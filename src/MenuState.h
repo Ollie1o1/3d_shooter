@@ -1,0 +1,332 @@
+#pragma once
+#include "GameState.h"
+#include <SDL2/SDL.h>
+#include <OpenGL/gl3.h>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include "ShaderProgram.h"
+#include <functional>
+#include <cmath>
+#include <cstring>
+
+// =============================================================================
+// 5x7 pixel font — each character is 7 rows of 5 bits (bit4 = leftmost pixel)
+// Indexed by (char - ' '), so 'A'-' ' = 33, etc.
+// =============================================================================
+static const uint8_t PIXEL_FONT[96][7] = {
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // ' '
+    {0x04,0x04,0x04,0x04,0x00,0x00,0x04}, // !
+    {0x0A,0x0A,0x00,0x00,0x00,0x00,0x00}, // "
+    {0x0A,0x0A,0x1F,0x0A,0x1F,0x0A,0x0A}, // #
+    {0x04,0x0F,0x14,0x0E,0x05,0x1E,0x04}, // $
+    {0x18,0x19,0x02,0x04,0x08,0x13,0x03}, // %
+    {0x0C,0x12,0x14,0x08,0x15,0x12,0x0D}, // &
+    {0x04,0x04,0x00,0x00,0x00,0x00,0x00}, // '
+    {0x02,0x04,0x08,0x08,0x08,0x04,0x02}, // (
+    {0x08,0x04,0x02,0x02,0x02,0x04,0x08}, // )
+    {0x00,0x04,0x15,0x0E,0x15,0x04,0x00}, // *
+    {0x00,0x04,0x04,0x1F,0x04,0x04,0x00}, // +
+    {0x00,0x00,0x00,0x00,0x00,0x04,0x08}, // ,
+    {0x00,0x00,0x00,0x1F,0x00,0x00,0x00}, // -
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x04}, // .
+    {0x01,0x01,0x02,0x04,0x08,0x10,0x10}, // /
+    {0x0E,0x11,0x13,0x15,0x19,0x11,0x0E}, // 0
+    {0x04,0x0C,0x04,0x04,0x04,0x04,0x0E}, // 1
+    {0x0E,0x11,0x01,0x06,0x08,0x10,0x1F}, // 2
+    {0x1F,0x02,0x04,0x06,0x01,0x11,0x0E}, // 3
+    {0x02,0x06,0x0A,0x12,0x1F,0x02,0x02}, // 4
+    {0x1F,0x10,0x1E,0x01,0x01,0x11,0x0E}, // 5
+    {0x06,0x08,0x10,0x1E,0x11,0x11,0x0E}, // 6
+    {0x1F,0x01,0x02,0x04,0x08,0x08,0x08}, // 7
+    {0x0E,0x11,0x11,0x0E,0x11,0x11,0x0E}, // 8
+    {0x0E,0x11,0x11,0x0F,0x01,0x02,0x0C}, // 9
+    {0x00,0x04,0x00,0x00,0x00,0x04,0x00}, // :
+    {0x00,0x04,0x00,0x00,0x00,0x04,0x08}, // ;
+    {0x02,0x04,0x08,0x10,0x08,0x04,0x02}, // <
+    {0x00,0x00,0x1F,0x00,0x1F,0x00,0x00}, // =
+    {0x08,0x04,0x02,0x01,0x02,0x04,0x08}, // >
+    {0x0E,0x11,0x01,0x06,0x04,0x00,0x04}, // ?
+    {0x0E,0x11,0x17,0x15,0x17,0x10,0x0E}, // @
+    {0x0E,0x11,0x11,0x1F,0x11,0x11,0x11}, // A
+    {0x1E,0x11,0x11,0x1E,0x11,0x11,0x1E}, // B
+    {0x0E,0x11,0x10,0x10,0x10,0x11,0x0E}, // C
+    {0x1C,0x12,0x11,0x11,0x11,0x12,0x1C}, // D
+    {0x1F,0x10,0x10,0x1E,0x10,0x10,0x1F}, // E
+    {0x1F,0x10,0x10,0x1E,0x10,0x10,0x10}, // F
+    {0x0E,0x11,0x10,0x17,0x11,0x11,0x0F}, // G
+    {0x11,0x11,0x11,0x1F,0x11,0x11,0x11}, // H
+    {0x0E,0x04,0x04,0x04,0x04,0x04,0x0E}, // I
+    {0x07,0x02,0x02,0x02,0x02,0x12,0x0C}, // J
+    {0x11,0x12,0x14,0x18,0x14,0x12,0x11}, // K
+    {0x10,0x10,0x10,0x10,0x10,0x10,0x1F}, // L
+    {0x11,0x1B,0x15,0x15,0x11,0x11,0x11}, // M
+    {0x11,0x19,0x19,0x15,0x13,0x13,0x11}, // N
+    {0x0E,0x11,0x11,0x11,0x11,0x11,0x0E}, // O
+    {0x1E,0x11,0x11,0x1E,0x10,0x10,0x10}, // P
+    {0x0E,0x11,0x11,0x11,0x15,0x12,0x0D}, // Q
+    {0x1E,0x11,0x11,0x1E,0x14,0x12,0x11}, // R
+    {0x0E,0x11,0x10,0x0E,0x01,0x11,0x0E}, // S
+    {0x1F,0x04,0x04,0x04,0x04,0x04,0x04}, // T
+    {0x11,0x11,0x11,0x11,0x11,0x11,0x0E}, // U
+    {0x11,0x11,0x11,0x11,0x11,0x0A,0x04}, // V
+    {0x11,0x11,0x11,0x15,0x15,0x15,0x0A}, // W
+    {0x11,0x11,0x0A,0x04,0x0A,0x11,0x11}, // X
+    {0x11,0x11,0x0A,0x04,0x04,0x04,0x04}, // Y
+    {0x1F,0x01,0x02,0x04,0x08,0x10,0x1F}, // Z
+    {0x0E,0x08,0x08,0x08,0x08,0x08,0x0E}, // [
+    {0x10,0x10,0x08,0x04,0x02,0x01,0x01}, // backslash
+    {0x0E,0x02,0x02,0x02,0x02,0x02,0x0E}, // ]
+    {0x04,0x0A,0x11,0x00,0x00,0x00,0x00}, // ^
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x1F}, // _
+    {0x08,0x04,0x00,0x00,0x00,0x00,0x00}, // `
+    // lowercase — map to uppercase visually
+    {0x00,0x0E,0x01,0x0F,0x11,0x11,0x0F}, // a
+    {0x10,0x10,0x1E,0x11,0x11,0x11,0x1E}, // b
+    {0x00,0x00,0x0E,0x10,0x10,0x11,0x0E}, // c
+    {0x01,0x01,0x0F,0x11,0x11,0x11,0x0F}, // d
+    {0x00,0x00,0x0E,0x11,0x1F,0x10,0x0E}, // e
+    {0x06,0x09,0x08,0x1E,0x08,0x08,0x08}, // f
+    {0x00,0x0F,0x11,0x11,0x0F,0x01,0x0E}, // g
+    {0x10,0x10,0x1E,0x11,0x11,0x11,0x11}, // h
+    {0x04,0x00,0x0C,0x04,0x04,0x04,0x0E}, // i
+    {0x02,0x00,0x06,0x02,0x02,0x12,0x0C}, // j
+    {0x10,0x10,0x11,0x16,0x18,0x16,0x11}, // k
+    {0x0C,0x04,0x04,0x04,0x04,0x04,0x0E}, // l
+    {0x00,0x00,0x1A,0x15,0x15,0x11,0x11}, // m
+    {0x00,0x00,0x1E,0x11,0x11,0x11,0x11}, // n
+    {0x00,0x00,0x0E,0x11,0x11,0x11,0x0E}, // o
+    {0x00,0x00,0x1E,0x11,0x11,0x1E,0x10}, // p
+    {0x00,0x00,0x0F,0x11,0x11,0x0F,0x01}, // q
+    {0x00,0x00,0x16,0x19,0x10,0x10,0x10}, // r
+    {0x00,0x00,0x0E,0x10,0x0E,0x01,0x1E}, // s
+    {0x08,0x08,0x1C,0x08,0x08,0x09,0x06}, // t
+    {0x00,0x00,0x11,0x11,0x11,0x11,0x0F}, // u
+    {0x00,0x00,0x11,0x11,0x11,0x0A,0x04}, // v
+    {0x00,0x00,0x11,0x11,0x15,0x15,0x0A}, // w
+    {0x00,0x00,0x11,0x0A,0x04,0x0A,0x11}, // x
+    {0x00,0x00,0x11,0x11,0x0F,0x01,0x0E}, // y
+    {0x00,0x00,0x1F,0x02,0x04,0x08,0x1F}, // z
+    {0x06,0x04,0x04,0x08,0x04,0x04,0x06}, // {
+    {0x04,0x04,0x04,0x00,0x04,0x04,0x04}, // |
+    {0x0C,0x04,0x04,0x02,0x04,0x04,0x0C}, // }
+    {0x00,0x08,0x15,0x02,0x00,0x00,0x00}, // ~
+    {0x00,0x00,0x00,0x00,0x00,0x00,0x00}, // DEL
+};
+
+// =============================================================================
+// MenuState — main menu with pixel-font labels
+// 3 options: START (0), SETTINGS (1), EXIT (2)
+// =============================================================================
+class MenuState : public GameState {
+public:
+    std::function<void()> onStart;
+    std::function<void()> onQuit;
+
+    // 0 = START, 1 = SETTINGS, 2 = EXIT
+    int   selected  = 0;
+    float flashTime = 0.f;
+
+    ShaderProgram uiShader;
+    GLuint quadVAO = 0, quadVBO = 0;
+    int screenW, screenH;
+
+    MenuState(int w, int h) : screenW(w), screenH(h) {
+        uiShader.loadFiles("src/ui.vert", "src/ui.frag");
+        float verts[] = { 0,0, 1,0, 1,1, 0,0, 1,1, 0,1 };
+        glGenVertexArrays(1, &quadVAO);
+        glGenBuffers(1, &quadVBO);
+        glBindVertexArray(quadVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2*sizeof(float), (void*)0);
+        glBindVertexArray(0);
+    }
+
+    ~MenuState() {
+        if (quadVAO) glDeleteVertexArrays(1, &quadVAO);
+        if (quadVBO) glDeleteBuffers(1, &quadVBO);
+    }
+
+    void handleEvent(const SDL_Event& e) override {
+        if (e.type == SDL_KEYDOWN) {
+            switch (e.key.keysym.sym) {
+                case SDLK_UP:
+                    selected = (selected + 2) % 3; // wrap up
+                    break;
+                case SDLK_DOWN:
+                    selected = (selected + 1) % 3;
+                    break;
+                case SDLK_RETURN:
+                case SDLK_SPACE:
+                    activate(selected);
+                    break;
+                case SDLK_ESCAPE:
+                    if (onQuit) onQuit();
+                    break;
+                default: break;
+            }
+        }
+        if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
+            int mx = e.button.x, my = e.button.y;
+            for (int i = 0; i < 3; ++i) {
+                int by = buttonY(i);
+                if (mx > screenW/2-120 && mx < screenW/2+120 &&
+                    my > by && my < by+50) {
+                    activate(i);
+                }
+            }
+        }
+        if (e.type == SDL_MOUSEMOTION) {
+            int mx = e.motion.x, my = e.motion.y;
+            for (int i = 0; i < 3; ++i) {
+                int by = buttonY(i);
+                if (mx > screenW/2-120 && mx < screenW/2+120 &&
+                    my > by && my < by+50) {
+                    selected = i;
+                }
+            }
+        }
+    }
+
+    void update(float dt) override {
+        flashTime += dt;
+    }
+
+    void render() override {
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        glClearColor(0.04f, 0.03f, 0.08f, 1.f);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        uiShader.use();
+        glm::mat4 ortho = glm::ortho(0.f, (float)screenW, (float)screenH, 0.f);
+        uiShader.setMat4("projection", ortho);
+        glBindVertexArray(quadVAO);
+
+        // --- Background gradient strips ---
+        for (int i = 0; i < 16; ++i) {
+            float t = (float)i / 16.f;
+            int   y = (int)(t * screenH);
+            int   h = screenH / 16 + 1;
+            drawRect(0, y, screenW, h, {0.04f+t*0.03f, 0.02f+t*0.02f, 0.08f+t*0.08f, 1.f});
+        }
+
+        // --- Decorative horizontal rule at bottom of title area ---
+        int titleBottom = screenH/2 - 148;
+        drawRect(screenW/2-260, titleBottom,   520, 3, {1.f, 0.55f, 0.05f, 0.9f});
+        drawRect(screenW/2-260, titleBottom+6, 520, 1, {1.f, 0.55f, 0.05f, 0.4f});
+
+        // --- Title: "OVERDRIVE" ---
+        drawText("OVERDRIVE", screenW/2, screenH/2 - 210, 5, {1.f, 0.55f, 0.08f, 1.f}, true);
+
+        // --- Buttons ---
+        const char* labels[3]  = { "START",    "SETTINGS", "EXIT"  };
+        glm::vec4   selColor   = {0.9f, 0.6f, 0.1f, 1.f};
+        glm::vec4   normColor  = {0.55f, 0.55f, 0.6f, 0.9f};
+        glm::vec4   dimColor   = {0.35f, 0.35f, 0.4f, 0.7f}; // SETTINGS is placeholder
+
+        for (int i = 0; i < 3; ++i) {
+            bool isSel  = (selected == i);
+            bool isDim  = (i == 1); // SETTINGS — not implemented yet
+            int  by     = buttonY(i);
+            float pulse = isSel ? 0.5f + 0.5f*sinf(flashTime*5.f) : 0.f;
+
+            // Button background
+            glm::vec4 bg = isSel
+                ? glm::vec4(0.12f+pulse*0.08f, 0.08f+pulse*0.04f, 0.04f, 0.92f)
+                : glm::vec4(0.08f, 0.08f, 0.10f, 0.85f);
+            drawRect(screenW/2-120, by, 240, 50, bg);
+
+            // Selection indicator bar on left edge
+            if (isSel) {
+                drawRect(screenW/2-120, by, 5, 50, {1.f, 0.6f+pulse*0.2f, 0.1f, 1.f});
+            }
+
+            // Border lines top/bottom
+            glm::vec4 borderC = isSel
+                ? glm::vec4(1.f, 0.6f+pulse*0.2f, 0.1f, 0.9f)
+                : glm::vec4(0.3f, 0.3f, 0.35f, 0.6f);
+            drawRect(screenW/2-120, by,    240, 2, borderC);
+            drawRect(screenW/2-120, by+48, 240, 2, borderC);
+
+            // Label text
+            glm::vec4 textC = isSel ? selColor : (isDim ? dimColor : normColor);
+            drawText(labels[i], screenW/2, by+15, 3, textC, true);
+
+            // "(not yet)" note for settings
+            if (isDim) {
+                drawText("(coming soon)", screenW/2, by+28, 1, {0.35f,0.35f,0.4f,0.6f}, true);
+            }
+        }
+
+        // --- Arrow indicator next to selected button ---
+        int ay = buttonY(selected) + 18;
+        float ap = 0.5f + 0.5f*sinf(flashTime*5.f);
+        drawText(">", screenW/2 - 140, ay, 3, {1.f, 0.6f+ap*0.2f, 0.1f, ap*0.8f+0.2f}, false);
+
+        // --- Bottom hint ---
+        float hint = 0.35f + 0.35f*sinf(flashTime*1.8f);
+        drawText("UP/DOWN or mouse to select  |  ENTER or click to confirm",
+                 screenW/2, screenH - 30, 1, {hint, hint, hint+0.05f, 0.8f}, true);
+
+        glDisable(GL_BLEND);
+        glEnable(GL_DEPTH_TEST);
+        glEnable(GL_CULL_FACE);
+    }
+
+private:
+    // Y position of button i (top edge)
+    int buttonY(int i) const {
+        return screenH/2 - 80 + i * 70;
+    }
+
+    void activate(int idx) {
+        if (idx == 0 && onStart) onStart();
+        if (idx == 2 && onQuit)  onQuit();
+        // idx == 1 (settings) is a no-op for now
+    }
+
+    // Draw a single pixel (as a filled rectangle of pixel_size)
+    void drawPixel(int x, int y, int sz, glm::vec4 c) {
+        drawRect(x, y, sz, sz, c);
+    }
+
+    // Draw a string using the 5x7 pixel font.
+    // px,py = position. scale = pixel size in screen pixels.
+    // centred = horizontally centre around px.
+    void drawText(const char* text, int px, int py, int scale, glm::vec4 color, bool centred) {
+        int len  = (int)strlen(text);
+        int charW = 5 * scale + scale; // 5 pixel cols + 1 gap
+        int totalW = len * charW - scale;
+        int startX = centred ? px - totalW/2 : px;
+
+        int cx = startX;
+        for (int ci = 0; ci < len; ++ci) {
+            char ch = text[ci];
+            if (ch < 32 || ch > 127) { cx += charW; continue; }
+            const uint8_t* glyph = PIXEL_FONT[(unsigned char)(ch - ' ')];
+            for (int row = 0; row < 7; ++row) {
+                uint8_t bits = glyph[row];
+                for (int col = 0; col < 5; ++col) {
+                    if (bits & (0x10 >> col)) { // bit4=leftmost
+                        drawPixel(cx + col*scale, py + row*scale, scale, color);
+                    }
+                }
+            }
+            cx += charW;
+        }
+    }
+
+    void drawRect(int x, int y, int w, int h, glm::vec4 c) {
+        glm::mat4 m = glm::translate(glm::mat4(1.f), {(float)x, (float)y, 0.f});
+        m = glm::scale(m, {(float)w, (float)h, 1.f});
+        uiShader.setMat4("model", m);
+        uiShader.setVec3("uColor", {c.r, c.g, c.b});
+        uiShader.setFloat("uAlpha", c.a);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+    }
+};

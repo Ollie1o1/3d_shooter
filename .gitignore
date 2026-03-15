@@ -1,0 +1,39 @@
+# Build output
+shooter
+*.o
+*.d
+*.dSYM/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+
+.claude/
+
+# IDE / editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Sensitive / local config
+.env
+*.env.*
+config.local.*
+secrets.*
+
+# Compiled/cached shader binaries (if you ever add shader caching)
+*.spv
+*.glslc
+
+# Dependency build artifacts (if you ever add vcpkg or conan)
+vcpkg_installed/
+build/
+CMakeCache.txt
+CMakeFiles/
