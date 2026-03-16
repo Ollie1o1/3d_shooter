@@ -5,8 +5,10 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include "ShaderProgram.h"
 #include "StyleSystem.h"
+#include "PixelFont.h"
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 class UIRenderer {
 public:
@@ -22,6 +24,9 @@ public:
     float hitmarkerTimer  = 0.f;
     float shootFlashTimer = 0.f;
     bool  hitmarkerKill   = false;
+
+    int  currentFPS = 0;
+    bool showFPS    = false;
 
     UIRenderer(int w, int h) : screenW(w), screenH(h) {
         shader.loadFiles("src/ui.vert", "src/ui.frag");
@@ -206,12 +211,42 @@ public:
         drawRect(cx-1,cy-8,2,6,chCol);
         drawRect(cx-1,cy+2,2,6,chCol);
 
+        // --- FPS counter (bottom of screen) ----------------------------------
+        if (showFPS) {
+            char buf[16];
+            snprintf(buf, sizeof(buf), "FPS %d", currentFPS);
+            drawText(buf, screenW/2, screenH - 18, 2, {0.9f,0.9f,0.2f,0.85f}, true);
+        }
+
         glDisable(GL_BLEND);
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
     }
 
 private:
+    void drawText(const char* text, int px, int py, int scale, glm::vec4 color, bool centred) {
+        int len   = (int)strlen(text);
+        int charW = 5 * scale + scale;
+        int totalW = len * charW - scale;
+        int startX = centred ? px - totalW / 2 : px;
+        int cx = startX;
+        for (int ci = 0; ci < len; ++ci) {
+            char ch = text[ci];
+            if ((unsigned char)ch < 32 || (unsigned char)ch > 127) { cx += charW; continue; }
+            const uint8_t* glyph = PIXEL_FONT[(unsigned char)(ch - ' ')];
+            for (int row = 0; row < 7; ++row) {
+                uint8_t bits = glyph[row];
+                for (int col = 0; col < 5; ++col) {
+                    if (bits & (0x10 >> col)) {
+                        int rx = cx + col * scale;
+                        int ry = py + row * scale;
+                        drawRect(rx, ry, scale, scale, color);
+                    }
+                }
+            }
+            cx += charW;
+        }
+    }
     void drawRect(int x, int y, int w, int h, glm::vec4 color) {
         glm::mat4 model = glm::translate(glm::mat4(1.f), glm::vec3((float)x,(float)y,0.f));
         model = glm::scale(model, glm::vec3((float)w,(float)h,1.f));

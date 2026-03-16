@@ -1,36 +1,50 @@
 #pragma once
 // =============================================================================
-// Level.h — Arena geometry (walls/platforms) + room management
+// Level.h — Multi-room arena geometry + room/door management
 // =============================================================================
 //
-// ARENA LAYOUT (130 × 130 units, X/Z: −65 … 65)
+// LAYOUT OVERVIEW (two massive rooms + corridor)
 //
-//   Zone 0  — Perimeter walls            : X/Z ±65, Y=14
-//   Zone 1  — Central Hub               : X[−7,7]    Z[−7,7]    Y=3.5
-//   Zone 2  — North Fortress            : X[−22,22]  Z[−38,−20] Y=4
-//   Zone 3  — East Elevated Walkway     : X[18,40]   Z[−15,15]  Y=3
-//   Zone 4  — West Raised Terraces      : X[−40,−18] Z[−15,5]   Y=2/4
-//   Zone 5  — Cover Walls               : waist-height scatter
-//   Zone 6  — Mid-Arena Pillars         : 8 pillars ringing hub, Y=5–7
-//   Zone 7  — Corner Towers             : SW + SE, Y=7
-//   Zone 8  — Perimeter Catwalks        : all 4 walls, Y=5
-//   Zone 9  — Inner Floating Platforms  : Y=5.5 near hub
-//   Zone 10 — Central Sky Platform      : X[−9,9]    Z[−9,9]    Y=10
-//   Zone 11 — Sky Bridges               : thin pads at Y=8 in 4 directions
-//   Zone 12 — Corner Sky Pads           : 4 large pads at Y=9, ±30 diagonal
-//   Zone 13 — Far North Expansion       : bastion at Z−47..−60, mega towers
-//   Zone 14 — Far South Platform        : Z[47,62]  Y=4, sky shelf above
-//   Zone 15 — Far East/West Sky Shelves : X±50..63  Y=7
-//   Zone 16 — Cardinal Spires           : 4 tall thin pillars at Y=12
+//  Room 0 (Starting Arena): X=-90..90  Z=-20..82   Y=0..16   (180x102m)
+//  Corridor:                 X=-7..7   Z=-70..-20  Y=0..10   (14x50m)
+//  Room 1 (Deep Compound):   X=-90..90 Z=-70..-230 Y=0..16   (180x160m)
 //
-// JUMP HEIGHTS: single ~1.5 m, double ~3.0 m, grapple unlimited
-// CEILING: Y=14. Keep all geometry below Y=13.
+//  Door (Room 0 wall, slides down when Room 0 cleared):
+//    X=-7..7, Z=-71..-70, Y=0..14
+//
+//  Player spawns at {0, 0, 60} facing -Z (north).
+//
+// WALL COLORS: stored per-wall so buildWorldMesh can read wall.color directly.
 // =============================================================================
 
 #include "Player.h"
 #include <vector>
 #include <algorithm>
 #include <glm/glm.hpp>
+
+// ---------------------------------------------------------------------------
+// Arena color palette — referenced when constructing walls in buildLevel()
+// ---------------------------------------------------------------------------
+namespace ArenaColor {
+    constexpr glm::vec3 Floor    = {0.18f, 0.16f, 0.14f};
+    constexpr glm::vec3 Ceiling  = {0.10f, 0.10f, 0.16f};
+    constexpr glm::vec3 Perim    = {0.26f, 0.26f, 0.34f};
+    constexpr glm::vec3 Hub      = {0.38f, 0.22f, 0.06f};
+    constexpr glm::vec3 Riser    = {0.22f, 0.27f, 0.22f};
+    constexpr glm::vec3 Corner   = {0.16f, 0.20f, 0.30f};
+    constexpr glm::vec3 Ledge    = {0.24f, 0.24f, 0.30f};
+    constexpr glm::vec3 Cover    = {0.34f, 0.26f, 0.16f};
+    constexpr glm::vec3 Pillar   = {0.48f, 0.32f, 0.04f};
+    constexpr glm::vec3 Catwalk  = {0.18f, 0.18f, 0.24f};
+    constexpr glm::vec3 Tower    = {0.20f, 0.16f, 0.30f};
+    constexpr glm::vec3 SkyPad   = {0.08f, 0.45f, 0.65f};
+    constexpr glm::vec3 Spire    = {0.50f, 0.08f, 0.72f};
+    constexpr glm::vec3 FarFort  = {0.32f, 0.10f, 0.10f};
+    constexpr glm::vec3 Door     = {0.55f, 0.50f, 0.10f};
+}
+
+// Helper: make a Wall with colour
+inline Wall W(AABB box, glm::vec3 col) { return {box, col}; }
 
 struct Room {
     std::vector<Wall>      walls;
@@ -49,10 +63,21 @@ struct LevelData {
             if (room.doorWallIndex >= 0 && room.cleared) {
                 float& botY = room.walls[room.doorWallIndex].box.min.y;
                 float& topY = room.walls[room.doorWallIndex].box.max.y;
-                botY = std::max(botY - 5.f * dt, -6.f);
-                topY = std::max(topY - 5.f * dt,  0.f);
+                if (topY > 0.f) {
+                    botY = std::max(botY - 5.f * dt, -6.f);
+                    topY = std::max(topY - 5.f * dt,  0.f);
+                }
             }
         }
+    }
+
+    bool anyDoorSliding() const {
+        for (auto& room : rooms) {
+            if (room.doorWallIndex >= 0 && room.cleared &&
+                room.walls[room.doorWallIndex].box.max.y > 0.01f)
+                return true;
+        }
+        return false;
     }
 
     std::vector<Wall> getAllWalls() const {
@@ -64,201 +89,222 @@ struct LevelData {
     }
 };
 
+// =============================================================================
+// buildLevel() — constructs the full two-room layout.
+// =============================================================================
 inline LevelData buildLevel() {
     LevelData level;
-    Room r;
-    r.unlocked = true;
 
-    r.walls = {
-        // =====================================================================
-        // ZONE 0 — PERIMETER WALLS (0-3)  130×130 arena, 14 m tall
-        // =====================================================================
-        { AABB{{-65.f, 0.f,-66.f},{ 65.f,14.f,-65.f}} }, // 0  North wall
-        { AABB{{-65.f, 0.f, 65.f},{ 65.f,14.f, 66.f}} }, // 1  South wall
-        { AABB{{-66.f, 0.f,-65.f},{-65.f,14.f, 65.f}} }, // 2  West wall
-        { AABB{{ 65.f, 0.f,-65.f},{ 66.f,14.f, 65.f}} }, // 3  East wall
+    // =========================================================================
+    // ROOM 0 — Starting Arena
+    // Bounds: X=-90..90, Z=-20..82, Y=0..16
+    // Player spawns at (0, 0, 60). All enemies here are spawned first.
+    // =========================================================================
+    {
+        Room r;
+        r.unlocked = true;
 
-        // =====================================================================
-        // ZONE 1 — CENTRAL HUB (4-8)
-        // =====================================================================
-        { AABB{{ -7.f, 0.f, -7.f},{  7.f, 3.5f,  7.f}} }, // 4  Hub
-        { AABB{{ -4.f, 0.f,  7.f},{  4.f, 1.0f, 10.f}} }, // 5  South riser
-        { AABB{{ -4.f, 0.f,-10.f},{  4.f, 1.0f, -7.f}} }, // 6  North riser
-        { AABB{{  7.f, 0.f, -4.f},{ 10.f, 1.0f,  4.f}} }, // 7  East riser
-        { AABB{{-10.f, 0.f, -4.f},{ -7.f, 1.0f,  4.f}} }, // 8  West riser
+        // --- Perimeter walls -------------------------------------------------
+        r.walls.push_back(W({{-90,0, 82},{ 90,16, 83}}, ArenaColor::Perim)); // South
+        r.walls.push_back(W({{ 90,0,-20},{ 91,16, 83}}, ArenaColor::Perim)); // East
+        r.walls.push_back(W({{-91,0,-20},{-90,16, 83}}, ArenaColor::Perim)); // West
+        // North wall — split left/right to leave door gap at X=-7..7
+        r.walls.push_back(W({{-90,0,-21},{-7, 16,-20}}, ArenaColor::Perim)); // North-left
+        r.walls.push_back(W({{  7,0,-21},{ 90,16,-20}}, ArenaColor::Perim)); // North-right
 
-        // =====================================================================
-        // ZONE 2 — NORTH FORTRESS (9-12)
-        // =====================================================================
-        { AABB{{-22.f, 0.f,-38.f},{ 22.f, 4.f,-20.f}} }, // 9  Fortress floor
-        { AABB{{-10.f, 0.f,-20.f},{ 10.f, 2.f,-16.f}} }, // 10 South approach riser
-        { AABB{{-22.f, 0.f,-38.f},{-18.f, 9.f,-34.f}} }, // 11 NW tower
-        { AABB{{ 18.f, 0.f,-38.f},{  22.f, 9.f,-34.f}} }, // 12 NE tower
+        // --- Central Hub (raised 4m platform) --------------------------------
+        r.walls.push_back(W({{-12,0, 0},{ 12,4, 20}}, ArenaColor::Hub));
+        r.walls.push_back(W({{ -6,4, 4},{  6,7, 16}}, ArenaColor::Hub)); // upper tier
 
-        // =====================================================================
-        // ZONE 3 — EAST ELEVATED WALKWAY (13-16)
-        // =====================================================================
-        { AABB{{ 18.f, 0.f,-15.f},{ 40.f, 3.f, 15.f}} }, // 13 East walkway
-        { AABB{{ 14.f, 0.f, -6.f},{ 18.f, 1.5f, 6.f}} }, // 14 Access step
-        { AABB{{ 37.f, 0.f,-15.f},{ 40.f, 6.f,-11.f}} }, // 15 North support column
-        { AABB{{ 37.f, 0.f, 11.f},{ 40.f, 6.f, 15.f}} }, // 16 South support column
+        // --- North Fortress (6m slab + two towers) ---------------------------
+        r.walls.push_back(W({{-26,0,-14},{ 26,6,  2}}, ArenaColor::Corner)); // fortress floor
+        r.walls.push_back(W({{-11,0,  2},{ 11,3,  8}}, ArenaColor::Riser));  // access riser
+        r.walls.push_back(W({{-26,0,-14},{-21,12,-9}}, ArenaColor::Pillar)); // NW tower
+        r.walls.push_back(W({{ 21,0,-14},{ 26,12,-9}}, ArenaColor::Pillar)); // NE tower
 
-        // =====================================================================
-        // ZONE 4 — WEST RAISED TERRACES (17-19)
-        // =====================================================================
-        { AABB{{-40.f, 0.f, -5.f},{-18.f, 2.f,  5.f}} }, // 17 West platform A
-        { AABB{{-40.f, 0.f,-15.f},{-28.f, 4.f, -7.f}} }, // 18 West platform B
-        { AABB{{-40.f, 0.f,-24.f},{-34.f, 8.f,-18.f}} }, // 19 West tall tower
+        // --- East Elevated Walkway (4m high) ---------------------------------
+        r.walls.push_back(W({{ 28,0,-8},{ 82,4, 12}}, ArenaColor::Ledge));
+        r.walls.push_back(W({{ 20,0,-5},{ 28,2,  9}}, ArenaColor::Riser)); // access step
+        r.walls.push_back(W({{ 76,4,-8},{ 82,10,-4}}, ArenaColor::Pillar)); // E support N
+        r.walls.push_back(W({{ 76,4, 8},{ 82,10, 12}}, ArenaColor::Pillar)); // E support S
 
-        // =====================================================================
-        // ZONE 5 — COVER WALLS (20-29)
-        // =====================================================================
-        { AABB{{-13.f, 0.f,-18.f},{ -9.f, 1.4f,-15.f}} }, // 20 NW L-shape A
-        { AABB{{-13.f, 0.f,-15.f},{-10.f, 1.4f,-12.f}} }, // 21 NW L-shape B
-        { AABB{{  9.f, 0.f,-18.f},{ 13.f, 1.4f,-15.f}} }, // 22 NE L-shape A
-        { AABB{{  9.f, 0.f,-15.f},{ 12.f, 1.4f,-12.f}} }, // 23 NE L-shape B
-        { AABB{{-18.f, 0.f, 20.f},{-14.f, 1.4f, 24.f}} }, // 24 SW L-shape A
-        { AABB{{-18.f, 0.f, 24.f},{-15.f, 1.4f, 27.f}} }, // 25 SW L-shape B
-        { AABB{{ 14.f, 0.f, 20.f},{ 18.f, 1.4f, 24.f}} }, // 26 SE L-shape A
-        { AABB{{ 14.f, 0.f, 24.f},{ 15.f, 1.4f, 27.f}} }, // 27 SE L-shape B
-        { AABB{{ -5.f, 0.f, 25.f},{  5.f, 1.4f, 28.f}} }, // 28 Center cover A
-        { AABB{{ -7.f, 0.f, 31.f},{  7.f, 1.4f, 33.f}} }, // 29 Center cover B
+        // --- West Raised Platforms -------------------------------------------
+        r.walls.push_back(W({{-82,0,-10},{-28,4, 10}}, ArenaColor::Corner));
+        r.walls.push_back(W({{-28,0, -6},{-20,2,  8}}, ArenaColor::Riser));
+        r.walls.push_back(W({{-82,4,-10},{-76,10,-4}}, ArenaColor::Pillar)); // W pillar N
+        r.walls.push_back(W({{-82,4,  8},{-76,10, 12}}, ArenaColor::Pillar)); // W pillar S
 
-        // =====================================================================
-        // ZONE 6 — MID-ARENA PILLARS (30-37)
-        // =====================================================================
-        { AABB{{ -1.f, 0.f,-17.f},{  1.f, 7.f,-15.f}} }, // 30 N pillar
-        { AABB{{ -1.f, 0.f, 15.f},{  1.f, 7.f, 17.f}} }, // 31 S pillar
-        { AABB{{-17.f, 0.f, -1.f},{-15.f, 7.f,  1.f}} }, // 32 W pillar
-        { AABB{{ 15.f, 0.f, -1.f},{ 17.f, 7.f,  1.f}} }, // 33 E pillar
-        { AABB{{-17.f, 0.f,-17.f},{-14.f, 5.f,-14.f}} }, // 34 NW diag pillar
-        { AABB{{ 14.f, 0.f,-17.f},{ 17.f, 5.f,-14.f}} }, // 35 NE diag pillar
-        { AABB{{-17.f, 0.f, 14.f},{-14.f, 5.f, 17.f}} }, // 36 SW diag pillar
-        { AABB{{ 14.f, 0.f, 14.f},{ 17.f, 5.f, 17.f}} }, // 37 SE diag pillar
+        // --- SE Compound (5m platform + tower) -------------------------------
+        r.walls.push_back(W({{ 38,0, 38},{ 82,5, 78}}, ArenaColor::Corner));
+        r.walls.push_back(W({{ 74,5, 38},{ 82,13,52}}, ArenaColor::Pillar));
 
-        // =====================================================================
-        // ZONE 7 — CORNER TOWERS (38-39)
-        // =====================================================================
-        { AABB{{-40.f, 0.f, 36.f},{-36.f, 7.f, 40.f}} }, // 38 SW corner tower
-        { AABB{{ 36.f, 0.f, 36.f},{ 40.f, 7.f, 40.f}} }, // 39 SE corner tower
+        // --- SW Area (4m platform + tower) -----------------------------------
+        r.walls.push_back(W({{-82,0, 40},{-38,4, 78}}, ArenaColor::Corner));
+        r.walls.push_back(W({{-82,4, 40},{-74,12,54}}, ArenaColor::Tower));
 
-        // =====================================================================
-        // ZONE 8 — PERIMETER CATWALKS (40-43)
-        // =====================================================================
-        { AABB{{-40.f, 5.f,-40.f},{-37.f, 5.3f, 40.f}} }, // 40 West catwalk
-        { AABB{{ 37.f, 5.f,-40.f},{ 40.f, 5.3f, 40.f}} }, // 41 East catwalk
-        { AABB{{-37.f, 5.f,-40.f},{ 37.f, 5.3f,-37.f}} }, // 42 North catwalk
-        { AABB{{-37.f, 5.f, 37.f},{ 37.f, 5.3f, 40.f}} }, // 43 South catwalk
+        // --- Far NE / NW mega towers (touch perimeter) -----------------------
+        r.walls.push_back(W({{ 82,0,-20},{ 90,14,-12}}, ArenaColor::Pillar));
+        r.walls.push_back(W({{-90,0,-20},{-82,14,-12}}, ArenaColor::Pillar));
 
-        // =====================================================================
-        // ZONE 9 — INNER FLOATING PLATFORMS (44-45)
-        // =====================================================================
-        { AABB{{ -4.f, 5.5f,-19.f},{  4.f, 5.8f,-16.f}} }, // 44 North hover pad
-        { AABB{{ -4.f, 5.5f, 16.f},{  4.f, 5.8f, 19.f}} }, // 45 South hover pad
+        // --- Mid-arena pillars (8 tall) --------------------------------------
+        r.walls.push_back(W({{ -2,0,-15},{  2, 9,-13}}, ArenaColor::Pillar)); // N
+        r.walls.push_back(W({{ -2,0, 22},{  2, 9, 24}}, ArenaColor::Pillar)); // S
+        r.walls.push_back(W({{ 19,0,  2},{ 21, 9,  4}}, ArenaColor::Pillar)); // E
+        r.walls.push_back(W({{-21,0,  2},{-19, 9,  4}}, ArenaColor::Pillar)); // W
+        r.walls.push_back(W({{ 15,0,-11},{ 17, 7, -9}}, ArenaColor::Pillar)); // NE
+        r.walls.push_back(W({{-17,0,-11},{-15, 7, -9}}, ArenaColor::Pillar)); // NW
+        r.walls.push_back(W({{ 15,0, 21},{ 17, 7, 23}}, ArenaColor::Pillar)); // SE diag
+        r.walls.push_back(W({{-17,0, 21},{-15, 7, 23}}, ArenaColor::Pillar)); // SW diag
 
-        // =====================================================================
-        // ZONE 10 — CENTRAL SKY PLATFORM (46)
-        // Large landing zone at Y=10. Only reachable via grapple or sky bridges.
-        // =====================================================================
-        { AABB{{ -9.f,10.0f, -9.f},{  9.f,10.3f,  9.f}} }, // 46 Central sky pad
+        // --- Floating catwalks (Y=7) -----------------------------------------
+        r.walls.push_back(W({{-28,7,-13},{ 28,7.4f,-11}}, ArenaColor::Catwalk)); // N catwalk
+        r.walls.push_back(W({{ 12,7, -3},{ 30,7.4f,  1}}, ArenaColor::Catwalk)); // E catwalk
+        r.walls.push_back(W({{-30,7, -3},{-12,7.4f,  1}}, ArenaColor::Catwalk)); // W catwalk
 
-        // =====================================================================
-        // ZONE 11 — SKY BRIDGES (47-50)
-        // Thin platforms at Y=8 radiating from the central sky pad.
-        // Grapple to a pillar top, jump to the bridge, walk to the sky pad.
-        // =====================================================================
-        { AABB{{ -2.f, 8.0f,-20.f},{  2.f, 8.3f, -9.f}} }, // 47 North sky bridge
-        { AABB{{ -2.f, 8.0f,  9.f},{  2.f, 8.3f, 20.f}} }, // 48 South sky bridge
-        { AABB{{  9.f, 8.0f, -2.f},{ 20.f, 8.3f,  2.f}} }, // 49 East sky bridge
-        { AABB{{-20.f, 8.0f, -2.f},{ -9.f, 8.3f,  2.f}} }, // 50 West sky bridge
+        // --- Central sky pad + bridges (Y=11) --------------------------------
+        r.walls.push_back(W({{ -8,11,  2},{  8,11.4f,16}}, ArenaColor::SkyPad));
+        r.walls.push_back(W({{ -2,8.5f,-12},{  2, 8.9f, 2}}, ArenaColor::SkyPad)); // N bridge
+        r.walls.push_back(W({{ -2,8.5f, 16},{  2, 8.9f,22}}, ArenaColor::SkyPad)); // S bridge
 
-        // =====================================================================
-        // ZONE 12 — CORNER SKY PADS (51-54)
-        // Wide floating platforms at Y=9 in the diagonal corners.
-        // =====================================================================
-        { AABB{{ 22.f, 9.0f,-38.f},{ 38.f, 9.3f,-22.f}} }, // 51 NE sky pad
-        { AABB{{-38.f, 9.0f,-38.f},{-22.f, 9.3f,-22.f}} }, // 52 NW sky pad
-        { AABB{{ 22.f, 9.0f, 22.f},{ 38.f, 9.3f, 38.f}} }, // 53 SE sky pad
-        { AABB{{-38.f, 9.0f, 22.f},{-22.f, 9.3f, 38.f}} }, // 54 SW sky pad
+        // --- Cover walls (waist-high) ----------------------------------------
+        r.walls.push_back(W({{ -8,0, 30},{  8,1.5f,32}}, ArenaColor::Cover));
+        r.walls.push_back(W({{-16,0, 28},{-12,1.5f,31}}, ArenaColor::Cover));
+        r.walls.push_back(W({{ 12,0, 28},{ 16,1.5f,31}}, ArenaColor::Cover));
+        r.walls.push_back(W({{-18,0,  8},{-15,1.4f,12}}, ArenaColor::Cover));
+        r.walls.push_back(W({{ 15,0,  8},{ 18,1.4f,12}}, ArenaColor::Cover));
+        r.walls.push_back(W({{ -6,0, 46},{  6,1.5f,48}}, ArenaColor::Cover));
+        r.walls.push_back(W({{-40,0, 25},{-36,1.5f,29}}, ArenaColor::Cover));
+        r.walls.push_back(W({{ 36,0, 25},{ 40,1.5f,29}}, ArenaColor::Cover));
 
-        // =====================================================================
-        // ZONE 13 — FAR NORTH EXPANSION (55-57)
-        // Extended territory beyond the original north fortress.
-        // Two mega-towers (Y=13) mark the far corners.
-        // =====================================================================
-        { AABB{{-20.f, 0.f,-60.f},{ 20.f, 5.f,-47.f}} }, // 55 Far north bastion
-        { AABB{{-63.f, 0.f,-65.f},{-58.f,13.f,-58.f}} }, // 56 Far NW mega tower
-        { AABB{{ 58.f, 0.f,-65.f},{ 63.f,13.f,-58.f}} }, // 57 Far NE mega tower
+        // --- Corridor side walls and ceiling ---------------------------------
+        r.walls.push_back(W({{ -7.5f,0,-70},{ -7, 10,-20}}, ArenaColor::Perim)); // W corridor
+        r.walls.push_back(W({{  7,   0,-70},{7.5f,10,-20}}, ArenaColor::Perim)); // E corridor
+        r.walls.push_back(W({{ -7.5f,10,-70},{7.5f,10.3f,-20}}, ArenaColor::Ceiling)); // ceiling
 
-        // =====================================================================
-        // ZONE 14 — FAR SOUTH PLATFORM (58-59)
-        // Elevated slab at Y=4, with a smaller sky shelf above at Y=8.
-        // =====================================================================
-        { AABB{{-30.f, 0.f, 47.f},{ 30.f, 4.f, 62.f}} }, // 58 Far south slab
-        { AABB{{ -8.f, 8.0f, 52.f},{  8.f, 8.3f, 60.f}} }, // 59 Far south sky shelf
+        // --- DOOR (doorWallIndex = last wall added to Room 0) ----------------
+        // Blocks corridor exit into Room 1 until all Room 0 enemies are dead.
+        r.walls.push_back(W({{ -7,0,-71},{  7,14,-70}}, ArenaColor::Door));
+        r.doorWallIndex = (int)r.walls.size() - 1;
 
-        // =====================================================================
-        // ZONE 15 — FAR EAST/WEST SKY SHELVES (60-61)
-        // Long thin platforms at Y=7 hugging the far east/west walls.
-        // Grapple from the mid-arena pillars or catwalks to reach them.
-        // =====================================================================
-        { AABB{{ 50.f, 7.0f,-20.f},{ 63.f, 7.3f, 20.f}} }, // 60 Far east sky shelf
-        { AABB{{-63.f, 7.0f,-20.f},{-50.f, 7.3f, 20.f}} }, // 61 Far west sky shelf
+        // --- Enemy spawn points ----------------------------------------------
+        // Y <= 5 → ground enemy, Y > 5 → FLYER
+        r.enemySpawns = {
+            // Open south area
+            {  0, 0.1f, 50 }, { -22, 0.1f, 45 }, { 22, 0.1f, 45 },
+            {  0, 0.1f, 35 }, { -30, 0.1f, 30 }, { 30, 0.1f, 30 },
+            // West/east platforms
+            { -50, 2.1f,  0 }, { 50, 2.1f,  0 },
+            // North fortress (on 6m slab)
+            {  0, 6.1f,-8 }, { -16, 6.1f,-8 }, { 16, 6.1f,-8 },
+            // SE/SW compounds
+            { 58, 3.1f, 55 }, { -58, 3.1f, 58 },
+            // Mid arena ground
+            { -22, 0.1f, 12 }, { 22, 0.1f, 12 },
+            // Flyiers on high platforms
+            {  0, 11.3f, 8 },        // central sky pad
+            { 28, 7.5f, -12 },       // N catwalk height
+            {-28, 7.5f, -12 },       // N catwalk height
+            { 60, 5.2f, 57 },        // SE compound top
+        };
 
-        // =====================================================================
-        // ZONE 16 — CARDINAL SPIRES (62-65)
-        // Tall thin pillars at the mid-range cardinal points.
-        // Excellent grapple anchors for crossing the expanded arena.
-        // =====================================================================
-        { AABB{{ -1.5f, 0.f,-52.f},{  1.5f,12.f,-50.f}} }, // 62 Far north spire
-        { AABB{{ -1.5f, 0.f, 50.f},{  1.5f,12.f, 52.f}} }, // 63 Far south spire
-        { AABB{{ 50.f, 0.f, -1.5f},{ 52.f,12.f,  1.5f}} }, // 64 Far east spire
-        { AABB{{-52.f, 0.f, -1.5f},{-50.f,12.f,  1.5f}} }, // 65 Far west spire
-    };
+        level.rooms.push_back(std::move(r));
+    }
 
-    // -------------------------------------------------------------------------
-    // Enemy spawns.  Y > 5 → FLYER type (GameplayState detects this).
-    // Player spawns at {0, 0, 32} (south open zone).
-    // -------------------------------------------------------------------------
-    r.enemySpawns = {
-        // North fortress (on top of 4 m slab) — ground enemies
-        {  0.f, 4.1f,-30.f },
-        {-12.f, 4.1f,-28.f },
-        { 12.f, 4.1f,-28.f },
-        {  0.f, 4.1f,-36.f },
-        // East walkway
-        { 28.f, 3.1f,  0.f },
-        { 28.f, 3.1f, -8.f },
-        // West terraces
-        {-30.f, 2.1f,  0.f },
-        {-34.f, 4.1f,-11.f },
-        // Mid-arena (ground)
-        {-14.f, 0.f, -14.f },
-        { 14.f, 0.f, -14.f },
-        {  0.f, 0.f, -14.f },
-        { 14.f, 0.f,   0.f },
-        // South open zone
-        {-18.f, 0.f,  18.f },
-        { 18.f, 0.f,  18.f },
-        {  0.f, 0.f,  20.f },
-        // Far north bastion (ground)
-        {  0.f, 5.1f,-53.f },
-        {-12.f, 5.1f,-52.f },
-        { 12.f, 5.1f,-52.f },
-        // Far south slab (ground)
-        {  0.f, 4.1f, 55.f },
-        {-18.f, 4.1f, 55.f },
-        { 18.f, 4.1f, 55.f },
-        // Sky platform spawns — Y > 5 → GameplayState spawns FLYER here
-        {  0.f, 10.2f,  0.f },   // Central sky pad
-        { 30.f,  9.4f,-30.f },   // NE sky pad
-        {-30.f,  9.4f,-30.f },   // NW sky pad
-        { 30.f,  9.4f, 30.f },   // SE sky pad
-        {-30.f,  9.4f, 30.f },   // SW sky pad
-        { 56.f,  7.2f,  0.f },   // Far east shelf flyer
-        {-56.f,  7.2f,  0.f },   // Far west shelf flyer
-    };
+    // =========================================================================
+    // ROOM 1 — Deep Compound
+    // Bounds: X=-90..90, Z=-70..-230, Y=0..16
+    // Accessed after Room 0 door opens. Much larger, more vertical.
+    // =========================================================================
+    {
+        Room r;
+        r.unlocked = false;
 
-    level.rooms.push_back(std::move(r));
+        // --- Perimeter walls -------------------------------------------------
+        // South wall has a gap at X=-7..7 for the corridor opening
+        r.walls.push_back(W({{-90,0,-71},{-7.5f,16,-70}}, ArenaColor::Perim)); // South-left
+        r.walls.push_back(W({{ 7.5f,0,-71},{ 90,16,-70}}, ArenaColor::Perim)); // South-right
+        r.walls.push_back(W({{-90,0,-231},{ 90,16,-230}}, ArenaColor::Perim)); // North
+        r.walls.push_back(W({{ 90,0,-231},{ 91,16,-70}}, ArenaColor::Perim)); // East
+        r.walls.push_back(W({{-91,0,-231},{-90,16,-70}}, ArenaColor::Perim)); // West
+
+        // --- Central Fortress (multi-tiered) ---------------------------------
+        r.walls.push_back(W({{-20,0,-152},{ 20,7,-118}}, ArenaColor::FarFort)); // base
+        r.walls.push_back(W({{-13,7,-150},{ 13,11,-120}}, ArenaColor::Corner)); // upper level
+        r.walls.push_back(W({{-20,7,-152},{-16,14,-148}}, ArenaColor::Pillar)); // NW battlement
+        r.walls.push_back(W({{ 16,7,-152},{ 20,14,-148}}, ArenaColor::Pillar)); // NE battlement
+        r.walls.push_back(W({{-20,7,-122},{-16,14,-118}}, ArenaColor::Pillar)); // SW battlement
+        r.walls.push_back(W({{ 16,7,-122},{ 20,14,-118}}, ArenaColor::Pillar)); // SE battlement
+
+        // --- Fortress approach riser ----------------------------------------
+        r.walls.push_back(W({{-10,0,-118},{ 10,3,-110}}, ArenaColor::Riser));
+
+        // --- East Compound ---------------------------------------------------
+        r.walls.push_back(W({{ 32,0,-202},{ 82,5,-153}}, ArenaColor::Corner));
+        r.walls.push_back(W({{ 76,5,-202},{ 82,14,-192}}, ArenaColor::Pillar)); // tower
+
+        // --- West Compound ---------------------------------------------------
+        r.walls.push_back(W({{-82,0,-202},{-32,5,-153}}, ArenaColor::Corner));
+        r.walls.push_back(W({{-82,5,-202},{-76,14,-192}}, ArenaColor::Pillar)); // tower
+
+        // --- North Bunker ----------------------------------------------------
+        r.walls.push_back(W({{-24,0,-227},{ 24,8,-210}}, ArenaColor::FarFort));
+        r.walls.push_back(W({{-14,0,-210},{ 14,4,-204}}, ArenaColor::Riser)); // access
+
+        // --- Far corner mega towers ------------------------------------------
+        r.walls.push_back(W({{ 80,0,-231},{ 90,14,-220}}, ArenaColor::Pillar)); // NE
+        r.walls.push_back(W({{-90,0,-231},{-80,14,-220}}, ArenaColor::Pillar)); // NW
+        r.walls.push_back(W({{ 80,0,-81},{  90,12,-71}}, ArenaColor::Pillar)); // SE (near door)
+        r.walls.push_back(W({{-90,0,-81},{ -80,12,-71}}, ArenaColor::Pillar)); // SW (near door)
+
+        // --- Mid-arena pillars (6) -------------------------------------------
+        r.walls.push_back(W({{ -2,0,-162},{  2,10,-160}}, ArenaColor::Pillar));
+        r.walls.push_back(W({{ -2,0,-108},{  2,10,-106}}, ArenaColor::Pillar));
+        r.walls.push_back(W({{ 26,0,-136},{ 28,10,-134}}, ArenaColor::Pillar));
+        r.walls.push_back(W({{-28,0,-136},{-26,10,-134}}, ArenaColor::Pillar));
+        r.walls.push_back(W({{ 26,0,-172},{ 28, 8,-170}}, ArenaColor::Pillar));
+        r.walls.push_back(W({{-28,0,-172},{-26, 8,-170}}, ArenaColor::Pillar));
+
+        // --- Elevated catwalks -----------------------------------------------
+        r.walls.push_back(W({{-28,8,-157},{ 28,8.4f,-155}}, ArenaColor::Catwalk)); // N fortress catwalk
+        r.walls.push_back(W({{ 22,7,-142},{ 40,7.4f,-138}}, ArenaColor::Catwalk)); // E mid
+        r.walls.push_back(W({{-40,7,-142},{-22,7.4f,-138}}, ArenaColor::Catwalk)); // W mid
+        r.walls.push_back(W({{-28,7,-117},{ 28,7.4f,-115}}, ArenaColor::Catwalk)); // S fortress
+
+        // --- Sky platforms ---------------------------------------------------
+        r.walls.push_back(W({{ -9,11,-152},{  9,11.4f,-118}}, ArenaColor::SkyPad)); // above fortress
+        r.walls.push_back(W({{-32,9,-183},{ 32,9.4f,-165}}, ArenaColor::SkyPad));   // mid sky
+
+        // --- Cover walls -----------------------------------------------------
+        r.walls.push_back(W({{ -8,0,-172},{  8,1.5f,-170}}, ArenaColor::Cover));
+        r.walls.push_back(W({{-18,0,-170},{-14,1.5f,-167}}, ArenaColor::Cover));
+        r.walls.push_back(W({{ 14,0,-170},{ 18,1.5f,-167}}, ArenaColor::Cover));
+        r.walls.push_back(W({{ -8,0,-100},{  8,1.5f,-98}}, ArenaColor::Cover));
+        r.walls.push_back(W({{-18,0,-100},{-14,1.5f,-97}}, ArenaColor::Cover));
+        r.walls.push_back(W({{ 14,0,-100},{ 18,1.5f,-97}}, ArenaColor::Cover));
+        r.walls.push_back(W({{ -6,0,-215},{  6,1.5f,-213}}, ArenaColor::Cover));
+        r.walls.push_back(W({{ 37,0,-177},{ 40,1.5f,-174}}, ArenaColor::Cover));
+        r.walls.push_back(W({{-40,0,-177},{-37,1.5f,-174}}, ArenaColor::Cover));
+
+        // --- Enemy spawns ----------------------------------------------------
+        r.enemySpawns = {
+            // Entry zone (just inside room 1)
+            {  0, 0.1f, -85 }, { -25, 0.1f, -90 }, { 25, 0.1f, -90 },
+            // Mid zone around fortress
+            {  0, 7.1f,-135 }, { -14, 7.1f,-140 }, { 14, 7.1f,-140 }, // on fortress
+            {  0,11.3f,-135 },                                          // fortress sky pad (FLYER)
+            { -40, 0.1f,-130 }, { 40, 0.1f,-130 },                     // flanks
+            // East/West compounds
+            { 55, 3.1f,-175 }, { 55, 3.1f,-185 },
+            {-55, 3.1f,-175 }, {-55, 3.1f,-185 },
+            // North bunker
+            {  0, 5.1f,-218 }, { -14, 5.1f,-215 }, { 14, 5.1f,-215 },
+            // Flyiers
+            { 25, 9.5f,-174 }, {-25, 9.5f,-174 },                     // mid sky
+            {  0, 7.5f,-200 },                                         // far zone
+        };
+
+        level.rooms.push_back(std::move(r));
+    }
+
     return level;
 }

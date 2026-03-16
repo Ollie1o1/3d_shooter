@@ -14,6 +14,7 @@
 #include "AudioSystem.h"
 #include "ViewModel.h"
 #include "Interactable.h"
+#include "Settings.h"
 #include <SDL2/SDL.h>
 #include "gl.h"
 #include <glm/glm.hpp>
@@ -24,6 +25,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <string>
+#include <cstdio>
 
 // =============================================================================
 // GameplayState — the live game: physics, combat, rendering, progression.
@@ -71,24 +73,7 @@ static GLuint makeGreyTexture() {
     return tex;
 }
 
-// Colors for different surface types — edit these to restyle the arena.
-// Each color is a linear RGB value applied as a per-vertex tint.
-namespace ArenaColor {
-    constexpr glm::vec3 Floor    = {0.18f, 0.16f, 0.14f}; // dark warm ground
-    constexpr glm::vec3 Ceiling  = {0.10f, 0.10f, 0.16f}; // very dark cool sky
-    constexpr glm::vec3 Perim    = {0.26f, 0.26f, 0.34f}; // outer walls — slate
-    constexpr glm::vec3 Hub      = {0.38f, 0.22f, 0.06f}; // central tower — burnt orange
-    constexpr glm::vec3 Riser    = {0.22f, 0.27f, 0.22f}; // approach steps — olive grey
-    constexpr glm::vec3 Corner   = {0.16f, 0.20f, 0.30f}; // fortress / raised sections — steel blue
-    constexpr glm::vec3 Ledge    = {0.24f, 0.24f, 0.30f}; // elevated walkways
-    constexpr glm::vec3 Cover    = {0.34f, 0.26f, 0.16f}; // cover blocks — sandy
-    constexpr glm::vec3 Pillar   = {0.48f, 0.32f, 0.04f}; // tall pillars — bright orange
-    constexpr glm::vec3 Catwalk  = {0.18f, 0.18f, 0.24f}; // perimeter catwalks
-    constexpr glm::vec3 Tower    = {0.20f, 0.16f, 0.30f}; // corner towers — dark purple
-    constexpr glm::vec3 SkyPad   = {0.08f, 0.45f, 0.65f}; // sky-blue floating platforms
-    constexpr glm::vec3 Spire    = {0.50f, 0.08f, 0.72f}; // tall grapple spires — vivid purple
-    constexpr glm::vec3 FarFort  = {0.32f, 0.10f, 0.10f}; // far north bastion — dark red
-}
+// ArenaColor palette is defined in Level.h (included above)
 
 // Thin glowing quads placed at every enemy spawn point.
 // Not added to the wall list so they don't affect collision.
@@ -140,88 +125,29 @@ static Mesh buildWorldMesh(const std::vector<Wall>& walls) {
         idx.insert(idx.end(), {base, base+1, base+2, base, base+2, base+3});
     };
 
-    // Push the 5 visible faces of an AABB box with a given colour.
-    // Vertex ordering is CCW when viewed from OUTSIDE (the direction the normal points),
-    // which is what OpenGL requires for front-face culling. All cross-products verified.
-    // Bottom face (-Y) is omitted — it sits on the floor and Z-fights with the floor quad.
+    // Push all 6 faces of an AABB box with a given colour.
+    // Bottom face (-Y) is only rendered for floating objects (min.y > 0.1)
+    // so ground-level boxes don't Z-fight with the floor quad.
     auto pushBox = [&](const AABB& b, glm::vec3 col) {
         glm::vec3 mn = b.min, mx = b.max;
-        // +X: right face — CCW from +X side  cross((b-a)×(c-a)) = +X
-        pushFace({mx.x,mn.y,mn.z},{mx.x,mx.y,mn.z},{mx.x,mx.y,mx.z},{mx.x,mn.y,mx.z},{1,0,0}, col);
-        // -X: left face — CCW from -X side
-        pushFace({mn.x,mn.y,mx.z},{mn.x,mx.y,mx.z},{mn.x,mx.y,mn.z},{mn.x,mn.y,mn.z},{-1,0,0}, col);
-        // +Z: front face — CCW from +Z side (unchanged, already correct)
-        pushFace({mn.x,mn.y,mx.z},{mx.x,mn.y,mx.z},{mx.x,mx.y,mx.z},{mn.x,mx.y,mx.z},{0,0,1}, col);
-        // -Z: back face — CCW from -Z side (unchanged, already correct)
-        pushFace({mx.x,mn.y,mn.z},{mn.x,mn.y,mn.z},{mn.x,mx.y,mn.z},{mx.x,mx.y,mn.z},{0,0,-1}, col);
-        // +Y: top face — CCW from above
-        pushFace({mn.x,mx.y,mx.z},{mx.x,mx.y,mx.z},{mx.x,mx.y,mn.z},{mn.x,mx.y,mn.z},{0,1,0}, col);
+        pushFace({mx.x,mn.y,mn.z},{mx.x,mx.y,mn.z},{mx.x,mx.y,mx.z},{mx.x,mn.y,mx.z},{ 1, 0, 0}, col);
+        pushFace({mn.x,mn.y,mx.z},{mn.x,mx.y,mx.z},{mn.x,mx.y,mn.z},{mn.x,mn.y,mn.z},{-1, 0, 0}, col);
+        pushFace({mn.x,mn.y,mx.z},{mx.x,mn.y,mx.z},{mx.x,mx.y,mx.z},{mn.x,mx.y,mx.z},{ 0, 0, 1}, col);
+        pushFace({mx.x,mn.y,mn.z},{mn.x,mn.y,mn.z},{mn.x,mx.y,mn.z},{mx.x,mx.y,mn.z},{ 0, 0,-1}, col);
+        pushFace({mn.x,mx.y,mx.z},{mx.x,mx.y,mx.z},{mx.x,mx.y,mn.z},{mn.x,mx.y,mn.z},{ 0, 1, 0}, col);
+        // Bottom face — render for all elevated objects so they look solid from below
+        if (b.min.y > 0.1f)
+            pushFace({mn.x,mn.y,mn.z},{mx.x,mn.y,mn.z},{mx.x,mn.y,mx.z},{mn.x,mn.y,mx.z},{ 0,-1, 0}, col);
     };
 
-    // Floor — one large quad, +Y normal, CCW from above
-    float F = 65.f;
-    pushFace({-F,0,F},{F,0,F},{F,0,-F},{-F,0,-F},{0,1,0}, ArenaColor::Floor);
-    // Ceiling — -Y normal, CCW from below
-    pushFace({-F,14.f,-F},{F,14.f,-F},{F,14.f,F},{-F,14.f,F},{0,-1,0}, ArenaColor::Ceiling);
+    // Floor — large quad covering both rooms + corridor
+    pushFace({-100,0, 90},{100,0, 90},{100,0,-240},{-100,0,-240},{0,1,0}, ArenaColor::Floor);
+    // Ceiling — matching extent
+    pushFace({-100,16,-240},{100,16,-240},{100,16,90},{-100,16,90},{0,-1,0}, ArenaColor::Ceiling);
 
-    // Assign a color to each wall based on its role in the level.
-    // Order must exactly match buildLevel(). Anything beyond the array uses Perim.
-    const glm::vec3 wallColors[] = {
-        // 0-3: Perimeter
-        ArenaColor::Perim, ArenaColor::Perim, ArenaColor::Perim, ArenaColor::Perim,
-        // 4: Central hub
-        ArenaColor::Hub,
-        // 5-8: Hub approach risers
-        ArenaColor::Riser, ArenaColor::Riser, ArenaColor::Riser, ArenaColor::Riser,
-        // 9: North fortress platform
-        ArenaColor::Corner,
-        // 10: North fortress access riser
-        ArenaColor::Riser,
-        // 11-12: North NW / NE towers
-        ArenaColor::Pillar, ArenaColor::Pillar,
-        // 13: East elevated walkway
-        ArenaColor::Ledge,
-        // 14: East access step
-        ArenaColor::Riser,
-        // 15-16: East tall support columns
-        ArenaColor::Pillar, ArenaColor::Pillar,
-        // 17-18: West raised platforms A / B
-        ArenaColor::Corner, ArenaColor::Corner,
-        // 19: West tall tower
-        ArenaColor::Pillar,
-        // 20-29: Cover walls (10)
-        ArenaColor::Cover, ArenaColor::Cover, ArenaColor::Cover, ArenaColor::Cover,
-        ArenaColor::Cover, ArenaColor::Cover, ArenaColor::Cover, ArenaColor::Cover,
-        ArenaColor::Cover, ArenaColor::Cover,
-        // 30-37: Mid-arena pillars (8)
-        ArenaColor::Pillar, ArenaColor::Pillar, ArenaColor::Pillar, ArenaColor::Pillar,
-        ArenaColor::Pillar, ArenaColor::Pillar, ArenaColor::Pillar, ArenaColor::Pillar,
-        // 38-39: SW / SE corner towers
-        ArenaColor::Tower, ArenaColor::Tower,
-        // 40-43: Perimeter catwalks
-        ArenaColor::Catwalk, ArenaColor::Catwalk, ArenaColor::Catwalk, ArenaColor::Catwalk,
-        // 44-45: Inner floating platforms
-        ArenaColor::Ledge, ArenaColor::Ledge,
-        // 46: Central sky pad
-        ArenaColor::SkyPad,
-        // 47-50: Sky bridges (N/S/E/W)
-        ArenaColor::SkyPad, ArenaColor::SkyPad, ArenaColor::SkyPad, ArenaColor::SkyPad,
-        // 51-54: Corner sky pads (NE/NW/SE/SW)
-        ArenaColor::SkyPad, ArenaColor::SkyPad, ArenaColor::SkyPad, ArenaColor::SkyPad,
-        // 55-57: Far north expansion
-        ArenaColor::FarFort, ArenaColor::Pillar, ArenaColor::Pillar,
-        // 58-59: Far south platform + sky shelf
-        ArenaColor::Corner, ArenaColor::SkyPad,
-        // 60-61: Far east/west sky shelves
-        ArenaColor::Ledge, ArenaColor::Ledge,
-        // 62-65: Cardinal spires
-        ArenaColor::Spire, ArenaColor::Spire, ArenaColor::Spire, ArenaColor::Spire,
-    };
-    const int numColors = (int)(sizeof(wallColors)/sizeof(wallColors[0]));
-
+    // Each wall carries its own colour (set in Level.h when the wall is created)
     for (int i = 0; i < (int)walls.size(); ++i) {
-        glm::vec3 col = (i < numColors) ? wallColors[i] : ArenaColor::Perim;
-        pushBox(walls[i].box, col);
+        pushBox(walls[i].box, walls[i].color);
     }
 
     Mesh m;
@@ -234,7 +160,9 @@ public:
     std::function<void()> onReturnToMenu;
     std::function<void()> onQuit;
 
-    Player         player{{0.f,0.f,32.f}};
+    GameSettings* settings = nullptr;   // injected by main — may be null (safe)
+
+    Player         player{{0.f,0.f,60.f}};
     StyleSystem    styleSystem;
     UIRenderer     ui{SCREEN_W,SCREEN_H};
     ProjectileSystem projSystem;
@@ -320,7 +248,7 @@ public:
     float respawnTimer   = 0.f;
     int   nextSpawnIdx   = 0;
     static constexpr float RESPAWN_INTERVAL = 4.f;  // check every 4 s
-    static constexpr int   MIN_ALIVE        = 3;    // respawn if below this
+    static constexpr int   MIN_ALIVE        = 0;    // 0 = disabled; room-clear progression
 
     static constexpr int MAX_POINT_LIGHTS = 4;
     glm::vec3 pointLightPos[MAX_POINT_LIGHTS];
@@ -330,6 +258,10 @@ public:
     Uint64 freq        = 0;
     double accumulator = 0.0;
     glm::vec3 prevCamPos{0.f};
+
+    // FPS counter
+    int   fpsFrameCount = 0;
+    float fpsTimer      = 0.f;
 
     bool rightMousePrev   = false;
     bool leftMousePrev    = false;
@@ -373,7 +305,7 @@ public:
 
         whiteTex = makeGreyTexture();
         player.camera.aspectRatio = (float)SCREEN_W/SCREEN_H;
-        player.camera.fov = 90.f;
+        player.camera.fov = settings ? settings->fov : 90.f;
 
         level = buildLevel();
         allWalls = level.getAllWalls();
@@ -453,7 +385,8 @@ public:
             if (e.key.keysym.sym == SDLK_2) activeWeapon = 1;
         }
         if (e.type == SDL_MOUSEMOTION) {
-            player.applyMouseLook((float)e.motion.xrel, (float)e.motion.yrel);
+            float sens = settings ? settings->sensitivity : 0.1f;
+            player.applyMouseLook((float)e.motion.xrel, (float)e.motion.yrel, sens);
         }
     }
 
@@ -489,6 +422,13 @@ public:
         styleSystem.update(floatDt);
         ui.update(floatDt, styleSystem);
         level.update(floatDt);
+
+        // Rebuild world mesh while a door is sliding open
+        if (level.anyDoorSliding()) {
+            allWalls  = level.getAllWalls();
+            worldMesh = buildWorldMesh(allWalls);
+        }
+
         viewModel.update(floatDt, playerXZSpeed, player.onGround);
         fovKick = glm::mix(fovKick, 0.f, std::min(1.f, floatDt * 7.f));
 
@@ -540,6 +480,16 @@ public:
         leftMousePrev  = leftMouse;
         rightMousePrev = rightMouse;
         parryPrev      = parryKey;
+
+        // FPS tracking
+        fpsFrameCount++;
+        fpsTimer += floatDt;
+        if (fpsTimer >= 1.0f) {
+            ui.currentFPS   = fpsFrameCount;
+            fpsFrameCount   = 0;
+            fpsTimer        = 0.f;
+        }
+        ui.showFPS = settings ? settings->showFPS : false;
 
         checkRoomClear();
 
@@ -922,8 +872,9 @@ public:
     }
 
     void restartGame() {
-        player = Player{{0.f,0.f,32.f}};
+        player = Player{{0.f,0.f,60.f}};
         player.camera.aspectRatio = (float)SCREEN_W/SCREEN_H;
+        player.camera.fov = settings ? settings->fov : 90.f;
         styleSystem = StyleSystem{};
         enemies.clear();
         level = buildLevel();

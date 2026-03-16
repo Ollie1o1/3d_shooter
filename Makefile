@@ -28,7 +28,8 @@ TARGET   := shooter
 # Windows (MSYS2 ucrt64)
 # -----------------------------------------------------------------------------
 else
-UCRT64   := /ucrt64
+UCRT64   := /c/msys64/ucrt64
+export PATH := $(UCRT64)/bin:$(PATH)
 CXX      := $(UCRT64)/bin/g++
 CXXFLAGS := -std=c++17 -O2 -Wall -Wextra \
             -I$(UCRT64)/include \
@@ -49,7 +50,8 @@ HEADERS := src/gl.h \
            src/GameState.h src/MenuState.h src/GameplayState.h \
            src/Enemy.h src/Projectile.h src/GrappleHook.h \
            src/StyleSystem.h src/UIRenderer.h src/PostProcess.h \
-           src/Level.h src/AudioSystem.h src/ViewModel.h src/Interactable.h
+           src/Level.h src/AudioSystem.h src/ViewModel.h src/Interactable.h \
+           src/Settings.h src/PixelFont.h
 
 .PHONY: all clean run
 

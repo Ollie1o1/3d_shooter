@@ -8,6 +8,7 @@
 #include <functional>
 
 #include "GameState.h"
+#include "Settings.h"
 #include "MenuState.h"
 #include "GameplayState.h"
 #include "AudioSystem.h"
@@ -38,7 +39,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
         throw std::runtime_error("Failed to initialize GLEW");
 #endif
 
-    SDL_GL_SetSwapInterval(0);
+    SDL_GL_SetSwapInterval(0); // vsync off — we do our own frame cap
     glViewport(0, 0, SCREEN_W, SCREEN_H);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
@@ -57,19 +58,22 @@ int main(int /*argc*/, char* /*argv*/[]) {
     audio.loadSound("player_hit",  "assets/sfx/player_hit.wav");
     audio.loadSound("parry",       "assets/sfx/parry.wav");
 
+    GameSettings settings; // shared settings object — persists for the process lifetime
+
     std::unique_ptr<GameState> currentState;
     bool running = true;
 
-    // Use std::function so the lambda can capture and call itself by name
     std::function<void()> goToMenu;
     goToMenu = [&]() {
         SDL_SetRelativeMouseMode(SDL_FALSE);
         auto* menu = new MenuState(SCREEN_W, SCREEN_H);
+        menu->settings = &settings;
         menu->onStart = [&]() {
             SDL_SetRelativeMouseMode(SDL_TRUE);
             auto* game = new GameplayState(audio);
-            game->onReturnToMenu = [&]() { goToMenu(); };
-            game->onQuit = [&]() { running = false; };
+            game->settings         = &settings;
+            game->onReturnToMenu   = [&]() { goToMenu(); };
+            game->onQuit           = [&]() { running = false; };
             currentState.reset(game);
         };
         menu->onQuit = [&]() { running = false; };
@@ -78,17 +82,33 @@ int main(int /*argc*/, char* /*argv*/[]) {
 
     goToMenu();
 
+    Uint64 freq      = SDL_GetPerformanceFrequency();
+
     while (running) {
+        Uint64 frameStart = SDL_GetPerformanceCounter();
+
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) { running = false; break; }
             if (currentState) currentState->handleEvent(e);
         }
         if (currentState) {
-            currentState->update(1.f/60.f);
+            currentState->update(1.f / 60.f);
             currentState->render();
         }
         SDL_GL_SwapWindow(window);
+
+        // FPS cap — sleep the remainder of the frame budget
+        int capValue = settings.getFPSCapValue();
+        if (capValue > 0) {
+            Uint64 frameEnd    = SDL_GetPerformanceCounter();
+            double elapsed     = (double)(frameEnd - frameStart) / (double)freq;
+            double targetTime  = 1.0 / (double)capValue;
+            if (elapsed < targetTime) {
+                Uint32 sleepMs = (Uint32)((targetTime - elapsed) * 1000.0);
+                if (sleepMs > 0) SDL_Delay(sleepMs);
+            }
+        }
     }
 
     currentState.reset();

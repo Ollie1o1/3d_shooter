@@ -14,7 +14,8 @@ struct AABB {
 };
 
 struct Wall {
-    AABB box;
+    AABB      box;
+    glm::vec3 color{0.28f, 0.28f, 0.32f};
 };
 
 // =============================================================================
@@ -90,8 +91,8 @@ public:
     // Call this with raw SDL mouse delta before (or after) update().
     // Mouse look is applied every frame, not on the physics tick, so it's
     // always responsive regardless of physics rate.
-    void applyMouseLook(float dx, float dy) {
-        camera.applyMouseDelta(dx, dy);
+    void applyMouseLook(float dx, float dy, float sensitivity = 0.1f) {
+        camera.applyMouseDelta(dx, dy, sensitivity);
     }
 
 private:
