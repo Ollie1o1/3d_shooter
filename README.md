@@ -1,70 +1,110 @@
 # 3D Shooter
 
-A minimal but solid 3D shooter base built with **SDL2**, **OpenGL 3.3 Core Profile**, and **GLM**. Designed to feel snappy (ULTRAKILL-style movement) and be easy to build on top of.
+A 3D arena shooter built with **SDL2**, **OpenGL 3.3 Core Profile**, and **GLM**. ULTRAKILL-inspired movement with grapple hook, dashing, multi-weapon combat, style scoring, and bloom post-processing.
 
-## Controls
+> **Platform: macOS only.** The project uses `<OpenGL/gl3.h>` (Apple's OpenGL framework). Windows/Linux support would require replacing this with GLEW or glad.
 
-| Key | Action |
-|-----|--------|
-| W A S D | Move |
-| Mouse | Look around |
-| Space | Jump |
-| Escape | Quit |
+---
 
-## Building
-
-### Requirements (macOS)
+## Requirements
 
 ```sh
-brew install sdl2 glm llvm
+brew install sdl2 sdl2_mixer glm llvm
 ```
 
-### Build & run
+> The Makefile uses Homebrew LLVM instead of system clang because Apple's system clang ships without C++ stdlib headers. If you've changed your Homebrew prefix or macOS SDK version, update `LLVM` and `SDK` at the top of `Makefile`.
+
+---
+
+## Build & Run
 
 ```sh
 make        # compile
-./shooter   # run (must be run from project root — shaders are loaded from src/)
+./shooter   # run  (must be launched from the project root — shaders load from src/)
+
 make run    # compile + run in one step
 make clean  # delete the binary
 ```
 
-> **Note:** The system clang on macOS ships without C++ stdlib headers. The Makefile uses Homebrew LLVM instead. If you move the project, update the `LLVM` and `SDK` paths at the top of `Makefile`.
+---
 
-## Project structure
+## Controls
+
+| Input | Action |
+|-------|--------|
+| W A S D | Move |
+| Mouse | Look |
+| Space | Jump / Double jump |
+| Left Shift | Dash (directional) |
+| Left Mouse | Fire revolver |
+| Right Mouse | Fire shotgun |
+| 1 / 2 | Switch weapon |
+| R | Reload |
+| F | Parry |
+| E | Interact |
+| Left Ctrl / C | Crouch / Ground slam |
+| Escape | Quit to menu |
+
+---
+
+## Project Structure
 
 ```
 3d_shooter/
 ├── src/
-│   ├── main.cpp          # game loop, world definition, render pass
-│   ├── Camera.h          # view/projection matrices, mouselook
-│   ├── Player.h          # physics, input, AABB collision
-│   ├── Mesh.h            # VAO/VBO wrapper — one draw call per mesh
-│   ├── ShaderProgram.h   # GLSL compile/link, uniform helpers
-│   ├── shader.vert       # vertex shader — MVP transform
-│   └── shader.frag       # fragment shader — texture + diffuse lighting
+│   ├── main.cpp            # entry point, SDL/OpenGL init, game loop
+│   ├── GameState.h         # base state interface (menu / gameplay)
+│   ├── MenuState.h         # main menu
+│   ├── GameplayState.h     # core game loop: physics, combat, rendering
+│   ├── Player.h            # kinematic character controller (Quake-style)
+│   ├── Camera.h            # view/projection, mouselook
+│   ├── Enemy.h             # enemy types and AI
+│   ├── Projectile.h        # bullet/projectile system
+│   ├── GrappleHook.h       # grapple hook physics
+│   ├── StyleSystem.h       # ULTRAKILL-style rank/score tracking
+│   ├── Level.h             # map geometry (AABB walls)
+│   ├── Mesh.h              # VAO/VBO wrapper
+│   ├── ShaderProgram.h     # GLSL compile/link, uniform helpers
+│   ├── PostProcess.h       # bloom post-processing pass
+│   ├── UIRenderer.h        # HUD (crosshair, ammo, style rank)
+│   ├── ViewModel.h         # first-person weapon model
+│   ├── AudioSystem.h       # SDL2_mixer sound wrapper
+│   ├── Interactable.h      # trigger volumes / interactable objects
+│   ├── shader.vert/frag    # world geometry shader
+│   ├── skybox.vert/frag    # skybox shader
+│   ├── ui.vert/frag        # HUD shader
+│   ├── tracer.vert/frag    # bullet tracer shader
+│   ├── postprocess.vert    # fullscreen quad vertex shader
+│   ├── bloom_bright.frag   # bloom brightness threshold pass
+│   ├── bloom_blur.frag     # bloom gaussian blur pass
+│   └── bloom_composite.frag # bloom composite pass
+├── assets/
+│   └── sfx/                # sound effects (jump, land, dash, guns, etc.)
 ├── Makefile
 └── README.md
 ```
 
-## How the engine works
+---
+
+## How the Engine Works
 
 ### Game loop (fixed timestep)
 
-Physics always runs at exactly **60 Hz** regardless of framerate. Real elapsed time is accumulated and drained in fixed 1/60s steps. Any leftover time is used as an **interpolation factor** for rendering, so movement looks smooth at 144 Hz+ without changing the physics.
+Physics runs at exactly **60 Hz** regardless of display framerate. Elapsed time is accumulated and drained in fixed 1/60 s steps. Leftover time becomes an interpolation factor for rendering, so motion looks smooth at any framerate.
 
 ```
 accumulator += elapsed_time
 while accumulator >= PHYSICS_DT:
     physics.update(PHYSICS_DT)
     accumulator -= PHYSICS_DT
-alpha = accumulator / PHYSICS_DT   # 0..1, used to lerp camera position
+alpha = accumulator / PHYSICS_DT   # 0..1, used to lerp camera
 ```
 
 Reference: [Fix Your Timestep — Gaffer on Games](https://gafferongames.com/post/fix_your_timestep/)
 
 ### Movement (Quake-style)
 
-Instead of `velocity = direction * speed`, acceleration is applied incrementally:
+Instead of `velocity = direction * speed`, acceleration is applied incrementally each tick:
 
 ```
 currentSpeed = dot(velocity_horizontal, wishDir)
@@ -72,75 +112,83 @@ addSpeed     = clamp(maxSpeed - currentSpeed, 0, accel * dt)
 velocity    += wishDir * addSpeed
 ```
 
-This means you keep your momentum mid-air, and strafe-jumping (changing direction while airborne) can gain a tiny speed boost — the same mechanic that makes Quake/Titanfall/ULTRAKILL movement feel good.
+Momentum is preserved in the air, so strafe-jumping can gain a small speed boost — the same mechanic behind Quake/Titanfall/ULTRAKILL movement feel.
 
 ### Rendering pipeline
 
-Every frame:
-1. `shader.use()` — activate the GLSL program
-2. Set uniforms: `model`, `view`, `projection` matrices + light values
-3. Bind texture to slot 0
-4. `worldMesh.draw()` — one `glDrawElements` call for the whole world
+Each frame:
+1. Render scene to an offscreen framebuffer
+2. Bloom pass — extract bright regions → gaussian blur → composite
+3. Blit result to the screen
+4. Render HUD and weapon view model on top (no depth test)
 
-The entire world (floor, ceiling, all walls) is batched into **one Mesh** and drawn in a single call. Keeping draw calls low is the primary performance lever for a simple renderer.
+World geometry is batched into as few draw calls as possible (one `glDrawElements` per mesh).
 
 ### Collision
 
-The player is an AABB (box). Each wall/platform is also an AABB. Collision is resolved by finding the axis of minimum penetration and pushing the player out along it. This is fast and handles stacking (standing on top of boxes) correctly.
+The player is an AABB. Each wall/platform is also an AABB. Collision is resolved by finding the axis of minimum penetration and pushing the player out along it. This handles stacking (standing on top of boxes) correctly.
 
-## How to extend
+---
 
-### Add a new wall / platform
+## Tuning Movement Feel
 
-In `main.cpp`, add an entry to the `walls` array:
-
-```cpp
-{ AABB{{ minX, minY, minZ }, { maxX, maxY, maxZ }} },
-```
-
-It will automatically appear in the world visually and be solid for collision.
-
-### Add a texture
-
-Swap `makeWhiteTexture()` for a real image load (e.g., with [stb_image](https://github.com/nothings/stb)):
-
-```cpp
-// Load image from disk, upload to GPU the same way makeWhiteTexture does
-GLuint myTex = loadTexture("assets/wall.png");
-glBindTexture(GL_TEXTURE_2D, myTex);
-```
-
-### Add a new renderable object (e.g., enemy, prop)
-
-1. Build vertices/indices and call `mesh.upload()`
-2. Set `shader.setMat4("model", transform)` before drawing
-3. Call `mesh.draw()`
-
-### Add a new shader effect
-
-Edit `src/shader.frag`. Ideas:
-- **Fog**: `mix(FragColor, fogColor, clamp(distance/fogEnd, 0, 1))`
-- **Specular**: Blinn-Phong with a `uniform vec3 cameraPos` and halfway vector
-- **Vertex colour**: add a `vec3 color` to `Vertex` struct, pass through as `layout(location=3)`
-
-### Change movement feel
-
-All tuning knobs are public members of `Player` in `Player.h`:
+All knobs are public members of `Player` in `Player.h`:
 
 | Variable | Default | Effect |
 |----------|---------|--------|
-| `horizontalSpeed` | 7.0 | Max ground speed |
-| `gravity` | -24.0 | Fall speed |
+| `horizontalSpeed` | 7.0 | Max ground speed (m/s) |
+| `gravity` | -24.0 | Fall acceleration |
 | `jumpForce` | 8.5 | Jump height |
 | `acceleration` | 80.0 | Ground responsiveness |
 | `airAcceleration` | 12.0 | Mid-air steering |
 | `friction` | 10.0 | Ground deceleration |
+
+---
+
+## How to Extend
+
+### Add a wall / platform
+
+In `Level.h`, add an entry inside `buildLevel()`:
+
+```cpp
+walls.push_back({ AABB{{ minX, minY, minZ }, { maxX, maxY, maxZ }} });
+```
+
+It will appear in the world visually and be solid for collision — no other changes needed.
+
+### Add a weapon
+
+In `GameplayState.h`:
+1. Add ammo/cooldown members in the "Player weapon state" block.
+2. Write a `fire___()` method modelled on `fireRevolver()`.
+   - Hitscan: use `rayAABBHit()` against enemies + walls, then call `spawnTracer()`.
+   - Projectile: call `projSystem.fire(origin, dir * speed, damage, true, color)`.
+3. Handle the key/button in `physicsTick()` where the shooting block is.
+4. Add an ammo display in `render()`.
+
+### Add an enemy type
+
+1. Add a value to `EnemyType` in `Enemy.h`.
+2. Handle movement/attack logic in `Enemy::update()`.
+3. Set health in the `Enemy` constructor switch.
+4. Spawn it in `spawnEnemiesForRoom()` or directly: `enemies.push_back(Enemy(EnemyType::YOURTYPE, pos))`.
+
+### Add a shader effect
+
+Edit `src/shader.frag`. Ideas:
+- **Fog**: `mix(FragColor, fogColor, clamp(dist / fogEnd, 0.0, 1.0))`
+- **Specular**: Blinn-Phong with `uniform vec3 cameraPos` and halfway vector
+- **Vertex colour**: add `vec3 color` to `Vertex`, pass through as `layout(location=3)`
+
+---
 
 ## Dependencies
 
 | Library | Purpose |
 |---------|---------|
 | SDL2 | Window, input, OpenGL context |
-| OpenGL 3.3 | Rendering (via macOS OpenGL.framework) |
+| SDL2_mixer | Sound effects |
+| OpenGL 3.3 | Rendering (via macOS `OpenGL.framework`) |
 | GLM | Math — vectors, matrices, transforms |
-| LLVM/clang++ | Compiler (Homebrew) — system clang has broken C++ stdlib on this macOS version |
+| LLVM/clang++ | Compiler (Homebrew) — replaces system clang |
