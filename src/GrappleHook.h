@@ -31,9 +31,10 @@ public:
         if (lineVBO) glDeleteBuffers(1, &lineVBO);
     }
 
-    bool fire(glm::vec3 origin, glm::vec3 dir, const Wall* walls, int wallCount) {
-        if (active) { active = false; return false; }
-
+    // Fire the grapple. On hit, writes an immediate launch impulse into outImpulse
+    // that the caller should apply directly to player velocity. Returns true on hit.
+    bool fire(glm::vec3 origin, glm::vec3 dir, const Wall* walls, int wallCount,
+              glm::vec3& outImpulse) {
         float bestT = maxLength;
         bool  hit   = false;
         for (int i = 0; i < wallCount; ++i) {
@@ -43,29 +44,35 @@ public:
         if (hit) {
             target = origin + dir * bestT;
             active = true;
+            // Immediate velocity burst toward target so movement is felt instantly.
+            glm::vec3 toTarget = glm::normalize(target - origin);
+            outImpulse = toTarget * 22.f;
+            // Always guarantee meaningful upward momentum so you gain height.
+            outImpulse.y = std::max(outImpulse.y, 7.f);
         }
         return hit;
     }
 
     void release() { active = false; }
 
+    // Called every physics tick while active. Applies continued pull + cancels most
+    // of gravity so upward grapples don't fight the physics system.
     void update(float dt, const glm::vec3& playerPos, glm::vec3& playerVel) {
         if (!active) return;
         glm::vec3 delta = target - playerPos;
         float dist = glm::length(delta);
-        if (dist < 0.8f) { active = false; return; }
+        if (dist < 1.5f) { active = false; return; }
         glm::vec3 dir = delta / dist;
 
-        // Strong constant pull + mild spring so it feels like a real winch.
-        // Guaranteed minimum pull force so the grapple stays snappy at close range.
-        float pull = std::max(dist * stiffness, 20.f);
-        glm::vec3 force = dir * pull;
+        // Continued directional pull toward attachment point.
+        playerVel += dir * 22.f * dt;
 
-        // Only damp velocity that moves AWAY from the target — not the lateral swing.
-        float awaySpeed = glm::dot(playerVel, -dir);
-        if (awaySpeed > 0.f) force += dir * awaySpeed * 6.f;
+        // Cancel ~90% of gravity (gravity = -24) so the player feels near-weightless.
+        playerVel.y += 22.f * dt;
 
-        playerVel += force * dt;
+        // Speed cap so you don't fly uncontrollably.
+        float spd = glm::length(playerVel);
+        if (spd > 30.f) playerVel *= 30.f / spd;
     }
 
     void drawLine(ShaderProgram& shader, const glm::vec3& playerPos,

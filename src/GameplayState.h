@@ -251,8 +251,9 @@ public:
     // Slot selection: 0 = revolver, 1 = grenades
     int   activeWeapon   = 0;
 
-    int   dashCharges    = 2;
-    float dashCooldown   = 0.f;
+    int   dashCharges       = 2;
+    float dashCooldown      = 0.f;
+    float dashMomentumTimer = 0.f;  // skips ground friction while nonzero
     int   jumpsRemaining = 2;
     bool  prevOnGround   = false;
     bool  slamming       = false;
@@ -495,6 +496,7 @@ public:
             glm::vec3 dashDir = player.camera.flatForward();
             player.velocity.x = dashDir.x * 22.f;
             player.velocity.z = dashDir.z * 22.f;
+            dashMomentumTimer = 0.28f;  // protect dash velocity from ground friction
             --dashCharges;
             dashCooldown = 1.2f;
             fovKick = 13.f;
@@ -502,6 +504,7 @@ public:
             audio.play("dash");
         }
         prevDashKey = dashKey;
+        if (dashMomentumTimer > 0.f) dashMomentumTimer -= dt;
 
         if (dashCooldown > 0.f) {
             dashCooldown -= dt;
@@ -557,7 +560,9 @@ public:
             glm::vec3 camFwd = player.camera.forward();
             if (!grapple.active) {
                 allWalls = level.getAllWalls();
-                if (grapple.fire(camPos, camFwd, allWalls.data(), (int)allWalls.size())) {
+                glm::vec3 grappleImpulse{0.f};
+                if (grapple.fire(camPos, camFwd, allWalls.data(), (int)allWalls.size(), grappleImpulse)) {
+                    player.velocity = grappleImpulse;  // immediate burst toward target
                     viewModel.triggerGrapple();
                     audio.play("grapple_fire");
                 }
@@ -572,7 +577,8 @@ public:
 
         // --- Update player physics ---
         allWalls = level.getAllWalls();
-        player.update(dt, keys, allWalls.data(), (int)allWalls.size(), grapple.active);
+        player.update(dt, keys, allWalls.data(), (int)allWalls.size(),
+                      grapple.active || dashMomentumTimer > 0.f);
         playerXZSpeed = glm::length(glm::vec2(player.velocity.x, player.velocity.z));
 
         // --- Shooting ---
