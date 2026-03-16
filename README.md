@@ -46,7 +46,7 @@ make clean  # delete binary
 
 ### Windows
 
-Open the **MSYS2 UCRT64** shell, navigate to the project folder, then:
+Open the **MSYS2 UCRT64** shell (`C:\msys64\ucrt64.exe`), navigate to the project folder, then:
 
 ```sh
 make              # compile → shooter.exe
@@ -54,7 +54,9 @@ make run          # compile + run
 make clean        # delete binary
 ```
 
-> **Important:** use the MSYS2 UCRT64 shell (not PowerShell or cmd). The Makefile auto-detects the platform.
+> **Important:** use the MSYS2 UCRT64 shell, not PowerShell or cmd. The Makefile auto-detects the platform.
+
+> **Runtime DLLs:** The game links against DLLs in `C:\msys64\ucrt64\bin` (`SDL2.dll`, `glew32.dll`, `libstdc++-6.dll`, etc.). `make run` works automatically because the UCRT64 shell already has that directory on `PATH`. If you want to run `shooter.exe` outside the shell (e.g. by double-clicking), either add `C:\msys64\ucrt64\bin` to your system `PATH`, or copy those DLLs next to `shooter.exe`.
 
 ---
 
@@ -215,10 +217,11 @@ Edit `src/shader.frag`. Ideas:
 
 ## Dependencies
 
-| Library | Purpose |
-|---------|---------|
-| SDL2 | Window, input, OpenGL context |
-| SDL2_mixer | Sound effects |
-| OpenGL 3.3 | Rendering (via macOS `OpenGL.framework`) |
-| GLM | Math — vectors, matrices, transforms |
-| LLVM/clang++ | Compiler (Homebrew) — replaces system clang |
+| Library | Purpose | Platform |
+|---------|---------|----------|
+| SDL2 | Window, input, OpenGL context | all |
+| SDL2_mixer | Sound effects | all |
+| OpenGL 3.3 | Rendering | all |
+| GLM | Math — vectors, matrices, transforms | all |
+| GLEW | OpenGL function loader | Windows |
+| LLVM/clang++ | Compiler (Homebrew) — replaces system clang | macOS |
