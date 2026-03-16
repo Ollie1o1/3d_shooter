@@ -189,12 +189,19 @@ public:
     bool  reloading       = false;
     float reloadTimer     = 0.f;
     static constexpr float RELOAD_TIME = 1.2f;
-    // Slot 2: Grenades — max 2, one returned per 2 kills
+    // Slot 2: Shotgun — 2 shells, pump-action
+    int   shotgunAmmo      = 2;
+    int   shotgunAmmoMax   = 2;
+    float shotgunTimer     = 0.f;   // between-shot cooldown
+    bool  shotgunReloading = false;
+    float shotgunReloadTimer = 0.f;
+    static constexpr float SHOTGUN_RELOAD_TIME = 1.4f;
+    // G key: Grenades — max 2, one returned per 2 kills (not a weapon slot)
     int   grenadeCount   = 2;
     int   grenadeMax     = 2;
     float grenadeTimer   = 0.f;   // cooldown between throws
     int   killsThisCycle = 0;     // counts toward next grenade refill (every 2 kills)
-    // Slot selection: 0 = revolver, 1 = grenades
+    // Slot selection: 0 = revolver, 1 = shotgun
     int   activeWeapon   = 0;
 
     int   dashCharges       = 2;
@@ -286,6 +293,7 @@ public:
     // Event-driven click flags — set in handleEvent, consumed once in physicsTick.
     // More reliable than polling SDL_GetMouseState on trackpads.
     bool pendingFire      = false;
+    bool pendingShotgun   = false;
     bool pendingGrenade   = false;
     bool pendingGrapple   = false;   // right-click: fire or release grapple
 
@@ -403,7 +411,7 @@ public:
         if (e.type == SDL_MOUSEBUTTONDOWN) {
             if (e.button.button == SDL_BUTTON_LEFT) {
                 if (activeWeapon == 0) pendingFire    = true;
-                else                   pendingGrenade = true;
+                else                   pendingShotgun  = true;
             }
             if (e.button.button == SDL_BUTTON_RIGHT) {
                 pendingGrapple = true;
@@ -415,6 +423,7 @@ public:
         if (e.type == SDL_KEYDOWN) {
             if (e.key.keysym.sym == SDLK_1) activeWeapon = 0;
             if (e.key.keysym.sym == SDLK_2) activeWeapon = 1;
+            if (e.key.keysym.sym == SDLK_g) pendingGrenade = true;
         }
         if (e.type == SDL_MOUSEMOTION) {
             float sens = settings ? settings->sensitivity : 0.1f;
@@ -635,23 +644,37 @@ public:
         playerXZSpeed = glm::length(glm::vec2(player.velocity.x, player.velocity.z));
 
         // --- Shooting ---
-        revolverTimer = std::max(0.f, revolverTimer - dt);
-        grenadeTimer  = std::max(0.f, grenadeTimer  - dt);
-        invincFrames  = std::max(0.f, invincFrames  - dt);
+        revolverTimer    = std::max(0.f, revolverTimer    - dt);
+        shotgunTimer     = std::max(0.f, shotgunTimer     - dt);
+        grenadeTimer     = std::max(0.f, grenadeTimer     - dt);
+        invincFrames     = std::max(0.f, invincFrames     - dt);
 
-        // Reload tick
+        // Revolver reload tick
         if (reloading) {
             reloadTimer -= dt;
             if (reloadTimer <= 0.f) {
-                reloading     = false;
-                reloadTimer   = 0.f;
-                revolverAmmo  = revolverAmmoMax;
+                reloading    = false;
+                reloadTimer  = 0.f;
+                revolverAmmo = revolverAmmoMax;
             }
         }
 
-        // R key — manual reload (only if not full and not already reloading)
-        if (keys[SDL_SCANCODE_R] && !reloading && revolverAmmo < revolverAmmoMax) {
-            startReload();
+        // Shotgun reload tick
+        if (shotgunReloading) {
+            shotgunReloadTimer -= dt;
+            if (shotgunReloadTimer <= 0.f) {
+                shotgunReloading   = false;
+                shotgunReloadTimer = 0.f;
+                shotgunAmmo        = shotgunAmmoMax;
+            }
+        }
+
+        // R key — manual reload
+        if (keys[SDL_SCANCODE_R]) {
+            if (activeWeapon == 0 && !reloading && revolverAmmo < revolverAmmoMax)
+                startReload();
+            else if (activeWeapon == 1 && !shotgunReloading && shotgunAmmo < shotgunAmmoMax)
+                startShotgunReload();
         }
 
         // Consume event-driven clicks — fire once per click event (reliable on trackpads)
@@ -659,6 +682,11 @@ public:
             fireRevolver();
         }
         pendingFire = false;
+
+        if (pendingShotgun && shotgunTimer <= 0.f && !shotgunReloading && shotgunAmmo > 0) {
+            fireShotgun();
+        }
+        pendingShotgun = false;
 
         if (pendingGrenade && grenadeCount > 0 && grenadeTimer <= 0.f) {
             throwGrenade();
@@ -669,6 +697,8 @@ public:
         for (auto& e : enemies) {
             if (!e.alive) continue;
             bool fired = e.update(dt, player.camera.position, allWalls.data(), (int)allWalls.size(), &spatialGrid);
+            // Telegraph audio: plays once at the start of each enemy wind-up
+            if (e.telegraphJustStarted) audio.play("telegraph");
             if (fired) {
                 glm::vec3 firePos = e.position + glm::vec3{0,1.2f,0};
                 glm::vec3 fireDir = e.getFireDir(player.camera.position);
@@ -992,6 +1022,80 @@ public:
         if (revolverAmmo <= 0) startReload();
     }
 
+    void startShotgunReload() {
+        shotgunReloading   = true;
+        shotgunReloadTimer = SHOTGUN_RELOAD_TIME;
+        audio.play("reload");
+    }
+
+    void fireShotgun() {
+        --shotgunAmmo;
+        shotgunTimer = 0.55f;  // pump cycle
+
+        glm::vec3 origin = player.camera.position;
+        glm::vec3 fwd    = player.camera.forward();
+        glm::vec3 right  = player.camera.right();
+        glm::vec3 up     = glm::cross(fwd, right); // camera-aligned up
+
+        static constexpr int   PELLETS      = 10;
+        static constexpr float SPREAD       = 0.18f;  // ±~10° half-angle in radians
+        static constexpr float PELLET_DMG   = 9.f;    // per pellet; 10 = 90 max
+
+        for (int p = 0; p < PELLETS; ++p) {
+            // Random spread within a square cone, then normalise
+            float rx = ((rand() % 2001) - 1000) / 1000.f * SPREAD;
+            float ry = ((rand() % 2001) - 1000) / 1000.f * SPREAD;
+            glm::vec3 dir = glm::normalize(fwd + right * rx + up * ry);
+
+            // Find closest enemy hit
+            float bestT    = 1000.f;
+            int   hitEnemy = -1;
+            for (int ei = 0; ei < (int)enemies.size(); ++ei) {
+                auto& e = enemies[ei];
+                if (!e.alive) continue;
+                float t = rayAABBHit(origin, dir, e.getAABB());
+                if (t > 0.f && t < bestT) { bestT = t; hitEnemy = ei; }
+            }
+
+            // Find closest wall hit
+            float wallT = 60.f;
+            for (auto& w : allWalls) {
+                float t = rayAABBHit(origin, dir, w.box);
+                if (t > 0.f && t < wallT) wallT = t;
+            }
+
+            float tracerDist = (hitEnemy >= 0) ? std::min(bestT, wallT) : wallT;
+            spawnTracer(origin + dir * 0.2f, origin + dir * tracerDist);
+
+            if (hitEnemy >= 0) {
+                enemies[hitEnemy].takeDamage(PELLET_DMG);
+                styleSystem.addStyle(3.f);
+                styleSystem.heal(0.5f);
+                spawnDecal(enemies[hitEnemy].position);
+                bool killed = !enemies[hitEnemy].alive;
+                ui.onHit(killed);
+                if (killed) {
+                    onEnemyKilled();
+                    hitStopFrames = glm::max(hitStopFrames, 2);
+                }
+            }
+        }
+
+        // Camera kick — stronger than revolver
+        player.camera.pitch += 2.2f;
+        player.camera.pitch = glm::clamp(player.camera.pitch, -89.f, 89.f);
+
+        viewModel.triggerFire();
+        ui.onShoot();
+        muzzleFlashPos   = origin + fwd * 0.6f;
+        muzzleFlashTimer = 0.07f;
+        shakeTimer       = 0.12f;
+        shakeIntensity   = 0.025f;
+        audio.play("shotgun");
+
+        if (shotgunAmmo <= 0) startShotgunReload();
+    }
+
     void throwGrenade() {
         --grenadeCount;
         grenadeTimer = 0.6f;  // brief cooldown between throws
@@ -1024,12 +1128,16 @@ public:
         spatialGrid.build(allWalls);
         worldMesh = buildWorldMesh(allWalls);
         spawnEnemiesForRoom(0);
-        grenadeCount   = grenadeMax;
-        killsThisCycle = 0;
-        revolverAmmo   = revolverAmmoMax;
-        reloading      = false;
-        reloadTimer    = 0.f;
-        revolverTimer  = 0.f;
+        grenadeCount       = grenadeMax;
+        killsThisCycle     = 0;
+        revolverAmmo       = revolverAmmoMax;
+        reloading          = false;
+        reloadTimer        = 0.f;
+        revolverTimer      = 0.f;
+        shotgunAmmo        = shotgunAmmoMax;
+        shotgunReloading   = false;
+        shotgunReloadTimer = 0.f;
+        shotgunTimer       = 0.f;
         dashCharges    = 2;
         jumpsRemaining = 2;
         playerDead = false;
@@ -1171,9 +1279,12 @@ public:
         postProcess.endScene();
 
         float reloadProgress = reloading ? (1.f - reloadTimer / RELOAD_TIME) : 1.f;
-        ui.render(styleSystem, activeWeapon, grenadeCount, grenadeMax,
-                  revolverAmmo, revolverAmmoMax,
-                  reloading, reloadProgress, nearInteractable);
+        float shotgunReloadProgress = shotgunReloading
+                                    ? (1.f - shotgunReloadTimer / SHOTGUN_RELOAD_TIME) : 1.f;
+        ui.render(styleSystem, activeWeapon,
+                  shotgunAmmo, shotgunAmmoMax, shotgunReloading, shotgunReloadProgress,
+                  revolverAmmo, revolverAmmoMax, reloading, reloadProgress,
+                  nearInteractable);
     }
 
     void renderParticles(const glm::mat4& view, const glm::mat4& proj) {

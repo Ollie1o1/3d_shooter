@@ -50,8 +50,13 @@ struct Enemy {
     float      strafeTimer  = 0.f;
     float      strafeDir    = 1.f;
     int        invincFrames = 0;
-    float      hitFlashTimer = 0.f;   // > 0 while flashing white after taking damage
-    float      hoverY       = 0.f;   // target hover altitude for FLYER type
+    float      hitFlashTimer     = 0.f;  // > 0 while flashing white after taking damage
+    float      hoverY            = 0.f;  // target hover altitude for FLYER type
+
+    // Telegraph: wind-up period before firing (provides a parry window).
+    float      telegraphTimer    = 0.f;  // counts DOWN; > 0 means winding up
+    float      telegraphDuration = 0.4f; // set per-type in constructor
+    bool       telegraphJustStarted = false; // true for exactly one tick when wind-up begins
 
     static constexpr float FLOOR_Y = 0.f;
     static constexpr float RADIUS  = 0.5f;
@@ -59,11 +64,21 @@ struct Enemy {
 
     Enemy(EnemyType t, glm::vec3 pos) : type(t), position(pos) {
         switch (t) {
-            case EnemyType::GRUNT:   health = maxHealth = 50.f; break;
-            case EnemyType::SHOOTER: health = maxHealth = 35.f; break;
-            case EnemyType::STALKER: health = maxHealth = 25.f; break;
+            case EnemyType::GRUNT:
+                health = maxHealth = 50.f;
+                telegraphDuration  = 0.45f;
+                break;
+            case EnemyType::SHOOTER:
+                health = maxHealth = 35.f;
+                telegraphDuration  = 0.55f; // longest — most parry time
+                break;
+            case EnemyType::STALKER:
+                health = maxHealth = 25.f;
+                telegraphDuration  = 0.30f; // fast and dangerous
+                break;
             case EnemyType::FLYER:
                 health = maxHealth = 40.f;
+                telegraphDuration  = 0.35f;
                 hoverY = pos.y > 1.f ? pos.y : 10.f;
                 break;
         }
@@ -86,9 +101,20 @@ struct Enemy {
                 const SpatialGrid* grid = nullptr) {
         if (!alive) return false;
         if (invincFrames > 0) --invincFrames;
-        if (hitFlashTimer > 0.f) hitFlashTimer -= dt;
+        if (hitFlashTimer     > 0.f) hitFlashTimer -= dt;
+
+        telegraphJustStarted = false; // consumed by GameplayState each tick
 
         bool fireProjectile = false;
+
+        // Tick telegraph wind-up; fires the projectile when it expires.
+        if (telegraphTimer > 0.f) {
+            telegraphTimer -= dt;
+            if (telegraphTimer <= 0.f) {
+                telegraphTimer  = 0.f;
+                fireProjectile  = true;
+            }
+        }
         glm::vec3 toPlayer = playerPos - position;
         float dist = glm::length(toPlayer);
         glm::vec3 dirToPlayer = dist > 0.001f ? toPlayer / dist : glm::vec3{1,0,0};
@@ -125,9 +151,10 @@ struct Enemy {
                         velocity.z = strafeAxis.z * strafeDir * 2.5f;
                     }
                     attackTimer += dt;
-                    if (attackTimer >= 2.2f) {
-                        attackTimer = 0.f;
-                        fireProjectile = true;
+                    if (attackTimer >= 2.2f && telegraphTimer <= 0.f) {
+                        attackTimer          = 0.f;
+                        telegraphTimer       = telegraphDuration;
+                        telegraphJustStarted = true;
                     }
                 }
                 break;
@@ -148,9 +175,10 @@ struct Enemy {
                         velocity.z *= std::pow(0.01f, dt);
                     }
                     attackTimer += dt;
-                    if (attackTimer >= 2.5f) {
-                        attackTimer = 0.f;
-                        fireProjectile = true;
+                    if (attackTimer >= 2.5f && telegraphTimer <= 0.f) {
+                        attackTimer          = 0.f;
+                        telegraphTimer       = telegraphDuration;
+                        telegraphJustStarted = true;
                     }
                 }
                 break;
@@ -197,9 +225,10 @@ struct Enemy {
                     velocity.y = glm::clamp(yErr * 6.f, -12.f, 12.f);
 
                     attackTimer += dt;
-                    if (attackTimer >= 1.6f) {
-                        attackTimer = 0.f;
-                        fireProjectile = true;
+                    if (attackTimer >= 1.6f && telegraphTimer <= 0.f) {
+                        attackTimer          = 0.f;
+                        telegraphTimer       = telegraphDuration;
+                        telegraphJustStarted = true;
                     }
                 } else {
                     // Idle: drift back toward hover altitude
@@ -386,11 +415,23 @@ public:
                 case EnemyType::STALKER: inst.color={0.8f,0.6f,0.0f}; inst.emissive={0,0,0}; break;
                 case EnemyType::FLYER:   inst.color={0.7f,0.1f,0.9f}; inst.emissive={0.4f,0.0f,0.6f}; break;
             }
-            // Hit flash — bleach toward white
+            // Telegraph glint: emissive pulses bright cyan as wind-up nears zero.
+            // t goes 0→1 from start to fire moment — glint intensifies over time.
+            if (e.telegraphTimer > 0.f) {
+                float t     = 1.f - (e.telegraphTimer / e.telegraphDuration);
+                // Pulsing: base brightness ramps up, plus a fast strobe
+                float pulse = t + 0.25f * std::sin(e.telegraphTimer * 40.f);
+                float glint = glm::clamp(pulse, 0.f, 1.f);
+                inst.emissive = glm::mix(inst.emissive, glm::vec3{0.2f, 1.f, 0.9f}, glint * 0.9f);
+                // Also slightly desaturate the body color toward white for readability
+                inst.color = glm::mix(inst.color, glm::vec3{1.f}, glint * 0.35f);
+            }
+
+            // Hit flash — briefly bleach the enemy white on damage
             if (e.hitFlashTimer > 0.f) {
                 float t = e.hitFlashTimer / 0.12f;
-                inst.color   = glm::mix(inst.color,   glm::vec3{1.f}, t * 0.85f);
-                inst.emissive = glm::mix(inst.emissive, glm::vec3{0.8f}, t * 0.6f);
+                inst.color    = glm::mix(inst.color,    glm::vec3{1.f},  t * 0.85f);
+                inst.emissive = glm::mix(inst.emissive, glm::vec3{0.8f}, t * 0.60f);
             }
         }
         if (count == 0) return;

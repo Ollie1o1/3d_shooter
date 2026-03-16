@@ -63,7 +63,8 @@ public:
     void onGrenadeRefill() { /* visual flash could go here */ }
 
     void render(const StyleSystem& style, int activeWeapon,
-                int grenadeCount, int grenadeMax,
+                int shotgunAmmo, int shotgunAmmoMax,
+                bool shotgunReloading, float shotgunReloadProgress,
                 int revolverAmmo, int revolverAmmoMax,
                 bool reloading, float reloadProgress,
                 bool nearInteractable = false) {
@@ -97,8 +98,7 @@ public:
         drawRect(sx,sy,(int)(200*sFill),18,rankColor);
 
         // ---- Weapon slots (bottom-right) ----
-        // Slot 1: Revolver (infinite ammo)
-        // Slot 2: Grenades (count shown as squares)
+        // Slot 1: Revolver  Slot 2: Shotgun   G key: Grenade (not shown as a slot)
         int slotW = 56, slotH = 64, slotPad = 8;
         int slotBaseX = screenW - 2*(slotW+slotPad) - 12;
         int slotBaseY = screenH - slotH - 12;
@@ -162,15 +162,42 @@ public:
                     }
                 }
             } else {
-                // Grenade icon — oval body
-                glm::vec4 gc = grenadeCount > 0 ? glm::vec4{0.3f,0.9f,0.15f,0.9f}
-                                                : glm::vec4{0.4f,0.4f,0.4f,0.5f};
-                drawRect(sx+14, slotBaseY+14, 24, 30, gc);  // body
-                drawRect(sx+20, slotBaseY+8,  12, 10, {0.6f,0.6f,0.6f,0.8f}); // cap
-                // Grenade count dots
-                for (int g = 0; g < grenadeMax; ++g) {
-                    float da = (g < grenadeCount) ? 0.95f : 0.2f;
-                    drawRect(sx+8 + g*18, slotBaseY+slotH-14, 14, 8, {0.3f,0.9f,0.15f,da});
+                // Shotgun icon — wide receiver body + barrel
+                glm::vec4 ic = shotgunAmmo > 0 ? glm::vec4{0.75f,0.6f,0.45f,0.9f}
+                                               : glm::vec4{0.4f,0.35f,0.3f,0.5f};
+                drawRect(sx+6,  slotBaseY+12, 40, 6,  ic);  // barrel (long)
+                drawRect(sx+6,  slotBaseY+20, 28, 8,  ic);  // receiver body
+                drawRect(sx+10, slotBaseY+28, 16, 12, ic);  // grip
+
+                // Shell pips — one large rect per shell
+                for (int sh = 0; sh < shotgunAmmoMax; ++sh) {
+                    bool live = sh < shotgunAmmo;
+                    glm::vec4 sc = live ? glm::vec4{0.95f,0.75f,0.20f,0.95f}
+                                       : glm::vec4{0.30f,0.26f,0.18f,0.4f};
+                    drawRect(sx + 8 + sh * 20, slotBaseY + slotH - 16, 16, 10, sc);
+                }
+
+                // Reload arc overlay
+                if (shotgunReloading) {
+                    int   dots   = 12;
+                    float cx_f   = sx + slotW * 0.5f;
+                    float cy_f   = slotBaseY + slotH * 0.5f;
+                    float radius = 20.f;
+                    for (int d = 0; d < dots; ++d) {
+                        float angle = (float)d / (float)dots * 6.2832f - 1.5708f;
+                        float dx    = cosf(angle) * radius;
+                        float dy    = sinf(angle) * radius;
+                        drawRect((int)(cx_f+dx-3),(int)(cy_f+dy-3),6,6,{0.15f,0.15f,0.15f,0.7f});
+                    }
+                    for (int d = 0; d < dots; ++d) {
+                        float angle = (float)d / (float)dots * 6.2832f - 1.5708f;
+                        float dx    = cosf(angle) * radius;
+                        float dy    = sinf(angle) * radius;
+                        float lit   = ((float)d / (float)dots < shotgunReloadProgress) ? 0.95f : 0.0f;
+                        if (lit > 0.f)
+                            drawRect((int)(cx_f+dx-3),(int)(cy_f+dy-3),6,6,
+                                     {0.95f,0.70f,0.20f,lit});
+                    }
                 }
             }
         }
