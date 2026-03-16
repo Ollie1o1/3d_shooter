@@ -27,7 +27,8 @@
 // =============================================================================
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include "Player.h"
+#include <vector>
+#include "Player.h"  // also brings in SpatialGrid, AABB, Wall
 #include "Mesh.h"
 #include "ShaderProgram.h"
 #include <vector>
@@ -80,9 +81,9 @@ struct Enemy {
         state = EnemyState::CHASE;
     }
 
-    // Returns true if this enemy should fire a projectile this tick.
-    // Velocity is in m/s; position integrates with dt — same convention as Player.
-    bool update(float dt, const glm::vec3& playerPos, const Wall* walls, int wallCount) {
+    bool update(float dt, const glm::vec3& playerPos,
+                const Wall* walls, int wallCount,
+                const SpatialGrid* grid = nullptr) {
         if (!alive) return false;
         if (invincFrames > 0) --invincFrames;
         if (hitFlashTimer > 0.f) hitFlashTimer -= dt;
@@ -226,7 +227,15 @@ struct Enemy {
 
         if (type != EnemyType::FLYER) {
             if (position.y < FLOOR_Y) { position.y = FLOOR_Y; velocity.y = 0.f; }
-            for (int i = 0; i < wallCount; ++i) resolveAABB(walls[i].box);
+            if (grid) {
+                static std::vector<int> cands;
+                AABB eb{ position+glm::vec3{-RADIUS-0.1f,-0.1f,-RADIUS-0.1f},
+                         position+glm::vec3{ RADIUS+0.1f, HEIGHT+0.1f, RADIUS+0.1f} };
+                grid->query(eb, cands);
+                for (int idx : cands) resolveAABB(walls[idx].box);
+            } else {
+                for (int i = 0; i < wallCount; ++i) resolveAABB(walls[i].box);
+            }
         } else {
             // Keep flyer above the floor minimum even if something pushes it down
             if (position.y < 1.5f) { position.y = 1.5f; velocity.y = 0.f; }
@@ -269,13 +278,30 @@ private:
     }
 };
 
-// Batch-render all enemies as colored cubes
+// Instanced renderer — one glDrawElementsInstanced call regardless of enemy count.
+// GameplayState sets all lighting uniforms on `shader` before calling draw().
 class EnemyRenderer {
 public:
+    ShaderProgram shader;          // owns enemy_inst.vert / enemy_inst.frag
     GLuint vao = 0, vbo = 0, ebo = 0;
+    GLuint instanceVBO = 0;
     GLsizei indexCount = 0;
 
+    static constexpr int MAX_INSTANCES = 256;
+
+    // Per-instance data uploaded to the GPU each frame.
+    struct InstanceData {
+        glm::mat4 model;        // locations 4-7
+        glm::vec3 color;        // location 8
+        float     _pad0 = 0.f;
+        glm::vec3 emissive;     // location 9
+        float     _pad1 = 0.f;
+    };
+
     EnemyRenderer() {
+        shader.loadFiles("src/enemy_inst.vert", "src/enemy_inst.frag");
+
+        // Build the shared cube mesh
         std::vector<Vertex> verts;
         std::vector<unsigned int> idx;
         float h = 0.9f, r = 0.5f;
@@ -291,55 +317,91 @@ public:
         pushFace({-r,0,-r},{-r,0,r},{-r,h*2,r},{-r,h*2,-r},{-1,0,0});
         pushFace({-r,h*2,r},{r,h*2,r},{r,h*2,-r},{-r,h*2,-r},{0,1,0});
         pushFace({-r,0,-r},{r,0,-r},{r,0,r},{-r,0,r},{0,-1,0});
+        indexCount = (GLsizei)idx.size();
 
         glGenVertexArrays(1, &vao);
         glGenBuffers(1, &vbo);
         glGenBuffers(1, &ebo);
+        glGenBuffers(1, &instanceVBO);
+
         glBindVertexArray(vao);
+
+        // Static mesh geometry (per-vertex attributes 0-3)
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(verts.size()*sizeof(Vertex)), verts.data(), GL_STATIC_DRAW);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)(idx.size()*sizeof(unsigned int)), idx.data(), GL_STATIC_DRAW);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,sizeof(Vertex),(void*)offsetof(Vertex,position));
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1,2,GL_FLOAT,GL_FALSE,sizeof(Vertex),(void*)offsetof(Vertex,uv));
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2,3,GL_FLOAT,GL_FALSE,sizeof(Vertex),(void*)offsetof(Vertex,normal));
+        glEnableVertexAttribArray(0); glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,sizeof(Vertex),(void*)offsetof(Vertex,position));
+        glEnableVertexAttribArray(1); glVertexAttribPointer(1,2,GL_FLOAT,GL_FALSE,sizeof(Vertex),(void*)offsetof(Vertex,uv));
+        glEnableVertexAttribArray(2); glVertexAttribPointer(2,3,GL_FLOAT,GL_FALSE,sizeof(Vertex),(void*)offsetof(Vertex,normal));
+
+        // Per-instance buffer (dynamic, updated every frame)
+        glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
+        glBufferData(GL_ARRAY_BUFFER, MAX_INSTANCES * sizeof(InstanceData), nullptr, GL_DYNAMIC_DRAW);
+
+        // mat4 instanceModel at locations 4-7 (four consecutive vec4s)
+        for (int i = 0; i < 4; ++i) {
+            glEnableVertexAttribArray(4 + i);
+            glVertexAttribPointer(4+i, 4, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
+                                  (void*)(offsetof(InstanceData, model) + i * 16));
+            glVertexAttribDivisor(4 + i, 1);
+        }
+        // vec3 instanceColor at location 8
+        glEnableVertexAttribArray(8);
+        glVertexAttribPointer(8, 3, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
+                              (void*)offsetof(InstanceData, color));
+        glVertexAttribDivisor(8, 1);
+        // vec3 instanceEmissive at location 9
+        glEnableVertexAttribArray(9);
+        glVertexAttribPointer(9, 3, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
+                              (void*)offsetof(InstanceData, emissive));
+        glVertexAttribDivisor(9, 1);
+
         glBindVertexArray(0);
-        indexCount = (GLsizei)idx.size();
     }
+
+    EnemyRenderer(const EnemyRenderer&) = delete;
+    EnemyRenderer& operator=(const EnemyRenderer&) = delete;
 
     ~EnemyRenderer() {
         if (vao) glDeleteVertexArrays(1,&vao);
         if (vbo) glDeleteBuffers(1,&vbo);
         if (ebo) glDeleteBuffers(1,&ebo);
+        if (instanceVBO) glDeleteBuffers(1,&instanceVBO);
     }
 
-    void draw(ShaderProgram& shader, const std::vector<Enemy>& enemies) {
-        glBindVertexArray(vao);
+    // Call after setting all lighting uniforms on `shader`.
+    void draw(const std::vector<Enemy>& enemies) {
+        // Build per-instance data on the CPU
+        static InstanceData buf[MAX_INSTANCES];
+        int count = 0;
         for (auto& e : enemies) {
-            if (!e.alive) continue;
-            glm::mat4 model = glm::translate(glm::mat4(1.f), e.position);
-            shader.setMat4("model", model);
-            glm::vec3 emissive{0,0,0};
-            glm::vec3 baseColor{1,1,1};
+            if (!e.alive || count >= MAX_INSTANCES) continue;
+            auto& inst = buf[count++];
+            inst.model = glm::translate(glm::mat4(1.f), e.position);
+
             switch (e.type) {
-                case EnemyType::GRUNT:   baseColor={0.8f,0.2f,0.2f}; break;
-                case EnemyType::SHOOTER: baseColor={0.2f,0.3f,0.9f}; emissive={0.1f,0.2f,0.8f}; break;
-                case EnemyType::STALKER: baseColor={0.8f,0.6f,0.0f}; break;
-                case EnemyType::FLYER:   baseColor={0.7f,0.1f,0.9f}; emissive={0.4f,0.0f,0.6f}; break;
+                case EnemyType::GRUNT:   inst.color={0.8f,0.2f,0.2f}; inst.emissive={0,0,0}; break;
+                case EnemyType::SHOOTER: inst.color={0.2f,0.3f,0.9f}; inst.emissive={0.1f,0.2f,0.8f}; break;
+                case EnemyType::STALKER: inst.color={0.8f,0.6f,0.0f}; inst.emissive={0,0,0}; break;
+                case EnemyType::FLYER:   inst.color={0.7f,0.1f,0.9f}; inst.emissive={0.4f,0.0f,0.6f}; break;
             }
-            // Hit flash — briefly bleach the enemy white on damage
+            // Hit flash — bleach toward white
             if (e.hitFlashTimer > 0.f) {
                 float t = e.hitFlashTimer / 0.12f;
-                baseColor = glm::mix(baseColor, glm::vec3{1.f,1.f,1.f}, t * 0.85f);
-                emissive  = glm::mix(emissive,  glm::vec3{0.8f,0.8f,0.8f}, t * 0.6f);
+                inst.color   = glm::mix(inst.color,   glm::vec3{1.f}, t * 0.85f);
+                inst.emissive = glm::mix(inst.emissive, glm::vec3{0.8f}, t * 0.6f);
             }
-            shader.setVec3("emissiveColor", emissive);
-            shader.setVec3("objectColor",   baseColor);
-            glDrawElements(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, nullptr);
         }
+        if (count == 0) return;
+
+        // Upload instance data and draw
+        glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, count * sizeof(InstanceData), buf);
+
+        shader.use();
+        glBindVertexArray(vao);
+        glDrawElementsInstanced(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, nullptr, count);
         glBindVertexArray(0);
     }
 };

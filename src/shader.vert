@@ -25,9 +25,14 @@ out vec3 FragPos; // world-space position, used for lighting in the fragment sha
 out vec3 VertColor;
 
 // Uniform matrices — set once per draw call from ShaderProgram::setMat4()
-uniform mat4 model;      // object-to-world transform
-uniform mat4 view;       // world-to-camera transform (inverse of camera pose)
-uniform mat4 projection; // camera-to-clip transform (perspective)
+uniform mat4  model;        // object-to-world transform
+uniform mat4  view;         // world-to-camera transform (inverse of camera pose)
+uniform mat4  projection;   // camera-to-clip transform (perspective)
+
+// PSX retro aesthetic: vertex snapping.
+// 0.0 = off (clean, default). 1.0 = maximum jitter.
+// Good range: 0.05 – 0.20 for a subtle retro look.
+uniform float uPSXStrength; // default 0
 
 void main()
 {
@@ -36,7 +41,17 @@ void main()
     FragPos = worldPos.xyz;
 
     // Full MVP transform: puts the vertex in clip space for rasterization
-    gl_Position = projection * view * worldPos;
+    vec4 clipPos = projection * view * worldPos;
+
+    // PSX-style vertex snapping: quantise clip-space XY to a coarse grid.
+    // The grid is expressed in NDC (divide by w, snap, multiply back by w)
+    // so snap resolution is uniform across the screen.
+    if (uPSXStrength > 0.0) {
+        float snapRes = mix(512.0, 64.0, uPSXStrength); // higher = finer = less jitter
+        clipPos.xy = floor(clipPos.xy / clipPos.w * snapRes + 0.5) / snapRes * clipPos.w;
+    }
+
+    gl_Position = clipPos;
 
     TexCoord = aTexCoord;
 

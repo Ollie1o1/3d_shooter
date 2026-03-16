@@ -180,6 +180,7 @@ public:
 
     std::vector<Enemy>   enemies;
     std::vector<Wall>    allWalls;
+    SpatialGrid          spatialGrid;  // rebuilt whenever allWalls changes
 
     // Slot 1: Revolver — 8 rounds, manual/auto reload
     int   revolverAmmo    = 8;
@@ -231,6 +232,20 @@ public:
     bool  paused     = false;
     bool  playerDead = false;
     float deadTimer  = 0.f;
+
+    // Hit-stop: number of physics ticks to freeze on high-damage events.
+    int hitStopFrames = 0;
+
+    // Impact decals — flat blood/burn quads that appear on the floor at enemy
+    // hit positions. Rendered with polygon offset to avoid Z-fighting.
+    struct Decal {
+        glm::vec3 pos{0.f};
+        float life = 0.f, maxLife = 10.f;
+        bool  alive = false;
+    };
+    static constexpr int MAX_DECALS = 64;
+    Decal  decals[MAX_DECALS];
+    GLuint decalVAO = 0, decalVBO = 0;
 
     // Explosion particles — spawned by grenade blasts, rendered as GL_POINTS
     struct Particle {
@@ -303,12 +318,27 @@ public:
         glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 4*sizeof(float), (void*)(3*sizeof(float)));
         glBindVertexArray(0);
 
+        // Decal VBO: dynamic flat quads, each vertex = pos(3)+uv(2)+normal(3)+color(3)=11 floats
+        // Matches the Vertex layout expected by worldShader.
+        glGenVertexArrays(1, &decalVAO);
+        glGenBuffers(1, &decalVBO);
+        glBindVertexArray(decalVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, decalVBO);
+        glBufferData(GL_ARRAY_BUFFER, MAX_DECALS * 6 * 11 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+        glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 11*sizeof(float), (void*)0);
+        glEnableVertexAttribArray(1); glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 11*sizeof(float), (void*)(3*sizeof(float)));
+        glEnableVertexAttribArray(2); glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 11*sizeof(float), (void*)(5*sizeof(float)));
+        glEnableVertexAttribArray(3); glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 11*sizeof(float), (void*)(8*sizeof(float)));
+        glBindVertexArray(0);
+
         whiteTex = makeGreyTexture();
         player.camera.aspectRatio = (float)SCREEN_W/SCREEN_H;
         player.camera.fov = settings ? settings->fov : 90.f;
 
-        level = buildLevel();
+        level = loadLevelFromFile("assets/level.txt");
+        if (level.rooms.empty()) level = buildLevel();  // fallback if file missing
         allWalls = level.getAllWalls();
+        spatialGrid.build(allWalls);
         worldMesh = buildWorldMesh(allWalls);
         spawnPadMesh = buildSpawnPadMesh(level);
 
@@ -328,10 +358,12 @@ public:
 
     ~GameplayState() {
         glDeleteTextures(1,&whiteTex);
-        if (tracerVAO)    glDeleteVertexArrays(1, &tracerVAO);
-        if (tracerVBO)    glDeleteBuffers(1, &tracerVBO);
-        if (particleVAO)  glDeleteVertexArrays(1, &particleVAO);
-        if (particleVBO)  glDeleteBuffers(1, &particleVBO);
+        if (tracerVAO)   glDeleteVertexArrays(1, &tracerVAO);
+        if (tracerVBO)   glDeleteBuffers(1, &tracerVBO);
+        if (particleVAO) glDeleteVertexArrays(1, &particleVAO);
+        if (particleVBO) glDeleteBuffers(1, &particleVBO);
+        if (decalVAO)    glDeleteVertexArrays(1, &decalVAO);
+        if (decalVBO)    glDeleteBuffers(1, &decalVBO);
         SDL_SetRelativeMouseMode(SDL_FALSE);
     }
 
@@ -414,7 +446,11 @@ public:
 
         while (accumulator >= PHYSICS_DT) {
             prevCamPos = player.camera.position;
-            physicsTick(PHYSICS_DT, keys, leftMouse, rightMouse, parryKey);
+            if (hitStopFrames > 0) {
+                --hitStopFrames;  // freeze simulation, consume one tick
+            } else {
+                physicsTick(PHYSICS_DT, keys, leftMouse, rightMouse, parryKey);
+            }
             accumulator -= PHYSICS_DT;
         }
 
@@ -426,6 +462,7 @@ public:
         // Rebuild world mesh while a door is sliding open
         if (level.anyDoorSliding()) {
             allWalls  = level.getAllWalls();
+            spatialGrid.build(allWalls);
             worldMesh = buildWorldMesh(allWalls);
         }
 
@@ -555,7 +592,7 @@ public:
                 player.velocity.y += 6.f;
                 styleSystem.addStyle(10.f);
                 audio.play("jump");
-            } else if (jumpsRemaining > 0 && !player.onGround) {
+            } else if (jumpsRemaining > 0 && !player.onGround && player.coyoteTimer <= 0.f) {
                 player.velocity.y = player.jumpForce;
                 --jumpsRemaining;
                 styleSystem.addStyle(3.f);
@@ -576,7 +613,7 @@ public:
             glm::vec3 camPos = player.camera.position;
             glm::vec3 camFwd = player.camera.forward();
             if (!grapple.active) {
-                allWalls = level.getAllWalls();
+                // allWalls is already current (no door slides mid-tick)
                 glm::vec3 grappleImpulse{0.f};
                 if (grapple.fire(camPos, camFwd, allWalls.data(), (int)allWalls.size(), grappleImpulse)) {
                     player.velocity = grappleImpulse;
@@ -593,9 +630,8 @@ public:
         grapple.update(dt, player.camera.position, player.velocity);
 
         // --- Update player physics ---
-        allWalls = level.getAllWalls();
         player.update(dt, keys, allWalls.data(), (int)allWalls.size(),
-                      grapple.active || dashMomentumTimer > 0.f);
+                      grapple.active || dashMomentumTimer > 0.f, &spatialGrid);
         playerXZSpeed = glm::length(glm::vec2(player.velocity.x, player.velocity.z));
 
         // --- Shooting ---
@@ -632,7 +668,7 @@ public:
         // --- Enemy & projectile update ---
         for (auto& e : enemies) {
             if (!e.alive) continue;
-            bool fired = e.update(dt, player.camera.position, allWalls.data(), (int)allWalls.size());
+            bool fired = e.update(dt, player.camera.position, allWalls.data(), (int)allWalls.size(), &spatialGrid);
             if (fired) {
                 glm::vec3 firePos = e.position + glm::vec3{0,1.2f,0};
                 glm::vec3 fireDir = e.getFireDir(player.camera.position);
@@ -641,21 +677,55 @@ public:
         }
 
         auto result = projSystem.update(dt, allWalls.data(), (int)allWalls.size(),
-                                        enemies, player.camera.position);
+                                        enemies, player.camera.position, &spatialGrid);
 
         // --- Parry ---
         bool parryPressed = parryKey && !parryPrev;
         parryPrev = parryKey;
 
-        if (parryPressed && result.parryableIndex >= 0) {
-            auto& p = projSystem.pool[result.parryableIndex];
-            p.isPlayer = true;
-            p.damage   = 50.f;
-            p.velocity  = -p.velocity * 2.f;
-            p.emissiveColor = {1.f,0.9f,0.3f};
-            styleSystem.addStyle(20.f);
-            invincFrames = 0.5f;
-            audio.play("parry");
+        if (parryPressed) {
+            if (result.parryableIndex >= 0) {
+                // Deflect an enemy projectile back at high speed.
+                auto& p = projSystem.pool[result.parryableIndex];
+                p.isPlayer      = true;
+                p.damage        = 50.f;
+                p.velocity      = -p.velocity * 2.f;
+                p.emissiveColor = {1.f, 0.9f, 0.3f};
+                styleSystem.addStyle(20.f);
+                invincFrames  = 0.5f;
+                hitStopFrames = glm::max(hitStopFrames, 1);
+                audio.play("parry");
+            } else if (result.boostableIndex >= 0) {
+                // Projectile boost: detonate your own projectile for a massive explosion.
+                auto& p = projSystem.pool[result.boostableIndex];
+                glm::vec3 boomPos    = p.position;
+                float     boomRadius = glm::max(p.blastRadius, 4.f) * 2.f;
+                float     boomDmg    = p.damage * 3.f;
+                p.alive = false;
+
+                spawnExplosionParticles(boomPos, boomRadius);
+                shakeTimer = 0.5f; shakeIntensity = 0.12f;
+
+                for (auto& e : enemies) {
+                    if (!e.alive) continue;
+                    float d = glm::length(e.position - boomPos);
+                    if (d < boomRadius) {
+                        float falloff = 1.f - d / boomRadius;
+                        e.takeDamage(boomDmg * falloff);
+                        styleSystem.addStyle(25.f);
+                        styleSystem.heal(5.f);
+                        ui.onHit(!e.alive);
+                        if (!e.alive) {
+                            onEnemyKilled();
+                            hitStopFrames = glm::max(hitStopFrames, 3);
+                        }
+                    }
+                }
+                styleSystem.addStyle(40.f);
+                invincFrames  = 0.6f;
+                hitStopFrames = glm::max(hitStopFrames, 2);
+                audio.play("parry");
+            }
         }
 
         for (auto& [pi,ei] : result.enemyHits) {
@@ -665,9 +735,13 @@ public:
             styleSystem.addStyle(10.f);
             styleSystem.heal(2.f);
             audio.play("hit");
+            spawnDecal(e.position);
             bool killed = !e.alive;
             ui.onHit(killed);
-            if (killed) onEnemyKilled();
+            if (killed) {
+                onEnemyKilled();
+                hitStopFrames = glm::max(hitStopFrames, 2);  // 2-frame freeze on kill
+            }
         }
 
         // Grenade explosions — AoE damage to all enemies in radius
@@ -714,6 +788,11 @@ public:
         for (auto& t : tracers) {
             if (t.alive) { t.life -= dt; if (t.life <= 0.f) t.alive = false; }
         }
+
+        // Age decals
+        for (auto& d : decals) {
+            if (d.alive) { d.life -= dt; if (d.life <= 0.f) d.alive = false; }
+        }
     }
 
     void checkRoomClear() {
@@ -737,6 +816,7 @@ public:
                 level.currentRoom++;
                 spawnEnemiesForRoom(level.currentRoom);
                 allWalls = level.getAllWalls();
+                spatialGrid.build(allWalls);
                 worldMesh = buildWorldMesh(allWalls);
             }
         }
@@ -761,6 +841,66 @@ public:
             p.alive   = true;
             ++spawned;
         }
+    }
+
+    void spawnDecal(glm::vec3 enemyPos) {
+        // Find a free slot; if full, overwrite the one closest to expiry.
+        int slot = -1;
+        float minLife = 1e9f;
+        for (int i = 0; i < MAX_DECALS; ++i) {
+            if (!decals[i].alive) { slot = i; break; }
+            if (decals[i].life < minLife) { minLife = decals[i].life; slot = i; }
+        }
+        auto& d  = decals[slot];
+        d.pos    = enemyPos + glm::vec3{0.f, 0.025f, 0.f}; // hover 2.5 cm above floor
+        d.maxLife = 10.f;
+        d.life    = d.maxLife;
+        d.alive   = true;
+    }
+
+    void renderDecals() {
+        // Each decal is a flat XZ quad (faces up). Vertices use the same layout
+        // as worldShader so we can render them with the already-bound shader.
+        struct DVert { float x,y,z, u,v, nx,ny,nz, r,g,b; };
+        DVert buf[MAX_DECALS * 6];
+        int count = 0;
+
+        for (auto& d : decals) {
+            if (!d.alive) continue;
+            float fade = d.life / d.maxLife;
+            // Blood red, dims as the decal ages
+            float r = 0.55f * fade, g = 0.03f * fade, b = 0.03f * fade;
+            float s = 0.35f; // half-size in metres
+            float px = d.pos.x, py = d.pos.y, pz = d.pos.z;
+
+            // Two CCW triangles forming a horizontal quad
+            DVert v0{px-s,py,pz-s, 0,0, 0,1,0, r,g,b};
+            DVert v1{px+s,py,pz-s, 1,0, 0,1,0, r,g,b};
+            DVert v2{px+s,py,pz+s, 1,1, 0,1,0, r,g,b};
+            DVert v3{px-s,py,pz+s, 0,1, 0,1,0, r,g,b};
+            buf[count++] = v0; buf[count++] = v1; buf[count++] = v2;
+            buf[count++] = v0; buf[count++] = v2; buf[count++] = v3;
+        }
+        if (count == 0) return;
+
+        glBindBuffer(GL_ARRAY_BUFFER, decalVBO);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, count * sizeof(DVert), buf);
+
+        worldShader.use();
+        worldShader.setMat4("model",         glm::mat4(1.f));
+        worldShader.setVec3("objectColor",   {1.f,1.f,1.f});
+        worldShader.setVec3("emissiveColor", {0.f,0.f,0.f});
+
+        // Polygon offset pushes decal surfaces slightly toward the camera in
+        // depth so they don't Z-fight with the floor geometry beneath them.
+        glEnable(GL_POLYGON_OFFSET_FILL);
+        glPolygonOffset(-1.f, -1.f);
+        glDisable(GL_CULL_FACE);
+        glBindVertexArray(decalVAO);
+        glDrawArrays(GL_TRIANGLES, 0, count);
+        glBindVertexArray(0);
+        glDisable(GL_POLYGON_OFFSET_FILL);
+        glEnable(GL_CULL_FACE);
     }
 
     void spawnTracer(glm::vec3 start, glm::vec3 end) {
@@ -830,9 +970,10 @@ public:
             styleSystem.addStyle(10.f);
             styleSystem.heal(2.f);
             audio.play("hit");
+            spawnDecal(enemies[hitEnemy].position);
             bool killed = !enemies[hitEnemy].alive;
             ui.onHit(killed);
-            if (killed) onEnemyKilled();
+            if (killed) { onEnemyKilled(); hitStopFrames = glm::max(hitStopFrames, 2); }
         }
 
         // Camera kick
@@ -877,8 +1018,10 @@ public:
         player.camera.fov = settings ? settings->fov : 90.f;
         styleSystem = StyleSystem{};
         enemies.clear();
-        level = buildLevel();
+        level = loadLevelFromFile("assets/level.txt");
+        if (level.rooms.empty()) level = buildLevel();
         allWalls = level.getAllWalls();
+        spatialGrid.build(allWalls);
         worldMesh = buildWorldMesh(allWalls);
         spawnEnemiesForRoom(0);
         grenadeCount   = grenadeMax;
@@ -950,8 +1093,9 @@ public:
         worldShader.setVec3("lightColor", {1.f,0.9f,0.8f});
         worldShader.setVec3("ambientColor",{0.15f,0.15f,0.2f});
         worldShader.setVec3("viewPos",    renderCamPos);
-        worldShader.setVec3("emissiveColor",{0.f,0.f,0.f});
-        worldShader.setVec3("objectColor",{1.f,1.f,1.f});
+        worldShader.setVec3 ("emissiveColor",  {0.f,0.f,0.f});
+        worldShader.setVec3 ("objectColor",    {1.f,1.f,1.f});
+        worldShader.setFloat("uPSXStrength",   0.0f);  // set > 0 to enable vertex jitter
         for (int i=0;i<MAX_POINT_LIGHTS;++i) {
             std::string pn = "pointLightPos["+std::to_string(i)+"]";
             std::string cn = "pointLightColor["+std::to_string(i)+"]";
@@ -973,11 +1117,30 @@ public:
             worldShader.setVec3("objectColor",   {1.f, 1.f, 1.f});
         }
 
-        worldShader.setMat4("projection",proj);
-        worldShader.setMat4("view",view);
-        enemyRenderer.draw(worldShader, enemies);
+        // Set lighting uniforms on the instanced enemy shader, then draw.
+        enemyRenderer.shader.use();
+        enemyRenderer.shader.setMat4("projection", proj);
+        enemyRenderer.shader.setMat4("view",       view);
+        enemyRenderer.shader.setVec3("viewPos",    renderCamPos);
+        enemyRenderer.shader.setVec3("lightDir",   glm::normalize(glm::vec3{0.4f,-1.f,0.3f}));
+        enemyRenderer.shader.setVec3("lightColor", {1.f,0.9f,0.8f});
+        enemyRenderer.shader.setVec3("ambientColor",{0.15f,0.15f,0.2f});
+        enemyRenderer.shader.setInt ("uTexture",   0);
+        for (int i=0;i<MAX_POINT_LIGHTS;++i) {
+            std::string pn = "pointLightPos["  + std::to_string(i) + "]";
+            std::string cn = "pointLightColor[" + std::to_string(i) + "]";
+            enemyRenderer.shader.setVec3(pn.c_str(), pointLightPos[i]);
+            enemyRenderer.shader.setVec3(cn.c_str(), pointLightColor[i]);
+        }
+        enemyRenderer.draw(enemies);
+        // Restore worldShader as active for subsequent draw calls
+        worldShader.use();
+        worldShader.setMat4("projection", proj);
+        worldShader.setMat4("view",       view);
 
-        grapple.drawLine(worldShader, player.position + glm::vec3{0,player.eyeHeight,0}, view, proj);
+        grapple.drawLine(player.position + glm::vec3{0,player.eyeHeight,0}, view, proj);
+
+        renderDecals();
 
         projSystem.draw(worldShader, view, proj);
 

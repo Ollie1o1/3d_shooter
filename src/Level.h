@@ -1,6 +1,10 @@
 #pragma once
 // =============================================================================
 // Level.h — Multi-room arena geometry + room/door management
+//
+// Two level sources:
+//   loadLevelFromFile("assets/level.txt") — preferred; hot-editable without recompile.
+//   buildLevel()                          — compile-time fallback if file is missing.
 // =============================================================================
 //
 // LAYOUT OVERVIEW (two massive rooms + corridor)
@@ -20,6 +24,9 @@
 #include "Player.h"
 #include <vector>
 #include <algorithm>
+#include <fstream>
+#include <sstream>
+#include <string>
 #include <glm/glm.hpp>
 
 // ---------------------------------------------------------------------------
@@ -90,7 +97,56 @@ struct LevelData {
 };
 
 // =============================================================================
-// buildLevel() — constructs the full two-room layout.
+// loadLevelFromFile() — parses assets/level.txt.
+// Returns an empty LevelData on any file error so the caller can fall back.
+//
+// Line types (whitespace-separated, # = comment):
+//   room                        — start a new room (initially locked, room 0 auto-unlocked)
+//   w x0 y0 z0 x1 y1 z1 r g b  — wall: AABB min/max + RGB colour (0-1 floats)
+//   s x y z                     — enemy spawn point
+//   door                        — flag the last wall added to the current room as its door
+//   end_room                    — close current room and push it
+// =============================================================================
+inline LevelData loadLevelFromFile(const char* path) {
+    std::ifstream file(path);
+    if (!file) return LevelData{};  // file not found — caller falls back to buildLevel()
+
+    LevelData level;
+    Room* cur = nullptr;
+
+    std::string line;
+    while (std::getline(file, line)) {
+        // Strip comments
+        auto hash = line.find('#');
+        if (hash != std::string::npos) line = line.substr(0, hash);
+
+        std::istringstream ss(line);
+        std::string tok;
+        if (!(ss >> tok)) continue;  // blank line
+
+        if (tok == "room") {
+            level.rooms.emplace_back();
+            cur = &level.rooms.back();
+            cur->unlocked = (level.rooms.size() == 1); // room 0 starts unlocked
+        } else if (tok == "end_room") {
+            cur = nullptr;
+        } else if (tok == "w" && cur) {
+            float x0,y0,z0, x1,y1,z1, r,g,b;
+            if (ss >> x0>>y0>>z0 >> x1>>y1>>z1 >> r>>g>>b)
+                cur->walls.push_back(W({{x0,y0,z0},{x1,y1,z1}}, {r,g,b}));
+        } else if (tok == "s" && cur) {
+            float x,y,z;
+            if (ss >> x >> y >> z)
+                cur->enemySpawns.push_back({x,y,z});
+        } else if (tok == "door" && cur && !cur->walls.empty()) {
+            cur->doorWallIndex = (int)cur->walls.size() - 1;
+        }
+    }
+    return level;
+}
+
+// =============================================================================
+// buildLevel() — compile-time fallback; used when level.txt is absent.
 // =============================================================================
 inline LevelData buildLevel() {
     LevelData level;

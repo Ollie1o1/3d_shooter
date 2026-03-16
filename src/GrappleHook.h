@@ -11,7 +11,8 @@ public:
     glm::vec3 target{0.f};
     float     maxLength   = 50.f;
 
-    GLuint lineVAO = 0, lineVBO = 0;
+    GLuint       lineVAO = 0, lineVBO = 0;
+    ShaderProgram lineShader; // dedicated dithered-line shader
 
     GrappleHook() {
         glGenVertexArrays(1, &lineVAO);
@@ -22,6 +23,8 @@ public:
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3*sizeof(float), (void*)0);
         glBindVertexArray(0);
+
+        lineShader.loadFiles("src/grapple.vert", "src/grapple.frag");
     }
 
     ~GrappleHook() {
@@ -73,30 +76,32 @@ public:
         if (spd > 45.f) playerVel *= 45.f / spd;
     }
 
-    void drawLine(ShaderProgram& shader, const glm::vec3& playerPos,
-                  const glm::mat4& /*view*/, const glm::mat4& /*proj*/) {
+    // Draw the rope and anchor cross using PSX-style dithered transparency.
+    // view/proj are needed by the grapple shader; no other shader state is touched.
+    void drawLine(const glm::vec3& playerPos,
+                  const glm::mat4& view, const glm::mat4& proj) {
         if (!active) return;
 
-        // Rope from gun hand position to anchor point.
+        lineShader.use();
+        lineShader.setMat4("view",       view);
+        lineShader.setMat4("projection", proj);
+
         glm::vec3 origin = playerPos + glm::vec3{0.f, 1.4f, 0.f};
 
-        // Draw multiple line segments to simulate a slightly thicker rope.
-        // Two parallel lines offset along world-up give visual thickness.
+        // Dithered rope at ~70% opacity (PSX look — every pixel either solid or
+        // discarded based on screen-space Bayer matrix in the frag shader).
+        lineShader.setVec3 ("uColor", {0.5f, 1.0f, 1.0f});
+        lineShader.setFloat("uAlpha", 0.70f);
+
+        // Two parallel strands offset along world-up for visual thickness.
         static const glm::vec3 offsets[] = {
             {0.f,  0.025f, 0.f},
             {0.f, -0.025f, 0.f},
         };
-
-        shader.use();
-        shader.setMat4("model", glm::mat4(1.f));
-        // Bright cyan-white rope — high emissive so it glows through the scene.
-        shader.setVec3("emissiveColor", {0.6f, 1.0f, 1.0f});
-        shader.setVec3("objectColor",   {0.6f, 1.0f, 1.0f});
-
         for (auto& off : offsets) {
             float pts[6] = {
-                origin.x + off.x, origin.y + off.y, origin.z + off.z,
-                target.x + off.x, target.y + off.y, target.z + off.z
+                origin.x+off.x, origin.y+off.y, origin.z+off.z,
+                target.x+off.x, target.y+off.y, target.z+off.z
             };
             glBindBuffer(GL_ARRAY_BUFFER, lineVBO);
             glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(pts), pts);
@@ -104,15 +109,15 @@ public:
             glDrawArrays(GL_LINES, 0, 2);
         }
 
-        // Draw a small cross at the anchor point so it's clear where you're hooked.
+        // Anchor cross — fully solid (alpha 1.0 skips dither entirely).
+        lineShader.setVec3 ("uColor", {1.f, 1.f, 0.4f});
+        lineShader.setFloat("uAlpha", 1.0f);
         float cr = 0.25f;
         const float crosses[3][6] = {
-            { target.x-cr, target.y, target.z,  target.x+cr, target.y, target.z },
-            { target.x, target.y-cr, target.z,  target.x, target.y+cr, target.z },
-            { target.x, target.y, target.z-cr,  target.x, target.y, target.z+cr },
+            { target.x-cr, target.y,    target.z,    target.x+cr, target.y,    target.z    },
+            { target.x,    target.y-cr, target.z,    target.x,    target.y+cr, target.z    },
+            { target.x,    target.y,    target.z-cr, target.x,    target.y,    target.z+cr },
         };
-        shader.setVec3("emissiveColor", {1.f, 1.f, 0.4f});
-        shader.setVec3("objectColor",   {1.f, 1.f, 0.4f});
         for (auto& c : crosses) {
             glBindBuffer(GL_ARRAY_BUFFER, lineVBO);
             glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(c), c);

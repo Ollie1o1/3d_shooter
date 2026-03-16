@@ -1,6 +1,7 @@
 #pragma once
 #include <glm/glm.hpp>
 #include <SDL2/SDL.h>
+#include <vector>
 #include "Camera.h"
 
 // =============================================================================
@@ -16,6 +17,55 @@ struct AABB {
 struct Wall {
     AABB      box;
     glm::vec3 color{0.28f, 0.28f, 0.32f};
+};
+
+// =============================================================================
+// SpatialGrid — uniform 2D grid over the XZ plane for fast wall queries.
+//
+// Walls are static (except sliding doors). Call build() whenever allWalls
+// changes (room cleared, door opened). Query with a bounding box to get
+// candidate wall indices — then still test actual AABB overlap yourself.
+//
+// Grid covers the full two-room level:
+//   X: -100 .. 100  (200 m → 17 cells of 12 m)
+//   Z: -240 .. 100  (340 m → 29 cells of 12 m)
+// =============================================================================
+struct SpatialGrid {
+    static constexpr float CELL = 12.f;
+    static constexpr float X0 = -100.f, Z0 = -240.f;
+    static constexpr int   NX = 17, NZ = 29;
+
+    std::vector<int> cells[NX * NZ];
+
+    void build(const std::vector<Wall>& walls) {
+        for (auto& c : cells) c.clear();
+        for (int i = 0; i < (int)walls.size(); ++i)
+            insertWall(i, walls[i].box);
+    }
+
+    // Returns candidate wall indices for a query box.
+    // May include false positives — caller must still check intersection.
+    void query(const AABB& box, std::vector<int>& out) const {
+        out.clear();
+        int x0 = cx(box.min.x), x1 = cx(box.max.x);
+        int z0 = cz(box.min.z), z1 = cz(box.max.z);
+        for (int xi = x0; xi <= x1; ++xi)
+            for (int zi = z0; zi <= z1; ++zi)
+                for (int idx : cell(xi, zi))
+                    out.push_back(idx);
+    }
+
+private:
+    int cx(float x) const { return glm::clamp((int)((x - X0) / CELL), 0, NX-1); }
+    int cz(float z) const { return glm::clamp((int)((z - Z0) / CELL), 0, NZ-1); }
+    const std::vector<int>& cell(int x, int z) const { return cells[z * NX + x]; }
+          std::vector<int>& cell(int x, int z)       { return cells[z * NX + x]; }
+
+    void insertWall(int idx, const AABB& b) {
+        for (int xi = cx(b.min.x); xi <= cx(b.max.x); ++xi)
+            for (int zi = cz(b.min.z); zi <= cz(b.max.z); ++zi)
+                cell(xi, zi).push_back(idx);
+    }
 };
 
 // =============================================================================
@@ -59,11 +109,29 @@ public:
     float radius    = 0.4f;  // half-width of player AABB (X and Z)
     float height    = 1.8f;  // full height of player AABB
 
-    bool onGround = false;
+    bool  onGround = false;
 
-    // Floor is a hard-coded infinite plane at Y=0.
-    // To make a different floor height, change this or add a floor Wall.
-    static constexpr float FLOOR_Y = 0.0f;
+    // Slide state — activated by crouching while moving fast on the ground.
+    bool  sliding  = false;
+    float slideTimer = 0.f;
+
+    // Coyote time: allows jumping for a brief window after walking off a ledge.
+    float coyoteTimer = 0.f;
+
+    // Jump buffering: if jump is pressed while airborne, store it so it fires
+    // the moment the player lands (up to JUMP_BUFFER_DURATION seconds later).
+    float jumpBufferTimer = 0.f;
+
+    static constexpr float FLOOR_Y              = 0.0f;
+    static constexpr float SLIDE_DURATION       = 0.55f;
+    static constexpr float SLIDE_SPEED          = 14.f;
+    static constexpr float SLIDE_FRICTION       = 2.5f;
+    static constexpr float NORMAL_EYE_H         = 1.7f;
+    static constexpr float SLIDE_EYE_H          = 0.65f;
+    static constexpr float NORMAL_HEIGHT        = 1.8f;
+    static constexpr float SLIDE_HEIGHT_VAL     = 0.9f;
+    static constexpr float COYOTE_DURATION      = 0.10f; // seconds after leaving a ledge
+    static constexpr float JUMP_BUFFER_DURATION = 0.10f; // seconds to buffer a jump input
 
     // The camera is owned by the player. It tracks position + eyeHeight and
     // shares the same yaw/pitch set by mouse input.
@@ -79,12 +147,13 @@ public:
     // walls[] is the list of solid AABB obstacles in the world.
     // -------------------------------------------------------------------------
     // grappling=true skips ground friction so the grapple can build speed freely.
+    // grid (optional): if non-null, used to skip walls that are far away.
     void update(float dt, const Uint8* keys, const Wall* walls, int wallCount,
-                bool grappling = false) {
+                bool grappling = false, const SpatialGrid* grid = nullptr) {
         handleMovement(dt, keys, grappling);
         applyGravity(dt);
         integrate(dt);
-        resolveCollisions(walls, wallCount);
+        resolveCollisions(walls, wallCount, grid);
         camera.position = position + glm::vec3{0, eyeHeight, 0};
     }
 
@@ -96,56 +165,93 @@ public:
     }
 
 private:
-    // -------------------------------------------------------------------------
-    // Quake-style movement acceleration.
-    //
-    // Instead of directly setting velocity = wishDir * speed, we project the
-    // current velocity onto wishDir and only add enough to reach max speed.
-    // This means:
-    //   - Strafing mid-air doesn't kill your existing momentum
-    //   - You can gain a tiny bit of extra speed by timing direction changes
-    //     (strafe-jumping, same mechanic as Quake/CS/ULTRAKILL)
-    //
-    // Formula: addSpeed = clamp(maxSpeed - dot(velocity, wishDir), 0, accel*dt)
-    //          velocity += wishDir * addSpeed
-    // -------------------------------------------------------------------------
+    bool prevGroundForCoyote = false; // tracks last-tick ground state for coyote detection
+
     void handleMovement(float dt, const Uint8* keys, bool grappling = false) {
-        // Build the desired movement direction from WASD in camera-relative space.
-        // We use flatForward (no pitch) so looking up doesn't make you fly.
         glm::vec3 flatFwd   = camera.flatForward();
         glm::vec3 flatRight = glm::normalize(glm::cross(flatFwd, {0, 1, 0}));
 
-        glm::vec3 wishDir{0.f};
-        if (keys[SDL_SCANCODE_W]) wishDir += flatFwd;
-        if (keys[SDL_SCANCODE_S]) wishDir -= flatFwd;
-        if (keys[SDL_SCANCODE_D]) wishDir += flatRight;
-        if (keys[SDL_SCANCODE_A]) wishDir -= flatRight;
+        // ---- Coyote time ----
+        // If we were grounded last tick but aren't now, start the coyote window.
+        // This lets the player jump for a brief moment after walking off a ledge.
+        if (!onGround) {
+            if (prevGroundForCoyote) {
+                coyoteTimer = COYOTE_DURATION; // just left solid ground
+            } else {
+                coyoteTimer = glm::max(0.f, coyoteTimer - dt);
+            }
+        } else {
+            coyoteTimer = 0.f; // grounded — no coyote needed
+        }
+        prevGroundForCoyote = onGround;
 
-        // Ground gives full acceleration; air gives much less (you commit to a
-        // jump direction but can still steer slightly).
-        float accel = onGround ? acceleration : airAcceleration;
-
-        if (glm::length(wishDir) > 0.001f) {
-            wishDir = glm::normalize(wishDir);
-
-            // Project horizontal velocity onto wishDir to find how much speed
-            // we already have in that direction.
-            glm::vec3 hVel{velocity.x, 0.f, velocity.z};
-            float currentSpeed = glm::dot(hVel, wishDir);
-
-            // Only add speed up to the maximum — never overshoot it from this call.
-            float addSpeed = glm::clamp(horizontalSpeed - currentSpeed, 0.f, accel * dt);
-            velocity.x += wishDir.x * addSpeed;
-            velocity.z += wishDir.z * addSpeed;
+        // ---- Jump buffer ----
+        // If jump is pressed while airborne (and coyote window isn't active),
+        // store it so the next landing executes it automatically.
+        bool jumpKey = keys[SDL_SCANCODE_SPACE] != 0;
+        if (jumpKey && !onGround && coyoteTimer <= 0.f) {
+            jumpBufferTimer = JUMP_BUFFER_DURATION;
+        } else if (jumpBufferTimer > 0.f) {
+            jumpBufferTimer = glm::max(0.f, jumpBufferTimer - dt);
         }
 
-        // Friction: bleed off horizontal speed when on the ground.
+        bool crouchKey = keys[SDL_SCANCODE_LCTRL] || keys[SDL_SCANCODE_C];
+
+        // ---- Slide state machine ----
+        glm::vec3 hVelFlat{velocity.x, 0.f, velocity.z};
+        float flatSpeed = glm::length(hVelFlat);
+
+        if (!sliding) {
+            // Activate slide: crouch while grounded and moving fast enough.
+            if (crouchKey && onGround && flatSpeed > horizontalSpeed * 0.6f) {
+                sliding    = true;
+                slideTimer = SLIDE_DURATION;
+                // Boost in current travel direction; at least SLIDE_SPEED.
+                glm::vec3 slideDir = glm::normalize(hVelFlat);
+                float boostSpd     = glm::max(flatSpeed, SLIDE_SPEED);
+                velocity.x = slideDir.x * boostSpd;
+                velocity.z = slideDir.z * boostSpd;
+                eyeHeight  = SLIDE_EYE_H;
+                height     = SLIDE_HEIGHT_VAL;
+            }
+        } else {
+            slideTimer -= dt;
+            // End slide when: timer runs out, crouch released, or left the ground.
+            if (slideTimer <= 0.f || !crouchKey || !onGround) {
+                sliding   = false;
+                eyeHeight = NORMAL_EYE_H;
+                height    = NORMAL_HEIGHT;
+            }
+        }
+
+        // WASD acceleration — suppressed while sliding so momentum carries.
+        if (!sliding) {
+            glm::vec3 wishDir{0.f};
+            if (keys[SDL_SCANCODE_W]) wishDir += flatFwd;
+            if (keys[SDL_SCANCODE_S]) wishDir -= flatFwd;
+            if (keys[SDL_SCANCODE_D]) wishDir += flatRight;
+            if (keys[SDL_SCANCODE_A]) wishDir -= flatRight;
+
+            float accel = onGround ? acceleration : airAcceleration;
+
+            if (glm::length(wishDir) > 0.001f) {
+                wishDir = glm::normalize(wishDir);
+                glm::vec3 hVel{velocity.x, 0.f, velocity.z};
+                float currentSpeed = glm::dot(hVel, wishDir);
+                float addSpeed = glm::clamp(horizontalSpeed - currentSpeed, 0.f, accel * dt);
+                velocity.x += wishDir.x * addSpeed;
+                velocity.z += wishDir.z * addSpeed;
+            }
+        }
+
+        // Friction: use low slide friction during a slide, normal otherwise.
         // Skipped while grappling so the hook can build speed freely.
         if (onGround && !grappling) {
+            float fr = sliding ? SLIDE_FRICTION : friction;
             glm::vec3 hVel{velocity.x, 0.f, velocity.z};
             float speed = glm::length(hVel);
             if (speed > 0.001f) {
-                float drop     = speed * friction * dt;
+                float drop     = speed * fr * dt;
                 float newSpeed = glm::max(speed - drop, 0.f);
                 float scale    = newSpeed / speed;
                 velocity.x *= scale;
@@ -153,11 +259,25 @@ private:
             }
         }
 
-        // Jump: instant vertical velocity. onGround prevents double-jumping.
-        // To add double-jump, track a jumpsRemaining counter here.
-        if (keys[SDL_SCANCODE_SPACE] && onGround) {
-            velocity.y = jumpForce;
-            onGround   = false;
+        // Jump: ground jump, coyote jump, or buffered jump.
+        // All three preserve horizontal velocity (slide-jump works naturally).
+        bool canGroundJump = onGround || coyoteTimer > 0.f;
+
+        // Buffered jump fires on landing if the buffer window is still open.
+        if (onGround && jumpBufferTimer > 0.f && !jumpKey) {
+            velocity.y      = jumpForce;
+            onGround        = false;
+            jumpBufferTimer = 0.f;
+            coyoteTimer     = 0.f;
+            if (sliding) { sliding = false; eyeHeight = NORMAL_EYE_H; height = NORMAL_HEIGHT; }
+        }
+        // Direct jump (including coyote window).
+        else if (jumpKey && canGroundJump) {
+            velocity.y      = jumpForce;
+            onGround        = false;
+            coyoteTimer     = 0.f;
+            jumpBufferTimer = 0.f;
+            if (sliding) { sliding = false; eyeHeight = NORMAL_EYE_H; height = NORMAL_HEIGHT; }
         }
     }
 
@@ -181,26 +301,28 @@ private:
     // Order: check floor first, then walls (so standing on top of a box works),
     // then re-check floor in case a wall pushed us below it.
     // -------------------------------------------------------------------------
-    void resolveCollisions(const Wall* walls, int wallCount) {
-        // Infinite floor plane at Y = FLOOR_Y
+    void resolveCollisions(const Wall* walls, int wallCount,
+                           const SpatialGrid* grid = nullptr) {
         if (position.y < FLOOR_Y) {
             position.y = FLOOR_Y;
             velocity.y = 0.f;
             onGround   = true;
         } else {
-            onGround = false; // re-determined by AABB checks below
+            onGround = false;
         }
 
-        // AABB push-out for each wall. Resolves on the axis of least penetration
-        // to avoid getting stuck in corners.
-        for (int i = 0; i < wallCount; ++i) {
-            resolveAABB(walls[i].box);
+        if (grid) {
+            // Grid path: only test walls in nearby cells (~4–9 cells vs all walls).
+            static std::vector<int> candidates;
+            AABB pb{ position + glm::vec3{-radius-0.1f, -0.1f, -radius-0.1f},
+                     position + glm::vec3{ radius+0.1f,  height+0.1f, radius+0.1f} };
+            grid->query(pb, candidates);
+            for (int idx : candidates) resolveAABB(walls[idx].box);
+        } else {
+            for (int i = 0; i < wallCount; ++i) resolveAABB(walls[i].box);
         }
 
-        // After wall resolution the player may have landed on top of a box.
-        if (position.y <= FLOOR_Y + 0.001f) {
-            onGround = true;
-        }
+        if (position.y <= FLOOR_Y + 0.001f) onGround = true;
     }
 
     // Push the player out of a single AABB wall.

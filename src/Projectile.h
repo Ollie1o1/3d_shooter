@@ -90,12 +90,14 @@ public:
         std::vector<ExplosionEvent>     explosions;
         bool  hitPlayer    = false;
         float playerDamage = 0.f;
-        int   parryableIndex = -1;
+        int   parryableIndex  = -1;  // closest enemy projectile within parry range
+        int   boostableIndex  = -1;  // closest PLAYER projectile within parry range
     };
 
     HitResult update(float dt, const Wall* walls, int wallCount,
                      std::vector<Enemy>& enemies,
-                     const glm::vec3& playerPos);
+                     const glm::vec3& playerPos,
+                     const SpatialGrid* grid = nullptr);
 
     void draw(ShaderProgram& shader, const glm::mat4& view, const glm::mat4& /*proj*/) {
         glDisable(GL_CULL_FACE);
@@ -124,10 +126,15 @@ public:
 inline ProjectileSystem::HitResult ProjectileSystem::update(
     float dt, const Wall* walls, int wallCount,
     std::vector<Enemy>& enemies,
-    const glm::vec3& playerPos)
+    const glm::vec3& playerPos,
+    const SpatialGrid* grid)
 {
     HitResult result;
     float closestParry = 2.5f;
+    float closestBoost = 2.5f;
+
+    // Reusable candidate list for grid queries (avoids per-projectile allocation).
+    static std::vector<int> candidates;
 
     for (int i = 0; i < POOL_SIZE; ++i) {
         auto& p = pool[i];
@@ -136,18 +143,30 @@ inline ProjectileSystem::HitResult ProjectileSystem::update(
         p.lifetime -= dt;
         if (p.lifetime <= 0.f) { p.alive = false; continue; }
 
-        // Arc trajectory for grenades
         if (p.hasGravity) p.velocity.y -= 20.f * dt;
         p.position += p.velocity * dt;
 
         // Wall + floor/ceiling collision
         bool hitSolid = false;
-        for (int w = 0; w < wallCount && !hitSolid; ++w) {
-            const AABB& b = walls[w].box;
-            if (p.position.x > b.min.x && p.position.x < b.max.x &&
-                p.position.y > b.min.y && p.position.y < b.max.y &&
-                p.position.z > b.min.z && p.position.z < b.max.z) {
-                hitSolid = true;
+        if (grid) {
+            AABB pb{ p.position - glm::vec3{0.1f}, p.position + glm::vec3{0.1f} };
+            grid->query(pb, candidates);
+            for (int w : candidates) {
+                const AABB& b = walls[w].box;
+                if (p.position.x > b.min.x && p.position.x < b.max.x &&
+                    p.position.y > b.min.y && p.position.y < b.max.y &&
+                    p.position.z > b.min.z && p.position.z < b.max.z) {
+                    hitSolid = true; break;
+                }
+            }
+        } else {
+            for (int w = 0; w < wallCount && !hitSolid; ++w) {
+                const AABB& b = walls[w].box;
+                if (p.position.x > b.min.x && p.position.x < b.max.x &&
+                    p.position.y > b.min.y && p.position.y < b.max.y &&
+                    p.position.z > b.min.z && p.position.z < b.max.z) {
+                    hitSolid = true;
+                }
             }
         }
         if (!hitSolid && (p.position.y < 0.f || p.position.y > 14.f)) hitSolid = true;
@@ -161,6 +180,13 @@ inline ProjectileSystem::HitResult ProjectileSystem::update(
         }
 
         if (p.isPlayer) {
+            // Track proximity to player for projectile boost (parry own shot).
+            float selfDist = glm::length(p.position - playerPos);
+            if (selfDist < closestBoost) {
+                closestBoost = selfDist;
+                result.boostableIndex = i;
+            }
+
             for (int ei = 0; ei < (int)enemies.size(); ++ei) {
                 auto& e = enemies[ei];
                 if (!e.alive) continue;
@@ -169,7 +195,6 @@ inline ProjectileSystem::HitResult ProjectileSystem::update(
                     p.position.y > box.min.y && p.position.y < box.max.y &&
                     p.position.z > box.min.z && p.position.z < box.max.z) {
                     if (p.isGrenade && p.blastRadius > 0.f) {
-                        // Direct hit still triggers AoE
                         result.explosions.push_back({p.position, p.blastRadius, p.damage});
                         p.alive = false;
                         break;
