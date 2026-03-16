@@ -493,10 +493,10 @@ public:
         // --- Dash ---
         bool dashKey = keys[SDL_SCANCODE_LSHIFT] != 0;
         if (dashKey && !prevDashKey && dashCharges > 0) {
-            glm::vec3 dashDir = player.camera.flatForward();
-            player.velocity.x = dashDir.x * 22.f;
-            player.velocity.z = dashDir.z * 22.f;
-            dashMomentumTimer = 0.28f;  // protect dash velocity from ground friction
+            // Full 3D dash in the direction the camera faces — diagonal, upward, etc.
+            glm::vec3 dashDir = player.camera.forward();
+            player.velocity = dashDir * 28.f;
+            dashMomentumTimer = 0.30f;  // protect dash velocity from ground friction
             --dashCharges;
             dashCooldown = 1.2f;
             fovKick = 13.f;

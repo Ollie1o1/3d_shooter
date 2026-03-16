@@ -9,9 +9,7 @@ class GrappleHook {
 public:
     bool      active      = false;
     glm::vec3 target{0.f};
-    float     stiffness   = 38.f;
-    float     damping     = 0.6f;
-    float     maxLength   = 40.f;
+    float     maxLength   = 50.f;
 
     GLuint lineVAO = 0, lineVBO = 0;
 
@@ -44,35 +42,35 @@ public:
         if (hit) {
             target = origin + dir * bestT;
             active = true;
-            // Immediate velocity burst toward target so movement is felt instantly.
+            // Strong immediate burst — overrides current velocity so movement is
+            // felt the instant you fire. Min Y ensures you always gain height.
             glm::vec3 toTarget = glm::normalize(target - origin);
-            outImpulse = toTarget * 22.f;
-            // Always guarantee meaningful upward momentum so you gain height.
-            outImpulse.y = std::max(outImpulse.y, 7.f);
+            outImpulse = toTarget * 32.f;
+            outImpulse.y = std::max(outImpulse.y, 12.f);
         }
         return hit;
     }
 
     void release() { active = false; }
 
-    // Called every physics tick while active. Applies continued pull + cancels most
-    // of gravity so upward grapples don't fight the physics system.
+    // Called every physics tick while active. Strongly pulls toward anchor +
+    // cancels gravity entirely so you fly straight at the attachment point.
     void update(float dt, const glm::vec3& playerPos, glm::vec3& playerVel) {
         if (!active) return;
         glm::vec3 delta = target - playerPos;
         float dist = glm::length(delta);
-        if (dist < 1.5f) { active = false; return; }
+        if (dist < 2.0f) { active = false; return; }
         glm::vec3 dir = delta / dist;
 
-        // Continued directional pull toward attachment point.
-        playerVel += dir * 22.f * dt;
+        // Strong continued pull — enough to clearly accelerate toward target.
+        playerVel += dir * 55.f * dt;
 
-        // Cancel ~90% of gravity (gravity = -24) so the player feels near-weightless.
-        playerVel.y += 22.f * dt;
+        // Cancel gravity entirely (gravity = -24 m/s²) so grappling upward works.
+        playerVel.y += 24.f * dt;
 
-        // Speed cap so you don't fly uncontrollably.
+        // Higher speed cap so long-range grapples build real momentum.
         float spd = glm::length(playerVel);
-        if (spd > 30.f) playerVel *= 30.f / spd;
+        if (spd > 45.f) playerVel *= 45.f / spd;
     }
 
     void drawLine(ShaderProgram& shader, const glm::vec3& playerPos,
