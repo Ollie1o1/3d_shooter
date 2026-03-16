@@ -1,8 +1,11 @@
 # Build output
 shooter
+shooter.exe
 *.o
 *.d
 *.dSYM/
+*.log
+build_out.txt
 
 # macOS
 .DS_Store
