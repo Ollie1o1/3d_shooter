@@ -34,7 +34,7 @@
 #include <cmath>
 #include <cstdlib>
 
-enum class EnemyType  { GRUNT, SHOOTER, STALKER };
+enum class EnemyType  { GRUNT, SHOOTER, STALKER, FLYER };
 enum class EnemyState { IDLE, CHASE, ATTACK, DEAD };
 
 struct Enemy {
@@ -50,6 +50,7 @@ struct Enemy {
     float      strafeDir    = 1.f;
     int        invincFrames = 0;
     float      hitFlashTimer = 0.f;   // > 0 while flashing white after taking damage
+    float      hoverY       = 0.f;   // target hover altitude for FLYER type
 
     static constexpr float FLOOR_Y = 0.f;
     static constexpr float RADIUS  = 0.5f;
@@ -60,6 +61,10 @@ struct Enemy {
             case EnemyType::GRUNT:   health = maxHealth = 50.f; break;
             case EnemyType::SHOOTER: health = maxHealth = 35.f; break;
             case EnemyType::STALKER: health = maxHealth = 25.f; break;
+            case EnemyType::FLYER:
+                health = maxHealth = 40.f;
+                hoverY = pos.y > 1.f ? pos.y : 10.f;
+                break;
         }
     }
 
@@ -169,6 +174,41 @@ struct Enemy {
                 }
                 break;
             }
+            case EnemyType::FLYER: {
+                // Hovers at fixed altitude, circles the player horizontally,
+                // and fires downward-angled shots at a fast rate.
+                if (dist < 40.f) state = EnemyState::CHASE;
+                if (dist > 55.f) state = EnemyState::IDLE;
+                if (state == EnemyState::CHASE) {
+                    strafeTimer -= dt;
+                    if (strafeTimer <= 0.f) {
+                        strafeTimer = 1.5f + (float)(rand() % 100) / 50.f;
+                        strafeDir  *= -1.f;
+                    }
+                    // Horizontal: orbit around the player
+                    glm::vec3 orbDir = dirToPlayer + strafeAxis * strafeDir * 0.9f;
+                    float orbLen = glm::length(orbDir);
+                    if (orbLen > 0.001f) orbDir /= orbLen;
+                    velocity.x = orbDir.x * 7.f;
+                    velocity.z = orbDir.z * 7.f;
+                    // Vertical: servo toward hover altitude
+                    float yErr = hoverY - position.y;
+                    velocity.y = glm::clamp(yErr * 6.f, -12.f, 12.f);
+
+                    attackTimer += dt;
+                    if (attackTimer >= 1.6f) {
+                        attackTimer = 0.f;
+                        fireProjectile = true;
+                    }
+                } else {
+                    // Idle: drift back toward hover altitude
+                    float yErr = hoverY - position.y;
+                    velocity.y = glm::clamp(yErr * 4.f, -6.f, 6.f);
+                    velocity.x *= std::pow(0.01f, dt);
+                    velocity.z *= std::pow(0.01f, dt);
+                }
+                break;
+            }
         }
 
         // Bleed off horizontal velocity quickly when idle (e.g. after knockback)
@@ -177,15 +217,20 @@ struct Enemy {
             velocity.z *= std::pow(0.01f, dt);
         }
 
-        // Apply gravity (only when airborne)
-        if (position.y > FLOOR_Y) velocity.y += -24.f * dt;
+        // Gravity only for ground-based enemies; FLYER manages its own Y velocity.
+        if (type != EnemyType::FLYER && position.y > FLOOR_Y)
+            velocity.y += -24.f * dt;
 
-        // Integrate — velocity in m/s, matches Player convention
+        // Integrate
         position += velocity * dt;
-        if (position.y < FLOOR_Y) { position.y = FLOOR_Y; velocity.y = 0.f; }
 
-        // Wall collision
-        for (int i = 0; i < wallCount; ++i) resolveAABB(walls[i].box);
+        if (type != EnemyType::FLYER) {
+            if (position.y < FLOOR_Y) { position.y = FLOOR_Y; velocity.y = 0.f; }
+            for (int i = 0; i < wallCount; ++i) resolveAABB(walls[i].box);
+        } else {
+            // Keep flyer above the floor minimum even if something pushes it down
+            if (position.y < 1.5f) { position.y = 1.5f; velocity.y = 0.f; }
+        }
 
         return fireProjectile;
     }
@@ -283,6 +328,7 @@ public:
                 case EnemyType::GRUNT:   baseColor={0.8f,0.2f,0.2f}; break;
                 case EnemyType::SHOOTER: baseColor={0.2f,0.3f,0.9f}; emissive={0.1f,0.2f,0.8f}; break;
                 case EnemyType::STALKER: baseColor={0.8f,0.6f,0.0f}; break;
+                case EnemyType::FLYER:   baseColor={0.7f,0.1f,0.9f}; emissive={0.4f,0.0f,0.6f}; break;
             }
             // Hit flash — briefly bleach the enemy white on damage
             if (e.hitFlashTimer > 0.f) {

@@ -85,6 +85,9 @@ namespace ArenaColor {
     constexpr glm::vec3 Pillar   = {0.48f, 0.32f, 0.04f}; // tall pillars — bright orange
     constexpr glm::vec3 Catwalk  = {0.18f, 0.18f, 0.24f}; // perimeter catwalks
     constexpr glm::vec3 Tower    = {0.20f, 0.16f, 0.30f}; // corner towers — dark purple
+    constexpr glm::vec3 SkyPad   = {0.08f, 0.45f, 0.65f}; // sky-blue floating platforms
+    constexpr glm::vec3 Spire    = {0.50f, 0.08f, 0.72f}; // tall grapple spires — vivid purple
+    constexpr glm::vec3 FarFort  = {0.32f, 0.10f, 0.10f}; // far north bastion — dark red
 }
 
 // Thin glowing quads placed at every enemy spawn point.
@@ -156,7 +159,7 @@ static Mesh buildWorldMesh(const std::vector<Wall>& walls) {
     };
 
     // Floor — one large quad, +Y normal, CCW from above
-    float F = 45.f;
+    float F = 65.f;
     pushFace({-F,0,F},{F,0,F},{F,0,-F},{-F,0,-F},{0,1,0}, ArenaColor::Floor);
     // Ceiling — -Y normal, CCW from below
     pushFace({-F,14.f,-F},{F,14.f,-F},{F,14.f,F},{-F,14.f,F},{0,-1,0}, ArenaColor::Ceiling);
@@ -197,8 +200,22 @@ static Mesh buildWorldMesh(const std::vector<Wall>& walls) {
         ArenaColor::Tower, ArenaColor::Tower,
         // 40-43: Perimeter catwalks
         ArenaColor::Catwalk, ArenaColor::Catwalk, ArenaColor::Catwalk, ArenaColor::Catwalk,
-        // 44-45: Floating mid-air platforms
+        // 44-45: Inner floating platforms
         ArenaColor::Ledge, ArenaColor::Ledge,
+        // 46: Central sky pad
+        ArenaColor::SkyPad,
+        // 47-50: Sky bridges (N/S/E/W)
+        ArenaColor::SkyPad, ArenaColor::SkyPad, ArenaColor::SkyPad, ArenaColor::SkyPad,
+        // 51-54: Corner sky pads (NE/NW/SE/SW)
+        ArenaColor::SkyPad, ArenaColor::SkyPad, ArenaColor::SkyPad, ArenaColor::SkyPad,
+        // 55-57: Far north expansion
+        ArenaColor::FarFort, ArenaColor::Pillar, ArenaColor::Pillar,
+        // 58-59: Far south platform + sky shelf
+        ArenaColor::Corner, ArenaColor::SkyPad,
+        // 60-61: Far east/west sky shelves
+        ArenaColor::Ledge, ArenaColor::Ledge,
+        // 62-65: Cardinal spires
+        ArenaColor::Spire, ArenaColor::Spire, ArenaColor::Spire, ArenaColor::Spire,
     };
     const int numColors = (int)(sizeof(wallColors)/sizeof(wallColors[0]));
 
@@ -287,6 +304,16 @@ public:
     bool  playerDead = false;
     float deadTimer  = 0.f;
 
+    // Explosion particles — spawned by grenade blasts, rendered as GL_POINTS
+    struct Particle {
+        glm::vec3 pos{0.f}, vel{0.f};
+        float life = 0.f, maxLife = 0.f;
+        bool  alive = false;
+    };
+    static constexpr int MAX_PARTICLES = 300;
+    Particle  particles[MAX_PARTICLES];
+    GLuint    particleVAO = 0, particleVBO = 0;
+
     // Spawn pads — glowing floor markers at each enemy spawn point.
     Mesh  spawnPadMesh;
     float spawnPadPulse  = 0.f;   // drives the emissive glow animation
@@ -332,6 +359,18 @@ public:
         glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 4*sizeof(float), (void*)(3*sizeof(float)));
         glBindVertexArray(0);
 
+        // Particle VBO: [x, y, z, alpha] per point — reuses tracer shader
+        glGenVertexArrays(1, &particleVAO);
+        glGenBuffers(1, &particleVBO);
+        glBindVertexArray(particleVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, particleVBO);
+        glBufferData(GL_ARRAY_BUFFER, MAX_PARTICLES * 4 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 4*sizeof(float), (void*)0);
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 4*sizeof(float), (void*)(3*sizeof(float)));
+        glBindVertexArray(0);
+
         whiteTex = makeGreyTexture();
         player.camera.aspectRatio = (float)SCREEN_W/SCREEN_H;
         player.camera.fov = 90.f;
@@ -357,20 +396,28 @@ public:
 
     ~GameplayState() {
         glDeleteTextures(1,&whiteTex);
-        if (tracerVAO) glDeleteVertexArrays(1, &tracerVAO);
-        if (tracerVBO) glDeleteBuffers(1, &tracerVBO);
+        if (tracerVAO)    glDeleteVertexArrays(1, &tracerVAO);
+        if (tracerVBO)    glDeleteBuffers(1, &tracerVBO);
+        if (particleVAO)  glDeleteVertexArrays(1, &particleVAO);
+        if (particleVBO)  glDeleteBuffers(1, &particleVBO);
         SDL_SetRelativeMouseMode(SDL_FALSE);
     }
 
     void spawnEnemiesForRoom(int roomIdx) {
         if (roomIdx >= (int)level.rooms.size()) return;
         auto& room = level.rooms[roomIdx];
+        int groundIdx = 0;
         for (auto& sp : room.enemySpawns) {
             EnemyType t;
-            int tidx = (int)enemies.size() % 3;
-            if (tidx==0) t=EnemyType::GRUNT;
-            else if(tidx==1) t=EnemyType::SHOOTER;
-            else t=EnemyType::STALKER;
+            if (sp.y > 5.f) {
+                t = EnemyType::FLYER;
+            } else {
+                int tidx = groundIdx % 3;
+                t = (tidx == 0) ? EnemyType::GRUNT
+                  : (tidx == 1) ? EnemyType::SHOOTER
+                  :               EnemyType::STALKER;
+                ++groundIdx;
+            }
             enemies.push_back(Enemy(t, sp));
         }
         room.unlocked = true;
@@ -444,6 +491,15 @@ public:
         level.update(floatDt);
         viewModel.update(floatDt, playerXZSpeed, player.onGround);
         fovKick = glm::mix(fovKick, 0.f, std::min(1.f, floatDt * 7.f));
+
+        // Update explosion particles
+        for (auto& p : particles) {
+            if (!p.alive) continue;
+            p.vel.y -= 18.f * floatDt;   // lighter gravity for visual particles
+            p.pos   += p.vel * floatDt;
+            p.life  -= floatDt;
+            if (p.life <= 0.f) p.alive = false;
+        }
 
         // Spawn pad pulse + enemy respawn
         spawnPadPulse += floatDt * 2.5f;
@@ -666,6 +722,7 @@ public:
 
         // Grenade explosions — AoE damage to all enemies in radius
         for (auto& exp : result.explosions) {
+            spawnExplosionParticles(exp.pos, exp.radius);
             shakeTimer = 0.35f; shakeIntensity = 0.07f;
             for (auto& e : enemies) {
                 if (!e.alive) continue;
@@ -732,6 +789,27 @@ public:
                 allWalls = level.getAllWalls();
                 worldMesh = buildWorldMesh(allWalls);
             }
+        }
+    }
+
+    void spawnExplosionParticles(glm::vec3 center, float radius) {
+        int spawned = 0;
+        for (auto& p : particles) {
+            if (p.alive) continue;
+            if (spawned >= 50) break;
+            // Random outward direction with upward bias
+            float rx = ((rand() % 2001) - 1000) / 1000.f;
+            float ry = ((rand() % 1000)) / 1000.f * 0.6f + 0.2f; // bias upward
+            float rz = ((rand() % 2001) - 1000) / 1000.f;
+            float len = sqrtf(rx*rx + ry*ry + rz*rz);
+            if (len < 0.001f) { rx=0; ry=1; rz=0; len=1; }
+            float speed = 8.f + (rand() % 1000) / 1000.f * (radius * 3.f);
+            p.pos     = center + glm::vec3{rx,ry,rz} / len * (radius * 0.3f);
+            p.vel     = glm::vec3{rx,ry,rz} / len * speed;
+            p.maxLife = 0.5f + (rand() % 1000) / 1000.f * 0.7f;
+            p.life    = p.maxLife;
+            p.alive   = true;
+            ++spawned;
         }
     }
 
@@ -955,6 +1033,9 @@ public:
         // Tracers drawn with additive blending — must be after opaque geometry
         renderTracers(view, proj, renderCamPos);
 
+        // Explosion particles — additive GL_POINTS
+        renderParticles(view, proj);
+
         // View model — drawn last inside FBO so it receives bloom; depth cleared inside
         {
             float revolverFill = reloading ? (1.f - reloadTimer / RELOAD_TIME)
@@ -979,6 +1060,47 @@ public:
         ui.render(styleSystem, activeWeapon, grenadeCount, grenadeMax,
                   revolverAmmo, revolverAmmoMax,
                   reloading, reloadProgress, nearInteractable);
+    }
+
+    void renderParticles(const glm::mat4& view, const glm::mat4& proj) {
+        struct PVert { float x, y, z, a; };
+        PVert buf[MAX_PARTICLES];
+        int count = 0;
+        for (auto& p : particles) {
+            if (!p.alive) continue;
+            float t = p.life / p.maxLife;
+            buf[count++] = { p.pos.x, p.pos.y, p.pos.z, t * t };
+        }
+        if (count == 0) return;
+
+        glBindBuffer(GL_ARRAY_BUFFER, particleVBO);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, count * sizeof(PVert), buf);
+
+        tracerShader.use();
+        tracerShader.setMat4("projection", proj);
+        tracerShader.setMat4("view",       view);
+
+        glDisable(GL_CULL_FACE);
+        glDepthMask(GL_FALSE);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE); // additive — particles glow
+
+        glBindVertexArray(particleVAO);
+
+        // Two passes: bright orange core + darker red outer particles
+        tracerShader.setVec3("uColor", {1.f, 0.55f, 0.05f});
+        glPointSize(5.f);
+        glDrawArrays(GL_POINTS, 0, count);
+
+        tracerShader.setVec3("uColor", {1.f, 0.20f, 0.02f});
+        glPointSize(3.f);
+        glDrawArrays(GL_POINTS, 0, count);
+
+        glBindVertexArray(0);
+        glPointSize(1.f);
+        glDepthMask(GL_TRUE);
+        glDisable(GL_BLEND);
+        glEnable(GL_CULL_FACE);
     }
 
     void renderTracers(const glm::mat4& view, const glm::mat4& proj,
