@@ -51,7 +51,7 @@ public:
     float gravity         = -24.0f;  // downward acceleration (m/s^2) — stronger than real for snappier jumps
     float jumpForce       = 8.5f;    // initial vertical velocity on jump
     float acceleration    = 80.0f;   // how fast you reach max speed on the ground
-    float airAcceleration = 12.0f;   // much lower in air — air control, not full redirection
+    float airAcceleration = 42.0f;   // responsive air control — lets you steer momentum mid-air
     float friction        = 10.0f;   // how fast horizontal speed bleeds off when grounded
 
     float eyeHeight = 1.7f;  // camera Y offset above feet (meters)

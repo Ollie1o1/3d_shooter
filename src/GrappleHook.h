@@ -76,19 +76,50 @@ public:
     void drawLine(ShaderProgram& shader, const glm::vec3& playerPos,
                   const glm::mat4& /*view*/, const glm::mat4& /*proj*/) {
         if (!active) return;
-        float pts[6] = {
-            playerPos.x, playerPos.y + 1.4f, playerPos.z,
-            target.x,    target.y,            target.z
+
+        // Rope from gun hand position to anchor point.
+        glm::vec3 origin = playerPos + glm::vec3{0.f, 1.4f, 0.f};
+
+        // Draw multiple line segments to simulate a slightly thicker rope.
+        // Two parallel lines offset along world-up give visual thickness.
+        static const glm::vec3 offsets[] = {
+            {0.f,  0.025f, 0.f},
+            {0.f, -0.025f, 0.f},
         };
-        glBindBuffer(GL_ARRAY_BUFFER, lineVBO);
-        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(pts), pts);
 
         shader.use();
         shader.setMat4("model", glm::mat4(1.f));
-        shader.setVec3("emissiveColor", {0.f, 1.f, 0.5f});
-        shader.setVec3("objectColor",   {0.f, 1.f, 0.5f});
-        glBindVertexArray(lineVAO);
-        glDrawArrays(GL_LINES, 0, 2);
+        // Bright cyan-white rope — high emissive so it glows through the scene.
+        shader.setVec3("emissiveColor", {0.6f, 1.0f, 1.0f});
+        shader.setVec3("objectColor",   {0.6f, 1.0f, 1.0f});
+
+        for (auto& off : offsets) {
+            float pts[6] = {
+                origin.x + off.x, origin.y + off.y, origin.z + off.z,
+                target.x + off.x, target.y + off.y, target.z + off.z
+            };
+            glBindBuffer(GL_ARRAY_BUFFER, lineVBO);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(pts), pts);
+            glBindVertexArray(lineVAO);
+            glDrawArrays(GL_LINES, 0, 2);
+        }
+
+        // Draw a small cross at the anchor point so it's clear where you're hooked.
+        float cr = 0.25f;
+        const float crosses[3][6] = {
+            { target.x-cr, target.y, target.z,  target.x+cr, target.y, target.z },
+            { target.x, target.y-cr, target.z,  target.x, target.y+cr, target.z },
+            { target.x, target.y, target.z-cr,  target.x, target.y, target.z+cr },
+        };
+        shader.setVec3("emissiveColor", {1.f, 1.f, 0.4f});
+        shader.setVec3("objectColor",   {1.f, 1.f, 0.4f});
+        for (auto& c : crosses) {
+            glBindBuffer(GL_ARRAY_BUFFER, lineVBO);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(c), c);
+            glBindVertexArray(lineVAO);
+            glDrawArrays(GL_LINES, 0, 2);
+        }
+
         glBindVertexArray(0);
     }
 

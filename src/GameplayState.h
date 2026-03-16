@@ -309,10 +309,11 @@ public:
     bool parryPrev        = false;
     bool prevDashKey      = false;
     bool prevJumpKey      = false;
-    // Event-driven click flag — set in handleEvent, consumed once in physicsTick.
+    // Event-driven click flags — set in handleEvent, consumed once in physicsTick.
     // More reliable than polling SDL_GetMouseState on trackpads.
     bool pendingFire      = false;
     bool pendingGrenade   = false;
+    bool pendingGrapple   = false;   // right-click: fire or release grapple
 
     GameplayState(AudioSystem& aud) : audio(aud) {
         worldShader.loadFiles("src/shader.vert","src/shader.frag");
@@ -392,6 +393,9 @@ public:
             if (e.button.button == SDL_BUTTON_LEFT) {
                 if (activeWeapon == 0) pendingFire    = true;
                 else                   pendingGrenade = true;
+            }
+            if (e.button.button == SDL_BUTTON_RIGHT) {
+                pendingGrapple = true;
             }
         }
         if (e.type == SDL_MOUSEWHEEL) {
@@ -538,11 +542,19 @@ public:
         }
         prevOnGround = player.onGround;
 
-        if (jumpKey && !prevJumpKey && jumpsRemaining > 0 && !player.onGround) {
-            player.velocity.y = player.jumpForce;
-            --jumpsRemaining;
-            styleSystem.addStyle(3.f);
-            audio.play("jump");
+        if (jumpKey && !prevJumpKey) {
+            if (grapple.active) {
+                // Slingshot: release grapple mid-swing and keep all momentum + upward kick.
+                grapple.release();
+                player.velocity.y += 6.f;
+                styleSystem.addStyle(10.f);
+                audio.play("jump");
+            } else if (jumpsRemaining > 0 && !player.onGround) {
+                player.velocity.y = player.jumpForce;
+                --jumpsRemaining;
+                styleSystem.addStyle(3.f);
+                audio.play("jump");
+            }
         }
         prevJumpKey = jumpKey;
 
@@ -553,24 +565,23 @@ public:
             slamming = true;
         }
 
-        // --- Grapple fire / release input ---
-        bool rightPressed = rightMouse && !rightMousePrev;
-        if (rightPressed) {
+        // --- Grapple fire / release (event-driven, reliable on all hardware) ---
+        if (pendingGrapple) {
             glm::vec3 camPos = player.camera.position;
             glm::vec3 camFwd = player.camera.forward();
             if (!grapple.active) {
                 allWalls = level.getAllWalls();
                 glm::vec3 grappleImpulse{0.f};
                 if (grapple.fire(camPos, camFwd, allWalls.data(), (int)allWalls.size(), grappleImpulse)) {
-                    player.velocity = grappleImpulse;  // immediate burst toward target
+                    player.velocity = grappleImpulse;
                     viewModel.triggerGrapple();
                     audio.play("grapple_fire");
                 }
             } else {
                 grapple.release();
             }
+            pendingGrapple = false;
         }
-        rightMousePrev = rightMouse;
 
         // Apply grapple force BEFORE player physics so it integrates this tick.
         grapple.update(dt, player.camera.position, player.velocity);
