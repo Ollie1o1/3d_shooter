@@ -2,7 +2,7 @@
 #include <glm/glm.hpp>
 #include "Player.h"
 #include "ShaderProgram.h"
-#include <OpenGL/gl3.h>
+#include "gl.h"
 #include <algorithm>
 
 class GrappleHook {

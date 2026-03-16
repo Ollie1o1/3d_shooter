@@ -1,7 +1,7 @@
 #pragma once
 #include "GameState.h"
 #include <SDL2/SDL.h>
-#include <OpenGL/gl3.h>
+#include "gl.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include "ShaderProgram.h"

@@ -3,7 +3,7 @@
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
-#include <OpenGL/gl3.h>
+#include "gl.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 

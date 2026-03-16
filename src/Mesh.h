@@ -1,6 +1,6 @@
 #pragma once
 #include <vector>
-#include <OpenGL/gl3.h>
+#include "gl.h"
 #include <glm/glm.hpp>
 
 // =============================================================================

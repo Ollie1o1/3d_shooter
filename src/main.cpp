@@ -1,5 +1,5 @@
 #include <SDL2/SDL.h>
-#include <OpenGL/gl3.h>
+#include "gl.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
@@ -31,6 +31,12 @@ int main(int /*argc*/, char* /*argv*/[]) {
 
     SDL_GLContext ctx = SDL_GL_CreateContext(window);
     if (!ctx) throw std::runtime_error(SDL_GetError());
+
+#ifndef __APPLE__
+    glewExperimental = GL_TRUE;
+    if (glewInit() != GLEW_OK)
+        throw std::runtime_error("Failed to initialize GLEW");
+#endif
 
     SDL_GL_SetSwapInterval(0);
     glViewport(0, 0, SCREEN_W, SCREEN_H);

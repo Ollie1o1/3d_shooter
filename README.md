@@ -2,11 +2,13 @@
 
 A 3D arena shooter built with **SDL2**, **OpenGL 3.3 Core Profile**, and **GLM**. ULTRAKILL-inspired movement with grapple hook, dashing, multi-weapon combat, style scoring, and bloom post-processing.
 
-> **Platform: macOS only.** The project uses `<OpenGL/gl3.h>` (Apple's OpenGL framework). Windows/Linux support would require replacing this with GLEW or glad.
+Builds and runs on **macOS** and **Windows** (via MSYS2). Linux support is straightforward but untested.
 
 ---
 
 ## Requirements
+
+### macOS
 
 ```sh
 brew install sdl2 sdl2_mixer glm llvm
@@ -14,17 +16,45 @@ brew install sdl2 sdl2_mixer glm llvm
 
 > The Makefile uses Homebrew LLVM instead of system clang because Apple's system clang ships without C++ stdlib headers. If you've changed your Homebrew prefix or macOS SDK version, update `LLVM` and `SDK` at the top of `Makefile`.
 
+### Windows (MSYS2)
+
+1. Install [MSYS2](https://www.msys2.org/) if you haven't already.
+2. Open the **MSYS2 UCRT64** shell and run:
+
+```sh
+pacman -S mingw-w64-ucrt-x86_64-gcc \
+          mingw-w64-ucrt-x86_64-SDL2 \
+          mingw-w64-ucrt-x86_64-SDL2_mixer \
+          mingw-w64-ucrt-x86_64-glm \
+          mingw-w64-ucrt-x86_64-glew \
+          make
+```
+
 ---
 
 ## Build & Run
 
-```sh
-make        # compile
-./shooter   # run  (must be launched from the project root — shaders load from src/)
+All commands must be run from the **project root** directory — shaders are loaded relative to `src/`.
 
-make run    # compile + run in one step
-make clean  # delete the binary
+### macOS
+
+```sh
+make        # compile → ./shooter
+make run    # compile + run
+make clean  # delete binary
 ```
+
+### Windows
+
+Open the **MSYS2 UCRT64** shell, navigate to the project folder, then:
+
+```sh
+make              # compile → shooter.exe
+make run          # compile + run
+make clean        # delete binary
+```
+
+> **Important:** use the MSYS2 UCRT64 shell (not PowerShell or cmd). The Makefile auto-detects the platform.
 
 ---
 

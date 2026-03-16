@@ -20,7 +20,7 @@
 //   1. Add a draw___() method with box calls defining the shape.
 //   2. Call it from draw() based on activeWeapon index.
 // =============================================================================
-#include <OpenGL/gl3.h>
+#include "gl.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include "Camera.h"
