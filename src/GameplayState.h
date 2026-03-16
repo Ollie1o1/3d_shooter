@@ -74,16 +74,17 @@ static GLuint makeGreyTexture() {
 // Colors for different surface types — edit these to restyle the arena.
 // Each color is a linear RGB value applied as a per-vertex tint.
 namespace ArenaColor {
-    constexpr glm::vec3 Floor    = {0.22f, 0.20f, 0.18f}; // dark warm stone
-    constexpr glm::vec3 Ceiling  = {0.15f, 0.15f, 0.20f}; // dark cool
-    constexpr glm::vec3 Perim    = {0.28f, 0.28f, 0.35f}; // perimeter wall
-    constexpr glm::vec3 Hub      = {0.30f, 0.18f, 0.10f}; // central platform — orange-brown
-    constexpr glm::vec3 Riser    = {0.20f, 0.25f, 0.20f}; // approach risers — grey-green
-    constexpr glm::vec3 Corner   = {0.18f, 0.22f, 0.28f}; // corner platforms — grey-blue
-    constexpr glm::vec3 Ledge    = {0.20f, 0.20f, 0.26f}; // mid ledges
-    constexpr glm::vec3 Cover    = {0.32f, 0.25f, 0.18f}; // cover walls — warm grey
-    constexpr glm::vec3 Pillar   = {0.40f, 0.28f, 0.08f}; // tall pillars — orange accent
-    constexpr glm::vec3 Catwalk  = {0.20f, 0.20f, 0.24f}; // wall catwalks
+    constexpr glm::vec3 Floor    = {0.18f, 0.16f, 0.14f}; // dark warm ground
+    constexpr glm::vec3 Ceiling  = {0.10f, 0.10f, 0.16f}; // very dark cool sky
+    constexpr glm::vec3 Perim    = {0.26f, 0.26f, 0.34f}; // outer walls — slate
+    constexpr glm::vec3 Hub      = {0.38f, 0.22f, 0.06f}; // central tower — burnt orange
+    constexpr glm::vec3 Riser    = {0.22f, 0.27f, 0.22f}; // approach steps — olive grey
+    constexpr glm::vec3 Corner   = {0.16f, 0.20f, 0.30f}; // fortress / raised sections — steel blue
+    constexpr glm::vec3 Ledge    = {0.24f, 0.24f, 0.30f}; // elevated walkways
+    constexpr glm::vec3 Cover    = {0.34f, 0.26f, 0.16f}; // cover blocks — sandy
+    constexpr glm::vec3 Pillar   = {0.48f, 0.32f, 0.04f}; // tall pillars — bright orange
+    constexpr glm::vec3 Catwalk  = {0.18f, 0.18f, 0.24f}; // perimeter catwalks
+    constexpr glm::vec3 Tower    = {0.20f, 0.16f, 0.30f}; // corner towers — dark purple
 }
 
 static Mesh buildWorldMesh(const std::vector<Wall>& walls) {
@@ -130,32 +131,49 @@ static Mesh buildWorldMesh(const std::vector<Wall>& walls) {
     };
 
     // Floor — one large quad, +Y normal, CCW from above
-    float F = 55.f;
+    float F = 45.f;
     pushFace({-F,0,F},{F,0,F},{F,0,-F},{-F,0,-F},{0,1,0}, ArenaColor::Floor);
-    // Ceiling — -Y normal, CCW from below (raised to give more vertical space)
+    // Ceiling — -Y normal, CCW from below
     pushFace({-F,14.f,-F},{F,14.f,-F},{F,14.f,F},{-F,14.f,F},{0,-1,0}, ArenaColor::Ceiling);
 
     // Assign a color to each wall based on its role in the level.
-    // Walls are ordered exactly as in buildLevel() — if you add walls there,
-    // add matching color entries here (or use the 'default' at the end).
+    // Order must exactly match buildLevel(). Anything beyond the array uses Perim.
     const glm::vec3 wallColors[] = {
-        // Perimeter (indices 0-3)
+        // 0-3: Perimeter
         ArenaColor::Perim, ArenaColor::Perim, ArenaColor::Perim, ArenaColor::Perim,
-        // Central hub (4)
+        // 4: Central hub
         ArenaColor::Hub,
-        // Hub risers N/S/E/W (5-8)
+        // 5-8: Hub approach risers
         ArenaColor::Riser, ArenaColor::Riser, ArenaColor::Riser, ArenaColor::Riser,
-        // Corner platforms (9-12)
-        ArenaColor::Corner, ArenaColor::Corner, ArenaColor::Corner, ArenaColor::Corner,
-        // Mid-lane side ledges (13-14)
-        ArenaColor::Ledge, ArenaColor::Ledge,
-        // Cover walls 8x (15-22)
+        // 9: North fortress platform
+        ArenaColor::Corner,
+        // 10: North fortress access riser
+        ArenaColor::Riser,
+        // 11-12: North NW / NE towers
+        ArenaColor::Pillar, ArenaColor::Pillar,
+        // 13: East elevated walkway
+        ArenaColor::Ledge,
+        // 14: East access step
+        ArenaColor::Riser,
+        // 15-16: East tall support columns
+        ArenaColor::Pillar, ArenaColor::Pillar,
+        // 17-18: West raised platforms A / B
+        ArenaColor::Corner, ArenaColor::Corner,
+        // 19: West tall tower
+        ArenaColor::Pillar,
+        // 20-29: Cover walls (10)
         ArenaColor::Cover, ArenaColor::Cover, ArenaColor::Cover, ArenaColor::Cover,
         ArenaColor::Cover, ArenaColor::Cover, ArenaColor::Cover, ArenaColor::Cover,
-        // Tall pillars (23-26)
+        ArenaColor::Cover, ArenaColor::Cover,
+        // 30-37: Mid-arena pillars (8)
         ArenaColor::Pillar, ArenaColor::Pillar, ArenaColor::Pillar, ArenaColor::Pillar,
-        // Catwalks (27-30)
+        ArenaColor::Pillar, ArenaColor::Pillar, ArenaColor::Pillar, ArenaColor::Pillar,
+        // 38-39: SW / SE corner towers
+        ArenaColor::Tower, ArenaColor::Tower,
+        // 40-43: Perimeter catwalks
         ArenaColor::Catwalk, ArenaColor::Catwalk, ArenaColor::Catwalk, ArenaColor::Catwalk,
+        // 44-45: Floating mid-air platforms
+        ArenaColor::Ledge, ArenaColor::Ledge,
     };
     const int numColors = (int)(sizeof(wallColors)/sizeof(wallColors[0]));
 
@@ -174,7 +192,7 @@ public:
     std::function<void()> onReturnToMenu;
     std::function<void()> onQuit;
 
-    Player         player{{0.f,0.f,14.f}};
+    Player         player{{0.f,0.f,32.f}};
     StyleSystem    styleSystem;
     UIRenderer     ui{SCREEN_W,SCREEN_H};
     ProjectileSystem projSystem;
@@ -422,15 +440,7 @@ public:
         // --- Dash ---
         bool dashKey = keys[SDL_SCANCODE_LSHIFT] != 0;
         if (dashKey && !prevDashKey && dashCharges > 0) {
-            glm::vec3 flatFwd   = player.camera.flatForward();
-            glm::vec3 flatRight = glm::normalize(glm::cross(flatFwd,{0,1,0}));
-            glm::vec3 dashDir{0.f};
-            if (keys[SDL_SCANCODE_W]) dashDir += flatFwd;
-            if (keys[SDL_SCANCODE_S]) dashDir -= flatFwd;
-            if (keys[SDL_SCANCODE_D]) dashDir += flatRight;
-            if (keys[SDL_SCANCODE_A]) dashDir -= flatRight;
-            if (glm::length(dashDir) < 0.01f) dashDir = flatFwd;
-            dashDir = glm::normalize(dashDir);
+            glm::vec3 dashDir = player.camera.flatForward();
             player.velocity.x = dashDir.x * 22.f;
             player.velocity.z = dashDir.z * 22.f;
             --dashCharges;
@@ -763,7 +773,7 @@ public:
     }
 
     void restartGame() {
-        player = Player{{0.f,0.f,14.f}};
+        player = Player{{0.f,0.f,32.f}};
         player.camera.aspectRatio = (float)SCREEN_W/SCREEN_H;
         styleSystem = StyleSystem{};
         enemies.clear();

@@ -9,9 +9,9 @@ class GrappleHook {
 public:
     bool      active      = false;
     glm::vec3 target{0.f};
-    float     stiffness   = 12.f;
-    float     damping     = 3.f;
-    float     maxLength   = 20.f;
+    float     stiffness   = 38.f;
+    float     damping     = 0.6f;
+    float     maxLength   = 40.f;
 
     GLuint lineVAO = 0, lineVBO = 0;
 
@@ -53,9 +53,18 @@ public:
         if (!active) return;
         glm::vec3 delta = target - playerPos;
         float dist = glm::length(delta);
-        if (dist < 0.5f) { active = false; return; }
-        glm::vec3 dir   = delta / dist;
-        glm::vec3 force = dir * stiffness * dist - playerVel * damping;
+        if (dist < 0.8f) { active = false; return; }
+        glm::vec3 dir = delta / dist;
+
+        // Strong constant pull + mild spring so it feels like a real winch.
+        // Guaranteed minimum pull force so the grapple stays snappy at close range.
+        float pull = std::max(dist * stiffness, 20.f);
+        glm::vec3 force = dir * pull;
+
+        // Only damp velocity that moves AWAY from the target — not the lateral swing.
+        float awaySpeed = glm::dot(playerVel, -dir);
+        if (awaySpeed > 0.f) force += dir * awaySpeed * 6.f;
+
         playerVel += force * dt;
     }
 
