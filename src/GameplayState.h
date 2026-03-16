@@ -87,6 +87,31 @@ namespace ArenaColor {
     constexpr glm::vec3 Tower    = {0.20f, 0.16f, 0.30f}; // corner towers — dark purple
 }
 
+// Thin glowing quads placed at every enemy spawn point.
+// Not added to the wall list so they don't affect collision.
+static Mesh buildSpawnPadMesh(const LevelData& level) {
+    std::vector<Vertex> verts;
+    std::vector<unsigned int> idx;
+    float r = 1.0f;   // pad half-size (1 m radius → 2x2 m square)
+    float y = 0.04f;  // just above floor to avoid z-fighting
+
+    for (auto& room : level.rooms) {
+        for (auto& sp : room.enemySpawns) {
+            unsigned int base = (unsigned int)verts.size();
+            glm::vec3 col{0.f, 0.7f, 0.25f};
+            glm::vec3 n{0.f, 1.f, 0.f};
+            verts.push_back({{sp.x-r, y, sp.z-r}, {0,0}, n, col});
+            verts.push_back({{sp.x+r, y, sp.z-r}, {1,0}, n, col});
+            verts.push_back({{sp.x+r, y, sp.z+r}, {1,1}, n, col});
+            verts.push_back({{sp.x-r, y, sp.z+r}, {0,1}, n, col});
+            idx.insert(idx.end(), {base,base+1,base+2, base,base+2,base+3});
+        }
+    }
+    Mesh m;
+    m.upload(verts, idx);
+    return m;
+}
+
 static Mesh buildWorldMesh(const std::vector<Wall>& walls) {
     std::vector<Vertex> verts;
     std::vector<unsigned int> idx;
@@ -261,6 +286,14 @@ public:
     bool  playerDead = false;
     float deadTimer  = 0.f;
 
+    // Spawn pads — glowing floor markers at each enemy spawn point.
+    Mesh  spawnPadMesh;
+    float spawnPadPulse  = 0.f;   // drives the emissive glow animation
+    float respawnTimer   = 0.f;
+    int   nextSpawnIdx   = 0;
+    static constexpr float RESPAWN_INTERVAL = 4.f;  // check every 4 s
+    static constexpr int   MIN_ALIVE        = 3;    // respawn if below this
+
     static constexpr int MAX_POINT_LIGHTS = 4;
     glm::vec3 pointLightPos[MAX_POINT_LIGHTS];
     glm::vec3 pointLightColor[MAX_POINT_LIGHTS];
@@ -304,6 +337,7 @@ public:
         level = buildLevel();
         allWalls = level.getAllWalls();
         worldMesh = buildWorldMesh(allWalls);
+        spawnPadMesh = buildSpawnPadMesh(level);
 
         spawnEnemiesForRoom(0);
 
@@ -406,6 +440,24 @@ public:
         viewModel.update(floatDt, playerXZSpeed, player.onGround);
         fovKick = glm::mix(fovKick, 0.f, std::min(1.f, floatDt * 7.f));
 
+        // Spawn pad pulse + enemy respawn
+        spawnPadPulse += floatDt * 2.5f;
+        respawnTimer  += floatDt;
+        if (respawnTimer >= RESPAWN_INTERVAL) {
+            respawnTimer = 0.f;
+            int alive = 0;
+            for (auto& e : enemies) if (e.alive) ++alive;
+            if (alive < MIN_ALIVE && !level.rooms.empty()) {
+                auto& spawns = level.rooms[0].enemySpawns;
+                if (!spawns.empty()) {
+                    glm::vec3 sp = spawns[nextSpawnIdx % (int)spawns.size()];
+                    nextSpawnIdx++;
+                    EnemyType t = (EnemyType)(nextSpawnIdx % 3);
+                    enemies.push_back(Enemy(t, sp));
+                }
+            }
+        }
+
         if (muzzleFlashTimer > 0.f) {
             muzzleFlashTimer -= floatDt;
             pointLightPos[0]   = muzzleFlashPos;
@@ -498,17 +550,13 @@ public:
             slamming = true;
         }
 
-        // --- Update player physics ---
-        allWalls = level.getAllWalls();
-        player.update(dt, keys, allWalls.data(), (int)allWalls.size());
-        playerXZSpeed = glm::length(glm::vec2(player.velocity.x, player.velocity.z));
-
-        // --- Grapple ---
+        // --- Grapple fire / release input ---
         bool rightPressed = rightMouse && !rightMousePrev;
         if (rightPressed) {
             glm::vec3 camPos = player.camera.position;
             glm::vec3 camFwd = player.camera.forward();
             if (!grapple.active) {
+                allWalls = level.getAllWalls();
                 if (grapple.fire(camPos, camFwd, allWalls.data(), (int)allWalls.size())) {
                     viewModel.triggerGrapple();
                     audio.play("grapple_fire");
@@ -519,7 +567,13 @@ public:
         }
         rightMousePrev = rightMouse;
 
+        // Apply grapple force BEFORE player physics so it integrates this tick.
         grapple.update(dt, player.camera.position, player.velocity);
+
+        // --- Update player physics ---
+        allWalls = level.getAllWalls();
+        player.update(dt, keys, allWalls.data(), (int)allWalls.size(), grapple.active);
+        playerXZSpeed = glm::length(glm::vec2(player.velocity.x, player.velocity.z));
 
         // --- Shooting ---
         revolverTimer = std::max(0.f, revolverTimer - dt);
@@ -862,6 +916,16 @@ public:
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D,whiteTex);
         worldMesh.draw();
+
+        // Spawn pads — pulsing green emissive quads on the floor
+        {
+            float glow = 0.4f + 0.35f * std::sin(spawnPadPulse);
+            worldShader.setVec3("emissiveColor", {0.f, glow, glow * 0.4f});
+            worldShader.setVec3("objectColor",   {0.f, 0.4f, 0.1f});
+            spawnPadMesh.draw();
+            worldShader.setVec3("emissiveColor", {0.f, 0.f, 0.f});
+            worldShader.setVec3("objectColor",   {1.f, 1.f, 1.f});
+        }
 
         worldShader.setMat4("projection",proj);
         worldShader.setMat4("view",view);

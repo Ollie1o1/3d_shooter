@@ -77,12 +77,14 @@ public:
     // Call this once per fixed physics tick (e.g., every 1/60 seconds).
     // walls[] is the list of solid AABB obstacles in the world.
     // -------------------------------------------------------------------------
-    void update(float dt, const Uint8* keys, const Wall* walls, int wallCount) {
-        handleMovement(dt, keys); // read input, apply acceleration/friction
-        applyGravity(dt);         // pull velocity.y downward
-        integrate(dt);            // move position by velocity * dt
-        resolveCollisions(walls, wallCount); // push out of walls/floor
-        camera.position = position + glm::vec3{0, eyeHeight, 0}; // sync camera
+    // grappling=true skips ground friction so the grapple can build speed freely.
+    void update(float dt, const Uint8* keys, const Wall* walls, int wallCount,
+                bool grappling = false) {
+        handleMovement(dt, keys, grappling);
+        applyGravity(dt);
+        integrate(dt);
+        resolveCollisions(walls, wallCount);
+        camera.position = position + glm::vec3{0, eyeHeight, 0};
     }
 
     // Call this with raw SDL mouse delta before (or after) update().
@@ -106,7 +108,7 @@ private:
     // Formula: addSpeed = clamp(maxSpeed - dot(velocity, wishDir), 0, accel*dt)
     //          velocity += wishDir * addSpeed
     // -------------------------------------------------------------------------
-    void handleMovement(float dt, const Uint8* keys) {
+    void handleMovement(float dt, const Uint8* keys, bool grappling = false) {
         // Build the desired movement direction from WASD in camera-relative space.
         // We use flatForward (no pitch) so looking up doesn't make you fly.
         glm::vec3 flatFwd   = camera.flatForward();
@@ -137,8 +139,8 @@ private:
         }
 
         // Friction: bleed off horizontal speed when on the ground.
-        // Not applied in air — you keep your momentum from a jump or dash.
-        if (onGround) {
+        // Skipped while grappling so the hook can build speed freely.
+        if (onGround && !grappling) {
             glm::vec3 hVel{velocity.x, 0.f, velocity.z};
             float speed = glm::length(hVel);
             if (speed > 0.001f) {
@@ -204,37 +206,39 @@ private:
     // The player is also treated as an AABB (a capsule would be smoother in
     // corners, but AABB is cheaper and plenty good for flat walls).
     void resolveAABB(const AABB& wall) {
-        // Compute the player's current AABB
         glm::vec3 pMin = position + glm::vec3{-radius, 0.f,    -radius};
         glm::vec3 pMax = position + glm::vec3{ radius, height,  radius};
 
-        // Broad phase: if no overlap on any axis, bail out early
         if (pMax.x <= wall.min.x || pMin.x >= wall.max.x) return;
         if (pMax.y <= wall.min.y || pMin.y >= wall.max.y) return;
         if (pMax.z <= wall.min.z || pMin.z >= wall.max.z) return;
 
-        // Penetration depth per axis (how far we're inside the wall)
         float ox = glm::min(pMax.x - wall.min.x, wall.max.x - pMin.x);
         float oy = glm::min(pMax.y - wall.min.y, wall.max.y - pMin.y);
         float oz = glm::min(pMax.z - wall.min.z, wall.max.z - pMin.z);
 
-        // Resolve on whichever axis has the smallest overlap (minimum translation)
         if (ox <= oy && ox <= oz) {
-            // Push left or right
-            float dir  = (position.x < (wall.min.x + wall.max.x) * 0.5f) ? -1.f : 1.f;
-            position.x += dir * ox;
-            velocity.x  = 0.f;
+            // Horizontal push — only zero the velocity component moving INTO the wall
+            // so grapple / dash momentum along the wall face is preserved.
+            float pushDir = (position.x < (wall.min.x + wall.max.x) * 0.5f) ? -1.f : 1.f;
+            position.x += pushDir * ox;
+            if (velocity.x * pushDir < 0.f) velocity.x = 0.f;
         } else if (oy <= ox && oy <= oz) {
-            // Push up or down
-            float dir  = (position.y < (wall.min.y + wall.max.y) * 0.5f) ? -1.f : 1.f;
-            position.y += dir * oy;
-            if (dir < 0.f) { velocity.y = 0.f; onGround = true; } // landed on top
-            else             velocity.y = 0.f;                      // hit ceiling
+            float pushDir = (position.y < (wall.min.y + wall.max.y) * 0.5f) ? -1.f : 1.f;
+            position.y += pushDir * oy;
+            if (pushDir > 0.f) {
+                // Pushed UP  → feet landed on the top surface of a box
+                if (velocity.y < 0.f) velocity.y = 0.f;
+                onGround = true;
+            } else {
+                // Pushed DOWN → head hit the underside of a box (ceiling)
+                // Only kill upward velocity; do NOT set onGround.
+                if (velocity.y > 0.f) velocity.y = 0.f;
+            }
         } else {
-            // Push forward or back
-            float dir  = (position.z < (wall.min.z + wall.max.z) * 0.5f) ? -1.f : 1.f;
-            position.z += dir * oz;
-            velocity.z  = 0.f;
+            float pushDir = (position.z < (wall.min.z + wall.max.z) * 0.5f) ? -1.f : 1.f;
+            position.z += pushDir * oz;
+            if (velocity.z * pushDir < 0.f) velocity.z = 0.f;
         }
     }
 };
