@@ -30,7 +30,7 @@
 #include <cmath>
 #include <algorithm>
 
-enum class ViewAnim { IDLE, FIRE, RELOAD, GRENADE_THROW, GRAPPLE_FIRE };
+enum class ViewAnim { IDLE, FIRE, RELOAD, GRENADE_THROW, GRAPPLE_FIRE, PUMP, WEAPON_SWITCH };
 
 class ViewModel {
 public:
@@ -53,6 +53,8 @@ public:
     void triggerReload()  { anim = ViewAnim::RELOAD;        animTimer = animMax = 0.60f; }
     void triggerGrenade() { anim = ViewAnim::GRENADE_THROW; animTimer = animMax = 0.50f; }
     void triggerGrapple() { anim = ViewAnim::GRAPPLE_FIRE;  animTimer = animMax = 0.28f; }
+    void triggerPump()    { anim = ViewAnim::PUMP;          animTimer = animMax = 0.45f; }
+    void triggerSwitch()  { anim = ViewAnim::WEAPON_SWITCH; animTimer = animMax = 0.30f; }
 
     // -------------------------------------------------------------------------
     void update(float dt, float xzSpeed, bool /*onGround*/) {
@@ -84,7 +86,7 @@ public:
     // revolverFill  — 0 = just fired / cooldown, 1 = fully ready
     // -------------------------------------------------------------------------
     void draw(ShaderProgram& shader, const Camera& cam,
-              int activeWeapon, float revolverFill) {
+              int activeWeapon, float revolverFill, float shotgunFill = 1.f) {
 
         // Compute animation offsets in gun-local space
         float p = (animMax > 0.f) ? (animTimer / animMax) : 0.f;
@@ -115,6 +117,28 @@ public:
                 break;
             case ViewAnim::GRAPPLE_FIRE:
                 kickZ = p * 0.06f;
+                break;
+            case ViewAnim::PUMP:
+                // p goes 1→0; first half: pump slides back, second half: slides forward
+                if (p > 0.5f) {
+                    float t = (p - 0.5f) * 2.f;
+                    kickZ = -t * 0.04f;
+                    kickY = -t * 0.015f;
+                } else {
+                    float t = p * 2.f;
+                    kickZ =  t * 0.02f;
+                    kickY = -t * 0.01f;
+                }
+                break;
+            case ViewAnim::WEAPON_SWITCH:
+                // p goes 1→0; first half: weapon drops down, second half: rises up
+                if (p > 0.5f) {
+                    float t = (p - 0.5f) * 2.f;
+                    kickY = -t * 0.18f;
+                } else {
+                    float t = p * 2.f;
+                    kickY = -(1.f - t) * 0.18f;
+                }
                 break;
             default: break;
         }
@@ -160,8 +184,9 @@ public:
 
         if (activeWeapon == 0)
             drawRevolver(shader, gunBase, revolverFill);
-        else
-            drawGrenade(shader, gunBase);
+        else if (activeWeapon == 1)
+            drawShotgun(shader, gunBase, shotgunFill);
+        // grenade only shown during GRENADE_THROW animation (handled by triggerGrenade)
 
         glEnable(GL_CULL_FACE);
     }
@@ -215,6 +240,43 @@ private:
         drawBox(shader, base, {0.024f, 0.048f, 0.120f}, {0.010f, 0.030f, 0.090f}, metal);
         // Grip
         drawBox(shader, base, {0.f, -0.110f, -0.042f}, {0.048f, 0.100f, 0.055f}, metal);
+    }
+
+    void drawShotgun(ShaderProgram& shader, const glm::mat4& base, float fill) {
+        glm::vec3 metal  = {0.35f, 0.33f, 0.30f};  // dark gunmetal
+        glm::vec3 dark   = {0.20f, 0.18f, 0.17f};  // dark frame
+        glm::vec3 wood   = {0.45f, 0.28f, 0.10f};  // pump grip / stock wood
+
+        // Barrel — thick and long along +Z
+        drawBox(shader, base, {0.f,  0.028f,  0.12f}, {0.048f, 0.048f, 0.32f}, metal);
+        // Magazine tube — under the barrel
+        drawBox(shader, base, {0.f, -0.018f,  0.14f}, {0.032f, 0.032f, 0.26f}, metal);
+        // Receiver body
+        drawBox(shader, base, {0.f,  0.005f, -0.04f}, {0.065f, 0.075f, 0.14f}, dark);
+        // Pump forearm — slides during pump animation
+        float pumpSlide = 0.f;
+        if (anim == ViewAnim::PUMP) {
+            float p = (animMax > 0.f) ? (animTimer / animMax) : 0.f;
+            if (p > 0.5f) pumpSlide = -(p - 0.5f) * 2.f * 0.08f;
+            else          pumpSlide =  p * 2.f * 0.04f - 0.04f;
+        }
+        drawBox(shader, base, {0.f, -0.005f, 0.08f + pumpSlide}, {0.050f, 0.044f, 0.10f}, wood);
+        // Stock
+        drawBox(shader, base, {0.f, -0.035f, -0.16f}, {0.048f, 0.065f, 0.10f}, wood);
+        drawBox(shader, base, {0.f, -0.060f, -0.22f}, {0.040f, 0.055f, 0.06f}, wood);
+        // Trigger guard
+        drawBox(shader, base, {0.f, -0.050f, -0.04f}, {0.020f, 0.022f, 0.070f}, dark);
+        // Grip
+        drawBox(shader, base, {0.f, -0.120f, -0.08f}, {0.044f, 0.100f, 0.055f}, wood);
+
+        // Muzzle flash — wider than revolver
+        if (fill < 0.20f) {
+            float glow = (0.20f - fill) / 0.20f;
+            shader.setVec3("emissiveColor", glm::vec3{1.f, 0.7f, 0.2f} * glow * 1.2f);
+            drawBox(shader, base, {0.f, 0.028f, 0.30f}, {0.035f, 0.035f, 0.04f},
+                    glm::mix(metal, glm::vec3{1.f, 0.85f, 0.4f}, glow));
+            shader.setVec3("emissiveColor", {0.f, 0.f, 0.f});
+        }
     }
 
     // Draw a box centered at localCenter with given full extents, in gun space.

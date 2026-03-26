@@ -14,6 +14,9 @@ public:
     ShaderProgram brightShader;
     ShaderProgram blurShader;
     ShaderProgram compositeShader;
+    ShaderProgram crtShader;
+    bool crtEnabled = false;
+    GLuint crtFBO = 0, crtTex = 0;  // intermediate FBO for CRT pass
 
     GLuint quadVAO = 0, quadVBO = 0;
 
@@ -64,12 +67,28 @@ public:
         brightShader.loadFiles("src/postprocess.vert","src/bloom_bright.frag");
         blurShader.loadFiles("src/postprocess.vert","src/bloom_blur.frag");
         compositeShader.loadFiles("src/postprocess.vert","src/bloom_composite.frag");
+        crtShader.loadFiles("src/postprocess.vert","src/crt.frag");
+
+        // CRT intermediate FBO
+        glGenFramebuffers(1,&crtFBO);
+        glBindFramebuffer(GL_FRAMEBUFFER,crtFBO);
+        glGenTextures(1,&crtTex);
+        glBindTexture(GL_TEXTURE_2D,crtTex);
+        glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA16F,W,H,0,GL_RGBA,GL_FLOAT,nullptr);
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
+        glFramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,crtTex,0);
+        glBindFramebuffer(GL_FRAMEBUFFER,0);
     }
 
     ~PostProcess() {
         glDeleteFramebuffers(1,&sceneFBO);
         glDeleteTextures(1,&sceneTex);
         glDeleteRenderbuffers(1,&sceneDepth);
+        glDeleteFramebuffers(1,&crtFBO);
+        glDeleteTextures(1,&crtTex);
         for(int i=0;i<2;++i) {
             glDeleteFramebuffers(1,&bloomFBO[i]);
             glDeleteTextures(1,&bloomTex[i]);
@@ -105,16 +124,39 @@ public:
             horizontal = !horizontal;
         }
 
-        glBindFramebuffer(GL_FRAMEBUFFER,0);
-        glViewport(0,0,W,H);
-        compositeShader.use();
-        compositeShader.setInt("scene",0);
-        compositeShader.setInt("bloomBlur",1);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D,sceneTex);
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D,bloomTex[0]);
-        drawQuad();
+        if (crtEnabled) {
+            // Composite bloom to CRT intermediate FBO
+            glBindFramebuffer(GL_FRAMEBUFFER,crtFBO);
+            glViewport(0,0,W,H);
+            compositeShader.use();
+            compositeShader.setInt("scene",0);
+            compositeShader.setInt("bloomBlur",1);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D,sceneTex);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D,bloomTex[0]);
+            drawQuad();
+
+            // Apply CRT filter to screen
+            glBindFramebuffer(GL_FRAMEBUFFER,0);
+            glViewport(0,0,W,H);
+            crtShader.use();
+            crtShader.setInt("scene",0);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D,crtTex);
+            drawQuad();
+        } else {
+            glBindFramebuffer(GL_FRAMEBUFFER,0);
+            glViewport(0,0,W,H);
+            compositeShader.use();
+            compositeShader.setInt("scene",0);
+            compositeShader.setInt("bloomBlur",1);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D,sceneTex);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D,bloomTex[0]);
+            drawQuad();
+        }
         glEnable(GL_DEPTH_TEST);
     }
 

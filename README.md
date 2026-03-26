@@ -1,6 +1,6 @@
-# 3D Shooter
+# OVERDRIVE
 
-A 3D arena shooter built with **SDL2**, **OpenGL 3.3 Core Profile**, and **GLM**. ULTRAKILL-inspired movement with grapple hook, dashing, multi-weapon combat, style scoring, and bloom post-processing.
+A 3D arena shooter built with **SDL2**, **OpenGL 3.3 Core Profile**, and **GLM**. ULTRAKILL-inspired movement with grapple hook, dashing, multi-weapon combat, style scoring, wave-based progression, and post-processing effects.
 
 Builds and runs on **macOS** and **Windows** (via MSYS2). Linux support is straightforward but untested.
 
@@ -68,14 +68,77 @@ make clean        # delete binary
 | Mouse | Look |
 | Space | Jump / Double jump |
 | Left Shift | Dash (directional) |
-| Left Mouse | Fire revolver |
-| Right Mouse | Fire shotgun |
-| 1 / 2 | Switch weapon |
-| R | Reload |
-| F | Parry |
+| Left Mouse | Fire weapon |
+| Right Mouse | Grapple hook |
+| 1 / Scroll Up | Revolver |
+| 2 / Scroll Down | Shotgun |
+| G | Throw grenade |
+| R | Reload / Restart (on death/win) |
+| F | Parry / Projectile boost |
 | E | Interact |
 | Left Ctrl / C | Crouch / Ground slam |
+| Enter | Restart (on death/win) |
 | Escape | Quit to menu |
+
+---
+
+## Features
+
+### Combat
+- **Revolver** (slot 1) — 8-round hitscan with auto-reload
+- **Shotgun** (slot 2) — 2-shell pump-action, 10 pellets per shot with spread
+- **Grenades** (G key) — parabolic arc, 5m blast radius, refill every 2 kills
+- **Parry** (F) — deflect enemy projectiles back at 2x speed for 50 damage
+- **Projectile Boost** (F near own grenade) — detonate for 3x damage AoE
+- **Recoil recovery** — camera kick smoothly returns to center instead of drifting
+- **Weapon switch animation** — smooth drop/raise transition with firing blocked during switch
+
+### Movement
+- Quake-style air strafing with momentum preservation
+- Double jump, directional dash (2 charges), ground slam
+- Grapple hook with slingshot release
+- Sliding with momentum boost
+
+### Enemies
+- **GRUNT** — wide, tough (50 HP), patrol-shooter at 14-22m range
+- **SHOOTER** — tall and thin (35 HP), maintains distance, longest telegraph
+- **STALKER** — low and fast (25 HP), aggressive strafing, charges at close range
+- **FLYER** — small diamond shape (40 HP), hovers and orbits with bobbing animation
+- Each type has a distinct silhouette (per-type scaling and rotation)
+- Health bars appear above damaged enemies
+- Death spawns colored cube debris particles
+
+### Progression
+- **Wave system** — each room has 3 waves of increasing difficulty
+  - Wave 1: mostly GRUNTs
+  - Wave 2: mixed GRUNTs, SHOOTERs, STALKERs
+  - Wave 3: harder mix with more STALKERs and FLYERs
+- 3-second pause between waves with "WAVE N" banner
+- Spawn pads pulse brighter when the next wave is incoming
+- Room door slides open when all waves are cleared
+
+### Style System
+- ULTRAKILL-inspired style meter (D → C → B → A → S → SSS)
+- Style gained from kills, parries, dashes, slams, grenade multikills
+- Overdrive mode at max style — dash charges refill on kill
+- Style decays after 3 seconds of inactivity
+
+### Visuals
+- **Procedural textures** — grid concrete floor, brick walls, brushed metal ceiling (no external image files)
+- World-space UV mapping for consistent texture tiling
+- Bloom post-processing (bright pass → gaussian blur → composite)
+- **CRT filter** (optional, toggle in settings) — barrel distortion, chromatic aberration, scanlines, vignette
+- PSX-style vertex snapping (configurable)
+- Hitscan tracers, muzzle flash, screen shake, hit-stop on kills
+- Impact decals, explosion particles, shell casings
+- Damage direction indicators on screen edges
+- Dithered grapple rope rendering
+
+### Game Flow
+- **Win screen** — "ARENA CLEARED" with stats (time, kills, accuracy, letter grade S/A/B/C/D)
+- **Death screen** — "YOU DIED" with red vignette and stats
+- Quick restart with R or Enter from either screen
+- Settings menu: FOV, sensitivity, audio volume, FPS cap, show FPS, CRT filter
 
 ---
 
@@ -84,34 +147,41 @@ make clean        # delete binary
 ```
 3d_shooter/
 ├── src/
-│   ├── main.cpp            # entry point, SDL/OpenGL init, game loop
-│   ├── GameState.h         # base state interface (menu / gameplay)
-│   ├── MenuState.h         # main menu
-│   ├── GameplayState.h     # core game loop: physics, combat, rendering
-│   ├── Player.h            # kinematic character controller (Quake-style)
-│   ├── Camera.h            # view/projection, mouselook
-│   ├── Enemy.h             # enemy types and AI
-│   ├── Projectile.h        # bullet/projectile system
-│   ├── GrappleHook.h       # grapple hook physics
-│   ├── StyleSystem.h       # ULTRAKILL-style rank/score tracking
-│   ├── Level.h             # map geometry (AABB walls)
-│   ├── Mesh.h              # VAO/VBO wrapper
-│   ├── ShaderProgram.h     # GLSL compile/link, uniform helpers
-│   ├── PostProcess.h       # bloom post-processing pass
-│   ├── UIRenderer.h        # HUD (crosshair, ammo, style rank)
-│   ├── ViewModel.h         # first-person weapon model
-│   ├── AudioSystem.h       # SDL2_mixer sound wrapper
-│   ├── Interactable.h      # trigger volumes / interactable objects
-│   ├── shader.vert/frag    # world geometry shader
-│   ├── skybox.vert/frag    # skybox shader
-│   ├── ui.vert/frag        # HUD shader
-│   ├── tracer.vert/frag    # bullet tracer shader
-│   ├── postprocess.vert    # fullscreen quad vertex shader
-│   ├── bloom_bright.frag   # bloom brightness threshold pass
-│   ├── bloom_blur.frag     # bloom gaussian blur pass
-│   └── bloom_composite.frag # bloom composite pass
+│   ├── main.cpp              # entry point, SDL/OpenGL init, game loop
+│   ├── GameState.h           # base state interface (menu / gameplay)
+│   ├── MenuState.h           # main menu + settings
+│   ├── GameplayState.h       # core game loop: physics, combat, rendering
+│   ├── Player.h              # kinematic character controller (Quake-style)
+│   ├── Camera.h              # view/projection, mouselook
+│   ├── Enemy.h               # enemy types, AI, and instanced renderer
+│   ├── Projectile.h          # bullet/projectile system
+│   ├── GrappleHook.h         # grapple hook physics
+│   ├── StyleSystem.h         # style rank/score tracking
+│   ├── Level.h               # map geometry (AABB walls), room/door management
+│   ├── Mesh.h                # VAO/VBO wrapper
+│   ├── ShaderProgram.h       # GLSL compile/link, uniform helpers
+│   ├── PostProcess.h         # bloom + optional CRT post-processing
+│   ├── UIRenderer.h          # HUD, win/death screens, damage indicators
+│   ├── ViewModel.h           # first-person weapon models (revolver, shotgun)
+│   ├── AudioSystem.h         # SDL2_mixer sound wrapper
+│   ├── TextureGen.h          # procedural texture generation
+│   ├── PixelFont.h           # bitmap font for UI text
+│   ├── Settings.h            # game settings (FOV, sensitivity, CRT, etc.)
+│   ├── Interactable.h        # trigger volumes / interactable objects
+│   ├── shader.vert/frag      # world geometry shader (Blinn-Phong, point lights)
+│   ├── enemy_inst.vert/frag  # instanced enemy shader
+│   ├── skybox.vert/frag      # skybox gradient shader
+│   ├── ui.vert/frag          # HUD shader
+│   ├── tracer.vert/frag      # bullet tracer + particle shader
+│   ├── grapple.vert/frag     # dithered grapple rope shader
+│   ├── crt.frag              # CRT post-process effect
+│   ├── postprocess.vert      # fullscreen quad vertex shader
+│   ├── bloom_bright.frag     # bloom brightness threshold pass
+│   ├── bloom_blur.frag       # bloom gaussian blur pass
+│   └── bloom_composite.frag  # bloom composite pass
 ├── assets/
-│   └── sfx/                # sound effects (jump, land, dash, guns, etc.)
+│   ├── level.txt             # level geometry (hot-editable)
+│   └── sfx/                  # sound effects (.wav)
 ├── Makefile
 └── README.md
 ```
@@ -132,8 +202,6 @@ while accumulator >= PHYSICS_DT:
 alpha = accumulator / PHYSICS_DT   # 0..1, used to lerp camera
 ```
 
-Reference: [Fix Your Timestep — Gaffer on Games](https://gafferongames.com/post/fix_your_timestep/)
-
 ### Movement (Quake-style)
 
 Instead of `velocity = direction * speed`, acceleration is applied incrementally each tick:
@@ -149,16 +217,16 @@ Momentum is preserved in the air, so strafe-jumping can gain a small speed boost
 ### Rendering pipeline
 
 Each frame:
-1. Render scene to an offscreen framebuffer
+1. Render scene to an offscreen framebuffer (split into floor/wall/ceiling draws with per-surface procedural textures)
 2. Bloom pass — extract bright regions → gaussian blur → composite
-3. Blit result to the screen
-4. Render HUD and weapon view model on top (no depth test)
+3. Optional CRT pass — barrel distortion, chromatic aberration, scanlines
+4. Render HUD, win/death screens, and weapon view model on top
 
-World geometry is batched into as few draw calls as possible (one `glDrawElements` per mesh).
+World geometry is batched into as few draw calls as possible. Enemies use GPU instancing (one `glDrawElementsInstanced` call for all enemies).
 
 ### Collision
 
-The player is an AABB. Each wall/platform is also an AABB. Collision is resolved by finding the axis of minimum penetration and pushing the player out along it. This handles stacking (standing on top of boxes) correctly.
+The player is an AABB. Each wall/platform is also an AABB. Collision is resolved by finding the axis of minimum penetration and pushing the player out along it. A spatial grid accelerates queries so only nearby walls are tested.
 
 ---
 
@@ -181,10 +249,10 @@ All knobs are public members of `Player` in `Player.h`:
 
 ### Add a wall / platform
 
-In `Level.h`, add an entry inside `buildLevel()`:
+In `Level.h`, add an entry inside `buildLevel()`, or edit `assets/level.txt`:
 
 ```cpp
-walls.push_back({ AABB{{ minX, minY, minZ }, { maxX, maxY, maxZ }} });
+r.walls.push_back(W({{minX, minY, minZ}, {maxX, maxY, maxZ}}, ArenaColor::Cover));
 ```
 
 It will appear in the world visually and be solid for collision — no other changes needed.
@@ -194,24 +262,17 @@ It will appear in the world visually and be solid for collision — no other cha
 In `GameplayState.h`:
 1. Add ammo/cooldown members in the "Player weapon state" block.
 2. Write a `fire___()` method modelled on `fireRevolver()`.
-   - Hitscan: use `rayAABBHit()` against enemies + walls, then call `spawnTracer()`.
-   - Projectile: call `projSystem.fire(origin, dir * speed, damage, true, color)`.
-3. Handle the key/button in `physicsTick()` where the shooting block is.
-4. Add an ammo display in `render()`.
+3. Add a `drawWeapon()` method in `ViewModel.h` and update the `draw()` dispatch.
+4. Handle the key/button in `physicsTick()` where the shooting block is.
+5. Add an ammo display in `UIRenderer::render()`.
 
 ### Add an enemy type
 
 1. Add a value to `EnemyType` in `Enemy.h`.
 2. Handle movement/attack logic in `Enemy::update()`.
 3. Set health in the `Enemy` constructor switch.
-4. Spawn it in `spawnEnemiesForRoom()` or directly: `enemies.push_back(Enemy(EnemyType::YOURTYPE, pos))`.
-
-### Add a shader effect
-
-Edit `src/shader.frag`. Ideas:
-- **Fog**: `mix(FragColor, fogColor, clamp(dist / fogEnd, 0.0, 1.0))`
-- **Specular**: Blinn-Phong with `uniform vec3 cameraPos` and halfway vector
-- **Vertex colour**: add `vec3 color` to `Vertex`, pass through as `layout(location=3)`
+4. Add per-type scaling in `EnemyRenderer::draw()`.
+5. Spawn it in `spawnWaveEnemies()` or directly: `enemies.push_back(Enemy(EnemyType::YOURTYPE, pos))`.
 
 ---
 

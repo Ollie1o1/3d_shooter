@@ -62,12 +62,48 @@ public:
 
     void onGrenadeRefill() { /* visual flash could go here */ }
 
+    // Damage direction indicators
+    struct DamageIndicator {
+        float angle;
+        float timer;
+    };
+    DamageIndicator damageIndicators[8];
+    int damageIndicatorCount = 0;
+
+    void onDamageFrom(float angle) {
+        if (damageIndicatorCount < 8) {
+            damageIndicators[damageIndicatorCount++] = {angle, 1.0f};
+        } else {
+            // Replace oldest
+            damageIndicators[0] = {angle, 1.0f};
+        }
+    }
+
+    // Floating damage numbers
+    struct FloatingNumber {
+        float x, y;     // screen position
+        float value;
+        float timer;
+        bool  critical;
+    };
+    FloatingNumber floatingNums[16];
+    int floatingNumCount = 0;
+
+    void spawnFloatingNumber(float screenX, float screenY, float value, bool crit = false) {
+        int slot = floatingNumCount < 16 ? floatingNumCount++ : 0;
+        floatingNums[slot] = {screenX, screenY, value, 0.8f, crit};
+    }
+
     void render(const StyleSystem& style, int activeWeapon,
                 int shotgunAmmo, int shotgunAmmoMax,
                 bool shotgunReloading, float shotgunReloadProgress,
                 int revolverAmmo, int revolverAmmoMax,
                 bool reloading, float reloadProgress,
-                bool nearInteractable = false) {
+                bool nearInteractable = false,
+                bool showWin = false, bool showDeath = false,
+                int kills = 0, int shots = 0, int hits = 0,
+                float gameTime = 0.f, float peakStyle = 0.f,
+                int waveNum = 0, float waveBanner = 0.f) {
         glDisable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE);
         glEnable(GL_BLEND);
@@ -237,6 +273,98 @@ public:
         drawRect(cx+2,cy-1,6,2,chCol);
         drawRect(cx-1,cy-8,2,6,chCol);
         drawRect(cx-1,cy+2,2,6,chCol);
+
+        // --- Damage direction indicators ---
+        for (int i = 0; i < damageIndicatorCount; ++i) {
+            auto& di = damageIndicators[i];
+            if (di.timer <= 0.f) continue;
+            di.timer -= 1.f / 60.f;  // approximate dt
+            float alpha = di.timer * 0.7f;
+            float a = di.angle;
+            // Normalize angle
+            while (a >  3.14159f) a -= 6.28318f;
+            while (a < -3.14159f) a += 6.28318f;
+            // Position on screen edge
+            float edgeDist = 80.f;
+            float ix = cx + sinf(a) * edgeDist;
+            float iy = cy - cosf(a) * edgeDist;
+            drawRect((int)ix - 6, (int)iy - 6, 12, 12, {0.9f, 0.1f, 0.1f, alpha});
+            drawRect((int)ix - 4, (int)iy - 4, 8, 8, {1.0f, 0.2f, 0.1f, alpha * 0.7f});
+        }
+        // Compact expired indicators
+        int w = 0;
+        for (int r = 0; r < damageIndicatorCount; ++r)
+            if (damageIndicators[r].timer > 0.f) damageIndicators[w++] = damageIndicators[r];
+        damageIndicatorCount = w;
+
+        // --- Floating damage numbers ---
+        for (int i = 0; i < floatingNumCount; ++i) {
+            auto& fn = floatingNums[i];
+            if (fn.timer <= 0.f) continue;
+            fn.timer -= 1.f / 60.f;
+            fn.y -= 40.f / 60.f;  // float upward
+            float alpha = fn.timer / 0.8f;
+            char numBuf[16];
+            snprintf(numBuf, sizeof(numBuf), "%d", (int)fn.value);
+            glm::vec4 col = fn.critical ? glm::vec4{1.f, 0.85f, 0.2f, alpha}
+                                        : glm::vec4{1.f, 1.f, 1.f, alpha};
+            drawText(numBuf, (int)fn.x, (int)fn.y, 2, col, true);
+        }
+        w = 0;
+        for (int r = 0; r < floatingNumCount; ++r)
+            if (floatingNums[r].timer > 0.f) floatingNums[w++] = floatingNums[r];
+        floatingNumCount = w;
+
+        // --- Wave banner ---
+        if (waveBanner > 0.f) {
+            float alpha = std::min(waveBanner, 1.f);
+            char waveBuf[32];
+            snprintf(waveBuf, sizeof(waveBuf), "WAVE %d", waveNum);
+            drawRect(screenW/2 - 120, screenH/2 - 40, 240, 50, {0.1f, 0.1f, 0.15f, alpha * 0.7f});
+            drawText(waveBuf, screenW/2, screenH/2 - 20, 3, {1.f, 0.9f, 0.3f, alpha}, true);
+        }
+
+        // --- Win screen ---
+        if (showWin) {
+            drawRect(0, 0, screenW, screenH, {0.0f, 0.02f, 0.05f, 0.65f});
+            drawText("ARENA CLEARED", screenW/2, screenH/2 - 100, 4, {0.2f, 1.f, 0.4f, 0.95f}, true);
+
+            char buf[64];
+            int statY = screenH/2 - 30;
+            snprintf(buf, sizeof(buf), "TIME  %d:%02d", (int)gameTime / 60, (int)gameTime % 60);
+            drawText(buf, screenW/2, statY, 2, {0.9f,0.9f,0.9f,0.9f}, true);
+            snprintf(buf, sizeof(buf), "KILLS  %d", kills);
+            drawText(buf, screenW/2, statY + 24, 2, {0.9f,0.9f,0.9f,0.9f}, true);
+            float acc = shots > 0 ? (float)hits / (float)shots * 100.f : 0.f;
+            snprintf(buf, sizeof(buf), "ACCURACY  %d%%", (int)acc);
+            drawText(buf, screenW/2, statY + 48, 2, {0.9f,0.9f,0.9f,0.9f}, true);
+
+            const char* gradeStr = "D";
+            float score = (float)kills * 10.f + acc * 2.f + peakStyle + std::max(0.f, 300.f - gameTime);
+            if (score > 800.f) gradeStr = "S";
+            else if (score > 600.f) gradeStr = "A";
+            else if (score > 400.f) gradeStr = "B";
+            else if (score > 200.f) gradeStr = "C";
+            drawText(gradeStr, screenW/2, statY + 80, 5, {1.f, 0.85f, 0.2f, 0.95f}, true);
+
+            drawText("R - RESTART    ESC - MENU", screenW/2, statY + 130, 2, {0.6f,0.6f,0.6f,0.8f}, true);
+        }
+
+        // --- Death screen ---
+        if (showDeath) {
+            float vigAlpha = 0.5f;
+            drawRect(0, 0, screenW, screenH, {0.3f, 0.0f, 0.0f, vigAlpha});
+            drawText("YOU DIED", screenW/2, screenH/2 - 80, 4, {0.9f, 0.15f, 0.1f, 0.95f}, true);
+
+            char buf[64];
+            int statY = screenH/2 - 10;
+            snprintf(buf, sizeof(buf), "TIME  %d:%02d", (int)gameTime / 60, (int)gameTime % 60);
+            drawText(buf, screenW/2, statY, 2, {0.8f,0.7f,0.7f,0.85f}, true);
+            snprintf(buf, sizeof(buf), "KILLS  %d", kills);
+            drawText(buf, screenW/2, statY + 24, 2, {0.8f,0.7f,0.7f,0.85f}, true);
+
+            drawText("R - RESTART    ESC - MENU", screenW/2, statY + 70, 2, {0.6f,0.5f,0.5f,0.8f}, true);
+        }
 
         // --- FPS counter (bottom of screen) ----------------------------------
         if (showFPS) {

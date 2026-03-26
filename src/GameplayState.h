@@ -15,6 +15,7 @@
 #include "ViewModel.h"
 #include "Interactable.h"
 #include "Settings.h"
+#include "TextureGen.h"
 #include <SDL2/SDL.h>
 #include "gl.h"
 #include <glm/glm.hpp>
@@ -117,11 +118,22 @@ static Mesh buildWorldMesh(const std::vector<Wall>& walls) {
             float t = (ySpan > 0.01f) ? (y - yLo) / ySpan : 1.f;
             return col * glm::mix(0.52f, 1.0f, t);
         };
+
+        // Compute world-space UVs based on face orientation (normal)
+        // so textures tile at consistent density (1 repeat per 4 meters)
+        float texScale = 0.25f;
+        auto worldUV = [&](glm::vec3 p) -> glm::vec2 {
+            float ax = fabsf(n.x), ay = fabsf(n.y), az = fabsf(n.z);
+            if (ay > ax && ay > az)      return {p.x * texScale, p.z * texScale}; // floor/ceiling
+            else if (ax > az)            return {p.z * texScale, p.y * texScale}; // X-facing wall
+            else                         return {p.x * texScale, p.y * texScale}; // Z-facing wall
+        };
+
         unsigned int base = (unsigned int)verts.size();
-        verts.push_back({a, {0,0}, n, gc(a.y)});
-        verts.push_back({b, {1,0}, n, gc(b.y)});
-        verts.push_back({c, {1,1}, n, gc(c.y)});
-        verts.push_back({d, {0,1}, n, gc(d.y)});
+        verts.push_back({a, worldUV(a), n, gc(a.y)});
+        verts.push_back({b, worldUV(b), n, gc(b.y)});
+        verts.push_back({c, worldUV(c), n, gc(c.y)});
+        verts.push_back({d, worldUV(d), n, gc(d.y)});
         idx.insert(idx.end(), {base, base+1, base+2, base, base+2, base+3});
     };
 
@@ -155,6 +167,70 @@ static Mesh buildWorldMesh(const std::vector<Wall>& walls) {
     return m;
 }
 
+struct SplitWorldMeshes {
+    Mesh floor, walls, ceiling;
+};
+
+static SplitWorldMeshes buildSplitWorldMesh(const std::vector<Wall>& walls) {
+    std::vector<Vertex> floorV, wallV, ceilV;
+    std::vector<unsigned int> floorI, wallI, ceilI;
+
+    float texScale = 0.25f;
+
+    auto pushFace = [&](std::vector<Vertex>& verts, std::vector<unsigned int>& idx,
+                        glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3 d,
+                        glm::vec3 n, glm::vec3 col) {
+        float yLo = std::min({a.y, b.y, c.y, d.y});
+        float yHi = std::max({a.y, b.y, c.y, d.y});
+        float ySpan = yHi - yLo;
+        auto gc = [&](float y) -> glm::vec3 {
+            float t = (ySpan > 0.01f) ? (y - yLo) / ySpan : 1.f;
+            return col * glm::mix(0.52f, 1.0f, t);
+        };
+        auto worldUV = [&](glm::vec3 p) -> glm::vec2 {
+            float ax = fabsf(n.x), ay = fabsf(n.y), az = fabsf(n.z);
+            if (ay > ax && ay > az)      return {p.x * texScale, p.z * texScale};
+            else if (ax > az)            return {p.z * texScale, p.y * texScale};
+            else                         return {p.x * texScale, p.y * texScale};
+        };
+        unsigned int base = (unsigned int)verts.size();
+        verts.push_back({a, worldUV(a), n, gc(a.y)});
+        verts.push_back({b, worldUV(b), n, gc(b.y)});
+        verts.push_back({c, worldUV(c), n, gc(c.y)});
+        verts.push_back({d, worldUV(d), n, gc(d.y)});
+        idx.insert(idx.end(), {base, base+1, base+2, base, base+2, base+3});
+    };
+
+    auto pushBoxSplit = [&](const AABB& b, glm::vec3 col) {
+        glm::vec3 mn = b.min, mx = b.max;
+        // Side faces → wall batch
+        pushFace(wallV, wallI, {mx.x,mn.y,mn.z},{mx.x,mx.y,mn.z},{mx.x,mx.y,mx.z},{mx.x,mn.y,mx.z},{ 1, 0, 0}, col);
+        pushFace(wallV, wallI, {mn.x,mn.y,mx.z},{mn.x,mx.y,mx.z},{mn.x,mx.y,mn.z},{mn.x,mn.y,mn.z},{-1, 0, 0}, col);
+        pushFace(wallV, wallI, {mn.x,mn.y,mx.z},{mx.x,mn.y,mx.z},{mx.x,mx.y,mx.z},{mn.x,mx.y,mx.z},{ 0, 0, 1}, col);
+        pushFace(wallV, wallI, {mx.x,mn.y,mn.z},{mn.x,mn.y,mn.z},{mn.x,mx.y,mn.z},{mx.x,mx.y,mn.z},{ 0, 0,-1}, col);
+        // Top face → ceiling batch
+        pushFace(ceilV, ceilI, {mn.x,mx.y,mx.z},{mx.x,mx.y,mx.z},{mx.x,mx.y,mn.z},{mn.x,mx.y,mn.z},{ 0, 1, 0}, col);
+        // Bottom face for elevated objects → floor batch
+        if (b.min.y > 0.1f)
+            pushFace(floorV, floorI, {mn.x,mn.y,mn.z},{mx.x,mn.y,mn.z},{mx.x,mn.y,mx.z},{mn.x,mn.y,mx.z},{ 0,-1, 0}, col);
+    };
+
+    // Floor quad
+    pushFace(floorV, floorI, {-100,0, 90},{100,0, 90},{100,0,-240},{-100,0,-240},{0,1,0}, ArenaColor::Floor);
+    // Ceiling quad
+    pushFace(ceilV, ceilI, {-100,16,-240},{100,16,-240},{100,16,90},{-100,16,90},{0,-1,0}, ArenaColor::Ceiling);
+
+    for (int i = 0; i < (int)walls.size(); ++i) {
+        pushBoxSplit(walls[i].box, walls[i].color);
+    }
+
+    SplitWorldMeshes result;
+    result.floor.upload(floorV, floorI);
+    result.walls.upload(wallV, wallI);
+    result.ceiling.upload(ceilV, ceilI);
+    return result;
+}
+
 class GameplayState : public GameState {
 public:
     std::function<void()> onReturnToMenu;
@@ -176,7 +252,14 @@ public:
     EnemyRenderer  enemyRenderer;
 
     GLuint   whiteTex = 0;
+    GLuint   floorTex = 0;
+    GLuint   wallTex  = 0;
+    GLuint   ceilTex  = 0;
     Mesh     worldMesh;
+    // Split world geometry for per-surface texture binding
+    Mesh     floorMesh;
+    Mesh     wallMesh;
+    Mesh     ceilMesh;
 
     std::vector<Enemy>   enemies;
     std::vector<Wall>    allWalls;
@@ -203,6 +286,30 @@ public:
     int   killsThisCycle = 0;     // counts toward next grenade refill (every 2 kills)
     // Slot selection: 0 = revolver, 1 = shotgun
     int   activeWeapon   = 0;
+    int   pendingWeapon  = -1;       // weapon switch in progress (-1 = none)
+    float weaponSwitchTimer = 0.f;   // time until actual switch happens
+
+    // Recoil recovery — kick accumulates, then smoothly returns to 0
+    float recoilPitch = 0.f;
+
+    // Game stats
+    int   totalKills  = 0;
+    int   totalShots  = 0;
+    int   totalHits   = 0;
+    float elapsedTime = 0.f;
+    float peakStyle   = 0.f;
+    bool  arenaCleared = false;
+    float arenaTimer   = 0.f;    // time on win screen
+
+    // Wave system
+    int   waveNumber      = 1;
+    int   wavesPerRoom    = 3;
+    float waveBannerTimer = 0.f;
+    float wavePauseTimer  = 0.f;
+    int   waveEnemyStart  = 0;   // index of first enemy in current wave
+
+    // Footstep system
+    float footstepTimer = 0.f;
 
     int   dashCharges       = 2;
     float dashCooldown      = 0.f;
@@ -257,6 +364,7 @@ public:
     // Explosion particles — spawned by grenade blasts, rendered as GL_POINTS
     struct Particle {
         glm::vec3 pos{0.f}, vel{0.f};
+        glm::vec3 color{1.f, 0.5f, 0.05f};  // particle color
         float life = 0.f, maxLife = 0.f;
         bool  alive = false;
     };
@@ -340,6 +448,9 @@ public:
         glBindVertexArray(0);
 
         whiteTex = makeGreyTexture();
+        floorTex = TextureGen::generateGridFloor(128);
+        wallTex  = TextureGen::generateBrickWall(128);
+        ceilTex  = TextureGen::generateMetalCeiling(128);
         player.camera.aspectRatio = (float)SCREEN_W/SCREEN_H;
         player.camera.fov = settings ? settings->fov : 90.f;
 
@@ -348,6 +459,12 @@ public:
         allWalls = level.getAllWalls();
         spatialGrid.build(allWalls);
         worldMesh = buildWorldMesh(allWalls);
+        {
+            auto split = buildSplitWorldMesh(allWalls);
+            floorMesh = std::move(split.floor);
+            wallMesh  = std::move(split.walls);
+            ceilMesh  = std::move(split.ceiling);
+        }
         spawnPadMesh = buildSpawnPadMesh(level);
 
         spawnEnemiesForRoom(0);
@@ -366,6 +483,9 @@ public:
 
     ~GameplayState() {
         glDeleteTextures(1,&whiteTex);
+        glDeleteTextures(1,&floorTex);
+        glDeleteTextures(1,&wallTex);
+        glDeleteTextures(1,&ceilTex);
         if (tracerVAO)   glDeleteVertexArrays(1, &tracerVAO);
         if (tracerVBO)   glDeleteBuffers(1, &tracerVBO);
         if (particleVAO) glDeleteVertexArrays(1, &particleVAO);
@@ -378,21 +498,51 @@ public:
     void spawnEnemiesForRoom(int roomIdx) {
         if (roomIdx >= (int)level.rooms.size()) return;
         auto& room = level.rooms[roomIdx];
+        waveNumber = 1;
+        waveBannerTimer = 3.0f;
+        spawnWaveEnemies(roomIdx, 0);
+        room.unlocked = true;
+    }
+
+    void spawnWaveEnemies(int roomIdx, int wave) {
+        if (roomIdx >= (int)level.rooms.size()) return;
+        auto& room = level.rooms[roomIdx];
+        int totalSpawns = (int)room.enemySpawns.size();
+        int perWave = totalSpawns / wavesPerRoom;
+        int start = wave * perWave;
+        int end   = (wave == wavesPerRoom - 1) ? totalSpawns : start + perWave;
+
+        waveEnemyStart = (int)enemies.size();
+
         int groundIdx = 0;
-        for (auto& sp : room.enemySpawns) {
+        for (int i = start; i < end; ++i) {
+            auto& sp = room.enemySpawns[i];
             EnemyType t;
             if (sp.y > 5.f) {
                 t = EnemyType::FLYER;
             } else {
-                int tidx = groundIdx % 3;
-                t = (tidx == 0) ? EnemyType::GRUNT
-                  : (tidx == 1) ? EnemyType::SHOOTER
-                  :               EnemyType::STALKER;
+                // Later waves get harder enemy mixes
+                if (wave == 0) {
+                    // Wave 1: mostly grunts
+                    t = (groundIdx % 3 == 2) ? EnemyType::SHOOTER : EnemyType::GRUNT;
+                } else if (wave == 1) {
+                    // Wave 2: mixed
+                    int tidx = groundIdx % 3;
+                    t = (tidx == 0) ? EnemyType::GRUNT
+                      : (tidx == 1) ? EnemyType::SHOOTER
+                      :               EnemyType::STALKER;
+                } else {
+                    // Wave 3: harder mix with more stalkers
+                    int tidx = groundIdx % 4;
+                    t = (tidx == 0) ? EnemyType::GRUNT
+                      : (tidx == 1) ? EnemyType::STALKER
+                      : (tidx == 2) ? EnemyType::SHOOTER
+                      :               EnemyType::STALKER;
+                }
                 ++groundIdx;
             }
             enemies.push_back(Enemy(t, sp));
         }
-        room.unlocked = true;
     }
 
     void handleEvent(const SDL_Event& e) override {
@@ -418,12 +568,36 @@ public:
             }
         }
         if (e.type == SDL_MOUSEWHEEL) {
-            activeWeapon = (activeWeapon + 1) % 2;
+            int newWeapon = (activeWeapon + 1) % 2;
+            if (newWeapon != activeWeapon && pendingWeapon < 0) {
+                pendingWeapon = newWeapon;
+                weaponSwitchTimer = 0.15f;
+                viewModel.triggerSwitch();
+                audio.play("reload", 80);
+            }
         }
         if (e.type == SDL_KEYDOWN) {
-            if (e.key.keysym.sym == SDLK_1) activeWeapon = 0;
-            if (e.key.keysym.sym == SDLK_2) activeWeapon = 1;
+            auto trySwitch = [&](int newWeapon) {
+                if (newWeapon != activeWeapon && pendingWeapon < 0) {
+                    pendingWeapon = newWeapon;
+                    weaponSwitchTimer = 0.15f;
+                    viewModel.triggerSwitch();
+                    audio.play("reload", 80);
+                }
+            };
+            if (e.key.keysym.sym == SDLK_1) trySwitch(0);
+            if (e.key.keysym.sym == SDLK_2) trySwitch(1);
             if (e.key.keysym.sym == SDLK_g) pendingGrenade = true;
+            // Restart on R during death or win screen
+            if (e.key.keysym.sym == SDLK_r && (playerDead || arenaCleared)) {
+                restartGame();
+                return;
+            }
+            // Enter to restart on win/death
+            if (e.key.keysym.sym == SDLK_RETURN && (playerDead || arenaCleared)) {
+                restartGame();
+                return;
+            }
         }
         if (e.type == SDL_MOUSEMOTION) {
             float sens = settings ? settings->sensitivity : 0.1f;
@@ -433,10 +607,13 @@ public:
 
     void update(float dt) override {
         (void)dt;
-        if (paused || playerDead) {
+        if (paused || playerDead || arenaCleared) {
             if (playerDead) {
                 deadTimer += dt;
-                if (deadTimer > 3.f && onReturnToMenu) onReturnToMenu();
+                // No longer auto-return to menu; player presses R or Enter
+            }
+            if (arenaCleared) {
+                arenaTimer += dt;
             }
             return;
         }
@@ -473,10 +650,39 @@ public:
             allWalls  = level.getAllWalls();
             spatialGrid.build(allWalls);
             worldMesh = buildWorldMesh(allWalls);
+            auto split = buildSplitWorldMesh(allWalls);
+            floorMesh = std::move(split.floor);
+            wallMesh  = std::move(split.walls);
+            ceilMesh  = std::move(split.ceiling);
         }
 
         viewModel.update(floatDt, playerXZSpeed, player.onGround);
         fovKick = glm::mix(fovKick, 0.f, std::min(1.f, floatDt * 7.f));
+
+        // Weapon switch timer — swap at midpoint of animation
+        if (pendingWeapon >= 0) {
+            weaponSwitchTimer -= floatDt;
+            if (weaponSwitchTimer <= 0.f) {
+                activeWeapon  = pendingWeapon;
+                pendingWeapon = -1;
+            }
+        }
+
+        // Track gameplay stats
+        elapsedTime += floatDt;
+        if (styleSystem.style > peakStyle) peakStyle = styleSystem.style;
+
+        // Wave pause timer — spawn next wave when pause ends
+        if (wavePauseTimer > 0.f) {
+            wavePauseTimer -= floatDt;
+            if (wavePauseTimer <= 0.f) {
+                wavePauseTimer = 0.f;
+                spawnWaveEnemies(level.currentRoom, waveNumber - 1);
+            }
+        }
+
+        // Wave banner timer
+        if (waveBannerTimer > 0.f) waveBannerTimer -= floatDt;
 
         // Update explosion particles
         for (auto& p : particles) {
@@ -643,6 +849,23 @@ public:
                       grapple.active || dashMomentumTimer > 0.f, &spatialGrid);
         playerXZSpeed = glm::length(glm::vec2(player.velocity.x, player.velocity.z));
 
+        // --- Footsteps ---
+        if (player.onGround && playerXZSpeed > 1.5f && !player.sliding) {
+            footstepTimer -= dt;
+            if (footstepTimer <= 0.f) {
+                float interval = glm::clamp(0.55f / (playerXZSpeed / 5.f), 0.2f, 0.5f);
+                footstepTimer = interval;
+                audio.play("land", 40);  // reuse land sound at lower volume
+            }
+        } else {
+            footstepTimer = 0.f;
+        }
+
+        // Landing sound
+        if (justLanded && !slamming) {
+            audio.play("land", 70);
+        }
+
         // --- Shooting ---
         revolverTimer    = std::max(0.f, revolverTimer    - dt);
         shotgunTimer     = std::max(0.f, shotgunTimer     - dt);
@@ -678,12 +901,14 @@ public:
         }
 
         // Consume event-driven clicks — fire once per click event (reliable on trackpads)
-        if (pendingFire && revolverTimer <= 0.f && !reloading && revolverAmmo > 0) {
+        // Block firing during weapon switch animation
+        bool switchBlocked = (pendingWeapon >= 0);
+        if (pendingFire && revolverTimer <= 0.f && !reloading && revolverAmmo > 0 && !switchBlocked) {
             fireRevolver();
         }
         pendingFire = false;
 
-        if (pendingShotgun && shotgunTimer <= 0.f && !shotgunReloading && shotgunAmmo > 0) {
+        if (pendingShotgun && shotgunTimer <= 0.f && !shotgunReloading && shotgunAmmo > 0 && !switchBlocked) {
             fireShotgun();
         }
         pendingShotgun = false;
@@ -692,6 +917,15 @@ public:
             throwGrenade();
         }
         pendingGrenade = false;
+
+        // --- Recoil recovery ---
+        if (recoilPitch > 0.f) {
+            float recovery = 12.f * dt;  // degrees/sec recovery rate
+            float applied  = std::min(recovery, recoilPitch);
+            player.camera.pitch -= applied;
+            recoilPitch -= applied;
+            player.camera.pitch = glm::clamp(player.camera.pitch, -89.f, 89.f);
+        }
 
         // --- Enemy & projectile update ---
         for (auto& e : enemies) {
@@ -735,6 +969,7 @@ public:
 
                 spawnExplosionParticles(boomPos, boomRadius);
                 shakeTimer = 0.5f; shakeIntensity = 0.12f;
+                audio.play("explosion");
 
                 for (auto& e : enemies) {
                     if (!e.alive) continue;
@@ -746,7 +981,7 @@ public:
                         styleSystem.heal(5.f);
                         ui.onHit(!e.alive);
                         if (!e.alive) {
-                            onEnemyKilled();
+                            onEnemyKilled(e.position, getEnemyColor(e.type));
                             hitStopFrames = glm::max(hitStopFrames, 3);
                         }
                     }
@@ -769,7 +1004,7 @@ public:
             bool killed = !e.alive;
             ui.onHit(killed);
             if (killed) {
-                onEnemyKilled();
+                onEnemyKilled(e.position, getEnemyColor(e.type));
                 hitStopFrames = glm::max(hitStopFrames, 2);  // 2-frame freeze on kill
             }
         }
@@ -778,6 +1013,7 @@ public:
         for (auto& exp : result.explosions) {
             spawnExplosionParticles(exp.pos, exp.radius);
             shakeTimer = 0.35f; shakeIntensity = 0.07f;
+            audio.play("explosion");
             for (auto& e : enemies) {
                 if (!e.alive) continue;
                 float d = glm::length(e.position - exp.pos);
@@ -787,7 +1023,7 @@ public:
                     styleSystem.addStyle(15.f);
                     styleSystem.heal(3.f);
                     ui.onHit(!e.alive);
-                    if (!e.alive) onEnemyKilled();
+                    if (!e.alive) onEnemyKilled(e.position, getEnemyColor(e.type));
                 }
             }
             // Check player self-damage (if too close)
@@ -807,6 +1043,15 @@ public:
             audio.play("player_hit");
             invincFrames = 0.3f;
             grapple.release();
+            // Damage direction indicator: find the source projectile
+            for (auto& p : projSystem.pool) {
+                if (!p.isPlayer && !p.alive) {
+                    glm::vec3 toProj = p.position - player.camera.position;
+                    float angle = atan2f(toProj.x, toProj.z) - glm::radians(player.camera.yaw + 90.f);
+                    ui.onDamageFrom(angle);
+                    break;
+                }
+            }
         }
 
         if (shakeTimer > 0.f) shakeTimer -= dt;
@@ -826,29 +1071,80 @@ public:
     }
 
     void checkRoomClear() {
+        if (wavePauseTimer > 0.f) return;  // between waves
+
         int roomIdx = level.currentRoom;
         if (roomIdx >= (int)level.rooms.size()) return;
         auto& room = level.rooms[roomIdx];
         if (room.cleared) return;
 
-        int enemyStart = 0;
-        for (int r = 0; r < roomIdx; ++r)
-            enemyStart += (int)level.rooms[r].enemySpawns.size();
-
+        // Check if all enemies from current wave are dead
         bool allDead = true;
-        for (int i = enemyStart; i < enemyStart+(int)room.enemySpawns.size() && i < (int)enemies.size(); ++i) {
+        for (int i = waveEnemyStart; i < (int)enemies.size(); ++i) {
             if (enemies[i].alive) { allDead = false; break; }
         }
 
         if (allDead) {
-            room.cleared = true;
-            if (roomIdx + 1 < (int)level.rooms.size()) {
-                level.currentRoom++;
-                spawnEnemiesForRoom(level.currentRoom);
-                allWalls = level.getAllWalls();
-                spatialGrid.build(allWalls);
-                worldMesh = buildWorldMesh(allWalls);
+            int currentWave = waveNumber - 1;  // 0-based
+            if (currentWave + 1 < wavesPerRoom) {
+                // More waves in this room
+                waveNumber++;
+                wavePauseTimer  = 3.0f;
+                waveBannerTimer = 3.0f;
+            } else {
+                // Room cleared — all waves done
+                room.cleared = true;
+                if (roomIdx + 1 < (int)level.rooms.size()) {
+                    level.currentRoom++;
+                    spawnEnemiesForRoom(level.currentRoom);
+                    allWalls = level.getAllWalls();
+                    spatialGrid.build(allWalls);
+                    worldMesh = buildWorldMesh(allWalls);
+                    auto split = buildSplitWorldMesh(allWalls);
+                    floorMesh = std::move(split.floor);
+                    wallMesh  = std::move(split.walls);
+                    ceilMesh  = std::move(split.ceiling);
+                } else {
+                    // All rooms cleared — arena victory!
+                    arenaCleared = true;
+                    arenaTimer   = 0.f;
+                }
             }
+        }
+    }
+
+    void spawnDeathParticles(glm::vec3 center, glm::vec3 enemyColor) {
+        int spawned = 0;
+        for (auto& p : particles) {
+            if (p.alive) continue;
+            if (spawned >= 8) break;
+            float rx = ((rand() % 2001) - 1000) / 1000.f;
+            float ry = ((rand() % 1000)) / 1000.f * 0.8f + 0.3f;
+            float rz = ((rand() % 2001) - 1000) / 1000.f;
+            float len = sqrtf(rx*rx + ry*ry + rz*rz);
+            if (len < 0.001f) { rx=0; ry=1; rz=0; len=1; }
+            float speed = 4.f + (rand() % 1000) / 1000.f * 6.f;
+            p.pos     = center + glm::vec3{0, 0.9f, 0};
+            p.vel     = glm::vec3{rx,ry,rz} / len * speed;
+            p.maxLife = 0.6f + (rand() % 1000) / 1000.f * 0.5f;
+            p.life    = p.maxLife;
+            p.color   = enemyColor;
+            p.alive   = true;
+            ++spawned;
+        }
+    }
+
+    void spawnShellCasing(glm::vec3 origin, glm::vec3 right) {
+        for (auto& p : particles) {
+            if (p.alive) continue;
+            p.pos     = origin + right * 0.15f;
+            p.vel     = right * 2.5f + glm::vec3{0, 3.f, 0}
+                      + glm::vec3{((rand()%100)-50)/100.f, 0, ((rand()%100)-50)/100.f};
+            p.maxLife = 0.7f;
+            p.life    = p.maxLife;
+            p.color   = {0.85f, 0.7f, 0.15f}; // golden brass
+            p.alive   = true;
+            return;
         }
     }
 
@@ -944,10 +1240,22 @@ public:
         }
     }
 
-    void onEnemyKilled() {
+    static glm::vec3 getEnemyColor(EnemyType t) {
+        switch (t) {
+            case EnemyType::GRUNT:   return {0.8f,0.2f,0.2f};
+            case EnemyType::SHOOTER: return {0.2f,0.3f,0.9f};
+            case EnemyType::STALKER: return {0.8f,0.6f,0.0f};
+            case EnemyType::FLYER:   return {0.7f,0.1f,0.9f};
+        }
+        return {1,1,1};
+    }
+
+    void onEnemyKilled(glm::vec3 deathPos = {0,0,0}, glm::vec3 deathColor = {0.8f,0.2f,0.2f}) {
+        ++totalKills;
         styleSystem.addStyle(30.f);
         styleSystem.heal(5.f);
         audio.play("enemy_death");
+        spawnDeathParticles(deathPos, deathColor);
         if (styleSystem.overdrive) dashCharges = 2;
         // Grenade refill: every 2 kills grants 1 grenade (up to max)
         killsThisCycle++;
@@ -1003,10 +1311,16 @@ public:
             spawnDecal(enemies[hitEnemy].position);
             bool killed = !enemies[hitEnemy].alive;
             ui.onHit(killed);
-            if (killed) { onEnemyKilled(); hitStopFrames = glm::max(hitStopFrames, 2); }
+            if (killed) {
+                glm::vec3 ec = getEnemyColor(enemies[hitEnemy].type);
+                onEnemyKilled(enemies[hitEnemy].position, ec);
+                hitStopFrames = glm::max(hitStopFrames, 2);
+            }
         }
 
-        // Camera kick
+        // Camera kick — accumulate recoil (recovered smoothly in physicsTick)
+        recoilPitch += 0.7f;
+        recoilPitch = std::min(recoilPitch, 12.f);
         player.camera.pitch += 0.7f;
         player.camera.pitch = glm::clamp(player.camera.pitch, -89.f, 89.f);
 
@@ -1017,6 +1331,9 @@ public:
         shakeTimer       = 0.06f;
         shakeIntensity   = 0.012f;
         audio.play("revolver");
+        ++totalShots;
+        if (hitEnemy >= 0) ++totalHits;
+        spawnShellCasing(origin, player.camera.right());
 
         // Auto-reload when empty
         if (revolverAmmo <= 0) startReload();
@@ -1075,13 +1392,16 @@ public:
                 bool killed = !enemies[hitEnemy].alive;
                 ui.onHit(killed);
                 if (killed) {
-                    onEnemyKilled();
+                    glm::vec3 ec = getEnemyColor(enemies[hitEnemy].type);
+                    onEnemyKilled(enemies[hitEnemy].position, ec);
                     hitStopFrames = glm::max(hitStopFrames, 2);
                 }
             }
         }
 
-        // Camera kick — stronger than revolver
+        // Camera kick — stronger than revolver, with recoil recovery
+        recoilPitch += 2.2f;
+        recoilPitch = std::min(recoilPitch, 12.f);
         player.camera.pitch += 2.2f;
         player.camera.pitch = glm::clamp(player.camera.pitch, -89.f, 89.f);
 
@@ -1092,8 +1412,13 @@ public:
         shakeTimer       = 0.12f;
         shakeIntensity   = 0.025f;
         audio.play("shotgun");
+        ++totalShots;
+        // Eject 2 shell casings for shotgun
+        spawnShellCasing(origin, player.camera.right());
+        spawnShellCasing(origin + player.camera.right() * 0.1f, player.camera.right());
 
         if (shotgunAmmo <= 0) startShotgunReload();
+        else viewModel.triggerPump(); // pump animation after each shot
     }
 
     void throwGrenade() {
@@ -1127,6 +1452,12 @@ public:
         allWalls = level.getAllWalls();
         spatialGrid.build(allWalls);
         worldMesh = buildWorldMesh(allWalls);
+        {
+            auto split = buildSplitWorldMesh(allWalls);
+            floorMesh = std::move(split.floor);
+            wallMesh  = std::move(split.walls);
+            ceilMesh  = std::move(split.ceiling);
+        }
         spawnEnemiesForRoom(0);
         grenadeCount       = grenadeMax;
         killsThisCycle     = 0;
@@ -1143,6 +1474,23 @@ public:
         playerDead = false;
         deadTimer = 0.f;
         paused = false;
+        activeWeapon   = 0;
+        pendingWeapon  = -1;
+        weaponSwitchTimer = 0.f;
+        recoilPitch    = 0.f;
+        totalKills     = 0;
+        totalShots     = 0;
+        totalHits      = 0;
+        elapsedTime    = 0.f;
+        peakStyle      = 0.f;
+        arenaCleared   = false;
+        arenaTimer     = 0.f;
+        waveNumber     = 1;
+        waveBannerTimer = 0.f;
+        wavePauseTimer  = 0.f;
+        waveEnemyStart  = 0;
+        for (auto& di : ui.damageIndicators) di.timer = 0.f;
+        ui.damageIndicatorCount = 0;
         SDL_SetRelativeMouseMode(SDL_TRUE);
     }
 
@@ -1212,12 +1560,21 @@ public:
         }
         worldShader.setInt("uTexture",0);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D,whiteTex);
-        worldMesh.draw();
+        // Draw floor with grid texture
+        glBindTexture(GL_TEXTURE_2D, floorTex);
+        floorMesh.draw();
+        // Draw walls with brick texture
+        glBindTexture(GL_TEXTURE_2D, wallTex);
+        wallMesh.draw();
+        // Draw ceiling with metal texture
+        glBindTexture(GL_TEXTURE_2D, ceilTex);
+        ceilMesh.draw();
 
         // Spawn pads — pulsing green emissive quads on the floor
         {
             float glow = 0.4f + 0.35f * std::sin(spawnPadPulse);
+            // Pads pulse more when wave is incoming
+            if (wavePauseTimer > 0.f) glow += 0.3f;
             worldShader.setVec3("emissiveColor", {0.f, glow, glow * 0.4f});
             worldShader.setVec3("objectColor",   {0.f, 0.4f, 0.1f});
             spawnPadMesh.draw();
@@ -1240,11 +1597,55 @@ public:
             enemyRenderer.shader.setVec3(pn.c_str(), pointLightPos[i]);
             enemyRenderer.shader.setVec3(cn.c_str(), pointLightColor[i]);
         }
-        enemyRenderer.draw(enemies);
-        // Restore worldShader as active for subsequent draw calls
+        enemyRenderer.draw(enemies, elapsedTime);
+
+        // Enemy health bars — billboard quads above damaged enemies
         worldShader.use();
         worldShader.setMat4("projection", proj);
         worldShader.setMat4("view",       view);
+        glBindTexture(GL_TEXTURE_2D, whiteTex);
+        glDisable(GL_CULL_FACE);
+        for (auto& e : enemies) {
+            if (!e.alive) continue;
+            if (e.hitFlashTimer <= 0.f && e.health >= e.maxHealth) continue;
+            // Show health bar for 2s after damage
+            if (e.health >= e.maxHealth) continue;
+
+            float barW = 1.2f, barH = 0.12f;
+            float fill = e.health / e.maxHealth;
+            glm::vec3 barPos = e.position + glm::vec3{0, 2.2f, 0};
+
+            // Billboard: face camera
+            glm::vec3 camRight = glm::normalize(glm::vec3(view[0][0], view[1][0], view[2][0]));
+
+            // Background (dark)
+            glm::mat4 bgModel = glm::translate(glm::mat4(1.f), barPos);
+            bgModel = bgModel * glm::scale(glm::mat4(1.f), {barW, barH, 0.01f});
+            bgModel[0] = glm::vec4(camRight * barW, 0);
+            bgModel[1] = glm::vec4(0, barH, 0, 0);
+            bgModel[2] = glm::vec4(glm::normalize(glm::cross(camRight, glm::vec3(0,1,0))) * 0.01f, 0);
+            bgModel[3] = glm::vec4(barPos, 1);
+            worldShader.setMat4("model", bgModel);
+            worldShader.setVec3("objectColor", {0.1f, 0.1f, 0.1f});
+            worldShader.setVec3("emissiveColor", {0.f, 0.f, 0.f});
+            viewModel.cubeMesh.draw();
+
+            // Red fill
+            glm::vec3 fillPos = barPos - camRight * (barW * (1.f - fill) * 0.5f);
+            glm::mat4 fillModel(1.f);
+            fillModel[0] = glm::vec4(camRight * barW * fill, 0);
+            fillModel[1] = glm::vec4(0, barH * 0.8f, 0, 0);
+            fillModel[2] = glm::vec4(glm::normalize(glm::cross(camRight, glm::vec3(0,1,0))) * 0.02f, 0);
+            fillModel[3] = glm::vec4(fillPos, 1);
+            worldShader.setMat4("model", fillModel);
+            worldShader.setVec3("objectColor", {0.9f, 0.15f, 0.1f});
+            worldShader.setVec3("emissiveColor", {0.3f, 0.05f, 0.02f});
+            viewModel.cubeMesh.draw();
+        }
+        glEnable(GL_CULL_FACE);
+        worldShader.setVec3("emissiveColor", {0.f, 0.f, 0.f});
+        worldShader.setVec3("objectColor", {1.f, 1.f, 1.f});
+        worldShader.setMat4("model", glm::mat4(1.f));
 
         grapple.drawLine(player.position + glm::vec3{0,player.eyeHeight,0}, view, proj);
 
@@ -1262,6 +1663,8 @@ public:
         {
             float revolverFill = reloading ? (1.f - reloadTimer / RELOAD_TIME)
                                            : (float)revolverAmmo / (float)revolverAmmoMax;
+            float shotgunFill  = shotgunReloading ? (1.f - shotgunReloadTimer / SHOTGUN_RELOAD_TIME)
+                                                  : (shotgunTimer > 0.f ? (1.f - shotgunTimer / 0.55f) : 1.f);
             worldShader.use();
             worldShader.setVec3("lightDir",    glm::normalize(glm::vec3{0.4f,-1.f,0.3f}));
             worldShader.setVec3("lightColor",  {1.f,0.9f,0.8f});
@@ -1270,12 +1673,13 @@ public:
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, whiteTex);
             worldShader.setInt("uTexture", 0);
-            viewModel.draw(worldShader, renderCam, activeWeapon, revolverFill);
+            viewModel.draw(worldShader, renderCam, activeWeapon, revolverFill, shotgunFill);
             // Restore world projection/view after viewmodel (postProcess.endScene reads no uniforms)
             worldShader.setMat4("projection", proj);
             worldShader.setMat4("view",       view);
         }
 
+        postProcess.crtEnabled = settings ? settings->crtFilter : false;
         postProcess.endScene();
 
         float reloadProgress = reloading ? (1.f - reloadTimer / RELOAD_TIME) : 1.f;
@@ -1284,7 +1688,11 @@ public:
         ui.render(styleSystem, activeWeapon,
                   shotgunAmmo, shotgunAmmoMax, shotgunReloading, shotgunReloadProgress,
                   revolverAmmo, revolverAmmoMax, reloading, reloadProgress,
-                  nearInteractable);
+                  nearInteractable,
+                  arenaCleared, playerDead,
+                  totalKills, totalShots, totalHits,
+                  elapsedTime, peakStyle,
+                  waveNumber, waveBannerTimer);
     }
 
     void renderParticles(const glm::mat4& view, const glm::mat4& proj) {

@@ -6,6 +6,7 @@ struct GameSettings {
     float audioVolume = 1.0f;   // 0.0..1.0
     int   fpsCap      = 0;      // 0=uncapped,1=60,2=144,3=180,4=240
     bool  showFPS     = false;
+    bool  crtFilter   = false;  // CRT post-process effect
 
     int getFPSCapValue() const {
         static const int caps[] = {0,60,144,180,240};

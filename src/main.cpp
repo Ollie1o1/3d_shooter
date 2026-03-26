@@ -57,6 +57,8 @@ int main(int /*argc*/, char* /*argv*/[]) {
     audio.loadSound("enemy_death", "assets/sfx/enemy_death.wav");
     audio.loadSound("player_hit",  "assets/sfx/player_hit.wav");
     audio.loadSound("parry",       "assets/sfx/parry.wav");
+    audio.loadSound("telegraph",   "assets/sfx/telegraph.wav");
+    audio.loadSound("explosion",   "assets/sfx/explosion.wav");
 
     GameSettings settings; // shared settings object — persists for the process lifetime
 

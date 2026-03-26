@@ -32,8 +32,8 @@ public:
     GLuint quadVAO = 0, quadVBO = 0;
     int screenW, screenH;
 
-    // Settings page items: 0=FOV 1=SENS 2=AUDIO 3=FPS_CAP 4=SHOW_FPS 5=BACK
-    static constexpr int NUM_SETTINGS = 6;
+    // Settings page items: 0=FOV 1=SENS 2=AUDIO 3=FPS_CAP 4=SHOW_FPS 5=CRT 6=BACK
+    static constexpr int NUM_SETTINGS = 7;
 
     MenuState(int w, int h) : screenW(w), screenH(h) {
         uiShader.loadFiles("src/ui.vert", "src/ui.frag");
@@ -184,7 +184,7 @@ private:
                 case SDLK_RIGHT: adjustSetting(selected,  1); break;
                 case SDLK_RETURN:
                 case SDLK_SPACE:
-                    if (selected == 5) { page = 0; selected = 1; }
+                    if (selected == 6) { page = 0; selected = 1; }
                     else adjustSetting(selected, 1);
                     break;
                 case SDLK_ESCAPE:
@@ -212,6 +212,9 @@ private:
             case 4: // Show FPS toggle
                 settings->showFPS = !settings->showFPS;
                 break;
+            case 5: // CRT filter toggle
+                settings->crtFilter = !settings->crtFilter;
+                break;
             default: break;
         }
     }
@@ -230,6 +233,7 @@ private:
             snprintf(items[2].value, 32, "%.0f%%", settings->audioVolume * 100.f);
             snprintf(items[3].value, 32, "%s", settings->getFPSCapLabel());
             snprintf(items[4].value, 32, "%s", settings->showFPS ? "ON" : "OFF");
+            snprintf(items[5].value, 32, "%s", settings->crtFilter ? "ON" : "OFF");
         } else {
             for (int i = 0; i < NUM_SETTINGS; ++i) strcpy(items[i].value, "-");
         }
@@ -238,8 +242,9 @@ private:
         items[2].label = "AUDIO";
         items[3].label = "FPS CAP";
         items[4].label = "SHOW FPS";
-        items[5].label = "BACK";
-        strcpy(items[5].value, "");
+        items[5].label = "CRT FILTER";
+        items[6].label = "BACK";
+        strcpy(items[6].value, "");
 
         int baseY = screenH/2 - 155;
         for (int i = 0; i < NUM_SETTINGS; ++i) {
@@ -261,7 +266,7 @@ private:
             glm::vec4 labelC = isSel ? glm::vec4{0.9f,0.6f,0.1f,1.f} : glm::vec4{0.6f,0.6f,0.65f,0.9f};
             drawText(items[i].label, screenW/2 - 200, iy + 16, 2, labelC, false);
 
-            if (i < 5) {
+            if (i < 6) {
                 // arrows + value
                 if (isSel) {
                     drawText("<", screenW/2 + 60, iy + 16, 2, {1.f,0.6f,0.1f,0.9f}, false);

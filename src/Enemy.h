@@ -400,14 +400,40 @@ public:
     }
 
     // Call after setting all lighting uniforms on `shader`.
-    void draw(const std::vector<Enemy>& enemies) {
+    void draw(const std::vector<Enemy>& enemies, float gameTime = 0.f) {
         // Build per-instance data on the CPU
         static InstanceData buf[MAX_INSTANCES];
         int count = 0;
         for (auto& e : enemies) {
             if (!e.alive || count >= MAX_INSTANCES) continue;
             auto& inst = buf[count++];
-            inst.model = glm::translate(glm::mat4(1.f), e.position);
+
+            glm::vec3 pos = e.position;
+
+            // Per-type scale for distinct silhouettes
+            glm::vec3 sc(1.f);
+            float rotY = 0.f;
+            switch (e.type) {
+                case EnemyType::GRUNT:
+                    sc = {1.2f, 0.95f, 1.0f};  // wider, slightly shorter
+                    break;
+                case EnemyType::SHOOTER:
+                    sc = {0.7f, 1.15f, 0.7f};  // tall and thin
+                    break;
+                case EnemyType::STALKER:
+                    sc = {0.9f, 0.75f, 1.2f};  // low and elongated
+                    break;
+                case EnemyType::FLYER:
+                    sc = {0.7f, 0.7f, 0.7f};   // smaller diamond shape
+                    rotY = 45.f;                // rotated 45° for diamond look
+                    pos.y += sinf(gameTime * 3.f + pos.x * 0.5f) * 0.3f; // bob
+                    break;
+            }
+
+            inst.model = glm::translate(glm::mat4(1.f), pos);
+            if (rotY != 0.f)
+                inst.model = inst.model * glm::rotate(glm::mat4(1.f), glm::radians(rotY), {0,1,0});
+            inst.model = inst.model * glm::scale(glm::mat4(1.f), sc);
 
             switch (e.type) {
                 case EnemyType::GRUNT:   inst.color={0.8f,0.2f,0.2f}; inst.emissive={0,0,0}; break;
