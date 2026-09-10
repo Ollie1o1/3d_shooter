@@ -78,7 +78,7 @@ make clean        # delete binary
 | E | Interact |
 | Left Ctrl / C | Crouch / Ground slam |
 | Enter | Restart (on death/win) |
-| Escape | Quit to menu |
+| Escape | Pause / Resume (quits to menu from death/win screens) |
 
 ---
 
@@ -134,11 +134,17 @@ make clean        # delete binary
 - Damage direction indicators on screen edges
 - Dithered grapple rope rendering
 
+### Audio
+- **Procedural sound effects** — synthesized in Python (`tools/gen_sfx.py`), not external recordings; covers jumps, landings, dashing, slams, both weapons, reloads, grapple, hits, kills, parries, enemy telegraphs, and explosions
+- Regenerate/tweak by editing the generator and running `python3 tools/gen_sfx.py`
+
 ### Game Flow
 - **Win screen** — "ARENA CLEARED" with stats (time, kills, accuracy, letter grade S/A/B/C/D)
 - **Death screen** — "YOU DIED" with red vignette and stats
+- **Pause menu** — Escape mid-run pauses (Resume / Quit to Menu) instead of ending the run
 - Quick restart with R or Enter from either screen
 - Settings menu: FOV, sensitivity, audio volume, FPS cap, show FPS, CRT filter
+- Settings persist across launches (`settings.cfg`, written next to the binary)
 
 ---
 
@@ -181,7 +187,9 @@ make clean        # delete binary
 │   └── bloom_composite.frag  # bloom composite pass
 ├── assets/
 │   ├── level.txt             # level geometry (hot-editable)
-│   └── sfx/                  # sound effects (.wav)
+│   └── sfx/                  # procedurally-generated sound effects (.wav)
+├── tools/
+│   └── gen_sfx.py            # synthesizes assets/sfx/*.wav — no external audio files
 ├── Makefile
 └── README.md
 ```

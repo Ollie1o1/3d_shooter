@@ -7,6 +7,9 @@ shooter.exe
 *.log
 build_out.txt
 
+# Runtime-generated
+settings.cfg
+
 # macOS
 .DS_Store
 .AppleDouble

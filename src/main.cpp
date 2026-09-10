@@ -61,6 +61,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
     audio.loadSound("explosion",   "assets/sfx/explosion.wav");
 
     GameSettings settings; // shared settings object — persists for the process lifetime
+    settings.load();       // restore FOV/sensitivity/volume/FPS cap/CRT from settings.cfg, if present
 
     std::unique_ptr<GameState> currentState;
     bool running = true;
@@ -85,9 +86,13 @@ int main(int /*argc*/, char* /*argv*/[]) {
     goToMenu();
 
     Uint64 freq      = SDL_GetPerformanceFrequency();
+    Uint64 lastCounter = SDL_GetPerformanceCounter();
 
     while (running) {
         Uint64 frameStart = SDL_GetPerformanceCounter();
+        float frameDt = (float)((double)(frameStart - lastCounter) / (double)freq);
+        lastCounter = frameStart;
+        if (frameDt > 0.25f) frameDt = 0.25f; // clamp huge stalls (breakpoints, window drag)
 
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
@@ -95,7 +100,7 @@ int main(int /*argc*/, char* /*argv*/[]) {
             if (currentState) currentState->handleEvent(e);
         }
         if (currentState) {
-            currentState->update(1.f / 60.f);
+            currentState->update(frameDt);
             currentState->render();
         }
         SDL_GL_SwapWindow(window);

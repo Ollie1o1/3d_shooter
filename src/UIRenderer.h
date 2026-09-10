@@ -378,6 +378,46 @@ public:
         glEnable(GL_CULL_FACE);
     }
 
+    // Pause overlay — drawn on top of the (frozen) gameplay frame.
+    void renderPause(int selected) {
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        shader.use();
+        glm::mat4 ortho = glm::ortho(0.f,(float)screenW,(float)screenH,0.f);
+        shader.setMat4("projection", ortho);
+        glBindVertexArray(quadVAO);
+
+        drawRect(0, 0, screenW, screenH, {0.0f, 0.0f, 0.02f, 0.55f});
+        drawText("PAUSED", screenW/2, screenH/2 - 120, 4, {0.9f, 0.9f, 0.95f, 0.95f}, true);
+
+        const char* labels[2] = { "RESUME", "QUIT TO MENU" };
+        for (int i = 0; i < 2; ++i) {
+            bool  isSel = (selected == i);
+            int   by    = screenH/2 - 20 + i * 60;
+            glm::vec4 bg = isSel
+                ? glm::vec4{0.15f,0.1f,0.05f,0.92f}
+                : glm::vec4{0.08f,0.08f,0.10f,0.85f};
+            drawRect(screenW/2-130, by, 260, 46, bg);
+            glm::vec4 borderC = isSel
+                ? glm::vec4{1.f,0.6f,0.1f,0.9f}
+                : glm::vec4{0.3f,0.3f,0.35f,0.5f};
+            drawRect(screenW/2-130, by,    260, 2, borderC);
+            drawRect(screenW/2-130, by+44, 260, 2, borderC);
+            glm::vec4 txtC = isSel ? glm::vec4{1.f,0.7f,0.15f,1.f} : glm::vec4{0.7f,0.7f,0.75f,0.9f};
+            drawText(labels[i], screenW/2, by+14, 2, txtC, true);
+        }
+
+        drawText("ESC TO RESUME  |  UP/DOWN + ENTER OR CLICK TO SELECT",
+                 screenW/2, screenH/2 + 140, 1, {0.5f,0.5f,0.55f,0.8f}, true);
+
+        glDisable(GL_BLEND);
+        glEnable(GL_DEPTH_TEST);
+        glEnable(GL_CULL_FACE);
+    }
+
 private:
     void drawText(const char* text, int px, int py, int scale, glm::vec4 color, bool centred) {
         int len   = (int)strlen(text);

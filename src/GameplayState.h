@@ -343,7 +343,8 @@ public:
     float fovKick        = 0.f;      // extra FOV added on dash, fades back to 0
     float playerXZSpeed  = 0.f;      // current horizontal speed (for camera bob)
 
-    bool  paused     = false;
+    bool  paused        = false;
+    int   pauseSelected = 0;   // 0=RESUME 1=QUIT TO MENU
     bool  playerDead = false;
     float deadTimer  = 0.f;
 
@@ -546,12 +547,22 @@ public:
     }
 
     void handleEvent(const SDL_Event& e) override {
-        if (e.type == SDL_KEYDOWN) {
-            if (e.key.keysym.sym == SDLK_ESCAPE) {
+        if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) {
+            if (playerDead || arenaCleared) {
                 SDL_SetRelativeMouseMode(SDL_FALSE);
                 if (onReturnToMenu) onReturnToMenu();
                 return;
             }
+            paused = !paused;
+            pauseSelected = 0;
+            SDL_SetRelativeMouseMode(paused ? SDL_FALSE : SDL_TRUE);
+            return;
+        }
+        if (paused) {
+            handlePauseEvent(e);
+            return;
+        }
+        if (e.type == SDL_KEYDOWN) {
             if (e.key.keysym.sym == SDLK_e) {
                 int idx = findInteractTarget();
                 if (idx >= 0 && interactables[idx].onInteract)
@@ -602,6 +613,48 @@ public:
         if (e.type == SDL_MOUSEMOTION) {
             float sens = settings ? settings->sensitivity : 0.1f;
             player.applyMouseLook((float)e.motion.xrel, (float)e.motion.yrel, sens);
+        }
+    }
+
+    int pauseButtonY(int i) const { return SCREEN_H/2 - 20 + i * 60; }
+
+    void activatePauseItem(int idx) {
+        if (idx == 0) {
+            paused = false;
+            SDL_SetRelativeMouseMode(SDL_TRUE);
+        } else {
+            SDL_SetRelativeMouseMode(SDL_FALSE);
+            if (onReturnToMenu) onReturnToMenu();
+        }
+    }
+
+    void handlePauseEvent(const SDL_Event& e) {
+        if (e.type == SDL_KEYDOWN) {
+            switch (e.key.keysym.sym) {
+                case SDLK_UP:
+                case SDLK_DOWN:
+                    pauseSelected = 1 - pauseSelected; break;
+                case SDLK_RETURN:
+                case SDLK_SPACE:
+                    activatePauseItem(pauseSelected); break;
+                default: break;
+            }
+        }
+        if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
+            int mx = e.button.x, my = e.button.y;
+            for (int i = 0; i < 2; ++i) {
+                int by = pauseButtonY(i);
+                if (mx > SCREEN_W/2-130 && mx < SCREEN_W/2+130 && my > by && my < by+46)
+                    activatePauseItem(i);
+            }
+        }
+        if (e.type == SDL_MOUSEMOTION) {
+            int mx = e.motion.x, my = e.motion.y;
+            for (int i = 0; i < 2; ++i) {
+                int by = pauseButtonY(i);
+                if (mx > SCREEN_W/2-130 && mx < SCREEN_W/2+130 && my > by && my < by+46)
+                    pauseSelected = i;
+            }
         }
     }
 
@@ -1474,6 +1527,7 @@ public:
         playerDead = false;
         deadTimer = 0.f;
         paused = false;
+        pauseSelected = 0;
         activeWeapon   = 0;
         pendingWeapon  = -1;
         weaponSwitchTimer = 0.f;
@@ -1693,6 +1747,8 @@ public:
                   totalKills, totalShots, totalHits,
                   elapsedTime, peakStyle,
                   waveNumber, waveBannerTimer);
+
+        if (paused) ui.renderPause(pauseSelected);
     }
 
     void renderParticles(const glm::mat4& view, const glm::mat4& proj) {

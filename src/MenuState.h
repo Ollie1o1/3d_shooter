@@ -217,6 +217,7 @@ private:
                 break;
             default: break;
         }
+        settings->save();
     }
 
     void renderSettings() {
