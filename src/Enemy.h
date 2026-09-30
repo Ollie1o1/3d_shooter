@@ -58,6 +58,12 @@ struct Enemy {
     float      telegraphDuration = 0.4f; // set per-type in constructor
     bool       telegraphJustStarted = false; // true for exactly one tick when wind-up begins
 
+    // Melee (STALKER): the wind-up ends in a lunge instead of a projectile.
+    bool       meleeWindup = false;  // current telegraph is a melee wind-up
+    bool       meleeHit    = false;  // true for exactly one tick when a lunge connects
+    static constexpr float MELEE_RANGE  = 2.6f;
+    static constexpr float MELEE_DAMAGE = 12.f;
+
     static constexpr float FLOOR_Y = 0.f;
     static constexpr float RADIUS  = 0.5f;
     static constexpr float HEIGHT  = 1.8f;
@@ -104,6 +110,7 @@ struct Enemy {
         if (hitFlashTimer     > 0.f) hitFlashTimer -= dt;
 
         telegraphJustStarted = false; // consumed by GameplayState each tick
+        meleeHit             = false;
 
         bool fireProjectile = false;
 
@@ -118,6 +125,16 @@ struct Enemy {
         glm::vec3 toPlayer = playerPos - position;
         float dist = glm::length(toPlayer);
         glm::vec3 dirToPlayer = dist > 0.001f ? toPlayer / dist : glm::vec3{1,0,0};
+
+        // A melee wind-up resolves as a hit (if still in reach), never a projectile.
+        // Horizontal distance: the player's camera sits ~1.7 m above enemy feet.
+        if (fireProjectile && meleeWindup) {
+            fireProjectile = false;
+            meleeWindup    = false;
+            glm::vec2 flat{toPlayer.x, toPlayer.z};
+            if (glm::length(flat) < MELEE_RANGE && std::fabs(toPlayer.y) < 3.f)
+                meleeHit = true;
+        }
 
         // Velocity is SET directly each tick (not accumulated) to prevent speed runaway.
         // Only gravity and knockback are accumulated. Horizontal speed caps are stable.
@@ -194,11 +211,27 @@ struct Enemy {
                         strafeDir  *= -1.f;
                     }
                     float speed = (dist < 5.f) ? 6.5f : 5.f;
-                    glm::vec3 moveVec = dirToPlayer + strafeAxis * 0.7f * strafeDir;
-                    float mvLen = glm::length(moveVec);
+                    // Stop strafing when close so the charge actually closes in
+                    float strafeMix = (dist < 5.f) ? 0.15f : 0.7f;
+                    glm::vec3 moveVec = dirToPlayer + strafeAxis * strafeMix * strafeDir;
+                    if (meleeWindup) {
+                        // Wind-up: brief crouch-stall, then lunge on the last frames
+                        speed    = (telegraphTimer < 0.1f) ? 14.f : 1.f;
+                        moveVec  = dirToPlayer;
+                    }
+                    float mvLen = glm::length(glm::vec2(moveVec.x, moveVec.z));
                     if (mvLen > 0.001f) {
                         velocity.x = (moveVec.x / mvLen) * speed;
                         velocity.z = (moveVec.z / mvLen) * speed;
+                    }
+                    attackTimer += dt;
+                    glm::vec2 flat{toPlayer.x, toPlayer.z};
+                    if (attackTimer >= 1.1f && telegraphTimer <= 0.f &&
+                        glm::length(flat) < MELEE_RANGE + 1.5f) {
+                        attackTimer          = 0.f;
+                        telegraphTimer       = telegraphDuration;
+                        telegraphJustStarted = true;
+                        meleeWindup          = true;
                     }
                 }
                 break;

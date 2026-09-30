@@ -103,7 +103,7 @@ public:
                 bool showWin = false, bool showDeath = false,
                 int kills = 0, int shots = 0, int hits = 0,
                 float gameTime = 0.f, float peakStyle = 0.f,
-                int waveNum = 0, float waveBanner = 0.f) {
+                const char* bannerText = "", float waveBanner = 0.f) {
         glDisable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE);
         glEnable(GL_BLEND);
@@ -315,13 +315,13 @@ public:
             if (floatingNums[r].timer > 0.f) floatingNums[w++] = floatingNums[r];
         floatingNumCount = w;
 
-        // --- Wave banner ---
+        // --- Wave / room banner ---
         if (waveBanner > 0.f) {
             float alpha = std::min(waveBanner, 1.f);
-            char waveBuf[32];
-            snprintf(waveBuf, sizeof(waveBuf), "WAVE %d", waveNum);
-            drawRect(screenW/2 - 120, screenH/2 - 40, 240, 50, {0.1f, 0.1f, 0.15f, alpha * 0.7f});
-            drawText(waveBuf, screenW/2, screenH/2 - 20, 3, {1.f, 0.9f, 0.3f, alpha}, true);
+            int   textW = (int)strlen(bannerText) * 21 + 40; // rough fit for scale-3 text
+            int   boxW  = std::max(240, textW);
+            drawRect(screenW/2 - boxW/2, screenH/2 - 40, boxW, 50, {0.1f, 0.1f, 0.15f, alpha * 0.7f});
+            drawText(bannerText, screenW/2, screenH/2 - 20, 3, {1.f, 0.9f, 0.3f, alpha}, true);
         }
 
         // --- Win screen ---
@@ -372,6 +372,54 @@ public:
             snprintf(buf, sizeof(buf), "FPS %d", currentFPS);
             drawText(buf, screenW/2, screenH - 18, 2, {0.9f,0.9f,0.2f,0.85f}, true);
         }
+
+        glDisable(GL_BLEND);
+        glEnable(GL_DEPTH_TEST);
+        glEnable(GL_CULL_FACE);
+    }
+
+    // Persistent enemies-remaining counter, shown during active combat.
+    void renderObjective(int enemiesRemaining, bool show) {
+        if (!show) return;
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        shader.use();
+        glm::mat4 ortho = glm::ortho(0.f,(float)screenW,(float)screenH,0.f);
+        shader.setMat4("projection", ortho);
+        glBindVertexArray(quadVAO);
+
+        char buf[32];
+        snprintf(buf, sizeof(buf), "ENEMIES REMAINING: %d", enemiesRemaining);
+        drawRect(screenW/2 - 130, 14, 260, 26, {0.05f,0.05f,0.08f,0.55f});
+        drawText(buf, screenW/2, 21, 1, {0.9f,0.85f,0.7f,0.9f}, true);
+
+        glDisable(GL_BLEND);
+        glEnable(GL_DEPTH_TEST);
+        glEnable(GL_CULL_FACE);
+    }
+
+    // Fading control legend shown for the first few seconds of a run.
+    void renderControlHint(float alpha) {
+        if (alpha <= 0.f) return;
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        shader.use();
+        glm::mat4 ortho = glm::ortho(0.f,(float)screenW,(float)screenH,0.f);
+        shader.setMat4("projection", ortho);
+        glBindVertexArray(quadVAO);
+
+        const char* line1 = "WASD MOVE  MOUSE LOOK  LMB FIRE  RMB GRAPPLE";
+        const char* line2 = "SPACE JUMP  SHIFT DASH  G GRENADE  F PARRY  E INTERACT";
+        int baseY = screenH - 90;
+        drawRect(screenW/2 - 290, baseY - 10, 580, 54, {0.05f,0.05f,0.08f, 0.5f*alpha});
+        drawText(line1, screenW/2, baseY,      1, {0.85f,0.85f,0.9f, 0.85f*alpha}, true);
+        drawText(line2, screenW/2, baseY + 22, 1, {0.85f,0.85f,0.9f, 0.85f*alpha}, true);
 
         glDisable(GL_BLEND);
         glEnable(GL_DEPTH_TEST);

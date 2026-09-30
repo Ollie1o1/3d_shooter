@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <cstdio>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
@@ -115,6 +116,7 @@ private:
             glGetProgramInfoLog(id, sizeof log, nullptr, log);
             glDeleteProgram(id);
             id = 0;
+            std::fprintf(stderr, "Shader link error:\n%s\n", log);
             throw std::runtime_error(std::string("Shader link error:\n") + log);
         }
 
@@ -124,6 +126,16 @@ private:
     }
 
     static GLuint compileStage(GLenum type, const char* src) {
+#ifdef __EMSCRIPTEN__
+        // Shaders are written as desktop GLSL 3.30 core; WebGL2 wants GLSL
+        // ES 3.00. The dialects are close enough that swapping the version
+        // line and declaring default precision is all that's needed.
+        std::string es = src;
+        auto nl = es.find('\n');
+        es = "#version 300 es\nprecision highp float;\nprecision highp int;\n"
+           + (nl == std::string::npos ? std::string() : es.substr(nl + 1));
+        src = es.c_str();
+#endif
         GLuint s = glCreateShader(type);
         glShaderSource(s, 1, &src, nullptr);
         glCompileShader(s);
@@ -134,6 +146,7 @@ private:
             char log[1024];
             glGetShaderInfoLog(s, sizeof log, nullptr, log);
             glDeleteShader(s);
+            std::fprintf(stderr, "Shader compile error:\n%s\n", log); // visible even where exceptions abort
             throw std::runtime_error(std::string("Shader compile error:\n") + log);
         }
         return s;

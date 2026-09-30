@@ -1,8 +1,10 @@
 # OVERDRIVE
 
+![OVERDRIVE gameplay: dashing through the arena, firing the revolver and throwing a grenade](docs/overdrive.gif)
+
 A 3D arena shooter built with **SDL2**, **OpenGL 3.3 Core Profile**, and **GLM**. ULTRAKILL-inspired movement with grapple hook, dashing, multi-weapon combat, style scoring, wave-based progression, and post-processing effects.
 
-Builds and runs on **macOS** and **Windows** (via MSYS2). Linux support is straightforward but untested.
+Builds and runs on **macOS**, **Windows** (via MSYS2), and **in the browser** (WebAssembly + WebGL2 via Emscripten). It also builds and passes its physics tests on **Linux** (Ubuntu 24.04), though it hasn't been play-tested on a Linux desktop yet.
 
 ---
 
@@ -14,7 +16,14 @@ Builds and runs on **macOS** and **Windows** (via MSYS2). Linux support is strai
 brew install sdl2 sdl2_mixer glm llvm
 ```
 
-> The Makefile uses Homebrew LLVM instead of system clang because Apple's system clang ships without C++ stdlib headers. If you've changed your Homebrew prefix or macOS SDK version, update `LLVM` and `SDK` at the top of `Makefile`.
+> The Makefile prefers Homebrew LLVM (some Command Line Tools installs ship a `clang++` that can't find the C++ stdlib headers) and falls back to Apple clang if LLVM isn't installed. The macOS SDK path is detected with `xcrun`, so nothing needs editing.
+
+### Linux (Debian/Ubuntu)
+
+```sh
+sudo apt install g++ make libsdl2-dev libsdl2-mixer-dev libglew-dev libglm-dev
+make && make test
+```
 
 ### Windows (MSYS2)
 
@@ -34,15 +43,34 @@ pacman -S mingw-w64-ucrt-x86_64-gcc \
 
 ## Build & Run
 
-All commands must be run from the **project root** directory — shaders are loaded relative to `src/`.
+Shaders and assets are loaded relative to the binary, so `./shooter` can be launched from any directory.
 
 ### macOS
 
 ```sh
 make        # compile → ./shooter
 make run    # compile + run
-make clean  # delete binary
+make test   # headless physics tests (no window needed)
+make clean  # delete binaries
+
+./shooter --play   # skip the main menu and start a run
 ```
+
+### Browser (WebAssembly)
+
+The same C++ compiles to WebAssembly with [Emscripten](https://emscripten.org), rendering through WebGL2:
+
+```sh
+source ~/emsdk/emsdk_env.sh     # once per shell
+make web                        # → web/dist/ (≈1.5 MB: wasm + preloaded shaders/sounds)
+python3 -m http.server -d web/dist 8000   # open http://localhost:8000 (add ?play to skip the menu)
+```
+
+What the port needed (all behind `#ifdef __EMSCRIPTEN__`, so the desktop build is unchanged):
+
+- `gl.h` includes GLES3; `ShaderProgram` rewrites `#version 330 core` to `#version 300 es` plus default precision at load time, so one set of shaders serves both builds (keep them free of implicit int→float conversions and uniform initializers, which GLSL ES rejects).
+- `main.cpp` runs one `App::frame()` per `requestAnimationFrame` instead of a blocking loop.
+- Browsers use Escape to release the mouse, so losing pointer lock pauses the game; **P** also pauses.
 
 ### Windows
 
@@ -78,7 +106,7 @@ make clean        # delete binary
 | E | Interact |
 | Left Ctrl / C | Crouch / Ground slam |
 | Enter | Restart (on death/win) |
-| Escape | Pause / Resume (quits to menu from death/win screens) |
+| Escape / P | Pause / Resume (Escape quits to menu from death/win screens; in a browser, Escape releases the mouse and pauses) |
 
 ---
 
@@ -102,7 +130,7 @@ make clean        # delete binary
 ### Enemies
 - **GRUNT** — wide, tough (50 HP), patrol-shooter at 14-22m range
 - **SHOOTER** — tall and thin (35 HP), maintains distance, longest telegraph
-- **STALKER** — low and fast (25 HP), aggressive strafing, charges at close range
+- **STALKER** — low and fast (25 HP), aggressive strafing, closes in and lunges for a telegraphed melee hit (with knockback)
 - **FLYER** — small diamond shape (40 HP), hovers and orbits with bobbing animation
 - Each type has a distinct silhouette (per-type scaling and rotation)
 - Health bars appear above damaged enemies
@@ -153,7 +181,7 @@ make clean        # delete binary
 ```
 3d_shooter/
 ├── src/
-│   ├── main.cpp              # entry point, SDL/OpenGL init, game loop
+│   ├── main.cpp              # entry point, SDL/OpenGL init, App::frame() loop (desktop + web)
 │   ├── GameState.h           # base state interface (menu / gameplay)
 │   ├── MenuState.h           # main menu + settings
 │   ├── GameplayState.h       # core game loop: physics, combat, rendering
@@ -178,7 +206,8 @@ make clean        # delete binary
 │   ├── enemy_inst.vert/frag  # instanced enemy shader
 │   ├── skybox.vert/frag      # skybox gradient shader
 │   ├── ui.vert/frag          # HUD shader
-│   ├── tracer.vert/frag      # bullet tracer + particle shader
+│   ├── tracer.vert/frag      # bullet tracer shader
+│   ├── particle.vert/frag    # coloured, distance-scaled particle points
 │   ├── grapple.vert/frag     # dithered grapple rope shader
 │   ├── crt.frag              # CRT post-process effect
 │   ├── postprocess.vert      # fullscreen quad vertex shader
@@ -188,8 +217,12 @@ make clean        # delete binary
 ├── assets/
 │   ├── level.txt             # level geometry (hot-editable)
 │   └── sfx/                  # procedurally-generated sound effects (.wav)
+├── tests/
+│   └── test_physics.cpp      # headless player-physics tests (`make test`)
 ├── tools/
 │   └── gen_sfx.py            # synthesizes assets/sfx/*.wav — no external audio files
+├── web/
+│   └── index.html            # browser shell for the WebAssembly build (`make web`)
 ├── Makefile
 └── README.md
 ```

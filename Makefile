@@ -9,19 +9,37 @@ UNAME := $(shell uname -s 2>/dev/null || echo Windows)
 # macOS
 # -----------------------------------------------------------------------------
 ifeq ($(UNAME), Darwin)
-LLVM     := /opt/homebrew/opt/llvm
-SDK      := /Library/Developer/CommandLineTools/SDKs/MacOSX15.5.sdk
+# Prefer Homebrew LLVM (some Command Line Tools installs ship a clang++ that
+# can't find the C++ stdlib headers); fall back to Apple clang if it's absent.
+LLVM     := $(shell brew --prefix llvm 2>/dev/null)
+SDK      := $(shell xcrun --show-sdk-path 2>/dev/null)
+BASEFLAGS := -std=c++17 -O3 -ffast-math -Wall -Wextra \
+             -DGL_SILENCE_DEPRECATION \
+             -I/opt/homebrew/include \
+             $(shell sdl2-config --cflags)
+ifneq ($(wildcard $(LLVM)/bin/clang++),)
 CXX      := $(LLVM)/bin/clang++
-CXXFLAGS := -std=c++17 -O3 -march=native -ffast-math -Wall -Wextra \
-            -DGL_SILENCE_DEPRECATION \
-            -isysroot $(SDK) \
-            -I/opt/homebrew/include \
-            -I$(LLVM)/lib/c++/v1 \
-            $(shell sdl2-config --cflags)
-LDFLAGS  := $(shell sdl2-config --libs) \
-            -L$(LLVM)/lib/c++ -lc++ \
+CXXFLAGS := $(BASEFLAGS) -isysroot $(SDK) -I$(LLVM)/include/c++/v1
+STDLIB   := -L$(LLVM)/lib/c++ -Wl,-rpath,$(LLVM)/lib/c++ -lc++
+else
+CXX      := clang++
+CXXFLAGS := $(BASEFLAGS)
+STDLIB   :=
+endif
+LDFLAGS  := $(shell sdl2-config --libs) $(STDLIB) \
             -framework OpenGL \
             -lSDL2_mixer
+TARGET   := shooter
+
+# -----------------------------------------------------------------------------
+# Linux (apt: g++ libsdl2-dev libsdl2-mixer-dev libglew-dev libglm-dev)
+# -----------------------------------------------------------------------------
+else ifeq ($(UNAME), Linux)
+CXX      := g++
+CXXFLAGS := -std=c++17 -O3 -ffast-math -Wall -Wextra \
+            $(shell sdl2-config --cflags)
+LDFLAGS  := $(shell sdl2-config --libs) -lSDL2_mixer -lGLEW -lGL
+STDLIB   :=
 TARGET   := shooter
 
 # -----------------------------------------------------------------------------
@@ -53,7 +71,7 @@ HEADERS := src/gl.h \
            src/Level.h src/AudioSystem.h src/ViewModel.h src/Interactable.h \
            src/Settings.h src/PixelFont.h
 
-.PHONY: all clean run
+.PHONY: all clean run test web
 
 all: $(TARGET)
 
@@ -63,5 +81,27 @@ $(TARGET): $(SRC) $(HEADERS)
 run: all
 	./$(TARGET)
 
+# Headless physics tests — no window or GL context needed
+test: tests/test_physics.cpp src/Player.h src/Camera.h
+	$(CXX) $(CXXFLAGS) tests/test_physics.cpp -o tests/test_physics $(STDLIB)
+	./tests/test_physics
+
+# Browser build (WebGL2 + WebAssembly) → web/dist. Needs Emscripten on PATH:
+#   source ~/emsdk/emsdk_env.sh && make web && python3 -m http.server -d web/dist
+WEB_OUT  := web/dist
+WEB_DATA := build/web-data
+web: $(SRC) $(HEADERS) web/index.html
+	rm -rf $(WEB_DATA) build/web-include && mkdir -p $(WEB_DATA)/src build/web-include $(WEB_OUT)
+	cp src/*.vert src/*.frag $(WEB_DATA)/src/
+	cp -R assets $(WEB_DATA)/assets
+	ln -s $$(brew --prefix glm 2>/dev/null || echo /usr)/include/glm build/web-include/glm
+	em++ -std=c++17 -O3 -Ibuild/web-include $(SRC) -o $(WEB_OUT)/overdrive.js \
+	    -sUSE_SDL=2 -sUSE_SDL_MIXER=2 \
+	    -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 \
+	    -sALLOW_MEMORY_GROWTH=1 -sENVIRONMENT=web \
+	    --preload-file $(WEB_DATA)@/
+	cp web/index.html $(WEB_OUT)/
+
 clean:
-	rm -f shooter shooter.exe
+	rm -f shooter shooter.exe tests/test_physics
+	rm -rf build web/dist

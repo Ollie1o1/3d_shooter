@@ -90,6 +90,7 @@ public:
         std::vector<ExplosionEvent>     explosions;
         bool  hitPlayer    = false;
         float playerDamage = 0.f;
+        glm::vec3 playerHitFrom{0.f};  // world point the hitting shot came from
         int   parryableIndex  = -1;  // closest enemy projectile within parry range
         int   boostableIndex  = -1;  // closest PLAYER projectile within parry range
     };
@@ -210,6 +211,9 @@ inline ProjectileSystem::HitResult ProjectileSystem::update(
             if (dist < 0.6f) {
                 result.hitPlayer = true;
                 result.playerDamage += p.damage;
+                float spd = glm::length(p.velocity);
+                result.playerHitFrom = spd > 0.001f ? p.position - p.velocity / spd * 5.f
+                                                    : p.position;
                 p.alive = false;
             } else if (dist < closestParry) {
                 closestParry = dist;

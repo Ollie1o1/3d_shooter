@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OVERDRIVE</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #07070b; color: #d9d8e0;
+               font: 13px/1.5 ui-monospace, 'SFMono-Regular', Menlo, monospace; }
+  body { display: grid; place-items: center; }
+  .stage { position: relative; width: min(100vw, calc(100vh * 16 / 9)); aspect-ratio: 16 / 9; background: #000; }
+  canvas { display: block; width: 100%; height: 100%; outline: none; cursor: crosshair; }
+  .overlay { position: absolute; inset: 0; display: grid; place-content: center; gap: 14px; text-align: center;
+             background: radial-gradient(ellipse at center, rgb(20 16 34 / 0.75), rgb(0 0 0 / 0.92));
+             border: 0; color: inherit; font: inherit; cursor: pointer; width: 100%; }
+  .overlay h1 { margin: 0; font: 700 clamp(28px, 6vw, 56px)/1 system-ui, sans-serif; letter-spacing: 0.08em; color: #f5b83d; }
+  .overlay .go { font-size: 14px; letter-spacing: 0.12em; text-transform: uppercase; }
+  .overlay .keys { color: #8d8b99; font-size: 12px; max-width: 46em; line-height: 1.8; }
+  .bar { width: 240px; height: 3px; background: #24222e; margin: 0 auto; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: #f5b83d; transition: width 150ms; }
+  .overlay[data-state="loading"] .go { color: #8d8b99; }
+  .overlay[data-state="error"] .go { color: #ff8a7a; }
+  kbd { border: 1px solid #3a3746; border-radius: 3px; padding: 0 4px; color: #d9d8e0; }
+</style>
+</head>
+<body>
+<div class="stage">
+  <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+  <button class="overlay" id="overlay" data-state="loading" disabled>
+    <h1>OVERDRIVE</h1>
+    <div class="bar"><i id="progress"></i></div>
+    <span class="go" id="status">Loading…</span>
+    <span class="keys">
+      <kbd>WASD</kbd> move · <kbd>Mouse</kbd> look · <kbd>LMB</kbd> fire · <kbd>RMB</kbd> grapple ·
+      <kbd>Space</kbd> jump · <kbd>Shift</kbd> dash · <kbd>Ctrl</kbd>/<kbd>C</kbd> slide / slam ·
+      <kbd>G</kbd> grenade · <kbd>F</kbd> parry · <kbd>1</kbd><kbd>2</kbd> weapons ·
+      <kbd>Esc</kbd> or <kbd>P</kbd> pause (click to recapture the mouse)
+    </span>
+  </button>
+</div>
+<script>
+  const overlay = document.getElementById('overlay');
+  const status = document.getElementById('status');
+  const progress = document.getElementById('progress');
+  const canvas = document.getElementById('canvas');
+  let total = 0;
+
+  var Module = {
+    canvas,
+    // ?play skips the main menu (same as ./shooter --play)
+    arguments: new URLSearchParams(location.search).has('play') ? ['--play'] : [],
+    // Asset preload progress ("Downloading data... (x/y)")
+    setStatus(text) {
+      const m = text.match(/\((\d+(?:\.\d+)?)\/(\d+)\)/);
+      if (m) progress.style.width = `${(100 * m[1] / m[2]).toFixed(0)}%`;
+    },
+    monitorRunDependencies(left) { total = Math.max(total, left); },
+    onRuntimeInitialized() {
+      progress.style.width = '100%';
+      overlay.dataset.state = 'ready';
+      overlay.disabled = false;
+      status.textContent = '▶ Click to play';
+      if (document.pointerLockElement) start();
+    },
+    onAbort(what) {
+      overlay.dataset.state = 'error';
+      status.textContent = 'Could not start (this needs WebGL2): ' + what;
+    },
+    print: (t) => console.log(t),
+    printErr: (t) => console.warn(t),
+  };
+
+  // Dismiss on the first interaction once the game is ready. Listening only for
+  // clicks on the overlay isn't enough: once the game holds pointer lock, the
+  // browser sends every mouse event to the canvas, even through the overlay.
+  function start() {
+    if (overlay.dataset.state !== 'ready' || !overlay.isConnected) return;
+    overlay.remove();
+    canvas.focus();
+    // Let an embedding page (e.g. a portfolio) know the game is live
+    if (window.parent !== window) window.parent.postMessage({ overdrive: 'running' }, location.origin);
+    // Resume audio contexts the browser created suspended (autoplay policy)
+    const ctx = globalThis.SDL2?.audioContext;
+    if (ctx && ctx.state === 'suspended') ctx.resume();
+  }
+  document.addEventListener('pointerdown', start, true);
+  document.addEventListener('keydown', start, true);
+  document.addEventListener('pointerlockchange', () => { if (document.pointerLockElement) start(); });
+</script>
+<script async src="overdrive.js"></script>
+</body>
+</html>

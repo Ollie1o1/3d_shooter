@@ -311,18 +311,38 @@ private:
             onGround = false;
         }
 
+        static std::vector<int> candidates;
         if (grid) {
             // Grid path: only test walls in nearby cells (~4–9 cells vs all walls).
-            static std::vector<int> candidates;
             AABB pb{ position + glm::vec3{-radius-0.1f, -0.1f, -radius-0.1f},
                      position + glm::vec3{ radius+0.1f,  height+0.1f, radius+0.1f} };
             grid->query(pb, candidates);
-            for (int idx : candidates) resolveAABB(walls[idx].box);
         } else {
-            for (int i = 0; i < wallCount; ++i) resolveAABB(walls[i].box);
+            candidates.clear();
+            for (int i = 0; i < wallCount; ++i) candidates.push_back(i);
         }
+        for (int idx : candidates) resolveAABB(walls[idx].box);
 
         if (position.y <= FLOOR_Y + 0.001f) onGround = true;
+
+        // Ground probe: gravity is skipped while grounded, so a player resting
+        // on a box top never penetrates it on the next tick and would otherwise
+        // read as airborne every other tick. Treat a box top just under the
+        // feet as ground while not moving upward.
+        if (!onGround && velocity.y <= 0.f) {
+            for (int idx : candidates) {
+                const AABB& b = walls[idx].box;
+                bool overXZ = position.x + radius > b.min.x && position.x - radius < b.max.x &&
+                              position.z + radius > b.min.z && position.z - radius < b.max.z;
+                float gap = position.y - b.max.y;
+                if (overXZ && gap >= -0.001f && gap < 0.02f) {
+                    position.y = b.max.y;
+                    velocity.y = 0.f;
+                    onGround   = true;
+                    break;
+                }
+            }
+        }
     }
 
     // Push the player out of a single AABB wall.

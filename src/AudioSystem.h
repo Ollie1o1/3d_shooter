@@ -18,7 +18,8 @@
 
 class AudioSystem {
 public:
-    bool initialized = false;
+    bool  initialized  = false;
+    float masterVolume = 1.f;   // 0..1, from GameSettings::audioVolume
 
     AudioSystem() {
 #if HAS_SDL_MIXER
@@ -59,7 +60,7 @@ public:
         auto it = sounds.find(name);
         if (it == sounds.end()) return;
         int ch = Mix_PlayChannel(-1, it->second, 0);
-        if (ch >= 0) Mix_Volume(ch, volume);
+        if (ch >= 0) Mix_Volume(ch, (int)(volume * masterVolume));
 #else
         (void)name; (void)volume;
 #endif

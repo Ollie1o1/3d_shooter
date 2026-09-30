@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  linux:
+    name: Linux build + physics tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libglew-dev libglm-dev
+      - run: make
+      - run: make test
+
+  macos:
+    name: macOS build + physics tests
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install sdl2 sdl2_mixer glm llvm
+      - run: make
+      - run: make test
+
+  web:
+    name: WebAssembly build (Emscripten)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mymindstorm/setup-emsdk@v14
+      - run: sudo apt-get install -y libglm-dev
+      - run: make web

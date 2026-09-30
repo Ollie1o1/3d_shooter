@@ -307,6 +307,10 @@ public:
     float waveBannerTimer = 0.f;
     float wavePauseTimer  = 0.f;
     int   waveEnemyStart  = 0;   // index of first enemy in current wave
+    char  waveBannerText[32] = "WAVE 1";  // shown by the wave banner; room name on room entry
+
+    // First-run control hint — fades out after a few seconds of play
+    float controlHintTimer = 9.f;
 
     // Footstep system
     float footstepTimer = 0.f;
@@ -324,6 +328,8 @@ public:
 
     float muzzleFlashTimer = 0.f;
     glm::vec3 muzzleFlashPos{0.f};
+    float explosionFlashTimer = 0.f;
+    glm::vec3 explosionFlashPos{0.f};
 
     // Hitscan tracer — thin billboard quad, additive blending, fades fast
     struct Tracer {
@@ -335,6 +341,7 @@ public:
     Tracer        tracers[MAX_TRACERS];
     ShaderProgram tracerShader;
     GLuint        tracerVAO = 0, tracerVBO = 0;
+    ShaderProgram particleShader;
 
     ViewModel viewModel;
     std::vector<Interactable> interactables;
@@ -342,6 +349,8 @@ public:
 
     float fovKick        = 0.f;      // extra FOV added on dash, fades back to 0
     float playerXZSpeed  = 0.f;      // current horizontal speed (for camera bob)
+    float peakFallSpeed  = 0.f;      // max downward speed while airborne, for landing squash
+    float landSquash     = 0.f;      // camera dip on hard landings, decays each frame
 
     bool  paused        = false;
     int   pauseSelected = 0;   // 0=RESUME 1=QUIT TO MENU
@@ -406,10 +415,11 @@ public:
     bool pendingGrenade   = false;
     bool pendingGrapple   = false;   // right-click: fire or release grapple
 
-    GameplayState(AudioSystem& aud) : audio(aud) {
+    GameplayState(AudioSystem& aud, GameSettings* s = nullptr) : settings(s), audio(aud) {
         worldShader.loadFiles("src/shader.vert","src/shader.frag");
         skyboxShader.loadFiles("src/skybox.vert","src/skybox.frag");
         tracerShader.loadFiles("src/tracer.vert","src/tracer.frag");
+        particleShader.loadFiles("src/particle.vert","src/particle.frag");
 
         // Tracer VBO: 4 floats per vertex (xyz + alpha), dynamic
         glGenVertexArrays(1, &tracerVAO);
@@ -423,16 +433,18 @@ public:
         glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 4*sizeof(float), (void*)(3*sizeof(float)));
         glBindVertexArray(0);
 
-        // Particle VBO: [x, y, z, alpha] per point — reuses tracer shader
+        // Particle VBO: [x, y, z, r, g, b, alpha] per point — particle shader
         glGenVertexArrays(1, &particleVAO);
         glGenBuffers(1, &particleVBO);
         glBindVertexArray(particleVAO);
         glBindBuffer(GL_ARRAY_BUFFER, particleVBO);
-        glBufferData(GL_ARRAY_BUFFER, MAX_PARTICLES * 4 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, MAX_PARTICLES * 7 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
         glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 4*sizeof(float), (void*)0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 7*sizeof(float), (void*)0);
         glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 4*sizeof(float), (void*)(3*sizeof(float)));
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 7*sizeof(float), (void*)(3*sizeof(float)));
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, 7*sizeof(float), (void*)(6*sizeof(float)));
         glBindVertexArray(0);
 
         // Decal VBO: dynamic flat quads, each vertex = pos(3)+uv(2)+normal(3)+color(3)=11 floats
@@ -501,6 +513,11 @@ public:
         auto& room = level.rooms[roomIdx];
         waveNumber = 1;
         waveBannerTimer = 3.0f;
+        switch (roomIdx) {
+            case 0:  snprintf(waveBannerText, sizeof(waveBannerText), "STARTING ARENA"); break;
+            case 1:  snprintf(waveBannerText, sizeof(waveBannerText), "DEEP COMPOUND");  break;
+            default: snprintf(waveBannerText, sizeof(waveBannerText), "ROOM %d", roomIdx + 1); break;
+        }
         spawnWaveEnemies(roomIdx, 0);
         room.unlocked = true;
     }
@@ -547,8 +564,9 @@ public:
     }
 
     void handleEvent(const SDL_Event& e) override {
-        if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE) {
+        if (e.type == SDL_KEYDOWN && (e.key.keysym.sym == SDLK_ESCAPE || e.key.keysym.sym == SDLK_p)) {
             if (playerDead || arenaCleared) {
+                if (e.key.keysym.sym != SDLK_ESCAPE) return;  // P only pauses
                 SDL_SetRelativeMouseMode(SDL_FALSE);
                 if (onReturnToMenu) onReturnToMenu();
                 return;
@@ -616,6 +634,14 @@ public:
         }
     }
 
+    // Pause a live run (no-op on death/win screens or if already paused).
+    void pause() {
+        if (paused || playerDead || arenaCleared) return;
+        paused = true;
+        pauseSelected = 0;
+        SDL_SetRelativeMouseMode(SDL_FALSE);
+    }
+
     int pauseButtonY(int i) const { return SCREEN_H/2 - 20 + i * 60; }
 
     void activatePauseItem(int idx) {
@@ -659,8 +685,11 @@ public:
     }
 
     void update(float dt) override {
-        (void)dt;
         if (paused || playerDead || arenaCleared) {
+            // Keep the physics clock current so resuming doesn't replay the
+            // whole paused interval as a burst of catch-up ticks.
+            prevTicks   = SDL_GetPerformanceCounter();
+            accumulator = 0.0;
             if (playerDead) {
                 deadTimer += dt;
                 // No longer auto-return to menu; player presses R or Enter
@@ -688,7 +717,7 @@ public:
             if (hitStopFrames > 0) {
                 --hitStopFrames;  // freeze simulation, consume one tick
             } else {
-                physicsTick(PHYSICS_DT, keys, leftMouse, rightMouse, parryKey);
+                physicsTick(PHYSICS_DT, keys, parryKey);
             }
             accumulator -= PHYSICS_DT;
         }
@@ -696,6 +725,7 @@ public:
         float floatDt = (float)elapsed;
         styleSystem.update(floatDt);
         ui.update(floatDt, styleSystem);
+        if (controlHintTimer > 0.f) controlHintTimer -= floatDt;
         level.update(floatDt);
 
         // Rebuild world mesh while a door is sliding open
@@ -710,7 +740,11 @@ public:
         }
 
         viewModel.update(floatDt, playerXZSpeed, player.onGround);
-        fovKick = glm::mix(fovKick, 0.f, std::min(1.f, floatDt * 7.f));
+        // Baseline FOV widens with horizontal speed (grapple/dash-chain momentum,
+        // slide speed) on top of the sharp one-shot kick from dashing below.
+        float speedKick = glm::clamp((playerXZSpeed - player.horizontalSpeed) / 15.f, 0.f, 1.f) * 6.f;
+        fovKick = glm::mix(fovKick, speedKick, std::min(1.f, floatDt * 7.f));
+        landSquash = glm::mix(landSquash, 0.f, std::min(1.f, floatDt * 10.f));
 
         // Weapon switch timer — swap at midpoint of animation
         if (pendingWeapon >= 0) {
@@ -764,7 +798,12 @@ public:
             }
         }
 
-        if (muzzleFlashTimer > 0.f) {
+        if (explosionFlashTimer > 0.f) {
+            explosionFlashTimer -= floatDt;
+            float t = glm::clamp(explosionFlashTimer / 0.35f, 0.f, 1.f);
+            pointLightPos[0]   = explosionFlashPos;
+            pointLightColor[0] = glm::vec3{1.6f, 0.9f, 0.4f} * t;
+        } else if (muzzleFlashTimer > 0.f) {
             muzzleFlashTimer -= floatDt;
             pointLightPos[0]   = muzzleFlashPos;
             pointLightColor[0] = {1.f,0.7f,0.2f};
@@ -804,7 +843,7 @@ public:
         }
     }
 
-    void physicsTick(float dt, const Uint8* keys, bool leftMouse, bool rightMouse, bool parryKey) {
+    void physicsTick(float dt, const Uint8* keys, bool parryKey) {
         // --- Dash ---
         bool dashKey = keys[SDL_SCANCODE_LSHIFT] != 0;
         if (dashKey && !prevDashKey && dashCharges > 0) {
@@ -835,6 +874,9 @@ public:
         bool justLanded = player.onGround && !prevOnGround;
         if (justLanded) {
             jumpsRemaining = 1;  // 1 air jump available after landing (ground jump handled by Player.h)
+            if (!slamming && peakFallSpeed > 4.f)
+                landSquash = glm::clamp(peakFallSpeed / 22.f, 0.f, 1.f) * 0.22f;
+            peakFallSpeed = 0.f;
             if (slamming) {
                 for (auto& e : enemies) {
                     if (!e.alive) continue;
@@ -901,6 +943,7 @@ public:
         player.update(dt, keys, allWalls.data(), (int)allWalls.size(),
                       grapple.active || dashMomentumTimer > 0.f, &spatialGrid);
         playerXZSpeed = glm::length(glm::vec2(player.velocity.x, player.velocity.z));
+        if (!player.onGround) peakFallSpeed = std::max(peakFallSpeed, -player.velocity.y);
 
         // --- Footsteps ---
         if (player.onGround && playerXZSpeed > 1.5f && !player.sliding) {
@@ -986,6 +1029,18 @@ public:
             bool fired = e.update(dt, player.camera.position, allWalls.data(), (int)allWalls.size(), &spatialGrid);
             // Telegraph audio: plays once at the start of each enemy wind-up
             if (e.telegraphJustStarted) audio.play("telegraph");
+            if (e.meleeHit && invincFrames <= 0.f) {
+                styleSystem.takeDamage(Enemy::MELEE_DAMAGE);
+                ui.onDamage();
+                showDamageFrom(e.position);
+                shakeTimer = 0.25f; shakeIntensity = 0.06f;
+                audio.play("player_hit");
+                invincFrames = 0.4f;
+                // Knock the player back away from the lunge
+                glm::vec3 away = player.position - e.position; away.y = 0.f;
+                if (glm::length(away) > 0.001f)
+                    player.velocity += glm::normalize(away) * 8.f + glm::vec3{0, 3.f, 0};
+            }
             if (fired) {
                 glm::vec3 firePos = e.position + glm::vec3{0,1.2f,0};
                 glm::vec3 fireDir = e.getFireDir(player.camera.position);
@@ -1054,6 +1109,7 @@ public:
             styleSystem.heal(2.f);
             audio.play("hit");
             spawnDecal(e.position);
+            spawnHitSparks(e.position, getEnemyColor(e.type));
             bool killed = !e.alive;
             ui.onHit(killed);
             if (killed) {
@@ -1066,6 +1122,8 @@ public:
         for (auto& exp : result.explosions) {
             spawnExplosionParticles(exp.pos, exp.radius);
             shakeTimer = 0.35f; shakeIntensity = 0.07f;
+            explosionFlashTimer = 0.35f;
+            explosionFlashPos   = exp.pos;
             audio.play("explosion");
             for (auto& e : enemies) {
                 if (!e.alive) continue;
@@ -1096,15 +1154,7 @@ public:
             audio.play("player_hit");
             invincFrames = 0.3f;
             grapple.release();
-            // Damage direction indicator: find the source projectile
-            for (auto& p : projSystem.pool) {
-                if (!p.isPlayer && !p.alive) {
-                    glm::vec3 toProj = p.position - player.camera.position;
-                    float angle = atan2f(toProj.x, toProj.z) - glm::radians(player.camera.yaw + 90.f);
-                    ui.onDamageFrom(angle);
-                    break;
-                }
-            }
+            showDamageFrom(result.playerHitFrom);
         }
 
         if (shakeTimer > 0.f) shakeTimer -= dt;
@@ -1121,6 +1171,13 @@ public:
         for (auto& d : decals) {
             if (d.alive) { d.life -= dt; if (d.life <= 0.f) d.alive = false; }
         }
+    }
+
+    // Damage direction indicator pointing at a world-space source.
+    void showDamageFrom(glm::vec3 source) {
+        glm::vec3 toSrc = source - player.camera.position;
+        float angle = atan2f(toSrc.x, toSrc.z) - glm::radians(player.camera.yaw + 90.f);
+        ui.onDamageFrom(angle);
     }
 
     void checkRoomClear() {
@@ -1144,6 +1201,7 @@ public:
                 waveNumber++;
                 wavePauseTimer  = 3.0f;
                 waveBannerTimer = 3.0f;
+                snprintf(waveBannerText, sizeof(waveBannerText), "WAVE %d", waveNumber);
             } else {
                 // Room cleared — all waves done
                 room.cleared = true;
@@ -1170,18 +1228,41 @@ public:
         int spawned = 0;
         for (auto& p : particles) {
             if (p.alive) continue;
-            if (spawned >= 8) break;
+            if (spawned >= 16) break;
             float rx = ((rand() % 2001) - 1000) / 1000.f;
             float ry = ((rand() % 1000)) / 1000.f * 0.8f + 0.3f;
             float rz = ((rand() % 2001) - 1000) / 1000.f;
             float len = sqrtf(rx*rx + ry*ry + rz*rz);
             if (len < 0.001f) { rx=0; ry=1; rz=0; len=1; }
-            float speed = 4.f + (rand() % 1000) / 1000.f * 6.f;
+            float speed = 5.f + (rand() % 1000) / 1000.f * 8.f;
             p.pos     = center + glm::vec3{0, 0.9f, 0};
             p.vel     = glm::vec3{rx,ry,rz} / len * speed;
-            p.maxLife = 0.6f + (rand() % 1000) / 1000.f * 0.5f;
+            p.maxLife = 0.5f + (rand() % 1000) / 1000.f * 0.6f;
             p.life    = p.maxLife;
-            p.color   = enemyColor;
+            // Slight per-particle tint variation so death bursts don't look flat
+            float tint = 0.75f + (rand() % 1000) / 1000.f * 0.5f;
+            p.color   = enemyColor * tint;
+            p.alive   = true;
+            ++spawned;
+        }
+    }
+
+    void spawnHitSparks(glm::vec3 pos, glm::vec3 color) {
+        int spawned = 0;
+        for (auto& p : particles) {
+            if (p.alive) continue;
+            if (spawned >= 4) break;
+            float rx = ((rand() % 2001) - 1000) / 1000.f;
+            float ry = ((rand() % 1000)) / 1000.f * 0.6f + 0.1f;
+            float rz = ((rand() % 2001) - 1000) / 1000.f;
+            float len = sqrtf(rx*rx + ry*ry + rz*rz);
+            if (len < 0.001f) { rx=0; ry=1; rz=0; len=1; }
+            float speed = 2.f + (rand() % 1000) / 1000.f * 3.f;
+            p.pos     = pos;
+            p.vel     = glm::vec3{rx,ry,rz} / len * speed;
+            p.maxLife = 0.15f + (rand() % 1000) / 1000.f * 0.12f;
+            p.life    = p.maxLife;
+            p.color   = color;
             p.alive   = true;
             ++spawned;
         }
@@ -1205,7 +1286,7 @@ public:
         int spawned = 0;
         for (auto& p : particles) {
             if (p.alive) continue;
-            if (spawned >= 50) break;
+            if (spawned >= 70) break;
             // Random outward direction with upward bias
             float rx = ((rand() % 2001) - 1000) / 1000.f;
             float ry = ((rand() % 1000)) / 1000.f * 0.6f + 0.2f; // bias upward
@@ -1217,6 +1298,13 @@ public:
             p.vel     = glm::vec3{rx,ry,rz} / len * speed;
             p.maxLife = 0.5f + (rand() % 1000) / 1000.f * 0.7f;
             p.life    = p.maxLife;
+            // Fire gradient: white-hot core particles fading out to smoky red/orange —
+            // explicitly set (rather than left at whatever color the pooled slot last
+            // held) so explosions read as fire instead of inheriting a stray tint.
+            float heat = (rand() % 1000) / 1000.f;
+            p.color   = heat > 0.8f ? glm::vec3{1.f, 0.95f, 0.75f}   // white-hot core
+                      : heat > 0.4f ? glm::vec3{1.f, 0.55f, 0.10f}   // orange
+                                    : glm::vec3{0.55f, 0.12f, 0.05f}; // smoky red
             p.alive   = true;
             ++spawned;
         }
@@ -1352,8 +1440,11 @@ public:
             if (t > 0.f && t < wallT) wallT = t;
         }
 
+        // A wall in front of the enemy blocks the shot
+        if (hitEnemy >= 0 && wallT < bestT) hitEnemy = -1;
+
         // Tracer ends at enemy hit, wall hit, or max range
-        float tracerDist = (hitEnemy >= 0) ? std::min(bestT, wallT) : wallT;
+        float tracerDist = (hitEnemy >= 0) ? bestT : wallT;
         spawnTracer(origin + dir * 0.2f, origin + dir * tracerDist);
 
         if (hitEnemy >= 0) {
@@ -1434,7 +1525,8 @@ public:
                 if (t > 0.f && t < wallT) wallT = t;
             }
 
-            float tracerDist = (hitEnemy >= 0) ? std::min(bestT, wallT) : wallT;
+            if (hitEnemy >= 0 && wallT < bestT) hitEnemy = -1;  // blocked by a wall
+            float tracerDist = (hitEnemy >= 0) ? bestT : wallT;
             spawnTracer(origin + dir * 0.2f, origin + dir * tracerDist);
 
             if (hitEnemy >= 0) {
@@ -1500,6 +1592,9 @@ public:
         player.camera.fov = settings ? settings->fov : 90.f;
         styleSystem = StyleSystem{};
         enemies.clear();
+        for (auto& p : projSystem.pool) p.alive = false;
+        for (auto& d : decals)          d.alive = false;
+        for (auto& p : particles)       p.alive = false;
         level = loadLevelFromFile("assets/level.txt");
         if (level.rooms.empty()) level = buildLevel();
         allWalls = level.getAllWalls();
@@ -1539,13 +1634,25 @@ public:
         peakStyle      = 0.f;
         arenaCleared   = false;
         arenaTimer     = 0.f;
-        waveNumber     = 1;
-        waveBannerTimer = 0.f;
+        controlHintTimer = 9.f;
+        peakFallSpeed  = 0.f;
+        landSquash     = 0.f;
         wavePauseTimer  = 0.f;
         waveEnemyStart  = 0;
         for (auto& di : ui.damageIndicators) di.timer = 0.f;
         ui.damageIndicatorCount = 0;
         SDL_SetRelativeMouseMode(SDL_TRUE);
+    }
+
+    // Per-room visual mood — Room 0 reads as an open, dusk-lit arena; Room 1
+    // ("Deep Compound") reads as a colder, more enclosed, starless space so
+    // the two rooms feel like distinct places rather than a re-skinned copy.
+    struct RoomTone { glm::vec3 skyBottom, skyTop, ambient; float starIntensity; };
+    RoomTone currentRoomTone() const {
+        if (level.currentRoom == 0) {
+            return { {0.06f,0.035f,0.09f}, {0.02f,0.018f,0.05f}, {0.17f,0.15f,0.19f}, 0.6f };
+        }
+        return { {0.015f,0.03f,0.03f}, {0.005f,0.010f,0.015f}, {0.10f,0.13f,0.12f}, 0.12f };
     }
 
     void render() override {
@@ -1567,6 +1674,9 @@ public:
         renderCam.position += viewModel.getBobOffset(playerXZSpeed, player.onGround,
                                                      renderCam.right());
 
+        // Landing squash — brief downward camera dip on hard landings, springs back
+        renderCam.position.y -= landSquash;
+
         // FOV kick from dash
         renderCam.fov = player.camera.fov + fovKick;
 
@@ -1579,6 +1689,8 @@ public:
         glEnable(GL_CULL_FACE);
         glEnable(GL_DEPTH_TEST);
 
+        RoomTone tone = currentRoomTone();
+
         // Draw skybox
         {
             glDepthFunc(GL_LEQUAL);
@@ -1587,6 +1699,9 @@ public:
             skyboxShader.use();
             skyboxShader.setMat4("view",       skyView);
             skyboxShader.setMat4("projection", proj);
+            skyboxShader.setVec3("uBottom",        tone.skyBottom);
+            skyboxShader.setVec3("uTop",           tone.skyTop);
+            skyboxShader.setFloat("uStarIntensity", tone.starIntensity);
             glBindVertexArray(postProcess.quadVAO);
             glDrawArrays(GL_TRIANGLES,0,6);
             glBindVertexArray(0);
@@ -1601,7 +1716,7 @@ public:
         worldShader.setMat4("model",      glm::mat4(1.f));
         worldShader.setVec3("lightDir",   glm::normalize(glm::vec3{0.4f,-1.f,0.3f}));
         worldShader.setVec3("lightColor", {1.f,0.9f,0.8f});
-        worldShader.setVec3("ambientColor",{0.15f,0.15f,0.2f});
+        worldShader.setVec3("ambientColor", tone.ambient);
         worldShader.setVec3("viewPos",    renderCamPos);
         worldShader.setVec3 ("emissiveColor",  {0.f,0.f,0.f});
         worldShader.setVec3 ("objectColor",    {1.f,1.f,1.f});
@@ -1643,7 +1758,7 @@ public:
         enemyRenderer.shader.setVec3("viewPos",    renderCamPos);
         enemyRenderer.shader.setVec3("lightDir",   glm::normalize(glm::vec3{0.4f,-1.f,0.3f}));
         enemyRenderer.shader.setVec3("lightColor", {1.f,0.9f,0.8f});
-        enemyRenderer.shader.setVec3("ambientColor",{0.15f,0.15f,0.2f});
+        enemyRenderer.shader.setVec3("ambientColor", tone.ambient);
         enemyRenderer.shader.setInt ("uTexture",   0);
         for (int i=0;i<MAX_POINT_LIGHTS;++i) {
             std::string pn = "pointLightPos["  + std::to_string(i) + "]";
@@ -1708,7 +1823,7 @@ public:
         projSystem.draw(worldShader, view, proj);
 
         // Tracers drawn with additive blending — must be after opaque geometry
-        renderTracers(view, proj, renderCamPos);
+        renderTracers(view, proj);
 
         // Explosion particles — additive GL_POINTS
         renderParticles(view, proj);
@@ -1746,54 +1861,61 @@ public:
                   arenaCleared, playerDead,
                   totalKills, totalShots, totalHits,
                   elapsedTime, peakStyle,
-                  waveNumber, waveBannerTimer);
+                  waveBannerText, waveBannerTimer);
+
+        if (!playerDead && !arenaCleared) {
+            int remaining = 0;
+            for (int i = waveEnemyStart; i < (int)enemies.size(); ++i)
+                if (enemies[i].alive) ++remaining;
+            ui.renderObjective(remaining, wavePauseTimer <= 0.f && waveBannerTimer <= 0.f);
+            ui.renderControlHint(glm::clamp(controlHintTimer / 1.5f, 0.f, 1.f));
+        }
 
         if (paused) ui.renderPause(pauseSelected);
     }
 
     void renderParticles(const glm::mat4& view, const glm::mat4& proj) {
-        struct PVert { float x, y, z, a; };
+        // Each particle carries its own colour (enemy tint, fire gradient, brass)
+        struct PVert { float x, y, z, r, g, b, a; };
         PVert buf[MAX_PARTICLES];
         int count = 0;
         for (auto& p : particles) {
             if (!p.alive) continue;
             float t = p.life / p.maxLife;
-            buf[count++] = { p.pos.x, p.pos.y, p.pos.z, t * t };
+            buf[count++] = { p.pos.x, p.pos.y, p.pos.z,
+                             p.color.r, p.color.g, p.color.b, t * t };
         }
         if (count == 0) return;
 
         glBindBuffer(GL_ARRAY_BUFFER, particleVBO);
         glBufferSubData(GL_ARRAY_BUFFER, 0, count * sizeof(PVert), buf);
 
-        tracerShader.use();
-        tracerShader.setMat4("projection", proj);
-        tracerShader.setMat4("view",       view);
+        particleShader.use();
+        particleShader.setMat4("projection", proj);
+        particleShader.setMat4("view",       view);
+        particleShader.setFloat("uPointScale", 60.f);
 
         glDisable(GL_CULL_FACE);
         glDepthMask(GL_FALSE);
         glEnable(GL_BLEND);
+#ifndef __EMSCRIPTEN__
+        glEnable(GL_PROGRAM_POINT_SIZE);  // always on in GLES/WebGL2
+#endif
         glBlendFunc(GL_SRC_ALPHA, GL_ONE); // additive — particles glow
 
         glBindVertexArray(particleVAO);
-
-        // Two passes: bright orange core + darker red outer particles
-        tracerShader.setVec3("uColor", {1.f, 0.55f, 0.05f});
-        glPointSize(5.f);
         glDrawArrays(GL_POINTS, 0, count);
-
-        tracerShader.setVec3("uColor", {1.f, 0.20f, 0.02f});
-        glPointSize(3.f);
-        glDrawArrays(GL_POINTS, 0, count);
-
         glBindVertexArray(0);
-        glPointSize(1.f);
+
+#ifndef __EMSCRIPTEN__
+        glDisable(GL_PROGRAM_POINT_SIZE);
+#endif
         glDepthMask(GL_TRUE);
         glDisable(GL_BLEND);
         glEnable(GL_CULL_FACE);
     }
 
-    void renderTracers(const glm::mat4& view, const glm::mat4& proj,
-                       const glm::vec3& camPos) {
+    void renderTracers(const glm::mat4& view, const glm::mat4& proj) {
         struct TVert { float x,y,z,a; };
         TVert buf[MAX_TRACERS * 6];
         int   count = 0;
