@@ -1,5 +1,7 @@
 # OVERDRIVE
 
+[![CI](https://github.com/Ollie1o1/3d_shooter/actions/workflows/ci.yml/badge.svg)](https://github.com/Ollie1o1/3d_shooter/actions/workflows/ci.yml)
+
 ![OVERDRIVE gameplay: dashing through the arena, firing the revolver and throwing a grenade](docs/overdrive.gif)
 
 A 3D arena shooter built with **SDL2**, **OpenGL 3.3 Core Profile**, and **GLM**. ULTRAKILL-inspired movement with grapple hook, dashing, multi-weapon combat, style scoring, wave-based progression, and post-processing effects.
