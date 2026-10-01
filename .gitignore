@@ -9,6 +9,7 @@ build_out.txt
 
 # Runtime-generated
 settings.cfg
+records.cfg
 
 # macOS
 .DS_Store

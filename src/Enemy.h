@@ -276,6 +276,32 @@ private:
         return false;
     }
 
+    // Gunners and Brutes hold their perch: on a raised surface they treat a
+    // drop as a wall. Rippers and Mites happily leap down after you.
+    bool ledgeAware() const {
+        return !stats().flying && type != EnemyType::RIPPER && type != EnemyType::MITE;
+    }
+
+    // Is there something to stand on under p (within a step of its height)?
+    bool supportedAt(glm::vec3 p, const EnemyWorld& w) const {
+        if (p.y < 0.3f || !w.walls) return true;   // the world floor
+        AABB q{p + glm::vec3{-0.05f, -1.4f, -0.05f}, p + glm::vec3{0.05f, 0.6f, 0.05f}};
+        static std::vector<int> cands;
+        if (w.grid) w.grid->query(q, cands);
+        else { cands.clear(); for (int i = 0; i < w.wallCount; ++i) cands.push_back(i); }
+        for (int i : cands) {
+            const AABB& b = w.walls[i].box;
+            if (p.x >= b.min.x && p.x <= b.max.x && p.z >= b.min.z && p.z <= b.max.z &&
+                b.max.y >= p.y - 1.4f && b.max.y <= p.y + 0.6f) return true;
+        }
+        return false;
+    }
+
+    bool canStepTo(glm::vec3 p, const EnemyWorld& w) const {
+        if (blockedAt(p, w)) return false;
+        return !(ledgeAware() && position.y > 0.3f && !supportedAt(p, w));
+    }
+
     // Feeler steering: if the way ahead is blocked, try turning ±45/90/135°
     // (keeping the side that worked last time) so enemies slide around cover
     // instead of grinding into it. No pathfinding: arenas are open by design.
@@ -283,12 +309,12 @@ private:
         want = norm2(want);
         if (glm::length(want) < 0.5f || stats().flying) return want;
         float probe = radius() + 0.9f;
-        if (!blockedAt(position + want * probe, w)) return want;
+        if (canStepTo(position + want * probe, w)) return want;
         static const float ANG[] = {0.785f, 1.571f, 2.356f};
         for (float a : ANG)
             for (float sgn : {avoidSign, -avoidSign}) {
                 glm::vec3 d = rotY(want, a * sgn);
-                if (!blockedAt(position + d * probe, w)) {
+                if (canStepTo(position + d * probe, w)) {
                     avoidSign = sgn; avoidTimer = 0.6f;
                     return d;
                 }
@@ -600,7 +626,7 @@ private:
         float r = radius();
         position.x = glm::clamp(position.x, w.bounds.min.x + r, w.bounds.max.x - r);
         position.z = glm::clamp(position.z, w.bounds.min.z + r, w.bounds.max.z - r);
-        if (flying) position.y = glm::clamp(position.y, 1.5f, w.bounds.max.y - height());
+        if (flying) position.y = glm::clamp(position.y, w.bounds.min.y + 1.5f, w.bounds.max.y - height());
     }
 
     void resolveAABB(const AABB& wall) {

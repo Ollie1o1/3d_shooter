@@ -8,6 +8,8 @@
 #include <functional>
 #include <string>
 #include <cstdlib>
+#include <cstring>
+#include <vector>
 #ifdef _WIN32
 #  include <direct.h>
 #  define chdir _chdir
@@ -41,6 +43,12 @@ struct App {
     // state while one of its methods is still on the stack is a use-after-free.
     enum class NextState { None, Menu, Game };
     NextState pending = NextState::Menu;
+    GameMode  mode    = GameMode::ARENA;   // which game the next Game state runs
+
+    // --shot N FILE: render N frames of gameplay, save the last one as a BMP and
+    // exit (used to eyeball levels and the HUD without playing)
+    int         shotFrames = 0;
+    std::string shotPath;
 
     Uint64 freq = 0, lastCounter = 0;
 
@@ -57,17 +65,29 @@ struct App {
             SDL_SetRelativeMouseMode(SDL_FALSE);
             auto* menu = new MenuState(SCREEN_W, SCREEN_H);
             menu->settings = &settings;
-            menu->onStart  = [this]() { pending = NextState::Game; };
+            menu->onStart  = [this](GameMode m) { mode = m; pending = NextState::Game; };
             menu->onQuit   = [this]() { quit(); };
             currentState.reset(menu);
         } else if (next == NextState::Game) {
-            SDL_SetRelativeMouseMode(SDL_TRUE);
+            SDL_SetRelativeMouseMode(g_devNoMouse ? SDL_FALSE : SDL_TRUE);
             audio.masterVolume = settings.audioVolume;
-            auto* game = new GameplayState(audio, &settings);
+            auto* game = new GameplayState(audio, &settings, mode);
             game->onReturnToMenu = [this]() { pending = NextState::Menu; };
             game->onQuit         = [this]() { quit(); };
             currentState.reset(game);
         }
+    }
+
+    void saveScreenshot(const std::string& path) {
+        std::vector<unsigned char> px(SCREEN_W * SCREEN_H * 3);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+        glReadPixels(0, 0, SCREEN_W, SCREEN_H, GL_RGB, GL_UNSIGNED_BYTE, px.data());
+        SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormat(0, SCREEN_W, SCREEN_H, 24, SDL_PIXELFORMAT_RGB24);
+        if (!surf) return;
+        for (int y = 0; y < SCREEN_H; ++y)   // GL rows are bottom-up
+            std::memcpy((unsigned char*)surf->pixels + y * surf->pitch, &px[(SCREEN_H - 1 - y) * SCREEN_W * 3], SCREEN_W * 3);
+        SDL_SaveBMP(surf, path.c_str());
+        SDL_FreeSurface(surf);
     }
 
     void frame() {
@@ -90,6 +110,12 @@ struct App {
         if (currentState) {
             currentState->update(frameDt);
             currentState->render();
+        }
+        if (shotFrames > 0 && --shotFrames == 0) {
+            saveScreenshot(shotPath); running = false;
+            if (auto* g = dynamic_cast<GameplayState*>(currentState.get()))
+                std::fprintf(stderr, "shot: feet (%.2f %.2f %.2f) yaw %.1f pitch %.1f arena %d\n", g->player.position.x,
+                             g->player.position.y, g->player.position.z, g->player.camera.yaw, g->player.camera.pitch, g->director.arena);
         }
         SDL_GL_SwapWindow(window);
 
@@ -173,24 +199,40 @@ int main(int argc, char* argv[]) {
     static const char* SOUNDS[] = {
         "jump", "land", "dash", "slam", "revolver", "shotgun", "reload", "grapple_fire",
         "hit", "enemy_death", "player_hit", "parry", "telegraph", "explosion",
-        "wave", "spawn", "pickup",
+        "wave", "spawn", "pickup", "kar", "longshot", "bolt", "scope", "levelup",
+        "potion", "barrier", "split", "upgrade",
     };
     for (const char* name : SOUNDS)
         app->audio.loadSound(name, std::string("assets/sfx/") + name + ".wav");
 
-    app->settings.load();  // restore FOV/sensitivity/volume/FPS cap/CRT from settings.cfg, if present
+    app->settings.load();  // restore every option (settings.cfg on desktop, localStorage on the web)
 
-    // --play skips the main menu and drops straight into a run
-    // --arena N (1-3) starts the run at a later arena (implies --play),
-    // --wave N skips to a wave within it, --god disables damage (for footage)
+    // --play skips the main menu and drops straight into an ARENA run; --fast
+    // into the FAST time trial. --arena N starts at a later arena / section
+    // (implies --play), --wave N skips to a wave within it, --god disables
+    // damage (for footage). Dev: --cam X Y Z YAW PITCH, --shot FRAMES FILE.BMP
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--play") app->pending = App::NextState::Game;
+        if (arg == "--fast") { app->mode = GameMode::FAST; app->pending = App::NextState::Game; }
         if (arg == "--god")  g_godMode = true;
         if (arg == "--wave" && i + 1 < argc) g_startWave = std::atoi(argv[++i]) - 1;
         if (arg == "--arena" && i + 1 < argc) {
             g_startArena = std::atoi(argv[++i]) - 1;
             app->pending = App::NextState::Game;
+        }
+        if (arg == "--cam" && i + 5 < argc) {
+            g_devCam = true;
+            g_devCamPos = {(float)std::atof(argv[i + 1]), (float)std::atof(argv[i + 2]), (float)std::atof(argv[i + 3])};
+            g_devCamYaw = (float)std::atof(argv[i + 4]); g_devCamPitch = (float)std::atof(argv[i + 5]);
+            i += 5;
+        }
+        if (arg == "--weapon" && i + 1 < argc) g_devWeapon = std::atoi(argv[++i]) - 1;
+        if (arg == "--aim") g_devAim = true;
+        if (arg == "--overlay" && i + 1 < argc) g_devOverlay = argv[++i];
+        if (arg == "--shot" && i + 2 < argc) {
+            app->shotFrames = std::atoi(argv[i + 1]); app->shotPath = argv[i + 2]; i += 2;
+            g_devNoMouse = true;
         }
     }
 

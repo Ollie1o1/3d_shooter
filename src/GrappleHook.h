@@ -32,29 +32,30 @@ public:
         if (lineVBO) glDeleteBuffers(1, &lineVBO);
     }
 
-    // Fire the grapple. On hit, writes an immediate launch impulse into outImpulse
-    // that the caller should apply directly to player velocity. Returns true on hit.
-    bool fire(glm::vec3 origin, glm::vec3 dir, const Wall* walls, int wallCount,
-              glm::vec3& outImpulse) {
-        float bestT = maxLength;
-        bool  hit   = false;
-        for (int i = 0; i < wallCount; ++i) {
-            float t = rayAABB(origin, dir, walls[i].box);
-            if (t > 0.f && t < bestT) { bestT = t; hit = true; }
-        }
-        if (hit) {
-            target = origin + dir * bestT;
-            active = true;
-            // Strong immediate burst — overrides current velocity so movement is
-            // felt the instant you fire. Min Y ensures you always gain height.
-            glm::vec3 toTarget = glm::normalize(target - origin);
-            outImpulse = toTarget * 32.f;
-            outImpulse.y = std::max(outImpulse.y, 12.f);
-        }
-        return hit;
+    // Hook onto `point` (GameplayState picks it with a raycast). If the point
+    // is on a moving platform, pass its wall index and current box: the anchor
+    // then rides along with the platform (see follow()). Writes an immediate
+    // launch impulse into outImpulse for the caller to apply to the player.
+    void attach(glm::vec3 origin, glm::vec3 point, glm::vec3& outImpulse,
+                int wall = -1, const AABB* box = nullptr) {
+        target = point;
+        active = true;
+        moverWall = box ? wall : -1;
+        if (box) anchorLocal = point - box->min;
+        // Strong immediate burst — overrides current velocity so movement is
+        // felt the instant you fire. Min Y ensures you always gain height.
+        glm::vec3 toTarget = glm::normalize(target - origin);
+        outImpulse = toTarget * 32.f;
+        outImpulse.y = std::max(outImpulse.y, 12.f);
     }
 
-    void release() { active = false; }
+    // Keep the anchor on a moving platform
+    void follow(const AABB& box) { if (active && moverWall >= 0) target = box.min + anchorLocal; }
+
+    int       moverWall = -1;       // wall index of the platform we're hooked to, or -1
+    glm::vec3 anchorLocal{0.f};
+
+    void release() { active = false; moverWall = -1; }
 
     // Called every physics tick while active. Strongly pulls toward anchor +
     // cancels gravity entirely so you fly straight at the attachment point.
@@ -128,16 +129,4 @@ public:
         glBindVertexArray(0);
     }
 
-private:
-    static float rayAABB(glm::vec3 o, glm::vec3 d, const AABB& b) {
-        glm::vec3 invD{1.f/(d.x+1e-9f), 1.f/(d.y+1e-9f), 1.f/(d.z+1e-9f)};
-        glm::vec3 t0 = (b.min - o) * invD;
-        glm::vec3 t1 = (b.max - o) * invD;
-        glm::vec3 tMin = glm::min(t0, t1);
-        glm::vec3 tMax = glm::max(t0, t1);
-        float tEnter = std::max({tMin.x, tMin.y, tMin.z});
-        float tExit  = std::min({tMax.x, tMax.y, tMax.z});
-        if (tEnter > tExit || tExit < 0.f) return -1.f;
-        return tEnter > 0.f ? tEnter : tExit;
-    }
 };

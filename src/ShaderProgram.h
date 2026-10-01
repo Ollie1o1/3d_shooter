@@ -4,6 +4,7 @@
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
+#include <unordered_map>
 #include "gl.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -63,35 +64,52 @@ public:
 
     // Set a 4x4 matrix (e.g., model, view, projection)
     void setMat4(const char* name, const glm::mat4& m) const {
-        glUniformMatrix4fv(glGetUniformLocation(id, name), 1, GL_FALSE, glm::value_ptr(m));
+        glUniformMatrix4fv(loc(name), 1, GL_FALSE, glm::value_ptr(m));
     }
 
     // Set a vec3 (e.g., light direction, color, camera position)
     void setVec3(const char* name, const glm::vec3& v) const {
-        glUniform3fv(glGetUniformLocation(id, name), 1, glm::value_ptr(v));
+        glUniform3fv(loc(name), 1, glm::value_ptr(v));
+    }
+
+    void setVec2(const char* name, const glm::vec2& v) const {
+        glUniform2fv(loc(name), 1, glm::value_ptr(v));
     }
 
     // Set an integer (e.g., texture slot index: 0 for GL_TEXTURE0)
     void setInt(const char* name, int v) const {
-        glUniform1i(glGetUniformLocation(id, name), v);
+        glUniform1i(loc(name), v);
     }
 
     // Set a float (e.g., time, opacity, fog density)
     void setFloat(const char* name, float v) const {
-        glUniform1f(glGetUniformLocation(id, name), v);
+        glUniform1f(loc(name), v);
     }
 
     // Set a vec4
     void setVec4(const char* name, const glm::vec4& v) const {
-        glUniform4fv(glGetUniformLocation(id, name), 1, glm::value_ptr(v));
+        glUniform4fv(loc(name), 1, glm::value_ptr(v));
     }
 
-    // Set an array of vec3
+    // Set an array of vec3 (name is the array's base name, e.g. "pointLightPos")
     void setVec3Array(const char* name, const glm::vec3* arr, int count) const {
-        glUniform3fv(glGetUniformLocation(id, name), count, glm::value_ptr(arr[0]));
+        glUniform3fv(loc(name), count, glm::value_ptr(arr[0]));
+    }
+
+    // Uniform locations are looked up once and cached: glGetUniformLocation is
+    // a string search in the driver, and in the browser every GL call is a
+    // trip from WebAssembly into JavaScript.
+    GLint loc(const char* name) const {
+        auto it = locations.find(name);
+        if (it != locations.end()) return it->second;
+        GLint l = glGetUniformLocation(id, name);
+        locations.emplace(name, l);
+        return l;
     }
 
 private:
+    mutable std::unordered_map<std::string, GLint> locations;
+
     static std::string readFile(const std::string& path) {
         std::ifstream f(path);
         if (!f) throw std::runtime_error("Cannot open shader: " + path);

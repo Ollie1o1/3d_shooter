@@ -17,7 +17,9 @@ struct AABB {
 struct Wall {
     AABB      box;
     glm::vec3 color{0.28f, 0.28f, 0.32f};
-    bool      hidden = false;  // collides but isn't part of the static world mesh
+    bool      hidden  = false;  // collides but isn't part of the static world mesh
+    bool      dynamic = false;  // moves at runtime (moving platform): kept out of the
+                                // SpatialGrid and tested every tick instead
 };
 
 // =============================================================================
@@ -27,21 +29,23 @@ struct Wall {
 // changes (room cleared, door opened). Query with a bounding box to get
 // candidate wall indices — then still test actual AABB overlap yourself.
 //
-// Grid covers the whole level (three arenas + corridors):
+// Grid covers the whole level (four arenas + corridors, or the Descent):
 //   X: -100 .. 100  (200 m → 17 cells of 12 m)
-//   Z: -240 .. 100  (340 m → 29 cells of 12 m)
+//   Z: -320 .. 100  (420 m → 35 cells of 12 m)
+// Dynamic walls (moving platforms) are left out: they'd be in the wrong
+// cells a second later. Callers test those directly every tick.
 // =============================================================================
 struct SpatialGrid {
     static constexpr float CELL = 12.f;
-    static constexpr float X0 = -100.f, Z0 = -240.f;
-    static constexpr int   NX = 17, NZ = 29;
+    static constexpr float X0 = -100.f, Z0 = -320.f;
+    static constexpr int   NX = 17, NZ = 35;
 
     std::vector<int> cells[NX * NZ];
 
     void build(const std::vector<Wall>& walls) {
         for (auto& c : cells) c.clear();
         for (int i = 0; i < (int)walls.size(); ++i)
-            insertWall(i, walls[i].box);
+            if (!walls[i].dynamic) insertWall(i, walls[i].box);
     }
 
     // Returns candidate wall indices for a query box.
@@ -118,6 +122,15 @@ public:
 
     // Coyote time: allows jumping for a brief window after walking off a ledge.
     float coyoteTimer = 0.f;
+
+    // Index of the wall whose top we're standing on (-1: floor or airborne).
+    // GameplayState uses it to carry the player along with moving platforms.
+    int groundWall = -1;
+
+    // Moving platforms: wall indices tested every tick on top of the grid
+    // query (they aren't in the grid). Set by the caller before update().
+    const int* dynWalls = nullptr;
+    int        dynCount = 0;
 
     // Jump buffering: if jump is pressed while airborne, store it so it fires
     // the moment the player lands (up to JUMP_BUFFER_DURATION seconds later).
@@ -304,6 +317,7 @@ private:
     // -------------------------------------------------------------------------
     void resolveCollisions(const Wall* walls, int wallCount,
                            const SpatialGrid* grid = nullptr) {
+        groundWall = -1;
         if (position.y < FLOOR_Y) {
             position.y = FLOOR_Y;
             velocity.y = 0.f;
@@ -318,11 +332,13 @@ private:
             AABB pb{ position + glm::vec3{-radius-0.1f, -0.1f, -radius-0.1f},
                      position + glm::vec3{ radius+0.1f,  height+0.1f, radius+0.1f} };
             grid->query(pb, candidates);
+            if (walls) for (int i = 0; i < dynCount; ++i) candidates.push_back(dynWalls[i]);
         } else {
             candidates.clear();
             for (int i = 0; i < wallCount; ++i) candidates.push_back(i);
         }
-        for (int idx : candidates) resolveAABB(walls[idx].box);
+        for (int idx : candidates)
+            if (resolveAABB(walls[idx].box)) groundWall = idx;
 
         if (position.y <= FLOOR_Y + 0.001f) onGround = true;
 
@@ -340,22 +356,24 @@ private:
                     position.y = b.max.y;
                     velocity.y = 0.f;
                     onGround   = true;
+                    groundWall = idx;
                     break;
                 }
             }
         }
     }
 
-    // Push the player out of a single AABB wall.
+    // Push the player out of a single AABB wall. Returns true if it landed
+    // the player on the wall's top surface.
     // The player is also treated as an AABB (a capsule would be smoother in
     // corners, but AABB is cheaper and plenty good for flat walls).
-    void resolveAABB(const AABB& wall) {
+    bool resolveAABB(const AABB& wall) {
         glm::vec3 pMin = position + glm::vec3{-radius, 0.f,    -radius};
         glm::vec3 pMax = position + glm::vec3{ radius, height,  radius};
 
-        if (pMax.x <= wall.min.x || pMin.x >= wall.max.x) return;
-        if (pMax.y <= wall.min.y || pMin.y >= wall.max.y) return;
-        if (pMax.z <= wall.min.z || pMin.z >= wall.max.z) return;
+        if (pMax.x <= wall.min.x || pMin.x >= wall.max.x) return false;
+        if (pMax.y <= wall.min.y || pMin.y >= wall.max.y) return false;
+        if (pMax.z <= wall.min.z || pMin.z >= wall.max.z) return false;
 
         float ox = glm::min(pMax.x - wall.min.x, wall.max.x - pMin.x);
         float oy = glm::min(pMax.y - wall.min.y, wall.max.y - pMin.y);
@@ -374,6 +392,7 @@ private:
                 // Pushed UP  → feet landed on the top surface of a box
                 if (velocity.y < 0.f) velocity.y = 0.f;
                 onGround = true;
+                return true;
             } else {
                 // Pushed DOWN → head hit the underside of a box (ceiling)
                 // Only kill upward velocity; do NOT set onGround.
@@ -384,5 +403,6 @@ private:
             position.z += pushDir * oz;
             if (velocity.z * pushDir < 0.f) velocity.z = 0.f;
         }
+        return false;
     }
 };

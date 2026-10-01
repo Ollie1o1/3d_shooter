@@ -12,13 +12,18 @@
 #include "Projectile.h"
 #include "GrappleHook.h"
 #include "Level.h"
+#include "LevelDescent.h"
 #include "WaveDirector.h"
 #include "PostProcess.h"
 #include "AudioSystem.h"
 #include "ViewModel.h"
 #include "Interactable.h"
 #include "Settings.h"
+#include "SettingsMenu.h"
 #include "TextureGen.h"
+#include "Weapons.h"
+#include "Progression.h"
+#include "MouseFilter.h"
 #include <SDL2/SDL.h>
 #include "gl.h"
 #include <glm/glm.hpp>
@@ -39,14 +44,19 @@
 // FLOW: WaveDirector (WaveDirector.h) decides when waves start and which
 // enemies to spawn where; this class owns the enemies, turns their per-tick
 // events into projectiles/damage/effects, opens and closes doors, and keeps
-// the player inside the arena they're fighting in.
+// the player inside the arena they're fighting in (and under its ceiling).
+//
+// MODES: ARENA runs buildLevel() (four arenas, waves, the boss). FAST runs
+// buildDescent() (LevelDescent.h): a countdown, a clock with splits, sections
+// that chain instantly, and a finish beacon.
 //
 // KEY EXTENSION POINTS:
-//   ADD A WEAPON:  write a fire___() modelled on fireRevolver(); hitscan uses
-//                  hitscan(), damage goes through hurtEnemy().
+//   ADD A WEAPON:  a row in Weapons.h, a model in ViewModel.h, a sound name in
+//                  fireWeapon(). Damage goes through hurtEnemy().
 //   ADD AN ENEMY:  Enemy.h (stats + AI), EnemyModel.h (its box rig), then list
 //                  it in a wave in Level.h.
-//   CHANGE A MAP:  Level.h. Walls render and collide automatically.
+//   CHANGE A MAP:  Level.h / LevelDescent.h. Walls render and collide
+//                  automatically; movers are walls that LevelData moves.
 // =============================================================================
 static constexpr int   SCREEN_W   = 1280;
 static constexpr int   SCREEN_H   = 720;
@@ -59,6 +69,15 @@ inline int g_startArena = 0;
 inline int g_startWave  = 0;   // --wave N / ?wave=N (with --arena): skip to that wave
 // --god / ?god: the player takes no damage (for recording footage)
 inline bool g_godMode = false;
+// --cam x y z yaw pitch: start the camera somewhere specific (screenshots)
+inline bool      g_devCam = false;
+inline glm::vec3 g_devCamPos{0.f};
+inline float     g_devCamYaw = -90.f, g_devCamPitch = 0.f;
+// --weapon N --aim --overlay armory|pause|settings: pose a screenshot
+inline int       g_devWeapon = -1;
+inline bool      g_devAim = false;
+inline std::string g_devOverlay;
+inline bool      g_devNoMouse = false;   // screenshot runs: never grab or read the mouse
 
 static GLuint makeGreyTexture() {
     GLuint tex;
@@ -89,6 +108,8 @@ static WorldMeshes buildWorldMeshes(const LevelData& L) {
         auto gc = [&](float y) -> glm::vec3 {
             if (!shade) return col;
             float t = (ySpan > 0.01f) ? (y - yLo) / ySpan : 1.f;
+            // Tall rock (the Descent) shouldn't go black for 50 m: shade the bottom few metres only
+            if (ySpan > 12.f) t = glm::clamp((y - yLo) / 12.f + 0.35f, 0.f, 1.f);
             return col * glm::mix(0.55f, 1.0f, t);
         };
         auto worldUV = [&](glm::vec3 p) -> glm::vec2 {
@@ -141,6 +162,8 @@ public:
     std::function<void()> onQuit;
 
     GameSettings* settings = nullptr;   // injected by main — may be null (safe)
+    GameMode      mode = GameMode::ARENA;
+    bool fast() const { return mode == GameMode::FAST; }
 
     Player           player{{0.f,0.f,24.f}};
     StyleSystem      styleSystem;
@@ -151,6 +174,10 @@ public:
     WaveDirector     director;
     AudioSystem&     audio;
     PostProcess      postProcess{SCREEN_W,SCREEN_H};
+    SettingsMenu     settingsMenu{SCREEN_W, SCREEN_H};
+    Progression      prog;
+    Records          records;
+    MouseFilter      mouseFilter;
 
     ShaderProgram  worldShader;
     ShaderProgram  skyboxShader;
@@ -160,30 +187,21 @@ public:
     WorldMeshes world;
 
     std::vector<Enemy> enemies;
-    SpatialGrid        spatialGrid;   // built once; door boxes move only in Y
+    SpatialGrid        spatialGrid;   // built once; door boxes move only in Y, movers are tested separately
 
-    // Slot 1: Revolver — 8 rounds, manual/auto reload
-    int   revolverAmmo    = 8;
-    int   revolverAmmoMax = 8;
-    float revolverTimer   = 0.f;
-    bool  reloading       = false;
-    float reloadTimer     = 0.f;
-    static constexpr float RELOAD_TIME = 1.2f;
-    // Slot 2: Shotgun — 2 shells, pump-action
-    int   shotgunAmmo      = 2;
-    int   shotgunAmmoMax   = 2;
-    float shotgunTimer     = 0.f;
-    bool  shotgunReloading = false;
-    float shotgunReloadTimer = 0.f;
-    static constexpr float SHOTGUN_RELOAD_TIME = 1.4f;
+    // ---- Weapons (see Weapons.h) ----
+    std::array<WeaponState, WEAPON_COUNT> weapons;
+    int   activeWeapon   = 0;
+    int   pendingWeapon  = -1;
+    float weaponSwitchTimer = 0.f;
+    float aim         = 0.f;    // 0 hip .. 1 aimed (rifles)
+    float aimFullAt   = -1.f;   // gameClock when aim last reached full (quickscope window)
+    float boltSoundTimer = -1.f;
     // G key: Grenades — max 2, one returned per 2 kills
     int   grenadeCount   = 2;
     int   grenadeMax     = 2;
     float grenadeTimer   = 0.f;
     int   killsThisCycle = 0;
-    int   activeWeapon   = 0;
-    int   pendingWeapon  = -1;
-    float weaponSwitchTimer = 0.f;
 
     float recoilPitch = 0.f;
 
@@ -196,12 +214,18 @@ public:
     float peakStyle   = 0.f;
     bool  victory      = false;
     float victoryDelay = -1.f;   // counts down after the boss dies, then shows the screen
+    bool  newRecord    = false;
+
+    // FAST mode
+    float countdown  = 0.f;      // 3-2-1 before the clock starts
+    bool  finishOpen = false;
+    std::vector<float> splits;   // clock at each section clear
 
     // Title cards, shown one after another
     struct Banner { std::string title, subtitle; glm::vec3 color; float time, duration; };
     std::deque<Banner> banners;
 
-    float controlHintTimer = 9.f;
+    float controlHintTimer = 10.f;
     float footstepTimer = 0.f;
 
     int   dashCharges       = 2;
@@ -219,14 +243,16 @@ public:
     glm::vec3 muzzleFlashPos{0.f};
     float explosionFlashTimer = 0.f;
     glm::vec3 explosionFlashPos{0.f};
+    float ceilingFxTimer = 0.f;
 
     // Hitscan tracer — thin billboard quad, additive blending, fades fast
     struct Tracer {
         glm::vec3 start{0.f}, end{0.f};
         float life = 0.f, maxLife = 0.13f;
+        float width = 0.055f;
         bool  alive = false;
     };
-    static constexpr int MAX_TRACERS = 24;
+    static constexpr int MAX_TRACERS = 32;
     Tracer        tracers[MAX_TRACERS];
     ShaderProgram tracerShader;
     GLuint        tracerVAO = 0, tracerVBO = 0;
@@ -235,6 +261,7 @@ public:
     ViewModel viewModel;
     std::vector<Interactable> interactables;
     bool  nearInteractable = false;
+    bool  grappleTargetInSight = false;
 
     float fovKick        = 0.f;
     float playerXZSpeed  = 0.f;
@@ -242,7 +269,10 @@ public:
     float landSquash     = 0.f;
 
     bool  paused        = false;
+    bool  pauseSettings = false;   // the settings page is open inside the pause menu
     int   pauseSelected = 0;
+    bool  armoryOpen    = false;
+    int   armoryW = 0, armoryS = 0;
     bool  playerDead = false;
     float deadTimer  = 0.f;
 
@@ -266,6 +296,7 @@ public:
     };
     static constexpr int MAX_PARTICLES = 1200;
     Particle  particles[MAX_PARTICLES];
+    int       particleCursor = 0;
     GLuint    particleVAO = 0, particleVBO = 0;
     float     ambientTimer = 0.f;
 
@@ -273,11 +304,14 @@ public:
     struct Debris {
         glm::mat3 shape;          // rotation * scale of the original part
         glm::vec3 pos, vel, axis, color, emissive;
-        float angle = 0.f, spin = 0.f, life = 0.f, maxLife = 1.f;
+        float angle = 0.f, spin = 0.f, life = 0.f, maxLife = 1.f, floorY = 0.f;
     };
     std::vector<Debris> debris;
 
-    struct Pickup { glm::vec3 pos, vel; float life; };   // health orbs
+    // Drops: health orbs (common, small heal, magnetic), health potions (rare,
+    // big heal, only taken when hurt) and XP shards (rare, bonus XP)
+    enum class PickupKind { ORB, POTION, XP };
+    struct Pickup { glm::vec3 pos, vel; float life; PickupKind kind; float floorY; };
     std::vector<Pickup> pickups;
 
     struct Shockwave { glm::vec3 pos; float radius, t; glm::vec3 color; };
@@ -289,6 +323,7 @@ public:
     float padCooldown  = 0.f;
     float hazardTick   = 0.f;
     float gameClock    = 0.f;     // drives decor animation
+    float moverClock   = 0.f;     // drives moving platforms (fixed-step)
 
     static constexpr int MAX_POINT_LIGHTS = 4;
     glm::vec3 pointLightPos[MAX_POINT_LIGHTS];
@@ -307,11 +342,12 @@ public:
     bool prevJumpKey      = false;
     // Event-driven click flags — set in handleEvent, consumed once in physicsTick.
     bool pendingFire      = false;
-    bool pendingShotgun   = false;
     bool pendingGrenade   = false;
     bool pendingGrapple   = false;
+    bool spawnSoundThisTick = false;
 
-    GameplayState(AudioSystem& aud, GameSettings* s = nullptr) : settings(s), audio(aud) {
+    GameplayState(AudioSystem& aud, GameSettings* s = nullptr, GameMode m = GameMode::ARENA)
+        : settings(s), mode(m), audio(aud) {
         worldShader.loadFiles("src/shader.vert","src/shader.frag");
         skyboxShader.loadFiles("src/skybox.vert","src/skybox.frag");
         tracerShader.loadFiles("src/tracer.vert","src/tracer.frag");
@@ -360,10 +396,15 @@ public:
         wallTex  = TextureGen::generateBrickWall(128);
         ceilTex  = TextureGen::generateMetalCeiling(128);
 
-        level = buildLevel();
+        level = fast() ? buildDescent() : buildLevel();
         spatialGrid.build(level.walls);
         world = buildWorldMeshes(level);
         director.level = &level;
+        director.fast  = fast();
+        records.load();
+
+        settingsMenu.s = settings;
+        settingsMenu.onBack = [this]() { pauseSettings = false; };
 
         for (int i=0;i<MAX_POINT_LIGHTS;++i) {
             pointLightPos[i]   = {0,0,0};
@@ -373,12 +414,19 @@ public:
         int start = glm::clamp(g_startArena, 0, (int)level.arenas.size() - 1);
         enterArena(start);
         director.wave = glm::clamp(g_startWave, 0, director.waveCount() - 1);
+        if (fast() && start == 0) countdown = 3.f;
+        if (g_devCam) countdown = 0.f;
+        if (g_devWeapon >= 0) activeWeapon = g_devWeapon % WEAPON_COUNT;
+        if (g_devAim) aim = 1.f;
+        if (g_devOverlay == "armory") { prog.points = 3; prog.up[2].tier[0] = 2; prog.up[3].mod = true; armoryOpen = true; armoryW = 2; }
+        if (g_devOverlay == "pause") paused = true;
+        if (g_devOverlay == "settings") { paused = true; pauseSettings = true; }
 
         prevTicks = SDL_GetPerformanceCounter();
         freq      = SDL_GetPerformanceFrequency();
         prevCamPos = player.camera.position;
 
-        SDL_SetRelativeMouseMode(SDL_TRUE);
+        captureMouse(true);
     }
 
     ~GameplayState() {
@@ -395,6 +443,12 @@ public:
         SDL_SetRelativeMouseMode(SDL_FALSE);
     }
 
+    void captureMouse(bool on) {
+        if (g_devNoMouse) on = false;
+        SDL_SetRelativeMouseMode(on ? SDL_TRUE : SDL_FALSE);
+        if (on) mouseFilter.onCapture();
+    }
+
     // =========================================================================
     // Run / arena lifecycle
     // =========================================================================
@@ -408,6 +462,12 @@ public:
             if (ar.entryGate >= 0) setDoor(ar.entryGate, i != a, true);
         }
         resetPlayer(level.arenas[a].playerStart);
+        if (g_devCam) {
+            player.position = g_devCamPos - glm::vec3{0, player.eyeHeight, 0};
+            player.camera.position = g_devCamPos;
+            player.camera.yaw = g_devCamYaw; player.camera.pitch = g_devCamPitch;
+            prevCamPos = g_devCamPos;
+        }
         enemies.clear();
         for (auto& p : projSystem.pool) p.alive = false;
         for (auto& d : decals)          d.alive = false;
@@ -417,6 +477,9 @@ public:
         grapple.release();
         playerDead = false; deadTimer = 0.f;
         victory = false; victoryDelay = -1.f;
+        finishOpen = false;
+        // Splits after this section belong to a run we're redoing
+        if (fast() && (int)splits.size() > a) splits.resize(a);
         director.startArena(a);
     }
 
@@ -427,33 +490,41 @@ public:
         prevCamPos = player.camera.position;
         styleSystem = StyleSystem{};
         grenadeCount = grenadeMax; killsThisCycle = 0;
-        revolverAmmo = revolverAmmoMax; reloading = false; reloadTimer = 0.f; revolverTimer = 0.f;
-        shotgunAmmo = shotgunAmmoMax; shotgunReloading = false; shotgunReloadTimer = 0.f; shotgunTimer = 0.f;
+        for (int w = 0; w < WEAPON_COUNT; ++w) {
+            weapons[w] = WeaponState{};
+            weapons[w].ammo = weaponMag((WeaponId)w, prog.up[w]);
+        }
+        aim = 0.f; aimFullAt = -1.f; boltSoundTimer = -1.f;
         dashCharges = 2; dashCooldown = 0.f; dashMomentumTimer = 0.f;
         jumpsRemaining = 2; slamming = false; invincFrames = 0.f;
         activeWeapon = 0; pendingWeapon = -1; weaponSwitchTimer = 0.f;
         recoilPitch = 0.f; peakFallSpeed = 0.f; landSquash = 0.f; fovKick = 0.f;
-        paused = false; pauseSelected = 0;
-        for (auto& di : ui.damageIndicators) di.timer = 0.f;
-        ui.damageIndicatorCount = 0;
+        paused = false; pauseSettings = false; pauseSelected = 0; armoryOpen = false;
+        ui.clearIndicators();
     }
 
     void retryArena() {
         ++deaths;
+        if (fast()) { enterArena(director.arena); captureMouse(true); return; }
         // Died on the way out of a cleared arena? Pick up at the next one.
         bool cleared = director.phase == WaveDirector::Phase::CLEARED;
         enterArena(director.arena + (cleared ? 1 : 0));
-        SDL_SetRelativeMouseMode(SDL_TRUE);
+        captureMouse(true);
     }
 
     void newRun() {
         director = WaveDirector{};
         director.level = &level;
+        director.fast  = fast();
+        prog = Progression{};
         totalKills = totalShots = totalHits = deaths = 0;
         elapsedTime = 0.f; peakStyle = 0.f;
-        controlHintTimer = 9.f;
+        controlHintTimer = 10.f;
+        splits.clear();
+        newRecord = false;
         enterArena(0);
-        SDL_SetRelativeMouseMode(SDL_TRUE);
+        if (fast()) countdown = 3.f;
+        captureMouse(true);
     }
 
     void setDoor(int d, bool open, bool instant) {
@@ -464,7 +535,7 @@ public:
     }
     void applyDoor(const Door& door) {
         AABB& b = level.walls[door.wall].box;
-        b.max.y = door.height * (1.f - door.openAmount);
+        b.max.y = door.baseY + door.height * (1.f - door.openAmount);
         b.min.y = b.max.y - door.height;
     }
 
@@ -476,15 +547,24 @@ public:
     void handleDirectorEvents() {
         for (auto& ev : director.events) {
             const Arena& ar = level.arenas[director.arena];
-            char buf[96];
+            char buf[128];
             switch (ev.kind) {
             case DirectorEvent::ARENA_START:
                 if (ar.entryGate >= 0) setDoor(ar.entryGate, false, false);
-                snprintf(buf, sizeof(buf), "ARENA %d/%d", ev.value + 1, (int)level.arenas.size());
-                pushBanner(std::string(buf) + "  " + ar.name, ar.subtitle, {1.f, 0.78f, 0.3f}, 2.6f);
-                audio.play("wave");
+                if (fast()) {
+                    if (ev.value == 0) pushBanner("THE DESCENT", "CLEAR EVERY SECTION - THEN REACH THE BEACON", {1.f, 0.6f, 0.2f}, 3.f);
+                    else {
+                        snprintf(buf, sizeof(buf), "SECTION %d/%d  %s", ev.value + 1, (int)level.arenas.size(), ar.name);
+                        pushBanner(buf, ar.subtitle, {1.f, 0.7f, 0.3f}, 1.8f);
+                    }
+                } else {
+                    snprintf(buf, sizeof(buf), "ARENA %d/%d", ev.value + 1, (int)level.arenas.size());
+                    pushBanner(std::string(buf) + "  " + ar.name, ar.subtitle, {1.f, 0.78f, 0.3f}, 2.6f);
+                    audio.play("wave");
+                }
                 break;
             case DirectorEvent::WAVE_START:
+                if (fast()) { if (ev.value > 0) pushBanner("SECOND WAVE", "", {1.f, 0.5f, 0.3f}, 1.4f); break; }
                 snprintf(buf, sizeof(buf), "WAVE %d/%d", ev.value + 1, director.waveCount());
                 pushBanner(buf, "", {1.f, 0.9f, 0.4f}, 1.8f);
                 audio.play("wave", 90);
@@ -492,117 +572,212 @@ public:
             case DirectorEvent::BOSS_START:
                 pushBanner("THE WARDEN", "DODGE THE VOLLEYS, JUMP THE SLAMS", {1.f, 0.2f, 0.65f}, 3.5f);
                 audio.play("wave"); audio.play("explosion", 70);
-                shakeTimer = 0.6f; shakeIntensity = 0.06f;
+                shake(0.6f, 0.06f);
                 break;
             case DirectorEvent::NEW_TYPE: {
                 EnemyType t = (EnemyType)ev.value;
                 if (t == EnemyType::WARDEN) break;
-                pushBanner(std::string("NEW: ") + statsOf(t).name, statsOf(t).hint, statsOf(t).glow, 3.4f);
+                if (fast()) ui.feed(std::string("NEW: ") + statsOf(t).name, statsOf(t).glow);
+                else pushBanner(std::string("NEW: ") + statsOf(t).name, statsOf(t).hint, statsOf(t).glow, 3.4f);
                 break;
             }
             case DirectorEvent::WAVE_CLEARED:
-                pushBanner("WAVE CLEAR", "", {0.4f, 1.f, 0.6f}, 1.6f);
+                if (!fast()) pushBanner("WAVE CLEAR", "", {0.4f, 1.f, 0.6f}, 1.6f);
                 styleSystem.heal(10.f);
                 break;
-            case DirectorEvent::ARENA_CLEARED:
-                if (ar.exitDoor >= 0) {
-                    setDoor(ar.exitDoor, true, false);
+            case DirectorEvent::ARENA_CLEARED: {
+                const Arena& done = level.arenas[ev.value];
+                if (fast()) {
+                    if (done.exitDoor >= 0) setDoor(done.exitDoor, true, false);
+                    recordSplit(ev.value);
+                    styleSystem.heal(25.f);
+                    grenadeCount = grenadeMax;
+                    audio.play("split");
+                    break;
+                }
+                if (done.exitDoor >= 0) {
+                    setDoor(done.exitDoor, true, false);
                     pushBanner("ARENA CLEARED", "THE GATE IS OPEN - HEAD NORTH", {0.4f, 1.f, 0.6f}, 3.5f);
                 }
                 styleSystem.heal(40.f);
                 grenadeCount = grenadeMax;
                 audio.play("wave");
                 break;
+            }
             case DirectorEvent::VICTORY:
                 victoryDelay = 2.5f;
+                break;
+            case DirectorEvent::FINISH_OPEN:
+                finishOpen = true;
+                pushBanner("FINISH OPEN", "REACH THE BEACON", {1.f, 0.6f, 0.2f}, 2.f);
+                audio.play("wave");
                 break;
             }
         }
         director.events.clear();
     }
 
+    // FAST mode: note the clock at a section clear and compare with the best run
+    void recordSplit(int section) {
+        if ((int)splits.size() > section) splits.resize(section);
+        splits.push_back(elapsedTime);
+        char buf[96];
+        if (section < (int)records.fastSplits.size()) {
+            float d = elapsedTime - records.fastSplits[section];
+            snprintf(buf, sizeof(buf), "SECTION %d  %s  %+.2f", section + 1, formatTime(elapsedTime).c_str(), d);
+            ui.showSplit(buf, d <= 0.f ? glm::vec3{0.3f, 1.f, 0.5f} : glm::vec3{1.f, 0.4f, 0.35f});
+        } else {
+            snprintf(buf, sizeof(buf), "SECTION %d  %s", section + 1, formatTime(elapsedTime).c_str());
+            ui.showSplit(buf, {1.f, 0.9f, 0.6f});
+        }
+    }
+
+    void finishRun() {
+        victory = true;
+        captureMouse(false);
+        if (fast()) {
+            newRecord = records.bestFast <= 0.f || elapsedTime < records.bestFast;
+            if (newRecord) { records.bestFast = elapsedTime; records.fastSplits = splits; }
+        } else {
+            newRecord = records.bestArena <= 0.f || elapsedTime < records.bestArena;
+            if (newRecord) records.bestArena = elapsedTime;
+        }
+        if (newRecord) records.save();
+    }
+
+    void shake(float t, float amount) {
+        float s = settings ? settings->screenShake : 1.f;
+        if (s <= 0.f) return;
+        shakeTimer = std::max(shakeTimer, t);
+        shakeIntensity = std::max(shakeIntensity, amount * s);
+    }
+
     // =========================================================================
     // Input
     // =========================================================================
     void handleEvent(const SDL_Event& e) override {
-        if (e.type == SDL_KEYDOWN && (e.key.keysym.sym == SDLK_ESCAPE || e.key.keysym.sym == SDLK_p)) {
+        // Gameplay keys act once per press; held-key auto-repeat would toggle
+        // the grapple, armory or pause on and off. (Menus below read `e`
+        // directly, where repeat is wanted for arrows and sliders.)
+        SDL_Keycode key = (e.type == SDL_KEYDOWN && !e.key.repeat) ? e.key.keysym.sym : SDLK_UNKNOWN;
+
+        // Armory (TAB) — a paused overlay for spending upgrade points
+        if (armoryOpen) {
+            if (key == SDLK_TAB || key == SDLK_ESCAPE || key == SDLK_p) { closeArmory(); return; }
+            handleArmoryEvent(e);
+            return;
+        }
+        if (paused && pauseSettings) { settingsMenu.handleEvent(e); return; }
+
+        if (key == SDLK_ESCAPE || key == SDLK_p) {
             if (playerDead || victory) {
-                if (e.key.keysym.sym != SDLK_ESCAPE) return;  // P only pauses
-                SDL_SetRelativeMouseMode(SDL_FALSE);
+                if (key != SDLK_ESCAPE) return;  // P only pauses
+                captureMouse(false);
                 if (onReturnToMenu) onReturnToMenu();
                 return;
             }
             paused = !paused;
             pauseSelected = 0;
-            SDL_SetRelativeMouseMode(paused ? SDL_FALSE : SDL_TRUE);
+            captureMouse(!paused);
             return;
         }
-        if (paused) {
-            handlePauseEvent(e);
-            return;
-        }
+        if (paused) { handlePauseEvent(e); return; }
+        if (key == SDLK_TAB && !playerDead && !victory) { openArmory(); return; }
         if (e.type == SDL_KEYDOWN && (playerDead || victory)) {
-            if (e.key.keysym.sym == SDLK_r && playerDead) { retryArena(); return; }
-            if (e.key.keysym.sym == SDLK_RETURN)          { newRun();     return; }
+            if (key == SDLK_r && playerDead) { retryArena(); return; }
+            if (key == SDLK_RETURN)          { newRun();     return; }
             return;
         }
-        if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_e) {
+        if (key == SDLK_e) {
             int idx = findInteractTarget();
             if (idx >= 0 && interactables[idx].onInteract) interactables[idx].onInteract();
         }
         if (e.type == SDL_MOUSEBUTTONDOWN) {
-            if (e.button.button == SDL_BUTTON_LEFT) {
-                if (activeWeapon == 0) pendingFire    = true;
-                else                   pendingShotgun = true;
-            }
-            if (e.button.button == SDL_BUTTON_RIGHT) pendingGrapple = true;
+            if (e.button.button == SDL_BUTTON_LEFT) pendingFire = true;
+            // RMB aims the rifles (polled in physicsTick); otherwise it's the grapple
+            if (e.button.button == SDL_BUTTON_RIGHT && !weaponDef(heldWeapon()).canAim) pendingGrapple = true;
         }
-        auto trySwitch = [&](int newWeapon) {
-            if (newWeapon != activeWeapon && pendingWeapon < 0) {
-                pendingWeapon = newWeapon;
-                weaponSwitchTimer = 0.15f;
-                viewModel.triggerSwitch();
-                audio.play("reload", 80);
-            }
-        };
-        if (e.type == SDL_MOUSEWHEEL) trySwitch((activeWeapon + 1) % 2);
-        if (e.type == SDL_KEYDOWN) {
-            if (e.key.keysym.sym == SDLK_1) trySwitch(0);
-            if (e.key.keysym.sym == SDLK_2) trySwitch(1);
-            if (e.key.keysym.sym == SDLK_g) pendingGrenade = true;
-        }
-        if (e.type == SDL_MOUSEMOTION) {
-            float sens = settings ? settings->sensitivity : 0.1f;
-            player.applyMouseLook((float)e.motion.xrel, (float)e.motion.yrel, sens);
+        if (key == SDLK_q) pendingGrapple = true;
+        if (e.type == SDL_MOUSEWHEEL && e.wheel.y != 0)
+            trySwitch((activeWeapon + (e.wheel.y > 0 ? WEAPON_COUNT - 1 : 1)) % WEAPON_COUNT);
+        if (key >= SDLK_1 && key <= SDLK_4) trySwitch(key - SDLK_1);
+        if (key == SDLK_g) pendingGrenade = true;
+        if (e.type == SDL_MOUSEMOTION && !g_devNoMouse) {
+            float dx = (float)e.motion.xrel, dy = (float)e.motion.yrel;
+            mouseFilter.enabled = settings ? settings->mouseFilter : true;
+            if (!mouseFilter.accept(dx, dy)) return;
+            float sens = (settings ? settings->sensitivity : 0.1f) * aimSensScale();
+            if (settings && settings->invertY) dy = -dy;
+            player.applyMouseLook(dx, dy, sens);
         }
     }
 
-    // Pause a live run (no-op on death/win screens or if already paused).
+    // The weapon in hand (or about to be, mid-switch)
+    WeaponId heldWeapon() const { return (WeaponId)(pendingWeapon >= 0 ? pendingWeapon : activeWeapon); }
+
+    void trySwitch(int w) {
+        if (w != activeWeapon && pendingWeapon < 0) {
+            pendingWeapon = w;
+            weaponSwitchTimer = 0.15f;
+            viewModel.triggerSwitch();
+            audio.play("reload", 80);
+        }
+    }
+
+    // While zoomed, scale mouse look by how much the view narrowed so the
+    // crosshair tracks the same distance on screen, then by the user's setting.
+    float aimSensScale() const {
+        const WeaponDef& d = weaponDef((WeaponId)activeWeapon);
+        if (!d.canAim || aim <= 0.f) return 1.f;
+        float base = settings ? settings->fov : 90.f;
+        float zoomed = base * d.aimFov;
+        float ratio = std::tan(glm::radians(zoomed) * 0.5f) / std::tan(glm::radians(base) * 0.5f);
+        float k = (settings ? settings->zoomSens : 1.f) * ratio;
+        return glm::mix(1.f, k, aim);
+    }
+
+    // Pause a live run (no-op on death/win screens, in the armory, or if already paused).
     void pause() {
-        if (paused || playerDead || victory) return;
+        if (paused || playerDead || victory || armoryOpen) return;
         paused = true;
         pauseSelected = 0;
-        SDL_SetRelativeMouseMode(SDL_FALSE);
+        captureMouse(false);
     }
 
-    int pauseButtonY(int i) const { return SCREEN_H/2 - 20 + i * 60; }
+    const char* pauseLabel(int i) const {
+        static const char* L[] = {"RESUME", "SETTINGS", "", "QUIT TO MENU"};
+        if (i == 2) return fast() ? "RESTART RUN" : "RESTART ARENA";
+        return L[i];
+    }
 
     void activatePauseItem(int idx) {
-        if (idx == 0) {
-            paused = false;
-            SDL_SetRelativeMouseMode(SDL_TRUE);
-        } else {
-            SDL_SetRelativeMouseMode(SDL_FALSE);
+        switch (idx) {
+        case 0: paused = false; captureMouse(true); break;
+        case 1: pauseSettings = true; settingsMenu.selected = 1; break;
+        case 2:
+            if (fast()) newRun();
+            else { enterArena(director.arena + (director.phase == WaveDirector::Phase::CLEARED ? 1 : 0)); captureMouse(true); }
+            break;
+        default:
+            captureMouse(false);
             if (onReturnToMenu) onReturnToMenu();
+            break;
         }
+    }
+
+    int pauseItemAt(int mx, int my) const {
+        for (int i = 0; i < UIRenderer::PAUSE_ITEMS; ++i) {
+            int by = ui.pauseButtonY(i);
+            if (mx > SCREEN_W/2-150 && mx < SCREEN_W/2+150 && my > by && my < by+46) return i;
+        }
+        return -1;
     }
 
     void handlePauseEvent(const SDL_Event& e) {
         if (e.type == SDL_KEYDOWN) {
             switch (e.key.keysym.sym) {
-                case SDLK_UP:
-                case SDLK_DOWN:
-                    pauseSelected = 1 - pauseSelected; break;
+                case SDLK_UP:   pauseSelected = (pauseSelected + UIRenderer::PAUSE_ITEMS - 1) % UIRenderer::PAUSE_ITEMS; break;
+                case SDLK_DOWN: pauseSelected = (pauseSelected + 1) % UIRenderer::PAUSE_ITEMS; break;
                 case SDLK_RETURN:
                 case SDLK_SPACE:
                     activatePauseItem(pauseSelected); break;
@@ -610,20 +785,54 @@ public:
             }
         }
         if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
-            int mx = e.button.x, my = e.button.y;
-            for (int i = 0; i < 2; ++i) {
-                int by = pauseButtonY(i);
-                if (mx > SCREEN_W/2-130 && mx < SCREEN_W/2+130 && my > by && my < by+46)
-                    activatePauseItem(i);
-            }
+            int i = pauseItemAt(e.button.x, e.button.y);
+            if (i >= 0) activatePauseItem(i);
         }
         if (e.type == SDL_MOUSEMOTION) {
-            int mx = e.motion.x, my = e.motion.y;
-            for (int i = 0; i < 2; ++i) {
-                int by = pauseButtonY(i);
-                if (mx > SCREEN_W/2-130 && mx < SCREEN_W/2+130 && my > by && my < by+46)
-                    pauseSelected = i;
+            int i = pauseItemAt(e.motion.x, e.motion.y);
+            if (i >= 0) pauseSelected = i;
+        }
+    }
+
+    void openArmory() {
+        armoryOpen = true;
+        captureMouse(false);
+        // Start on the gun in hand
+        armoryW = activeWeapon;
+    }
+    void closeArmory() {
+        armoryOpen = false;
+        captureMouse(true);
+    }
+
+    void buyUpgrade(int w, int s) {
+        WeaponId wid = (WeaponId)w;
+        int oldMag = weaponMag(wid, prog.up[w]);
+        if (!prog.buy(wid, (UpgradeStat)s)) { audio.play("telegraph", 50); return; }
+        // A bigger magazine is topped up straight away
+        int newMag = weaponMag(wid, prog.up[w]);
+        if (newMag > oldMag && !weapons[w].reloading) weapons[w].ammo += newMag - oldMag;
+        audio.play("upgrade");
+    }
+
+    void handleArmoryEvent(const SDL_Event& e) {
+        if (e.type == SDL_KEYDOWN) {
+            switch (e.key.keysym.sym) {
+                case SDLK_LEFT:  armoryW = (armoryW + WEAPON_COUNT - 1) % WEAPON_COUNT; break;
+                case SDLK_RIGHT: armoryW = (armoryW + 1) % WEAPON_COUNT; break;
+                case SDLK_UP:    armoryS = (armoryS + UPGRADE_STATS - 1) % UPGRADE_STATS; break;
+                case SDLK_DOWN:  armoryS = (armoryS + 1) % UPGRADE_STATS; break;
+                case SDLK_RETURN:
+                case SDLK_SPACE: buyUpgrade(armoryW, armoryS); break;
+                default: break;
             }
+        }
+        int w, s;
+        if (e.type == SDL_MOUSEMOTION && ui.armoryCellAt(e.motion.x, e.motion.y, w, s)) { armoryW = w; armoryS = s; }
+        if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT &&
+            ui.armoryCellAt(e.button.x, e.button.y, w, s)) {
+            armoryW = w; armoryS = s;
+            buyUpgrade(w, s);
         }
     }
 
@@ -631,17 +840,29 @@ public:
     // Per-frame update
     // =========================================================================
     void update(float dt) override {
+        if (settings) audio.masterVolume = settings->audioVolume;
+
         // Banners keep animating on the death/victory screens, not while paused
-        if (!banners.empty() && !paused) {
+        bool frozen = paused || armoryOpen;
+        if (!banners.empty() && !frozen) {
             banners.front().time += dt;
             if (banners.front().time >= banners.front().duration) banners.pop_front();
         }
-        if (paused || playerDead || victory) {
+        if (!frozen) ui.update(dt, styleSystem);
+        if (frozen || playerDead || victory || countdown > 0.f) {
             // Keep the physics clock current so resuming doesn't replay the
             // whole paused interval as a burst of catch-up ticks.
             prevTicks   = SDL_GetPerformanceCounter();
             accumulator = 0.0;
             if (playerDead) deadTimer += dt;
+            if (countdown > 0.f && !frozen) {
+                float before = countdown;
+                countdown -= dt;
+                if (std::ceil(before) != std::ceil(countdown)) audio.play(countdown <= 0.f ? "wave" : "telegraph", 90);
+                if (countdown <= 0.f) countdown = 0.f;
+                handleDirectorEvents();   // the "THE DESCENT" banner during the count
+            }
+            if (playerDead) gameClock += dt;
             return;
         }
 
@@ -667,14 +888,14 @@ public:
         float floatDt = (float)elapsed;
         gameClock += floatDt;
         styleSystem.update(floatDt);
-        ui.update(floatDt, styleSystem);
         if (controlHintTimer > 0.f) controlHintTimer -= floatDt;
 
-        // Doors slide toward their target
+        // Doors slide toward their target (fast in FAST mode: no waiting around)
+        float doorSpeed = fast() ? 3.f : 1.f;
         for (auto& d : level.doors) {
             float target = d.open ? 1.f : 0.f;
             if (d.openAmount != target) {
-                float step = floatDt * (d.open ? 0.7f : 1.6f);
+                float step = floatDt * (d.open ? 0.7f : 1.6f) * doorSpeed;
                 d.openAmount = d.open ? std::min(1.f, d.openAmount + step) : std::max(0.f, d.openAmount - step);
                 applyDoor(d);
             }
@@ -682,7 +903,7 @@ public:
 
         viewModel.update(floatDt, playerXZSpeed, player.onGround);
         // Baseline FOV widens with horizontal speed on top of the dash kick
-        float speedKick = glm::clamp((playerXZSpeed - player.horizontalSpeed) / 15.f, 0.f, 1.f) * 6.f;
+        float speedKick = glm::clamp((playerXZSpeed - 7.f) / 15.f, 0.f, 1.f) * 6.f;
         fovKick = glm::mix(fovKick, speedKick, std::min(1.f, floatDt * 7.f));
         landSquash = glm::mix(landSquash, 0.f, std::min(1.f, floatDt * 10.f));
 
@@ -692,6 +913,10 @@ public:
                 activeWeapon  = pendingWeapon;
                 pendingWeapon = -1;
             }
+        }
+        if (boltSoundTimer > 0.f) {
+            boltSoundTimer -= floatDt;
+            if (boltSoundTimer <= 0.f) audio.play("bolt", 110);
         }
 
         elapsedTime += floatDt;
@@ -748,7 +973,7 @@ public:
 
         if (victoryDelay > 0.f) {
             victoryDelay -= floatDt;
-            if (victoryDelay <= 0.f) { victory = true; SDL_SetRelativeMouseMode(SDL_FALSE); }
+            if (victoryDelay <= 0.f) finishRun();
         }
         if (!styleSystem.isAlive() && !playerDead) {
             playerDead = true;
@@ -761,6 +986,18 @@ public:
     // Fixed-rate simulation (60 Hz)
     // =========================================================================
     void physicsTick(float dt, const Uint8* keys, bool parryKey) {
+        spawnSoundThisTick = false;
+
+        // --- Moving platforms: move them, then carry whoever stands on one ---
+        int rideMover = level.moverOfWall(player.groundWall);
+        moverClock += dt;
+        level.updateMovers(moverClock);
+        if (rideMover >= 0) {
+            player.position += level.movers[rideMover].delta;
+            player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0};
+        }
+        if (grapple.active && grapple.moverWall >= 0) grapple.follow(level.walls[grapple.moverWall].box);
+
         // --- Dash ---
         bool dashKey = keys[SDL_SCANCODE_LSHIFT] != 0;
         if (dashKey && !prevDashKey && dashCharges > 0) {
@@ -801,8 +1038,7 @@ public:
                         hurtEnemy(e, 30.f, e.position + glm::vec3{0, e.height() * 0.5f, 0}, 15.f, 2.f);
                 }
                 spawnShockwave(player.position, 4.5f, {1.f, 0.8f, 0.4f});
-                shakeTimer = 0.3f;
-                shakeIntensity = 0.08f;
+                shake(0.3f, 0.08f);
                 audio.play("slam");
                 slamming = false;
             }
@@ -833,15 +1069,19 @@ public:
         }
 
         // --- Grapple fire / release ---
+        glm::vec3 gPoint; int gWall = -1; bool gMover = false;
+        bool canHook = findGrappleTarget(gPoint, gWall, gMover);
+        grappleTargetInSight = canHook && gMover;
         if (pendingGrapple) {
-            glm::vec3 camPos = player.camera.position;
-            glm::vec3 camFwd = player.camera.forward();
             if (!grapple.active) {
-                glm::vec3 grappleImpulse{0.f};
-                if (grapple.fire(camPos, camFwd, level.walls.data(), (int)level.walls.size(), grappleImpulse)) {
-                    player.velocity = grappleImpulse;
+                if (canHook) {
+                    glm::vec3 impulse{0.f};
+                    grapple.attach(player.camera.position, gPoint, impulse, gWall,
+                                   gMover ? &level.walls[gWall].box : nullptr);
+                    player.velocity = impulse;
                     viewModel.triggerGrapple();
                     audio.play("grapple_fire");
+                    if (gMover) styleSystem.addStyle(4.f);
                 }
             } else {
                 grapple.release();
@@ -850,10 +1090,27 @@ public:
         }
         grapple.update(dt, player.camera.position, player.velocity);
 
+        // --- Aiming (rifles, RMB held) ---
+        {
+            const WeaponDef& d = weaponDef((WeaponId)activeWeapon);
+            const WeaponState& ws = weapons[activeWeapon];
+            bool rmb = (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
+            bool want = d.canAim && rmb && pendingWeapon < 0 && !ws.reloading;
+            float before = aim;
+            if (g_devAim) want = d.canAim;
+            if (want) aim = std::min(1.f, aim + dt / d.aimTime);
+            else      aim = std::max(0.f, aim - dt / (d.canAim ? d.aimTime * 0.6f : 0.05f));
+            if (before < 0.02f && aim >= 0.02f && d.scope) audio.play("scope", 70);
+            if (before < 0.98f && aim >= 0.98f) aimFullAt = gameClock;
+            player.horizontalSpeed = 7.f * glm::mix(1.f, d.aimMoveMult, aim);
+        }
+
         // --- Player physics ---
+        player.dynWalls = level.moverWalls.data();
+        player.dynCount = (int)level.moverWalls.size();
         player.update(dt, keys, level.walls.data(), (int)level.walls.size(),
                       grapple.active || dashMomentumTimer > 0.f, &spatialGrid);
-        keepPlayerInZone();
+        keepPlayerInZone(dt);
         pushPlayerOutOfEnemies();
         playerXZSpeed = glm::length(glm::vec2(player.velocity.x, player.velocity.z));
         if (!player.onGround) peakFallSpeed = std::max(peakFallSpeed, -player.velocity.y);
@@ -862,7 +1119,7 @@ public:
         padCooldown = std::max(0.f, padCooldown - dt);
         for (auto& pad : level.pads) {
             glm::vec3 p = player.position;
-            if (padCooldown <= 0.f && player.velocity.y <= 0.5f && p.y < pad.centre.y + 0.4f &&
+            if (padCooldown <= 0.f && player.velocity.y <= 0.5f && p.y < pad.centre.y + 0.4f && p.y > pad.centre.y - 0.6f &&
                 std::fabs(p.x - pad.centre.x) < pad.half.x && std::fabs(p.z - pad.centre.z) < pad.half.y) {
                 player.velocity = pad.launch;
                 player.onGround = false;
@@ -879,7 +1136,7 @@ public:
         hazardTick = std::max(0.f, hazardTick - dt);
         for (auto& hz : level.hazards) {
             glm::vec3 p = player.position;
-            if (p.y < hz.box.max.y + 0.3f && p.x > hz.box.min.x && p.x < hz.box.max.x &&
+            if (p.y < hz.box.max.y + 0.3f && p.y > hz.box.min.y - 0.5f && p.x > hz.box.min.x && p.x < hz.box.max.x &&
                 p.z > hz.box.min.z && p.z < hz.box.max.z) {
                 if (!g_godMode && director.phase != WaveDirector::Phase::VICTORY)
                     styleSystem.health = std::max(0.f, styleSystem.health - hz.dps * dt);
@@ -905,36 +1162,26 @@ public:
         if (justLanded && !slamming) audio.play("land", 70);
 
         // --- Weapons ---
-        revolverTimer    = std::max(0.f, revolverTimer    - dt);
-        shotgunTimer     = std::max(0.f, shotgunTimer     - dt);
-        grenadeTimer     = std::max(0.f, grenadeTimer     - dt);
-        invincFrames     = std::max(0.f, invincFrames     - dt);
+        grenadeTimer = std::max(0.f, grenadeTimer - dt);
+        invincFrames = std::max(0.f, invincFrames - dt);
+        for (int w = 0; w < WEAPON_COUNT; ++w)
+            if (weapons[w].tick(dt, weaponMag((WeaponId)w, prog.up[w])) && w == activeWeapon && w >= 2)
+                audio.play("bolt", 90);   // rifles chamber a round when the reload finishes
 
-        if (reloading) {
-            reloadTimer -= dt;
-            if (reloadTimer <= 0.f) { reloading = false; reloadTimer = 0.f; revolverAmmo = revolverAmmoMax; }
-        }
-        if (shotgunReloading) {
-            shotgunReloadTimer -= dt;
-            if (shotgunReloadTimer <= 0.f) { shotgunReloading = false; shotgunReloadTimer = 0.f; shotgunAmmo = shotgunAmmoMax; }
-        }
-        if (keys[SDL_SCANCODE_R]) {
-            if (activeWeapon == 0 && !reloading && revolverAmmo < revolverAmmoMax) startReload();
-            else if (activeWeapon == 1 && !shotgunReloading && shotgunAmmo < shotgunAmmoMax) startShotgunReload();
-        }
+        WeaponState& ws = weapons[activeWeapon];
+        int mag = weaponMag((WeaponId)activeWeapon, prog.up[activeWeapon]);
+        if (keys[SDL_SCANCODE_R] && !ws.reloading && ws.ammo < mag && pendingWeapon < 0) startReload(activeWeapon);
+        // Empty: reload once the last shot's cycle is done
+        if (ws.ammo <= 0 && !ws.reloading && ws.cooldown <= 0.f && pendingWeapon < 0) startReload(activeWeapon);
 
         bool switchBlocked = (pendingWeapon >= 0);
-        if (pendingFire && revolverTimer <= 0.f && !reloading && revolverAmmo > 0 && !switchBlocked)
-            fireRevolver();
+        if (pendingFire && ws.ready() && !switchBlocked) fireWeapon(activeWeapon);
         pendingFire = false;
-        if (pendingShotgun && shotgunTimer <= 0.f && !shotgunReloading && shotgunAmmo > 0 && !switchBlocked)
-            fireShotgun();
-        pendingShotgun = false;
         if (pendingGrenade && grenadeCount > 0 && grenadeTimer <= 0.f) throwGrenade();
         pendingGrenade = false;
 
         if (recoilPitch > 0.f) {
-            float applied = std::min(12.f * dt, recoilPitch);
+            float applied = std::min(14.f * dt, recoilPitch);
             player.camera.pitch -= applied;
             recoilPitch -= applied;
             player.camera.pitch = glm::clamp(player.camera.pitch, -89.f, 89.f);
@@ -968,6 +1215,7 @@ public:
                 invincFrames  = 0.5f;
                 hitStopFrames = glm::max(hitStopFrames, 1);
                 audio.play("parry");
+                ui.feed("PARRY", {1.f, 0.9f, 0.3f});
             } else if (result.boostableIndex >= 0) {
                 // Projectile boost: detonate your own projectile for a massive explosion.
                 auto& p = projSystem.pool[result.boostableIndex];
@@ -978,6 +1226,7 @@ public:
                 invincFrames  = 0.6f;
                 hitStopFrames = glm::max(hitStopFrames, 2);
                 audio.play("parry");
+                ui.feed("PROJECTILE BOOST", {1.f, 0.6f, 0.2f});
             }
         }
 
@@ -993,7 +1242,19 @@ public:
 
         updatePickups(dt);
 
+        // --- FAST: the finish beacon ---
+        if (finishOpen && !victory) {
+            glm::vec3 d = player.position - level.finishPos;
+            if (glm::length(glm::vec2(d.x, d.z)) < 3.f && std::fabs(d.y) < 4.f) {
+                finishOpen = false;
+                spawnBurst(level.finishPos + glm::vec3{0, 1.f, 0}, {1.f, 0.6f, 0.2f}, 60, 10.f, 1.2f, -2.f);
+                audio.play("wave"); audio.play("split");
+                finishRun();
+            }
+        }
+
         if (shakeTimer > 0.f) shakeTimer -= dt;
+        if (ceilingFxTimer > 0.f) ceilingFxTimer -= dt;
         nearInteractable = findInteractTarget() >= 0;
         for (auto& t : tracers) if (t.alive) { t.life -= dt; if (t.life <= 0.f) t.alive = false; }
         for (auto& d : decals)  if (d.alive) { d.life -= dt; if (d.life <= 0.f) d.alive = false; }
@@ -1003,28 +1264,107 @@ public:
                       [](const Enemy& e){ return !e.alive; }), enemies.end());
     }
 
+    // Where would the grapple hook if fired now? Static walls are hit exactly;
+    // moving platforms get a generous 1.2 m of aim assist and pull you to just
+    // above their top, so hooking one lands you on it.
+    bool findGrappleTarget(glm::vec3& point, int& wall, bool& isMover) const {
+        glm::vec3 o = player.camera.position, d = player.camera.forward();
+        float best = grapple.maxLength;
+        wall = -1; isMover = false;
+        for (int i = 0; i < (int)level.walls.size(); ++i) {
+            if (level.walls[i].dynamic) continue;
+            float t = rayBoxHit(o, d, level.walls[i].box);
+            if (t > 0.f && t < best) { best = t; wall = i; }
+        }
+        float bestMover = best + 0.5f;
+        int moverWall = -1;
+        for (int w : level.moverWalls) {
+            AABB b = level.walls[w].box;
+            b.min -= glm::vec3{1.2f}; b.max += glm::vec3{1.2f};
+            float t = rayBoxHit(o, d, b);
+            if (t > 0.f && t < bestMover) { bestMover = t; moverWall = w; }
+        }
+        if (moverWall >= 0) {
+            const AABB& b = level.walls[moverWall].box;
+            point = {(b.min.x + b.max.x) * 0.5f, b.max.y + 1.2f, (b.min.z + b.max.z) * 0.5f};
+            wall = moverWall; isMover = true;
+            return true;
+        }
+        if (wall >= 0) { point = o + d * best; return true; }
+        return false;
+    }
+
     // The player may only be inside the arena being fought — plus, once it's
-    // cleared, the corridor and the next arena. Walls are low enough to stand
-    // on, so this (not wall height) is what stops you leaving the map.
-    void keepPlayerInZone() {
-        std::vector<AABB> zones{ level.arenas[director.arena].zone };
-        if (director.phase == WaveDirector::Phase::CLEARED) {
-            zones.push_back(level.corridors[director.arena]);
-            zones.push_back(level.arenas[director.arena + 1].zone);
+    // cleared, the corridor and the next arena (FAST: every section reached so
+    // far). Walls are low enough to stand on, so this (not wall height) is
+    // what stops you leaving the map. Each zone's max.y is an invisible
+    // ceiling, and falling below an arena's voidY returns you to its start.
+    void keepPlayerInZone(float dt) {
+        static std::vector<const AABB*> zones;
+        zones.clear();
+        if (fast()) {
+            for (int i = 0; i <= director.arena; ++i) zones.push_back(&level.arenas[i].zone);
+        } else {
+            zones.push_back(&level.arenas[director.arena].zone);
+            if (director.phase == WaveDirector::Phase::CLEARED) {
+                zones.push_back(&level.corridors[director.arena]);
+                zones.push_back(&level.arenas[director.arena + 1].zone);
+            }
         }
         glm::vec3& p = player.position;
         float bestD = 1e9f; glm::vec2 best{p.x, p.z};
-        for (auto& z : zones) {
-            glm::vec2 c{glm::clamp(p.x, z.min.x, z.max.x), glm::clamp(p.z, z.min.z, z.max.z)};
+        const AABB* in = zones[0];
+        for (auto* z : zones) {
+            glm::vec2 c{glm::clamp(p.x, z->min.x, z->max.x), glm::clamp(p.z, z->min.z, z->max.z)};
             float d = glm::length(c - glm::vec2{p.x, p.z});
-            if (d < bestD) { bestD = d; best = c; }
+            if (d < bestD) { bestD = d; best = c; in = z; }
         }
         if (bestD > 0.f) {
             if (best.x != p.x) player.velocity.x = 0.f;
             if (best.y != p.z) player.velocity.z = 0.f;
             p.x = best.x; p.z = best.y;
-            player.camera.position = p + glm::vec3{0, player.eyeHeight, 0};
         }
+        // Ceiling: a force field you can see when you bump it
+        float ceiling = in->max.y;
+        if (p.y + player.height > ceiling) {
+            p.y = ceiling - player.height;
+            if (player.velocity.y > 0.f) player.velocity.y = -1.f;
+            if (grapple.active && grapple.target.y > ceiling - 1.f) grapple.release();
+            if (ceilingFxTimer <= 0.f) {
+                ceilingFxTimer = 0.35f;
+                for (int i = 0; i < 26; ++i) {
+                    Particle* q = freeParticle();
+                    if (!q) break;
+                    float a = i * 6.2832f / 26.f;
+                    q->pos = glm::vec3{p.x, ceiling, p.z} + glm::vec3{std::cos(a), 0.f, std::sin(a)} * 0.6f;
+                    q->vel = glm::vec3{std::cos(a), 0.f, std::sin(a)} * 5.f;
+                    q->color = glm::vec3{0.3f, 0.85f, 1.f} * 1.3f;
+                    q->gravity = 0.f; q->maxLife = q->life = 0.5f; q->alive = true;
+                }
+                audio.play("barrier", 70);
+            }
+        }
+        player.camera.position = p + glm::vec3{0, player.eyeHeight, 0};
+
+        // Void: back to the start of the section you fell out of
+        int a = level.arenaAt(p);
+        if (a >= 0 && p.y < level.arenas[a].voidY) {
+            resetToCheckpoint(a);
+            if (!g_godMode) styleSystem.takeDamage(15.f);
+            ui.onDamage();
+            ui.feed("FELL - BACK TO THE LEDGE", {1.f, 0.5f, 0.3f});
+            audio.play("player_hit");
+        }
+        (void)dt;
+    }
+
+    void resetToCheckpoint(int a) {
+        player.position = level.arenas[a].playerStart;
+        player.velocity = glm::vec3{0.f};
+        player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0};
+        prevCamPos = player.camera.position;
+        grapple.release();
+        slamming = false; peakFallSpeed = 0.f;
     }
 
     // Ground enemies are solid: you can't walk through a Brute.
@@ -1044,10 +1384,26 @@ public:
         }
     }
 
+    // Highest walkable surface under (x, z) at or below fromY (0 = the floor)
+    float groundHeightAt(float x, float z, float fromY) const {
+        static std::vector<int> cands;
+        AABB q{{x - 0.05f, -1.f, z - 0.05f}, {x + 0.05f, fromY + 0.5f, z + 0.05f}};
+        spatialGrid.query(q, cands);
+        float best = 0.f;
+        for (int i : cands) {
+            const AABB& b = level.walls[i].box;
+            if (x >= b.min.x && x <= b.max.x && z >= b.min.z && z <= b.max.z && b.max.y <= fromY + 0.5f)
+                best = std::max(best, b.max.y);
+        }
+        return best;
+    }
+
     void spawnEnemy(EnemyType t, glm::vec3 pos) {
         enemies.push_back(Enemy(t, pos));
         glm::vec3 c = statsOf(t).glow;
         spawnBurst(pos + glm::vec3{0, 0.3f, 0}, c, 14, 3.f, 0.7f, -6.f);
+        if (spawnSoundThisTick) return;   // a FAST section spawns a dozen at once: one sound
+        spawnSoundThisTick = true;
         float d = glm::length(pos - player.position);
         audio.play("spawn", (int)glm::clamp(110.f - d * 2.f, 25.f, 110.f));
     }
@@ -1086,10 +1442,10 @@ public:
             }
             if (ev.slam) {
                 spawnShockwave(epos, ev.slamRadius, statsOf(enemies[i].type).glow);
-                shakeTimer = 0.35f; shakeIntensity = 0.07f;
+                shake(0.35f, 0.07f);
                 audio.play("slam");
                 glm::vec2 flat{player.position.x - epos.x, player.position.z - epos.z};
-                bool grounded = player.position.y < epos.y + 0.9f;   // jump it to dodge
+                bool grounded = player.position.y < epos.y + 0.9f && player.position.y > epos.y - 1.5f;   // jump it to dodge
                 if (glm::length(flat) < ev.slamRadius && grounded) {
                     if (damagePlayer(ev.slamDamage * ar.damageScale, epos, 0.3f, 0.08f) && glm::length(flat) > 0.01f)
                         player.velocity += glm::vec3{flat.x, 0.f, flat.y} / glm::length(flat) * 10.f + glm::vec3{0, 6.f, 0};
@@ -1107,22 +1463,32 @@ public:
                     glm::vec3 p = epos + glm::vec3{std::cos(a) * 3.5f, 0.f, std::sin(a) * 3.5f};
                     p.x = glm::clamp(p.x, ar.bounds.min.x + 1.f, ar.bounds.max.x - 1.f);
                     p.z = glm::clamp(p.z, ar.bounds.min.z + 1.f, ar.bounds.max.z - 1.f);
-                    p.y = 0.f;
+                    p.y = epos.y;
                     spawnEnemy(k < ev.summonMites ? EnemyType::MITE : EnemyType::RIPPER, p);
                 }
             }
             if (ev.enraged) {
                 pushBanner("THE WARDEN IS ENRAGED", "", {1.f, 0.15f, 0.25f}, 2.f);
-                shakeTimer = 0.5f; shakeIntensity = 0.06f;
+                shake(0.5f, 0.06f);
                 audio.play("wave");
             }
         }
 
-        // Lava burns enemies too: lure them in
         for (auto& e : enemies) {
-            if (!e.targetable() || e.stats().flying) continue;
+            if (!e.targetable()) continue;
+            // Fell into the void: counts as your kill
+            if (e.position.y < ar.voidY) {
+                e.alive = false; e.state = EnemyState::DEAD; e.health = 0.f;
+                ui.feed(std::string(e.stats().name) + " FELL", {1.f, 0.7f, 0.3f});
+                styleSystem.addStyle(15.f);
+                onEnemyKilled(e);
+                continue;
+            }
+            // Lava burns enemies too: lure them in
+            if (e.stats().flying) continue;
             for (auto& hz : level.hazards)
-                if (e.position.y < hz.box.max.y + 0.3f && e.position.x > hz.box.min.x && e.position.x < hz.box.max.x &&
+                if (e.position.y < hz.box.max.y + 0.3f && e.position.y > hz.box.min.y - 0.5f &&
+                    e.position.x > hz.box.min.x && e.position.x < hz.box.max.x &&
                     e.position.z > hz.box.min.z && e.position.z < hz.box.max.z) {
                     if (e.takeDamage(hz.dps * 0.5f * dt)) onEnemyKilled(e);
                 }
@@ -1134,7 +1500,7 @@ public:
                 Enemy& a = enemies[i]; Enemy& b = enemies[j];
                 if (!a.alive || !b.alive || a.stats().flying != b.stats().flying) continue;
                 glm::vec3 d = b.position - a.position;
-                if (!a.stats().flying) d.y = 0.f;
+                if (!a.stats().flying) { if (std::fabs(d.y) > 1.5f) continue; d.y = 0.f; }
                 float len = glm::length(d), minD = a.radius() + b.radius();
                 if (len >= minD || len < 1e-4f) continue;
                 glm::vec3 n = d / len * (minD - len);
@@ -1145,13 +1511,13 @@ public:
     }
 
     // Returns true if damage was applied (not blocked by i-frames).
-    bool damagePlayer(float dmg, glm::vec3 from, float shake, float shakeAmt) {
-        if (invincFrames > 0.f || playerDead || g_godMode ||
-            director.phase == WaveDirector::Phase::VICTORY) return false;
+    bool damagePlayer(float dmg, glm::vec3 from, float shakeT, float shakeAmt) {
+        if (invincFrames > 0.f || playerDead || g_godMode || victory ||
+            (!fast() && director.phase == WaveDirector::Phase::VICTORY)) return false;
         styleSystem.takeDamage(dmg);
         ui.onDamage();
         showDamageFrom(from);
-        shakeTimer = shake; shakeIntensity = shakeAmt;
+        shake(shakeT, shakeAmt);
         audio.play("player_hit");
         invincFrames = 0.35f;
         grapple.release();
@@ -1165,8 +1531,9 @@ public:
     }
 
     // All player damage to enemies goes through here. Returns true on a kill.
-    bool hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float style, float heal) {
+    bool hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float style, float heal, bool crit = false) {
         if (!e.targetable()) return false;
+        float before = e.health;
         bool killed = e.takeDamage(dmg);
         styleSystem.addStyle(style);
         styleSystem.heal(heal);
@@ -1174,6 +1541,7 @@ public:
         if (!e.stats().flying) spawnDecal(e.position);
         spawnHitSparks(at, e.stats().color * 1.4f);
         ui.onHit(killed);
+        if (!settings || settings->damageNumbers) ui.spawnDamageNumber(at, std::min(dmg, before), crit);
         if (killed) {
             onEnemyKilled(e);
             hitStopFrames = glm::max(hitStopFrames, e.type == EnemyType::WARDEN ? 12 : 2);
@@ -1194,17 +1562,32 @@ public:
             if (grenadeCount < grenadeMax) { grenadeCount++; ui.onGrenadeRefill(); }
         }
 
-        // Health orbs: Brutes always drop a handful, others sometimes
-        int orbs = 0;
+        // XP, scaled by how stylishly you're playing
+        int xp = (int)std::round(xpForKill(e.type) * styleXpMultiplier(styleSystem.getRank()));
+        gainXp(xp);
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%s  +%d XP", e.stats().name, xp);
+        ui.feed(buf, {0.8f, 0.85f, 0.9f});
+
+        // Drops. Health orbs are common and small; potions (18%) and XP shards
+        // (10%) are the rare ones, and get a loot beam so you notice them.
+        glm::vec3 c = e.position + glm::vec3{0, std::min(e.height() * 0.5f, 1.5f), 0};
+        float floorY = groundHeightAt(e.position.x, e.position.z, e.position.y + 0.5f);
+        auto drop = [&](PickupKind k) {
+            pickups.push_back({c, glm::vec3{frand(-3.f, 3.f), frand(3.f, 6.f), frand(-3.f, 3.f)},
+                               k == PickupKind::ORB ? 20.f : 30.f, k, floorY});
+        };
         switch (e.type) {
-            case EnemyType::BRUTE:  orbs = 3; break;
-            case EnemyType::MITE:   orbs = (rand() % 10 == 0); break;
-            case EnemyType::WARDEN: orbs = 0; break;
-            default:                orbs = (rand() % 100 < 28); break;
+            case EnemyType::BRUTE:  for (int i = 0; i < 3; ++i) drop(PickupKind::ORB);
+                                    if (rand() % 100 < 50) drop(PickupKind::POTION); break;
+            case EnemyType::MITE:   if (rand() % 10 == 0) drop(PickupKind::ORB); break;
+            case EnemyType::WARDEN: break;
+            default:
+                if (rand() % 100 < 20) drop(PickupKind::ORB);
+                if (rand() % 100 < 18) drop(PickupKind::POTION);
+                if (rand() % 100 < 10) drop(PickupKind::XP);
+                break;
         }
-        for (int i = 0; i < orbs; ++i)
-            pickups.push_back({e.position + glm::vec3{0, std::min(e.height() * 0.5f, 1.5f), 0},
-                               glm::vec3{frand(-3.f, 3.f), frand(3.f, 6.f), frand(-3.f, 3.f)}, 20.f});
 
         if (e.type == EnemyType::MITE)          // shot mites still pop — but only hurt enemies
             pendingBlasts.push_back({e.position + glm::vec3{0, 0.3f, 0}, 4.f, 30.f, 0.f, 0.f});
@@ -1220,9 +1603,20 @@ public:
             for (int k = 0; k < 4; ++k)
                 spawnExplosionParticles(e.position + glm::vec3{frand(-1.5f,1.5f), frand(1.f,4.f), frand(-1.5f,1.5f)}, 4.f);
             explosionFlashTimer = 0.35f; explosionFlashPos = e.position + glm::vec3{0, 2.f, 0};
-            shakeTimer = 1.0f; shakeIntensity = 0.12f;
+            shake(1.0f, 0.12f);
             audio.play("explosion");
             pushBanner("WARDEN DESTROYED", "", {1.f, 0.85f, 0.3f}, 2.5f);
+        }
+    }
+
+    void gainXp(int xp) {
+        int lv = prog.addXp(xp);
+        if (lv > 0) {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "LEVEL %d", prog.level);
+            ui.toast(buf, "UPGRADE READY - PRESS TAB", {0.4f, 0.9f, 1.f}, 2.6f);
+            audio.play("levelup");
+            styleSystem.heal(15.f);
         }
     }
 
@@ -1233,14 +1627,14 @@ public:
             Blast b = pendingBlasts.back();
             pendingBlasts.pop_back();
             spawnExplosionParticles(b.pos, b.radius);
-            shakeTimer = std::max(shakeTimer, 0.3f); shakeIntensity = std::max(shakeIntensity, 0.06f);
+            shake(0.3f, 0.06f);
             explosionFlashTimer = 0.35f; explosionFlashPos = b.pos;
             audio.play("explosion");
             for (auto& e : enemies) {
                 if (!e.targetable()) continue;
                 float d = glm::length(e.position + glm::vec3{0, e.height() * 0.5f, 0} - b.pos);
                 if (d < b.radius)
-                    hurtEnemy(e, b.damage * (1.f - d / b.radius), e.position, 15.f, 3.f);
+                    hurtEnemy(e, b.damage * (1.f - d / b.radius), e.position + glm::vec3{0, e.height() * 0.6f, 0}, 15.f, 3.f);
             }
             if (b.playerDamage > 0.f) {
                 float pd = glm::length(player.camera.position - b.pos);
@@ -1253,23 +1647,48 @@ public:
 
     void updatePickups(float dt) {
         glm::vec3 chest = player.position + glm::vec3{0, 0.9f, 0};
+        bool hurt = styleSystem.health < styleSystem.maxHealth - 0.5f;
         for (auto& p : pickups) {
             glm::vec3 to = chest - p.pos;
             float d = glm::length(to);
-            if (d < 5.f && d > 1e-3f) {
-                p.vel = glm::mix(p.vel, to / d * 16.f, std::min(1.f, dt * 8.f));   // magnet
+            float magnet = p.kind == PickupKind::ORB ? 5.f : p.kind == PickupKind::XP ? 4.f : (hurt ? 2.5f : 0.f);
+            if (d < magnet && d > 1e-3f) {
+                p.vel = glm::mix(p.vel, to / d * 16.f, std::min(1.f, dt * 8.f));
             } else {
                 p.vel.y -= 20.f * dt;
                 p.vel.x *= std::pow(0.2f, dt); p.vel.z *= std::pow(0.2f, dt);
             }
             p.pos += p.vel * dt;
-            if (p.pos.y < 0.4f) { p.pos.y = 0.4f; p.vel.y = std::fabs(p.vel.y) * 0.3f; }
+            float rest = p.floorY + (p.kind == PickupKind::ORB ? 0.4f : 0.55f);
+            if (p.pos.y < rest) { p.pos.y = rest; p.vel.y = std::fabs(p.vel.y) * 0.3f; }
             p.life -= dt;
             if (d < 1.2f) {
-                p.life = 0.f;
-                styleSystem.heal(12.f);
-                audio.play("pickup");
-                spawnBurst(p.pos, {0.3f, 1.f, 0.5f}, 8, 2.f, 0.4f, 0.f);
+                switch (p.kind) {
+                case PickupKind::ORB:
+                    p.life = 0.f;
+                    styleSystem.heal(12.f);
+                    audio.play("pickup");
+                    spawnBurst(p.pos, {0.3f, 1.f, 0.5f}, 8, 2.f, 0.4f, 0.f);
+                    break;
+                case PickupKind::POTION:
+                    if (!hurt) break;   // saved for when you need it
+                    p.life = 0.f;
+                    styleSystem.heal(40.f);
+                    audio.play("potion");
+                    ui.feed("+40 HP  HEALTH POTION", {1.f, 0.35f, 0.4f});
+                    spawnBurst(p.pos, {1.f, 0.25f, 0.35f}, 20, 3.f, 0.6f, -2.f);
+                    break;
+                case PickupKind::XP: {
+                    p.life = 0.f;
+                    int xp = 40 + 5 * prog.level;
+                    gainXp(xp);
+                    char buf[32]; snprintf(buf, sizeof(buf), "+%d XP  SHARD", xp);
+                    ui.feed(buf, {0.6f, 0.5f, 1.f});
+                    audio.play("pickup");
+                    spawnBurst(p.pos, {0.6f, 0.4f, 1.f}, 16, 3.f, 0.5f, -2.f);
+                    break;
+                }
+                }
             }
         }
         pickups.erase(std::remove_if(pickups.begin(), pickups.end(),
@@ -1277,10 +1696,166 @@ public:
     }
 
     // =========================================================================
+    // Weapons
+    // =========================================================================
+
+    // Every enemy along a ray up to the first wall, nearest first.
+    struct RayHit { int enemy; float t; };
+    float hitscanAll(glm::vec3 origin, glm::vec3 dir, float range, std::vector<RayHit>& out) {
+        out.clear();
+        float wallT = range;
+        for (auto& w : level.walls) {
+            float t = rayBoxHit(origin, dir, w.box);
+            if (t > 0.f && t < wallT) wallT = t;
+        }
+        for (int ei = 0; ei < (int)enemies.size(); ++ei) {
+            if (!enemies[ei].targetable()) continue;
+            float t = rayBoxHit(origin, dir, enemies[ei].getAABB());
+            if (t > 0.f && t < wallT) out.push_back({ei, t});
+        }
+        std::sort(out.begin(), out.end(), [](const RayHit& a, const RayHit& b) { return a.t < b.t; });
+        return wallT;
+    }
+
+    // Headshots: the top fifth of a humanoid.
+    static bool isHeadshot(const Enemy& e, glm::vec3 hitPoint) {
+        bool humanoid = e.type == EnemyType::HUSK || e.type == EnemyType::SENTINEL ||
+                        e.type == EnemyType::BRUTE || e.type == EnemyType::WARDEN;
+        return humanoid && hitPoint.y > e.position.y + e.height() * 0.8f;
+    }
+
+    void startReload(int w) {
+        WeaponId id = (WeaponId)w;
+        weapons[w].startReload(weaponReload(id, prog.up[w]));
+        if (w == activeWeapon) viewModel.triggerReload(weapons[w].reloadTotal * 0.6f);
+        audio.play("reload");
+    }
+
+    void fireWeapon(int w) {
+        WeaponId id = (WeaponId)w;
+        const WeaponDef& d = weaponDef(id);
+        const WeaponUpgrades& u = prog.up[w];
+        WeaponState& ws = weapons[w];
+        --ws.ammo;
+        ws.cooldown = weaponCooldown(id, u);
+
+        glm::vec3 origin = player.camera.position;
+        glm::vec3 fwd    = player.camera.forward();
+        glm::vec3 right  = player.camera.right();
+        glm::vec3 up     = glm::cross(right, fwd);
+
+        float aimNow = d.canAim ? aim : 0.f;
+        bool  quick  = id == WeaponId::LONGSHOT && aimNow >= 0.98f && aimFullAt >= 0.f && gameClock - aimFullAt < 0.4f;
+        bool  noscope = d.canAim && aimNow < 0.15f;
+        float spread = weaponSpread(id, u, aimNow);
+        // Rifles are wild in the air unless aimed
+        if (d.canAim && !player.onGround) spread += 0.03f * (1.f - aimNow);
+        int   pellets = weaponPellets(id, u);
+        int   pierce  = weaponPierce(id, u);
+        float dmg     = weaponDamage(id, u);
+        bool  sniper  = id == WeaponId::KAR || id == WeaponId::LONGSHOT;
+
+        bool anyHit = false, headKill = false, kills = 0;
+        int  killCount = 0;
+        static std::vector<RayHit> hits;
+        for (int p = 0; p < pellets; ++p) {
+            // Uniform within a disc of radius `spread`
+            float ang = frand(0.f, 6.2832f), rad = std::sqrt(frand(0.f, 1.f)) * spread;
+            glm::vec3 dir = glm::normalize(fwd + right * (std::cos(ang) * rad) + up * (std::sin(ang) * rad));
+            float wallT = hitscanAll(origin, dir, d.range, hits);
+            int n = std::min((int)hits.size(), pierce + 1);
+            float endT = n > 0 && n == pierce + 1 ? hits[n - 1].t : wallT;
+            spawnTracer(origin + dir * 0.25f - up * 0.08f, origin + dir * endT, sniper ? 0.09f : 0.055f, sniper ? 0.35f : 0.22f);
+            for (int k = 0; k < n; ++k) {
+                Enemy& e = enemies[hits[k].enemy];
+                glm::vec3 at = origin + dir * hits[k].t;
+                bool head = isHeadshot(e, at);
+                float m = head ? d.headMult : 1.f;
+                float falloff = 1.f - 0.15f * k;    // each body it punches through costs a little
+                if (head) spawnHitSparks(at, {1.f, 0.9f, 0.3f});
+                anyHit = true;
+                if (hurtEnemy(e, dmg * m * falloff, at, sniper ? 12.f : (pellets > 1 ? 3.f : 10.f), pellets > 1 ? 0.5f : 2.f, head)) {
+                    ++killCount;
+                    if (head) headKill = true;
+                }
+            }
+            // Explosive tips: burst where the round stops
+            if (id == WeaponId::LONGSHOT && u.mod)
+                pendingBlasts.push_back({origin + dir * (n > 0 ? hits[0].t : wallT) - dir * 0.3f, 3.5f, 70.f, 0.f, 0.f});
+        }
+        kills = killCount > 0;
+
+        // Trick-shot bonuses
+        if (kills && id == WeaponId::LONGSHOT && quick) {
+            styleSystem.addStyle(40.f); gainXp(25);
+            ui.toast("QUICKSCOPE", "+25 XP", {1.f, 0.85f, 0.2f}, 1.4f);
+            audio.play("parry", 90);
+        } else if (kills && sniper && noscope) {
+            styleSystem.addStyle(60.f); gainXp(40);
+            ui.toast("NOSCOPE", "+40 XP", {1.f, 0.4f, 0.8f}, 1.6f);
+            audio.play("parry", 90);
+        }
+        if (killCount >= 2) {
+            char buf[32]; snprintf(buf, sizeof(buf), "COLLATERAL x%d", killCount);
+            styleSystem.addStyle(25.f * (killCount - 1)); gainXp(15 * (killCount - 1));
+            ui.toast(buf, "", {1.f, 0.55f, 0.2f}, 1.4f);
+        }
+        if (headKill && sniper) {
+            ui.feed("HEADSHOT", {1.f, 0.85f, 0.25f});
+            styleSystem.addStyle(10.f);
+            // HEADHUNTER: the round comes back and the bolt is skipped
+            if (id == WeaponId::KAR && u.mod) { ++ws.ammo; ws.cooldown = 0.1f; }
+        }
+        if (killCount > 0 && sniper) hitStopFrames = glm::max(hitStopFrames, 3);
+
+        float recoil = d.recoil * (1.f - 0.4f * aimNow);
+        recoilPitch = std::min(recoilPitch + recoil, 14.f);
+        player.camera.pitch = glm::clamp(player.camera.pitch + recoil, -89.f, 89.f);
+
+        viewModel.triggerFire();
+        ui.onShoot();
+        muzzleFlashPos   = origin + fwd * 0.6f;
+        muzzleFlashTimer = sniper ? 0.08f : pellets > 1 ? 0.07f : 0.04f;
+        shake(sniper ? 0.14f : pellets > 1 ? 0.12f : 0.06f, sniper ? 0.03f : pellets > 1 ? 0.025f : 0.012f);
+        static const char* SND[] = {"revolver", "shotgun", "kar", "longshot"};
+        audio.play(SND[w]);
+        ++totalShots;
+        if (anyHit) ++totalHits;
+        spawnShellCasing(origin, right);
+        if (pellets > 1) spawnShellCasing(origin + right * 0.1f, right);
+
+        if (ws.ammo <= 0) {
+            if (!sniper) startReload(w);   // rifles reload after the bolt cycle (physicsTick)
+        } else if (sniper && ws.cooldown > 0.2f) {
+            viewModel.triggerBolt(ws.cooldown * 0.85f);
+            boltSoundTimer = ws.cooldown * 0.2f;
+        } else if (pellets > 1) {
+            viewModel.triggerPump();
+        }
+    }
+
+    void throwGrenade() {
+        --grenadeCount;
+        grenadeTimer = 0.6f;
+        glm::vec3 origin = player.camera.position;
+        glm::vec3 dir    = player.camera.forward();
+        projSystem.fire(origin, dir * 14.f + glm::vec3{0, 5.f, 0}, 80.f, true,
+                        {0.3f, 0.9f, 0.1f}, /*grenade=*/true, /*blastRadius=*/5.f);
+        viewModel.triggerGrenade();
+        shake(0.05f, 0.008f);
+        audio.play("jump");
+    }
+
+    // =========================================================================
     // Effects
     // =========================================================================
+    // Round-robin search from the last allocation: O(1) on average instead of
+    // rescanning the whole pool for every particle of an explosion.
     Particle* freeParticle() {
-        for (auto& p : particles) if (!p.alive) return &p;
+        for (int k = 0; k < MAX_PARTICLES; ++k) {
+            int i = (particleCursor + k) % MAX_PARTICLES;
+            if (!particles[i].alive) { particleCursor = (i + 1) % MAX_PARTICLES; return &particles[i]; }
+        }
         return nullptr;
     }
 
@@ -1356,10 +1931,11 @@ public:
         }
     }
 
-    // Dust in the yard, embers over the lava, motes around the reactor.
+    // Dust in the yard, embers over lava, motes around the reactor, wind up high.
     void spawnAmbientParticles(float dt) {
         int a = level.arenaAt(player.position);
         if (a < 0) return;
+        Ambient kind = level.arenas[a].ambient;
         ambientTimer += dt;
         const float every = 1.f / 45.f;
         while (ambientTimer > every) {
@@ -1367,24 +1943,48 @@ public:
             Particle* p = freeParticle();
             if (!p) return;
             p->alive = true;
-            if (a == 0) {
-                float ang = frand(0.f, 6.28f), r = frand(5.f, 24.f);
-                p->pos = player.position + glm::vec3{std::cos(ang) * r, frand(0.3f,6.f), std::sin(ang) * r};
+            glm::vec3 me = player.position;
+            float ang = frand(0.f, 6.28f), r = frand(4.f, 22.f);
+            switch (kind) {
+            case Ambient::DUST:
+                p->pos = me + glm::vec3{std::cos(ang) * r, frand(0.3f,6.f), std::sin(ang) * r};
                 p->vel = {frand(0.2f,0.8f), frand(-0.05f,0.15f), frand(-0.2f,0.2f)};
                 p->color = glm::vec3{1.f, 0.7f, 0.5f} * 0.15f;
                 p->gravity = 0.f; p->maxLife = p->life = frand(2.5f, 4.5f);
-            } else if (a == 1) {
-                const Hazard& hz = level.hazards[rand() % level.hazards.size()];
-                p->pos = {frand(hz.box.min.x, hz.box.max.x), 0.1f, frand(hz.box.min.z, hz.box.max.z)};
+                break;
+            case Ambient::EMBERS:
+                if (!level.hazards.empty() && !fast()) {
+                    const Hazard& hz = level.hazards[rand() % level.hazards.size()];
+                    p->pos = {frand(hz.box.min.x, hz.box.max.x), hz.box.max.y + 0.05f, frand(hz.box.min.z, hz.box.max.z)};
+                } else {
+                    p->pos = me + glm::vec3{std::cos(ang) * r, frand(-2.f, 1.f), std::sin(ang) * r};
+                }
                 p->vel = {frand(-0.4f,0.4f), frand(1.5f,3.5f), frand(-0.4f,0.4f)};
                 p->color = glm::vec3{1.f, 0.45f, 0.1f} * frand(0.6f, 1.1f);
                 p->gravity = -0.5f; p->maxLife = p->life = frand(1.2f, 2.8f);
-            } else {
-                float ang = frand(0.f, 6.28f), r = frand(2.5f, 9.f);
-                p->pos = {std::cos(ang) * r, frand(0.5f, 4.f), -162.f + std::sin(ang) * r};
+                break;
+            case Ambient::MOTES: {
+                glm::vec3 c = level.hasReactor ? level.reactorPos : me;
+                float rr = frand(2.5f, 9.f);
+                p->pos = c + glm::vec3{std::cos(ang) * rr, frand(-1.f, 2.5f), std::sin(ang) * rr};
                 p->vel = {0.f, frand(1.f, 2.5f), 0.f};
                 p->color = glm::vec3{0.3f, 0.9f, 1.f} * 0.6f;
                 p->gravity = -0.3f; p->maxLife = p->life = frand(2.f, 4.f);
+                break;
+            }
+            case Ambient::WIND:
+                // Fast pale streaks blowing across the heights
+                p->pos = me + glm::vec3{std::cos(ang) * r - 10.f, frand(-1.f, 9.f), std::sin(ang) * r};
+                p->vel = {frand(9.f, 14.f), frand(-0.3f, 0.3f), frand(1.f, 3.f)};
+                p->color = glm::vec3{0.85f, 0.9f, 1.f} * 0.22f;
+                p->gravity = 0.f; p->maxLife = p->life = frand(1.f, 2.f);
+                break;
+            case Ambient::ASH:
+                p->pos = me + glm::vec3{std::cos(ang) * r, frand(4.f, 12.f), std::sin(ang) * r};
+                p->vel = {frand(0.3f, 1.2f), frand(-1.2f, -0.4f), frand(-0.3f, 0.3f)};
+                p->color = glm::vec3{0.6f, 0.55f, 0.55f} * 0.25f;
+                p->gravity = 0.f; p->maxLife = p->life = frand(3.f, 5.f);
+                break;
             }
         }
     }
@@ -1397,6 +1997,7 @@ public:
         pose.spawnTimer    = 0.f;
         buildEnemy(pose, gameClock, parts);
         glm::vec3 c = e.position + glm::vec3{0, e.height() * 0.5f, 0};
+        float floorY = groundHeightAt(e.position.x, e.position.z, e.position.y + 0.5f) + 0.1f;
         for (auto& b : parts) {
             Debris d;
             d.shape = glm::mat3(b.model);
@@ -1409,6 +2010,7 @@ public:
             d.spin  = frand(4.f, 12.f);
             d.color = b.color; d.emissive = b.emissive;
             d.maxLife = d.life = frand(1.2f, 1.8f);
+            d.floorY = floorY;
             debris.push_back(d);
         }
         if (debris.size() > 900) debris.erase(debris.begin(), debris.begin() + (debris.size() - 900));
@@ -1419,7 +2021,7 @@ public:
             d.vel.y -= 20.f * dt;
             d.pos   += d.vel * dt;
             d.angle += d.spin * dt;
-            if (d.pos.y < 0.1f) { d.pos.y = 0.1f; d.vel.y = std::fabs(d.vel.y) * 0.35f; d.vel.x *= 0.6f; d.vel.z *= 0.6f; d.spin *= 0.6f; }
+            if (d.pos.y < d.floorY) { d.pos.y = d.floorY; d.vel.y = std::fabs(d.vel.y) * 0.35f; d.vel.x *= 0.6f; d.vel.z *= 0.6f; d.spin *= 0.6f; }
             d.life -= dt;
         }
         debris.erase(std::remove_if(debris.begin(), debris.end(),
@@ -1440,151 +2042,16 @@ public:
         d.alive   = true;
     }
 
-    void spawnTracer(glm::vec3 start, glm::vec3 end) {
-        for (auto& t : tracers) {
-            if (!t.alive) {
-                t.start = start; t.end = end;
-                t.maxLife = 0.22f; t.life = t.maxLife;
-                t.alive = true;
-                return;
-            }
+    void spawnTracer(glm::vec3 start, glm::vec3 end, float width = 0.055f, float life = 0.22f) {
+        Tracer* slot = nullptr;
+        for (auto& t : tracers) if (!t.alive) { slot = &t; break; }
+        if (!slot) {   // all busy (shotgun spam): reuse the oldest
+            slot = &tracers[0];
+            for (auto& t : tracers) if (t.life < slot->life) slot = &t;
         }
-    }
-
-    // =========================================================================
-    // Weapons
-    // =========================================================================
-
-    // Nearest enemy along a ray, unless a wall is closer. Returns the enemy
-    // index (or -1) and the distance to whatever stopped the ray.
-    int hitscan(glm::vec3 origin, glm::vec3 dir, float range, float& hitT) {
-        float bestT = 1000.f;
-        int   hit   = -1;
-        for (int ei = 0; ei < (int)enemies.size(); ++ei) {
-            if (!enemies[ei].targetable()) continue;
-            float t = rayBoxHit(origin, dir, enemies[ei].getAABB());
-            if (t > 0.f && t < bestT) { bestT = t; hit = ei; }
-        }
-        float wallT = range;
-        for (auto& w : level.walls) {
-            float t = rayBoxHit(origin, dir, w.box);
-            if (t > 0.f && t < wallT) wallT = t;
-        }
-        if (hit >= 0 && wallT < bestT) hit = -1;
-        hitT = hit >= 0 ? bestT : wallT;
-        return hit;
-    }
-
-    // Headshots: the top fifth of a humanoid takes 1.5x damage.
-    float critMultiplier(const Enemy& e, glm::vec3 hitPoint) const {
-        bool humanoid = e.type == EnemyType::HUSK || e.type == EnemyType::SENTINEL ||
-                        e.type == EnemyType::BRUTE || e.type == EnemyType::WARDEN;
-        return humanoid && hitPoint.y > e.position.y + e.height() * 0.8f ? 1.5f : 1.f;
-    }
-
-    void startReload() {
-        reloading     = true;
-        reloadTimer   = RELOAD_TIME;
-        viewModel.triggerReload();
-        audio.play("reload");
-    }
-
-    void fireRevolver() {
-        --revolverAmmo;
-        revolverTimer = 0.15f;
-
-        glm::vec3 origin = player.camera.position;
-        glm::vec3 dir    = player.camera.forward();
-        float t;
-        int hit = hitscan(origin, dir, 80.f, t);
-        spawnTracer(origin + dir * 0.2f, origin + dir * t);
-        if (hit >= 0) {
-            Enemy& e = enemies[hit];
-            glm::vec3 at = origin + dir * t;
-            float mult = critMultiplier(e, at);
-            if (mult > 1.f) spawnHitSparks(at, {1.f, 0.9f, 0.3f});
-            hurtEnemy(e, 35.f * mult, at, 10.f, 2.f);
-        }
-
-        recoilPitch = std::min(recoilPitch + 0.7f, 12.f);
-        player.camera.pitch = glm::clamp(player.camera.pitch + 0.7f, -89.f, 89.f);
-
-        viewModel.triggerFire();
-        ui.onShoot();
-        muzzleFlashPos   = origin + dir * 0.6f;
-        muzzleFlashTimer = 0.04f;
-        shakeTimer       = 0.06f;
-        shakeIntensity   = 0.012f;
-        audio.play("revolver");
-        ++totalShots;
-        if (hit >= 0) ++totalHits;
-        spawnShellCasing(origin, player.camera.right());
-        if (revolverAmmo <= 0) startReload();
-    }
-
-    void startShotgunReload() {
-        shotgunReloading   = true;
-        shotgunReloadTimer = SHOTGUN_RELOAD_TIME;
-        audio.play("reload");
-    }
-
-    void fireShotgun() {
-        --shotgunAmmo;
-        shotgunTimer = 0.55f;
-
-        glm::vec3 origin = player.camera.position;
-        glm::vec3 fwd    = player.camera.forward();
-        glm::vec3 right  = player.camera.right();
-        glm::vec3 up     = glm::cross(fwd, right);
-
-        static constexpr int   PELLETS    = 10;
-        static constexpr float SPREAD     = 0.18f;
-        static constexpr float PELLET_DMG = 9.f;
-
-        bool anyHit = false;
-        for (int p = 0; p < PELLETS; ++p) {
-            float rx = frand(-1.f, 1.f) * SPREAD;
-            float ry = frand(-1.f, 1.f) * SPREAD;
-            glm::vec3 dir = glm::normalize(fwd + right * rx + up * ry);
-            float t;
-            int hit = hitscan(origin, dir, 60.f, t);
-            spawnTracer(origin + dir * 0.2f, origin + dir * t);
-            if (hit >= 0) {
-                anyHit = true;
-                hurtEnemy(enemies[hit], PELLET_DMG, origin + dir * t, 3.f, 0.5f);
-            }
-        }
-
-        recoilPitch = std::min(recoilPitch + 2.2f, 12.f);
-        player.camera.pitch = glm::clamp(player.camera.pitch + 2.2f, -89.f, 89.f);
-
-        viewModel.triggerFire();
-        ui.onShoot();
-        muzzleFlashPos   = origin + fwd * 0.6f;
-        muzzleFlashTimer = 0.07f;
-        shakeTimer       = 0.12f;
-        shakeIntensity   = 0.025f;
-        audio.play("shotgun");
-        ++totalShots;
-        if (anyHit) ++totalHits;
-        spawnShellCasing(origin, player.camera.right());
-        spawnShellCasing(origin + player.camera.right() * 0.1f, player.camera.right());
-
-        if (shotgunAmmo <= 0) startShotgunReload();
-        else viewModel.triggerPump();
-    }
-
-    void throwGrenade() {
-        --grenadeCount;
-        grenadeTimer = 0.6f;
-        glm::vec3 origin = player.camera.position;
-        glm::vec3 dir    = player.camera.forward();
-        projSystem.fire(origin, dir * 14.f + glm::vec3{0, 5.f, 0}, 80.f, true,
-                        {0.3f, 0.9f, 0.1f}, /*grenade=*/true, /*blastRadius=*/5.f);
-        viewModel.triggerGrenade();
-        shakeTimer     = 0.05f;
-        shakeIntensity = 0.008f;
-        audio.play("jump");
+        slot->start = start; slot->end = end;
+        slot->maxLife = life; slot->life = life; slot->width = width;
+        slot->alive = true;
     }
 
     // =========================================================================
@@ -1598,16 +2065,12 @@ public:
         sh.setVec3("uGroundAmb",  th.groundAmb);
         sh.setVec3("uFogColor",   th.fogColor);
         sh.setFloat("uFogDensity", th.fogDensity);
-        for (int i=0;i<MAX_POINT_LIGHTS;++i) {
-            std::string pn = "pointLightPos["+std::to_string(i)+"]";
-            std::string cn = "pointLightColor["+std::to_string(i)+"]";
-            sh.setVec3(pn.c_str(), pointLightPos[i]);
-            sh.setVec3(cn.c_str(), pointLightColor[i]);
-        }
+        sh.setVec3Array("pointLightPos",   pointLightPos,   MAX_POINT_LIGHTS);
+        sh.setVec3Array("pointLightColor", pointLightColor, MAX_POINT_LIGHTS);
     }
 
     // Everything dynamic that's made of boxes, gathered for one instanced draw.
-    void gatherBoxes(std::vector<BoxInstance>& out) {
+    void gatherBoxes(std::vector<BoxInstance>& out, const glm::mat4& view) {
         using namespace rig;
         float t = gameClock;
 
@@ -1618,11 +2081,30 @@ public:
             if (!e.alive || e.state != EnemyState::SPAWNING) continue;
             float k = e.spawnTimer / Enemy::SPAWN_TIME;
             glm::vec3 c = e.stats().glow;
-            float base = e.stats().flying ? 0.f : e.position.y;
+            float base = e.position.y;
             push(out, T({e.position.x, base + 8.f, e.position.z}) * S({0.25f + 0.6f * k, 16.f, 0.25f + 0.6f * k}),
                  c * 0.2f, c * (1.5f + 2.f * k));
             push(out, T({e.position.x, base + 0.05f, e.position.z}) * RY(t * 3.f) * S({2.2f * k + 0.5f, 0.06f, 2.2f * k + 0.5f}),
                  c * 0.2f, c * 2.f);
+        }
+
+        // Enemy health bars (only once damaged), facing the camera
+        glm::vec3 camRight = glm::normalize(glm::vec3(view[0][0], view[1][0], view[2][0]));
+        glm::vec3 camFwdFlat = glm::normalize(glm::cross(camRight, glm::vec3(0,1,0)));
+        for (auto& e : enemies) {
+            if (!e.targetable() || e.health >= e.maxHealth || e.type == EnemyType::WARDEN) continue;
+            float barW = std::max(1.0f, e.radius() * 1.8f), barH = 0.12f;
+            float fill = e.health / e.maxHealth;
+            glm::vec3 barPos = e.position + glm::vec3{0, e.height() + 0.45f, 0};
+            glm::mat4 bg(1.f);
+            bg[0] = glm::vec4(camRight * barW, 0); bg[1] = glm::vec4(0, barH, 0, 0);
+            bg[2] = glm::vec4(camFwdFlat * 0.01f, 0); bg[3] = glm::vec4(barPos, 1);
+            push(out, bg, {0.05f, 0.05f, 0.05f}, {0.02f, 0.02f, 0.02f});
+            glm::mat4 fm(1.f);
+            fm[0] = glm::vec4(camRight * barW * fill, 0); fm[1] = glm::vec4(0, barH * 0.8f, 0, 0);
+            fm[2] = glm::vec4(camFwdFlat * 0.02f, 0);
+            fm[3] = glm::vec4(barPos - camRight * (barW * (1.f - fill) * 0.5f) - camFwdFlat * 0.01f, 1);
+            push(out, fm, {0.9f, 0.15f, 0.1f}, {1.2f, 0.15f, 0.08f});
         }
 
         for (auto& d : debris) {
@@ -1642,20 +2124,34 @@ public:
             push(out, base * RZ(0.785f) * S(glm::vec3{s * 0.75f}), p.emissiveColor, p.emissiveColor * 3.f);
         }
 
-        // Projectiles: a spinning bright core inside a darker shell
-        for (auto& p : projSystem.pool) {
-            if (!p.alive) continue;
-            float s = (p.isGrenade ? 0.22f : 0.26f) * p.size;
-            float spin = t * 9.f + p.position.x;
-            glm::mat4 base = T(p.position) * RY(spin) * RX(spin * 0.7f);
-            push(out, base * S(glm::vec3{s}), p.emissiveColor * 0.3f, p.emissiveColor * 0.8f);
-            push(out, base * RZ(0.785f) * S(glm::vec3{s * 0.75f}), p.emissiveColor, p.emissiveColor * 3.f);
-        }
-
+        // Drops
         for (auto& p : pickups) {
-            float pulse = 1.f + 0.3f * std::sin(t * 8.f);
-            push(out, T(p.pos + glm::vec3{0, std::sin(t * 3.f + p.pos.x) * 0.1f, 0}) * RY(t * 3.f) * RX(0.6f) * S(glm::vec3{0.32f}),
-                 {0.2f, 0.9f, 0.4f}, glm::vec3{0.3f, 1.6f, 0.6f} * pulse);
+            float blink = p.life < 5.f && std::fmod(p.life, 0.4f) < 0.15f ? 0.2f : 1.f;
+            glm::vec3 bob = p.pos + glm::vec3{0, std::sin(t * 3.f + p.pos.x) * 0.1f, 0};
+            switch (p.kind) {
+            case PickupKind::ORB: {
+                float pulse = 1.f + 0.3f * std::sin(t * 8.f);
+                push(out, T(bob) * RY(t * 3.f) * RX(0.6f) * S(glm::vec3{0.32f}),
+                     {0.2f, 0.9f, 0.4f}, glm::vec3{0.3f, 1.6f, 0.6f} * pulse * blink);
+                break;
+            }
+            case PickupKind::POTION: {
+                // A red flask: body, neck, cork, and a loot beam
+                glm::mat4 m = T(bob) * RY(t * 1.5f);
+                glm::vec3 red{0.9f, 0.1f, 0.15f}, glow = glm::vec3{1.8f, 0.2f, 0.3f} * (0.7f + 0.3f * std::sin(t * 5.f)) * blink;
+                push(out, m * T({0, 0.f, 0}) * S({0.42f, 0.42f, 0.42f}), red, glow);
+                push(out, m * T({0, 0.3f, 0}) * S({0.16f, 0.2f, 0.16f}), {0.8f, 0.85f, 0.9f}, glm::vec3{0.4f} * blink);
+                push(out, m * T({0, 0.45f, 0}) * S({0.18f, 0.1f, 0.18f}), {0.45f, 0.3f, 0.15f});
+                push(out, T(p.pos + glm::vec3{0, 3.f, 0}) * S({0.08f, 6.f, 0.08f}), red * 0.2f, glow * 0.6f);
+                break;
+            }
+            case PickupKind::XP: {
+                glm::vec3 c{0.55f, 0.4f, 1.f}, g = glm::vec3{1.0f, 0.7f, 2.f} * (0.8f + 0.4f * std::sin(t * 6.f)) * blink;
+                push(out, T(bob) * RY(t * 4.f) * RX(0.785f) * RZ(0.785f) * S(glm::vec3{0.36f}), c, g);
+                push(out, T(p.pos + glm::vec3{0, 3.f, 0}) * S({0.06f, 6.f, 0.06f}), c * 0.2f, g * 0.5f);
+                break;
+            }
+            }
         }
 
         for (auto& s : shockwaves) {
@@ -1673,12 +2169,15 @@ public:
         for (int di = 0; di < (int)level.doors.size(); ++di) {
             const Door& d = level.doors[di];
             const AABB& b = level.walls[d.wall].box;
-            if (b.max.y <= 0.02f) continue;
+            if (b.max.y <= d.baseY + 0.02f) continue;
             glm::vec3 c = (b.min + b.max) * 0.5f, sz = b.max - b.min;
+            float visibleBottom = std::max(b.min.y, d.baseY);
+            c.y = (visibleBottom + b.max.y) * 0.5f; sz.y = b.max.y - visibleBottom;
             push(out, T(c) * S(sz), {0.16f, 0.15f, 0.18f});
             glm::vec3 bar = d.open ? glm::vec3{0.3f, 1.6f, 0.7f} : glm::vec3{1.8f, 0.2f, 0.15f};
-            for (int i = 0; i < 6; ++i) {
-                float x = b.min.x + sz.x * (i + 0.5f) / 6.f;
+            int bars = std::max(3, (int)(sz.x / 1.4f));
+            for (int i = 0; i < bars; ++i) {
+                float x = b.min.x + sz.x * (i + 0.5f) / bars;
                 push(out, T({x, c.y, c.z}) * S({0.18f, sz.y * 0.92f, sz.z + 0.08f}), bar * 0.2f, bar);
             }
         }
@@ -1701,6 +2200,25 @@ public:
             }
         }
 
+        // Moving platforms: a slab with glowing edges and a grapple ring under it
+        for (auto& m : level.movers) {
+            const AABB& b = level.walls[m.wall].box;
+            glm::vec3 c = (b.min + b.max) * 0.5f, sz = b.max - b.min;
+            float pulse = 0.75f + 0.25f * std::sin(t * 4.f + c.x);
+            push(out, T(c) * S(sz), m.color);
+            glm::vec3 g = m.glow * pulse;
+            float ey = b.max.y - 0.03f;
+            push(out, T({c.x, ey, b.min.z}) * S({sz.x + 0.06f, 0.08f, 0.08f}), g * 0.2f, g);
+            push(out, T({c.x, ey, b.max.z}) * S({sz.x + 0.06f, 0.08f, 0.08f}), g * 0.2f, g);
+            push(out, T({b.min.x, ey, c.z}) * S({0.08f, 0.08f, sz.z + 0.06f}), g * 0.2f, g);
+            push(out, T({b.max.x, ey, c.z}) * S({0.08f, 0.08f, sz.z + 0.06f}), g * 0.2f, g);
+            float ry = b.min.y - 0.35f, rr = std::min(sz.x, sz.z) * 0.3f;
+            for (int k = 0; k < 8; ++k) {
+                float a = k * 0.785f + t * 1.5f;
+                push(out, T({c.x + std::cos(a) * rr, ry, c.z + std::sin(a) * rr}) * RY(-a) * S({0.1f, 0.1f, rr * 0.8f}), g * 0.2f, g * 1.3f);
+            }
+        }
+
         // Lava shimmer over the channels
         for (auto& hz : level.hazards) {
             glm::vec3 c = (hz.box.min + hz.box.max) * 0.5f, sz = hz.box.max - hz.box.min;
@@ -1712,15 +2230,32 @@ public:
             }
         }
 
-        // Sunset Yard: a diamond spinning above the obelisk
-        push(out, T({0.f, 9.f + std::sin(t * 1.5f) * 0.3f, 0.f}) * RY(t) * RX(0.785f) * RZ(0.785f) * S(glm::vec3{1.1f}),
-             {1.f, 0.4f, 0.7f}, glm::vec3{1.6f, 0.35f, 0.9f});
+        // Spinning gems (the obelisk, the Spire's beacon, the finish)
+        for (auto& g : level.gems) {
+            float s = g.size;
+            glm::vec3 col = g.color;
+            push(out, T(g.pos + glm::vec3{0, std::sin(t * 1.5f) * 0.3f, 0}) * RY(t) * RX(0.785f) * RZ(0.785f) * S(glm::vec3{s}),
+                 col * 0.6f, col);
+            if (g.beam) push(out, T(g.pos + glm::vec3{0, 40.f, 0}) * S({0.35f, 80.f, 0.35f}), col * 0.1f, col * 0.5f);
+        }
+
+        // FAST: the finish beacon lights up once the last section is clear
+        if (fast()) {
+            glm::vec3 f = level.finishPos;
+            glm::vec3 col = finishOpen ? glm::vec3{1.8f, 0.7f, 0.2f} : glm::vec3{0.3f, 0.12f, 0.1f};
+            push(out, T(f + glm::vec3{0, 0.08f, 0}) * S({5.f, 0.16f, 5.f}), {0.15f, 0.12f, 0.12f});
+            for (int k = 0; k < 16; ++k) {
+                float a = k * 0.3927f + t * (finishOpen ? 1.2f : 0.2f);
+                push(out, T(f + glm::vec3{std::cos(a) * 2.6f, 0.25f, std::sin(a) * 2.6f}) * RY(-a) * S({0.18f, 0.18f, 0.8f}), col * 0.2f, col);
+            }
+            if (finishOpen) push(out, T(f + glm::vec3{0, 30.f, 0}) * S({1.2f, 60.f, 1.2f}), col * 0.1f, col * 0.8f);
+        }
 
         // The Core: the reactor — stacked counter-rotating blocks and orbiting rings
-        {
+        if (level.hasReactor) {
             bool bossRage = false;
             for (auto& e : enemies) if (e.alive && e.type == EnemyType::WARDEN && e.enraged) bossRage = true;
-            glm::vec3 base{0.f, 1.5f, -162.f};
+            glm::vec3 base = level.reactorPos;
             glm::vec3 hot = bossRage ? glm::vec3{1.8f, 0.2f, 0.3f} : glm::vec3{0.3f, 1.4f, 1.8f};
             glm::vec3 alt = bossRage ? glm::vec3{1.6f, 0.4f, 0.1f} : glm::vec3{1.6f, 0.25f, 1.1f};
             for (int i = 0; i < 6; ++i) {
@@ -1744,6 +2279,8 @@ public:
         }
     }
 
+    bool scopedView() const { return activeWeapon == (int)WeaponId::LONGSHOT && aim > 0.9f; }
+
     void render() override {
         float alpha = (float)(accumulator / PHYSICS_DT);
         glm::vec3 renderCamPos = glm::mix(prevCamPos, player.camera.position, alpha);
@@ -1751,12 +2288,17 @@ public:
         renderCam.position = renderCamPos;
 
         if (shakeTimer > 0.f) {
-            float s = shakeIntensity * (shakeTimer / 0.2f);
+            float s = shakeIntensity * (shakeTimer / 0.2f) * (1.f - 0.7f * aim);
             renderCam.position += glm::vec3{frand(-1.f,1.f) * s, frand(-1.f,1.f) * s, 0.f};
         }
-        renderCam.position += viewModel.getBobOffset(playerXZSpeed, player.onGround, renderCam.right());
+        if (!settings || settings->viewBob)
+            renderCam.position += viewModel.getBobOffset(playerXZSpeed, player.onGround, renderCam.right()) * (1.f - aim);
         renderCam.position.y -= landSquash;
-        renderCam.fov = player.camera.fov + fovKick;
+        const WeaponDef& wd = weaponDef((WeaponId)activeWeapon);
+        float baseFov = settings ? settings->fov : 90.f;
+        float a = aim * aim * (3.f - 2.f * aim);
+        float zoom = wd.canAim ? glm::mix(1.f, wd.aimFov, a) : 1.f;
+        renderCam.fov = baseFov * zoom + fovKick * (1.f - a);
 
         glm::mat4 view = renderCam.viewMatrix();
         glm::mat4 proj = renderCam.projectionMatrix();
@@ -1817,7 +2359,7 @@ public:
         {
             static std::vector<BoxInstance> boxes;
             boxes.clear();
-            gatherBoxes(boxes);
+            gatherBoxes(boxes, view);
             boxRenderer.shader.use();
             boxRenderer.shader.setMat4("projection", proj);
             boxRenderer.shader.setMat4("view",       view);
@@ -1827,38 +2369,8 @@ public:
             boxRenderer.draw(boxes);
         }
 
-        // --- Enemy health bars (only once damaged) ---
         worldShader.use();
-        glBindTexture(GL_TEXTURE_2D, whiteTex);
-        glDisable(GL_CULL_FACE);
-        glm::vec3 camRight = glm::normalize(glm::vec3(view[0][0], view[1][0], view[2][0]));
-        glm::vec3 camFwdFlat = glm::normalize(glm::cross(camRight, glm::vec3(0,1,0)));
-        for (auto& e : enemies) {
-            if (!e.targetable() || e.health >= e.maxHealth || e.type == EnemyType::WARDEN) continue;
-            float barW = std::max(1.0f, e.radius() * 1.8f), barH = 0.12f;
-            float fill = e.health / e.maxHealth;
-            glm::vec3 barPos = e.position + glm::vec3{0, e.height() + 0.45f, 0};
-            glm::mat4 bg(1.f);
-            bg[0] = glm::vec4(camRight * barW, 0); bg[1] = glm::vec4(0, barH, 0, 0);
-            bg[2] = glm::vec4(camFwdFlat * 0.01f, 0); bg[3] = glm::vec4(barPos, 1);
-            worldShader.setMat4("model", bg);
-            worldShader.setVec3("objectColor", {0.1f, 0.1f, 0.1f});
-            worldShader.setVec3("emissiveColor", {0.f, 0.f, 0.f});
-            viewModel.cubeMesh.draw();
-            glm::mat4 fm(1.f);
-            fm[0] = glm::vec4(camRight * barW * fill, 0); fm[1] = glm::vec4(0, barH * 0.8f, 0, 0);
-            fm[2] = glm::vec4(camFwdFlat * 0.02f, 0);
-            fm[3] = glm::vec4(barPos - camRight * (barW * (1.f - fill) * 0.5f), 1);
-            worldShader.setMat4("model", fm);
-            worldShader.setVec3("objectColor", {0.9f, 0.15f, 0.1f});
-            worldShader.setVec3("emissiveColor", {0.6f, 0.08f, 0.04f});
-            viewModel.cubeMesh.draw();
-        }
-        glEnable(GL_CULL_FACE);
-        worldShader.setVec3("emissiveColor", {0.f, 0.f, 0.f});
-        worldShader.setVec3("objectColor", {1.f, 1.f, 1.f});
         worldShader.setMat4("model", glm::mat4(1.f));
-
         grapple.drawLine(player.position + glm::vec3{0,player.eyeHeight,0}, view, proj);
         renderDecals();
 
@@ -1866,12 +2378,9 @@ public:
         renderLasers(view, proj);
         renderParticles(view, proj);
 
-        // --- View model (inside the FBO so it gets bloom; no fog) ---
-        {
-            float revolverFill = reloading ? (1.f - reloadTimer / RELOAD_TIME)
-                                           : (float)revolverAmmo / (float)revolverAmmoMax;
-            float shotgunFill  = shotgunReloading ? (1.f - shotgunReloadTimer / SHOTGUN_RELOAD_TIME)
-                                                  : (shotgunTimer > 0.f ? (1.f - shotgunTimer / 0.55f) : 1.f);
+        // --- View model (inside the FBO so it gets bloom; no fog). Hidden
+        // behind the Longshot's scope once it's up. ---
+        if (!scopedView()) {
             worldShader.use();
             worldShader.setVec3("lightDir",    glm::normalize(glm::vec3{0.4f,-1.f,0.3f}));
             worldShader.setVec3("lightColor",  {1.f,0.9f,0.8f});
@@ -1882,7 +2391,8 @@ public:
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D, whiteTex);
             worldShader.setInt("uTexture", 0);
-            viewModel.draw(worldShader, renderCam, activeWeapon, revolverFill, shotgunFill);
+            float flash = glm::clamp(muzzleFlashTimer / 0.06f, 0.f, 1.f);
+            viewModel.draw(worldShader, renderCam, activeWeapon, flash, wd.canAim ? aim : 0.f);
             worldShader.setMat4("projection", proj);
             worldShader.setMat4("view",       view);
         }
@@ -1911,16 +2421,38 @@ public:
     }
 
     void renderHUD(const glm::mat4& view, const glm::mat4& proj) {
-        float reloadProgress = reloading ? (1.f - reloadTimer / RELOAD_TIME) : 1.f;
-        float shotgunReloadProgress = shotgunReloading ? (1.f - shotgunReloadTimer / SHOTGUN_RELOAD_TIME) : 1.f;
-        ui.render(styleSystem, activeWeapon,
-                  shotgunAmmo, shotgunAmmoMax, shotgunReloading, shotgunReloadProgress,
-                  revolverAmmo, revolverAmmoMax, reloading, reloadProgress,
-                  nearInteractable);
+        // ---- the HUD proper ----
+        HudState h;
+        h.health = styleSystem.health; h.maxHealth = styleSystem.maxHealth;
+        h.activeWeapon = activeWeapon;
+        for (int w = 0; w < WEAPON_COUNT; ++w) {
+            h.weapons[w].name = weaponDef((WeaponId)w).name;
+            h.weapons[w].ammo = weapons[w].ammo;
+            h.weapons[w].mag  = weaponMag((WeaponId)w, prog.up[w]);
+            h.weapons[w].reloading = weapons[w].reloading;
+            h.weapons[w].reload01  = weapons[w].reloadProgress();
+        }
+        h.grenades = grenadeCount; h.grenadeMax = grenadeMax;
+        h.level = prog.level; h.xp = prog.xp; h.xpNext = Progression::xpToNext(prog.level); h.points = prog.points;
+        const WeaponDef& wd = weaponDef((WeaponId)activeWeapon);
+        h.aim = wd.canAim ? aim : 0.f;
+        h.scoped = activeWeapon == (int)WeaponId::LONGSHOT && aim > 0.82f;   // lens fades in, then the model hides
+        // Crosshair gap follows the spread (pixels at the current FOV)
+        float spread = weaponSpread((WeaponId)activeWeapon, prog.up[activeWeapon], h.aim);
+        if (wd.canAim && !player.onGround) spread += 0.03f * (1.f - h.aim);
+        h.spread = spread * (SCREEN_H * 0.5f) / std::tan(glm::radians(player.camera.fov) * 0.5f) * 0.7f;
+        h.hideCrosshair = (activeWeapon == (int)WeaponId::KAR && aim > 0.6f) || scopedView() || playerDead || victory;
+        h.grappleTarget = grappleTargetInSight && !grapple.active;
+        h.showTimer = fast() || (settings && settings->showTimer);
+        h.time = elapsedTime;
+        if (settings) settings->crosshairColor(h.crosshairColor.r, h.crosshairColor.g, h.crosshairColor.b);
+        h.viewProj = proj * view;
+        h.damageNumbers = !settings || settings->damageNumbers;
+        if (!playerDead && !victory) ui.render(styleSystem, h);
 
         const Arena& ar = level.arenas[director.arena];
         int nArenas = (int)level.arenas.size();
-        char buf[96];
+        char buf[128];
 
         if (!playerDead && !victory) {
             int alive = 0;
@@ -1930,7 +2462,10 @@ public:
             const Enemy* boss = nullptr;
             for (auto& e : enemies) if (e.alive && e.type == EnemyType::WARDEN) boss = &e;
 
-            switch (director.phase) {
+            if (fast()) {
+                if (finishOpen) { snprintf(buf, sizeof(buf), "FINISH OPEN - REACH THE BEACON"); accent = {1.f, 0.6f, 0.2f}; }
+                else snprintf(buf, sizeof(buf), "SECTION %d/%d  %s   HOSTILES %d", director.arena + 1, nArenas, ar.name, left);
+            } else switch (director.phase) {
             case WaveDirector::Phase::INTRO:
                 snprintf(buf, sizeof(buf), "ARENA %d/%d  %s  GET READY", director.arena + 1, nArenas, ar.name); break;
             case WaveDirector::Phase::ACTIVE:
@@ -1953,13 +2488,20 @@ public:
 
             // Waypoint to the open gate
             const AABB* gate = ar.exitDoor >= 0 ? &level.walls[level.doors[ar.exitDoor].wall].box : nullptr;
-            if (director.phase == WaveDirector::Phase::CLEARED && gate && player.position.z > gate->min.z) {
+            if (!fast() && director.phase == WaveDirector::Phase::CLEARED && gate && player.position.z > gate->min.z) {
                 const AABB& b = *gate;
                 glm::vec3 target{(b.min.x + b.max.x) * 0.5f, 2.f, (b.min.z + b.max.z) * 0.5f};
                 float sx, sy;
                 bool on = projectToScreen(target, view, proj, sx, sy);
                 snprintf(buf, sizeof(buf), "GATE %dM", (int)glm::length(target - player.position));
                 ui.renderMarker(sx, sy, on, {0.4f, 1.f, 0.6f}, buf);
+            }
+            if (finishOpen) {
+                glm::vec3 target = level.finishPos + glm::vec3{0, 2.f, 0};
+                float sx, sy;
+                bool on = projectToScreen(target, view, proj, sx, sy);
+                snprintf(buf, sizeof(buf), "FINISH %dM", (int)glm::length(target - player.position));
+                ui.renderMarker(sx, sy, on, {1.f, 0.6f, 0.2f}, buf);
             }
             // The last few enemies get markers so you never hunt for a straggler
             if (director.fighting() && director.queued() == 0 && alive > 0 && alive <= 3) {
@@ -1973,19 +2515,47 @@ public:
             ui.renderControlHint(glm::clamp(controlHintTimer / 1.5f, 0.f, 1.f));
         }
 
-        if (!banners.empty()) {
+        if (!banners.empty() && !armoryOpen) {
             const Banner& b = banners.front();
             float a = std::min({1.f, b.time * 4.f, (b.duration - b.time) * 2.5f});
             ui.renderBanner(b.title.c_str(), b.subtitle.c_str(), b.color, a);
         }
+        if (countdown > 0.f) ui.renderCountdown(countdown);
 
         if (playerDead) {
-            snprintf(buf, sizeof(buf), "ARENA %d/%d %s - WAVE %d/%d", director.arena + 1, nArenas, ar.name,
-                     director.wave + 1, director.waveCount());
-            ui.renderDeath(buf, totalKills, elapsedTime);
+            if (fast()) snprintf(buf, sizeof(buf), "SECTION %d/%d  %s", director.arena + 1, nArenas, ar.name);
+            else snprintf(buf, sizeof(buf), "ARENA %d/%d %s - WAVE %d/%d", director.arena + 1, nArenas, ar.name,
+                          director.wave + 1, director.waveCount());
+            ui.renderDeath(buf, totalKills, elapsedTime, fast());
         }
-        if (victory) ui.renderVictory(totalKills, totalShots, totalHits, deaths, elapsedTime, peakStyle);
-        if (paused) ui.renderPause(pauseSelected);
+        if (victory) {
+            if (fast()) {
+                const char* rank = elapsedTime < level.parTimes[0] ? "S" : elapsedTime < level.parTimes[1] ? "A"
+                                 : elapsedTime < level.parTimes[2] ? "B" : elapsedTime < level.parTimes[3] ? "C" : "D";
+                // Show the best run as it was before this one (newRecord already replaced it)
+                static std::vector<float> none;
+                ui.renderVictoryFast(elapsedTime, newRecord ? 0.f : records.bestFast, newRecord, rank, totalKills,
+                                     totalShots, totalHits, deaths, splits, newRecord ? none : records.fastSplits);
+            } else {
+                ui.renderVictoryArena(totalKills, totalShots, totalHits, deaths, elapsedTime, peakStyle,
+                                      prog.level, records.bestArena, newRecord);
+            }
+        }
+        if (armoryOpen) ui.renderArmory(prog, armoryW, armoryS);
+        if (paused) {
+            if (pauseSettings) {
+                ui.begin2D();
+                ui.ui.rect(0, 0, SCREEN_W, SCREEN_H, {0.f, 0.f, 0.02f, 0.65f});
+                settingsMenu.render(ui.ui, gameClock + (float)SDL_GetTicks() * 0.001f);
+                ui.end2D();
+            } else {
+                const char* labels[UIRenderer::PAUSE_ITEMS];
+                for (int i = 0; i < UIRenderer::PAUSE_ITEMS; ++i) labels[i] = pauseLabel(i);
+                std::string line = fast() ? "FAST - THE DESCENT  " + formatTime(elapsedTime)
+                                          : std::string("ARENA - ") + ar.name;
+                ui.renderPause(pauseSelected, labels, line.c_str());
+            }
+        }
     }
 
     void renderDecals() {
@@ -2059,14 +2629,15 @@ public:
     }
 
     // Draws thin additive beams. Shared by bullet tracers and Sentinel lasers.
-    void drawBeams(const std::vector<std::array<glm::vec4, 2>>& beams, glm::vec3 color, float width,
-                   const glm::mat4& view, const glm::mat4& proj) {
+    // Each beam: start (xyz, alpha), end (xyz, alpha), width.
+    struct Beam { glm::vec4 a, b; float width; };
+    void drawBeams(const std::vector<Beam>& beams, glm::vec3 color, const glm::mat4& view, const glm::mat4& proj) {
         struct TVert { float x,y,z,a; };
         TVert buf[MAX_TRACERS * 6];
         int count = 0;
         for (auto& bm : beams) {
             if (count + 6 > MAX_TRACERS * 6) break;
-            glm::vec3 s = glm::vec3(bm[0]), e = glm::vec3(bm[1]);
+            glm::vec3 s = glm::vec3(bm.a), e = glm::vec3(bm.b);
             glm::vec3 ray = e - s;
             float len = glm::length(ray);
             if (len < 0.001f) continue;
@@ -2074,8 +2645,8 @@ public:
             // Side axis perpendicular to the ray (cross with world up; fall back to X)
             glm::vec3 side = glm::cross(dir, glm::vec3(0.f, 1.f, 0.f));
             if (glm::length(side) < 0.01f) side = glm::cross(dir, glm::vec3(1.f, 0.f, 0.f));
-            side = glm::normalize(side) * width;
-            float aN = bm[0].w, aF = bm[1].w;
+            side = glm::normalize(side) * bm.width;
+            float aN = bm.a.w, aF = bm.b.w;
             glm::vec3 s0 = s - side, s1 = s + side, e0 = e - side, e1 = e + side;
             buf[count++] = {s0.x,s0.y,s0.z, aN}; buf[count++] = {s1.x,s1.y,s1.z, aN};
             buf[count++] = {e1.x,e1.y,e1.z, aF}; buf[count++] = {s0.x,s0.y,s0.z, aN};
@@ -2101,18 +2672,20 @@ public:
     }
 
     void renderTracers(const glm::mat4& view, const glm::mat4& proj) {
-        std::vector<std::array<glm::vec4, 2>> beams;
+        static std::vector<Beam> beams;
+        beams.clear();
         for (auto& t : tracers) {
             if (!t.alive) continue;
             float fade = t.life / t.maxLife;
-            beams.push_back({glm::vec4(t.start, fade), glm::vec4(t.end, fade * 0.08f)});
+            beams.push_back({glm::vec4(t.start, fade), glm::vec4(t.end, fade * 0.08f), t.width});
         }
-        drawBeams(beams, {0.97f, 0.95f, 0.72f}, 0.055f, view, proj);
+        drawBeams(beams, {0.97f, 0.95f, 0.72f}, view, proj);
     }
 
     // A Sentinel winding up paints you with a laser; it brightens until it fires.
     void renderLasers(const glm::mat4& view, const glm::mat4& proj) {
-        std::vector<std::array<glm::vec4, 2>> beams;
+        static std::vector<Beam> beams;
+        beams.clear();
         glm::vec3 target = player.camera.position - glm::vec3{0, 0.35f, 0};
         for (auto& e : enemies) {
             if (!e.targetable() || e.type != EnemyType::SENTINEL || e.attack != AttackKind::BURST) continue;
@@ -2124,9 +2697,9 @@ public:
             glm::vec3 d = target - eye;
             float len = glm::length(d);
             if (len < 4.f) continue;
-            beams.push_back({glm::vec4(eye, a), glm::vec4(eye + d * ((len - 3.f) / len), a * 0.5f)});
+            beams.push_back({glm::vec4(eye, a), glm::vec4(eye + d * ((len - 3.f) / len), a * 0.5f), 0.03f});
         }
-        drawBeams(beams, {0.3f, 0.95f, 1.f}, 0.03f, view, proj);
+        drawBeams(beams, {0.3f, 0.95f, 1.f}, view, proj);
     }
 
     int findInteractTarget() const {

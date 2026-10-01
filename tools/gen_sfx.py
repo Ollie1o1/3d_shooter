@@ -286,6 +286,147 @@ def gen_pickup():
     return out
 
 
+def gen_kar():
+    """Bolt-action rifle: a sharp supersonic crack with a long rolling tail."""
+    n = n_samples(0.55)
+    noise = [white() for _ in range(n)]
+    crack = highpass(noise, 2500)
+    body = lowpass(noise, 1200)
+    out = []
+    for i in range(n):
+        t = i / n
+        punch = sine(110 - 50 * t, i) * math.exp(-18.0 * t)
+        out.append(crack[i] * math.exp(-60.0 * t) * 1.1
+                   + body[i] * math.exp(-7.0 * t) * 0.55
+                   + punch * 0.8)
+    return out
+
+
+def gen_longshot():
+    """Heavy .50 sniper: a huge low boom, a crack on top and a long echo."""
+    n = n_samples(1.1)
+    noise = [white() for _ in range(n)]
+    crack = highpass(noise, 1800)
+    boom = lowpass(noise, 350)
+    out = []
+    for i in range(n):
+        t = i / n
+        sub = sine(52 - 18 * t, i) * math.exp(-5.0 * t)
+        echo = 0.0
+        if t > 0.22:
+            te = t - 0.22
+            echo = boom[i - n_samples(0.24)] * math.exp(-6.0 * te) * 0.35
+        out.append(crack[i] * math.exp(-45.0 * t) * 0.9
+                   + boom[i] * math.exp(-3.5 * t) * 1.2
+                   + sub * 1.0 + echo)
+    return out
+
+
+def gen_bolt():
+    """Rifle bolt: lift-click, a sliding rasp back and forward, lock-click."""
+    n = n_samples(0.42)
+    out = [0.0] * n
+    def click(at, freq, amp):
+        start = n_samples(at)
+        cn = n_samples(0.025)
+        for i in range(cn):
+            if start + i < n:
+                t = i / cn
+                out[start + i] += (sine(freq, i) * 0.5 + white() * 0.5) * math.exp(-35.0 * t) * amp
+    def rasp(at, dur, amp):
+        start = n_samples(at)
+        rn = n_samples(dur)
+        r = highpass([white() for _ in range(rn)], 2500)
+        for i in range(rn):
+            if start + i < n:
+                t = i / rn
+                out[start + i] += r[i] * math.sin(math.pi * t) * amp
+    click(0.0, 1800, 0.8)
+    rasp(0.06, 0.09, 0.45)
+    click(0.15, 1300, 0.7)
+    rasp(0.22, 0.08, 0.45)
+    click(0.33, 2200, 1.0)
+    return out
+
+
+def gen_scope():
+    """Raising the scope: a short soft lens whoosh."""
+    n = n_samples(0.18)
+    noise = lowpass([white() for _ in range(n)], 1800)
+    out = []
+    for i in range(n):
+        t = i / n
+        out.append(noise[i] * math.sin(math.pi * t) * 0.6 + sine(600 + 400 * t, i) * math.exp(-8 * t) * 0.15)
+    return out
+
+
+def gen_levelup():
+    """Level up: a bright rising major arpeggio."""
+    notes = [523.25, 659.25, 783.99, 1046.5]
+    step = n_samples(0.07)
+    n = step * len(notes) + n_samples(0.35)
+    out = [0.0] * n
+    for k, f in enumerate(notes):
+        start = k * step
+        ln = n - start
+        for i in range(ln):
+            t = i / ln
+            out[start + i] += (sine(f, i) + 0.4 * sine(f * 2, i)) * math.exp(-5.0 * t) * 0.35
+    return out
+
+
+def gen_potion():
+    """Health potion: a couple of glugs and a warm chime."""
+    n = n_samples(0.45)
+    out = []
+    for i in range(n):
+        t = i / n
+        glug = 0.0
+        for g0 in (0.0, 0.1):
+            if t * 0.45 >= g0:
+                tg = t * 0.45 - g0
+                glug += sine(180 + 260 * tg * 10, i) * math.exp(-40.0 * tg) * 0.6
+        chime = (sine(880, i) + 0.6 * sine(1318.5, i)) * math.exp(-4.0 * t) * (0.4 if t > 0.35 else 0.0)
+        out.append(glug + chime)
+    return out
+
+
+def gen_barrier():
+    """Bumping the invisible ceiling: a soft electric fizz."""
+    n = n_samples(0.25)
+    noise = highpass([white() for _ in range(n)], 3000)
+    out = []
+    for i in range(n):
+        t = i / n
+        buzz = math.copysign(1.0, sine(120, i)) * 0.15
+        out.append((noise[i] * 0.5 + buzz + sine(1500, i) * 0.2) * math.exp(-9.0 * t))
+    return lowpass(out, 6000)
+
+
+def gen_split():
+    """Section split: two quick high blips."""
+    n = n_samples(0.22)
+    out = []
+    for i in range(n):
+        t = i / n
+        f = 1568 if t < 0.45 else 2093
+        out.append(sine(f, i) * math.exp(-6.0 * (t % 0.45)) * 0.5)
+    return out
+
+
+def gen_upgrade():
+    """Buying an upgrade: a heavy mechanical clunk and a rising tone."""
+    n = n_samples(0.35)
+    noise = lowpass([white() for _ in range(n)], 900)
+    out = []
+    for i in range(n):
+        t = i / n
+        clunk = (noise[i] * 0.8 + sine(90, i) * 0.6) * math.exp(-18.0 * t)
+        tone = sine(440 + 440 * t, i) * math.exp(-4.0 * t) * 0.3
+        out.append(clunk + tone)
+    return out
+
+
 GENERATORS = {
     "jump": gen_jump,
     "land": gen_land,
@@ -304,6 +445,15 @@ GENERATORS = {
     "wave": gen_wave,
     "spawn": gen_spawn,
     "pickup": gen_pickup,
+    "kar": gen_kar,
+    "longshot": gen_longshot,
+    "bolt": gen_bolt,
+    "scope": gen_scope,
+    "levelup": gen_levelup,
+    "potion": gen_potion,
+    "barrier": gen_barrier,
+    "split": gen_split,
+    "upgrade": gen_upgrade,
 }
 
 

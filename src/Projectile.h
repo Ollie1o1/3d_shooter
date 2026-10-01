@@ -120,7 +120,7 @@ inline ProjectileSystem::HitResult ProjectileSystem::update(
                 }
             }
         }
-        if (!hitSolid && (p.position.y < 0.f || p.position.y > 40.f)) hitSolid = true;
+        if (!hitSolid && (p.position.y < 0.f || p.position.y > 150.f)) hitSolid = true;
 
         if (hitSolid) {
             if (p.isGrenade && p.blastRadius > 0.f) {

@@ -13,6 +13,13 @@
 // dumping fifteen enemies on you in one frame. Spawn points are picked away
 // from the player so nothing materialises on top of you.
 //
+// FAST mode (fast = true) is a time trial, so nothing waits: a section's
+// whole wave appears at once at its hand-placed points, the next wave follows
+// the moment one is cleared, and clearing a section starts the next one
+// straight away (its enemies appear below you as the gate opens). Clearing
+// the last section sends FINISH_OPEN instead of VICTORY: the run ends when
+// the player reaches the beacon.
+//
 // The director only *requests* spawns and reports events (wave started, new
 // enemy type seen, arena cleared…); GameplayState owns the enemies, banners
 // and doors. That split is what lets tests/test_game.cpp drive a whole run.
@@ -23,7 +30,7 @@
 
 struct SpawnRequest { EnemyType type; glm::vec3 pos; };
 
-enum class DirectorEvent { ARENA_START, WAVE_START, BOSS_START, NEW_TYPE, WAVE_CLEARED, ARENA_CLEARED, VICTORY };
+enum class DirectorEvent { ARENA_START, WAVE_START, BOSS_START, NEW_TYPE, WAVE_CLEARED, ARENA_CLEARED, VICTORY, FINISH_OPEN };
 struct DirectorEventRec { DirectorEvent kind; int value; };
 
 class WaveDirector {
@@ -36,16 +43,18 @@ public:
     static constexpr float SAFE_RADIUS = 13.f;    // don't spawn closer than this to the player
 
     const LevelData* level = nullptr;
+    bool  fast = false;
     int   arena = 0, wave = 0;
     Phase phase = Phase::INTRO;
     float timer = 0.f;
-    std::vector<EnemyType>         queue;
+    struct Queued { EnemyType type; bool fixed; glm::vec3 pos; };
+    std::vector<Queued>            queue;
     std::vector<DirectorEventRec>  events;      // drained by the caller every frame
     bool  seen[(int)EnemyType::COUNT] = {};
 
     void startArena(int a) {
         arena = a; wave = 0;
-        phase = Phase::INTRO; timer = INTRO_TIME;
+        phase = Phase::INTRO; timer = fast ? 0.f : INTRO_TIME;
         queue.clear(); spawnTimer = 0.f;
         events.push_back({DirectorEvent::ARENA_START, a});
     }
@@ -68,24 +77,30 @@ public:
             break;
         case Phase::ACTIVE: {
             spawnTimer -= dt;
-            if (!queue.empty() && aliveCount < current().maxAlive && spawnTimer <= 0.f) {
-                EnemyType t = queue.front();
+            if (fast) {
+                for (auto& q : queue) out.push_back({q.type, q.fixed ? q.pos : pickSpawn(q.type, playerPos)});
+                aliveCount += (int)queue.size();
+                queue.clear();
+            } else if (!queue.empty() && aliveCount < current().maxAlive && spawnTimer <= 0.f) {
+                Queued q = queue.front();
                 queue.erase(queue.begin());
-                out.push_back({t, pickSpawn(t, playerPos)});
+                out.push_back({q.type, q.fixed ? q.pos : pickSpawn(q.type, playerPos)});
                 spawnTimer = SPAWN_GAP;
                 ++aliveCount;   // it's on the field now; don't call the wave clear this tick
             }
             if (queue.empty() && aliveCount == 0) {
                 if (wave + 1 < waveCount()) {
-                    phase = Phase::BREAK; timer = BREAK_TIME;
                     events.push_back({DirectorEvent::WAVE_CLEARED, wave});
+                    if (fast) { ++wave; beginWave(); }
+                    else      { phase = Phase::BREAK; timer = BREAK_TIME; }
                 } else if (arena + 1 < (int)level->arenas.size()) {
-                    phase = Phase::CLEARED;
                     events.push_back({DirectorEvent::ARENA_CLEARED, arena});
+                    if (fast) startArena(arena + 1);
+                    else      phase = Phase::CLEARED;
                 } else {
                     phase = Phase::VICTORY;
                     events.push_back({DirectorEvent::ARENA_CLEARED, arena});
-                    events.push_back({DirectorEvent::VICTORY, arena});
+                    events.push_back({fast ? DirectorEvent::FINISH_OPEN : DirectorEvent::VICTORY, arena});
                 }
             }
             break;
@@ -118,12 +133,16 @@ private:
         spawnTimer = 0.f;
         queue.clear();
         // Interleave the types (round-robin) so a mixed wave arrives mixed
-        auto entries = current().waves[wave];
+        const auto& entries = current().waves[wave];
         bool any = true;
         for (int round = 0; any; ++round) {
             any = false;
             for (auto& e : entries)
-                if (round < e.count) { queue.push_back(e.type); any = true; }
+                if (round < e.total()) {
+                    bool fixed = !e.at.empty();
+                    queue.push_back({e.type, fixed, fixed ? e.at[round] : glm::vec3{0.f}});
+                    any = true;
+                }
         }
         events.push_back({bossWave() ? DirectorEvent::BOSS_START : DirectorEvent::WAVE_START, wave});
         for (auto& e : entries)
@@ -140,7 +159,10 @@ private:
             if ((player.x > 0.f) == (s.x > 0.f)) s.x = -s.x;
             return s;
         }
-        const auto& pts = statsOf(t).flying ? a.airSpawns : a.groundSpawns;
+        bool flying = statsOf(t).flying;
+        const auto& pts = flying ? a.airSpawns
+                        : (wave < (int)a.waveGround.size() && !a.waveGround[wave].empty()) ? a.waveGround[wave]
+                        : a.groundSpawns;
         // Random point beyond the safe radius, not the one used last time
         int n = (int)pts.size();
         int start = rand() % n;

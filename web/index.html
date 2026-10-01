@@ -34,9 +34,9 @@
     <div class="bar"><i id="progress"></i></div>
     <span class="go" id="status">Loading…</span>
     <span class="keys">
-      <kbd>WASD</kbd> move · <kbd>Mouse</kbd> look · <kbd>LMB</kbd> fire · <kbd>RMB</kbd> grapple ·
-      <kbd>Space</kbd> jump · <kbd>Shift</kbd> dash · <kbd>Ctrl</kbd>/<kbd>C</kbd> slide / slam ·
-      <kbd>G</kbd> grenade · <kbd>F</kbd> parry · <kbd>1</kbd><kbd>2</kbd> weapons ·
+      <kbd>WASD</kbd> move · <kbd>Mouse</kbd> look · <kbd>LMB</kbd> fire · <kbd>RMB</kbd> grapple / aim rifles ·
+      <kbd>Q</kbd> grapple · <kbd>Space</kbd> jump · <kbd>Shift</kbd> dash · <kbd>Ctrl</kbd>/<kbd>C</kbd> slide / slam ·
+      <kbd>G</kbd> grenade · <kbd>F</kbd> parry · <kbd>1</kbd>–<kbd>4</kbd> weapons · <kbd>Tab</kbd> armory ·
       <kbd>Esc</kbd> or <kbd>P</kbd> pause (click to recapture the mouse)
     </span>
   </button>
@@ -50,10 +50,12 @@
 
   var Module = {
     canvas,
-    // ?play skips the main menu (same as ./shooter --play); ?arena=N starts at arena N
+    // ?play skips the main menu (same as ./shooter --play), ?fast starts the FAST
+    // time trial; ?arena=N starts at arena (or FAST section) N
     arguments: (() => {
       const q = new URLSearchParams(location.search);
       const args = q.has('arena') ? ['--arena', q.get('arena')] : q.has('play') ? ['--play'] : [];
+      if (q.has('fast')) args.push('--fast');
       if (q.has('wave')) args.push('--wave', q.get('wave'));
       if (q.has('god')) args.push('--god');
       return args;
@@ -79,6 +81,25 @@
     printErr: (t) => console.warn(t),
   };
 
+  // Ask for raw mouse input under pointer lock. Without it Chrome occasionally
+  // reports one enormous movementX/Y (worst with high-polling-rate mice), which
+  // snaps the view round. Browsers that don't support the option (or reject
+  // it, e.g. some Linux setups) fall back to a plain lock; the game also
+  // filters single-event spikes itself (MouseFilter.h).
+  (() => {
+    const lock = HTMLCanvasElement.prototype.requestPointerLock;
+    if (!lock) return;
+    HTMLCanvasElement.prototype.requestPointerLock = function (opts) {
+      try {
+        const p = lock.call(this, Object.assign({ unadjustedMovement: true }, opts || {}));
+        if (p && typeof p.catch === 'function') return p.catch(() => lock.call(this));
+        return p;
+      } catch (e) {
+        return lock.call(this);
+      }
+    };
+  })();
+
   // Dismiss on the first interaction once the game is ready. Listening only for
   // clicks on the overlay isn't enough: once the game holds pointer lock, the
   // browser sends every mouse event to the canvas, even through the overlay.
@@ -92,6 +113,8 @@
     const ctx = globalThis.SDL2?.audioContext;
     if (ctx && ctx.state === 'suspended') ctx.resume();
   }
+  // Tab opens the in-game armory: keep the browser from moving focus off the canvas
+  window.addEventListener('keydown', (e) => { if (e.key === 'Tab') e.preventDefault(); });
   document.addEventListener('pointerdown', start, true);
   document.addEventListener('keydown', start, true);
   document.addEventListener('pointerlockchange', () => { if (document.pointerLockElement) start(); });

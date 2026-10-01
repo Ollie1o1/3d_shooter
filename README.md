@@ -6,7 +6,12 @@
 
 ![OVERDRIVE gameplay: Rippers charging across the Sunset Yard and breaking apart into their component blocks under shotgun fire](docs/overdrive.gif)
 
-A 3D arena shooter built with **SDL2**, **OpenGL 3.3 Core Profile**, and **GLM**. ULTRAKILL-inspired movement with grapple hook, dashing, multi-weapon combat and style scoring, across **three themed arenas** (sunset yard, foundry, night-time reactor) of three waves each, **seven enemy types** built as animated block rigs, and a **boss fight** at the end.
+A 3D arena shooter built with **SDL2**, **OpenGL 3.3 Core Profile**, and **GLM**. ULTRAKILL-inspired movement with grapple hook, dashing, four weapons (including two bolt-action snipers) and style scoring, in two modes:
+
+- **ARENA**: **four themed arenas** (sunset yard, foundry, a vertical spire you have to climb, a night-time reactor) of three waves each, **seven enemy types** built as animated block rigs, and a **boss fight** at the end.
+- **FAST**: **the Descent**, a Halo-style time trial. Fight your way down six hand-placed sections from 60 m up to the ground, with a run clock, splits against your best run, and a finish beacon.
+
+Kills earn **XP** (more for stylish play), and levels buy **weapon upgrades** in the Armory.
 
 Builds and runs on **macOS**, **Windows** (via MSYS2), and **in the browser** (WebAssembly + WebGL2 via Emscripten). It also builds and passes its physics tests on **Linux** (Ubuntu 24.04), though it hasn't been play-tested on a Linux desktop yet.
 
@@ -57,9 +62,15 @@ make run    # compile + run
 make test   # headless tests: physics, level data, AI, a simulated full run
 make clean  # delete binaries
 
-./shooter --play                 # skip the main menu and start a run
-./shooter --arena 3 --wave 3     # jump straight to an arena / wave (here: the boss)
+./shooter --play                 # skip the main menu and start an ARENA run
+./shooter --fast                 # skip the main menu and start the FAST time trial
+./shooter --arena 4 --wave 3     # jump straight to an arena / wave (here: the boss)
+./shooter --fast --arena 3       # jump to a FAST section (here: the chasm)
 ./shooter --god                  # take no damage (for recording footage)
+
+# Dev: render N frames, save the last as a BMP and quit (the mouse is ignored)
+./shooter --arena 3 --cam 0 3 -129 -90 18 --weapon 4 --aim --shot 90 shot.bmp
+#         --cam X Y Z YAW PITCH   --weapon 1-4   --aim   --overlay armory|pause|settings
 ```
 
 ### Browser (WebAssembly)
@@ -69,7 +80,7 @@ The same C++ compiles to WebAssembly with [Emscripten](https://emscripten.org), 
 ```sh
 source ~/emsdk/emsdk_env.sh     # once per shell
 make web                        # → web/dist/ (≈1.5 MB: wasm + preloaded shaders/sounds)
-python3 -m http.server -d web/dist 8000   # open http://localhost:8000 (?play skips the menu; ?arena=3&wave=3 jumps to the boss)
+python3 -m http.server -d web/dist 8000   # open http://localhost:8000 (?play skips the menu, ?fast starts the time trial; ?arena=4&wave=3 jumps to the boss)
 ```
 
 What the port needed (all behind `#ifdef __EMSCRIPTEN__`, so the desktop build is unchanged):
@@ -77,6 +88,8 @@ What the port needed (all behind `#ifdef __EMSCRIPTEN__`, so the desktop build i
 - `gl.h` includes GLES3; `ShaderProgram` rewrites `#version 330 core` to `#version 300 es` plus default precision at load time, so one set of shaders serves both builds (keep them free of implicit int→float conversions and uniform initializers, which GLSL ES rejects).
 - `main.cpp` runs one `App::frame()` per `requestAnimationFrame` instead of a blocking loop.
 - Browsers use Escape to release the mouse, so losing pointer lock pauses the game; **P** also pauses.
+- Settings and best times are saved to `localStorage` (the Emscripten filesystem is in-memory and forgotten on reload), through `Persist.h`.
+- The shell requests pointer lock with `unadjustedMovement` (raw mouse input) where supported; together with `MouseFilter.h` this stops the occasional huge bogus mouse delta Chrome reports, which used to snap the view round 180°.
 
 ### Windows
 
@@ -103,9 +116,10 @@ make clean        # delete binary
 | Space | Jump / Double jump |
 | Left Shift | Dash (directional) |
 | Left Mouse | Fire weapon |
-| Right Mouse | Grapple hook |
-| 1 / Scroll Up | Revolver |
-| 2 / Scroll Down | Shotgun |
+| Right Mouse | Grapple hook (Revolver / Shotgun) · Aim down sights / scope (Kar98 / Longshot) |
+| Q | Grapple hook (any weapon) |
+| 1 2 3 4 / Scroll | Revolver, Shotgun, Kar98, Longshot |
+| Tab | Armory: spend upgrade points (pauses the game) |
 | G | Throw grenade |
 | R | Reload / Retry the arena (on death) |
 | F | Parry / Projectile boost |
@@ -117,20 +131,34 @@ make clean        # delete binary
 
 ## Features
 
+### Modes
+- **ARENA** — four arenas, three waves each, the Warden at the end. Optional run timer; your best time is saved.
+- **FAST: the Descent** — six sections stepping down from 60 m: a sniper ledge, a rush, a chasm crossed on ferries or by grappling floating anchors (fall in and you're back at the ledge), three terraces, a hall with galleries, and a two-wave pit. Each section's enemies are hand-placed and appear the moment the gate above them opens, so you see the next fight below you as you drop in. A 3-2-1 countdown starts the clock; every section clear shows a split (green ahead / red behind your best run); the clock stops at the finish beacon. Ranked S/A/B/C/D against par times. Dying restarts the section with the clock still running.
+
 ### Combat
 - **Revolver** (slot 1) — 8-round hitscan with auto-reload
 - **Shotgun** (slot 2) — 2-shell pump-action, 10 pellets per shot with spread
+- **Kar98** (slot 3) — bolt-action rifle. RMB raises the iron sights (a small zoom; the front post sits in the rear notch on screen centre). 120 damage, 2.5x on the head: a headshot one-shots anything but the boss. Accurate aimed, loose from the hip or in the air
+- **Longshot** (slot 4) — heavy .50 sniper. RMB brings up a full scope (mil-dot reticle, heavy zoom). 300 damage one-shots every regular enemy and punches through three of them (**COLLATERAL**). Fire as the scope settles for a **QUICKSCOPE** bonus; kill without aiming for a **NOSCOPE** bonus
+- Aiming scales mouse sensitivity with the zoom (plus a ZOOM SENSITIVITY setting) and slows you a little
 - **Grenades** (G key) — parabolic arc, 5m blast radius, refill every 2 kills
 - **Parry** (F) — deflect enemy projectiles back at 2x speed for 50 damage
 - **Projectile Boost** (F near own grenade) — detonate for 3x damage AoE
 - **Recoil recovery** — camera kick smoothly returns to center instead of drifting
 - **Weapon switch animation** — smooth drop/raise transition with firing blocked during switch
 
+### XP, upgrades and drops
+- Kills give XP by enemy type, multiplied by your style rank (D x1 up to SSS x2); trick shots give bonuses
+- Each level is an upgrade point. **Armory (Tab)**: per gun, three tiers each of DAMAGE (+20%), FIRE RATE (-15% between shots) and MAGAZINE (more rounds, faster reload), plus one MOD (2 points): Piercing Rounds, Dragon Breath (+5 pellets), Headhunter (Kar headshot kills refund the round and skip the bolt), Explosive Tips
+- Upgrades survive dying and retrying; a new run starts at level 1
+- **Drops**: health orbs (20%, small heal, magnetic), **health potions** (18%, +40 HP, red loot beam, only picked up when you're hurt so they wait for you) and **XP shards** (10%). Brutes always drop orbs and often a potion
+
 ### Movement
 - Quake-style air strafing with momentum preservation
 - Double jump, directional dash (2 charges), ground slam
-- Grapple hook with slingshot release
+- Grapple hook with slingshot release; **moving platforms** (lifts, sweepers, ferries, orbiting platforms) can be hooked with generous aim assist (cyan brackets on the crosshair) and pull you to land on top; standing on one carries you with it
 - Sliding with momentum boost
+- Every arena has an **invisible ceiling** (a force field that flashes when you hit it) so dashes and grapples can't launch you out over the walls
 
 ### Enemies
 Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from its AI state each frame: legs swing with the walk cycle, wings flap, and arms come up to aim or slam during a wind-up, so you can read an attack before it lands. Each type teaches a different answer:
@@ -146,13 +174,14 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 | **Warden** | 4.6 m crowned boss | Volleys, slams, summons Mites and Rippers; enrages at half health | Everything above |
 
 - Ground enemies steer around cover with feeler probes (no pathfinding; the arenas are open by design) and keep apart with soft separation
+- Gunners and Brutes won't walk off a ledge; Rippers and Mites jump down after you
 - Gunners check line of sight before firing and sidestep out from behind cover when blocked
 - Enemies materialise in a column of light (untargetable for 0.9 s) and break apart into their blocks when killed
 - Health orbs drop from kills (Brutes always drop three) and home in when you're close
 - Headshots on humanoids deal 1.5x damage
 
 ### Arenas and waves
-- **Three arenas**, each with its own lighting, fog and sky: the **Sunset Yard** (open air, synthwave sun, side platforms), **the Foundry** (roofed, lava channels you can lure enemies into, a furnace to climb, catwalks), and **the Core** (night sky, a reactor ringed by pillars, corner perches)
+- **Four arenas**, each with its own lighting, fog and sky: the **Sunset Yard** (open air, synthwave sun, side platforms), **the Foundry** (roofed, lava channels you can lure enemies into, a furnace to climb, catwalks), **the Spire** (a 26 m tower at dawn: ledges, bridges, a balcony and the summit, linked by jump pads, lifts, sweepers and orbiting platforms; each wave spawns a tier higher, and the gunners up there hold their perch, so you have to climb), and **the Core** (night sky, a reactor ringed by pillars, corner perches)
 - Each arena has three waves; the director keeps at most 6–10 enemies on the field and trickles the rest in as you kill, spawning them away from you
 - New enemy types get a title card the first time they appear, with a one-line tip on how to beat them
 - Clearing an arena opens its gate and points a waypoint at it; walking into the next arena closes the gate behind you
@@ -186,10 +215,15 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 ### Game Flow
 - **Victory screen** — after the Warden: time, kills, accuracy, deaths and a letter grade (S/A/B/C/D)
 - **Death screen** — where you died, with retry-arena and new-run options
-- **Pause menu** — Escape mid-run pauses (Resume / Quit to Menu) instead of ending the run
+- **Pause menu** — Escape mid-run pauses: Resume / Settings / Restart / Quit to Menu
 - R retries the current arena; Enter starts a new run
-- Settings menu: FOV, sensitivity, audio volume, FPS cap, show FPS, CRT filter
-- Settings persist across launches (`settings.cfg`, written next to the binary)
+- **Settings** (main menu and pause menu, keyboard or mouse, sliders drag): field of view, FPS cap, show FPS, CRT filter, screen shake, view bob, mouse sensitivity, zoom sensitivity, invert Y, mouse spike filter, master volume, run timer, damage numbers, crosshair colour
+- Settings and best times persist across launches (`settings.cfg` / `records.cfg` next to the binary; `localStorage` in the browser)
+
+### HUD
+- Health as a big number with a bar (pulses red when low), level and XP bar, four weapon slots with ammo counts and reload bars, grenade pips, style rank
+- Floating damage numbers (gold on headshots), a kill/pickup feed, toasts for level-ups and trick shots, run timer and splits
+- The whole HUD is batched into a few draw calls (`UIBatch.h`); it used to be one draw call per pixel of text
 
 ---
 
@@ -200,7 +234,10 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 ├── src/
 │   ├── main.cpp              # entry point, SDL/OpenGL init, App::frame() loop (desktop + web)
 │   ├── GameState.h           # base state interface (menu / gameplay)
-│   ├── MenuState.h           # main menu + settings
+│   ├── MenuState.h           # main menu (ARENA / FAST / SETTINGS)
+│   ├── SettingsMenu.h        # settings page shared by the main and pause menus
+│   ├── Settings.h            # every option, saved via Persist.h
+│   ├── Persist.h             # key → text store: files on desktop, localStorage on the web
 │   ├── GameplayState.h       # core game loop: physics, combat, rendering
 │   ├── Player.h              # kinematic character controller (Quake-style)
 │   ├── Camera.h              # view/projection, mouselook
@@ -210,17 +247,21 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 │   ├── Projectile.h          # bullet/projectile system
 │   ├── GrappleHook.h         # grapple hook physics
 │   ├── StyleSystem.h         # style rank/score tracking
-│   ├── Level.h               # the three arenas, corridors, doors, pads, lava, themes
+│   ├── Level.h               # ARENA map: four arenas, corridors, doors, pads, lava, movers, themes
+│   ├── LevelDescent.h        # FAST map: the Descent's six sections
+│   ├── Weapons.h             # the four guns' stats, upgrade maths, ammo/reload state
+│   ├── Progression.h         # XP, levels, upgrade purchases, best times
+│   ├── MouseFilter.h         # drops bogus single-event mouse spikes
 │   ├── WaveDirector.h        # arena → wave → arena state machine (no OpenGL)
 │   ├── Mesh.h                # VAO/VBO wrapper
 │   ├── ShaderProgram.h       # GLSL compile/link, uniform helpers
 │   ├── PostProcess.h         # bloom + optional CRT post-processing
-│   ├── UIRenderer.h          # HUD, win/death screens, damage indicators
-│   ├── ViewModel.h           # first-person weapon models (revolver, shotgun)
+│   ├── UIRenderer.h          # HUD, armory, pause, win/death screens, scope overlay
+│   ├── UIBatch.h             # batched 2D quads + pixel-font text
+│   ├── ViewModel.h           # first-person weapon models, aim-down-sights, bolt animation
 │   ├── AudioSystem.h         # SDL2_mixer sound wrapper
 │   ├── TextureGen.h          # procedural texture generation
 │   ├── PixelFont.h           # bitmap font for UI text
-│   ├── Settings.h            # game settings (FOV, sensitivity, CRT, etc.)
 │   ├── Interactable.h        # trigger volumes / interactable objects
 │   ├── shader.vert/frag      # world geometry shader (Blinn-Phong, point lights)
 │   ├── box_inst.vert/frag    # instanced box shader (enemies, debris, doors, pads…)
@@ -230,6 +271,7 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 │   ├── particle.vert/frag    # coloured, distance-scaled particle points
 │   ├── grapple.vert/frag     # dithered grapple rope shader
 │   ├── crt.frag              # CRT post-process effect
+│   ├── scope.frag            # sniper scope lens
 │   ├── postprocess.vert      # fullscreen quad vertex shader
 │   ├── bloom_bright.frag     # bloom brightness threshold pass
 │   ├── bloom_blur.frag       # bloom gaussian blur pass
@@ -238,7 +280,8 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 │   └── sfx/                  # procedurally-generated sound effects (.wav)
 ├── tests/
 │   ├── test_physics.cpp      # headless player-physics tests
-│   └── test_game.cpp         # level, AI, rigs and a full simulated run (`make test`)
+│   └── test_game.cpp         # both maps, movers, AI, rigs, weapons, XP, mouse filter and
+│                             # simulated ARENA and FAST runs (`make test`)
 ├── tools/
 │   └── gen_sfx.py            # synthesizes assets/sfx/*.wav — no external audio files
 ├── web/
@@ -288,7 +331,9 @@ World geometry is batched into as few draw calls as possible. Everything dynamic
 
 ### Collision
 
-The player is an AABB. Each wall/platform is also an AABB. Collision is resolved by finding the axis of minimum penetration and pushing the player out along it. A spatial grid accelerates queries so only nearby walls are tested. Perimeter walls are low enough to stand on; what keeps you in the fight is a zone check that only allows the current arena (plus the corridor and next arena once it's cleared).
+The player is an AABB. Each wall/platform is also an AABB. Collision is resolved by finding the axis of minimum penetration and pushing the player out along it. A spatial grid accelerates queries so only nearby walls are tested. Perimeter walls are low enough to stand on; what keeps you in the fight is a zone check that only allows the current arena (plus the corridor and next arena once it's cleared), with the zone's `max.y` as an invisible ceiling and an optional void plane below.
+
+Moving platforms are ordinary walls flagged `dynamic`: `LevelData::updateMovers()` moves them every physics tick and records how far each went. They're left out of the spatial grid and tested every tick instead, the player remembers which wall it's standing on, and `GameplayState` adds that platform's movement to the player before the physics step, which is all "riding a platform" needs.
 
 ---
 
@@ -319,16 +364,18 @@ prop(x0, y0, z0, x1, y1, z1, color);   // rendered only
 neon(x0, y0, z0, x1, y1, z1, color);   // self-lit trim
 ```
 
-`make test` then checks that no spawn point ended up inside it and that every jump pad still lands on its platform.
+`make test` then checks that no spawn point ended up inside it, that every jump pad still lands on its platform, and that no tall scenery sits inside an arena.
 
 ### Add a weapon
 
-In `GameplayState.h`:
-1. Add ammo/cooldown members in the "Player weapon state" block.
-2. Write a `fire___()` method modelled on `fireRevolver()`.
-3. Add a `drawWeapon()` method in `ViewModel.h` and update the `draw()` dispatch.
-4. Handle the key/button in `physicsTick()` where the shooting block is.
-5. Add an ammo display in `UIRenderer::render()`.
+1. Add an id to `WeaponId` and a row to the table in `Weapons.h` (damage, pellets, spread, fire rate, magazine, reload, aim zoom, pierce, recoil, mod).
+2. Add a `draw___()` model in `ViewModel.h` and a case in the `draw()` dispatch.
+3. Add its sound name to `SND[]` in `GameplayState::fireWeapon()` (and to `SOUNDS[]` in `main.cpp`).
+4. Give it an icon in `UIRenderer::drawWeaponIcon()`. The slots, Armory, ammo and reload all follow from the table.
+
+### Add a moving platform
+
+In `Level.h` (or `LevelDescent.h`): `B.mover(centre, halfSize, Mover::Path::PINGPONG, offsetA, offsetB, period, phase, glowColour)`, or `Path::ORBIT` with two radius vectors. `make test` sweeps every mover through two full periods and fails if it ever passes through a wall.
 
 ### Add an enemy type
 
