@@ -104,7 +104,7 @@ struct App {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) { running = false; break; }
-            if (currentState) currentState->handleEvent(e);
+            if (currentState && shotFrames == 0) currentState->handleEvent(e);   // screenshot runs ignore all input
             if (pending != NextState::None) break; // remaining events go to the next state
         }
         if (currentState) {
@@ -200,7 +200,7 @@ int main(int argc, char* argv[]) {
         "jump", "land", "dash", "slam", "revolver", "shotgun", "reload", "grapple_fire",
         "hit", "enemy_death", "player_hit", "parry", "telegraph", "explosion",
         "wave", "spawn", "pickup", "kar", "longshot", "bolt", "scope", "levelup",
-        "potion", "barrier", "split", "upgrade",
+        "potion", "barrier", "split", "upgrade", "clank", "punch", "step1", "step2", "step3", "step4",
     };
     for (const char* name : SOUNDS)
         app->audio.loadSound(name, std::string("assets/sfx/") + name + ".wav");
@@ -229,6 +229,7 @@ int main(int argc, char* argv[]) {
         }
         if (arg == "--weapon" && i + 1 < argc) g_devWeapon = std::atoi(argv[++i]) - 1;
         if (arg == "--aim") g_devAim = true;
+        if (arg == "--spawn" && i + 1 < argc) g_devSpawn = std::atoi(argv[++i]);
         if (arg == "--overlay" && i + 1 < argc) g_devOverlay = argv[++i];
         if (arg == "--shot" && i + 2 < argc) {
             app->shotFrames = std::atoi(argv[i + 1]); app->shotPath = argv[i + 2]; i += 2;

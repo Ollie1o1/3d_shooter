@@ -13,12 +13,12 @@
 // dumping fifteen enemies on you in one frame. Spawn points are picked away
 // from the player so nothing materialises on top of you.
 //
-// FAST mode (fast = true) is a time trial, so nothing waits: a section's
-// whole wave appears at once at its hand-placed points, the next wave follows
-// the moment one is cleared, and clearing a section starts the next one
-// straight away (its enemies appear below you as the gate opens). Clearing
-// the last section sends FINISH_OPEN instead of VICTORY: the run ends when
-// the player reaches the beacon.
+// FAST mode (fast = true) is a time trial: a section's whole wave appears at
+// once at its hand-placed points, and the next wave follows the moment one is
+// cleared. Clearing a section opens its gate and moves to APPROACH for the
+// next one: a breather stretch, until the player walks into that section's
+// trigger and its fight begins. Clearing the last section sends FINISH_OPEN
+// instead of VICTORY: the run ends when the player reaches the beacon.
 //
 // The director only *requests* spawns and reports events (wave started, new
 // enemy type seen, arena cleared…); GameplayState owns the enemies, banners
@@ -35,7 +35,9 @@ struct DirectorEventRec { DirectorEvent kind; int value; };
 
 class WaveDirector {
 public:
-    enum class Phase { INTRO, ACTIVE, BREAK, CLEARED, VICTORY };
+    // APPROACH (FAST): the section is reached but its fight hasn't started;
+    // it does when the player walks into the section's trigger.
+    enum class Phase { INTRO, ACTIVE, BREAK, CLEARED, VICTORY, APPROACH };
 
     static constexpr float INTRO_TIME  = 2.5f;
     static constexpr float BREAK_TIME  = 3.0f;
@@ -57,6 +59,13 @@ public:
         phase = Phase::INTRO; timer = fast ? 0.f : INTRO_TIME;
         queue.clear(); spawnTimer = 0.f;
         events.push_back({DirectorEvent::ARENA_START, a});
+    }
+
+    // FAST: wait at section a's breather until the player reaches its trigger
+    void approach(int a) {
+        arena = a; wave = 0;
+        phase = Phase::APPROACH;
+        queue.clear(); spawnTimer = 0.f;
     }
 
     const Arena& current() const { return level->arenas[arena]; }
@@ -95,7 +104,7 @@ public:
                     else      { phase = Phase::BREAK; timer = BREAK_TIME; }
                 } else if (arena + 1 < (int)level->arenas.size()) {
                     events.push_back({DirectorEvent::ARENA_CLEARED, arena});
-                    if (fast) startArena(arena + 1);
+                    if (fast) approach(arena + 1);
                     else      phase = Phase::CLEARED;
                 } else {
                     phase = Phase::VICTORY;
@@ -115,6 +124,15 @@ public:
             const Arena& next = level->arenas[arena + 1];
             if (level->arenaAt(playerPos) == arena + 1 && playerPos.z < next.zone.max.z - 3.5f)
                 startArena(arena + 1);
+            break;
+        }
+        case Phase::APPROACH: {
+            const Arena& a = current();
+            if (!a.hasTrigger) { startArena(arena); break; }
+            const AABB& t = a.trigger;
+            if (playerPos.x >= t.min.x && playerPos.x <= t.max.x && playerPos.y >= t.min.y && playerPos.y <= t.max.y &&
+                playerPos.z >= t.min.z && playerPos.z <= t.max.z)
+                startArena(arena);
             break;
         }
         case Phase::VICTORY: break;

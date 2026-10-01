@@ -10,5 +10,5 @@ public:
 };
 
 // ARENA: the four-arena wave run ending with the boss.
-// FAST:  the Descent, a time trial through hand-placed fights (see LevelDescent.h).
+// FAST:  the Gauntlet, a time trial through six levels of hand-placed fights (LevelGauntlet.h).
 enum class GameMode { ARENA, FAST };

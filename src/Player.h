@@ -29,16 +29,16 @@ struct Wall {
 // changes (room cleared, door opened). Query with a bounding box to get
 // candidate wall indices — then still test actual AABB overlap yourself.
 //
-// Grid covers the whole level (four arenas + corridors, or the Descent):
-//   X: -100 .. 100  (200 m → 17 cells of 12 m)
-//   Z: -320 .. 100  (420 m → 35 cells of 12 m)
+// Grid covers the whole level (four arenas + corridors, or the Gauntlet):
+//   X: -160 .. 164  (324 m → 27 cells of 12 m)
+//   Z: -400 .. 200  (600 m → 50 cells of 12 m)
 // Dynamic walls (moving platforms) are left out: they'd be in the wrong
 // cells a second later. Callers test those directly every tick.
 // =============================================================================
 struct SpatialGrid {
     static constexpr float CELL = 12.f;
-    static constexpr float X0 = -100.f, Z0 = -320.f;
-    static constexpr int   NX = 17, NZ = 35;
+    static constexpr float X0 = -160.f, Z0 = -400.f;
+    static constexpr int   NX = 27, NZ = 50;
 
     std::vector<int> cells[NX * NZ];
 

@@ -19,6 +19,22 @@ struct GameSettings {
     float zoomSens    = 1.0f;   // multiplier while aiming down sights (after FOV scaling), 0.3..1.5
     bool  invertY     = false;
     bool  mouseFilter = true;   // drop single-event mouse spikes (see MouseFilter.h)
+    int   grappleKey  = 0;      // see grappleLabel(): Q by default; right mouse always aims
+    static constexpr int GRAPPLE_KEYS = 5;
+    static const char* grappleLabel(int i) {
+        static const char* N[] = {"Q", "E", "MOUSE 4", "MOUSE 5", "MIDDLE MOUSE"};
+        return N[(i % GRAPPLE_KEYS + GRAPPLE_KEYS) % GRAPPLE_KEYS];
+    }
+    // Does this SDL event press the grapple button?
+    bool isGrappleEvent(int sdlType, int keyOrButton) const {
+        switch (grappleKey) {
+            case 1:  return sdlType == 0 && keyOrButton == 'e';
+            case 2:  return sdlType == 1 && keyOrButton == 4;   // SDL_BUTTON_X1
+            case 3:  return sdlType == 1 && keyOrButton == 5;   // SDL_BUTTON_X2
+            case 4:  return sdlType == 1 && keyOrButton == 2;   // SDL_BUTTON_MIDDLE
+            default: return sdlType == 0 && keyOrButton == 'q';
+        }
+    }
     // Audio
     float audioVolume = 0.8f;   // 0.0..1.0
     // Gameplay / HUD
@@ -60,6 +76,7 @@ struct GameSettings {
         f << "zoomSens "      << zoomSens      << "\n";
         f << "invertY "       << (invertY ? 1 : 0) << "\n";
         f << "mouseFilter "   << (mouseFilter ? 1 : 0) << "\n";
+        f << "grappleKey "    << grappleKey    << "\n";
         f << "audioVolume "   << audioVolume   << "\n";
         f << "fpsCap "        << fpsCap        << "\n";
         f << "showFPS "       << (showFPS   ? 1 : 0) << "\n";
@@ -82,6 +99,7 @@ struct GameSettings {
             else if (key == "zoomSens")      f >> zoomSens;
             else if (key == "invertY")       flag(invertY);
             else if (key == "mouseFilter")   flag(mouseFilter);
+            else if (key == "grappleKey")    f >> grappleKey;
             else if (key == "audioVolume")   f >> audioVolume;
             else if (key == "fpsCap")        f >> fpsCap;
             else if (key == "showFPS")       flag(showFPS);
@@ -105,6 +123,7 @@ struct GameSettings {
         screenShake = clampf(screenShake, 0.f, 1.f);
         if (fpsCap < 0 || fpsCap > 4) fpsCap = 0;
         crosshair = (crosshair % CROSSHAIR_COLORS + CROSSHAIR_COLORS) % CROSSHAIR_COLORS;
+        grappleKey = (grappleKey % GRAPPLE_KEYS + GRAPPLE_KEYS) % GRAPPLE_KEYS;
     }
 
     static float clampf(float v, float lo, float hi) {

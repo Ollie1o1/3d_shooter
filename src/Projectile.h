@@ -20,6 +20,8 @@ struct Projectile {
     bool      hasGravity = false;  // arc trajectory
     float     blastRadius = 0.f;   // > 0 triggers AoE explosion
     float     size       = 1.f;    // billboard + hit-radius scale (big boss orbs)
+    bool      heavy      = false;  // JUGGERNAUT siege shell
+    bool      parried    = false;  // sent back by the player: ignores armor
 };
 
 class ProjectileSystem {
@@ -29,7 +31,7 @@ public:
 
     void fire(glm::vec3 pos, glm::vec3 vel, float dmg, bool player,
               glm::vec3 color = {1,0.8f,0.2f},
-              bool grenade = false, float blastR = 0.f, float size = 1.f) {
+              bool grenade = false, float blastR = 0.f, float size = 1.f, bool heavy = false) {
         for (auto& p : pool) {
             if (!p.alive) {
                 p.position    = pos;
@@ -43,6 +45,8 @@ public:
                 p.hasGravity  = grenade;
                 p.blastRadius = blastR;
                 p.size        = size;
+                p.heavy       = heavy;
+                p.parried     = false;
                 return;
             }
         }

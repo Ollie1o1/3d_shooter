@@ -12,7 +12,7 @@
 #include "Projectile.h"
 #include "GrappleHook.h"
 #include "Level.h"
-#include "LevelDescent.h"
+#include "LevelGauntlet.h"
 #include "WaveDirector.h"
 #include "PostProcess.h"
 #include "AudioSystem.h"
@@ -47,15 +47,15 @@
 // the player inside the arena they're fighting in (and under its ceiling).
 //
 // MODES: ARENA runs buildLevel() (four arenas, waves, the boss). FAST runs
-// buildDescent() (LevelDescent.h): a countdown, a clock with splits, sections
-// that chain instantly, and a finish beacon.
+// buildGauntlet() (LevelGauntlet.h): a countdown, a clock with splits, levels
+// whose fights start at a trigger after a breather, and a finish beacon.
 //
 // KEY EXTENSION POINTS:
 //   ADD A WEAPON:  a row in Weapons.h, a model in ViewModel.h, a sound name in
 //                  fireWeapon(). Damage goes through hurtEnemy().
 //   ADD AN ENEMY:  Enemy.h (stats + AI), EnemyModel.h (its box rig), then list
 //                  it in a wave in Level.h.
-//   CHANGE A MAP:  Level.h / LevelDescent.h. Walls render and collide
+//   CHANGE A MAP:  Level.h / LevelGauntlet.h. Walls render and collide
 //                  automatically; movers are walls that LevelData moves.
 // =============================================================================
 static constexpr int   SCREEN_W   = 1280;
@@ -78,6 +78,7 @@ inline int       g_devWeapon = -1;
 inline bool      g_devAim = false;
 inline std::string g_devOverlay;
 inline bool      g_devNoMouse = false;   // screenshot runs: never grab or read the mouse
+inline int       g_devSpawn = -1;        // --spawn N: put an enemy of type N 9 m in front of the camera
 
 static GLuint makeGreyTexture() {
     GLuint tex;
@@ -108,7 +109,7 @@ static WorldMeshes buildWorldMeshes(const LevelData& L) {
         auto gc = [&](float y) -> glm::vec3 {
             if (!shade) return col;
             float t = (ySpan > 0.01f) ? (y - yLo) / ySpan : 1.f;
-            // Tall rock (the Descent) shouldn't go black for 50 m: shade the bottom few metres only
+            // Tall rock and towers shouldn't go black for 30 m: shade the bottom few metres only
             if (ySpan > 12.f) t = glm::clamp((y - yLo) / 12.f + 0.35f, 0.f, 1.f);
             return col * glm::mix(0.55f, 1.0f, t);
         };
@@ -338,6 +339,7 @@ public:
     float fpsTimer      = 0.f;
 
     bool parryPrev        = false;
+    float punchCooldown   = 0.f;
     bool prevDashKey      = false;
     bool prevJumpKey      = false;
     // Event-driven click flags — set in handleEvent, consumed once in physicsTick.
@@ -396,7 +398,7 @@ public:
         wallTex  = TextureGen::generateBrickWall(128);
         ceilTex  = TextureGen::generateMetalCeiling(128);
 
-        level = fast() ? buildDescent() : buildLevel();
+        level = fast() ? buildGauntlet() : buildLevel();
         spatialGrid.build(level.walls);
         world = buildWorldMeshes(level);
         director.level = &level;
@@ -414,12 +416,16 @@ public:
         int start = glm::clamp(g_startArena, 0, (int)level.arenas.size() - 1);
         enterArena(start);
         director.wave = glm::clamp(g_startWave, 0, director.waveCount() - 1);
-        if (fast() && start == 0) countdown = 3.f;
+        if (fast() && start == 0) { countdown = 3.f; pushBanner("THE GAUNTLET", "SIX LEVELS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
         if (g_devCam) countdown = 0.f;
         if (g_devWeapon >= 0) activeWeapon = g_devWeapon % WEAPON_COUNT;
         if (g_devAim) aim = 1.f;
         if (g_devOverlay == "armory") { prog.points = 3; prog.up[2].tier[0] = 2; prog.up[3].mod = true; armoryOpen = true; armoryW = 2; }
         if (g_devOverlay == "pause") paused = true;
+        if (g_devSpawn >= 0) {
+            glm::vec3 f = player.camera.flatForward();
+            spawnEnemy((EnemyType)g_devSpawn, player.position * glm::vec3{1, 0, 1} + f * 9.f + glm::vec3{0, groundHeightAt(player.position.x + f.x * 9.f, player.position.z + f.z * 9.f, player.position.y + 1.f), 0});
+        }
         if (g_devOverlay == "settings") { paused = true; pauseSettings = true; }
 
         prevTicks = SDL_GetPerformanceCounter();
@@ -478,9 +484,16 @@ public:
         playerDead = false; deadTimer = 0.f;
         victory = false; victoryDelay = -1.f;
         finishOpen = false;
+        // Health and XP placed in the level's breathers
+        for (auto& pp : level.placedPickups) {
+            PickupKind k = pp.kind == 1 ? PickupKind::POTION : pp.kind == 2 ? PickupKind::XP : PickupKind::ORB;
+            float fy = groundHeightAt(pp.pos.x, pp.pos.z, pp.pos.y + 0.5f);
+            pickups.push_back({pp.pos + glm::vec3{0, 0.6f, 0}, glm::vec3{0.f}, 1e9f, k, fy});
+        }
         // Splits after this section belong to a run we're redoing
         if (fast() && (int)splits.size() > a) splits.resize(a);
-        director.startArena(a);
+        if (fast()) director.approach(a);   // the fight starts at the section's trigger
+        else director.startArena(a);
     }
 
     void resetPlayer(glm::vec3 start) {
@@ -523,7 +536,7 @@ public:
         splits.clear();
         newRecord = false;
         enterArena(0);
-        if (fast()) countdown = 3.f;
+        if (fast()) { countdown = 3.f; pushBanner("THE GAUNTLET", "SIX LEVELS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
         captureMouse(true);
     }
 
@@ -552,11 +565,9 @@ public:
             case DirectorEvent::ARENA_START:
                 if (ar.entryGate >= 0) setDoor(ar.entryGate, false, false);
                 if (fast()) {
-                    if (ev.value == 0) pushBanner("THE DESCENT", "CLEAR EVERY SECTION - THEN REACH THE BEACON", {1.f, 0.6f, 0.2f}, 3.f);
-                    else {
-                        snprintf(buf, sizeof(buf), "SECTION %d/%d  %s", ev.value + 1, (int)level.arenas.size(), ar.name);
-                        pushBanner(buf, ar.subtitle, {1.f, 0.7f, 0.3f}, 1.8f);
-                    }
+                    snprintf(buf, sizeof(buf), "LEVEL %d/%d  %s", ev.value + 1, (int)level.arenas.size(), ar.name);
+                    pushBanner(buf, ar.subtitle, {1.f, 0.7f, 0.3f}, 1.8f);
+                    audio.play("wave", 90);
                 } else {
                     snprintf(buf, sizeof(buf), "ARENA %d/%d", ev.value + 1, (int)level.arenas.size());
                     pushBanner(std::string(buf) + "  " + ar.name, ar.subtitle, {1.f, 0.78f, 0.3f}, 2.6f);
@@ -624,10 +635,10 @@ public:
         char buf[96];
         if (section < (int)records.fastSplits.size()) {
             float d = elapsedTime - records.fastSplits[section];
-            snprintf(buf, sizeof(buf), "SECTION %d  %s  %+.2f", section + 1, formatTime(elapsedTime).c_str(), d);
+            snprintf(buf, sizeof(buf), "LEVEL %d  %s  %+.2f", section + 1, formatTime(elapsedTime).c_str(), d);
             ui.showSplit(buf, d <= 0.f ? glm::vec3{0.3f, 1.f, 0.5f} : glm::vec3{1.f, 0.4f, 0.35f});
         } else {
-            snprintf(buf, sizeof(buf), "SECTION %d  %s", section + 1, formatTime(elapsedTime).c_str());
+            snprintf(buf, sizeof(buf), "LEVEL %d  %s", section + 1, formatTime(elapsedTime).c_str());
             ui.showSplit(buf, {1.f, 0.9f, 0.6f});
         }
     }
@@ -692,12 +703,15 @@ public:
             int idx = findInteractTarget();
             if (idx >= 0 && interactables[idx].onInteract) interactables[idx].onInteract();
         }
-        if (e.type == SDL_MOUSEBUTTONDOWN) {
-            if (e.button.button == SDL_BUTTON_LEFT) pendingFire = true;
-            // RMB aims the rifles (polled in physicsTick); otherwise it's the grapple
-            if (e.button.button == SDL_BUTTON_RIGHT && !weaponDef(heldWeapon()).canAim) pendingGrapple = true;
+        // Grapple on its own button (Q by default, see Settings). Right mouse is
+        // only ever aim (rifles), so scoping and grappling never fight over it.
+        if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) pendingFire = true;
+        {
+            GameSettings def;
+            const GameSettings& gs = settings ? *settings : def;
+            if (key != SDLK_UNKNOWN && gs.isGrappleEvent(0, (int)key)) pendingGrapple = true;
+            if (e.type == SDL_MOUSEBUTTONDOWN && gs.isGrappleEvent(1, e.button.button)) pendingGrapple = true;
         }
-        if (key == SDLK_q) pendingGrapple = true;
         if (e.type == SDL_MOUSEWHEEL && e.wheel.y != 0)
             trySwitch((activeWeapon + (e.wheel.y > 0 ? WEAPON_COUNT - 1 : 1)) % WEAPON_COUNT);
         if (key >= SDLK_1 && key <= SDLK_4) trySwitch(key - SDLK_1);
@@ -860,7 +874,7 @@ public:
                 countdown -= dt;
                 if (std::ceil(before) != std::ceil(countdown)) audio.play(countdown <= 0.f ? "wave" : "telegraph", 90);
                 if (countdown <= 0.f) countdown = 0.f;
-                handleDirectorEvents();   // the "THE DESCENT" banner during the count
+                handleDirectorEvents();
             }
             if (playerDead) gameClock += dt;
             return;
@@ -873,6 +887,8 @@ public:
         if (accumulator > 0.25) accumulator = 0.25;
 
         const Uint8* keys = SDL_GetKeyboardState(nullptr);
+        static Uint8 noKeys[SDL_NUM_SCANCODES] = {};
+        if (g_devNoMouse) keys = noKeys;   // screenshot runs: the real keyboard doesn't reach the game
         bool parryKey = keys[SDL_SCANCODE_F] != 0;
 
         while (accumulator >= PHYSICS_DT) {
@@ -902,6 +918,7 @@ public:
         }
 
         viewModel.update(floatDt, playerXZSpeed, player.onGround);
+        if (g_devOverlay == "punch") { viewModel.parryTimer = ViewModel::PARRY_TIME * 0.62f; viewModel.parryHit = true; }
         // Baseline FOV widens with horizontal speed on top of the dash kick
         float speedKick = glm::clamp((playerXZSpeed - 7.f) / 15.f, 0.f, 1.f) * 6.f;
         fovKick = glm::mix(fovKick, speedKick, std::min(1.f, floatDt * 7.f));
@@ -1108,9 +1125,11 @@ public:
         // --- Player physics ---
         player.dynWalls = level.moverWalls.data();
         player.dynCount = (int)level.moverWalls.size();
-        player.update(dt, keys, level.walls.data(), (int)level.walls.size(),
-                      grapple.active || dashMomentumTimer > 0.f, &spatialGrid);
-        keepPlayerInZone(dt);
+        if (!(g_devCam && g_devNoMouse)) {   // screenshot runs: the camera stays exactly where it was put
+            player.update(dt, keys, level.walls.data(), (int)level.walls.size(),
+                          grapple.active || dashMomentumTimer > 0.f, &spatialGrid);
+            keepPlayerInZone(dt);
+        }
         pushPlayerOutOfEnemies();
         playerXZSpeed = glm::length(glm::vec2(player.velocity.x, player.velocity.z));
         if (!player.onGround) peakFallSpeed = std::max(peakFallSpeed, -player.velocity.y);
@@ -1154,7 +1173,8 @@ public:
             footstepTimer -= dt;
             if (footstepTimer <= 0.f) {
                 footstepTimer = glm::clamp(0.55f / (playerXZSpeed / 5.f), 0.2f, 0.5f);
-                audio.play("land", 40);
+                static const char* STEPS[] = {"step1", "step2", "step3", "step4"};
+                audio.play(STEPS[rand() % 4], 55);
             }
         } else {
             footstepTimer = 0.f;
@@ -1203,36 +1223,18 @@ public:
 
         bool parryPressed = parryKey && !parryPrev;
         parryPrev = parryKey;
-        if (parryPressed) {
-            if (result.parryableIndex >= 0) {
-                // Deflect an enemy projectile back at high speed.
-                auto& p = projSystem.pool[result.parryableIndex];
-                p.isPlayer      = true;
-                p.damage        = 50.f;
-                p.velocity      = -p.velocity * 2.f;
-                p.emissiveColor = {1.f, 0.9f, 0.3f};
-                styleSystem.addStyle(20.f);
-                invincFrames  = 0.5f;
-                hitStopFrames = glm::max(hitStopFrames, 1);
-                audio.play("parry");
-                ui.feed("PARRY", {1.f, 0.9f, 0.3f});
-            } else if (result.boostableIndex >= 0) {
-                // Projectile boost: detonate your own projectile for a massive explosion.
-                auto& p = projSystem.pool[result.boostableIndex];
-                float r = glm::max(p.blastRadius, 4.f) * 2.f;
-                pendingBlasts.push_back({p.position, r, p.damage * 3.f, 0.f, 0.f});
-                p.alive = false;
-                styleSystem.addStyle(40.f);
-                invincFrames  = 0.6f;
-                hitStopFrames = glm::max(hitStopFrames, 2);
-                audio.play("parry");
-                ui.feed("PROJECTILE BOOST", {1.f, 0.6f, 0.2f});
-            }
-        }
+        punchCooldown = std::max(0.f, punchCooldown - dt);
+        if (parryPressed && punchCooldown <= 0.f) punch(result.boostableIndex);
 
         for (auto& [pi, ei] : result.enemyHits) {
             auto& e = enemies[ei];
-            hurtEnemy(e, projSystem.pool[pi].damage, projSystem.pool[pi].position, 10.f, 2.f);
+            const Projectile& pr = projSystem.pool[pi];
+            if (pr.parried && pr.heavy) {
+                spawnExplosionParticles(pr.position, 3.f);
+                audio.play("explosion", 100);
+                shake(0.3f, 0.07f);
+            }
+            hurtEnemy(e, pr.damage, pr.position, pr.parried ? 25.f : 10.f, 2.f, false, pr.parried);
         }
         for (auto& exp : result.explosions)
             pendingBlasts.push_back({exp.pos, exp.radius, exp.damage, exp.radius * 0.5f, 20.f});
@@ -1262,6 +1264,115 @@ public:
         // Clear out dead enemies once nothing references them by index
         enemies.erase(std::remove_if(enemies.begin(), enemies.end(),
                       [](const Enemy& e){ return !e.alive; }), enemies.end());
+    }
+
+    // =========================================================================
+    // Punch / parry (F)
+    //
+    // F always throws a punch. In order of priority it:
+    //   1. parries an enemy projectile in front of you (the window grows with
+    //      the shot's speed, so sniper rounds are fair). It flies where you
+    //      look; a Juggernaut's siege shell comes back as a 400-damage round
+    //      that ignores armor.
+    //   2. breaks a Juggernaut mid-smash (its last 0.4 s): staggered, it takes
+    //      double damage.
+    //   3. detonates your own grenade (projectile boost).
+    //   4. hits whatever is right in front of you.
+    // =========================================================================
+    int findParryTarget() const {
+        glm::vec3 eye = player.camera.position, fwd = player.camera.forward();
+        int best = -1; float bestD = 1e9f;
+        for (int i = 0; i < ProjectileSystem::POOL_SIZE; ++i) {
+            const Projectile& p = projSystem.pool[i];
+            if (!p.alive || p.isPlayer) continue;
+            glm::vec3 d = p.position - eye;
+            float dist = glm::length(d);
+            float reach = std::max(2.5f, 1.f + glm::length(p.velocity) * 0.22f) + p.size * 0.3f;
+            if (dist < reach && dist > 1e-3f && glm::dot(fwd, d / dist) > 0.25f && dist < bestD) { bestD = dist; best = i; }
+        }
+        return best;
+    }
+
+    void parryFeedback(glm::vec3 at, bool heavy) {
+        spawnBurst(at, {1.f, 0.85f, 0.35f}, heavy ? 50 : 28, heavy ? 12.f : 8.f, 0.45f, 4.f);
+        spawnBurst(at, {1.f, 1.f, 1.f}, 10, 4.f, 0.2f, 0.f);
+        explosionFlashTimer = 0.2f; explosionFlashPos = at;
+        audio.play("clank");
+        audio.play("parry", 80);
+        ui.onParry();
+        viewModel.triggerParry(true);
+        invincFrames  = std::max(invincFrames, 0.5f);
+        hitStopFrames = glm::max(hitStopFrames, heavy ? 9 : 4);
+        shake(heavy ? 0.25f : 0.12f, heavy ? 0.06f : 0.03f);
+    }
+
+    void punch(int boostable) {
+        punchCooldown = 0.3f;
+        glm::vec3 eye = player.camera.position, fwd = player.camera.forward();
+
+        int pi = findParryTarget();
+        if (pi >= 0) {
+            Projectile& p = projSystem.pool[pi];
+            float speed = std::max(40.f, glm::length(p.velocity) * 2.f);
+            p.isPlayer = true;
+            p.parried  = true;
+            p.velocity = fwd * speed;                        // it goes where you look
+            p.lifetime = 4.f;
+            if (p.heavy) {
+                p.damage = 400.f; p.size *= 1.3f; p.emissiveColor = {1.6f, 1.1f, 0.3f};
+                styleSystem.addStyle(60.f);
+                ui.toast("HEAVY PARRY", "", {1.f, 0.8f, 0.2f}, 1.2f);
+            } else {
+                p.damage = 60.f; p.emissiveColor = {1.f, 0.9f, 0.3f};
+                styleSystem.addStyle(25.f);
+                ui.feed("PARRY", {1.f, 0.9f, 0.3f});
+            }
+            parryFeedback(p.position, p.heavy);
+            return;
+        }
+        for (auto& e : enemies) {
+            if (!e.targetable() || !e.parryWindow()) continue;
+            glm::vec3 d = e.position + glm::vec3{0, e.height() * 0.5f, 0} - eye;
+            float dist = glm::length(d);
+            if (dist < 5.5f && glm::dot(fwd, d / dist) > 0.2f) {
+                e.stagger(2.5f);
+                parryFeedback(eye + fwd * 1.2f, true);
+                styleSystem.addStyle(70.f);
+                gainXp(30);
+                ui.toast("BROKEN", "IT TAKES DOUBLE DAMAGE - UNLOAD", {1.f, 0.75f, 0.2f}, 1.8f);
+                return;
+            }
+        }
+        if (boostable >= 0) {
+            // Projectile boost: detonate your own projectile for a massive explosion.
+            auto& p = projSystem.pool[boostable];
+            float r = glm::max(p.blastRadius, 4.f) * 2.f;
+            pendingBlasts.push_back({p.position, r, p.damage * 3.f, 0.f, 0.f});
+            p.alive = false;
+            styleSystem.addStyle(40.f);
+            invincFrames  = 0.6f;
+            hitStopFrames = glm::max(hitStopFrames, 2);
+            audio.play("parry");
+            viewModel.triggerParry(true);
+            ui.feed("PROJECTILE BOOST", {1.f, 0.6f, 0.2f});
+            return;
+        }
+        viewModel.triggerParry(false);
+        audio.play("punch", 90);
+        for (auto& e : enemies) {
+            if (!e.targetable()) continue;
+            glm::vec3 c = e.position + glm::vec3{0, std::min(e.height() * 0.5f, 1.2f), 0};
+            glm::vec3 d = c - eye;
+            float dist = glm::length(d) - e.radius();
+            if (dist < 2.4f && glm::dot(fwd, glm::normalize(d)) > 0.5f) {
+                hurtEnemy(e, 25.f, c, 6.f, 1.f);
+                glm::vec3 push = glm::normalize(glm::vec3{d.x, 0.f, d.z}) * (e.type == EnemyType::JUGGERNAUT ? 0.3f : 1.4f);
+                e.position += push;
+                audio.play("clank", 50);
+                shake(0.08f, 0.02f);
+                break;
+            }
+        }
     }
 
     // Where would the grapple hook if fired now? Static walls are hit exactly;
@@ -1432,7 +1543,7 @@ public:
                 audio.play("telegraph", (int)glm::clamp(128.f - dist * 3.f, 20.f, 128.f));
             for (int k = 0; k < ev.shots; ++k)
                 projSystem.fire(ev.shotOrigin, ev.shotDir[k] * ev.shotSpeed, ev.shotDamage * ar.damageScale, false,
-                                enemies[i].stats().shotColor, false, 0.f, ev.shotSize);
+                                enemies[i].stats().shotColor, false, 0.f, ev.shotSize, ev.shotHeavy);
             if (ev.meleeHit) {
                 if (damagePlayer(ev.meleeDamage * ar.damageScale, epos, 0.25f, 0.06f)) {
                     glm::vec3 away = player.position - epos; away.y = 0.f;
@@ -1446,14 +1557,14 @@ public:
                 audio.play("slam");
                 glm::vec2 flat{player.position.x - epos.x, player.position.z - epos.z};
                 bool grounded = player.position.y < epos.y + 0.9f && player.position.y > epos.y - 1.5f;   // jump it to dodge
-                if (glm::length(flat) < ev.slamRadius && grounded) {
+                if (ev.slamDamage > 0.f && glm::length(flat) < ev.slamRadius && grounded) {
                     if (damagePlayer(ev.slamDamage * ar.damageScale, epos, 0.3f, 0.08f) && glm::length(flat) > 0.01f)
                         player.velocity += glm::vec3{flat.x, 0.f, flat.y} / glm::length(flat) * 10.f + glm::vec3{0, 6.f, 0};
                 }
             }
             if (ev.detonated) {
                 // A mite that reached you: hurts you AND its friends
-                pendingBlasts.push_back({epos + glm::vec3{0, 0.3f, 0}, 4.f, 30.f, 4.f, 24.f * ar.damageScale});
+                pendingBlasts.push_back({epos + glm::vec3{0, 0.3f, 0}, 4.f, 30.f, 4.f, 30.f * ar.damageScale});
                 spawnDebrisFor(enemies[i]);
             }
             if (ev.summonMites + ev.summonRippers > 0) {
@@ -1531,8 +1642,10 @@ public:
     }
 
     // All player damage to enemies goes through here. Returns true on a kill.
-    bool hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float style, float heal, bool crit = false) {
+    // pierceArmor: parried shots go straight through a Juggernaut's plating.
+    bool hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float style, float heal, bool crit = false, bool pierceArmor = false) {
         if (!e.targetable()) return false;
+        if (!pierceArmor) dmg *= e.armorMult();
         float before = e.health;
         bool killed = e.takeDamage(dmg);
         styleSystem.addStyle(style);
@@ -2175,10 +2288,13 @@ public:
             c.y = (visibleBottom + b.max.y) * 0.5f; sz.y = b.max.y - visibleBottom;
             push(out, T(c) * S(sz), {0.16f, 0.15f, 0.18f});
             glm::vec3 bar = d.open ? glm::vec3{0.3f, 1.6f, 0.7f} : glm::vec3{1.8f, 0.2f, 0.15f};
-            int bars = std::max(3, (int)(sz.x / 1.4f));
+            bool alongX = sz.x >= sz.z;   // doors in east-west walls run along Z
+            float span = alongX ? sz.x : sz.z;
+            int bars = std::max(3, (int)(span / 1.4f));
             for (int i = 0; i < bars; ++i) {
-                float x = b.min.x + sz.x * (i + 0.5f) / bars;
-                push(out, T({x, c.y, c.z}) * S({0.18f, sz.y * 0.92f, sz.z + 0.08f}), bar * 0.2f, bar);
+                float u = (i + 0.5f) / bars;
+                if (alongX) push(out, T({b.min.x + sz.x * u, c.y, c.z}) * S({0.18f, sz.y * 0.92f, sz.z + 0.08f}), bar * 0.2f, bar);
+                else        push(out, T({c.x, c.y, b.min.z + sz.z * u}) * S({sz.x + 0.08f, sz.y * 0.92f, 0.18f}), bar * 0.2f, bar);
             }
         }
 
@@ -2463,9 +2579,13 @@ public:
             for (auto& e : enemies) if (e.alive && e.type == EnemyType::WARDEN) boss = &e;
 
             if (fast()) {
-                if (finishOpen) { snprintf(buf, sizeof(buf), "FINISH OPEN - REACH THE BEACON"); accent = {1.f, 0.6f, 0.2f}; }
-                else snprintf(buf, sizeof(buf), "SECTION %d/%d  %s   HOSTILES %d", director.arena + 1, nArenas, ar.name, left);
+                if (finishOpen) { snprintf(buf, sizeof(buf), "FINISH OPEN - CLIMB TO THE BEACON"); accent = {1.f, 0.6f, 0.2f}; }
+                else if (director.phase == WaveDirector::Phase::APPROACH) {
+                    snprintf(buf, sizeof(buf), "LEVEL %d/%d  %s   ADVANCE", director.arena + 1, nArenas, ar.name);
+                    accent = {0.4f, 1.f, 0.6f};
+                } else snprintf(buf, sizeof(buf), "LEVEL %d/%d  %s   HOSTILES %d", director.arena + 1, nArenas, ar.name, left);
             } else switch (director.phase) {
+            case WaveDirector::Phase::APPROACH:   // FAST only
             case WaveDirector::Phase::INTRO:
                 snprintf(buf, sizeof(buf), "ARENA %d/%d  %s  GET READY", director.arena + 1, nArenas, ar.name); break;
             case WaveDirector::Phase::ACTIVE:
@@ -2512,7 +2632,8 @@ public:
                     ui.renderMarker(sx, sy, on, {1.f, 0.3f, 0.25f}, "");
                 }
             }
-            ui.renderControlHint(glm::clamp(controlHintTimer / 1.5f, 0.f, 1.f));
+            ui.renderControlHint(glm::clamp(controlHintTimer / 1.5f, 0.f, 1.f),
+                                 GameSettings::grappleLabel(settings ? settings->grappleKey : 0));
         }
 
         if (!banners.empty() && !armoryOpen) {
@@ -2523,7 +2644,7 @@ public:
         if (countdown > 0.f) ui.renderCountdown(countdown);
 
         if (playerDead) {
-            if (fast()) snprintf(buf, sizeof(buf), "SECTION %d/%d  %s", director.arena + 1, nArenas, ar.name);
+            if (fast()) snprintf(buf, sizeof(buf), "LEVEL %d/%d  %s", director.arena + 1, nArenas, ar.name);
             else snprintf(buf, sizeof(buf), "ARENA %d/%d %s - WAVE %d/%d", director.arena + 1, nArenas, ar.name,
                           director.wave + 1, director.waveCount());
             ui.renderDeath(buf, totalKills, elapsedTime, fast());
@@ -2551,7 +2672,7 @@ public:
             } else {
                 const char* labels[UIRenderer::PAUSE_ITEMS];
                 for (int i = 0; i < UIRenderer::PAUSE_ITEMS; ++i) labels[i] = pauseLabel(i);
-                std::string line = fast() ? "FAST - THE DESCENT  " + formatTime(elapsedTime)
+                std::string line = fast() ? "FAST - THE GAUNTLET  " + formatTime(elapsedTime)
                                           : std::string("ARENA - ") + ar.name;
                 ui.renderPause(pauseSelected, labels, line.c_str());
             }

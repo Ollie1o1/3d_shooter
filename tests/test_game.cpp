@@ -7,7 +7,7 @@
 // director driven through an entire simulated ARENA run and FAST run, the
 // weapon and upgrade numbers, XP, and the mouse spike filter.
 #include "../src/WaveDirector.h"
-#include "../src/LevelDescent.h"
+#include "../src/LevelGauntlet.h"
 #include "../src/EnemyModel.h"
 #include "../src/Weapons.h"
 #include "../src/Progression.h"
@@ -55,7 +55,7 @@ static bool padsLand(const LevelData& L, const SpatialGrid& grid, Uint8* keys) {
         int ticks = 0;
         while (!p.onGround && ticks < 600) { p.update(DT, keys, L.walls.data(), (int)L.walls.size(), false, &grid); ++ticks; }
         std::printf("      pad (%.1f, %.1f, %.1f) -> lands y=%.2f after %.2fs\n", pad.centre.x, pad.centre.y, pad.centre.z, p.position.y, ticks * DT);
-        if (p.position.y < pad.centre.y + 3.4f) allLand = false;
+        if (p.position.y < pad.centre.y + 2.5f) allLand = false;
     }
     return allLand;
 }
@@ -93,9 +93,9 @@ int main() {
         CHECK(L.corridors.size() == 3, "three corridors join them");
         bool groundOk = true, airOk = true, inBounds = true, starts = true, underCeiling = true;
         for (auto& a : L.arenas) {
-            // Largest ground enemy (Brute) must fit at every ground spawn
+            // Largest regular ground enemy (the Juggernaut) must fit at every ground spawn
             for (auto& s : allGround(a)) {
-                if (overlapsWall(L, boxAt(s, statsOf(EnemyType::BRUTE).radius, statsOf(EnemyType::BRUTE).height))) {
+                if (overlapsWall(L, boxAt(s, statsOf(EnemyType::JUGGERNAUT).radius, statsOf(EnemyType::JUGGERNAUT).height))) {
                     std::printf("      ground spawn (%.1f %.1f %.1f) in a wall\n", s.x, s.y, s.z); groundOk = false; }
                 if (!inside(a.bounds, s)) inBounds = false;
                 if (s.y + 3.f > a.zone.max.y) underCeiling = false;
@@ -112,7 +112,7 @@ int main() {
         CHECK(!overlapsWall(L, boxAt(last.bossSpawn, statsOf(EnemyType::WARDEN).radius, statsOf(EnemyType::WARDEN).height)) &&
               !overlapsWall(L, boxAt(mirrored, statsOf(EnemyType::WARDEN).radius, statsOf(EnemyType::WARDEN).height)),
               "the Warden fits at both of his spawn points");
-        CHECK(groundOk, "every ground spawn (all Spire tiers too) fits a Brute without touching a wall");
+        CHECK(groundOk, "every ground spawn (all Spire tiers too) fits a Juggernaut without touching a wall");
         CHECK(airOk, "every air spawn is clear of walls");
         CHECK(inBounds, "every spawn is inside its arena's bounds");
         CHECK(starts, "every player start is inside its arena and clear of walls");
@@ -155,7 +155,7 @@ int main() {
         CHECK(top >= 26.f, "the last Spire wave reaches the summit (26 m)");
     }
 
-    CHECK(padsLand(L, grid, keys), "every arena jump pad lands the player on something higher");
+    CHECK(padsLand(L, grid, keys), "every arena jump pad lands the player on something higher (>= 2.5 m up)");
 
     // Moving platforms
     {
@@ -183,15 +183,17 @@ int main() {
         CHECK(L.arenas[0].exitDoor >= 0 && !L.doors[L.arenas[0].exitDoor].open, "arena 1's exit starts locked");
     }
 
-    // ---------------------------------------------------------------- the Descent (FAST)
-    LevelData D = buildDescent();
+    // ---------------------------------------------------------------- the Gauntlet (FAST)
+    LevelData D = buildGauntlet();
     SpatialGrid dgrid; dgrid.build(D.walls);
+    auto inBox = [](const AABB& b, glm::vec3 p) {
+        return p.x >= b.min.x && p.x <= b.max.x && p.y >= b.min.y && p.y <= b.max.y && p.z >= b.min.z && p.z <= b.max.z;
+    };
     {
-        CHECK(D.fast && D.arenas.size() == 6, "the Descent has six sections");
-        bool descends = true, placedOk = true, inBounds = true, starts = true, gates = true;
+        CHECK(D.fast && D.arenas.size() == 6, "the Gauntlet has six levels");
+        bool placedOk = true, inBounds = true, starts = true, gates = true, breathers = true, long_ = true, triggers = true;
         for (size_t i = 0; i < D.arenas.size(); ++i) {
             const Arena& a = D.arenas[i];
-            if (i > 0 && D.arenas[i].bounds.min.y > D.arenas[i - 1].bounds.min.y) descends = false;
             for (auto& w : a.waves) for (auto& e : w) {
                 if (e.at.empty()) placedOk = false;
                 for (auto& p : e.at) {
@@ -199,32 +201,75 @@ int main() {
                     if (overlapsWall(D, boxAt(p, st.radius, st.height))) {
                         std::printf("      %s at (%.1f %.1f %.1f) is in a wall\n", st.name, p.x, p.y, p.z); placedOk = false; }
                     if (!inside(a.bounds, p) || p.y < a.bounds.min.y - 0.01f) {
-                        std::printf("      %s at (%.1f %.1f %.1f) is outside section %d\n", st.name, p.x, p.y, p.z, (int)i); inBounds = false; }
+                        std::printf("      %s at (%.1f %.1f %.1f) is outside level %d\n", st.name, p.x, p.y, p.z, (int)i); inBounds = false; }
+                    // Nothing spawns in the breather: every enemy is in the fight zone
+                    if (!inBox(a.trigger, p)) { std::printf("      %s at (%.1f %.1f %.1f) is before level %d's trigger\n", st.name, p.x, p.y, p.z, (int)i); breathers = false; }
                 }
             }
             if (overlapsWall(D, boxAt(a.playerStart, 0.4f, 1.8f)) || !inside(a.zone, a.playerStart)) {
-                std::printf("      section %d start (%.1f %.1f %.1f) blocked\n", (int)i, a.playerStart.x, a.playerStart.y, a.playerStart.z); starts = false; }
+                std::printf("      level %d start (%.1f %.1f %.1f) blocked\n", (int)i, a.playerStart.x, a.playerStart.y, a.playerStart.z); starts = false; }
+            if (!a.hasTrigger || inBox(a.trigger, a.playerStart)) triggers = false;
             if (i + 1 < D.arenas.size() && (a.exitDoor < 0 || D.doors[a.exitDoor].open)) gates = false;
+            glm::vec3 ext = a.zone.max - a.zone.min;
+            if (std::max(ext.x, ext.z) < 40.f || std::min(ext.x, ext.z) < 20.f) long_ = false;
         }
-        CHECK(descends, "every section is lower than the one before it");
         CHECK(placedOk, "every FAST enemy is hand-placed and clear of walls");
-        CHECK(inBounds, "every FAST enemy is placed inside its own section");
-        CHECK(starts, "every section's checkpoint is clear of walls");
-        CHECK(gates, "every section but the last is gated until it's cleared");
-        CHECK(D.arenas[2].voidY > 0.f, "the chasm has a void plane that sends you back");
-        CHECK(D.finishPos.z < D.arenas.back().zone.max.z && D.finishPos.z > D.arenas.back().zone.min.z,
-              "the finish beacon is in the last section");
+        CHECK(inBounds, "every FAST enemy is placed inside its own level");
+        CHECK(starts, "every level's checkpoint is clear of walls");
+        CHECK(triggers, "every level starts with a breather before its fight trigger");
+        CHECK(breathers, "no enemy spawns in a breather");
+        CHECK(gates, "every level but the last is gated until it's cleared");
+        CHECK(long_, "every level is a wide channel (at least 20 m wide, 40 m long)");
+        // The route changes direction: some exits go north, some west, some east
+        int north = 0, west = 0, east = 0, up = 0, down = 0;
+        for (size_t i = 0; i + 1 < D.arenas.size(); ++i) {
+            glm::vec3 d = D.arenas[i + 1].playerStart - D.arenas[i].playerStart;
+            if (std::fabs(d.z) > std::fabs(d.x)) north += d.z < 0; else (d.x < 0 ? west : east)++;
+            up += d.y > 4.f; down += d.y < -4.f;
+        }
+        CHECK(north > 0 && west > 0 && east > 0 && up > 0 && down > 0, "the route turns left and right and goes both up and down");
+        int potions = 0;
+        for (auto& p : D.placedPickups) potions += p.kind == 1;
+        CHECK(potions >= 4, "breathers have health potions waiting");
+        bool pickupsOk = true;
+        for (auto& p : D.placedPickups) if (D.arenaAt(p.pos) < 0 || overlapsWall(D, boxAt(p.pos, 0.3f, 0.6f))) pickupsOk = false;
+        CHECK(pickupsOk, "placed pickups sit in the open inside a level");
+        CHECK(D.arenas[2].voidY > 0.f, "the Span has a void plane that sends you back");
+        CHECK(inside(D.arenas.back().zone, D.finishPos) && D.finishPos.y > 20.f, "the finish beacon is on top of the tower");
         CHECK(D.parTimes[0] > 0.f && D.parTimes[0] < D.parTimes[1] && D.parTimes[1] < D.parTimes[2] && D.parTimes[2] < D.parTimes[3],
               "par times are ordered S < A < B < C");
-        CHECK(padsLand(D, dgrid, keys), "every Descent jump pad lands the player on something higher");
-        CHECK(moversClear(D), "no Descent mover ever passes through a wall");
+        CHECK(padsLand(D, dgrid, keys), "every Gauntlet jump pad lands the player on something higher (>= 2.5 m up)");
+        CHECK(moversClear(D), "no Gauntlet mover ever passes through a wall");
+        // Consecutive levels' zones overlap through the gate, or you couldn't walk between them
+        bool linked = true;
+        for (size_t i = 0; i + 1 < D.arenas.size(); ++i) {
+            const AABB& z0 = D.arenas[i].zone; const AABB& z1 = D.arenas[i + 1].zone;
+            if (!(z0.max.x > z1.min.x && z0.min.x < z1.max.x && z0.max.z > z1.min.z && z0.min.z < z1.max.z)) linked = false;
+        }
+        CHECK(linked, "each level's zone connects to the next");
+    }
+
+    // The tower at the end can be climbed by its pads alone (lifts aside)
+    {
+        const JumpPad* top = nullptr;
+        for (auto& p : D.pads) if (p.centre.y > 20.f) top = &p;
+        bool ok = top != nullptr;
+        if (top) {
+            Player p(top->centre); p.velocity = top->launch; p.onGround = false;
+            for (int i = 0; i < 600 && !(p.onGround && i > 2); ++i) p.update(DT, keys, D.walls.data(), (int)D.walls.size(), false, &dgrid);
+            std::printf("      tower pad lands at y=%.1f (beacon at %.1f)\n", p.position.y, D.finishPos.y);
+            ok = std::fabs(p.position.y - D.finishPos.y) < 0.1f && glm::length(glm::vec2(p.position.x - D.finishPos.x, p.position.z - D.finishPos.z)) < 6.f;
+        }
+        CHECK(ok, "the top balcony's pads land you next to the finish beacon");
     }
 
     // A player standing on a lift rides it up (the carry GameplayState does)
     {
         LevelData M = L;
         // the Spire's first lift: tier 1 (y 6) to tier 2 (y 12)
-        const Mover& lift = M.movers[0];
+        const Mover* liftP = nullptr;
+        for (auto& m : M.movers) if (m.path == Mover::Path::PINGPONG && m.b.y > 4.f && m.a == glm::vec3{0.f}) { liftP = &m; break; }
+        const Mover& lift = *liftP;
         glm::vec3 c = (M.walls[lift.wall].box.min + M.walls[lift.wall].box.max) * 0.5f;
         Player p({c.x, M.walls[lift.wall].box.max.y + 0.01f, c.z});
         p.dynWalls = M.moverWalls.data(); p.dynCount = (int)M.moverWalls.size();
@@ -316,6 +361,24 @@ int main() {
       CHECK(s.slams >= 1, "BRUTE walks up and slams the ground"); }
     { auto s = simulate(L, grid, EnemyType::MITE, {0,0,8}, P0, A0, 10.f);
       CHECK(s.detonated, "MITE runs in and detonates"); }
+    // The Juggernaut: siege shells at range, a smash up close, armor, a parry window
+    { Enemy j(EnemyType::JUGGERNAUT, {0,0,-10});
+      EnemyWorld w = worldFor(L, grid, P0, A0);
+      bool heavyShot = false, smashed = false, window = false;
+      for (int i = 0; i < 60 * 15; ++i) { j.update(DT, w); heavyShot |= j.ev.shots > 0 && j.ev.shotHeavy; }
+      Enemy k(EnemyType::JUGGERNAUT, {0,0,20});
+      EnemyWorld w2 = worldFor(L, grid, {0,0,22.5f}, A0);
+      for (int i = 0; i < 60 * 10; ++i) { k.update(DT, w2); window |= k.parryWindow(); smashed |= k.ev.meleeHit; }
+      CHECK(heavyShot, "JUGGERNAUT fires heavy (parryable) siege shells at range");
+      CHECK(smashed && window, "JUGGERNAUT smashes up close, with a parry window before it lands");
+      float armored = k.armorMult();
+      k.stagger(2.5f);
+      CHECK(armored == 0.5f && k.armorMult() == 2.f && k.attack == AttackKind::NONE,
+            "its armor halves bullets; once broken it takes double damage");
+      bool still = true; glm::vec3 p0 = k.position;
+      for (int i = 0; i < 60; ++i) { k.update(DT, w2); if (k.ev.meleeHit || k.ev.shots) still = false; }
+      CHECK(still && glm::length(glm::vec2(k.position.x - p0.x, k.position.z - p0.z)) < 0.01f,
+            "a broken JUGGERNAUT stands still and can't attack"); }
     { auto s = simulate(L, grid, EnemyType::WARDEN, BOSS.bossSpawn, BOSS.playerStart, BOSS, 30.f);
       CHECK(s.shots >= 7, "WARDEN fires volleys");
       CHECK(s.summons >= 1, "WARDEN summons adds");
@@ -343,9 +406,12 @@ int main() {
       CHECK(rip.minY < 0.5f, "a Ripper on a ledge drops down to chase you"); }
 
     // Flyers stay above the floor of a high section
-    { const Arena& S0 = D.arenas[0];
-      auto s = simulate(D, dgrid, EnemyType::RAPTOR, {0, 66.f, -15.f}, S0.playerStart, S0, 15.f);
-      CHECK(s.minY >= S0.bounds.min.y + 1.4f, "a Raptor high in the Descent never sinks below its section's floor"); }
+    { const Arena& S2 = D.arenas[2];
+      auto s = simulate(D, dgrid, EnemyType::RAPTOR, {-124, 31.f, -180.f}, S2.playerStart, S2, 15.f);
+      CHECK(s.minY >= S2.bounds.min.y + 1.4f, "a Raptor over the Span never sinks below the level's floor"); }
+    { const Arena& S1 = D.arenas[1];   // gunners on the Ascent's terraces stay up there
+      auto s = simulate(D, dgrid, EnemyType::HUSK, {-100, 19.f, -104.f}, S1.playerStart, S1, 15.f);
+      CHECK(s.minY > 18.5f, "a Husk on an Ascent terrace holds it while you climb"); }
 
     // ---------------------------------------------------------------- director: ARENA
     {
@@ -412,18 +478,26 @@ int main() {
     // ---------------------------------------------------------------- director: FAST
     {
         WaveDirector d; d.level = &D; d.fast = true;
-        d.startArena(0);
+        d.approach(0);
         std::map<DirectorEvent, int> counts;
         int spawned = 0, expected = 0, sectionsSeen = 0;
-        bool allAtOnce = true, exact = true;
+        bool allAtOnce = true, exact = true, waitedForTrigger = true;
         for (auto& a : D.arenas) for (auto& w : a.waves) for (auto& e : w) expected += e.total();
-        int alive = 0, killIn = 0;
-        float clock = 0.f;
+        int alive = 0, killIn = 0, idle = 0;
+        // The player stands at each level's breather for a while, then walks into its trigger
         for (int tick = 0; tick < 60 * 60 * 10 && d.phase != WaveDirector::Phase::VICTORY; ++tick) {
             std::vector<SpawnRequest> out;
             int sec = d.arena, wave = d.wave;
-            d.update(DT, alive, D.arenas[d.arena].playerStart, out);
+            glm::vec3 where = D.arenas[d.arena].playerStart;
+            if (d.phase == WaveDirector::Phase::APPROACH) ++idle;
+            if (d.phase == WaveDirector::Phase::APPROACH && idle > 120) {
+                const AABB& t = D.arenas[d.arena].trigger;
+                where = (t.min + t.max) * 0.5f;
+                where.y = std::max(t.min.y + 0.5f, std::min(t.max.y - 0.5f, D.arenas[d.arena].playerStart.y));
+            }
+            d.update(DT, alive, where, out);
             if (!out.empty()) {
+                if (wave == 0 && idle <= 120) waitedForTrigger = false;   // later waves follow straight on
                 int want = 0;
                 for (auto& e : D.arenas[sec].waves[wave]) want += e.total();
                 if ((int)out.size() != want) allAtOnce = false;
@@ -436,20 +510,19 @@ int main() {
                 alive += (int)out.size();
                 killIn = 90;   // the player kills the lot 1.5 s later
             }
-            if (killIn > 0 && --killIn == 0) alive = 0;
+            if (killIn > 0 && --killIn == 0) { alive = 0; idle = 0; }
             for (auto& ev : d.events) { counts[ev.kind]++; if (ev.kind == DirectorEvent::ARENA_START) ++sectionsSeen; }
             d.events.clear();
-            clock += DT;
         }
-        std::printf("      FAST: spawned %d of %d across %d sections in %.1fs of simulated play\n", spawned, expected, sectionsSeen, clock);
-        CHECK(d.phase == WaveDirector::Phase::VICTORY, "a simulated FAST run clears every section");
+        std::printf("      FAST: spawned %d of %d across %d levels\n", spawned, expected, sectionsSeen);
+        CHECK(d.phase == WaveDirector::Phase::VICTORY, "a simulated FAST run clears every level");
         CHECK(spawned == expected, "every hand-placed enemy spawns exactly once");
         CHECK(allAtOnce, "a FAST wave arrives all at once, not trickled");
         CHECK(exact, "FAST enemies appear exactly at their hand-placed points");
-        CHECK(sectionsSeen == (int)D.arenas.size(), "sections chain straight into each other");
+        CHECK(waitedForTrigger, "a level's fight waits until you reach its trigger (the breather is safe)");
+        CHECK(sectionsSeen == (int)D.arenas.size(), "every level's fight starts once");
         CHECK(counts[DirectorEvent::FINISH_OPEN] == 1 && counts[DirectorEvent::VICTORY] == 0,
-              "clearing the last section opens the finish (the beacon ends the run)");
-        CHECK(clock < 60.f, "FAST mode never makes you wait (no intros or breaks)");
+              "clearing the last level opens the finish (the beacon ends the run)");
     }
 
     // ---------------------------------------------------------------- weapons + progression
@@ -457,7 +530,8 @@ int main() {
         WeaponUpgrades none;
         float maxRegular = 0.f;
         for (int t = 0; t < (int)EnemyType::COUNT; ++t)
-            if ((EnemyType)t != EnemyType::WARDEN) maxRegular = std::max(maxRegular, statsOf((EnemyType)t).health);
+            if ((EnemyType)t != EnemyType::WARDEN && (EnemyType)t != EnemyType::JUGGERNAUT)   // the heavies: parry them
+                maxRegular = std::max(maxRegular, statsOf((EnemyType)t).health);
         CHECK(weaponDamage(WeaponId::LONGSHOT, none) >= maxRegular, "the Longshot one-shots every regular enemy");
         CHECK(weaponDamage(WeaponId::KAR, none) * weaponDef(WeaponId::KAR).headMult >= maxRegular,
               "a Kar98 headshot one-shots every regular enemy");

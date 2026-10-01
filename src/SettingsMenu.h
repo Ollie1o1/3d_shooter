@@ -48,6 +48,7 @@ public:
         header("CONTROLS");
         slider("MOUSE SENSITIVITY", &g->sensitivity, 0.01f, 1.0f, 0.01f, 1);
         slider("ZOOM SENSITIVITY", &g->zoomSens, 0.3f, 1.5f, 0.05f, 3);
+        cycle ("GRAPPLE BUTTON", &g->grappleKey, GameSettings::GRAPPLE_KEYS, [](int i) { return GameSettings::grappleLabel(i); });
         toggle("INVERT Y", &g->invertY);
         toggle("MOUSE SPIKE FILTER", &g->mouseFilter);
         header("AUDIO");
@@ -61,7 +62,7 @@ public:
     }
 
     // ---- layout ----
-    static constexpr int PANEL_W = 680, ROW_H = 29, HEAD_H = 27, TOP = 92;
+    static constexpr int PANEL_W = 680, ROW_H = 27, HEAD_H = 24, TOP = 90;
     int rowY(const std::vector<Row>& r, int idx) const {
         int y = TOP;
         for (int k = 0; k < idx; ++k) y += r[k].kind == Kind::HEADER ? HEAD_H : ROW_H;

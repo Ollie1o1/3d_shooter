@@ -8,8 +8,8 @@
 
 A 3D arena shooter built with **SDL2**, **OpenGL 3.3 Core Profile**, and **GLM**. ULTRAKILL-inspired movement with grapple hook, dashing, four weapons (including two bolt-action snipers) and style scoring, in two modes:
 
-- **ARENA**: **four themed arenas** (sunset yard, foundry, a vertical spire you have to climb, a night-time reactor) of three waves each, **seven enemy types** built as animated block rigs, and a **boss fight** at the end.
-- **FAST**: **the Descent**, a Halo-style time trial. Fight your way down six hand-placed sections from 60 m up to the ground, with a run clock, splits against your best run, and a finish beacon.
+- **ARENA**: **four themed arenas** (sunset yard, foundry, a vertical spire you have to climb, a night-time reactor) of three waves each, **eight enemy types** built as animated block rigs (including the armored Juggernaut, built to be parried), and a **boss fight** at the end.
+- **FAST**: **the Gauntlet**, a Halo-style time trial along one long route: six levels, each a wide channel with a breather and then a fight, turning left and right, climbing terraces, crossing a void, dropping down a tower and finishing with a tower climb to a beacon. Run clock, splits against your best run, par ranks.
 
 Kills earn **XP** (more for stylish play), and levels buy **weapon upgrades** in the Armory.
 
@@ -116,13 +116,13 @@ make clean        # delete binary
 | Space | Jump / Double jump |
 | Left Shift | Dash (directional) |
 | Left Mouse | Fire weapon |
-| Right Mouse | Grapple hook (Revolver / Shotgun) · Aim down sights / scope (Kar98 / Longshot) |
-| Q | Grapple hook (any weapon) |
+| Right Mouse | Aim down sights / scope (Kar98 / Longshot) |
+| Q | Grapple hook (rebind in Settings: Q, E, Mouse 4, Mouse 5 or Middle Mouse) |
 | 1 2 3 4 / Scroll | Revolver, Shotgun, Kar98, Longshot |
 | Tab | Armory: spend upgrade points (pauses the game) |
 | G | Throw grenade |
 | R | Reload / Retry the arena (on death) |
-| F | Parry / Projectile boost |
+| F | Punch: parries projectiles, breaks a Juggernaut's smash, detonates your grenade, hits what's in front |
 | Left Ctrl / C | Crouch / Ground slam |
 | Enter | New run (on death/win) |
 | Escape / P | Pause / Resume (Escape quits to menu from death/win screens; in a browser, Escape releases the mouse and pauses) |
@@ -133,7 +133,15 @@ make clean        # delete binary
 
 ### Modes
 - **ARENA** — four arenas, three waves each, the Warden at the end. Optional run timer; your best time is saved.
-- **FAST: the Descent** — six sections stepping down from 60 m: a sniper ledge, a rush, a chasm crossed on ferries or by grappling floating anchors (fall in and you're back at the ledge), three terraces, a hall with galleries, and a two-wave pit. Each section's enemies are hand-placed and appear the moment the gate above them opens, so you see the next fight below you as you drop in. A 3-2-1 countdown starts the clock; every section clear shows a split (green ahead / red behind your best run); the clock stops at the finish beacon. Ranked S/A/B/C/D against par times. Dying restarts the section with the clock still running.
+- **FAST: the Gauntlet** — six levels, each a long, wide channel: a **breather** first (health potions waiting, nothing shooting at you), then a **fight** that starts when you reach its trigger; clear it and the gate at the far end opens.
+  1. **The Canal** (north): a sunken lane between raised walkways, bridges across it
+  2. **The Ascent** (turn left, climb): five terraces up 20 m, each riser with a pad and a step block; gunners hold the high ground
+  3. **The Span** (north, 23 m up): islands, a beam, ferries and grapple anchors over a void (fall and you're back at the landing)
+  4. **The Well** (turn right, drop): a tower you fall through, floor by floor, gunners on each
+  5. **The Pumpworks** (east): a roofed tunnel with a lava strip opening into a hall with galleries
+  6. **The Tower**: win the courtyard (two waves), then ride the lifts or grapple to the beacon on top
+
+  A 3-2-1 countdown starts the clock; every level clear shows a split (green ahead / red behind your best run); the clock stops at the beacon. Ranked S/A/B/C/D against par times. Dying restarts the level with the clock still running.
 
 ### Combat
 - **Revolver** (slot 1) — 8-round hitscan with auto-reload
@@ -142,7 +150,7 @@ make clean        # delete binary
 - **Longshot** (slot 4) — heavy .50 sniper. RMB brings up a full scope (mil-dot reticle, heavy zoom). 300 damage one-shots every regular enemy and punches through three of them (**COLLATERAL**). Fire as the scope settles for a **QUICKSCOPE** bonus; kill without aiming for a **NOSCOPE** bonus
 - Aiming scales mouse sensitivity with the zoom (plus a ZOOM SENSITIVITY setting) and slows you a little
 - **Grenades** (G key) — parabolic arc, 5m blast radius, refill every 2 kills
-- **Parry** (F) — deflect enemy projectiles back at 2x speed for 50 damage
+- **Punch / parry** (F) — a fist you can see. Parries an enemy shot in front of you (the window grows with the shot's speed) and sends it where you're looking for 60; a Juggernaut's siege shell comes back for 400 and ignores armor. Punch a Juggernaut in the last moment of its smash to **break** it (staggered, double damage). Otherwise it hits whatever's in front of you. A parry lands with a metal clank, a gold flash and a hit-stop
 - **Projectile Boost** (F near own grenade) — detonate for 3x damage AoE
 - **Recoil recovery** — camera kick smoothly returns to center instead of drifting
 - **Weapon switch animation** — smooth drop/raise transition with firing blocked during switch
@@ -171,6 +179,7 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 | **Raptor** | Bird with a 4 m flapping wingspan | Circles overhead shooting, then dives at you | Watch the sky |
 | **Brute** | 2.9 m heavy with a glowing chest core | Walks you down and slams the ground; lobs at range | Jump the shockwave |
 | **Mite** | Small spider bomb | Rushes in and detonates | Shoot it early: its blast hurts its friends |
+| **Juggernaut** | 3.3 m armored heavy with a cannon arm | Armor halves bullet damage; fires slow siege shells, smashes up close | Parry the shell (400 back), or punch the smash to break it |
 | **Warden** | 4.6 m crowned boss | Volleys, slams, summons Mites and Rippers; enrages at half health | Everything above |
 
 - Ground enemies steer around cover with feeler probes (no pathfinding; the arenas are open by design) and keep apart with soft separation
@@ -181,7 +190,7 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 - Headshots on humanoids deal 1.5x damage
 
 ### Arenas and waves
-- **Four arenas**, each with its own lighting, fog and sky: the **Sunset Yard** (open air, synthwave sun, side platforms), **the Foundry** (roofed, lava channels you can lure enemies into, a furnace to climb, catwalks), **the Spire** (a 26 m tower at dawn: ledges, bridges, a balcony and the summit, linked by jump pads, lifts, sweepers and orbiting platforms; each wave spawns a tier higher, and the gunners up there hold their perch, so you have to climb), and **the Core** (night sky, a reactor ringed by pillars, corner perches)
+- **Four arenas**, each with its own lighting, fog and sky: the **Sunset Yard** (four corner buildings break the square into a plaza with four arms, and their rooftops are joined into a ring of bridges at 5 m, with market stalls to duck behind), **the Foundry** (roofed, lava channels you can lure enemies into, a furnace to climb, side and cross catwalks forming a loop at 5 m, a crane platform to grapple), **the Spire** (a 26 m tower at dawn: ledges, bridges, a balcony and the summit, linked by jump pads, lifts, sweepers and orbiting platforms; each wave spawns a tier higher, and the gunners up there hold their perch, so you have to climb), and **the Core** (night sky, a reactor ringed by pillars; an outer walkway ring at 4 m linking the corner perches and an inner ring at 7 m across the pillar tops). Every arena loops: there's always somewhere to run, on the ground or above it
 - Each arena has three waves; the director keeps at most 6–10 enemies on the field and trickles the rest in as you kill, spawning them away from you
 - New enemy types get a title card the first time they appear, with a one-line tip on how to beat them
 - Clearing an arena opens its gate and points a waypoint at it; walking into the next arena closes the gate behind you
@@ -209,8 +218,9 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 - Dithered grapple rope rendering
 
 ### Audio
-- **Procedural sound effects** — synthesized in Python (`tools/gen_sfx.py`), not external recordings; covers jumps, landings, dashing, slams, both weapons, reloads, grapple, hits, kills, parries, enemy telegraphs, explosions, wave stingers, spawns and pickups
-- Regenerate/tweak by editing the generator and running `python3 tools/gen_sfx.py`
+- **Procedural sound effects** — synthesized in Python (`tools/gen_sfx.py`): jumps, landings, slams, reloads, bolts, hits, kills, telegraphs, explosions, stingers, spawns, pickups, level-ups
+- **Recorded sounds** from free CC0 (public domain) packs, cut, trimmed and layered by `tools/import_sfx.py`: the four gunshots (real pistol, shotgun and rifle recordings), the dash whoosh, the grapple, footsteps (four variations), the punch and the parry clank. Sources in [`assets/sfx/CREDITS.md`](assets/sfx/CREDITS.md)
+- Every sound is trimmed to start within a few milliseconds of being triggered, so shots never feel late
 
 ### Game Flow
 - **Victory screen** — after the Warden: time, kills, accuracy, deaths and a letter grade (S/A/B/C/D)
@@ -248,7 +258,7 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 │   ├── GrappleHook.h         # grapple hook physics
 │   ├── StyleSystem.h         # style rank/score tracking
 │   ├── Level.h               # ARENA map: four arenas, corridors, doors, pads, lava, movers, themes
-│   ├── LevelDescent.h        # FAST map: the Descent's six sections
+│   ├── LevelGauntlet.h       # FAST map: the Gauntlet's six levels
 │   ├── Weapons.h             # the four guns' stats, upgrade maths, ammo/reload state
 │   ├── Progression.h         # XP, levels, upgrade purchases, best times
 │   ├── MouseFilter.h         # drops bogus single-event mouse spikes
@@ -283,7 +293,8 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 │   └── test_game.cpp         # both maps, movers, AI, rigs, weapons, XP, mouse filter and
 │                             # simulated ARENA and FAST runs (`make test`)
 ├── tools/
-│   └── gen_sfx.py            # synthesizes assets/sfx/*.wav — no external audio files
+│   ├── gen_sfx.py            # synthesizes most of assets/sfx/*.wav
+│   └── import_sfx.py         # builds the recorded sounds from CC0 packs (see assets/sfx/CREDITS.md)
 ├── web/
 │   └── index.html            # browser shell for the WebAssembly build (`make web`)
 ├── Makefile
@@ -375,7 +386,7 @@ neon(x0, y0, z0, x1, y1, z1, color);   // self-lit trim
 
 ### Add a moving platform
 
-In `Level.h` (or `LevelDescent.h`): `B.mover(centre, halfSize, Mover::Path::PINGPONG, offsetA, offsetB, period, phase, glowColour)`, or `Path::ORBIT` with two radius vectors. `make test` sweeps every mover through two full periods and fails if it ever passes through a wall.
+In `Level.h` (or `LevelGauntlet.h`): `B.mover(centre, halfSize, Mover::Path::PINGPONG, offsetA, offsetB, period, phase, glowColour)`, or `Path::ORBIT` with two radius vectors. `make test` sweeps every mover through two full periods and fails if it ever passes through a wall.
 
 ### Add an enemy type
 

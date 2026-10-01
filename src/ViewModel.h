@@ -58,6 +58,12 @@ public:
     void triggerFire()    { anim = ViewAnim::FIRE;          animTimer = animMax = 0.14f; }
     void triggerReload(float t = 0.6f) { anim = ViewAnim::RELOAD; animTimer = animMax = std::min(t, 1.2f); }
     void triggerBolt(float t)          { anim = ViewAnim::BOLT;   animTimer = animMax = std::max(t, 0.2f); }
+    // Punch / parry: a fist drives forward from the lower left. It runs
+    // alongside the gun's own animation, so you can punch mid-reload.
+    void triggerParry(bool hit) { parryTimer = PARRY_TIME; parryHit = hit; }
+    static constexpr float PARRY_TIME = 0.3f;
+    float parryTimer = 0.f;
+    bool  parryHit = false;
     void triggerGrenade() { anim = ViewAnim::GRENADE_THROW; animTimer = animMax = 0.50f; }
     void triggerGrapple() { anim = ViewAnim::GRAPPLE_FIRE;  animTimer = animMax = 0.28f; }
     void triggerPump()    { anim = ViewAnim::PUMP;          animTimer = animMax = 0.45f; }
@@ -66,6 +72,7 @@ public:
     // -------------------------------------------------------------------------
     void update(float dt, float xzSpeed, bool /*onGround*/) {
         animTimer = std::max(0.f, animTimer - dt);
+        parryTimer = std::max(0.f, parryTimer - dt);
         if (animTimer <= 0.f) anim = ViewAnim::IDLE;
 
         // Bob advances continuously — speed controls the stride frequency
@@ -218,7 +225,35 @@ public:
             default: break;
         }
 
+        if (parryTimer > 0.f) drawFist(shader, cam);
         glEnable(GL_CULL_FACE);
+    }
+
+    // The punching arm, in camera space: wound back low-left, snapping out to
+    // just under the crosshair, holding a beat, then pulling back.
+    void drawFist(ShaderProgram& shader, const Camera& cam) {
+        float u = 1.f - parryTimer / PARRY_TIME;          // 0 → 1 over the punch
+        float out = u < 0.3f ? u / 0.3f : u < 0.55f ? 1.f : 1.f - (u - 0.55f) / 0.45f;
+        out = out * out * (3.f - 2.f * out);
+        glm::vec3 fwd = cam.forward(), right = cam.right();
+        glm::vec3 up = glm::normalize(glm::cross(right, fwd));
+        glm::vec3 from{-0.32f, -0.36f, 0.2f}, to{-0.08f, -0.13f, 0.58f};
+        glm::vec3 o = glm::mix(from, to, out);
+        glm::mat4 base(1.f);
+        base[0] = glm::vec4(right, 0.f); base[1] = glm::vec4(up, 0.f); base[2] = glm::vec4(fwd, 0.f);
+        base[3] = glm::vec4(cam.position + right * o.x + up * o.y + fwd * o.z, 1.f);
+        base = base * glm::rotate(glm::mat4(1.f), glm::radians(-12.f + 20.f * out), glm::vec3{0.f, 1.f, 0.f})
+                    * glm::rotate(glm::mat4(1.f), glm::radians(10.f), glm::vec3{1.f, 0.f, 0.f});
+        glm::vec3 glove{0.13f, 0.13f, 0.15f}, plate{0.42f, 0.4f, 0.38f}, sleeve{0.22f, 0.12f, 0.1f};
+        drawBox(shader, base, {0.f, -0.008f, -0.15f}, {0.058f, 0.058f, 0.17f}, sleeve);   // forearm
+        drawBox(shader, base, {0.f, 0.f, -0.065f}, {0.072f, 0.05f, 0.04f}, plate);        // cuff
+        float glow = parryHit ? std::max(0.f, 1.f - u * 1.6f) : 0.f;
+        shader.setVec3("emissiveColor", glm::vec3{1.f, 0.75f, 0.25f} * glow * 2.f);
+        drawBox(shader, base, {0.f, -0.005f, 0.f}, {0.08f, 0.07f, 0.075f}, glove);       // fist
+        for (int k = 0; k < 4; ++k)                                                      // knuckles
+            drawBox(shader, base, {-0.03f + 0.02f * k, 0.022f, 0.042f}, {0.017f, 0.022f, 0.016f}, plate);
+        drawBox(shader, base, {0.045f, -0.012f, 0.012f}, {0.02f, 0.03f, 0.045f}, glove * 1.3f);   // thumb
+        shader.setVec3("emissiveColor", {0.f, 0.f, 0.f});
     }
 
     // Height of the Kar's sight line and the Longshot's scope axis above the

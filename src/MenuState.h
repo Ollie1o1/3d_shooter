@@ -116,7 +116,7 @@ private:
 
         struct Item { const char* label; const char* sub; };
         std::string arenaSub = "4 ARENAS - WAVES - THE WARDEN";
-        std::string fastSub  = "TIME TRIAL - THE DESCENT";
+        std::string fastSub  = "TIME TRIAL - THE GAUNTLET";
         if (records.bestArena > 0.f) arenaSub += "   BEST " + formatTime(records.bestArena);
         if (records.bestFast  > 0.f) fastSub  += "   BEST " + formatTime(records.bestFast);
         Item items[NUM_ITEMS] = {

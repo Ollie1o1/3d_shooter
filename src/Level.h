@@ -1,7 +1,7 @@
 #pragma once
 // =============================================================================
 // Level.h — the ARENA mode map: four arenas, the corridors between them, and
-// their moods. (FAST mode's map, the Descent, is in LevelDescent.h and uses
+// their moods. (FAST mode's map, the Gauntlet, is in LevelGauntlet.h and uses
 // the same data structures.)
 //
 //          +Z (south)
@@ -144,6 +144,10 @@ struct Arena {
     int         entryGate = -1;  // door behind you once you're in (index into doors)
     int         exitDoor  = -1;
     float       voidY = -1e9f;   // fall below this inside the zone: back to the checkpoint
+    // FAST: the fight starts when the player walks into this box. The stretch
+    // before it (from playerStart) is a breather with health to pick up.
+    AABB        trigger{{0, 0, 0}, {0, 0, 0}};
+    bool        hasTrigger = false;
     Ambient     ambient = Ambient::DUST;
     Theme       theme;
 };
@@ -158,6 +162,13 @@ struct LevelData {
     std::vector<Hazard>     hazards;
     std::vector<Arena>      arenas;
     std::vector<AABB>       corridors; // corridor i joins arena i and i+1 (zone, XZ)
+    // Lighting crossfades between two arenas across a box, along one axis
+    // (FAST's course turns, so not always along -Z like the corridors)
+    struct Blend { AABB box; int from, to; int axis; bool decreasing; };
+    std::vector<Blend>      blends;
+    // Health and XP placed in the level (FAST's breathers): kind 0 orb, 1 potion, 2 XP
+    struct Placed { glm::vec3 pos; int kind; };
+    std::vector<Placed>     placedPickups;
     std::vector<Mover>      movers;
     std::vector<int>        moverWalls;   // wall index of every mover (for Player::dynWalls)
 
@@ -194,6 +205,14 @@ struct LevelData {
     // Lighting for a position: an arena's own theme, or a blend while walking
     // down the corridor between two arenas.
     Theme themeAt(glm::vec3 p) const {
+        for (auto& b : blends) {
+            if (p.x < b.box.min.x || p.x > b.box.max.x || p.z < b.box.min.z || p.z > b.box.max.z) continue;
+            float lo = b.box.min[b.axis], hi = b.box.max[b.axis];
+            float t = b.decreasing ? (hi - p[b.axis]) / (hi - lo) : (p[b.axis] - lo) / (hi - lo);
+            t = glm::clamp(t, 0.f, 1.f);
+            t = t * t * (3.f - 2.f * t);
+            return lerpTheme(arenas[b.from].theme, arenas[b.to].theme, t);
+        }
         for (int i = 0; i < (int)corridors.size() && i + 1 < (int)arenas.size(); ++i) {
             const AABB& c = corridors[i];
             if (p.z <= c.max.z && p.z >= c.min.z && p.x >= c.min.x - 2.f && p.x <= c.max.x + 2.f) {
@@ -351,38 +370,46 @@ inline LevelData buildLevel() {
         ring(-1,-1, 1,1, 5.0f, 5.2f, cyan);
         neon(-0.6f,7,-0.6f, 0.6f,7.6f,0.6f, pink);
 
-        // L-shaped waist-high cover around the middle
+        // The square is broken up by four adobe buildings in the corners: the
+        // ground becomes a central plaza with four arms, and their rooftops
+        // are joined by bridges into a ring at 5 m, so there's always a loop
+        // to run, on the ground or above it.
         for (int sx : {-1, 1}) for (int sz : {-1, 1}) {
-            float x0 = sx * 9.f, x1 = sx * 14.f, zA = sz * 12.f, zB = sz * 13.f;
-            wall(x0,0,zA, x1,1.3f,zB, stone);
-            wall(sx * 13.f,0,sz * 8.f, x1,1.3f,zB, stone);
+            wall(sx * 19.f,0,sz * 19.f, sx * 30.f,5,sz * 30.f, sx * sz > 0 ? adobe : adobeDark);
+            neon(sx * 18.9f,4.7f,sz * 19.f, sx * 18.96f,4.95f,sz * 30.f, pink);         // roof edge
+            neon(sx * 19.f,4.7f,sz * 18.9f, sx * 30.f,4.95f,sz * 18.96f, pink);
+            for (float y : {1.4f, 3.0f})                                                // lit windows
+                neon(sx * 18.94f,y,sz * 23.f, sx * 18.98f,y + 0.7f,sz * 25.5f, vec3{1.f,0.7f,0.35f} * 0.8f);
+            prop(sx * 18.2f,2.6f,sz * 21.5f, sx * 19.f,2.75f,sz * 27.f, adobeDark);     // awnings
+            wall(sx * 17.f,0,sz * 19.f, sx * 19.f,2.5f,sz * 21.f, stone);               // step up to the roof
+            wall(sx * 23.f,5,sz * 23.f, sx * 25.f,6.2f,sz * 25.f, crate);               // rooftop cover
         }
+        // The rooftop ring: four bridges over the arms (you can walk under them)
+        wall(-19,4.6f,-26, 19,5,-23, stone);
+        wall(-19,4.6f, 23, 19,5, 26, stone);
+        wall(-26,4.6f,-19, -23,5,19, stone);
+        wall( 23,4.6f,-19,  26,5,19, stone);
+        neon(-19,4.45f,-23.08f, 19,4.6f,-22.95f, cyan); neon(-19,4.45f,22.95f, 19,4.6f,23.08f, cyan);
+        neon(-23.08f,4.45f,-19, -22.95f,4.6f,19, cyan); neon(22.95f,4.45f,-19, 23.08f,4.6f,19, cyan);
+        // Pads up onto each bridge from the arm below it
+        L.pads.push_back({{0.f, 0.f, -20.5f}, {1.3f, 1.3f}, {0.f, 17.f, -5.f}});
+        L.pads.push_back({{0.f, 0.f,  20.5f}, {1.3f, 1.3f}, {0.f, 17.f,  5.f}});
+        L.pads.push_back({{-20.5f, 0.f, 0.f}, {1.3f, 1.3f}, {-5.f, 17.f, 0.f}});
+        L.pads.push_back({{ 20.5f, 0.f, 0.f}, {1.3f, 1.3f}, { 5.f, 17.f, 0.f}});
 
-        // Side platforms with steps and jump pads
-        for (int s : {-1, 1}) {
-            float in = s * 22.f, out = s * 30.f;
-            wall(in,0,-12, out,3.5f,12, adobeDark);
-            neon(in - s * 0.12f,3.15f,-12, in - s * 0.02f,3.35f,12, pink);
-            wall(s * 18.f,0,8, s * 20.f,1.2f,12, stone);
-            wall(s * 20.f,0,8, s * 22.f,2.4f,12, stone);
-            wall(s * 25.f,3.5f,-7, s * 27.f,4.7f,-5, crate);
-            wall(s * 25.f,3.5f, 3, s * 27.f,4.7f, 5, crate);
-            L.pads.push_back({{s * 19.5f, 0.f, -2.f}, {1.4f, 1.4f}, {s * 5.5f, 15.5f, 0.f}});
+        // Market stalls in the arms: a counter to duck behind, a canopy to hop on
+        const float stalls[][4] = {{-8,-16,-4,-14},{4,-14,8,-12},{-8,12,-4,14},{4,14,8,16},{-16,-6,-14,-2},{14,2,16,6}};
+        for (auto& st : stalls) {
+            wall(st[0],0,st[1], st[2],1.2f,st[3], crate);
+            wall(st[0] - 0.3f,2.6f,st[1] - 0.3f, st[2] + 0.3f,2.8f,st[3] + 0.3f, adobeDark);
+            prop(st[0],1.2f,st[1], st[0] + 0.2f,2.6f,st[1] + 0.2f, stone);
+            prop(st[2] - 0.2f,1.2f,st[3] - 0.2f, st[2],2.6f,st[3], stone);
         }
-
-        // Corner towers with glowing caps
+        // Broken columns around the plaza
         for (int sx : {-1, 1}) for (int sz : {-1, 1}) {
-            wall(sx * 26.f,0,sz * 26.f, sx * 30.f,8,sz * 30.f, adobe);
-            neon(sx * 25.95f,8,sz * 25.95f, sx * 30.05f,8.3f,sz * 30.05f, pink);
+            float h = 2.5f + 1.5f * ((sx + sz + 2) % 3);
+            wall(sx * 10.f - 0.75f,0,sz * 10.f - 0.75f, sx * 10.f + 0.75f,h,sz * 10.f + 0.75f, stone);
         }
-
-        // Crates
-        wall(-6,0,18, -4,1.2f,20, crate);
-        wall( 5,0,20,  7,1.2f,22, crate);
-        wall(-20,0,20, -17.5f,1.6f,22.5f, crate);
-        wall(17.5f,0,-22.5f, 20,1.6f,-20, crate);
-        wall(-19,0,-22, -17,1.2f,-20, crate);
-        wall(2,0,-20, 4,1.2f,-18, crate);
 
         // Palms outside the walls, silhouetted against the sunset
         palm(-37, -18, 10.f,  0.4f); palm(-38, 4, 8.f, -0.3f); palm(-36, 22, 11.f, 0.2f);
@@ -390,16 +417,17 @@ inline LevelData buildLevel() {
         palm(-16, -38, 9.f, 0.3f);   palm(14, -37, 11.f, -0.3f); palm(-28, -40, 12.f, 0.2f);
         palm(26, -41, 9.f, 0.2f);    palm(-12, 38, 9.f, 0.3f);   palm(14, 37, 10.f, -0.2f);
 
-        a.groundSpawns = {{-16,0,-24},{16,0,-24},{0,0,-22},{-24,0,-20},{24,0,-20},
-                          {-26,3.55f,0},{26,3.55f,0},{-24,0,20},{24,0,20},{-9,0,25},{9,0,25},{0,1.05f,-3}};
-        a.airSpawns    = {{-15,8,-15},{15,8,-15},{0,9,-20},{-18,8,12},{18,8,12},{0,9,12}};
+        a.groundSpawns = {{-12,0,-20},{12,0,-20},{0,0,-19},{-24,0,-10},{24,0,-10},{-24,0,10},{24,0,10},
+                          {-24.5f,5.05f,-27},{24.5f,5.05f,-27},{-27,5.05f,24.5f},{27,5.05f,24.5f},
+                          {0,5.05f,-24.5f},{-24.5f,5.05f,0},{24.5f,5.05f,0}};
+        a.airSpawns    = {{-15,9,-15},{15,9,-15},{0,10,-20},{-15,9,15},{15,9,15},{0,10,12}};
         a.waves = {
-            {{EnemyType::HUSK, 4}},
-            {{EnemyType::HUSK, 4}, {EnemyType::RIPPER, 3}},
-            {{EnemyType::HUSK, 3}, {EnemyType::RIPPER, 3}, {EnemyType::RAPTOR, 3}},
+            {{EnemyType::HUSK, 5}, {EnemyType::RIPPER, 2}},
+            {{EnemyType::HUSK, 4}, {EnemyType::RIPPER, 4}, {EnemyType::SENTINEL, 1}},
+            {{EnemyType::HUSK, 3}, {EnemyType::RIPPER, 3}, {EnemyType::RAPTOR, 3}, {EnemyType::BRUTE, 1}},
         };
-        a.maxAlive = 6;
-        a.damageScale = 0.7f;
+        a.maxAlive = 7;
+        a.damageScale = 0.85f;
         a.ambient = Ambient::DUST;
         L.gems.push_back({{0.f, 9.f, 0.f}, {1.6f, 0.35f, 0.9f}, 1.1f, false});   // above the obelisk
         a.theme = Theme{
@@ -489,16 +517,27 @@ inline LevelData buildLevel() {
             L.pads.push_back({{s * 20.5f, 0.f, -78.f}, {1.4f, 1.4f}, {s * 6.5f, 16.5f, 0.f}});
         }
 
+        // Cross catwalks over both lava channels join the side catwalks into a
+        // loop at 5 m around the furnace
+        for (float z : {-61.5f, -96.5f}) {
+            wall(-24,4.6f,z, 24,5,z + 2.f, dark);
+            neon(-24,4.45f,z - 0.08f, 24,4.6f,z + 2.08f, orange);
+        }
+        // A crane platform sweeps across the hall: ride it or grapple it
+        B.mover({0.f, 9.25f, -85.f}, {2.5f, 0.25f, 1.5f}, Mover::Path::PINGPONG,
+                {-18.f, 0, 0}, {18.f, 0, 0}, 10.f, 0.f, orange);
+        prop(-20,13.2f,-85.4f, 20,13.6f,-84.6f, dark);                        // its rail on the roof
+
         // Full-height pillars for cover
         for (int sx : {-1, 1}) for (float z : {-70.f, -90.f}) {
             wall(sx * 13.f,0,z, sx * 15.f,14,z + 2.f, iron);
             ring(std::min(sx * 13.f, sx * 15.f), z, std::max(sx * 13.f, sx * 15.f), z + 2.f, 3.0f, 3.25f, orange);
         }
-        // Low cover
-        wall(-10,0,-104, -4,1.2f,-102, rust);
-        wall(  4,0,-104, 10,1.2f,-102, rust);
-        wall(  4,0,-55,  10,1.2f,-53,  rust);
-        wall(-10,0,-55,  -4,1.2f,-53,  rust);
+        // Ingot stacks: low cover with a step on top
+        for (auto c : {std::pair<float,float>{-7.f, -103.f}, {7.f, -103.f}, {7.f, -54.f}, {-7.f, -54.f}}) {
+            wall(c.first - 3,0,c.second - 1, c.first + 3,1.2f,c.second + 1, rust);
+            wall(c.first - 1.5f,1.2f,c.second - 1, c.first + 1.5f,2.4f,c.second + 1, rust * 0.8f);
+        }
         wall(-22,0,-84, -18,1.4f,-80,  iron);
         wall( 18,0,-84,  22,1.4f,-80,  iron);
 
@@ -512,12 +551,12 @@ inline LevelData buildLevel() {
                           {-20,0,-68},{20,0,-68},{-26,0,-52},{26,0,-52},{0,6.05f,-82}};
         a.airSpawns    = {{-12,9,-78},{12,9,-78},{0,10,-95},{0,10,-60},{-20,10,-100},{20,10,-56}};
         a.waves = {
-            {{EnemyType::HUSK, 4}, {EnemyType::MITE, 4}, {EnemyType::SENTINEL, 1}},
-            {{EnemyType::BRUTE, 1}, {EnemyType::RIPPER, 4}, {EnemyType::SENTINEL, 2}, {EnemyType::RAPTOR, 2}},
-            {{EnemyType::BRUTE, 2}, {EnemyType::MITE, 6}, {EnemyType::HUSK, 3}, {EnemyType::RAPTOR, 2}},
+            {{EnemyType::HUSK, 5}, {EnemyType::MITE, 4}, {EnemyType::SENTINEL, 2}},
+            {{EnemyType::BRUTE, 1}, {EnemyType::RIPPER, 5}, {EnemyType::SENTINEL, 2}, {EnemyType::RAPTOR, 2}},
+            {{EnemyType::JUGGERNAUT, 1}, {EnemyType::BRUTE, 1}, {EnemyType::MITE, 6}, {EnemyType::HUSK, 3}, {EnemyType::RAPTOR, 2}},
         };
-        a.maxAlive = 8;
-        a.damageScale = 0.9f;
+        a.maxAlive = 9;
+        a.damageScale = 1.0f;
         a.ambient = Ambient::EMBERS;
         a.theme = Theme{
             {0.04f,0.02f,0.02f}, {0.30f,0.10f,0.04f}, {0.05f,0.02f,0.01f},
@@ -676,7 +715,7 @@ inline LevelData buildLevel() {
         std::vector<vec3> tier2  = {{-26,12.05f,-177},{26,12.05f,-177},{-26,12.05f,-135},{26,12.05f,-135},
                                     {-12,12.05f,-179},{12,12.05f,-179},{-12,12.05f,-133},{12,12.05f,-133}};
         std::vector<vec3> tier3  = {{0,18.05f,-163},{0,18.05f,-149},{-7,18.05f,-163},{7,18.05f,-149},
-                                    {0,26.05f,CZ},{-3,26.05f,CZ + 3},{3,26.05f,CZ - 3}};
+                                    {0,26.05f,CZ},{-2.5f,26.05f,CZ + 2.5f},{2.5f,26.05f,CZ - 2.5f}};
         auto join = [](std::vector<vec3> x, const std::vector<vec3>& y) { x.insert(x.end(), y.begin(), y.end()); return x; };
         a.groundSpawns = join(ground, tier1);
         a.waveGround = { join(ground, tier1), join(tier1, tier2), join(tier2, tier3) };
@@ -684,10 +723,10 @@ inline LevelData buildLevel() {
         a.waves = {
             {{EnemyType::HUSK, 4}, {EnemyType::RIPPER, 3}, {EnemyType::SENTINEL, 2}},
             {{EnemyType::SENTINEL, 3}, {EnemyType::HUSK, 3}, {EnemyType::RAPTOR, 3}, {EnemyType::MITE, 4}},
-            {{EnemyType::BRUTE, 1}, {EnemyType::SENTINEL, 2}, {EnemyType::HUSK, 3}, {EnemyType::RAPTOR, 3}},
+            {{EnemyType::JUGGERNAUT, 1}, {EnemyType::BRUTE, 1}, {EnemyType::SENTINEL, 2}, {EnemyType::HUSK, 3}, {EnemyType::RAPTOR, 3}},
         };
-        a.maxAlive = 8;
-        a.damageScale = 1.0f;
+        a.maxAlive = 9;
+        a.damageScale = 1.1f;
         a.ambient = Ambient::WIND;
         a.theme = Theme{
             {0.10f,0.18f,0.40f}, {0.88f,0.74f,0.62f}, {0.24f,0.24f,0.31f},
@@ -767,6 +806,29 @@ inline LevelData buildLevel() {
             L.pads.push_back({{sx * 21.f, 0.f, pz}, {1.4f, 1.4f}, {sx * 6.f, 15.5f, sz < 0 ? -6.f : 6.f}});
         }
 
+        // Outer ring at 4 m: walkways along every wall join the four perches
+        wall(-24,3.6f,CZ - 36, 24,4,CZ - 33, slateDark);
+        wall(-24,3.6f,CZ + 33, 24,4,CZ + 36, slateDark);
+        wall(-36,3.6f,CZ - 24, -33,4,CZ + 24, slateDark);
+        wall( 33,3.6f,CZ - 24,  36,4,CZ + 24, slateDark);
+        neon(-24,3.45f,CZ - 33.f, 24,3.6f,CZ - 32.9f, magenta); neon(-24,3.45f,CZ + 32.9f, 24,3.6f,CZ + 33.f, magenta);
+        neon(-33.f,3.45f,CZ - 24, -32.9f,3.6f,CZ + 24, magenta); neon(32.9f,3.45f,CZ - 24, 33.f,3.6f,CZ + 24, magenta);
+        // Inner ring at 7 m across the pillar tops: bridges on the four straight
+        // edges, stepping slabs to jump across the diagonals; pads up from the floor
+        const float P = 16.63f, Q = 6.89f;
+        wall(-Q,6.6f,CZ + P - 1, Q,7,CZ + P + 1, slate);
+        wall(-Q,6.6f,CZ - P - 1, Q,7,CZ - P + 1, slate);
+        wall( P - 1,6.6f,CZ - Q,  P + 1,7,CZ + Q, slate);
+        wall(-P - 1,6.6f,CZ - Q, -P + 1,7,CZ + Q, slate);
+        for (int sx : {-1, 1}) for (int sz : {-1, 1}) {
+            wall(sx * 11.76f - 1.5f,6.6f,CZ + sz * 11.76f - 1.5f, sx * 11.76f + 1.5f,7,CZ + sz * 11.76f + 1.5f, slate);
+            ring(sx * 11.76f - 1.5f, CZ + sz * 11.76f - 1.5f, sx * 11.76f + 1.5f, CZ + sz * 11.76f + 1.5f, 6.6f, 6.75f, cyan);
+        }
+        L.pads.push_back({{0.f, 0.f, CZ + 11.f}, {1.2f, 1.2f}, {0.f, 20.f,  5.f}});
+        L.pads.push_back({{0.f, 0.f, CZ - 11.f}, {1.2f, 1.2f}, {0.f, 20.f, -5.f}});
+        L.pads.push_back({{ 11.f, 0.f, CZ}, {1.2f, 1.2f}, { 5.f, 20.f, 0.f}});
+        L.pads.push_back({{-11.f, 0.f, CZ}, {1.2f, 1.2f}, {-5.f, 20.f, 0.f}});
+
         // Low cover
         wall(-12,0,CZ + 22, -8,1.3f,CZ + 24, slateDark);
         wall(  8,0,CZ + 22, 12,1.3f,CZ + 24, slateDark);
@@ -788,15 +850,16 @@ inline LevelData buildLevel() {
 
         a.groundSpawns = {{30,4.05f,CZ - 30},{-30,4.05f,CZ - 30},{30,4.05f,CZ + 30},{-30,4.05f,CZ + 30},
                           {0,0,CZ - 30},{-18,0,CZ - 30},{18,0,CZ - 30},{-31,0,CZ},{31,0,CZ},
-                          {0,0,CZ + 12},{-14,0,CZ - 13},{14,0,CZ - 13}};
+                          {0,0,CZ + 13},{-14,0,CZ - 13},{14,0,CZ - 13},
+                          {0,4.05f,CZ - 34.5f},{34.5f,4.05f,CZ},{-34.5f,4.05f,CZ},{0,7.05f,CZ + P},{0,7.05f,CZ - P}};
         a.airSpawns    = {{-18,10,CZ - 18},{18,10,CZ - 18},{0,12,CZ - 28},{-20,10,CZ + 22},{20,10,CZ + 22},{0,12,CZ + 17}};
         a.waves = {
-            {{EnemyType::BRUTE, 2}, {EnemyType::SENTINEL, 3}, {EnemyType::RAPTOR, 3}, {EnemyType::RIPPER, 4}},
-            {{EnemyType::BRUTE, 2}, {EnemyType::MITE, 8}, {EnemyType::HUSK, 4}, {EnemyType::RAPTOR, 3}, {EnemyType::SENTINEL, 2}},
+            {{EnemyType::BRUTE, 2}, {EnemyType::SENTINEL, 3}, {EnemyType::RAPTOR, 3}, {EnemyType::RIPPER, 5}},
+            {{EnemyType::JUGGERNAUT, 1}, {EnemyType::BRUTE, 1}, {EnemyType::MITE, 8}, {EnemyType::HUSK, 5}, {EnemyType::RAPTOR, 3}, {EnemyType::SENTINEL, 2}},
             {{EnemyType::WARDEN, 1}},
         };
-        a.maxAlive = 10;
-        a.damageScale = 1.1f;
+        a.maxAlive = 11;
+        a.damageScale = 1.25f;
         a.ambient = Ambient::MOTES;
         a.theme = Theme{
             {0.005f,0.012f,0.04f}, {0.05f,0.22f,0.30f}, {0.01f,0.03f,0.04f},

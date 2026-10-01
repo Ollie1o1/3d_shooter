@@ -13,6 +13,10 @@
 //   BRUTE    — heavy. Walks you down and slams the ground; jump the shockwave.
 //   MITE     — small spider bomb. Rushes and detonates; shoot it early and the
 //              blast hurts its friends instead.
+//   JUGGERNAUT — armored heavy (bullets do half). Fires slow siege shells and
+//              smashes up close. PARRY (F) a shell to send it back for 400,
+//              or punch during the smash's last moment to break it: staggered,
+//              it takes double damage.
 //   WARDEN   — the final boss: volleys, slams, and summons adds; enrages at 50%.
 //
 // An enemy reports what it did this tick through `ev` (shots fired, melee hit,
@@ -26,9 +30,9 @@
 #include <algorithm>
 #include "Player.h"  // AABB, Wall, SpatialGrid
 
-enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, WARDEN, COUNT };
+enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, JUGGERNAUT, WARDEN, COUNT };
 enum class EnemyState { SPAWNING, ACTIVE, DEAD };
-enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY, SUMMON };
+enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY, SUMMON, SHELL, SMASH };
 
 struct EnemyStats {
     const char* name;
@@ -46,24 +50,27 @@ struct EnemyStats {
 
 inline const EnemyStats& statsOf(EnemyType t) {
     static const EnemyStats S[] = {
-        {"HUSK",     60.f, 0.45f, 1.95f, 3.6f, 0.50f, 2.4f, false,
+        {"HUSK",     60.f, 0.45f, 1.95f, 3.9f, 0.45f, 1.9f, false,
          {0.70f,0.26f,0.18f}, {1.0f,0.78f,0.20f}, {1.0f,0.50f,0.12f},
          "HUSKS FIRE SLOW ORBS - PRESS F AS ONE ARRIVES TO PARRY IT"},
-        {"RIPPER",   40.f, 0.55f, 1.10f, 7.6f, 0.34f, 1.1f, false,
+        {"RIPPER",   45.f, 0.55f, 1.10f, 8.4f, 0.32f, 1.0f, false,
          {0.80f,0.64f,0.14f}, {1.0f,0.95f,0.25f}, {1.0f,0.9f,0.3f},
          "RIPPERS CROUCH BEFORE THEY LUNGE - DASH OUT OF THE WAY"},
-        {"SENTINEL", 55.f, 0.45f, 2.60f, 3.0f, 0.85f, 3.4f, false,
+        {"SENTINEL", 55.f, 0.45f, 2.60f, 3.0f, 0.75f, 2.9f, false,
          {0.20f,0.32f,0.62f}, {0.25f,0.95f,1.0f}, {0.35f,0.9f,1.0f},
          "SENTINELS SNIPE - BREAK THEIR LASER BEFORE THEY FIRE"},
         {"RAPTOR",   40.f, 1.00f, 0.90f, 7.5f, 0.42f, 1.9f, true,
          {0.40f,0.16f,0.52f}, {1.0f,0.30f,0.85f}, {0.95f,0.35f,1.0f},
          "RAPTORS CIRCLE AND DIVE - WATCH THE SKY"},
-        {"BRUTE",   280.f, 0.95f, 2.90f, 2.8f, 0.95f, 2.6f, false,
+        {"BRUTE",   340.f, 0.95f, 2.90f, 3.0f, 0.90f, 2.3f, false,
          {0.58f,0.24f,0.17f}, {1.0f,0.48f,0.06f}, {1.0f,0.50f,0.10f},
          "BRUTES SLAM THE GROUND - JUMP OVER THE SHOCKWAVE"},
         {"MITE",     14.f, 0.38f, 0.60f, 7.2f, 0.55f, 0.0f, false,
          {0.18f,0.30f,0.16f}, {0.40f,1.0f,0.30f}, {0.40f,1.0f,0.30f},
          "MITES EXPLODE - SHOOT THEM EARLY AND THE BLAST HITS THEIR FRIENDS"},
+        {"JUGGERNAUT", 700.f, 1.05f, 3.30f, 2.3f, 1.10f, 3.2f, false,
+         {0.36f,0.38f,0.44f}, {1.0f,0.72f,0.12f}, {1.0f,0.78f,0.2f},
+         "JUGGERNAUTS ARE ARMORED - PARRY (F) THEIR SHELLS, PUNCH THEIR SMASH"},
         {"WARDEN", 2000.f, 1.60f, 4.60f, 2.4f, 0.85f, 3.0f, false,
          {0.34f,0.27f,0.40f}, {1.0f,0.16f,0.62f}, {1.0f,0.22f,0.68f},
          "THE WARDEN"},
@@ -79,6 +86,7 @@ struct EnemyEvents {
     glm::vec3 shotOrigin{0.f};
     glm::vec3 shotDir[MAX_SHOTS];
     float     shotSpeed = 16.f, shotDamage = 10.f, shotSize = 1.f;
+    bool      shotHeavy = false;   // a JUGGERNAUT siege shell: parry it for a huge hit
     bool      meleeHit = false;   float meleeDamage = 0.f;
     bool      slam = false;       float slamRadius = 0.f, slamDamage = 0.f;
     bool      detonated = false;  // MITE blew itself up next to the player
@@ -144,6 +152,7 @@ struct Enemy {
     float animPhase     = 0.f;   // walk / flap cycle
     float moveSpeed     = 0.f;   // horizontal speed this tick
     float hitFlashTimer = 0.f;
+    float staggerTimer  = 0.f;   // JUGGERNAUT, after its smash was parried
     float age           = 0.f;
 
     bool  enraged       = false; // WARDEN phase two
@@ -167,6 +176,20 @@ struct Enemy {
     float radius() const { return stats().radius; }
     float height() const { return stats().height; }
     bool  targetable() const { return alive && state == EnemyState::ACTIVE; }
+    bool  staggered() const  { return staggerTimer > 0.f; }
+    // The moment a JUGGERNAUT's smash can be punched back (its last 0.4 s)
+    bool  parryWindow() const {
+        return type == EnemyType::JUGGERNAUT && attack == AttackKind::SMASH &&
+               telegraphTimer > 0.f && telegraphTimer < 0.4f;
+    }
+    // Damage multiplier from armor: the JUGGERNAUT shrugs off half, unless broken
+    float armorMult() const {
+        if (type != EnemyType::JUGGERNAUT) return 1.f;
+        return staggered() ? 2.f : 0.5f;
+    }
+    void stagger(float t) {
+        staggerTimer = t; attack = AttackKind::NONE; telegraphTimer = 0.f; attackTimer = 0.f;
+    }
     float telegraphProgress() const {
         return telegraphTimer > 0.f && telegraphDuration > 0.f
              ? 1.f - telegraphTimer / telegraphDuration : 0.f;
@@ -216,6 +239,12 @@ struct Enemy {
             if (telegraphTimer <= 0.f) { telegraphTimer = 0.f; resolve = true; }
         }
         if (recoverTimer > 0.f) recoverTimer -= dt;
+        if (staggerTimer > 0.f) {   // broken: stands there, open to punishment
+            staggerTimer -= dt;
+            velocity.x = velocity.z = 0.f;
+            integrate(dt, w);
+            return;
+        }
         if (noLosTimer   > 0.f) noLosTimer   -= dt;
         if (avoidTimer   > 0.f) avoidTimer   -= dt;
 
@@ -226,6 +255,7 @@ struct Enemy {
             case EnemyType::RAPTOR:   thinkRaptor(dt, w, resolve);   break;
             case EnemyType::BRUTE:    thinkBrute(dt, w, resolve);    break;
             case EnemyType::MITE:     thinkMite(dt, w, resolve);     break;
+            case EnemyType::JUGGERNAUT: thinkJuggernaut(dt, w, resolve); break;
             case EnemyType::WARDEN:   thinkWarden(dt, w, resolve);   break;
             default: break;
         }
@@ -396,7 +426,7 @@ private:
         rangedMove(dt, w, 8.f, 17.f, speed);
         turnToward(flatTo(w.playerFeet), dt, 6.f);
         if (resolve && attack == AttackKind::SHOT) {
-            fireAt(w.playerEye, 1, 0.f, 17.f, 10.f);
+            fireAt(w.playerEye, 1, 0.f, 21.f, 12.f);
             attack = AttackKind::NONE;
         }
         if (attackReady(dt)) {
@@ -420,7 +450,7 @@ private:
             if (resolve) {
                 attack = AttackKind::NONE;
                 float dy = w.playerFeet.y - position.y;
-                if (d < 2.7f && std::fabs(dy) < 2.5f) { ev.meleeHit = true; ev.meleeDamage = 13.f; }
+                if (d < 2.7f && std::fabs(dy) < 2.5f) { ev.meleeHit = true; ev.meleeDamage = 18.f; }
                 recoverTimer = 0.45f;
             }
         } else if (recoverTimer > 0.f) {
@@ -450,7 +480,7 @@ private:
         if (burstLeft > 0) {
             burstTimer -= dt;
             if (burstTimer <= 0.f) {
-                fireAt(w.playerEye, 1, 0.f, 32.f, 7.f, 0.8f);
+                fireAt(w.playerEye, 1, 0.f, 34.f, 9.f, 0.8f);
                 --burstLeft; burstTimer = 0.12f;
             }
         }
@@ -473,7 +503,7 @@ private:
             velocity = diveDir * 17.f;
             pitch = glm::mix(pitch, 0.7f, std::min(1.f, dt * 8.f));
             if (glm::length(w.playerEye - position) < 1.8f) {
-                ev.meleeHit = true; ev.meleeDamage = 12.f;
+                ev.meleeHit = true; ev.meleeDamage = 16.f;
                 diveTimer = 0.f; recoverTimer = 1.2f;
             }
             if (diveTimer <= 0.f) recoverTimer = std::max(recoverTimer, 1.0f);
@@ -521,7 +551,7 @@ private:
         turnToward(to, dt, telegraphTimer > 0.f ? 1.f : 3.f);
         if (resolve) {
             if (attack == AttackKind::SLAM) {
-                ev.slam = true; ev.slamRadius = 8.f; ev.slamDamage = 26.f;
+                ev.slam = true; ev.slamRadius = 8.f; ev.slamDamage = 32.f;
             } else if (attack == AttackKind::LOB) {
                 fireAt(w.playerEye, 1, 0.f, 15.f, 18.f, 2.2f);
             }
@@ -555,6 +585,39 @@ private:
                 startAttack(AttackKind::FUSE, stats().telegraph);
         }
         turnToward(to, dt, 12.f);
+    }
+
+    void thinkJuggernaut(float dt, const EnemyWorld& w, bool resolve) {
+        glm::vec3 to = flatTo(w.playerFeet);
+        float d = glm::length(to);
+        if (telegraphTimer > 0.f) {
+            velocity.x = velocity.z = 0.f;   // planted for the wind-up
+        } else {
+            // Advance steadily; it wants you close enough to smash
+            glm::vec3 dir = norm2(to), side{-dir.z, 0.f, dir.x};
+            strafeTimer -= dt;
+            if (strafeTimer <= 0.f) { strafeTimer = frand(2.5f, 4.f); strafeDir = -strafeDir; }
+            setMove(d > 4.f ? dir + side * strafeDir * 0.25f : side * strafeDir, stats().speed, w);
+            animPhase += dt * 3.f;
+        }
+        turnToward(to, dt, telegraphTimer > 0.f ? 1.4f : 2.5f);
+        if (resolve) {
+            if (attack == AttackKind::SHELL) {
+                fireAt(w.playerEye, 1, 0.f, 13.f, 45.f, 3.0f);
+                ev.shotHeavy = true;
+            } else if (attack == AttackKind::SMASH) {
+                float dy = w.playerFeet.y - position.y;
+                if (d < 4.6f && std::fabs(dy) < 2.5f) { ev.meleeHit = true; ev.meleeDamage = 40.f; }
+                ev.slam = true; ev.slamRadius = 3.5f; ev.slamDamage = 0.f;   // the dust ring, no extra damage
+            }
+            attack = AttackKind::NONE;
+            recoverTimer = 0.5f;
+        }
+        if (recoverTimer <= 0.f && attackReady(dt)) {
+            if (d < 5.f) startAttack(AttackKind::SMASH, 0.95f);
+            else if (lineOfSight(eyePos(), w)) startAttack(AttackKind::SHELL, stats().telegraph);
+            else blockedShot();
+        }
     }
 
     void thinkWarden(float dt, const EnemyWorld& w, bool resolve) {

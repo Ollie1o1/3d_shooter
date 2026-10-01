@@ -88,6 +88,8 @@ public:
     void onOverdrive()           { overdriveFlash = 2.0f; }
     void onShoot()               { shootFlashTimer = 0.06f; }
     void onHit(bool kill=false)  { hitmarkerTimer = 0.18f; hitmarkerKill = kill; }
+    void onParry()               { parryFlash = 0.15f; }
+    float parryFlash = 0.f;
     void onGrenadeRefill()       { feed("+1 GRENADE", {0.5f, 1.f, 0.3f}); }
 
     // ---- damage direction indicators ----
@@ -142,6 +144,7 @@ public:
         if (overdriveFlash  > 0.f) overdriveFlash  -= dt;
         if (hitmarkerTimer  > 0.f) hitmarkerTimer  -= dt;
         if (shootFlashTimer > 0.f) shootFlashTimer -= dt;
+        if (parryFlash      > 0.f) parryFlash      -= dt;
         if (splitTimer      > 0.f) splitTimer      -= dt;
         for (int i = 0; i < damageIndicatorCount; ++i) damageIndicators[i].timer -= dt;
         int w = 0;
@@ -164,6 +167,8 @@ public:
         int cx = screenW / 2, cy = screenH / 2;
 
         drawVignettes(style, h);
+        if (parryFlash > 0.f)   // a bright gold flash the instant a parry lands
+            ui.rect(0, 0, screenW, screenH, {1.f, 0.9f, 0.6f, parryFlash / 0.15f * 0.35f});
         if (h.scoped) drawReticle(h);
 
         drawHealthPanel(style, h);
@@ -292,11 +297,12 @@ public:
     }
 
     // Fading control legend shown for the first few seconds of a run.
-    void renderControlHint(float alpha) {
+    void renderControlHint(float alpha, const char* grappleKey) {
         if (alpha <= 0.f) return;
         begin2D();
         const char* l1 = "WASD MOVE  SPACE JUMP  SHIFT DASH  CTRL SLIDE/SLAM  LMB FIRE  F PARRY  G GRENADE";
-        const char* l2 = "RMB GRAPPLE (AIM WITH RIFLES)  Q GRAPPLE  1-4 WEAPONS  TAB ARMORY  ESC PAUSE";
+        char l2[128];
+        std::snprintf(l2, sizeof(l2), "%s GRAPPLE  RMB AIM (RIFLES)  1-4 WEAPONS  TAB ARMORY  ESC PAUSE", grappleKey);
         int baseY = screenH - 150;
         ui.rect(screenW / 2 - 330, baseY - 10, 660, 54, {0.05f, 0.05f, 0.08f, 0.55f * alpha});
         ui.text(l1, screenW / 2, baseY,      1, {0.88f, 0.88f, 0.92f, 0.9f * alpha}, true);
@@ -427,7 +433,7 @@ public:
                            int deaths, const std::vector<float>& splits, const std::vector<float>& bestSplits) {
         begin2D();
         ui.rect(0, 0, screenW, screenH, {0.03f, 0.0f, 0.02f, 0.75f});
-        ui.text("DESCENT COMPLETE", screenW / 2, 70, 4, {1.f, 0.6f, 0.2f, 0.95f}, true);
+        ui.text("GAUNTLET COMPLETE", screenW / 2, 70, 4, {1.f, 0.6f, 0.2f, 0.95f}, true);
         std::string ts = formatTime(time);
         ui.text(ts.c_str(), screenW / 2, 120, 6, {1.f, 0.95f, 0.85f, 1.f}, true);
         char buf[96];
@@ -439,7 +445,7 @@ public:
         // Splits table
         int y = 216;
         for (size_t i = 0; i < splits.size(); ++i, y += 22) {
-            std::snprintf(buf, sizeof(buf), "SECTION %d", (int)i + 1);
+            std::snprintf(buf, sizeof(buf), "LEVEL %d", (int)i + 1);
             ui.text(buf, screenW / 2 - 220, y, 2, {0.75f, 0.75f, 0.8f, 0.9f});
             std::string st = formatTime(splits[i]);
             ui.text(st.c_str(), screenW / 2 + 10, y, 2, {0.95f, 0.95f, 0.95f, 0.95f});
@@ -465,7 +471,7 @@ public:
         char buf[64];
         std::snprintf(buf, sizeof(buf), "TIME %s   KILLS %d", formatTime(gameTime, fast).c_str(), kills);
         ui.text(buf, screenW / 2, screenH / 2 - 6, 2, {0.8f, 0.7f, 0.7f, 0.85f}, true);
-        ui.text(fast ? "R - RESTART SECTION (CLOCK KEEPS RUNNING)" : "R - RETRY THIS ARENA (UPGRADES KEPT)",
+        ui.text(fast ? "R - RESTART LEVEL (CLOCK KEEPS RUNNING)" : "R - RETRY THIS ARENA (UPGRADES KEPT)",
                 screenW / 2, screenH / 2 + 40, 2, {1.f, 0.85f, 0.5f, 0.95f}, true);
         ui.text("ENTER - NEW RUN    ESC - MENU", screenW / 2, screenH / 2 + 68, 2, {0.6f, 0.5f, 0.5f, 0.8f}, true);
         end2D();

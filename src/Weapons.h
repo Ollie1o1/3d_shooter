@@ -7,9 +7,10 @@
 //   1 REVOLVER  8-round hitscan sidearm
 //   2 SHOTGUN   2-shell pump, 10 pellets
 //   3 KAR98     bolt-action rifle. RMB: iron sights (small zoom). Headshots
-//               do 2.5x, so a head is a one-shot kill on anything but the boss.
+//               do 3x, a one-shot kill on anything but the armored heavies.
 //   4 LONGSHOT  heavy .50 bolt sniper. RMB: full scope with a reticle. One
-//               shot kills any regular enemy and punches through three of
+//               shot kills any regular enemy (not the armored Juggernaut:
+//               parry that) and punches through three of
 //               them. Fire just as the scope settles for a QUICKSCOPE bonus.
 //
 // Upgrades (bought with points from levelling up, see Progression.h):
@@ -40,7 +41,7 @@ struct WeaponDef {
     float reloadTime;
     float range;
     float headMult;      // headshot multiplier (humanoids' heads)
-    bool  canAim;        // RMB aims instead of grappling
+    bool  canAim;        // RMB aims down sights / scope
     bool  scope;         // full scope overlay (vs. iron sights)
     float aimFov;        // FOV multiplier when fully aimed
     float aimTime;       // seconds from hip to fully aimed
@@ -56,9 +57,9 @@ inline const WeaponDef& weaponDef(WeaponId w) {
         {"SHOTGUN", "DRAGON BREATH", "+5 PELLETS, TIGHTER SPREAD",
          9.f, 10, 0.18f, 0.18f, 0.55f, 2, 1, 1.4f, 60.f, 1.f, false, false, 1.f, 0.f, 0, 2.2f, 1.f},
         {"KAR98", "HEADHUNTER", "HEADSHOT KILLS REFUND THE ROUND AND SKIP THE BOLT",
-         120.f, 1, 0.045f, 0.f, 0.85f, 5, 2, 2.0f, 200.f, 2.5f, true, false, 0.62f, 0.16f, 0, 2.6f, 0.9f},
+         120.f, 1, 0.045f, 0.f, 0.85f, 5, 2, 2.0f, 200.f, 3.0f, true, false, 0.62f, 0.16f, 0, 2.6f, 0.9f},
         {"LONGSHOT", "EXPLOSIVE TIPS", "SHOTS BURST ON IMPACT FOR AREA DAMAGE",
-         300.f, 1, 0.10f, 0.f, 1.25f, 4, 1, 2.8f, 300.f, 1.5f, true, true, 0.26f, 0.22f, 3, 4.0f, 0.8f},
+         360.f, 1, 0.10f, 0.f, 1.25f, 4, 1, 2.8f, 300.f, 1.5f, true, true, 0.26f, 0.22f, 3, 4.0f, 0.8f},
     };
     return D[(int)w];
 }

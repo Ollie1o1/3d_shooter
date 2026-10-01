@@ -165,6 +165,42 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         r.box(f.torso, {0.f, 0.55f, 0.44f}, {0.45f, 0.45f, 0.08f}, glow * 0.3f, glow * (1.2f * pulse + 2.f * tp));
         break;
     }
+    case EnemyType::JUGGERNAUT: {
+        // Broken (parried): slumps forward, core strobing — hit it now
+        bool broken = e.staggered();
+        mat4 base = broken ? root * T({0.f, -0.25f, 0.f}) * RX(0.32f) : root;
+        vec3 core = broken ? (std::fmod(time * 10.f, 1.f) > 0.5f ? vec3{3.f, 2.6f, 1.2f} : vec3{1.f, 0.5f, 0.1f})
+                           : glow;
+        HumanoidLook L{1.15f, 0.5f, 0.65f, 0.25f, 1.3f, 1.5f, 0.95f, 0.42f, 1.3f, 0.45f,
+                       st.color, st.color * 0.45f, core};
+        ArmPose pose = ArmPose::SWING; float amt = 0.f;
+        if (e.attack == AttackKind::SHELL) { pose = ArmPose::AIM_RIGHT; amt = smooth01(tp * 2.f); }
+        if (e.attack == AttackKind::SMASH) { pose = ArmPose::RAISED;    amt = smooth01(tp * 1.4f); }
+        if (broken) { pose = ArmPose::SWING; amt = 0.f; }
+        auto f = humanoid(r, base, L, e.animPhase, broken ? 0.f : std::max(stride, 0.3f), pose, amt);
+        vec3 gun{0.14f, 0.14f, 0.16f}, gold{0.85f, 0.62f, 0.18f};
+        // Cannon arm (right) with a muzzle that glows as it charges
+        r.box(f.armR, {0.f, -1.45f, 0.f}, {0.62f, 1.0f, 0.62f}, gun);
+        r.box(f.armR, {0.f, -1.98f, 0.f}, {0.48f, 0.12f, 0.48f}, gun * 0.6f,
+              st.shotColor * (e.attack == AttackKind::SHELL ? 0.5f + 4.f * tp : 0.4f));
+        for (float a : {0.f, 1.5708f})
+            r.box(f.armR * RY(a), {0.f, -1.2f, 0.f}, {0.72f, 0.1f, 0.18f}, gold * 0.7f);
+        // Hammer fist (left)
+        r.box(f.armL, {0.f, -1.55f, 0.f}, {0.85f, 0.7f, 0.85f}, gold * 0.75f,
+              e.attack == AttackKind::SMASH ? glow * (0.3f + 2.f * tp) : vec3{0.f});
+        // Plating: shoulder slabs, chest plate, a helmet with a visor slit
+        for (float s : {-1.f, 1.f}) {
+            r.box(f.torso, {s * 0.95f, 1.2f, 0.f}, {0.7f, 0.5f, 1.05f}, st.color * 1.3f);
+            r.box(f.torso, {s * 0.95f, 1.47f, 0.f}, {0.6f, 0.06f, 0.9f}, gold, gold * 0.2f);
+        }
+        r.box(f.torso, {0.f, 0.7f, 0.5f}, {1.2f, 0.9f, 0.1f}, st.color * 1.15f);
+        float pulse = 0.6f + 0.4f * std::sin(time * 4.f);
+        r.box(f.torso, {0.f, 0.72f, 0.56f}, {0.42f, 0.42f, 0.08f}, core * 0.3f, core * (1.3f * pulse + 2.f * tp));
+        r.box(f.head, {0.f, 0.3f, 0.f}, {0.62f, 0.55f, 0.62f}, st.color * 1.2f);
+        r.box(f.head, {0.f, 0.33f, 0.32f}, {0.46f, 0.07f, 0.02f}, core * 0.3f, core * 2.5f);
+        r.box(f.torso, {0.f, 0.9f, -0.58f}, {0.9f, 0.9f, 0.3f}, gun);   // back reactor
+        break;
+    }
     case EnemyType::WARDEN: {
         vec3 g = e.enraged ? vec3{1.f, 0.1f, 0.25f} * (1.f + 2.5f * tp) : glow;
         HumanoidLook L{1.7f, 0.6f, 0.8f, 0.3f, 1.75f, 1.9f, 1.1f, 0.62f, 1.9f, 0.55f,
