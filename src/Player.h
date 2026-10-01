@@ -17,6 +17,7 @@ struct AABB {
 struct Wall {
     AABB      box;
     glm::vec3 color{0.28f, 0.28f, 0.32f};
+    bool      hidden = false;  // collides but isn't part of the static world mesh
 };
 
 // =============================================================================
@@ -26,7 +27,7 @@ struct Wall {
 // changes (room cleared, door opened). Query with a bounding box to get
 // candidate wall indices — then still test actual AABB overlap yourself.
 //
-// Grid covers the full two-room level:
+// Grid covers the whole level (three arenas + corridors):
 //   X: -100 .. 100  (200 m → 17 cells of 12 m)
 //   Z: -240 .. 100  (340 m → 29 cells of 12 m)
 // =============================================================================

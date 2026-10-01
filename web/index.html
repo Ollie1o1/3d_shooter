@@ -50,8 +50,14 @@
 
   var Module = {
     canvas,
-    // ?play skips the main menu (same as ./shooter --play)
-    arguments: new URLSearchParams(location.search).has('play') ? ['--play'] : [],
+    // ?play skips the main menu (same as ./shooter --play); ?arena=N starts at arena N
+    arguments: (() => {
+      const q = new URLSearchParams(location.search);
+      const args = q.has('arena') ? ['--arena', q.get('arena')] : q.has('play') ? ['--play'] : [];
+      if (q.has('wave')) args.push('--wave', q.get('wave'));
+      if (q.has('god')) args.push('--god');
+      return args;
+    })(),
     // Asset preload progress ("Downloading data... (x/y)")
     setStatus(text) {
       const m = text.match(/\((\d+(?:\.\d+)?)\/(\d+)\)/);

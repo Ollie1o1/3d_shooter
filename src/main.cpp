@@ -7,6 +7,7 @@
 #include <stdexcept>
 #include <functional>
 #include <string>
+#include <cstdlib>
 #ifdef _WIN32
 #  include <direct.h>
 #  define chdir _chdir
@@ -172,6 +173,7 @@ int main(int argc, char* argv[]) {
     static const char* SOUNDS[] = {
         "jump", "land", "dash", "slam", "revolver", "shotgun", "reload", "grapple_fire",
         "hit", "enemy_death", "player_hit", "parry", "telegraph", "explosion",
+        "wave", "spawn", "pickup",
     };
     for (const char* name : SOUNDS)
         app->audio.loadSound(name, std::string("assets/sfx/") + name + ".wav");
@@ -179,8 +181,18 @@ int main(int argc, char* argv[]) {
     app->settings.load();  // restore FOV/sensitivity/volume/FPS cap/CRT from settings.cfg, if present
 
     // --play skips the main menu and drops straight into a run
-    for (int i = 1; i < argc; ++i)
-        if (std::string(argv[i]) == "--play") app->pending = App::NextState::Game;
+    // --arena N (1-3) starts the run at a later arena (implies --play),
+    // --wave N skips to a wave within it, --god disables damage (for footage)
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--play") app->pending = App::NextState::Game;
+        if (arg == "--god")  g_godMode = true;
+        if (arg == "--wave" && i + 1 < argc) g_startWave = std::atoi(argv[++i]) - 1;
+        if (arg == "--arena" && i + 1 < argc) {
+            g_startArena = std::atoi(argv[++i]) - 1;
+            app->pending = App::NextState::Game;
+        }
+    }
 
     app->freq        = SDL_GetPerformanceFrequency();
     app->lastCounter = SDL_GetPerformanceCounter();

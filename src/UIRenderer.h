@@ -9,6 +9,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <cstdlib>
+#include <cstdio>
 
 class UIRenderer {
 public:
@@ -99,11 +101,7 @@ public:
                 bool shotgunReloading, float shotgunReloadProgress,
                 int revolverAmmo, int revolverAmmoMax,
                 bool reloading, float reloadProgress,
-                bool nearInteractable = false,
-                bool showWin = false, bool showDeath = false,
-                int kills = 0, int shots = 0, int hits = 0,
-                float gameTime = 0.f, float peakStyle = 0.f,
-                const char* bannerText = "", float waveBanner = 0.f) {
+                bool nearInteractable = false) {
         glDisable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE);
         glEnable(GL_BLEND);
@@ -240,9 +238,11 @@ public:
 
         if (overdriveFlash > 0.f || style.overdrive) {
             float alpha = style.overdrive ? 0.9f : (overdriveFlash * 0.6f);
-            drawRect(screenW/2-120, 40, 240, 36, {0.9f,0.5f,0.05f,alpha*0.3f});
-            drawRect(screenW/2-120, 40, 240, 4, {1.f,0.7f,0.1f,alpha});
-            drawRect(screenW/2-120, 72, 240, 4, {1.f,0.7f,0.1f,alpha});
+            int oy = screenH - 96;
+            drawRect(screenW/2-120, oy, 240, 30, {0.9f,0.5f,0.05f,alpha*0.3f});
+            drawRect(screenW/2-120, oy, 240, 3, {1.f,0.7f,0.1f,alpha});
+            drawRect(screenW/2-120, oy+27, 240, 3, {1.f,0.7f,0.1f,alpha});
+            drawText("OVERDRIVE", screenW/2, oy+8, 2, {1.f,0.75f,0.2f,alpha}, true);
         }
 
         int cx=screenW/2, cy=screenH/2;
@@ -315,57 +315,6 @@ public:
             if (floatingNums[r].timer > 0.f) floatingNums[w++] = floatingNums[r];
         floatingNumCount = w;
 
-        // --- Wave / room banner ---
-        if (waveBanner > 0.f) {
-            float alpha = std::min(waveBanner, 1.f);
-            int   textW = (int)strlen(bannerText) * 21 + 40; // rough fit for scale-3 text
-            int   boxW  = std::max(240, textW);
-            drawRect(screenW/2 - boxW/2, screenH/2 - 40, boxW, 50, {0.1f, 0.1f, 0.15f, alpha * 0.7f});
-            drawText(bannerText, screenW/2, screenH/2 - 20, 3, {1.f, 0.9f, 0.3f, alpha}, true);
-        }
-
-        // --- Win screen ---
-        if (showWin) {
-            drawRect(0, 0, screenW, screenH, {0.0f, 0.02f, 0.05f, 0.65f});
-            drawText("ARENA CLEARED", screenW/2, screenH/2 - 100, 4, {0.2f, 1.f, 0.4f, 0.95f}, true);
-
-            char buf[64];
-            int statY = screenH/2 - 30;
-            snprintf(buf, sizeof(buf), "TIME  %d:%02d", (int)gameTime / 60, (int)gameTime % 60);
-            drawText(buf, screenW/2, statY, 2, {0.9f,0.9f,0.9f,0.9f}, true);
-            snprintf(buf, sizeof(buf), "KILLS  %d", kills);
-            drawText(buf, screenW/2, statY + 24, 2, {0.9f,0.9f,0.9f,0.9f}, true);
-            float acc = shots > 0 ? (float)hits / (float)shots * 100.f : 0.f;
-            snprintf(buf, sizeof(buf), "ACCURACY  %d%%", (int)acc);
-            drawText(buf, screenW/2, statY + 48, 2, {0.9f,0.9f,0.9f,0.9f}, true);
-
-            const char* gradeStr = "D";
-            float score = (float)kills * 10.f + acc * 2.f + peakStyle + std::max(0.f, 300.f - gameTime);
-            if (score > 800.f) gradeStr = "S";
-            else if (score > 600.f) gradeStr = "A";
-            else if (score > 400.f) gradeStr = "B";
-            else if (score > 200.f) gradeStr = "C";
-            drawText(gradeStr, screenW/2, statY + 80, 5, {1.f, 0.85f, 0.2f, 0.95f}, true);
-
-            drawText("R - RESTART    ESC - MENU", screenW/2, statY + 130, 2, {0.6f,0.6f,0.6f,0.8f}, true);
-        }
-
-        // --- Death screen ---
-        if (showDeath) {
-            float vigAlpha = 0.5f;
-            drawRect(0, 0, screenW, screenH, {0.3f, 0.0f, 0.0f, vigAlpha});
-            drawText("YOU DIED", screenW/2, screenH/2 - 80, 4, {0.9f, 0.15f, 0.1f, 0.95f}, true);
-
-            char buf[64];
-            int statY = screenH/2 - 10;
-            snprintf(buf, sizeof(buf), "TIME  %d:%02d", (int)gameTime / 60, (int)gameTime % 60);
-            drawText(buf, screenW/2, statY, 2, {0.8f,0.7f,0.7f,0.85f}, true);
-            snprintf(buf, sizeof(buf), "KILLS  %d", kills);
-            drawText(buf, screenW/2, statY + 24, 2, {0.8f,0.7f,0.7f,0.85f}, true);
-
-            drawText("R - RESTART    ESC - MENU", screenW/2, statY + 70, 2, {0.6f,0.5f,0.5f,0.8f}, true);
-        }
-
         // --- FPS counter (bottom of screen) ----------------------------------
         if (showFPS) {
             char buf[16];
@@ -378,27 +327,110 @@ public:
         glEnable(GL_CULL_FACE);
     }
 
-    // Persistent enemies-remaining counter, shown during active combat.
-    void renderObjective(int enemiesRemaining, bool show) {
-        if (!show) return;
+    // Shared setup for the overlay passes below
+    void begin2D() {
         glDisable(GL_DEPTH_TEST);
         glDisable(GL_CULL_FACE);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
         shader.use();
-        glm::mat4 ortho = glm::ortho(0.f,(float)screenW,(float)screenH,0.f);
-        shader.setMat4("projection", ortho);
+        shader.setMat4("projection", glm::ortho(0.f,(float)screenW,(float)screenH,0.f));
         glBindVertexArray(quadVAO);
-
-        char buf[32];
-        snprintf(buf, sizeof(buf), "ENEMIES REMAINING: %d", enemiesRemaining);
-        drawRect(screenW/2 - 130, 14, 260, 26, {0.05f,0.05f,0.08f,0.55f});
-        drawText(buf, screenW/2, 21, 1, {0.9f,0.85f,0.7f,0.9f}, true);
-
+    }
+    void end2D() {
         glDisable(GL_BLEND);
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_CULL_FACE);
+    }
+
+    // One status line at the top: arena, wave, hostiles left (or what to do next).
+    void renderObjective(const char* text, glm::vec3 accent) {
+        begin2D();
+        int w = std::max(260, (int)strlen(text) * 12 + 40);
+        drawRect(screenW/2 - w/2, 10, w, 28, {0.04f,0.04f,0.07f,0.6f});
+        drawRect(screenW/2 - w/2, 36, w, 2, {accent.r, accent.g, accent.b, 0.8f});
+        drawText(text, screenW/2, 17, 2, {0.95f,0.92f,0.85f,0.95f}, true);
+        end2D();
+    }
+
+    // Big centred title card with a smaller line under it (arena names, waves,
+    // new-enemy tips). alpha fades it in and out.
+    void renderBanner(const char* title, const char* subtitle, glm::vec3 color, float alpha) {
+        if (alpha <= 0.f) return;
+        begin2D();
+        int y = screenH/2 - 150;
+        int tw = (int)strlen(title) * 24 + 60;
+        int sw = (int)strlen(subtitle) * 12 + 40;
+        int bw = std::max(std::max(tw, sw), 320);
+        drawRect(screenW/2 - bw/2, y - 16, bw, subtitle[0] ? 88 : 62, {0.03f,0.02f,0.05f,0.7f * alpha});
+        drawRect(screenW/2 - bw/2, y - 16, bw, 3, {color.r, color.g, color.b, alpha});
+        drawText(title, screenW/2, y, 4, {color.r, color.g, color.b, alpha}, true);
+        if (subtitle[0])
+            drawText(subtitle, screenW/2, y + 42, 2, {0.92f,0.9f,0.88f,alpha}, true);
+        end2D();
+    }
+
+    void renderBossBar(const char* name, float fill, bool enraged) {
+        begin2D();
+        int w = 560, x = screenW/2 - w/2, y = 62;
+        glm::vec4 col = enraged ? glm::vec4{1.f,0.15f,0.25f,0.95f} : glm::vec4{1.f,0.2f,0.65f,0.95f};
+        drawText(name, screenW/2, y - 16, 2, col, true);
+        drawRect(x - 3, y - 3, w + 6, 18, {0.05f,0.03f,0.06f,0.85f});
+        drawRect(x, y, (int)(w * glm::clamp(fill, 0.f, 1.f)), 12, col);
+        for (int i = 1; i < 4; ++i) drawRect(x + w * i / 4, y, 2, 12, {0.f,0.f,0.f,0.5f});
+        end2D();
+    }
+
+    // A diamond marker at a screen position; when the target is off-screen the
+    // caller passes onScreen=false and the marker sits on the screen edge.
+    void renderMarker(float sx, float sy, bool onScreen, glm::vec3 color, const char* label) {
+        begin2D();
+        int x = (int)sx, y = (int)sy;
+        glm::vec4 c{color.r, color.g, color.b, 0.9f};
+        int s = onScreen ? 7 : 9;
+        for (int i = -s; i <= s; i += 2) {
+            int half = s - std::abs(i);
+            drawRect(x - half, y + i, half * 2 + 1, 2, c);
+        }
+        if (label && label[0]) drawText(label, x, y + s + 6, 1, c, true);
+        end2D();
+    }
+
+    void renderVictory(int kills, int shots, int hits, int deaths, float gameTime, float peakStyle) {
+        begin2D();
+        drawRect(0, 0, screenW, screenH, {0.0f, 0.02f, 0.05f, 0.7f});
+        drawText("ALL ARENAS CLEARED", screenW/2, screenH/2 - 130, 4, {0.2f, 1.f, 0.6f, 0.95f}, true);
+        drawText("THE WARDEN IS DOWN", screenW/2, screenH/2 - 88, 2, {0.8f, 0.9f, 0.85f, 0.85f}, true);
+        char buf[64];
+        int statY = screenH/2 - 40;
+        glm::vec4 sc{0.9f,0.9f,0.9f,0.9f};
+        snprintf(buf, sizeof(buf), "TIME  %d:%02d", (int)gameTime / 60, (int)gameTime % 60);
+        drawText(buf, screenW/2, statY, 2, sc, true);
+        snprintf(buf, sizeof(buf), "KILLS  %d", kills);
+        drawText(buf, screenW/2, statY + 24, 2, sc, true);
+        float acc = shots > 0 ? (float)hits / (float)shots * 100.f : 0.f;
+        snprintf(buf, sizeof(buf), "ACCURACY  %d%%", (int)acc);
+        drawText(buf, screenW/2, statY + 48, 2, sc, true);
+        snprintf(buf, sizeof(buf), "DEATHS  %d", deaths);
+        drawText(buf, screenW/2, statY + 72, 2, sc, true);
+        float score = acc * 3.f + peakStyle + std::max(0.f, 900.f - gameTime) - deaths * 60.f;
+        const char* grade = score > 900.f ? "S" : score > 700.f ? "A" : score > 500.f ? "B" : score > 300.f ? "C" : "D";
+        drawText(grade, screenW/2, statY + 106, 5, {1.f, 0.85f, 0.2f, 0.95f}, true);
+        drawText("ENTER - NEW RUN    ESC - MENU", screenW/2, statY + 160, 2, {0.6f,0.6f,0.6f,0.8f}, true);
+        end2D();
+    }
+
+    void renderDeath(const char* where, int kills, float gameTime) {
+        begin2D();
+        drawRect(0, 0, screenW, screenH, {0.3f, 0.0f, 0.0f, 0.5f});
+        drawText("YOU DIED", screenW/2, screenH/2 - 90, 4, {0.9f, 0.15f, 0.1f, 0.95f}, true);
+        drawText(where, screenW/2, screenH/2 - 44, 2, {0.95f,0.8f,0.75f,0.9f}, true);
+        char buf[64];
+        snprintf(buf, sizeof(buf), "TIME %d:%02d   KILLS %d", (int)gameTime / 60, (int)gameTime % 60, kills);
+        drawText(buf, screenW/2, screenH/2 - 10, 2, {0.8f,0.7f,0.7f,0.85f}, true);
+        drawText("R - RETRY THIS ARENA", screenW/2, screenH/2 + 40, 2, {1.f,0.85f,0.5f,0.95f}, true);
+        drawText("ENTER - NEW RUN    ESC - MENU", screenW/2, screenH/2 + 68, 2, {0.6f,0.5f,0.5f,0.8f}, true);
+        end2D();
     }
 
     // Fading control legend shown for the first few seconds of a run.
@@ -415,7 +447,7 @@ public:
         glBindVertexArray(quadVAO);
 
         const char* line1 = "WASD MOVE  MOUSE LOOK  LMB FIRE  RMB GRAPPLE";
-        const char* line2 = "SPACE JUMP  SHIFT DASH  G GRENADE  F PARRY  E INTERACT";
+        const char* line2 = "SPACE JUMP  SHIFT DASH  CTRL SLIDE/SLAM  G GRENADE  F PARRY";
         int baseY = screenH - 90;
         drawRect(screenW/2 - 290, baseY - 10, 580, 54, {0.05f,0.05f,0.08f, 0.5f*alpha});
         drawText(line1, screenW/2, baseY,      1, {0.85f,0.85f,0.9f, 0.85f*alpha}, true);

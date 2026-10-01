@@ -249,6 +249,43 @@ def gen_explosion():
     return out
 
 
+def gen_wave():
+    """Wave / arena stinger: a low two-note horn with a metallic edge."""
+    n = n_samples(0.9)
+    out = []
+    for i in range(n):
+        t = i / n
+        f = 110 if t < 0.35 else 147
+        env = min(1.0, t * 20) * math.exp(-2.2 * t)
+        tone = sine(f, i) + 0.5 * sine(f * 2, i) + 0.25 * sine(f * 3.01, i)
+        out.append(tone * env * 0.6)
+    return lowpass(out, 1800)
+
+
+def gen_spawn():
+    """Enemy materialising: a rising shimmer."""
+    n = n_samples(0.5)
+    noise = highpass([white() for _ in range(n)], 3000)
+    out = []
+    for i in range(n):
+        t = i / n
+        f = 300 + 900 * t * t
+        env = math.sin(math.pi * t)
+        out.append((sine(f, i) * 0.5 + noise[i] * 0.25) * env)
+    return out
+
+
+def gen_pickup():
+    """Health orb: a quick bright two-tone chime."""
+    n = n_samples(0.22)
+    out = []
+    for i in range(n):
+        t = i / n
+        f = 880 if t < 0.4 else 1320
+        out.append(sine(f, i) * math.exp(-6.0 * t) * 0.7)
+    return out
+
+
 GENERATORS = {
     "jump": gen_jump,
     "land": gen_land,
@@ -264,6 +301,9 @@ GENERATORS = {
     "parry": gen_parry,
     "telegraph": gen_telegraph,
     "explosion": gen_explosion,
+    "wave": gen_wave,
+    "spawn": gen_spawn,
+    "pickup": gen_pickup,
 }
 
 

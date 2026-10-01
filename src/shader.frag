@@ -10,13 +10,18 @@ out vec4 FragColor;
 uniform sampler2D uTexture;
 uniform vec3 lightDir;
 uniform vec3 lightColor;
-uniform vec3 ambientColor;
 uniform vec3 viewPos;
 uniform vec3 emissiveColor;
 uniform vec3 objectColor;
 
 uniform vec3 pointLightPos[4];
 uniform vec3 pointLightColor[4];
+
+uniform vec3  uSkyAmb;       // hemisphere ambient, per arena
+uniform vec3  uGroundAmb;
+uniform vec3  uFogColor;
+uniform float uFogDensity;   // 0 = no fog (view model, HUD-ish geometry)
+uniform float uVertexGlow;   // > 0: per-vertex colour is also emitted (neon strips)
 
 void main()
 {
@@ -26,11 +31,8 @@ void main()
     vec3 norm    = normalize(Normal);
     vec3 viewDir = normalize(viewPos - FragPos);
 
-    // Hemisphere ambient
-    vec3 skyColor    = vec3(0.18, 0.22, 0.38);
-    vec3 groundColor = vec3(0.07, 0.06, 0.05);
-    float hemi = norm.y * 0.5 + 0.5;
-    vec3 ambient = mix(groundColor, skyColor, hemi);
+    // Hemisphere ambient: sky colour from above, bounce colour from below
+    vec3 ambient = mix(uGroundAmb, uSkyAmb, norm.y * 0.5 + 0.5);
 
     // Directional light — Blinn-Phong
     vec3  L    = normalize(-lightDir);
@@ -54,18 +56,28 @@ void main()
 
     // Rim light
     float rim    = pow(1.0 - max(dot(norm, viewDir), 0.0), 4.0);
-    vec3 rimColor = vec3(0.10, 0.14, 0.30) * rim;
+    vec3 rimColor = uSkyAmb * rim * 0.5;
 
     // UV-based edge lines — darkens pixels near the boundary of each polygon face.
     // Makes box edges visually readable without extra geometry.
-    float eu = min(TexCoord.x, 1.0 - TexCoord.x);
-    float ev = min(TexCoord.y, 1.0 - TexCoord.y);
-    float edgeFactor = smoothstep(0.0, 0.035, min(eu, ev));
+    // World UVs run 1 per 4 m, so fract() puts a thin seam at every tile edge.
+    // (Without it, every UV outside 0..1 read as "on an edge" and the whole
+    // level outside one 4 m tile rendered at 15% brightness.)
+    vec2  tuv = fract(TexCoord);
+    float eu = min(tuv.x, 1.0 - tuv.x);
+    float ev = min(tuv.y, 1.0 - tuv.y);
+    float edgeFactor = smoothstep(0.0, 0.02, min(eu, ev));
     // edgeFactor = 0 at edges (dark), 1 at face centre (full colour)
 
     vec3 lighting = ambient + diff * lightColor + pointContrib;
     vec3 result   = (lighting * texColor.rgb + specular + rimColor + emissiveColor)
-                  * mix(0.15, 1.0, edgeFactor);  // darken at face edges
+                  * mix(0.6, 1.0, edgeFactor);   // darken at tile seams
+    result += VertColor * uVertexGlow;
+
+    // Exponential-squared distance fog toward the arena's horizon colour
+    float d   = length(viewPos - FragPos) * uFogDensity;
+    float fog = 1.0 - exp(-d * d);
+    result = mix(result, uFogColor, fog * 0.85);
 
     FragColor = vec4(result, texColor.a);
 }

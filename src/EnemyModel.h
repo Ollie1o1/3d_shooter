@@ -1,0 +1,283 @@
+#pragma once
+// =============================================================================
+// EnemyModel.h — builds each enemy as a little rig of boxes.
+//
+// Every model is a hierarchy of joints (hips, shoulders, wing roots) with box
+// "parts" hung off them, posed from the enemy's AI state every frame: legs
+// swing with the walk cycle, wings flap, arms come up to aim or slam during a
+// telegraph so the player can read the attack before it lands. The output is
+// a flat list of BoxInstance (one unit cube each) that BoxRenderer draws in a
+// single instanced call. No OpenGL here, so tests can count parts headlessly.
+// =============================================================================
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <vector>
+#include <cmath>
+#include "Enemy.h"
+
+// One unit cube ([-0.5, 0.5]^3) placed by `model`. Layout matches the
+// per-instance vertex attributes in BoxRenderer (locations 4-9).
+struct BoxInstance {
+    glm::mat4 model{1.f};
+    glm::vec3 color{1.f};
+    float     _pad0 = 0.f;
+    glm::vec3 emissive{0.f};
+    float     _pad1 = 0.f;
+};
+
+namespace rig {
+using glm::mat4; using glm::vec3;
+
+inline mat4 T(vec3 p)            { return glm::translate(mat4(1.f), p); }
+inline mat4 RX(float a)          { return glm::rotate(mat4(1.f), a, vec3{1,0,0}); }
+inline mat4 RY(float a)          { return glm::rotate(mat4(1.f), a, vec3{0,1,0}); }
+inline mat4 RZ(float a)          { return glm::rotate(mat4(1.f), a, vec3{0,0,1}); }
+inline mat4 S(vec3 s)            { return glm::scale(mat4(1.f), s); }
+
+inline void push(std::vector<BoxInstance>& out, const mat4& m, vec3 col, vec3 emi = vec3{0.f}) {
+    BoxInstance b; b.model = m; b.color = col; b.emissive = emi;
+    out.push_back(b);
+}
+
+struct Rig {
+    std::vector<BoxInstance>& out;
+    float flash = 0.f;   // 0..1 white hit flash
+    float spawn = 1.f;   // 0..1 materialise progress
+    void box(const mat4& parent, vec3 centre, vec3 size, vec3 col, vec3 emi = vec3{0.f}) {
+        vec3 c = glm::mix(col, vec3{1.f}, flash * 0.85f);
+        vec3 e = glm::mix(emi, vec3{0.9f}, flash * 0.6f);
+        if (spawn < 1.f) e += vec3{0.5f, 0.85f, 1.f} * (1.f - spawn) * 2.5f;
+        push(out, parent * T(centre) * S(size), c, e);
+    }
+};
+
+struct HumanoidLook {
+    float legLen, legW, hipW, pelvisH, torsoH, torsoW, torsoD, headS, armLen, armW;
+    vec3  armor, under, glow;
+};
+enum class ArmPose { SWING, AIM_RIGHT, AIM_BOTH, RAISED };
+struct HumanoidFrames { mat4 body, torso, head, armL, armR; };
+
+// Two legs, pelvis, torso with a glowing chest stripe, head with a visor, two
+// arms with hands: 13 parts. Right side is local -X (the model faces +Z).
+inline HumanoidFrames humanoid(Rig& r, const mat4& root, const HumanoidLook& L,
+                               float phase, float stride, ArmPose pose, float amt,
+                               bool visor = true) {
+    HumanoidFrames f;
+    float bob = std::fabs(std::sin(phase)) * 0.05f * stride;
+    f.body = root * T({0.f, bob, 0.f});
+    float hipY = L.legLen;
+
+    for (float s : {-1.f, 1.f}) {
+        float swing = std::sin(phase + (s > 0.f ? 0.f : 3.14159f)) * 0.6f * stride;
+        mat4 hip = f.body * T({s * L.hipW * 0.5f, hipY, 0.f}) * RX(swing);
+        r.box(hip, {0.f, -L.legLen * 0.5f, 0.f}, {L.legW, L.legLen, L.legW * 1.1f}, L.under);
+        r.box(hip, {0.f, -L.legLen + 0.05f, 0.07f}, {L.legW * 1.15f, 0.12f, L.legW * 1.7f}, L.armor);
+    }
+    r.box(f.body, {0.f, hipY + L.pelvisH * 0.5f, 0.f},
+          {L.hipW + L.legW, L.pelvisH, L.torsoD * 0.8f}, L.under);
+
+    f.torso = f.body * T({0.f, hipY + L.pelvisH, 0.f}) * RY(std::sin(phase) * 0.08f * stride);
+    r.box(f.torso, {0.f, L.torsoH * 0.5f, 0.f}, {L.torsoW, L.torsoH, L.torsoD}, L.armor);
+    r.box(f.torso, {0.f, L.torsoH * 0.62f, L.torsoD * 0.5f + 0.01f},
+          {L.torsoW * 0.45f, L.torsoH * 0.12f, 0.05f}, L.glow * 0.3f, L.glow * 1.2f);
+
+    f.head = f.torso * T({0.f, L.torsoH, 0.f});
+    r.box(f.head, {0.f, L.headS * 0.5f + 0.02f, 0.f}, vec3{L.headS}, L.armor * 0.85f);
+    if (visor)
+        r.box(f.head, {0.f, L.headS * 0.58f, L.headS * 0.5f + 0.01f},
+              {L.headS * 0.8f, L.headS * 0.2f, 0.05f}, L.glow * 0.3f, L.glow * 2.f);
+
+    for (float s : {-1.f, 1.f}) {
+        float legSwing = std::sin(phase + (s > 0.f ? 0.f : 3.14159f)) * 0.6f * stride;
+        float rx = legSwing;                                 // arms swing against the legs
+        bool  right = s < 0.f;
+        if (pose == ArmPose::AIM_RIGHT && right) rx = -1.5708f * amt + rx * (1.f - amt);
+        if (pose == ArmPose::AIM_BOTH)           rx = -1.5708f * amt + rx * (1.f - amt);
+        if (pose == ArmPose::RAISED)             rx = -2.9f * amt + rx * (1.f - amt);
+        mat4 sh = f.torso * T({s * (L.torsoW * 0.5f + L.armW * 0.5f), L.torsoH - L.armW * 0.5f, 0.f})
+                * RX(rx) * RZ(s * 0.08f);
+        r.box(sh, {0.f, -L.armLen * 0.5f, 0.f}, {L.armW, L.armLen, L.armW}, L.armor * 0.9f);
+        r.box(sh, {0.f, -L.armLen - L.armW * 0.3f, 0.f}, vec3{L.armW * 1.2f}, L.under);
+        (right ? f.armR : f.armL) = sh;
+    }
+    return f;
+}
+
+inline float smooth01(float t) { t = glm::clamp(t, 0.f, 1.f); return t * t * (3.f - 2.f * t); }
+
+// Append the parts for one enemy. `time` drives idle animation (orbiting
+// shards, blinking fuses).
+inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out) {
+    const EnemyStats& st = e.stats();
+    Rig r{out};
+    r.flash = glm::clamp(e.hitFlashTimer / 0.12f, 0.f, 1.f);
+    r.spawn = 1.f - e.spawnTimer / Enemy::SPAWN_TIME;
+    float grow = 0.05f + 0.95f * smooth01(r.spawn);
+
+    float tp   = e.telegraphProgress();
+    vec3  glow = st.glow * (1.f + 2.5f * tp);           // eyes flare during a wind-up
+    float stride = glm::clamp(e.moveSpeed / std::max(0.1f, st.speed), 0.f, 1.2f);
+
+    mat4 root = T(e.position) * RY(e.yaw) * S({1.f, grow, 1.f});
+
+    switch (e.type) {
+    case EnemyType::HUSK: {
+        HumanoidLook L{0.9f, 0.2f, 0.26f, 0.14f, 0.62f, 0.56f, 0.32f, 0.32f, 0.62f, 0.17f,
+                       st.color, st.color * 0.45f, glow};
+        float aim = e.attack == AttackKind::SHOT ? smooth01(tp * 3.f) : 0.35f;
+        auto f = humanoid(r, root, L, e.animPhase, stride, ArmPose::AIM_RIGHT, aim);
+        vec3 gun{0.16f, 0.15f, 0.17f};
+        r.box(f.armR, {0.f, -0.78f, 0.06f}, {0.12f, 0.5f, 0.15f}, gun);
+        r.box(f.armR, {0.f, -1.05f, 0.06f}, {0.09f, 0.08f, 0.09f}, gun, st.shotColor * (0.3f + 3.f * tp));
+        r.box(f.torso, {0.f, 0.35f, -0.22f}, {0.4f, 0.4f, 0.14f}, st.color * 0.6f);   // backpack
+        break;
+    }
+    case EnemyType::SENTINEL: {
+        HumanoidLook L{1.25f, 0.15f, 0.22f, 0.14f, 0.74f, 0.44f, 0.3f, 0.3f, 0.82f, 0.14f,
+                       st.color, st.color * 0.4f, glow};
+        float aim = (e.attack == AttackKind::BURST || e.burstLeft > 0) ? 1.f : 0.55f;
+        auto f = humanoid(r, root, L, e.animPhase, stride, ArmPose::AIM_RIGHT, aim, false);
+        vec3 metal{0.12f, 0.13f, 0.16f};
+        r.box(f.armR, {0.f, -1.25f, 0.f}, {0.1f, 1.1f, 0.12f}, metal);                 // long rifle
+        r.box(f.armR, {0.f, -1.0f, 0.1f}, {0.08f, 0.3f, 0.1f}, metal, glow * 0.6f);   // scope
+        r.box(f.head, {0.f, 0.17f, 0.16f}, {0.16f, 0.12f, 0.04f}, glow * 0.2f, glow * 3.f); // cyclops eye
+        r.box(f.head, {0.1f, 0.5f, -0.05f}, {0.03f, 0.45f, 0.03f}, metal);            // antenna
+        r.box(f.head, {0.1f, 0.74f, -0.05f}, vec3{0.07f}, glow, glow * 2.f);
+        for (float s : {-1.f, 1.f})                                                   // pauldrons
+            r.box(f.torso, {s * 0.3f, 0.72f, 0.f}, {0.24f, 0.12f, 0.34f}, st.color * 1.25f);
+        break;
+    }
+    case EnemyType::BRUTE: {
+        HumanoidLook L{1.0f, 0.42f, 0.55f, 0.2f, 1.15f, 1.35f, 0.85f, 0.44f, 1.25f, 0.42f,
+                       st.color, st.color * 0.5f, glow};
+        ArmPose pose = ArmPose::SWING; float amt = 0.f;
+        if (e.attack == AttackKind::SLAM) { pose = ArmPose::RAISED;   amt = smooth01(tp * 1.6f); }
+        if (e.attack == AttackKind::LOB)  { pose = ArmPose::AIM_BOTH; amt = smooth01(tp * 2.f); }
+        auto f = humanoid(r, root, L, e.animPhase, std::max(stride, 0.4f), pose, amt);
+        for (float s : {-1.f, 1.f}) {
+            r.box(f.torso, {s * 0.78f, 1.08f, 0.f}, {0.62f, 0.42f, 0.8f}, st.color * 1.3f); // shoulder pads
+            r.box(f.torso, {s * 0.78f, 1.31f, 0.f}, {0.5f, 0.06f, 0.6f}, glow * 0.2f, glow * 0.8f);
+            r.box(s < 0.f ? f.armR : f.armL, {0.f, -1.45f, 0.f}, {0.62f, 0.55f, 0.62f}, st.color * 0.8f); // fists
+            r.box(f.torso, {s * 0.3f, 0.95f, -0.5f}, {0.18f, 0.5f, 0.18f}, st.color * 0.5f, glow * 0.5f); // exhausts
+        }
+        float pulse = 0.6f + 0.4f * std::sin(time * 4.f);
+        r.box(f.torso, {0.f, 0.55f, 0.44f}, {0.45f, 0.45f, 0.08f}, glow * 0.3f, glow * (1.2f * pulse + 2.f * tp));
+        break;
+    }
+    case EnemyType::WARDEN: {
+        vec3 g = e.enraged ? vec3{1.f, 0.1f, 0.25f} * (1.f + 2.5f * tp) : glow;
+        HumanoidLook L{1.7f, 0.6f, 0.8f, 0.3f, 1.75f, 1.9f, 1.1f, 0.62f, 1.9f, 0.55f,
+                       st.color, st.color * 0.6f, g};
+        ArmPose pose = ArmPose::SWING; float amt = 0.f;
+        if (e.attack == AttackKind::SLAM)   { pose = ArmPose::RAISED;   amt = smooth01(tp * 1.5f); }
+        if (e.attack == AttackKind::VOLLEY) { pose = ArmPose::AIM_BOTH; amt = smooth01(tp * 2.f); }
+        if (e.attack == AttackKind::SUMMON) { pose = ArmPose::RAISED;   amt = 0.6f * smooth01(tp * 2.f); }
+        auto f = humanoid(r, root, L, e.animPhase, std::max(stride, 0.35f), pose, amt);
+        vec3 gold{0.78f, 0.56f, 0.16f};
+        for (float s : {-1.f, 1.f}) {
+            r.box(f.torso, {s * 1.08f, 1.62f, 0.f}, {0.9f, 0.5f, 1.2f}, st.color * 1.4f);
+            r.box(f.torso, {s * 1.08f, 1.9f, 0.f}, {0.95f, 0.08f, 1.25f}, gold, gold * 0.3f);
+            r.box(s < 0.f ? f.armR : f.armL, {0.f, -2.1f, 0.f}, {0.8f, 0.7f, 0.8f}, gold * 0.6f);
+        }
+        float sway = std::sin(time * 1.3f) * 0.08f;
+        r.box(f.torso * RX(0.12f + sway), {0.f, -0.6f, -0.62f}, {1.7f, 2.9f, 0.08f}, vec3{0.2f, 0.03f, 0.1f}); // cape
+        float pulse = 0.6f + 0.4f * std::sin(time * 5.f);
+        r.box(f.torso, {0.f, 0.95f, 0.56f}, {0.6f, 0.6f, 0.1f}, g * 0.3f, g * (1.5f * pulse + 2.f * tp));
+        for (int i = 0; i < 5; ++i) {                                                // crown
+            float x = -0.24f + 0.12f * i;
+            float hgt = (i == 2) ? 0.45f : (i % 2 ? 0.3f : 0.22f);
+            r.box(f.head, {x, 0.64f + hgt * 0.5f, 0.f}, {0.07f, hgt, 0.07f}, gold, g * 0.8f);
+        }
+        for (int i = 0; i < 4; ++i) {                                                // orbiting shards
+            float a = time * 1.6f + i * 1.5708f;
+            mat4 m = T(e.position + vec3{std::cos(a) * 2.6f, 4.0f + std::sin(time * 2.f + i) * 0.3f, std::sin(a) * 2.6f})
+                   * RY(a * 2.f) * RX(0.785f) * S(vec3{0.35f * grow});
+            push(out, m, g * 0.3f, g * 1.8f);
+        }
+        break;
+    }
+    case EnemyType::RIPPER: {
+        float crouch = e.attack == AttackKind::LUNGE ? smooth01(tp * 2.f) : 0.f;
+        bool  spring = e.attack == AttackKind::LUNGE && e.telegraphTimer < 0.1f;
+        mat4 body = root * T({0.f, 0.62f - crouch * 0.22f, 0.f}) * RX(spring ? -0.25f : crouch * 0.12f);
+        vec3 armor = st.color, under = st.color * 0.45f;
+        r.box(body, {0.f, 0.f, 0.f},   {0.62f, 0.42f, 1.15f}, armor);
+        r.box(body, {0.f, 0.2f, -0.25f}, {0.55f, 0.24f, 0.5f}, armor * 0.85f);
+        for (int i = 0; i < 3; ++i)
+            r.box(body, {0.f, 0.3f, -0.38f + i * 0.28f}, {0.08f, 0.26f, 0.12f}, under, glow * 0.4f);
+        mat4 head = body * T({0.f, 0.1f, 0.6f}) * RX(-0.12f + crouch * 0.3f);
+        r.box(head, {0.f, 0.f, 0.22f},    {0.42f, 0.34f, 0.46f}, armor * 0.9f);
+        r.box(head, {0.f, -0.17f, 0.28f}, {0.36f, 0.1f, 0.4f},  under);
+        for (float s : {-1.f, 1.f})
+            r.box(head, {s * 0.12f, 0.06f, 0.46f}, {0.08f, 0.06f, 0.03f}, glow, glow * 2.5f);
+        float ph = e.animPhase * 1.4f;
+        const vec3 corners[4] = {{0.27f,-0.12f,0.42f},{-0.27f,-0.12f,0.42f},{0.27f,-0.12f,-0.42f},{-0.27f,-0.12f,-0.42f}};
+        const float offs[4] = {0.f, 3.14159f, 3.14159f, 0.f};
+        for (int i = 0; i < 4; ++i) {
+            mat4 leg = body * T(corners[i]) * RX(std::sin(ph + offs[i]) * 0.7f * stride - crouch * 0.4f);
+            r.box(leg, {0.f, -0.25f, 0.f}, {0.13f, 0.55f, 0.13f}, under);
+        }
+        for (float s : {-1.f, 1.f}) {                                                // blades
+            mat4 arm = body * T({s * 0.36f, 0.05f, 0.42f}) * RX(-0.35f - crouch * 0.9f) * RY(-s * 0.2f);
+            r.box(arm, {0.f, 0.f, 0.36f}, {0.06f, 0.1f, 0.78f}, glow * 0.4f, glow * (0.8f + 1.5f * crouch));
+        }
+        break;
+    }
+    case EnemyType::RAPTOR: {
+        bool diving = e.diveTimer > 0.f;
+        float bob = diving ? 0.f : std::sin(time * 3.f + e.animPhase * 0.1f) * 0.15f;
+        mat4 base = T(e.position + vec3{0.f, bob, 0.f}) * RY(e.yaw) * RX(e.pitch) * S(vec3{grow});
+        vec3 armor = st.color, under = st.color * 0.5f;
+        r.box(base, {0.f, 0.45f, 0.f},    {0.5f, 0.42f, 1.0f}, armor);
+        r.box(base, {0.f, 0.38f, 0.32f},  {0.44f, 0.36f, 0.42f}, armor * 1.15f);
+        mat4 head = base * T({0.f, 0.62f, 0.55f});
+        r.box(head, {0.f, 0.05f, 0.12f},  {0.34f, 0.3f, 0.36f}, armor * 0.9f);
+        r.box(head, {0.f, -0.02f, 0.42f}, {0.12f, 0.1f, 0.34f}, {0.9f, 0.6f, 0.15f}, vec3{0.25f, 0.12f, 0.f});
+        for (float s : {-1.f, 1.f})
+            r.box(head, {s * 0.13f, 0.08f, 0.22f}, {0.05f, 0.07f, 0.07f}, glow, glow * 2.5f);
+        r.box(head, {0.f, 0.25f, 0.f}, {0.06f, 0.18f, 0.3f}, under, glow * 0.6f);   // crest
+        mat4 tail = base * T({0.f, 0.5f, -0.5f}) * RX(0.2f + std::sin(e.animPhase * 0.5f) * 0.1f);
+        r.box(tail, {0.f, 0.f, -0.3f},  {0.45f, 0.06f, 0.6f}, armor * 0.8f);
+        r.box(tail, {0.f, 0.f, -0.62f}, {0.52f, 0.05f, 0.08f}, glow * 0.3f, glow * 1.2f);
+        float flap = diving ? 0.1f : std::sin(e.animPhase) * 0.65f + 0.1f;
+        float windFlap = e.attack == AttackKind::DIVE ? -0.5f * smooth01(tp * 2.f) : 0.f;   // rears up before diving
+        for (float s : {-1.f, 1.f}) {
+            mat4 w1 = base * T({s * 0.25f, 0.55f, 0.05f}) * (diving ? RY(-s * 0.9f) : mat4(1.f))
+                    * RZ(s * (flap + windFlap));
+            r.box(w1, {s * 0.5f, 0.f, 0.f},   {1.0f, 0.07f, 0.62f}, armor);
+            r.box(w1, {s * 0.5f, 0.f, 0.31f}, {1.0f, 0.08f, 0.06f}, glow * 0.3f, glow * 1.2f);
+            mat4 w2 = w1 * T({s * 1.0f, 0.f, 0.f}) * RZ(s * flap * 0.6f);
+            r.box(w2, {s * 0.45f, 0.f, -0.08f}, {0.9f, 0.05f, 0.48f}, armor * 0.8f);
+            r.box(w2, {s * 0.86f, 0.f, -0.1f},  {0.14f, 0.06f, 0.5f}, glow * 0.4f, glow * 1.5f);
+            r.box(base, {s * 0.12f, 0.12f, 0.1f}, {0.07f, 0.25f, 0.07f}, under, diving ? glow : vec3{0.f});
+        }
+        break;
+    }
+    case EnemyType::MITE: {
+        float hop = std::fabs(std::sin(e.animPhase)) * 0.04f;
+        mat4 body = root * T({0.f, 0.32f + hop, 0.f});
+        vec3 armor = st.color, under = st.color * 0.5f;
+        r.box(body, {0.f, 0.02f, -0.12f}, {0.5f, 0.32f, 0.5f}, armor);
+        r.box(body, {0.f, 0.f, 0.22f},    {0.32f, 0.24f, 0.26f}, under);
+        for (float s : {-1.f, 1.f})
+            r.box(body, {s * 0.08f, 0.04f, 0.36f}, {0.06f, 0.05f, 0.02f}, glow, glow * 2.f);
+        vec3 core = glow * 1.5f;
+        if (e.attack == AttackKind::FUSE)
+            core = std::fmod(e.age * 14.f, 1.f) > 0.5f ? vec3{3.f, 0.4f, 0.2f} : vec3{0.6f, 0.05f, 0.f};
+        r.box(body, {0.f, 0.21f, -0.1f}, {0.26f, 0.12f, 0.26f}, glow * 0.3f, core);
+        for (float s : {-1.f, 1.f})
+            for (int i = 0; i < 3; ++i) {
+                float lift = std::sin(e.animPhase + i * 2.1f + (s > 0.f ? 0.f : 1.f)) * 0.25f;
+                mat4 leg = body * T({s * 0.22f, 0.f, 0.18f - i * 0.2f})
+                         * RY(s * (0.5f - i * 0.5f)) * RZ(s * (-0.6f + lift));
+                r.box(leg, {s * 0.25f, 0.f, 0.f}, {0.5f, 0.06f, 0.06f}, under);
+            }
+        break;
+    }
+    default: break;
+    }
+}
+} // namespace rig
+
+using rig::buildEnemy;

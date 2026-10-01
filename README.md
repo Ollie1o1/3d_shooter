@@ -4,9 +4,9 @@
 
 **[▶ Play it in your browser](https://oliver-raczka.vercel.app/work/overdrive/#play)**, no install needed.
 
-![OVERDRIVE gameplay: dashing through the arena, firing the revolver and throwing a grenade](docs/overdrive.gif)
+![OVERDRIVE gameplay: Rippers charging across the Sunset Yard and breaking apart into their component blocks under shotgun fire](docs/overdrive.gif)
 
-A 3D arena shooter built with **SDL2**, **OpenGL 3.3 Core Profile**, and **GLM**. ULTRAKILL-inspired movement with grapple hook, dashing, multi-weapon combat, style scoring, wave-based progression, and post-processing effects.
+A 3D arena shooter built with **SDL2**, **OpenGL 3.3 Core Profile**, and **GLM**. ULTRAKILL-inspired movement with grapple hook, dashing, multi-weapon combat and style scoring, across **three themed arenas** (sunset yard, foundry, night-time reactor) of three waves each, **seven enemy types** built as animated block rigs, and a **boss fight** at the end.
 
 Builds and runs on **macOS**, **Windows** (via MSYS2), and **in the browser** (WebAssembly + WebGL2 via Emscripten). It also builds and passes its physics tests on **Linux** (Ubuntu 24.04), though it hasn't been play-tested on a Linux desktop yet.
 
@@ -54,10 +54,12 @@ Shaders and assets are loaded relative to the binary, so `./shooter` can be laun
 ```sh
 make        # compile → ./shooter
 make run    # compile + run
-make test   # headless physics tests (no window needed)
+make test   # headless tests: physics, level data, AI, a simulated full run
 make clean  # delete binaries
 
-./shooter --play   # skip the main menu and start a run
+./shooter --play                 # skip the main menu and start a run
+./shooter --arena 3 --wave 3     # jump straight to an arena / wave (here: the boss)
+./shooter --god                  # take no damage (for recording footage)
 ```
 
 ### Browser (WebAssembly)
@@ -67,7 +69,7 @@ The same C++ compiles to WebAssembly with [Emscripten](https://emscripten.org), 
 ```sh
 source ~/emsdk/emsdk_env.sh     # once per shell
 make web                        # → web/dist/ (≈1.5 MB: wasm + preloaded shaders/sounds)
-python3 -m http.server -d web/dist 8000   # open http://localhost:8000 (add ?play to skip the menu)
+python3 -m http.server -d web/dist 8000   # open http://localhost:8000 (?play skips the menu; ?arena=3&wave=3 jumps to the boss)
 ```
 
 What the port needed (all behind `#ifdef __EMSCRIPTEN__`, so the desktop build is unchanged):
@@ -105,11 +107,10 @@ make clean        # delete binary
 | 1 / Scroll Up | Revolver |
 | 2 / Scroll Down | Shotgun |
 | G | Throw grenade |
-| R | Reload / Restart (on death/win) |
+| R | Reload / Retry the arena (on death) |
 | F | Parry / Projectile boost |
-| E | Interact |
 | Left Ctrl / C | Crouch / Ground slam |
-| Enter | Restart (on death/win) |
+| Enter | New run (on death/win) |
 | Escape / P | Pause / Resume (Escape quits to menu from death/win screens; in a browser, Escape releases the mouse and pauses) |
 
 ---
@@ -132,22 +133,32 @@ make clean        # delete binary
 - Sliding with momentum boost
 
 ### Enemies
-- **GRUNT** — wide, tough (50 HP), patrol-shooter at 14-22m range
-- **SHOOTER** — tall and thin (35 HP), maintains distance, longest telegraph
-- **STALKER** — low and fast (25 HP), aggressive strafing, closes in and lunges for a telegraphed melee hit (with knockback)
-- **FLYER** — small diamond shape (40 HP), hovers and orbits with bobbing animation
-- Each type has a distinct silhouette (per-type scaling and rotation)
-- Health bars appear above damaged enemies
-- Death spawns colored cube debris particles
+Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from its AI state each frame: legs swing with the walk cycle, wings flap, and arms come up to aim or slam during a wind-up, so you can read an attack before it lands. Each type teaches a different answer:
 
-### Progression
-- **Wave system** — each room has 3 waves of increasing difficulty
-  - Wave 1: mostly GRUNTs
-  - Wave 2: mixed GRUNTs, SHOOTERs, STALKERs
-  - Wave 3: harder mix with more STALKERs and FLYERs
-- 3-second pause between waves with "WAVE N" banner
-- Spawn pads pulse brighter when the next wave is incoming
-- Room door slides open when all waves are cleared
+| Enemy | Looks like | What it does | Answer |
+|-------|------------|--------------|--------|
+| **Husk** | Humanoid rifleman, glowing visor | Holds mid range, strafes, fires slow orbs | Parry the orbs back (F) |
+| **Ripper** | Low four-legged hound with blades | Zig-zags in, crouches, lunges | Dash out of the lunge |
+| **Sentinel** | Tall cyclops sniper | Paints you with a laser, then fires a fast 3-round burst | Break line of sight while the laser is up |
+| **Raptor** | Bird with a 4 m flapping wingspan | Circles overhead shooting, then dives at you | Watch the sky |
+| **Brute** | 2.9 m heavy with a glowing chest core | Walks you down and slams the ground; lobs at range | Jump the shockwave |
+| **Mite** | Small spider bomb | Rushes in and detonates | Shoot it early: its blast hurts its friends |
+| **Warden** | 4.6 m crowned boss | Volleys, slams, summons Mites and Rippers; enrages at half health | Everything above |
+
+- Ground enemies steer around cover with feeler probes (no pathfinding; the arenas are open by design) and keep apart with soft separation
+- Gunners check line of sight before firing and sidestep out from behind cover when blocked
+- Enemies materialise in a column of light (untargetable for 0.9 s) and break apart into their blocks when killed
+- Health orbs drop from kills (Brutes always drop three) and home in when you're close
+- Headshots on humanoids deal 1.5x damage
+
+### Arenas and waves
+- **Three arenas**, each with its own lighting, fog and sky: the **Sunset Yard** (open air, synthwave sun, side platforms), **the Foundry** (roofed, lava channels you can lure enemies into, a furnace to climb, catwalks), and **the Core** (night sky, a reactor ringed by pillars, corner perches)
+- Each arena has three waves; the director keeps at most 6–10 enemies on the field and trickles the rest in as you kill, spawning them away from you
+- New enemy types get a title card the first time they appear, with a one-line tip on how to beat them
+- Clearing an arena opens its gate and points a waypoint at it; walking into the next arena closes the gate behind you
+- **Jump pads** launch you onto platforms; the lighting blends between arenas as you walk the corridor
+- The last three enemies of a wave get on-screen markers so you never hunt for a straggler
+- Dying offers **retry this arena** (R) or a new run (Enter); enemy damage scales up from 70% in the first arena to 110% in the last
 
 ### Style System
 - ULTRAKILL-inspired style meter (D → C → B → A → S → SSS)
@@ -157,6 +168,8 @@ make clean        # delete binary
 
 ### Visuals
 - **Procedural textures** — grid concrete floor, brick walls, brushed metal ceiling (no external image files)
+- **Procedural sky** — gradient, sun or moon (with synthwave bands in the Sunset Yard), stars and two mountain ridges, computed per pixel from the view direction
+- Distance fog and hemisphere ambient per arena; self-lit neon trim; ACES filmic tone mapping
 - World-space UV mapping for consistent texture tiling
 - Bloom post-processing (bright pass → gaussian blur → composite)
 - **CRT filter** (optional, toggle in settings) — barrel distortion, chromatic aberration, scanlines, vignette
@@ -167,14 +180,14 @@ make clean        # delete binary
 - Dithered grapple rope rendering
 
 ### Audio
-- **Procedural sound effects** — synthesized in Python (`tools/gen_sfx.py`), not external recordings; covers jumps, landings, dashing, slams, both weapons, reloads, grapple, hits, kills, parries, enemy telegraphs, and explosions
+- **Procedural sound effects** — synthesized in Python (`tools/gen_sfx.py`), not external recordings; covers jumps, landings, dashing, slams, both weapons, reloads, grapple, hits, kills, parries, enemy telegraphs, explosions, wave stingers, spawns and pickups
 - Regenerate/tweak by editing the generator and running `python3 tools/gen_sfx.py`
 
 ### Game Flow
-- **Win screen** — "ARENA CLEARED" with stats (time, kills, accuracy, letter grade S/A/B/C/D)
-- **Death screen** — "YOU DIED" with red vignette and stats
+- **Victory screen** — after the Warden: time, kills, accuracy, deaths and a letter grade (S/A/B/C/D)
+- **Death screen** — where you died, with retry-arena and new-run options
 - **Pause menu** — Escape mid-run pauses (Resume / Quit to Menu) instead of ending the run
-- Quick restart with R or Enter from either screen
+- R retries the current arena; Enter starts a new run
 - Settings menu: FOV, sensitivity, audio volume, FPS cap, show FPS, CRT filter
 - Settings persist across launches (`settings.cfg`, written next to the binary)
 
@@ -191,11 +204,14 @@ make clean        # delete binary
 │   ├── GameplayState.h       # core game loop: physics, combat, rendering
 │   ├── Player.h              # kinematic character controller (Quake-style)
 │   ├── Camera.h              # view/projection, mouselook
-│   ├── Enemy.h               # enemy types, AI, and instanced renderer
+│   ├── Enemy.h               # enemy roster: stats + AI (no OpenGL, unit-tested)
+│   ├── EnemyModel.h          # each enemy's animated box rig (no OpenGL)
+│   ├── BoxRenderer.h         # one instanced draw for every box-built thing
 │   ├── Projectile.h          # bullet/projectile system
 │   ├── GrappleHook.h         # grapple hook physics
 │   ├── StyleSystem.h         # style rank/score tracking
-│   ├── Level.h               # map geometry (AABB walls), room/door management
+│   ├── Level.h               # the three arenas, corridors, doors, pads, lava, themes
+│   ├── WaveDirector.h        # arena → wave → arena state machine (no OpenGL)
 │   ├── Mesh.h                # VAO/VBO wrapper
 │   ├── ShaderProgram.h       # GLSL compile/link, uniform helpers
 │   ├── PostProcess.h         # bloom + optional CRT post-processing
@@ -207,8 +223,8 @@ make clean        # delete binary
 │   ├── Settings.h            # game settings (FOV, sensitivity, CRT, etc.)
 │   ├── Interactable.h        # trigger volumes / interactable objects
 │   ├── shader.vert/frag      # world geometry shader (Blinn-Phong, point lights)
-│   ├── enemy_inst.vert/frag  # instanced enemy shader
-│   ├── skybox.vert/frag      # skybox gradient shader
+│   ├── box_inst.vert/frag    # instanced box shader (enemies, debris, doors, pads…)
+│   ├── skybox.vert/frag      # procedural sky (sun/moon, stars, mountains)
 │   ├── ui.vert/frag          # HUD shader
 │   ├── tracer.vert/frag      # bullet tracer shader
 │   ├── particle.vert/frag    # coloured, distance-scaled particle points
@@ -219,10 +235,10 @@ make clean        # delete binary
 │   ├── bloom_blur.frag       # bloom gaussian blur pass
 │   └── bloom_composite.frag  # bloom composite pass
 ├── assets/
-│   ├── level.txt             # level geometry (hot-editable)
 │   └── sfx/                  # procedurally-generated sound effects (.wav)
 ├── tests/
-│   └── test_physics.cpp      # headless player-physics tests (`make test`)
+│   ├── test_physics.cpp      # headless player-physics tests
+│   └── test_game.cpp         # level, AI, rigs and a full simulated run (`make test`)
 ├── tools/
 │   └── gen_sfx.py            # synthesizes assets/sfx/*.wav — no external audio files
 ├── web/
@@ -262,16 +278,17 @@ Momentum is preserved in the air, so strafe-jumping can gain a small speed boost
 ### Rendering pipeline
 
 Each frame:
-1. Render scene to an offscreen framebuffer (split into floor/wall/ceiling draws with per-surface procedural textures)
-2. Bloom pass — extract bright regions → gaussian blur → composite
-3. Optional CRT pass — barrel distortion, chromatic aberration, scanlines
-4. Render HUD, win/death screens, and weapon view model on top
+1. Render the procedural sky, then the static level (one draw per texture: floors/tops, sides, undersides, neon)
+2. Gather everything built from boxes — enemies, debris, projectiles, doors, jump pads, pickups, the reactor — into one instanced draw
+3. Bloom pass — extract bright regions → gaussian blur → composite with ACES tone mapping
+4. Optional CRT pass — barrel distortion, chromatic aberration, scanlines
+5. Render HUD (objective line, boss bar, waypoints, title cards) and screens on top
 
-World geometry is batched into as few draw calls as possible. Enemies use GPU instancing (one `glDrawElementsInstanced` call for all enemies).
+World geometry is batched into as few draw calls as possible. Everything dynamic is a unit cube instance, so a wave of enemies plus their debris is still one `glDrawElementsInstanced` call.
 
 ### Collision
 
-The player is an AABB. Each wall/platform is also an AABB. Collision is resolved by finding the axis of minimum penetration and pushing the player out along it. A spatial grid accelerates queries so only nearby walls are tested.
+The player is an AABB. Each wall/platform is also an AABB. Collision is resolved by finding the axis of minimum penetration and pushing the player out along it. A spatial grid accelerates queries so only nearby walls are tested. Perimeter walls are low enough to stand on; what keeps you in the fight is a zone check that only allows the current arena (plus the corridor and next arena once it's cleared).
 
 ---
 
@@ -285,7 +302,7 @@ All knobs are public members of `Player` in `Player.h`:
 | `gravity` | -24.0 | Fall acceleration |
 | `jumpForce` | 8.5 | Jump height |
 | `acceleration` | 80.0 | Ground responsiveness |
-| `airAcceleration` | 12.0 | Mid-air steering |
+| `airAcceleration` | 42.0 | Mid-air steering |
 | `friction` | 10.0 | Ground deceleration |
 
 ---
@@ -294,13 +311,15 @@ All knobs are public members of `Player` in `Player.h`:
 
 ### Add a wall / platform
 
-In `Level.h`, add an entry inside `buildLevel()`, or edit `assets/level.txt`:
+In `Level.h`, inside the arena's block in `buildLevel()`:
 
 ```cpp
-r.walls.push_back(W({{minX, minY, minZ}, {maxX, maxY, maxZ}}, ArenaColor::Cover));
+wall(x0, y0, z0, x1, y1, z1, color);   // solid, rendered
+prop(x0, y0, z0, x1, y1, z1, color);   // rendered only
+neon(x0, y0, z0, x1, y1, z1, color);   // self-lit trim
 ```
 
-It will appear in the world visually and be solid for collision — no other changes needed.
+`make test` then checks that no spawn point ended up inside it and that every jump pad still lands on its platform.
 
 ### Add a weapon
 
@@ -313,11 +332,10 @@ In `GameplayState.h`:
 
 ### Add an enemy type
 
-1. Add a value to `EnemyType` in `Enemy.h`.
-2. Handle movement/attack logic in `Enemy::update()`.
-3. Set health in the `Enemy` constructor switch.
-4. Add per-type scaling in `EnemyRenderer::draw()`.
-5. Spawn it in `spawnWaveEnemies()` or directly: `enemies.push_back(Enemy(EnemyType::YOURTYPE, pos))`.
+1. Add a value to `EnemyType` and a row to the stats table in `Enemy.h` (health, size, speed, colours, tip text).
+2. Write its `think…()` behaviour; report attacks through `ev` (shots, melee, slam…).
+3. Build its rig in `buildEnemy()` in `EnemyModel.h`.
+4. Add it to a wave in `Level.h`.
 
 ---
 

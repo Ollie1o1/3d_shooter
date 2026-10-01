@@ -1,12 +1,12 @@
 #version 330 core
 
-// Per-vertex (mesh geometry — same cube for every enemy)
+// Per-vertex (mesh geometry — the same unit cube for every instance)
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec2 aTexCoord;
 layout(location = 2) in vec3 aNormal;
 // location 3 (per-vertex color) unused — color comes from instance data
 
-// Per-instance (divisor=1, one record per enemy, uploaded each frame)
+// Per-instance (divisor=1, one record per box, uploaded each frame)
 layout(location = 4) in mat4 instanceModel;    // occupies locations 4, 5, 6, 7
 layout(location = 8) in vec3 instanceColor;
 layout(location = 9) in vec3 instanceEmissive;

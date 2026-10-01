@@ -66,7 +66,8 @@ SRC     := src/main.cpp
 HEADERS := src/gl.h \
            src/Camera.h src/Player.h src/Mesh.h src/ShaderProgram.h \
            src/GameState.h src/MenuState.h src/GameplayState.h \
-           src/Enemy.h src/Projectile.h src/GrappleHook.h \
+           src/Enemy.h src/EnemyModel.h src/BoxRenderer.h src/WaveDirector.h \
+           src/Projectile.h src/GrappleHook.h \
            src/StyleSystem.h src/UIRenderer.h src/PostProcess.h \
            src/Level.h src/AudioSystem.h src/ViewModel.h src/Interactable.h \
            src/Settings.h src/PixelFont.h
@@ -81,10 +82,14 @@ $(TARGET): $(SRC) $(HEADERS)
 run: all
 	./$(TARGET)
 
-# Headless physics tests — no window or GL context needed
-test: tests/test_physics.cpp src/Player.h src/Camera.h
+# Headless tests — no window or GL context needed: player physics, plus the
+# enemy AI, wave director and level data driven through a simulated run
+test: tests/test_physics.cpp tests/test_game.cpp src/Player.h src/Camera.h \
+      src/Enemy.h src/EnemyModel.h src/Level.h src/WaveDirector.h
 	$(CXX) $(CXXFLAGS) tests/test_physics.cpp -o tests/test_physics $(STDLIB)
+	$(CXX) $(CXXFLAGS) tests/test_game.cpp -o tests/test_game $(STDLIB)
 	./tests/test_physics
+	./tests/test_game
 
 # Browser build (WebGL2 + WebAssembly) → web/dist. Needs Emscripten on PATH:
 #   source ~/emsdk/emsdk_env.sh && make web && python3 -m http.server -d web/dist
@@ -103,5 +108,5 @@ web: $(SRC) $(HEADERS) web/index.html
 	cp web/index.html $(WEB_OUT)/
 
 clean:
-	rm -f shooter shooter.exe tests/test_physics
+	rm -f shooter shooter.exe tests/test_physics tests/test_game
 	rm -rf build web/dist

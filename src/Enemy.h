@@ -1,507 +1,627 @@
 #pragma once
 // =============================================================================
-// Enemy.h — AI types, per-enemy state machine, and batch renderer.
+// Enemy.h — the enemy roster: per-type stats and AI. No OpenGL in here, so the
+// AI runs in the headless tests (tests/test_game.cpp). Models are built from
+// the same state in EnemyModel.h.
 //
-// ENEMY TYPES (add new ones by extending EnemyType and the switch blocks):
-//   GRUNT   — 50 hp, charges the player, melee threat
-//   SHOOTER — 35 hp, keeps distance and fires slow projectiles (parryable)
-//   STALKER — 25 hp, fast, strafes sideways, rushes when close
+// ROSTER (each one teaches the player a different answer):
+//   HUSK     — humanoid rifleman. Keeps mid range, fires slow parryable orbs.
+//   RIPPER   — low four-legged hound. Zig-zags in, crouches, lunges. Dash away.
+//   SENTINEL — tall sniper. Paints you with a laser, then fires a fast burst.
+//              Break line of sight while the laser is up.
+//   RAPTOR   — bird. Circles overhead shooting, then dives at you.
+//   BRUTE    — heavy. Walks you down and slams the ground; jump the shockwave.
+//   MITE     — small spider bomb. Rushes and detonates; shoot it early and the
+//              blast hurts its friends instead.
+//   WARDEN   — the final boss: volleys, slams, and summons adds; enrages at 50%.
 //
-// TO ADD A NEW ENEMY TYPE:
-//   1. Add value to EnemyType enum.
-//   2. Set its health in the Enemy constructor switch (health = ...).
-//   3. Add a case in Enemy::update() — implement movement + attack logic.
-//      Return true from update() when the enemy fires a projectile.
-//      The caller (GameplayState) will create the projectile at firePos.
-//   4. Optionally set a distinct emissiveColor / baseColor in EnemyRenderer::draw().
-//
-// DAMAGE / HEALING:
-//   Call enemy.takeDamage(amount).  It auto-sets state to CHASE and marks the
-//   enemy dead when hp reaches 0.  Lifesteal and style rewards are applied by
-//   GameplayState after checking the return value of the projectile update.
-//
-// COLLISION:
-//   Enemies reuse the same AABB push-out logic as the player (resolveAABB).
-//   getAABB() returns the current bounding box — used by ray tests and
-//   ProjectileSystem for hit detection.
+// An enemy reports what it did this tick through `ev` (shots fired, melee hit,
+// slam, detonation, summons). GameplayState turns those into projectiles,
+// damage, particles and sound, so the AI stays free of rendering and audio.
 // =============================================================================
 #include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <vector>
-#include "Player.h"  // also brings in SpatialGrid, AABB, Wall
-#include "Mesh.h"
-#include "ShaderProgram.h"
 #include <vector>
 #include <cmath>
 #include <cstdlib>
+#include <algorithm>
+#include "Player.h"  // AABB, Wall, SpatialGrid
 
-enum class EnemyType  { GRUNT, SHOOTER, STALKER, FLYER };
-enum class EnemyState { IDLE, CHASE, ATTACK, DEAD };
+enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, WARDEN, COUNT };
+enum class EnemyState { SPAWNING, ACTIVE, DEAD };
+enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY, SUMMON };
+
+struct EnemyStats {
+    const char* name;
+    float     health;
+    float     radius, height;   // hitbox: feet at position, centred in XZ
+    float     speed;            // m/s
+    float     telegraph;        // default wind-up before an attack lands
+    float     attackEvery;      // seconds between attacks
+    bool      flying;
+    glm::vec3 color;            // armour colour (also hit/death particle tint)
+    glm::vec3 glow;             // eyes / core
+    glm::vec3 shotColor;
+    const char* hint;           // shown the first time the type appears
+};
+
+inline const EnemyStats& statsOf(EnemyType t) {
+    static const EnemyStats S[] = {
+        {"HUSK",     60.f, 0.45f, 1.95f, 3.6f, 0.50f, 2.4f, false,
+         {0.70f,0.26f,0.18f}, {1.0f,0.78f,0.20f}, {1.0f,0.50f,0.12f},
+         "HUSKS FIRE SLOW ORBS - PRESS F AS ONE ARRIVES TO PARRY IT"},
+        {"RIPPER",   40.f, 0.55f, 1.10f, 7.6f, 0.34f, 1.1f, false,
+         {0.80f,0.64f,0.14f}, {1.0f,0.95f,0.25f}, {1.0f,0.9f,0.3f},
+         "RIPPERS CROUCH BEFORE THEY LUNGE - DASH OUT OF THE WAY"},
+        {"SENTINEL", 55.f, 0.45f, 2.60f, 3.0f, 0.85f, 3.4f, false,
+         {0.20f,0.32f,0.62f}, {0.25f,0.95f,1.0f}, {0.35f,0.9f,1.0f},
+         "SENTINELS SNIPE - BREAK THEIR LASER BEFORE THEY FIRE"},
+        {"RAPTOR",   40.f, 1.00f, 0.90f, 7.5f, 0.42f, 1.9f, true,
+         {0.40f,0.16f,0.52f}, {1.0f,0.30f,0.85f}, {0.95f,0.35f,1.0f},
+         "RAPTORS CIRCLE AND DIVE - WATCH THE SKY"},
+        {"BRUTE",   280.f, 0.95f, 2.90f, 2.8f, 0.95f, 2.6f, false,
+         {0.58f,0.24f,0.17f}, {1.0f,0.48f,0.06f}, {1.0f,0.50f,0.10f},
+         "BRUTES SLAM THE GROUND - JUMP OVER THE SHOCKWAVE"},
+        {"MITE",     14.f, 0.38f, 0.60f, 7.2f, 0.55f, 0.0f, false,
+         {0.18f,0.30f,0.16f}, {0.40f,1.0f,0.30f}, {0.40f,1.0f,0.30f},
+         "MITES EXPLODE - SHOOT THEM EARLY AND THE BLAST HITS THEIR FRIENDS"},
+        {"WARDEN", 2000.f, 1.60f, 4.60f, 2.4f, 0.85f, 3.0f, false,
+         {0.34f,0.27f,0.40f}, {1.0f,0.16f,0.62f}, {1.0f,0.22f,0.68f},
+         "THE WARDEN"},
+    };
+    return S[(int)t];
+}
+
+// Everything an enemy did this tick. Cleared at the top of every update().
+struct EnemyEvents {
+    static constexpr int MAX_SHOTS = 16;
+    bool      telegraphStarted = false;
+    int       shots = 0;
+    glm::vec3 shotOrigin{0.f};
+    glm::vec3 shotDir[MAX_SHOTS];
+    float     shotSpeed = 16.f, shotDamage = 10.f, shotSize = 1.f;
+    bool      meleeHit = false;   float meleeDamage = 0.f;
+    bool      slam = false;       float slamRadius = 0.f, slamDamage = 0.f;
+    bool      detonated = false;  // MITE blew itself up next to the player
+    int       summonMites = 0, summonRippers = 0;
+    bool      enraged = false;    // WARDEN crossed 50% this tick
+};
+
+// What an enemy can sense each tick.
+struct EnemyWorld {
+    glm::vec3 playerEye{0.f};
+    glm::vec3 playerFeet{0.f};
+    const Wall* walls = nullptr;
+    int  wallCount = 0;
+    const SpatialGrid* grid = nullptr;
+    AABB bounds{{-1e9f,-1e9f,-1e9f},{1e9f,1e9f,1e9f}}; // arena interior; enemies stay inside
+};
+
+// Ray vs AABB: distance along the ray to the first hit, or -1 on a miss.
+inline float rayBoxHit(glm::vec3 o, glm::vec3 d, const AABB& b) {
+    glm::vec3 invD{1.f/(d.x+1e-9f), 1.f/(d.y+1e-9f), 1.f/(d.z+1e-9f)};
+    glm::vec3 t0 = (b.min-o)*invD, t1 = (b.max-o)*invD;
+    glm::vec3 tMin = glm::min(t0,t1), tMax = glm::max(t0,t1);
+    float tEnter = std::max({tMin.x,tMin.y,tMin.z});
+    float tExit  = std::min({tMax.x,tMax.y,tMax.z});
+    if (tEnter > tExit || tExit < 0.f) return -1.f;
+    return tEnter > 0.f ? tEnter : tExit;
+}
+
+inline float frand(float lo, float hi) { return lo + (hi - lo) * (float)(rand() % 10001) / 10000.f; }
 
 struct Enemy {
     EnemyType  type;
-    EnemyState state = EnemyState::IDLE;
+    EnemyState state = EnemyState::SPAWNING;
     glm::vec3  position;
     glm::vec3  velocity{0.f};
-    float      health;
-    float      maxHealth;
+    float      yaw   = 0.f;   // radians; model faces +Z at yaw 0
+    float      pitch = 0.f;   // RAPTOR only: nose-down while diving
+    float      health, maxHealth;
     bool       alive = true;
-    float      attackTimer  = 0.f;
-    float      strafeTimer  = 0.f;
-    float      strafeDir    = 1.f;
-    int        invincFrames = 0;
-    float      hitFlashTimer     = 0.f;  // > 0 while flashing white after taking damage
-    float      hoverY            = 0.f;  // target hover altitude for FLYER type
 
-    // Telegraph: wind-up period before firing (provides a parry window).
-    float      telegraphTimer    = 0.f;  // counts DOWN; > 0 means winding up
-    float      telegraphDuration = 0.4f; // set per-type in constructor
-    bool       telegraphJustStarted = false; // true for exactly one tick when wind-up begins
+    static constexpr float SPAWN_TIME = 0.9f;
+    float spawnTimer = SPAWN_TIME;   // counts down; untargetable while > 0
 
-    // Melee (STALKER): the wind-up ends in a lunge instead of a projectile.
-    bool       meleeWindup = false;  // current telegraph is a melee wind-up
-    bool       meleeHit    = false;  // true for exactly one tick when a lunge connects
-    static constexpr float MELEE_RANGE  = 2.6f;
-    static constexpr float MELEE_DAMAGE = 12.f;
+    // Attack cycle
+    AttackKind attack = AttackKind::NONE;   // the attack currently winding up / running
+    float telegraphTimer = 0.f, telegraphDuration = 0.f;
+    float attackTimer    = 0.f;
+    int   attackCount    = 0;
+    float recoverTimer   = 0.f;   // after a lunge/dive: back off before re-engaging
+    int   burstLeft      = 0;
+    float burstTimer     = 0.f;
+    float diveTimer      = 0.f;
+    glm::vec3 diveDir{0.f};
 
-    static constexpr float FLOOR_Y = 0.f;
-    static constexpr float RADIUS  = 0.5f;
-    static constexpr float HEIGHT  = 1.8f;
+    // Movement
+    float strafeTimer = 0.f, strafeDir = 1.f;
+    float avoidSign   = 1.f, avoidTimer = 0.f;
+    float noLosTimer  = 0.f;      // > 0: reposition to find a clear shot
+    float hoverY      = 8.f;
+    float orbitRadius = 12.f;
+
+    // Animation / feedback
+    float animPhase     = 0.f;   // walk / flap cycle
+    float moveSpeed     = 0.f;   // horizontal speed this tick
+    float hitFlashTimer = 0.f;
+    float age           = 0.f;
+
+    bool  enraged       = false; // WARDEN phase two
+    bool  killedByBlast = false; // MITE: set when it detonated itself (not shot)
+
+    EnemyEvents ev;
 
     Enemy(EnemyType t, glm::vec3 pos) : type(t), position(pos) {
-        switch (t) {
-            case EnemyType::GRUNT:
-                health = maxHealth = 50.f;
-                telegraphDuration  = 0.45f;
-                break;
-            case EnemyType::SHOOTER:
-                health = maxHealth = 35.f;
-                telegraphDuration  = 0.55f; // longest — most parry time
-                break;
-            case EnemyType::STALKER:
-                health = maxHealth = 25.f;
-                telegraphDuration  = 0.30f; // fast and dangerous
-                break;
-            case EnemyType::FLYER:
-                health = maxHealth = 40.f;
-                telegraphDuration  = 0.35f;
-                hoverY = pos.y > 1.f ? pos.y : 10.f;
-                break;
+        const EnemyStats& s = statsOf(t);
+        health = maxHealth = s.health;
+        attackTimer = frand(0.f, s.attackEvery * 0.6f);   // desync the squad
+        strafeDir   = (rand() & 1) ? 1.f : -1.f;
+        animPhase   = frand(0.f, 6.28f);
+        if (s.flying) {
+            hoverY      = pos.y > 2.f ? pos.y : 8.f;
+            orbitRadius = frand(9.f, 15.f);
         }
     }
 
-    void takeDamage(float dmg) {
-        if (!alive || invincFrames > 0) return;
+    const EnemyStats& stats() const { return statsOf(type); }
+    float radius() const { return stats().radius; }
+    float height() const { return stats().height; }
+    bool  targetable() const { return alive && state == EnemyState::ACTIVE; }
+    float telegraphProgress() const {
+        return telegraphTimer > 0.f && telegraphDuration > 0.f
+             ? 1.f - telegraphTimer / telegraphDuration : 0.f;
+    }
+
+    AABB getAABB() const {
+        float r = radius();
+        return { position + glm::vec3{-r, 0.f, -r}, position + glm::vec3{r, height(), r} };
+    }
+
+    // Returns true if this hit killed the enemy.
+    bool takeDamage(float dmg) {
+        if (!targetable()) return false;
         health -= dmg;
         hitFlashTimer = 0.12f;
         if (health <= 0.f) {
             health = 0.f;
             alive  = false;
             state  = EnemyState::DEAD;
+            return true;
         }
-        state = EnemyState::CHASE;
+        if (type == EnemyType::WARDEN && !enraged && health < maxHealth * 0.5f) {
+            enraged    = true;
+            ev.enraged = true;
+        }
+        return false;
     }
 
-    bool update(float dt, const glm::vec3& playerPos,
-                const Wall* walls, int wallCount,
-                const SpatialGrid* grid = nullptr) {
-        if (!alive) return false;
-        if (invincFrames > 0) --invincFrames;
-        if (hitFlashTimer     > 0.f) hitFlashTimer -= dt;
+    void update(float dt, const EnemyWorld& w) {
+        ev = EnemyEvents{};
+        if (!alive) return;
+        age += dt;
+        if (hitFlashTimer > 0.f) hitFlashTimer -= dt;
 
-        telegraphJustStarted = false; // consumed by GameplayState each tick
-        meleeHit             = false;
+        if (state == EnemyState::SPAWNING) {
+            spawnTimer -= dt;
+            if (spawnTimer <= 0.f) { spawnTimer = 0.f; state = EnemyState::ACTIVE; }
+            // Face the player while materialising
+            glm::vec3 d = w.playerFeet - position;
+            if (glm::length(glm::vec2(d.x, d.z)) > 0.01f) yaw = std::atan2(d.x, d.z);
+            return;
+        }
 
-        bool fireProjectile = false;
-
-        // Tick telegraph wind-up; fires the projectile when it expires.
+        bool resolve = false;   // telegraph ran out this tick
         if (telegraphTimer > 0.f) {
             telegraphTimer -= dt;
-            if (telegraphTimer <= 0.f) {
-                telegraphTimer  = 0.f;
-                fireProjectile  = true;
-            }
+            if (telegraphTimer <= 0.f) { telegraphTimer = 0.f; resolve = true; }
         }
-        glm::vec3 toPlayer = playerPos - position;
-        float dist = glm::length(toPlayer);
-        glm::vec3 dirToPlayer = dist > 0.001f ? toPlayer / dist : glm::vec3{1,0,0};
-
-        // A melee wind-up resolves as a hit (if still in reach), never a projectile.
-        // Horizontal distance: the player's camera sits ~1.7 m above enemy feet.
-        if (fireProjectile && meleeWindup) {
-            fireProjectile = false;
-            meleeWindup    = false;
-            glm::vec2 flat{toPlayer.x, toPlayer.z};
-            if (glm::length(flat) < MELEE_RANGE && std::fabs(toPlayer.y) < 3.f)
-                meleeHit = true;
-        }
-
-        // Velocity is SET directly each tick (not accumulated) to prevent speed runaway.
-        // Only gravity and knockback are accumulated. Horizontal speed caps are stable.
-        // Perpendicular strafe axis used by GRUNT and STALKER
-        glm::vec3 strafeAxis = glm::normalize(glm::vec3{-dirToPlayer.z, 0.f, dirToPlayer.x});
+        if (recoverTimer > 0.f) recoverTimer -= dt;
+        if (noLosTimer   > 0.f) noLosTimer   -= dt;
+        if (avoidTimer   > 0.f) avoidTimer   -= dt;
 
         switch (type) {
-            case EnemyType::GRUNT: {
-                // Patrol-shooter: wanders with slow strafe movement and fires
-                // when the player is in range. Keeps 14-22 m distance — never rushes.
-                if (dist < 22.f) state = EnemyState::CHASE;
-                if (dist > 30.f) state = EnemyState::IDLE;
-                if (state == EnemyState::CHASE) {
-                    strafeTimer -= dt;
-                    if (strafeTimer <= 0.f) {
-                        strafeTimer = 2.0f + (float)(rand() % 150) / 60.f;
-                        strafeDir  *= -1.f;
-                    }
-                    if (dist < 14.f) {
-                        // Too close — back away while strafing sideways
-                        glm::vec3 mv = glm::normalize(-dirToPlayer + strafeAxis * 0.7f * strafeDir);
-                        velocity.x = mv.x * 3.0f;
-                        velocity.z = mv.z * 3.0f;
-                    } else if (dist > 22.f) {
-                        // Too far — close in just enough to be in range
-                        velocity.x = dirToPlayer.x * 2.5f;
-                        velocity.z = dirToPlayer.z * 2.5f;
-                    } else {
-                        // In preferred range — strafe sideways only, no approach
-                        velocity.x = strafeAxis.x * strafeDir * 2.5f;
-                        velocity.z = strafeAxis.z * strafeDir * 2.5f;
-                    }
-                    attackTimer += dt;
-                    if (attackTimer >= 2.2f && telegraphTimer <= 0.f) {
-                        attackTimer          = 0.f;
-                        telegraphTimer       = telegraphDuration;
-                        telegraphJustStarted = true;
-                    }
-                }
-                break;
-            }
-            case EnemyType::SHOOTER: {
-                // Keeps 10-16 m distance, fires every 2.5 s, backs off if too close.
-                if (dist < 18.f) state = EnemyState::CHASE;
-                if (dist > 24.f) state = EnemyState::IDLE;
-                if (state == EnemyState::CHASE) {
-                    if (dist < 10.f) {
-                        velocity.x = -dirToPlayer.x * 3.5f;  // back off
-                        velocity.z = -dirToPlayer.z * 3.5f;
-                    } else if (dist > 16.f) {
-                        velocity.x = dirToPlayer.x * 2.5f;   // close in slowly
-                        velocity.z = dirToPlayer.z * 2.5f;
-                    } else {
-                        velocity.x *= std::pow(0.01f, dt);    // hold position
-                        velocity.z *= std::pow(0.01f, dt);
-                    }
-                    attackTimer += dt;
-                    if (attackTimer >= 2.5f && telegraphTimer <= 0.f) {
-                        attackTimer          = 0.f;
-                        telegraphTimer       = telegraphDuration;
-                        telegraphJustStarted = true;
-                    }
-                }
-                break;
-            }
-            case EnemyType::STALKER: {
-                // Fast and aggressive: strafes in wide arcs, charges at close range.
-                if (dist < 18.f) state = EnemyState::CHASE;
-                if (dist > 24.f) state = EnemyState::IDLE;
-                if (state == EnemyState::CHASE) {
-                    strafeTimer -= dt;
-                    if (strafeTimer <= 0.f) {
-                        strafeTimer = 1.2f + (float)(rand() % 100) / 60.f;
-                        strafeDir  *= -1.f;
-                    }
-                    float speed = (dist < 5.f) ? 6.5f : 5.f;
-                    // Stop strafing when close so the charge actually closes in
-                    float strafeMix = (dist < 5.f) ? 0.15f : 0.7f;
-                    glm::vec3 moveVec = dirToPlayer + strafeAxis * strafeMix * strafeDir;
-                    if (meleeWindup) {
-                        // Wind-up: brief crouch-stall, then lunge on the last frames
-                        speed    = (telegraphTimer < 0.1f) ? 14.f : 1.f;
-                        moveVec  = dirToPlayer;
-                    }
-                    float mvLen = glm::length(glm::vec2(moveVec.x, moveVec.z));
-                    if (mvLen > 0.001f) {
-                        velocity.x = (moveVec.x / mvLen) * speed;
-                        velocity.z = (moveVec.z / mvLen) * speed;
-                    }
-                    attackTimer += dt;
-                    glm::vec2 flat{toPlayer.x, toPlayer.z};
-                    if (attackTimer >= 1.1f && telegraphTimer <= 0.f &&
-                        glm::length(flat) < MELEE_RANGE + 1.5f) {
-                        attackTimer          = 0.f;
-                        telegraphTimer       = telegraphDuration;
-                        telegraphJustStarted = true;
-                        meleeWindup          = true;
-                    }
-                }
-                break;
-            }
-            case EnemyType::FLYER: {
-                // Hovers at fixed altitude, circles the player horizontally,
-                // and fires downward-angled shots at a fast rate.
-                if (dist < 40.f) state = EnemyState::CHASE;
-                if (dist > 55.f) state = EnemyState::IDLE;
-                if (state == EnemyState::CHASE) {
-                    strafeTimer -= dt;
-                    if (strafeTimer <= 0.f) {
-                        strafeTimer = 1.5f + (float)(rand() % 100) / 50.f;
-                        strafeDir  *= -1.f;
-                    }
-                    // Horizontal: orbit around the player
-                    glm::vec3 orbDir = dirToPlayer + strafeAxis * strafeDir * 0.9f;
-                    float orbLen = glm::length(orbDir);
-                    if (orbLen > 0.001f) orbDir /= orbLen;
-                    velocity.x = orbDir.x * 7.f;
-                    velocity.z = orbDir.z * 7.f;
-                    // Vertical: servo toward hover altitude
-                    float yErr = hoverY - position.y;
-                    velocity.y = glm::clamp(yErr * 6.f, -12.f, 12.f);
-
-                    attackTimer += dt;
-                    if (attackTimer >= 1.6f && telegraphTimer <= 0.f) {
-                        attackTimer          = 0.f;
-                        telegraphTimer       = telegraphDuration;
-                        telegraphJustStarted = true;
-                    }
-                } else {
-                    // Idle: drift back toward hover altitude
-                    float yErr = hoverY - position.y;
-                    velocity.y = glm::clamp(yErr * 4.f, -6.f, 6.f);
-                    velocity.x *= std::pow(0.01f, dt);
-                    velocity.z *= std::pow(0.01f, dt);
-                }
-                break;
-            }
+            case EnemyType::HUSK:     thinkHusk(dt, w, resolve);     break;
+            case EnemyType::RIPPER:   thinkRipper(dt, w, resolve);   break;
+            case EnemyType::SENTINEL: thinkSentinel(dt, w, resolve); break;
+            case EnemyType::RAPTOR:   thinkRaptor(dt, w, resolve);   break;
+            case EnemyType::BRUTE:    thinkBrute(dt, w, resolve);    break;
+            case EnemyType::MITE:     thinkMite(dt, w, resolve);     break;
+            case EnemyType::WARDEN:   thinkWarden(dt, w, resolve);   break;
+            default: break;
         }
-
-        // Bleed off horizontal velocity quickly when idle (e.g. after knockback)
-        if (state == EnemyState::IDLE) {
-            velocity.x *= std::pow(0.01f, dt);
-            velocity.z *= std::pow(0.01f, dt);
-        }
-
-        // Gravity only for ground-based enemies; FLYER manages its own Y velocity.
-        if (type != EnemyType::FLYER && position.y > FLOOR_Y)
-            velocity.y += -24.f * dt;
-
-        // Integrate
-        position += velocity * dt;
-
-        if (type != EnemyType::FLYER) {
-            if (position.y < FLOOR_Y) { position.y = FLOOR_Y; velocity.y = 0.f; }
-            if (grid) {
-                static std::vector<int> cands;
-                AABB eb{ position+glm::vec3{-RADIUS-0.1f,-0.1f,-RADIUS-0.1f},
-                         position+glm::vec3{ RADIUS+0.1f, HEIGHT+0.1f, RADIUS+0.1f} };
-                grid->query(eb, cands);
-                for (int idx : cands) resolveAABB(walls[idx].box);
-            } else {
-                for (int i = 0; i < wallCount; ++i) resolveAABB(walls[i].box);
-            }
-        } else {
-            // Keep flyer above the floor minimum even if something pushes it down
-            if (position.y < 1.5f) { position.y = 1.5f; velocity.y = 0.f; }
-        }
-
-        return fireProjectile;
-    }
-
-    glm::vec3 getFireDir(const glm::vec3& playerPos) const {
-        glm::vec3 d = playerPos - position;
-        float len = glm::length(d);
-        return len > 0.001f ? d / len : glm::vec3{0,0,1};
-    }
-
-    AABB getAABB() const {
-        return { position + glm::vec3{-RADIUS,0,-RADIUS},
-                 position + glm::vec3{ RADIUS, HEIGHT, RADIUS} };
+        integrate(dt, w);
     }
 
 private:
+    // ---- shared helpers ------------------------------------------------------
+    glm::vec3 flatTo(const glm::vec3& target) const {
+        glm::vec3 d = target - position; d.y = 0.f; return d;
+    }
+    static glm::vec3 norm2(glm::vec3 v) {
+        v.y = 0.f; float l = glm::length(v); return l > 1e-4f ? v / l : glm::vec3{0.f};
+    }
+    static glm::vec3 rotY(glm::vec3 v, float a) {
+        float c = std::cos(a), s = std::sin(a);
+        return { v.x * c + v.z * s, v.y, -v.x * s + v.z * c };
+    }
+
+    void turnToward(glm::vec3 dir, float dt, float rate) {
+        if (glm::length(glm::vec2(dir.x, dir.z)) < 1e-4f) return;
+        float target = std::atan2(dir.x, dir.z);
+        float diff = std::remainder(target - yaw, 6.2831853f);
+        float step = rate * dt;
+        yaw += glm::clamp(diff, -step, step);
+    }
+
+    void startAttack(AttackKind k, float windup) {
+        attack            = k;
+        telegraphDuration = windup;
+        telegraphTimer    = windup;
+        ev.telegraphStarted = true;
+    }
+
+    bool blockedAt(glm::vec3 p, const EnemyWorld& w) const {
+        if (!w.walls) return false;
+        float r = radius();
+        AABB box{ p + glm::vec3{-r, 0.3f, -r}, p + glm::vec3{r, height(), r} };
+        static std::vector<int> cands;
+        if (w.grid) w.grid->query(box, cands);
+        else { cands.clear(); for (int i = 0; i < w.wallCount; ++i) cands.push_back(i); }
+        for (int i : cands) {
+            const AABB& b = w.walls[i].box;
+            if (box.max.x > b.min.x && box.min.x < b.max.x &&
+                box.max.y > b.min.y && box.min.y < b.max.y &&
+                box.max.z > b.min.z && box.min.z < b.max.z) return true;
+        }
+        return false;
+    }
+
+    // Feeler steering: if the way ahead is blocked, try turning ±45/90/135°
+    // (keeping the side that worked last time) so enemies slide around cover
+    // instead of grinding into it. No pathfinding: arenas are open by design.
+    glm::vec3 steer(glm::vec3 want, const EnemyWorld& w) {
+        want = norm2(want);
+        if (glm::length(want) < 0.5f || stats().flying) return want;
+        float probe = radius() + 0.9f;
+        if (!blockedAt(position + want * probe, w)) return want;
+        static const float ANG[] = {0.785f, 1.571f, 2.356f};
+        for (float a : ANG)
+            for (float sgn : {avoidSign, -avoidSign}) {
+                glm::vec3 d = rotY(want, a * sgn);
+                if (!blockedAt(position + d * probe, w)) {
+                    avoidSign = sgn; avoidTimer = 0.6f;
+                    return d;
+                }
+            }
+        return glm::vec3{0.f};
+    }
+
+    void setMove(glm::vec3 dir, float speed, const EnemyWorld& w) {
+        glm::vec3 d = steer(dir, w);
+        velocity.x = d.x * speed;
+        velocity.z = d.z * speed;
+    }
+
+    bool lineOfSight(const glm::vec3& from, const EnemyWorld& w) const {
+        glm::vec3 d = w.playerEye - from;
+        float dist = glm::length(d);
+        if (dist < 1e-3f || !w.walls) return true;
+        d /= dist;
+        for (int i = 0; i < w.wallCount; ++i) {
+            float t = rayBoxHit(from, d, w.walls[i].box);
+            if (t > 0.f && t < dist) return false;
+        }
+        return true;
+    }
+
+    glm::vec3 eyePos() const { return position + glm::vec3{0.f, height() * 0.85f, 0.f}; }
+
+    void fireAt(const glm::vec3& target, int n, float spread, float speed, float dmg, float size = 1.f) {
+        ev.shotOrigin = eyePos();
+        ev.shotSpeed  = speed;
+        ev.shotDamage = dmg;
+        ev.shotSize   = size;
+        glm::vec3 base = target - ev.shotOrigin;
+        float len = glm::length(base);
+        base = len > 1e-4f ? base / len : glm::vec3{0,0,1};
+        n = std::min(n, EnemyEvents::MAX_SHOTS);
+        for (int i = 0; i < n; ++i) {
+            float a = (n == 1) ? 0.f : -spread * 0.5f + spread * (float)i / (float)(n - 1);
+            ev.shotDir[i] = glm::normalize(rotY(base, a));
+        }
+        ev.shots = n;
+    }
+
+    // Strafe-and-hold-range movement used by the gunners.
+    void rangedMove(float dt, const EnemyWorld& w, float nearR, float farR, float speed) {
+        glm::vec3 to = flatTo(w.playerFeet);
+        float d = glm::length(to);
+        glm::vec3 dir = norm2(to);
+        glm::vec3 side{-dir.z, 0.f, dir.x};
+        strafeTimer -= dt;
+        if (strafeTimer <= 0.f) { strafeTimer = frand(1.6f, 3.2f); strafeDir = -strafeDir; }
+        glm::vec3 mv;
+        if (noLosTimer > 0.f)  mv = side * strafeDir + dir * 0.35f;      // sidestep out from behind cover
+        else if (d < nearR)    mv = -dir + side * strafeDir * 0.7f;
+        else if (d > farR)     mv = dir + side * strafeDir * 0.3f;
+        else                   mv = side * strafeDir;
+        setMove(mv, speed, w);
+    }
+
+    // Ticks the attack clock; returns true when it's time to start a new attack.
+    bool attackReady(float dt) {
+        if (telegraphTimer > 0.f || burstLeft > 0 || diveTimer > 0.f) return false;
+        attackTimer += dt * (enraged ? 1.5f : 1.f);
+        if (attackTimer < stats().attackEvery) return false;
+        attackTimer = 0.f;
+        return true;
+    }
+
+    // No clear shot: sidestep for a moment and look again soon, rather than
+    // waiting out a whole attack cycle behind cover.
+    void blockedShot() {
+        noLosTimer  = 1.2f;
+        attackTimer = stats().attackEvery - 0.35f;
+    }
+
+    // ---- per-type behaviour --------------------------------------------------
+    void thinkHusk(float dt, const EnemyWorld& w, bool resolve) {
+        float speed = stats().speed * (telegraphTimer > 0.f ? 0.25f : 1.f);
+        rangedMove(dt, w, 8.f, 17.f, speed);
+        turnToward(flatTo(w.playerFeet), dt, 6.f);
+        if (resolve && attack == AttackKind::SHOT) {
+            fireAt(w.playerEye, 1, 0.f, 17.f, 10.f);
+            attack = AttackKind::NONE;
+        }
+        if (attackReady(dt)) {
+            if (lineOfSight(eyePos(), w)) startAttack(AttackKind::SHOT, stats().telegraph);
+            else blockedShot();
+        }
+    }
+
+    void thinkRipper(float dt, const EnemyWorld& w, bool resolve) {
+        glm::vec3 to = flatTo(w.playerFeet);
+        float d = glm::length(to);
+        glm::vec3 dir = norm2(to);
+        glm::vec3 side{-dir.z, 0.f, dir.x};
+        strafeTimer -= dt;
+        if (strafeTimer <= 0.f) { strafeTimer = frand(0.6f, 1.2f); strafeDir = -strafeDir; }
+
+        if (attack == AttackKind::LUNGE) {
+            // Crouch almost still, then spring on the last tenth of a second
+            float spd = telegraphTimer < 0.1f ? 15.f : 0.8f;
+            velocity.x = dir.x * spd; velocity.z = dir.z * spd;
+            if (resolve) {
+                attack = AttackKind::NONE;
+                float dy = w.playerFeet.y - position.y;
+                if (d < 2.7f && std::fabs(dy) < 2.5f) { ev.meleeHit = true; ev.meleeDamage = 13.f; }
+                recoverTimer = 0.45f;
+            }
+        } else if (recoverTimer > 0.f) {
+            setMove(-dir + side * strafeDir, stats().speed * 0.7f, w);   // hit and run
+        } else {
+            float zig = d < 5.f ? 0.15f : 0.75f;
+            setMove(dir + side * strafeDir * zig, stats().speed, w);
+            attackTimer += dt;
+            if (attackTimer >= stats().attackEvery && d < 4.2f) {
+                attackTimer = 0.f;
+                startAttack(AttackKind::LUNGE, stats().telegraph);
+            }
+        }
+        turnToward(to, dt, 10.f);
+    }
+
+    void thinkSentinel(float dt, const EnemyWorld& w, bool resolve) {
+        float speed = (telegraphTimer > 0.f || burstLeft > 0) ? 0.f : stats().speed;
+        rangedMove(dt, w, 15.f, 26.f, speed);
+        turnToward(flatTo(w.playerFeet), dt, 4.f);
+        if (resolve && attack == AttackKind::BURST) {
+            attack = AttackKind::NONE;
+            // The laser warned you: if you broke line of sight, the shot is lost.
+            if (lineOfSight(eyePos(), w)) { burstLeft = 3; burstTimer = 0.f; }
+            else blockedShot();
+        }
+        if (burstLeft > 0) {
+            burstTimer -= dt;
+            if (burstTimer <= 0.f) {
+                fireAt(w.playerEye, 1, 0.f, 32.f, 7.f, 0.8f);
+                --burstLeft; burstTimer = 0.12f;
+            }
+        }
+        if (attackReady(dt)) {
+            if (lineOfSight(eyePos(), w)) startAttack(AttackKind::BURST, stats().telegraph);
+            else blockedShot();
+        }
+    }
+
+    void thinkRaptor(float dt, const EnemyWorld& w, bool resolve) {
+        animPhase += dt * (diveTimer > 0.f ? 5.f : 9.f);
+        glm::vec3 to3 = w.playerEye - position;
+        glm::vec3 to  = flatTo(w.playerFeet);
+        float d = glm::length(to);
+        glm::vec3 dir = norm2(to);
+        glm::vec3 side{-dir.z, 0.f, dir.x};
+
+        if (diveTimer > 0.f) {
+            diveTimer -= dt;
+            velocity = diveDir * 17.f;
+            pitch = glm::mix(pitch, 0.7f, std::min(1.f, dt * 8.f));
+            if (glm::length(w.playerEye - position) < 1.8f) {
+                ev.meleeHit = true; ev.meleeDamage = 12.f;
+                diveTimer = 0.f; recoverTimer = 1.2f;
+            }
+            if (diveTimer <= 0.f) recoverTimer = std::max(recoverTimer, 1.0f);
+            turnToward(diveDir, dt, 8.f);
+            return;
+        }
+        pitch = glm::mix(pitch, 0.f, std::min(1.f, dt * 4.f));
+
+        strafeTimer -= dt;
+        if (strafeTimer <= 0.f) { strafeTimer = frand(2.5f, 4.5f); strafeDir = -strafeDir; }
+        // Orbit: tangent plus a radial correction toward the preferred radius
+        float radial = glm::clamp((d - orbitRadius) * 0.25f, -1.f, 1.f);
+        glm::vec3 mv = norm2(side * strafeDir + dir * radial);
+        velocity.x = mv.x * stats().speed;
+        velocity.z = mv.z * stats().speed;
+        float targetY = recoverTimer > 0.f ? hoverY + 2.f : hoverY;
+        velocity.y = glm::clamp((targetY - position.y) * 3.f, -8.f, 8.f);
+        turnToward(glm::vec3{velocity.x, 0.f, velocity.z}, dt, 5.f);
+
+        if (resolve) {
+            if (attack == AttackKind::SHOT) fireAt(w.playerEye, 1, 0.f, 18.f, 9.f);
+            else if (attack == AttackKind::DIVE) {
+                float l = glm::length(to3);
+                diveDir   = l > 1e-3f ? to3 / l : glm::vec3{0,-1,0};
+                diveTimer = 1.3f;
+            }
+            attack = AttackKind::NONE;
+        }
+        if (recoverTimer <= 0.f && attackReady(dt)) {
+            ++attackCount;
+            if (attackCount % 3 == 0) startAttack(AttackKind::DIVE, 0.55f);
+            else if (lineOfSight(eyePos(), w)) startAttack(AttackKind::SHOT, stats().telegraph);
+        }
+    }
+
+    void thinkBrute(float dt, const EnemyWorld& w, bool resolve) {
+        glm::vec3 to = flatTo(w.playerFeet);
+        float d = glm::length(to);
+        if (telegraphTimer > 0.f) {
+            velocity.x = velocity.z = 0.f;
+        } else {
+            setMove(to, stats().speed * (d > 16.f ? 1.35f : 1.f), w);
+            animPhase += dt * 4.f;
+        }
+        turnToward(to, dt, telegraphTimer > 0.f ? 1.f : 3.f);
+        if (resolve) {
+            if (attack == AttackKind::SLAM) {
+                ev.slam = true; ev.slamRadius = 8.f; ev.slamDamage = 26.f;
+            } else if (attack == AttackKind::LOB) {
+                fireAt(w.playerEye, 1, 0.f, 15.f, 18.f, 2.2f);
+            }
+            attack = AttackKind::NONE;
+        }
+        if (attackReady(dt)) {
+            if (d < 7.f) startAttack(AttackKind::SLAM, stats().telegraph);
+            else if (d > 12.f && lineOfSight(eyePos(), w)) startAttack(AttackKind::LOB, 0.7f);
+            else attackTimer = stats().attackEvery * 0.7f;  // close the gap, re-check soon
+        }
+    }
+
+    void thinkMite(float dt, const EnemyWorld& w, bool resolve) {
+        glm::vec3 to = flatTo(w.playerFeet);
+        float d = glm::length(to);
+        glm::vec3 dir = norm2(to);
+        glm::vec3 side{-dir.z, 0.f, dir.x};
+        animPhase += dt * 14.f;
+        if (attack == AttackKind::FUSE) {
+            setMove(dir, 2.5f, w);
+            if (resolve) {
+                ev.detonated  = true;
+                killedByBlast = true;
+                alive = false; state = EnemyState::DEAD; health = 0.f;
+                return;
+            }
+        } else {
+            float wobble = std::sin(age * 7.f + animPhase) * 0.35f;
+            setMove(dir + side * wobble, stats().speed, w);
+            if (d < 2.6f && std::fabs(w.playerFeet.y - position.y) < 2.f)
+                startAttack(AttackKind::FUSE, stats().telegraph);
+        }
+        turnToward(to, dt, 12.f);
+    }
+
+    void thinkWarden(float dt, const EnemyWorld& w, bool resolve) {
+        glm::vec3 to = flatTo(w.playerFeet);
+        float d = glm::length(to);
+        float speed = stats().speed * (enraged ? 1.4f : 1.f);
+        if (telegraphTimer > 0.f) { velocity.x = velocity.z = 0.f; }
+        else {
+            glm::vec3 dir = norm2(to);
+            glm::vec3 side{-dir.z, 0.f, dir.x};
+            strafeTimer -= dt;
+            if (strafeTimer <= 0.f) { strafeTimer = frand(3.f, 5.f); strafeDir = -strafeDir; }
+            glm::vec3 mv = d > 11.f ? dir + side * strafeDir * 0.4f : side * strafeDir;
+            setMove(mv, speed, w);
+            animPhase += dt * 3.f;
+        }
+        turnToward(to, dt, 2.f);
+
+        if (resolve) {
+            switch (attack) {
+                case AttackKind::SLAM:
+                    ev.slam = true; ev.slamRadius = 11.f; ev.slamDamage = 30.f; break;
+                case AttackKind::VOLLEY:
+                    fireAt(w.playerEye, enraged ? 11 : 7, enraged ? 1.4f : 0.9f, 18.f, 12.f, 1.6f);
+                    break;
+                case AttackKind::SUMMON:
+                    ev.summonMites   = enraged ? 2 : 3;
+                    ev.summonRippers = enraged ? 2 : 0;
+                    break;
+                default: break;
+            }
+            attack = AttackKind::NONE;
+        }
+        if (attackReady(dt)) {
+            ++attackCount;
+            if (d < 9.f)                   startAttack(AttackKind::SLAM, 1.0f);
+            else if (attackCount % 4 == 0) startAttack(AttackKind::SUMMON, 1.2f);
+            else                           startAttack(AttackKind::VOLLEY, stats().telegraph);
+        }
+    }
+
+    // ---- physics -------------------------------------------------------------
+    void integrate(float dt, const EnemyWorld& w) {
+        bool flying = stats().flying;
+        if (!flying) {
+            velocity.y -= 24.f * dt;
+            moveSpeed = glm::length(glm::vec2(velocity.x, velocity.z));
+            if (type != EnemyType::RAPTOR && type != EnemyType::MITE &&
+                type != EnemyType::BRUTE && type != EnemyType::WARDEN)
+                animPhase += dt * moveSpeed * 1.9f;
+        } else {
+            moveSpeed = glm::length(velocity);
+        }
+        position += velocity * dt;
+
+        if (position.y < 0.f) { position.y = 0.f; if (velocity.y < 0.f) velocity.y = 0.f; }
+
+        if (w.walls) {
+            static std::vector<int> cands;
+            float r = radius();
+            AABB eb{ position + glm::vec3{-r-0.1f, -0.1f, -r-0.1f},
+                     position + glm::vec3{ r+0.1f, height()+0.1f, r+0.1f} };
+            if (w.grid) w.grid->query(eb, cands);
+            else { cands.clear(); for (int i = 0; i < w.wallCount; ++i) cands.push_back(i); }
+            for (int idx : cands) resolveAABB(w.walls[idx].box);
+        }
+
+        // Stay inside the arena
+        float r = radius();
+        position.x = glm::clamp(position.x, w.bounds.min.x + r, w.bounds.max.x - r);
+        position.z = glm::clamp(position.z, w.bounds.min.z + r, w.bounds.max.z - r);
+        if (flying) position.y = glm::clamp(position.y, 1.5f, w.bounds.max.y - height());
+    }
+
     void resolveAABB(const AABB& wall) {
-        glm::vec3 pMin = position + glm::vec3{-RADIUS,0,-RADIUS};
-        glm::vec3 pMax = position + glm::vec3{ RADIUS,HEIGHT, RADIUS};
+        float r = radius(), h = height();
+        glm::vec3 pMin = position + glm::vec3{-r, 0.f, -r};
+        glm::vec3 pMax = position + glm::vec3{ r, h,   r};
         if (pMax.x <= wall.min.x || pMin.x >= wall.max.x) return;
         if (pMax.y <= wall.min.y || pMin.y >= wall.max.y) return;
         if (pMax.z <= wall.min.z || pMin.z >= wall.max.z) return;
-        float ox = std::min(pMax.x-wall.min.x, wall.max.x-pMin.x);
-        float oy = std::min(pMax.y-wall.min.y, wall.max.y-pMin.y);
-        float oz = std::min(pMax.z-wall.min.z, wall.max.z-pMin.z);
+        float ox = std::min(pMax.x - wall.min.x, wall.max.x - pMin.x);
+        float oy = std::min(pMax.y - wall.min.y, wall.max.y - pMin.y);
+        float oz = std::min(pMax.z - wall.min.z, wall.max.z - pMin.z);
         if (ox <= oy && ox <= oz) {
-            float dir = (position.x < (wall.min.x+wall.max.x)*0.5f) ? -1.f : 1.f;
-            position.x += dir * ox;
+            position.x += (position.x < (wall.min.x + wall.max.x) * 0.5f) ? -ox : ox;
         } else if (oy <= ox && oy <= oz) {
-            float dir = (position.y < (wall.min.y+wall.max.y)*0.5f) ? -1.f : 1.f;
-            position.y += dir * oy;
+            bool up = position.y + h * 0.5f > (wall.min.y + wall.max.y) * 0.5f;
+            position.y += up ? oy : -oy;
+            if (up && velocity.y < 0.f) velocity.y = 0.f;
+            if (!up && velocity.y > 0.f) velocity.y = 0.f;
         } else {
-            float dir = (position.z < (wall.min.z+wall.max.z)*0.5f) ? -1.f : 1.f;
-            position.z += dir * oz;
+            position.z += (position.z < (wall.min.z + wall.max.z) * 0.5f) ? -oz : oz;
         }
-    }
-};
-
-// Instanced renderer — one glDrawElementsInstanced call regardless of enemy count.
-// GameplayState sets all lighting uniforms on `shader` before calling draw().
-class EnemyRenderer {
-public:
-    ShaderProgram shader;          // owns enemy_inst.vert / enemy_inst.frag
-    GLuint vao = 0, vbo = 0, ebo = 0;
-    GLuint instanceVBO = 0;
-    GLsizei indexCount = 0;
-
-    static constexpr int MAX_INSTANCES = 256;
-
-    // Per-instance data uploaded to the GPU each frame.
-    struct InstanceData {
-        glm::mat4 model;        // locations 4-7
-        glm::vec3 color;        // location 8
-        float     _pad0 = 0.f;
-        glm::vec3 emissive;     // location 9
-        float     _pad1 = 0.f;
-    };
-
-    EnemyRenderer() {
-        shader.loadFiles("src/enemy_inst.vert", "src/enemy_inst.frag");
-
-        // Build the shared cube mesh
-        std::vector<Vertex> verts;
-        std::vector<unsigned int> idx;
-        float h = 0.9f, r = 0.5f;
-        auto pushFace = [&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3 d, glm::vec3 n) {
-            unsigned int base = (unsigned int)verts.size();
-            verts.push_back({a,{0,0},n,{1,1,1}}); verts.push_back({b,{1,0},n,{1,1,1}});
-            verts.push_back({c,{1,1},n,{1,1,1}}); verts.push_back({d,{0,1},n,{1,1,1}});
-            idx.insert(idx.end(),{base,base+1,base+2,base,base+2,base+3});
-        };
-        pushFace({-r,0,r},{r,0,r},{r,h*2,r},{-r,h*2,r},{0,0,1});
-        pushFace({r,0,-r},{-r,0,-r},{-r,h*2,-r},{r,h*2,-r},{0,0,-1});
-        pushFace({r,0,r},{r,0,-r},{r,h*2,-r},{r,h*2,r},{1,0,0});
-        pushFace({-r,0,-r},{-r,0,r},{-r,h*2,r},{-r,h*2,-r},{-1,0,0});
-        pushFace({-r,h*2,r},{r,h*2,r},{r,h*2,-r},{-r,h*2,-r},{0,1,0});
-        pushFace({-r,0,-r},{r,0,-r},{r,0,r},{-r,0,r},{0,-1,0});
-        indexCount = (GLsizei)idx.size();
-
-        glGenVertexArrays(1, &vao);
-        glGenBuffers(1, &vbo);
-        glGenBuffers(1, &ebo);
-        glGenBuffers(1, &instanceVBO);
-
-        glBindVertexArray(vao);
-
-        // Static mesh geometry (per-vertex attributes 0-3)
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(verts.size()*sizeof(Vertex)), verts.data(), GL_STATIC_DRAW);
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)(idx.size()*sizeof(unsigned int)), idx.data(), GL_STATIC_DRAW);
-        glEnableVertexAttribArray(0); glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,sizeof(Vertex),(void*)offsetof(Vertex,position));
-        glEnableVertexAttribArray(1); glVertexAttribPointer(1,2,GL_FLOAT,GL_FALSE,sizeof(Vertex),(void*)offsetof(Vertex,uv));
-        glEnableVertexAttribArray(2); glVertexAttribPointer(2,3,GL_FLOAT,GL_FALSE,sizeof(Vertex),(void*)offsetof(Vertex,normal));
-
-        // Per-instance buffer (dynamic, updated every frame)
-        glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
-        glBufferData(GL_ARRAY_BUFFER, MAX_INSTANCES * sizeof(InstanceData), nullptr, GL_DYNAMIC_DRAW);
-
-        // mat4 instanceModel at locations 4-7 (four consecutive vec4s)
-        for (int i = 0; i < 4; ++i) {
-            glEnableVertexAttribArray(4 + i);
-            glVertexAttribPointer(4+i, 4, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
-                                  (void*)(offsetof(InstanceData, model) + i * 16));
-            glVertexAttribDivisor(4 + i, 1);
-        }
-        // vec3 instanceColor at location 8
-        glEnableVertexAttribArray(8);
-        glVertexAttribPointer(8, 3, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
-                              (void*)offsetof(InstanceData, color));
-        glVertexAttribDivisor(8, 1);
-        // vec3 instanceEmissive at location 9
-        glEnableVertexAttribArray(9);
-        glVertexAttribPointer(9, 3, GL_FLOAT, GL_FALSE, sizeof(InstanceData),
-                              (void*)offsetof(InstanceData, emissive));
-        glVertexAttribDivisor(9, 1);
-
-        glBindVertexArray(0);
-    }
-
-    EnemyRenderer(const EnemyRenderer&) = delete;
-    EnemyRenderer& operator=(const EnemyRenderer&) = delete;
-
-    ~EnemyRenderer() {
-        if (vao) glDeleteVertexArrays(1,&vao);
-        if (vbo) glDeleteBuffers(1,&vbo);
-        if (ebo) glDeleteBuffers(1,&ebo);
-        if (instanceVBO) glDeleteBuffers(1,&instanceVBO);
-    }
-
-    // Call after setting all lighting uniforms on `shader`.
-    void draw(const std::vector<Enemy>& enemies, float gameTime = 0.f) {
-        // Build per-instance data on the CPU
-        static InstanceData buf[MAX_INSTANCES];
-        int count = 0;
-        for (auto& e : enemies) {
-            if (!e.alive || count >= MAX_INSTANCES) continue;
-            auto& inst = buf[count++];
-
-            glm::vec3 pos = e.position;
-
-            // Per-type scale for distinct silhouettes
-            glm::vec3 sc(1.f);
-            float rotY = 0.f;
-            switch (e.type) {
-                case EnemyType::GRUNT:
-                    sc = {1.2f, 0.95f, 1.0f};  // wider, slightly shorter
-                    break;
-                case EnemyType::SHOOTER:
-                    sc = {0.7f, 1.15f, 0.7f};  // tall and thin
-                    break;
-                case EnemyType::STALKER:
-                    sc = {0.9f, 0.75f, 1.2f};  // low and elongated
-                    break;
-                case EnemyType::FLYER:
-                    sc = {0.7f, 0.7f, 0.7f};   // smaller diamond shape
-                    rotY = 45.f;                // rotated 45° for diamond look
-                    pos.y += sinf(gameTime * 3.f + pos.x * 0.5f) * 0.3f; // bob
-                    break;
-            }
-
-            inst.model = glm::translate(glm::mat4(1.f), pos);
-            if (rotY != 0.f)
-                inst.model = inst.model * glm::rotate(glm::mat4(1.f), glm::radians(rotY), {0,1,0});
-            inst.model = inst.model * glm::scale(glm::mat4(1.f), sc);
-
-            switch (e.type) {
-                case EnemyType::GRUNT:   inst.color={0.8f,0.2f,0.2f}; inst.emissive={0,0,0}; break;
-                case EnemyType::SHOOTER: inst.color={0.2f,0.3f,0.9f}; inst.emissive={0.1f,0.2f,0.8f}; break;
-                case EnemyType::STALKER: inst.color={0.8f,0.6f,0.0f}; inst.emissive={0,0,0}; break;
-                case EnemyType::FLYER:   inst.color={0.7f,0.1f,0.9f}; inst.emissive={0.4f,0.0f,0.6f}; break;
-            }
-            // Telegraph glint: emissive pulses bright cyan as wind-up nears zero.
-            // t goes 0→1 from start to fire moment — glint intensifies over time.
-            if (e.telegraphTimer > 0.f) {
-                float t     = 1.f - (e.telegraphTimer / e.telegraphDuration);
-                // Pulsing: base brightness ramps up, plus a fast strobe
-                float pulse = t + 0.25f * std::sin(e.telegraphTimer * 40.f);
-                float glint = glm::clamp(pulse, 0.f, 1.f);
-                inst.emissive = glm::mix(inst.emissive, glm::vec3{0.2f, 1.f, 0.9f}, glint * 0.9f);
-                // Also slightly desaturate the body color toward white for readability
-                inst.color = glm::mix(inst.color, glm::vec3{1.f}, glint * 0.35f);
-            }
-
-            // Hit flash — briefly bleach the enemy white on damage
-            if (e.hitFlashTimer > 0.f) {
-                float t = e.hitFlashTimer / 0.12f;
-                inst.color    = glm::mix(inst.color,    glm::vec3{1.f},  t * 0.85f);
-                inst.emissive = glm::mix(inst.emissive, glm::vec3{0.8f}, t * 0.60f);
-            }
-        }
-        if (count == 0) return;
-
-        // Upload instance data and draw
-        glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
-        glBufferSubData(GL_ARRAY_BUFFER, 0, count * sizeof(InstanceData), buf);
-
-        shader.use();
-        glBindVertexArray(vao);
-        glDrawElementsInstanced(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, nullptr, count);
-        glBindVertexArray(0);
     }
 };

@@ -27,7 +27,7 @@ public:
             std::cerr << "SDL_mixer init failed: " << Mix_GetError() << "\n";
             return;
         }
-        Mix_AllocateChannels(16);
+        Mix_AllocateChannels(32);
         initialized = true;
 #endif
     }

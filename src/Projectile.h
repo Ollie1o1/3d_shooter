@@ -2,8 +2,6 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include "Player.h"
-#include "Mesh.h"
-#include "ShaderProgram.h"
 #include <array>
 #include <vector>
 
@@ -21,47 +19,17 @@ struct Projectile {
     bool      isGrenade  = false;  // if true: gravity applied, explodes on contact
     bool      hasGravity = false;  // arc trajectory
     float     blastRadius = 0.f;   // > 0 triggers AoE explosion
+    float     size       = 1.f;    // billboard + hit-radius scale (big boss orbs)
 };
 
 class ProjectileSystem {
 public:
-    static constexpr int POOL_SIZE = 64;
+    static constexpr int POOL_SIZE = 160;  // a boss volley is 11 shots
     std::array<Projectile, POOL_SIZE> pool;
-
-    GLuint vao = 0, vbo = 0;
-
-    ProjectileSystem() {
-        float s = 0.15f;
-        float verts[] = {
-            -s,-s,0, 0,0, 0,0,1,
-             s,-s,0, 1,0, 0,0,1,
-             s, s,0, 1,1, 0,0,1,
-            -s,-s,0, 0,0, 0,0,1,
-             s, s,0, 1,1, 0,0,1,
-            -s, s,0, 0,1, 0,0,1,
-        };
-        glGenVertexArrays(1,&vao);
-        glGenBuffers(1,&vbo);
-        glBindVertexArray(vao);
-        glBindBuffer(GL_ARRAY_BUFFER,vbo);
-        glBufferData(GL_ARRAY_BUFFER,sizeof(verts),verts,GL_STATIC_DRAW);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,8*sizeof(float),(void*)0);
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1,2,GL_FLOAT,GL_FALSE,8*sizeof(float),(void*)(3*sizeof(float)));
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2,3,GL_FLOAT,GL_FALSE,8*sizeof(float),(void*)(5*sizeof(float)));
-        glBindVertexArray(0);
-    }
-
-    ~ProjectileSystem() {
-        if (vao) glDeleteVertexArrays(1,&vao);
-        if (vbo) glDeleteBuffers(1,&vbo);
-    }
 
     void fire(glm::vec3 pos, glm::vec3 vel, float dmg, bool player,
               glm::vec3 color = {1,0.8f,0.2f},
-              bool grenade = false, float blastR = 0.f) {
+              bool grenade = false, float blastR = 0.f, float size = 1.f) {
         for (auto& p : pool) {
             if (!p.alive) {
                 p.position    = pos;
@@ -74,6 +42,7 @@ public:
                 p.isGrenade   = grenade;
                 p.hasGravity  = grenade;
                 p.blastRadius = blastR;
+                p.size        = size;
                 return;
             }
         }
@@ -100,25 +69,6 @@ public:
                      const glm::vec3& playerPos,
                      const SpatialGrid* grid = nullptr);
 
-    void draw(ShaderProgram& shader, const glm::mat4& view, const glm::mat4& /*proj*/) {
-        glDisable(GL_CULL_FACE);
-        glBindVertexArray(vao);
-        for (auto& p : pool) {
-            if (!p.alive) continue;
-            glm::mat4 m = glm::translate(glm::mat4(1.f), p.position);
-            glm::mat4 billboard = m;
-            billboard[0] = glm::vec4(glm::normalize(glm::vec3(view[0][0],view[1][0],view[2][0])), 0);
-            billboard[1] = glm::vec4(glm::normalize(glm::vec3(view[0][1],view[1][1],view[2][1])), 0);
-            billboard[2] = glm::vec4(glm::normalize(glm::vec3(view[0][2],view[1][2],view[2][2])), 0);
-            billboard[3] = m[3];
-            shader.setMat4("model", billboard);
-            shader.setVec3("emissiveColor", p.emissiveColor);
-            shader.setVec3("objectColor", p.emissiveColor);
-            glDrawArrays(GL_TRIANGLES, 0, 6);
-        }
-        glBindVertexArray(0);
-        glEnable(GL_CULL_FACE);
-    }
 };
 
 // Include Enemy after forward declaration is satisfied
@@ -170,7 +120,7 @@ inline ProjectileSystem::HitResult ProjectileSystem::update(
                 }
             }
         }
-        if (!hitSolid && (p.position.y < 0.f || p.position.y > 14.f)) hitSolid = true;
+        if (!hitSolid && (p.position.y < 0.f || p.position.y > 40.f)) hitSolid = true;
 
         if (hitSolid) {
             if (p.isGrenade && p.blastRadius > 0.f) {
@@ -190,7 +140,7 @@ inline ProjectileSystem::HitResult ProjectileSystem::update(
 
             for (int ei = 0; ei < (int)enemies.size(); ++ei) {
                 auto& e = enemies[ei];
-                if (!e.alive) continue;
+                if (!e.targetable()) continue;
                 AABB box = e.getAABB();
                 if (p.position.x > box.min.x && p.position.x < box.max.x &&
                     p.position.y > box.min.y && p.position.y < box.max.y &&
@@ -208,7 +158,7 @@ inline ProjectileSystem::HitResult ProjectileSystem::update(
         } else {
             glm::vec3 diff = p.position - playerPos;
             float dist = glm::length(diff);
-            if (dist < 0.6f) {
+            if (dist < 0.6f * std::max(1.f, p.size * 0.8f)) {
                 result.hitPlayer = true;
                 result.playerDamage += p.damage;
                 float spd = glm::length(p.velocity);

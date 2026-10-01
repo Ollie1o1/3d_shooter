@@ -11,24 +11,22 @@ out vec4 FragColor;
 uniform sampler2D uTexture;
 uniform vec3 lightDir;
 uniform vec3 lightColor;
-uniform vec3 ambientColor;
 uniform vec3 viewPos;
+uniform vec3 uSkyAmb;      // hemisphere ambient, per arena
+uniform vec3 uGroundAmb;
+uniform vec3 uFogColor;
+uniform float uFogDensity;
 uniform vec3 pointLightPos[4];
 uniform vec3 pointLightColor[4];
 
 void main()
 {
-    // Per-instance colour replaces per-vertex + objectColor uniforms.
     vec4 texColor = texture(uTexture, TexCoord) * vec4(vColor, 1.0);
 
     vec3 norm    = normalize(Normal);
     vec3 viewDir = normalize(viewPos - FragPos);
 
-    // Hemisphere ambient
-    vec3 skyColor    = vec3(0.18, 0.22, 0.38);
-    vec3 groundColor = vec3(0.07, 0.06, 0.05);
-    float hemi  = norm.y * 0.5 + 0.5;
-    vec3 ambient = mix(groundColor, skyColor, hemi);
+    vec3 ambient = mix(uGroundAmb, uSkyAmb, norm.y * 0.5 + 0.5);
 
     // Directional light — Blinn-Phong
     vec3  L    = normalize(-lightDir);
@@ -37,7 +35,6 @@ void main()
     float spec = pow(max(dot(norm, H), 0.0), 48.0);
     vec3  specular = lightColor * spec * 0.18;
 
-    // Point lights
     vec3 pointContrib = vec3(0.0);
     for (int i = 0; i < 4; ++i) {
         vec3  toLight = pointLightPos[i] - FragPos;
@@ -50,18 +47,22 @@ void main()
         pointContrib += pointLightColor[i] * (pDiff + pSpec) * atten;
     }
 
-    // Rim light
-    float rim     = pow(1.0 - max(dot(norm, viewDir), 0.0), 4.0);
-    vec3 rimColor = vec3(0.10, 0.14, 0.30) * rim;
+    // Rim light in the sky colour keeps silhouettes readable against the floor
+    float rim     = pow(1.0 - max(dot(norm, viewDir), 0.0), 3.0);
+    vec3 rimColor = (uSkyAmb * 1.4 + vec3(0.06)) * rim;
 
-    // Edge darkening (same UV-based trick as world shader)
+    // Dark seams at face edges make every box in a rig read as a separate part
     float eu = min(TexCoord.x, 1.0 - TexCoord.x);
     float ev = min(TexCoord.y, 1.0 - TexCoord.y);
-    float edgeFactor = smoothstep(0.0, 0.035, min(eu, ev));
+    float edgeFactor = smoothstep(0.0, 0.06, min(eu, ev));
 
     vec3 lighting = ambient + diff * lightColor + pointContrib;
-    vec3 result   = (lighting * texColor.rgb + specular + rimColor + vEmissive)
-                  * mix(0.15, 1.0, edgeFactor);
+    vec3 result   = (lighting * texColor.rgb + specular + rimColor) * mix(0.35, 1.0, edgeFactor)
+                  + vEmissive;
+
+    float d   = length(viewPos - FragPos) * uFogDensity;
+    float fog = 1.0 - exp(-d * d);
+    result = mix(result, uFogColor, fog * 0.85);
 
     FragColor = vec4(result, texColor.a);
 }
