@@ -3,6 +3,9 @@
 #include "Settings.h"
 #include "SettingsMenu.h"
 #include "Progression.h"
+#include "LeaderboardView.h"
+#include "Level.h"
+#include "LevelGauntlet.h"
 #include "UIBatch.h"
 #include <SDL2/SDL.h>
 #include "gl.h"
@@ -11,18 +14,23 @@
 #include <cmath>
 #include <cstdio>
 #include <string>
+#include <vector>
 
 // =============================================================================
-// MenuState — main menu (ARENA / FAST / SETTINGS / EXIT) and the settings page
+// MenuState — main menu (ARENA / FAST / LEADERBOARD / SETTINGS / EXIT), the
+// settings page, the leaderboard page, and the DEV level select (press ` or
+// F2 on the main menu): jump straight to any arena, wave, FAST room or the
+// boss, optionally in god mode. Dev runs are practice: no records.
 // =============================================================================
 class MenuState : public GameState {
 public:
-    std::function<void(GameMode)> onStart;
+    std::function<void(GameMode, StartOptions)> onStart;
     std::function<void()>         onQuit;
 
     GameSettings* settings = nullptr;   // injected by main
 
-    int   page      = 0;   // 0=main, 1=settings
+    enum Page { MAIN, SETTINGS, BOARD, DEV };
+    int   page      = MAIN;
     int   selected  = 0;
     float flashTime = 0.f;
     int   screenW, screenH;
@@ -30,17 +38,42 @@ public:
     UIBatch      ui;
     SettingsMenu settingsMenu;
     Records      records;
+    Leaderboard  board;
 
-    static constexpr int NUM_ITEMS = 4;
+    static constexpr int NUM_ITEMS = 5;
+
+    // DEV level select: rows are options, then every arena, then every FAST room
+    struct DevRow { const char* label; std::string name; GameMode mode; int arena; int waves; };
+    std::vector<DevRow> devRows;
+    int  devSel = 0, devWave = 0;
+    bool devGod = true;
+    static constexpr int DEV_OPTIONS = 2;   // GOD MODE, START WAVE
 
     MenuState(int w, int h) : screenW(w), screenH(h), ui(w, h), settingsMenu(w, h) {
-        settingsMenu.onBack = [this]() { page = 0; selected = 2; };
+        settingsMenu.onBack = [this]() { page = MAIN; selected = 3; };
         records.load();
+        board.load();
+        LevelData A = buildLevel(), F = buildGauntlet();
+        for (int i = 0; i < (int)A.arenas.size(); ++i)
+            devRows.push_back({"ARENA", A.arenas[i].name, GameMode::ARENA, i, (int)A.arenas[i].waves.size()});
+        for (int i = 0; i < (int)F.arenas.size(); ++i)
+            devRows.push_back({"FAST", F.arenas[i].name, GameMode::FAST, i, (int)F.arenas[i].waves.size()});
     }
+
+    void openDev() { page = DEV; devSel = DEV_OPTIONS; }
 
     void handleEvent(const SDL_Event& e) override {
         settingsMenu.s = settings;
-        if (page == 1) { settingsMenu.handleEvent(e); return; }
+        if (page == SETTINGS) { settingsMenu.handleEvent(e); return; }
+        if (page == BOARD) {
+            if ((e.type == SDL_KEYDOWN && (e.key.keysym.sym == SDLK_ESCAPE || e.key.keysym.sym == SDLK_RETURN ||
+                                          e.key.keysym.sym == SDLK_BACKSPACE)) ||
+                (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT)) page = MAIN;
+            return;
+        }
+        if (page == DEV) { handleDevEvent(e); return; }
+        if (e.type == SDL_KEYDOWN && !e.key.repeat &&
+            (e.key.keysym.sym == SDLK_BACKQUOTE || e.key.keysym.sym == SDLK_F2)) { openDev(); return; }
         if (e.type == SDL_KEYDOWN) {
             switch (e.key.keysym.sym) {
                 case SDLK_UP:     selected = (selected + NUM_ITEMS - 1) % NUM_ITEMS; break;
@@ -89,12 +122,15 @@ public:
                 ui.rect(x, y, 1 + z * 2, (screenH - horizon) / 16.f + 1, {1.f, 0.3f, 0.6f, 0.05f + 0.25f * z});
             }
         }
-        if (page == 0) renderMain(); else settingsMenu.render(ui, flashTime);
+        if (page == MAIN) renderMain();
+        else if (page == SETTINGS) settingsMenu.render(ui, flashTime);
+        else if (page == BOARD) renderBoard();
+        else renderDev();
         ui.end();
     }
 
 private:
-    int itemY(int i) const { return screenH / 2 - 92 + i * 66; }
+    int itemY(int i) const { return screenH / 2 - 100 + i * 60; }
     int itemAt(int mx, int my) const {
         for (int i = 0; i < NUM_ITEMS; ++i) {
             int y = itemY(i);
@@ -104,10 +140,111 @@ private:
     }
 
     void activate(int idx) {
-        if (idx == 0 && onStart) onStart(GameMode::ARENA);
-        if (idx == 1 && onStart) onStart(GameMode::FAST);
-        if (idx == 2) { page = 1; settingsMenu.selected = 1; }
-        if (idx == 3 && onQuit) onQuit();
+        if (idx == 0 && onStart) onStart(GameMode::ARENA, StartOptions{});
+        if (idx == 1 && onStart) onStart(GameMode::FAST, StartOptions{});
+        if (idx == 2) { page = BOARD; board.load(); }
+        if (idx == 3) { page = SETTINGS; settingsMenu.selected = 1; }
+        if (idx == 4 && onQuit) onQuit();
+    }
+
+    // ---- DEV level select ----------------------------------------------------
+    int devCount() const { return DEV_OPTIONS + (int)devRows.size(); }
+    float devY(int i) const {
+        // options, a gap, then the levels in two columns (ARENA left, FAST right)
+        if (i < DEV_OPTIONS) return 128.f + i * 34.f;
+        const DevRow& r = devRows[i - DEV_OPTIONS];
+        return 232.f + r.arena * 34.f;
+    }
+    float devX(int i) const {
+        if (i < DEV_OPTIONS) return screenW / 2.f - 260.f;
+        return devRows[i - DEV_OPTIONS].mode == GameMode::ARENA ? screenW / 2.f - 560.f : screenW / 2.f + 40.f;
+    }
+    static constexpr float DEV_W = 520.f;
+    int devAt(int mx, int my) const {
+        for (int i = 0; i < devCount(); ++i)
+            if (mx > devX(i) && mx < devX(i) + DEV_W && my > devY(i) - 6 && my < devY(i) + 26) return i;
+        return -1;
+    }
+    void devActivate(int i, int dir = 1) {
+        if (i == 0) { devGod = !devGod; return; }
+        if (i == 1) { devWave = (devWave + dir + 6) % 6; return; }
+        if (i < DEV_OPTIONS || !onStart) return;
+        const DevRow& r = devRows[i - DEV_OPTIONS];
+        StartOptions o;
+        o.arena = r.arena;
+        o.wave  = r.mode == GameMode::ARENA ? std::min(devWave, r.waves - 1) : 0;
+        o.god   = devGod;
+        o.practice = true;
+        onStart(r.mode, o);
+    }
+    void handleDevEvent(const SDL_Event& e) {
+        if (e.type == SDL_KEYDOWN) {
+            SDL_Keycode k = e.key.keysym.sym;
+            int n = devCount();
+            if (k == SDLK_ESCAPE || k == SDLK_BACKQUOTE || k == SDLK_F2) { page = MAIN; return; }
+            if (k == SDLK_UP)   devSel = (devSel + n - 1) % n;
+            if (k == SDLK_DOWN) devSel = (devSel + 1) % n;
+            if ((k == SDLK_LEFT || k == SDLK_RIGHT) && devSel >= DEV_OPTIONS) {
+                // jump between the ARENA and FAST columns, keeping the row
+                const DevRow& r = devRows[devSel - DEV_OPTIONS];
+                GameMode want = r.mode == GameMode::ARENA ? GameMode::FAST : GameMode::ARENA;
+                int best = -1;
+                for (int i = 0; i < (int)devRows.size(); ++i)
+                    if (devRows[i].mode == want && (best < 0 || std::abs(devRows[i].arena - r.arena) < std::abs(devRows[best].arena - r.arena)))
+                        best = i;
+                if (best >= 0) devSel = best + DEV_OPTIONS;
+            } else if (k == SDLK_LEFT || k == SDLK_RIGHT) devActivate(devSel, k == SDLK_LEFT ? -1 : 1);
+            if (k == SDLK_RETURN || k == SDLK_SPACE) devActivate(devSel);
+        }
+        if (e.type == SDL_MOUSEMOTION) { int i = devAt(e.motion.x, e.motion.y); if (i >= 0) devSel = i; }
+        if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
+            int i = devAt(e.button.x, e.button.y);
+            if (i >= 0) { devSel = i; devActivate(i); }
+        }
+    }
+    void renderDev() {
+        int cx = screenW / 2;
+        ui.rect(0, 0, (float)screenW, (float)screenH, {0.f, 0.f, 0.02f, 0.55f});
+        ui.text("DEV - LEVEL SELECT", cx, 46, 4, {0.3f, 1.f, 0.8f, 1.f}, true);
+        ui.text("PRACTICE RUNS: NO RECORDS, NO LEADERBOARD", cx, 90, 1, {0.6f, 0.75f, 0.7f, 0.9f}, true);
+        char buf[96];
+        for (int i = 0; i < devCount(); ++i) {
+            bool sel = i == devSel;
+            float x = devX(i), y = devY(i);
+            ui.rect(x, y - 6, DEV_W, 30, sel ? glm::vec4{0.05f, 0.2f, 0.17f, 0.95f} : glm::vec4{0.06f, 0.06f, 0.09f, 0.85f});
+            if (sel) ui.rect(x, y - 6, 4, 30, {0.3f, 1.f, 0.8f, 1.f});
+            glm::vec4 c = sel ? glm::vec4{0.5f, 1.f, 0.85f, 1.f} : glm::vec4{0.75f, 0.75f, 0.8f, 0.95f};
+            if (i == 0) std::snprintf(buf, sizeof(buf), "GOD MODE            %s", devGod ? "ON" : "OFF");
+            else if (i == 1) std::snprintf(buf, sizeof(buf), "ARENA START WAVE    < %d >", devWave + 1);
+            else {
+                const DevRow& r = devRows[i - DEV_OPTIONS];
+                bool boss = r.mode == GameMode::ARENA && r.arena == (int)countMode(GameMode::ARENA) - 1;
+                std::snprintf(buf, sizeof(buf), "%s %d  %s%s", r.mode == GameMode::ARENA ? "ARENA" : "ROOM",
+                              r.arena + 1, r.name.c_str(), boss ? "  (BOSS)" : "");
+            }
+            ui.text(buf, x + 14, y + 1, 2, c);
+        }
+        ui.text("ARENAS", devX(DEV_OPTIONS) + DEV_W / 2, 206, 1, {0.4f, 1.f, 0.65f, 0.9f}, true);
+        ui.text("FAST ROOMS", screenW / 2.f + 40.f + DEV_W / 2, 206, 1, {1.f, 0.65f, 0.25f, 0.9f}, true);
+        ui.text("ARROWS / MOUSE TO PICK   ENTER OR CLICK TO GO   LEFT/RIGHT CHANGES OPTIONS   ESC BACK",
+                cx, screenH - 54, 1, {0.6f, 0.6f, 0.65f, 0.85f}, true);
+        ui.text("IN A PRACTICE RUN: F5 CLEARS THE WAVE   F6 REFILLS HEALTH", cx, screenH - 36, 1,
+                {0.6f, 0.6f, 0.65f, 0.85f}, true);
+    }
+    int countMode(GameMode m) const {
+        int n = 0;
+        for (auto& r : devRows) if (r.mode == m) ++n;
+        return n;
+    }
+
+    // ---- LEADERBOARD page ----------------------------------------------------
+    void renderBoard() {
+        int cx = screenW / 2;
+        ui.text("LEADERBOARD", cx, 50, 5, {1.f, 0.55f, 0.08f, 1.f}, true);
+        drawLeaderboardTable(ui, board, false, cx - 600.f, 130.f, 570.f, Leaderboard::KEEP, -1, flashTime);
+        drawLeaderboardTable(ui, board, true,  cx + 30.f,  130.f, 570.f, Leaderboard::KEEP, -1, flashTime);
+        ui.text("FINISH A FULL RUN TO PUT YOUR NAME ON THE BOARD", cx, screenH - 64, 1, {0.7f, 0.7f, 0.75f, 0.9f}, true);
+        ui.text("ESC, ENTER OR CLICK - BACK", cx, screenH - 40, 2, {0.6f, 0.6f, 0.65f, 0.85f}, true);
     }
 
     // LEFT/RIGHT on the main menu: pick the difficulty for the next run
@@ -124,14 +261,15 @@ private:
         ui.rect(cx - 300, screenH / 2 - 172, 600, 3, {1.f, 0.55f, 0.05f, 0.9f});
 
         struct Item { const char* label; const char* sub; };
-        std::string arenaSub = "4 ARENAS - WAVES - THE WARDEN";
+        std::string arenaSub = "5 ARENAS - WAVES - TWO BOSSES";
         std::string fastSub  = "TIME TRIAL - THE GAUNTLET";
         if (records.bestArena > 0.f) arenaSub += "   BEST " + formatTime(records.bestArena);
         if (records.bestFast  > 0.f) fastSub  += "   BEST " + formatTime(records.bestFast);
         Item items[NUM_ITEMS] = {
             {"ARENA", arenaSub.c_str()},
             {"FAST",  fastSub.c_str()},
-            {"SETTINGS", "SENSITIVITY  FOV  AUDIO  MORE"},
+            {"LEADERBOARD", "FASTEST RUNS - ARENA AND FAST"},
+            {"SETTINGS", "SENSITIVITY  FOV  GRAPHICS  MORE"},
             {"EXIT", ""},
         };
         for (int i = 0; i < NUM_ITEMS; ++i) {
@@ -153,11 +291,11 @@ private:
             char d[64];
             std::snprintf(d, sizeof(d), "DIFFICULTY   <  %s  >", difficulty(settings->difficulty).name);
             glm::vec4 dc = settings->difficulty >= 2 ? glm::vec4{1.f, 0.35f, 0.25f, 0.95f} : glm::vec4{1.f, 0.8f, 0.45f, 0.95f};
-            ui.text(d, cx, itemY(NUM_ITEMS - 1) + 74, 2, dc, true);
-            ui.text("LEFT / RIGHT TO CHANGE", cx, itemY(NUM_ITEMS - 1) + 98, 1, {0.6f, 0.6f, 0.65f, 0.8f}, true);
+            ui.text(d, cx, itemY(NUM_ITEMS - 1) + 70, 2, dc, true);
+            ui.text("LEFT / RIGHT TO CHANGE", cx, itemY(NUM_ITEMS - 1) + 92, 1, {0.6f, 0.6f, 0.65f, 0.8f}, true);
         }
         float hint = 0.35f + 0.35f * std::sin(flashTime * 1.8f);
-        ui.text("UP/DOWN OR MOUSE TO SELECT  -  ENTER OR CLICK TO CONFIRM",
+        ui.text("UP/DOWN OR MOUSE TO SELECT  -  ENTER OR CLICK TO CONFIRM  -  ` FOR DEV LEVEL SELECT",
                 cx, screenH - 30, 1, {hint, hint, hint + 0.05f, 0.85f}, true);
     }
 };

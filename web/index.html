@@ -51,13 +51,15 @@
   var Module = {
     canvas,
     // ?play skips the main menu (same as ./shooter --play), ?fast starts the FAST
-    // time trial; ?arena=N starts at arena (or FAST section) N
+    // time trial; ?arena=N starts at arena (or FAST section) N; ?dev opens the
+    // dev level select
     arguments: (() => {
       const q = new URLSearchParams(location.search);
       const args = q.has('arena') ? ['--arena', q.get('arena')] : q.has('play') ? ['--play'] : [];
       if (q.has('fast')) args.push('--fast');
       if (q.has('wave')) args.push('--wave', q.get('wave'));
       if (q.has('god')) args.push('--god');
+      if (q.has('dev')) args.push('--dev');   // ?dev opens the level select
       return args;
     })(),
     // Asset preload progress ("Downloading data... (x/y)")

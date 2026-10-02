@@ -23,6 +23,7 @@
 #include "TextureGen.h"
 #include "Weapons.h"
 #include "Progression.h"
+#include "LeaderboardView.h"
 #include "MouseFilter.h"
 #include <SDL2/SDL.h>
 #include "gl.h"
@@ -69,6 +70,7 @@ inline int g_startArena = 0;
 inline int g_startWave  = 0;   // --wave N / ?wave=N (with --arena): skip to that wave
 // --god / ?god: the player takes no damage (for recording footage)
 inline bool g_godMode = false;
+inline bool g_practice = false;   // dev level select: no records, no leaderboard
 // --cam x y z yaw pitch: start the camera somewhere specific (screenshots)
 inline bool      g_devCam = false;
 inline glm::vec3 g_devCamPos{0.f};
@@ -195,6 +197,7 @@ public:
     SettingsMenu     settingsMenu{SCREEN_W, SCREEN_H};
     Progression      prog;
     Records          records;
+    Leaderboard      board;
     MouseFilter      mouseFilter;
 
     ShaderProgram  worldShader;
@@ -241,6 +244,12 @@ public:
     bool  victory      = false;
     float victoryDelay = -1.f;   // counts down after the boss dies, then shows the screen
     bool  newRecord    = false;
+    // Only a full run counts for records and the leaderboard: started at the
+    // first arena, not in god mode, not from the dev level select
+    bool  ranked       = true;
+    bool  nameEntry    = false;  // victory screen: typing a name for the leaderboard
+    std::string nameBuf;
+    int   boardPlace   = -1;     // where the saved run landed (highlighted)
 
     // FAST mode
     float countdown  = 0.f;      // 3-2-1 before the clock starts
@@ -341,6 +350,11 @@ public:
     std::vector<Pickup> pickups;
 
     struct Shockwave { glm::vec3 pos; float radius, t; glm::vec3 color; };
+    // A SOVEREIGN sword stroke: an arc of light that sweeps out and fades
+    // (kind as EnemyEvents::slash: 0/1 sweeps, 2 the overhead cleave, 3 a dash's cut)
+    struct Slash { glm::vec3 pos; float yaw; int kind; float t; };
+    static constexpr float SLASH_LIFE = 0.3f;
+    std::vector<Slash> slashes;
     std::vector<Shockwave> shockwaves;
 
     struct Blast { glm::vec3 pos; float radius, damage; float playerRadius, playerDamage; };
@@ -444,6 +458,7 @@ public:
         }
 
         int start = glm::clamp(g_startArena, 0, (int)level.arenas.size() - 1);
+        ranked = start == 0 && g_startWave <= 0 && !g_godMode && !g_practice && !g_devCam;
         enterArena(start);
         director.wave = glm::clamp(g_startWave, 0, director.waveCount() - 1);
         if (fast() && start == 0) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
@@ -452,6 +467,10 @@ public:
         if (g_devAim) aim = 1.f;
         if (g_devOverlay == "armory") { prog.points = 3; prog.up[2].tier[0] = 2; prog.up[3].mod = true; armoryOpen = true; armoryW = 2; }
         if (g_devOverlay == "pause") paused = true;
+        if (g_devOverlay == "victory") {   // the victory screen mid name entry (screenshots)
+            elapsedTime = 754.3f; victory = true; ranked = true;
+            board.load(); nameEntry = true; nameBuf = "OLLIE";
+        }
         if (g_devSpawn >= 0) {
             glm::vec3 f = player.camera.flatForward();
             spawnEnemy((EnemyType)g_devSpawn, player.position * glm::vec3{1, 0, 1} + f * 9.f + glm::vec3{0, groundHeightAt(player.position.x + f.x * 9.f, player.position.z + f.z * 9.f, player.position.y + 1.f), 0});
@@ -573,6 +592,8 @@ public:
         controlHintTimer = 10.f;
         splits.clear();
         newRecord = false;
+        ranked = !g_godMode && !g_practice;
+        nameEntry = false; boardPlace = -1;
         enterArena(0);
         if (fast()) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
         captureMouse(true);
@@ -609,13 +630,16 @@ public:
                 audio.play("wave", 90);
                 break;
             case DirectorEvent::BOSS_START:
-                pushBanner("THE WARDEN", "DODGE THE VOLLEYS, JUMP THE SLAMS", {1.f, 0.2f, 0.65f}, 3.5f);
+                if (ar.waves[ev.value][0].type == EnemyType::SOVEREIGN)
+                    pushBanner("THE SOVEREIGN", "PARRY (F) HIS BLADE AS IT FALLS", {1.f, 0.3f, 0.2f}, 4.f);
+                else
+                    pushBanner("THE WARDEN", "DODGE THE VOLLEYS, JUMP THE SLAMS", {1.f, 0.2f, 0.65f}, 3.5f);
                 audio.play("wave"); audio.play("explosion", 70);
                 shake(0.6f, 0.06f);
                 break;
             case DirectorEvent::NEW_TYPE: {
                 EnemyType t = (EnemyType)ev.value;
-                if (t == EnemyType::WARDEN) break;
+                if (isBoss(t)) break;
                 if (fast()) ui.feed(std::string("NEW: ") + statsOf(t).name, statsOf(t).glow);
                 else pushBanner(std::string("NEW: ") + statsOf(t).name, statsOf(t).hint, statsOf(t).glow, 3.4f);
                 break;
@@ -673,6 +697,10 @@ public:
     void finishRun() {
         victory = true;
         captureMouse(false);
+        newRecord = false;
+        if (!ranked) return;
+        board.load();
+        if (board.placeFor(fast(), elapsedTime) >= 0) { nameEntry = true; nameBuf = board.lastName; }
         if (fast()) {
             newRecord = records.bestFast <= 0.f || elapsedTime < records.bestFast;
             if (newRecord) { records.bestFast = elapsedTime; records.fastSplits = splits; }
@@ -681,6 +709,98 @@ public:
             if (newRecord) records.bestArena = elapsedTime;
         }
         if (newRecord) records.save();
+    }
+
+    // --overlay poseN (screenshots): hold a SOVEREIGN in one pose, facing the camera.
+    // 0 idle, 1 dash wind-up, 2 dashing, 3 sweep wind-up, 4 mid-sweep,
+    // 5 cleave wind-up, 6 mid-cleave, 7 leaping, 8 broken, 9 enraged
+    void devPose(Enemy& e) {
+        int n = std::atoi(g_devOverlay.c_str() + 4);
+        e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE;
+        glm::vec3 to = player.position - e.position;
+        e.yaw = e.prevYaw = std::atan2(to.x, to.z);
+        e.prevPosition = e.position;
+        e.attack = AttackKind::NONE; e.telegraphTimer = 0.f; e.telegraphDuration = 1.f;
+        e.dashTimer = e.leapTimer = e.swingTimer = e.staggerTimer = 0.f;
+        auto windup = [&](AttackKind k) { e.attack = k; e.telegraphTimer = 0.3f; };
+        switch (n) {
+            case 1: windup(AttackKind::DASH); break;
+            case 2: e.dashTimer = 0.3f; e.diveDir = glm::normalize(glm::vec3{to.x, 0.f, to.z}); e.moveSpeed = 34.f; break;
+            case 3: windup(AttackKind::SWEEP); break;
+            case 4: e.swingTimer = Enemy::SWING_TIME * 0.5f; e.lastSwing = AttackKind::SWEEP; break;
+            case 5: windup(AttackKind::CLEAVE); break;
+            case 6: e.swingTimer = Enemy::SWING_TIME * 0.4f; e.lastSwing = AttackKind::CLEAVE; break;
+            case 7: e.leapTimer = 1.f; break;
+            case 8: e.staggerTimer = 1.f; break;
+            case 9: e.enraged = true; break;
+            default: break;
+        }
+    }
+
+    // Practice (dev level select): F5 ends the current wave on the spot
+    void devClearWave() {
+        director.queue.clear();
+        for (auto& e : enemies)
+            if (e.alive) {
+                e.alive = false; e.state = EnemyState::DEAD; e.health = 0.f;
+                spawnDebrisFor(e);
+            }
+        ui.feed("DEV: WAVE CLEARED", {0.3f, 1.f, 0.8f});
+    }
+
+    // Victory screen, right-hand side: the name prompt (when this run makes
+    // the board) and the mode's leaderboard
+    void renderLeaderboardPanel() {
+        float t = gameClock + (float)SDL_GetTicks() * 0.001f;
+        float x = 926.f, w = 334.f, y = 110.f;
+        ui.begin2D();
+        UIBatch& b = ui.ui;
+        if (!ranked) {
+            b.text("PRACTICE RUN - NOT RANKED", x + w / 2, y + 8, 1, {0.7f, 0.7f, 0.75f, 0.85f}, true);
+            y += 30.f;
+        } else if (nameEntry) {
+            b.rect(x, y, w, 112, {0.08f, 0.05f, 0.02f, 0.9f});
+            b.frame(x, y, w, 112, 2, {1.f, 0.75f, 0.2f, 0.9f});
+            char buf[64];
+            std::snprintf(buf, sizeof(buf), "YOU MADE THE BOARD - #%d", board.placeFor(fast(), elapsedTime) + 1);
+            b.text(buf, x + w / 2, y + 12, 2, {1.f, 0.85f, 0.3f, 1.f}, true);
+            b.rect(x + 20, y + 40, w - 40, 32, {0.f, 0.f, 0.f, 0.7f});
+            std::string shown = nameBuf;
+            if (std::fmod(t, 1.f) < 0.55f && (int)nameBuf.size() < Leaderboard::MAX_NAME_LEN) shown += "_";
+            b.text(shown.empty() ? " " : shown.c_str(), x + 30, y + 48, 3, {1.f, 1.f, 1.f, 1.f});
+            b.text("TYPE YOUR NAME   ENTER - SAVE   ESC - SKIP", x + w / 2, y + 88, 1, {0.8f, 0.75f, 0.65f, 0.9f}, true);
+            y += 128.f;
+        } else if (boardPlace >= 0) {
+            b.text("SAVED TO THE LEADERBOARD", x + w / 2, y + 8, 2, {1.f, 0.85f, 0.3f, 0.95f}, true);
+            y += 34.f;
+        }
+        drawLeaderboardTable(b, board, fast(), x, y, w, nameEntry ? 8 : Leaderboard::KEEP, boardPlace, t);
+        ui.end2D();
+    }
+
+    // Victory screen: type a name (letters, digits, space - . _), ENTER saves
+    // it to the leaderboard, ESC skips
+    void handleNameEntry(const SDL_Event& e) {
+        if (e.type != SDL_KEYDOWN) return;
+        SDL_Keycode k = e.key.keysym.sym;
+        if (k == SDLK_BACKSPACE) { if (!nameBuf.empty()) nameBuf.pop_back(); return; }
+        if (e.key.repeat) return;
+        if (k == SDLK_ESCAPE) { nameEntry = false; return; }
+        if (k == SDLK_RETURN || k == SDLK_KP_ENTER) {
+            boardPlace = board.add(fast(), nameBuf, elapsedTime, settings ? settings->difficulty : DIFFICULTY_DEFAULT);
+            if (boardPlace >= 0) { board.save(); audio.play("upgrade"); }
+            nameEntry = false;
+            return;
+        }
+        char c = 0;
+        if (k >= SDLK_a && k <= SDLK_z) c = (char)('A' + (k - SDLK_a));
+        else if (k >= SDLK_0 && k <= SDLK_9) c = (char)('0' + (k - SDLK_0));
+        else if (k >= SDLK_KP_1 && k <= SDLK_KP_9) c = (char)('1' + (k - SDLK_KP_1));
+        else if (k == SDLK_KP_0) c = '0';
+        else if (k == SDLK_SPACE) c = ' ';
+        else if (k == SDLK_MINUS) c = '-';
+        else if (k == SDLK_PERIOD) c = '.';
+        if (c && (int)nameBuf.size() < Leaderboard::MAX_NAME_LEN && !(c == ' ' && nameBuf.empty())) nameBuf += c;
     }
 
     void shake(float t, float amount) {
@@ -709,6 +829,7 @@ public:
             return;
         }
         if (paused && pauseSettings) { settingsMenu.handleEvent(e); return; }
+        if (victory && nameEntry) { handleNameEntry(e); return; }
 
         if (key == SDLK_ESCAPE || key == SDLK_p) {
             if (playerDead || victory) {
@@ -723,6 +844,10 @@ public:
             return;
         }
         if (paused) { handlePauseEvent(e); return; }
+        if (g_practice && !playerDead && !victory) {
+            if (key == SDLK_F5) { devClearWave(); return; }    // practice: skip the fight in progress
+            if (key == SDLK_F6) { styleSystem.heal(1000.f); ui.feed("HEALTH REFILLED", {0.4f, 1.f, 0.6f}); return; }
+        }
         if (key == SDLK_TAB && !playerDead && !victory) { openArmory(); return; }
         // Backspace: straight back to the checkpoint and the start of this fight
         if (key == SDLK_BACKSPACE && !victory) { if (playerDead) retryArena(); else restartHere(); return; }
@@ -890,10 +1015,10 @@ public:
     void updateMusic() {
         auto& m = audio.music;
         audio.setMusicVolume(settings ? settings->musicVolume : 0.6f);
-        static const int ARENA_TRACK[] = {0, 1, 2, 3};          // Yard, Foundry, Spire, Core
+        static const int ARENA_TRACK[] = {0, 1, 2, 3, 3};       // Yard, Foundry, Spire, Core, Sanctum
         static const int FAST_TRACK[]  = {0, 1, 2, 2, 1, 1, 3}; // Canal .. Tower
         int a = director.arena;
-        m.setTrack(fast() ? FAST_TRACK[a % 7] : ARENA_TRACK[a % 4]);
+        m.setTrack(fast() ? FAST_TRACK[a % 7] : ARENA_TRACK[a % 5]);
         float lv = 0.6f;
         switch (director.phase) {
             case WaveDirector::Phase::ACTIVE:   lv = director.bossWave() ? 1.35f : 1.f; break;
@@ -1016,6 +1141,9 @@ public:
         }
         updateDebris(floatDt);
         for (auto& s : shockwaves) s.t += floatDt;
+        for (auto& s : slashes) s.t += floatDt;
+        slashes.erase(std::remove_if(slashes.begin(), slashes.end(),
+                      [](const Slash& s){ return s.t > SLASH_LIFE; }), slashes.end());
         shockwaves.erase(std::remove_if(shockwaves.begin(), shockwaves.end(),
                          [](const Shockwave& s){ return s.t > 0.5f; }), shockwaves.end());
 
@@ -1426,11 +1554,12 @@ public:
             glm::vec3 d = e.position + glm::vec3{0, e.height() * 0.5f, 0} - eye;
             float dist = glm::length(d);
             if (dist < 5.5f && glm::dot(fwd, d / dist) > 0.2f) {
-                e.stagger(2.5f);
+                e.stagger(e.staggerTime());
                 parryFeedback(eye + fwd * 1.2f, true);
                 styleSystem.addStyle(70.f);
                 gainXp(30);
-                ui.toast("BROKEN", "IT TAKES DOUBLE DAMAGE - UNLOAD", {1.f, 0.75f, 0.2f}, 1.8f);
+                if (e.type == EnemyType::SOVEREIGN) ui.toast("PARRIED", "HIS GUARD IS BROKEN - UNLOAD", {1.f, 0.75f, 0.2f}, 1.4f);
+                else ui.toast("BROKEN", "IT TAKES DOUBLE DAMAGE - UNLOAD", {1.f, 0.75f, 0.2f}, 1.8f);
                 return;
             }
         }
@@ -1637,6 +1766,7 @@ public:
         for (size_t i = 0; i < n; ++i) {
             Enemy& e = enemies[i];
             if (!e.alive) continue;
+            if (g_devOverlay.rfind("pose", 0) == 0 && e.type == EnemyType::SOVEREIGN) { devPose(e); continue; }
             e.update(dt, w);
             const EnemyEvents ev = e.ev;   // copy: spawning below may reallocate
             glm::vec3 epos = e.position;
@@ -1685,8 +1815,15 @@ public:
                     spawnEnemy(k < ev.summonMites ? EnemyType::MITE : EnemyType::RIPPER, p);
                 }
             }
+            if (ev.slash >= 0) {   // a sword stroke: its arc, and a whoosh
+                slashes.push_back({epos, enemies[i].yaw, ev.slash, 0.f});
+                audio.play("dash", ev.slash == 2 ? 120 : 95);
+            }
+            if (ev.dashStarted) { audio.play("dash", 128); shake(0.12f, 0.03f); }
+            if (ev.leapStarted) { audio.play("jump", 128); spawnShockwave(epos, 3.f, statsOf(enemies[i].type).glow); }
             if (ev.enraged) {
-                pushBanner("THE WARDEN IS ENRAGED", "", {1.f, 0.15f, 0.25f}, 2.f);
+                pushBanner(enemies[i].type == EnemyType::SOVEREIGN ? "THE SOVEREIGN IS ENRAGED" : "THE WARDEN IS ENRAGED",
+                           "", {1.f, 0.15f, 0.25f}, 2.f);
                 shake(0.5f, 0.06f);
                 audio.play("wave");
             }
@@ -1764,7 +1901,7 @@ public:
         if (!settings || settings->damageNumbers) ui.spawnDamageNumber(at, std::min(dmg, before), crit);
         if (killed) {
             onEnemyKilled(e);
-            hitStopFrames = glm::max(hitStopFrames, e.type == EnemyType::WARDEN ? 12 : 2);
+            hitStopFrames = glm::max(hitStopFrames, isBoss(e.type) ? 12 : 2);
         }
         return killed;
     }
@@ -1801,7 +1938,7 @@ public:
             case EnemyType::BRUTE:  for (int i = 0; i < 3; ++i) drop(PickupKind::ORB);
                                     if (rand() % 100 < 50) drop(PickupKind::POTION); break;
             case EnemyType::MITE:   if (rand() % 10 == 0) drop(PickupKind::ORB); break;
-            case EnemyType::WARDEN: break;
+            case EnemyType::WARDEN: case EnemyType::SOVEREIGN: break;
             default:
                 if (rand() % 100 < (int)(20 * tune().drops)) drop(PickupKind::ORB);
                 if (rand() % 100 < (int)(18 * tune().drops)) drop(PickupKind::POTION);
@@ -1812,7 +1949,7 @@ public:
         if (e.type == EnemyType::MITE)          // shot mites still pop — but only hurt enemies
             pendingBlasts.push_back({e.position + glm::vec3{0, 0.3f, 0}, 4.f, 30.f, 0.f, 0.f});
 
-        if (e.type == EnemyType::WARDEN) {
+        if (isBoss(e.type)) {
             // The boss takes his summons with him
             for (auto& o : enemies)
                 if (o.alive && &o != &e) {
@@ -1825,7 +1962,14 @@ public:
             explosionFlashTimer = 0.35f; explosionFlashPos = e.position + glm::vec3{0, 2.f, 0};
             shake(1.0f, 0.12f);
             audio.play("explosion");
-            pushBanner("WARDEN DESTROYED", "", {1.f, 0.85f, 0.3f}, 2.5f);
+            if (e.type == EnemyType::SOVEREIGN) {
+                for (int k = 0; k < 6; ++k)
+                    spawnBurst(e.position + glm::vec3{frand(-1.f, 1.f), frand(0.5f, 3.5f), frand(-1.f, 1.f)},
+                               {1.f, 0.8f, 0.4f}, 30, 10.f, 0.8f, 2.f);
+                pushBanner("THE SOVEREIGN HAS FALLEN", "", {1.f, 0.85f, 0.3f}, 3.f);
+            } else {
+                pushBanner("WARDEN DESTROYED", "", {1.f, 0.85f, 0.3f}, 2.5f);
+            }
         }
     }
 
@@ -1932,9 +2076,17 @@ public:
             if (!enemies[ei].targetable()) continue;
             // A ray through the head box is a headshot, and the head counts
             // even where it pokes out of the body box
-            float t = rayBoxHit(origin, dir, enemies[ei].getAABB());
+            // Test against where it was drawn, not where it has got to since
+            const Enemy& en = enemies[ei];
+            glm::vec3 off = en.hasShown ? en.shownPos - en.position : glm::vec3{0.f};
+            if (glm::dot(off, off) > 9.f) off = glm::vec3{0.f};   // teleported: trust the simulation
+            AABB body = en.getAABB();
+            body.min += off; body.max += off;
+            float t = rayBoxHit(origin, dir, body);
             AABB head;
-            float th = headBox(enemies[ei], head) ? rayBoxHit(origin, dir, head) : -1.f;
+            bool hasHead = headBox(en, head);
+            head.min += off; head.max += off;
+            float th = hasHead ? rayBoxHit(origin, dir, head) : -1.f;
             if (th > 0.f && th < wallT) out.push_back({ei, th, true});
             else if (t > 0.f && t < wallT) out.push_back({ei, t, false});
         }
@@ -2326,8 +2478,23 @@ public:
             if (!e.alive) continue;
             Enemy pose = e;
             pose.position = lerpPos(e.prevPosition, e.position);
+            e.shownPos = pose.position; e.hasShown = true;
             pose.yaw = e.prevYaw + std::remainder(e.yaw - e.prevYaw, 6.2831853f) * renderAlpha;
             buildEnemy(pose, t, out);
+            // The SOVEREIGN leaves afterimages down the line of a dash
+            if (e.type == EnemyType::SOVEREIGN && e.dashTimer > 0.f) {
+                for (int k = 1; k <= 3; ++k) {
+                    Enemy ghost = pose;
+                    ghost.position -= e.diveDir * (1.7f * k);
+                    ghost.hitFlashTimer = 0.f;
+                    size_t from = out.size();
+                    buildEnemy(ghost, t, out);
+                    for (size_t j = from; j < out.size(); ++j) {
+                        out[j].color = glm::vec3{0.05f};
+                        out[j].emissive = glm::vec3{1.2f, 0.3f, 0.15f} * (0.9f / k);
+                    }
+                }
+            }
         }
 
         // Spawn beams: a column of light while an enemy materialises
@@ -2347,7 +2514,7 @@ public:
         glm::vec3 camRight = glm::normalize(glm::vec3(view[0][0], view[1][0], view[2][0]));
         glm::vec3 camFwdFlat = glm::normalize(glm::cross(camRight, glm::vec3(0,1,0)));
         for (auto& e : enemies) {
-            if (!e.targetable() || e.health >= e.maxHealth || e.type == EnemyType::WARDEN) continue;
+            if (!e.targetable() || e.health >= e.maxHealth || isBoss(e.type)) continue;
             float barW = std::max(1.0f, e.radius() * 1.8f), barH = 0.12f;
             float fill = e.health / e.maxHealth;
             glm::vec3 barPos = lerpPos(e.prevPosition, e.position) + glm::vec3{0, e.height() + 0.45f, 0};
@@ -2407,6 +2574,29 @@ public:
                 push(out, T(p.pos + glm::vec3{0, 3.f, 0}) * S({0.06f, 6.f, 0.06f}), c * 0.2f, g * 0.5f);
                 break;
             }
+            }
+        }
+
+        for (auto& sl : slashes) {
+            float reveal = std::min(1.f, sl.t / 0.1f), fade = 1.f - sl.t / SLASH_LIFE;
+            const int N = 18;
+            glm::vec3 hot = glm::vec3{1.9f, 1.4f, 0.8f} * fade * 2.f;
+            for (int i = 0; i < N; ++i) {
+                float u = (i + 0.5f) / N;
+                if (u > reveal) break;
+                float w = 1.f - std::fabs(u * 2.f - 1.f);              // thickest mid-arc
+                if (sl.kind == 2) {                                    // overhead: a vertical arc down to the floor
+                    float R = 3.2f, b = -0.4f + 2.1f * u;
+                    glm::mat4 m = T(sl.pos + glm::vec3{0, 0.3f, 0}) * RY(sl.yaw) * T({0.f, R * std::cos(b) * 0.75f, R * std::sin(b)})
+                                * RX(b) * S({0.5f * w + 0.1f, 0.08f, R * 2.1f / N * 1.2f});
+                    push(out, m, glm::vec3{0.1f}, hot);
+                } else {                                               // sweeps: a flat arc at chest height
+                    float R = sl.kind == 3 ? 3.4f : 4.4f, span = sl.kind == 3 ? 0.9f : 1.35f;
+                    float a = (sl.kind == 1 ? 1.f - u : u) * 2.f * span - span;
+                    glm::mat4 m = T(sl.pos + glm::vec3{0, 2.1f, 0}) * RY(sl.yaw + a) * T({0.f, 0.f, R})
+                                * S({R * 2.f * span / N * 1.15f, 0.07f, 0.6f * w + 0.12f});
+                    push(out, m, glm::vec3{0.1f}, hot);
+                }
             }
         }
 
@@ -2697,6 +2887,8 @@ public:
         renderTracers(view, proj);
         renderLasers(view, proj);
         renderParticles(view, proj);
+        bool warm = warmupFrames > 0;
+        if (warm) warmPipelines(renderCamPos, view, proj);
 
         // --- View model (inside the FBO so it gets bloom; no fog). Hidden
         // behind the Longshot's scope once it's up. ---
@@ -2722,6 +2914,7 @@ public:
         postProcess.endScene();
 
         renderHUD(view, proj);
+        if (warm) { ui.warmScope(); --warmupFrames; }
     }
 
     // Project a world point to the screen. Off-screen (or behind) points are
@@ -2782,7 +2975,7 @@ public:
             int left = alive + director.queued();
             glm::vec3 accent{1.f, 0.75f, 0.3f};
             const Enemy* boss = nullptr;
-            for (auto& e : enemies) if (e.alive && e.type == EnemyType::WARDEN) boss = &e;
+            for (auto& e : enemies) if (e.alive && isBoss(e.type)) boss = &e;
 
             if (fast()) {
                 if (finishOpen) { snprintf(buf, sizeof(buf), "FINISH OPEN - CLIMB TO THE BEACON"); accent = {1.f, 0.6f, 0.2f}; }
@@ -2810,7 +3003,8 @@ public:
             }
             ui.renderObjective(buf, accent);
 
-            if (boss) ui.renderBossBar("THE WARDEN", boss->health / boss->maxHealth, boss->enraged);
+            if (boss) ui.renderBossBar(boss->type == EnemyType::SOVEREIGN ? "THE SOVEREIGN" : "THE WARDEN",
+                                       boss->health / boss->maxHealth, boss->enraged);
 
             // Waypoint to the way on: the open gate (ARENA), or the exit of the
             // room you just cleared (FAST) until you're out of it
@@ -2859,6 +3053,11 @@ public:
             ui.renderBanner(b.title.c_str(), b.subtitle.c_str(), b.color, a);
         }
         if (countdown > 0.f) ui.renderCountdown(countdown);
+        if (g_practice && !victory && !paused) {
+            ui.begin2D();
+            ui.ui.textShadow("PRACTICE  F5 CLEAR WAVE  F6 HEAL", 12, SCREEN_H - 22, 1, {0.4f, 1.f, 0.85f, 0.8f});
+            ui.end2D();
+        }
 
         if (playerDead) {
             if (fast()) snprintf(buf, sizeof(buf), "ROOM %d/%d  %s", director.arena + 1, nArenas, ar.name);
@@ -2873,11 +3072,12 @@ public:
                 // Show the best run as it was before this one (newRecord already replaced it)
                 static std::vector<float> none;
                 ui.renderVictoryFast(elapsedTime, newRecord ? 0.f : records.bestFast, newRecord, rank, totalKills,
-                                     totalShots, totalHits, deaths, splits, newRecord ? none : records.fastSplits);
+                                     totalShots, totalHits, deaths, splits, newRecord ? none : records.fastSplits, !nameEntry);
             } else {
                 ui.renderVictoryArena(totalKills, totalShots, totalHits, deaths, elapsedTime, peakStyle,
-                                      prog.level, records.bestArena, newRecord);
+                                      prog.level, records.bestArena, newRecord, !nameEntry);
             }
+            renderLeaderboardPanel();
         }
         if (armoryOpen) ui.renderArmory(prog, armoryW, armoryS);
         if (paused) {
@@ -2931,8 +3131,8 @@ public:
         glEnable(GL_CULL_FACE);
     }
 
+    struct PVert { float x, y, z, r, g, b, a; };
     void renderParticles(const glm::mat4& view, const glm::mat4& proj) {
-        struct PVert { float x, y, z, r, g, b, a; };
         static PVert buf[MAX_PARTICLES];
         int count = 0;
         for (auto& p : particles) {
@@ -2940,6 +3140,9 @@ public:
             float t = p.life / p.maxLife;
             buf[count++] = { p.pos.x, p.pos.y, p.pos.z, p.color.r, p.color.g, p.color.b, t * t };
         }
+        drawPoints(buf, count, view, proj);
+    }
+    void drawPoints(const PVert* buf, int count, const glm::mat4& view, const glm::mat4& proj) {
         if (count == 0) return;
         glBindBuffer(GL_ARRAY_BUFFER, particleVBO);
         glBufferSubData(GL_ARRAY_BUFFER, 0, count * sizeof(PVert), buf);
@@ -2965,6 +3168,28 @@ public:
         glDepthMask(GL_TRUE);
         glDisable(GL_BLEND);
         glEnable(GL_CULL_FACE);
+    }
+
+    // The first time OpenGL (on Metal, or WebGL through ANGLE) sees a new
+    // shader + blend combination it compiles a pipeline on the spot, which
+    // froze the game for ~200 ms the first time you fired, a Sentinel aimed
+    // or you scoped in. The first frames of a level draw one invisible
+    // instance of each effect so that happens behind the loading screen.
+    int warmupFrames = 2;
+    void warmPipelines(glm::vec3 camPos, const glm::mat4& view, const glm::mat4& proj) {
+        glm::vec3 f = camPos + player.camera.forward() * 30.f;
+        std::vector<Beam> beam{{glm::vec4(f, 0.f), glm::vec4(f + glm::vec3{0, 1, 0}, 0.f), 0.01f}};
+        drawBeams(beam, {0.f, 0.f, 0.f}, view, proj);
+        PVert pt{f.x, f.y, f.z, 0.f, 0.f, 0.f, 0.f};
+        drawPoints(&pt, 1, view, proj);
+        if (!grapple.active) {   // a zero-length rope
+            glm::vec3 keep = grapple.target;
+            grapple.active = true;
+            grapple.target = camPos + glm::vec3{0.f, 1.4f, 0.f};
+            grapple.drawLine(camPos, view, proj);
+            grapple.active = false;
+            grapple.target = keep;
+        }
     }
 
     // Draws thin additive beams. Shared by bullet tracers and Sentinel lasers.

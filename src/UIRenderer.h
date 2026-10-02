@@ -417,11 +417,11 @@ public:
     }
 
     void renderVictoryArena(int kills, int shots, int hits, int deaths, float gameTime, float peakStyle,
-                            int level, float best, bool newRecord) {
+                            int level, float best, bool newRecord, bool showKeys = true) {
         begin2D();
         ui.rect(0, 0, screenW, screenH, {0.0f, 0.02f, 0.05f, 0.72f});
         ui.text("ALL ARENAS CLEARED", screenW / 2, screenH / 2 - 170, 4, {0.2f, 1.f, 0.6f, 0.95f}, true);
-        ui.text("THE WARDEN IS DOWN", screenW / 2, screenH / 2 - 128, 2, {0.8f, 0.9f, 0.85f, 0.85f}, true);
+        ui.text("THE SOVEREIGN HAS FALLEN", screenW / 2, screenH / 2 - 128, 2, {0.8f, 0.9f, 0.85f, 0.85f}, true);
         char buf[64];
         int y = screenH / 2 - 84;
         glm::vec4 sc{0.9f, 0.9f, 0.9f, 0.9f};
@@ -435,12 +435,13 @@ public:
         float score = acc * 3.f + peakStyle + std::max(0.f, 1200.f - gameTime) - deaths * 60.f;
         const char* grade = score > 1150.f ? "S" : score > 900.f ? "A" : score > 650.f ? "B" : score > 400.f ? "C" : "D";
         ui.text(grade, screenW / 2, y + 90, 7, {1.f, 0.85f, 0.2f, 0.95f}, true);
-        ui.text("ENTER - NEW RUN    ESC - MENU", screenW / 2, y + 170, 2, {0.6f, 0.6f, 0.6f, 0.8f}, true);
+        if (showKeys) ui.text("ENTER - NEW RUN    ESC - MENU", screenW / 2, y + 170, 2, {0.6f, 0.6f, 0.6f, 0.8f}, true);
         end2D();
     }
 
     void renderVictoryFast(float time, float best, bool newRecord, const char* rank, int kills, int shots, int hits,
-                           int deaths, const std::vector<float>& splits, const std::vector<float>& bestSplits) {
+                           int deaths, const std::vector<float>& splits, const std::vector<float>& bestSplits,
+                           bool showKeys = true) {
         begin2D();
         ui.rect(0, 0, screenW, screenH, {0.03f, 0.0f, 0.02f, 0.75f});
         ui.text("GAUNTLET COMPLETE", screenW / 2, 70, 4, {1.f, 0.6f, 0.2f, 0.95f}, true);
@@ -469,7 +470,7 @@ public:
         std::snprintf(buf, sizeof(buf), "KILLS %d    ACCURACY %d%%    DEATHS %d", kills, (int)acc, deaths);
         ui.text(buf, screenW / 2, y + 16, 2, {0.9f, 0.9f, 0.9f, 0.9f}, true);
         ui.text(rank, screenW / 2, y + 48, 7, {1.f, 0.85f, 0.2f, 0.95f}, true);
-        ui.text("ENTER - RUN IT AGAIN    ESC - MENU", screenW / 2, screenH - 40, 2, {0.6f, 0.6f, 0.6f, 0.85f}, true);
+        if (showKeys) ui.text("ENTER - RUN IT AGAIN    ESC - MENU", screenW / 2, screenH - 40, 2, {0.6f, 0.6f, 0.6f, 0.85f}, true);
         end2D();
     }
 
@@ -485,6 +486,14 @@ public:
                 screenW / 2, screenH / 2 + 40, 2, {1.f, 0.85f, 0.5f, 0.95f}, true);
         ui.text("ENTER - NEW RUN    ESC - MENU", screenW / 2, screenH / 2 + 68, 2, {0.6f, 0.5f, 0.5f, 0.8f}, true);
         end2D();
+    }
+
+    // Draw the scope lens once, invisibly, so its pipeline is compiled before
+    // the first time you scope in (see GameplayState::warmPipelines)
+    void warmScope() {
+        HudState h{};
+        h.aim = 0.f;
+        drawScopeLens(h);
     }
 
 private:

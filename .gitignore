@@ -8,8 +8,7 @@ shooter.exe
 build_out.txt
 
 # Runtime-generated
-settings.cfg
-records.cfg
+*.cfg
 
 # macOS
 .DS_Store

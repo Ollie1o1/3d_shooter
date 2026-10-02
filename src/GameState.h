@@ -9,6 +9,15 @@ public:
     virtual void render() = 0;
 };
 
-// ARENA: the four-arena wave run ending with the boss.
-// FAST:  the Gauntlet, a time trial through six levels of hand-placed fights (LevelGauntlet.h).
+// ARENA: the wave run through every arena, ending with the boss.
+// FAST:  the Gauntlet, a time trial through seven rooms of hand-placed fights (LevelGauntlet.h).
 enum class GameMode { ARENA, FAST };
+
+// Where a run starts. The dev level select fills it in; a normal start from
+// the menu is the default (first arena, ranked).
+struct StartOptions {
+    int  arena = 0;          // arena / FAST room index
+    int  wave  = 0;          // wave within it (ARENA)
+    bool god   = false;
+    bool practice = false;   // no records, no leaderboard
+};

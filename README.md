@@ -8,7 +8,7 @@
 
 A 3D arena shooter built with **SDL2**, **OpenGL 3.3 Core Profile**, and **GLM**. ULTRAKILL-inspired movement with grapple hook, dashing, four weapons (including two bolt-action snipers) and style scoring, in two modes:
 
-- **ARENA**: **four themed arenas** (sunset yard, foundry, a vertical spire you have to climb, a night-time reactor) of three waves each, **eight enemy types** built as animated block rigs (including the armored Juggernaut, built to be parried), and a **boss fight** at the end.
+- **ARENA**: **four themed arenas** (sunset yard, foundry, a vertical spire you have to climb, a night-time reactor) of three waves each, **eight enemy types** built as animated block rigs (including the armored Juggernaut, built to be parried), the **Warden** at the end of the fourth, then **the Sanctum**: a huge arena under an eclipse where you duel the final boss, **the Sovereign**, a sword-wielding knight.
 - **FAST**: **the Gauntlet**, a time trial through seven rooms joined by **boost tubes**: doors part as you sprint at them, lock behind you when a room's fight starts, and the exit unlocks when it's clear. A long canal, a close-quarters pump room, a cathedral of terraces, a canyon of islands over a void, a tower you fall through, a hall with control rooms, and a courtyard finale with a lift shaft to the beacon. Run clock, splits against your best run, par ranks.
 
 Kills earn **XP** (more for stylish play), and levels buy **weapon upgrades** in the Armory.
@@ -64,7 +64,9 @@ make clean  # delete binaries
 
 ./shooter --play                 # skip the main menu and start an ARENA run
 ./shooter --fast                 # skip the main menu and start the FAST time trial
-./shooter --arena 4 --wave 3     # jump straight to an arena / wave (here: the boss)
+./shooter --arena 4 --wave 3     # jump straight to an arena / wave (here: the Warden)
+./shooter --arena 5              # the Sanctum: the Sovereign
+./shooter --dev                  # open the DEV level select (also ` or F2 on the main menu)
 ./shooter --fast --arena 3       # jump to a FAST section (here: the chasm)
 ./shooter --god                  # take no damage (for recording footage)
 
@@ -80,7 +82,7 @@ The same C++ compiles to WebAssembly with [Emscripten](https://emscripten.org), 
 ```sh
 source ~/emsdk/emsdk_env.sh     # once per shell
 make web                        # → web/dist/ (≈1.5 MB: wasm + preloaded shaders/sounds)
-python3 -m http.server -d web/dist 8000   # open http://localhost:8000 (?play skips the menu, ?fast starts the time trial; ?arena=4&wave=3 jumps to the boss)
+python3 -m http.server -d web/dist 8000   # open http://localhost:8000 (?play skips the menu, ?fast starts the time trial; ?arena=4&wave=3 jumps to the Warden, ?arena=5 to the Sovereign, ?dev opens the level select)
 ```
 
 What the port needed (all behind `#ifdef __EMSCRIPTEN__`, so the desktop build is unchanged):
@@ -132,7 +134,7 @@ make clean        # delete binary
 ## Features
 
 ### Modes
-- **ARENA** — four arenas, three waves each, the Warden at the end. Optional run timer; your best time is saved.
+- **ARENA** — four arenas, three waves each, the Warden at the end of the fourth, then the Sanctum and the Sovereign. Optional run timer; your best time is saved.
 - **FAST: the Gauntlet** — seven rooms, each reached down a ribbed **boost tube** (a breather: health waiting, nothing shooting at you) that fires you along at 26 m/s. Step into the room and the fight starts: the door behind you locks, and the exit unlocks when the room is clear. A waypoint points to the exit.
   1. **The Canal** (north): a sunken lane between raised walkways, bridges across it
   2. **The Ascent** (turn left, climb): five terraces up 20 m, each riser with a pad and a step block; gunners hold the high ground
@@ -181,6 +183,7 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 | **Mite** | Small spider bomb | Rushes in and detonates | Shoot it early: its blast hurts its friends |
 | **Juggernaut** | 3.3 m armored heavy with a cannon arm | Armor halves bullet damage; fires slow siege shells, smashes up close | Parry the shell (400 back), or punch the smash to break it |
 | **Warden** | 4.6 m crowned boss | Volleys, slams, summons Mites and Rippers; enrages at half health | Everything above |
+| **Sovereign** | 3.5 m horned knight with a greatsword, a halo and a cape | The final boss. Dashes at you and dashes again; chains two sweeps into an overhead cleave with a shockwave; leaps onto any platform you climb; throws crescent slashes at range. Enrages at half health: faster, longer chains, double crescents | Dash through the dashes, jump the cleave's shockwave, and **parry (F) a sweep or the cleave as it lands** to break his guard (he takes 1.5x while broken) |
 
 - Ground enemies steer around cover with feeler probes (no pathfinding; the arenas are open by design) and keep apart with soft separation
 - Gunners and Brutes won't walk off a ledge; Rippers and Mites jump down after you
@@ -223,7 +226,9 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 - Every sound is trimmed to start within a few milliseconds of being triggered, so shots never feel late
 
 ### Game Flow
-- **Victory screen** — after the Warden: time, kills, accuracy, deaths and a letter grade (S/A/B/C/D)
+- **Victory screen** — after the Sovereign: time, kills, accuracy, deaths and a letter grade (S/A/B/C/D)
+- **Leaderboard** — finish a full run fast enough for the top 10 and you're asked for a name (or ESC to skip); it's saved with the time and difficulty, per mode (ARENA / FAST). LEADERBOARD on the main menu shows both boards. Only full runs count: not one started at a later arena, in god mode or from the dev level select
+- **DEV level select** (` or F2 on the main menu, `--dev`, `?dev` on the web) — jump to any arena (and wave), any FAST room or the Sovereign, with god mode on or off. These are practice runs (no records, no leaderboard); in one, F5 clears the current wave and F6 refills health
 - **Death screen** — where you died, with retry-arena and new-run options
 - **Pause menu** — Escape mid-run pauses: Resume / Settings / Restart / Quit to Menu
 - R retries the current arena; Enter starts a new run

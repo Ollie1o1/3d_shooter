@@ -80,12 +80,12 @@ public:
     int  maxAlive() const        { return current().maxAlive + maxAliveBonus; }
     // How many of an entry this wave brings (hand-placed ones are exact)
     int  countOf(const WaveEntry& e) const {
-        if (!e.at.empty() || e.type == EnemyType::WARDEN) return e.total();
+        if (!e.at.empty() || isBoss(e.type)) return e.total();
         return std::max(1, (int)std::lround(e.count * countScale));
     }
     bool fighting() const        { return phase == Phase::ACTIVE; }
     bool bossWave() const {
-        for (auto& e : current().waves[wave]) if (e.type == EnemyType::WARDEN) return true;
+        for (auto& e : current().waves[wave]) if (isBoss(e.type)) return true;
         return false;
     }
 
@@ -184,6 +184,7 @@ private:
 
     glm::vec3 pickSpawn(EnemyType t, glm::vec3 player) {
         const Arena& a = current();
+        if (t == EnemyType::SOVEREIGN) return a.bossSpawn;   // at the far end of the Sanctum, waiting
         if (t == EnemyType::WARDEN) {   // beside the reactor, on the side away from the player
             glm::vec3 s = a.bossSpawn;
             if ((player.x > 0.f) == (s.x > 0.f)) s.x = -s.x;

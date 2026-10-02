@@ -108,6 +108,9 @@ struct App {
         if (e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP) display::toVirtual(ww, wh, e.button.x, e.button.y);
     }
 
+    bool godFromCommandLine = false;   // --god: every run, not just dev ones
+    bool openDevMenu = false;          // --dev / ?dev: start on the level select
+
     bool fullscreenOn = false;
     void applyFullscreen() {
 #ifndef __EMSCRIPTEN__
@@ -140,8 +143,15 @@ struct App {
             SDL_SetRelativeMouseMode(SDL_FALSE);
             auto* menu = new MenuState(SCREEN_W, SCREEN_H);
             menu->settings = &settings;
-            menu->onStart  = [this](GameMode m) { mode = m; pending = NextState::Game; };
+            menu->onStart  = [this](GameMode m, StartOptions o) {
+                mode = m; pending = NextState::Game;
+                g_startArena = o.arena; g_startWave = o.wave;
+                g_godMode    = o.god || godFromCommandLine;
+                g_practice   = o.practice;
+            };
             menu->onQuit   = [this]() { quit(); };
+            if (openDevMenu) { menu->openDev(); openDevMenu = false; }
+            if (g_devOverlay == "board") menu->page = MenuState::BOARD;
             currentState.reset(menu);
         } else if (next == NextState::Game) {
             SDL_SetRelativeMouseMode(g_devNoMouse ? SDL_FALSE : SDL_TRUE);
@@ -351,12 +361,14 @@ int main(int argc, char* argv[]) {
     // --play skips the main menu and drops straight into an ARENA run; --fast
     // into the FAST time trial. --arena N starts at a later arena / section
     // (implies --play), --wave N skips to a wave within it, --god disables
-    // damage (for footage). Dev: --cam X Y Z YAW PITCH, --shot FRAMES FILE.BMP
+    // damage (for footage), --dev opens the level select. Dev: --cam X Y Z
+    // YAW PITCH, --shot FRAMES FILE.BMP
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--play") app->pending = App::NextState::Game;
         if (arg == "--fast") { app->mode = GameMode::FAST; app->pending = App::NextState::Game; }
-        if (arg == "--god")  g_godMode = true;
+        if (arg == "--god")  { g_godMode = true; app->godFromCommandLine = true; }
+        if (arg == "--dev")  app->openDevMenu = true;
         if (arg == "--wave" && i + 1 < argc) g_startWave = std::atoi(argv[++i]) - 1;
         if (arg == "--arena" && i + 1 < argc) {
             g_startArena = std::atoi(argv[++i]) - 1;

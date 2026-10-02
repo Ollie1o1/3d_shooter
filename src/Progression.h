@@ -17,6 +17,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <algorithm>
 
 inline int xpForKill(EnemyType t) {
     switch (t) {
@@ -82,12 +83,14 @@ struct Progression {
 };
 
 // Best times, kept across runs (file on desktop, localStorage on the web).
+// The key carries a version: bump it when the maps change enough that old
+// times no longer mean anything (v2: the Gauntlet's rooms, the Sanctum).
 struct Records {
     float bestArena = 0.f;                 // full Arena run, seconds (0 = none yet)
     float bestFast  = 0.f;                 // FAST mode total
     std::vector<float> fastSplits;         // cumulative time at each section clear, from the best run
 
-    static constexpr const char* kKey = "records.cfg";
+    static constexpr const char* kKey = "records.v2.cfg";
 
     void load() {
         std::istringstream f(persist::load(kKey));
@@ -110,6 +113,86 @@ struct Records {
         f << "fastSplits " << fastSplits.size();
         for (float s : fastSplits) f << " " << s;
         f << "\n";
+        persist::save(kKey, f.str());
+    }
+};
+
+// Finished runs a player chose to put their name to, fastest first, kept
+// per mode (the top KEEP of each). Only full runs count: not one started at
+// a later arena, in god mode or from the dev level select.
+struct Leaderboard {
+    struct Entry { std::string name; float time; int difficulty; };
+    static constexpr int KEEP = 10;
+    static constexpr int MAX_NAME_LEN = 12;
+    std::vector<Entry> arena, fast;
+    std::string lastName;   // offered again next time
+
+    static constexpr const char* kKey = "leaderboard.cfg";
+
+    std::vector<Entry>&       list(bool f)       { return f ? fast : arena; }
+    const std::vector<Entry>& list(bool f) const { return f ? fast : arena; }
+
+    // Letters, digits, space and - . _ only (what the pixel font draws), upper case
+    static bool nameChar(char c) {
+        return (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == ' ' || c == '-' || c == '.' || c == '_';
+    }
+    static std::string cleanName(const std::string& in) {
+        std::string o;
+        for (char c : in) {
+            if (c >= 'a' && c <= 'z') c = (char)(c - 'a' + 'A');
+            if (nameChar(c) && (int)o.size() < MAX_NAME_LEN) o += c;
+        }
+        size_t a = o.find_first_not_of(' '), b = o.find_last_not_of(' ');
+        return a == std::string::npos ? std::string() : o.substr(a, b - a + 1);
+    }
+
+    // Where a time would place (0-based), or -1 if it wouldn't make the board
+    int placeFor(bool f, float t) const {
+        const auto& l = list(f);
+        int i = 0;
+        while (i < (int)l.size() && l[i].time <= t) ++i;
+        return i < KEEP ? i : -1;
+    }
+    // Returns the entry's place, or -1 (no name, or not fast enough)
+    int add(bool f, const std::string& rawName, float t, int difficulty) {
+        std::string name = cleanName(rawName);
+        if (name.empty() || t <= 0.f) return -1;
+        int at = placeFor(f, t);
+        if (at < 0) return -1;
+        auto& l = list(f);
+        l.insert(l.begin() + at, Entry{name, t, difficulty});
+        if ((int)l.size() > KEEP) l.resize(KEEP);
+        lastName = name;
+        return at;
+    }
+
+    void load() {
+        arena.clear(); fast.clear();
+        std::istringstream f(persist::load(kKey));
+        std::string line;
+        while (std::getline(f, line)) {
+            std::istringstream ls(line);
+            std::string key; ls >> key;
+            if (key == "arena" || key == "fast") {
+                Entry e{"", 0.f, 0}; ls >> e.time >> e.difficulty;
+                std::string rest; std::getline(ls, rest);
+                e.name = cleanName(rest);
+                if (!e.name.empty() && e.time > 0.f && (int)list(key == "fast").size() < KEEP)
+                    list(key == "fast").push_back(e);
+            } else if (key == "lastName") {
+                std::string rest; std::getline(ls, rest);
+                lastName = cleanName(rest);
+            }
+        }
+        auto byTime = [](const Entry& a, const Entry& b) { return a.time < b.time; };
+        std::stable_sort(arena.begin(), arena.end(), byTime);
+        std::stable_sort(fast.begin(), fast.end(), byTime);
+    }
+    void save() const {
+        std::ostringstream f;
+        for (bool fm : {false, true})
+            for (auto& e : list(fm)) f << (fm ? "fast " : "arena ") << e.time << " " << e.difficulty << " " << e.name << "\n";
+        if (!lastName.empty()) f << "lastName " << lastName << "\n";
         persist::save(kKey, f.str());
     }
 };

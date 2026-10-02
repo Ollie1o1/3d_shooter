@@ -133,8 +133,8 @@ int main() {
 
     // ---------------------------------------------------------------- arena map
     {
-        CHECK(L.arenas.size() == 4, "four arenas");
-        CHECK(L.corridors.size() == 3, "three corridors join them");
+        CHECK(L.arenas.size() == 5, "five arenas");
+        CHECK(L.corridors.size() == 4, "four corridors join them");
         bool groundOk = true, airOk = true, inBounds = true, starts = true, underCeiling = true;
         for (auto& a : L.arenas) {
             // Largest regular ground enemy (the Juggernaut) must fit at every ground spawn
@@ -151,11 +151,20 @@ int main() {
             }
             if (overlapsWall(L, boxAt(a.playerStart, 0.4f, 1.8f)) || !inside(a.zone, a.playerStart)) starts = false;
         }
-        const Arena& last = L.arenas.back();
-        glm::vec3 mirrored{-last.bossSpawn.x, last.bossSpawn.y, last.bossSpawn.z};
-        CHECK(!overlapsWall(L, boxAt(last.bossSpawn, statsOf(EnemyType::WARDEN).radius, statsOf(EnemyType::WARDEN).height)) &&
+        const Arena& core = L.arenas[3];
+        glm::vec3 mirrored{-core.bossSpawn.x, core.bossSpawn.y, core.bossSpawn.z};
+        CHECK(!overlapsWall(L, boxAt(core.bossSpawn, statsOf(EnemyType::WARDEN).radius, statsOf(EnemyType::WARDEN).height)) &&
               !overlapsWall(L, boxAt(mirrored, statsOf(EnemyType::WARDEN).radius, statsOf(EnemyType::WARDEN).height)),
               "the Warden fits at both of his spawn points");
+        const Arena& sanctum = L.arenas.back();
+        CHECK(std::string(sanctum.name) == "THE SANCTUM" && sanctum.waves.size() == 1 &&
+              sanctum.waves[0].size() == 1 && sanctum.waves[0][0].type == EnemyType::SOVEREIGN &&
+              !overlapsWall(L, boxAt(sanctum.bossSpawn, statsOf(EnemyType::SOVEREIGN).radius, statsOf(EnemyType::SOVEREIGN).height)),
+              "the Sanctum holds the Sovereign alone, and he fits where he waits");
+        CHECK((sanctum.zone.max.x - sanctum.zone.min.x) * (sanctum.zone.max.z - sanctum.zone.min.z) >
+              2.f * (core.zone.max.x - core.zone.min.x) * (core.zone.max.z - core.zone.min.z),
+              "the Sanctum is more than twice the size of any arena before it");
+        CHECK(core.exitDoor >= 0 && L.doors[core.exitDoor].locked, "the Core's way on to the Sanctum starts locked");
         CHECK(groundOk, "every ground spawn (all Spire tiers too) fits a Juggernaut without touching a wall");
         CHECK(airOk, "every air spawn is clear of walls");
         CHECK(inBounds, "every spawn is inside its arena's bounds");
@@ -180,7 +189,7 @@ int main() {
         CHECK(ceilings, "every arena has an invisible ceiling (12-36 m), so you can't fly out of the map");
         int waves = 0;
         for (auto& a : L.arenas) waves += (int)a.waves.size();
-        CHECK(waves == 12, "three waves per arena");
+        CHECK(waves == 13, "three waves per arena, then the Sovereign");
     }
 
     // The Spire: each wave spawns a tier higher, and it has things to ride
@@ -457,7 +466,8 @@ int main() {
 
     // ---------------------------------------------------------------- AI
     const Arena& A0 = L.arenas[0];
-    const Arena& BOSS = L.arenas.back();
+    const Arena& BOSS = L.arenas[3];          // the Core: the Warden
+    const Arena& SAN  = L.arenas.back();      // the Sanctum: the Sovereign
     auto worldFor = [&](const LevelData& lv, const SpatialGrid& g, glm::vec3 playerFeet, const Arena& a) {
         EnemyWorld w;
         w.playerFeet = playerFeet;
@@ -534,6 +544,64 @@ int main() {
       for (int i = 0; i < 60; ++i) { k.update(DT, w2); if (k.ev.meleeHit || k.ev.shots) still = false; }
       CHECK(still && glm::length(glm::vec2(k.position.x - p0.x, k.position.z - p0.z)) < 0.01f,
             "a broken JUGGERNAUT stands still and can't attack"); }
+    // The Sovereign: dashes (and dashes again), sweep-sweep-cleave combos,
+    // leaps onto high ground, crescents at range, a parry window, enrage
+    {
+        glm::vec3 C{0.f, 0.f, -348.f};
+        Enemy b(EnemyType::SOVEREIGN, C + glm::vec3{0, 0, -14});
+        EnemyWorld w = worldFor(L, grid, C, SAN);
+        int melee = 0, cleaves = 0, slams = 0; bool sweepL = false, sweepR = false;
+        bool window = false, inWall = false, outside = false;
+        for (int i = 0; i < 60 * 25; ++i) {
+            b.update(DT, w);
+            melee += b.ev.meleeHit; slams += b.ev.slam;
+            sweepL |= b.ev.slash == 0; sweepR |= b.ev.slash == 1; cleaves += b.ev.slash == 2;
+            window |= b.parryWindow();
+            if (!inside(SAN.bounds, b.position)) outside = true;
+            AABB box = boxAt(b.position + glm::vec3{0, 0.05f, 0}, b.radius() - 0.05f, b.height() - 0.1f);
+            for (auto& wl : L.walls) if (!wl.dynamic && overlapsBox(box, wl.box)) inWall = true;
+        }
+        std::printf("      sovereign (player standing): %d hits, %d cleaves, %d slams\n", melee, cleaves, slams);
+        // A player kiting him in a wide circle: he closes the gap by dashing
+        Enemy k(EnemyType::SOVEREIGN, C + glm::vec3{0, 0, -20});
+        int dashes = 0; bool chained = false; float lastDash = -10.f;
+        for (int i = 0; i < 60 * 20; ++i) {
+            float t = i * DT, ang = t * 0.4f;
+            glm::vec3 p = C + glm::vec3{std::cos(ang) * 16.f, 0.f, std::sin(ang) * 16.f};
+            EnemyWorld kw = worldFor(L, grid, p, SAN);
+            kw.playerVel = glm::vec3{-std::sin(ang), 0.f, std::cos(ang)} * 6.4f;
+            k.update(DT, kw);
+            if (k.ev.dashStarted) { if (t - lastDash < 1.4f) chained = true; lastDash = t; ++dashes; }
+        }
+        std::printf("      sovereign (player kiting): %d dashes\n", dashes);
+        CHECK(dashes >= 4 && chained, "SOVEREIGN dashes at a kiting player, and chains a second dash out of the first");
+        CHECK(sweepL && sweepR && cleaves >= 1 && slams >= 1, "SOVEREIGN's combo: a sweep each way, then a cleave with a shockwave");
+        CHECK(melee >= 4, "SOVEREIGN's sword connects with a player who just stands there");
+        CHECK(window, "SOVEREIGN's sweeps and cleave can be parried as they land");
+        CHECK(!inWall && !outside, "SOVEREIGN stays out of walls and inside the Sanctum");
+
+        // High ground: stand on the north island (11 m) and he comes up
+        Enemy h(EnemyType::SOVEREIGN, C + glm::vec3{0, 0, -6});
+        EnemyWorld hw = worldFor(L, grid, C + glm::vec3{0, 11.f, -24.f}, SAN);
+        bool leapt = false; float topY = 0.f;
+        for (int i = 0; i < 60 * 12; ++i) { h.update(DT, hw); leapt |= h.ev.leapStarted; topY = std::max(topY, h.grounded ? h.position.y : 0.f); }
+        CHECK(leapt && topY > 10.5f, "SOVEREIGN leaps up onto the island you're standing on");
+
+        // Far away: crescents
+        Enemy f(EnemyType::SOVEREIGN, C + glm::vec3{0, 0, -30});
+        EnemyWorld fw = worldFor(L, grid, C + glm::vec3{0, 0, 28}, SAN);
+        int shots = 0;
+        for (int i = 0; i < 60 * 12; ++i) { f.update(DT, fw); shots += f.ev.shots; }
+        CHECK(shots >= 5, "SOVEREIGN throws crescent slashes at range");
+
+        float before = b.armorMult();
+        b.stagger(b.staggerTime());
+        CHECK(before == 1.f && b.armorMult() == 1.5f && b.dashTimer == 0.f && b.attack == AttackKind::NONE,
+              "a parried SOVEREIGN drops everything and takes extra damage");
+        Enemy r(EnemyType::SOVEREIGN, C); r.spawnTimer = 0.f; r.state = EnemyState::ACTIVE;
+        r.takeDamage(r.maxHealth * 0.55f);
+        CHECK(r.enraged, "SOVEREIGN enrages below half health");
+    }
     { auto s = simulate(L, grid, EnemyType::WARDEN, BOSS.bossSpawn, BOSS.playerStart, BOSS, 30.f);
       CHECK(s.shots >= 7, "WARDEN fires volleys");
       CHECK(s.summons >= 1, "WARDEN summons adds");
@@ -617,7 +685,7 @@ int main() {
             d.update(DT, (int)alive.size(), player, out);
             for (auto& r : out) {
                 ++spawned;
-                if (r.type == EnemyType::WARDEN) ++bossSpawns;
+                if (isBoss(r.type)) ++bossSpawns;
                 if (glm::length(glm::vec2(r.pos.x - player.x, r.pos.z - player.z)) < WaveDirector::SAFE_RADIUS) tooClose = true;
                 alive.push_back(3.f);   // each enemy "survives" 3 s, so the cap gets exercised
             }
@@ -634,9 +702,10 @@ int main() {
         std::printf("      spawned %d of %d, peak alive %d\n", spawned, expected, maxAliveSeen);
         CHECK(d.phase == WaveDirector::Phase::VICTORY, "a simulated ARENA run reaches victory");
         CHECK(spawned == expected, "every queued enemy spawns exactly once");
-        CHECK(bossSpawns == 1, "the Warden spawns once");
+        CHECK(bossSpawns == 2, "each boss (the Warden, the Sovereign) spawns once");
         CHECK(counts[DirectorEvent::ARENA_START] == n, "every arena starts");
-        CHECK(counts[DirectorEvent::WAVE_START] == 3 * n - 1 && counts[DirectorEvent::BOSS_START] == 1, "every wave starts, the last is the boss");
+        CHECK(counts[DirectorEvent::WAVE_START] == 3 * (n - 1) - 1 && counts[DirectorEvent::BOSS_START] == 2,
+              "every wave starts; the Core and the Sanctum end on their bosses");
         CHECK(counts[DirectorEvent::ARENA_CLEARED] == n && counts[DirectorEvent::VICTORY] == 1 &&
               counts[DirectorEvent::FINISH_OPEN] == 0, "each arena clears, then victory");
         CHECK(counts[DirectorEvent::NEW_TYPE] == (int)EnemyType::COUNT, "each enemy type is introduced exactly once");
@@ -660,7 +729,7 @@ int main() {
             if (alive > 0 && d.phase != WaveDirector::Phase::ACTIVE) clearedWithBossAlive = true;
         }
         CHECK(alive == 1 && d.phase == WaveDirector::Phase::ACTIVE && !clearedWithBossAlive,
-              "the boss wave stays active while the Warden is alive");
+              "the boss wave stays active while the boss is alive");
     }
 
     // ---------------------------------------------------------------- director: FAST
@@ -718,7 +787,7 @@ int main() {
         WeaponUpgrades none;
         float maxRegular = 0.f;
         for (int t = 0; t < (int)EnemyType::COUNT; ++t)
-            if ((EnemyType)t != EnemyType::WARDEN && (EnemyType)t != EnemyType::JUGGERNAUT)   // the heavies: parry them
+            if (!isBoss((EnemyType)t) && (EnemyType)t != EnemyType::JUGGERNAUT)   // the heavies: parry them
                 maxRegular = std::max(maxRegular, statsOf((EnemyType)t).health);
         CHECK(weaponDamage(WeaponId::LONGSHOT, none) >= maxRegular, "the Longshot one-shots every regular enemy");
         CHECK(weaponDamage(WeaponId::KAR, none) * weaponDef(WeaponId::KAR).headMult >= maxRegular,
@@ -761,6 +830,18 @@ int main() {
               "upgrades stop at the max tier");
         CHECK(styleXpMultiplier(StyleRank::SSS) > styleXpMultiplier(StyleRank::D), "stylish kills earn more XP");
         CHECK(formatTime(83.456f) == "1:23.46" && formatTime(5.f, false) == "0:05", "times format as m:ss.hh");
+    }
+    {
+        Leaderboard lb;
+        CHECK(Leaderboard::cleanName("  ollie <3!!  ") == "OLLIE 3" && Leaderboard::cleanName("abcdefghijklmnopq").size() == 12,
+              "leaderboard names are upper-cased, filtered to what the font draws, and capped at 12");
+        CHECK(lb.add(false, "   ", 100.f, 1) == -1 && lb.arena.empty(), "a blank name is not saved");
+        lb.add(false, "B", 200.f, 1); lb.add(false, "A", 100.f, 1); lb.add(false, "C", 300.f, 2);
+        CHECK(lb.arena.size() == 3 && lb.arena[0].name == "A" && lb.arena[2].name == "C" && lb.fast.empty(),
+              "entries sort fastest first, per mode");
+        for (int i = 0; i < 20; ++i) lb.add(false, "X", 50.f + i, 0);
+        CHECK((int)lb.arena.size() == Leaderboard::KEEP && lb.placeFor(false, 1000.f) == -1 && lb.placeFor(false, 1.f) == 0,
+              "the board keeps the top 10; a slower time doesn't place");
     }
 
     // ---------------------------------------------------------------- music

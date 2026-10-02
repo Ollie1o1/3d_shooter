@@ -21,10 +21,16 @@
 //          │ │          corridor  Z -202..-187
 //   ┌──────┘ └────────┐  ARENA 4  THE CORE      X ±36  Z -274..-202 night sky
 //   │ reactor + boss  │           pillar ring, corner perches, the Warden
-//   └─────────────────┘
+//   └──────┐ ┌────────┘
+//          │ │          corridor  Z -291..-275
+//   ┌──────┘ └──────────────┐  ARENA 5  THE SANCTUM  X ±56  Z -404..-292  eclipse
+//   │                       │     a duelling ground under an eclipse: open
+//   │   the Sovereign       │     floor, a ring of tall pillars to grapple,
+//   │                       │     raised corners, floating islands, orbiting
+//   └───────────────────────┘     platforms. One enemy: the final boss.
 //          -Z (north)
 //
-// Each arena: three waves. Clearing the last opens the exit door; walking far
+// Each arena: three waves (the Sanctum: just the boss). Clearing the last opens the exit door; walking far
 // enough into the next arena slams the gate shut behind you and starts it.
 // Every arena has a ceiling (zone.max.y): an invisible barrier that stops
 // dashes and grapples from launching you out over the walls.
@@ -978,7 +984,12 @@ inline LevelData buildLevel() {
         neon(-5.5f,7.6f,-202.62f, 5.5f,7.8f,-202.5f, magenta);
         wall( 36,0,-275, 37,6,-201, slate);
         wall(-37,0,-275,-36,6,-201, slate);
-        wall(-37,0,-275, 37,6,-274, slate);
+        // North wall: the way on to the Sanctum, shut until the Warden falls
+        // (low enough to pass under the walkway that runs above it)
+        wall(-37,0,-275, -4,6,-274, slate);
+        wall(  4,0,-275, 37,6,-274, slate);
+        wall( -4,3.4f,-275, 4,6,-274, slate);
+        a.exitDoor = B.doorway(true, -4, 4, -275, -274, 0.f, 3.4f, magenta, true);
         neon(-36,5.3f,-274.0f+0.02f, 36,5.5f,-273.88f, cyan);
         neon( 35.88f,5.3f,-274, 35.98f,5.5f,-202, cyan);
         neon(-35.98f,5.3f,-274, -35.88f,5.5f,-202, cyan);
@@ -1045,7 +1056,7 @@ inline LevelData buildLevel() {
 
         // A dead city skyline beyond the walls
         const float towers[][4] = {{-52,12,8,34},{-58,-16,10,26},{-48,-42,7,40},{52,22,9,30},
-                                   {60,-8,12,22},{50,-48,8,44},{-20,-56,10,30},{22,-62,9,36},{0,-70,14,20}};
+                                   {60,-8,12,22},{50,-48,8,44}};
         for (auto& t : towers) {
             float x = t[0], z = CZ + t[1], w = t[2] * 0.5f, h = t[3];
             prop(x - w,0,z - w, x + w,h,z + w, {0.05f,0.06f,0.08f});
@@ -1074,6 +1085,134 @@ inline LevelData buildLevel() {
             glm::normalize(vec3{-0.35f,-0.6f,0.7f}), {0.55f,0.75f,0.95f},
             {0.14f,0.22f,0.32f}, {0.04f,0.06f,0.08f},
             {0.04f,0.12f,0.16f}, 0.012f };
+        L.arenas.push_back(std::move(a));
+    }
+
+    // ---- Corridor 4 → 5 ------------------------------------------------------
+    {
+        B.tube(2, -291.f, -275.f, 0.f, 0.f, 8.f, 6.f, {0.2f,0.16f,0.18f}, {1.0f,0.3f,0.2f});
+        L.floors.push_back({-4.f, -291.f, 4.f, -275.f, 0.f, {0.14f,0.11f,0.12f}});
+        L.corridors.push_back(aabb(-5, 0, -291.5f, 5, 40, -274.5f));
+    }
+
+    // =========================================================================
+    // ARENA 5 — THE SANCTUM: the Sovereign's duelling ground
+    // =========================================================================
+    // Built for movement as much as for the fight: a wide open floor to dash
+    // around him, a ring of tall pillars to grapple, four raised corners and
+    // four floating islands reached by jump pads, and two platforms orbiting
+    // the middle. High ground buys you a moment, not safety: he leaps.
+    {
+        vec3 basalt{0.2f,0.17f,0.19f}, basaltDark{0.12f,0.1f,0.12f},
+             crimson{1.0f,0.22f,0.12f}, gold{1.0f,0.72f,0.3f};
+        const float CZ = -348.f;    // centre (z)
+        Arena a;
+        a.name = "THE SANCTUM";
+        a.subtitle = "THE SOVEREIGN AWAITS";
+        a.bounds = aabb(-56, 0, -404, 56, 30, -292);
+        a.zone   = aabb(-57.5f, 0, -405.5f, 57.5f, 34, -290.5f);   // ceiling 34 m
+        a.playerStart = {0.f, 0.f, -296.f};
+        a.bossSpawn   = {0.f, 0.f, CZ - 30.f};
+        // The floor: a dark plaza with a ringed seal in the middle
+        L.floors.push_back({-57.f, -405.f, 57.f, -291.f, 0.f, {0.15f,0.12f,0.13f}});
+        L.floors.push_back({-16.f, CZ - 16.f, 16.f, CZ + 16.f, 0.005f, {0.22f,0.15f,0.12f}});
+        L.floors.push_back({-11.f, CZ - 11.f, 11.f, CZ + 11.f, 0.01f, {0.12f,0.08f,0.09f}});
+        L.floors.push_back({ -5.f, CZ -  5.f,  5.f, CZ +  5.f, 0.015f, {0.3f,0.2f,0.12f}});
+        for (float r : {16.f, 11.f}) {
+            neon(-r, 0.01f, CZ - r - 0.12f, r, 0.05f, CZ - r, crimson * 0.7f);
+            neon(-r, 0.01f, CZ + r, r, 0.05f, CZ + r + 0.12f, crimson * 0.7f);
+            neon(-r - 0.12f, 0.01f, CZ - r, -r, 0.05f, CZ + r, crimson * 0.7f);
+            neon(r, 0.01f, CZ - r, r + 0.12f, 0.05f, CZ + r, crimson * 0.7f);
+        }
+
+        // Gate and perimeter
+        wall(-57,0,-292, -4,9,-291, basalt);
+        wall(  4,0,-292, 57,9,-291, basalt);
+        wall( -4,6,-292,  4,9,-291, basalt);
+        a.entryGate = B.doorway(true, -4, 4, -292, -291, 0.f, 6.f, crimson, false);
+        wall(-5.5f,0,-292.5f, -4,10,-291, basaltDark); wall(4,0,-292.5f, 5.5f,10,-291, basaltDark);
+        wall( 56,0,-405, 57,9,-291, basalt);
+        wall(-57,0,-405,-56,9,-291, basalt);
+        wall(-57,0,-405, 57,9,-404, basalt);
+        neon(-56,8.2f,-403.88f, 56,8.45f,-403.78f, crimson);
+        neon( 55.78f,8.2f,-404, 55.88f,8.45f,-292, crimson);
+        neon(-55.88f,8.2f,-404, -55.78f,8.45f,-292, crimson);
+        neon(-56,8.2f,-292.22f, -5.5f,8.45f,-292.12f, crimson);
+        neon(5.5f,8.2f,-292.22f, 56,8.45f,-292.12f, crimson);
+
+        // A ring of eight tall pillars: grapple anchors and cover
+        for (int k = 0; k < 8; ++k) {
+            float ang = glm::radians(22.5f + 45.f * k);
+            float cx = std::cos(ang) * 34.f, cz = CZ + std::sin(ang) * 34.f;
+            wall(cx - 1.5f,0,cz - 1.5f, cx + 1.5f,18,cz + 1.5f, basalt);
+            ring(cx - 1.5f,cz - 1.5f, cx + 1.5f,cz + 1.5f, 6.f, 6.2f, gold * 0.8f);
+            ring(cx - 1.5f,cz - 1.5f, cx + 1.5f,cz + 1.5f, 12.f, 12.2f, gold * 0.8f);
+            neon(cx - 1.55f,18,cz - 1.55f, cx + 1.55f,18.2f,cz + 1.55f, crimson);
+        }
+
+        // Raised corners (5 m) with jump pads up to them
+        for (int sx : {-1, 1}) for (int sz : {-1, 1}) {
+            float x0 = sx * 34.f, x1 = sx * 44.f, z0 = CZ + sz * 34.f, z1 = CZ + sz * 44.f;
+            wall(x0,0,z0, x1,5,z1, basaltDark);
+            ring(std::min(x0,x1), std::min(z0,z1), std::max(x0,x1), std::max(z0,z1), 4.7f, 4.9f, crimson);
+            L.pads.push_back({{sx * 28.5f, 0.f, CZ + sz * 28.5f}, {1.3f, 1.3f}, {sx * 8.f, 17.f, sz * 8.f}});
+        }
+
+        // Four floating islands at 11 m (north, south, east, west), each with a pad below
+        for (int k = 0; k < 4; ++k) {
+            float dx = k == 0 ? 0.f : k == 1 ? 0.f : k == 2 ? 1.f : -1.f;
+            float dz = k == 0 ? -1.f : k == 1 ? 1.f : 0.f;
+            float cx = dx * 24.f, cz = CZ + dz * 24.f;
+            wall(cx - 3.f,10,cz - 3.f, cx + 3.f,11,cz + 3.f, basalt);
+            ring(cx - 3.f,cz - 3.f, cx + 3.f,cz + 3.f, 10.f, 10.15f, gold);
+            L.pads.push_back({{dx * 14.f, 0.f, CZ + dz * 14.f}, {1.2f, 1.2f}, {dx * 6.5f, 25.f, dz * 6.5f}});
+        }
+
+        // Two platforms orbiting the seal at 6 m: ride them, hook them
+        B.mover({0.f, 6.f, CZ}, {2.5f, 0.3f, 2.5f}, Mover::Path::ORBIT, {19.f, 0.f, 0.f}, {0.f, 0.f, 19.f}, 18.f, 0.f, crimson);
+        B.mover({0.f, 6.f, CZ}, {2.5f, 0.3f, 2.5f}, Mover::Path::ORBIT, {19.f, 0.f, 0.f}, {0.f, 0.f, 19.f}, 18.f, 0.5f, crimson);
+
+        // Broken column stumps: a little low cover, nothing that boxes you in
+        const float stumps[][2] = {{-20, -9}, {20, 9}, {-9, 20}, {9, -20}};
+        for (auto& st : stumps) {
+            wall(st[0] - 1.2f,0,CZ + st[1] - 1.2f, st[0] + 1.2f,1.3f,CZ + st[1] + 1.2f, basaltDark);
+            ring(st[0] - 1.2f,CZ + st[1] - 1.2f, st[0] + 1.2f,CZ + st[1] + 1.2f, 1.1f, 1.25f, gold * 0.6f);
+        }
+
+        // Beyond the walls: kneeling colossi and black spires against the eclipse
+        for (int k = 0; k < 3; ++k) {
+            float x = -40.f + 40.f * k, z = -430.f;
+            vec3 st{0.06f,0.05f,0.06f};
+            prop(x - 5,0,z - 4, x + 5,10,z + 4, st);                 // folded legs
+            prop(x - 4,10,z - 3, x + 4,26,z + 3, st);                // torso
+            prop(x - 2,26,z - 2, x + 2,31,z + 2, st);                // head
+            prop(x - 7,14,z - 1, x - 4,24,z + 1, st);                // arms on the sword
+            prop(x + 4,14,z - 1, x + 7,24,z + 1, st);
+            prop(x - 0.6f,0,z + 4, x + 0.6f,22,z + 5.5f, st);        // the sword, point down
+            neon(x - 1.2f,28.5f,z + 2.02f, x + 1.2f,28.8f,z + 2.1f, crimson);   // eyes
+        }
+        const float spires[][4] = {{-75,-330,6,46},{78,-360,7,52},{-80,-385,8,38},{72,-310,5,34},{-70,-300,5,30},{82,-395,6,44}};
+        for (auto& t : spires) {
+            prop(t[0] - t[2] * 0.5f,0,t[1] - t[2] * 0.5f, t[0] + t[2] * 0.5f,t[3],t[1] + t[2] * 0.5f, {0.05f,0.04f,0.05f});
+            neon(t[0] - t[2] * 0.5f - 0.05f,t[3] - 3.f,t[1] - t[2] * 0.5f - 0.05f,
+                 t[0] + t[2] * 0.5f + 0.05f,t[3] - 2.6f,t[1] + t[2] * 0.5f + 0.05f, crimson * 0.6f);
+        }
+
+        a.groundSpawns = {{0,0,CZ - 30},{-30,0,CZ},{30,0,CZ},{0,0,CZ + 25}};
+        a.airSpawns    = {{0,12,CZ}};
+        a.waves = { {{EnemyType::SOVEREIGN, 1}} };
+        a.maxAlive = 1;
+        a.damageScale = 1.2f;
+        a.ambient = Ambient::ASH;
+        a.theme = Theme{
+            {0.025f,0.0f,0.015f}, {0.42f,0.08f,0.05f}, {0.04f,0.01f,0.01f},
+            glm::normalize(vec3{0.f, 0.3f, -1.f}), {2.0f,1.55f,1.0f}, 0.16f, 0.f,
+            {0.07f,0.02f,0.02f}, 0.7f,
+            // Key light from behind the gate (the eclipse is a dark disc), so
+            // the boss is lit from where you face him
+            glm::normalize(vec3{-0.25f,-0.55f,-1.f}), {1.2f,0.85f,0.7f},
+            {0.32f,0.16f,0.15f}, {0.09f,0.04f,0.04f},
+            {0.16f,0.04f,0.04f}, 0.007f };
         L.arenas.push_back(std::move(a));
     }
 

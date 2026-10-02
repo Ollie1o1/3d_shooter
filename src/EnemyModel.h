@@ -64,6 +64,7 @@ inline HumanoidLook humanoidDims(EnemyType t) {
     case EnemyType::BRUTE:      return {1.0f,  0.42f, 0.55f, 0.2f,  1.15f, 1.35f, 0.85f, 0.44f, 1.25f, 0.42f, {}, {}, {}};
     case EnemyType::JUGGERNAUT: return {1.15f, 0.5f,  0.65f, 0.25f, 1.3f,  1.5f,  0.95f, 0.42f, 1.3f,  0.45f, {}, {}, {}};
     case EnemyType::WARDEN:     return {1.7f,  0.6f,  0.8f,  0.3f,  1.75f, 1.9f,  1.1f,  0.62f, 1.9f,  0.55f, {}, {}, {}};
+    case EnemyType::SOVEREIGN:  return {1.35f, 0.34f, 0.46f, 0.22f, 1.25f, 1.05f, 0.58f, 0.42f, 1.3f,  0.3f,  {}, {}, {}};
     default:                    return {};
     }
 }
@@ -76,14 +77,23 @@ inline HumanoidLook humanoidLook(EnemyType t, vec3 armor, vec3 under, vec3 glow)
 enum class ArmPose { SWING, AIM_RIGHT, AIM_BOTH, RAISED };
 struct HumanoidFrames { mat4 body, torso, head, armL, armR; };
 
+// Explicit joint angles instead of the walk cycle's arms (the SOVEREIGN's
+// sword work). crouch lowers the whole body; the torso turns and leans.
+struct PoseOverride {
+    bool  on = false;
+    float crouch = 0.f, torsoYaw = 0.f, torsoPitch = 0.f;
+    float rxR = 0.f, rzR = 0.f, rxL = 0.f, rzL = 0.f;
+    float grip = 0.f;   // the blade's angle in the right hand (0: continues the arm)
+};
+
 // Two legs, pelvis, torso with a glowing chest stripe, head with a visor, two
 // arms with hands: 13 parts. Right side is local -X (the model faces +Z).
 inline HumanoidFrames humanoid(Rig& r, const mat4& root, const HumanoidLook& L,
                                float phase, float stride, ArmPose pose, float amt,
-                               bool visor = true) {
+                               bool visor = true, const PoseOverride* ov = nullptr) {
     HumanoidFrames f;
     float bob = std::fabs(std::sin(phase)) * 0.05f * stride;
-    f.body = root * T({0.f, bob, 0.f});
+    f.body = root * T({0.f, bob - (ov ? ov->crouch : 0.f), 0.f});
     float hipY = L.legLen;
 
     for (float s : {-1.f, 1.f}) {
@@ -96,6 +106,7 @@ inline HumanoidFrames humanoid(Rig& r, const mat4& root, const HumanoidLook& L,
           {L.hipW + L.legW, L.pelvisH, L.torsoD * 0.8f}, L.under);
 
     f.torso = f.body * T({0.f, hipY + L.pelvisH, 0.f}) * RY(std::sin(phase) * 0.08f * stride);
+    if (ov) f.torso = f.torso * RY(ov->torsoYaw) * RX(ov->torsoPitch);
     r.box(f.torso, {0.f, L.torsoH * 0.5f, 0.f}, {L.torsoW, L.torsoH, L.torsoD}, L.armor);
     r.box(f.torso, {0.f, L.torsoH * 0.62f, L.torsoD * 0.5f + 0.01f},
           {L.torsoW * 0.45f, L.torsoH * 0.12f, 0.05f}, L.glow * 0.3f, L.glow * 1.2f);
@@ -113,8 +124,10 @@ inline HumanoidFrames humanoid(Rig& r, const mat4& root, const HumanoidLook& L,
         if (pose == ArmPose::AIM_RIGHT && right) rx = -1.5708f * amt + rx * (1.f - amt);
         if (pose == ArmPose::AIM_BOTH)           rx = -1.5708f * amt + rx * (1.f - amt);
         if (pose == ArmPose::RAISED)             rx = -2.9f * amt + rx * (1.f - amt);
+        float rz = 0.f;
+        if (ov) { rx = right ? ov->rxR : ov->rxL; rz = right ? ov->rzR : ov->rzL; }
         mat4 sh = f.torso * T({s * (L.torsoW * 0.5f + L.armW * 0.5f), L.torsoH - L.armW * 0.5f, 0.f})
-                * RX(rx) * RZ(s * 0.08f);
+                * RX(rx) * RZ(s * 0.08f + rz);
         r.box(sh, {0.f, -L.armLen * 0.5f, 0.f}, {L.armW, L.armLen, L.armW}, L.armor * 0.9f);
         r.box(sh, {0.f, -L.armLen - L.armW * 0.3f, 0.f}, vec3{L.armW * 1.2f}, L.under);
         (right ? f.armR : f.armL) = sh;
@@ -123,6 +136,70 @@ inline HumanoidFrames humanoid(Rig& r, const mat4& root, const HumanoidLook& L,
 }
 
 inline float smooth01(float t) { t = glm::clamp(t, 0.f, 1.f); return t * t * (3.f - 2.f * t); }
+
+// The SOVEREIGN's stance from his attack state: every wind-up is a clear,
+// held pose (sword drawn back for a dash, wound to one side for a sweep,
+// raised overhead for the cleave), and every stroke follows through.
+inline PoseOverride sovereignPose(const Enemy& e) {
+    PoseOverride o; o.on = true;
+    float walk = std::sin(e.animPhase) * glm::clamp(e.moveSpeed / 6.f, 0.f, 1.f);
+    o.rxR = -0.45f + walk * 0.12f; o.rxL = -walk * 0.5f; o.grip = -1.05f;
+    float k = smooth01(e.telegraphProgress() * 1.6f);
+    auto mixTo = [&](float& v, float to, float t) { v = v + (to - v) * t; };
+    bool windup = e.telegraphTimer > 0.f;
+    bool follow = e.swingTimer > 0.f && !(windup && e.telegraphProgress() > 0.35f);
+    if (follow) {
+        float t = 1.f - e.swingTimer / Enemy::SWING_TIME;
+        float u = 1.f - (1.f - t) * (1.f - t);   // fast, then settling
+        switch (e.lastSwing) {
+        case AttackKind::SWEEP: {
+            float from = e.lastSwingStep % 2 == 0 ? -1.1f : 1.1f;
+            o.torsoYaw = from + (-from * 1.15f - from) * u;
+            o.rxR = -1.45f; o.rxL = -0.5f; o.grip = -0.15f; o.crouch = 0.12f;
+            break;
+        }
+        case AttackKind::CLEAVE:
+            o.rxR = -2.9f + 2.35f * u; o.rxL = -2.7f + 2.1f * u;
+            o.torsoPitch = -0.18f + 0.63f * u; o.grip = -0.1f + 0.3f * u; o.crouch = 0.25f * u;
+            break;
+        case AttackKind::DASH:
+            o.torsoYaw = 1.0f * u; o.torsoPitch = 0.3f; o.rxR = -1.3f; o.rxL = -0.6f; o.grip = -0.2f; o.crouch = 0.2f;
+            break;
+        default: break;
+        }
+        return o;
+    }
+    if (e.leapTimer > 0.f) {
+        o.rxR = -2.8f; o.rxL = -2.4f; o.grip = -0.1f; o.torsoPitch = -0.12f;
+        return o;
+    }
+    if (e.dashTimer > 0.f) {
+        o.crouch = 0.25f; o.torsoPitch = 0.45f; o.rxR = 0.9f; o.rzR = -0.25f; o.rxL = -1.2f; o.grip = -1.6f;
+        return o;
+    }
+    if (!windup) return o;
+    switch (e.attack) {
+    case AttackKind::DASH:
+        o.crouch = 0.3f * k; o.torsoPitch = 0.35f * k;
+        mixTo(o.rxR, 0.75f, k); o.rzR = -0.2f * k; mixTo(o.rxL, -1.1f, k); mixTo(o.grip, -1.6f, k);
+        break;
+    case AttackKind::SWEEP: case AttackKind::CRESCENT: {
+        float side = (e.attack == AttackKind::SWEEP && e.comboStep % 2 == 1) ? 1.f : -1.f;
+        o.torsoYaw = 1.1f * side * k;
+        mixTo(o.rxR, e.attack == AttackKind::CRESCENT ? -1.2f : -1.45f, k);
+        mixTo(o.rxL, -0.4f, k); mixTo(o.grip, -0.15f, k); o.crouch = 0.1f * k;
+        break;
+    }
+    case AttackKind::CLEAVE:
+        mixTo(o.rxR, -2.9f, k); mixTo(o.rxL, -2.7f, k); o.torsoPitch = -0.18f * k; mixTo(o.grip, -0.1f, k);
+        break;
+    case AttackKind::LEAP:
+        o.crouch = 0.35f * k; mixTo(o.rxR, -2.6f, k); mixTo(o.rxL, -2.2f, k); mixTo(o.grip, -0.2f, k);
+        break;
+    default: break;
+    }
+    return o;
+}
 
 // Append the parts for one enemy. `time` drives idle animation (orbiting
 // shards, blinking fuses).
@@ -324,6 +401,56 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
             }
         break;
     }
+    case EnemyType::SOVEREIGN: {
+        bool broken = e.staggered();
+        vec3 g = e.enraged ? vec3{1.f, 0.12f, 0.08f} * (1.3f + 2.f * tp) : glow;
+        HumanoidLook L = humanoidLook(e.type, st.color, st.color * 0.45f, g);
+        PoseOverride ov = sovereignPose(e);
+        mat4 base = broken ? root * T({0.f, -0.2f, 0.f}) * RX(0.28f) : root;
+        if (broken) { ov.rxR = 0.2f; ov.rxL = 0.1f; ov.grip = -1.3f; ov.torsoYaw = 0.f; ov.torsoPitch = 0.2f; }
+        auto f = humanoid(r, base, L, e.animPhase, stride, ArmPose::SWING, 0.f, true, &ov);
+        vec3 gold{0.86f, 0.64f, 0.22f}, steel{0.5f, 0.52f, 0.58f};
+        vec3 edge = e.enraged ? vec3{2.2f, 0.5f, 0.35f} : vec3{1.7f, 1.35f, 0.75f};
+        // The greatsword, in the right hand: pommel, grip, guard, blade with a lit edge
+        mat4 sw = f.armR * T({0.f, -L.armLen - L.armW * 0.3f, 0.f}) * RX(ov.grip);
+        const float BL = 2.4f;
+        r.box(sw, {0.f, 0.3f, 0.f},  vec3{0.13f}, gold);
+        r.box(sw, {0.f, 0.05f, 0.f}, {0.09f, 0.42f, 0.09f}, st.color * 0.6f);
+        r.box(sw, {0.f, -0.2f, 0.f}, {0.62f, 0.08f, 0.15f}, gold, gold * 0.15f);
+        r.box(sw, {0.f, -0.25f - BL * 0.5f, 0.f}, {0.18f, BL, 0.05f}, steel);
+        r.box(sw, {0.f, -0.25f - BL * 0.48f, 0.f}, {0.06f, BL * 0.94f, 0.07f}, edge * 0.3f, edge * (1.f + 1.5f * tp));
+        r.box(sw, {0.f, -0.28f - BL, 0.f}, {0.1f, 0.12f, 0.05f}, steel, edge * 0.6f);
+        // Plate: pauldrons with gold trim, chest plate and its sigil, belt, tassets
+        for (float s : {-1.f, 1.f}) {
+            r.box(f.torso, {s * (L.torsoW * 0.5f + 0.12f), L.torsoH - 0.04f, 0.f}, {0.52f, 0.32f, 0.68f}, st.color * 1.5f);
+            r.box(f.torso, {s * (L.torsoW * 0.5f + 0.12f), L.torsoH + 0.13f, 0.f}, {0.54f, 0.05f, 0.7f}, gold, gold * 0.2f);
+            r.box(f.body, {s * 0.22f, L.legLen - 0.2f, L.torsoD * 0.42f}, {0.34f, 0.5f, 0.06f}, st.color * 1.3f);
+        }
+        r.box(f.torso, {0.f, L.torsoH * 0.6f, L.torsoD * 0.5f + 0.02f}, {L.torsoW * 0.78f, L.torsoH * 0.5f, 0.06f}, st.color * 1.35f);
+        float pulse = 0.6f + 0.4f * std::sin(time * 4.f);
+        r.box(f.torso, {0.f, L.torsoH * 0.62f, L.torsoD * 0.5f + 0.06f}, {0.16f, 0.32f, 0.04f}, g * 0.3f, g * (1.2f * pulse + 2.f * tp));
+        r.box(f.torso, {0.f, 0.06f, 0.f}, {L.torsoW + 0.05f, 0.12f, L.torsoD + 0.05f}, gold * 0.6f);
+        r.box(f.armL, {0.f, -L.armLen - L.armW * 0.3f, 0.f}, vec3{L.armW * 1.45f}, gold * 0.7f);   // gauntlet
+        // Helm: three horns swept back
+        r.box(f.head * T({0.f, L.headS + 0.1f, -0.06f}) * RX(-0.5f), {0.f, 0.14f, 0.f}, {0.08f, 0.36f, 0.08f}, gold);
+        for (float s : {-1.f, 1.f})
+            r.box(f.head * T({s * 0.19f, L.headS - 0.02f, -0.02f}) * RZ(-s * 0.45f) * RX(-0.4f),
+                  {0.f, 0.2f, 0.f}, {0.07f, 0.44f, 0.07f}, gold * 0.85f);
+        // A halo of eight shards turning behind the head
+        mat4 halo = f.head * T({0.f, L.headS * 0.6f, -0.42f}) * RZ(time * 0.8f);
+        for (int i = 0; i < 8; ++i) {
+            float a = i * 0.785f;
+            r.box(halo, {std::cos(a) * 0.62f, std::sin(a) * 0.62f, 0.f}, {0.09f, 0.09f, 0.04f}, gold, g * 0.6f + gold * 0.8f);
+        }
+        // Cape: lifts behind him as he moves, streams out in a dash
+        float lift = glm::clamp(e.moveSpeed / 20.f, 0.f, 1.f);
+        float sway = std::sin(time * 1.7f + e.animPhase * 0.2f) * 0.05f;
+        mat4 cape = f.torso * T({0.f, L.torsoH - 0.05f, -L.torsoD * 0.5f - 0.05f}) * RX(0.12f + sway + lift * 0.9f);
+        vec3 capeCol{0.32f, 0.04f, 0.05f};
+        r.box(cape, {0.f, -1.05f, 0.f}, {L.torsoW * 0.92f, 2.1f, 0.05f}, capeCol, e.enraged ? capeCol * 1.5f : vec3{0.f});
+        r.box(cape, {0.f, -2.08f, 0.f}, {L.torsoW * 0.94f, 0.06f, 0.06f}, gold * 0.5f);
+        break;
+    }
     default: break;
     }
 }
@@ -343,15 +470,22 @@ inline bool headBox(const Enemy& e, AABB& out) {
 
     switch (e.type) {
     case EnemyType::HUSK: case EnemyType::SENTINEL: case EnemyType::BRUTE:
-    case EnemyType::JUGGERNAUT: case EnemyType::WARDEN: {
+    case EnemyType::JUGGERNAUT: case EnemyType::WARDEN: case EnemyType::SOVEREIGN: {
         HumanoidLook L = humanoidDims(e.type);
         mat4 base = root;
         if (e.type == EnemyType::JUGGERNAUT && e.staggered()) base = root * T({0.f, -0.25f, 0.f}) * RX(0.32f);
+        PoseOverride ov;
+        if (e.type == EnemyType::SOVEREIGN) {
+            if (e.staggered()) { base = root * T({0.f, -0.2f, 0.f}) * RX(0.28f); ov.torsoPitch = 0.2f; }
+            else ov = sovereignPose(e);
+        }
         float bob = std::fabs(std::sin(e.animPhase)) * 0.05f * stride;
-        frame = base * T({0.f, bob + L.legLen + L.pelvisH + L.torsoH, 0.f});
+        frame = base * T({0.f, bob - ov.crouch + L.legLen + L.pelvisH, 0.f}) * RY(ov.torsoYaw) * RX(ov.torsoPitch)
+              * T({0.f, L.torsoH, 0.f});
         float w = L.headS, top = L.headS + 0.02f;
         if (e.type == EnemyType::JUGGERNAUT) { w = 0.62f; top = 0.575f; }   // helmet
         if (e.type == EnemyType::WARDEN)     top = 0.95f;                     // crown
+        if (e.type == EnemyType::SOVEREIGN)  top = 0.62f;                     // helm and horn roots
         centre = {0.f, top * 0.5f, 0.f};
         half   = {w * 0.5f, top * 0.5f, w * 0.5f};
         break;

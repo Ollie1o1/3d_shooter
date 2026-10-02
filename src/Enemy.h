@@ -17,7 +17,12 @@
 //              smashes up close. PARRY (F) a shell to send it back for 400,
 //              or punch during the smash's last moment to break it: staggered,
 //              it takes double damage.
-//   WARDEN   — the final boss: volleys, slams, and summons adds; enrages at 50%.
+//   WARDEN   — the Core's boss: volleys, slams, and summons adds; enrages at 50%.
+//   SOVEREIGN — the final boss, alone in the Sanctum: a 3.5 m knight with a
+//              greatsword. Dashes at you (and dashes again), chains two sweeps
+//              into an overhead cleave, leaps onto whatever you're standing on,
+//              and throws crescent slashes at range. PARRY (F) a sweep or the
+//              cleave as it lands to break his guard. Enrages at 50%.
 //
 // An enemy reports what it did this tick through `ev` (shots fired, melee hit,
 // slam, detonation, summons). GameplayState turns those into projectiles,
@@ -31,9 +36,11 @@
 #include "Player.h"  // AABB, Wall, SpatialGrid
 #include "Difficulty.h"
 
-enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, JUGGERNAUT, WARDEN, COUNT };
+enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, JUGGERNAUT, WARDEN, SOVEREIGN, COUNT };
+inline bool isBoss(EnemyType t) { return t == EnemyType::WARDEN || t == EnemyType::SOVEREIGN; }
 enum class EnemyState { SPAWNING, ACTIVE, DEAD };
-enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY, SUMMON, SHELL, SMASH };
+enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY, SUMMON, SHELL, SMASH,
+                        DASH, SWEEP, CLEAVE, LEAP, CRESCENT };   // the SOVEREIGN's
 
 struct EnemyStats {
     const char* name;
@@ -75,6 +82,9 @@ inline const EnemyStats& statsOf(EnemyType t) {
         {"WARDEN", 2000.f, 1.60f, 4.60f, 2.4f, 0.85f, 3.0f, false,
          {0.34f,0.27f,0.40f}, {1.0f,0.16f,0.62f}, {1.0f,0.22f,0.68f},
          "THE WARDEN"},
+        {"SOVEREIGN", 3200.f, 0.85f, 3.50f, 6.2f, 0.55f, 0.95f, false,
+         {0.12f,0.11f,0.14f}, {1.0f,0.24f,0.14f}, {1.0f,0.82f,0.45f},
+         "PARRY (F) HIS BLADE AS IT FALLS - DASH THROUGH THE REST"},
     };
     return S[(int)t];
 }
@@ -92,7 +102,11 @@ struct EnemyEvents {
     bool      slam = false;       float slamRadius = 0.f, slamDamage = 0.f;
     bool      detonated = false;  // MITE blew itself up next to the player
     int       summonMites = 0, summonRippers = 0;
-    bool      enraged = false;    // WARDEN crossed 50% this tick
+    bool      enraged = false;    // a boss crossed 50% this tick
+    // SOVEREIGN: a sword stroke landed (for its slash arc). 0 sweep to his
+    // left, 1 sweep to his right, 2 overhead cleave, 3 the cut at a dash's end
+    int       slash = -1;
+    bool      dashStarted = false, leapStarted = false;
 };
 
 // What an enemy can sense each tick.
@@ -130,6 +144,11 @@ struct Enemy {
     // from here to `position` so it moves smoothly at any frame rate
     glm::vec3  prevPosition{0.f};
     float      prevYaw = 0.f;
+    // Where it was last drawn (set by the renderer). Hitscan aims at this, so
+    // a shot lands on what you saw, not on where the simulation has already
+    // moved it (up to a tick ahead)
+    glm::vec3  shownPos{0.f};
+    bool       hasShown = false;
     float      pitch = 0.f;   // RAPTOR only: nose-down while diving
     float      health, maxHealth;
     bool       alive = true;
@@ -162,7 +181,23 @@ struct Enemy {
     float staggerTimer  = 0.f;   // JUGGERNAUT, after its smash was parried
     float age           = 0.f;
 
-    bool  enraged       = false; // WARDEN phase two
+    bool  enraged       = false; // a boss's phase two
+
+    // SOVEREIGN
+    int   comboStep  = 0;       // sweeps landed in the current combo
+    int   chainLeft  = 0;       // dashes still to come in this chain
+    int   crescentLeft = 0;
+    float dashTimer  = 0.f;     // > 0 while dashing
+    float dashAge    = 0.f;
+    glm::vec3 dashFrom{0.f};    // where the last tick of the dash started
+    bool  dashHit    = false;   // the dash already caught you
+    float leapTimer  = 0.f;     // > 0 while airborne
+    float swingTimer = 0.f;     // follow-through after a stroke lands (animation)
+    AttackKind lastSwing = AttackKind::NONE;
+    int   lastSwingStep = 0;
+    bool  grounded   = true;    // standing on something (set by integrate)
+    static constexpr float SWING_TIME = 0.24f;
+    static constexpr float DASH_SPEED = 34.f;
     bool  killedByBlast = false; // MITE: set when it detonated itself (not shot)
 
     EnemyEvents ev;
@@ -184,18 +219,28 @@ struct Enemy {
     float height() const { return stats().height; }
     bool  targetable() const { return alive && state == EnemyState::ACTIVE; }
     bool  staggered() const  { return staggerTimer > 0.f; }
-    // The moment a JUGGERNAUT's smash can be punched back (its last 0.4 s)
+    // The moment a melee blow can be punched back: a JUGGERNAUT's smash (its
+    // last 0.4 s), a SOVEREIGN's sweep or cleave (its last quarter second)
     bool  parryWindow() const {
-        return type == EnemyType::JUGGERNAUT && attack == AttackKind::SMASH &&
-               telegraphTimer > 0.f && telegraphTimer < 0.4f;
+        if (telegraphTimer <= 0.f) return false;
+        if (type == EnemyType::JUGGERNAUT) return attack == AttackKind::SMASH && telegraphTimer < 0.4f;
+        if (type == EnemyType::SOVEREIGN)
+            return (attack == AttackKind::SWEEP || attack == AttackKind::CLEAVE) && telegraphTimer < 0.25f;
+        return false;
     }
-    // Damage multiplier from armor: the JUGGERNAUT shrugs off half, unless broken
+    // How long a parry leaves it broken
+    float staggerTime() const { return type == EnemyType::SOVEREIGN ? 1.6f : 2.5f; }
+    // Damage multiplier from armor: the JUGGERNAUT shrugs off half unless
+    // broken; a broken SOVEREIGN takes half again
     float armorMult() const {
+        if (type == EnemyType::SOVEREIGN) return staggered() ? 1.5f : 1.f;
         if (type != EnemyType::JUGGERNAUT) return 1.f;
         return staggered() ? 2.f : 0.5f;
     }
     void stagger(float t) {
         staggerTimer = t; attack = AttackKind::NONE; telegraphTimer = 0.f; attackTimer = 0.f;
+        comboStep = 0; chainLeft = 0; crescentLeft = 0; dashTimer = 0.f;
+        if (leapTimer <= 0.f) { velocity.x = velocity.z = 0.f; }
     }
     float telegraphProgress() const {
         return telegraphTimer > 0.f && telegraphDuration > 0.f
@@ -218,7 +263,7 @@ struct Enemy {
             state  = EnemyState::DEAD;
             return true;
         }
-        if (type == EnemyType::WARDEN && !enraged && health < maxHealth * 0.5f) {
+        if (isBoss(type) && !enraged && health < maxHealth * 0.5f) {
             enraged    = true;
             ev.enraged = true;
         }
@@ -266,6 +311,7 @@ struct Enemy {
             case EnemyType::MITE:     thinkMite(dt, w, resolve);     break;
             case EnemyType::JUGGERNAUT: thinkJuggernaut(dt, w, resolve); break;
             case EnemyType::WARDEN:   thinkWarden(dt, w, resolve);   break;
+            case EnemyType::SOVEREIGN: thinkSovereign(dt, w, resolve); break;
             default: break;
         }
         integrate(dt, w);
@@ -322,7 +368,7 @@ private:
     // Gunners and Brutes hold their perch: on a raised surface they treat a
     // drop as a wall. Rippers and Mites happily leap down after you.
     bool ledgeAware() const {
-        return !stats().flying && type != EnemyType::RIPPER && type != EnemyType::MITE;
+        return !stats().flying && type != EnemyType::RIPPER && type != EnemyType::MITE && type != EnemyType::SOVEREIGN;
     }
 
     // Is there something to stand on under p (within a step of its height)?
@@ -681,6 +727,174 @@ private:
         }
     }
 
+    // ---- the SOVEREIGN ---------------------------------------------------------
+    // A duelist. Every stroke is telegraphed (blade raised, eyes flaring) and
+    // every one can be dodged; what makes him hard is that they come in
+    // strings. Out of a dash he dashes again or goes straight into a combo;
+    // a combo is two sweeps and an overhead cleave whose shockwave you jump.
+    // Standing on a platform doesn't save you: he leaps up to you. Enraged
+    // (below half health) he winds up faster, chains longer and throws two
+    // crescents at a time.
+    static constexpr float SWEEP_REACH  = 5.2f;
+    static constexpr float CLEAVE_REACH = 5.8f;
+
+    // Is the player inside the arc in front of him (half-angle in radians)?
+    bool inArc(const EnemyWorld& w, float reach, float halfAngle) const {
+        glm::vec3 to = flatTo(w.playerFeet);
+        float d = glm::length(to);
+        if (d > reach || std::fabs(w.playerFeet.y - position.y) > 2.6f) return false;
+        if (d < 1.2f) return true;
+        glm::vec3 fwd{std::sin(yaw), 0.f, std::cos(yaw)};
+        return glm::dot(fwd, to / d) > std::cos(halfAngle);
+    }
+
+    void thinkSovereign(float dt, const EnemyWorld& w, bool resolve) {
+        const float rage = enraged ? 1.f : 0.f;
+        glm::vec3 to  = flatTo(w.playerFeet);
+        float d       = glm::length(to);
+        glm::vec3 dir = norm2(to);
+        float dy      = w.playerFeet.y - position.y;
+        if (swingTimer > 0.f) swingTimer -= dt;
+
+        // ---- in the air (LEAP): gravity does the work; land with a slam ----
+        if (leapTimer > 0.f) {
+            leapTimer -= dt;
+            turnToward(to, dt, 4.f);
+            bool landed = grounded && velocity.y <= 0.f && leapTimer < 1.2f;
+            if (landed || leapTimer <= 0.f) {
+                leapTimer = 0.f;
+                velocity.x = velocity.z = 0.f;
+                ev.slam = true; ev.slamRadius = 8.f; ev.slamDamage = 24.f;
+                ev.slash = 2; lastSwing = AttackKind::CLEAVE; swingTimer = SWING_TIME;
+                recoverTimer = 0.65f - 0.25f * rage;
+            }
+            return;
+        }
+
+        // ---- dashing: a straight line at 34 m/s, cutting at the end --------
+        if (dashTimer > 0.f) {
+            // How far the last tick actually carried him (walls stop a dash)
+            float made = dashAge > 0.f ? glm::length(glm::vec2(position.x - dashFrom.x, position.z - dashFrom.z)) / dt : DASH_SPEED;
+            dashFrom = position;
+            dashTimer -= dt; dashAge += dt;
+            velocity.x = diveDir.x * DASH_SPEED;
+            velocity.z = diveDir.z * DASH_SPEED;
+            turnToward(diveDir, dt, 20.f);
+            if (!dashHit && d < 2.6f && std::fabs(dy) < 2.6f) {
+                dashHit = true; ev.meleeHit = true; ev.meleeDamage = 22.f;
+            }
+            // Stopped by a wall (barely moved last tick) or out of distance
+            bool stalled = dashAge > 0.1f && made < 6.f;
+            if (dashTimer <= 0.f || stalled) {
+                dashTimer = 0.f;
+                velocity.x = velocity.z = 0.f;
+                ev.slash = 3; lastSwing = AttackKind::DASH; swingTimer = SWING_TIME;
+                if (!dashHit && inArc(w, 4.4f, 1.2f)) { ev.meleeHit = true; ev.meleeDamage = 18.f; }
+                attack = AttackKind::NONE;
+                if (chainLeft > 0) {                       // and again
+                    --chainLeft;
+                    startAttack(AttackKind::DASH, 0.34f - 0.08f * rage);
+                } else if (d < SWEEP_REACH + 0.8f) {       // straight into a combo
+                    comboStep = 0;
+                    startAttack(AttackKind::SWEEP, 0.36f - 0.06f * rage);
+                } else {
+                    recoverTimer = 0.55f - 0.2f * rage;    // the opening: punish it
+                }
+            }
+            return;
+        }
+
+        // ---- on foot ----
+        if (telegraphTimer > 0.f) {
+            // Planted for most wind-ups; creeps in behind a sweep or cleave
+            bool creep = attack == AttackKind::SWEEP || attack == AttackKind::CLEAVE;
+            float spd = creep && d > 2.5f ? 2.2f : 0.f;
+            velocity.x = dir.x * spd; velocity.z = dir.z * spd;
+            turnToward(to, dt, attack == AttackKind::DASH ? 7.f : creep ? 3.5f : 2.5f);
+        } else if (recoverTimer > 0.f) {
+            velocity.x = velocity.z = 0.f;
+            turnToward(to, dt, 1.5f);
+        } else {
+            glm::vec3 side{-dir.z, 0.f, dir.x};
+            strafeTimer -= dt;
+            if (strafeTimer <= 0.f) { strafeTimer = frand(1.2f, 2.4f); strafeDir = -strafeDir; }
+            glm::vec3 mv = d > 7.f ? dir + side * strafeDir * 0.35f : side * strafeDir + dir * 0.25f;
+            setMove(mv, stats().speed * (1.f + 0.25f * rage), w);
+            turnToward(to, dt, 5.f);
+        }
+
+        if (resolve) {
+            AttackKind k = attack;
+            attack = AttackKind::NONE;
+            switch (k) {
+            case AttackKind::DASH: {
+                // Aim where you're going to be, and carry on a few metres past
+                glm::vec3 aim = w.playerFeet + leadVel_ * 0.35f;
+                glm::vec3 a = flatTo(aim);
+                float len = glm::length(a);
+                diveDir = len > 0.1f ? a / len : glm::vec3{std::sin(yaw), 0.f, std::cos(yaw)};
+                float dist = glm::clamp(len + 4.f, 7.f, 24.f);
+                dashTimer = dist / DASH_SPEED;
+                dashAge = 0.f; dashHit = false;
+                ev.dashStarted = true;
+                break;
+            }
+            case AttackKind::SWEEP: {
+                ev.slash = comboStep % 2; lastSwing = AttackKind::SWEEP; lastSwingStep = comboStep;
+                swingTimer = SWING_TIME;
+                if (inArc(w, SWEEP_REACH, 1.35f)) { ev.meleeHit = true; ev.meleeDamage = 18.f; }
+                ++comboStep;
+                if (comboStep < 2) startAttack(AttackKind::SWEEP, 0.3f - 0.06f * rage);
+                else               startAttack(AttackKind::CLEAVE, 0.48f - 0.08f * rage);
+                break;
+            }
+            case AttackKind::CLEAVE: {
+                ev.slash = 2; lastSwing = AttackKind::CLEAVE; swingTimer = SWING_TIME;
+                if (inArc(w, CLEAVE_REACH, 0.6f)) { ev.meleeHit = true; ev.meleeDamage = 28.f; }
+                ev.slam = true; ev.slamRadius = 7.f; ev.slamDamage = 16.f;   // jump the shockwave
+                comboStep = 0;
+                if (rage > 0.f && d > 4.f) { chainLeft = 0; startAttack(AttackKind::DASH, 0.38f); }
+                else recoverTimer = 0.85f - 0.3f * rage;
+                break;
+            }
+            case AttackKind::LEAP: {
+                // A ballistic arc onto where you are (gravity 24, as in integrate)
+                glm::vec3 target = w.playerFeet + leadVel_ * 0.25f;
+                glm::vec3 flat = flatTo(target);
+                float T  = glm::clamp(0.8f + glm::length(flat) / 40.f, 0.85f, 1.3f);
+                float up = target.y - position.y;
+                velocity.x = flat.x / T; velocity.z = flat.z / T;
+                velocity.y = up / T + 0.5f * 24.f * T;
+                leapTimer = T + 0.8f;
+                grounded = false;
+                ev.leapStarted = true;
+                break;
+            }
+            case AttackKind::CRESCENT: {
+                ev.slash = 0; lastSwing = AttackKind::SWEEP; lastSwingStep = 0; swingTimer = SWING_TIME;
+                fireAt(w.playerEye, enraged ? 7 : 5, enraged ? 1.2f : 0.9f, 26.f, 10.f, 1.5f);
+                if (crescentLeft > 0) { --crescentLeft; startAttack(AttackKind::CRESCENT, 0.32f); }
+                else recoverTimer = 0.4f;
+                break;
+            }
+            default: break;
+            }
+        }
+
+        if (recoverTimer <= 0.f && attackReady(dt)) {
+            ++attackCount;
+            if (dy > 3.f && d < 30.f)          startAttack(AttackKind::LEAP, 0.55f - 0.1f * rage);
+            else if (d < SWEEP_REACH)         { comboStep = 0; startAttack(AttackKind::SWEEP, 0.42f - 0.08f * rage); }
+            else if (d < 18.f || attackCount % 2 == 0) {
+                chainLeft = rage > 0.f ? 2 : (attackCount % 3 == 0 ? 0 : 1);
+                startAttack(AttackKind::DASH, 0.55f - 0.12f * rage);
+            } else {
+                crescentLeft = rage > 0.f ? 1 : 0;
+                startAttack(AttackKind::CRESCENT, 0.6f - 0.1f * rage);
+            }
+        }
+    }
+
     // ---- physics -------------------------------------------------------------
     void integrate(float dt, const EnemyWorld& w) {
         bool flying = stats().flying;
@@ -689,13 +903,14 @@ private:
             moveSpeed = glm::length(glm::vec2(velocity.x, velocity.z));
             if (type != EnemyType::RAPTOR && type != EnemyType::MITE &&
                 type != EnemyType::BRUTE && type != EnemyType::WARDEN)
-                animPhase += dt * moveSpeed * 1.9f;
+                animPhase += dt * std::min(moveSpeed, 9.f) * (type == EnemyType::SOVEREIGN ? 1.2f : 1.9f);
         } else {
             moveSpeed = glm::length(velocity);
         }
         position += velocity * dt;
+        grounded = false;
 
-        if (position.y < 0.f) { position.y = 0.f; if (velocity.y < 0.f) velocity.y = 0.f; }
+        if (position.y < 0.f) { position.y = 0.f; if (velocity.y < 0.f) velocity.y = 0.f; grounded = true; }
 
         if (w.walls) {
             static std::vector<int> cands;
@@ -729,6 +944,7 @@ private:
         } else if (oy <= ox && oy <= oz) {
             bool up = position.y + h * 0.5f > (wall.min.y + wall.max.y) * 0.5f;
             position.y += up ? oy : -oy;
+            if (up) grounded = true;
             if (up && velocity.y < 0.f) velocity.y = 0.f;
             if (!up && velocity.y > 0.f) velocity.y = 0.f;
         } else {
