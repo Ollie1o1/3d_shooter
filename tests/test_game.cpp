@@ -13,6 +13,7 @@
 #include "../src/Progression.h"
 #include "../src/MouseFilter.h"
 #include "../src/MusicSynth.h"
+#include "../src/Ghost.h"
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -544,6 +545,23 @@ int main() {
       for (int i = 0; i < 60; ++i) { k.update(DT, w2); if (k.ev.meleeHit || k.ev.shots) still = false; }
       CHECK(still && glm::length(glm::vec2(k.position.x - p0.x, k.position.z - p0.z)) < 0.01f,
             "a broken JUGGERNAUT stands still and can't attack"); }
+    // The Shieldbearer: blocks from the front only, bashes up close, can be parried
+    {
+        Enemy sb(EnemyType::SHIELDBEARER, {0, 0, -10});
+        sb.spawnTimer = 0.f; sb.state = EnemyState::ACTIVE; sb.yaw = 0.f;   // facing +Z
+        CHECK(sb.blocks({0, 0, -1}) && !sb.blocks({0, 0, 1}) && !sb.blocks({-1, 0, 0}),
+              "SHIELDBEARER blocks shots from the front, not from behind or the side");
+        Enemy k(EnemyType::SHIELDBEARER, {0, 0, 20});
+        EnemyWorld w2 = worldFor(L, grid, {0, 0, 22.f}, A0);
+        bool bashed = false, window = false;
+        for (int i = 0; i < 60 * 10; ++i) { k.update(DT, w2); bashed |= k.ev.meleeHit; window |= k.parryWindow(); }
+        CHECK(bashed && window, "SHIELDBEARER bashes up close, with a parry window");
+        k.stagger(k.staggerTime());
+        CHECK(!k.blocks(-glm::vec3{std::sin(k.yaw), 0.f, std::cos(k.yaw)}), "a parried SHIELDBEARER's shield is down");
+        auto s = simulate(L, grid, EnemyType::SHIELDBEARER, {0,0,-14}, P0, A0, 12.f);
+        CHECK(s.shots >= 3 && !s.inWall, "SHIELDBEARER fires spreads at mid range and stays out of walls");
+    }
+
     // The Sovereign: dashes (and dashes again), sweep-sweep-cleave combos,
     // leaps onto high ground, crescents at range, a parry window, enrage
     {
@@ -612,10 +630,16 @@ int main() {
       CHECK(w.enraged && w.ev.enraged, "WARDEN enrages below half health"); }
 
     // A Ripper starting behind the furnace in the Foundry has to go around it
+    // (every time, not just with lucky dice: 20 runs with different seeds)
     { const Arena& A1 = L.arenas[1];
-      auto s = simulate(L, grid, EnemyType::RIPPER, {0,0,-86}, {0,0,-64}, A1, 10.f);
-      std::printf("      ripper behind furnace: closest approach %.1f m\n", s.closest);
-      CHECK(s.closest < 3.f, "RIPPER finds its way around the furnace to the player"); }
+      int made = 0; float worst = 0.f;
+      for (int seed = 0; seed < 20; ++seed) {
+          srand(1000 + seed);
+          auto s = simulate(L, grid, EnemyType::RIPPER, {0,0,-86}, {0,0,-64}, A1, 10.f);
+          made += s.closest < 3.f; worst = std::max(worst, s.closest);
+      }
+      std::printf("      ripper behind furnace: %d/20 reach the player, worst closest approach %.1f m\n", made, worst);
+      CHECK(made == 20, "RIPPER finds its way around the furnace to the player, every time"); }
 
     // Gunners hold the high ground; rushers jump down after you
     { const Arena& S = L.arenas[2];
@@ -842,6 +866,16 @@ int main() {
         for (int i = 0; i < 20; ++i) lb.add(false, "X", 50.f + i, 0);
         CHECK((int)lb.arena.size() == Leaderboard::KEEP && lb.placeFor(false, 1000.f) == -1 && lb.placeFor(false, 1.f) == 0,
               "the board keeps the top 10; a slower time doesn't place");
+    }
+    {
+        GhostRun g;
+        for (int i = 0; i <= 120; ++i) g.record(i * DT, {i * DT * 6.f, 0.f, 0.f}, 170.f + i * 0.2f);   // 2 s at 6 m/s
+        glm::vec3 p; float yaw;
+        bool ok = g.at(1.05f, p, yaw);
+        CHECK(ok && std::fabs(g.duration() - 2.f) < 0.11f && std::fabs(p.x - 6.3f) < 0.05f,
+              "the ghost records ten samples a second and plays back in between them");
+        g.at(99.f, p, yaw);
+        CHECK(std::fabs(p.x - 12.f) < 0.05f && !GhostRun{}.at(0.f, p, yaw), "it waits at the finish; no run, no ghost");
     }
 
     // ---------------------------------------------------------------- music

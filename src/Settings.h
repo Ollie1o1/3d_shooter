@@ -68,6 +68,7 @@ struct GameSettings {
     // Gameplay / HUD
     int   difficulty   = DIFFICULTY_DEFAULT;   // see Difficulty.h
     bool  showTimer    = true;  // run clock in Arena mode (FAST mode always shows it)
+    bool  ghost        = true;  // FAST: race the ghost of your best run
     bool  damageNumbers = true;
     int   crosshair    = 0;     // colour index, see crosshairColor()
 
@@ -125,6 +126,7 @@ struct GameSettings {
         f << "screenShake "   << screenShake   << "\n";
         f << "viewBob "       << (viewBob ? 1 : 0) << "\n";
         f << "showTimer "     << (showTimer ? 1 : 0) << "\n";
+        f << "ghost "         << (ghost ? 1 : 0) << "\n";
         f << "damageNumbers " << (damageNumbers ? 1 : 0) << "\n";
         f << "crosshair "     << crosshair     << "\n";
         f << "difficulty "    << difficulty    << "\n";
@@ -158,6 +160,7 @@ struct GameSettings {
             else if (key == "screenShake")   f >> screenShake;
             else if (key == "viewBob")       flag(viewBob);
             else if (key == "showTimer")     flag(showTimer);
+            else if (key == "ghost")         flag(ghost);
             else if (key == "damageNumbers") flag(damageNumbers);
             else if (key == "crosshair")     f >> crosshair;
             else if (key == "difficulty")    f >> difficulty;

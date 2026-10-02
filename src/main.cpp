@@ -25,6 +25,7 @@
 #include "GameplayState.h"
 #include "AudioSystem.h"
 #include "Display.h"
+#include "Gamepad.h"
 
 #ifdef __EMSCRIPTEN__
 #  include <emscripten.h>
@@ -52,6 +53,10 @@ struct App {
     // exit (used to eyeball levels and the HUD without playing)
     int         shotFrames = 0;
     std::string shotPath;
+    // --record FRAMES SKIP PREFIX: footage. Every frame advances 1/30 s; after
+    // SKIP frames, FRAMES are saved as PREFIX_0001.bmp ...
+    int         recordFrames = 0, recordSkip = 0, recordIndex = 0;
+    std::string recordPrefix;
 
     Uint64 freq = 0, lastCounter = 0;
     double nextFrameAt = 0.0;   // frame limiter's schedule (seconds)
@@ -183,6 +188,7 @@ struct App {
         float frameDt = (float)((double)(frameStart - lastCounter) / (double)freq);
         lastCounter = frameStart;
         if (frameDt > 0.25f) frameDt = 0.25f; // clamp huge stalls (breakpoints, window drag)
+        if (g_fixedDt > 0.0) frameDt = (float)g_fixedDt;
 
         if (pending != NextState::None) {
             applyPendingState();
@@ -201,6 +207,7 @@ struct App {
                 settings.save();
                 continue;
             }
+            if (e.type == SDL_CONTROLLERDEVICEADDED || e.type == SDL_CONTROLLERDEVICEREMOVED) gamepad::onDeviceEvent(e);
             mapMouse(e);
             if (currentState && shotFrames == 0) currentState->handleEvent(e);   // screenshot runs ignore all input
             if (pending != NextState::None) break; // remaining events go to the next state
@@ -218,6 +225,16 @@ struct App {
             audio.music.setTrack(0);
             audio.music.setIntensity(0.55f);
             audio.music.setMuffle(false);
+        }
+        if (recordFrames > 0) {   // --record: skip the warm-up, then save every frame
+            ++recordIndex;
+            if (recordIndex > recordSkip) {
+                char path[512];
+                std::snprintf(path, sizeof(path), "%s_%04d.bmp", recordPrefix.c_str(), recordIndex - recordSkip);
+                saveScreenshot(path);
+                if (recordIndex - recordSkip >= recordFrames) running = false;
+            }
+            g_recProgress = recordIndex > recordSkip ? (float)(recordIndex - recordSkip) / (float)recordFrames : 0.f;
         }
         if (shotFrames > 0 && --shotFrames == 0) {
             saveScreenshot(shotPath); running = false;
@@ -292,7 +309,7 @@ static bool onPointerLockChange(int, const EmscriptenPointerlockChangeEvent* e, 
 #endif
 
 int main(int argc, char* argv[]) {
-    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0)
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMECONTROLLER) != 0)
         throw std::runtime_error(SDL_GetError());
 
 #ifndef __EMSCRIPTEN__
@@ -382,11 +399,25 @@ int main(int argc, char* argv[]) {
         }
         if (arg == "--weapon" && i + 1 < argc) g_devWeapon = std::atoi(argv[++i]) - 1;
         if (arg == "--aim") g_devAim = true;
-        if (arg == "--spawn" && i + 1 < argc) g_devSpawn = std::atoi(argv[++i]);
+        if (arg == "--spawn" && i + 1 < argc) g_devSpawns.push_back(std::atoi(argv[++i]));
         if (arg == "--overlay" && i + 1 < argc) g_devOverlay = argv[++i];
         if (arg == "--bench" && i + 1 < argc) { app->benchFrames = std::atoi(argv[++i]); g_devNoMouse = true; }
         if (arg == "--cap" && i + 1 < argc) app->capOverride = std::atoi(argv[++i]);
         if (arg == "--res" && i + 1 < argc) app->renderOverride = std::atoi(argv[++i]);
+        if (arg == "--record" && i + 3 < argc) {
+            app->recordFrames = std::atoi(argv[i + 1]); app->recordSkip = std::atoi(argv[i + 2]);
+            app->recordPrefix = argv[i + 3]; i += 3;
+            g_fixedDt = 1.0 / 30.0; g_devNoMouse = true;
+        }
+        if (arg == "--campath" && i + 5 < argc) {
+            g_devCamPath = true;
+            g_devCamPos2 = {(float)std::atof(argv[i + 1]), (float)std::atof(argv[i + 2]), (float)std::atof(argv[i + 3])};
+            g_devCamYaw2 = (float)std::atof(argv[i + 4]); g_devCamPitch2 = (float)std::atof(argv[i + 5]);
+            i += 5;
+        }
+        if (arg == "--autoaim") g_devAutoAim = true;
+        if (arg == "--clean") g_devClean = true;
+        if (arg == "--kite") g_devKite = true;
         if (arg == "--shot" && i + 2 < argc) {
             app->shotFrames = std::atoi(argv[i + 1]); app->shotPath = argv[i + 2]; i += 2;
             g_devNoMouse = true;

@@ -37,7 +37,8 @@
       <kbd>WASD</kbd> move · <kbd>Mouse</kbd> look · <kbd>LMB</kbd> fire · <kbd>RMB</kbd> aim (rifles) ·
       <kbd>Q</kbd> grapple · <kbd>Space</kbd> jump · <kbd>Shift</kbd> dash · <kbd>Ctrl</kbd>/<kbd>C</kbd> slide / slam ·
       <kbd>G</kbd> grenade · <kbd>F</kbd> parry · <kbd>1</kbd>–<kbd>4</kbd> weapons · <kbd>Tab</kbd> armory ·
-      <kbd>Esc</kbd> or <kbd>P</kbd> pause (click to recapture the mouse)
+      <kbd>Esc</kbd> or <kbd>P</kbd> pause (click to recapture the mouse) ·
+      fullscreen from the pause menu
     </span>
   </button>
 </div>
@@ -115,6 +116,57 @@
     const ctx = globalThis.SDL2?.audioContext;
     if (ctx && ctx.state === 'suspended') ctx.resume();
   }
+  // Fullscreen. Embedded (the portfolio page shows the game in an iframe),
+  // the parent page owns fullscreen, so ask it; on its own, the stage goes
+  // fullscreen. The pause menu's FULLSCREEN / EXIT FULLSCREEN calls this.
+  window.overdriveFullscreen = {
+    embedded: window.parent !== window,
+    isOn() {
+      try { return !!(this.embedded ? window.parent.document.fullscreenElement : document.fullscreenElement); }
+      catch (e) { return !!document.fullscreenElement; }
+    },
+    toggle() {
+      if (this.embedded) { window.parent.postMessage({ overdrive: 'fullscreen' }, location.origin); return; }
+      if (document.fullscreenElement) document.exitFullscreen?.();
+      else document.querySelector('.stage').requestFullscreen?.().catch(() => {});
+    },
+  };
+  // In fullscreen, Escape would throw you out of it the moment you used it to
+  // pause or close the armory. Where the browser allows it (Chrome, Edge),
+  // keep Escape for the game: holding it still leaves fullscreen.
+  document.addEventListener('fullscreenchange', () => {
+    if (document.fullscreenElement) navigator.keyboard?.lock?.(['Escape'])?.catch?.(() => {});
+    else navigator.keyboard?.unlock?.();
+  });
+
+  // The shared leaderboard (the portfolio site's /api/overdrive-board). The
+  // game reads what this caches in localStorage, in the same "time difficulty
+  // name" lines as its own board; where there's no API (a local server, or
+  // no store connected yet) nothing is cached and the game shows its own.
+  window.overdriveBoard = {
+    api: '/api/overdrive-board',
+    cache(mode, entries) {
+      const text = entries.map((e) => `${e.time} ${e.difficulty} ${e.name}`).join('\n');
+      try { localStorage.setItem(`overdrive.leaderboard.online.${mode}`, text); } catch (e) {}
+    },
+    async refresh() {
+      for (const mode of ['arena', 'fast']) {
+        try {
+          const r = await fetch(`${this.api}?mode=${mode}`, { cache: 'no-store' });
+          if (r.ok) this.cache(mode, (await r.json()).entries || []);
+        } catch (e) {}
+      }
+    },
+    async submit(mode, name, time, difficulty) {
+      try {
+        const r = await fetch(this.api, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                          body: JSON.stringify({ mode, name, time, difficulty }) });
+        if (r.ok) this.cache(mode, (await r.json()).entries || []);
+      } catch (e) {}
+    },
+  };
+  window.overdriveBoard.refresh();
+
   // Tab opens the in-game armory: keep the browser from moving focus off the canvas
   window.addEventListener('keydown', (e) => { if (e.key === 'Tab') e.preventDefault(); });
   document.addEventListener('pointerdown', start, true);

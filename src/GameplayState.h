@@ -24,8 +24,13 @@
 #include "Weapons.h"
 #include "Progression.h"
 #include "LeaderboardView.h"
+#include "Ghost.h"
+#include "Gamepad.h"
 #include "MouseFilter.h"
 #include <SDL2/SDL.h>
+#ifdef __EMSCRIPTEN__
+#  include <emscripten.h>
+#endif
 #include "gl.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -80,7 +85,18 @@ inline int       g_devWeapon = -1;
 inline bool      g_devAim = false;
 inline std::string g_devOverlay;
 inline bool      g_devNoMouse = false;   // screenshot runs: never grab or read the mouse
-inline int       g_devSpawn = -1;        // --spawn N: put an enemy of type N 9 m in front of the camera
+inline std::vector<int> g_devSpawns;    // --spawn N (repeatable): enemies of type N in an arc 9-12 m in front of the camera
+// Footage (--record, see main.cpp): every frame advances a fixed step, the
+// camera glides from --cam to --campath, --autoaim turns it onto the nearest
+// enemy in sight and fires, --clean hides title cards and control hints
+inline double    g_fixedDt = 0.0;
+inline bool      g_devCamPath = false;
+inline glm::vec3 g_devCamPos2{0.f};
+inline float     g_devCamYaw2 = -90.f, g_devCamPitch2 = 0.f;
+inline float     g_recProgress = 0.f;    // 0..1 through the recording
+inline bool      g_devAutoAim = false;
+inline bool      g_devClean = false;
+inline bool      g_devKite = false;      // --kite: the camera backs off from whatever gets close
 
 static GLuint makeGreyTexture() {
     GLuint tex;
@@ -198,6 +214,11 @@ public:
     Progression      prog;
     Records          records;
     Leaderboard      board;
+    Leaderboard      worldBoard;     // web: the shared board, when the site's API answers
+    bool             worldLoaded = false;
+    float            worldPoll = 0.f;
+    GhostRun         ghost;      // FAST: the best run, played back
+    GhostRun         ghostRec;   // FAST: this run, being recorded
     MouseFilter      mouseFilter;
 
     ShaderProgram  worldShader;
@@ -382,6 +403,7 @@ public:
     bool prevDashKey      = false;
     int  boostPrev        = -1;     // booster the player was in last tick
     float telegraphSoundCd = 0.f;   // throttles the enemy wind-up tick
+    float shieldClankCd = 0.f;      // throttles the clank of bullets on a shield
     bool prevJumpKey      = false;
     // Event-driven click flags — set in handleEvent, consumed once in physicsTick.
     bool pendingFire      = false;
@@ -461,6 +483,7 @@ public:
         ranked = start == 0 && g_startWave <= 0 && !g_godMode && !g_practice && !g_devCam;
         enterArena(start);
         director.wave = glm::clamp(g_startWave, 0, director.waveCount() - 1);
+        if (fast()) ghost.load();
         if (fast() && start == 0) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
         if (g_devCam) countdown = 0.f;
         if (g_devWeapon >= 0) activeWeapon = g_devWeapon % WEAPON_COUNT;
@@ -471,9 +494,11 @@ public:
             elapsedTime = 754.3f; victory = true; ranked = true;
             board.load(); nameEntry = true; nameBuf = "OLLIE";
         }
-        if (g_devSpawn >= 0) {
-            glm::vec3 f = player.camera.flatForward();
-            spawnEnemy((EnemyType)g_devSpawn, player.position * glm::vec3{1, 0, 1} + f * 9.f + glm::vec3{0, groundHeightAt(player.position.x + f.x * 9.f, player.position.z + f.z * 9.f, player.position.y + 1.f), 0});
+        for (int k = 0; k < (int)g_devSpawns.size(); ++k) {
+            float a = (k - (g_devSpawns.size() - 1) * 0.5f) * 0.4f, dist = 9.f + (k % 2) * 3.f;
+            glm::vec3 f = player.camera.flatForward(), r{-f.z, 0.f, f.x};
+            glm::vec3 at = player.position * glm::vec3{1, 0, 1} + (f * std::cos(a) + r * std::sin(a)) * dist;
+            spawnEnemy((EnemyType)g_devSpawns[k], at + glm::vec3{0, groundHeightAt(at.x, at.z, player.position.y + 1.f), 0});
         }
         if (g_devOverlay == "settings") { paused = true; pauseSettings = true; }
 
@@ -594,6 +619,8 @@ public:
         newRecord = false;
         ranked = !g_godMode && !g_practice;
         nameEntry = false; boardPlace = -1;
+        ghostRec.pts.clear();
+        if (fast()) ghost.load();
         enterArena(0);
         if (fast()) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
         captureMouse(true);
@@ -700,10 +727,18 @@ public:
         newRecord = false;
         if (!ranked) return;
         board.load();
-        if (board.placeFor(fast(), elapsedTime) >= 0) { nameEntry = true; nameBuf = board.lastName; }
+        worldLoaded = worldBoard.loadOnline();
+        // Asked for a name when the run makes this browser's board, or (on the
+        // web, with the shared board up) that one
+        bool places = board.placeFor(fast(), elapsedTime) >= 0 ||
+                      (worldLoaded && worldBoard.placeFor(fast(), elapsedTime) >= 0);
+        if (places) { nameEntry = true; nameBuf = board.lastName; }
         if (fast()) {
             newRecord = records.bestFast <= 0.f || elapsedTime < records.bestFast;
-            if (newRecord) { records.bestFast = elapsedTime; records.fastSplits = splits; }
+            if (newRecord) {
+                records.bestFast = elapsedTime; records.fastSplits = splits;
+                ghostRec.save(); ghost = ghostRec;
+            }
         } else {
             newRecord = records.bestArena <= 0.f || elapsedTime < records.bestArena;
             if (newRecord) records.bestArena = elapsedTime;
@@ -737,6 +772,103 @@ public:
         }
     }
 
+    // Phase two of the Sovereign fight: the eclipse turns to blood and the
+    // platforms orbiting the seal pick up speed
+    float rageBlend = 0.f;   // 0..1, eases in once he enrages
+    bool  sanctumRaged = false;
+    static Theme bloodEclipse(const Theme& t) {
+        Theme o = t;
+        o.zenith = {0.05f, 0.0f, 0.0f}; o.horizon = {0.55f, 0.03f, 0.02f}; o.ground = {0.06f, 0.0f, 0.0f};
+        o.sunColor = {2.2f, 0.45f, 0.25f}; o.mountain = {0.1f, 0.01f, 0.01f};
+        o.lightColor = {1.3f, 0.5f, 0.4f}; o.skyAmb = {0.34f, 0.08f, 0.07f};
+        o.fogColor = {0.22f, 0.02f, 0.02f}; o.fogDensity = t.fogDensity * 1.6f;
+        return o;
+    }
+    void updateSanctumPhase(float dt) {
+        bool raged = false;
+        for (auto& e : enemies) if (e.alive && e.type == EnemyType::SOVEREIGN && e.enraged) raged = true;
+        rageBlend = glm::clamp(rageBlend + (raged ? dt / 2.f : -dt / 3.f), 0.f, 1.f);
+        if (raged == sanctumRaged) return;
+        // Speed the orbiting platforms up (or back down after a retry) without
+        // a jump: keep each one's current point on its path (offsetAt uses
+        // t / period + phase)
+        sanctumRaged = raged;
+        const Arena& ar = level.arenas[director.arena];
+        for (auto& m : level.movers) {
+            if (m.path != Mover::Path::ORBIT) continue;
+            glm::vec3 c = (m.base.min + m.base.max) * 0.5f;
+            if (c.x < ar.zone.min.x || c.x > ar.zone.max.x || c.z < ar.zone.min.z || c.z > ar.zone.max.z) continue;
+            float newPeriod = raged ? m.period * 0.55f : m.period / 0.55f;
+            m.phase += moverClock / m.period - moverClock / newPeriod;
+            m.period = newPeriod;
+        }
+    }
+
+    // Footage camera (--cam, --campath, --autoaim, --kite; see the globals at the top)
+    glm::vec3 devKite{0.f}, devKiteSafe{0.f};
+    float devFireCd = 0.f;
+    void devCamera(float dt) {
+        float u = glm::clamp(g_recProgress, 0.f, 1.f);
+        u = u * u * (3.f - 2.f * u);
+        glm::vec3 p = g_devCamPath ? glm::mix(g_devCamPos, g_devCamPos2, u) : g_devCamPos;
+        if (g_devKite) {
+            // Keep 8 m from the nearest enemy, circling a little as a player would
+            const Enemy* near = nullptr; float nd = 1e9f;
+            for (auto& e : enemies)
+                if (e.targetable()) { float d = glm::length(glm::vec2(e.position.x - p.x - devKite.x, e.position.z - p.z - devKite.z)); if (d < nd) { nd = d; near = &e; } }
+            if (near && nd < 8.f && nd > 0.01f) {
+                glm::vec3 away = p + devKite - near->position; away.y = 0.f; away = glm::normalize(away);
+                devKite += (away * 9.f + glm::vec3{-away.z, 0.f, away.x} * 3.f) * dt;
+            }
+            const AABB& z = level.arenas[director.arena].zone;
+            glm::vec3 q = p + devKite;
+            q.x = glm::clamp(q.x, z.min.x + 3.f, z.max.x - 3.f); q.z = glm::clamp(q.z, z.min.z + 3.f, z.max.z - 3.f);
+            AABB body{q - glm::vec3{0.6f, 1.6f, 0.6f}, q + glm::vec3{0.6f, 0.3f, 0.6f}};
+            bool inWall = false;
+            for (auto& wl : level.walls)
+                if (body.max.x > wl.box.min.x && body.min.x < wl.box.max.x && body.max.y > wl.box.min.y &&
+                    body.min.y < wl.box.max.y && body.max.z > wl.box.min.z && body.min.z < wl.box.max.z) { inWall = true; break; }
+            if (inWall) q = p + devKiteSafe;   // back to the last spot that was clear
+            devKite = devKiteSafe = q - p;
+            p = q;
+        }
+        player.position = p - glm::vec3{0, player.eyeHeight, 0};
+        player.camera.position = p;
+        prevCamPos = p;
+        if (g_devClean) { banners.clear(); controlHintTimer = 0.f; }
+        if (!g_devAutoAim) {
+            if (g_devCamPath) {
+                player.camera.yaw = g_devCamYaw + std::remainder(g_devCamYaw2 - g_devCamYaw, 360.f) * u;
+                player.camera.pitch = glm::mix(g_devCamPitch, g_devCamPitch2, u);
+            }
+            return;
+        }
+        // Nearest enemy in sight, in front of us first
+        const Enemy* best = nullptr; float bestScore = 1e9f;
+        glm::vec3 fwd = player.camera.forward();
+        for (auto& e : enemies) {
+            if (!e.targetable()) continue;
+            glm::vec3 c = e.position + glm::vec3{0, e.height() * 0.6f, 0};
+            glm::vec3 d = c - p;
+            float dist = glm::length(d);
+            if (dist > 45.f || dist < 0.5f) continue;
+            bool clear = true;
+            for (auto& wl : level.walls) { float t = rayBoxHit(p, d / dist, wl.box); if (t > 0.f && t < dist - 0.6f) { clear = false; break; } }
+            if (!clear) continue;
+            float score = dist * (1.6f - glm::dot(fwd, d / dist));
+            if (score < bestScore) { bestScore = score; best = &e; }
+        }
+        if (!best) return;
+        glm::vec3 d = best->position + glm::vec3{0, best->height() * 0.6f, 0} - p;
+        float wantYaw = glm::degrees(std::atan2(d.z, d.x));
+        float wantPitch = glm::degrees(std::asin(glm::clamp(d.y / glm::length(d), -1.f, 1.f)));
+        float k = 1.f - std::exp(-7.f * dt);
+        float dy = std::remainder(wantYaw - player.camera.yaw, 360.f), dp = wantPitch - player.camera.pitch;
+        player.camera.yaw += dy * k; player.camera.pitch += dp * k;
+        devFireCd -= dt;
+        if (std::fabs(dy) < 3.f && std::fabs(dp) < 3.f && devFireCd <= 0.f) { pendingFire = true; devFireCd = 0.3f; }
+    }
+
     // Practice (dev level select): F5 ends the current wave on the spot
     void devClearWave() {
         director.queue.clear();
@@ -762,7 +894,9 @@ public:
             b.rect(x, y, w, 112, {0.08f, 0.05f, 0.02f, 0.9f});
             b.frame(x, y, w, 112, 2, {1.f, 0.75f, 0.2f, 0.9f});
             char buf[64];
-            std::snprintf(buf, sizeof(buf), "YOU MADE THE BOARD - #%d", board.placeFor(fast(), elapsedTime) + 1);
+            int wp = worldLoaded ? worldBoard.placeFor(fast(), elapsedTime) : -1;
+            if (wp >= 0) std::snprintf(buf, sizeof(buf), "YOU MADE THE WORLD BOARD - #%d", wp + 1);
+            else         std::snprintf(buf, sizeof(buf), "YOU MADE THE BOARD - #%d", board.placeFor(fast(), elapsedTime) + 1);
             b.text(buf, x + w / 2, y + 12, 2, {1.f, 0.85f, 0.3f, 1.f}, true);
             b.rect(x + 20, y + 40, w - 40, 32, {0.f, 0.f, 0.f, 0.7f});
             std::string shown = nameBuf;
@@ -774,8 +908,61 @@ public:
             b.text("SAVED TO THE LEADERBOARD", x + w / 2, y + 8, 2, {1.f, 0.85f, 0.3f, 0.95f}, true);
             y += 34.f;
         }
-        drawLeaderboardTable(b, board, fast(), x, y, w, nameEntry ? 8 : Leaderboard::KEEP, boardPlace, t);
+        // The shared board when there is one (re-read every second: the post
+        // and the refresh land asynchronously), else this browser's
+        if ((worldPoll -= 1.f / 60.f) <= 0.f) { worldPoll = 1.f; worldLoaded = worldBoard.loadOnline(); }
+        if (worldLoaded) {
+            int hi = -1;
+            const auto& l = worldBoard.list(fast());
+            for (int i = 0; i < (int)l.size(); ++i)
+                if (boardPlace >= 0 && std::fabs(l[i].time - elapsedTime) < 0.02f && l[i].name == board.lastName) hi = i;
+            b.text("WORLD", x + 8, y + 14, 1, {0.4f, 0.9f, 1.f, 0.9f});
+            drawLeaderboardTable(b, worldBoard, fast(), x, y, w, nameEntry ? 8 : Leaderboard::KEEP, hi, t);
+        } else {
+            drawLeaderboardTable(b, board, fast(), x, y, w, nameEntry ? 8 : Leaderboard::KEEP, boardPlace < 99 ? boardPlace : -1, t);
+        }
         ui.end2D();
+    }
+
+    // A controller button press (held buttons are read as keys; see Gamepad.h)
+    void padButton(Uint8 b) {
+        auto key = [&](SDL_Keycode k) { if (k != SDLK_UNKNOWN) { SDL_Event e = gamepad::keyEvent(k); handleEvent(e); } };
+        if (victory && nameEntry) {   // no on-screen keyboard: A saves the name as it stands, B skips
+            key(b == SDL_CONTROLLER_BUTTON_A || b == SDL_CONTROLLER_BUTTON_START ? SDLK_RETURN
+              : b == SDL_CONTROLLER_BUTTON_B ? SDLK_ESCAPE : SDLK_UNKNOWN);
+            return;
+        }
+        if (playerDead) {             // A retries, X starts over, B to the menu
+            key(b == SDL_CONTROLLER_BUTTON_A ? SDLK_r : b == SDL_CONTROLLER_BUTTON_X ? SDLK_RETURN
+              : b == SDL_CONTROLLER_BUTTON_B ? SDLK_ESCAPE : SDLK_UNKNOWN);
+            return;
+        }
+        if (victory) { key(b == SDL_CONTROLLER_BUTTON_A ? SDLK_RETURN : b == SDL_CONTROLLER_BUTTON_B ? SDLK_ESCAPE : SDLK_UNKNOWN); return; }
+        if (armoryOpen) { key(b == SDL_CONTROLLER_BUTTON_BACK ? SDLK_TAB : gamepad::menuKey(b)); return; }
+        if (paused) { key(gamepad::menuKey(b)); return; }
+        switch (b) {
+            case SDL_CONTROLLER_BUTTON_START:         key(SDLK_ESCAPE); break;
+            case SDL_CONTROLLER_BUTTON_BACK:          key(SDLK_TAB); break;
+            case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:  pendingGrapple = true; break;
+            case SDL_CONTROLLER_BUTTON_DPAD_UP:       pendingGrenade = true; break;
+            case SDL_CONTROLLER_BUTTON_DPAD_DOWN:     key(SDLK_v); break;
+            case SDL_CONTROLLER_BUTTON_DPAD_LEFT:     trySwitch((activeWeapon + WEAPON_COUNT - 1) % WEAPON_COUNT); break;
+            case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:    trySwitch((activeWeapon + 1) % WEAPON_COUNT); break;
+            default: break;
+        }
+    }
+
+    // Web: post the run to the shared board (web/index.html does the request;
+    // the name is already restricted to A-Z 0-9 space - . _)
+    void submitWorld(const std::string& name, int diff) {
+#ifdef __EMSCRIPTEN__
+        char js[160];
+        std::snprintf(js, sizeof(js), "window.overdriveBoard&&window.overdriveBoard.submit('%s','%s',%.2f,%d)",
+                      fast() ? "fast" : "arena", name.c_str(), elapsedTime, diff);
+        emscripten_run_script(js);
+#else
+        (void)name; (void)diff;
+#endif
     }
 
     // Victory screen: type a name (letters, digits, space - . _), ENTER saves
@@ -787,8 +974,15 @@ public:
         if (e.key.repeat) return;
         if (k == SDLK_ESCAPE) { nameEntry = false; return; }
         if (k == SDLK_RETURN || k == SDLK_KP_ENTER) {
-            boardPlace = board.add(fast(), nameBuf, elapsedTime, settings ? settings->difficulty : DIFFICULTY_DEFAULT);
-            if (boardPlace >= 0) { board.save(); audio.play("upgrade"); }
+            int diff = settings ? settings->difficulty : DIFFICULTY_DEFAULT;
+            std::string name = Leaderboard::cleanName(nameBuf);
+            boardPlace = board.add(fast(), nameBuf, elapsedTime, diff);
+            if (boardPlace >= 0) board.save();
+            if (!name.empty()) {
+                audio.play("upgrade");
+                submitWorld(name, diff);
+                if (boardPlace < 0) boardPlace = 99;   // saved to the shared board only
+            }
             nameEntry = false;
             return;
         }
@@ -818,6 +1012,8 @@ public:
         // the grapple, armory or pause on and off. (Menus below read `e`
         // directly, where repeat is wanted for arrows and sliders.)
         SDL_Keycode key = (e.type == SDL_KEYDOWN && !e.key.repeat) ? e.key.keysym.sym : SDLK_UNKNOWN;
+
+        if (e.type == SDL_CONTROLLERBUTTONDOWN) { padButton(e.cbutton.button); return; }
 
         // Alt-tabbing away mid-fight pauses (the web build pauses on losing the pointer lock)
         if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_FOCUS_LOST && !g_devNoMouse) { pause(); return; }
@@ -917,18 +1113,39 @@ public:
     }
 
     const char* pauseLabel(int i) const {
-        static const char* L[] = {"RESUME", "SETTINGS", "", "", "QUIT TO MENU"};
-        if (i == 2) return fast() ? "RESTART ROOM" : "RESTART ARENA";
-        if (i == 3) return fast() ? "RESTART RUN" : "NEW RUN";
+        static const char* L[] = {"RESUME", "SETTINGS", "", "", "", "QUIT TO MENU"};
+        if (i == 2) return fullscreenOn() ? "EXIT FULLSCREEN" : "FULLSCREEN";
+        if (i == 3) return fast() ? "RESTART ROOM" : "RESTART ARENA";
+        if (i == 4) return fast() ? "RESTART RUN" : "NEW RUN";
         return L[i];
+    }
+
+    // Fullscreen from the pause menu. Desktop: the window (main.cpp applies the
+    // setting). Web: the page, through web/index.html, which asks the embedding
+    // portfolio page when there is one. In a browser this is the easy way out
+    // of fullscreen: Escape belongs to the game there (see index.html).
+    bool fullscreenOn() const {
+#ifdef __EMSCRIPTEN__
+        return EM_ASM_INT({ return window.overdriveFullscreen ? (window.overdriveFullscreen.isOn() ? 1 : 0) : 0; }) != 0;
+#else
+        return settings && settings->fullscreen;
+#endif
+    }
+    void toggleFullscreen() {
+#ifdef __EMSCRIPTEN__
+        EM_ASM({ if (window.overdriveFullscreen) window.overdriveFullscreen.toggle(); });
+#else
+        if (settings) { settings->fullscreen = !settings->fullscreen; settings->save(); }
+#endif
     }
 
     void activatePauseItem(int idx) {
         switch (idx) {
         case 0: paused = false; captureMouse(true); break;
         case 1: pauseSettings = true; settingsMenu.selected = 1; break;
-        case 2: restartHere(); break;
-        case 3: newRun(); break;
+        case 2: toggleFullscreen(); break;
+        case 3: restartHere(); break;
+        case 4: newRun(); break;
         default:
             captureMouse(false);
             if (onReturnToMenu) onReturnToMenu();
@@ -1015,7 +1232,7 @@ public:
     void updateMusic() {
         auto& m = audio.music;
         audio.setMusicVolume(settings ? settings->musicVolume : 0.6f);
-        static const int ARENA_TRACK[] = {0, 1, 2, 3, 3};       // Yard, Foundry, Spire, Core, Sanctum
+        static const int ARENA_TRACK[] = {0, 1, 2, 3, 4};       // Yard, Foundry, Spire, Core, Sanctum
         static const int FAST_TRACK[]  = {0, 1, 2, 2, 1, 1, 3}; // Canal .. Tower
         int a = director.arena;
         m.setTrack(fast() ? FAST_TRACK[a % 7] : ARENA_TRACK[a % 5]);
@@ -1064,12 +1281,29 @@ public:
         }
 
         Uint64 now = SDL_GetPerformanceCounter();
-        double elapsed = (double)(now - prevTicks) / (double)freq;
+        double elapsed = g_fixedDt > 0.0 ? g_fixedDt : (double)(now - prevTicks) / (double)freq;
         prevTicks = now;
+        if (g_devCam && g_devNoMouse) devCamera((float)elapsed);
         accumulator += elapsed;
         if (accumulator > 0.25) accumulator = 0.25;
 
         const Uint8* keys = SDL_GetKeyboardState(nullptr);
+        // A controller holds keys too (Gamepad.h): fold it in
+        static Uint8 merged[SDL_NUM_SCANCODES];
+        gamepad::poll();
+        if (gamepad::state().pad) {
+            const gamepad::State& gp = gamepad::state();
+            for (int i = 0; i < SDL_NUM_SCANCODES; ++i) merged[i] = keys[i] | gp.held[i];
+            keys = merged;
+            if (gp.fire && !gp.firePrev) pendingFire = true;
+            if (gp.look.x != 0.f || gp.look.y != 0.f) {
+                // Full deflection turns 240 degrees a second at the default sensitivity
+                float speed = 240.f * (settings ? settings->sensitivity / 0.1f : 1.f) * (float)elapsed;
+                float dy = gp.look.y * speed;
+                if (settings && settings->invertY) dy = -dy;
+                player.applyMouseLook(gp.look.x * speed, dy, aimSensScale());
+            }
+        }
         static Uint8 noKeys[SDL_NUM_SCANCODES] = {};
         if (g_devNoMouse) keys = noKeys;   // screenshot runs: the real keyboard doesn't reach the game
         bool parryKey = keys[SDL_SCANCODE_F] != 0;
@@ -1317,7 +1551,7 @@ public:
         {
             const WeaponDef& d = weaponDef((WeaponId)activeWeapon);
             const WeaponState& ws = weapons[activeWeapon];
-            bool rmb = (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0;
+            bool rmb = (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0 || gamepad::state().aim;
             bool want = d.canAim && rmb && pendingWeapon < 0 && !ws.reloading;
             float before = aim;
             if (g_devAim) want = d.canAim;
@@ -1435,6 +1669,8 @@ public:
 
         // --- Enemies ---
         updateEnemies(dt);
+        updateSanctumPhase(dt);
+        if (fast() && countdown <= 0.f && !victory) ghostRec.record(elapsedTime, player.position, player.camera.yaw);
 
         // --- Projectiles ---
         auto result = projSystem.update(dt, level.walls.data(), (int)level.walls.size(),
@@ -1559,6 +1795,7 @@ public:
                 styleSystem.addStyle(70.f);
                 gainXp(30);
                 if (e.type == EnemyType::SOVEREIGN) ui.toast("PARRIED", "HIS GUARD IS BROKEN - UNLOAD", {1.f, 0.75f, 0.2f}, 1.4f);
+                else if (e.type == EnemyType::SHIELDBEARER) ui.toast("SHIELD DOWN", "", {0.4f, 1.f, 0.75f}, 1.2f);
                 else ui.toast("BROKEN", "IT TAKES DOUBLE DAMAGE - UNLOAD", {1.f, 0.75f, 0.2f}, 1.8f);
                 return;
             }
@@ -1749,6 +1986,7 @@ public:
 
     void updateEnemies(float dt) {
         telegraphSoundCd -= dt;
+        shieldClankCd -= dt;
         const Arena& ar = level.arenas[director.arena];
         EnemyWorld w;
         w.playerEye  = player.camera.position;
@@ -2162,6 +2400,14 @@ public:
                 Enemy& e = enemies[hits[k].enemy];
                 glm::vec3 at = origin + dir * hits[k].t;
                 bool head = hits[k].head && d.headMult > 1.f;   // the shotgun has no headshot bonus
+                // A Shieldbearer's shield stops body shots from the front (not
+                // the head over its rim), and the round with it
+                if (!hits[k].head && e.blocks(dir)) {
+                    spawnHitSparks(at, {0.4f, 1.f, 0.75f});
+                    if (shieldClankCd <= 0.f) { audio.play("clank", 70); shieldClankCd = 0.12f; }
+                    anyHit = true;
+                    break;
+                }
                 float m = head ? d.headMult : 1.f;
                 float falloff = 1.f - 0.15f * k;    // each body it punches through costs a little
                 if (head) spawnHitSparks(at, {1.f, 0.9f, 0.3f});
@@ -2497,6 +2743,22 @@ public:
             }
         }
 
+        // FAST: the ghost of your best run, a glowing figure on its route
+        glm::vec3 gFeet; float gYaw;
+        if (fast() && (!settings || settings->ghost) && countdown <= 0.f && ghost.at(elapsedTime, gFeet, gYaw) &&
+            glm::length(gFeet - player.position) > 1.6f) {
+            float r = glm::radians(gYaw);
+            glm::mat4 g = T(gFeet) * RY(std::atan2(std::cos(r), std::sin(r)));
+            float stride = std::sin(elapsedTime * 11.f) * 0.35f;
+            glm::vec3 col{0.03f, 0.06f, 0.08f}, glow{0.25f, 0.9f, 1.2f};
+            for (float s : {-1.f, 1.f})
+                push(out, g * T({s * 0.14f, 0.85f, 0.f}) * RX(stride * s) * T({0.f, -0.42f, 0.f}) * S({0.16f, 0.84f, 0.18f}), col, glow * 0.6f);
+            push(out, g * T({0.f, 1.25f, 0.f}) * S({0.46f, 0.72f, 0.26f}), col, glow * 0.8f);
+            push(out, g * T({0.f, 1.78f, 0.f}) * S(glm::vec3{0.26f}), col, glow * 1.2f);
+            for (float s : {-1.f, 1.f})
+                push(out, g * T({s * 0.31f, 1.5f, 0.f}) * RX(-stride * s) * T({0.f, -0.32f, 0.f}) * S({0.12f, 0.64f, 0.12f}), col, glow * 0.5f);
+        }
+
         // Spawn beams: a column of light while an enemy materialises
         for (auto& e : enemies) {
             if (!e.alive || e.state != EnemyState::SPAWNING) continue;
@@ -2811,6 +3073,7 @@ public:
         glm::mat4 view = renderCam.viewMatrix();
         glm::mat4 proj = renderCam.projectionMatrix();
         Theme th = level.themeAt(player.position);
+        if (rageBlend > 0.f) th = lerpTheme(th, bloodEclipse(th), rageBlend);
 
         postProcess.beginScene();
         glClearColor(th.fogColor.r, th.fogColor.g, th.fogColor.b, 1.f);

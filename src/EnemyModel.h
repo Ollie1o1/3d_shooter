@@ -65,6 +65,7 @@ inline HumanoidLook humanoidDims(EnemyType t) {
     case EnemyType::JUGGERNAUT: return {1.15f, 0.5f,  0.65f, 0.25f, 1.3f,  1.5f,  0.95f, 0.42f, 1.3f,  0.45f, {}, {}, {}};
     case EnemyType::WARDEN:     return {1.7f,  0.6f,  0.8f,  0.3f,  1.75f, 1.9f,  1.1f,  0.62f, 1.9f,  0.55f, {}, {}, {}};
     case EnemyType::SOVEREIGN:  return {1.35f, 0.34f, 0.46f, 0.22f, 1.25f, 1.05f, 0.58f, 0.42f, 1.3f,  0.3f,  {}, {}, {}};
+    case EnemyType::SHIELDBEARER: return {0.95f, 0.24f, 0.3f, 0.16f, 0.7f, 0.62f, 0.36f, 0.32f, 0.66f, 0.19f, {}, {}, {}};
     default:                    return {};
     }
 }
@@ -401,6 +402,28 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
             }
         break;
     }
+    case EnemyType::SHIELDBEARER: {
+        HumanoidLook L = humanoidLook(e.type, st.color, st.color * 0.5f, glow);
+        float aim = e.attack == AttackKind::SHOT ? smooth01(tp * 2.5f) : 0.3f;
+        auto f = humanoid(r, root, L, e.animPhase, stride, ArmPose::AIM_RIGHT, aim);
+        vec3 metal{0.16f, 0.17f, 0.2f}, bronze{0.62f, 0.46f, 0.2f};
+        r.box(f.armR, {0.f, -0.74f, 0.05f}, {0.14f, 0.36f, 0.18f}, metal);                         // stubby scattergun
+        r.box(f.armR, {0.f, -0.94f, 0.05f}, {0.16f, 0.07f, 0.16f}, metal, st.shotColor * (0.3f + 3.f * tp));
+        // The tower shield: braced in front, drawn back for a bash, knocked aside when broken
+        bool broken = e.staggered();
+        float bash = e.attack == AttackKind::BASH ? smooth01(tp * 1.5f) : 0.f;
+        mat4 sh = f.torso * T({0.12f, -0.15f, L.torsoD * 0.5f + 0.32f - 0.22f * bash}) * RX(-0.12f * bash);
+        if (broken) sh = f.torso * T({0.55f, -0.5f, 0.3f}) * RY(1.1f) * RZ(0.5f);
+        vec3 rim = glow * (0.5f + 2.f * tp);
+        r.box(sh, {0.f, 0.f, 0.f},      {1.05f, 1.6f, 0.12f}, st.color * 1.25f);
+        r.box(sh, {0.f, 0.f, 0.07f},    {0.86f, 1.38f, 0.03f}, st.color * 0.9f);
+        r.box(sh, {0.f, 0.83f, 0.03f},  {1.08f, 0.07f, 0.16f}, bronze, rim);
+        r.box(sh, {0.f, -0.83f, 0.03f}, {1.08f, 0.07f, 0.16f}, bronze, rim);
+        r.box(sh, {0.f, 0.1f, 0.09f},   {0.1f, 0.6f, 0.03f}, bronze * 0.5f, glow * 1.2f);   // sigil
+        r.box(sh, {0.f, 0.1f, 0.09f},   {0.36f, 0.1f, 0.03f}, bronze * 0.5f, glow * 1.2f);
+        r.box(f.head, {0.f, L.headS + 0.06f, -0.02f}, {0.06f, 0.14f, 0.3f}, bronze);        // helmet crest
+        break;
+    }
     case EnemyType::SOVEREIGN: {
         bool broken = e.staggered();
         vec3 g = e.enraged ? vec3{1.f, 0.12f, 0.08f} * (1.3f + 2.f * tp) : glow;
@@ -470,7 +493,7 @@ inline bool headBox(const Enemy& e, AABB& out) {
 
     switch (e.type) {
     case EnemyType::HUSK: case EnemyType::SENTINEL: case EnemyType::BRUTE:
-    case EnemyType::JUGGERNAUT: case EnemyType::WARDEN: case EnemyType::SOVEREIGN: {
+    case EnemyType::JUGGERNAUT: case EnemyType::WARDEN: case EnemyType::SOVEREIGN: case EnemyType::SHIELDBEARER: {
         HumanoidLook L = humanoidDims(e.type);
         mat4 base = root;
         if (e.type == EnemyType::JUGGERNAUT && e.staggered()) base = root * T({0.f, -0.25f, 0.f}) * RX(0.32f);

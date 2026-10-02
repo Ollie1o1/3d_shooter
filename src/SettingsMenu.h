@@ -62,6 +62,7 @@ public:
         header("GAMEPLAY");
         cycle ("DIFFICULTY", &g->difficulty, DIFFICULTY_LEVELS, [](int i) { return difficulty(i).name; });
         toggle("RUN TIMER", &g->showTimer);
+        toggle("FAST GHOST", &g->ghost);
         toggle("DAMAGE NUMBERS", &g->damageNumbers);
         cycle ("CROSSHAIR", &g->crosshair, GameSettings::CROSSHAIR_COLORS, [](int i) { return GameSettings::crosshairLabel(i); });
         Row back; back.kind = Kind::BACK; back.label = "BACK"; r.push_back(back);

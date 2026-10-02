@@ -7,7 +7,11 @@
 #include "Level.h"
 #include "LevelGauntlet.h"
 #include "UIBatch.h"
+#include "Gamepad.h"
 #include <SDL2/SDL.h>
+#ifdef __EMSCRIPTEN__
+#  include <emscripten.h>
+#endif
 #include "gl.h"
 #include <glm/glm.hpp>
 #include <functional>
@@ -39,6 +43,9 @@ public:
     SettingsMenu settingsMenu;
     Records      records;
     Leaderboard  board;
+    Leaderboard  worldBoard;          // web: the shared board, cached by web/index.html
+    bool         worldLoaded = false;
+    float        boardPoll = 0.f;
 
     static constexpr int NUM_ITEMS = 5;
 
@@ -64,6 +71,13 @@ public:
 
     void handleEvent(const SDL_Event& e) override {
         settingsMenu.s = settings;
+        if (e.type == SDL_CONTROLLERBUTTONDOWN) {   // the D-pad and A/B drive every page
+            // B backs out of a page; on the main page it does nothing (Escape there quits)
+            SDL_Keycode k = gamepad::menuKey(e.cbutton.button, page != MAIN);
+            if (page == MAIN && e.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) { openDev(); return; }
+            if (k != SDLK_UNKNOWN) { SDL_Event ke = gamepad::keyEvent(k); handleEvent(ke); }
+            return;
+        }
         if (page == SETTINGS) { settingsMenu.handleEvent(e); return; }
         if (page == BOARD) {
             if ((e.type == SDL_KEYDOWN && (e.key.keysym.sym == SDLK_ESCAPE || e.key.keysym.sym == SDLK_RETURN ||
@@ -142,7 +156,12 @@ private:
     void activate(int idx) {
         if (idx == 0 && onStart) onStart(GameMode::ARENA, StartOptions{});
         if (idx == 1 && onStart) onStart(GameMode::FAST, StartOptions{});
-        if (idx == 2) { page = BOARD; board.load(); }
+        if (idx == 2) {
+            page = BOARD; board.load(); boardPoll = 0.f;
+#ifdef __EMSCRIPTEN__
+            emscripten_run_script("window.overdriveBoard&&window.overdriveBoard.refresh()");
+#endif
+        }
         if (idx == 3) { page = SETTINGS; settingsMenu.selected = 1; }
         if (idx == 4 && onQuit) onQuit();
     }
@@ -240,9 +259,12 @@ private:
     // ---- LEADERBOARD page ----------------------------------------------------
     void renderBoard() {
         int cx = screenW / 2;
-        ui.text("LEADERBOARD", cx, 50, 5, {1.f, 0.55f, 0.08f, 1.f}, true);
-        drawLeaderboardTable(ui, board, false, cx - 600.f, 130.f, 570.f, Leaderboard::KEEP, -1, flashTime);
-        drawLeaderboardTable(ui, board, true,  cx + 30.f,  130.f, 570.f, Leaderboard::KEEP, -1, flashTime);
+        // The shared board when the site's API is up (re-read as the fetch lands), else this browser's
+        if ((boardPoll -= 1.f / 60.f) <= 0.f) { boardPoll = 1.f; worldLoaded = worldBoard.loadOnline(); }
+        const Leaderboard& shown = worldLoaded ? worldBoard : board;
+        ui.text(worldLoaded ? "WORLD LEADERBOARD" : "LEADERBOARD", cx, 50, 5, {1.f, 0.55f, 0.08f, 1.f}, true);
+        drawLeaderboardTable(ui, shown, false, cx - 600.f, 130.f, 570.f, Leaderboard::KEEP, -1, flashTime);
+        drawLeaderboardTable(ui, shown, true,  cx + 30.f,  130.f, 570.f, Leaderboard::KEEP, -1, flashTime);
         ui.text("FINISH A FULL RUN TO PUT YOUR NAME ON THE BOARD", cx, screenH - 64, 1, {0.7f, 0.7f, 0.75f, 0.9f}, true);
         ui.text("ESC, ENTER OR CLICK - BACK", cx, screenH - 40, 2, {0.6f, 0.6f, 0.65f, 0.85f}, true);
     }

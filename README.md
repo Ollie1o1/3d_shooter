@@ -4,14 +4,14 @@
 
 **[▶ Play it in your browser](https://oliver-raczka.vercel.app/work/overdrive/#play)**, no install needed.
 
-![OVERDRIVE gameplay: Rippers charging across the Sunset Yard and breaking apart into their component blocks under shotgun fire](docs/overdrive.gif)
+![OVERDRIVE gameplay: Rippers breaking apart under shotgun fire in the Sunset Yard, a Shieldbearer and a Juggernaut in the Core at night, the walk into the Sanctum under an eclipse, and a duel with the Sovereign, the sword-wielding final boss](docs/overdrive.gif)
 
-A 3D arena shooter built with **SDL2**, **OpenGL 3.3 Core Profile**, and **GLM**. ULTRAKILL-inspired movement with grapple hook, dashing, four weapons (including two bolt-action snipers) and style scoring, in two modes:
+A 3D arena shooter built with **SDL2**, **OpenGL 3.3 Core Profile**, and **GLM**, with no engine. ULTRAKILL-inspired movement with grapple hook, dashing, four weapons (including two bolt-action snipers) and style scoring, in two modes:
 
-- **ARENA**: **four themed arenas** (sunset yard, foundry, a vertical spire you have to climb, a night-time reactor) of three waves each, **eight enemy types** built as animated block rigs (including the armored Juggernaut, built to be parried), the **Warden** at the end of the fourth, then **the Sanctum**: a huge arena under an eclipse where you duel the final boss, **the Sovereign**, a sword-wielding knight.
+- **ARENA**: **four themed arenas** (sunset yard, foundry, a vertical spire you have to climb, a night-time reactor) of three waves each, **eight enemy types** built as animated block rigs (including the armored Juggernaut and the shield-carrying Shieldbearer, both built around the parry), the **Warden** at the end of the fourth, then **the Sanctum**: a huge arena under an eclipse where you duel the final boss, **the Sovereign**, a sword-wielding knight.
 - **FAST**: **the Gauntlet**, a time trial through seven rooms joined by **boost tubes**: doors part as you sprint at them, lock behind you when a room's fight starts, and the exit unlocks when it's clear. A long canal, a close-quarters pump room, a cathedral of terraces, a canyon of islands over a void, a tower you fall through, a hall with control rooms, and a courtyard finale with a lift shaft to the beacon. Run clock, splits against your best run, par ranks.
 
-Kills earn **XP** (more for stylish play), and levels buy **weapon upgrades** in the Armory.
+Kills earn **XP** (more for stylish play), and levels buy **weapon upgrades** in the Armory. Finish a run fast enough and you can put your name on that mode's **leaderboard** (shared by every player on the website); in FAST mode you race the **ghost** of your best run. Plays with **mouse and keyboard or a gamepad**, at **720p to 4K**, with a **dev level select** for jumping to any arena, room or boss.
 
 Builds and runs on **macOS**, **Windows** (via MSYS2), and **in the browser** (WebAssembly + WebGL2 via Emscripten). It also builds and passes its physics tests on **Linux** (Ubuntu 24.04), though it hasn't been play-tested on a Linux desktop yet.
 
@@ -67,13 +67,34 @@ make clean  # delete binaries
 ./shooter --arena 4 --wave 3     # jump straight to an arena / wave (here: the Warden)
 ./shooter --arena 5              # the Sanctum: the Sovereign
 ./shooter --dev                  # open the DEV level select (also ` or F2 on the main menu)
-./shooter --fast --arena 3       # jump to a FAST section (here: the chasm)
+./shooter --fast --arena 3       # jump to a FAST room (here: the Ascent)
 ./shooter --god                  # take no damage (for recording footage)
-
-# Dev: render N frames, save the last as a BMP and quit (the mouse is ignored)
-./shooter --arena 3 --cam 0 3 -129 -90 18 --weapon 4 --aim --shot 90 shot.bmp
-#         --cam X Y Z YAW PITCH   --weapon 1-4   --aim   --overlay armory|pause|settings
 ```
+
+### Dev tools
+
+Everything below runs without touching the mouse, so it works from scripts.
+
+```sh
+# Render N frames, save the last as a BMP and quit
+./shooter --arena 3 --cam 0 3 -129 -90 18 --weapon 4 --aim --shot 90 shot.bmp
+#   --cam X Y Z YAW PITCH   --weapon 1-4   --aim   --res LINES
+#   --overlay armory | pause | settings | victory | poseN (hold the Sovereign in pose N: 0-9)
+#   --spawn TYPE (repeatable): enemies in an arc in front of the camera
+#     0 Husk  1 Ripper  2 Sentinel  3 Raptor  4 Brute  5 Mite  6 Juggernaut  7 Warden  8 Sovereign  9 Shieldbearer
+
+# Footage: fixed 1/30 s frames; skip SKIP, then save FRAMES as PREFIX_0001.bmp ...
+./shooter --arena 5 --god --cam 0 1.8 -310 -90 2 --spawn 8 --autoaim --kite --clean --record 180 30 out/boss
+#   --campath X Y Z YAW PITCH  glide the camera there over the recording
+#   --autoaim  turn onto the nearest enemy in sight and fire      --kite  back off from whatever gets close
+#   --clean    no title cards or control hints
+tools/record_showcase.sh         # re-record docs/overdrive.gif (needs gifski)
+
+# Frame times
+./shooter --bench 2000 --arena 4 --wave 2 --god [--cap HZ] [--res LINES]
+```
+
+**In the game:** `` ` `` or **F2** on the main menu opens the **DEV level select** (also `--dev`, or `?dev` on the web build): any arena and wave, any FAST room, or the Sovereign, with god mode on or off. These are practice runs (no records, no leaderboard); in one, **F5** clears the current wave and **F6** refills health.
 
 ### Browser (WebAssembly)
 
@@ -81,7 +102,7 @@ The same C++ compiles to WebAssembly with [Emscripten](https://emscripten.org), 
 
 ```sh
 source ~/emsdk/emsdk_env.sh     # once per shell
-make web                        # → web/dist/ (≈1.5 MB: wasm + preloaded shaders/sounds)
+make web                        # → web/dist/ (≈3.2 MB: wasm + preloaded shaders/sounds; ≈1.7 MB served compressed)
 python3 -m http.server -d web/dist 8000   # open http://localhost:8000 (?play skips the menu, ?fast starts the time trial; ?arena=4&wave=3 jumps to the Warden, ?arena=5 to the Sovereign, ?dev opens the level select)
 ```
 
@@ -89,7 +110,9 @@ What the port needed (all behind `#ifdef __EMSCRIPTEN__`, so the desktop build i
 
 - `gl.h` includes GLES3; `ShaderProgram` rewrites `#version 330 core` to `#version 300 es` plus default precision at load time, so one set of shaders serves both builds (keep them free of implicit int→float conversions and uniform initializers, which GLSL ES rejects).
 - `main.cpp` runs one `App::frame()` per `requestAnimationFrame` instead of a blocking loop.
-- Browsers use Escape to release the mouse, so losing pointer lock pauses the game; **P** also pauses.
+- Browsers use Escape to release the mouse, so losing pointer lock pauses the game; **P** also pauses. In fullscreen, Chrome and Edge hand Escape to the game (Keyboard Lock), so pausing or closing the armory doesn't drop you out of fullscreen; hold Escape, or use **FULLSCREEN / EXIT FULLSCREEN** in the pause menu, which works in every browser (the portfolio page, which shows the game in an iframe, does the actual fullscreen through `postMessage`).
+- The canvas is sized to the screen pixels it covers (CSS size × `devicePixelRatio`), capped at the graphics quality's resolution; SDL's web port reports a fixed window size, so `main.cpp` asks for the canvas size directly.
+- The shared leaderboard: `web/index.html` fetches the portfolio site's `/api/overdrive-board` into `localStorage`, where the game reads it like its own board, and posts finished runs to it. With no API (a local server) the game shows its own board.
 - Settings and best times are saved to `localStorage` (the Emscripten filesystem is in-memory and forgotten on reload), through `Persist.h`.
 - The shell requests pointer lock with `unadjustedMovement` (raw mouse input) where supported; together with `MouseFilter.h` this stops the occasional huge bogus mouse delta Chrome reports, which used to snap the view round 180°.
 
@@ -127,7 +150,27 @@ make clean        # delete binary
 | F | Punch: parries projectiles, breaks a Juggernaut's smash, detonates your grenade, hits what's in front |
 | Left Ctrl / C | Crouch / Ground slam |
 | Enter | New run (on death/win) |
-| Escape / P | Pause / Resume (Escape quits to menu from death/win screens; in a browser, Escape releases the mouse and pauses) |
+| Escape / P | Pause / Resume (Escape quits to menu from death/win screens; in a browser, Escape releases the mouse and pauses). The pause menu also toggles fullscreen |
+| V | Inspect your weapon |
+| Backspace | Restart the current arena / room |
+
+**Gamepad** (Xbox layout; PlayStation and others map onto it, in browsers too):
+
+| Input | Action |
+|-------|--------|
+| Left stick / right stick | Move / look |
+| RT / LT | Fire / aim |
+| A | Jump |
+| B | Slide / ground slam |
+| RB | Dash |
+| LB | Grapple |
+| Y | Punch / parry |
+| X | Reload |
+| D-pad left / right | Previous / next weapon |
+| D-pad up / down | Grenade / inspect |
+| Start / Back | Pause / Armory |
+
+In menus the D-pad moves, **A** confirms and **B** goes back; on the main menu **Back** opens the dev level select.
 
 ---
 
@@ -143,7 +186,7 @@ make clean        # delete binary
   5. **The Pumpworks** (east): a roofed tunnel with a lava strip opening into a hall with galleries
   6. **The Tower**: win the courtyard (two waves), then ride the lifts or grapple to the beacon on top
 
-  A 3-2-1 countdown starts the clock; every room clear shows a split (green ahead / red behind your best run); the clock stops at the beacon. Ranked S/A/B/C/D against par times. Dying (or Backspace) restarts the room with the clock still running.
+  A 3-2-1 countdown starts the clock; every room clear shows a split (green ahead / red behind your best run); the clock stops at the beacon. Ranked S/A/B/C/D against par times. Dying (or Backspace) restarts the room with the clock still running. A glowing **ghost** runs the route of your best time alongside you (FAST GHOST in Settings turns it off).
 
 ### Combat
 - **Revolver** (slot 1) — 8-round hitscan with auto-reload
@@ -182,8 +225,9 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 | **Brute** | 2.9 m heavy with a glowing chest core | Walks you down and slams the ground; lobs at range | Jump the shockwave |
 | **Mite** | Small spider bomb | Rushes in and detonates | Shoot it early: its blast hurts its friends |
 | **Juggernaut** | 3.3 m armored heavy with a cannon arm | Armor halves bullet damage; fires slow siege shells, smashes up close | Parry the shell (400 back), or punch the smash to break it |
+| **Shieldbearer** | Soldier behind a tower shield with a glowing sigil | The shield stops bullets from the front; advances slowly, fires spreads of orbs, bashes up close | Flank it (it turns slowly), shoot the head over the rim, use explosives, or parry the bash to knock the shield aside |
 | **Warden** | 4.6 m crowned boss | Volleys, slams, summons Mites and Rippers; enrages at half health | Everything above |
-| **Sovereign** | 3.5 m horned knight with a greatsword, a halo and a cape | The final boss. Dashes at you and dashes again; chains two sweeps into an overhead cleave with a shockwave; leaps onto any platform you climb; throws crescent slashes at range. Enrages at half health: faster, longer chains, double crescents | Dash through the dashes, jump the cleave's shockwave, and **parry (F) a sweep or the cleave as it lands** to break his guard (he takes 1.5x while broken) |
+| **Sovereign** | 3.5 m horned knight with a greatsword, a halo and a cape | The final boss. Dashes at you and dashes again; chains two sweeps into an overhead cleave with a shockwave; leaps onto any platform you climb; throws crescent slashes at range. Enrages at half health: faster, longer chains, double crescents, and the eclipse turns to blood while the orbiting platforms speed up | Dash through the dashes, jump the cleave's shockwave, and **parry (F) a sweep or the cleave as it lands** to break his guard (he takes 1.5x while broken) |
 
 - Ground enemies steer around cover with feeler probes (no pathfinding; the arenas are open by design) and keep apart with soft separation
 - Gunners and Brutes won't walk off a ledge; Rippers and Mites jump down after you
@@ -227,15 +271,15 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 
 ### Game Flow
 - **Victory screen** — after the Sovereign: time, kills, accuracy, deaths and a letter grade (S/A/B/C/D)
-- **Leaderboard** — finish a full run fast enough for the top 10 and you're asked for a name (or ESC to skip); it's saved with the time and difficulty, per mode (ARENA / FAST). LEADERBOARD on the main menu shows both boards. Only full runs count: not one started at a later arena, in god mode or from the dev level select
+- **Leaderboard** — finish a full run fast enough for the top 10 and you're asked for a name (or ESC to skip); it's saved with the time and difficulty, per mode (ARENA / FAST). LEADERBOARD on the main menu shows both boards. On the website it's the **world** board, shared by every player (the site's `/api/overdrive-board`, checked server-side for plausible times); elsewhere it's this machine's. Only full runs count: not one started at a later arena, in god mode or from the dev level select
 - **DEV level select** (` or F2 on the main menu, `--dev`, `?dev` on the web) — jump to any arena (and wave), any FAST room or the Sovereign, with god mode on or off. These are practice runs (no records, no leaderboard); in one, F5 clears the current wave and F6 refills health
 - **Death screen** — where you died, with retry-arena and new-run options
 - **Pause menu** — Escape mid-run pauses: Resume / Settings / Restart / Quit to Menu
 - R retries the current arena; Enter starts a new run
-- **Settings** (main menu and pause menu, keyboard or mouse, sliders drag): field of view, fullscreen (also F11 / Alt+Enter), frame rate (match display, 60–360, unlimited), VSync, **graphics quality** (LOW 720p / MEDIUM 1080p / HIGH 1440p / EXTREME 4K render resolution, plus anisotropic texture filtering above LOW; in the browser the canvas gets the screen's real pixels), show FPS, CRT filter, screen shake, view bob, mouse sensitivity, zoom sensitivity, invert Y, mouse spike filter, master and music volume, **difficulty** (LENIENT / STANDARD / VIOLENT / BRUTAL — also LEFT/RIGHT on the main menu), run timer, damage numbers, crosshair colour
-- **Soundtrack** — synthesized live (`MusicSynth.h`, no audio files): darksynth/industrial, a track per area, layers that build from the tubes into the fight and up again for the boss, muffled while paused
+- **Settings** (main menu and pause menu, keyboard or mouse, sliders drag): field of view, fullscreen (also F11 / Alt+Enter), frame rate (match display, 60–360, unlimited), VSync, **graphics quality** (LOW 720p / MEDIUM 1080p / HIGH 1440p / EXTREME 4K render resolution, plus anisotropic texture filtering above LOW; in the browser the canvas gets the screen's real pixels), show FPS, CRT filter, screen shake, view bob, mouse sensitivity, zoom sensitivity, invert Y, mouse spike filter, master and music volume, **difficulty** (LENIENT / STANDARD / VIOLENT / BRUTAL — also LEFT/RIGHT on the main menu), run timer, damage numbers, FAST ghost, crosshair colour
+- **Soundtrack** — synthesized live (`MusicSynth.h`, no audio files): darksynth/industrial, a track per area (and one for the Sovereign), layers that build from the tubes into the fight and up again for the boss, muffled while paused
 - **High refresh rates** — physics stays at a fixed 60 Hz while enemies, projectiles, pickups and platforms are interpolated between ticks, so 144/240/360 Hz is smooth; the frame limiter sleeps then spins to hold a cap to within microseconds. `./shooter --bench N [--cap HZ] [--res H]` prints frame times
-- Settings and best times persist across launches (`settings.cfg` / `records.cfg` next to the binary; `localStorage` in the browser)
+- Settings, best times, the leaderboard and your best FAST ghost persist across launches (`settings.cfg`, `records.v2.cfg`, `leaderboard.cfg`, `ghost.v2.cfg` next to the binary; `localStorage` in the browser)
 
 ### HUD
 - Health as a big number with a bar (pulses red when low), level and XP bar, four weapon slots with ammo counts and reload bars, grenade pips, style rank
@@ -264,10 +308,16 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 │   ├── Projectile.h          # bullet/projectile system
 │   ├── GrappleHook.h         # grapple hook physics
 │   ├── StyleSystem.h         # style rank/score tracking
-│   ├── Level.h               # ARENA map: four arenas, corridors, doors, pads, lava, movers, themes
+│   ├── Level.h               # ARENA map: five arenas, corridors, doors, pads, lava, movers, themes
 │   ├── LevelGauntlet.h       # FAST map: the Gauntlet's seven rooms and their tubes
 │   ├── Weapons.h             # the four guns' stats, upgrade maths, ammo/reload state
-│   ├── Progression.h         # XP, levels, upgrade purchases, best times
+│   ├── Progression.h         # XP, levels, upgrade purchases, best times, leaderboard
+│   ├── LeaderboardView.h     # draws a leaderboard table (menu page, victory screen)
+│   ├── Ghost.h               # FAST mode's ghost: records and plays back your best route
+│   ├── Gamepad.h             # controller support, folded into the keys the game reads
+│   ├── Difficulty.h          # the four difficulty levels' tuning
+│   ├── MusicSynth.h          # the live-synthesized soundtrack
+│   ├── Display.h             # the render-resolution canvas, scaled into the window
 │   ├── MouseFilter.h         # drops bogus single-event mouse spikes
 │   ├── WaveDirector.h        # arena → wave → arena state machine (no OpenGL)
 │   ├── Mesh.h                # VAO/VBO wrapper
@@ -301,7 +351,8 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 │                             # simulated ARENA and FAST runs (`make test`)
 ├── tools/
 │   ├── gen_sfx.py            # synthesizes most of assets/sfx/*.wav
-│   └── import_sfx.py         # builds the recorded sounds from CC0 packs (see assets/sfx/CREDITS.md)
+│   ├── import_sfx.py         # builds the recorded sounds from CC0 packs (see assets/sfx/CREDITS.md)
+│   └── record_showcase.sh    # re-records docs/overdrive.gif from scripted shots
 ├── web/
 │   └── index.html            # browser shell for the WebAssembly build (`make web`)
 ├── Makefile

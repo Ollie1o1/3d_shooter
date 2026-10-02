@@ -776,7 +776,7 @@ inline LevelData buildLevel() {
         a.airSpawns    = {{-12,9,-78},{12,9,-78},{0,10,-95},{0,10,-60},{-20,10,-100},{20,10,-56}};
         a.waves = {
             {{EnemyType::HUSK, 5}, {EnemyType::MITE, 4}, {EnemyType::SENTINEL, 2}},
-            {{EnemyType::BRUTE, 1}, {EnemyType::RIPPER, 5}, {EnemyType::SENTINEL, 2}, {EnemyType::RAPTOR, 2}},
+            {{EnemyType::BRUTE, 1}, {EnemyType::SHIELDBEARER, 2}, {EnemyType::RIPPER, 5}, {EnemyType::SENTINEL, 2}, {EnemyType::RAPTOR, 2}},
             {{EnemyType::JUGGERNAUT, 1}, {EnemyType::BRUTE, 1}, {EnemyType::MITE, 6}, {EnemyType::HUSK, 3}, {EnemyType::RAPTOR, 2}},
         };
         a.maxAlive = 9;
@@ -935,7 +935,7 @@ inline LevelData buildLevel() {
         a.airSpawns  = {{-14,16,-140},{14,16,-140},{-14,16,-172},{14,16,-172},{0,30,-140},{-20,26,CZ},{20,26,CZ}};
         a.waves = {
             {{EnemyType::HUSK, 4}, {EnemyType::RIPPER, 3}, {EnemyType::SENTINEL, 2}},
-            {{EnemyType::SENTINEL, 3}, {EnemyType::HUSK, 3}, {EnemyType::RAPTOR, 3}, {EnemyType::MITE, 4}},
+            {{EnemyType::SENTINEL, 3}, {EnemyType::SHIELDBEARER, 1}, {EnemyType::HUSK, 3}, {EnemyType::RAPTOR, 3}, {EnemyType::MITE, 4}},
             {{EnemyType::JUGGERNAUT, 1}, {EnemyType::BRUTE, 1}, {EnemyType::SENTINEL, 2}, {EnemyType::HUSK, 3}, {EnemyType::RAPTOR, 3}},
         };
         a.maxAlive = 9;
@@ -1071,7 +1071,7 @@ inline LevelData buildLevel() {
                           {0,4.05f,CZ - 34.5f},{34.5f,4.05f,CZ},{-34.5f,4.05f,CZ},{0,7.05f,CZ + P},{0,7.05f,CZ - P}};
         a.airSpawns    = {{-18,10,CZ - 18},{18,10,CZ - 18},{0,12,CZ - 28},{-20,10,CZ + 22},{20,10,CZ + 22},{0,12,CZ + 17}};
         a.waves = {
-            {{EnemyType::BRUTE, 2}, {EnemyType::SENTINEL, 3}, {EnemyType::RAPTOR, 3}, {EnemyType::RIPPER, 5}},
+            {{EnemyType::BRUTE, 2}, {EnemyType::SHIELDBEARER, 2}, {EnemyType::SENTINEL, 3}, {EnemyType::RAPTOR, 3}, {EnemyType::RIPPER, 5}},
             {{EnemyType::JUGGERNAUT, 1}, {EnemyType::BRUTE, 1}, {EnemyType::MITE, 8}, {EnemyType::HUSK, 5}, {EnemyType::RAPTOR, 3}, {EnemyType::SENTINEL, 2}},
             {{EnemyType::WARDEN, 1}},
         };

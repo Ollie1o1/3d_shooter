@@ -27,7 +27,10 @@ inline int xpForKill(EnemyType t) {
         case EnemyType::RAPTOR:   return 25;
         case EnemyType::BRUTE:    return 80;
         case EnemyType::MITE:     return 8;
+        case EnemyType::JUGGERNAUT: return 120;
+        case EnemyType::SHIELDBEARER: return 40;
         case EnemyType::WARDEN:   return 500;
+        case EnemyType::SOVEREIGN: return 1000;
         default:                  return 10;
     }
 }
@@ -188,6 +191,27 @@ struct Leaderboard {
         std::stable_sort(arena.begin(), arena.end(), byTime);
         std::stable_sort(fast.begin(), fast.end(), byTime);
     }
+    // The shared (online) board, as the web page caches it: per mode, lines
+    // of "time difficulty name". Empty off the web or with no API: callers
+    // then show this browser's own board.
+    static constexpr const char* kOnlineKey = "leaderboard.online.";
+    bool loadOnline() {
+        arena.clear(); fast.clear();
+        for (bool fm : {false, true}) {
+            std::istringstream f(persist::load(std::string(kOnlineKey) + (fm ? "fast" : "arena")));
+            std::string line;
+            while (std::getline(f, line) && (int)list(fm).size() < KEEP) {
+                std::istringstream ls(line);
+                Entry e{"", 0.f, 0};
+                if (!(ls >> e.time >> e.difficulty)) continue;
+                std::string rest; std::getline(ls, rest);
+                e.name = cleanName(rest);
+                if (!e.name.empty() && e.time > 0.f) list(fm).push_back(e);
+            }
+        }
+        return !arena.empty() || !fast.empty();
+    }
+
     void save() const {
         std::ostringstream f;
         for (bool fm : {false, true})

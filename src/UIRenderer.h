@@ -332,8 +332,8 @@ public:
     }
 
     // Pause overlay — drawn on top of the (frozen) gameplay frame.
-    static constexpr int PAUSE_ITEMS = 5;
-    int pauseButtonY(int i) const { return screenH / 2 - 84 + i * 54; }
+    static constexpr int PAUSE_ITEMS = 6;
+    int pauseButtonY(int i) const { return screenH / 2 - 92 + i * 52; }
     void renderPause(int selected, const char* const labels[PAUSE_ITEMS], const char* modeLine) {
         begin2D();
         ui.rect(0, 0, screenW, screenH, {0.0f, 0.0f, 0.02f, 0.6f});
@@ -348,7 +348,7 @@ public:
             ui.rect(screenW / 2 - 150, by + 44, 300, 2, b);
             ui.text(labels[i], screenW / 2, by + 16, 2, sel ? glm::vec4{1.f, 0.7f, 0.15f, 1.f} : glm::vec4{0.75f, 0.75f, 0.8f, 0.9f}, true);
         }
-        ui.text("ESC TO RESUME   UP/DOWN + ENTER OR CLICK   BACKSPACE IN GAME RESTARTS THE ROOM", screenW / 2, screenH / 2 + 196, 1, {0.55f, 0.55f, 0.6f, 0.85f}, true);
+        ui.text("ESC TO RESUME   UP/DOWN + ENTER OR CLICK   BACKSPACE IN GAME RESTARTS THE ROOM", screenW / 2, screenH / 2 + 232, 1, {0.55f, 0.55f, 0.6f, 0.85f}, true);
         end2D();
     }
 

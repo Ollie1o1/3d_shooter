@@ -17,6 +17,10 @@
 //              smashes up close. PARRY (F) a shell to send it back for 400,
 //              or punch during the smash's last moment to break it: staggered,
 //              it takes double damage.
+//   SHIELDBEARER — carries a tower shield that stops bullets from the front.
+//              Advances slowly, fires a spread of orbs, bashes up close. Flank
+//              it (it turns slowly), shoot the head over the rim, blow it up,
+//              or PARRY (F) the bash to knock the shield aside.
 //   WARDEN   — the Core's boss: volleys, slams, and summons adds; enrages at 50%.
 //   SOVEREIGN — the final boss, alone in the Sanctum: a 3.5 m knight with a
 //              greatsword. Dashes at you (and dashes again), chains two sweeps
@@ -36,11 +40,12 @@
 #include "Player.h"  // AABB, Wall, SpatialGrid
 #include "Difficulty.h"
 
-enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, JUGGERNAUT, WARDEN, SOVEREIGN, COUNT };
+enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, JUGGERNAUT, WARDEN, SOVEREIGN, SHIELDBEARER, COUNT };
 inline bool isBoss(EnemyType t) { return t == EnemyType::WARDEN || t == EnemyType::SOVEREIGN; }
 enum class EnemyState { SPAWNING, ACTIVE, DEAD };
 enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY, SUMMON, SHELL, SMASH,
-                        DASH, SWEEP, CLEAVE, LEAP, CRESCENT };   // the SOVEREIGN's
+                        DASH, SWEEP, CLEAVE, LEAP, CRESCENT,   // the SOVEREIGN's
+                        BASH };                                // the SHIELDBEARER's
 
 struct EnemyStats {
     const char* name;
@@ -85,6 +90,9 @@ inline const EnemyStats& statsOf(EnemyType t) {
         {"SOVEREIGN", 3200.f, 0.85f, 3.50f, 6.2f, 0.55f, 0.95f, false,
          {0.12f,0.11f,0.14f}, {1.0f,0.24f,0.14f}, {1.0f,0.82f,0.45f},
          "PARRY (F) HIS BLADE AS IT FALLS - DASH THROUGH THE REST"},
+        {"SHIELDBEARER", 140.f, 0.6f, 2.20f, 3.4f, 0.5f, 2.4f, false,
+         {0.34f,0.37f,0.42f}, {0.3f,1.0f,0.7f}, {0.4f,1.0f,0.75f},
+         "SHIELDBEARERS BLOCK FROM THE FRONT - FLANK THEM, SHOOT OVER THE SHIELD, PARRY THE BASH"},
     };
     return S[(int)t];
 }
@@ -170,6 +178,14 @@ struct Enemy {
     // Movement
     float strafeTimer = 0.f, strafeDir = 1.f;
     float avoidSign   = 1.f, avoidTimer = 0.f;
+    // Stuck detection: a short look ahead can leave an enemy nudging at a wide
+    // obstacle, or zig-zagging along its far side, forever. If it's heading
+    // for you but hasn't got any closer for a second, it commits to going
+    // round one side until the way to you opens (the other side next time).
+    glm::vec3 progressFrom{0.f};
+    float progressDist = 0.f;
+    float progressAt = 0.f, detourUntil = -1.f, detourSign = 1.f;
+    glm::vec3 detourDir{0.f};
     float noLosTimer  = 0.f;      // > 0: reposition to find a clear shot
     float hoverY      = 8.f;
     float orbitRadius = 12.f;
@@ -224,12 +240,22 @@ struct Enemy {
     bool  parryWindow() const {
         if (telegraphTimer <= 0.f) return false;
         if (type == EnemyType::JUGGERNAUT) return attack == AttackKind::SMASH && telegraphTimer < 0.4f;
+        if (type == EnemyType::SHIELDBEARER) return attack == AttackKind::BASH && telegraphTimer < 0.3f;
         if (type == EnemyType::SOVEREIGN)
             return (attack == AttackKind::SWEEP || attack == AttackKind::CLEAVE) && telegraphTimer < 0.25f;
         return false;
     }
     // How long a parry leaves it broken
-    float staggerTime() const { return type == EnemyType::SOVEREIGN ? 1.6f : 2.5f; }
+    float staggerTime() const { return type == EnemyType::SOVEREIGN ? 1.6f : type == EnemyType::SHIELDBEARER ? 2.2f : 2.5f; }
+    // SHIELDBEARER: does its shield stop a shot travelling along dir? (From
+    // the front, while it's standing; a broken one has its shield knocked aside)
+    bool blocks(glm::vec3 dir) const {
+        if (type != EnemyType::SHIELDBEARER || staggered() || !alive) return false;
+        glm::vec2 d{-dir.x, -dir.z};
+        float l = glm::length(d);
+        if (l < 1e-4f) return false;
+        return glm::dot(d / l, glm::vec2{std::sin(yaw), std::cos(yaw)}) > 0.42f;   // within ~65 degrees of its facing
+    }
     // Damage multiplier from armor: the JUGGERNAUT shrugs off half unless
     // broken; a broken SOVEREIGN takes half again
     float armorMult() const {
@@ -312,6 +338,7 @@ struct Enemy {
             case EnemyType::JUGGERNAUT: thinkJuggernaut(dt, w, resolve); break;
             case EnemyType::WARDEN:   thinkWarden(dt, w, resolve);   break;
             case EnemyType::SOVEREIGN: thinkSovereign(dt, w, resolve); break;
+            case EnemyType::SHIELDBEARER: thinkShieldbearer(dt, w, resolve); break;
             default: break;
         }
         integrate(dt, w);
@@ -412,6 +439,32 @@ private:
     }
 
     void setMove(glm::vec3 dir, float speed, const EnemyWorld& w) {
+        glm::vec3 want = norm2(dir);
+        glm::vec3 toP = flatTo(w.playerFeet);
+        float distP = glm::length(toP);
+        bool approaching = distP > 4.f && glm::dot(want, toP / std::max(distP, 1e-3f)) > 0.3f;
+        if (!stats().flying && speed > 1.f && glm::length(want) > 0.5f && (approaching || age < detourUntil)) {
+            if (age - progressAt > 1.f) {
+                bool noCloser = progressDist - distP < 1.f;
+                if (progressAt > 0.f && approaching && noCloser && age >= detourUntil) {
+                    // Stuck again straight after a detour: that side's blocked too, try the other
+                    detourSign = age < detourUntil + 0.5f ? -detourSign : avoidSign;
+                    detourDir = rotY(toP / std::max(distP, 1e-3f), 1.571f * detourSign);
+                    detourUntil = age + 1.4f;
+                }
+                progressFrom = position; progressAt = age; progressDist = distP;
+            }
+            if (age < detourUntil) {
+                dir = detourDir + want * 0.25f;
+                avoidSign = detourSign;   // and slide round obstacles on the same side
+                // Round the corner: done as soon as the straight way opens up;
+                // still blocked when the time's up, keep going
+                glm::vec3 straight = toP / std::max(distP, 1e-3f);
+                bool open = canStepTo(position + straight * (radius() + 1.2f), w);
+                if (open && age > detourUntil - 1.1f) detourUntil = age;
+                else if (!open && detourUntil - age < 0.1f) detourUntil = age + 0.5f;
+            }
+        }
         glm::vec3 d = steer(dir, w);
         speed *= tune_->moveSpeed;
         velocity.x = d.x * speed;
@@ -727,6 +780,45 @@ private:
         }
     }
 
+    // ---- the SHIELDBEARER ------------------------------------------------------
+    // Walks you down behind its shield, turning slowly (that's the opening:
+    // get round it). Mid range it fires a spread of three orbs; close in it
+    // winds up a shield bash you can parry.
+    void thinkShieldbearer(float dt, const EnemyWorld& w, bool resolve) {
+        glm::vec3 to = flatTo(w.playerFeet);
+        float d = glm::length(to);
+        glm::vec3 dir = norm2(to);
+        if (telegraphTimer > 0.f) {
+            float spd = attack == AttackKind::BASH && d > 1.8f ? 1.5f : 0.f;
+            velocity.x = dir.x * spd; velocity.z = dir.z * spd;
+        } else {
+            glm::vec3 side{-dir.z, 0.f, dir.x};
+            strafeTimer -= dt;
+            if (strafeTimer <= 0.f) { strafeTimer = frand(2.f, 3.5f); strafeDir = -strafeDir; }
+            setMove(d > 2.5f ? dir + side * strafeDir * 0.2f : side * strafeDir, stats().speed, w);
+        }
+        turnToward(to, dt, 1.8f);   // slow to turn: flank it
+        if (resolve) {
+            if (attack == AttackKind::BASH) {
+                float dy = w.playerFeet.y - position.y;
+                glm::vec3 fwd{std::sin(yaw), 0.f, std::cos(yaw)};
+                if (d < 3.4f && std::fabs(dy) < 2.f && (d < 1.f || glm::dot(fwd, to / d) > 0.5f)) {
+                    ev.meleeHit = true; ev.meleeDamage = 20.f;
+                }
+            } else if (attack == AttackKind::SHOT) {
+                fireAt(w.playerEye, 3, 0.35f, 17.f, 9.f);
+            }
+            attack = AttackKind::NONE;
+        }
+        if (attackReady(dt)) {
+            if (d < 3.2f) startAttack(AttackKind::BASH, 0.6f);
+            else if (d < 16.f && lineOfSight(eyePos(), w)) startAttack(AttackKind::SHOT, stats().telegraph);
+            else attackTimer = stats().attackEvery * 0.6f;
+        }
+        if (d < 3.2f && telegraphTimer <= 0.f && attackTimer > stats().attackEvery * 0.5f)
+            startAttack(AttackKind::BASH, 0.6f);   // too close to wait out the clock
+    }
+
     // ---- the SOVEREIGN ---------------------------------------------------------
     // A duelist. Every stroke is telegraphed (blade raised, eyes flaring) and
     // every one can be dodged; what makes him hard is that they come in
@@ -782,6 +874,8 @@ private:
             turnToward(diveDir, dt, 20.f);
             if (!dashHit && d < 2.6f && std::fabs(dy) < 2.6f) {
                 dashHit = true; ev.meleeHit = true; ev.meleeDamage = 22.f;
+                // Caught you: pull up just past instead of carrying on through you
+                dashTimer = std::min(dashTimer, 0.06f);
             }
             // Stopped by a wall (barely moved last tick) or out of distance
             bool stalled = dashAge > 0.1f && made < 6.f;
