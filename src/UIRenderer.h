@@ -311,7 +311,7 @@ public:
         begin2D();
         const char* l1 = "WASD MOVE  SPACE JUMP  SHIFT DASH  CTRL SLIDE/SLAM  LMB FIRE  F PARRY  G GRENADE";
         char l2[128];
-        std::snprintf(l2, sizeof(l2), "%s GRAPPLE  RMB AIM (RIFLES)  1-4 WEAPONS  TAB ARMORY  BKSP RESTART  ESC PAUSE", grappleKey);
+        std::snprintf(l2, sizeof(l2), "%s GRAPPLE  RMB AIM  1-4 WEAPONS  V INSPECT  TAB ARMORY  BKSP RESTART  ESC PAUSE", grappleKey);
         int baseY = screenH - 150;
         ui.rect(screenW / 2 - 360, baseY - 10, 720, 54, {0.05f, 0.05f, 0.08f, 0.55f * alpha});
         ui.text(l1, screenW / 2, baseY,      1, {0.88f, 0.88f, 0.92f, 0.9f * alpha}, true);

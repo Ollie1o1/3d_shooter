@@ -8,7 +8,9 @@
 //
 // ANIMATIONS:
 //   triggerFire()    — quick upward kick and settle
-//   triggerReload()  — gun swings down and back up
+//   triggerReload()  — revolver: cylinder out, brass out, speedloader in,
+//                      flick shut. Shotgun: roll it over, thumb in each
+//                      missing shell, rack the pump. Rifles: swing down and up.
 //   triggerGrenade() — arm swings forward and back
 //   triggerGrapple() — short forward push
 //   triggerBolt()    — rifles: bolt up, back, forward, down
@@ -36,7 +38,7 @@
 #include <cmath>
 #include <algorithm>
 
-enum class ViewAnim { IDLE, FIRE, RELOAD, GRENADE_THROW, GRAPPLE_FIRE, PUMP, WEAPON_SWITCH, BOLT };
+enum class ViewAnim { IDLE, FIRE, RELOAD, GRENADE_THROW, GRAPPLE_FIRE, PUMP, WEAPON_SWITCH, BOLT, INSPECT };
 
 class ViewModel {
 public:
@@ -55,8 +57,11 @@ public:
     ViewModel() { buildCube(); }
 
     // --- Animation triggers --------------------------------------------------
-    void triggerFire()    { anim = ViewAnim::FIRE;          animTimer = animMax = 0.14f; }
-    void triggerReload(float t = 0.6f) { anim = ViewAnim::RELOAD; animTimer = animMax = std::min(t, 1.2f); }
+    void triggerFire()    { anim = ViewAnim::FIRE; animTimer = animMax = 0.14f; heat = std::min(1.f, heat + 0.22f); cylSpin = 45.f; }
+    // Reloads play over the whole reload time; shells: how many the shotgun loads
+    void triggerReload(float t = 0.6f, int shells = 1) {
+        anim = ViewAnim::RELOAD; animTimer = animMax = std::min(t, 2.f); reloadShells = std::max(1, std::min(shells, 5));
+    }
     void triggerBolt(float t)          { anim = ViewAnim::BOLT;   animTimer = animMax = std::max(t, 0.2f); }
     // Punch / parry: a fist drives forward from the lower left. It runs
     // alongside the gun's own animation, so you can punch mid-reload.
@@ -64,15 +69,20 @@ public:
     static constexpr float PARRY_TIME = 0.3f;
     float parryTimer = 0.f;
     bool  parryHit = false;
+    int   reloadShells = 1;     // shotgun: shells to feed this reload
     void triggerGrenade() { anim = ViewAnim::GRENADE_THROW; animTimer = animMax = 0.50f; }
     void triggerGrapple() { anim = ViewAnim::GRAPPLE_FIRE;  animTimer = animMax = 0.28f; }
     void triggerPump()    { anim = ViewAnim::PUMP;          animTimer = animMax = 0.45f; }
     void triggerSwitch()  { anim = ViewAnim::WEAPON_SWITCH; animTimer = animMax = 0.30f; }
+    // V: turn the gun over to admire it (only from idle)
+    void triggerInspect() { if (anim == ViewAnim::IDLE) { anim = ViewAnim::INSPECT; animTimer = animMax = 2.2f; } }
 
     // -------------------------------------------------------------------------
     void update(float dt, float xzSpeed, bool /*onGround*/) {
         animTimer = std::max(0.f, animTimer - dt);
         parryTimer = std::max(0.f, parryTimer - dt);
+        heat    = std::max(0.f, heat - dt * 0.7f);
+        cylSpin *= std::exp(-dt * 22.f);          // the cylinder clicks round to the next chamber
         if (animTimer <= 0.f) anim = ViewAnim::IDLE;
 
         // Bob advances continuously — speed controls the stride frequency
@@ -100,12 +110,16 @@ public:
     // flash — muzzle flash 0..1 (1 the instant a shot leaves)
     // aim   — 0 at the hip .. 1 fully aimed (rifles only)
     // -------------------------------------------------------------------------
-    void draw(ShaderProgram& shader, const Camera& cam, int activeWeapon, float flash, float aim = 0.f) {
+    // ammo / mag: the revolver's chambers light up for the rounds left
+    void draw(ShaderProgram& shader, const Camera& cam, int activeWeapon, float flash, float aim = 0.f,
+              int ammo = 8, int mag = 8) {
+        ammoNow = ammo; magNow = std::max(1, mag);
 
         // Compute animation offsets in gun-local space
         float p = (animMax > 0.f) ? (animTimer / animMax) : 0.f;
         float kickZ = 0.f, kickY = 0.f, kickX = 0.f, roll = 0.f, pitchUp = 0.f;
         boltLift = 0.f; boltPull = 0.f;
+        reloadU = anim == ViewAnim::RELOAD ? 1.f - p : -1.f;
 
         switch (anim) {
             case ViewAnim::FIRE:
@@ -115,11 +129,36 @@ public:
                 pitchUp = p * (activeWeapon == 3 ? 9.f : activeWeapon == 2 ? 6.f : 0.f);
                 break;
             case ViewAnim::RELOAD: {
-                // Swing down and roll, then back up
-                float t = p > 0.5f ? (1.f - p) * 2.f : p * 2.f;
-                t = std::min(1.f, t * 1.6f);
-                kickY = -t * 0.13f;
-                roll  =  t * 14.f;
+                float u = 1.f - p;
+                if (activeWeapon == 0) {
+                    // Tip the revolver over to the left and up for the swing-out,
+                    // muzzle up while the brass drops, back down for the loader,
+                    // then a flick back to the right as the cylinder snaps home
+                    float tilt = smooth(seg(u, 0.f, 0.12f)) - smooth(seg(u, 0.78f, 0.95f));
+                    float eject = std::sin(seg(u, 0.12f, 0.34f) * 3.14159f);
+                    float flick = std::sin(seg(u, 0.74f, 0.9f) * 3.14159f);
+                    roll    = -tilt * 32.f + flick * 14.f;
+                    pitchUp = eject * 28.f + tilt * 6.f;
+                    kickX   = -tilt * 0.07f;
+                    kickY   =  tilt * 0.035f - eject * 0.02f;
+                    kickZ   = -tilt * 0.02f;
+                } else if (activeWeapon == 1) {
+                    // Roll the shotgun onto its side to bare the loading port,
+                    // feed the shells, roll back and rack it
+                    float tilt = smooth(seg(u, 0.f, 0.12f)) - smooth(seg(u, 0.72f, 0.84f));
+                    roll  = -tilt * 55.f;
+                    kickY = tilt * 0.06f;
+                    kickX = -tilt * 0.07f;
+                    pitchUp = tilt * 10.f;
+                    float rack = std::sin(seg(u, 0.84f, 1.f) * 3.14159f);
+                    kickZ = -rack * 0.02f;
+                } else {
+                    // Rifles: swing down and roll, then back up
+                    float t = p > 0.5f ? (1.f - p) * 2.f : p * 2.f;
+                    t = std::min(1.f, t * 1.6f);
+                    kickY = -t * 0.13f;
+                    roll  =  t * 14.f;
+                }
                 break;
             }
             case ViewAnim::GRENADE_THROW:
@@ -166,6 +205,19 @@ public:
             }
             default: break;
         }
+        // Inspect: bring the gun in and turn its side to you, tilt it, put it back
+        float inspectYaw = 0.f;
+        if (anim == ViewAnim::INSPECT) {
+            float u = 1.f - p;
+            float k = smooth(seg(u, 0.f, 0.22f)) * (1.f - smooth(seg(u, 0.8f, 1.f)));
+            float tilt = std::sin(seg(u, 0.3f, 0.75f) * 3.14159f);
+            inspectYaw = k * 62.f;
+            roll = -tilt * 25.f * k;
+            pitchUp = k * 6.f + tilt * 10.f;
+            kickX = -k * 0.11f;
+            kickY = k * 0.06f;
+            kickZ = k * 0.05f;
+        }
 
         // Build camera basis vectors
         glm::vec3 fwd   = cam.forward();
@@ -175,6 +227,7 @@ public:
         // Hip position, blended toward the aimed position for the rifles
         float a = aim * aim * (3.f - 2.f * aim);
         glm::vec3 hip{GUN_R, GUN_U, GUN_F};
+        if (activeWeapon == 0) hip = {0.15f, -0.125f, 0.27f};   // the revolver sits higher, cylinder in view
         glm::vec3 aimed = activeWeapon == 2 ? glm::vec3{0.f, -KAR_SIGHT_Y, 0.30f}
                         : activeWeapon == 3 ? glm::vec3{0.f, -LONG_SCOPE_Y, 0.05f}
                         : hip;
@@ -193,7 +246,8 @@ public:
         gunBase[3] = glm::vec4(gunPos, 1.f);
 
         // At the hip the rifles cant inward a touch; aimed they sit level
-        float yawIn = (activeWeapon >= 2) ? (1.f - a) * 4.f : 0.f;
+        float yawIn = (activeWeapon >= 2) ? (1.f - a) * 4.f : activeWeapon == 0 ? -9.f : 0.f;
+        yawIn += inspectYaw;
         if (yawIn != 0.f) gunBase = gunBase * glm::rotate(glm::mat4(1.f), glm::radians(yawIn), glm::vec3{0.f, 1.f, 0.f});
         if (pitchUp != 0.f) gunBase = gunBase * glm::rotate(glm::mat4(1.f), glm::radians(pitchUp * kickScale), glm::vec3{-1.f, 0.f, 0.f});
         if (roll != 0.f) {
@@ -265,33 +319,177 @@ private:
     // ---- Gun geometry -------------------------------------------------------
     // All positions in gun-local space where +Z = barrel direction (world fwd).
 
+    // ---- Animation helpers ----
+    static float seg(float u, float a, float b) { return std::clamp((u - a) / (b - a), 0.f, 1.f); }
+    static float smooth(float t) { return t * t * (3.f - 2.f * t); }
+    static glm::mat4 T(glm::vec3 v) { return glm::translate(glm::mat4(1.f), v); }
+    static glm::mat4 R(float deg, glm::vec3 axis) { return glm::rotate(glm::mat4(1.f), glm::radians(deg), axis); }
+
+    float heat = 0.f;           // revolver barrel stripe: glows hotter as you fan it
+    float cylSpin = 0.f;        // degrees still to turn to the next chamber
+    float reloadU = -1.f;       // 0..1 through the current reload (-1: not reloading)
+    int   ammoNow = 8, magNow = 8;
+
+    // THE REVOLVER — OVERDRIVE's sidearm. A heavy blackened-steel magnum: a
+    // chrome vent rib over a full-length underlug, a ported compensator, an
+    // eight-shot cylinder whose chambers glow orange while loaded (it's your
+    // ammo counter), a heat stripe that brightens as you fan it, a glowing
+    // front sight, and an oxblood grip with a brass medallion.
     void drawRevolver(ShaderProgram& shader, const glm::mat4& base, float flash) {
-        glm::vec3 metal  = {0.50f, 0.46f, 0.42f};  // gunmetal silver
-        glm::vec3 dark   = {0.25f, 0.23f, 0.22f};  // dark frame
-        glm::vec3 wood   = {0.40f, 0.25f, 0.10f};  // grip wood
+        const glm::vec3 black  {0.10f, 0.10f, 0.11f};
+        const glm::vec3 steel  {0.20f, 0.20f, 0.22f};
+        const glm::vec3 chrome {0.72f, 0.72f, 0.76f};
+        const glm::vec3 grip   {0.36f, 0.09f, 0.07f};
+        const glm::vec3 brass  {0.85f, 0.62f, 0.22f};
+        const glm::vec3 orange {1.0f, 0.55f, 0.1f};
+        const float CY = 0.018f, CZ = 0.036f;              // cylinder axis
 
-        // Barrel — long thin along +Z
-        drawBox(shader, base, {0.f,  0.022f,  0.14f}, {0.036f, 0.036f, 0.28f}, metal);
-        // Receiver / frame
-        drawBox(shader, base, {0.f,  -0.012f, -0.02f}, {0.062f, 0.080f, 0.16f}, dark);
-        // Cylinder (ammo wheel) — sits on the right side of frame
-        drawBox(shader, base, {0.040f, 0.008f, 0.042f}, {0.052f, 0.058f, 0.076f}, metal);
-        // Grip
-        drawBox(shader, base, {0.f, -0.130f, -0.075f}, {0.052f, 0.130f, 0.068f}, wood);
-        // Hammer (top rear)
-        drawBox(shader, base, {0.f,  0.058f, -0.098f}, {0.020f, 0.036f, 0.026f}, dark);
-        // Trigger guard
-        drawBox(shader, base, {0.f, -0.052f, -0.030f}, {0.020f, 0.022f, 0.080f}, dark);
+        // ---- reload state ----
+        float u = reloadU;
+        bool  rl = u >= 0.f;
+        float swing = rl ? smooth(seg(u, 0.03f, 0.13f)) * (1.f - smooth(seg(u, 0.76f, 0.84f))) : 0.f;
+        float spin  = rl ? smooth(seg(u, 0.76f, 0.95f)) * 540.f : 0.f;      // spun shut
+        int   lit;                                                         // chambers glowing
+        int   shown = (int)std::ceil(8.f * ammoNow / magNow);
+        if (!rl)              lit = shown;
+        else if (u < 0.22f)   lit = shown;
+        else if (u < 0.55f)   lit = 0;
+        else                  lit = (int)std::round(8.f * seg(u, 0.55f, 0.72f));
 
-        // Muzzle flash — brief glow right after firing
-        if (flash > 0.f) {
-            float glow = flash;
-            shader.setVec3("emissiveColor", glm::vec3{1.f, 0.8f, 0.3f} * glow * 0.9f);
-            drawBox(shader, base, {0.f, 0.022f, 0.295f}, {0.022f, 0.022f, 0.028f},
-                    glm::mix(metal, glm::vec3{1.f, 0.9f, 0.5f}, glow));
-            shader.setVec3("emissiveColor", {0.f, 0.f, 0.f});
+        // ---- frame ----
+        drawBox(shader, base, {0.f, 0.006f, -0.036f}, {0.050f, 0.082f, 0.062f}, black);   // rear of the frame
+        drawBox(shader, base, {0.f, -0.026f, CZ},     {0.044f, 0.018f, 0.078f}, black);   // bridge under the cylinder
+        drawBox(shader, base, {0.f, 0.050f, 0.030f},  {0.040f, 0.014f, 0.13f},  steel);   // top strap
+        drawBox(shader, base, {0.f, 0.020f, 0.080f},  {0.044f, 0.064f, 0.012f}, black);   // barrel seat
+        // Side plates with an orange inlay line
+        for (float sx : {-1.f, 1.f}) {
+            drawBox(shader, base, {sx * 0.0255f, 0.004f, -0.036f}, {0.002f, 0.06f, 0.05f}, steel);
+            glow(shader, orange * (0.35f + heat * 0.8f));
+            drawBox(shader, base, {sx * 0.0268f, 0.03f, -0.036f}, {0.001f, 0.004f, 0.048f}, orange);
+            glow(shader, {});
+        }
+        // ---- barrel: tube, underlug, vent rib, compensator, sights ----
+        drawBox(shader, base, {0.f, 0.028f, 0.195f}, {0.030f, 0.030f, 0.23f}, steel);
+        drawBox(shader, base, {0.f, 0.000f, 0.185f}, {0.034f, 0.032f, 0.21f}, black);      // underlug
+        drawBox(shader, base, {0.f, 0.048f, 0.195f}, {0.014f, 0.010f, 0.23f}, chrome);     // vent rib
+        for (int k = 0; k < 5; ++k)                                                          // vents
+            drawBox(shader, base, {0.f, 0.0535f, 0.105f + k * 0.045f}, {0.015f, 0.002f, 0.018f}, black);
+        for (float sx : {-1.f, 1.f}) {                                                       // heat stripes
+            glow(shader, orange * (0.25f + heat * 1.6f));
+            drawBox(shader, base, {sx * 0.0172f, 0.0f, 0.185f}, {0.001f, 0.005f, 0.19f}, orange);
+            glow(shader, {});
+            drawBox(shader, base, {sx * 0.0158f, 0.028f, 0.195f}, {0.001f, 0.026f, 0.22f}, chrome);   // polished flats
+        }
+        drawBox(shader, base, {0.f, 0.020f, 0.326f}, {0.040f, 0.058f, 0.036f}, black);     // compensator
+        for (int k = 0; k < 2; ++k)                                                          // its ports
+            drawBox(shader, base, {0.f, 0.0495f, 0.316f + k * 0.017f}, {0.026f, 0.002f, 0.008f}, steel * 0.5f);
+        glow(shader, orange * 1.4f);
+        drawBox(shader, base, {0.f, 0.062f, 0.322f}, {0.004f, 0.012f, 0.014f}, orange);     // front sight blade
+        glow(shader, {});
+        drawBox(shader, base, {-0.009f, 0.062f, -0.052f}, {0.006f, 0.012f, 0.008f}, black);// rear sight ears
+        drawBox(shader, base, { 0.009f, 0.062f, -0.052f}, {0.006f, 0.012f, 0.008f}, black);
+
+        // ---- hammer: falls when you fire, cocks back after ----
+        float fall = anim == ViewAnim::FIRE ? (animTimer / animMax) : 0.f;
+        glm::mat4 hm = base * T({0.f, 0.040f, -0.064f}) * R(-28.f + fall * 28.f, {1.f, 0.f, 0.f});
+        drawBox(shader, hm, {0.f, 0.012f, -0.004f}, {0.011f, 0.024f, 0.010f}, black);
+        drawBox(shader, hm, {0.f, 0.024f, -0.012f}, {0.012f, 0.006f, 0.014f}, steel);
+
+        // ---- the cylinder: swings out on its crane for a reload ----
+        glm::vec3 pivot{-0.024f, -0.022f, CZ};
+        glm::mat4 crane = base * T(pivot) * R(swing * 82.f, {0.f, 0.f, 1.f}) * T(-pivot);
+        drawBox(shader, crane, {-0.012f, -0.022f, CZ + 0.044f}, {0.012f, 0.008f, 0.02f}, steel);   // crane arm
+        float cyl = cylSpin + spin;
+        glm::mat4 cm = crane * T({0.f, CY, CZ}) * R(cyl, {0.f, 0.f, 1.f});
+        for (int k = 0; k < 4; ++k)                                                  // octagonal prism: four
+            drawBox(shader, cm * R(k * 45.f, {0.f, 0.f, 1.f}), {}, {0.0257f, 0.062f, 0.070f}, steel);   // crossed slabs
+        // Each chamber shows through a slot in the cylinder's side, glowing
+        // while it's loaded: the ammo counter you see from where you hold it
+        for (int k = 0; k < 8; ++k) {
+            glm::mat4 f = cm * R(k * 45.f, {0.f, 0.f, 1.f});
+            bool loaded = k < lit;
+            glow(shader, loaded ? orange * 1.8f : glm::vec3{});
+            drawBox(shader, f, {0.f, 0.0313f, -0.006f}, {0.011f, 0.002f, 0.044f}, loaded ? orange : black * 0.6f);
+        }
+        glow(shader, {});
+        glow(shader, orange * (0.4f + heat));
+        for (int k = 0; k < 4; ++k)                                                  // the band round its middle
+            drawBox(shader, cm * R(k * 45.f, {0.f, 0.f, 1.f}), {0.f, 0.f, 0.03f}, {0.027f, 0.0645f, 0.003f}, orange);
+        glow(shader, {});
+        // Chambers, front and back: the next one to fire sits at the top
+        for (int k = 0; k < 8; ++k) {
+            float a = glm::radians(90.f + k * 45.f);
+            glm::vec3 c{std::cos(a) * 0.021f, std::sin(a) * 0.021f, 0.f};
+            bool loaded = k < lit;
+            glow(shader, loaded ? orange * 1.6f : glm::vec3{});
+            for (float z : {0.0355f, -0.0355f})
+                drawBox(shader, cm, c + glm::vec3{0.f, 0.f, z}, {0.011f, 0.011f, 0.003f}, loaded ? orange : black * 0.5f);
+        }
+        glow(shader, {});
+        drawBox(shader, crane, {0.f, CY, CZ + 0.05f}, {0.006f, 0.006f, 0.03f}, chrome);   // ejector rod
+        drawBox(shader, crane, {0.f, CY, CZ}, {0.012f, 0.012f, 0.076f}, chrome);          // its star
+
+        // ---- the brass: eight spent cases tumble out when you eject ----
+        if (rl && u > 0.16f && u < 0.42f) {
+            float t = seg(u, 0.16f, 0.42f);
+            for (int k = 0; k < 8; ++k) {
+                float a = glm::radians(90.f + k * 45.f);
+                glm::vec3 from{std::cos(a) * 0.021f, CY + std::sin(a) * 0.021f, CZ - 0.04f};
+                float tk = std::max(0.f, t * 1.3f - k * 0.03f);
+                glm::vec3 at = from + glm::vec3{-0.03f * tk + std::cos(a) * 0.02f * tk, -0.35f * tk * tk, -0.12f * tk};
+                glm::mat4 m = crane * T(at) * R(tk * 400.f + k * 30.f, {1.f, 0.3f, 0.f});
+                drawBox(shader, m, {}, {0.009f, 0.009f, 0.030f}, brass * 0.8f);
+            }
+        }
+        // ---- the speedloader: rises from below, seats eight rounds, drops away ----
+        if (rl && u > 0.34f && u < 0.78f) {
+            float in  = smooth(seg(u, 0.34f, 0.55f));
+            float out = smooth(seg(u, 0.64f, 0.78f));
+            glm::vec3 seat{0.f, CY, CZ - 0.06f};
+            glm::vec3 at = seat + glm::vec3{-0.02f, -0.22f, -0.10f} * (1.f - in) + glm::vec3{-0.06f, -0.25f, -0.05f} * out;
+            glm::mat4 lm = crane * T(at);
+            drawBox(shader, lm, {0.f, 0.f, -0.012f}, {0.05f, 0.05f, 0.016f}, black);            // the loader body
+            drawBox(shader, lm, {0.f, 0.f, -0.026f}, {0.018f, 0.018f, 0.014f}, chrome);          // its knob
+            if (u < 0.6f)                                                                         // rounds until seated
+                for (int k = 0; k < 8; ++k) {
+                    float a = glm::radians(90.f + k * 45.f);
+                    glm::vec3 c{std::cos(a) * 0.021f, std::sin(a) * 0.021f, 0.012f};
+                    drawBox(shader, lm, c, {0.009f, 0.009f, 0.024f}, brass);
+                    glow(shader, orange * 0.6f);
+                    drawBox(shader, lm, c + glm::vec3{0.f, 0.f, 0.013f}, {0.006f, 0.006f, 0.004f}, orange);
+                    glow(shader, {});
+                }
+        }
+
+        // ---- trigger and guard ----
+        drawBox(shader, base, {0.f, -0.052f, 0.000f}, {0.016f, 0.008f, 0.064f}, black);
+        drawBox(shader, base, {0.f, -0.040f, 0.030f}, {0.016f, 0.030f, 0.008f}, black);
+        drawBox(shader, base, {0.f, -0.034f, -0.004f + fall * 0.004f}, {0.007f, 0.026f, 0.008f}, chrome);
+
+        // ---- grip: raked back, oxblood panels, a brass medallion, a steel butt cap ----
+        glm::mat4 gm = base * T({0.f, -0.034f, -0.050f}) * R(-17.f, {1.f, 0.f, 0.f});
+        drawBox(shader, gm, {0.f, -0.055f, -0.004f}, {0.040f, 0.112f, 0.050f}, black);
+        for (float sx : {-1.f, 1.f}) {
+            drawBox(shader, gm, {sx * 0.0215f, -0.058f, -0.004f}, {0.004f, 0.098f, 0.046f}, grip);
+            for (int r = 0; r < 4; ++r)                                                    // checkering
+                drawBox(shader, gm, {sx * 0.0237f, -0.085f + r * 0.012f, -0.004f}, {0.001f, 0.004f, 0.04f}, grip * 0.6f);
+            glow(shader, brass * 0.25f);
+            drawBox(shader, gm, {sx * 0.0238f, -0.032f, -0.004f}, {0.002f, 0.016f, 0.016f}, brass);
+            glow(shader, {});
+        }
+        drawBox(shader, gm, {0.f, -0.114f, -0.004f}, {0.044f, 0.012f, 0.054f}, steel);   // butt cap
+        drawBox(shader, gm, {0.f, -0.114f, -0.032f}, {0.012f, 0.008f, 0.006f}, chrome);  // lanyard ring
+
+        muzzleFlash(shader, base, {0.f, 0.020f, 0.37f}, 0.042f, flash);
+        if (flash > 0.f) {                                                                // compensator jets
+            glow(shader, glm::vec3{1.f, 0.7f, 0.25f} * flash * 1.5f);
+            for (float sx : {-0.5f, 0.5f})
+                drawBox(shader, base, {sx * 0.02f, 0.062f + flash * 0.02f, 0.325f}, {0.008f, 0.03f * flash, 0.012f}, {1.f, 0.85f, 0.5f});
+            glow(shader, {});
         }
     }
+
+    void glow(ShaderProgram& shader, glm::vec3 e) { shader.setVec3("emissiveColor", e); }
 
     void drawGrenade(ShaderProgram& shader, const glm::mat4& base) {
         glm::vec3 body  = {0.22f, 0.52f, 0.12f};  // dark OD green
@@ -330,7 +528,39 @@ private:
             if (p > 0.5f) pumpSlide = -(p - 0.5f) * 2.f * 0.08f;
             else          pumpSlide =  p * 2.f * 0.04f - 0.04f;
         }
+        // Reload: thumb each missing shell into the loading port under the
+        // receiver, then rack the pump
+        if (reloadU >= 0.f) {
+            float u = reloadU;
+            float rack = seg(u, 0.84f, 1.f);
+            pumpSlide = rack < 0.5f ? -rack * 2.f * 0.08f : -(1.f - rack) * 2.f * 0.08f;
+            int n = reloadShells;
+            float span = 0.6f / n;
+            for (int i = 0; i < n; ++i) {
+                float t = seg(u, 0.13f + i * span, 0.13f + (i + 0.85f) * span);
+                if (t <= 0.f || t >= 1.f) continue;
+                // up from below-left to the port, then pushed forward into the tube
+                float up = smooth(std::min(1.f, t * 1.7f));
+                float push = smooth(seg(t, 0.55f, 1.f));
+                glm::vec3 port{0.f, -0.046f, -0.02f};
+                glm::vec3 at = port + glm::vec3{-0.13f, -0.05f, -0.03f} * (1.f - up) + glm::vec3{0.f, 0.02f, 0.07f} * push;
+                glm::mat4 sm = base * T(at) * R((1.f - up) * 40.f, {1.f, 0.f, 0.f});
+                drawBox(shader, sm, {0.f, 0.f, 0.f},      {0.022f, 0.022f, 0.050f}, {0.70f, 0.08f, 0.06f});   // hull
+                drawBox(shader, sm, {0.f, 0.f, -0.029f},  {0.024f, 0.024f, 0.010f}, {0.85f, 0.62f, 0.22f});   // brass head
+                drawBox(shader, sm, {-0.016f, -0.012f, -0.04f + push * 0.01f}, {0.022f, 0.026f, 0.03f}, {0.13f, 0.13f, 0.15f}); // thumb
+            }
+        }
         drawBox(shader, base, {0.f, -0.005f, 0.08f + pumpSlide}, {0.050f, 0.044f, 0.10f}, wood);
+        for (int k = 0; k < 4; ++k) {                                   // pump grip ridges
+            drawBox(shader, base, {0.f, -0.005f, 0.044f + k * 0.024f + pumpSlide}, {0.052f, 0.046f, 0.006f}, wood * 0.7f);
+        }
+        // Side saddle: four spare shells on the left of the receiver
+        drawBox(shader, base, {-0.036f, 0.004f, -0.04f}, {0.008f, 0.05f, 0.11f}, dark);
+        for (int k = 0; k < 4; ++k) {
+            drawBox(shader, base, {-0.044f, 0.004f, -0.08f + k * 0.026f}, {0.012f, 0.044f, 0.02f}, {0.70f, 0.08f, 0.06f});
+            drawBox(shader, base, {-0.044f, -0.022f, -0.08f + k * 0.026f}, {0.013f, 0.009f, 0.021f}, {0.85f, 0.62f, 0.22f});
+        }
+        drawBox(shader, base, {0.f, -0.046f, -0.02f}, {0.026f, 0.004f, 0.05f}, {0.05f, 0.05f, 0.05f});   // loading port
         // Stock
         drawBox(shader, base, {0.f, -0.035f, -0.16f}, {0.048f, 0.065f, 0.10f}, wood);
         drawBox(shader, base, {0.f, -0.060f, -0.22f}, {0.040f, 0.055f, 0.06f}, wood);

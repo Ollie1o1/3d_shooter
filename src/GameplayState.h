@@ -741,6 +741,7 @@ public:
             trySwitch((activeWeapon + (e.wheel.y > 0 ? WEAPON_COUNT - 1 : 1)) % WEAPON_COUNT);
         if (key >= SDLK_1 && key <= SDLK_4) trySwitch(key - SDLK_1);
         if (key == SDLK_g) pendingGrenade = true;
+        if (key == SDLK_v && pendingWeapon < 0 && !weapons[activeWeapon].reloading) viewModel.triggerInspect();
         if (e.type == SDL_MOUSEMOTION && !g_devNoMouse) {
             float dx = (float)e.motion.xrel, dy = (float)e.motion.yrel;
             mouseFilter.enabled = settings ? settings->mouseFilter : true;
@@ -965,6 +966,16 @@ public:
         });
 
         viewModel.update(floatDt, playerXZSpeed, player.onGround);
+        // --overlay reloadNN: freeze the gun NN% through its reload (screenshots)
+        if (g_devOverlay.rfind("reload", 0) == 0) {
+            float u = std::atoi(g_devOverlay.c_str() + 6) / 100.f;
+            viewModel.anim = ViewAnim::RELOAD; viewModel.animMax = 1.f; viewModel.animTimer = std::max(0.001f, 1.f - u);
+            viewModel.reloadShells = 2;
+        }
+        if (g_devOverlay.rfind("inspect", 0) == 0) {   // --overlay inspectNN: frozen NN% through it
+            float u = std::atoi(g_devOverlay.c_str() + 7) / 100.f;
+            viewModel.anim = ViewAnim::INSPECT; viewModel.animMax = 2.2f; viewModel.animTimer = std::max(0.001f, (1.f - u) * 2.2f);
+        }
         if (g_devOverlay == "punch") { viewModel.parryTimer = ViewModel::PARRY_TIME * 0.62f; viewModel.parryHit = true; }
         // Baseline FOV widens with horizontal speed on top of the dash kick
         float speedKick = glm::clamp((playerXZSpeed - 7.f) / 15.f, 0.f, 1.f) * 6.f;
@@ -1258,6 +1269,7 @@ public:
             if (weapons[w].tick(dt, weaponMag((WeaponId)w, prog.up[w])) && w == activeWeapon && w >= 2)
                 audio.play("bolt", 90);   // rifles chamber a round when the reload finishes
 
+        reloadSounds();
         WeaponState& ws = weapons[activeWeapon];
         int mag = weaponMag((WeaponId)activeWeapon, prog.up[activeWeapon]);
         if (keys[SDL_SCANCODE_R] && !ws.reloading && ws.ammo < mag && pendingWeapon < 0) startReload(activeWeapon);
@@ -1925,11 +1937,33 @@ public:
         return humanoid && hitPoint.y > e.position.y + e.height() * 0.8f;
     }
 
+    // Sounds timed to the reload animations (ViewModel.h): the revolver's
+    // cylinder out, brass, speedloader, snap shut; each shotgun shell, the rack
+    float reloadCueAt = 0.f;   // reload progress already cued
+    void reloadSounds() {
+        const WeaponState& ws = weapons[activeWeapon];
+        if (!ws.reloading || activeWeapon > 1 || pendingWeapon >= 0) return;
+        float now = ws.reloadProgress(), before = reloadCueAt;
+        reloadCueAt = now;
+        auto cue = [&](float at, const char* snd, int vol) { if (before < at && now >= at) audio.play(snd, vol); };
+        if (activeWeapon == 0) {
+            cue(0.04f, "cyl_open", 110); cue(0.2f, "eject", 100); cue(0.5f, "shell_in", 120); cue(0.78f, "cyl_close", 120);
+        } else {
+            int n = viewModel.reloadShells;
+            for (int i = 0; i < n; ++i) cue(0.13f + (i + 0.55f) * 0.6f / n, "shell_in", 110);
+            cue(0.86f, "pump", 120);
+        }
+    }
+
     void startReload(int w) {
         WeaponId id = (WeaponId)w;
         weapons[w].startReload(weaponReload(id, prog.up[w]));
-        if (w == activeWeapon) viewModel.triggerReload(weapons[w].reloadTotal * 0.6f);
-        audio.play("reload");
+        // The revolver and shotgun play their reload over its whole length; the rifles swing
+        int mag = weaponMag(id, prog.up[w]);
+        if (w == activeWeapon) viewModel.triggerReload(w <= 1 ? weapons[w].reloadTotal : weapons[w].reloadTotal * 0.6f,
+                                                       mag - weapons[w].ammo);
+        reloadCueAt = 0.f;
+        if (w >= 2) audio.play("reload");
     }
 
     void fireWeapon(int w) {
@@ -2032,6 +2066,7 @@ public:
             boltSoundTimer = ws.cooldown * 0.2f;
         } else if (pellets > 1) {
             viewModel.triggerPump();
+            audio.play("pump", 70);
         }
     }
 
@@ -2671,7 +2706,8 @@ public:
             glBindTexture(GL_TEXTURE_2D, whiteTex);
             worldShader.setInt("uTexture", 0);
             float flash = glm::clamp(muzzleFlashTimer / 0.06f, 0.f, 1.f);
-            viewModel.draw(worldShader, renderCam, activeWeapon, flash, wd.canAim ? aim : 0.f);
+            viewModel.draw(worldShader, renderCam, activeWeapon, flash, wd.canAim ? aim : 0.f,
+                           weapons[activeWeapon].ammo, weaponMag((WeaponId)activeWeapon, prog.up[activeWeapon]));
             worldShader.setMat4("projection", proj);
             worldShader.setMat4("view",       view);
         }

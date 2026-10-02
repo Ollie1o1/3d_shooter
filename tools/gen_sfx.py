@@ -484,6 +484,75 @@ def gen_boost():
     return out
 
 
+def _click(out, at, freq, amp, decay=45.0, dur=0.03):
+    start = n_samples(at)
+    cn = n_samples(dur)
+    for i in range(cn):
+        if start + i < len(out):
+            t = i / cn
+            out[start + i] += (sine(freq, i) * 0.5 + white() * 0.5) * math.exp(-decay * t) * amp
+
+
+def gen_cyl_open():
+    """Revolver cylinder swinging out: a latch click and a short ratchet."""
+    out = [0.0] * n_samples(0.25)
+    _click(out, 0.0, 2600, 0.9)
+    for k in range(4):
+        _click(out, 0.06 + k * 0.025, 3400 - k * 200, 0.35, 60.0, 0.015)
+    return lowpass(out, 9000)
+
+
+def gen_cyl_close():
+    """Cylinder snapping home: a hard metallic snap with a ring."""
+    n = n_samples(0.3)
+    out = [0.0] * n
+    _click(out, 0.0, 1900, 1.0, 30.0, 0.05)
+    for i in range(n):
+        t = i / n
+        out[i] += (sine(3150, i) * 0.25 + sine(4700, i) * 0.12) * math.exp(-14.0 * t)
+    return out
+
+
+def gen_eject():
+    """Spent brass tumbling out: a cluster of bright pings."""
+    out = [0.0] * n_samples(0.5)
+    random.seed(77)
+    for k in range(8):
+        at = 0.02 + k * 0.035 + random.uniform(0, 0.02)
+        f = random.uniform(3800, 6200)
+        start = n_samples(at)
+        for i in range(n_samples(0.12)):
+            if start + i < len(out):
+                t = i / n_samples(0.12)
+                out[start + i] += sine(f, i) * math.exp(-28.0 * t) * 0.3
+    return out
+
+
+def gen_shell_in():
+    """A round or shell seating: a soft thunk and a click."""
+    n = n_samples(0.14)
+    body = lowpass([white() for _ in range(n)], 1200)
+    out = []
+    for i in range(n):
+        t = i / n
+        out.append(body[i] * math.exp(-25.0 * t) * 0.8 + sine(180, i) * math.exp(-30.0 * t) * 0.5)
+    _click(out, 0.05, 2200, 0.6)
+    return out
+
+
+def gen_pump():
+    """Racking the pump: slide back with a clack, slide forward with a clack."""
+    out = [0.0] * n_samples(0.42)
+    for at, slide_len in ((0.0, 0.09), (0.19, 0.08)):
+        start = n_samples(at)
+        r = highpass([white() for _ in range(n_samples(slide_len))], 1800)
+        for i in range(len(r)):
+            if start + i < len(out):
+                out[start + i] += r[i] * math.sin(math.pi * i / len(r)) * 0.35
+        _click(out, at + slide_len, 1500, 1.0, 35.0, 0.04)
+    return out
+
+
 GENERATORS = {
     "jump": gen_jump,
     "land": gen_land,
@@ -514,6 +583,11 @@ GENERATORS = {
     "door": gen_door,
     "door_close": gen_door_close,
     "boost": gen_boost,
+    "cyl_open": gen_cyl_open,
+    "cyl_close": gen_cyl_close,
+    "eject": gen_eject,
+    "shell_in": gen_shell_in,
+    "pump": gen_pump,
 }
 
 
