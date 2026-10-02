@@ -14,31 +14,37 @@ struct AABB {
     glm::vec3 min, max; // min = bottom-left-front, max = top-right-back
 };
 
+// Surface material: picks the texture a wall is drawn with (GameplayState)
+enum class Mat : unsigned char { BRICK, PANEL, ROCK, METAL, CONCRETE };
+
 struct Wall {
     AABB      box;
     glm::vec3 color{0.28f, 0.28f, 0.32f};
     bool      hidden  = false;  // collides but isn't part of the static world mesh
     bool      dynamic = false;  // moves at runtime (moving platform): kept out of the
                                 // SpatialGrid and tested every tick instead
+    Mat       mat = Mat::BRICK;
 };
 
 // =============================================================================
 // SpatialGrid — uniform 2D grid over the XZ plane for fast wall queries.
 //
-// Walls are static (except sliding doors). Call build() whenever allWalls
-// changes (room cleared, door opened). Query with a bounding box to get
-// candidate wall indices — then still test actual AABB overlap yourself.
+// Walls are static, except doors, which only ever shrink inside the box they
+// were built with (so the cells they were filed under stay right). Query with
+// a bounding box to get candidate wall indices — then still test actual AABB
+// overlap yourself.
 //
 // Grid covers the whole level (four arenas + corridors, or the Gauntlet):
-//   X: -160 .. 164  (324 m → 27 cells of 12 m)
-//   Z: -400 .. 200  (600 m → 50 cells of 12 m)
+//   X: -240 .. 108  (348 m → 29 cells of 12 m)
+//   Z: -320 ..  40  (360 m → 30 cells of 12 m)
+// Anything beyond that is filed in the edge cells (still correct, just slower).
 // Dynamic walls (moving platforms) are left out: they'd be in the wrong
 // cells a second later. Callers test those directly every tick.
 // =============================================================================
 struct SpatialGrid {
     static constexpr float CELL = 12.f;
-    static constexpr float X0 = -160.f, Z0 = -400.f;
-    static constexpr int   NX = 27, NZ = 50;
+    static constexpr float X0 = -240.f, Z0 = -320.f;
+    static constexpr int   NX = 29, NZ = 30;
 
     std::vector<int> cells[NX * NZ];
 

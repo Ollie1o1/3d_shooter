@@ -2,6 +2,8 @@
 #include <string>
 #include <unordered_map>
 #include <iostream>
+#include <vector>
+#include "MusicSynth.h"
 
 // SDL2_mixer may not be available — guard the include
 #ifdef __has_include
@@ -20,6 +22,7 @@ class AudioSystem {
 public:
     bool  initialized  = false;
     float masterVolume = 1.f;   // 0..1, from GameSettings::audioVolume
+    MusicSynth music;           // the live soundtrack (MusicSynth.h), always running
 
     AudioSystem() {
 #if HAS_SDL_MIXER
@@ -29,13 +32,23 @@ public:
         }
         Mix_AllocateChannels(32);
         initialized = true;
+        // The soundtrack is synthesized on the fly into SDL_mixer's music slot
+        int freq = 44100, ch = 2; Uint16 fmt = AUDIO_S16SYS;
+        Mix_QuerySpec(&freq, &fmt, &ch);
+        outFormat = fmt; outChannels = ch;
+        music.setSampleRate((float)freq);
+        musicBuf.resize(16384);          // so the audio thread never has to allocate
+        Mix_HookMusic(&AudioSystem::musicCallback, this);
 #endif
     }
 
+    // Music volume (0..1) on top of the master volume
+    void setMusicVolume(float v) { music.setVolume(v * masterVolume * 0.8f); }
+
     ~AudioSystem() {
 #if HAS_SDL_MIXER
+        if (initialized) Mix_HookMusic(nullptr, nullptr);
         for (auto& [k,v] : sounds) Mix_FreeChunk(v);
-        if (music) Mix_FreeMusic(music);
         if (initialized) Mix_CloseAudio();
 #endif
     }
@@ -66,36 +79,36 @@ public:
 #endif
     }
 
-    void loadMusic(const std::string& path) {
-#if HAS_SDL_MIXER
-        if (!initialized) return;
-        if (music) Mix_FreeMusic(music);
-        music = Mix_LoadMUS(path.c_str());
-        if (!music) std::cerr << "Failed to load music: " << Mix_GetError() << "\n";
-#else
-        (void)path;
-#endif
-    }
-
-    void playMusic(int loops = -1, int volume = 80) {
-#if HAS_SDL_MIXER
-        if (!initialized || !music) return;
-        Mix_VolumeMusic(volume);
-        Mix_PlayMusic(music, loops);
-#else
-        (void)loops; (void)volume;
-#endif
-    }
-
-    void stopMusic() {
-#if HAS_SDL_MIXER
-        if (initialized) Mix_HaltMusic();
-#endif
-    }
-
 private:
 #if HAS_SDL_MIXER
     std::unordered_map<std::string, Mix_Chunk*> sounds;
-    Mix_Music* music = nullptr;
+    Uint16 outFormat = AUDIO_S16SYS;
+    int    outChannels = 2;
+    std::vector<float> musicBuf;
+
+    // Audio thread: render the synth and convert to the device's format
+    static void musicCallback(void* self, Uint8* stream, int len) {
+        auto* a = static_cast<AudioSystem*>(self);
+        int ch = a->outChannels > 0 ? a->outChannels : 2;
+        int bytesPerSample = SDL_AUDIO_BITSIZE(a->outFormat) / 8;
+        int frames = len / (bytesPerSample * ch);
+        if ((int)a->musicBuf.size() < frames * 2) a->musicBuf.resize(frames * 2);
+        a->music.render(a->musicBuf.data(), frames);
+        const float* src = a->musicBuf.data();
+        if (SDL_AUDIO_ISFLOAT(a->outFormat) && bytesPerSample == 4) {
+            float* out = reinterpret_cast<float*>(stream);
+            for (int f = 0; f < frames; ++f) for (int c = 0; c < ch; ++c) out[f * ch + c] = src[2 * f + (c & 1)];
+        } else if (bytesPerSample == 2 && SDL_AUDIO_ISSIGNED(a->outFormat)) {
+            Sint16* out = reinterpret_cast<Sint16*>(stream);
+            for (int f = 0; f < frames; ++f)
+                for (int c = 0; c < ch; ++c) {
+                    float v = src[2 * f + (c & 1)];
+                    v = v < -1.f ? -1.f : v > 1.f ? 1.f : v;
+                    out[f * ch + c] = (Sint16)(v * 32767.f);
+                }
+        } else {
+            SDL_memset(stream, 0, len);   // unexpected device format: stay silent rather than screech
+        }
+    }
 #endif
 };

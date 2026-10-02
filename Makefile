@@ -71,7 +71,7 @@ HEADERS := src/gl.h \
            src/StyleSystem.h src/UIRenderer.h src/PostProcess.h \
            src/Level.h src/LevelGauntlet.h src/AudioSystem.h src/ViewModel.h src/Interactable.h \
            src/Settings.h src/SettingsMenu.h src/Persist.h src/PixelFont.h src/UIBatch.h \
-           src/Weapons.h src/Progression.h src/MouseFilter.h
+           src/Weapons.h src/Progression.h src/MouseFilter.h src/Difficulty.h src/MusicSynth.h src/Display.h
 
 .PHONY: all clean run test web
 
@@ -88,7 +88,7 @@ run: all
 # driven through simulated ARENA and FAST runs
 test: tests/test_physics.cpp tests/test_game.cpp src/Player.h src/Camera.h \
       src/Enemy.h src/EnemyModel.h src/Level.h src/LevelGauntlet.h src/WaveDirector.h \
-      src/Weapons.h src/Progression.h src/MouseFilter.h src/Persist.h
+      src/Weapons.h src/Progression.h src/MouseFilter.h src/Persist.h src/Difficulty.h src/MusicSynth.h
 	$(CXX) $(CXXFLAGS) tests/test_physics.cpp -o tests/test_physics $(STDLIB)
 	$(CXX) $(CXXFLAGS) tests/test_game.cpp -o tests/test_game $(STDLIB)
 	./tests/test_physics

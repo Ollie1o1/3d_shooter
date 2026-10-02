@@ -48,6 +48,8 @@ public:
                 case SDLK_RETURN:
                 case SDLK_SPACE:  activate(selected); break;
                 case SDLK_ESCAPE: if (onQuit) onQuit(); break;
+                case SDLK_LEFT:   cycleDifficulty(-1); break;
+                case SDLK_RIGHT:  cycleDifficulty(1); break;
                 default: break;
             }
         }
@@ -108,6 +110,13 @@ private:
         if (idx == 3 && onQuit) onQuit();
     }
 
+    // LEFT/RIGHT on the main menu: pick the difficulty for the next run
+    void cycleDifficulty(int dir) {
+        if (!settings) return;
+        settings->difficulty = ((settings->difficulty + dir) % DIFFICULTY_LEVELS + DIFFICULTY_LEVELS) % DIFFICULTY_LEVELS;
+        settings->save();
+    }
+
     void renderMain() {
         int cx = screenW / 2;
         ui.text("OVERDRIVE", cx + 4, screenH / 2 - 236, 7, {0.4f, 0.05f, 0.2f, 0.8f}, true);
@@ -139,6 +148,13 @@ private:
             bool hasSub = items[i].sub[0] != 0;
             ui.text(items[i].label, cx, y + (hasSub ? 9 : 16), 3, c, true);
             if (hasSub) ui.text(items[i].sub, cx, y + 37, 1, {0.75f, 0.72f, 0.7f, 0.9f}, true);
+        }
+        if (settings) {
+            char d[64];
+            std::snprintf(d, sizeof(d), "DIFFICULTY   <  %s  >", difficulty(settings->difficulty).name);
+            glm::vec4 dc = settings->difficulty >= 2 ? glm::vec4{1.f, 0.35f, 0.25f, 0.95f} : glm::vec4{1.f, 0.8f, 0.45f, 0.95f};
+            ui.text(d, cx, itemY(NUM_ITEMS - 1) + 74, 2, dc, true);
+            ui.text("LEFT / RIGHT TO CHANGE", cx, itemY(NUM_ITEMS - 1) + 98, 1, {0.6f, 0.6f, 0.65f, 0.8f}, true);
         }
         float hint = 0.35f + 0.35f * std::sin(flashTime * 1.8f);
         ui.text("UP/DOWN OR MOUSE TO SELECT  -  ENTER OR CLICK TO CONFIRM",

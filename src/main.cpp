@@ -10,6 +10,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <vector>
+#include <algorithm>
+#include <cmath>
 #ifdef _WIN32
 #  include <direct.h>
 #  define chdir _chdir
@@ -22,6 +24,7 @@
 #include "MenuState.h"
 #include "GameplayState.h"
 #include "AudioSystem.h"
+#include "Display.h"
 
 #ifdef __EMSCRIPTEN__
 #  include <emscripten.h>
@@ -51,6 +54,62 @@ struct App {
     std::string shotPath;
 
     Uint64 freq = 0, lastCounter = 0;
+    double nextFrameAt = 0.0;   // frame limiter's schedule (seconds)
+    bool   vsyncOn = false;
+
+    // --bench N: render N frames flat out (no cap, no vsync), then print the
+    // frame rate and exit. Pair with --fast --arena N --cam ... to time a spot.
+    int benchFrames = 0, benchTotal = 0;
+    int capOverride = -1;       // --cap HZ: hold this rate whatever the settings say (0 = unlimited)
+    std::vector<double> benchTimes;
+    Uint64 benchLast = 0;
+
+    double seconds() const { return (double)SDL_GetPerformanceCounter() / (double)freq; }
+
+    void readDisplayHz() {
+        SDL_DisplayMode m;
+        if (SDL_GetCurrentDisplayMode(SDL_GetWindowDisplayIndex(window), &m) == 0 && m.refresh_rate > 0)
+            GameSettings::displayHz() = m.refresh_rate;
+    }
+
+    // The canvas follows the window: the largest 16:9 area that fits its
+    // drawable pixels, times the resolution scale setting
+    void sizeCanvas() {
+        int dw = SCREEN_W, dh = SCREEN_H;
+        SDL_GL_GetDrawableSize(window, &dw, &dh);
+        display::Rect r = display::fit(dw, dh);
+        float k = GameSettings::renderScaleValue(settings.renderScale);
+        if (renderOverride > 0) { display::ensure(renderOverride * 16 / 9, renderOverride); return; }
+        display::ensure((int)(r.w * k), (int)(r.h * k));
+    }
+    int renderOverride = 0;     // --res H: render at H lines (16:9) whatever the window (dev)
+
+    // Mouse positions arrive in window points; menus think in the virtual 1280x720
+    void mapMouse(SDL_Event& e) {
+        int ww = SCREEN_W, wh = SCREEN_H;
+        SDL_GetWindowSize(window, &ww, &wh);
+        if (e.type == SDL_MOUSEMOTION) display::toVirtual(ww, wh, e.motion.x, e.motion.y);
+        if (e.type == SDL_MOUSEBUTTONDOWN || e.type == SDL_MOUSEBUTTONUP) display::toVirtual(ww, wh, e.button.x, e.button.y);
+    }
+
+    bool fullscreenOn = false;
+    void applyFullscreen() {
+#ifndef __EMSCRIPTEN__
+        if (settings.fullscreen == fullscreenOn) return;
+        fullscreenOn = settings.fullscreen;
+        SDL_SetWindowFullscreen(window, fullscreenOn ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
+        readDisplayHz();
+#endif
+    }
+
+    void applyVsync() {
+        bool want = settings.vsync && benchFrames == 0;
+        if (want == vsyncOn) return;
+        vsyncOn = want;
+        // Adaptive vsync (tears instead of stuttering when a frame is late) where the driver has it
+        if (!want) SDL_GL_SetSwapInterval(0);
+        else if (SDL_GL_SetSwapInterval(-1) != 0) SDL_GL_SetSwapInterval(1);
+    }
 
     void quit() {
 #ifndef __EMSCRIPTEN__
@@ -78,14 +137,17 @@ struct App {
         }
     }
 
+    // Saves the canvas (the frame at render resolution, before scaling to the window)
     void saveScreenshot(const std::string& path) {
-        std::vector<unsigned char> px(SCREEN_W * SCREEN_H * 3);
+        int W = display::renderW(), H = display::renderH();
+        std::vector<unsigned char> px(W * H * 3);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, display::canvas().fbo);
         glPixelStorei(GL_PACK_ALIGNMENT, 1);
-        glReadPixels(0, 0, SCREEN_W, SCREEN_H, GL_RGB, GL_UNSIGNED_BYTE, px.data());
-        SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormat(0, SCREEN_W, SCREEN_H, 24, SDL_PIXELFORMAT_RGB24);
+        glReadPixels(0, 0, W, H, GL_RGB, GL_UNSIGNED_BYTE, px.data());
+        SDL_Surface* surf = SDL_CreateRGBSurfaceWithFormat(0, W, H, 24, SDL_PIXELFORMAT_RGB24);
         if (!surf) return;
-        for (int y = 0; y < SCREEN_H; ++y)   // GL rows are bottom-up
-            std::memcpy((unsigned char*)surf->pixels + y * surf->pitch, &px[(SCREEN_H - 1 - y) * SCREEN_W * 3], SCREEN_W * 3);
+        for (int y = 0; y < H; ++y)   // GL rows are bottom-up
+            std::memcpy((unsigned char*)surf->pixels + y * surf->pitch, &px[(H - 1 - y) * W * 3], W * 3);
         SDL_SaveBMP(surf, path.c_str());
         SDL_FreeSurface(surf);
     }
@@ -104,12 +166,32 @@ struct App {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) { running = false; break; }
+            if (e.type == SDL_WINDOWEVENT && (e.window.event == SDL_WINDOWEVENT_MOVED || e.window.event == SDL_WINDOWEVENT_DISPLAY_CHANGED))
+                readDisplayHz();
+            // F11 or Alt+Enter: fullscreen on / off
+            if (e.type == SDL_KEYDOWN && !e.key.repeat && (e.key.keysym.sym == SDLK_F11 ||
+                (e.key.keysym.sym == SDLK_RETURN && (e.key.keysym.mod & KMOD_ALT)))) {
+                settings.fullscreen = !settings.fullscreen;
+                settings.save();
+                continue;
+            }
+            mapMouse(e);
             if (currentState && shotFrames == 0) currentState->handleEvent(e);   // screenshot runs ignore all input
             if (pending != NextState::None) break; // remaining events go to the next state
         }
+        applyFullscreen();
+        sizeCanvas();
         if (currentState) {
             currentState->update(frameDt);
+            display::bind();
             currentState->render();
+        }
+        if (dynamic_cast<MenuState*>(currentState.get())) {   // the menu's music: a groove, no fight
+            audio.masterVolume = settings.audioVolume;
+            audio.setMusicVolume(settings.musicVolume);
+            audio.music.setTrack(0);
+            audio.music.setIntensity(0.55f);
+            audio.music.setMuffle(false);
         }
         if (shotFrames > 0 && --shotFrames == 0) {
             saveScreenshot(shotPath); running = false;
@@ -117,21 +199,51 @@ struct App {
                 std::fprintf(stderr, "shot: feet (%.2f %.2f %.2f) yaw %.1f pitch %.1f arena %d\n", g->player.position.x,
                              g->player.position.y, g->player.position.z, g->player.camera.yaw, g->player.camera.pitch, g->director.arena);
         }
+        {
+            int dw = SCREEN_W, dh = SCREEN_H;
+            SDL_GL_GetDrawableSize(window, &dw, &dh);
+            display::present(dw, dh);
+        }
         SDL_GL_SwapWindow(window);
 
 #ifndef __EMSCRIPTEN__
-        // FPS cap — sleep the remainder of the frame budget (the browser paces the web build)
-        int capValue = settings.getFPSCapValue();
+        applyVsync();
+        // Frame limiter (the browser paces the web build itself). It keeps an
+        // absolute schedule and sleeps most of each gap, then spins the last
+        // 1.5 ms: millisecond sleeps alone can't hold 144 or 240 Hz evenly.
+        int capValue = capOverride >= 0 ? capOverride : (benchFrames > 0 || vsyncOn) ? 0 : settings.getFPSCapValue();
         if (capValue > 0) {
-            Uint64 frameEnd    = SDL_GetPerformanceCounter();
-            double elapsed     = (double)(frameEnd - frameStart) / (double)freq;
-            double targetTime  = 1.0 / (double)capValue;
-            if (elapsed < targetTime) {
-                Uint32 sleepMs = (Uint32)((targetTime - elapsed) * 1000.0);
-                if (sleepMs > 0) SDL_Delay(sleepMs);
+            double period = 1.0 / capValue;
+            if (nextFrameAt == 0.0 || seconds() - nextFrameAt > period * 2.0) nextFrameAt = seconds();   // fell behind: start over
+            nextFrameAt += period;
+            for (;;) {
+                double left = nextFrameAt - seconds();
+                if (left <= 0.0) break;
+                if (left > 0.002) SDL_Delay((Uint32)((left - 0.0015) * 1000.0));
             }
+        } else {
+            nextFrameAt = 0.0;
+        }
+        if (benchFrames > 0) {
+            Uint64 nowC = SDL_GetPerformanceCounter();
+            if (benchLast) benchTimes.push_back((double)(nowC - benchLast) / (double)freq);   // start-to-start: what the screen sees
+            benchLast = nowC;
+            if (--benchFrames == 0) { reportBench(); running = false; }
         }
 #endif
+    }
+
+    void reportBench() {
+        if (benchTimes.size() < 10) return;
+        std::vector<double> t(benchTimes.begin() + benchTimes.size() / 10, benchTimes.end());   // skip warm-up
+        double sum = 0; for (double v : t) sum += v;
+        std::sort(t.begin(), t.end());
+        double avg = sum / t.size();
+        double p99 = t[(size_t)(t.size() * 0.99)];
+        double var = 0; for (double v : t) var += (v - avg) * (v - avg);
+        std::fprintf(stderr, "bench: %d frames  avg %.2f ms (%.0f fps)  1%% low %.2f ms (%.0f fps)  worst %.2f ms  jitter %.3f ms\n",
+                     (int)t.size(), avg * 1000.0, 1.0 / avg, p99 * 1000.0, 1.0 / p99, t.back() * 1000.0,
+                     std::sqrt(var / t.size()) * 1000.0);
     }
 };
 
@@ -179,8 +291,15 @@ int main(int argc, char* argv[]) {
         "OVERDRIVE",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
         SCREEN_W, SCREEN_H,
+#ifdef __EMSCRIPTEN__
         SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+#else
+        // Resizable, full-resolution on Retina/HiDPI screens: the 3D scene
+        // renders at the window's real pixel size (times the resolution scale)
+        SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+#endif
     if (!app->window) throw std::runtime_error(SDL_GetError());
+    SDL_SetWindowMinimumSize(app->window, 640, 360);
 
     app->ctx = SDL_GL_CreateContext(app->window);
     if (!app->ctx) throw std::runtime_error(SDL_GetError());
@@ -201,6 +320,7 @@ int main(int argc, char* argv[]) {
         "hit", "enemy_death", "player_hit", "parry", "telegraph", "explosion",
         "wave", "spawn", "pickup", "kar", "longshot", "bolt", "scope", "levelup",
         "potion", "barrier", "split", "upgrade", "clank", "punch", "step1", "step2", "step3", "step4",
+        "door", "door_close", "boost",
     };
     for (const char* name : SOUNDS)
         app->audio.loadSound(name, std::string("assets/sfx/") + name + ".wav");
@@ -231,6 +351,9 @@ int main(int argc, char* argv[]) {
         if (arg == "--aim") g_devAim = true;
         if (arg == "--spawn" && i + 1 < argc) g_devSpawn = std::atoi(argv[++i]);
         if (arg == "--overlay" && i + 1 < argc) g_devOverlay = argv[++i];
+        if (arg == "--bench" && i + 1 < argc) { app->benchFrames = std::atoi(argv[++i]); g_devNoMouse = true; }
+        if (arg == "--cap" && i + 1 < argc) app->capOverride = std::atoi(argv[++i]);
+        if (arg == "--res" && i + 1 < argc) app->renderOverride = std::atoi(argv[++i]);
         if (arg == "--shot" && i + 2 < argc) {
             app->shotFrames = std::atoi(argv[i + 1]); app->shotPath = argv[i + 2]; i += 2;
             g_devNoMouse = true;
@@ -239,6 +362,7 @@ int main(int argc, char* argv[]) {
 
     app->freq        = SDL_GetPerformanceFrequency();
     app->lastCounter = SDL_GetPerformanceCounter();
+    app->readDisplayHz();
 
 #ifdef __EMSCRIPTEN__
     emscripten_set_pointerlockchange_callback(EMSCRIPTEN_EVENT_TARGET_DOCUMENT, app, false, onPointerLockChange);

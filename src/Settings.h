@@ -1,6 +1,8 @@
 #pragma once
 #include "Persist.h"
+#include "Difficulty.h"
 #include <sstream>
+#include <cstdio>
 #include <string>
 
 // Every option on the settings page (main menu and pause menu share it).
@@ -9,7 +11,19 @@
 struct GameSettings {
     // Video
     float fov         = 90.f;   // 60..120
-    int   fpsCap      = 0;      // 0=uncapped,1=60,2=144,3=180,4=240
+    int   frameCap    = 1;      // index into FRAME_CAPS: MATCH DISPLAY by default
+    bool  vsync       = false;  // wait for the display (no tearing, a little more latency)
+    bool  fullscreen  = false;  // borderless fullscreen at the desktop resolution (F11 / Alt+Enter)
+    int   renderScale = 0;      // index into RENDER_SCALES: the 3D scene's resolution vs the screen
+    static constexpr int RENDER_SCALES = 5;
+    static float renderScaleValue(int i) {
+        static const float S[RENDER_SCALES] = {1.f, 0.85f, 0.7f, 0.5f, 1.5f};
+        return S[(i % RENDER_SCALES + RENDER_SCALES) % RENDER_SCALES];
+    }
+    static const char* renderScaleLabel(int i) {
+        static const char* N[RENDER_SCALES] = {"100%", "85%", "70%", "50%", "150% (SHARP)"};
+        return N[(i % RENDER_SCALES + RENDER_SCALES) % RENDER_SCALES];
+    }
     bool  showFPS     = false;
     bool  crtFilter   = false;  // CRT post-process effect
     float screenShake = 1.0f;   // 0..1
@@ -36,8 +50,10 @@ struct GameSettings {
         }
     }
     // Audio
-    float audioVolume = 0.8f;   // 0.0..1.0
+    float audioVolume = 0.8f;   // 0.0..1.0, everything
+    float musicVolume = 0.6f;   // 0.0..1.0, the soundtrack on top of that
     // Gameplay / HUD
+    int   difficulty   = DIFFICULTY_DEFAULT;   // see Difficulty.h
     bool  showTimer    = true;  // run clock in Arena mode (FAST mode always shows it)
     bool  damageNumbers = true;
     int   crosshair    = 0;     // colour index, see crosshairColor()
@@ -53,18 +69,26 @@ struct GameSettings {
         r = C[i][0]; g = C[i][1]; b = C[i][2];
     }
 
+    // Frame rate limit choices: 0 = unlimited, -1 = the display's refresh rate
+    static constexpr int FRAME_CAPS = 8;
+    static int frameCapHz(int i) {
+        static const int C[FRAME_CAPS] = {0, -1, 60, 120, 144, 165, 240, 360};
+        return C[(i % FRAME_CAPS + FRAME_CAPS) % FRAME_CAPS];
+    }
+    // The display's refresh rate, filled in by main (60 if unknown)
+    static int& displayHz() { static int hz = 60; return hz; }
+    // Frames per second to hold, or 0 for no limit
     int getFPSCapValue() const {
-        static const int caps[] = {0,60,144,180,240};
-        return (fpsCap >= 0 && fpsCap <= 4) ? caps[fpsCap] : 0;
+        int hz = frameCapHz(frameCap);
+        return hz < 0 ? displayHz() : hz;
     }
     const char* getFPSCapLabel() const {
-        switch (fpsCap) {
-            case 1: return "60";
-            case 2: return "144";
-            case 3: return "180";
-            case 4: return "240";
-            default: return "UNCAPPED";
-        }
+        static char buf[32];
+        int hz = frameCapHz(frameCap);
+        if (hz == 0) return "UNLIMITED";
+        if (hz < 0) std::snprintf(buf, sizeof(buf), "DISPLAY (%d)", displayHz());
+        else        std::snprintf(buf, sizeof(buf), "%d", hz);
+        return buf;
     }
 
     static constexpr const char* kSaveKey = "settings.cfg";
@@ -78,7 +102,11 @@ struct GameSettings {
         f << "mouseFilter "   << (mouseFilter ? 1 : 0) << "\n";
         f << "grappleKey "    << grappleKey    << "\n";
         f << "audioVolume "   << audioVolume   << "\n";
-        f << "fpsCap "        << fpsCap        << "\n";
+        f << "musicVolume "   << musicVolume   << "\n";
+        f << "frameCap "      << frameCap      << "\n";
+        f << "vsync "         << (vsync ? 1 : 0) << "\n";
+        f << "fullscreen "    << (fullscreen ? 1 : 0) << "\n";
+        f << "renderScale "   << renderScale   << "\n";
         f << "showFPS "       << (showFPS   ? 1 : 0) << "\n";
         f << "crtFilter "     << (crtFilter ? 1 : 0) << "\n";
         f << "screenShake "   << screenShake   << "\n";
@@ -86,6 +114,7 @@ struct GameSettings {
         f << "showTimer "     << (showTimer ? 1 : 0) << "\n";
         f << "damageNumbers " << (damageNumbers ? 1 : 0) << "\n";
         f << "crosshair "     << crosshair     << "\n";
+        f << "difficulty "    << difficulty    << "\n";
         persist::save(kSaveKey, f.str());
     }
 
@@ -101,7 +130,16 @@ struct GameSettings {
             else if (key == "mouseFilter")   flag(mouseFilter);
             else if (key == "grappleKey")    f >> grappleKey;
             else if (key == "audioVolume")   f >> audioVolume;
-            else if (key == "fpsCap")        f >> fpsCap;
+            else if (key == "musicVolume")   f >> musicVolume;
+            else if (key == "frameCap")      f >> frameCap;
+            else if (key == "vsync")         flag(vsync);
+            else if (key == "fullscreen")    flag(fullscreen);
+            else if (key == "renderScale")   f >> renderScale;
+            else if (key == "fpsCap") {      // older saves: 0 uncapped, 1 60, 2 144, 3 180, 4 240
+                int old = 0; f >> old;
+                static const int MAP[] = {0, 2, 4, 4, 6};
+                frameCap = (old >= 0 && old <= 4) ? MAP[old] : 1;
+            }
             else if (key == "showFPS")       flag(showFPS);
             else if (key == "crtFilter")     flag(crtFilter);
             else if (key == "screenShake")   f >> screenShake;
@@ -109,6 +147,7 @@ struct GameSettings {
             else if (key == "showTimer")     flag(showTimer);
             else if (key == "damageNumbers") flag(damageNumbers);
             else if (key == "crosshair")     f >> crosshair;
+            else if (key == "difficulty")    f >> difficulty;
             else { std::string skip; f >> skip; } // unknown key — skip its value
             if (!f) break;
         }
@@ -120,9 +159,12 @@ struct GameSettings {
         sensitivity = clampf(sensitivity, 0.01f, 1.00f);
         zoomSens    = clampf(zoomSens, 0.3f, 1.5f);
         audioVolume = clampf(audioVolume, 0.f, 1.f);
+        musicVolume = clampf(musicVolume, 0.f, 1.f);
         screenShake = clampf(screenShake, 0.f, 1.f);
-        if (fpsCap < 0 || fpsCap > 4) fpsCap = 0;
+        frameCap = (frameCap % FRAME_CAPS + FRAME_CAPS) % FRAME_CAPS;
+        renderScale = (renderScale % RENDER_SCALES + RENDER_SCALES) % RENDER_SCALES;
         crosshair = (crosshair % CROSSHAIR_COLORS + CROSSHAIR_COLORS) % CROSSHAIR_COLORS;
+        if (difficulty < 0 || difficulty >= DIFFICULTY_LEVELS) difficulty = DIFFICULTY_DEFAULT;
         grappleKey = (grappleKey % GRAPPLE_KEYS + GRAPPLE_KEYS) % GRAPPLE_KEYS;
     }
 

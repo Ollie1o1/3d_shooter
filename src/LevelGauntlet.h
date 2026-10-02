@@ -2,30 +2,33 @@
 // =============================================================================
 // LevelGauntlet.h — FAST mode's map: THE GAUNTLET.
 //
-// A time trial along one long route. Each of its six levels is a long, wide
-// channel in two parts: a breather (health to pick up, nothing shooting at
-// you) and then a fight that starts when you reach the section's trigger.
-// Clear the fight and the gate at the far end opens. The route turns and
-// climbs, so every level asks something different of your movement:
+// A time trial through seven rooms joined by boost tubes. Every room is
+// reached down a ribbed duct (a breather: health to pick up, nothing
+// shooting at you) that fires you along at speed; its doors part as you run
+// at them. Step into the room and the fight starts: the door behind you
+// locks, and the exit stays locked until the room is clear.
 //
-//          N (-Z)                          ┌──────┐ 6 THE TOWER  courtyard fight,
-//   3 THE SPAN ┐  islands, bridges and     │  ▲   │   then climb to the beacon
-//   (y 23)     │  ferries over a void ─┐   └──┬───┘
-//              │                 4 THE WELL ──┴── 5 THE PUMPWORKS ────────┘
-//   2 THE ASCENT ◀─ (west, up 20 m)   drop down a tower    east: tunnel → hall
-//              └──── 1 THE CANAL (north from the start)
+//                          ┌──────────┐
+//                          │ 4 SPAN   │ islands over a canyon (y 20)
+//                          │  (void)  ├──▶ 5 WELL ──▶ 6 PUMPWORKS ──▶ 7 TOWER
+//                          └────▲─────┘   drop down     hall + control    courtyard,
+//                               │          the floors    rooms            climb to the
+//   3 ASCENT ◀── 2 SLUICE ◀── 1 CANAL                                     beacon
+//   cathedral    pit and       long sunken
+//   of terraces  mezzanine     lane, north from the start airlock
 //
-//   level            heading   floor        idea
-//   1 THE CANAL      north     0 / 3        sunken lane, walkways, bridges
-//   2 THE ASCENT     west      3 → 23       five terraces: pads, steps, grapple
-//   3 THE SPAN       north     23 (void)    islands, a beam, ferries, anchors
-//   4 THE WELL       east      23 → 0       a tower you fall through, floor by floor
-//   5 THE PUMPWORKS  east      0            roofed tunnel opening into a hall
-//   6 THE TOWER      north     0 → 34       courtyard, then lifts to the beacon
+//   room            size        idea
+//   1 THE CANAL     30 x 80     sunken lane, walkways, bridges, beams to grapple
+//   2 THE SLUICE    24 x 24     small and close: a pit ringed by a mezzanine
+//   3 THE ASCENT    88 x 29     roofed hall of six terraces climbing 20 m west
+//   4 THE SPAN      44 x 120    open canyon: islands, ferries, a void
+//   5 THE WELL      39 x 39     a tower you fall through, floor by floor
+//   6 THE PUMPWORKS 60 x 39     hall with galleries and two control rooms
+//   7 THE TOWER     70 x 71     courtyard fight, then a lift shaft to the beacon
 //
-// Levels are Arenas run by WaveDirector with fast = true; each has a trigger,
-// hand-placed enemies (WaveEntry::at) and its own theme, crossfaded at the
-// gates by LevelData::blends.
+// Rooms are Arenas run by WaveDirector with fast = true; each has a trigger,
+// hand-placed enemies (WaveEntry::at), its tube as an extra zone and its own
+// theme, crossfaded down the tubes by LevelData::blends.
 // =============================================================================
 #include "Level.h"
 
@@ -41,9 +44,18 @@ inline LevelData buildGauntlet() {
     auto pad  = [&](vec3 at, vec3 launch) { L.pads.push_back({at, {1.3f, 1.3f}, launch}); };
     auto place = [&](vec3 at, int kind) { L.placedPickups.push_back({at, kind}); };
     using W = WaveEntry;
+    using Gap = LevelBuilder::Gap;
+    const float TW = 5.f, TH = 4.5f;    // every tube: 5 m wide, 4.5 m tall inside
+    const float BOOST = 26.f;           // m/s down a boost tube
+    // A door in the middle of a tube opens from further off: you arrive fast
+    auto tubeDoor = [&](float x, float zc, vec3 trim) {
+        int d = B.doorway(false, zc - TW * 0.5f, zc + TW * 0.5f, x - 0.5f, x + 0.5f, 0.f, TH, trim);
+        L.doors[d].sense = 12.f;
+        return d;
+    };
 
     // Far ground below everything
-    L.floors.push_back({-160.f, -400.f, 164.f, 200.f, -0.3f, {0.10f,0.09f,0.11f}});
+    L.floors.push_back({-240.f, -320.f, 110.f, 30.f, -0.3f, {0.10f,0.09f,0.11f}});
 
     auto theme = [](vec3 zen, vec3 hor, vec3 gnd, vec3 sunDir, vec3 sunCol, float sunSize, float stripes,
                     vec3 mtn, float stars, vec3 lightDir, vec3 lightCol, vec3 skyA, vec3 gndA, vec3 fog, float fogD) {
@@ -51,285 +63,560 @@ inline LevelData buildGauntlet() {
                      glm::normalize(lightDir), lightCol, skyA, gndA, fog, fogD};
     };
 
-    auto section = [&](const char* name, const char* sub, AABB zone, AABB bounds, vec3 start, AABB trigger,
+    auto section = [&](const char* name, const char* sub, AABB zone, AABB bounds, vec3 start, float yaw, AABB trigger,
                        Ambient amb, Theme th) -> Arena& {
         Arena a;
         a.name = name; a.subtitle = sub;
-        a.zone = zone; a.bounds = bounds; a.playerStart = start;
+        a.zone = zone; a.bounds = bounds; a.playerStart = start; a.startYaw = yaw;
         a.trigger = trigger; a.hasTrigger = true;
         a.maxAlive = 99; a.ambient = amb; a.theme = th;
-        a.damageScale = 0.95f + 0.06f * (float)L.arenas.size();   // harder the further in
+        a.damageScale = 1.f + 0.05f * (float)L.arenas.size();   // harder the further in
         L.arenas.push_back(std::move(a));
         return L.arenas.back();
     };
 
     // =========================================================================
-    // 1 THE CANAL — north. A sunken lane between two raised walkways, bridges
-    // across it. Start on a raised plaza, drop in, push north, exit west.
+    // 1 THE CANAL — out of the start airlock, a boost tube north into a long
+    // sunken lane between raised walkways. Bridges cross it, beams overhead
+    // are grapple points. Exit west off the far end of the left walkway.
     // =========================================================================
     {
-        vec3 conc{0.52f,0.54f,0.58f}, dark{0.32f,0.34f,0.39f}, crate{0.45f,0.33f,0.22f}, cyan{0.2f,0.9f,1.f};
+        vec3 conc{0.52f,0.54f,0.58f}, dark{0.32f,0.34f,0.39f}, crate{0.45f,0.33f,0.22f}, cyan{0.2f,0.9f,1.f},
+             panel{0.30f,0.32f,0.38f}, teal{0.2f,1.f,0.8f};
         Arena& a = section("THE CANAL", "PUSH UP THE CANAL",
-                           aabb(-14.6f, 0, -121.6f, 14.6f, 22, 1.6f), aabb(-15, 0, -122, 15, 16, 2),
-                           {0.f, 3.f, -4.f}, aabb(-15, -1, -122, 15, 40, -34), Ambient::DUST,
+                           aabb(-15, 0, -125, 15, 22, -46), aabb(-15, 0, -125, 15, 16, -46),
+                           {0.f, 3.f, 0.f}, -90.f, aabb(-15, -1, -125, 15, 40, -63), Ambient::DUST,
                            theme({0.10f,0.20f,0.36f}, {0.95f,0.62f,0.42f}, {0.2f,0.18f,0.2f}, {0.3f,0.2f,-1.f}, {1.6f,0.9f,0.5f}, 0.09f, 0.f,
                                  {0.22f,0.2f,0.28f}, 0.f, {-0.3f,-0.6f,0.75f}, {1.1f,0.85f,0.65f},
                                  {0.38f,0.36f,0.46f}, {0.18f,0.15f,0.14f}, {0.62f,0.48f,0.46f}, 0.006f));
-        // Perimeter: back, east, north, and the west wall with the exit gate on the walkway
-        wall(-16,0,2, 16,9,3, conc);
-        wall(15,0,-123, 16,9,2, conc);
-        wall(-16,0,-123, 16,9,-122, conc);
-        wall(-16,0,-106, -15,9,2, conc);
-        wall(-16,0,-125, -15,9,-118, conc);
-        wall(-16,0,-118, -15,3,-106, conc);
-        a.exitDoor = B.door(-15.9f, -118, -15.1f, -106, 6.f, {0.2f,0.22f,0.26f}, false, 3.f);
-        // Start plaza, then the canal with its walkways
-        wall(-15,0,-30, 15,3,2, conc);
-        wall(-15,0,-122, -9,3,-30, dark);
-        wall(9,0,-122, 15,3,-30, dark);
-        L.floors.push_back({-9.f, -122.f, 9.f, -30.f, 0.f, {0.18f,0.34f,0.38f}});
-        neon(-9.12f,2.75f,-122, -9.0f,2.95f,-30, cyan);
-        neon(9.0f,2.75f,-122, 9.12f,2.95f,-30, cyan);
-        neon(-15,2.75f,-30.12f, 15,2.95f,-30.0f, cyan);
+        // --- The start airlock (floor 3, roofed), its door, and the tube north ---
+        B.mat = Mat::PANEL;
+        wall(-5,0,-8, 5,3,4, panel);                                   // floor block
+        B.wallX(-6, 6, 4, 5, 0, 9, panel);
+        B.wallZ(-9, 5, 5, 6, 0, 9, panel);
+        B.wallZ(-9, 5, -6, -5, 0, 9, panel);
+        B.wallX(-6, 6, -9, -8, 0, 9, panel, {Gap{-2.5f, 2.5f, 3.f, 3.f + TH}});
+        wall(-6,8,-9, 6,9,5, panel * 0.8f);                            // roof
+        B.doorway(true, -2.5f, 2.5f, -9, -8, 3.f, TH, cyan);
+        for (float x : {-2.f, 2.f}) neon(x - 0.12f, 7.92f, -7, x + 0.12f, 8, 3, vec3{0.7f,0.85f,1.f} * 0.45f);   // ceiling strips
+        for (float sx : {-1.f, 1.f}) {                                 // wall screens in dark frames
+            float x = sx * 5.f;
+            wall(x - sx * 0.25f, 4.2f, -4.6f, x, 6.6f, -1.4f, panel * 0.5f);
+            neon(x - sx * 0.3f, 4.4f, -4.4f, x - sx * 0.25f, 6.4f, -1.6f, cyan * 0.18f);
+            neon(x - sx * 0.3f, 4.5f, -1.f, x - sx * 0.25f, 4.9f, 1.f, vec3{1.f,0.6f,0.2f} * 0.4f);
+        }
+        neon(-5,3,3.88f, 5,3.12f,4, cyan);                             // floor edges
+        AABB t0 = B.tube(2, -45.f, -9.f, 0.f, 3.f, TW, TH, panel, cyan);
+        B.booster(aabb(-2.5f, 3, -39, 2.5f, 3 + TH, -12), {0, 0, -1}, BOOST);
+        a.extraZones = {aabb(-5, 3, -8, 5, 8, 4), t0};
+
+        // --- The canal: walls, the plaza you arrive on, walkways, the lane ---
+        B.mat = Mat::CONCRETE;
+        B.wallX(-16, 16, -46, -45, 0, 11, conc, {Gap{-2.5f, 2.5f, 3.f, 3.f + TH}});
+        a.entryGate = B.doorway(true, -2.5f, 2.5f, -46, -45, 3.f, TH, cyan);
+        B.wallX(-16, 16, -126, -125, 0, 11, conc);
+        B.wallZ(-126, -45, 15, 16, 0, 11, conc);
+        B.wallZ(-126, -45, -16, -15, 0, 11, conc, {Gap{-121, -116, 3.f, 3.f + TH}});
+        a.exitDoor = B.doorway(false, -121, -116, -16, -15, 3.f, TH, cyan, true);
+        wall(-15,0,-62, 15,3,-46, conc);                               // plaza
+        wall(-15,0,-125, -9,3,-62, dark);                              // walkways
+        wall(9,0,-125, 15,3,-62, dark);
+        L.floors.push_back({-9.f, -125.f, 9.f, -62.f, 0.f, {0.18f,0.34f,0.38f}});
+        neon(-9.12f,2.75f,-125, -9.0f,2.95f,-62, cyan);
+        neon(9.0f,2.75f,-125, 9.12f,2.95f,-62, cyan);
+        neon(-15,2.75f,-62.12f, 15,2.95f,-62.0f, cyan);
+        neon(-15,10.8f,-45.98f, 15,11,-45.86f, cyan * 0.7f);           // wall-top trim
+        neon(-15,10.8f,-125.14f, 15,11,-125.02f, cyan * 0.7f);
         // Bridges you can stand on or run under
-        for (float z : {-55.f, -90.f}) {
+        for (float z : {-82.f, -106.f}) {
             wall(-9,2.6f,z - 2, 9,3,z + 2, conc);
             neon(-9,2.45f,z - 2.1f, 9,2.6f,z + 2.1f, cyan * 0.6f);
         }
-        // Crates to climb out of the canal, pads that throw you onto a walkway
-        wall(-9,0,-45, -7,1.5f,-42, crate);  wall(7,0,-75, 9,1.5f,-72, crate);
-        wall(-9,0,-104, -7,1.5f,-101, crate); wall(7,0,-112, 9,1.5f,-109, crate);
-        pad({-5.f, 0.f, -66.f}, {-7.f, 14.f, 0.f});
-        pad({ 5.f, 0.f, -98.f}, { 7.f, 14.f, 0.f});
-        // Cover in the lane and on the walkways; pillars to grapple
-        wall(-3,0,-64, 3,1.2f,-62, dark); wall(-6,0,-98, -2,1.2f,-96, dark); wall(2,0,-84, 6,1.2f,-82, dark);
-        wall(-14,3,-80, -10,4.2f,-79, dark); wall(10,3,-66, 14,4.2f,-65, dark);
-        for (float sx : {-12.f, 12.f}) for (float z : {-70.f, -100.f}) {
+        // Steel beams across the room: grapple them, swing over the lane
+        B.mat = Mat::METAL;
+        for (float z : {-70.f, -94.f, -118.f}) {
+            wall(-15,8.6f,z - 0.4f, 15,9.2f,z + 0.4f, {0.26f,0.27f,0.3f});
+            neon(-15,8.5f,z - 0.1f, 15,8.6f,z + 0.1f, teal * 0.6f);
+        }
+        B.mat = Mat::CONCRETE;
+        // Crates to climb out of the lane, pads that throw you onto a walkway
+        wall(-9,0,-76, -7,1.5f,-73, crate);  wall(7,0,-96, 9,1.5f,-93, crate);
+        wall(-9,0,-114, -7,1.5f,-111, crate); wall(7,0,-122, 9,1.5f,-119, crate);
+        pad({-5.f, 0.f, -90.f}, {-7.f, 14.f, 0.f});
+        pad({ 5.f, 0.f, -100.f}, { 7.f, 14.f, 0.f});
+        // Cover in the lane and on the walkways; pillars up to the wall tops
+        wall(-3,0,-66, 3,1.2f,-64, dark); wall(-6,0,-100, -2,1.2f,-98, dark); wall(2,0,-112, 6,1.2f,-110, dark);
+        wall(-14,3,-96, -11.5f,4.2f,-95, dark); wall(10,3,-74, 14,4.2f,-73, dark);
+        for (float sx : {-12.f, 12.f}) for (float z : {-88.f, -112.f}) {
             wall(sx - 1,3,z - 1, sx + 1,11,z + 1, conc);
             B.ring(sx - 1, z - 1, sx + 1, z + 1, 9.6f, 9.9f, cyan);
         }
-        a.waves = {{
-            W{EnemyType::HUSK, 0, {{-12,3,-62},{12,3,-84},{12,3,-112},{0,0,-118}}},
-            W{EnemyType::SENTINEL, 0, {{-5,3,-90},{5,3,-55}}},
-            W{EnemyType::RIPPER, 0, {{0,0,-74},{-4,0,-80},{4,0,-104}}},
-            W{EnemyType::RAPTOR, 0, {{-5,11,-80},{5,11,-100}}},
-        }};
+        // The sluice gate the canal runs out of, at the north end
+        B.mat = Mat::METAL;
+        prop(-9,0,-125, 9,8.5f,-124.6f, {0.22f,0.23f,0.26f});
+        for (float x = -8.f; x <= 8.f; x += 2.f) neon(x - 0.1f, 0.3f, -124.62f, x + 0.1f, 8.2f, -124.5f, teal * 0.45f);
+        neon(-9,8.3f,-124.6f, 9,8.5f,-124.45f, teal);
+        L.fans.push_back({{-11.5f, 7.f, -124.8f}, 1.4f, 2, teal});
+        L.fans.push_back({{ 11.5f, 7.f, -124.8f}, 1.4f, 2, teal});
+        B.mat = Mat::BRICK;
+        place({0.f, 3.f, -50.f}, 0);
+        a.waves = {
+            {
+                W{EnemyType::HUSK, 0, {{-12,3,-80},{12,3,-92},{12,3,-118},{-12,3,-104},{0,0,-122}}},
+                W{EnemyType::SENTINEL, 0, {{-5,3,-106},{5,3,-82}}},
+                W{EnemyType::RIPPER, 0, {{0,0,-92},{-4,0,-103},{4,0,-116}}},
+                W{EnemyType::RAPTOR, 0, {{-5,11,-100},{5,11,-114}}},
+            },
+            {
+                W{EnemyType::BRUTE, 0, {{0,0,-118}}},
+                W{EnemyType::MITE, 0, {{-6,0,-86},{6,0,-90},{0,0,-76}}},
+                W{EnemyType::HUSK, 0, {{-12,3,-120},{12,3,-66}}},
+                W{EnemyType::RAPTOR, 0, {{0,12,-110}}},
+            },
+        };
     }
 
     // =========================================================================
-    // 2 THE ASCENT — west, climbing. Five 4 m terraces from y 3 to 23. Each
-    // riser has a jump pad and a step block; gunners hold the terraces above.
+    // 2 THE SLUICE — west down a boost tube into a small, roofed pump room:
+    // you arrive on a mezzanine ringing a pit, with a pump block in the middle.
+    // Close quarters. Exit west at the bottom of the pit.
     // =========================================================================
     {
-        vec3 sand{0.66f,0.52f,0.38f}, sandD{0.48f,0.36f,0.27f}, gold{1.f,0.7f,0.3f};
+        vec3 conc{0.40f,0.45f,0.46f}, steel{0.30f,0.33f,0.36f}, rust{0.44f,0.30f,0.20f}, amber{1.f,0.62f,0.15f},
+             green{0.35f,1.f,0.55f}, panel{0.30f,0.32f,0.38f};
+        Arena& a = section("THE SLUICE", "CLOSE QUARTERS",
+                           aabb(-81, 0, -131, -57, 12, -107), aabb(-81, 0, -131, -57, 11, -107),
+                           {-18.f, 3.f, -118.5f}, 180.f, aabb(-80, -1, -131, -59, 40, -107), Ambient::STEAM,
+                           theme({0.03f,0.06f,0.06f}, {0.12f,0.28f,0.26f}, {0.03f,0.05f,0.05f}, {0.f,0.3f,-1.f}, {0.f,0.f,0.f}, 0.01f, 0.f,
+                                 {0.04f,0.08f,0.08f}, 0.f, {0.2f,-1.f,0.1f}, {0.55f,0.72f,0.66f},
+                                 {0.15f,0.21f,0.21f}, {0.10f,0.18f,0.15f}, {0.06f,0.14f,0.13f}, 0.02f));
+        AABB t1 = B.tube(0, -56.f, -16.f, -118.5f, 3.f, TW, TH, panel, amber);
+        B.booster(aabb(-50, 3, -121, -22, 3 + TH, -116), {-1, 0, 0}, BOOST);
+        a.extraZones = {t1};
+        place({-26.f, 3.f, -118.5f}, 1);
+
+        B.mat = Mat::CONCRETE;
+        B.wallZ(-132, -106, -57, -56, 0, 13, conc, {Gap{-121, -116, 3.f, 3.f + TH}});
+        a.entryGate = B.doorway(false, -121, -116, -57, -56, 3.f, TH, amber);
+        B.wallZ(-132, -106, -82, -81, 0, 13, conc, {Gap{-121, -116, 0.f, TH}});
+        a.exitDoor = B.doorway(false, -121, -116, -82, -81, 0.f, TH, amber, true);
+        B.wallX(-82, -56, -132, -131, 0, 13, conc);
+        B.wallX(-82, -56, -107, -106, 0, 13, conc);
+        B.mat = Mat::METAL;
+        wall(-82,12,-132, -56,13,-106, steel * 0.7f);                  // roof
+        // The mezzanine: east, north and south strips at 3 m, open to the west
+        wall(-61,2.5f,-131, -57,3,-107, steel);
+        wall(-81,2.5f,-131, -61,3,-127, steel);
+        wall(-81,2.5f,-111, -61,3,-107, steel);
+        neon(-61.1f,2.55f,-127, -61,2.95f,-111, amber);
+        neon(-81,2.55f,-127.1f, -61,2.95f,-127, amber);
+        neon(-81,2.55f,-111, -61,2.95f,-110.9f, amber);
+        for (float z : {-127.6f, -111.f}) wall(-61.6f,0,z, -61,2.5f,z + 0.6f, steel);   // posts under the corners
+        // The pump block, its pipe to the roof, and pads up to the mezzanine and onto it
+        wall(-73,0,-122, -67,6,-116, rust);
+        B.ring(-73, -122, -67, -116, 1.5f, 1.8f, green);
+        B.ring(-73, -122, -67, -116, 4.6f, 4.9f, green);
+        wall(-70.6f,6,-119.6f, -69.4f,12,-118.4f, steel);
+        B.ring(-70.6f, -119.6f, -69.4f, -118.4f, 9.f, 9.3f, green);
+        pad({-70.f, 0.f, -113.f}, {0.f, 14.f, 4.f});
+        pad({-70.f, 0.f, -125.f}, {0.f, 14.f, -4.f});
+        pad({-77.f, 0.f, -119.f}, {4.f, 19.f, 0.f});
+        // Pipes along the walls, fans, a grate glowing in the pit floor
+        for (float y : {6.5f, 8.5f}) {
+            prop(-80.9f, y, -131, -80.3f, y + 0.6f, -122, rust * 0.8f);
+            prop(-80.9f, y, -115, -80.3f, y + 0.6f, -107, rust * 0.8f);
+        }
+        prop(-81, 9.5f, -130.9f, -57, 10.1f, -130.3f, steel);
+        L.fans.push_back({{-75.f, 8.f, -107.3f}, 1.5f, 2, green});
+        L.fans.push_back({{-63.f, 8.f, -107.3f}, 1.5f, 2, green});
+        L.fans.push_back({{-70.f, 11.9f, -112.5f}, 1.6f, 1, amber});
+        neon(-79,0,-114, -75,0.03f,-112, green * 0.35f);
+        neon(-66,0,-126, -62,0.03f,-124, green * 0.35f);
+        B.mat = Mat::BRICK;
+        a.waves = {
+            {
+                W{EnemyType::HUSK, 0, {{-76,3,-129},{-66,3,-129},{-76,3,-109},{-64,3,-109}}},
+                W{EnemyType::RIPPER, 0, {{-78,0,-119},{-64,0,-114}}},
+                W{EnemyType::MITE, 0, {{-75,0,-113},{-64,0,-124},{-77,0,-124}}},
+                W{EnemyType::SENTINEL, 0, {{-71.5f,6,-117}}},
+            },
+            {
+                W{EnemyType::JUGGERNAUT, 0, {{-77,0,-119}}},
+                W{EnemyType::RIPPER, 0, {{-63,0,-119},{-64,0,-125}}},
+                W{EnemyType::HUSK, 0, {{-59,3,-125},{-59,3,-112}}},
+                W{EnemyType::MITE, 0, {{-66,0,-113},{-78,0,-128}}},
+            },
+        };
+    }
+
+    // =========================================================================
+    // 3 THE ASCENT — west down another tube into a roofed hall of six 4 m
+    // terraces climbing to 20 m. Each riser has a jump pad and a step block;
+    // gunners hold the terraces above you. Exit north from the top.
+    // =========================================================================
+    {
+        vec3 sand{0.66f,0.52f,0.38f}, sandD{0.48f,0.36f,0.27f}, gold{1.f,0.7f,0.3f}, panel{0.34f,0.31f,0.28f};
         Arena& a = section("THE ASCENT", "CLIMB THE TERRACES",
-                           aabb(-135.6f, 0, -123.6f, -14.f, 42, -100.4f), aabb(-136, 3, -124, -16, 34, -100),
-                           {-24.f, 3.f, -112.f}, aabb(-136, -1, -124, -37, 60, -100), Ambient::DUST,
+                           aabb(-201, 0, -133, -113, 34, -104), aabb(-201, 0, -133, -113, 33, -104),
+                           {-84.f, 0.f, -118.5f}, 180.f, aabb(-201, -1, -133, -128, 60, -104), Ambient::DUST,
                            theme({0.14f,0.22f,0.42f}, {1.0f,0.72f,0.40f}, {0.25f,0.2f,0.18f}, {-1.f,0.25f,0.1f}, {1.8f,1.1f,0.5f}, 0.1f, 0.f,
                                  {0.35f,0.26f,0.25f}, 0.f, {0.8f,-0.5f,-0.2f}, {1.2f,0.9f,0.6f},
                                  {0.42f,0.38f,0.44f}, {0.22f,0.16f,0.12f}, {0.75f,0.58f,0.45f}, 0.005f));
-        // Walls: north (exit gate at the top), south, west end, and closing the east end above the canal wall
-        wall(-114,0,-125, -15,30,-124, sand);
-        wall(-137,0,-125, -134,30,-124, sand);
-        wall(-134,0,-125, -114,23,-124, sand);
-        wall(-134,29,-125, -114,30,-124, sand);
-        a.exitDoor = B.door(-134, -124.9f, -114, -124.1f, 6.f, {0.25f,0.2f,0.18f}, false, 23.f);
-        wall(-137,0,-100, -15,30,-99, sand);
-        wall(-137,0,-125, -136,30,-99, sand);
-        wall(-16,9,-124, -15,30,-100, sand);
-        // Landing and terraces
+        AABB t2 = B.tube(0, -112.f, -82.f, -118.5f, 0.f, TW, TH, panel, gold);
+        B.booster(aabb(-108, 0, -121, -88, TH, -116), {-1, 0, 0}, BOOST);
+        a.extraZones = {t2};
+
+        // The hall: tall walls with window slits high up, a roof at 35 m
+        std::vector<Gap> windows;
+        for (float x = -197.f; x < -115.f; x += 14.f) windows.push_back({x, x + 3.f, 23.f, 31.f});
+        std::vector<Gap> north = windows;
+        north.erase(std::remove_if(north.begin(), north.end(), [](const Gap& g) { return g.a1 > -199.f && g.a0 < -188.f; }), north.end());
+        north.push_back({-193, -188, 20.f, 20.f + TH});
+        B.wallZ(-134, -103, -113, -112, 0, 36, sand, {Gap{-121, -116, 0.f, TH}});
+        a.entryGate = B.doorway(false, -121, -116, -113, -112, 0.f, TH, gold);
+        B.wallZ(-134, -103, -202, -201, 0, 36, sand);
+        B.wallX(-202, -112, -104, -103, 0, 36, sand, windows);
+        B.wallX(-202, -112, -134, -133, 0, 36, sand, north);
+        a.exitDoor = B.doorway(true, -193, -188, -134, -133, 20.f, TH, gold, true);
+        wall(-202,35,-134, -112,36,-103, sandD * 0.8f);
+        for (auto& g : windows) {                                       // sun through the slits
+            neon(g.a0, g.y0, -103.95f, g.a1, g.y0 + 0.15f, -103.8f, gold * 0.6f);
+            neon(g.a0, g.y0, -133.2f, g.a1, g.y0 + 0.15f, -133.05f, gold * 0.6f);
+        }
+        // Terraces and the risers between them
         struct T { float x0, x1, top; };
-        const T terr[] = {{-36,-16,3}, {-54,-36,7}, {-72,-54,11}, {-90,-72,15}, {-108,-90,19}, {-136,-108,23}};
-        for (int i = 0; i < 6; ++i) {
-            wall(terr[i].x0, 0, -124, terr[i].x1, terr[i].top, -100, i % 2 ? sandD : sand);
-            neon(terr[i].x1 - 0.12f, terr[i].top - 0.3f, -124, terr[i].x1 + 0.02f, terr[i].top - 0.05f, -100, gold);
+        const T terr[] = {{-127,-113,0}, {-142,-127,4}, {-157,-142,8}, {-172,-157,12}, {-187,-172,16}, {-201,-187,20}};
+        for (int i = 1; i < 6; ++i) {
+            wall(terr[i].x0, 0, -133, terr[i].x1, terr[i].top, -104, i % 2 ? sandD : sand);
+            neon(terr[i].x1 - 0.12f, terr[i].top - 0.3f, -133, terr[i].x1 + 0.02f, terr[i].top - 0.05f, -104, gold);
         }
         for (int i = 0; i < 5; ++i) {
             float xb = terr[i + 1].x1, lo = terr[i].top;      // riser between terrace i and i+1
-            pad({xb + 3.f, lo, -106.f}, {-6.f, 15.f, 0.f});
-            wall(xb, lo, -122, xb + 2.f, lo + 2.f, -118, sandD);   // step block
+            pad({xb + 3.f, lo, -110.f}, {-6.f, 15.f, 0.f});
+            wall(xb, lo, -131, xb + 2.f, lo + 2.f, -127, sandD);   // step block
         }
-        // Cover
-        wall(-48,7,-104, -46,8.3f,-101, sandD); wall(-66,11,-118, -63,12.3f,-116, sandD);
-        wall(-86,15,-104, -82,17.5f,-102, sandD); wall(-104,19,-112, -101,20.3f,-109, sandD);
-        wall(-126,23,-108, -122,24.3f,-106, sandD); wall(-118,23,-120, -116,25,-117, sandD);
-        // Tall pylons along the walls to grapple
-        for (float x : {-60.f, -96.f}) {
-            wall(x - 1, 0, -123.9f, x + 1, 34, -122, sandD);
-            neon(x - 1.05f, 31, -123.9f, x + 1.05f, 31.4f, -121.95f, gold);
+        // Columns along both walls, beams across at 28 m (grapple them)
+        for (float x : {-120.f, -135.f, -150.f, -165.f, -180.f, -195.f})
+            for (float z : {-132.f, -105.f}) {
+                wall(x - 1, 0, z - 1, x + 1, 35, z + 1, sandD);
+                B.ring(x - 1, z - 1, x + 1, z + 1, 26.f, 26.4f, gold);
+                prop(x - 1.2f, 33.f, z - 1.2f, x + 1.2f, 35.f, z + 1.2f, sand);   // capitals
+            }
+        B.mat = Mat::METAL;
+        for (float x : {-135.f, -165.f, -195.f}) {
+            wall(x - 0.5f, 27.5f, -133, x + 0.5f, 28.5f, -104, {0.30f,0.27f,0.25f});
+            neon(x - 0.15f, 27.4f, -133, x + 0.15f, 27.5f, -104, gold * 0.7f);
         }
-        place({-28.f, 3.f, -104.f}, 1); place({-30.f, 3.f, -120.f}, 0); place({-20.f, 3.f, -120.f}, 0);
-        a.waves = {{
-            W{EnemyType::MITE, 0, {{-44,7,-108},{-46,7,-116},{-50,7,-112}}},
-            W{EnemyType::HUSK, 0, {{-62,11,-104},{-64,11,-121},{-100,19,-104},{-128,23,-104}}},
-            W{EnemyType::SENTINEL, 0, {{-84,15,-112},{-102,19,-120},{-120,23,-112}}},
-            W{EnemyType::BRUTE, 0, {{-78,15,-108}}},
-        }};
+        B.mat = Mat::BRICK;
+        // Banners down the walls between the columns
+        for (float x : {-127.5f, -142.5f, -157.5f, -172.5f, -187.5f}) {
+            prop(x - 1.4f, 27.f, -132.9f, x + 1.4f, 34.f, -132.7f, {0.45f,0.12f,0.10f});
+            prop(x - 1.4f, 27.f, -104.3f, x + 1.4f, 34.f, -104.1f, {0.45f,0.12f,0.10f});
+            neon(x - 1.4f, 27.f, -132.7f, x + 1.4f, 27.2f, -132.6f, gold * 0.5f);
+            neon(x - 1.4f, 27.f, -104.4f, x + 1.4f, 27.2f, -104.3f, gold * 0.5f);
+        }
+        // Cover on the terraces
+        wall(-148,8,-112, -146,9.3f,-109, sandD); wall(-136,4,-124, -133,5.3f,-122, sandD);
+        wall(-168,12,-122, -164,14.5f,-120, sandD); wall(-180,16,-118, -177,17.3f,-115, sandD);
+        wall(-199,20,-121, -196,21.3f,-118, sandD); wall(-192,20,-110, -190,22,-107, sandD);
+        place({-118.f, 0.f, -108.f}, 1); place({-118.f, 0.f, -128.f}, 0);
+        a.waves = {
+            {
+                W{EnemyType::MITE, 0, {{-133,4,-110},{-135,4,-128},{-138,4,-117}}},
+                W{EnemyType::HUSK, 0, {{-150,8,-109},{-152,8,-127},{-182,16,-110},{-196,20,-114}}},
+                W{EnemyType::SENTINEL, 0, {{-161,12,-114},{-184,16,-126},{-198,20,-126}}},
+                W{EnemyType::BRUTE, 0, {{-164,12,-109}}},
+            },
+            {
+                W{EnemyType::RAPTOR, 0, {{-150,24,-118},{-180,24,-112}}},
+                W{EnemyType::JUGGERNAUT, 0, {{-194,20,-114}}},
+                W{EnemyType::HUSK, 0, {{-160,12,-128},{-176,16,-128}}},
+                W{EnemyType::MITE, 0, {{-176,16,-110},{-180,16,-122},{-184,16,-114}}},
+            },
+        };
     }
 
     // =========================================================================
-    // 3 THE SPAN — north at y 23 over a void. Landing, twin bridges, an island,
-    // a gap (ferries, a beam, or grapple the anchors), a bigger island with a
-    // sniper perch, a sweeper, the far landing. Fall and you're back at the start.
+    // 4 THE SPAN — north at 20 m into an open canyon: an entry cliff, twin
+    // bridges, an island, a gap (ferries, a beam, or grapple the canyon wall),
+    // a bigger island with a sniper perch, a sweeper, the far cliff. Fall and
+    // you're back on the entry cliff. Exit east from the far end.
     // =========================================================================
     {
-        vec3 rock{0.46f,0.48f,0.56f}, rockD{0.30f,0.32f,0.40f}, ice{0.4f,0.9f,1.f};
+        vec3 rock{0.46f,0.48f,0.56f}, rockD{0.30f,0.32f,0.40f}, ice{0.4f,0.9f,1.f}, panel{0.32f,0.35f,0.42f};
         Arena& a = section("THE SPAN", "MIND THE GAPS",
-                           aabb(-143.6f, 0, -249.6f, -104.8f, 44, -122.8f), aabb(-144, 23, -250, -104, 38, -124),
-                           {-124.f, 23.f, -129.f}, aabb(-144, -1, -250, -104, 70, -141), Ambient::WIND,
+                           aabb(-215, 0, -272, -171, 44, -152), aabb(-215, 20, -272, -171, 38, -152),
+                           {-190.5f, 20.f, -137.f}, -90.f, aabb(-215, -1, -272, -171, 70, -168), Ambient::WIND,
                            theme({0.12f,0.32f,0.70f}, {0.75f,0.86f,0.97f}, {0.30f,0.32f,0.40f}, {0.4f,0.5f,-1.f}, {1.6f,1.5f,1.3f}, 0.05f, 0.f,
                                  {0.42f,0.48f,0.62f}, 0.f, {-0.3f,-0.8f,0.5f}, {1.15f,1.1f,1.f},
                                  {0.46f,0.52f,0.68f}, {0.2f,0.2f,0.24f}, {0.68f,0.76f,0.88f}, 0.004f));
-        a.voidY = 12.f;
-        wall(-136,0,-138, -112,23,-125, rock);                       // entry landing (a cliff)
-        wall(-134,22.4f,-160, -130,23,-138, rockD);                   // twin bridges
-        wall(-118,22.4f,-160, -114,23,-138, rockD);
-        wall(-138,18,-176, -110,23,-160, rock);                       // island 1
-        wall(-128,23,-170, -120,24.3f,-168, rockD);
-        wall(-136,23,-164, -133,28,-161, rockD);
-        wall(-131,22.5f,-190, -130,23,-176, rockD);                   // the beam
-        B.mover({-122.f, 22.75f, -178.5f}, {2.f, 0.25f, 2.f}, Mover::Path::PINGPONG, {0,0,0}, {0,0,-9.f}, 5.f, 0.f, ice);
-        B.mover({-115.f, 22.75f, -178.5f}, {2.f, 0.25f, 2.f}, Mover::Path::PINGPONG, {0,0,0}, {0,0,-9.f}, 5.f, 0.5f, ice);
-        wall(-112,29,-184, -110,31,-182, rockD);                      // grapple anchors
-        wall(-139,29,-184, -137,31,-182, rockD);
-        wall(-142,18,-212, -106,23,-190, rock);                       // island 2
-        wall(-128,23,-206, -120,26,-198, rockD);                      // sniper perch
-        wall(-120,23,-202, -118,24.5f,-200, rockD);                   // step up to it
-        wall(-140,23,-196, -136,24.3f,-194, rockD);
-        wall(-112,23,-208, -108,24.3f,-206, rockD);
-        B.mover({-124.f, 22.75f, -218.f}, {3.f, 0.25f, 3.f}, Mover::Path::PINGPONG, {-10.f,0,0}, {10.f,0,0}, 7.f, 0.f, ice);
-        wall(-110,22.4f,-224, -106,23,-212, rockD);                   // narrow east bridge
-        wall(-142,0,-250, -106,23,-224, rock);                        // far landing (cliff)
-        // The landing's edge glows; pillars hold the islands up (visual only)
-        neon(-136,22.7f,-138.12f, -112,23,-138, ice);
-        for (float x : {-134.f, -114.f}) { prop(x - 1.5f, 0, -170, x + 1.5f, 18, -167, rockD); prop(x - 2, 0, -203, x + 2, 18, -199, rockD); }
-        // Exit gate in the east wall of the tower beyond
-        a.exitDoor = B.door(-105.9f, -248, -105.1f, -238, 6.f, {0.2f,0.22f,0.28f}, false, 23.f);
-        place({-124.f, 23.f, -132.f}, 1); place({-130.f, 23.f, -134.f}, 0);
-        a.waves = {{
-            W{EnemyType::HUSK, 0, {{-130,23,-172},{-114,23,-166},{-136,23,-200},{-112,23,-196}}},
-            W{EnemyType::RIPPER, 0, {{-124,23,-164},{-116,23,-172}}},
-            W{EnemyType::SENTINEL, 0, {{-124,26,-202},{-136,23,-244}}},
-            W{EnemyType::BRUTE, 0, {{-124,23,-194}}},
-            W{EnemyType::RAPTOR, 0, {{-124,31,-180},{-118,31,-215},{-130,31,-232}}},
-        }};
-    }
+        a.voidY = 9.f;
+        a.respawn = {-190.5f, 20.f, -158.f}; a.hasRespawn = true;
+        AABB t3 = B.tube(2, -151.f, -134.f, -190.5f, 20.f, TW, TH, panel, ice);
+        B.booster(aabb(-193, 20, -148, -188, 20 + TH, -138), {0, 0, -1}, BOOST);
+        a.extraZones = {t3};
 
-    // =========================================================================
-    // 4 THE WELL — a tower you enter at the top and fall through: a balcony at
-    // 23, floors at 16 and 9 each with a hole in a different corner, then the
-    // ground and the exit east. Gunners on every floor.
-    // =========================================================================
-    {
-        vec3 brick{0.40f,0.30f,0.30f}, brickD{0.26f,0.20f,0.21f}, steel{0.30f,0.32f,0.36f}, red{1.f,0.35f,0.25f};
-        Arena& a = section("THE WELL", "DROP THROUGH THE FLOORS",
-                           aabb(-106.2f, 0, -259.6f, -62.6f, 34, -220.4f), aabb(-105, 0, -260, -64, 30, -220),
-                           {-101.f, 23.f, -243.f}, aabb(-97, -1, -260, -64, 60, -220), Ambient::MOTES,
-                           theme({0.05f,0.03f,0.06f}, {0.30f,0.12f,0.12f}, {0.06f,0.03f,0.04f}, {0.f,0.4f,-1.f}, {0.f,0.f,0.f}, 0.01f, 0.f,
-                                 {0.08f,0.04f,0.05f}, 0.f, {0.2f,-1.f,0.2f}, {0.6f,0.45f,0.4f},
-                                 {0.18f,0.14f,0.18f}, {0.30f,0.12f,0.08f}, {0.12f,0.05f,0.05f}, 0.012f));
-        // Shell: west wall (with the doorway at the top), south, north, east (exit at the bottom), roof
-        wall(-106,0,-261, -105,34,-248, brick);
-        wall(-106,0,-238, -105,34,-219, brick);
-        wall(-106,0,-248, -105,23,-238, brick);
-        wall(-106,29,-248, -105,34,-238, brick);
-        wall(-106,0,-261, -63,34,-260, brick);
-        wall(-106,0,-220, -63,34,-219, brick);
-        wall(-64,0,-260, -63,34,-245, brick);
-        wall(-64,0,-235, -63,34,-220, brick);
-        wall(-64,6,-245, -63,34,-235, brick);
-        wall(-106,34,-261, -63,35,-219, brickD);
-        a.exitDoor = B.door(-63.9f, -245, -63.1f, -235, 6.f, {0.2f,0.18f,0.2f}, false, 0.f);
-        L.floors.push_back({-105.f, -260.f, -64.f, -220.f, 0.f, {0.22f,0.18f,0.18f}});
-        wall(-105,22.4f,-260, -97,23,-220, steel);                    // balcony
-        wall(-97,15.4f,-260, -64,16,-232, steel);                     // floor 1, hole north-east
-        wall(-97,15.4f,-232, -76,16,-220, steel);
-        wall(-91,8.4f,-260, -64,9,-246, steel);                       // floor 2, hole south-west
-        wall(-105,8.4f,-246, -64,9,-220, steel);
-        wall(-86,0,-242, -82,34,-238, brickD);                        // central column
-        for (float y : {22.6f, 15.6f, 8.6f}) {                        // floor edges glow
-            neon(-105,y,-259.9f, -64,y + 0.25f,-259.75f, red * 0.8f);
-            neon(-105,y,-220.25f, -64,y + 0.25f,-220.1f, red * 0.8f);
+        // The canyon: rock walls 40 m high
+        B.mat = Mat::ROCK;
+        B.wallX(-216, -170, -152, -151, 0, 40, rock, {Gap{-193, -188, 20.f, 20.f + TH}});
+        a.entryGate = B.doorway(true, -193, -188, -152, -151, 20.f, TH, ice);
+        B.wallZ(-273, -151, -216, -215, 0, 40, rock);
+        B.wallZ(-273, -151, -171, -170, 0, 40, rock, {Gap{-266, -261, 20.f, 20.f + TH}});
+        a.exitDoor = B.doorway(false, -266, -261, -171, -170, 20.f, TH, ice, true);
+        B.wallX(-216, -170, -273, -272, 0, 40, rock);
+        // Ledges and outcrops on the canyon walls (grapple points)
+        wall(-215,27,-216, -213,29,-212, rockD); wall(-173,27,-216, -171,29,-212, rockD);
+        wall(-215,31,-185, -212,33,-180, rockD); wall(-174,31,-245, -171,33,-240, rockD);
+        wall(-215,24,-255, -213,26,-250, rockD); wall(-173,24,-178, -171,26,-174, rockD);
+        // Peaks beyond the walls
+        const float peaks[][4] = {{-232,-170,14,52},{-238,-215,20,60},{-230,-255,12,48},{-154,-190,14,50},{-150,-230,18,56},{-158,-150,10,44}};
+        for (auto& p : peaks) {
+            float x = p[0], z = p[1], w = p[2] * 0.5f, h = p[3];
+            prop(x - w, 0, z - w, x + w, h * 0.7f, z + w, {0.30f,0.33f,0.42f});
+            prop(x - w * 0.5f, h * 0.7f, z - w * 0.5f, x + w * 0.5f, h, z + w * 0.5f, {0.36f,0.40f,0.5f});
+            prop(x - w * 0.2f, h, z - w * 0.2f, x + w * 0.2f, h + 4.f, z + w * 0.2f, {0.85f,0.88f,0.95f});
         }
-        neon(-97.12f,22.4f,-260, -97.f,23.f,-220, red);
-        wall(-74,16,-254, -70,17.3f,-252, brickD);  wall(-92,9,-232, -88,10.3f,-230, brickD);
-        wall(-100,0,-228, -96,1.3f,-226, brickD);   wall(-72,0,-256, -68,1.3f,-254, brickD);
-        place({-101.f, 23.f, -232.f}, 1); place({-101.f, 23.f, -254.f}, 0);
-        a.waves = {{
-            W{EnemyType::HUSK, 0, {{-80,16,-250},{-90,16,-226},{-74,9,-226}}},
-            W{EnemyType::SENTINEL, 0, {{-70,16,-246}}},
-            W{EnemyType::MITE, 0, {{-80,9,-252},{-70,9,-240},{-96,9,-232}}},
-            W{EnemyType::BRUTE, 0, {{-75,0,-240}}},
-            W{EnemyType::RIPPER, 0, {{-95,0,-232},{-70,0,-250}}},
-        }};
+        // Entry cliff, twin bridges, island 1
+        wall(-215,0,-166, -171,20,-152, rock);
+        wall(-202,19.4f,-186, -198,20,-166, rockD);
+        wall(-188,19.4f,-186, -184,20,-166, rockD);
+        wall(-213,15,-206, -173,20,-186, rock);
+        wall(-197,20,-198, -189,21.3f,-196, rockD);
+        wall(-210,20,-192, -207,25,-189, rockD);
+        // The first gap: a beam, two ferries
+        wall(-202,19.5f,-221, -201,20,-206, rockD);
+        B.mover({-193.f, 19.75f, -208.5f}, {2.f, 0.25f, 2.f}, Mover::Path::PINGPONG, {0,0,0}, {0,0,-10.f}, 5.f, 0.f, ice);
+        B.mover({-185.f, 19.75f, -208.5f}, {2.f, 0.25f, 2.f}, Mover::Path::PINGPONG, {0,0,0}, {0,0,-10.f}, 5.f, 0.5f, ice);
+        // Island 2 with its sniper perch
+        wall(-214,15,-246, -172,20,-221, rock);
+        wall(-197,20,-238, -189,23,-230, rockD);
+        wall(-189,20,-234, -187,21.5f,-232, rockD);
+        wall(-210,20,-228, -206,21.3f,-226, rockD); wall(-180,20,-240, -176,21.3f,-238, rockD);
+        // The second gap: a sweeper and a narrow bridge, then the far cliff
+        B.mover({-193.f, 19.75f, -252.f}, {3.f, 0.25f, 3.f}, Mover::Path::PINGPONG, {-10.f,0,0}, {10.f,0,0}, 7.f, 0.f, ice);
+        wall(-178,19.4f,-258, -174,20,-246, rockD);
+        wall(-215,0,-272, -171,20,-258, rock);
+        // Pillars holding the islands up, glowing cliff edges
+        for (float x : {-208.f, -178.f}) { wall(x - 1.5f, 0, -199, x + 1.5f, 15, -195, rockD); wall(x - 2, 0, -236, x + 2, 15, -231, rockD); }
+        neon(-215,19.7f,-166.12f, -171,20,-166, ice);
+        neon(-213,19.7f,-186.1f, -173,20,-185.98f, ice * 0.7f); neon(-213,19.7f,-206.02f, -173,20,-205.9f, ice * 0.7f);
+        neon(-214,19.7f,-221.1f, -172,20,-220.98f, ice * 0.7f); neon(-214,19.7f,-246.02f, -172,20,-245.9f, ice * 0.7f);
+        neon(-215,19.7f,-258.02f, -171,20,-257.9f, ice);
+        B.mat = Mat::BRICK;
+        place({-190.5f, 20.f, -158.f}, 1); place({-200.f, 20.f, -160.f}, 0);
+        a.waves = {
+            {
+                W{EnemyType::HUSK, 0, {{-205,20,-190},{-181,20,-194},{-207,20,-224},{-177,20,-230}}},
+                W{EnemyType::RIPPER, 0, {{-193,20,-190},{-185,20,-200}}},
+                W{EnemyType::SENTINEL, 0, {{-193,23,-234},{-207,20,-266}}},
+                W{EnemyType::BRUTE, 0, {{-193,20,-226}}},
+                W{EnemyType::RAPTOR, 0, {{-193,28,-212},{-187,28,-240},{-199,28,-262}}},
+            },
+            {
+                W{EnemyType::JUGGERNAUT, 0, {{-193,20,-266}}},
+                W{EnemyType::HUSK, 0, {{-202,20,-240},{-182,20,-226}}},
+                W{EnemyType::RAPTOR, 0, {{-200,30,-200},{-184,30,-250}}},
+            },
+        };
     }
 
     // =========================================================================
-    // 5 THE PUMPWORKS — east under a roof. A 20 m tunnel with a lava strip
-    // opens into a 32 m hall with side galleries and a pump block a Brute
-    // guards, then narrows again to the exit.
+    // 5 THE WELL — a short tube east into a tower you enter near the top and
+    // fall through: a balcony at 20, floors at 13 and 6.5 each with a hole in
+    // a different corner, then the ground and the exit east.
     // =========================================================================
     {
-        vec3 iron{0.34f,0.31f,0.30f}, rust{0.50f,0.28f,0.17f}, dark{0.18f,0.17f,0.18f}, orange{1.f,0.4f,0.08f};
-        Arena& a = section("THE PUMPWORKS", "THROUGH THE HALL",
-                           aabb(-64.4f, 0, -255.6f, 77.6f, 10, -224.4f), aabb(-63, 0, -256, 76, 9, -224),
-                           {-58.f, 0.f, -240.f}, aabb(-44, -1, -257, 77, 40, -223), Ambient::EMBERS,
+        vec3 brick{0.40f,0.30f,0.30f}, brickD{0.26f,0.20f,0.21f}, steel{0.30f,0.32f,0.36f}, red{1.f,0.35f,0.25f},
+             panel{0.34f,0.28f,0.30f};
+        Arena& a = section("THE WELL", "DROP THROUGH THE FLOORS",
+                           aabb(-160, 0, -283, -121, 34, -244), aabb(-160, 0, -283, -121, 30, -244),
+                           {-167.5f, 20.f, -263.5f}, 0.f, aabb(-152, -1, -283, -121, 60, -244), Ambient::MOTES,
+                           theme({0.05f,0.03f,0.06f}, {0.30f,0.12f,0.12f}, {0.06f,0.03f,0.04f}, {0.f,0.4f,-1.f}, {0.f,0.f,0.f}, 0.01f, 0.f,
+                                 {0.08f,0.04f,0.05f}, 0.f, {0.3f,-1.f,0.25f}, {0.85f,0.62f,0.52f},
+                                 {0.30f,0.22f,0.28f}, {0.40f,0.17f,0.11f}, {0.14f,0.06f,0.06f}, 0.010f));
+        AABB t4 = B.tube(0, -170.f, -161.f, -263.5f, 20.f, TW, TH, panel, red);
+        a.extraZones = {t4};
+
+        B.wallZ(-284, -243, -161, -160, 0, 35, brick, {Gap{-266, -261, 20.f, 20.f + TH}});
+        a.entryGate = B.doorway(false, -266, -261, -161, -160, 20.f, TH, red);
+        B.wallZ(-284, -243, -121, -120, 0, 35, brick, {Gap{-266, -261, 0.f, TH}});
+        a.exitDoor = B.doorway(false, -266, -261, -121, -120, 0.f, TH, red, true);
+        B.wallX(-161, -120, -284, -283, 0, 35, brick);
+        B.wallX(-161, -120, -244, -243, 0, 35, brick);
+        wall(-161,34,-284, -120,35,-243, brickD);
+        L.floors.push_back({-160.f, -283.f, -121.f, -244.f, 0.f, {0.22f,0.18f,0.18f}});
+        B.mat = Mat::METAL;
+        wall(-160,19.4f,-283, -152,20,-244, steel);                    // balcony
+        wall(-152,12.4f,-283, -121,13,-256, steel);                    // floor 1, hole south-east
+        wall(-152,12.4f,-256, -133,13,-244, steel);
+        wall(-146,5.9f,-283, -121,6.5f,-268, steel);                   // floor 2, hole north-west
+        wall(-160,5.9f,-268, -121,6.5f,-244, steel);
+        B.mat = Mat::BRICK;
+        wall(-142,0,-266, -138,34,-262, brickD);                       // central column
+        for (float y : {28.f, 21.f, 14.f, 7.f}) B.ring(-142, -266, -138, -262, y, y + 0.25f, red * 0.8f);
+        for (float y : {19.6f, 12.6f, 6.1f}) {                         // floor edges glow
+            neon(-160,y,-282.9f, -121,y + 0.25f,-282.75f, red * 0.8f);
+            neon(-160,y,-244.25f, -121,y + 0.25f,-244.1f, red * 0.8f);
+        }
+        neon(-152.12f,19.4f,-283, -152.f,20.f,-244, red);
+        neon(-133.1f,12.4f,-256, -133,13,-244, red); neon(-133,12.4f,-256.1f, -121,13,-256, red);
+        neon(-146,5.9f,-283, -145.9f,6.5f,-268, red); neon(-160,5.9f,-268, -146,6.5f,-267.9f, red);
+        for (float y : {3.f, 9.5f, 16.f, 25.f})                       // wall lamps on every floor
+            for (float z : {-276.f, -251.f}) {
+                neon(-120.95f - 0.07f, y, z - 0.6f, -120.95f, y + 1.4f, z + 0.6f, vec3{1.f,0.55f,0.35f} * 0.8f);
+                neon(-160.05f, y, z - 0.6f, -159.98f, y + 1.4f, z + 0.6f, vec3{1.f,0.55f,0.35f} * 0.8f);
+            }
+        wall(-128,13,-276, -124,14.3f,-274, brickD);  wall(-150,6.5f,-252, -146,7.8f,-250, brickD);
+        wall(-155,0,-250, -151,1.3f,-248, brickD);    wall(-127,0,-282, -123,1.3f,-280, brickD);
+        // Chains and a hanging cage in the shaft; fans in the roof
+        for (float x : {-148.f, -130.f}) prop(x - 0.08f, 22.f, -270.08f, x + 0.08f, 34.f, -269.92f, steel);
+        prop(-150, 26.f, -258, -146, 30.f, -254, steel * 0.6f);
+        L.fans.push_back({{-130.f, 33.9f, -275.f}, 2.2f, 1, red});
+        L.fans.push_back({{-150.f, 33.9f, -275.f}, 2.2f, 1, red});
+        place({-156.f, 20.f, -250.f}, 1); place({-156.f, 20.f, -278.f}, 0);
+        a.waves = {
+            {
+                W{EnemyType::HUSK, 0, {{-140,13,-275},{-146,13,-250},{-128,6.5f,-250}}},
+                W{EnemyType::SENTINEL, 0, {{-125,13,-270}}},
+                W{EnemyType::MITE, 0, {{-138,6.5f,-274},{-126,6.5f,-260},{-150,6.5f,-256}}},
+                W{EnemyType::BRUTE, 0, {{-128,0,-272}}},
+                W{EnemyType::RIPPER, 0, {{-150,0,-256},{-130,0,-252}}},
+            },
+            {
+                W{EnemyType::JUGGERNAUT, 0, {{-135,0,-278}}},
+                W{EnemyType::HUSK, 0, {{-128,13,-262},{-148,6.5f,-262}}},
+                W{EnemyType::RAPTOR, 0, {{-140,24,-255}}},
+                W{EnemyType::RIPPER, 0, {{-152,0,-274},{-126,0,-250}}},
+            },
+        };
+    }
+
+    // =========================================================================
+    // 6 THE PUMPWORKS — east down a long boost tube (a bulkhead door halfway)
+    // into a roofed hall: galleries along both walls, a pump block in the
+    // middle, lava across the floor, and a control room behind each gallery
+    // whose gunners shoot out through the windows.
+    // =========================================================================
+    {
+        vec3 iron{0.34f,0.31f,0.30f}, rust{0.50f,0.28f,0.17f}, dark{0.18f,0.17f,0.18f}, orange{1.f,0.4f,0.08f},
+             panel{0.33f,0.30f,0.28f}, screen{0.3f,1.f,0.6f};
+        Arena& a = section("THE PUMPWORKS", "CLEAR THE HALL",
+                           aabb(-79, 0, -283, -19, 14, -244), aabb(-79, 0, -296, -19, 13, -231),
+                           {-117.5f, 0.f, -263.5f}, 0.f, aabb(-77, -1, -296, -19, 60, -231), Ambient::EMBERS,
                            theme({0.05f,0.03f,0.02f}, {0.32f,0.14f,0.05f}, {0.05f,0.02f,0.01f}, {0.f,0.3f,-1.f}, {0.f,0.f,0.f}, 0.01f, 0.f,
                                  {0.06f,0.03f,0.02f}, 0.f, {0.2f,-1.f,0.15f}, {0.6f,0.42f,0.3f},
                                  {0.12f,0.10f,0.10f}, {0.42f,0.17f,0.06f}, {0.16f,0.07f,0.03f}, 0.014f));
-        L.floors.push_back({-64.f, -256.f, 77.f, -224.f, 0.f, {0.24f,0.22f,0.21f}});
-        wall(-64,0,-257, 77,10,-256, iron);  wall(-64,0,-224, 77,10,-223, iron);
-        wall(-63,0,-256, -20,10,-250, iron); wall(-63,0,-230, -20,10,-224, iron);   // narrow west part
-        wall(36,0,-256, 76,10,-250, iron);   wall(36,0,-230, 76,10,-224, iron);     // narrow east part
-        wall(-64,10,-257, 77,11,-223, dark);                                        // roof
-        wall(76,0,-250, 77,10,-245, iron); wall(76,0,-235, 77,10,-230, iron); wall(76,6,-245, 77,10,-235, iron);
-        a.exitDoor = B.door(76.1f, -245, 76.9f, -235, 6.f, {0.22f,0.2f,0.18f}, false, 0.f);
-        // Lava across the tunnel: jump it
-        L.hazards.push_back({aabb(-38, 0, -250, -35, 0.06f, -230), 30.f});
-        L.hazards.push_back({aabb(20, 0, -252, 24, 0.06f, -228), 30.f});
-        for (auto& hz : L.hazards) neon(hz.box.min.x, 0, hz.box.min.z, hz.box.max.x, 0.06f, hz.box.max.z, {1.f,0.24f,0.02f});
-        // The hall: galleries both sides, the pump block, pads up
-        wall(-20,0,-256, 36,4,-252, rust); wall(-20,0,-228, 36,4,-224, rust);
-        neon(-20,3.7f,-252.02f, 36,4,-251.9f, orange); neon(-20,3.7f,-228.1f, 36,4,-227.98f, orange);
-        wall(0,0,-246, 16,5,-234, iron);
-        B.ring(0, -246, 16, -234, 3.f, 3.3f, orange);
-        pad({-12.f, 0.f, -247.f}, {0.f, 15.f, -8.f});
-        pad({ 28.f, 0.f, -233.f}, {0.f, 15.f,  8.f});
-        // Pillars in the tunnels, crates in the hall
-        for (float x : {-28.f, 46.f, 60.f}) { wall(x - 1,0,-249, x + 1,10,-247, iron); wall(x - 1,0,-233, x + 1,10,-231, iron); }
-        wall(-8,0,-240, -5,1.4f,-237, rust); wall(26,0,-246, 29,1.4f,-243, rust); wall(52,0,-242, 55,1.4f,-238, rust);
-        place({-50.f, 0.f, -246.f}, 1); place({-50.f, 0.f, -234.f}, 0); place({-56.f, 0.f, -234.f}, 0);
-        a.waves = {{
-            W{EnemyType::RIPPER, 0, {{-30,0,-238},{-26,0,-244},{50,0,-234},{64,0,-244}}},
-            W{EnemyType::HUSK, 0, {{-4,4,-254},{20,4,-226},{30,4,-254}}},
-            W{EnemyType::BRUTE, 0, {{8,5,-240}}},
-            W{EnemyType::JUGGERNAUT, 0, {{64,0,-240}}},
-            W{EnemyType::MITE, 0, {{-10,0,-232},{-8,0,-248},{32,0,-240}}},
-        }};
+        AABB t5 = B.tube(0, -120.f, -80.f, -263.5f, 0.f, TW, TH, panel, orange);
+        B.booster(aabb(-116, 0, -266, -104, TH, -261), {1, 0, 0}, BOOST);
+        B.booster(aabb(-96, 0, -266, -84, TH, -261), {1, 0, 0}, BOOST);
+        tubeDoor(-100.f, -263.5f, orange);
+        place({-110.f, 0.f, -263.5f}, 1);
+
+        // The hall
+        B.mat = Mat::METAL;
+        B.wallZ(-284, -243, -80, -79, 0, 15, iron, {Gap{-266, -261, 0.f, TH}});
+        a.entryGate = B.doorway(false, -266, -261, -80, -79, 0.f, TH, orange);
+        B.wallZ(-284, -243, -19, -18, 0, 15, iron, {Gap{-266, -261, 0.f, TH}});
+        a.exitDoor = B.doorway(false, -266, -261, -19, -18, 0.f, TH, orange, true);
+        std::vector<Gap> side = {{-52, -47, 5.f, 9.f}, {-58, -55, 6.5f, 9.f}, {-44, -41, 6.5f, 9.f}};
+        B.wallX(-80, -18, -284, -283, 0, 15, iron, side);
+        B.wallX(-80, -18, -244, -243, 0, 15, iron, side);
+        B.doorway(true, -52, -47, -284, -283, 5.f, 4.f, screen);
+        B.doorway(true, -52, -47, -244, -243, 5.f, 4.f, screen);
+        wall(-80,14,-284, -18,15,-243, dark);
+        L.floors.push_back({-79.f, -283.f, -19.f, -244.f, 0.f, {0.24f,0.22f,0.21f}});
+        // Galleries along both long walls, pads up to them
+        wall(-79,4.6f,-283, -19,5,-278, dark); wall(-79,4.6f,-249, -19,5,-244, dark);
+        neon(-79,4.6f,-278.02f, -19,5,-277.9f, orange); neon(-79,4.6f,-249.1f, -19,5,-248.98f, orange);
+        pad({-30.f, 0.f, -275.f}, {0.f, 17.f, -6.f}); pad({-30.f, 0.f, -252.f}, {0.f, 17.f, 6.f});
+        pad({-72.f, 0.f, -275.f}, {0.f, 17.f, -6.f}); pad({-72.f, 0.f, -252.f}, {0.f, 17.f, 6.f});
+        // The pump block (a pad onto it), lava across the floor, pillars, crates
+        wall(-56,0,-270, -42,6,-257, rust);
+        B.ring(-56, -270, -42, -257, 3.f, 3.3f, orange);
+        pad({-59.f, 0.f, -263.5f}, {4.f, 19.f, 0.f});
+        L.hazards.push_back({aabb(-70, 0, -278, -67, 0.06f, -249), 30.f});
+        neon(-70, 0, -278, -67, 0.06f, -249, {1.f,0.24f,0.02f});
+        for (float x : {-65.f, -33.f}) for (float z : {-272.f, -255.f}) {
+            wall(x - 1,0,z - 1, x + 1,14,z + 1, iron);
+            B.ring(x - 1, z - 1, x + 1, z + 1, 9.f, 9.3f, orange);
+        }
+        wall(-28,0,-262, -25,1.4f,-259, rust); wall(-38,0,-266, -35,1.4f,-263, rust); wall(-61,0,-251, -58,1.4f,-248, rust);
+        // A crane sweeping the length of the hall under the roof
+        B.mover({-49.f, 11.25f, -263.5f}, {2.5f, 0.25f, 1.5f}, Mover::Path::PINGPONG, {-24.f,0,0}, {22.f,0,0}, 12.f, 0.f, orange);
+        prop(-75,13.4f,-264, -25,14,-263, dark);
+        L.fans.push_back({{-78.7f, 10.f, -255.f}, 1.6f, 0, orange});
+        L.fans.push_back({{-78.7f, 10.f, -272.f}, 1.6f, 0, orange});
+        // Control rooms behind both galleries: a floor at 5, consoles, screens
+        for (int s : {-1, 1}) {
+            float zin = s < 0 ? -284.f : -243.f, zout = s < 0 ? -296.f : -231.f;
+            float lo = std::min(zin, zout), hi = std::max(zin, zout);
+            wall(-60, 0, lo, -40, 5, hi, iron);                        // floor block
+            B.wallX(-61, -39, s < 0 ? zout - 1 : zout, s < 0 ? zout : zout + 1, 0, 12, iron);
+            B.wallZ(lo - (s < 0 ? 1 : 0), hi + (s > 0 ? 1 : 0), -61, -60, 0, 12, iron);
+            B.wallZ(lo - (s < 0 ? 1 : 0), hi + (s > 0 ? 1 : 0), -40, -39, 0, 12, iron);
+            wall(-61, 11, lo - (s < 0 ? 1 : 0), -39, 12, hi + (s > 0 ? 1 : 0), dark);
+            float zc = s < 0 ? zout + 1.f : zout - 2.2f;               // consoles along the back wall
+            for (float x : {-57.f, -50.f, -43.f}) {
+                wall(x - 2, 5, std::min(zc, zc + 1.2f), x + 2, 6.2f, std::max(zc, zc + 1.2f), dark);
+                float zs = s < 0 ? zout + 0.02f : zout - 0.09f;
+                neon(x - 1.8f, 6.6f, zs, x + 1.8f, 8.4f, zs + 0.07f, screen * 0.45f);
+            }
+            neon(-60, 10.9f, lo + 1, -40, 11, hi - 1, vec3{0.8f,1.f,0.9f} * 0.35f);
+        }
+        B.mat = Mat::BRICK;
+        a.extraZones = {t5, aabb(-60, 5, -296, -40, 11, -283), aabb(-60, 5, -244, -40, 11, -231)};
+        a.waves = {
+            {
+                W{EnemyType::RIPPER, 0, {{-60,0,-268},{-64,0,-259},{-30,0,-250},{-26,0,-276}}},
+                W{EnemyType::HUSK, 0, {{-50,5,-290},{-45,5,-236},{-35,5,-281},{-35,5,-246}}},
+                W{EnemyType::BRUTE, 0, {{-49,6,-263.5f}}},
+                W{EnemyType::MITE, 0, {{-40,0,-252},{-38,0,-275},{-24,0,-263}}},
+            },
+            {
+                W{EnemyType::JUGGERNAUT, 0, {{-28,0,-268}}},
+                W{EnemyType::SENTINEL, 0, {{-56,5,-290},{-44,5,-236}}},
+                W{EnemyType::RAPTOR, 0, {{-62,9,-263}}},
+                W{EnemyType::MITE, 0, {{-62,0,-276},{-62,0,-250},{-40,0,-276}}},
+                W{EnemyType::HUSK, 0, {{-70,5,-280},{-70,5,-247}}},
+            },
+        };
     }
 
     // =========================================================================
-    // 6 THE TOWER — the finale. A courtyard with corner bastions and a 34 m
-    // tower: fight two waves, then ride the lifts (or grapple) to the beacon.
+    // 7 THE TOWER — the finale. Down the last tube into a courtyard with
+    // corner bastions and a 34 m tower: win two waves, then ride the lifts,
+    // the lift shaft or the pads up to the beacon on top.
     // =========================================================================
     {
-        vec3 slate{0.26f,0.26f,0.34f}, slateD{0.16f,0.16f,0.22f}, mag{1.f,0.25f,0.75f}, cyan{0.25f,0.9f,1.f};
-        const float TX = 111.f, TZ = -238.f;
+        vec3 slate{0.26f,0.26f,0.34f}, slateD{0.16f,0.16f,0.22f}, mag{1.f,0.25f,0.75f}, cyan{0.25f,0.9f,1.f},
+             panel{0.28f,0.27f,0.36f};
+        const float TX = 56.f, TZ = -263.5f;
         Arena& a = section("THE TOWER", "WIN THE YARD - THEN CLIMB",
-                           aabb(76.4f, 0, -275.6f, 145.6f, 42, -203.6f), aabb(77, 0, -276, 146, 32, -204),
-                           {80.f, 0.f, -240.f}, aabb(83, -1, -277, 147, 60, -203), Ambient::ASH,
+                           aabb(21, 0, -299, 91, 42, -228), aabb(21, 0, -299, 91, 32, -228),
+                           {-15.5f, 0.f, -263.5f}, 0.f, aabb(28, -1, -299, 91, 60, -228), Ambient::ASH,
                            theme({0.03f,0.01f,0.06f}, {0.36f,0.10f,0.30f}, {0.06f,0.02f,0.06f}, {-0.3f,0.25f,-1.f}, {1.6f,0.4f,1.1f}, 0.12f, 1.f,
                                  {0.10f,0.03f,0.10f}, 0.8f, {0.3f,-0.6f,0.7f}, {0.75f,0.55f,0.85f},
                                  {0.22f,0.14f,0.30f}, {0.10f,0.05f,0.10f}, {0.16f,0.05f,0.16f}, 0.008f));
-        L.floors.push_back({76.f, -276.f, 146.f, -204.f, 0.f, {0.24f,0.22f,0.28f}});
-        wall(76,0,-277, 77,12,-250, slate); wall(76,0,-230, 77,12,-203, slate); wall(76,10,-250, 77,12,-230, slate);
-        wall(146,0,-277, 147,12,-203, slate); wall(76,0,-277, 147,12,-276, slate); wall(76,0,-204, 147,12,-203, slate);
-        neon(77,11.4f,-276, 77.1f,11.7f,-204, mag); neon(145.9f,11.4f,-276, 146,11.7f,-204, mag);
+        AABB t6 = B.tube(0, -18.f, 21.f, -263.5f, 0.f, TW, TH, panel, mag);
+        B.booster(aabb(-13, 0, -266, -3, TH, -261), {1, 0, 0}, BOOST);
+        B.booster(aabb(5, 0, -266, 15, TH, -261), {1, 0, 0}, BOOST);
+        tubeDoor(1.f, -263.5f, mag);
+        place({-9.f, 0.f, -263.5f}, 1);
+        a.extraZones = {t6};
+
+        L.floors.push_back({21.f, -299.f, 91.f, -228.f, 0.f, {0.24f,0.22f,0.28f}});
+        B.wallZ(-300, -227, 20, 21, 0, 12, slate, {Gap{-266, -261, 0.f, TH}});
+        a.entryGate = B.doorway(false, -266, -261, 20, 21, 0.f, TH, mag);
+        B.wallZ(-300, -227, 91, 92, 0, 12, slate);
+        B.wallX(20, 92, -300, -299, 0, 12, slate);
+        B.wallX(20, 92, -228, -227, 0, 12, slate);
+        neon(21,11.4f,-299, 21.1f,11.7f,-228, mag); neon(90.9f,11.4f,-299, 91,11.7f,-228, mag);
+        neon(21,11.4f,-298.95f, 91,11.7f,-298.85f, mag); neon(21,11.4f,-228.15f, 91,11.7f,-228.05f, mag);
         // Corner bastions and pads up to them
-        wall(77,0,-276, 90,5,-264, slateD); wall(133,0,-276, 146,5,-264, slateD);
-        wall(77,0,-216, 90,5,-204, slateD); wall(133,0,-216, 146,5,-204, slateD);
-        pad({93.f, 0.f, -270.f}, {-5.f, 17.f, 0.f}); pad({130.f, 0.f, -270.f}, {5.f, 17.f, 0.f});
-        pad({93.f, 0.f, -210.f}, {-5.f, 17.f, 0.f}); pad({130.f, 0.f, -210.f}, {5.f, 17.f, 0.f});
+        wall(21,0,-299, 34,5,-287, slateD); wall(78,0,-299, 91,5,-287, slateD);
+        wall(21,0,-240, 34,5,-228, slateD); wall(78,0,-240, 91,5,-228, slateD);
+        pad({37.f, 0.f, -293.f}, {-5.f, 17.f, 0.f}); pad({75.f, 0.f, -293.f}, {5.f, 17.f, 0.f});
+        pad({37.f, 0.f, -234.f}, {-5.f, 17.f, 0.f}); pad({75.f, 0.f, -234.f}, {5.f, 17.f, 0.f});
         // The tower, two balcony rings, lifts between them, pads to the top
         wall(TX - 6, 0, TZ - 6, TX + 6, 34, TZ + 6, slateD);
         for (float top : {12.f, 24.f}) {
@@ -340,45 +627,56 @@ inline LevelData buildGauntlet() {
             B.ring(TX - 10, TZ - 10, TX + 10, TZ + 10, top - 0.5f, top - 0.2f, cyan);
         }
         B.ring(TX - 6, TZ - 6, TX + 6, TZ + 6, 33.6f, 34.f, mag);
+        for (float y : {6.f, 18.f, 30.f}) B.ring(TX - 6, TZ - 6, TX + 6, TZ + 6, y, y + 0.2f, mag * 0.6f);
         B.mover({TX - 12.f, 0.25f, TZ}, {2.f, 0.25f, 2.f}, Mover::Path::PINGPONG, {0,0,0}, {0, 11.75f, 0}, 7.f, 0.f, cyan);
         B.mover({TX + 12.f, 11.75f, TZ}, {2.f, 0.25f, 2.f}, Mover::Path::PINGPONG, {0,0,0}, {0, 12.f, 0}, 7.f, 0.5f, cyan);
         pad({TX, 24.f, TZ - 8.f}, {0.f, 26.f,  2.f});   // steep: clear the tower's edge first
         pad({TX, 24.f, TZ + 8.f}, {0.f, 26.f, -2.f});
         B.mover({TX, 18.25f, TZ}, {1.8f, 0.25f, 1.8f}, Mover::Path::ORBIT, {15.f,0,0}, {0,0,15.f}, 14.f, 0.f, mag);
+        // A lift shaft from the yard straight up to the top balcony: ride it
+        // up, and a gust at the top blows you onto the balcony
+        const float SX = TX, SZ = TZ + 20.f;
+        B.mat = Mat::PANEL;
+        for (float dx : {-2.2f, 1.8f}) for (float dz : {-2.2f, 1.8f})
+            wall(SX + dx, 0, SZ + dz, SX + dx + 0.4f, 27.5f, SZ + dz + 0.4f, panel);
+        B.mat = Mat::BRICK;
+        B.ring(SX - 2.2f, SZ - 2.2f, SX + 2.2f, SZ + 2.2f, 27.3f, 27.5f, cyan);
+        B.booster(aabb(SX - 1.8f, 0, SZ - 1.8f, SX + 1.8f, 27.f, SZ + 1.8f), {0, 1, 0}, 20.f);
+        B.booster(aabb(SX - 2.5f, 27.f, SZ - 2.5f, SX + 2.5f, 33.f, SZ + 2.5f), {0, 0, -1}, 9.f);
         // Cover in the yard
-        wall(95,0,-256, 99,1.3f,-254, slateD); wall(123,0,-222, 127,1.3f,-220, slateD);
-        wall(95,0,-222, 97,1.6f,-218, slateD); wall(125,0,-258, 127,1.6f,-254, slateD);
-        wall(136,0,-242, 138,1.3f,-234, slateD);
+        wall(40,0,-282, 44,1.3f,-280, slateD); wall(68,0,-247, 72,1.3f,-245, slateD);
+        wall(40,0,-247, 42,1.6f,-243, slateD); wall(70,0,-284, 72,1.6f,-280, slateD);
+        wall(81,0,-267, 83,1.3f,-259, slateD);
         L.finishPos = {TX, 34.f, TZ};
         L.gems.push_back({{TX, 37.5f, TZ}, {1.8f, 0.5f, 1.4f}, 1.3f, true});
-        place({82.f, 0.f, -232.f}, 1); place({82.f, 0.f, -248.f}, 0);
         a.waves = {
             {
-                W{EnemyType::HUSK, 0, {{100,0,-260},{122,0,-260},{100,0,-216},{122,0,-216}}},
-                W{EnemyType::RIPPER, 0, {{130,0,-238},{136,0,-252},{134,0,-226}}},
-                W{EnemyType::SENTINEL, 0, {{140,5,-270},{140,5,-209}}},
-                W{EnemyType::RAPTOR, 0, {{111,20,-258},{111,20,-218}}},
+                W{EnemyType::HUSK, 0, {{45,0,-293},{67,0,-293},{45,0,-234},{67,0,-234}}},
+                W{EnemyType::RIPPER, 0, {{85,0,-255},{80,0,-280},{80,0,-246}}},
+                W{EnemyType::SENTINEL, 0, {{85,5,-293},{85,5,-233}}},
+                W{EnemyType::RAPTOR, 0, {{56,20,-284},{40,20,-263}}},
             },
             {
-                W{EnemyType::BRUTE, 0, {{120,0,-266}}},
-                W{EnemyType::JUGGERNAUT, 0, {{130,0,-240}}},
-                W{EnemyType::MITE, 0, {{136,0,-258},{136,0,-220},{125,0,-212},{125,0,-268}}},
+                W{EnemyType::BRUTE, 0, {{65,0,-292}}},
+                W{EnemyType::JUGGERNAUT, 0, {{85,0,-273}}},
+                W{EnemyType::MITE, 0, {{81,0,-283},{81,0,-244},{70,0,-236},{70,0,-291}}},
                 W{EnemyType::HUSK, 0, {{TX,12,TZ - 8},{TX,12,TZ + 8}}},
-                W{EnemyType::SENTINEL, 0, {{83,5,-270},{83,5,-209}}},
+                W{EnemyType::SENTINEL, 0, {{28,5,-293},{28,5,-233}}},
             },
         };
     }
 
-    // Lighting crossfades through each gate
+    // Lighting crossfades down each tube
     L.blends = {
-        {aabb(-22, 0, -124, -9, 60, -100),     0, 1, 0, true},
-        {aabb(-136, 0, -131, -112, 60, -118),  1, 2, 2, true},
-        {aabb(-112, 0, -250, -99, 60, -234),   2, 3, 0, false},
-        {aabb(-70, 0, -250, -57, 60, -230),    3, 4, 0, false},
-        {aabb(70, 0, -250, 84, 60, -230),      4, 5, 0, false},
+        {aabb(-56, 0, -121, -16, 60, -116),   0, 1, 0, true},
+        {aabb(-112, 0, -121, -82, 60, -116),  1, 2, 0, true},
+        {aabb(-193, 0, -151, -188, 60, -134), 2, 3, 2, true},
+        {aabb(-170, 0, -266, -161, 60, -261), 3, 4, 0, false},
+        {aabb(-120, 0, -266, -80, 60, -261),  4, 5, 0, false},
+        {aabb(-18, 0, -266, 21, 60, -261),    5, 6, 0, false},
     };
 
     // Par times (seconds): S, A, B, C
-    L.parTimes[0] = 270.f; L.parTimes[1] = 390.f; L.parTimes[2] = 540.f; L.parTimes[3] = 720.f;
+    L.parTimes[0] = 300.f; L.parTimes[1] = 420.f; L.parTimes[2] = 570.f; L.parTimes[3] = 780.f;
     return L;
 }

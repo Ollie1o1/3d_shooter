@@ -91,13 +91,30 @@ static GLuint makeGreyTexture() {
     return tex;
 }
 
-// Static level geometry, batched by texture: walkable tops + floors (grid),
-// vertical sides (brick), undersides (metal) and self-lit neon (no texture).
-struct WorldMeshes { Mesh floor, walls, under, neon; };
+// Static level geometry, batched by texture. Each wall's material picks the
+// texture of its sides and of its top; undersides are always metal, and the
+// self-lit neon is drawn untextured.
+enum WorldTex { TEX_GRID, TEX_BRICK, TEX_METAL, TEX_PANEL, TEX_ROCK, TEX_CONCRETE, TEX_COUNT };
+struct WorldMeshes { Mesh byTex[TEX_COUNT]; Mesh neon; };
+
+static WorldTex sideTex(Mat m) {
+    switch (m) {
+        case Mat::PANEL: return TEX_PANEL;  case Mat::ROCK: return TEX_ROCK;
+        case Mat::METAL: return TEX_METAL;  case Mat::CONCRETE: return TEX_CONCRETE;
+        default: return TEX_BRICK;
+    }
+}
+static WorldTex topTex(Mat m) {
+    switch (m) {
+        case Mat::PANEL: case Mat::METAL: return TEX_METAL;
+        case Mat::ROCK: return TEX_ROCK;
+        default: return TEX_GRID;
+    }
+}
 
 static WorldMeshes buildWorldMeshes(const LevelData& L) {
-    std::vector<Vertex> fV, wV, uV, nV;
-    std::vector<unsigned int> fI, wI, uI, nI;
+    std::vector<Vertex> V[TEX_COUNT], nV;
+    std::vector<unsigned int> I[TEX_COUNT], nI;
     const float texScale = 0.25f;   // one texture repeat per 4 m
 
     auto pushFace = [&](std::vector<Vertex>& verts, std::vector<unsigned int>& idx,
@@ -127,11 +144,12 @@ static WorldMeshes buildWorldMeshes(const LevelData& L) {
         idx.insert(idx.end(), {base, base+1, base+2, base, base+2, base+3});
     };
 
-    auto pushBox = [&](const AABB& b, glm::vec3 col, bool neon) {
+    auto pushBox = [&](const AABB& b, glm::vec3 col, bool neon, Mat m) {
         glm::vec3 mn = b.min, mx = b.max;
-        auto& sv = neon ? nV : wV; auto& si = neon ? nI : wI;
-        auto& tv = neon ? nV : fV; auto& ti = neon ? nI : fI;
-        auto& bv = neon ? nV : uV; auto& bi = neon ? nI : uI;
+        int st = sideTex(m), tt = topTex(m);
+        auto& sv = neon ? nV : V[st];      auto& si = neon ? nI : I[st];
+        auto& tv = neon ? nV : V[tt];      auto& ti = neon ? nI : I[tt];
+        auto& bv = neon ? nV : V[TEX_METAL]; auto& bi = neon ? nI : I[TEX_METAL];
         bool shade = !neon;
         pushFace(sv, si, {mx.x,mn.y,mn.z},{mx.x,mx.y,mn.z},{mx.x,mx.y,mx.z},{mx.x,mn.y,mx.z},{ 1, 0, 0}, col, shade);
         pushFace(sv, si, {mn.x,mn.y,mx.z},{mn.x,mx.y,mx.z},{mn.x,mx.y,mn.z},{mn.x,mn.y,mn.z},{-1, 0, 0}, col, shade);
@@ -139,20 +157,18 @@ static WorldMeshes buildWorldMeshes(const LevelData& L) {
         pushFace(sv, si, {mx.x,mn.y,mn.z},{mn.x,mn.y,mn.z},{mn.x,mx.y,mn.z},{mx.x,mx.y,mn.z},{ 0, 0,-1}, col, shade);
         pushFace(tv, ti, {mn.x,mx.y,mx.z},{mx.x,mx.y,mx.z},{mx.x,mx.y,mn.z},{mn.x,mx.y,mn.z},{ 0, 1, 0}, col, false);
         if (b.min.y > 0.1f || neon)
-            pushFace(bv, bi, {mn.x,mn.y,mn.z},{mx.x,mn.y,mn.z},{mx.x,mn.y,mx.z},{mn.x,mn.y,mx.z},{ 0,-1, 0}, col, false);
+            pushFace(bv, bi, {mn.x,mn.y,mn.z},{mx.x,mn.y,mn.z},{mx.x,mn.y,mx.z},{mn.x,mn.y,mx.z},{ 0,-1, 0}, col * 0.8f, false);
     };
 
     for (auto& f : L.floors)
-        pushFace(fV, fI, {f.x0,f.y,f.z1},{f.x1,f.y,f.z1},{f.x1,f.y,f.z0},{f.x0,f.y,f.z0},{0,1,0}, f.color, false);
+        pushFace(V[TEX_GRID], I[TEX_GRID], {f.x0,f.y,f.z1},{f.x1,f.y,f.z1},{f.x1,f.y,f.z0},{f.x0,f.y,f.z0},{0,1,0}, f.color, false);
     for (int i = 0; i < (int)L.walls.size(); ++i)
-        if (!L.walls[i].hidden && !L.isDoorWall(i)) pushBox(L.walls[i].box, L.walls[i].color, false);
-    for (auto& p : L.props) pushBox(p.box, p.color, false);
-    for (auto& n : L.neon)  pushBox(n.box, n.color, true);
+        if (!L.walls[i].hidden && !L.isDoorWall(i)) pushBox(L.walls[i].box, L.walls[i].color, false, L.walls[i].mat);
+    for (auto& p : L.props) pushBox(p.box, p.color, false, p.mat);
+    for (auto& n : L.neon)  pushBox(n.box, n.color, true, Mat::BRICK);
 
     WorldMeshes m;
-    m.floor.upload(fV, fI);
-    m.walls.upload(wV, wI);
-    m.under.upload(uV, uI);
+    for (int t = 0; t < TEX_COUNT; ++t) m.byTex[t].upload(V[t], I[t]);
     m.neon.upload(nV, nI);
     return m;
 }
@@ -165,6 +181,7 @@ public:
     GameSettings* settings = nullptr;   // injected by main — may be null (safe)
     GameMode      mode = GameMode::ARENA;
     bool fast() const { return mode == GameMode::FAST; }
+    const DifficultyTuning& tune() const { return difficulty(settings ? settings->difficulty : DIFFICULTY_DEFAULT); }
 
     Player           player{{0.f,0.f,24.f}};
     StyleSystem      styleSystem;
@@ -174,7 +191,7 @@ public:
     LevelData        level;
     WaveDirector     director;
     AudioSystem&     audio;
-    PostProcess      postProcess{SCREEN_W,SCREEN_H};
+    PostProcess      postProcess{display::renderW(), display::renderH()};
     SettingsMenu     settingsMenu{SCREEN_W, SCREEN_H};
     Progression      prog;
     Records          records;
@@ -184,7 +201,8 @@ public:
     ShaderProgram  skyboxShader;
     BoxRenderer    boxRenderer;
 
-    GLuint      whiteTex = 0, floorTex = 0, wallTex = 0, ceilTex = 0;
+    GLuint      whiteTex = 0;
+    GLuint      worldTex[TEX_COUNT] = {};
     WorldMeshes world;
 
     std::vector<Enemy> enemies;
@@ -312,7 +330,7 @@ public:
     // Drops: health orbs (common, small heal, magnetic), health potions (rare,
     // big heal, only taken when hurt) and XP shards (rare, bonus XP)
     enum class PickupKind { ORB, POTION, XP };
-    struct Pickup { glm::vec3 pos, vel; float life; PickupKind kind; float floorY; };
+    struct Pickup { glm::vec3 pos, vel; float life; PickupKind kind; float floorY; glm::vec3 prev{0.f}; };
     std::vector<Pickup> pickups;
 
     struct Shockwave { glm::vec3 pos; float radius, t; glm::vec3 color; };
@@ -341,6 +359,8 @@ public:
     bool parryPrev        = false;
     float punchCooldown   = 0.f;
     bool prevDashKey      = false;
+    int  boostPrev        = -1;     // booster the player was in last tick
+    float telegraphSoundCd = 0.f;   // throttles the enemy wind-up tick
     bool prevJumpKey      = false;
     // Event-driven click flags — set in handleEvent, consumed once in physicsTick.
     bool pendingFire      = false;
@@ -394,9 +414,12 @@ public:
         glBindVertexArray(0);
 
         whiteTex = makeGreyTexture();
-        floorTex = TextureGen::generateGridFloor(128);
-        wallTex  = TextureGen::generateBrickWall(128);
-        ceilTex  = TextureGen::generateMetalCeiling(128);
+        worldTex[TEX_GRID]     = TextureGen::generateGridFloor(128);
+        worldTex[TEX_BRICK]    = TextureGen::generateBrickWall(128);
+        worldTex[TEX_METAL]    = TextureGen::generateMetalCeiling(128);
+        worldTex[TEX_PANEL]    = TextureGen::generatePanel(128);
+        worldTex[TEX_ROCK]     = TextureGen::generateRock(128);
+        worldTex[TEX_CONCRETE] = TextureGen::generateConcrete(128);
 
         level = fast() ? buildGauntlet() : buildLevel();
         spatialGrid.build(level.walls);
@@ -416,7 +439,7 @@ public:
         int start = glm::clamp(g_startArena, 0, (int)level.arenas.size() - 1);
         enterArena(start);
         director.wave = glm::clamp(g_startWave, 0, director.waveCount() - 1);
-        if (fast() && start == 0) { countdown = 3.f; pushBanner("THE GAUNTLET", "SIX LEVELS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
+        if (fast() && start == 0) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
         if (g_devCam) countdown = 0.f;
         if (g_devWeapon >= 0) activeWeapon = g_devWeapon % WEAPON_COUNT;
         if (g_devAim) aim = 1.f;
@@ -437,9 +460,7 @@ public:
 
     ~GameplayState() {
         glDeleteTextures(1,&whiteTex);
-        glDeleteTextures(1,&floorTex);
-        glDeleteTextures(1,&wallTex);
-        glDeleteTextures(1,&ceilTex);
+        glDeleteTextures(TEX_COUNT, worldTex);
         if (tracerVAO)   glDeleteVertexArrays(1, &tracerVAO);
         if (tracerVBO)   glDeleteBuffers(1, &tracerVBO);
         if (particleVAO) glDeleteVertexArrays(1, &particleVAO);
@@ -462,12 +483,15 @@ public:
     // Put the player at the start of arena `a` with the doors set as if they
     // had just walked in. Used for a fresh run, a retry after death, and --arena.
     void enterArena(int a) {
+        // Every door shut; exits of the arenas already beaten unlocked. The way
+        // in locks when the fight starts (ARENA_START).
+        for (int d = 0; d < (int)level.doors.size(); ++d) { level.doors[d].locked = false; level.setDoorInstant(d, false); }
         for (int i = 0; i < (int)level.arenas.size(); ++i) {
             const Arena& ar = level.arenas[i];
-            if (ar.exitDoor  >= 0) setDoor(ar.exitDoor,  i < a, true);
-            if (ar.entryGate >= 0) setDoor(ar.entryGate, i != a, true);
+            if (ar.exitDoor >= 0) level.doors[ar.exitDoor].locked = i >= a;
         }
         resetPlayer(level.arenas[a].playerStart);
+        player.camera.yaw = level.arenas[a].startYaw;
         if (g_devCam) {
             player.position = g_devCamPos - glm::vec3{0, player.eyeHeight, 0};
             player.camera.position = g_devCamPos;
@@ -488,7 +512,7 @@ public:
         for (auto& pp : level.placedPickups) {
             PickupKind k = pp.kind == 1 ? PickupKind::POTION : pp.kind == 2 ? PickupKind::XP : PickupKind::ORB;
             float fy = groundHeightAt(pp.pos.x, pp.pos.z, pp.pos.y + 0.5f);
-            pickups.push_back({pp.pos + glm::vec3{0, 0.6f, 0}, glm::vec3{0.f}, 1e9f, k, fy});
+            pickups.push_back({pp.pos + glm::vec3{0, 0.6f, 0}, glm::vec3{0.f}, 1e9f, k, fy, pp.pos + glm::vec3{0, 0.6f, 0}});
         }
         // Splits after this section belong to a run we're redoing
         if (fast() && (int)splits.size() > a) splits.resize(a);
@@ -516,6 +540,13 @@ public:
         ui.clearIndicators();
     }
 
+    // Restart the room / arena you're in from its checkpoint (pause menu,
+    // Backspace). Not a death; the run clock keeps going.
+    void restartHere() {
+        enterArena(director.arena + (!fast() && director.phase == WaveDirector::Phase::CLEARED ? 1 : 0));
+        captureMouse(true);
+    }
+
     void retryArena() {
         ++deaths;
         if (fast()) { enterArena(director.arena); captureMouse(true); return; }
@@ -536,21 +567,11 @@ public:
         splits.clear();
         newRecord = false;
         enterArena(0);
-        if (fast()) { countdown = 3.f; pushBanner("THE GAUNTLET", "SIX LEVELS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
+        if (fast()) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
         captureMouse(true);
     }
 
-    void setDoor(int d, bool open, bool instant) {
-        Door& door = level.doors[d];
-        door.open = open;
-        if (instant) door.openAmount = open ? 1.f : 0.f;
-        applyDoor(door);
-    }
-    void applyDoor(const Door& door) {
-        AABB& b = level.walls[door.wall].box;
-        b.max.y = door.baseY + door.height * (1.f - door.openAmount);
-        b.min.y = b.max.y - door.height;
-    }
+    void lockDoor(int d, bool locked) { if (d >= 0) level.doors[d].locked = locked; }
 
     void pushBanner(const std::string& title, const std::string& sub, glm::vec3 col, float dur = 3.f) {
         banners.push_back({title, sub, col, 0.f, dur});
@@ -563,9 +584,9 @@ public:
             char buf[128];
             switch (ev.kind) {
             case DirectorEvent::ARENA_START:
-                if (ar.entryGate >= 0) setDoor(ar.entryGate, false, false);
+                lockDoor(ar.entryGate, true);   // no way back out mid-fight
                 if (fast()) {
-                    snprintf(buf, sizeof(buf), "LEVEL %d/%d  %s", ev.value + 1, (int)level.arenas.size(), ar.name);
+                    snprintf(buf, sizeof(buf), "ROOM %d/%d  %s", ev.value + 1, (int)level.arenas.size(), ar.name);
                     pushBanner(buf, ar.subtitle, {1.f, 0.7f, 0.3f}, 1.8f);
                     audio.play("wave", 90);
                 } else {
@@ -598,18 +619,17 @@ public:
                 break;
             case DirectorEvent::ARENA_CLEARED: {
                 const Arena& done = level.arenas[ev.value];
+                lockDoor(done.exitDoor, false);
+                lockDoor(done.entryGate, false);
                 if (fast()) {
-                    if (done.exitDoor >= 0) setDoor(done.exitDoor, true, false);
                     recordSplit(ev.value);
                     styleSystem.heal(25.f);
                     grenadeCount = grenadeMax;
                     audio.play("split");
                     break;
                 }
-                if (done.exitDoor >= 0) {
-                    setDoor(done.exitDoor, true, false);
+                if (done.exitDoor >= 0)
                     pushBanner("ARENA CLEARED", "THE GATE IS OPEN - HEAD NORTH", {0.4f, 1.f, 0.6f}, 3.5f);
-                }
                 styleSystem.heal(40.f);
                 grenadeCount = grenadeMax;
                 audio.play("wave");
@@ -635,10 +655,10 @@ public:
         char buf[96];
         if (section < (int)records.fastSplits.size()) {
             float d = elapsedTime - records.fastSplits[section];
-            snprintf(buf, sizeof(buf), "LEVEL %d  %s  %+.2f", section + 1, formatTime(elapsedTime).c_str(), d);
+            snprintf(buf, sizeof(buf), "ROOM %d  %s  %+.2f", section + 1, formatTime(elapsedTime).c_str(), d);
             ui.showSplit(buf, d <= 0.f ? glm::vec3{0.3f, 1.f, 0.5f} : glm::vec3{1.f, 0.4f, 0.35f});
         } else {
-            snprintf(buf, sizeof(buf), "LEVEL %d  %s", section + 1, formatTime(elapsedTime).c_str());
+            snprintf(buf, sizeof(buf), "ROOM %d  %s", section + 1, formatTime(elapsedTime).c_str());
             ui.showSplit(buf, {1.f, 0.9f, 0.6f});
         }
     }
@@ -672,6 +692,9 @@ public:
         // directly, where repeat is wanted for arrows and sliders.)
         SDL_Keycode key = (e.type == SDL_KEYDOWN && !e.key.repeat) ? e.key.keysym.sym : SDLK_UNKNOWN;
 
+        // Alt-tabbing away mid-fight pauses (the web build pauses on losing the pointer lock)
+        if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_FOCUS_LOST && !g_devNoMouse) { pause(); return; }
+
         // Armory (TAB) — a paused overlay for spending upgrade points
         if (armoryOpen) {
             if (key == SDLK_TAB || key == SDLK_ESCAPE || key == SDLK_p) { closeArmory(); return; }
@@ -694,6 +717,8 @@ public:
         }
         if (paused) { handlePauseEvent(e); return; }
         if (key == SDLK_TAB && !playerDead && !victory) { openArmory(); return; }
+        // Backspace: straight back to the checkpoint and the start of this fight
+        if (key == SDLK_BACKSPACE && !victory) { if (playerDead) retryArena(); else restartHere(); return; }
         if (e.type == SDL_KEYDOWN && (playerDead || victory)) {
             if (key == SDLK_r && playerDead) { retryArena(); return; }
             if (key == SDLK_RETURN)          { newRun();     return; }
@@ -759,8 +784,9 @@ public:
     }
 
     const char* pauseLabel(int i) const {
-        static const char* L[] = {"RESUME", "SETTINGS", "", "QUIT TO MENU"};
-        if (i == 2) return fast() ? "RESTART RUN" : "RESTART ARENA";
+        static const char* L[] = {"RESUME", "SETTINGS", "", "", "QUIT TO MENU"};
+        if (i == 2) return fast() ? "RESTART ROOM" : "RESTART ARENA";
+        if (i == 3) return fast() ? "RESTART RUN" : "NEW RUN";
         return L[i];
     }
 
@@ -768,10 +794,8 @@ public:
         switch (idx) {
         case 0: paused = false; captureMouse(true); break;
         case 1: pauseSettings = true; settingsMenu.selected = 1; break;
-        case 2:
-            if (fast()) newRun();
-            else { enterArena(director.arena + (director.phase == WaveDirector::Phase::CLEARED ? 1 : 0)); captureMouse(true); }
-            break;
+        case 2: restartHere(); break;
+        case 3: newRun(); break;
         default:
             captureMouse(false);
             if (onReturnToMenu) onReturnToMenu();
@@ -853,8 +877,34 @@ public:
     // =========================================================================
     // Per-frame update
     // =========================================================================
+    // The soundtrack follows the fight: a track per area, layers by what's
+    // happening (MusicSynth.h), muffled under the pause menu
+    void updateMusic() {
+        auto& m = audio.music;
+        audio.setMusicVolume(settings ? settings->musicVolume : 0.6f);
+        static const int ARENA_TRACK[] = {0, 1, 2, 3};          // Yard, Foundry, Spire, Core
+        static const int FAST_TRACK[]  = {0, 1, 2, 2, 1, 1, 3}; // Canal .. Tower
+        int a = director.arena;
+        m.setTrack(fast() ? FAST_TRACK[a % 7] : ARENA_TRACK[a % 4]);
+        float lv = 0.6f;
+        switch (director.phase) {
+            case WaveDirector::Phase::ACTIVE:   lv = director.bossWave() ? 1.35f : 1.f; break;
+            case WaveDirector::Phase::BREAK:    lv = 0.7f; break;
+            case WaveDirector::Phase::CLEARED:  lv = 0.5f; break;
+            case WaveDirector::Phase::VICTORY:  lv = fast() ? 1.2f : 0.55f; break;
+            default: break;
+        }
+        if (lv >= 1.f && styleSystem.overdrive) lv = 1.35f;
+        if (countdown > 0.f) lv = 0.45f;
+        if (victory) lv = 0.55f;
+        if (playerDead) lv = 0.1f;
+        m.setIntensity(lv);
+        m.setMuffle(paused || armoryOpen || playerDead);
+    }
+
     void update(float dt) override {
         if (settings) audio.masterVolume = settings->audioVolume;
+        updateMusic();
 
         // Banners keep animating on the death/victory screens, not while paused
         bool frozen = paused || armoryOpen;
@@ -893,6 +943,7 @@ public:
 
         while (accumulator >= PHYSICS_DT) {
             prevCamPos = player.camera.position;
+            snapshotForInterpolation();
             if (hitStopFrames > 0) {
                 --hitStopFrames;  // freeze simulation, consume one tick
             } else {
@@ -906,16 +957,12 @@ public:
         styleSystem.update(floatDt);
         if (controlHintTimer > 0.f) controlHintTimer -= floatDt;
 
-        // Doors slide toward their target (fast in FAST mode: no waiting around)
-        float doorSpeed = fast() ? 3.f : 1.f;
-        for (auto& d : level.doors) {
-            float target = d.open ? 1.f : 0.f;
-            if (d.openAmount != target) {
-                float step = floatDt * (d.open ? 0.7f : 1.6f) * doorSpeed;
-                d.openAmount = d.open ? std::min(1.f, d.openAmount + step) : std::max(0.f, d.openAmount - step);
-                applyDoor(d);
-            }
-        }
+        // Doors part as you run at them (unless locked) and shut behind you
+        level.updateDoors(floatDt, player.position, [this](int di, bool opening) {
+            const AABB& c = level.doors[di].closed;
+            float d = glm::length((c.min + c.max) * 0.5f - player.camera.position);
+            audio.play(opening ? "door" : "door_close", (int)glm::clamp(120.f - d * 3.f, 20.f, 120.f));
+        });
 
         viewModel.update(floatDt, playerXZSpeed, player.onGround);
         if (g_devOverlay == "punch") { viewModel.parryTimer = ViewModel::PARRY_TIME * 0.62f; viewModel.parryHit = true; }
@@ -998,6 +1045,19 @@ public:
             grapple.release();
         }
     }
+
+    // Everything that moves on the physics tick remembers where it was at the
+    // start of it; render() draws it blended toward where it is now, so it
+    // glides at 144 or 240 Hz instead of stepping at 60. (Called during
+    // hit-stop too, so frozen things stay still rather than flicker.)
+    void snapshotForInterpolation() {
+        for (auto& e : enemies) { e.prevPosition = e.position; e.prevYaw = e.yaw; }
+        for (auto& p : projSystem.pool) if (p.alive) p.prevPosition = p.position;
+        for (auto& p : pickups) p.prev = p.pos;
+        for (auto& m : level.movers) m.delta = glm::vec3{0.f};
+    }
+    float renderAlpha = 1.f;   // set by render(): how far between the last two ticks we are
+    glm::vec3 lerpPos(glm::vec3 prev, glm::vec3 now) const { return glm::mix(prev, now, renderAlpha); }
 
     // =========================================================================
     // Fixed-rate simulation (60 Hz)
@@ -1125,11 +1185,21 @@ public:
         // --- Player physics ---
         player.dynWalls = level.moverWalls.data();
         player.dynCount = (int)level.moverWalls.size();
+        int boost = level.boosterAt(player.position);
         if (!(g_devCam && g_devNoMouse)) {   // screenshot runs: the camera stays exactly where it was put
             player.update(dt, keys, level.walls.data(), (int)level.walls.size(),
-                          grapple.active || dashMomentumTimer > 0.f, &spatialGrid);
+                          grapple.active || dashMomentumTimer > 0.f || boost >= 0, &spatialGrid);
+            if (boost >= 0) applyBooster(level.boosters[boost], player, dt);
             keepPlayerInZone(dt);
         }
+        if (boost >= 0 && boostPrev < 0) {
+            audio.play("boost", 100);
+            fovKick = std::max(fovKick, 10.f);
+            styleSystem.addStyle(3.f);
+            grapple.release();
+        }
+        if (boost < 0 && boostPrev >= 0) dashMomentumTimer = std::max(dashMomentumTimer, 0.35f);   // shoot out of the tube
+        boostPrev = boost;
         pushPlayerOutOfEnemies();
         playerXZSpeed = glm::length(glm::vec2(player.velocity.x, player.velocity.z));
         if (!player.onGround) peakFallSpeed = std::max(peakFallSpeed, -player.velocity.y);
@@ -1211,6 +1281,8 @@ public:
         int alive = 0;
         for (auto& e : enemies) if (e.alive) ++alive;
         std::vector<SpawnRequest> spawns;
+        director.countScale    = tune().waveSize;
+        director.maxAliveBonus = tune().maxAliveBonus;
         director.update(dt, alive, player.position, spawns);
         for (auto& s : spawns) spawnEnemy(s.type, s.pos);
 
@@ -1413,13 +1485,17 @@ public:
     void keepPlayerInZone(float dt) {
         static std::vector<const AABB*> zones;
         zones.clear();
+        auto addArena = [&](int i) {
+            zones.push_back(&level.arenas[i].zone);
+            for (auto& z : level.arenas[i].extraZones) zones.push_back(&z);
+        };
         if (fast()) {
-            for (int i = 0; i <= director.arena; ++i) zones.push_back(&level.arenas[i].zone);
+            for (int i = 0; i <= director.arena; ++i) addArena(i);
         } else {
-            zones.push_back(&level.arenas[director.arena].zone);
+            addArena(director.arena);
             if (director.phase == WaveDirector::Phase::CLEARED) {
                 zones.push_back(&level.corridors[director.arena]);
-                zones.push_back(&level.arenas[director.arena + 1].zone);
+                addArena(director.arena + 1);
             }
         }
         glm::vec3& p = player.position;
@@ -1428,7 +1504,8 @@ public:
         for (auto* z : zones) {
             glm::vec2 c{glm::clamp(p.x, z->min.x, z->max.x), glm::clamp(p.z, z->min.z, z->max.z)};
             float d = glm::length(c - glm::vec2{p.x, p.z});
-            if (d < bestD) { bestD = d; best = c; in = z; }
+            // Inside several (a doorway where a tube meets a room): the higher ceiling wins
+            if (d < bestD - 1e-4f || (d < 1e-4f && bestD < 1e-4f && z->max.y > in->max.y)) { bestD = d; best = c; in = z; }
         }
         if (bestD > 0.f) {
             if (best.x != p.x) player.velocity.x = 0.f;
@@ -1470,7 +1547,8 @@ public:
     }
 
     void resetToCheckpoint(int a) {
-        player.position = level.arenas[a].playerStart;
+        const Arena& ar = level.arenas[a];
+        player.position = ar.hasRespawn ? ar.respawn : ar.playerStart;
         player.velocity = glm::vec3{0.f};
         player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0};
         prevCamPos = player.camera.position;
@@ -1511,6 +1589,8 @@ public:
 
     void spawnEnemy(EnemyType t, glm::vec3 pos) {
         enemies.push_back(Enemy(t, pos));
+        enemies.back().maxHealth *= tune().health;
+        enemies.back().health = enemies.back().maxHealth;
         glm::vec3 c = statsOf(t).glow;
         spawnBurst(pos + glm::vec3{0, 0.3f, 0}, c, 14, 3.f, 0.7f, -6.f);
         if (spawnSoundThisTick) return;   // a FAST section spawns a dozen at once: one sound
@@ -1520,6 +1600,7 @@ public:
     }
 
     void updateEnemies(float dt) {
+        telegraphSoundCd -= dt;
         const Arena& ar = level.arenas[director.arena];
         EnemyWorld w;
         w.playerEye  = player.camera.position;
@@ -1528,6 +1609,9 @@ public:
         w.wallCount  = (int)level.walls.size();
         w.grid       = &spatialGrid;
         w.bounds     = ar.bounds;
+        w.playerVel  = player.velocity;
+        w.tune       = &tune();
+        const float dmgScale = ar.damageScale * tune().damage;
 
         // Iterate by index: summons push_back into `enemies` mid-loop
         size_t n = enemies.size();
@@ -1539,13 +1623,17 @@ public:
             glm::vec3 epos = e.position;
             float dist = glm::length(epos - player.position);
 
-            if (ev.telegraphStarted)
-                audio.play("telegraph", (int)glm::clamp(128.f - dist * 3.f, 20.f, 128.f));
+            // Wind-up tick: a cue for the ones close enough to matter, at most
+            // a few a second however many are aiming at you
+            if (ev.telegraphStarted && dist < 30.f && telegraphSoundCd <= 0.f) {
+                audio.play("telegraph", (int)glm::clamp(70.f - dist * 2.f, 12.f, 70.f));
+                telegraphSoundCd = 0.22f;
+            }
             for (int k = 0; k < ev.shots; ++k)
-                projSystem.fire(ev.shotOrigin, ev.shotDir[k] * ev.shotSpeed, ev.shotDamage * ar.damageScale, false,
+                projSystem.fire(ev.shotOrigin, ev.shotDir[k] * ev.shotSpeed, ev.shotDamage * dmgScale, false,
                                 enemies[i].stats().shotColor, false, 0.f, ev.shotSize, ev.shotHeavy);
             if (ev.meleeHit) {
-                if (damagePlayer(ev.meleeDamage * ar.damageScale, epos, 0.25f, 0.06f)) {
+                if (damagePlayer(ev.meleeDamage * dmgScale, epos, 0.25f, 0.06f)) {
                     glm::vec3 away = player.position - epos; away.y = 0.f;
                     if (glm::length(away) > 0.001f)
                         player.velocity += glm::normalize(away) * 8.f + glm::vec3{0, 3.f, 0};
@@ -1558,13 +1646,13 @@ public:
                 glm::vec2 flat{player.position.x - epos.x, player.position.z - epos.z};
                 bool grounded = player.position.y < epos.y + 0.9f && player.position.y > epos.y - 1.5f;   // jump it to dodge
                 if (ev.slamDamage > 0.f && glm::length(flat) < ev.slamRadius && grounded) {
-                    if (damagePlayer(ev.slamDamage * ar.damageScale, epos, 0.3f, 0.08f) && glm::length(flat) > 0.01f)
+                    if (damagePlayer(ev.slamDamage * dmgScale, epos, 0.3f, 0.08f) && glm::length(flat) > 0.01f)
                         player.velocity += glm::vec3{flat.x, 0.f, flat.y} / glm::length(flat) * 10.f + glm::vec3{0, 6.f, 0};
                 }
             }
             if (ev.detonated) {
                 // A mite that reached you: hurts you AND its friends
-                pendingBlasts.push_back({epos + glm::vec3{0, 0.3f, 0}, 4.f, 30.f, 4.f, 30.f * ar.damageScale});
+                pendingBlasts.push_back({epos + glm::vec3{0, 0.3f, 0}, 4.f, 30.f, 4.f, 30.f * dmgScale});
                 spawnDebrisFor(enemies[i]);
             }
             if (ev.summonMites + ev.summonRippers > 0) {
@@ -1649,7 +1737,7 @@ public:
         float before = e.health;
         bool killed = e.takeDamage(dmg);
         styleSystem.addStyle(style);
-        styleSystem.heal(heal);
+        styleSystem.heal(heal * tune().heal);
         audio.play("hit");
         if (!e.stats().flying) spawnDecal(e.position);
         spawnHitSparks(at, e.stats().color * 1.4f);
@@ -1665,7 +1753,7 @@ public:
     void onEnemyKilled(Enemy& e) {
         ++totalKills;
         styleSystem.addStyle(30.f);
-        styleSystem.heal(5.f);
+        styleSystem.heal(5.f * tune().heal);
         audio.play("enemy_death");
         spawnDeathParticles(e.position + glm::vec3{0, e.height() * 0.5f, 0}, e.stats().color);
         spawnDebrisFor(e);
@@ -1688,7 +1776,7 @@ public:
         float floorY = groundHeightAt(e.position.x, e.position.z, e.position.y + 0.5f);
         auto drop = [&](PickupKind k) {
             pickups.push_back({c, glm::vec3{frand(-3.f, 3.f), frand(3.f, 6.f), frand(-3.f, 3.f)},
-                               k == PickupKind::ORB ? 20.f : 30.f, k, floorY});
+                               k == PickupKind::ORB ? 20.f : 30.f, k, floorY, c});
         };
         switch (e.type) {
             case EnemyType::BRUTE:  for (int i = 0; i < 3; ++i) drop(PickupKind::ORB);
@@ -1696,8 +1784,8 @@ public:
             case EnemyType::MITE:   if (rand() % 10 == 0) drop(PickupKind::ORB); break;
             case EnemyType::WARDEN: break;
             default:
-                if (rand() % 100 < 20) drop(PickupKind::ORB);
-                if (rand() % 100 < 18) drop(PickupKind::POTION);
+                if (rand() % 100 < (int)(20 * tune().drops)) drop(PickupKind::ORB);
+                if (rand() % 100 < (int)(18 * tune().drops)) drop(PickupKind::POTION);
                 if (rand() % 100 < 10) drop(PickupKind::XP);
                 break;
         }
@@ -2092,6 +2180,13 @@ public:
                 p->color = glm::vec3{0.85f, 0.9f, 1.f} * 0.22f;
                 p->gravity = 0.f; p->maxLife = p->life = frand(1.f, 2.f);
                 break;
+            case Ambient::STEAM:
+                // Pale puffs drifting up from the floor
+                p->pos = me + glm::vec3{std::cos(ang) * r * 0.6f, frand(-1.f, 0.5f), std::sin(ang) * r * 0.6f};
+                p->vel = {frand(-0.3f, 0.3f), frand(1.f, 2.2f), frand(-0.3f, 0.3f)};
+                p->color = glm::vec3{0.7f, 0.95f, 0.85f} * 0.16f;
+                p->gravity = -0.2f; p->maxLife = p->life = frand(2.f, 3.5f);
+                break;
             case Ambient::ASH:
                 p->pos = me + glm::vec3{std::cos(ang) * r, frand(4.f, 12.f), std::sin(ang) * r};
                 p->vel = {frand(0.3f, 1.2f), frand(-1.2f, -0.4f), frand(-0.3f, 0.3f)};
@@ -2187,17 +2282,24 @@ public:
         using namespace rig;
         float t = gameClock;
 
-        for (auto& e : enemies) if (e.alive) buildEnemy(e, t, out);
+        for (auto& e : enemies) {
+            if (!e.alive) continue;
+            Enemy pose = e;
+            pose.position = lerpPos(e.prevPosition, e.position);
+            pose.yaw = e.prevYaw + std::remainder(e.yaw - e.prevYaw, 6.2831853f) * renderAlpha;
+            buildEnemy(pose, t, out);
+        }
 
         // Spawn beams: a column of light while an enemy materialises
         for (auto& e : enemies) {
             if (!e.alive || e.state != EnemyState::SPAWNING) continue;
             float k = e.spawnTimer / Enemy::SPAWN_TIME;
             glm::vec3 c = e.stats().glow;
-            float base = e.position.y;
-            push(out, T({e.position.x, base + 8.f, e.position.z}) * S({0.25f + 0.6f * k, 16.f, 0.25f + 0.6f * k}),
+            glm::vec3 ep = lerpPos(e.prevPosition, e.position);
+            float base = ep.y;
+            push(out, T({ep.x, base + 8.f, ep.z}) * S({0.25f + 0.6f * k, 16.f, 0.25f + 0.6f * k}),
                  c * 0.2f, c * (1.5f + 2.f * k));
-            push(out, T({e.position.x, base + 0.05f, e.position.z}) * RY(t * 3.f) * S({2.2f * k + 0.5f, 0.06f, 2.2f * k + 0.5f}),
+            push(out, T({ep.x, base + 0.05f, ep.z}) * RY(t * 3.f) * S({2.2f * k + 0.5f, 0.06f, 2.2f * k + 0.5f}),
                  c * 0.2f, c * 2.f);
         }
 
@@ -2208,7 +2310,7 @@ public:
             if (!e.targetable() || e.health >= e.maxHealth || e.type == EnemyType::WARDEN) continue;
             float barW = std::max(1.0f, e.radius() * 1.8f), barH = 0.12f;
             float fill = e.health / e.maxHealth;
-            glm::vec3 barPos = e.position + glm::vec3{0, e.height() + 0.45f, 0};
+            glm::vec3 barPos = lerpPos(e.prevPosition, e.position) + glm::vec3{0, e.height() + 0.45f, 0};
             glm::mat4 bg(1.f);
             bg[0] = glm::vec4(camRight * barW, 0); bg[1] = glm::vec4(0, barH, 0, 0);
             bg[2] = glm::vec4(camFwdFlat * 0.01f, 0); bg[3] = glm::vec4(barPos, 1);
@@ -2232,7 +2334,7 @@ public:
             if (!p.alive) continue;
             float s = (p.isGrenade ? 0.22f : 0.26f) * p.size;
             float spin = t * 9.f + p.position.x;
-            glm::mat4 base = T(p.position) * RY(spin) * RX(spin * 0.7f);
+            glm::mat4 base = T(lerpPos(p.prevPosition, p.position)) * RY(spin) * RX(spin * 0.7f);
             push(out, base * S(glm::vec3{s}), p.emissiveColor * 0.3f, p.emissiveColor * 0.8f);
             push(out, base * RZ(0.785f) * S(glm::vec3{s * 0.75f}), p.emissiveColor, p.emissiveColor * 3.f);
         }
@@ -2240,7 +2342,8 @@ public:
         // Drops
         for (auto& p : pickups) {
             float blink = p.life < 5.f && std::fmod(p.life, 0.4f) < 0.15f ? 0.2f : 1.f;
-            glm::vec3 bob = p.pos + glm::vec3{0, std::sin(t * 3.f + p.pos.x) * 0.1f, 0};
+            glm::vec3 pp = lerpPos(p.prev, p.pos);
+            glm::vec3 bob = pp + glm::vec3{0, std::sin(t * 3.f + p.pos.x) * 0.1f, 0};
             switch (p.kind) {
             case PickupKind::ORB: {
                 float pulse = 1.f + 0.3f * std::sin(t * 8.f);
@@ -2278,23 +2381,79 @@ public:
             }
         }
 
-        // Doors: a dark slab with light bars — red while locked, green once open
-        for (int di = 0; di < (int)level.doors.size(); ++di) {
-            const Door& d = level.doors[di];
-            const AABB& b = level.walls[d.wall].box;
-            if (b.max.y <= d.baseY + 0.02f) continue;
-            glm::vec3 c = (b.min + b.max) * 0.5f, sz = b.max - b.min;
-            float visibleBottom = std::max(b.min.y, d.baseY);
-            c.y = (visibleBottom + b.max.y) * 0.5f; sz.y = b.max.y - visibleBottom;
-            push(out, T(c) * S(sz), {0.16f, 0.15f, 0.18f});
-            glm::vec3 bar = d.open ? glm::vec3{0.3f, 1.6f, 0.7f} : glm::vec3{1.8f, 0.2f, 0.15f};
-            bool alongX = sz.x >= sz.z;   // doors in east-west walls run along Z
-            float span = alongX ? sz.x : sz.z;
-            int bars = std::max(3, (int)(span / 1.4f));
-            for (int i = 0; i < bars; ++i) {
-                float u = (i + 0.5f) / bars;
-                if (alongX) push(out, T({b.min.x + sz.x * u, c.y, c.z}) * S({0.18f, sz.y * 0.92f, sz.z + 0.08f}), bar * 0.2f, bar);
-                else        push(out, T({c.x, c.y, b.min.z + sz.z * u}) * S({sz.x + 0.08f, sz.y * 0.92f, 0.18f}), bar * 0.2f, bar);
+        // Doors: two halves that part in the middle. Red while locked, cyan
+        // when they'll open for you. The meeting edges glow.
+        for (auto& d : level.doors) {
+            if (d.openAmount >= 0.999f) continue;
+            glm::vec3 lit = d.locked ? glm::vec3{1.8f, 0.18f, 0.12f} : glm::vec3{0.25f, 1.3f, 1.6f};
+            if (!d.locked && d.open) lit *= 1.4f;
+            bool ax = d.alongX();
+            for (int h = 0; h < 2; ++h) {
+                const AABB& b = level.walls[h ? d.wall2 : d.wall].box;
+                glm::vec3 c = (b.min + b.max) * 0.5f, sz = b.max - b.min;
+                if ((ax ? sz.x : sz.z) < 0.02f) continue;
+                push(out, T(c) * S(sz), {0.17f, 0.17f, 0.21f});
+                float edge = ax ? (h ? b.min.x : b.max.x) : (h ? b.min.z : b.max.z);
+                float in = h ? 0.08f : -0.08f;
+                glm::vec3 e = c;
+                (ax ? e.x : e.z) = edge + in;
+                glm::vec3 es = ax ? glm::vec3{0.16f, sz.y, sz.z + 0.06f} : glm::vec3{sz.x + 0.06f, sz.y, 0.16f};
+                push(out, T(e) * S(es), lit * 0.2f, lit);
+                for (float fy : {0.22f, 0.5f, 0.78f}) {        // light bars across each half
+                    glm::vec3 bc = c; bc.y = b.min.y + sz.y * fy;
+                    glm::vec3 bs = ax ? glm::vec3{sz.x * 0.75f, 0.09f, sz.z + 0.05f} : glm::vec3{sz.x + 0.05f, 0.09f, sz.z * 0.75f};
+                    push(out, T(bc) * S(bs), lit * 0.12f, lit * 0.5f);
+                }
+            }
+        }
+
+        // Boost tubes: chevrons streaming along the floor (or up the shaft)
+        for (auto& bo : level.boosters) {
+            glm::vec3 dir = bo.dir, mn = bo.box.min, mx = bo.box.max;
+            glm::vec3 col = glm::vec3{0.3f, 1.4f, 1.9f};
+            if (dir.y > 0.5f) {
+                // Lift shaft: rings rising up it
+                glm::vec3 c = (mn + mx) * 0.5f, sz = mx - mn;
+                for (int k = 0; k < 6; ++k) {
+                    float y = mn.y + std::fmod(t * bo.speed * 0.35f + k * sz.y / 6.f, sz.y);
+                    float a = 1.f - std::fabs(y - c.y) / (sz.y * 0.5f);
+                    glm::vec3 g = col * (0.4f + 0.8f * a);
+                    push(out, T({c.x, y, mn.z + 0.05f}) * S({sz.x, 0.08f, 0.08f}), g * 0.2f, g);
+                    push(out, T({c.x, y, mx.z - 0.05f}) * S({sz.x, 0.08f, 0.08f}), g * 0.2f, g);
+                    push(out, T({mn.x + 0.05f, y, c.z}) * S({0.08f, 0.08f, sz.z}), g * 0.2f, g);
+                    push(out, T({mx.x - 0.05f, y, c.z}) * S({0.08f, 0.08f, sz.z}), g * 0.2f, g);
+                }
+                continue;
+            }
+            glm::vec3 side{-dir.z, 0.f, dir.x};
+            glm::vec3 c = (mn + mx) * 0.5f;
+            float len = std::fabs(glm::dot(mx - mn, dir));
+            glm::vec3 start = c - dir * (len * 0.5f);
+            start.y = mn.y + 0.04f;
+            const float gap = 2.4f;
+            float ph = std::fmod(t * bo.speed * 0.45f, gap);
+            for (float u = ph; u < len; u += gap) {
+                glm::vec3 tip = start + dir * u;
+                float fade = std::min({1.f, u / 3.f, (len - u) / 3.f});
+                glm::vec3 g = col * fade;
+                for (float sgn : {1.f, -1.f}) {
+                    glm::vec3 arm = glm::normalize(-dir + side * sgn * 1.1f);
+                    push(out, T(tip + arm * 0.55f) * RY(std::atan2(arm.x, arm.z)) * S({0.16f, 0.03f, 1.1f}), g * 0.2f, g);
+                }
+            }
+        }
+
+        // Fans: four blades spinning in a housing ring
+        for (auto& f : level.fans) {
+            glm::mat4 base = T(f.pos) * (f.axis == 0 ? RZ(1.5708f) : f.axis == 2 ? RX(1.5708f) : glm::mat4(1.f));
+            float spin = t * 7.f + f.pos.x;
+            for (int k = 0; k < 4; ++k)
+                push(out, base * RY(spin + k * 0.785f) * S({f.radius * 1.9f, 0.06f, f.radius * 0.28f}), {0.2f, 0.2f, 0.23f});
+            push(out, base * S({0.5f, 0.18f, 0.5f}), {0.15f, 0.15f, 0.18f}, f.glow * 0.6f);
+            for (int k = 0; k < 12; ++k) {
+                float a = k * 0.5236f;
+                push(out, base * T({std::cos(a) * f.radius, 0.f, std::sin(a) * f.radius}) * RY(-a) * S({0.16f, 0.16f, f.radius * 0.56f}),
+                     f.glow * 0.15f, f.glow * 0.7f);
             }
         }
 
@@ -2318,7 +2477,8 @@ public:
 
         // Moving platforms: a slab with glowing edges and a grapple ring under it
         for (auto& m : level.movers) {
-            const AABB& b = level.walls[m.wall].box;
+            AABB b = level.walls[m.wall].box;
+            b.min -= m.delta * (1.f - renderAlpha); b.max -= m.delta * (1.f - renderAlpha);
             glm::vec3 c = (b.min + b.max) * 0.5f, sz = b.max - b.min;
             float pulse = 0.75f + 0.25f * std::sin(t * 4.f + c.x);
             push(out, T(c) * S(sz), m.color);
@@ -2399,6 +2559,7 @@ public:
 
     void render() override {
         float alpha = (float)(accumulator / PHYSICS_DT);
+        renderAlpha = glm::clamp(alpha, 0.f, 1.f);
         glm::vec3 renderCamPos = glm::mix(prevCamPos, player.camera.position, alpha);
         Camera renderCam = player.camera;
         renderCam.position = renderCamPos;
@@ -2461,9 +2622,11 @@ public:
         worldShader.setFloat("uVertexGlow",   0.0f);
         worldShader.setInt("uTexture",0);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, floorTex); world.floor.draw();
-        glBindTexture(GL_TEXTURE_2D, wallTex);  world.walls.draw();
-        glBindTexture(GL_TEXTURE_2D, ceilTex);  world.under.draw();
+        for (int t = 0; t < TEX_COUNT; ++t) {
+            if (world.byTex[t].indexCount == 0) continue;
+            glBindTexture(GL_TEXTURE_2D, worldTex[t]);
+            world.byTex[t].draw();
+        }
         glBindTexture(GL_TEXTURE_2D, whiteTex);
         worldShader.setVec3("objectColor", {0.25f,0.25f,0.25f});
         worldShader.setFloat("uVertexGlow", 1.5f);
@@ -2487,7 +2650,7 @@ public:
 
         worldShader.use();
         worldShader.setMat4("model", glm::mat4(1.f));
-        grapple.drawLine(player.position + glm::vec3{0,player.eyeHeight,0}, view, proj);
+        grapple.drawLine(renderCamPos, view, proj);
         renderDecals();
 
         renderTracers(view, proj);
@@ -2560,6 +2723,7 @@ public:
         h.hideCrosshair = (activeWeapon == (int)WeaponId::KAR && aim > 0.6f) || scopedView() || playerDead || victory;
         h.grappleTarget = grappleTargetInSight && !grapple.active;
         h.showTimer = fast() || (settings && settings->showTimer);
+        h.speed = fast() ? playerXZSpeed : -1.f;
         h.time = elapsedTime;
         if (settings) settings->crosshairColor(h.crosshairColor.r, h.crosshairColor.g, h.crosshairColor.b);
         h.viewProj = proj * view;
@@ -2581,9 +2745,9 @@ public:
             if (fast()) {
                 if (finishOpen) { snprintf(buf, sizeof(buf), "FINISH OPEN - CLIMB TO THE BEACON"); accent = {1.f, 0.6f, 0.2f}; }
                 else if (director.phase == WaveDirector::Phase::APPROACH) {
-                    snprintf(buf, sizeof(buf), "LEVEL %d/%d  %s   ADVANCE", director.arena + 1, nArenas, ar.name);
+                    snprintf(buf, sizeof(buf), "ROOM %d/%d  %s   ADVANCE", director.arena + 1, nArenas, ar.name);
                     accent = {0.4f, 1.f, 0.6f};
-                } else snprintf(buf, sizeof(buf), "LEVEL %d/%d  %s   HOSTILES %d", director.arena + 1, nArenas, ar.name, left);
+                } else snprintf(buf, sizeof(buf), "ROOM %d/%d  %s   HOSTILES %d", director.arena + 1, nArenas, ar.name, left);
             } else switch (director.phase) {
             case WaveDirector::Phase::APPROACH:   // FAST only
             case WaveDirector::Phase::INTRO:
@@ -2606,14 +2770,24 @@ public:
 
             if (boss) ui.renderBossBar("THE WARDEN", boss->health / boss->maxHealth, boss->enraged);
 
-            // Waypoint to the open gate
-            const AABB* gate = ar.exitDoor >= 0 ? &level.walls[level.doors[ar.exitDoor].wall].box : nullptr;
-            if (!fast() && director.phase == WaveDirector::Phase::CLEARED && gate && player.position.z > gate->min.z) {
-                const AABB& b = *gate;
-                glm::vec3 target{(b.min.x + b.max.x) * 0.5f, 2.f, (b.min.z + b.max.z) * 0.5f};
+            // Waypoint to the way on: the open gate (ARENA), or the exit of the
+            // room you just cleared (FAST) until you're out of it
+            int wayDoor = -1;
+            if (!fast() && director.phase == WaveDirector::Phase::CLEARED && ar.exitDoor >= 0 &&
+                player.position.z > level.doors[ar.exitDoor].closed.min.z) wayDoor = ar.exitDoor;
+            if (fast() && director.phase == WaveDirector::Phase::APPROACH && director.arena > 0) {
+                const Arena& prev = level.arenas[director.arena - 1];
+                const AABB& z = prev.zone;
+                if (player.position.x > z.min.x && player.position.x < z.max.x &&
+                    player.position.z > z.min.z && player.position.z < z.max.z) wayDoor = prev.exitDoor;
+            }
+            if (wayDoor >= 0) {
+                const Door& dr = level.doors[wayDoor];
+                glm::vec3 target = (dr.closed.min + dr.closed.max) * 0.5f;
+                target.y = dr.baseY + 2.f;
                 float sx, sy;
                 bool on = projectToScreen(target, view, proj, sx, sy);
-                snprintf(buf, sizeof(buf), "GATE %dM", (int)glm::length(target - player.position));
+                snprintf(buf, sizeof(buf), fast() ? "EXIT %dM" : "GATE %dM", (int)glm::length(target - player.position));
                 ui.renderMarker(sx, sy, on, {0.4f, 1.f, 0.6f}, buf);
             }
             if (finishOpen) {
@@ -2632,7 +2806,8 @@ public:
                     ui.renderMarker(sx, sy, on, {1.f, 0.3f, 0.25f}, "");
                 }
             }
-            ui.renderControlHint(glm::clamp(controlHintTimer / 1.5f, 0.f, 1.f),
+            if (!paused && !armoryOpen)
+                ui.renderControlHint(glm::clamp(controlHintTimer / 1.5f, 0.f, 1.f),
                                  GameSettings::grappleLabel(settings ? settings->grappleKey : 0));
         }
 
@@ -2644,7 +2819,7 @@ public:
         if (countdown > 0.f) ui.renderCountdown(countdown);
 
         if (playerDead) {
-            if (fast()) snprintf(buf, sizeof(buf), "LEVEL %d/%d  %s", director.arena + 1, nArenas, ar.name);
+            if (fast()) snprintf(buf, sizeof(buf), "ROOM %d/%d  %s", director.arena + 1, nArenas, ar.name);
             else snprintf(buf, sizeof(buf), "ARENA %d/%d %s - WAVE %d/%d", director.arena + 1, nArenas, ar.name,
                           director.wave + 1, director.waveCount());
             ui.renderDeath(buf, totalKills, elapsedTime, fast());
@@ -2674,6 +2849,7 @@ public:
                 for (int i = 0; i < UIRenderer::PAUSE_ITEMS; ++i) labels[i] = pauseLabel(i);
                 std::string line = fast() ? "FAST - THE GAUNTLET  " + formatTime(elapsedTime)
                                           : std::string("ARENA - ") + ar.name;
+                line += std::string("   ") + tune().name;
                 ui.renderPause(pauseSelected, labels, line.c_str());
             }
         }

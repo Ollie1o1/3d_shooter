@@ -135,6 +135,85 @@ inline GLuint generateMetalCeiling(int size = 128) {
     return uploadTexture(pixels, size, size);
 }
 
+// Sci-fi wall panels: big plates with bevelled seams, a recessed strip and
+// a few rivets. Tubes, airlocks and the newer rooms use it.
+inline GLuint generatePanel(int size = 128) {
+    std::vector<unsigned char> pixels(size * size * 4);
+    const float P = 64.f;   // two plates per tile edge
+    for (int y = 0; y < size; ++y) {
+        for (int x = 0; x < size; ++x) {
+            float px = fmodf((float)x, P), py = fmodf((float)y, P);
+            float base = 0.36f + smoothNoise(x * 0.06f, y * 0.06f) * 0.06f + smoothNoise(x * 0.5f, y * 0.5f) * 0.02f;
+            // Bevel: light top/left edge, dark bottom/right edge, a dark seam
+            if (px < 1.5f || py < 1.5f) base = 0.12f;
+            else if (px < 3.5f || py < 3.5f) base *= 1.25f;
+            else if (px > P - 3.f || py > P - 3.f) base *= 0.7f;
+            // A recessed horizontal strip across the middle of each plate
+            if (py > P * 0.62f && py < P * 0.70f && px > 8.f && px < P - 8.f) base *= 0.62f;
+            // Rivets in the corners
+            for (float cx : {7.f, P - 7.f}) for (float cy : {7.f, P - 7.f}) {
+                float d = sqrtf((px - cx) * (px - cx) + (py - cy) * (py - cy));
+                if (d < 1.8f) base = 0.55f;
+            }
+            unsigned char v = (unsigned char)(glm::clamp(base, 0.f, 1.f) * 255.f);
+            int i = (y * size + x) * 4;
+            pixels[i+0] = (unsigned char)(v * 0.94f);
+            pixels[i+1] = (unsigned char)(v * 0.97f);
+            pixels[i+2] = v;
+            pixels[i+3] = 255;
+        }
+    }
+    return uploadTexture(pixels, size, size);
+}
+
+// Layered rock: strata, cracks and grain. Cliffs, islands, the canyon.
+inline GLuint generateRock(int size = 128) {
+    std::vector<unsigned char> pixels(size * size * 4);
+    for (int y = 0; y < size; ++y) {
+        for (int x = 0; x < size; ++x) {
+            float n = smoothNoise(x * 0.05f, y * 0.05f) * 0.5f + smoothNoise(x * 0.13f, y * 0.13f) * 0.3f
+                    + smoothNoise(x * 0.4f, y * 0.4f) * 0.2f;
+            // Strata: wavy horizontal bands
+            float band = sinf(y * 0.35f + smoothNoise(x * 0.04f, y * 0.02f) * 6.f);
+            float base = 0.30f + n * 0.22f + band * 0.035f;
+            // Cracks where a low-frequency noise crosses a threshold
+            float c = fabsf(smoothNoise(x * 0.09f + 3.f, y * 0.09f) - 0.5f);
+            if (c < 0.02f) base *= 0.55f;
+            unsigned char v = (unsigned char)(glm::clamp(base, 0.f, 1.f) * 255.f);
+            int i = (y * size + x) * 4;
+            pixels[i+0] = (unsigned char)(v * 1.02f > 255 ? 255 : v * 1.02f);
+            pixels[i+1] = (unsigned char)(v * 0.98f);
+            pixels[i+2] = (unsigned char)(v * 0.92f);
+            pixels[i+3] = 255;
+        }
+    }
+    return uploadTexture(pixels, size, size);
+}
+
+// Poured concrete: formwork seams, tie holes and staining
+inline GLuint generateConcrete(int size = 128) {
+    std::vector<unsigned char> pixels(size * size * 4);
+    for (int y = 0; y < size; ++y) {
+        for (int x = 0; x < size; ++x) {
+            float base = 0.40f + smoothNoise(x * 0.07f, y * 0.07f) * 0.08f + smoothNoise(x * 0.6f, y * 0.6f) * 0.04f;
+            base -= smoothNoise(x * 0.02f, y * 0.11f) * 0.08f;          // vertical run-off stains
+            float fx = fmodf((float)x, 64.f), fy = fmodf((float)y, 32.f);
+            if (fx < 1.f || fy < 1.f) base *= 0.72f;                    // formwork seams
+            for (float cx : {16.f, 48.f}) {                             // tie holes
+                float d = sqrtf((fx - cx) * (fx - cx) + (fy - 16.f) * (fy - 16.f));
+                if (d < 1.6f) base *= 0.45f;
+            }
+            unsigned char v = (unsigned char)(glm::clamp(base, 0.f, 1.f) * 255.f);
+            int i = (y * size + x) * 4;
+            pixels[i+0] = v;
+            pixels[i+1] = v;
+            pixels[i+2] = (unsigned char)(v * 0.96f);
+            pixels[i+3] = 255;
+        }
+    }
+    return uploadTexture(pixels, size, size);
+}
+
 // Crate/box surface texture
 inline GLuint generateCrateSurface(int size = 64) {
     std::vector<unsigned char> pixels(size * size * 4);

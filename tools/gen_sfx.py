@@ -223,15 +223,19 @@ def gen_parry():
 
 
 def gen_telegraph():
-    n = n_samples(0.42)
+    """An enemy winding up: a short dry tick with a muted low blip under it.
+    (It used to be a rising 500-1200 Hz sine, the "woop" that played every
+    time anything aimed at you.) Quiet and short so a room full of gunners
+    reads as a texture, not a siren."""
+    n = n_samples(0.11)
+    noise = highpass([white() for _ in range(n)], 2500)
     out = []
     for i in range(n):
         t = i / n
-        freq = 500 + 700 * t
-        env = 0.5 - 0.5 * math.cos(math.pi * min(1.0, t * 3))  # quick fade-in
-        env *= math.exp(-1.5 * t)
-        out.append(sine(freq, i) * env)
-    return out
+        tick = noise[i] * math.exp(-60.0 * t) * 0.5
+        blip = sine(260, i) * math.exp(-22.0 * t) * 0.45
+        out.append(tick + blip)
+    return lowpass(out, 5000)
 
 
 def gen_explosion():
@@ -263,15 +267,16 @@ def gen_wave():
 
 
 def gen_spawn():
-    """Enemy materialising: a rising shimmer."""
-    n = n_samples(0.5)
-    noise = highpass([white() for _ in range(n)], 3000)
+    """Enemy materialising: a low electric crackle that swells and cuts."""
+    n = n_samples(0.38)
+    noise = bandish = highpass(lowpass([white() for _ in range(n)], 4000), 600)
     out = []
     for i in range(n):
         t = i / n
-        f = 300 + 900 * t * t
-        env = math.sin(math.pi * t)
-        out.append((sine(f, i) * 0.5 + noise[i] * 0.25) * env)
+        env = min(1.0, t * 6.0) * math.exp(-5.0 * t)
+        crackle = noise[i] * (0.6 + 0.4 * math.copysign(1.0, sine(31, i)))
+        hum = sine(110, i) * 0.5 + sine(165, i) * 0.25
+        out.append((crackle * 0.45 + hum * 0.5) * env)
     return out
 
 
@@ -427,6 +432,58 @@ def gen_upgrade():
     return out
 
 
+def gen_door():
+    """A door parting: a pneumatic hiss over a short mechanical slide, with a
+    thunk as the locks release."""
+    n = n_samples(0.42)
+    hiss = highpass([white() for _ in range(n)], 3000)
+    rumble = lowpass([white() for _ in range(n)], 300)
+    out = []
+    for i in range(n):
+        t = i / n
+        thunk = sine(70, i) * math.exp(-30.0 * t) * 0.9
+        h = hiss[i] * (math.exp(-7.0 * t) * min(1.0, t * 30.0)) * 0.5
+        r = rumble[i] * math.sin(math.pi * min(1.0, t * 1.4)) * 0.8
+        out.append(thunk + h + r)
+    return out
+
+
+def gen_door_close():
+    """A door shutting: the slide, then a heavy clunk as it seals."""
+    n = n_samples(0.45)
+    rumble = lowpass([white() for _ in range(n)], 300)
+    hiss = highpass([white() for _ in range(n)], 2500)
+    out = []
+    hit = 0.62
+    for i in range(n):
+        t = i / n
+        r = rumble[i] * math.sin(math.pi * min(1.0, t / hit)) * 0.7 if t < hit else 0.0
+        clunk = 0.0
+        if t >= hit:
+            tc = (t - hit) * 0.45 / 0.45
+            clunk = (sine(62, i) * 1.0 + rumble[i] * 1.2) * math.exp(-16.0 * tc / (1 - hit))
+        h = hiss[i] * math.exp(-12.0 * max(0.0, t - hit)) * (0.25 if t >= hit else 0.08)
+        out.append(r + clunk + h)
+    return out
+
+
+def gen_boost():
+    """Entering a boost tube: a fast rising air rush with a low kick."""
+    n = n_samples(0.55)
+    noise = [white() for _ in range(n)]
+    out = []
+    lp = 0.0
+    for i in range(n):
+        t = i / n
+        cutoff = 400 + 5000 * t * t                      # the rush opens up
+        a = (1.0 / SR) / (1.0 / (2 * math.pi * cutoff) + 1.0 / SR)
+        lp += a * (noise[i] - lp)
+        env = min(1.0, t * 12.0) * math.exp(-3.5 * t)
+        kick = sine(55 + 40 * (1 - t), i) * math.exp(-18.0 * t)
+        out.append(lp * env * 1.4 + kick * 0.8)
+    return out
+
+
 GENERATORS = {
     "jump": gen_jump,
     "land": gen_land,
@@ -454,14 +511,27 @@ GENERATORS = {
     "barrier": gen_barrier,
     "split": gen_split,
     "upgrade": gen_upgrade,
+    "door": gen_door,
+    "door_close": gen_door_close,
+    "boost": gen_boost,
 }
 
 
 def main():
-    random.seed(1234)  # reproducible output
+    """No arguments: regenerate every synthesized sound (then re-run
+    import_sfx.py for the recorded ones it replaces). With names: only those,
+    e.g. `python3 tools/gen_sfx.py door boost`."""
+    import sys
     os.makedirs(OUT_DIR, exist_ok=True)
-    for name, gen in GENERATORS.items():
-        write_wav(name, gen())
+    names = sys.argv[1:]
+    if not names:
+        random.seed(1234)  # reproducible output
+        for name, gen in GENERATORS.items():
+            write_wav(name, gen())
+        return
+    for name in names:
+        random.seed(name)
+        write_wav(name, GENERATORS[name]())
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@
 #include "../src/Weapons.h"
 #include "../src/Progression.h"
 #include "../src/MouseFilter.h"
+#include "../src/MusicSynth.h"
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -78,6 +79,49 @@ static bool moversClear(LevelData L) {
         }
     }
     return ok;
+}
+
+// A player-sized box swept along a straight walk: does it ever overlap a wall?
+// Door halves are skipped when `doorsOpen` (they part as you arrive).
+static bool walkClear(const LevelData& L, glm::vec3 a, glm::vec3 b, bool doorsOpen, const char* what) {
+    float len = glm::length(b - a);
+    int n = std::max(1, (int)(len / 0.2f));
+    for (int i = 0; i <= n; ++i) {
+        glm::vec3 p = glm::mix(a, b, (float)i / n);
+        AABB box = boxAt(p + glm::vec3{0, 0.05f, 0}, 0.4f, 1.75f);
+        for (int w = 0; w < (int)L.walls.size(); ++w) {
+            if (L.walls[w].dynamic || (doorsOpen && L.isDoorWall(w))) continue;
+            if (overlapsBox(box, L.walls[w].box)) {
+                if (what) std::printf("      %s blocked at (%.1f %.1f %.1f) by wall %d (%.1f..%.1f, %.1f..%.1f, %.1f..%.1f)\n", what, p.x, p.y, p.z, w,
+                                      L.walls[w].box.min.x, L.walls[w].box.max.x, L.walls[w].box.min.y, L.walls[w].box.max.y,
+                                      L.walls[w].box.min.z, L.walls[w].box.max.z);
+                return false;
+            }
+        }
+    }
+    return true;
+}
+static bool routeClear(const LevelData& L, const std::vector<glm::vec3>& pts, const char* what) {
+    for (size_t i = 0; i + 1 < pts.size(); ++i) if (!walkClear(L, pts[i], pts[i + 1], true, what)) return false;
+    return true;
+}
+
+// Drop a player into a level at p and let the boosters, doors and physics run
+// for `seconds` with nobody on the keys. Returns where they ended up.
+static Player ride(LevelData L, const SpatialGrid& grid, glm::vec3 p, float seconds, Uint8* keys, float* topSpeed = nullptr) {
+    Player pl(p);
+    pl.dynWalls = L.moverWalls.data(); pl.dynCount = (int)L.moverWalls.size();
+    for (int d = 0; d < (int)L.doors.size(); ++d) L.doors[d].locked = false;
+    float best = 0.f;
+    for (int i = 0; i < (int)(seconds / DT); ++i) {
+        L.updateDoors(DT, pl.position);
+        int b = L.boosterAt(pl.position);
+        pl.update(DT, keys, L.walls.data(), (int)L.walls.size(), b >= 0, &grid);
+        if (b >= 0) applyBooster(L.boosters[b], pl, DT);
+        best = std::max(best, glm::length(pl.velocity));
+    }
+    if (topSpeed) *topSpeed = best;
+    return pl;
 }
 
 int main() {
@@ -171,16 +215,50 @@ int main() {
         CHECK(moversClear(L), "no arena mover ever passes through a wall");
     }
 
-    // Doors: closed doors block the gap, and open ones sit fully under their base
-    {
+    // Doors: two halves filling a gap in a wall; they part when you come
+    // near (unless locked) and close again once you've gone
+    auto doorsFill = [&](const LevelData& lv, const char* name) {
         bool ok = true;
-        for (auto& d : L.doors) {
-            const AABB& b = L.walls[d.wall].box;
-            if (d.open  && b.max.y > d.baseY + 0.001f) ok = false;
-            if (!d.open && b.max.y < d.baseY + d.height - 0.001f) ok = false;
+        for (auto& d : lv.doors) {
+            const AABB &a = lv.walls[d.wall].box, &b = lv.walls[d.wall2].box, &c = d.closed;
+            int ax0 = d.alongX() ? 0 : 2;
+            bool halves = a.min == c.min && b.max == c.max && std::fabs(a.max[ax0] - b.min[ax0]) < 1e-4f &&
+                          a.max.y == c.max.y && b.min.y == c.min.y && a.max[2 - ax0] == c.max[2 - ax0] && b.min[2 - ax0] == c.min[2 - ax0];
+            // Something solid either side of the door and above it: it fills its gap
+            glm::vec3 m = (c.min + c.max) * 0.5f;
+            int ax = d.alongX() ? 0 : 2;
+            glm::vec3 j0 = m, j1 = m, top = m;
+            j0[ax] = c.min[ax] - 0.25f; j1[ax] = c.max[ax] + 0.25f; top.y = c.max.y + 0.25f;
+            auto solid = [&](glm::vec3 q) {
+                for (int w = 0; w < (int)lv.walls.size(); ++w) {
+                    if (lv.isDoorWall(w)) continue;
+                    const AABB& bx = lv.walls[w].box;
+                    if (q.x > bx.min.x && q.x < bx.max.x && q.y > bx.min.y && q.y < bx.max.y && q.z > bx.min.z && q.z < bx.max.z) return true;
+                }
+                return false;
+            };
+            if (!halves || !solid(j0) || !solid(j1) || !solid(top)) {
+                std::printf("      %s door at (%.1f %.1f %.1f) doesn't fill its gap\n", name, m.x, m.y, m.z); ok = false; }
         }
-        CHECK(ok, "doors start fully open or fully closed");
-        CHECK(L.arenas[0].exitDoor >= 0 && !L.doors[L.arenas[0].exitDoor].open, "arena 1's exit starts locked");
+        return ok;
+    };
+    {
+        CHECK(doorsFill(L, "arena"), "every arena door is two halves filling a gap in a wall");
+        CHECK(L.arenas[0].exitDoor >= 0 && L.doors[L.arenas[0].exitDoor].locked, "arena 1's exit starts locked");
+        LevelData M = L;
+        int ex = M.arenas[0].exitDoor, en = M.arenas[1].entryGate;
+        glm::vec3 nearEx = (M.doors[ex].closed.min + M.doors[ex].closed.max) * 0.5f + glm::vec3{0, 0, 4.f};
+        nearEx.y = 0.f;
+        for (int i = 0; i < 60; ++i) M.updateDoors(DT, nearEx);
+        bool lockedStays = M.doors[ex].openAmount == 0.f && overlapsBox(boxAt(nearEx - glm::vec3{0, 0, 4.f}, 0.4f, 1.8f), M.walls[M.doors[ex].wall].box);
+        M.doors[ex].locked = false;
+        for (int i = 0; i < 30; ++i) M.updateDoors(DT, nearEx);
+        bool opens = M.doors[ex].openAmount == 1.f && walkClear(M, nearEx, nearEx - glm::vec3{0, 0, 8.f}, false, "open gate");
+        for (int i = 0; i < 60; ++i) M.updateDoors(DT, {0.f, 0.f, 10.f});
+        bool closes = M.doors[ex].openAmount == 0.f && M.doors[en].openAmount == 0.f;
+        CHECK(lockedStays, "a locked door stays shut when you walk up to it");
+        CHECK(opens, "an unlocked door parts in under half a second as you approach, and you can walk through");
+        CHECK(closes, "doors close again once you've moved away");
     }
 
     // ---------------------------------------------------------------- the Gauntlet (FAST)
@@ -190,8 +268,9 @@ int main() {
         return p.x >= b.min.x && p.x <= b.max.x && p.y >= b.min.y && p.y <= b.max.y && p.z >= b.min.z && p.z <= b.max.z;
     };
     {
-        CHECK(D.fast && D.arenas.size() == 6, "the Gauntlet has six levels");
-        bool placedOk = true, inBounds = true, starts = true, gates = true, breathers = true, long_ = true, triggers = true;
+        CHECK(D.fast && D.arenas.size() == 7, "the Gauntlet has seven rooms");
+        bool placedOk = true, inBounds = true, starts = true, gates = true, breathers = true, roomy = true, triggers = true;
+        int big = 0;
         for (size_t i = 0; i < D.arenas.size(); ++i) {
             const Arena& a = D.arenas[i];
             for (auto& w : a.waves) for (auto& e : w) {
@@ -206,20 +285,23 @@ int main() {
                     if (!inBox(a.trigger, p)) { std::printf("      %s at (%.1f %.1f %.1f) is before level %d's trigger\n", st.name, p.x, p.y, p.z, (int)i); breathers = false; }
                 }
             }
-            if (overlapsWall(D, boxAt(a.playerStart, 0.4f, 1.8f)) || !inside(a.zone, a.playerStart)) {
+            if (overlapsWall(D, boxAt(a.playerStart, 0.4f, 1.8f)) || D.arenaAt(a.playerStart) != (int)i) {
                 std::printf("      level %d start (%.1f %.1f %.1f) blocked\n", (int)i, a.playerStart.x, a.playerStart.y, a.playerStart.z); starts = false; }
             if (!a.hasTrigger || inBox(a.trigger, a.playerStart)) triggers = false;
-            if (i + 1 < D.arenas.size() && (a.exitDoor < 0 || D.doors[a.exitDoor].open)) gates = false;
+            if (i + 1 < D.arenas.size() && (a.exitDoor < 0 || !D.doors[a.exitDoor].locked)) gates = false;
+            if (a.entryGate < 0 || D.doors[a.entryGate].locked) gates = false;
             glm::vec3 ext = a.zone.max - a.zone.min;
-            if (std::max(ext.x, ext.z) < 40.f || std::min(ext.x, ext.z) < 20.f) long_ = false;
+            if (std::min(ext.x, ext.z) < 20.f) roomy = false;
+            if (std::max(ext.x, ext.z) >= 60.f) ++big;
+            if (a.extraZones.empty()) roomy = false;
         }
         CHECK(placedOk, "every FAST enemy is hand-placed and clear of walls");
         CHECK(inBounds, "every FAST enemy is placed inside its own level");
         CHECK(starts, "every level's checkpoint is clear of walls");
         CHECK(triggers, "every level starts with a breather before its fight trigger");
         CHECK(breathers, "no enemy spawns in a breather");
-        CHECK(gates, "every level but the last is gated until it's cleared");
-        CHECK(long_, "every level is a wide channel (at least 20 m wide, 40 m long)");
+        CHECK(gates, "every room has a way in, and every exit but the last is locked until the room is cleared");
+        CHECK(roomy && big >= 4, "every room is at least 20 m across and reached by a tube; four or more are 60 m+ halls");
         // The route changes direction: some exits go north, some west, some east
         int north = 0, west = 0, east = 0, up = 0, down = 0;
         for (size_t i = 0; i + 1 < D.arenas.size(); ++i) {
@@ -234,19 +316,68 @@ int main() {
         bool pickupsOk = true;
         for (auto& p : D.placedPickups) if (D.arenaAt(p.pos) < 0 || overlapsWall(D, boxAt(p.pos, 0.3f, 0.6f))) pickupsOk = false;
         CHECK(pickupsOk, "placed pickups sit in the open inside a level");
-        CHECK(D.arenas[2].voidY > 0.f, "the Span has a void plane that sends you back");
+        CHECK(std::string(D.arenas[3].name) == "THE SPAN" && D.arenas[3].voidY > 0.f && D.arenas[3].hasRespawn &&
+              D.arenas[3].respawn.y >= 20.f, "the Span has a void plane that sends you back onto its entry cliff");
         CHECK(inside(D.arenas.back().zone, D.finishPos) && D.finishPos.y > 20.f, "the finish beacon is on top of the tower");
         CHECK(D.parTimes[0] > 0.f && D.parTimes[0] < D.parTimes[1] && D.parTimes[1] < D.parTimes[2] && D.parTimes[2] < D.parTimes[3],
               "par times are ordered S < A < B < C");
         CHECK(padsLand(D, dgrid, keys), "every Gauntlet jump pad lands the player on something higher (>= 2.5 m up)");
         CHECK(moversClear(D), "no Gauntlet mover ever passes through a wall");
-        // Consecutive levels' zones overlap through the gate, or you couldn't walk between them
+        // Consecutive rooms' zones (tubes included) overlap through the doors,
+        // or you couldn't walk between them
         bool linked = true;
+        auto zonesOf = [](const Arena& a) { std::vector<AABB> v = a.extraZones; v.push_back(a.zone); return v; };
         for (size_t i = 0; i + 1 < D.arenas.size(); ++i) {
-            const AABB& z0 = D.arenas[i].zone; const AABB& z1 = D.arenas[i + 1].zone;
-            if (!(z0.max.x > z1.min.x && z0.min.x < z1.max.x && z0.max.z > z1.min.z && z0.min.z < z1.max.z)) linked = false;
+            bool any = false;
+            for (auto& z0 : zonesOf(D.arenas[i])) for (auto& z1 : zonesOf(D.arenas[i + 1]))
+                if (z0.max.x > z1.min.x && z0.min.x < z1.max.x && z0.max.z > z1.min.z && z0.min.z < z1.max.z) any = true;
+            if (!any) { std::printf("      room %d doesn't connect to room %d\n", (int)i, (int)i + 1); linked = false; }
         }
-        CHECK(linked, "each level's zone connects to the next");
+        CHECK(linked, "each room's zones connect to the next room's");
+        CHECK(doorsFill(D, "gauntlet") && D.doors.size() >= 16, "every Gauntlet door is two halves filling a gap (16+ doors)");
+
+        // The main route can be walked: tubes, doorways and rooms leave room
+        // for the player (with the doors open), and every door, shut, blocks it
+        bool routes = true;
+        routes &= routeClear(D, {{0,3,0}, {0,3,-50}, {-10,3,-62}, {-10,3,-118.5f}, {-59,3,-118.5f}}, "canal");
+        routes &= routeClear(D, {{-62,0,-113}, {-79,0,-113}, {-79,0,-118.5f}, {-124,0,-118.5f}}, "sluice");
+        routes &= routeClear(D, {{-190.5f,20,-112}, {-190.5f,20,-164}}, "ascent top");
+        routes &= routeClear(D, {{-185,20,-263.5f}, {-155,20,-263.5f}}, "span to well");
+        routes &= routeClear(D, {{-128,0,-263.5f}, {-60,0,-263.5f}}, "well to pumpworks");
+        routes &= routeClear(D, {{-49.5f,5,-280}, {-49.5f,5,-290}}, "control room");
+        routes &= routeClear(D, {{-30,0,-263.5f}, {40,0,-263.5f}}, "pumpworks to tower");
+        CHECK(routes, "the route through every tube and doorway is wide and tall enough to walk");
+        bool shutBlocks = !walkClear(D, {0,3,0}, {0,3,-50}, false, nullptr) && !walkClear(D, {-10,3,-118.5f}, {-59,3,-118.5f}, false, nullptr) &&
+                          !walkClear(D, {-30,0,-263.5f}, {40,0,-263.5f}, false, nullptr);
+        CHECK(shutBlocks, "a shut door blocks its doorway");
+
+        // Every horizontal boost tube fires you down it; the lift shaft takes
+        // you up to the tower's top balcony
+        bool fired = true;
+        for (auto& b : D.boosters) {
+            if (b.dir.y > 0.5f || b.box.min.y > 26.f) continue;
+            glm::vec3 c = (b.box.min + b.box.max) * 0.5f, startP = c - b.dir * (std::fabs(glm::dot(b.box.max - b.box.min, b.dir)) * 0.5f - 0.5f);
+            startP.y = b.box.min.y;
+            float top = 0.f;
+            Player pl = ride(D, dgrid, startP, 1.2f, keys, &top);
+            float went = glm::dot(pl.position - startP, b.dir);
+            float len = std::fabs(glm::dot(b.box.max - b.box.min, b.dir));
+            if (went < len - 1.f || top < b.speed * 0.95f) {
+                std::printf("      booster at (%.0f %.0f %.0f) carried the player %.1f m, top speed %.1f\n", c.x, c.y, c.z, went, top); fired = false; }
+        }
+        CHECK(fired, "every boost tube shoots you down it at full speed");
+        {
+            const Booster* shaft = nullptr;
+            for (auto& b : D.boosters) if (b.dir.y > 0.5f) shaft = &b;
+            bool up = false;
+            if (shaft) {
+                glm::vec3 c = (shaft->box.min + shaft->box.max) * 0.5f; c.y = 0.f;
+                Player pl = ride(D, dgrid, c, 4.f, keys);
+                std::printf("      lift shaft: ended at (%.1f %.1f %.1f) %s\n", pl.position.x, pl.position.y, pl.position.z, pl.onGround ? "standing" : "airborne");
+                up = pl.onGround && std::fabs(pl.position.y - 24.f) < 0.1f;
+            }
+            CHECK(up, "the tower's lift shaft puts you on its top balcony");
+        }
     }
 
     // The tower at the end can be climbed by its pads alone (lifts aside)
@@ -406,12 +537,45 @@ int main() {
       CHECK(rip.minY < 0.5f, "a Ripper on a ledge drops down to chase you"); }
 
     // Flyers stay above the floor of a high section
-    { const Arena& S2 = D.arenas[2];
-      auto s = simulate(D, dgrid, EnemyType::RAPTOR, {-124, 31.f, -180.f}, S2.playerStart, S2, 15.f);
-      CHECK(s.minY >= S2.bounds.min.y + 1.4f, "a Raptor over the Span never sinks below the level's floor"); }
-    { const Arena& S1 = D.arenas[1];   // gunners on the Ascent's terraces stay up there
-      auto s = simulate(D, dgrid, EnemyType::HUSK, {-100, 19.f, -104.f}, S1.playerStart, S1, 15.f);
-      CHECK(s.minY > 18.5f, "a Husk on an Ascent terrace holds it while you climb"); }
+    { const Arena& S3 = D.arenas[3];
+      auto s = simulate(D, dgrid, EnemyType::RAPTOR, {-193, 30.f, -212.f}, S3.respawn, S3, 15.f);
+      CHECK(s.minY >= S3.bounds.min.y + 1.4f, "a Raptor over the Span never sinks below the room's floor"); }
+    { const Arena& S2 = D.arenas[2];   // gunners on the Ascent's terraces stay up there
+      auto s = simulate(D, dgrid, EnemyType::HUSK, {-196, 20.f, -114.f}, {-120.f, 0.f, -118.f}, S2, 15.f);
+      CHECK(s.minY > 19.5f, "a Husk on the Ascent's top terrace holds it while you climb"); }
+
+    // ---------------------------------------------------------------- difficulty
+    {
+        bool ordered = true;
+        for (int i = 0; i + 1 < DIFFICULTY_LEVELS; ++i) {
+            const DifficultyTuning &a = difficulty(i), &b = difficulty(i + 1);
+            if (!(b.damage > a.damage && b.attackRate > a.attackRate && b.lead >= a.lead && b.windup < a.windup + 1e-4f &&
+                  b.heal < a.heal && b.waveSize > a.waveSize)) ordered = false;
+        }
+        CHECK(ordered && difficulty(DIFFICULTY_DEFAULT).damage > 1.f && difficulty(0).lead == 0.f,
+              "each difficulty is harder than the last; STANDARD is harder than the original game (LENIENT)");
+        // A Husk leads a strafing player at STANDARD, and doesn't at LENIENT
+        auto aimAt = [&](int level) {
+            Enemy e(EnemyType::HUSK, {0, 0, -14});
+            EnemyWorld w = worldFor(L, grid, {0, 0, 4}, A0);
+            w.playerVel = {7.f, 0.f, 0.f};
+            w.tune = &difficulty(level);
+            for (int i = 0; i < 60 * 10; ++i) {
+                e.update(DT, w);
+                if (e.ev.shots) return e.ev.shotDir[0].x - glm::normalize(w.playerEye - e.ev.shotOrigin).x;   // ahead of the direct line
+            }
+            return -1.f;
+        };
+        float lenient = aimAt(0), standard = aimAt(DIFFICULTY_DEFAULT);
+        std::printf("      husk aim x: lenient %.3f, standard %.3f\n", lenient, standard);
+        CHECK(std::fabs(lenient) < 0.02f && standard > 0.1f, "enemies lead a moving player's shots (from STANDARD up)");
+        WaveDirector d; d.level = &L; d.countScale = difficulty(3).waveSize; d.maxAliveBonus = difficulty(3).maxAliveBonus;
+        int base = 0, scaled = 0;
+        for (auto& e : L.arenas[0].waves[0]) { base += e.total(); scaled += d.countOf(e); }
+        WaveEntry boss(EnemyType::WARDEN, 1);
+        CHECK(scaled > base && d.countOf(boss) == 1 && d.maxAlive() > L.arenas[0].maxAlive,
+              "harder difficulties bring bigger waves and more at once - but still one Warden");
+    }
 
     // ---------------------------------------------------------------- director: ARENA
     {
@@ -573,6 +737,43 @@ int main() {
               "upgrades stop at the max tier");
         CHECK(styleXpMultiplier(StyleRank::SSS) > styleXpMultiplier(StyleRank::D), "stylish kills earn more XP");
         CHECK(formatTime(83.456f) == "1:23.46" && formatTime(5.f, false) == "0:05", "times format as m:ss.hh");
+    }
+
+    // ---------------------------------------------------------------- music
+    {
+        auto measure = [](int track, float level, bool muffled, float& rms, float& peak, float& hf) {
+            MusicSynth m; m.setTrack(track); m.setIntensity(level); m.setVolume(1.f); m.setMuffle(muffled);
+            std::vector<float> buf(44100 * 2 * 3);
+            m.render(buf.data(), 44100 * 3);             // settle (track switch, layer fades)
+            m.render(buf.data(), 44100 * 3);
+            double s2 = 0, d2 = 0; peak = 0.f; bool finite = true;
+            for (size_t i = 0; i < buf.size(); ++i) {
+                s2 += buf[i] * buf[i]; peak = std::max(peak, std::fabs(buf[i]));
+                if (i >= 2) { float d = buf[i] - buf[i - 2]; d2 += d * d; }   // first difference: high-frequency energy
+                if (!std::isfinite(buf[i])) finite = false;
+            }
+            rms = (float)std::sqrt(s2 / buf.size()); hf = (float)std::sqrt(d2 / buf.size());
+            if (!finite) peak = 99.f;
+        };
+        bool sane = true, layers = true;
+        for (int t = 0; t < MUSIC_TRACKS; ++t) {
+            float r0, p0, h0, r1, p1, h1;
+            measure(t, 0.f, false, r0, p0, h0);
+            measure(t, 1.f, false, r1, p1, h1);
+            std::printf("      music %-7s calm rms %.3f, fight rms %.3f peak %.2f\n", musicTrack(t).name, r0, r1, p1);
+            if (p0 > 1.f || p1 > 1.f || r1 < 0.08f || r1 > 0.6f) sane = false;
+            if (!(r1 > r0 * 1.3f)) layers = false;
+        }
+        float r, p, h, rm, pm, hm;
+        measure(0, 1.f, false, r, p, h);
+        measure(0, 1.f, true, rm, pm, hm);
+        CHECK(sane, "every soundtrack renders clean: finite, never clipping, at a sensible level");
+        CHECK(layers, "the music gets bigger when a fight starts");
+        CHECK(hm < h * 0.5f, "the pause menu muffles the music");
+        MusicSynth m; m.setTrack(2);
+        std::vector<float> buf(2 * 4410);
+        m.render(buf.data(), 4410);
+        CHECK(m.currentTrack() == 2, "a track change waits for the bar line, then takes");
     }
 
     // ---------------------------------------------------------------- mouse filter

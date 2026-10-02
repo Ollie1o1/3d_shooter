@@ -76,13 +76,20 @@ struct WaveEntry {
     int total() const { return at.empty() ? count : (int)at.size(); }
 };
 
-// A door is a wall that slides down into whatever it stands on when opened.
+// A door is a pair of walls that part in the middle, each half sliding into
+// its jamb. Every door opens by itself when the player comes near (Ultrakill
+// style) unless it's locked: an arena's exit until the fight there is won,
+// the way in once a fight has started. LevelData::updateDoors() runs them.
 struct Door {
-    int       wall;          // index into LevelData::walls
-    float     height;        // closed height above baseY
-    bool      open = false;
-    float     openAmount = 0.f;  // 0 closed .. 1 fully sunk; animated by GameplayState
-    float     baseY = 0.f;       // floor the door stands on
+    int   wall = -1, wall2 = -1;     // the two halves (indices into LevelData::walls)
+    AABB  closed{};                  // the whole doorway when shut
+    float height = 4.f;
+    float baseY  = 0.f;              // floor the door stands on
+    bool  locked = false;
+    bool  open   = false;            // where it's heading (set by updateDoors)
+    float openAmount = 0.f;          // 0 shut .. 1 fully parted
+    float sense = 8.f;               // opens when the player is this close (m)
+    bool  alongX() const { return closed.max.x - closed.min.x >= closed.max.z - closed.min.z; }
 };
 
 struct JumpPad {
@@ -90,6 +97,10 @@ struct JumpPad {
     glm::vec2 half;          // XZ half-extents of the trigger
     glm::vec3 launch;        // velocity applied to the player
 };
+
+// A boost tube: inside the box the player is driven along `dir` at `speed`
+// (at least). Horizontal ones fire you down a duct; vertical ones are lifts.
+struct Booster { AABB box; glm::vec3 dir; float speed; };
 
 struct Hazard { AABB box; float dps; };
 
@@ -125,14 +136,22 @@ struct Mover {
     }
 };
 
-enum class Ambient { DUST, EMBERS, MOTES, WIND, ASH };
+enum class Ambient { DUST, EMBERS, MOTES, WIND, ASH, STEAM };
 
 struct Arena {
     const char* name;
     const char* subtitle;
     AABB        bounds;          // interior; enemies are clamped inside, max.y caps flyers
     AABB        zone;            // where the player may be (XZ); max.y is the ceiling
+    // More boxes that count as this arena/section: the tubes and side rooms
+    // leading into and off it. Same rules as `zone`.
+    std::vector<AABB> extraZones;
     glm::vec3   playerStart;
+    float       startYaw = -90.f;   // which way the checkpoint faces (-90 = north)
+    // Where a fall into the void puts you back (FAST rooms mid-fight, when the
+    // way back to playerStart is locked). Unset: playerStart.
+    glm::vec3   respawn{0.f};
+    bool        hasRespawn = false;
     std::vector<glm::vec3> groundSpawns, airSpawns;
     // Optional per-wave ground spawns (the Spire: each wave a tier higher).
     // Empty for a wave → groundSpawns.
@@ -150,6 +169,13 @@ struct Arena {
     bool        hasTrigger = false;
     Ambient     ambient = Ambient::DUST;
     Theme       theme;
+
+    bool containsXZ(glm::vec3 p) const {
+        auto in = [&](const AABB& z) { return p.x >= z.min.x && p.x <= z.max.x && p.z >= z.min.z && p.z <= z.max.z; };
+        if (in(zone)) return true;
+        for (auto& z : extraZones) if (in(z)) return true;
+        return false;
+    }
 };
 
 struct LevelData {
@@ -159,6 +185,7 @@ struct LevelData {
     std::vector<FloorPatch> floors;
     std::vector<Door>       doors;
     std::vector<JumpPad>    pads;
+    std::vector<Booster>    boosters;
     std::vector<Hazard>     hazards;
     std::vector<Arena>      arenas;
     std::vector<AABB>       corridors; // corridor i joins arena i and i+1 (zone, XZ)
@@ -175,6 +202,9 @@ struct LevelData {
     // Animated set dressing, drawn by GameplayState
     struct Gem { glm::vec3 pos; glm::vec3 color; float size; bool beam; };
     std::vector<Gem> gems;
+    // Spinning fans set into walls and floors (drawn by GameplayState)
+    struct Fan { glm::vec3 pos; float radius; int axis; glm::vec3 glow; };
+    std::vector<Fan> fans;
     bool      hasReactor = false;
     glm::vec3 reactorPos{0.f};
 
@@ -185,7 +215,7 @@ struct LevelData {
     float     moverClock = 0.f;
 
     bool isDoorWall(int w) const {
-        for (auto& d : doors) if (d.wall == w) return true;
+        for (auto& d : doors) if (d.wall == w || d.wall2 == w) return true;
         return false;
     }
     int moverOfWall(int w) const {
@@ -193,12 +223,10 @@ struct LevelData {
         return -1;
     }
 
-    // Arena whose zone contains p (or -1 if p is in a corridor / outside).
+    // Arena whose zone (or one of its extra zones) contains p, or -1 if p is
+    // in an ARENA corridor / outside.
     int arenaAt(glm::vec3 p) const {
-        for (int i = 0; i < (int)arenas.size(); ++i) {
-            const AABB& z = arenas[i].zone;
-            if (p.x >= z.min.x && p.x <= z.max.x && p.z >= z.min.z && p.z <= z.max.z) return i;
-        }
+        for (int i = 0; i < (int)arenas.size(); ++i) if (arenas[i].containsXZ(p)) return i;
         return -1;
     }
 
@@ -207,6 +235,7 @@ struct LevelData {
     Theme themeAt(glm::vec3 p) const {
         for (auto& b : blends) {
             if (p.x < b.box.min.x || p.x > b.box.max.x || p.z < b.box.min.z || p.z > b.box.max.z) continue;
+            if (p.y < b.box.min.y || p.y > b.box.max.y) continue;
             float lo = b.box.min[b.axis], hi = b.box.max[b.axis];
             float t = b.decreasing ? (hi - p[b.axis]) / (hi - lo) : (p[b.axis] - lo) / (hi - lo);
             t = glm::clamp(t, 0.f, 1.f);
@@ -244,36 +273,220 @@ struct LevelData {
             m.delta = b.min - before;
         }
     }
+
+    // ---- Doors ----
+    // Size the two halves for how far the door has parted. Fully open, both
+    // are parked under the floor (inside the cells they were filed under), so
+    // nothing snags on a sliver of door in the jamb.
+    void applyDoor(int di) {
+        Door& d = doors[di];
+        AABB a = d.closed, b = d.closed;
+        if (d.openAmount >= 0.999f) {
+            a.min.y = b.min.y = d.baseY - 60.f;
+            a.max.y = b.max.y = d.baseY - 59.f;
+        } else {
+            int ax = d.alongX() ? 0 : 2;
+            float mid = (d.closed.min[ax] + d.closed.max[ax]) * 0.5f;
+            float half = (d.closed.max[ax] - d.closed.min[ax]) * 0.5f;
+            a.max[ax] = mid - d.openAmount * half;
+            b.min[ax] = mid + d.openAmount * half;
+        }
+        walls[d.wall].box = a;
+        walls[d.wall2].box = b;
+    }
+    void setDoorInstant(int di, bool open) {
+        doors[di].open = open;
+        doors[di].openAmount = open ? 1.f : 0.f;
+        applyDoor(di);
+    }
+    // Is the player close enough to a door to open it?
+    static bool nearDoor(const Door& d, glm::vec3 feet, float pad) {
+        const AABB& c = d.closed;
+        float dx = std::max({c.min.x - feet.x, 0.f, feet.x - c.max.x});
+        float dz = std::max({c.min.z - feet.z, 0.f, feet.z - c.max.z});
+        if (feet.y < d.baseY - 3.f || feet.y > d.baseY + d.height + 1.f) return false;
+        return dx * dx + dz * dz < pad * pad;
+    }
+    // Open every unlocked door the player is near, close the rest. A door
+    // never closes on the player standing in it. Calls onChange(door, opening)
+    // when a door starts to move (for its sound).
+    template <typename F>
+    void updateDoors(float dt, glm::vec3 feet, F&& onChange) {
+        for (int i = 0; i < (int)doors.size(); ++i) {
+            Door& d = doors[i];
+            bool want = !d.locked && nearDoor(d, feet, d.sense);
+            if (!want && nearDoor(d, feet, 0.6f)) want = true;   // standing in the doorway
+            if (want != d.open) { d.open = want; onChange(i, want); }
+            float target = d.open ? 1.f : 0.f;
+            if (d.openAmount == target) continue;
+            float step = dt * (d.open ? 4.5f : 2.5f);   // parts in under a quarter second
+            d.openAmount = d.open ? std::min(1.f, d.openAmount + step) : std::max(0.f, d.openAmount - step);
+            applyDoor(i);
+        }
+    }
+    void updateDoors(float dt, glm::vec3 feet) { updateDoors(dt, feet, [](int, bool) {}); }
+
+    // Which booster (if any) is the player in?
+    int boosterAt(glm::vec3 feet) const {
+        glm::vec3 c = feet + glm::vec3{0, 0.9f, 0};
+        for (int i = 0; i < (int)boosters.size(); ++i) {
+            const AABB& b = boosters[i].box;
+            if (c.x >= b.min.x && c.x <= b.max.x && c.y >= b.min.y && c.y <= b.max.y && c.z >= b.min.z && c.z <= b.max.z) return i;
+        }
+        return -1;
+    }
 };
+
+// Inside a boost tube the player is driven along it at (at least) its speed
+// and straightened up; a vertical one is a lift shaft that also draws you to
+// its middle so you don't scrape up the wall. Call after Player::update().
+inline void applyBooster(const Booster& b, Player& p, float dt) {
+    glm::vec3& v = p.velocity;
+    if (b.dir.y > 0.5f) {
+        glm::vec3 c = (b.box.min + b.box.max) * 0.5f;
+        glm::vec2 off{p.position.x - c.x, p.position.z - c.z};
+        float k = std::exp(-5.f * dt);
+        v.x = v.x * k - off.x * 3.f * (1.f - k);
+        v.z = v.z * k - off.y * 3.f * (1.f - k);
+        if (v.y < b.speed) v.y += (b.speed - v.y) * std::min(1.f, dt * 12.f);
+        p.onGround = false;
+        return;
+    }
+    glm::vec3 flat{v.x, 0.f, v.z};
+    float along = glm::dot(flat, b.dir);
+    glm::vec3 side = (flat - b.dir * along) * std::exp(-7.f * dt);
+    along = std::max(along, b.speed);
+    v.x = side.x + b.dir.x * along;
+    v.z = side.z + b.dir.z * along;
+}
 
 // Shared building helpers for both maps
 struct LevelBuilder {
     LevelData& L;
+    Mat mat = Mat::BRICK;          // material for walls and props built from here on
+
+    // An opening cut in a wall: [a0, a1] along the wall, open from y0 to y1
+    struct Gap { float a0, a1, y0, y1; };
+
     static AABB aabb(float x0, float y0, float z0, float x1, float y1, float z1) {
         return AABB{ {std::min(x0,x1), std::min(y0,y1), std::min(z0,z1)},
                      {std::max(x0,x1), std::max(y0,y1), std::max(z0,z1)} };
     }
     int wall(float x0, float y0, float z0, float x1, float y1, float z1, glm::vec3 c) {
-        L.walls.push_back(Wall{aabb(x0,y0,z0,x1,y1,z1), c});
+        Wall w{aabb(x0,y0,z0,x1,y1,z1), c};
+        w.mat = mat;
+        L.walls.push_back(w);
         return (int)L.walls.size() - 1;
     }
     void prop(float x0, float y0, float z0, float x1, float y1, float z1, glm::vec3 c) {
-        L.props.push_back(Wall{aabb(x0,y0,z0,x1,y1,z1), c});
+        Wall w{aabb(x0,y0,z0,x1,y1,z1), c};
+        w.mat = mat;
+        L.props.push_back(w);
     }
     void neon(float x0, float y0, float z0, float x1, float y1, float z1, glm::vec3 c) {
         L.neon.push_back(Wall{aabb(x0,y0,z0,x1,y1,z1), c});
-    }
-    int door(float x0, float z0, float x1, float z1, float h, glm::vec3 c, bool open, float baseY = 0.f) {
-        int w = wall(x0, baseY, z0, x1, baseY + h, z1, c);
-        Door d; d.wall = w; d.height = h; d.open = open; d.openAmount = open ? 1.f : 0.f; d.baseY = baseY;
-        if (open) { L.walls[w].box.max.y = baseY; L.walls[w].box.min.y = baseY - h; }
-        L.doors.push_back(d);
-        return (int)L.doors.size() - 1;
     }
     // A band of light wrapped around a box (slightly larger, so only its sides show)
     void ring(float x0, float z0, float x1, float z1, float y0, float y1, glm::vec3 c) {
         neon(x0 - 0.06f, y0, z0 - 0.06f, x1 + 0.06f, y1, z1 + 0.06f, c);
     }
+
+    // A wall running along X (thin in Z) with doorways / windows cut in it
+    void wallX(float x0, float x1, float z0, float z1, float y0, float y1, glm::vec3 c, std::vector<Gap> gaps = {}) {
+        std::sort(gaps.begin(), gaps.end(), [](const Gap& a, const Gap& b) { return a.a0 < b.a0; });
+        float x = x0;
+        for (auto& g : gaps) {
+            if (g.a0 > x) wall(x, y0, z0, g.a0, y1, z1, c);
+            if (g.y0 > y0) wall(g.a0, y0, z0, g.a1, g.y0, z1, c);   // sill
+            if (g.y1 < y1) wall(g.a0, g.y1, z0, g.a1, y1, z1, c);   // lintel
+            x = g.a1;
+        }
+        if (x < x1) wall(x, y0, z0, x1, y1, z1, c);
+    }
+    // A wall running along Z (thin in X) with doorways / windows cut in it
+    void wallZ(float z0, float z1, float x0, float x1, float y0, float y1, glm::vec3 c, std::vector<Gap> gaps = {}) {
+        std::sort(gaps.begin(), gaps.end(), [](const Gap& a, const Gap& b) { return a.a0 < b.a0; });
+        float z = z0;
+        for (auto& g : gaps) {
+            if (g.a0 > z) wall(x0, y0, z, x1, y1, g.a0, c);
+            if (g.y0 > y0) wall(x0, y0, g.a0, x1, g.y0, g.a1, c);
+            if (g.y1 < y1) wall(x0, g.y1, g.a0, x1, y1, g.a1, c);
+            z = g.a1;
+        }
+        if (z < z1) wall(x0, y0, z, x1, y1, z1, c);
+    }
+
+    // A door filling a doorway [a0, a1] in a wall whose thickness spans w0..w1
+    // across it (alongX: the wall runs along X, so w is Z). Glowing trim frames
+    // the opening on both faces. Returns the door index.
+    int doorway(bool alongX, float a0, float a1, float w0, float w1, float baseY, float h,
+                glm::vec3 trim, bool locked = false) {
+        float m0 = std::min(w0, w1) + 0.15f, m1 = std::max(w0, w1) - 0.15f;
+        AABB box = alongX ? aabb(a0, baseY, m0, a1, baseY + h, m1) : aabb(m0, baseY, a0, m1, baseY + h, a1);
+        glm::vec3 col{0.17f, 0.17f, 0.21f};
+        Wall wa{box, col}, wb{box, col};
+        wa.hidden = wb.hidden = true;
+        L.walls.push_back(wa);
+        L.walls.push_back(wb);
+        Door d;
+        d.wall = (int)L.walls.size() - 2; d.wall2 = (int)L.walls.size() - 1;
+        d.closed = box; d.height = h; d.baseY = baseY; d.locked = locked;
+        L.doors.push_back(d);
+        L.applyDoor((int)L.doors.size() - 1);
+        // Trim on both faces: two jambs and a header
+        float lo = std::min(w0, w1), hi = std::max(w0, w1);
+        for (float f : {lo - 0.07f, hi}) {
+            float g0 = f, g1 = f + 0.07f;
+            if (alongX) {
+                neon(a0 - 0.3f, baseY, g0, a0, baseY + h + 0.3f, g1, trim);
+                neon(a1, baseY, g0, a1 + 0.3f, baseY + h + 0.3f, g1, trim);
+                neon(a0 - 0.3f, baseY + h, g0, a1 + 0.3f, baseY + h + 0.3f, g1, trim);
+            } else {
+                neon(g0, baseY, a0 - 0.3f, g1, baseY + h + 0.3f, a0, trim);
+                neon(g0, baseY, a1, g1, baseY + h + 0.3f, a1 + 0.3f, trim);
+                neon(g0, baseY + h, a0 - 0.3f, g1, baseY + h + 0.3f, a1 + 0.3f, trim);
+            }
+        }
+        return (int)L.doors.size() - 1;
+    }
+
+    // A square duct along X (axis 0) or Z (axis 2), from a to b along the
+    // axis, centred on c across it, floor at y, inner width w and height h,
+    // with a 1 m shell. Glowing ribs every 3 m and a light strip down the
+    // middle of the floor. `solidBelow`: the floor is a block down to the
+    // ground (else a 1 m slab over thin air). Returns the duct's zone, which
+    // reaches 1.5 m past both ends so it overlaps the rooms it joins.
+    AABB tube(int axis, float a, float b, float c, float y, float w, float h,
+              glm::vec3 shell, glm::vec3 rib, bool solidBelow = true) {
+        float lo = std::min(a, b), hi = std::max(a, b);
+        float c0 = c - w * 0.5f, c1 = c + w * 0.5f;
+        float base = solidBelow ? 0.f : y - 1.f;
+        Mat keep = mat;
+        mat = Mat::PANEL;
+        auto box = [&](float u0, float v0, float y0, float u1, float v1, float y1, bool solid, glm::vec3 col) {
+            // u: along the axis, v: across it
+            if (axis == 0) { if (solid) wall(u0, y0, v0, u1, y1, v1, col); else neon(u0, y0, v0, u1, y1, v1, col); }
+            else           { if (solid) wall(v0, y0, u0, v1, y1, u1, col); else neon(v0, y0, u0, v1, y1, u1, col); }
+        };
+        box(lo, c0 - 1.f, base, hi, c0, y + h, true, shell);          // sides
+        box(lo, c1, base, hi, c1 + 1.f, y + h, true, shell);
+        box(lo, c0 - 1.f, y + h, hi, c1 + 1.f, y + h + 1.f, true, shell * 0.8f);   // roof
+        if (y > 0.01f) box(lo, c0, base, hi, c1, y, true, shell * 0.7f);          // floor
+        mat = keep;
+        box(lo, c - 0.18f, y, hi, c + 0.18f, y + 0.03f, false, rib * 0.55f);     // floor strip
+        int n = (int)((hi - lo) / 3.f);
+        for (int i = 1; i < n; ++i) {
+            float u = lo + (hi - lo) * i / n;
+            box(u - 0.12f, c0, y + 0.25f, u + 0.12f, c0 + 0.07f, y + h, false, rib);
+            box(u - 0.12f, c1 - 0.07f, y + 0.25f, u + 0.12f, c1, y + h, false, rib);
+            box(u - 0.12f, c0, y + h - 0.07f, u + 0.12f, c1, y + h, false, rib);
+        }
+        return axis == 0 ? aabb(lo - 1.5f, y, c0, hi + 1.5f, y + h, c1)
+                         : aabb(c0, y, lo - 1.5f, c1, y + h, hi + 1.5f);
+    }
+
+    void booster(AABB box, glm::vec3 dir, float speed) { L.boosters.push_back({box, glm::normalize(dir), speed}); }
+
     // A moving platform: a box of half-size `half` centred at `centre` (its top
     // is centre.y + half.y), travelling along a path. Returns the mover index.
     int mover(glm::vec3 centre, glm::vec3 half, Mover::Path path, glm::vec3 a, glm::vec3 b,
@@ -303,7 +516,6 @@ inline LevelData buildLevel() {
     auto wall = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { return B.wall(x0,y0,z0,x1,y1,z1,c); };
     auto prop = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { B.prop(x0,y0,z0,x1,y1,z1,c); };
     auto neon = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { B.neon(x0,y0,z0,x1,y1,z1,c); };
-    auto door = [&](float x0, float z0, float x1, float z1, float h, vec3 c, bool open) { return B.door(x0,z0,x1,z1,h,c,open); };
     auto ring = [&](float x0, float z0, float x1, float z1, float y0, float y1, vec3 c) { B.ring(x0,z0,x1,z1,y0,y1,c); };
     // A blocky synthwave palm: a leaning trunk and drooping fronds
     auto palm = [&](float x, float z, float h, float lean) {
@@ -347,7 +559,7 @@ inline LevelData buildLevel() {
         wall(-31,0,-31, -30,5, 31, adobe);
         wall(-31,0,-31,  -4,5,-30, adobe);
         wall(  4,0,-31,  31,5,-30, adobe);
-        a.exitDoor = door(-4, -30.9f, 4, -30.1f, 5.f, {0.25f,0.22f,0.26f}, false);
+        a.exitDoor = B.doorway(true, -4, 4, -31, -30, 0.f, 5.f, cyan, true);
         // Gate frame
         wall(-5.5f,0,-31.5f, -4,7.5f,-29.5f, adobeDark);
         wall(  4,0,-31.5f, 5.5f,7.5f,-29.5f, adobeDark);
@@ -374,15 +586,32 @@ inline LevelData buildLevel() {
         // ground becomes a central plaza with four arms, and their rooftops
         // are joined by bridges into a ring at 5 m, so there's always a loop
         // to run, on the ground or above it.
+        // Each building is hollow: a dim room with an arch onto each arm, so
+        // you can duck through it (and grab the health inside) mid-fight.
+        auto mn = [](float a, float b) { return std::min(a, b); };
+        auto mx = [](float a, float b) { return std::max(a, b); };
+        vec3 warm{1.f,0.7f,0.35f};
         for (int sx : {-1, 1}) for (int sz : {-1, 1}) {
-            wall(sx * 19.f,0,sz * 19.f, sx * 30.f,5,sz * 30.f, sx * sz > 0 ? adobe : adobeDark);
+            vec3 col = sx * sz > 0 ? adobe : adobeDark;
+            float xi = sx * 19.f, xo = sx * 30.f, zi = sz * 19.f, zo = sz * 30.f;
+            B.wallZ(mn(zi, zo), mx(zi, zo), mn(xi, xi + sx), mx(xi, xi + sx), 0, 4.6f, col,
+                    {LevelBuilder::Gap{mn(sz * 22.5f, sz * 25.5f), mx(sz * 22.5f, sz * 25.5f), 0.f, 2.6f}});
+            B.wallX(mn(xi, xo), mx(xi, xo), mn(zi, zi + sz), mx(zi, zi + sz), 0, 4.6f, col,
+                    {LevelBuilder::Gap{mn(sx * 22.5f, sx * 25.5f), mx(sx * 22.5f, sx * 25.5f), 0.f, 2.6f}});
+            wall(xi, 4.6f, zi, xo, 5, zo, col);                                         // roof (the rooftop ring's floor)
             neon(sx * 18.9f,4.7f,sz * 19.f, sx * 18.96f,4.95f,sz * 30.f, pink);         // roof edge
             neon(sx * 19.f,4.7f,sz * 18.9f, sx * 30.f,4.95f,sz * 18.96f, pink);
-            for (float y : {1.4f, 3.0f})                                                // lit windows
-                neon(sx * 18.94f,y,sz * 23.f, sx * 18.98f,y + 0.7f,sz * 25.5f, vec3{1.f,0.7f,0.35f} * 0.8f);
-            prop(sx * 18.2f,2.6f,sz * 21.5f, sx * 19.f,2.75f,sz * 27.f, adobeDark);     // awnings
+            neon(sx * 18.94f,3.0f,sz * 22.5f, sx * 18.98f,3.6f,sz * 25.5f, warm * 0.8f);   // lit windows over the arches
+            neon(sx * 22.5f,3.0f,sz * 18.94f, sx * 25.5f,3.6f,sz * 18.98f, warm * 0.8f);
+            prop(sx * 18.2f,2.65f,sz * 21.5f, sx * 19.f,2.8f,sz * 27.f, adobeDark);     // awnings
             wall(sx * 17.f,0,sz * 19.f, sx * 19.f,2.5f,sz * 21.f, stone);               // step up to the roof
             wall(sx * 23.f,5,sz * 23.f, sx * 25.f,6.2f,sz * 25.f, crate);               // rooftop cover
+            // Inside: a lamp, a bench, a crate, and a health orb
+            float cx = sx * 25.f, cz = sz * 25.f;
+            neon(cx - 1.2f, 4.48f, cz - 1.2f, cx + 1.2f, 4.6f, cz + 1.2f, warm * 0.7f);
+            wall(sx * 27.f, 0, sz * 21.f, sx * 29.f, 0.9f, sz * 23.f, crate);
+            wall(sx * 21.f, 0, sz * 27.5f, sx * 24.f, 0.6f, sz * 29.f, adobeDark);
+            L.placedPickups.push_back({{sx * 26.f, 0.f, sz * 26.5f}, 0});
         }
         // The rooftop ring: four bridges over the arms (you can walk under them)
         wall(-19,4.6f,-26, 19,5,-23, stone);
@@ -441,16 +670,11 @@ inline LevelData buildLevel() {
     }
 
     // ---- Corridor 1 → 2 ------------------------------------------------------
+    // A short ribbed duct between the gates (a tube, like the Gauntlet's)
     {
-        vec3 c{0.22f,0.20f,0.24f}, cyan{0.2f,0.9f,1.0f};
-        wall(-5,0,-46, -4,5,-31, c);
-        wall( 4,0,-46,  5,5,-31, c);
-        wall(-5,5,-46,  5,5.5f,-31, c);
+        B.tube(2, -45.f, -31.f, 0.f, 0.f, 8.f, 6.f, {0.22f,0.21f,0.25f}, {0.2f,0.9f,1.0f});
         L.floors.push_back({-4.f, -46.f, 4.f, -31.f, 0.f, {0.15f,0.15f,0.18f}});
-        neon(-3.9f,0,-45, -3.7f,0.05f,-32, cyan);
-        neon( 3.7f,0,-45,  3.9f,0.05f,-32, cyan);
-        neon(-0.3f,4.88f,-45.5f, 0.3f,4.98f,-31.5f, {0.45f,0.5f,0.6f});
-        L.corridors.push_back(aabb(-5, 0, -46.5f, 5, 40, -29.5f));
+        L.corridors.push_back(aabb(-5, 0, -46.5f, 5, 40, -30.5f));
     }
 
     // =========================================================================
@@ -470,20 +694,14 @@ inline LevelData buildLevel() {
         wall(-33,0,-46, -4,14,-45, iron);
         wall(  4,0,-46, 33,14,-45, iron);
         wall( -4,5,-46,  4,14,-45, iron);
-        a.entryGate = door(-4, -45.9f, 4, -45.1f, 5.f, {0.25f,0.22f,0.22f}, true);
+        a.entryGate = B.doorway(true, -4, 4, -46, -45, 0.f, 5.f, orange, false);
         wall( 32,0,-111, 33,14,-45, iron);
         wall(-33,0,-111,-32,14,-45, iron);
         wall(-33,0,-111, -4,14,-110, iron);
         wall(  4,0,-111, 33,14,-110, iron);
         wall( -4,5,-111,  4,14,-110, iron);
-        a.exitDoor = door(-4, -110.9f, 4, -110.1f, 5.f, {0.25f,0.22f,0.22f}, false);
+        a.exitDoor = B.doorway(true, -4, 4, -111, -110, 0.f, 5.f, orange, true);
         wall(-33,14,-111, 33,15,-45, dark);                                    // roof
-        for (float zf : {-46.12f, -109.88f}) {                                // door frames
-            float zb = zf < -100.f ? zf - 0.1f : zf + 0.1f;
-            neon(-4.6f,0,zf, -4.3f,5.3f,zb, orange);
-            neon( 4.3f,0,zf,  4.6f,5.3f,zb, orange);
-            neon(-4.6f,5.0f,zf, 4.6f,5.3f,zb, orange);
-        }
         // Wall stripes at shoulder height, like hazard paint
         neon(-31.98f,2.0f,-110, -31.88f,2.2f,-46, orange);
         neon( 31.88f,2.0f,-110,  31.98f,2.2f,-46, orange);
@@ -569,16 +787,11 @@ inline LevelData buildLevel() {
     }
 
     // ---- Corridor 2 → 3 ------------------------------------------------------
+    // A short ribbed duct between the gates (a tube, like the Gauntlet's)
     {
-        vec3 c{0.20f,0.20f,0.24f}, cyan{0.2f,0.9f,1.0f};
-        wall(-5,0,-126, -4,5,-111, c);
-        wall( 4,0,-126,  5,5,-111, c);
-        wall(-5,5,-126,  5,5.5f,-111, c);
+        B.tube(2, -125.f, -111.f, 0.f, 0.f, 8.f, 6.f, {0.22f,0.21f,0.25f}, {0.2f,0.9f,1.0f});
         L.floors.push_back({-4.f, -126.f, 4.f, -111.f, 0.f, {0.15f,0.15f,0.18f}});
-        neon(-3.9f,0,-125, -3.7f,0.05f,-112, cyan);
-        neon( 3.7f,0,-125,  3.9f,0.05f,-112, cyan);
-        neon(-0.3f,4.88f,-125.5f, 0.3f,4.98f,-111.5f, {0.45f,0.5f,0.6f});
-        L.corridors.push_back(aabb(-5, 0, -126.5f, 5, 40, -109.5f));
+        L.corridors.push_back(aabb(-5, 0, -126.5f, 5, 40, -110.5f));
     }
 
     // =========================================================================
@@ -612,19 +825,13 @@ inline LevelData buildLevel() {
         wall(-31,0,-126, -4,9,-125, stone);
         wall(  4,0,-126, 31,9,-125, stone);
         wall( -4,6,-126,  4,9,-125, stone);
-        a.entryGate = door(-4, -125.9f, 4, -125.1f, 6.f, {0.22f,0.24f,0.30f}, true);
+        a.entryGate = B.doorway(true, -4, 4, -126, -125, 0.f, 6.f, gold, false);
         wall( 30,0,-187, 31,9,-125, stone);
         wall(-31,0,-187,-30,9,-125, stone);
         wall(-31,0,-187, -4,9,-186, stone);
         wall(  4,0,-187, 31,9,-186, stone);
         wall( -4,6,-187,  4,9,-186, stone);
-        a.exitDoor = door(-4, -186.9f, 4, -186.1f, 6.f, {0.22f,0.24f,0.30f}, false);
-        for (float zf : {-126.12f, -185.88f}) {                                // door frames
-            float zb = zf < -150.f ? zf + 0.1f : zf - 0.1f;
-            neon(-4.6f,0,zf, -4.3f,6.3f,zb, gold);
-            neon( 4.3f,0,zf,  4.6f,6.3f,zb, gold);
-            neon(-4.6f,6.0f,zf, 4.6f,6.3f,zb, gold);
-        }
+        a.exitDoor = B.doorway(true, -4, 4, -187, -186, 0.f, 6.f, gold, true);
         neon(-30,8.5f,-125.98f, 30,8.7f,-125.86f, ice);                       // trim along the top
         neon(-30,8.5f,-186.14f, 30,8.7f,-186.02f, ice);
         neon( 29.86f,8.5f,-186, 29.98f,8.7f,-126, ice);
@@ -739,16 +946,11 @@ inline LevelData buildLevel() {
     }
 
     // ---- Corridor 3 → 4 ------------------------------------------------------
+    // A short ribbed duct between the gates (a tube, like the Gauntlet's)
     {
-        vec3 c{0.20f,0.21f,0.25f}, cyan{0.2f,0.9f,1.0f};
-        wall(-5,0,-202, -4,5,-187, c);
-        wall( 4,0,-202,  5,5,-187, c);
-        wall(-5,5,-202,  5,5.5f,-187, c);
+        B.tube(2, -201.f, -187.f, 0.f, 0.f, 8.f, 6.f, {0.22f,0.21f,0.25f}, {0.2f,0.9f,1.0f});
         L.floors.push_back({-4.f, -202.f, 4.f, -187.f, 0.f, {0.15f,0.15f,0.18f}});
-        neon(-3.9f,0,-201, -3.7f,0.05f,-188, cyan);
-        neon( 3.7f,0,-201,  3.9f,0.05f,-188, cyan);
-        neon(-0.3f,4.88f,-201.5f, 0.3f,4.98f,-187.5f, {0.45f,0.5f,0.6f});
-        L.corridors.push_back(aabb(-5, 0, -202.5f, 5, 40, -185.5f));
+        L.corridors.push_back(aabb(-5, 0, -202.5f, 5, 40, -186.5f));
     }
 
     // =========================================================================
@@ -769,7 +971,11 @@ inline LevelData buildLevel() {
 
         wall(-37,0,-202, -4,6,-201, slate);
         wall(  4,0,-202, 37,6,-201, slate);
-        a.entryGate = door(-4, -201.9f, 4, -201.1f, 6.f, {0.2f,0.22f,0.26f}, true);
+        a.entryGate = B.doorway(true, -4, 4, -202, -201, 0.f, 6.f, cyan, false);
+        // Gate frame: posts and a lintel standing proud of the low wall
+        wall(-5.5f,0,-202.5f, -4,8,-201, slateDark); wall(4,0,-202.5f, 5.5f,8,-201, slateDark);
+        wall(-5.5f,6,-202.5f, 5.5f,8,-201, slateDark);
+        neon(-5.5f,7.6f,-202.62f, 5.5f,7.8f,-202.5f, magenta);
         wall( 36,0,-275, 37,6,-201, slate);
         wall(-37,0,-275,-36,6,-201, slate);
         wall(-37,0,-275, 37,6,-274, slate);

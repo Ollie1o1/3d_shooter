@@ -27,6 +27,8 @@
 #include "Level.h"
 #include <vector>
 #include <cstdlib>
+#include <cmath>
+#include <algorithm>
 
 struct SpawnRequest { EnemyType type; glm::vec3 pos; };
 
@@ -46,6 +48,10 @@ public:
 
     const LevelData* level = nullptr;
     bool  fast = false;
+    // Difficulty (ARENA): waves are this many times bigger (the boss is still
+    // one Warden) and this many more may be on the field at once
+    float countScale    = 1.f;
+    int   maxAliveBonus = 0;
     int   arena = 0, wave = 0;
     Phase phase = Phase::INTRO;
     float timer = 0.f;
@@ -71,6 +77,12 @@ public:
     const Arena& current() const { return level->arenas[arena]; }
     int  waveCount() const       { return (int)current().waves.size(); }
     int  queued() const          { return (int)queue.size(); }
+    int  maxAlive() const        { return current().maxAlive + maxAliveBonus; }
+    // How many of an entry this wave brings (hand-placed ones are exact)
+    int  countOf(const WaveEntry& e) const {
+        if (!e.at.empty() || e.type == EnemyType::WARDEN) return e.total();
+        return std::max(1, (int)std::lround(e.count * countScale));
+    }
     bool fighting() const        { return phase == Phase::ACTIVE; }
     bool bossWave() const {
         for (auto& e : current().waves[wave]) if (e.type == EnemyType::WARDEN) return true;
@@ -90,7 +102,7 @@ public:
                 for (auto& q : queue) out.push_back({q.type, q.fixed ? q.pos : pickSpawn(q.type, playerPos)});
                 aliveCount += (int)queue.size();
                 queue.clear();
-            } else if (!queue.empty() && aliveCount < current().maxAlive && spawnTimer <= 0.f) {
+            } else if (!queue.empty() && aliveCount < maxAlive() && spawnTimer <= 0.f) {
                 Queued q = queue.front();
                 queue.erase(queue.begin());
                 out.push_back({q.type, q.fixed ? q.pos : pickSpawn(q.type, playerPos)});
@@ -156,7 +168,7 @@ private:
         for (int round = 0; any; ++round) {
             any = false;
             for (auto& e : entries)
-                if (round < e.total()) {
+                if (round < countOf(e)) {
                     bool fixed = !e.at.empty();
                     queue.push_back({e.type, fixed, fixed ? e.at[round] : glm::vec3{0.f}});
                     any = true;

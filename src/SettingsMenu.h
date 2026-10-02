@@ -40,7 +40,12 @@ public:
         GameSettings* g = s;
         header("VIDEO");
         slider("FIELD OF VIEW", &g->fov, 60.f, 120.f, 1.f, 0);
-        cycle ("FPS CAP", &g->fpsCap, 5, [g](int) { return g->getFPSCapLabel(); });
+#ifndef __EMSCRIPTEN__
+        toggle("FULLSCREEN", &g->fullscreen);
+        cycle ("FRAME RATE", &g->frameCap, GameSettings::FRAME_CAPS, [g](int) { return g->getFPSCapLabel(); });
+        toggle("VSYNC", &g->vsync);
+#endif
+        cycle ("RESOLUTION SCALE", &g->renderScale, GameSettings::RENDER_SCALES, [](int i) { return GameSettings::renderScaleLabel(i); });
         toggle("SHOW FPS", &g->showFPS);
         toggle("CRT FILTER", &g->crtFilter);
         slider("SCREEN SHAKE", &g->screenShake, 0.f, 1.f, 0.05f, 2);
@@ -53,7 +58,9 @@ public:
         toggle("MOUSE SPIKE FILTER", &g->mouseFilter);
         header("AUDIO");
         slider("MASTER VOLUME", &g->audioVolume, 0.f, 1.f, 0.05f, 2);
+        slider("MUSIC VOLUME", &g->musicVolume, 0.f, 1.f, 0.05f, 2);
         header("GAMEPLAY");
+        cycle ("DIFFICULTY", &g->difficulty, DIFFICULTY_LEVELS, [](int i) { return difficulty(i).name; });
         toggle("RUN TIMER", &g->showTimer);
         toggle("DAMAGE NUMBERS", &g->damageNumbers);
         cycle ("CROSSHAIR", &g->crosshair, GameSettings::CROSSHAIR_COLORS, [](int i) { return GameSettings::crosshairLabel(i); });
@@ -62,7 +69,7 @@ public:
     }
 
     // ---- layout ----
-    static constexpr int PANEL_W = 680, ROW_H = 27, HEAD_H = 24, TOP = 90;
+    static constexpr int PANEL_W = 680, ROW_H = 23, HEAD_H = 22, TOP = 86;
     int rowY(const std::vector<Row>& r, int idx) const {
         int y = TOP;
         for (int k = 0; k < idx; ++k) y += r[k].kind == Kind::HEADER ? HEAD_H : ROW_H;
@@ -130,7 +137,7 @@ public:
             const Row& row = r[k];
             int y = rowY(r, k);
             if (row.kind == Kind::HEADER) {
-                ui.text(row.label, cx - PANEL_W / 2, y + 10, 2, {1.f, 0.6f, 0.15f, 0.95f});
+                ui.text(row.label, cx - PANEL_W / 2, y + 9, 2, {1.f, 0.6f, 0.15f, 0.95f});
                 ui.rect(cx - PANEL_W / 2 + UIBatch::textWidth(row.label, 2) + 12, y + 16, PANEL_W - UIBatch::textWidth(row.label, 2) - 12, 2,
                         {1.f, 0.6f, 0.15f, 0.35f});
                 continue;
@@ -141,37 +148,37 @@ public:
                     sel ? glm::vec4{0.14f + pulse * 0.05f, 0.09f, 0.04f, 0.9f} : glm::vec4{0.08f, 0.08f, 0.11f, 0.7f});
             if (sel) ui.rect(cx - PANEL_W / 2, y + 2, 4, ROW_H - 4, {1.f, 0.6f + pulse * 0.2f, 0.1f, 1.f});
             glm::vec4 labelC = sel ? glm::vec4{1.f, 0.75f, 0.3f, 1.f} : glm::vec4{0.75f, 0.75f, 0.8f, 0.95f};
-            if (row.kind == Kind::BACK) { ui.text(row.label, cx, y + 8, 2, labelC, true); continue; }
-            ui.text(row.label, cx - PANEL_W / 2 + 16, y + 8, 2, labelC);
+            if (row.kind == Kind::BACK) { ui.text(row.label, cx, y + 6, 2, labelC, true); continue; }
+            ui.text(row.label, cx - PANEL_W / 2 + 16, y + 6, 2, labelC);
             glm::vec4 valC = sel ? glm::vec4{1.f, 0.92f, 0.5f, 1.f} : glm::vec4{0.85f, 0.85f, 0.85f, 0.9f};
             char buf[32];
             switch (row.kind) {
             case Kind::SLIDER: {
                 float t = (*row.f - row.lo) / (row.hi - row.lo);
-                int bx = barX(), by = y + 11;
+                int bx = barX(), by = y + 9;
                 ui.rect(bx, by, BAR_W, 6, {0.2f, 0.2f, 0.25f, 0.9f});
                 ui.rect(bx, by, BAR_W * t, 6, {1.f, 0.6f, 0.15f, 0.95f});
                 ui.rect(bx + BAR_W * t - 4, by - 5, 8, 16, sel ? glm::vec4{1.f, 0.9f, 0.6f, 1.f} : glm::vec4{0.8f, 0.8f, 0.85f, 1.f});
                 formatValue(row, buf, sizeof(buf));
-                ui.text(buf, bx + BAR_W + 20, y + 8, 2, valC);
+                ui.text(buf, bx + BAR_W + 20, y + 6, 2, valC);
                 break;
             }
             case Kind::TOGGLE: {
                 bool on = *row.b;
                 int bx = barX();
-                ui.rect(bx, y + 6, 64, 18, on ? glm::vec4{0.2f, 0.75f, 0.4f, 0.9f} : glm::vec4{0.3f, 0.3f, 0.35f, 0.9f});
-                ui.text(on ? "ON" : "OFF", bx + 32, y + 8, 2, {1.f, 1.f, 1.f, 0.95f}, true);
+                ui.rect(bx, y + 3, 64, 17, on ? glm::vec4{0.2f, 0.75f, 0.4f, 0.9f} : glm::vec4{0.3f, 0.3f, 0.35f, 0.9f});
+                ui.text(on ? "ON" : "OFF", bx + 32, y + 5, 2, {1.f, 1.f, 1.f, 0.95f}, true);
                 break;
             }
             case Kind::CYCLE: {
                 const char* nm = row.name(*row.i);
                 int bx = barX();
-                ui.text("<", bx - 4, y + 8, 2, valC);
-                ui.text(nm, bx + 100, y + 8, 2, valC, true);
-                ui.text(">", bx + 196, y + 8, 2, valC);
+                ui.text("<", bx - 4, y + 6, 2, valC);
+                ui.text(nm, bx + 100, y + 6, 2, valC, true);
+                ui.text(">", bx + 196, y + 6, 2, valC);
                 if (row.i == &s->crosshair) {
                     float cr, cg, cb; s->crosshairColor(cr, cg, cb);
-                    ui.rect(bx + 230, y + 8, 14, 14, {cr, cg, cb, 1.f});
+                    ui.rect(bx + 230, y + 5, 14, 14, {cr, cg, cb, 1.f});
                 }
                 break;
             }

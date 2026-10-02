@@ -10,6 +10,7 @@ struct Enemy;
 
 struct Projectile {
     glm::vec3 position{0.f};
+    glm::vec3 prevPosition{0.f};   // start of the last physics tick (render interpolation)
     glm::vec3 velocity{0.f};
     glm::vec3 emissiveColor{1.f, 0.8f, 0.2f};
     float     damage     = 8.f;
@@ -35,6 +36,7 @@ public:
         for (auto& p : pool) {
             if (!p.alive) {
                 p.position    = pos;
+                p.prevPosition = pos;
                 p.velocity    = vel;
                 p.damage      = dmg;
                 p.isPlayer    = player;

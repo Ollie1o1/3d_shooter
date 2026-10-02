@@ -42,6 +42,7 @@ struct HudState {
     bool  grappleTarget = false;   // aiming at something the grapple can hook
     bool  showTimer = false;
     float time = 0.f;
+    float speed = -1.f;       // FAST: horizontal speed in m/s (< 0: hidden)
     glm::vec3 crosshairColor{1.f};
     glm::mat4 viewProj{1.f};       // for floating damage numbers
     bool  damageNumbers = true;
@@ -230,6 +231,14 @@ public:
                               {splitColor.r, splitColor.g, splitColor.b, a});
             }
         }
+        // Speed: grey at a walk, cyan when you're flying
+        if (h.speed >= 0.f) {
+            char sp[24];
+            std::snprintf(sp, sizeof(sp), "%d M/S", (int)std::round(h.speed));
+            float k = std::min(1.f, std::max(0.f, (h.speed - 7.f) / 20.f));
+            glm::vec4 c = glm::mix(glm::vec4{0.7f, 0.7f, 0.75f, 0.7f}, glm::vec4{0.35f, 0.95f, 1.f, 0.95f}, k);
+            ui.textShadow(sp, screenW - 24 - UIBatch::textWidth(sp, 2), splitTimer > 0.f ? 84 : 62, 2, c);
+        }
 
         if (showFPS) {
             char buf[16];
@@ -302,9 +311,9 @@ public:
         begin2D();
         const char* l1 = "WASD MOVE  SPACE JUMP  SHIFT DASH  CTRL SLIDE/SLAM  LMB FIRE  F PARRY  G GRENADE";
         char l2[128];
-        std::snprintf(l2, sizeof(l2), "%s GRAPPLE  RMB AIM (RIFLES)  1-4 WEAPONS  TAB ARMORY  ESC PAUSE", grappleKey);
+        std::snprintf(l2, sizeof(l2), "%s GRAPPLE  RMB AIM (RIFLES)  1-4 WEAPONS  TAB ARMORY  BKSP RESTART  ESC PAUSE", grappleKey);
         int baseY = screenH - 150;
-        ui.rect(screenW / 2 - 330, baseY - 10, 660, 54, {0.05f, 0.05f, 0.08f, 0.55f * alpha});
+        ui.rect(screenW / 2 - 360, baseY - 10, 720, 54, {0.05f, 0.05f, 0.08f, 0.55f * alpha});
         ui.text(l1, screenW / 2, baseY,      1, {0.88f, 0.88f, 0.92f, 0.9f * alpha}, true);
         ui.text(l2, screenW / 2, baseY + 22, 1, {0.88f, 0.88f, 0.92f, 0.9f * alpha}, true);
         end2D();
@@ -322,8 +331,8 @@ public:
     }
 
     // Pause overlay — drawn on top of the (frozen) gameplay frame.
-    static constexpr int PAUSE_ITEMS = 4;
-    int pauseButtonY(int i) const { return screenH / 2 - 70 + i * 58; }
+    static constexpr int PAUSE_ITEMS = 5;
+    int pauseButtonY(int i) const { return screenH / 2 - 84 + i * 54; }
     void renderPause(int selected, const char* const labels[PAUSE_ITEMS], const char* modeLine) {
         begin2D();
         ui.rect(0, 0, screenW, screenH, {0.0f, 0.0f, 0.02f, 0.6f});
@@ -338,7 +347,7 @@ public:
             ui.rect(screenW / 2 - 150, by + 44, 300, 2, b);
             ui.text(labels[i], screenW / 2, by + 16, 2, sel ? glm::vec4{1.f, 0.7f, 0.15f, 1.f} : glm::vec4{0.75f, 0.75f, 0.8f, 0.9f}, true);
         }
-        ui.text("ESC TO RESUME   UP/DOWN + ENTER OR CLICK", screenW / 2, screenH / 2 + 180, 1, {0.55f, 0.55f, 0.6f, 0.85f}, true);
+        ui.text("ESC TO RESUME   UP/DOWN + ENTER OR CLICK   BACKSPACE IN GAME RESTARTS THE ROOM", screenW / 2, screenH / 2 + 196, 1, {0.55f, 0.55f, 0.6f, 0.85f}, true);
         end2D();
     }
 
@@ -471,7 +480,7 @@ public:
         char buf[64];
         std::snprintf(buf, sizeof(buf), "TIME %s   KILLS %d", formatTime(gameTime, fast).c_str(), kills);
         ui.text(buf, screenW / 2, screenH / 2 - 6, 2, {0.8f, 0.7f, 0.7f, 0.85f}, true);
-        ui.text(fast ? "R - RESTART LEVEL (CLOCK KEEPS RUNNING)" : "R - RETRY THIS ARENA (UPGRADES KEPT)",
+        ui.text(fast ? "R - RESTART ROOM (CLOCK KEEPS RUNNING)" : "R - RETRY THIS ARENA (UPGRADES KEPT)",
                 screenW / 2, screenH / 2 + 40, 2, {1.f, 0.85f, 0.5f, 0.95f}, true);
         ui.text("ENTER - NEW RUN    ESC - MENU", screenW / 2, screenH / 2 + 68, 2, {0.6f, 0.5f, 0.5f, 0.8f}, true);
         end2D();

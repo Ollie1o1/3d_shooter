@@ -29,6 +29,7 @@
 #include <cstdlib>
 #include <algorithm>
 #include "Player.h"  // AABB, Wall, SpatialGrid
+#include "Difficulty.h"
 
 enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, JUGGERNAUT, WARDEN, COUNT };
 enum class EnemyState { SPAWNING, ACTIVE, DEAD };
@@ -102,6 +103,8 @@ struct EnemyWorld {
     int  wallCount = 0;
     const SpatialGrid* grid = nullptr;
     AABB bounds{{-1e9f,-1e9f,-1e9f},{1e9f,1e9f,1e9f}}; // arena interior; enemies stay inside
+    glm::vec3 playerVel{0.f};      // for leading shots
+    const DifficultyTuning* tune = nullptr;   // null: the default difficulty
 };
 
 // Ray vs AABB: distance along the ray to the first hit, or -1 on a miss.
@@ -123,6 +126,10 @@ struct Enemy {
     glm::vec3  position;
     glm::vec3  velocity{0.f};
     float      yaw   = 0.f;   // radians; model faces +Z at yaw 0
+    // Where it was at the start of the last physics tick: rendering blends
+    // from here to `position` so it moves smoothly at any frame rate
+    glm::vec3  prevPosition{0.f};
+    float      prevYaw = 0.f;
     float      pitch = 0.f;   // RAPTOR only: nose-down while diving
     float      health, maxHealth;
     bool       alive = true;
@@ -160,7 +167,7 @@ struct Enemy {
 
     EnemyEvents ev;
 
-    Enemy(EnemyType t, glm::vec3 pos) : type(t), position(pos) {
+    Enemy(EnemyType t, glm::vec3 pos) : type(t), position(pos), prevPosition(pos) {
         const EnemyStats& s = statsOf(t);
         health = maxHealth = s.health;
         attackTimer = frand(0.f, s.attackEvery * 0.6f);   // desync the squad
@@ -221,6 +228,8 @@ struct Enemy {
     void update(float dt, const EnemyWorld& w) {
         ev = EnemyEvents{};
         if (!alive) return;
+        tune_    = w.tune ? w.tune : &difficulty(DIFFICULTY_DEFAULT);
+        leadVel_ = w.playerVel * tune_->lead;
         age += dt;
         if (hitFlashTimer > 0.f) hitFlashTimer -= dt;
 
@@ -263,6 +272,9 @@ struct Enemy {
     }
 
 private:
+    const DifficultyTuning* tune_ = &difficulty(DIFFICULTY_DEFAULT);   // this tick's difficulty
+    glm::vec3 leadVel_{0.f};      // how far ahead to aim: player velocity × lead
+
     // ---- shared helpers ------------------------------------------------------
     glm::vec3 flatTo(const glm::vec3& target) const {
         glm::vec3 d = target - position; d.y = 0.f; return d;
@@ -284,6 +296,7 @@ private:
     }
 
     void startAttack(AttackKind k, float windup) {
+        windup *= tune_->windup;
         attack            = k;
         telegraphDuration = windup;
         telegraphTimer    = windup;
@@ -354,6 +367,7 @@ private:
 
     void setMove(glm::vec3 dir, float speed, const EnemyWorld& w) {
         glm::vec3 d = steer(dir, w);
+        speed *= tune_->moveSpeed;
         velocity.x = d.x * speed;
         velocity.z = d.z * speed;
     }
@@ -372,12 +386,20 @@ private:
 
     glm::vec3 eyePos() const { return position + glm::vec3{0.f, height() * 0.85f, 0.f}; }
 
+    // Fire n shots fanned across `spread` radians. Aimed ahead of a moving
+    // player by the difficulty's lead (where they'll be when the shot lands).
     void fireAt(const glm::vec3& target, int n, float spread, float speed, float dmg, float size = 1.f) {
+        speed *= tune_->shotSpeed;
         ev.shotOrigin = eyePos();
         ev.shotSpeed  = speed;
         ev.shotDamage = dmg;
         ev.shotSize   = size;
-        glm::vec3 base = target - ev.shotOrigin;
+        glm::vec3 aim = target;
+        if (speed > 1.f) {
+            float flight = glm::length(target - ev.shotOrigin) / speed;
+            aim += leadVel_ * std::min(flight, 1.2f);
+        }
+        glm::vec3 base = aim - ev.shotOrigin;
         float len = glm::length(base);
         base = len > 1e-4f ? base / len : glm::vec3{0,0,1};
         n = std::min(n, EnemyEvents::MAX_SHOTS);
@@ -407,7 +429,7 @@ private:
     // Ticks the attack clock; returns true when it's time to start a new attack.
     bool attackReady(float dt) {
         if (telegraphTimer > 0.f || burstLeft > 0 || diveTimer > 0.f) return false;
-        attackTimer += dt * (enraged ? 1.5f : 1.f);
+        attackTimer += dt * (enraged ? 1.5f : 1.f) * tune_->attackRate;
         if (attackTimer < stats().attackEvery) return false;
         attackTimer = 0.f;
         return true;
@@ -458,7 +480,7 @@ private:
         } else {
             float zig = d < 5.f ? 0.15f : 0.75f;
             setMove(dir + side * strafeDir * zig, stats().speed, w);
-            attackTimer += dt;
+            attackTimer += dt * tune_->attackRate;
             if (attackTimer >= stats().attackEvery && d < 4.2f) {
                 attackTimer = 0.f;
                 startAttack(AttackKind::LUNGE, stats().telegraph);

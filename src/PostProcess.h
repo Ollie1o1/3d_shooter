@@ -1,12 +1,17 @@
 #pragma once
 #include "gl.h"
 #include "ShaderProgram.h"
+#include "Display.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+// Scene → bloom → (CRT) → the display canvas. The scene targets follow the
+// render resolution (resized on the fly); bloom always works at 640x360, so
+// the glow looks the same at any resolution.
 class PostProcess {
 public:
     int W, H;
+    static constexpr int BW = 640, BH = 360;
     GLuint sceneFBO = 0, sceneTex = 0, sceneDepth = 0;
     GLuint bloomFBO[2] = {0,0};
     GLuint bloomTex[2] = {0,0};
@@ -36,6 +41,22 @@ public:
         glVertexAttribPointer(1,2,GL_FLOAT,GL_FALSE,4*sizeof(float),(void*)(2*sizeof(float)));
         glBindVertexArray(0);
 
+        createTargets();
+        brightShader.loadFiles("src/postprocess.vert","src/bloom_bright.frag");
+        blurShader.loadFiles("src/postprocess.vert","src/bloom_blur.frag");
+        compositeShader.loadFiles("src/postprocess.vert","src/bloom_composite.frag");
+        crtShader.loadFiles("src/postprocess.vert","src/crt.frag");
+
+        // CRT intermediate FBO
+    }
+
+    ~PostProcess() {
+        destroyTargets();
+        if(quadVAO) glDeleteVertexArrays(1,&quadVAO);
+        if(quadVBO) glDeleteBuffers(1,&quadVBO);
+    }
+
+    void createTargets() {
         glGenFramebuffers(1,&sceneFBO);
         glBindFramebuffer(GL_FRAMEBUFFER,sceneFBO);
         glGenTextures(1,&sceneTex);
@@ -55,7 +76,7 @@ public:
             glBindFramebuffer(GL_FRAMEBUFFER,bloomFBO[i]);
             glGenTextures(1,&bloomTex[i]);
             glBindTexture(GL_TEXTURE_2D,bloomTex[i]);
-            glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA16F,W/2,H/2,0,GL_RGBA,GL_FLOAT,nullptr);
+            glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA16F,BW,BH,0,GL_RGBA,GL_FLOAT,nullptr);
             glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
             glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
@@ -64,12 +85,6 @@ public:
             glBindFramebuffer(GL_FRAMEBUFFER,0);
         }
 
-        brightShader.loadFiles("src/postprocess.vert","src/bloom_bright.frag");
-        blurShader.loadFiles("src/postprocess.vert","src/bloom_blur.frag");
-        compositeShader.loadFiles("src/postprocess.vert","src/bloom_composite.frag");
-        crtShader.loadFiles("src/postprocess.vert","src/crt.frag");
-
-        // CRT intermediate FBO
         glGenFramebuffers(1,&crtFBO);
         glBindFramebuffer(GL_FRAMEBUFFER,crtFBO);
         glGenTextures(1,&crtTex);
@@ -83,7 +98,7 @@ public:
         glBindFramebuffer(GL_FRAMEBUFFER,0);
     }
 
-    ~PostProcess() {
+    void destroyTargets() {
         glDeleteFramebuffers(1,&sceneFBO);
         glDeleteTextures(1,&sceneTex);
         glDeleteRenderbuffers(1,&sceneDepth);
@@ -93,11 +108,15 @@ public:
             glDeleteFramebuffers(1,&bloomFBO[i]);
             glDeleteTextures(1,&bloomTex[i]);
         }
-        if(quadVAO) glDeleteVertexArrays(1,&quadVAO);
-        if(quadVBO) glDeleteBuffers(1,&quadVBO);
     }
 
     void beginScene() {
+        // The render resolution changed (window resized, fullscreen, scale setting)
+        if (W != display::renderW() || H != display::renderH()) {
+            destroyTargets();
+            W = display::renderW(); H = display::renderH();
+            createTargets();
+        }
         glBindFramebuffer(GL_FRAMEBUFFER,sceneFBO);
         glViewport(0,0,W,H);
         glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
@@ -105,7 +124,7 @@ public:
 
     void endScene() {
         glBindFramebuffer(GL_FRAMEBUFFER,bloomFBO[0]);
-        glViewport(0,0,W/2,H/2);
+        glViewport(0,0,BW,BH);
         glDisable(GL_DEPTH_TEST);
         brightShader.use();
         brightShader.setInt("scene",0);
@@ -137,8 +156,8 @@ public:
             glBindTexture(GL_TEXTURE_2D,bloomTex[0]);
             drawQuad();
 
-            // Apply CRT filter to screen
-            glBindFramebuffer(GL_FRAMEBUFFER,0);
+            // Apply CRT filter into the display canvas
+            glBindFramebuffer(GL_FRAMEBUFFER,display::canvas().fbo);
             glViewport(0,0,W,H);
             crtShader.use();
             crtShader.setInt("scene",0);
@@ -146,7 +165,7 @@ public:
             glBindTexture(GL_TEXTURE_2D,crtTex);
             drawQuad();
         } else {
-            glBindFramebuffer(GL_FRAMEBUFFER,0);
+            glBindFramebuffer(GL_FRAMEBUFFER,display::canvas().fbo);
             glViewport(0,0,W,H);
             compositeShader.use();
             compositeShader.setInt("scene",0);

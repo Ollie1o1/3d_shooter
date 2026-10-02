@@ -9,7 +9,7 @@
 A 3D arena shooter built with **SDL2**, **OpenGL 3.3 Core Profile**, and **GLM**. ULTRAKILL-inspired movement with grapple hook, dashing, four weapons (including two bolt-action snipers) and style scoring, in two modes:
 
 - **ARENA**: **four themed arenas** (sunset yard, foundry, a vertical spire you have to climb, a night-time reactor) of three waves each, **eight enemy types** built as animated block rigs (including the armored Juggernaut, built to be parried), and a **boss fight** at the end.
-- **FAST**: **the Gauntlet**, a Halo-style time trial along one long route: six levels, each a wide channel with a breather and then a fight, turning left and right, climbing terraces, crossing a void, dropping down a tower and finishing with a tower climb to a beacon. Run clock, splits against your best run, par ranks.
+- **FAST**: **the Gauntlet**, a time trial through seven rooms joined by **boost tubes**: doors part as you sprint at them, lock behind you when a room's fight starts, and the exit unlocks when it's clear. A long canal, a close-quarters pump room, a cathedral of terraces, a canyon of islands over a void, a tower you fall through, a hall with control rooms, and a courtyard finale with a lift shaft to the beacon. Run clock, splits against your best run, par ranks.
 
 Kills earn **XP** (more for stylish play), and levels buy **weapon upgrades** in the Armory.
 
@@ -133,7 +133,7 @@ make clean        # delete binary
 
 ### Modes
 - **ARENA** — four arenas, three waves each, the Warden at the end. Optional run timer; your best time is saved.
-- **FAST: the Gauntlet** — six levels, each a long, wide channel: a **breather** first (health potions waiting, nothing shooting at you), then a **fight** that starts when you reach its trigger; clear it and the gate at the far end opens.
+- **FAST: the Gauntlet** — seven rooms, each reached down a ribbed **boost tube** (a breather: health waiting, nothing shooting at you) that fires you along at 26 m/s. Step into the room and the fight starts: the door behind you locks, and the exit unlocks when the room is clear. A waypoint points to the exit.
   1. **The Canal** (north): a sunken lane between raised walkways, bridges across it
   2. **The Ascent** (turn left, climb): five terraces up 20 m, each riser with a pad and a step block; gunners hold the high ground
   3. **The Span** (north, 23 m up): islands, a beam, ferries and grapple anchors over a void (fall and you're back at the landing)
@@ -141,7 +141,7 @@ make clean        # delete binary
   5. **The Pumpworks** (east): a roofed tunnel with a lava strip opening into a hall with galleries
   6. **The Tower**: win the courtyard (two waves), then ride the lifts or grapple to the beacon on top
 
-  A 3-2-1 countdown starts the clock; every level clear shows a split (green ahead / red behind your best run); the clock stops at the beacon. Ranked S/A/B/C/D against par times. Dying restarts the level with the clock still running.
+  A 3-2-1 countdown starts the clock; every room clear shows a split (green ahead / red behind your best run); the clock stops at the beacon. Ranked S/A/B/C/D against par times. Dying (or Backspace) restarts the room with the clock still running.
 
 ### Combat
 - **Revolver** (slot 1) — 8-round hitscan with auto-reload
@@ -227,7 +227,9 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 - **Death screen** — where you died, with retry-arena and new-run options
 - **Pause menu** — Escape mid-run pauses: Resume / Settings / Restart / Quit to Menu
 - R retries the current arena; Enter starts a new run
-- **Settings** (main menu and pause menu, keyboard or mouse, sliders drag): field of view, FPS cap, show FPS, CRT filter, screen shake, view bob, mouse sensitivity, zoom sensitivity, invert Y, mouse spike filter, master volume, run timer, damage numbers, crosshair colour
+- **Settings** (main menu and pause menu, keyboard or mouse, sliders drag): field of view, fullscreen (also F11 / Alt+Enter), frame rate (match display, 60–360, unlimited), VSync, resolution scale, show FPS, CRT filter, screen shake, view bob, mouse sensitivity, zoom sensitivity, invert Y, mouse spike filter, master and music volume, **difficulty** (LENIENT / STANDARD / VIOLENT / BRUTAL — also LEFT/RIGHT on the main menu), run timer, damage numbers, crosshair colour
+- **Soundtrack** — synthesized live (`MusicSynth.h`, no audio files): darksynth/industrial, a track per area, layers that build from the tubes into the fight and up again for the boss, muffled while paused
+- **High refresh rates** — physics stays at a fixed 60 Hz while enemies, projectiles, pickups and platforms are interpolated between ticks, so 144/240/360 Hz is smooth; the frame limiter sleeps then spins to hold a cap to within microseconds. `./shooter --bench N [--cap HZ] [--res H]` prints frame times
 - Settings and best times persist across launches (`settings.cfg` / `records.cfg` next to the binary; `localStorage` in the browser)
 
 ### HUD
@@ -258,7 +260,7 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 │   ├── GrappleHook.h         # grapple hook physics
 │   ├── StyleSystem.h         # style rank/score tracking
 │   ├── Level.h               # ARENA map: four arenas, corridors, doors, pads, lava, movers, themes
-│   ├── LevelGauntlet.h       # FAST map: the Gauntlet's six levels
+│   ├── LevelGauntlet.h       # FAST map: the Gauntlet's seven rooms and their tubes
 │   ├── Weapons.h             # the four guns' stats, upgrade maths, ammo/reload state
 │   ├── Progression.h         # XP, levels, upgrade purchases, best times
 │   ├── MouseFilter.h         # drops bogus single-event mouse spikes
