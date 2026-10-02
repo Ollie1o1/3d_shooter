@@ -14,15 +14,28 @@ struct GameSettings {
     int   frameCap    = 1;      // index into FRAME_CAPS: MATCH DISPLAY by default
     bool  vsync       = false;  // wait for the display (no tearing, a little more latency)
     bool  fullscreen  = false;  // borderless fullscreen at the desktop resolution (F11 / Alt+Enter)
-    int   renderScale = 0;      // index into RENDER_SCALES: the 3D scene's resolution vs the screen
-    static constexpr int RENDER_SCALES = 5;
-    static float renderScaleValue(int i) {
-        static const float S[RENDER_SCALES] = {1.f, 0.85f, 0.7f, 0.5f, 1.5f};
-        return S[(i % RENDER_SCALES + RENDER_SCALES) % RENDER_SCALES];
+    // Graphics quality: the resolution everything renders at (16:9 lines,
+    // whatever the window), plus texture sharpness at a glancing angle. Above
+    // the screen's own resolution it's supersampling: smoother edges.
+    static constexpr int QUALITY_LEVELS = 4;
+#ifdef __EMSCRIPTEN__
+    static constexpr int QUALITY_DEFAULT = 1;   // MEDIUM: kind to laptops in a browser
+#else
+    static constexpr int QUALITY_DEFAULT = 2;   // HIGH
+#endif
+    int   quality = QUALITY_DEFAULT;
+    static int wrapQuality(int i) { return (i % QUALITY_LEVELS + QUALITY_LEVELS) % QUALITY_LEVELS; }
+    static int qualityLines(int i) {
+        static const int L[QUALITY_LEVELS] = {720, 1080, 1440, 2160};
+        return L[wrapQuality(i)];
     }
-    static const char* renderScaleLabel(int i) {
-        static const char* N[RENDER_SCALES] = {"100%", "85%", "70%", "50%", "150% (SHARP)"};
-        return N[(i % RENDER_SCALES + RENDER_SCALES) % RENDER_SCALES];
+    static float qualityAnisotropy(int i) {
+        static const float A[QUALITY_LEVELS] = {1.f, 4.f, 8.f, 16.f};
+        return A[wrapQuality(i)];
+    }
+    static const char* qualityLabel(int i) {
+        static const char* N[QUALITY_LEVELS] = {"LOW (720P)", "MEDIUM (1080P)", "HIGH (1440P)", "EXTREME (4K)"};
+        return N[wrapQuality(i)];
     }
     bool  showFPS     = false;
     bool  crtFilter   = false;  // CRT post-process effect
@@ -106,7 +119,7 @@ struct GameSettings {
         f << "frameCap "      << frameCap      << "\n";
         f << "vsync "         << (vsync ? 1 : 0) << "\n";
         f << "fullscreen "    << (fullscreen ? 1 : 0) << "\n";
-        f << "renderScale "   << renderScale   << "\n";
+        f << "quality "       << quality       << "\n";
         f << "showFPS "       << (showFPS   ? 1 : 0) << "\n";
         f << "crtFilter "     << (crtFilter ? 1 : 0) << "\n";
         f << "screenShake "   << screenShake   << "\n";
@@ -134,7 +147,7 @@ struct GameSettings {
             else if (key == "frameCap")      f >> frameCap;
             else if (key == "vsync")         flag(vsync);
             else if (key == "fullscreen")    flag(fullscreen);
-            else if (key == "renderScale")   f >> renderScale;
+            else if (key == "quality")       f >> quality;
             else if (key == "fpsCap") {      // older saves: 0 uncapped, 1 60, 2 144, 3 180, 4 240
                 int old = 0; f >> old;
                 static const int MAP[] = {0, 2, 4, 4, 6};
@@ -162,7 +175,7 @@ struct GameSettings {
         musicVolume = clampf(musicVolume, 0.f, 1.f);
         screenShake = clampf(screenShake, 0.f, 1.f);
         frameCap = (frameCap % FRAME_CAPS + FRAME_CAPS) % FRAME_CAPS;
-        renderScale = (renderScale % RENDER_SCALES + RENDER_SCALES) % RENDER_SCALES;
+        quality = wrapQuality(quality);
         crosshair = (crosshair % CROSSHAIR_COLORS + CROSSHAIR_COLORS) % CROSSHAIR_COLORS;
         if (difficulty < 0 || difficulty >= DIFFICULTY_LEVELS) difficulty = DIFFICULTY_DEFAULT;
         grappleKey = (grappleKey % GRAPPLE_KEYS + GRAPPLE_KEYS) % GRAPPLE_KEYS;

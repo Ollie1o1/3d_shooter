@@ -146,7 +146,7 @@ make clean        # delete binary
 ### Combat
 - **Revolver** (slot 1) — 8-round hitscan with auto-reload
 - **Shotgun** (slot 2) — 2-shell pump-action, 10 pellets per shot with spread
-- **Kar98** (slot 3) — bolt-action rifle. RMB raises the iron sights (a small zoom; the front post sits in the rear notch on screen centre). 120 damage, 2.5x on the head: a headshot one-shots anything but the boss. Accurate aimed, loose from the hip or in the air
+- **Kar98** (slot 3) — bolt-action rifle. RMB raises the iron sights (a small zoom; the front post sits in the rear notch on screen centre). 120 damage, 3x on the head: a headshot one-shots anything but the boss. Accurate aimed, loose from the hip or in the air
 - **Longshot** (slot 4) — heavy .50 sniper. RMB brings up a full scope (mil-dot reticle, heavy zoom). 300 damage one-shots every regular enemy and punches through three of them (**COLLATERAL**). Fire as the scope settles for a **QUICKSCOPE** bonus; kill without aiming for a **NOSCOPE** bonus
 - Aiming scales mouse sensitivity with the zoom (plus a ZOOM SENSITIVITY setting) and slows you a little
 - **Grenades** (G key) — parabolic arc, 5m blast radius, refill every 2 kills
@@ -187,7 +187,7 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 - Gunners check line of sight before firing and sidestep out from behind cover when blocked
 - Enemies materialise in a column of light (untargetable for 0.9 s) and break apart into their blocks when killed
 - Health orbs drop from kills (Brutes always drop three) and home in when you're close
-- Headshots on humanoids deal 1.5x damage
+- Headshots deal bonus damage (revolver 1.5x, rifles more). Every enemy with a head has a real head hitbox that follows the drawn model (walk bob, a broken Juggernaut's slump, a Ripper's crouch, a Raptor's dive); a headshot flashes the hitmarker gold
 
 ### Arenas and waves
 - **Four arenas**, each with its own lighting, fog and sky: the **Sunset Yard** (four corner buildings break the square into a plaza with four arms, and their rooftops are joined into a ring of bridges at 5 m, with market stalls to duck behind), **the Foundry** (roofed, lava channels you can lure enemies into, a furnace to climb, side and cross catwalks forming a loop at 5 m, a crane platform to grapple), **the Spire** (a 26 m tower at dawn: ledges, bridges, a balcony and the summit, linked by jump pads, lifts, sweepers and orbiting platforms; each wave spawns a tier higher, and the gunners up there hold their perch, so you have to climb), and **the Core** (night sky, a reactor ringed by pillars; an outer walkway ring at 4 m linking the corner perches and an inner ring at 7 m across the pillar tops). Every arena loops: there's always somewhere to run, on the ground or above it
@@ -227,7 +227,7 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 - **Death screen** — where you died, with retry-arena and new-run options
 - **Pause menu** — Escape mid-run pauses: Resume / Settings / Restart / Quit to Menu
 - R retries the current arena; Enter starts a new run
-- **Settings** (main menu and pause menu, keyboard or mouse, sliders drag): field of view, fullscreen (also F11 / Alt+Enter), frame rate (match display, 60–360, unlimited), VSync, resolution scale, show FPS, CRT filter, screen shake, view bob, mouse sensitivity, zoom sensitivity, invert Y, mouse spike filter, master and music volume, **difficulty** (LENIENT / STANDARD / VIOLENT / BRUTAL — also LEFT/RIGHT on the main menu), run timer, damage numbers, crosshair colour
+- **Settings** (main menu and pause menu, keyboard or mouse, sliders drag): field of view, fullscreen (also F11 / Alt+Enter), frame rate (match display, 60–360, unlimited), VSync, **graphics quality** (LOW 720p / MEDIUM 1080p / HIGH 1440p / EXTREME 4K render resolution, plus anisotropic texture filtering above LOW; in the browser the canvas gets the screen's real pixels), show FPS, CRT filter, screen shake, view bob, mouse sensitivity, zoom sensitivity, invert Y, mouse spike filter, master and music volume, **difficulty** (LENIENT / STANDARD / VIOLENT / BRUTAL — also LEFT/RIGHT on the main menu), run timer, damage numbers, crosshair colour
 - **Soundtrack** — synthesized live (`MusicSynth.h`, no audio files): darksynth/industrial, a track per area, layers that build from the tubes into the fight and up again for the boss, muffled while paused
 - **High refresh rates** — physics stays at a fixed 60 Hz while enemies, projectiles, pickups and platforms are interpolated between ticks, so 144/240/360 Hz is smooth; the frame limiter sleeps then spins to hold a cap to within microseconds. `./shooter --bench N [--cap HZ] [--res H]` prints frame times
 - Settings and best times persist across launches (`settings.cfg` / `records.cfg` next to the binary; `localStorage` in the browser)

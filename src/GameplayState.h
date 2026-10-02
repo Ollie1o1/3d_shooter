@@ -203,6 +203,13 @@ public:
 
     GLuint      whiteTex = 0;
     GLuint      worldTex[TEX_COUNT] = {};
+    int         textureQuality = -1;   // graphics quality the world textures are filtered for
+    void applyTextureQuality() {
+        int q = settings ? settings->quality : GameSettings::QUALITY_DEFAULT;
+        if (q == textureQuality) return;
+        textureQuality = q;
+        for (GLuint t : worldTex) if (t) TextureGen::setAnisotropy(t, GameSettings::qualityAnisotropy(q));
+    }
     WorldMeshes world;
 
     std::vector<Enemy> enemies;
@@ -1753,7 +1760,7 @@ public:
         audio.play("hit");
         if (!e.stats().flying) spawnDecal(e.position);
         spawnHitSparks(at, e.stats().color * 1.4f);
-        ui.onHit(killed);
+        ui.onHit(killed, crit);
         if (!settings || settings->damageNumbers) ui.spawnDamageNumber(at, std::min(dmg, before), crit);
         if (killed) {
             onEnemyKilled(e);
@@ -1913,7 +1920,7 @@ public:
     // =========================================================================
 
     // Every enemy along a ray up to the first wall, nearest first.
-    struct RayHit { int enemy; float t; };
+    struct RayHit { int enemy; float t; bool head; };
     float hitscanAll(glm::vec3 origin, glm::vec3 dir, float range, std::vector<RayHit>& out) {
         out.clear();
         float wallT = range;
@@ -1923,18 +1930,16 @@ public:
         }
         for (int ei = 0; ei < (int)enemies.size(); ++ei) {
             if (!enemies[ei].targetable()) continue;
+            // A ray through the head box is a headshot, and the head counts
+            // even where it pokes out of the body box
             float t = rayBoxHit(origin, dir, enemies[ei].getAABB());
-            if (t > 0.f && t < wallT) out.push_back({ei, t});
+            AABB head;
+            float th = headBox(enemies[ei], head) ? rayBoxHit(origin, dir, head) : -1.f;
+            if (th > 0.f && th < wallT) out.push_back({ei, th, true});
+            else if (t > 0.f && t < wallT) out.push_back({ei, t, false});
         }
         std::sort(out.begin(), out.end(), [](const RayHit& a, const RayHit& b) { return a.t < b.t; });
         return wallT;
-    }
-
-    // Headshots: the top fifth of a humanoid.
-    static bool isHeadshot(const Enemy& e, glm::vec3 hitPoint) {
-        bool humanoid = e.type == EnemyType::HUSK || e.type == EnemyType::SENTINEL ||
-                        e.type == EnemyType::BRUTE || e.type == EnemyType::WARDEN;
-        return humanoid && hitPoint.y > e.position.y + e.height() * 0.8f;
     }
 
     // Sounds timed to the reload animations (ViewModel.h): the revolver's
@@ -2004,7 +2009,7 @@ public:
             for (int k = 0; k < n; ++k) {
                 Enemy& e = enemies[hits[k].enemy];
                 glm::vec3 at = origin + dir * hits[k].t;
-                bool head = isHeadshot(e, at);
+                bool head = hits[k].head && d.headMult > 1.f;   // the shotgun has no headshot bonus
                 float m = head ? d.headMult : 1.f;
                 float falloff = 1.f - 0.15f * k;    // each body it punches through costs a little
                 if (head) spawnHitSparks(at, {1.f, 0.9f, 0.3f});
@@ -2593,6 +2598,7 @@ public:
     bool scopedView() const { return activeWeapon == (int)WeaponId::LONGSHOT && aim > 0.9f; }
 
     void render() override {
+        applyTextureQuality();
         float alpha = (float)(accumulator / PHYSICS_DT);
         renderAlpha = glm::clamp(alpha, 0.f, 1.f);
         glm::vec3 renderCamPos = glm::mix(prevCamPos, player.camera.position, alpha);

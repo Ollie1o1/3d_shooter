@@ -61,6 +61,7 @@ public:
     float hitmarkerTimer  = 0.f;
     float shootFlashTimer = 0.f;
     bool  hitmarkerKill   = false;
+    bool  hitmarkerHead   = false;
     float hudTime         = 0.f;
 
     int  currentFPS = 0;
@@ -88,7 +89,7 @@ public:
     void onDamage()              { damageVignette = 0.5f; }
     void onOverdrive()           { overdriveFlash = 2.0f; }
     void onShoot()               { shootFlashTimer = 0.06f; }
-    void onHit(bool kill=false)  { hitmarkerTimer = 0.18f; hitmarkerKill = kill; }
+    void onHit(bool kill=false, bool head=false) { hitmarkerTimer = 0.18f; hitmarkerKill = kill; hitmarkerHead = head; }
     void onParry()               { parryFlash = 0.15f; }
     float parryFlash = 0.f;
     void onGrenadeRefill()       { feed("+1 GRENADE", {0.5f, 1.f, 0.3f}); }
@@ -648,7 +649,8 @@ private:
             ui.rect(cx - 5, cy - 5, 10, 10, {1.f, 0.9f, 0.5f, (shootFlashTimer / 0.06f) * 0.6f});
         if (hitmarkerTimer > 0.f) {
             float a = hitmarkerTimer / 0.18f;
-            glm::vec4 hc = hitmarkerKill ? glm::vec4{1.f, 0.35f, 0.f, a} : glm::vec4{1.f, 1.f, 1.f, a};
+            glm::vec4 hc = hitmarkerKill ? glm::vec4{1.f, 0.35f, 0.f, a}
+                         : hitmarkerHead ? glm::vec4{1.f, 0.85f, 0.2f, a} : glm::vec4{1.f, 1.f, 1.f, a};
             int g = h.scoped ? 10 : 6;
             for (int i = 0; i < 4; ++i) {   // diagonal ticks
                 float sx = (i & 1) ? 1.f : -1.f, sy = (i & 2) ? 1.f : -1.f;

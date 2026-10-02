@@ -72,16 +72,32 @@ struct App {
             GameSettings::displayHz() = m.refresh_rate;
     }
 
-    // The canvas follows the window: the largest 16:9 area that fits its
-    // drawable pixels, times the resolution scale setting
+    // Everything renders at the graphics quality's resolution (16:9 lines),
+    // then present() scales that to the window
     void sizeCanvas() {
-        int dw = SCREEN_W, dh = SCREEN_H;
-        SDL_GL_GetDrawableSize(window, &dw, &dh);
-        display::Rect r = display::fit(dw, dh);
-        float k = GameSettings::renderScaleValue(settings.renderScale);
-        if (renderOverride > 0) { display::ensure(renderOverride * 16 / 9, renderOverride); return; }
-        display::ensure((int)(r.w * k), (int)(r.h * k));
+        int lines = renderOverride > 0 ? renderOverride : GameSettings::qualityLines(settings.quality);
+#ifdef __EMSCRIPTEN__
+        fitWebCanvas(lines);
+#endif
+        display::ensure(lines * 16 / 9, lines);
     }
+#ifdef __EMSCRIPTEN__
+    // The page's <canvas> holds the pixels the browser shows. Give it the
+    // screen pixels it covers (CSS size x devicePixelRatio), no more than the
+    // render resolution: below it the browser upscales, as LOW always did;
+    // a higher render resolution is supersampled down into it by present().
+    void fitWebCanvas(int lines) {
+        double cssW = 0, cssH = 0;
+        emscripten_get_element_css_size("#canvas", &cssW, &cssH);
+        double dpr = emscripten_get_device_pixel_ratio();
+        int h = SCREEN_H;
+        if (cssW > 0 && cssH > 0) h = display::fit((int)(cssW * dpr + 0.5), (int)(cssH * dpr + 0.5)).h;
+        h = std::max(360, std::min(lines, h));
+        int w = h * 16 / 9, curW = 0, curH = 0;
+        emscripten_get_canvas_element_size("#canvas", &curW, &curH);
+        if (curW != w || curH != h) emscripten_set_canvas_element_size("#canvas", w, h);
+    }
+#endif
     int renderOverride = 0;     // --res H: render at H lines (16:9) whatever the window (dev)
 
     // Mouse positions arrive in window points; menus think in the virtual 1280x720
@@ -201,7 +217,12 @@ struct App {
         }
         {
             int dw = SCREEN_W, dh = SCREEN_H;
+#ifdef __EMSCRIPTEN__
+            // SDL reports its fixed window size here; the real pixels are the canvas's
+            emscripten_get_canvas_element_size("#canvas", &dw, &dh);
+#else
             SDL_GL_GetDrawableSize(window, &dw, &dh);
+#endif
             display::present(dw, dh);
         }
         SDL_GL_SwapWindow(window);

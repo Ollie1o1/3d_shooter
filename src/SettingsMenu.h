@@ -45,7 +45,7 @@ public:
         cycle ("FRAME RATE", &g->frameCap, GameSettings::FRAME_CAPS, [g](int) { return g->getFPSCapLabel(); });
         toggle("VSYNC", &g->vsync);
 #endif
-        cycle ("RESOLUTION SCALE", &g->renderScale, GameSettings::RENDER_SCALES, [](int i) { return GameSettings::renderScaleLabel(i); });
+        cycle ("GRAPHICS QUALITY", &g->quality, GameSettings::QUALITY_LEVELS, [](int i) { return GameSettings::qualityLabel(i); });
         toggle("SHOW FPS", &g->showFPS);
         toggle("CRT FILTER", &g->crtFilter);
         slider("SCREEN SHAKE", &g->screenShake, 0.f, 1.f, 0.05f, 2);

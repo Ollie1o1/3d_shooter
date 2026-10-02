@@ -430,6 +430,30 @@ int main() {
         }
         CHECK(ok, "every enemy is a multi-part model (>= 8 boxes), not a single cube");
     }
+    {
+        // Head hitboxes: a shot from the player's eye at the drawn head is a
+        // headshot (the JUGGERNAUT included); one at the chest is not
+        bool headsHit = true, chestsMiss = true;
+        for (EnemyType t : {EnemyType::HUSK, EnemyType::SENTINEL, EnemyType::BRUTE,
+                            EnemyType::JUGGERNAUT, EnemyType::WARDEN}) {
+            Enemy e(t, {0, 0, 0});
+            e.spawnTimer = 0.f; e.yaw = 0.7f;
+            rig::HumanoidLook L = rig::humanoidDims(t);
+            float neck = L.legLen + L.pelvisH + L.torsoH;
+            glm::vec3 eye{0.f, 1.7f, 12.f};
+            AABB head;
+            bool has = headBox(e, head);
+            auto hits = [&](float y) { glm::vec3 to{0.f, y, 0.f}; return rayBoxHit(eye, glm::normalize(to - eye), head) > 0.f; };
+            std::printf("      %-10s head %.2f..%.2f (neck %.2f)\n", statsOf(t).name, head.min.y, head.max.y, neck);
+            if (!has || !hits(neck + L.headS * 0.5f) || !hits(neck + 0.05f)) headsHit = false;
+            if (hits(L.legLen + L.pelvisH + L.torsoH * 0.5f)) chestsMiss = false;
+        }
+        CHECK(headsHit, "shooting a humanoid's head (including the Juggernaut's) lands in its head hitbox");
+        CHECK(chestsMiss, "chest shots are not headshots");
+        Enemy mite(EnemyType::MITE, {0, 0, 0});
+        AABB none;
+        CHECK(!headBox(mite, none), "mites have no head to hit");
+    }
 
     // ---------------------------------------------------------------- AI
     const Arena& A0 = L.arenas[0];

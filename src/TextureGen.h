@@ -4,6 +4,10 @@
 #include <vector>
 #include <cmath>
 #include <cstdlib>
+#include <algorithm>
+#ifdef __EMSCRIPTEN__
+#  include <emscripten/html5.h>
+#endif
 
 // =============================================================================
 // TextureGen.h — Procedural texture generation (no external image files needed)
@@ -41,6 +45,25 @@ inline GLuint uploadTexture(const std::vector<unsigned char>& pixels, int w, int
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glGenerateMipmap(GL_TEXTURE_2D);
     return tex;
+}
+
+// Anisotropic filtering: floors and walls stay sharp where they stretch away
+// at a glancing angle, instead of blurring into the distance. 1 turns it off.
+// Does nothing where the GPU or browser doesn't offer it.
+inline void setAnisotropy(GLuint tex, float amount) {
+    constexpr GLenum MAX_ANISOTROPY = 0x84FE, MAX_ANISOTROPY_LIMIT = 0x84FF;   // EXT_texture_filter_anisotropic
+    static float limit = -1.f;
+    if (limit < 0.f) {
+#ifdef __EMSCRIPTEN__
+        emscripten_webgl_enable_extension(emscripten_webgl_get_current_context(), "EXT_texture_filter_anisotropic");
+#endif
+        limit = 0.f;
+        glGetFloatv(MAX_ANISOTROPY_LIMIT, &limit);
+        if (glGetError() != GL_NO_ERROR) limit = 0.f;
+    }
+    if (limit < 1.f) return;
+    glBindTexture(GL_TEXTURE_2D, tex);
+    glTexParameterf(GL_TEXTURE_2D, MAX_ANISOTROPY, std::min(std::max(amount, 1.f), limit));
 }
 
 // Dark concrete floor with subtle grid lines

@@ -55,6 +55,24 @@ struct HumanoidLook {
     float legLen, legW, hipW, pelvisH, torsoH, torsoW, torsoD, headS, armLen, armW;
     vec3  armor, under, glow;
 };
+// Body proportions of the humanoid types. buildEnemy adds the colours;
+// headBox() reads the same numbers so the head you see is the head you hit.
+inline HumanoidLook humanoidDims(EnemyType t) {
+    switch (t) {
+    case EnemyType::HUSK:       return {0.9f,  0.2f,  0.26f, 0.14f, 0.62f, 0.56f, 0.32f, 0.32f, 0.62f, 0.17f, {}, {}, {}};
+    case EnemyType::SENTINEL:   return {1.25f, 0.15f, 0.22f, 0.14f, 0.74f, 0.44f, 0.3f,  0.3f,  0.82f, 0.14f, {}, {}, {}};
+    case EnemyType::BRUTE:      return {1.0f,  0.42f, 0.55f, 0.2f,  1.15f, 1.35f, 0.85f, 0.44f, 1.25f, 0.42f, {}, {}, {}};
+    case EnemyType::JUGGERNAUT: return {1.15f, 0.5f,  0.65f, 0.25f, 1.3f,  1.5f,  0.95f, 0.42f, 1.3f,  0.45f, {}, {}, {}};
+    case EnemyType::WARDEN:     return {1.7f,  0.6f,  0.8f,  0.3f,  1.75f, 1.9f,  1.1f,  0.62f, 1.9f,  0.55f, {}, {}, {}};
+    default:                    return {};
+    }
+}
+inline HumanoidLook humanoidLook(EnemyType t, vec3 armor, vec3 under, vec3 glow) {
+    HumanoidLook L = humanoidDims(t);
+    L.armor = armor; L.under = under; L.glow = glow;
+    return L;
+}
+
 enum class ArmPose { SWING, AIM_RIGHT, AIM_BOTH, RAISED };
 struct HumanoidFrames { mat4 body, torso, head, armL, armR; };
 
@@ -123,8 +141,7 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
 
     switch (e.type) {
     case EnemyType::HUSK: {
-        HumanoidLook L{0.9f, 0.2f, 0.26f, 0.14f, 0.62f, 0.56f, 0.32f, 0.32f, 0.62f, 0.17f,
-                       st.color, st.color * 0.45f, glow};
+        HumanoidLook L = humanoidLook(e.type, st.color, st.color * 0.45f, glow);
         float aim = e.attack == AttackKind::SHOT ? smooth01(tp * 3.f) : 0.35f;
         auto f = humanoid(r, root, L, e.animPhase, stride, ArmPose::AIM_RIGHT, aim);
         vec3 gun{0.16f, 0.15f, 0.17f};
@@ -134,8 +151,7 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         break;
     }
     case EnemyType::SENTINEL: {
-        HumanoidLook L{1.25f, 0.15f, 0.22f, 0.14f, 0.74f, 0.44f, 0.3f, 0.3f, 0.82f, 0.14f,
-                       st.color, st.color * 0.4f, glow};
+        HumanoidLook L = humanoidLook(e.type, st.color, st.color * 0.4f, glow);
         float aim = (e.attack == AttackKind::BURST || e.burstLeft > 0) ? 1.f : 0.55f;
         auto f = humanoid(r, root, L, e.animPhase, stride, ArmPose::AIM_RIGHT, aim, false);
         vec3 metal{0.12f, 0.13f, 0.16f};
@@ -149,8 +165,7 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         break;
     }
     case EnemyType::BRUTE: {
-        HumanoidLook L{1.0f, 0.42f, 0.55f, 0.2f, 1.15f, 1.35f, 0.85f, 0.44f, 1.25f, 0.42f,
-                       st.color, st.color * 0.5f, glow};
+        HumanoidLook L = humanoidLook(e.type, st.color, st.color * 0.5f, glow);
         ArmPose pose = ArmPose::SWING; float amt = 0.f;
         if (e.attack == AttackKind::SLAM) { pose = ArmPose::RAISED;   amt = smooth01(tp * 1.6f); }
         if (e.attack == AttackKind::LOB)  { pose = ArmPose::AIM_BOTH; amt = smooth01(tp * 2.f); }
@@ -171,8 +186,7 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         mat4 base = broken ? root * T({0.f, -0.25f, 0.f}) * RX(0.32f) : root;
         vec3 core = broken ? (std::fmod(time * 10.f, 1.f) > 0.5f ? vec3{3.f, 2.6f, 1.2f} : vec3{1.f, 0.5f, 0.1f})
                            : glow;
-        HumanoidLook L{1.15f, 0.5f, 0.65f, 0.25f, 1.3f, 1.5f, 0.95f, 0.42f, 1.3f, 0.45f,
-                       st.color, st.color * 0.45f, core};
+        HumanoidLook L = humanoidLook(e.type, st.color, st.color * 0.45f, core);
         ArmPose pose = ArmPose::SWING; float amt = 0.f;
         if (e.attack == AttackKind::SHELL) { pose = ArmPose::AIM_RIGHT; amt = smooth01(tp * 2.f); }
         if (e.attack == AttackKind::SMASH) { pose = ArmPose::RAISED;    amt = smooth01(tp * 1.4f); }
@@ -203,8 +217,7 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
     }
     case EnemyType::WARDEN: {
         vec3 g = e.enraged ? vec3{1.f, 0.1f, 0.25f} * (1.f + 2.5f * tp) : glow;
-        HumanoidLook L{1.7f, 0.6f, 0.8f, 0.3f, 1.75f, 1.9f, 1.1f, 0.62f, 1.9f, 0.55f,
-                       st.color, st.color * 0.6f, g};
+        HumanoidLook L = humanoidLook(e.type, st.color, st.color * 0.6f, g);
         ArmPose pose = ArmPose::SWING; float amt = 0.f;
         if (e.attack == AttackKind::SLAM)   { pose = ArmPose::RAISED;   amt = smooth01(tp * 1.5f); }
         if (e.attack == AttackKind::VOLLEY) { pose = ArmPose::AIM_BOTH; amt = smooth01(tp * 2.f); }
@@ -314,6 +327,63 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
     default: break;
     }
 }
+// The head hitbox, world space: the box around the drawn head (helmet, crown,
+// beak) a little oversized so a shot that grazes it still counts. It follows
+// the same frames the model is built from: walk bob, a broken JUGGERNAUT's
+// slump, a RIPPER's crouch, a RAPTOR's dive. False for a type without a head
+// (MITE). Uses the physics position, like the rest of the hitscan.
+inline bool headBox(const Enemy& e, AABB& out) {
+    const EnemyStats& st = e.stats();
+    float grow   = 0.05f + 0.95f * smooth01(1.f - e.spawnTimer / Enemy::SPAWN_TIME);
+    float tp     = e.telegraphProgress();
+    float stride = glm::clamp(e.moveSpeed / std::max(0.1f, st.speed), 0.f, 1.2f);
+    mat4  root   = T(e.position) * RY(e.yaw) * S({1.f, grow, 1.f});
+    mat4  frame;          // the head's frame
+    vec3  centre, half;   // the head box within it
+
+    switch (e.type) {
+    case EnemyType::HUSK: case EnemyType::SENTINEL: case EnemyType::BRUTE:
+    case EnemyType::JUGGERNAUT: case EnemyType::WARDEN: {
+        HumanoidLook L = humanoidDims(e.type);
+        mat4 base = root;
+        if (e.type == EnemyType::JUGGERNAUT && e.staggered()) base = root * T({0.f, -0.25f, 0.f}) * RX(0.32f);
+        float bob = std::fabs(std::sin(e.animPhase)) * 0.05f * stride;
+        frame = base * T({0.f, bob + L.legLen + L.pelvisH + L.torsoH, 0.f});
+        float w = L.headS, top = L.headS + 0.02f;
+        if (e.type == EnemyType::JUGGERNAUT) { w = 0.62f; top = 0.575f; }   // helmet
+        if (e.type == EnemyType::WARDEN)     top = 0.95f;                     // crown
+        centre = {0.f, top * 0.5f, 0.f};
+        half   = {w * 0.5f, top * 0.5f, w * 0.5f};
+        break;
+    }
+    case EnemyType::RIPPER: {
+        float crouch = e.attack == AttackKind::LUNGE ? smooth01(tp * 2.f) : 0.f;
+        bool  spring = e.attack == AttackKind::LUNGE && e.telegraphTimer < 0.1f;
+        mat4 body = root * T({0.f, 0.62f - crouch * 0.22f, 0.f}) * RX(spring ? -0.25f : crouch * 0.12f);
+        frame  = body * T({0.f, 0.1f, 0.6f}) * RX(-0.12f + crouch * 0.3f);
+        centre = {0.f, -0.03f, 0.22f};
+        half   = {0.21f, 0.2f, 0.23f};
+        break;
+    }
+    case EnemyType::RAPTOR: {
+        mat4 base = T(e.position) * RY(e.yaw) * RX(e.pitch) * S(vec3{grow});
+        frame  = base * T({0.f, 0.62f, 0.55f});
+        centre = {0.f, 0.05f, 0.26f};
+        half   = {0.17f, 0.17f, 0.33f};
+        break;
+    }
+    default: return false;
+    }
+
+    half = half * 1.15f + vec3{0.04f};
+    vec3 c = vec3(frame * glm::vec4(centre, 1.f));
+    glm::mat3 m(frame);
+    vec3 ext = glm::abs(m[0]) * half.x + glm::abs(m[1]) * half.y + glm::abs(m[2]) * half.z;
+    out = {c - ext, c + ext};
+    return true;
+}
+
 } // namespace rig
 
 using rig::buildEnemy;
+using rig::headBox;
