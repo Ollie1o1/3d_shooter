@@ -2337,12 +2337,18 @@ public:
     float reloadCueAt = 0.f;   // reload progress already cued
     void reloadSounds() {
         const WeaponState& ws = weapons[activeWeapon];
-        if (!ws.reloading || activeWeapon > 1 || pendingWeapon >= 0) return;
+        if (!ws.reloading || activeWeapon > 2 || pendingWeapon >= 0) return;
         float now = ws.reloadProgress(), before = reloadCueAt;
         reloadCueAt = now;
         auto cue = [&](float at, const char* snd, int vol) { if (before < at && now >= at) audio.play(snd, vol); };
         if (activeWeapon == 0) {
             cue(0.04f, "cyl_open", 110); cue(0.2f, "eject", 100); cue(0.5f, "shell_in", 120); cue(0.78f, "cyl_close", 120);
+        } else if (activeWeapon == 2) {   // Kar98: bolt open, the empty, clip in, rounds down, clip out, bolt home
+            cue(0.11f, "cyl_open", 100); cue(0.2f, "eject", 90);
+            cue(ViewModel::KAR_CLIP1 - 0.02f, "shell_in", 120);
+            cue(ViewModel::KAR_PRESS0 + 0.08f, "reload", 90);
+            cue(ViewModel::KAR_FLICK0 + 0.02f, "eject", 70);
+            cue(0.8f, "bolt", 120);
         } else {
             int n = viewModel.reloadShells;
             for (int i = 0; i < n; ++i) cue(0.13f + (i + 0.55f) * 0.6f / n, "shell_in", 110);
@@ -2353,12 +2359,12 @@ public:
     void startReload(int w) {
         WeaponId id = (WeaponId)w;
         weapons[w].startReload(weaponReload(id, prog.up[w]));
-        // The revolver and shotgun play their reload over its whole length; the rifles swing
+        // The revolver, shotgun and Kar98 play their reload over its whole length; the Longshot swings
         int mag = weaponMag(id, prog.up[w]);
-        if (w == activeWeapon) viewModel.triggerReload(w <= 1 ? weapons[w].reloadTotal : weapons[w].reloadTotal * 0.6f,
+        if (w == activeWeapon) viewModel.triggerReload(w <= 2 ? weapons[w].reloadTotal : weapons[w].reloadTotal * 0.6f,
                                                        mag - weapons[w].ammo);
         reloadCueAt = 0.f;
-        if (w >= 2) audio.play("reload");
+        if (w >= 3) audio.play("reload");
     }
 
     void fireWeapon(int w) {

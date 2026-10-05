@@ -10,7 +10,10 @@
 //   triggerFire()    — quick upward kick and settle
 //   triggerReload()  — revolver: cylinder out, brass out, speedloader in,
 //                      flick shut. Shotgun: roll it over, thumb in each
-//                      missing shell, rack the pump. Rifles: swing down and up.
+//                      missing shell, rack the pump. Kar98: tip it over,
+//                      bolt up and back (the empty flies), a stripper clip
+//                      into the guide, thumb the rounds down, flick the
+//                      clip away, bolt home. Longshot: swing down and up.
 //   triggerGrenade() — arm swings forward and back
 //   triggerGrapple() — short forward push
 //   triggerBolt()    — rifles: bolt up, back, forward, down
@@ -69,7 +72,7 @@ public:
     static constexpr float PARRY_TIME = 0.3f;
     float parryTimer = 0.f;
     bool  parryHit = false;
-    int   reloadShells = 1;     // shotgun: shells to feed this reload
+    int   reloadShells = 1;     // shotgun: shells to feed this reload; Kar98: rounds in the clip
     void triggerGrenade() { anim = ViewAnim::GRENADE_THROW; animTimer = animMax = 0.50f; }
     void triggerGrapple() { anim = ViewAnim::GRAPPLE_FIRE;  animTimer = animMax = 0.28f; }
     void triggerPump()    { anim = ViewAnim::PUMP;          animTimer = animMax = 0.45f; }
@@ -117,7 +120,7 @@ public:
 
         // Compute animation offsets in gun-local space
         float p = (animMax > 0.f) ? (animTimer / animMax) : 0.f;
-        float kickZ = 0.f, kickY = 0.f, kickX = 0.f, roll = 0.f, pitchUp = 0.f;
+        float kickZ = 0.f, kickY = 0.f, kickX = 0.f, roll = 0.f, pitchUp = 0.f, reloadYaw = 0.f;
         boltLift = 0.f; boltPull = 0.f;
         reloadU = anim == ViewAnim::RELOAD ? 1.f - p : -1.f;
 
@@ -152,8 +155,25 @@ public:
                     pitchUp = tilt * 10.f;
                     float rack = std::sin(seg(u, 0.84f, 1.f) * 3.14159f);
                     kickZ = -rack * 0.02f;
+                } else if (activeWeapon == 2) {
+                    // Kar98: tip it so the action faces you (right side up),
+                    // dip as the thumb strips the rounds down, settle back
+                    float tilt = smooth(seg(u, 0.f, 0.1f)) - smooth(seg(u, 0.86f, 1.f));
+                    float press = std::sin(seg(u, KAR_PRESS0, KAR_PRESS1) * 3.14159f);
+                    float seat  = std::sin(seg(u, KAR_CLIP0, KAR_CLIP1) * 3.14159f);
+                    // and bring it in toward the middle, muzzle turned
+                    // inward, so the open action sits clear of the HUD
+                    roll    = tilt * 12.f;
+                    pitchUp = tilt * 8.f - press * 3.f;
+                    reloadYaw = -tilt * 16.f;
+                    kickX   = -tilt * 0.09f;
+                    kickY   = tilt * 0.045f - press * 0.018f - seat * 0.006f;
+                    kickZ   = tilt * 0.07f;
+                    // The bolt: lifted and drawn back early, home again at the end
+                    boltLift = seg(u, 0.1f, 0.15f) - seg(u, 0.8f, 0.86f);
+                    boltPull = seg(u, 0.15f, 0.23f) - seg(u, 0.72f, 0.8f);
                 } else {
-                    // Rifles: swing down and roll, then back up
+                    // Longshot: swing down and roll, then back up
                     float t = p > 0.5f ? (1.f - p) * 2.f : p * 2.f;
                     t = std::min(1.f, t * 1.6f);
                     kickY = -t * 0.13f;
@@ -247,7 +267,7 @@ public:
 
         // At the hip the rifles cant inward a touch; aimed they sit level
         float yawIn = (activeWeapon >= 2) ? (1.f - a) * 4.f : activeWeapon == 0 ? -9.f : 0.f;
-        yawIn += inspectYaw;
+        yawIn += inspectYaw + reloadYaw;
         if (yawIn != 0.f) gunBase = gunBase * glm::rotate(glm::mat4(1.f), glm::radians(yawIn), glm::vec3{0.f, 1.f, 0.f});
         if (pitchUp != 0.f) gunBase = gunBase * glm::rotate(glm::mat4(1.f), glm::radians(pitchUp * kickScale), glm::vec3{-1.f, 0.f, 0.f});
         if (roll != 0.f) {
@@ -309,6 +329,13 @@ public:
         drawBox(shader, base, {0.045f, -0.012f, 0.012f}, {0.02f, 0.03f, 0.045f}, glove * 1.3f);   // thumb
         shader.setVec3("emissiveColor", {0.f, 0.f, 0.f});
     }
+
+    // The Kar98 reload's timeline (0..1 through it): the clip comes in and
+    // seats, the rounds are pressed down, the clip flicks out. GameplayState
+    // times the sounds to these too.
+    static constexpr float KAR_CLIP0 = 0.27f, KAR_CLIP1 = 0.42f;
+    static constexpr float KAR_PRESS0 = 0.45f, KAR_PRESS1 = 0.66f;
+    static constexpr float KAR_FLICK0 = 0.66f, KAR_FLICK1 = 0.8f;
 
     // Height of the Kar's sight line and the Longshot's scope axis above the
     // gun origin: aiming moves the gun down by this so they sit on screen centre.
@@ -632,7 +659,55 @@ private:
         drawBox(shader, base, {-0.011f, 0.046f, 0.630f}, {0.004f, 0.024f, 0.014f}, metal);
         drawBox(shader, base, { 0.011f, 0.046f, 0.630f}, {0.004f, 0.024f, 0.014f}, metal);
         drawBoltHandle(shader, base, {0.020f, 0.022f, -0.035f}, 0.036f, steel, steel * 1.2f);
+        if (reloadU >= 0.f) drawKarReload(shader, base, reloadU);
         muzzleFlash(shader, base, {0.f, 0.028f, 0.68f}, 0.05f, flash);
+    }
+
+    // The Kar98's stripper-clip reload, in gun space. The action is open from
+    // the bolt pull to the bolt push; the clip guide sits over its rear.
+    void drawKarReload(ShaderProgram& shader, const glm::mat4& base, float u) {
+        glm::vec3 brass{0.85f, 0.62f, 0.22f}, copper{0.72f, 0.38f, 0.18f}, clipSteel{0.3f, 0.3f, 0.33f},
+                  glove{0.13f, 0.13f, 0.15f}, sleeve{0.22f, 0.12f, 0.1f};
+        // The empty, kicked up and out to the right as the bolt comes back
+        float ej = seg(u, 0.2f, 0.36f);
+        if (ej > 0.f && ej < 1.f) {
+            glm::vec3 at = glm::vec3{0.02f, 0.04f, 0.03f} + glm::vec3{0.16f, 0.f, -0.05f} * ej
+                         + glm::vec3{0.f, 0.11f * std::sin(ej * 3.14159f) - 0.05f * ej * ej, 0.f};
+            glm::mat4 cm = base * T(at) * R(ej * 540.f, {0.3f, 0.2f, 1.f});
+            drawBox(shader, cm, {0.f, 0.f, 0.f}, {0.01f, 0.01f, 0.04f}, brass);
+        }
+        // The clip: in from above-right, seated in the guide, pressed empty, flicked away
+        float in = smooth(seg(u, KAR_CLIP0, KAR_CLIP1));
+        float press = smooth(seg(u, KAR_PRESS0, KAR_PRESS1));
+        float flick = seg(u, KAR_FLICK0, KAR_FLICK1);
+        if (u < KAR_CLIP0 || flick >= 1.f) return;
+        glm::vec3 seat{0.f, 0.07f, -0.005f};
+        glm::vec3 clipAt = seat + glm::vec3{0.09f, 0.1f, -0.04f} * (1.f - in)
+                         + glm::vec3{0.12f * flick, 0.09f * std::sin(flick * 3.14159f) + 0.02f * flick, -0.03f * flick};
+        glm::mat4 cm = base * T(clipAt) * R((1.f - in) * -35.f + flick * 300.f, {0.f, 0.f, 1.f});
+        drawBox(shader, cm, {0.f, 0.f, -0.009f}, {0.016f, 0.066f, 0.004f}, clipSteel);   // the clip's spine
+        drawBox(shader, cm, {0.f, 0.032f, 0.f},  {0.016f, 0.004f, 0.02f}, clipSteel);
+        drawBox(shader, cm, {0.f, -0.032f, 0.f}, {0.016f, 0.004f, 0.02f}, clipSteel);
+        // The rounds stacked in it, stripped down into the magazine by the thumb
+        int n = std::max(1, std::min(reloadShells, 5));
+        if (flick <= 0.f)
+            for (int i = 0; i < n; ++i) {
+                float y = 0.024f - i * 0.012f - press * 0.075f;
+                glm::mat4 rm = base * T(clipAt + glm::vec3{0.f, y, 0.022f});
+                drawBox(shader, rm, {0.f, 0.f, 0.f},     {0.0095f, 0.0095f, 0.042f}, brass);
+                drawBox(shader, rm, {0.f, 0.f, 0.029f},  {0.007f, 0.007f, 0.018f}, copper);
+            }
+        // Left thumb and hand: brings the clip in, presses the stack, flicks the clip
+        float handIn = smooth(seg(u, KAR_CLIP0 - 0.04f, KAR_CLIP0 + 0.06f)) * (1.f - smooth(seg(u, KAR_FLICK0 + 0.02f, KAR_FLICK1)));
+        if (handIn > 0.01f) {
+            // The hand comes in from low on the left, its thumb over the stack
+            glm::vec3 thumb = clipAt + glm::vec3{0.f, 0.04f - press * 0.06f, 0.012f};
+            glm::vec3 hand = thumb + glm::vec3{-0.03f, -0.005f, -0.004f} + glm::vec3{-0.12f, -0.1f, -0.04f} * (1.f - handIn);
+            glm::mat4 hm = base * T(hand) * R(20.f, {0.f, 0.f, 1.f});
+            drawBox(shader, hm, {0.f, 0.f, 0.f},          {0.028f, 0.034f, 0.03f}, glove);
+            drawBox(shader, hm, {-0.03f, -0.03f, -0.02f}, {0.026f, 0.026f, 0.08f}, sleeve);
+            drawBox(shader, base * T(thumb), {0.f, 0.f, 0.f}, {0.013f, 0.012f, 0.022f}, glove * 1.3f);
+        }
     }
 
     // Longshot: a heavy .50 with a big scope, muzzle brake and folded bipod.
