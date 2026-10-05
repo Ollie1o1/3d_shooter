@@ -278,6 +278,29 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
         }
     }
 
+    // Pistons: a hexagonal sleeve and rod (three turned boxes), a heavy head
+    for (auto& p : level.pistons) {
+        float len = p.length(t);
+        auto hex = [&](glm::vec3 c, float r, float h, glm::vec3 col, glm::vec3 emi) {
+            for (int k = 0; k < 3; ++k) push(out, T(c) * RY(k * 1.0472f) * S({r * 1.73f, h, r}), col, emi);
+        };
+        hex(p.top - glm::vec3{0, 1.2f, 0}, p.radius * 1.5f, 2.4f, {0.22f, 0.2f, 0.2f}, glm::vec3{0.f});
+        hex(p.top - glm::vec3{0, 2.4f + len * 0.5f, 0}, p.radius * 0.55f, len, {0.55f, 0.55f, 0.6f}, glm::vec3{0.f});
+        glm::vec3 head = p.top - glm::vec3{0, 2.4f + len + 0.6f, 0};
+        hex(head, p.radius * 1.3f, 1.2f, {0.3f, 0.22f, 0.18f}, glm::vec3{0.f});
+        float hot = 1.f - (p.maxLen - len) / std::max(0.01f, p.maxLen - p.minLen);
+        hex(head - glm::vec3{0, 0.62f, 0}, p.radius * 1.2f, 0.08f, p.glow * 0.2f, p.glow * (0.3f + 1.5f * hot));
+    }
+    for (auto& s : level.spinners) {
+        float a0 = t * s.speed;
+        float segLen = 6.2832f * s.radius / s.segs * 0.55f;
+        for (int k = 0; k < s.segs; ++k) {
+            float a = a0 + k * 6.2832f / s.segs;
+            push(out, T(s.pos + glm::vec3{std::cos(a) * s.radius, 0.f, std::sin(a) * s.radius}) * RY(-a) * S({0.18f, 0.22f, segLen}),
+                 s.glow * 0.15f, s.glow);
+        }
+    }
+
     // Jump pads: a plate, a glowing core, and a ring that rises off it
     for (auto& pad : level.pads) {
         glm::vec3 c = pad.centre;

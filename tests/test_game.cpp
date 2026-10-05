@@ -472,6 +472,42 @@ int main() {
         CHECK(!headBox(mite, none), "mites have no head to hit");
     }
 
+    // ---------------------------------------------------------------- shapes
+    {
+        std::vector<Shape> v;
+        ShapeKit k{v};
+        k.column({5, 0, 5}, 2.f, 6.f, glm::vec3{0.5f}, 10, 0.6f);
+        k.shaft({0, 0, 0}, 8.f, 10.f, glm::vec3{0.5f});
+        k.box({0, 3, 0}, {2, 1, 4}, glm::vec3{0.5f}, 0.7f, 0.3f, 0.2f);
+        k.rod({0, 2, 0}, {6, 5, -3}, 0.5f, glm::vec3{0.5f});
+        bool outCol = true, inShaft = true, outBox = true, finite = true, rodEnds = true;
+        float rodMin = 1e9f, rodMax = -1e9f;
+        v[0].forEachTri([&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3 n) {
+            glm::vec3 m = (a + b + c) / 3.f - glm::vec3{5, 0, 5};
+            if (std::fabs(n.y) < 0.9f) { glm::vec3 r{m.x, 0, m.z}; if (glm::dot(n, r) <= 0.f) outCol = false; }
+            else if ((n.y > 0.f) != (m.y > 3.f)) outCol = false;   // the top faces up, the base down
+        });
+        v[1].forEachTri([&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3 n) {
+            glm::vec3 m = (a + b + c) / 3.f;
+            if (glm::dot(n, glm::vec3{m.x, 0, m.z}) >= 0.f) inShaft = false;
+        });
+        v[2].forEachTri([&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3 n) {
+            if (glm::dot(n, (a + b + c) / 3.f - glm::vec3{0, 3, 0}) <= 0.f) outBox = false;
+            for (auto p : {a, b, c}) if (!std::isfinite(p.x + p.y + p.z)) finite = false;
+        });
+        v[3].forEachTri([&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3) {
+            for (auto p : {a, b, c}) { float t = glm::dot(p - glm::vec3{0, 2, 0}, glm::normalize(glm::vec3{6, 3, -3})); rodMin = std::min(rodMin, t); rodMax = std::max(rodMax, t); }
+        });
+        rodEnds = std::fabs(rodMin) < 0.01f && std::fabs(rodMax - glm::length(glm::vec3{6, 3, -3})) < 0.01f;
+        CHECK(outCol && outBox && finite, "shapes: columns and turned boxes face outward");
+        CHECK(inShaft, "shapes: a shaft faces inward, to be seen from inside");
+        CHECK(rodEnds, "shapes: a rod runs exactly from one end to the other");
+        size_t tris = 0;
+        for (auto& sh : D.shapes) sh.forEachTri([&](glm::vec3, glm::vec3, glm::vec3, glm::vec3) { ++tris; });
+        std::printf("      gauntlet: %zu shapes, %zu triangles\n", D.shapes.size(), tris);
+        CHECK(tris < 120000, "the gauntlet's shapes stay within the triangle budget");
+    }
+
     // ---------------------------------------------------------------- AI
     const Arena& A0 = L.arenas[0];
     const Arena& BOSS = L.arenas[3];          // the Core: the Warden

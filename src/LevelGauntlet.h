@@ -26,6 +26,12 @@
 //   6 THE PUMPWORKS 60 x 39     hall with galleries and two control rooms
 //   7 THE TOWER     70 x 71     courtyard fight, then a lift shaft to the beacon
 //
+// Each room has a set piece built from Shapes.h (round, curved and turned
+// geometry over box collision): the Canal's dam, aqueduct and skyline, the
+// Sluice's turbine, the Ascent's vaulting and rose window, the Span's rock,
+// broken viaduct and the ring on the horizon, the Well's lit core, the
+// Pumpworks' tanks and pistons, the Tower's octagonal keep.
+//
 // Rooms are Arenas run by WaveDirector with fast = true; each has a trigger,
 // hand-placed enemies (WaveEntry::at), its tube as an extra zone and its own
 // theme, crossfaded down the tubes by LevelData::blends.
@@ -40,6 +46,8 @@ inline LevelData buildGauntlet() {
     auto aabb = &LevelBuilder::aabb;
     auto wall = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { return B.wall(x0,y0,z0,x1,y1,z1,c); };
     auto neon = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { B.neon(x0,y0,z0,x1,y1,z1,c); };
+    // Keep a wall's collision but draw a shape in its place
+    auto hide = [&](int w) { L.walls[w].hidden = true; };
     auto prop = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { B.prop(x0,y0,z0,x1,y1,z1,c); };
     auto pad  = [&](vec3 at, vec3 launch) { L.pads.push_back({at, {1.3f, 1.3f}, launch}); };
     auto place = [&](vec3 at, int kind) { L.placedPickups.push_back({at, kind}); };
@@ -111,12 +119,15 @@ inline LevelData buildGauntlet() {
         a.extraZones = {aabb(-5, 3, -8, 5, 8, 4), t0};
 
         // --- The canal: walls, the plaza you arrive on, walkways, the lane ---
+        // The side walls are only parapets over the walkways: past them the
+        // city, and ahead, over the sluice gate, the dam the canal ran from
         B.mat = Mat::CONCRETE;
         B.wallX(-16, 16, -46, -45, 0, 11, conc, {Gap{-2.5f, 2.5f, 3.f, 3.f + TH}});
         a.entryGate = B.doorway(true, -2.5f, 2.5f, -46, -45, 3.f, TH, cyan);
         B.wallX(-16, 16, -126, -125, 0, 11, conc);
-        B.wallZ(-126, -45, 15, 16, 0, 11, conc);
-        B.wallZ(-126, -45, -16, -15, 0, 11, conc, {Gap{-121, -116, 3.f, 3.f + TH}});
+        B.wallZ(-126, -45, 15, 16, 0, 6, conc);
+        B.wallZ(-126, -45, -16, -15, 0, 6, conc, {Gap{-121, -116, 3.f, 3.f + TH}});
+        wall(-16, 3.f + TH, -121.5f, -15, 9.f, -115.5f, conc);          // the exit's lintel block
         a.exitDoor = B.doorway(false, -121, -116, -16, -15, 3.f, TH, cyan, true);
         wall(-15,0,-62, 15,3,-46, conc);                               // plaza
         wall(-15,0,-125, -9,3,-62, dark);                              // walkways
@@ -127,30 +138,66 @@ inline LevelData buildGauntlet() {
         neon(-15,2.75f,-62.12f, 15,2.95f,-62.0f, cyan);
         neon(-15,10.8f,-45.98f, 15,11,-45.86f, cyan * 0.7f);           // wall-top trim
         neon(-15,10.8f,-125.14f, 15,11,-125.02f, cyan * 0.7f);
-        // Bridges you can stand on or run under
-        for (float z : {-82.f, -106.f}) {
-            wall(-9,2.6f,z - 2, 9,3,z + 2, conc);
-            neon(-9,2.45f,z - 2.1f, 9,2.6f,z + 2.1f, cyan * 0.6f);
+        for (float x : {-15.06f, 15.f}) neon(x, 5.85f, -125, x + 0.06f, 6.f, -46, cyan * 0.5f);
+        {
+            ShapeKit k = B.kit(), g = B.kit(true);
+            // Buttresses leaning on the parapets, every 9 m
+            for (float sx : {-1.f, 1.f}) for (float z = -70.f; z > -124.f; z -= 9.f) {
+                if (z < -114.f && z > -123.f && sx < 0.f) continue;    // the exit
+                k.box({sx * 14.55f, 4.4f, z}, {0.9f, 3.4f, 1.1f}, dark, 0.f, 0.f, sx * 0.22f);
+                B.solid(sx > 0 ? 14.1f : -15.f, 3.f, z - 0.55f, sx > 0 ? 15.f : -14.1f, 5.6f, z + 0.55f);
+            }
+            // The arrival plaza: a round fountain, a lamp on each corner
+            k.column({0, 3, -57.f}, 2.6f, 0.6f, conc * 0.9f, 16);
+            g.column({0, 3.62f, -57.f}, 2.2f, 0.04f, teal * 0.22f, 16);
+            k.column({0, 3, -57.f}, 0.45f, 3.2f, conc, 8, 0.7f);
+            g.column({0, 6.2f, -57.f}, 0.5f, 0.5f, teal, 8, 0.2f);
+            B.solid(-2.4f, 3.f, -59.4f, 2.4f, 3.6f, -54.6f);
+            for (float sx : {-1.f, 1.f}) {
+                k.column({sx * 13.5f, 3, -48.5f}, 0.18f, 4.2f, dark, 6);
+                g.column({sx * 13.5f, 7.2f, -48.5f}, 0.35f, 0.5f, vec3{1.f, 0.75f, 0.45f}, 6, 0.6f);
+            }
+            // Stone arches under the bridges
+            for (float z : {-82.f, -106.f}) {
+                k.arch({0, 0.9f, z}, 18.f, 1.6f, 0.5f, 3.8f, conc * 0.85f);
+                g.arch({0, 0.88f, z}, 18.f, 1.6f, 0.12f, 3.9f, cyan * 0.35f);
+            }
+            // Round columns with capitals in place of the square pillars
+            for (float sx : {-12.f, 12.f}) for (float z : {-88.f, -112.f}) {
+                B.solid(sx - 1, 3, z - 1, sx + 1, 11, z + 1);
+                k.column({sx, 3, z}, 1.25f, 0.5f, conc * 0.8f, 12);
+                k.column({sx, 3.5f, z}, 0.95f, 6.6f, conc, 12, 0.9f);
+                k.column({sx, 10.1f, z}, 0.9f, 0.9f, conc * 0.9f, 12, 1.5f);
+                g.column({sx, 9.55f, z}, 0.92f, 0.25f, cyan, 12);
+            }
+            // Drums for climbing out of the lane
+            const float drums[][2] = {{-8.f, -74.5f}, {8.f, -94.5f}, {-8.f, -112.5f}, {8.f, -120.5f}};
+            for (auto& d : drums) {
+                B.solid(d[0] - 1.f, 0, d[1] - 1.5f, d[0] + 1.f, 1.5f, d[1] + 1.5f);
+                for (float o : {-0.75f, 0.75f}) {
+                    k.column({d[0], 0, d[1] + o}, 0.72f, 1.5f, crate, 10);
+                    g.column({d[0], 1.1f, d[1] + o}, 0.74f, 0.08f, vec3{1.f, 0.6f, 0.2f} * 0.5f, 10);
+                }
+            }
         }
-        // Steel beams across the room: grapple them, swing over the lane
+        // Arched trusses across the room (grapple their crowns), springing
+        // from the parapets
         B.mat = Mat::METAL;
-        for (float z : {-70.f, -94.f, -118.f}) {
-            wall(-15,8.6f,z - 0.4f, 15,9.2f,z + 0.4f, {0.26f,0.27f,0.3f});
-            neon(-15,8.5f,z - 0.1f, 15,8.6f,z + 0.1f, teal * 0.6f);
+        {
+            ShapeKit k = B.kit(), g = B.kit(true);
+            for (float z : {-70.f, -94.f, -118.f}) {
+                k.arch({0, 6.f, z}, 30.f, 3.6f, 0.55f, 0.7f, {0.26f,0.27f,0.3f}, 0.f, 18);
+                g.arch({0, 5.8f, z}, 30.f, 3.6f, 0.1f, 0.2f, teal * 0.6f, 0.f, 18);
+                for (float sx : {-1.f, 1.f}) k.rod({sx * 15.f, 6.f, z}, {sx * 7.5f, 9.1f, z}, 0.12f, {0.22f,0.23f,0.26f}, 6);
+                B.solid(-8, 9.f, z - 0.4f, 8, 9.6f, z + 0.4f);
+            }
         }
         B.mat = Mat::CONCRETE;
-        // Crates to climb out of the lane, pads that throw you onto a walkway
-        wall(-9,0,-76, -7,1.5f,-73, crate);  wall(7,0,-96, 9,1.5f,-93, crate);
-        wall(-9,0,-114, -7,1.5f,-111, crate); wall(7,0,-122, 9,1.5f,-119, crate);
-        pad({-5.f, 0.f, -90.f}, {-7.f, 14.f, 0.f});
-        pad({ 5.f, 0.f, -100.f}, { 7.f, 14.f, 0.f});
-        // Cover in the lane and on the walkways; pillars up to the wall tops
+        // Cover in the lane and on the walkways
         wall(-3,0,-66, 3,1.2f,-64, dark); wall(-6,0,-100, -2,1.2f,-98, dark); wall(2,0,-112, 6,1.2f,-110, dark);
         wall(-14,3,-96, -11.5f,4.2f,-95, dark); wall(10,3,-74, 14,4.2f,-73, dark);
-        for (float sx : {-12.f, 12.f}) for (float z : {-88.f, -112.f}) {
-            wall(sx - 1,3,z - 1, sx + 1,11,z + 1, conc);
-            B.ring(sx - 1, z - 1, sx + 1, z + 1, 9.6f, 9.9f, cyan);
-        }
+        pad({-5.f, 0.f, -90.f}, {-7.f, 14.f, 0.f});
+        pad({ 5.f, 0.f, -100.f}, { 7.f, 14.f, 0.f});
         // The sluice gate the canal runs out of, at the north end
         B.mat = Mat::METAL;
         prop(-9,0,-125, 9,8.5f,-124.6f, {0.22f,0.23f,0.26f});
@@ -158,6 +205,80 @@ inline LevelData buildGauntlet() {
         neon(-9,8.3f,-124.6f, 9,8.5f,-124.45f, teal);
         L.fans.push_back({{-11.5f, 7.f, -124.8f}, 1.4f, 2, teal});
         L.fans.push_back({{ 11.5f, 7.f, -124.8f}, 1.4f, 2, teal});
+        // ---- Beyond the walls ----
+        {
+            B.mat = Mat::CONCRETE;
+            ShapeKit k = B.kit(), g = B.kit(true);
+            vec3 damC{0.5f,0.49f,0.5f}, water{0.35f,0.95f,1.1f};
+            // THE DAM: a curved wall 46 m high bowed toward you, spillways
+            // pouring light down its face, a tower at each end
+            const vec3 DC{0.f, -0.3f, -55.f};
+            const float DR = 92.f, A0 = glm::radians(-90.f - 33.f), A1 = glm::radians(-90.f + 33.f);
+            k.curve(DC, DR, A0, A1, -0.3f, 46.f, 5.f, damC, 30);
+            k.curve(DC, DR - 3.5f, A0, A1, -0.3f, 7.f, 3.f, damC * 0.8f, 30);          // the toe
+            k.curve(DC, DR + 1.5f, A0, A1, 46.f, 48.f, 8.f, damC * 0.7f, 30);         // the crest road
+            g.curve(DC, DR - 2.6f, A0, A1, 45.6f, 46.f, 0.2f, water * 0.6f, 30);
+            for (int i = 0; i < 5; ++i) {                                              // spillways
+                float an = glm::radians(-90.f + (i - 2) * 9.f);
+                vec3 p = DC + vec3{std::cos(an) * (DR - 2.7f), 0, std::sin(an) * (DR - 2.7f)};
+                g.box(p + vec3{0, 26.f, 0}, {0.3f, 36.f, 3.6f}, water * 0.75f, -an);
+                g.box(p + vec3{0, 26.f, 0} + vec3{std::cos(an), 0, std::sin(an)} * -0.2f, {0.2f, 36.f, 1.2f}, water * 1.4f, -an);
+                k.box(p + vec3{0, 45.f, 0} + vec3{std::cos(an), 0, std::sin(an)} * -1.2f, {2.f, 2.5f, 5.f}, damC * 0.6f, -an);
+                g.column(p + vec3{std::cos(an), 0, std::sin(an)} * -3.f, 4.5f, 0.4f, water * 0.5f, 10);   // foam
+            }
+            for (float s : {-1.f, 1.f}) {                                              // the dam's towers
+                float an = s < 0 ? A0 : A1;
+                vec3 p = DC + vec3{std::cos(an) * DR, 0, std::sin(an) * DR};
+                k.column(p, 6.5f, 54.f, damC * 0.75f, 12, 0.82f);
+                k.dome(p + vec3{0, 54.f, 0}, 5.4f, damC * 0.6f);
+                for (float y : {20.f, 34.f, 48.f}) g.column(p + vec3{0, y, 0}, 6.5f * (1.f - 0.18f * y / 54.f) + 0.06f, 0.35f, cyan * 0.6f, 12);
+                g.column(p + vec3{0, 59.2f, 0}, 0.25f, 3.f, {1.6f, 0.2f, 0.15f}, 6);
+            }
+            // THE AQUEDUCT: an arcade crossing over the canal, broken where
+            // it spans it, its pieces hanging
+            B.mat = Mat::BRICK;
+            ShapeKit b = B.kit();
+            vec3 brick{0.5f,0.36f,0.3f};
+            for (float x = -100.f; x <= 100.f; x += 12.f) {
+                if (std::fabs(x) < 13.f) continue;
+                b.box({x, 9.f, -99.f}, {2.4f, 18.6f, 3.4f}, brick * 0.85f);
+            }
+            for (float x = -94.f; x <= 94.f; x += 12.f) {
+                if (std::fabs(x) < 18.f) continue;
+                b.arch({x, 12.f, -99.f}, 9.6f, 4.8f, 1.f, 3.4f, brick);
+                b.box({x, 18.4f, -99.f}, {12.f, 1.6f, 3.6f}, brick * 0.9f);
+                g.box({x, 17.5f, -97.25f}, {12.f, 0.16f, 0.1f}, vec3{1.f, 0.7f, 0.4f} * 0.6f);
+            }
+            for (float s : {-1.f, 1.f}) {   // the broken ends, and what fell
+                b.box({s * 15.5f, 18.6f, -99.f}, {7.f, 1.6f, 3.6f}, brick * 0.9f, 0.f, 0.f, s * 0.35f);
+                b.box({s * 9.f, 15.2f, -99.6f}, {5.f, 1.3f, 3.2f}, brick * 0.8f, 0.3f, 0.2f, s * 0.9f);
+            }
+            // THE CITY: towers on both sides and behind you, lit windows
+            uint32_t seed = 7;
+            auto rnd = [&]() { seed = seed * 1664525u + 1013904223u; return (float)((seed >> 8) & 0xFFFF) / 65535.f; };
+            struct Spot { float x, z; };
+            std::vector<Spot> spots;
+            for (int i = 0; i < 14; ++i) spots.push_back({32.f + rnd() * 100.f, -190.f + rnd() * 200.f});    // east
+            for (int i = 0; i < 9; ++i)  spots.push_back({-32.f - rnd() * 90.f, -102.f + rnd() * 120.f});    // west
+            for (int i = 0; i < 6; ++i)  spots.push_back({-28.f + rnd() * 56.f, 18.f + rnd() * 60.f});      // south
+            B.mat = Mat::PANEL;
+            ShapeKit t = B.kit();
+            vec3 glass{0.2f,0.22f,0.3f}, win{1.f,0.72f,0.45f};
+            for (auto& sp : spots) {
+                float h = 25.f + rnd() * 70.f, r = 4.f + rnd() * 6.f;
+                vec3 base{sp.x, -0.3f, sp.z};
+                int kind = (int)(rnd() * 3.f);
+                float taper = kind == 0 ? 0.55f + rnd() * 0.3f : kind == 1 ? 1.f : 0.8f;
+                int sides = kind == 1 ? 4 : kind == 2 ? 6 : 10;
+                glm::mat4 turn = ShapeKit::R(rnd() * 3.f, {0, 1, 0});
+                t.column(base, r, h, glass * (0.7f + 0.5f * rnd()), sides, taper).xf *= turn;
+                for (float y = 6.f; y < h - 3.f; y += 5.f + rnd() * 6.f) {
+                    float rr = r * (1.f - (1.f - taper) * y / h) + 0.07f;
+                    g.column(base + vec3{0, y, 0}, rr, 0.35f, (rnd() < 0.3f ? cyan * 0.5f : win * 0.45f), sides).xf *= turn;
+                }
+                if (kind == 0) g.column(base + vec3{0, h, 0}, 0.2f, 6.f, {1.6f, 0.2f, 0.15f}, 4);   // a mast
+            }
+        }
         B.mat = Mat::BRICK;
         place({0.f, 3.f, -50.f}, 0);
         a.waves = {
@@ -213,11 +334,43 @@ inline LevelData buildGauntlet() {
         neon(-81,2.55f,-111, -61,2.95f,-110.9f, amber);
         for (float z : {-127.6f, -111.f}) wall(-61.6f,0,z, -61,2.5f,z + 0.6f, steel);   // posts under the corners
         // The pump block, its pipe to the roof, and pads up to the mezzanine and onto it
-        wall(-73,0,-122, -67,6,-116, rust);
-        B.ring(-73, -122, -67, -116, 1.5f, 1.8f, green);
-        B.ring(-73, -122, -67, -116, 4.6f, 4.9f, green);
-        wall(-70.6f,6,-119.6f, -69.4f,12,-118.4f, steel);
-        B.ring(-70.6f, -119.6f, -69.4f, -118.4f, 9.f, 9.3f, green);
+        // ...a turbine: a round, ribbed housing, its shaft up to the roof,
+        // pipes curving away from it into the walls, a ring of light turning
+        hide(wall(-73,0,-122, -67,6,-116, rust));
+        hide(wall(-70.6f,6,-119.6f, -69.4f,12,-118.4f, steel));
+        {
+            ShapeKit k = B.kit(), g = B.kit(true);
+            const vec3 TC{-70.f, 0.f, -119.f};
+            k.column(TC, 3.75f, 0.7f, steel * 0.8f, 16);
+            k.column(TC, 3.35f, 5.4f, rust, 16, 0.94f);
+            k.column(TC + vec3{0, 5.4f, 0}, 3.6f, 0.6f, steel * 0.8f, 16);
+            for (int i = 0; i < 8; ++i) {
+                float an = i * 0.7854f;
+                k.box(TC + vec3{std::cos(an) * 3.35f, 3.f, std::sin(an) * 3.35f}, {0.5f, 4.6f, 0.4f}, steel * 0.7f, -an);
+            }
+            for (float y : {1.6f, 4.7f}) g.column(TC + vec3{0, y, 0}, 3.4f - 0.04f * y, 0.3f, green, 16);
+            g.column(TC + vec3{0, 6.f, 0}, 1.7f, 0.04f, green * 0.5f, 12);
+            k.column(TC + vec3{0, 6.f, 0}, 0.7f, 6.f, steel, 10);
+            g.column(TC + vec3{0, 9.f, 0}, 0.74f, 0.3f, green, 10);
+            L.spinners.push_back({TC + vec3{0, 3.1f, 0}, 4.3f, 1.4f, 14, green * 1.2f});
+            // Pipes out of the housing's top, arching into the four walls
+            const vec3 ends[] = {{-57.f, 9.5f, -119.f}, {-81.f, 9.5f, -119.f}, {-70.f, 9.5f, -131.f}, {-70.f, 9.5f, -107.f}};
+            for (auto& e : ends) {
+                vec3 d = glm::normalize(vec3{e.x - TC.x, 0, e.z - TC.z});
+                vec3 p0 = TC + d * 2.6f + vec3{0, 6.f, 0}, p1 = TC + d * 3.6f + vec3{0, 9.5f, 0};
+                vec3 prev = p0;
+                for (int i = 1; i <= 8; ++i) {
+                    float u = i / 8.f;
+                    vec3 q = (1 - u) * (1 - u) * p0 + 2 * (1 - u) * u * p1 + u * u * e;
+                    k.rod(prev, q, 0.45f, rust * 0.8f, 8);
+                    prev = q;
+                }
+                g.rod(e - d * 1.2f, e - d * 1.0f, 0.5f, green * 0.6f, 8);
+            }
+            // Vaulted ribs across the roof
+            for (float x : {-64.f, -76.f}) k.arch({x, 8.6f, -119.f}, 24.f, 3.2f, 0.45f, 0.6f, steel * 0.8f, 1.5708f);
+            k.arch({-69.f, 8.6f, -119.f}, 24.f, 3.2f, 0.45f, 0.6f, steel * 0.8f, 0.f);
+        }
         pad({-70.f, 0.f, -113.f}, {0.f, 14.f, 4.f});
         pad({-70.f, 0.f, -125.f}, {0.f, 14.f, -4.f});
         pad({-77.f, 0.f, -119.f}, {4.f, 19.f, 0.f});
@@ -298,9 +451,12 @@ inline LevelData buildGauntlet() {
         // Columns along both walls, beams across at 28 m (grapple them)
         for (float x : {-120.f, -135.f, -150.f, -165.f, -180.f, -195.f})
             for (float z : {-132.f, -105.f}) {
-                wall(x - 1, 0, z - 1, x + 1, 35, z + 1, sandD);
-                B.ring(x - 1, z - 1, x + 1, z + 1, 26.f, 26.4f, gold);
-                prop(x - 1.2f, 33.f, z - 1.2f, x + 1.2f, 35.f, z + 1.2f, sand);   // capitals
+                hide(wall(x - 1, 0, z - 1, x + 1, 35, z + 1, sandD));
+                ShapeKit k = B.kit(), g = B.kit(true);
+                k.column({x, 0, z}, 1.45f, 1.4f, sandD, 12);              // plinth
+                k.column({x, 1.4f, z}, 1.05f, 31.4f, sandD, 12, 0.92f);
+                k.column({x, 32.8f, z}, 0.97f, 2.2f, sand, 12, 1.7f);      // capital
+                g.column({x, 26.f, z}, 0.99f, 0.35f, gold, 12);
             }
         B.mat = Mat::METAL;
         for (float x : {-135.f, -165.f, -195.f}) {
@@ -308,6 +464,45 @@ inline LevelData buildGauntlet() {
             neon(x - 0.15f, 27.4f, -133, x + 0.15f, 27.5f, -104, gold * 0.7f);
         }
         B.mat = Mat::BRICK;
+        {
+            ShapeKit k = B.kit(), g = B.kit(true);
+            // Ribs vaulting over the hall from each pair of columns
+            for (float x : {-120.f, -135.f, -150.f, -165.f, -180.f, -195.f}) {
+                k.arch({x, 27.f, -118.5f}, 27.f, 7.4f, 0.8f, 1.2f, sand * 0.9f, 1.5708f, 18);
+                g.arch({x, 26.8f, -118.5f}, 27.f, 7.4f, 0.12f, 0.4f, gold * 0.5f, 1.5708f, 18);
+            }
+            // The rose window over the top terrace: a wheel of tracery, glass glowing behind
+            const vec3 RC{-200.8f, 25.5f, -118.5f};
+            g.rod(RC - vec3{0.2f, 0, 0}, RC, 7.f, vec3{0.9f, 0.45f, 0.15f} * 0.5f, 24);
+            for (float R : {7.f, 2.6f}) {
+                k.arch(RC + vec3{0.25f, 0, 0}, 2.f * R, R, 0.5f, 0.45f, sand, 1.5708f, 20);
+                k.arch(RC + vec3{0.25f, 0, 0}, 2.f * R, -R, 0.5f, 0.45f, sand, 1.5708f, 20);
+            }
+            for (int i = 0; i < 12; ++i) {
+                float an = i * 0.5236f;
+                vec3 d{0.f, std::sin(an), std::cos(an)};
+                k.rod(RC + vec3{0.25f, 0, 0} + d * 2.6f, RC + vec3{0.25f, 0, 0} + d * 7.f, 0.18f, sand, 6);
+                g.box(RC + vec3{0.1f, 0, 0} + d * 4.8f, {0.08f, 1.4f, 1.4f}, (i % 2 ? vec3{1.f, 0.25f, 0.15f} : vec3{0.3f, 0.5f, 1.f}) * 0.8f, 0.f, an);
+            }
+            // Two ring chandeliers on chains
+            for (auto c : {vec3{-150.f, 22.f, -118.5f}, vec3{-180.f, 27.f, -118.5f}}) {
+                B.mat = Mat::METAL;
+                ShapeKit m = B.kit();
+                m.curve(c, 5.f, 0.f, 6.2832f, 0.f, 0.35f, 0.3f, {0.25f, 0.2f, 0.15f}, 20);
+                m.curve(c + vec3{0, -1.6f, 0}, 2.4f, 0.f, 6.2832f, 0.f, 0.3f, 0.25f, {0.25f, 0.2f, 0.15f}, 12);
+                for (int i = 0; i < 4; ++i) {
+                    float an = i * 1.5708f + 0.785f;
+                    m.rod(c + vec3{std::cos(an) * 5.f, 0.3f, std::sin(an) * 5.f}, c + vec3{0, 6.f, 0}, 0.06f, {0.2f, 0.18f, 0.15f}, 4);
+                }
+                m.rod(c + vec3{0, 6.f, 0}, vec3{c.x, 35.f, c.z}, 0.1f, {0.2f, 0.18f, 0.15f}, 4);
+                for (int i = 0; i < 16; ++i) {
+                    float an = i * 0.3927f;
+                    g.column(c + vec3{std::cos(an) * 5.f, 0.35f, std::sin(an) * 5.f}, 0.1f, 0.5f, vec3{1.f, 0.75f, 0.4f} * 1.2f, 5);
+                }
+                g.column(c + vec3{0, -3.6f, 0}, 0.5f, 2.f, gold, 6, 0.f);   // a crystal point beneath
+                B.mat = Mat::BRICK;
+            }
+        }
         // Banners down the walls between the columns
         for (float x : {-127.5f, -142.5f, -157.5f, -172.5f, -187.5f}) {
             prop(x - 1.4f, 27.f, -132.9f, x + 1.4f, 34.f, -132.7f, {0.45f,0.12f,0.10f});
@@ -368,13 +563,70 @@ inline LevelData buildGauntlet() {
         wall(-215,27,-216, -213,29,-212, rockD); wall(-173,27,-216, -171,29,-212, rockD);
         wall(-215,31,-185, -212,33,-180, rockD); wall(-174,31,-245, -171,33,-240, rockD);
         wall(-215,24,-255, -213,26,-250, rockD); wall(-173,24,-178, -171,26,-174, rockD);
-        // Peaks beyond the walls
-        const float peaks[][4] = {{-232,-170,14,52},{-238,-215,20,60},{-230,-255,12,48},{-154,-190,14,50},{-150,-230,18,56},{-158,-150,10,44}};
-        for (auto& p : peaks) {
-            float x = p[0], z = p[1], w = p[2] * 0.5f, h = p[3];
-            prop(x - w, 0, z - w, x + w, h * 0.7f, z + w, {0.30f,0.33f,0.42f});
-            prop(x - w * 0.5f, h * 0.7f, z - w * 0.5f, x + w * 0.5f, h, z + w * 0.5f, {0.36f,0.40f,0.5f});
-            prop(x - w * 0.2f, h, z - w * 0.2f, x + w * 0.2f, h + 4.f, z + w * 0.2f, {0.85f,0.88f,0.95f});
+        {
+            ShapeKit k = B.kit(), g = B.kit(true);
+            // Peaks beyond the walls: jagged, snow on top
+            const float peaks[][4] = {{-236,-170,18,62},{-245,-215,26,74},{-232,-258,15,56},{-150,-190,17,60},{-146,-232,22,68},{-156,-150,12,50},
+                                      {-262,-195,20,80},{-128,-210,18,72}};
+            uint32_t sd = 3;
+            for (auto& p : peaks) {
+                k.rock({p[0], 0, p[1]}, p[2], p[3], {0.30f,0.33f,0.42f}, ++sd, 0.18f, 8);
+                k.rock({p[0], p[3] * 0.72f, p[1]}, p[2] * 0.36f, p[3] * 0.32f, {0.85f,0.88f,0.95f}, ++sd, 0.15f, 8);
+            }
+            // The canyon's own walls: rock lumps clinging to them, spikes along the rim
+            // Bold below the islands and above head height; slim where you walk
+            for (float side : {-1.f, 1.f}) {
+                float wx = side < 0 ? -215.f : -171.f;
+                for (float z = -270.f; z < -153.f; z += 4.f) {
+                    float v = (float)(((int)(-z * 37.f)) % 100) / 100.f;
+                    float r = 3.f + v * 3.f;
+                    k.rock({wx - side * r * 0.25f, -0.3f, z}, r, 13.f + v * 5.f, rockD * (0.85f + 0.2f * v), ++sd, 0.5f);
+                    bool exit = side > 0 && z > -270.f && z < -257.f;
+                    if (!exit) k.rock({wx - side * 0.2f, 18.f + v * 2.f, z + 1.f}, 1.6f + v, 9.f, rock * 0.9f, ++sd, 0.6f, 6);
+                    float r2 = 2.5f + (1.f - v) * 3.f;
+                    k.rock({wx - side * r2 * 0.3f, 27.f + v * 4.f, z + 2.f}, r2, 10.f + v * 6.f, rock * (0.85f + 0.15f * v), ++sd, 0.35f);
+                    k.rock({wx + side * 1.2f, 38.f, z + 2.f}, 2.4f, 6.f + (float)(((int)(-z * 3.f)) % 13), rock, ++sd, 0.1f, 6);
+                }
+            }
+            for (float x = -213.f; x < -172.f; x += 4.5f) {           // the far end wall
+                float v = (float)(((int)(-x * 29.f)) % 100) / 100.f;
+                k.rock({x, -0.3f, -272.f + 0.8f}, 3.f + 2.f * v, 14.f + 5.f * v, rockD, ++sd, 0.5f);
+                k.rock({x + 1.f, 25.f + 4.f * v, -272.f + 0.6f}, 2.f + 2.f * v, 12.f, rock * 0.9f, ++sd, 0.35f);
+                for (float z : {-272.f, -152.f}) k.rock({x + 2.f, 38.f, z + (z < -200.f ? -1.2f : 1.2f)}, 2.4f, 6.f + 9.f * v, rock, ++sd, 0.1f, 6);
+            }
+            // The islands stand on stalks of rock, and hang rock beneath
+            for (float x : {-208.f, -178.f}) {
+                k.rock({x, 0, -197.f}, 1.6f, 15.2f, rockD, ++sd, 2.1f);
+                k.rock({x, 0, -233.5f}, 2.f, 15.2f, rockD, ++sd, 2.f);
+            }
+            const float under[][3] = {{-200,-196,6},{-186,-192,4},{-194,-202,9},{-205,-232,5},{-190,-238,8},{-182,-228,3},{-198,-226,7},{-212,-240,10}};
+            for (auto& u : under) k.rock({u[0], u[2], u[1]}, 1.2f, 15.1f - u[2], rockD * 0.85f, ++sd, 4.2f, 7);
+            // THE OLD BRIDGE: a viaduct that once crossed the canyon high
+            // above, broken where it spans it; a fallen piece lies below
+            B.mat = Mat::CONCRETE;
+            ShapeKit b = B.kit();
+            vec3 st{0.62f,0.62f,0.66f};
+            const float BZ = -228.f, BY = 50.f;
+            for (float x : {-330.f, -296.f, -262.f, -228.f, -158.f, -124.f, -90.f, -56.f}) {
+                b.column({x, -0.3f, BZ}, 4.2f, BY - 1.f, st * 0.85f, 8, 0.8f);
+                g.column({x, BY - 12.f, BZ}, 3.55f, 0.4f, ice * 0.6f, 8);
+            }
+            for (float x : {-313.f, -279.f, -245.f, -141.f, -107.f, -73.f}) {
+                b.arch({x, BY - 18.f, BZ}, 27.f, 15.f, 2.2f, 7.f, st);
+                b.box({x, BY, BZ}, {34.f, 2.4f, 8.f}, st * 0.9f);
+                g.box({x, BY - 1.25f, BZ + 4.05f}, {34.f, 0.2f, 0.1f}, ice * 0.5f);
+            }
+            b.box({-213.f, BY, BZ}, {24.f, 2.4f, 8.f}, st * 0.9f, 0.f, 0.f, -0.12f);        // the broken ends
+            b.box({-170.f, BY - 1.f, BZ}, {20.f, 2.4f, 8.f}, st * 0.9f, 0.f, 0.f, 0.2f);
+            b.box({-196.f, 4.f, -213.f}, {22.f, 2.6f, 8.f}, st * 0.7f, 0.5f, 0.15f, 0.35f);  // fallen into the canyon
+            b.box({-184.f, 2.f, -212.f}, {6.f, 6.f, 7.f}, st * 0.6f, 0.9f, 0.4f, 0.2f);
+            // THE GATE: a ring the height of a mountain on the northern horizon
+            const vec3 GC{-190.f, 60.f, -470.f};
+            b.arch(GC, 170.f, 85.f, 9.f, 12.f, st * 0.8f, 0.f, 36);
+            b.arch(GC, 170.f, -85.f, 9.f, 12.f, st * 0.8f, 0.f, 36);
+            g.arch(GC + vec3{0, 0, 6.2f}, 152.f, 76.f, 1.2f, 0.4f, ice * 1.4f, 0.f, 36);
+            g.arch(GC + vec3{0, 0, 6.2f}, 152.f, -76.f, 1.2f, 0.4f, ice * 1.4f, 0.f, 36);
+            B.mat = Mat::ROCK;
         }
         // Entry cliff, twin bridges, island 1
         wall(-215,0,-166, -171,20,-152, rock);
@@ -397,7 +649,7 @@ inline LevelData buildGauntlet() {
         wall(-178,19.4f,-258, -174,20,-246, rockD);
         wall(-215,0,-272, -171,20,-258, rock);
         // Pillars holding the islands up, glowing cliff edges
-        for (float x : {-208.f, -178.f}) { wall(x - 1.5f, 0, -199, x + 1.5f, 15, -195, rockD); wall(x - 2, 0, -236, x + 2, 15, -231, rockD); }
+        for (float x : {-208.f, -178.f}) { hide(wall(x - 1.5f, 0, -199, x + 1.5f, 15, -195, rockD)); hide(wall(x - 2, 0, -236, x + 2, 15, -231, rockD)); }
         neon(-215,19.7f,-166.12f, -171,20,-166, ice);
         neon(-213,19.7f,-186.1f, -173,20,-185.98f, ice * 0.7f); neon(-213,19.7f,-206.02f, -173,20,-205.9f, ice * 0.7f);
         neon(-214,19.7f,-221.1f, -172,20,-220.98f, ice * 0.7f); neon(-214,19.7f,-246.02f, -172,20,-245.9f, ice * 0.7f);
@@ -452,8 +704,33 @@ inline LevelData buildGauntlet() {
         wall(-146,5.9f,-283, -121,6.5f,-268, steel);                   // floor 2, hole north-west
         wall(-160,5.9f,-268, -121,6.5f,-244, steel);
         B.mat = Mat::BRICK;
-        wall(-142,0,-266, -138,34,-262, brickD);                       // central column
-        for (float y : {28.f, 21.f, 14.f, 7.f}) B.ring(-142, -266, -138, -262, y, y + 0.25f, red * 0.8f);
+        hide(wall(-142,0,-266, -138,34,-262, brickD));                 // central column...
+        {
+            ShapeKit k = B.kit(), g = B.kit(true);
+            const vec3 CC{-140.f, 0.f, -264.f};
+            k.column(CC, 2.75f, 34.f, brickD, 14);                     // ...round, ringed, a stair of light wound up it
+            for (float y : {28.f, 21.f, 14.f, 7.f}) g.column(CC + vec3{0, y, 0}, 2.8f, 0.25f, red * 0.8f, 14);
+            g.helix(CC + vec3{0, 0.4f, 0}, 3.3f, 33.f, 3.5f, {0.25f, 0.1f, 0.9f}, red * 0.9f, 90);
+            L.spinners.push_back({CC + vec3{0, 24.5f, 0}, 4.6f, 0.9f, 18, vec3{1.f, 0.45f, 0.3f}});
+            L.spinners.push_back({CC + vec3{0, 9.8f, 0}, 4.6f, -1.2f, 18, vec3{1.f, 0.45f, 0.3f}});
+            // The roof: ribs from the corners to an oculus burning over the shaft
+            for (int i = 0; i < 8; ++i) {
+                float an = i * 0.7854f;
+                vec3 out{-140.5f + std::cos(an) * 19.f, 32.f, -263.5f + std::sin(an) * 19.f};
+                k.rod(out, vec3{-140.5f, 33.8f, -263.5f} + vec3{std::cos(an), 0, std::sin(an)} * 3.4f, 0.4f, brickD * 0.8f, 6);
+            }
+            g.column({-140.5f, 33.85f, -263.5f}, 3.2f, 0.12f, vec3{1.f, 0.5f, 0.3f}, 16);
+            k.curve({-140.5f, 0.f, -263.5f}, 3.5f, 0.f, 6.2832f, 33.4f, 34.f, 0.5f, brickD * 0.7f, 16);
+            // Arched niches high on the long walls, lit from inside
+            for (float x : {-151.f, -140.5f, -130.f})
+                for (float z : {-282.9f, -244.1f}) {
+                    float in = z < -260.f ? 0.06f : -0.06f;
+                    g.box({x, 24.5f, z + in}, {2.6f, 6.f, 0.06f}, vec3{1.f, 0.45f, 0.3f} * 0.25f);
+                    g.arch({x, 27.5f, z + in * 2.f}, 2.8f, 1.6f, 0.18f, 0.1f, red, 0.f, 10);
+                    g.box({x - 1.4f, 24.5f, z + in * 2.f}, {0.18f, 6.f, 0.1f}, red);
+                    g.box({x + 1.4f, 24.5f, z + in * 2.f}, {0.18f, 6.f, 0.1f}, red);
+                }
+        }
         for (float y : {19.6f, 12.6f, 6.1f}) {                         // floor edges glow
             neon(-160,y,-282.9f, -121,y + 0.25f,-282.75f, red * 0.8f);
             neon(-160,y,-244.25f, -121,y + 0.25f,-244.1f, red * 0.8f);
@@ -470,7 +747,20 @@ inline LevelData buildGauntlet() {
         wall(-155,0,-250, -151,1.3f,-248, brickD);    wall(-127,0,-282, -123,1.3f,-280, brickD);
         // Chains and a hanging cage in the shaft; fans in the roof
         for (float x : {-148.f, -130.f}) prop(x - 0.08f, 22.f, -270.08f, x + 0.08f, 34.f, -269.92f, steel);
-        prop(-150, 26.f, -258, -146, 30.f, -254, steel * 0.6f);
+        {   // the cage: round, on a chain
+            B.mat = Mat::METAL;
+            ShapeKit k = B.kit(), g = B.kit(true);
+            const vec3 C0{-148.f, 26.f, -256.f};
+            for (int i = 0; i < 10; ++i) {
+                float an = i * 0.6283f;
+                k.rod(C0 + vec3{std::cos(an) * 1.9f, 0, std::sin(an) * 1.9f}, C0 + vec3{std::cos(an) * 1.9f, 4.f, std::sin(an) * 1.9f}, 0.06f, steel, 4);
+            }
+            k.column(C0 - vec3{0, 0.2f, 0}, 2.05f, 0.3f, steel * 0.6f, 12);
+            k.dome(C0 + vec3{0, 4.f, 0}, 2.05f, steel * 0.6f, 3, 12);
+            k.rod(C0 + vec3{0, 6.f, 0}, {C0.x, 34.f, C0.z}, 0.08f, steel, 4);
+            g.column(C0, 0.6f, 1.2f, red * 0.7f, 6, 0.4f);
+            B.mat = Mat::BRICK;
+        }
         L.fans.push_back({{-130.f, 33.9f, -275.f}, 2.2f, 1, red});
         L.fans.push_back({{-150.f, 33.9f, -275.f}, 2.2f, 1, red});
         place({-156.f, 20.f, -250.f}, 1); place({-156.f, 20.f, -278.f}, 0);
@@ -531,14 +821,38 @@ inline LevelData buildGauntlet() {
         pad({-30.f, 0.f, -275.f}, {0.f, 17.f, -6.f}); pad({-30.f, 0.f, -252.f}, {0.f, 17.f, 6.f});
         pad({-72.f, 0.f, -275.f}, {0.f, 17.f, -6.f}); pad({-72.f, 0.f, -252.f}, {0.f, 17.f, 6.f});
         // The pump block (a pad onto it), lava across the floor, pillars, crates
-        wall(-56,0,-270, -42,6,-257, rust);
-        B.ring(-56, -270, -42, -257, 3.f, 3.3f, orange);
+        hide(wall(-56,0,-270, -42,6,-257, rust));
+        {   // ...two great tanks side by side, a deck across them, saddles beneath
+            ShapeKit k = B.kit(), g = B.kit(true);
+            for (float z : {-266.75f, -260.25f}) {
+                k.rod({-56.f, 2.75f, z}, {-42.f, 2.75f, z}, 3.2f, rust, 14);
+                for (float x : {-55.f, -49.f, -43.f}) g.rod({x - 0.2f, 2.75f, z}, {x + 0.2f, 2.75f, z}, 3.25f, orange * 0.7f, 14);
+                for (float x : {-53.f, -45.f}) k.box({x, 0.6f, z}, {1.2f, 1.2f, 6.f}, dark);
+            }
+            k.box({-49.f, 5.85f, -263.5f}, {14.f, 0.3f, 13.f}, dark);
+            g.box({-49.f, 5.72f, -263.5f}, {14.1f, 0.06f, 13.1f}, orange * 0.6f);
+        }
         pad({-59.f, 0.f, -263.5f}, {4.f, 19.f, 0.f});
         L.hazards.push_back({aabb(-70, 0, -278, -67, 0.06f, -249), 30.f});
         neon(-70, 0, -278, -67, 0.06f, -249, {1.f,0.24f,0.02f});
         for (float x : {-65.f, -33.f}) for (float z : {-272.f, -255.f}) {
-            wall(x - 1,0,z - 1, x + 1,14,z + 1, iron);
-            B.ring(x - 1, z - 1, x + 1, z + 1, 9.f, 9.3f, orange);
+            hide(wall(x - 1,0,z - 1, x + 1,14,z + 1, iron));
+            ShapeKit k = B.kit(), g = B.kit(true);
+            k.column({x, 0, z}, 1.4f, 1.f, dark, 8);
+            k.column({x, 1.f, z}, 1.05f, 12.f, iron, 8);
+            k.column({x, 13.f, z}, 1.05f, 1.f, dark, 8, 1.4f);
+            g.column({x, 9.f, z}, 1.09f, 0.3f, orange, 8);
+        }
+        {   // Pipes arching over the hall at both ends, and pistons pounding in the roof
+            ShapeKit k = B.kit(), g = B.kit(true);
+            for (float x : {-76.f, -22.f}) for (float dz : {-0.9f, 0.9f}) {
+                k.arch({x + dz, 6.f, -263.5f}, 33.f, 7.f, 0.9f, 0.9f, rust * 0.8f, 1.5708f, 16);
+                g.arch({x + dz, 6.f, -263.5f}, 33.f, 7.f, 0.95f, 0.2f, orange * 0.35f, 1.5708f, 16);
+            }
+            for (float x : {-70.f, -60.f, -38.f, -28.f}) for (float z : {-270.5f, -256.5f}) {
+                float ph = (x + z) * 0.037f;
+                L.pistons.push_back({{x, 14.f, z}, 0.9f, 0.4f, 3.4f, 2.6f, ph, orange});
+            }
         }
         wall(-28,0,-262, -25,1.4f,-259, rust); wall(-38,0,-266, -35,1.4f,-263, rust); wall(-61,0,-251, -58,1.4f,-248, rust);
         // A crane sweeping the length of the hall under the roof
@@ -618,7 +932,41 @@ inline LevelData buildGauntlet() {
         pad({37.f, 0.f, -293.f}, {-5.f, 17.f, 0.f}); pad({75.f, 0.f, -293.f}, {5.f, 17.f, 0.f});
         pad({37.f, 0.f, -234.f}, {-5.f, 17.f, 0.f}); pad({75.f, 0.f, -234.f}, {5.f, 17.f, 0.f});
         // The tower, two balcony rings, lifts between them, pads to the top
-        wall(TX - 6, 0, TZ - 6, TX + 6, 34, TZ + 6, slateD);
+        // An octagonal keep (its collision a cross plus four corner blocks)
+        hide(wall(TX - 6, 0, TZ - 2.5f, TX + 6, 34, TZ + 2.5f, slateD));
+        hide(wall(TX - 2.5f, 0, TZ - 6, TX + 2.5f, 34, TZ + 6, slateD));
+        for (float sx : {-1.f, 1.f}) for (float sz : {-1.f, 1.f})
+            hide(wall(TX + sx * 2.5f, 0, TZ + sz * 2.5f, TX + sx * 4.2f, 34, TZ + sz * 4.2f, slateD));
+        {
+            ShapeKit k = B.kit(), g = B.kit(true);
+            glm::mat4 oct = ShapeKit::R(0.3927f, {0, 1, 0});
+            const float RO = 6.f / std::cos(0.3927f);
+            k.column({TX, 0, TZ}, RO + 0.5f, 1.5f, slate, 8).xf *= oct;
+            k.column({TX, 0, TZ}, RO, 34.f, slateD, 8).xf *= oct;
+            k.column({TX, 32.6f, TZ}, RO + 0.55f, 1.4f, slate, 8).xf *= oct;             // the crown's cornice
+            for (float y : {6.f, 18.f, 30.f}) g.column({TX, y, TZ}, RO + 0.06f, 0.2f, mag * 0.6f, 8).xf *= oct;
+            g.column({TX, 33.6f, TZ}, RO + 0.6f, 0.4f, mag, 8).xf *= oct;
+            for (int i = 0; i < 8; ++i) {                                                // finials
+                float an = i * 0.7854f;
+                vec3 p{TX + std::cos(an) * (RO + 0.2f), 34.f, TZ + std::sin(an) * (RO + 0.2f)};
+                k.column(p, 0.45f, 5.f, slate, 4, 0.1f);
+                g.column(p + vec3{0, 4.6f, 0}, 0.2f, 0.9f, mag, 4, 0.f);
+                // tall slit windows down each face
+                float fa = an + 0.3927f;
+                g.box({TX + std::cos(fa) * 6.02f, 20.f, TZ + std::sin(fa) * 6.02f}, {0.06f, 22.f, 0.7f}, cyan * 0.35f, -fa);
+            }
+            L.spinners.push_back({{TX, 36.5f, TZ}, 4.f, 0.8f, 16, mag * 1.2f});
+            // Turrets on the bastions' outer corners, battlements on the walls
+            for (float cx : {24.5f, 87.5f}) for (float cz : {-295.5f, -231.5f}) {
+                k.column({cx, 5.f, cz}, 2.4f, 5.f, slate, 10);
+                k.column({cx, 10.f, cz}, 2.9f, 4.f, slateD, 10, 0.f);
+                g.column({cx, 8.f, cz}, 2.45f, 0.25f, mag * 0.8f, 10);
+            }
+            for (float x = 23.f; x < 90.f; x += 3.f)
+                for (float z : {-299.5f, -227.5f}) k.box({x, 12.6f, z}, {1.5f, 1.2f, 1.f}, slate);
+            for (float z = -297.f; z < -229.f; z += 3.f)
+                for (float x : {20.5f, 91.5f}) if (z < -267.f || z > -260.f || x > 50.f) k.box({x, 12.6f, z}, {1.f, 1.2f, 1.5f}, slate);
+        }
         for (float top : {12.f, 24.f}) {
             wall(TX - 10, top - 0.5f, TZ - 10, TX + 10, top, TZ - 6, slate);
             wall(TX - 10, top - 0.5f, TZ + 6,  TX + 10, top, TZ + 10, slate);
@@ -626,8 +974,6 @@ inline LevelData buildGauntlet() {
             wall(TX + 6,  top - 0.5f, TZ - 6,  TX + 10, top, TZ + 6, slate);
             B.ring(TX - 10, TZ - 10, TX + 10, TZ + 10, top - 0.5f, top - 0.2f, cyan);
         }
-        B.ring(TX - 6, TZ - 6, TX + 6, TZ + 6, 33.6f, 34.f, mag);
-        for (float y : {6.f, 18.f, 30.f}) B.ring(TX - 6, TZ - 6, TX + 6, TZ + 6, y, y + 0.2f, mag * 0.6f);
         B.mover({TX - 12.f, 0.25f, TZ}, {2.f, 0.25f, 2.f}, Mover::Path::PINGPONG, {0,0,0}, {0, 11.75f, 0}, 7.f, 0.f, cyan);
         B.mover({TX + 12.f, 11.75f, TZ}, {2.f, 0.25f, 2.f}, Mover::Path::PINGPONG, {0,0,0}, {0, 12.f, 0}, 7.f, 0.5f, cyan);
         pad({TX, 24.f, TZ - 8.f}, {0.f, 26.f,  2.f});   // steep: clear the tower's edge first

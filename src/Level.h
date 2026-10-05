@@ -40,6 +40,7 @@
 // =============================================================================
 #include "Player.h"
 #include "Enemy.h"
+#include "Shapes.h"
 #include <vector>
 #include <algorithm>
 #include <cmath>
@@ -213,6 +214,7 @@ struct LevelData {
     std::vector<Wall>       walls;     // collidable (doors and movers included)
     std::vector<Wall>       props;     // visual only
     std::vector<Wall>       neon;      // visual only, self-lit (drawn with vertex glow)
+    std::vector<Shape>      shapes;    // visual only: round, curved, turned (Shapes.h)
     std::vector<FloorPatch> floors;
     std::vector<Door>       doors;
     std::vector<JumpPad>    pads;
@@ -236,6 +238,20 @@ struct LevelData {
     // Spinning fans set into walls and floors (drawn by GameplayState)
     struct Fan { glm::vec3 pos; float radius; int axis; glm::vec3 glow; };
     std::vector<Fan> fans;
+    // Pistons hanging from a ceiling: a sleeve at `top`, a rod that pumps
+    // down between minLen and maxLen once every `period`, a heavy head on it
+    struct Piston {
+        glm::vec3 top; float radius, minLen, maxLen, period, phase; glm::vec3 glow;
+        float length(float t) const {
+            float u = 0.5f - 0.5f * std::cos((t / period + phase) * 6.2831853f);
+            u = u * u * (3.f - 2.f * u);   // dwell at each end, slam between
+            return minLen + (maxLen - minLen) * u;
+        }
+    };
+    std::vector<Piston> pistons;
+    // Rings of light turning about a vertical axis (round a turbine, a core)
+    struct Spinner { glm::vec3 pos; float radius, speed; int segs; glm::vec3 glow; };
+    std::vector<Spinner> spinners;
     bool      hasReactor = false;
     glm::vec3 reactorPos{0.f};
 
@@ -416,6 +432,14 @@ struct LevelBuilder {
     }
     void neon(float x0, float y0, float z0, float x1, float y1, float z1, glm::vec3 c) {
         L.neon.push_back(Wall{aabb(x0,y0,z0,x1,y1,z1), c});
+    }
+    // Non-box geometry in the current material (Shapes.h); `glow` for self-lit
+    ShapeKit kit(bool glow = false) { return ShapeKit{L.shapes, (int)mat, glow}; }
+    // Collision with nothing drawn: what a shape stands on, or stops you
+    int solid(float x0, float y0, float z0, float x1, float y1, float z1) {
+        int w = wall(x0, y0, z0, x1, y1, z1, {0.3f, 0.3f, 0.3f});
+        L.walls[w].hidden = true;
+        return w;
     }
     // A band of light wrapped around a box (slightly larger, so only its sides show)
     void ring(float x0, float z0, float x1, float z1, float y0, float y1, glm::vec3 c) {

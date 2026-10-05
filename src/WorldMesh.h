@@ -74,6 +74,40 @@ static WorldMeshes buildWorldMeshes(const LevelData& L) {
         idx.insert(idx.end(), {base, base+1, base+2, base, base+2, base+3});
     };
 
+    auto pushTri = [&](std::vector<Vertex>& verts, std::vector<unsigned int>& idx,
+                       glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3 n, glm::vec3 col, bool shade, float yLo, float ySpan) {
+        auto gc = [&](float y) -> glm::vec3 {
+            if (!shade || ySpan < 0.01f) return col;
+            float t = ySpan > 12.f ? glm::clamp((y - yLo) / 12.f + 0.35f, 0.f, 1.f) : (y - yLo) / ySpan;
+            return col * glm::mix(0.55f, 1.0f, glm::clamp(t, 0.f, 1.f));
+        };
+        float ax = fabsf(n.x), ay = fabsf(n.y), az = fabsf(n.z);
+        auto uv = [&](glm::vec3 p) -> glm::vec2 {
+            if (ay > ax && ay > az) return {p.x * texScale, p.z * texScale};
+            if (ax > az)            return {p.z * texScale, p.y * texScale};
+            return {p.x * texScale, p.y * texScale};
+        };
+        unsigned int base = (unsigned int)verts.size();
+        verts.push_back({a, uv(a), n, gc(a.y)});
+        verts.push_back({b, uv(b), n, gc(b.y)});
+        verts.push_back({c, uv(c), n, gc(c.y)});
+        idx.insert(idx.end(), {base, base + 1, base + 2});
+    };
+    // A shape: sides shade toward the shape's base like a wall's; anything
+    // facing up gets the top texture
+    auto pushShape = [&](const Shape& s) {
+        float yLo = 1e9f, yHi = -1e9f;
+        s.forEachTri([&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3) {
+            yLo = std::min({yLo, a.y, b.y, c.y}); yHi = std::max({yHi, a.y, b.y, c.y});
+        });
+        Mat m = (Mat)s.mat;
+        s.forEachTri([&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3 n) {
+            if (s.neon) { pushTri(nV, nI, a, b, c, n, s.color, false, yLo, yHi - yLo); return; }
+            int t = n.y > 0.7f ? topTex(m) : n.y < -0.7f ? TEX_METAL : sideTex(m);
+            pushTri(V[t], I[t], a, b, c, n, n.y < -0.7f ? s.color * 0.8f : s.color, n.y < 0.7f, yLo, yHi - yLo);
+        });
+    };
+
     auto pushBox = [&](const AABB& b, glm::vec3 col, bool neon, Mat m) {
         glm::vec3 mn = b.min, mx = b.max;
         int st = sideTex(m), tt = topTex(m);
@@ -96,6 +130,7 @@ static WorldMeshes buildWorldMeshes(const LevelData& L) {
         if (!L.walls[i].hidden && !L.isDoorWall(i)) pushBox(L.walls[i].box, L.walls[i].color, false, L.walls[i].mat);
     for (auto& p : L.props) pushBox(p.box, p.color, false, p.mat);
     for (auto& n : L.neon)  pushBox(n.box, n.color, true, Mat::BRICK);
+    for (auto& s : L.shapes) pushShape(s);
 
     WorldMeshes m;
     for (int t = 0; t < TEX_COUNT; ++t) m.byTex[t].upload(V[t], I[t]);
