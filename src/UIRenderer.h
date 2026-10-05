@@ -517,7 +517,7 @@ public:
         end2D();
     }
 
-    void renderDeath(const char* where, int kills, float gameTime, bool fast) {
+    void renderDeath(const char* where, int kills, float gameTime, bool fast, bool retry = true) {
         begin2D();
         ui.rect(0, 0, screenW, screenH, {0.3f, 0.0f, 0.0f, 0.5f});
         ui.text("YOU DIED", screenW / 2, screenH / 2 - 90, 5, {0.95f, 0.15f, 0.1f, 0.95f}, true);
@@ -525,9 +525,13 @@ public:
         char buf[64];
         std::snprintf(buf, sizeof(buf), "TIME %s   KILLS %d", formatTime(gameTime, fast).c_str(), kills);
         ui.text(buf, screenW / 2, screenH / 2 - 6, 2, {0.8f, 0.7f, 0.7f, 0.85f}, true);
-        ui.text(fast ? "R - RESTART ROOM (CLOCK KEEPS RUNNING)" : "R - RETRY THIS ARENA (UPGRADES KEPT)",
-                screenW / 2, screenH / 2 + 40, 2, {1.f, 0.85f, 0.5f, 0.95f}, true);
-        ui.text("ENTER - NEW RUN    ESC - MENU", screenW / 2, screenH / 2 + 68, 2, {0.6f, 0.5f, 0.5f, 0.8f}, true);
+        if (retry) {
+            ui.text(fast ? "R - RESTART ROOM (CLOCK KEEPS RUNNING)" : "R - RETRY THIS ARENA (UPGRADES KEPT)",
+                    screenW / 2, screenH / 2 + 40, 2, {1.f, 0.85f, 0.5f, 0.95f}, true);
+            ui.text("ENTER - NEW RUN    ESC - MENU", screenW / 2, screenH / 2 + 68, 2, {0.6f, 0.5f, 0.5f, 0.8f}, true);
+        } else {
+            ui.text("ONE LIFE - THE RUN IS OVER", screenW / 2, screenH / 2 + 40, 2, {1.f, 0.3f, 0.45f, 0.9f}, true);
+        }
         end2D();
     }
 

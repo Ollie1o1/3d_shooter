@@ -162,7 +162,10 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
     }
     if (key == SDLK_TAB && !playerDead && !victory) { openArmory(); return; }
     // Backspace: straight back to the checkpoint and the start of this fight
-    if (key == SDLK_BACKSPACE && !victory) { if (playerDead) retryArena(); else restartHere(); return; }
+    if (key == SDLK_BACKSPACE && !victory) {
+        if (!playerDead) restartHere(); else if (!endless()) retryArena();   // ENDLESS: one life
+        return;
+    }
     if (e.type == SDL_KEYDOWN && (playerDead || victory)) {
         if (key == SDLK_r && playerDead && !endless()) { retryArena(); return; }   // ENDLESS: one life
         if (key == SDLK_RETURN)          { newRun();     return; }

@@ -493,6 +493,11 @@ inline void GameplayState::update(float dt) {
             handleDirectorEvents();
         }
         if (playerDead) gameClock += dt;
+        // ENDLESS: the death screen hands over to the run's score
+        if (playerDead && victoryDelay > 0.f && !frozen) {
+            victoryDelay -= dt;
+            if (victoryDelay <= 0.f) finishRun();
+        }
         return;
     }
 
@@ -634,7 +639,7 @@ inline void GameplayState::update(float dt) {
         playerDead = true;
         deadTimer = 0.f;
         grapple.release();
-        if (endless()) victoryDelay = 1.6f;   // no retries: the run's over, on to its score
+        if (endless()) victoryDelay = 2.4f;   // no retries: YOU DIED, then on to the run's score
     }
 }
 

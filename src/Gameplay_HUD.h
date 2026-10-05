@@ -178,7 +178,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
                              GameSettings::grappleLabel(settings ? settings->grappleKey : 0));
     }
 
-    if (!banners.empty() && !armoryOpen) {
+    if (!banners.empty() && !armoryOpen && !playerDead) {
         const Banner& b = banners.front();
         float a = std::min({1.f, b.time * 4.f, (b.duration - b.time) * 2.5f});
         ui.renderBanner(b.title.c_str(), b.subtitle.c_str(), b.color, a);
@@ -190,11 +190,12 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         ui.end2D();
     }
 
-    if (playerDead && !endless()) {   // (ENDLESS has no retry: straight to the run's score)
+    if (playerDead && !victory) {   // (ENDLESS has no retry: a moment, then the run's score)
         if (fast()) snprintf(buf, sizeof(buf), "ROOM %d/%d  %s", director.arena + 1, nArenas, ar.name);
+        else if (endless()) snprintf(buf, sizeof(buf), "%s - WAVE %d", ar.name, wavesCleared + 1);
         else snprintf(buf, sizeof(buf), "ARENA %d/%d %s - WAVE %d/%d", director.arena + 1, nArenas, ar.name,
                       director.wave + 1, director.waveCount());
-        ui.renderDeath(buf, totalKills, elapsedTime, fast());
+        ui.renderDeath(buf, totalKills, elapsedTime, fast(), !endless());
     }
     if (victory) {
         if (fast()) {
