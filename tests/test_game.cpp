@@ -14,6 +14,8 @@
 #include "../src/MouseFilter.h"
 #include "../src/MusicSynth.h"
 #include "../src/Ghost.h"
+#include "../src/StyleSystem.h"
+#include "../src/Projectile.h"
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -866,6 +868,56 @@ int main() {
         for (int i = 0; i < 20; ++i) lb.add(false, "X", 50.f + i, 0);
         CHECK((int)lb.arena.size() == Leaderboard::KEEP && lb.placeFor(false, 1000.f) == -1 && lb.placeFor(false, 1.f) == 0,
               "the board keeps the top 10; a slower time doesn't place");
+    }
+    {
+        // Style freshness: the same gun over and over scores less, switching restores it
+        StyleSystem st;
+        CHECK(st.freshness(StyleSource::REVOLVER) == Freshness::FRESH, "every source starts fresh");
+        float first = st.addStyle(10.f, StyleSource::REVOLVER);
+        CHECK(std::fabs(first - 15.f) < 1e-3f, "a fresh source scores x1.5");
+        int kills = 0;
+        while (st.freshness(StyleSource::REVOLVER) != Freshness::DULL && kills < 50) { st.addStyle(40.f, StyleSource::REVOLVER); ++kills; }
+        CHECK(kills >= 4 && kills <= 9, "a gun goes dull after a handful of kills with nothing else");
+        CHECK(st.addStyle(10.f, StyleSource::REVOLVER) < 2.5f, "a dull source scores x0.2");
+        CHECK(st.freshness(StyleSource::SHOTGUN) == Freshness::FRESH && std::fabs(st.addStyle(10.f, StyleSource::SHOTGUN) - 15.f) < 1e-3f,
+              "another gun is still fresh");
+        float before = st.fresh[(int)StyleSource::REVOLVER];
+        for (int k = 0; k < 6; ++k) st.addStyle(40.f, StyleSource::PARRY);
+        CHECK(st.fresh[(int)StyleSource::REVOLVER] > before + 0.15f, "using other things freshens a worn source");
+        float mid = st.fresh[(int)StyleSource::REVOLVER];
+        st.update(4.f);
+        CHECK(std::fabs(st.fresh[(int)StyleSource::REVOLVER] - std::min(1.f, mid + 0.2f)) < 1e-3f, "worn sources recover with time");
+        float s0 = st.style; st.addStyle(8.f);
+        CHECK(std::fabs(st.style - std::min(st.maxStyle, s0 + 8.f)) < 1e-3f, "movement style isn't tracked or scaled");
+    }
+    {
+        // Friendly fire: a Juggernaut's siege shell hits the enemies in its path, but not its own Juggernaut or a boss
+        auto ready = [](Enemy& e) { e.state = EnemyState::ACTIVE; e.spawnTimer = 0.f; };
+        std::vector<Enemy> es;
+        es.emplace_back(EnemyType::JUGGERNAUT, glm::vec3{0, 0, 0});
+        es.emplace_back(EnemyType::HUSK, glm::vec3{0, 0, -6});
+        for (auto& e : es) ready(e);
+        ProjectileSystem ps;
+        ps.fire({0, 1.f, -0.5f}, {0, 0, -13.f}, 20.f, false, {1, 1, 1}, false, 0.f, 3.f, true);
+        bool hitHusk = false, hitJugg = false;
+        for (int t = 0; t < 60 && !hitHusk; ++t) {
+            auto r = ps.update(1.f / 60.f, nullptr, 0, es, glm::vec3{0, 1.6f, 40.f});
+            for (auto& [pi, ei] : r.friendlyHits) { (ei == 1 ? hitHusk : hitJugg) = true; }
+        }
+        CHECK(hitHusk && !hitJugg, "a siege shell clears its own Juggernaut and hits the Husk in its way");
+        std::vector<Enemy> boss;
+        boss.emplace_back(EnemyType::WARDEN, glm::vec3{0, 0, -6});
+        ready(boss[0]);
+        ProjectileSystem ps2;
+        ps2.fire({0, 1.f, -0.5f}, {0, 0, -13.f}, 20.f, false, {1, 1, 1}, false, 0.f, 3.f, true);
+        bool hitBoss = false;
+        for (int t = 0; t < 60; ++t) if (!ps2.update(1.f / 60.f, nullptr, 0, boss, glm::vec3{0, 1.6f, 40.f}).friendlyHits.empty()) hitBoss = true;
+        CHECK(!hitBoss, "bosses shrug off friendly fire");
+        ProjectileSystem ps3;
+        ps3.fire({0, 1.f, -5.f}, {0, 0, -13.f}, 20.f, false);
+        bool orbHit = false;
+        for (int t = 0; t < 60; ++t) if (!ps3.update(1.f / 60.f, nullptr, 0, es, glm::vec3{0, 1.6f, 40.f}).friendlyHits.empty()) orbHit = true;
+        CHECK(!orbHit, "ordinary enemy shots pass through their friends");
     }
     {
         GhostRun g;

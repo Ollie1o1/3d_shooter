@@ -24,6 +24,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
     HudState h;
     h.health = styleSystem.health; h.maxHealth = styleSystem.maxHealth;
     h.activeWeapon = activeWeapon;
+    h.heldSource = weaponSource(heldWeapon());
     for (int w = 0; w < WEAPON_COUNT; ++w) {
         h.weapons[w].name = weaponDef((WeaponId)w).name;
         h.weapons[w].ammo = weapons[w].ammo;

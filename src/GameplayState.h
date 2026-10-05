@@ -240,7 +240,16 @@ public:
     struct Pickup { glm::vec3 pos, vel; float life; PickupKind kind; float floorY; glm::vec3 prev{0.f}; };
     std::vector<Pickup> pickups;
 
-    struct Blast { glm::vec3 pos; float radius, damage; float playerRadius, playerDamage; };
+    // src: whose blast it is, for style (a Mite that reaches you hurts its friends: FRIENDLY)
+    struct Blast { glm::vec3 pos; float radius, damage; float playerRadius, playerDamage;
+                   StyleSource src = StyleSource::EXPLOSIVE; };
+
+    // Friendly fire: a Juggernaut's siege shell kills the small fry it hits;
+    // a Brute's slam kills Rippers and Mites around it and leaves a Husk on
+    // 15; a Juggernaut's smash ring is smaller and weaker
+    static constexpr float FRIENDLY_SHELL_DAMAGE    = 120.f;
+    static constexpr float FRIENDLY_SLAM_BRUTE      = 45.f;
+    static constexpr float FRIENDLY_SLAM_JUGGERNAUT = 35.f;
     std::vector<Blast> pendingBlasts;
 
     float padCooldown  = 0.f;
@@ -456,10 +465,18 @@ public:
     void showDamageFrom(glm::vec3 source);
 
     // All player damage to enemies goes through here. Returns true on a kill.
+    // src: what did it, for style freshness (FRIENDLY: another enemy did).
     // pierceArmor: parried shots go straight through a Juggernaut's plating.
-    bool hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float style, float heal, bool crit = false, bool pierceArmor = false);
+    bool hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float style, float heal, StyleSource src,
+                   bool crit = false, bool pierceArmor = false);
 
-    void onEnemyKilled(Enemy& e);
+    void onEnemyKilled(Enemy& e, StyleSource src);
+
+    // The style source for a gun
+    static StyleSource weaponSource(WeaponId id) { return (StyleSource)((int)StyleSource::REVOLVER + (int)id); }
+
+    // Brute slams and Juggernaut smashes hurt the enemies around them too
+    void friendlySlam(const Enemy& slammer, float radius);
 
     void gainXp(int xp);
 

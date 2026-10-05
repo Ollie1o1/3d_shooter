@@ -248,6 +248,8 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 ### Style System
 - ULTRAKILL-inspired style meter (D → C → B → A → S → SSS)
 - Style gained from kills, parries, dashes, slams, grenade multikills
+- **Freshness**: scoring with the same thing over and over earns less. Each gun, the punch, parries, explosives, the slam and the environment wear out as they score (FRESH x1.5, USED x1, STALE x0.5, DULL x0.2) and recover while you use something else; the gun in hand's freshness shows beside the style bar. Movement style (dashes, grapples, jumps) isn't affected
+- **Friendly fire**: a Juggernaut's siege shell ploughs into any enemy in its path, and a Brute's slam or a Juggernaut's smash hurts the enemies around it (bosses are immune). Bait them into a crowd: those kills count as yours (+10 XP, half the kill style)
 - Overdrive mode at max style — dash charges refill on kill
 - Style decays after 3 seconds of inactivity
 

@@ -55,7 +55,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
             for (auto& e : enemies) {
                 if (!e.targetable()) continue;
                 if (glm::length(e.position - player.position) < 4.5f)
-                    hurtEnemy(e, 30.f, e.position + glm::vec3{0, e.height() * 0.5f, 0}, 15.f, 2.f);
+                    hurtEnemy(e, 30.f, e.position + glm::vec3{0, e.height() * 0.5f, 0}, 15.f, 2.f, StyleSource::SLAM);
             }
             fx.spawnShockwave(player.position, 4.5f, {1.f, 0.8f, 0.4f});
             shake(0.3f, 0.08f);
@@ -252,7 +252,15 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
             audio.play("explosion", 100);
             shake(0.3f, 0.07f);
         }
-        hurtEnemy(e, pr.damage, pr.position, pr.parried ? 25.f : 10.f, 2.f, false, pr.parried);
+        hurtEnemy(e, pr.damage, pr.position, pr.parried ? 25.f : 10.f, 2.f,
+                  pr.parried ? StyleSource::PARRY : StyleSource::EXPLOSIVE, false, pr.parried);
+    }
+    // A Juggernaut's shell into one of its own
+    for (auto& [pi, ei] : result.friendlyHits) {
+        const Projectile& pr = projSystem.pool[pi];
+        fx.spawnExplosionParticles(pr.position, 2.f);
+        audio.play("explosion", 80);
+        hurtEnemy(enemies[ei], FRIENDLY_SHELL_DAMAGE, pr.position, 0.f, 0.f, StyleSource::FRIENDLY);
     }
     for (auto& exp : result.explosions)
         pendingBlasts.push_back({exp.pos, exp.radius, exp.damage, exp.radius * 0.5f, 20.f});

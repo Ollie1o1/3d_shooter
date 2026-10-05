@@ -46,11 +46,11 @@ inline void GameplayState::punch(int boostable) {
         p.lifetime = 4.f;
         if (p.heavy) {
             p.damage = 400.f; p.size *= 1.3f; p.emissiveColor = {1.6f, 1.1f, 0.3f};
-            styleSystem.addStyle(60.f);
+            styleSystem.addStyle(60.f, StyleSource::PARRY);
             ui.toast("HEAVY PARRY", "", {1.f, 0.8f, 0.2f}, 1.2f);
         } else {
             p.damage = 60.f; p.emissiveColor = {1.f, 0.9f, 0.3f};
-            styleSystem.addStyle(25.f);
+            styleSystem.addStyle(25.f, StyleSource::PARRY);
             ui.feed("PARRY", {1.f, 0.9f, 0.3f});
         }
         parryFeedback(p.position, p.heavy);
@@ -63,7 +63,7 @@ inline void GameplayState::punch(int boostable) {
         if (dist < 5.5f && glm::dot(fwd, d / dist) > 0.2f) {
             e.stagger(e.staggerTime());
             parryFeedback(eye + fwd * 1.2f, true);
-            styleSystem.addStyle(70.f);
+            styleSystem.addStyle(70.f, StyleSource::PARRY);
             gainXp(30);
             if (e.type == EnemyType::SOVEREIGN) ui.toast("PARRIED", "HIS GUARD IS BROKEN - UNLOAD", {1.f, 0.75f, 0.2f}, 1.4f);
             else if (e.type == EnemyType::SHIELDBEARER) ui.toast("SHIELD DOWN", "", {0.4f, 1.f, 0.75f}, 1.2f);
@@ -77,7 +77,7 @@ inline void GameplayState::punch(int boostable) {
         float r = glm::max(p.blastRadius, 4.f) * 2.f;
         pendingBlasts.push_back({p.position, r, p.damage * 3.f, 0.f, 0.f});
         p.alive = false;
-        styleSystem.addStyle(40.f);
+        styleSystem.addStyle(40.f, StyleSource::EXPLOSIVE);
         invincFrames  = 0.6f;
         hitStopFrames = glm::max(hitStopFrames, 2);
         audio.play("parry");
@@ -93,7 +93,7 @@ inline void GameplayState::punch(int boostable) {
         glm::vec3 d = c - eye;
         float dist = glm::length(d) - e.radius();
         if (dist < 2.4f && glm::dot(fwd, glm::normalize(d)) > 0.5f) {
-            hurtEnemy(e, 25.f, c, 6.f, 1.f);
+            hurtEnemy(e, 25.f, c, 6.f, 1.f, StyleSource::PUNCH);
             glm::vec3 push = glm::normalize(glm::vec3{d.x, 0.f, d.z}) * (e.type == EnemyType::JUGGERNAUT ? 0.3f : 1.4f);
             e.position += push;
             audio.play("clank", 50);
@@ -158,6 +158,7 @@ inline void GameplayState::updateEnemies(float dt) {
             }
         }
         if (ev.slam) {
+            friendlySlam(enemies[i], ev.slamRadius);
             fx.spawnShockwave(epos, ev.slamRadius, statsOf(enemies[i].type).glow);
             shake(0.35f, 0.07f);
             audio.play("slam");
@@ -170,7 +171,7 @@ inline void GameplayState::updateEnemies(float dt) {
         }
         if (ev.detonated) {
             // A mite that reached you: hurts you AND its friends
-            pendingBlasts.push_back({epos + glm::vec3{0, 0.3f, 0}, 4.f, 30.f, 4.f, 30.f * dmgScale});
+            pendingBlasts.push_back({epos + glm::vec3{0, 0.3f, 0}, 4.f, 30.f, 4.f, 30.f * dmgScale, StyleSource::FRIENDLY});
             spawnDebrisFor(enemies[i]);
         }
         if (ev.summonMites + ev.summonRippers > 0) {
@@ -204,8 +205,8 @@ inline void GameplayState::updateEnemies(float dt) {
         if (e.position.y < ar.voidY) {
             e.alive = false; e.state = EnemyState::DEAD; e.health = 0.f;
             ui.feed(std::string(e.stats().name) + " FELL", {1.f, 0.7f, 0.3f});
-            styleSystem.addStyle(15.f);
-            onEnemyKilled(e);
+            styleSystem.addStyle(15.f, StyleSource::ENVIRONMENT);
+            onEnemyKilled(e, StyleSource::ENVIRONMENT);
             continue;
         }
         // Lava burns enemies too: lure them in
@@ -214,7 +215,7 @@ inline void GameplayState::updateEnemies(float dt) {
             if (e.position.y < hz.box.max.y + 0.3f && e.position.y > hz.box.min.y - 0.5f &&
                 e.position.x > hz.box.min.x && e.position.x < hz.box.max.x &&
                 e.position.z > hz.box.min.z && e.position.z < hz.box.max.z) {
-                if (e.takeDamage(hz.dps * 0.5f * dt)) onEnemyKilled(e);
+                if (e.takeDamage(hz.dps * 0.5f * dt)) onEnemyKilled(e, StyleSource::ENVIRONMENT);
             }
     }
 
@@ -231,6 +232,18 @@ inline void GameplayState::updateEnemies(float dt) {
             float wa = b.radius() / minD, wb = a.radius() / minD;   // big ones get pushed less
             a.position -= n * wa; b.position += n * wb;
         }
+    }
+}
+
+inline void GameplayState::friendlySlam(const Enemy& slammer, float radius) {
+    float dmg = slammer.type == EnemyType::BRUTE ? FRIENDLY_SLAM_BRUTE
+              : slammer.type == EnemyType::JUGGERNAUT ? FRIENDLY_SLAM_JUGGERNAUT : 0.f;
+    if (dmg <= 0.f) return;   // the bosses' slams spare their summons
+    for (auto& o : enemies) {
+        if (&o == &slammer || !o.targetable() || isBoss(o.type) || o.stats().flying) continue;
+        glm::vec3 d = o.position - slammer.position;
+        if (glm::length(glm::vec2{d.x, d.z}) < radius && std::fabs(d.y) < 1.5f)
+            hurtEnemy(o, dmg, o.position + glm::vec3{0, o.height() * 0.5f, 0}, 0.f, 0.f, StyleSource::FRIENDLY);
     }
 }
 
@@ -253,28 +266,34 @@ inline void GameplayState::showDamageFrom(glm::vec3 source) {
     ui.onDamageFrom(angle);
 }
 
-inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float style, float heal, bool crit, bool pierceArmor) {
+inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float style, float heal, StyleSource src,
+                                     bool crit, bool pierceArmor) {
     if (!e.targetable()) return false;
     if (!pierceArmor) dmg *= e.armorMult();
     float before = e.health;
     bool killed = e.takeDamage(dmg);
-    styleSystem.addStyle(style);
-    styleSystem.heal(heal * tune().heal);
-    audio.play("hit");
+    // Enemies hurting each other: no hitmarker, no style or healing for the
+    // hit (a kill still scores, in onEnemyKilled)
+    bool friendly = src == StyleSource::FRIENDLY;
+    if (!friendly) {
+        styleSystem.addStyle(style, src);
+        styleSystem.heal(heal * tune().heal);
+    }
+    if (!friendly) audio.play("hit");
     if (!e.stats().flying) fx.spawnDecal(e.position);
     fx.spawnHitSparks(at, e.stats().color * 1.4f);
-    ui.onHit(killed, crit);
+    if (!friendly) ui.onHit(killed, crit);
     if (!settings || settings->damageNumbers) ui.spawnDamageNumber(at, std::min(dmg, before), crit);
     if (killed) {
-        onEnemyKilled(e);
+        onEnemyKilled(e, src);
         hitStopFrames = glm::max(hitStopFrames, isBoss(e.type) ? 12 : 2);
     }
     return killed;
 }
 
-inline void GameplayState::onEnemyKilled(Enemy& e) {
+inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     ++totalKills;
-    styleSystem.addStyle(30.f);
+    styleSystem.addStyle(src == StyleSource::FRIENDLY ? 15.f : 30.f, src);   // half for one you only set up
     styleSystem.heal(5.f * tune().heal);
     audio.play("enemy_death");
     fx.spawnDeathParticles(e.position + glm::vec3{0, e.height() * 0.5f, 0}, e.stats().color);
@@ -291,6 +310,10 @@ inline void GameplayState::onEnemyKilled(Enemy& e) {
     char buf[64];
     snprintf(buf, sizeof(buf), "%s  +%d XP", e.stats().name, xp);
     ui.feed(buf, {0.8f, 0.85f, 0.9f});
+    if (src == StyleSource::FRIENDLY) {
+        gainXp(10);
+        ui.feed("FRIENDLY FIRE  +10 XP", {1.f, 0.5f, 0.35f});
+    }
 
     // Drops. Health orbs are common and small; potions (18%) and XP shards
     // (10%) are the rare ones, and get a loot beam so you notice them.
@@ -313,7 +336,8 @@ inline void GameplayState::onEnemyKilled(Enemy& e) {
     }
 
     if (e.type == EnemyType::MITE)          // shot mites still pop — but only hurt enemies
-        pendingBlasts.push_back({e.position + glm::vec3{0, 0.3f, 0}, 4.f, 30.f, 0.f, 0.f});
+        pendingBlasts.push_back({e.position + glm::vec3{0, 0.3f, 0}, 4.f, 30.f, 0.f, 0.f,
+                                 src == StyleSource::FRIENDLY ? StyleSource::FRIENDLY : StyleSource::EXPLOSIVE});
 
     if (isBoss(e.type)) {
         // The boss takes his summons with him
@@ -362,7 +386,7 @@ inline void GameplayState::processBlasts() {
             if (!e.targetable()) continue;
             float d = glm::length(e.position + glm::vec3{0, e.height() * 0.5f, 0} - b.pos);
             if (d < b.radius)
-                hurtEnemy(e, b.damage * (1.f - d / b.radius), e.position + glm::vec3{0, e.height() * 0.6f, 0}, 15.f, 3.f);
+                hurtEnemy(e, b.damage * (1.f - d / b.radius), e.position + glm::vec3{0, e.height() * 0.6f, 0}, 15.f, 3.f, b.src);
         }
         if (b.playerDamage > 0.f) {
             float pd = glm::length(player.camera.position - b.pos);
@@ -535,35 +559,36 @@ inline void GameplayState::fireWeapon(int w) {
             float falloff = 1.f - 0.15f * k;    // each body it punches through costs a little
             if (head) fx.spawnHitSparks(at, {1.f, 0.9f, 0.3f});
             anyHit = true;
-            if (hurtEnemy(e, dmg * m * falloff, at, sniper ? 12.f : (pellets > 1 ? 3.f : 10.f), pellets > 1 ? 0.5f : 2.f, head)) {
+            if (hurtEnemy(e, dmg * m * falloff, at, sniper ? 12.f : (pellets > 1 ? 3.f : 10.f), pellets > 1 ? 0.5f : 2.f,
+                          weaponSource(id), head)) {
                 ++killCount;
                 if (head) headKill = true;
             }
         }
         // Explosive tips: burst where the round stops
         if (id == WeaponId::LONGSHOT && u.mod)
-            pendingBlasts.push_back({origin + dir * (n > 0 ? hits[0].t : wallT) - dir * 0.3f, 3.5f, 70.f, 0.f, 0.f});
+            pendingBlasts.push_back({origin + dir * (n > 0 ? hits[0].t : wallT) - dir * 0.3f, 3.5f, 70.f, 0.f, 0.f, StyleSource::LONGSHOT});
     }
     kills = killCount > 0;
 
     // Trick-shot bonuses
     if (kills && id == WeaponId::LONGSHOT && quick) {
-        styleSystem.addStyle(40.f); gainXp(25);
+        styleSystem.addStyle(40.f, StyleSource::LONGSHOT); gainXp(25);
         ui.toast("QUICKSCOPE", "+25 XP", {1.f, 0.85f, 0.2f}, 1.4f);
         audio.play("parry", 90);
     } else if (kills && sniper && noscope) {
-        styleSystem.addStyle(60.f); gainXp(40);
+        styleSystem.addStyle(60.f, weaponSource(id)); gainXp(40);
         ui.toast("NOSCOPE", "+40 XP", {1.f, 0.4f, 0.8f}, 1.6f);
         audio.play("parry", 90);
     }
     if (killCount >= 2) {
         char buf[32]; snprintf(buf, sizeof(buf), "COLLATERAL x%d", killCount);
-        styleSystem.addStyle(25.f * (killCount - 1)); gainXp(15 * (killCount - 1));
+        styleSystem.addStyle(25.f * (killCount - 1), weaponSource(id)); gainXp(15 * (killCount - 1));
         ui.toast(buf, "", {1.f, 0.55f, 0.2f}, 1.4f);
     }
     if (headKill && sniper) {
         ui.feed("HEADSHOT", {1.f, 0.85f, 0.25f});
-        styleSystem.addStyle(10.f);
+        styleSystem.addStyle(10.f, weaponSource(id));
         // HEADHUNTER: the round comes back and the bolt is skipped
         if (id == WeaponId::KAR && u.mod) { ++ws.ammo; ws.cooldown = 0.1f; }
     }

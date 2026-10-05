@@ -28,6 +28,7 @@ struct Projectile {
 class ProjectileSystem {
 public:
     static constexpr int POOL_SIZE = 160;  // a boss volley is 11 shots
+    static constexpr float FRIENDLY_ARM = 0.35f;   // s before an enemy's shell can hit another enemy
     std::array<Projectile, POOL_SIZE> pool;
 
     void fire(glm::vec3 pos, glm::vec3 vel, float dmg, bool player,
@@ -62,6 +63,7 @@ public:
 
     struct HitResult {
         std::vector<std::pair<int,int>> enemyHits; // proj idx, enemy idx
+        std::vector<std::pair<int,int>> friendlyHits; // an enemy's siege shell into another enemy
         std::vector<ExplosionEvent>     explosions;
         bool  hitPlayer    = false;
         float playerDamage = 0.f;
@@ -162,6 +164,20 @@ inline ProjectileSystem::HitResult ProjectileSystem::update(
                 }
             }
         } else {
+            // A siege shell ploughs into any other enemy in its way (bosses
+            // shrug it off). Clear of the Juggernaut that fired it first.
+            if (p.heavy && p.lifetime < 5.f - FRIENDLY_ARM) {
+                int hit = -1;
+                for (int ei = 0; ei < (int)enemies.size() && hit < 0; ++ei) {
+                    auto& e = enemies[ei];
+                    if (!e.targetable() || isBoss(e.type)) continue;
+                    AABB box = e.getAABB();
+                    if (p.position.x > box.min.x && p.position.x < box.max.x &&
+                        p.position.y > box.min.y && p.position.y < box.max.y &&
+                        p.position.z > box.min.z && p.position.z < box.max.z) hit = ei;
+                }
+                if (hit >= 0) { result.friendlyHits.push_back({i, hit}); p.alive = false; continue; }
+            }
             glm::vec3 diff = p.position - playerPos;
             float dist = glm::length(diff);
             if (dist < 0.6f * std::max(1.f, p.size * 0.8f)) {

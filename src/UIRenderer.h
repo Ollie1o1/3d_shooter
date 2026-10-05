@@ -31,6 +31,7 @@ struct HudWeapon {
 struct HudState {
     float health = 100.f, maxHealth = 100.f;
     int   activeWeapon = 0;
+    StyleSource heldSource = StyleSource::NONE;   // the gun in hand, for its freshness
     HudWeapon weapons[WEAPON_COUNT];
     int   grenades = 0, grenadeMax = 2;
     int   level = 1, xp = 0, xpNext = 100, points = 0;
@@ -174,7 +175,7 @@ public:
         if (h.scoped) drawReticle(h);
 
         drawHealthPanel(style, h);
-        drawStyleMeter(style);
+        drawStyleMeter(style, h.heldSource);
         drawWeaponSlots(h);
         drawCrosshair(h, cx, cy);
 
@@ -592,7 +593,7 @@ private:
         for (int i = 1; i < 4; ++i) ui.rect(bx + bw * i / 4, by, 2, bh, {0.f, 0.f, 0.f, 0.45f});
     }
 
-    void drawStyleMeter(const StyleSystem& style) {
+    void drawStyleMeter(const StyleSystem& style, StyleSource held) {
         StyleRank rank = style.getRank();
         glm::vec4 rc = rankColor(rank);
         int sx = (screenW - 220) / 2, sy = screenH - 40;
@@ -601,6 +602,13 @@ private:
         ui.rect(sx, sy, 220 * displayStyle / style.maxStyle, 12, rc);
         static const char* NAMES[] = {"D", "C", "B", "A", "S", "SSS"};
         if (displayStyle > 1.f) ui.textShadow(NAMES[(int)rank], screenW / 2, sy - 40, 4, rc, true);
+        // How fresh the gun in hand is: the same gun over and over scores less
+        if (held != StyleSource::NONE) {
+            Freshness f = style.freshness(held);
+            static const glm::vec4 FC[] = {{0.4f, 1.f, 0.8f, 0.9f}, {0.7f, 0.72f, 0.8f, 0.8f},
+                                           {1.f, 0.6f, 0.2f, 0.95f}, {1.f, 0.25f, 0.2f, 1.f}};
+            ui.textShadow(StyleSystem::freshnessName(f), sx + 232, sy - 1, 2, FC[(int)f], false);
+        }
         if (overdriveFlash > 0.f || style.overdrive) {
             float alpha = style.overdrive ? 0.9f : (overdriveFlash * 0.6f);
             int oy = screenH - 120;
