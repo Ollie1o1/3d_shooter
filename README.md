@@ -241,6 +241,7 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 - **Four arenas**, each with its own lighting, fog and sky: the **Sunset Yard** (four corner buildings break the square into a plaza with four arms, and their rooftops are joined into a ring of bridges at 5 m, with market stalls to duck behind), **the Foundry** (roofed, lava channels you can lure enemies into, a furnace to climb, side and cross catwalks forming a loop at 5 m, a crane platform to grapple), **the Spire** (a 26 m tower at dawn: ledges, bridges, a balcony and the summit, linked by jump pads, lifts, sweepers and orbiting platforms; each wave spawns a tier higher, and the gunners up there hold their perch, so you have to climb), and **the Core** (night sky, a reactor ringed by pillars; an outer walkway ring at 4 m linking the corner perches and an inner ring at 7 m across the pillar tops). Every arena loops: there's always somewhere to run, on the ground or above it
 - Each arena has three waves; the director keeps at most 6–10 enemies on the field and trickles the rest in as you kill, spawning them away from you
 - **Objectives**: some waves aren't "kill everything". **HOLD THE DAIS** (the Yard's last wave) and **HOLD THE BALCONY** (the Spire): stand in the ring until it fills; it only fills while no enemy on foot is inside it. **DESTROY THE CONDUITS** (the Foundry): the wave pours out of three pylons until you bring them all down. **SURVIVE THE OVERLOAD** (the Core): last 45 seconds. These waves keep coming until the objective is met; then whatever's left collapses (+40 XP)
+- **Arenas that change as the fight goes on**: the sun sets over the **Yard** wave by wave (its last wave is fought at night); on the **Foundry**'s last wave the lava channels spread from 3 m to 9 m, cutting the floor into islands (the catwalks are the safe way round, and it's a bigger trap to lure enemies into); the **Spire**'s platforms speed up each wave (x1.3, x1.6); and during the **Core**'s overload the reactor fires a ring of energy along the floor every 4.5 s (it flares first): jump it or get up on a walkway. The rings burn enemies on foot too, and the lights go red. A retry puts it all back
 - **Squads**: some enemies arrive with an escort in formation: a Shieldbearer screening a Sentinel or two Husks, a Juggernaut with Mites at its feet
 - New enemy types get a title card the first time they appear, with a one-line tip on how to beat them
 - Clearing an arena opens its gate and points a waypoint at it; walking into the next arena closes the gate behind you
@@ -252,6 +253,7 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 - ULTRAKILL-inspired style meter (D → C → B → A → S → SSS)
 - Style gained from kills, parries, dashes, slams, grenade multikills
 - **Freshness**: scoring with the same thing over and over earns less. Each gun, the punch, parries, explosives, the slam and the environment wear out as they score (FRESH x1.5, USED x1, STALE x0.5, DULL x0.2) and recover while you use something else; the gun in hand's freshness shows beside the style bar. Movement style (dashes, grapples, jumps) isn't affected
+- Kills you only set up (lava, the void, enemies hurting each other) can carry the meter into rank B but no further: the top ranks and Overdrive come from what you do yourself
 - **Friendly fire**: a Juggernaut's siege shell ploughs into any enemy in its path, and a Brute's slam or a Juggernaut's smash hurts the enemies around it (bosses are immune). Bait them into a crowd: those kills count as yours (+10 XP, half the kill style)
 - Overdrive mode at max style — dash charges refill on kill
 - Style decays after 3 seconds of inactivity
@@ -313,6 +315,8 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 │   ├── Gameplay_HUD.h        #   the HUD
 │   ├── Gameplay_Dev.h        #   footage camera, Sovereign poses, practice wave skip
 │   ├── Effects.h             # particles, debris, decals, tracers, shockwaves (no OpenGL)
+│   ├── ArenaShifts.h         # arenas that change as the fight goes on: nightfall, rising lava, faster platforms, the overload (no OpenGL)
+│   ├── Gameplay_Shifts.h     #   their damage, sounds, banners and drawing
 │   ├── WorldMesh.h           # static level geometry batched into one mesh per texture
 │   ├── Player.h              # kinematic character controller (Quake-style)
 │   ├── Camera.h              # view/projection, mouselook

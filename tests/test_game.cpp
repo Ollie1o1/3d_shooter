@@ -16,6 +16,7 @@
 #include "../src/Ghost.h"
 #include "../src/StyleSystem.h"
 #include "../src/Projectile.h"
+#include "../src/ArenaShifts.h"
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -801,6 +802,77 @@ int main() {
         CHECK(refilled, "a goal wave keeps its queue topped up until the goal is met");
     }
 
+    // ---------------------------------------------------------------- arenas that change
+    {
+        LevelData M = buildLevel();
+        ArenaShifts sh; sh.capture(M);
+        auto find = [&](ArenaShift k) { for (int i = 0; i < (int)M.arenas.size(); ++i) if (M.arenas[i].shift == k) return i; return -1; };
+        int yard = find(ArenaShift::NIGHTFALL), foundry = find(ArenaShift::LAVA_RISE), spire = find(ArenaShift::SPEED_UP), core = find(ArenaShift::OVERLOAD);
+        CHECK(yard >= 0 && foundry >= 0 && spire >= 0 && core >= 0, "the Yard, Foundry, Spire and Core each change as their fight goes on");
+
+        // Lava: nothing until the last wave, then the channels spread 3 m each side; reset puts them back
+        auto lavaArea = [&]() { float A = 0.f; for (auto& h : M.hazards) A += (h.box.max.x - h.box.min.x) * (h.box.max.z - h.box.min.z); return A; };
+        float before = lavaArea();
+        sh.onWave(M, foundry, 0, WaveGoal{}, 0.f);
+        for (int i = 0; i < 600; ++i) sh.update(DT, M, foundry, true);
+        bool still = lavaArea() == before;
+        sh.onWave(M, foundry, (int)M.arenas[foundry].waves.size() - 1, WaveGoal{}, 0.f);
+        bool started = false;
+        for (int i = 0; i < 60 * 8; ++i) { sh.update(DT, M, foundry, true); started |= sh.lavaStarted; }
+        float widened = lavaArea();
+        CHECK(still && started && widened > before * 2.5f, "the Foundry's lava stays put until the last wave, then spreads");
+        bool spawnsDry = true;
+        for (auto& h : M.hazards)
+            for (int wv = 0; wv < 3; ++wv)
+                for (auto& p : M.arenas[foundry].groundSpawns)
+                    if (p.x > h.box.min.x && p.x < h.box.max.x && p.z > h.box.min.z && p.z < h.box.max.z && p.y < 1.f) spawnsDry = false;
+        CHECK(spawnsDry, "no Foundry spawn point ends up in the widened lava");
+        sh.reset(M);
+        CHECK(lavaArea() == before, "a retry puts the lava back");
+
+        // Platforms: faster, without jumping
+        float t = 37.3f;
+        M.updateMovers(t);
+        std::vector<glm::vec3> at; for (auto& m : M.movers) at.push_back(m.offsetAt(t));
+        sh.onWave(M, spire, 2, WaveGoal{}, t);
+        bool smooth = true, faster = false;
+        for (int i = 0; i < (int)M.movers.size(); ++i) {
+            if (glm::length(M.movers[i].offsetAt(t) - at[i]) > 1e-3f) smooth = false;
+            faster |= M.movers[i].period < 0.99f * buildLevel().movers[i].period;
+        }
+        CHECK(smooth && faster && sh.speed[spire] > 1.5f, "the Spire's platforms speed up without a jump");
+        sh.reset(M);
+
+        // Overload: rings on the SURVIVE wave only; they hit feet on the floor, not on a walkway
+        int sw = -1;
+        for (int i = 0; i < (int)M.arenas[core].goals.size(); ++i) if (M.arenas[core].goals[i].kind == WaveGoal::SURVIVE) sw = i;
+        sh.onWave(M, core, 0, WaveGoal{}, 0.f);
+        for (int i = 0; i < 60 * 10; ++i) sh.update(DT, M, core, true);
+        bool quietFirst = sh.rings.empty();
+        sh.onWave(M, core, sw, M.arenas[core].goals[sw], 0.f);
+        glm::vec3 floorP = M.reactorPos + glm::vec3{12.f, 0.f, 0.f}; floorP.y = M.arenas[core].playerStart.y;
+        glm::vec3 high = floorP + glm::vec3{0.f, 4.f, 0.f};
+        int floorHits = 0, highHits = 0, fired = 0;
+        for (int i = 0; i < 60 * 12; ++i) {
+            sh.update(DT, M, core, true);
+            fired += sh.pulseFired; floorHits += sh.ringHits(floorP); highHits += sh.ringHits(high);
+        }
+        std::printf("      overload: %d rings in 12 s, floor hit %d times, walkway %d\n", fired, floorHits, highHits);
+        CHECK(quietFirst && fired >= 2 && floorHits == fired && highHits == 0,
+              "the Core's overload rings hit once each on the floor and pass under the walkways");
+        sh.onWaveOver();
+        for (int i = 0; i < 60 * 6; ++i) sh.update(DT, M, core, true);
+        CHECK(sh.rings.empty() && sh.alarm == 0.f, "the overload stops when its wave does");
+
+        // Nightfall: darker each wave; a retry brings the sun back
+        Theme day = M.arenas[yard].theme;
+        sh.onWave(M, yard, 2, WaveGoal{}, 0.f);
+        for (int i = 0; i < 60 * 6; ++i) sh.update(DT, M, yard, true);
+        bool darker = glm::length(M.arenas[yard].theme.lightColor) < glm::length(day.lightColor) * 0.7f && M.arenas[yard].theme.sunDir.y < 0.f;
+        sh.reset(M);
+        CHECK(darker && M.arenas[yard].theme.sunDir == day.sunDir, "the Yard's sun sets by the last wave, and rises again on a retry");
+    }
+
     // Regression: a wave whose last enemy spawns into an empty field must not
     // count as cleared on that same tick (the one-enemy boss wave always did).
     {
@@ -949,6 +1021,11 @@ int main() {
         float mid = st.fresh[(int)StyleSource::REVOLVER];
         st.update(4.f);
         CHECK(std::fabs(st.fresh[(int)StyleSource::REVOLVER] - std::min(1.f, mid + 0.2f)) < 1e-3f, "worn sources recover with time");
+        StyleSystem pv;
+        for (int k = 0; k < 40; ++k) { pv.addStyle(15.f, StyleSource::ENVIRONMENT); pv.addStyle(15.f, StyleSource::FRIENDLY); }
+        CHECK(pv.style <= StyleSystem::PASSIVE_CAP + 1e-3f && !pv.overdrive, "lava and friendly-fire kills alone can't carry the meter past B");
+        pv.addStyle(40.f, StyleSource::KAR);
+        CHECK(pv.style > StyleSystem::PASSIVE_CAP, "your own kills take it on from there");
         float s0 = st.style; st.addStyle(8.f);
         CHECK(std::fabs(st.style - std::min(st.maxStyle, s0 + 8.f)) < 1e-3f, "movement style isn't tracked or scaled");
     }

@@ -69,6 +69,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     level = fast() ? buildGauntlet() : buildLevel();
     spatialGrid.build(level.walls);
     world = buildWorldMeshes(level);
+    shifts.capture(level);
     director.level = &level;
     director.fast  = fast();
     records.load();
@@ -133,6 +134,8 @@ inline void GameplayState::enterArena(int a) {
     // Every door shut; exits of the arenas already beaten unlocked. The way
     // in locks when the fight starts (ARENA_START).
     for (int d = 0; d < (int)level.doors.size(); ++d) { level.doors[d].locked = false; level.setDoorInstant(d, false); }
+    shifts.reset(level);   // the sun back up, the lava back down, the platforms back to speed
+    level.updateMovers(moverClock);
     for (int i = 0; i < (int)level.arenas.size(); ++i) {
         const Arena& ar = level.arenas[i];
         if (ar.exitDoor >= 0) level.doors[ar.exitDoor].locked = i >= a;
@@ -240,6 +243,8 @@ inline void GameplayState::handleDirectorEvents() {
             }
             break;
         case DirectorEvent::WAVE_START:
+            shifts.onWave(level, director.arena, ev.value, director.goal(), moverClock);
+            if (ar.shift == ArenaShift::SPEED_UP && ev.value > 0) ui.feed("THE PLATFORMS SPEED UP", {0.4f, 0.9f, 1.f});
             if (fast()) { if (ev.value > 0) pushBanner("SECOND WAVE", "", {1.f, 0.5f, 0.3f}, 1.4f); break; }
             snprintf(buf, sizeof(buf), "WAVE %d/%d", ev.value + 1, director.waveCount());
             pushBanner(buf, director.goal().label, {1.f, 0.9f, 0.4f}, director.hasGoal() ? 2.6f : 1.8f);
@@ -261,6 +266,7 @@ inline void GameplayState::handleDirectorEvents() {
             break;
         }
         case DirectorEvent::WAVE_CLEARED:
+            shifts.onWaveOver();
             if (!fast()) pushBanner("WAVE CLEAR", "", {0.4f, 1.f, 0.6f}, 1.6f);
             styleSystem.heal(10.f);
             break;
@@ -283,6 +289,7 @@ inline void GameplayState::handleDirectorEvents() {
             break;
         }
         case DirectorEvent::GOAL_DONE:
+            shifts.onWaveOver();
             // The objective's met: whatever's left of the wave falls apart
             for (auto& e : enemies)
                 if (e.alive) {

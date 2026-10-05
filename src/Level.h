@@ -164,6 +164,8 @@ struct Mover {
 };
 
 enum class Ambient { DUST, EMBERS, MOTES, WIND, ASH, STEAM };
+// How an arena changes as its fight goes on (ArenaShifts.h)
+enum class ArenaShift { NONE, NIGHTFALL, LAVA_RISE, SPEED_UP, OVERLOAD };
 
 struct Arena {
     const char* name;
@@ -196,6 +198,7 @@ struct Arena {
     AABB        trigger{{0, 0, 0}, {0, 0, 0}};
     bool        hasTrigger = false;
     Ambient     ambient = Ambient::DUST;
+    ArenaShift  shift = ArenaShift::NONE;
     Theme       theme;
 
     bool containsXZ(glm::vec3 p) const {
@@ -687,6 +690,7 @@ inline LevelData buildLevel() {
         a.maxAlive = 7;
         a.damageScale = 0.85f;
         a.ambient = Ambient::DUST;
+        a.shift = ArenaShift::NIGHTFALL;   // the sun sets as the fight goes on
         L.gems.push_back({{0.f, 9.f, 0.f}, {1.6f, 0.35f, 0.9f}, 1.1f, false});   // above the obelisk
         a.theme = Theme{
             {0.12f,0.05f,0.22f}, {1.0f,0.48f,0.32f}, {0.16f,0.07f,0.10f},
@@ -807,6 +811,7 @@ inline LevelData buildLevel() {
         a.maxAlive = 9;
         a.damageScale = 1.0f;
         a.ambient = Ambient::EMBERS;
+        a.shift = ArenaShift::LAVA_RISE;   // the last wave floods the channels
         a.theme = Theme{
             {0.04f,0.02f,0.02f}, {0.30f,0.10f,0.04f}, {0.05f,0.02f,0.01f},
             glm::normalize(vec3{0.f, 0.3f, -1.f}), {0.f,0.f,0.f}, 0.01f, 0.f,
@@ -968,6 +973,7 @@ inline LevelData buildLevel() {
         a.maxAlive = 9;
         a.damageScale = 1.1f;
         a.ambient = Ambient::WIND;
+        a.shift = ArenaShift::SPEED_UP;    // the platforms quicken each wave
         a.theme = Theme{
             {0.10f,0.18f,0.40f}, {0.88f,0.74f,0.62f}, {0.24f,0.24f,0.31f},
             glm::normalize(vec3{-0.55f, 0.16f, -1.f}), {1.7f,1.25f,0.8f}, 0.07f, 0.f,
@@ -1107,6 +1113,7 @@ inline LevelData buildLevel() {
         a.maxAlive = 11;
         a.damageScale = 1.25f;
         a.ambient = Ambient::MOTES;
+        a.shift = ArenaShift::OVERLOAD;    // the overload wave: rings of energy off the reactor
         a.theme = Theme{
             {0.005f,0.012f,0.04f}, {0.05f,0.22f,0.30f}, {0.01f,0.03f,0.04f},
             glm::normalize(vec3{0.45f, 0.32f, -1.f}), {0.8f,1.1f,1.3f}, 0.09f, 0.f,

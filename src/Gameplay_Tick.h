@@ -11,6 +11,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     // --- Moving platforms: move them, then carry whoever stands on one ---
     int rideMover = level.moverOfWall(player.groundWall);
     moverClock += dt;
+    updateShifts(dt);
     level.updateMovers(moverClock);
     if (rideMover >= 0) {
         player.position += level.movers[rideMover].delta;

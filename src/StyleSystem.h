@@ -32,6 +32,10 @@ public:
     static constexpr float WEAR    = 0.0035f;  // freshness lost per style point scored
     static constexpr float SHARE   = 0.25f;    // the others regain this much of what one lost
     static constexpr float RECOVER = 0.05f;    // per second, every source
+    // Kills you only set up (lava, the void, enemies hurting each other) can
+    // carry the meter this far (well into rank B) but no further: the top ranks and
+    // OVERDRIVE are for what you do yourself
+    static constexpr float PASSIVE_CAP = 45.f;
 
     StyleSystem() { resetFreshness(); }
     void resetFreshness() { for (float& f : fresh) f = 1.f; }
@@ -73,6 +77,8 @@ public:
         if (src != StyleSource::NONE) {
             float worn = amount * WEAR;
             amount *= freshnessMult(freshness(src));
+            if (src == StyleSource::FRIENDLY || src == StyleSource::ENVIRONMENT)
+                amount = std::min(amount, std::max(0.f, PASSIVE_CAP - style));
             for (int i = 1; i < (int)StyleSource::COUNT; ++i)
                 fresh[i] = i == (int)src ? std::max(0.f, fresh[i] - worn) : std::min(1.f, fresh[i] + worn * SHARE);
         }

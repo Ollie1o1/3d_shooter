@@ -296,7 +296,8 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
 inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     ++totalKills;
     if (e.type == EnemyType::CONDUIT) director.onConduitDestroyed(e.position);
-    styleSystem.addStyle(src == StyleSource::FRIENDLY ? 15.f : 30.f, src);   // half for one you only set up
+    // Half for one you only set up (enemies hurting each other, lava, the void)
+    styleSystem.addStyle(src == StyleSource::FRIENDLY || src == StyleSource::ENVIRONMENT ? 15.f : 30.f, src);
     styleSystem.heal(5.f * tune().heal);
     audio.play("enemy_death");
     fx.spawnDeathParticles(e.position + glm::vec3{0, e.height() * 0.5f, 0}, e.stats().color);
@@ -341,7 +342,8 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
 
     if (e.type == EnemyType::MITE)          // shot mites still pop — but only hurt enemies
         pendingBlasts.push_back({e.position + glm::vec3{0, 0.3f, 0}, 4.f, 30.f, 0.f, 0.f,
-                                 src == StyleSource::FRIENDLY ? StyleSource::FRIENDLY : StyleSource::EXPLOSIVE});
+                                 src == StyleSource::FRIENDLY || src == StyleSource::ENVIRONMENT ? StyleSource::FRIENDLY
+                                                                                                 : StyleSource::EXPLOSIVE});
 
     if (isBoss(e.type)) {
         // The boss takes his summons with him

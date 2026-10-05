@@ -29,6 +29,7 @@
 #include "MouseFilter.h"
 #include "WorldMesh.h"
 #include "Effects.h"
+#include "ArenaShifts.h"
 #include <SDL2/SDL.h>
 #ifdef __EMSCRIPTEN__
 #  include <emscripten.h>
@@ -205,6 +206,8 @@ public:
     glm::vec3 explosionFlashPos{0.f};
     float ceilingFxTimer = 0.f;
 
+    ArenaShifts   shifts;      // arenas that change as the fight goes on (ArenaShifts.h)
+    bool          pulseWarnCued = false;
     Effects       fx;          // particles, debris, decals, tracers, rings (Effects.h)
     ShaderProgram tracerShader;
     GLuint        tracerVAO = 0, tracerVBO = 0;
@@ -329,6 +332,10 @@ public:
     bool  sanctumRaged = false;
     static Theme bloodEclipse(const Theme& t);
     void updateSanctumPhase(float dt);
+
+    // Arenas that change as the fight goes on (Gameplay_Shifts.h)
+    void updateShifts(float dt);
+    void gatherShiftBoxes(std::vector<BoxInstance>& out);
 
     // Footage camera (--cam, --campath, --autoaim, --kite; see the globals at the top)
     glm::vec3 devKite{0.f}, devKiteSafe{0.f};
@@ -566,3 +573,4 @@ public:
 #include "Gameplay_Render.h"
 #include "Gameplay_HUD.h"
 #include "Gameplay_Dev.h"
+#include "Gameplay_Shifts.h"

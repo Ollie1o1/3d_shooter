@@ -21,6 +21,8 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
     using namespace rig;
     float t = gameClock;
 
+    gatherShiftBoxes(out);
+
     // HOLD: a ring of light on the ground; the lit arc is how far it's held.
     // Cyan while you hold it, red when an enemy stands in it.
     if (director.fighting() && director.goal().kind == WaveGoal::HOLD && !director.goalDone) {
@@ -346,6 +348,10 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
         glm::vec3 base = level.reactorPos;
         glm::vec3 hot = bossRage ? glm::vec3{1.8f, 0.2f, 0.3f} : glm::vec3{0.3f, 1.4f, 1.8f};
         glm::vec3 alt = bossRage ? glm::vec3{1.6f, 0.4f, 0.1f} : glm::vec3{1.6f, 0.25f, 1.1f};
+        // Overloading: it runs red, and flares as each ring winds up
+        float flare = 1.f + 2.5f * shifts.warning();
+        hot = glm::mix(hot, glm::vec3{1.9f, 0.25f, 0.15f}, shifts.alarm) * flare;
+        alt = glm::mix(alt, glm::vec3{1.6f, 0.5f, 0.1f}, shifts.alarm) * flare;
         for (int i = 0; i < 6; ++i) {
             float y = 1.0f + i * 1.55f;
             float s = 2.6f - std::fabs(i - 2.5f) * 0.35f;
