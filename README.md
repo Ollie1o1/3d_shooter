@@ -299,7 +299,16 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 │   ├── SettingsMenu.h        # settings page shared by the main and pause menus
 │   ├── Settings.h            # every option, saved via Persist.h
 │   ├── Persist.h             # key → text store: files on desktop, localStorage on the web
-│   ├── GameplayState.h       # core game loop: physics, combat, rendering
+│   ├── GameplayState.h       # the live game: its state, and an index of what it does (declarations)
+│   ├── Gameplay_Flow.h       #   the run: arenas, retries, director events, the per-frame update, music
+│   ├── Gameplay_Tick.h       #   the fixed 60 Hz tick, arena zones, ceilings, checkpoints
+│   ├── Gameplay_Combat.h     #   enemies, damage, kills, XP, pickups, punch/parry, the guns
+│   ├── Gameplay_Menus.h      #   input, pause, armory, name entry, gamepad buttons
+│   ├── Gameplay_Render.h     #   drawing a frame: lighting, boxes, effects, beams, warm-up
+│   ├── Gameplay_HUD.h        #   the HUD
+│   ├── Gameplay_Dev.h        #   footage camera, Sovereign poses, practice wave skip
+│   ├── Effects.h             # particles, debris, decals, tracers, shockwaves (no OpenGL)
+│   ├── WorldMesh.h           # static level geometry batched into one mesh per texture
 │   ├── Player.h              # kinematic character controller (Quake-style)
 │   ├── Camera.h              # view/projection, mouselook
 │   ├── Enemy.h               # enemy roster: stats + AI (no OpenGL, unit-tested)
