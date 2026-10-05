@@ -166,8 +166,19 @@ inline PoseOverride sovereignPose(const Enemy& e) {
         case AttackKind::DASH:
             o.torsoYaw = 1.0f * u; o.torsoPitch = 0.3f; o.rxR = -1.3f; o.rxL = -0.6f; o.grip = -0.2f; o.crouch = 0.2f;
             break;
+        case AttackKind::THRUST:
+            o.torsoYaw = 0.25f; o.torsoPitch = 0.25f; o.rxR = -1.55f; o.rxL = -0.3f; o.grip = 0.f; o.crouch = 0.25f;
+            break;
         default: break;
         }
+        return o;
+    }
+    if (e.whirlTimer > 0.f) {   // arms out, blade level: the spin is his yaw
+        o.rxR = -1.5f; o.rxL = -1.4f; o.rzL = 0.4f; o.grip = -0.15f; o.crouch = 0.15f;
+        return o;
+    }
+    if (e.thrustTimer > 0.f) {   // the blade straight out ahead of him
+        o.torsoYaw = 0.25f; o.torsoPitch = 0.3f; o.rxR = -1.55f; o.rxL = -0.3f; o.grip = 0.f; o.crouch = 0.3f;
         return o;
     }
     if (e.leapTimer > 0.f) {
@@ -196,6 +207,27 @@ inline PoseOverride sovereignPose(const Enemy& e) {
         break;
     case AttackKind::LEAP:
         o.crouch = 0.35f * k; mixTo(o.rxR, -2.6f, k); mixTo(o.rxL, -2.2f, k); mixTo(o.grip, -0.2f, k);
+        break;
+    case AttackKind::BLINK:      // sinking into a crouch, blade trailing
+        o.crouch = 0.45f * k; o.torsoPitch = 0.5f * k;
+        mixTo(o.rxR, 0.75f, k); mixTo(o.rxL, 0.5f, k); mixTo(o.grip, -1.6f, k);
+        break;
+    case AttackKind::JUDGMENT:   // the sword held up to the sky
+        o.torsoPitch = -0.3f * k; mixTo(o.rxR, -3.05f, k); mixTo(o.rxL, -2.95f, k); mixTo(o.grip, 0.f, k);
+        break;
+    case AttackKind::WHIRL:      // wound right round to one side
+        o.torsoYaw = 1.45f * k; o.crouch = 0.2f * k;
+        mixTo(o.rxR, -1.5f, k); mixTo(o.rxL, -0.6f, k); mixTo(o.grip, -0.15f, k);
+        break;
+    case AttackKind::THRUST:     // drawn back at the hip, point forward
+        o.torsoYaw = -0.6f * k; o.crouch = 0.3f * k;
+        mixTo(o.rxR, 0.3f, k); mixTo(o.rxL, -0.9f, k); mixTo(o.grip, -1.57f, k);
+        break;
+    case AttackKind::RUPTURE:    // overhead, to drive it into the floor
+        mixTo(o.rxR, -2.9f, k); mixTo(o.rxL, -2.7f, k); o.torsoPitch = -0.25f * k; o.crouch = 0.1f * k; mixTo(o.grip, -0.1f, k);
+        break;
+    case AttackKind::PHANTOMS:   // pointing the blade at you: they come
+        mixTo(o.rxR, -2.1f, k); mixTo(o.rxL, -0.3f, k); mixTo(o.grip, -0.9f, k); o.torsoYaw = -0.3f * k;
         break;
     default: break;
     }

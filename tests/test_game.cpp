@@ -20,6 +20,7 @@
 #include "../src/Score.h"
 #include "../src/Daily.h"
 #include "../src/EndlessWaves.h"
+#include "../src/SovereignHazards.h"
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -670,6 +671,87 @@ int main() {
         Enemy r(EnemyType::SOVEREIGN, C); r.spawnTimer = 0.f; r.state = EnemyState::ACTIVE;
         r.takeDamage(r.maxHealth * 0.55f);
         CHECK(r.enraged, "SOVEREIGN enrages below half health");
+
+        // No camping: a player who keeps running to the far corner perches
+        // (5 m up) gets visited - he shadow-steps or leaps to them - and
+        // has blades called down on them
+        {
+            Enemy c(EnemyType::SOVEREIGN, C + glm::vec3{0, 0, -20});
+            const glm::vec3 perch[2] = {C + glm::vec3{39.f, 5.f, 39.f}, C + glm::vec3{-39.f, 5.f, -39.f}};
+            int at = 0, blinks = 0, leaps = 0, nearStrikes = 0; bool reached = false;
+            for (int i = 0; i < 60 * 30; ++i) {
+                glm::vec3 p = perch[at];
+                EnemyWorld cw = worldFor(L, grid, p, SAN);
+                c.update(DT, cw);
+                blinks += c.ev.blinked; leaps += c.ev.leapStarted;
+                for (int k = 0; k < c.ev.strikes; ++k)
+                    if (glm::length(glm::vec2(c.ev.strikePos[k].x - p.x, c.ev.strikePos[k].z - p.z)) < 3.f) ++nearStrikes;
+                glm::vec3 to = p - c.position;
+                if (glm::length(glm::vec2(to.x, to.z)) < 6.f && std::fabs(to.y) < 1.5f) { reached = true; at = 1 - at; }
+            }
+            std::printf("      sovereign (perch camper): %d blinks, %d leaps, %d blades near you\n", blinks, leaps, nearStrikes);
+            CHECK(reached && blinks + leaps >= 2, "SOVEREIGN comes up to a player camping a far perch (shadow step or leap)");
+            CHECK(nearStrikes >= 1, "SOVEREIGN calls blades down on a player who keeps their distance");
+        }
+        // Shots from range bounce off his guard (when he's not mid-attack),
+        // and he answers with a crescent; up close, behind, or broken they land
+        {
+            Enemy g(EnemyType::SOVEREIGN, C); g.spawnTimer = 0.f; g.state = EnemyState::ACTIVE; g.yaw = 0.f;   // faces +Z
+            glm::vec3 fromFront{0.f, 0.f, -1.f};   // a round travelling -Z: fired from in front of him
+            bool far = g.deflects(fromFront, 30.f), close = g.deflects(fromFront, 8.f), back = g.deflects(-fromFront, 30.f);
+            g.stagger(g.staggerTime());
+            bool broken = g.deflects(fromFront, 30.f);
+            CHECK(far && !close && !back && !broken, "SOVEREIGN deflects shots from range, but not up close, from behind, or broken");
+        }
+        // Up close he has more than one combo: whirlwind, thrust, rupture
+        {
+            Enemy m(EnemyType::SOVEREIGN, C + glm::vec3{0, 0, -9});
+            EnemyWorld mw = worldFor(L, grid, C, SAN);
+            bool whirl = false, thrust = false, rupture = false;
+            for (int i = 0; i < 60 * 45; ++i) {
+                m.update(DT, mw);
+                whirl |= m.whirlTimer > 0.f; thrust |= m.attack == AttackKind::THRUST || m.thrustTimer > 0.f;
+                for (int k = 0; k < m.ev.strikes; ++k) rupture |= m.ev.strikeKind[k] == 1;
+            }
+            std::printf("      sovereign (duel): whirl %d thrust %d rupture %d\n", whirl, thrust, rupture);
+            CHECK(whirl && thrust && rupture, "SOVEREIGN mixes whirlwinds, thrusts and ruptures into the duel");
+            CHECK(inside(SAN.bounds, m.position), "SOVEREIGN stays in the Sanctum through all of it");
+        }
+        // Enraged, he sends phantoms of himself dashing in from the sides
+        {
+            Enemy e(EnemyType::SOVEREIGN, C + glm::vec3{0, 0, -12}); e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE;
+            e.takeDamage(e.maxHealth * 0.6f);
+            EnemyWorld ew = worldFor(L, grid, C, SAN);
+            int phantoms = 0;
+            for (int i = 0; i < 60 * 30; ++i) { e.update(DT, ew); phantoms += e.ev.phantoms; }
+            CHECK(phantoms >= 2, "an enraged SOVEREIGN sends phantoms after you");
+        }
+    }
+    // The Sanctum's hazards: blades that land after their warning, eruptions
+    // you can jump, phantom dashes, and the last stand's burning edge
+    {
+        glm::vec3 C{0.f, 0.f, -348.f};
+        SovereignHazards hz;
+        hz.addStrike(C, 0, 0.8f);
+        hz.addStrike(C + glm::vec3{10, 0, 0}, 1, 0.3f);
+        int early = 0, hitsBlade = 0, hitsJumped = 0;
+        for (int i = 0; i < 30; ++i) early += (int)hz.update(DT, C + glm::vec3{0.5f, 0, 0}).size();
+        for (int i = 0; i < 60; ++i) {
+            for (auto& h : hz.update(DT, C + glm::vec3{0.5f, 0, 0})) hitsBlade += h.kind == 0;
+        }
+        SovereignHazards hz2;
+        hz2.addStrike(C, 1, 0.2f);
+        for (int i = 0; i < 40; ++i) hitsJumped += (int)hz2.update(DT, C + glm::vec3{0, 2.2f, 0}).size();
+        CHECK(early == 0 && hitsBlade == 1, "a falling blade waits for its warning, then hits whoever's under it");
+        CHECK(hitsJumped == 0, "a rupture's eruption can be jumped");
+        SovereignHazards hz3;
+        hz3.addPhantom(C + glm::vec3{-14, 0, 0}, {1, 0, 0});
+        int phHits = 0;
+        for (int i = 0; i < 90; ++i) phHits += (int)hz3.update(DT, C).size();
+        CHECK(phHits == 1, "a phantom's dash hits once on its way through");
+        CHECK(SovereignHazards::burns(C + glm::vec3{30, 0, 0}, C) && SovereignHazards::burns(C + glm::vec3{0, 11, 24}, C) &&
+              !SovereignHazards::burns(C + glm::vec3{10, 0, -10}, C) && !SovereignHazards::burns(C + glm::vec3{19, 6.3f, 0}, C),
+              "the last stand burns the edges and the islands, not the middle or the orbiting platforms");
     }
     { auto s = simulate(L, grid, EnemyType::WARDEN, BOSS.bossSpawn, BOSS.playerStart, BOSS, 30.f);
       CHECK(s.shots >= 7, "WARDEN fires volleys");

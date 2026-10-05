@@ -191,6 +191,7 @@ inline void GameplayState::updateEnemies(float dt) {
         }
         if (ev.dashStarted) { audio.play("dash", 128); shake(0.12f, 0.03f); }
         if (ev.leapStarted) { audio.play("jump", 128); fx.spawnShockwave(epos, 3.f, statsOf(enemies[i].type).glow); }
+        if (enemies[i].type == EnemyType::SOVEREIGN) onSovereignEvents(enemies[i], ev);
         if (ev.enraged) {
             pushBanner(enemies[i].type == EnemyType::SOVEREIGN ? "THE SOVEREIGN IS ENRAGED" : "THE WARDEN IS ENRAGED",
                        "", {1.f, 0.15f, 0.25f}, 2.f);
@@ -561,6 +562,17 @@ inline void GameplayState::fireWeapon(int w) {
             Enemy& e = enemies[hits[k].enemy];
             glm::vec3 at = origin + dir * hits[k].t;
             bool head = hits[k].head && d.headMult > 1.f;   // the shotgun has no headshot bonus
+            // The Sovereign turns aside shots from range unless he's mid-attack,
+            // and answers with a crescent: his openings are up close
+            if (e.deflects(dir, hits[k].t)) {
+                fx.spawnHitSparks(at, {1.f, 0.85f, 0.4f});
+                fx.spawnBurst(at, {1.f, 0.8f, 0.35f}, 10, 6.f, 0.3f, 10.f);
+                audio.play("clank", 100);
+                e.onDeflect();
+                if (deflectHints < 2) { ++deflectHints; ui.toast("DEFLECTED", "GET CLOSE - HIT HIM AS HE STRIKES", {1.f, 0.8f, 0.3f}, 1.8f); }
+                anyHit = true;
+                break;
+            }
             // A Shieldbearer's shield stops body shots from the front (not
             // the head over its rim), and the round with it
             if (!hits[k].head && e.blocks(dir)) {

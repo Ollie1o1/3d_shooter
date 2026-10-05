@@ -33,6 +33,7 @@
 #include "Score.h"
 #include "Daily.h"
 #include "EndlessWaves.h"
+#include "SovereignHazards.h"
 #include <SDL2/SDL.h>
 #ifdef __EMSCRIPTEN__
 #  include <emscripten.h>
@@ -348,7 +349,9 @@ public:
 
     // --overlay poseN (screenshots): hold a SOVEREIGN in one pose, facing the camera.
     // 0 idle, 1 dash wind-up, 2 dashing, 3 sweep wind-up, 4 mid-sweep,
-    // 5 cleave wind-up, 6 mid-cleave, 7 leaping, 8 broken, 9 enraged
+    // 5 cleave wind-up, 6 mid-cleave, 7 leaping, 8 broken, 9 enraged, 10 shadow step
+    // wind-up, 11 judgment, 12 whirlwind wind-up, 13 whirling, 14 thrust wind-up,
+    // 15 thrusting, 16 sending phantoms
     void devPose(Enemy& e);
 
     // Phase two of the Sovereign fight: the eclipse turns to blood and the
@@ -357,6 +360,18 @@ public:
     bool  sanctumRaged = false;
     static Theme bloodEclipse(const Theme& t);
     void updateSanctumPhase(float dt);
+
+    // The Sovereign's blades, eruptions and phantoms, and his last stand: under
+    // 20% the Sanctum's edges and high ground burn (Gameplay_Sovereign.h)
+    SovereignHazards sov;
+    bool  lastStand = false;
+    float lastStandT = 0.f;      // seconds since it began (the edge warns first)
+    int   deflectHints = 0;
+    static constexpr float LAST_STAND_WARN = 2.5f;
+    void onSovereignEvents(const Enemy& e, const EnemyEvents& ev);
+    void updateSovereign(float dt);
+    void gatherSovereignBoxes(std::vector<BoxInstance>& out);
+    glm::vec3 sanctumCentre() const;
 
     // Arenas that change as the fight goes on (Gameplay_Shifts.h)
     void updateShifts(float dt);
@@ -602,3 +617,4 @@ public:
 #include "Gameplay_HUD.h"
 #include "Gameplay_Dev.h"
 #include "Gameplay_Shifts.h"
+#include "Gameplay_Sovereign.h"

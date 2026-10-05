@@ -12,7 +12,7 @@ inline void GameplayState::devPose(Enemy& e) {
     e.yaw = e.prevYaw = std::atan2(to.x, to.z);
     e.prevPosition = e.position;
     e.attack = AttackKind::NONE; e.telegraphTimer = 0.f; e.telegraphDuration = 1.f;
-    e.dashTimer = e.leapTimer = e.swingTimer = e.staggerTimer = 0.f;
+    e.dashTimer = e.leapTimer = e.swingTimer = e.staggerTimer = e.whirlTimer = e.thrustTimer = 0.f;
     auto windup = [&](AttackKind k) { e.attack = k; e.telegraphTimer = 0.3f; };
     switch (n) {
         case 1: windup(AttackKind::DASH); break;
@@ -24,6 +24,13 @@ inline void GameplayState::devPose(Enemy& e) {
         case 7: e.leapTimer = 1.f; break;
         case 8: e.staggerTimer = 1.f; break;
         case 9: e.enraged = true; break;
+        case 10: windup(AttackKind::BLINK); break;
+        case 11: windup(AttackKind::JUDGMENT); break;
+        case 12: windup(AttackKind::WHIRL); break;
+        case 13: e.whirlTimer = 1.f; break;
+        case 14: windup(AttackKind::THRUST); break;
+        case 15: e.thrustTimer = 0.2f; break;
+        case 16: windup(AttackKind::PHANTOMS); break;
         default: break;
     }
 }

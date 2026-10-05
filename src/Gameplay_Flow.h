@@ -153,6 +153,7 @@ inline void GameplayState::enterArena(int a) {
     enemies.clear();
     for (auto& p : projSystem.pool) p.alive = false;
     fx.clear(); pickups.clear(); pendingBlasts.clear();
+    sov.clear(); lastStand = false; lastStandT = 0.f;
     banners.clear();
     grapple.release();
     playerDead = false; deadTimer = 0.f;
