@@ -49,6 +49,12 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
         e.shownPos = pose.position; e.hasShown = true;
         pose.yaw = e.prevYaw + std::remainder(e.yaw - e.prevYaw, 6.2831853f) * renderAlpha;
         buildEnemy(pose, t, out);
+        if (e.shielded) {   // tethered to a CONDUCTOR: a ring of light turning over its head
+            glm::mat4 halo = T(pose.position + glm::vec3{0, e.height() + 0.45f, 0}) * RY(t * 2.5f);
+            for (int k = 0; k < 6; ++k)
+                push(out, halo * RY(k * 1.0472f) * T({0.f, 0.f, 0.45f}) * S({0.28f, 0.06f, 0.06f}),
+                     {0.2f, 0.6f, 0.55f}, glm::vec3{0.3f, 1.f, 0.9f} * 1.6f);
+        }
         // The SOVEREIGN leaves afterimages down the line of a dash
         if (e.type == EnemyType::SOVEREIGN && e.dashTimer > 0.f) {
             for (int k = 1; k <= 3; ++k) {
@@ -473,6 +479,7 @@ inline void GameplayState::render() {
 
     renderTracers(view, proj);
     renderLasers(view, proj);
+    renderTethers(view, proj);
     renderParticles(view, proj);
     bool warm = warmupFrames > 0;
     if (warm) warmPipelines(renderCamPos, view, proj);
@@ -662,3 +669,22 @@ inline void GameplayState::renderLasers(const glm::mat4& view, const glm::mat4& 
     }
     drawBeams(beams, {0.3f, 0.95f, 1.f}, view, proj);
 }
+
+// CONDUCTOR tethers: a flickering line from each conductor to every ally it shields
+inline void GameplayState::renderTethers(const glm::mat4& view, const glm::mat4& proj) {
+    static std::vector<Beam> beams;
+    beams.clear();
+    for (auto& c : enemies) {
+        if (!c.alive || c.type != EnemyType::CONDUCTOR) continue;
+        glm::vec3 from = (c.hasShown ? c.shownPos : c.position) + glm::vec3{0, 0.3f, 0};
+        for (int k = 0; k < c.linkCount; ++k) {
+            const Enemy& o = enemies[c.links[k]];
+            if (!o.alive) continue;
+            glm::vec3 to = (o.hasShown ? o.shownPos : o.position) + glm::vec3{0, o.height() * 0.6f, 0};
+            float a = 0.75f + 0.25f * std::sin(gameClock * 13.f + k * 2.f);
+            beams.push_back({glm::vec4(from, a), glm::vec4(to, a * 0.85f), 0.1f});
+        }
+    }
+    drawBeams(beams, {0.3f, 1.f, 0.9f}, view, proj);
+}
+

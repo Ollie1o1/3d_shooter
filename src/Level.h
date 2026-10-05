@@ -966,7 +966,8 @@ inline LevelData buildLevel() {
         a.waves = {
             {{EnemyType::HUSK, 4}, {EnemyType::RIPPER, 3}, {EnemyType::SENTINEL, 2}},
             {{EnemyType::SENTINEL, 3}, WaveEntry(EnemyType::SHIELDBEARER, 1).with({EnemyType::HUSK, EnemyType::HUSK}), {EnemyType::HUSK, 1}, {EnemyType::RAPTOR, 3}, {EnemyType::MITE, 4}},
-            {{EnemyType::JUGGERNAUT, 1}, {EnemyType::BRUTE, 1}, {EnemyType::SENTINEL, 2}, {EnemyType::HUSK, 3}, {EnemyType::RAPTOR, 3}},
+            {{EnemyType::JUGGERNAUT, 1}, {EnemyType::BRUTE, 1}, {EnemyType::SENTINEL, 2}, {EnemyType::HUSK, 3}, {EnemyType::RAPTOR, 2},
+             {EnemyType::CONDUCTOR, 1}},
         };
         // Wave 2: take the balcony ringing the tower, under fire from the ledges and tier 2
         a.goals = { {}, WaveGoal::hold("HOLD THE BALCONY", {0.f, 18.f, CZ}, 8.6f, 20.f) };
@@ -1104,8 +1105,10 @@ inline LevelData buildLevel() {
                           {0,4.05f,CZ - 34.5f},{34.5f,4.05f,CZ},{-34.5f,4.05f,CZ},{0,7.05f,CZ + P},{0,7.05f,CZ - P}};
         a.airSpawns    = {{-18,10,CZ - 18},{18,10,CZ - 18},{0,12,CZ - 28},{-20,10,CZ + 22},{20,10,CZ + 22},{0,12,CZ + 17}};
         a.waves = {
-            {{EnemyType::BRUTE, 2}, WaveEntry(EnemyType::SHIELDBEARER, 2).with({EnemyType::SENTINEL}), {EnemyType::SENTINEL, 1}, {EnemyType::RAPTOR, 3}, {EnemyType::RIPPER, 5}},
-            {WaveEntry(EnemyType::JUGGERNAUT, 1).with({EnemyType::MITE, EnemyType::MITE, EnemyType::MITE}), {EnemyType::BRUTE, 1}, {EnemyType::MITE, 5}, {EnemyType::HUSK, 5}, {EnemyType::RAPTOR, 3}, {EnemyType::SENTINEL, 2}},
+            {{EnemyType::BRUTE, 2}, WaveEntry(EnemyType::SHIELDBEARER, 2).with({EnemyType::SENTINEL}), {EnemyType::SENTINEL, 1}, {EnemyType::RAPTOR, 2}, {EnemyType::RIPPER, 5},
+             {EnemyType::CONDUCTOR, 1}},
+            {WaveEntry(EnemyType::JUGGERNAUT, 1).with({EnemyType::MITE, EnemyType::MITE, EnemyType::MITE}), {EnemyType::BRUTE, 1}, {EnemyType::MITE, 5}, {EnemyType::HUSK, 5}, {EnemyType::RAPTOR, 2}, {EnemyType::SENTINEL, 2},
+             {EnemyType::CONDUCTOR, 1}},
             {{EnemyType::WARDEN, 1}},
         };
         // Wave 2: the reactor overloads; hold out until it vents

@@ -272,6 +272,10 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
                                      bool crit, bool pierceArmor) {
     if (!e.targetable()) return false;
     if (!pierceArmor) dmg *= e.armorMult();
+    if (e.shielded) {   // a CONDUCTOR's tether soaks most of it
+        dmg *= CONDUCTOR_SHIELD;
+        fx.spawnHitSparks(at, {0.3f, 1.f, 0.9f});
+    }
     float before = e.health;
     bool killed = e.takeDamage(dmg);
     // Enemies hurting each other: no hitmarker, no style or healing for the
@@ -296,6 +300,7 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
 inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     ++totalKills;
     if (e.type == EnemyType::CONDUIT) director.onConduitDestroyed(e.position);
+    if (e.type == EnemyType::CONDUCTOR && e.linkCount > 0) ui.feed("TETHERS BROKEN", {0.3f, 1.f, 0.9f});
     // Half for one you only set up (enemies hurting each other, lava, the void)
     styleSystem.addStyle(src == StyleSource::FRIENDLY || src == StyleSource::ENVIRONMENT ? 15.f : 30.f, src);
     styleSystem.heal(5.f * tune().heal);
@@ -333,6 +338,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
         case EnemyType::MITE:   if (rand() % 10 == 0) drop(PickupKind::ORB); break;
         case EnemyType::WARDEN: case EnemyType::SOVEREIGN: break;
         case EnemyType::CONDUIT: drop(PickupKind::ORB); drop(PickupKind::ORB); break;
+        case EnemyType::CONDUCTOR: drop(PickupKind::ORB); break;
         default:
             if (rand() % 100 < (int)(20 * tune().drops)) drop(PickupKind::ORB);
             if (rand() % 100 < (int)(18 * tune().drops)) drop(PickupKind::POTION);

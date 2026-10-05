@@ -41,8 +41,11 @@
 #include "Difficulty.h"
 
 // CONDUIT: not a fighter but a spawner pylon (a wave objective, WaveDirector.h):
-// it stands still and the wave keeps coming out of it until it's destroyed
-enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, JUGGERNAUT, WARDEN, SOVEREIGN, SHIELDBEARER, CONDUIT, COUNT };
+// it stands still and the wave keeps coming out of it until it's destroyed.
+// CONDUCTOR: doesn't attack either; it tethers nearby allies and shields them
+// (linkConductors below), so it's the one to kill first.
+enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, JUGGERNAUT, WARDEN, SOVEREIGN, SHIELDBEARER, CONDUIT,
+                       CONDUCTOR, COUNT };
 inline bool isBoss(EnemyType t) { return t == EnemyType::WARDEN || t == EnemyType::SOVEREIGN; }
 enum class EnemyState { SPAWNING, ACTIVE, DEAD };
 enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY, SUMMON, SHELL, SMASH,
@@ -98,6 +101,9 @@ inline const EnemyStats& statsOf(EnemyType t) {
         {"CONDUIT", 300.f, 0.8f, 3.4f, 0.f, 0.f, 0.f, false,
          {0.22f,0.2f,0.26f}, {1.0f,0.25f,0.45f}, {1.0f,0.3f,0.5f},
          "CONDUITS KEEP THE WAVE COMING - DESTROY THEM ALL TO END IT"},
+        {"CONDUCTOR", 90.f, 0.75f, 1.7f, 6.f, 0.f, 0.f, true,
+         {0.18f,0.3f,0.34f}, {0.3f,1.0f,0.9f}, {0.3f,1.0f,0.9f},
+         "CONDUCTORS SHIELD THE ENEMIES THEY TETHER - SHOOT THEM DOWN FIRST"},
     };
     return S[(int)t];
 }
@@ -164,6 +170,13 @@ struct Enemy {
     bool       hasShown = false;
     float      pitch = 0.f;   // RAPTOR only: nose-down while diving
     float      health, maxHealth;
+    // CONDUCTOR tethers, set every tick by linkConductors (indices into this
+    // tick's enemy list)
+    bool       shielded = false;     // tethered: takes CONDUCTOR_SHIELD x damage
+    int        links[3] = {-1, -1, -1};
+    int        linkCount = 0;
+    glm::vec3  supportAnchor{0.f};   // a CONDUCTOR's: where it wants to hover
+    bool       hasAnchor = false;
     bool       alive = true;
 
     static constexpr float SPAWN_TIME = 0.9f;
@@ -344,6 +357,7 @@ struct Enemy {
             case EnemyType::WARDEN:   thinkWarden(dt, w, resolve);   break;
             case EnemyType::SOVEREIGN: thinkSovereign(dt, w, resolve); break;
             case EnemyType::SHIELDBEARER: thinkShieldbearer(dt, w, resolve); break;
+            case EnemyType::CONDUCTOR: thinkConductor(dt, w); break;
             default: break;
         }
         integrate(dt, w);
@@ -829,6 +843,28 @@ private:
             startAttack(AttackKind::BASH, 0.6f);   // too close to wait out the clock
     }
 
+    // ---- the CONDUCTOR --------------------------------------------------------
+    // Hovers behind the allies it shields (supportAnchor), weaving so it isn't
+    // a sitting target, and backs off if you close in. No attack of its own.
+    void thinkConductor(float dt, const EnemyWorld& w) {
+        animPhase += dt * 3.f;
+        glm::vec3 toP = flatTo(w.playerFeet);
+        float dP = glm::length(toP);
+        glm::vec3 target = hasAnchor ? supportAnchor
+                         : w.playerFeet - norm2(toP) * 18.f + glm::vec3{0.f, hoverY, 0.f};
+        glm::vec3 to = target - position;
+        glm::vec3 flat{to.x, 0.f, to.z};
+        glm::vec3 mv = glm::length(flat) > 0.5f ? norm2(flat) * std::min(1.f, glm::length(flat) / 3.f) : glm::vec3{0.f};
+        glm::vec3 side{-toP.z, 0.f, toP.x};
+        mv += norm2(side) * std::sin(age * 1.7f) * 0.6f;               // weave
+        if (dP < 9.f) mv -= norm2(toP) * (9.f - dP) / 3.f;             // too close: back off
+        velocity.x = mv.x * stats().speed;
+        velocity.z = mv.z * stats().speed;
+        float ty = std::max(target.y, w.playerFeet.y + 3.5f) + std::sin(age * 2.3f) * 0.4f;
+        velocity.y = glm::clamp((ty - position.y) * 2.5f, -6.f, 6.f);
+        turnToward(toP, dt, 3.f);
+    }
+
     // ---- the SOVEREIGN ---------------------------------------------------------
     // A duelist. Every stroke is telegraphed (blade raised, eyes flaring) and
     // every one can be dodged; what makes him hard is that they come in
@@ -1056,3 +1092,40 @@ private:
         }
     }
 };
+
+// CONDUCTORs: each tethers up to three allies within CONDUCTOR_RANGE (the
+// nearest that aren't already tethered; never a boss, a conduit or another
+// conductor). Tethered enemies take CONDUCTOR_SHIELD x damage. Each conductor
+// is also given a spot to hover: above and behind its allies, as seen from
+// the player. Call once per tick, after dead enemies are removed.
+static constexpr float CONDUCTOR_RANGE  = 14.f;
+static constexpr float CONDUCTOR_SHIELD = 0.4f;
+inline void linkConductors(std::vector<Enemy>& es, glm::vec3 player) {
+    for (auto& e : es) { e.shielded = false; e.linkCount = 0; e.hasAnchor = false; }
+    for (auto& c : es) {
+        if (c.type != EnemyType::CONDUCTOR || !c.targetable()) continue;
+        for (int n = 0; n < 3; ++n) {
+            int best = -1; float bestD = CONDUCTOR_RANGE;
+            for (int i = 0; i < (int)es.size(); ++i) {
+                const Enemy& o = es[i];
+                if (!o.targetable() || o.shielded || isBoss(o.type) || o.type == EnemyType::CONDUIT ||
+                    o.type == EnemyType::CONDUCTOR) continue;
+                float d = glm::length(o.position - c.position);
+                if (d < bestD) { bestD = d; best = i; }
+            }
+            if (best < 0) break;
+            es[best].shielded = true;
+            c.links[c.linkCount++] = best;
+        }
+        if (c.linkCount == 0) continue;
+        glm::vec3 mid{0.f};
+        for (int k = 0; k < c.linkCount; ++k) mid += es[c.links[k]].position;
+        mid /= (float)c.linkCount;
+        glm::vec3 away{mid.x - player.x, 0.f, mid.z - player.z};
+        float l = glm::length(away);
+        away = l > 0.01f ? away / l : glm::vec3{0.f, 0.f, -1.f};
+        c.supportAnchor = mid + away * 4.f + glm::vec3{0.f, 4.5f, 0.f};
+        c.hasAnchor = true;
+    }
+}
+

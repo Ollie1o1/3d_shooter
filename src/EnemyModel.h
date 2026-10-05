@@ -501,6 +501,30 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         r.box(top, {0.f, 0.f, 0.f}, {0.36f, 0.36f, 0.36f}, glow * 0.5f, core * 1.2f);
         break;
     }
+    case EnemyType::CONDUCTOR: {
+        // A hovering emitter: a glowing core in a split shell, three fins
+        // turning round it, an antenna, and a prong underneath the tethers
+        // run from. Brighter while it's holding links.
+        float bob = std::sin(time * 2.2f + e.animPhase) * 0.08f;
+        mat4 body = root * T({0.f, 0.85f + bob, 0.f}) * S(vec3{1.3f});   // big enough to pick out at range
+        vec3 shell = st.color, dark = st.color * 0.5f;
+        vec3 core = glow * (e.linkCount > 0 ? 2.4f + 0.6f * std::sin(time * 9.f) : 1.2f);
+        r.box(body, {0.f, 0.f, 0.f}, {0.34f, 0.34f, 0.34f}, glow * 0.4f, core);
+        for (float s : {-1.f, 1.f}) {
+            r.box(body, {s * 0.27f, 0.f, 0.f}, {0.14f, 0.5f, 0.5f}, shell);
+            r.box(body, {0.f, s * 0.27f, 0.f}, {0.36f, 0.12f, 0.36f}, dark);
+        }
+        mat4 spin = body * RY(time * 2.f);
+        for (int k = 0; k < 3; ++k) {
+            mat4 fin = spin * RY(k * 2.094f) * T({0.f, 0.f, 0.55f});
+            r.box(fin, {0.f, 0.f, 0.f}, {0.08f, 0.42f, 0.22f}, shell, glow * 0.5f);
+        }
+        r.box(body, {0.f, 0.45f, 0.f}, {0.04f, 0.3f, 0.04f}, dark);
+        r.box(body, {0.f, 0.62f, 0.f}, {0.09f, 0.09f, 0.09f}, glow * 0.5f, core * 0.8f);
+        r.box(body, {0.f, -0.38f, 0.f}, {0.1f, 0.28f, 0.1f}, dark, glow * 0.3f);
+        r.box(body, {0.f, -0.56f, 0.f}, {0.16f, 0.06f, 0.16f}, glow * 0.4f, core * 0.7f);
+        break;
+    }
     default: break;
     }
 }

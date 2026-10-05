@@ -573,6 +573,43 @@ int main() {
         CHECK(firing >= 28 && !walled, "SHIELDBEARER gets round cover to fire spreads at mid range, and stays out of walls");
     }
 
+    // The Conductor: tethers (and shields) its three nearest allies, never a
+    // boss or a conduit, each ally once; hovers behind them; keeps its distance
+    {
+        auto ready = [](Enemy& e) { e.state = EnemyState::ACTIVE; e.spawnTimer = 0.f; };
+        std::vector<Enemy> es;
+        es.emplace_back(EnemyType::CONDUCTOR, glm::vec3{0, 5, -10});
+        es.emplace_back(EnemyType::CONDUCTOR, glm::vec3{1, 5, -10});
+        es.emplace_back(EnemyType::HUSK,    glm::vec3{2, 0, -12});
+        es.emplace_back(EnemyType::RIPPER,  glm::vec3{-2, 0, -12});
+        es.emplace_back(EnemyType::SENTINEL,glm::vec3{0, 0, -15});
+        es.emplace_back(EnemyType::BRUTE,   glm::vec3{4, 0, -8});
+        es.emplace_back(EnemyType::WARDEN,  glm::vec3{0, 0, -9});
+        es.emplace_back(EnemyType::CONDUIT, glm::vec3{-1, 0, -9});
+        es.emplace_back(EnemyType::HUSK,    glm::vec3{0, 0, -40});   // out of range
+        for (auto& e : es) ready(e);
+        glm::vec3 player{0, 0, 10};
+        linkConductors(es, player);
+        int shielded = 0; bool wrong = es[6].shielded || es[7].shielded || es[8].shielded || es[0].shielded;
+        for (auto& e : es) shielded += e.shielded;
+        CHECK(es[0].linkCount == 3 && es[1].linkCount == 1 && shielded == 4 && !wrong,
+              "a CONDUCTOR tethers its three nearest allies - not a boss, a conduit or one out of range - and each ally once");
+        CHECK(es[0].hasAnchor && es[0].supportAnchor.z < -12.f && es[0].supportAnchor.y > 3.f,
+              "a CONDUCTOR hovers above and behind the allies it shields");
+        es.erase(es.begin());   // one down: the other takes up what it can (still three at most)
+        linkConductors(es, player);
+        shielded = 0; for (auto& e : es) shielded += e.shielded;
+        bool regrouped = shielded == es[0].linkCount && es[0].linkCount <= 3;
+        es.erase(es.begin());   // both down
+        linkConductors(es, player);
+        shielded = 0; for (auto& e : es) shielded += e.shielded;
+        CHECK(regrouped && shielded == 0, "kill the CONDUCTORs and their tethers drop");
+
+        auto s = simulate(L, grid, EnemyType::CONDUCTOR, {0, 6, -20}, P0, A0, 12.f);
+        CHECK(!s.leftBounds && s.closest > 7.f && s.minY > 2.f && s.shots == 0 && s.melee == 0,
+              "a CONDUCTOR on its own keeps its distance, flies, and never attacks");
+    }
+
     // The Sovereign: dashes (and dashes again), sweep-sweep-cleave combos,
     // leaps onto high ground, crescents at range, a parry window, enrage
     {

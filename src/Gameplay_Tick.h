@@ -296,6 +296,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     // Clear out dead enemies once nothing references them by index
     enemies.erase(std::remove_if(enemies.begin(), enemies.end(),
                   [](const Enemy& e){ return !e.alive; }), enemies.end());
+    linkConductors(enemies, player.position);   // tethers for the next tick (and this frame's beams)
 }
 
 inline bool GameplayState::findGrappleTarget(glm::vec3& point, int& wall, bool& isMover) const {

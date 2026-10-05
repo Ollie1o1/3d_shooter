@@ -559,6 +559,9 @@ public:
 
     void renderTracers(const glm::mat4& view, const glm::mat4& proj);
 
+    // CONDUCTOR tethers (linkConductors, Enemy.h)
+    void renderTethers(const glm::mat4& view, const glm::mat4& proj);
+
     // A Sentinel winding up paints you with a laser; it brightens until it fires.
     void renderLasers(const glm::mat4& view, const glm::mat4& proj);
 
