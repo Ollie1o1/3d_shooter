@@ -40,7 +40,9 @@
 #include "Player.h"  // AABB, Wall, SpatialGrid
 #include "Difficulty.h"
 
-enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, JUGGERNAUT, WARDEN, SOVEREIGN, SHIELDBEARER, COUNT };
+// CONDUIT: not a fighter but a spawner pylon (a wave objective, WaveDirector.h):
+// it stands still and the wave keeps coming out of it until it's destroyed
+enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, JUGGERNAUT, WARDEN, SOVEREIGN, SHIELDBEARER, CONDUIT, COUNT };
 inline bool isBoss(EnemyType t) { return t == EnemyType::WARDEN || t == EnemyType::SOVEREIGN; }
 enum class EnemyState { SPAWNING, ACTIVE, DEAD };
 enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY, SUMMON, SHELL, SMASH,
@@ -93,6 +95,9 @@ inline const EnemyStats& statsOf(EnemyType t) {
         {"SHIELDBEARER", 140.f, 0.6f, 2.20f, 3.4f, 0.5f, 2.4f, false,
          {0.34f,0.37f,0.42f}, {0.3f,1.0f,0.7f}, {0.4f,1.0f,0.75f},
          "SHIELDBEARERS BLOCK FROM THE FRONT - FLANK THEM, SHOOT OVER THE SHIELD, PARRY THE BASH"},
+        {"CONDUIT", 300.f, 0.8f, 3.4f, 0.f, 0.f, 0.f, false,
+         {0.22f,0.2f,0.26f}, {1.0f,0.25f,0.45f}, {1.0f,0.3f,0.5f},
+         "CONDUITS KEEP THE WAVE COMING - DESTROY THEM ALL TO END IT"},
     };
     return S[(int)t];
 }
@@ -457,10 +462,12 @@ private:
             if (age < detourUntil) {
                 dir = detourDir + want * 0.25f;
                 avoidSign = detourSign;   // and slide round obstacles on the same side
-                // Round the corner: done as soon as the straight way opens up;
+                // Round the corner: done as soon as the straight way opens up
+                // (a few metres of it, so a corner isn't cut straight back into);
                 // still blocked when the time's up, keep going
                 glm::vec3 straight = toP / std::max(distP, 1e-3f);
-                bool open = canStepTo(position + straight * (radius() + 1.2f), w);
+                bool open = canStepTo(position + straight * (radius() + 1.2f), w) &&
+                            !blockedAt(position + straight * (radius() + 3.f), w);   // walls only: a ledge further on is fine
                 if (open && age > detourUntil - 1.1f) detourUntil = age;
                 else if (!open && detourUntil - age < 0.1f) detourUntil = age + 0.5f;
             }
@@ -795,7 +802,9 @@ private:
             glm::vec3 side{-dir.z, 0.f, dir.x};
             strafeTimer -= dt;
             if (strafeTimer <= 0.f) { strafeTimer = frand(2.f, 3.5f); strafeDir = -strafeDir; }
-            setMove(d > 2.5f ? dir + side * strafeDir * 0.2f : side * strafeDir, stats().speed, w);
+            glm::vec3 mv = d > 2.5f ? dir + side * strafeDir * 0.2f : side * strafeDir;
+            if (noLosTimer > 0.f && d > 2.5f) mv = side * strafeDir + dir * 0.35f;   // sidestep out from behind cover
+            setMove(mv, stats().speed, w);
         }
         turnToward(to, dt, 1.8f);   // slow to turn: flank it
         if (resolve) {
@@ -813,6 +822,7 @@ private:
         if (attackReady(dt)) {
             if (d < 3.2f) startAttack(AttackKind::BASH, 0.6f);
             else if (d < 16.f && lineOfSight(eyePos(), w)) startAttack(AttackKind::SHOT, stats().telegraph);
+            else if (d < 16.f) blockedShot();   // in range but behind cover: step out
             else attackTimer = stats().attackEvery * 0.6f;
         }
         if (d < 3.2f && telegraphTimer <= 0.f && attackTimer > stats().attackEvery * 0.5f)

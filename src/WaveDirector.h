@@ -20,6 +20,12 @@
 // trigger and its fight begins. Clearing the last section sends FINISH_OPEN
 // instead of VICTORY: the run ends when the player reaches the beacon.
 //
+// A wave can have a goal other than killing everything (WaveGoal, Level.h):
+// hold a circle, destroy the conduits it spawns out of, or survive a timer.
+// Those waves refill as you kill until the goal is met; then GOAL_DONE tells
+// the caller to collapse whatever is left, and the wave clears. Entries can
+// be squads: a leader and its escort, spawned together in formation.
+//
 // The director only *requests* spawns and reports events (wave started, new
 // enemy type seen, arena cleared…); GameplayState owns the enemies, banners
 // and doors. That split is what lets tests/test_game.cpp drive a whole run.
@@ -32,7 +38,8 @@
 
 struct SpawnRequest { EnemyType type; glm::vec3 pos; };
 
-enum class DirectorEvent { ARENA_START, WAVE_START, BOSS_START, NEW_TYPE, WAVE_CLEARED, ARENA_CLEARED, VICTORY, FINISH_OPEN };
+enum class DirectorEvent { ARENA_START, WAVE_START, BOSS_START, NEW_TYPE, WAVE_CLEARED, ARENA_CLEARED, VICTORY, FINISH_OPEN,
+                           GOAL_DONE };
 struct DirectorEventRec { DirectorEvent kind; int value; };
 
 class WaveDirector {
@@ -55,10 +62,49 @@ public:
     int   arena = 0, wave = 0;
     Phase phase = Phase::INTRO;
     float timer = 0.f;
-    struct Queued { EnemyType type; bool fixed; glm::vec3 pos; };
+    struct Queued { EnemyType type; bool fixed; glm::vec3 pos; std::vector<EnemyType> escort; };
     std::vector<Queued>            queue;
     std::vector<DirectorEventRec>  events;      // drained by the caller every frame
     bool  seen[(int)EnemyType::COUNT] = {};
+
+    // ---- the current wave's goal ----
+    float goalTimer = 0.f;          // HOLD: seconds held; SURVIVE: seconds left
+    bool  goalDone  = false;
+    bool  holding   = false;        // HOLD: the player is in the circle (for the HUD)
+    bool  zoneContested = false;    // HOLD: set by the caller each tick, an enemy on foot is in the circle
+    std::vector<bool> conduitAlive; // CONDUITS: which pylons still stand
+
+    const WaveGoal& goal() const {
+        static const WaveGoal none;
+        const auto& g = current().goals;
+        return (phase == Phase::ACTIVE || phase == Phase::BREAK || phase == Phase::INTRO) && wave < (int)g.size() ? g[wave] : none;
+    }
+    bool hasGoal() const { return goal().kind != WaveGoal::KILL_ALL; }
+    int  conduitsLeft() const { int n = 0; for (bool a : conduitAlive) n += a; return n; }
+    // 0..1 toward the goal
+    float goalProgress() const {
+        const WaveGoal& g = goal();
+        switch (g.kind) {
+            case WaveGoal::HOLD:     return std::min(1.f, goalTimer / g.seconds);
+            case WaveGoal::SURVIVE:  return 1.f - std::max(0.f, goalTimer) / g.seconds;
+            case WaveGoal::CONDUITS: return conduitAlive.empty() ? 0.f : 1.f - (float)conduitsLeft() / conduitAlive.size();
+            default:                 return 0.f;
+        }
+    }
+    bool inHoldZone(glm::vec3 p) const {
+        const WaveGoal& g = goal();
+        return glm::length(glm::vec2{p.x - g.pos.x, p.z - g.pos.z}) < g.radius && p.y > g.pos.y - 0.6f && p.y < g.pos.y + 3.5f;
+    }
+    // The caller destroyed a conduit (the one nearest p)
+    void onConduitDestroyed(glm::vec3 p) {
+        const WaveGoal& g = goal();
+        int best = -1; float bestD = 1e9f;
+        for (int i = 0; i < (int)conduitAlive.size() && i < (int)g.points.size(); ++i) {
+            float d = glm::length(g.points[i] - p);
+            if (conduitAlive[i] && d < bestD) { bestD = d; best = i; }
+        }
+        if (best >= 0) conduitAlive[best] = false;
+    }
 
     void startArena(int a) {
         arena = a; wave = 0;
@@ -79,8 +125,9 @@ public:
     int  queued() const          { return (int)queue.size(); }
     int  maxAlive() const        { return current().maxAlive + maxAliveBonus; }
     // How many of an entry this wave brings (hand-placed ones are exact)
+    // (leaders: a squad's escort comes on top)
     int  countOf(const WaveEntry& e) const {
-        if (!e.at.empty() || isBoss(e.type)) return e.total();
+        if (!e.at.empty() || isBoss(e.type)) return e.at.empty() ? e.count : (int)e.at.size();
         return std::max(1, (int)std::lround(e.count * countScale));
     }
     bool fighting() const        { return phase == Phase::ACTIVE; }
@@ -98,18 +145,24 @@ public:
             break;
         case Phase::ACTIVE: {
             spawnTimer -= dt;
+            for (auto& r : fixedOut) out.push_back(r);   // a goal's conduits: straight away, outside the cap
+            aliveCount += (int)fixedOut.size();
+            fixedOut.clear();
             if (fast) {
-                for (auto& q : queue) out.push_back({q.type, q.fixed ? q.pos : pickSpawn(q.type, playerPos)});
-                aliveCount += (int)queue.size();
+                for (auto& q : queue) aliveCount += emitSquad(q, playerPos, out);
                 queue.clear();
-            } else if (!queue.empty() && aliveCount < maxAlive() && spawnTimer <= 0.f) {
+            } else if (!queue.empty() && spawnTimer <= 0.f &&
+                       (aliveCount + 1 + (int)queue.front().escort.size() <= maxAlive() || aliveCount == 0)) {
                 Queued q = queue.front();
                 queue.erase(queue.begin());
-                out.push_back({q.type, q.fixed ? q.pos : pickSpawn(q.type, playerPos)});
+                aliveCount += emitSquad(q, playerPos, out);   // on the field now; don't call the wave clear this tick
                 spawnTimer = SPAWN_GAP;
-                ++aliveCount;   // it's on the field now; don't call the wave clear this tick
             }
-            if (queue.empty() && aliveCount == 0) {
+            if (hasGoal() && !goalDone) {
+                updateGoal(dt, playerPos);
+                if (queue.empty() && !goalDone) buildQueue(false);   // they keep coming until it's done
+            }
+            if (queue.empty() && aliveCount == 0 && (!hasGoal() || goalDone)) {
                 if (wave + 1 < waveCount()) {
                     events.push_back({DirectorEvent::WAVE_CLEARED, wave});
                     if (fast) { ++wave; beginWave(); }
@@ -158,28 +211,96 @@ private:
     float spawnTimer = 0.f;
     int   lastSpawn  = -1;
 
+    std::vector<SpawnRequest> fixedOut;   // spawned on the next update, outside the cap
+
     void beginWave() {
         phase = Phase::ACTIVE;
         spawnTimer = 0.f;
+        goalDone = false; holding = false;
+        const WaveGoal& g = goal();
+        goalTimer = g.kind == WaveGoal::SURVIVE ? g.seconds : 0.f;
+        conduitAlive.assign(g.kind == WaveGoal::CONDUITS ? g.points.size() : 0, true);
+        fixedOut.clear();
+        for (auto& p : g.kind == WaveGoal::CONDUITS ? g.points : std::vector<glm::vec3>{})
+            fixedOut.push_back({EnemyType::CONDUIT, p});
+        buildQueue(true);
+        events.push_back({bossWave() ? DirectorEvent::BOSS_START : DirectorEvent::WAVE_START, wave});
+        auto introduce = [&](EnemyType t) {
+            if (seen[(int)t]) return;
+            seen[(int)t] = true;
+            events.push_back({DirectorEvent::NEW_TYPE, (int)t});
+        };
+        if (!conduitAlive.empty()) introduce(EnemyType::CONDUIT);
+        for (auto& e : current().waves[wave]) {
+            introduce(e.type);
+            for (EnemyType t : e.escort) introduce(t);
+        }
+    }
+
+    // Queue the wave's entries, interleaved (round-robin) so a mixed wave
+    // arrives mixed. A refill (a goal wave that keeps coming) leaves out bosses.
+    void buildQueue(bool first) {
         queue.clear();
-        // Interleave the types (round-robin) so a mixed wave arrives mixed
         const auto& entries = current().waves[wave];
         bool any = true;
         for (int round = 0; any; ++round) {
             any = false;
             for (auto& e : entries)
-                if (round < countOf(e)) {
+                if (round < countOf(e) && (first || !isBoss(e.type))) {
                     bool fixed = !e.at.empty();
-                    queue.push_back({e.type, fixed, fixed ? e.at[round] : glm::vec3{0.f}});
+                    queue.push_back({e.type, fixed, fixed ? e.at[round] : glm::vec3{0.f}, e.escort});
                     any = true;
                 }
         }
-        events.push_back({bossWave() ? DirectorEvent::BOSS_START : DirectorEvent::WAVE_START, wave});
-        for (auto& e : entries)
-            if (!seen[(int)e.type]) {
-                seen[(int)e.type] = true;
-                events.push_back({DirectorEvent::NEW_TYPE, (int)e.type});
-            }
+    }
+
+    void updateGoal(float dt, glm::vec3 playerPos) {
+        const WaveGoal& g = goal();
+        bool met = false;
+        switch (g.kind) {
+            case WaveGoal::HOLD:
+                holding = inHoldZone(playerPos);
+                if (holding && !zoneContested) goalTimer += dt;
+                met = goalTimer >= g.seconds;
+                break;
+            case WaveGoal::SURVIVE:  goalTimer -= dt; met = goalTimer <= 0.f; break;
+            case WaveGoal::CONDUITS: met = !conduitAlive.empty() && conduitsLeft() == 0; break;
+            default: break;
+        }
+        if (met) {
+            goalDone = true; holding = false;
+            queue.clear();
+            events.push_back({DirectorEvent::GOAL_DONE, wave});
+        }
+    }
+
+    // Spawn a queued leader and its escort; returns how many
+    int emitSquad(const Queued& q, glm::vec3 playerPos, std::vector<SpawnRequest>& out) {
+        glm::vec3 at = q.fixed ? q.pos : pickSpawn(q.type, playerPos);
+        out.push_back({q.type, at});
+        // The escort stands behind the leader (away from the player), in a fan
+        glm::vec2 back{at.x - playerPos.x, at.z - playerPos.z};
+        back = glm::length(back) > 0.01f ? glm::normalize(back) : glm::vec2{0.f, -1.f};
+        glm::vec2 side{-back.y, back.x};
+        for (int k = 0; k < (int)q.escort.size(); ++k) {
+            EnemyType t = q.escort[k];
+            if (statsOf(t).flying) { out.push_back({t, pickSpawn(t, playerPos)}); continue; }
+            float lateral = (k % 2 ? -1.f : 1.f) * (1.6f + 1.2f * (k / 2));
+            glm::vec2 o = back * 2.2f + side * lateral;
+            glm::vec3 p = at + glm::vec3{o.x, 0.f, o.y};
+            out.push_back({t, clearOfWalls(p) ? p : at});
+        }
+        return 1 + (int)q.escort.size();
+    }
+
+    // Is there room to stand at p (no wall through the body)?
+    bool clearOfWalls(glm::vec3 p) const {
+        for (auto& w : level->walls) {
+            const AABB& b = w.box;
+            if (p.x > b.min.x - 0.6f && p.x < b.max.x + 0.6f && p.z > b.min.z - 0.6f && p.z < b.max.z + 0.6f &&
+                p.y + 0.2f < b.max.y && p.y + 1.8f > b.min.y) return false;
+        }
+        return level->arenaAt(p) == arena;
     }
 
     glm::vec3 pickSpawn(EnemyType t, glm::vec3 player) {
@@ -191,6 +312,18 @@ private:
             return s;
         }
         bool flying = statsOf(t).flying;
+        // A conduit wave comes out of its standing conduits (not one right next to you)
+        if (!flying && !conduitAlive.empty()) {
+            const auto& cp = goal().points;
+            int n = (int)conduitAlive.size(), start = rand() % n;
+            for (int k = 0; k < n; ++k) {
+                int i = (start + k) % n;
+                if (!conduitAlive[i] || glm::length(glm::vec2{cp[i].x - player.x, cp[i].z - player.z}) < SAFE_RADIUS) continue;
+                float ang = (rand() % 628) / 100.f;
+                glm::vec3 p = cp[i] + glm::vec3{std::cos(ang) * 2.2f, 0.f, std::sin(ang) * 2.2f};
+                return clearOfWalls(p) ? p : cp[i];   // on top of it: separation pushes it clear
+            }
+        }
         const auto& pts = flying ? a.airSpawns
                         : (wave < (int)a.waveGround.size() && !a.waveGround[wave].empty()) ? a.waveGround[wave]
                         : a.groundSpawns;

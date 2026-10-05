@@ -75,6 +75,22 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             snprintf(buf, sizeof(buf), "ARENA %d/%d  %s  GET READY", director.arena + 1, nArenas, ar.name); break;
         case WaveDirector::Phase::ACTIVE:
             if (boss) snprintf(buf, sizeof(buf), "ARENA %d/%d  FINAL WAVE", director.arena + 1, nArenas);
+            else if (director.hasGoal()) {
+                const WaveGoal& g = director.goal();
+                char what[48];
+                switch (g.kind) {
+                case WaveGoal::HOLD:
+                    if (director.goalDone) snprintf(what, sizeof(what), "HELD");
+                    else if (director.holding && director.zoneContested) { snprintf(what, sizeof(what), "CONTESTED - CLEAR THE ZONE"); accent = {1.f, 0.3f, 0.25f}; }
+                    else if (director.holding) { snprintf(what, sizeof(what), "HOLDING %.0f%%", director.goalProgress() * 100.f); accent = {0.4f, 1.f, 0.6f}; }
+                    else snprintf(what, sizeof(what), "%.0f%% - GET IN THE ZONE", director.goalProgress() * 100.f);
+                    break;
+                case WaveGoal::CONDUITS: snprintf(what, sizeof(what), "%d LEFT", director.conduitsLeft()); break;
+                case WaveGoal::SURVIVE:  snprintf(what, sizeof(what), "%s", formatTime(std::max(0.f, director.goalTimer), false).c_str()); break;
+                default: what[0] = 0;
+                }
+                snprintf(buf, sizeof(buf), "WAVE %d/%d   %s   %s", director.wave + 1, director.waveCount(), g.label, what);
+            }
             else snprintf(buf, sizeof(buf), "ARENA %d/%d   WAVE %d/%d   HOSTILES %d",
                           director.arena + 1, nArenas, director.wave + 1, director.waveCount(), left);
             break;
@@ -119,8 +135,24 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             snprintf(buf, sizeof(buf), "FINISH %dM", (int)glm::length(target - player.position));
             ui.renderMarker(sx, sy, on, {1.f, 0.6f, 0.2f}, buf);
         }
+        // Objective markers: every standing conduit, and the zone while you're out of it
+        if (director.fighting() && director.goal().kind == WaveGoal::CONDUITS)
+            for (auto& e : enemies) {
+                if (!e.alive || e.type != EnemyType::CONDUIT) continue;
+                float sx, sy;
+                bool on = projectToScreen(e.position + glm::vec3{0, e.height() + 0.8f, 0}, view, proj, sx, sy);
+                snprintf(buf, sizeof(buf), "%dM", (int)glm::length(e.position - player.position));
+                ui.renderMarker(sx, sy, on, {1.f, 0.3f, 0.5f}, buf);
+            }
+        if (director.fighting() && director.goal().kind == WaveGoal::HOLD && !director.holding && !director.goalDone) {
+            glm::vec3 target = director.goal().pos + glm::vec3{0, 1.5f, 0};
+            float sx, sy;
+            bool on = projectToScreen(target, view, proj, sx, sy);
+            snprintf(buf, sizeof(buf), "HOLD %dM", (int)glm::length(target - player.position));
+            ui.renderMarker(sx, sy, on, {0.4f, 1.f, 0.85f}, buf);
+        }
         // The last few enemies get markers so you never hunt for a straggler
-        if (director.fighting() && director.queued() == 0 && alive > 0 && alive <= 3) {
+        if (director.fighting() && !director.hasGoal() && director.queued() == 0 && alive > 0 && alive <= 3) {
             for (auto& e : enemies) {
                 if (!e.alive) continue;
                 float sx, sy;

@@ -230,6 +230,8 @@ inline void GameplayState::updateEnemies(float dt) {
             if (len >= minD || len < 1e-4f) continue;
             glm::vec3 n = d / len * (minD - len);
             float wa = b.radius() / minD, wb = a.radius() / minD;   // big ones get pushed less
+            if (a.type == EnemyType::CONDUIT) { wa = 0.f; wb = 1.f; }   // conduits are rooted
+            if (b.type == EnemyType::CONDUIT) { wa = 1.f; wb = 0.f; }
             a.position -= n * wa; b.position += n * wb;
         }
     }
@@ -293,6 +295,7 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
 
 inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     ++totalKills;
+    if (e.type == EnemyType::CONDUIT) director.onConduitDestroyed(e.position);
     styleSystem.addStyle(src == StyleSource::FRIENDLY ? 15.f : 30.f, src);   // half for one you only set up
     styleSystem.heal(5.f * tune().heal);
     audio.play("enemy_death");
@@ -328,6 +331,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
                                 if (rand() % 100 < 50) drop(PickupKind::POTION); break;
         case EnemyType::MITE:   if (rand() % 10 == 0) drop(PickupKind::ORB); break;
         case EnemyType::WARDEN: case EnemyType::SOVEREIGN: break;
+        case EnemyType::CONDUIT: drop(PickupKind::ORB); drop(PickupKind::ORB); break;
         default:
             if (rand() % 100 < (int)(20 * tune().drops)) drop(PickupKind::ORB);
             if (rand() % 100 < (int)(18 * tune().drops)) drop(PickupKind::POTION);

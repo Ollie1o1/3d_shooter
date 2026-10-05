@@ -474,6 +474,33 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         r.box(cape, {0.f, -2.08f, 0.f}, {L.torsoW * 0.94f, 0.06f, 0.06f}, gold * 0.5f);
         break;
     }
+    case EnemyType::CONDUIT: {
+        // A pylon: a plinth, four fins, a pulsing core and two rings turning
+        // round it, a crystal on top. The core beats faster as it's hurt.
+        vec3 dark = st.color, trim = st.color * 1.8f;
+        float hurt = 1.f - e.health / e.maxHealth;
+        float beat = 0.6f + 0.4f * std::sin(time * (3.f + 6.f * hurt) + e.animPhase);
+        vec3 core = glow * (1.2f + 1.6f * beat);
+        r.box(root, {0.f, 0.15f, 0.f}, {1.5f, 0.3f, 1.5f}, dark);
+        r.box(root, {0.f, 0.34f, 0.f}, {1.6f, 0.08f, 1.6f}, trim, glow * 0.4f);
+        for (int k = 0; k < 4; ++k) {
+            mat4 fin = root * RY(k * 1.5708f + 0.785f);
+            r.box(fin, {0.f, 1.1f, 0.62f}, {0.14f, 1.6f, 0.32f}, dark);
+            r.box(fin, {0.f, 1.1f, 0.79f}, {0.04f, 1.2f, 0.04f}, glow * 0.4f, core * 0.6f);
+        }
+        r.box(root, {0.f, 1.7f, 0.f}, {0.5f, 2.4f, 0.5f}, glow * 0.3f, core);
+        for (int i = 0; i < 2; ++i) {
+            float y = 1.2f + i * 1.1f + 0.15f * std::sin(time * 1.3f + i * 1.7f);
+            mat4 ring = root * T({0.f, y, 0.f}) * RY(time * (i ? -1.1f : 0.8f));
+            for (int k = 0; k < 4; ++k) {
+                mat4 seg = ring * RY(k * 1.5708f);
+                r.box(seg, {0.f, 0.f, 0.55f}, {0.8f, 0.07f, 0.07f}, trim, glow * 0.8f * beat);
+            }
+        }
+        mat4 top = root * T({0.f, 3.1f + 0.08f * std::sin(time * 2.f), 0.f}) * RY(time * 0.6f) * RX(0.785f) * RZ(0.785f);
+        r.box(top, {0.f, 0.f, 0.f}, {0.36f, 0.36f, 0.36f}, glow * 0.5f, core * 1.2f);
+        break;
+    }
     default: break;
     }
 }

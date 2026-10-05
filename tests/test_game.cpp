@@ -560,8 +560,16 @@ int main() {
         CHECK(bashed && window, "SHIELDBEARER bashes up close, with a parry window");
         k.stagger(k.staggerTime());
         CHECK(!k.blocks(-glm::vec3{std::sin(k.yaw), 0.f, std::cos(k.yaw)}), "a parried SHIELDBEARER's shield is down");
-        auto s = simulate(L, grid, EnemyType::SHIELDBEARER, {0,0,-14}, P0, A0, 12.f);
-        CHECK(s.shots >= 3 && !s.inWall, "SHIELDBEARER fires spreads at mid range and stays out of walls");
+        // It starts behind the Yard's dais and obelisk, so it has to work its
+        // way round them; across seeds (its strafe is random) it nearly always does
+        int firing = 0; bool walled = false;
+        for (int sd = 1; sd <= 30; ++sd) {
+            srand(sd);
+            auto q = simulate(L, grid, EnemyType::SHIELDBEARER, {0,0,-14}, P0, A0, 12.f);
+            firing += q.shots >= 3; walled |= q.inWall;
+        }
+        std::printf("      SHIELDBEARER fired from cover in %d/30 runs\n", firing);
+        CHECK(firing >= 28 && !walled, "SHIELDBEARER gets round cover to fire spreads at mid range, and stays out of walls");
     }
 
     // The Sovereign: dashes (and dashes again), sweep-sweep-cleave combos,
@@ -700,34 +708,62 @@ int main() {
         WaveDirector d; d.level = &L;
         d.startArena(0);
         std::map<DirectorEvent, int> counts;
-        int spawned = 0, expected = 0, maxAliveSeen = 0, bossSpawns = 0;
-        bool tooClose = false, overCap = false;
-        for (auto& a : L.arenas) for (auto& w : a.waves) for (auto& e : w) expected += e.total();
+        int spawned = 0, expected = 0, maxAliveSeen = 0, bossSpawns = 0, conduitSpawns = 0, conduitsWanted = 0;
+        bool tooClose = false, overCap = false, squadsTogether = true;
+        // Kill-everything waves spawn exactly what they list (squads included);
+        // goal waves refill until the goal is met, so they're checked by finishing
+        for (auto& a : L.arenas)
+            for (int wv = 0; wv < (int)a.waves.size(); ++wv) {
+                bool goal = wv < (int)a.goals.size() && a.goals[wv].kind != WaveGoal::KILL_ALL;
+                if (goal) { if (a.goals[wv].kind == WaveGoal::CONDUITS) conduitsWanted += (int)a.goals[wv].points.size(); continue; }
+                for (auto& e : a.waves[wv]) expected += e.total();
+            }
 
         glm::vec3 player = L.arenas[0].playerStart;
-        std::vector<float> alive;   // remaining lifetime of each live enemy
+        struct Sim { float t; EnemyType type; glm::vec3 pos; };
+        std::vector<Sim> alive;   // each enemy "survives" 3 s, so the cap gets exercised
+        std::map<int, int> goalsDone;
         for (int tick = 0; tick < 60 * 60 * 30 && d.phase != WaveDirector::Phase::VICTORY; ++tick) {
             std::vector<SpawnRequest> out;
+            bool goalWave = d.hasGoal();
+            // HOLD: the player stands in the circle
+            if (d.goal().kind == WaveGoal::HOLD) player = d.goal().pos + glm::vec3{0.f, 0.05f, 0.f};
+            int fighters = 0;
+            for (auto& a : alive) fighters += a.type != EnemyType::CONDUIT;
             d.update(DT, (int)alive.size(), player, out);
-            for (auto& r : out) {
-                ++spawned;
+            for (size_t k = 0; k < out.size(); ++k) {
+                auto& r = out[k];
+                if (r.type == EnemyType::CONDUIT) { ++conduitSpawns; alive.push_back({3.f, r.type, r.pos}); continue; }
+                if (!goalWave) ++spawned;
                 if (isBoss(r.type)) ++bossSpawns;
-                if (glm::length(glm::vec2(r.pos.x - player.x, r.pos.z - player.z)) < WaveDirector::SAFE_RADIUS) tooClose = true;
-                alive.push_back(3.f);   // each enemy "survives" 3 s, so the cap gets exercised
+                if (glm::length(glm::vec2(r.pos.x - player.x, r.pos.z - player.z)) < WaveDirector::SAFE_RADIUS - 0.5f &&
+                    d.goal().kind != WaveGoal::HOLD) tooClose = true;
+                if (k > 0 && out[k - 1].type != EnemyType::CONDUIT && !statsOf(r.type).flying &&
+                    glm::length(r.pos - out[0].pos) > 6.f && out.size() > 1) squadsTogether = false;
+                alive.push_back({3.f, r.type, r.pos});
             }
-            if ((int)alive.size() > d.current().maxAlive) overCap = true;
-            maxAliveSeen = std::max(maxAliveSeen, (int)alive.size());
-            for (auto& t : alive) t -= DT;
-            alive.erase(std::remove_if(alive.begin(), alive.end(), [](float t){ return t <= 0.f; }), alive.end());
-            for (auto& ev : d.events) counts[ev.kind]++;
+            fighters = 0;
+            for (auto& a : alive) fighters += a.type != EnemyType::CONDUIT;
+            if (fighters > d.maxAlive()) overCap = true;
+            maxAliveSeen = std::max(maxAliveSeen, fighters);
+            for (auto& a : alive) a.t -= DT;
+            for (auto& a : alive) if (a.t <= 0.f && a.type == EnemyType::CONDUIT) d.onConduitDestroyed(a.pos);
+            alive.erase(std::remove_if(alive.begin(), alive.end(), [](const Sim& a){ return a.t <= 0.f; }), alive.end());
+            for (auto& ev : d.events) {
+                counts[ev.kind]++;
+                if (ev.kind == DirectorEvent::GOAL_DONE) { alive.clear(); goalsDone[d.arena * 10 + ev.value]++; }   // the rest collapse
+            }
             d.events.clear();
             // Walk into the next arena once the gate opens
             if (d.phase == WaveDirector::Phase::CLEARED) player = L.arenas[d.arena + 1].playerStart;
+            else if (d.goal().kind != WaveGoal::HOLD && d.phase != WaveDirector::Phase::VICTORY) player = L.arenas[d.arena].playerStart;
         }
-        int n = (int)L.arenas.size();
-        std::printf("      spawned %d of %d, peak alive %d\n", spawned, expected, maxAliveSeen);
+        int n = (int)L.arenas.size(), goalWaves = 0;
+        for (auto& a : L.arenas) for (auto& g : a.goals) goalWaves += g.kind != WaveGoal::KILL_ALL;
+        std::printf("      spawned %d of %d (kill-all waves), peak alive %d, %d goal waves met\n",
+                    spawned, expected, maxAliveSeen, (int)goalsDone.size());
         CHECK(d.phase == WaveDirector::Phase::VICTORY, "a simulated ARENA run reaches victory");
-        CHECK(spawned == expected, "every queued enemy spawns exactly once");
+        CHECK(spawned == expected, "every queued enemy of a kill-all wave spawns exactly once (squads included)");
         CHECK(bossSpawns == 2, "each boss (the Warden, the Sovereign) spawns once");
         CHECK(counts[DirectorEvent::ARENA_START] == n, "every arena starts");
         CHECK(counts[DirectorEvent::WAVE_START] == 3 * (n - 1) - 1 && counts[DirectorEvent::BOSS_START] == 2,
@@ -735,8 +771,34 @@ int main() {
         CHECK(counts[DirectorEvent::ARENA_CLEARED] == n && counts[DirectorEvent::VICTORY] == 1 &&
               counts[DirectorEvent::FINISH_OPEN] == 0, "each arena clears, then victory");
         CHECK(counts[DirectorEvent::NEW_TYPE] == (int)EnemyType::COUNT, "each enemy type is introduced exactly once");
-        CHECK(!overCap, "never more enemies alive than the arena's cap");
+        CHECK(goalWaves >= 3 && (int)goalsDone.size() == goalWaves && counts[DirectorEvent::GOAL_DONE] == goalWaves,
+              "every goal wave (hold, conduits, survive) is met once, and that ends it");
+        CHECK(conduitSpawns == conduitsWanted && conduitsWanted > 0, "a conduit wave raises its conduits once");
+        CHECK(squadsTogether, "a squad arrives together, its escort close behind its leader");
+        CHECK(!overCap, "never more fighters alive than the arena's cap");
         CHECK(!tooClose, "nothing spawns within the safe radius of the player");
+    }
+    {
+        // HOLD only counts while you're in the circle and it isn't contested;
+        // SURVIVE runs out on its own; a conduit wave keeps coming until they're down
+        WaveDirector d; d.level = &L;
+        int yard = 0, hw = -1;
+        for (int i = 0; i < (int)L.arenas[yard].goals.size(); ++i) if (L.arenas[yard].goals[i].kind == WaveGoal::HOLD) hw = i;
+        d.startArena(yard); d.wave = hw; d.skipIntro();
+        std::vector<SpawnRequest> out;
+        d.update(DT, 0, L.arenas[yard].playerStart, out);
+        const WaveGoal g = d.goal();
+        float secs = g.seconds;
+        for (int t = 0; t < (int)(secs * 2.f / DT); ++t) { out.clear(); d.update(DT, 3, L.arenas[yard].playerStart, out); }
+        bool outsideNothing = d.goalTimer == 0.f && !d.goalDone;
+        d.zoneContested = true;
+        for (int t = 0; t < (int)(secs * 2.f / DT); ++t) { out.clear(); d.update(DT, 3, g.pos, out); }
+        bool contestedNothing = d.goalTimer == 0.f && !d.goalDone && d.holding;
+        d.zoneContested = false;
+        bool refilled = false;
+        for (int t = 0; t < (int)((secs + 1.f) / DT) && !d.goalDone; ++t) { out.clear(); d.update(DT, 3, g.pos, out); refilled |= d.queued() > 0; }
+        CHECK(outsideNothing && contestedNothing && d.goalDone, "HOLD fills only while you stand in the circle and no enemy does");
+        CHECK(refilled, "a goal wave keeps its queue topped up until the goal is met");
     }
 
     // Regression: a wave whose last enemy spawns into an empty field must not

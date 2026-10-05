@@ -242,7 +242,7 @@ inline void GameplayState::handleDirectorEvents() {
         case DirectorEvent::WAVE_START:
             if (fast()) { if (ev.value > 0) pushBanner("SECOND WAVE", "", {1.f, 0.5f, 0.3f}, 1.4f); break; }
             snprintf(buf, sizeof(buf), "WAVE %d/%d", ev.value + 1, director.waveCount());
-            pushBanner(buf, "", {1.f, 0.9f, 0.4f}, 1.8f);
+            pushBanner(buf, director.goal().label, {1.f, 0.9f, 0.4f}, director.hasGoal() ? 2.6f : 1.8f);
             audio.play("wave", 90);
             break;
         case DirectorEvent::BOSS_START:
@@ -282,6 +282,21 @@ inline void GameplayState::handleDirectorEvents() {
             audio.play("wave");
             break;
         }
+        case DirectorEvent::GOAL_DONE:
+            // The objective's met: whatever's left of the wave falls apart
+            for (auto& e : enemies)
+                if (e.alive) {
+                    e.alive = false; e.state = EnemyState::DEAD;
+                    spawnDebrisFor(e);
+                    fx.spawnDeathParticles(e.position + glm::vec3{0, e.height() * 0.5f, 0}, e.stats().color);
+                }
+            pushBanner("OBJECTIVE COMPLETE", "", {0.4f, 1.f, 0.6f}, 1.8f);
+            styleSystem.addStyle(30.f);
+            gainXp(40);
+            ui.feed("OBJECTIVE  +40 XP", {0.4f, 1.f, 0.6f});
+            audio.play("wave");
+            shake(0.3f, 0.05f);
+            break;
         case DirectorEvent::VICTORY:
             victoryDelay = 2.5f;
             break;

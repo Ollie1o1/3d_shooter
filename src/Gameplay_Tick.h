@@ -227,6 +227,12 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     std::vector<SpawnRequest> spawns;
     director.countScale    = tune().waveSize;
     director.maxAliveBonus = tune().maxAliveBonus;
+    // HOLD: an enemy on foot in the circle stops it filling
+    director.zoneContested = false;
+    if (director.goal().kind == WaveGoal::HOLD)
+        for (auto& e : enemies)
+            if (e.targetable() && !e.stats().flying && e.type != EnemyType::CONDUIT && director.inHoldZone(e.position + glm::vec3{0, 0.3f, 0}))
+                director.zoneContested = true;
     director.update(dt, alive, player.position, spawns);
     for (auto& s : spawns) spawnEnemy(s.type, s.pos);
 

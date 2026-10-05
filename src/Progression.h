@@ -29,6 +29,7 @@ inline int xpForKill(EnemyType t) {
         case EnemyType::MITE:     return 8;
         case EnemyType::JUGGERNAUT: return 120;
         case EnemyType::SHIELDBEARER: return 40;
+        case EnemyType::CONDUIT:  return 50;
         case EnemyType::WARDEN:   return 500;
         case EnemyType::SOVEREIGN: return 1000;
         default:                  return 10;

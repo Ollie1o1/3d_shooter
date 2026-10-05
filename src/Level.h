@@ -74,12 +74,33 @@ inline Theme lerpTheme(const Theme& a, const Theme& b, float t) {
 
 // `count` enemies of `type`. If `at` is filled, they spawn exactly there (one
 // per point, count ignored) — FAST mode's hand-placed encounters.
+// A squad: each one arrives with its `escort` in formation behind it, e.g.
+// WaveEntry(EnemyType::SHIELDBEARER, 2).with({EnemyType::SENTINEL}).
 struct WaveEntry {
     EnemyType type;
     int count = 0;
     std::vector<glm::vec3> at;
+    std::vector<EnemyType> escort;
     WaveEntry(EnemyType t, int n, std::vector<glm::vec3> pts = {}) : type(t), count(n), at(std::move(pts)) {}
-    int total() const { return at.empty() ? count : (int)at.size(); }
+    WaveEntry with(std::vector<EnemyType> e) const { WaveEntry w = *this; w.escort = std::move(e); return w; }
+    int total() const { return (at.empty() ? count : (int)at.size()) * (1 + (int)escort.size()); }
+};
+
+// What ends a wave. KILL_ALL is the default. The others keep the wave coming
+// (it refills as you kill) until they're met, then whatever's left collapses:
+//   HOLD      stand in the circle (`pos`, `radius`) for `seconds`; it only
+//             counts while no enemy on foot is inside it
+//   CONDUITS  destroy the CONDUIT pylons at `points`; the wave spawns out of them
+//   SURVIVE   last `seconds`
+struct WaveGoal {
+    enum Kind { KILL_ALL, HOLD, CONDUITS, SURVIVE } kind = KILL_ALL;
+    const char* label = "";        // the objective line, e.g. "HOLD THE DAIS"
+    glm::vec3 pos{0.f};
+    float radius = 0.f, seconds = 0.f;
+    std::vector<glm::vec3> points;
+    static WaveGoal hold(const char* l, glm::vec3 p, float r, float s) { WaveGoal g; g.kind = HOLD; g.label = l; g.pos = p; g.radius = r; g.seconds = s; return g; }
+    static WaveGoal conduits(const char* l, std::vector<glm::vec3> pts) { WaveGoal g; g.kind = CONDUITS; g.label = l; g.points = std::move(pts); return g; }
+    static WaveGoal survive(const char* l, float s) { WaveGoal g; g.kind = SURVIVE; g.label = l; g.seconds = s; return g; }
 };
 
 // A door is a pair of walls that part in the middle, each half sliding into
@@ -164,6 +185,7 @@ struct Arena {
     std::vector<std::vector<glm::vec3>> waveGround;
     glm::vec3   bossSpawn{0.f};
     std::vector<std::vector<WaveEntry>> waves;
+    std::vector<WaveGoal> goals;    // per wave; missing: KILL_ALL
     int         maxAlive = 8;    // concurrent enemies; the rest trickle in as you kill
     float       damageScale = 1.f;  // enemy damage multiplier: the first arena is forgiving
     int         entryGate = -1;  // door behind you once you're in (index into doors)
@@ -661,6 +683,7 @@ inline LevelData buildLevel() {
             {{EnemyType::HUSK, 4}, {EnemyType::RIPPER, 4}, {EnemyType::SENTINEL, 1}},
             {{EnemyType::HUSK, 3}, {EnemyType::RIPPER, 3}, {EnemyType::RAPTOR, 3}, {EnemyType::BRUTE, 1}},
         };
+        a.goals = { {}, {}, WaveGoal::hold("HOLD THE DAIS", {0.f, 1.f, 0.f}, 3.9f, 15.f) };
         a.maxAlive = 7;
         a.damageScale = 0.85f;
         a.ambient = Ambient::DUST;
@@ -776,9 +799,11 @@ inline LevelData buildLevel() {
         a.airSpawns    = {{-12,9,-78},{12,9,-78},{0,10,-95},{0,10,-60},{-20,10,-100},{20,10,-56}};
         a.waves = {
             {{EnemyType::HUSK, 5}, {EnemyType::MITE, 4}, {EnemyType::SENTINEL, 2}},
-            {{EnemyType::BRUTE, 1}, {EnemyType::SHIELDBEARER, 2}, {EnemyType::RIPPER, 5}, {EnemyType::SENTINEL, 2}, {EnemyType::RAPTOR, 2}},
-            {{EnemyType::JUGGERNAUT, 1}, {EnemyType::BRUTE, 1}, {EnemyType::MITE, 6}, {EnemyType::HUSK, 3}, {EnemyType::RAPTOR, 2}},
+            {{EnemyType::BRUTE, 1}, WaveEntry(EnemyType::SHIELDBEARER, 2).with({EnemyType::SENTINEL}), {EnemyType::RIPPER, 5}, {EnemyType::RAPTOR, 2}},
+            {WaveEntry(EnemyType::JUGGERNAUT, 1).with({EnemyType::MITE, EnemyType::MITE}), {EnemyType::BRUTE, 1}, {EnemyType::MITE, 4}, {EnemyType::HUSK, 3}, {EnemyType::RAPTOR, 2}},
         };
+        // Wave 2 pours out of three conduits: one on each side catwalk, one at the far end
+        a.goals = { {}, WaveGoal::conduits("DESTROY THE CONDUITS", {{-28.f, 5.f, -80.f}, {28.f, 5.f, -80.f}, {0.f, 0.f, -104.f}}) };
         a.maxAlive = 9;
         a.damageScale = 1.0f;
         a.ambient = Ambient::EMBERS;
@@ -935,9 +960,11 @@ inline LevelData buildLevel() {
         a.airSpawns  = {{-14,16,-140},{14,16,-140},{-14,16,-172},{14,16,-172},{0,30,-140},{-20,26,CZ},{20,26,CZ}};
         a.waves = {
             {{EnemyType::HUSK, 4}, {EnemyType::RIPPER, 3}, {EnemyType::SENTINEL, 2}},
-            {{EnemyType::SENTINEL, 3}, {EnemyType::SHIELDBEARER, 1}, {EnemyType::HUSK, 3}, {EnemyType::RAPTOR, 3}, {EnemyType::MITE, 4}},
+            {{EnemyType::SENTINEL, 3}, WaveEntry(EnemyType::SHIELDBEARER, 1).with({EnemyType::HUSK, EnemyType::HUSK}), {EnemyType::HUSK, 1}, {EnemyType::RAPTOR, 3}, {EnemyType::MITE, 4}},
             {{EnemyType::JUGGERNAUT, 1}, {EnemyType::BRUTE, 1}, {EnemyType::SENTINEL, 2}, {EnemyType::HUSK, 3}, {EnemyType::RAPTOR, 3}},
         };
+        // Wave 2: take the balcony ringing the tower, under fire from the ledges and tier 2
+        a.goals = { {}, WaveGoal::hold("HOLD THE BALCONY", {0.f, 18.f, CZ}, 8.6f, 20.f) };
         a.maxAlive = 9;
         a.damageScale = 1.1f;
         a.ambient = Ambient::WIND;
@@ -1071,10 +1098,12 @@ inline LevelData buildLevel() {
                           {0,4.05f,CZ - 34.5f},{34.5f,4.05f,CZ},{-34.5f,4.05f,CZ},{0,7.05f,CZ + P},{0,7.05f,CZ - P}};
         a.airSpawns    = {{-18,10,CZ - 18},{18,10,CZ - 18},{0,12,CZ - 28},{-20,10,CZ + 22},{20,10,CZ + 22},{0,12,CZ + 17}};
         a.waves = {
-            {{EnemyType::BRUTE, 2}, {EnemyType::SHIELDBEARER, 2}, {EnemyType::SENTINEL, 3}, {EnemyType::RAPTOR, 3}, {EnemyType::RIPPER, 5}},
-            {{EnemyType::JUGGERNAUT, 1}, {EnemyType::BRUTE, 1}, {EnemyType::MITE, 8}, {EnemyType::HUSK, 5}, {EnemyType::RAPTOR, 3}, {EnemyType::SENTINEL, 2}},
+            {{EnemyType::BRUTE, 2}, WaveEntry(EnemyType::SHIELDBEARER, 2).with({EnemyType::SENTINEL}), {EnemyType::SENTINEL, 1}, {EnemyType::RAPTOR, 3}, {EnemyType::RIPPER, 5}},
+            {WaveEntry(EnemyType::JUGGERNAUT, 1).with({EnemyType::MITE, EnemyType::MITE, EnemyType::MITE}), {EnemyType::BRUTE, 1}, {EnemyType::MITE, 5}, {EnemyType::HUSK, 5}, {EnemyType::RAPTOR, 3}, {EnemyType::SENTINEL, 2}},
             {{EnemyType::WARDEN, 1}},
         };
+        // Wave 2: the reactor overloads; hold out until it vents
+        a.goals = { {}, WaveGoal::survive("SURVIVE THE OVERLOAD", 45.f) };
         a.maxAlive = 11;
         a.damageScale = 1.25f;
         a.ambient = Ambient::MOTES;
