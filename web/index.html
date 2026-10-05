@@ -52,12 +52,14 @@
   var Module = {
     canvas,
     // ?play skips the main menu (same as ./shooter --play), ?fast starts the FAST
-    // time trial; ?arena=N starts at arena (or FAST section) N; ?dev opens the
+    // time trial, ?endless an ENDLESS run, ?daily today's DAILY; ?arena=N starts at arena (or FAST section) N; ?dev opens the
     // dev level select
     arguments: (() => {
       const q = new URLSearchParams(location.search);
       const args = q.has('arena') ? ['--arena', q.get('arena')] : q.has('play') ? ['--play'] : [];
       if (q.has('fast')) args.push('--fast');
+      if (q.has('endless')) args.push('--endless');
+      if (q.has('daily')) args.push('--daily');
       if (q.has('wave')) args.push('--wave', q.get('wave'));
       if (q.has('god')) args.push('--god');
       if (q.has('dev')) args.push('--dev');   // ?dev opens the level select
@@ -140,28 +142,40 @@
   });
 
   // The shared leaderboard (the portfolio site's /api/overdrive-board). The
-  // game reads what this caches in localStorage, in the same "time difficulty
-  // name" lines as its own board; where there's no API (a local server, or
-  // no store connected yet) nothing is cached and the game shows its own.
+  // game reads what this caches in localStorage, in the lines its own board
+  // uses: "time difficulty name" for FAST (by time), "score time difficulty
+  // wave name" for ARENA, ENDLESS and DAILY (by score); today's DAILY board
+  // under its date (UTC, as the game names it). Where there's no API (a local
+  // server, or no store connected yet) nothing is cached and the game shows
+  // its own.
   window.overdriveBoard = {
     api: '/api/overdrive-board',
-    cache(mode, entries) {
-      const text = entries.map((e) => `${e.time} ${e.difficulty} ${e.name}`).join('\n');
-      try { localStorage.setItem(`overdrive.leaderboard.online.${mode}`, text); } catch (e) {}
+    modes: ['arena', 'fast', 'endless', 'daily'],
+    today() {
+      const d = new Date(), p = (n) => String(n).padStart(2, '0');
+      return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}`;
+    },
+    cache(mode, entries, date) {
+      const text = entries.map((e) => mode === 'fast' ? `${e.time} ${e.difficulty} ${e.name}`
+                                                     : `${e.score} ${e.time} ${e.difficulty} ${e.wave || 0} ${e.name}`).join('\n');
+      const key = `overdrive.leaderboard.online.${mode}${mode === 'daily' ? '.' + date : ''}`;
+      try { localStorage.setItem(key, text); } catch (e) {}
     },
     async refresh() {
-      for (const mode of ['arena', 'fast']) {
+      const date = this.today();
+      for (const mode of this.modes) {
         try {
-          const r = await fetch(`${this.api}?mode=${mode}`, { cache: 'no-store' });
-          if (r.ok) this.cache(mode, (await r.json()).entries || []);
+          const r = await fetch(`${this.api}?mode=${mode}${mode === 'daily' ? '&date=' + date : ''}`, { cache: 'no-store' });
+          if (r.ok) this.cache(mode, (await r.json()).entries || [], date);
         } catch (e) {}
       }
     },
-    async submit(mode, name, time, difficulty) {
+    // run: { mode, name, time, difficulty, score, wave, date }
+    async submit(run) {
       try {
         const r = await fetch(this.api, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-                                          body: JSON.stringify({ mode, name, time, difficulty }) });
-        if (r.ok) this.cache(mode, (await r.json()).entries || []);
+                                          body: JSON.stringify(run) });
+        if (r.ok) this.cache(run.mode, (await r.json()).entries || [], run.date);
       } catch (e) {}
     },
   };

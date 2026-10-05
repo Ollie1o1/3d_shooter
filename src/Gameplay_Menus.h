@@ -8,6 +8,8 @@
 inline void GameplayState::renderLeaderboardPanel() {
     float t = gameClock + (float)SDL_GetTicks() * 0.001f;
     float x = 926.f, w = 334.f, y = 110.f;
+    Board bd = boardFor();
+    Leaderboard::Entry me = runEntry();
     ui.begin2D();
     UIBatch& b = ui.ui;
     if (!ranked) {
@@ -17,9 +19,9 @@ inline void GameplayState::renderLeaderboardPanel() {
         b.rect(x, y, w, 112, {0.08f, 0.05f, 0.02f, 0.9f});
         b.frame(x, y, w, 112, 2, {1.f, 0.75f, 0.2f, 0.9f});
         char buf[64];
-        int wp = worldLoaded ? worldBoard.placeFor(fast(), elapsedTime) : -1;
+        int wp = worldLoaded ? worldBoard.placeFor(bd, me) : -1;
         if (wp >= 0) std::snprintf(buf, sizeof(buf), "YOU MADE THE WORLD BOARD - #%d", wp + 1);
-        else         std::snprintf(buf, sizeof(buf), "YOU MADE THE BOARD - #%d", board.placeFor(fast(), elapsedTime) + 1);
+        else         std::snprintf(buf, sizeof(buf), "YOU MADE THE BOARD - #%d", std::max(1, board.placeFor(bd, me) + 1));
         b.text(buf, x + w / 2, y + 12, 2, {1.f, 0.85f, 0.3f, 1.f}, true);
         b.rect(x + 20, y + 40, w - 40, 32, {0.f, 0.f, 0.f, 0.7f});
         std::string shown = nameBuf;
@@ -34,15 +36,19 @@ inline void GameplayState::renderLeaderboardPanel() {
     // The shared board when there is one (re-read every second: the post
     // and the refresh land asynchronously), else this browser's
     if ((worldPoll -= 1.f / 60.f) <= 0.f) { worldPoll = 1.f; worldLoaded = worldBoard.loadOnline(); }
+    auto same = [&](const Leaderboard::Entry& e) {
+        return e.name == board.lastName && (Leaderboard::byScore(bd) ? e.score == me.score : std::fabs(e.time - me.time) < 0.02f);
+    };
+    std::string title = dailyRun() ? "DAILY " + daily.label() : "";
     if (worldLoaded) {
         int hi = -1;
-        const auto& l = worldBoard.list(fast());
-        for (int i = 0; i < (int)l.size(); ++i)
-            if (boardPlace >= 0 && std::fabs(l[i].time - elapsedTime) < 0.02f && l[i].name == board.lastName) hi = i;
+        const auto& l = worldBoard.list(bd);
+        for (int i = 0; i < (int)l.size(); ++i) if (boardPlace >= 0 && same(l[i])) hi = i;
         b.text("WORLD", x + 8, y + 14, 1, {0.4f, 0.9f, 1.f, 0.9f});
-        drawLeaderboardTable(b, worldBoard, fast(), x, y, w, nameEntry ? 8 : Leaderboard::KEEP, hi, t);
+        drawLeaderboardTable(b, worldBoard, bd, x, y, w, nameEntry ? 8 : Leaderboard::KEEP, hi, t, title.empty() ? nullptr : title.c_str());
     } else {
-        drawLeaderboardTable(b, board, fast(), x, y, w, nameEntry ? 8 : Leaderboard::KEEP, boardPlace < 99 ? boardPlace : -1, t);
+        drawLeaderboardTable(b, board, bd, x, y, w, nameEntry ? 8 : Leaderboard::KEEP, boardPlace < 99 ? boardPlace : -1, t,
+                             title.empty() ? nullptr : title.c_str());
     }
     ui.end2D();
 }
@@ -76,9 +82,11 @@ inline void GameplayState::padButton(Uint8 b) {
 
 inline void GameplayState::submitWorld(const std::string& name, int diff) {
 #ifdef __EMSCRIPTEN__
-    char js[160];
-    std::snprintf(js, sizeof(js), "window.overdriveBoard&&window.overdriveBoard.submit('%s','%s',%.2f,%d)",
-                  fast() ? "fast" : "arena", name.c_str(), elapsedTime, diff);
+    Leaderboard::Entry e = runEntry();
+    char js[240];
+    std::snprintf(js, sizeof(js),
+                  "window.overdriveBoard&&window.overdriveBoard.submit({mode:'%s',name:'%s',time:%.2f,difficulty:%d,score:%d,wave:%d,date:'%s'})",
+                  boardKey(boardFor()), name.c_str(), elapsedTime, diff, e.score, e.wave, daily.key().c_str());
     emscripten_run_script(js);
 #else
     (void)name; (void)diff;
@@ -94,7 +102,7 @@ inline void GameplayState::handleNameEntry(const SDL_Event& e) {
     if (k == SDLK_RETURN || k == SDLK_KP_ENTER) {
         int diff = settings ? settings->difficulty : DIFFICULTY_DEFAULT;
         std::string name = Leaderboard::cleanName(nameBuf);
-        boardPlace = board.add(fast(), nameBuf, elapsedTime, diff);
+        boardPlace = board.add(boardFor(), nameBuf, runEntry());
         if (boardPlace >= 0) board.save();
         if (!name.empty()) {
             audio.play("upgrade");
@@ -156,7 +164,7 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
     // Backspace: straight back to the checkpoint and the start of this fight
     if (key == SDLK_BACKSPACE && !victory) { if (playerDead) retryArena(); else restartHere(); return; }
     if (e.type == SDL_KEYDOWN && (playerDead || victory)) {
-        if (key == SDLK_r && playerDead) { retryArena(); return; }
+        if (key == SDLK_r && playerDead && !endless()) { retryArena(); return; }   // ENDLESS: one life
         if (key == SDLK_RETURN)          { newRun();     return; }
         return;
     }
@@ -189,6 +197,7 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
 }
 
 inline void GameplayState::trySwitch(int w) {
+    if (modOn(DailyMod::MARKSMAN) && w != (int)WeaponId::KAR) return;   // DAILY: the Kar98 only
     if (w != activeWeapon && pendingWeapon < 0) {
         pendingWeapon = w;
         weaponSwitchTimer = 0.15f;

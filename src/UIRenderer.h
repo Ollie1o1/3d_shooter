@@ -12,6 +12,7 @@
 #include "StyleSystem.h"
 #include "UIBatch.h"
 #include "Progression.h"
+#include "Score.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -417,8 +418,50 @@ public:
         end2D();
     }
 
+    // A run's score, a line per part (Score.h)
+    void drawScoreBreakdown(const RunScore& s, int y, bool endless, int cx) {
+        char buf[64];
+        glm::vec4 dim{0.75f, 0.75f, 0.8f, 0.9f};
+        int x0 = cx - 170, x1 = cx + 170;
+        auto row = [&](const char* label, int v, bool minus = false) {
+            ui.text(label, x0, y, 2, dim);
+            std::snprintf(buf, sizeof(buf), minus ? "-%d" : "%d", v);
+            ui.textRight(buf, x1, y, 2, minus ? glm::vec4{1.f, 0.5f, 0.4f, 0.95f} : glm::vec4{0.95f, 0.95f, 0.95f, 0.95f});
+            y += 22;
+        };
+        row("STYLE", s.style);
+        if (endless) row("WAVES", s.waves);
+        else { row("TIME BONUS", s.time); row("DAMAGE TAKEN", s.damage, true); }
+        std::snprintf(buf, sizeof(buf), "DIFFICULTY  X%.2f", s.mult);
+        ui.text(buf, x0, y, 2, dim);
+        y += 30;
+        std::snprintf(buf, sizeof(buf), "SCORE  %d", s.total);
+        ui.text(buf, cx, y, 4, {1.f, 0.85f, 0.2f, 1.f}, true);
+    }
+
+    void renderVictoryEndless(const char* title, const char* sub, const RunScore& s, int waves, int kills, int shots,
+                              int hits, float gameTime, int best, bool newRecord, bool showKeys = true) {
+        begin2D();
+        ui.rect(0, 0, screenW, screenH, {0.03f, 0.0f, 0.03f, 0.78f});
+        const int cx = 460;   // left of the leaderboard panel
+        ui.text("RUN OVER", cx, 70, 5, {1.f, 0.3f, 0.45f, 0.95f}, true);
+        ui.text(title, cx, 126, 2, {0.85f, 0.85f, 0.9f, 0.9f}, true);
+        if (sub[0]) ui.text(sub, cx, 148, 2, {0.4f, 0.8f, 1.f, 0.9f}, true);
+        char buf[96];
+        float acc = shots > 0 ? (float)hits / (float)shots * 100.f : 0.f;
+        std::snprintf(buf, sizeof(buf), "WAVES %d   KILLS %d   ACCURACY %d%%", waves, kills, (int)acc);
+        ui.text(buf, cx, 190, 2, {0.9f, 0.9f, 0.9f, 0.9f}, true);
+        std::snprintf(buf, sizeof(buf), "SURVIVED %s", formatTime(gameTime, false).c_str());
+        ui.text(buf, cx, 214, 2, {0.75f, 0.75f, 0.8f, 0.9f}, true);
+        drawScoreBreakdown(s, 256, true, cx);
+        if (newRecord) ui.text("NEW BEST", cx, 416, 3, {1.f, 0.85f, 0.2f, 0.5f + 0.5f * std::sin(hudTime * 6.f)}, true);
+        else if (best > 0) { std::snprintf(buf, sizeof(buf), "BEST %d", best); ui.text(buf, cx, 420, 2, {0.6f, 0.6f, 0.65f, 0.85f}, true); }
+        if (showKeys) ui.text("ENTER - NEW RUN    ESC - MENU", cx, screenH - 40, 2, {0.6f, 0.6f, 0.6f, 0.85f}, true);
+        end2D();
+    }
+
     void renderVictoryArena(int kills, int shots, int hits, int deaths, float gameTime, float peakStyle,
-                            int level, float best, bool newRecord, bool showKeys = true) {
+                            int level, float best, bool newRecord, bool showKeys, const RunScore& score) {
         begin2D();
         ui.rect(0, 0, screenW, screenH, {0.0f, 0.02f, 0.05f, 0.72f});
         ui.text("ALL ARENAS CLEARED", screenW / 2, screenH / 2 - 170, 4, {0.2f, 1.f, 0.6f, 0.95f}, true);
@@ -433,10 +476,9 @@ public:
         float acc = shots > 0 ? (float)hits / (float)shots * 100.f : 0.f;
         std::snprintf(buf, sizeof(buf), "KILLS %d    ACCURACY %d%%    DEATHS %d    LEVEL %d", kills, (int)acc, deaths, level);
         ui.text(buf, screenW / 2, y + 52, 2, sc, true);
-        float score = acc * 3.f + peakStyle + std::max(0.f, 1200.f - gameTime) - deaths * 60.f;
-        const char* grade = score > 1150.f ? "S" : score > 900.f ? "A" : score > 650.f ? "B" : score > 400.f ? "C" : "D";
-        ui.text(grade, screenW / 2, y + 90, 7, {1.f, 0.85f, 0.2f, 0.95f}, true);
-        if (showKeys) ui.text("ENTER - NEW RUN    ESC - MENU", screenW / 2, y + 170, 2, {0.6f, 0.6f, 0.6f, 0.8f}, true);
+        (void)peakStyle;
+        drawScoreBreakdown(score, y + 90, false, screenW / 2);
+        if (showKeys) ui.text("ENTER - NEW RUN    ESC - MENU", screenW / 2, screenH - 40, 2, {0.6f, 0.6f, 0.6f, 0.8f}, true);
         end2D();
     }
 

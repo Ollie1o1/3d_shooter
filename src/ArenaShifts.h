@@ -74,12 +74,15 @@ public:
         alarm = 0.f; rings.clear(); overloading = false;
     }
 
-    // A wave began in arena a: set where its shift is heading
-    void onWave(LevelData& L, int a, int wave, const WaveGoal& goal, float moverClock) {
-        int waves = (int)L.arenas[a].waves.size();
+    // A wave began in arena a: set where its shift is heading. `of`: how many
+    // waves make the cycle (ENDLESS passes 3 and the wave mod 3, so the Yard
+    // goes day-dusk-night-day and the Foundry's lava rises and falls); -1: the
+    // arena's own count
+    void onWave(LevelData& L, int a, int wave, const WaveGoal& goal, float moverClock, int of = -1) {
+        int waves = of > 0 ? of : (int)L.arenas[a].waves.size();
         switch (L.arenas[a].shift) {
         case ArenaShift::NIGHTFALL: nightTarget[a] = waves > 1 ? (float)wave / (waves - 1) : 0.f; break;
-        case ArenaShift::LAVA_RISE: if (wave == waves - 1) lavaTarget[a] = 1.f; break;
+        case ArenaShift::LAVA_RISE: lavaTarget[a] = wave == waves - 1 ? 1.f : 0.f; break;
         case ArenaShift::SPEED_UP:  setSpeed(L, a, wave == 0 ? 1.f : wave == 1 ? 1.3f : 1.6f, moverClock); break;
         case ArenaShift::OVERLOAD:
             overloading = goal.kind == WaveGoal::SURVIVE;

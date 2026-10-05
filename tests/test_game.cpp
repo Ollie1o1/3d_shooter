@@ -17,6 +17,9 @@
 #include "../src/StyleSystem.h"
 #include "../src/Projectile.h"
 #include "../src/ArenaShifts.h"
+#include "../src/Score.h"
+#include "../src/Daily.h"
+#include "../src/EndlessWaves.h"
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -1030,15 +1033,108 @@ int main() {
     }
     {
         Leaderboard lb;
+        auto timed = [](float t) { Leaderboard::Entry e; e.time = t; return e; };
+        auto scored = [](int sc, float t = 600.f) { Leaderboard::Entry e; e.score = sc; e.time = t; return e; };
         CHECK(Leaderboard::cleanName("  ollie <3!!  ") == "OLLIE 3" && Leaderboard::cleanName("abcdefghijklmnopq").size() == 12,
               "leaderboard names are upper-cased, filtered to what the font draws, and capped at 12");
-        CHECK(lb.add(false, "   ", 100.f, 1) == -1 && lb.arena.empty(), "a blank name is not saved");
-        lb.add(false, "B", 200.f, 1); lb.add(false, "A", 100.f, 1); lb.add(false, "C", 300.f, 2);
-        CHECK(lb.arena.size() == 3 && lb.arena[0].name == "A" && lb.arena[2].name == "C" && lb.fast.empty(),
-              "entries sort fastest first, per mode");
-        for (int i = 0; i < 20; ++i) lb.add(false, "X", 50.f + i, 0);
-        CHECK((int)lb.arena.size() == Leaderboard::KEEP && lb.placeFor(false, 1000.f) == -1 && lb.placeFor(false, 1.f) == 0,
-              "the board keeps the top 10; a slower time doesn't place");
+        CHECK(lb.add(Board::FAST, "   ", timed(100.f)) == -1 && lb.list(Board::FAST).empty(), "a blank name is not saved");
+        lb.add(Board::FAST, "B", timed(200.f)); lb.add(Board::FAST, "A", timed(100.f)); lb.add(Board::FAST, "C", timed(300.f));
+        CHECK(lb.list(Board::FAST).size() == 3 && lb.list(Board::FAST)[0].name == "A" && lb.list(Board::FAST)[2].name == "C" &&
+              lb.list(Board::ARENA).empty(), "FAST sorts fastest first, per mode");
+        for (int i = 0; i < 20; ++i) lb.add(Board::FAST, "X", timed(50.f + i));
+        CHECK((int)lb.list(Board::FAST).size() == Leaderboard::KEEP && lb.placeFor(Board::FAST, timed(1000.f)) == -1 &&
+              lb.placeFor(Board::FAST, timed(1.f)) == 0, "the board keeps the top 10; a slower time doesn't place");
+        lb.add(Board::ARENA, "LOW", scored(4000)); lb.add(Board::ARENA, "HIGH", scored(9000, 900.f)); lb.add(Board::ARENA, "MID", scored(6000, 300.f));
+        CHECK(lb.list(Board::ARENA)[0].name == "HIGH" && lb.list(Board::ARENA)[2].name == "LOW",
+              "ARENA ranks by score, not time: a slower run that scored more is ahead");
+        CHECK(lb.add(Board::ENDLESS, "ZERO", scored(0)) == -1, "a run that scored nothing isn't saved");
+    }
+    {
+        // The combined score
+        RunScore a = arenaScore(5000.f, 600.f, 300.f, 1);
+        CHECK(a.style == 5000 && a.time == 3000 && a.damage == 600 && a.total == 7400, "ARENA score = style + time under par - damage");
+        RunScore slow = arenaScore(5000.f, 1200.f, 300.f, 1), hard = arenaScore(5000.f, 600.f, 300.f, 3);
+        CHECK(slow.time == 0 && slow.total == 4400 && hard.total == 11100, "no time bonus past par; harder difficulties multiply it");
+        CHECK(arenaScore(100.f, 2000.f, 5000.f, 1).total == 0, "a score never goes below zero");
+        RunScore e = endlessScore(2000.f, 7, 2);
+        CHECK(e.waves == 3500 && e.total == (int)std::lround(5500 * 1.25f), "ENDLESS score = style + 500 a wave, x difficulty");
+    }
+    {
+        // The daily challenge: the same date is always the same run; days differ
+        DailyInfo d1 = DailyInfo::forDate(20261005), d2 = DailyInfo::forDate(20261005), d3 = DailyInfo::forDate(20261006);
+        bool variety = false;
+        for (int day = 1; day <= 28; ++day) {
+            DailyInfo x = DailyInfo::forDate(20261100 + day);
+            if (x.arena != d1.arena || x.mod != d1.mod) variety = true;
+            if (x.arena < 0 || x.arena > 3) variety = false;
+        }
+        CHECK(d1.seed == d2.seed && d1.arena == d2.arena && d1.mod == d2.mod && d1.seed != d3.seed && variety,
+              "a DAILY is the same for everyone on a date, and changes from day to day");
+        CHECK(d1.key() == "20261005" && d1.label() == "2026-10-05", "a DAILY's board is named by its date");
+        int today = DailyInfo::todayUtc();
+        CHECK(today > 20250000 && today < 21000000, "today's date (UTC) reads as YYYYMMDD");
+    }
+    {
+        // ENDLESS waves: deterministic from the seed, growing, unlocking, with
+        // an objective every 4th wave and a heavy wave every 10th
+        LevelData M = buildLevel();
+        EndlessWaves g1, g2;
+        g1.begin(1234u, M.arenas[3].goals, true); g2.begin(1234u, M.arenas[3].goals, true);
+        bool same = true, grows = true, unlockOk = true, goalsOk = true, heavyOk = true;
+        int prevTotal = 0;
+        for (int n = 0; n < 30; ++n) {
+            auto a = g1.wave(n), b = g2.wave(n);
+            int ta = 0, tb = 0;
+            for (auto& e : a.first) ta += e.total();
+            for (auto& e : b.first) tb += e.total();
+            if (ta != tb || a.first.size() != b.first.size() || a.second.kind != b.second.kind) same = false;
+            for (auto& e : a.first) {
+                if (n < 4 && (e.type == EnemyType::BRUTE || e.type == EnemyType::JUGGERNAUT || e.type == EnemyType::CONDUCTOR)) unlockOk = false;
+                if (n < 7 && e.type == EnemyType::JUGGERNAUT && n % 10 != 9) unlockOk = false;
+            }
+            bool isGoal = a.second.kind != WaveGoal::KILL_ALL;
+            if (isGoal != (n % 4 == 3 && n % 10 != 9)) goalsOk = false;
+            bool warden = false;
+            for (auto& e : a.first) warden |= e.type == EnemyType::WARDEN;
+            if (warden != (n % 10 == 9)) heavyOk = false;
+            if (n % 10 != 9 && n >= 2 && n % 4 != 3 && ta + 3 < prevTotal / 2) grows = false;
+            if (n % 10 != 9) prevTotal = ta;
+        }
+        std::printf("      endless wave 1: %d enemies, wave 20: %d\n", [&]{ EndlessWaves g; g.begin(1234u, {}, true); int t = 0; for (auto& e : g.wave(0).first) t += e.total(); return t; }(),
+                    [&]{ EndlessWaves g; g.begin(1234u, {}, true); for (int i = 0; i < 19; ++i) g.wave(i); int t = 0; for (auto& e : g.wave(19).first) t += e.total(); return t; }());
+        CHECK(same, "the same seed gives the same ENDLESS waves");
+        CHECK(unlockOk && grows, "ENDLESS waves grow, and the heavies only turn up later");
+        CHECK(goalsOk && heavyOk, "every 4th ENDLESS wave is an objective; every 10th brings the Warden (in the Core)");
+        EndlessWaves y; y.begin(99u, M.arenas[0].goals, false);
+        for (int i = 0; i < 9; ++i) y.wave(i);
+        auto heavy = y.wave(9);
+        bool jugg = false, noWarden = true;
+        for (auto& e : heavy.first) { jugg |= e.type == EnemyType::JUGGERNAUT; noWarden &= e.type != EnemyType::WARDEN; }
+        CHECK(jugg && noWarden, "outside the Core the heavy wave is Juggernauts, not the Warden");
+
+        // Fed one wave ahead, the director never runs out or clears the arena
+        Arena& core = M.arenas[3];
+        core.waves.clear(); core.goals.clear();
+        EndlessWaves g; g.begin(7u, buildLevel().arenas[3].goals, true);
+        WaveDirector d; d.level = &M;
+        d.startArena(3);
+        int waveStarts = 0; bool cleared = false;
+        std::vector<float> alive;
+        for (int tick = 0; tick < 60 * 60 * 12 && waveStarts < 12; ++tick) {
+            while ((int)core.waves.size() < d.wave + 2) { auto w = g.wave((int)core.waves.size()); core.waves.push_back(w.first); core.goals.push_back(w.second); }
+            std::vector<SpawnRequest> out;
+            d.update(DT, (int)alive.size(), d.goal().kind == WaveGoal::HOLD ? d.goal().pos : core.playerStart, out);
+            for (auto& r : out) { (void)r; alive.push_back(1.f); }
+            for (auto& t : alive) t -= DT;
+            alive.erase(std::remove_if(alive.begin(), alive.end(), [](float t) { return t <= 0.f; }), alive.end());
+            for (auto& ev : d.events) {
+                if (ev.kind == DirectorEvent::WAVE_START || ev.kind == DirectorEvent::BOSS_START) ++waveStarts;
+                if (ev.kind == DirectorEvent::ARENA_CLEARED || ev.kind == DirectorEvent::VICTORY) cleared = true;
+                if (ev.kind == DirectorEvent::GOAL_DONE) alive.clear();
+            }
+            d.events.clear();
+        }
+        CHECK(waveStarts >= 12 && !cleared, "an ENDLESS run keeps going wave after wave and never clears its arena");
     }
     {
         // Style freshness: the same gun over and over scores less, switching restores it

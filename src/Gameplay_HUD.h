@@ -72,7 +72,9 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         } else switch (director.phase) {
         case WaveDirector::Phase::APPROACH:   // FAST only
         case WaveDirector::Phase::INTRO:
-            snprintf(buf, sizeof(buf), "ARENA %d/%d  %s  GET READY", director.arena + 1, nArenas, ar.name); break;
+            if (endless()) snprintf(buf, sizeof(buf), "%s  %s  GET READY", dailyRun() ? "DAILY" : "ENDLESS", ar.name);
+            else snprintf(buf, sizeof(buf), "ARENA %d/%d  %s  GET READY", director.arena + 1, nArenas, ar.name);
+            break;
         case WaveDirector::Phase::ACTIVE:
             if (boss) snprintf(buf, sizeof(buf), "ARENA %d/%d  FINAL WAVE", director.arena + 1, nArenas);
             else if (director.hasGoal()) {
@@ -89,8 +91,11 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
                 case WaveGoal::SURVIVE:  snprintf(what, sizeof(what), "%s", formatTime(std::max(0.f, director.goalTimer), false).c_str()); break;
                 default: what[0] = 0;
                 }
-                snprintf(buf, sizeof(buf), "WAVE %d/%d   %s   %s", director.wave + 1, director.waveCount(), g.label, what);
+                if (endless()) snprintf(buf, sizeof(buf), "WAVE %d   %s   %s", director.wave + 1, g.label, what);
+                else snprintf(buf, sizeof(buf), "WAVE %d/%d   %s   %s", director.wave + 1, director.waveCount(), g.label, what);
             }
+            else if (endless()) snprintf(buf, sizeof(buf), "%s   WAVE %d   HOSTILES %d", dailyRun() ? "DAILY" : "ENDLESS",
+                                         director.wave + 1, left);
             else snprintf(buf, sizeof(buf), "ARENA %d/%d   WAVE %d/%d   HOSTILES %d",
                           director.arena + 1, nArenas, director.wave + 1, director.waveCount(), left);
             break;
@@ -104,6 +109,14 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             snprintf(buf, sizeof(buf), "VICTORY"); accent = {0.4f, 1.f, 0.6f}; break;
         }
         ui.renderObjective(buf, accent);
+        // The run's score so far (not FAST: that's a race), under the clock
+        if (!fast() && ranked) {
+            char sc[32];
+            snprintf(sc, sizeof(sc), "SCORE %d", runScore().total);
+            ui.begin2D();
+            ui.ui.textRight(sc, SCREEN_W - 14, 54, 2, {1.f, 0.85f, 0.4f, 0.9f});
+            ui.end2D();
+        }
 
         if (boss) ui.renderBossBar(boss->type == EnemyType::SOVEREIGN ? "THE SOVEREIGN" : "THE WARDEN",
                                    boss->health / boss->maxHealth, boss->enraged);
@@ -177,7 +190,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         ui.end2D();
     }
 
-    if (playerDead) {
+    if (playerDead && !endless()) {   // (ENDLESS has no retry: straight to the run's score)
         if (fast()) snprintf(buf, sizeof(buf), "ROOM %d/%d  %s", director.arena + 1, nArenas, ar.name);
         else snprintf(buf, sizeof(buf), "ARENA %d/%d %s - WAVE %d/%d", director.arena + 1, nArenas, ar.name,
                       director.wave + 1, director.waveCount());
@@ -191,9 +204,14 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             static std::vector<float> none;
             ui.renderVictoryFast(elapsedTime, newRecord ? 0.f : records.bestFast, newRecord, rank, totalKills,
                                  totalShots, totalHits, deaths, splits, newRecord ? none : records.fastSplits, !nameEntry);
+        } else if (endless()) {
+            std::string title = dailyRun() ? "DAILY  " + daily.label() : std::string("ENDLESS  ") + ar.name;
+            std::string sub = dailyRun() ? std::string(daily.modName()) : "";
+            ui.renderVictoryEndless(title.c_str(), sub.c_str(), runScore(), wavesCleared, totalKills, totalShots, totalHits,
+                                    elapsedTime, dailyRun() ? records.bestDaily : records.bestEndless, newRecord, !nameEntry);
         } else {
             ui.renderVictoryArena(totalKills, totalShots, totalHits, deaths, elapsedTime, peakStyle,
-                                  prog.level, records.bestArena, newRecord, !nameEntry);
+                                  prog.level, records.bestArena, newRecord, !nameEntry, runScore());
         }
         renderLeaderboardPanel();
     }

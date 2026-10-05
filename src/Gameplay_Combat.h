@@ -105,7 +105,7 @@ inline void GameplayState::punch(int boostable) {
 
 inline void GameplayState::spawnEnemy(EnemyType t, glm::vec3 pos) {
     enemies.push_back(Enemy(t, pos));
-    enemies.back().maxHealth *= tune().health;
+    enemies.back().maxHealth *= tune().health * endlessToughness();
     enemies.back().health = enemies.back().maxHealth;
     glm::vec3 c = statsOf(t).glow;
     fx.spawnBurst(pos + glm::vec3{0, 0.3f, 0}, c, 14, 3.f, 0.7f, -6.f);
@@ -252,6 +252,7 @@ inline void GameplayState::friendlySlam(const Enemy& slammer, float radius) {
 inline bool GameplayState::damagePlayer(float dmg, glm::vec3 from, float shakeT, float shakeAmt) {
     if (invincFrames > 0.f || playerDead || g_godMode || victory ||
         (!fast() && director.phase == WaveDirector::Phase::VICTORY)) return false;
+    if (modOn(DailyMod::GLASS_CANNON)) dmg *= 2.f;
     styleSystem.takeDamage(dmg);
     ui.onDamage();
     showDamageFrom(from);
@@ -272,6 +273,7 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
                                      bool crit, bool pierceArmor) {
     if (!e.targetable()) return false;
     if (!pierceArmor) dmg *= e.armorMult();
+    if (modOn(DailyMod::GLASS_CANNON) && src != StyleSource::FRIENDLY && src != StyleSource::ENVIRONMENT) dmg *= 2.f;
     if (e.shielded) {   // a CONDUCTOR's tether soaks most of it
         dmg *= CONDUCTOR_SHIELD;
         fx.spawnHitSparks(at, {0.3f, 1.f, 0.9f});

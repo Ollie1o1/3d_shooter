@@ -82,8 +82,9 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
         pointLightColor[i] = {0,0,0};
     }
 
-    int start = glm::clamp(g_startArena, 0, (int)level.arenas.size() - 1);
-    ranked = start == 0 && g_startWave <= 0 && !g_godMode && !g_practice && !g_devCam;
+    if (endless()) setupEndless();
+    int start = endless() ? endlessArena : glm::clamp(g_startArena, 0, (int)level.arenas.size() - 1);
+    ranked = (start == 0 || endless()) && g_startWave <= 0 && !g_godMode && !g_practice && !g_devCam;
     enterArena(start);
     director.wave = glm::clamp(g_startWave, 0, director.waveCount() - 1);
     if (fast()) ghost.load();
@@ -95,6 +96,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     if (g_devOverlay == "pause") paused = true;
     if (g_devOverlay == "victory") {   // the victory screen mid name entry (screenshots)
         elapsedTime = 754.3f; victory = true; ranked = true;
+        bankedStyle = 6240.f; bankedDamage = 410.f; wavesCleared = endless() ? 14 : 0; totalKills = 187;
         board.load(); nameEntry = true; nameBuf = "OLLIE";
     }
     for (int k = 0; k < (int)g_devSpawns.size(); ++k) {
@@ -173,6 +175,7 @@ inline void GameplayState::resetPlayer(glm::vec3 start) {
     player.camera.aspectRatio = (float)SCREEN_W/SCREEN_H;
     player.camera.fov = settings ? settings->fov : 90.f;
     prevCamPos = player.camera.position;
+    bankedStyle += styleSystem.earned; bankedDamage += styleSystem.damageTaken;   // the score survives a retry
     styleSystem = StyleSystem{};
     grenadeCount = grenadeMax; killsThisCycle = 0;
     for (int w = 0; w < WEAPON_COUNT; ++w) {
@@ -182,7 +185,7 @@ inline void GameplayState::resetPlayer(glm::vec3 start) {
     aim = 0.f; aimFullAt = -1.f; boltSoundTimer = -1.f;
     dashCharges = 2; dashCooldown = 0.f; dashMomentumTimer = 0.f;
     jumpsRemaining = 2; slamming = false; invincFrames = 0.f;
-    activeWeapon = 0; pendingWeapon = -1; weaponSwitchTimer = 0.f;
+    activeWeapon = modOn(DailyMod::MARKSMAN) ? (int)WeaponId::KAR : 0; pendingWeapon = -1; weaponSwitchTimer = 0.f;
     recoilPitch = 0.f; peakFallSpeed = 0.f; landSquash = 0.f; fovKick = 0.f;
     paused = false; pauseSettings = false; pauseSelected = 0; armoryOpen = false;
     ui.clearIndicators();
@@ -216,7 +219,10 @@ inline void GameplayState::newRun() {
     nameEntry = false; boardPlace = -1;
     ghostRec.pts.clear();
     if (fast()) ghost.load();
-    enterArena(0);
+    if (endless()) setupEndless();
+    enterArena(endless() ? endlessArena : 0);
+    bankedStyle = bankedDamage = 0.f;   // after enterArena: that banked the last run's
+    wavesCleared = 0;
     if (fast()) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
     captureMouse(true);
 }
@@ -236,6 +242,11 @@ inline void GameplayState::handleDirectorEvents() {
                 snprintf(buf, sizeof(buf), "ROOM %d/%d  %s", ev.value + 1, (int)level.arenas.size(), ar.name);
                 pushBanner(buf, ar.subtitle, {1.f, 0.7f, 0.3f}, 1.8f);
                 audio.play("wave", 90);
+            } else if (endless()) {
+                if (dailyRun()) pushBanner("DAILY  " + daily.label(), std::string(daily.modName()) + " - " + daily.modHint(),
+                                           {0.4f, 0.8f, 1.f}, 3.4f);
+                else pushBanner(std::string("ENDLESS  ") + ar.name, "HOW LONG CAN YOU LAST", {1.f, 0.3f, 0.45f}, 3.f);
+                audio.play("wave");
             } else {
                 snprintf(buf, sizeof(buf), "ARENA %d/%d", ev.value + 1, (int)level.arenas.size());
                 pushBanner(std::string(buf) + "  " + ar.name, ar.subtitle, {1.f, 0.78f, 0.3f}, 2.6f);
@@ -243,10 +254,14 @@ inline void GameplayState::handleDirectorEvents() {
             }
             break;
         case DirectorEvent::WAVE_START:
-            shifts.onWave(level, director.arena, ev.value, director.goal(), moverClock);
+            if (endless()) shifts.onWave(level, director.arena, ev.value % 3, director.goal(), moverClock, 3);
+            else shifts.onWave(level, director.arena, ev.value, director.goal(), moverClock);
             if (ar.shift == ArenaShift::SPEED_UP && ev.value > 0) ui.feed("THE PLATFORMS SPEED UP", {0.4f, 0.9f, 1.f});
             if (fast()) { if (ev.value > 0) pushBanner("SECOND WAVE", "", {1.f, 0.5f, 0.3f}, 1.4f); break; }
-            snprintf(buf, sizeof(buf), "WAVE %d/%d", ev.value + 1, director.waveCount());
+            if (endless()) {
+                level.arenas[director.arena].maxAlive = endlessBaseAlive + std::min(6, ev.value / 3);   // more at once as it goes on
+                snprintf(buf, sizeof(buf), "WAVE %d", ev.value + 1);
+            } else snprintf(buf, sizeof(buf), "WAVE %d/%d", ev.value + 1, director.waveCount());
             pushBanner(buf, director.goal().label, {1.f, 0.9f, 0.4f}, director.hasGoal() ? 2.6f : 1.8f);
             audio.play("wave", 90);
             break;
@@ -266,6 +281,7 @@ inline void GameplayState::handleDirectorEvents() {
             break;
         }
         case DirectorEvent::WAVE_CLEARED:
+            if (endless()) ++wavesCleared;
             shifts.onWaveOver();
             if (!fast()) pushBanner("WAVE CLEAR", "", {0.4f, 1.f, 0.6f}, 1.6f);
             styleSystem.heal(10.f);
@@ -336,12 +352,14 @@ inline void GameplayState::finishRun() {
     captureMouse(false);
     newRecord = false;
     if (!ranked) return;
+    board.daily = worldBoard.daily = daily.key();
     board.load();
     worldLoaded = worldBoard.loadOnline();
     // Asked for a name when the run makes this browser's board, or (on the
     // web, with the shared board up) that one
-    bool places = board.placeFor(fast(), elapsedTime) >= 0 ||
-                  (worldLoaded && worldBoard.placeFor(fast(), elapsedTime) >= 0);
+    Board bd = boardFor();
+    Leaderboard::Entry me = runEntry();
+    bool places = board.placeFor(bd, me) >= 0 || (worldLoaded && worldBoard.placeFor(bd, me) >= 0);
     if (places) { nameEntry = true; nameBuf = board.lastName; }
     if (fast()) {
         newRecord = records.bestFast <= 0.f || elapsedTime < records.bestFast;
@@ -349,11 +367,69 @@ inline void GameplayState::finishRun() {
             records.bestFast = elapsedTime; records.fastSplits = splits;
             ghostRec.save(); ghost = ghostRec;
         }
+    } else if (endless()) {
+        int& best = dailyRun() ? records.bestDaily : records.bestEndless;
+        if (dailyRun() && records.dailyDate != daily.date) { records.dailyDate = daily.date; best = 0; }
+        newRecord = me.score > best;
+        if (newRecord) best = me.score;
+        if (dailyRun()) records.save();   // today's date, best or not
     } else {
         newRecord = records.bestArena <= 0.f || elapsedTime < records.bestArena;
         if (newRecord) records.bestArena = elapsedTime;
+        int sc = me.score;
+        if (sc > records.bestArenaScore) { records.bestArenaScore = sc; newRecord = true; }
     }
     if (newRecord) records.save();
+}
+
+inline RunScore GameplayState::runScore() const {
+    int diff = settings ? settings->difficulty : DIFFICULTY_DEFAULT;
+    float style = bankedStyle + styleSystem.earned;
+    if (endless()) return endlessScore(style, wavesCleared, diff);
+    return arenaScore(style, elapsedTime, bankedDamage + styleSystem.damageTaken, diff);
+}
+
+inline Leaderboard::Entry GameplayState::runEntry() const {
+    Leaderboard::Entry e;
+    e.time = elapsedTime;
+    e.difficulty = settings ? settings->difficulty : DIFFICULTY_DEFAULT;
+    e.score = fast() ? 0 : runScore().total;
+    e.wave = endless() ? wavesCleared : 0;
+    return e;
+}
+
+// ---- ENDLESS / DAILY --------------------------------------------------------
+// The run's arena gets generated waves instead of its own: one is always
+// queued ahead of the director, so it never runs out and never "clears" the
+// arena (its exit stays shut). The arena's own objectives come back as every
+// 4th wave (EndlessWaves.h).
+inline void GameplayState::setupEndless() {
+    daily = DailyInfo::today();
+    endlessArena = dailyRun() ? daily.arena : 3;
+    static LevelData built = buildLevel();   // the arenas' own objectives, before any run touched them
+    Arena& a = level.arenas[endlessArena];
+    endlessBaseAlive = built.arenas[endlessArena].maxAlive;
+    uint32_t seed = dailyRun() ? daily.seed : (uint32_t)SDL_GetPerformanceCounter();
+    gen.budgetScale = modOn(DailyMod::SWARM) ? 1.5f : 1.f;
+    gen.begin(seed, built.arenas[endlessArena].goals, endlessArena == 3);
+    a.waves.clear(); a.goals.clear();
+    feedEndless();
+    board.daily = worldBoard.daily = daily.key();
+}
+
+inline void GameplayState::feedEndless() {
+    Arena& a = level.arenas[endlessArena];
+    while ((int)a.waves.size() < director.wave + 2) {
+        auto w = gen.wave((int)a.waves.size());
+        a.waves.push_back(w.first);
+        a.goals.push_back(w.second);
+    }
+}
+
+inline float GameplayState::endlessToughness() const {
+    if (!endless()) return 1.f;
+    float t = 1.f + 0.03f * director.wave;   // each wave a little tougher
+    return modOn(DailyMod::SWARM) ? t * 0.6f : t;
 }
 
 inline Theme GameplayState::bloodEclipse(const Theme& t) {
@@ -558,6 +634,7 @@ inline void GameplayState::update(float dt) {
         playerDead = true;
         deadTimer = 0.f;
         grapple.release();
+        if (endless()) victoryDelay = 1.6f;   // no retries: the run's over, on to its score
     }
 }
 

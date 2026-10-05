@@ -376,7 +376,7 @@ int main(int argc, char* argv[]) {
     app->settings.load();  // restore every option (settings.cfg on desktop, localStorage on the web)
 
     // --play skips the main menu and drops straight into an ARENA run; --fast
-    // into the FAST time trial. --arena N starts at a later arena / section
+    // into the FAST time trial, --endless an ENDLESS run, --daily today's DAILY. --arena N starts at a later arena / section
     // (implies --play), --wave N skips to a wave within it, --god disables
     // damage (for footage), --dev opens the level select. Dev: --cam X Y Z
     // YAW PITCH, --shot FRAMES FILE.BMP
@@ -384,6 +384,8 @@ int main(int argc, char* argv[]) {
         std::string arg = argv[i];
         if (arg == "--play") app->pending = App::NextState::Game;
         if (arg == "--fast") { app->mode = GameMode::FAST; app->pending = App::NextState::Game; }
+        if (arg == "--endless") { app->mode = GameMode::ENDLESS; app->pending = App::NextState::Game; }
+        if (arg == "--daily")   { app->mode = GameMode::DAILY;   app->pending = App::NextState::Game; }
         if (arg == "--god")  { g_godMode = true; app->godFromCommandLine = true; }
         if (arg == "--dev")  app->openDevMenu = true;
         if (arg == "--wave" && i + 1 < argc) g_startWave = std::atoi(argv[++i]) - 1;

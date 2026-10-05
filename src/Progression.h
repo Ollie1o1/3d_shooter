@@ -94,6 +94,9 @@ struct Records {
     float bestArena = 0.f;                 // full Arena run, seconds (0 = none yet)
     float bestFast  = 0.f;                 // FAST mode total
     std::vector<float> fastSplits;         // cumulative time at each section clear, from the best run
+    int   bestArenaScore = 0;              // best ARENA score (Score.h)
+    int   bestEndless = 0;                 // best ENDLESS score
+    int   bestDaily = 0, dailyDate = 0;    // best DAILY score, and the day it's for (YYYYMMDD)
 
     static constexpr const char* kKey = "records.v2.cfg";
 
@@ -103,6 +106,9 @@ struct Records {
         while (f >> key) {
             if (key == "bestArena") f >> bestArena;
             else if (key == "bestFast") f >> bestFast;
+            else if (key == "bestArenaScore") f >> bestArenaScore;
+            else if (key == "bestEndless") f >> bestEndless;
+            else if (key == "bestDaily") f >> bestDaily >> dailyDate;
             else if (key == "fastSplits") {
                 int n = 0; f >> n;
                 fastSplits.assign(std::max(0, std::min(n, 32)), 0.f);
@@ -115,6 +121,9 @@ struct Records {
         std::ostringstream f;
         f << "bestArena " << bestArena << "\n";
         f << "bestFast " << bestFast << "\n";
+        f << "bestArenaScore " << bestArenaScore << "\n";
+        f << "bestEndless " << bestEndless << "\n";
+        f << "bestDaily " << bestDaily << " " << dailyDate << "\n";
         f << "fastSplits " << fastSplits.size();
         for (float s : fastSplits) f << " " << s;
         f << "\n";
@@ -125,17 +134,32 @@ struct Records {
 // Finished runs a player chose to put their name to, fastest first, kept
 // per mode (the top KEEP of each). Only full runs count: not one started at
 // a later arena, in god mode or from the dev level select.
+// The leaderboards, one per mode. ARENA, ENDLESS and DAILY rank by score
+// (Score.h), FAST (a time trial) by time. DAILY keeps only today's board.
+enum class Board { ARENA, FAST, ENDLESS, DAILY, COUNT };
+inline const char* boardKey(Board b) {
+    static const char* K[] = {"arena", "fast", "endless", "daily"};
+    return K[(int)b];
+}
+
 struct Leaderboard {
-    struct Entry { std::string name; float time; int difficulty; };
+    struct Entry { std::string name; float time = 0.f; int difficulty = 1; int score = 0; int wave = 0; };
     static constexpr int KEEP = 10;
     static constexpr int MAX_NAME_LEN = 12;
-    std::vector<Entry> arena, fast;
+    std::vector<Entry> lists[(int)Board::COUNT];
+    std::string daily;      // today's DAILY key (YYYYMMDD): other days' entries are dropped
     std::string lastName;   // offered again next time
 
-    static constexpr const char* kKey = "leaderboard.cfg";
+    static constexpr const char* kKey    = "leaderboard.v2.cfg";
+    static constexpr const char* kOldKey = "leaderboard.cfg";   // time-only boards, before scores
 
-    std::vector<Entry>&       list(bool f)       { return f ? fast : arena; }
-    const std::vector<Entry>& list(bool f) const { return f ? fast : arena; }
+    std::vector<Entry>&       list(Board b)       { return lists[(int)b]; }
+    const std::vector<Entry>& list(Board b) const { return lists[(int)b]; }
+    static bool byScore(Board b) { return b != Board::FAST; }
+    // Does a rank above b on board `bd`?
+    static bool ahead(Board bd, const Entry& a, const Entry& b) {
+        return byScore(bd) ? a.score > b.score : a.time < b.time;
+    }
 
     // Letters, digits, space and - . _ only (what the pixel font draws), upper case
     static bool nameChar(char c) {
@@ -150,75 +174,109 @@ struct Leaderboard {
         size_t a = o.find_first_not_of(' '), b = o.find_last_not_of(' ');
         return a == std::string::npos ? std::string() : o.substr(a, b - a + 1);
     }
+    static bool valid(Board b, const Entry& e) { return byScore(b) ? e.score > 0 : e.time > 0.f; }
 
-    // Where a time would place (0-based), or -1 if it wouldn't make the board
-    int placeFor(bool f, float t) const {
-        const auto& l = list(f);
+    // Where a run would place (0-based), or -1 if it wouldn't make the board
+    int placeFor(Board b, const Entry& e) const {
+        if (!valid(b, e)) return -1;
+        const auto& l = list(b);
         int i = 0;
-        while (i < (int)l.size() && l[i].time <= t) ++i;
+        while (i < (int)l.size() && !ahead(b, e, l[i])) ++i;
         return i < KEEP ? i : -1;
     }
-    // Returns the entry's place, or -1 (no name, or not fast enough)
-    int add(bool f, const std::string& rawName, float t, int difficulty) {
-        std::string name = cleanName(rawName);
-        if (name.empty() || t <= 0.f) return -1;
-        int at = placeFor(f, t);
+    // Returns the entry's place, or -1 (no name, or not good enough)
+    int add(Board b, const std::string& rawName, Entry e) {
+        e.name = cleanName(rawName);
+        if (e.name.empty()) return -1;
+        int at = placeFor(b, e);
         if (at < 0) return -1;
-        auto& l = list(f);
-        l.insert(l.begin() + at, Entry{name, t, difficulty});
+        auto& l = list(b);
+        l.insert(l.begin() + at, e);
         if ((int)l.size() > KEEP) l.resize(KEEP);
-        lastName = name;
+        lastName = e.name;
         return at;
     }
 
+    // One entry per line. FAST: "fast TIME DIFF NAME"; the others:
+    // "arena|endless SCORE TIME DIFF WAVE NAME", "daily DATE SCORE TIME DIFF WAVE NAME"
+    static bool parseScored(std::istringstream& ls, Entry& e) {
+        if (!(ls >> e.score >> e.time >> e.difficulty >> e.wave)) return false;
+        std::string rest; std::getline(ls, rest);
+        e.name = cleanName(rest);
+        return !e.name.empty();
+    }
+    static bool parseTimed(std::istringstream& ls, Entry& e) {
+        if (!(ls >> e.time >> e.difficulty)) return false;
+        std::string rest; std::getline(ls, rest);
+        e.name = cleanName(rest);
+        return !e.name.empty() && e.time > 0.f;
+    }
+    void clear() { for (auto& l : lists) l.clear(); }
+    void sortAll() {
+        for (int b = 0; b < (int)Board::COUNT; ++b) {
+            Board bd = (Board)b;
+            std::stable_sort(lists[b].begin(), lists[b].end(), [bd](const Entry& x, const Entry& y) { return ahead(bd, x, y); });
+            if ((int)lists[b].size() > KEEP) lists[b].resize(KEEP);
+        }
+    }
+
     void load() {
-        arena.clear(); fast.clear();
-        std::istringstream f(persist::load(kKey));
+        clear();
+        std::string text = persist::load(kKey);
+        bool migrate = text.empty();
+        if (migrate) text = persist::load(kOldKey);   // keep the FAST times from before scores
+        std::istringstream f(text);
         std::string line;
         while (std::getline(f, line)) {
             std::istringstream ls(line);
             std::string key; ls >> key;
-            if (key == "arena" || key == "fast") {
-                Entry e{"", 0.f, 0}; ls >> e.time >> e.difficulty;
-                std::string rest; std::getline(ls, rest);
-                e.name = cleanName(rest);
-                if (!e.name.empty() && e.time > 0.f && (int)list(key == "fast").size() < KEEP)
-                    list(key == "fast").push_back(e);
+            Entry e;
+            if (key == "fast") { if (parseTimed(ls, e)) list(Board::FAST).push_back(e); }
+            else if (key == "arena" && !migrate) { if (parseScored(ls, e)) list(Board::ARENA).push_back(e); }
+            else if (key == "endless") { if (parseScored(ls, e)) list(Board::ENDLESS).push_back(e); }
+            else if (key == "daily") {
+                std::string date; ls >> date;
+                if (date == daily && parseScored(ls, e)) list(Board::DAILY).push_back(e);
             } else if (key == "lastName") {
                 std::string rest; std::getline(ls, rest);
                 lastName = cleanName(rest);
             }
         }
-        auto byTime = [](const Entry& a, const Entry& b) { return a.time < b.time; };
-        std::stable_sort(arena.begin(), arena.end(), byTime);
-        std::stable_sort(fast.begin(), fast.end(), byTime);
+        sortAll();
     }
-    // The shared (online) board, as the web page caches it: per mode, lines
-    // of "time difficulty name". Empty off the web or with no API: callers
-    // then show this browser's own board.
+
+    // The shared (online) board, as the web page caches it: per mode, lines of
+    // "TIME DIFF NAME" (FAST) or "SCORE TIME DIFF WAVE NAME". Empty off the web
+    // or with no API: callers then show this browser's own board.
     static constexpr const char* kOnlineKey = "leaderboard.online.";
     bool loadOnline() {
-        arena.clear(); fast.clear();
-        for (bool fm : {false, true}) {
-            std::istringstream f(persist::load(std::string(kOnlineKey) + (fm ? "fast" : "arena")));
+        clear();
+        bool any = false;
+        for (int b = 0; b < (int)Board::COUNT; ++b) {
+            Board bd = (Board)b;
+            std::string key = std::string(kOnlineKey) + boardKey(bd) + (bd == Board::DAILY ? "." + daily : "");
+            std::istringstream f(persist::load(key));
             std::string line;
-            while (std::getline(f, line) && (int)list(fm).size() < KEEP) {
+            while (std::getline(f, line) && (int)list(bd).size() < KEEP) {
                 std::istringstream ls(line);
-                Entry e{"", 0.f, 0};
-                if (!(ls >> e.time >> e.difficulty)) continue;
-                std::string rest; std::getline(ls, rest);
-                e.name = cleanName(rest);
-                if (!e.name.empty() && e.time > 0.f) list(fm).push_back(e);
+                Entry e;
+                if (byScore(bd) ? parseScored(ls, e) : parseTimed(ls, e)) { list(bd).push_back(e); any = true; }
             }
         }
-        return !arena.empty() || !fast.empty();
+        return any;
     }
 
     void save() const {
         std::ostringstream f;
-        for (bool fm : {false, true})
-            for (auto& e : list(fm)) f << (fm ? "fast " : "arena ") << e.time << " " << e.difficulty << " " << e.name << "\n";
+        for (auto& e : list(Board::FAST)) f << "fast " << e.time << " " << e.difficulty << " " << e.name << "\n";
+        for (Board b : {Board::ARENA, Board::ENDLESS, Board::DAILY})
+            for (auto& e : list(b)) {
+                f << boardKey(b) << " ";
+                if (b == Board::DAILY) f << daily << " ";
+                f << e.score << " " << e.time << " " << e.difficulty << " " << e.wave << " " << e.name << "\n";
+            }
         if (!lastName.empty()) f << "lastName " << lastName << "\n";
+        // Other days' DAILY entries go: only today's board is kept
         persist::save(kKey, f.str());
     }
 };

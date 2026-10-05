@@ -93,6 +93,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     glm::vec3 gPoint; int gWall = -1; bool gMover = false;
     bool canHook = findGrappleTarget(gPoint, gWall, gMover);
     grappleTargetInSight = canHook && gMover;
+    if (pendingGrapple && modOn(DailyMod::GROUNDED)) pendingGrapple = false;   // DAILY: no grapple today
     if (pendingGrapple) {
         if (!grapple.active) {
             if (canHook) {
@@ -171,8 +172,11 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         glm::vec3 p = player.position;
         if (p.y < hz.box.max.y + 0.3f && p.y > hz.box.min.y - 0.5f && p.x > hz.box.min.x && p.x < hz.box.max.x &&
             p.z > hz.box.min.z && p.z < hz.box.max.z) {
-            if (!g_godMode && director.phase != WaveDirector::Phase::VICTORY)
-                styleSystem.health = std::max(0.f, styleSystem.health - hz.dps * dt);
+            if (!g_godMode && director.phase != WaveDirector::Phase::VICTORY) {
+                float burn = std::min(hz.dps * dt, styleSystem.health);
+                styleSystem.health -= burn;
+                styleSystem.damageTaken += burn;
+            }
             if (hazardTick <= 0.f) {
                 hazardTick = 0.35f;
                 ui.onDamage();
@@ -228,6 +232,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     std::vector<SpawnRequest> spawns;
     director.countScale    = tune().waveSize;
     director.maxAliveBonus = tune().maxAliveBonus;
+    if (endless()) feedEndless();
     // HOLD: an enemy on foot in the circle stops it filling
     director.zoneContested = false;
     if (director.goal().kind == WaveGoal::HOLD)

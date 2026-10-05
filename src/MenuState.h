@@ -4,6 +4,7 @@
 #include "SettingsMenu.h"
 #include "Progression.h"
 #include "LeaderboardView.h"
+#include "Daily.h"
 #include "Level.h"
 #include "LevelGauntlet.h"
 #include "UIBatch.h"
@@ -21,7 +22,8 @@
 #include <vector>
 
 // =============================================================================
-// MenuState — main menu (ARENA / FAST / LEADERBOARD / SETTINGS / EXIT), the
+// MenuState — main menu (ARENA / FAST / ENDLESS / DAILY / LEADERBOARD /
+// SETTINGS / EXIT), the
 // settings page, the leaderboard page, and the DEV level select (press ` or
 // F2 on the main menu): jump straight to any arena, wave, FAST room or the
 // boss, optionally in god mode. Dev runs are practice: no records.
@@ -47,7 +49,9 @@ public:
     bool         worldLoaded = false;
     float        boardPoll = 0.f;
 
-    static constexpr int NUM_ITEMS = 5;
+    static constexpr int NUM_ITEMS = 7;
+    DailyInfo daily = DailyInfo::today();
+    std::vector<std::string> arenaNames;
 
     // DEV level select: rows are options, then every arena, then every FAST room
     struct DevRow { const char* label; std::string name; GameMode mode; int arena; int waves; };
@@ -57,10 +61,12 @@ public:
     static constexpr int DEV_OPTIONS = 2;   // GOD MODE, START WAVE
 
     MenuState(int w, int h) : screenW(w), screenH(h), ui(w, h), settingsMenu(w, h) {
-        settingsMenu.onBack = [this]() { page = MAIN; selected = 3; };
+        settingsMenu.onBack = [this]() { page = MAIN; selected = 5; };
         records.load();
+        board.daily = worldBoard.daily = daily.key();
         board.load();
         LevelData A = buildLevel(), F = buildGauntlet();
+        for (auto& a : A.arenas) arenaNames.push_back(a.name);
         for (int i = 0; i < (int)A.arenas.size(); ++i)
             devRows.push_back({"ARENA", A.arenas[i].name, GameMode::ARENA, i, (int)A.arenas[i].waves.size()});
         for (int i = 0; i < (int)F.arenas.size(); ++i)
@@ -144,11 +150,12 @@ public:
     }
 
 private:
-    int itemY(int i) const { return screenH / 2 - 100 + i * 60; }
+    static constexpr int ITEM_H = 44;
+    int itemY(int i) const { return screenH / 2 - 150 + i * 50; }
     int itemAt(int mx, int my) const {
         for (int i = 0; i < NUM_ITEMS; ++i) {
             int y = itemY(i);
-            if (mx > screenW / 2 - 200 && mx < screenW / 2 + 200 && my > y && my < y + 54) return i;
+            if (mx > screenW / 2 - 200 && mx < screenW / 2 + 200 && my > y && my < y + ITEM_H) return i;
         }
         return -1;
     }
@@ -156,14 +163,18 @@ private:
     void activate(int idx) {
         if (idx == 0 && onStart) onStart(GameMode::ARENA, StartOptions{});
         if (idx == 1 && onStart) onStart(GameMode::FAST, StartOptions{});
-        if (idx == 2) {
+        if (idx == 2 && onStart) onStart(GameMode::ENDLESS, StartOptions{});
+        if (idx == 3 && onStart) onStart(GameMode::DAILY, StartOptions{});
+        if (idx == 4) {
+            daily = DailyInfo::today();
+            board.daily = worldBoard.daily = daily.key();
             page = BOARD; board.load(); boardPoll = 0.f;
 #ifdef __EMSCRIPTEN__
             emscripten_run_script("window.overdriveBoard&&window.overdriveBoard.refresh()");
 #endif
         }
-        if (idx == 3) { page = SETTINGS; settingsMenu.selected = 1; }
-        if (idx == 4 && onQuit) onQuit();
+        if (idx == 5) { page = SETTINGS; settingsMenu.selected = 1; }
+        if (idx == 6 && onQuit) onQuit();
     }
 
     // ---- DEV level select ----------------------------------------------------
@@ -262,10 +273,15 @@ private:
         // The shared board when the site's API is up (re-read as the fetch lands), else this browser's
         if ((boardPoll -= 1.f / 60.f) <= 0.f) { boardPoll = 1.f; worldLoaded = worldBoard.loadOnline(); }
         const Leaderboard& shown = worldLoaded ? worldBoard : board;
-        ui.text(worldLoaded ? "WORLD LEADERBOARD" : "LEADERBOARD", cx, 50, 5, {1.f, 0.55f, 0.08f, 1.f}, true);
-        drawLeaderboardTable(ui, shown, false, cx - 600.f, 130.f, 570.f, Leaderboard::KEEP, -1, flashTime);
-        drawLeaderboardTable(ui, shown, true,  cx + 30.f,  130.f, 570.f, Leaderboard::KEEP, -1, flashTime);
-        ui.text("FINISH A FULL RUN TO PUT YOUR NAME ON THE BOARD", cx, screenH - 64, 1, {0.7f, 0.7f, 0.75f, 0.9f}, true);
+        ui.text(worldLoaded ? "WORLD LEADERBOARD" : "LEADERBOARD", cx, 34, 4, {1.f, 0.55f, 0.08f, 1.f}, true);
+        const int rows = 8;
+        std::string dl = "DAILY  " + daily.label();
+        drawLeaderboardTable(ui, shown, Board::ARENA,   cx - 600.f, 84.f,  570.f, rows, -1, flashTime);
+        drawLeaderboardTable(ui, shown, Board::FAST,    cx + 30.f,  84.f,  570.f, rows, -1, flashTime);
+        drawLeaderboardTable(ui, shown, Board::ENDLESS, cx - 600.f, 338.f, 570.f, rows, -1, flashTime);
+        drawLeaderboardTable(ui, shown, Board::DAILY,   cx + 30.f,  338.f, 570.f, rows, -1, flashTime, dl.c_str());
+        ui.text("ARENA, ENDLESS AND DAILY RANK BY SCORE (STYLE, SPEED, DAMAGE AVOIDED, DIFFICULTY) - FAST BY TIME",
+                cx, screenH - 64, 1, {0.7f, 0.7f, 0.75f, 0.9f}, true);
         ui.text("ESC, ENTER OR CLICK - BACK", cx, screenH - 40, 2, {0.6f, 0.6f, 0.65f, 0.85f}, true);
     }
 
@@ -285,12 +301,18 @@ private:
         struct Item { const char* label; const char* sub; };
         std::string arenaSub = "5 ARENAS - WAVES - TWO BOSSES";
         std::string fastSub  = "TIME TRIAL - THE GAUNTLET";
-        if (records.bestArena > 0.f) arenaSub += "   BEST " + formatTime(records.bestArena);
+        std::string endSub   = "THE CORE - HOW LONG CAN YOU LAST";
+        std::string daySub   = "TODAY: " + arenaNames[daily.arena] + " - " + daily.modName();
+        if (records.bestArenaScore > 0) arenaSub += "   BEST " + std::to_string(records.bestArenaScore);
         if (records.bestFast  > 0.f) fastSub  += "   BEST " + formatTime(records.bestFast);
+        if (records.bestEndless > 0) endSub += "   BEST " + std::to_string(records.bestEndless);
+        if (records.bestDaily > 0 && records.dailyDate == daily.date) daySub += "   BEST " + std::to_string(records.bestDaily);
         Item items[NUM_ITEMS] = {
             {"ARENA", arenaSub.c_str()},
             {"FAST",  fastSub.c_str()},
-            {"LEADERBOARD", "FASTEST RUNS - ARENA AND FAST"},
+            {"ENDLESS", endSub.c_str()},
+            {"DAILY", daySub.c_str()},
+            {"LEADERBOARD", "EVERY MODE - THE WORLD'S BEST"},
             {"SETTINGS", "SENSITIVITY  FOV  GRAPHICS  MORE"},
             {"EXIT", ""},
         };
@@ -298,23 +320,23 @@ private:
             bool sel = selected == i;
             int y = itemY(i);
             float pulse = sel ? 0.5f + 0.5f * std::sin(flashTime * 5.f) : 0.f;
-            ui.rect(cx - 200, y, 400, 54, sel ? glm::vec4{0.13f + pulse * 0.06f, 0.08f, 0.04f, 0.92f}
-                                              : glm::vec4{0.07f, 0.07f, 0.10f, 0.85f});
+            ui.rect(cx - 200, y, 400, ITEM_H, sel ? glm::vec4{0.13f + pulse * 0.06f, 0.08f, 0.04f, 0.92f}
+                                                  : glm::vec4{0.07f, 0.07f, 0.10f, 0.85f});
             glm::vec4 border = sel ? glm::vec4{1.f, 0.6f + pulse * 0.2f, 0.1f, 0.9f} : glm::vec4{0.3f, 0.3f, 0.35f, 0.6f};
             ui.rect(cx - 200, y, 400, 2, border);
-            ui.rect(cx - 200, y + 52, 400, 2, border);
-            if (sel) ui.rect(cx - 200, y, 5, 54, {1.f, 0.6f + pulse * 0.2f, 0.1f, 1.f});
+            ui.rect(cx - 200, y + ITEM_H - 2, 400, 2, border);
+            if (sel) ui.rect(cx - 200, y, 5, ITEM_H, {1.f, 0.6f + pulse * 0.2f, 0.1f, 1.f});
             glm::vec4 c = sel ? glm::vec4{1.f, 0.65f, 0.12f, 1.f} : glm::vec4{0.65f, 0.65f, 0.7f, 0.95f};
             bool hasSub = items[i].sub[0] != 0;
-            ui.text(items[i].label, cx, y + (hasSub ? 9 : 16), 3, c, true);
-            if (hasSub) ui.text(items[i].sub, cx, y + 37, 1, {0.75f, 0.72f, 0.7f, 0.9f}, true);
+            ui.text(items[i].label, cx, y + (hasSub ? 6 : 12), 3, c, true);
+            if (hasSub) ui.text(items[i].sub, cx, y + 31, 1, {0.75f, 0.72f, 0.7f, 0.9f}, true);
         }
         if (settings) {
             char d[64];
             std::snprintf(d, sizeof(d), "DIFFICULTY   <  %s  >", difficulty(settings->difficulty).name);
             glm::vec4 dc = settings->difficulty >= 2 ? glm::vec4{1.f, 0.35f, 0.25f, 0.95f} : glm::vec4{1.f, 0.8f, 0.45f, 0.95f};
-            ui.text(d, cx, itemY(NUM_ITEMS - 1) + 70, 2, dc, true);
-            ui.text("LEFT / RIGHT TO CHANGE", cx, itemY(NUM_ITEMS - 1) + 92, 1, {0.6f, 0.6f, 0.65f, 0.8f}, true);
+            ui.text(d, cx, itemY(NUM_ITEMS - 1) + 58, 2, dc, true);
+            ui.text("LEFT / RIGHT TO CHANGE", cx, itemY(NUM_ITEMS - 1) + 80, 1, {0.6f, 0.6f, 0.65f, 0.8f}, true);
         }
         float hint = 0.35f + 0.35f * std::sin(flashTime * 1.8f);
         ui.text("UP/DOWN OR MOUSE TO SELECT  -  ENTER OR CLICK TO CONFIRM  -  ` FOR DEV LEVEL SELECT",

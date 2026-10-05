@@ -30,6 +30,9 @@
 #include "WorldMesh.h"
 #include "Effects.h"
 #include "ArenaShifts.h"
+#include "Score.h"
+#include "Daily.h"
+#include "EndlessWaves.h"
 #include <SDL2/SDL.h>
 #ifdef __EMSCRIPTEN__
 #  include <emscripten.h>
@@ -109,6 +112,28 @@ public:
     GameSettings* settings = nullptr;   // injected by main — may be null (safe)
     GameMode      mode = GameMode::ARENA;
     bool fast() const { return mode == GameMode::FAST; }
+    bool endless() const { return mode == GameMode::ENDLESS || mode == GameMode::DAILY; }
+    bool dailyRun() const { return mode == GameMode::DAILY; }
+    Board boardFor() const {
+        return fast() ? Board::FAST : mode == GameMode::ENDLESS ? Board::ENDLESS : dailyRun() ? Board::DAILY : Board::ARENA;
+    }
+
+    // ---- ENDLESS / DAILY (Gameplay_Flow.h) ----
+    DailyInfo    daily = DailyInfo::today();
+    EndlessWaves gen;
+    int   endlessArena = 3;        // ENDLESS runs in the Core; DAILY wherever today's says
+    int   endlessBaseAlive = 11;
+    int   wavesCleared = 0;
+    bool  modOn(DailyMod m) const { return dailyRun() && daily.mod == m; }
+    void  setupEndless();          // fresh waves for a new run
+    void  feedEndless();           // keep a wave queued ahead of the director
+    float endlessToughness() const;
+
+    // ---- the run's score (Score.h) ----
+    // Retrying an arena rebuilds the style system, so what it had counted goes here first
+    float bankedStyle = 0.f, bankedDamage = 0.f;
+    RunScore runScore() const;
+    Leaderboard::Entry runEntry() const;
     const DifficultyTuning& tune() const { return difficulty(settings ? settings->difficulty : DIFFICULTY_DEFAULT); }
 
     Player           player{{0.f,0.f,24.f}};

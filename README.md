@@ -6,12 +6,14 @@
 
 ![OVERDRIVE gameplay: Rippers breaking apart under shotgun fire in the Sunset Yard, a Shieldbearer and a Juggernaut in the Core at night, the walk into the Sanctum under an eclipse, and a duel with the Sovereign, the sword-wielding final boss](docs/overdrive.gif)
 
-A 3D arena shooter built with **SDL2**, **OpenGL 3.3 Core Profile**, and **GLM**, with no engine. ULTRAKILL-inspired movement with grapple hook, dashing, four weapons (including two bolt-action snipers) and style scoring, in two modes:
+A 3D arena shooter built with **SDL2**, **OpenGL 3.3 Core Profile**, and **GLM**, with no engine. ULTRAKILL-inspired movement with grapple hook, dashing, four weapons (including two bolt-action snipers) and style scoring, in four modes:
 
 - **ARENA**: **four themed arenas** (sunset yard, foundry, a vertical spire you have to climb, a night-time reactor) of three waves each, **eight enemy types** built as animated block rigs (including the armored Juggernaut and the shield-carrying Shieldbearer, both built around the parry), the **Warden** at the end of the fourth, then **the Sanctum**: a huge arena under an eclipse where you duel the final boss, **the Sovereign**, a sword-wielding knight.
 - **FAST**: **the Gauntlet**, a time trial through seven rooms joined by **boost tubes**: doors part as you sprint at them, lock behind you when a room's fight starts, and the exit unlocks when it's clear. A long canal, a close-quarters pump room, a cathedral of terraces, a canyon of islands over a void, a tower you fall through, a hall with control rooms, and a courtyard finale with a lift shaft to the beacon. Run clock, splits against your best run, par ranks.
+- **ENDLESS**: generated waves in the Core until you die. They grow, unlock tougher enemies as they go (Brutes, Conductors, Juggernauts), throw in an objective every 4th wave and the Warden every 10th, and every enemy gets a little tougher each wave.
+- **DAILY**: one ENDLESS run a day that's the same for everyone: the date picks the arena, a modifier (**GLASS CANNON**: double damage both ways; **SWARM**: bigger waves of weaker enemies; **MARKSMAN**: the Kar98 only; **GROUNDED**: no grapple) and the waves, and it has its own leaderboard for the day.
 
-Kills earn **XP** (more for stylish play), and levels buy **weapon upgrades** in the Armory. Finish a run fast enough and you can put your name on that mode's **leaderboard** (shared by every player on the website); in FAST mode you race the **ghost** of your best run. Plays with **mouse and keyboard or a gamepad**, at **720p to 4K**, with a **dev level select** for jumping to any arena, room or boss.
+Kills earn **XP** (more for stylish play), and levels buy **weapon upgrades** in the Armory. Every run is **scored**: the style you earned (so varied, aggressive play pays), plus a bonus for beating par (ARENA) or for each wave cleared (ENDLESS, DAILY), minus the damage you took, times the difficulty. A good enough score puts your name on that mode's **leaderboard** (shared by every player on the website; FAST's is by time); in FAST mode you race the **ghost** of your best run. Plays with **mouse and keyboard or a gamepad**, at **720p to 4K**, with a **dev level select** for jumping to any arena, room or boss.
 
 Builds and runs on **macOS**, **Windows** (via MSYS2), and **in the browser** (WebAssembly + WebGL2 via Emscripten). It also builds and passes its physics tests on **Linux** (Ubuntu 24.04), though it hasn't been play-tested on a Linux desktop yet.
 
@@ -64,6 +66,7 @@ make clean  # delete binaries
 
 ./shooter --play                 # skip the main menu and start an ARENA run
 ./shooter --fast                 # skip the main menu and start the FAST time trial
+./shooter --endless              # an ENDLESS run (--daily: today's DAILY)
 ./shooter --arena 4 --wave 3     # jump straight to an arena / wave (here: the Warden)
 ./shooter --arena 5              # the Sanctum: the Sovereign
 ./shooter --dev                  # open the DEV level select (also ` or F2 on the main menu)
@@ -278,8 +281,8 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 - Every sound is trimmed to start within a few milliseconds of being triggered, so shots never feel late
 
 ### Game Flow
-- **Victory screen** — after the Sovereign: time, kills, accuracy, deaths and a letter grade (S/A/B/C/D)
-- **Leaderboard** — finish a full run fast enough for the top 10 and you're asked for a name (or ESC to skip); it's saved with the time and difficulty, per mode (ARENA / FAST). LEADERBOARD on the main menu shows both boards. On the website it's the **world** board, shared by every player (the site's `/api/overdrive-board`, checked server-side for plausible times); elsewhere it's this machine's. Only full runs count: not one started at a later arena, in god mode or from the dev level select
+- **Victory screen** — after the Sovereign: time, kills, accuracy, deaths and the run's **score**, part by part: style earned, time bonus (10 a second under a 15-minute par), damage taken (2 a point), times the difficulty (x0.75 LENIENT to x1.5 BRUTAL). An ENDLESS or DAILY run ends when you die, on a RUN OVER screen with its score (style + 500 a wave cleared)
+- **Leaderboard** — make the top 10 and you're asked for a name (or ESC to skip). ARENA, ENDLESS and DAILY rank by score, FAST by time; DAILY has a board per day. LEADERBOARD on the main menu shows all four. On the website it's the **world** board, shared by every player (the site's `/api/overdrive-board`, checked server-side for plausible scores and times); elsewhere it's this machine's. Only full runs count: not one started at a later arena, in god mode or from the dev level select
 - **DEV level select** (` or F2 on the main menu, `--dev`, `?dev` on the web) — jump to any arena (and wave), any FAST room or the Sovereign, with god mode on or off. These are practice runs (no records, no leaderboard); in one, F5 clears the current wave and F6 refills health
 - **Death screen** — where you died, with retry-arena and new-run options
 - **Pause menu** — Escape mid-run pauses: Resume / Settings / Restart / Quit to Menu
@@ -330,7 +333,10 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 │   ├── Level.h               # ARENA map: five arenas, corridors, doors, pads, lava, movers, themes
 │   ├── LevelGauntlet.h       # FAST map: the Gauntlet's seven rooms and their tubes
 │   ├── Weapons.h             # the four guns' stats, upgrade maths, ammo/reload state
-│   ├── Progression.h         # XP, levels, upgrade purchases, best times, leaderboard
+│   ├── Progression.h         # XP, levels, upgrade purchases, records, the four leaderboards
+│   ├── Score.h               # a run's score: style, time or waves, damage, difficulty
+│   ├── EndlessWaves.h        # ENDLESS / DAILY waves, generated from a seed
+│   ├── Daily.h               # the daily challenge: date → arena, modifier, seed
 │   ├── LeaderboardView.h     # draws a leaderboard table (menu page, victory screen)
 │   ├── Ghost.h               # FAST mode's ghost: records and plays back your best route
 │   ├── Gamepad.h             # controller support, folded into the keys the game reads

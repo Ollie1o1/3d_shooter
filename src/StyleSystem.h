@@ -27,6 +27,11 @@ public:
 
     float idleTimer = 0.f; // time since last style action
 
+    // For the run's score (Score.h): all the style scored (after freshness),
+    // and all the damage taken
+    float earned = 0.f;
+    float damageTaken = 0.f;
+
     // 1 fresh .. 0 dull, per source
     float fresh[(int)StyleSource::COUNT];
     static constexpr float WEAR    = 0.0035f;  // freshness lost per style point scored
@@ -83,6 +88,7 @@ public:
                 fresh[i] = i == (int)src ? std::max(0.f, fresh[i] - worn) : std::min(1.f, fresh[i] + worn * SHARE);
         }
         idleTimer = 0.f;
+        earned += amount;
         style = std::min(maxStyle, style + amount);
         if (style >= maxStyle && !overdrive) {
             overdrive = true;
@@ -92,6 +98,7 @@ public:
     }
 
     void takeDamage(float amount) {
+        damageTaken += std::min(amount, health);
         health = std::max(0.f, health - amount);
         style  = std::max(0.f, style - 20.f);
         idleTimer = 0.f;
