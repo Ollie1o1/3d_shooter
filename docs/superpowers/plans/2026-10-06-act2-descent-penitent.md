@@ -922,7 +922,7 @@ git commit -m "Into the Descent: board the cage, ride it down a floor per wave"
                 if (p.ev.telegraphStarted && firstTell < 0.f && p.attack != AttackKind::SCOURGE) firstTell = p.telegraphDuration;
             }
             CHECK(p.scourging && embers >= 1, "PENITENT: under a quarter it scourges itself, throwing rings of embers");
-            CHECK(firstTell > 0.f && firstTell < 0.9f * 0.75f, "PENITENT: scourging, its wind-ups come 30% sooner");
+            CHECK(firstTell > 0.f && firstTell < 0.72f, "PENITENT: scourging, its wind-ups come 30% sooner (a sweep 0.63 s, a slam 0.7 s)");
         }
         {   // a parry staggers it: no blows during the stagger, double damage
             Enemy p(EnemyType::PENITENT, home, -240.f); p.anchorsLeft = 0; p.risen = true; p.spawnTimer = 0.f; p.state = EnemyState::ACTIVE;
