@@ -87,6 +87,8 @@ Everything below runs without touching the mouse, so it works from scripts.
 #   --overlay armory | pause | settings | victory | poseN (hold the Sovereign in pose N: 0-9)
 #   --spawn TYPE (repeatable): enemies in an arc in front of the camera
 #     0 Husk  1 Ripper  2 Sentinel  3 Raptor  4 Brute  5 Mite  6 Juggernaut  7 Warden  8 Sovereign  9 Shieldbearer
+#     10 Conduit  11 Conductor  12 Seraph  13 Anchor
+#   --hollow N: --spawn enemies are Hollowed (1 Enraged, 2 Twinned, 3 Haloed)
 
 # Footage: fixed 1/30 s frames; skip SKIP, then save FRAMES as PREFIX_0001.bmp ...
 ./shooter --arena 5 --god --cam 0 1.8 -310 -90 2 --spawn 8 --autoaim --kite --clean --record 180 30 out/boss
@@ -233,10 +235,13 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 | **Shieldbearer** | Soldier behind a tower shield with a glowing sigil | The shield stops bullets from the front; advances slowly, fires spreads of orbs, bashes up close | Flank it (it turns slowly), shoot the head over the rim, use explosives, or parry the bash to knock the shield aside |
 | **Conductor** | A hovering emitter with a glowing core and turning fins | Doesn't attack: tethers up to three nearby enemies (cyan beams, a ring over each head) and they take only 40% damage; hangs back above and behind them | Shoot it down first (90 HP); the tethers drop with it |
 | **Conduit** | A pylon with a pulsing core and turning rings | Doesn't fight: the wave spawns out of it | Destroy it (300 HP); the core beats faster as it breaks |
+| **Seraph** (Act II) | Winged figure with a ring for a head | Hangs high and far; charges, then sweeps a beam toward you that turns slower than you run | Keep moving, break line of sight, or hit it hard (or in the head) while it charges |
+| **Anchor** (Act II) | Hunched heavy with a ring core on its back | Projects a 10 m field where you can't dash or grapple; lobs slow orbs | Fight it from outside its field, or go in and kill it first; parry the orbs back for 120 |
 | **Warden** | 4.6 m crowned boss | Volleys, slams, summons Mites and Rippers; enrages at half health | Everything above |
 | **Sovereign** | 3.5 m horned knight with a greatsword, a halo and a cape | The final boss. Dashes at you and dashes again; chains two sweeps into an overhead cleave with a shockwave; leaps onto any platform you climb; throws crescent slashes at range. Enrages at half health: faster, longer chains, double crescents, and the eclipse turns to blood while the orbiting platforms speed up | Dash through the dashes, jump the cleave's shockwave, and **parry (F) a sweep or the cleave as it lands** to break his guard (he takes 1.5x while broken) |
 
 - Ground enemies steer around cover with feeler probes (no pathfinding; the arenas are open by design) and keep apart with soft separation
+- **Hollowed variants** (Act II): an **Enraged** enemy is faster, quicker to strike and hits harder; a **Twinned** one splits into two smaller copies when it dies; a **Haloed** one takes a tenth of the damage until a headshot or a parry breaks its halo. Worth 1.5x the XP and style.
 - Gunners and Brutes won't walk off a ledge; Rippers and Mites jump down after you
 - Gunners check line of sight before firing and sidestep out from behind cover when blocked
 - Enemies materialise in a column of light (untargetable for 0.9 s) and break apart into their blocks when killed
