@@ -556,7 +556,7 @@ public:
     // =========================================================================
 
     // Every enemy along a ray up to the first wall, nearest first.
-    struct RayHit { int enemy; float t; bool head; };
+    struct RayHit { int enemy; float t; bool head; bool wound = false; };   // wound: the PENITENT's back (x3)
     float hitscanAll(glm::vec3 origin, glm::vec3 dir, float range, std::vector<RayHit>& out);
 
     // Sounds timed to the reload animations (ViewModel.h): the revolver's

@@ -556,6 +556,9 @@ inline float GameplayState::hitscanAll(glm::vec3 origin, glm::vec3 dir, float ra
         AABB body = en.getAABB();
         body.min += off; body.max += off;
         float t = rayBoxHit(origin, dir, body);
+        AABB wound;   // the PENITENT's open back, while it scourges itself
+        float tw = woundBox(en, wound) ? rayBoxHit(origin, dir, AABB{wound.min + off, wound.max + off}) : -1.f;
+        if (tw > 0.f && tw < wallT) { out.push_back({ei, tw, false, true}); continue; }
         AABB head;
         bool hasHead = headBox(en, head);
         head.min += off; head.max += off;
@@ -658,7 +661,8 @@ inline void GameplayState::fireWeapon(int w) {
                 break;
             }
             if (hits[k].head && e.halo) breakHalo(e);   // a headshot shatters a halo
-            float m = head ? d.headMult : 1.f;
+            float m = hits[k].wound ? 3.f : head ? d.headMult : 1.f;
+            if (hits[k].wound) fx.spawnHitSparks(at, {1.f, 0.3f, 0.15f});
             float falloff = 1.f - 0.15f * k;    // each body it punches through costs a little
             if (head) fx.spawnHitSparks(at, {1.f, 0.9f, 0.3f});
             anyHit = true;

@@ -2609,6 +2609,25 @@ int main() {
         }
     }
 
+    // ---------------------------------------------------------------- the PENITENT's body
+    {
+        Enemy p(EnemyType::PENITENT, {0.f, -240.f, -864.f}, -240.f); p.spawnTimer = 0.f; p.state = EnemyState::ACTIVE; p.anchorsLeft = 6;
+        std::vector<BoxInstance> boxes; buildEnemy(p, 0.f, boxes);
+        AABB head, wound;
+        bool hasHead = headBox(p, head), hasWound = woundBox(p, wound);
+        CHECK(boxes.size() >= 30 && hasHead && !hasWound, "PENITENT: a big rig, a head, no wound until it scourges");
+        CHECK(head.min.y > -240.f + 5.f && head.max.y < -240.f + 9.5f, "PENITENT: kneeling, its head is 5-9.5 m up");
+        p.anchorsLeft = 0; p.risen = true;
+        headBox(p, head);
+        CHECK(head.min.y > -240.f + 8.5f, "PENITENT: risen, its head is up at 8.5 m+");
+        p.scourging = true;
+        bool w = woundBox(p, wound);
+        glm::vec3 back{-std::sin(p.yaw), 0.f, -std::cos(p.yaw)};
+        glm::vec3 wc = (wound.min + wound.max) * 0.5f;
+        CHECK(w && glm::dot(glm::vec2{wc.x - p.position.x, wc.z - p.position.z}, glm::vec2{back.x, back.z}) > 0.5f,
+              "PENITENT: scourging, the wound is on its back");
+    }
+
     // ---------------------------------------------------------------- mouse filter
     {
         MouseFilter f;

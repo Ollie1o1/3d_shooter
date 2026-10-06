@@ -67,6 +67,7 @@ inline HumanoidLook humanoidDims(EnemyType t) {
     case EnemyType::SOVEREIGN:  return {1.35f, 0.34f, 0.46f, 0.22f, 1.25f, 1.05f, 0.58f, 0.42f, 1.3f,  0.3f,  {}, {}, {}};
     case EnemyType::SHIELDBEARER: return {0.95f, 0.24f, 0.3f, 0.16f, 0.7f, 0.62f, 0.36f, 0.32f, 0.66f, 0.19f, {}, {}, {}};
     case EnemyType::ANCHOR:     return {0.95f, 0.4f,  0.5f,  0.2f,  1.05f, 1.25f, 0.8f,  0.4f,  1.15f, 0.4f,  {}, {}, {}};
+    case EnemyType::PENITENT:   return {4.5f,  1.35f, 1.9f,  0.75f, 4.25f, 4.5f,  2.5f,  1.5f,  5.5f,  1.1f,  {}, {}, {}};
     default:                    return {};
     }
 }
@@ -237,6 +238,31 @@ inline PoseOverride sovereignPose(const Enemy& e) {
 
 // Append the parts for one enemy. `time` drives idle animation (orbiting
 // shards, blinking fuses).
+// THE PENITENT's stance: kneeling while chained (the body sunk 3.3 m, legs
+// folded under the floor), standing once risen; a censer drawn back low or
+// raised high for each sweep, both fists up for the slam, one arm thrown back
+// over its shoulder for the scourge
+inline PoseOverride penitentPose(const Enemy& e) {
+    PoseOverride o; o.on = true;
+    o.crouch = e.risen ? 0.f : 3.3f;
+    if (!e.risen && e.riseTimer > 0.f) o.crouch = 3.3f * (e.riseTimer / Enemy::PEN_RISE_TIME);
+    float tp = smooth01(e.telegraphProgress() * 1.3f);
+    o.rxR = o.rxL = 0.15f; o.rzR = o.rzL = 0.25f;
+    o.torsoPitch = e.scourging ? 0.25f : 0.1f;
+    switch (e.attack) {
+        case AttackKind::CENSER_LOW:  o.rxR = 0.9f * tp; o.rzR = 1.2f * tp; o.torsoYaw = -0.5f * tp; break;   // drawn back low
+        case AttackKind::CENSER_HIGH: o.rxR = -2.3f * tp; o.rzR = 0.6f * tp; o.torsoYaw = -0.4f * tp; break;  // raised high
+        case AttackKind::PSLAM:       o.rxR = o.rxL = -2.8f * tp; o.torsoPitch = -0.2f * tp; break;           // both fists up
+        case AttackKind::PSTOMP:      o.torsoPitch = 0.3f * tp; break;
+        case AttackKind::PLASH:       o.rxL = -1.6f * tp; o.rzL = -0.4f; break;
+        case AttackKind::SCOURGE:     o.rxR = -3.0f * tp; o.rzR = -0.9f * tp; o.torsoPitch = 0.4f; break;    // over its shoulder
+        default: break;
+    }
+    return o;
+}
+
+inline vec3 brassOf() { return {0.6f, 0.45f, 0.22f}; }
+
 inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out) {
     const EnemyStats& st = e.stats();
     Rig r{out};
@@ -597,6 +623,35 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         r.box(body, {0.f, -0.56f, 0.f}, {0.16f, 0.06f, 0.16f}, glow * 0.4f, core * 0.7f);
         break;
     }
+    case EnemyType::PENITENT: {
+        // Blackened iron, a hood over a bone mask, two censers on chains
+        vec3 iron{0.12f, 0.11f, 0.12f}, cloth{0.07f, 0.05f, 0.06f}, bone{0.72f, 0.68f, 0.6f};
+        PoseOverride ov = penitentPose(e);
+        HumanoidLook L = humanoidLook(e.type, iron, cloth, st.glow);
+        auto f = humanoid(r, root, L, e.animPhase, e.risen ? std::max(stride, 0.3f) : 0.f, ArmPose::SWING, 0.f, false, &ov);
+        r.box(f.head, {0.f, 0.8f, -0.1f}, {1.9f, 1.9f, 1.9f}, cloth);                                  // the hood
+        r.box(f.head, {0.f, 0.75f, 0.78f}, {1.1f, 1.2f, 0.12f}, bone);                                 // the mask
+        r.box(f.head, {0.f, 0.95f, 0.85f}, {0.8f, 0.12f, 0.05f}, bone * 0.2f, st.glow * (1.f + 2.f * tp));   // its eyes
+        r.box(f.torso, {0.f, 2.1f, -1.3f}, {3.6f, 3.8f, 0.2f}, cloth * 1.2f);                         // the robe's back
+        r.box(f.torso, {0.f, -0.4f, 0.f}, {4.8f, 1.6f, 2.8f}, cloth);                                  // the skirt
+        for (int k = 0; k < 6; ++k)                                                                    // its chains' collar
+            r.box(f.torso, {std::cos(k * 1.047f) * 2.0f, 4.0f, std::sin(k * 1.047f) * 1.2f}, {0.45f, 0.45f, 0.45f}, iron * 1.6f);
+        // Censers: hang from each hand on a chain, glowing amber (white when raised high, hot when lashing)
+        vec3 hot = e.attack == AttackKind::CENSER_HIGH ? vec3{1.6f, 1.6f, 1.5f} : st.glow;
+        for (int s = 0; s < 2; ++s) {
+            const mat4& arm = s ? f.armL : f.armR;
+            float glowAmt = (s == 0 && (e.attack == AttackKind::CENSER_LOW || e.attack == AttackKind::CENSER_HIGH)) ? 1.f + 3.f * tp : 0.8f;
+            for (int c = 0; c < 4; ++c) r.box(arm, {0.f, -L.armLen - 0.6f - c * 0.6f, 0.f}, {0.15f, 0.5f, 0.15f}, iron * 1.5f);
+            r.box(arm, {0.f, -L.armLen - 3.4f, 0.f}, {1.1f, 1.3f, 1.1f}, brassOf(), hot * glowAmt);
+            r.box(arm, {0.f, -L.armLen - 2.7f, 0.f}, {0.7f, 0.25f, 0.7f}, brassOf());
+        }
+        if (e.scourging) {                                                                             // the wound
+            float pulse = 0.6f + 0.4f * std::sin(time * 9.f);
+            r.box(f.torso, {0.f, L.torsoH * 0.55f, -L.torsoD * 0.5f - 0.05f}, {2.0f, 2.2f, 0.15f}, vec3{0.3f, 0.02f, 0.02f},
+                  vec3{2.2f, 0.25f, 0.1f} * pulse);
+        }
+        break;
+    }
     default: break;
     }
 }
@@ -617,7 +672,7 @@ inline bool headBox(const Enemy& e, AABB& out) {
     switch (e.type) {
     case EnemyType::HUSK: case EnemyType::SENTINEL: case EnemyType::BRUTE:
     case EnemyType::JUGGERNAUT: case EnemyType::WARDEN: case EnemyType::SOVEREIGN: case EnemyType::SHIELDBEARER:
-    case EnemyType::ANCHOR: {
+    case EnemyType::ANCHOR: case EnemyType::PENITENT: {
         HumanoidLook L = humanoidDims(e.type);
         mat4 base = root;
         if (e.type == EnemyType::ANCHOR) base = root * RX(0.18f);   // hunched, as drawn
@@ -627,6 +682,7 @@ inline bool headBox(const Enemy& e, AABB& out) {
             if (e.staggered()) { base = root * T({0.f, -0.2f, 0.f}) * RX(0.28f); ov.torsoPitch = 0.2f; }
             else ov = sovereignPose(e);
         }
+        if (e.type == EnemyType::PENITENT) ov = penitentPose(e);
         float bob = std::fabs(std::sin(e.animPhase)) * 0.05f * stride;
         frame = base * T({0.f, bob - ov.crouch + L.legLen + L.pelvisH, 0.f}) * RY(ov.torsoYaw) * RX(ov.torsoPitch)
               * T({0.f, L.torsoH, 0.f});
@@ -634,6 +690,7 @@ inline bool headBox(const Enemy& e, AABB& out) {
         if (e.type == EnemyType::JUGGERNAUT) { w = 0.62f; top = 0.575f; }   // helmet
         if (e.type == EnemyType::WARDEN)     top = 0.95f;                     // crown
         if (e.type == EnemyType::SOVEREIGN)  top = 0.62f;                     // helm and horn roots
+        if (e.type == EnemyType::PENITENT)   { w = 1.9f; top = 1.9f; }        // the hood
         centre = {0.f, top * 0.5f, 0.f};
         half   = {w * 0.5f, top * 0.5f, w * 0.5f};
         break;
@@ -672,7 +729,21 @@ inline bool headBox(const Enemy& e, AABB& out) {
     return true;
 }
 
+// THE PENITENT's wound: its back, open while it scourges itself (x3)
+inline bool woundBox(const Enemy& e, AABB& out) {
+    if (e.type != EnemyType::PENITENT || !e.scourging) return false;
+    HumanoidLook L = humanoidDims(e.type);
+    PoseOverride ov = penitentPose(e);
+    mat4 root = T(e.position) * RY(e.yaw);
+    mat4 torso = root * T({0.f, -ov.crouch + L.legLen + L.pelvisH, 0.f}) * RY(ov.torsoYaw) * RX(ov.torsoPitch);
+    vec3 c = vec3(torso * glm::vec4(0.f, L.torsoH * 0.55f, -L.torsoD * 0.5f - 0.2f, 1.f));
+    vec3 half{1.3f, 1.4f, 1.3f};
+    out = {c - half, c + half};
+    return true;
+}
+
 } // namespace rig
 
 using rig::buildEnemy;
 using rig::headBox;
+using rig::woundBox;
