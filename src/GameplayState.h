@@ -307,6 +307,7 @@ public:
 
     bool parryPrev        = false;
     float punchCooldown   = 0.f;
+    static constexpr float PARRY_COOLDOWN = 1.0f;   // a punch / parry at most once a second: no spamming it
     bool prevDashKey      = false;
     int  boostPrev        = -1;     // booster the player was in last tick
     float telegraphSoundCd = 0.f;   // throttles the enemy wind-up tick

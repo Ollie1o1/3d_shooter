@@ -55,7 +55,7 @@ inline void GameplayState::pinnedCue() {
 }
 
 inline void GameplayState::punch(int boostable) {
-    punchCooldown = 0.3f;
+    punchCooldown = PARRY_COOLDOWN;
     glm::vec3 eye = player.camera.position, fwd = player.camera.forward();
 
     int pi = findParryTarget();
