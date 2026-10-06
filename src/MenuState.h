@@ -319,7 +319,7 @@ private:
         bool act2 = canStartAct2(records);
         Item items[NUM_ITEMS] = {
             {"ARENA", arenaSub.c_str()},
-            {"ACT II", act2 ? "PREVIEW - 1/4 ARENAS - BENEATH THE ECLIPSE" : "DEFEAT THE SOVEREIGN TO UNLOCK"},
+            {"ACT II", act2 ? "PREVIEW - 2/4 ARENAS - BENEATH THE ECLIPSE" : "DEFEAT THE SOVEREIGN TO UNLOCK"},
             {"FAST",  fastSub.c_str()},
             {"ENDLESS", endSub.c_str()},
             {"DAILY", daySub.c_str()},

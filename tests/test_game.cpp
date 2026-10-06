@@ -641,7 +641,8 @@ int main() {
         std::printf("      nave run: %d seraphs, %d anchors, %d haloed, %d twinned, %d enraged\n", seraphs, anchors, haloed, twinned, enragedSpawns);
         CHECK(seraphs >= 3 && anchors >= 1 && haloed >= 3 && twinned >= 2 && enragedSpawns >= 1,
               "the Nave's waves bring Seraphs, an Anchor and every variant");
-        CHECK(MUSIC_TRACKS == 6 && std::string(musicTrack(5).name) == "NAVE", "the Nave has its own track");
+        CHECK(MUSIC_TRACKS == 7 && std::string(musicTrack(5).name) == "NAVE" && std::string(musicTrack(6).name) == "ORRERY",
+              "the Nave and the Orrery have their own tracks");
     }
 
     // ---------------------------------------------------------------- Hollowed variants: data

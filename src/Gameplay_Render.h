@@ -534,6 +534,7 @@ inline void GameplayState::render() {
 
     renderTracers(view, proj);
     renderLasers(view, proj);
+    renderFlare(view, proj);
     renderTethers(view, proj);
     renderParticles(view, proj);
     bool warm = warmupFrames > 0;
@@ -777,6 +778,28 @@ inline void GameplayState::renderLasers(const glm::mat4& view, const glm::mat4& 
     }
     drawBeams(aims, {1.f, 0.85f, 0.5f}, view, proj);
     drawBeams(sweeps, {1.4f, 1.15f, 0.7f}, view, proj);
+}
+
+// SOLAR: each arm of the sun's flare as a fan of beams across its wedge, from
+// the sun out over the terrace: faint while it gathers, blazing while it burns
+inline void GameplayState::renderFlare(const glm::mat4& view, const glm::mat4& proj) {
+    const Arena& ar = level.arenas[director.arena];
+    if (ar.shift != ArenaShift::SOLAR || !director.fighting()) return;
+    FlarePhase ph = shifts.flarePhase();
+    if (ph == FlarePhase::OFF) return;
+    static std::vector<Beam> fan;
+    fan.clear();
+    bool burn = ph == FlarePhase::BURN;
+    float a = burn ? 0.5f : 0.18f + 0.12f * std::sin(gameClock * 12.f);
+    glm::vec3 c{ar.sunPos.x, -79.4f, ar.sunPos.z};
+    for (int arm = 0; arm < shifts.flareArms; ++arm)
+        for (int k = 0; k < 7; ++k) {
+            float ang = shifts.flareAngle + arm * 6.2831853f / shifts.flareArms
+                      + (k - 3) / 3.f * ArenaShifts::FLARE_HALF;
+            glm::vec3 dir{std::cos(ang), 0.f, std::sin(ang)};
+            fan.push_back({glm::vec4(c + dir * 9.f, a), glm::vec4(c + dir * 52.f, a * 0.6f), burn ? 1.1f : 0.8f});
+        }
+    drawBeams(fan, burn ? glm::vec3{1.6f, 1.25f, 0.7f} : glm::vec3{1.f, 0.7f, 0.3f}, view, proj);
 }
 
 // CONDUCTOR tethers: a flickering line from each conductor to every ally it shields

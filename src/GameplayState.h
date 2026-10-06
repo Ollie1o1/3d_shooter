@@ -621,6 +621,10 @@ public:
 
     // A Sentinel winding up paints you with a laser; it brightens until it fires.
     void renderLasers(const glm::mat4& view, const glm::mat4& proj);
+    void renderFlare(const glm::mat4& view, const glm::mat4& proj);   // SOLAR: the sun's arms of light
+    float flareTickCd = 0.f;      // SOLAR: damage in 0.2 s ticks
+    bool  flareIntroduced = false;
+    FlarePhase flarePrev = FlarePhase::OFF;
 
     int findInteractTarget() const;
 };

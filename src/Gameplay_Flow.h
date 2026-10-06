@@ -292,6 +292,8 @@ inline void GameplayState::handleDirectorEvents() {
             if (endless()) shifts.onWave(level, director.arena, ev.value % 3, director.goal(), moverClock, 3);
             else shifts.onWave(level, director.arena, ev.value, director.goal(), moverClock);
             if (ar.shift == ArenaShift::SPEED_UP && ev.value > 0) ui.feed("THE PLATFORMS SPEED UP", {0.4f, 0.9f, 1.f});
+            if (ar.shift == ArenaShift::SOLAR && ev.value > 0)
+                ui.feed(ev.value >= 2 ? "THE RINGS QUICKEN - A SECOND FLARE" : "THE RINGS QUICKEN", {1.f, 0.75f, 0.3f});
             if (fast()) { if (ev.value > 0) pushBanner("SECOND WAVE", "", {1.f, 0.5f, 0.3f}, 1.4f); break; }
             if (endless()) {
                 level.arenas[director.arena].maxAlive = endlessBaseAlive + std::min(6, ev.value / 3);   // more at once as it goes on
@@ -339,6 +341,8 @@ inline void GameplayState::handleDirectorEvents() {
             }
             if (done.exitDoor >= 0 && !act2())
                 pushBanner("ARENA CLEARED", "THE GATE IS OPEN - HEAD NORTH", {0.4f, 1.f, 0.6f}, 3.5f);
+            else if (done.exitDoor >= 0)
+                pushBanner("THE WAY DOWN IS OPEN", "BEHIND THE ORGAN", {0.35f, 0.95f, 0.9f}, 3.5f);
             styleSystem.heal(40.f);
             grenadeCount = grenadeMax;
             audio.play("wave");
@@ -361,9 +365,9 @@ inline void GameplayState::handleDirectorEvents() {
             shake(0.3f, 0.05f);
             break;
         case DirectorEvent::VICTORY:
-            if (act2()) {   // the run ends at the end of the sealed passage
+            if (act2()) {   // the run ends at the beacon on the Orrery's north terrace
                 finishOpen = true;
-                pushBanner("THE WAY DOWN IS OPEN", "BEHIND THE ORGAN", {0.35f, 0.95f, 0.9f}, 3.f);
+                pushBanner("THE ORRERY STILLS", "REACH THE BEACON ON THE NORTH TERRACE", {1.f, 0.75f, 0.3f}, 3.f);
                 audio.play("wave");
             } else victoryDelay = 2.5f;
             break;
@@ -700,7 +704,7 @@ inline void GameplayState::updateMusic() {
     static const int ARENA_TRACK[] = {0, 1, 2, 3, 4};       // Yard, Foundry, Spire, Core, Sanctum
     static const int FAST_TRACK[]  = {0, 1, 2, 2, 1, 1, 3}; // Canal .. Tower
     int a = director.arena;
-    m.setTrack(fast() ? FAST_TRACK[a % 7] : act2() ? 5 : ARENA_TRACK[a % 5]);
+    m.setTrack(fast() ? FAST_TRACK[a % 7] : act2() ? 5 + std::min(a, 1) : ARENA_TRACK[a % 5]);   // the Nave, the Orrery
     float lv = 0.6f;
     switch (director.phase) {
         case WaveDirector::Phase::ACTIVE:   lv = director.bossWave() ? 1.35f : 1.f; break;

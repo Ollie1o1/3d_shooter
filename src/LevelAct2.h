@@ -54,7 +54,7 @@ inline void buildAct2(LevelBuilder& B) {
     a.startYaw = -90.f;
 
     // ---- floors (drawn) ----
-    L.floors.push_back({-300.f, -1000.f, 300.f, -440.f, F - 0.3f, {0.05f, 0.06f, 0.07f}});   // seen from wall tops
+    L.floors.push_back({-300.f, -668.f, 300.f, -440.f, F - 0.3f, {0.05f, 0.06f, 0.07f}});    // seen from wall tops
     L.floors.push_back({-12.f, -472.f, 12.f, -450.f, F, slate});                             // narthex
     L.floors.push_back({-16.f, -622.f, 16.f, -472.f, F, {0.2f, 0.22f, 0.22f}});              // nave + crossing
 
@@ -368,7 +368,7 @@ inline void buildAct2(LevelBuilder& B) {
     o.shift = ArenaShift::SOLAR;
     o.ambient = Ambient::EMBERS;
     o.theme = Theme{
-        {0.03f,0.02f,0.04f}, {0.32f,0.18f,0.08f}, {0.2f,0.1f,0.03f},
+        {0.03f,0.02f,0.04f}, {0.32f,0.18f,0.08f}, {0.015f,0.008f,0.004f},   // below: an abyss
         glm::normalize(vec3{0.f, -0.3f, -1.f}), {1.6f,1.1f,0.5f}, 0.08f, 0.f,
         {0.08f,0.05f,0.03f}, 0.5f,
         // The sun is below you: warm light from underneath, cool from the dark above
