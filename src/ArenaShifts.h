@@ -14,6 +14,8 @@
 //                            (warning first): jump it, or get up on the
 //                            walkways. It burns enemies on foot too, and the
 //                            lights go to alarm red.
+//   FLOOD     (the Nave)     the water rises a step each time a wave is
+//                            cleared (Arena::floodLevels), over FLOOD_TIME
 //
 // It edits the level itself (each arena's theme, its lava hazards, its
 // movers' periods), so lighting still blends down the corridors and the
@@ -36,6 +38,7 @@ public:
     static constexpr float PULSE_RANGE  = 40.f;   // m before it fades
     static constexpr float PULSE_HEIGHT = 1.4f;   // above the floor it sweeps; stand higher and it passes under
     static constexpr float PULSE_DAMAGE = 18.f;   // to the player; enemies on foot take double
+    static constexpr float FLOOD_TIME   = 6.f;    // s for one rise of the water
 
     // Live state, read by the renderer and the HUD
     std::vector<float> night;        // per arena 0..1 (NIGHTFALL)
@@ -48,6 +51,7 @@ public:
     bool  overloading = false;
     bool  pulseFired = false;        // this update: a ring went out (for its sound)
     bool  lavaStarted = false;       // this update: the lava began to rise (for its banner)
+    bool  floodStarted = false;      // this update: the water began to rise (banner, rumble)
 
     // Remember the level as built
     void capture(const LevelData& L) {
@@ -57,6 +61,8 @@ public:
         basePeriod.clear(); for (auto& m : L.movers) basePeriod.push_back({m.period, m.phase});
         night.assign(n, 0.f); lava.assign(n, 0.f); speed.assign(n, 1.f);
         nightTarget.assign(n, 0.f); lavaTarget.assign(n, 0.f);
+        baseWater.clear(); for (auto& w : L.water) baseWater.push_back(w.level);
+        waterTarget = baseWater; waterRate.assign(baseWater.size(), 0.f); rising.assign(baseWater.size(), false);
     }
 
     // Back to the level as built (a retry or a new run)
@@ -72,6 +78,23 @@ public:
         }
         for (int i = 0; i < (int)L.hazards.size(); ++i) L.hazards[i].box = baseHazard[i];
         alarm = 0.f; rings.clear(); overloading = false;
+        for (int i = 0; i < (int)L.water.size() && i < (int)baseWater.size(); ++i) {
+            L.water[i].level = waterTarget[i] = baseWater[i];
+            waterRate[i] = 0.f; rising[i] = false;
+        }
+    }
+
+    // A wave was cleared in arena a: a FLOOD arena's water heads for the
+    // next wave's level
+    void onWaveCleared(LevelData& L, int a, int nextWave) {
+        const Arena& ar = L.arenas[a];
+        if (ar.shift != ArenaShift::FLOOD || nextWave >= (int)ar.floodLevels.size()) return;
+        for (int i = 0; i < (int)L.water.size(); ++i)
+            if (inArena(ar, L.water[i].box)) {
+                waterTarget[i] = ar.floodLevels[nextWave];
+                waterRate[i] = std::fabs(waterTarget[i] - L.water[i].level) / FLOOD_TIME;
+                rising[i] = false;
+            }
     }
 
     // A wave began in arena a: set where its shift is heading. `of`: how many
@@ -96,7 +119,7 @@ public:
 
     // fighting: the overload only pulses mid-wave
     void update(float dt, LevelData& L, int arena, bool fighting) {
-        pulseFired = lavaStarted = false;
+        pulseFired = lavaStarted = floodStarted = false;
         for (int a = 0; a < (int)L.arenas.size(); ++a) {
             Arena& ar = L.arenas[a];
             if (ar.shift == ArenaShift::NIGHTFALL && night[a] != nightTarget[a]) {
@@ -114,6 +137,13 @@ public:
                 alarm = approach(alarm, target, dt / 1.5f);
                 ar.theme = lerpTheme(baseTheme[a], alarmed(baseTheme[a]), alarm);
             }
+        }
+        // The flood
+        for (int i = 0; i < (int)L.water.size(); ++i) {
+            if (L.water[i].level == waterTarget[i]) continue;
+            if (!rising[i]) { rising[i] = true; floodStarted = true; }
+            L.water[i].level = approach(L.water[i].level, waterTarget[i], waterRate[i] * dt);
+            if (L.water[i].level == waterTarget[i]) rising[i] = false;
         }
         // Overload rings
         bool live = overloading && fighting && L.arenas[arena].shift == ArenaShift::OVERLOAD && L.hasReactor;
@@ -182,6 +212,8 @@ private:
     std::vector<AABB>  baseHazard;
     std::vector<std::pair<float, float>> basePeriod;   // (period, phase) as built
     std::vector<float> nightTarget, lavaTarget;
+    std::vector<float> baseWater, waterTarget, waterRate;   // per water volume
+    std::vector<bool>  rising;
 
     static float smooth(float t) { return t * t * (3.f - 2.f * t); }
     static float approach(float v, float target, float step) {

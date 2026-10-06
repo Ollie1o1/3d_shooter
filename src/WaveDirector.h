@@ -52,6 +52,7 @@ public:
     static constexpr float BREAK_TIME  = 3.0f;
     static constexpr float SPAWN_GAP   = 0.45f;   // seconds between trickled spawns
     static constexpr float SAFE_RADIUS = 13.f;    // don't spawn closer than this to the player
+    static constexpr float DRY_DEPTH   = 1.2f;    // ground spawns under more water than this aren't used
 
     const LevelData* level = nullptr;
     bool  fast = false;
@@ -204,6 +205,9 @@ public:
         }
     }
 
+    // Tests: where the next spawn of type t would go
+    glm::vec3 pickSpawnForTest(EnemyType t, glm::vec3 player) { return pickSpawn(t, player); }
+
     // Debug/dev: put the director straight into a running arena.
     void skipIntro() { if (phase == Phase::INTRO) timer = 0.f; }
 
@@ -327,17 +331,23 @@ private:
         const auto& pts = flying ? a.airSpawns
                         : (wave < (int)a.waveGround.size() && !a.waveGround[wave].empty()) ? a.waveGround[wave]
                         : a.groundSpawns;
-        // Random point beyond the safe radius, not the one used last time
+        // Under deep water (a flood): not used, unless every point is
+        auto wet = [&](const glm::vec3& p) { return !flying && level->waterDepthAt(p) > DRY_DEPTH; };
         int n = (int)pts.size();
+        bool anyDry = false;
+        for (auto& p : pts) anyDry |= !wet(p);
+        // Random point beyond the safe radius, not the one used last time
         int start = rand() % n;
         for (int k = 0; k < n; ++k) {
             int i = (start + k) % n;
+            if (anyDry && wet(pts[i])) continue;
             glm::vec2 d{pts[i].x - player.x, pts[i].z - player.z};
             if (glm::length(d) >= SAFE_RADIUS && i != lastSpawn) { lastSpawn = i; return pts[i]; }
         }
         // Everything is close (player standing in the middle of the spawns): farthest wins
         int best = 0; float bestD = -1.f;
         for (int i = 0; i < n; ++i) {
+            if (anyDry && wet(pts[i])) continue;
             float d = glm::length(glm::vec2{pts[i].x - player.x, pts[i].z - player.z});
             if (d > bestD) { bestD = d; best = i; }
         }

@@ -319,6 +319,34 @@ int main() {
         CHECK(p.position.y + p.eyeHeight > -57.4f && p.onGround, "dropped into deep water, you wade with your eyes above it");
     }
 
+    // ---------------------------------------------------------------- the flood
+    {
+        LevelData Fd;
+        Arena a; a.name = "TANK"; a.subtitle = "";
+        a.bounds = LevelBuilder::aabb(-20, -60, -20, 20, -30, 20);
+        a.zone = a.bounds;
+        a.shift = ArenaShift::FLOOD;
+        a.floodLevels = {-59.6f, -58.f, -57.4f};
+        a.groundSpawns = {{-15.f, -60.f, 0.f}, {15.f, -57.f, 0.f}};   // a low one and one on a 3 m ledge
+        a.waves = {{{EnemyType::HUSK, 4}}, {{EnemyType::HUSK, 4}}, {{EnemyType::HUSK, 4}}};
+        Fd.arenas.push_back(a);
+        Fd.water.push_back({LevelBuilder::aabb(-20, -60, -20, 20, -60, 20), -59.6f});
+        ArenaShifts sh; sh.capture(Fd);
+        sh.onWaveCleared(Fd, 0, 2);
+        bool started = false;
+        for (int i = 0; i < 60 * 7; ++i) { sh.update(DT, Fd, 0, true); started |= sh.floodStarted; }
+        CHECK(started && std::fabs(Fd.water[0].level - (-57.4f)) < 1e-3f, "the water rises to the next wave's level within ~6 s");
+        WaveDirector d; d.level = &Fd; d.startArena(0); d.wave = 2;
+        bool allDry = true;
+        for (int k = 0; k < 20; ++k) {
+            glm::vec3 sp = d.pickSpawnForTest(EnemyType::HUSK, {0.f, -57.f, 0.f});
+            allDry &= Fd.waterDepthAt(sp) <= WaveDirector::DRY_DEPTH;
+        }
+        CHECK(allDry, "nothing spawns under more than 1.2 m of water");
+        sh.reset(Fd);
+        CHECK(std::fabs(Fd.water[0].level - (-59.6f)) < 1e-4f, "a retry drains the flood back to how it was built");
+    }
+
     // ---------------------------------------------------------------- the Gauntlet (FAST)
     LevelData D = buildGauntlet();
     SpatialGrid dgrid; dgrid.build(D.walls);

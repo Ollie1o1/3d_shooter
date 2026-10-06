@@ -284,6 +284,7 @@ inline void GameplayState::handleDirectorEvents() {
         case DirectorEvent::WAVE_CLEARED:
             if (endless()) ++wavesCleared;
             shifts.onWaveOver();
+            shifts.onWaveCleared(level, director.arena, ev.value + 1);
             if (!fast()) pushBanner("WAVE CLEAR", "", {0.4f, 1.f, 0.6f}, 1.6f);
             styleSystem.heal(10.f);
             break;
