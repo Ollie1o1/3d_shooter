@@ -157,6 +157,8 @@ inline void GameplayState::updateEnemies(float dt) {
         e.floorY = level.floorWithWater(e.position.x, e.position.z, false);
         e.wadeMul = e.stats().flying ? 1.f : 1.f - 0.5f * (1.f - Player::wadeFactor(level.waterDepthAt(e.position)));
         e.update(dt, w);
+        if (e.hollow == Hollow::ENRAGED && std::fmod(e.age, 0.15f) < dt)   // embers off an Enraged one
+            fx.spawnBurst(e.position + glm::vec3{0, e.height() * 0.6f, 0}, {1.f, 0.3f, 0.1f}, 2, 1.5f, 0.6f, -2.f);
         const float eScale = dmgScale * e.damageMult();   // ENRAGED hits harder
         const EnemyEvents ev = e.ev;   // copy: spawning below may reallocate
         glm::vec3 epos = e.position;
@@ -337,7 +339,8 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     }
     if (e.type == EnemyType::CONDUCTOR && e.linkCount > 0) ui.feed("TETHERS BROKEN", {0.3f, 1.f, 0.9f});
     // Half for one you only set up (enemies hurting each other, lava, the void)
-    styleSystem.addStyle(src == StyleSource::FRIENDLY || src == StyleSource::ENVIRONMENT ? 15.f : 30.f, src);
+    float hm = e.hollow != Hollow::NONE ? 1.5f : 1.f;   // a Hollowed kill is worth more
+    styleSystem.addStyle((src == StyleSource::FRIENDLY || src == StyleSource::ENVIRONMENT ? 15.f : 30.f) * hm, src);
     styleSystem.heal(5.f * tune().heal);
     audio.play("enemy_death");
     fx.spawnDeathParticles(e.position + glm::vec3{0, e.height() * 0.5f, 0}, e.stats().color);
@@ -349,7 +352,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     }
 
     // XP, scaled by how stylishly you're playing
-    int xp = (int)std::round(xpForKill(e.type) * styleXpMultiplier(styleSystem.getRank()));
+    int xp = (int)std::round(xpForKill(e.type) * styleXpMultiplier(styleSystem.getRank()) * hm);
     gainXp(xp);
     char buf[64];
     snprintf(buf, sizeof(buf), "%s  +%d XP", e.stats().name, xp);

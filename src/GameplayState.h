@@ -92,6 +92,7 @@ inline int       g_devWeapon = -1;
 inline bool      g_devAim = false;
 inline std::string g_devOverlay;
 inline bool      g_devNoMouse = false;   // screenshot runs: never grab or read the mouse
+inline int g_devHollow = 0;            // --hollow N: --spawn enemies get Hollow variant N (1 ENRAGED, 2 TWINNED, 3 HALOED)
 inline std::vector<int> g_devSpawns;    // --spawn N (repeatable): enemies of type N in an arc 9-12 m in front of the camera
 // Footage (--record, see main.cpp): every frame advances a fixed step, the
 // camera glides from --cam to --campath, --autoaim turns it onto the nearest

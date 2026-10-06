@@ -115,7 +115,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
         float a = (k - (g_devSpawns.size() - 1) * 0.5f) * 0.4f, dist = 9.f + (k % 2) * 3.f;
         glm::vec3 f = player.camera.flatForward(), r{-f.z, 0.f, f.x};
         glm::vec3 at = player.position * glm::vec3{1, 0, 1} + (f * std::cos(a) + r * std::sin(a)) * dist;
-        spawnEnemy((EnemyType)g_devSpawns[k], at + glm::vec3{0, groundHeightAt(at.x, at.z, player.position.y + 1.f), 0});
+        spawnEnemy((EnemyType)g_devSpawns[k], at + glm::vec3{0, groundHeightAt(at.x, at.z, player.position.y + 1.f), 0}, (Hollow)g_devHollow);
     }
     if (g_devOverlay == "settings") { paused = true; pauseSettings = true; }
 

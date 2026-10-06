@@ -49,7 +49,24 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
         pose.position = lerpPos(e.prevPosition, e.position);
         e.shownPos = pose.position; e.hasShown = true;
         pose.yaw = e.prevYaw + std::remainder(e.yaw - e.prevYaw, 6.2831853f) * renderAlpha;
+        size_t from = out.size();
         buildEnemy(pose, t, out);
+        if (e.hollow == Hollow::ENRAGED)   // everything that glows burns red
+            for (size_t j = from; j < out.size(); ++j) {
+                float g = std::max({out[j].emissive.x, out[j].emissive.y, out[j].emissive.z});
+                if (g > 0.05f) out[j].emissive = glm::vec3{1.6f, 0.22f, 0.12f} * g;
+            }
+        if (e.hollow == Hollow::TWINNED)   // a seam of light down the middle, front and back
+            for (float side : {-1.f, 1.f})
+                push(out, T(pose.position + glm::vec3{0, e.height() * 0.5f, 0}) * RY(pose.yaw) * T({0.f, 0.f, side * e.radius() * 0.95f})
+                          * S({0.07f, e.height() * 0.85f, 0.06f}),
+                     {0.9f, 0.9f, 1.f}, glm::vec3{1.2f, 1.4f, 2.2f});
+        if (e.halo) {                      // a thick gold ring turning over its head
+            glm::mat4 h = T(pose.position + glm::vec3{0, e.height() + 0.5f, 0}) * RY(-t * 1.8f);
+            for (int k = 0; k < 10; ++k)
+                push(out, h * RY(k * 0.6283f) * T({0.f, 0.f, 0.5f}) * S({0.34f, 0.1f, 0.1f}),
+                     {1.f, 0.8f, 0.35f}, glm::vec3{1.8f, 1.3f, 0.45f});
+        }
         if (e.shielded) {   // tethered to a CONDUCTOR: a ring of light turning over its head
             glm::mat4 halo = T(pose.position + glm::vec3{0, e.height() + 0.45f, 0}) * RY(t * 2.5f);
             for (int k = 0; k < 6; ++k)
