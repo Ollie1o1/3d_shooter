@@ -30,6 +30,9 @@ public:
     static constexpr int CHUNK      = 512;    // frames mixed per inner pass
     static constexpr int RING       = 512;    // commands buffered between renders
     static constexpr int GROUP_CAP[(int)SoundGroup::COUNT] = {12, 20, 12, 4};
+    static constexpr float REF_DIST = 4.f;    // full level inside this
+    static constexpr float ROLLOFF  = 1.f;
+    static constexpr float MAX_DIST = 90.f;   // silent beyond (fading over the last 10 m)
 
     struct Opts {
         float      volume     = 1.f;                 // linear, before jitter
@@ -198,10 +201,30 @@ private:
         v.pitch = c.pitch; v.gain = c.gain; v.at = c.a; v.loud = c.gain;
     }
 
-    // Target left/right gain and low-pass coefficient for a voice right now
+    // Target left/right gain and low-pass coefficient for a voice right now:
+    // distance falloff, a pan law that keeps the centre at full level, and a
+    // low-pass that closes with distance and when the source is behind you
     void target(const Voice& v, float& L, float& R, float& lp) const {
-        L = R = v.gain;
+        float g = v.gain;
         lp = 1.f;
+        if (!v.positional) { L = R = g; return; }
+        glm::vec3 d = v.at - lis.pos;
+        float dist = glm::length(d);
+        if (!(dist < MAX_DIST)) { L = R = 0.f; return; }
+        g *= REF_DIST / (REF_DIST + ROLLOFF * std::max(0.f, dist - REF_DIST));
+        g *= std::min(1.f, (MAX_DIST - dist) / 10.f);
+        float pan = 0.f, behind = 0.f;
+        if (dist > 0.5f) {
+            glm::vec3 nd = d / dist;
+            pan = glm::clamp(glm::dot(nd, lis.right), -1.f, 1.f);
+            behind = std::max(0.f, -glm::dot(nd, lis.fwd));
+        }
+        float th = (pan + 1.f) * 0.78539816f;   // 0 (hard left) .. pi/2 (hard right)
+        L = g * std::min(1.f, 1.41421356f * std::cos(th));
+        R = g * std::min(1.f, 1.41421356f * std::sin(th));
+        float fc = 18000.f * std::pow(2500.f / 18000.f, dist / MAX_DIST) * (1.f - 0.5f * behind);
+        fc = std::min(fc, 0.45f * rate);
+        lp = 1.f - std::exp(-6.2831853f * fc / rate);
     }
 
     void mixChunk(float* io, int n) {

@@ -2260,6 +2260,62 @@ int main() {
             sfxRender(m, 512);
             CHECK(!m.isPlaying(h) && m.active(G::WORLD) == 0, "a short sound frees its voice when it finishes");
         }
+        // ---- positional
+        auto at = [](glm::vec3 p, float vol = 1.f, G g = G::WORLD) {
+            SfxMixer::Opts o; o.volume = vol; o.group = g; o.positional = true; o.pos = p; return o;
+        };
+        auto lisN = [](SfxMixer& m) { m.setListener({0.f, 0.f, 0.f}, {1.f, 0.f, 0.f}, {0.f, 0.f, -1.f}); };   // facing -Z, right = +X
+        {
+            SfxMixer m(44100.f, 3); m.addSound("noise", sfxNoise(44100)); lisN(m);
+            m.play("noise", at({10.f, 0.f, 0.f}));
+            auto r = sfxRender(m, 4410);
+            SfxMixer m2(44100.f, 3); m2.addSound("noise", sfxNoise(44100)); lisN(m2);
+            m2.play("noise", at({-10.f, 0.f, 0.f}));
+            auto l = sfxRender(m2, 4410);
+            CHECK(sfxRms(r, 1) > 4.f * sfxRms(r, 0) && sfxRms(l, 0) > 4.f * sfxRms(l, 1),
+                  "a sound on your right is in the right ear, on your left in the left");
+        }
+        {
+            SfxMixer f(44100.f, 3); f.addSound("noise", sfxNoise(44100)); lisN(f);
+            f.play("noise", at({0.f, 0.f, -10.f}));
+            auto front = sfxRender(f, 4410);
+            SfxMixer b(44100.f, 3); b.addSound("noise", sfxNoise(44100)); lisN(b);
+            b.play("noise", at({0.f, 0.f, 10.f}));
+            auto behind = sfxRender(b, 4410);
+            CHECK(sfxHf(behind, 0) / sfxRms(behind, 0) < 0.9f * sfxHf(front, 0) / sfxRms(front, 0),
+                  "the same sound behind you is darker than in front");
+        }
+        {
+            float rms[4]; const float D[4] = {4.f, 15.f, 40.f, 95.f};
+            for (int k = 0; k < 4; ++k) {
+                SfxMixer m(44100.f, 3); m.addSound("noise", sfxNoise(44100)); lisN(m);
+                m.play("noise", at({0.f, 0.f, -D[k]}));
+                auto b = sfxRender(m, 4410);
+                rms[k] = k == 3 ? sfxPeak(b) : sfxRms(b, 0);
+            }
+            CHECK(rms[0] > rms[1] && rms[1] > rms[2] && rms[2] > 0.f, "quieter the further away (4, 15, 40 m)");
+            CHECK(rms[3] == 0.f, "beyond 90 m: silent");
+        }
+        {   // on top of the listener: centred, full, finite
+            SfxMixer m(44100.f, 3); m.addSound("noise", sfxNoise(44100)); lisN(m);
+            m.play("noise", at({0.f, 0.f, 0.f}));
+            auto b = sfxRender(m, 4410);
+            float l = sfxRms(b, 0), r = sfxRms(b, 1);
+            CHECK(sfxFinite(b) && l > 0.3f && std::fabs(l - r) < 0.01f * l, "a sound right on you is centred and full (no NaN)");
+        }
+        {   // a moving source follows; a stale handle moves nothing
+            SfxMixer m(44100.f, 3); m.addSound("noise", sfxNoise(44100)); m.addSound("blip", sfxNoise(100)); lisN(m);
+            SoundHandle old = m.play("blip", at({0.f, 0.f, -2.f}));
+            sfxRender(m, 512);
+            SoundHandle h = m.play("noise", at({10.f, 0.f, 0.f}));
+            m.move(old, {-10.f, 0.f, 0.f});   // finished long ago: must not touch the new voice
+            auto first = sfxRender(m, 4410);
+            m.move(h, {-10.f, 0.f, 0.f});
+            sfxRender(m, 512);                // the swing across
+            auto second = sfxRender(m, 4410);
+            CHECK(sfxRms(first, 1) > 4.f * sfxRms(first, 0), "a stale handle moves nothing");
+            CHECK(sfxRms(second, 0) > 4.f * sfxRms(second, 1), "a moved source is heard where it went");
+        }
     }
 
     // ---------------------------------------------------------------- mouse filter
