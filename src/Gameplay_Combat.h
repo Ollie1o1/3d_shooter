@@ -39,7 +39,7 @@ inline void GameplayState::breakHalo(Enemy& e) {
     fx.spawnBurst(at, {1.f, 0.8f, 0.3f}, 36, 9.f, 0.5f, 6.f);
     styleSystem.addStyle(40.f, StyleSource::PARRY);
     ui.feed("HALO BROKEN", {1.f, 0.85f, 0.3f});
-    audio.play("parry", 90);
+    audio.playAt("parry", at, 90, SoundGroup::ENEMY);
 }
 
 inline bool GameplayState::anchoredAt(glm::vec3 feet) const {
@@ -120,7 +120,7 @@ inline void GameplayState::punch(int boostable) {
             hurtEnemy(e, 25.f, c, 6.f, 1.f, StyleSource::PUNCH);
             glm::vec3 push = glm::normalize(glm::vec3{d.x, 0.f, d.z}) * (e.type == EnemyType::JUGGERNAUT ? 0.3f : 1.4f);
             e.position += push;
-            audio.play("clank", 50);
+            audio.playAt("clank", c, 50, SoundGroup::ENEMY);
             shake(0.08f, 0.02f);
             break;
         }
@@ -141,8 +141,7 @@ inline void GameplayState::spawnEnemy(EnemyType t, glm::vec3 pos, Hollow h) {
     }
     if (spawnSoundThisTick) return;   // a FAST section spawns a dozen at once: one sound
     spawnSoundThisTick = true;
-    float d = glm::length(pos - player.position);
-    audio.play("spawn", (int)glm::clamp(110.f - d * 2.f, 25.f, 110.f));
+    audio.playAt("spawn", pos, 110, SoundGroup::WORLD);
 }
 
 inline void GameplayState::updateEnemies(float dt) {
@@ -180,7 +179,8 @@ inline void GameplayState::updateEnemies(float dt) {
         // Wind-up tick: a cue for the ones close enough to matter, at most
         // a few a second however many are aiming at you
         if (ev.telegraphStarted && dist < 30.f && telegraphSoundCd <= 0.f) {
-            audio.play("telegraph", (int)glm::clamp(70.f - dist * 2.f, 12.f, 70.f));
+            audio.playAt("telegraph", epos, 70, SoundGroup::ENEMY, isBoss(enemies[i].type));
+            if (isBoss(enemies[i].type)) audio.duck(6.f, 0.5f);   // a boss winding up: everything else steps back
             telegraphSoundCd = 0.22f;
         }
         for (int k = 0; k < ev.shots; ++k)
@@ -201,7 +201,7 @@ inline void GameplayState::updateEnemies(float dt) {
                 fx.spawnBurst(ev.beamTo + glm::vec3{0, 0.1f, 0}, wet ? glm::vec3{0.85f, 0.88f, 0.9f} : glm::vec3{1.f, 0.85f, 0.5f},
                               3, wet ? 2.f : 5.f, wet ? 0.8f : 0.3f, wet ? -3.f : 9.f);
             }
-            if (beamHissCd <= 0.f) { audio.play("skim", 55); beamHissCd = 0.45f; }
+            if (beamHissCd <= 0.f) { audio.playAt("skim", ev.beamTo, 55, SoundGroup::ENEMY); beamHissCd = 0.45f; }
         }
         if (ev.meleeHit) {
             if (damagePlayer(ev.meleeDamage * eScale, epos, 0.25f, 0.06f)) {
@@ -215,7 +215,7 @@ inline void GameplayState::updateEnemies(float dt) {
             friendlySlam(enemies[i], ev.slamRadius);
             fx.spawnShockwave(epos, ev.slamRadius, statsOf(enemies[i].type).glow);
             shake(0.35f, 0.07f);
-            audio.play("slam");
+            audio.playAt("slam", epos, 128, SoundGroup::ENEMY, isBoss(enemies[i].type));
             glm::vec2 flat{player.position.x - epos.x, player.position.z - epos.z};
             bool grounded = player.position.y < epos.y + 0.9f && player.position.y > epos.y - 1.5f;   // jump it to dodge
             if (ev.slamDamage > 0.f && glm::length(flat) < ev.slamRadius && grounded) {
@@ -241,16 +241,17 @@ inline void GameplayState::updateEnemies(float dt) {
         }
         if (ev.slash >= 0) {   // a sword stroke: its arc, and a whoosh
             fx.slashes.push_back({epos, enemies[i].yaw, ev.slash, 0.f});
-            audio.play("dash", ev.slash == 2 ? 120 : 95);
+            audio.playAt("dash", epos, ev.slash == 2 ? 120 : 95, SoundGroup::ENEMY, true);
         }
-        if (ev.dashStarted) { audio.play("dash", 128); shake(0.12f, 0.03f); }
-        if (ev.leapStarted) { audio.play("jump", 128); fx.spawnShockwave(epos, 3.f, statsOf(enemies[i].type).glow); }
+        if (ev.dashStarted) { audio.playAt("dash", epos, 128, SoundGroup::ENEMY, isBoss(enemies[i].type)); shake(0.12f, 0.03f); }
+        if (ev.leapStarted) { audio.playAt("jump", epos, 128, SoundGroup::ENEMY, isBoss(enemies[i].type)); fx.spawnShockwave(epos, 3.f, statsOf(enemies[i].type).glow); }
         if (enemies[i].type == EnemyType::SOVEREIGN) onSovereignEvents(enemies[i], ev);
         if (ev.enraged) {
             pushBanner(enemies[i].type == EnemyType::SOVEREIGN ? "THE SOVEREIGN IS ENRAGED" : "THE WARDEN IS ENRAGED",
                        "", {1.f, 0.15f, 0.25f}, 2.f);
             shake(0.5f, 0.06f);
-            audio.play("wave");
+            audio.play("wave", 128, SoundGroup::UI);
+            audio.duck(6.f, 0.5f);
         }
     }
 
@@ -313,6 +314,7 @@ inline bool GameplayState::damagePlayer(float dmg, glm::vec3 from, float shakeT,
     showDamageFrom(from);
     shake(shakeT, shakeAmt);
     audio.play("player_hit");
+    audio.duck(5.f, 0.15f);   // you got hit: that is the sound that matters
     invincFrames = std::max(invincFrames, iframes);
     grapple.release();
     return true;
@@ -375,7 +377,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     float hm = e.hollow != Hollow::NONE ? 1.5f : 1.f;   // a Hollowed kill is worth more
     styleSystem.addStyle((src == StyleSource::FRIENDLY || src == StyleSource::ENVIRONMENT ? 15.f : 30.f) * hm, src);
     styleSystem.heal(5.f * tune().heal);
-    audio.play("enemy_death");
+    audio.playAt("enemy_death", e.position + glm::vec3{0, e.height() * 0.5f, 0}, 128, SoundGroup::ENEMY);
     fx.spawnDeathParticles(e.position + glm::vec3{0, e.height() * 0.5f, 0}, e.stats().color);
     spawnDebrisFor(e);
     if (styleSystem.overdrive) dashCharges = 2;
@@ -435,7 +437,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
             fx.spawnExplosionParticles(e.position + glm::vec3{frand(-1.5f,1.5f), frand(1.f,4.f), frand(-1.5f,1.5f)}, 4.f);
         explosionFlashTimer = 0.35f; explosionFlashPos = e.position + glm::vec3{0, 2.f, 0};
         shake(1.0f, 0.12f);
-        audio.play("explosion");
+        audio.playAt("explosion", e.position + glm::vec3{0, 2.f, 0}, 128, SoundGroup::WORLD, true);
         if (e.type == EnemyType::SOVEREIGN) {
             for (int k = 0; k < 6; ++k)
                 fx.spawnBurst(e.position + glm::vec3{frand(-1.f, 1.f), frand(0.5f, 3.5f), frand(-1.f, 1.f)},
@@ -458,7 +460,7 @@ inline void GameplayState::gainXp(int xp) {
         char buf[64];
         snprintf(buf, sizeof(buf), "LEVEL %d", prog.level);
         ui.toast(buf, "UPGRADE READY - PRESS TAB", {0.4f, 0.9f, 1.f}, 2.6f);
-        audio.play("levelup");
+        audio.play("levelup", 128, SoundGroup::UI);
         styleSystem.heal(15.f);
     }
 }
@@ -470,7 +472,7 @@ inline void GameplayState::processBlasts() {
         fx.spawnExplosionParticles(b.pos, b.radius);
         shake(0.3f, 0.06f);
         explosionFlashTimer = 0.35f; explosionFlashPos = b.pos;
-        audio.play("explosion");
+        audio.playAt("explosion", b.pos, 128, SoundGroup::WORLD);
         for (auto& e : enemies) {
             if (!e.targetable()) continue;
             float d = glm::length(e.position + glm::vec3{0, e.height() * 0.5f, 0} - b.pos);
@@ -641,7 +643,7 @@ inline void GameplayState::fireWeapon(int w) {
             if (e.deflects(dir, hits[k].t)) {
                 fx.spawnHitSparks(at, {1.f, 0.85f, 0.4f});
                 fx.spawnBurst(at, {1.f, 0.8f, 0.35f}, 10, 6.f, 0.3f, 10.f);
-                audio.play("clank", 100);
+                audio.playAt("clank", at, 100, SoundGroup::ENEMY, true);
                 e.onDeflect();
                 if (deflectHints < 2) { ++deflectHints; ui.toast("DEFLECTED", "GET CLOSE - HIT HIM AS HE STRIKES", {1.f, 0.8f, 0.3f}, 1.8f); }
                 anyHit = true;
@@ -651,7 +653,7 @@ inline void GameplayState::fireWeapon(int w) {
             // the head over its rim), and the round with it
             if (!hits[k].head && e.blocks(dir)) {
                 fx.spawnHitSparks(at, {0.4f, 1.f, 0.75f});
-                if (shieldClankCd <= 0.f) { audio.play("clank", 70); shieldClankCd = 0.12f; }
+                if (shieldClankCd <= 0.f) { audio.playAt("clank", at, 70, SoundGroup::ENEMY); shieldClankCd = 0.12f; }
                 anyHit = true;
                 break;
             }
@@ -676,11 +678,11 @@ inline void GameplayState::fireWeapon(int w) {
     if (kills && id == WeaponId::LONGSHOT && quick) {
         styleSystem.addStyle(40.f, StyleSource::LONGSHOT); gainXp(25);
         ui.toast("QUICKSCOPE", "+25 XP", {1.f, 0.85f, 0.2f}, 1.4f);
-        audio.play("parry", 90);
+        audio.play("parry", 90, SoundGroup::UI);
     } else if (kills && sniper && noscope) {
         styleSystem.addStyle(60.f, weaponSource(id)); gainXp(40);
         ui.toast("NOSCOPE", "+40 XP", {1.f, 0.4f, 0.8f}, 1.6f);
-        audio.play("parry", 90);
+        audio.play("parry", 90, SoundGroup::UI);
     }
     if (killCount >= 2) {
         char buf[32]; snprintf(buf, sizeof(buf), "COLLATERAL x%d", killCount);
@@ -705,7 +707,7 @@ inline void GameplayState::fireWeapon(int w) {
     muzzleFlashTimer = sniper ? 0.08f : pellets > 1 ? 0.07f : 0.04f;
     shake(sniper ? 0.14f : pellets > 1 ? 0.12f : 0.06f, sniper ? 0.03f : pellets > 1 ? 0.025f : 0.012f);
     static const char* SND[] = {"revolver", "shotgun", "kar", "longshot"};
-    audio.play(SND[w]);
+    audio.play(SND[w], 128, SoundGroup::PLAYER, true);
     ++totalShots;
     if (anyHit) ++totalHits;
     fx.spawnShellCasing(origin, right);

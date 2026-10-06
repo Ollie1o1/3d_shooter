@@ -292,7 +292,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         const Projectile& pr = projSystem.pool[pi];
         if (pr.parried && pr.heavy) {
             fx.spawnExplosionParticles(pr.position, 3.f);
-            audio.play("explosion", 100);
+            audio.playAt("explosion", pr.position, 100, SoundGroup::WORLD);
             shake(0.3f, 0.07f);
         }
         hurtEnemy(e, pr.damage, pr.position, pr.parried ? 25.f : 10.f, 2.f,
@@ -302,7 +302,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     for (auto& [pi, ei] : result.friendlyHits) {
         const Projectile& pr = projSystem.pool[pi];
         fx.spawnExplosionParticles(pr.position, 2.f);
-        audio.play("explosion", 80);
+        audio.playAt("explosion", pr.position, 80, SoundGroup::WORLD);
         hurtEnemy(enemies[ei], FRIENDLY_SHELL_DAMAGE, pr.position, 0.f, 0.f, StyleSource::FRIENDLY);
     }
     for (auto& exp : result.explosions)
@@ -319,7 +319,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         if (glm::length(glm::vec2(d.x, d.z)) < 3.f && std::fabs(d.y) < 4.f) {
             finishOpen = false;
             fx.spawnBurst(level.finishPos + glm::vec3{0, 1.f, 0}, {1.f, 0.6f, 0.2f}, 60, 10.f, 1.2f, -2.f);
-            audio.play("wave"); audio.play("split");
+            audio.play("wave", 128, SoundGroup::UI); audio.play("split", 128, SoundGroup::UI);
             finishRun();
         }
     }
@@ -424,6 +424,7 @@ inline void GameplayState::keepPlayerInZone(float dt) {
         ui.onDamage();
         ui.feed("FELL - BACK TO THE LEDGE", {1.f, 0.5f, 0.3f});
         audio.play("player_hit");
+        audio.duck(5.f, 0.15f);
     }
     (void)dt;
 }

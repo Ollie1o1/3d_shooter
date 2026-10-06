@@ -274,19 +274,19 @@ inline void GameplayState::handleDirectorEvents() {
             if (fast()) {
                 snprintf(buf, sizeof(buf), "ROOM %d/%d  %s", ev.value + 1, (int)level.arenas.size(), ar.name);
                 pushBanner(buf, ar.subtitle, {1.f, 0.7f, 0.3f}, 1.8f);
-                audio.play("wave", 90);
+                audio.play("wave", 90, SoundGroup::UI);
             } else if (endless()) {
                 if (dailyRun()) pushBanner("DAILY  " + daily.label(), std::string(daily.modName()) + " - " + daily.modHint(),
                                            {0.4f, 0.8f, 1.f}, 3.4f);
                 else pushBanner(std::string("ENDLESS  ") + ar.name, "HOW LONG CAN YOU LAST", {1.f, 0.3f, 0.45f}, 3.f);
-                audio.play("wave");
+                audio.play("wave", 128, SoundGroup::UI);
             } else if (act2()) {
                 pushBanner(std::string("ACT II  ") + ar.name, ar.subtitle, {0.35f, 0.95f, 0.9f}, 2.6f);
-                audio.play("wave");
+                audio.play("wave", 128, SoundGroup::UI);
             } else {
                 snprintf(buf, sizeof(buf), "ARENA %d/%d", ev.value + 1, (int)level.arenas.size());
                 pushBanner(std::string(buf) + "  " + ar.name, ar.subtitle, {1.f, 0.78f, 0.3f}, 2.6f);
-                audio.play("wave");
+                audio.play("wave", 128, SoundGroup::UI);
             }
             break;
         case DirectorEvent::WAVE_START:
@@ -301,14 +301,14 @@ inline void GameplayState::handleDirectorEvents() {
                 snprintf(buf, sizeof(buf), "WAVE %d", ev.value + 1);
             } else snprintf(buf, sizeof(buf), "WAVE %d/%d", ev.value + 1, director.waveCount());
             pushBanner(buf, director.goal().label, {1.f, 0.9f, 0.4f}, director.hasGoal() ? 2.6f : 1.8f);
-            audio.play("wave", 90);
+            audio.play("wave", 90, SoundGroup::UI); audio.duck(4.f, 0.4f);
             break;
         case DirectorEvent::BOSS_START:
             if (ar.waves[ev.value][0].type == EnemyType::SOVEREIGN)
                 pushBanner("THE SOVEREIGN", "PARRY (F) HIS BLADE AS IT FALLS", {1.f, 0.3f, 0.2f}, 4.f);
             else
                 pushBanner("THE WARDEN", "DODGE THE VOLLEYS, JUMP THE SLAMS", {1.f, 0.2f, 0.65f}, 3.5f);
-            audio.play("wave"); audio.play("explosion", 70);
+            audio.play("wave", 128, SoundGroup::UI); audio.play("explosion", 70, SoundGroup::UI); audio.duck(4.f, 0.4f);
             shake(0.6f, 0.06f);
             break;
         case DirectorEvent::NEW_TYPE: {
@@ -337,7 +337,7 @@ inline void GameplayState::handleDirectorEvents() {
                 recordSplit(ev.value);
                 styleSystem.heal(25.f);
                 grenadeCount = grenadeMax;
-                audio.play("split");
+                audio.play("split", 128, SoundGroup::UI);
                 break;
             }
             if (done.exitDoor >= 0 && !act2())
@@ -346,7 +346,7 @@ inline void GameplayState::handleDirectorEvents() {
                 pushBanner("THE WAY DOWN IS OPEN", "BEHIND THE ORGAN", {0.35f, 0.95f, 0.9f}, 3.5f);
             styleSystem.heal(40.f);
             grenadeCount = grenadeMax;
-            audio.play("wave");
+            audio.play("wave", 128, SoundGroup::UI);
             break;
         }
         case DirectorEvent::GOAL_DONE:
@@ -362,20 +362,20 @@ inline void GameplayState::handleDirectorEvents() {
             styleSystem.addStyle(30.f);
             gainXp(40);
             ui.feed("OBJECTIVE  +40 XP", {0.4f, 1.f, 0.6f});
-            audio.play("wave");
+            audio.play("wave", 128, SoundGroup::UI);
             shake(0.3f, 0.05f);
             break;
         case DirectorEvent::VICTORY:
             if (act2()) {   // the run ends at the beacon on the Orrery's north terrace
                 finishOpen = true;
                 pushBanner("THE ORRERY STILLS", "REACH THE BEACON ON THE NORTH TERRACE", {1.f, 0.75f, 0.3f}, 3.f);
-                audio.play("wave");
+                audio.play("wave", 128, SoundGroup::UI);
             } else victoryDelay = 2.5f;
             break;
         case DirectorEvent::FINISH_OPEN:
             finishOpen = true;
             pushBanner("FINISH OPEN", "REACH THE BEACON", {1.f, 0.6f, 0.2f}, 2.f);
-            audio.play("wave");
+            audio.play("wave", 128, SoundGroup::UI);
             break;
         }
     }
@@ -537,7 +537,7 @@ inline void GameplayState::update(float dt) {
         if (countdown > 0.f && !frozen) {
             float before = countdown;
             countdown -= dt;
-            if (std::ceil(before) != std::ceil(countdown)) audio.play(countdown <= 0.f ? "wave" : "telegraph", 90);
+            if (std::ceil(before) != std::ceil(countdown)) audio.play(countdown <= 0.f ? "wave" : "telegraph", 90, SoundGroup::UI);
             if (countdown <= 0.f) countdown = 0.f;
             handleDirectorEvents();
         }
@@ -597,8 +597,7 @@ inline void GameplayState::update(float dt) {
     // Doors part as you run at them (unless locked) and shut behind you
     level.updateDoors(floatDt, player.position, [this](int di, bool opening) {
         const AABB& c = level.doors[di].closed;
-        float d = glm::length((c.min + c.max) * 0.5f - player.camera.position);
-        audio.play(opening ? "door" : "door_close", (int)glm::clamp(120.f - d * 3.f, 20.f, 120.f));
+        audio.playAt(opening ? "door" : "door_close", (c.min + c.max) * 0.5f, 120, SoundGroup::WORLD);
     });
 
     viewModel.update(floatDt, playerXZSpeed, player.onGround);

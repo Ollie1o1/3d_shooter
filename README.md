@@ -99,6 +99,10 @@ tools/record_showcase.sh         # re-record docs/overdrive.gif (needs gifski)
 
 # Frame times
 ./shooter --bench 2000 --arena 4 --wave 2 --god [--cap HZ] [--res LINES]
+
+# Record the final mix (music + effects) to a WAV, then quit
+./shooter --arena 5 --god --kite --audiodump mix.wav 15
+OVERDRIVE_SFXLIST=1 ./shooter ...   # print every loaded sound and its length
 ```
 
 **In the game:** `` ` `` or **F2** on the main menu opens the **DEV level select** (also `--dev`, or `?dev` on the web build): any arena and wave, any FAST room, or the Sovereign, with god mode on or off. These are practice runs (no records, no leaderboard); in one, **F5** clears the current wave and **F6** refills health.
@@ -286,6 +290,7 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 - **Procedural sound effects** — synthesized in Python (`tools/gen_sfx.py`): jumps, landings, slams, reloads, bolts, hits, kills, telegraphs, explosions, stingers, spawns, pickups, level-ups
 - **Recorded sounds** from free CC0 (public domain) packs, cut, trimmed and layered by `tools/import_sfx.py`: the four gunshots (real pistol, shotgun and rifle recordings), the dash whoosh, the grapple, footsteps (four variations), the punch and the parry clank. Sources in [`assets/sfx/CREDITS.md`](assets/sfx/CREDITS.md)
 - Every sound is trimmed to start within a few milliseconds of being triggered, so shots never feel late
+- **Our own effects mixer** (`SfxMixer.h`, in the same audio callback as the music): enemies, doors, blasts and boss attacks sound from where they happen (quieter and darker with distance, panned to their side, muffled behind you); every play varies a little in pitch and level, and a sound with numbered variants (`name_1.wav` …) never repeats one twice running; voice caps per group (player, enemies, world, UI) keep a crowd from turning to noise without ever cutting your gun or the boss; the music and the world duck when you're hit, a wave starts or a boss winds up; each arena has its own reverb (the open Yard, metal halls, the long dark Sanctum, Nave and Orrery)
 
 ### Game Flow
 - **Victory screen** — after the Sovereign: time, kills, accuracy, deaths and the run's **score**, part by part: style earned, time bonus (10 a second under a 15-minute par), damage taken (2 a point), times the difficulty (x0.75 LENIENT to x1.5 BRUTAL). An ENDLESS or DAILY run ends when you die, on a RUN OVER screen with its score (style + 500 a wave cleared)
@@ -349,6 +354,8 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 │   ├── Gamepad.h             # controller support, folded into the keys the game reads
 │   ├── Difficulty.h          # the four difficulty levels' tuning
 │   ├── MusicSynth.h          # the live-synthesized soundtrack
+│   ├── SfxMixer.h            # the effects mixer: positional voices, variation, ducking, reverb
+│   ├── AudioTypes.h          # sound groups, reverb spaces, sound handles
 │   ├── Display.h             # the render-resolution canvas, scaled into the window
 │   ├── MouseFilter.h         # drops bogus single-event mouse spikes
 │   ├── WaveDirector.h        # arena → wave → arena state machine (no OpenGL)

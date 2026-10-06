@@ -19,17 +19,17 @@ inline void GameplayState::onSovereignEvents(const Enemy& e, const EnemyEvents& 
         p.y = groundHeightAt(p.x, p.z, p.y + 1.f);   // on whatever's under the mark
         sov.addStrike(p, ev.strikeKind[k], ev.strikeDelay[k]);
     }
-    if (ev.strikes > 0) audio.play("telegraph", 110);
+    if (ev.strikes > 0) { audio.playAt("telegraph", e.position, 110, SoundGroup::ENEMY, true); audio.duck(6.f, 0.5f); }
     if (ev.blinked) {
         glm::vec3 smoke{0.45f, 0.04f, 0.08f};
         fx.spawnBurst(ev.blinkFrom + glm::vec3{0, 1.6f, 0}, smoke, 40, 7.f, 0.7f, -3.f);
         fx.spawnBurst(e.position + glm::vec3{0, 1.6f, 0}, smoke, 40, 7.f, 0.7f, -3.f);
         fx.spawnShockwave(e.position, 3.f, {1.f, 0.2f, 0.15f});
-        audio.play("dash", 128);
+        audio.playAt("dash", e.position, 128, SoundGroup::ENEMY, true);
         shake(0.15f, 0.04f);
     }
     for (int k = 0; k < ev.phantoms; ++k) sov.addPhantom(ev.phantomPos[k], ev.phantomDir[k]);
-    if (ev.phantoms > 0) audio.play("telegraph", 120);
+    if (ev.phantoms > 0) { audio.playAt("telegraph", e.position, 120, SoundGroup::ENEMY, true); audio.duck(6.f, 0.5f); }
 }
 
 inline void GameplayState::updateSovereign(float dt) {
@@ -57,10 +57,10 @@ inline void GameplayState::updateSovereign(float dt) {
         if (s.kind == 0) {
             fx.spawnShockwave(s.pos, SovereignHazards::BLADE_RADIUS + 0.6f, {1.f, 0.25f, 0.15f});
             fx.spawnBurst(s.pos + glm::vec3{0, 0.3f, 0}, {1.f, 0.45f, 0.25f}, 14, 7.f, 0.5f, 12.f);
-            if (!bladeSound) { audio.play("slam", 90); bladeSound = true; }
+            if (!bladeSound) { audio.playAt("slam", s.pos, 90, SoundGroup::ENEMY, true); bladeSound = true; }
         } else {
             fx.spawnBurst(s.pos + glm::vec3{0, 0.2f, 0}, {1.f, 0.4f, 0.12f}, 10, 9.f, 0.6f, 14.f);
-            if (!eruptSound) { audio.play("slam", 60); eruptSound = true; }
+            if (!eruptSound) { audio.playAt("slam", s.pos, 60, SoundGroup::ENEMY, true); eruptSound = true; }
         }
     }
 
@@ -74,7 +74,8 @@ inline void GameplayState::updateSovereign(float dt) {
     if (!lastStand && boss->health < boss->maxHealth * 0.2f) {
         lastStand = true; lastStandT = 0.f;
         pushBanner("THE SANCTUM BURNS", "GET TO THE MIDDLE - FINISH IT", {1.f, 0.3f, 0.15f}, 3.f);
-        audio.play("wave");
+        audio.play("wave", 128, SoundGroup::UI);
+        audio.duck(6.f, 0.5f);
         shake(0.6f, 0.07f);
     }
     if (!lastStand) return;

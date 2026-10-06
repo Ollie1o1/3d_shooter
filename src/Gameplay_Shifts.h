@@ -13,7 +13,7 @@ inline void GameplayState::updateShifts(float dt) {
     if (sa.shift == ArenaShift::SOLAR && director.fighting() && !playerDead) {
         FlarePhase ph = shifts.flarePhase();
         if (ph == FlarePhase::WARN && flarePrev != FlarePhase::WARN) {
-            audio.play("telegraph", 70);
+            audio.playAt("telegraph", sa.sunPos, 110, SoundGroup::WORLD);
             if (!flareIntroduced) {
                 flareIntroduced = true;
                 pushBanner("THE SUN FLARES", "GET BEHIND A PILLAR - OR LURE THEM INTO IT", {1.f, 0.75f, 0.3f}, 2.8f);
@@ -36,15 +36,15 @@ inline void GameplayState::updateShifts(float dt) {
         pushBanner("THE LAVA IS RISING", "GET TO THE CATWALKS - OR LURE THEM IN", {1.f, 0.45f, 0.1f}, 2.6f);
     if (shifts.floodStarted) {
         pushBanner("THE WATER RISES", "GET TO HIGH GROUND - OR SLIDE", {0.35f, 0.9f, 0.95f}, 2.6f);
-        audio.play("explosion", 45);
+        audio.play("explosion", 45, SoundGroup::WORLD);
         shake(0.5f, 0.03f);
     }
     // The overload: a tick as the reactor winds up, a boom as a ring goes out
     float warn = shifts.warning();
-    if (warn > 0.f && pulseWarnCued == false) { audio.play("telegraph", 110); pulseWarnCued = true; }
+    if (warn > 0.f && pulseWarnCued == false) { audio.play("telegraph", 110, SoundGroup::WORLD); pulseWarnCued = true; }
     if (shifts.pulseFired) {
         pulseWarnCued = false;
-        audio.play("slam", 110);
+        audio.play("slam", 110, SoundGroup::WORLD);
         shake(0.25f, 0.05f);
     }
     if (shifts.rings.empty()) return;

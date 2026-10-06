@@ -105,7 +105,7 @@ inline void GameplayState::handleNameEntry(const SDL_Event& e) {
         boardPlace = board.add(boardFor(), nameBuf, runEntry());
         if (boardPlace >= 0) board.save();
         if (!name.empty()) {
-            audio.play("upgrade");
+            audio.play("upgrade", 128, SoundGroup::UI);
             submitWorld(name, diff);
             if (boardPlace < 0) boardPlace = 99;   // saved to the shared board only
         }
@@ -205,7 +205,7 @@ inline void GameplayState::trySwitch(int w) {
         pendingWeapon = w;
         weaponSwitchTimer = 0.15f;
         viewModel.triggerSwitch();
-        audio.play("reload", 80);
+        audio.play("reload", 80, SoundGroup::UI);
     }
 }
 
@@ -308,11 +308,11 @@ inline void GameplayState::closeArmory() {
 inline void GameplayState::buyUpgrade(int w, int s) {
     WeaponId wid = (WeaponId)w;
     int oldMag = weaponMag(wid, prog.up[w]);
-    if (!prog.buy(wid, (UpgradeStat)s)) { audio.play("telegraph", 50); return; }
+    if (!prog.buy(wid, (UpgradeStat)s)) { audio.play("telegraph", 50, SoundGroup::UI); return; }
     // A bigger magazine is topped up straight away
     int newMag = weaponMag(wid, prog.up[w]);
     if (newMag > oldMag && !weapons[w].reloading) weapons[w].ammo += newMag - oldMag;
-    audio.play("upgrade");
+    audio.play("upgrade", 128, SoundGroup::UI);
 }
 
 inline void GameplayState::handleArmoryEvent(const SDL_Event& e) {
