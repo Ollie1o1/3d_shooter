@@ -23,6 +23,8 @@
 //
 // The water: one volume over the whole floor. FLOOD raises it each wave
 // (0.4 m, 2.0 m, 2.6 m over the nave floor).
+// Waves: Haloed Husks and Twinned Rippers; Seraphs over the conduits; then an
+// Anchor first, with Twinned Shieldbearers, Seraphs and a Haloed Juggernaut.
 // =============================================================================
 #include "Level.h"
 
@@ -203,12 +205,17 @@ inline void buildAct2(LevelBuilder& B) {
         {-23, F + 6, -490}, {23, F + 6, -505}, {-23, F + 6, -580}, {23, F + 6, -575},               // galleries
     };
     a.airSpawns = {{0, F + 13, -495}, {0, F + 13, -560}, {-32, F + 11, -607}, {32, F + 11, -607}};
+    // Wave 3 opens with the Anchor (first in the queue): kill it before the rest pile in
     a.waves = {
-        {{EnemyType::HUSK, 6}, {EnemyType::RIPPER, 5}, {EnemyType::SENTINEL, 3},
+        {{EnemyType::HUSK, 4}, WaveEntry(EnemyType::HUSK, 3).hollow(Hollow::HALOED), {EnemyType::RIPPER, 3},
+         WaveEntry(EnemyType::RIPPER, 2).hollow(Hollow::TWINNED), {EnemyType::SENTINEL, 3},
          WaveEntry(EnemyType::SHIELDBEARER, 2).with({EnemyType::HUSK})},
-        {{EnemyType::RAPTOR, 4}, {EnemyType::BRUTE, 2}, {EnemyType::CONDUCTOR, 2}, {EnemyType::MITE, 6}},
-        {{EnemyType::BRUTE, 3}, WaveEntry(EnemyType::SHIELDBEARER, 3).with({EnemyType::SENTINEL}),
-         {EnemyType::CONDUCTOR, 2}, {EnemyType::JUGGERNAUT, 1}, {EnemyType::RIPPER, 4}},
+        {{EnemyType::RAPTOR, 3}, {EnemyType::SERAPH, 2}, {EnemyType::BRUTE, 1},
+         WaveEntry(EnemyType::BRUTE, 1).hollow(Hollow::ENRAGED), {EnemyType::CONDUCTOR, 2}, {EnemyType::MITE, 6}},
+        {{EnemyType::ANCHOR, 1}, {EnemyType::BRUTE, 2},
+         WaveEntry(EnemyType::SHIELDBEARER, 2).with({EnemyType::SENTINEL}).hollow(Hollow::TWINNED),
+         {EnemyType::CONDUCTOR, 2}, {EnemyType::SERAPH, 2}, WaveEntry(EnemyType::JUGGERNAUT, 1).hollow(Hollow::HALOED),
+         {EnemyType::RIPPER, 4}},
     };
     a.goals = {WaveGoal{},
                WaveGoal::conduits("DESTROY THE CONDUITS ON THE GALLERIES",

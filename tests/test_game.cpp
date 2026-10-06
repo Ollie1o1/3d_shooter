@@ -489,10 +489,16 @@ int main() {
         d.startArena(0);
         glm::vec3 player = N.arenas[0].playerStart; player.y = -60.f;
         std::vector<float> alive;
+        int seraphs = 0, anchors = 0, haloed = 0, twinned = 0, enragedSpawns = 0;
         for (int tick = 0; tick < 60 * 60 * 20 && d.phase != WaveDirector::Phase::VICTORY; ++tick) {
             std::vector<SpawnRequest> out;
             d.update(DT, (int)alive.size(), player, out);
-            for (size_t k = 0; k < out.size(); ++k) alive.push_back(3.f);
+            for (auto& r : out) {
+                alive.push_back(3.f);
+                seraphs += r.type == EnemyType::SERAPH; anchors += r.type == EnemyType::ANCHOR;
+                haloed += r.hollow == Hollow::HALOED; twinned += r.hollow == Hollow::TWINNED;
+                enragedSpawns += r.hollow == Hollow::ENRAGED;
+            }
             for (auto& t : alive) t -= DT;
             for (auto& t : alive)
                 if (t <= 0.f && d.conduitsLeft() > 0) d.onConduitDestroyed(d.goal().points[0]);
@@ -501,6 +507,9 @@ int main() {
             d.events.clear();
         }
         CHECK(d.phase == WaveDirector::Phase::VICTORY, "a simulated ACT II run clears the Nave");
+        std::printf("      nave run: %d seraphs, %d anchors, %d haloed, %d twinned, %d enraged\n", seraphs, anchors, haloed, twinned, enragedSpawns);
+        CHECK(seraphs >= 3 && anchors >= 1 && haloed >= 3 && twinned >= 2 && enragedSpawns >= 1,
+              "the Nave's waves bring Seraphs, an Anchor and every variant");
         CHECK(MUSIC_TRACKS == 6 && std::string(musicTrack(5).name) == "NAVE", "the Nave has its own track");
     }
 
@@ -678,6 +687,18 @@ int main() {
         Enemy sh(EnemyType::SERAPH, {0, 12, 0}); sh.spawnTimer = 0.f;
         AABB sHead; bool sHas = headBox(sh, sHead);
         CHECK(sHas && sHead.min.y > 12.9f, "a Seraph's head is its ring, up top");
+    }
+
+    // ---------------------------------------------------------------- ENDLESS stays as it was
+    {
+        bool clean = true;
+        EndlessWaves g; g.begin(99u, {}, true);
+        for (int n = 0; n < 40; ++n)
+            for (auto& e : g.wave(n).first) {
+                if (e.type == EnemyType::SERAPH || e.type == EnemyType::ANCHOR || e.variant != Hollow::NONE) clean = false;
+                for (auto t : e.escort) if (t == EnemyType::SERAPH || t == EnemyType::ANCHOR) clean = false;
+            }
+        CHECK(clean, "ENDLESS never brings a Seraph, an Anchor or a Hollowed enemy");
     }
 
     // ---------------------------------------------------------------- the Gauntlet (FAST)
