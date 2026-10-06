@@ -103,6 +103,8 @@ struct WaveGoal {
     glm::vec3 pos{0.f};
     float radius = 0.f, seconds = 0.f;
     std::vector<glm::vec3> points;
+    int mover = -1;   // HOLD: the circle rides this mover (on its top) instead of staying at pos
+    WaveGoal onMover(int m) const { WaveGoal g = *this; g.mover = m; return g; }
     static WaveGoal hold(const char* l, glm::vec3 p, float r, float s) { WaveGoal g; g.kind = HOLD; g.label = l; g.pos = p; g.radius = r; g.seconds = s; return g; }
     static WaveGoal conduits(const char* l, std::vector<glm::vec3> pts) { WaveGoal g; g.kind = CONDUITS; g.label = l; g.points = std::move(pts); return g; }
     static WaveGoal survive(const char* l, float s) { WaveGoal g; g.kind = SURVIVE; g.label = l; g.seconds = s; return g; }

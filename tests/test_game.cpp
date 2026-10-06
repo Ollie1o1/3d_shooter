@@ -710,6 +710,42 @@ int main() {
         CHECK(clean, "ENDLESS never brings a Seraph, an Anchor or a Hollowed enemy");
     }
 
+    // ---------------------------------------------------------------- HOLD circles that ride a mover
+    {
+        LevelData M; LevelBuilder MB{M};
+        MB.mover({0.f, 2.f, 0.f}, {2.5f, 0.5f, 2.5f}, Mover::Path::ORBIT, {10.f, 0.f, 0.f}, {0.f, 0.f, 10.f}, 20.f, 0.f, {1, 1, 1});
+        Arena a; a.name = "RIDE"; a.subtitle = "";
+        a.bounds = a.zone = LevelBuilder::aabb(-30, 0, -30, 30, 10, 30);
+        a.groundSpawns = {{-25, 0, -25}, {25, 0, 25}};
+        a.waves = {{{EnemyType::HUSK, 1}}};
+        a.goals = {WaveGoal::hold("HOLD", {0, 0, 0}, 2.5f, 3.f).onMover(0)};
+        M.arenas.push_back(a);
+        WaveDirector d; d.level = &M; d.startArena(0);
+        bool follows = true;
+        for (float t : {0.f, 5.f, 12.f}) {
+            M.updateMovers(t);
+            const AABB& b = M.walls[M.movers[0].wall].box;
+            glm::vec3 want{(b.min.x + b.max.x) * 0.5f, b.max.y, (b.min.z + b.max.z) * 0.5f};
+            for (int i = 0; i < 60 * 3; ++i) { std::vector<SpawnRequest> o; d.update(DT, 0, {99, 0, 99}, o); }   // into the wave
+            if (glm::length(d.goalPos() - want) > 1e-4f) follows = false;
+        }
+        CHECK(follows, "a HOLD circle on a moving platform follows it");
+        auto holdOn = [&](bool onIt) {
+            WaveDirector h; h.level = &M; h.startArena(0);
+            float t = 0.f; bool done = false;
+            for (int i = 0; i < 60 * 8 && !done; ++i, t += DT) {
+                M.updateMovers(t);
+                glm::vec3 p = onIt ? h.goalPos() : glm::vec3{25.f, 0.f, 0.f};
+                std::vector<SpawnRequest> o;
+                h.update(DT, 1, p, o);   // one enemy alive somewhere: the wave stays up
+                for (auto& ev : h.events) done |= ev.kind == DirectorEvent::GOAL_DONE;
+                h.events.clear();
+            }
+            return done;
+        };
+        CHECK(holdOn(true) && !holdOn(false), "standing on it fills the hold; standing elsewhere doesn't");
+    }
+
     // ---------------------------------------------------------------- the Gauntlet (FAST)
     LevelData D = buildGauntlet();
     SpatialGrid dgrid; dgrid.build(D.walls);

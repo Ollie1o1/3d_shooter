@@ -34,11 +34,12 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
                                                   : director.holding ? glm::vec3{0.3f, 1.f, 0.85f} : glm::vec3{1.f, 0.75f, 0.3f};
         float pulse = 0.7f + 0.3f * std::sin(t * 5.f);
         float segLen = 6.2832f * g.radius / SEG;
+        glm::vec3 gp = director.goalPos();   // riding a ring: where it is now
         for (int k = 0; k < SEG; ++k) {
             float a = (k + 0.5f) / SEG * 6.2832f;
             bool lit = (float)k / SEG < held;
             glm::vec3 c = lit ? hot : idle * 0.35f;
-            push(out, T(g.pos + glm::vec3{std::cos(a) * g.radius, 0.06f, std::sin(a) * g.radius}) * RY(-a) *
+            push(out, T(gp + glm::vec3{std::cos(a) * g.radius, 0.06f, std::sin(a) * g.radius}) * RY(-a) *
                       S({0.18f, 0.08f, segLen * 0.8f}), c * 0.4f, c * (lit ? 2.2f * pulse : 0.8f));
         }
     }

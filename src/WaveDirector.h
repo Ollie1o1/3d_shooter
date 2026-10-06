@@ -95,7 +95,8 @@ public:
     }
     bool inHoldZone(glm::vec3 p) const {
         const WaveGoal& g = goal();
-        return glm::length(glm::vec2{p.x - g.pos.x, p.z - g.pos.z}) < g.radius && p.y > g.pos.y - 0.6f && p.y < g.pos.y + 3.5f;
+        glm::vec3 c = goalPos();
+        return glm::length(glm::vec2{p.x - c.x, p.z - c.z}) < g.radius && p.y > c.y - 0.6f && p.y < c.y + 3.5f;
     }
     // The caller destroyed a conduit (the one nearest p)
     void onConduitDestroyed(glm::vec3 p) {
@@ -106,6 +107,16 @@ public:
             if (conduitAlive[i] && d < bestD) { bestD = d; best = i; }
         }
         if (best >= 0) conduitAlive[best] = false;
+    }
+
+    // Where the current goal's circle is now (a HOLD riding a mover follows it)
+    glm::vec3 goalPos() const {
+        const WaveGoal& g = goal();
+        if (g.mover >= 0 && level && g.mover < (int)level->movers.size()) {
+            const AABB& b = level->walls[level->movers[g.mover].wall].box;
+            return {(b.min.x + b.max.x) * 0.5f, b.max.y, (b.min.z + b.max.z) * 0.5f};
+        }
+        return g.pos;
     }
 
     void startArena(int a) {

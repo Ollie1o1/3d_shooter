@@ -159,7 +159,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
                 ui.renderMarker(sx, sy, on, {1.f, 0.3f, 0.5f}, buf);
             }
         if (director.fighting() && director.goal().kind == WaveGoal::HOLD && !director.holding && !director.goalDone) {
-            glm::vec3 target = director.goal().pos + glm::vec3{0, 1.5f, 0};
+            glm::vec3 target = director.goalPos() + glm::vec3{0, 1.5f, 0};
             float sx, sy;
             bool on = projectToScreen(target, view, proj, sx, sy);
             snprintf(buf, sizeof(buf), "HOLD %dM", (int)glm::length(target - player.position));
