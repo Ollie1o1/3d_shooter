@@ -40,7 +40,8 @@ inline void buildAct2(LevelBuilder& B) {
          teal{0.2f,0.9f,0.85f}, red{1.f,0.16f,0.08f}, brass{0.62f,0.5f,0.3f}, light{1.4f,1.25f,1.0f};
 
     // All of Act II stands in one basin, 60 m down
-    L.basins.push_back({aabb(-300, 0, -440, 300, 0, -1000), F});
+    L.basins.push_back({aabb(-300, 0, -440, 300, 0, -668), F});          // the Nave
+    L.basins.push_back({aabb(-300, 0, -668, 300, 0, -1000), -140.f});   // the Orrery: its void bottoms out far below
 
     Arena a;
     a.name = "THE DROWNED NAVE";
@@ -174,11 +175,10 @@ inline void buildAct2(LevelBuilder& B) {
     // back wall with the sealed way on
     B.wallX(-17, 17, -653, -652, F, F + 26, bone, {{-3.f, 3.f, F + 3.f, F + 8.f}});
     a.exitDoor = B.doorway(true, -3, 3, -653, -652, F + 3, 5.f, red, true);
-    wall(-4, F, -662, -3, F + 9, -653, slate); wall(3, F, -662, 4, F + 9, -653, slate);
-    wall(-4, F, -663, 4, F + 9, -662, slate);
-    wall(-3, F, -662, 3, F + 3, -653, slate);                      // passage floor (+3)
-    wall(-4, F + 9, -663, 4, F + 10, -653, slate);
-    L.finishPos = {0.f, F + 3.f, -659.f};
+    // the passage on, north to the shaft down to the Orrery
+    wall(-4, F, -668, -3, F + 9, -653, slate); wall(3, F, -668, 4, F + 9, -653, slate);
+    wall(-3, F, -668, 3, F + 3, -653, slate);                      // passage floor (+3)
+    wall(-4, F + 9, -668, 4, F + 10, -653, slate);
     // organ pipes: a staircase of double jumps from the chancel to the loft (+12)
     B.mat = Mat::METAL;
     const float pipeX[] = {-9.f, -6.f, -3.f, 0.f, 3.f, 6.f};
@@ -235,6 +235,147 @@ inline void buildAct2(LevelBuilder& B) {
         {0.16f,0.3f,0.32f}, {0.28f,0.06f,0.05f},
         {0.05f,0.12f,0.13f}, 0.012f };
     L.arenas.push_back(std::move(a));
+
+    // =========================================================================
+    // The corridor down: the Nave's passage drops down a shaft to an apron at
+    // the Orrery's south gate. Lighting blends from teal to gold on the way.
+    // =========================================================================
+    const float O = -80.f;                  // the Orrery's terrace
+    const vec3 C{0.f, O, -732.f};           // its centre (the sun's axis)
+    vec3 stone{0.42f,0.36f,0.30f}, stoneDark{0.24f,0.2f,0.17f}, brassO{0.75f,0.58f,0.3f},
+         gold{1.f,0.72f,0.3f}, sunCol{1.6f,1.05f,0.45f};
+    B.mat = Mat::BRICK;
+    wall(-5, O - 2, -669, 5, -57, -668, slate);                    // under the passage's end
+    wall(-6, O - 2, -681, -5, -50, -664, slate);                   // the shaft's sides
+    wall( 5, O - 2, -681,  6, -50, -664, slate);
+    wall(-6, -50, -681, 6, -49, -664, slate);                      // its roof
+    wall(-5, O - 1, -680, 5, O, -668, stoneDark);                  // the apron at the bottom
+    for (float y = O + 4.f; y < -54.f; y += 5.f) {                 // rings of light down the shaft
+        neon(-4.95f, y, -679.9f, -4.85f, y + 0.2f, -668.1f, gold * 0.6f);
+        neon(4.85f, y, -679.9f, 4.95f, y + 0.2f, -668.1f, gold * 0.6f);
+    }
+    L.corridors.push_back(aabb(-6, O, -684, 6, -50, -652));
+
+    // =========================================================================
+    // THE ORRERY — a solid terrace round a void; two rings turn over a captive
+    // sun, the outer one clockwise, the inner one (2 m higher) against it
+    // =========================================================================
+    Arena o;
+    o.name = "THE ORRERY";
+    o.subtitle = "MIND THE SUN - SURVIVE 3 WAVES";
+    o.bounds = aabb(-52, O, -784, 52, O + 28, -680);
+    o.zone   = aabb(-53.5f, O, -785.5f, 53.5f, O + 30, -678.5f);
+    o.playerStart = {0.f, O, -686.f};
+    o.startYaw = -90.f;
+    o.respawn = {0.f, O, -690.f}; o.hasRespawn = true;
+    o.voidY = -105.f;
+    o.sunPos = {C.x, -92.f, C.z};
+
+    // ---- the terrace: an annulus R 30-52, collision as strips of boxes ----
+    const float RIN = 30.f, ROUT = 53.f, STRIP = 1.5f;
+    for (float z0 = -ROUT; z0 < ROUT - 1e-3f; z0 += STRIP) {
+        float z1 = std::min(z0 + STRIP, ROUT);
+        float zn = std::min(std::fabs(z0), std::fabs(z1)), zf = std::max(std::fabs(z0), std::fabs(z1));
+        if (z0 < 0.f && z1 > 0.f) zn = 0.f;
+        float xo = std::sqrt(std::max(0.f, ROUT * ROUT - zn * zn));
+        if (zf >= RIN) wall(-xo, O - 1, C.z + z0, xo, O, C.z + z1, stone);
+        else {
+            float xi = std::sqrt(RIN * RIN - zf * zf);   // the pit's edge (the strip's far side: no floor over the void)
+            B.solid(-xo, O - 1, C.z + z0, -xi, O, C.z + z1);
+            B.solid(xi, O - 1, C.z + z0, xo, O, C.z + z1);
+        }
+    }
+    B.kit().curve({C.x, 0.f, C.z}, 41.f, 0.f, 6.2831853f, O - 1.f, O, 22.f, stone, 48);   // its face
+    B.kit(true).curve({C.x, 0.f, C.z}, 30.3f, 0.f, 6.2831853f, O - 0.2f, O + 0.05f, 0.5f, gold * 0.7f, 48);      // the pit's lit lip
+
+    // ---- the outer wall (posts round R 53) with a gate on the south ----
+    for (int k = 0; k < 96; ++k) {
+        float ang = k * 6.2831853f / 96.f;
+        vec3 p = C + vec3{std::cos(ang) * 54.f, 0.f, std::sin(ang) * 54.f};
+        if (std::fabs(p.x) < 5.5f && p.z > C.z) continue;          // the gate
+        B.solid(p.x - 1.8f, O, p.z - 1.8f, p.x + 1.8f, O + 14.f, p.z + 1.8f);
+    }
+    B.kit().curve({C.x, 0.f, C.z}, 54.f, 0.f, 6.2831853f, O, O + 14.f, 2.f, stoneDark, 64);
+    B.kit(true).curve({C.x, 0.f, C.z}, 52.9f, 0.f, 6.2831853f, O + 13.f, O + 13.3f, 0.2f, gold * 0.8f, 64);
+    wall(-6, O, -682, -4, O + 14, -678, stoneDark); wall(4, O, -682, 6, O + 14, -678, stoneDark);   // gate posts
+    wall(-4, O + 7, -681, 4, O + 14, -679, stoneDark);
+    o.entryGate = B.doorway(true, -4, 4, -681, -679, O, 7.f, gold, false);
+
+    // ---- eight great pillars (cover from the flare, grapple anchors) ----
+    for (int k = 0; k < 8; ++k) {
+        float ang = (k + 0.5f) * 0.7853982f;
+        vec3 p = C + vec3{std::cos(ang) * 41.f, 0.f, std::sin(ang) * 41.f};
+        wall(p.x - 1.3f, O, p.z - 1.3f, p.x + 1.3f, O + 18.f, p.z + 1.3f, stone);
+        B.kit().column({p.x, O, p.z}, 1.5f, 18.f, stone, 12);
+        B.kit(true).column({p.x, O + 17.6f, p.z}, 1.6f, 0.3f, gold, 12);
+        B.kit().column({p.x, O + 18.f, p.z}, 2.1f, 1.f, brassO, 12, 0.7f);
+    }
+
+    // ---- four spokes reaching in to R 25 (a short jump onto the outer ring) ----
+    for (int k = 0; k < 4; ++k) {
+        float cx = k == 0 ? 1.f : k == 1 ? -1.f : 0.f, cz = k == 2 ? 1.f : k == 3 ? -1.f : 0.f;
+        float x0 = C.x + cx * 25.f, x1 = C.x + cx * 31.f, z0 = C.z + cz * 25.f, z1 = C.z + cz * 31.f;
+        if (cx != 0.f) wall(std::min(x0, x1), O - 1, C.z - 1.5f, std::max(x0, x1), O, C.z + 1.5f, stoneDark);
+        else           wall(C.x - 1.5f, O - 1, std::min(z0, z1), C.x + 1.5f, O, std::max(z0, z1), stoneDark);
+        vec3 tip = C + vec3{cx * 25.1f, 0.f, cz * 25.1f};
+        neon(tip.x - 1.5f, O - 0.05f, tip.z - 1.5f, tip.x + 1.5f, O + 0.04f, tip.z + 1.5f, gold * 0.5f);
+    }
+
+    // ---- the rings: segments orbiting the sun's axis ----
+    vec3 ringGlow{1.f, 0.7f, 0.3f};
+    for (int k = 0; k < 26; ++k)       // outer: R 22, tops at the terrace's height, clockwise
+        B.mover({C.x, O - 0.5f, C.z}, {2.5f, 0.5f, 2.5f}, Mover::Path::ORBIT,
+                {22.f, 0.f, 0.f}, {0.f, 0.f, 22.f}, 62.83f, k / 26.f, ringGlow);
+    int firstInner = (int)L.movers.size();
+    for (int k = 0; k < 16; ++k)       // inner: R 12, 2 m higher, the other way
+        B.mover({C.x, O + 1.5f, C.z}, {2.2f, 0.5f, 2.2f}, Mover::Path::ORBIT,
+                {12.f, 0.f, 0.f}, {0.f, 0.f, -12.f}, 34.27f, k / 16.f, ringGlow);
+
+    // ---- the sun, sunk in the pit, and the armillary arcs over everything ----
+    for (int k = 0; k < 9; ++k) {
+        float y0 = -101.f + k * 2.f, yc = y0 + 1.f;
+        float r = std::sqrt(std::max(1.f, 81.f - (yc + 92.f) * (yc + 92.f)));
+        B.kit(true).column({C.x, y0, C.z}, r, 2.f, sunCol * (0.7f + 0.05f * k), 20);
+    }
+    for (float yaw : {0.f, 1.5707963f, 0.7853982f})
+        B.kit().arch({C.x, O, C.z}, 96.f, 40.f, 0.7f, 0.7f, brassO, yaw, 24);
+    B.kit(true).curve({C.x, 0.f, C.z}, 48.f, 0.f, 6.2831853f, O + 38.f, O + 38.4f, 0.3f, gold * 0.6f, 48);
+
+    // ---- the finish: a beacon on the north terrace ----
+    L.finishPos = {0.f, O, -778.f};
+
+    // ---- spawns, waves ----
+    for (int k = 0; k < 8; ++k) {
+        float ang = k * 0.7853982f;
+        float r = k % 2 ? 46.f : 36.f;
+        o.groundSpawns.push_back(C + vec3{std::cos(ang) * r, 0.f, std::sin(ang) * r});
+    }
+    o.airSpawns = {C + vec3{0, 12, 18}, C + vec3{0, 12, -18}, C + vec3{18, 14, 0}, C + vec3{-18, 14, 0}};
+    o.waves = {
+        {{EnemyType::HUSK, 5}, WaveEntry(EnemyType::SENTINEL, 2).hollow(Hollow::HALOED), {EnemyType::RAPTOR, 3},
+         {EnemyType::SERAPH, 1}, WaveEntry(EnemyType::SHIELDBEARER, 2).with({EnemyType::HUSK})},
+        {{EnemyType::SERAPH, 2}, {EnemyType::RAPTOR, 3}, {EnemyType::CONDUCTOR, 2}, {EnemyType::MITE, 6},
+         WaveEntry(EnemyType::RIPPER, 2).hollow(Hollow::TWINNED)},
+        {{EnemyType::ANCHOR, 2}, WaveEntry(EnemyType::BRUTE, 2).hollow(Hollow::ENRAGED),
+         WaveEntry(EnemyType::SHIELDBEARER, 2).with({EnemyType::SENTINEL}).hollow(Hollow::TWINNED),
+         {EnemyType::SERAPH, 2}, {EnemyType::HUSK, 4}},
+    };
+    o.goals = {WaveGoal{},
+               WaveGoal::hold("HOLD THE CIRCLE ON THE INNER RING", {C.x, O + 2.f, C.z}, 3.f, 12.f).onMover(firstInner),
+               WaveGoal{}};
+    o.maxAlive = 12;
+    o.damageScale = 1.35f;
+    o.shift = ArenaShift::SOLAR;
+    o.ambient = Ambient::EMBERS;
+    o.theme = Theme{
+        {0.03f,0.02f,0.04f}, {0.32f,0.18f,0.08f}, {0.2f,0.1f,0.03f},
+        glm::normalize(vec3{0.f, -0.3f, -1.f}), {1.6f,1.1f,0.5f}, 0.08f, 0.f,
+        {0.08f,0.05f,0.03f}, 0.5f,
+        // The sun is below you: warm light from underneath, cool from the dark above
+        glm::normalize(vec3{0.2f, 0.6f, 0.1f}), {1.1f,0.8f,0.45f},
+        {0.12f,0.12f,0.18f}, {0.45f,0.28f,0.12f},
+        {0.16f,0.09f,0.05f}, 0.009f };
+    L.arenas.push_back(std::move(o));
 }
 
 // ACT II mode's level

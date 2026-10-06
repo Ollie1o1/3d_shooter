@@ -25,6 +25,7 @@
 #include <cstdio>
 #include <cstring>
 #include <map>
+#include <functional>
 
 static int failures = 0;
 #define CHECK(cond, msg) do { if (!(cond)) { std::printf("FAIL: %s\n", msg); ++failures; } \
@@ -415,7 +416,8 @@ int main() {
     {
         LevelData N = buildAct2Level();
         SpatialGrid ng; ng.build(N.walls);
-        CHECK(N.arenas.size() == 1 && std::string(N.arenas[0].name) == "THE DROWNED NAVE", "act II opens with the Drowned Nave");
+        CHECK(N.arenas.size() == 2 && std::string(N.arenas[0].name) == "THE DROWNED NAVE" && std::string(N.arenas[1].name) == "THE ORRERY" &&
+              N.corridors.size() == 1, "act II: the Drowned Nave, then down a corridor to the Orrery");
         const Arena& nave = N.arenas[0];
         bool groundOk = true, airOk = true, inB = true, under = true;
         for (auto& sp : allGround(nave)) {
@@ -482,6 +484,131 @@ int main() {
         keep.save();   // leave the developer's records as they were
     }
 
+    // ---------------------------------------------------------------- ACT II: the Orrery
+    {
+        LevelData N = buildAct2Level();
+        SpatialGrid ng; ng.build(N.walls);
+        const Arena& orr = N.arenas[1];
+        const glm::vec3 C{0.f, -80.f, -732.f};
+        CHECK(N.baseFloor(0.f, -500.f) == -60.f && N.baseFloor(0.f, -732.f) == -140.f, "the Nave's floor at -60, the Orrery's void bottoms out at -140");
+        bool groundOk = true, airOk = true, inB = true, under = true;
+        for (auto& sp : allGround(orr)) {
+            if (overlapsWall(N, boxAt(sp, statsOf(EnemyType::ANCHOR).radius, statsOf(EnemyType::JUGGERNAUT).height))) {
+                std::printf("      orrery ground spawn (%.1f %.1f %.1f) in a wall\n", sp.x, sp.y, sp.z); groundOk = false; }
+            if (!inside(orr.bounds, sp)) inB = false;
+            if (sp.y + 3.f > orr.zone.max.y) under = false;
+            float r = glm::length(glm::vec2(sp.x - C.x, sp.z - C.z));
+            if (r < 31.f || r > 51.f) { std::printf("      orrery ground spawn off the terrace (r %.1f)\n", r); groundOk = false; }
+        }
+        for (auto& sp : orr.airSpawns)
+            if (overlapsWall(N, boxAt(sp, statsOf(EnemyType::SERAPH).radius, statsOf(EnemyType::SERAPH).height))) airOk = false;
+        CHECK(groundOk && airOk && inB && under, "the Orrery's spawns: ground on the terrace, air over the pit, all clear");
+        CHECK(padsLand(N, ng, keys), "every pad in Act II lands you higher");
+        CHECK(moversClear(N), "the rings never pass through the spokes, pillars or terrace");
+        CHECK(orr.entryGate >= 0 && orr.voidY == -105.f && orr.hasRespawn && orr.shift == ArenaShift::SOLAR &&
+              orr.maxAlive == 12 && std::fabs(orr.damageScale - 1.35f) < 1e-4f, "a gate behind you, a void with a way back, the sun's flare");
+        CHECK(orr.waves.size() == 3 && orr.goals.size() == 3 && orr.goals[1].kind == WaveGoal::HOLD && orr.goals[1].mover >= 0,
+              "wave 2 is a HOLD that rides a ring");
+        CHECK(std::fabs(N.finishPos.z - (-778.f)) < 0.1f, "the finish is on the Orrery's north terrace now");
+        // The rings turn as rings
+        auto ringOf = [&](int mi) { return mi < 26 ? 0 : 1; };
+        bool rings = N.movers.size() == 42;
+        LevelData R = N;
+        for (float t : {0.f, 7.3f, 31.f}) {
+            R.updateMovers(t);
+            for (int mi = 0; mi < (int)R.movers.size(); ++mi) {
+                const AABB& b = R.walls[R.movers[mi].wall].box;
+                glm::vec2 c{(b.min.x + b.max.x) * 0.5f - C.x, (b.min.z + b.max.z) * 0.5f - C.z};
+                float want = ringOf(mi) == 0 ? 22.f : 12.f;
+                if (std::fabs(glm::length(c) - want) > 0.01f) rings = false;
+            }
+        }
+        CHECK(rings, "26 outer and 16 inner segments, each always on its ring's circle");
+        // A player standing on a ring is carried round and stays on
+        auto rideFor = [&](LevelData& L, Player& p, float t0, float secs, std::function<void(int, Player&)> act) {
+            SpatialGrid g; g.build(L.walls);
+            p.dynWalls = L.moverWalls.data(); p.dynCount = (int)L.moverWalls.size();
+            float t = t0;
+            L.updateMovers(t);
+            for (int i = 0; i < (int)(secs * 60); ++i) {
+                int ride = L.moverOfWall(p.groundWall);
+                t += DT; L.updateMovers(t);
+                if (ride >= 0) p.position += L.movers[ride].delta;
+                act(i, p);
+                p.floorY = L.baseFloor(p.position.x, p.position.z);
+                Uint8 k[SDL_NUM_SCANCODES]; std::memset(k, 0, sizeof(k));
+                p.update(DT, k, L.walls.data(), (int)L.walls.size(), false, &g);
+                if (p.position.y < -105.f) return false;
+            }
+            return true;
+        };
+        {
+            LevelData L = N; L.updateMovers(0.f);
+            const AABB& b = L.walls[L.movers[0].wall].box;
+            Player p({(b.min.x + b.max.x) * 0.5f, b.max.y, (b.min.z + b.max.z) * 0.5f});
+            bool stayed = rideFor(L, p, 0.f, 10.f, [](int, Player&) {});
+            CHECK(stayed && L.moverOfWall(p.groundWall) >= 0 && std::fabs(p.position.y + 80.f) < 0.05f,
+                  "standing on the outer ring for 10 s, it carries you round and you stay on");
+        }
+        // Running jumps: spoke tip to the outer ring, and outer ring to the inner one (with the double jump)
+        auto runJump = [&](glm::vec3 start, float yaw, float jumpAtDist, bool doubleJump, float t0) {
+            LevelData L = N;
+            Player p(start); p.camera.yaw = yaw;
+            glm::vec2 s2{start.x - C.x, start.z - C.z};
+            float startR = glm::length(s2);
+            bool jumped = false, doubled = false, landedOnMover = false;
+            SpatialGrid g; g.build(L.walls);
+            p.dynWalls = L.moverWalls.data(); p.dynCount = (int)L.moverWalls.size();
+            float t = t0; L.updateMovers(t);
+            for (int i = 0; i < 60 * 4; ++i) {
+                int ride = L.moverOfWall(p.groundWall);
+                t += DT; L.updateMovers(t);
+                if (ride >= 0 && jumped) { landedOnMover = true; break; }
+                if (ride >= 0) p.position += L.movers[ride].delta;
+                Uint8 k[SDL_NUM_SCANCODES]; std::memset(k, 0, sizeof(k));
+                k[SDL_SCANCODE_W] = 1;
+                float r = glm::length(glm::vec2(p.position.x - C.x, p.position.z - C.z));
+                if (!jumped && p.onGround && startR - r >= jumpAtDist) { k[SDL_SCANCODE_SPACE] = 1; jumped = true; }
+                if (jumped && doubleJump && !doubled && !p.onGround && p.velocity.y < 0.f) { p.velocity.y = p.jumpForce; doubled = true; }
+                p.floorY = L.baseFloor(p.position.x, p.position.z);
+                p.update(DT, k, L.walls.data(), (int)L.walls.size(), false, &g);
+                if (jumped && p.onGround && L.moverOfWall(p.groundWall) >= 0) { landedOnMover = true; break; }
+                if (p.position.y < -100.f) break;
+            }
+            return landedOnMover;
+        };
+        int spokeOk = 0, innerOk = 0;
+        for (int k = 0; k < 8; ++k) {
+            float t0 = k * 62.83f / 8.f;
+            // east spoke: tip at R 25, run west from R 29.5 and jump right at the tip
+            if (runJump(C + glm::vec3{29.5f, 0.f, 0.f}, 180.f, 29.5f - 25.2f, false, t0)) ++spokeOk;
+            // from the outer ring's inner edge (R 19) toward the sun, jump and double jump
+            float ti = k * 34.27f / 8.f;
+            if (runJump(C + glm::vec3{20.5f, 0.f, 0.f}, 180.f, 20.5f - 19.3f, true, ti)) ++innerOk;
+        }
+        std::printf("      spoke -> outer ring %d/8, outer -> inner ring %d/8\n", spokeOk, innerOk);
+        CHECK(spokeOk == 8, "from a spoke's tip a running jump always lands on the outer ring");
+        CHECK(innerOk >= 6, "from the outer ring a jump and double jump reaches the inner ring");
+        // Walk it: from the Nave's passage north, drop down the shaft, through the gate onto the terrace
+        {
+            LevelData L = N;
+            L.setDoorInstant(L.arenas[0].exitDoor, true);
+            L.setDoorInstant(L.arenas[1].entryGate, true);
+            SpatialGrid g; g.build(L.walls);
+            Player p({0.f, -57.f, -655.f}); p.camera.yaw = -90.f;
+            Uint8 k[SDL_NUM_SCANCODES]; std::memset(k, 0, sizeof(k)); k[SDL_SCANCODE_W] = 1;
+            float lowest = 0.f;
+            for (int i = 0; i < 60 * 8; ++i) {
+                p.floorY = L.baseFloor(p.position.x, p.position.z);
+                p.update(DT, k, L.walls.data(), (int)L.walls.size(), false, &g);
+                lowest = std::min(lowest, p.position.y);
+            }
+            std::printf("      walked to (%.1f %.1f %.1f), lowest %.1f\n", p.position.x, p.position.y, p.position.z, lowest);
+            CHECK(L.arenaAt(p.position) == 1 && std::fabs(p.position.y + 80.f) < 0.05f && lowest > -80.5f,
+                  "the way down: the passage, the shaft, the gate, and you're on the Orrery's terrace");
+        }
+    }
+
     // ---------------------------------------------------------------- a simulated ACT II run
     {
         LevelData N = buildAct2Level();
@@ -490,7 +617,11 @@ int main() {
         glm::vec3 player = N.arenas[0].playerStart; player.y = -60.f;
         std::vector<float> alive;
         int seraphs = 0, anchors = 0, haloed = 0, twinned = 0, enragedSpawns = 0;
-        for (int tick = 0; tick < 60 * 60 * 20 && d.phase != WaveDirector::Phase::VICTORY; ++tick) {
+        float clock = 0.f;
+        for (int tick = 0; tick < 60 * 60 * 30 && d.phase != WaveDirector::Phase::VICTORY; ++tick) {
+            clock += DT; N.updateMovers(clock);
+            if (d.phase == WaveDirector::Phase::CLEARED) player = N.arenas[d.arena + 1].playerStart;   // down the corridor
+            else if (d.goal().kind == WaveGoal::HOLD) player = d.goalPos() + glm::vec3{0, 0.05f, 0};   // onto the ring
             std::vector<SpawnRequest> out;
             d.update(DT, (int)alive.size(), player, out);
             for (auto& r : out) {
@@ -506,7 +637,7 @@ int main() {
             for (auto& ev : d.events) if (ev.kind == DirectorEvent::GOAL_DONE) alive.clear();
             d.events.clear();
         }
-        CHECK(d.phase == WaveDirector::Phase::VICTORY, "a simulated ACT II run clears the Nave");
+        CHECK(d.phase == WaveDirector::Phase::VICTORY && d.arena == 1, "a simulated ACT II run clears the Nave, goes down to the Orrery and clears it");
         std::printf("      nave run: %d seraphs, %d anchors, %d haloed, %d twinned, %d enraged\n", seraphs, anchors, haloed, twinned, enragedSpawns);
         CHECK(seraphs >= 3 && anchors >= 1 && haloed >= 3 && twinned >= 2 && enragedSpawns >= 1,
               "the Nave's waves bring Seraphs, an Anchor and every variant");
