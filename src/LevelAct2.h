@@ -609,7 +609,7 @@ inline void buildDescent(LevelBuilder& B) {
         {{EnemyType::ANCHOR, 2}, {EnemyType::JUGGERNAUT, 1},
          WaveEntry(EnemyType::SHIELDBEARER, 2).with({EnemyType::SENTINEL}).hollow(Hollow::TWINNED),
          {EnemyType::SERAPH, 2}, WaveEntry(EnemyType::RAPTOR, 3).hollow(Hollow::ENRAGED), {EnemyType::HUSK, 4}},
-        {{EnemyType::SOVEREIGN, 1}},   // replaced by the PENITENT in Task 4
+        {{EnemyType::PENITENT, 1}},
     };
     a.goals = {WaveGoal{}, WaveGoal::conduits("RELEASE THE CLAMPS", clamps), WaveGoal{}, WaveGoal{}};
     a.maxAlive = 12;

@@ -53,8 +53,8 @@
 // CONDUCTOR: doesn't attack either; it tethers nearby allies and shields them
 // (linkConductors below), so it's the one to kill first.
 enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, JUGGERNAUT, WARDEN, SOVEREIGN, SHIELDBEARER, CONDUIT,
-                       CONDUCTOR, SERAPH, ANCHOR, COUNT };
-inline bool isBoss(EnemyType t) { return t == EnemyType::WARDEN || t == EnemyType::SOVEREIGN; }
+                       CONDUCTOR, SERAPH, ANCHOR, PENITENT, COUNT };
+inline bool isBoss(EnemyType t) { return t == EnemyType::WARDEN || t == EnemyType::SOVEREIGN || t == EnemyType::PENITENT; }
 
 // Hollowed variants (Act II): a regular enemy made harder in one specific way.
 //   ENRAGED  faster, shorter wind-ups, hits harder
@@ -81,7 +81,8 @@ enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY,
                         DASH, SWEEP, CLEAVE, LEAP, CRESCENT,   // the SOVEREIGN's
                         BLINK, JUDGMENT, WHIRL, THRUST, RUPTURE, PHANTOMS,
                         BASH,                                  // the SHIELDBEARER's
-                        BEAM };                                // the SERAPH's
+                        BEAM,                                  // the SERAPH's
+                        CENSER_LOW, CENSER_HIGH, PSLAM, PSTOMP, PLASH, SCOURGE };   // the PENITENT's
 
 struct EnemyStats {
     const char* name;
@@ -141,6 +142,9 @@ inline const EnemyStats& statsOf(EnemyType t) {
         {"ANCHOR", 260.f, 1.0f, 2.8f, 2.2f, 1.0f, 2.8f, false,
          {0.24f,0.27f,0.32f}, {0.95f,0.25f,0.3f}, {1.0f,0.35f,0.35f},
          "ANCHORS PIN YOU DOWN - NO DASH OR GRAPPLE IN THEIR FIELD"},
+        {"PENITENT", 6000.f, 3.0f, 8.2f, 3.5f, 0.9f, 2.6f, false,
+         {0.14f,0.13f,0.14f}, {1.3f,0.75f,0.3f}, {1.2f,0.5f,0.2f},
+         "BREAK ITS CHAINS - JUMP THE LOW SWEEP, SLIDE UNDER THE HIGH"},
     };
     return S[(int)t];
 }
@@ -177,6 +181,15 @@ struct EnemyEvents {
     glm::vec3 blinkFrom{0.f};
     int       phantoms = 0;          // phantoms of him, set to dash at you
     glm::vec3 phantomPos[2], phantomDir[2];
+    // PENITENT: a censer sweep landed (0 low: jump it, 1 high: slide under
+    // it), a slam / stomp ring, a chain lash marked toward you, incense pools,
+    // a ring of embers off its own back, the moment it rises, Husks called up
+    int       penSweep = -1;
+    bool      penSlam = false, penStomp = false, penEmbers = false, penRose = false, penLash = false;
+    glm::vec3 penLashFrom{0.f}, penLashDir{0.f};
+    int       penIncense = 0;
+    glm::vec3 penIncensePos[3];
+    int       penSummon = 0;
 };
 
 // What an enemy can sense each tick.
@@ -318,6 +331,17 @@ struct Enemy {
     glm::vec3 dashFrom{0.f};    // where the last tick of the dash started
     bool  dashHit    = false;   // the dash already caught you
     float leapTimer  = 0.f;     // > 0 while airborne
+    // PENITENT
+    static constexpr float PEN_RISE_TIME = 2.f, PEN_LASH_FAR = 22.f, PEN_LASH_HIGH = 4.f, PEN_LASH_AFTER = 3.f,
+                           PEN_LASH_WARN = 0.7f, PEN_INCENSE_EVERY = 12.f, PEN_SUMMON_EVERY = 25.f, PEN_SCOURGE_EVERY = 6.f;
+    int   anchorsLeft  = 0;      // its chains still holding (GameplayState sets it every tick)
+    bool  risen        = false;  // every chain broken: it stands and walks
+    float riseTimer    = 0.f;
+    bool  scourging    = false;  // under a quarter: it lashes itself, the wound on its back open
+    float incenseTimer = 6.f, summonTimer = PEN_SUMMON_EVERY, scourgeTimer = 4.f;
+    int   comboLeft    = 0, nextSweep = 0;
+    bool  chained() const { return type == EnemyType::PENITENT && !risen; }
+    float sweepReach() const { return risen ? 18.f : 16.f; }
     float swingTimer = 0.f;     // follow-through after a stroke lands (animation)
     AttackKind lastSwing = AttackKind::NONE;
     int   lastSwingStep = 0;
@@ -355,7 +379,10 @@ struct Enemy {
 
     const EnemyStats& stats() const { return statsOf(type); }
     float radius() const { return stats().radius * scale; }
-    float height() const { return stats().height * scale; }
+    float height() const {
+        if (type == EnemyType::PENITENT) return (risen ? 11.5f : 8.2f) * scale;   // kneeling, then standing
+        return stats().height * scale;
+    }
     bool  targetable() const { return alive && state == EnemyState::ACTIVE; }
     bool  staggered() const  { return staggerTimer > 0.f; }
     // The moment a melee blow can be punched back: a JUGGERNAUT's smash (its
@@ -367,6 +394,9 @@ struct Enemy {
         if (type == EnemyType::SOVEREIGN)
             return (attack == AttackKind::SWEEP || attack == AttackKind::CLEAVE || attack == AttackKind::THRUST) &&
                    telegraphTimer < 0.25f;
+        if (type == EnemyType::PENITENT)
+            return (attack == AttackKind::CENSER_LOW || attack == AttackKind::CENSER_HIGH ||
+                    attack == AttackKind::PSLAM || attack == AttackKind::PSTOMP) && telegraphTimer < 0.25f;
         return false;
     }
     // SOVEREIGN: does his guard turn aside a shot travelling along dir, fired
@@ -396,11 +426,13 @@ struct Enemy {
     // Damage multiplier from armor: the JUGGERNAUT shrugs off half unless
     // broken; a broken SOVEREIGN takes half again
     float armorMult() const {
+        if (type == EnemyType::PENITENT) return (anchorsLeft > 0 ? 0.25f : 1.f) * (staggered() ? 2.f : 1.f);
         if (type == EnemyType::SOVEREIGN) return staggered() ? 1.5f : 1.f;
         if (type != EnemyType::JUGGERNAUT) return 1.f;
         return staggered() ? 2.f : 0.5f;
     }
     void stagger(float t) {
+        comboLeft = 0;
         staggerTimer = t; attack = AttackKind::NONE; telegraphTimer = 0.f; attackTimer = 0.f;
         comboStep = 0; chainLeft = 0; crescentLeft = 0; dashTimer = 0.f;
         whirlTimer = 0.f; thrustTimer = 0.f; riposte = false;
@@ -488,6 +520,7 @@ struct Enemy {
             case EnemyType::CONDUCTOR: thinkConductor(dt, w); break;
             case EnemyType::SERAPH:   thinkSeraph(dt, w, resolve);   break;
             case EnemyType::ANCHOR:   thinkAnchor(dt, w, resolve);   break;
+            case EnemyType::PENITENT: thinkPenitent(dt, w, resolve); break;
             default: break;
         }
         integrate(dt, w);
@@ -1099,6 +1132,8 @@ private:
                p.z > w.bounds.min.z + margin && p.z < w.bounds.max.z - margin;
     }
 
+    void thinkPenitent(float dt, const EnemyWorld& w, bool resolve);   // EnemyPenitent.h
+
     void thinkSovereign(float dt, const EnemyWorld& w, bool resolve) {
         const float rage = enraged ? 1.f : 0.f;
         const bool  last = health < maxHealth * 0.2f;     // the last stand: everything comes quicker
@@ -1541,3 +1576,4 @@ inline void linkConductors(std::vector<Enemy>& es, glm::vec3 player) {
     }
 }
 
+#include "EnemyPenitent.h"   // THE PENITENT's mind (Enemy::thinkPenitent)

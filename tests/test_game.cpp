@@ -1862,7 +1862,7 @@ int main() {
               "every wave starts; the Core and the Sanctum end on their bosses");
         CHECK(counts[DirectorEvent::ARENA_CLEARED] == n && counts[DirectorEvent::VICTORY] == 1 &&
               counts[DirectorEvent::FINISH_OPEN] == 0, "each arena clears, then victory");
-        CHECK(counts[DirectorEvent::NEW_TYPE] == (int)EnemyType::COUNT - 2,   // the Seraph and the Anchor are Act II's
+        CHECK(counts[DirectorEvent::NEW_TYPE] == (int)EnemyType::COUNT - 3,   // the Seraph, the Anchor and the Penitent are Act II's
               "each Act I enemy type is introduced exactly once");
         CHECK(goalWaves >= 3 && (int)goalsDone.size() == goalWaves && counts[DirectorEvent::GOAL_DONE] == goalWaves,
               "every goal wave (hold, conduits, survive) is met once, and that ends it");
@@ -2541,6 +2541,72 @@ int main() {
         d.hold = false;
         for (int i = 0; i < 60 * 4; ++i) d.update(DT, 0, A.arenas[0].playerStart, out);
         CHECK(held && d.phase == WaveDirector::Phase::ACTIVE, "the director holds the wave while told to, then starts it");
+    }
+
+    // ---------------------------------------------------------------- the PENITENT
+    {
+        auto world = [](glm::vec3 feet) { EnemyWorld w; w.playerFeet = feet; w.playerEye = feet + glm::vec3{0, 1.7f, 0}; return w; };
+        const glm::vec3 home{0.f, -240.f, -864.f};
+        {   // chained: never moves, takes a quarter
+            Enemy p(EnemyType::PENITENT, home, -240.f); p.anchorsLeft = 6; p.spawnTimer = 0.f; p.state = EnemyState::ACTIVE;
+            for (int i = 0; i < 60 * 12; ++i) p.update(DT, world({0.f, -240.f, -846.f}));
+            CHECK(glm::length(glm::vec2{p.position.x - home.x, p.position.z - home.z}) < 0.01f, "PENITENT: chained, it never moves");
+            CHECK(std::fabs(p.armorMult() - 0.25f) < 1e-4f, "PENITENT: chained, it takes a quarter of the damage");
+            CHECK(std::fabs(p.height() - 8.2f) < 1e-3f, "PENITENT: kneeling, 8.2 m");
+        }
+        {   // it attacks with both sweeps, a slam, and drops incense
+            Enemy p(EnemyType::PENITENT, home, -240.f); p.anchorsLeft = 6; p.spawnTimer = 0.f; p.state = EnemyState::ACTIVE;
+            int low = 0, high = 0, slams = 0, incense = 0; bool tell = false, window = false;
+            for (int i = 0; i < 60 * 40; ++i) {
+                p.update(DT, world({0.f, -240.f, -852.f}));
+                low += p.ev.penSweep == 0; high += p.ev.penSweep == 1; slams += p.ev.penSlam; incense += p.ev.penIncense;
+                tell |= p.ev.telegraphStarted; window |= p.parryWindow();
+            }
+            CHECK(low > 0 && high > 0 && slams > 0, "PENITENT: low sweeps, high sweeps and slams");
+            CHECK(tell && window, "PENITENT: every blow has a wind-up, with a parry window at its end");
+            CHECK(incense >= 6, "PENITENT: incense every ~12 s, three pools at a time");
+        }
+        {   // the lash: only after 3 s far away or up high
+            Enemy p(EnemyType::PENITENT, home, -240.f); p.anchorsLeft = 6; p.spawnTimer = 0.f; p.state = EnemyState::ACTIVE;
+            bool lashedClose = false;
+            for (int i = 0; i < 60 * 10; ++i) { p.update(DT, world({0.f, -240.f, -850.f})); lashedClose |= p.ev.penLash; }
+            float firstLash = -1.f;
+            for (int i = 0; i < 60 * 6 && firstLash < 0.f; ++i) { p.update(DT, world({0.f, -240.f, -830.f + 0.f * i + 4.f})); if (p.ev.penLash) firstLash = i * DT; }
+            CHECK(!lashedClose, "PENITENT: no lash while you fight it up close on the floor");
+            CHECK(firstLash >= 2.9f && firstLash < 4.6f, "PENITENT: stay 22 m away for 3 s and the chain lashes at you");
+            Enemy q(EnemyType::PENITENT, home, -240.f); q.anchorsLeft = 6; q.spawnTimer = 0.f; q.state = EnemyState::ACTIVE;
+            bool perched = false;
+            for (int i = 0; i < 60 * 5; ++i) { q.update(DT, world({0.f, -233.f, -850.f})); perched |= q.ev.penLash; }
+            CHECK(perched, "PENITENT: perch up high and the chain finds you there too");
+        }
+        {   // unchained: it rises and walks; scourge: faster, and it lashes itself
+            Enemy p(EnemyType::PENITENT, home, -240.f); p.anchorsLeft = 0; p.spawnTimer = 0.f; p.state = EnemyState::ACTIVE;
+            bool rose = false; glm::vec3 start = p.position;
+            for (int i = 0; i < 60 * 8; ++i) { p.update(DT, world({0.f, -240.f, -830.f})); rose |= p.ev.penRose; }
+            CHECK(rose && p.risen && glm::length(p.position - start) > 4.f && std::fabs(p.height() - 11.5f) < 1e-3f,
+                  "PENITENT: with every chain broken it rises (11.5 m) and stalks you");
+            CHECK(std::fabs(p.armorMult() - 1.f) < 1e-4f, "PENITENT: unchained, it takes full damage");
+            int summons = 0;
+            for (int i = 0; i < 60 * 30; ++i) { p.update(DT, world({0.f, -240.f, -830.f})); summons += p.ev.penSummon; }
+            CHECK(summons >= 4, "PENITENT: risen, it calls up Hollowed Husks every 25 s");
+            p.health = p.maxHealth * 0.2f;
+            int embers = 0; float firstTell = -1.f;
+            for (int i = 0; i < 60 * 15; ++i) {
+                p.update(DT, world({0.f, -240.f, -850.f}));
+                embers += p.ev.penEmbers;
+                if (p.ev.telegraphStarted && firstTell < 0.f && p.attack != AttackKind::SCOURGE) firstTell = p.telegraphDuration;
+            }
+            CHECK(p.scourging && embers >= 1, "PENITENT: under a quarter it scourges itself, throwing rings of embers");
+            CHECK(firstTell > 0.f && firstTell < 0.72f, "PENITENT: scourging, its wind-ups come 30% sooner (a sweep 0.63 s, a slam 0.7 s)");
+        }
+        {   // a parry staggers it: no blows during the stagger, double damage
+            Enemy p(EnemyType::PENITENT, home, -240.f); p.anchorsLeft = 0; p.risen = true; p.spawnTimer = 0.f; p.state = EnemyState::ACTIVE;
+            p.stagger(p.staggerTime());
+            bool hit = false;
+            for (int i = 0; i < 60 * 2; ++i) { p.update(DT, world({0.f, -240.f, -858.f})); hit |= p.ev.penSweep >= 0 || p.ev.penSlam || p.ev.penStomp; }
+            CHECK(std::fabs(p.staggerTime() - 2.5f) < 1e-4f && !hit, "PENITENT: parried, it reels for 2.5 s and strikes nothing");
+            CHECK(std::fabs(p.armorMult() - 2.f) < 1e-4f || !p.staggered(), "PENITENT: reeling, it takes double");
+        }
     }
 
     // ---------------------------------------------------------------- mouse filter
