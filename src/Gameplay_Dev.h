@@ -5,6 +5,20 @@
 // Included at the end of GameplayState.h.
 // =============================================================================
 
+inline void GameplayState::devPenitentPose(Enemy& e) {
+    int n = std::atoi(g_devOverlay.c_str() + 8);
+    e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE;
+    glm::vec3 to = player.position - e.position;
+    e.yaw = e.prevYaw = std::atan2(to.x, to.z);
+    e.prevPosition = e.position;
+    e.attack = AttackKind::NONE; e.telegraphTimer = 0.f; e.telegraphDuration = 1.f; e.riseTimer = 0.f;
+    e.risen = n >= 3; e.scourging = n == 4;
+    e.anchorsLeft = e.risen ? 0 : level.anchorsAlive();
+    if (n == 1) { e.attack = AttackKind::CENSER_LOW;  e.telegraphTimer = 0.3f; }
+    if (n == 2) { e.attack = AttackKind::CENSER_HIGH; e.telegraphTimer = 0.3f; }
+    if (n == 4) e.yaw = e.prevYaw = e.yaw + 3.14159265f;   // its back to you: the wound
+}
+
 inline void GameplayState::devPose(Enemy& e) {
     int n = std::atoi(g_devOverlay.c_str() + 4);
     e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE;

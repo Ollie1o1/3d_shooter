@@ -81,6 +81,9 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     spatialGrid.build(level.walls);
     world = buildWorldMeshes(level);
     shifts.capture(level);
+    anchorsBuilt = level.anchors;   // the Penitent's anchors as built: a retry restores them
+    anchorBoxes.clear();
+    for (auto& a : level.anchors) anchorBoxes.push_back(level.walls[a.wall].box);
     director.level = &level;
     director.fast  = fast();
     records.load();
@@ -153,6 +156,9 @@ inline void GameplayState::enterArena(int a) {
     for (int d = 0; d < (int)level.doors.size(); ++d) { level.doors[d].locked = false; level.setDoorInstant(d, false); }
     shifts.reset(level);   // the sun back up, the lava back down, the platforms back to speed, the cage to the top
     boardHinted = liftRiding = false;
+    pen.clear(); scourgeAnnounced = false; ripAnchor = -1; anchorRipTimer = 0.f;
+    level.anchors = anchorsBuilt;   // every chain whole again
+    for (size_t i = 0; i < level.anchors.size() && i < anchorBoxes.size(); ++i) level.walls[level.anchors[i].wall].box = anchorBoxes[i];
     {   // a practice start at a later wave: the flood already at that wave's level
         const Arena& fa = level.arenas[a];
         if (g_startWave > 0 && fa.shift == ArenaShift::FLOOD && !fa.floodLevels.empty())
@@ -312,6 +318,8 @@ inline void GameplayState::handleDirectorEvents() {
         case DirectorEvent::BOSS_START:
             if (ar.waves[ev.value][0].type == EnemyType::SOVEREIGN)
                 pushBanner("THE SOVEREIGN", "PARRY (F) HIS BLADE AS IT FALLS", {1.f, 0.3f, 0.2f}, 4.f);
+            else if (ar.waves[ev.value][0].type == EnemyType::PENITENT)
+                pushBanner("THE PENITENT", "BREAK ITS CHAINS - JUMP THE LOW SWEEP, SLIDE UNDER THE HIGH", {1.f, 0.5f, 0.2f}, 4.5f);
             else
                 pushBanner("THE WARDEN", "DODGE THE VOLLEYS, JUMP THE SLAMS", {1.f, 0.2f, 0.65f}, 3.5f);
             audio.play("wave", 128, SoundGroup::UI); audio.play("explosion", 70, SoundGroup::UI); audio.duck(4.f, 0.4f);

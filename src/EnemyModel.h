@@ -625,15 +625,18 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
     }
     case EnemyType::PENITENT: {
         // Blackened iron, a hood over a bone mask, two censers on chains
-        vec3 iron{0.12f, 0.11f, 0.12f}, cloth{0.07f, 0.05f, 0.06f}, bone{0.72f, 0.68f, 0.6f};
+        vec3 iron{0.26f, 0.24f, 0.25f}, cloth{0.15f, 0.1f, 0.11f}, bone{0.86f, 0.8f, 0.68f};
         PoseOverride ov = penitentPose(e);
         HumanoidLook L = humanoidLook(e.type, iron, cloth, st.glow);
         auto f = humanoid(r, root, L, e.animPhase, e.risen ? std::max(stride, 0.3f) : 0.f, ArmPose::SWING, 0.f, false, &ov);
         r.box(f.head, {0.f, 0.8f, -0.1f}, {1.9f, 1.9f, 1.9f}, cloth);                                  // the hood
-        r.box(f.head, {0.f, 0.75f, 0.78f}, {1.1f, 1.2f, 0.12f}, bone);                                 // the mask
-        r.box(f.head, {0.f, 0.95f, 0.85f}, {0.8f, 0.12f, 0.05f}, bone * 0.2f, st.glow * (1.f + 2.f * tp));   // its eyes
+        r.box(f.head, {0.f, 0.75f, 0.92f}, {1.2f, 1.3f, 0.14f}, bone, bone * 0.12f);                   // the mask, out of the hood
+        r.box(f.head, {0.f, 0.98f, 1.0f}, {0.85f, 0.14f, 0.05f}, bone * 0.2f, st.glow * (1.5f + 2.5f * tp));   // its eyes
+        r.box(f.head, {0.f, 1.78f, 0.86f}, {1.95f, 0.12f, 0.12f}, cloth, st.glow * 0.5f);              // the hood's lit rim
         r.box(f.torso, {0.f, 2.1f, -1.3f}, {3.6f, 3.8f, 0.2f}, cloth * 1.2f);                         // the robe's back
         r.box(f.torso, {0.f, -0.4f, 0.f}, {4.8f, 1.6f, 2.8f}, cloth);                                  // the skirt
+        r.box(f.torso, {0.f, -1.18f, 0.f}, {4.9f, 0.14f, 2.9f}, cloth, st.glow * 0.45f);               // its hem, lit
+        r.box(f.torso, {0.f, L.torsoH * 0.5f, L.torsoD * 0.5f + 0.06f}, {0.3f, L.torsoH * 0.9f, 0.08f}, cloth, st.glow * 0.6f);   // a seam of light down its front
         for (int k = 0; k < 6; ++k)                                                                    // its chains' collar
             r.box(f.torso, {std::cos(k * 1.047f) * 2.0f, 4.0f, std::sin(k * 1.047f) * 1.2f}, {0.45f, 0.45f, 0.45f}, iron * 1.6f);
         // Censers: hang from each hand on a chain, glowing amber (white when raised high, hot when lashing)
@@ -641,13 +644,14 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         for (int s = 0; s < 2; ++s) {
             const mat4& arm = s ? f.armL : f.armR;
             float glowAmt = (s == 0 && (e.attack == AttackKind::CENSER_LOW || e.attack == AttackKind::CENSER_HIGH)) ? 1.f + 3.f * tp : 0.8f;
-            for (int c = 0; c < 4; ++c) r.box(arm, {0.f, -L.armLen - 0.6f - c * 0.6f, 0.f}, {0.15f, 0.5f, 0.15f}, iron * 1.5f);
-            r.box(arm, {0.f, -L.armLen - 3.4f, 0.f}, {1.1f, 1.3f, 1.1f}, brassOf(), hot * glowAmt);
-            r.box(arm, {0.f, -L.armLen - 2.7f, 0.f}, {0.7f, 0.25f, 0.7f}, brassOf());
+            for (int c = 0; c < 4; ++c) r.box(arm, {0.f, -L.armLen - 0.6f - c * 0.6f, 0.f}, {0.22f, 0.5f, 0.22f}, iron * 1.5f);
+            r.box(arm, {0.f, -L.armLen - 3.6f, 0.f}, {2.0f, 2.2f, 2.0f}, brassOf(), hot * glowAmt * 1.4f);   // the censer
+            r.box(arm, {0.f, -L.armLen - 2.4f, 0.f}, {1.3f, 0.3f, 1.3f}, brassOf(), hot * 0.2f);
+            r.box(arm, {0.f, -L.armLen - 4.8f, 0.f}, {1.0f, 0.3f, 1.0f}, brassOf());
         }
         if (e.scourging) {                                                                             // the wound
             float pulse = 0.6f + 0.4f * std::sin(time * 9.f);
-            r.box(f.torso, {0.f, L.torsoH * 0.55f, -L.torsoD * 0.5f - 0.05f}, {2.0f, 2.2f, 0.15f}, vec3{0.3f, 0.02f, 0.02f},
+            r.box(f.torso, {0.f, L.torsoH * 0.55f, -1.5f}, {2.0f, 2.2f, 0.15f}, vec3{0.3f, 0.02f, 0.02f},   // out past the robe's back
                   vec3{2.2f, 0.25f, 0.1f} * pulse);
         }
         break;

@@ -40,6 +40,7 @@ public:
                 int wall = -1, const AABB* box = nullptr) {
         target = point;
         active = true;
+        hookedWall = wall;
         moverWall = box ? wall : -1;
         if (box) anchorLocal = point - box->min;
         // Strong immediate burst — overrides current velocity so movement is
@@ -53,9 +54,10 @@ public:
     void follow(const AABB& box) { if (active && moverWall >= 0) target = box.min + anchorLocal; }
 
     int       moverWall = -1;       // wall index of the platform we're hooked to, or -1
+    int       hookedWall = -1;      // wall index of whatever we're hooked to (a PENITENT's chain anchor: rip it out)
     glm::vec3 anchorLocal{0.f};
 
-    void release() { active = false; moverWall = -1; }
+    void release() { active = false; moverWall = -1; hookedWall = -1; }
 
     // Called every physics tick while active. Strongly pulls toward anchor +
     // cancels gravity entirely so you fly straight at the attachment point.

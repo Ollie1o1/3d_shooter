@@ -119,8 +119,17 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             ui.end2D();
         }
 
-        if (boss) ui.renderBossBar(boss->type == EnemyType::SOVEREIGN ? "THE SOVEREIGN" : "THE WARDEN",
-                                   boss->health / boss->maxHealth, boss->enraged);
+        if (boss) ui.renderBossBar(boss->type == EnemyType::SOVEREIGN ? "THE SOVEREIGN" :
+                                   boss->type == EnemyType::PENITENT ? "THE PENITENT" : "THE WARDEN",
+                                   boss->health / boss->maxHealth,
+                                   boss->type == EnemyType::PENITENT ? boss->scourging : boss->enraged);
+        if (boss && boss->type == EnemyType::PENITENT && boss->anchorsLeft > 0) {   // its chains, under the bar
+            char cb[48];
+            snprintf(cb, sizeof(cb), "CHAINS %d/6 - SHOOT OR RIP THE ANCHORS", boss->anchorsLeft);
+            ui.begin2D();
+            ui.ui.textShadow(cb, SCREEN_W / 2, 82, 2, {1.f, 0.7f, 0.3f, 0.95f}, true);
+            ui.end2D();
+        }
 
         // Waypoint to the way on: the open gate (ARENA), or the exit of the
         // room you just cleared (FAST) until you're out of it

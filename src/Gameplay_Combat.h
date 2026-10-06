@@ -83,13 +83,22 @@ inline void GameplayState::punch(int boostable) {
         if (!e.targetable() || !e.parryWindow()) continue;
         glm::vec3 d = e.position + glm::vec3{0, e.height() * 0.5f, 0} - eye;
         float dist = glm::length(d);
-        if (dist < 5.5f && glm::dot(fwd, d / dist) > 0.2f) {
+        bool inReach = dist < 5.5f && glm::dot(fwd, d / dist) > 0.2f;
+        if (e.type == EnemyType::PENITENT) {   // a censer or its fists: punch it as it reaches you
+            float flat = glm::length(glm::vec2{player.position.x - e.position.x, player.position.z - e.position.z});
+            if (e.attack == AttackKind::CENSER_LOW || e.attack == AttackKind::CENSER_HIGH)
+                inReach = PenitentHazards::sweepHits(e.attack == AttackKind::CENSER_HIGH ? 1 : 0, e.position, e.yaw,
+                                                     e.sweepReach(), player.position, player.height, e.floorY);
+            else inReach = flat < (e.attack == AttackKind::PSLAM ? PenitentHazards::SLAM_RADIUS : PenitentHazards::STOMP_RADIUS);
+        }
+        if (inReach) {
             if (e.halo) breakHalo(e);
             e.stagger(e.staggerTime());
             parryFeedback(eye + fwd * 1.2f, true);
             styleSystem.addStyle(70.f, StyleSource::PARRY);
             gainXp(30);
             if (e.type == EnemyType::SOVEREIGN) ui.toast("PARRIED", "HIS GUARD IS BROKEN - UNLOAD", {1.f, 0.75f, 0.2f}, 1.4f);
+            else if (e.type == EnemyType::PENITENT) ui.toast("PARRIED", "IT REELS - UNLOAD", {1.f, 0.75f, 0.2f}, 1.6f);
             else if (e.type == EnemyType::SHIELDBEARER) ui.toast("SHIELD DOWN", "", {0.4f, 1.f, 0.75f}, 1.2f);
             else ui.toast("BROKEN", "IT TAKES DOUBLE DAMAGE - UNLOAD", {1.f, 0.75f, 0.2f}, 1.8f);
             return;
@@ -166,6 +175,7 @@ inline void GameplayState::updateEnemies(float dt) {
         Enemy& e = enemies[i];
         if (!e.alive) continue;
         if (g_devOverlay.rfind("pose", 0) == 0 && e.type == EnemyType::SOVEREIGN) { devPose(e); continue; }
+        if (g_devOverlay.rfind("penitent", 0) == 0 && e.type == EnemyType::PENITENT) { devPenitentPose(e); continue; }
         e.floorY = level.floorWithWater(e.position.x, e.position.z, false);
         e.wadeMul = e.stats().flying ? 1.f : 1.f - 0.5f * (1.f - Player::wadeFactor(level.waterDepthAt(e.position)));
         e.update(dt, w);
@@ -178,7 +188,7 @@ inline void GameplayState::updateEnemies(float dt) {
 
         // Wind-up tick: a cue for the ones close enough to matter, at most
         // a few a second however many are aiming at you
-        if (ev.telegraphStarted && dist < 30.f && telegraphSoundCd <= 0.f) {
+        if (ev.telegraphStarted && dist < 30.f && telegraphSoundCd <= 0.f && enemies[i].type != EnemyType::PENITENT) {
             audio.playAt("telegraph", epos, 70, SoundGroup::ENEMY, isBoss(enemies[i].type));
             if (isBoss(enemies[i].type)) audio.duck(6.f, 0.5f);   // a boss winding up: everything else steps back
             telegraphSoundCd = 0.22f;
@@ -246,7 +256,8 @@ inline void GameplayState::updateEnemies(float dt) {
         if (ev.dashStarted) { audio.playAt("dash", epos, 128, SoundGroup::ENEMY, isBoss(enemies[i].type)); shake(0.12f, 0.03f); }
         if (ev.leapStarted) { audio.playAt("jump", epos, 128, SoundGroup::ENEMY, isBoss(enemies[i].type)); fx.spawnShockwave(epos, 3.f, statsOf(enemies[i].type).glow); }
         if (enemies[i].type == EnemyType::SOVEREIGN) onSovereignEvents(enemies[i], ev);
-        if (ev.enraged) {
+        if (enemies[i].type == EnemyType::PENITENT) onPenitentEvents(enemies[i], ev);
+        if (ev.enraged && enemies[i].type != EnemyType::PENITENT) {   // the Penitent's phases announce themselves
             pushBanner(enemies[i].type == EnemyType::SOVEREIGN ? "THE SOVEREIGN IS ENRAGED" : "THE WARDEN IS ENRAGED",
                        "", {1.f, 0.15f, 0.25f}, 2.f);
             shake(0.5f, 0.06f);
@@ -473,6 +484,9 @@ inline void GameplayState::processBlasts() {
         shake(0.3f, 0.06f);
         explosionFlashTimer = 0.35f; explosionFlashPos = b.pos;
         audio.playAt("explosion", b.pos, 128, SoundGroup::WORLD);
+        for (int ai = 0; ai < (int)level.anchors.size(); ++ai)   // a blast against the Penitent's anchors
+            if (level.anchors[ai].alive && glm::length(level.anchors[ai].pos - b.pos) < b.radius + 1.f && level.damageAnchor(ai, b.damage))
+                breakAnchor(ai, false);
         for (auto& e : enemies) {
             if (!e.targetable()) continue;
             float d = glm::length(e.position + glm::vec3{0, e.height() * 0.5f, 0} - b.pos);
@@ -635,6 +649,8 @@ inline void GameplayState::fireWeapon(int w) {
         glm::vec3 dir = glm::normalize(fwd + right * (std::cos(ang) * rad) + up * (std::sin(ang) * rad));
         float wallT = hitscanAll(origin, dir, d.range, hits);
         int n = std::min((int)hits.size(), pierce + 1);
+        if (!level.anchors.empty() && (hits.empty() || hits[0].t > wallT - 0.05f))
+            hitAnchor(origin, dir, wallT, dmg);   // the round stopped on a wall: one of the Penitent's anchors?
         float endT = n > 0 && n == pierce + 1 ? hits[n - 1].t : wallT;
         fx.spawnTracer(origin + dir * 0.25f - up * 0.08f, origin + dir * endT, sniper ? 0.09f : 0.055f, sniper ? 0.35f : 0.22f);
         for (int k = 0; k < n; ++k) {

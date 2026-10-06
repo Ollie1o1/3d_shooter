@@ -34,6 +34,7 @@
 #include "Daily.h"
 #include "EndlessWaves.h"
 #include "SovereignHazards.h"
+#include "PenitentHazards.h"
 #include <SDL2/SDL.h>
 #ifdef __EMSCRIPTEN__
 #  include <emscripten.h>
@@ -363,6 +364,9 @@ public:
     // wind-up, 11 judgment, 12 whirlwind wind-up, 13 whirling, 14 thrust wind-up,
     // 15 thrusting, 16 sending phantoms
     void devPose(Enemy& e);
+    // --overlay penitentN: hold THE PENITENT still, facing the camera.
+    // 0 kneeling, 1 low sweep wind-up, 2 high sweep wind-up, 3 risen, 4 scourging
+    void devPenitentPose(Enemy& e);
 
     // Phase two of the Sovereign fight: the eclipse turns to blood and the
     // platforms orbiting the seal pick up speed
@@ -381,6 +385,19 @@ public:
     void onSovereignEvents(const Enemy& e, const EnemyEvents& ev);
     void updateSovereign(float dt);
     void gatherSovereignBoxes(std::vector<BoxInstance>& out);
+
+    // THE PENITENT (Gameplay_Penitent.h): its hazards, its chains' anchors
+    PenitentHazards pen;
+    float anchorRipTimer = 0.f;     // hanging on an anchor with the grapple: rip it at 0.5 s
+    int   ripAnchor = -1;
+    bool  scourgeAnnounced = false;
+    std::vector<LevelData::ChainAnchor> anchorsBuilt;   // as built, for a retry
+    std::vector<AABB> anchorBoxes;
+    void onPenitentEvents(Enemy& e, const EnemyEvents& ev);
+    void updatePenitent(float dt);
+    void breakAnchor(int i, bool ripped);
+    bool hitAnchor(glm::vec3 origin, glm::vec3 dir, float wallT, float dmg);
+    void gatherPenitentBoxes(std::vector<BoxInstance>& out);
     glm::vec3 sanctumCentre() const;
 
     // Arenas that change as the fight goes on (Gameplay_Shifts.h)
