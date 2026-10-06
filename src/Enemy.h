@@ -123,7 +123,7 @@ inline const EnemyStats& statsOf(EnemyType t) {
         {"WARDEN", 2000.f, 1.60f, 4.60f, 2.4f, 0.85f, 3.0f, false,
          {0.34f,0.27f,0.40f}, {1.0f,0.16f,0.62f}, {1.0f,0.22f,0.68f},
          "THE WARDEN"},
-        {"SOVEREIGN", 3200.f, 0.85f, 3.50f, 6.2f, 0.55f, 0.95f, false,
+        {"SOVEREIGN", 6400.f, 0.85f, 3.50f, 6.2f, 0.55f, 0.95f, false,
          {0.12f,0.11f,0.14f}, {1.0f,0.24f,0.14f}, {1.0f,0.82f,0.45f},
          "PARRY (F) HIS BLADE AS IT FALLS - DASH THROUGH THE REST"},
         {"SHIELDBEARER", 140.f, 0.6f, 2.20f, 3.4f, 0.5f, 2.4f, false,
