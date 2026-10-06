@@ -136,6 +136,7 @@ inline void GameplayState::updateEnemies(float dt) {
         Enemy& e = enemies[i];
         if (!e.alive) continue;
         if (g_devOverlay.rfind("pose", 0) == 0 && e.type == EnemyType::SOVEREIGN) { devPose(e); continue; }
+        e.floorY = level.baseFloor(e.position.x, e.position.z);
         e.update(dt, w);
         const EnemyEvents ev = e.ev;   // copy: spawning below may reallocate
         glm::vec3 epos = e.position;

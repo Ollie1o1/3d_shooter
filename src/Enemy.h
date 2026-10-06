@@ -229,6 +229,7 @@ struct Enemy {
     float moveSpeed     = 0.f;   // horizontal speed this tick
     float hitFlashTimer = 0.f;
     float staggerTimer  = 0.f;   // JUGGERNAUT, after its smash was parried
+    float floorY        = 0.f;   // hard floor under it (GameplayState sets it each tick)
     float age           = 0.f;
 
     bool  enraged       = false; // a boss's phase two
@@ -1276,7 +1277,7 @@ private:
         position += velocity * dt;
         grounded = false;
 
-        if (position.y < 0.f) { position.y = 0.f; if (velocity.y < 0.f) velocity.y = 0.f; grounded = true; }
+        if (position.y < floorY) { position.y = floorY; if (velocity.y < 0.f) velocity.y = 0.f; grounded = true; }
 
         if (w.walls) {
             static std::vector<int> cands;

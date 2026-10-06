@@ -134,6 +134,10 @@ struct Hazard { AABB box; float dps; };
 
 struct FloorPatch { float x0, z0, x1, z1, y; glm::vec3 color; };
 
+// Ground that isn't at Y 0: inside `xz` (its X and Z only) the hard floor is
+// at `y`. Act II sits in one, 60 m under Act I.
+struct Basin { AABB xz; float y; };
+
 // A platform that moves along a path. Its collision box is an ordinary wall
 // (flagged dynamic), so the player stands on it, bullets stop on it and the
 // grapple hooks it; LevelData::updateMovers() moves that wall every tick and
@@ -220,6 +224,7 @@ struct LevelData {
     std::vector<JumpPad>    pads;
     std::vector<Booster>    boosters;
     std::vector<Hazard>     hazards;
+    std::vector<Basin>      basins;
     std::vector<Arena>      arenas;
     std::vector<AABB>       corridors; // corridor i joins arena i and i+1 (zone, XZ)
     // Lighting crossfades between two arenas across a box, along one axis
@@ -260,6 +265,18 @@ struct LevelData {
     glm::vec3 finishPos{0.f};      // touch this once the last section is clear
     float     parTimes[4] = {0, 0, 0, 0};   // S / A / B / C thresholds in seconds
     float     moverClock = 0.f;
+
+    // The hard floor at (x, z): a basin's, else Y 0
+    float baseFloor(float x, float z) const {
+        for (auto& b : basins)
+            if (x >= b.xz.min.x && x <= b.xz.max.x && z >= b.xz.min.z && z <= b.xz.max.z) return b.y;
+        return 0.f;
+    }
+    float lowestFloor() const {
+        float y = 0.f;
+        for (auto& b : basins) y = std::min(y, b.y);
+        return y;
+    }
 
     bool isDoorWall(int w) const {
         for (auto& d : doors) if (d.wall == w || d.wall2 == w) return true;

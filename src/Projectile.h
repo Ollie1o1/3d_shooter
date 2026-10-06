@@ -30,6 +30,7 @@ public:
     static constexpr int POOL_SIZE = 160;  // a boss volley is 11 shots
     static constexpr float FRIENDLY_ARM = 0.35f;   // s before an enemy's shell can hit another enemy
     std::array<Projectile, POOL_SIZE> pool;
+    float floorY = 0.f;   // shots that sink below this hit the ground
 
     void fire(glm::vec3 pos, glm::vec3 vel, float dmg, bool player,
               glm::vec3 color = {1,0.8f,0.2f},
@@ -128,7 +129,7 @@ inline ProjectileSystem::HitResult ProjectileSystem::update(
                 }
             }
         }
-        if (!hitSolid && (p.position.y < 0.f || p.position.y > 150.f)) hitSolid = true;
+        if (!hitSolid && (p.position.y < floorY || p.position.y > 150.f)) hitSolid = true;
 
         if (hitSolid) {
             if (p.isGrenade && p.blastRadius > 0.f) {

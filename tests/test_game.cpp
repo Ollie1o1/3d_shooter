@@ -278,6 +278,26 @@ int main() {
         CHECK(closes, "doors close again once you've moved away");
     }
 
+    // ---------------------------------------------------------------- floors below Y 0
+    {
+        LevelData B;
+        B.basins.push_back({LevelBuilder::aabb(-10, 0, -10, 10, 0, 10), -60.f});
+        CHECK(B.baseFloor(0.f, 0.f) == -60.f && B.baseFloor(50.f, 0.f) == 0.f && B.lowestFloor() == -60.f,
+              "a basin lowers the floor inside it and nowhere else");
+        Enemy e(EnemyType::HUSK, {0.f, -55.f, 0.f});
+        e.floorY = -60.f;
+        e.state = EnemyState::ACTIVE; e.staggerTimer = 10.f;   // stands still: just physics
+        EnemyWorld w;
+        for (int i = 0; i < 120; ++i) e.update(DT, w);
+        CHECK(std::fabs(e.position.y + 60.f) < 0.001f && e.grounded, "an enemy lands on its floorY");
+        ProjectileSystem ps; ps.floorY = -60.f;
+        ps.fire({0.f, -50.f, 0.f}, {0.f, -1.f, 0.f}, 10.f, false);
+        std::vector<Enemy> none;
+        ps.update(0.5f, nullptr, 0, none, {1000.f, 0.f, 1000.f});
+        bool alive = false; for (auto& p : ps.pool) alive |= p.alive;
+        CHECK(alive, "a shot below Y 0 but above floorY keeps flying");
+    }
+
     // ---------------------------------------------------------------- the Gauntlet (FAST)
     LevelData D = buildGauntlet();
     SpatialGrid dgrid; dgrid.build(D.walls);

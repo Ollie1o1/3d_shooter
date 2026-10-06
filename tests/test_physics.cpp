@@ -3,6 +3,9 @@
 #include "../src/Player.h"
 #include <cstdio>
 #include <cstring>
+#include <algorithm>
+#include <cmath>
+#include <vector>
 
 static int failures = 0;
 #define CHECK(cond, msg) do { if (!(cond)) { std::printf("FAIL: %s\n", msg); ++failures; } \
@@ -81,6 +84,31 @@ int main() {
         for (int i = 0; i < 180; ++i) p.update(DT, keys, walls.data(), (int)walls.size());
         keys[SDL_SCANCODE_W] = 0;
         CHECK(p.position.x + p.radius <= 2.001f, "wall blocks forward movement");
+    }
+
+
+    // 6. The spatial grid covers walls far from the origin (Act II sits at Z -450..-660)
+    {
+        std::vector<Wall> walls{ Wall{ AABB{{-2.f, -61.f, -602.f}, {2.f, -59.f, -598.f}} },
+                                 Wall{ AABB{{300.f, 0.f, 0.f}, {302.f, 2.f, 2.f}} } };
+        SpatialGrid grid; grid.build(walls);
+        std::vector<int> out;
+        grid.query(AABB{{-1.f, -61.f, -601.f}, {1.f, -59.f, -599.f}}, out);
+        bool foundFar = std::find(out.begin(), out.end(), 0) != out.end();
+        bool notOther = std::find(out.begin(), out.end(), 1) == out.end();
+        CHECK(foundFar && notOther, "the spatial grid finds a wall at Z -600 and only nearby walls");
+        Player p({0.f, -59.f + 0.5f, -600.f});
+        p.floorY = -1000.f;
+        for (int i = 0; i < 60; ++i) p.update(DT, keys, walls.data(), (int)walls.size(), false, &grid);
+        CHECK(std::fabs(p.position.y - (-59.f)) < 0.01f && p.onGround, "the player stands on a wall top far from the origin");
+    }
+
+    // 7. The hard floor follows floorY (Act II's floors are at Y -60)
+    {
+        Player p({0.f, -50.f, 0.f});
+        p.floorY = -60.f;
+        for (int i = 0; i < 180; ++i) p.update(DT, keys, nullptr, 0);
+        CHECK(std::fabs(p.position.y + 60.f) < 0.001f && p.onGround, "the player falls to floorY and stands there");
     }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "PASSED", failures, failures == 1 ? "" : "s");

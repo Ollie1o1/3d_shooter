@@ -34,22 +34,32 @@ struct Wall {
 // a bounding box to get candidate wall indices — then still test actual AABB
 // overlap yourself.
 //
-// Grid covers the whole level (four arenas + corridors, or the Gauntlet):
-//   X: -240 .. 108  (348 m → 29 cells of 12 m)
-//   Z: -320 ..  40  (360 m → 30 cells of 12 m)
-// Anything beyond that is filed in the edge cells (still correct, just slower).
+// build() fits the grid to the walls it's given (12 m cells, one cell of
+// margin), so Act I, the Gauntlet and Act II (60 m down, far north) each get
+// a grid of their own size.
 // Dynamic walls (moving platforms) are left out: they'd be in the wrong
 // cells a second later. Callers test those directly every tick.
 // =============================================================================
 struct SpatialGrid {
     static constexpr float CELL = 12.f;
-    static constexpr float X0 = -240.f, Z0 = -320.f;
-    static constexpr int   NX = 29, NZ = 30;
+    // Fitted to the walls in build(), with a cell of margin all round
+    float X0 = 0.f, Z0 = 0.f;
+    int   NX = 1, NZ = 1;
 
-    std::vector<int> cells[NX * NZ];
+    std::vector<std::vector<int>> cells = std::vector<std::vector<int>>(1);
 
     void build(const std::vector<Wall>& walls) {
-        for (auto& c : cells) c.clear();
+        float x0 = 1e9f, z0 = 1e9f, x1 = -1e9f, z1 = -1e9f;
+        for (auto& w : walls) {
+            if (w.dynamic) continue;
+            x0 = std::min(x0, w.box.min.x); z0 = std::min(z0, w.box.min.z);
+            x1 = std::max(x1, w.box.max.x); z1 = std::max(z1, w.box.max.z);
+        }
+        if (x0 > x1) { x0 = z0 = -CELL; x1 = z1 = CELL; }
+        X0 = x0 - CELL; Z0 = z0 - CELL;
+        NX = (int)((x1 - X0) / CELL) + 2;
+        NZ = (int)((z1 - Z0) / CELL) + 2;
+        cells.assign((size_t)NX * NZ, {});
         for (int i = 0; i < (int)walls.size(); ++i)
             if (!walls[i].dynamic) insertWall(i, walls[i].box);
     }
@@ -86,7 +96,7 @@ private:
 // velocity, gravity, and collision response rather than relying on a physics
 // engine. This gives us tight, predictable feel (similar to Quake/ULTRAKILL).
 //
-// Coordinate system: Y is up, floor is at Y = 0.
+// Coordinate system: Y is up; the floor is at floorY (Y 0 unless the caller says otherwise).
 // The player's position is the feet. The camera sits at position + eyeHeight.
 //
 // Physics runs at a FIXED RATE (60Hz) driven by the accumulator in main.cpp.
@@ -133,6 +143,11 @@ public:
     // GameplayState uses it to carry the player along with moving platforms.
     int groundWall = -1;
 
+    // The hard floor under the player: Y 0 in Act I, lower in a basin (Act II),
+    // raised by deep water (feet are held under its surface). Set by the
+    // caller before update().
+    float floorY = 0.f;
+
     // Moving platforms: wall indices tested every tick on top of the grid
     // query (they aren't in the grid). Set by the caller before update().
     const int* dynWalls = nullptr;
@@ -142,7 +157,6 @@ public:
     // the moment the player lands (up to JUMP_BUFFER_DURATION seconds later).
     float jumpBufferTimer = 0.f;
 
-    static constexpr float FLOOR_Y              = 0.0f;
     static constexpr float SLIDE_DURATION       = 0.55f;
     static constexpr float SLIDE_SPEED          = 14.f;
     static constexpr float SLIDE_FRICTION       = 2.5f;
@@ -324,8 +338,8 @@ private:
     void resolveCollisions(const Wall* walls, int wallCount,
                            const SpatialGrid* grid = nullptr) {
         groundWall = -1;
-        if (position.y < FLOOR_Y) {
-            position.y = FLOOR_Y;
+        if (position.y < floorY) {
+            position.y = floorY;
             velocity.y = 0.f;
             onGround   = true;
         } else {
@@ -346,7 +360,7 @@ private:
         for (int idx : candidates)
             if (resolveAABB(walls[idx].box)) groundWall = idx;
 
-        if (position.y <= FLOOR_Y + 0.001f) onGround = true;
+        if (position.y <= floorY + 0.001f) onGround = true;
 
         // Ground probe: gravity is skipped while grounded, so a player resting
         // on a box top never penetrates it on the next tick and would otherwise
