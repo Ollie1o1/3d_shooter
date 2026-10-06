@@ -374,6 +374,11 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
                 fx.spawnBurst(e.position + glm::vec3{frand(-1.f, 1.f), frand(0.5f, 3.5f), frand(-1.f, 1.f)},
                            {1.f, 0.8f, 0.4f}, 30, 10.f, 0.8f, 2.f);
             pushBanner("THE SOVEREIGN HAS FALLEN", "", {1.f, 0.85f, 0.3f}, 3.f);
+            if (!g_godMode && !records.act2Unlocked) {
+                records.act2Unlocked = true;
+                records.save();
+                ui.feed("ACT II UNLOCKED - BENEATH THE ECLIPSE", {0.35f, 0.95f, 0.9f});
+            }
         } else {
             pushBanner("WARDEN DESTROYED", "", {1.f, 0.85f, 0.3f}, 2.5f);
         }

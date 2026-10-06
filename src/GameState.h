@@ -14,7 +14,8 @@ public:
 // ENDLESS: generated waves in the Core until you die (EndlessWaves.h).
 // DAILY:   an ENDLESS run that's the same for everyone today: the date picks
 //          the arena, a modifier and the waves (Daily.h).
-enum class GameMode { ARENA, FAST, ENDLESS, DAILY };
+// ACT2:    Act II, beneath the eclipse (LevelAct2.h). Unlocked by killing the Sovereign.
+enum class GameMode { ARENA, FAST, ENDLESS, DAILY, ACT2 };
 
 // Where a run starts. The dev level select fills it in; a normal start from
 // the menu is the default (first arena, ranked).

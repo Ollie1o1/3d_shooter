@@ -410,6 +410,19 @@ int main() {
         CHECK(dryOk, "at every flood level the Nave's spawns are out of deep water");
     }
 
+    // ---------------------------------------------------------------- the Act II unlock
+    {
+        Records r; r.load();
+        Records keep = r;
+        r.act2Unlocked = false; r.save();
+        Records a; a.load();
+        CHECK(!a.act2Unlocked && !canStartAct2(a), "act II starts locked: the menu row won't start it");
+        a.act2Unlocked = true; a.save();
+        Records b; b.load();
+        CHECK(b.act2Unlocked && canStartAct2(b), "the unlock is saved and loaded");
+        keep.save();   // leave the developer's records as they were
+    }
+
     // ---------------------------------------------------------------- the Gauntlet (FAST)
     LevelData D = buildGauntlet();
     SpatialGrid dgrid; dgrid.build(D.walls);

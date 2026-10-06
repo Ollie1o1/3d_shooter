@@ -97,6 +97,7 @@ struct Records {
     int   bestArenaScore = 0;              // best ARENA score (Score.h)
     int   bestEndless = 0;                 // best ENDLESS score
     int   bestDaily = 0, dailyDate = 0;    // best DAILY score, and the day it's for (YYYYMMDD)
+    bool  act2Unlocked = false;            // the Sovereign has fallen: ACT II is open
 
     static constexpr const char* kKey = "records.v2.cfg";
 
@@ -109,6 +110,7 @@ struct Records {
             else if (key == "bestArenaScore") f >> bestArenaScore;
             else if (key == "bestEndless") f >> bestEndless;
             else if (key == "bestDaily") f >> bestDaily >> dailyDate;
+            else if (key == "act2Unlocked") { int v = 0; f >> v; act2Unlocked = v != 0; }
             else if (key == "fastSplits") {
                 int n = 0; f >> n;
                 fastSplits.assign(std::max(0, std::min(n, 32)), 0.f);
@@ -124,12 +126,16 @@ struct Records {
         f << "bestArenaScore " << bestArenaScore << "\n";
         f << "bestEndless " << bestEndless << "\n";
         f << "bestDaily " << bestDaily << " " << dailyDate << "\n";
+        f << "act2Unlocked " << (act2Unlocked ? 1 : 0) << "\n";
         f << "fastSplits " << fastSplits.size();
         for (float s : fastSplits) f << " " << s;
         f << "\n";
         persist::save(kKey, f.str());
     }
 };
+
+// The main menu's ACT II row only starts a run once the Sovereign has fallen
+inline bool canStartAct2(const Records& r) { return r.act2Unlocked; }
 
 // Finished runs a player chose to put their name to, fastest first, kept
 // per mode (the top KEEP of each). Only full runs count: not one started at

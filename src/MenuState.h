@@ -7,6 +7,7 @@
 #include "Daily.h"
 #include "Level.h"
 #include "LevelGauntlet.h"
+#include "LevelAct2.h"
 #include "UIBatch.h"
 #include "Gamepad.h"
 #include <SDL2/SDL.h>
@@ -49,7 +50,7 @@ public:
     bool         worldLoaded = false;
     float        boardPoll = 0.f;
 
-    static constexpr int NUM_ITEMS = 7;
+    static constexpr int NUM_ITEMS = 8;
     DailyInfo daily = DailyInfo::today();
     std::vector<std::string> arenaNames;
 
@@ -59,9 +60,10 @@ public:
     int  devSel = 0, devWave = 0;
     bool devGod = true;
     static constexpr int DEV_OPTIONS = 2;   // GOD MODE, START WAVE
+    int act1Rows = 0;                       // ARENA rows; ACT II's go under them
 
     MenuState(int w, int h) : screenW(w), screenH(h), ui(w, h), settingsMenu(w, h) {
-        settingsMenu.onBack = [this]() { page = MAIN; selected = 5; };
+        settingsMenu.onBack = [this]() { page = MAIN; selected = 6; };
         records.load();
         board.daily = worldBoard.daily = daily.key();
         board.load();
@@ -71,6 +73,10 @@ public:
             devRows.push_back({"ARENA", A.arenas[i].name, GameMode::ARENA, i, (int)A.arenas[i].waves.size()});
         for (int i = 0; i < (int)F.arenas.size(); ++i)
             devRows.push_back({"FAST", F.arenas[i].name, GameMode::FAST, i, (int)F.arenas[i].waves.size()});
+        act1Rows = (int)A.arenas.size();
+        LevelData A2 = buildAct2Level();
+        for (int i = 0; i < (int)A2.arenas.size(); ++i)
+            devRows.push_back({"ACT II", A2.arenas[i].name, GameMode::ACT2, i, (int)A2.arenas[i].waves.size()});
     }
 
     void openDev() { page = DEV; devSel = DEV_OPTIONS; }
@@ -162,10 +168,11 @@ private:
 
     void activate(int idx) {
         if (idx == 0 && onStart) onStart(GameMode::ARENA, StartOptions{});
-        if (idx == 1 && onStart) onStart(GameMode::FAST, StartOptions{});
-        if (idx == 2 && onStart) onStart(GameMode::ENDLESS, StartOptions{});
-        if (idx == 3 && onStart) onStart(GameMode::DAILY, StartOptions{});
-        if (idx == 4) {
+        if (idx == 1 && onStart && canStartAct2(records)) onStart(GameMode::ACT2, StartOptions{});
+        if (idx == 2 && onStart) onStart(GameMode::FAST, StartOptions{});
+        if (idx == 3 && onStart) onStart(GameMode::ENDLESS, StartOptions{});
+        if (idx == 4 && onStart) onStart(GameMode::DAILY, StartOptions{});
+        if (idx == 5) {
             daily = DailyInfo::today();
             board.daily = worldBoard.daily = daily.key();
             page = BOARD; board.load(); boardPoll = 0.f;
@@ -173,8 +180,8 @@ private:
             emscripten_run_script("window.overdriveBoard&&window.overdriveBoard.refresh()");
 #endif
         }
-        if (idx == 5) { page = SETTINGS; settingsMenu.selected = 1; }
-        if (idx == 6 && onQuit) onQuit();
+        if (idx == 6) { page = SETTINGS; settingsMenu.selected = 1; }
+        if (idx == 7 && onQuit) onQuit();
     }
 
     // ---- DEV level select ----------------------------------------------------
@@ -183,11 +190,12 @@ private:
         // options, a gap, then the levels in two columns (ARENA left, FAST right)
         if (i < DEV_OPTIONS) return 128.f + i * 34.f;
         const DevRow& r = devRows[i - DEV_OPTIONS];
+        if (r.mode == GameMode::ACT2) return 232.f + (act1Rows + 1 + r.arena) * 34.f;
         return 232.f + r.arena * 34.f;
     }
     float devX(int i) const {
         if (i < DEV_OPTIONS) return screenW / 2.f - 260.f;
-        return devRows[i - DEV_OPTIONS].mode == GameMode::ARENA ? screenW / 2.f - 560.f : screenW / 2.f + 40.f;
+        return devRows[i - DEV_OPTIONS].mode != GameMode::FAST ? screenW / 2.f - 560.f : screenW / 2.f + 40.f;
     }
     static constexpr float DEV_W = 520.f;
     int devAt(int mx, int my) const {
@@ -202,7 +210,7 @@ private:
         const DevRow& r = devRows[i - DEV_OPTIONS];
         StartOptions o;
         o.arena = r.arena;
-        o.wave  = r.mode == GameMode::ARENA ? std::min(devWave, r.waves - 1) : 0;
+        o.wave  = r.mode != GameMode::FAST ? std::min(devWave, r.waves - 1) : 0;
         o.god   = devGod;
         o.practice = true;
         onStart(r.mode, o);
@@ -217,7 +225,7 @@ private:
             if ((k == SDLK_LEFT || k == SDLK_RIGHT) && devSel >= DEV_OPTIONS) {
                 // jump between the ARENA and FAST columns, keeping the row
                 const DevRow& r = devRows[devSel - DEV_OPTIONS];
-                GameMode want = r.mode == GameMode::ARENA ? GameMode::FAST : GameMode::ARENA;
+                GameMode want = r.mode == GameMode::FAST ? GameMode::ARENA : GameMode::FAST;
                 int best = -1;
                 for (int i = 0; i < (int)devRows.size(); ++i)
                     if (devRows[i].mode == want && (best < 0 || std::abs(devRows[i].arena - r.arena) < std::abs(devRows[best].arena - r.arena)))
@@ -249,7 +257,8 @@ private:
             else {
                 const DevRow& r = devRows[i - DEV_OPTIONS];
                 bool boss = r.mode == GameMode::ARENA && r.arena == (int)countMode(GameMode::ARENA) - 1;
-                std::snprintf(buf, sizeof(buf), "%s %d  %s%s", r.mode == GameMode::ARENA ? "ARENA" : "ROOM",
+                std::snprintf(buf, sizeof(buf), "%s %d  %s%s",
+                              r.mode == GameMode::ARENA ? "ARENA" : r.mode == GameMode::ACT2 ? "ACT II" : "ROOM",
                               r.arena + 1, r.name.c_str(), boss ? "  (BOSS)" : "");
             }
             ui.text(buf, x + 14, y + 1, 2, c);
@@ -307,8 +316,10 @@ private:
         if (records.bestFast  > 0.f) fastSub  += "   BEST " + formatTime(records.bestFast);
         if (records.bestEndless > 0) endSub += "   BEST " + std::to_string(records.bestEndless);
         if (records.bestDaily > 0 && records.dailyDate == daily.date) daySub += "   BEST " + std::to_string(records.bestDaily);
+        bool act2 = canStartAct2(records);
         Item items[NUM_ITEMS] = {
             {"ARENA", arenaSub.c_str()},
+            {"ACT II", act2 ? "PREVIEW - 1/4 ARENAS - BENEATH THE ECLIPSE" : "DEFEAT THE SOVEREIGN TO UNLOCK"},
             {"FAST",  fastSub.c_str()},
             {"ENDLESS", endSub.c_str()},
             {"DAILY", daySub.c_str()},
@@ -327,6 +338,7 @@ private:
             ui.rect(cx - 200, y + ITEM_H - 2, 400, 2, border);
             if (sel) ui.rect(cx - 200, y, 5, ITEM_H, {1.f, 0.6f + pulse * 0.2f, 0.1f, 1.f});
             glm::vec4 c = sel ? glm::vec4{1.f, 0.65f, 0.12f, 1.f} : glm::vec4{0.65f, 0.65f, 0.7f, 0.95f};
+            if (i == 1 && !act2) c = {0.42f, 0.42f, 0.47f, 0.75f};   // locked
             bool hasSub = items[i].sub[0] != 0;
             ui.text(items[i].label, cx, y + (hasSub ? 6 : 12), 3, c, true);
             if (hasSub) ui.text(items[i].sub, cx, y + 31, 1, {0.75f, 0.72f, 0.7f, 0.9f}, true);
