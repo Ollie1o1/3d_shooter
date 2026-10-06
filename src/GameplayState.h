@@ -629,6 +629,11 @@ public:
     FlarePhase flarePrev = FlarePhase::OFF;
 
     int findInteractTarget() const;
+
+    // The Descent's cage (Gameplay_Penitent.h)
+    bool boardHinted = false;   // "BOARD THE CAGE" shown for this stop
+    bool liftRiding  = false;   // a ride is under way (its arrival drops health on the cage)
+    void updateLift(float dt);
 };
 
 // The member functions, by topic
@@ -641,3 +646,4 @@ public:
 #include "Gameplay_Dev.h"
 #include "Gameplay_Shifts.h"
 #include "Gameplay_Sovereign.h"
+#include "Gameplay_Penitent.h"

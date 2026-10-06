@@ -16,6 +16,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     int rideMover = level.moverOfWall(player.groundWall);
     moverClock += dt;
     updateShifts(dt);
+    updateLift(dt);
     level.updateMovers(moverClock);
     if (rideMover >= 0) {
         player.position += level.movers[rideMover].delta;
@@ -463,6 +464,11 @@ inline float GameplayState::groundHeightAt(float x, float z, float fromY) const 
     float best = base;
     for (int i : cands) {
         const AABB& b = level.walls[i].box;
+        if (x >= b.min.x && x <= b.max.x && z >= b.min.z && z <= b.max.z && b.max.y <= fromY + 0.5f)
+            best = std::max(best, b.max.y);
+    }
+    for (int wi : level.moverWalls) {   // moving platforms (the Descent's cage) aren't in the grid
+        const AABB& b = level.walls[wi].box;
         if (x >= b.min.x && x <= b.max.x && z >= b.min.z && z <= b.max.z && b.max.y <= fromY + 0.5f)
             best = std::max(best, b.max.y);
     }

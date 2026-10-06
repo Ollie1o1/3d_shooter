@@ -41,6 +41,8 @@ struct MusicTrack {
     const char* lead;      // 32 steps (two bars): chord tone 0-3, '-' hold, '.' rest
 };
 
+constexpr int MUSIC_TRACKS = 8;
+
 inline const MusicTrack& musicTrack(int i) {
     static const MusicTrack T[] = {
         {"SUNSET", 150.f, 57, {0, 5, 2, 6},
@@ -67,10 +69,13 @@ inline const MusicTrack& musicTrack(int i) {
         {"ORRERY", 152.f, 48, {0, 4, 5, 3},
          "x...x...x..x....", "....x.......x..g", "xXx.xXx.xXx.xXxo",
          "x.ox.fx.x.ox.fxo", "0123210301232103", "3---2---1---2---3---1---0-------"},
+        // The Descent: slow, heavy, low brass and chains, falling forever
+        {"DESCENT", 132.f, 43, {0, 6, 3, 5},
+         "x.....x.x.......", "....x.......x..g", "x.x.X.x.x.xxX.xo",
+         "x---o---x--fo---", "0..1..2..3..2..1", "3-------2-------1---0---1-------"},
     };
-    return T[((i % 7) + 7) % 7];
+    return T[((i % MUSIC_TRACKS) + MUSIC_TRACKS) % MUSIC_TRACKS];
 }
-constexpr int MUSIC_TRACKS = 7;
 
 class MusicSynth {
 public:

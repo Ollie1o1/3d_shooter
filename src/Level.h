@@ -183,7 +183,7 @@ struct Mover {
 
 enum class Ambient { DUST, EMBERS, MOTES, WIND, ASH, STEAM };
 // How an arena changes as its fight goes on (ArenaShifts.h)
-enum class ArenaShift { NONE, NIGHTFALL, LAVA_RISE, SPEED_UP, OVERLOAD, FLOOD, SOLAR };
+enum class ArenaShift { NONE, NIGHTFALL, LAVA_RISE, SPEED_UP, OVERLOAD, FLOOD, SOLAR, DESCENT };
 
 struct Arena {
     const char* name;
@@ -292,6 +292,10 @@ struct LevelData {
 
     // The Penitent's chains are fixed to these, high on the pit wall: shoot
     // one out (hp) or grapple onto it and hang on (GameplayState rips it)
+    bool onLift(int groundWall) const {
+        for (int m : lift.movers) if (movers[m].wall == groundWall) return true;
+        return false;
+    }
     struct ChainAnchor { int wall = -1; glm::vec3 pos{0.f}; float hp = 400.f; bool alive = true; };
     std::vector<ChainAnchor> anchors;
     int anchorsAlive() const { int n = 0; for (auto& a : anchors) n += a.alive; return n; }

@@ -19,6 +19,8 @@
 //                            each wave and a second arm joins on the last
 //   FLOOD     (the Nave)     the water rises a step each time a wave is
 //                            cleared (Arena::floodLevels), over FLOOD_TIME
+//   DESCENT   (the Descent)  the cage rides down to the next stop once a wave
+//                            is cleared and you're aboard (LevelData::Lift)
 //
 // It edits the level itself (each arena's theme, its lava hazards, its
 // movers' periods), so lighting still blends down the corridors and the
@@ -116,6 +118,7 @@ public:
 
     // Back to the level as built (a retry or a new run)
     void reset(LevelData& L) {
+        L.lift.reset(); L.lift.update(0.f, L);   // the Descent's cage back at the top
         for (int a = 0; a < (int)L.arenas.size(); ++a) {
             L.arenas[a].theme = baseTheme[a];
             night[a] = nightTarget[a] = lava[a] = lavaTarget[a] = 0.f;
@@ -136,7 +139,10 @@ public:
 
     // A wave was cleared in arena a: a FLOOD arena's water heads for the
     // next wave's level
+    // DESCENT: the stop each wave is fought at (the top is stop 0)
+    static int descentStop(int wave) { return wave + 1; }
     void onWaveCleared(LevelData& L, int a, int nextWave) {
+        if (a >= 0 && a < (int)L.arenas.size() && L.arenas[a].shift == ArenaShift::DESCENT) L.lift.request(descentStop(nextWave));
         const Arena& ar = L.arenas[a];
         if (ar.shift != ArenaShift::FLOOD || nextWave >= (int)ar.floodLevels.size()) return;
         for (int i = 0; i < (int)L.water.size(); ++i)
@@ -174,6 +180,7 @@ public:
 
     // fighting: the overload only pulses mid-wave
     void update(float dt, LevelData& L, int arena, bool fighting) {
+        L.lift.update(dt, L);   // the Descent's cage (rides only when GameplayState starts one)
         pulseFired = lavaStarted = floodStarted = false;
         if (arena >= 0 && arena < (int)L.arenas.size() && L.arenas[arena].shift == ArenaShift::SOLAR && fighting) {
             flareClock = std::fmod(flareClock + dt, FLARE_CYCLE);

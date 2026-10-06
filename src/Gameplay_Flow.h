@@ -151,7 +151,8 @@ inline void GameplayState::enterArena(int a) {
     // Every door shut; exits of the arenas already beaten unlocked. The way
     // in locks when the fight starts (ARENA_START).
     for (int d = 0; d < (int)level.doors.size(); ++d) { level.doors[d].locked = false; level.setDoorInstant(d, false); }
-    shifts.reset(level);   // the sun back up, the lava back down, the platforms back to speed
+    shifts.reset(level);   // the sun back up, the lava back down, the platforms back to speed, the cage to the top
+    boardHinted = liftRiding = false;
     {   // a practice start at a later wave: the flood already at that wave's level
         const Arena& fa = level.arenas[a];
         if (g_startWave > 0 && fa.shift == ArenaShift::FLOOD && !fa.floodLevels.empty())
@@ -280,6 +281,11 @@ inline void GameplayState::handleDirectorEvents() {
                                            {0.4f, 0.8f, 1.f}, 3.4f);
                 else pushBanner(std::string("ENDLESS  ") + ar.name, "HOW LONG CAN YOU LAST", {1.f, 0.3f, 0.45f}, 3.f);
                 audio.play("wave", 128, SoundGroup::UI);
+            } else if (act2() && ar.shift == ArenaShift::DESCENT) {
+                level.lift.request(ArenaShifts::descentStop(director.wave));   // down to the first fight
+                boardHinted = true;
+                pushBanner(std::string("ACT II  ") + ar.name, "BOARD THE CAGE", {1.f, 0.7f, 0.3f}, 3.f);
+                audio.play("wave", 128, SoundGroup::UI);
             } else if (act2()) {
                 pushBanner(std::string("ACT II  ") + ar.name, ar.subtitle, {0.35f, 0.95f, 0.9f}, 2.6f);
                 audio.play("wave", 128, SoundGroup::UI);
@@ -343,7 +349,7 @@ inline void GameplayState::handleDirectorEvents() {
             if (done.exitDoor >= 0 && !act2())
                 pushBanner("ARENA CLEARED", "THE GATE IS OPEN - HEAD NORTH", {0.4f, 1.f, 0.6f}, 3.5f);
             else if (done.exitDoor >= 0)
-                pushBanner("THE WAY DOWN IS OPEN", "BEHIND THE ORGAN", {0.35f, 0.95f, 0.9f}, 3.5f);
+                pushBanner("THE WAY DOWN IS OPEN", ev.value == 0 ? "BEHIND THE ORGAN" : "THROUGH THE NORTH ARCH", {0.35f, 0.95f, 0.9f}, 3.5f);
             styleSystem.heal(40.f);
             grenadeCount = grenadeMax;
             audio.play("wave", 128, SoundGroup::UI);
@@ -704,7 +710,7 @@ inline void GameplayState::updateMusic() {
     static const int ARENA_TRACK[] = {0, 1, 2, 3, 4};       // Yard, Foundry, Spire, Core, Sanctum
     static const int FAST_TRACK[]  = {0, 1, 2, 2, 1, 1, 3}; // Canal .. Tower
     int a = director.arena;
-    m.setTrack(fast() ? FAST_TRACK[a % 7] : act2() ? 5 + std::min(a, 1) : ARENA_TRACK[a % 5]);   // the Nave, the Orrery
+    m.setTrack(fast() ? FAST_TRACK[a % 7] : act2() ? 5 + std::min(a, 2) : ARENA_TRACK[a % 5]);   // the Nave, the Orrery
     float lv = 0.6f;
     switch (director.phase) {
         case WaveDirector::Phase::ACTIVE:   lv = director.bossWave() ? 1.35f : 1.f; break;

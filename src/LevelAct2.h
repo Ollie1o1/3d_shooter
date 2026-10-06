@@ -420,7 +420,7 @@ inline void buildDescent(LevelBuilder& B) {
     const Rect CAGE[4] = {{12.f, 5.f}, {5.f, 12.f}, {10.5f, 8.f}, {8.f, 10.5f}};
     const float STOP[5] = {-80.f, -120.f, -160.f, -200.f, -240.f};
     vec3 iron{0.16f,0.15f,0.16f}, ironDark{0.09f,0.085f,0.09f}, bone{0.7f,0.66f,0.58f}, brass{0.62f,0.48f,0.26f},
-         ember{1.4f,0.45f,0.12f}, amber{1.3f,0.8f,0.35f}, blood{1.2f,0.12f,0.08f}, pale{0.8f,0.85f,0.9f};
+         ember{1.4f,0.45f,0.12f}, amber{1.3f,0.8f,0.35f}, blood{1.2f,0.12f,0.08f};
     B.mat = Mat::METAL;
 
     // ---- the corridor from the Orrery's north arch to the landing ----
@@ -614,14 +614,15 @@ inline void buildDescent(LevelBuilder& B) {
     a.goals = {WaveGoal{}, WaveGoal::conduits("RELEASE THE CLAMPS", clamps), WaveGoal{}, WaveGoal{}};
     a.maxAlive = 12;
     a.damageScale = 1.4f;
+    a.shift = ArenaShift::DESCENT;
     a.ambient = Ambient::ASH;
     a.theme = Theme{
         {0.02f,0.015f,0.02f}, {0.22f,0.08f,0.05f}, {0.01f,0.004f,0.003f},
         glm::normalize(vec3{0.f, -1.f, -0.2f}), {1.2f,0.75f,0.4f}, 0.06f, 0.f,
         {0.05f,0.03f,0.025f}, 0.45f,
         // The light comes from the furnaces below; cold grey from the mouth above
-        glm::normalize(vec3{0.1f, 0.8f, 0.2f}), {1.1f,0.5f,0.25f},
-        {0.1f,0.1f,0.13f}, {0.4f,0.12f,0.06f},
+        glm::normalize(vec3{0.1f, 0.8f, 0.2f}), {1.5f,0.75f,0.4f},
+        {0.22f,0.21f,0.26f}, {0.55f,0.2f,0.1f},
         {0.12f,0.05f,0.03f}, 0.01f };
     L.arenas.push_back(std::move(a));
 }

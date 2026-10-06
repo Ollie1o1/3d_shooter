@@ -738,6 +738,61 @@ int main() {
         CHECK(hit == 1, "a shot at an anchor finds it");
     }
 
+    // ---------------------------------------------------------------- the Descent's ride
+    {
+        LevelData N = buildAct2Level();
+        ArenaShifts sh; sh.capture(N);
+        CHECK(N.arenas[2].shift == ArenaShift::DESCENT, "the Descent's shift is the ride");
+        N.lift.request(3); N.lift.start();
+        for (int i = 0; i < 60 * 3; ++i) sh.update(DT, N, 2, true);
+        bool moving = N.lift.riding();
+        sh.reset(N);
+        CHECK(moving && N.lift.at == 0 && !N.lift.busy(), "a retry stops the ride and puts the cage back at the top");
+        sh.onWaveCleared(N, 2, 1);
+        CHECK(N.lift.pending == 2, "clearing a wave asks for the next stop (it waits for the player to board)");
+        CHECK(N.onLift(N.movers[N.lift.movers[0]].wall) && !N.onLift(0), "the game can tell when you're standing on the cage");
+        // The cage never passes through a static wall on the way down, and is flush with every stop's bridges
+        N.lift.reset(); N.lift.request(4); N.lift.start();
+        float clock = 0.f; bool clear = true;
+        SpatialGrid g; g.build(N.walls);
+        for (int i = 0; i < 60 * 9; ++i) {
+            clock += DT; N.lift.update(DT, N); N.updateMovers(clock);
+            for (int m : N.lift.movers) {
+                AABB b = N.walls[N.movers[m].wall].box;
+                b.min += glm::vec3{0.02f}; b.max -= glm::vec3{0.02f};
+                for (size_t w = 0; w < N.walls.size(); ++w)
+                    if (!N.walls[w].dynamic && overlapsBox(b, N.walls[w].box)) { clear = false; }
+            }
+        }
+        CHECK(clear, "the cage rides all the way down without touching a wall");
+        bool flush = true;
+        for (int s = 1; s < 5; ++s) {
+            N.lift.reset(); N.lift.request(s); N.lift.start();
+            for (int i = 0; i < 60 * 9; ++i) { clock += DT; N.lift.update(DT, N); N.updateMovers(clock); }
+            float top = N.walls[N.movers[N.lift.movers[1]].wall].box.max.y;
+            float bridge = N.groundAt(12.6f, -840.f, top + 0.1f);
+            flush &= std::fabs(top - N.lift.stops[s]) < 0.02f && std::fabs(bridge - top) < 0.02f;
+        }
+        CHECK(flush, "at every stop the cage sits flush with the floor round it");
+        // A player standing on the cage for a whole ride is carried and stays on
+        N.lift.reset(); N.lift.update(0.f, N); N.updateMovers(clock);
+        Player p({3.f, -80.f, -838.f});
+        p.dynWalls = N.moverWalls.data(); p.dynCount = (int)N.moverWalls.size();
+        SpatialGrid pg; pg.build(N.walls);
+        N.lift.request(1); N.lift.start();
+        bool stayed = true;
+        for (int i = 0; i < 60 * 9; ++i) {
+            int rm = N.moverOfWall(p.groundWall);
+            clock += DT; N.lift.update(DT, N); N.updateMovers(clock);
+            if (rm >= 0) p.position += N.movers[rm].delta;
+            p.floorY = N.baseFloor(p.position.x, p.position.z);
+            Uint8 k[SDL_NUM_SCANCODES]; std::memset(k, 0, sizeof(k));
+            p.update(DT, k, N.walls.data(), (int)N.walls.size(), false, &pg);
+            stayed &= p.position.y > N.lift.y() - 1.0f && p.position.y < N.lift.y() + 1.5f;
+        }
+        CHECK(stayed && std::fabs(p.position.y - (-120.f)) < 0.1f, "standing on the cage, you ride it down and stay on");
+    }
+
     // ---------------------------------------------------------------- a simulated ACT II run
     {
         LevelData N = buildAct2Level();
@@ -777,8 +832,8 @@ int main() {
         std::printf("      nave run: %d seraphs, %d anchors, %d haloed, %d twinned, %d enraged\n", seraphs, anchors, haloed, twinned, enragedSpawns);
         CHECK(seraphs >= 3 && anchors >= 1 && haloed >= 3 && twinned >= 2 && enragedSpawns >= 1,
               "the Nave's waves bring Seraphs, an Anchor and every variant");
-        CHECK(MUSIC_TRACKS == 7 && std::string(musicTrack(5).name) == "NAVE" && std::string(musicTrack(6).name) == "ORRERY",
-              "the Nave and the Orrery have their own tracks");
+        CHECK(MUSIC_TRACKS == 8 && std::string(musicTrack(5).name) == "NAVE" && std::string(musicTrack(6).name) == "ORRERY" &&
+              std::string(musicTrack(7).name) == "DESCENT", "the Nave, the Orrery and the Descent have their own tracks");
     }
 
     // ---------------------------------------------------------------- Hollowed variants: data
