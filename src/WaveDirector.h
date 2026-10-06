@@ -36,7 +36,7 @@
 #include <cmath>
 #include <algorithm>
 
-struct SpawnRequest { EnemyType type; glm::vec3 pos; };
+struct SpawnRequest { EnemyType type; glm::vec3 pos; Hollow hollow = Hollow::NONE; };
 
 enum class DirectorEvent { ARENA_START, WAVE_START, BOSS_START, NEW_TYPE, WAVE_CLEARED, ARENA_CLEARED, VICTORY, FINISH_OPEN,
                            GOAL_DONE };
@@ -63,10 +63,11 @@ public:
     int   arena = 0, wave = 0;
     Phase phase = Phase::INTRO;
     float timer = 0.f;
-    struct Queued { EnemyType type; bool fixed; glm::vec3 pos; std::vector<EnemyType> escort; };
+    struct Queued { EnemyType type; bool fixed; glm::vec3 pos; std::vector<EnemyType> escort; Hollow variant; };
     std::vector<Queued>            queue;
     std::vector<DirectorEventRec>  events;      // drained by the caller every frame
     bool  seen[(int)EnemyType::COUNT] = {};
+    bool  seenHollow[(int)EnemyType::COUNT][4] = {};   // variants introduced so far
 
     // ---- the current wave's goal ----
     float goalTimer = 0.f;          // HOLD: seconds held; SURVIVE: seconds left
@@ -237,6 +238,10 @@ private:
         if (!conduitAlive.empty()) introduce(EnemyType::CONDUIT);
         for (auto& e : current().waves[wave]) {
             introduce(e.type);
+            if (e.variant != Hollow::NONE && !seenHollow[(int)e.type][(int)e.variant]) {
+                seenHollow[(int)e.type][(int)e.variant] = true;
+                events.push_back({DirectorEvent::NEW_TYPE, (int)e.type | ((int)e.variant << 8)});
+            }
             for (EnemyType t : e.escort) introduce(t);
         }
     }
@@ -252,7 +257,7 @@ private:
             for (auto& e : entries)
                 if (round < countOf(e) && (first || !isBoss(e.type))) {
                     bool fixed = !e.at.empty();
-                    queue.push_back({e.type, fixed, fixed ? e.at[round] : glm::vec3{0.f}, e.escort});
+                    queue.push_back({e.type, fixed, fixed ? e.at[round] : glm::vec3{0.f}, e.escort, e.variant});
                     any = true;
                 }
         }
@@ -281,7 +286,7 @@ private:
     // Spawn a queued leader and its escort; returns how many
     int emitSquad(const Queued& q, glm::vec3 playerPos, std::vector<SpawnRequest>& out) {
         glm::vec3 at = q.fixed ? q.pos : pickSpawn(q.type, playerPos);
-        out.push_back({q.type, at});
+        out.push_back({q.type, at, q.variant});
         // The escort stands behind the leader (away from the player), in a fan
         glm::vec2 back{at.x - playerPos.x, at.z - playerPos.z};
         back = glm::length(back) > 0.01f ? glm::normalize(back) : glm::vec2{0.f, -1.f};

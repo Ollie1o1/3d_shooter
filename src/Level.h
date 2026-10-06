@@ -84,8 +84,10 @@ struct WaveEntry {
     int count = 0;
     std::vector<glm::vec3> at;
     std::vector<EnemyType> escort;
+    Hollow variant = Hollow::NONE;   // a Hollowed variant (Act II): the leader only
     WaveEntry(EnemyType t, int n, std::vector<glm::vec3> pts = {}) : type(t), count(n), at(std::move(pts)) {}
     WaveEntry with(std::vector<EnemyType> e) const { WaveEntry w = *this; w.escort = std::move(e); return w; }
+    WaveEntry hollow(Hollow h) const { WaveEntry w = *this; w.variant = canBeHollow(type) ? h : Hollow::NONE; return w; }
     int total() const { return (at.empty() ? count : (int)at.size()) * (1 + (int)escort.size()); }
 };
 

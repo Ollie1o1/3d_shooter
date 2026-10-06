@@ -51,6 +51,27 @@
 enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, JUGGERNAUT, WARDEN, SOVEREIGN, SHIELDBEARER, CONDUIT,
                        CONDUCTOR, COUNT };
 inline bool isBoss(EnemyType t) { return t == EnemyType::WARDEN || t == EnemyType::SOVEREIGN; }
+
+// Hollowed variants (Act II): a regular enemy made harder in one specific way.
+//   ENRAGED  faster, shorter wind-ups, hits harder
+//   TWINNED  splits in two smaller copies when it dies
+//   HALOED   takes a tenth of the damage until a headshot or a parry breaks its halo
+enum class Hollow { NONE, ENRAGED, TWINNED, HALOED };
+inline bool canBeHollow(EnemyType t) {
+    return !isBoss(t) && t != EnemyType::CONDUIT && t != EnemyType::CONDUCTOR;
+}
+inline const char* hollowName(Hollow h) {
+    switch (h) { case Hollow::ENRAGED: return "ENRAGED"; case Hollow::TWINNED: return "TWINNED";
+                 case Hollow::HALOED: return "HALOED"; default: return ""; }
+}
+inline const char* hollowHint(Hollow h) {
+    switch (h) {
+        case Hollow::ENRAGED: return "FASTER, QUICKER TO STRIKE, HITS HARDER - DON'T WAIT FOR ITS RHYTHM";
+        case Hollow::TWINNED: return "SPLITS IN TWO WHEN IT DIES - FINISH THE JOB";
+        case Hollow::HALOED:  return "SHRUGS OFF DAMAGE - HEADSHOT OR PARRY TO BREAK THE HALO";
+        default: return "";
+    }
+}
 enum class EnemyState { SPAWNING, ACTIVE, DEAD };
 enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY, SUMMON, SHELL, SMASH,
                         DASH, SWEEP, CLEAVE, LEAP, CRESCENT,   // the SOVEREIGN's
@@ -194,6 +215,15 @@ struct Enemy {
     glm::vec3  supportAnchor{0.f};   // a CONDUCTOR's: where it wants to hover
     bool       hasAnchor = false;
     bool       alive = true;
+    int        uid = 0;              // stable id (GameplayState numbers them): who fired a shot
+    Hollow     hollow = Hollow::NONE;
+    float      scale = 1.f;          // TWINNED copies are smaller
+    bool       halo = false;         // HALOED: up until a headshot or parry
+    float      haloOpenTimer = 0.f;  // > 0: the halo just broke, it takes double damage
+    void setHollow(Hollow h) {
+        hollow = canBeHollow(type) ? h : Hollow::NONE;
+        halo = hollow == Hollow::HALOED;
+    }
 
     static constexpr float SPAWN_TIME = 0.9f;
     float spawnTimer = SPAWN_TIME;   // counts down; untargetable while > 0
@@ -280,8 +310,8 @@ struct Enemy {
     }
 
     const EnemyStats& stats() const { return statsOf(type); }
-    float radius() const { return stats().radius; }
-    float height() const { return stats().height; }
+    float radius() const { return stats().radius * scale; }
+    float height() const { return stats().height * scale; }
     bool  targetable() const { return alive && state == EnemyState::ACTIVE; }
     bool  staggered() const  { return staggerTimer > 0.f; }
     // The moment a melee blow can be punched back: a JUGGERNAUT's smash (its

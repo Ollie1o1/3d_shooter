@@ -509,7 +509,8 @@ public:
     // Highest walkable surface under (x, z) at or below fromY (0 = the floor)
     float groundHeightAt(float x, float z, float fromY) const;
 
-    void spawnEnemy(EnemyType t, glm::vec3 pos);
+    void spawnEnemy(EnemyType t, glm::vec3 pos, Hollow h = Hollow::NONE);
+    int  nextEnemyUid = 1;
 
     void updateEnemies(float dt);
 

@@ -103,8 +103,10 @@ inline void GameplayState::punch(int boostable) {
     }
 }
 
-inline void GameplayState::spawnEnemy(EnemyType t, glm::vec3 pos) {
+inline void GameplayState::spawnEnemy(EnemyType t, glm::vec3 pos, Hollow h) {
     enemies.push_back(Enemy(t, pos, level.baseFloor(pos.x, pos.z)));
+    enemies.back().uid = nextEnemyUid++;
+    enemies.back().setHollow(h);
     enemies.back().maxHealth *= tune().health * endlessToughness();
     enemies.back().health = enemies.back().maxHealth;
     glm::vec3 c = statsOf(t).glow;

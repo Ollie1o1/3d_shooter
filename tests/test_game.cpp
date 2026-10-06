@@ -504,6 +504,40 @@ int main() {
         CHECK(MUSIC_TRACKS == 6 && std::string(musicTrack(5).name) == "NAVE", "the Nave has its own track");
     }
 
+    // ---------------------------------------------------------------- Hollowed variants: data
+    {
+        CHECK(WaveEntry(EnemyType::HUSK, 3).hollow(Hollow::HALOED).variant == Hollow::HALOED &&
+              WaveEntry(EnemyType::WARDEN, 1).hollow(Hollow::HALOED).variant == Hollow::NONE &&
+              WaveEntry(EnemyType::CONDUIT, 1).hollow(Hollow::TWINNED).variant == Hollow::NONE &&
+              WaveEntry(EnemyType::CONDUCTOR, 1).hollow(Hollow::ENRAGED).variant == Hollow::NONE,
+              "bosses, conduits and conductors never take a variant");
+        Enemy h(EnemyType::HUSK, {0, 0, 0}); h.setHollow(Hollow::HALOED);
+        Enemy w(EnemyType::WARDEN, {0, 0, 0}); w.setHollow(Hollow::HALOED);
+        CHECK(h.hollow == Hollow::HALOED && h.halo && w.hollow == Hollow::NONE && !w.halo, "a Haloed enemy spawns with its halo up");
+        LevelData V; Arena a; a.name = "V"; a.subtitle = "";
+        a.bounds = a.zone = LevelBuilder::aabb(-30, 0, -30, 30, 10, 30);
+        a.groundSpawns = {{-20, 0, 0}, {20, 0, 0}, {0, 0, 20}};
+        a.waves = {{WaveEntry(EnemyType::HUSK, 2), WaveEntry(EnemyType::HUSK, 2).hollow(Hollow::HALOED),
+                    WaveEntry(EnemyType::SHIELDBEARER, 1).with({EnemyType::HUSK}).hollow(Hollow::ENRAGED)}};
+        V.arenas.push_back(a);
+        WaveDirector d; d.level = &V; d.startArena(0);
+        std::vector<SpawnRequest> out;
+        for (int i = 0; i < 60 * 30; ++i) d.update(DT, 0, {0, 0, 0}, out);
+        int haloed = 0, enraged = 0, escortsPlain = 1;
+        for (size_t k = 0; k < out.size(); ++k) {
+            haloed += out[k].hollow == Hollow::HALOED;
+            enraged += out[k].hollow == Hollow::ENRAGED;
+            if (out[k].type == EnemyType::SHIELDBEARER && k + 1 < out.size() && out[k + 1].hollow != Hollow::NONE) escortsPlain = 0;
+        }
+        int introPlain = 0, introHaloHusk = 0;
+        for (auto& ev : d.events) if (ev.kind == DirectorEvent::NEW_TYPE) {
+            introPlain += ev.value == (int)EnemyType::HUSK;
+            introHaloHusk += ev.value == ((int)EnemyType::HUSK | ((int)Hollow::HALOED << 8));
+        }
+        CHECK(haloed == 2 && enraged == 1 && escortsPlain, "spawn requests carry the variant; a squad's escort stays plain");
+        CHECK(introPlain == 1 && introHaloHusk == 1, "a variant is introduced once, on top of its plain type");
+    }
+
     // ---------------------------------------------------------------- the Gauntlet (FAST)
     LevelData D = buildGauntlet();
     SpatialGrid dgrid; dgrid.build(D.walls);

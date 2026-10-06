@@ -259,7 +259,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
             if (e.targetable() && !e.stats().flying && e.type != EnemyType::CONDUIT && director.inHoldZone(e.position + glm::vec3{0, 0.3f, 0}))
                 director.zoneContested = true;
     if (!act2Falling) director.update(dt, alive, player.position, spawns);   // ACT II: the fight waits for you to land
-    for (auto& s : spawns) spawnEnemy(s.type, s.pos);
+    for (auto& s : spawns) spawnEnemy(s.type, s.pos, s.hollow);
 
     // --- Enemies ---
     updateEnemies(dt);

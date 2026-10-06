@@ -309,10 +309,14 @@ inline void GameplayState::handleDirectorEvents() {
             shake(0.6f, 0.06f);
             break;
         case DirectorEvent::NEW_TYPE: {
-            EnemyType t = (EnemyType)ev.value;
+            EnemyType t = (EnemyType)(ev.value & 255);
+            Hollow h = (Hollow)(ev.value >> 8);
             if (isBoss(t)) break;
-            if (fast()) ui.feed(std::string("NEW: ") + statsOf(t).name, statsOf(t).glow);
-            else pushBanner(std::string("NEW: ") + statsOf(t).name, statsOf(t).hint, statsOf(t).glow, 3.4f);
+            std::string name = h == Hollow::NONE ? std::string(statsOf(t).name)
+                                                 : std::string(hollowName(h)) + " " + statsOf(t).name;
+            const char* hint = h == Hollow::NONE ? statsOf(t).hint : hollowHint(h);
+            if (fast()) ui.feed("NEW: " + name, statsOf(t).glow);
+            else pushBanner("NEW: " + name, hint, statsOf(t).glow, 3.4f);
             break;
         }
         case DirectorEvent::WAVE_CLEARED:
