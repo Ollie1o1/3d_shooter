@@ -746,6 +746,47 @@ int main() {
         CHECK(holdOn(true) && !holdOn(false), "standing on it fills the hold; standing elsewhere doesn't");
     }
 
+    // ---------------------------------------------------------------- the sun's flare (SOLAR)
+    {
+        LevelData S; LevelBuilder SB{S};
+        for (int k = 0; k < 2; ++k)
+            SB.mover({0.f, -80.5f, 0.f}, {2.f, 0.5f, 2.f}, Mover::Path::ORBIT, {20.f, 0.f, 0.f}, {0.f, 0.f, 20.f}, 60.f, k * 0.5f, {1, 1, 1});
+        Arena a; a.name = "SUN"; a.subtitle = "";
+        a.bounds = a.zone = LevelBuilder::aabb(-55, -100, -55, 55, -50, 55);
+        a.shift = ArenaShift::SOLAR; a.sunPos = {0.f, -92.f, 0.f};
+        a.waves = {{{EnemyType::HUSK, 1}}, {{EnemyType::HUSK, 1}}, {{EnemyType::HUSK, 1}}};
+        S.arenas.push_back(a);
+        ArenaShifts sh; sh.capture(S);
+        sh.onWave(S, 0, 0, WaveGoal{}, 0.f);
+        auto phaseAt = [&](float t) {
+            ArenaShifts c = sh; c.flareClock = 0.f;
+            for (float x = 0.f; x < t - 1e-4f; x += DT) c.update(DT, S, 0, true);
+            return c.flarePhase();
+        };
+        CHECK(phaseAt(0.5f) == FlarePhase::WARN && phaseAt(1.7f) == FlarePhase::BURN && phaseAt(6.3f) == FlarePhase::BURN &&
+              phaseAt(7.f) == FlarePhase::OFF && phaseAt(10.4f) == FlarePhase::OFF && phaseAt(10.7f) == FlarePhase::WARN,
+              "the flare warns 1.5 s, burns 5 s, rests 4 s, and goes round again");
+        ArenaShifts b = sh; b.flareClock = 2.f; b.flareAngle = 0.f;
+        CHECK(b.flareHits(S, 0, {40.f, -80.f, 0.f}) && !b.flareHits(S, 0, {40.f, -80.f, 15.f}),
+              "burning, it hits what's in its 24 degree wedge and nothing beside it");
+        CHECK(!b.flareHits(S, 0, {-40.f, -80.f, 0.f}), "one arm in wave 1: the far side is safe");
+        LevelData Sc = S; Sc.walls.push_back(Wall{LevelBuilder::aabb(30, -82, -2, 32, -70, 2)});
+        CHECK(!b.flareHits(Sc, 0, {40.f, -80.f, 0.f}), "a pillar between you and the sun is cover");
+        ArenaShifts w = sh; w.flareClock = 6.8f; w.flareAngle = 0.f;
+        CHECK(!w.flareHits(S, 0, {40.f, -80.f, 0.f}), "resting, it burns nothing");
+        sh.onWave(S, 0, 1, WaveGoal{}, 0.f);
+        bool w1 = sh.flareArms == 1 && std::fabs(sh.speed[0] - 1.3f) < 1e-4f;
+        sh.onWave(S, 0, 2, WaveGoal{}, 0.f);
+        bool w2 = sh.flareArms == 2 && std::fabs(sh.speed[0] - 1.6f) < 1e-4f;
+        ArenaShifts two = sh; two.flareClock = 2.f; two.flareAngle = 0.f;
+        CHECK(w1 && w2 && two.flareHits(S, 0, {-40.f, -80.f, 0.f}), "wave 2: the rings quicken; wave 3: a second arm, opposite");
+        sh.reset(S);
+        CHECK(sh.flareArms == 1 && sh.speed[0] == 1.f && sh.flareClock == 0.f &&
+              std::fabs(S.movers[0].period - 60.f) < 1e-3f, "a retry puts the sun and the rings back");
+        float turned = 0.f; { ArenaShifts c = sh; c.flareAngle = 0.f; for (int i = 0; i < 60; ++i) c.update(DT, S, 0, true); turned = c.flareAngle; }
+        CHECK(std::fabs(glm::degrees(turned) - 15.f) < 0.5f, "the flare turns 15 degrees a second");
+    }
+
     // ---------------------------------------------------------------- the Gauntlet (FAST)
     LevelData D = buildGauntlet();
     SpatialGrid dgrid; dgrid.build(D.walls);

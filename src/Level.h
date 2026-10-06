@@ -180,7 +180,7 @@ struct Mover {
 
 enum class Ambient { DUST, EMBERS, MOTES, WIND, ASH, STEAM };
 // How an arena changes as its fight goes on (ArenaShifts.h)
-enum class ArenaShift { NONE, NIGHTFALL, LAVA_RISE, SPEED_UP, OVERLOAD, FLOOD };
+enum class ArenaShift { NONE, NIGHTFALL, LAVA_RISE, SPEED_UP, OVERLOAD, FLOOD, SOLAR };
 
 struct Arena {
     const char* name;
@@ -215,6 +215,7 @@ struct Arena {
     Ambient     ambient = Ambient::DUST;
     ArenaShift  shift = ArenaShift::NONE;
     std::vector<float> floodLevels;   // FLOOD: the water's surface (Y) for each wave
+    glm::vec3   sunPos{0.f};          // SOLAR: the sun the flare turns about
     Theme       theme;
 
     bool containsXZ(glm::vec3 p) const {

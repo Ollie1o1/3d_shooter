@@ -14,6 +14,9 @@
 //                            (warning first): jump it, or get up on the
 //                            walkways. It burns enemies on foot too, and the
 //                            lights go to alarm red.
+//   SOLAR     (the Orrery)   the sun throws arms of light (24 degree wedges) that
+//                            turn about it: warn, burn, rest; the rings speed up
+//                            each wave and a second arm joins on the last
 //   FLOOD     (the Nave)     the water rises a step each time a wave is
 //                            cleared (Arena::floodLevels), over FLOOD_TIME
 //
@@ -28,6 +31,8 @@
 #include <algorithm>
 #include <cmath>
 
+enum class FlarePhase { OFF, WARN, BURN };
+
 class ArenaShifts {
 public:
     static constexpr float LAVA_WIDEN   = 3.f;    // m added each side of a channel
@@ -39,6 +44,10 @@ public:
     static constexpr float PULSE_HEIGHT = 1.4f;   // above the floor it sweeps; stand higher and it passes under
     static constexpr float PULSE_DAMAGE = 18.f;   // to the player; enemies on foot take double
     static constexpr float FLOOD_TIME   = 6.f;    // s for one rise of the water
+    static constexpr float FLARE_HALF   = 0.2094395f;   // half the wedge: 12 degrees
+    static constexpr float FLARE_SPIN   = 0.2617994f;   // 15 degrees a second
+    static constexpr float FLARE_WARN   = 1.5f, FLARE_BURN = 5.f, FLARE_REST = 4.f;
+    static constexpr float FLARE_CYCLE  = FLARE_WARN + FLARE_BURN + FLARE_REST;
 
     // Live state, read by the renderer and the HUD
     std::vector<float> night;        // per arena 0..1 (NIGHTFALL)
@@ -52,6 +61,44 @@ public:
     bool  pulseFired = false;        // this update: a ring went out (for its sound)
     bool  lavaStarted = false;       // this update: the lava began to rise (for its banner)
     bool  floodStarted = false;      // this update: the water began to rise (banner, rumble)
+    // SOLAR: the flare's arms (all on one cycle, spread evenly round the sun)
+    int   flareArms = 1;
+    float flareAngle = 0.f;          // radians, about the sun, from +X toward +Z
+    float flareClock = 0.f;          // into the warn/burn/rest cycle
+
+    FlarePhase flarePhase() const {
+        if (flareClock < FLARE_WARN) return FlarePhase::WARN;
+        if (flareClock < FLARE_WARN + FLARE_BURN) return FlarePhase::BURN;
+        return FlarePhase::OFF;
+    }
+    // Is p inside one of the arms' wedges (whatever the phase)?
+    bool inFlareWedge(const Arena& ar, glm::vec3 p) const {
+        glm::vec2 d{p.x - ar.sunPos.x, p.z - ar.sunPos.z};
+        if (glm::dot(d, d) < 1e-4f) return false;
+        float ang = std::atan2(d.y, d.x);
+        for (int k = 0; k < flareArms; ++k) {
+            float arm = flareAngle + k * 6.2831853f / flareArms;
+            if (std::fabs(std::remainder(ang - arm, 6.2831853f)) <= FLARE_HALF) return true;
+        }
+        return false;
+    }
+    // Does the burning flare reach p (feet)? In a wedge, and nothing solid
+    // between the sun's axis and p's chest (pillars, ring segments, walls)
+    bool flareHits(const LevelData& L, int a, glm::vec3 p) const {
+        const Arena& ar = L.arenas[a];
+        if (ar.shift != ArenaShift::SOLAR || flarePhase() != FlarePhase::BURN || !inFlareWedge(ar, p)) return false;
+        glm::vec3 chest = p + glm::vec3{0.f, 1.2f, 0.f};
+        glm::vec3 from{ar.sunPos.x, chest.y, ar.sunPos.z};
+        glm::vec3 d = chest - from;
+        float len = glm::length(d);
+        if (len < 1e-3f) return true;
+        d /= len;
+        for (auto& w : L.walls) {
+            float t = rayBoxHit(from, d, w.box);
+            if (t > 0.f && t < len - 0.3f) return false;
+        }
+        return true;
+    }
 
     // Remember the level as built
     void capture(const LevelData& L) {
@@ -70,7 +117,7 @@ public:
         for (int a = 0; a < (int)L.arenas.size(); ++a) {
             L.arenas[a].theme = baseTheme[a];
             night[a] = nightTarget[a] = lava[a] = lavaTarget[a] = 0.f;
-            if (L.arenas[a].shift == ArenaShift::SPEED_UP) {
+            if (L.arenas[a].shift == ArenaShift::SPEED_UP || L.arenas[a].shift == ArenaShift::SOLAR) {
                 for (int i = 0; i < (int)L.movers.size(); ++i)
                     if (moverIn(L, i, a)) { L.movers[i].period = basePeriod[i].first; L.movers[i].phase = basePeriod[i].second; }
                 speed[a] = 1.f;
@@ -78,6 +125,7 @@ public:
         }
         for (int i = 0; i < (int)L.hazards.size(); ++i) L.hazards[i].box = baseHazard[i];
         alarm = 0.f; rings.clear(); overloading = false;
+        flareArms = 1; flareAngle = 0.f; flareClock = 0.f;
         for (int i = 0; i < (int)L.water.size() && i < (int)baseWater.size(); ++i) {
             L.water[i].level = waterTarget[i] = baseWater[i];
             waterRate[i] = 0.f; rising[i] = false;
@@ -107,6 +155,11 @@ public:
         case ArenaShift::NIGHTFALL: nightTarget[a] = waves > 1 ? (float)wave / (waves - 1) : 0.f; break;
         case ArenaShift::LAVA_RISE: lavaTarget[a] = wave == waves - 1 ? 1.f : 0.f; break;
         case ArenaShift::SPEED_UP:  setSpeed(L, a, wave == 0 ? 1.f : wave == 1 ? 1.3f : 1.6f, moverClock); break;
+        case ArenaShift::SOLAR:
+            setSpeed(L, a, wave == 0 ? 1.f : wave == 1 ? 1.3f : 1.6f, moverClock);
+            flareArms = wave >= 2 ? 2 : 1;
+            flareClock = 0.f;
+            break;
         case ArenaShift::OVERLOAD:
             overloading = goal.kind == WaveGoal::SURVIVE;
             pulseClock = PULSE_EVERY;
@@ -120,6 +173,10 @@ public:
     // fighting: the overload only pulses mid-wave
     void update(float dt, LevelData& L, int arena, bool fighting) {
         pulseFired = lavaStarted = floodStarted = false;
+        if (arena >= 0 && arena < (int)L.arenas.size() && L.arenas[arena].shift == ArenaShift::SOLAR && fighting) {
+            flareClock = std::fmod(flareClock + dt, FLARE_CYCLE);
+            flareAngle = std::fmod(flareAngle + FLARE_SPIN * dt, 6.2831853f);
+        }
         for (int a = 0; a < (int)L.arenas.size(); ++a) {
             Arena& ar = L.arenas[a];
             if (ar.shift == ArenaShift::NIGHTFALL && night[a] != nightTarget[a]) {
