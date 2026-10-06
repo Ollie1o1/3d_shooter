@@ -204,6 +204,9 @@ struct Arena {
     // Optional per-wave ground spawns (the Spire: each wave a tier higher).
     // Empty for a wave → groundSpawns.
     std::vector<std::vector<glm::vec3>> waveGround;
+    // Optional per-wave air spawns (the Descent: each wave a stop lower).
+    // Empty for a wave → airSpawns.
+    std::vector<std::vector<glm::vec3>> waveAir;
     glm::vec3   bossSpawn{0.f};
     std::vector<std::vector<WaveEntry>> waves;
     std::vector<WaveGoal> goals;    // per wave; missing: KILL_ALL
@@ -286,6 +289,47 @@ struct LevelData {
         }
     };
     Lift lift;
+
+    // The Penitent's chains are fixed to these, high on the pit wall: shoot
+    // one out (hp) or grapple onto it and hang on (GameplayState rips it)
+    struct ChainAnchor { int wall = -1; glm::vec3 pos{0.f}; float hp = 400.f; bool alive = true; };
+    std::vector<ChainAnchor> anchors;
+    int anchorsAlive() const { int n = 0; for (auto& a : anchors) n += a.alive; return n; }
+    // True only on the hit that breaks it. A broken anchor's wall is parked
+    // far below, inside the grid cells it was filed under (like an open door)
+    bool damageAnchor(int i, float dmg) {
+        if (i < 0 || i >= (int)anchors.size() || !anchors[i].alive) return false;
+        anchors[i].hp -= dmg;
+        if (anchors[i].hp > 0.f) return false;
+        anchors[i].alive = false;
+        AABB& b = walls[anchors[i].wall].box;
+        b.min.y -= 500.f; b.max.y = b.min.y + 0.01f;
+        return true;
+    }
+    int anchorAlong(glm::vec3 o, glm::vec3 d, float maxT) const {
+        int best = -1; float bt = maxT + 0.05f;
+        for (int i = 0; i < (int)anchors.size(); ++i) {
+            if (!anchors[i].alive) continue;
+            const AABB& b = walls[anchors[i].wall].box;
+            glm::vec3 inv{1.f / (d.x + 1e-9f), 1.f / (d.y + 1e-9f), 1.f / (d.z + 1e-9f)};
+            glm::vec3 t0 = (b.min - o) * inv, t1 = (b.max - o) * inv;
+            glm::vec3 tn = glm::min(t0, t1), tx = glm::max(t0, t1);
+            float te = std::max({tn.x, tn.y, tn.z}), tl = std::min({tx.x, tx.y, tx.z});
+            if (tl >= te && te > 0.f && te < bt) { bt = te; best = i; }
+        }
+        return best;
+    }
+    // The highest top (static wall or moving platform) under (x, z) at or
+    // below fromY + 0.5, else the hard floor
+    float groundAt(float x, float z, float fromY) const {
+        float best = baseFloor(x, z);
+        for (const auto& w : walls) {
+            const AABB& b = w.box;
+            if (x >= b.min.x && x <= b.max.x && z >= b.min.z && z <= b.max.z && b.max.y <= fromY + 0.5f)
+                best = std::max(best, b.max.y);
+        }
+        return best;
+    }
 
     // Animated set dressing, drawn by GameplayState
     struct Gem { glm::vec3 pos; glm::vec3 color; float size; bool beam; };

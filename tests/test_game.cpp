@@ -449,8 +449,9 @@ int main() {
     {
         LevelData N = buildAct2Level();
         SpatialGrid ng; ng.build(N.walls);
-        CHECK(N.arenas.size() == 2 && std::string(N.arenas[0].name) == "THE DROWNED NAVE" && std::string(N.arenas[1].name) == "THE ORRERY" &&
-              N.corridors.size() == 1, "act II: the Drowned Nave, then down a corridor to the Orrery");
+        CHECK(N.arenas.size() == 3 && std::string(N.arenas[0].name) == "THE DROWNED NAVE" && std::string(N.arenas[1].name) == "THE ORRERY" &&
+              std::string(N.arenas[2].name) == "THE DESCENT" && N.corridors.size() == 2,
+              "act II: the Drowned Nave, the Orrery, then the Descent, joined by corridors");
         const Arena& nave = N.arenas[0];
         bool groundOk = true, airOk = true, inB = true, under = true;
         for (auto& sp : allGround(nave)) {
@@ -542,14 +543,14 @@ int main() {
               orr.maxAlive == 12 && std::fabs(orr.damageScale - 1.35f) < 1e-4f, "a gate behind you, a void with a way back, the sun's flare");
         CHECK(orr.waves.size() == 3 && orr.goals.size() == 3 && orr.goals[1].kind == WaveGoal::HOLD && orr.goals[1].mover >= 0,
               "wave 2 is a HOLD that rides a ring");
-        CHECK(std::fabs(N.finishPos.z - (-778.f)) < 0.1f, "the finish is on the Orrery's north terrace now");
+        CHECK(orr.exitDoor >= 0 && N.doors[orr.exitDoor].locked, "the Orrery's north arch, the way on down, starts locked");
         // The rings turn as rings
         auto ringOf = [&](int mi) { return mi < 26 ? 0 : 1; };
-        bool rings = N.movers.size() == 42;
+        bool rings = N.movers.size() == 42 + 4;   // the Orrery's rings, then the Descent's cage
         LevelData R = N;
         for (float t : {0.f, 7.3f, 31.f}) {
             R.updateMovers(t);
-            for (int mi = 0; mi < (int)R.movers.size(); ++mi) {
+            for (int mi = 0; mi < 42; ++mi) {
                 const AABB& b = R.walls[R.movers[mi].wall].box;
                 glm::vec2 c{(b.min.x + b.max.x) * 0.5f - C.x, (b.min.z + b.max.z) * 0.5f - C.z};
                 float want = ringOf(mi) == 0 ? 22.f : 12.f;
@@ -687,6 +688,56 @@ int main() {
         }
     }
 
+    // ---------------------------------------------------------------- ACT II: the Descent
+    {
+        LevelData N = buildAct2Level();
+        const Arena& D = N.arenas[2];
+        const glm::vec3 C{0.f, 0.f, -840.f};
+        CHECK(D.space == ReverbSpace::SHAFT && D.waves.size() == 4 && D.maxAlive == 12 && std::fabs(D.damageScale - 1.4f) < 1e-4f,
+              "the Descent: a shaft's reverb, three waves and the boss");
+        CHECK(N.lift.movers.size() == 4 && N.lift.stops.size() == 5 && N.lift.stops[0] == -80.f && N.lift.stops[4] == -240.f,
+              "the cage: four boxes (a 12-sided platform), five stops from -80 to -240");
+        CHECK(N.anchors.size() == 6 && N.anchorsAlive() == 6, "six chain anchors in the pit");
+        bool anchorsHigh = true;
+        for (auto& a : N.anchors) anchorsHigh &= a.pos.y >= -232.f && a.pos.y <= -228.f + 0.01f &&
+                                                glm::length(glm::vec2{a.pos.x - C.x, a.pos.z - C.z}) > 30.f;
+        CHECK(anchorsHigh, "the anchors hang 8-12 m up the pit wall");
+        // Spawns: each wave's ground points clear of walls and inside; air points clear
+        bool ok = true;
+        for (int w = 0; w < 3; ++w) {
+            for (auto& sp : D.waveGround[w]) {
+                if (overlapsWall(N, boxAt(sp, statsOf(EnemyType::JUGGERNAUT).radius, statsOf(EnemyType::JUGGERNAUT).height))) {
+                    std::printf("      descent wave %d ground spawn (%.1f %.1f %.1f) in a wall\n", w, sp.x, sp.y, sp.z); ok = false; }
+                if (!inside(D.bounds, sp)) { std::printf("      descent spawn outside bounds\n"); ok = false; }
+            }
+            for (auto& sp : D.waveAir[w])
+                if (overlapsWall(N, boxAt(sp, statsOf(EnemyType::RAPTOR).radius, statsOf(EnemyType::RAPTOR).height))) {
+                    std::printf("      descent wave %d air spawn in a wall\n", w); ok = false; }
+        }
+        for (auto& cp : D.goals[1].points)
+            if (overlapsWall(N, boxAt(cp, statsOf(EnemyType::CONDUIT).radius, statsOf(EnemyType::CONDUIT).height))) ok = false;
+        CHECK(ok, "the Descent's spawns and clamps stand clear of walls, inside the shaft");
+        CHECK(D.goals[1].kind == WaveGoal::CONDUITS && D.goals[1].points.size() == 4, "stop 2: release the four clamps");
+        // Every stop's ground spawns are at that stop's height (gallery or cage)
+        bool levels = true;
+        for (int w = 0; w < 3; ++w) for (auto& sp : D.waveGround[w]) levels &= std::fabs(sp.y - N.lift.stops[w + 1]) < 0.05f;
+        CHECK(levels, "each wave spawns on its own stop's floor");
+        CHECK(std::fabs(N.finishPos.y - (-240.f)) < 1e-3f && glm::length(glm::vec2{N.finishPos.x, N.finishPos.z + 840.f}) < 34.f,
+              "the finish beacon stands in the Penitent's pit");
+        CHECK(N.arenas[1].exitDoor >= 0, "the Orrery has a way on (its north arch)");
+        // groundAt sees the cage
+        N.lift.reset(); N.lift.update(0.f, N); N.updateMovers(0.f);
+        CHECK(std::fabs(N.groundAt(0.f, -840.f, -79.f) - (-80.f)) < 1e-3f, "something standing on the cage stands on it (movers count as ground)");
+        // Anchors: damage breaks once
+        LevelData M = buildAct2Level();
+        bool first = M.damageAnchor(0, 300.f), second = M.damageAnchor(0, 300.f), third = M.damageAnchor(0, 300.f);
+        CHECK(!first && second && !third && M.anchorsAlive() == 5, "an anchor breaks once, on the hit that takes it past 400");
+        glm::vec3 a1 = M.anchors[1].pos;
+        glm::vec3 from = glm::vec3{0.f, -236.f, -840.f};
+        int hit = M.anchorAlong(from, glm::normalize(a1 - from), 60.f);
+        CHECK(hit == 1, "a shot at an anchor finds it");
+    }
+
     // ---------------------------------------------------------------- a simulated ACT II run
     {
         LevelData N = buildAct2Level();
@@ -696,10 +747,16 @@ int main() {
         std::vector<float> alive;
         int seraphs = 0, anchors = 0, haloed = 0, twinned = 0, enragedSpawns = 0;
         float clock = 0.f;
-        for (int tick = 0; tick < 60 * 60 * 30 && d.phase != WaveDirector::Phase::VICTORY; ++tick) {
-            clock += DT; N.updateMovers(clock);
+        for (int tick = 0; tick < 60 * 60 * 40 && d.phase != WaveDirector::Phase::VICTORY; ++tick) {
+            clock += DT; N.lift.update(DT, N); N.updateMovers(clock);
             if (d.phase == WaveDirector::Phase::CLEARED) player = N.arenas[d.arena + 1].playerStart;   // down the corridor
             else if (d.goal().kind == WaveGoal::HOLD) player = d.goalPos() + glm::vec3{0, 0.05f, 0};   // onto the ring
+            if (d.arena == 2) {   // the Descent: ride to each wave's stop first
+                int want = std::min(d.wave + (d.phase == WaveDirector::Phase::BREAK ? 2 : 1), 4);
+                if (N.lift.at != want && !N.lift.busy()) { N.lift.request(want); N.lift.start(); }
+                d.hold = N.lift.busy();
+                player = glm::vec3{0.f, N.lift.y(), -840.f};
+            }
             std::vector<SpawnRequest> out;
             d.update(DT, (int)alive.size(), player, out);
             for (auto& r : out) {
@@ -715,7 +772,8 @@ int main() {
             for (auto& ev : d.events) if (ev.kind == DirectorEvent::GOAL_DONE) alive.clear();
             d.events.clear();
         }
-        CHECK(d.phase == WaveDirector::Phase::VICTORY && d.arena == 1, "a simulated ACT II run clears the Nave, goes down to the Orrery and clears it");
+        CHECK(d.phase == WaveDirector::Phase::VICTORY && d.arena == 2,
+              "a simulated ACT II run clears the Nave and the Orrery, rides the Descent and kills the Penitent");
         std::printf("      nave run: %d seraphs, %d anchors, %d haloed, %d twinned, %d enraged\n", seraphs, anchors, haloed, twinned, enragedSpawns);
         CHECK(seraphs >= 3 && anchors >= 1 && haloed >= 3 && twinned >= 2 && enragedSpawns >= 1,
               "the Nave's waves bring Seraphs, an Anchor and every variant");

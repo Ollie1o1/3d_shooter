@@ -326,7 +326,7 @@ private:
 
     glm::vec3 pickSpawn(EnemyType t, glm::vec3 player) {
         const Arena& a = current();
-        if (t == EnemyType::SOVEREIGN) return a.bossSpawn;   // at the far end of the Sanctum, waiting
+        if (t == EnemyType::SOVEREIGN || (isBoss(t) && t != EnemyType::WARDEN)) return a.bossSpawn;   // waiting where it lives
         if (t == EnemyType::WARDEN) {   // beside the reactor, on the side away from the player
             glm::vec3 s = a.bossSpawn;
             if ((player.x > 0.f) == (s.x > 0.f)) s.x = -s.x;
@@ -345,7 +345,7 @@ private:
                 return clearOfWalls(p) ? p : cp[i];   // on top of it: separation pushes it clear
             }
         }
-        const auto& pts = flying ? a.airSpawns
+        const auto& pts = flying ? ((wave < (int)a.waveAir.size() && !a.waveAir[wave].empty()) ? a.waveAir[wave] : a.airSpawns)
                         : (wave < (int)a.waveGround.size() && !a.waveGround[wave].empty()) ? a.waveGround[wave]
                         : a.groundSpawns;
         // Under deep water (a flood): not used, unless every point is

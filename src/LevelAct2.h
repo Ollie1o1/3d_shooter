@@ -28,6 +28,8 @@
 // =============================================================================
 #include "Level.h"
 
+inline void buildDescent(LevelBuilder& B);
+
 inline void buildAct2(LevelBuilder& B) {
     using glm::vec3;
     LevelData& L = B.L;
@@ -41,7 +43,8 @@ inline void buildAct2(LevelBuilder& B) {
 
     // All of Act II stands in one basin, 60 m down
     L.basins.push_back({aabb(-300, 0, -440, 300, 0, -668), F});          // the Nave
-    L.basins.push_back({aabb(-300, 0, -668, 300, 0, -1000), -140.f});   // the Orrery: its void bottoms out far below
+    L.basins.push_back({aabb(-300, 0, -668, 300, 0, -788), -140.f});    // the Orrery: its void bottoms out far below
+    L.basins.push_back({aabb(-300, 0, -788, 300, 0, -1000), -300.f});   // the Descent: open below the cage
 
     Arena a;
     a.name = "THE DROWNED NAVE"; a.space = ReverbSpace::HALL;
@@ -302,7 +305,8 @@ inline void buildAct2(LevelBuilder& B) {
     for (int k = 0; k < 96; ++k) {
         float ang = k * 6.2831853f / 96.f;
         vec3 p = C + vec3{std::cos(ang) * 54.f, 0.f, std::sin(ang) * 54.f};
-        if (std::fabs(p.x) < 5.5f && p.z > C.z) continue;          // the gate
+        if (std::fabs(p.x) < 5.5f && p.z > C.z) continue;          // the south gate
+        if (std::fabs(p.x) < 5.5f && p.z < C.z) continue;          // the north arch, the way down
         B.solid(p.x - 1.8f, O, p.z - 1.8f, p.x + 1.8f, O + 14.f, p.z + 1.8f);
     }
     B.kit().curve({C.x, 0.f, C.z}, 54.f, 0.f, 6.2831853f, O, O + 14.f, 2.f, stoneDark, 64);
@@ -310,6 +314,9 @@ inline void buildAct2(LevelBuilder& B) {
     wall(-6, O, -682, -4, O + 14, -678, stoneDark); wall(4, O, -682, 6, O + 14, -678, stoneDark);   // gate posts
     wall(-4, O + 7, -681, 4, O + 14, -679, stoneDark);
     o.entryGate = B.doorway(true, -4, 4, -681, -679, O, 7.f, gold, false);
+    wall(-6, O, -790, -4, O + 14, -782, stoneDark); wall(4, O, -790, 6, O + 14, -782, stoneDark);   // north arch posts
+    wall(-4, O + 7, -789, 4, O + 14, -783, stoneDark);
+    o.exitDoor = B.doorway(true, -4, 4, -787, -785, O, 7.f, gold, true);
 
     // ---- eight great pillars (cover from the flare, grapple anchors) ----
     for (int k = 0; k < 8; ++k) {
@@ -351,8 +358,6 @@ inline void buildAct2(LevelBuilder& B) {
         B.kit().arch({C.x, O, C.z}, 96.f, 40.f, 0.7f, 0.7f, brassO, yaw, 24);
     B.kit(true).curve({C.x, 0.f, C.z}, 48.f, 0.f, 6.2831853f, O + 38.f, O + 38.4f, 0.3f, gold * 0.6f, 48);
 
-    // ---- the finish: a beacon on the north terrace ----
-    L.finishPos = {0.f, O, -778.f};
 
     // ---- spawns, waves ----
     for (int k = 0; k < 8; ++k) {
@@ -386,6 +391,239 @@ inline void buildAct2(LevelBuilder& B) {
         {0.12f,0.12f,0.18f}, {0.45f,0.28f,0.12f},
         {0.16f,0.09f,0.05f}, 0.009f };
     L.arenas.push_back(std::move(o));
+
+    buildDescent(B);
+}
+
+// =============================================================================
+// THE DESCENT — a cage that rides down a vast round shaft. It hangs at a
+// different floor for each wave (bell galleries, the clamps, the furnace
+// ring) and comes to rest in the Penitent's pit, 160 m below the Orrery.
+//
+//   Y  -80  the landing (the corridor from the Orrery's north arch)
+//   Y -120  the bell galleries     arcades and great bells round the shaft
+//   Y -160  the clamps             four brake clamps bite the cage's rim
+//   Y -200  the furnace ring       catwalks round furnace mouths, red below
+//   Y -240  the pit                the Penitent, chained to six anchors
+// =============================================================================
+inline void buildDescent(LevelBuilder& B) {
+    using glm::vec3;
+    LevelData& L = B.L;
+    auto aabb = &LevelBuilder::aabb;
+    auto wall = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { return B.wall(x0,y0,z0,x1,y1,z1,c); };
+    auto neon = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { B.neon(x0,y0,z0,x1,y1,z1,c); };
+
+    const vec3 C{0.f, 0.f, -840.f};
+    const float TOP = -80.f, PIT = -240.f, RW = 34.f, RCAGE = 12.f, RGAL = 20.f;
+    // The cage: four overlapping boxes, a 12-sided platform ~13 m across the radius
+    struct Rect { float hx, hz; };
+    const Rect CAGE[4] = {{12.f, 5.f}, {5.f, 12.f}, {10.5f, 8.f}, {8.f, 10.5f}};
+    const float STOP[5] = {-80.f, -120.f, -160.f, -200.f, -240.f};
+    vec3 iron{0.16f,0.15f,0.16f}, ironDark{0.09f,0.085f,0.09f}, bone{0.7f,0.66f,0.58f}, brass{0.62f,0.48f,0.26f},
+         ember{1.4f,0.45f,0.12f}, amber{1.3f,0.8f,0.35f}, blood{1.2f,0.12f,0.08f}, pale{0.8f,0.85f,0.9f};
+    B.mat = Mat::METAL;
+
+    // ---- the corridor from the Orrery's north arch to the landing ----
+    wall(-4, TOP - 1, -808, 4, TOP, -786, iron);
+    wall(-5, TOP, -808, -4, TOP + 8, -786, ironDark); wall(4, TOP, -808, 5, TOP + 8, -786, ironDark);
+    wall(-5, TOP + 8, -808, 5, TOP + 9, -786, ironDark);
+    for (float z = -806.f; z < -787.f; z += 4.f) neon(-3.95f, TOP + 7.6f, z, 3.95f, TOP + 7.75f, z + 0.3f, amber * 0.5f);
+    L.corridors.push_back(aabb(-6, TOP, -810, 6, TOP + 14, -784));
+
+    Arena a;
+    a.name = "THE DESCENT"; a.space = ReverbSpace::SHAFT;
+    a.subtitle = "RIDE THE CAGE DOWN - SURVIVE 3 WAVES";
+    a.bounds = aabb(C.x - 33, PIT, C.z - 33, C.x + 33, TOP + 14, C.z + 33);
+    a.zone   = aabb(C.x - 34.5f, PIT, C.z - 34.5f, C.x + 34.5f, TOP + 16, C.z + 34.5f);
+    a.playerStart = {0.f, TOP, -812.f};
+    a.startYaw = -90.f;
+    a.respawn = {C.x, TOP, C.z}; a.hasRespawn = true;
+    a.voidY = TOP - 25.f;
+    a.bossSpawn = {C.x, PIT, C.z - 24.f};
+
+    // ---- the shaft wall: posts round R 35 (collision), a curved wall drawn
+    // inside them, ribs of light every 10 m, a gap for the landing's door ----
+    for (int k = 0; k < 72; ++k) {
+        float ang = k * 6.2831853f / 72.f;
+        vec3 p = C + vec3{std::cos(ang) * (RW + 1.2f), 0.f, std::sin(ang) * (RW + 1.2f)};
+        bool door = std::fabs(p.x) < 5.5f && p.z > C.z;
+        B.solid(p.x - 1.6f, PIT - 6.f, p.z - 1.6f, p.x + 1.6f, door ? TOP - 1.f : TOP + 16.f, p.z + 1.6f);
+        if (door) B.solid(p.x - 1.6f, TOP + 8.f, p.z - 1.6f, p.x + 1.6f, TOP + 16.f, p.z + 1.6f);
+    }
+    B.kit().curve({C.x, 0.f, C.z}, RW + 0.6f, 0.f, 6.2831853f, PIT - 6.f, TOP + 16.f, 1.2f, ironDark, 72);
+    for (float y = PIT + 5.f; y < TOP + 14.f; y += 10.f)
+        B.kit(true).curve({C.x, 0.f, C.z}, RW - 0.05f, 0.f, 6.2831853f, y, y + 0.18f, 0.1f, amber * 0.35f, 72);
+    for (int k = 0; k < 16; ++k) {                                      // ribs: arches climbing the wall
+        float yaw = k * 6.2831853f / 16.f;
+        vec3 p = C + vec3{std::cos(yaw) * (RW - 0.5f), 0.f, std::sin(yaw) * (RW - 0.5f)};
+        B.kit().rod({p.x, PIT, p.z}, {p.x, TOP + 16.f, p.z}, 0.5f, iron, 6);
+    }
+    a.entryGate = B.doorway(true, -4, 4, -809, -807, TOP, 7.f, amber, false);
+
+    // ---- an annulus floor (galleries, the pit) built as strips, like the
+    // Orrery's terrace: drawn exactly where it holds you ----
+    auto annulus = [&](float y, float rIn, float rOut, vec3 col, vec3 lip) {
+        const float STRIP = 0.75f;
+        auto band = [&](bool alongX, float side, float u0, float u1) {
+            float un = (u0 < 0.f && u1 > 0.f) ? 0.f : std::min(std::fabs(u0), std::fabs(u1));
+            float edge = std::sqrt(std::max(0.f, rIn * rIn - un * un));
+            float from = std::max(edge, un), to = std::sqrt(std::max(0.f, rOut * rOut - un * un));
+            if (from >= to) return;
+            float a0 = side * from, a1 = side * to;
+            if (alongX) wall(C.x + std::min(a0, a1), y - 1, C.z + u0, C.x + std::max(a0, a1), y, C.z + u1, col);
+            else        wall(C.x + u0, y - 1, C.z + std::min(a0, a1), C.x + u1, y, C.z + std::max(a0, a1), col);
+            if (edge > un + 1e-3f) {
+                float e = side * edge;
+                if (alongX) neon(C.x + e - 0.06f, y - 0.3f, C.z + u0, C.x + e + 0.06f, y + 0.03f, C.z + u1, lip);
+                else        neon(C.x + u0, y - 0.3f, C.z + e - 0.06f, C.x + u1, y + 0.03f, C.z + e + 0.06f, lip);
+            }
+        };
+        for (float u = -rOut; u < rOut - 1e-3f; u += STRIP) {
+            float u1 = std::min(u + STRIP, rOut);
+            for (float side : {-1.f, 1.f}) { band(true, side, u, u1); band(false, side, u, u1); }
+        }
+    };
+    auto bridges = [&](float y, vec3 col, vec3 lip) {
+        for (int k = 0; k < 4; ++k) {
+            float cx = k == 0 ? 1.f : k == 1 ? -1.f : 0.f, cz = k == 2 ? 1.f : k == 3 ? -1.f : 0.f;
+            float r0 = RCAGE + 0.3f, r1 = RGAL + 0.5f;   // RCAGE: the cage's reach along an axis
+            if (cx != 0.f) wall(C.x + std::min(cx * r0, cx * r1), y - 0.8f, C.z - 1.5f, C.x + std::max(cx * r0, cx * r1), y, C.z + 1.5f, col);
+            else           wall(C.x - 1.5f, y - 0.8f, C.z + std::min(cz * r0, cz * r1), C.x + 1.5f, y, C.z + std::max(cz * r0, cz * r1), col);
+            vec3 tip = C + vec3{cx * r0, y, cz * r0};
+            neon(tip.x - 1.5f, y - 0.05f, tip.z - 1.5f, tip.x + 1.5f, y + 0.04f, tip.z + 1.5f, lip);
+        }
+    };
+
+    // ---- the landing: a south apron and a bridge onto the cage (no ring:
+    // the cage is the only floor up here, so you're aboard when it drops) ----
+    wall(-5, TOP - 1, -810, 5, TOP, C.z + RW - 0.5f, iron);
+    wall(-1.5f, TOP - 0.8f, C.z + RCAGE + 0.3f, 1.5f, TOP, C.z + RW - 0.5f, iron);
+
+    // ---- stop 1: the bell galleries ----
+    annulus(STOP[1], RGAL, RW, iron, amber * 0.6f);
+    bridges(STOP[1], iron, amber * 0.5f);
+    for (int k = 0; k < 8; ++k) {
+        float yaw = (k + 0.5f) * 0.7853982f;
+        vec3 p = C + vec3{std::cos(yaw) * (RW - 1.5f), STOP[1], std::sin(yaw) * (RW - 1.5f)};
+        B.kit().arch({p.x, STOP[1], p.z}, 9.f, 7.f, 0.8f, 1.2f, bone * 0.8f, -yaw + 1.5707963f, 12);   // arcades
+        vec3 b = C + vec3{std::cos(yaw) * 27.f, 0.f, std::sin(yaw) * 27.f};
+        B.kit().dome({b.x, STOP[1] + 5.2f, b.z}, 1.8f, brass, 4, 12);                                 // a bell
+        B.kit().column({b.x, STOP[1] + 6.8f, b.z}, 0.12f, 3.f, ironDark, 6);
+        B.kit(true).column({b.x, STOP[1] + 4.0f, b.z}, 0.35f, 0.5f, amber, 8);                       // its clapper glows
+    }
+    // ---- stop 2: the clamps ----
+    annulus(STOP[2], RGAL, RW, ironDark, blood * 0.5f);
+    bridges(STOP[2], ironDark, blood * 0.4f);
+    std::vector<vec3> clamps;
+    for (int k = 0; k < 4; ++k) {
+        float yaw = k * 1.5707963f + 0.7853982f;                        // between the bridges
+        vec3 p = C + vec3{std::cos(yaw) * 17.5f, STOP[2], std::sin(yaw) * 17.5f};
+        wall(p.x - 2.f, STOP[2] - 1.f, p.z - 2.f, p.x + 2.f, STOP[2], p.z + 2.f, ironDark);   // the clamp's footing
+        B.kit().box({p.x, STOP[2] + 4.5f, p.z}, {1.2f, 9.f, 3.2f}, brass, -yaw, 0.3f, 0.f);    // jaws over the rim
+        clamps.push_back(p);
+    }
+    // ---- stop 3: the furnace ring ----
+    annulus(STOP[3], RGAL, RW, iron, ember * 0.6f);
+    bridges(STOP[3], iron, ember * 0.5f);
+    for (int k = 0; k < 6; ++k) {
+        float yaw = k * 1.0471976f;
+        vec3 p = C + vec3{std::cos(yaw) * (RW - 0.3f), STOP[3], std::sin(yaw) * (RW - 0.3f)};
+        B.kit().arch({p.x, STOP[3], p.z}, 6.f, 5.f, 0.9f, 1.4f, ironDark, -yaw + 1.5707963f, 10);   // furnace mouths
+        B.kit(true).dome({p.x, STOP[3] + 1.2f, p.z}, 2.2f, ember, 3, 10);
+    }
+    B.kit(true).curve({C.x, 0.f, C.z}, RGAL + 0.4f, 0.f, 6.2831853f, STOP[3] + 1.0f, STOP[3] + 1.15f, 0.12f, ember, 48);   // rail light
+
+    // ---- the pit: a round floor fitted round the cage's outline (strips along
+    // X, each split where the cage is), so it docks flush; six anchors, rubble ----
+    {
+        const float STRIP = 0.5f;
+        for (float z0 = -RW; z0 < RW - 1e-3f; z0 += STRIP) {
+            float z1 = std::min(z0 + STRIP, RW);
+            float zf = std::max(std::fabs(z0), std::fabs(z1));
+            float xOut = std::sqrt(std::max(0.f, RW * RW - zf * zf));
+            if (xOut < 0.3f) continue;
+            float xIn = 0.f;
+            for (const Rect& r : CAGE) if (z1 > -r.hz + 1e-3f && z0 < r.hz - 1e-3f) xIn = std::max(xIn, r.hx);
+            if (xIn <= 0.f) { wall(C.x - xOut, PIT - 1, C.z + z0, C.x + xOut, PIT, C.z + z1, iron); continue; }
+            xIn += 0.02f;
+            if (xOut <= xIn) continue;
+            wall(C.x - xOut, PIT - 1, C.z + z0, C.x - xIn, PIT, C.z + z1, iron);
+            wall(C.x + xIn, PIT - 1, C.z + z0, C.x + xOut, PIT, C.z + z1, iron);
+        }
+    }
+    for (int k = 0; k < 6; ++k) {
+        static const float ANG[6] = {-170.f, -130.f, -105.f, -75.f, -50.f, -10.f};   // round the north half and the sides
+        float yaw = glm::radians(ANG[k]);
+        float h = 8.f + 4.f * (k % 3) / 2.f;                                          // 8, 10, 12 m up
+        vec3 p = C + vec3{std::cos(yaw) * (RW - 1.0f), PIT + h, std::sin(yaw) * (RW - 1.0f)};
+        int w = wall(p.x - 0.9f, p.y - 0.9f, p.z - 0.9f, p.x + 0.9f, p.y + 0.9f, p.z + 0.9f, ironDark);
+        L.walls[w].hidden = true;                                                     // drawn live (glow, breaking)
+        L.anchors.push_back({w, p, 400.f, true});
+    }
+    B.kit(true).curve({C.x, 0.f, C.z}, 15.5f, 0.f, 6.2831853f, PIT + 0.02f, PIT + 0.08f, 0.15f, blood, 48);   // a red ring round the dock
+    for (int k = 0; k < 9; ++k) {                                                     // rubble round the edge
+        float yaw = k * 0.698f + 0.2f;
+        vec3 p = C + vec3{std::cos(yaw) * 30.f, PIT, std::sin(yaw) * 30.f};
+        B.kit().rock({p.x, PIT, p.z}, 1.6f + 0.4f * (k % 3), 2.2f + 0.5f * (k % 2), iron, (uint32_t)k);
+    }
+    L.finishPos = {C.x, PIT, C.z + 20.f};
+
+    // ---- the cage: four overlapping driven boxes, top at the stop's height ----
+    vec3 cageCol{0.2f, 0.19f, 0.2f}, cageGlow{1.2f, 0.7f, 0.3f};
+    vec3 drop{0.f, PIT - TOP, 0.f};
+    auto cagePart = [&](float x0, float z0, float x1, float z1) {
+        int m = B.mover({C.x + (x0 + x1) * 0.5f, TOP - 0.5f, C.z + (z0 + z1) * 0.5f}, {(x1 - x0) * 0.5f, 0.5f, (z1 - z0) * 0.5f},
+                        Mover::Path::DRIVEN, {0.f, 0.f, 0.f}, drop, 1.f, 0.f, cageGlow);
+        L.movers[m].color = cageCol;
+        L.lift.movers.push_back(m);
+    };
+    for (const Rect& r : CAGE) cagePart(-r.hx, -r.hz, r.hx, r.hz);
+    L.lift.stops.assign(STOP, STOP + 5);
+
+    // ---- spawns per stop: galleries round the shaft + the cage ----
+    for (int w = 0; w < 3; ++w) {
+        float y = STOP[w + 1];
+        std::vector<vec3> g, air;
+        for (int k = 0; k < 8; ++k) {
+            float yaw = k * 0.7853982f + 0.3927f;                        // between bridges and clamps
+            g.push_back(C + vec3{std::cos(yaw) * 27.f, y, std::sin(yaw) * 27.f});
+        }
+        g.push_back(C + vec3{-6.f, y, -6.f}); g.push_back(C + vec3{6.f, y, 6.f});   // on the cage
+        for (int k = 0; k < 4; ++k) {
+            float yaw = k * 1.5707963f;
+            air.push_back(C + vec3{std::cos(yaw) * 17.f, y + 10.f, std::sin(yaw) * 17.f});
+        }
+        a.waveGround.push_back(g);
+        a.waveAir.push_back(air);
+    }
+    a.waveGround.push_back({a.bossSpawn});
+    a.waveAir.push_back({C + vec3{0.f, PIT + 12.f, 0.f}});
+    a.groundSpawns = a.waveGround[0];
+    a.airSpawns = a.waveAir[0];
+
+    a.waves = {
+        {{EnemyType::HUSK, 4}, {EnemyType::RAPTOR, 3}, {EnemyType::SERAPH, 2},
+         WaveEntry(EnemyType::SHIELDBEARER, 2).with({EnemyType::HUSK}), WaveEntry(EnemyType::RIPPER, 2).hollow(Hollow::ENRAGED)},
+        {{EnemyType::ANCHOR, 1}, {EnemyType::CONDUCTOR, 2}, {EnemyType::SENTINEL, 3}, {EnemyType::MITE, 6},
+         WaveEntry(EnemyType::BRUTE, 2).hollow(Hollow::HALOED)},
+        {{EnemyType::ANCHOR, 2}, {EnemyType::JUGGERNAUT, 1},
+         WaveEntry(EnemyType::SHIELDBEARER, 2).with({EnemyType::SENTINEL}).hollow(Hollow::TWINNED),
+         {EnemyType::SERAPH, 2}, WaveEntry(EnemyType::RAPTOR, 3).hollow(Hollow::ENRAGED), {EnemyType::HUSK, 4}},
+        {{EnemyType::SOVEREIGN, 1}},   // replaced by the PENITENT in Task 4
+    };
+    a.goals = {WaveGoal{}, WaveGoal::conduits("RELEASE THE CLAMPS", clamps), WaveGoal{}, WaveGoal{}};
+    a.maxAlive = 12;
+    a.damageScale = 1.4f;
+    a.ambient = Ambient::ASH;
+    a.theme = Theme{
+        {0.02f,0.015f,0.02f}, {0.22f,0.08f,0.05f}, {0.01f,0.004f,0.003f},
+        glm::normalize(vec3{0.f, -1.f, -0.2f}), {1.2f,0.75f,0.4f}, 0.06f, 0.f,
+        {0.05f,0.03f,0.025f}, 0.45f,
+        // The light comes from the furnaces below; cold grey from the mouth above
+        glm::normalize(vec3{0.1f, 0.8f, 0.2f}), {1.1f,0.5f,0.25f},
+        {0.1f,0.1f,0.13f}, {0.4f,0.12f,0.06f},
+        {0.12f,0.05f,0.03f}, 0.01f };
+    L.arenas.push_back(std::move(a));
 }
 
 // ACT II mode's level
