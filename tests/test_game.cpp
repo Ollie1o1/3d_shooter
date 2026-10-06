@@ -8,6 +8,7 @@
 // weapon and upgrade numbers, XP, and the mouse spike filter.
 #include "../src/WaveDirector.h"
 #include "../src/LevelGauntlet.h"
+#include "../src/LevelAct2.h"
 #include "../src/EnemyModel.h"
 #include "../src/Weapons.h"
 #include "../src/Progression.h"
@@ -60,9 +61,13 @@ static bool padsLand(const LevelData& L, const SpatialGrid& grid, Uint8* keys) {
         Player p(pad.centre);
         p.velocity = pad.launch;
         p.onGround = false;
+        p.floorY = L.baseFloor(pad.centre.x, pad.centre.z);
         p.update(DT, keys, L.walls.data(), (int)L.walls.size(), false, &grid);
         int ticks = 0;
-        while (!p.onGround && ticks < 600) { p.update(DT, keys, L.walls.data(), (int)L.walls.size(), false, &grid); ++ticks; }
+        while (!p.onGround && ticks < 600) {
+            p.floorY = L.baseFloor(p.position.x, p.position.z);
+            p.update(DT, keys, L.walls.data(), (int)L.walls.size(), false, &grid); ++ticks;
+        }
         std::printf("      pad (%.1f, %.1f, %.1f) -> lands y=%.2f after %.2fs\n", pad.centre.x, pad.centre.y, pad.centre.z, p.position.y, ticks * DT);
         if (p.position.y < pad.centre.y + 2.5f) allLand = false;
     }
@@ -345,6 +350,64 @@ int main() {
         CHECK(allDry, "nothing spawns under more than 1.2 m of water");
         sh.reset(Fd);
         CHECK(std::fabs(Fd.water[0].level - (-59.6f)) < 1e-4f, "a retry drains the flood back to how it was built");
+    }
+
+    // ---------------------------------------------------------------- ACT II: the Drowned Nave
+    {
+        LevelData N = buildAct2Level();
+        SpatialGrid ng; ng.build(N.walls);
+        CHECK(N.arenas.size() == 1 && std::string(N.arenas[0].name) == "THE DROWNED NAVE", "act II opens with the Drowned Nave");
+        const Arena& nave = N.arenas[0];
+        bool groundOk = true, airOk = true, inB = true, under = true;
+        for (auto& sp : allGround(nave)) {
+            if (overlapsWall(N, boxAt(sp, statsOf(EnemyType::JUGGERNAUT).radius, statsOf(EnemyType::JUGGERNAUT).height))) {
+                std::printf("      nave ground spawn (%.1f %.1f %.1f) in a wall\n", sp.x, sp.y, sp.z); groundOk = false; }
+            if (!inside(nave.bounds, sp)) inB = false;
+            if (sp.y + 3.f > nave.zone.max.y) under = false;
+        }
+        for (auto& sp : nave.airSpawns)
+            if (overlapsWall(N, boxAt(sp, statsOf(EnemyType::RAPTOR).radius, statsOf(EnemyType::RAPTOR).height))) {
+                std::printf("      nave air spawn (%.1f %.1f %.1f) in a wall\n", sp.x, sp.y, sp.z); airOk = false; }
+        CHECK(groundOk && airOk && inB && under, "the Nave's spawns are clear of walls, inside it and under its ceiling");
+        bool condOk = true;
+        for (auto& g : nave.goals) for (auto& cp : g.points)
+            if (overlapsWall(N, boxAt(cp, statsOf(EnemyType::CONDUIT).radius, statsOf(EnemyType::CONDUIT).height))) {
+                std::printf("      conduit (%.1f %.1f %.1f) in a wall\n", cp.x, cp.y, cp.z); condOk = false; }
+        CHECK(condOk, "the gallery conduits stand clear of walls");
+        CHECK(padsLand(N, ng, keys), "every Nave jump pad lands you on something higher");
+        CHECK(nave.exitDoor >= 0 && N.doors[nave.exitDoor].locked, "the way on starts sealed");
+        CHECK(nave.waves.size() == 3 && nave.goals.size() == 3 && nave.goals[1].kind == WaveGoal::CONDUITS &&
+              nave.shift == ArenaShift::FLOOD && nave.floodLevels.size() == 3 && nave.maxAlive == 11 &&
+              std::fabs(nave.damageScale - 1.3f) < 1e-4f, "three waves, conduits in the second, a flood, 11 at once, x1.3 damage");
+        const Arena& sanctum = L.arenas.back();
+        CHECK((nave.zone.max.x - nave.zone.min.x) * (nave.zone.max.z - nave.zone.min.z) >
+              (sanctum.zone.max.x - sanctum.zone.min.x) * (sanctum.zone.max.z - sanctum.zone.min.z),
+              "the Nave is bigger than the Sanctum");
+        bool apart = true;
+        for (auto& a1 : L.arenas) if (a1.zone.min.z < nave.zone.max.z) apart = false;
+        CHECK(apart, "Act II never overlaps Act I (ASCENT can build both)");
+        // The fall: from the top of the shaft to the narthex floor
+        Player p(nave.playerStart);
+        int t = 0;
+        for (; t < 60 * 6 && !(p.onGround && t > 5); ++t) {
+            p.floorY = N.floorWithWater(p.position.x, p.position.z, false);
+            p.update(DT, keys, N.walls.data(), (int)N.walls.size(), false, &ng);
+        }
+        std::printf("      fell %.1f m in %.2f s\n", nave.playerStart.y - p.position.y, t * DT);
+        CHECK(p.onGround && p.position.y < -58.f && p.position.z > -472.f && t < 60 * 4,
+              "the fall lands you in the narthex within 4 s");
+        // Every flood level: the effective spawns stay wadeable
+        LevelData Nf = buildAct2Level();
+        bool dryOk = true;
+        for (int w = 0; w < 3; ++w) {
+            Nf.water[0].level = Nf.arenas[0].floodLevels[w];
+            WaveDirector d; d.level = &Nf; d.startArena(0); d.wave = w;
+            for (int k = 0; k < 30; ++k) {
+                glm::vec3 sp = d.pickSpawnForTest(EnemyType::HUSK, Nf.arenas[0].playerStart);
+                if (Nf.waterDepthAt(sp) > WaveDirector::DRY_DEPTH) dryOk = false;
+            }
+        }
+        CHECK(dryOk, "at every flood level the Nave's spawns are out of deep water");
     }
 
     // ---------------------------------------------------------------- the Gauntlet (FAST)
