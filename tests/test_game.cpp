@@ -2393,6 +2393,43 @@ int main() {
         }
     }
 
+    // ---------------------------------------------------------------- the lift (driven movers) and the director's hold
+    {
+        LevelData L; LevelBuilder B{L};
+        int m0 = B.mover({0.f, -80.5f, 0.f}, {10.f, 0.5f, 10.f}, Mover::Path::DRIVEN, {0.f, 0.f, 0.f}, {0.f, -160.f, 0.f}, 1.f, 0.f, {1, 1, 1});
+        int m1 = B.mover({12.f, -80.5f, 0.f}, {2.f, 0.5f, 5.f}, Mover::Path::DRIVEN, {0.f, 0.f, 0.f}, {0.f, -160.f, 0.f}, 1.f, 0.f, {1, 1, 1});
+        L.lift.movers = {m0, m1};
+        L.lift.stops = {-80.f, -120.f, -160.f, -200.f, -240.f};
+        L.lift.reset(); L.lift.update(0.f, L); L.updateMovers(0.f);
+        bool atTop = std::fabs(L.walls[L.movers[m0].wall].box.max.y - (-80.f)) < 1e-3f;
+        L.lift.request(1);
+        bool waits = L.lift.busy() && !L.lift.riding();
+        L.lift.start();
+        float clock = 0.f, maxStep = 0.f, prevY = L.lift.y();
+        bool together = true;
+        for (int i = 0; i < 60 * 9; ++i) {
+            clock += DT; L.lift.update(DT, L); L.updateMovers(clock);
+            maxStep = std::max(maxStep, std::fabs(L.lift.y() - prevY)); prevY = L.lift.y();
+            together &= std::fabs(L.walls[L.movers[m0].wall].box.max.y - L.walls[L.movers[m1].wall].box.max.y) < 1e-4f;
+        }
+        bool arrived = !L.lift.busy() && L.lift.at == 1 && std::fabs(L.walls[L.movers[m0].wall].box.max.y - (-120.f)) < 1e-3f;
+        CHECK(atTop && waits, "the cage starts at the top; a requested ride waits until it's started");
+        CHECK(arrived && together, "a ride takes the whole cage down to the next stop together, within 9 s");
+        CHECK(maxStep < 0.25f, "the ride eases (never more than 15 m/s)");
+        L.lift.reset(); L.lift.update(0.f, L); L.updateMovers(clock);
+        CHECK(L.lift.at == 0 && std::fabs(L.walls[L.movers[m0].wall].box.max.y - (-80.f)) < 1e-3f, "a reset puts the cage back at the top");
+
+        LevelData A = buildLevel();
+        WaveDirector d; d.level = &A; d.startArena(0);
+        d.hold = true;
+        std::vector<SpawnRequest> out;
+        for (int i = 0; i < 60 * 10; ++i) d.update(DT, 0, A.arenas[0].playerStart, out);
+        bool held = d.phase == WaveDirector::Phase::INTRO && out.empty();
+        d.hold = false;
+        for (int i = 0; i < 60 * 4; ++i) d.update(DT, 0, A.arenas[0].playerStart, out);
+        CHECK(held && d.phase == WaveDirector::Phase::ACTIVE, "the director holds the wave while told to, then starts it");
+    }
+
     // ---------------------------------------------------------------- mouse filter
     {
         MouseFilter f;

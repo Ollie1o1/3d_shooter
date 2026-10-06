@@ -56,6 +56,7 @@ public:
 
     const LevelData* level = nullptr;
     bool  fast = false;
+    bool  hold = false;   // set by the caller: keep the next wave waiting (the Descent's cage is riding)
     // Difficulty (ARENA): waves are this many times bigger (the boss is still
     // one Warden) and this many more may be on the field at once
     float countScale    = 1.f;
@@ -153,7 +154,7 @@ public:
     void update(float dt, int aliveCount, glm::vec3 playerPos, std::vector<SpawnRequest>& out) {
         switch (phase) {
         case Phase::INTRO:
-            timer -= dt;
+            if (!hold) timer -= dt;
             if (timer <= 0.f) beginWave();
             break;
         case Phase::ACTIVE: {
@@ -193,7 +194,7 @@ public:
             break;
         }
         case Phase::BREAK:
-            timer -= dt;
+            if (!hold) timer -= dt;
             if (timer <= 0.f) { ++wave; beginWave(); }
             break;
         case Phase::CLEARED: {

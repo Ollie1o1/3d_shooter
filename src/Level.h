@@ -154,7 +154,7 @@ struct WaterVolume { AABB box; float level; };
 // grapple hooks it; LevelData::updateMovers() moves that wall every tick and
 // records how far it went so GameplayState can carry the player along.
 struct Mover {
-    enum class Path { PINGPONG, ORBIT };
+    enum class Path { PINGPONG, ORBIT, DRIVEN };   // DRIVEN: placed by the game (drive), not by the clock
     int       wall = -1;
     AABB      base;              // box at the path's origin
     Path      path = Path::PINGPONG;
@@ -164,8 +164,10 @@ struct Mover {
     glm::vec3 color{0.35f, 0.38f, 0.45f};
     glm::vec3 glow {0.3f, 1.0f, 1.0f};
     glm::vec3 delta{0.f};        // how far it moved on the last update
+    float     drive  = 0.f;      // DRIVEN: 0..1 along a -> b
 
     glm::vec3 offsetAt(float t) const {
+        if (path == Path::DRIVEN) return glm::mix(a, b, drive);
         float u = t / period + phase;
         if (path == Path::ORBIT) {
             float ang = u * 6.2831853f;
@@ -251,6 +253,39 @@ struct LevelData {
     std::vector<Placed>     placedPickups;
     std::vector<Mover>      movers;
     std::vector<int>        moverWalls;   // wall index of every mover (for Player::dynWalls)
+    // The Descent's cage: movers driven together between stops (Y of the
+    // cage's top at each). A ride is requested between waves, starts when the
+    // player is aboard (GameplayState calls start()), and eases over RIDE_TIME.
+    struct Lift {
+        std::vector<int>   movers;
+        std::vector<float> stops;
+        int   at = 0, to = 0, pending = -1;
+        float t = 0.f;
+        static constexpr float RIDE_TIME = 8.f;
+        bool  riding() const { return to != at; }
+        bool  busy() const { return riding() || pending >= 0; }
+        float y() const {
+            if (stops.empty()) return 0.f;
+            if (!riding()) return stops[at];
+            float u = glm::clamp(t / RIDE_TIME, 0.f, 1.f);
+            u = u * u * (3.f - 2.f * u);
+            return glm::mix(stops[at], stops[to], u);
+        }
+        void request(int stop) { if (!stops.empty()) pending = std::clamp(stop, 0, (int)stops.size() - 1); }
+        void start() { if (pending >= 0 && !riding()) { to = pending; pending = -1; t = 0.f; if (to == at) to = at; } }
+        void reset() { at = to = 0; pending = -1; t = 0.f; }
+        void update(float dt, LevelData& L) {
+            if (movers.empty() || stops.empty()) return;
+            if (riding()) {
+                t += dt;
+                if (t >= RIDE_TIME) { at = to; t = 0.f; }
+            }
+            float span = stops.back() - stops.front();
+            float drive = std::fabs(span) > 1e-4f ? (y() - stops.front()) / span : 0.f;
+            for (int m : movers) L.movers[m].drive = drive;
+        }
+    };
+    Lift lift;
 
     // Animated set dressing, drawn by GameplayState
     struct Gem { glm::vec3 pos; glm::vec3 color; float size; bool beam; };
