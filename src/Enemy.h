@@ -262,6 +262,7 @@ struct Enemy {
         attack = AttackKind::NONE; telegraphTimer = 0.f; attackTimer = 0.f;
         return true;
     }
+    float fieldRadius() const { return hollow == Hollow::ENRAGED ? 13.f : 10.f; }   // ANCHOR
     float damageMult() const { return hollow == Hollow::ENRAGED ? 1.25f : 1.f; }   // what its attacks deal
     void setHollow(Hollow h) {
         hollow = canBeHollow(type) ? h : Hollow::NONE;
@@ -486,6 +487,7 @@ struct Enemy {
             case EnemyType::SHIELDBEARER: thinkShieldbearer(dt, w, resolve); break;
             case EnemyType::CONDUCTOR: thinkConductor(dt, w); break;
             case EnemyType::SERAPH:   thinkSeraph(dt, w, resolve);   break;
+            case EnemyType::ANCHOR:   thinkAnchor(dt, w, resolve);   break;
             default: break;
         }
         integrate(dt, w);
@@ -1028,6 +1030,25 @@ private:
         }
     }
 
+    // Walks in until you're 8 m off (inside its field), holds, and lobs a
+    // telegraphed volley of three slow orbs that parry back for 120
+    void thinkAnchor(float dt, const EnemyWorld& w, bool resolve) {
+        glm::vec3 to = flatTo(w.playerFeet);
+        float d = glm::length(to);
+        if (telegraphTimer > 0.f || d < 8.f) velocity.x = velocity.z = 0.f;
+        else { setMove(to, stats().speed, w); animPhase += dt * 3.f; }
+        turnToward(to, dt, 1.5f);
+        if (resolve && attack == AttackKind::VOLLEY) {
+            fireAt(w.playerEye, 3, 0.12f, 11.f, 16.f, 1.8f);
+            ev.shotParry = 120.f;
+            attack = AttackKind::NONE;
+        }
+        if (attackReady(dt)) {
+            if (lineOfSight(eyePos(), w)) startAttack(AttackKind::VOLLEY, 1.f);
+            else attackTimer = stats().attackEvery * 0.6f;
+        }
+    }
+
     void thinkConductor(float dt, const EnemyWorld& w) {
         animPhase += dt * 3.f;
         glm::vec3 toP = flatTo(w.playerFeet);
@@ -1473,6 +1494,15 @@ inline std::vector<Enemy> twinsOf(const Enemy& p) {
         out.push_back(t);
     }
     return out;
+}
+
+// Are the player's feet inside an ANCHOR's field? (A cylinder on its feet,
+// 3 m up and down: grapple high over it and you're free.)
+inline bool inAnchorField(const Enemy& a, glm::vec3 feet) {
+    if (a.type != EnemyType::ANCHOR || !a.alive || a.state != EnemyState::ACTIVE) return false;
+    if (std::fabs(feet.y - a.position.y) > 3.f) return false;
+    glm::vec2 d{feet.x - a.position.x, feet.z - a.position.z};
+    return glm::dot(d, d) <= a.fieldRadius() * a.fieldRadius();
 }
 
 // CONDUCTORs: each tethers up to three allies within CONDUCTOR_RANGE (the

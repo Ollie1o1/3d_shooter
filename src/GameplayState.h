@@ -487,7 +487,10 @@ public:
     int findParryTarget() const;
 
     void parryFeedback(glm::vec3 at, bool heavy);
-    void breakHalo(Enemy& e);   // a HALOED enemy's halo shatters: feedback and style
+    void breakHalo(Enemy& e);
+    bool anchoredAt(glm::vec3 feet) const;   // inside an ANCHOR's field: no dash, no grapple
+    void pinnedCue();                        // the dull thunk when one of those is refused
+    float pinnedCueCd = 0.f;   // a HALOED enemy's halo shatters: feedback and style
 
     void punch(int boostable);
 

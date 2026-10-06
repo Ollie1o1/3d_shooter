@@ -20,8 +20,11 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     if (grapple.active && grapple.moverWall >= 0) grapple.follow(level.walls[grapple.moverWall].box);
 
     // --- Dash ---
+    bool pinned = anchoredAt(player.position);   // an ANCHOR's field: no dash, no grapple
+    if (pinnedCueCd > 0.f) pinnedCueCd -= dt;
     bool dashKey = keys[SDL_SCANCODE_LSHIFT] != 0;
-    if (dashKey && !prevDashKey && dashCharges > 0) {
+    if (dashKey && !prevDashKey && pinned) pinnedCue();
+    if (dashKey && !prevDashKey && dashCharges > 0 && !pinned) {
         // Full 3D dash in the direction the camera faces
         glm::vec3 dashDir = player.camera.forward();
         player.velocity = dashDir * 28.f;
@@ -94,6 +97,8 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     bool canHook = findGrappleTarget(gPoint, gWall, gMover);
     grappleTargetInSight = canHook && gMover;
     if (pendingGrapple && modOn(DailyMod::GROUNDED)) pendingGrapple = false;   // DAILY: no grapple today
+    if (pendingGrapple && pinned && !grapple.active) { pendingGrapple = false; pinnedCue(); }
+    if (pinned && grapple.active) grapple.release();
     if (pendingGrapple) {
         if (!grapple.active) {
             if (canHook) {

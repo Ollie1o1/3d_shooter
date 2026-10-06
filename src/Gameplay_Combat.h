@@ -42,6 +42,18 @@ inline void GameplayState::breakHalo(Enemy& e) {
     audio.play("parry", 90);
 }
 
+inline bool GameplayState::anchoredAt(glm::vec3 feet) const {
+    for (auto& e : enemies) if (inAnchorField(e, feet)) return true;
+    return false;
+}
+
+inline void GameplayState::pinnedCue() {
+    if (pinnedCueCd > 0.f) return;
+    pinnedCueCd = 0.6f;
+    audio.play("clank", 45);
+    ui.feed("PINNED - NO DASH OR GRAPPLE", {1.f, 0.3f, 0.3f});
+}
+
 inline void GameplayState::punch(int boostable) {
     punchCooldown = 0.3f;
     glm::vec3 eye = player.camera.position, fwd = player.camera.forward();
@@ -353,6 +365,11 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
         fx.spawnBurst(e.position + glm::vec3{0, e.height() * 0.5f, 0}, e.stats().glow, 30, 7.f, 0.5f, 4.f);
         ui.feed("IT SPLITS", e.stats().glow);
     }
+    if (e.type == EnemyType::ANCHOR) {   // its field collapses: dash and grapple come back
+        fx.spawnShockwave(e.position, e.fieldRadius(), e.stats().glow);
+        styleSystem.addStyle(30.f, src);
+        ui.feed("FIELD BROKEN", e.stats().glow);
+    }
     if (e.type == EnemyType::CONDUCTOR && e.linkCount > 0) ui.feed("TETHERS BROKEN", {0.3f, 1.f, 0.9f});
     // Half for one you only set up (enemies hurting each other, lava, the void)
     float hm = e.hollow != Hollow::NONE ? 1.5f : 1.f;   // a Hollowed kill is worth more
@@ -393,6 +410,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
         case EnemyType::WARDEN: case EnemyType::SOVEREIGN: break;
         case EnemyType::CONDUIT: drop(PickupKind::ORB); drop(PickupKind::ORB); break;
         case EnemyType::CONDUCTOR: drop(PickupKind::ORB); break;
+        case EnemyType::ANCHOR: drop(PickupKind::ORB); drop(PickupKind::ORB); break;
         default:
             if (rand() % 100 < (int)(20 * tune().drops)) drop(PickupKind::ORB);
             if (rand() % 100 < (int)(18 * tune().drops)) drop(PickupKind::POTION);

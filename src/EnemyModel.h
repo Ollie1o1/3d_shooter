@@ -66,6 +66,7 @@ inline HumanoidLook humanoidDims(EnemyType t) {
     case EnemyType::WARDEN:     return {1.7f,  0.6f,  0.8f,  0.3f,  1.75f, 1.9f,  1.1f,  0.62f, 1.9f,  0.55f, {}, {}, {}};
     case EnemyType::SOVEREIGN:  return {1.35f, 0.34f, 0.46f, 0.22f, 1.25f, 1.05f, 0.58f, 0.42f, 1.3f,  0.3f,  {}, {}, {}};
     case EnemyType::SHIELDBEARER: return {0.95f, 0.24f, 0.3f, 0.16f, 0.7f, 0.62f, 0.36f, 0.32f, 0.66f, 0.19f, {}, {}, {}};
+    case EnemyType::ANCHOR:     return {0.95f, 0.4f,  0.5f,  0.2f,  1.05f, 1.25f, 0.8f,  0.4f,  1.15f, 0.4f,  {}, {}, {}};
     default:                    return {};
     }
 }
@@ -274,7 +275,24 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
             r.box(f.torso, {s * 0.3f, 0.72f, 0.f}, {0.24f, 0.12f, 0.34f}, st.color * 1.25f);
         break;
     }
-    case EnemyType::BRUTE: case EnemyType::ANCHOR: {   // ANCHOR: its own rig comes next
+    case EnemyType::ANCHOR: {
+        HumanoidLook L = humanoidLook(e.type, st.color, st.color * 0.5f, glow);
+        bool firing = e.attack == AttackKind::VOLLEY;
+        mat4 hunch = root * RX(0.18f);                                       // bent under its weight
+        auto f = humanoid(r, hunch, L, e.animPhase, std::max(stride, 0.3f), firing ? ArmPose::AIM_BOTH : ArmPose::SWING,
+                          firing ? smooth01(tp * 1.5f) : 0.f);
+        float pulse = 0.6f + 0.4f * std::sin(time * 2.5f);
+        mat4 ring = f.torso * T({0.f, 0.75f, -0.62f});                      // the ring core on its back
+        for (int k = 0; k < 10; ++k)
+            r.box(ring * RZ(k * 0.6283f), {0.f, 0.55f, 0.f}, {0.3f, 0.14f, 0.2f}, st.color * 0.8f, glow * (0.6f + pulse));
+        r.box(ring, {0.f, 0.f, 0.f}, {0.36f, 0.36f, 0.18f}, glow * 0.3f, glow * (2.f * pulse + 2.f * tp));
+        for (float s : {-1.f, 1.f}) {
+            r.box(f.torso, {s * 0.72f, 0.98f, 0.f}, {0.55f, 0.36f, 0.7f}, st.color * 1.2f);   // pauldrons
+            r.box(s < 0.f ? f.armR : f.armL, {0.f, -1.3f, 0.f}, {0.5f, 0.45f, 0.5f}, st.color * 0.8f);   // fists
+        }
+        break;
+    }
+    case EnemyType::BRUTE: {
         HumanoidLook L = humanoidLook(e.type, st.color, st.color * 0.5f, glow);
         ArmPose pose = ArmPose::SWING; float amt = 0.f;
         if (e.attack == AttackKind::SLAM) { pose = ArmPose::RAISED;   amt = smooth01(tp * 1.6f); }
@@ -598,9 +616,11 @@ inline bool headBox(const Enemy& e, AABB& out) {
 
     switch (e.type) {
     case EnemyType::HUSK: case EnemyType::SENTINEL: case EnemyType::BRUTE:
-    case EnemyType::JUGGERNAUT: case EnemyType::WARDEN: case EnemyType::SOVEREIGN: case EnemyType::SHIELDBEARER: {
+    case EnemyType::JUGGERNAUT: case EnemyType::WARDEN: case EnemyType::SOVEREIGN: case EnemyType::SHIELDBEARER:
+    case EnemyType::ANCHOR: {
         HumanoidLook L = humanoidDims(e.type);
         mat4 base = root;
+        if (e.type == EnemyType::ANCHOR) base = root * RX(0.18f);   // hunched, as drawn
         if (e.type == EnemyType::JUGGERNAUT && e.staggered()) base = root * T({0.f, -0.25f, 0.f}) * RX(0.32f);
         PoseOverride ov;
         if (e.type == EnemyType::SOVEREIGN) {

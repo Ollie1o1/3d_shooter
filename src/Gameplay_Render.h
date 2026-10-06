@@ -67,6 +67,17 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
                 push(out, h * RY(k * 0.6283f) * T({0.f, 0.f, 0.5f}) * S({0.34f, 0.1f, 0.1f}),
                      {1.f, 0.8f, 0.35f}, glm::vec3{1.8f, 1.3f, 0.45f});
         }
+        if (e.type == EnemyType::ANCHOR && e.targetable()) {   // its field: a ring on the ground and faint ribs
+            float R = e.fieldRadius(), pulse = 0.55f + 0.45f * std::sin(t * 2.f + e.uid);
+            glm::vec3 c = pose.position + glm::vec3{0, 0.06f, 0};
+            glm::vec3 g = e.stats().glow * (0.8f + 0.6f * pulse);
+            for (int k = 0; k < 40; ++k) {
+                float a = k * 0.15708f;
+                push(out, T(c + glm::vec3{std::cos(a) * R, 0.f, std::sin(a) * R}) * RY(-a) * S({0.12f, 0.06f, 1.62f}), g * 0.3f, g);
+                if (k % 5 == 0)
+                    push(out, T(c + glm::vec3{std::cos(a) * R, 1.5f, std::sin(a) * R}) * S({0.05f, 3.f, 0.05f}), g * 0.1f, g * 0.35f * pulse);
+            }
+        }
         if (e.shielded) {   // tethered to a CONDUCTOR: a ring of light turning over its head
             glm::mat4 halo = T(pose.position + glm::vec3{0, e.height() + 0.45f, 0}) * RY(t * 2.5f);
             for (int k = 0; k < 6; ++k)

@@ -650,6 +650,36 @@ int main() {
         CHECK(!c.ev.beamOn, "a dead Seraph's beam is gone");
     }
 
+    // ---------------------------------------------------------------- the Anchor
+    {
+        CHECK((int)EnemyType::ANCHOR == 13 && !statsOf(EnemyType::ANCHOR).flying, "the Anchor walks (dev spawn 13)");
+        Enemy a(EnemyType::ANCHOR, {0, 0, 0}); a.state = EnemyState::ACTIVE;
+        CHECK(inAnchorField(a, {9.5f, 0, 0}) && !inAnchorField(a, {10.5f, 0, 0}) &&
+              inAnchorField(a, {0, 2.9f, 5}) && !inAnchorField(a, {0, 3.2f, 5}), "its field: 10 m round, 6 m tall");
+        Enemy r(EnemyType::ANCHOR, {0, 0, 0}); r.state = EnemyState::ACTIVE; r.setHollow(Hollow::ENRAGED);
+        CHECK(inAnchorField(r, {12.5f, 0, 0}) && std::fabs(r.fieldRadius() - 13.f) < 1e-4f, "an Enraged Anchor's field is 13 m");
+        a.alive = false;
+        CHECK(!inAnchorField(a, {1, 0, 0}), "a dead Anchor's field is gone");
+        Enemy b(EnemyType::ANCHOR, {0, 0, 0}); b.state = EnemyState::ACTIVE;
+        EnemyWorld w; w.playerFeet = {20, 0, 0}; w.playerEye = {20, 1.7f, 0};
+        int volleys = 0, shots = 0; float parry = 0.f;
+        for (int i = 0; i < 60 * 12; ++i) { b.update(DT, w); if (b.ev.shots) { ++volleys; shots = b.ev.shots; parry = b.ev.shotParry; } }
+        float dist = glm::length(glm::vec2(20.f - b.position.x, -b.position.z));
+        std::printf("      anchor holds at %.1f m, %d volleys of %d\n", dist, volleys, shots);
+        CHECK(dist > 7.f && dist < 9.5f, "an Anchor walks in and holds about 8 m away");
+        CHECK(volleys >= 2 && shots == 3 && std::fabs(parry - 120.f) < 1e-4f, "it fires volleys of three orbs that parry back for 120");
+        Enemy hb(EnemyType::ANCHOR, {0, 0, 0}); hb.spawnTimer = 0.f;
+        rig::HumanoidLook L = rig::humanoidDims(EnemyType::ANCHOR);
+        float neck = L.legLen + L.pelvisH + L.torsoH;
+        AABB head; bool has = headBox(hb, head);
+        glm::vec3 eye{0.f, 1.7f, 12.f};
+        CHECK(has && rayBoxHit(eye, glm::normalize(glm::vec3{0, neck + L.headS * 0.5f, 0} - eye), head) > 0.f,
+              "shooting an Anchor's head is a headshot");
+        Enemy sh(EnemyType::SERAPH, {0, 12, 0}); sh.spawnTimer = 0.f;
+        AABB sHead; bool sHas = headBox(sh, sHead);
+        CHECK(sHas && sHead.min.y > 12.9f, "a Seraph's head is its ring, up top");
+    }
+
     // ---------------------------------------------------------------- the Gauntlet (FAST)
     LevelData D = buildGauntlet();
     SpatialGrid dgrid; dgrid.build(D.walls);
