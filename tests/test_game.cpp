@@ -2316,6 +2316,48 @@ int main() {
             CHECK(sfxRms(first, 1) > 4.f * sfxRms(first, 0), "a stale handle moves nothing");
             CHECK(sfxRms(second, 0) > 4.f * sfxRms(second, 1), "a moved source is heard where it went");
         }
+        // ---- duck and reverb
+        {
+            SfxMixer m(44100.f, 3);
+            sfxRender(m, 4410, 0.5f);
+            m.duck(6.f, 0.1f);
+            auto during = sfxRender(m, 2205, 0.5f);                  // 50 ms in
+            float dipped = during[during.size() - 2];
+            sfxRender(m, 88200, 0.5f);                                // hold 0.1 s, release 250 ms
+            auto after = sfxRender(m, 441, 0.5f);
+            CHECK(std::fabs(dipped - 0.5f * 0.501f) < 0.03f, "a 6 dB duck dips the music to half within 50 ms");
+            CHECK(std::fabs(after.back() - 0.5f) < 0.005f, "the music comes back once the duck is over");
+            SfxMixer o(44100.f, 3);
+            o.duck(3.f, 0.5f); o.duck(9.f, 0.1f);
+            sfxRender(o, 4410, 0.5f);
+            CHECK(std::fabs(o.duckLevel() - 0.355f) < 0.03f, "overlapping ducks take the deepest");
+        }
+        {
+            auto tail = [](ReverbSpace s) {
+                SfxMixer m(44100.f, 3); m.addSound("blip", sfxNoise(2205));
+                m.setSpace(s);
+                sfxRender(m, 66150);                                  // let the space settle (1 s crossfade)
+                m.play("blip", SfxMixer::Opts{1.f, SoundGroup::WORLD});
+                sfxRender(m, 4410);                                   // the blip (50 ms) and its first echoes
+                return sfxRms(sfxRender(m, 22050), 0);                // the 0.1-0.6 s tail
+            };
+            float open = tail(ReverbSpace::OPEN), hall = tail(ReverbSpace::HALL);
+            CHECK(hall > 3.f * open && open >= 0.f, "a HALL rings on far longer than the OPEN yard");
+            SfxMixer u(44100.f, 3); u.addSound("blip", sfxNoise(2205)); u.setSpace(ReverbSpace::HALL);
+            sfxRender(u, 66150);
+            u.play("blip", SfxMixer::Opts{1.f, SoundGroup::UI});
+            sfxRender(u, 4410);
+            CHECK(sfxPeak(sfxRender(u, 22050)) == 0.f, "UI sounds stay dry (no reverb)");
+        }
+        {   // a 48 kHz device (browsers): same behaviour, silence still silent
+            SfxMixer m(48000.f, 3); m.addSound("noise", sfxNoise(48000)); m.setSpace(ReverbSpace::SHAFT);
+            bool silent = sfxPeak(sfxRender(m, 48000)) == 0.f;
+            m.setListener({0.f, 0.f, 0.f}, {1.f, 0.f, 0.f}, {0.f, 0.f, -1.f});
+            SfxMixer::Opts o; o.group = SoundGroup::ENEMY; o.positional = true; o.pos = {10.f, 0.f, 0.f};
+            m.play("noise", o);
+            auto b = sfxRender(m, 4800);
+            CHECK(silent && sfxFinite(b) && sfxRms(b, 1) > 3.f * sfxRms(b, 0), "at 48 kHz: silent when idle, panned when not");
+        }
     }
 
     // ---------------------------------------------------------------- mouse filter

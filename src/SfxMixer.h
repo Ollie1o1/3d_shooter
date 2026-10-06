@@ -48,7 +48,23 @@ public:
     SfxMixer(const SfxMixer&) = delete;
     SfxMixer& operator=(const SfxMixer&) = delete;
 
-    void  setSampleRate(float sr) { rate = sr; }
+    void setSampleRate(float sr) {
+        rate = sr;
+        static const int COMB[4] = {1116, 1188, 1277, 1356}, AP[2] = {556, 441};
+        const float k = sr / 44100.f;
+        for (int i = 0; i < 4; ++i) {
+            combL[i].buf.assign(std::max(1, (int)(COMB[i] * k)), 0.f);
+            combR[i].buf.assign(std::max(1, (int)((COMB[i] + 23) * k)), 0.f);
+            combL[i].idx = combR[i].idx = 0; combL[i].store = combR[i].store = 0.f;
+        }
+        for (int i = 0; i < 2; ++i) {
+            apL[i].buf.assign(std::max(1, (int)(AP[i] * k)), 0.f);
+            apR[i].buf.assign(std::max(1, (int)((AP[i] + 23) * k)), 0.f);
+            apL[i].idx = apR[i].idx = 0;
+        }
+        atkK = 1.f - std::exp(-1.f / (0.020f * sr));
+        relK = 1.f - std::exp(-1.f / (0.250f * sr));
+    }
     float sampleRate() const { return rate; }
 
     // --- loading (before render() runs) ---------------------------------------
@@ -91,6 +107,11 @@ public:
     void setListener(glm::vec3 pos, glm::vec3 right, glm::vec3 fwd) {
         Cmd c{}; c.kind = Cmd::LISTENER; c.a = pos; c.b = right; c.c = fwd; push(c);
     }
+    // Dip the music and the ENEMY/WORLD groups by dB for `seconds`, so the
+    // sound that matters (you got hit, a boss winds up) stands out
+    void duck(float dB, float seconds) { Cmd c{}; c.kind = Cmd::DUCK; c.x = dB; c.y = seconds; push(c); }
+    // The reverb of the place; its parameters crossfade over about a second
+    void setSpace(ReverbSpace s) { Cmd c{}; c.kind = Cmd::SPACE; c.x = (float)(int)s; push(c); }
     float lastPlayPitch() const { return lastPitch; }
     int   lastPlayVariant() const { return lastPick; }
 
@@ -110,6 +131,7 @@ public:
         for (const auto& v : voices) if (v.active && v.serial == h) return true;
         return false;
     }
+    float duckLevel() const { return duckGain; }
     int active(SoundGroup g) const {
         int n = 0;
         for (const auto& v : voices) n += v.active && v.group == g;
@@ -154,6 +176,42 @@ private:
     std::array<Voice, MAX_VOICES> voices{};
     Listener lis;
 
+    // Duck envelope: dips toward duckDepth while duckHold lasts, then recovers
+    float duckGain = 1.f, duckDepth = 1.f, duckHold = 0.f, atkK = 0.f, relK = 0.f;
+
+    // Reverb: Freeverb-lite, 4 damped combs + 2 allpasses a side
+    struct Comb {
+        std::vector<float> buf; int idx = 0; float store = 0.f;
+        float process(float in, float fb, float damp) {
+            float out = buf[idx];
+            store = out * (1.f - damp) + store * damp;
+            buf[idx] = in + store * fb;
+            if (++idx >= (int)buf.size()) idx = 0;
+            return out;
+        }
+    };
+    struct Allpass {
+        std::vector<float> buf; int idx = 0;
+        float process(float in) {
+            float b = buf[idx], out = b - in;
+            buf[idx] = in + b * 0.5f;
+            if (++idx >= (int)buf.size()) idx = 0;
+            return out;
+        }
+    };
+    struct Preset { float fb, damp, wet; };
+    static constexpr Preset PRESETS[(int)ReverbSpace::COUNT] = {
+        {0.50f, 0.50f, 0.04f},   // OPEN   nearly dry, short
+        {0.80f, 0.15f, 0.16f},   // METAL  bright, medium
+        {0.89f, 0.40f, 0.26f},   // HALL   long, dark
+        {0.74f, 0.05f, 0.22f},   // SHAFT  tight, bright, fluttery
+    };
+    static constexpr float SEND[(int)SoundGroup::COUNT] = {0.15f, 0.30f, 0.35f, 0.f};
+    std::array<Comb, 4> combL, combR;
+    std::array<Allpass, 2> apL, apR;
+    Preset revCur = PRESETS[0], revWant = PRESETS[0];
+    std::array<float, CHUNK> send{};
+
     static float dbToLin(float db) { return std::pow(10.f, db / 20.f); }
     uint32_t next() { rng ^= rng << 13; rng ^= rng >> 17; rng ^= rng << 5; return rng; }
     float uni() { return (next() & 0xFFFFFF) / 8388607.5f - 1.f; }   // -1..1
@@ -176,6 +234,17 @@ private:
             case Cmd::MOVE: for (auto& v : voices) if (v.active && v.serial == c.serial) v.at = c.a; break;
             case Cmd::STOP: for (auto& v : voices) if (v.active && v.serial == c.serial) v.active = false; break;
             case Cmd::LISTENER: lis.pos = c.a; lis.right = c.b; lis.fwd = c.c; break;
+            case Cmd::SPACE: {
+                int s = std::clamp((int)c.x, 0, (int)ReverbSpace::COUNT - 1);
+                revWant = PRESETS[s];
+                break;
+            }
+            case Cmd::DUCK: {
+                float lin = dbToLin(-std::fabs(c.x));
+                duckDepth = duckHold > 0.f ? std::min(duckDepth, lin) : lin;
+                duckHold = std::max(duckHold, c.y);
+                break;
+            }
             default: break;
         }
     }
@@ -205,7 +274,7 @@ private:
     // distance falloff, a pan law that keeps the centre at full level, and a
     // low-pass that closes with distance and when the source is behind you
     void target(const Voice& v, float& L, float& R, float& lp) const {
-        float g = v.gain;
+        float g = v.gain * (v.group == SoundGroup::ENEMY || v.group == SoundGroup::WORLD ? duckGain : 1.f);
         lp = 1.f;
         if (!v.positional) { L = R = g; return; }
         glm::vec3 d = v.at - lis.pos;
@@ -228,7 +297,27 @@ private:
     }
 
     void mixChunk(float* io, int n) {
+        // The duck envelope, sample by sample, on the music already in io
+        for (int i = 0; i < n; ++i) {
+            float want = duckHold > 0.f ? duckDepth : 1.f;
+            duckGain += (want - duckGain) * (want < duckGain ? atkK : relK);
+            io[2 * i] *= duckGain; io[2 * i + 1] *= duckGain;
+        }
+        duckHold = std::max(0.f, duckHold - n / rate);
+        // Reverb parameters drift toward the place's preset (~1 s)
+        float k = 1.f - std::exp(-(float)n / (0.35f * rate));
+        revCur.fb   += (revWant.fb   - revCur.fb)   * k;
+        revCur.damp += (revWant.damp - revCur.damp) * k;
+        revCur.wet  += (revWant.wet  - revCur.wet)  * k;
+
+        std::fill(send.begin(), send.begin() + n, 0.f);
         for (auto& v : voices) if (v.active) mixVoice(v, io, n);
+        for (int i = 0; i < n; ++i) {
+            float in = send[i] * 0.03f, l = 0.f, r = 0.f;
+            for (int c = 0; c < 4; ++c) { l += combL[c].process(in, revCur.fb, revCur.damp); r += combR[c].process(in, revCur.fb, revCur.damp); }
+            for (int a = 0; a < 2; ++a) { l = apL[a].process(l); r = apR[a].process(r); }
+            io[2 * i] += l * revCur.wet; io[2 * i + 1] += r * revCur.wet;
+        }
         for (int i = 0; i < 2 * n; ++i) io[i] = softClip(io[i]);
     }
     void mixVoice(Voice& v, float* io, int n) {
@@ -253,6 +342,7 @@ private:
             v.z += v.lp * (x - v.z);
             io[2 * i]     += v.z * v.curL;
             io[2 * i + 1] += v.z * v.curR;
+            send[i] += v.z * (v.curL + v.curR) * 0.5f * SEND[(int)v.group];
             v.pos += v.pitch;
         }
         v.curL = tL; v.curR = tR; v.lp = tlp;
