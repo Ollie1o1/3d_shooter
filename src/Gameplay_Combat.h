@@ -145,6 +145,7 @@ inline void GameplayState::updateEnemies(float dt) {
         e.floorY = level.floorWithWater(e.position.x, e.position.z, false);
         e.wadeMul = e.stats().flying ? 1.f : 1.f - 0.5f * (1.f - Player::wadeFactor(level.waterDepthAt(e.position)));
         e.update(dt, w);
+        const float eScale = dmgScale * e.damageMult();   // ENRAGED hits harder
         const EnemyEvents ev = e.ev;   // copy: spawning below may reallocate
         glm::vec3 epos = e.position;
         float dist = glm::length(epos - player.position);
@@ -156,10 +157,10 @@ inline void GameplayState::updateEnemies(float dt) {
             telegraphSoundCd = 0.22f;
         }
         for (int k = 0; k < ev.shots; ++k)
-            projSystem.fire(ev.shotOrigin, ev.shotDir[k] * ev.shotSpeed, ev.shotDamage * dmgScale, false,
+            projSystem.fire(ev.shotOrigin, ev.shotDir[k] * ev.shotSpeed, ev.shotDamage * eScale, false,
                             enemies[i].stats().shotColor, false, 0.f, ev.shotSize, ev.shotHeavy);
         if (ev.meleeHit) {
-            if (damagePlayer(ev.meleeDamage * dmgScale, epos, 0.25f, 0.06f)) {
+            if (damagePlayer(ev.meleeDamage * eScale, epos, 0.25f, 0.06f)) {
                 glm::vec3 away = player.position - epos; away.y = 0.f;
                 if (glm::length(away) > 0.001f)
                     player.velocity += glm::normalize(away) * 8.f + glm::vec3{0, 3.f, 0};
@@ -174,13 +175,13 @@ inline void GameplayState::updateEnemies(float dt) {
             glm::vec2 flat{player.position.x - epos.x, player.position.z - epos.z};
             bool grounded = player.position.y < epos.y + 0.9f && player.position.y > epos.y - 1.5f;   // jump it to dodge
             if (ev.slamDamage > 0.f && glm::length(flat) < ev.slamRadius && grounded) {
-                if (damagePlayer(ev.slamDamage * dmgScale, epos, 0.3f, 0.08f) && glm::length(flat) > 0.01f)
+                if (damagePlayer(ev.slamDamage * eScale, epos, 0.3f, 0.08f) && glm::length(flat) > 0.01f)
                     player.velocity += glm::vec3{flat.x, 0.f, flat.y} / glm::length(flat) * 10.f + glm::vec3{0, 6.f, 0};
             }
         }
         if (ev.detonated) {
             // A mite that reached you: hurts you AND its friends
-            pendingBlasts.push_back({epos + glm::vec3{0, 0.3f, 0}, 4.f, 30.f, 4.f, 30.f * dmgScale, StyleSource::FRIENDLY});
+            pendingBlasts.push_back({epos + glm::vec3{0, 0.3f, 0}, 4.f, 30.f, 4.f, 30.f * eScale, StyleSource::FRIENDLY});
             spawnDebrisFor(enemies[i]);
         }
         if (ev.summonMites + ev.summonRippers > 0) {

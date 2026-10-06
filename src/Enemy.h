@@ -220,6 +220,7 @@ struct Enemy {
     float      scale = 1.f;          // TWINNED copies are smaller
     bool       halo = false;         // HALOED: up until a headshot or parry
     float      haloOpenTimer = 0.f;  // > 0: the halo just broke, it takes double damage
+    float damageMult() const { return hollow == Hollow::ENRAGED ? 1.25f : 1.f; }   // what its attacks deal
     void setHollow(Hollow h) {
         hollow = canBeHollow(type) ? h : Hollow::NONE;
         halo = hollow == Hollow::HALOED;
@@ -394,6 +395,13 @@ struct Enemy {
         ev = EnemyEvents{};
         if (!alive) return;
         tune_    = w.tune ? w.tune : &difficulty(DIFFICULTY_DEFAULT);
+        if (hollow == Hollow::ENRAGED) {   // on top of the difficulty
+            hollowTune_ = *tune_;
+            hollowTune_.moveSpeed  *= 1.3f;
+            hollowTune_.windup     *= 0.65f;
+            hollowTune_.attackRate /= 0.75f;
+            tune_ = &hollowTune_;
+        }
         leadVel_ = w.playerVel * tune_->lead;
         age += dt;
         if (hitFlashTimer > 0.f) hitFlashTimer -= dt;
@@ -441,6 +449,7 @@ struct Enemy {
 
 private:
     const DifficultyTuning* tune_ = &difficulty(DIFFICULTY_DEFAULT);   // this tick's difficulty
+    DifficultyTuning hollowTune_{};   // ENRAGED: the difficulty, sharpened
     glm::vec3 leadVel_{0.f};      // how far ahead to aim: player velocity × lead
 
     // ---- shared helpers ------------------------------------------------------

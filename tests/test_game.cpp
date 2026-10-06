@@ -538,6 +538,29 @@ int main() {
         CHECK(introPlain == 1 && introHaloHusk == 1, "a variant is introduced once, on top of its plain type");
     }
 
+    // ---------------------------------------------------------------- Enraged
+    {
+        EnemyWorld w; w.playerFeet = {30.f, 0.f, 0.f}; w.playerEye = w.playerFeet + glm::vec3{0, 1.7f, 0};
+        auto run = [&](Hollow h) {
+            Enemy r(EnemyType::RIPPER, {0, 0, 0}); r.setHollow(h); r.state = EnemyState::ACTIVE;
+            for (int i = 0; i < 30; ++i) r.update(DT, w);
+            return r.position.x;
+        };
+        float plain = run(Hollow::NONE), fast = run(Hollow::ENRAGED);
+        auto windup = [&](Hollow h) {
+            Enemy b(EnemyType::BRUTE, {0, 0, 0}); b.setHollow(h); b.state = EnemyState::ACTIVE;
+            EnemyWorld near = w; near.playerFeet = {4.f, 0.f, 0.f}; near.playerEye = near.playerFeet + glm::vec3{0, 1.7f, 0};
+            for (int i = 0; i < 600 && b.telegraphDuration <= 0.f; ++i) b.update(DT, near);
+            return b.telegraphDuration;
+        };
+        float wp = windup(Hollow::NONE), we = windup(Hollow::ENRAGED);
+        std::printf("      ripper 0.5 s: plain %.2f m, enraged %.2f m; brute wind-up %.2f vs %.2f\n", plain, fast, wp, we);
+        CHECK(fast > plain * 1.2f, "an Enraged enemy moves faster");
+        CHECK(we > 0.f && std::fabs(we / wp - 0.65f) < 0.02f, "an Enraged enemy winds up in 65% of the time");
+        Enemy e(EnemyType::HUSK, {0, 0, 0}); e.setHollow(Hollow::ENRAGED);
+        CHECK(std::fabs(e.damageMult() - 1.25f) < 1e-4f, "an Enraged enemy hits 25% harder");
+    }
+
     // ---------------------------------------------------------------- the Gauntlet (FAST)
     LevelData D = buildGauntlet();
     SpatialGrid dgrid; dgrid.build(D.walls);
