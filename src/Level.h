@@ -30,6 +30,8 @@
 //   └───────────────────────┘     platforms. One enemy: the final boss.
 //          -Z (north)
 //
+// Act II (beneath the Sanctum, 60 m down) is built by LevelAct2.h.
+//
 // Each arena: three waves (the Sanctum: just the boss). Clearing the last opens the exit door; walking far
 // enough into the next arena slams the gate shut behind you and starts it.
 // Every arena has a ceiling (zone.max.y): an invisible barrier that stops

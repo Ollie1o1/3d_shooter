@@ -9,6 +9,7 @@
 A 3D arena shooter built with **SDL2**, **OpenGL 3.3 Core Profile**, and **GLM**, with no engine. ULTRAKILL-inspired movement with grapple hook, dashing, four weapons (including two bolt-action snipers) and style scoring, in four modes:
 
 - **ARENA**: **four themed arenas** (sunset yard, foundry, a vertical spire you have to climb, a night-time reactor) of three waves each, **eight enemy types** built as animated block rigs (including the armored Juggernaut and the shield-carrying Shieldbearer, both built around the parry), the **Warden** at the end of the fourth, then **the Sanctum**: a huge arena under an eclipse where you duel the final boss, **the Sovereign**, a sword-wielding knight.
+- **ACT II (preview)**: unlocked by killing the Sovereign. Fall beneath the eclipse into **the Drowned Nave**, a flooded cathedral: the water slows you on foot but slides skim across it, and it rises every wave until only the galleries, bridges and the organ loft stay dry. Three more arenas and a final boss are coming; until then ACT II runs are unranked.
 - **FAST**: **the Gauntlet**, a time trial through seven rooms joined by **boost tubes**: doors part as you sprint at them, lock behind you when a room's fight starts, and the exit unlocks when it's clear. A long canal, a close-quarters pump room, a cathedral of terraces, a canyon of islands over a void, a tower you fall through, a hall with control rooms, and a courtyard finale with a lift shaft to the beacon. Run clock, splits against your best run, par ranks.
 - **ENDLESS**: generated waves in the Core until you die. They grow, unlock tougher enemies as they go (Brutes, Conductors, Juggernauts), throw in an objective every 4th wave and the Warden every 10th, and every enemy gets a little tougher each wave.
 - **DAILY**: one ENDLESS run a day that's the same for everyone: the date picks the arena, a modifier (**GLASS CANNON**: double damage both ways; **SWARM**: bigger waves of weaker enemies; **MARKSMAN**: the Kar98 only; **GROUNDED**: no grapple) and the waves, and it has its own leaderboard for the day.
@@ -67,6 +68,7 @@ make clean  # delete binaries
 ./shooter --play                 # skip the main menu and start an ARENA run
 ./shooter --fast                 # skip the main menu and start the FAST time trial
 ./shooter --endless              # an ENDLESS run (--daily: today's DAILY)
+./shooter --act2                 # an ACT II run (ignores the unlock)
 ./shooter --arena 4 --wave 3     # jump straight to an arena / wave (here: the Warden)
 ./shooter --arena 5              # the Sanctum: the Sovereign
 ./shooter --dev                  # open the DEV level select (also ` or F2 on the main menu)
