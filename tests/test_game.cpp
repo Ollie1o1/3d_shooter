@@ -23,6 +23,7 @@
 #include "../src/Daily.h"
 #include "../src/EndlessWaves.h"
 #include "../src/SovereignHazards.h"
+#include "../src/SfxMixer.h"
 #include <cstdio>
 #include <cstring>
 #include <map>
@@ -39,6 +40,35 @@ static bool overlapsBox(const AABB& b, const AABB& o, float eps = 0.f) {
     return b.max.x > o.min.x + eps && b.min.x < o.max.x - eps && b.max.y > o.min.y + eps && b.min.y < o.max.y - eps &&
            b.max.z > o.min.z + eps && b.min.z < o.max.z - eps;
 }
+
+// Sound-effects mixer helpers: deterministic test signals and measurements
+static std::vector<float> sfxNoise(int n, uint32_t seed = 1) {
+    std::vector<float> v(n);
+    for (auto& x : v) { seed ^= seed << 13; seed ^= seed >> 17; seed ^= seed << 5; x = (seed & 0xFFFF) / 32767.5f - 1.f; }
+    return v;
+}
+static std::vector<float> sfxSquare(int n) {
+    std::vector<float> v(n);
+    for (int i = 0; i < n; ++i) v[i] = (i / 50) % 2 ? 1.f : -1.f;
+    return v;
+}
+static std::vector<float> sfxRender(SfxMixer& m, int frames, float music = 0.f) {
+    std::vector<float> b(2 * frames, music);
+    m.render(b.data(), frames);
+    return b;
+}
+static float sfxRms(const std::vector<float>& b, int ch) {
+    double s = 0; int n = (int)b.size() / 2;
+    for (int i = 0; i < n; ++i) s += b[2 * i + ch] * b[2 * i + ch];
+    return n ? (float)std::sqrt(s / n) : 0.f;
+}
+static float sfxHf(const std::vector<float>& b, int ch) {   // RMS of the first difference: high-frequency energy
+    double s = 0; int n = (int)b.size() / 2;
+    for (int i = 1; i < n; ++i) { float d = b[2 * i + ch] - b[2 * (i - 1) + ch]; s += d * d; }
+    return n > 1 ? (float)std::sqrt(s / (n - 1)) : 0.f;
+}
+static float sfxPeak(const std::vector<float>& b) { float p = 0.f; for (float x : b) p = std::max(p, std::fabs(x)); return p; }
+static bool sfxFinite(const std::vector<float>& b) { for (float x : b) if (!std::isfinite(x)) return false; return true; }
 static bool overlapsWall(const LevelData& L, const AABB& b) {
     for (auto& w : L.walls) if (overlapsBox(b, w.box)) return true;
     return false;
@@ -2145,6 +2175,91 @@ int main() {
         std::vector<float> buf(2 * 4410);
         m.render(buf.data(), 4410);
         CHECK(m.currentTrack() == 2, "a track change waits for the bar line, then takes");
+    }
+
+    // ---------------------------------------------------------------- sound effects mixer: core
+    {
+        using G = SoundGroup;
+        auto opts = [](float vol, G g, bool prio = false) { SfxMixer::Opts o; o.volume = vol; o.group = g; o.priority = prio; return o; };
+        {   // silence in, silence out
+            SfxMixer m(44100.f, 3); m.addSound("noise", sfxNoise(44100));
+            auto b = sfxRender(m, 44100);
+            CHECK(sfxPeak(b) == 0.f, "no sounds playing: the mixer adds exactly nothing");
+        }
+        {   // unknown names and zero volume do nothing
+            SfxMixer m(44100.f, 3); m.addSound("noise", sfxNoise(44100));
+            SoundHandle a = m.play("nope", opts(1.f, G::WORLD));
+            SoundHandle b = m.play("noise", opts(0.f, G::WORLD));
+            sfxRender(m, 64);
+            CHECK(a == 0 && b == 0 && m.active(G::WORLD) == 0, "an unknown sound or zero volume plays nothing (handle 0)");
+        }
+        {   // a full group steals its quietest voice
+            SfxMixer m(44100.f, 3); m.addSound("noise", sfxNoise(44100));
+            SoundHandle quiet = 0;
+            for (int i = 0; i < 20; ++i) {
+                SoundHandle h = m.play("noise", opts(i == 3 ? 0.05f : 0.5f, G::ENEMY));
+                if (i == 3) quiet = h;
+            }
+            sfxRender(m, 64);
+            bool full = m.active(G::ENEMY) == 20;
+            SoundHandle fresh = m.play("noise", opts(0.5f, G::ENEMY));
+            sfxRender(m, 64);
+            CHECK(full && m.active(G::ENEMY) == 20 && !m.isPlaying(quiet) && m.isPlaying(fresh),
+                  "a full group (ENEMY 20) gives its quietest voice to the new sound");
+        }
+        {   // priority voices are never stolen by a non-priority sound
+            SfxMixer m(44100.f, 3); m.addSound("noise", sfxNoise(44100));
+            std::vector<SoundHandle> hs;
+            for (int i = 0; i < 20; ++i) hs.push_back(m.play("noise", opts(0.2f, G::ENEMY, true)));
+            sfxRender(m, 64);
+            SoundHandle extra = m.play("noise", opts(1.f, G::ENEMY));
+            sfxRender(m, 64);
+            bool all = true; for (auto h : hs) all &= m.isPlaying(h);
+            CHECK(all && !m.isPlaying(extra), "a group full of priority voices (the boss) keeps them all");
+        }
+        {   // pitch jitter: varied, within bounds; UI tighter
+            SfxMixer m(44100.f, 11); m.addSound("noise", sfxNoise(441));
+            float lo = 9.f, hi = 0.f, uiLo = 9.f, uiHi = 0.f;
+            for (int i = 0; i < 1000; ++i) {
+                m.play("noise", opts(1.f, G::WORLD)); lo = std::min(lo, m.lastPlayPitch()); hi = std::max(hi, m.lastPlayPitch());
+                m.play("noise", opts(1.f, G::UI));    uiLo = std::min(uiLo, m.lastPlayPitch()); uiHi = std::max(uiHi, m.lastPlayPitch());
+                if (i % 200 == 0) sfxRender(m, 16);
+            }
+            CHECK(lo >= 0.96f && hi <= 1.04f && hi - lo > 0.05f, "every play gets a pitch within +-4% (and they differ)");
+            CHECK(uiLo >= 0.99f && uiHi <= 1.01f, "UI sounds vary by at most +-1%");
+        }
+        {   // variants: never the same one twice running
+            SfxMixer m(44100.f, 5);
+            m.addSound("step", sfxNoise(100, 1)); m.addSound("step", sfxNoise(100, 2)); m.addSound("step", sfxNoise(100, 3));
+            bool noRepeat = m.variants("step") == 3; int last = -1; bool usedAll[3] = {};
+            for (int i = 0; i < 60; ++i) {
+                m.play("step", opts(1.f, G::PLAYER));
+                int v = m.lastPlayVariant();
+                noRepeat &= v != last && v >= 0 && v < 3; last = v; if (v >= 0 && v < 3) usedAll[v] = true;
+                sfxRender(m, 8);
+            }
+            CHECK(noRepeat && usedAll[0] && usedAll[1] && usedAll[2], "a sound with variants picks among them, never the same twice running");
+        }
+        {   // overload: 48 full-scale voices stay within +-1 and finite
+            SfxMixer m(44100.f, 3); m.addSound("loud", sfxSquare(44100));
+            for (int g = 0; g < 4; ++g) for (int i = 0; i < 20; ++i) m.play("loud", opts(1.f, (G)g));
+            auto b = sfxRender(m, 8192, 0.9f);
+            CHECK(sfxFinite(b) && sfxPeak(b) <= 1.f, "48 full-scale voices over loud music: never past +-1, never NaN");
+        }
+        {   // the command ring: a flood drops, later commands still work
+            SfxMixer m(44100.f, 3); m.addSound("noise", sfxNoise(44100));
+            for (int i = 0; i < 600; ++i) m.move(12345, {0.f, 0.f, 0.f});
+            sfxRender(m, 64);
+            SoundHandle h = m.play("noise", opts(1.f, G::WORLD));
+            sfxRender(m, 64);
+            CHECK(h != 0 && m.isPlaying(h), "a flooded command ring drops the overflow; the next play still lands");
+        }
+        {   // a sound ends when its sample does
+            SfxMixer m(44100.f, 3); m.addSound("blip", sfxNoise(100));
+            SoundHandle h = m.play("blip", opts(1.f, G::WORLD));
+            sfxRender(m, 512);
+            CHECK(!m.isPlaying(h) && m.active(G::WORLD) == 0, "a short sound frees its voice when it finishes");
+        }
     }
 
     // ---------------------------------------------------------------- mouse filter

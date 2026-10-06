@@ -71,7 +71,7 @@ HEADERS := src/gl.h \
            src/Enemy.h src/EnemyModel.h src/BoxRenderer.h src/WaveDirector.h \
            src/Projectile.h src/GrappleHook.h \
            src/StyleSystem.h src/UIRenderer.h src/PostProcess.h \
-           src/Level.h src/LevelGauntlet.h src/LevelAct2.h src/AudioSystem.h src/ViewModel.h src/Interactable.h \
+           src/Level.h src/LevelGauntlet.h src/LevelAct2.h src/AudioSystem.h src/AudioTypes.h src/SfxMixer.h src/ViewModel.h src/Interactable.h \
            src/Settings.h src/SettingsMenu.h src/Persist.h src/PixelFont.h src/UIBatch.h \
            src/Weapons.h src/Progression.h src/MouseFilter.h src/Difficulty.h src/MusicSynth.h src/Display.h
 
@@ -91,7 +91,8 @@ run: all
 test: tests/test_physics.cpp tests/test_game.cpp src/Player.h src/Camera.h \
       src/Enemy.h src/EnemyModel.h src/Level.h src/LevelGauntlet.h src/LevelAct2.h src/WaveDirector.h \
       src/Weapons.h src/Progression.h src/MouseFilter.h src/Persist.h src/Difficulty.h src/MusicSynth.h \
-      src/StyleSystem.h src/Projectile.h src/ArenaShifts.h src/Score.h src/Daily.h src/EndlessWaves.h
+      src/StyleSystem.h src/Projectile.h src/ArenaShifts.h src/Score.h src/Daily.h src/EndlessWaves.h \
+      src/AudioTypes.h src/SfxMixer.h
 	$(CXX) $(CXXFLAGS) tests/test_physics.cpp -o tests/test_physics $(STDLIB)
 	$(CXX) $(CXXFLAGS) tests/test_game.cpp -o tests/test_game $(STDLIB)
 	./tests/test_physics
