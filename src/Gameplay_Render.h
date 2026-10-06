@@ -447,6 +447,7 @@ inline void GameplayState::render() {
     if (!settings || settings->viewBob)
         renderCam.position += viewModel.getBobOffset(playerXZSpeed, player.onGround, renderCam.right()) * (1.f - aim);
     renderCam.position.y -= landSquash;
+    audio.setListener(renderCam.position, renderCam.right(), renderCam.forward());
     const WeaponDef& wd = weaponDef((WeaponId)activeWeapon);
     float baseFov = settings ? settings->fov : 90.f;
     float a = aim * aim * (3.f - 2.f * aim);

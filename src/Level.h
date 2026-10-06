@@ -41,6 +41,7 @@
 // points aren't inside walls, pads land on their platforms, and so on.
 // =============================================================================
 #include "Player.h"
+#include "AudioTypes.h"
 #include "Enemy.h"
 #include "Shapes.h"
 #include <vector>
@@ -185,6 +186,7 @@ enum class ArenaShift { NONE, NIGHTFALL, LAVA_RISE, SPEED_UP, OVERLOAD, FLOOD, S
 struct Arena {
     const char* name;
     const char* subtitle;
+    ReverbSpace space = ReverbSpace::METAL;   // its reverb (AudioSystem::setSpace)
     AABB        bounds;          // interior; enemies are clamped inside, max.y caps flyers
     AABB        zone;            // where the player may be (XZ); max.y is the ceiling
     // More boxes that count as this arena/section: the tubes and side rooms
@@ -652,7 +654,7 @@ inline void buildAct1(LevelBuilder& B) {
         vec3 adobe{0.66f,0.40f,0.30f}, adobeDark{0.50f,0.28f,0.22f}, stone{0.56f,0.48f,0.43f},
              crate{0.47f,0.31f,0.21f}, pink{1.0f,0.25f,0.62f}, cyan{0.2f,0.9f,1.0f};
         Arena a;
-        a.name = "SUNSET YARD";
+        a.name = "SUNSET YARD"; a.space = ReverbSpace::OPEN;
         a.subtitle = "SURVIVE 3 WAVES";
         a.bounds = aabb(-30, 0, -30, 30, 12, 30);
         a.zone   = aabb(-31.5f, 0, -31.5f, 31.5f, 18, 31.5f);   // ceiling 18 m
@@ -1221,7 +1223,7 @@ inline void buildAct1(LevelBuilder& B) {
              crimson{1.0f,0.22f,0.12f}, gold{1.0f,0.72f,0.3f};
         const float CZ = -348.f;    // centre (z)
         Arena a;
-        a.name = "THE SANCTUM";
+        a.name = "THE SANCTUM"; a.space = ReverbSpace::HALL;
         a.subtitle = "THE SOVEREIGN AWAITS";
         a.bounds = aabb(-56, 0, -404, 56, 30, -292);
         a.zone   = aabb(-57.5f, 0, -405.5f, 57.5f, 34, -290.5f);   // ceiling 34 m

@@ -311,6 +311,7 @@ public:
     bool prevDashKey      = false;
     int  boostPrev        = -1;     // booster the player was in last tick
     float telegraphSoundCd = 0.f;   // throttles the enemy wind-up tick
+    int   spaceArena = -1;          // the arena whose reverb is playing
     float shieldClankCd = 0.f;      // throttles the clank of bullets on a shield
     bool prevJumpKey      = false;
     // Event-driven click flags — set in handleEvent, consumed once in physicsTick.

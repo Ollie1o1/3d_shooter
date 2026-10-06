@@ -44,7 +44,7 @@ inline void buildAct2(LevelBuilder& B) {
     L.basins.push_back({aabb(-300, 0, -668, 300, 0, -1000), -140.f});   // the Orrery: its void bottoms out far below
 
     Arena a;
-    a.name = "THE DROWNED NAVE";
+    a.name = "THE DROWNED NAVE"; a.space = ReverbSpace::HALL;
     a.subtitle = "THE WATER RISES - SURVIVE 3 WAVES";
     a.bounds = aabb(-49, F, -651, 49, F + 26, -451);
     a.zone   = aabb(-50.5f, F, -652.5f, 50.5f, F + 28, -449.5f);   // ceiling under the dome
@@ -263,7 +263,7 @@ inline void buildAct2(LevelBuilder& B) {
     // sun, the outer one clockwise, the inner one (2 m higher) against it
     // =========================================================================
     Arena o;
-    o.name = "THE ORRERY";
+    o.name = "THE ORRERY"; o.space = ReverbSpace::HALL;
     o.subtitle = "MIND THE SUN - SURVIVE 3 WAVES";
     o.bounds = aabb(-52, O, -784, 52, O + 28, -680);
     o.zone   = aabb(-53.5f, O, -785.5f, 53.5f, O + 30, -678.5f);

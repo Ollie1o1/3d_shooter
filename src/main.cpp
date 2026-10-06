@@ -146,6 +146,7 @@ struct App {
         pending = NextState::None;
         if (next == NextState::Menu) {
             SDL_SetRelativeMouseMode(SDL_FALSE);
+            audio.setSpace(ReverbSpace::OPEN);
             auto* menu = new MenuState(SCREEN_W, SCREEN_H);
             menu->settings = &settings;
             menu->onStart  = [this](GameMode m, StartOptions o) {
@@ -236,6 +237,7 @@ struct App {
             }
             g_recProgress = recordIndex > recordSkip ? (float)(recordIndex - recordSkip) / (float)recordFrames : 0.f;
         }
+        if (audio.dumpDone()) { audio.writeDump(); running = false; }
         if (shotFrames > 0 && --shotFrames == 0) {
             saveScreenshot(shotPath); running = false;
             if (auto* g = dynamic_cast<GameplayState*>(currentState.get()))
@@ -372,6 +374,8 @@ int main(int argc, char* argv[]) {
     };
     for (const char* name : SOUNDS)
         app->audio.loadSound(name, std::string("assets/sfx/") + name + ".wav");
+    if (std::getenv("OVERDRIVE_SFXLIST")) app->audio.sfx.dumpLengths(stderr);
+    app->audio.start();   // the bank is complete: the audio thread may mix from here on
 
     app->settings.load();  // restore every option (settings.cfg on desktop, localStorage on the web)
 
@@ -379,7 +383,7 @@ int main(int argc, char* argv[]) {
     // into the FAST time trial, --endless an ENDLESS run, --daily today's DAILY, --act2 ACT II. --arena N starts at a later arena / section
     // (implies --play), --wave N skips to a wave within it, --god disables
     // damage (for footage), --dev opens the level select. Dev: --cam X Y Z
-    // YAW PITCH, --shot FRAMES FILE.BMP
+    // YAW PITCH, --shot FRAMES FILE.BMP, --audiodump FILE.WAV SECONDS (record the mix, then quit)
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--play") app->pending = App::NextState::Game;
@@ -422,6 +426,10 @@ int main(int argc, char* argv[]) {
         if (arg == "--autoaim") g_devAutoAim = true;
         if (arg == "--clean") g_devClean = true;
         if (arg == "--kite") g_devKite = true;
+        if (arg == "--audiodump" && i + 2 < argc) {   // dev: record the final mix to a WAV, then quit
+            app->audio.startDump(argv[i + 1], (float)std::atof(argv[i + 2])); i += 2;
+            g_devNoMouse = true;
+        }
         if (arg == "--shot" && i + 2 < argc) {
             app->shotFrames = std::atoi(argv[i + 1]); app->shotPath = argv[i + 2]; i += 2;
             g_devNoMouse = true;

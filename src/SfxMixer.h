@@ -20,6 +20,7 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <cstdio>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -77,6 +78,11 @@ public:
     int  variants(const std::string& name) const {
         auto it = names.find(name);
         return it == names.end() ? 0 : (int)it->second.size();
+    }
+
+    // Dev (OVERDRIVE_SFXLIST): every loaded sound and its length
+    void dumpLengths(FILE* f) const {
+        for (const auto& [n, ids] : names) for (int id : ids) std::fprintf(f, "sfx %s %.3f s\n", n.c_str(), bank[id].size() / rate);
     }
 
     // --- game thread ----------------------------------------------------------
