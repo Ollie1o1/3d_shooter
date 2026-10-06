@@ -330,6 +330,11 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
 inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     ++totalKills;
     if (e.type == EnemyType::CONDUIT) director.onConduitDestroyed(e.position);
+    if (e.splitsOnDeath()) {   // not into `enemies` yet: callers may be iterating it
+        for (auto& t : twinsOf(e)) pendingTwins.push_back(t);
+        fx.spawnBurst(e.position + glm::vec3{0, e.height() * 0.5f, 0}, e.stats().glow, 30, 7.f, 0.5f, 4.f);
+        ui.feed("IT SPLITS", e.stats().glow);
+    }
     if (e.type == EnemyType::CONDUCTOR && e.linkCount > 0) ui.feed("TETHERS BROKEN", {0.3f, 1.f, 0.9f});
     // Half for one you only set up (enemies hurting each other, lava, the void)
     styleSystem.addStyle(src == StyleSource::FRIENDLY || src == StyleSource::ENVIRONMENT ? 15.f : 30.f, src);

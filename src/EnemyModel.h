@@ -247,7 +247,7 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
     vec3  glow = st.glow * (1.f + 2.5f * tp);           // eyes flare during a wind-up
     float stride = glm::clamp(e.moveSpeed / std::max(0.1f, st.speed), 0.f, 1.2f);
 
-    mat4 root = T(e.position) * RY(e.yaw) * S({1.f, grow, 1.f});
+    mat4 root = T(e.position) * RY(e.yaw) * S(vec3{e.scale}) * S({1.f, grow, 1.f});
 
     switch (e.type) {
     case EnemyType::HUSK: {
@@ -386,7 +386,7 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
     case EnemyType::RAPTOR: {
         bool diving = e.diveTimer > 0.f;
         float bob = diving ? 0.f : std::sin(time * 3.f + e.animPhase * 0.1f) * 0.15f;
-        mat4 base = T(e.position + vec3{0.f, bob, 0.f}) * RY(e.yaw) * RX(e.pitch) * S(vec3{grow});
+        mat4 base = T(e.position + vec3{0.f, bob, 0.f}) * RY(e.yaw) * RX(e.pitch) * S(vec3{e.scale}) * S(vec3{grow});
         vec3 armor = st.color, under = st.color * 0.5f;
         r.box(base, {0.f, 0.45f, 0.f},    {0.5f, 0.42f, 1.0f}, armor);
         r.box(base, {0.f, 0.38f, 0.32f},  {0.44f, 0.36f, 0.42f}, armor * 1.15f);
@@ -570,7 +570,7 @@ inline bool headBox(const Enemy& e, AABB& out) {
     float grow   = 0.05f + 0.95f * smooth01(1.f - e.spawnTimer / Enemy::SPAWN_TIME);
     float tp     = e.telegraphProgress();
     float stride = glm::clamp(e.moveSpeed / std::max(0.1f, st.speed), 0.f, 1.2f);
-    mat4  root   = T(e.position) * RY(e.yaw) * S({1.f, grow, 1.f});
+    mat4  root   = T(e.position) * RY(e.yaw) * S(vec3{e.scale}) * S({1.f, grow, 1.f});
     mat4  frame;          // the head's frame
     vec3  centre, half;   // the head box within it
 
@@ -606,7 +606,7 @@ inline bool headBox(const Enemy& e, AABB& out) {
         break;
     }
     case EnemyType::RAPTOR: {
-        mat4 base = T(e.position) * RY(e.yaw) * RX(e.pitch) * S(vec3{grow});
+        mat4 base = T(e.position) * RY(e.yaw) * RX(e.pitch) * S(vec3{e.scale}) * S(vec3{grow});
         frame  = base * T({0.f, 0.62f, 0.55f});
         centre = {0.f, 0.05f, 0.26f};
         half   = {0.17f, 0.17f, 0.33f};

@@ -577,6 +577,28 @@ int main() {
         CHECK(pr && pr->alive && pr->owner == -1 && pr->parryDamage == 0.f, "fire hands back the shot so its owner can be set");
     }
 
+    // ---------------------------------------------------------------- Twinned
+    {
+        Enemy p(EnemyType::BRUTE, {5, 0, 5}); p.setHollow(Hollow::TWINNED); p.yaw = 0.3f;
+        CHECK(p.splitsOnDeath(), "a Twinned enemy splits when it dies");
+        auto tw = twinsOf(p);
+        bool ok = tw.size() == 2;
+        for (auto& t : tw)
+            ok &= t.type == EnemyType::BRUTE && t.hollow == Hollow::NONE && !t.splitsOnDeath() &&
+                  std::fabs(t.maxHealth - p.maxHealth * 0.35f) < 1e-3f && t.health == t.maxHealth &&
+                  std::fabs(t.scale - 0.75f) < 1e-4f && t.targetable();
+        ok &= tw.size() == 2 && glm::length(tw[0].position - tw[1].position) > 2.f;
+        CHECK(ok, "into two plain copies at 35% health, three-quarter size, apart, that don't split again");
+        CHECK(std::fabs(tw[0].radius() - p.radius() * 0.75f) < 1e-4f, "a copy's hitbox is smaller too");
+        std::vector<BoxInstance> big, small;
+        Enemy pb = p; pb.spawnTimer = 0.f;
+        buildEnemy(pb, 0.f, big); buildEnemy(tw[0], 0.f, small);
+        float hb = 0.f, hs = 0.f;
+        for (auto& b : big) hb = std::max(hb, b.model[3].y);
+        for (auto& b : small) hs = std::max(hs, b.model[3].y);
+        CHECK(hs < hb * 0.85f, "and drawn smaller");
+    }
+
     // ---------------------------------------------------------------- the Gauntlet (FAST)
     LevelData D = buildGauntlet();
     SpatialGrid dgrid; dgrid.build(D.walls);

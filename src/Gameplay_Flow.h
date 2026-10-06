@@ -170,7 +170,7 @@ inline void GameplayState::enterArena(int a) {
         player.camera.yaw = g_devCamYaw; player.camera.pitch = g_devCamPitch;
         prevCamPos = g_devCamPos;
     }
-    enemies.clear();
+    enemies.clear(); pendingTwins.clear();
     for (auto& p : projSystem.pool) p.alive = false;
     fx.clear(); pickups.clear(); pendingBlasts.clear();
     sov.clear(); lastStand = false; lastStandT = 0.f;

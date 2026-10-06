@@ -229,6 +229,7 @@ struct Enemy {
         haloOpenTimer = 2.f;
         stagger(0.4f);
     }
+    bool  splitsOnDeath() const { return hollow == Hollow::TWINNED; }
     float damageMult() const { return hollow == Hollow::ENRAGED ? 1.25f : 1.f; }   // what its attacks deal
     void setHollow(Hollow h) {
         hollow = canBeHollow(type) ? h : Hollow::NONE;
@@ -1371,6 +1372,22 @@ private:
         }
     }
 };
+
+// A TWINNED enemy's two copies: plain, 35% of its health, three-quarter size,
+// either side of where it fell, ready to fight at once
+inline std::vector<Enemy> twinsOf(const Enemy& p) {
+    std::vector<Enemy> out;
+    glm::vec3 side{std::cos(p.yaw), 0.f, -std::sin(p.yaw)};
+    for (float s : {-1.f, 1.f}) {
+        Enemy t(p.type, p.position + side * (1.2f * s), p.floorY);
+        t.maxHealth = t.health = p.maxHealth * 0.35f;
+        t.scale = 0.75f;
+        t.yaw = t.prevYaw = p.yaw;
+        t.state = EnemyState::ACTIVE; t.spawnTimer = 0.f;
+        out.push_back(t);
+    }
+    return out;
+}
 
 // CONDUCTORs: each tethers up to three allies within CONDUCTOR_RANGE (the
 // nearest that aren't already tethered; never a boss, a conduit or another
