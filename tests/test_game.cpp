@@ -142,6 +142,10 @@ int main() {
     // ---------------------------------------------------------------- arena map
     {
         CHECK(L.arenas.size() == 5, "five arenas");
+        // Act I as built before the Act II split: nothing added, nothing lost
+        CHECK(L.walls.size() == 252 && L.props.size() == 274 && L.neon.size() == 296 && L.shapes.size() == 0 &&
+              L.floors.size() == 13 && L.doors.size() == 8 && L.pads.size() == 29 && L.movers.size() == 13,
+              "buildAct1 builds exactly what buildLevel did");
         CHECK(L.corridors.size() == 4, "four corridors join them");
         bool groundOk = true, airOk = true, inBounds = true, starts = true, underCeiling = true;
         for (auto& a : L.arenas) {

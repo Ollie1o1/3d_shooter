@@ -578,12 +578,11 @@ struct LevelBuilder {
 };
 
 // =============================================================================
-// buildLevel() — ARENA mode
+// buildAct1() — ARENA mode (Act I)
 // =============================================================================
-inline LevelData buildLevel() {
+inline void buildAct1(LevelBuilder& B) {
     using glm::vec3;
-    LevelData L;
-    LevelBuilder B{L};
+    LevelData& L = B.L;
     auto aabb = &LevelBuilder::aabb;
     auto wall = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { return B.wall(x0,y0,z0,x1,y1,z1,c); };
     auto prop = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { B.prop(x0,y0,z0,x1,y1,z1,c); };
@@ -1295,6 +1294,12 @@ inline LevelData buildLevel() {
             {0.16f,0.04f,0.04f}, 0.007f };
         L.arenas.push_back(std::move(a));
     }
+}
 
+// ARENA mode's level: Act I alone
+inline LevelData buildLevel() {
+    LevelData L;
+    LevelBuilder B{L};
+    buildAct1(B);
     return L;
 }
