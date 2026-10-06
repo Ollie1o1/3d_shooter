@@ -39,7 +39,7 @@ inline void GameplayState::breakHalo(Enemy& e) {
     fx.spawnBurst(at, {1.f, 0.8f, 0.3f}, 36, 9.f, 0.5f, 6.f);
     styleSystem.addStyle(40.f, StyleSource::PARRY);
     ui.feed("HALO BROKEN", {1.f, 0.85f, 0.3f});
-    audio.playAt("parry", at, 90, SoundGroup::ENEMY);
+    audio.playAt("parry", at, 90, SoundGroup::ENEMY, false, 0.5f);   // the halo breaking: heard from any range
 }
 
 inline bool GameplayState::anchoredAt(glm::vec3 feet) const {
@@ -377,7 +377,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     float hm = e.hollow != Hollow::NONE ? 1.5f : 1.f;   // a Hollowed kill is worth more
     styleSystem.addStyle((src == StyleSource::FRIENDLY || src == StyleSource::ENVIRONMENT ? 15.f : 30.f) * hm, src);
     styleSystem.heal(5.f * tune().heal);
-    audio.playAt("enemy_death", e.position + glm::vec3{0, e.height() * 0.5f, 0}, 128, SoundGroup::ENEMY);
+    audio.playAt("enemy_death", e.position + glm::vec3{0, e.height() * 0.5f, 0}, 128, SoundGroup::ENEMY, false, 0.5f);   // a kill confirms at any range
     fx.spawnDeathParticles(e.position + glm::vec3{0, e.height() * 0.5f, 0}, e.stats().color);
     spawnDebrisFor(e);
     if (styleSystem.overdrive) dashCharges = 2;
@@ -643,7 +643,7 @@ inline void GameplayState::fireWeapon(int w) {
             if (e.deflects(dir, hits[k].t)) {
                 fx.spawnHitSparks(at, {1.f, 0.85f, 0.4f});
                 fx.spawnBurst(at, {1.f, 0.8f, 0.35f}, 10, 6.f, 0.3f, 10.f);
-                audio.playAt("clank", at, 100, SoundGroup::ENEMY, true);
+                audio.playAt("clank", at, 100, SoundGroup::ENEMY, true, 0.6f);   // the deflect is the tell: GET CLOSE
                 e.onDeflect();
                 if (deflectHints < 2) { ++deflectHints; ui.toast("DEFLECTED", "GET CLOSE - HIT HIM AS HE STRIKES", {1.f, 0.8f, 0.3f}, 1.8f); }
                 anyHit = true;

@@ -41,6 +41,7 @@ public:
         bool       priority   = false;               // never stolen by a non-priority sound
         bool       positional = false;               // placed at pos in the world
         glm::vec3  pos{0.f};
+        float      floor      = 0.f;                 // positional: never quieter than this (a must-hear cue)
     };
 
     explicit SfxMixer(float sampleRate = 44100.f, uint32_t seed = 0x9E3779B9u) : rng(seed ? seed : 1u) {
@@ -104,7 +105,7 @@ public:
         c.sample = ids[pick];
         c.pitch = 1.f + (ui ? 0.01f : 0.04f) * uni();
         c.gain  = o.volume * (ui ? 1.f : dbToLin(1.5f * uni()));
-        c.group = o.group; c.priority = o.priority; c.positional = o.positional; c.a = o.pos;
+        c.group = o.group; c.priority = o.priority; c.positional = o.positional; c.a = o.pos; c.x = o.floor;
         lastPitch = c.pitch; lastPick = pick;
         return push(c) ? c.serial : 0;
     }
@@ -138,6 +139,13 @@ public:
         return false;
     }
     float duckLevel() const { return duckGain; }
+    int reverbSubnormals() const {
+        auto sub = [](float x) { return x != 0.f && std::fabs(x) < 1.17549435e-38f; };
+        int n = 0;
+        for (const auto* bank : {&combL, &combR}) for (const auto& c : *bank) { n += sub(c.store); for (float x : c.buf) n += sub(x); }
+        for (const auto* bank : {&apL, &apR}) for (const auto& a : *bank) for (float x : a.buf) n += sub(x);
+        return n;
+    }
     int active(SoundGroup g) const {
         int n = 0;
         for (const auto& v : voices) n += v.active && v.group == g;
@@ -165,6 +173,7 @@ private:
         float      curL = 0.f, curR = 0.f, lp = 1.f;   // smoothed gains and low-pass coefficient
         float      z = 0.f;                            // low-pass state
         float      loud = 0.f;                         // last target level (for stealing)
+        float      floor = 0.f;                        // positional: lowest distance attenuation
     };
     struct Listener { glm::vec3 pos{0.f}, right{1.f, 0.f, 0.f}, fwd{0.f, 0.f, -1.f}; };
 
@@ -191,7 +200,9 @@ private:
         float process(float in, float fb, float damp) {
             float out = buf[idx];
             store = out * (1.f - damp) + store * damp;
-            buf[idx] = in + store * fb;
+            if (std::fabs(store) < 1e-15f) store = 0.f;   // let the tail reach true zero: denormals are slow on x86 / wasm
+            float w = in + store * fb;
+            buf[idx] = std::fabs(w) < 1e-15f ? 0.f : w;
             if (++idx >= (int)buf.size()) idx = 0;
             return out;
         }
@@ -200,7 +211,8 @@ private:
         std::vector<float> buf; int idx = 0;
         float process(float in) {
             float b = buf[idx], out = b - in;
-            buf[idx] = in + b * 0.5f;
+            float w = in + b * 0.5f;
+            buf[idx] = std::fabs(w) < 1e-15f ? 0.f : w;
             if (++idx >= (int)buf.size()) idx = 0;
             return out;
         }
@@ -273,7 +285,7 @@ private:
         v = Voice{};
         v.active = true; v.priority = c.priority; v.positional = c.positional;
         v.serial = c.serial; v.sample = c.sample; v.group = c.group;
-        v.pitch = c.pitch; v.gain = c.gain; v.at = c.a; v.loud = c.gain;
+        v.pitch = c.pitch; v.gain = c.gain; v.at = c.a; v.loud = c.gain; v.floor = c.x;
     }
 
     // Target left/right gain and low-pass coefficient for a voice right now:
@@ -285,19 +297,24 @@ private:
         if (!v.positional) { L = R = g; return; }
         glm::vec3 d = v.at - lis.pos;
         float dist = glm::length(d);
-        if (!(dist < MAX_DIST)) { L = R = 0.f; return; }
-        g *= REF_DIST / (REF_DIST + ROLLOFF * std::max(0.f, dist - REF_DIST));
-        g *= std::min(1.f, (MAX_DIST - dist) / 10.f);
+        float att = 0.f;
+        if (dist < MAX_DIST)
+            att = REF_DIST / (REF_DIST + ROLLOFF * std::max(0.f, dist - REF_DIST)) * std::min(1.f, (MAX_DIST - dist) / 10.f);
+        att = std::max(att, v.floor);   // a must-hear cue never fades below its floor
+        if (!(att > 0.f)) { L = R = 0.f; return; }
+        g *= att;
         float pan = 0.f, behind = 0.f;
         if (dist > 0.5f) {
             glm::vec3 nd = d / dist;
             pan = glm::clamp(glm::dot(nd, lis.right), -1.f, 1.f);
             behind = std::max(0.f, -glm::dot(nd, lis.fwd));
         }
+        // a floored cue also sounds no further off than where its floor takes over
+        float audible = v.floor > 0.f ? std::min(dist, REF_DIST / v.floor) : dist;
         float th = (pan + 1.f) * 0.78539816f;   // 0 (hard left) .. pi/2 (hard right)
         L = g * std::min(1.f, 1.41421356f * std::cos(th));
         R = g * std::min(1.f, 1.41421356f * std::sin(th));
-        float fc = 18000.f * std::pow(2500.f / 18000.f, dist / MAX_DIST) * (1.f - 0.5f * behind);
+        float fc = 18000.f * std::pow(2500.f / 18000.f, std::min(audible, MAX_DIST) / MAX_DIST) * (1.f - 0.5f * behind);
         fc = std::min(fc, 0.45f * rate);
         lp = 1.f - std::exp(-6.2831853f * fc / rate);
     }

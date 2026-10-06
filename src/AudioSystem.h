@@ -83,12 +83,13 @@ public:
         SfxMixer::Opts o; o.volume = volume / 128.f * masterVolume; o.group = g; o.priority = priority;
         return sfx.play(name, o);
     }
-    // Placed in the world: louder near, panned to its side, darker far away / behind
+    // Placed in the world: louder near, panned to its side, darker far away / behind.
+    // floor (0..1): a must-hear cue (a kill, a deflect) never fades below it
     SoundHandle playAt(const std::string& name, glm::vec3 pos, int volume = 128, SoundGroup g = SoundGroup::WORLD,
-                       bool priority = false) {
+                       bool priority = false, float floor = 0.f) {
         if (!initialized) return 0;
         SfxMixer::Opts o; o.volume = volume / 128.f * masterVolume; o.group = g; o.priority = priority;
-        o.positional = true; o.pos = pos;
+        o.positional = true; o.pos = pos; o.floor = floor;
         return sfx.play(name, o);
     }
     void moveSource(SoundHandle h, glm::vec3 p) { if (initialized) sfx.move(h, p); }

@@ -26,6 +26,7 @@
 #include "../src/SfxMixer.h"
 #include <cstdio>
 #include <cstring>
+#include <limits>
 #include <map>
 #include <tuple>
 #include <functional>
@@ -2357,6 +2358,38 @@ int main() {
             m.play("noise", o);
             auto b = sfxRender(m, 4800);
             CHECK(silent && sfxFinite(b) && sfxRms(b, 1) > 3.f * sfxRms(b, 0), "at 48 kHz: silent when idle, panned when not");
+        }
+        {   // after a sound dies away the reverb settles to true zero (subnormals cost x86 / wasm dearly)
+            SfxMixer m(44100.f, 3); m.addSound("blip", sfxNoise(2205)); m.setSpace(ReverbSpace::HALL);
+            sfxRender(m, 66150);
+            m.play("blip", SfxMixer::Opts{1.f, SoundGroup::WORLD});
+            for (int k = 0; k < 60; ++k) sfxRender(m, 44100);
+            CHECK(m.reverbSubnormals() == 0, "a minute after a sound, the reverb holds no denormals");
+        }
+        {   // a NaN anywhere (listener, music) never kills the audio, even built with -ffast-math
+            SfxMixer m(44100.f, 3); m.addSound("noise", sfxNoise(44100));
+            float nan = std::numeric_limits<float>::quiet_NaN();
+            m.setListener({nan, 0.f, 0.f}, {1.f, 0.f, 0.f}, {0.f, 0.f, -1.f});
+            SfxMixer::Opts o; o.group = SoundGroup::WORLD; o.positional = true; o.pos = {3.f, 0.f, 0.f};
+            m.play("noise", o);
+            auto bad = sfxRender(m, 4410, nan);
+            m.setListener({0.f, 0.f, 0.f}, {1.f, 0.f, 0.f}, {0.f, 0.f, -1.f});
+            m.play("noise", o);
+            auto good = sfxRender(m, 4410);
+            CHECK(sfxFinite(bad) && sfxPeak(bad) <= 1.f, "NaN in (listener or music): finite, bounded out");
+            CHECK(sfxFinite(good) && sfxRms(good, 1) > 0.05f, "...and the next sound plays normally");
+        }
+        {   // a level floor keeps a must-hear cue (a kill far away) audible
+            auto lvl = [](float d, float floor) {
+                SfxMixer m(44100.f, 3); m.addSound("noise", sfxNoise(44100));
+                m.setListener({0.f, 0.f, 0.f}, {1.f, 0.f, 0.f}, {0.f, 0.f, -1.f});
+                SfxMixer::Opts o; o.group = SoundGroup::ENEMY; o.positional = true; o.pos = {0.f, 0.f, -d}; o.floor = floor;
+                m.play("noise", o);
+                return sfxRms(sfxRender(m, 4410), 0);
+            };
+            float near = lvl(4.f, 0.f), far = lvl(60.f, 0.f), floored = lvl(60.f, 0.5f), beyond = lvl(120.f, 0.5f);
+            CHECK(far < 0.15f * near && floored > 0.4f * near, "a floored cue at 60 m stays at least half as loud as up close");
+            CHECK(beyond > 0.3f * near, "...even past 90 m");
         }
     }
 

@@ -13,7 +13,7 @@ inline void GameplayState::updateShifts(float dt) {
     if (sa.shift == ArenaShift::SOLAR && director.fighting() && !playerDead) {
         FlarePhase ph = shifts.flarePhase();
         if (ph == FlarePhase::WARN && flarePrev != FlarePhase::WARN) {
-            audio.playAt("telegraph", sa.sunPos, 110, SoundGroup::WORLD);
+            audio.play("telegraph", 110, SoundGroup::UI);   // a hazard warning: never quiet, never ducked
             if (!flareIntroduced) {
                 flareIntroduced = true;
                 pushBanner("THE SUN FLARES", "GET BEHIND A PILLAR - OR LURE THEM INTO IT", {1.f, 0.75f, 0.3f}, 2.8f);
