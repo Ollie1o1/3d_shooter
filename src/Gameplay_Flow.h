@@ -98,7 +98,6 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     // ACT II is a preview: unranked until the whole act exists
     ranked = (start == 0 || endless()) && g_startWave <= 0 && !g_godMode && !g_practice && !g_devCam && !act2();
     enterArena(start);
-    if (act2()) beginAct2();
     director.wave = glm::clamp(g_startWave, 0, director.waveCount() - 1);
     if (fast()) ghost.load();
     if (fast() && start == 0) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
@@ -125,6 +124,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     prevCamPos = player.camera.position;
 
     captureMouse(true);
+    if (act2()) beginAct2();   // after the capture: the armory frees the mouse to shop with
 }
 
 inline GameplayState::~GameplayState() {
@@ -243,11 +243,11 @@ inline void GameplayState::newRun() {
     if (fast()) ghost.load();
     if (endless()) setupEndless();
     enterArena(endless() ? endlessArena : 0);
-    if (act2()) beginAct2();
     bankedStyle = bankedDamage = 0.f;   // after enterArena: that banked the last run's
     wavesCleared = 0;
     if (fast()) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
     captureMouse(true);
+    if (act2()) beginAct2();   // after the capture: the armory frees the mouse to shop with
 }
 
 // ACT II: the head start (what an Act I run has by the Sanctum), spent in the

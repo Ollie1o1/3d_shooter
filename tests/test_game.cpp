@@ -340,6 +340,49 @@ int main() {
         CHECK(p.position.y + p.eyeHeight > -57.4f && p.onGround, "dropped into deep water, you wade with your eyes above it");
     }
 
+    // ---------------------------------------------------------------- sliding in and out of deep water
+    {
+        LevelData W;
+        W.basins.push_back({LevelBuilder::aabb(-100, 0, -100, 100, 0, 100), -60.f});
+        W.water.push_back({LevelBuilder::aabb(-100, -60, -100, 100, -60, 100), -57.4f});   // 2.6 m deep
+        const float surf = -57.4f;
+        Player p({0.f, -59.f, 0.f});
+        Uint8 k[SDL_NUM_SCANCODES]; std::memset(k, 0, sizeof(k));
+        for (int i = 0; i < 60; ++i) { applyWater(p, W); p.update(DT, k, nullptr, 0); }
+        k[SDL_SCANCODE_W] = 1;
+        for (int i = 0; i < 60; ++i) { applyWater(p, W); p.update(DT, k, nullptr, 0); }
+        k[SDL_SCANCODE_LCTRL] = 1;
+        float minEye = 1e9f; bool slid = false;
+        for (int i = 0; i < 20; ++i) {
+            applyWater(p, W); p.update(DT, k, nullptr, 0);
+            slid |= p.sliding; minEye = std::min(minEye, p.camera.position.y - surf);
+        }
+        k[SDL_SCANCODE_LCTRL] = 0;
+        int airborne = 0;
+        for (int i = 0; i < 20; ++i) {
+            applyWater(p, W); p.update(DT, k, nullptr, 0);
+            airborne += !p.onGround; minEye = std::min(minEye, p.camera.position.y - surf);
+        }
+        std::printf("      deep-water slide: lowest eye %.2f m over the surface, %d ticks airborne after it\n", minEye, airborne);
+        CHECK(slid && minEye > 0.f, "starting and ending a slide in deep water never puts the camera under the surface");
+        CHECK(airborne == 0, "standing up out of a skim keeps you on your feet (your jump isn't lost)");
+    }
+
+    // ---------------------------------------------------------------- flyers below Y 0
+    {
+        Enemy hi(EnemyType::RAPTOR, {0.f, -47.f, 0.f}, -60.f), lo(EnemyType::RAPTOR, {0.f, -60.f, 0.f}, -60.f);
+        Enemy act1(EnemyType::RAPTOR, {0.f, 12.f, 0.f}), act1lo(EnemyType::RAPTOR, {0.f, 0.f, 0.f});
+        CHECK(std::fabs(hi.hoverY - 13.f) < 1e-4f && std::fabs(lo.hoverY - 8.f) < 1e-4f,
+              "a flyer in Act II hovers at its spawn height over the Nave's floor (8 m if it spawned low)");
+        CHECK(std::fabs(act1.hoverY - 12.f) < 1e-4f && std::fabs(act1lo.hoverY - 8.f) < 1e-4f, "Act I flyers hover as before");
+        hi.state = EnemyState::ACTIVE;
+        EnemyWorld w; w.playerFeet = {30.f, -60.f, 0.f}; w.playerEye = w.playerFeet + glm::vec3{0, 1.7f, 0};
+        w.bounds = LevelBuilder::aabb(-49, -60, -50, 49, -34, 50);
+        float maxY = -1e9f;
+        for (int i = 0; i < 60 * 2; ++i) { hi.floorY = -60.f; hi.update(DT, w); maxY = std::max(maxY, hi.position.y); }
+        CHECK(maxY < -42.f, "it doesn't climb to the ceiling");
+    }
+
     // ---------------------------------------------------------------- the flood
     {
         LevelData Fd;

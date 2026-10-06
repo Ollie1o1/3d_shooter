@@ -280,8 +280,8 @@ struct LevelData {
             if (x >= b.xz.min.x && x <= b.xz.max.x && z >= b.xz.min.z && z <= b.xz.max.z) return b.y;
         return 0.f;
     }
-    static constexpr float WADE_MAX   = 1.5f;   // feet never deeper than this under the surface
-    static constexpr float SKIM_DEPTH = 0.3f;   // a slide planes this far under it
+    static constexpr float WADE_MAX   = Player::WADE_MAX;     // feet never deeper than this under the surface
+    static constexpr float SKIM_DEPTH = Player::SKIM_DEPTH;   // a slide planes this far under it
     // The water's surface over (x, z), or -1e9 where it's dry
     float waterSurfaceAt(float x, float z) const {
         float s = -1e9f;
@@ -422,6 +422,14 @@ struct LevelData {
         return -1;
     }
 };
+
+// Before Player::update(): the floor and water where the player stands
+inline void applyWater(Player& p, const LevelData& L) {
+    float surf = L.waterSurfaceAt(p.position.x, p.position.z);
+    p.wadeDepth = std::max(0.f, surf - p.position.y);
+    p.waterSurface = surf;
+    p.floorY = L.baseFloor(p.position.x, p.position.z);   // the Player adds the water's lift itself
+}
 
 // Inside a boost tube the player is driven along it at (at least) its speed
 // and straightened up; a vertical one is a lift shaft that also draws you to

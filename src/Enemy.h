@@ -221,7 +221,7 @@ struct Enemy {
     float progressAt = 0.f, detourUntil = -1.f, detourSign = 1.f;
     glm::vec3 detourDir{0.f};
     float noLosTimer  = 0.f;      // > 0: reposition to find a clear shot
-    float hoverY      = 8.f;
+    float hoverY      = 8.f;   // flyers: height kept above floorY
     float orbitRadius = 12.f;
 
     // Animation / feedback
@@ -266,14 +266,15 @@ struct Enemy {
 
     EnemyEvents ev;
 
-    Enemy(EnemyType t, glm::vec3 pos) : type(t), position(pos), prevPosition(pos) {
+    Enemy(EnemyType t, glm::vec3 pos, float floor = 0.f) : type(t), position(pos), prevPosition(pos) {
+        floorY = floor;
         const EnemyStats& s = statsOf(t);
         health = maxHealth = s.health;
         attackTimer = frand(0.f, s.attackEvery * 0.6f);   // desync the squad
         strafeDir   = (rand() & 1) ? 1.f : -1.f;
         animPhase   = frand(0.f, 6.28f);
         if (s.flying) {
-            hoverY      = pos.y > 2.f ? pos.y : 8.f;
+            hoverY      = pos.y - floor > 2.f ? pos.y - floor : 8.f;   // above the floor under it
             orbitRadius = frand(9.f, 15.f);
         }
     }
@@ -706,7 +707,7 @@ private:
         glm::vec3 mv = norm2(side * strafeDir + dir * radial);
         velocity.x = mv.x * stats().speed;
         velocity.z = mv.z * stats().speed;
-        float targetY = recoverTimer > 0.f ? hoverY + 2.f : hoverY;
+        float targetY = floorY + (recoverTimer > 0.f ? hoverY + 2.f : hoverY);
         velocity.y = glm::clamp((targetY - position.y) * 3.f, -8.f, 8.f);
         turnToward(glm::vec3{velocity.x, 0.f, velocity.z}, dt, 5.f);
 

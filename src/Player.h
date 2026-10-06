@@ -150,6 +150,13 @@ public:
 
     // Water above the feet (set by the caller): walking slows, sliding doesn't
     float wadeDepth = 0.f;
+    // The water's surface over the player (-1e9: dry), set by the caller.
+    // Deep water holds the feet WADE_MAX under it; a slide planes SKIM_DEPTH
+    // under it; standing up out of a skim settles back down on your feet.
+    float waterSurface = -1e9f;
+    static constexpr float WADE_MAX   = 1.5f;
+    static constexpr float SKIM_DEPTH = 0.3f;
+    float waterSink = WADE_MAX;   // how far under the surface the feet are held right now
     // Ground speed multiplier for a wading depth: none under 0.1 m, -20% at
     // 0.4 m, -45% from 1 m down
     static float wadeFactor(float d) {
@@ -250,6 +257,7 @@ private:
             if (crouchKey && onGround && flatSpeed > horizontalSpeed * wadeFactor(wadeDepth) * 0.6f) {
                 sliding    = true;
                 slideTimer = SLIDE_DURATION * (wadeDepth >= 0.1f ? 1.3f : 1.f);   // water carries a slide further
+                waterSink  = SKIM_DEPTH;   // up onto the surface this tick: the camera never dips under
                 // Boost in current travel direction; at least SLIDE_SPEED.
                 glm::vec3 slideDir = glm::normalize(hVelFlat);
                 float boostSpd     = glm::max(flatSpeed, SLIDE_SPEED);
@@ -357,8 +365,13 @@ private:
     void resolveCollisions(const Wall* walls, int wallCount,
                            const SpatialGrid* grid = nullptr) {
         groundWall = -1;
-        if (position.y < floorY) {
-            position.y = floorY;
+        bool wasGrounded = onGround;
+        bool settling = !sliding && waterSink < WADE_MAX;   // standing up out of a skim
+        if (!sliding) waterSink = std::min(WADE_MAX, waterSink + 0.1f);
+        float floor = std::max(floorY, waterSurface - waterSink);
+        if (position.y < floor ||
+            (settling && wasGrounded && velocity.y <= 0.f && position.y - floor < 0.2f)) {
+            position.y = floor;
             velocity.y = 0.f;
             onGround   = true;
         } else {
@@ -379,7 +392,7 @@ private:
         for (int idx : candidates)
             if (resolveAABB(walls[idx].box)) groundWall = idx;
 
-        if (position.y <= floorY + 0.001f) onGround = true;
+        if (position.y <= floor + 0.001f) onGround = true;
 
         // Ground probe: gravity is skipped while grounded, so a player resting
         // on a box top never penetrates it on the next tick and would otherwise
