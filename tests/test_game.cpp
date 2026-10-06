@@ -24,6 +24,7 @@
 #include "../src/EndlessWaves.h"
 #include "../src/SovereignHazards.h"
 #include "../src/SfxMixer.h"
+#include "../src/PenitentHazards.h"
 #include <cstdio>
 #include <cstring>
 #include <limits>
@@ -2626,6 +2627,51 @@ int main() {
         glm::vec3 wc = (wound.min + wound.max) * 0.5f;
         CHECK(w && glm::dot(glm::vec2{wc.x - p.position.x, wc.z - p.position.z}, glm::vec2{back.x, back.z}) > 0.5f,
               "PENITENT: scourging, the wound is on its back");
+    }
+
+    // ---------------------------------------------------------------- the Penitent's hazards
+    {
+        using PH = PenitentHazards;
+        const glm::vec3 c{0.f, -240.f, -864.f};
+        const float yaw = 3.14159265f;   // facing +Z... (yaw 0 faces +Z): yaw pi faces -Z; the player is at +Z, so use 0
+        const glm::vec3 front = c + glm::vec3{0.f, 0.f, 8.f};
+        CHECK(PH::sweepHits(0, c, 0.f, 16.f, front, 1.8f, -240.f), "a low sweep hits you standing");
+        CHECK(!PH::sweepHits(0, c, 0.f, 16.f, front + glm::vec3{0, 1.2f, 0}, 1.8f, -240.f), "...and passes under you mid-jump");
+        CHECK(PH::sweepHits(1, c, 0.f, 16.f, front, 1.8f, -240.f), "a high sweep hits you standing");
+        CHECK(PH::sweepHits(1, c, 0.f, 16.f, front + glm::vec3{0, 1.2f, 0}, 1.8f, -240.f), "...and mid-jump");
+        CHECK(!PH::sweepHits(1, c, 0.f, 16.f, front, 0.9f, -240.f), "...but passes over you sliding");
+        CHECK(!PH::sweepHits(0, c, 0.f, 16.f, c + glm::vec3{0, 0, -8.f}, 1.8f, -240.f), "a sweep misses behind it");
+        CHECK(!PH::sweepHits(0, c, 0.f, 16.f, c + glm::vec3{0, 0, 17.f}, 1.8f, -240.f), "...and beyond its reach");
+        (void)yaw;
+        // A slam ring hits once, as its edge passes; not if you're in the air
+        PH h; h.addRing(c, PH::SLAM_RADIUS, PH::SLAM_DAMAGE, 0);
+        int hits = 0; float t = 0.f;
+        for (int i = 0; i < 120; ++i) { auto hs = h.update(DT, c + glm::vec3{0, 0, 8.f}, -240.f); hits += (int)hs.size(); t += DT; }
+        PH j; j.addRing(c, PH::SLAM_RADIUS, PH::SLAM_DAMAGE, 0);
+        int airHits = 0;
+        for (int i = 0; i < 120; ++i) airHits += (int)j.update(DT, c + glm::vec3{0, 1.5f, 8.f}, -240.f).size();
+        CHECK(hits == 1 && airHits == 0 && h.rings.empty(), "a slam's ring hits you once on the floor, never in the air, then is gone");
+        // The lash: warned, then it hits along its line (and only there)
+        PH l; l.addLash(c, {0.f, 0.f, 1.f}, true);
+        int before = 0, on = 0;
+        for (int i = 0; i < 30; ++i) before += (int)l.update(DT, c + glm::vec3{0, 0, 20.f}, -240.f).size();   // 0.5 s: still the warning
+        std::vector<PH::Hit> hs;
+        for (int i = 0; i < 30; ++i) { auto x = l.update(DT, c + glm::vec3{0.5f, 0, 20.f}, -240.f); on += (int)x.size(); if (!x.empty()) hs = x; }
+        PH l2; l2.addLash(c, {0.f, 0.f, 1.f}, false);
+        int off = 0;
+        for (int i = 0; i < 60; ++i) off += (int)l2.update(DT, c + glm::vec3{5.f, 0, 20.f}, -240.f).size();
+        CHECK(before == 0 && on == 1 && off == 0 && !hs.empty() && hs[0].yank && std::fabs(hs[0].damage - 35.f) < 1e-4f,
+              "the lash waits out its warning, hits once along its line (and can yank), misses beside it");
+        // Incense: harmless while it lands, 20/s inside, nothing outside, gone after 8 s
+        PH p; p.addPool(c);
+        float in = 0.f, out = 0.f;
+        for (int i = 0; i < 60 * 9; ++i) {
+            for (auto& x : p.update(DT, c + glm::vec3{1.f, 0, 0}, -240.f)) in += x.damage;
+        }
+        PH q; q.addPool(c);
+        for (int i = 0; i < 60 * 9; ++i) for (auto& x : q.update(DT, c + glm::vec3{5.f, 0, 0}, -240.f)) out += x.damage;
+        CHECK(std::fabs(in - 20.f * (8.f - 0.6f)) < 6.f && out == 0.f && p.pools.empty(),
+              "incense burns 20/s inside it after landing, nothing outside, and fades after 8 s");
     }
 
     // ---------------------------------------------------------------- mouse filter
