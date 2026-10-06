@@ -198,12 +198,29 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         if (footstepTimer <= 0.f) {
             footstepTimer = glm::clamp(0.55f / (playerXZSpeed / 5.f), 0.2f, 0.5f);
             static const char* STEPS[] = {"step1", "step2", "step3", "step4"};
-            audio.play(STEPS[rand() % 4], 55);
+            if (player.wadeDepth >= 0.1f) audio.play("wade", 60);
+            else audio.play(STEPS[rand() % 4], 55);
         }
     } else {
         footstepTimer = 0.f;
     }
     if (justLanded && !slamming) audio.play("land", 70);
+    // Water: a splash on landing in it, spray and a hiss while a slide skims it
+    if (justLanded && player.wadeDepth >= 0.1f) {
+        fx.spawnBurst(player.position + glm::vec3{0, 0.1f, 0}, {0.6f, 0.85f, 0.9f}, 20, 6.f, 0.5f, 9.f);
+        audio.play("wade", 90);
+    }
+    bool skimming = player.sliding && player.onGround &&
+                    level.waterSurfaceAt(player.position.x, player.position.z) > player.position.y + 0.05f;
+    if (skimming) {
+        skimTimer -= dt;
+        if (skimTimer <= 0.f) {
+            skimTimer = 0.18f;
+            fx.spawnBurst(player.position + glm::vec3{0, 0.25f, 0}, {0.6f, 0.85f, 0.9f}, 6, 4.f, 0.35f, 9.f);
+            static int hiss = 0;
+            if (hiss++ % 3 == 0) audio.play("skim", 70);
+        }
+    } else skimTimer = 0.f;
 
     // --- Weapons ---
     grenadeTimer = std::max(0.f, grenadeTimer - dt);

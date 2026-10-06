@@ -496,6 +496,8 @@ inline void GameplayState::render() {
         boxRenderer.draw(boxes);
     }
 
+    renderWater(view, proj, th, renderCamPos);
+
     worldShader.use();
     worldShader.setMat4("model", glm::mat4(1.f));
     grapple.drawLine(renderCamPos, view, proj);
@@ -603,6 +605,43 @@ inline void GameplayState::drawPoints(const PVert* buf, int count, const glm::ma
 #ifndef __EMSCRIPTEN__
     glDisable(GL_PROGRAM_POINT_SIZE);
 #endif
+    glDepthMask(GL_TRUE);
+    glDisable(GL_BLEND);
+    glEnable(GL_CULL_FACE);
+}
+
+// Standing water: one translucent quad per volume at its current level, lit
+// red from beneath and pale where the eclipse light falls on it
+inline void GameplayState::renderWater(const glm::mat4& view, const glm::mat4& proj, const Theme& th, glm::vec3 camPos) {
+    if (level.water.empty()) return;
+    static float buf[MAX_WATER * 18];
+    int n = 0;
+    for (auto& w : level.water) {
+        if (n + 18 > MAX_WATER * 18) break;
+        float x0 = w.box.min.x, x1 = w.box.max.x, z0 = w.box.min.z, z1 = w.box.max.z, y = w.level;
+        const float q[18] = {x0,y,z0, x1,y,z1, x1,y,z0,  x0,y,z0, x0,y,z1, x1,y,z1};
+        std::memcpy(buf + n, q, sizeof(q)); n += 18;
+    }
+    glBindBuffer(GL_ARRAY_BUFFER, waterVBO);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, n * sizeof(float), buf);
+    waterShader.use();
+    waterShader.setMat4("projection", proj);
+    waterShader.setMat4("view", view);
+    waterShader.setFloat("uTime", gameClock);
+    waterShader.setVec3("uViewPos", camPos);
+    waterShader.setVec3("uDeep", {0.03f, 0.1f, 0.11f});
+    waterShader.setVec3("uGlow", {0.55f, 0.07f, 0.04f});
+    waterShader.setVec3("uFogColor", th.fogColor);
+    waterShader.setFloat("uFogDensity", th.fogDensity);
+    waterShader.setVec2("uShaftXZ", {0.f, -607.f});   // the Nave's crossing
+    waterShader.setFloat("uShaftR", 4.f);
+    glDisable(GL_CULL_FACE);
+    glDepthMask(GL_FALSE);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBindVertexArray(waterVAO);
+    glDrawArrays(GL_TRIANGLES, 0, n / 3);
+    glBindVertexArray(0);
     glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
     glEnable(GL_CULL_FACE);

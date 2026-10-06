@@ -464,7 +464,7 @@ private:
 
     // Is there something to stand on under p (within a step of its height)?
     bool supportedAt(glm::vec3 p, const EnemyWorld& w) const {
-        if (p.y < 0.3f || !w.walls) return true;   // the world floor
+        if (p.y < floorY + 0.3f || !w.walls) return true;   // the floor under it (Y 0, or a basin's)
         AABB q{p + glm::vec3{-0.05f, -1.4f, -0.05f}, p + glm::vec3{0.05f, 0.6f, 0.05f}};
         static std::vector<int> cands;
         if (w.grid) w.grid->query(q, cands);
@@ -479,7 +479,7 @@ private:
 
     bool canStepTo(glm::vec3 p, const EnemyWorld& w) const {
         if (blockedAt(p, w)) return false;
-        return !(ledgeAware() && position.y > 0.3f && !supportedAt(p, w));
+        return !(ledgeAware() && position.y > floorY + 0.3f && !supportedAt(p, w));
     }
 
     // Feeler steering: if the way ahead is blocked, try turning ±45/90/135°

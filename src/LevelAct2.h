@@ -155,7 +155,13 @@ inline void buildAct2(LevelBuilder& B) {
     B.kit().curve({0.f, 0.f, -607.f}, 17.f, 0.f, 6.2831853f, F + 26.f, F + 30.f, 1.2f, boneDark, 24);
     B.kit().dome({0.f, F + 30.f, -607.f}, 17.f, boneDark, 6, 18);
     B.kit(true).rod({-3.f, F + 46.f, -607.f}, {5.f, F + 44.f, -603.f}, 0.4f, light * 0.6f, 6);   // the crack
-    B.kit(true).column({0.f, F, -607.f}, 3.4f, 46.f, light * 0.18f, 18);                          // the shaft of eclipse light
+    // the eclipse light falling through it: thin rays, slightly splayed, round a beam
+    for (int k = 0; k < 7; ++k) {
+        float ang = k * 0.8975979f;
+        vec3 top{std::cos(ang) * 1.2f, F + 44.f, -607.f + std::sin(ang) * 1.2f};
+        vec3 foot{std::cos(ang + 0.4f) * 2.8f, F + 0.2f, -607.f + std::sin(ang + 0.4f) * 2.8f};
+        B.kit(true).rod(foot, top, 0.07f + 0.03f * (k % 3), light * 0.55f, 5);
+    }
     L.gems.push_back({{0.f, F + 0.4f, -607.f}, light, 1.2f, true});
 
     // ---- the chancel and the drowned organ ----

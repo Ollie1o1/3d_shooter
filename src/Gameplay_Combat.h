@@ -109,6 +109,10 @@ inline void GameplayState::spawnEnemy(EnemyType t, glm::vec3 pos) {
     enemies.back().health = enemies.back().maxHealth;
     glm::vec3 c = statsOf(t).glow;
     fx.spawnBurst(pos + glm::vec3{0, 0.3f, 0}, c, 14, 3.f, 0.7f, -6.f);
+    if (level.waterDepthAt(pos) > 0.3f) {   // materialising in the water: a splash and a ring
+        fx.spawnBurst(pos + glm::vec3{0, 0.2f, 0}, {0.6f, 0.85f, 0.9f}, 14, 5.f, 0.45f, 9.f);
+        fx.spawnShockwave(pos, 2.5f, {0.4f, 0.8f, 0.85f});
+    }
     if (spawnSoundThisTick) return;   // a FAST section spawns a dozen at once: one sound
     spawnSoundThisTick = true;
     float d = glm::length(pos - player.position);
@@ -160,6 +164,7 @@ inline void GameplayState::updateEnemies(float dt) {
             }
         }
         if (ev.slam) {
+            if (level.waterDepthAt(epos) > 0.3f) fx.spawnBurst(epos + glm::vec3{0, 0.2f, 0}, {0.6f, 0.85f, 0.9f}, 24, 7.f, 0.6f, 9.f);
             friendlySlam(enemies[i], ev.slamRadius);
             fx.spawnShockwave(epos, ev.slamRadius, statsOf(enemies[i].type).glow);
             shake(0.35f, 0.07f);

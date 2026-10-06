@@ -307,6 +307,22 @@ int main() {
         CHECK(alive, "a shot below Y 0 but above floorY keeps flying");
     }
 
+    // ---------------------------------------------------------------- ledges below Y 0
+    {
+        // A Brute on a 6 m perch in Act II's basin holds it (treats the drop
+        // as a wall), as it would in Act I, instead of walking off
+        std::vector<Wall> walls{ Wall{ AABB{{-3.f, -61.f, -3.f}, {3.f, -54.f, 3.f}} } };
+        SpatialGrid g; g.build(walls);
+        Enemy e(EnemyType::BRUTE, {0.f, -54.f, 0.f});
+        e.state = EnemyState::ACTIVE; e.floorY = -60.f;
+        EnemyWorld w;
+        w.walls = walls.data(); w.wallCount = (int)walls.size(); w.grid = &g;
+        w.playerFeet = {16.f, -60.f, 0.f}; w.playerEye = w.playerFeet + glm::vec3{0, 1.7f, 0};
+        for (int i = 0; i < 60 * 5; ++i) e.update(DT, w);
+        std::printf("      brute on a perch below Y 0 ends at (%.1f %.1f %.1f)\n", e.position.x, e.position.y, e.position.z);
+        CHECK(e.position.y > -54.5f, "a ledge-aware enemy holds its perch below Y 0 too");
+    }
+
     // ---------------------------------------------------------------- water
     {
         LevelData W;

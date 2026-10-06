@@ -484,6 +484,30 @@ def gen_boost():
     return out
 
 
+def gen_wade():
+    """Wading: a soft low slosh with a short bright splash on top."""
+    n = n_samples(0.32)
+    noise = lowpass([white() for _ in range(n)], 900)
+    out = []
+    for i in range(n):
+        t = i / n
+        env = min(1.0, t * 20.0) * math.exp(-6.0 * t)
+        out.append(noise[i] * env * 1.6 + sine(140 - 60 * t, i) * math.exp(-14.0 * t) * 0.25)
+    return out
+
+
+def gen_skim():
+    """Skimming water on a slide: a hissing spray that rises and falls."""
+    n = n_samples(0.6)
+    noise = highpass([white() for _ in range(n)], 1800)
+    out = []
+    for i in range(n):
+        t = i / n
+        env = math.sin(math.pi * t) ** 0.6
+        out.append(noise[i] * env * 0.9)
+    return out
+
+
 def _click(out, at, freq, amp, decay=45.0, dur=0.03):
     start = n_samples(at)
     cn = n_samples(dur)
@@ -588,6 +612,8 @@ GENERATORS = {
     "eject": gen_eject,
     "shell_in": gen_shell_in,
     "pump": gen_pump,
+    "wade": gen_wade,
+    "skim": gen_skim,
 }
 
 

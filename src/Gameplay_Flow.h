@@ -19,6 +19,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     skyboxShader.loadFiles("src/skybox.vert","src/skybox.frag");
     tracerShader.loadFiles("src/tracer.vert","src/tracer.frag");
     particleShader.loadFiles("src/particle.vert","src/particle.frag");
+    waterShader.loadFiles("src/water.vert","src/water.frag");
 
     // Effects::Tracer VBO: 4 floats per vertex (xyz + alpha), dynamic
     glGenVertexArrays(1, &tracerVAO);
@@ -30,6 +31,16 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 4*sizeof(float), (void*)0);
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 1, GL_FLOAT, GL_FALSE, 4*sizeof(float), (void*)(3*sizeof(float)));
+    glBindVertexArray(0);
+
+    // Water VBO: a quad (two triangles, xyz) per volume, rebuilt each frame
+    glGenVertexArrays(1, &waterVAO);
+    glGenBuffers(1, &waterVBO);
+    glBindVertexArray(waterVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, waterVBO);
+    glBufferData(GL_ARRAY_BUFFER, MAX_WATER * 6 * 3 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3*sizeof(float), (void*)0);
     glBindVertexArray(0);
 
     // Effects::Particle VBO: [x, y, z, r, g, b, alpha] per point
@@ -121,6 +132,8 @@ inline GameplayState::~GameplayState() {
     glDeleteTextures(TEX_COUNT, worldTex);
     if (tracerVAO)   glDeleteVertexArrays(1, &tracerVAO);
     if (tracerVBO)   glDeleteBuffers(1, &tracerVBO);
+    if (waterVAO)    glDeleteVertexArrays(1, &waterVAO);
+    if (waterVBO)    glDeleteBuffers(1, &waterVBO);
     if (particleVAO) glDeleteVertexArrays(1, &particleVAO);
     if (particleVBO) glDeleteBuffers(1, &particleVBO);
     if (decalVAO)    glDeleteVertexArrays(1, &decalVAO);
@@ -139,6 +152,11 @@ inline void GameplayState::enterArena(int a) {
     // in locks when the fight starts (ARENA_START).
     for (int d = 0; d < (int)level.doors.size(); ++d) { level.doors[d].locked = false; level.setDoorInstant(d, false); }
     shifts.reset(level);   // the sun back up, the lava back down, the platforms back to speed
+    {   // a practice start at a later wave: the flood already at that wave's level
+        const Arena& fa = level.arenas[a];
+        if (g_startWave > 0 && fa.shift == ArenaShift::FLOOD && !fa.floodLevels.empty())
+            for (auto& w : level.water) w.level = fa.floodLevels[std::min(g_startWave, (int)fa.floodLevels.size() - 1)];
+    }
     level.updateMovers(moverClock);
     for (int i = 0; i < (int)level.arenas.size(); ++i) {
         const Arena& ar = level.arenas[i];

@@ -239,6 +239,10 @@ public:
     Effects       fx;          // particles, debris, decals, tracers, rings (Effects.h)
     ShaderProgram tracerShader;
     GLuint        tracerVAO = 0, tracerVBO = 0;
+    ShaderProgram waterShader;
+    GLuint        waterVAO = 0, waterVBO = 0;
+    static constexpr int MAX_WATER = 64;   // volumes drawn per frame
+    float         skimTimer = 0.f;         // spray and hiss while a slide skims water
     ShaderProgram particleShader;
 
     ViewModel viewModel;
@@ -585,6 +589,7 @@ public:
 
     struct PVert { float x, y, z, r, g, b, a; };
     void renderParticles(const glm::mat4& view, const glm::mat4& proj);
+    void renderWater(const glm::mat4& view, const glm::mat4& proj, const Theme& th, glm::vec3 camPos);
     void drawPoints(const PVert* buf, int count, const glm::mat4& view, const glm::mat4& proj);
 
     // The first time OpenGL (on Metal, or WebGL through ANGLE) sees a new
