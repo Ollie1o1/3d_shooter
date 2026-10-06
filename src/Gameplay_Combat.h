@@ -194,7 +194,7 @@ inline void GameplayState::updateEnemies(float dt) {
                     player.position + glm::vec3{player.radius, player.height, player.radius}};
             if (segmentHitsBox(ev.beamFrom, ev.beamTo, pb)) {
                 beamTickCd -= dt;
-                if (beamTickCd <= 0.f) { beamTickCd = 0.2f; damagePlayer(6.f * eScale, epos, 0.08f, 0.02f); }
+                if (beamTickCd <= 0.f) { beamTickCd = 0.2f; damagePlayer(6.f * eScale, epos, 0.08f, 0.02f, 0.f); }   // no i-frames: 30/s, and no shield
             }
             if (rand() % 3 == 0) {
                 bool wet = level.waterDepthAt(ev.beamTo) > 0.05f;
@@ -304,7 +304,7 @@ inline void GameplayState::friendlySlam(const Enemy& slammer, float radius) {
     }
 }
 
-inline bool GameplayState::damagePlayer(float dmg, glm::vec3 from, float shakeT, float shakeAmt) {
+inline bool GameplayState::damagePlayer(float dmg, glm::vec3 from, float shakeT, float shakeAmt, float iframes) {
     if (invincFrames > 0.f || playerDead || g_godMode || victory ||
         (!fast() && director.phase == WaveDirector::Phase::VICTORY)) return false;
     if (modOn(DailyMod::GLASS_CANNON)) dmg *= 2.f;
@@ -313,7 +313,7 @@ inline bool GameplayState::damagePlayer(float dmg, glm::vec3 from, float shakeT,
     showDamageFrom(from);
     shake(shakeT, shakeAmt);
     audio.play("player_hit");
-    invincFrames = 0.35f;
+    invincFrames = std::max(invincFrames, iframes);
     grapple.release();
     return true;
 }

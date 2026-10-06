@@ -687,6 +687,15 @@ int main() {
         Enemy sh(EnemyType::SERAPH, {0, 12, 0}); sh.spawnTimer = 0.f;
         AABB sHead; bool sHas = headBox(sh, sHead);
         CHECK(sHas && sHead.min.y > 12.9f, "a Seraph's head is its ring, up top");
+        bool follows = true;
+        for (float tm : {0.f, 0.4f, 1.3f, 2.2f}) for (float ph : {0.f, 2.f, 5.f}) {
+            Enemy sp(EnemyType::SERAPH, {0, 12, 0}); sp.spawnTimer = 0.f; sp.animPhase = ph;
+            std::vector<BoxInstance> parts; buildEnemy(sp, tm, parts);
+            float top = -1e9f; for (auto& b : parts) top = std::max(top, b.model[3].y);   // the ring's top piece
+            AABB hbx; headBox(sp, hbx);
+            if (top < hbx.min.y || top > hbx.max.y) follows = false;
+        }
+        CHECK(follows, "the Seraph's head box follows its drawn head as it bobs");
     }
 
     // ---------------------------------------------------------------- ENDLESS stays as it was

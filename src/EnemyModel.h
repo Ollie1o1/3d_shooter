@@ -403,7 +403,7 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
     }
     case EnemyType::SERAPH: {
         bool charging = e.attack == AttackKind::BEAM && e.telegraphTimer > 0.f, sweeping = e.beamTimer > 0.f;
-        float bob = std::sin(time * 2.f + e.animPhase * 0.1f) * 0.2f;
+        float bob = std::sin(e.animPhase * 0.5f) * 0.2f;   // from its own state, so headBox can follow it
         mat4 base = T(e.position + vec3{0.f, bob, 0.f}) * RY(e.yaw) * S(vec3{e.scale}) * S(vec3{grow});
         vec3 bone = st.color, dark = st.color * 0.45f;
         r.box(base, {0.f, 0.8f, 0.f},  {0.42f, 0.9f, 0.3f}, bone);                  // body
@@ -648,7 +648,7 @@ inline bool headBox(const Enemy& e, AABB& out) {
         break;
     }
     case EnemyType::SERAPH: {
-        float bob = std::sin(e.animPhase * 0.1f) * 0.2f;
+        float bob = std::sin(e.animPhase * 0.5f) * 0.2f;   // the model's bob
         frame  = T(e.position + vec3{0.f, bob, 0.f}) * RY(e.yaw) * S(vec3{e.scale}) * S(vec3{grow}) * T({0.f, 1.42f, 0.f});
         centre = {0.f, 0.f, 0.f};
         half   = {0.3f, 0.3f, 0.12f};

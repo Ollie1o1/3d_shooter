@@ -522,7 +522,8 @@ public:
     void updateEnemies(float dt);
 
     // Returns true if damage was applied (not blocked by i-frames).
-    bool damagePlayer(float dmg, glm::vec3 from, float shakeT, float shakeAmt);
+    // iframes: how long you're untouchable after (a SERAPH beam's ticks give none)
+    bool damagePlayer(float dmg, glm::vec3 from, float shakeT, float shakeAmt, float iframes = 0.35f);
 
     void showDamageFrom(glm::vec3 source);
 
