@@ -23,6 +23,8 @@ struct Projectile {
     float     size       = 1.f;    // billboard + hit-radius scale (big boss orbs)
     bool      heavy      = false;  // JUGGERNAUT siege shell
     bool      parried    = false;  // sent back by the player: ignores armor
+    int       owner      = -1;     // uid of the enemy that fired it
+    float     parryDamage = 0.f;   // > 0: what it does when parried back (else 60, or 400 heavy)
 };
 
 class ProjectileSystem {
@@ -32,7 +34,8 @@ public:
     std::array<Projectile, POOL_SIZE> pool;
     float floorY = 0.f;   // shots that sink below this hit the ground
 
-    void fire(glm::vec3 pos, glm::vec3 vel, float dmg, bool player,
+    // The shot fired (its owner can be set), or nullptr if the pool is full
+    Projectile* fire(glm::vec3 pos, glm::vec3 vel, float dmg, bool player,
               glm::vec3 color = {1,0.8f,0.2f},
               bool grenade = false, float blastR = 0.f, float size = 1.f, bool heavy = false) {
         for (auto& p : pool) {
@@ -51,9 +54,12 @@ public:
                 p.size        = size;
                 p.heavy       = heavy;
                 p.parried     = false;
-                return;
+                p.owner       = -1;
+                p.parryDamage = 0.f;
+                return &p;
             }
         }
+        return nullptr;
     }
 
     struct ExplosionEvent {

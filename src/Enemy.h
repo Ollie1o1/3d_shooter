@@ -143,6 +143,7 @@ struct EnemyEvents {
     glm::vec3 shotDir[MAX_SHOTS];
     float     shotSpeed = 16.f, shotDamage = 10.f, shotSize = 1.f;
     bool      shotHeavy = false;   // a JUGGERNAUT siege shell: parry it for a huge hit
+    float     shotParry = 0.f;     // > 0: what these shots do when parried back
     bool      meleeHit = false;   float meleeDamage = 0.f;
     bool      slam = false;       float slamRadius = 0.f, slamDamage = 0.f;
     bool      detonated = false;  // MITE blew itself up next to the player
@@ -220,6 +221,14 @@ struct Enemy {
     float      scale = 1.f;          // TWINNED copies are smaller
     bool       halo = false;         // HALOED: up until a headshot or parry
     float      haloOpenTimer = 0.f;  // > 0: the halo just broke, it takes double damage
+    // Damage taken from a halo: a tenth while it's up, double for 2 s once broken
+    float incomingMult() const { return halo ? 0.1f : haloOpenTimer > 0.f ? 2.f : 1.f; }
+    void breakHalo() {
+        if (!halo) return;
+        halo = false;
+        haloOpenTimer = 2.f;
+        stagger(0.4f);
+    }
     float damageMult() const { return hollow == Hollow::ENRAGED ? 1.25f : 1.f; }   // what its attacks deal
     void setHollow(Hollow h) {
         hollow = canBeHollow(type) ? h : Hollow::NONE;
@@ -405,6 +414,7 @@ struct Enemy {
         leadVel_ = w.playerVel * tune_->lead;
         age += dt;
         if (hitFlashTimer > 0.f) hitFlashTimer -= dt;
+        if (haloOpenTimer > 0.f) haloOpenTimer = std::max(0.f, haloOpenTimer - dt);
 
         if (state == EnemyState::SPAWNING) {
             spawnTimer -= dt;

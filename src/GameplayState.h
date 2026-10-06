@@ -486,6 +486,7 @@ public:
     int findParryTarget() const;
 
     void parryFeedback(glm::vec3 at, bool heavy);
+    void breakHalo(Enemy& e);   // a HALOED enemy's halo shatters: feedback and style
 
     void punch(int boostable);
 

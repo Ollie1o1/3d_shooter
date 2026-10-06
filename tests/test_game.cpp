@@ -561,6 +561,22 @@ int main() {
         CHECK(std::fabs(e.damageMult() - 1.25f) < 1e-4f, "an Enraged enemy hits 25% harder");
     }
 
+    // ---------------------------------------------------------------- Haloed
+    {
+        Enemy e(EnemyType::HUSK, {0, 0, 0}); e.setHollow(Hollow::HALOED); e.state = EnemyState::ACTIVE;
+        CHECK(std::fabs(e.incomingMult() - 0.1f) < 1e-4f, "a halo cuts damage to a tenth");
+        e.breakHalo();
+        CHECK(!e.halo && e.staggered() && std::fabs(e.incomingMult() - 2.f) < 1e-4f, "broken: staggered, and it takes double");
+        EnemyWorld w; w.playerFeet = {20, 0, 0}; w.playerEye = {20, 1.7f, 0};
+        for (int i = 0; i < 60 * 2 + 3; ++i) e.update(DT, w);
+        CHECK(std::fabs(e.incomingMult() - 1.f) < 1e-4f, "the double-damage window ends after 2 s");
+        Enemy plain(EnemyType::HUSK, {0, 0, 0});
+        CHECK(plain.incomingMult() == 1.f, "a plain enemy takes normal damage");
+        ProjectileSystem ps;
+        Projectile* pr = ps.fire({0, 1, 0}, {1, 0, 0}, 10.f, false);
+        CHECK(pr && pr->alive && pr->owner == -1 && pr->parryDamage == 0.f, "fire hands back the shot so its owner can be set");
+    }
+
     // ---------------------------------------------------------------- the Gauntlet (FAST)
     LevelData D = buildGauntlet();
     SpatialGrid dgrid; dgrid.build(D.walls);

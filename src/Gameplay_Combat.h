@@ -32,6 +32,16 @@ inline void GameplayState::parryFeedback(glm::vec3 at, bool heavy) {
     shake(heavy ? 0.25f : 0.12f, heavy ? 0.06f : 0.03f);
 }
 
+inline void GameplayState::breakHalo(Enemy& e) {
+    if (!e.halo) return;
+    e.breakHalo();
+    glm::vec3 at = e.position + glm::vec3{0, e.height() + 0.4f, 0};
+    fx.spawnBurst(at, {1.f, 0.8f, 0.3f}, 36, 9.f, 0.5f, 6.f);
+    styleSystem.addStyle(40.f, StyleSource::PARRY);
+    ui.feed("HALO BROKEN", {1.f, 0.85f, 0.3f});
+    audio.play("parry", 90);
+}
+
 inline void GameplayState::punch(int boostable) {
     punchCooldown = 0.3f;
     glm::vec3 eye = player.camera.position, fwd = player.camera.forward();
@@ -42,14 +52,15 @@ inline void GameplayState::punch(int boostable) {
         float speed = std::max(40.f, glm::length(p.velocity) * 2.f);
         p.isPlayer = true;
         p.parried  = true;
+        for (auto& o : enemies) if (o.alive && o.uid == p.owner && o.halo) { breakHalo(o); break; }
         p.velocity = fwd * speed;                        // it goes where you look
         p.lifetime = 4.f;
         if (p.heavy) {
-            p.damage = 400.f; p.size *= 1.3f; p.emissiveColor = {1.6f, 1.1f, 0.3f};
+            p.damage = p.parryDamage > 0.f ? p.parryDamage : 400.f; p.size *= 1.3f; p.emissiveColor = {1.6f, 1.1f, 0.3f};
             styleSystem.addStyle(60.f, StyleSource::PARRY);
             ui.toast("HEAVY PARRY", "", {1.f, 0.8f, 0.2f}, 1.2f);
         } else {
-            p.damage = 60.f; p.emissiveColor = {1.f, 0.9f, 0.3f};
+            p.damage = p.parryDamage > 0.f ? p.parryDamage : 60.f; p.emissiveColor = {1.f, 0.9f, 0.3f};
             styleSystem.addStyle(25.f, StyleSource::PARRY);
             ui.feed("PARRY", {1.f, 0.9f, 0.3f});
         }
@@ -61,6 +72,7 @@ inline void GameplayState::punch(int boostable) {
         glm::vec3 d = e.position + glm::vec3{0, e.height() * 0.5f, 0} - eye;
         float dist = glm::length(d);
         if (dist < 5.5f && glm::dot(fwd, d / dist) > 0.2f) {
+            if (e.halo) breakHalo(e);
             e.stagger(e.staggerTime());
             parryFeedback(eye + fwd * 1.2f, true);
             styleSystem.addStyle(70.f, StyleSource::PARRY);
@@ -157,8 +169,11 @@ inline void GameplayState::updateEnemies(float dt) {
             telegraphSoundCd = 0.22f;
         }
         for (int k = 0; k < ev.shots; ++k)
-            projSystem.fire(ev.shotOrigin, ev.shotDir[k] * ev.shotSpeed, ev.shotDamage * eScale, false,
-                            enemies[i].stats().shotColor, false, 0.f, ev.shotSize, ev.shotHeavy);
+            if (Projectile* pr = projSystem.fire(ev.shotOrigin, ev.shotDir[k] * ev.shotSpeed, ev.shotDamage * eScale, false,
+                                                 enemies[i].stats().shotColor, false, 0.f, ev.shotSize, ev.shotHeavy)) {
+                pr->owner = enemies[i].uid;
+                pr->parryDamage = ev.shotParry;
+            }
         if (ev.meleeHit) {
             if (damagePlayer(ev.meleeDamage * eScale, epos, 0.25f, 0.06f)) {
                 glm::vec3 away = player.position - epos; away.y = 0.f;
@@ -284,6 +299,8 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
                                      bool crit, bool pierceArmor) {
     if (!e.targetable()) return false;
     if (!pierceArmor) dmg *= e.armorMult();
+    dmg *= e.incomingMult();   // a halo, or the window after one breaks
+    if (e.halo) fx.spawnHitSparks(at, {1.f, 0.85f, 0.3f});
     if (modOn(DailyMod::GLASS_CANNON) && src != StyleSource::FRIENDLY && src != StyleSource::ENVIRONMENT) dmg *= 2.f;
     if (e.shielded) {   // a CONDUCTOR's tether soaks most of it
         dmg *= CONDUCTOR_SHIELD;
@@ -596,6 +613,7 @@ inline void GameplayState::fireWeapon(int w) {
                 anyHit = true;
                 break;
             }
+            if (hits[k].head && e.halo) breakHalo(e);   // a headshot shatters a halo
             float m = head ? d.headMult : 1.f;
             float falloff = 1.f - 0.15f * k;    // each body it punches through costs a little
             if (head) fx.spawnHitSparks(at, {1.f, 0.9f, 0.3f});
