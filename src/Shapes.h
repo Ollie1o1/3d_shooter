@@ -29,6 +29,7 @@ struct Shape {
     uint32_t  seed = 1;
     bool      inward = false;    // PRISM: seen from inside (a shaft): faces turned in, no caps
     bool      caps = true;
+    bool      twoSided = false;  // drawn from both sides (an open dome or shaft seen from in or out)
     glm::vec3 color{0.4f};
     int       mat = 0;           // a Mat, as int (WorldMesh picks the texture)
     bool      neon = false;      // self-lit, untextured
@@ -103,6 +104,7 @@ struct ShapeKit {
     Shape& shaft(glm::vec3 base, float r, float h, glm::vec3 col, int sides = 16) {
         Shape& s = column(base, r, h, col, sides);
         s.inward = true;
+        s.twoSided = true;   // open ends: you can see its outside too
         return s;
     }
     // A column lying along an axis from a to b (pipes, logs, beams)
@@ -136,7 +138,8 @@ struct ShapeKit {
     // measured from +X toward +Z.
     void curve(glm::vec3 centre, float radius, float a0, float a1, float y0, float y1, float thick, glm::vec3 col, int seg = 16) {
         float da = (a1 - a0) / seg;
-        float chord = 2.f * radius * std::sin(std::fabs(da) * 0.5f) + 0.06f;
+        // sized for the outer edge, so the pieces meet there too (they overlap inside)
+        float chord = 2.f * (radius + thick * 0.5f) * std::sin(std::fabs(da) * 0.5f) + 0.06f;
         for (int i = 0; i < seg; ++i) {
             float a = a0 + da * (i + 0.5f);
             glm::vec3 p = centre + glm::vec3{std::cos(a) * radius, (y0 + y1) * 0.5f, std::sin(a) * radius};
@@ -168,6 +171,7 @@ struct ShapeKit {
             float y0 = std::sin(a0) * r, y1 = std::sin(a1) * r;
             Shape& s = column(centre + glm::vec3{0, y0, 0}, r0, y1 - y0, col, sides, r1 / r0);
             s.caps = i == rings - 1;
+            s.twoSided = true;   // seen from under it, from inside
         }
     }
     // Small boxes along a helix (stairs of light round a column)

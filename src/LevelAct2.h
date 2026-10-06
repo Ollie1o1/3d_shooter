@@ -273,22 +273,30 @@ inline void buildAct2(LevelBuilder& B) {
     o.voidY = -105.f;
     o.sunPos = {C.x, -92.f, C.z};
 
-    // ---- the terrace: an annulus R 30-52, collision as strips of boxes ----
-    const float RIN = 30.f, ROUT = 53.f, STRIP = 1.5f;
-    for (float z0 = -ROUT; z0 < ROUT - 1e-3f; z0 += STRIP) {
-        float z1 = std::min(z0 + STRIP, ROUT);
-        float zn = std::min(std::fabs(z0), std::fabs(z1)), zf = std::max(std::fabs(z0), std::fabs(z1));
-        if (z0 < 0.f && z1 > 0.f) zn = 0.f;
-        float xo = std::sqrt(std::max(0.f, ROUT * ROUT - zn * zn));
-        if (zn >= RIN) B.solid(-xo, O - 1, C.z + z0, xo, O, C.z + z1);   // clear of the pit (drawn by the curve below)
-        else {
-            float xi = std::sqrt(RIN * RIN - zn * zn);   // the pit's widest point in the strip: no floor over the void
-            B.solid(-xo, O - 1, C.z + z0, -xi, O, C.z + z1);
-            B.solid(xi, O - 1, C.z + z0, xo, O, C.z + z1);
+    // ---- the terrace: an annulus R 30-52, built of strips. East and west of
+    // the pit the strips run along X, north and south along Z, so the pit's
+    // edge is never more than a strip's width out of round anywhere. Drawn
+    // exactly as you stand on it: what you see is what holds you.
+    const float RIN = 30.f, ROUT = 53.f, STRIP = 0.75f;
+    auto band = [&](bool alongX, float side, float u0, float u1) {
+        // u: across the strip (z for alongX, x otherwise); the strip runs outward along the other axis
+        float un = (u0 < 0.f && u1 > 0.f) ? 0.f : std::min(std::fabs(u0), std::fabs(u1));
+        float edge = std::sqrt(std::max(0.f, RIN * RIN - un * un));     // the pit's widest point in the strip
+        float from = std::max(edge, un), to = std::sqrt(std::max(0.f, ROUT * ROUT - un * un));
+        if (from >= to) return;
+        float a0 = side * from, a1 = side * to;
+        if (alongX) wall(C.x + std::min(a0, a1), O - 1, C.z + u0, C.x + std::max(a0, a1), O, C.z + u1, stone);
+        else        wall(C.x + u0, O - 1, C.z + std::min(a0, a1), C.x + u1, O, C.z + std::max(a0, a1), stone);
+        if (edge > un + 1e-3f) {   // this end meets the pit: its lit lip
+            float e = side * edge;
+            if (alongX) neon(C.x + e - 0.06f, O - 0.3f, C.z + u0, C.x + e + 0.06f, O + 0.03f, C.z + u1, gold * 0.7f);
+            else        neon(C.x + u0, O - 0.3f, C.z + e - 0.06f, C.x + u1, O + 0.03f, C.z + e + 0.06f, gold * 0.7f);
         }
+    };
+    for (float u = -ROUT; u < ROUT - 1e-3f; u += STRIP) {
+        float u1 = std::min(u + STRIP, ROUT);
+        for (float side : {-1.f, 1.f}) { band(true, side, u, u1); band(false, side, u, u1); }
     }
-    B.kit().curve({C.x, 0.f, C.z}, 41.f, 0.f, 6.2831853f, O - 1.f, O, 22.f, stone, 48);   // its face
-    B.kit(true).curve({C.x, 0.f, C.z}, 30.3f, 0.f, 6.2831853f, O - 0.2f, O + 0.05f, 0.5f, gold * 0.7f, 48);      // the pit's lit lip
 
     // ---- the outer wall (posts round R 53) with a gate on the south ----
     for (int k = 0; k < 96; ++k) {

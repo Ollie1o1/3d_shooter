@@ -9,6 +9,7 @@
 #include "../src/WaveDirector.h"
 #include "../src/LevelGauntlet.h"
 #include "../src/LevelAct2.h"
+#include "../src/WorldGeometry.h"
 #include "../src/EnemyModel.h"
 #include "../src/Weapons.h"
 #include "../src/Progression.h"
@@ -25,6 +26,7 @@
 #include <cstdio>
 #include <cstring>
 #include <map>
+#include <tuple>
 #include <functional>
 
 static int failures = 0;
@@ -962,6 +964,107 @@ int main() {
               std::fabs(S.movers[0].period - 60.f) < 1e-3f, "a retry puts the sun and the rings back");
         float turned = 0.f; { ArenaShifts c = sh; c.flareAngle = 0.f; for (int i = 0; i < 60; ++i) c.update(DT, S, 0, true); turned = c.flareAngle; }
         CHECK(std::fabs(glm::degrees(turned) - 15.f) < 0.5f, "the flare turns 15 degrees a second");
+    }
+
+    // ---------------------------------------------------------------- nothing see-through, from any side
+    {
+        struct Lvl { const char* name; LevelData L; };
+        std::vector<Lvl> lvls{{"Act I", buildLevel()}, {"the Gauntlet", buildGauntlet()}, {"Act II", buildAct2Level()}};
+        bool undersides = true, shapesClosed = true;
+        for (auto& lv : lvls) {
+            const LevelData& L = lv.L;
+            WorldGeometry G = buildWorldGeometry(L);
+            // Every drawn box raised off the ground under it shows its underside
+            auto hasUnderside = [&](const AABB& b) {
+                glm::vec2 c{(b.min.x + b.max.x) * 0.5f, (b.min.z + b.max.z) * 0.5f};
+                for (int t = 0; t < TEX_COUNT; ++t)
+                    for (size_t i = 0; i + 3 < G.V[t].size(); ++i) {
+                        const Vertex& v = G.V[t][i];
+                        if (v.normal.y > -0.99f || std::fabs(v.position.y - b.min.y) > 1e-3f) continue;
+                        // the face's four corners are consecutive (pushFace): test the quad's extent
+                        if (i + 3 >= G.V[t].size()) continue;
+                        float x0 = 1e9f, x1 = -1e9f, z0 = 1e9f, z1 = -1e9f;
+                        bool quad = true;
+                        for (int k = 0; k < 4; ++k)
+                            quad &= G.V[t][i + k].normal.y < -0.99f && std::fabs(G.V[t][i + k].position.y - b.min.y) < 1e-3f;
+                        if (!quad) continue;
+                        for (int k = 0; k < 4; ++k) {
+                            x0 = std::min(x0, G.V[t][i + k].position.x); x1 = std::max(x1, G.V[t][i + k].position.x);
+                            z0 = std::min(z0, G.V[t][i + k].position.z); z1 = std::max(z1, G.V[t][i + k].position.z);
+                        }
+                        if (c.x > x0 && c.x < x1 && c.y > z0 && c.y < z1) return true;
+                    }
+                return false;
+            };
+            int missing = 0;
+            auto checkBox = [&](const AABB& b) {
+                float ground = L.baseFloor((b.min.x + b.max.x) * 0.5f, (b.min.z + b.max.z) * 0.5f);
+                if (b.min.y <= ground + 0.1f) return;
+                if (!hasUnderside(b)) {
+                    if (missing++ < 3) std::printf("      %s: no underside on the box at (%.1f %.1f %.1f)\n", lv.name, b.min.x, b.min.y, b.min.z);
+                    undersides = false;
+                }
+            };
+            for (int i = 0; i < (int)L.walls.size(); ++i)
+                if (!L.walls[i].hidden && !L.walls[i].dynamic && !L.isDoorWall(i)) checkBox(L.walls[i].box);
+            for (auto& p : L.props) checkBox(p.box);
+            // Every shape is closed, or drawn from both sides
+            int open = 0;
+            for (auto& sh : L.shapes) {
+                if (sh.twoSided) continue;
+                std::map<std::tuple<long, long, long, long, long, long>, int> edges;
+                auto key = [](glm::vec3 p) { return std::make_tuple(std::lround(p.x * 200), std::lround(p.y * 200), std::lround(p.z * 200)); };
+                sh.forEachTri([&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3) {
+                    glm::vec3 v[3] = {a, b, c};
+                    for (int k = 0; k < 3; ++k) {
+                        auto p = key(v[k]), q = key(v[(k + 1) % 3]);
+                        edges[std::tuple_cat(p, q)]++;
+                    }
+                });
+                bool closed = true;
+                for (auto& e : edges) {
+                    auto& k = e.first;
+                    auto rev = std::make_tuple(std::get<3>(k), std::get<4>(k), std::get<5>(k), std::get<0>(k), std::get<1>(k), std::get<2>(k));
+                    if (!edges.count(rev)) { closed = false; break; }
+                }
+                if (!closed) { if (open++ < 3) std::printf("      %s: an open shape that's one-sided\n", lv.name); shapesClosed = false; }
+            }
+        }
+        CHECK(undersides, "every raised box and prop shows its underside, in every level (Act II is below Y 0)");
+        CHECK(shapesClosed, "every shape is closed or drawn from both sides: nothing vanishes seen from inside or below");
+        // A curved wall has no slits: its band is covered all round, out to its outer edge
+        std::vector<Shape> out; ShapeKit k{out, 0, false};
+        k.curve({0.f, 0.f, 0.f}, 20.f, 0.f, 6.2831853f, 0.f, 1.f, 6.f, {1, 1, 1}, 24);
+        bool covered = true;
+        for (int i = 0; i < 360 && covered; ++i) {
+            float a = glm::radians(i + 0.5f);
+            for (float r : {17.2f, 20.f, 22.8f}) {
+                glm::vec3 p{std::cos(a) * r, 0.5f, std::sin(a) * r};
+                bool in = false;
+                for (auto& sh : out) {
+                    glm::vec3 lp = glm::vec3(glm::inverse(sh.xf) * glm::vec4(p, 1.f));
+                    if (std::fabs(lp.x) <= 0.5f && std::fabs(lp.y) <= 0.5f && std::fabs(lp.z) <= 0.5f) { in = true; break; }
+                }
+                if (!in) { std::printf("      curve slit at %d degrees, r %.1f\n", i, r); covered = false; break; }
+            }
+        }
+        CHECK(covered, "a curved wall has no slits, even at its outer edge");
+        // The Orrery's terrace is drawn exactly where you can stand on it
+        LevelData N = buildAct2Level();
+        const glm::vec3 C{0.f, -80.f, -732.f};
+        bool drawn = true;
+        for (int i = 0; i < 180 && drawn; ++i) {
+            float a = glm::radians(i * 2.f + 1.f);
+            for (float r : {32.f, 41.f, 50.f}) {
+                glm::vec3 p = C + glm::vec3{std::cos(a) * r, -0.5f, std::sin(a) * r};
+                bool top = false;
+                for (auto& w : N.walls)
+                    if (!w.hidden && p.x > w.box.min.x && p.x < w.box.max.x && p.z > w.box.min.z && p.z < w.box.max.z &&
+                        p.y > w.box.min.y && p.y < w.box.max.y && std::fabs(w.box.max.y - C.y) < 1e-3f) top = true;
+                if (!top) { std::printf("      terrace not drawn at r %.0f, %d degrees\n", r, i * 2 + 1); drawn = false; break; }
+            }
+        }
+        CHECK(drawn, "the Orrery's terrace is drawn wherever you can stand on it");
     }
 
     // ---------------------------------------------------------------- the Gauntlet (FAST)

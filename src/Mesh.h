@@ -10,12 +10,7 @@
 // attribute locations declared in shader.vert (layout(location = N)).
 // If you add a new attribute (e.g., vertex color, tangent), add it here AND
 // in the shader, then add a new glVertexAttribPointer call in Mesh::upload().
-struct Vertex {
-    glm::vec3 position; // location 0 in shader
-    glm::vec2 uv;       // location 1 — texture coordinates (0..1 range per tile)
-    glm::vec3 normal;   // location 2 — used for lighting calculations
-    glm::vec3 color = {1.f, 1.f, 1.f}; // location 3 — per-vertex surface tint, default white
-};
+#include "Vertex.h"
 
 // =============================================================================
 // Mesh
