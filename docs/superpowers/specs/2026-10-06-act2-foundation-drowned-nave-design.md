@@ -89,7 +89,7 @@ the two never overlap and ASCENT can build both into one world.
 
 ## 2. The Drowned Nave — layout
 
-A flooded cathedral, about **100 m × 150 m** (the Sanctum is 112 × 112), floors at Y −60.
+A flooded cathedral, about **100 m × 180 m** including the narthex and apse (the Sanctum is 112 × 112), floors at Y −60.
 
 ```
                 N (−Z)
@@ -107,7 +107,8 @@ A flooded cathedral, about **100 m × 150 m** (the Sanctum is 112 × 112), floor
         │  ║═══════════║    │  fallen flying buttresses: bridges at +9 m
         │  ║           ║    │
         └──┴─── ↓ ─────┴────┘
-           entry shaft (the fall lands here)
+           NARTHEX + entry shaft (the fall lands here, then
+           through the great doors into the nave)
                 S (+Z)
 ```
 
@@ -130,7 +131,7 @@ anchors on column capitals, and the organ pipes.
 
 - **The crossing:** a half-collapsed dome (`dome`, `curve`) with a ring walkway
   around the break. A shaft of eclipse light falls through the crack, visible
-  from everywhere. The entry shaft connects up through it.
+  from everywhere (visual only; the zone ceiling stays below the dome).
 - **The drowned organ** in the apse: tall pipes of differing heights
   (`column`/`shaft`), half under water; a climbable vertical route to the
   clerestory.
@@ -195,7 +196,7 @@ Modelled on `LAVA_RISE` in ArenaShifts.h; edits `LevelData::water` levels.
 |---|---|---|
 | 1 | 0.4 m | nave floor ankle-deep |
 | 2 | 2.0 m | nave chest-deep (held at the 1.5 m cap, maximum slow), aisles ankle-deep |
-| 3 | 4.0 m | nave and aisles chest-deep at the cap; only chancel, galleries, bridges, clerestory dry |
+| 3 | 2.6 m | nave chest-deep at the cap, aisles waist-deep (1.1 m); only chancel (+3 m), galleries, bridges, clerestory dry |
 
 - The water rises between waves over ~6 s: low rumble, banner "THE WATER
   RISES", red underglow brightens.
