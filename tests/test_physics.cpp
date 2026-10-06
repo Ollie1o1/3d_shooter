@@ -111,6 +111,32 @@ int main() {
         CHECK(std::fabs(p.position.y + 60.f) < 0.001f && p.onGround, "the player falls to floorY and stands there");
     }
 
+    // 8. Wading: slower on foot, full speed when sliding
+    {
+        auto runFor = [&](float depth, bool slide) {
+            Player p({0.f, 0.f, 0.f});
+            p.wadeDepth = depth;
+            Uint8 k[SDL_NUM_SCANCODES]; std::memset(k, 0, sizeof(k));
+            k[SDL_SCANCODE_W] = 1;
+            for (int i = 0; i < 60; ++i) p.update(DT, k, nullptr, 0);
+            float top = 0.f;
+            if (slide) {
+                k[SDL_SCANCODE_LCTRL] = 1;
+                for (int i = 0; i < 6; ++i) { p.update(DT, k, nullptr, 0); top = std::max(top, glm::length(glm::vec2(p.velocity.x, p.velocity.z))); }
+            } else top = glm::length(glm::vec2(p.velocity.x, p.velocity.z));
+            return top;
+        };
+        float dry = runFor(0.f, false), ankle = runFor(0.4f, false), deep = runFor(1.2f, false);
+        std::printf("      walk speed dry %.2f, 0.4 m %.2f, 1.2 m %.2f\n", dry, ankle, deep);
+        CHECK(std::fabs(ankle / dry - 0.8f) < 0.03f && std::fabs(deep / dry - 0.55f) < 0.03f,
+              "wading slows walking: -20% ankle-deep, -45% waist-deep and deeper");
+        CHECK(deep > 3.f, "even the deepest water leaves you able to move");
+        float drySlide = runFor(0.f, true), wetSlide = runFor(1.2f, true);
+        std::printf("      slide top speed dry %.2f, 1.2 m %.2f\n", drySlide, wetSlide);
+        CHECK(drySlide > 12.f && wetSlide >= drySlide - 0.01f, "a slide skims deep water at full slide speed");
+        CHECK(Player::wadeFactor(0.05f) == 1.f, "a puddle doesn't slow you");
+    }
+
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "PASSED", failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;
 }

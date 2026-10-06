@@ -138,6 +138,10 @@ struct FloorPatch { float x0, z0, x1, z1, y; glm::vec3 color; };
 // at `y`. Act II sits in one, 60 m under Act I.
 struct Basin { AABB xz; float y; };
 
+// Standing water: over `box` (X and Z; box.min.y is the floor it fills from)
+// the surface is at `level`. ArenaShifts raises it (FLOOD).
+struct WaterVolume { AABB box; float level; };
+
 // A platform that moves along a path. Its collision box is an ordinary wall
 // (flagged dynamic), so the player stands on it, bullets stop on it and the
 // grapple hooks it; LevelData::updateMovers() moves that wall every tick and
@@ -225,6 +229,7 @@ struct LevelData {
     std::vector<Booster>    boosters;
     std::vector<Hazard>     hazards;
     std::vector<Basin>      basins;
+    std::vector<WaterVolume> water;
     std::vector<Arena>      arenas;
     std::vector<AABB>       corridors; // corridor i joins arena i and i+1 (zone, XZ)
     // Lighting crossfades between two arenas across a box, along one axis
@@ -271,6 +276,20 @@ struct LevelData {
         for (auto& b : basins)
             if (x >= b.xz.min.x && x <= b.xz.max.x && z >= b.xz.min.z && z <= b.xz.max.z) return b.y;
         return 0.f;
+    }
+    static constexpr float WADE_MAX   = 1.5f;   // feet never deeper than this under the surface
+    static constexpr float SKIM_DEPTH = 0.3f;   // a slide planes this far under it
+    // The water's surface over (x, z), or -1e9 where it's dry
+    float waterSurfaceAt(float x, float z) const {
+        float s = -1e9f;
+        for (auto& w : water)
+            if (x >= w.box.min.x && x <= w.box.max.x && z >= w.box.min.z && z <= w.box.max.z) s = std::max(s, w.level);
+        return s;
+    }
+    float waterDepthAt(glm::vec3 p) const { return std::max(0.f, waterSurfaceAt(p.x, p.z) - p.y); }
+    // The hard floor with deep water's lift on top of it
+    float floorWithWater(float x, float z, bool skimming) const {
+        return std::max(baseFloor(x, z), waterSurfaceAt(x, z) - (skimming ? SKIM_DEPTH : WADE_MAX));
     }
     float lowestFloor() const {
         float y = 0.f;

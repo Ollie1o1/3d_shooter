@@ -148,6 +148,16 @@ public:
     // caller before update().
     float floorY = 0.f;
 
+    // Water above the feet (set by the caller): walking slows, sliding doesn't
+    float wadeDepth = 0.f;
+    // Ground speed multiplier for a wading depth: none under 0.1 m, -20% at
+    // 0.4 m, -45% from 1 m down
+    static float wadeFactor(float d) {
+        if (d < 0.1f) return 1.f;
+        if (d < 0.4f) return 1.f - 0.2f * (d - 0.1f) / 0.3f;
+        return 0.8f - 0.25f * glm::clamp((d - 0.4f) / 0.6f, 0.f, 1.f);
+    }
+
     // Moving platforms: wall indices tested every tick on top of the grid
     // query (they aren't in the grid). Set by the caller before update().
     const int* dynWalls = nullptr;
@@ -237,9 +247,9 @@ private:
 
         if (!sliding) {
             // Activate slide: crouch while grounded and moving fast enough.
-            if (crouchKey && onGround && flatSpeed > horizontalSpeed * 0.6f) {
+            if (crouchKey && onGround && flatSpeed > horizontalSpeed * wadeFactor(wadeDepth) * 0.6f) {
                 sliding    = true;
-                slideTimer = SLIDE_DURATION;
+                slideTimer = SLIDE_DURATION * (wadeDepth >= 0.1f ? 1.3f : 1.f);   // water carries a slide further
                 // Boost in current travel direction; at least SLIDE_SPEED.
                 glm::vec3 slideDir = glm::normalize(hVelFlat);
                 float boostSpd     = glm::max(flatSpeed, SLIDE_SPEED);
@@ -272,7 +282,8 @@ private:
                 wishDir = glm::normalize(wishDir);
                 glm::vec3 hVel{velocity.x, 0.f, velocity.z};
                 float currentSpeed = glm::dot(hVel, wishDir);
-                float addSpeed = glm::clamp(horizontalSpeed - currentSpeed, 0.f, accel * dt);
+                float cap = horizontalSpeed * (onGround ? wadeFactor(wadeDepth) : 1.f);
+                float addSpeed = glm::clamp(cap - currentSpeed, 0.f, accel * dt);
                 velocity.x += wishDir.x * addSpeed;
                 velocity.z += wishDir.z * addSpeed;
             }
@@ -291,6 +302,14 @@ private:
                 velocity.x *= scale;
                 velocity.z *= scale;
             }
+        }
+
+        // Wading: running momentum bleeds off to the water's pace (slides keep theirs)
+        if (onGround && !sliding && !grappling && wadeDepth >= 0.1f) {
+            float cap = horizontalSpeed * wadeFactor(wadeDepth);
+            glm::vec2 h{velocity.x, velocity.z};
+            float s = glm::length(h);
+            if (s > cap) { float k = std::max(cap, s - 30.f * dt) / s; velocity.x *= k; velocity.z *= k; }
         }
 
         // Jump: ground jump, coyote jump, or buffered jump.

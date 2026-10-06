@@ -230,6 +230,7 @@ struct Enemy {
     float hitFlashTimer = 0.f;
     float staggerTimer  = 0.f;   // JUGGERNAUT, after its smash was parried
     float floorY        = 0.f;   // hard floor under it (GameplayState sets it each tick)
+    float wadeMul       = 1.f;   // wading slows its steps (set each tick)
     float age           = 0.f;
 
     bool  enraged       = false; // a boss's phase two
@@ -1274,7 +1275,8 @@ private:
         } else {
             moveSpeed = glm::length(velocity);
         }
-        position += velocity * dt;
+        float slow = flying ? 1.f : wadeMul;
+        position += glm::vec3{velocity.x * slow, velocity.y, velocity.z * slow} * dt;
         grounded = false;
 
         if (position.y < floorY) { position.y = floorY; if (velocity.y < 0.f) velocity.y = 0.f; grounded = true; }

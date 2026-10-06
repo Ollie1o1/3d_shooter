@@ -131,7 +131,11 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     player.dynWalls = level.moverWalls.data();
     player.dynCount = (int)level.moverWalls.size();
     int boost = level.boosterAt(player.position);
-    player.floorY = level.baseFloor(player.position.x, player.position.z);
+    {
+        float surf = level.waterSurfaceAt(player.position.x, player.position.z);
+        player.wadeDepth = std::max(0.f, surf - player.position.y);
+        player.floorY = level.floorWithWater(player.position.x, player.position.z, player.sliding);
+    }
     if (!(g_devCam && g_devNoMouse)) {   // screenshot runs: the camera stays exactly where it was put
         player.update(dt, keys, level.walls.data(), (int)level.walls.size(),
                       grapple.active || dashMomentumTimer > 0.f || boost >= 0, &spatialGrid);

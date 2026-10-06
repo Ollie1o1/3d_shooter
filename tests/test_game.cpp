@@ -302,6 +302,23 @@ int main() {
         CHECK(alive, "a shot below Y 0 but above floorY keeps flying");
     }
 
+    // ---------------------------------------------------------------- water
+    {
+        LevelData W;
+        W.basins.push_back({LevelBuilder::aabb(-20, 0, -20, 20, 0, 20), -60.f});
+        W.water.push_back({LevelBuilder::aabb(-10, -60, -10, 10, -60, 10), -57.4f});   // 2.6 m deep
+        CHECK(std::fabs(W.waterDepthAt({0.f, -60.f, 0.f}) - 2.6f) < 1e-4f && W.waterDepthAt({15.f, -60.f, 0.f}) == 0.f,
+              "water depth inside a volume, none outside");
+        CHECK(std::fabs(W.floorWithWater(0.f, 0.f, false) - (-57.4f - LevelData::WADE_MAX)) < 1e-4f,
+              "deep water holds your feet 1.5 m under the surface");
+        CHECK(std::fabs(W.floorWithWater(0.f, 0.f, true) - (-57.4f - LevelData::SKIM_DEPTH)) < 1e-4f &&
+              -57.4f - LevelData::SKIM_DEPTH + Player::SLIDE_EYE_H > -57.4f,
+              "a slide planes on top: the camera stays above the surface");
+        Player p({0.f, -50.f, 0.f});
+        for (int i = 0; i < 240; ++i) { p.floorY = W.floorWithWater(p.position.x, p.position.z, p.sliding); p.update(DT, keys, nullptr, 0); }
+        CHECK(p.position.y + p.eyeHeight > -57.4f && p.onGround, "dropped into deep water, you wade with your eyes above it");
+    }
+
     // ---------------------------------------------------------------- the Gauntlet (FAST)
     LevelData D = buildGauntlet();
     SpatialGrid dgrid; dgrid.build(D.walls);
