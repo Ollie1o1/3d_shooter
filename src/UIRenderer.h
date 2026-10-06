@@ -461,11 +461,12 @@ public:
     }
 
     void renderVictoryArena(int kills, int shots, int hits, int deaths, float gameTime, float peakStyle,
-                            int level, float best, bool newRecord, bool showKeys, const RunScore& score) {
+                            int level, float best, bool newRecord, bool showKeys, const RunScore& score,
+                            const char* title = "ALL ARENAS CLEARED", const char* sub = "THE SOVEREIGN HAS FALLEN") {
         begin2D();
         ui.rect(0, 0, screenW, screenH, {0.0f, 0.02f, 0.05f, 0.72f});
-        ui.text("ALL ARENAS CLEARED", screenW / 2, screenH / 2 - 170, 4, {0.2f, 1.f, 0.6f, 0.95f}, true);
-        ui.text("THE SOVEREIGN HAS FALLEN", screenW / 2, screenH / 2 - 128, 2, {0.8f, 0.9f, 0.85f, 0.85f}, true);
+        ui.text(title, screenW / 2, screenH / 2 - 170, 4, {0.2f, 1.f, 0.6f, 0.95f}, true);
+        ui.text(sub, screenW / 2, screenH / 2 - 128, 2, {0.8f, 0.9f, 0.85f, 0.85f}, true);
         char buf[64];
         int y = screenH / 2 - 84;
         glm::vec4 sc{0.9f, 0.9f, 0.9f, 0.9f};

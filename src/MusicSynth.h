@@ -6,7 +6,7 @@
 // AudioSystem feeds it to SDL_mixer (Mix_HookMusic); the tests render it
 // headless.
 //
-// Darksynth / industrial at 148-172 BPM, in five tracks (one per kind of
+// Darksynth / industrial at 148-172 BPM, in six tracks (one per kind of
 // place, and one for the Sovereign). It plays in layers that follow the action — the game sets an
 // intensity and the layers fade in and out on their own:
 //
@@ -59,10 +59,14 @@ inline const MusicTrack& musicTrack(int i) {
         {"SOVEREIGN", 140.f, 46, {0, 6, 5, 4},
          "x..x..x...x..x..", "....x.......x.gx", "x.X.xxX.x.X.xxXo",
          "x--fx--ox--fx-fo", "3210321032103201", "3-------2---1---0-------1-2-3---"},
+        // The Nave: slow and cold, a bell-like arp over a drowned pulse
+        {"NAVE", 138.f, 45, {0, 3, 5, 4},
+         "x.....x...x.....", "....x.......x...", "x.x.X.x.x.x.X.xo",
+         "x--.x--.o--.x-f.", "0.2.1.3.0.2.1.3.", "2-------3---1---0-------1---2---"},
     };
-    return T[((i % 5) + 5) % 5];
+    return T[((i % 6) + 6) % 6];
 }
-constexpr int MUSIC_TRACKS = 5;
+constexpr int MUSIC_TRACKS = 6;
 
 class MusicSynth {
 public:

@@ -52,7 +52,8 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
     if (!playerDead && !victory) ui.render(styleSystem, h);
 
     const Arena& ar = level.arenas[director.arena];
-    int nArenas = (int)level.arenas.size();
+    int nArenas = act2() ? 4 : (int)level.arenas.size();   // ACT II: the Nave is the first of four
+    const char* tag = act2() ? "ACT II" : "ARENA";
     char buf[128];
 
     if (!playerDead && !victory) {
@@ -73,10 +74,10 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         case WaveDirector::Phase::APPROACH:   // FAST only
         case WaveDirector::Phase::INTRO:
             if (endless()) snprintf(buf, sizeof(buf), "%s  %s  GET READY", dailyRun() ? "DAILY" : "ENDLESS", ar.name);
-            else snprintf(buf, sizeof(buf), "ARENA %d/%d  %s  GET READY", director.arena + 1, nArenas, ar.name);
+            else snprintf(buf, sizeof(buf), "%s %d/%d  %s  GET READY", tag, director.arena + 1, nArenas, ar.name);
             break;
         case WaveDirector::Phase::ACTIVE:
-            if (boss) snprintf(buf, sizeof(buf), "ARENA %d/%d  FINAL WAVE", director.arena + 1, nArenas);
+            if (boss) snprintf(buf, sizeof(buf), "%s %d/%d  FINAL WAVE", tag, director.arena + 1, nArenas);
             else if (director.hasGoal()) {
                 const WaveGoal& g = director.goal();
                 char what[48];
@@ -96,8 +97,8 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             }
             else if (endless()) snprintf(buf, sizeof(buf), "%s   WAVE %d   HOSTILES %d", dailyRun() ? "DAILY" : "ENDLESS",
                                          director.wave + 1, left);
-            else snprintf(buf, sizeof(buf), "ARENA %d/%d   WAVE %d/%d   HOSTILES %d",
-                          director.arena + 1, nArenas, director.wave + 1, director.waveCount(), left);
+            else snprintf(buf, sizeof(buf), "%s %d/%d   WAVE %d/%d   HOSTILES %d",
+                          tag, director.arena + 1, nArenas, director.wave + 1, director.waveCount(), left);
             break;
         case WaveDirector::Phase::BREAK:
             snprintf(buf, sizeof(buf), "WAVE CLEAR - NEXT WAVE IN %d", (int)std::ceil(director.timer));
@@ -193,7 +194,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
     if (playerDead && !victory) {   // (ENDLESS has no retry: a moment, then the run's score)
         if (fast()) snprintf(buf, sizeof(buf), "ROOM %d/%d  %s", director.arena + 1, nArenas, ar.name);
         else if (endless()) snprintf(buf, sizeof(buf), "%s - WAVE %d", ar.name, wavesCleared + 1);
-        else snprintf(buf, sizeof(buf), "ARENA %d/%d %s - WAVE %d/%d", director.arena + 1, nArenas, ar.name,
+        else snprintf(buf, sizeof(buf), "%s %d/%d %s - WAVE %d/%d", tag, director.arena + 1, nArenas, ar.name,
                       director.wave + 1, director.waveCount());
         ui.renderDeath(buf, totalKills, elapsedTime, fast(), !endless());
     }
@@ -210,11 +211,15 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             std::string sub = dailyRun() ? std::string(daily.modName()) : "";
             ui.renderVictoryEndless(title.c_str(), sub.c_str(), runScore(), wavesCleared, totalKills, totalShots, totalHits,
                                     elapsedTime, dailyRun() ? records.bestDaily : records.bestEndless, newRecord, !nameEntry);
+        } else if (act2()) {   // a preview: no records, no board
+            ui.renderVictoryArena(totalKills, totalShots, totalHits, deaths, elapsedTime, peakStyle,
+                                  prog.level, 0.f, false, true, runScore(),
+                                  "TO BE CONTINUED", "THE NAVE IS BEHIND YOU - THREE MORE BELOW");
         } else {
             ui.renderVictoryArena(totalKills, totalShots, totalHits, deaths, elapsedTime, peakStyle,
                                   prog.level, records.bestArena, newRecord, !nameEntry, runScore());
         }
-        renderLeaderboardPanel();
+        if (!act2()) renderLeaderboardPanel();
     }
     if (armoryOpen) ui.renderArmory(prog, armoryW, armoryS);
     if (paused) {
@@ -227,7 +232,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             const char* labels[UIRenderer::PAUSE_ITEMS];
             for (int i = 0; i < UIRenderer::PAUSE_ITEMS; ++i) labels[i] = pauseLabel(i);
             std::string line = fast() ? "FAST - THE GAUNTLET  " + formatTime(elapsedTime)
-                                      : std::string("ARENA - ") + ar.name;
+                                      : std::string(act2() ? "ACT II - " : "ARENA - ") + ar.name;
             line += std::string("   ") + tune().name;
             ui.renderPause(pauseSelected, labels, line.c_str());
         }

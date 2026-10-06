@@ -113,6 +113,7 @@ public:
     GameSettings* settings = nullptr;   // injected by main — may be null (safe)
     GameMode      mode = GameMode::ARENA;
     bool fast() const { return mode == GameMode::FAST; }
+    bool act2() const { return mode == GameMode::ACT2; }
     bool endless() const { return mode == GameMode::ENDLESS || mode == GameMode::DAILY; }
     bool dailyRun() const { return mode == GameMode::DAILY; }
     Board boardFor() const {
@@ -205,6 +206,7 @@ public:
 
     // FAST mode
     float countdown  = 0.f;      // 3-2-1 before the clock starts
+    bool  act2Falling = false;   // ACT II: still dropping down the shaft (the fight waits)
     bool  finishOpen = false;
     std::vector<float> splits;   // clock at each section clear
 
@@ -334,6 +336,7 @@ public:
     void retryArena();
 
     void newRun();
+    void beginAct2();
 
     void lockDoor(int d, bool locked) { if (d >= 0) level.doors[d].locked = locked; }
 

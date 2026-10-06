@@ -359,8 +359,8 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
         if (g.beam) push(out, T(g.pos + glm::vec3{0, 40.f, 0}) * S({0.35f, 80.f, 0.35f}), col * 0.1f, col * 0.5f);
     }
 
-    // FAST: the finish beacon lights up once the last section is clear
-    if (fast()) {
+    // FAST / ACT II: the finish beacon lights up once the last fight is won
+    if (fast() || act2()) {
         glm::vec3 f = level.finishPos;
         glm::vec3 col = finishOpen ? glm::vec3{1.8f, 0.7f, 0.2f} : glm::vec3{0.3f, 0.12f, 0.1f};
         push(out, T(f + glm::vec3{0, 0.08f, 0}) * S({5.f, 0.16f, 5.f}), {0.15f, 0.12f, 0.12f});

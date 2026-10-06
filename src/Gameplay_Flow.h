@@ -66,7 +66,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     worldTex[TEX_ROCK]     = TextureGen::generateRock(128);
     worldTex[TEX_CONCRETE] = TextureGen::generateConcrete(128);
 
-    level = fast() ? buildGauntlet() : buildLevel();
+    level = fast() ? buildGauntlet() : act2() ? buildAct2Level() : buildLevel();
     spatialGrid.build(level.walls);
     world = buildWorldMeshes(level);
     shifts.capture(level);
@@ -84,8 +84,10 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
 
     if (endless()) setupEndless();
     int start = endless() ? endlessArena : glm::clamp(g_startArena, 0, (int)level.arenas.size() - 1);
-    ranked = (start == 0 || endless()) && g_startWave <= 0 && !g_godMode && !g_practice && !g_devCam;
+    // ACT II is a preview: unranked until the whole act exists
+    ranked = (start == 0 || endless()) && g_startWave <= 0 && !g_godMode && !g_practice && !g_devCam && !act2();
     enterArena(start);
+    if (act2()) beginAct2();
     director.wave = glm::clamp(g_startWave, 0, director.waveCount() - 1);
     if (fast()) ghost.load();
     if (fast() && start == 0) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
@@ -159,6 +161,7 @@ inline void GameplayState::enterArena(int a) {
     playerDead = false; deadTimer = 0.f;
     victory = false; victoryDelay = -1.f;
     finishOpen = false;
+    act2Falling = act2() && !g_devCam;
     // Health and XP placed in the level's breathers
     for (auto& pp : level.placedPickups) {
         PickupKind k = pp.kind == 1 ? PickupKind::POTION : pp.kind == 2 ? PickupKind::XP : PickupKind::ORB;
@@ -216,16 +219,26 @@ inline void GameplayState::newRun() {
     controlHintTimer = 10.f;
     splits.clear();
     newRecord = false;
-    ranked = !g_godMode && !g_practice;
+    ranked = !g_godMode && !g_practice && !act2();
     nameEntry = false; boardPlace = -1;
     ghostRec.pts.clear();
     if (fast()) ghost.load();
     if (endless()) setupEndless();
     enterArena(endless() ? endlessArena : 0);
+    if (act2()) beginAct2();
     bankedStyle = bankedDamage = 0.f;   // after enterArena: that banked the last run's
     wavesCleared = 0;
     if (fast()) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
     captureMouse(true);
+}
+
+// ACT II: the head start (what an Act I run has by the Sanctum), spent in the
+// armory before the fall
+inline void GameplayState::beginAct2() {
+    prog = Progression{};
+    prog.level = 6; prog.points = 5;
+    pushBanner("ACT II", "BENEATH THE ECLIPSE", {0.35f, 0.95f, 0.9f}, 3.5f);
+    if (!g_devCam && g_devOverlay.empty()) openArmory();
 }
 
 inline void GameplayState::pushBanner(const std::string& title, const std::string& sub, glm::vec3 col, float dur) {
@@ -247,6 +260,9 @@ inline void GameplayState::handleDirectorEvents() {
                 if (dailyRun()) pushBanner("DAILY  " + daily.label(), std::string(daily.modName()) + " - " + daily.modHint(),
                                            {0.4f, 0.8f, 1.f}, 3.4f);
                 else pushBanner(std::string("ENDLESS  ") + ar.name, "HOW LONG CAN YOU LAST", {1.f, 0.3f, 0.45f}, 3.f);
+                audio.play("wave");
+            } else if (act2()) {
+                pushBanner(std::string("ACT II  ") + ar.name, ar.subtitle, {0.35f, 0.95f, 0.9f}, 2.6f);
                 audio.play("wave");
             } else {
                 snprintf(buf, sizeof(buf), "ARENA %d/%d", ev.value + 1, (int)level.arenas.size());
@@ -299,7 +315,7 @@ inline void GameplayState::handleDirectorEvents() {
                 audio.play("split");
                 break;
             }
-            if (done.exitDoor >= 0)
+            if (done.exitDoor >= 0 && !act2())
                 pushBanner("ARENA CLEARED", "THE GATE IS OPEN - HEAD NORTH", {0.4f, 1.f, 0.6f}, 3.5f);
             styleSystem.heal(40.f);
             grenadeCount = grenadeMax;
@@ -323,7 +339,11 @@ inline void GameplayState::handleDirectorEvents() {
             shake(0.3f, 0.05f);
             break;
         case DirectorEvent::VICTORY:
-            victoryDelay = 2.5f;
+            if (act2()) {   // the run ends at the end of the sealed passage
+                finishOpen = true;
+                pushBanner("THE WAY DOWN IS OPEN", "BEHIND THE ORGAN", {0.35f, 0.95f, 0.9f}, 3.f);
+                audio.play("wave");
+            } else victoryDelay = 2.5f;
             break;
         case DirectorEvent::FINISH_OPEN:
             finishOpen = true;
@@ -583,7 +603,7 @@ inline void GameplayState::update(float dt) {
         if (boltSoundTimer <= 0.f) audio.play("bolt", 110);
     }
 
-    elapsedTime += floatDt;
+    if (!act2Falling) elapsedTime += floatDt;   // ACT II's clock starts when you land
     if (styleSystem.style > peakStyle) peakStyle = styleSystem.style;
 
     fx.updateParticles(floatDt);
@@ -658,7 +678,7 @@ inline void GameplayState::updateMusic() {
     static const int ARENA_TRACK[] = {0, 1, 2, 3, 4};       // Yard, Foundry, Spire, Core, Sanctum
     static const int FAST_TRACK[]  = {0, 1, 2, 2, 1, 1, 3}; // Canal .. Tower
     int a = director.arena;
-    m.setTrack(fast() ? FAST_TRACK[a % 7] : ARENA_TRACK[a % 5]);
+    m.setTrack(fast() ? FAST_TRACK[a % 7] : act2() ? 5 : ARENA_TRACK[a % 5]);
     float lv = 0.6f;
     switch (director.phase) {
         case WaveDirector::Phase::ACTIVE:   lv = director.bossWave() ? 1.35f : 1.f; break;

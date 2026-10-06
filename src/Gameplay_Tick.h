@@ -142,6 +142,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         if (boost >= 0) applyBooster(level.boosters[boost], player, dt);
         keepPlayerInZone(dt);
     }
+    if (act2Falling && player.onGround) act2Falling = false;
     if (boost >= 0 && boostPrev < 0) {
         audio.play("boost", 100);
         fovKick = std::max(fovKick, 10.f);
@@ -244,7 +245,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         for (auto& e : enemies)
             if (e.targetable() && !e.stats().flying && e.type != EnemyType::CONDUIT && director.inHoldZone(e.position + glm::vec3{0, 0.3f, 0}))
                 director.zoneContested = true;
-    director.update(dt, alive, player.position, spawns);
+    if (!act2Falling) director.update(dt, alive, player.position, spawns);   // ACT II: the fight waits for you to land
     for (auto& s : spawns) spawnEnemy(s.type, s.pos);
 
     // --- Enemies ---

@@ -423,6 +423,28 @@ int main() {
         keep.save();   // leave the developer's records as they were
     }
 
+    // ---------------------------------------------------------------- a simulated ACT II run
+    {
+        LevelData N = buildAct2Level();
+        WaveDirector d; d.level = &N;
+        d.startArena(0);
+        glm::vec3 player = N.arenas[0].playerStart; player.y = -60.f;
+        std::vector<float> alive;
+        for (int tick = 0; tick < 60 * 60 * 20 && d.phase != WaveDirector::Phase::VICTORY; ++tick) {
+            std::vector<SpawnRequest> out;
+            d.update(DT, (int)alive.size(), player, out);
+            for (size_t k = 0; k < out.size(); ++k) alive.push_back(3.f);
+            for (auto& t : alive) t -= DT;
+            for (auto& t : alive)
+                if (t <= 0.f && d.conduitsLeft() > 0) d.onConduitDestroyed(d.goal().points[0]);
+            alive.erase(std::remove_if(alive.begin(), alive.end(), [](float t) { return t <= 0.f; }), alive.end());
+            for (auto& ev : d.events) if (ev.kind == DirectorEvent::GOAL_DONE) alive.clear();
+            d.events.clear();
+        }
+        CHECK(d.phase == WaveDirector::Phase::VICTORY, "a simulated ACT II run clears the Nave");
+        CHECK(MUSIC_TRACKS == 6 && std::string(musicTrack(5).name) == "NAVE", "the Nave has its own track");
+    }
+
     // ---------------------------------------------------------------- the Gauntlet (FAST)
     LevelData D = buildGauntlet();
     SpatialGrid dgrid; dgrid.build(D.walls);
