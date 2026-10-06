@@ -748,6 +748,23 @@ inline void GameplayState::renderLasers(const glm::mat4& view, const glm::mat4& 
         beams.push_back({glm::vec4(eye, a), glm::vec4(eye + d * ((len - 3.f) / len), a * 0.5f), 0.03f});
     }
     drawBeams(beams, {0.3f, 0.95f, 1.f}, view, proj);
+    // SERAPHS: a thin aim line while charging, then the thick sweeping beam
+    static std::vector<Beam> aims, sweeps;
+    aims.clear(); sweeps.clear();
+    for (auto& e : enemies) {
+        if (!e.targetable() || e.type != EnemyType::SERAPH) continue;
+        glm::vec3 eye = (e.hasShown ? e.shownPos : e.position) + glm::vec3{0, e.height() * 0.6f, 0};
+        if (e.attack == AttackKind::BEAM && e.telegraphTimer > 0.f) {
+            float a = 0.3f + 0.6f * e.telegraphProgress();
+            aims.push_back({glm::vec4(eye, a), glm::vec4(e.beamPoint, a * 0.6f), 0.025f});
+        } else if (e.beamTimer > 0.f) {
+            float f = 0.85f + 0.15f * std::sin(gameClock * 40.f);
+            sweeps.push_back({glm::vec4(eye, f), glm::vec4(e.beamEnd, f), 0.22f});
+            sweeps.push_back({glm::vec4(eye, f * 0.5f), glm::vec4(e.beamEnd, f * 0.5f), 0.5f});
+        }
+    }
+    drawBeams(aims, {1.f, 0.85f, 0.5f}, view, proj);
+    drawBeams(sweeps, {1.4f, 1.15f, 0.7f}, view, proj);
 }
 
 // CONDUCTOR tethers: a flickering line from each conductor to every ally it shields

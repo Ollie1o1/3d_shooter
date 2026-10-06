@@ -31,6 +31,8 @@ inline int xpForKill(EnemyType t) {
         case EnemyType::SHIELDBEARER: return 40;
         case EnemyType::CONDUIT:  return 50;
         case EnemyType::CONDUCTOR: return 45;
+        case EnemyType::SERAPH:   return 60;
+        case EnemyType::ANCHOR:   return 90;
         case EnemyType::WARDEN:   return 500;
         case EnemyType::SOVEREIGN: return 1000;
         default:                  return 10;

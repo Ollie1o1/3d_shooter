@@ -599,6 +599,57 @@ int main() {
         CHECK(hs < hb * 0.85f, "and drawn smaller");
     }
 
+    // ---------------------------------------------------------------- the Seraph
+    {
+        CHECK((int)EnemyType::SERAPH == 12 && statsOf(EnemyType::SERAPH).flying, "the Seraph flies (dev spawn 12)");
+        auto sweep = [&](glm::vec3 playerVel, bool wall, int& hitTicks, int& beamTicks, float& startGap, float& maxStep, bool& charged) {
+            std::vector<Wall> walls;
+            // low enough that it sees your head over it, high enough to stop a beam at your feet
+            if (wall) walls.push_back(Wall{LevelBuilder::aabb(17, 0, -6, 18, 2.5f, 6)});
+            SpatialGrid g; g.build(walls);
+            Enemy s(EnemyType::SERAPH, {0, 12, 0}); s.state = EnemyState::ACTIVE; s.attackTimer = 99.f;
+            EnemyWorld w; w.walls = walls.empty() ? nullptr : walls.data(); w.wallCount = (int)walls.size(); w.grid = &g;
+            glm::vec3 feet{20.f, 0.f, 0.f};
+            hitTicks = beamTicks = 0; startGap = -1.f; maxStep = 0.f; charged = false;
+            glm::vec3 lastTo{0.f}; bool had = false;
+            for (int i = 0; i < 60 * 6; ++i) {
+                feet += playerVel * DT;
+                w.playerFeet = feet; w.playerEye = feet + glm::vec3{0, 1.7f, 0}; w.playerVel = playerVel;
+                s.update(DT, w);
+                charged |= s.attack == AttackKind::BEAM && s.telegraphTimer > 0.f;
+                if (!s.ev.beamOn) { had = false; continue; }
+                ++beamTicks;
+                glm::vec3 pt = s.beamPoint;
+                if (startGap < 0.f) startGap = glm::length(glm::vec2(pt.x - feet.x, pt.z - feet.z));
+                if (had) maxStep = std::max(maxStep, glm::length(pt - lastTo));
+                lastTo = pt; had = true;
+                AABB pb{feet + glm::vec3{-0.4f, 0, -0.4f}, feet + glm::vec3{0.4f, 1.8f, 0.4f}};
+                hitTicks += segmentHitsBox(s.ev.beamFrom, s.ev.beamTo, pb);
+            }
+        };
+        int hit, beam; float gap, step; bool charged;
+        sweep({0, 0, 0}, false, hit, beam, gap, step, charged);
+        std::printf("      seraph vs still player: beam %d ticks, hit %d, start %.1f m off, max step %.3f m\n", beam, hit, gap, step);
+        CHECK(charged && beam > 60, "a Seraph charges, then sweeps its beam");
+        CHECK(gap >= 4.f && step <= 8.f * DT + 1e-3f, "the beam starts metres to the side and turns no faster than 8 m/s");
+        CHECK(hit > beam / 2, "standing still, you're caught");
+        sweep({0, 0, 7.f}, false, hit, beam, gap, step, charged);
+        std::printf("      seraph vs strafing player: hit %d of %d\n", hit, beam);
+        CHECK(hit < beam / 5, "strafing at walking speed, you're grazed at most");
+        sweep({0, 0, 0}, true, hit, beam, gap, step, charged);
+        std::printf("      seraph behind a wall: hit %d of %d\n", hit, beam);
+        CHECK(beam > 0 && hit == 0, "a wall between you blocks the beam");
+        Enemy c(EnemyType::SERAPH, {0, 12, 0}); c.state = EnemyState::ACTIVE; c.attackTimer = 99.f;
+        EnemyWorld w; w.playerFeet = {20, 0, 0}; w.playerEye = {20, 1.7f, 0};
+        for (int i = 0; i < 30 && !(c.attack == AttackKind::BEAM && c.telegraphTimer > 0.f); ++i) c.update(DT, w);
+        bool cancelled = c.onBeamHit(45.f, false);
+        bool beamed = false;
+        for (int i = 0; i < 90; ++i) { c.update(DT, w); beamed |= c.ev.beamOn; }
+        CHECK(cancelled && !beamed, "a big hit during the charge cancels the beam");
+        c.alive = false; c.update(DT, w);
+        CHECK(!c.ev.beamOn, "a dead Seraph's beam is gone");
+    }
+
     // ---------------------------------------------------------------- the Gauntlet (FAST)
     LevelData D = buildGauntlet();
     SpatialGrid dgrid; dgrid.build(D.walls);
@@ -1250,7 +1301,8 @@ int main() {
               "every wave starts; the Core and the Sanctum end on their bosses");
         CHECK(counts[DirectorEvent::ARENA_CLEARED] == n && counts[DirectorEvent::VICTORY] == 1 &&
               counts[DirectorEvent::FINISH_OPEN] == 0, "each arena clears, then victory");
-        CHECK(counts[DirectorEvent::NEW_TYPE] == (int)EnemyType::COUNT, "each enemy type is introduced exactly once");
+        CHECK(counts[DirectorEvent::NEW_TYPE] == (int)EnemyType::COUNT - 2,   // the Seraph and the Anchor are Act II's
+              "each Act I enemy type is introduced exactly once");
         CHECK(goalWaves >= 3 && (int)goalsDone.size() == goalWaves && counts[DirectorEvent::GOAL_DONE] == goalWaves,
               "every goal wave (hold, conduits, survive) is met once, and that ends it");
         CHECK(conduitSpawns == conduitsWanted && conduitsWanted > 0, "a conduit wave raises its conduits once");

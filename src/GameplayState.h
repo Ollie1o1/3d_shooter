@@ -513,6 +513,7 @@ public:
 
     void spawnEnemy(EnemyType t, glm::vec3 pos, Hollow h = Hollow::NONE);
     int  nextEnemyUid = 1;
+    float beamTickCd = 0.f, beamHissCd = 0.f;   // SERAPH beams: damage in 0.2 s ticks, a hiss now and then
     std::vector<Enemy> pendingTwins;   // TWINNED copies, spawned once the tick's enemy loop is done
 
     void updateEnemies(float dt);

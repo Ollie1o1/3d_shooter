@@ -22,6 +22,10 @@
 //              it (it turns slowly), shoot the head over the rim, blow it up,
 //              or PARRY (F) the bash to knock the shield aside.
 //   WARDEN   — the Core's boss: volleys, slams, and summons adds; enrages at 50%.
+//   SERAPH   — winged, high and far. Charges, then sweeps a beam toward you
+//              that turns slower than you run: keep moving, or break line of sight.
+//   ANCHOR   — slow heavy. Inside its field you can't dash or grapple; it
+//              lobs slow orbs you can parry. Kill it, or keep out of its field.
 //   SOVEREIGN — the final boss, alone in the Sanctum: a 3.5 m knight with a
 //              greatsword. Dashes at you (and dashes again), chains two sweeps
 //              into an overhead cleave, whirls, thrusts, drives eruptions
@@ -49,7 +53,7 @@
 // CONDUCTOR: doesn't attack either; it tethers nearby allies and shields them
 // (linkConductors below), so it's the one to kill first.
 enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, JUGGERNAUT, WARDEN, SOVEREIGN, SHIELDBEARER, CONDUIT,
-                       CONDUCTOR, COUNT };
+                       CONDUCTOR, SERAPH, ANCHOR, COUNT };
 inline bool isBoss(EnemyType t) { return t == EnemyType::WARDEN || t == EnemyType::SOVEREIGN; }
 
 // Hollowed variants (Act II): a regular enemy made harder in one specific way.
@@ -76,7 +80,8 @@ enum class EnemyState { SPAWNING, ACTIVE, DEAD };
 enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY, SUMMON, SHELL, SMASH,
                         DASH, SWEEP, CLEAVE, LEAP, CRESCENT,   // the SOVEREIGN's
                         BLINK, JUDGMENT, WHIRL, THRUST, RUPTURE, PHANTOMS,
-                        BASH };                                // the SHIELDBEARER's
+                        BASH,                                  // the SHIELDBEARER's
+                        BEAM };                                // the SERAPH's
 
 struct EnemyStats {
     const char* name;
@@ -130,6 +135,12 @@ inline const EnemyStats& statsOf(EnemyType t) {
         {"CONDUCTOR", 90.f, 0.75f, 1.7f, 6.f, 0.f, 0.f, true,
          {0.18f,0.3f,0.34f}, {0.3f,1.0f,0.9f}, {0.3f,1.0f,0.9f},
          "CONDUCTORS SHIELD THE ENEMIES THEY TETHER - SHOOT THEM DOWN FIRST"},
+        {"SERAPH", 120.f, 0.8f, 1.6f, 5.0f, 1.0f, 3.5f, true,
+         {0.82f,0.78f,0.66f}, {1.0f,0.86f,0.5f}, {1.0f,0.9f,0.6f},
+         "SERAPHS SWEEP A BEAM TOWARD YOU - KEEP MOVING OR BREAK LINE OF SIGHT"},
+        {"ANCHOR", 260.f, 1.0f, 2.8f, 2.2f, 1.0f, 2.8f, false,
+         {0.24f,0.27f,0.32f}, {0.95f,0.25f,0.3f}, {1.0f,0.35f,0.35f},
+         "ANCHORS PIN YOU DOWN - NO DASH OR GRAPPLE IN THEIR FIELD"},
     };
     return S[(int)t];
 }
@@ -144,6 +155,8 @@ struct EnemyEvents {
     float     shotSpeed = 16.f, shotDamage = 10.f, shotSize = 1.f;
     bool      shotHeavy = false;   // a JUGGERNAUT siege shell: parry it for a huge hit
     float     shotParry = 0.f;     // > 0: what these shots do when parried back
+    bool      beamOn = false;      // SERAPH: its beam is sweeping, from beamFrom to beamTo
+    glm::vec3 beamFrom{0.f}, beamTo{0.f};
     bool      meleeHit = false;   float meleeDamage = 0.f;
     bool      slam = false;       float slamRadius = 0.f, slamDamage = 0.f;
     bool      detonated = false;  // MITE blew itself up next to the player
@@ -189,6 +202,16 @@ inline float rayBoxHit(glm::vec3 o, glm::vec3 d, const AABB& b) {
     return tEnter > 0.f ? tEnter : tExit;
 }
 
+// Does the segment a→b pass through the box?
+inline bool segmentHitsBox(glm::vec3 a, glm::vec3 b, const AABB& box) {
+    glm::vec3 d = b - a;
+    float len = glm::length(d);
+    if (len < 1e-4f) return a.x >= box.min.x && a.x <= box.max.x && a.y >= box.min.y && a.y <= box.max.y &&
+                            a.z >= box.min.z && a.z <= box.max.z;
+    float t = rayBoxHit(a, d / len, box);
+    return t >= 0.f && t <= len;
+}
+
 inline float frand(float lo, float hi) { return lo + (hi - lo) * (float)(rand() % 10001) / 10000.f; }
 
 struct Enemy {
@@ -216,6 +239,8 @@ struct Enemy {
     glm::vec3  supportAnchor{0.f};   // a CONDUCTOR's: where it wants to hover
     bool       hasAnchor = false;
     bool       alive = true;
+    float      beamTimer = 0.f;      // SERAPH: > 0 while sweeping
+    glm::vec3  beamPoint{0.f}, beamEnd{0.f};   // SERAPH: where it's aimed; where the beam stops
     int        uid = 0;              // stable id (GameplayState numbers them): who fired a shot
     Hollow     hollow = Hollow::NONE;
     float      scale = 1.f;          // TWINNED copies are smaller
@@ -230,6 +255,13 @@ struct Enemy {
         stagger(0.4f);
     }
     bool  splitsOnDeath() const { return hollow == Hollow::TWINNED; }
+    // SERAPH: a hit during the charge - a big one, or the head - cancels it
+    bool onBeamHit(float dmg, bool head) {
+        if (type != EnemyType::SERAPH || attack != AttackKind::BEAM || telegraphTimer <= 0.f) return false;
+        if (dmg < 40.f && !head) return false;
+        attack = AttackKind::NONE; telegraphTimer = 0.f; attackTimer = 0.f;
+        return true;
+    }
     float damageMult() const { return hollow == Hollow::ENRAGED ? 1.25f : 1.f; }   // what its attacks deal
     void setHollow(Hollow h) {
         hollow = canBeHollow(type) ? h : Hollow::NONE;
@@ -453,6 +485,7 @@ struct Enemy {
             case EnemyType::SOVEREIGN: thinkSovereign(dt, w, resolve); break;
             case EnemyType::SHIELDBEARER: thinkShieldbearer(dt, w, resolve); break;
             case EnemyType::CONDUCTOR: thinkConductor(dt, w); break;
+            case EnemyType::SERAPH:   thinkSeraph(dt, w, resolve);   break;
             default: break;
         }
         integrate(dt, w);
@@ -644,7 +677,7 @@ private:
 
     // Ticks the attack clock; returns true when it's time to start a new attack.
     bool attackReady(float dt) {
-        if (telegraphTimer > 0.f || burstLeft > 0 || diveTimer > 0.f) return false;
+        if (telegraphTimer > 0.f || burstLeft > 0 || diveTimer > 0.f || beamTimer > 0.f) return false;
         attackTimer += dt * (enraged ? 1.5f : 1.f) * tune_->attackRate;
         if (attackTimer < stats().attackEvery) return false;
         attackTimer = 0.f;
@@ -942,6 +975,59 @@ private:
     // ---- the CONDUCTOR --------------------------------------------------------
     // Hovers behind the allies it shields (supportAnchor), weaving so it isn't
     // a sitting target, and backs off if you close in. No attack of its own.
+    // Drifts high and far; charges (1 s), then sweeps a beam whose ground point
+    // starts 5 m to one side and turns toward you at 8 m/s for 3 s. Walls cut it.
+    void thinkSeraph(float dt, const EnemyWorld& w, bool resolve) {
+        animPhase += dt * 4.f;
+        glm::vec3 to = flatTo(w.playerFeet);
+        float d = glm::length(to);
+        glm::vec3 dir = norm2(to), side{-dir.z, 0.f, dir.x};
+        bool busy = telegraphTimer > 0.f || beamTimer > 0.f;
+        if (busy) { velocity.x = velocity.z = 0.f; }
+        else {
+            strafeTimer -= dt;
+            if (strafeTimer <= 0.f) { strafeTimer = frand(3.f, 5.f); strafeDir = -strafeDir; }
+            float radial = d < 18.f ? -1.f : d > 28.f ? 1.f : 0.f;
+            glm::vec3 mv = norm2(side * strafeDir + dir * radial);
+            velocity.x = mv.x * stats().speed * tune_->moveSpeed;
+            velocity.z = mv.z * stats().speed * tune_->moveSpeed;
+        }
+        float targetY = floorY + glm::clamp(hoverY, 10.f, 14.f);
+        velocity.y = glm::clamp((targetY - position.y) * 2.f, -6.f, 6.f);
+        turnToward(to, dt, 3.f);
+        glm::vec3 feet = w.playerFeet;
+        if (resolve && attack == AttackKind::BEAM) { beamTimer = 3.f; attack = AttackKind::NONE; }
+        if (beamTimer > 0.f) {
+            beamTimer -= dt;
+            glm::vec3 gap = feet - beamPoint;
+            float l = glm::length(gap), step = 8.f * dt;
+            beamPoint = l <= step ? feet : beamPoint + gap / l * step;
+            glm::vec3 from = eyePos(), seg = beamPoint - from;
+            float len = glm::length(seg);
+            beamEnd = beamPoint;
+            if (w.walls && len > 1e-3f) {
+                glm::vec3 u = seg / len;
+                AABB q{glm::min(from, beamPoint) - glm::vec3{0.5f}, glm::max(from, beamPoint) + glm::vec3{0.5f}};
+                static std::vector<int> cands;
+                if (w.grid) w.grid->query(q, cands);
+                else { cands.clear(); for (int i = 0; i < w.wallCount; ++i) cands.push_back(i); }
+                float best = len;
+                for (int i : cands) { float t = rayBoxHit(from, u, w.walls[i].box); if (t > 0.f && t < best) best = t; }
+                beamEnd = from + u * best;
+            }
+            ev.beamOn = true; ev.beamFrom = from; ev.beamTo = beamEnd;
+            if (beamTimer <= 0.f) { beamTimer = 0.f; attackTimer = 0.f; }
+            return;
+        }
+        if (attackReady(dt) && lineOfSight(eyePos(), w)) {
+            // Start 5 m off: behind where you're heading, or to one side if you're still
+            glm::vec2 v{w.playerVel.x, w.playerVel.z};
+            glm::vec3 off = glm::length(v) > 1.f ? -glm::vec3{v.x, 0.f, v.y} / glm::length(v) : side * strafeDir;
+            beamPoint = feet + off * 5.f;
+            startAttack(AttackKind::BEAM, 1.f);
+        }
+    }
+
     void thinkConductor(float dt, const EnemyWorld& w) {
         animPhase += dt * 3.f;
         glm::vec3 toP = flatTo(w.playerFeet);

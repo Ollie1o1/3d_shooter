@@ -135,6 +135,7 @@ inline void GameplayState::spawnEnemy(EnemyType t, glm::vec3 pos, Hollow h) {
 
 inline void GameplayState::updateEnemies(float dt) {
     telegraphSoundCd -= dt;
+    beamHissCd -= dt;
     shieldClankCd -= dt;
     const Arena& ar = level.arenas[director.arena];
     EnemyWorld w;
@@ -176,6 +177,20 @@ inline void GameplayState::updateEnemies(float dt) {
                 pr->owner = enemies[i].uid;
                 pr->parryDamage = ev.shotParry;
             }
+        if (ev.beamOn) {   // a SERAPH's beam: 30/s while it touches you, sparks (or steam) where it lands
+            AABB pb{player.position + glm::vec3{-player.radius, 0.f, -player.radius},
+                    player.position + glm::vec3{player.radius, player.height, player.radius}};
+            if (segmentHitsBox(ev.beamFrom, ev.beamTo, pb)) {
+                beamTickCd -= dt;
+                if (beamTickCd <= 0.f) { beamTickCd = 0.2f; damagePlayer(6.f * eScale, epos, 0.08f, 0.02f); }
+            }
+            if (rand() % 3 == 0) {
+                bool wet = level.waterDepthAt(ev.beamTo) > 0.05f;
+                fx.spawnBurst(ev.beamTo + glm::vec3{0, 0.1f, 0}, wet ? glm::vec3{0.85f, 0.88f, 0.9f} : glm::vec3{1.f, 0.85f, 0.5f},
+                              3, wet ? 2.f : 5.f, wet ? 0.8f : 0.3f, wet ? -3.f : 9.f);
+            }
+            if (beamHissCd <= 0.f) { audio.play("skim", 55); beamHissCd = 0.45f; }
+        }
         if (ev.meleeHit) {
             if (damagePlayer(ev.meleeDamage * eScale, epos, 0.25f, 0.06f)) {
                 glm::vec3 away = player.position - epos; away.y = 0.f;
@@ -302,6 +317,7 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
     if (!e.targetable()) return false;
     if (!pierceArmor) dmg *= e.armorMult();
     dmg *= e.incomingMult();   // a halo, or the window after one breaks
+    if (e.onBeamHit(dmg, crit)) { ui.feed("BEAM BROKEN", {1.f, 0.85f, 0.5f}); styleSystem.addStyle(25.f, src); }
     if (e.halo) fx.spawnHitSparks(at, {1.f, 0.85f, 0.3f});
     if (modOn(DailyMod::GLASS_CANNON) && src != StyleSource::FRIENDLY && src != StyleSource::ENVIRONMENT) dmg *= 2.f;
     if (e.shielded) {   // a CONDUCTOR's tether soaks most of it

@@ -274,7 +274,7 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
             r.box(f.torso, {s * 0.3f, 0.72f, 0.f}, {0.24f, 0.12f, 0.34f}, st.color * 1.25f);
         break;
     }
-    case EnemyType::BRUTE: {
+    case EnemyType::BRUTE: case EnemyType::ANCHOR: {   // ANCHOR: its own rig comes next
         HumanoidLook L = humanoidLook(e.type, st.color, st.color * 0.5f, glow);
         ArmPose pose = ArmPose::SWING; float amt = 0.f;
         if (e.attack == AttackKind::SLAM) { pose = ArmPose::RAISED;   amt = smooth01(tp * 1.6f); }
@@ -380,6 +380,28 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         for (float s : {-1.f, 1.f}) {                                                // blades
             mat4 arm = body * T({s * 0.36f, 0.05f, 0.42f}) * RX(-0.35f - crouch * 0.9f) * RY(-s * 0.2f);
             r.box(arm, {0.f, 0.f, 0.36f}, {0.06f, 0.1f, 0.78f}, glow * 0.4f, glow * (0.8f + 1.5f * crouch));
+        }
+        break;
+    }
+    case EnemyType::SERAPH: {
+        bool charging = e.attack == AttackKind::BEAM && e.telegraphTimer > 0.f, sweeping = e.beamTimer > 0.f;
+        float bob = std::sin(time * 2.f + e.animPhase * 0.1f) * 0.2f;
+        mat4 base = T(e.position + vec3{0.f, bob, 0.f}) * RY(e.yaw) * S(vec3{e.scale}) * S(vec3{grow});
+        vec3 bone = st.color, dark = st.color * 0.45f;
+        r.box(base, {0.f, 0.8f, 0.f},  {0.42f, 0.9f, 0.3f}, bone);                  // body
+        r.box(base, {0.f, 0.32f, 0.f}, {0.2f, 0.5f, 0.2f}, dark);                    // tail spine
+        r.box(base, {0.f, 0.95f, 0.17f}, {0.18f, 0.18f, 0.06f}, glow * 0.3f,
+              glow * (1.5f + (sweeping ? 3.f : 3.f * tp)));                          // chest lens
+        mat4 head = base * T({0.f, 1.42f, 0.f});
+        for (int k = 0; k < 8; ++k)                                                 // a ring for a head
+            r.box(head * RZ(k * 0.7854f), {0.f, 0.26f, 0.f}, {0.14f, 0.08f, 0.06f}, bone, glow * 0.8f);
+        float flare = charging ? smooth01(tp) : sweeping ? 1.f : 0.f;
+        for (float s : {-1.f, 1.f}) for (int pair = 0; pair < 2; ++pair) {
+            float lift = pair == 0 ? 0.5f : -0.15f;
+            mat4 wr = base * T({s * 0.2f, 1.05f - pair * 0.35f, -0.05f})
+                    * RZ(s * (lift + std::sin(e.animPhase + pair) * 0.18f + flare * 0.5f)) * RY(-s * 0.25f);
+            r.box(wr, {s * 0.6f, 0.f, 0.f}, {1.2f - pair * 0.3f, 0.05f, 0.42f}, bone * (pair ? 0.8f : 1.f));
+            r.box(wr, {s * 1.2f, 0.f, 0.2f}, {0.1f, 0.06f, 0.5f}, glow * 0.3f, glow * (1.f + 2.f * flare));
         }
         break;
     }
@@ -603,6 +625,13 @@ inline bool headBox(const Enemy& e, AABB& out) {
         frame  = body * T({0.f, 0.1f, 0.6f}) * RX(-0.12f + crouch * 0.3f);
         centre = {0.f, -0.03f, 0.22f};
         half   = {0.21f, 0.2f, 0.23f};
+        break;
+    }
+    case EnemyType::SERAPH: {
+        float bob = std::sin(e.animPhase * 0.1f) * 0.2f;
+        frame  = T(e.position + vec3{0.f, bob, 0.f}) * RY(e.yaw) * S(vec3{e.scale}) * S(vec3{grow}) * T({0.f, 1.42f, 0.f});
+        centre = {0.f, 0.f, 0.f};
+        half   = {0.3f, 0.3f, 0.12f};
         break;
     }
     case EnemyType::RAPTOR: {
