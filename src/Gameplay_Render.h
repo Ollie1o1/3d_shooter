@@ -791,7 +791,7 @@ inline void GameplayState::renderFlare(const glm::mat4& view, const glm::mat4& p
     fan.clear();
     bool burn = ph == FlarePhase::BURN;
     float a = burn ? 0.5f : 0.18f + 0.12f * std::sin(gameClock * 12.f);
-    glm::vec3 c{ar.sunPos.x, -79.4f, ar.sunPos.z};
+    glm::vec3 c{ar.sunPos.x, ar.playerStart.y + 0.6f, ar.sunPos.z};   // just over the terrace
     for (int arm = 0; arm < shifts.flareArms; ++arm)
         for (int k = 0; k < 7; ++k) {
             float ang = shifts.flareAngle + arm * 6.2831853f / shifts.flareArms

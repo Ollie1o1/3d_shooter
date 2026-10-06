@@ -239,6 +239,7 @@ inline void GameplayState::newRun() {
     newRecord = false;
     ranked = !g_godMode && !g_practice && !act2();
     nameEntry = false; boardPlace = -1;
+    flareIntroduced = false;
     ghostRec.pts.clear();
     if (fast()) ghost.load();
     if (endless()) setupEndless();

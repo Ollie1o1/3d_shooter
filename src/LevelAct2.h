@@ -245,7 +245,9 @@ inline void buildAct2(LevelBuilder& B) {
     vec3 stone{0.42f,0.36f,0.30f}, stoneDark{0.24f,0.2f,0.17f}, brassO{0.75f,0.58f,0.3f},
          gold{1.f,0.72f,0.3f}, sunCol{1.6f,1.05f,0.45f};
     B.mat = Mat::BRICK;
-    wall(-5, O - 2, -669, 5, -57, -668, slate);                    // under the passage's end
+    wall(-4, O - 2, -669, 4, -57, -668, slate);                    // under the passage's end
+    wall(-6, O - 2, -669, -4, -49, -653, slate);                   // no slot beside the passage's end
+    wall( 4, O - 2, -669,  6, -49, -653, slate);
     wall(-6, O - 2, -681, -5, -50, -664, slate);                   // the shaft's sides
     wall( 5, O - 2, -681,  6, -50, -664, slate);
     wall(-6, -50, -681, 6, -49, -664, slate);                      // its roof
@@ -278,9 +280,9 @@ inline void buildAct2(LevelBuilder& B) {
         float zn = std::min(std::fabs(z0), std::fabs(z1)), zf = std::max(std::fabs(z0), std::fabs(z1));
         if (z0 < 0.f && z1 > 0.f) zn = 0.f;
         float xo = std::sqrt(std::max(0.f, ROUT * ROUT - zn * zn));
-        if (zf >= RIN) wall(-xo, O - 1, C.z + z0, xo, O, C.z + z1, stone);
+        if (zn >= RIN) B.solid(-xo, O - 1, C.z + z0, xo, O, C.z + z1);   // clear of the pit (drawn by the curve below)
         else {
-            float xi = std::sqrt(RIN * RIN - zf * zf);   // the pit's edge (the strip's far side: no floor over the void)
+            float xi = std::sqrt(RIN * RIN - zn * zn);   // the pit's widest point in the strip: no floor over the void
             B.solid(-xo, O - 1, C.z + z0, -xi, O, C.z + z1);
             B.solid(xi, O - 1, C.z + z0, xo, O, C.z + z1);
         }

@@ -83,7 +83,8 @@ public:
         return false;
     }
     // Does the burning flare reach p (feet)? In a wedge, and nothing solid
-    // between the sun's axis and p's chest (pillars, ring segments, walls)
+    // between the sun's axis and p's chest: pillars and walls (not the rings,
+    // which turn through that line and would shade the whole terrace)
     bool flareHits(const LevelData& L, int a, glm::vec3 p) const {
         const Arena& ar = L.arenas[a];
         if (ar.shift != ArenaShift::SOLAR || flarePhase() != FlarePhase::BURN || !inFlareWedge(ar, p)) return false;
@@ -94,6 +95,7 @@ public:
         if (len < 1e-3f) return true;
         d /= len;
         for (auto& w : L.walls) {
+            if (w.dynamic) continue;
             float t = rayBoxHit(from, d, w.box);
             if (t > 0.f && t < len - 0.3f) return false;
         }

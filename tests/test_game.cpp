@@ -589,6 +589,51 @@ int main() {
         std::printf("      spoke -> outer ring %d/8, outer -> inner ring %d/8\n", spokeOk, innerOk);
         CHECK(spokeOk == 8, "from a spoke's tip a running jump always lands on the outer ring");
         CHECK(innerOk >= 6, "from the outer ring a jump and double jump reaches the inner ring");
+        // The flare reaches the open terrace whatever the rings are doing (they don't shade it)
+        {
+            ArenaShifts fs; fs.capture(N);
+            fs.flareClock = 2.f;   // burning
+            int hits = 0, tries = 0;
+            LevelData L = N;
+            for (float t = 0.f; t < 60.f; t += 1.7f) {
+                L.updateMovers(t);
+                for (float r : {32.f, 40.f, 50.f}) {
+                    glm::vec3 p = C + glm::vec3{r, 0.f, 0.f};
+                    fs.flareAngle = 0.f;
+                    ++tries; hits += fs.flareHits(L, 1, p);
+                }
+            }
+            std::printf("      flare on the open terrace: %d/%d\n", hits, tries);
+            CHECK(hits == tries, "the burning flare reaches anyone in the open on the terrace");
+        }
+        // No floor over the void: nothing solid at the terrace's height inside the pit's edge
+        {
+            bool clear = true, floored = true;
+            for (int k = 0; k < 72; ++k) {
+                float ang = k * 6.2831853f / 72.f;
+                for (float r : {12.f, 20.f, 26.f, 29.6f}) {
+                    if (r > 24.f && std::fabs(std::sin(ang)) < 0.06f) continue;   // the E/W spokes
+                    if (r > 24.f && std::fabs(std::cos(ang)) < 0.06f) continue;   // the N/S spokes
+                    glm::vec3 p = C + glm::vec3{std::cos(ang) * r, -0.5f, std::sin(ang) * r};
+                    for (auto& w : N.walls) {
+                        if (w.dynamic) continue;
+                        const AABB& b = w.box;
+                        if (p.x > b.min.x && p.x < b.max.x && p.z > b.min.z && p.z < b.max.z && p.y > b.min.y && p.y < b.max.y) {
+                            std::printf("      solid over the pit at r %.1f, angle %.0f\n", r, glm::degrees(ang)); clear = false; break;
+                        }
+                    }
+                }
+                glm::vec3 q = C + glm::vec3{std::cos(ang) * 33.f, -0.5f, std::sin(ang) * 33.f};
+                bool any = false;
+                for (auto& w : N.walls) {
+                    const AABB& b = w.box;
+                    if (q.x > b.min.x && q.x < b.max.x && q.z > b.min.z && q.z < b.max.z && q.y > b.min.y && q.y < b.max.y) any = true;
+                }
+                if (!any) { std::printf("      no floor at r 33, angle %.0f\n", glm::degrees(ang)); floored = false; }
+            }
+            CHECK(clear, "no floor (seen or hidden) reaches over the pit");
+            CHECK(floored, "the terrace is solid all the way round");
+        }
         // Walk it: from the Nave's passage north, drop down the shaft, through the gate onto the terrace
         {
             LevelData L = N;
