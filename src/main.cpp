@@ -371,6 +371,7 @@ int main(int argc, char* argv[]) {
         "wave", "spawn", "pickup", "kar", "longshot", "bolt", "scope", "levelup",
         "potion", "barrier", "split", "upgrade", "clank", "punch", "step1", "step2", "step3", "step4",
         "door", "door_close", "boost", "cyl_open", "cyl_close", "eject", "shell_in", "pump", "wade", "skim",
+        "cell", "dry", "switch_up0", "switch_up1", "switch_up2", "switch_up3",
     };
     for (const char* name : SOUNDS)
         app->audio.loadSound(name, std::string("assets/sfx/") + name + ".wav");
