@@ -3049,8 +3049,7 @@ int main() {
         Enemy p = warden(R + glm::vec3{12, 0, 0}); EnemyWorld cw = core(R + glm::vec3{0, 0, 14});
         p.update(DT, cw); p.health = p.maxHealth * 0.59f; p.update(DT, cw);
         bool two = p.wardenPhase == 2 && p.ev.wPhase == 2 && p.ev.enraged;
-        int walked = 0;
-        for (int f = 0; f < 60 * 12 && !p.atReactor; ++f) { p.update(DT, cw); ++walked; }
+        for (int f = 0; f < 60 * 12 && !p.atReactor; ++f) p.update(DT, cw);
         float atR = glm::length(glm::vec2(p.position.x - R.x, p.position.z - R.z));
         bool planted = p.atReactor;
         p.health = p.maxHealth * 0.24f; p.update(DT, cw);
@@ -3106,6 +3105,56 @@ int main() {
                 for (int f = 0; f < 60 * 20; ++f) { t.update(DT, tw); if (t.ev.telegraphStarted && t.telegraphDuration < Enemy::TELL_FLOOR - 1e-4f) floors = false; }
             }
         CHECK(floors, "every Warden tell is at least 0.35 s, in every phase, on every difficulty");
+    }
+
+    // ---------------------------------------------------------------- the boss pass: the Warden's hazards
+    {
+        const glm::vec3 O{0.f, 0.f, 0.f};
+        // The lance sweeps 120 degrees at 35 a second; a pillar between you stops it
+        WardenHazards h; h.addLance(O + glm::vec3{0, 3.f, 0}, 0.f, 1.f);   // from facing +Z, sweeping toward +X
+        float firstHit = -1.f, total = 0.f;
+        glm::vec3 feet{std::sin(0.7f) * 12.f, 0.f, std::cos(0.7f) * 12.f};   // 40 degrees round, 12 m out
+        for (int f = 0; f < 60 * 5; ++f) for (auto& x : h.update(DT, feet, 1.8f, nullptr, 0, O + glm::vec3{0, 0, 30}, false)) { if (firstHit < 0.f) firstHit = (f + 1) * DT; total += x.damage; }
+        CHECK(firstHit > 1.0f && firstHit < 1.35f && total > 5.f && total < 15.f, "the lance reaches you as its sweep passes (35 degrees a second) and burns while it's on you");
+        std::vector<Wall> pillar{Wall{LevelBuilder::aabb(std::sin(0.7f) * 6.f - 1.f, 0, std::cos(0.7f) * 6.f - 1.f, std::sin(0.7f) * 6.f + 1.f, 7, std::cos(0.7f) * 6.f + 1.f), {}}};
+        WardenHazards hb; hb.addLance(O + glm::vec3{0, 3.f, 0}, 0.f, 1.f);
+        float blocked = 0.f;
+        for (int f = 0; f < 60 * 5; ++f) for (auto& x : hb.update(DT, feet, 1.8f, pillar.data(), 1, O + glm::vec3{0, 0, 30}, false)) blocked += x.damage;
+        CHECK(blocked == 0.f, "a pillar between you and the Warden stops the lance");
+        // Review focus 4: a player up on a walkway passes over the beam's band
+        WardenHazards hw; hw.addLance(O + glm::vec3{0, 3.f, 0}, 0.f, 1.f);
+        float high = 0.f;
+        for (int f = 0; f < 60 * 5; ++f) for (auto& x : hw.update(DT, feet + glm::vec3{0, 7.f, 0}, 1.8f, nullptr, 0, O + glm::vec3{0, 0, 30}, false)) high += x.damage;
+        CHECK(high == 0.f, "a lance passes under a player on a walkway 7 m up");
+        CHECK(std::fabs(WardenHazards::LANCE_TIME - Enemy::W_LANCE_TIME) < 1e-4f, "the lance lasts as long as the Warden stands for it");
+        // The seeker: 1 s of warning, then a burst where you stood
+        WardenHazards s; s.addSeeker(glm::vec3{5, 0, 5});
+        int early = 0, hits = 0, missed = 0;
+        for (int f = 0; f < 50; ++f) early += (int)s.update(DT, glm::vec3{5, 0, 5}, 1.8f, nullptr, 0, O, false).size();
+        for (int f = 0; f < 30; ++f) hits += (int)s.update(DT, glm::vec3{5, 0, 5}, 1.8f, nullptr, 0, O, false).size();
+        WardenHazards s2; s2.addSeeker(glm::vec3{5, 0, 5});
+        for (int f = 0; f < 90; ++f) missed += (int)s2.update(DT, glm::vec3{10, 0, 5}, 1.8f, nullptr, 0, O, false).size();
+        CHECK(early == 0 && hits == 1 && missed == 0, "a seeker bursts after its 1 s marker, on whoever stayed in it");
+        // Steam: 15/s within 4 m of an open vent
+        WardenHazards st; float steam = 0.f, cold = 0.f;
+        for (int f = 0; f < 60; ++f) for (auto& x : st.update(DT, glm::vec3{3, 0, 0}, 1.8f, nullptr, 0, O, true)) steam += x.damage;
+        for (int f = 0; f < 60; ++f) for (auto& x : st.update(DT, glm::vec3{6, 0, 0}, 1.8f, nullptr, 0, O, true)) cold += x.damage;
+        CHECK(std::fabs(steam - 15.f) < 4.f && cold == 0.f, "an open vent scalds within 4 m (15/s), not past it");
+        st.addLance(O, 0.f, 1.f); st.addSeeker(O); st.clear();
+        CHECK(st.lances.empty() && st.seekers.empty(), "clear() drops every lance and seeker (a retry)");
+        // The rings, driven by the boss: every 3.5 s from where it says, off again when it's done
+        LevelData RL = L; ArenaShifts sh; sh.capture(RL); sh.reset(RL);
+        sh.bossPulse(3.5f, RL.reactorPos);
+        int rings = 0;
+        for (int f = 0; f < 60 * 8; ++f) { sh.update(DT, RL, 3, true); rings += sh.pulseFired; }
+        sh.bossPulseOff();
+        int after = 0;
+        for (int f = 0; f < 60 * 8; ++f) { sh.update(DT, RL, 3, true); after += sh.pulseFired; }
+        CHECK(rings == 2 && after == 0, "the Warden drives the reactor's rings every 3.5 s, and they stop when it says");
+        LevelData NR = L; NR.hasReactor = false; ArenaShifts sn; sn.capture(NR); sn.reset(NR);
+        sn.bossPulse(5.f, glm::vec3{1, 0, -240});
+        int nr = 0; for (int f = 0; f < 60 * 6; ++f) { sn.update(DT, NR, 0, true); nr += sn.pulseFired; }
+        CHECK(nr == 1, "with no reactor, the rings come off the Warden itself");
     }
 
     // ---------------------------------------------------------------- the lift (driven movers) and the director's hold
