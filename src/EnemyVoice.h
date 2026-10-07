@@ -70,7 +70,20 @@ public:
         deadNow.insert(in.uid);
         VoiceCue c = cue(in, voiceName(in.type, VoiceKind::DEATH), SoundRole::ACTION);
         c.floor = 0.5f;
+        c.priority = true;   // a kill is heard even when wind-ups fill every enemy voice
         dress(in, c, cs);
+        return cs;
+    }
+
+    // Removed without a kill (an objective met, a boss taking its summons):
+    // no cry, but its held voice stops now and it's forgotten
+    std::vector<VoiceCue> forget(int uid) {
+        std::vector<VoiceCue> cs;
+        auto it = st.find(uid);
+        if (it == st.end()) return cs;
+        if (it->second.beam) { VoiceCue c; c.uid = uid; c.loop = VoiceCue::STOP; c.name = "v_seraph_atk_beam"; cs.push_back(c); }
+        st.erase(it);
+        deadNow.insert(uid);
         return cs;
     }
 

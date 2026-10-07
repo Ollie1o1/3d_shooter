@@ -45,6 +45,7 @@ public:
     static constexpr float SIDE_MUSIC     = 0.70795f;     // -3 dB under a TELL
     static constexpr float COMP_THRESH    = 0.31623f;     // -10 dBFS
     static constexpr float COMP_THRESH_DB = -10.f, COMP_RATIO = 2.f;
+    static constexpr float DRIVE_TRIM     = 0.86f;        // the drive's shape adds ~1.3 dB at drive 0.35: taken back
 
     struct Opts {
         float      volume     = 1.f;                 // linear, before jitter
@@ -83,6 +84,7 @@ public:
         relK = 1.f - std::exp(-1.f / (0.250f * sr));
         sideAtk = 1.f - std::exp(-1.f / (0.030f * sr));
         sideRel = 1.f - std::exp(-1.f / (0.250f * sr));
+        driveDec = std::exp(-1.f / (0.050f * sr));
         compAtk = 1.f - std::exp(-1.f / (0.010f * sr));
         compRel = 1.f - std::exp(-1.f / (0.150f * sr));
     }
@@ -223,6 +225,7 @@ private:
         SoundRole  role = SoundRole::ACTION;
         float      drive = 0.f;
         int        wait = 0;                           // frames still to wait before it sounds
+        float      driveEnv = 0.f;                     // drive: the voice's recent peak
         uint32_t   born = 0;                           // start order (chatter steals the oldest)
     };
     struct Listener { glm::vec3 pos{0.f}, right{1.f, 0.f, 0.f}, fwd{0.f, 0.f, -1.f}; };
@@ -244,7 +247,7 @@ private:
     // Duck envelope: dips toward duckDepth while duckHold lasts, then recovers
     float duckGain = 1.f, duckDepth = 1.f, duckHold = 0.f, atkK = 0.f, relK = 0.f;
     // Tell sidechain envelope (0..1) and the bus compressor
-    float sideEnv = 0.f, sideAtk = 0.f, sideRel = 0.f;
+    float sideEnv = 0.f, sideAtk = 0.f, sideRel = 0.f, driveDec = 0.f;
     float compEnv = 0.f, compGr = 0.f, compAtk = 0.f, compRel = 0.f;
     std::atomic<int> soloMask{0};
     uint32_t births = 0;
@@ -449,7 +452,11 @@ private:
             size_t k = (size_t)v.pos;
             float f = (float)(v.pos - (double)k);
             float x = s[k] + (s[k + 1] - s[k]) * f;
-            if (v.drive > 0.f) { const float k2 = 1.f + 4.f * v.drive; x = std::tanh(x * k2) / k2; }
+            if (v.drive > 0.f) {   // saturate relative to the voice's own level: more edge, the same loudness
+                const float k2 = 1.f + 4.f * v.drive;
+                v.driveEnv = std::max(std::max(std::fabs(x), v.driveEnv * driveDec), 1e-4f);
+                x = DRIVE_TRIM * v.driveEnv * std::tanh(k2 * x / v.driveEnv) / std::tanh(k2);
+            }
             v.lp += dlp; v.curL += dL; v.curR += dR;
             v.z += v.lp * (x - v.z);
             io[2 * i]     += v.z * v.curL;

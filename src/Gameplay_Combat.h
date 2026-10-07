@@ -474,6 +474,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
         for (auto& o : enemies)
             if (o.alive && &o != &e) {
                 o.alive = false; o.state = EnemyState::DEAD;
+                for (const VoiceCue& c : voices.forget(o.uid)) playVoice(c);
                 spawnDebrisFor(o);
                 fx.spawnDeathParticles(o.position + glm::vec3{0, o.height() * 0.5f, 0}, o.stats().color);
             }

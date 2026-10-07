@@ -374,6 +374,7 @@ inline void GameplayState::handleDirectorEvents() {
             for (auto& e : enemies)
                 if (e.alive) {
                     e.alive = false; e.state = EnemyState::DEAD;
+                    for (const VoiceCue& c : voices.forget(e.uid)) playVoice(c);
                     spawnDebrisFor(e);
                     fx.spawnDeathParticles(e.position + glm::vec3{0, e.height() * 0.5f, 0}, e.stats().color);
                 }

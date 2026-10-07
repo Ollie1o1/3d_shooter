@@ -2904,6 +2904,45 @@ int main() {
               "a sound's mix gain is its trim; built voices and unknown names pass at 1");
     }
 
+    // ---------------------------------------------------------------- review fixes: enemy voices
+    {
+        const float F = 1.f / 60.f;
+        {   // drive keeps a voice about as loud: an Enraged one isn't quieter than the rest
+            auto run = [](float amp, float drive) {
+                std::vector<float> sine(44100);
+                for (int i = 0; i < 44100; ++i) sine[i] = amp * std::sin(6.2831853f * 220.f * i / 44100.f);
+                SfxMixer m(44100.f, 3); m.addSound("sine", sine);
+                SfxMixer::Opts o; o.group = SoundGroup::UI; o.drive = drive;
+                m.play("sine", o); return sfxRender(m, 8192);
+            };
+            bool level = true;
+            for (float amp : {0.2f, 0.6f, 0.8f}) {
+                auto clean = run(amp, 0.f), driven = run(amp, 0.35f);
+                float d = 20.f * std::log10(sfxRms(driven, 0) / sfxRms(clean, 0));
+                std::printf("      drive at %.1f: %+.1f dB\n", amp, d);
+                level &= std::fabs(d) < 1.f && sfxPeak(driven) <= 1.f;
+            }
+            CHECK(level, "an Enraged voice's drive keeps it within 1 dB of a normal one, quiet or loud");
+        }
+        {   // gone without a kill (an objective met, a boss's summons): forgotten, its held voice stopped at once
+            VoiceDirector d; VoiceIn v; v.uid = 7; v.type = EnemyType::SERAPH; v.pos = {10, 0, 0}; v.health = 100.f; v.beamOn = true;
+            d.begin({0, 0, 0}, F); d.enemy(v); d.end();
+            auto cs = d.forget(7);
+            bool stop = false; for (auto& c : cs) stop |= c.loop == VoiceCue::STOP && c.uid == 7;
+            CHECK(stop && d.tracked() == 0, "an enemy removed without a kill is forgotten and its held voice stops at once");
+        }
+        {   // a death cry outranks the tells filling the enemy voices
+            VoiceDirector d; VoiceIn v; v.uid = 3; v.type = EnemyType::HUSK; v.pos = {5, 0, 0}; v.health = 0.f;
+            auto cs = d.death(v);
+            SfxMixer m(44100.f, 3); m.addSound("noise", sfxNoise(44100)); m.addSound(cs[0].name, sfxNoise(44100));
+            for (int i = 0; i < 20; ++i) { SfxMixer::Opts o; o.group = SoundGroup::ENEMY; o.role = SoundRole::TELL; o.priority = true; o.volume = 0.5f; m.play("noise", o); }
+            sfxRender(m, 16);
+            SfxMixer::Opts o; o.group = SoundGroup::ENEMY; o.role = cs[0].role; o.priority = cs[0].priority; o.floor = cs[0].floor;
+            SoundHandle h = m.play(cs[0].name, o); sfxRender(m, 16);
+            CHECK(m.isPlaying(h), "a kill is heard even when wind-ups fill every enemy voice");
+        }
+    }
+
     // ---------------------------------------------------------------- the lift (driven movers) and the director's hold
     {
         LevelData L; LevelBuilder B{L};
