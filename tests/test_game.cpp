@@ -3208,6 +3208,34 @@ int main() {
         CHECK(ks >= 100.f && ks <= 150.f, "a solid player kills the Sovereign in 100-150 s");
     }
 
+    // ---------------------------------------------------------------- review fixes: the boss pass
+    {
+        const glm::vec3 R = L.reactorPos;
+        EnemyWorld cw = worldFor(L, grid, R + glm::vec3{-9, 0, 0}, BOSS); cw.reactor = R; cw.hasReactor = true;
+        {   // the meltdown always winds up, even when another attack lands the same tick
+            Enemy m(EnemyType::WARDEN, R + glm::vec3{9, 0, 0}); m.spawnTimer = 0.f; m.state = EnemyState::ACTIVE;
+            m.wardenPhase = 3; m.health = m.maxHealth * 0.2f;
+            m.attack = AttackKind::VOLLEY; m.telegraphTimer = DT * 0.5f; m.telegraphDuration = 1.f;
+            m.meltClock = 1.5f + DT * 0.5f;
+            m.update(DT, cw);
+            bool noBlast = !m.ev.wDetonate, volleyed = m.ev.shots > 0;
+            m.update(DT, cw);
+            CHECK(noBlast && volleyed && m.attack == AttackKind::DETONATE && m.telegraphTimer > 1.f,
+                  "the meltdown never goes off unannounced: the attack landing that tick lands, then the meltdown winds up");
+        }
+        {   // the lunge can be punched as it reaches you
+            Enemy u(EnemyType::WARDEN, R + glm::vec3{9, 0, 0}); u.spawnTimer = 0.f; u.state = EnemyState::ACTIVE;
+            u.wardenPhase = 3; u.meltClock = 40.f; u.health = u.maxHealth * 0.2f;
+            bool punchable = false;
+            for (int f = 0; f < 60 * 15 && !punchable; ++f) {
+                u.update(DT, cw);
+                glm::vec3 mid = u.position + glm::vec3{0, u.height() * 0.5f, 0};
+                if (u.parryWindow() && glm::length(mid - cw.playerEye) < 5.5f) punchable = true;
+            }
+            CHECK(punchable, "a lunge can be punched within the parry's reach as it arrives");
+        }
+    }
+
     // ---------------------------------------------------------------- the lift (driven movers) and the director's hold
     {
         LevelData L; LevelBuilder B{L};

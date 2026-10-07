@@ -43,7 +43,7 @@ inline void Enemy::thinkWarden(float dt, const EnemyWorld& w, bool resolve) {
     // ---- the meltdown clock: in its last 1.5 s it winds up to go off ----
     if (wardenPhase == 3) {
         meltClock -= dt;
-        if (meltClock <= 1.5f && attack != AttackKind::DETONATE) {
+        if (meltClock <= 1.5f && attack != AttackKind::DETONATE && !resolve) {   // (an attack landing this tick lands first)
             dashTimer = 0.f;
             startAttack(AttackKind::DETONATE, std::max(meltClock, 0.f));
         }

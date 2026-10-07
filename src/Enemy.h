@@ -427,8 +427,11 @@ struct Enemy {
     // The moment a melee blow can be punched back: a JUGGERNAUT's smash (its
     // last 0.4 s), a SOVEREIGN's sweep or cleave (its last quarter second)
     bool  parryWindow() const {
+        // THE WARDEN's lunge: its last quarter second, or in flight until it connects (it comes into reach)
+        if (type == EnemyType::WARDEN && dashTimer > 0.f && !dashHit) return true;
         if (telegraphTimer <= 0.f) return false;
         if (type == EnemyType::WARDEN) return attack == AttackKind::WLUNGE && telegraphTimer < 0.25f;
+
         if (type == EnemyType::JUGGERNAUT) return attack == AttackKind::SMASH && telegraphTimer < 0.4f;
         if (type == EnemyType::SHIELDBEARER) return attack == AttackKind::BASH && telegraphTimer < 0.3f;
         if (type == EnemyType::SOVEREIGN)
