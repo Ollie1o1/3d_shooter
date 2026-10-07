@@ -5,9 +5,10 @@ The enemy voices are not files: they are synthesized in code when the game loads
 
 Most sounds are synthesized by `tools/gen_sfx.py`. The arsenal's sounds (the four
 gunshots, three variants each, and the reload / bolt / pump / cylinder / cell / dry /
-switch foley) are built by `tools/gen_arsenal.py` from one recipe: the first instant of
-each CC0 gunshot recording below (frozen in `assets/sfx/src/`) layered with a
-synthesized thump, a metallic ring in the gun's pitch and a tail. The ones below are built
+switch foley) are built by `tools/gen_arsenal.py`: each gunshot is its whole CC0
+recording below (frozen in `assets/sfx/src/`) with a synthesized thump under it and a
+faint metallic ring in the gun's pitch; each piece of reload foley is its original
+recording with a faint ring in its gun's pitch. The ones below are built
 by `tools/import_sfx.py` from free recordings released under **CC0** (public
 domain: no attribution required, credited here anyway).
 

@@ -47,9 +47,9 @@ struct MixEntry { const char* name; MixClass cls; float trimDb; };
 inline const std::vector<MixEntry>& mixTable() {
     using C = MixClass;
     static const std::vector<MixEntry> T = {
-        {"revolver", C::GUN, 0.2f}, {"shotgun", C::GUN, -0.2f}, {"kar", C::GUN, 0.f}, {"longshot", C::GUN, 0.f},
-        {"bolt", C::FOLEY, -1.5f}, {"cell", C::FOLEY, 1.5f}, {"cyl_close", C::FOLEY, -1.6f}, {"cyl_open", C::FOLEY, 1.5f},
-        {"dry", C::FOLEY, 2.4f}, {"eject", C::FOLEY, 0.7f}, {"pump", C::FOLEY, -0.6f}, {"reload", C::FOLEY, -0.8f},
+        {"revolver", C::GUN, 0.2f}, {"shotgun", C::GUN, -2.5f}, {"kar", C::GUN, 0.f}, {"longshot", C::GUN, 0.f},
+        {"bolt", C::FOLEY, -6.0f}, {"cell", C::FOLEY, 7.5f}, {"cyl_close", C::FOLEY, 1.0f}, {"cyl_open", C::FOLEY, 8.8f},
+        {"dry", C::FOLEY, 5.0f}, {"eject", C::FOLEY, 0.7f}, {"pump", C::FOLEY, -3.2f}, {"reload", C::FOLEY, 8.6f},
         {"shell_in", C::FOLEY, -0.3f}, {"scope", C::FOLEY, 0.8f}, {"telegraph", C::FOLEY, 5.f}, {"hit", C::FOLEY, 2.5f},
         {"wade", C::FOLEY, -0.7f}, {"barrier", C::FOLEY, 0.6f},
         {"jump", C::PLAYER, -4.1f}, {"land", C::PLAYER, 1.3f}, {"dash", C::PLAYER, -2.6f}, {"grapple_fire", C::PLAYER, -0.6f},

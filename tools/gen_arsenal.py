@@ -3,18 +3,20 @@
 The arsenal's sounds, built from one recipe so the four guns sound like one
 family (the feel track's "dark machine + glow"):
 
-  shot = crack (the real recording's first instant) + thump (a falling sine,
-         deeper and longer the heavier the gun) + ring (a few damped
-         inharmonic partials in the gun's own pitch: the family sound) + tail
-         (filtered noise dying away; the Longshot's a long boom)
+  shot = the real recording, whole (its crack and its own tail carry it) +
+         thump (a falling sine under it, deeper the heavier the gun) + ring
+         (a faint few damped inharmonic partials in the gun's own pitch: the
+         family sound). Measured against the recording by the tests: it keeps
+         its midrange body, its ring-out and its brightness
 
 Three variants per gun (name.wav, name_1.wav, name_2.wav) - the sound engine
-rotates them. Then the mechanical foley, one recipe pitched per mechanism:
-cyl_open, cyl_close, eject, shell_in, pump, bolt, reload, cell, dry and a
-switch_up chime per gun in its glow's pitch.
+rotates them. The mechanical foley (cyl_open, cyl_close, eject, shell_in,
+pump, bolt, reload) is each mechanism's own recording with a faint ring in its
+gun's pitch; then a soft cell tick, a dull dry click, and a switch_up chime per
+gun in its glow's pitch.
 
 Reads the frozen recordings in assets/sfx/src/*_rec.wav (copied once from the
-old shots, so re-running never stacks layers). Stdlib only.
+old sounds, so re-running never stacks layers). Stdlib only.
 
     python3 tools/gen_arsenal.py
 """
@@ -92,25 +94,42 @@ def tail(dur, cutoff, seed):
     x = [rnd.uniform(-1, 1) * math.exp(-4 * (i / SR) / dur) for i in range(n_of(dur))]
     return onepole_lp(x, cutoff)
 
-GUNS = {   # name: recording, crack length, thump (from, to, s), ring Hz, ring s, tail (s, Hz), gains (crack, thump, ring, tail)
-    "revolver": ("revolver", 0.09, (90, 50, 0.16), 520, 0.25, (0.25, 2600), (1.0, 0.85, 0.22, 0.30)),
-    "shotgun":  ("shotgun",  0.12, (70, 40, 0.26), 330, 0.30, (0.45, 1800), (1.0, 1.00, 0.20, 0.40)),
-    "kar":      ("kar",      0.12, (80, 45, 0.22), 440, 0.35, (0.60, 2200), (1.0, 0.90, 0.22, 0.35)),
-    "longshot": ("longshot", 0.15, (55, 30, 0.40), 220, 0.50, (1.20, 1200), (1.0, 1.10, 0.25, 0.55)),
+GUNS = {   # name: recording, thump (from, to, s), ring Hz, gains (thump, ring)
+    # The recording carries the shot - its whole crack and its own tail; the
+    # thump adds weight under it and the ring a faint metallic tint in the
+    # gun's pitch (the family sound), never louder than the gun itself
+    "revolver": ("revolver", (90, 50, 0.14), 520, (0.30, 0.07)),
+    "shotgun":  ("shotgun",  (70, 40, 0.20), 330, (0.30, 0.06)),
+    "kar":      ("kar",      (80, 45, 0.18), 440, (0.28, 0.07)),
+    "longshot": ("longshot", (55, 30, 0.30), 220, (0.35, 0.08)),
 }
 GLOW_HZ = [520, 330, 440, 220]   # the switch chime of each gun, in its ring's pitch
+PITCH = [1.0, 0.97, 1.03]        # the three variants: the same gun, a hair lower or higher
+
+def resample(x, k):
+    """Play x at k times the speed (linear interpolation)."""
+    n = int(len(x) / k)
+    out = []
+    for i in range(n):
+        p = i * k; j = int(p); f = p - j
+        out.append(x[j] + (x[j + 1] - x[j]) * f if j + 1 < len(x) else x[-1])
+    return out
+
+def faded(x, sec=0.03):
+    x = list(x); n = min(len(x), n_of(sec))
+    for i in range(n): x[len(x) - 1 - i] *= i / n
+    return x
 
 def shots():
     energy = {}
-    for name, (rec, keep, th, rf, rd, (td, tc), (gc, gt, gr, gtl)) in GUNS.items():
+    for name, (rec, th, rf, (gt, gr)) in GUNS.items():
         src = load(os.path.join(SRC, rec + "_rec.wav"))
         for v in range(3):
-            length = n_of(max(keep, th[2], rd, td) + 0.05)
-            x = mix(length,
-                    (gc, 0, crack(src, keep, skip=v * n_of(0.0015))),
-                    (gt, 0, thump(th[0], th[1], th[2])),
-                    (gr, n_of(0.004), ring(rf, rd, detune=1.0 + 0.03 * (v - 1))),
-                    (gtl, n_of(0.01), tail(td, tc, seed=hash((name, v)) & 0xffff)))
+            body = faded(resample(src, PITCH[v]))
+            x = mix(len(body),
+                    (1.0, 0, body),
+                    (gt, 0, thump(th[0] * PITCH[v], th[1] * PITCH[v], th[2])),
+                    (gr, n_of(0.004), ring(rf * PITCH[v], 0.12)))
             save(name if v == 0 else f"{name}_{v}", x, peak=0.75)   # headroom: shots stack over the music
             if v == 0: energy[name] = sum(s * s for s in x[:n_of(0.3)]) * (len(x) / SR)
     order = sorted(energy, key=energy.get)
@@ -121,23 +140,25 @@ def click(freq, dur=0.035, noise=0.6, seed=1):
     return [(noise * rnd.uniform(-1, 1) + (1 - noise) * math.sin(2 * math.pi * freq * i / SR)) * math.exp(-i / SR * 70)
             for i in range(n_of(dur))]
 
-def slide(dur, cutoff, seed=2):
-    rnd = random.Random(seed)
-    x = [rnd.uniform(-1, 1) * math.sin(math.pi * i / n_of(dur)) for i in range(n_of(dur))]
-    return onepole_lp(x, cutoff)
+FOLEY = {   # name: the recording it's built on, the gun pitch of its faint accent ring, peak
+    "cyl_open":  ("cyl_open", 520, 0.70), "cyl_close": ("cyl_close", 520, 0.80), "eject": ("eject", 520, 0.60),
+    "shell_in":  ("shell_in", 330, 0.70), "pump":      ("pump",      330, 0.85), "bolt":  ("bolt",  440, 0.80),
+    "reload":    ("reload",   440, 0.70),
+}
 
 def foley():
-    save("cyl_open",  mix(n_of(0.25), (1, 0, click(1800)), (0.7, n_of(0.06), click(1200, seed=3)), (0.3, 0, ring(1600, 0.2))), 0.7)
-    save("cyl_close", mix(n_of(0.30), (1, 0, click(2200)), (0.5, 0, thump(160, 90, 0.08)), (0.35, 0, ring(1400, 0.25))), 0.8)
-    save("eject",     mix(n_of(0.50), *[(0.8 - 0.15 * k, n_of(0.05 + 0.09 * k), click(3000 - 300 * k, seed=10 + k)) for k in range(4)]), 0.6)
-    save("shell_in",  mix(n_of(0.14), (0.6, 0, slide(0.06, 3000)), (1, n_of(0.05), click(1400, seed=5))), 0.7)
-    save("pump",      mix(n_of(0.42), (0.7, 0, slide(0.14, 2200)), (1, n_of(0.14), click(900, seed=6)),
-                          (0.6, n_of(0.22), slide(0.12, 2600, seed=7)), (1, n_of(0.34), click(1100, seed=8)), (0.3, n_of(0.34), ring(330, 0.08))), 0.85)
-    save("bolt",      mix(n_of(0.42), (1, 0, click(1500, seed=9)), (0.6, n_of(0.08), slide(0.1, 2500, seed=11)),
-                          (1, n_of(0.2), click(1300, seed=12)), (0.9, n_of(0.32), click(1700, seed=13)), (0.25, n_of(0.32), ring(440, 0.08))), 0.8)
-    save("reload",    mix(n_of(0.28), (1, 0, click(1200, seed=14)), (0.8, n_of(0.12), click(1600, seed=15))), 0.7)
-    save("cell",      [math.sin(2 * math.pi * 3200 * i / SR) * math.exp(-i / SR * 120) for i in range(n_of(0.04))], 0.45)
-    save("dry",       click(700, 0.05, noise=0.4, seed=16), 0.5)
+    # The mechanism's own recording, with a faint ring in the gun's pitch on its first hit
+    for name, (rec, hz, peak) in FOLEY.items():
+        src = faded(load(os.path.join(SRC, rec + "_rec.wav")), 0.02)
+        save(name, mix(len(src), (1.0, 0, src), (0.05, 0, ring(hz, 0.08))), peak)
+    # A cell relighting: a soft, low ratchet tick (one per round, so it stays small)
+    rnd = random.Random(17)
+    tick = onepole_lp([rnd.uniform(-1, 1) * math.exp(-i / SR * 220) for i in range(n_of(0.03))], 1800)
+    tone = [math.sin(2 * math.pi * 900 * i / SR) * math.exp(-i / SR * 160) for i in range(n_of(0.03))]
+    save("cell", mix(n_of(0.03), (1.0, 0, tick), (0.5, 0, tone)), 0.30)
+    # Empty: a dull clack, the cylinder-close recording's first hit, darkened
+    clack = onepole_lp(load(os.path.join(SRC, "cyl_close_rec.wav"))[:n_of(0.06)], 2200)
+    save("dry", faded(clack, 0.02), 0.45)
     for g, hz in enumerate(GLOW_HZ):   # a short rising chime as the gun comes up
         out, ph = [], 0.0
         for i in range(n_of(0.22)):
@@ -145,7 +166,7 @@ def foley():
             f = hz * (0.5 + 0.5 * min(1, t / 0.12))
             ph += 2 * math.pi * f / SR
             out.append((math.sin(ph) + 0.3 * math.sin(2.76 * ph)) * math.exp(-t * 9) * min(1, i / 200))
-        save(f"switch_up{g}", mix(n_of(0.22), (1, 0, out), (0.5, 0, click(2000, 0.02, seed=20 + g))), 0.55)
+        save(f"switch_up{g}", mix(n_of(0.22), (1, 0, out), (0.4, 0, click(900, 0.02, seed=20 + g))), 0.55)
 
 if __name__ == "__main__":
     shots()

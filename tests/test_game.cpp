@@ -3236,6 +3236,45 @@ int main() {
         }
     }
 
+    // ---------------------------------------------------------------- the arsenal's sounds, against their recordings
+    {
+        // Each rebuilt sound keeps the character of the recording it's built on
+        // (assets/sfx/src/<name>_rec.wav): its midrange body, its ring-out, its brightness
+        struct Shape { float mid, ringOut, bright; };
+        auto shape = [](const std::vector<float>& x, float sr) {
+            auto lp = [&](float hz) { std::vector<float> o(x.size()); float a = 1.f - std::exp(-6.2831853f * hz / sr), y = 0.f;
+                                      for (size_t i = 0; i < x.size(); ++i) { y += a * (x[i] - y); o[i] = y; } return o; };
+            auto l1 = lp(300.f), l2 = lp(3000.f);
+            double low = 0, mid = 0, all = 0;
+            for (size_t i = 0; i < x.size(); ++i) { low += l1[i] * l1[i]; mid += (l2[i] - l1[i]) * (l2[i] - l1[i]); all += x[i] * x[i]; }
+            float pk = 0.f; for (float v : x) pk = std::max(pk, std::fabs(v));
+            size_t last = 0; for (size_t i = 0; i < x.size(); ++i) if (std::fabs(x[i]) > 0.01f * pk) last = i;
+            int n = 0, z = 0; for (size_t i = 1; i < x.size(); ++i) if (std::fabs(x[i]) > 0.05f * pk) { ++n; z += (x[i] > 0.f) != (x[i - 1] > 0.f); }
+            return Shape{(float)(100.0 * mid / std::max(all, 1e-12)), last / sr, n ? z * sr / 2.f / n : 0.f};
+        };
+        bool body = true, ring = true, bright = true, refs = true;
+        for (const char* n : {"revolver", "shotgun", "kar", "longshot", "reload", "cyl_open", "cyl_close", "eject", "shell_in", "bolt", "pump"}) {
+            float rs; auto ref = readWav16(std::string("assets/sfx/src/") + n + "_rec.wav", rs);
+            if (ref.empty()) { refs = false; std::printf("      no recording for %s\n", n); continue; }
+            Shape R = shape(ref, rs);
+            for (int k = 0; k <= 2; ++k) {
+                std::string path = std::string("assets/sfx/") + n + (k ? "_" + std::to_string(k) : std::string()) + ".wav";
+                float sr; auto x = readWav16(path, sr);
+                if (x.empty()) continue;
+                Shape S = shape(x, sr);
+                std::printf("      %-12s mid %3.0f%% (rec %3.0f%%)  ring-out %.2f s (rec %.2f)  brightness %5.0f Hz (rec %5.0f)\n",
+                            (std::string(n) + (k ? "_" + std::to_string(k) : "")).c_str(), S.mid, R.mid, S.ringOut, R.ringOut, S.bright, R.bright);
+                body &= S.mid >= R.mid - 10.f;
+                ring &= S.ringOut >= 0.85f * R.ringOut;
+                bright &= S.bright <= 1.3f * R.bright;
+            }
+        }
+        CHECK(refs, "every gunshot and reload sound has its recording frozen beside the generator");
+        CHECK(body, "every rebuilt gun sound keeps its recording's midrange body (within 10 points)");
+        CHECK(ring, "every rebuilt gun sound rings out at least 85% as long as its recording");
+        CHECK(bright, "no rebuilt gun sound is more than 30% brighter than its recording");
+    }
+
     // ---------------------------------------------------------------- the lift (driven movers) and the director's hold
     {
         LevelData L; LevelBuilder B{L};
