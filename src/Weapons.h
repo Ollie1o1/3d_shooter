@@ -56,7 +56,7 @@ inline const WeaponDef& weaponDef(WeaponId w) {
          35.f, 1, 0.f, 0.f, 0.15f, 8, 2, 1.2f, 90.f, 1.5f, false, false, 1.f, 0.f, 0, 0.7f, 1.f},
         {"SHOTGUN", "DRAGON BREATH", "+5 PELLETS, TIGHTER SPREAD",
          9.f, 10, 0.18f, 0.18f, 0.55f, 2, 1, 1.4f, 60.f, 1.f, false, false, 1.f, 0.f, 0, 2.2f, 1.f},
-        {"KAR98", "HEADHUNTER", "HEADSHOT KILLS REFUND THE ROUND AND SKIP THE BOLT",
+        {"LANCER", "HEADHUNTER", "HEADSHOT KILLS REFUND THE ROUND AND SKIP THE BOLT",
          120.f, 1, 0.045f, 0.f, 0.85f, 5, 2, 2.0f, 200.f, 3.0f, true, false, 0.62f, 0.16f, 0, 2.6f, 0.9f},
         {"LONGSHOT", "EXPLOSIVE TIPS", "SHOTS BURST ON IMPACT FOR AREA DAMAGE",
          360.f, 1, 0.10f, 0.f, 1.25f, 4, 1, 2.8f, 300.f, 1.5f, true, true, 0.26f, 0.22f, 3, 4.0f, 0.8f},

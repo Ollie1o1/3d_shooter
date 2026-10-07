@@ -25,7 +25,7 @@
 #include "../src/SovereignHazards.h"
 #include "../src/SfxMixer.h"
 #include "../src/PenitentHazards.h"
-#include "../src/GunMotion.h"
+#include "../src/GunKit.h"
 #include <cstdio>
 #include <cstring>
 #include <limits>
@@ -2841,6 +2841,60 @@ int main() {
         GunMotion b; b.gun = 2; b.cycle(0.7f);
         int bolts = 0; for (int i = 0; i < 60; ++i) { b.update(DT); for (auto& q : b.cues) bolts += std::string(q.name) == "bolt"; b.cues.clear(); }
         CHECK(bolts == 1, "after a rifle shot the bolt sounds once, on its beat");
+    }
+
+    // ---------------------------------------------------------------- the arsenal: one look
+    {
+        GunPose rest;
+        bool cellsOk = true, litOk = true, glowOk = true;
+        for (int g = 0; g < 4; ++g)
+            for (int mag : {1, 2, 4, 5, 8, 10, 14, 16})
+                for (int ammo : {0, mag / 2, mag}) {
+                    GunLook L; L.mag = mag; L.ammo = ammo; L.lit = ammo;
+                    std::vector<GunPart> parts; gunkit::buildGun(g, L, rest, parts);
+                    int lit = 0, dark = 0;
+                    for (auto& p : parts) { lit += p.tag == 1; dark += p.tag == 2; }
+                    if (lit + dark != mag) { std::printf("      gun %d mag %d: %d cells\n", g, mag, lit + dark); cellsOk = false; }
+                    litOk &= lit == ammo;
+                    if (ammo > 0) {
+                        bool any = false;
+                        for (auto& p : parts)
+                            if (p.tag == 1) any |= glm::length(glm::normalize(p.emissive) - glm::normalize(gunkit::glowOf(g))) < 0.01f;
+                        glowOk &= any;
+                    }
+                }
+        CHECK(cellsOk, "every gun shows one cell per round of its magazine (1-16, upgrades included)");
+        CHECK(litOk, "the lit cells are the rounds left");
+        CHECK(glowOk, "each gun's cells glow its own colour");
+        CHECK(glm::length(gunkit::glowOf(0) - glm::vec3{1.f, 0.68f, 0.22f}) < 1e-4f && glm::length(gunkit::glowOf(2) - glm::vec3{0.3f, 0.9f, 1.f}) < 1e-4f,
+              "amber revolver, cyan Lancer");
+        // Framing: at the hip, every gun's parts project into the lower-right of a 16:9 screen
+        glm::mat4 proj = glm::perspective(glm::radians(65.f), 16.f / 9.f, 0.03f, 10.f);
+        bool framed = true; float areas[4];
+        for (int g = 0; g < 4; ++g) {
+            GunLook L; std::vector<GunPart> parts; gunkit::buildGun(g, L, rest, parts);
+            glm::vec3 hip = gunkit::hipOf(g);
+            float x0 = 9, x1 = -9, y0 = 9, y1 = -9;
+            for (auto& p : parts) {
+                glm::vec3 c = glm::vec3(p.xf[3]) + hip;
+                if (c.z < 0.06f) continue;   // behind the near plane (the butt of a stock): off screen
+                glm::vec4 clip = proj * glm::vec4(c.x, c.y, -c.z, 1.f);    // camera looks down -Z
+                glm::vec2 ndc{clip.x / clip.w, clip.y / clip.w};
+                x0 = std::min(x0, ndc.x); x1 = std::max(x1, ndc.x); y0 = std::min(y0, ndc.y); y1 = std::max(y1, ndc.y);
+            }
+            areas[g] = (std::min(x1, 1.f) - std::max(x0, -1.f)) * (std::min(y1, 0.3f) - std::max(y0, -1.f));
+            if (x0 < -0.25f || y1 > 0.3f || x1 < 0.2f) { std::printf("      gun %d frame x %.2f..%.2f y %.2f..%.2f\n", g, x0, x1, y0, y1); framed = false; }
+        }
+        CHECK(framed, "at the hip every gun sits in the lower right, its muzzle toward the crosshair");
+        bool similar = true;
+        for (int g = 1; g < 4; ++g) similar &= areas[g] > areas[0] * 0.5f && areas[g] < areas[0] * 3.f;
+        CHECK(similar, "the four guns fill a similar share of the screen");
+        std::vector<GunPart> fist; gunkit::buildFist(gunkit::glowOf(1), 1.f, true, fist);
+        bool seam = false; for (auto& p : fist) seam |= glm::length(p.emissive) > 0.1f;
+        CHECK(fist.size() >= 8 && seam, "the gauntlet: a fist with a seam glowing in the current gun's colour");
+        CHECK(std::string(weaponDef(WeaponId::KAR).name) == "LANCER" && weaponDef(WeaponId::KAR).damage == 120.f &&
+              weaponDef(WeaponId::KAR).magSize == 5 && std::fabs(weaponDef(WeaponId::KAR).reloadTime - 2.0f) < 1e-4f,
+              "the Kar98 is now the LANCER, with the same stats");
     }
 
     // ---------------------------------------------------------------- mouse filter
