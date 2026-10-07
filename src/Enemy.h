@@ -374,6 +374,7 @@ struct Enemy {
     float meltClock    = 0.f;     // MELTDOWN: seconds until it goes off
     bool  atReactor    = false;
     glm::vec3 reactorSpot{0.f};
+    float spotBest = 1e9f, spotAt = 0.f;   // its walk to the reactor: closest yet, and when
     bool  coreOpen() const { return type == EnemyType::WARDEN && (ventTimer > 0.f || wardenPhase == 3); }
     // A shot into an open weak point: the PENITENT's wound x3, the WARDEN's core x3 venting, x2 in meltdown
     float woundMult() const { return type == EnemyType::WARDEN ? (ventTimer > 0.f ? 3.f : 2.f) : 3.f; }

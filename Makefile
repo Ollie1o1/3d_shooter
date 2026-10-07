@@ -88,7 +88,7 @@ run: all
 # Headless tests — no window or GL context needed: player physics, plus the
 # enemy AI, wave director, level data, weapons, XP and the mouse filter,
 # driven through simulated ARENA and FAST runs
-test: tests/test_physics.cpp tests/test_game.cpp src/Player.h src/Camera.h \
+test: tests/test_physics.cpp tests/test_game.cpp tests/BossSim.h src/Player.h src/Camera.h \
       src/Enemy.h src/EnemyPenitent.h src/EnemyWarden.h src/EnemyModel.h src/Level.h src/LevelGauntlet.h src/LevelAct2.h src/WaveDirector.h \
       src/Weapons.h src/Progression.h src/MouseFilter.h src/Persist.h src/Difficulty.h src/MusicSynth.h \
       src/StyleSystem.h src/Projectile.h src/ArenaShifts.h src/Score.h src/Daily.h src/EndlessWaves.h \

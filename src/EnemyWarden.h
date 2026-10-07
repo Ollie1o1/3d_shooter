@@ -27,9 +27,9 @@ inline void Enemy::thinkWarden(float dt, const EnemyWorld& w, bool resolve) {
             glm::vec3 out{w.playerFeet.x - w.reactor.x, 0.f, w.playerFeet.z - w.reactor.z};
             float l = glm::length(out);
             out = l > 0.1f ? out / l : glm::vec3{1.f, 0.f, 0.f};
-            reactorSpot = glm::vec3{w.reactor.x, position.y, w.reactor.z} + out * 7.2f;   // clear of the pedestal (5 m) with its 1.6 m girth
+            reactorSpot = glm::vec3{w.reactor.x, position.y, w.reactor.z} + out * 9.f;   // clear of the pedestal (a 10 m square: 7.1 m at its corners) with its 1.6 m girth
         } else { reactorSpot = position; }
-        atReactor = false;
+        atReactor = false; spotBest = 1e9f; spotAt = age;
     }
     if (wardenPhase == 2 && hp <= W_PHASE3) {
         wardenPhase = 3; ev.wPhase = 3; ev.enraged = true; phaseHold = PHASE_PAUSE;
@@ -66,7 +66,12 @@ inline void Enemy::thinkWarden(float dt, const EnemyWorld& w, bool resolve) {
     if (telegraphTimer > 0.f) { velocity.x = velocity.z = 0.f; }
     else if (wardenPhase == 2) {
         glm::vec3 go = flatTo(reactorSpot);
-        if (!atReactor && glm::length(go) > 0.8f) { setMove(norm2(go), stats().speed * 1.3f, w); animPhase += dt * 3.f; }
+        if (!atReactor && glm::length(go) > 0.8f) {
+            setMove(norm2(go), stats().speed * 1.3f, w); animPhase += dt * 3.f;
+            // Something in the way: plant itself where it got to
+            if (glm::length(go) < spotBest - 0.3f) { spotBest = glm::length(go); spotAt = age; }
+            else if (age - spotAt > 1.5f) { atReactor = true; reactorSpot = position; }
+        }
         else { atReactor = true; velocity.x = velocity.z = 0.f; }
     } else {
         float speed = stats().speed * (wardenPhase == 3 ? 1.4f : 1.f);
@@ -121,17 +126,20 @@ inline void Enemy::thinkWarden(float dt, const EnemyWorld& w, bool resolve) {
     }
 
     // ---- the seeker: hiding behind a pillar or keeping away doesn't last ----
+    // (fed or feeding: phases 1 and 2; in its meltdown it comes for you itself)
     bool away = d > W_SEEK_FAR || !lineOfSight(eyePos(), w);
-    farTimer = wardenPhase == 2 && away ? farTimer + dt : 0.f;
-    if (telegraphTimer > 0.f || phaseHold > 0.f || (wardenPhase == 2 && !atReactor)) return;
-    if (wardenPhase == 2 && farTimer >= W_SEEK_AFTER) {
+    farTimer = wardenPhase <= 2 && away ? farTimer + dt : 0.f;
+    if (telegraphTimer > 0.f || phaseHold > 0.f) return;
+    if (wardenPhase <= 2 && farTimer >= W_SEEK_AFTER) {   // even on its way to the reactor
         farTimer = 0.f;
-        ev.wSeeker = true; ev.wSeekerAt = w.playerFeet;
+        ev.wSeeker = true; ev.wSeekerAt = w.playerFeet + w.playerVel * 1.f;   // where you'll be when it lands (keep changing direction)
+        ev.wSeekerAt.y = w.playerFeet.y;
         startAttack(AttackKind::SEEKER, 1.f);
         return;
     }
 
-    // ---- what it starts next ----
+    // ---- what it starts next (overloaded: once it's at the reactor) ----
+    if (wardenPhase == 2 && !atReactor) return;
     if (!attackReady(dt / quick)) return;
     ++attackCount;
     if (sinceVent >= 3 && wardenPhase != 2) { sinceVent = 0; startAttack(AttackKind::WVENT, 0.6f); return; }
