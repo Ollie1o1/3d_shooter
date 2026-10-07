@@ -3157,6 +3157,24 @@ int main() {
         CHECK(nr == 1, "with no reactor, the rings come off the Warden itself");
     }
 
+    // ---------------------------------------------------------------- the boss pass: the Warden in the game
+    {
+        // Review focus 5: a parried orb steers into a living Warden's core
+        glm::vec3 pos{0, 2, 0}, vel{20, 0, 0}, target{0, 3, 20};
+        for (int f = 0; f < 60; ++f) { vel = steerParried(pos, vel, target, DT); pos += vel * DT; }
+        CHECK(glm::length(pos - target) < 2.5f && std::fabs(glm::length(vel) - 20.f) < 0.1f, "a parried orb curves into the Warden's core, keeping its speed");
+        // Review focus 1: conduits are only targets while the Warden is alive and feeding
+        CHECK(!conduitShootable(false, 1) && conduitShootable(true, 1) && !conduitShootable(true, 2), "conduits can only be cut while the Warden is alive and feeding");
+        // Its core: in front of its chest, only from the front
+        Enemy w(EnemyType::WARDEN, {0, 0, 0}); w.spawnTimer = 0.f; w.state = EnemyState::ACTIVE; w.yaw = 0.f; w.ventTimer = 1.f;
+        AABB cb; bool has = coreBox(w, cb);
+        float tf = 0.f, tb = 0.f;
+        bool front = woundShot(w, glm::vec3{0, (cb.min.y + cb.max.y) * 0.5f, 10.f}, glm::vec3{0, 0, -1}, tf);
+        bool back = woundShot(w, glm::vec3{0, (cb.min.y + cb.max.y) * 0.5f, -10.f}, glm::vec3{0, 0, 1}, tb);
+        w.ventTimer = 0.f; AABB shut; bool closed = !coreBox(w, shut);
+        CHECK(has && (cb.min.z + cb.max.z) * 0.5f > 0.3f && front && !back && closed, "the Warden's core opens on its chest and is hit from the front");
+    }
+
     // ---------------------------------------------------------------- the lift (driven movers) and the director's hold
     {
         LevelData L; LevelBuilder B{L};

@@ -370,9 +370,15 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         break;
     }
     case EnemyType::WARDEN: {
-        vec3 g = e.enraged ? vec3{1.f, 0.1f, 0.25f} * (1.f + 2.5f * tp) : glow;
+        // Its glow: magenta fed, angrier overloaded, white-hot with its core open, burning in meltdown
+        vec3 g = e.ventTimer > 0.f ? vec3{1.6f, 1.5f, 1.3f}
+               : e.wardenPhase == 3 ? vec3{1.6f, 0.45f, 0.15f} * (1.f + 1.5f * tp)
+               : e.wardenPhase == 2 ? vec3{1.f, 0.1f, 0.25f} * (1.f + 2.5f * tp) : glow;
         HumanoidLook L = humanoidLook(e.type, st.color, st.color * 0.6f, g);
         ArmPose pose = ArmPose::SWING; float amt = 0.f;
+        if (e.attack == AttackKind::LANCE || e.lanceTimer > 0.f) { pose = ArmPose::RAISED; amt = e.lanceTimer > 0.f ? 1.f : smooth01(tp * 1.5f); }
+        if (e.attack == AttackKind::WLUNGE || e.dashTimer > 0.f) { pose = ArmPose::AIM_BOTH; amt = 1.f; }
+        if (e.attack == AttackKind::WVENT || e.attack == AttackKind::DETONATE) { pose = ArmPose::RAISED; amt = 0.5f * smooth01(tp * 2.f); }
         if (e.attack == AttackKind::SLAM)   { pose = ArmPose::RAISED;   amt = smooth01(tp * 1.5f); }
         if (e.attack == AttackKind::VOLLEY) { pose = ArmPose::AIM_BOTH; amt = smooth01(tp * 2.f); }
         if (e.attack == AttackKind::SUMMON) { pose = ArmPose::RAISED;   amt = 0.6f * smooth01(tp * 2.f); }
@@ -386,7 +392,8 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         float sway = std::sin(time * 1.3f) * 0.08f;
         r.box(f.torso * RX(0.12f + sway), {0.f, -0.6f, -0.62f}, {1.7f, 2.9f, 0.08f}, vec3{0.2f, 0.03f, 0.1f}); // cape
         float pulse = 0.6f + 0.4f * std::sin(time * 5.f);
-        r.box(f.torso, {0.f, 0.95f, 0.56f}, {0.6f, 0.6f, 0.1f}, g * 0.3f, g * (1.5f * pulse + 2.f * tp));
+        float coreSize = e.coreOpen() ? 1.1f : 0.6f;                               // its core: the plates open when it vents
+        r.box(f.torso, {0.f, 0.95f, 0.56f}, {coreSize, coreSize, 0.1f}, g * 0.3f, g * (1.5f * pulse + 2.f * tp + (e.coreOpen() ? 2.f : 0.f)));
         for (int i = 0; i < 5; ++i) {                                                // crown
             float x = -0.24f + 0.12f * i;
             float hgt = (i == 2) ? 0.45f : (i % 2 ? 0.3f : 0.22f);
@@ -733,8 +740,21 @@ inline bool headBox(const Enemy& e, AABB& out) {
     return true;
 }
 
-// THE PENITENT's wound: its back, open while it scourges itself (x3)
+// THE WARDEN's core: its chest, open while it vents and all through its meltdown
+inline bool coreBox(const Enemy& e, AABB& out) {
+    if (!e.coreOpen()) return false;
+    HumanoidLook L = humanoidDims(e.type);
+    mat4 torso = T(e.position) * RY(e.yaw) * T({0.f, L.legLen + L.pelvisH, 0.f});
+    vec3 c = vec3(torso * glm::vec4(0.f, L.torsoH * 0.55f, L.torsoD * 0.5f + 0.25f, 1.f));
+    vec3 half{0.9f, 1.0f, 0.9f};
+    out = {c - half, c + half};
+    return true;
+}
+
+// THE PENITENT's wound: its back, open while it scourges itself (x3); the
+// WARDEN's core: its chest (coreBox)
 inline bool woundBox(const Enemy& e, AABB& out) {
+    if (e.type == EnemyType::WARDEN) return coreBox(e, out);
     if (e.type != EnemyType::PENITENT || !e.scourging) return false;
     HumanoidLook L = humanoidDims(e.type);
     PoseOverride ov = penitentPose(e);
@@ -752,7 +772,8 @@ inline bool woundBox(const Enemy& e, AABB& out) {
 inline bool woundShot(const Enemy& e, glm::vec3 o, glm::vec3 d, float& t) {
     AABB w;
     if (!woundBox(e, w)) return false;
-    if (glm::dot(glm::vec2{d.x, d.z}, glm::vec2{std::sin(e.yaw), std::cos(e.yaw)}) <= 0.f) return false;
+    float face = glm::dot(glm::vec2{d.x, d.z}, glm::vec2{std::sin(e.yaw), std::cos(e.yaw)});
+    if (e.type == EnemyType::WARDEN ? face >= 0.f : face <= 0.f) return false;   // the Penitent's from behind, the Warden's from the front
     t = rayBoxHit(o, d, w);
     if (t <= 0.f) return false;
     float tb = rayBoxHit(o, d, e.getAABB());
@@ -764,4 +785,5 @@ inline bool woundShot(const Enemy& e, glm::vec3 o, glm::vec3 d, float& t) {
 using rig::buildEnemy;
 using rig::headBox;
 using rig::woundBox;
+using rig::coreBox;
 using rig::woundShot;

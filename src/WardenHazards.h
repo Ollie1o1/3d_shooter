@@ -106,3 +106,21 @@ private:
         return true;
     }
 };
+
+// A parried orb's flight toward the Warden's core: turn up to 6 rad/s toward
+// target, same speed
+inline glm::vec3 steerParried(glm::vec3 pos, glm::vec3 vel, glm::vec3 target, float dt) {
+    float speed = glm::length(vel);
+    glm::vec3 want = target - pos;
+    if (speed < 1e-3f || glm::length(want) < 1e-3f) return vel;
+    glm::vec3 a = vel / speed, b = glm::normalize(want);
+    float ang = std::acos(std::clamp(glm::dot(a, b), -1.f, 1.f)), turn = 6.f * dt;
+    if (ang <= turn) return b * speed;
+    glm::vec3 axis = glm::cross(a, b);
+    if (glm::length(axis) < 1e-5f) return vel;
+    axis = glm::normalize(axis);
+    glm::vec3 r = a * std::cos(turn) + glm::cross(axis, a) * std::sin(turn) + axis * glm::dot(axis, a) * (1.f - std::cos(turn));
+    return glm::normalize(r) * speed;
+}
+// Conduits are only targets while the Warden lives and feeds (phase 1)
+inline bool conduitShootable(bool wardenAlive, int phase) { return wardenAlive && phase == 1; }

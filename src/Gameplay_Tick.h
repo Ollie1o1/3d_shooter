@@ -280,6 +280,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     updateSanctumPhase(dt);
     updateSovereign(dt);
     updatePenitent(dt);
+    updateWarden(dt);
     if (fast() && countdown <= 0.f && !victory) ghostRec.record(elapsedTime, player.position, player.camera.yaw);
 
     // --- Projectiles ---

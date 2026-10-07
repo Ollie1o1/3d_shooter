@@ -86,6 +86,7 @@ inline void GameplayState::onPenitentEvents(Enemy& e, const EnemyEvents& ev) {
 }
 
 inline void GameplayState::breakAnchor(int i, bool ripped) {
+    if (level.anchors[i].kind == LevelData::ChainAnchor::CONDUIT) { cutConduit(i); return; }
     const glm::vec3 p = level.anchors[i].pos;
     fx.spawnBurst(p, {1.2f, 0.6f, 0.25f}, 40, 9.f, 0.7f, 6.f);
     audio.playAt("clank", p, 128, SoundGroup::ENEMY, true, 0.5f);
@@ -99,6 +100,7 @@ inline void GameplayState::breakAnchor(int i, bool ripped) {
 inline bool GameplayState::hitAnchor(glm::vec3 origin, glm::vec3 dir, float wallT, float dmg) {
     int i = level.anchorAlong(origin, dir, wallT);
     if (i < 0) return false;
+    if (level.anchors[i].kind == LevelData::ChainAnchor::CONDUIT && !conduitShootable(wardenAlive(), wardenPhase())) return false;
     fx.spawnHitSparks(origin + dir * wallT, {1.2f, 0.7f, 0.3f});
     if (level.damageAnchor(i, dmg)) breakAnchor(i, false);
     return true;

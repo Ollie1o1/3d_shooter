@@ -66,6 +66,7 @@ inline void GameplayState::punch(int boostable) {
         p.parried  = true;
         for (auto& o : enemies) if (o.alive && o.uid == p.owner && o.halo) { breakHalo(o); break; }
         p.velocity = fwd * speed;                        // it goes where you look
+        for (auto& o : enemies) if (o.alive && o.uid == p.owner && o.type == EnemyType::WARDEN) { p.homeOn = o.uid; break; }   // ...or into the Warden's core
         p.lifetime = 4.f;
         if (p.heavy) {
             p.damage = p.parryDamage > 0.f ? p.parryDamage : 400.f; p.size *= 1.3f; p.emissiveColor = {1.6f, 1.1f, 0.3f};
@@ -198,6 +199,8 @@ inline void GameplayState::updateEnemies(float dt) {
     w.tune       = &tune();
     w.dynWalls   = level.moverWalls.data();   // the Descent's cage: walkers step onto it
     w.dynCount   = (int)level.moverWalls.size();
+    w.reactor    = level.reactorPos;              // the Warden feeds here
+    w.hasReactor = level.hasReactor;
     const bool descent = ar.shift == ArenaShift::DESCENT;
     const float dmgScale = ar.damageScale * tune().damage;
 
@@ -208,6 +211,8 @@ inline void GameplayState::updateEnemies(float dt) {
         if (!e.alive) continue;
         if (g_devOverlay.rfind("pose", 0) == 0 && e.type == EnemyType::SOVEREIGN) { devPose(e); continue; }
         if (g_devOverlay.rfind("penitent", 0) == 0 && e.type == EnemyType::PENITENT) { devPenitentPose(e); continue; }
+        if (e.type == EnemyType::WARDEN && (g_devOverlay == "warden2" || g_devOverlay == "warden3") && e.health > e.maxHealth * 0.62f)
+            e.health = e.maxHealth * (g_devOverlay == "warden2" ? 0.5f : 0.2f);   // dev: straight into its later phases
         // In the Descent the void runs to -300: stand on what's really under you (the cage included)
         e.floorY = level.enemyFloor(director.arena, e.position, e.stats().flying,
                                     descent ? groundHeightAt(e.position.x, e.position.z, e.position.y + 0.5f, true) : 0.f);
@@ -284,7 +289,8 @@ inline void GameplayState::updateEnemies(float dt) {
         if (ev.leapStarted) { audio.playAt("jump", epos, 128, SoundGroup::ENEMY, isBoss(enemies[i].type)); fx.spawnShockwave(epos, 3.f, statsOf(enemies[i].type).glow); }
         if (enemies[i].type == EnemyType::SOVEREIGN) onSovereignEvents(enemies[i], ev);
         if (enemies[i].type == EnemyType::PENITENT) onPenitentEvents(enemies[i], ev);
-        if (ev.enraged && enemies[i].type != EnemyType::PENITENT) {   // the Penitent's phases announce themselves
+        if (enemies[i].type == EnemyType::WARDEN) onWardenEvents(enemies[i], ev);
+        if (ev.enraged && enemies[i].type == EnemyType::SOVEREIGN) {   // the Penitent and the Warden announce their own phases
             pushBanner(enemies[i].type == EnemyType::SOVEREIGN ? "THE SOVEREIGN IS ENRAGED" : "THE WARDEN IS ENRAGED",
                        "", {1.f, 0.15f, 0.25f}, 2.f);
             shake(0.5f, 0.06f);
@@ -422,6 +428,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     styleSystem.addStyle((src == StyleSource::FRIENDLY || src == StyleSource::ENVIRONMENT ? 15.f : 30.f) * hm, src);
     styleSystem.heal(5.f * tune().heal);
     for (const VoiceCue& c : voices.death(voiceIn(e, nullptr))) playVoice(c);   // a kill confirms at any range
+    if (e.type == EnemyType::WARDEN) { shifts.bossPulseOff(); ward.clear(); conduitClock.reset(); }   // its rings and hazards die with it
     fx.spawnDeathParticles(e.position + glm::vec3{0, e.height() * 0.5f, 0}, e.stats().color);
     spawnDebrisFor(e);
     if (styleSystem.overdrive) dashCharges = 2;
@@ -522,7 +529,9 @@ inline void GameplayState::processBlasts() {
         explosionFlashTimer = 0.35f; explosionFlashPos = b.pos;
         audio.playAt("explosion", b.pos, 128, SoundGroup::WORLD);
         for (int ai = 0; ai < (int)level.anchors.size(); ++ai)   // a blast against the Penitent's anchors
-            if (level.anchors[ai].alive && glm::length(level.anchors[ai].pos - b.pos) < b.radius + 1.f && level.damageAnchor(ai, b.damage))
+            if (level.anchors[ai].alive && glm::length(level.anchors[ai].pos - b.pos) < b.radius + 1.f &&
+                (level.anchors[ai].kind != LevelData::ChainAnchor::CONDUIT || conduitShootable(wardenAlive(), wardenPhase())) &&
+                level.damageAnchor(ai, b.damage))
                 breakAnchor(ai, false);
         for (auto& e : enemies) {
             if (!e.targetable()) continue;
@@ -691,7 +700,7 @@ inline void GameplayState::fireWeapon(int w) {
                 break;
             }
             if (hits[k].head && e.halo) breakHalo(e);   // a headshot shatters a halo
-            float m = hits[k].wound ? 3.f : head ? d.headMult : 1.f;
+            float m = hits[k].wound ? e.woundMult() : head ? d.headMult : 1.f;
             if (hits[k].wound) fx.spawnHitSparks(at, {1.f, 0.3f, 0.15f});
             float falloff = 1.f - 0.15f * k;    // each body it punches through costs a little
             if (head) fx.spawnHitSparks(at, {1.f, 0.9f, 0.3f});
