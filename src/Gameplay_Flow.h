@@ -211,7 +211,7 @@ inline void GameplayState::resetPlayer(glm::vec3 start) {
         weapons[w] = WeaponState{};
         weapons[w].ammo = weaponMag((WeaponId)w, prog.up[w]);
     }
-    aim = 0.f; aimFullAt = -1.f; boltSoundTimer = -1.f;
+    aim = 0.f; aimFullAt = -1.f;
     dashCharges = 2; dashCooldown = 0.f; dashMomentumTimer = 0.f;
     jumpsRemaining = 2; slamming = false; invincFrames = 0.f;
     activeWeapon = modOn(DailyMod::MARKSMAN) ? (int)WeaponId::KAR : 0; pendingWeapon = -1; weaponSwitchTimer = 0.f;
@@ -614,17 +614,18 @@ inline void GameplayState::update(float dt) {
         audio.playAt(opening ? "door" : "door_close", (c.min + c.max) * 0.5f, 120, SoundGroup::WORLD);
     });
 
+    viewModel.setMove(dashMomentumTimer > 0.f, player.sliding);
     viewModel.update(floatDt, playerXZSpeed, player.onGround);
-    // --overlay reloadNN: freeze the gun NN% through its reload (screenshots)
+    for (const auto& c : viewModel.takeCues()) audio.play(c.name, c.volume, SoundGroup::PLAYER);   // on the motion's beats
+    // --overlay reloadNN / inspectNN / switchNN: hold the gun NN% through it (screenshots)
     if (g_devOverlay.rfind("reload", 0) == 0) {
         float u = std::atoi(g_devOverlay.c_str() + 6) / 100.f;
-        viewModel.anim = ViewAnim::RELOAD; viewModel.animMax = 1.f; viewModel.animTimer = std::max(0.001f, 1.f - u);
-        viewModel.reloadShells = 2;
+        int m = weaponMag((WeaponId)activeWeapon, prog.up[activeWeapon]);
+        viewModel.reloadShells = activeWeapon == 1 ? m : activeWeapon == 2 ? std::min(5, m) : m;
+        viewModel.motion.devReload(u, 0, m, viewModel.reloadShells);
     }
-    if (g_devOverlay.rfind("inspect", 0) == 0) {   // --overlay inspectNN: frozen NN% through it
-        float u = std::atoi(g_devOverlay.c_str() + 7) / 100.f;
-        viewModel.anim = ViewAnim::INSPECT; viewModel.animMax = 2.2f; viewModel.animTimer = std::max(0.001f, (1.f - u) * 2.2f);
-    }
+    if (g_devOverlay.rfind("inspect", 0) == 0) viewModel.motion.devInspect(std::atoi(g_devOverlay.c_str() + 7) / 100.f);
+    if (g_devOverlay.rfind("switch", 0) == 0) viewModel.motion.devSwitch(std::atoi(g_devOverlay.c_str() + 6) / 100.f, activeWeapon);
     if (g_devOverlay == "punch") { viewModel.parryTimer = ViewModel::PARRY_TIME * 0.62f; viewModel.parryHit = true; }
     // Baseline FOV widens with horizontal speed on top of the dash kick
     float speedKick = glm::clamp((playerXZSpeed - 7.f) / 15.f, 0.f, 1.f) * 6.f;
@@ -637,10 +638,6 @@ inline void GameplayState::update(float dt) {
             activeWeapon  = pendingWeapon;
             pendingWeapon = -1;
         }
-    }
-    if (boltSoundTimer > 0.f) {
-        boltSoundTimer -= floatDt;
-        if (boltSoundTimer <= 0.f) audio.play("bolt", 110);
     }
 
     if (!act2Falling) elapsedTime += floatDt;   // ACT II's clock starts when you land

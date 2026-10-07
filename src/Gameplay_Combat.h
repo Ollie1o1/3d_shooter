@@ -592,36 +592,12 @@ inline float GameplayState::hitscanAll(glm::vec3 origin, glm::vec3 dir, float ra
     return wallT;
 }
 
-inline void GameplayState::reloadSounds() {
-    const WeaponState& ws = weapons[activeWeapon];
-    if (!ws.reloading || activeWeapon > 2 || pendingWeapon >= 0) return;
-    float now = ws.reloadProgress(), before = reloadCueAt;
-    reloadCueAt = now;
-    auto cue = [&](float at, const char* snd, int vol) { if (before < at && now >= at) audio.play(snd, vol); };
-    if (activeWeapon == 0) {
-        cue(0.04f, "cyl_open", 110); cue(0.2f, "eject", 100); cue(0.5f, "shell_in", 120); cue(0.78f, "cyl_close", 120);
-    } else if (activeWeapon == 2) {   // Kar98: bolt open, the empty, clip in, rounds down, clip out, bolt home
-        cue(0.11f, "cyl_open", 100); cue(0.2f, "eject", 90);
-        cue(ViewModel::KAR_CLIP1 - 0.02f, "shell_in", 120);
-        cue(ViewModel::KAR_PRESS0 + 0.08f, "reload", 90);
-        cue(ViewModel::KAR_FLICK0 + 0.02f, "eject", 70);
-        cue(0.8f, "bolt", 120);
-    } else {
-        int n = viewModel.reloadShells;
-        for (int i = 0; i < n; ++i) cue(0.13f + (i + 0.55f) * 0.6f / n, "shell_in", 110);
-        cue(0.86f, "pump", 120);
-    }
-}
-
 inline void GameplayState::startReload(int w) {
     WeaponId id = (WeaponId)w;
     weapons[w].startReload(weaponReload(id, prog.up[w]));
-    // The revolver, shotgun and Kar98 play their reload over its whole length; the Longshot swings
+    // Every gun plays its reload over the whole of it, in the same three beats (GunMotion.h)
     int mag = weaponMag(id, prog.up[w]);
-    if (w == activeWeapon) viewModel.triggerReload(w <= 2 ? weapons[w].reloadTotal : weapons[w].reloadTotal * 0.6f,
-                                                   mag - weapons[w].ammo);
-    reloadCueAt = 0.f;
-    if (w >= 3) audio.play("reload");
+    if (w == activeWeapon) viewModel.triggerReload(weapons[w].reloadTotal, mag - weapons[w].ammo);
 }
 
 inline void GameplayState::fireWeapon(int w) {
@@ -744,11 +720,9 @@ inline void GameplayState::fireWeapon(int w) {
     if (ws.ammo <= 0) {
         if (!sniper) startReload(w);   // rifles reload after the bolt cycle (physicsTick)
     } else if (sniper && ws.cooldown > 0.2f) {
-        viewModel.triggerBolt(ws.cooldown * 0.85f);
-        boltSoundTimer = ws.cooldown * 0.2f;
+        viewModel.triggerBolt(ws.cooldown * 0.85f);   // its bolt sound comes on the beat
     } else if (pellets > 1) {
         viewModel.triggerPump();
-        audio.play("pump", 70);
     }
 }
 

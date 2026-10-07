@@ -57,8 +57,10 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     bool justLanded = player.onGround && !prevOnGround;
     if (justLanded) {
         jumpsRemaining = 1;
-        if (!slamming && peakFallSpeed > 4.f)
+        if (!slamming && peakFallSpeed > 4.f) {
             landSquash = glm::clamp(peakFallSpeed / 22.f, 0.f, 1.f) * 0.22f;
+            viewModel.land(peakFallSpeed);   // the gun dips too, more after a bigger fall
+        }
         peakFallSpeed = 0.f;
         if (slamming) {
             for (auto& e : enemies) {
@@ -232,10 +234,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     grenadeTimer = std::max(0.f, grenadeTimer - dt);
     invincFrames = std::max(0.f, invincFrames - dt);
     for (int w = 0; w < WEAPON_COUNT; ++w)
-        if (weapons[w].tick(dt, weaponMag((WeaponId)w, prog.up[w])) && w == activeWeapon && w >= 2)
-            audio.play("bolt", 90);   // rifles chamber a round when the reload finishes
-
-    reloadSounds();
+        weapons[w].tick(dt, weaponMag((WeaponId)w, prog.up[w]));   // the rifles' bolt home is the reload's CLOSE cue
     WeaponState& ws = weapons[activeWeapon];
     int mag = weaponMag((WeaponId)activeWeapon, prog.up[activeWeapon]);
     if (keys[SDL_SCANCODE_R] && !ws.reloading && ws.ammo < mag && pendingWeapon < 0) startReload(activeWeapon);

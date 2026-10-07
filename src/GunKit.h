@@ -24,7 +24,17 @@ inline vec3 glowOf(int gun) {
     static const vec3 G[4] = {{1.f, 0.68f, 0.22f}, {1.f, 0.28f, 0.10f}, {0.30f, 0.90f, 1.f}, {0.70f, 0.35f, 1.f}};
     return G[std::clamp(gun, 0, 3)];
 }
-inline vec3 hipOf(int) { return {0.17f, -0.15f, 0.30f}; }   // one framing rule for every gun
+// One framing rule: every gun at the hip in the same lower-right region, at a
+// similar size on screen (the framing test holds them to it). Each gun's hip
+// is set in camera space - never by offsetting its model - so the rifles'
+// sights and scope stay true when you aim.
+inline vec3 hipOf(int gun) {
+    static const vec3 H[4] = {{0.15f, -0.125f, 0.27f},   // revolver: high, the cylinder in view
+                              {0.15f, -0.115f, 0.36f},   // shotgun: up and out, its barrel on screen
+                              {0.19f, -0.17f,  0.31f},   // lancer
+                              {0.20f, -0.195f, 0.34f}};  // longshot: lower and further, it's huge
+    return H[std::clamp(gun, 0, 3)];
+}
 // The Lancer's sight line and the Longshot's scope axis above the gun origin:
 // aiming moves the gun down by these so they sit on the screen's centre
 constexpr float LANCER_SIGHT_Y = 0.052f, LONG_SCOPE_Y = 0.098f;
@@ -244,7 +254,7 @@ inline void buildRevolver(Builder& b, const GunLook& L, const GunPose& P) {
 // pump grip, a shell window on the right that glows ember for each shell
 // loaded, an ember strip along the barrel.
 inline void buildShotgun(Builder& b, const GunLook& L, const GunPose& P) {
-    const mat4 base = T({0.f, 0.035f, -0.02f});   // raised into view
+    const mat4 base(1.f);
     const vec3 acc = b.accent(L);
     float boost = 0.4f + 0.6f * P.boot;
     float slide = 0.f;
@@ -257,11 +267,11 @@ inline void buildShotgun(Builder& b, const GunLook& L, const GunPose& P) {
     b.unlit();
     b.box(base, {0.f, -0.018f, 0.14f}, {0.032f, 0.032f, 0.26f}, BLACK);          // magazine tube
     b.box(base, {0.f, 0.005f, -0.04f}, {0.065f, 0.075f, 0.14f}, BLACK);          // receiver
-    b.box(base, {0.f, 0.042f, -0.04f}, {0.04f, 0.006f, 0.12f}, EDGE);            // its top rail
-    // the shell window: a cell per shell
-    b.box(base, {0.0335f, 0.002f, -0.04f}, {0.002f, 0.05f, 0.13f}, STEEL);
-    b.cells(base, {0.0345f, 0.012f, -0.09f}, {0.f, 0.f, 0.024f}, {0.f, -0.02f, 0.f}, 5,
-            {0.006f, 0.016f, 0.018f}, std::max(1, L.mag), L.lit, boost);
+    b.box(base, {0.f, 0.042f, -0.04f}, {0.04f, 0.004f, 0.12f}, EDGE);            // its top rail
+    // the shell window on top of the receiver (the side you see): a cell per shell
+    b.box(base, {0.f, 0.044f, -0.04f}, {0.03f, 0.003f, 0.13f}, STEEL);
+    b.cells(base, {-0.007f, 0.0465f, -0.09f}, {0.f, 0.f, 0.024f}, {0.014f, 0.f, 0.f}, 5,
+            {0.01f, 0.004f, 0.018f}, std::max(1, L.mag), L.lit, boost);
     // shells fed one by one through the loading port (FEED), thumb behind
     if (P.reloadU >= 0.f) {
         float u = P.reloadU;
@@ -312,11 +322,11 @@ inline void buildLancer(Builder& b, const GunLook& L, const GunPose& P) {
     b.box(base, {0.f, -0.080f, -0.270f}, {0.052f, 0.100f, 0.07f}, BLACK);
     b.box(base, {0.f, -0.082f, -0.308f}, {0.054f, 0.104f, 0.012f}, STEEL);         // butt plate
     b.box(base, {0.f, -0.068f, -0.040f}, {0.040f, 0.070f, 0.07f}, BONE);           // the wrist
-    b.box(base, {0.f, -0.012f, -0.170f}, {0.052f, 0.012f, 0.12f}, BONE);           // cheek panel
+    b.box(base, {0.f, -0.012f, -0.170f}, {0.052f, 0.012f, 0.12f}, STEEL);          // cheek plate (in your eye line when aimed)
     b.box(base, {0.f, 0.014f, 0.020f}, {0.040f, 0.044f, 0.17f}, BLACK);            // receiver
     b.box(base, {0.f, -0.034f, 0.050f}, {0.034f, 0.026f, 0.08f}, BLACK);
     b.box(base, {0.f, -0.056f, -0.005f}, {0.016f, 0.020f, 0.05f}, BLACK);          // guard
-    b.cells(base, {0.0215f, 0.026f, -0.03f}, {0.f, 0.f, 0.022f}, {0.f, -0.012f, 0.f}, 8,
+    b.cells(base, {-0.0215f, 0.026f, -0.03f}, {0.f, 0.f, 0.022f}, {0.f, -0.012f, 0.f}, 8,   // the left side: the one you see
             {0.004f, 0.008f, 0.016f}, std::max(1, L.mag), L.lit, boost);
     b.box(base, {0.f, -0.004f, 0.250f}, {0.044f, 0.040f, 0.32f}, BLACK);           // forend
     b.lit(acc);
@@ -380,7 +390,7 @@ inline void buildLancer(Builder& b, const GunLook& L, const GunPose& P) {
 // barrel with a violet strip, a muzzle brake, a big scope whose lenses glow
 // violet and whose side carries the cells. Its scope axis is LONG_SCOPE_Y.
 inline void buildLongshot(Builder& b, const GunLook& L, const GunPose& P) {
-    const mat4 base = T({0.f, -0.01f, 0.f});
+    const mat4 base(1.f);   // no offset: the scope axis must stay at LONG_SCOPE_Y
     const vec3 acc = b.accent(L);
     float boost = 0.4f + 0.6f * P.boot;
     b.box(base, {0.f, -0.030f, -0.200f}, {0.050f, 0.050f, 0.20f}, BLACK);          // stock

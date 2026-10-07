@@ -180,7 +180,6 @@ public:
     float weaponSwitchTimer = 0.f;
     float aim         = 0.f;    // 0 hip .. 1 aimed (rifles)
     float aimFullAt   = -1.f;   // gameClock when aim last reached full (quickscope window)
-    float boltSoundTimer = -1.f;
     // G key: Grenades — max 2, one returned per 2 kills
     int   grenadeCount   = 2;
     int   grenadeMax     = 2;
@@ -578,8 +577,6 @@ public:
 
     // Sounds timed to the reload animations (ViewModel.h): the revolver's
     // cylinder out, brass, speedloader, snap shut; each shotgun shell, the rack
-    float reloadCueAt = 0.f;   // reload progress already cued
-    void reloadSounds();
 
     void startReload(int w);
 

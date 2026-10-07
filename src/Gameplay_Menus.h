@@ -204,8 +204,7 @@ inline void GameplayState::trySwitch(int w) {
     if (w != activeWeapon && pendingWeapon < 0) {
         pendingWeapon = w;
         weaponSwitchTimer = 0.15f;
-        viewModel.triggerSwitch();
-        audio.play("reload", 80, SoundGroup::UI);
+        viewModel.triggerSwitch(w);   // its chime comes with the motion's cues
     }
 }
 

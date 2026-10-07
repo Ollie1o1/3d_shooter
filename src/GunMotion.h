@@ -69,6 +69,11 @@ public:
     void land(float fallSpeed) { landDip = std::max(landDip, std::min(1.f, fallSpeed / 20.f)); }
     void setMove(bool dashing, bool sliding) { dash = dashing; slide = sliding; }
 
+    // Dev (screenshots): hold a reload / inspect / switch at u (call after update)
+    void devReload(float u, int ammoBefore, int mag, int refill) { reload(1.f, ammoBefore, mag, refill); reloadT = u; cues.clear(); }
+    void devInspect(float u) { inspectT = u * INSPECT_LEN; }
+    void devSwitch(float u, int g) { gun = toGun = g; switching = true; upCued = true; switchT = SWITCH_DOWN + u * SWITCH_UP; cues.clear(); }
+
     bool reloading() const { return reloadT >= 0.f; }
     bool switchingNow() const { return switching; }
     int  shownGun() const { return switching && switchT < SWITCH_DOWN ? gun : (switching ? toGun : gun); }
