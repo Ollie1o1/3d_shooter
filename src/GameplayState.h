@@ -7,6 +7,7 @@
 #include "StyleSystem.h"
 #include "UIRenderer.h"
 #include "Enemy.h"
+#include "EnemyVoice.h"
 #include "EnemyModel.h"
 #include "BoxRenderer.h"
 #include "Projectile.h"
@@ -310,7 +311,6 @@ public:
     static constexpr float PARRY_COOLDOWN = 1.0f;   // a punch / parry at most once a second: no spamming it
     bool prevDashKey      = false;
     int  boostPrev        = -1;     // booster the player was in last tick
-    float telegraphSoundCd = 0.f;   // throttles the enemy wind-up tick
     int   spaceArena = -1;          // the arena whose reverb is playing
     float shieldClankCd = 0.f;      // throttles the clank of bullets on a shield
     bool prevJumpKey      = false;
@@ -318,7 +318,6 @@ public:
     bool pendingFire      = false;
     bool pendingGrenade   = false;
     bool pendingGrapple   = false;
-    bool spawnSoundThisTick = false;
 
     GameplayState(AudioSystem& aud, GameSettings* s = nullptr, GameMode m = GameMode::ARENA);
 
@@ -384,6 +383,12 @@ public:
     void onSovereignEvents(const Enemy& e, const EnemyEvents& ev);
     void updateSovereign(float dt);
     void gatherSovereignBoxes(std::vector<BoxInstance>& out);
+
+    // The enemies' voices (EnemyVoice.h): who speaks, and the held ones by uid
+    VoiceDirector voices;
+    std::unordered_map<int, SoundHandle> voiceLoops;     // a Seraph's beam, following it
+    VoiceIn voiceIn(const Enemy& e, const EnemyEvents* ev) const;
+    void playVoice(const VoiceCue& c);
 
     // THE PENITENT (Gameplay_Penitent.h): its hazards, its chains' anchors
     PenitentHazards pen;

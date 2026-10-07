@@ -6,7 +6,6 @@
 // =============================================================================
 
 inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKey) {
-    spawnSoundThisTick = false;
     if (director.arena != spaceArena && director.arena >= 0 && director.arena < (int)level.arenas.size()) {
         spaceArena = director.arena;   // a new place: its reverb
         audio.setSpace(level.arenas[spaceArena].space);

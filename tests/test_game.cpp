@@ -26,10 +26,13 @@
 #include "../src/SfxMixer.h"
 #include "../src/PenitentHazards.h"
 #include "../src/GunKit.h"
+#include "../src/VoiceSynth.h"
+#include "../src/EnemyVoice.h"
 #include <cstdio>
 #include <cstring>
 #include <limits>
 #include <map>
+#include <set>
 #include <tuple>
 #include <functional>
 
@@ -72,6 +75,28 @@ static float sfxHf(const std::vector<float>& b, int ch) {   // RMS of the first 
 }
 static float sfxPeak(const std::vector<float>& b) { float p = 0.f; for (float x : b) p = std::max(p, std::fabs(x)); return p; }
 static bool sfxFinite(const std::vector<float>& b) { for (float x : b) if (!std::isfinite(x)) return false; return true; }
+// A 16-bit PCM WAV, channel 0, as floats (empty if missing)
+static std::vector<float> readWav16(const std::string& path, float& rate) {
+    std::vector<float> out; rate = 0.f;
+    FILE* f = std::fopen(path.c_str(), "rb");
+    if (!f) return out;
+    char id[4], wave[4]; uint32_t len = 0; int ch = 1, bits = 16;
+    if (std::fread(id, 1, 4, f) != 4 || std::fread(&len, 4, 1, f) != 1 || std::fread(wave, 1, 4, f) != 4) { std::fclose(f); return out; }
+    while (std::fread(id, 1, 4, f) == 4 && std::fread(&len, 4, 1, f) == 1) {
+        if (!std::memcmp(id, "fmt ", 4)) {
+            std::vector<uint8_t> b(len); if (std::fread(b.data(), 1, len, f) != len) break;
+            uint16_t c, bp; uint32_t sr; std::memcpy(&c, &b[2], 2); std::memcpy(&sr, &b[4], 4); std::memcpy(&bp, &b[14], 2);
+            ch = c; rate = (float)sr; bits = bp;
+            if (len & 1) std::fseek(f, 1, SEEK_CUR);
+        } else if (!std::memcmp(id, "data", 4)) {
+            std::vector<int16_t> s(len / 2); size_t got = std::fread(s.data(), 2, s.size(), f);
+            if (bits == 16) for (size_t i = 0; i + ch <= got; i += ch) out.push_back(s[i] / 32768.f);
+            break;
+        } else std::fseek(f, len + (len & 1), SEEK_CUR);
+    }
+    std::fclose(f);
+    return out;
+}
 static bool overlapsWall(const LevelData& L, const AABB& b) {
     for (auto& w : L.walls) if (overlapsBox(b, w.box)) return true;
     return false;
@@ -2435,14 +2460,14 @@ int main() {
         // ---- duck and reverb
         {
             SfxMixer m(44100.f, 3);
-            sfxRender(m, 4410, 0.5f);
+            sfxRender(m, 4410, 0.25f);                                // under the bus compressor's threshold
             m.duck(6.f, 0.1f);
-            auto during = sfxRender(m, 2205, 0.5f);                  // 50 ms in
+            auto during = sfxRender(m, 2205, 0.25f);                 // 50 ms in
             float dipped = during[during.size() - 2];
-            sfxRender(m, 88200, 0.5f);                                // hold 0.1 s, release 250 ms
-            auto after = sfxRender(m, 441, 0.5f);
-            CHECK(std::fabs(dipped - 0.5f * 0.501f) < 0.03f, "a 6 dB duck dips the music to half within 50 ms");
-            CHECK(std::fabs(after.back() - 0.5f) < 0.005f, "the music comes back once the duck is over");
+            sfxRender(m, 88200, 0.25f);                               // hold 0.1 s, release 250 ms
+            auto after = sfxRender(m, 441, 0.25f);
+            CHECK(std::fabs(dipped - 0.25f * 0.501f) < 0.015f, "a 6 dB duck dips the music to half within 50 ms");
+            CHECK(std::fabs(after.back() - 0.25f) < 0.0025f, "the music comes back once the duck is over");
             SfxMixer o(44100.f, 3);
             o.duck(3.f, 0.5f); o.duck(9.f, 0.1f);
             sfxRender(o, 4410, 0.5f);
@@ -2505,6 +2530,416 @@ int main() {
             float near = lvl(4.f, 0.f), far = lvl(60.f, 0.f), floored = lvl(60.f, 0.5f), beyond = lvl(120.f, 0.5f);
             CHECK(far < 0.15f * near && floored > 0.4f * near, "a floored cue at 60 m stays at least half as loud as up close");
             CHECK(beyond > 0.3f * near, "...even past 90 m");
+        }
+    }
+
+    // ---------------------------------------------------------------- sound effects mixer: roles and the bus
+    {
+        using G = SoundGroup; using R = SoundRole;
+        auto ro = [](R role, float vol = 0.5f, bool prio = false) {
+            SfxMixer::Opts o; o.volume = vol; o.group = SoundGroup::ENEMY; o.role = role; o.priority = prio; return o;
+        };
+        {   // chatter: at most 6 at once, a 7th takes the oldest
+            SfxMixer m(44100.f, 3); m.addSound("noise", sfxNoise(44100));
+            std::vector<SoundHandle> hs;
+            for (int i = 0; i < 6; ++i) { hs.push_back(m.play("noise", ro(R::CHATTER))); sfxRender(m, 16); }
+            SoundHandle seventh = m.play("noise", ro(R::CHATTER)); sfxRender(m, 16);
+            CHECK(m.roleActive(R::CHATTER) == 6 && !m.isPlaying(hs[0]) && m.isPlaying(hs[1]) && m.isPlaying(seventh),
+                  "enemy chatter: 6 voices at most, a 7th takes the oldest");
+        }
+        {   // chatter piling up never takes a tell
+            SfxMixer m(44100.f, 3); m.addSound("noise", sfxNoise(44100));
+            SoundHandle t = m.play("noise", ro(R::TELL, 0.05f, true)); sfxRender(m, 16);
+            for (int i = 0; i < 8; ++i) { m.play("noise", ro(R::CHATTER)); sfxRender(m, 16); }
+            CHECK(m.isPlaying(t) && m.roleActive(R::TELL) == 1 && m.roleActive(R::CHATTER) == 6,
+                  "chatter piling up never silences a tell");
+        }
+        {   // a full ENEMY group: a tell takes chatter, never a (quieter) tell
+            SfxMixer m(44100.f, 3); m.addSound("noise", sfxNoise(44100));
+            for (int i = 0; i < 15; ++i) m.play("noise", ro(R::TELL, 0.01f, true));
+            for (int i = 0; i < 5; ++i) m.play("noise", ro(R::CHATTER, 0.9f));
+            sfxRender(m, 16);
+            SoundHandle t = m.play("noise", ro(R::TELL, 0.5f, true)); sfxRender(m, 16);
+            CHECK(m.active(G::ENEMY) == 20 && m.isPlaying(t) && m.roleActive(R::TELL) == 16 && m.roleActive(R::CHATTER) == 4,
+                  "a tell in a full group takes a chatter voice, not a quieter tell");
+        }
+        {   // the sidechain: while a tell plays chatter dips 8 dB and the music 3 dB; both come back after
+            SfxMixer m(44100.f, 3); m.addSound("noise", sfxNoise(44100));
+            m.addSound("hush", std::vector<float>(13230, 0.f));   // a silent 0.3 s tell
+            m.play("noise", ro(R::CHATTER));
+            m.play("hush", ro(R::TELL, 1.f, true));
+            sfxRender(m, 8820, 0.1f);   // 0.2 s
+            float chatDb = 20.f * std::log10(m.chatterGain()), musDb = 20.f * std::log10(m.musicGain());
+            CHECK(std::fabs(chatDb + 8.f) < 0.5f && std::fabs(musDb + 3.f) < 0.5f, "while a tell plays, chatter dips 8 dB and the music 3 dB");
+            sfxRender(m, 4410); sfxRender(m, 26460);   // the tell ends at 0.3 s, then 0.6 s more
+            CHECK(m.chatterGain() > 0.9f && m.musicGain() > 0.95f, "...and both come back within about half a second after it");
+        }
+        {   // the music really is 3 dB down under a tell
+            SfxMixer m(44100.f, 3); m.addSound("hush", std::vector<float>(44100, 0.f));
+            m.play("hush", ro(R::TELL, 1.f, true));
+            auto b = sfxRender(m, 8820, 0.1f);
+            CHECK(std::fabs(std::fabs(b[b.size() - 2]) - 0.1f * 0.70795f) < 0.003f, "the music under a tell is 3 dB down");
+        }
+        {   // the bus compressor: nothing on a quiet mix, at most ~5 dB on a full-scale one
+            SfxMixer m(44100.f, 3);
+            sfxRender(m, 4410, 0.03f);
+            float quiet = m.compReductionDb();
+            sfxRender(m, 22050, 1.f);
+            float loud = m.compReductionDb();
+            CHECK(quiet == 0.f && loud > 4.f && loud <= 5.05f, "the bus compressor leaves quiet mixes alone and takes at most ~5 dB off a full-scale one");
+        }
+        {   // a 22.05 kHz sound plays for its real length
+            SfxMixer m(44100.f, 3); m.addSound("half", std::vector<float>(2205, 0.3f), 22050.f);   // 0.1 s
+            SfxMixer::Opts o; o.group = G::UI;
+            SoundHandle h = m.play("half", o);
+            sfxRender(m, 4300); bool mid = m.isPlaying(h);
+            sfxRender(m, 200);  bool done = !m.isPlaying(h);
+            CHECK(mid && done, "a sound built at 22.05 kHz plays for its real length at 44.1 kHz");
+        }
+        {   // pitch: twice the rate, half the length
+            SfxMixer m(44100.f, 3); m.addSound("dc", std::vector<float>(4410, 0.3f));
+            SfxMixer::Opts o; o.group = G::UI; o.pitch = 2.f;
+            SoundHandle h = m.play("dc", o);
+            sfxRender(m, 2300);
+            CHECK(!m.isPlaying(h), "a sound at pitch 2 lasts half as long");
+        }
+        {   // delay: silent until it's due
+            SfxMixer m(44100.f, 3); m.addSound("dc", std::vector<float>(44100, 0.5f));
+            SfxMixer::Opts o; o.group = G::UI; o.delay = 0.012f;
+            m.play("dc", o);
+            auto b = sfxRender(m, 1024);
+            CHECK(b[2 * 500] == 0.f && std::fabs(b[2 * 1000]) > 0.1f, "a delayed sound (a Twinned echo) starts 12 ms late");
+        }
+        {   // drive: saturated (more edge), never louder
+            std::vector<float> sine(44100);
+            for (int i = 0; i < 44100; ++i) sine[i] = 0.6f * std::sin(6.2831853f * 220.f * i / 44100.f);
+            auto run = [&](float drive) {
+                SfxMixer m(44100.f, 3); m.addSound("sine", sine);
+                SfxMixer::Opts o; o.group = G::UI; o.drive = drive; o.volume = 0.5f;
+                m.play("sine", o); return sfxRender(m, 8192);
+            };
+            auto clean = run(0.f), driven = run(1.f);
+            CHECK(sfxPeak(driven) <= sfxPeak(clean) + 1e-4f && sfxHf(driven, 0) / sfxRms(driven, 0) > 1.05f * sfxHf(clean, 0) / sfxRms(clean, 0),
+                  "drive (an Enraged voice) adds edge without adding level");
+        }
+        {   // dev solo: only the chosen roles, no music
+            SfxMixer m(44100.f, 3); m.addSound("dc", std::vector<float>(44100, 0.2f));
+            m.devSolo(1 << (int)R::TELL);
+            m.play("dc", ro(R::CHATTER, 1.f));
+            auto b = sfxRender(m, 512, 0.1f);
+            CHECK(sfxPeak(b) == 0.f, "soloing tells mutes chatter and the music");
+        }
+        {   // reading the bank back (the mix report)
+            SfxMixer m(44100.f, 3); m.addSound("a", std::vector<float>(10, 0.1f), 22050.f); m.addSound("a", std::vector<float>(20, 0.1f), 22050.f);
+            CHECK(m.sample("a", 1) && m.sample("a", 1)->size() == 20 && !m.sample("a", 2) && !m.sample("b", 0) && m.sampleRateOf("a") == 22050.f,
+                  "the bank can be read back: each variant and its source rate");
+        }
+    }
+
+    // ---------------------------------------------------------------- enemy voices: the bank
+    {
+        const auto& bank = voiceBank();
+        std::map<std::string, int> seen;
+        bool unique = true;
+        for (auto& s : bank) unique &= seen[s.name]++ == 0;
+        CHECK(unique, "every voice has its own name");
+        bool table = true;
+        for (int i = 0; i < (int)EnemyType::COUNT; ++i) {
+            EnemyType t = (EnemyType)i;
+            for (VoiceKind k : {VoiceKind::SPAWN, VoiceKind::IDLE, VoiceKind::HURT, VoiceKind::DEATH}) table &= seen.count(voiceName(t, k)) > 0;
+            if (moveCadence(t) > 0.f) table &= seen.count(voiceName(t, VoiceKind::MOVE)) > 0;
+            for (AttackKind a : attacksOf(t)) {
+                table &= seen.count(voiceName(t, VoiceKind::TELL, a)) > 0;
+                if (hasRelease(a)) table &= seen.count(voiceName(t, VoiceKind::ATTACK, a)) > 0;
+            }
+        }
+        CHECK(table, "every enemy type has spawn, idle, hurt and death voices, steps if it moves, a tell (and release) per attack");
+
+        // Every attack an enemy really starts has a tell: run each type against a player at a few ranges
+        bool covered = true;
+        for (int i = 0; i < (int)EnemyType::COUNT; ++i) {
+            EnemyType t = (EnemyType)i;
+            auto known = attacksOf(t);
+            for (float dist : {3.f, 8.f, 14.f, 24.f}) {
+                Enemy e(t, {0.f, 0.f, 0.f});
+                EnemyWorld w; w.playerFeet = {dist, 0.f, 0.f}; w.playerEye = w.playerFeet + glm::vec3{0, 1.7f, 0};
+                for (int f = 0; f < 60 * 40 && e.alive; ++f) {
+                    if (f == 60 * 20) e.health = e.maxHealth * 0.2f;   // bosses: their late-fight moves too
+                    e.update(DT, w);
+                    if (e.ev.telegraphStarted && std::find(known.begin(), known.end(), e.attack) == known.end()) {
+                        covered = false;
+                        std::printf("      %s starts attack %d with no tell\n", statsOf(t).name, (int)e.attack);
+                    }
+                }
+            }
+        }
+        CHECK(covered, "every attack an enemy starts has a tell of its own");
+
+        float total = 0.f; bool built = true, levels = true, varied = true, same = true;
+        int idx = 0;
+        for (const auto& s : bank) {
+            std::vector<float> first;
+            for (int v = 0; v < s.variants; ++v) {
+                auto b = VoiceSynth::build(s, v);
+                total += b.size() / VoiceSynth::RATE;
+                float pk = 0.f; bool fin = true;
+                for (float x : b) { pk = std::max(pk, std::fabs(x)); fin &= std::isfinite(x); }
+                float lv = shortTermDb(b.data(), b.size(), VoiceSynth::RATE);
+                if (b.size() < 200 || !fin || pk > 0.951f) { built = false; std::printf("      %s/%d: %zu samples, peak %.2f\n", s.name.c_str(), v, b.size(), pk); }
+                if (std::fabs(lv - mixTargetDb(s.cls)) > 2.f) { levels = false; std::printf("      %s/%d at %.1f dB (wants %.1f)\n", s.name.c_str(), v, lv, mixTargetDb(s.cls)); }
+                if (v == 0) first = b; else if (b == first) varied = false;
+            }
+            if (idx++ % 7 == 0) same &= VoiceSynth::build(s, 0) == first;
+        }
+        std::printf("      voice bank: %zu names, %.1f s of audio\n", bank.size(), total);
+        CHECK(built, "every voice builds: a real length, finite, peak under 0.95");
+        CHECK(levels, "every voice sits within 2 dB of its mix class's level");
+        CHECK(varied, "a voice's variants differ");
+        CHECK(same, "the same voice builds the same every time");
+        CHECK(total <= 150.f, "the whole voice bank is at most 150 s of audio");
+    }
+
+    // ---------------------------------------------------------------- enemy voices: who gets to speak
+    {
+        auto in = [](int uid, EnemyType t, glm::vec3 p) { VoiceIn v; v.uid = uid; v.type = t; v.pos = p; v.health = 100.f; return v; };
+        auto count = [](const std::vector<VoiceCue>& cs, SoundRole r, const std::string& part = "") {
+            int n = 0; for (auto& c : cs) n += c.role == r && c.name.find(part) != std::string::npos; return n;
+        };
+        auto windup = [](VoiceIn v, AttackKind a, float t = 0.45f) { v.attack = a; v.telegraphTimer = t; v.telegraphStarted = true; return v; };
+        const glm::vec3 O{0.f};
+        const float F = 1.f / 60.f;
+        {   // a wind-up 35 m off, behind a wall: heard, by name, at priority
+            VoiceDirector d;
+            d.begin(O, F); d.enemy(in(1, EnemyType::HUSK, {35, 0, 0})); d.end();
+            d.begin(O, F); d.enemy(windup(in(1, EnemyType::HUSK, {35, 0, 0}), AttackKind::SHOT));
+            auto cs = d.end();
+            CHECK(count(cs, SoundRole::TELL, "v_husk_tell_shot") == 1 && cs[0].priority, "a wind-up 35 m off, out of sight, is heard: its own tell, at priority");
+        }
+        {   // the same enemy: not twice within 0.15 s
+            VoiceDirector d; int tells = 0;
+            for (int f = 0; f < 7; ++f) {
+                d.begin(O, F); VoiceIn v = in(1, EnemyType::RIPPER, {5, 0, 0});
+                if (f == 1 || f == 6) v = windup(v, AttackKind::LUNGE, 0.3f);
+                d.enemy(v); tells += count(d.end(), SoundRole::TELL);
+            }
+            CHECK(tells == 1, "the same enemy can't repeat its tell within 0.15 s");
+        }
+        {   // six at once: the nearest four
+            VoiceDirector d; d.begin(O, F); for (int i = 0; i < 6; ++i) d.enemy(in(i + 1, EnemyType::HUSK, {5.f + 5.f * i, 0, 0})); d.end();
+            d.begin(O, F); for (int i = 0; i < 6; ++i) d.enemy(windup(in(i + 1, EnemyType::HUSK, {5.f + 5.f * i, 0, 0}), AttackKind::SHOT));
+            int n = 0; bool nearest = true; for (auto& c : d.end()) if (c.role == SoundRole::TELL) { ++n; nearest &= c.uid <= 4; }
+            CHECK(n == 4 && nearest, "six wind-ups at once: the nearest four are heard");
+        }
+        {   // chatter: only the nearest four, and they do chatter
+            VoiceDirector d(7); std::set<int> spoke;
+            for (int f = 0; f < 60 * 20; ++f) {
+                d.begin(O, F);
+                for (int i = 0; i < 10; ++i) { VoiceIn v = in(i + 1, EnemyType::HUSK, {2.f + 2.f * i, 0, 0}); v.moveSpeed = statsOf(EnemyType::HUSK).speed; d.enemy(v); }
+                for (auto& c : d.end()) if (c.role == SoundRole::CHATTER && c.name.find("spawn") == std::string::npos) spoke.insert(c.uid);
+            }
+            CHECK(spoke.size() == 4 && *spoke.rbegin() <= 4, "ten enemies close by: the nearest four chatter, no one else");
+        }
+        {   // hurts: one per enemy per 0.4 s
+            VoiceDirector d; int hurts = 0; float hp = 100.f;
+            for (int f = 0; f < 60; ++f) {
+                d.begin(O, F); VoiceIn v = in(1, EnemyType::BRUTE, {5, 0, 0});
+                if (f >= 1 && f <= 5) hp -= 8.f;
+                v.health = hp; d.enemy(v); hurts += count(d.end(), SoundRole::ACTION, "hurt");
+            }
+            CHECK(hurts == 1, "pellets landing over a few frames: one hurt, not eight");
+        }
+        {   // hurts: six a second at most
+            VoiceDirector d; d.begin(O, F); for (int i = 0; i < 20; ++i) d.enemy(in(i + 1, EnemyType::HUSK, {3.f + i, 0, 0})); d.end();
+            d.begin(O, F); for (int i = 0; i < 20; ++i) { VoiceIn v = in(i + 1, EnemyType::HUSK, {3.f + i, 0, 0}); v.health = 50.f; d.enemy(v); }
+            CHECK(count(d.end(), SoundRole::ACTION, "hurt") == 6, "twenty hit at once: six hurts a second at most");
+        }
+        {   // the release: when the wind-up runs out (not when it's broken off)
+            auto run = [&](bool stagger) {
+                VoiceDirector d; int atk = 0;
+                for (int f = 0; f < 40; ++f) {
+                    d.begin(O, F); VoiceIn v = in(1, EnemyType::HUSK, {6, 0, 0});
+                    if (f >= 1 && f < 28) { v.attack = AttackKind::SHOT; v.telegraphTimer = 0.45f - (f - 1) * F; v.telegraphStarted = f == 1; }
+                    else if (f >= 28) { v.attack = stagger ? AttackKind::NONE : AttackKind::SHOT; v.staggered = stagger; }
+                    d.enemy(v); atk += count(d.end(), SoundRole::ACTION, "v_husk_atk_shot");
+                }
+                return atk;
+            };
+            CHECK(run(false) == 1 && run(true) == 0, "the release sounds when the wind-up runs out, not when a stagger breaks it off");
+        }
+        {   // beam held, death cries at any range and ends it, the dead are forgotten
+            VoiceDirector d; d.begin(O, F); d.enemy(in(1, EnemyType::SERAPH, {80, 0, 0})); d.end();
+            d.begin(O, F); VoiceIn v = in(1, EnemyType::SERAPH, {80, 0, 0}); v.beamOn = true; d.enemy(v); auto start = d.end();
+            auto cs = d.death(v);
+            bool started = false, cry = false, stop = false;
+            for (auto& c : start) started |= c.loop == VoiceCue::START && c.name == "v_seraph_atk_beam";
+            for (auto& c : cs) { cry |= c.name == "v_seraph_death" && c.floor >= 0.5f; stop |= c.loop == VoiceCue::STOP && c.uid == 1; }
+            CHECK(started, "a Seraph's beam starts a held voice");
+            CHECK(cry && stop, "a death always cries out (any range, with a floor) and ends its held voice");
+            d.begin(O, F); d.end();
+            CHECK(d.tracked() == 0, "the dead are forgotten");
+        }
+        {   // Review focus 5: a beam that ends and starts again
+            VoiceDirector d; int starts = 0, stops = 0;
+            for (int f = 0; f < 4; ++f) {
+                d.begin(O, F); VoiceIn v = in(1, EnemyType::SERAPH, {10, 0, 0}); v.beamOn = f == 1 || f == 3; d.enemy(v);
+                for (auto& c : d.end()) { starts += c.loop == VoiceCue::START; stops += c.loop == VoiceCue::STOP; }
+            }
+            CHECK(starts == 2 && stops == 1, "a beam off and on again: stopped, then a fresh held voice");
+        }
+        {   // gone without a death: forgotten after half a second, its held voice stopped
+            VoiceDirector d; d.begin(O, F); VoiceIn v = in(1, EnemyType::SERAPH, {10, 0, 0}); v.beamOn = true; d.enemy(v); d.end();
+            bool stop = false;
+            for (int f = 0; f < 40; ++f) { d.begin(O, F); for (auto& c : d.end()) stop |= c.loop == VoiceCue::STOP && c.uid == 1; }
+            CHECK(d.tracked() == 0 && stop, "an enemy that vanishes is forgotten and its held voice stopped");
+        }
+        {   // Review focus 1: a retry forgets everyone at once
+            VoiceDirector d; d.begin(O, F); d.enemy(in(1, EnemyType::HUSK, {5, 0, 0})); d.end();
+            d.reset();
+            CHECK(d.tracked() == 0, "reset forgets everyone");
+        }
+        {   // Review focus 2: a frame's gap is not a new enemy
+            VoiceDirector d; int spawns = 0;
+            for (int f = 0; f < 3; ++f) { d.begin(O, F); if (f != 1) d.enemy(in(1, EnemyType::HUSK, {5, 0, 0})); spawns += count(d.end(), SoundRole::CHATTER, "spawn"); }
+            CHECK(spawns == 1, "an enemy missing for a frame and back again doesn't spawn twice");
+        }
+        {   // Review focus 3: killed after it was reported this frame
+            VoiceDirector d; d.begin(O, F); d.enemy(in(1, EnemyType::HUSK, {5, 0, 0})); d.end();
+            d.begin(O, F); VoiceIn v = in(1, EnemyType::HUSK, {5, 0, 0}); v.health = 0.f; d.enemy(v);
+            auto deathCues = d.death(v);
+            auto cs = d.end();
+            CHECK(count(deathCues, SoundRole::ACTION, "death") == 1 && cs.empty() && d.tracked() == 0,
+                  "killed mid-frame: its death cry and nothing else (no spawn, no hurt)");
+        }
+        {   // Hollowed: same name, changed voice
+            auto tellOf = [&](Hollow h) {
+                VoiceDirector d; VoiceIn v = in(1, EnemyType::HUSK, {5, 0, 0}); v.hollow = h; v.halo = h == Hollow::HALOED;
+                d.begin(O, F); d.enemy(v); d.end();
+                d.begin(O, F); d.enemy(windup(v, AttackKind::SHOT)); return d.end();
+            };
+            auto en = tellOf(Hollow::ENRAGED), tw = tellOf(Hollow::TWINNED), ha = tellOf(Hollow::HALOED);
+            int twins = 0; float delay = 0.f; bool shimmer = false;
+            for (auto& c : tw) if (c.name == "v_husk_tell_shot") { ++twins; delay = std::max(delay, c.delay); }
+            for (auto& c : ha) shimmer |= c.name == VOICE_HALO_SHIMMER;
+            CHECK(!en.empty() && en[0].name == "v_husk_tell_shot" && en[0].pitch > 1.1f && en[0].drive > 0.f, "an Enraged voice: the same tell, higher and driven");
+            CHECK(twins == 2 && std::fabs(delay - 0.012f) < 1e-4f, "a Twinned voice is doubled, the copy 12 ms late");
+            CHECK(shimmer, "a Haloed one's tell shimmers");
+            VoiceDirector d; VoiceIn v = in(1, EnemyType::HUSK, {5, 0, 0}); v.hollow = Hollow::HALOED; v.halo = true;
+            d.begin(O, F); d.enemy(v); d.end();
+            v.halo = false; d.begin(O, F); d.enemy(v);
+            CHECK(count(d.end(), SoundRole::ACTION, VOICE_HALO_BREAK) == 1, "a halo breaking shatters");
+        }
+        {   // Review focus 4: a dozen appearing at once
+            VoiceDirector d; d.begin(O, F); for (int i = 0; i < 12; ++i) d.enemy(in(i + 1, EnemyType::MITE, {3.f + i, 0, 0}));
+            int n = 0; bool nearest = true; for (auto& c : d.end()) if (c.name.find("spawn") != std::string::npos) { ++n; nearest &= c.uid <= 3; }
+            CHECK(n == 3 && nearest, "a dozen appearing at once: three spawn cues, the nearest");
+        }
+        {   // bosses: chatter whoever else is near; their wind-ups duck the mix (not the Penitent's every sweep)
+            VoiceDirector d; bool bossSpoke = false;
+            for (int f = 0; f < 60 * 15; ++f) {
+                d.begin(O, F);
+                for (int i = 0; i < 6; ++i) d.enemy(in(i + 1, EnemyType::HUSK, {2.f + i, 0, 0}));
+                VoiceIn w = in(99, EnemyType::WARDEN, {40, 0, 0}); w.moveSpeed = 2.4f; d.enemy(w);
+                for (auto& c : d.end()) bossSpoke |= c.uid == 99 && c.role == SoundRole::CHATTER && c.name.find("spawn") == std::string::npos;
+            }
+            CHECK(bossSpoke, "a boss chatters at 40 m whoever else is near");
+            auto duckOf = [&](EnemyType t, AttackKind a) {
+                VoiceDirector e; e.begin(O, F); e.enemy(in(5, t, {10, 0, 0})); e.end();
+                e.begin(O, F); e.enemy(windup(in(5, t, {10, 0, 0}), a, 1.f));
+                for (auto& c : e.end()) if (c.role == SoundRole::TELL) return c.duckDb;
+                return -1.f;
+            };
+            CHECK(duckOf(EnemyType::WARDEN, AttackKind::SLAM) == 6.f && duckOf(EnemyType::PENITENT, AttackKind::PSLAM) == 6.f &&
+                  duckOf(EnemyType::PENITENT, AttackKind::CENSER_LOW) == 0.f && duckOf(EnemyType::HUSK, AttackKind::SHOT) == 0.f,
+                  "a boss's wind-up ducks the mix (not the Penitent's every sweep, not a Husk's)");
+        }
+        {   // every cue the director can ask for is in the bank
+            std::set<std::string> names; for (auto& s : voiceBank()) names.insert(s.name);
+            bool all = true;
+            auto check = [&](const std::vector<VoiceCue>& cs) {
+                for (auto& c : cs) if (!names.count(c.name)) { all = false; std::printf("      no voice called %s\n", c.name.c_str()); }
+            };
+            for (int i = 0; i < (int)EnemyType::COUNT; ++i) {
+                const EnemyType t = (EnemyType)i; VoiceDirector d((uint32_t)i + 3); float hp = 100.f;
+                const auto atks = attacksOf(t);
+                for (int f = 0; f < 60 * 10; ++f) {
+                    d.begin(O, F); VoiceIn v = in(1, t, {5, 0, 0});
+                    v.moveSpeed = statsOf(t).speed; hp -= f % 50 == 0 ? 5.f : 0.f; v.health = hp;
+                    if (!atks.empty()) {
+                        const int k = (f / 40) % (int)atks.size(), ph = f % 40;
+                        v.attack = atks[k]; v.telegraphTimer = ph < 30 ? 0.5f - ph * F : 0.f; v.telegraphStarted = ph == 0;
+                        v.beamOn = atks[k] == AttackKind::BEAM && ph >= 30;
+                    }
+                    v.enraged = f == 300; v.rose = f == 310; v.hollow = f < 200 ? Hollow::HALOED : Hollow::NONE; v.halo = f < 200;
+                    v.linkCount = f / 100;
+                    d.enemy(v); check(d.end());
+                }
+                check(d.death(in(1, t, {5, 0, 0})));
+            }
+            CHECK(all, "every voice the director can ask for is in the bank");
+        }
+    }
+
+    // ---------------------------------------------------------------- the mix: every sound file at its class's level
+    {
+        bool levels = true, complete = true;
+        for (const MixEntry& m : mixTable()) {
+            for (int k = 0; k <= 8; ++k) {
+                const std::string path = "assets/sfx/" + std::string(m.name) + (k ? "_" + std::to_string(k) : std::string()) + ".wav";
+                float sr; auto x = readWav16(path, sr);
+                if (x.empty()) { if (k == 0) { complete = false; std::printf("      missing %s\n", path.c_str()); } continue; }
+                const float lv = shortTermDb(x.data(), x.size(), sr) + m.trimDb;
+                if (std::fabs(lv - mixTargetDb(m.cls)) > 2.f) { levels = false; std::printf("      %s at %.1f dB after trim (wants %.1f)\n", path.c_str(), lv, mixTargetDb(m.cls)); }
+            }
+        }
+        CHECK(complete, "every sound in the mix table has its file");
+        CHECK(levels, "every sound file, after its trim, sits within 2 dB of its class's level");
+        const char* loaded[] = {"jump", "land", "dash", "slam", "revolver", "shotgun", "reload", "grapple_fire", "hit", "player_hit",
+                                "parry", "telegraph", "explosion", "wave", "pickup", "kar", "longshot", "bolt", "scope", "levelup",
+                                "potion", "barrier", "split", "upgrade", "clank", "punch", "step1", "step2", "step3", "step4", "door",
+                                "door_close", "boost", "cyl_open", "cyl_close", "eject", "shell_in", "pump", "wade", "skim", "cell",
+                                "dry", "switch_up0", "switch_up1", "switch_up2", "switch_up3"};
+        bool all = true; for (const char* n : loaded) all &= mixEntry(n) != nullptr;
+        CHECK(all && mixTable().size() == sizeof(loaded) / sizeof(loaded[0]), "every sound file the game loads has exactly one place in the mix");
+        CHECK(std::fabs(mixGain("jump") - std::pow(10.f, -4.1f / 20.f)) < 1e-4f && mixGain("v_husk_idle") == 1.f && mixGain("nope") == 1.f,
+              "a sound's mix gain is its trim; built voices and unknown names pass at 1");
+    }
+
+    // ---------------------------------------------------------------- review fixes: enemy voices
+    {
+        const float F = 1.f / 60.f;
+        {   // drive keeps a voice about as loud: an Enraged one isn't quieter than the rest
+            auto run = [](float amp, float drive) {
+                std::vector<float> sine(44100);
+                for (int i = 0; i < 44100; ++i) sine[i] = amp * std::sin(6.2831853f * 220.f * i / 44100.f);
+                SfxMixer m(44100.f, 3); m.addSound("sine", sine);
+                SfxMixer::Opts o; o.group = SoundGroup::UI; o.drive = drive;
+                m.play("sine", o); return sfxRender(m, 8192);
+            };
+            bool level = true;
+            for (float amp : {0.2f, 0.6f, 0.8f}) {
+                auto clean = run(amp, 0.f), driven = run(amp, 0.35f);
+                float d = 20.f * std::log10(sfxRms(driven, 0) / sfxRms(clean, 0));
+                std::printf("      drive at %.1f: %+.1f dB\n", amp, d);
+                level &= std::fabs(d) < 1.f && sfxPeak(driven) <= 1.f;
+            }
+            CHECK(level, "an Enraged voice's drive keeps it within 1 dB of a normal one, quiet or loud");
+        }
+        {   // gone without a kill (an objective met, a boss's summons): forgotten, its held voice stopped at once
+            VoiceDirector d; VoiceIn v; v.uid = 7; v.type = EnemyType::SERAPH; v.pos = {10, 0, 0}; v.health = 100.f; v.beamOn = true;
+            d.begin({0, 0, 0}, F); d.enemy(v); d.end();
+            auto cs = d.forget(7);
+            bool stop = false; for (auto& c : cs) stop |= c.loop == VoiceCue::STOP && c.uid == 7;
+            CHECK(stop && d.tracked() == 0, "an enemy removed without a kill is forgotten and its held voice stops at once");
+        }
+        {   // a death cry outranks the tells filling the enemy voices
+            VoiceDirector d; VoiceIn v; v.uid = 3; v.type = EnemyType::HUSK; v.pos = {5, 0, 0}; v.health = 0.f;
+            auto cs = d.death(v);
+            SfxMixer m(44100.f, 3); m.addSound("noise", sfxNoise(44100)); m.addSound(cs[0].name, sfxNoise(44100));
+            for (int i = 0; i < 20; ++i) { SfxMixer::Opts o; o.group = SoundGroup::ENEMY; o.role = SoundRole::TELL; o.priority = true; o.volume = 0.5f; m.play("noise", o); }
+            sfxRender(m, 16);
+            SfxMixer::Opts o; o.group = SoundGroup::ENEMY; o.role = cs[0].role; o.priority = cs[0].priority; o.floor = cs[0].floor;
+            SoundHandle h = m.play(cs[0].name, o); sfxRender(m, 16);
+            CHECK(m.isPlaying(h), "a kill is heard even when wind-ups fill every enemy voice");
         }
     }
 
