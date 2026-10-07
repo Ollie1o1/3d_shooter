@@ -75,6 +75,28 @@ static float sfxHf(const std::vector<float>& b, int ch) {   // RMS of the first 
 }
 static float sfxPeak(const std::vector<float>& b) { float p = 0.f; for (float x : b) p = std::max(p, std::fabs(x)); return p; }
 static bool sfxFinite(const std::vector<float>& b) { for (float x : b) if (!std::isfinite(x)) return false; return true; }
+// A 16-bit PCM WAV, channel 0, as floats (empty if missing)
+static std::vector<float> readWav16(const std::string& path, float& rate) {
+    std::vector<float> out; rate = 0.f;
+    FILE* f = std::fopen(path.c_str(), "rb");
+    if (!f) return out;
+    char id[4], wave[4]; uint32_t len = 0; int ch = 1, bits = 16;
+    if (std::fread(id, 1, 4, f) != 4 || std::fread(&len, 4, 1, f) != 1 || std::fread(wave, 1, 4, f) != 4) { std::fclose(f); return out; }
+    while (std::fread(id, 1, 4, f) == 4 && std::fread(&len, 4, 1, f) == 1) {
+        if (!std::memcmp(id, "fmt ", 4)) {
+            std::vector<uint8_t> b(len); if (std::fread(b.data(), 1, len, f) != len) break;
+            uint16_t c, bp; uint32_t sr; std::memcpy(&c, &b[2], 2); std::memcpy(&sr, &b[4], 4); std::memcpy(&bp, &b[14], 2);
+            ch = c; rate = (float)sr; bits = bp;
+            if (len & 1) std::fseek(f, 1, SEEK_CUR);
+        } else if (!std::memcmp(id, "data", 4)) {
+            std::vector<int16_t> s(len / 2); size_t got = std::fread(s.data(), 2, s.size(), f);
+            if (bits == 16) for (size_t i = 0; i + ch <= got; i += ch) out.push_back(s[i] / 32768.f);
+            break;
+        } else std::fseek(f, len + (len & 1), SEEK_CUR);
+    }
+    std::fclose(f);
+    return out;
+}
 static bool overlapsWall(const LevelData& L, const AABB& b) {
     for (auto& w : L.walls) if (overlapsBox(b, w.box)) return true;
     return false;
@@ -2855,6 +2877,31 @@ int main() {
             }
             CHECK(all, "every voice the director can ask for is in the bank");
         }
+    }
+
+    // ---------------------------------------------------------------- the mix: every sound file at its class's level
+    {
+        bool levels = true, complete = true;
+        for (const MixEntry& m : mixTable()) {
+            for (int k = 0; k <= 8; ++k) {
+                const std::string path = "assets/sfx/" + std::string(m.name) + (k ? "_" + std::to_string(k) : std::string()) + ".wav";
+                float sr; auto x = readWav16(path, sr);
+                if (x.empty()) { if (k == 0) { complete = false; std::printf("      missing %s\n", path.c_str()); } continue; }
+                const float lv = shortTermDb(x.data(), x.size(), sr) + m.trimDb;
+                if (std::fabs(lv - mixTargetDb(m.cls)) > 2.f) { levels = false; std::printf("      %s at %.1f dB after trim (wants %.1f)\n", path.c_str(), lv, mixTargetDb(m.cls)); }
+            }
+        }
+        CHECK(complete, "every sound in the mix table has its file");
+        CHECK(levels, "every sound file, after its trim, sits within 2 dB of its class's level");
+        const char* loaded[] = {"jump", "land", "dash", "slam", "revolver", "shotgun", "reload", "grapple_fire", "hit", "player_hit",
+                                "parry", "telegraph", "explosion", "wave", "pickup", "kar", "longshot", "bolt", "scope", "levelup",
+                                "potion", "barrier", "split", "upgrade", "clank", "punch", "step1", "step2", "step3", "step4", "door",
+                                "door_close", "boost", "cyl_open", "cyl_close", "eject", "shell_in", "pump", "wade", "skim", "cell",
+                                "dry", "switch_up0", "switch_up1", "switch_up2", "switch_up3"};
+        bool all = true; for (const char* n : loaded) all &= mixEntry(n) != nullptr;
+        CHECK(all && mixTable().size() == sizeof(loaded) / sizeof(loaded[0]), "every sound file the game loads has exactly one place in the mix");
+        CHECK(std::fabs(mixGain("jump") - std::pow(10.f, -4.1f / 20.f)) < 1e-4f && mixGain("v_husk_idle") == 1.f && mixGain("nope") == 1.f,
+              "a sound's mix gain is its trim; built voices and unknown names pass at 1");
     }
 
     // ---------------------------------------------------------------- the lift (driven movers) and the director's hold

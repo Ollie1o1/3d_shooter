@@ -366,16 +366,8 @@ int main(int argc, char* argv[]) {
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
 
-    static const char* SOUNDS[] = {
-        "jump", "land", "dash", "slam", "revolver", "shotgun", "reload", "grapple_fire",
-        "hit", "player_hit", "parry", "telegraph", "explosion",
-        "wave", "pickup", "kar", "longshot", "bolt", "scope", "levelup",
-        "potion", "barrier", "split", "upgrade", "clank", "punch", "step1", "step2", "step3", "step4",
-        "door", "door_close", "boost", "cyl_open", "cyl_close", "eject", "shell_in", "pump", "wade", "skim",
-        "cell", "dry", "switch_up0", "switch_up1", "switch_up2", "switch_up3",
-    };
-    for (const char* name : SOUNDS)
-        app->audio.loadSound(name, std::string("assets/sfx/") + name + ".wav");
+    for (const MixEntry& m : mixTable())   // every sound file has its place in the mix (MixTable.h)
+        app->audio.loadSound(m.name, std::string("assets/sfx/") + m.name + ".wav");
     if (app->audio.initialized) {   // the enemy voices, built in code (VoiceSynth.h)
         const Uint32 t0 = SDL_GetTicks();
         float secs = 0.f;
@@ -388,6 +380,19 @@ int main(int argc, char* argv[]) {
         if (std::getenv("OVERDRIVE_SFXLIST")) std::fprintf(stderr, "voices: %.1f s of audio built in %u ms\n", secs, SDL_GetTicks() - t0);
     }
     if (std::getenv("OVERDRIVE_SFXLIST")) app->audio.sfx.dumpLengths(stderr);
+    for (int i = 1; i < argc; ++i) if (std::string(argv[i]) == "--mixreport") {   // dev: every sound's level, then quit
+        auto row = [&](const std::string& n, MixClass c, float trim) {
+            const std::vector<float>* smp = app->audio.sfx.sample(n, 0);
+            if (!smp) { std::printf("%-24s missing\n", n.c_str()); return; }
+            float file = shortTermDb(smp->data(), smp->size(), app->audio.sfx.sampleRateOf(n));
+            std::printf("%-24s class %d  file %6.1f  trim %5.1f  level %6.1f  target %6.1f\n", n.c_str(), (int)c, file, trim, file + trim, mixTargetDb(c));
+        };
+        for (const MixEntry& m : mixTable()) row(m.name, m.cls, m.trimDb);
+        for (const VoiceSpec& v : voiceBank()) row(v.name, v.cls, 0.f);
+        SDL_GL_DeleteContext(app->ctx); SDL_DestroyWindow(app->window);
+        delete app; SDL_Quit();   // the audio callback unhooks before anything goes away
+        return 0;
+    }
     app->audio.start();   // the bank is complete: the audio thread may mix from here on
 
     app->settings.load();  // restore every option (settings.cfg on desktop, localStorage on the web)

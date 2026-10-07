@@ -8,6 +8,7 @@
 #include <vector>
 #include "MusicSynth.h"
 #include "SfxMixer.h"
+#include "MixTable.h"
 
 // SDL_mixer may not be available — guard the include
 #ifdef __has_include
@@ -92,7 +93,7 @@ public:
     // Not placed: the player's own sounds, announcements, UI
     SoundHandle play(const std::string& name, int volume = 128, SoundGroup g = SoundGroup::PLAYER, bool priority = false) {
         if (!initialized) return 0;
-        SfxMixer::Opts o; o.volume = volume / 128.f * masterVolume; o.group = g; o.priority = priority;
+        SfxMixer::Opts o; o.volume = volume / 128.f * masterVolume * mixGain(name); o.group = g; o.priority = priority;
         return sfx.play(name, o);
     }
     // Placed in the world: louder near, panned to its side, darker far away / behind.
@@ -100,14 +101,14 @@ public:
     SoundHandle playAt(const std::string& name, glm::vec3 pos, int volume = 128, SoundGroup g = SoundGroup::WORLD,
                        bool priority = false, float floor = 0.f) {
         if (!initialized) return 0;
-        SfxMixer::Opts o; o.volume = volume / 128.f * masterVolume; o.group = g; o.priority = priority;
+        SfxMixer::Opts o; o.volume = volume / 128.f * masterVolume * mixGain(name); o.group = g; o.priority = priority;
         o.positional = true; o.pos = pos; o.floor = floor;
         return sfx.play(name, o);
     }
     // Every option the mixer has (roles, pitch, drive, delay: the enemy voices)
     SoundHandle playOpts(const std::string& name, SfxMixer::Opts o) {
         if (!initialized) return 0;
-        o.volume *= masterVolume;
+        o.volume *= masterVolume * mixGain(name);
         return sfx.play(name, o);
     }
     void moveSource(SoundHandle h, glm::vec3 p) { if (initialized) sfx.move(h, p); }
