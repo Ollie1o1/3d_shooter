@@ -113,6 +113,7 @@ public:
 
         glm::mat4 vmProj = glm::perspective(glm::radians(65.f), cam.aspectRatio, 0.03f, 10.f);
         glClear(GL_DEPTH_BUFFER_BIT);   // the gun always draws on top
+        lastEmissive = glm::vec3{-1.f};
         shader.setMat4("projection", vmProj);
         shader.setMat4("view", cam.viewMatrix());
         glDisable(GL_CULL_FACE);
@@ -123,6 +124,7 @@ public:
         }
         if (parryTimer > 0.f) drawFist(shader, cam, gunkit::glowOf(g));
         shader.setVec3("emissiveColor", {0.f, 0.f, 0.f});
+        lastEmissive = glm::vec3{-1.f};
         glEnable(GL_CULL_FACE);
     }
 
@@ -158,9 +160,10 @@ private:
     void drawPart(ShaderProgram& shader, const glm::mat4& model, glm::vec3 color, glm::vec3 emissive) {
         shader.setMat4("model", model);
         shader.setVec3("objectColor", color);
-        shader.setVec3("emissiveColor", emissive);
+        if (emissive != lastEmissive) { shader.setVec3("emissiveColor", emissive); lastEmissive = emissive; }   // most parts share it
         cubeMesh.draw();
     }
+    glm::vec3 lastEmissive{-1.f};
 
     // A unit cube (-0.5..0.5) with 0..1 UVs per face so the shader's edge-darkening works
     void buildCube() {

@@ -85,6 +85,7 @@ Everything below runs without touching the mouse, so it works from scripts.
 ./shooter --arena 3 --cam 0 3 -129 -90 18 --weapon 4 --aim --shot 90 shot.bmp
 #   --cam X Y Z YAW PITCH   --weapon 1-4   --aim   --res LINES
 #   --overlay armory | pause | settings | victory | poseN (hold the Sovereign in pose N: 0-9)
+#                reloadNN | inspectNN | switchNN | punch (hold the gun NN% through it)
 #                penitentN (hold the Penitent: 0 kneeling, 1 low sweep, 2 high sweep, 3 risen, 4 scourging)
 #   --act2 --arena 3 --wave 4: straight to the Penitent (the cage is simply there with --cam)
 #   --spawn TYPE (repeatable): enemies in an arc in front of the camera
@@ -202,6 +203,7 @@ In menus the D-pad moves, **A** confirms and **B** goes back; on the main menu *
   A 3-2-1 countdown starts the clock; every room clear shows a split (green ahead / red behind your best run); the clock stops at the beacon. Ranked S/A/B/C/D against par times. Dying (or Backspace) restarts the room with the clock still running. A glowing **ghost** runs the route of your best time alongside you (FAST GHOST in Settings turns it off).
 
 ### Combat
+- **One arsenal**: all four guns share one body (blackened gunmetal, worn steel, bone grips) and each glows its own colour (revolver amber, shotgun ember, Lancer cyan, Longshot violet) in its accent strips, muzzle flash, tracers, shell casings, hit sparks and HUD slot. **Ammo cells** on every gun light for the rounds left (upgrades add cells), go dark as you fire and relight one by one as you reload. They all move by the same rules (`GunMotion.h`): a kick that settles by the gun's weight, a switch where the old gun drops and the new one rises as its cells boot up with a chime, and reloads in three beats (open, feed, close) with every sound on its beat. The gunshots are one family too (`tools/gen_arsenal.py`): the crack of a real recording, a synthesized thump, a metallic ring in the gun's pitch and a tail, three variants each
 - **Revolver** (slot 1) — 8-round hitscan with auto-reload
 - **Shotgun** (slot 2) — 2-shell pump-action, 10 pellets per shot with spread
 - **Lancer** (slot 3) — a long, slim bolt rifle in blackened steel, its cells glowing cyan along the receiver. RMB raises the iron sights (a small zoom; the front post sits in the rear notch on screen centre). 120 damage, 3x on the head: a headshot one-shots anything but the boss. Accurate aimed, loose from the hip or in the air
@@ -367,7 +369,9 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 │   ├── PostProcess.h         # bloom + optional CRT post-processing
 │   ├── UIRenderer.h          # HUD, armory, pause, win/death screens, scope overlay
 │   ├── UIBatch.h             # batched 2D quads + pixel-font text
-│   ├── ViewModel.h           # first-person weapon models, aim-down-sights, bolt animation
+│   ├── ViewModel.h           # the gun in your hands: framing, aiming, drawing GunKit's parts
+│   ├── GunKit.h              # the arsenal's look: materials, a glow per gun, ammo cells, each gun's recipe
+│   ├── GunMotion.h           # how every gun moves: kick, switch, three reload beats, timed sound cues
 │   ├── AudioSystem.h         # SDL2_mixer sound wrapper
 │   ├── TextureGen.h          # procedural texture generation
 │   ├── PixelFont.h           # bitmap font for UI text
@@ -393,6 +397,7 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 │                             # simulated ARENA and FAST runs (`make test`)
 ├── tools/
 │   ├── gen_sfx.py            # synthesizes most of assets/sfx/*.wav
+│   ├── gen_arsenal.py        # the gun sounds: recorded crack + thump + ring + tail, and the foley
 │   ├── import_sfx.py         # builds the recorded sounds from CC0 packs (see assets/sfx/CREDITS.md)
 │   └── record_showcase.sh    # re-records docs/overdrive.gif from scripted shots
 ├── web/
