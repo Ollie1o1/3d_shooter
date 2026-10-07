@@ -37,6 +37,9 @@ inline const char* attackKey(AttackKind k) {
         case AttackKind::CENSER_LOW: return "censer_low"; case AttackKind::CENSER_HIGH: return "censer_high";
         case AttackKind::PSLAM: return "pslam";       case AttackKind::PSTOMP: return "stomp";
         case AttackKind::PLASH: return "lash";        case AttackKind::SCOURGE: return "scourge";
+        case AttackKind::WVENT: return "vent";        case AttackKind::LANCE: return "lance";
+        case AttackKind::SEEKER: return "seeker";     case AttackKind::WLUNGE: return "lunge";
+        case AttackKind::DETONATE: return "detonate";
         default: return "none";
     }
 }
@@ -52,7 +55,7 @@ inline std::vector<AttackKind> attacksOf(EnemyType t) {
         case EnemyType::BRUTE:        return {A::SLAM, A::LOB};
         case EnemyType::MITE:         return {A::FUSE};
         case EnemyType::JUGGERNAUT:   return {A::SHELL, A::SMASH};
-        case EnemyType::WARDEN:       return {A::VOLLEY, A::SLAM, A::SUMMON};
+        case EnemyType::WARDEN:       return {A::VOLLEY, A::SLAM, A::SUMMON, A::WVENT, A::LANCE, A::SEEKER, A::WLUNGE, A::DETONATE};
         case EnemyType::SOVEREIGN:    return {A::DASH, A::SWEEP, A::CLEAVE, A::LEAP, A::CRESCENT, A::BLINK,
                                               A::JUDGMENT, A::WHIRL, A::THRUST, A::RUPTURE, A::PHANTOMS};
         case EnemyType::SHIELDBEARER: return {A::SHOT, A::BASH};
@@ -95,6 +98,9 @@ inline float tellDur(EnemyType t, AttackKind a) {
         case AttackKind::PLASH: return 0.7f;    case AttackKind::SCOURGE: return 0.8f;
         case AttackKind::JUDGMENT: return 0.65f; case AttackKind::PHANTOMS: return 0.6f;
         case AttackKind::LEAP: return 0.55f;    case AttackKind::RUPTURE: return 0.6f;
+        case AttackKind::WVENT: return 0.6f;    case AttackKind::LANCE: return 1.f;
+        case AttackKind::SEEKER: return 1.f;    case AttackKind::WLUNGE: return 0.8f;
+        case AttackKind::DETONATE: return 1.5f;
         case AttackKind::DASH: case AttackKind::SWEEP: case AttackKind::CLEAVE: case AttackKind::CRESCENT:
         case AttackKind::BLINK: case AttackKind::WHIRL: case AttackKind::THRUST: return 0.4f;
         default: return statsOf(t).telegraph > 0.f ? statsOf(t).telegraph : 0.6f;

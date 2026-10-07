@@ -21,7 +21,10 @@
 //              Advances slowly, fires a spread of orbs, bashes up close. Flank
 //              it (it turns slowly), shoot the head over the rim, blow it up,
 //              or PARRY (F) the bash to knock the shield aside.
-//   WARDEN   — the Core's boss: volleys, slams, and summons adds; enrages at 50%.
+//   WARDEN   — the Core's boss, fed by four conduits on the pillars (cut them:
+//              it reels), venting its core every third attack; at 60% it feeds
+//              on the reactor (rings, a sweeping lance, seekers for anyone
+//              hiding), at 25% it melts down (40 s to kill it).
 //   SERAPH   — winged, high and far. Charges, then sweeps a beam toward you
 //              that turns slower than you run: keep moving, or break line of sight.
 //   ANCHOR   — slow heavy. Inside its field you can't dash or grapple; it
@@ -82,7 +85,8 @@ enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY,
                         BLINK, JUDGMENT, WHIRL, THRUST, RUPTURE, PHANTOMS,
                         BASH,                                  // the SHIELDBEARER's
                         BEAM,                                  // the SERAPH's
-                        CENSER_LOW, CENSER_HIGH, PSLAM, PSTOMP, PLASH, SCOURGE };   // the PENITENT's
+                        CENSER_LOW, CENSER_HIGH, PSLAM, PSTOMP, PLASH, SCOURGE,     // the PENITENT's
+                        WVENT, LANCE, SEEKER, WLUNGE, DETONATE };      // the WARDEN's
 
 struct EnemyStats {
     const char* name;
@@ -121,7 +125,7 @@ inline const EnemyStats& statsOf(EnemyType t) {
         {"JUGGERNAUT", 700.f, 1.05f, 3.30f, 2.3f, 1.10f, 3.2f, false,
          {0.36f,0.38f,0.44f}, {1.0f,0.72f,0.12f}, {1.0f,0.78f,0.2f},
          "JUGGERNAUTS ARE ARMORED - PARRY (F) THEIR SHELLS, PUNCH THEIR SMASH"},
-        {"WARDEN", 2000.f, 1.60f, 4.60f, 2.4f, 0.85f, 3.0f, false,
+        {"WARDEN", 3600.f, 1.60f, 4.60f, 2.4f, 0.85f, 3.0f, false,
          {0.34f,0.27f,0.40f}, {1.0f,0.16f,0.62f}, {1.0f,0.22f,0.68f},
          "THE WARDEN"},
         {"SOVEREIGN", 6400.f, 0.85f, 3.50f, 6.2f, 0.55f, 0.95f, false,
@@ -190,6 +194,13 @@ struct EnemyEvents {
     int       penIncense = 0;
     glm::vec3 penIncensePos[3];
     int       penSummon = 0;
+    // WARDEN: its phase changed (2 overload, 3 meltdown); a lance began (from,
+    // start yaw, which way it sweeps); a seeker marked where you stand; its
+    // vent opened; the meltdown went off
+    int       wPhase = 0;
+    bool      wLance = false; glm::vec3 wLanceFrom{0.f}; float wLanceYaw = 0.f, wLanceSign = 1.f;
+    bool      wSeeker = false; glm::vec3 wSeekerAt{0.f};
+    bool      wVent = false, wDetonate = false;
 };
 
 // What an enemy can sense each tick.
@@ -204,6 +215,8 @@ struct EnemyWorld {
     const DifficultyTuning* tune = nullptr;   // null: the default difficulty
     const int* dynWalls = nullptr;   // moving platforms (not in the grid): the Descent's cage
     int  dynCount = 0;
+    glm::vec3 reactor{0.f};       // the WARDEN's power: where it goes to feed (the Core's reactor)
+    bool hasReactor = false;
 };
 
 // Ray vs AABB: distance along the ray to the first hit, or -1 on a miss.
@@ -348,6 +361,23 @@ struct Enemy {
     float incenseTimer = 6.f, summonTimer = PEN_SUMMON_EVERY, scourgeTimer = 4.f;
     int   comboLeft    = 0, nextSweep = 0;
     float scourgeRest  = 0.f;    // after its ember ring: a breath before the next blow
+    // WARDEN (EnemyWarden.h)
+    static constexpr float W_PHASE2 = 0.6f, W_PHASE3 = 0.25f, W_VENT_TIME = 2.5f, W_LANCE_VENT = 2.f,
+                           W_LANCE_TIME = 2.0943951f / 0.6108652f,   // 120 degrees at 35 a second
+                           W_SEEK_AFTER = 4.f, W_SEEK_FAR = 28.f, W_MELT_TIME = 40.f, W_LUNGE_SPEED = 16.f;
+    int   wardenPhase  = 1;       // 1 CHARGING, 2 OVERLOAD, 3 MELTDOWN
+    int   conduitsLeft = 0;       // conduits feeding it (GameplayState sets it every tick)
+    float ventTimer    = 0.f;     // > 0: its core is open
+    int   sinceVent    = 0, wardenAttacks = 0;   // attacks since its last vent; its attacks that weren't vents
+    float lanceTimer   = 0.f;     // > 0: a lance is sweeping
+    float lanceSign    = 1.f;
+    float meltClock    = 0.f;     // MELTDOWN: seconds until it goes off
+    bool  atReactor    = false;
+    glm::vec3 reactorSpot{0.f};
+    bool  coreOpen() const { return type == EnemyType::WARDEN && (ventTimer > 0.f || wardenPhase == 3); }
+    // A shot into an open weak point: the PENITENT's wound x3, the WARDEN's core x3 venting, x2 in meltdown
+    float woundMult() const { return type == EnemyType::WARDEN ? (ventTimer > 0.f ? 3.f : 2.f) : 3.f; }
+
     bool  chained() const { return type == EnemyType::PENITENT && !risen; }
     float sweepReach() const { return risen ? 18.f : 16.f; }
     float swingTimer = 0.f;     // follow-through after a stroke lands (animation)
@@ -397,6 +427,7 @@ struct Enemy {
     // last 0.4 s), a SOVEREIGN's sweep or cleave (its last quarter second)
     bool  parryWindow() const {
         if (telegraphTimer <= 0.f) return false;
+        if (type == EnemyType::WARDEN) return attack == AttackKind::WLUNGE && telegraphTimer < 0.25f;
         if (type == EnemyType::JUGGERNAUT) return attack == AttackKind::SMASH && telegraphTimer < 0.4f;
         if (type == EnemyType::SHIELDBEARER) return attack == AttackKind::BASH && telegraphTimer < 0.3f;
         if (type == EnemyType::SOVEREIGN)
@@ -421,7 +452,7 @@ struct Enemy {
     }
     void onDeflect() { if (riposteCd <= 0.f) { riposte = true; riposteCd = 1.4f; } }
     // How long a parry leaves it broken
-    float staggerTime() const { return type == EnemyType::SOVEREIGN ? 3.f : type == EnemyType::SHIELDBEARER ? 2.2f : 2.5f; }
+    float staggerTime() const { return type == EnemyType::SOVEREIGN ? 3.f : type == EnemyType::WARDEN ? 2.f : type == EnemyType::SHIELDBEARER ? 2.2f : 2.5f; }
     // SHIELDBEARER: does its shield stop a shot travelling along dir? (From
     // the front, while it's standing; a broken one has its shield knocked aside)
     bool blocks(glm::vec3 dir) const {
@@ -434,6 +465,7 @@ struct Enemy {
     // Damage multiplier from armor: the JUGGERNAUT shrugs off half unless
     // broken; a broken SOVEREIGN takes half again
     float armorMult() const {
+        if (type == EnemyType::WARDEN) return (conduitsLeft > 0 && ventTimer <= 0.f ? 0.5f : 1.f) * (staggered() ? 2.f : 1.f);
         if (type == EnemyType::PENITENT) return (anchorsLeft > 0 ? 0.25f : 1.f) * (staggered() ? 2.f : 1.f);
         if (type == EnemyType::SOVEREIGN) return staggered() ? 2.f : 1.f;
         if (type != EnemyType::JUGGERNAUT) return 1.f;
@@ -467,7 +499,7 @@ struct Enemy {
             state  = EnemyState::DEAD;
             return true;
         }
-        if (isBoss(type) && !enraged && health < maxHealth * 0.5f) {
+        if (isBoss(type) && type != EnemyType::WARDEN && !enraged && health < maxHealth * 0.5f) {
             enraged    = true;
             ev.enraged = true;
         }
@@ -944,44 +976,7 @@ private:
         }
     }
 
-    void thinkWarden(float dt, const EnemyWorld& w, bool resolve) {
-        glm::vec3 to = flatTo(w.playerFeet);
-        float d = glm::length(to);
-        float speed = stats().speed * (enraged ? 1.4f : 1.f);
-        if (telegraphTimer > 0.f) { velocity.x = velocity.z = 0.f; }
-        else {
-            glm::vec3 dir = norm2(to);
-            glm::vec3 side{-dir.z, 0.f, dir.x};
-            strafeTimer -= dt;
-            if (strafeTimer <= 0.f) { strafeTimer = frand(3.f, 5.f); strafeDir = -strafeDir; }
-            glm::vec3 mv = d > 11.f ? dir + side * strafeDir * 0.4f : side * strafeDir;
-            setMove(mv, speed, w);
-            animPhase += dt * 3.f;
-        }
-        turnToward(to, dt, 2.f);
-
-        if (resolve) {
-            switch (attack) {
-                case AttackKind::SLAM:
-                    ev.slam = true; ev.slamRadius = 11.f; ev.slamDamage = 30.f; break;
-                case AttackKind::VOLLEY:
-                    fireAt(w.playerEye, enraged ? 11 : 7, enraged ? 1.4f : 0.9f, 18.f, 12.f, 1.6f);
-                    break;
-                case AttackKind::SUMMON:
-                    ev.summonMites   = enraged ? 2 : 3;
-                    ev.summonRippers = enraged ? 2 : 0;
-                    break;
-                default: break;
-            }
-            attack = AttackKind::NONE;
-        }
-        if (attackReady(dt)) {
-            ++attackCount;
-            if (d < 9.f)                   startAttack(AttackKind::SLAM, 1.0f);
-            else if (attackCount % 4 == 0) startAttack(AttackKind::SUMMON, 1.2f);
-            else                           startAttack(AttackKind::VOLLEY, stats().telegraph);
-        }
-    }
+    void thinkWarden(float dt, const EnemyWorld& w, bool resolve);   // EnemyWarden.h
 
     // ---- the SHIELDBEARER ------------------------------------------------------
     // Walks you down behind its shield, turning slowly (that's the opening:
@@ -1599,3 +1594,4 @@ inline void linkConductors(std::vector<Enemy>& es, glm::vec3 player) {
 }
 
 #include "EnemyPenitent.h"   // THE PENITENT's mind (Enemy::thinkPenitent)
+#include "EnemyWarden.h"     // THE WARDEN's mind (Enemy::thinkWarden)

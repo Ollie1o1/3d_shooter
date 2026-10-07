@@ -1754,10 +1754,6 @@ int main() {
       CHECK(s.shots >= 7, "WARDEN fires volleys");
       CHECK(s.summons >= 1, "WARDEN summons adds");
       CHECK(!s.leftBounds, "WARDEN stays inside the arena"); }
-    { Enemy w(EnemyType::WARDEN, BOSS.bossSpawn);
-      w.update(Enemy::SPAWN_TIME + DT, worldFor(L, grid, BOSS.playerStart, BOSS));
-      w.takeDamage(w.maxHealth * 0.55f);
-      CHECK(w.enraged && w.ev.enraged, "WARDEN enrages below half health"); }
 
     // A Ripper starting behind the furnace in the Foundry has to go around it
     // (every time, not just with lucky dice: 20 runs with different seeds)
@@ -3033,6 +3029,83 @@ int main() {
         CHECK(at19 == 0 && at21 == 1 && at26 == 2 && at36 == 4, "conduits re-attach one at a time, 5 s apart, from 20 s after the last is cut");
         ConduitClock idle;
         CHECK(idle.update(1.f) == 0, "nothing re-attaches until all four have been cut");
+    }
+
+    // ---------------------------------------------------------------- the boss pass: the Warden's mind
+    {
+        auto warden = [&](glm::vec3 at) { Enemy w(EnemyType::WARDEN, at); w.spawnTimer = 0.f; w.state = EnemyState::ACTIVE; return w; };
+        auto core = [&](glm::vec3 feet) { EnemyWorld w = worldFor(L, grid, feet, BOSS); w.reactor = L.reactorPos; w.hasReactor = true; return w; };
+        const glm::vec3 R = L.reactorPos;
+        CHECK(statsOf(EnemyType::WARDEN).health == 3600.f, "the Warden has 3600 health");
+        // Damage: x0.5 while fed, x1 cut off, the core x3 in a vent, x2 in meltdown
+        Enemy w = warden(R + glm::vec3{12, 0, 0}); w.conduitsLeft = 2;
+        float fed = w.armorMult(); w.conduitsLeft = 0; float cut = w.armorMult();
+        w.ventTimer = 1.f; float vent = w.woundMult(); bool open = w.coreOpen(); w.ventTimer = 0.f; bool shut = !w.coreOpen();
+        w.conduitsLeft = 2; w.ventTimer = 1.f; float ventFed = w.armorMult(); w.ventTimer = 0.f;
+        w.wardenPhase = 3; float melt = w.woundMult(); bool meltOpen = w.coreOpen();
+        CHECK(fed == 0.5f && cut == 1.f && ventFed == 1.f, "fed by a conduit it takes half (a vent drops the shield); cut off, full");
+        CHECK(open && shut && vent == 3.f && melt == 2.f && meltOpen, "its core: x3 in a vent, x2 open all through the meltdown");
+        // Phases by health
+        Enemy p = warden(R + glm::vec3{12, 0, 0}); EnemyWorld cw = core(R + glm::vec3{0, 0, 14});
+        p.update(DT, cw); p.health = p.maxHealth * 0.59f; p.update(DT, cw);
+        bool two = p.wardenPhase == 2 && p.ev.wPhase == 2 && p.ev.enraged;
+        int walked = 0;
+        for (int f = 0; f < 60 * 12 && !p.atReactor; ++f) { p.update(DT, cw); ++walked; }
+        float atR = glm::length(glm::vec2(p.position.x - R.x, p.position.z - R.z));
+        bool planted = p.atReactor;
+        p.health = p.maxHealth * 0.24f; p.update(DT, cw);
+        bool three = p.wardenPhase == 3 && p.ev.wPhase == 3 && std::fabs(p.meltClock - Enemy::W_MELT_TIME) < 0.1f && !p.atReactor;
+        CHECK(two && planted && atR < 8.f, "at 60 % it walks to the reactor and plants itself there");
+        CHECK(three, "at 25 % it tears free into the meltdown, its clock at 40 s");
+        // Phase 1: vents after every third attack
+        Enemy v = warden(R + glm::vec3{14, 0, 0}); EnemyWorld vw = core(R + glm::vec3{-14, 0, 0});
+        int attacks = 0, vents = 0, volleys = 0; bool parryable = false;
+        for (int f = 0; f < 60 * 40; ++f) {
+            v.update(DT, vw);
+            if (v.ev.telegraphStarted) { ++attacks; vents += v.attack == AttackKind::WVENT; }
+            volleys += v.ev.shots > 0; parryable |= v.ev.shots > 0 && v.ev.shotParry == 150.f;
+        }
+        CHECK(vents >= 2 && vents * 4 <= attacks + 4, "it vents after every third attack");
+        CHECK(volleys >= 2 && parryable, "its volleys can be parried back for 150");
+        // Phase 2: the lance, then a vent; the seeker only for a player away or hidden
+        Enemy l = warden(R + glm::vec3{6.5f, 0, 0}); l.wardenPhase = 2; l.atReactor = true; l.reactorSpot = l.position;
+        EnemyWorld lw = core(R + glm::vec3{15, 0, -4});   // its side of the reactor: close and in sight
+        bool lanced = false, ventAfter = false, seekClose = false;
+        for (int f = 0; f < 60 * 20; ++f) {
+            l.update(DT, lw);
+            lanced |= l.ev.wLance; seekClose |= l.ev.wSeeker;
+            if (lanced && l.ev.wVent) ventAfter = true;
+        }
+        CHECK(lanced && ventAfter, "overloaded, it sweeps a lance and vents when it ends");
+        Enemy s = warden(R + glm::vec3{6.5f, 0, 0}); s.wardenPhase = 2; s.atReactor = true; s.reactorSpot = s.position;
+        EnemyWorld far = core(R + glm::vec3{0, 0, 34}); far.walls = nullptr; far.wallCount = 0;   // out in the open, but past 28 m
+        float firstSeek = -1.f;
+        for (int f = 0; f < 60 * 8 && firstSeek < 0.f; ++f) { s.update(DT, far); if (s.ev.wSeeker) firstSeek = (f + 1) * DT; }
+        CHECK(!seekClose, "no seeker at a player close by and in sight");
+        CHECK(firstSeek >= Enemy::W_SEEK_AFTER - 0.05f && firstSeek < Enemy::W_SEEK_AFTER + 1.5f, "keep past 28 m for 4 s and a seeker comes for you");
+        // Phase 3: meltdown never kills, the lunge can be punched
+        Enemy m = warden(R + glm::vec3{8, 0, 0}); EnemyWorld mw = core(R + glm::vec3{-8, 0, 0});
+        m.update(DT, mw); m.health = m.maxHealth * 0.2f; m.update(DT, mw);
+        bool det = false; float hpAfter = 0.f;
+        for (int f = 0; f < 60 * 45 && !det; ++f) { m.update(DT, mw); if (m.ev.wDetonate) { det = true; hpAfter = m.health / m.maxHealth; } }
+        CHECK(det && std::fabs(hpAfter - Enemy::W_PHASE3) < 0.01f && m.wardenPhase == 3 && m.meltClock > 38.f,
+              "the meltdown goes off at 0 and it heals back to 25 % with the clock reset");
+        Enemy u = warden(R + glm::vec3{12, 0, 0}); u.wardenPhase = 3; u.meltClock = 40.f;
+        EnemyWorld uw = core(R + glm::vec3{-6, 0, 0});
+        bool window = false;
+        for (int f = 0; f < 60 * 20 && !window; ++f) { u.update(DT, uw); if (u.attack == AttackKind::WLUNGE && u.parryWindow()) window = true; }
+        u.stagger(u.staggerTime());
+        CHECK(window && std::fabs(u.staggerTimer - 2.f) < 1e-4f && u.armorMult() == 2.f, "its lunge can be punched in the last 0.25 s: staggered 2 s, double damage");
+        // Tell floors hold for it too
+        bool floors = true;
+        for (int lvl = 0; lvl < DIFFICULTY_LEVELS; ++lvl)
+            for (int ph = 1; ph <= 3; ++ph) {
+                Enemy t = warden(R + glm::vec3{10, 0, 0}); t.wardenPhase = ph; if (ph == 2) { t.atReactor = true; t.reactorSpot = t.position; }
+                if (ph == 3) t.meltClock = 40.f;
+                EnemyWorld tw = core(R + glm::vec3{-9, 0, 0}); tw.tune = &difficulty(lvl);
+                for (int f = 0; f < 60 * 20; ++f) { t.update(DT, tw); if (t.ev.telegraphStarted && t.telegraphDuration < Enemy::TELL_FLOOR - 1e-4f) floors = false; }
+            }
+        CHECK(floors, "every Warden tell is at least 0.35 s, in every phase, on every difficulty");
     }
 
     // ---------------------------------------------------------------- the lift (driven movers) and the director's hold
