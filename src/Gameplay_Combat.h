@@ -597,7 +597,7 @@ inline void GameplayState::startReload(int w) {
     weapons[w].startReload(weaponReload(id, prog.up[w]));
     // Every gun plays its reload over the whole of it, in the same three beats (GunMotion.h)
     int mag = weaponMag(id, prog.up[w]);
-    if (w == activeWeapon) viewModel.triggerReload(weapons[w].reloadTotal, mag - weapons[w].ammo);
+    if (w == activeWeapon) viewModel.triggerReload(weapons[w].reloadTotal, mag - weapons[w].ammo, weapons[w].ammo, mag);
 }
 
 inline void GameplayState::fireWeapon(int w) {

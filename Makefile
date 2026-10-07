@@ -106,6 +106,7 @@ web: $(SRC) $(HEADERS) web/index.html
 	rm -rf $(WEB_DATA) build/web-include && mkdir -p $(WEB_DATA)/src build/web-include $(WEB_OUT)
 	cp src/*.vert src/*.frag $(WEB_DATA)/src/
 	cp -R assets $(WEB_DATA)/assets
+	rm -rf $(WEB_DATA)/assets/sfx/src   # the frozen recordings gen_arsenal.py reads: the game never loads them
 	ln -s $$(brew --prefix glm 2>/dev/null || echo /usr)/include/glm build/web-include/glm
 	em++ -std=c++17 -O3 -Ibuild/web-include $(SRC) -o $(WEB_OUT)/overdrive.js \
 	    -sUSE_SDL=2 -sUSE_SDL_MIXER=2 \

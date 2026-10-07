@@ -2897,6 +2897,42 @@ int main() {
               "the Kar98 is now the LANCER, with the same stats");
     }
 
+    // ---------------------------------------------------------------- arsenal review fixes
+    {
+        // 1. A reset (retry, restart) drops whatever the gun was doing
+        GunMotion m; m.gun = 3; m.reload(2.8f, 0, 4, 4);
+        for (int i = 0; i < 30; ++i) m.update(DT);
+        m.switchTo(1); for (int i = 0; i < 3; ++i) m.update(DT);
+        m.reset(0);
+        m.cues.clear();
+        for (int i = 0; i < 180; ++i) m.update(DT);
+        CHECK(!m.reloading() && !m.switchingNow() && m.shownGun() == 0 && m.litCells(8, 8) == 8 && m.cues.empty(),
+              "a retry resets the gun: no leftover reload or switch, every cell lit, nothing playing");
+        // 2. Switching back to a gun mid-reload picks its reload up where it is
+        GunMotion b; b.gun = 0;
+        b.reload(1.2f, 3, 8, 8, 0.5f);
+        bool noEarly = true; int lit = b.litCells(3, 8);
+        for (auto& c : b.cues) noEarly &= std::string(c.name) != "cyl_open" && std::string(c.name) != "eject";
+        b.update(DT);
+        for (auto& c : b.cues) noEarly &= std::string(c.name) != "cyl_open" && std::string(c.name) != "eject";
+        int closes = 0;
+        for (int i = 0; i < 60 && b.reloading(); ++i) { b.update(DT); for (auto& c : b.cues) closes += std::string(c.name) == "cyl_close"; b.cues.clear(); }
+        CHECK(b.pose().reloadU < 0.f && noEarly && closes == 1 && lit >= 3 && lit < 8,
+              "switching back mid-reload resumes it halfway: no repeat of its opening, it still closes with its sound");
+        // 4. Firing or reloading puts an inspect away
+        GunMotion i1; i1.gun = 2; i1.inspect(); for (int k = 0; k < 20; ++k) i1.update(DT);
+        i1.fire();
+        GunMotion i2; i2.gun = 2; i2.inspect(); for (int k = 0; k < 20; ++k) i2.update(DT);
+        i2.reload(2.f, 0, 5, 5);
+        CHECK(i1.pose(false).inspectU < 0.f && i2.pose(false).inspectU < 0.f, "shooting or reloading puts the inspect away at once");
+        // 5. An upgraded revolver's extra rounds sit where you can see them (its left side)
+        GunLook L; L.mag = 14; L.ammo = 14; L.lit = 14;
+        std::vector<GunPart> parts; gunkit::buildGun(0, L, GunPose{}, parts);
+        int k = 0; bool leftSide = true;
+        for (auto& p : parts) if (p.tag) { if (k >= 8) leftSide &= p.xf[3].x < -0.026f; ++k; }
+        CHECK(k == 14 && leftSide, "rounds past the eighth show on the revolver's left side, where you can see them");
+    }
+
     // ---------------------------------------------------------------- mouse filter
     {
         MouseFilter f;

@@ -39,10 +39,12 @@ public:
     // --- Triggers --------------------------------------------------------------
     void triggerFire() { motion.fire(); heat = std::min(1.f, heat + 0.22f); cylSpin = 45.f; }
     // A reload over its whole time; shells: rounds it puts back (the shotgun's shells, the Lancer's clip)
-    void triggerReload(float t = 0.6f, int shells = 1) {
+    // ammo / mag: the gun's real state as the reload starts; startU: pick it up part-way
+    void triggerReload(float t, int shells, int ammo, int mag, float startU = 0.f) {
         reloadShells = std::max(1, shells);
-        motion.reload(t, ammoSeen, magSeen, reloadShells);
+        motion.reload(t, ammo, std::max(1, mag), reloadShells, startU);
     }
+    void reset(int gun) { motion.reset(gun); parryTimer = grenadeT = grappleT = 0.f; }
     void triggerBolt(float t)     { motion.cycle(std::max(t, 0.2f)); }
     void triggerPump()            { motion.cycle(0.45f); }
     void triggerSwitch(int toGun) { motion.switchTo(toGun); }
@@ -81,8 +83,8 @@ public:
     // flash: muzzle flash 0..1; aim: 0 hip .. 1 aimed (rifles); ammo / mag: the cells
     void draw(ShaderProgram& shader, const Camera& cam, int activeWeapon, float flash, float aim = 0.f,
               int ammo = 8, int mag = 8) {
-        ammoSeen = ammo; magSeen = std::max(1, mag);
-        if (!motion.switchingNow() && motion.shownGun() != activeWeapon) motion.gun = activeWeapon;   // a start or retry on another gun
+        magSeen = std::max(1, mag);
+        if (!motion.switchingNow() && motion.shownGun() != activeWeapon) motion.reset(activeWeapon);   // out of step: start clean
         int g = motion.shownGun();
         GunPose P = motion.pose();
         // The grenade toss and the grapple shove ride on top
@@ -133,7 +135,7 @@ private:
     float grenadeT = 0.f, grappleT = 0.f;
     float heat = 0.f;           // the revolver's heat stripe: hotter as you fan it
     float cylSpin = 0.f;        // degrees still to turn to the next chamber
-    int   ammoSeen = 8, magSeen = 8;
+    int   magSeen = 8;
     std::vector<GunPart> parts; // this frame's boxes (kept: no allocation after the first)
 
     // The punching arm, in camera space: wound back low-left, snapping out to

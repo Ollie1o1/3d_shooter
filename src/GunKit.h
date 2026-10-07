@@ -181,17 +181,17 @@ inline void buildRevolver(Builder& b, const GunLook& L, const GunPose& P) {
     b.lit(acc * (0.6f + L.heat));
     for (int k = 0; k < 4; ++k) b.box(cm * R(k * 45.f, {0.f, 0.f, 1.f}), {0.f, 0.f, 0.03f}, {0.027f, 0.0645f, 0.003f}, b.glow);
     b.unlit();
-    // The cells: slots round the cylinder's side for the first eight rounds,
-    // the chamber faces' inner ring for any beyond (an upgraded cylinder)
+    // The cells: slots round the cylinder's side for the first eight rounds;
+    // any beyond (an upgraded cylinder) in rows of four on the frame's left
+    // side plate, the side you see
     int n = std::max(1, L.mag), ring1 = std::min(n, 8);
     for (int k = 0; k < ring1; ++k) {
         mat4 f = cm * R(k * 360.f / ring1, {0.f, 0.f, 1.f});
         b.cell(f, {0.f, 0.0313f, -0.006f}, {0.011f, 0.002f, 0.044f}, k < L.lit, boost);
     }
-    for (int k = 8; k < n; ++k) {
-        float a = glm::radians(90.f + (k - 8) * 360.f / (n - 8));
-        b.cell(cm, {std::cos(a) * 0.0105f, std::sin(a) * 0.0105f, -0.0355f}, {0.006f, 0.006f, 0.003f}, k < L.lit, boost);
-    }
+    if (n > 8)
+        b.cells(base, {-0.0275f, 0.018f, -0.054f}, {0.f, 0.f, 0.011f}, {0.f, -0.012f, 0.f}, 4,
+                {0.002f, 0.008f, 0.008f}, n - 8, std::max(0, L.lit - 8), boost);
     for (int k = 0; k < 8; ++k) {   // the chamber faces, front and back (dressing)
         float a = glm::radians(90.f + k * 45.f);
         vec3 c{std::cos(a) * 0.021f, std::sin(a) * 0.021f, 0.f};

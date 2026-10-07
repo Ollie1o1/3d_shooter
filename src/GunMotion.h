@@ -51,10 +51,10 @@ public:
     int gun = 0;
     std::vector<GunCue> cues;
 
-    void fire() { kickAge = 0.f; }
-    void cycle(float duration) { cycleT = 0.f; cycleLen = std::max(0.15f, duration); cycleCued = false; }
+    void fire() { kickAge = 0.f; inspectT = -1.f; }   // shooting puts an inspect away
+    void cycle(float duration) { cycleT = 0.f; cycleLen = std::max(0.15f, duration); cycleCued = false; inspectT = -1.f; }
     void reload(float total, int ammoBefore, int mag, int refill) {
-        reloadT = 0.f; reloadLen = std::max(0.3f, total);
+        reloadT = 0.f; reloadLen = std::max(0.3f, total); inspectT = -1.f;
         rAmmo = ammoBefore; rMag = std::max(1, mag);
         rRefill = std::clamp(refill, 1, rMag);
         rWhole = gun == 0 || gun == 3;          // the revolver and the Longshot empty and refill everything
@@ -66,6 +66,18 @@ public:
         reloadT = -1.f; cycleT = -1.f; inspectT = -1.f;   // whatever the old gun was doing stops here
     }
     void inspect() { if (reloadT < 0.f && !switching) inspectT = 0.f; }
+    // A retry / restart: the gun is simply there, doing nothing
+    void reset(int g) {
+        gun = toGun = g; switching = false; upCued = true;
+        reloadT = cycleT = inspectT = -1.f; kickAge = 10.f; landDip = 0.f;
+        cues.clear();
+    }
+    // Pick a reload up part-way (switching back to a gun still reloading):
+    // nothing before startU plays again
+    void reload(float total, int ammoBefore, int mag, int refill, float startU) {
+        reload(total, ammoBefore, mag, refill);
+        reloadT = std::clamp(startU, 0.f, 0.999f) * reloadLen;
+    }
     void land(float fallSpeed) { landDip = std::max(landDip, std::min(1.f, fallSpeed / 20.f)); }
     void setMove(bool dashing, bool sliding) { dash = dashing; slide = sliding; }
 

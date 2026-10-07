@@ -201,6 +201,8 @@ inline void GameplayState::enterArena(int a) {
 
 inline void GameplayState::resetPlayer(glm::vec3 start) {
     player = Player{start};
+    viewModel.reset(activeWeapon);   // whatever the gun was doing (a reload, a switch) is over
+    dryCd = 0.f;
     player.camera.aspectRatio = (float)SCREEN_W/SCREEN_H;
     player.camera.fov = settings ? settings->fov : 90.f;
     prevCamPos = player.camera.position;
@@ -637,6 +639,11 @@ inline void GameplayState::update(float dt) {
         if (weaponSwitchTimer <= 0.f) {
             activeWeapon  = pendingWeapon;
             pendingWeapon = -1;
+            const WeaponState& ws = weapons[activeWeapon];
+            if (ws.reloading) {   // back to a gun still reloading: pick its reload up where it is
+                int m = weaponMag((WeaponId)activeWeapon, prog.up[activeWeapon]);
+                viewModel.triggerReload(ws.reloadTotal, m - ws.ammo, ws.ammo, m, ws.reloadProgress());
+            }
         }
     }
 
