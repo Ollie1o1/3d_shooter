@@ -27,6 +27,7 @@
 #include "../src/PenitentHazards.h"
 #include "../src/GunKit.h"
 #include "../src/VoiceSynth.h"
+#include "../src/EnemyVoice.h"
 #include <cstdio>
 #include <cstring>
 #include <limits>
@@ -2674,6 +2675,186 @@ int main() {
         CHECK(varied, "a voice's variants differ");
         CHECK(same, "the same voice builds the same every time");
         CHECK(total <= 150.f, "the whole voice bank is at most 150 s of audio");
+    }
+
+    // ---------------------------------------------------------------- enemy voices: who gets to speak
+    {
+        auto in = [](int uid, EnemyType t, glm::vec3 p) { VoiceIn v; v.uid = uid; v.type = t; v.pos = p; v.health = 100.f; return v; };
+        auto count = [](const std::vector<VoiceCue>& cs, SoundRole r, const std::string& part = "") {
+            int n = 0; for (auto& c : cs) n += c.role == r && c.name.find(part) != std::string::npos; return n;
+        };
+        auto windup = [](VoiceIn v, AttackKind a, float t = 0.45f) { v.attack = a; v.telegraphTimer = t; v.telegraphStarted = true; return v; };
+        const glm::vec3 O{0.f};
+        const float F = 1.f / 60.f;
+        {   // a wind-up 35 m off, behind a wall: heard, by name, at priority
+            VoiceDirector d;
+            d.begin(O, F); d.enemy(in(1, EnemyType::HUSK, {35, 0, 0})); d.end();
+            d.begin(O, F); d.enemy(windup(in(1, EnemyType::HUSK, {35, 0, 0}), AttackKind::SHOT));
+            auto cs = d.end();
+            CHECK(count(cs, SoundRole::TELL, "v_husk_tell_shot") == 1 && cs[0].priority, "a wind-up 35 m off, out of sight, is heard: its own tell, at priority");
+        }
+        {   // the same enemy: not twice within 0.15 s
+            VoiceDirector d; int tells = 0;
+            for (int f = 0; f < 7; ++f) {
+                d.begin(O, F); VoiceIn v = in(1, EnemyType::RIPPER, {5, 0, 0});
+                if (f == 1 || f == 6) v = windup(v, AttackKind::LUNGE, 0.3f);
+                d.enemy(v); tells += count(d.end(), SoundRole::TELL);
+            }
+            CHECK(tells == 1, "the same enemy can't repeat its tell within 0.15 s");
+        }
+        {   // six at once: the nearest four
+            VoiceDirector d; d.begin(O, F); for (int i = 0; i < 6; ++i) d.enemy(in(i + 1, EnemyType::HUSK, {5.f + 5.f * i, 0, 0})); d.end();
+            d.begin(O, F); for (int i = 0; i < 6; ++i) d.enemy(windup(in(i + 1, EnemyType::HUSK, {5.f + 5.f * i, 0, 0}), AttackKind::SHOT));
+            int n = 0; bool nearest = true; for (auto& c : d.end()) if (c.role == SoundRole::TELL) { ++n; nearest &= c.uid <= 4; }
+            CHECK(n == 4 && nearest, "six wind-ups at once: the nearest four are heard");
+        }
+        {   // chatter: only the nearest four, and they do chatter
+            VoiceDirector d(7); std::set<int> spoke;
+            for (int f = 0; f < 60 * 20; ++f) {
+                d.begin(O, F);
+                for (int i = 0; i < 10; ++i) { VoiceIn v = in(i + 1, EnemyType::HUSK, {2.f + 2.f * i, 0, 0}); v.moveSpeed = statsOf(EnemyType::HUSK).speed; d.enemy(v); }
+                for (auto& c : d.end()) if (c.role == SoundRole::CHATTER && c.name.find("spawn") == std::string::npos) spoke.insert(c.uid);
+            }
+            CHECK(spoke.size() == 4 && *spoke.rbegin() <= 4, "ten enemies close by: the nearest four chatter, no one else");
+        }
+        {   // hurts: one per enemy per 0.4 s
+            VoiceDirector d; int hurts = 0; float hp = 100.f;
+            for (int f = 0; f < 60; ++f) {
+                d.begin(O, F); VoiceIn v = in(1, EnemyType::BRUTE, {5, 0, 0});
+                if (f >= 1 && f <= 5) hp -= 8.f;
+                v.health = hp; d.enemy(v); hurts += count(d.end(), SoundRole::ACTION, "hurt");
+            }
+            CHECK(hurts == 1, "pellets landing over a few frames: one hurt, not eight");
+        }
+        {   // hurts: six a second at most
+            VoiceDirector d; d.begin(O, F); for (int i = 0; i < 20; ++i) d.enemy(in(i + 1, EnemyType::HUSK, {3.f + i, 0, 0})); d.end();
+            d.begin(O, F); for (int i = 0; i < 20; ++i) { VoiceIn v = in(i + 1, EnemyType::HUSK, {3.f + i, 0, 0}); v.health = 50.f; d.enemy(v); }
+            CHECK(count(d.end(), SoundRole::ACTION, "hurt") == 6, "twenty hit at once: six hurts a second at most");
+        }
+        {   // the release: when the wind-up runs out (not when it's broken off)
+            auto run = [&](bool stagger) {
+                VoiceDirector d; int atk = 0;
+                for (int f = 0; f < 40; ++f) {
+                    d.begin(O, F); VoiceIn v = in(1, EnemyType::HUSK, {6, 0, 0});
+                    if (f >= 1 && f < 28) { v.attack = AttackKind::SHOT; v.telegraphTimer = 0.45f - (f - 1) * F; v.telegraphStarted = f == 1; }
+                    else if (f >= 28) { v.attack = stagger ? AttackKind::NONE : AttackKind::SHOT; v.staggered = stagger; }
+                    d.enemy(v); atk += count(d.end(), SoundRole::ACTION, "v_husk_atk_shot");
+                }
+                return atk;
+            };
+            CHECK(run(false) == 1 && run(true) == 0, "the release sounds when the wind-up runs out, not when a stagger breaks it off");
+        }
+        {   // beam held, death cries at any range and ends it, the dead are forgotten
+            VoiceDirector d; d.begin(O, F); d.enemy(in(1, EnemyType::SERAPH, {80, 0, 0})); d.end();
+            d.begin(O, F); VoiceIn v = in(1, EnemyType::SERAPH, {80, 0, 0}); v.beamOn = true; d.enemy(v); auto start = d.end();
+            auto cs = d.death(v);
+            bool started = false, cry = false, stop = false;
+            for (auto& c : start) started |= c.loop == VoiceCue::START && c.name == "v_seraph_atk_beam";
+            for (auto& c : cs) { cry |= c.name == "v_seraph_death" && c.floor >= 0.5f; stop |= c.loop == VoiceCue::STOP && c.uid == 1; }
+            CHECK(started, "a Seraph's beam starts a held voice");
+            CHECK(cry && stop, "a death always cries out (any range, with a floor) and ends its held voice");
+            d.begin(O, F); d.end();
+            CHECK(d.tracked() == 0, "the dead are forgotten");
+        }
+        {   // Review focus 5: a beam that ends and starts again
+            VoiceDirector d; int starts = 0, stops = 0;
+            for (int f = 0; f < 4; ++f) {
+                d.begin(O, F); VoiceIn v = in(1, EnemyType::SERAPH, {10, 0, 0}); v.beamOn = f == 1 || f == 3; d.enemy(v);
+                for (auto& c : d.end()) { starts += c.loop == VoiceCue::START; stops += c.loop == VoiceCue::STOP; }
+            }
+            CHECK(starts == 2 && stops == 1, "a beam off and on again: stopped, then a fresh held voice");
+        }
+        {   // gone without a death: forgotten after half a second, its held voice stopped
+            VoiceDirector d; d.begin(O, F); VoiceIn v = in(1, EnemyType::SERAPH, {10, 0, 0}); v.beamOn = true; d.enemy(v); d.end();
+            bool stop = false;
+            for (int f = 0; f < 40; ++f) { d.begin(O, F); for (auto& c : d.end()) stop |= c.loop == VoiceCue::STOP && c.uid == 1; }
+            CHECK(d.tracked() == 0 && stop, "an enemy that vanishes is forgotten and its held voice stopped");
+        }
+        {   // Review focus 1: a retry forgets everyone at once
+            VoiceDirector d; d.begin(O, F); d.enemy(in(1, EnemyType::HUSK, {5, 0, 0})); d.end();
+            d.reset();
+            CHECK(d.tracked() == 0, "reset forgets everyone");
+        }
+        {   // Review focus 2: a frame's gap is not a new enemy
+            VoiceDirector d; int spawns = 0;
+            for (int f = 0; f < 3; ++f) { d.begin(O, F); if (f != 1) d.enemy(in(1, EnemyType::HUSK, {5, 0, 0})); spawns += count(d.end(), SoundRole::CHATTER, "spawn"); }
+            CHECK(spawns == 1, "an enemy missing for a frame and back again doesn't spawn twice");
+        }
+        {   // Review focus 3: killed after it was reported this frame
+            VoiceDirector d; d.begin(O, F); d.enemy(in(1, EnemyType::HUSK, {5, 0, 0})); d.end();
+            d.begin(O, F); VoiceIn v = in(1, EnemyType::HUSK, {5, 0, 0}); v.health = 0.f; d.enemy(v);
+            auto deathCues = d.death(v);
+            auto cs = d.end();
+            CHECK(count(deathCues, SoundRole::ACTION, "death") == 1 && cs.empty() && d.tracked() == 0,
+                  "killed mid-frame: its death cry and nothing else (no spawn, no hurt)");
+        }
+        {   // Hollowed: same name, changed voice
+            auto tellOf = [&](Hollow h) {
+                VoiceDirector d; VoiceIn v = in(1, EnemyType::HUSK, {5, 0, 0}); v.hollow = h; v.halo = h == Hollow::HALOED;
+                d.begin(O, F); d.enemy(v); d.end();
+                d.begin(O, F); d.enemy(windup(v, AttackKind::SHOT)); return d.end();
+            };
+            auto en = tellOf(Hollow::ENRAGED), tw = tellOf(Hollow::TWINNED), ha = tellOf(Hollow::HALOED);
+            int twins = 0; float delay = 0.f; bool shimmer = false;
+            for (auto& c : tw) if (c.name == "v_husk_tell_shot") { ++twins; delay = std::max(delay, c.delay); }
+            for (auto& c : ha) shimmer |= c.name == VOICE_HALO_SHIMMER;
+            CHECK(!en.empty() && en[0].name == "v_husk_tell_shot" && en[0].pitch > 1.1f && en[0].drive > 0.f, "an Enraged voice: the same tell, higher and driven");
+            CHECK(twins == 2 && std::fabs(delay - 0.012f) < 1e-4f, "a Twinned voice is doubled, the copy 12 ms late");
+            CHECK(shimmer, "a Haloed one's tell shimmers");
+            VoiceDirector d; VoiceIn v = in(1, EnemyType::HUSK, {5, 0, 0}); v.hollow = Hollow::HALOED; v.halo = true;
+            d.begin(O, F); d.enemy(v); d.end();
+            v.halo = false; d.begin(O, F); d.enemy(v);
+            CHECK(count(d.end(), SoundRole::ACTION, VOICE_HALO_BREAK) == 1, "a halo breaking shatters");
+        }
+        {   // Review focus 4: a dozen appearing at once
+            VoiceDirector d; d.begin(O, F); for (int i = 0; i < 12; ++i) d.enemy(in(i + 1, EnemyType::MITE, {3.f + i, 0, 0}));
+            int n = 0; bool nearest = true; for (auto& c : d.end()) if (c.name.find("spawn") != std::string::npos) { ++n; nearest &= c.uid <= 3; }
+            CHECK(n == 3 && nearest, "a dozen appearing at once: three spawn cues, the nearest");
+        }
+        {   // bosses: chatter whoever else is near; their wind-ups duck the mix (not the Penitent's every sweep)
+            VoiceDirector d; bool bossSpoke = false;
+            for (int f = 0; f < 60 * 15; ++f) {
+                d.begin(O, F);
+                for (int i = 0; i < 6; ++i) d.enemy(in(i + 1, EnemyType::HUSK, {2.f + i, 0, 0}));
+                VoiceIn w = in(99, EnemyType::WARDEN, {40, 0, 0}); w.moveSpeed = 2.4f; d.enemy(w);
+                for (auto& c : d.end()) bossSpoke |= c.uid == 99 && c.role == SoundRole::CHATTER && c.name.find("spawn") == std::string::npos;
+            }
+            CHECK(bossSpoke, "a boss chatters at 40 m whoever else is near");
+            auto duckOf = [&](EnemyType t, AttackKind a) {
+                VoiceDirector e; e.begin(O, F); e.enemy(in(5, t, {10, 0, 0})); e.end();
+                e.begin(O, F); e.enemy(windup(in(5, t, {10, 0, 0}), a, 1.f));
+                for (auto& c : e.end()) if (c.role == SoundRole::TELL) return c.duckDb;
+                return -1.f;
+            };
+            CHECK(duckOf(EnemyType::WARDEN, AttackKind::SLAM) == 6.f && duckOf(EnemyType::PENITENT, AttackKind::PSLAM) == 6.f &&
+                  duckOf(EnemyType::PENITENT, AttackKind::CENSER_LOW) == 0.f && duckOf(EnemyType::HUSK, AttackKind::SHOT) == 0.f,
+                  "a boss's wind-up ducks the mix (not the Penitent's every sweep, not a Husk's)");
+        }
+        {   // every cue the director can ask for is in the bank
+            std::set<std::string> names; for (auto& s : voiceBank()) names.insert(s.name);
+            bool all = true;
+            auto check = [&](const std::vector<VoiceCue>& cs) {
+                for (auto& c : cs) if (!names.count(c.name)) { all = false; std::printf("      no voice called %s\n", c.name.c_str()); }
+            };
+            for (int i = 0; i < (int)EnemyType::COUNT; ++i) {
+                const EnemyType t = (EnemyType)i; VoiceDirector d((uint32_t)i + 3); float hp = 100.f;
+                const auto atks = attacksOf(t);
+                for (int f = 0; f < 60 * 10; ++f) {
+                    d.begin(O, F); VoiceIn v = in(1, t, {5, 0, 0});
+                    v.moveSpeed = statsOf(t).speed; hp -= f % 50 == 0 ? 5.f : 0.f; v.health = hp;
+                    if (!atks.empty()) {
+                        const int k = (f / 40) % (int)atks.size(), ph = f % 40;
+                        v.attack = atks[k]; v.telegraphTimer = ph < 30 ? 0.5f - ph * F : 0.f; v.telegraphStarted = ph == 0;
+                        v.beamOn = atks[k] == AttackKind::BEAM && ph >= 30;
+                    }
+                    v.enraged = f == 300; v.rose = f == 310; v.hollow = f < 200 ? Hollow::HALOED : Hollow::NONE; v.halo = f < 200;
+                    v.linkCount = f / 100;
+                    d.enemy(v); check(d.end());
+                }
+                check(d.death(in(1, t, {5, 0, 0})));
+            }
+            CHECK(all, "every voice the director can ask for is in the bank");
+        }
     }
 
     // ---------------------------------------------------------------- the lift (driven movers) and the director's hold
