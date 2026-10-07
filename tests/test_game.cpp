@@ -3287,6 +3287,58 @@ int main() {
               "Ripper and Mite steps play at half the level of other enemies' steps");
     }
 
+    // ---------------------------------------------------------------- the Reliquary: a formation that drifts
+    {
+        LevelData F; LevelBuilder B{F};
+        auto chunk = [&](glm::vec3 top, glm::vec2 half, std::vector<glm::vec3> at) {
+            LevelData::Formation::Chunk c; c.home = top; c.half = half; c.at = at;
+            c.movers.push_back(B.mover(top - glm::vec3{0, 0.75f, 0}, {half.x, 0.75f, half.y}, Mover::Path::DRIVEN, {0, 0, 0}, {0, 0, 0}, 1.f, 0.f, {1, 1, 1}));
+            F.formation.chunks.push_back(c);
+        };
+        chunk({0, 0, 0},  {5, 5}, {{0, 0, 0}, {0, 0, -20}, {10, 3, 0}});
+        chunk({20, 0, 0}, {4, 4}, {{0, 0, 0}, {0, 2, 0},   {-40, 0, 0}});
+        LevelData::Formation& fm = F.formation;
+        fm.reset(F); F.updateMovers(0.f);
+        CHECK(fm.arrangements() == 3 && !fm.gliding() && F.walls[F.movers[0].wall].box.max.y == 0.f, "a formation starts in its first arrangement");
+        fm.glideTo(1);
+        float clock = 0.f; bool eased = true; float prevZ = 0.f, prevStep = 0.f;
+        for (int i = 0; i < 60 * 3; ++i) {
+            clock += DT; fm.update(DT, F); F.updateMovers(clock);
+            float z = F.walls[F.movers[0].wall].box.max.z, step = std::fabs(z - prevZ);
+            if (i > 5 && i < 60 && step + 1e-5f < prevStep) eased = false;   // speeding up in the first second
+            prevStep = step; prevZ = z;
+        }
+        bool midway = fm.gliding();
+        for (int i = 0; i < 60 * 4; ++i) { clock += DT; fm.update(DT, F); F.updateMovers(clock); }
+        CHECK(midway && eased && !fm.gliding() && fm.at == 1, "a glide eases in, takes 6 s, and ends");
+        CHECK(std::fabs(F.walls[F.movers[0].wall].box.max.z - (5.f - 20.f)) < 1e-4f && std::fabs(F.walls[F.movers[1].wall].box.max.y - 2.f) < 1e-4f,
+              "each chunk ends exactly in its next arrangement");
+        CHECK(fm.chunkOfWall(F, F.movers[1].wall) == 1 && fm.chunkOfWall(F, 9999) == -1 && (fm.top(1) == glm::vec3{20, 2, 0}),
+              "a formation knows which chunk a wall belongs to, and where its top is");
+        // Review focus 1: a retry mid-glide puts everything back at once
+        fm.glideTo(2);
+        for (int i = 0; i < 60 * 2; ++i) { clock += DT; fm.update(DT, F); F.updateMovers(clock); }
+        fm.reset(F); F.updateMovers(clock);
+        CHECK(!fm.gliding() && fm.at == 0 && F.walls[F.movers[0].wall].box.max.y == 0.f && F.walls[F.movers[0].wall].box.max.x == 5.f,
+              "reset mid-glide puts every chunk back in its first arrangement");
+        // Review focus 5: a player standing at a chunk's edge when it glides is carried and stays on
+        fm.glideTo(2);
+        Player p({4.6f, 0.f, 4.6f});
+        p.dynWalls = F.moverWalls.data(); p.dynCount = (int)F.moverWalls.size();
+        SpatialGrid pg; pg.build(F.walls);
+        bool stayed = true;
+        for (int i = 0; i < 60 * 7; ++i) {
+            int rm = F.moverOfWall(p.groundWall);
+            clock += DT; fm.update(DT, F); F.updateMovers(clock);
+            if (rm >= 0) p.position += F.movers[rm].delta;
+            p.floorY = -100.f;
+            Uint8 k[SDL_NUM_SCANCODES]; std::memset(k, 0, sizeof(k));
+            p.update(DT, k, F.walls.data(), (int)F.walls.size(), false, &pg);
+            if (i > 10) stayed &= p.position.y > fm.top(0).y - 0.3f && p.position.y < fm.top(0).y + 1.2f;
+        }
+        CHECK(stayed && std::fabs(p.position.x - 14.6f) < 0.3f, "standing at a chunk's edge you're carried through the glide and stay on");
+    }
+
     // ---------------------------------------------------------------- the lift (driven movers) and the director's hold
     {
         LevelData L; LevelBuilder B{L};
