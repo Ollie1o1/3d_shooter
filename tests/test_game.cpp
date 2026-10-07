@@ -2435,14 +2435,14 @@ int main() {
         // ---- duck and reverb
         {
             SfxMixer m(44100.f, 3);
-            sfxRender(m, 4410, 0.5f);
+            sfxRender(m, 4410, 0.25f);                                // under the bus compressor's threshold
             m.duck(6.f, 0.1f);
-            auto during = sfxRender(m, 2205, 0.5f);                  // 50 ms in
+            auto during = sfxRender(m, 2205, 0.25f);                 // 50 ms in
             float dipped = during[during.size() - 2];
-            sfxRender(m, 88200, 0.5f);                                // hold 0.1 s, release 250 ms
-            auto after = sfxRender(m, 441, 0.5f);
-            CHECK(std::fabs(dipped - 0.5f * 0.501f) < 0.03f, "a 6 dB duck dips the music to half within 50 ms");
-            CHECK(std::fabs(after.back() - 0.5f) < 0.005f, "the music comes back once the duck is over");
+            sfxRender(m, 88200, 0.25f);                               // hold 0.1 s, release 250 ms
+            auto after = sfxRender(m, 441, 0.25f);
+            CHECK(std::fabs(dipped - 0.25f * 0.501f) < 0.015f, "a 6 dB duck dips the music to half within 50 ms");
+            CHECK(std::fabs(after.back() - 0.25f) < 0.0025f, "the music comes back once the duck is over");
             SfxMixer o(44100.f, 3);
             o.duck(3.f, 0.5f); o.duck(9.f, 0.1f);
             sfxRender(o, 4410, 0.5f);
@@ -2505,6 +2505,109 @@ int main() {
             float near = lvl(4.f, 0.f), far = lvl(60.f, 0.f), floored = lvl(60.f, 0.5f), beyond = lvl(120.f, 0.5f);
             CHECK(far < 0.15f * near && floored > 0.4f * near, "a floored cue at 60 m stays at least half as loud as up close");
             CHECK(beyond > 0.3f * near, "...even past 90 m");
+        }
+    }
+
+    // ---------------------------------------------------------------- sound effects mixer: roles and the bus
+    {
+        using G = SoundGroup; using R = SoundRole;
+        auto ro = [](R role, float vol = 0.5f, bool prio = false) {
+            SfxMixer::Opts o; o.volume = vol; o.group = SoundGroup::ENEMY; o.role = role; o.priority = prio; return o;
+        };
+        {   // chatter: at most 6 at once, a 7th takes the oldest
+            SfxMixer m(44100.f, 3); m.addSound("noise", sfxNoise(44100));
+            std::vector<SoundHandle> hs;
+            for (int i = 0; i < 6; ++i) { hs.push_back(m.play("noise", ro(R::CHATTER))); sfxRender(m, 16); }
+            SoundHandle seventh = m.play("noise", ro(R::CHATTER)); sfxRender(m, 16);
+            CHECK(m.roleActive(R::CHATTER) == 6 && !m.isPlaying(hs[0]) && m.isPlaying(hs[1]) && m.isPlaying(seventh),
+                  "enemy chatter: 6 voices at most, a 7th takes the oldest");
+        }
+        {   // chatter piling up never takes a tell
+            SfxMixer m(44100.f, 3); m.addSound("noise", sfxNoise(44100));
+            SoundHandle t = m.play("noise", ro(R::TELL, 0.05f, true)); sfxRender(m, 16);
+            for (int i = 0; i < 8; ++i) { m.play("noise", ro(R::CHATTER)); sfxRender(m, 16); }
+            CHECK(m.isPlaying(t) && m.roleActive(R::TELL) == 1 && m.roleActive(R::CHATTER) == 6,
+                  "chatter piling up never silences a tell");
+        }
+        {   // a full ENEMY group: a tell takes chatter, never a (quieter) tell
+            SfxMixer m(44100.f, 3); m.addSound("noise", sfxNoise(44100));
+            for (int i = 0; i < 15; ++i) m.play("noise", ro(R::TELL, 0.01f, true));
+            for (int i = 0; i < 5; ++i) m.play("noise", ro(R::CHATTER, 0.9f));
+            sfxRender(m, 16);
+            SoundHandle t = m.play("noise", ro(R::TELL, 0.5f, true)); sfxRender(m, 16);
+            CHECK(m.active(G::ENEMY) == 20 && m.isPlaying(t) && m.roleActive(R::TELL) == 16 && m.roleActive(R::CHATTER) == 4,
+                  "a tell in a full group takes a chatter voice, not a quieter tell");
+        }
+        {   // the sidechain: while a tell plays chatter dips 8 dB and the music 3 dB; both come back after
+            SfxMixer m(44100.f, 3); m.addSound("noise", sfxNoise(44100));
+            m.addSound("hush", std::vector<float>(13230, 0.f));   // a silent 0.3 s tell
+            m.play("noise", ro(R::CHATTER));
+            m.play("hush", ro(R::TELL, 1.f, true));
+            sfxRender(m, 8820, 0.1f);   // 0.2 s
+            float chatDb = 20.f * std::log10(m.chatterGain()), musDb = 20.f * std::log10(m.musicGain());
+            CHECK(std::fabs(chatDb + 8.f) < 0.5f && std::fabs(musDb + 3.f) < 0.5f, "while a tell plays, chatter dips 8 dB and the music 3 dB");
+            sfxRender(m, 4410); sfxRender(m, 26460);   // the tell ends at 0.3 s, then 0.6 s more
+            CHECK(m.chatterGain() > 0.9f && m.musicGain() > 0.95f, "...and both come back within about half a second after it");
+        }
+        {   // the music really is 3 dB down under a tell
+            SfxMixer m(44100.f, 3); m.addSound("hush", std::vector<float>(44100, 0.f));
+            m.play("hush", ro(R::TELL, 1.f, true));
+            auto b = sfxRender(m, 8820, 0.1f);
+            CHECK(std::fabs(std::fabs(b[b.size() - 2]) - 0.1f * 0.70795f) < 0.003f, "the music under a tell is 3 dB down");
+        }
+        {   // the bus compressor: nothing on a quiet mix, at most ~5 dB on a full-scale one
+            SfxMixer m(44100.f, 3);
+            sfxRender(m, 4410, 0.03f);
+            float quiet = m.compReductionDb();
+            sfxRender(m, 22050, 1.f);
+            float loud = m.compReductionDb();
+            CHECK(quiet == 0.f && loud > 4.f && loud <= 5.05f, "the bus compressor leaves quiet mixes alone and takes at most ~5 dB off a full-scale one");
+        }
+        {   // a 22.05 kHz sound plays for its real length
+            SfxMixer m(44100.f, 3); m.addSound("half", std::vector<float>(2205, 0.3f), 22050.f);   // 0.1 s
+            SfxMixer::Opts o; o.group = G::UI;
+            SoundHandle h = m.play("half", o);
+            sfxRender(m, 4300); bool mid = m.isPlaying(h);
+            sfxRender(m, 200);  bool done = !m.isPlaying(h);
+            CHECK(mid && done, "a sound built at 22.05 kHz plays for its real length at 44.1 kHz");
+        }
+        {   // pitch: twice the rate, half the length
+            SfxMixer m(44100.f, 3); m.addSound("dc", std::vector<float>(4410, 0.3f));
+            SfxMixer::Opts o; o.group = G::UI; o.pitch = 2.f;
+            SoundHandle h = m.play("dc", o);
+            sfxRender(m, 2300);
+            CHECK(!m.isPlaying(h), "a sound at pitch 2 lasts half as long");
+        }
+        {   // delay: silent until it's due
+            SfxMixer m(44100.f, 3); m.addSound("dc", std::vector<float>(44100, 0.5f));
+            SfxMixer::Opts o; o.group = G::UI; o.delay = 0.012f;
+            m.play("dc", o);
+            auto b = sfxRender(m, 1024);
+            CHECK(b[2 * 500] == 0.f && std::fabs(b[2 * 1000]) > 0.1f, "a delayed sound (a Twinned echo) starts 12 ms late");
+        }
+        {   // drive: saturated (more edge), never louder
+            std::vector<float> sine(44100);
+            for (int i = 0; i < 44100; ++i) sine[i] = 0.6f * std::sin(6.2831853f * 220.f * i / 44100.f);
+            auto run = [&](float drive) {
+                SfxMixer m(44100.f, 3); m.addSound("sine", sine);
+                SfxMixer::Opts o; o.group = G::UI; o.drive = drive; o.volume = 0.5f;
+                m.play("sine", o); return sfxRender(m, 8192);
+            };
+            auto clean = run(0.f), driven = run(1.f);
+            CHECK(sfxPeak(driven) <= sfxPeak(clean) + 1e-4f && sfxHf(driven, 0) / sfxRms(driven, 0) > 1.05f * sfxHf(clean, 0) / sfxRms(clean, 0),
+                  "drive (an Enraged voice) adds edge without adding level");
+        }
+        {   // dev solo: only the chosen roles, no music
+            SfxMixer m(44100.f, 3); m.addSound("dc", std::vector<float>(44100, 0.2f));
+            m.devSolo(1 << (int)R::TELL);
+            m.play("dc", ro(R::CHATTER, 1.f));
+            auto b = sfxRender(m, 512, 0.1f);
+            CHECK(sfxPeak(b) == 0.f, "soloing tells mutes chatter and the music");
+        }
+        {   // reading the bank back (the mix report)
+            SfxMixer m(44100.f, 3); m.addSound("a", std::vector<float>(10, 0.1f), 22050.f); m.addSound("a", std::vector<float>(20, 0.1f), 22050.f);
+            CHECK(m.sample("a", 1) && m.sample("a", 1)->size() == 20 && !m.sample("a", 2) && !m.sample("b", 0) && m.sampleRateOf("a") == 22050.f,
+                  "the bank can be read back: each variant and its source rate");
         }
     }
 
