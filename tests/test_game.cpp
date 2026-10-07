@@ -1662,7 +1662,7 @@ int main() {
 
         float before = b.armorMult();
         b.stagger(b.staggerTime());
-        CHECK(before == 1.f && b.armorMult() == 1.5f && b.dashTimer == 0.f && b.attack == AttackKind::NONE,
+        CHECK(before == 1.f && b.armorMult() == 2.f && b.dashTimer == 0.f && b.attack == AttackKind::NONE,
               "a parried SOVEREIGN drops everything and takes extra damage");
         Enemy r(EnemyType::SOVEREIGN, C); r.spawnTimer = 0.f; r.state = EnemyState::ACTIVE;
         r.takeDamage(r.maxHealth * 0.55f);
@@ -2941,6 +2941,65 @@ int main() {
             SoundHandle h = m.play(cs[0].name, o); sfxRender(m, 16);
             CHECK(m.isPlaying(h), "a kill is heard even when wind-ups fill every enemy voice");
         }
+    }
+
+    // ---------------------------------------------------------------- the boss pass: the Sovereign, tuned
+    {
+        const LevelData& SL = L;
+        const Arena& SA = SL.arenas.back();   // the Sanctum
+        const glm::vec3 C = SA.bossSpawn;
+        // Every tell readable: on every difficulty, enraged and in the last stand
+        bool floors = true; float shortest = 9.f;
+        for (int lvl = 0; lvl < DIFFICULTY_LEVELS; ++lvl)
+            for (float hp : {1.f, 0.45f, 0.15f})
+                for (float dist : {3.f, 9.f, 20.f}) {
+                    Enemy s(EnemyType::SOVEREIGN, C + glm::vec3{0, 0, -dist});
+                    s.spawnTimer = 0.f; s.state = EnemyState::ACTIVE;
+                    EnemyWorld w = worldFor(SL, grid, C, SA); w.tune = &difficulty(lvl);
+                    s.health = s.maxHealth * hp; if (hp < 0.5f) s.enraged = true;
+                    for (int f = 0; f < 60 * 25 && s.alive; ++f) {
+                        w.playerFeet = C + glm::vec3{std::sin(f * 0.01f) * 6.f, 0, std::cos(f * 0.013f) * 6.f};
+                        w.playerEye = w.playerFeet + glm::vec3{0, 1.7f, 0};
+                        s.update(DT, w);
+                        if (s.ev.telegraphStarted) {
+                            float need = s.tellFollow ? Enemy::TELL_FLOOR_FOLLOW : Enemy::TELL_FLOOR;
+                            shortest = std::min(shortest, s.telegraphDuration);
+                            if (s.telegraphDuration < need - 1e-4f) floors = false;
+                        }
+                    }
+                }
+        std::printf("      sovereign's shortest tell: %.3f s\n", shortest);
+        CHECK(floors, "every Sovereign tell is at least 0.35 s (0.28 s inside a combo), on every difficulty, enraged or not");
+        // Every recovery is a real window
+        bool windows = true; float minRec = 9.f;
+        {
+            Enemy s(EnemyType::SOVEREIGN, C + glm::vec3{0, 0, -6}); s.spawnTimer = 0.f; s.state = EnemyState::ACTIVE; s.enraged = true;
+            EnemyWorld w = worldFor(SL, grid, C, SA); w.tune = &difficulty(DIFFICULTY_LEVELS - 1);
+            float prev = 0.f;
+            for (int f = 0; f < 60 * 40; ++f) {
+                s.update(DT, w);
+                if (s.recoverTimer > prev + 1e-4f && prev <= 0.f) { minRec = std::min(minRec, s.recoverTimer); windows &= s.recoverTimer >= Enemy::RECOVER_MIN - DT; }
+                prev = s.recoverTimer;
+            }
+        }
+        std::printf("      sovereign's shortest recovery: %.2f s\n", minRec);
+        CHECK(windows, "every Sovereign recovery leaves at least 0.8 s, enraged on the hardest difficulty");
+        // A parry: 3 s at x2
+        Enemy p(EnemyType::SOVEREIGN, C); p.spawnTimer = 0.f; p.state = EnemyState::ACTIVE;
+        p.stagger(p.staggerTime());
+        CHECK(std::fabs(p.staggerTimer - 3.f) < 1e-4f && p.armorMult() == 2.f, "a parried Sovereign is broken for 3 s and takes double");
+        // Phase changes: a breath before the next attack
+        auto pauseAfter = [&](float to) {
+            Enemy s(EnemyType::SOVEREIGN, C + glm::vec3{0, 0, -5}); s.spawnTimer = 0.f; s.state = EnemyState::ACTIVE;
+            EnemyWorld w = worldFor(SL, grid, C, SA);
+            if (to < 0.3f) { s.health = s.maxHealth * 0.3f; s.enraged = true; s.update(DT, w); }
+            for (int f = 0; f < 60 * 3 && !(s.attack == AttackKind::NONE && s.recoverTimer <= 0.f && s.dashTimer <= 0.f); ++f) s.update(DT, w);
+            s.takeDamage(s.health - s.maxHealth * to);
+            int started = 0;
+            for (int f = 0; f < 33; ++f) { s.update(DT, w); started += s.ev.telegraphStarted; }   // 0.55 s
+            return started;
+        };
+        CHECK(pauseAfter(0.49f) == 0 && pauseAfter(0.19f) == 0, "at 50 % and at 20 % the Sovereign starts nothing new for 0.6 s");
     }
 
     // ---------------------------------------------------------------- the lift (driven movers) and the director's hold
