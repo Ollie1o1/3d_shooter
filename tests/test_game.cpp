@@ -26,10 +26,12 @@
 #include "../src/SfxMixer.h"
 #include "../src/PenitentHazards.h"
 #include "../src/GunKit.h"
+#include "../src/VoiceSynth.h"
 #include <cstdio>
 #include <cstring>
 #include <limits>
 #include <map>
+#include <set>
 #include <tuple>
 #include <functional>
 
@@ -2609,6 +2611,69 @@ int main() {
             CHECK(m.sample("a", 1) && m.sample("a", 1)->size() == 20 && !m.sample("a", 2) && !m.sample("b", 0) && m.sampleRateOf("a") == 22050.f,
                   "the bank can be read back: each variant and its source rate");
         }
+    }
+
+    // ---------------------------------------------------------------- enemy voices: the bank
+    {
+        const auto& bank = voiceBank();
+        std::map<std::string, int> seen;
+        bool unique = true;
+        for (auto& s : bank) unique &= seen[s.name]++ == 0;
+        CHECK(unique, "every voice has its own name");
+        bool table = true;
+        for (int i = 0; i < (int)EnemyType::COUNT; ++i) {
+            EnemyType t = (EnemyType)i;
+            for (VoiceKind k : {VoiceKind::SPAWN, VoiceKind::IDLE, VoiceKind::HURT, VoiceKind::DEATH}) table &= seen.count(voiceName(t, k)) > 0;
+            if (moveCadence(t) > 0.f) table &= seen.count(voiceName(t, VoiceKind::MOVE)) > 0;
+            for (AttackKind a : attacksOf(t)) {
+                table &= seen.count(voiceName(t, VoiceKind::TELL, a)) > 0;
+                if (hasRelease(a)) table &= seen.count(voiceName(t, VoiceKind::ATTACK, a)) > 0;
+            }
+        }
+        CHECK(table, "every enemy type has spawn, idle, hurt and death voices, steps if it moves, a tell (and release) per attack");
+
+        // Every attack an enemy really starts has a tell: run each type against a player at a few ranges
+        bool covered = true;
+        for (int i = 0; i < (int)EnemyType::COUNT; ++i) {
+            EnemyType t = (EnemyType)i;
+            auto known = attacksOf(t);
+            for (float dist : {3.f, 8.f, 14.f, 24.f}) {
+                Enemy e(t, {0.f, 0.f, 0.f});
+                EnemyWorld w; w.playerFeet = {dist, 0.f, 0.f}; w.playerEye = w.playerFeet + glm::vec3{0, 1.7f, 0};
+                for (int f = 0; f < 60 * 40 && e.alive; ++f) {
+                    if (f == 60 * 20) e.health = e.maxHealth * 0.2f;   // bosses: their late-fight moves too
+                    e.update(DT, w);
+                    if (e.ev.telegraphStarted && std::find(known.begin(), known.end(), e.attack) == known.end()) {
+                        covered = false;
+                        std::printf("      %s starts attack %d with no tell\n", statsOf(t).name, (int)e.attack);
+                    }
+                }
+            }
+        }
+        CHECK(covered, "every attack an enemy starts has a tell of its own");
+
+        float total = 0.f; bool built = true, levels = true, varied = true, same = true;
+        int idx = 0;
+        for (const auto& s : bank) {
+            std::vector<float> first;
+            for (int v = 0; v < s.variants; ++v) {
+                auto b = VoiceSynth::build(s, v);
+                total += b.size() / VoiceSynth::RATE;
+                float pk = 0.f; bool fin = true;
+                for (float x : b) { pk = std::max(pk, std::fabs(x)); fin &= std::isfinite(x); }
+                float lv = shortTermDb(b.data(), b.size(), VoiceSynth::RATE);
+                if (b.size() < 200 || !fin || pk > 0.951f) { built = false; std::printf("      %s/%d: %zu samples, peak %.2f\n", s.name.c_str(), v, b.size(), pk); }
+                if (std::fabs(lv - mixTargetDb(s.cls)) > 2.f) { levels = false; std::printf("      %s/%d at %.1f dB (wants %.1f)\n", s.name.c_str(), v, lv, mixTargetDb(s.cls)); }
+                if (v == 0) first = b; else if (b == first) varied = false;
+            }
+            if (idx++ % 7 == 0) same &= VoiceSynth::build(s, 0) == first;
+        }
+        std::printf("      voice bank: %zu names, %.1f s of audio\n", bank.size(), total);
+        CHECK(built, "every voice builds: a real length, finite, peak under 0.95");
+        CHECK(levels, "every voice sits within 2 dB of its mix class's level");
+        CHECK(varied, "a voice's variants differ");
+        CHECK(same, "the same voice builds the same every time");
+        CHECK(total <= 150.f, "the whole voice bank is at most 150 s of audio");
     }
 
     // ---------------------------------------------------------------- the lift (driven movers) and the director's hold
