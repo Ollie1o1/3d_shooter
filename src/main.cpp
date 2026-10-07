@@ -26,6 +26,7 @@
 #include "AudioSystem.h"
 #include "Display.h"
 #include "Gamepad.h"
+#include "VoiceSynth.h"
 
 #ifdef __EMSCRIPTEN__
 #  include <emscripten.h>
@@ -367,14 +368,25 @@ int main(int argc, char* argv[]) {
 
     static const char* SOUNDS[] = {
         "jump", "land", "dash", "slam", "revolver", "shotgun", "reload", "grapple_fire",
-        "hit", "enemy_death", "player_hit", "parry", "telegraph", "explosion",
-        "wave", "spawn", "pickup", "kar", "longshot", "bolt", "scope", "levelup",
+        "hit", "player_hit", "parry", "telegraph", "explosion",
+        "wave", "pickup", "kar", "longshot", "bolt", "scope", "levelup",
         "potion", "barrier", "split", "upgrade", "clank", "punch", "step1", "step2", "step3", "step4",
         "door", "door_close", "boost", "cyl_open", "cyl_close", "eject", "shell_in", "pump", "wade", "skim",
         "cell", "dry", "switch_up0", "switch_up1", "switch_up2", "switch_up3",
     };
     for (const char* name : SOUNDS)
         app->audio.loadSound(name, std::string("assets/sfx/") + name + ".wav");
+    if (app->audio.initialized) {   // the enemy voices, built in code (VoiceSynth.h)
+        const Uint32 t0 = SDL_GetTicks();
+        float secs = 0.f;
+        for (const VoiceSpec& v : voiceBank())
+            for (int k = 0; k < v.variants; ++k) {
+                auto b = VoiceSynth::build(v, k);
+                secs += b.size() / VoiceSynth::RATE;
+                app->audio.addBuffer(v.name, std::move(b), VoiceSynth::RATE);
+            }
+        if (std::getenv("OVERDRIVE_SFXLIST")) std::fprintf(stderr, "voices: %.1f s of audio built in %u ms\n", secs, SDL_GetTicks() - t0);
+    }
     if (std::getenv("OVERDRIVE_SFXLIST")) app->audio.sfx.dumpLengths(stderr);
     app->audio.start();   // the bank is complete: the audio thread may mix from here on
 

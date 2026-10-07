@@ -60,16 +60,6 @@ inline void GameplayState::onPenitentEvents(Enemy& e, const EnemyEvents& ev) {
     const float scale = ar.damageScale * tune().damage;
     const float floorY = e.floorY;
     glm::vec3 at = e.position + glm::vec3{0.f, 3.f, 0.f};
-    // Tells: a distinct sound for each, from where it kneels; big ones duck the rest
-    if (ev.telegraphStarted) {
-        switch (e.attack) {
-            case AttackKind::CENSER_LOW:  audio.playAt("telegraph", at, 120, SoundGroup::ENEMY, true); break;   // grinding whine
-            case AttackKind::CENSER_HIGH: audio.playAt("barrier", at, 128, SoundGroup::ENEMY, true); break;     // a bell tone
-            case AttackKind::PSLAM: case AttackKind::PSTOMP: case AttackKind::SCOURGE:
-                audio.playAt("telegraph", at, 128, SoundGroup::ENEMY, true); audio.duck(6.f, 0.5f); break;
-            default: break;
-        }
-    }
     if (ev.penSweep >= 0) {
         pen.addSweep(e.position, e.yaw, e.sweepReach(), ev.penSweep);
         audio.playAt("dash", at, 128, SoundGroup::ENEMY, true);

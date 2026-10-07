@@ -148,13 +148,42 @@ inline void GameplayState::spawnEnemy(EnemyType t, glm::vec3 pos, Hollow h) {
         fx.spawnBurst(pos + glm::vec3{0, 0.2f, 0}, {0.6f, 0.85f, 0.9f}, 14, 5.f, 0.45f, 9.f);
         fx.spawnShockwave(pos, 2.5f, {0.4f, 0.8f, 0.85f});
     }
-    if (spawnSoundThisTick) return;   // a FAST section spawns a dozen at once: one sound
-    spawnSoundThisTick = true;
-    audio.playAt("spawn", pos, 110, SoundGroup::WORLD);
+}
+
+// What the voice director needs to know about one enemy this frame
+inline VoiceIn GameplayState::voiceIn(const Enemy& e, const EnemyEvents* ev) const {
+    VoiceIn v;
+    v.uid = e.uid; v.type = e.type; v.hollow = e.hollow; v.scale = e.scale;
+    v.pos = e.position + glm::vec3{0.f, e.height() * 0.7f, 0.f};
+    v.moveSpeed = e.moveSpeed; v.health = e.health;
+    v.attack = e.attack; v.telegraphTimer = e.telegraphTimer; v.staggered = e.staggered();
+    v.halo = e.halo; v.linkCount = e.linkCount; v.beamOn = e.beamTimer > 0.f;
+    if (ev) { v.telegraphStarted = ev->telegraphStarted; v.enraged = ev->enraged; v.rose = ev->penRose; }
+    return v;
+}
+
+// One enemy voice: placed at the enemy, ranked by its role; a held one is
+// kept by uid so it can follow its enemy and be stopped
+inline void GameplayState::playVoice(const VoiceCue& c) {
+    if (c.loop == VoiceCue::STOP) {
+        auto it = voiceLoops.find(c.uid);
+        if (it != voiceLoops.end()) { audio.stop(it->second); voiceLoops.erase(it); }
+        return;
+    }
+    SfxMixer::Opts o;
+    o.volume = c.volume; o.group = SoundGroup::ENEMY; o.role = c.role; o.priority = c.priority;
+    o.positional = true; o.pos = c.pos; o.floor = c.floor; o.pitch = c.pitch; o.drive = c.drive; o.delay = c.delay;
+    SoundHandle h = audio.playOpts(c.name, o);
+    if (c.loop == VoiceCue::START) {
+        auto it = voiceLoops.find(c.uid);
+        if (it != voiceLoops.end()) audio.stop(it->second);
+        voiceLoops[c.uid] = h;
+    }
+    if (c.duckDb > 0.f) audio.duck(c.duckDb, 0.5f);
 }
 
 inline void GameplayState::updateEnemies(float dt) {
-    telegraphSoundCd -= dt;
+    voices.begin(player.camera.position, dt);
     beamHissCd -= dt;
     shieldClankCd -= dt;
     const Arena& ar = level.arenas[director.arena];
@@ -188,16 +217,9 @@ inline void GameplayState::updateEnemies(float dt) {
             fx.spawnBurst(e.position + glm::vec3{0, e.height() * 0.6f, 0}, {1.f, 0.3f, 0.1f}, 2, 1.5f, 0.6f, -2.f);
         const float eScale = dmgScale * e.damageMult();   // ENRAGED hits harder
         const EnemyEvents ev = e.ev;   // copy: spawning below may reallocate
+        if (e.alive) voices.enemy(voiceIn(e, &ev));
         glm::vec3 epos = e.position;
-        float dist = glm::length(epos - player.position);
 
-        // Wind-up tick: a cue for the ones close enough to matter, at most
-        // a few a second however many are aiming at you
-        if (ev.telegraphStarted && dist < 30.f && telegraphSoundCd <= 0.f && enemies[i].type != EnemyType::PENITENT) {
-            audio.playAt("telegraph", epos, 70, SoundGroup::ENEMY, isBoss(enemies[i].type));
-            if (isBoss(enemies[i].type)) audio.duck(6.f, 0.5f);   // a boss winding up: everything else steps back
-            telegraphSoundCd = 0.22f;
-        }
         for (int k = 0; k < ev.shots; ++k)
             if (Projectile* pr = projSystem.fire(ev.shotOrigin, ev.shotDir[k] * ev.shotSpeed, ev.shotDamage * eScale, false,
                                                  enemies[i].stats().shotColor, false, 0.f, ev.shotSize, ev.shotHeavy)) {
@@ -307,6 +329,12 @@ inline void GameplayState::updateEnemies(float dt) {
             a.position -= n * wa; b.position += n * wb;
         }
     }
+
+    // The voices: what the director picked, and held ones following their enemy
+    for (const VoiceCue& c : voices.end()) playVoice(c);
+    for (auto& [uid, h] : voiceLoops)
+        for (const auto& e : enemies)
+            if (e.uid == uid) { audio.moveSource(h, e.position + glm::vec3{0.f, e.height() * 0.7f, 0.f}); break; }
 }
 
 inline void GameplayState::friendlySlam(const Enemy& slammer, float radius) {
@@ -393,7 +421,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     float hm = e.hollow != Hollow::NONE ? 1.5f : 1.f;   // a Hollowed kill is worth more
     styleSystem.addStyle((src == StyleSource::FRIENDLY || src == StyleSource::ENVIRONMENT ? 15.f : 30.f) * hm, src);
     styleSystem.heal(5.f * tune().heal);
-    audio.playAt("enemy_death", e.position + glm::vec3{0, e.height() * 0.5f, 0}, 128, SoundGroup::ENEMY, false, 0.5f);   // a kill confirms at any range
+    for (const VoiceCue& c : voices.death(voiceIn(e, nullptr))) playVoice(c);   // a kill confirms at any range
     fx.spawnDeathParticles(e.position + glm::vec3{0, e.height() * 0.5f, 0}, e.stats().color);
     spawnDebrisFor(e);
     if (styleSystem.overdrive) dashCharges = 2;

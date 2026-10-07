@@ -178,6 +178,9 @@ inline void GameplayState::enterArena(int a) {
         prevCamPos = g_devCamPos;
     }
     enemies.clear(); pendingTwins.clear();
+    voices.reset();                                   // and their voices: nobody is speaking now
+    for (auto& [uid, h] : voiceLoops) audio.stop(h);
+    voiceLoops.clear();
     for (auto& p : projSystem.pool) p.alive = false;
     fx.clear(); pickups.clear(); pendingBlasts.clear();
     sov.clear(); lastStand = false; lastStandT = 0.f;
