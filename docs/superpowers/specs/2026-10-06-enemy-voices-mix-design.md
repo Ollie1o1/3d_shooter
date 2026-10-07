@@ -74,13 +74,20 @@ files): **Enraged** pitched up ×1.12 with drive; **Twinned** doubled, the copy
 detuned ~15 cents and 12 ms late; **Haloed** with a shimmer layer, plus a glass
 shatter (`halo_break`) when the halo breaks.
 
-**Generation:** `tools/gen_voices.py` (new) builds every file from shared
-blocks — a formant choir (vowel formants over a sawtooth/pulse source, several
-detuned voices), servo, vent, gear grind, metal resonance (damped inharmonic
-partials), noise beds. Files are `v_<type>_<kind>[_<attack>]_<n>.wav`, mono.
-Chatter (`idle`, `move`) is written at 22.05 kHz, everything else at 44.1 kHz,
-so the web data grows by no more than ~1.5 MB. `assets/sfx/CREDITS.md` notes
-the generator. Deterministic: a fixed seed, so re-running gives the same files.
+**Generation (amended while planning):** `src/VoiceSynth.h` (new, no GL/audio)
+builds every voice in code when the game loads — like `MusicSynth` and
+`TextureGen` — from shared blocks: a formant choir (vowel formants over
+several detuned sawtooth voices), servo, vent, gear grind, metal resonance
+(damped inharmonic partials), clicks, thuds, noise beds. Each type has a
+profile (choir pitch and vowel, body, size) and each attack a tell recipe.
+Names are `v_<type>_<kind>` and `v_<type>_tell_<attack>` /
+`v_<type>_atk_<attack>`. Everything is built at 22.05 kHz (the mixer gets a
+per-sound source rate) and normalised to its mix class's level.
+Deterministic (seeded per name and variant).
+*Why amended:* as WAV files the bank (~130 names × 2–3 variants, ~130 s of
+audio) would add ~6 MB to the web download against a 1.5 MB budget; built
+in code it adds nothing, costs ~12 MB of RAM and a fraction of a second at
+load, and tests measure every voice directly.
 
 ## 2. Who gets to speak: the VoiceDirector
 
@@ -123,8 +130,10 @@ the generator. Deterministic: a fixed seed, so re-running gives the same files.
   target and a trim, measured by a new `--mixreport` dev flag (peak and RMS of
   every loaded sound, and the resulting level). Order, loudest first: player
   guns and player hits → tells → attacks and deaths → world → chatter well
-  below; UI fixed. Call sites stop carrying their own volume numbers: they pass
-  the sound and its context (distance-based volume stays the mixer's job).
+  below; UI fixed. *(Amended while planning:)* call sites keep their volume
+  numbers only as **context weights** (most sounds are played at several
+  levels on purpose: `telegraph` at 50–128); each sound's own level lives in
+  the table, so 128 at a call site means "this sound at its class level".
 - **Master**: a gentle bus compressor (threshold −10 dBFS, ratio 2:1,
   attack 10 ms, release 150 ms) ahead of the existing soft clip, so a big wave
   doesn't pump.
@@ -136,16 +145,16 @@ the generator. Deterministic: a fixed seed, so re-running gives the same files.
 
 ### Code
 
-- `tools/gen_voices.py` — the voice bank (section 1).
+- `src/VoiceSynth.h` — the voice bank, built at load (section 1).
 - `src/EnemyVoice.h` — `VoiceTable`, `VoiceDirector`, `VoiceCue`.
 - `src/MixTable.h` — per-sound role targets and trims.
 - `src/AudioTypes.h` — `SoundRole`.
 - `src/SfxMixer.h` — `role` in `Opts`, the CHATTER cap and steal rule, the
   tell sidechain on chatter and music, the bus compressor; introspection for
   tests (`roleActive(role)`, `sidechainLevel()`, `musicGain()`).
-- `src/AudioSystem.h` — load the voice bank (a name list built from the
-  table, not hand-typed), `playCue(const VoiceCue&)`, trims from `MixTable`;
-  `--mixreport`.
+- `src/AudioSystem.h` — `addBuffer` for the built voices (a name list from
+  the table, not hand-typed), `playCue(const VoiceCue&)`, trims from
+  `MixTable`; `--mixreport`. The mixer takes a source rate per sound.
 - `src/Gameplay_Combat.h` — the enemy loop feeds the director and plays its
   cues (replacing the `telegraph`/`enemy_death`/`spawn` uses for enemies);
   `Gameplay_Sovereign.h`, `Gameplay_Penitent.h` and the Warden's events use
@@ -156,7 +165,8 @@ the generator. Deterministic: a fixed seed, so re-running gives the same files.
 
 - **Table**: every `EnemyType` has spawn, tell, attack, hurt and death names;
   every `AttackKind` a boss uses resolves to a tell; every name the table can
-  produce exists in the bank on disk (with its 3 variants).
+  produce builds (every variant), non-silent, peak ≤ 0.95, within ±2 dB of
+  its class level, the same twice; the whole bank ≤ 150 s of audio.
 - **Director**: a wind-up 35 m away behind a wall gives one TELL; two wind-ups
   from one enemy 0.1 s apart give one; 6 in a frame give the nearest 4;
   10 enemies within 25 m → chatter only from the nearest 4; a shotgun's
@@ -178,7 +188,7 @@ the generator. Deterministic: a fixed seed, so re-running gives the same files.
   touching no more than the gun attacks (< 0.5 % of samples).
 - Listen through each type with `--spawn N`; screenshots not needed.
 - `--bench` against `main` (the director and compressor within ~0.1 ms);
-  `make web`, web data growth ≤ 1.5 MB.
+  `make web` (web data unchanged); load time of the voice bank printed.
 
 ## Out of scope
 
