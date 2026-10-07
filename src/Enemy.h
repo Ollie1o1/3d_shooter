@@ -73,9 +73,9 @@ inline const char* hollowName(Hollow h) {
 }
 inline const char* hollowHint(Hollow h) {
     switch (h) {
-        case Hollow::ENRAGED: return "FASTER, QUICKER TO STRIKE, HITS HARDER - DON'T WAIT FOR ITS RHYTHM";
-        case Hollow::TWINNED: return "SPLITS IN TWO WHEN IT DIES - FINISH THE JOB";
-        case Hollow::HALOED:  return "SHRUGS OFF DAMAGE - HEADSHOT OR PARRY TO BREAK THE HALO";
+        case Hollow::ENRAGED: return "FASTER AND MEANER - DON'T WAIT FOR ITS RHYTHM";
+        case Hollow::TWINNED: return "KILL IT AND THERE ARE TWO - FINISH BOTH";
+        case Hollow::HALOED:  return "SHRUGS OFF DAMAGE - A HEADSHOT OR PARRY BREAKS THE HALO";
         default: return "";
     }
 }
@@ -106,25 +106,25 @@ inline const EnemyStats& statsOf(EnemyType t) {
     static const EnemyStats S[] = {
         {"HUSK",     60.f, 0.45f, 1.95f, 3.9f, 0.45f, 1.9f, false,
          {0.70f,0.26f,0.18f}, {1.0f,0.78f,0.20f}, {1.0f,0.50f,0.12f},
-         "HUSKS FIRE SLOW ORBS - PRESS F AS ONE ARRIVES TO PARRY IT"},
+         "SLOW ORBS - PRESS F AS ONE REACHES YOU TO SEND IT BACK"},
         {"RIPPER",   45.f, 0.55f, 1.10f, 8.4f, 0.32f, 1.0f, false,
          {0.80f,0.64f,0.14f}, {1.0f,0.95f,0.25f}, {1.0f,0.9f,0.3f},
-         "RIPPERS CROUCH BEFORE THEY LUNGE - DASH OUT OF THE WAY"},
+         "IT CROUCHES BEFORE IT LUNGES - DASH ASIDE"},
         {"SENTINEL", 55.f, 0.45f, 2.60f, 3.0f, 0.75f, 2.9f, false,
          {0.20f,0.32f,0.62f}, {0.25f,0.95f,1.0f}, {0.35f,0.9f,1.0f},
-         "SENTINELS SNIPE - BREAK THEIR LASER BEFORE THEY FIRE"},
+         "THE LASER COMES FIRST - BREAK LINE OF SIGHT"},
         {"RAPTOR",   40.f, 1.00f, 0.90f, 7.5f, 0.42f, 1.9f, true,
          {0.40f,0.16f,0.52f}, {1.0f,0.30f,0.85f}, {0.95f,0.35f,1.0f},
-         "RAPTORS CIRCLE AND DIVE - WATCH THE SKY"},
+         "THEY CIRCLE, THEN DIVE - WATCH THE SKY"},
         {"BRUTE",   340.f, 0.95f, 2.90f, 3.0f, 0.90f, 2.3f, false,
          {0.58f,0.24f,0.17f}, {1.0f,0.48f,0.06f}, {1.0f,0.50f,0.10f},
-         "BRUTES SLAM THE GROUND - JUMP OVER THE SHOCKWAVE"},
+         "IT SLAMS THE GROUND - JUMP THE SHOCKWAVE"},
         {"MITE",     14.f, 0.38f, 0.60f, 7.2f, 0.55f, 0.0f, false,
          {0.18f,0.30f,0.16f}, {0.40f,1.0f,0.30f}, {0.40f,1.0f,0.30f},
-         "MITES EXPLODE - SHOOT THEM EARLY AND THE BLAST HITS THEIR FRIENDS"},
+         "WALKING BOMBS - POP THEM EARLY, AMONG FRIENDS"},
         {"JUGGERNAUT", 700.f, 1.05f, 3.30f, 2.3f, 1.10f, 3.2f, false,
          {0.36f,0.38f,0.44f}, {1.0f,0.72f,0.12f}, {1.0f,0.78f,0.2f},
-         "JUGGERNAUTS ARE ARMORED - PARRY (F) THEIR SHELLS, PUNCH THEIR SMASH"},
+         "HALF YOUR BULLETS BOUNCE - PARRY (F) ITS SHELLS, PUNCH ITS SMASH"},
         {"WARDEN", 3600.f, 1.60f, 4.60f, 2.4f, 0.85f, 3.0f, false,
          {0.34f,0.27f,0.40f}, {1.0f,0.16f,0.62f}, {1.0f,0.22f,0.68f},
          "THE WARDEN"},
@@ -133,22 +133,22 @@ inline const EnemyStats& statsOf(EnemyType t) {
          "PARRY (F) HIS BLADE AS IT FALLS - DASH THROUGH THE REST"},
         {"SHIELDBEARER", 140.f, 0.6f, 2.20f, 3.4f, 0.5f, 2.4f, false,
          {0.34f,0.37f,0.42f}, {0.3f,1.0f,0.7f}, {0.4f,1.0f,0.75f},
-         "SHIELDBEARERS BLOCK FROM THE FRONT - FLANK THEM, SHOOT OVER THE SHIELD, PARRY THE BASH"},
+         "NOTHING GETS THROUGH THE FRONT - FLANK IT OR PARRY THE BASH"},
         {"CONDUIT", 300.f, 0.8f, 3.4f, 0.f, 0.f, 0.f, false,
          {0.22f,0.2f,0.26f}, {1.0f,0.25f,0.45f}, {1.0f,0.3f,0.5f},
-         "CONDUITS KEEP THE WAVE COMING - DESTROY THEM ALL TO END IT"},
+         "THEY KEEP THE WAVE COMING - DESTROY THEM ALL"},
         {"CONDUCTOR", 90.f, 0.75f, 1.7f, 6.f, 0.f, 0.f, true,
          {0.18f,0.3f,0.34f}, {0.3f,1.0f,0.9f}, {0.3f,1.0f,0.9f},
-         "CONDUCTORS SHIELD THE ENEMIES THEY TETHER - SHOOT THEM DOWN FIRST"},
+         "IT SHIELDS WHAT IT TETHERS - TAKE IT OUT FIRST"},
         {"SERAPH", 120.f, 0.8f, 1.6f, 5.0f, 1.0f, 3.5f, true,
          {0.82f,0.78f,0.66f}, {1.0f,0.86f,0.5f}, {1.0f,0.9f,0.6f},
-         "SERAPHS SWEEP A BEAM TOWARD YOU - KEEP MOVING OR BREAK LINE OF SIGHT"},
+         "THE BEAM TURNS SLOWER THAN YOU RUN - KEEP MOVING"},
         {"ANCHOR", 260.f, 1.0f, 2.8f, 2.2f, 1.0f, 2.8f, false,
          {0.24f,0.27f,0.32f}, {0.95f,0.25f,0.3f}, {1.0f,0.35f,0.35f},
-         "ANCHORS PIN YOU DOWN - NO DASH OR GRAPPLE IN THEIR FIELD"},
+         "INSIDE ITS FIELD: NO DASH, NO GRAPPLE"},
         {"PENITENT", 6000.f, 3.0f, 8.2f, 3.5f, 0.9f, 2.6f, false,
          {0.14f,0.13f,0.14f}, {1.3f,0.75f,0.3f}, {1.2f,0.5f,0.2f},
-         "BREAK ITS CHAINS - JUMP THE LOW SWEEP, SLIDE UNDER THE HIGH"},
+         "BREAK ITS CHAINS - JUMP LOW SWEEPS, SLIDE UNDER HIGH ONES"},
     };
     return S[(int)t];
 }

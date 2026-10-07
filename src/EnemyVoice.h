@@ -166,7 +166,12 @@ public:
                 s.stride += step * cad * ratio;
                 if (s.stride >= 1.f) {
                     s.stride -= std::floor(s.stride);
-                    if (speaks) { VoiceCue c = cue(in, voiceName(in.type, VoiceKind::MOVE), SoundRole::CHATTER); c.volume = 0.5f + 0.5f * std::min(1.f, ratio); rest.push_back(c); }
+                    if (speaks) {
+                        VoiceCue c = cue(in, voiceName(in.type, VoiceKind::MOVE), SoundRole::CHATTER);
+                        c.volume = 0.5f + 0.5f * std::min(1.f, ratio);
+                        if (in.type == EnemyType::RIPPER || in.type == EnemyType::MITE) c.volume *= 0.5f;   // many quick little steps: keep them under
+                        rest.push_back(c);
+                    }
                 }
             }
         }

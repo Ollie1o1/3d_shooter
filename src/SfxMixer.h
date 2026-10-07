@@ -16,9 +16,8 @@
 //
 // ROLES: CHATTER (enemy idles and steps, at most 6 at once; a 7th takes the
 // oldest), TELL (a wind-up: never silenced by another tell, takes chatter
-// first in a full group), ACTION, UI. While a TELL plays, chatter dips 8 dB
-// and the music 3 dB (a sidechain). The whole bus then runs through a gentle
-// compressor (2:1 above -10 dBFS) before the soft clip.
+// first in a full group), ACTION, UI. While a TELL plays, enemy chatter dips
+// 3 dB (a gentle sidechain); the music is left alone.
 // =============================================================================
 #include "AudioTypes.h"
 #include <glm/glm.hpp>
@@ -41,10 +40,7 @@ public:
     static constexpr float ROLLOFF  = 1.f;
     static constexpr float MAX_DIST = 90.f;   // silent beyond (fading over the last 10 m)
     static constexpr int   CHATTER_CAP    = 6;            // enemy idle/step voices at once
-    static constexpr float SIDE_CHATTER   = 0.39811f;     // -8 dB under a TELL
-    static constexpr float SIDE_MUSIC     = 0.70795f;     // -3 dB under a TELL
-    static constexpr float COMP_THRESH    = 0.31623f;     // -10 dBFS
-    static constexpr float COMP_THRESH_DB = -10.f, COMP_RATIO = 2.f;
+    static constexpr float SIDE_CHATTER   = 0.70795f;     // -3 dB under a TELL
     static constexpr float DRIVE_TRIM     = 0.86f;        // the drive's shape adds ~1.3 dB at drive 0.35: taken back
 
     struct Opts {
@@ -85,8 +81,6 @@ public:
         sideAtk = 1.f - std::exp(-1.f / (0.030f * sr));
         sideRel = 1.f - std::exp(-1.f / (0.250f * sr));
         driveDec = std::exp(-1.f / (0.050f * sr));
-        compAtk = 1.f - std::exp(-1.f / (0.010f * sr));
-        compRel = 1.f - std::exp(-1.f / (0.150f * sr));
     }
     float sampleRate() const { return rate; }
 
@@ -194,8 +188,7 @@ public:
     }
     float sidechainLevel() const { return sideEnv; }                          // 0 none .. 1 a tell is playing
     float chatterGain() const { return 1.f - sideEnv * (1.f - SIDE_CHATTER); }
-    float musicGain() const { return duckGain * (1.f - sideEnv * (1.f - SIDE_MUSIC)); }
-    float compReductionDb() const { return compGr; }
+    float musicGain() const { return duckGain; }
     // Dev (OVERDRIVE_SOLO): hear only these roles (1 << role), and no music; 0 = everything
     void devSolo(int roleMask) { soloMask.store(roleMask, std::memory_order_relaxed); }
 
@@ -246,9 +239,8 @@ private:
 
     // Duck envelope: dips toward duckDepth while duckHold lasts, then recovers
     float duckGain = 1.f, duckDepth = 1.f, duckHold = 0.f, atkK = 0.f, relK = 0.f;
-    // Tell sidechain envelope (0..1) and the bus compressor
+    // Tell sidechain envelope (0..1)
     float sideEnv = 0.f, sideAtk = 0.f, sideRel = 0.f, driveDec = 0.f;
-    float compEnv = 0.f, compGr = 0.f, compAtk = 0.f, compRel = 0.f;
     std::atomic<int> soloMask{0};
     uint32_t births = 0;
     std::vector<float> bankRate;   // per bank entry: its source rate (0 = the device's)
@@ -396,12 +388,12 @@ private:
         for (const auto& v : voices) if (v.active && v.role == SoundRole::TELL && v.wait <= 0) { tellOn = true; break; }
         const float side = tellOn ? 1.f : 0.f;
         const float music = soloMask.load(std::memory_order_relaxed) ? 0.f : 1.f;
-        // The duck and the tell sidechain, sample by sample, on the music already in io
+        // The duck, sample by sample, on the music already in io (the tell sidechain only follows along)
         for (int i = 0; i < n; ++i) {
             float want = duckHold > 0.f ? duckDepth : 1.f;
             duckGain += (want - duckGain) * (want < duckGain ? atkK : relK);
             sideEnv  += (side - sideEnv) * (side > sideEnv ? sideAtk : sideRel);
-            float m = duckGain * (1.f - sideEnv * (1.f - SIDE_MUSIC)) * music;
+            float m = duckGain * music;
             io[2 * i] *= m; io[2 * i + 1] *= m;
         }
         duckHold = std::max(0.f, duckHold - n / rate);
@@ -418,16 +410,6 @@ private:
             for (int c = 0; c < 4; ++c) { l += combL[c].process(in, revCur.fb, revCur.damp); r += combR[c].process(in, revCur.fb, revCur.damp); }
             for (int a = 0; a < 2; ++a) { l = apL[a].process(l); r = apR[a].process(r); }
             io[2 * i] += l * revCur.wet; io[2 * i + 1] += r * revCur.wet;
-        }
-        // The bus compressor: 2:1 above -10 dBFS, so a full wave doesn't pump
-        for (int i = 0; i < n; ++i) {
-            float pk = std::max(std::fabs(io[2 * i]), std::fabs(io[2 * i + 1]));
-            if (!(pk < 1e6f)) pk = 0.f;
-            compEnv += (pk - compEnv) * (pk > compEnv ? compAtk : compRel);
-            float g = 1.f;
-            if (compEnv > COMP_THRESH) { compGr = (20.f * std::log10(compEnv) - COMP_THRESH_DB) * (1.f - 1.f / COMP_RATIO); g = dbToLin(-compGr); }
-            else compGr = 0.f;
-            io[2 * i] *= g; io[2 * i + 1] *= g;
         }
         for (int i = 0; i < 2 * n; ++i) io[i] = softClip(io[i]);
     }

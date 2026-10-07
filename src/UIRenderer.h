@@ -463,7 +463,7 @@ public:
 
     void renderVictoryArena(int kills, int shots, int hits, int deaths, float gameTime, float peakStyle,
                             int level, float best, bool newRecord, bool showKeys, const RunScore& score,
-                            const char* title = "ALL ARENAS CLEARED", const char* sub = "THE SOVEREIGN HAS FALLEN") {
+                            const char* title = "ALL ARENAS CLEARED", const char* sub = "THE SOVEREIGN FALLS") {
         begin2D();
         ui.rect(0, 0, screenW, screenH, {0.0f, 0.02f, 0.05f, 0.72f});
         ui.text(title, screenW / 2, screenH / 2 - 170, 4, {0.2f, 1.f, 0.6f, 0.95f}, true);

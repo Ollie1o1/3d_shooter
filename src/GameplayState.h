@@ -406,7 +406,7 @@ public:
     // THE PENITENT (Gameplay_Penitent.h): its hazards, its chains' anchors
     PenitentHazards pen;
     AnchorRip rip;                  // hooking an anchor with the grapple (PenitentHazards.h)
-    bool  downHinted = false;       // "GET DOWN TO THE CAGE" shown
+    bool  downHinted = false;       // "BACK TO THE CAGE" shown
     bool  scourgeAnnounced = false;
     std::vector<LevelData::ChainAnchor> anchorsBuilt;   // as built, for a retry
     std::vector<AABB> anchorBoxes;
@@ -664,7 +664,7 @@ public:
 
     // The Descent's cage (Gameplay_Penitent.h)
     float dryCd = 0.f;          // the dry click, at most every 0.3 s
-    bool boardHinted = false;   // "BOARD THE CAGE" shown for this stop
+    bool boardHinted = false;   // "STEP ONTO THE CAGE" shown for this stop
     bool liftRiding  = false;   // a ride is under way (its arrival drops health on the cage)
     void updateLift(float dt);
 };

@@ -98,10 +98,10 @@ inline void GameplayState::punch(int boostable) {
             parryFeedback(eye + fwd * 1.2f, true);
             styleSystem.addStyle(70.f, StyleSource::PARRY);
             gainXp(30);
-            if (e.type == EnemyType::SOVEREIGN) ui.toast("PARRIED", "HIS GUARD IS BROKEN - UNLOAD", {1.f, 0.75f, 0.2f}, 1.4f);
-            else if (e.type == EnemyType::PENITENT) ui.toast("PARRIED", "IT REELS - UNLOAD", {1.f, 0.75f, 0.2f}, 1.6f);
+            if (e.type == EnemyType::SOVEREIGN) ui.toast("GUARD BROKEN", "HE'S OPEN - THREE SECONDS", {1.f, 0.75f, 0.2f}, 1.4f);
+            else if (e.type == EnemyType::PENITENT) ui.toast("PARRIED", "IT STAGGERS - HIT IT HARD", {1.f, 0.75f, 0.2f}, 1.6f);
             else if (e.type == EnemyType::SHIELDBEARER) ui.toast("SHIELD DOWN", "", {0.4f, 1.f, 0.75f}, 1.2f);
-            else ui.toast("BROKEN", "IT TAKES DOUBLE DAMAGE - UNLOAD", {1.f, 0.75f, 0.2f}, 1.8f);
+            else ui.toast("STAGGERED", "DOUBLE DAMAGE - MAKE IT COUNT", {1.f, 0.75f, 0.2f}, 1.8f);
             return;
         }
     }
@@ -291,8 +291,7 @@ inline void GameplayState::updateEnemies(float dt) {
         if (enemies[i].type == EnemyType::PENITENT) onPenitentEvents(enemies[i], ev);
         if (enemies[i].type == EnemyType::WARDEN) onWardenEvents(enemies[i], ev);
         if (ev.enraged && enemies[i].type == EnemyType::SOVEREIGN) {   // the Penitent and the Warden announce their own phases
-            pushBanner(enemies[i].type == EnemyType::SOVEREIGN ? "THE SOVEREIGN IS ENRAGED" : "THE WARDEN IS ENRAGED",
-                       "", {1.f, 0.15f, 0.25f}, 2.f);
+            pushBanner("HE STOPS HOLDING BACK", "LONGER CHAINS - WATCH THE BLADE", {1.f, 0.15f, 0.25f}, 2.4f);
             shake(0.5f, 0.06f);
             audio.play("wave", 128, SoundGroup::UI);
             audio.duck(6.f, 0.5f);
@@ -494,7 +493,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
             for (int k = 0; k < 6; ++k)
                 fx.spawnBurst(e.position + glm::vec3{frand(-1.f, 1.f), frand(0.5f, 3.5f), frand(-1.f, 1.f)},
                            {1.f, 0.8f, 0.4f}, 30, 10.f, 0.8f, 2.f);
-            pushBanner("THE SOVEREIGN HAS FALLEN", "", {1.f, 0.85f, 0.3f}, 3.f);
+            pushBanner("THE SOVEREIGN FALLS", "", {1.f, 0.85f, 0.3f}, 3.f);
             if (!g_godMode && !records.act2Unlocked) {
                 records.act2Unlocked = true;
                 records.save();
@@ -502,9 +501,9 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
             }
         } else if (e.type == EnemyType::PENITENT) {
             pen.clear();   // nothing it threw outlives it
-            pushBanner("THE PENITENT IS STILL", "", {1.f, 0.7f, 0.3f}, 3.f);
+            pushBanner("THE PENITENT FALLS SILENT", "", {1.f, 0.7f, 0.3f}, 3.f);
         } else {
-            pushBanner("WARDEN DESTROYED", "", {1.f, 0.85f, 0.3f}, 2.5f);
+            pushBanner("THE WARDEN GOES DARK", "", {1.f, 0.85f, 0.3f}, 2.5f);
         }
     }
 }
@@ -687,7 +686,7 @@ inline void GameplayState::fireWeapon(int w) {
                 fx.spawnBurst(at, {1.f, 0.8f, 0.35f}, 10, 6.f, 0.3f, 10.f);
                 audio.playAt("clank", at, 100, SoundGroup::ENEMY, true, 0.6f);   // the deflect is the tell: GET CLOSE
                 e.onDeflect();
-                if (deflectHints < 2) { ++deflectHints; ui.toast("DEFLECTED", "GET CLOSE - HIT HIM AS HE STRIKES", {1.f, 0.8f, 0.3f}, 1.8f); }
+                if (deflectHints < 2) { ++deflectHints; ui.toast("TURNED ASIDE", "HIS GUARD STOPS SHOTS FROM RANGE - GET CLOSE", {1.f, 0.8f, 0.3f}, 1.8f); }
                 anyHit = true;
                 break;
             }

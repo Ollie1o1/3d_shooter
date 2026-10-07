@@ -28,7 +28,7 @@ inline void GameplayState::updateLift(float dt) {
                 audio.playAt("clank", glm::vec3{k < 2 ? -9.f : 9.f, C.y + 8.f, k % 2 ? -831.f : -849.f}, 70, SoundGroup::WORLD);
         } else if (!boardHinted && director.phase != WaveDirector::Phase::ACTIVE) {
             boardHinted = true;
-            pushBanner("BOARD THE CAGE", "IT WON'T GO DOWN WITHOUT YOU", {1.f, 0.7f, 0.3f}, 2.5f);
+            pushBanner("STEP ONTO THE CAGE", "IT'S WAITING FOR YOU", {1.f, 0.7f, 0.3f}, 2.5f);
         }
     }
     if (liftRiding && !lift.riding()) {   // arrived: a jolt, and health waiting on the cage
@@ -43,7 +43,7 @@ inline void GameplayState::updateLift(float dt) {
     bool above = !g_devCam && player.position.y > lift.y() + 6.f;
     if (above && !lift.busy() && !downHinted && director.phase != WaveDirector::Phase::ACTIVE) {
         downHinted = true;
-        pushBanner("GET DOWN TO THE CAGE", "THE FIGHT IS BELOW YOU", {1.f, 0.7f, 0.3f}, 2.5f);
+        pushBanner("BACK TO THE CAGE", "THE FIGHT IS DOWN HERE", {1.f, 0.7f, 0.3f}, 2.5f);
     }
     if (!above) downHinted = false;
     director.hold = lift.busy() || above;
@@ -73,7 +73,7 @@ inline void GameplayState::onPenitentEvents(Enemy& e, const EnemyEvents& ev) {
     for (int k = 0; k < ev.penIncense; ++k) pen.addPool(ev.penIncensePos[k]);
     if (ev.penIncense > 0) audio.playAt("skim", player.position, 80, SoundGroup::ENEMY);
     if (ev.penRose) {
-        pushBanner("THE PENITENT RISES", "IT WALKS - KEEP MOVING, READ EVERY SWING", {1.f, 0.4f, 0.2f}, 3.f);
+        pushBanner("THE PENITENT RISES", "NO CHAINS NOW - KEEP MOVING", {1.f, 0.4f, 0.2f}, 3.f);
         audio.play("wave", 128, SoundGroup::UI); audio.duck(6.f, 0.8f); shake(0.8f, 0.08f);
     }
     const glm::vec3 base = e.position;   // spawning reallocates the enemy list: e is gone after the first
@@ -133,7 +133,7 @@ inline void GameplayState::updatePenitent(float dt) {
     // Phase 3's banner, once
     if (boss && boss->scourging && !scourgeAnnounced) {
         scourgeAnnounced = true;
-        pushBanner("IT SCOURGES ITSELF", "STRIKE THE WOUND ON ITS BACK", {1.f, 0.25f, 0.15f}, 3.f);
+        pushBanner("IT TEARS ITSELF OPEN", "THE WOUND'S ON ITS BACK - GET BEHIND IT", {1.f, 0.25f, 0.15f}, 3.f);
         audio.duck(6.f, 0.6f);
     }
 }

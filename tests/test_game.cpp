@@ -2568,7 +2568,7 @@ int main() {
             m.play("hush", ro(R::TELL, 1.f, true));
             sfxRender(m, 8820, 0.1f);   // 0.2 s
             float chatDb = 20.f * std::log10(m.chatterGain()), musDb = 20.f * std::log10(m.musicGain());
-            CHECK(std::fabs(chatDb + 8.f) < 0.5f && std::fabs(musDb + 3.f) < 0.5f, "while a tell plays, chatter dips 8 dB and the music 3 dB");
+            CHECK(std::fabs(chatDb + 3.f) < 0.5f && std::fabs(musDb) < 0.05f, "while a tell plays, chatter dips 3 dB and the music is left alone");
             sfxRender(m, 4410); sfxRender(m, 26460);   // the tell ends at 0.3 s, then 0.6 s more
             CHECK(m.chatterGain() > 0.9f && m.musicGain() > 0.95f, "...and both come back within about half a second after it");
         }
@@ -2576,15 +2576,12 @@ int main() {
             SfxMixer m(44100.f, 3); m.addSound("hush", std::vector<float>(44100, 0.f));
             m.play("hush", ro(R::TELL, 1.f, true));
             auto b = sfxRender(m, 8820, 0.1f);
-            CHECK(std::fabs(std::fabs(b[b.size() - 2]) - 0.1f * 0.70795f) < 0.003f, "the music under a tell is 3 dB down");
+            CHECK(std::fabs(std::fabs(b[b.size() - 2]) - 0.1f) < 0.002f, "the music under a tell is untouched");
         }
-        {   // the bus compressor: nothing on a quiet mix, at most ~5 dB on a full-scale one
+        {   // nothing pumps the mix: loud music passes at its own level (only the soft clip above 0.8)
             SfxMixer m(44100.f, 3);
-            sfxRender(m, 4410, 0.03f);
-            float quiet = m.compReductionDb();
-            sfxRender(m, 22050, 1.f);
-            float loud = m.compReductionDb();
-            CHECK(quiet == 0.f && loud > 4.f && loud <= 5.05f, "the bus compressor leaves quiet mixes alone and takes at most ~5 dB off a full-scale one");
+            auto b = sfxRender(m, 22050, 0.6f);
+            CHECK(std::fabs(b[b.size() - 2] - 0.6f) < 1e-4f, "loud music passes through at its own level: nothing pumps the mix");
         }
         {   // a 22.05 kHz sound plays for its real length
             SfxMixer m(44100.f, 3); m.addSound("half", std::vector<float>(2205, 0.3f), 22050.f);   // 0.1 s
@@ -3234,6 +3231,60 @@ int main() {
             }
             CHECK(punchable, "a lunge can be punched within the parry's reach as it arrives");
         }
+    }
+
+    // ---------------------------------------------------------------- the arsenal's sounds, against their recordings
+    {
+        // Each rebuilt sound keeps the character of the recording it's built on
+        // (assets/sfx/src/<name>_rec.wav): its midrange body, its ring-out, its brightness
+        struct Shape { float mid, ringOut, bright; };
+        auto shape = [](const std::vector<float>& x, float sr) {
+            auto lp = [&](float hz) { std::vector<float> o(x.size()); float a = 1.f - std::exp(-6.2831853f * hz / sr), y = 0.f;
+                                      for (size_t i = 0; i < x.size(); ++i) { y += a * (x[i] - y); o[i] = y; } return o; };
+            auto l1 = lp(300.f), l2 = lp(3000.f);
+            double low = 0, mid = 0, all = 0;
+            for (size_t i = 0; i < x.size(); ++i) { low += l1[i] * l1[i]; mid += (l2[i] - l1[i]) * (l2[i] - l1[i]); all += x[i] * x[i]; }
+            float pk = 0.f; for (float v : x) pk = std::max(pk, std::fabs(v));
+            size_t last = 0; for (size_t i = 0; i < x.size(); ++i) if (std::fabs(x[i]) > 0.01f * pk) last = i;
+            int n = 0, z = 0; for (size_t i = 1; i < x.size(); ++i) if (std::fabs(x[i]) > 0.05f * pk) { ++n; z += (x[i] > 0.f) != (x[i - 1] > 0.f); }
+            return Shape{(float)(100.0 * mid / std::max(all, 1e-12)), last / sr, n ? z * sr / 2.f / n : 0.f};
+        };
+        bool body = true, ring = true, bright = true, refs = true;
+        for (const char* n : {"revolver", "shotgun", "kar", "longshot", "reload", "cyl_open", "cyl_close", "eject", "shell_in", "bolt", "pump"}) {
+            float rs; auto ref = readWav16(std::string("assets/sfx/src/") + n + "_rec.wav", rs);
+            if (ref.empty()) { refs = false; std::printf("      no recording for %s\n", n); continue; }
+            Shape R = shape(ref, rs);
+            for (int k = 0; k <= 2; ++k) {
+                std::string path = std::string("assets/sfx/") + n + (k ? "_" + std::to_string(k) : std::string()) + ".wav";
+                float sr; auto x = readWav16(path, sr);
+                if (x.empty()) continue;
+                Shape S = shape(x, sr);
+                std::printf("      %-12s mid %3.0f%% (rec %3.0f%%)  ring-out %.2f s (rec %.2f)  brightness %5.0f Hz (rec %5.0f)\n",
+                            (std::string(n) + (k ? "_" + std::to_string(k) : "")).c_str(), S.mid, R.mid, S.ringOut, R.ringOut, S.bright, R.bright);
+                body &= S.mid >= R.mid - 10.f;
+                ring &= S.ringOut >= 0.85f * R.ringOut;
+                bright &= S.bright <= 1.3f * R.bright;
+            }
+        }
+        CHECK(refs, "every gunshot and reload sound has its recording frozen beside the generator");
+        CHECK(body, "every rebuilt gun sound keeps its recording's midrange body (within 10 points)");
+        CHECK(ring, "every rebuilt gun sound rings out at least 85% as long as its recording");
+        CHECK(bright, "no rebuilt gun sound is more than 30% brighter than its recording");
+    }
+
+    {   // skittering steps (Rippers, Mites) sit under the rest of the chatter
+        auto stepVol = [&](EnemyType t) {
+            VoiceDirector d(5); float vol = -1.f;
+            for (int f = 0; f < 60 * 4 && vol < 0.f; ++f) {
+                d.begin({0, 0, 0}, 1.f / 60.f);
+                VoiceIn v; v.uid = 1; v.type = t; v.pos = {4, 0, 0}; v.health = 100.f; v.moveSpeed = statsOf(t).speed; d.enemy(v);
+                for (auto& c : d.end()) if (c.name.find("_move") != std::string::npos) vol = c.volume;
+            }
+            return vol;
+        };
+        float husk = stepVol(EnemyType::HUSK), ripper = stepVol(EnemyType::RIPPER), mite = stepVol(EnemyType::MITE);
+        CHECK(husk > 0.f && ripper > 0.f && mite > 0.f && ripper <= husk * 0.5f && mite <= husk * 0.5f,
+              "Ripper and Mite steps play at half the level of other enemies' steps");
     }
 
     // ---------------------------------------------------------------- the lift (driven movers) and the director's hold

@@ -310,7 +310,7 @@ private:
         struct Item { const char* label; const char* sub; };
         std::string arenaSub = "5 ARENAS - WAVES - TWO BOSSES";
         std::string fastSub  = "TIME TRIAL - THE GAUNTLET";
-        std::string endSub   = "THE CORE - HOW LONG CAN YOU LAST";
+        std::string endSub   = "THE CORE - NO EXIT, JUST THE NEXT WAVE";
         std::string daySub   = "TODAY: " + arenaNames[daily.arena] + " - " + daily.modName();
         if (records.bestArenaScore > 0) arenaSub += "   BEST " + std::to_string(records.bestArenaScore);
         if (records.bestFast  > 0.f) fastSub  += "   BEST " + formatTime(records.bestFast);
