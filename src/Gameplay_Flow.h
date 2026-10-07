@@ -291,12 +291,12 @@ inline void GameplayState::handleDirectorEvents() {
             } else if (endless()) {
                 if (dailyRun()) pushBanner("DAILY  " + daily.label(), std::string(daily.modName()) + " - " + daily.modHint(),
                                            {0.4f, 0.8f, 1.f}, 3.4f);
-                else pushBanner(std::string("ENDLESS  ") + ar.name, "HOW LONG CAN YOU LAST", {1.f, 0.3f, 0.45f}, 3.f);
+                else pushBanner(std::string("ENDLESS  ") + ar.name, "NO EXIT - JUST THE NEXT WAVE", {1.f, 0.3f, 0.45f}, 3.f);
                 audio.play("wave", 128, SoundGroup::UI);
             } else if (act2() && ar.shift == ArenaShift::DESCENT) {
                 level.lift.request(ArenaShifts::descentStop(director.wave));   // down to the first fight
                 boardHinted = true;
-                pushBanner(std::string("ACT II  ") + ar.name, "BOARD THE CAGE", {1.f, 0.7f, 0.3f}, 3.f);
+                pushBanner(std::string("ACT II  ") + ar.name, "STEP ONTO THE CAGE", {1.f, 0.7f, 0.3f}, 3.f);
                 audio.play("wave", 128, SoundGroup::UI);
             } else if (act2()) {
                 pushBanner(std::string("ACT II  ") + ar.name, ar.subtitle, {0.35f, 0.95f, 0.9f}, 2.6f);
@@ -323,9 +323,9 @@ inline void GameplayState::handleDirectorEvents() {
             break;
         case DirectorEvent::BOSS_START:
             if (ar.waves[ev.value][0].type == EnemyType::SOVEREIGN)
-                pushBanner("THE SOVEREIGN", "PARRY (F) HIS BLADE AS IT FALLS", {1.f, 0.3f, 0.2f}, 4.f);
+                pushBanner("THE SOVEREIGN", "PARRY (F) THE BLADE AS IT LANDS", {1.f, 0.3f, 0.2f}, 4.f);
             else if (ar.waves[ev.value][0].type == EnemyType::PENITENT)
-                pushBanner("THE PENITENT", "BREAK ITS CHAINS - JUMP THE LOW SWEEP, SLIDE UNDER THE HIGH", {1.f, 0.5f, 0.2f}, 4.5f);
+                pushBanner("THE PENITENT", "BREAK ITS CHAINS - JUMP LOW SWEEPS, SLIDE UNDER HIGH ONES", {1.f, 0.5f, 0.2f}, 4.5f);
             else
                 pushBanner("THE WARDEN", "CUT ITS CONDUITS - HIT THE CORE WHEN IT VENTS", {1.f, 0.2f, 0.65f}, 3.5f);
             audio.play("wave", 128, SoundGroup::UI); audio.play("explosion", 70, SoundGroup::UI); audio.duck(4.f, 0.4f);
@@ -389,7 +389,7 @@ inline void GameplayState::handleDirectorEvents() {
         case DirectorEvent::VICTORY:
             if (act2()) {   // the run ends at the beacon on the Orrery's north terrace
                 finishOpen = true;
-                pushBanner("THE PENITENT IS STILL", "REACH THE BEACON IN THE PIT", {1.f, 0.75f, 0.3f}, 3.f);
+                pushBanner("THE PENITENT FALLS SILENT", "REACH THE BEACON IN THE PIT", {1.f, 0.75f, 0.3f}, 3.f);
                 audio.play("wave", 128, SoundGroup::UI);
             } else victoryDelay = 2.5f;
             break;

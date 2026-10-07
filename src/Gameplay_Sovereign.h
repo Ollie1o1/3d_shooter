@@ -73,7 +73,7 @@ inline void GameplayState::updateSovereign(float dt) {
         boss->health = std::min(boss->health, boss->maxHealth * 0.19f);
     if (!lastStand && boss->health < boss->maxHealth * 0.2f) {
         lastStand = true; lastStandT = 0.f;
-        pushBanner("THE SANCTUM BURNS", "GET TO THE MIDDLE - FINISH IT", {1.f, 0.3f, 0.15f}, 3.f);
+        pushBanner("THE SANCTUM IGNITES", "HOLD THE CENTRE - FINISH HIM", {1.f, 0.3f, 0.15f}, 3.f);
         audio.play("wave", 128, SoundGroup::UI);
         audio.duck(6.f, 0.5f);
         shake(0.6f, 0.07f);

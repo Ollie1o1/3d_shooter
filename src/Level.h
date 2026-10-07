@@ -1346,7 +1346,7 @@ inline void buildAct1(LevelBuilder& B) {
         const float CZ = -348.f;    // centre (z)
         Arena a;
         a.name = "THE SANCTUM"; a.space = ReverbSpace::HALL;
-        a.subtitle = "THE SOVEREIGN AWAITS";
+        a.subtitle = "HE'S WAITING";
         a.bounds = aabb(-56, 0, -404, 56, 30, -292);
         a.zone   = aabb(-57.5f, 0, -405.5f, 57.5f, 34, -290.5f);   // ceiling 34 m
         a.playerStart = {0.f, 0.f, -296.f};

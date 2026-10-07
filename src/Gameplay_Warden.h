@@ -15,7 +15,7 @@ inline Enemy* GameplayState::warden() {
 inline void GameplayState::onWardenEvents(Enemy& e, const EnemyEvents& ev) {
     const float scale = level.arenas[director.arena].damageScale * tune().damage;
     if (ev.wPhase == 2) {
-        pushBanner("THE WARDEN FEEDS ON THE CORE", "JUMP THE RINGS - EVERY LANCE ENDS IN A VENT", {1.f, 0.2f, 0.65f}, 3.f);
+        pushBanner("THE WARDEN DRINKS THE CORE", "JUMP THE RINGS - PUNISH THE VENTS", {1.f, 0.2f, 0.65f}, 3.f);
         shake(0.5f, 0.06f); audio.duck(6.f, 0.6f);
         for (int i = 0; i < (int)level.anchors.size(); ++i)   // its conduits burn out for good
             if (level.anchors[i].kind == LevelData::ChainAnchor::CONDUIT && level.anchors[i].alive) {
@@ -25,7 +25,7 @@ inline void GameplayState::onWardenEvents(Enemy& e, const EnemyEvents& ev) {
         conduitClock.reset();
     }
     if (ev.wPhase == 3) {
-        pushBanner("MELTDOWN", "KILL IT BEFORE IT GOES OFF - ITS CORE IS OPEN", {1.f, 0.35f, 0.15f}, 3.f);
+        pushBanner("MELTDOWN", "40 SECONDS - END IT BEFORE IT BLOWS", {1.f, 0.35f, 0.15f}, 3.f);
         shake(0.6f, 0.07f); audio.duck(6.f, 0.6f);
     }
     if (ev.wLance) ward.addLance(ev.wLanceFrom, ev.wLanceYaw, ev.wLanceSign);
@@ -46,7 +46,7 @@ inline void GameplayState::onWardenEvents(Enemy& e, const EnemyEvents& ev) {
         if (dmg > 0.f) damagePlayer(dmg, c, 0.4f, 0.09f);
         glm::vec3 away = player.position - e.position; away.y = 0.f;
         if (glm::length(away) > 0.1f) player.velocity += glm::normalize(away) * 18.f + glm::vec3{0.f, 7.f, 0.f};
-        pushBanner("IT HOLDS TOGETHER", "THE CLOCK STARTS AGAIN", {1.f, 0.5f, 0.2f}, 2.f);
+        pushBanner("IT BLEW - AND IT'S STILL STANDING", "ANOTHER 40 SECONDS", {1.f, 0.5f, 0.2f}, 2.f);
     }
 }
 
@@ -59,7 +59,7 @@ inline void GameplayState::cutConduit(int i) {
     Enemy* w = warden();
     if (w && w->wardenPhase == 1 && level.anchorsAlive(LevelData::ChainAnchor::CONDUIT) == 0) {
         w->stagger(4.f);
-        ui.toast("CUT OFF", "IT REELS - FULL DAMAGE", {0.3f, 0.9f, 1.f}, 1.6f);
+        ui.toast("CUT OFF", "NOTHING FEEDING IT - FULL DAMAGE", {0.3f, 0.9f, 1.f}, 1.6f);
         conduitClock.allCut();
     }
 }
