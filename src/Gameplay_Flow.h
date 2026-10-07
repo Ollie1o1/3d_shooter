@@ -156,6 +156,7 @@ inline void GameplayState::enterArena(int a) {
     for (int d = 0; d < (int)level.doors.size(); ++d) { level.doors[d].locked = false; level.setDoorInstant(d, false); }
     shifts.reset(level);   // the sun back up, the lava back down, the platforms back to speed, the cage to the top
     boardHinted = liftRiding = false;
+    ward.clear(); conduitClock.reset(); wardenUid = -1; shifts.bossPulseOff();
     pen.clear(); scourgeAnnounced = false; rip = AnchorRip{}; downHinted = false;
     level.anchors = anchorsBuilt;   // every chain whole again
     for (size_t i = 0; i < level.anchors.size() && i < anchorBoxes.size(); ++i) level.walls[level.anchors[i].wall].box = anchorBoxes[i];
@@ -326,7 +327,7 @@ inline void GameplayState::handleDirectorEvents() {
             else if (ar.waves[ev.value][0].type == EnemyType::PENITENT)
                 pushBanner("THE PENITENT", "BREAK ITS CHAINS - JUMP THE LOW SWEEP, SLIDE UNDER THE HIGH", {1.f, 0.5f, 0.2f}, 4.5f);
             else
-                pushBanner("THE WARDEN", "DODGE THE VOLLEYS, JUMP THE SLAMS", {1.f, 0.2f, 0.65f}, 3.5f);
+                pushBanner("THE WARDEN", "CUT ITS CONDUITS - HIT THE CORE WHEN IT VENTS", {1.f, 0.2f, 0.65f}, 3.5f);
             audio.play("wave", 128, SoundGroup::UI); audio.play("explosion", 70, SoundGroup::UI); audio.duck(4.f, 0.4f);
             shake(0.6f, 0.06f);
             break;

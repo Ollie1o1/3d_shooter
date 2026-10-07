@@ -28,6 +28,8 @@
 #include "../src/GunKit.h"
 #include "../src/VoiceSynth.h"
 #include "../src/EnemyVoice.h"
+#include "../src/WardenHazards.h"
+#include "BossSim.h"
 #include <cstdio>
 #include <cstring>
 #include <limits>
@@ -209,7 +211,7 @@ int main() {
     {
         CHECK(L.arenas.size() == 5, "five arenas");
         // Act I as built before the Act II split: nothing added, nothing lost
-        CHECK(L.walls.size() == 252 && L.props.size() == 274 && L.neon.size() == 296 && L.shapes.size() == 0 &&
+        CHECK(L.walls.size() == 256 && L.props.size() == 274 && L.neon.size() == 296 && L.shapes.size() == 0 &&
               L.floors.size() == 13 && L.doors.size() == 8 && L.pads.size() == 29 && L.movers.size() == 13,
               "buildAct1 builds exactly what buildLevel did");
         CHECK(L.corridors.size() == 4, "four corridors join them");
@@ -1662,7 +1664,7 @@ int main() {
 
         float before = b.armorMult();
         b.stagger(b.staggerTime());
-        CHECK(before == 1.f && b.armorMult() == 1.5f && b.dashTimer == 0.f && b.attack == AttackKind::NONE,
+        CHECK(before == 1.f && b.armorMult() == 2.f && b.dashTimer == 0.f && b.attack == AttackKind::NONE,
               "a parried SOVEREIGN drops everything and takes extra damage");
         Enemy r(EnemyType::SOVEREIGN, C); r.spawnTimer = 0.f; r.state = EnemyState::ACTIVE;
         r.takeDamage(r.maxHealth * 0.55f);
@@ -1753,10 +1755,6 @@ int main() {
       CHECK(s.shots >= 7, "WARDEN fires volleys");
       CHECK(s.summons >= 1, "WARDEN summons adds");
       CHECK(!s.leftBounds, "WARDEN stays inside the arena"); }
-    { Enemy w(EnemyType::WARDEN, BOSS.bossSpawn);
-      w.update(Enemy::SPAWN_TIME + DT, worldFor(L, grid, BOSS.playerStart, BOSS));
-      w.takeDamage(w.maxHealth * 0.55f);
-      CHECK(w.enraged && w.ev.enraged, "WARDEN enrages below half health"); }
 
     // A Ripper starting behind the furnace in the Foundry has to go around it
     // (every time, not just with lucky dice: 20 runs with different seeds)
@@ -2940,6 +2938,301 @@ int main() {
             SfxMixer::Opts o; o.group = SoundGroup::ENEMY; o.role = cs[0].role; o.priority = cs[0].priority; o.floor = cs[0].floor;
             SoundHandle h = m.play(cs[0].name, o); sfxRender(m, 16);
             CHECK(m.isPlaying(h), "a kill is heard even when wind-ups fill every enemy voice");
+        }
+    }
+
+    // ---------------------------------------------------------------- the boss pass: the Sovereign, tuned
+    {
+        const LevelData& SL = L;
+        const Arena& SA = SL.arenas.back();   // the Sanctum
+        const glm::vec3 C = SA.bossSpawn;
+        // Every tell readable: on every difficulty, enraged and in the last stand
+        bool floors = true; float shortest = 9.f;
+        for (int lvl = 0; lvl < DIFFICULTY_LEVELS; ++lvl)
+            for (float hp : {1.f, 0.45f, 0.15f})
+                for (float dist : {3.f, 9.f, 20.f}) {
+                    Enemy s(EnemyType::SOVEREIGN, C + glm::vec3{0, 0, -dist});
+                    s.spawnTimer = 0.f; s.state = EnemyState::ACTIVE;
+                    EnemyWorld w = worldFor(SL, grid, C, SA); w.tune = &difficulty(lvl);
+                    s.health = s.maxHealth * hp; if (hp < 0.5f) s.enraged = true;
+                    for (int f = 0; f < 60 * 25 && s.alive; ++f) {
+                        w.playerFeet = C + glm::vec3{std::sin(f * 0.01f) * 6.f, 0, std::cos(f * 0.013f) * 6.f};
+                        w.playerEye = w.playerFeet + glm::vec3{0, 1.7f, 0};
+                        s.update(DT, w);
+                        if (s.ev.telegraphStarted) {
+                            float need = s.tellFollow ? Enemy::TELL_FLOOR_FOLLOW : Enemy::TELL_FLOOR;
+                            shortest = std::min(shortest, s.telegraphDuration);
+                            if (s.telegraphDuration < need - 1e-4f) floors = false;
+                        }
+                    }
+                }
+        std::printf("      sovereign's shortest tell: %.3f s\n", shortest);
+        CHECK(floors, "every Sovereign tell is at least 0.35 s (0.28 s inside a combo), on every difficulty, enraged or not");
+        // Every recovery is a real window
+        bool windows = true; float minRec = 9.f;
+        {
+            Enemy s(EnemyType::SOVEREIGN, C + glm::vec3{0, 0, -6}); s.spawnTimer = 0.f; s.state = EnemyState::ACTIVE; s.enraged = true;
+            EnemyWorld w = worldFor(SL, grid, C, SA); w.tune = &difficulty(DIFFICULTY_LEVELS - 1);
+            float prev = 0.f;
+            for (int f = 0; f < 60 * 40; ++f) {
+                s.update(DT, w);
+                if (s.recoverTimer > prev + 1e-4f && prev <= 0.f) { minRec = std::min(minRec, s.recoverTimer); windows &= s.recoverTimer >= Enemy::RECOVER_MIN - DT; }
+                prev = s.recoverTimer;
+            }
+        }
+        std::printf("      sovereign's shortest recovery: %.2f s\n", minRec);
+        CHECK(windows, "every Sovereign recovery leaves at least 0.8 s, enraged on the hardest difficulty");
+        // A parry: 3 s at x2
+        Enemy p(EnemyType::SOVEREIGN, C); p.spawnTimer = 0.f; p.state = EnemyState::ACTIVE;
+        p.stagger(p.staggerTime());
+        CHECK(std::fabs(p.staggerTimer - 3.f) < 1e-4f && p.armorMult() == 2.f, "a parried Sovereign is broken for 3 s and takes double");
+        // Phase changes: a breath before the next attack
+        auto pauseAfter = [&](float to) {
+            Enemy s(EnemyType::SOVEREIGN, C + glm::vec3{0, 0, -5}); s.spawnTimer = 0.f; s.state = EnemyState::ACTIVE;
+            EnemyWorld w = worldFor(SL, grid, C, SA);
+            if (to < 0.3f) { s.health = s.maxHealth * 0.3f; s.enraged = true; s.update(DT, w); }
+            for (int f = 0; f < 60 * 3 && !(s.attack == AttackKind::NONE && s.recoverTimer <= 0.f && s.dashTimer <= 0.f); ++f) s.update(DT, w);
+            s.takeDamage(s.health - s.maxHealth * to);
+            int started = 0;
+            for (int f = 0; f < 33; ++f) { s.update(DT, w); started += s.ev.telegraphStarted; }   // 0.55 s
+            return started;
+        };
+        CHECK(pauseAfter(0.49f) == 0 && pauseAfter(0.19f) == 0, "at 50 % and at 20 % the Sovereign starts nothing new for 0.6 s");
+    }
+
+    // ---------------------------------------------------------------- the boss pass: the Warden's conduits
+    {
+        const Arena& CORE = L.arenas[3];
+        int conduits = 0; bool onPillars = true;
+        for (const auto& a : L.anchors) {
+            if (a.kind != LevelData::ChainAnchor::CONDUIT) continue;
+            ++conduits;
+            const AABB& b = L.walls[a.wall].box;
+            float r = glm::length(glm::vec2(a.pos.x - L.reactorPos.x, a.pos.z - L.reactorPos.z));
+            onPillars &= inside(CORE.bounds, a.pos) && r > 15.f && r < 18.f && a.pos.y > 2.f && a.pos.y < 4.f &&
+                         a.pos.x >= b.min.x - 0.01f && a.pos.x <= b.max.x + 0.01f && a.hp == 250.f && a.maxHp == 250.f;
+        }
+        CHECK(conduits == 4 && onPillars, "four conduit nodes, 3 m up the pillars, facing the reactor, 250 hp each");
+        CHECK(L.anchorsAlive(LevelData::ChainAnchor::CONDUIT) == 4 && L.anchorsAlive() == 0, "conduits are counted apart from the Penitent's chains");
+        LevelData M = L;
+        int c0 = -1; for (int i = 0; i < (int)M.anchors.size(); ++i) if (M.anchors[i].kind == LevelData::ChainAnchor::CONDUIT) { c0 = i; break; }
+        AABB home = M.walls[M.anchors[c0].wall].box;
+        bool cut = M.damageAnchor(c0, 300.f);
+        bool parked = M.walls[M.anchors[c0].wall].box.max.y < -100.f;
+        M.restoreAnchor(c0);
+        CHECK(cut && parked && M.anchors[c0].alive && M.anchors[c0].hp == 250.f && M.walls[M.anchors[c0].wall].box.min == home.min,
+              "a cut conduit's node is parked, and restoring it puts it back whole");
+        ConduitClock k; k.allCut();
+        int at19 = 0, at21 = 0, at26 = 0, at36 = 0;
+        for (int f = 0; f < 60 * 37; ++f) { int n = k.update(DT); float t = (f + 1) * DT;
+            if (std::fabs(t - 19.f) < DT / 2) at19 = n; if (std::fabs(t - 21.f) < DT / 2) at21 = n;
+            if (std::fabs(t - 26.f) < DT / 2) at26 = n; if (std::fabs(t - 36.f) < DT / 2) at36 = n; }
+        CHECK(at19 == 0 && at21 == 1 && at26 == 2 && at36 == 4, "conduits re-attach one at a time, 5 s apart, from 20 s after the last is cut");
+        ConduitClock idle;
+        CHECK(idle.update(1.f) == 0, "nothing re-attaches until all four have been cut");
+    }
+
+    // ---------------------------------------------------------------- the boss pass: the Warden's mind
+    {
+        auto warden = [&](glm::vec3 at) { Enemy w(EnemyType::WARDEN, at); w.spawnTimer = 0.f; w.state = EnemyState::ACTIVE; return w; };
+        auto core = [&](glm::vec3 feet) { EnemyWorld w = worldFor(L, grid, feet, BOSS); w.reactor = L.reactorPos; w.hasReactor = true; return w; };
+        const glm::vec3 R = L.reactorPos;
+        CHECK(statsOf(EnemyType::WARDEN).health == 3600.f, "the Warden has 3600 health");
+        // Damage: x0.5 while fed, x1 cut off, the core x3 in a vent, x2 in meltdown
+        Enemy w = warden(R + glm::vec3{12, 0, 0}); w.conduitsLeft = 2;
+        float fed = w.armorMult(); w.conduitsLeft = 0; float cut = w.armorMult();
+        w.ventTimer = 1.f; float vent = w.woundMult(); bool open = w.coreOpen(); w.ventTimer = 0.f; bool shut = !w.coreOpen();
+        w.conduitsLeft = 2; w.ventTimer = 1.f; float ventFed = w.armorMult(); w.ventTimer = 0.f;
+        w.wardenPhase = 3; float melt = w.woundMult(); bool meltOpen = w.coreOpen();
+        CHECK(fed == 0.5f && cut == 1.f && ventFed == 1.f, "fed by a conduit it takes half (a vent drops the shield); cut off, full");
+        CHECK(open && shut && vent == 3.f && melt == 2.f && meltOpen, "its core: x3 in a vent, x2 open all through the meltdown");
+        // Phases by health
+        Enemy p = warden(R + glm::vec3{12, 0, 0}); EnemyWorld cw = core(R + glm::vec3{0, 0, 14});
+        p.update(DT, cw); p.health = p.maxHealth * 0.59f; p.update(DT, cw);
+        bool two = p.wardenPhase == 2 && p.ev.wPhase == 2 && p.ev.enraged;
+        for (int f = 0; f < 60 * 12 && !p.atReactor; ++f) p.update(DT, cw);
+        float atR = glm::length(glm::vec2(p.position.x - R.x, p.position.z - R.z));
+        bool planted = p.atReactor;
+        p.health = p.maxHealth * 0.24f; p.update(DT, cw);
+        bool three = p.wardenPhase == 3 && p.ev.wPhase == 3 && std::fabs(p.meltClock - Enemy::W_MELT_TIME) < 0.1f && !p.atReactor;
+        CHECK(two && planted && atR < 10.f, "at 60 % it walks to the reactor and plants itself there");
+        CHECK(three, "at 25 % it tears free into the meltdown, its clock at 40 s");
+        // Phase 1: vents after every third attack
+        Enemy v = warden(R + glm::vec3{14, 0, 0}); EnemyWorld vw = core(R + glm::vec3{-14, 0, 0});
+        int attacks = 0, vents = 0, volleys = 0; bool parryable = false;
+        for (int f = 0; f < 60 * 40; ++f) {
+            v.update(DT, vw);
+            if (v.ev.telegraphStarted) { ++attacks; vents += v.attack == AttackKind::WVENT; }
+            volleys += v.ev.shots > 0; parryable |= v.ev.shots > 0 && v.ev.shotParry == 150.f;
+        }
+        CHECK(vents >= 2 && vents * 4 <= attacks + 4, "it vents after every third attack");
+        CHECK(volleys >= 2 && parryable, "its volleys can be parried back for 150");
+        // Phase 2: the lance, then a vent; the seeker only for a player away or hidden
+        Enemy l = warden(R + glm::vec3{6.5f, 0, 0}); l.wardenPhase = 2; l.atReactor = true; l.reactorSpot = l.position;
+        EnemyWorld lw = core(R + glm::vec3{15, 0, -4});   // its side of the reactor: close and in sight
+        bool lanced = false, ventAfter = false, seekClose = false;
+        for (int f = 0; f < 60 * 20; ++f) {
+            l.update(DT, lw);
+            lanced |= l.ev.wLance; seekClose |= l.ev.wSeeker;
+            if (lanced && l.ev.wVent) ventAfter = true;
+        }
+        CHECK(lanced && ventAfter, "overloaded, it sweeps a lance and vents when it ends");
+        Enemy s = warden(R + glm::vec3{6.5f, 0, 0}); s.wardenPhase = 2; s.atReactor = true; s.reactorSpot = s.position;
+        EnemyWorld far = core(R + glm::vec3{0, 0, 34}); far.walls = nullptr; far.wallCount = 0;   // out in the open, but past 28 m
+        float firstSeek = -1.f;
+        for (int f = 0; f < 60 * 8 && firstSeek < 0.f; ++f) { s.update(DT, far); if (s.ev.wSeeker) firstSeek = (f + 1) * DT; }
+        CHECK(!seekClose, "no seeker at a player close by and in sight");
+        CHECK(firstSeek >= Enemy::W_SEEK_AFTER - 0.05f && firstSeek < Enemy::W_SEEK_AFTER + 1.5f, "keep past 28 m for 4 s and a seeker comes for you");
+        // Phase 3: meltdown never kills, the lunge can be punched
+        Enemy m = warden(R + glm::vec3{8, 0, 0}); EnemyWorld mw = core(R + glm::vec3{-8, 0, 0});
+        m.update(DT, mw); m.health = m.maxHealth * 0.2f; m.update(DT, mw);
+        bool det = false; float hpAfter = 0.f;
+        for (int f = 0; f < 60 * 45 && !det; ++f) { m.update(DT, mw); if (m.ev.wDetonate) { det = true; hpAfter = m.health / m.maxHealth; } }
+        CHECK(det && std::fabs(hpAfter - Enemy::W_PHASE3) < 0.01f && m.wardenPhase == 3 && m.meltClock > 38.f,
+              "the meltdown goes off at 0 and it heals back to 25 % with the clock reset");
+        Enemy u = warden(R + glm::vec3{12, 0, 0}); u.wardenPhase = 3; u.meltClock = 40.f;
+        EnemyWorld uw = core(R + glm::vec3{-6, 0, 0});
+        bool window = false;
+        for (int f = 0; f < 60 * 20 && !window; ++f) { u.update(DT, uw); if (u.attack == AttackKind::WLUNGE && u.parryWindow()) window = true; }
+        u.stagger(u.staggerTime());
+        CHECK(window && std::fabs(u.staggerTimer - 2.f) < 1e-4f && u.armorMult() == 2.f, "its lunge can be punched in the last 0.25 s: staggered 2 s, double damage");
+        // Tell floors hold for it too
+        bool floors = true;
+        for (int lvl = 0; lvl < DIFFICULTY_LEVELS; ++lvl)
+            for (int ph = 1; ph <= 3; ++ph) {
+                Enemy t = warden(R + glm::vec3{10, 0, 0}); t.wardenPhase = ph; if (ph == 2) { t.atReactor = true; t.reactorSpot = t.position; }
+                if (ph == 3) t.meltClock = 40.f;
+                EnemyWorld tw = core(R + glm::vec3{-9, 0, 0}); tw.tune = &difficulty(lvl);
+                for (int f = 0; f < 60 * 20; ++f) { t.update(DT, tw); if (t.ev.telegraphStarted && t.telegraphDuration < Enemy::TELL_FLOOR - 1e-4f) floors = false; }
+            }
+        CHECK(floors, "every Warden tell is at least 0.35 s, in every phase, on every difficulty");
+    }
+
+    // ---------------------------------------------------------------- the boss pass: the Warden's hazards
+    {
+        const glm::vec3 O{0.f, 0.f, 0.f};
+        // The lance sweeps 120 degrees at 35 a second; a pillar between you stops it
+        WardenHazards h; h.addLance(O + glm::vec3{0, 3.f, 0}, 0.f, 1.f);   // from facing +Z, sweeping toward +X
+        float firstHit = -1.f, total = 0.f;
+        glm::vec3 feet{std::sin(0.7f) * 12.f, 0.f, std::cos(0.7f) * 12.f};   // 40 degrees round, 12 m out
+        for (int f = 0; f < 60 * 5; ++f) for (auto& x : h.update(DT, feet, 1.8f, nullptr, 0, O + glm::vec3{0, 0, 30}, false)) { if (firstHit < 0.f) firstHit = (f + 1) * DT; total += x.damage; }
+        CHECK(firstHit > 1.0f && firstHit < 1.35f && total > 5.f && total < 15.f, "the lance reaches you as its sweep passes (35 degrees a second) and burns while it's on you");
+        std::vector<Wall> pillar{Wall{LevelBuilder::aabb(std::sin(0.7f) * 6.f - 1.f, 0, std::cos(0.7f) * 6.f - 1.f, std::sin(0.7f) * 6.f + 1.f, 7, std::cos(0.7f) * 6.f + 1.f), {}}};
+        WardenHazards hb; hb.addLance(O + glm::vec3{0, 3.f, 0}, 0.f, 1.f);
+        float blocked = 0.f;
+        for (int f = 0; f < 60 * 5; ++f) for (auto& x : hb.update(DT, feet, 1.8f, pillar.data(), 1, O + glm::vec3{0, 0, 30}, false)) blocked += x.damage;
+        CHECK(blocked == 0.f, "a pillar between you and the Warden stops the lance");
+        // Review focus 4: a player up on a walkway passes over the beam's band
+        WardenHazards hw; hw.addLance(O + glm::vec3{0, 3.f, 0}, 0.f, 1.f);
+        float high = 0.f;
+        for (int f = 0; f < 60 * 5; ++f) for (auto& x : hw.update(DT, feet + glm::vec3{0, 7.f, 0}, 1.8f, nullptr, 0, O + glm::vec3{0, 0, 30}, false)) high += x.damage;
+        CHECK(high == 0.f, "a lance passes under a player on a walkway 7 m up");
+        CHECK(std::fabs(WardenHazards::LANCE_TIME - Enemy::W_LANCE_TIME) < 1e-4f, "the lance lasts as long as the Warden stands for it");
+        // The seeker: 1 s of warning, then a burst where you stood
+        WardenHazards s; s.addSeeker(glm::vec3{5, 0, 5});
+        int early = 0, hits = 0, missed = 0;
+        for (int f = 0; f < 50; ++f) early += (int)s.update(DT, glm::vec3{5, 0, 5}, 1.8f, nullptr, 0, O, false).size();
+        for (int f = 0; f < 30; ++f) hits += (int)s.update(DT, glm::vec3{5, 0, 5}, 1.8f, nullptr, 0, O, false).size();
+        WardenHazards s2; s2.addSeeker(glm::vec3{5, 0, 5});
+        for (int f = 0; f < 90; ++f) missed += (int)s2.update(DT, glm::vec3{10, 0, 5}, 1.8f, nullptr, 0, O, false).size();
+        CHECK(early == 0 && hits == 1 && missed == 0, "a seeker bursts after its 1 s marker, on whoever stayed in it");
+        // Steam: 15/s within 4 m of an open vent
+        WardenHazards st; float steam = 0.f, cold = 0.f;
+        for (int f = 0; f < 60; ++f) for (auto& x : st.update(DT, glm::vec3{3, 0, 0}, 1.8f, nullptr, 0, O, true)) steam += x.damage;
+        for (int f = 0; f < 60; ++f) for (auto& x : st.update(DT, glm::vec3{6, 0, 0}, 1.8f, nullptr, 0, O, true)) cold += x.damage;
+        CHECK(std::fabs(steam - 15.f) < 4.f && cold == 0.f, "an open vent scalds within 4 m (15/s), not past it");
+        st.addLance(O, 0.f, 1.f); st.addSeeker(O); st.clear();
+        CHECK(st.lances.empty() && st.seekers.empty(), "clear() drops every lance and seeker (a retry)");
+        // The rings, driven by the boss: every 3.5 s from where it says, off again when it's done
+        LevelData RL = L; ArenaShifts sh; sh.capture(RL); sh.reset(RL);
+        sh.bossPulse(3.5f, RL.reactorPos);
+        int rings = 0;
+        for (int f = 0; f < 60 * 8; ++f) { sh.update(DT, RL, 3, true); rings += sh.pulseFired; }
+        sh.bossPulseOff();
+        int after = 0;
+        for (int f = 0; f < 60 * 8; ++f) { sh.update(DT, RL, 3, true); after += sh.pulseFired; }
+        CHECK(rings == 2 && after == 0, "the Warden drives the reactor's rings every 3.5 s, and they stop when it says");
+        LevelData NR = L; NR.hasReactor = false; ArenaShifts sn; sn.capture(NR); sn.reset(NR);
+        sn.bossPulse(5.f, glm::vec3{1, 0, -240});
+        int nr = 0; for (int f = 0; f < 60 * 6; ++f) { sn.update(DT, NR, 0, true); nr += sn.pulseFired; }
+        CHECK(nr == 1, "with no reactor, the rings come off the Warden itself");
+    }
+
+    // ---------------------------------------------------------------- the boss pass: the Warden in the game
+    {
+        // Review focus 5: a parried orb steers into a living Warden's core
+        glm::vec3 pos{0, 2, 0}, vel{20, 0, 0}, target{0, 3, 20};
+        for (int f = 0; f < 60; ++f) { vel = steerParried(pos, vel, target, DT); pos += vel * DT; }
+        CHECK(glm::length(pos - target) < 2.5f && std::fabs(glm::length(vel) - 20.f) < 0.1f, "a parried orb curves into the Warden's core, keeping its speed");
+        // Review focus 1: conduits are only targets while the Warden is alive and feeding
+        CHECK(!conduitShootable(false, 1) && conduitShootable(true, 1) && !conduitShootable(true, 2), "conduits can only be cut while the Warden is alive and feeding");
+        // Its core: in front of its chest, only from the front
+        Enemy w(EnemyType::WARDEN, {0, 0, 0}); w.spawnTimer = 0.f; w.state = EnemyState::ACTIVE; w.yaw = 0.f; w.ventTimer = 1.f;
+        AABB cb; bool has = coreBox(w, cb);
+        float tf = 0.f, tb = 0.f;
+        bool front = woundShot(w, glm::vec3{0, (cb.min.y + cb.max.y) * 0.5f, 10.f}, glm::vec3{0, 0, -1}, tf);
+        bool back = woundShot(w, glm::vec3{0, (cb.min.y + cb.max.y) * 0.5f, -10.f}, glm::vec3{0, 0, 1}, tb);
+        w.ventTimer = 0.f; AABB shut; bool closed = !coreBox(w, shut);
+        CHECK(has && (cb.min.z + cb.max.z) * 0.5f > 0.3f && front && !back && closed, "the Warden's core opens on its chest and is hit from the front");
+    }
+
+    // ---------------------------------------------------------------- the boss pass: no cheese, and fights that end
+    {
+        const Arena& CORE = L.arenas[3]; const Arena& SAN = L.arenas.back();
+        auto punished = [&](const Arena& a, EnemyType t, BossSim::Policy p, float hpFrac) {
+            BossSim s(L, grid, a, t, p);
+            s.boss.health = s.boss.maxHealth * hpFrac;
+            for (int f = 0; f < 60 * 8 && s.damageTaken <= 0.f; ++f) s.step(DT);
+            return s.damageTaken > 0.f ? s.t : 99.f;
+        };
+        const char* names[] = {"corner-camper", "perch-sitter", "edge-kiter", "ranged-only"};
+        bool ok = true;
+        for (int p = 0; p < 4; ++p) {
+            float w1 = punished(CORE, EnemyType::WARDEN, (BossSim::Policy)p, 1.f);
+            float w2 = punished(CORE, EnemyType::WARDEN, (BossSim::Policy)p, 0.5f);
+            float sv = punished(SAN, EnemyType::SOVEREIGN, (BossSim::Policy)p, 1.f);
+            std::printf("      %-14s hit after: warden %.1f s, warden overloaded %.1f s, sovereign %.1f s\n", names[p], w1, w2, sv);
+            ok &= w1 <= 8.f && w2 <= 8.f && sv <= 8.f;
+        }
+        CHECK(ok, "every cheese (corner, perch, edge-kiting, ranged-only) is punished within 8 s by both bosses");
+        auto killTime = [&](const Arena& a, EnemyType t) {
+            BossSim s(L, grid, a, t, BossSim::SOLID);
+            for (int f = 0; f < 60 * 400 && s.bossAlive(); ++f) s.step(DT);
+            return s.bossAlive() ? 999.f : s.t;
+        };
+        float kw = killTime(CORE, EnemyType::WARDEN), ks = killTime(SAN, EnemyType::SOVEREIGN);
+        std::printf("      solid player's kill time: warden %.0f s, sovereign %.0f s\n", kw, ks);
+        // The windows are what the approved design gives this scripted player (who
+        // parries every other window and dodges perfectly); real fights run longer
+        CHECK(kw >= 75.f && kw <= 120.f, "a solid player kills the Warden in 75-120 s");
+        CHECK(ks >= 100.f && ks <= 150.f, "a solid player kills the Sovereign in 100-150 s");
+    }
+
+    // ---------------------------------------------------------------- review fixes: the boss pass
+    {
+        const glm::vec3 R = L.reactorPos;
+        EnemyWorld cw = worldFor(L, grid, R + glm::vec3{-9, 0, 0}, BOSS); cw.reactor = R; cw.hasReactor = true;
+        {   // the meltdown always winds up, even when another attack lands the same tick
+            Enemy m(EnemyType::WARDEN, R + glm::vec3{9, 0, 0}); m.spawnTimer = 0.f; m.state = EnemyState::ACTIVE;
+            m.wardenPhase = 3; m.health = m.maxHealth * 0.2f;
+            m.attack = AttackKind::VOLLEY; m.telegraphTimer = DT * 0.5f; m.telegraphDuration = 1.f;
+            m.meltClock = 1.5f + DT * 0.5f;
+            m.update(DT, cw);
+            bool noBlast = !m.ev.wDetonate, volleyed = m.ev.shots > 0;
+            m.update(DT, cw);
+            CHECK(noBlast && volleyed && m.attack == AttackKind::DETONATE && m.telegraphTimer > 1.f,
+                  "the meltdown never goes off unannounced: the attack landing that tick lands, then the meltdown winds up");
+        }
+        {   // the lunge can be punched as it reaches you
+            Enemy u(EnemyType::WARDEN, R + glm::vec3{9, 0, 0}); u.spawnTimer = 0.f; u.state = EnemyState::ACTIVE;
+            u.wardenPhase = 3; u.meltClock = 40.f; u.health = u.maxHealth * 0.2f;
+            bool punchable = false;
+            for (int f = 0; f < 60 * 15 && !punchable; ++f) {
+                u.update(DT, cw);
+                glm::vec3 mid = u.position + glm::vec3{0, u.height() * 0.5f, 0};
+                if (u.parryWindow() && glm::length(mid - cw.playerEye) < 5.5f) punchable = true;
+            }
+            CHECK(punchable, "a lunge can be punched within the parry's reach as it arrives");
         }
     }
 

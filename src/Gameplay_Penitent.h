@@ -86,6 +86,7 @@ inline void GameplayState::onPenitentEvents(Enemy& e, const EnemyEvents& ev) {
 }
 
 inline void GameplayState::breakAnchor(int i, bool ripped) {
+    if (level.anchors[i].kind == LevelData::ChainAnchor::CONDUIT) { cutConduit(i); return; }
     const glm::vec3 p = level.anchors[i].pos;
     fx.spawnBurst(p, {1.2f, 0.6f, 0.25f}, 40, 9.f, 0.7f, 6.f);
     audio.playAt("clank", p, 128, SoundGroup::ENEMY, true, 0.5f);
@@ -99,6 +100,7 @@ inline void GameplayState::breakAnchor(int i, bool ripped) {
 inline bool GameplayState::hitAnchor(glm::vec3 origin, glm::vec3 dir, float wallT, float dmg) {
     int i = level.anchorAlong(origin, dir, wallT);
     if (i < 0) return false;
+    if (level.anchors[i].kind == LevelData::ChainAnchor::CONDUIT && !conduitShootable(wardenAlive(), wardenPhase())) return false;
     fx.spawnHitSparks(origin + dir * wallT, {1.2f, 0.7f, 0.3f});
     if (level.damageAnchor(i, dmg)) breakAnchor(i, false);
     return true;
@@ -112,7 +114,7 @@ inline void GameplayState::updatePenitent(float dt) {
     int hooked = -1;
     if (grapple.active)
         for (int i = 0; i < (int)level.anchors.size(); ++i)
-            if (level.anchors[i].alive && grapple.hookedWall == level.anchors[i].wall) hooked = i;
+            if (level.anchors[i].alive && level.anchors[i].kind == LevelData::ChainAnchor::CHAIN && grapple.hookedWall == level.anchors[i].wall) hooked = i;
     float rd = rip.anchor >= 0 ? glm::length(player.camera.position - level.anchors[rip.anchor].pos) : 1e9f;
     int ripped = rip.update(dt, hooked, grapple.active, rd);
     if (ripped >= 0 && level.damageAnchor(ripped, 1e9f)) breakAnchor(ripped, true);
@@ -144,7 +146,7 @@ inline void GameplayState::gatherPenitentBoxes(std::vector<BoxInstance>& out) {
     for (auto& e : enemies) if (e.alive && e.type == EnemyType::PENITENT) boss = &e;
     // Anchors: a glowing sigil on an iron block; chains from its collar to each
     for (const auto& a : level.anchors) {
-        if (!a.alive) continue;
+        if (!a.alive || a.kind != LevelData::ChainAnchor::CHAIN) continue;
         float pulse = 0.7f + 0.3f * std::sin(t * 3.f + a.pos.x);
         push(out, T(a.pos) * S(glm::vec3{1.8f}), {0.1f, 0.09f, 0.1f}, amber * 0.2f);
         push(out, T(a.pos) * S(glm::vec3{1.0f, 1.0f, 1.9f}), {0.2f, 0.1f, 0.05f}, amber * (1.2f * pulse));

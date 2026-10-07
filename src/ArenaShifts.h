@@ -60,7 +60,10 @@ public:
     std::vector<Ring> rings;         // OVERLOAD rings in flight
     float pulseClock = 0.f;          // counts down to the next ring
     bool  overloading = false;
-    bool  pulseFired = false;        // this update: a ring went out (for its sound)
+    bool  pulseFired = false;
+    bool  bossDriven = false;        // THE WARDEN is driving the rings (bossPulse)
+    float pulseEvery = PULSE_EVERY;
+    glm::vec3 bossCentre{0.f};        // this update: a ring went out (for its sound)
     bool  lavaStarted = false;       // this update: the lava began to rise (for its banner)
     bool  floodStarted = false;      // this update: the water began to rise (banner, rumble)
     // SOLAR: the flare's arms (all on one cycle, spread evenly round the sun)
@@ -129,7 +132,7 @@ public:
             }
         }
         for (int i = 0; i < (int)L.hazards.size(); ++i) L.hazards[i].box = baseHazard[i];
-        alarm = 0.f; rings.clear(); overloading = false;
+        alarm = 0.f; rings.clear(); overloading = false; bossPulseOff();
         flareArms = 1; flareAngle = 0.f; flareClock = 0.f;
         for (int i = 0; i < (int)L.water.size() && i < (int)baseWater.size(); ++i) {
             L.water[i].level = waterTarget[i] = baseWater[i];
@@ -177,6 +180,14 @@ public:
     }
     // The wave's goal is met (or it was cleared): an overload ends
     void onWaveOver() { overloading = false; }
+    // THE WARDEN feeding on the reactor (or, with none, on itself): rings every
+    // `every` seconds from `centre` while it lives; bossPulseOff() stops them
+    void bossPulse(float every, glm::vec3 centre) {
+        if (!bossDriven) pulseClock = every;
+        bossDriven = true; pulseEvery = every; bossCentre = centre;
+    }
+    void bossPulseOff() { bossDriven = false; pulseEvery = PULSE_EVERY; }
+
 
     // fighting: the overload only pulses mid-wave
     void update(float dt, LevelData& L, int arena, bool fighting) {
@@ -212,12 +223,14 @@ public:
             if (L.water[i].level == waterTarget[i]) rising[i] = false;
         }
         // Overload rings
-        bool live = overloading && fighting && L.arenas[arena].shift == ArenaShift::OVERLOAD && L.hasReactor;
+        bool live = (overloading && fighting && arena >= 0 && arena < (int)L.arenas.size() &&
+                     L.arenas[arena].shift == ArenaShift::OVERLOAD && L.hasReactor) || (bossDriven && fighting);
         if (live) {
             pulseClock -= dt;
             if (pulseClock <= 0.f) {
-                pulseClock += PULSE_EVERY;
-                glm::vec3 c = L.reactorPos; c.y = L.arenas[arena].playerStart.y;
+                pulseClock += bossDriven ? pulseEvery : PULSE_EVERY;
+                glm::vec3 c = bossDriven ? bossCentre : L.reactorPos;
+                c.y = bossDriven ? bossCentre.y : L.arenas[arena].playerStart.y;
                 rings.push_back({c, 1.5f, 1.5f});
                 pulseFired = true;
             }
@@ -228,7 +241,7 @@ public:
 
     // 0..1: how close the next ring is (the reactor flares as it nears 1)
     float warning() const {
-        if (!overloading) return 0.f;
+        if (!overloading && !bossDriven) return 0.f;
         return std::clamp(1.f - pulseClock / PULSE_WARN, 0.f, 1.f);
     }
 

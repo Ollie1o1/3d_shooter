@@ -8,6 +8,7 @@
 #include "UIRenderer.h"
 #include "Enemy.h"
 #include "EnemyVoice.h"
+#include "WardenHazards.h"
 #include "EnemyModel.h"
 #include "BoxRenderer.h"
 #include "Projectile.h"
@@ -390,6 +391,18 @@ public:
     VoiceIn voiceIn(const Enemy& e, const EnemyEvents* ev) const;
     void playVoice(const VoiceCue& c);
 
+    // THE WARDEN (Gameplay_Warden.h): its lance, seekers and steam; its conduits' clock
+    WardenHazards ward;
+    ConduitClock  conduitClock;
+    int  wardenUid = -1;            // the Warden whose conduits were last made whole
+    void onWardenEvents(Enemy& e, const EnemyEvents& ev);
+    void updateWarden(float dt);
+    void cutConduit(int i);
+    void gatherWardenBoxes(std::vector<BoxInstance>& out);
+    Enemy* warden();
+    bool wardenAlive() { return warden() != nullptr; }
+    int  wardenPhase() { Enemy* w = warden(); return w ? w->wardenPhase : 0; }
+
     // THE PENITENT (Gameplay_Penitent.h): its hazards, its chains' anchors
     PenitentHazards pen;
     AnchorRip rip;                  // hooking an anchor with the grapple (PenitentHazards.h)
@@ -667,3 +680,4 @@ public:
 #include "Gameplay_Shifts.h"
 #include "Gameplay_Sovereign.h"
 #include "Gameplay_Penitent.h"
+#include "Gameplay_Warden.h"

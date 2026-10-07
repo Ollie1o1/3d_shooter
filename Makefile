@@ -67,11 +67,11 @@ HEADERS := src/gl.h \
            src/Camera.h src/Player.h src/Mesh.h src/ShaderProgram.h \
            src/GameState.h src/MenuState.h src/GameplayState.h \
            src/Gameplay_Flow.h src/Gameplay_Tick.h src/Gameplay_Combat.h \
-           src/Gameplay_Menus.h src/Gameplay_Render.h src/Gameplay_HUD.h src/Gameplay_Dev.h src/WorldMesh.h src/WorldGeometry.h src/Vertex.h src/Effects.h src/ArenaShifts.h src/Gameplay_Shifts.h src/Gameplay_Sovereign.h src/Gameplay_Penitent.h src/SovereignHazards.h src/PenitentHazards.h src/Shapes.h src/Score.h src/Daily.h src/EndlessWaves.h \
-           src/Enemy.h src/EnemyPenitent.h src/EnemyModel.h src/BoxRenderer.h src/WaveDirector.h \
+           src/Gameplay_Menus.h src/Gameplay_Render.h src/Gameplay_HUD.h src/Gameplay_Dev.h src/WorldMesh.h src/WorldGeometry.h src/Vertex.h src/Effects.h src/ArenaShifts.h src/Gameplay_Shifts.h src/Gameplay_Sovereign.h src/Gameplay_Penitent.h src/Gameplay_Warden.h src/SovereignHazards.h src/PenitentHazards.h src/Shapes.h src/Score.h src/Daily.h src/EndlessWaves.h \
+           src/Enemy.h src/EnemyPenitent.h src/EnemyWarden.h src/EnemyModel.h src/BoxRenderer.h src/WaveDirector.h \
            src/Projectile.h src/GrappleHook.h \
            src/StyleSystem.h src/UIRenderer.h src/PostProcess.h \
-           src/Level.h src/LevelGauntlet.h src/LevelAct2.h src/AudioSystem.h src/GunMotion.h src/GunKit.h src/AudioTypes.h src/SfxMixer.h src/MixTable.h src/VoiceTable.h src/VoiceSynth.h src/EnemyVoice.h src/ViewModel.h src/Interactable.h \
+           src/Level.h src/LevelGauntlet.h src/LevelAct2.h src/AudioSystem.h src/GunMotion.h src/GunKit.h src/AudioTypes.h src/SfxMixer.h src/MixTable.h src/VoiceTable.h src/VoiceSynth.h src/EnemyVoice.h src/WardenHazards.h src/ViewModel.h src/Interactable.h \
            src/Settings.h src/SettingsMenu.h src/Persist.h src/PixelFont.h src/UIBatch.h \
            src/Weapons.h src/Progression.h src/MouseFilter.h src/Difficulty.h src/MusicSynth.h src/Display.h
 
@@ -88,12 +88,12 @@ run: all
 # Headless tests — no window or GL context needed: player physics, plus the
 # enemy AI, wave director, level data, weapons, XP and the mouse filter,
 # driven through simulated ARENA and FAST runs
-test: tests/test_physics.cpp tests/test_game.cpp src/Player.h src/Camera.h \
-      src/Enemy.h src/EnemyPenitent.h src/EnemyModel.h src/Level.h src/LevelGauntlet.h src/LevelAct2.h src/WaveDirector.h \
+test: tests/test_physics.cpp tests/test_game.cpp tests/BossSim.h src/Player.h src/Camera.h \
+      src/Enemy.h src/EnemyPenitent.h src/EnemyWarden.h src/EnemyModel.h src/Level.h src/LevelGauntlet.h src/LevelAct2.h src/WaveDirector.h \
       src/Weapons.h src/Progression.h src/MouseFilter.h src/Persist.h src/Difficulty.h src/MusicSynth.h \
       src/StyleSystem.h src/Projectile.h src/ArenaShifts.h src/Score.h src/Daily.h src/EndlessWaves.h \
       src/AudioTypes.h src/SfxMixer.h src/PenitentHazards.h src/GunMotion.h src/GunKit.h \
-      src/MixTable.h src/VoiceTable.h src/VoiceSynth.h src/EnemyVoice.h
+      src/MixTable.h src/VoiceTable.h src/VoiceSynth.h src/EnemyVoice.h src/WardenHazards.h
 	$(CXX) $(CXXFLAGS) tests/test_physics.cpp -o tests/test_physics $(STDLIB)
 	$(CXX) $(CXXFLAGS) tests/test_game.cpp -o tests/test_game $(STDLIB)
 	./tests/test_physics

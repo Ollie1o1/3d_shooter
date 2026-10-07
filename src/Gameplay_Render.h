@@ -24,6 +24,7 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
     gatherShiftBoxes(out);
     gatherSovereignBoxes(out);
     gatherPenitentBoxes(out);
+    gatherWardenBoxes(out);
 
     // HOLD: a ring of light on the ground; the lit arc is how far it's held.
     // Cyan while you hold it, red when an enemy stands in it.

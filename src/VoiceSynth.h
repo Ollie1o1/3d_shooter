@@ -370,6 +370,20 @@ inline Buf tellV(EnemyType t, AttackKind a, const Profile& p, Rng& r) {
             for (int k = 0; k < 3; ++k)
                 add(out, sing(d / 3.f, f, 1.f + 0.1f * k, 1.f + 0.1f * k, k % 2 ? Vowel::AH : Vowel::OH, p, r), 1.f, k * d / 3.f);
             break;
+        // THE WARDEN
+        case AttackKind::WVENT:     // plates opening: a hiss rising, the gears letting go
+            add(out, vent(d, 2500.f, r, d * 0.7f, 0.05f)); add(out, metal(0.3f, p.bodyHz * 3.f, r, 10.f), 0.6f, d * 0.5f); break;
+        case AttackKind::LANCE:     // the chest gathering a beam: a whine climbing over the choir
+            add(out, servo(d, 400.f, 2000.f, r, d * 0.8f, 0.03f), 0.7f);
+            add(out, choir(d, f, f * 1.5f, p.vowel, p.voices, p.formant, r, d * 0.6f, 0.05f), 0.6f); break;
+        case AttackKind::SEEKER:    // a ping and a low chord: something is coming for you
+            add(out, beep(1600.f, 0.06f)); add(out, beep(1600.f, 0.06f), 1.f, 0.25f);
+            add(out, chord(d, f, p, r, 1.f, 1.2f, 1.5f), 0.6f); break;
+        case AttackKind::WLUNGE:    // a groan dragged forward
+            add(out, choir(d, f * 1.1f, f * 0.7f, Vowel::UH, p.voices, p.formant, r, 0.05f, 0.1f, 0.3f));
+            add(out, grind(d, 25.f, 250.f, r), 0.6f); break;
+        case AttackKind::DETONATE:  // the meltdown: a siren racing up, the choir swelling
+            add(out, siren(d, 400.f, 1600.f)); add(out, choir(d, f * 0.7f, f * 1.4f, p.vowel, 6, p.formant, r, d * 0.8f, 0.05f), 0.7f); break;
         default: add(out, choir(d, f, f * 1.2f, p.vowel, p.voices, p.formant, r, d * 0.6f, 0.05f)); break;
     }
     out.resize(N(d));

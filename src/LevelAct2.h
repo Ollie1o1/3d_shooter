@@ -558,7 +558,7 @@ inline void buildDescent(LevelBuilder& B) {
         vec3 p = C + vec3{std::cos(yaw) * (RW - 1.0f), PIT + h, std::sin(yaw) * (RW - 1.0f)};
         int w = wall(p.x - 0.9f, p.y - 0.9f, p.z - 0.9f, p.x + 0.9f, p.y + 0.9f, p.z + 0.9f, ironDark);
         L.walls[w].hidden = true;                                                     // drawn live (glow, breaking)
-        L.anchors.push_back({w, p, 400.f, true});
+        L.addAnchor(w, p, 400.f, LevelData::ChainAnchor::CHAIN);
     }
     B.kit(true).curve({C.x, 0.f, C.z}, 15.5f, 0.f, 6.2831853f, PIT + 0.02f, PIT + 0.08f, 0.15f, blood, 48);   // a red ring round the dock
     for (int k = 0; k < 9; ++k) {                                                     // rubble round the edge

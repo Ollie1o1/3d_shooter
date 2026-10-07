@@ -25,6 +25,7 @@ struct Projectile {
     bool      parried    = false;  // sent back by the player: ignores armor
     int       owner      = -1;     // uid of the enemy that fired it
     float     parryDamage = 0.f;   // > 0: what it does when parried back (else 60, or 400 heavy)
+    int       homeOn     = -1;     // uid: a parried orb steering into the WARDEN's core
 };
 
 class ProjectileSystem {
@@ -56,6 +57,7 @@ public:
                 p.parried     = false;
                 p.owner       = -1;
                 p.parryDamage = 0.f;
+                p.homeOn      = -1;
                 return &p;
             }
         }

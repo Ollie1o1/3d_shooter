@@ -123,7 +123,21 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         if (boss) ui.renderBossBar(boss->type == EnemyType::SOVEREIGN ? "THE SOVEREIGN" :
                                    boss->type == EnemyType::PENITENT ? "THE PENITENT" : "THE WARDEN",
                                    boss->health / boss->maxHealth,
-                                   boss->type == EnemyType::PENITENT ? boss->scourging : boss->enraged);
+                                   boss->type == EnemyType::PENITENT ? boss->scourging :
+                                   boss->type == EnemyType::WARDEN ? boss->wardenPhase >= 2 : boss->enraged);
+        if (boss && boss->type == EnemyType::WARDEN) {   // its conduits, or the meltdown clock
+            char wb[64];
+            if (boss->wardenPhase == 1 && boss->conduitsLeft > 0)
+                snprintf(wb, sizeof(wb), "CONDUITS %d/4 - SHOOT THE NODES ON THE PILLARS", boss->conduitsLeft);
+            else if (boss->wardenPhase == 3)
+                snprintf(wb, sizeof(wb), "MELTDOWN  0:%02d", (int)std::ceil(std::max(boss->meltClock, 0.f)));
+            else wb[0] = 0;
+            if (wb[0]) {
+                ui.begin2D();
+                ui.ui.textShadow(wb, SCREEN_W / 2, 82, 2, boss->wardenPhase == 3 ? glm::vec4{1.f, 0.35f, 0.2f, 1.f} : glm::vec4{0.3f, 0.9f, 1.f, 0.95f}, true);
+                ui.end2D();
+            }
+        }
         if (boss && boss->type == EnemyType::PENITENT && boss->anchorsLeft > 0) {   // its chains, under the bar
             char cb[48];
             snprintf(cb, sizeof(cb), "CHAINS %d/6 - SHOOT OR RIP THE ANCHORS", boss->anchorsLeft);
