@@ -28,6 +28,7 @@
 #include "../src/GunKit.h"
 #include "../src/VoiceSynth.h"
 #include "../src/EnemyVoice.h"
+#include "../src/WardenHazards.h"
 #include <cstdio>
 #include <cstring>
 #include <limits>
@@ -209,7 +210,7 @@ int main() {
     {
         CHECK(L.arenas.size() == 5, "five arenas");
         // Act I as built before the Act II split: nothing added, nothing lost
-        CHECK(L.walls.size() == 252 && L.props.size() == 274 && L.neon.size() == 296 && L.shapes.size() == 0 &&
+        CHECK(L.walls.size() == 256 && L.props.size() == 274 && L.neon.size() == 296 && L.shapes.size() == 0 &&
               L.floors.size() == 13 && L.doors.size() == 8 && L.pads.size() == 29 && L.movers.size() == 13,
               "buildAct1 builds exactly what buildLevel did");
         CHECK(L.corridors.size() == 4, "four corridors join them");
@@ -3000,6 +3001,38 @@ int main() {
             return started;
         };
         CHECK(pauseAfter(0.49f) == 0 && pauseAfter(0.19f) == 0, "at 50 % and at 20 % the Sovereign starts nothing new for 0.6 s");
+    }
+
+    // ---------------------------------------------------------------- the boss pass: the Warden's conduits
+    {
+        const Arena& CORE = L.arenas[3];
+        int conduits = 0; bool onPillars = true;
+        for (const auto& a : L.anchors) {
+            if (a.kind != LevelData::ChainAnchor::CONDUIT) continue;
+            ++conduits;
+            const AABB& b = L.walls[a.wall].box;
+            float r = glm::length(glm::vec2(a.pos.x - L.reactorPos.x, a.pos.z - L.reactorPos.z));
+            onPillars &= inside(CORE.bounds, a.pos) && r > 15.f && r < 18.f && a.pos.y > 2.f && a.pos.y < 4.f &&
+                         a.pos.x >= b.min.x - 0.01f && a.pos.x <= b.max.x + 0.01f && a.hp == 250.f && a.maxHp == 250.f;
+        }
+        CHECK(conduits == 4 && onPillars, "four conduit nodes, 3 m up the pillars, facing the reactor, 250 hp each");
+        CHECK(L.anchorsAlive(LevelData::ChainAnchor::CONDUIT) == 4 && L.anchorsAlive() == 0, "conduits are counted apart from the Penitent's chains");
+        LevelData M = L;
+        int c0 = -1; for (int i = 0; i < (int)M.anchors.size(); ++i) if (M.anchors[i].kind == LevelData::ChainAnchor::CONDUIT) { c0 = i; break; }
+        AABB home = M.walls[M.anchors[c0].wall].box;
+        bool cut = M.damageAnchor(c0, 300.f);
+        bool parked = M.walls[M.anchors[c0].wall].box.max.y < -100.f;
+        M.restoreAnchor(c0);
+        CHECK(cut && parked && M.anchors[c0].alive && M.anchors[c0].hp == 250.f && M.walls[M.anchors[c0].wall].box.min == home.min,
+              "a cut conduit's node is parked, and restoring it puts it back whole");
+        ConduitClock k; k.allCut();
+        int at19 = 0, at21 = 0, at26 = 0, at36 = 0;
+        for (int f = 0; f < 60 * 37; ++f) { int n = k.update(DT); float t = (f + 1) * DT;
+            if (std::fabs(t - 19.f) < DT / 2) at19 = n; if (std::fabs(t - 21.f) < DT / 2) at21 = n;
+            if (std::fabs(t - 26.f) < DT / 2) at26 = n; if (std::fabs(t - 36.f) < DT / 2) at36 = n; }
+        CHECK(at19 == 0 && at21 == 1 && at26 == 2 && at36 == 4, "conduits re-attach one at a time, 5 s apart, from 20 s after the last is cut");
+        ConduitClock idle;
+        CHECK(idle.update(1.f) == 0, "nothing re-attaches until all four have been cut");
     }
 
     // ---------------------------------------------------------------- the lift (driven movers) and the director's hold

@@ -112,7 +112,7 @@ inline void GameplayState::updatePenitent(float dt) {
     int hooked = -1;
     if (grapple.active)
         for (int i = 0; i < (int)level.anchors.size(); ++i)
-            if (level.anchors[i].alive && grapple.hookedWall == level.anchors[i].wall) hooked = i;
+            if (level.anchors[i].alive && level.anchors[i].kind == LevelData::ChainAnchor::CHAIN && grapple.hookedWall == level.anchors[i].wall) hooked = i;
     float rd = rip.anchor >= 0 ? glm::length(player.camera.position - level.anchors[rip.anchor].pos) : 1e9f;
     int ripped = rip.update(dt, hooked, grapple.active, rd);
     if (ripped >= 0 && level.damageAnchor(ripped, 1e9f)) breakAnchor(ripped, true);
@@ -144,7 +144,7 @@ inline void GameplayState::gatherPenitentBoxes(std::vector<BoxInstance>& out) {
     for (auto& e : enemies) if (e.alive && e.type == EnemyType::PENITENT) boss = &e;
     // Anchors: a glowing sigil on an iron block; chains from its collar to each
     for (const auto& a : level.anchors) {
-        if (!a.alive) continue;
+        if (!a.alive || a.kind != LevelData::ChainAnchor::CHAIN) continue;
         float pulse = 0.7f + 0.3f * std::sin(t * 3.f + a.pos.x);
         push(out, T(a.pos) * S(glm::vec3{1.8f}), {0.1f, 0.09f, 0.1f}, amber * 0.2f);
         push(out, T(a.pos) * S(glm::vec3{1.0f, 1.0f, 1.9f}), {0.2f, 0.1f, 0.05f}, amber * (1.2f * pulse));

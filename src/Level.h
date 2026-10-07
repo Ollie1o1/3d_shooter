@@ -306,9 +306,29 @@ struct LevelData {
         for (int m : lift.movers) if (movers[m].wall == groundWall) return true;
         return false;
     }
-    struct ChainAnchor { int wall = -1; glm::vec3 pos{0.f}; float hp = 400.f; bool alive = true; };
+    // Wall targets a boss is tied to: the PENITENT's chain anchors (shoot or
+    // rip them), the WARDEN's conduit nodes (shoot them; they re-attach)
+    struct ChainAnchor {
+        int wall = -1; glm::vec3 pos{0.f}; float hp = 400.f; bool alive = true;
+        enum Kind { CHAIN, CONDUIT } kind = CHAIN;
+        AABB home{};          // its wall as built (restoreAnchor)
+        float maxHp = 400.f;
+    };
     std::vector<ChainAnchor> anchors;
-    int anchorsAlive() const { int n = 0; for (auto& a : anchors) n += a.alive; return n; }
+    int addAnchor(int wall, glm::vec3 pos, float hp, ChainAnchor::Kind kind) {
+        ChainAnchor a; a.wall = wall; a.pos = pos; a.hp = a.maxHp = hp; a.kind = kind; a.home = walls[wall].box;
+        anchors.push_back(a);
+        return (int)anchors.size() - 1;
+    }
+    int anchorsAlive(ChainAnchor::Kind kind = ChainAnchor::CHAIN) const {
+        int n = 0; for (auto& a : anchors) n += a.alive && a.kind == kind; return n;
+    }
+    // A conduit re-attached: its node back where it was, whole
+    void restoreAnchor(int i) {
+        if (i < 0 || i >= (int)anchors.size()) return;
+        anchors[i].alive = true; anchors[i].hp = anchors[i].maxHp;
+        walls[anchors[i].wall].box = anchors[i].home;
+    }
     // True only on the hit that breaks it. A broken anchor's wall is parked
     // far below, inside the grid cells it was filed under (like an open door)
     bool damageAnchor(int i, float dmg) {
@@ -1214,6 +1234,15 @@ inline void buildAct1(LevelBuilder& B) {
             wall(cx - 1,0,cz - 1, cx + 1,7,cz + 1, slate);
             neon(cx - 1.05f,7,cz - 1.05f, cx + 1.05f,7.25f,cz + 1.05f, cyan);
             ring(cx - 1,cz - 1, cx + 1,cz + 1, 2.0f, 2.15f, cyan);
+        }
+
+        // The Warden's four conduits: a node on every other pillar, 3 m up,
+        // facing the reactor (LevelData::anchors, CONDUIT; Gameplay_Warden.h)
+        for (int k = 0; k < 8; k += 2) {
+            float ang = glm::radians(22.5f + 45.f * k);
+            glm::vec3 p{std::cos(ang) * 16.6f, 3.f, CZ + std::sin(ang) * 16.6f};
+            int wi = wall(p.x - 0.5f, 2.5f, p.z - 0.5f, p.x + 0.5f, 3.5f, p.z + 0.5f, slateDark);
+            L.addAnchor(wi, p, 250.f, LevelData::ChainAnchor::CONDUIT);
         }
 
         // Corner perches with jump pads
