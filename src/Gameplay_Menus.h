@@ -200,7 +200,7 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
 }
 
 inline void GameplayState::trySwitch(int w) {
-    if (modOn(DailyMod::MARKSMAN) && w != (int)WeaponId::KAR) return;   // DAILY: the Kar98 only
+    if (modOn(DailyMod::MARKSMAN) && w != (int)WeaponId::KAR) return;   // DAILY: the Lancer only
     if (w != activeWeapon && pendingWeapon < 0) {
         pendingWeapon = w;
         weaponSwitchTimer = 0.15f;

@@ -26,6 +26,7 @@ struct HudWeapon {
     int   ammo = 0, mag = 0;
     bool  reloading = false;
     float reload01 = 1.f;
+    glm::vec3 glow{1.f, 0.7f, 0.2f};   // the gun's colour (GunKit)
 };
 
 // Everything the HUD shows, filled in by GameplayState each frame
@@ -675,14 +676,14 @@ private:
             const HudWeapon& w = h.weapons[s];
             int x = x0 + s * (slotW + pad);
             bool active = s == h.activeWeapon;
-            ui.rect(x - 2, y0 - 2, slotW + 4, slotH + 4, active ? glm::vec4{1.f, 0.7f, 0.2f, 0.95f} : glm::vec4{0.3f, 0.3f, 0.35f, 0.5f});
+            ui.rect(x - 2, y0 - 2, slotW + 4, slotH + 4, active ? glm::vec4(w.glow, 0.95f) : glm::vec4(w.glow * 0.35f, 0.5f));
             ui.rect(x, y0, slotW, slotH, active ? glm::vec4{0.16f, 0.15f, 0.2f, 0.95f} : glm::vec4{0.06f, 0.06f, 0.08f, 0.85f});
             std::snprintf(buf, sizeof(buf), "%d", s + 1);
-            ui.text(buf, x + 4, y0 + 4, 1, active ? glm::vec4{1.f, 0.8f, 0.3f, 1.f} : glm::vec4{0.55f, 0.55f, 0.6f, 0.9f});
+            ui.text(buf, x + 4, y0 + 4, 1, active ? glm::vec4(glm::mix(w.glow, glm::vec3{1.f}, 0.3f), 1.f) : glm::vec4{0.55f, 0.55f, 0.6f, 0.9f});
             ui.text(w.name, x + slotW / 2 + 3, y0 + 4, 1, {0.85f, 0.85f, 0.9f, active ? 1.f : 0.6f}, true);
             drawWeaponIcon(s, x + 6, y0 + 16, active);
             if (w.reloading) {
-                ui.rect(x + 4, y0 + slotH - 8, (slotW - 8) * w.reload01, 4, {1.f, 0.75f, 0.25f, 0.95f});
+                ui.rect(x + 4, y0 + slotH - 8, (slotW - 8) * w.reload01, 4, glm::vec4(w.glow, 0.95f));
                 ui.text("RELOAD", x + slotW / 2, y0 + slotH - 22, 1, {1.f, 0.75f, 0.25f, 0.6f + 0.4f * std::sin(hudTime * 10.f)}, true);
             } else {
                 std::snprintf(buf, sizeof(buf), "%d/%d", w.ammo, w.mag);

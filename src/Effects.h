@@ -21,6 +21,7 @@ public:
         glm::vec3 start{0.f}, end{0.f};
         float life = 0.f, maxLife = 0.13f;
         float width = 0.055f;
+        glm::vec3 color{0.97f, 0.95f, 0.72f};   // the gun's glow, whitened
         bool  alive = false;
     };
     static constexpr int MAX_TRACERS = 32;
@@ -95,14 +96,14 @@ public:
     void spawnDeathParticles(glm::vec3 center, glm::vec3 color) { spawnBurst(center, color, 22, 12.f, 1.0f, 18.f); }
     void spawnHitSparks(glm::vec3 pos, glm::vec3 color)         { spawnBurst(pos, color, 5, 5.f, 0.25f, 18.f); }
 
-    void spawnShellCasing(glm::vec3 origin, glm::vec3 right) {
+    void spawnShellCasing(glm::vec3 origin, glm::vec3 right, glm::vec3 glow = {0.85f, 0.7f, 0.15f}) {
         Particle* p = freeParticle();
         if (!p) return;
         p->pos     = origin + right * 0.15f;
         p->vel     = right * 2.5f + glm::vec3{0, 3.f, 0}
                    + glm::vec3{((rand()%100)-50)/100.f, 0, ((rand()%100)-50)/100.f};
         p->maxLife = p->life = 0.7f;
-        p->color   = {0.85f, 0.7f, 0.15f};
+        p->color   = glm::mix(glm::vec3{0.7f, 0.52f, 0.24f}, glow, 0.5f);   // brass, lit by the gun's glow
         p->gravity = 18.f;
         p->alive   = true;
     }
@@ -278,7 +279,8 @@ public:
         d.alive   = true;
     }
 
-    void spawnTracer(glm::vec3 start, glm::vec3 end, float width = 0.055f, float life = 0.22f) {
+    void spawnTracer(glm::vec3 start, glm::vec3 end, float width = 0.055f, float life = 0.22f,
+                     glm::vec3 color = {0.97f, 0.95f, 0.72f}) {
         Tracer* slot = nullptr;
         for (auto& t : tracers) if (!t.alive) { slot = &t; break; }
         if (!slot) {   // all busy (shotgun spam): reuse the oldest
@@ -286,7 +288,7 @@ public:
             for (auto& t : tracers) if (t.life < slot->life) slot = &t;
         }
         slot->start = start; slot->end = end;
-        slot->maxLife = life; slot->life = life; slot->width = width;
+        slot->maxLife = life; slot->life = life; slot->width = width; slot->color = color;
         slot->alive = true;
     }
 

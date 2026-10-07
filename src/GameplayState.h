@@ -645,6 +645,7 @@ public:
     int findInteractTarget() const;
 
     // The Descent's cage (Gameplay_Penitent.h)
+    float dryCd = 0.f;          // the dry click, at most every 0.3 s
     bool boardHinted = false;   // "BOARD THE CAGE" shown for this stop
     bool liftRiding  = false;   // a ride is under way (its arrival drops health on the cage)
     void updateLift(float dt);

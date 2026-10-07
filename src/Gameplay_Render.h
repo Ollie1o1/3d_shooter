@@ -736,14 +736,22 @@ inline void GameplayState::drawBeams(const std::vector<Beam>& beams, glm::vec3 c
 }
 
 inline void GameplayState::renderTracers(const glm::mat4& view, const glm::mat4& proj) {
+    // One batch per colour: each gun's tracers take its glow
     static std::vector<Beam> beams;
-    beams.clear();
-    for (auto& t : fx.tracers) {
-        if (!t.alive) continue;
-        float fade = t.life / t.maxLife;
-        beams.push_back({glm::vec4(t.start, fade), glm::vec4(t.end, fade * 0.08f), t.width});
+    static std::vector<glm::vec3> colours;
+    colours.clear();
+    for (auto& t : fx.tracers)
+        if (t.alive && std::find_if(colours.begin(), colours.end(), [&](const glm::vec3& c) { return glm::length(c - t.color) < 1e-3f; }) == colours.end())
+            colours.push_back(t.color);
+    for (const auto& col : colours) {
+        beams.clear();
+        for (auto& t : fx.tracers) {
+            if (!t.alive || glm::length(t.color - col) >= 1e-3f) continue;
+            float fade = t.life / t.maxLife;
+            beams.push_back({glm::vec4(t.start, fade), glm::vec4(t.end, fade * 0.08f), t.width});
+        }
+        drawBeams(beams, col, view, proj);
     }
-    drawBeams(beams, {0.97f, 0.95f, 0.72f}, view, proj);
 }
 
 inline void GameplayState::renderLasers(const glm::mat4& view, const glm::mat4& proj) {

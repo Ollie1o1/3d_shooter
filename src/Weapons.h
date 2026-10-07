@@ -6,7 +6,7 @@
 //
 //   1 REVOLVER  8-round hitscan sidearm
 //   2 SHOTGUN   2-shell pump, 10 pellets
-//   3 KAR98     bolt-action rifle. RMB: iron sights (small zoom). Headshots
+//   3 LANCER    bolt-action rifle. RMB: iron sights (small zoom). Headshots
 //               do 3x, a one-shot kill on anything but the armored heavies.
 //   4 LONGSHOT  heavy .50 bolt sniper. RMB: full scope with a reticle. One
 //               shot kills any regular enemy (not the armored Juggernaut:

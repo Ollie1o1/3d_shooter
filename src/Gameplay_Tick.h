@@ -243,6 +243,11 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
 
     bool switchBlocked = (pendingWeapon >= 0);
     if (pendingFire && ws.ready() && !switchBlocked) fireWeapon(activeWeapon);
+    else if (pendingFire && !switchBlocked && (ws.ammo <= 0 || ws.reloading) && dryCd <= 0.f) {
+        audio.play("dry", 100, SoundGroup::PLAYER);   // empty: the hammer falls on nothing
+        dryCd = 0.3f;
+    }
+    dryCd = std::max(0.f, dryCd - dt);
     pendingFire = false;
     if (pendingGrenade && grenadeCount > 0 && grenadeTimer <= 0.f) throwGrenade();
     pendingGrenade = false;

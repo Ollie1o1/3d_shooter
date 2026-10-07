@@ -24,7 +24,7 @@ struct DailyInfo {
     static const char* modHint(DailyMod m) {
         static const char* H[] = {"YOU DEAL DOUBLE DAMAGE - AND TAKE IT",
                                   "WAVES HALF AGAIN AS BIG - EACH ENEMY 60% AS TOUGH",
-                                  "THE KAR98 ONLY",
+                                  "THE LANCER ONLY",
                                   "NO GRAPPLE"};
         return H[(int)m];
     }

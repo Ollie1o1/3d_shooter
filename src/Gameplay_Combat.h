@@ -636,7 +636,8 @@ inline void GameplayState::fireWeapon(int w) {
         if (!level.anchors.empty() && (hits.empty() || hits[0].t > wallT - 0.05f))
             hitAnchor(origin, dir, wallT, dmg);   // the round stopped on a wall: one of the Penitent's anchors?
         float endT = n > 0 && n == pierce + 1 ? hits[n - 1].t : wallT;
-        fx.spawnTracer(origin + dir * 0.25f - up * 0.08f, origin + dir * endT, sniper ? 0.09f : 0.055f, sniper ? 0.35f : 0.22f);
+        fx.spawnTracer(origin + dir * 0.25f - up * 0.08f, origin + dir * endT, sniper ? 0.09f : 0.055f, sniper ? 0.35f : 0.22f,
+                       glm::mix(glm::vec3{1.f}, gunkit::glowOf(w), 0.6f));   // the gun's colour
         for (int k = 0; k < n; ++k) {
             Enemy& e = enemies[hits[k].enemy];
             glm::vec3 at = origin + dir * hits[k].t;
@@ -665,6 +666,7 @@ inline void GameplayState::fireWeapon(int w) {
             if (hits[k].wound) fx.spawnHitSparks(at, {1.f, 0.3f, 0.15f});
             float falloff = 1.f - 0.15f * k;    // each body it punches through costs a little
             if (head) fx.spawnHitSparks(at, {1.f, 0.9f, 0.3f});
+            fx.spawnHitSparks(at, gunkit::glowOf(w) * 1.2f);   // the gun's colour where it lands
             anyHit = true;
             if (hurtEnemy(e, dmg * m * falloff, at, sniper ? 12.f : (pellets > 1 ? 3.f : 10.f), pellets > 1 ? 0.5f : 2.f,
                           weaponSource(id), head)) {
@@ -714,8 +716,8 @@ inline void GameplayState::fireWeapon(int w) {
     audio.play(SND[w], 128, SoundGroup::PLAYER, true);
     ++totalShots;
     if (anyHit) ++totalHits;
-    fx.spawnShellCasing(origin, right);
-    if (pellets > 1) fx.spawnShellCasing(origin + right * 0.1f, right);
+    fx.spawnShellCasing(origin, right, gunkit::glowOf(w));
+    if (pellets > 1) fx.spawnShellCasing(origin + right * 0.1f, right, gunkit::glowOf(w));
 
     if (ws.ammo <= 0) {
         if (!sniper) startReload(w);   // rifles reload after the bolt cycle (physicsTick)

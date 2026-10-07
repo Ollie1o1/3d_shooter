@@ -31,6 +31,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         h.weapons[w].mag  = weaponMag((WeaponId)w, prog.up[w]);
         h.weapons[w].reloading = weapons[w].reloading;
         h.weapons[w].reload01  = weapons[w].reloadProgress();
+        h.weapons[w].glow      = gunkit::glowOf(w);
     }
     h.grenades = grenadeCount; h.grenadeMax = grenadeMax;
     h.level = prog.level; h.xp = prog.xp; h.xpNext = Progression::xpToNext(prog.level); h.points = prog.points;

@@ -12,7 +12,7 @@ A 3D arena shooter built with **SDL2**, **OpenGL 3.3 Core Profile**, and **GLM**
 - **ACT II (preview)**: unlocked by killing the Sovereign. Fall beneath the eclipse into **the Drowned Nave**, a flooded cathedral: the water slows you on foot but slides skim across it, and it rises every wave until only the galleries, bridges and the organ loft stay dry. Then down a shaft into **the Orrery**: a terrace round a void where two rings turn over a captive sun. The sun's flare sweeps the arena (get behind a pillar), and in wave 2 you hold a circle that rides the inner ring. Then through the north arch into **the Descent**: a cage that rides down a vast shaft, stopping at a different floor for each wave (bell galleries, the brake clamps you shoot to release it, a furnace ring), and at the bottom, **the Penitent**: a kneeling colossus chained to the pit's walls. Break its six chains (shoot the anchors, or grapple onto one and hang on to rip it out), jump its low censer sweeps and slide under the high ones; unchained it rises and stalks you, and near death it scourges itself, opening a wound on its back. One more arena and a final boss are coming; until then ACT II runs are unranked.
 - **FAST**: **the Gauntlet**, a time trial through seven rooms joined by **boost tubes**: doors part as you sprint at them, lock behind you when a room's fight starts, and the exit unlocks when it's clear. A long canal, a close-quarters pump room, a cathedral of terraces, a canyon of islands over a void, a tower you fall through, a hall with control rooms, and a courtyard finale with a lift shaft to the beacon. Run clock, splits against your best run, par ranks.
 - **ENDLESS**: generated waves in the Core until you die. They grow, unlock tougher enemies as they go (Brutes, Conductors, Juggernauts), throw in an objective every 4th wave and the Warden every 10th, and every enemy gets a little tougher each wave.
-- **DAILY**: one ENDLESS run a day that's the same for everyone: the date picks the arena, a modifier (**GLASS CANNON**: double damage both ways; **SWARM**: bigger waves of weaker enemies; **MARKSMAN**: the Kar98 only; **GROUNDED**: no grapple) and the waves, and it has its own leaderboard for the day.
+- **DAILY**: one ENDLESS run a day that's the same for everyone: the date picks the arena, a modifier (**GLASS CANNON**: double damage both ways; **SWARM**: bigger waves of weaker enemies; **MARKSMAN**: the Lancer only; **GROUNDED**: no grapple) and the waves, and it has its own leaderboard for the day.
 
 Kills earn **XP** (more for stylish play), and levels buy **weapon upgrades** in the Armory. Every run is **scored**: the style you earned (so varied, aggressive play pays), plus a bonus for beating par (ARENA) or for each wave cleared (ENDLESS, DAILY), minus the damage you took, times the difficulty. A good enough score puts your name on that mode's **leaderboard** (shared by every player on the website; FAST's is by time); in FAST mode you race the **ghost** of your best run. Plays with **mouse and keyboard or a gamepad**, at **720p to 4K**, with a **dev level select** for jumping to any arena, room or boss.
 
@@ -154,9 +154,9 @@ make clean        # delete binary
 | Space | Jump / Double jump |
 | Left Shift | Dash (directional) |
 | Left Mouse | Fire weapon |
-| Right Mouse | Aim down sights / scope (Kar98 / Longshot) |
+| Right Mouse | Aim down sights / scope (Lancer / Longshot) |
 | Q | Grapple hook (rebind in Settings: Q, E, Mouse 4, Mouse 5 or Middle Mouse) |
-| 1 2 3 4 / Scroll | Revolver, Shotgun, Kar98, Longshot |
+| 1 2 3 4 / Scroll | Revolver, Shotgun, Lancer, Longshot |
 | Tab | Armory: spend upgrade points (pauses the game) |
 | G | Throw grenade |
 | R | Reload / Retry the arena (on death) |
@@ -204,7 +204,7 @@ In menus the D-pad moves, **A** confirms and **B** goes back; on the main menu *
 ### Combat
 - **Revolver** (slot 1) — 8-round hitscan with auto-reload
 - **Shotgun** (slot 2) — 2-shell pump-action, 10 pellets per shot with spread
-- **Kar98** (slot 3) — bolt-action rifle. RMB raises the iron sights (a small zoom; the front post sits in the rear notch on screen centre). 120 damage, 3x on the head: a headshot one-shots anything but the boss. Accurate aimed, loose from the hip or in the air
+- **Lancer** (slot 3) — a long, slim bolt rifle in blackened steel, its cells glowing cyan along the receiver. RMB raises the iron sights (a small zoom; the front post sits in the rear notch on screen centre). 120 damage, 3x on the head: a headshot one-shots anything but the boss. Accurate aimed, loose from the hip or in the air
 - **Longshot** (slot 4) — heavy .50 sniper. RMB brings up a full scope (mil-dot reticle, heavy zoom). 300 damage one-shots every regular enemy and punches through three of them (**COLLATERAL**). Fire as the scope settles for a **QUICKSCOPE** bonus; kill without aiming for a **NOSCOPE** bonus
 - Aiming scales mouse sensitivity with the zoom (plus a ZOOM SENSITIVITY setting) and slows you a little
 - **Grenades** (G key) — parabolic arc, 5m blast radius, refill every 2 kills
