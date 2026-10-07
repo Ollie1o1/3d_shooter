@@ -25,6 +25,7 @@
 #include "../src/SovereignHazards.h"
 #include "../src/SfxMixer.h"
 #include "../src/PenitentHazards.h"
+#include "../src/GunMotion.h"
 #include <cstdio>
 #include <cstring>
 #include <limits>
@@ -2773,6 +2774,73 @@ int main() {
             if (p.ev.telegraphStarted && p.attack != AttackKind::SCOURGE && sinceEmbers < 1.0f) clash = true;
         }
         CHECK(!clash, "after it scourges itself, a second passes before its next blow (no jump-and-slide at once)");
+    }
+
+    // ---------------------------------------------------------------- the arsenal: one motion grammar
+    {
+        // Kick: instant, then settles within each gun's `settle`
+        bool settles = true;
+        for (int g = 0; g < 4; ++g) {
+            GunMotion m; m.gun = g; m.fire();
+            float at0 = m.kickAmount();
+            float t = 0.f;
+            while (t < gunWeight(g).settle) { m.update(DT * 0.25f); t += DT * 0.25f; }
+            settles &= at0 > 0.99f && m.kickAmount() < 0.03f;
+        }
+        CHECK(settles, "every gun kicks at once and settles within its weight's time");
+        CHECK(gunWeight(0).settle < gunWeight(1).settle && gunWeight(1).settle <= gunWeight(3).settle &&
+              gunWeight(2).settle < gunWeight(3).settle, "light guns snap back sooner than heavy ones");
+        // Switch: the old gun until it's down, the new one rising, ~0.32 s, one chime
+        GunMotion s; s.gun = 0;
+        s.switchTo(2);
+        float t = 0.f; bool oldFirst = true; int chimes = 0; float done = -1.f;
+        for (int i = 0; i < 240 && done < 0.f; ++i) {
+            s.update(DT * 0.25f); t += DT * 0.25f;
+            if (t < SWITCH_DOWN - 0.005f) oldFirst &= s.shownGun() == 0;
+            for (auto& c : s.cues) chimes += std::string(c.name) == "switch_up2";
+            s.cues.clear();
+            GunPose p = s.pose(false);
+            if (t > SWITCH_DOWN + SWITCH_UP && glm::length(p.offset) < 1e-3f) done = t;
+        }
+        CHECK(oldFirst && s.shownGun() == 2 && chimes == 1 && done > 0.3f && done < 0.36f,
+              "a switch lowers the old gun, raises the new one with one chime, in about 0.32 s");
+        // Reload: three beats; cells go dark on OPEN (revolver ejects), relight evenly during FEED, all lit at CLOSE
+        GunMotion r; r.gun = 0; r.reload(1.2f, 0, 8, 8);
+        std::vector<float> relit; int lastLit = r.litCells(0, 8), maxLit = 0; float tt = 0.f;
+        std::vector<std::string> order;
+        while (r.reloading()) {
+            r.update(DT * 0.25f); tt += DT * 0.25f;
+            int lit = r.litCells(0, 8);
+            if (lit > lastLit) relit.push_back(tt / 1.2f);
+            lastLit = lit; maxLit = std::max(maxLit, lit);
+            for (auto& c : r.cues) order.push_back(c.name);
+            r.cues.clear();
+        }
+        bool even = relit.size() == 8 && relit.front() >= BEAT_OPEN - 0.01f && relit.back() <= BEAT_FEED_END + 0.01f;
+        for (size_t i = 2; i < relit.size() && even; ++i)
+            even &= std::fabs((relit[i] - relit[i - 1]) - (relit[1] - relit[0])) < 0.02f;
+        CHECK(even, "a reload relights its cells one by one, evenly, inside the FEED beat");
+        CHECK(maxLit == 8 && r.litCells(0, 8) == 0, "all eight relight; after the reload the gun shows what the game says (ammo)");
+        int opens = 0, closes = 0, cells = 0; bool inOrder = !order.empty() && order.front() == "cyl_open" && order.back() == "cyl_close";
+        for (auto& n : order) { opens += n == "cyl_open"; closes += n == "cyl_close"; cells += n == "cell"; }
+        CHECK(inOrder && opens == 1 && closes == 1 && cells == 8, "reload cues: open first, a tick per cell, close last, each once");
+        // A switch cancels a reload: no more cues, back to rest
+        GunMotion c; c.gun = 1; c.reload(1.4f, 0, 2, 2);
+        for (int i = 0; i < 20; ++i) c.update(DT);
+        c.cues.clear(); c.switchTo(3);
+        bool quiet = true;
+        for (int i = 0; i < 60; ++i) { c.update(DT); for (auto& q : c.cues) quiet &= std::string(q.name) == "switch_up3"; c.cues.clear(); }
+        CHECK(quiet && !c.reloading() && c.pose().reloadU < 0.f, "switching mid-reload drops the reload and its sounds");
+        // A second switch mid-switch restarts cleanly to the newest gun
+        GunMotion d; d.gun = 0; d.switchTo(1);
+        for (int i = 0; i < 4; ++i) d.update(DT);
+        d.switchTo(2);
+        for (int i = 0; i < 40; ++i) d.update(DT);
+        CHECK(d.shownGun() == 2 && glm::length(d.pose(false).offset) < 1e-3f, "switching again mid-switch lands on the newest gun");
+        // Cycling cues: the shotgun pumps, the rifles work the bolt
+        GunMotion b; b.gun = 2; b.cycle(0.7f);
+        int bolts = 0; for (int i = 0; i < 60; ++i) { b.update(DT); for (auto& q : b.cues) bolts += std::string(q.name) == "bolt"; b.cues.clear(); }
+        CHECK(bolts == 1, "after a rifle shot the bolt sounds once, on its beat");
     }
 
     // ---------------------------------------------------------------- mouse filter
