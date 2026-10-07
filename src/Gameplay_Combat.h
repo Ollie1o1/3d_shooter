@@ -167,6 +167,9 @@ inline void GameplayState::updateEnemies(float dt) {
     w.bounds     = ar.bounds;
     w.playerVel  = player.velocity;
     w.tune       = &tune();
+    w.dynWalls   = level.moverWalls.data();   // the Descent's cage: walkers step onto it
+    w.dynCount   = (int)level.moverWalls.size();
+    const bool descent = ar.shift == ArenaShift::DESCENT;
     const float dmgScale = ar.damageScale * tune().damage;
 
     // Iterate by index: summons push_back into `enemies` mid-loop
@@ -176,7 +179,9 @@ inline void GameplayState::updateEnemies(float dt) {
         if (!e.alive) continue;
         if (g_devOverlay.rfind("pose", 0) == 0 && e.type == EnemyType::SOVEREIGN) { devPose(e); continue; }
         if (g_devOverlay.rfind("penitent", 0) == 0 && e.type == EnemyType::PENITENT) { devPenitentPose(e); continue; }
-        e.floorY = level.floorWithWater(e.position.x, e.position.z, false);
+        // In the Descent the void runs to -300: stand on what's really under you (the cage included)
+        e.floorY = level.enemyFloor(director.arena, e.position, e.stats().flying,
+                                    descent ? groundHeightAt(e.position.x, e.position.z, e.position.y + 0.5f, true) : 0.f);
         e.wadeMul = e.stats().flying ? 1.f : 1.f - 0.5f * (1.f - Player::wadeFactor(level.waterDepthAt(e.position)));
         e.update(dt, w);
         if (e.hollow == Hollow::ENRAGED && std::fmod(e.age, 0.15f) < dt)   // embers off an Enraged one
@@ -459,6 +464,9 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
                 records.save();
                 ui.feed("ACT II UNLOCKED - BENEATH THE ECLIPSE", {0.35f, 0.95f, 0.9f});
             }
+        } else if (e.type == EnemyType::PENITENT) {
+            pen.clear();   // nothing it threw outlives it
+            pushBanner("THE PENITENT IS STILL", "", {1.f, 0.7f, 0.3f}, 3.f);
         } else {
             pushBanner("WARDEN DESTROYED", "", {1.f, 0.85f, 0.3f}, 2.5f);
         }
@@ -570,13 +578,13 @@ inline float GameplayState::hitscanAll(glm::vec3 origin, glm::vec3 dir, float ra
         AABB body = en.getAABB();
         body.min += off; body.max += off;
         float t = rayBoxHit(origin, dir, body);
-        AABB wound;   // the PENITENT's open back, while it scourges itself
-        float tw = woundBox(en, wound) ? rayBoxHit(origin, dir, AABB{wound.min + off, wound.max + off}) : -1.f;
-        if (tw > 0.f && tw < wallT) { out.push_back({ei, tw, false, true}); continue; }
         AABB head;
         bool hasHead = headBox(en, head);
         head.min += off; head.max += off;
         float th = hasHead ? rayBoxHit(origin, dir, head) : -1.f;
+        // The PENITENT's open back (x3), only from behind; a head nearer along the ray wins
+        float tw = -1.f;
+        if (woundShot(en, origin - off, dir, tw) && tw < wallT && (th <= 0.f || tw <= th)) { out.push_back({ei, tw, false, true}); continue; }
         if (th > 0.f && th < wallT) out.push_back({ei, th, true});
         else if (t > 0.f && t < wallT) out.push_back({ei, t, false});
     }

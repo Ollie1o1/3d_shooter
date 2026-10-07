@@ -22,6 +22,7 @@ inline void GameplayState::updateLift(float dt) {
             lift.start();
             liftRiding = true;
             for (auto& p : projSystem.pool) p.alive = false;   // nothing left over from the last floor
+            pickups.clear();
             audio.playAt("door_close", C, 128, SoundGroup::WORLD);
             for (int k = 0; k < 4; ++k)   // the chains take the weight, overhead
                 audio.playAt("clank", glm::vec3{k < 2 ? -9.f : 9.f, C.y + 8.f, k % 2 ? -831.f : -849.f}, 70, SoundGroup::WORLD);
@@ -38,7 +39,14 @@ inline void GameplayState::updateLift(float dt) {
         for (float x : {-4.f, 4.f})
             pickups.push_back({C + glm::vec3{x, 0.6f, 0.f}, glm::vec3{0.f}, 1e9f, PickupKind::ORB, C.y, C + glm::vec3{x, 0.6f, 0.f}});
     }
-    director.hold = lift.busy();
+    // ...and the next fight waits for you to come down to it (no perching on the floor above)
+    bool above = !g_devCam && player.position.y > lift.y() + 6.f;
+    if (above && !lift.busy() && !downHinted && director.phase != WaveDirector::Phase::ACTIVE) {
+        downHinted = true;
+        pushBanner("GET DOWN TO THE CAGE", "THE FIGHT IS BELOW YOU", {1.f, 0.7f, 0.3f}, 2.5f);
+    }
+    if (!above) downHinted = false;
+    director.hold = lift.busy() || above;
     // The fall line: 25 m under the cage; a fall puts you back aboard
     Arena& mar = level.arenas[director.arena];
     mar.voidY = lift.y() - 25.f;
@@ -82,7 +90,7 @@ inline void GameplayState::onPenitentEvents(Enemy& e, const EnemyEvents& ev) {
     for (int k = 0; k < ev.penSummon; ++k) {   // Hollowed Husks, round it
         float a = k * 1.5707963f + gameClock;
         glm::vec3 p = base + glm::vec3{std::cos(a) * 8.f, 0.f, std::sin(a) * 8.f};
-        p.y = groundHeightAt(p.x, p.z, base.y + 2.f);
+        p.y = groundHeightAt(p.x, p.z, base.y + 2.f, true);
         spawnEnemy(EnemyType::HUSK, p, (Hollow)(1 + k % 3));
     }
 }
@@ -110,15 +118,15 @@ inline void GameplayState::updatePenitent(float dt) {
     Enemy* boss = nullptr;
     for (auto& e : enemies) if (e.alive && e.type == EnemyType::PENITENT) boss = &e;
     if (boss) boss->anchorsLeft = level.anchorsAlive();
-    // Rip: hang on an anchor with the grapple for half a second
+    // Rip: hook an anchor and hang on half a second (reaching it counts)
     int hooked = -1;
     if (grapple.active)
         for (int i = 0; i < (int)level.anchors.size(); ++i)
             if (level.anchors[i].alive && grapple.hookedWall == level.anchors[i].wall) hooked = i;
-    if (hooked >= 0 && hooked == ripAnchor) {
-        anchorRipTimer += dt;
-        if (anchorRipTimer >= 0.5f && level.damageAnchor(hooked, 1e9f)) { breakAnchor(hooked, true); ripAnchor = -1; anchorRipTimer = 0.f; }
-    } else { ripAnchor = hooked; anchorRipTimer = 0.f; }
+    float rd = rip.anchor >= 0 ? glm::length(player.camera.position - level.anchors[rip.anchor].pos) : 1e9f;
+    int ripped = rip.update(dt, hooked, grapple.active, rd);
+    if (ripped >= 0 && level.damageAnchor(ripped, 1e9f)) breakAnchor(ripped, true);
+    if (boss && boss->staggered()) pen.lashes.clear();   // reeling, its marked lash falls slack
     // Its hazards
     if (!boss && pen.rings.empty() && pen.lashes.empty() && pen.pools.empty()) return;
     const float scale = level.arenas[director.arena].damageScale * tune().damage;
@@ -179,13 +187,15 @@ inline void GameplayState::gatherPenitentBoxes(std::vector<BoxInstance>& out) {
                  {0.1f, 0.04f, 0.02f}, (r.kind == 1 ? blood : ember) * 1.5f);
         }
     }
-    // The lash: a red line on the floor while it's warned, the chain itself when it strikes
+    // The lash: a thin red line from its shoulder to where you stood while it's
+    // warned, the chain itself (thick, blazing) when it strikes
     for (const auto& l : pen.lashes) {
         bool struck = l.t >= PenitentHazards::LASH_WARN;
-        float yaw = std::atan2(l.dir.x, l.dir.z);
+        float yaw = std::atan2(l.dir.x, l.dir.z), pitch = -std::asin(glm::clamp(l.dir.y, -1.f, 1.f));
         glm::vec3 mid = l.from + l.dir * (PenitentHazards::LASH_REACH * 0.5f);
         float pulse = 0.5f + 0.5f * std::sin(t * 30.f);
-        push(out, T(glm::vec3{mid.x, l.from.y - 0.25f, mid.z}) * RY(yaw) * S({struck ? 0.6f : 0.25f, struck ? 0.5f : 0.04f, PenitentHazards::LASH_REACH}),
+        float thick = struck ? 0.55f : 0.12f;
+        push(out, T(mid) * RY(yaw) * RX(pitch) * S({thick, thick, PenitentHazards::LASH_REACH}),
              {0.1f, 0.02f, 0.02f}, blood * (struck ? 2.5f : 0.6f + 1.2f * pulse));
     }
     // Incense: a burning disc (a hint while it lands, then full)

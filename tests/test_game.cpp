@@ -2674,6 +2674,107 @@ int main() {
               "incense burns 20/s inside it after landing, nothing outside, and fades after 8 s");
     }
 
+    // ---------------------------------------------------------------- review fixes: the Penitent in the game's world
+    {
+        LevelData N = buildAct2Level();
+        SpatialGrid g; g.build(N.walls);
+        N.lift.reset(); N.lift.at = N.lift.to = 4; N.lift.update(0.f, N); N.updateMovers(0.f);   // the cage docked in the pit
+        const Arena& D = N.arenas[2];
+        // 1. Its floor is the pit, not the void below the shaft
+        glm::vec3 bp = D.bossSpawn;
+        float pf = N.enemyFloor(2, bp, false, N.groundAt(bp.x, bp.z, bp.y + 0.5f));
+        CHECK(std::fabs(pf - (-240.f)) < 1e-3f, "in the Descent the Penitent stands on the pit's floor (-240), not the void (-300)");
+        N.lift.at = N.lift.to = 1; N.lift.update(0.f, N); N.updateMovers(0.f);
+        glm::vec3 air = D.waveAir[0][0];
+        CHECK(N.enemyFloor(2, air, true, N.groundAt(air.x, air.z, air.y + 0.5f)) >= -120.f - 1e-3f,
+              "fliers in the Descent hover over the cage's stop, not the bottom of the shaft");
+        // With that floor, a chained Penitent 10 m away hits a standing player
+        N.lift.at = N.lift.to = 4; N.lift.update(0.f, N); N.updateMovers(0.f);
+        Enemy p(EnemyType::PENITENT, bp, -300.f); p.anchorsLeft = 6; p.spawnTimer = 0.f; p.state = EnemyState::ACTIVE;
+        glm::vec3 feet = bp + glm::vec3{0.f, 0.f, 10.f};
+        EnemyWorld w; w.playerFeet = feet; w.playerEye = feet + glm::vec3{0, 1.7f, 0};
+        int sweeps = 0, hits = 0, lashes = 0;
+        for (int i = 0; i < 60 * 40; ++i) {
+            p.floorY = N.enemyFloor(2, p.position, false, N.groundAt(p.position.x, p.position.z, p.position.y + 0.5f));
+            p.update(DT, w);
+            if (p.ev.penSweep >= 0) { ++sweeps; hits += PenitentHazards::sweepHits(p.ev.penSweep, p.position, p.yaw, p.sweepReach(), feet, 1.8f, p.floorY); }
+            lashes += p.ev.penLash;
+        }
+        CHECK(sweeps > 0 && hits == sweeps && lashes == 0, "fed the game's floor, its sweeps reach a player standing in front of it, and it doesn't lash in melee");
+        // 2. Walkers step onto the cage and stand on it
+        Enemy h(EnemyType::BRUTE, glm::vec3{0.f, -240.f, -840.f + 20.f}, -240.f); h.spawnTimer = 0.f; h.state = EnemyState::ACTIVE;
+        EnemyWorld hw; hw.walls = N.walls.data(); hw.wallCount = (int)N.walls.size(); hw.grid = &g;
+        hw.dynWalls = N.moverWalls.data(); hw.dynCount = (int)N.moverWalls.size();
+        hw.playerFeet = {0.f, -240.f, -840.f}; hw.playerEye = hw.playerFeet + glm::vec3{0, 1.7f, 0};
+        bool onCage = false;
+        for (int i = 0; i < 60 * 8; ++i) {
+            h.floorY = N.enemyFloor(2, h.position, false, N.groundAt(h.position.x, h.position.z, h.position.y + 0.5f));
+            h.update(DT, hw);
+            onCage |= glm::length(glm::vec2{h.position.x, h.position.z + 840.f}) < 11.f && std::fabs(h.position.y + 240.f) < 0.2f;
+        }
+        CHECK(onCage, "a ledge-wary Brute walks off the pit floor onto the docked cage and stands on it");
+    }
+    {   // 3. Phase 1 has no safe distance: between its reach and 22 m, and across the whole pit
+        const glm::vec3 home{0.f, -240.f, -864.f};
+        auto lashAt = [&](float dz, float dy) {
+            Enemy p(EnemyType::PENITENT, home, -240.f); p.anchorsLeft = 6; p.spawnTimer = 0.f; p.state = EnemyState::ACTIVE;
+            EnemyWorld w; w.playerFeet = home + glm::vec3{0.f, dy, dz}; w.playerEye = w.playerFeet + glm::vec3{0, 1.7f, 0};
+            for (int i = 0; i < 60 * 6; ++i) {
+                p.update(DT, w);
+                if (p.ev.penLash) {
+                    PenitentHazards hz; hz.addLash(p.ev.penLashFrom, p.ev.penLashDir, false);
+                    int hit = 0;
+                    for (int k = 0; k < 60; ++k) hit += (int)hz.update(DT, w.playerFeet, -240.f).size();
+                    return hit;
+                }
+            }
+            return -1;
+        };
+        CHECK(lashAt(19.f, 0.f) == 1, "chained, stand just out of its sweeps (19 m) and the chain finds you");
+        CHECK(lashAt(54.f, 0.f) == 1, "...and across the whole pit (54 m)");
+        CHECK(lashAt(10.f, 9.f) == 1, "...and perched 9 m up, close in");
+    }
+    {   // 4. Ripping: hook an anchor from anywhere; the hook letting go as you arrive still counts
+        AnchorRip r;
+        int broke = -1; float t = 0.f;
+        for (int i = 0; i < 60 && broke < 0; ++i, t += DT) {
+            bool active = t < 0.24f;                    // the hook lets go on arrival (2 m)
+            float dist = std::max(1.5f, 11.f - 45.f * t);
+            broke = r.update(DT, active ? 3 : -1, active, dist);
+        }
+        CHECK(broke == 3 && t >= 0.49f && t < 0.55f, "an anchor hooked from 11 m rips out after half a second (hanging on at the anchor counts)");
+        AnchorRip c;
+        int early = -1;
+        for (int i = 0; i < 60; ++i) {
+            float tt = i * DT; bool active = tt < 0.2f;
+            int x = c.update(DT, active ? 3 : -1, active, 15.f);   // let go early, far away
+            if (x >= 0) early = x;
+        }
+        CHECK(early == -1, "letting go of the hook early, far from the anchor, rips nothing");
+    }
+    {   // 5. The wound counts only from behind
+        Enemy p(EnemyType::PENITENT, {0.f, -240.f, -864.f}, -240.f); p.spawnTimer = 0.f; p.state = EnemyState::ACTIVE;
+        p.anchorsLeft = 0; p.risen = true; p.scourging = true; p.yaw = 0.f;   // facing +Z
+        AABB wb; woundBox(p, wb); glm::vec3 wc = (wb.min + wb.max) * 0.5f;
+        float t;
+        glm::vec3 front = wc + glm::vec3{0.f, 0.f, 20.f}, back = wc - glm::vec3{0.f, 0.f, 20.f};
+        CHECK(!woundShot(p, front, glm::normalize(wc - front), t), "a shot from the front never counts as the wound");
+        CHECK(woundShot(p, back, glm::normalize(wc - back), t), "a shot from behind finds the wound");
+    }
+    {   // 6. No sweep starts on top of its ember ring
+        Enemy p(EnemyType::PENITENT, {0.f, -240.f, -864.f}, -240.f); p.anchorsLeft = 0; p.risen = true;
+        p.spawnTimer = 0.f; p.state = EnemyState::ACTIVE; p.health = p.maxHealth * 0.2f;
+        EnemyWorld w; w.playerFeet = {0.f, -240.f, -852.f}; w.playerEye = w.playerFeet + glm::vec3{0, 1.7f, 0};
+        float sinceEmbers = 99.f; bool clash = false;
+        for (int i = 0; i < 60 * 30; ++i) {
+            p.update(DT, w);
+            sinceEmbers += DT;
+            if (p.ev.penEmbers) sinceEmbers = 0.f;
+            if (p.ev.telegraphStarted && p.attack != AttackKind::SCOURGE && sinceEmbers < 1.0f) clash = true;
+        }
+        CHECK(!clash, "after it scourges itself, a second passes before its next blow (no jump-and-slide at once)");
+    }
+
     // ---------------------------------------------------------------- mouse filter
     {
         MouseFilter f;

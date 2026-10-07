@@ -292,6 +292,16 @@ struct LevelData {
 
     // The Penitent's chains are fixed to these, high on the pit wall: shoot
     // one out (hp) or grapple onto it and hang on (GameplayState rips it)
+    // The floor an enemy at pos stands on (or hovers over)
+    // (groundUnder: the highest top under it, moving platforms included). In
+    // the Descent the void runs down to -300, so walkers stand on whatever is
+    // really under them (a gallery, the cage, the pit) and fliers keep to the
+    // cage's stop instead of sinking to the bottom of the shaft.
+    float enemyFloor(int arena, glm::vec3 pos, bool flying, float groundUnder) const {
+        float base = floorWithWater(pos.x, pos.z, false);
+        if (arena < 0 || arena >= (int)arenas.size() || arenas[arena].shift != ArenaShift::DESCENT) return base;
+        return flying ? std::max(base, lift.y()) : std::max(base, groundUnder);
+    }
     bool onLift(int groundWall) const {
         for (int m : lift.movers) if (movers[m].wall == groundWall) return true;
         return false;

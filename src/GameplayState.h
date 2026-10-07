@@ -388,8 +388,8 @@ public:
 
     // THE PENITENT (Gameplay_Penitent.h): its hazards, its chains' anchors
     PenitentHazards pen;
-    float anchorRipTimer = 0.f;     // hanging on an anchor with the grapple: rip it at 0.5 s
-    int   ripAnchor = -1;
+    AnchorRip rip;                  // hooking an anchor with the grapple (PenitentHazards.h)
+    bool  downHinted = false;       // "GET DOWN TO THE CAGE" shown
     bool  scourgeAnnounced = false;
     std::vector<LevelData::ChainAnchor> anchorsBuilt;   // as built, for a retry
     std::vector<AABB> anchorBoxes;
@@ -531,7 +531,7 @@ public:
     void pushPlayerOutOfEnemies();
 
     // Highest walkable surface under (x, z) at or below fromY (0 = the floor)
-    float groundHeightAt(float x, float z, float fromY) const;
+    float groundHeightAt(float x, float z, float fromY, bool movers = false) const;   // movers: moving platforms count
 
     void spawnEnemy(EnemyType t, glm::vec3 pos, Hollow h = Hollow::NONE);
     int  nextEnemyUid = 1;

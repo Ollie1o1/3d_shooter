@@ -746,8 +746,22 @@ inline bool woundBox(const Enemy& e, AABB& out) {
     return true;
 }
 
+// A shot along d from o that finds THE PENITENT's wound; t: where
+// Only from behind: the shot travels the way it faces, and meets the wound
+// no deeper than its back (a chest shot from the front doesn't count)
+inline bool woundShot(const Enemy& e, glm::vec3 o, glm::vec3 d, float& t) {
+    AABB w;
+    if (!woundBox(e, w)) return false;
+    if (glm::dot(glm::vec2{d.x, d.z}, glm::vec2{std::sin(e.yaw), std::cos(e.yaw)}) <= 0.f) return false;
+    t = rayBoxHit(o, d, w);
+    if (t <= 0.f) return false;
+    float tb = rayBoxHit(o, d, e.getAABB());
+    return tb <= 0.f || t <= tb + 1.2f;   // its back: the body box stands ~0.9 m proud of the wound
+}
+
 } // namespace rig
 
 using rig::buildEnemy;
 using rig::headBox;
 using rig::woundBox;
+using rig::woundShot;

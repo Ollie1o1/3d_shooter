@@ -457,7 +457,7 @@ inline void GameplayState::pushPlayerOutOfEnemies() {
     }
 }
 
-inline float GameplayState::groundHeightAt(float x, float z, float fromY) const {
+inline float GameplayState::groundHeightAt(float x, float z, float fromY, bool movers) const {
     static std::vector<int> cands;
     float base = level.baseFloor(x, z);
     AABB q{{x - 0.05f, base - 1.f, z - 0.05f}, {x + 0.05f, fromY + 0.5f, z + 0.05f}};
@@ -468,7 +468,7 @@ inline float GameplayState::groundHeightAt(float x, float z, float fromY) const 
         if (x >= b.min.x && x <= b.max.x && z >= b.min.z && z <= b.max.z && b.max.y <= fromY + 0.5f)
             best = std::max(best, b.max.y);
     }
-    for (int wi : level.moverWalls) {   // moving platforms (the Descent's cage) aren't in the grid
+    if (movers) for (int wi : level.moverWalls) {   // moving platforms (the Descent's cage) aren't in the grid
         const AABB& b = level.walls[wi].box;
         if (x >= b.min.x && x <= b.max.x && z >= b.min.z && z <= b.max.z && b.max.y <= fromY + 0.5f)
             best = std::max(best, b.max.y);

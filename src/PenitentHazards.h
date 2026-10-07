@@ -12,12 +12,32 @@
 #include <cmath>
 #include <algorithm>
 
+// Ripping a chain anchor out with the grapple
+// Ripping a chain anchor out with the grapple: hook it and hang on for half a
+// second. The hook lets go by itself as you arrive (within 2 m), so reaching
+// the anchor counts as hanging on; letting go early, far from it, cancels.
+// update(): hooked = the anchor the hook is on (-1: none), dist = how far you
+// are from the anchor being ripped. Returns the anchor to break, or -1.
+struct AnchorRip {
+    static constexpr float TIME = 0.5f, REACHED = 3.5f;
+    int anchor = -1; float t = 0.f; bool arrived = false;
+    int update(float dt, int hooked, bool active, float dist) {
+        if (active && hooked >= 0 && hooked != anchor) { anchor = hooked; t = 0.f; arrived = false; }
+        if (anchor < 0) return -1;
+        if (dist < REACHED) arrived = true;
+        if (!active && !arrived) { anchor = -1; t = 0.f; return -1; }   // let go before getting there
+        t += dt;
+        if (t >= TIME) { int a = anchor; anchor = -1; t = 0.f; arrived = false; return a; }
+        return -1;
+    }
+};
+
 class PenitentHazards {
 public:
     static constexpr float HALF_ARC = 1.7453293f;          // ±100°
     static constexpr float LOW_TOP = 1.0f, HIGH_DUCK = 1.3f, HIGH_TOP = 3.5f;
     static constexpr float SLAM_RADIUS = 14.f, STOMP_RADIUS = 6.f, RING_SPEED = 16.f, RING_HEIGHT = 1.2f, EMBER_RANGE = 30.f;
-    static constexpr float LASH_WARN = 0.7f, LASH_REACH = 40.f, LASH_HALF = 1.3f, LASH_LINGER = 0.3f;
+    static constexpr float LASH_WARN = 0.7f, LASH_REACH = 70.f, LASH_HALF = 1.3f, LASH_LINGER = 0.3f;   // reaches across the pit
     static constexpr float POOL_RADIUS = 3.5f, POOL_TIME = 8.f, POOL_WARN = 0.6f, POOL_DPS = 20.f, POOL_TICK = 0.25f;
     static constexpr float SWEEP_DAMAGE = 30.f, SLAM_DAMAGE = 30.f, LASH_DAMAGE = 35.f, EMBER_DAMAGE = 15.f;
     struct Arc  { glm::vec3 centre; float yaw, reach; int kind; float t = 0.f; };          // a drawn sweep trail
@@ -62,10 +82,10 @@ public:
             l.t += dt;
             if (!l.fired && l.t >= LASH_WARN) {
                 l.fired = true;
-                glm::vec2 o{l.from.x, l.from.z}, dir{l.dir.x, l.dir.z}, p{feet.x, feet.z};
-                float along = glm::dot(p - o, dir);
-                float side = glm::length((p - o) - dir * along);
-                if (along > 0.f && along < LASH_REACH && side < LASH_HALF && up < 3.f)
+                glm::vec3 chest = feet + glm::vec3{0.f, 0.9f, 0.f};   // a line through the air, at your chest
+                float along = glm::dot(chest - l.from, l.dir);
+                float side = glm::length((chest - l.from) - l.dir * along);
+                if (along > 0.f && along < LASH_REACH && side < LASH_HALF)
                     hits.push_back({LASH_DAMAGE, l.from, l.yank});
             }
         }

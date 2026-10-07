@@ -33,7 +33,8 @@ inline void Enemy::thinkPenitent(float dt, const EnemyWorld& w, bool resolve) {
     if (telegraphTimer <= 0.f) turnToward(to, dt, risen ? 1.1f : 0.8f);
 
     // Keeping your distance (or perching) winds up the lash
-    bool away = d > PEN_LASH_FAR || w.playerFeet.y > floorY + PEN_LASH_HIGH;
+    // (chained: anywhere past its sweeps; risen it walks to you, so only far off)
+    bool away = d > (risen ? PEN_LASH_FAR : sweepReach()) || w.playerFeet.y > floorY + PEN_LASH_HIGH;
     farTimer = away ? farTimer + dt : 0.f;
 
     if (resolve) {
@@ -42,7 +43,7 @@ inline void Enemy::thinkPenitent(float dt, const EnemyWorld& w, bool resolve) {
             case AttackKind::CENSER_HIGH: ev.penSweep = 1; break;
             case AttackKind::PSLAM:       ev.penSlam = true; break;
             case AttackKind::PSTOMP:      ev.penStomp = true; break;
-            case AttackKind::SCOURGE:     ev.penEmbers = true; break;
+            case AttackKind::SCOURGE:     ev.penEmbers = true; scourgeRest = 1.f; break;
             default: break;
         }
         bool swept = ev.penSweep >= 0;
@@ -72,6 +73,7 @@ inline void Enemy::thinkPenitent(float dt, const EnemyWorld& w, bool resolve) {
         if (summonTimer <= 0.f) { summonTimer = PEN_SUMMON_EVERY; ev.penSummon = 4; }
     }
     if (telegraphTimer > 0.f) return;
+    if (scourgeRest > 0.f) { scourgeRest -= dt; return; }   // its own ring first: jump that, then the next blow
 
     if (scourging) {
         scourgeTimer -= dt;
@@ -80,8 +82,10 @@ inline void Enemy::thinkPenitent(float dt, const EnemyWorld& w, bool resolve) {
     if (farTimer >= PEN_LASH_AFTER) {   // the lash, marked along the floor toward you
         farTimer = 0.f;
         ev.penLash = true;
-        ev.penLashFrom = position + glm::vec3{0.f, 0.3f, 0.f};
-        ev.penLashDir = norm2(to);
+        // From its shoulder straight at you, wherever you are (perched too)
+        ev.penLashFrom = position + glm::vec3{0.f, height() * 0.7f, 0.f};
+        glm::vec3 aim = w.playerFeet + glm::vec3{0.f, 0.9f, 0.f} - ev.penLashFrom;
+        ev.penLashDir = glm::length(aim) > 1e-3f ? glm::normalize(aim) : glm::vec3{0.f, 0.f, 1.f};
         startAttack(AttackKind::PLASH, PEN_LASH_WARN);
         return;
     }

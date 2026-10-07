@@ -156,7 +156,7 @@ inline void GameplayState::enterArena(int a) {
     for (int d = 0; d < (int)level.doors.size(); ++d) { level.doors[d].locked = false; level.setDoorInstant(d, false); }
     shifts.reset(level);   // the sun back up, the lava back down, the platforms back to speed, the cage to the top
     boardHinted = liftRiding = false;
-    pen.clear(); scourgeAnnounced = false; ripAnchor = -1; anchorRipTimer = 0.f;
+    pen.clear(); scourgeAnnounced = false; rip = AnchorRip{}; downHinted = false;
     level.anchors = anchorsBuilt;   // every chain whole again
     for (size_t i = 0; i < level.anchors.size() && i < anchorBoxes.size(); ++i) level.walls[level.anchors[i].wall].box = anchorBoxes[i];
     {   // a practice start at a later wave: the flood already at that wave's level
@@ -382,7 +382,7 @@ inline void GameplayState::handleDirectorEvents() {
         case DirectorEvent::VICTORY:
             if (act2()) {   // the run ends at the beacon on the Orrery's north terrace
                 finishOpen = true;
-                pushBanner("THE ORRERY STILLS", "REACH THE BEACON ON THE NORTH TERRACE", {1.f, 0.75f, 0.3f}, 3.f);
+                pushBanner("THE PENITENT IS STILL", "REACH THE BEACON IN THE PIT", {1.f, 0.75f, 0.3f}, 3.f);
                 audio.play("wave", 128, SoundGroup::UI);
             } else victoryDelay = 2.5f;
             break;

@@ -202,6 +202,8 @@ struct EnemyWorld {
     AABB bounds{{-1e9f,-1e9f,-1e9f},{1e9f,1e9f,1e9f}}; // arena interior; enemies stay inside
     glm::vec3 playerVel{0.f};      // for leading shots
     const DifficultyTuning* tune = nullptr;   // null: the default difficulty
+    const int* dynWalls = nullptr;   // moving platforms (not in the grid): the Descent's cage
+    int  dynCount = 0;
 };
 
 // Ray vs AABB: distance along the ray to the first hit, or -1 on a miss.
@@ -340,6 +342,7 @@ struct Enemy {
     bool  scourging    = false;  // under a quarter: it lashes itself, the wound on its back open
     float incenseTimer = 6.f, summonTimer = PEN_SUMMON_EVERY, scourgeTimer = 4.f;
     int   comboLeft    = 0, nextSweep = 0;
+    float scourgeRest  = 0.f;    // after its ember ring: a breath before the next blow
     bool  chained() const { return type == EnemyType::PENITENT && !risen; }
     float sweepReach() const { return risen ? 18.f : 16.f; }
     float swingTimer = 0.f;     // follow-through after a stroke lands (animation)
@@ -590,6 +593,11 @@ private:
         else { cands.clear(); for (int i = 0; i < w.wallCount; ++i) cands.push_back(i); }
         for (int i : cands) {
             const AABB& b = w.walls[i].box;
+            if (p.x >= b.min.x && p.x <= b.max.x && p.z >= b.min.z && p.z <= b.max.z &&
+                b.max.y >= p.y - 1.4f && b.max.y <= p.y + 0.6f) return true;
+        }
+        for (int k = 0; k < w.dynCount; ++k) {   // moving platforms (the Descent's cage) aren't in the grid
+            const AABB& b = w.walls[w.dynWalls[k]].box;
             if (p.x >= b.min.x && p.x <= b.max.x && p.z >= b.min.z && p.z <= b.max.z &&
                 b.max.y >= p.y - 1.4f && b.max.y <= p.y + 0.6f) return true;
         }
