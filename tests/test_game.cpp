@@ -4246,6 +4246,71 @@ int main() {
         }
     }
 
+    // ---------------------------------------------------------------- the Leviathan: the hunt and the eclipse
+    {
+        LevelData N = buildAct2Level(); SpatialGrid g; g.build(N.walls);
+        const Arena& M = N.arenas[4];
+        const glm::vec3 C = MAW_C;
+        auto world = [&](glm::vec3 feet) {
+            EnemyWorld w; w.playerFeet = feet; w.playerEye = feet + glm::vec3{0, 1.7f, 0};
+            w.walls = N.walls.data(); w.wallCount = (int)N.walls.size(); w.grid = &g; w.bounds = M.bounds;
+            w.hasLair = true; w.lair = N.lair; w.lairFloor = N.lairFloor; w.wells = N.wells.data(); w.wellCount = (int)N.wells.size();
+            return w;
+        };
+        Enemy e(EnemyType::LEVIATHAN, M.bossSpawn); e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE;
+        glm::vec3 nearWell = N.wells[1] + glm::vec3{2.f, 0.f, 2.f};
+        EnemyWorld w = world(nearWell);
+        for (int f = 0; f < 60 * 4; ++f) e.update(DT, w);
+        e.health = e.maxHealth * 0.6f;
+        // Into the hunt: it goes under, hidden, and comes up out of the well nearest you after a 1.2 s boil
+        bool submerged = false, hiddenUntouchable = true, sawHidden = false; float boil = -1.f; glm::vec3 site{0.f}; bool breached = false;
+        for (int f = 0; f < 60 * 10 && !breached; ++f) {
+            e.update(DT, w);
+            if (e.ev.telegraphStarted && e.attack == AttackKind::SUBMERGE) submerged = true;
+            if (e.levHidden()) { sawHidden = true; hiddenUntouchable &= !e.targetable(); }
+            if (e.ev.lvBreachTell) { boil = e.telegraphDuration; site = e.ev.lvSite; }
+            if (e.ev.lvBreach) breached = true;
+        }
+        CHECK(submerged && sawHidden && hiddenUntouchable, "in the hunt it goes under: hidden, untouchable");
+        CHECK(breached && std::fabs(boil - 1.2f) < 1e-4f && glm::length(glm::vec2{site.x - N.wells[1].x, site.z - N.wells[1].z}) < 0.1f &&
+              glm::length(glm::vec2{e.levRoot.x - N.wells[1].x, e.levRoot.z - N.wells[1].z}) < 0.1f && e.targetable(),
+              "it breaches out of the well nearest you after a 1.2 s boil, and fights from there");
+        // Two attacks from a root, then under again - and never back up the same well
+        int attacks = 0; bool dove = false; glm::vec3 next{0.f};
+        for (int f = 0; f < 60 * 30 && !dove; ++f) {
+            e.update(DT, w);
+            if (e.ev.lvCrash || (e.ev.shots > 0) || e.ev.lvTide) ++attacks;
+            if (e.ev.lvBreachTell) { dove = true; next = e.ev.lvSite; }
+            e.levBeached = std::min(e.levBeached, 0.5f);
+        }
+        CHECK(dove && attacks >= 1 && attacks <= 2 && glm::length(glm::vec2{next.x - N.wells[1].x, next.z - N.wells[1].z}) > 1.f,
+              "after two attacks from a root it dives again, and comes up somewhere else");
+        // The eclipse: it goes home to the pool, and every third attack is a swallow
+        for (int f = 0; f < 60 * 3; ++f) e.update(DT, w);
+        e.health = e.maxHealth * 0.25f;
+        EnemyWorld w3 = world(C + glm::vec3{0.f, 0.f, 26.f});
+        bool home = false; std::vector<AttackKind> seq;
+        for (int f = 0; f < 60 * 60 && seq.size() < 6; ++f) {
+            e.update(DT, w3);
+            if (e.levPhase == 3 && e.levAtPool() && e.levStage == Enemy::LevStage::FIGHT && e.attack != AttackKind::BREACH) home = true;
+            if (home && e.ev.telegraphStarted && e.attack != AttackKind::SPIT && e.attack != AttackKind::SUBMERGE && e.attack != AttackKind::BREACH) seq.push_back(e.attack);
+            e.levBeached = std::min(e.levBeached, 0.3f);
+            if (e.levInhale > 0.f) e.levInhale = std::min(e.levInhale, 0.1f);
+        }
+        int swallows = 0; for (auto k : seq) swallows += k == AttackKind::SWALLOW;
+        CHECK(home && seq.size() == 6 && seq[2] == AttackKind::SWALLOW && seq[5] == AttackKind::SWALLOW && swallows == 2,
+              "in the eclipse it fights from its pool, a swallow every third attack");
+        // A swallow: inhaling 3 s; 450 down its throat in one breath and it chokes, staggered 4 s
+        Enemy s(EnemyType::LEVIATHAN, M.bossSpawn); s.levInit = true; s.levRoot = s.levHome = N.lair; s.levFloor = C.y;
+        s.levStage = Enemy::LevStage::FIGHT; s.state = EnemyState::ACTIVE; s.spawnTimer = 0.f; s.levPhase = 3;
+        s.levInhale = Enemy::LV_INHALE;
+        bool notYet = !s.levThroatHit(300.f);
+        bool choked = s.levThroatHit(160.f);
+        CHECK(notYet && choked && s.staggered() && std::fabs(s.staggerTimer - 4.f) < 1e-4f && s.levInhale <= 0.f,
+              "450 down its throat in one inhale and it chokes: the inhale ends, staggered 4 s");
+        CHECK(!s.levThroatHit(500.f), "no throat to hit when it isn't inhaling");
+    }
+
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;
 }

@@ -71,6 +71,7 @@ inline void Enemy::thinkLeviathan(float dt, const EnemyWorld& w, bool resolve) {
             levStage = LevStage::FIGHT;
             ev.lvBreachTell = true; ev.lvSite = levTarget;
             startAttack(AttackKind::BREACH, 1.2f);
+            telegraphTimer = telegraphDuration = 1.2f;   // a place to get away from: the same on every difficulty
         }
         levPose(dt, w);
         return;
