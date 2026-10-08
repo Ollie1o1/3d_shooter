@@ -9,6 +9,7 @@
 #include "Enemy.h"
 #include "EnemyVoice.h"
 #include "WardenHazards.h"
+#include "LeviathanHazards.h"
 #include "RelicHazards.h"
 #include "EnemyModel.h"
 #include "BoxRenderer.h"
@@ -404,6 +405,17 @@ public:
     bool wardenAlive() { return warden() != nullptr; }
     int  wardenPhase() { Enemy* w = warden(); return w ? w->wardenPhase : 0; }
 
+    // THE LEVIATHAN (Gameplay_Leviathan.h): what it does to the ring, the flood
+    LeviathanHazards lev;
+    bool  beachHinted = false;      // "BEACHED" shown
+    static constexpr float FLOOD_DEPTH = 0.6f;   // the Maw's flood over the ring in its last phase
+    Enemy* leviathan();
+    void onLeviathanEvents(Enemy& e, const EnemyEvents& ev);
+    void updateLeviathan(float dt);
+    void throatHit(Enemy& e, float dmg);
+    void steerParriedOrbs(float dt);
+    void gatherLeviathanBoxes(std::vector<BoxInstance>& out);
+
     // THE RELIQUARY (Gameplay_Reliquary.h): souls and wires, the last relic you
     // stood on, the snare, the drift
     RelicHazards relic;
@@ -603,7 +615,7 @@ public:
     // =========================================================================
 
     // Every enemy along a ray up to the first wall, nearest first.
-    struct RayHit { int enemy; float t; bool head; bool wound = false; };   // wound: the PENITENT's back (x3)
+    struct RayHit { int enemy; float t; bool head; bool wound = false; LevZone zone = LevZone::NONE; };   // zone: where it found the LEVIATHAN   // wound: the PENITENT's back (x3)
     float hitscanAll(glm::vec3 origin, glm::vec3 dir, float range, std::vector<RayHit>& out);
 
     // Sounds timed to the reload animations (ViewModel.h): the revolver's
@@ -695,3 +707,4 @@ public:
 #include "Gameplay_Penitent.h"
 #include "Gameplay_Warden.h"
 #include "Gameplay_Reliquary.h"
+#include "Gameplay_Leviathan.h"

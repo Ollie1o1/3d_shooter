@@ -283,6 +283,8 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     updatePenitent(dt);
     updateWarden(dt);
     updateReliquary(dt);
+    updateLeviathan(dt);
+    steerParriedOrbs(dt);   // parried orbs into the Warden's core, the Leviathan's eye
     if (fast() && countdown <= 0.f && !victory) ghostRec.record(elapsedTime, player.position, player.camera.yaw);
 
     // --- Projectiles ---

@@ -66,7 +66,14 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         for (auto& e : enemies) if (e.alive && isBoss(e.type)) boss = &e;
 
         if (fast()) {
-            if (finishOpen) { snprintf(buf, sizeof(buf), "FINISH OPEN - CLIMB TO THE BEACON"); accent = {1.f, 0.6f, 0.2f}; }
+            if (act2() && director.phase == WaveDirector::Phase::CLEARED && level.arenas[director.arena].shift == ArenaShift::DRIFT) {
+            glm::vec3 target = level.finishPos;   // the Reliquary's rim: the way down to the Maw
+            float sx, sy;
+            bool on = projectToScreen(target, view, proj, sx, sy);
+            snprintf(buf, sizeof(buf), "THE HOLE %dM", (int)glm::length(target - player.position));
+            ui.renderMarker(sx, sy, on, {1.f, 0.4f, 0.25f}, buf);
+        }
+        if (finishOpen) { snprintf(buf, sizeof(buf), "FINISH OPEN - CLIMB TO THE BEACON"); accent = {1.f, 0.6f, 0.2f}; }
             else if (director.phase == WaveDirector::Phase::APPROACH) {
                 snprintf(buf, sizeof(buf), "ROOM %d/%d  %s   ADVANCE", director.arena + 1, nArenas, ar.name);
                 accent = {0.4f, 1.f, 0.6f};
@@ -121,8 +128,10 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         }
 
         if (boss) ui.renderBossBar(boss->type == EnemyType::SOVEREIGN ? "THE SOVEREIGN" :
-                                   boss->type == EnemyType::PENITENT ? "THE PENITENT" : "THE WARDEN",
+                                   boss->type == EnemyType::PENITENT ? "THE PENITENT" :
+                                   boss->type == EnemyType::LEVIATHAN ? "THE LEVIATHAN" : "THE WARDEN",
                                    boss->health / boss->maxHealth,
+                                   boss->type == EnemyType::LEVIATHAN ? boss->levPhase >= 2 :
                                    boss->type == EnemyType::PENITENT ? boss->scourging :
                                    boss->type == EnemyType::WARDEN ? boss->wardenPhase >= 2 : boss->enraged);
         if (boss && boss->type == EnemyType::WARDEN) {   // its conduits, or the meltdown clock
@@ -137,6 +146,12 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
                 ui.ui.textShadow(wb, SCREEN_W / 2, 82, 2, boss->wardenPhase == 3 ? glm::vec4{1.f, 0.35f, 0.2f, 1.f} : glm::vec4{0.3f, 0.9f, 1.f, 0.95f}, true);
                 ui.end2D();
             }
+        }
+        if (boss && boss->type == EnemyType::LEVIATHAN && (boss->levInhale > 0.f || boss->levPhase == 2)) {   // what to do, under the bar
+            ui.begin2D();
+            if (boss->levInhale > 0.f) ui.ui.textShadow("SHOOT DOWN ITS THROAT", SCREEN_W / 2, 82, 2, {1.f, 0.9f, 0.8f, 1.f}, true);
+            else ui.ui.textShadow("IT HUNTS BELOW - WATCH THE WELLS", SCREEN_W / 2, 82, 2, {1.f, 0.45f, 0.3f, 0.95f}, true);
+            ui.end2D();
         }
         if (boss && boss->type == EnemyType::PENITENT && boss->anchorsLeft > 0) {   // its chains, under the bar
             char cb[48];
@@ -235,10 +250,10 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             std::string sub = dailyRun() ? std::string(daily.modName()) : "";
             ui.renderVictoryEndless(title.c_str(), sub.c_str(), runScore(), wavesCleared, totalKills, totalShots, totalHits,
                                     elapsedTime, dailyRun() ? records.bestDaily : records.bestEndless, newRecord, !nameEntry);
-        } else if (act2()) {   // a preview: no records, no board
+        } else if (act2()) {   // the act's end (no records or board yet)
             ui.renderVictoryArena(totalKills, totalShots, totalHits, deaths, elapsedTime, peakStyle,
                                   prog.level, 0.f, false, true, runScore(),
-                                  "TO BE CONTINUED", "THE NAVE IS BEHIND YOU - THREE MORE BELOW");
+                                  "ACT II COMPLETE", "THE ECLIPSE BREAKS");
         } else {
             ui.renderVictoryArena(totalKills, totalShots, totalHits, deaths, elapsedTime, peakStyle,
                                   prog.level, records.bestArena, newRecord, !nameEntry, runScore());

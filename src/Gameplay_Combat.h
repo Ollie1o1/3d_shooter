@@ -67,7 +67,7 @@ inline void GameplayState::punch(int boostable) {
         p.parried  = true;
         for (auto& o : enemies) if (o.alive && o.uid == p.owner && o.halo) { breakHalo(o); break; }
         p.velocity = fwd * speed;                        // it goes where you look
-        for (auto& o : enemies) if (o.alive && o.uid == p.owner && o.type == EnemyType::WARDEN) { p.homeOn = o.uid; break; }   // ...or into the Warden's core
+        for (auto& o : enemies) if (o.alive && o.uid == p.owner && (o.type == EnemyType::WARDEN || o.type == EnemyType::LEVIATHAN)) { p.homeOn = o.uid; break; }   // ...or into the Warden's core, the Leviathan's eye
         p.lifetime = 4.f;
         if (p.heavy) {
             p.damage = p.parryDamage > 0.f ? p.parryDamage : 400.f; p.size *= 1.3f; p.emissiveColor = {1.6f, 1.1f, 0.3f};
@@ -93,6 +93,8 @@ inline void GameplayState::punch(int boostable) {
                                                      e.sweepReach(), player.position, player.height, e.floorY);
             else inReach = flat < (e.attack == AttackKind::PSLAM ? PenitentHazards::SLAM_RADIUS : PenitentHazards::STOMP_RADIUS);
         }
+        if (e.type == EnemyType::LEVIATHAN)   // its head coming down on you: punch it as it lands
+            inReach = glm::length(glm::vec2{player.position.x - e.levTarget.x, player.position.z - e.levTarget.z}) < Enemy::LV_PARRY_REACH;
         if (inReach) {
             if (e.halo) breakHalo(e);
             e.stagger(e.staggerTime());
@@ -101,6 +103,7 @@ inline void GameplayState::punch(int boostable) {
             gainXp(30);
             if (e.type == EnemyType::SOVEREIGN) ui.toast("GUARD BROKEN", "HE'S OPEN - THREE SECONDS", {1.f, 0.75f, 0.2f}, 1.4f);
             else if (e.type == EnemyType::PENITENT) ui.toast("PARRIED", "IT STAGGERS - HIT IT HARD", {1.f, 0.75f, 0.2f}, 1.6f);
+            else if (e.type == EnemyType::LEVIATHAN) { ui.toast("STAGGERED", "DOUBLE DAMAGE - MAKE IT COUNT", {1.f, 0.75f, 0.2f}, 1.8f); lev.dropMarks(); shake(0.7f, 0.08f); }
             else if (e.type == EnemyType::SHIELDBEARER) ui.toast("SHIELD DOWN", "", {0.4f, 1.f, 0.75f}, 1.2f);
             else ui.toast("STAGGERED", "DOUBLE DAMAGE - MAKE IT COUNT", {1.f, 0.75f, 0.2f}, 1.8f);
             return;
@@ -218,6 +221,8 @@ inline void GameplayState::updateEnemies(float dt) {
         if (g_devOverlay.rfind("penitent", 0) == 0 && e.type == EnemyType::PENITENT) { devPenitentPose(e); continue; }
         if (e.type == EnemyType::WARDEN && (g_devOverlay == "warden2" || g_devOverlay == "warden3") && e.health > e.maxHealth * 0.62f)
             e.health = e.maxHealth * (g_devOverlay == "warden2" ? 0.5f : 0.2f);   // dev: straight into its later phases
+        if (e.type == EnemyType::LEVIATHAN && (g_devOverlay == "leviathan2" || g_devOverlay == "leviathan3") && e.health > e.maxHealth * 0.66f && e.levStage == Enemy::LevStage::FIGHT)
+            e.health = e.maxHealth * (g_devOverlay == "leviathan2" ? 0.6f : 0.28f);
         // In the Descent the void runs to -300: stand on what's really under you (the cage included)
         e.floorY = level.enemyFloor(director.arena, e.position, e.stats().flying,
                                     descent ? groundHeightAt(e.position.x, e.position.z, e.position.y + 0.5f, true) : 0.f);
@@ -296,6 +301,7 @@ inline void GameplayState::updateEnemies(float dt) {
         if (enemies[i].type == EnemyType::PENITENT) onPenitentEvents(enemies[i], ev);
         if (enemies[i].type == EnemyType::WARDEN) onWardenEvents(enemies[i], ev);
         if (enemies[i].type == EnemyType::WEAVER) onReliquaryEvents(enemies[i], ev);
+        if (enemies[i].type == EnemyType::LEVIATHAN) onLeviathanEvents(enemies[i], ev);
         if (ev.enraged && enemies[i].type == EnemyType::SOVEREIGN) {   // the Penitent and the Warden announce their own phases
             pushBanner("HE STOPS HOLDING BACK", "LONGER CHAINS - WATCH THE BLADE", {1.f, 0.15f, 0.25f}, 2.4f);
             shake(0.5f, 0.06f);
@@ -305,7 +311,7 @@ inline void GameplayState::updateEnemies(float dt) {
     }
 
     for (auto& e : enemies) {
-        if (!e.targetable()) continue;
+        if (!e.targetable() || e.type == EnemyType::LEVIATHAN) continue;   // (it lives in the pool's void)
         // Fell into the void: counts as your kill
         if (e.position.y < ar.voidY) {
             e.alive = false; e.state = EnemyState::DEAD; e.health = 0.f;
@@ -403,7 +409,7 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
         styleSystem.heal(heal * tune().heal);
     }
     if (!friendly) audio.play("hit");
-    if (!e.stats().flying) fx.spawnDecal(e.position);
+    if (!e.stats().flying && e.type != EnemyType::LEVIATHAN) fx.spawnDecal(e.position);
     fx.spawnHitSparks(at, e.stats().color * 1.4f);
     if (!friendly) ui.onHit(killed, crit);
     if (!settings || settings->damageNumbers) ui.spawnDamageNumber(at, std::min(dmg, before), crit);
@@ -467,7 +473,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
         case EnemyType::BRUTE:  for (int i = 0; i < 3; ++i) drop(PickupKind::ORB);
                                 if (rand() % 100 < 50) drop(PickupKind::POTION); break;
         case EnemyType::MITE:   if (rand() % 10 == 0) drop(PickupKind::ORB); break;
-        case EnemyType::WARDEN: case EnemyType::SOVEREIGN: break;
+        case EnemyType::WARDEN: case EnemyType::SOVEREIGN: case EnemyType::LEVIATHAN: break;
         case EnemyType::CONDUIT: drop(PickupKind::ORB); drop(PickupKind::ORB); break;
         case EnemyType::CONDUCTOR: drop(PickupKind::ORB); break;
         case EnemyType::ANCHOR: drop(PickupKind::ORB); drop(PickupKind::ORB); break;
@@ -510,6 +516,14 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
         } else if (e.type == EnemyType::PENITENT) {
             pen.clear();   // nothing it threw outlives it
             pushBanner("THE PENITENT FALLS SILENT", "", {1.f, 0.7f, 0.3f}, 3.f);
+        } else if (e.type == EnemyType::LEVIATHAN) {
+            lev.clear();   // nothing it did outlives it
+            glm::vec3 c{e.levRoot.x, e.levFloor, e.levRoot.z};
+            for (int k = 0; k < 8; ++k)
+                fx.spawnBurst(c + glm::vec3{frand(-6.f, 6.f), frand(1.f, 8.f), frand(-6.f, 6.f)}, {1.4f, 1.1f, 0.8f}, 40, 14.f, 1.2f, 3.f);
+            fx.spawnShockwave(c, 30.f, {1.4f, 1.2f, 1.f});
+            explosionFlashTimer = 0.8f; explosionFlashPos = e.position;
+            pushBanner("THE LEVIATHAN SINKS", "", {1.f, 0.9f, 0.7f}, 3.f);
         } else {
             pushBanner("THE WARDEN GOES DARK", "", {1.f, 0.85f, 0.3f}, 2.5f);
         }
@@ -546,6 +560,17 @@ inline void GameplayState::processBlasts() {
                 breakAnchor(ai, false);
         for (auto& e : enemies) {
             if (!e.targetable()) continue;
+            if (e.type == EnemyType::LEVIATHAN) {   // its head takes a blast in full; its plates a fifth
+                float dh = glm::length(e.position - b.pos), m = 1.f;
+                if (dh >= b.radius + 2.f) {
+                    LevSegment seg[LV_SEGMENTS]; leviathanBody(e, seg);
+                    dh = 1e9f;
+                    for (auto& s : seg) dh = std::min(dh, std::max(0.f, glm::length(s.c - b.pos) - s.r));
+                    m = 0.2f;
+                } else dh = std::max(0.f, dh - 2.f);
+                if (dh < b.radius) hurtEnemy(e, b.damage * m * (1.f - dh / b.radius), b.pos, 15.f, 3.f, b.src);
+                continue;
+            }
             float d = glm::length(e.position + glm::vec3{0, e.height() * 0.5f, 0} - b.pos);
             if (d < b.radius)
                 hurtEnemy(e, b.damage * (1.f - d / b.radius), e.position + glm::vec3{0, e.height() * 0.6f, 0}, 15.f, 3.f, b.src);
@@ -626,6 +651,11 @@ inline float GameplayState::hitscanAll(glm::vec3 origin, glm::vec3 dir, float ra
         if (glm::dot(off, off) > 9.f) off = glm::vec3{0.f};   // teleported: trust the simulation
         AABB body = en.getAABB();
         body.min += off; body.max += off;
+        if (en.type == EnemyType::LEVIATHAN) {   // plates, head, eye, throat: whichever the ray meets first
+            float tl; LevZone z = leviathanRay(en, origin - off, dir, tl);
+            if (z != LevZone::NONE && tl < wallT) { RayHit h{ei, tl, z == LevZone::EYE}; h.zone = z; out.push_back(h); }
+            continue;
+        }
         float t = rayBoxHit(origin, dir, body);
         AABB head;
         bool hasHead = headBox(en, head);
@@ -731,6 +761,11 @@ inline void GameplayState::fireWeapon(int w) {
             }
             if (hits[k].head && e.halo) breakHalo(e);   // a headshot shatters a halo
             float m = hits[k].wound ? e.woundMult() : head ? d.headMult : 1.f;
+            if (hits[k].zone != LevZone::NONE) {   // THE LEVIATHAN: its plates turn most of it; the eye and an open throat don't
+                m = leviathanZoneMult(e, hits[k].zone) * (hits[k].zone == LevZone::EYE ? std::max(1.f, d.headMult * 0.5f) : 1.f);
+                if (hits[k].zone == LevZone::BODY) fx.spawnHitSparks(at, {0.8f, 0.75f, 0.7f});
+                if (hits[k].zone == LevZone::THROAT) throatHit(e, dmg * m * (1.f - 0.15f * k) * e.armorMult());
+            }
             if (hits[k].wound) fx.spawnHitSparks(at, {1.f, 0.3f, 0.15f});
             float falloff = 1.f - 0.15f * k;    // each body it punches through costs a little
             if (head) fx.spawnHitSparks(at, {1.f, 0.9f, 0.3f});

@@ -4353,6 +4353,26 @@ int main() {
         CHECK(LH::bites({0, -300, 0}, {4.f, -300.f, 0.f}) && !LH::bites({0, -300, 0}, {5.f, -300.f, 0.f}), "it bites inside 4.5 m");
     }
 
+    // ---------------------------------------------------------------- the Maw's flood
+    {
+        LevelData N = buildAct2Level();
+        ArenaShifts sh; sh.capture(N); sh.reset(N);
+        const float F = MAW_C.y;
+        glm::vec3 ring = MAW_C + glm::vec3{0.f, 0.f, 30.f}, ledge = MAW_C + glm::vec3{MAW_RIB_R - 3.8f, MAW_LEDGE_UP, 0.f};
+        bool dry = N.waterSurfaceAt(ring.x, ring.z) < F && N.waterSurfaceAt(MAW_C.x, MAW_C.z) < -1e8f;
+        sh.floodTo(N, 4, F + 0.6f, 4.f);
+        for (int i = 0; i < 60 * 2; ++i) sh.update(DT, N, 4, true);
+        bool rising = N.waterSurfaceAt(ring.x, ring.z) > F - 0.9f && N.waterSurfaceAt(ring.x, ring.z) < F + 0.6f;
+        for (int i = 0; i < 60 * 3; ++i) sh.update(DT, N, 4, true);
+        bool full = std::fabs(N.waterSurfaceAt(ring.x, ring.z) - (F + 0.6f)) < 1e-3f && N.waterSurfaceAt(MAW_C.x, MAW_C.z) < -1e8f &&
+                    N.waterDepthAt(ledge) == 0.f;
+        bool others = N.waterSurfaceAt(0.f, -540.f) < -59.f;   // the Nave's water left alone
+        sh.reset(N);
+        bool drained = N.waterSurfaceAt(ring.x, ring.z) < F;
+        CHECK(dry && rising && full && drained && others,
+              "the Maw floods its ring to 0.6 m over 4 s (the pool stays open, the ledges dry), and a retry drains it");
+    }
+
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;
 }

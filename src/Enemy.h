@@ -439,6 +439,7 @@ struct Enemy {
         return true;
     }
     void  levEndInhale() { levInhale = 0.f; levChoke = 0.f; recoverTimer = 0.8f; }
+    glm::vec3 levMouth() const { return position + glm::vec3{std::sin(yaw), 0.f, std::cos(yaw)} * 2.4f - glm::vec3{0.f, 0.6f, 0.f}; }
     bool  coreOpen() const { return type == EnemyType::WARDEN && (ventTimer > 0.f || wardenPhase == 3); }
     // A shot into an open weak point: the PENITENT's wound x3, the WARDEN's core x3 venting, x2 in meltdown
     float woundMult() const { return type == EnemyType::WARDEN ? (ventTimer > 0.f ? 3.f : 2.f) : 3.f; }
@@ -798,7 +799,7 @@ private:
     }
 
     glm::vec3 eyePos() const {
-        if (type == EnemyType::LEVIATHAN) return position + glm::vec3{std::sin(yaw), 0.f, std::cos(yaw)} * 2.4f - glm::vec3{0.f, 0.6f, 0.f};   // its mouth
+        if (type == EnemyType::LEVIATHAN) return levMouth();
         return position + glm::vec3{0.f, height() * 0.85f, 0.f};
     }
 

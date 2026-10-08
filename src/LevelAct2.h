@@ -718,6 +718,7 @@ inline void buildReliquary(LevelBuilder& B) {
     // ---- the rim, over the Maw: jump in (buildMaw) ----
     wall(-8, Q.y - 1, Q.z - 62, 8, Q.y, Q.z - 50, debrisCol);
     B.kit(true).box({0.f, Q.y + 0.02f, Q.z - 61.9f}, {15.6f, 0.06f, 0.2f}, blood);   // its edge, glowing
+    L.finishPos = {0.f, Q.y + 1.f, Q.z - 61.f};   // ACT II's way on once the Reliquary is clear (a waypoint, no beacon)
     // ---- the arena ----
     Arena a;
     a.name = "THE RELIQUARY"; a.space = ReverbSpace::HALL;
