@@ -14,11 +14,11 @@
 
 class LeviathanHazards {
 public:
-    static constexpr float STRIP_HALF = 2.5f, STRIP_PAST = 4.f, CRASH_HIGH = 2.5f, CRASH_DAMAGE = 40.f, STRIP_FADE = 0.6f;
-    static constexpr float TIDE_SPEED = 14.f, TIDE_HEIGHT = 1.2f, TIDE_DAMAGE = 25.f;
-    static constexpr float SPIT_WARN = 1.f, SPIT_RADIUS = 4.f, SPIT_DAMAGE = 30.f, SPIT_BURN = 4.f, SPIT_DPS = 15.f, SPIT_TICK = 0.25f;
-    static constexpr float BOIL_TIME = 1.2f, BREACH_RADIUS = 6.f, BREACH_HIGH = 6.f, BREACH_DAMAGE = 40.f;
-    static constexpr float PULL_SPEED = 3.5f, BITE_REACH = 4.5f, BITE_DAMAGE = 45.f;
+    static constexpr float STRIP_HALF = 2.5f, STRIP_PAST = 4.f, CRASH_HIGH = 2.5f, CRASH_DAMAGE = 48.f, STRIP_FADE = 0.6f;
+    static constexpr float TIDE_SPEED = 14.f, TIDE_HEIGHT = 1.2f, TIDE_DAMAGE = 30.f;
+    static constexpr float SPIT_WARN = 1.f, SPIT_RADIUS = 4.f, SPIT_DAMAGE = 36.f, SPIT_BURN = 4.f, SPIT_DPS = 18.f, SPIT_TICK = 0.25f;
+    static constexpr float BOIL_TIME = 1.2f, BREACH_RADIUS = 6.f, BREACH_HIGH = 6.f, BREACH_DAMAGE = 48.f;
+    static constexpr float PULL_SPEED = 3.5f, BITE_REACH = 4.5f, BITE_DAMAGE = 55.f;
     struct Strip { glm::vec3 from, to; float t = 0.f; bool landed = false; };   // marked, then struck (and fading)
     struct Tide  { glm::vec3 centre; float radius, prev, maxR; bool hit = false; };
     struct Spit  { glm::vec3 at; float t = 0.f; bool burst = false; };          // a marker, a burst, then it burns

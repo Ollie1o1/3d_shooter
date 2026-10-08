@@ -99,12 +99,19 @@ inline void Enemy::thinkLeviathan(float dt, const EnemyWorld& w, bool resolve) {
         switch (k) {
             case AttackKind::CRASH:
                 ev.lvCrash = true; ev.lvFrom = levRoot; ev.lvTo = levTarget;
+                if (comboLeft > 0) {   // the eclipse: the first of a pair - straight back up and down again where you've gone
+                    --comboLeft;
+                    position = levTarget + glm::vec3{0.f, 2.2f, 0.f};
+                    aimCrash(w, 0.7f * quick, true);
+                    levPose(dt, w);
+                    return;
+                }
                 levBeached = LV_BEACHED; ev.lvBeached = true;
                 ++levSiteAttacks;
                 if (levPhase == 2) levSiteAttacks = 2;   // a beaching spends its time at this root
                 break;
             case AttackKind::TORRENT:
-                fireAt(w.playerEye, tune_->windup < 1.f ? 11 : 9, 1.1f, 16.f, 12.f, 1.7f);
+                fireAt(w.playerEye, tune_->windup < 1.f ? 11 : 9, 1.1f, 16.f, 14.f, 1.7f);
                 ev.shotParry = 180.f;   // parried back, it homes into the eye (Gameplay_Leviathan.h)
                 ++levSiteAttacks;
                 break;
@@ -159,18 +166,11 @@ inline void Enemy::thinkLeviathan(float dt, const EnemyWorld& w, bool resolve) {
     if (levPhase >= 2 && levSiteAttacks >= 2) { startAttack(AttackKind::SUBMERGE, 0.8f); return; }
     if (!attackReady(dt / quick)) return;
     ++attackCount;
-    auto crash = [&]() {   // locked on where you'll be as it lands (up to 8 m on), within its reach
-        glm::vec2 lead{w.playerVel.x, w.playerVel.z};
-        lead *= 1.1f * quick;
-        if (glm::length(lead) > 8.f) lead = glm::normalize(lead) * 8.f;
-        glm::vec2 aim = rel + lead;
-        float da = glm::length(aim);
-        glm::vec2 to = da > LV_REACH ? aim / da * LV_REACH : aim;
-        levTarget = glm::vec3{levRoot.x + to.x, levFloor, levRoot.z + to.y};
-        ev.lvCrashMark = true; ev.lvFrom = levRoot; ev.lvTo = levTarget;
-        startAttack(AttackKind::CRASH, 1.1f * quick);
+    auto crash = [&]() {   // in the eclipse they come in pairs
+        comboLeft = levPhase == 3 ? 1 : 0;
+        aimCrash(w, 1.1f * quick, false);
     };
-    if (d < rootR + 10.f) { crash(); return; }   // hugging its root
+    if (d < rootR + 4.f) { crash(); return; }    // hugging its root (not the whole ring: from mid-ring it uses everything)
     int s = levSeq++;
     if (levPhase == 1) {
         switch (s % 4) { case 0: case 2: crash(); break; case 1: startAttack(AttackKind::TORRENT, 0.8f); break;
@@ -185,6 +185,21 @@ inline void Enemy::thinkLeviathan(float dt, const EnemyWorld& w, bool resolve) {
         else if (s % 6 == 1) startAttack(AttackKind::TORRENT, 0.8f * quick);
         else startAttack(AttackKind::TIDE, 0.9f * quick);
     }
+}
+
+// A crash, locked on where you'll be as it lands (your motion led by its
+// wind-up, up to 8 m on), within its reach
+inline void Enemy::aimCrash(const EnemyWorld& w, float windup, bool followUp) {
+    glm::vec2 rel{w.playerFeet.x - levRoot.x, w.playerFeet.z - levRoot.z};
+    glm::vec2 lead{w.playerVel.x, w.playerVel.z};
+    lead *= windup;
+    if (glm::length(lead) > 8.f) lead = glm::normalize(lead) * 8.f;
+    glm::vec2 aim = rel + lead;
+    float da = glm::length(aim);
+    glm::vec2 to = da > LV_REACH ? aim / da * LV_REACH : aim;
+    levTarget = glm::vec3{levRoot.x + to.x, levFloor, levRoot.z + to.y};
+    ev.lvCrashMark = true; ev.lvFrom = levRoot; ev.lvMarkTo = levTarget;
+    startAttack(AttackKind::CRASH, windup, followUp);
 }
 
 // Staggered (a parried crash, a choke): the head down on the ring, reeling
@@ -225,7 +240,7 @@ inline void Enemy::levPose(float dt, const EnemyWorld& w) {
         return;
     }
     if (levInhale > 0.f) {   // low over the edge of its root, the jaw unhinged
-        want = base + fwd * (levAtPool() ? LV_POOL + 2.5f : 6.f) + up * 2.6f; pitch = 0.f; jaw = 1.f; rate = 6.f;
+        want = base + fwd * (levAtPool() ? LV_POOL - 1.f : 4.f) + up * 2.6f; pitch = 0.f; jaw = 1.f; rate = 6.f;   // over its root's lip: the pull has to drag you to it
     } else switch (attack) {
         case AttackKind::CRASH: {   // rearing back, then down along the strip
             const float slam = 0.15f;
@@ -242,7 +257,7 @@ inline void Enemy::levPose(float dt, const EnemyWorld& w) {
         case AttackKind::TORRENT: want = base + up * 10.f + fwd * (8.f + 3.f * tp); pitch = -0.3f; jaw = 0.2f + 0.8f * tp; break;
         case AttackKind::TIDE:    want = base + up * 15.f + fwd * 2.f; pitch = 0.3f; jaw = 0.5f * tp; break;
         case AttackKind::SPIT:    want = idle + up * 1.5f; pitch = 0.2f + 0.3f * tp; jaw = 0.6f * tp; break;
-        case AttackKind::SWALLOW: want = base + fwd * (levAtPool() ? LV_POOL + 2.5f : 6.f) + up * (7.f - 4.4f * tp); pitch = 0.f; jaw = tp; rate = 4.f; break;
+        case AttackKind::SWALLOW: want = base + fwd * (levAtPool() ? LV_POOL - 1.f : 4.f) + up * (7.f - 4.4f * tp); pitch = 0.f; jaw = tp; rate = 4.f; break;
         case AttackKind::SUBMERGE: want = base - up * 8.f * tp; pitch = -0.5f; jaw = 0.f; rate = 4.f; break;
         default: break;
     }

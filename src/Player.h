@@ -148,6 +148,7 @@ public:
     // raised by deep water (feet are held under its surface). Set by the
     // caller before update().
     float floorY = 0.f;
+    glm::vec3 tickFrom{0.f, -1e9f, 0.f};   // position at the start of this tick's move (update); y -1e9: none yet
 
     // Water above the feet (set by the caller): walking slows, sliding doesn't
     float wadeDepth = 0.f;
@@ -204,6 +205,7 @@ public:
                 bool grappling = false, const SpatialGrid* grid = nullptr) {
         handleMovement(dt, keys, grappling);
         applyGravity(dt);
+        tickFrom = position;   // where it was before this tick's move (resolveAABB: what you ran into, you ran into from there)
         integrate(dt);
         resolveCollisions(walls, wallCount, grid);
         camera.position = position + glm::vec3{0, eyeHeight, 0};
@@ -429,8 +431,46 @@ private:
         glm::vec3 pMax = position + glm::vec3{ radius, height,  radius};
 
         if (pMax.x <= wall.min.x || pMin.x >= wall.max.x) return false;
-        if (pMax.y <= wall.min.y || pMin.y >= wall.max.y) return false;
         if (pMax.z <= wall.min.z || pMin.z >= wall.max.z) return false;
+        // Swept: if the player was clear of the box along an axis when this
+        // tick began and now overlaps it, it came in from that side - put it
+        // back there, however fast it moved and however thin the box. Without
+        // this a fast move (a slam, a long drop, a full-speed grapple) that
+        // carried the player past a box's middle in one tick pushed it out the
+        // far side: under a floor slab, through a thin wall
+        const float EPS = 0.001f;
+        if (tickFrom.y > -1e8f) {
+            glm::vec3 fMin = tickFrom + glm::vec3{-radius, 0.f, -radius}, fMax = tickFrom + glm::vec3{radius, height, radius};
+            if (fMin.y >= wall.max.y - EPS && pMin.y < wall.max.y) {   // landed on it
+                position.y = wall.max.y;
+                if (velocity.y < 0.f) velocity.y = 0.f;
+                onGround = true;
+                return true;
+            }
+            if (fMax.y <= wall.min.y + EPS && pMax.y > wall.min.y) {   // head into its underside
+                position.y = wall.min.y - height;
+                if (velocity.y > 0.f) velocity.y = 0.f;
+                return false;
+            }
+            if (pMax.y > wall.min.y && pMin.y < wall.max.y) {   // ran into its side
+                bool fromX = fMax.x <= wall.min.x + EPS || fMin.x >= wall.max.x - EPS;
+                bool fromZ = fMax.z <= wall.min.z + EPS || fMin.z >= wall.max.z - EPS;
+                float px = glm::min(pMax.x - wall.min.x, wall.max.x - pMin.x), pz = glm::min(pMax.z - wall.min.z, wall.max.z - pMin.z);
+                if (fromX && (!fromZ || px <= pz)) {
+                    float dir = fMax.x <= wall.min.x + EPS ? -1.f : 1.f;
+                    position.x = dir < 0.f ? wall.min.x - radius : wall.max.x + radius;
+                    if (velocity.x * dir < 0.f) velocity.x = 0.f;
+                    return false;
+                }
+                if (fromZ) {
+                    float dir = fMax.z <= wall.min.z + EPS ? -1.f : 1.f;
+                    position.z = dir < 0.f ? wall.min.z - radius : wall.max.z + radius;
+                    if (velocity.z * dir < 0.f) velocity.z = 0.f;
+                    return false;
+                }
+            }
+        }
+        if (pMax.y <= wall.min.y || pMin.y >= wall.max.y) return false;
 
         float ox = glm::min(pMax.x - wall.min.x, wall.max.x - pMin.x);
         float oy = glm::min(pMax.y - wall.min.y, wall.max.y - pMin.y);

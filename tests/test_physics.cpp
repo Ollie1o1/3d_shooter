@@ -137,6 +137,40 @@ int main() {
         CHECK(Player::wadeFactor(0.05f) == 1.f, "a puddle doesn't slow you");
     }
 
+    // Fast landings on thin floors: a ground slam (40 m/s and climbing) or a
+    // long drop puts the feet more than half a slab deep in one tick. They
+    // must land on top, never be pushed out underneath
+    {
+        int clipped = 0, cases = 0;
+        for (float thick : {0.3f, 0.5f, 1.f, 1.5f, 2.f})
+            for (float speed : {10.f, 25.f, 40.f, 54.f, 70.f})
+                for (float x : {0.f, 1.f}) {   // over the middle of a slab, and over the seam between two
+                    std::vector<Wall> walls{ Wall{ AABB{{-5.f, -thick, -5.f}, {1.f, 0.f, 5.f}} },
+                                             Wall{ AABB{{1.f, -thick, -5.f}, {5.f, 0.f, 5.f}} } };
+                    SpatialGrid grid; grid.build(walls);
+                    Player p({x, 3.f, 0.f});
+                    p.floorY = -100.f;
+                    p.velocity = {0.f, -speed, 0.f};
+                    for (int i = 0; i < 90; ++i) p.update(DT, keys, walls.data(), (int)walls.size(), false, &grid);
+                    ++cases;
+                    if (p.position.y < -0.01f) { ++clipped; std::printf("      thick %.1f, %.0f m/s at x %.0f: ended at y %.2f\n", thick, speed, x, p.position.y); }
+                }
+        CHECK(clipped == 0, "landing fast on a thin floor (a slam, a long drop) stands you on top, never under it");
+    }
+
+    // ...and the same for walls: a full-speed grapple (45 m/s) into a thin wall stops at it
+    {
+        int through = 0;
+        for (float thick : {0.2f, 0.4f, 0.6f, 1.f})
+            for (float speed : {20.f, 28.f, 45.f, 60.f}) {
+                std::vector<Wall> walls{ Wall{ AABB{{2.f, 0.f, -5.f}, {2.f + thick, 3.f, 5.f}} } };
+                Player p({0.f, 0.f, 0.f}); p.onGround = true;
+                for (int i = 0; i < 30; ++i) { p.velocity.x = speed; p.update(DT, keys, walls.data(), (int)walls.size()); }
+                if (p.position.x > 2.f) { ++through; std::printf("      thick %.1f at %.0f m/s: x %.2f\n", thick, speed, p.position.x); }
+            }
+        CHECK(through == 0, "moving fast into a thin wall (a dash, a grapple) stops at it, never passes through");
+    }
+
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "PASSED", failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;
 }

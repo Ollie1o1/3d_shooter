@@ -157,7 +157,7 @@ inline const EnemyStats& statsOf(EnemyType t) {
         {"WEAVER", 120.f, 0.9f, 1.3f, 4.2f, 0.8f, 6.f, false,
          {0.16f,0.13f,0.2f}, {0.75f,0.35f,1.1f}, {0.75f,0.35f,1.1f},
          "IT WIRES THE GAPS - CUT THE NODES OR DUCK UNDER"},
-        {"LEVIATHAN", 15000.f, 3.0f, 5.2f, 0.f, 1.1f, 2.4f, false,   // radius/height: the head's box
+        {"LEVIATHAN", 15000.f, 3.0f, 5.2f, 0.f, 1.1f, 1.9f, false,   // radius/height: the head's box
          {0.2f,0.18f,0.21f}, {1.4f,1.0f,0.6f}, {0.3f,1.1f,0.9f},
          "DASH THE CRASH - SHOOT THE EYE WHILE IT'S DOWN"},
     };
@@ -219,7 +219,8 @@ struct EnemyEvents {
     // there; a tide rolling out from its root; a spit marked where you'll be;
     // a well boiling, then the breach out of it; an inhale began; it rose
     int       lvPhase = 0;
-    bool      lvCrashMark = false, lvCrash = false; glm::vec3 lvFrom{0.f}, lvTo{0.f};
+    bool      lvCrashMark = false, lvCrash = false; glm::vec3 lvFrom{0.f}, lvTo{0.f};   // lvTo: where a crash landed
+    glm::vec3 lvMarkTo{0.f};   // where a crash just marked will land (the eclipse marks the second as the first lands)
     bool      lvTide = false; glm::vec3 lvTideAt{0.f}; float lvTideR = 0.f;
     bool      lvSpit = false; glm::vec3 lvSpitAt{0.f};
     bool      lvBreachTell = false, lvBreach = false; glm::vec3 lvSite{0.f};
@@ -409,7 +410,7 @@ struct Enemy {
     // LEVIATHAN (EnemyLeviathan.h): `position` is its head's centre; the body
     // curves up to it out of its root (the pool, or a well while it hunts)
     enum class LevStage { RISE, FIGHT, HIDDEN };
-    static constexpr float LV_PHASE2 = 0.65f, LV_PHASE3 = 0.30f, LV_RISE = 3.f, LV_BEACHED = 3.f, LV_HIDDEN = 1.4f,
+    static constexpr float LV_PHASE2 = 0.65f, LV_PHASE3 = 0.30f, LV_RISE = 3.f, LV_BEACHED = 2.2f, LV_HIDDEN = 1.4f,
                            LV_SPIT_AFTER = 4.f, LV_SPIT_FAR = 34.f, LV_SPIT_HIGH = 4.f, LV_REACH = 44.f, LV_INHALE = 3.f,
                            LV_CHOKE = 450.f, LV_STAGGER = 4.f, LV_PARRY_REACH = 6.f, LV_POOL = 13.f;
     int   levPhase = 1;
@@ -1231,6 +1232,7 @@ private:
     void thinkPenitent(float dt, const EnemyWorld& w, bool resolve);   // EnemyPenitent.h
     void thinkLeviathan(float dt, const EnemyWorld& w, bool resolve);  // EnemyLeviathan.h
     void levReel(float dt);                                            // EnemyLeviathan.h
+    void aimCrash(const EnemyWorld& w, float windup, bool followUp);
     void levPose(float dt, const EnemyWorld& w);
     void thinkRevenant(float dt, const EnemyWorld& w, bool resolve);   // EnemyRelic.h
     void thinkWeaver(float dt, const EnemyWorld& w, bool resolve);     // EnemyRelic.h

@@ -112,9 +112,10 @@ struct BossSim {
     // THE LEVIATHAN: its events resolved as Gameplay_Leviathan.h does
     float lvFloor() const { return L.hasLair ? L.lairFloor : A.playerStart.y; }
     bool jumping = false;   // SOLID: in the air over a tide right now
+    float circle = 1.f;     // SOLID: which way it circles the Leviathan
     void leviathanEvents(float dt, const EnemyEvents& ev) {
-        if (ev.lvCrashMark) lev.markCrash(ev.lvFrom, ev.lvTo);
         if (ev.lvCrash) { lev.landCrash(); if (LeviathanHazards::inStrip(ev.lvFrom, ev.lvTo, feet, lvFloor())) hurt(LeviathanHazards::CRASH_DAMAGE); }
+        if (ev.lvCrashMark) lev.markCrash(ev.lvFrom, ev.lvMarkTo);
         if (ev.lvTide) lev.addTide(ev.lvTideAt, boss.levAtPool() ? Enemy::LV_POOL : 3.5f, ev.lvTideR);
         if (ev.lvSpit) lev.addSpit(ev.lvSpitAt);
         if (ev.lvBreachTell) lev.addBoil(ev.lvSite);
@@ -140,7 +141,8 @@ struct BossSim {
         glm::vec3 from = feet - root; from.y = 0.f;
         float l = glm::length(from);
         glm::vec3 dir = l > 0.1f ? from / l : glm::vec3{0, 0, 1}, side{-dir.z, 0.f, dir.x};
-        glm::vec3 mv = side * 0.6f + dir * glm::clamp((22.f - l) * 0.3f, -1.f, 1.f);
+        if (boss.ev.telegraphStarted && boss.attack == AttackKind::TORRENT) circle = -circle;   // orbs coming: change direction, as a player would
+        glm::vec3 mv = side * (0.6f * circle) + dir * glm::clamp((22.f - l) * 0.3f, -1.f, 1.f);
         if (t >= dodgeFrom) {
             for (auto& s : lev.strips)
                 if (!s.landed) {   // well clear of it (2 m past its edge), not just out
@@ -153,7 +155,7 @@ struct BossSim {
             for (auto& s : lev.spits) if (!s.burst) { glm::vec3 a = feet - s.at; a.y = 0.f; if (glm::length(a) < LeviathanHazards::SPIT_RADIUS + 1.f) mv = glm::normalize(a + glm::vec3{0.01f, 0, 0}) * 3.f; }
             for (auto& b : lev.boils) { glm::vec3 a = feet - b.at; a.y = 0.f; if (glm::length(a) < LeviathanHazards::BREACH_RADIUS + 1.f) mv = glm::normalize(a + glm::vec3{0.01f, 0, 0}) * 3.f; }
         }
-        if (boss.levInhale > 0.f) mv = dir * 3.f;
+        if (boss.levInhale > 0.f || (boss.attack == AttackKind::SWALLOW && t >= dodgeFrom)) mv = dir * 3.f;   // the jaw unhinges: run
         float ml = glm::length(mv);
         if (ml > 1e-3f) feet += mv / ml * std::min(8.f, 8.f * ml) * dt;
         glm::vec3 c{L.lair.x, feet.y, L.lair.z}; glm::vec3 o = feet - c; o.y = 0.f;   // stay on the ring
