@@ -28,7 +28,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     if (pinnedCueCd > 0.f) pinnedCueCd -= dt;
     bool dashKey = keys[SDL_SCANCODE_LSHIFT] != 0;
     if (dashKey && !prevDashKey && pinned) pinnedCue();
-    if (dashKey && !prevDashKey && dashCharges > 0 && !pinned) {
+    if (dashKey && !prevDashKey && dashCharges > 0 && !pinned && snareTimer <= 0.f) {   // (snared by a wire: no dash)
         // Full 3D dash in the direction the camera faces
         glm::vec3 dashDir = player.camera.forward();
         player.velocity = dashDir * 28.f;
@@ -261,6 +261,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     // --- Waves ---
     int alive = 0;
     for (auto& e : enemies) if (e.alive) ++alive;
+    alive += relic.alive();              // a Revenant's soul in flight: not over until it's caught or back
     alive += (int)pendingTwins.size();   // a TWINNED kill this tick: its copies count before they're spawned
     std::vector<SpawnRequest> spawns;
     director.countScale    = tune().waveSize;
@@ -281,6 +282,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     updateSovereign(dt);
     updatePenitent(dt);
     updateWarden(dt);
+    updateReliquary(dt);
     if (fast() && countdown <= 0.f && !victory) ghostRec.record(elapsedTime, player.position, player.camera.yaw);
 
     // --- Projectiles ---

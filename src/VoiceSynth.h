@@ -54,6 +54,8 @@ inline Profile profileOf(EnemyType t) {
         case EnemyType::SERAPH:       return {440.f, Vowel::AH,   4, 1.20f, Body::WINGS,      180.f, 0.40f};
         case EnemyType::ANCHOR:       return { 49.f, Vowel::OO,   3, 0.80f, Body::GRIND,      120.f, 0.75f};
         case EnemyType::PENITENT:     return { 73.f, Vowel::OH,   6, 0.80f, Body::CHAINS,     160.f, 1.00f};
+        case EnemyType::REVENANT:     return {165.f, Vowel::OO,   3, 1.05f, Body::ARMOUR,     700.f, 0.35f};
+        case EnemyType::WEAVER:       return {  0.f, Vowel::NONE, 0, 1.00f, Body::SKITTER,   1600.f, 0.30f};
         default:                      return {};
     }
 }
@@ -370,6 +372,11 @@ inline Buf tellV(EnemyType t, AttackKind a, const Profile& p, Rng& r) {
             for (int k = 0; k < 3; ++k)
                 add(out, sing(d / 3.f, f, 1.f + 0.1f * k, 1.f + 0.1f * k, k % 2 ? Vowel::AH : Vowel::OH, p, r), 1.f, k * d / 3.f);
             break;
+        // THE REVENANT / THE WEAVER
+        case AttackKind::RAKE:     add(out, vent(d, 2600.f, r, d * 0.7f, 0.03f)); add(out, metal(0.12f, 900.f, r, 30.f), 0.6f, d - 0.12f); break;
+        case AttackKind::SOULBOLT: add(out, choir(d, f * 0.9f, f * 1.6f, Vowel::OO, p.voices, p.formant, r, d * 0.8f, 0.05f, 0.4f)); break;
+        case AttackKind::STRING:   add(out, servo(d, 300.f, 1400.f, r, d * 0.8f, 0.03f), 0.8f);
+                                   for (float tt = 0.f; tt < d - 0.05f; tt += 0.06f) add(out, click(2200.f, r, 0.02f), 0.4f, tt); break;
         // THE WARDEN
         case AttackKind::WVENT:     // plates opening: a hiss rising, the gears letting go
             add(out, vent(d, 2500.f, r, d * 0.7f, 0.05f)); add(out, metal(0.3f, p.bodyHz * 3.f, r, 10.f), 0.6f, d * 0.5f); break;
@@ -425,6 +432,9 @@ inline Buf specialV(const VoiceSpec& s, Rng& r) {
     if (k == "enrage") { Buf out = chord(1.5f, p.f0, p, r, 1.f, 1.5f, 2.f, 0.4f); add(out, grind(1.5f, 22.f, 300.f, r), 0.5f); return out; }
     if (k == "rise")   { Buf out = choir(2.f, p.f0 * 0.75f, p.f0, p.vowel, 6, p.formant, r, 1.2f, 0.4f, 0.2f); add(out, body(p, 2.f, r), 0.6f); return out; }
     if (k == "link")   return choir(0.25f, p.f0, p.f0 * 1.5f, Vowel::EE, 2, p.formant, r, 0.02f, 0.08f, 0.05f);
+    if (k == "soul")   return choir(0.9f, 300.f, 700.f, Vowel::OO, 3, 1.1f, r, 0.05f, 0.4f, 0.4f, 7.f);   // a soul tearing free: a rising choir
+    if (k == "reform") { Buf out = choir(1.f, 140.f, 220.f, Vowel::OH, 4, 1.f, r, 0.8f, 0.15f, 0.2f); add(out, shimmer(1.f, 2400.f, r), 0.3f); return out; }
+    if (k == "twang")  { Buf out = metal(0.3f, 1300.f, r, 9.f); add(out, servo(0.25f, 900.f, 300.f, r, 0.002f, 0.2f), 0.5f); return out; }
     return Buf(N(0.1f), 0.f);
 }
 

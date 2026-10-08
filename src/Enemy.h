@@ -56,7 +56,7 @@
 // CONDUCTOR: doesn't attack either; it tethers nearby allies and shields them
 // (linkConductors below), so it's the one to kill first.
 enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, JUGGERNAUT, WARDEN, SOVEREIGN, SHIELDBEARER, CONDUIT,
-                       CONDUCTOR, SERAPH, ANCHOR, PENITENT, COUNT };
+                       CONDUCTOR, SERAPH, ANCHOR, PENITENT, REVENANT, WEAVER, COUNT };
 inline bool isBoss(EnemyType t) { return t == EnemyType::WARDEN || t == EnemyType::SOVEREIGN || t == EnemyType::PENITENT; }
 
 // Hollowed variants (Act II): a regular enemy made harder in one specific way.
@@ -86,7 +86,8 @@ enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY,
                         BASH,                                  // the SHIELDBEARER's
                         BEAM,                                  // the SERAPH's
                         CENSER_LOW, CENSER_HIGH, PSLAM, PSTOMP, PLASH, SCOURGE,     // the PENITENT's
-                        WVENT, LANCE, SEEKER, WLUNGE, DETONATE };      // the WARDEN's
+                        WVENT, LANCE, SEEKER, WLUNGE, DETONATE,        // the WARDEN's
+                        RAKE, SOULBOLT, STRING };                      // the REVENANT's, the WEAVER's
 
 struct EnemyStats {
     const char* name;
@@ -149,6 +150,12 @@ inline const EnemyStats& statsOf(EnemyType t) {
         {"PENITENT", 6000.f, 3.0f, 8.2f, 3.5f, 0.9f, 2.6f, false,
          {0.14f,0.13f,0.14f}, {1.3f,0.75f,0.3f}, {1.2f,0.5f,0.2f},
          "BREAK ITS CHAINS - JUMP LOW SWEEPS, SLIDE UNDER HIGH ONES"},
+        {"REVENANT", 160.f, 0.5f, 2.3f, 5.4f, 0.45f, 1.6f, false,
+         {0.2f,0.21f,0.26f}, {0.75f,0.9f,1.3f}, {0.6f,0.85f,1.2f},
+         "ITS SOUL RUNS - CATCH IT BEFORE IT COMES BACK"},
+        {"WEAVER", 120.f, 0.9f, 1.3f, 4.2f, 0.8f, 6.f, false,
+         {0.16f,0.13f,0.2f}, {0.75f,0.35f,1.1f}, {0.75f,0.35f,1.1f},
+         "IT WIRES THE GAPS - CUT THE NODES OR DUCK UNDER"},
     };
     return S[(int)t];
 }
@@ -194,6 +201,8 @@ struct EnemyEvents {
     int       penIncense = 0;
     glm::vec3 penIncensePos[3];
     int       penSummon = 0;
+    // WEAVER: a wire strung between A and B
+    bool      wire = false; glm::vec3 wireA{0.f}, wireB{0.f};
     // WARDEN: its phase changed (2 overload, 3 meltdown); a lance began (from,
     // start yaw, which way it sweeps); a seeker marked where you stand; its
     // vent opened; the meltdown went off
@@ -217,6 +226,7 @@ struct EnemyWorld {
     int  dynCount = 0;
     glm::vec3 reactor{0.f};       // the WARDEN's power: where it goes to feed (the Core's reactor)
     bool hasReactor = false;
+    bool voidUnder = false;       // the floor under the arena is a void (the Reliquary): only real ground holds you up
 };
 
 // Ray vs AABB: distance along the ray to the first hit, or -1 on a miss.
@@ -375,6 +385,8 @@ struct Enemy {
     bool  atReactor    = false;
     glm::vec3 reactorSpot{0.f};
     float spotBest = 1e9f, spotAt = 0.f;   // its walk to the reactor: closest yet, and when
+    // REVENANT: how many times its soul has come back (the third death is final)
+    int   reforms = 0;
     bool  coreOpen() const { return type == EnemyType::WARDEN && (ventTimer > 0.f || wardenPhase == 3); }
     // A shot into an open weak point: the PENITENT's wound x3, the WARDEN's core x3 venting, x2 in meltdown
     float woundMult() const { return type == EnemyType::WARDEN ? (ventTimer > 0.f ? 3.f : 2.f) : 3.f; }
@@ -565,6 +577,8 @@ struct Enemy {
             case EnemyType::SERAPH:   thinkSeraph(dt, w, resolve);   break;
             case EnemyType::ANCHOR:   thinkAnchor(dt, w, resolve);   break;
             case EnemyType::PENITENT: thinkPenitent(dt, w, resolve); break;
+            case EnemyType::REVENANT: thinkRevenant(dt, w, resolve); break;
+            case EnemyType::WEAVER:   thinkWeaver(dt, w, resolve);   break;
             default: break;
         }
         integrate(dt, w);
@@ -632,7 +646,8 @@ private:
 
     // Is there something to stand on under p (within a step of its height)?
     bool supportedAt(glm::vec3 p, const EnemyWorld& w) const {
-        if (p.y < floorY + 0.3f || !w.walls) return true;   // the floor under it (Y 0, or a basin's)
+        if (!w.walls) return true;
+        if (p.y < floorY + 0.3f && !w.voidUnder) return true;   // the floor under it (Y 0, or a basin's); over a void, only real ground counts
         AABB q{p + glm::vec3{-0.05f, -1.4f, -0.05f}, p + glm::vec3{0.05f, 0.6f, 0.05f}};
         static std::vector<int> cands;
         if (w.grid) w.grid->query(q, cands);
@@ -652,6 +667,7 @@ private:
 
     bool canStepTo(glm::vec3 p, const EnemyWorld& w) const {
         if (blockedAt(p, w)) return false;
+        if (w.voidUnder) return stats().flying || supportedAt(p, w);   // over a void every walker keeps to real ground
         return !(ledgeAware() && position.y > floorY + 0.3f && !supportedAt(p, w));
     }
 
@@ -1150,6 +1166,8 @@ private:
     }
 
     void thinkPenitent(float dt, const EnemyWorld& w, bool resolve);   // EnemyPenitent.h
+    void thinkRevenant(float dt, const EnemyWorld& w, bool resolve);   // EnemyRelic.h
+    void thinkWeaver(float dt, const EnemyWorld& w, bool resolve);     // EnemyRelic.h
 
     void thinkSovereign(float dt, const EnemyWorld& w, bool resolve) {
         const float rage = enraged ? 1.f : 0.f;
@@ -1545,6 +1563,7 @@ inline std::vector<Enemy> twinsOf(const Enemy& p) {
         Enemy t(p.type, p.position + side * (1.2f * s), p.floorY);
         t.maxHealth = t.health = p.maxHealth * 0.35f;
         t.scale = 0.75f;
+        t.reforms = p.reforms;   // a REVENANT's twins have the lives it had left
         t.yaw = t.prevYaw = p.yaw;
         t.state = EnemyState::ACTIVE; t.spawnTimer = 0.f;
         out.push_back(t);
@@ -1599,3 +1618,4 @@ inline void linkConductors(std::vector<Enemy>& es, glm::vec3 player) {
 
 #include "EnemyPenitent.h"   // THE PENITENT's mind (Enemy::thinkPenitent)
 #include "EnemyWarden.h"     // THE WARDEN's mind (Enemy::thinkWarden)
+#include "EnemyRelic.h"      // the Reliquary's REVENANT and WEAVER

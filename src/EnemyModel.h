@@ -68,6 +68,7 @@ inline HumanoidLook humanoidDims(EnemyType t) {
     case EnemyType::SHIELDBEARER: return {0.95f, 0.24f, 0.3f, 0.16f, 0.7f, 0.62f, 0.36f, 0.32f, 0.66f, 0.19f, {}, {}, {}};
     case EnemyType::ANCHOR:     return {0.95f, 0.4f,  0.5f,  0.2f,  1.05f, 1.25f, 0.8f,  0.4f,  1.15f, 0.4f,  {}, {}, {}};
     case EnemyType::PENITENT:   return {4.5f,  1.35f, 1.9f,  0.75f, 4.25f, 4.5f,  2.5f,  1.5f,  5.5f,  1.1f,  {}, {}, {}};
+    case EnemyType::REVENANT:   return {1.1f,  0.16f, 0.21f, 0.12f, 0.7f,  0.46f, 0.26f, 0.3f,  0.8f,  0.13f, {}, {}, {}};   // gaunt, long-limbed
     default:                    return {};
     }
 }
@@ -285,6 +286,45 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         r.box(f.armR, {0.f, -0.78f, 0.06f}, {0.12f, 0.5f, 0.15f}, gun);
         r.box(f.armR, {0.f, -1.05f, 0.06f}, {0.09f, 0.08f, 0.09f}, gun, st.shotColor * (0.3f + 3.f * tp));
         r.box(f.torso, {0.f, 0.35f, -0.22f}, {0.4f, 0.4f, 0.14f}, st.color * 0.6f);   // backpack
+        break;
+    }
+    case EnemyType::REVENANT: {
+        // A gaunt machine-knight; its soul glows white-blue in its cracked chest
+        HumanoidLook L = humanoidLook(e.type, st.color, st.color * 0.5f, glow);
+        bool rake = e.attack == AttackKind::RAKE, bolt = e.attack == AttackKind::SOULBOLT;
+        auto f = humanoid(r, root, L, e.animPhase, std::max(stride, 0.25f), rake ? ArmPose::RAISED : ArmPose::SWING, rake ? smooth01(tp * 3.f) : 0.f);
+        vec3 bone{0.72f, 0.7f, 0.66f}, soul{0.75f, 0.9f, 1.3f};
+        float flare = 1.2f + (bolt ? 4.f * tp : 0.f) + 0.4f * std::sin(time * 6.f);
+        r.box(f.torso, {0.f, 0.42f, 0.14f}, {0.22f, 0.26f, 0.08f}, soul * 0.3f, soul * flare);          // the soul in the crack
+        for (float s : {-1.f, 1.f}) {
+            r.box(f.torso, {s * 0.16f, 0.42f, 0.13f}, {0.08f, 0.38f, 0.06f}, st.color * 1.2f);        // ribs either side
+            r.box(s < 0.f ? f.armR : f.armL, {0.f, -0.98f, 0.08f}, {0.05f, 0.3f, 0.05f}, bone, soul * (rake ? 1.5f : 0.3f));   // claws
+            r.box(s < 0.f ? f.armR : f.armL, {s * 0.06f, -0.98f, 0.08f}, {0.04f, 0.26f, 0.04f}, bone);
+            r.box(f.torso, {s * 0.28f, 0.7f, 0.f}, {0.18f, 0.08f, 0.26f}, st.color * 1.3f);         // shoulder plates
+        }
+        r.box(f.head, {0.f, 0.16f, 0.13f}, {0.18f, 0.05f, 0.03f}, soul * 0.2f, soul * 2.f);           // eye slit
+        r.box(f.head, {0.f, 0.36f, -0.04f}, {0.24f, 0.08f, 0.28f}, st.color * 0.9f);                 // a cracked crest
+        break;
+    }
+    case EnemyType::WEAVER: {
+        // A long-legged spider machine; its violet spinner brightens as it strings a wire
+        bool str = e.attack == AttackKind::STRING;
+        float rear = str ? smooth01(tp * 2.f) : 0.f;
+        mat4 body = root * T({0.f, 0.85f + 0.25f * rear, 0.f}) * RX(-0.35f * rear);
+        vec3 shell = st.color, under = st.color * 0.5f, violet = glow;
+        r.box(body, {0.f, 0.f, 0.f}, {0.9f, 0.4f, 1.2f}, shell);
+        r.box(body, {0.f, 0.05f, 0.75f}, {0.55f, 0.32f, 0.4f}, shell * 0.9f);                          // head
+        for (float s : {-1.f, 1.f}) r.box(body, {s * 0.15f, 0.12f, 0.97f}, {0.08f, 0.06f, 0.03f}, violet, violet * 2.5f);
+        r.box(body, {0.f, 0.32f, -0.45f}, {0.42f, 0.32f, 0.42f}, violet * 0.3f, violet * (0.4f + 3.f * rear)); // the spinner
+        float ph = e.animPhase * 1.6f;
+        for (int i = 0; i < 6; ++i) {                                                                   // six legs, two rows
+            float s = i < 3 ? -1.f : 1.f, z = -0.45f + 0.45f * (i % 3);
+            float swing = std::sin(ph + i * 2.1f) * 0.45f * stride;
+            mat4 hip = body * T({s * 0.45f, 0.f, z}) * RY(swing) * RZ(s * 0.9f);
+            r.box(hip, {0.f, -0.55f, 0.f}, {0.08f, 1.1f, 0.08f}, under);
+            mat4 knee = hip * T({0.f, -1.1f, 0.f}) * RZ(-s * 1.5f);
+            r.box(knee, {0.f, -0.5f, 0.f}, {0.06f, 1.0f, 0.06f}, under, violet * 0.3f);
+        }
         break;
     }
     case EnemyType::SENTINEL: {
@@ -682,7 +722,7 @@ inline bool headBox(const Enemy& e, AABB& out) {
 
     switch (e.type) {
     case EnemyType::HUSK: case EnemyType::SENTINEL: case EnemyType::BRUTE:
-    case EnemyType::JUGGERNAUT: case EnemyType::WARDEN: case EnemyType::SOVEREIGN: case EnemyType::SHIELDBEARER:
+    case EnemyType::JUGGERNAUT: case EnemyType::WARDEN: case EnemyType::SOVEREIGN: case EnemyType::SHIELDBEARER: case EnemyType::REVENANT:
     case EnemyType::ANCHOR: case EnemyType::PENITENT: {
         HumanoidLook L = humanoidDims(e.type);
         mat4 base = root;

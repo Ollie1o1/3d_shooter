@@ -58,6 +58,7 @@ inline void GameplayState::punch(int boostable) {
     punchCooldown = PARRY_COOLDOWN;
     glm::vec3 eye = player.camera.position, fwd = player.camera.forward();
 
+    if (catchSoulWithPunch()) return;   // a fleeing soul within reach, taken bare-handed
     int pi = findParryTarget();
     if (pi >= 0) {
         Projectile& p = projSystem.pool[pi];
@@ -201,6 +202,7 @@ inline void GameplayState::updateEnemies(float dt) {
     w.dynCount   = (int)level.moverWalls.size();
     w.reactor    = level.reactorPos;              // the Warden feeds here
     w.hasReactor = level.hasReactor;
+    w.voidUnder  = ar.shift == ArenaShift::DRIFT;   // the Reliquary: step off a relic and you fall
     const bool descent = ar.shift == ArenaShift::DESCENT;
     const float dmgScale = ar.damageScale * tune().damage;
 
@@ -290,6 +292,7 @@ inline void GameplayState::updateEnemies(float dt) {
         if (enemies[i].type == EnemyType::SOVEREIGN) onSovereignEvents(enemies[i], ev);
         if (enemies[i].type == EnemyType::PENITENT) onPenitentEvents(enemies[i], ev);
         if (enemies[i].type == EnemyType::WARDEN) onWardenEvents(enemies[i], ev);
+        if (enemies[i].type == EnemyType::WEAVER) onReliquaryEvents(enemies[i], ev);
         if (ev.enraged && enemies[i].type == EnemyType::SOVEREIGN) {   // the Penitent and the Warden announce their own phases
             pushBanner("HE STOPS HOLDING BACK", "LONGER CHAINS - WATCH THE BLADE", {1.f, 0.15f, 0.25f}, 2.4f);
             shake(0.5f, 0.06f);
@@ -428,6 +431,8 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     styleSystem.heal(5.f * tune().heal);
     for (const VoiceCue& c : voices.death(voiceIn(e, nullptr))) playVoice(c);   // a kill confirms at any range
     if (e.type == EnemyType::WARDEN) { shifts.bossPulseOff(); ward.clear(); conduitClock.reset(); }   // its rings and hazards die with it
+    if (e.type == EnemyType::REVENANT) releaseRevenantSoul(e, e.position.y < level.arenas[director.arena].voidY);   // its soul runs
+    if (e.type == EnemyType::WEAVER) relic.dropOwner(e.uid);                                                       // its wires fall
     fx.spawnDeathParticles(e.position + glm::vec3{0, e.height() * 0.5f, 0}, e.stats().color);
     spawnDebrisFor(e);
     if (styleSystem.overdrive) dashCharges = 2;
@@ -527,6 +532,10 @@ inline void GameplayState::processBlasts() {
         shake(0.3f, 0.06f);
         explosionFlashTimer = 0.35f; explosionFlashPos = b.pos;
         audio.playAt("explosion", b.pos, 128, SoundGroup::WORLD);
+        for (int si = (int)relic.souls.size() - 1; si >= 0; --si)   // a blast catches a fleeing soul
+            if (glm::length(relic.souls[si].pos - b.pos) < b.radius && relic.hurtSoul(si, b.damage)) ui.feed("SOUL TAKEN", {0.75f, 0.9f, 1.3f});
+        for (int wi = (int)relic.wires.size() - 1; wi >= 0; --wi)    // ...and cuts any wire whose node it reaches
+            if (glm::length(relic.wires[wi].a - b.pos) < b.radius || glm::length(relic.wires[wi].b - b.pos) < b.radius) relic.cutWire(wi);
         for (int ai = 0; ai < (int)level.anchors.size(); ++ai)   // a blast against the Penitent's anchors
             if (level.anchors[ai].alive && glm::length(level.anchors[ai].pos - b.pos) < b.radius + 1.f &&
                 (level.anchors[ai].kind != LevelData::ChainAnchor::CONDUIT || conduitShootable(wardenAlive(), wardenPhase())) &&
@@ -672,6 +681,25 @@ inline void GameplayState::fireWeapon(int w) {
         int n = std::min((int)hits.size(), pierce + 1);
         if (!level.anchors.empty() && (hits.empty() || hits[0].t > wallT - 0.05f))
             hitAnchor(origin, dir, wallT, dmg);   // the round stopped on a wall: one of the Penitent's anchors?
+        if (!relic.souls.empty() || !relic.wires.empty()) {   // the Reliquary: a fleeing soul, a wire's node, before what it hit
+            float firstT = hits.empty() ? wallT : hits[0].t, st = 0.f;
+            int si = relic.raySoul(origin, dir, firstT, st);
+            if (si >= 0) {
+                glm::vec3 sp = relic.souls[si].pos;
+                fx.spawnHitSparks(sp, {0.75f, 0.9f, 1.3f});
+                if (relic.hurtSoul(si, dmg)) {
+                    styleSystem.addStyle(40.f, StyleSource::PARRY);
+                    ui.feed("SOUL TAKEN", {0.75f, 0.9f, 1.3f});
+                    fx.spawnBurst(sp, {0.75f, 0.9f, 1.3f}, 30, 6.f, 0.5f, 2.f);
+                }
+            }
+            int ni = relic.rayNode(origin, dir, firstT, st);
+            if (ni >= 0) {
+                fx.spawnBurst(origin + dir * st, {0.75f, 0.35f, 1.1f}, 16, 5.f, 0.4f, 4.f);
+                audio.playAt("v_weaver_twang", origin + dir * st, 100, SoundGroup::ENEMY);
+                relic.cutWire(ni);
+            }
+        }
         float endT = n > 0 && n == pierce + 1 ? hits[n - 1].t : wallT;
         fx.spawnTracer(origin + dir * 0.25f - up * 0.08f, origin + dir * endT, sniper ? 0.09f : 0.055f, sniper ? 0.35f : 0.22f,
                        glm::mix(glm::vec3{1.f}, gunkit::glowOf(w), 0.6f));   // the gun's colour

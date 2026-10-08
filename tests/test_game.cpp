@@ -30,6 +30,7 @@
 #include "../src/EnemyVoice.h"
 #include "../src/WardenHazards.h"
 #include "BossSim.h"
+#include "../src/RelicHazards.h"
 #include <cstdio>
 #include <cstring>
 #include <limits>
@@ -478,9 +479,9 @@ int main() {
     {
         LevelData N = buildAct2Level();
         SpatialGrid ng; ng.build(N.walls);
-        CHECK(N.arenas.size() == 3 && std::string(N.arenas[0].name) == "THE DROWNED NAVE" && std::string(N.arenas[1].name) == "THE ORRERY" &&
-              std::string(N.arenas[2].name) == "THE DESCENT" && N.corridors.size() == 2,
-              "act II: the Drowned Nave, the Orrery, then the Descent, joined by corridors");
+        CHECK(N.arenas.size() == 4 && std::string(N.arenas[0].name) == "THE DROWNED NAVE" && std::string(N.arenas[1].name) == "THE ORRERY" &&
+              std::string(N.arenas[2].name) == "THE DESCENT" && std::string(N.arenas[3].name) == "THE RELIQUARY" && N.corridors.size() == 3,
+              "act II: the Drowned Nave, the Orrery, the Descent, then the Reliquary, joined by corridors");
         const Arena& nave = N.arenas[0];
         bool groundOk = true, airOk = true, inB = true, under = true;
         for (auto& sp : allGround(nave)) {
@@ -575,7 +576,7 @@ int main() {
         CHECK(orr.exitDoor >= 0 && N.doors[orr.exitDoor].locked, "the Orrery's north arch, the way on down, starts locked");
         // The rings turn as rings
         auto ringOf = [&](int mi) { return mi < 26 ? 0 : 1; };
-        bool rings = N.movers.size() == 42 + 4;   // the Orrery's rings, then the Descent's cage
+        bool rings = N.movers.size() > 42 + 4;   // the Orrery's rings, then the Descent's cage (then the Reliquary's relics)
         LevelData R = N;
         for (float t : {0.f, 7.3f, 31.f}) {
             R.updateMovers(t);
@@ -751,8 +752,8 @@ int main() {
         bool levels = true;
         for (int w = 0; w < 3; ++w) for (auto& sp : D.waveGround[w]) levels &= std::fabs(sp.y - N.lift.stops[w + 1]) < 0.05f;
         CHECK(levels, "each wave spawns on its own stop's floor");
-        CHECK(std::fabs(N.finishPos.y - (-240.f)) < 1e-3f && glm::length(glm::vec2{N.finishPos.x, N.finishPos.z + 840.f}) < 34.f,
-              "the finish beacon stands in the Penitent's pit");
+        CHECK(D.exitDoor >= 0 && N.doors[D.exitDoor].locked && N.doors[D.exitDoor].closed.max.z < -873.f,
+              "the way on, a door in the pit's south wall, starts locked");
         CHECK(N.arenas[1].exitDoor >= 0, "the Orrery has a way on (its north arch)");
         // groundAt sees the cage
         N.lift.reset(); N.lift.update(0.f, N); N.updateMovers(0.f);
@@ -835,7 +836,14 @@ int main() {
             clock += DT; N.lift.update(DT, N); N.updateMovers(clock);
             if (d.phase == WaveDirector::Phase::CLEARED) player = N.arenas[d.arena + 1].playerStart;   // down the corridor
             else if (d.goal().kind == WaveGoal::HOLD) player = d.goalPos() + glm::vec3{0, 0.05f, 0};   // onto the ring
-            if (d.arena == 2) {   // the Descent: ride to each wave's stop first
+            if (d.arena == 3) {   // the Reliquary: the relics drift into the next wave's arrangement first
+                int want = std::min(d.wave + (d.phase == WaveDirector::Phase::BREAK ? 1 : 0), 3);
+                if (N.formation.at != want && !N.formation.gliding()) N.formation.glideTo(want);
+                N.formation.update(DT, N);
+                d.hold = N.formation.gliding();
+                player = N.formation.top(0) + glm::vec3{0, 0.05f, 0};
+            }
+            if (d.arena == 2 && d.phase != WaveDirector::Phase::CLEARED) {   // the Descent: ride to each wave's stop first
                 int want = std::min(d.wave + (d.phase == WaveDirector::Phase::BREAK ? 2 : 1), 4);
                 if (N.lift.at != want && !N.lift.busy()) { N.lift.request(want); N.lift.start(); }
                 d.hold = N.lift.busy();
@@ -856,12 +864,13 @@ int main() {
             for (auto& ev : d.events) if (ev.kind == DirectorEvent::GOAL_DONE) alive.clear();
             d.events.clear();
         }
-        CHECK(d.phase == WaveDirector::Phase::VICTORY && d.arena == 2,
-              "a simulated ACT II run clears the Nave and the Orrery, rides the Descent and kills the Penitent");
+        std::printf("      act II run ended: arena %d wave %d phase %d\n", d.arena, d.wave, (int)d.phase);
+        CHECK(d.phase == WaveDirector::Phase::VICTORY && d.arena == 3,
+              "a simulated ACT II run clears the Nave and the Orrery, rides the Descent, kills the Penitent and clears the Reliquary");
         std::printf("      nave run: %d seraphs, %d anchors, %d haloed, %d twinned, %d enraged\n", seraphs, anchors, haloed, twinned, enragedSpawns);
         CHECK(seraphs >= 3 && anchors >= 1 && haloed >= 3 && twinned >= 2 && enragedSpawns >= 1,
               "the Nave's waves bring Seraphs, an Anchor and every variant");
-        CHECK(MUSIC_TRACKS == 8 && std::string(musicTrack(5).name) == "NAVE" && std::string(musicTrack(6).name) == "ORRERY" &&
+        CHECK(MUSIC_TRACKS == 9 && std::string(musicTrack(5).name) == "NAVE" && std::string(musicTrack(6).name) == "ORRERY" &&
               std::string(musicTrack(7).name) == "DESCENT", "the Nave, the Orrery and the Descent have their own tracks");
     }
 
@@ -1887,7 +1896,7 @@ int main() {
               "every wave starts; the Core and the Sanctum end on their bosses");
         CHECK(counts[DirectorEvent::ARENA_CLEARED] == n && counts[DirectorEvent::VICTORY] == 1 &&
               counts[DirectorEvent::FINISH_OPEN] == 0, "each arena clears, then victory");
-        CHECK(counts[DirectorEvent::NEW_TYPE] == (int)EnemyType::COUNT - 3,   // the Seraph, the Anchor and the Penitent are Act II's
+        CHECK(counts[DirectorEvent::NEW_TYPE] == (int)EnemyType::COUNT - 5,   // the Seraph, the Anchor, the Penitent, the Revenant and the Weaver are Act II's
               "each Act I enemy type is introduced exactly once");
         CHECK(goalWaves >= 3 && (int)goalsDone.size() == goalWaves && counts[DirectorEvent::GOAL_DONE] == goalWaves,
               "every goal wave (hold, conduits, survive) is met once, and that ends it");
@@ -2691,7 +2700,7 @@ int main() {
         CHECK(levels, "every voice sits within 2 dB of its mix class's level");
         CHECK(varied, "a voice's variants differ");
         CHECK(same, "the same voice builds the same every time");
-        CHECK(total <= 150.f, "the whole voice bank is at most 150 s of audio");
+        CHECK(total <= 180.f, "the whole voice bank is at most 180 s of audio");
     }
 
     // ---------------------------------------------------------------- enemy voices: who gets to speak
@@ -3285,6 +3294,316 @@ int main() {
         float husk = stepVol(EnemyType::HUSK), ripper = stepVol(EnemyType::RIPPER), mite = stepVol(EnemyType::MITE);
         CHECK(husk > 0.f && ripper > 0.f && mite > 0.f && ripper <= husk * 0.5f && mite <= husk * 0.5f,
               "Ripper and Mite steps play at half the level of other enemies' steps");
+    }
+
+    // ---------------------------------------------------------------- the Reliquary: a formation that drifts
+    {
+        LevelData F; LevelBuilder B{F};
+        auto chunk = [&](glm::vec3 top, glm::vec2 half, std::vector<glm::vec3> at) {
+            LevelData::Formation::Chunk c; c.home = top; c.half = half; c.at = at;
+            c.movers.push_back(B.mover(top - glm::vec3{0, 0.75f, 0}, {half.x, 0.75f, half.y}, Mover::Path::DRIVEN, {0, 0, 0}, {0, 0, 0}, 1.f, 0.f, {1, 1, 1}));
+            F.formation.chunks.push_back(c);
+        };
+        chunk({0, 0, 0},  {5, 5}, {{0, 0, 0}, {0, 0, -20}, {10, 3, 0}});
+        chunk({20, 0, 0}, {4, 4}, {{0, 0, 0}, {0, 2, 0},   {-40, 0, 0}});
+        LevelData::Formation& fm = F.formation;
+        fm.reset(F); F.updateMovers(0.f);
+        CHECK(fm.arrangements() == 3 && !fm.gliding() && F.walls[F.movers[0].wall].box.max.y == 0.f, "a formation starts in its first arrangement");
+        fm.glideTo(1);
+        float clock = 0.f; bool eased = true; float prevZ = 0.f, prevStep = 0.f;
+        for (int i = 0; i < 60 * 3; ++i) {
+            clock += DT; fm.update(DT, F); F.updateMovers(clock);
+            float z = F.walls[F.movers[0].wall].box.max.z, step = std::fabs(z - prevZ);
+            if (i > 5 && i < 60 && step + 1e-5f < prevStep) eased = false;   // speeding up in the first second
+            prevStep = step; prevZ = z;
+        }
+        bool midway = fm.gliding();
+        for (int i = 0; i < 60 * 4; ++i) { clock += DT; fm.update(DT, F); F.updateMovers(clock); }
+        CHECK(midway && eased && !fm.gliding() && fm.at == 1, "a glide eases in, takes 6 s, and ends");
+        CHECK(std::fabs(F.walls[F.movers[0].wall].box.max.z - (5.f - 20.f)) < 1e-4f && std::fabs(F.walls[F.movers[1].wall].box.max.y - 2.f) < 1e-4f,
+              "each chunk ends exactly in its next arrangement");
+        CHECK(fm.chunkOfWall(F, F.movers[1].wall) == 1 && fm.chunkOfWall(F, 9999) == -1 && (fm.top(1) == glm::vec3{20, 2, 0}),
+              "a formation knows which chunk a wall belongs to, and where its top is");
+        // Review focus 1: a retry mid-glide puts everything back at once
+        fm.glideTo(2);
+        for (int i = 0; i < 60 * 2; ++i) { clock += DT; fm.update(DT, F); F.updateMovers(clock); }
+        fm.reset(F); F.updateMovers(clock);
+        CHECK(!fm.gliding() && fm.at == 0 && F.walls[F.movers[0].wall].box.max.y == 0.f && F.walls[F.movers[0].wall].box.max.x == 5.f,
+              "reset mid-glide puts every chunk back in its first arrangement");
+        // Review focus 5: a player standing at a chunk's edge when it glides is carried and stays on
+        fm.glideTo(2);
+        Player p({4.6f, 0.f, 4.6f});
+        p.dynWalls = F.moverWalls.data(); p.dynCount = (int)F.moverWalls.size();
+        SpatialGrid pg; pg.build(F.walls);
+        bool stayed = true;
+        for (int i = 0; i < 60 * 7; ++i) {
+            int rm = F.moverOfWall(p.groundWall);
+            clock += DT; fm.update(DT, F); F.updateMovers(clock);
+            if (rm >= 0) p.position += F.movers[rm].delta;
+            p.floorY = -100.f;
+            Uint8 k[SDL_NUM_SCANCODES]; std::memset(k, 0, sizeof(k));
+            p.update(DT, k, F.walls.data(), (int)F.walls.size(), false, &pg);
+            if (i > 10) stayed &= p.position.y > fm.top(0).y - 0.3f && p.position.y < fm.top(0).y + 1.2f;
+        }
+        CHECK(stayed && std::fabs(p.position.x - 14.6f) < 0.3f, "standing at a chunk's edge you're carried through the glide and stay on");
+    }
+
+    // ---------------------------------------------------------------- the Reliquary: the map
+    {
+        LevelData N = buildAct2Level();
+        CHECK(N.arenas.size() == 4 && std::string(N.arenas[3].name) == "THE RELIQUARY" && N.arenas[3].shift == ArenaShift::DRIFT &&
+              N.arenas[3].waves.size() == 3 && N.arenas[3].maxAlive == 12 && std::fabs(N.arenas[3].damageScale - 1.45f) < 1e-4f,
+              "the Reliquary: the fourth Act II arena, three waves, 12 at once, x1.45");
+        const Arena& R = N.arenas[3];
+        auto& fm = N.formation;
+        CHECK(fm.chunks.size() >= 12 && fm.arrangements() == 4, "four relics and their debris, in four arrangements (three waves and the way to the hole)");
+        SpatialGrid g; g.build(N.walls);
+        float clock = 0.f;
+        // Spawns stand on a chunk in their wave's arrangement, inside bounds, clear of walls
+        bool spawnsOk = true;
+        for (int w = 0; w < 3; ++w) {
+            fm.at = fm.to = w; fm.t = 0.f; fm.apply(N); N.updateMovers(clock);
+            for (auto& s : R.waveGround[w]) {
+                float top = N.groundAt(s.x, s.z, s.y + 0.5f);
+                bool clear = !overlapsWall(N, boxAt(s + glm::vec3{0, 0.05f, 0}, 0.6f, 1.8f));
+                if (std::fabs(top - s.y) > 0.05f || !inside(R.bounds, s) || !clear) { spawnsOk = false; std::printf("      wave %d spawn (%.1f %.1f %.1f) top %.2f clear %d\n", w, s.x, s.y, s.z, top, clear); }
+            }
+        }
+        CHECK(spawnsOk, "every wave's spawns stand on a chunk, inside the Reliquary, clear of walls");
+        // Every chunk can be reached from the landing in every arrangement: jump+dash gaps or a grapple point in reach
+        const float GRAPPLE = 50.f - 2.f;   // GrappleHook::maxLength (its header needs GL)
+        bool reach = true;
+        for (int k = 0; k < 4; ++k) {
+            fm.at = fm.to = k; fm.t = 0.f; fm.apply(N); N.updateMovers(clock);
+            int n = (int)fm.chunks.size();
+            auto rect = [&](int c) { glm::vec3 t = fm.top(c); return glm::vec4{t.x - fm.chunks[c].half.x, t.z - fm.chunks[c].half.y, t.x + fm.chunks[c].half.x, t.z + fm.chunks[c].half.y}; };
+            auto gap = [&](int a, int b) { glm::vec4 A = rect(a), Bq = rect(b);
+                float dx = std::max(0.f, std::max(A.x - Bq.z, Bq.x - A.z)), dz = std::max(0.f, std::max(A.y - Bq.w, Bq.y - A.w)); return std::sqrt(dx * dx + dz * dz); };
+            std::vector<char> seen(n, 0); std::vector<int> q{0}; seen[0] = 1;   // chunk 0: the Yard, where the bridge lands
+            while (!q.empty()) {
+                int a = q.back(); q.pop_back();
+                for (int b = 0; b < n; ++b) {
+                    if (seen[b]) continue;
+                    float up = fm.top(b).y - fm.top(a).y;
+                    bool hop = gap(a, b) <= 9.f && up <= 3.f;
+                    bool hook = fm.chunks[b].movers.size() > 1 && gap(a, b) <= GRAPPLE;   // big chunks carry a pillar
+                    if (hop || hook) { seen[b] = 1; q.push_back(b); }
+                }
+            }
+            for (int c = 0; c < n; ++c) if (!seen[c]) { reach = false; std::printf("      arrangement %d: chunk %d unreachable\n", k, c); }
+        }
+        CHECK(reach, "in every arrangement every chunk can be reached from the Yard (a jump and a dash, or a grapple)");
+        // Gliding, no chunk passes through another or through the static world
+        bool clean = true;
+        for (int k = 0; k < 3; ++k) {
+            fm.at = fm.to = k; fm.t = 0.f; fm.apply(N); N.updateMovers(clock); fm.glideTo(k + 1);
+            for (int i = 0; i < 60 * 7; ++i) {
+                clock += DT; fm.update(DT, N); N.updateMovers(clock);
+                if (i % 6) continue;
+                for (int a = 0; a < (int)fm.chunks.size(); ++a)
+                    for (int ma : fm.chunks[a].movers) {
+                        AABB A = N.walls[N.movers[ma].wall].box;
+                        for (int b = a + 1; b < (int)fm.chunks.size(); ++b)
+                            for (int mb : fm.chunks[b].movers) if (overlapsBox(A, N.walls[N.movers[mb].wall].box, 0.02f)) { if (clean) std::printf("      glide %d->%d at %.1f s: chunk %d meets chunk %d\n", k, k + 1, i * DT, a, b); clean = false; }
+                        for (auto& wl : N.walls) if (!wl.dynamic && overlapsBox(A, wl.box, 0.02f)) { if (clean) std::printf("      glide %d->%d at %.1f s: chunk %d meets a wall at (%.0f %.0f %.0f)\n", k, k + 1, i * DT, a, wl.box.min.x, wl.box.min.y, wl.box.min.z); clean = false; }
+                    }
+            }
+        }
+        CHECK(clean, "gliding, no relic passes through another or through the static world");
+        // The way in: a bridge from the pit's south wall to the Yard; the way out: the hole's rim
+        fm.reset(N); N.updateMovers(0.f);
+        float bridge = N.groundAt(0.f, -890.f, -239.f), landing = N.groundAt(fm.top(0).x + 5.f, fm.top(0).z + 6.f, fm.top(0).y + 0.5f);   // beside the dais
+        CHECK(std::fabs(bridge + 240.f) < 0.05f && std::fabs(landing - fm.top(0).y) < 0.05f && N.arenas[2].exitDoor >= 0,
+              "a bridge leads from a door in the pit's south wall out to the Yard");
+        fm.at = fm.to = 3; fm.apply(N); N.updateMovers(0.f);
+        CHECK(std::fabs(N.groundAt(N.finishPos.x, N.finishPos.z, N.finishPos.y + 0.5f) - N.finishPos.y) < 0.05f && N.finishPos.z < -1000.f,
+              "the finish stands on the hole's rim, past the last arrangement");
+        CHECK(MUSIC_TRACKS == 9 && std::string(musicTrack(8).name) == "RELIQUARY", "the Reliquary has its own track");
+    }
+
+    // ---------------------------------------------------------------- the Revenant
+    {
+        LevelData N = buildAct2Level(); SpatialGrid g; g.build(N.walls);
+        const Arena& R = N.arenas[3];
+        N.formation.reset(N); N.updateMovers(0.f);
+        auto world = [&](glm::vec3 feet) { EnemyWorld w; w.playerFeet = feet; w.playerEye = feet + glm::vec3{0, 1.7f, 0};
+                                           w.walls = N.walls.data(); w.wallCount = (int)N.walls.size(); w.grid = &g; w.bounds = R.bounds; return w; };
+        CHECK(statsOf(EnemyType::REVENANT).health == 160.f && statsOf(EnemyType::WEAVER).health == 120.f, "a Revenant has 160 health, a Weaver 120");
+        // It rakes up close and bolts at range, each with its tell
+        glm::vec3 yard = N.formation.top(0);
+        auto run = [&](float dist) {
+            Enemy e(EnemyType::REVENANT, yard + glm::vec3{0, 0, -dist}); e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE;
+            EnemyWorld w = world(yard + glm::vec3{0, 0, 3});
+            int rakes = 0, bolts = 0, hits = 0; float rakeTell = 0.f, boltTell = 0.f;
+            for (int f = 0; f < 60 * 10; ++f) {
+                e.update(DT, w);
+                if (e.ev.telegraphStarted && e.attack == AttackKind::RAKE && !e.tellFollow) { ++rakes; rakeTell = e.telegraphDuration; }   // an opening rake (the second hand follows on)
+                if (e.ev.telegraphStarted && e.attack == AttackKind::SOULBOLT) { ++bolts; boltTell = e.telegraphDuration; }
+                hits += e.ev.meleeHit;
+            }
+            return std::tuple<int, int, int, float, float>{rakes, bolts, hits, rakeTell, boltTell};
+        };
+        auto [r1, b1, h1, rt, bt0] = run(1.f);
+        auto [r2, b2, h2, rt2, bt] = run(9.f);
+        std::printf("      revenant: close rakes %d hits %d tell %.2f; far bolts %d tell %.2f\n", r1, h1, rt, b2, bt);
+        CHECK(r1 >= 2 && h1 >= 2 * r1 - 1 && std::fabs(rt - 0.45f) < 0.05f, "up close it rakes, two hits a time (0.45 s tell)");
+        CHECK(b2 >= 1 && std::fabs(bt - 0.6f) < 0.06f, "at range it throws a soul bolt (0.6 s tell) before it closes in");
+        // Its soul: flees toward another chunk, can be shot, punched, or re-forms at half
+        RelicHazards hz;
+        Enemy dead(EnemyType::REVENANT, yard); dead.maxHealth = dead.health = 160.f;
+        glm::vec3 to = soulDestination(R.waveGround[0], yard, 15.f);
+        Soul* s = hz.releaseSoul(dead, to);
+        CHECK(s && glm::length(to - yard) >= 15.f && s->bodyHealth == 80.f && s->reforms == 1, "a dying Revenant releases a soul toward a spot on another chunk, carrying half its health");
+        float t = 0.f; int hit = hz.raySoul(s->pos + glm::vec3{0, 0, 10}, {0, 0, -1}, 50.f, t);
+        bool shot = hit == 0 && hz.hurtSoul(0, 40.f) && hz.souls.empty();
+        CHECK(shot, "a soul shot for 40 is gone for good");
+        hz.releaseSoul(dead, to);
+        bool punched = hz.soulNear(hz.souls[0].pos + glm::vec3{1, 0, 0}, 2.5f) == 0;
+        CHECK(punched, "a soul passing within reach can be punched");
+        hz.clear(); hz.releaseSoul(dead, to);
+        std::vector<Soul> back; float flown = 0.f;
+        for (int f = 0; f < 60 * 6 && back.empty(); ++f) { auto a = hz.arrived(DT); flown += DT; back.insert(back.end(), a.begin(), a.end()); }
+        CHECK(back.size() == 1 && std::fabs(flown - RelicHazards::SOUL_TIME) < 0.1f && glm::length(back[0].pos - to) < 0.1f,
+              "an uncaught soul arrives after about 4 s at its spot");
+        Enemy twice(EnemyType::REVENANT, yard); twice.reforms = 2;
+        CHECK(hz.releaseSoul(twice, to) == nullptr, "after two re-forms, the third death is final");
+        // Review focus 4: twins each flee
+        Enemy parent(EnemyType::REVENANT, yard); parent.setHollow(Hollow::TWINNED); parent.reforms = 1;
+        auto twins = twinsOf(parent);
+        hz.clear();
+        bool splitNoSoul = hz.releaseSoul(parent, to) == nullptr;
+        CHECK(splitNoSoul && twins.size() == 2 && twins[0].reforms == 1 && twins[1].reforms == 1 &&
+              hz.releaseSoul(twins[0], to) && hz.releaseSoul(twins[1], to) && hz.souls.size() == 2 && hz.souls[0].reforms == 2,
+              "a Twinned Revenant's soul goes into its twins: each carries its own, with the lives the parent had left");
+    }
+
+    // ---------------------------------------------------------------- the Weaver
+    {
+        LevelData N = buildAct2Level(); SpatialGrid g; g.build(N.walls);
+        const Arena& R = N.arenas[3];
+        N.formation.reset(N); N.updateMovers(0.f);
+        glm::vec3 core = N.formation.top(3);
+        Enemy wv(EnemyType::WEAVER, core + glm::vec3{0, 0, -5}); wv.spawnTimer = 0.f; wv.state = EnemyState::ACTIVE;
+        EnemyWorld w; w.playerFeet = core + glm::vec3{0, 0, 6}; w.playerEye = w.playerFeet + glm::vec3{0, 1.7f, 0};
+        w.walls = N.walls.data(); w.wallCount = (int)N.walls.size(); w.grid = &g; w.bounds = R.bounds; w.playerVel = {4, 0, 0};
+        int strung = 0; float tell = 0.f; glm::vec3 A{0.f}, Bw{0.f};
+        for (int f = 0; f < 60 * 14; ++f) {
+            wv.update(DT, w);
+            if (wv.ev.telegraphStarted && wv.attack == AttackKind::STRING) tell = wv.telegraphDuration;
+            if (wv.ev.wire) { ++strung; A = wv.ev.wireA; Bw = wv.ev.wireB; }
+        }
+        CHECK(strung >= 2 && std::fabs(tell - 0.8f * difficulty(DIFFICULTY_DEFAULT).windup) < 0.02f, "a Weaver strings a wire every ~6 s after a 0.8 s tell (x the difficulty's wind-up)");
+        CHECK(std::fabs(A.y - (w.playerFeet.y + RelicHazards::WIRE_HEIGHT)) < 0.05f && std::fabs(glm::length(Bw - A) - RelicHazards::WIRE_LEN) < 0.1f,
+              "its wire runs 10 m across your way at chest height");
+        RelicHazards hz;
+        glm::vec3 F{0, 0, 0};
+        hz.addWire(1, {-5, 1.2f, 0}, {5, 1.2f, 0});
+        // Review focus 3: not armed on the tick it's strung
+        int fresh = hz.touchedWire(F, 1.8f, 0.4f);
+        hz.age(DT * 7);
+        int standing = hz.touchedWire(F, 1.8f, 0.4f), sliding = hz.touchedWire(F, 0.9f, 0.4f), jumped = hz.touchedWire(F + glm::vec3{0, 1.4f, 0}, 1.8f, 0.4f),
+            beside = hz.touchedWire(F + glm::vec3{0, 0, 2}, 1.8f, 0.4f);
+        CHECK(fresh < 0, "a fresh wire doesn't snare where it's strung through you");
+        CHECK(standing == 0 && sliding < 0 && jumped < 0 && beside < 0, "standing in a wire snares you; sliding under or jumping over doesn't");
+        for (int k = 0; k < 4; ++k) hz.addWire(1, {-5, 1.2f, 3.f + k}, {5, 1.2f, 3.f + k});
+        CHECK(hz.wires.size() == 4 && hz.wires[0].a.z == 3.f, "at most 4 wires per Weaver: a fifth replaces its oldest");
+        float t = 0.f; int node = hz.rayNode({5, 1.2f, 10}, {0, 0, -1}, 50.f, t);
+        if (node >= 0) hz.cutWire(node);
+        CHECK(node >= 0 && hz.wires.size() == 3, "shooting a wire's node cuts it");
+        hz.addWire(2, {0, 1.2f, -5}, {0, 1.2f, 5});
+        hz.dropOwner(1);
+        CHECK(hz.wires.size() == 1 && hz.wires[0].owner == 2, "a Weaver's death drops all its wires (and only its)");
+        hz.clearWires();
+        CHECK(hz.wires.empty(), "a drift clears every wire");
+    }
+
+    {   // Review focus 2: a Revenant lost to the void doesn't come back; killed any other way, its soul flees
+        CHECK(!revenantSoulEscapes(StyleSource::ENVIRONMENT, true) && revenantSoulEscapes(StyleSource::ENVIRONMENT, false) &&
+              revenantSoulEscapes(StyleSource::FRIENDLY, false) && revenantSoulEscapes(StyleSource::REVOLVER, false),
+              "a Revenant lost to the void doesn't come back; killed any other way, its soul flees");
+    }
+
+    {
+        LevelData N = buildAct2Level(); SpatialGrid g; g.build(N.walls);
+        const Arena& R = N.arenas[3]; N.formation.reset(N); N.updateMovers(0.f);
+        auto pressure = [&](EnemyType t, glm::vec3 feet) {
+            // From the nearest wave-1 spawn on another relic (waves spawn on every relic)
+            int mine = -1;
+            for (int c = 0; c < (int)N.formation.chunks.size(); ++c) {
+                glm::vec3 tp = N.formation.top(c); glm::vec2 h = N.formation.chunks[c].half;
+                if (std::fabs(feet.x - tp.x) <= h.x && std::fabs(feet.z - tp.z) <= h.y) mine = c;
+            }
+            glm::vec3 from{0.f}; float best = 1e9f;
+            for (auto& sp : R.waveGround[0]) {
+                glm::vec3 tp = N.formation.top(mine); glm::vec2 h = N.formation.chunks[mine].half;
+                bool same = std::fabs(sp.x - tp.x) <= h.x && std::fabs(sp.z - tp.z) <= h.y;
+                if (!same && glm::length(sp - feet) < best) { best = glm::length(sp - feet); from = sp; }
+            }
+            Enemy e(t, from); e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE;
+            EnemyWorld w; w.playerFeet = feet; w.playerEye = feet + glm::vec3{0, 1.7f, 0};
+            w.walls = N.walls.data(); w.wallCount = (int)N.walls.size(); w.grid = &g; w.bounds = R.bounds;
+            w.dynWalls = N.moverWalls.data(); w.dynCount = (int)N.moverWalls.size(); w.voidUnder = true;
+            ProjectileSystem ps; ps.floorY = -600.f; std::vector<Enemy> none;
+            for (int f = 0; f < 60 * 10; ++f) {
+                e.floorY = N.enemyFloor(3, e.position, false, N.groundAt(e.position.x, e.position.z, e.position.y + 0.5f));
+                e.update(DT, w);
+                if (e.ev.meleeHit || e.ev.wire) return true;
+                for (int k = 0; k < e.ev.shots; ++k) ps.fire(e.ev.shotOrigin, e.ev.shotDir[k] * e.ev.shotSpeed, e.ev.shotDamage, false);
+                if (ps.update(DT, N.walls.data(), (int)N.walls.size(), none, w.playerEye, &g).hitPlayer) return true;
+            }
+            return false;
+        };
+        glm::vec3 corner = N.formation.top(0) + glm::vec3{-8.5f, 0, 8.5f}   /* the far corner, clear of the lamp post */, far = N.formation.top(1) + glm::vec3{-6, 0, 0};
+        std::printf("      pressure: revenant corner %d far %d, weaver corner %d far %d\n", (int)pressure(EnemyType::REVENANT, corner), (int)pressure(EnemyType::REVENANT, far), (int)pressure(EnemyType::WEAVER, corner), (int)pressure(EnemyType::WEAVER, far));
+        CHECK(pressure(EnemyType::REVENANT, corner) && pressure(EnemyType::REVENANT, far) &&
+              pressure(EnemyType::WEAVER, corner) && pressure(EnemyType::WEAVER, far),
+              "neither camping a corner nor keeping away escapes a Revenant or a Weaver for 10 s");
+    }
+
+    {   // Walkers chasing you across the void stay on their relic (they don't walk off the edge)
+        LevelData N = buildAct2Level(); SpatialGrid g; g.build(N.walls);
+        const Arena& R = N.arenas[3]; N.formation.reset(N); N.updateMovers(0.f);
+        bool stayed = true;
+        for (EnemyType t : {EnemyType::REVENANT, EnemyType::WEAVER, EnemyType::HUSK, EnemyType::RIPPER}) {
+            Enemy e(t, N.formation.top(3)); e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE;
+            glm::vec3 feet = N.formation.top(1) + glm::vec3{-6, 0, 0};
+            EnemyWorld w; w.playerFeet = feet; w.playerEye = feet + glm::vec3{0, 1.7f, 0};
+            w.walls = N.walls.data(); w.wallCount = (int)N.walls.size(); w.grid = &g; w.bounds = R.bounds;
+            w.dynWalls = N.moverWalls.data(); w.dynCount = (int)N.moverWalls.size(); w.voidUnder = true;
+            for (int f = 0; f < 60 * 10; ++f) {
+                e.floorY = N.enemyFloor(3, e.position, false, N.groundAt(e.position.x, e.position.z, e.position.y + 0.5f));
+                e.update(DT, w);
+            }
+            if (e.position.y < N.formation.top(3).y - 0.5f) { stayed = false; std::printf("      %s fell off its relic\n", statsOf(t).name); }
+        }
+        CHECK(stayed, "walkers chasing you across the void stay on their relic");
+    }
+
+    // ---------------------------------------------------------------- review fixes: the Reliquary
+    {
+        RelicHazards hz; Enemy r(EnemyType::REVENANT, {0, 0, 0}); r.maxHealth = r.health = 160.f;
+        hz.releaseSoul(r, {20, 0, 0});
+        CHECK(hz.alive() == 1, "a soul in flight still counts as alive (the wave isn't over, the relics don't drift)");
+        // A wire for a player standing still goes up beside them, not through them
+        LevelData N = buildAct2Level(); SpatialGrid g; g.build(N.walls);
+        N.formation.reset(N); N.updateMovers(0.f);
+        glm::vec3 core = N.formation.top(3);
+        Enemy wv(EnemyType::WEAVER, core + glm::vec3{0, 0, -5}); wv.spawnTimer = 0.f; wv.state = EnemyState::ACTIVE;
+        EnemyWorld w; w.playerFeet = core + glm::vec3{0, 0, 6}; w.playerEye = w.playerFeet + glm::vec3{0, 1.7f, 0};
+        w.walls = N.walls.data(); w.wallCount = (int)N.walls.size(); w.grid = &g; w.bounds = N.arenas[3].bounds; w.playerVel = {0, 0, 0};
+        bool strung = false, through = false;
+        for (int f = 0; f < 60 * 10; ++f) {
+            wv.update(DT, w);
+            if (wv.ev.wire) { strung = true; Wire t{1, wv.ev.wireA, wv.ev.wireB, 1.f}; through |= RelicHazards::wireTouches(t, w.playerFeet, 1.8f, 0.4f); }
+        }
+        CHECK(strung && !through, "a wire for a player standing still goes up beside them, never through them");
+        // The snare holds you to a crawl whatever pushes you (a grapple, a slide)
+        Player p({0.f, 0.f, 0.f});
+        p.speedCap = 3.f; p.velocity = {20.f, 0.f, 0.f};
+        Uint8 k[SDL_NUM_SCANCODES]; std::memset(k, 0, sizeof(k));
+        float x0 = p.position.x;
+        p.update(DT, k, nullptr, 0, false, nullptr);
+        CHECK(p.position.x - x0 <= 3.f * DT + 1e-4f, "snared, you move at a crawl however fast you were pushed");
     }
 
     // ---------------------------------------------------------------- the lift (driven movers) and the director's hold
