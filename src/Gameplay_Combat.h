@@ -202,6 +202,7 @@ inline void GameplayState::updateEnemies(float dt) {
     w.dynCount   = (int)level.moverWalls.size();
     w.reactor    = level.reactorPos;              // the Warden feeds here
     w.hasReactor = level.hasReactor;
+    w.voidUnder  = ar.shift == ArenaShift::DRIFT;   // the Reliquary: step off a relic and you fall
     const bool descent = ar.shift == ArenaShift::DESCENT;
     const float dmgScale = ar.damageScale * tune().damage;
 

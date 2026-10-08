@@ -3520,6 +3520,62 @@ int main() {
               "a Revenant lost to the void doesn't come back; killed any other way, its soul flees");
     }
 
+    {
+        LevelData N = buildAct2Level(); SpatialGrid g; g.build(N.walls);
+        const Arena& R = N.arenas[3]; N.formation.reset(N); N.updateMovers(0.f);
+        auto pressure = [&](EnemyType t, glm::vec3 feet) {
+            // From the nearest wave-1 spawn on another relic (waves spawn on every relic)
+            int mine = -1;
+            for (int c = 0; c < (int)N.formation.chunks.size(); ++c) {
+                glm::vec3 tp = N.formation.top(c); glm::vec2 h = N.formation.chunks[c].half;
+                if (std::fabs(feet.x - tp.x) <= h.x && std::fabs(feet.z - tp.z) <= h.y) mine = c;
+            }
+            glm::vec3 from{0.f}; float best = 1e9f;
+            for (auto& sp : R.waveGround[0]) {
+                glm::vec3 tp = N.formation.top(mine); glm::vec2 h = N.formation.chunks[mine].half;
+                bool same = std::fabs(sp.x - tp.x) <= h.x && std::fabs(sp.z - tp.z) <= h.y;
+                if (!same && glm::length(sp - feet) < best) { best = glm::length(sp - feet); from = sp; }
+            }
+            Enemy e(t, from); e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE;
+            EnemyWorld w; w.playerFeet = feet; w.playerEye = feet + glm::vec3{0, 1.7f, 0};
+            w.walls = N.walls.data(); w.wallCount = (int)N.walls.size(); w.grid = &g; w.bounds = R.bounds;
+            w.dynWalls = N.moverWalls.data(); w.dynCount = (int)N.moverWalls.size(); w.voidUnder = true;
+            ProjectileSystem ps; ps.floorY = -600.f; std::vector<Enemy> none;
+            for (int f = 0; f < 60 * 10; ++f) {
+                e.floorY = N.enemyFloor(3, e.position, false, N.groundAt(e.position.x, e.position.z, e.position.y + 0.5f));
+                e.update(DT, w);
+                if (e.ev.meleeHit || e.ev.wire) return true;
+                for (int k = 0; k < e.ev.shots; ++k) ps.fire(e.ev.shotOrigin, e.ev.shotDir[k] * e.ev.shotSpeed, e.ev.shotDamage, false);
+                if (ps.update(DT, N.walls.data(), (int)N.walls.size(), none, w.playerEye, &g).hitPlayer) return true;
+            }
+            return false;
+        };
+        glm::vec3 corner = N.formation.top(0) + glm::vec3{-8.5f, 0, 8.5f}   /* the far corner, clear of the lamp post */, far = N.formation.top(1) + glm::vec3{-6, 0, 0};
+        std::printf("      pressure: revenant corner %d far %d, weaver corner %d far %d\n", (int)pressure(EnemyType::REVENANT, corner), (int)pressure(EnemyType::REVENANT, far), (int)pressure(EnemyType::WEAVER, corner), (int)pressure(EnemyType::WEAVER, far));
+        CHECK(pressure(EnemyType::REVENANT, corner) && pressure(EnemyType::REVENANT, far) &&
+              pressure(EnemyType::WEAVER, corner) && pressure(EnemyType::WEAVER, far),
+              "neither camping a corner nor keeping away escapes a Revenant or a Weaver for 10 s");
+    }
+
+    {   // Walkers chasing you across the void stay on their relic (they don't walk off the edge)
+        LevelData N = buildAct2Level(); SpatialGrid g; g.build(N.walls);
+        const Arena& R = N.arenas[3]; N.formation.reset(N); N.updateMovers(0.f);
+        bool stayed = true;
+        for (EnemyType t : {EnemyType::REVENANT, EnemyType::WEAVER, EnemyType::HUSK, EnemyType::RIPPER}) {
+            Enemy e(t, N.formation.top(3)); e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE;
+            glm::vec3 feet = N.formation.top(1) + glm::vec3{-6, 0, 0};
+            EnemyWorld w; w.playerFeet = feet; w.playerEye = feet + glm::vec3{0, 1.7f, 0};
+            w.walls = N.walls.data(); w.wallCount = (int)N.walls.size(); w.grid = &g; w.bounds = R.bounds;
+            w.dynWalls = N.moverWalls.data(); w.dynCount = (int)N.moverWalls.size(); w.voidUnder = true;
+            for (int f = 0; f < 60 * 10; ++f) {
+                e.floorY = N.enemyFloor(3, e.position, false, N.groundAt(e.position.x, e.position.z, e.position.y + 0.5f));
+                e.update(DT, w);
+            }
+            if (e.position.y < N.formation.top(3).y - 0.5f) { stayed = false; std::printf("      %s fell off its relic\n", statsOf(t).name); }
+        }
+        CHECK(stayed, "walkers chasing you across the void stay on their relic");
+    }
+
     // ---------------------------------------------------------------- the lift (driven movers) and the director's hold
     {
         LevelData L; LevelBuilder B{L};

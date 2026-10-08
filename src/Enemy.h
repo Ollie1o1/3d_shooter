@@ -226,6 +226,7 @@ struct EnemyWorld {
     int  dynCount = 0;
     glm::vec3 reactor{0.f};       // the WARDEN's power: where it goes to feed (the Core's reactor)
     bool hasReactor = false;
+    bool voidUnder = false;       // the floor under the arena is a void (the Reliquary): only real ground holds you up
 };
 
 // Ray vs AABB: distance along the ray to the first hit, or -1 on a miss.
@@ -645,7 +646,8 @@ private:
 
     // Is there something to stand on under p (within a step of its height)?
     bool supportedAt(glm::vec3 p, const EnemyWorld& w) const {
-        if (p.y < floorY + 0.3f || !w.walls) return true;   // the floor under it (Y 0, or a basin's)
+        if (!w.walls) return true;
+        if (p.y < floorY + 0.3f && !w.voidUnder) return true;   // the floor under it (Y 0, or a basin's); over a void, only real ground counts
         AABB q{p + glm::vec3{-0.05f, -1.4f, -0.05f}, p + glm::vec3{0.05f, 0.6f, 0.05f}};
         static std::vector<int> cands;
         if (w.grid) w.grid->query(q, cands);
@@ -665,6 +667,7 @@ private:
 
     bool canStepTo(glm::vec3 p, const EnemyWorld& w) const {
         if (blockedAt(p, w)) return false;
+        if (w.voidUnder) return stats().flying || supportedAt(p, w);   // over a void every walker keeps to real ground
         return !(ledgeAware() && position.y > floorY + 0.3f && !supportedAt(p, w));
     }
 
