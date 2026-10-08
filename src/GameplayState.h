@@ -408,6 +408,9 @@ public:
     // THE LEVIATHAN (Gameplay_Leviathan.h): what it does to the ring, the flood
     LeviathanHazards lev;
     bool  beachHinted = false;      // "BEACHED" shown
+    Enemy levCorpse{EnemyType::LEVIATHAN, glm::vec3{0.f}};   // dead: it sinks into its pool (drawn LV_SINK s)
+    float levSinkT = 1e9f;
+    static constexpr float LV_SINK = 3.f;
     static constexpr float FLOOD_DEPTH = 0.6f;   // the Maw's flood over the ring in its last phase
     Enemy* leviathan();
     void onLeviathanEvents(Enemy& e, const EnemyEvents& ev);

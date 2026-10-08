@@ -21,20 +21,17 @@ inline void GameplayState::onLeviathanEvents(Enemy& e, const EnemyEvents& ev) {
         glm::vec3 c{e.levRoot.x, floorY, e.levRoot.z};
         shake(1.0f, 0.06f); audio.duck(6.f, 1.2f);
         audio.playAt("explosion", c, 128, SoundGroup::WORLD, true, 0.5f);
-        audio.playAt("v_leviathan_rise", c + glm::vec3{0.f, 6.f, 0.f}, 128, SoundGroup::ENEMY, true);
         fx.spawnBurst(c + glm::vec3{0.f, 1.f, 0.f}, water, 80, 14.f, 1.2f, 9.f);
         fx.spawnShockwave(c, Enemy::LV_POOL + 2.f, red);
     }
     if (ev.lvPhase == 2) {
         pushBanner("IT GOES UNDER", "WATCH THE WELLS", {1.f, 0.35f, 0.2f}, 3.f);
-        shake(0.5f, 0.06f); audio.duck(6.f, 0.6f);
-        audio.playAt("v_leviathan_enrage", e.position, 128, SoundGroup::ENEMY, true);
+        shake(0.5f, 0.06f); audio.duck(6.f, 0.6f);   // (its roar: the voice director, on ev.enraged)
         lev.dropMarks();
     }
     if (ev.lvPhase == 3) {
         pushBanner("THE MAW FLOODS", "GET HIGH - SHOOT THE EYE", {1.f, 0.3f, 0.15f}, 3.f);
         shake(0.6f, 0.07f); audio.duck(6.f, 0.6f);
-        audio.playAt("v_leviathan_enrage", e.position, 128, SoundGroup::ENEMY, true);
         shifts.floodTo(level, director.arena, floorY + FLOOD_DEPTH, 4.f);
         lev.dropMarks();
     }
@@ -97,6 +94,15 @@ inline void GameplayState::throatHit(Enemy& e, float dmg) {
 }
 
 inline void GameplayState::updateLeviathan(float dt) {
+    if (levSinkT < LV_SINK) {   // dead: rearing once more, then down into the dark
+        levSinkT += dt;
+        levCorpse.prevPosition = levCorpse.position; levCorpse.prevYaw = levCorpse.yaw;
+        glm::vec3 base{levCorpse.levRoot.x, levCorpse.levFloor, levCorpse.levRoot.z};
+        glm::vec3 want = levSinkT < 0.8f ? base + glm::vec3{0.f, 17.f, 0.f} : base - glm::vec3{0.f, 12.f, 0.f};
+        levCorpse.position += (want - levCorpse.position) * std::min(1.f, dt * (levSinkT < 0.8f ? 4.f : 1.6f));
+        levCorpse.levPitch = levSinkT < 0.8f ? 0.8f : -0.6f; levCorpse.levJaw = levSinkT < 0.8f ? 1.f : 0.2f;
+        if (std::fmod(levSinkT, 0.2f) < dt) fx.spawnBurst(base + glm::vec3{frand(-6.f, 6.f), 0.5f, frand(-6.f, 6.f)}, {0.4f, 0.12f, 0.12f}, 6, 8.f, 0.8f, 9.f);
+    }
     Enemy* e = leviathan();
     if (e && (e->staggered() || e->attack != AttackKind::CRASH)) lev.dropMarks();   // a crash that never came
     const float scale = level.arenas[director.arena].damageScale * tune().damage;
@@ -147,6 +153,15 @@ inline void GameplayState::gatherLeviathanBoxes(std::vector<BoxInstance>& out) {
     using namespace rig;
     const float t = gameClock;
     const glm::vec3 red{1.6f, 0.2f, 0.1f}, acid{0.4f, 1.2f, 0.8f}, white{1.6f, 1.5f, 1.4f};
+    if (levSinkT < LV_SINK) {   // its corpse, going under (the eye cracked: dark)
+        Enemy pose = levCorpse;
+        pose.position = glm::mix(levCorpse.prevPosition, levCorpse.position, renderAlpha);
+        pose.hitFlashTimer = 0.12f * std::max(0.f, 1.f - levSinkT * 2.f);
+        size_t from = out.size();
+        buildEnemy(pose, t, out);
+        float k = std::max(0.f, 1.f - levSinkT / LV_SINK);
+        for (size_t j = from; j < out.size(); ++j) out[j].emissive *= k;
+    }
     Enemy* e = leviathan();
     float floorY = e ? e->levFloor : level.lairFloor;
     // The crash's strip: a red band burning brighter until it lands; then the scar, fading

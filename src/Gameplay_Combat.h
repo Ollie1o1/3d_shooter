@@ -163,7 +163,7 @@ inline VoiceIn GameplayState::voiceIn(const Enemy& e, const EnemyEvents* ev) con
     v.moveSpeed = e.moveSpeed; v.health = e.health;
     v.attack = e.attack; v.telegraphTimer = e.telegraphTimer; v.staggered = e.staggered();
     v.halo = e.halo; v.linkCount = e.linkCount; v.beamOn = e.beamTimer > 0.f;
-    if (ev) { v.telegraphStarted = ev->telegraphStarted; v.enraged = ev->enraged; v.rose = ev->penRose; }
+    if (ev) { v.telegraphStarted = ev->telegraphStarted; v.enraged = ev->enraged; v.rose = ev->penRose || ev->lvRise; }
     return v;
 }
 
@@ -518,6 +518,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
             pushBanner("THE PENITENT FALLS SILENT", "", {1.f, 0.7f, 0.3f}, 3.f);
         } else if (e.type == EnemyType::LEVIATHAN) {
             lev.clear();   // nothing it did outlives it
+            levCorpse = e; levCorpse.alive = true; levCorpse.staggerTimer = 0.f; levCorpse.levBeached = 0.f; levSinkT = 0.f;   // it sinks
             glm::vec3 c{e.levRoot.x, e.levFloor, e.levRoot.z};
             for (int k = 0; k < 8; ++k)
                 fx.spawnBurst(c + glm::vec3{frand(-6.f, 6.f), frand(1.f, 8.f), frand(-6.f, 6.f)}, {1.4f, 1.1f, 0.8f}, 40, 14.f, 1.2f, 3.f);

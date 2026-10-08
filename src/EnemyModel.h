@@ -330,6 +330,7 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
     case EnemyType::LEVIATHAN: {
         // THE LEVIATHAN: a plated serpent out of its root, a long iron skull, a
         // jaw of turbine teeth and the eclipse eye (a black disc, a burning corona)
+        if (!e.levInit) break;                                           // not yet risen: nowhere to grow from
         if (e.levHidden() && e.levStage != Enemy::LevStage::RISE) break;   // under the floor: only its wake shows (Gameplay_Leviathan.h)
         const vec3 plate = st.color, seam = vec3{1.3f, 0.3f, 0.12f}, corona = st.glow, bone{0.5f, 0.47f, 0.42f};
         float rage = e.levPhase == 3 ? 1.6f : 1.f;

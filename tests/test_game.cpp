@@ -1413,6 +1413,7 @@ int main() {
         bool ok = true;
         for (int t = 0; t < (int)EnemyType::COUNT; ++t) {
             Enemy e((EnemyType)t, {0, 0, 0});
+            if (e.type == EnemyType::LEVIATHAN) { e.levInit = true; e.levStage = Enemy::LevStage::FIGHT; e.position = {0.f, 12.f, 6.f}; }   // risen out of its root at the origin
             std::vector<BoxInstance> parts;
             buildEnemy(e, 0.f, parts);
             std::printf("      %-8s %2d parts\n", statsOf((EnemyType)t).name, (int)parts.size());

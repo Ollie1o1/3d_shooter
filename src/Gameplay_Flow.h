@@ -158,7 +158,7 @@ inline void GameplayState::enterArena(int a) {
     boardHinted = liftRiding = false;
     ward.clear(); conduitClock.reset(); wardenUid = -1; shifts.bossPulseOff();
     relic.clear(); lastChunk = 0; snareTimer = 0.f; driftWasGliding = false;
-    lev.clear(); beachHinted = false;   // (shifts.reset drained the Maw's flood)
+    lev.clear(); beachHinted = false; levSinkT = 1e9f;   // (shifts.reset drained the Maw's flood)
     pen.clear(); scourgeAnnounced = false; rip = AnchorRip{}; downHinted = false;
     level.anchors = anchorsBuilt;   // every chain whole again
     for (size_t i = 0; i < level.anchors.size() && i < anchorBoxes.size(); ++i) level.walls[level.anchors[i].wall].box = anchorBoxes[i];
