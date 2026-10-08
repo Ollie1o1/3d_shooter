@@ -4402,6 +4402,35 @@ int main() {
         CHECK(kl >= 150.f && kl <= 220.f, "a solid player kills the Leviathan in 150-220 s, the longest fight in the game");
     }
 
+    // ---------------------------------------------------------------- no clipping under a floor
+    {
+        // A ground slam (40 m/s and gaining) or a long drop onto every arena's
+        // floors - Act I's, Act II's slabs, the Maw's ring - lands on top
+        auto check = [&](LevelData& M, const char* tag) {
+            SpatialGrid g; g.build(M.walls);
+            int bad = 0, n = 0;
+            for (auto& a : M.arenas)
+                for (auto& sp : allGround(a)) {
+                    float top = M.groundAt(sp.x, sp.z, sp.y + 0.5f);
+                    for (float speed : {40.f, 54.f}) {
+                        Player p({sp.x, top + 6.f, sp.z});
+                        p.velocity = {0.f, -speed, 0.f};
+                        p.dynWalls = M.moverWalls.data(); p.dynCount = (int)M.moverWalls.size();
+                        Uint8 k[SDL_NUM_SCANCODES]; std::memset(k, 0, sizeof(k));
+                        for (int i = 0; i < 40; ++i) { applyWater(p, M); p.update(DT, k, M.walls.data(), (int)M.walls.size(), false, &g); }
+                        ++n;
+                        if (p.position.y < top - 0.05f) { ++bad; if (bad <= 5) std::printf("      %s %s: (%.1f %.1f %.1f) at %.0f m/s ended at y %.2f\n", tag, a.name, sp.x, top, sp.z, speed, p.position.y); }
+                    }
+                }
+            return std::make_pair(bad, n);
+        };
+        LevelData A1 = buildLevel(), A2 = buildAct2Level();
+        A2.formation.reset(A2); A2.updateMovers(0.f);
+        auto r1 = check(A1, "act I"), r2 = check(A2, "act II");
+        std::printf("      slams onto the floors: act I %d/%d under, act II %d/%d under\n", r1.first, r1.second, r2.first, r2.second);
+        CHECK(r1.first == 0 && r2.first == 0, "slamming or dropping fast onto any arena's floor lands you on it, never under it");
+    }
+
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;
 }
