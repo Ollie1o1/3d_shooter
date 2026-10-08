@@ -3468,10 +3468,13 @@ int main() {
         Enemy twice(EnemyType::REVENANT, yard); twice.reforms = 2;
         CHECK(hz.releaseSoul(twice, to) == nullptr, "after two re-forms, the third death is final");
         // Review focus 4: twins each flee
-        Enemy twin(EnemyType::REVENANT, yard); twin.setHollow(Hollow::TWINNED); twin.scale = 0.7f;
+        Enemy parent(EnemyType::REVENANT, yard); parent.setHollow(Hollow::TWINNED); parent.reforms = 1;
+        auto twins = twinsOf(parent);
         hz.clear();
-        CHECK(hz.releaseSoul(twin, to) && hz.releaseSoul(twin, to) && hz.souls.size() == 2 && hz.souls[0].hollow == Hollow::TWINNED,
-              "each Twinned Revenant carries its own soul");
+        bool splitNoSoul = hz.releaseSoul(parent, to) == nullptr;
+        CHECK(splitNoSoul && twins.size() == 2 && twins[0].reforms == 1 && twins[1].reforms == 1 &&
+              hz.releaseSoul(twins[0], to) && hz.releaseSoul(twins[1], to) && hz.souls.size() == 2 && hz.souls[0].reforms == 2,
+              "a Twinned Revenant's soul goes into its twins: each carries its own, with the lives the parent had left");
     }
 
     // ---------------------------------------------------------------- the Weaver
@@ -3574,6 +3577,33 @@ int main() {
             if (e.position.y < N.formation.top(3).y - 0.5f) { stayed = false; std::printf("      %s fell off its relic\n", statsOf(t).name); }
         }
         CHECK(stayed, "walkers chasing you across the void stay on their relic");
+    }
+
+    // ---------------------------------------------------------------- review fixes: the Reliquary
+    {
+        RelicHazards hz; Enemy r(EnemyType::REVENANT, {0, 0, 0}); r.maxHealth = r.health = 160.f;
+        hz.releaseSoul(r, {20, 0, 0});
+        CHECK(hz.alive() == 1, "a soul in flight still counts as alive (the wave isn't over, the relics don't drift)");
+        // A wire for a player standing still goes up beside them, not through them
+        LevelData N = buildAct2Level(); SpatialGrid g; g.build(N.walls);
+        N.formation.reset(N); N.updateMovers(0.f);
+        glm::vec3 core = N.formation.top(3);
+        Enemy wv(EnemyType::WEAVER, core + glm::vec3{0, 0, -5}); wv.spawnTimer = 0.f; wv.state = EnemyState::ACTIVE;
+        EnemyWorld w; w.playerFeet = core + glm::vec3{0, 0, 6}; w.playerEye = w.playerFeet + glm::vec3{0, 1.7f, 0};
+        w.walls = N.walls.data(); w.wallCount = (int)N.walls.size(); w.grid = &g; w.bounds = N.arenas[3].bounds; w.playerVel = {0, 0, 0};
+        bool strung = false, through = false;
+        for (int f = 0; f < 60 * 10; ++f) {
+            wv.update(DT, w);
+            if (wv.ev.wire) { strung = true; Wire t{1, wv.ev.wireA, wv.ev.wireB, 1.f}; through |= RelicHazards::wireTouches(t, w.playerFeet, 1.8f, 0.4f); }
+        }
+        CHECK(strung && !through, "a wire for a player standing still goes up beside them, never through them");
+        // The snare holds you to a crawl whatever pushes you (a grapple, a slide)
+        Player p({0.f, 0.f, 0.f});
+        p.speedCap = 3.f; p.velocity = {20.f, 0.f, 0.f};
+        Uint8 k[SDL_NUM_SCANCODES]; std::memset(k, 0, sizeof(k));
+        float x0 = p.position.x;
+        p.update(DT, k, nullptr, 0, false, nullptr);
+        CHECK(p.position.x - x0 <= 3.f * DT + 1e-4f, "snared, you move at a crawl however fast you were pushed");
     }
 
     // ---------------------------------------------------------------- the lift (driven movers) and the director's hold

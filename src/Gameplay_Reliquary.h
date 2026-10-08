@@ -9,7 +9,7 @@
 
 inline void GameplayState::updateReliquary(float dt) {
     const Arena& ar = level.arenas[director.arena];
-    if (ar.shift != ArenaShift::DRIFT) { relic.clear(); return; }
+    if (ar.shift != ArenaShift::DRIFT) { relic.clear(); snareTimer = 0.f; player.speedCap = 0.f; return; }
     auto& fm = level.formation;
     // The drift: started by ArenaShifts on a cleared wave; the fight waits for it
     if (fm.gliding() && !driftWasGliding) {
@@ -56,11 +56,7 @@ inline void GameplayState::updateReliquary(float dt) {
             if (e.targetable() && glm::length(e.position - player.position) < 30.f) e.attackTimer = e.stats().attackEvery;
         relic.cutWire(wi);   // it snaps
     }
-    if (snareTimer > 0.f) {   // snared: slowed to a crawl, no dash
-        glm::vec2 h{player.velocity.x, player.velocity.z};
-        float sp = glm::length(h), cap = 3.f;
-        if (sp > cap) { player.velocity.x *= cap / sp; player.velocity.z *= cap / sp; }
-    }
+    player.speedCap = snareTimer > 0.f ? 3.f : 0.f;   // snared: a crawl (Player::integrate), and no dash (Gameplay_Tick)
 }
 
 inline void GameplayState::onReliquaryEvents(Enemy& e, const EnemyEvents& ev) {

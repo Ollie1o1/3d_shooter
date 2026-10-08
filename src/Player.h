@@ -134,6 +134,7 @@ public:
 
     // Slide state — activated by crouching while moving fast on the ground.
     bool  sliding  = false;
+    float speedCap = 0.f;   // > 0: horizontal speed held to this (a Weaver's wire)
     float slideTimer = 0.f;
 
     // Coyote time: allows jumping for a brief window after walking off a ledge.
@@ -354,6 +355,10 @@ private:
     // Works well at fixed 60Hz. If you ever want sub-step accuracy, use
     // Verlet integration here instead.
     void integrate(float dt) {
+        if (speedCap > 0.f) {   // snared: a crawl, whatever pushed you
+            float h = std::sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+            if (h > speedCap) { velocity.x *= speedCap / h; velocity.z *= speedCap / h; }
+        }
         position += velocity * dt;
     }
 

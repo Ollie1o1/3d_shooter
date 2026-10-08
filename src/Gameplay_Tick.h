@@ -261,6 +261,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     // --- Waves ---
     int alive = 0;
     for (auto& e : enemies) if (e.alive) ++alive;
+    alive += relic.alive();              // a Revenant's soul in flight: not over until it's caught or back
     alive += (int)pendingTwins.size();   // a TWINNED kill this tick: its copies count before they're spawned
     std::vector<SpawnRequest> spawns;
     director.countScale    = tune().waveSize;

@@ -1563,6 +1563,7 @@ inline std::vector<Enemy> twinsOf(const Enemy& p) {
         Enemy t(p.type, p.position + side * (1.2f * s), p.floorY);
         t.maxHealth = t.health = p.maxHealth * 0.35f;
         t.scale = 0.75f;
+        t.reforms = p.reforms;   // a REVENANT's twins have the lives it had left
         t.yaw = t.prevYaw = p.yaw;
         t.state = EnemyState::ACTIVE; t.spawnTimer = 0.f;
         out.push_back(t);

@@ -54,7 +54,7 @@ inline void Enemy::thinkWeaver(float dt, const EnemyWorld& w, bool resolve) {
         float sp = glm::length(v);
         glm::vec3 fwd = sp > 0.5f ? v / sp : -dir;                 // across your path (or across the line to it)
         glm::vec3 across{-fwd.z, 0.f, fwd.x};
-        glm::vec3 c = w.playerFeet + (sp > 0.5f ? fwd * 4.f : glm::vec3{0.f});
+        glm::vec3 c = w.playerFeet + (sp > 0.5f ? fwd * 4.f : -dir * 4.f);   // ahead of you, or (standing still) between you and it
         c.y = w.playerFeet.y + 1.2f;
         ev.wire = true;
         ev.wireA = c - across * 5.f;

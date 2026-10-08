@@ -37,7 +37,7 @@ public:
 
     // A Revenant's body died: its soul flees to `to` (nullptr: that was its last life)
     Soul* releaseSoul(const Enemy& e, glm::vec3 to) {
-        if (e.reforms >= 2) return nullptr;
+        if (e.reforms >= 2 || e.splitsOnDeath()) return nullptr;   // last life, or a Twinned one whose twins carry it on
         Soul s; s.fromUid = e.uid; s.type = e.type; s.hollow = e.hollow; s.scale = e.scale;
         s.from = s.pos = e.position + glm::vec3{0.f, e.height() * 0.6f, 0.f};
         s.to = to; s.hp = SOUL_HP; s.bodyHealth = e.maxHealth * 0.5f; s.reforms = e.reforms + 1;
@@ -117,5 +117,6 @@ public:
     void dropOwner(int owner) { wires.erase(std::remove_if(wires.begin(), wires.end(), [owner](const Wire& w) { return w.owner == owner; }), wires.end()); }
     void clearWires() { wires.clear(); }
     void age(float dt) { for (auto& w : wires) w.age += dt; }
+    int  alive() const { return (int)souls.size(); }   // souls in flight: the wave isn't over until they're caught or back
     void clear() { souls.clear(); wires.clear(); }
 };
