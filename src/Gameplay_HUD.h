@@ -66,14 +66,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         for (auto& e : enemies) if (e.alive && isBoss(e.type)) boss = &e;
 
         if (fast()) {
-            if (act2() && director.phase == WaveDirector::Phase::CLEARED && level.arenas[director.arena].shift == ArenaShift::DRIFT) {
-            glm::vec3 target = level.finishPos;   // the Reliquary's rim: the way down to the Maw
-            float sx, sy;
-            bool on = projectToScreen(target, view, proj, sx, sy);
-            snprintf(buf, sizeof(buf), "THE HOLE %dM", (int)glm::length(target - player.position));
-            ui.renderMarker(sx, sy, on, {1.f, 0.4f, 0.25f}, buf);
-        }
-        if (finishOpen) { snprintf(buf, sizeof(buf), "FINISH OPEN - CLIMB TO THE BEACON"); accent = {1.f, 0.6f, 0.2f}; }
+            if (finishOpen) { snprintf(buf, sizeof(buf), "FINISH OPEN - CLIMB TO THE BEACON"); accent = {1.f, 0.6f, 0.2f}; }
             else if (director.phase == WaveDirector::Phase::APPROACH) {
                 snprintf(buf, sizeof(buf), "ROOM %d/%d  %s   ADVANCE", director.arena + 1, nArenas, ar.name);
                 accent = {0.4f, 1.f, 0.6f};
@@ -180,6 +173,13 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             bool on = projectToScreen(target, view, proj, sx, sy);
             snprintf(buf, sizeof(buf), fast() ? "EXIT %dM" : "GATE %dM", (int)glm::length(target - player.position));
             ui.renderMarker(sx, sy, on, {0.4f, 1.f, 0.6f}, buf);
+        }
+        if (act2() && director.phase == WaveDirector::Phase::CLEARED && ar.shift == ArenaShift::DRIFT) {
+            glm::vec3 target = level.finishPos;   // the Reliquary's rim: the way down to the Maw
+            float sx, sy;
+            bool on = projectToScreen(target, view, proj, sx, sy);
+            snprintf(buf, sizeof(buf), "THE HOLE %dM", (int)glm::length(target - player.position));
+            ui.renderMarker(sx, sy, on, {1.f, 0.4f, 0.25f}, buf);
         }
         if (finishOpen) {
             glm::vec3 target = level.finishPos + glm::vec3{0, 2.f, 0};
