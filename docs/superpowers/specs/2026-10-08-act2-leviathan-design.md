@@ -63,8 +63,11 @@ Centre **M = (0, −300, −1068)**.
 
 ## 2. THE LEVIATHAN
 
-`EnemyType::LEVIATHAN`, **9000 hp** before difficulty. Target: a solid player
-kills it in **200–280 s**, the longest fight in the game.
+`EnemyType::LEVIATHAN`, **15000 hp** before difficulty (first written as 9000;
+raised in tuning, when the scripted solid player killed 9000 in 104 s). Target:
+the longest fight in the game. The scripted solid player (who dodges
+perfectly and parries every other window) kills it in **150–220 s**; the
+Sovereign takes ~115 s by the same measure. Real fights run longer.
 
 ### Body
 
@@ -97,7 +100,7 @@ It towers out of the pool, head ~12 m up, swaying toward you.
 
 | Attack | Tell (light / sound) | Answer |
 |---|---|---|
-| **CRASH**: slams its head down along a strip from the pool to where you stood (5 m wide, out to the wall); 40 + knockback | 1.1 s: it rears back, the eye turns red, a red strip burns on the floor along the line; a deep rising roar | **dash out of the strip**. Afterwards it lies **beached** on the ring for **3 s** with the eye open (×3). **Or stand your ground and punch** in the last 0.25 s, within 6 m of where the head lands: parried, staggered **4 s** at ×2 |
+| **CRASH**: slams its head down along a strip from the pool to where you'll be as it lands (your motion led by its wind-up, up to 8 m; 5 m wide, out to the wall); 40 + knockback | 1.1 s: it rears back, the eye turns red, a red strip burns on the floor along the line; a deep rising roar | **dash out of the strip**. Afterwards it lies **beached** on the ring for **3 s** with the eye open (×3). **Or stand your ground and punch** in the last 0.25 s, within 6 m of where the head lands: parried, staggered **4 s** at ×2 |
 | **TORRENT**: a fan of 9 slow orbs (11 on Standard+), 12 each | 0.8 s: the jaw opens, the throat glows acid-cyan; a gurgling swell | strafe; **parry an orb** and it homes into the eye for **180** |
 | **TIDE**: its tail slams the water and a wave rolls out over the ring (to r 46, 1.2 m high); 25 | 0.9 s: the tail rises out of the pool behind it; the water churns and hisses | **jump it** |
 | **SPIT** (anti-camping): a glob arcs onto where you'll be; bursts radius 4 for 30, then burns 4 s at 15/s | 1 s red ground marker; a hacking retch | keep moving. Fires only after **4 s** beyond 34 m from the root, out of the head's sight, or 4 m+ above the ring |
@@ -242,7 +245,7 @@ bosses' do.
   ≥ 0.35 s and a follow-up ≥ 0.28 s, measured from the AI.
 - **Cheese players** (BossSim): corner, perch, kite and ranged players each
   take damage within 8 s.
-- **Kill time**: a scripted solid player kills it in 200–280 s on Standard.
+- **Kill time**: a scripted solid player kills it in 150–220 s on Standard.
 - **Voices**: every attack it starts has a tell in the bank (the existing test
   covers this).
 - **Act II run**: a simulated run goes Nave → Orrery → Descent → Reliquary →

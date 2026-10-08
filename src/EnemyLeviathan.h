@@ -58,10 +58,16 @@ inline void Enemy::thinkLeviathan(float dt, const EnemyWorld& w, bool resolve) {
     if (phaseHold > 0.f) phaseHold -= dt;
     if (levBeached > 0.f) levBeached -= dt;
 
+    // ---- the spit's clock: keeping away, hiding or perching doesn't last
+    // (it keeps counting while it hunts under the floor) ----
+    glm::vec3 eye = position + glm::vec3{std::sin(yaw), 0.f, std::cos(yaw)} * 2.f;
+    bool away = d > LV_SPIT_FAR || feet.y > levFloor + LV_SPIT_HIGH || (levStage == LevStage::FIGHT && !levHidden() && !lineOfSight(eye, w));
+    farTimer = away && levStage != LevStage::RISE ? farTimer + dt : 0.f;
+
     // ---- rising out of the pool, or hidden under the ring ----
     if (levStage == LevStage::RISE) {
         levStageT -= dt;
-        if (levStageT <= 0.f) { levStage = LevStage::FIGHT; phaseHold = PHASE_PAUSE; }
+        if (levStageT <= 0.f) { levStage = LevStage::FIGHT; phaseHold = PHASE_PAUSE; attackTimer = stats().attackEvery - 0.5f; }   // risen: it opens soon after
         levPose(dt, w);
         return;
     }
@@ -140,11 +146,6 @@ inline void Enemy::thinkLeviathan(float dt, const EnemyWorld& w, bool resolve) {
     if (telegraphTimer <= 0.f && levBeached <= 0.f)
         yaw += glm::clamp(std::remainder(std::atan2(rel.x, rel.y) - yaw, 6.2831853f), -1.6f * dt, 1.6f * dt);
 
-    // ---- the spit: keeping away, hiding or perching doesn't last ----
-    glm::vec3 eye = position + glm::vec3{std::sin(yaw), 0.f, std::cos(yaw)} * 2.f;
-    bool away = d > LV_SPIT_FAR || feet.y > levFloor + LV_SPIT_HIGH || !lineOfSight(eye, w);
-    farTimer = away && attack != AttackKind::BREACH ? farTimer + dt : 0.f;
-
     levPose(dt, w);
     if (telegraphTimer > 0.f || phaseHold > 0.f || levBeached > 0.f || recoverTimer > 0.f) return;
     if (farTimer >= LV_SPIT_AFTER) {
@@ -158,8 +159,13 @@ inline void Enemy::thinkLeviathan(float dt, const EnemyWorld& w, bool resolve) {
     if (levPhase >= 2 && levSiteAttacks >= 2) { startAttack(AttackKind::SUBMERGE, 0.8f); return; }
     if (!attackReady(dt / quick)) return;
     ++attackCount;
-    auto crash = [&]() {   // locked on where you stand now, within its reach
-        glm::vec2 to = d > LV_REACH ? rel / d * LV_REACH : rel;
+    auto crash = [&]() {   // locked on where you'll be as it lands (up to 8 m on), within its reach
+        glm::vec2 lead{w.playerVel.x, w.playerVel.z};
+        lead *= 1.1f * quick;
+        if (glm::length(lead) > 8.f) lead = glm::normalize(lead) * 8.f;
+        glm::vec2 aim = rel + lead;
+        float da = glm::length(aim);
+        glm::vec2 to = da > LV_REACH ? aim / da * LV_REACH : aim;
         levTarget = glm::vec3{levRoot.x + to.x, levFloor, levRoot.z + to.y};
         ev.lvCrashMark = true; ev.lvFrom = levRoot; ev.lvTo = levTarget;
         startAttack(AttackKind::CRASH, 1.1f * quick);
@@ -184,9 +190,9 @@ inline void Enemy::thinkLeviathan(float dt, const EnemyWorld& w, bool resolve) {
 // Staggered (a parried crash, a choke): the head down on the ring, reeling
 inline void Enemy::levReel(float dt) {
     glm::vec3 fwd{std::sin(yaw), 0.f, std::cos(yaw)};
-    glm::vec3 want = levTarget + glm::vec3{0.f, 1.6f, 0.f};
+    glm::vec3 want = levTarget + glm::vec3{0.f, 2.2f, 0.f};
     if (glm::length(glm::vec2{levTarget.x - levRoot.x, levTarget.z - levRoot.z}) < 4.f)   // no strike to fall along: in front of its root
-        want = glm::vec3{levRoot.x, levFloor + 1.6f, levRoot.z} + fwd * (levAtPool() ? LV_POOL + 3.f : 6.f);
+        want = glm::vec3{levRoot.x, levFloor + 2.2f, levRoot.z} + fwd * (levAtPool() ? LV_POOL + 3.f : 6.f);
     position += (want - position) * std::min(1.f, dt * 8.f);
     levPitch += (-0.1f - levPitch) * std::min(1.f, dt * 6.f);
     levJaw += (0.6f - levJaw) * std::min(1.f, dt * 4.f);
@@ -201,7 +207,7 @@ inline void Enemy::levPose(float dt, const EnemyWorld& w) {
     glm::vec3 base{levRoot.x, levFloor, levRoot.z};
     float sway = std::sin(animPhase * 0.7f) * 1.2f;
     glm::vec3 side{fwd.z, 0.f, -fwd.x};
-    glm::vec3 idle = base + up * 11.f + fwd * 4.f + side * sway;
+    glm::vec3 idle = base + up * 13.f + fwd * 8.f + side * sway;
     glm::vec3 want = idle; float pitch = -0.15f, jaw = 0.1f, rate = 5.f;
     float tp = telegraphProgress();
     if (levStage == LevStage::RISE) {
@@ -215,28 +221,28 @@ inline void Enemy::levPose(float dt, const EnemyWorld& w) {
         return;
     }
     if (levBeached > 0.f) {   // lying where it struck
-        position = levTarget + up * 1.6f; levPitch = -0.05f; levJaw = 0.25f;
+        position = levTarget + up * 2.2f; levPitch = -0.05f; levJaw = 0.25f;
         return;
     }
     if (levInhale > 0.f) {   // low over the edge of its root, the jaw unhinged
-        want = base + fwd * (levAtPool() ? LV_POOL + 1.5f : 5.f) + up * 2.2f; pitch = 0.f; jaw = 1.f; rate = 6.f;
+        want = base + fwd * (levAtPool() ? LV_POOL + 2.5f : 6.f) + up * 2.6f; pitch = 0.f; jaw = 1.f; rate = 6.f;
     } else switch (attack) {
         case AttackKind::CRASH: {   // rearing back, then down along the strip
             const float slam = 0.15f;
-            glm::vec3 reared = base + up * 15.f - fwd * 3.f;
+            glm::vec3 reared = base + up * 18.f - fwd * 1.f;
             if (tp < 1.f - slam) { want = glm::mix(idle, reared, levSmooth(tp / (1.f - slam))); pitch = 0.5f; jaw = 0.4f; rate = 7.f; }
             else {
                 float s = (tp - (1.f - slam)) / slam;
-                position = glm::mix(reared, levTarget + up * 1.6f, s * s);
+                position = glm::mix(reared, levTarget + up * 2.2f, s * s);
                 levPitch = glm::mix(0.5f, -0.05f, s); levJaw = 0.3f;
                 return;
             }
             break;
         }
-        case AttackKind::TORRENT: want = base + up * 8.f + fwd * (4.f + 3.f * tp); pitch = -0.3f; jaw = 0.2f + 0.8f * tp; break;
-        case AttackKind::TIDE:    want = base + up * 12.f - fwd * 2.f; pitch = 0.3f; jaw = 0.5f * tp; break;
+        case AttackKind::TORRENT: want = base + up * 10.f + fwd * (8.f + 3.f * tp); pitch = -0.3f; jaw = 0.2f + 0.8f * tp; break;
+        case AttackKind::TIDE:    want = base + up * 15.f + fwd * 2.f; pitch = 0.3f; jaw = 0.5f * tp; break;
         case AttackKind::SPIT:    want = idle + up * 1.5f; pitch = 0.2f + 0.3f * tp; jaw = 0.6f * tp; break;
-        case AttackKind::SWALLOW: want = base + fwd * (levAtPool() ? LV_POOL + 1.5f : 5.f) + up * (6.f - 3.8f * tp); pitch = 0.f; jaw = tp; rate = 4.f; break;
+        case AttackKind::SWALLOW: want = base + fwd * (levAtPool() ? LV_POOL + 2.5f : 6.f) + up * (7.f - 4.4f * tp); pitch = 0.f; jaw = tp; rate = 4.f; break;
         case AttackKind::SUBMERGE: want = base - up * 8.f * tp; pitch = -0.5f; jaw = 0.f; rate = 4.f; break;
         default: break;
     }
@@ -252,25 +258,26 @@ inline void leviathanBody(const Enemy& e, LevSegment out[LV_SEGMENTS]) {
     glm::vec3 up{0.f, 1.f, 0.f}, fwd{std::sin(e.yaw), 0.f, std::cos(e.yaw)};
     glm::vec3 base{e.levRoot.x, e.levFloor, e.levRoot.z};
     float reach = glm::length(glm::vec2{e.position.x - base.x, e.position.z - base.z});
-    glm::vec3 p0 = base - up * 6.f, p1 = base + up * std::max(6.f, 4.f + reach * 0.35f);
-    glm::vec3 p3 = e.position - fwd * 2.4f, p2 = p3 - fwd * 5.f + up * 3.f;
+    // up out of the water leaning back, then over and forward to the head: an S
+    glm::vec3 p0 = base - up * 6.f, p1 = base + up * std::max(9.f, 6.f + reach * 0.35f) - fwd * 5.f;
+    glm::vec3 p3 = e.position - fwd * 3.4f, p2 = p3 - fwd * 6.f + up * 4.f;
     for (int i = 0; i < LV_SEGMENTS; ++i) {
         float t = (i + 0.5f) / LV_SEGMENTS, u = 1.f - t;
         out[i].c = u * u * u * p0 + 3.f * u * u * t * p1 + 3.f * u * t * t * p2 + t * t * t * p3;
-        out[i].r = 2.5f - 0.8f * t;
+        out[i].r = 3.1f - 1.1f * t;
     }
 }
 // The eye on its brow, its throat behind the open jaw
 inline AABB leviathanEye(const Enemy& e) {
     glm::vec3 fwd{std::sin(e.yaw), 0.f, std::cos(e.yaw)};
-    glm::vec3 c = e.position + fwd * 2.1f + glm::vec3{0.f, 0.7f + e.levPitch * 1.5f, 0.f};
-    glm::vec3 h{0.75f};
+    glm::vec3 c = e.position + fwd * 3.25f + glm::vec3{0.f, 1.9f + e.levPitch * 3.2f, 0.f};   // the rig's (0, 1.25, 2.18), drawn x1.5
+    glm::vec3 h{1.0f};
     return {c - h, c + h};
 }
 inline AABB leviathanThroat(const Enemy& e) {
     glm::vec3 fwd{std::sin(e.yaw), 0.f, std::cos(e.yaw)};
-    glm::vec3 c = e.position + fwd * 1.6f - glm::vec3{0.f, 0.9f, 0.f};
-    glm::vec3 h{1.0f};
+    glm::vec3 c = e.position + fwd * 2.4f - glm::vec3{0.f, 1.3f, 0.f};
+    glm::vec3 h{1.4f};
     return {c - h, c + h};
 }
 

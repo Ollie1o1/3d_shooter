@@ -347,12 +347,12 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
             r.box(f, {0.f, 0.f, len * 0.5f}, {rr * 1.7f, rr * 1.55f, len + 0.5f}, plate);                       // the ring of plates
             r.box(f, {0.f, -rr * 0.5f, len * 0.5f}, {rr * 1.3f, rr * 0.7f, len * 0.9f}, plate * 0.6f);          // the belly
             r.box(f, {0.f, 0.f, 0.f}, {rr * 1.78f, rr * 1.6f, 0.25f}, plate * 0.3f, seam * (0.5f + pulse) * rage);   // a glowing seam between plates
-            r.box(f * RZ(0.f), {0.f, rr * 0.85f + 0.4f, len * 0.4f}, {0.25f, 0.9f + 0.5f * std::sin(i * 1.3f), len * 0.7f}, bone);   // a dorsal fin
+            r.box(f, {0.f, rr * 0.85f + 0.4f, len * 0.4f}, {0.25f, 0.9f + 0.5f * std::sin(i * 1.3f), len * 0.7f}, bone, seam * 0.25f * rage);   // a dorsal fin
             for (float sd : {-1.f, 1.f})
                 r.box(f, {sd * rr * 0.85f, 0.f, len * 0.5f}, {0.2f, rr * 0.9f, len * 0.6f}, plate * 1.3f);       // side plates
         }
         // The head: its frame turned to face, tilted by levPitch
-        mat4 h = T(e.position) * RY(e.yaw) * RX(-e.levPitch);
+        mat4 h = T(e.position) * RY(e.yaw) * RX(-e.levPitch) * S(vec3{1.5f});   // drawn half again its rig's size
         float tp = e.telegraphProgress();
         bool crash = e.attack == AttackKind::CRASH, torrent = e.attack == AttackKind::TORRENT, swallow = e.attack == AttackKind::SWALLOW || e.levInhale > 0.f;
         r.box(h, {0.f, 0.3f, -0.3f}, {3.2f, 2.0f, 4.6f}, plate);                       // the skull
@@ -375,11 +375,14 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         // The eye: a black disc, its corona burning brighter as it strikes; red when it locks on
         vec3 col = crash ? glm::mix(corona, vec3{1.8f, 0.2f, 0.1f}, glm::clamp(tp * 2.f, 0.f, 1.f)) : corona;
         float open = e.levEyeOpen() ? 2.2f : 1.f;
-        r.box(h, {0.f, 0.7f, 2.05f}, {1.5f, 1.5f, 0.12f}, vec3{0.01f}, vec3{0.f});                           // the black disc
-        for (int k = 0; k < 8; ++k) {                                                                     // the corona
-            float a = k * 0.7853982f + time * 0.6f;
-            r.box(h * T({0.f, 0.7f, 2.0f}) * RZ(a), {0.95f, 0.f, 0.f}, {0.5f, 0.16f, 0.1f}, col * 0.3f, col * (1.2f + 1.5f * tp) * open * rage);
+        r.box(h, {0.f, 1.25f, 2.18f}, {1.3f, 1.3f, 0.12f}, vec3{0.01f}, e.levEyeOpen() ? col * 0.25f : vec3{0.f});   // the black disc
+        for (int k = 0; k < 12; ++k) {                                                                    // the corona
+            float a = k * 0.5235988f + time * 0.6f, flick = 0.8f + 0.2f * std::sin(time * 9.f + k * 1.7f);
+            r.box(h * T({0.f, 1.25f, 2.2f}) * RZ(a), {0.95f, 0.f, 0.f}, {0.6f + 0.15f * (k % 2), 0.13f, 0.1f}, col * 0.3f, col * (1.4f + 1.5f * tp) * open * rage * flick);
         }
+        for (float sd : {-1.f, 1.f})   // seams of light along the skull, so its shape reads in the dark
+            for (int k = 0; k < 3; ++k)
+                r.box(h, {sd * 1.62f, 0.9f - 0.45f * k, -0.6f + 0.3f * k}, {0.06f, 0.06f, 3.2f - 0.6f * k}, plate, seam * (0.9f + 0.6f * tp) * rage);
         break;
     }
     case EnemyType::SENTINEL: {

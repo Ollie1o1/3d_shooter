@@ -29,9 +29,9 @@
 #include "../src/VoiceSynth.h"
 #include "../src/EnemyVoice.h"
 #include "../src/WardenHazards.h"
+#include "../src/LeviathanHazards.h"
 #include "BossSim.h"
 #include "../src/RelicHazards.h"
-#include "../src/LeviathanHazards.h"
 #include <cstdio>
 #include <cstring>
 #include <limits>
@@ -4145,8 +4145,8 @@ int main() {
             e.health = e.maxHealth * 0.64f; e.update(DT, w);
             bool p2 = e.levPhase == 2 && e.ev.lvPhase == 2;
             e.health = e.maxHealth * 0.29f; e.update(DT, w);
-            CHECK(p2 && e.levPhase == 3 && e.ev.lvPhase == 3 && statsOf(EnemyType::LEVIATHAN).health == 9000.f,
-                  "9000 health; under 65 % it hunts, under 30 % the eclipse");
+            CHECK(p2 && e.levPhase == 3 && e.ev.lvPhase == 3 && statsOf(EnemyType::LEVIATHAN).health == 15000.f,
+                  "15000 health; under 65 % it hunts, under 30 % the eclipse");
         }
         // What a hit does where
         {
@@ -4371,6 +4371,34 @@ int main() {
         bool drained = N.waterSurfaceAt(ring.x, ring.z) < F;
         CHECK(dry && rising && full && drained && others,
               "the Maw floods its ring to 0.6 m over 4 s (the pool stays open, the ledges dry), and a retry drains it");
+    }
+
+    // ---------------------------------------------------------------- the Leviathan: no cheese, and a fight that ends
+    {
+        LevelData N = buildAct2Level(); SpatialGrid g; g.build(N.walls);
+        const Arena& M = N.arenas[4];
+        auto punished = [&](BossSim::Policy p, float hpFrac) {
+            BossSim s(N, g, M, EnemyType::LEVIATHAN, p);
+            for (int f = 0; f < 60 * 4; ++f) s.step(DT);   // it rises (3 s): nothing to dodge yet
+            s.boss.health = s.boss.maxHealth * hpFrac;
+            s.damageTaken = 0.f; float from = s.t;
+            for (int f = 0; f < 60 * 8 && s.damageTaken <= 0.f; ++f) s.step(DT);
+            return s.damageTaken > 0.f ? s.t - from : 99.f;
+        };
+        const char* names[] = {"corner-camper", "perch-sitter", "edge-kiter", "ranged-only"};
+        bool ok = true;
+        for (int p = 0; p < 4; ++p) {
+            float a = punished((BossSim::Policy)p, 1.f), b = punished((BossSim::Policy)p, 0.5f), c = punished((BossSim::Policy)p, 0.2f);
+            std::printf("      %-14s hit after: leviathan %.1f s, hunting %.1f s, eclipse %.1f s\n", names[p], a, b, c);
+            ok &= a <= 8.f && b <= 8.f && c <= 8.f;
+        }
+        CHECK(ok, "every cheese (corner, perch, edge-kiting, ranged-only) is punished within 8 s by the Leviathan, in every phase");
+        BossSim s(N, g, M, EnemyType::LEVIATHAN, BossSim::SOLID);
+        int phase3 = 0;
+        for (int f = 0; f < 60 * 600 && s.bossAlive(); ++f) { s.step(DT); if (s.boss.levPhase == 3) ++phase3; }
+        float kl = s.bossAlive() ? 999.f : s.t;
+        std::printf("      solid player's kill time: leviathan %.0f s (eclipse %.0f s), took %.0f damage\n", kl, phase3 * DT, s.damageTaken);
+        CHECK(kl >= 150.f && kl <= 220.f, "a solid player kills the Leviathan in 150-220 s, the longest fight in the game");
     }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");

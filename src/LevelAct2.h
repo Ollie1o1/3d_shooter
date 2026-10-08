@@ -908,7 +908,7 @@ inline void buildMaw(LevelBuilder& B) {
     }
 
     // ---- the eclipse's light through the open top, onto the south ring ----
-    B.kit(true).column({C.x, F + 0.03f, C.z + 30.f}, 9.f, 0.02f, eclipse * 0.12f, 32);
+    B.kit(true).column({C.x, F + 0.03f, C.z + 30.f}, 9.f, 0.02f, eclipse * 0.05f, 32);
 
     // ---- the arena ----
     Arena a;
@@ -934,7 +934,7 @@ inline void buildMaw(LevelBuilder& B) {
         glm::normalize(vec3{0.f, 0.9f, 0.4f}), {1.2f,1.1f,1.0f}, 0.05f, 0.f,   // the eclipse, overhead through the hole
         {0.05f,0.02f,0.03f}, 0.6f,
         glm::normalize(vec3{0.1f,-0.9f,-0.3f}), {0.55f,0.5f,0.55f},          // cold light from above
-        {0.08f,0.07f,0.1f}, {0.22f,0.05f,0.04f},                             // red from the pool below
+        {0.16f,0.14f,0.19f}, {0.3f,0.08f,0.06f},                             // red from the pool below
         {0.05f,0.02f,0.025f}, 0.012f };
     L.arenas.push_back(std::move(a));
 }

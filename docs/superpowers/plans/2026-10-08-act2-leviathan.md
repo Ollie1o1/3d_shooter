@@ -24,7 +24,7 @@ CHECK), Emscripten web build.
   r 29 (radius 3.5) on the diagonals, six ribs at r 42 with ledges at +5 m
   and steps at +2.5 m, the wall at r 46–48, `voidY` −315, HALL reverb, track
   9 "LEVIATHAN", `MUSIC_TRACKS` 10, `damageScale` 1.5.
-- Leviathan: 9000 hp. Phases at 65 % and 30 %. Body ×0.2, head ×1, eye ×3
+- Leviathan: 15000 hp (tuned up from 9000). Phases at 65 % and 30 %. Body ×0.2, head ×1, eye ×3
   beached or staggered, eye ×2 in phase 3, throat ×3 while inhaling.
 - CRASH: tell 1.1 s, strip 5 m wide, 40 damage. Beached 3 s. Parry in the
   last 0.25 s within 6 m of the landing point → stagger 4 s.

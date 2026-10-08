@@ -157,8 +157,8 @@ inline const EnemyStats& statsOf(EnemyType t) {
         {"WEAVER", 120.f, 0.9f, 1.3f, 4.2f, 0.8f, 6.f, false,
          {0.16f,0.13f,0.2f}, {0.75f,0.35f,1.1f}, {0.75f,0.35f,1.1f},
          "IT WIRES THE GAPS - CUT THE NODES OR DUCK UNDER"},
-        {"LEVIATHAN", 9000.f, 2.2f, 4.0f, 0.f, 1.1f, 2.4f, false,   // radius/height: the head's box
-         {0.11f,0.1f,0.12f}, {1.4f,1.0f,0.6f}, {0.3f,1.1f,0.9f},
+        {"LEVIATHAN", 15000.f, 3.0f, 5.2f, 0.f, 1.1f, 2.4f, false,   // radius/height: the head's box
+         {0.2f,0.18f,0.21f}, {1.4f,1.0f,0.6f}, {0.3f,1.1f,0.9f},
          "DASH THE CRASH - SHOOT THE EYE WHILE IT'S DOWN"},
     };
     return S[(int)t];
@@ -439,7 +439,7 @@ struct Enemy {
         return true;
     }
     void  levEndInhale() { levInhale = 0.f; levChoke = 0.f; recoverTimer = 0.8f; }
-    glm::vec3 levMouth() const { return position + glm::vec3{std::sin(yaw), 0.f, std::cos(yaw)} * 2.4f - glm::vec3{0.f, 0.6f, 0.f}; }
+    glm::vec3 levMouth() const { return position + glm::vec3{std::sin(yaw), 0.f, std::cos(yaw)} * 3.6f - glm::vec3{0.f, 0.9f, 0.f}; }
     bool  coreOpen() const { return type == EnemyType::WARDEN && (ventTimer > 0.f || wardenPhase == 3); }
     // A shot into an open weak point: the PENITENT's wound x3, the WARDEN's core x3 venting, x2 in meltdown
     float woundMult() const { return type == EnemyType::WARDEN ? (ventTimer > 0.f ? 3.f : 2.f) : 3.f; }
@@ -555,7 +555,7 @@ struct Enemy {
 
     AABB getAABB() const {
         if (type == EnemyType::LEVIATHAN) {   // its head, round its centre
-            glm::vec3 h{2.2f, 2.f, 2.2f};
+            glm::vec3 h{3.0f, 2.6f, 3.0f};
             return {position - h, position + h};
         }
         float r = radius();
