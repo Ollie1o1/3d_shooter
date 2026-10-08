@@ -3514,6 +3514,12 @@ int main() {
         CHECK(hz.wires.empty(), "a drift clears every wire");
     }
 
+    {   // Review focus 2: a Revenant lost to the void doesn't come back; killed any other way, its soul flees
+        CHECK(!revenantSoulEscapes(StyleSource::ENVIRONMENT, true) && revenantSoulEscapes(StyleSource::ENVIRONMENT, false) &&
+              revenantSoulEscapes(StyleSource::FRIENDLY, false) && revenantSoulEscapes(StyleSource::REVOLVER, false),
+              "a Revenant lost to the void doesn't come back; killed any other way, its soul flees");
+    }
+
     // ---------------------------------------------------------------- the lift (driven movers) and the director's hold
     {
         LevelData L; LevelBuilder B{L};

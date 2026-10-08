@@ -5,6 +5,7 @@
 // (Task 4). No OpenGL or audio: Gameplay_Reliquary.h feeds and draws them.
 // =============================================================================
 #include "Enemy.h"
+#include "StyleSystem.h"
 #include <vector>
 #include <cmath>
 #include <algorithm>
@@ -25,6 +26,9 @@ inline glm::vec3 soulDestination(const std::vector<glm::vec3>& spawns, glm::vec3
 }
 
 struct Wire { int owner = 0; glm::vec3 a{0.f}, b{0.f}; float age = 0.f; };
+
+// Does a dead Revenant's soul flee? Always - unless its body went into the void
+inline bool revenantSoulEscapes(StyleSource src, bool inVoid) { (void)src; return !inVoid; }
 
 class RelicHazards {
 public:

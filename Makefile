@@ -67,7 +67,7 @@ HEADERS := src/gl.h \
            src/Camera.h src/Player.h src/Mesh.h src/ShaderProgram.h \
            src/GameState.h src/MenuState.h src/GameplayState.h \
            src/Gameplay_Flow.h src/Gameplay_Tick.h src/Gameplay_Combat.h \
-           src/Gameplay_Menus.h src/Gameplay_Render.h src/Gameplay_HUD.h src/Gameplay_Dev.h src/WorldMesh.h src/WorldGeometry.h src/Vertex.h src/Effects.h src/ArenaShifts.h src/Gameplay_Shifts.h src/Gameplay_Sovereign.h src/Gameplay_Penitent.h src/Gameplay_Warden.h src/SovereignHazards.h src/PenitentHazards.h src/Shapes.h src/Score.h src/Daily.h src/EndlessWaves.h \
+           src/Gameplay_Menus.h src/Gameplay_Render.h src/Gameplay_HUD.h src/Gameplay_Dev.h src/WorldMesh.h src/WorldGeometry.h src/Vertex.h src/Effects.h src/ArenaShifts.h src/Gameplay_Shifts.h src/Gameplay_Sovereign.h src/Gameplay_Penitent.h src/Gameplay_Warden.h src/Gameplay_Reliquary.h src/SovereignHazards.h src/PenitentHazards.h src/Shapes.h src/Score.h src/Daily.h src/EndlessWaves.h \
            src/Enemy.h src/EnemyPenitent.h src/EnemyWarden.h src/EnemyRelic.h src/RelicHazards.h src/EnemyModel.h src/BoxRenderer.h src/WaveDirector.h \
            src/Projectile.h src/GrappleHook.h \
            src/StyleSystem.h src/UIRenderer.h src/PostProcess.h \

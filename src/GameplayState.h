@@ -9,6 +9,7 @@
 #include "Enemy.h"
 #include "EnemyVoice.h"
 #include "WardenHazards.h"
+#include "RelicHazards.h"
 #include "EnemyModel.h"
 #include "BoxRenderer.h"
 #include "Projectile.h"
@@ -403,6 +404,18 @@ public:
     bool wardenAlive() { return warden() != nullptr; }
     int  wardenPhase() { Enemy* w = warden(); return w ? w->wardenPhase : 0; }
 
+    // THE RELIQUARY (Gameplay_Reliquary.h): souls and wires, the last relic you
+    // stood on, the snare, the drift
+    RelicHazards relic;
+    int   lastChunk = 0;
+    float snareTimer = 0.f;
+    bool  driftWasGliding = false;
+    void updateReliquary(float dt);
+    void onReliquaryEvents(Enemy& e, const EnemyEvents& ev);
+    void releaseRevenantSoul(const Enemy& e, bool inVoid);
+    bool catchSoulWithPunch();
+    void gatherReliquaryBoxes(std::vector<BoxInstance>& out);
+
     // THE PENITENT (Gameplay_Penitent.h): its hazards, its chains' anchors
     PenitentHazards pen;
     AnchorRip rip;                  // hooking an anchor with the grapple (PenitentHazards.h)
@@ -681,3 +694,4 @@ public:
 #include "Gameplay_Sovereign.h"
 #include "Gameplay_Penitent.h"
 #include "Gameplay_Warden.h"
+#include "Gameplay_Reliquary.h"
