@@ -29,6 +29,7 @@
 #include "../src/VoiceSynth.h"
 #include "../src/EnemyVoice.h"
 #include "../src/WardenHazards.h"
+#include "../src/LeviathanHazards.h"
 #include "BossSim.h"
 #include "../src/RelicHazards.h"
 #include <cstdio>
@@ -479,9 +480,10 @@ int main() {
     {
         LevelData N = buildAct2Level();
         SpatialGrid ng; ng.build(N.walls);
-        CHECK(N.arenas.size() == 4 && std::string(N.arenas[0].name) == "THE DROWNED NAVE" && std::string(N.arenas[1].name) == "THE ORRERY" &&
-              std::string(N.arenas[2].name) == "THE DESCENT" && std::string(N.arenas[3].name) == "THE RELIQUARY" && N.corridors.size() == 3,
-              "act II: the Drowned Nave, the Orrery, the Descent, then the Reliquary, joined by corridors");
+        CHECK(N.arenas.size() == 5 && std::string(N.arenas[0].name) == "THE DROWNED NAVE" && std::string(N.arenas[1].name) == "THE ORRERY" &&
+              std::string(N.arenas[2].name) == "THE DESCENT" && std::string(N.arenas[3].name) == "THE RELIQUARY" &&
+              std::string(N.arenas[4].name) == "THE MAW" && N.corridors.size() == 4,
+              "act II: the Drowned Nave, the Orrery, the Descent, the Reliquary, then the Maw, joined by corridors");
         const Arena& nave = N.arenas[0];
         bool groundOk = true, airOk = true, inB = true, under = true;
         for (auto& sp : allGround(nave)) {
@@ -836,7 +838,7 @@ int main() {
             clock += DT; N.lift.update(DT, N); N.updateMovers(clock);
             if (d.phase == WaveDirector::Phase::CLEARED) player = N.arenas[d.arena + 1].playerStart;   // down the corridor
             else if (d.goal().kind == WaveGoal::HOLD) player = d.goalPos() + glm::vec3{0, 0.05f, 0};   // onto the ring
-            if (d.arena == 3) {   // the Reliquary: the relics drift into the next wave's arrangement first
+            if (d.arena == 3 && d.phase != WaveDirector::Phase::CLEARED) {   // the Reliquary: the relics drift into the next wave's arrangement first
                 int want = std::min(d.wave + (d.phase == WaveDirector::Phase::BREAK ? 1 : 0), 3);
                 if (N.formation.at != want && !N.formation.gliding()) N.formation.glideTo(want);
                 N.formation.update(DT, N);
@@ -865,12 +867,12 @@ int main() {
             d.events.clear();
         }
         std::printf("      act II run ended: arena %d wave %d phase %d\n", d.arena, d.wave, (int)d.phase);
-        CHECK(d.phase == WaveDirector::Phase::VICTORY && d.arena == 3,
-              "a simulated ACT II run clears the Nave and the Orrery, rides the Descent, kills the Penitent and clears the Reliquary");
+        CHECK(d.phase == WaveDirector::Phase::VICTORY && d.arena == 4,
+              "a simulated ACT II run clears the Nave and the Orrery, rides the Descent, kills the Penitent, clears the Reliquary and kills the Leviathan");
         std::printf("      nave run: %d seraphs, %d anchors, %d haloed, %d twinned, %d enraged\n", seraphs, anchors, haloed, twinned, enragedSpawns);
         CHECK(seraphs >= 3 && anchors >= 1 && haloed >= 3 && twinned >= 2 && enragedSpawns >= 1,
               "the Nave's waves bring Seraphs, an Anchor and every variant");
-        CHECK(MUSIC_TRACKS == 9 && std::string(musicTrack(5).name) == "NAVE" && std::string(musicTrack(6).name) == "ORRERY" &&
+        CHECK(MUSIC_TRACKS >= 9 && std::string(musicTrack(5).name) == "NAVE" && std::string(musicTrack(6).name) == "ORRERY" &&
               std::string(musicTrack(7).name) == "DESCENT", "the Nave, the Orrery and the Descent have their own tracks");
     }
 
@@ -1411,6 +1413,7 @@ int main() {
         bool ok = true;
         for (int t = 0; t < (int)EnemyType::COUNT; ++t) {
             Enemy e((EnemyType)t, {0, 0, 0});
+            if (e.type == EnemyType::LEVIATHAN) { e.levInit = true; e.levStage = Enemy::LevStage::FIGHT; e.position = {0.f, 12.f, 6.f}; }   // risen out of its root at the origin
             std::vector<BoxInstance> parts;
             buildEnemy(e, 0.f, parts);
             std::printf("      %-8s %2d parts\n", statsOf((EnemyType)t).name, (int)parts.size());
@@ -1896,7 +1899,7 @@ int main() {
               "every wave starts; the Core and the Sanctum end on their bosses");
         CHECK(counts[DirectorEvent::ARENA_CLEARED] == n && counts[DirectorEvent::VICTORY] == 1 &&
               counts[DirectorEvent::FINISH_OPEN] == 0, "each arena clears, then victory");
-        CHECK(counts[DirectorEvent::NEW_TYPE] == (int)EnemyType::COUNT - 5,   // the Seraph, the Anchor, the Penitent, the Revenant and the Weaver are Act II's
+        CHECK(counts[DirectorEvent::NEW_TYPE] == (int)EnemyType::COUNT - 6,   // the Seraph, the Anchor, the Penitent, the Revenant, the Weaver and the Leviathan are Act II's
               "each Act I enemy type is introduced exactly once");
         CHECK(goalWaves >= 3 && (int)goalsDone.size() == goalWaves && counts[DirectorEvent::GOAL_DONE] == goalWaves,
               "every goal wave (hold, conduits, survive) is met once, and that ends it");
@@ -2700,7 +2703,7 @@ int main() {
         CHECK(levels, "every voice sits within 2 dB of its mix class's level");
         CHECK(varied, "a voice's variants differ");
         CHECK(same, "the same voice builds the same every time");
-        CHECK(total <= 180.f, "the whole voice bank is at most 180 s of audio");
+        CHECK(total <= 200.f, "the whole voice bank is at most 200 s of audio");   // (180 before the Leviathan)
     }
 
     // ---------------------------------------------------------------- enemy voices: who gets to speak
@@ -3351,7 +3354,7 @@ int main() {
     // ---------------------------------------------------------------- the Reliquary: the map
     {
         LevelData N = buildAct2Level();
-        CHECK(N.arenas.size() == 4 && std::string(N.arenas[3].name) == "THE RELIQUARY" && N.arenas[3].shift == ArenaShift::DRIFT &&
+        CHECK(N.arenas.size() == 5 && std::string(N.arenas[3].name) == "THE RELIQUARY" && N.arenas[3].shift == ArenaShift::DRIFT &&
               N.arenas[3].waves.size() == 3 && N.arenas[3].maxAlive == 12 && std::fabs(N.arenas[3].damageScale - 1.45f) < 1e-4f,
               "the Reliquary: the fourth Act II arena, three waves, 12 at once, x1.45");
         const Arena& R = N.arenas[3];
@@ -3416,9 +3419,9 @@ int main() {
         CHECK(std::fabs(bridge + 240.f) < 0.05f && std::fabs(landing - fm.top(0).y) < 0.05f && N.arenas[2].exitDoor >= 0,
               "a bridge leads from a door in the pit's south wall out to the Yard");
         fm.at = fm.to = 3; fm.apply(N); N.updateMovers(0.f);
-        CHECK(std::fabs(N.groundAt(N.finishPos.x, N.finishPos.z, N.finishPos.y + 0.5f) - N.finishPos.y) < 0.05f && N.finishPos.z < -1000.f,
-              "the finish stands on the hole's rim, past the last arrangement");
-        CHECK(MUSIC_TRACKS == 9 && std::string(musicTrack(8).name) == "RELIQUARY", "the Reliquary has its own track");
+        CHECK(std::fabs(N.groundAt(0.f, -1020.f, -239.f) + 240.f) < 0.05f && N.arenaAt({0.f, -240.f, -1021.f}) == 3 &&
+              N.arenaAt({0.f, -240.f, -1023.f}) == 4, "the rim stands past the last arrangement; beyond its edge is the Maw");
+        CHECK(MUSIC_TRACKS >= 9 && std::string(musicTrack(8).name) == "RELIQUARY", "the Reliquary has its own track");
     }
 
     // ---------------------------------------------------------------- the Revenant
@@ -4047,6 +4050,356 @@ int main() {
         CHECK(normal, "ordinary mouse movement passes through");
         CHECK(dropsSpike && resumes, "a single huge spike (the 180 snap) is dropped");
         CHECK(through >= 3, "a genuine fast flick still turns the camera");
+    }
+
+    // ---------------------------------------------------------------- the Maw: the map
+    {
+        LevelData N = buildAct2Level();
+        const Arena& M = N.arenas[4];
+        const glm::vec3 C = MAW_C;
+        CHECK(M.waves.size() == 1 && M.waves[0][0].type == EnemyType::LEVIATHAN && std::fabs(M.damageScale - 1.5f) < 1e-4f &&
+              M.space == ReverbSpace::HALL, "the Maw: one wave, the Leviathan, x1.5, a hall");
+        bool ring = true;
+        for (int k = 0; k < 16; ++k) {
+            float a = k * 0.3926991f + 0.1f;
+            for (float rr : {16.f, 24.f, 35.f, 44.f}) {
+                glm::vec3 p = C + glm::vec3{std::cos(a) * rr, 0.f, std::sin(a) * rr};
+                bool onWell = false;
+                for (int w = 0; w < 4; ++w) onWell |= glm::length(glm::vec2{p.x - mawWell(w).x, p.z - mawWell(w).z}) < MAW_WELL;
+                float g = N.groundAt(p.x, p.z, C.y + 0.5f);
+                if (std::fabs(g - C.y) > 0.05f && !onWell) {
+                    bool solidHere = false;   // a rib's pillar, a step or a pipe stands here
+                    for (auto& wl : N.walls) solidHere |= p.x > wl.box.min.x && p.x < wl.box.max.x && p.z > wl.box.min.z && p.z < wl.box.max.z && wl.box.max.y > C.y + 0.5f;
+                    if (!solidHere) { ring = false; std::printf("      no ring at r %.0f, %.0f deg: %.2f\n", rr, a * 57.3f, g); }
+                }
+            }
+        }
+        CHECK(ring, "the ring floor stands at Y -300 from the pool to the wall");
+        CHECK(N.groundAt(C.x, C.z, C.y + 0.5f) < C.y - 50.f && N.groundAt(C.x + 6.f, C.z - 6.f, C.y + 0.5f) < C.y - 50.f &&
+              M.voidY > C.y - 20.f && M.voidY < C.y - 2.f, "the pool is open: a fall into it is a fall");
+        bool wells = N.hasLair && N.wells.size() == 4;
+        for (auto& w : N.wells) wells &= std::fabs(glm::length(glm::vec2{w.x - C.x, w.z - C.z}) - MAW_WELL_R) < 0.01f &&
+                                         std::fabs(N.groundAt(w.x, w.z, C.y + 0.5f) - C.y) < 0.05f;
+        CHECK(wells && std::fabs(N.lairFloor - C.y) < 1e-4f, "four wells on the ring, flush with it; the lair is known to the level");
+        bool ledges = true;
+        for (int k = 0; k < 6; ++k) {
+            float a = mawRibAngle(k);
+            glm::vec3 out{std::cos(a), 0.f, std::sin(a)}, side{-out.z, 0.f, out.x};
+            glm::vec3 l = C + out * (MAW_RIB_R - 3.8f), st = l + side * 3.6f - out * 1.2f;
+            float lt = N.groundAt(l.x, l.z, C.y + 10.f), sh = N.groundAt(st.x, st.z, C.y + 10.f);
+            ledges &= std::fabs(lt - (C.y + MAW_LEDGE_UP)) < 0.05f && std::fabs(sh - (C.y + MAW_STEP_UP)) < 0.05f &&
+                      sh - C.y <= 2.6f && lt - sh <= 2.6f;
+        }
+        CHECK(ledges, "six dry ledges at +5 m, each with a step at +2.5 m");
+        // Off the rim and down: you land on the ring, in the Maw, never in the Reliquary's void
+        SpatialGrid g; g.build(N.walls);
+        N.formation.at = N.formation.to = 3; N.formation.apply(N); N.updateMovers(0.f);
+        Player p({0.f, -240.f, -1021.5f});
+        Uint8 k[SDL_NUM_SCANCODES]; std::memset(k, 0, sizeof(k));
+        k[SDL_SCANCODE_W] = 1;
+        bool neverVoid = true;
+        for (int i = 0; i < 60 * 6; ++i) {
+            applyWater(p, N);
+            p.update(DT, k, N.walls.data(), (int)N.walls.size(), false, &g);
+            int a = N.arenaAt(p.position);
+            if (a >= 0 && p.position.y < N.arenas[a].voidY) neverVoid = false;
+            if (p.position.z < -1030.f) k[SDL_SCANCODE_W] = 0;
+        }
+        std::printf("      off the rim: landed at (%.1f %.1f %.1f) in arena %d\n", p.position.x, p.position.y, p.position.z, N.arenaAt(p.position));
+        CHECK(neverVoid && N.arenaAt(p.position) == 4 && p.position.y > C.y - 0.1f && p.position.y < C.y + 3.1f,
+              "running off the Reliquary's rim you fall into the Maw and land on its ring");
+        CHECK(N.arenaAt(M.playerStart) == 4 && M.playerStart.y > C.y + 20.f && std::fabs(N.groundAt(M.playerStart.x, M.playerStart.z, M.playerStart.y) - C.y) < 0.05f,
+              "a retry drops you in again, over the ring");
+        CHECK(MUSIC_TRACKS == 10 && std::string(musicTrack(9).name) == "LEVIATHAN", "the Maw has its own track");
+    }
+
+    // ---------------------------------------------------------------- the Leviathan: its mind
+    {
+        LevelData N = buildAct2Level(); SpatialGrid g; g.build(N.walls);
+        const Arena& M = N.arenas[4];
+        const glm::vec3 C = MAW_C;
+        auto world = [&](glm::vec3 feet, int diff = DIFFICULTY_DEFAULT) {
+            EnemyWorld w; w.playerFeet = feet; w.playerEye = feet + glm::vec3{0, 1.7f, 0};
+            w.walls = N.walls.data(); w.wallCount = (int)N.walls.size(); w.grid = &g; w.bounds = M.bounds;
+            w.hasLair = true; w.lair = N.lair; w.lairFloor = N.lairFloor; w.wells = N.wells.data(); w.wellCount = (int)N.wells.size();
+            w.tune = &difficulty(diff);
+            return w;
+        };
+        auto fresh = [&]() { Enemy e(EnemyType::LEVIATHAN, M.bossSpawn); e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE; return e; };
+        glm::vec3 south = C + glm::vec3{0.f, 0.f, 25.f};
+        // It rises out of the pool over 3 s, untouchable, then towers over it
+        {
+            Enemy e = fresh(); EnemyWorld w = world(south);
+            bool hidden = true; float upAt = -1.f;
+            for (int f = 0; f < 60 * 4; ++f) {
+                e.update(DT, w);
+                if (f < 60 * 2.9f) hidden &= !e.targetable();
+                if (upAt < 0.f && e.targetable()) upAt = f * DT;
+            }
+            CHECK(hidden && upAt > 2.9f && upAt < 3.1f && e.position.y > C.y + 8.f && e.levAtPool(),
+                  "it rises out of the pool over 3 s, untouchable, then towers over it");
+        }
+        // Its phases
+        {
+            Enemy e = fresh(); EnemyWorld w = world(south);
+            for (int f = 0; f < 60 * 4; ++f) e.update(DT, w);
+            e.health = e.maxHealth * 0.64f; e.update(DT, w);
+            bool p2 = e.levPhase == 2 && e.ev.lvPhase == 2;
+            e.health = e.maxHealth * 0.29f; e.update(DT, w);
+            CHECK(p2 && e.levPhase == 3 && e.ev.lvPhase == 3 && statsOf(EnemyType::LEVIATHAN).health == 15000.f,
+                  "15000 health; under 65 % it hunts, under 30 % the eclipse");
+        }
+        // What a hit does where
+        {
+            Enemy e = fresh(); e.levRoot = e.levHome = N.lair; e.levFloor = C.y; e.levStage = Enemy::LevStage::FIGHT;
+            bool base = leviathanZoneMult(e, LevZone::BODY) == 0.2f && leviathanZoneMult(e, LevZone::HEAD) == 1.f &&
+                        leviathanZoneMult(e, LevZone::EYE) == 1.f && leviathanZoneMult(e, LevZone::THROAT) == 0.f && e.armorMult() == 1.f;
+            e.levBeached = 2.f; bool beached = leviathanZoneMult(e, LevZone::EYE) == 3.f; e.levBeached = 0.f;
+            e.levPhase = 3; bool eclipse = leviathanZoneMult(e, LevZone::EYE) == 2.f;
+            e.levInhale = 1.f; bool throat = leviathanZoneMult(e, LevZone::THROAT) == 3.f; e.levInhale = 0.f;
+            e.stagger(4.f); bool stag = e.armorMult() == 2.f && leviathanZoneMult(e, LevZone::EYE) == 3.f;
+            CHECK(base && beached && eclipse && throat && stag,
+                  "body x0.2, head x1, the eye x3 beached or staggered and x2 in the eclipse, the throat x3 only while it inhales, x2 staggered");
+        }
+        // Shots find the zones: the eye from in front, the body from the side
+        {
+            Enemy e = fresh(); EnemyWorld w = world(south);
+            for (int f = 0; f < 60 * 4; ++f) e.update(DT, w);
+            glm::vec3 fwd{std::sin(e.yaw), 0.f, std::cos(e.yaw)};
+            AABB eye = leviathanEye(e); glm::vec3 ec = (eye.min + eye.max) * 0.5f;
+            glm::vec3 from = ec + fwd * 15.f; float t;
+            LevZone ze = leviathanRay(e, from, glm::normalize(ec - from), t);
+            LevSegment seg[LV_SEGMENTS]; leviathanBody(e, seg);
+            glm::vec3 sc = seg[4].c, sfrom = sc + glm::vec3{fwd.z, 0.f, -fwd.x} * 15.f;
+            LevZone zb = leviathanRay(e, sfrom, glm::normalize(sc - sfrom), t);
+            CHECK(ze == LevZone::EYE && zb == LevZone::BODY, "a shot at the eye from in front finds the eye; one at its neck finds plates");
+        }
+        // CRASH: locked on where you stood, a 1.1 s tell, it lands there and lies beached 3 s; the parry window is its last quarter second
+        {
+            Enemy e = fresh(); EnemyWorld w = world(south);
+            float tell = 0.f; glm::vec3 marked{0.f}; bool landed = false, beachedThree = false, window = true, openEye = false;
+            float landT = -1.f;
+            for (int f = 0; f < 60 * 14 && !landed; ++f) {
+                e.update(DT, w);
+                if (e.ev.lvCrashMark) { tell = e.telegraphDuration; marked = e.ev.lvTo; }
+                if (e.attack == AttackKind::CRASH && e.parryWindow() != (e.telegraphTimer < 0.25f)) window = false;
+                if (e.attack != AttackKind::CRASH && e.parryWindow()) window = false;
+                if (e.ev.lvCrash) { landed = true; landT = f * DT; openEye = e.levEyeOpen(); beachedThree = std::fabs(e.levBeached - Enemy::LV_BEACHED) < 1e-4f; }
+            }
+            float lieFor = 0.f;
+            for (int f = 0; f < 60 * 5; ++f) { e.update(DT, w); if (e.levBeached > 0.f) lieFor += DT; }
+            (void)landT;
+            CHECK(landed && std::fabs(tell - 1.1f * difficulty(DIFFICULTY_DEFAULT).windup) < 1e-3f && glm::length(glm::vec2{marked.x - south.x, marked.z - south.z}) < 0.1f,
+                  "a crash is marked on where you stand and winds up 1.1 s");
+            CHECK(beachedThree && openEye && lieFor > 2.9f && lieFor < 3.05f && window,
+                  "after a crash its head lies beached 3 s, the eye open; the parry window is the last quarter second of the crash");
+        }
+        // Hugging its root brings a crash; TORRENT orbs go back into its eye for 180; TIDE rolls out from the pool to the wall
+        {
+            Enemy e = fresh(); EnemyWorld w = world(C + glm::vec3{0.f, 0.f, 16.f});
+            for (int f = 0; f < 60 * 4; ++f) e.update(DT, w);
+            AttackKind first = AttackKind::NONE;
+            for (int f = 0; f < 60 * 4 && first == AttackKind::NONE; ++f) { e.update(DT, w); if (e.ev.telegraphStarted) first = e.attack; }
+            CHECK(first == AttackKind::CRASH, "stand at its pool's lip and it crashes down on you");
+            Enemy t = fresh(); EnemyWorld tw = world(south);
+            int orbs = 0; float parry = 0.f; bool tide = false; glm::vec3 tideAt{0.f}; float tideR = 0.f;
+            for (int f = 0; f < 60 * 40; ++f) {
+                t.update(DT, tw);
+                if (t.ev.shots > 0) { orbs = t.ev.shots; parry = t.ev.shotParry; }
+                if (t.ev.lvTide) { tide = true; tideAt = t.ev.lvTideAt; tideR = t.ev.lvTideR; }
+                if (t.levPhase != 1) break;
+            }
+            CHECK(orbs >= 9 && parry == 180.f, "its torrent is a fan of orbs, each parried back worth 180");
+            CHECK(tide && std::fabs(tideR - 46.f) < 1e-3f && glm::length(glm::vec2{tideAt.x - C.x, tideAt.z - C.z}) < 0.1f && std::fabs(tideAt.y - C.y) < 1e-3f,
+                  "its tide rolls out over the ring from the pool, to the wall");
+        }
+        // SPIT: never at a close, visible, grounded player; within ~5 s for one far off or up on a ledge
+        {
+            auto spitAfter = [&](glm::vec3 feet) {
+                Enemy e = fresh(); EnemyWorld w = world(feet);
+                for (int f = 0; f < 60 * 3; ++f) e.update(DT, w);   // risen
+                for (int f = 0; f < 60 * 20; ++f) { e.update(DT, w); if (e.ev.lvSpit) return f * DT; e.levBeached = 0.f; }
+                return -1.f;
+            };
+            float close = spitAfter(C + glm::vec3{0.f, 0.f, 24.f});
+            float far = spitAfter(C + glm::vec3{0.f, 0.f, 40.f});
+            float a = mawRibAngle(1); glm::vec3 ledge = C + glm::vec3{std::cos(a), 0.f, std::sin(a)} * (MAW_RIB_R - 3.8f) + glm::vec3{0.f, MAW_LEDGE_UP, 0.f};
+            float perch = spitAfter(ledge);
+            std::printf("      spit: close %.1f s, far %.1f s, perched %.1f s\n", close, far, perch);
+            CHECK(close < 0.f && far > 3.9f && far < 7.f && perch > 3.9f && perch < 7.f,
+                  "it spits only at someone keeping away or perched (after 4 s), never at a close, grounded player");
+        }
+        // Tell floors on every difficulty, in every phase
+        {
+            float least = 9.f, leastFollow = 9.f;
+            for (int dI = 0; dI < DIFFICULTY_LEVELS; ++dI)
+                for (int ph = 1; ph <= 3; ++ph) {
+                    Enemy e = fresh(); EnemyWorld w = world(south, dI);
+                    for (int f = 0; f < 60 * 4; ++f) e.update(DT, w);
+                    e.health = e.maxHealth * (ph == 1 ? 0.9f : ph == 2 ? 0.5f : 0.2f);
+                    for (int f = 0; f < 60 * 40; ++f) {
+                        e.update(DT, w);
+                        if (e.health > 0.f) e.health = e.maxHealth * (ph == 1 ? 0.9f : ph == 2 ? 0.5f : 0.2f);
+                        if (e.ev.telegraphStarted) (e.tellFollow ? leastFollow : least) = std::min(e.tellFollow ? leastFollow : least, e.telegraphDuration);
+                    }
+                }
+            std::printf("      leviathan: shortest tell %.2f s (follow-ups %.2f s)\n", least, leastFollow);
+            CHECK(least >= Enemy::TELL_FLOOR - 1e-4f && leastFollow >= Enemy::TELL_FLOOR_FOLLOW - 1e-4f, "every Leviathan tell is at least 0.35 s on every difficulty");
+        }
+    }
+
+    // ---------------------------------------------------------------- the Leviathan: the hunt and the eclipse
+    {
+        LevelData N = buildAct2Level(); SpatialGrid g; g.build(N.walls);
+        const Arena& M = N.arenas[4];
+        const glm::vec3 C = MAW_C;
+        auto world = [&](glm::vec3 feet) {
+            EnemyWorld w; w.playerFeet = feet; w.playerEye = feet + glm::vec3{0, 1.7f, 0};
+            w.walls = N.walls.data(); w.wallCount = (int)N.walls.size(); w.grid = &g; w.bounds = M.bounds;
+            w.hasLair = true; w.lair = N.lair; w.lairFloor = N.lairFloor; w.wells = N.wells.data(); w.wellCount = (int)N.wells.size();
+            return w;
+        };
+        Enemy e(EnemyType::LEVIATHAN, M.bossSpawn); e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE;
+        glm::vec3 nearWell = N.wells[1] + glm::vec3{2.f, 0.f, 2.f};
+        EnemyWorld w = world(nearWell);
+        for (int f = 0; f < 60 * 4; ++f) e.update(DT, w);
+        e.health = e.maxHealth * 0.6f;
+        // Into the hunt: it goes under, hidden, and comes up out of the well nearest you after a 1.2 s boil
+        bool submerged = false, hiddenUntouchable = true, sawHidden = false; float boil = -1.f; glm::vec3 site{0.f}; bool breached = false;
+        for (int f = 0; f < 60 * 10 && !breached; ++f) {
+            e.update(DT, w);
+            if (e.ev.telegraphStarted && e.attack == AttackKind::SUBMERGE) submerged = true;
+            if (e.levHidden()) { sawHidden = true; hiddenUntouchable &= !e.targetable(); }
+            if (e.ev.lvBreachTell) { boil = e.telegraphDuration; site = e.ev.lvSite; }
+            if (e.ev.lvBreach) breached = true;
+        }
+        CHECK(submerged && sawHidden && hiddenUntouchable, "in the hunt it goes under: hidden, untouchable");
+        CHECK(breached && std::fabs(boil - 1.2f) < 1e-4f && glm::length(glm::vec2{site.x - N.wells[1].x, site.z - N.wells[1].z}) < 0.1f &&
+              glm::length(glm::vec2{e.levRoot.x - N.wells[1].x, e.levRoot.z - N.wells[1].z}) < 0.1f && e.targetable(),
+              "it breaches out of the well nearest you after a 1.2 s boil, and fights from there");
+        // Two attacks from a root, then under again - and never back up the same well
+        int attacks = 0; bool dove = false; glm::vec3 next{0.f};
+        for (int f = 0; f < 60 * 30 && !dove; ++f) {
+            e.update(DT, w);
+            if (e.ev.lvCrash || (e.ev.shots > 0) || e.ev.lvTide) ++attacks;
+            if (e.ev.lvBreachTell) { dove = true; next = e.ev.lvSite; }
+            e.levBeached = std::min(e.levBeached, 0.5f);
+        }
+        CHECK(dove && attacks >= 1 && attacks <= 2 && glm::length(glm::vec2{next.x - N.wells[1].x, next.z - N.wells[1].z}) > 1.f,
+              "after two attacks from a root it dives again, and comes up somewhere else");
+        // The eclipse: it goes home to the pool, and every third attack is a swallow
+        for (int f = 0; f < 60 * 3; ++f) e.update(DT, w);
+        e.health = e.maxHealth * 0.25f;
+        EnemyWorld w3 = world(C + glm::vec3{0.f, 0.f, 26.f});
+        bool home = false; std::vector<AttackKind> seq;
+        for (int f = 0; f < 60 * 60 && seq.size() < 6; ++f) {
+            e.update(DT, w3);
+            if (e.levPhase == 3 && e.levAtPool() && e.levStage == Enemy::LevStage::FIGHT && e.attack != AttackKind::BREACH) home = true;
+            if (home && e.ev.telegraphStarted && e.attack != AttackKind::SPIT && e.attack != AttackKind::SUBMERGE && e.attack != AttackKind::BREACH) seq.push_back(e.attack);
+            e.levBeached = std::min(e.levBeached, 0.3f);
+            if (e.levInhale > 0.f) e.levInhale = std::min(e.levInhale, 0.1f);
+        }
+        int swallows = 0; for (auto k : seq) swallows += k == AttackKind::SWALLOW;
+        CHECK(home && seq.size() == 6 && seq[2] == AttackKind::SWALLOW && seq[5] == AttackKind::SWALLOW && swallows == 2,
+              "in the eclipse it fights from its pool, a swallow every third attack");
+        // A swallow: inhaling 3 s; 450 down its throat in one breath and it chokes, staggered 4 s
+        Enemy s(EnemyType::LEVIATHAN, M.bossSpawn); s.levInit = true; s.levRoot = s.levHome = N.lair; s.levFloor = C.y;
+        s.levStage = Enemy::LevStage::FIGHT; s.state = EnemyState::ACTIVE; s.spawnTimer = 0.f; s.levPhase = 3;
+        s.levInhale = Enemy::LV_INHALE;
+        bool notYet = !s.levThroatHit(300.f);
+        bool choked = s.levThroatHit(160.f);
+        CHECK(notYet && choked && s.staggered() && std::fabs(s.staggerTimer - 4.f) < 1e-4f && s.levInhale <= 0.f,
+              "450 down its throat in one inhale and it chokes: the inhale ends, staggered 4 s");
+        CHECK(!s.levThroatHit(500.f), "no throat to hit when it isn't inhaling");
+    }
+
+    // ---------------------------------------------------------------- the Leviathan's hazards
+    {
+        using LH = LeviathanHazards;
+        glm::vec3 from{0, -300, 0}, to{0, -300, 30};
+        CHECK(LH::inStrip(from, to, {0.f, -300.f, 20.f}, -300.f) && LH::inStrip(from, to, {2.f, -300.f, 33.f}, -300.f) &&
+              !LH::inStrip(from, to, {3.f, -300.f, 20.f}, -300.f) && !LH::inStrip(from, to, {0.f, -297.f, 20.f}, -300.f) &&
+              !LH::inStrip(from, to, {0.f, -300.f, 36.f}, -300.f), "a crash's strip: 5 m wide, out past where the head lands, on the ground; 3 m aside you're clear");
+        LH h;
+        h.markCrash(from, to); h.markCrash(from, to * 0.5f); h.landCrash();
+        bool newest = h.strips[1].landed && !h.strips[0].landed;
+        h.dropMarks();
+        CHECK(newest && h.strips.size() == 1 && h.strips[0].landed, "a crash lands along its newest mark; a mark it never strikes is dropped");
+        // A tide: hits a grounded player as it passes, misses one in the air
+        auto tideHits = [&](float up) {
+            LH t; t.addTide({0, -300, 0}, 13.f, 46.f);
+            int hits = 0;
+            for (int i = 0; i < 60 * 4; ++i) for (auto& x : t.update(DT, {20.f, -300.f + up, 0.f}, -300.f)) hits += x.damage == LH::TIDE_DAMAGE;
+            return hits;
+        };
+        CHECK(tideHits(0.f) == 1 && tideHits(1.5f) == 0, "a tide hits you on the ground as it passes (once), and passes under a jump");
+        // A spit: bursts after a second where it was marked, then burns
+        {
+            LH t; t.addSpit({0, -300, 0});
+            float burst = 0.f, burn = 0.f; float burstAt = -1.f;
+            for (int i = 0; i < 60 * 6; ++i)
+                for (auto& x : t.update(DT, {1.f, -300.f, 0.f}, -300.f)) {
+                    if (x.damage == LH::SPIT_DAMAGE) { burst += x.damage; burstAt = i * DT; } else burn += x.damage;
+                }
+            LH f; f.addSpit({0, -300, 0}); float away = 0.f;
+            for (int i = 0; i < 60 * 6; ++i) for (auto& x : f.update(DT, {6.f, -300.f, 0.f}, -300.f)) away += x.damage;
+            CHECK(burst == 30.f && burstAt > 0.95f && burstAt < 1.05f && burn > 50.f && burn < 65.f && away == 0.f,
+                  "a spit bursts a second after its marker (30), then burns there for 4 s at 15/s; 6 m away nothing");
+        }
+        CHECK(LH::breachHits({0, -300, 0}, {5.f, -300.f, 0.f}) && !LH::breachHits({0, -300, 0}, {8.f, -300.f, 0.f}) &&
+              !LH::breachHits({0, -300, 0}, {2.f, -293.f, 0.f}), "a breach erupts within 6 m of its well, not at 8 m, not up on a ledge");
+        glm::vec3 pl = LH::pull({0, -300, 0}, {10.f, -300.f, 0.f});
+        CHECK(std::fabs(glm::length(pl) - 3.5f) < 1e-4f && pl.x < 0.f && pl.y == 0.f &&
+              LH::PULL_SPEED < 7.f * Player::wadeFactor(0.6f), "the swallow drags you toward its mouth at 3.5 m/s, slower than you wade in its flood");
+        CHECK(LH::bites({0, -300, 0}, {4.f, -300.f, 0.f}) && !LH::bites({0, -300, 0}, {5.f, -300.f, 0.f}), "it bites inside 4.5 m");
+    }
+
+    // ---------------------------------------------------------------- the Maw's flood
+    {
+        LevelData N = buildAct2Level();
+        ArenaShifts sh; sh.capture(N); sh.reset(N);
+        const float F = MAW_C.y;
+        glm::vec3 ring = MAW_C + glm::vec3{0.f, 0.f, 30.f}, ledge = MAW_C + glm::vec3{MAW_RIB_R - 3.8f, MAW_LEDGE_UP, 0.f};
+        bool dry = N.waterSurfaceAt(ring.x, ring.z) < F && N.waterSurfaceAt(MAW_C.x, MAW_C.z) < -1e8f;
+        sh.floodTo(N, 4, F + 0.6f, 4.f);
+        for (int i = 0; i < 60 * 2; ++i) sh.update(DT, N, 4, true);
+        bool rising = N.waterSurfaceAt(ring.x, ring.z) > F - 0.9f && N.waterSurfaceAt(ring.x, ring.z) < F + 0.6f;
+        for (int i = 0; i < 60 * 3; ++i) sh.update(DT, N, 4, true);
+        bool full = std::fabs(N.waterSurfaceAt(ring.x, ring.z) - (F + 0.6f)) < 1e-3f && N.waterSurfaceAt(MAW_C.x, MAW_C.z) < -1e8f &&
+                    N.waterDepthAt(ledge) == 0.f;
+        bool others = N.waterSurfaceAt(0.f, -540.f) < -59.f;   // the Nave's water left alone
+        sh.reset(N);
+        bool drained = N.waterSurfaceAt(ring.x, ring.z) < F;
+        CHECK(dry && rising && full && drained && others,
+              "the Maw floods its ring to 0.6 m over 4 s (the pool stays open, the ledges dry), and a retry drains it");
+    }
+
+    // ---------------------------------------------------------------- the Leviathan: no cheese, and a fight that ends
+    {
+        LevelData N = buildAct2Level(); SpatialGrid g; g.build(N.walls);
+        const Arena& M = N.arenas[4];
+        auto punished = [&](BossSim::Policy p, float hpFrac) {
+            BossSim s(N, g, M, EnemyType::LEVIATHAN, p);
+            for (int f = 0; f < 60 * 4; ++f) s.step(DT);   // it rises (3 s): nothing to dodge yet
+            s.boss.health = s.boss.maxHealth * hpFrac;
+            s.damageTaken = 0.f; float from = s.t;
+            for (int f = 0; f < 60 * 8 && s.damageTaken <= 0.f; ++f) s.step(DT);
+            return s.damageTaken > 0.f ? s.t - from : 99.f;
+        };
+        const char* names[] = {"corner-camper", "perch-sitter", "edge-kiter", "ranged-only"};
+        bool ok = true;
+        for (int p = 0; p < 4; ++p) {
+            float a = punished((BossSim::Policy)p, 1.f), b = punished((BossSim::Policy)p, 0.5f), c = punished((BossSim::Policy)p, 0.2f);
+            std::printf("      %-14s hit after: leviathan %.1f s, hunting %.1f s, eclipse %.1f s\n", names[p], a, b, c);
+            ok &= a <= 8.f && b <= 8.f && c <= 8.f;
+        }
+        CHECK(ok, "every cheese (corner, perch, edge-kiting, ranged-only) is punished within 8 s by the Leviathan, in every phase");
+        BossSim s(N, g, M, EnemyType::LEVIATHAN, BossSim::SOLID);
+        int phase3 = 0;
+        for (int f = 0; f < 60 * 600 && s.bossAlive(); ++f) { s.step(DT); if (s.boss.levPhase == 3) ++phase3; }
+        float kl = s.bossAlive() ? 999.f : s.t;
+        std::printf("      solid player's kill time: leviathan %.0f s (eclipse %.0f s), took %.0f damage\n", kl, phase3 * DT, s.damageTaken);
+        CHECK(kl >= 150.f && kl <= 220.f, "a solid player kills the Leviathan in 150-220 s, the longest fight in the game");
     }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");

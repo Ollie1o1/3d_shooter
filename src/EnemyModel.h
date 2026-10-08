@@ -327,6 +327,65 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         }
         break;
     }
+    case EnemyType::LEVIATHAN: {
+        // THE LEVIATHAN: a plated serpent out of its root, a long iron skull, a
+        // jaw of turbine teeth and the eclipse eye (a black disc, a burning corona)
+        if (!e.levInit) break;                                           // not yet risen: nowhere to grow from
+        if (e.levHidden() && e.levStage != Enemy::LevStage::RISE) break;   // under the floor: only its wake shows (Gameplay_Leviathan.h)
+        const vec3 plate = st.color, seam = vec3{1.3f, 0.3f, 0.12f}, corona = st.glow, bone{0.5f, 0.47f, 0.42f};
+        float rage = e.levPhase == 3 ? 1.6f : 1.f;
+        LevSegment seg[LV_SEGMENTS];
+        leviathanBody(e, seg);
+        for (int i = 0; i < LV_SEGMENTS; ++i) {
+            vec3 a = seg[i].c, b = i + 1 < LV_SEGMENTS ? seg[i + 1].c : e.position;
+            vec3 dir = b - a; float len = glm::length(dir);
+            if (len < 1e-3f) continue;
+            dir /= len;
+            float yawS = std::atan2(dir.x, dir.z), pitchS = -std::asin(glm::clamp(dir.y, -1.f, 1.f));
+            mat4 f = T(a) * RY(yawS) * RX(pitchS);
+            float rr = seg[i].r;
+            float pulse = 0.6f + 0.4f * std::sin(time * 3.f - i * 0.7f);
+            r.box(f, {0.f, 0.f, len * 0.5f}, {rr * 1.7f, rr * 1.55f, len + 0.5f}, plate);                       // the ring of plates
+            r.box(f, {0.f, -rr * 0.5f, len * 0.5f}, {rr * 1.3f, rr * 0.7f, len * 0.9f}, plate * 0.6f);          // the belly
+            r.box(f, {0.f, 0.f, 0.f}, {rr * 1.78f, rr * 1.6f, 0.25f}, plate * 0.3f, seam * (0.5f + pulse) * rage);   // a glowing seam between plates
+            r.box(f, {0.f, rr * 0.85f + 0.4f, len * 0.4f}, {0.25f, 0.9f + 0.5f * std::sin(i * 1.3f), len * 0.7f}, bone, seam * 0.25f * rage);   // a dorsal fin
+            for (float sd : {-1.f, 1.f})
+                r.box(f, {sd * rr * 0.85f, 0.f, len * 0.5f}, {0.2f, rr * 0.9f, len * 0.6f}, plate * 1.3f);       // side plates
+        }
+        // The head: its frame turned to face, tilted by levPitch
+        mat4 h = T(e.position) * RY(e.yaw) * RX(-e.levPitch) * S(vec3{1.5f});   // drawn half again its rig's size
+        float tp = e.telegraphProgress();
+        bool crash = e.attack == AttackKind::CRASH, torrent = e.attack == AttackKind::TORRENT, swallow = e.attack == AttackKind::SWALLOW || e.levInhale > 0.f;
+        r.box(h, {0.f, 0.3f, -0.3f}, {3.2f, 2.0f, 4.6f}, plate);                       // the skull
+        r.box(h, {0.f, 1.1f, 0.3f}, {2.4f, 0.6f, 3.6f}, plate * 1.25f);               // the brow ridge
+        r.box(h, {0.f, 0.f, 2.2f}, {2.6f, 1.2f, 1.8f}, plate * 0.9f);                 // the snout
+        for (float sd : {-1.f, 1.f}) {
+            r.box(h * RY(sd * 0.35f), {sd * 1.6f, 1.2f, -1.8f}, {0.3f, 0.5f, 3.5f}, bone);     // swept-back horns
+            r.box(h, {sd * 1.65f, 0.f, 0.2f}, {0.2f, 1.2f, 2.8f}, plate * 1.3f, seam * 0.4f * rage);
+        }
+        // The jaw: hinged under the skull, opening for the torrent and the swallow
+        mat4 jaw = h * T({0.f, -0.7f, -1.2f}) * RX(0.9f * e.levJaw);
+        r.box(jaw, {0.f, -0.3f, 2.f}, {2.6f, 0.6f, 4.2f}, plate * 0.8f);
+        for (int k = 0; k < 6; ++k) {   // turbine teeth along both jaws
+            float x = -1.0f + k * 0.4f;
+            r.box(jaw, {x, 0.15f, 3.6f}, {0.18f, 0.5f, 0.18f}, bone);
+            r.box(h, {x, -0.75f, 2.9f}, {0.18f, 0.5f, 0.18f}, bone);
+        }
+        vec3 throat = torrent ? vec3{0.3f, 1.1f, 0.9f} * (0.5f + 3.f * tp) : swallow ? vec3{1.6f, 1.5f, 1.4f} * (0.6f + 2.f * (e.levInhale > 0.f ? 1.f : tp)) : seam * 0.4f;
+        r.box(jaw, {0.f, 0.05f, 1.6f}, {1.6f, 0.1f, 2.4f}, vec3{0.05f}, throat);      // the throat's glow
+        // The eye: a black disc, its corona burning brighter as it strikes; red when it locks on
+        vec3 col = crash ? glm::mix(corona, vec3{1.8f, 0.2f, 0.1f}, glm::clamp(tp * 2.f, 0.f, 1.f)) : corona;
+        float open = e.levEyeOpen() ? 2.2f : 1.f;
+        r.box(h, {0.f, 1.25f, 2.18f}, {1.3f, 1.3f, 0.12f}, vec3{0.01f}, e.levEyeOpen() ? col * 0.25f : vec3{0.f});   // the black disc
+        for (int k = 0; k < 12; ++k) {                                                                    // the corona
+            float a = k * 0.5235988f + time * 0.6f, flick = 0.8f + 0.2f * std::sin(time * 9.f + k * 1.7f);
+            r.box(h * T({0.f, 1.25f, 2.2f}) * RZ(a), {0.95f, 0.f, 0.f}, {0.6f + 0.15f * (k % 2), 0.13f, 0.1f}, col * 0.3f, col * (1.4f + 1.5f * tp) * open * rage * flick);
+        }
+        for (float sd : {-1.f, 1.f})   // seams of light along the skull, so its shape reads in the dark
+            for (int k = 0; k < 3; ++k)
+                r.box(h, {sd * 1.62f, 0.9f - 0.45f * k, -0.6f + 0.3f * k}, {0.06f, 0.06f, 3.2f - 0.6f * k}, plate, seam * (0.9f + 0.6f * tp) * rage);
+        break;
+    }
     case EnemyType::SENTINEL: {
         HumanoidLook L = humanoidLook(e.type, st.color, st.color * 0.4f, glow);
         float aim = (e.attack == AttackKind::BURST || e.burstLeft > 0) ? 1.f : 0.55f;

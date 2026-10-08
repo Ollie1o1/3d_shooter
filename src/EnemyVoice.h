@@ -148,11 +148,11 @@ public:
             s.halo = in.halo;
             if (in.type == EnemyType::CONDUCTOR && in.linkCount > s.links) rest.push_back(cue(in, "v_conductor_link", SoundRole::ACTION));
             s.links = in.linkCount;
-            if (in.enraged && (in.type == EnemyType::WARDEN || in.type == EnemyType::SOVEREIGN)) {
+            if (in.enraged && (in.type == EnemyType::WARDEN || in.type == EnemyType::SOVEREIGN || in.type == EnemyType::LEVIATHAN)) {
                 VoiceCue c = cue(in, std::string("v_") + voiceKey(in.type) + "_enrage", SoundRole::TELL); c.priority = true; c.duckDb = 6.f; rest.push_back(c);
             }
-            if (in.rose && in.type == EnemyType::PENITENT) {
-                VoiceCue c = cue(in, "v_penitent_rise", SoundRole::TELL); c.priority = true; c.duckDb = 6.f; rest.push_back(c);
+            if (in.rose && (in.type == EnemyType::PENITENT || in.type == EnemyType::LEVIATHAN)) {
+                VoiceCue c = cue(in, std::string("v_") + voiceKey(in.type) + "_rise", SoundRole::TELL); c.priority = true; c.duckDb = 6.f; rest.push_back(c);
             }
             // Chatter: idles and steps (the nearest few, and bosses)
             const bool speaks = may[i] || (boss && d < BOSS_RANGE);

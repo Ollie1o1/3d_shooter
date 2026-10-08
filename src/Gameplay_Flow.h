@@ -158,6 +158,7 @@ inline void GameplayState::enterArena(int a) {
     boardHinted = liftRiding = false;
     ward.clear(); conduitClock.reset(); wardenUid = -1; shifts.bossPulseOff();
     relic.clear(); lastChunk = 0; snareTimer = 0.f; driftWasGliding = false;
+    lev.clear(); beachHinted = false; levSinkT = 1e9f;   // (shifts.reset drained the Maw's flood)
     pen.clear(); scourgeAnnounced = false; rip = AnchorRip{}; downHinted = false;
     level.anchors = anchorsBuilt;   // every chain whole again
     for (size_t i = 0; i < level.anchors.size() && i < anchorBoxes.size(); ++i) level.walls[level.anchors[i].wall].box = anchorBoxes[i];
@@ -327,6 +328,8 @@ inline void GameplayState::handleDirectorEvents() {
                 pushBanner("THE SOVEREIGN", "PARRY (F) THE BLADE AS IT LANDS", {1.f, 0.3f, 0.2f}, 4.f);
             else if (ar.waves[ev.value][0].type == EnemyType::PENITENT)
                 pushBanner("THE PENITENT", "BREAK ITS CHAINS - JUMP LOW SWEEPS, SLIDE UNDER HIGH ONES", {1.f, 0.5f, 0.2f}, 4.5f);
+            else if (ar.waves[ev.value][0].type == EnemyType::LEVIATHAN)
+                pushBanner("THE LEVIATHAN", "DASH THE CRASH - SHOOT THE EYE WHILE IT'S DOWN", {1.f, 0.35f, 0.2f}, 4.5f);
             else
                 pushBanner("THE WARDEN", "CUT ITS CONDUITS - HIT THE CORE WHEN IT VENTS", {1.f, 0.2f, 0.65f}, 3.5f);
             audio.play("wave", 128, SoundGroup::UI); audio.play("explosion", 70, SoundGroup::UI); audio.duck(4.f, 0.4f);
@@ -363,6 +366,8 @@ inline void GameplayState::handleDirectorEvents() {
             }
             if (done.exitDoor >= 0 && !act2())
                 pushBanner("ARENA CLEARED", "THE GATE IS OPEN - HEAD NORTH", {0.4f, 1.f, 0.6f}, 3.5f);
+            else if (act2() && done.shift == ArenaShift::DRIFT)
+                pushBanner("THE HOLE IS OPEN", "JUMP IN", {1.f, 0.4f, 0.25f}, 3.5f);
             else if (done.exitDoor >= 0)
                 pushBanner("THE WAY DOWN IS OPEN", ev.value == 0 ? "BEHIND THE ORGAN" : "THROUGH THE NORTH ARCH", {0.35f, 0.95f, 0.9f}, 3.5f);
             styleSystem.heal(40.f);
@@ -388,11 +393,7 @@ inline void GameplayState::handleDirectorEvents() {
             shake(0.3f, 0.05f);
             break;
         case DirectorEvent::VICTORY:
-            if (act2()) {   // the run ends at the beacon on the Orrery's north terrace
-                finishOpen = true;
-                pushBanner("THE PENITENT FALLS SILENT", "THE SOUTH WALL HAS OPENED", {1.f, 0.75f, 0.3f}, 3.f);
-                audio.play("wave", 128, SoundGroup::UI);
-            } else victoryDelay = 2.5f;
+            victoryDelay = act2() ? 3.f : 2.5f;   // ACT II: the Leviathan sinks first
             break;
         case DirectorEvent::FINISH_OPEN:
             finishOpen = true;
@@ -728,7 +729,7 @@ inline void GameplayState::updateMusic() {
     static const int ARENA_TRACK[] = {0, 1, 2, 3, 4};       // Yard, Foundry, Spire, Core, Sanctum
     static const int FAST_TRACK[]  = {0, 1, 2, 2, 1, 1, 3}; // Canal .. Tower
     int a = director.arena;
-    m.setTrack(fast() ? FAST_TRACK[a % 7] : act2() ? 5 + std::min(a, 3) : ARENA_TRACK[a % 5]);   // the Nave, the Orrery
+    m.setTrack(fast() ? FAST_TRACK[a % 7] : act2() ? 5 + std::min(a, 4) : ARENA_TRACK[a % 5]);   // the Nave, the Orrery
     float lv = 0.6f;
     switch (director.phase) {
         case WaveDirector::Phase::ACTIVE:   lv = director.bossWave() ? 1.35f : 1.f; break;

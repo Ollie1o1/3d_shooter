@@ -56,6 +56,7 @@ inline Profile profileOf(EnemyType t) {
         case EnemyType::PENITENT:     return { 73.f, Vowel::OH,   6, 0.80f, Body::CHAINS,     160.f, 1.00f};
         case EnemyType::REVENANT:     return {165.f, Vowel::OO,   3, 1.05f, Body::ARMOUR,     700.f, 0.35f};
         case EnemyType::WEAVER:       return {  0.f, Vowel::NONE, 0, 1.00f, Body::SKITTER,   1600.f, 0.30f};
+        case EnemyType::LEVIATHAN:    return { 41.f, Vowel::OO,   6, 0.70f, Body::GRIND,       70.f, 1.00f};   // a whale's groan through grinding plates
         default:                      return {};
     }
 }
@@ -377,6 +378,28 @@ inline Buf tellV(EnemyType t, AttackKind a, const Profile& p, Rng& r) {
         case AttackKind::SOULBOLT: add(out, choir(d, f * 0.9f, f * 1.6f, Vowel::OO, p.voices, p.formant, r, d * 0.8f, 0.05f, 0.4f)); break;
         case AttackKind::STRING:   add(out, servo(d, 300.f, 1400.f, r, d * 0.8f, 0.03f), 0.8f);
                                    for (float tt = 0.f; tt < d - 0.05f; tt += 0.06f) add(out, click(2200.f, r, 0.02f), 0.4f, tt); break;
+        // THE LEVIATHAN
+        case AttackKind::CRASH:     // rearing back: a roar climbing out of the deep
+            add(out, choir(d, f * 0.8f, f * 1.7f, Vowel::UH, p.voices, p.formant, r, d * 0.7f, 0.05f, 0.3f));
+            add(out, grind(d, 18.f, 160.f, r), 0.7f); break;
+        case AttackKind::TORRENT:   // a gurgling swell in the throat
+            add(out, choir(d, f * 1.2f, f * 1.5f, Vowel::OH, p.voices, p.formant, r, d * 0.6f, 0.05f, 0.2f, 9.f), 0.8f);
+            for (float tt = 0.f; tt < d - 0.05f; tt += 0.05f + 0.04f * r.uni()) add(out, thud(120.f + 80.f * r.uni(), 60.f, 0.06f), 0.4f, tt);
+            break;
+        case AttackKind::TIDE:      // the tail coming up: water churning into a hiss
+            add(out, vent(d, 700.f, r, d * 0.8f, 0.05f)); add(out, thud(55.f, 30.f, 0.4f), 0.8f, d - 0.15f); break;
+        case AttackKind::SPIT:      // a hacking retch
+            add(out, choir(d * 0.6f, f * 2.f, f * 1.2f, Vowel::AH, 3, p.formant, r, 0.02f, 0.1f, 0.6f), 0.8f);
+            add(out, vent(d * 0.4f, 1800.f, r, 0.01f, 0.2f), 0.7f, d * 0.6f); break;
+        case AttackKind::BREACH:    // from under the floor: grinding, then the roar breaking the surface
+            add(out, grind(d, 12.f, 120.f, r), 0.8f);
+            add(out, choir(d, f * 0.6f, f * 1.4f, Vowel::UH, 6, p.formant, r, d * 0.9f, 0.05f, 0.3f), 0.8f); break;
+        case AttackKind::SWALLOW:   // the jaw unhinging and a long inhale
+            add(out, metal(0.25f, p.bodyHz * 4.f, r, 8.f), 0.6f);
+            add(out, vent(d, 1400.f, r, d * 0.9f, 0.05f)); add(out, choir(d, f, f * 1.3f, Vowel::OO, p.voices, p.formant, r, d * 0.8f, 0.05f), 0.5f); break;
+        case AttackKind::SUBMERGE:  // going under: the groan falling away
+            add(out, choir(d, f * 1.3f, f * 0.6f, Vowel::OO, p.voices, p.formant, r, 0.05f, 0.2f, 0.2f));
+            add(out, vent(d, 500.f, r, 0.1f, d * 0.5f), 0.5f); break;
         // THE WARDEN
         case AttackKind::WVENT:     // plates opening: a hiss rising, the gears letting go
             add(out, vent(d, 2500.f, r, d * 0.7f, 0.05f)); add(out, metal(0.3f, p.bodyHz * 3.f, r, 10.f), 0.6f, d * 0.5f); break;
@@ -434,6 +457,8 @@ inline Buf specialV(const VoiceSpec& s, Rng& r) {
     if (k == "link")   return choir(0.25f, p.f0, p.f0 * 1.5f, Vowel::EE, 2, p.formant, r, 0.02f, 0.08f, 0.05f);
     if (k == "soul")   return choir(0.9f, 300.f, 700.f, Vowel::OO, 3, 1.1f, r, 0.05f, 0.4f, 0.4f, 7.f);   // a soul tearing free: a rising choir
     if (k == "reform") { Buf out = choir(1.f, 140.f, 220.f, Vowel::OH, 4, 1.f, r, 0.8f, 0.15f, 0.2f); add(out, shimmer(1.f, 2400.f, r), 0.3f); return out; }
+    if (k == "choke")  { Buf out = choir(0.8f, p.f0 * 2.5f, p.f0 * 1.5f, Vowel::AH, 4, p.formant, r, 0.01f, 0.3f, 0.8f, 11.f);   // gagging on its own breath
+                         add(out, metal(0.5f, 300.f, r, 6.f), 0.6f); add(out, grind(0.8f, 30.f, 200.f, r), 0.5f); return out; }
     if (k == "twang")  { Buf out = metal(0.3f, 1300.f, r, 9.f); add(out, servo(0.25f, 900.f, 300.f, r, 0.002f, 0.2f), 0.5f); return out; }
     return Buf(N(0.1f), 0.f);
 }

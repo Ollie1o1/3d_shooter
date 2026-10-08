@@ -91,13 +91,7 @@ inline void GameplayState::updateWarden(float dt) {
         c.y = w->floorY;
         shifts.bossPulse(w->wardenPhase == 2 ? 3.5f : 5.f, c);
     } else if (shifts.bossDriven) shifts.bossPulseOff();
-    // Parried orbs into its core
-    for (auto& p : projSystem.pool) {
-        if (!p.alive || p.homeOn < 0) continue;
-        if (!w || w->uid != p.homeOn) { p.homeOn = -1; continue; }
-        AABB cb; glm::vec3 target = coreBox(*w, cb) ? (cb.min + cb.max) * 0.5f : w->position + glm::vec3{0.f, w->height() * 0.62f, 0.f};
-        p.velocity = steerParried(p.position, p.velocity, target, dt);
-    }
+    // (parried orbs steer into its core: steerParriedOrbs, Gameplay_Leviathan.h)
     // Its hazards
     if (!w && ward.lances.empty() && ward.seekers.empty()) return;
     const float scale = level.arenas[director.arena].damageScale * tune().damage;

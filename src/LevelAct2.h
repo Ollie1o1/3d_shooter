@@ -30,6 +30,7 @@
 
 inline void buildDescent(LevelBuilder& B);
 inline void buildReliquary(LevelBuilder& B);
+inline void buildMaw(LevelBuilder& B);
 
 inline void buildAct2(LevelBuilder& B) {
     using glm::vec3;
@@ -396,6 +397,7 @@ inline void buildAct2(LevelBuilder& B) {
 
     buildDescent(B);
     buildReliquary(B);
+    buildMaw(B);
 }
 
 // =============================================================================
@@ -713,21 +715,16 @@ inline void buildReliquary(LevelBuilder& B) {
         B.mover(Q + vec3{0, -6.5f, 0}, {1.8f, 0.5f, 1.8f}, Mover::Path::ORBIT, {16, 0, 0}, {0, 0, 16}, 40.f, k / 3.f, blood * 0.5f);
     L.formation.reset(L);
 
-    // ---- the rim of the hole, and what waits below it (piece 6) ----
+    // ---- the rim, over the Maw: jump in (buildMaw) ----
     wall(-8, Q.y - 1, Q.z - 62, 8, Q.y, Q.z - 50, debrisCol);
-    B.kit(true).curve({Q.x, 0.f, Q.z - 80.f}, 18.f, 0.f, 6.2831853f, Q.y - 40.f, Q.y - 39.8f, 0.4f, blood, 48);   // a glow far down
-    for (int k = 0; k < 10; ++k) {
-        float yaw = k * 0.628f;
-        B.kit().rock({Q.x + std::cos(yaw) * 20.f, Q.y - 3.f, Q.z - 80.f + std::sin(yaw) * 20.f}, 2.f, 3.f, debrisCol, (uint32_t)(40 + k));
-    }
-    L.finishPos = {Q.x, Q.y, Q.z - 56.f};
-
+    B.kit(true).box({0.f, Q.y + 0.02f, Q.z - 61.9f}, {15.6f, 0.06f, 0.2f}, blood);   // its edge, glowing
+    L.finishPos = {0.f, Q.y + 1.f, Q.z - 61.f};   // ACT II's way on once the Reliquary is clear (a waypoint, no beacon)
     // ---- the arena ----
     Arena a;
     a.name = "THE RELIQUARY"; a.space = ReverbSpace::HALL;
     a.subtitle = "THE OLD WORLD, IN PIECES - SURVIVE 3 WAVES";
-    a.bounds = LevelBuilder::aabb(-56, Q.y - 20, Q.z - 66, 56, Q.y + 30, Q.z + 60);
-    a.zone   = LevelBuilder::aabb(-58, Q.y - 30, Q.z - 68, 58, Q.y + 40, Q.z + 92);
+    a.bounds = LevelBuilder::aabb(-56, Q.y - 20, Q.z - 61, 56, Q.y + 30, Q.z + 60);
+    a.zone   = LevelBuilder::aabb(-58, Q.y - 30, Q.z - 62, 58, Q.y + 40, Q.z + 92);   // ends at the rim: past it is the Maw's
     a.playerStart = {0.f, Q.y, -909.f};   // on the Yard, just off the bridge
     a.startYaw = -90.f;
     a.respawn = Q + yardPos[0]; a.hasRespawn = true;
@@ -766,6 +763,179 @@ inline void buildReliquary(LevelBuilder& B) {
         glm::normalize(vec3{-0.3f,-0.7f,0.6f}), {0.5f,0.2f,0.18f},
         {0.12f,0.08f,0.1f}, {0.03f,0.02f,0.025f},
         {0.08f,0.03f,0.04f}, 0.01f };
+    L.arenas.push_back(std::move(a));
+}
+
+// =============================================================================
+// THE MAW — the cavern under the Reliquary, open to the void above: you jump
+// in off the rim. A ring of cracked stone round a black pool where THE
+// LEVIATHAN lives; four wells it breaches from, six machine ribs arching
+// overhead with dry ledges on them, broken pipes for cover. Its water lies
+// under the ring until the last phase floods it (Gameplay_Leviathan.h).
+//
+//                 N (-Z)
+//            rib   ___   rib
+//          well  /     \  well        pool    r 0-13   (an open void under black water)
+//     rib  pipe |  POOL | pipe  rib   ring    r 13-46  (Y -300)
+//          well  \_____/  well        wells   r 29, on the diagonals
+//            rib  pipe   rib          ribs    r 42, ledges +5 m, steps +2.5 m
+//                 (rim)
+//                 S (+Z)
+// =============================================================================
+static constexpr glm::vec3 MAW_C{0.f, -300.f, -1072.f};
+static constexpr float MAW_POOL = 13.f, MAW_RING = 46.f, MAW_WELL_R = 29.f, MAW_WELL = 3.5f, MAW_RIB_R = 42.f,
+                       MAW_LEDGE_UP = 5.f, MAW_STEP_UP = 2.5f;
+inline glm::vec3 mawWell(int k) {   // on the diagonals
+    float a = 0.7853982f + k * 1.5707963f;
+    return MAW_C + glm::vec3{std::cos(a) * MAW_WELL_R, 0.f, std::sin(a) * MAW_WELL_R};
+}
+inline float mawRibAngle(int k) { return k * 1.0471976f; }   // 0, 60, ... 300 degrees from +X toward +Z
+
+inline void buildMaw(LevelBuilder& B) {
+    using vec3 = glm::vec3;
+    LevelData& L = B.L;
+    const vec3 C = MAW_C;
+    const float F = C.y;
+    const vec3 stone{0.2f, 0.19f, 0.2f}, stoneDark{0.11f, 0.1f, 0.11f}, iron{0.15f, 0.14f, 0.15f}, bone{0.52f, 0.49f, 0.44f},
+               blood{1.2f, 0.14f, 0.08f}, eclipse{1.3f, 1.2f, 1.05f}, ember{1.3f, 0.45f, 0.15f};
+    auto wall = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { return B.wall(x0, y0, z0, x1, y1, z1, c); };
+    auto neon = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { B.neon(x0, y0, z0, x1, y1, z1, c); };
+
+    // ---- the way in: off the Reliquary's rim, down through the open top ----
+    L.corridors.push_back(LevelBuilder::aabb(-12, F, -1032, 12, -200, -1010));
+
+    // ---- the ring: rows along X between the pool and the wall (no overlaps,
+    // so the water rows laid the same way never blend twice) ----
+    B.mat = Mat::ROCK;
+    auto rows = [&](float rIn, float rOut, float strip, auto fn) {
+        for (float u = -rOut; u < rOut - 1e-3f; u += strip) {
+            float u1 = std::min(u + strip, rOut);
+            float un = (u < 0.f && u1 > 0.f) ? 0.f : std::min(std::fabs(u), std::fabs(u1));   // the row's edge nearest the centre
+            float uf = std::max(std::fabs(u), std::fabs(u1));
+            float outer = std::sqrt(std::max(0.f, rOut * rOut - un * un));
+            if (outer <= 0.f) continue;
+            if (uf < rIn) {   // the row crosses the pool: two pieces
+                float inner = std::sqrt(std::max(0.f, rIn * rIn - uf * uf));
+                fn(-outer, -inner, u, u1, true);
+                fn(inner, outer, u, u1, true);
+            } else fn(-outer, outer, u, u1, false);
+        }
+    };
+    rows(MAW_POOL, MAW_RING, 1.f, [&](float x0, float x1, float z0, float z1, bool lip) {
+        wall(C.x + x0, F - 1.f, C.z + z0, C.x + x1, F, C.z + z1, stone);
+        if (lip) {   // a glowing seam round the pool's lip
+            float e = x0 < 0.f ? x1 : x0;
+            neon(C.x + e - 0.08f, F - 0.4f, C.z + z0, C.x + e + 0.08f, F + 0.03f, C.z + z1, blood * 0.8f);
+        }
+    });
+    // the flood waits under the ring (raised in the Leviathan's last phase)
+    rows(MAW_POOL, MAW_RING, 2.f, [&](float x0, float x1, float z0, float z1, bool) {
+        L.water.push_back({LevelBuilder::aabb(C.x + x0, F - 1.f, C.z + z0, C.x + x1, F + 4.f, C.z + z1), F - 1.f});
+    });
+    L.floors.push_back({C.x - 60.f, C.z - 60.f, C.x + 60.f, C.z + 60.f, -500.f, {0.01f, 0.005f, 0.005f}});   // far below the pool
+    // the pool: black water over the dark, lit red from beneath; a low kerb
+    B.kit().column({C.x, F - 2.2f, C.z}, MAW_POOL - 0.2f, 0.05f, {0.02f, 0.015f, 0.02f}, 40);
+    B.kit(true).curve({C.x, 0.f, C.z}, MAW_POOL * 0.6f, 0.f, 6.2831853f, F - 9.f, F - 8.8f, 0.6f, blood * 0.6f, 32);
+    B.kit().curve({C.x, 0.f, C.z}, MAW_POOL + 0.4f, 0.f, 6.2831853f, F, F + 0.35f, 0.8f, stoneDark, 40);
+    // cracks with a glow in them, radiating out across the ring
+    for (int k = 0; k < 18; ++k) {
+        float a = k * 0.3490659f + 0.11f, r0 = MAW_POOL + 1.5f + (k % 3) * 2.f, r1 = MAW_RING - 3.f - (k % 4) * 3.f;
+        vec3 m = C + vec3{std::cos(a) * (r0 + r1) * 0.5f, 0.02f, std::sin(a) * (r0 + r1) * 0.5f};
+        B.kit(true).box(m, {r1 - r0, 0.04f, 0.12f}, blood * 0.35f, -a);
+    }
+
+    // ---- the wall: posts round r 47.5 (collision), drawn as a curved wall to
+    // the open top; low on the south arc, under the rim, where you drop in ----
+    for (int k = 0; k < 100; ++k) {
+        float ang = k * 6.2831853f / 100.f;
+        vec3 p = C + vec3{std::cos(ang) * (MAW_RING + 1.5f), 0.f, std::sin(ang) * (MAW_RING + 1.5f)};
+        bool south = std::fabs(p.x) < 12.f && p.z > C.z;
+        B.solid(p.x - 1.5f, F - 6.f, p.z - 1.5f, p.x + 1.5f, south ? F + 3.f : -262.f, p.z + 1.5f);
+    }
+    B.mat = Mat::ROCK;
+    B.kit().curve({C.x, 0.f, C.z}, MAW_RING + 1.2f, 1.5707963f + 0.27f, 1.5707963f + 6.2831853f - 0.27f, F - 6.f, -262.f, 1.4f, stoneDark, 90);
+    B.kit().curve({C.x, 0.f, C.z}, MAW_RING + 1.2f, 1.5707963f - 0.27f, 1.5707963f + 0.27f, F - 6.f, F + 3.f, 1.4f, stoneDark, 8);
+    for (float y = F + 6.f; y < -266.f; y += 9.f)   // seams of red climbing the wall
+        B.kit(true).curve({C.x, 0.f, C.z}, MAW_RING - 0.05f, 1.5707963f + 0.3f, 1.5707963f + 6.2831853f - 0.3f, y, y + 0.15f, 0.1f, blood * 0.3f, 80);
+    for (int k = 0; k < 14; ++k) {   // the lip of the hole: broken rock round the open top
+        float a = k * 0.4487989f + 0.2f;
+        if (std::fabs(std::remainder(a - 1.5707963f, 6.2831853f)) < 0.45f) continue;   // the rim's side: open
+        B.kit().rock({C.x + std::cos(a) * (MAW_RING + 2.5f), -263.f, C.z + std::sin(a) * (MAW_RING + 2.5f)}, 3.f, 5.f, stoneDark, (uint32_t)(70 + k));
+    }
+
+    // ---- four wells: shallow round basins flush with the ring, dark water
+    // with a red glow; the Leviathan breaches out of them ----
+    for (int k = 0; k < 4; ++k) {
+        vec3 w = mawWell(k);
+        B.kit().column({w.x, F + 0.01f, w.z}, MAW_WELL, 0.03f, {0.02f, 0.02f, 0.03f}, 24);
+        B.kit(true).curve({w.x, 0.f, w.z}, MAW_WELL, 0.f, 6.2831853f, F, F + 0.08f, 0.25f, blood * 0.7f, 24);
+        B.kit().curve({w.x, 0.f, w.z}, MAW_WELL + 0.45f, 0.f, 6.2831853f, F, F + 0.25f, 0.5f, stoneDark, 24);
+    }
+
+    // ---- six ribs: a pillar at r 42 (a grapple point), a dry ledge on it at
+    // +5 m and a step up at +2.5 m, and the rib itself arching in overhead ----
+    B.mat = Mat::METAL;
+    for (int k = 0; k < 6; ++k) {
+        float a = mawRibAngle(k);
+        vec3 out{std::cos(a), 0.f, std::sin(a)}, side{-out.z, 0.f, out.x};
+        vec3 p = C + out * MAW_RIB_R;
+        wall(p.x - 1.6f, F, p.z - 1.6f, p.x + 1.6f, F + 22.f, p.z + 1.6f, iron);         // the pillar
+        vec3 l = C + out * (MAW_RIB_R - 3.8f);
+        wall(l.x - 2.4f, F + MAW_LEDGE_UP - 0.6f, l.z - 2.4f, l.x + 2.4f, F + MAW_LEDGE_UP, l.z + 2.4f, iron);   // the ledge
+        B.ring(l.x - 2.4f, l.z - 2.4f, l.x + 2.4f, l.z + 2.4f, F + MAW_LEDGE_UP - 0.1f, F + MAW_LEDGE_UP, ember * 0.5f);
+        vec3 s = l + side * 3.6f - out * 1.2f;
+        wall(s.x - 1.3f, F, s.z - 1.3f, s.x + 1.3f, F + MAW_STEP_UP, s.z + 1.3f, stone);   // the step
+        // the rib: from the pillar's top, up and in, over the ring
+        vec3 prev = p + vec3{0.f, 22.f, 0.f};
+        for (int i = 1; i <= 8; ++i) {
+            float t = i / 8.f;
+            vec3 q = C + out * (MAW_RIB_R - 20.f * t) + vec3{0.f, 22.f + 14.f * std::sin(t * 1.5707963f), 0.f};
+            B.kit().rod(prev, q, 1.1f - 0.06f * i, bone * 0.7f, 7);
+            prev = q;
+        }
+        B.kit(true).box(p + vec3{0.f, 21.f, 0.f} - out * 1.65f, {0.12f, 2.f, 0.6f}, blood * 0.8f, -a);   // a light on its face
+    }
+
+    // ---- cover: broken conduit pipes between the wells ----
+    for (int k = 0; k < 4; ++k) {
+        float a = k * 1.5707963f;
+        vec3 out{std::cos(a), 0.f, std::sin(a)}, side{-out.z, 0.f, out.x};
+        vec3 p = C + out * 21.f;
+        vec3 h = glm::abs(side) * 4.f + glm::abs(out) * 0.6f;
+        B.solid(p.x - h.x, F, p.z - h.z, p.x + h.x, F + 1.6f, p.z + h.z);
+        B.kit().rod(p - side * 4.f + vec3{0.f, 0.8f, 0.f}, p + side * 4.f + vec3{0.f, 0.8f, 0.f}, 0.8f, iron, 10);
+        B.kit(true).rod(p - side * 4.05f + vec3{0.f, 0.8f, 0.f}, p - side * 3.9f + vec3{0.f, 0.8f, 0.f}, 0.82f, blood * 0.6f, 10);
+    }
+
+    // ---- the eclipse's light through the open top, onto the south ring ----
+    B.kit(true).column({C.x, F + 0.03f, C.z + 30.f}, 9.f, 0.02f, eclipse * 0.05f, 32);
+
+    // ---- the arena ----
+    Arena a;
+    a.name = "THE MAW"; a.space = ReverbSpace::HALL;
+    a.subtitle = "SOMETHING BELOW";
+    a.bounds = LevelBuilder::aabb(C.x - 45, F - 4, C.z - 45, C.x + 45, F + 40, C.z + 45);
+    a.zone   = LevelBuilder::aabb(C.x - 50, F - 20, C.z - 50, C.x + 50, -200.f, -1022.f);   // up through the open top to the rim
+    a.playerStart = {0.f, -262.f, C.z + 36.f};   // in the air over the south ring: a retry drops you in again
+    a.startYaw = -90.f;
+    a.respawn = {0.f, F, C.z + 36.f}; a.hasRespawn = true;
+    a.voidY = F - 15.f;
+    a.bossSpawn = {C.x, F - 2.f, C.z};
+    L.hasLair = true; L.lair = a.bossSpawn; L.lairFloor = F;
+    for (int k = 0; k < 4; ++k) L.wells.push_back(mawWell(k));
+    a.groundSpawns = {C + vec3{0, 0, 30}};
+    a.waves = {{{EnemyType::LEVIATHAN, 1}}};
+    a.goals = {WaveGoal{}};
+    a.maxAlive = 1;
+    a.damageScale = 1.5f;
+    a.ambient = Ambient::MOTES;
+    a.theme = Theme{
+        {0.01f,0.01f,0.016f}, {0.1f,0.05f,0.07f}, {0.01f,0.003f,0.003f},
+        glm::normalize(vec3{0.f, 0.9f, 0.4f}), {1.2f,1.1f,1.0f}, 0.05f, 0.f,   // the eclipse, overhead through the hole
+        {0.05f,0.02f,0.03f}, 0.6f,
+        glm::normalize(vec3{0.1f,-0.9f,-0.3f}), {0.55f,0.5f,0.55f},          // cold light from above
+        {0.16f,0.14f,0.19f}, {0.3f,0.08f,0.06f},                             // red from the pool below
+        {0.05f,0.02f,0.025f}, 0.012f };
     L.arenas.push_back(std::move(a));
 }
 

@@ -434,6 +434,12 @@ struct LevelData {
     std::vector<Spinner> spinners;
     bool      hasReactor = false;
     glm::vec3 reactorPos{0.f};
+    // THE LEVIATHAN's lair (the Maw): its pool's centre at the surface, the
+    // ring floor's height, the wells it breaches from
+    bool      hasLair = false;
+    glm::vec3 lair{0.f};
+    float     lairFloor = 0.f;
+    std::vector<glm::vec3> wells;
 
     // FAST mode
     bool      fast = false;

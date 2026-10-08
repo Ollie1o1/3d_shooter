@@ -144,6 +144,17 @@ public:
 
     // A wave was cleared in arena a: a FLOOD arena's water heads for the
     // next wave's level
+    // Arena a's water heads for `level` over `seconds` (the Maw floods in the
+    // Leviathan's last phase); reset() drains it again
+    void floodTo(LevelData& L, int a, float level, float seconds) {
+        if (a < 0 || a >= (int)L.arenas.size()) return;
+        for (int i = 0; i < (int)L.water.size() && i < (int)waterTarget.size(); ++i)
+            if (inArena(L.arenas[a], L.water[i].box)) {
+                waterTarget[i] = level;
+                waterRate[i] = std::fabs(level - L.water[i].level) / std::max(seconds, 0.01f);
+                rising[i] = false;
+            }
+    }
     // DESCENT: the stop each wave is fought at (the top is stop 0)
     static int descentStop(int wave) { return wave + 1; }
     void onWaveCleared(LevelData& L, int a, int nextWave) {

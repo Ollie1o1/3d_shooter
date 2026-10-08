@@ -16,7 +16,7 @@ enum class VoiceKind : uint8_t { SPAWN, IDLE, MOVE, TELL, ATTACK, HURT, DEATH, S
 inline const char* voiceKey(EnemyType t) {
     static const char* K[] = {"husk", "ripper", "sentinel", "raptor", "brute", "mite", "juggernaut", "warden",
                               "sovereign", "shieldbearer", "conduit", "conductor", "seraph", "anchor", "penitent",
-                              "revenant", "weaver"};
+                              "revenant", "weaver", "leviathan"};
     static_assert(sizeof(K) / sizeof(K[0]) == (size_t)EnemyType::COUNT, "a voice key per enemy type");
     return (int)t < (int)EnemyType::COUNT ? K[(int)t] : "any";
 }
@@ -43,6 +43,10 @@ inline const char* attackKey(AttackKind k) {
         case AttackKind::DETONATE: return "detonate";
         case AttackKind::RAKE: return "rake";         case AttackKind::SOULBOLT: return "soulbolt";
         case AttackKind::STRING: return "string";
+        case AttackKind::CRASH: return "crash";       case AttackKind::TORRENT: return "torrent";
+        case AttackKind::TIDE: return "tide";         case AttackKind::SPIT: return "spit";
+        case AttackKind::BREACH: return "breach";     case AttackKind::SWALLOW: return "swallow";
+        case AttackKind::SUBMERGE: return "submerge";
         default: return "none";
     }
 }
@@ -67,6 +71,7 @@ inline std::vector<AttackKind> attacksOf(EnemyType t) {
         case EnemyType::REVENANT:     return {A::RAKE, A::SOULBOLT};
         case EnemyType::WEAVER:       return {A::STRING};
         case EnemyType::PENITENT:     return {A::CENSER_LOW, A::CENSER_HIGH, A::PSLAM, A::PSTOMP, A::PLASH, A::SCOURGE};
+        case EnemyType::LEVIATHAN:    return {A::CRASH, A::TORRENT, A::TIDE, A::SPIT, A::BREACH, A::SWALLOW, A::SUBMERGE};
         default:                      return {};
     }
 }
@@ -85,7 +90,7 @@ inline bool hasRelease(AttackKind k) {
 
 // Steps (or wingbeats) a second at full speed; 0: it doesn't move
 inline float moveCadence(EnemyType t) {
-    static const float C[] = {2.2f, 7.f, 1.5f, 3.f, 1.4f, 9.f, 1.2f, 1.f, 2.4f, 1.8f, 0.f, 2.f, 1.6f, 1.f, 0.7f, 2.6f, 5.f};
+    static const float C[] = {2.2f, 7.f, 1.5f, 3.f, 1.4f, 9.f, 1.2f, 1.f, 2.4f, 1.8f, 0.f, 2.f, 1.6f, 1.f, 0.7f, 2.6f, 5.f, 0.f};
     static_assert(sizeof(C) / sizeof(C[0]) == (size_t)EnemyType::COUNT, "a cadence per enemy type");
     return C[(int)t];
 }
@@ -108,6 +113,10 @@ inline float tellDur(EnemyType t, AttackKind a) {
         case AttackKind::DETONATE: return 1.5f;
         case AttackKind::RAKE: return 0.45f;    case AttackKind::SOULBOLT: return 0.6f;
         case AttackKind::STRING: return 0.8f;
+        case AttackKind::CRASH: return 1.1f;    case AttackKind::TORRENT: return 0.8f;
+        case AttackKind::TIDE: return 0.9f;     case AttackKind::SPIT: return 1.f;
+        case AttackKind::BREACH: return 1.2f;   case AttackKind::SWALLOW: return 0.9f;
+        case AttackKind::SUBMERGE: return 0.8f;
         case AttackKind::DASH: case AttackKind::SWEEP: case AttackKind::CLEAVE: case AttackKind::CRESCENT:
         case AttackKind::BLINK: case AttackKind::WHIRL: case AttackKind::THRUST: return 0.4f;
         default: return statsOf(t).telegraph > 0.f ? statsOf(t).telegraph : 0.6f;
@@ -171,6 +180,9 @@ inline const std::vector<VoiceSpec>& voiceBank() {
         sp("v_revenant_soul",    EnemyType::REVENANT,  1, MixClass::TELL,    "soul");
         sp("v_revenant_reform",  EnemyType::REVENANT,  1, MixClass::TELL,    "reform");
         sp("v_weaver_twang",     EnemyType::WEAVER,    2, MixClass::ACTION,  "twang");
+        sp("v_leviathan_rise",   EnemyType::LEVIATHAN, 1, MixClass::TELL,    "rise");
+        sp("v_leviathan_enrage", EnemyType::LEVIATHAN, 1, MixClass::TELL,    "enrage");
+        sp("v_leviathan_choke",  EnemyType::LEVIATHAN, 1, MixClass::ACTION,  "choke");
         return v;
     }();
     return bank;
