@@ -747,11 +747,11 @@ inline void buildReliquary(LevelBuilder& B) {
     }
     a.groundSpawns = a.waveGround[0]; a.airSpawns = a.waveAir[0];
     a.waves = {
-        {{EnemyType::HUSK, 4}, {EnemyType::RAPTOR, 3}, {EnemyType::HUSK /*REVENANT*/, 2},
+        {{EnemyType::HUSK, 4}, {EnemyType::RAPTOR, 3}, {EnemyType::REVENANT, 2},
          WaveEntry(EnemyType::SHIELDBEARER, 2).with({EnemyType::HUSK}), {EnemyType::SERAPH, 1}},
-        {{EnemyType::SENTINEL /*WEAVER*/, 2}, {EnemyType::HUSK /*REVENANT*/, 2}, WaveEntry(EnemyType::HUSK /*REVENANT*/, 1).hollow(Hollow::ENRAGED),
+        {{EnemyType::WEAVER, 2}, {EnemyType::REVENANT, 2}, WaveEntry(EnemyType::REVENANT, 1).hollow(Hollow::ENRAGED),
          {EnemyType::ANCHOR, 1}, {EnemyType::SENTINEL, 2}, {EnemyType::RIPPER, 3}, {EnemyType::MITE, 4}},
-        {{EnemyType::JUGGERNAUT, 1}, WaveEntry(EnemyType::HUSK /*REVENANT*/, 2).hollow(Hollow::HALOED), {EnemyType::SENTINEL /*WEAVER*/, 2},
+        {{EnemyType::JUGGERNAUT, 1}, WaveEntry(EnemyType::REVENANT, 2).hollow(Hollow::HALOED), {EnemyType::WEAVER, 2},
          {EnemyType::SERAPH, 2}, {EnemyType::CONDUCTOR, 1}, WaveEntry(EnemyType::HUSK, 3).hollow(Hollow::TWINNED)},
     };
     a.goals = {WaveGoal{}, WaveGoal{}, WaveGoal{}};

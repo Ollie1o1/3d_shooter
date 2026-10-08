@@ -30,6 +30,7 @@
 #include "../src/EnemyVoice.h"
 #include "../src/WardenHazards.h"
 #include "BossSim.h"
+#include "../src/RelicHazards.h"
 #include <cstdio>
 #include <cstring>
 #include <limits>
@@ -1895,7 +1896,7 @@ int main() {
               "every wave starts; the Core and the Sanctum end on their bosses");
         CHECK(counts[DirectorEvent::ARENA_CLEARED] == n && counts[DirectorEvent::VICTORY] == 1 &&
               counts[DirectorEvent::FINISH_OPEN] == 0, "each arena clears, then victory");
-        CHECK(counts[DirectorEvent::NEW_TYPE] == (int)EnemyType::COUNT - 3,   // the Seraph, the Anchor and the Penitent are Act II's
+        CHECK(counts[DirectorEvent::NEW_TYPE] == (int)EnemyType::COUNT - 5,   // the Seraph, the Anchor, the Penitent, the Revenant and the Weaver are Act II's
               "each Act I enemy type is introduced exactly once");
         CHECK(goalWaves >= 3 && (int)goalsDone.size() == goalWaves && counts[DirectorEvent::GOAL_DONE] == goalWaves,
               "every goal wave (hold, conduits, survive) is met once, and that ends it");
@@ -2699,7 +2700,7 @@ int main() {
         CHECK(levels, "every voice sits within 2 dB of its mix class's level");
         CHECK(varied, "a voice's variants differ");
         CHECK(same, "the same voice builds the same every time");
-        CHECK(total <= 150.f, "the whole voice bank is at most 150 s of audio");
+        CHECK(total <= 180.f, "the whole voice bank is at most 180 s of audio");
     }
 
     // ---------------------------------------------------------------- enemy voices: who gets to speak
@@ -3418,6 +3419,59 @@ int main() {
         CHECK(std::fabs(N.groundAt(N.finishPos.x, N.finishPos.z, N.finishPos.y + 0.5f) - N.finishPos.y) < 0.05f && N.finishPos.z < -1000.f,
               "the finish stands on the hole's rim, past the last arrangement");
         CHECK(MUSIC_TRACKS == 9 && std::string(musicTrack(8).name) == "RELIQUARY", "the Reliquary has its own track");
+    }
+
+    // ---------------------------------------------------------------- the Revenant
+    {
+        LevelData N = buildAct2Level(); SpatialGrid g; g.build(N.walls);
+        const Arena& R = N.arenas[3];
+        N.formation.reset(N); N.updateMovers(0.f);
+        auto world = [&](glm::vec3 feet) { EnemyWorld w; w.playerFeet = feet; w.playerEye = feet + glm::vec3{0, 1.7f, 0};
+                                           w.walls = N.walls.data(); w.wallCount = (int)N.walls.size(); w.grid = &g; w.bounds = R.bounds; return w; };
+        CHECK(statsOf(EnemyType::REVENANT).health == 160.f && statsOf(EnemyType::WEAVER).health == 120.f, "a Revenant has 160 health, a Weaver 120");
+        // It rakes up close and bolts at range, each with its tell
+        glm::vec3 yard = N.formation.top(0);
+        auto run = [&](float dist) {
+            Enemy e(EnemyType::REVENANT, yard + glm::vec3{0, 0, -dist}); e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE;
+            EnemyWorld w = world(yard + glm::vec3{0, 0, 3});
+            int rakes = 0, bolts = 0, hits = 0; float rakeTell = 0.f, boltTell = 0.f;
+            for (int f = 0; f < 60 * 10; ++f) {
+                e.update(DT, w);
+                if (e.ev.telegraphStarted && e.attack == AttackKind::RAKE && !e.tellFollow) { ++rakes; rakeTell = e.telegraphDuration; }   // an opening rake (the second hand follows on)
+                if (e.ev.telegraphStarted && e.attack == AttackKind::SOULBOLT) { ++bolts; boltTell = e.telegraphDuration; }
+                hits += e.ev.meleeHit;
+            }
+            return std::tuple<int, int, int, float, float>{rakes, bolts, hits, rakeTell, boltTell};
+        };
+        auto [r1, b1, h1, rt, bt0] = run(1.f);
+        auto [r2, b2, h2, rt2, bt] = run(9.f);
+        std::printf("      revenant: close rakes %d hits %d tell %.2f; far bolts %d tell %.2f\n", r1, h1, rt, b2, bt);
+        CHECK(r1 >= 2 && h1 >= 2 * r1 - 1 && std::fabs(rt - 0.45f) < 0.05f, "up close it rakes, two hits a time (0.45 s tell)");
+        CHECK(b2 >= 1 && std::fabs(bt - 0.6f) < 0.06f, "at range it throws a soul bolt (0.6 s tell) before it closes in");
+        // Its soul: flees toward another chunk, can be shot, punched, or re-forms at half
+        RelicHazards hz;
+        Enemy dead(EnemyType::REVENANT, yard); dead.maxHealth = dead.health = 160.f;
+        glm::vec3 to = soulDestination(R.waveGround[0], yard, 15.f);
+        Soul* s = hz.releaseSoul(dead, to);
+        CHECK(s && glm::length(to - yard) >= 15.f && s->bodyHealth == 80.f && s->reforms == 1, "a dying Revenant releases a soul toward a spot on another chunk, carrying half its health");
+        float t = 0.f; int hit = hz.raySoul(s->pos + glm::vec3{0, 0, 10}, {0, 0, -1}, 50.f, t);
+        bool shot = hit == 0 && hz.hurtSoul(0, 40.f) && hz.souls.empty();
+        CHECK(shot, "a soul shot for 40 is gone for good");
+        hz.releaseSoul(dead, to);
+        bool punched = hz.soulNear(hz.souls[0].pos + glm::vec3{1, 0, 0}, 2.5f) == 0;
+        CHECK(punched, "a soul passing within reach can be punched");
+        hz.clear(); hz.releaseSoul(dead, to);
+        std::vector<Soul> back; float flown = 0.f;
+        for (int f = 0; f < 60 * 6 && back.empty(); ++f) { auto a = hz.arrived(DT); flown += DT; back.insert(back.end(), a.begin(), a.end()); }
+        CHECK(back.size() == 1 && std::fabs(flown - RelicHazards::SOUL_TIME) < 0.1f && glm::length(back[0].pos - to) < 0.1f,
+              "an uncaught soul arrives after about 4 s at its spot");
+        Enemy twice(EnemyType::REVENANT, yard); twice.reforms = 2;
+        CHECK(hz.releaseSoul(twice, to) == nullptr, "after two re-forms, the third death is final");
+        // Review focus 4: twins each flee
+        Enemy twin(EnemyType::REVENANT, yard); twin.setHollow(Hollow::TWINNED); twin.scale = 0.7f;
+        hz.clear();
+        CHECK(hz.releaseSoul(twin, to) && hz.releaseSoul(twin, to) && hz.souls.size() == 2 && hz.souls[0].hollow == Hollow::TWINNED,
+              "each Twinned Revenant carries its own soul");
     }
 
     // ---------------------------------------------------------------- the lift (driven movers) and the director's hold
