@@ -258,6 +258,25 @@ Screenshots of each phase, a CRASH strip and a beached head, a breach, the
 flood and a swallow, and the victory screen. `--bench` in the Maw vs the
 Sanctum (within ~15 %). `make web`.
 
+## Tuning after the first playtest (Oct 8)
+
+The user found it "a little too easy". Changes:
+
+- **The real cause:** the "hugging its root" rule (always crash) reached
+  10 m past the pool's lip, half the ring. Anyone fighting mid-ring only ever
+  saw crashes. It now reaches 4 m past the lip.
+- It attacks every **1.9 s** (was 2.4); beached **2.2 s** (was 3).
+- About +20 % damage: crash 48, tide 30, torrent orbs 14, spit 36 then 18/s,
+  breach 48, bite 55.
+- **In the eclipse its crashes come in pairs:** the first lands without
+  beaching and a second, re-aimed after a 0.7 s tell (×0.75 in the eclipse,
+  never under 0.28 s), does.
+- The swallow holds its head over its root's lip, so its mouth is ~16 m out
+  and the pull has to drag you there. It used to reach mid-ring, which meant
+  an instant bite.
+- Scripted solid player: 182 s, 328 damage taken, all of it from torrent orbs
+  it never parries (was 173 s and 78).
+
 ## Out of scope
 
 A ranked ACT II leaderboard and the site's `act2` key; ASCENT; new

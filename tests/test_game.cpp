@@ -4181,7 +4181,7 @@ int main() {
             float landT = -1.f;
             for (int f = 0; f < 60 * 14 && !landed; ++f) {
                 e.update(DT, w);
-                if (e.ev.lvCrashMark) { tell = e.telegraphDuration; marked = e.ev.lvTo; }
+                if (e.ev.lvCrashMark) { tell = e.telegraphDuration; marked = e.ev.lvMarkTo; }
                 if (e.attack == AttackKind::CRASH && e.parryWindow() != (e.telegraphTimer < 0.25f)) window = false;
                 if (e.attack != AttackKind::CRASH && e.parryWindow()) window = false;
                 if (e.ev.lvCrash) { landed = true; landT = f * DT; openEye = e.levEyeOpen(); beachedThree = std::fabs(e.levBeached - Enemy::LV_BEACHED) < 1e-4f; }
@@ -4191,13 +4191,13 @@ int main() {
             (void)landT;
             CHECK(landed && std::fabs(tell - 1.1f * difficulty(DIFFICULTY_DEFAULT).windup) < 1e-3f && glm::length(glm::vec2{marked.x - south.x, marked.z - south.z}) < 0.1f,
                   "a crash is marked on where you stand and winds up 1.1 s");
-            CHECK(beachedThree && openEye && lieFor > 2.9f && lieFor < 3.05f && window,
-                  "after a crash its head lies beached 3 s, the eye open; the parry window is the last quarter second of the crash");
+            CHECK(beachedThree && openEye && lieFor > Enemy::LV_BEACHED - 0.1f && lieFor < Enemy::LV_BEACHED + 0.05f && window,
+                  "after a crash its head lies beached 2.2 s, the eye open; the parry window is the last quarter second of the crash");
         }
         // Hugging its root brings a crash; TORRENT orbs go back into its eye for 180; TIDE rolls out from the pool to the wall
         {
             Enemy e = fresh(); EnemyWorld w = world(C + glm::vec3{0.f, 0.f, 16.f});
-            for (int f = 0; f < 60 * 4; ++f) e.update(DT, w);
+            for (int f = 0; f < 60 * 3; ++f) e.update(DT, w);   // risen
             AttackKind first = AttackKind::NONE;
             for (int f = 0; f < 60 * 4 && first == AttackKind::NONE; ++f) { e.update(DT, w); if (e.ev.telegraphStarted) first = e.attack; }
             CHECK(first == AttackKind::CRASH, "stand at its pool's lip and it crashes down on you");
@@ -4295,7 +4295,7 @@ int main() {
         for (int f = 0; f < 60 * 60 && seq.size() < 6; ++f) {
             e.update(DT, w3);
             if (e.levPhase == 3 && e.levAtPool() && e.levStage == Enemy::LevStage::FIGHT && e.attack != AttackKind::BREACH) home = true;
-            if (home && e.ev.telegraphStarted && e.attack != AttackKind::SPIT && e.attack != AttackKind::SUBMERGE && e.attack != AttackKind::BREACH) seq.push_back(e.attack);
+            if (home && e.ev.telegraphStarted && !e.tellFollow && e.attack != AttackKind::SPIT && e.attack != AttackKind::SUBMERGE && e.attack != AttackKind::BREACH) seq.push_back(e.attack);   // (a crash's second half is the same attack)
             e.levBeached = std::min(e.levBeached, 0.3f);
             if (e.levInhale > 0.f) e.levInhale = std::min(e.levInhale, 0.1f);
         }
@@ -4343,8 +4343,9 @@ int main() {
                 }
             LH f; f.addSpit({0, -300, 0}); float away = 0.f;
             for (int i = 0; i < 60 * 6; ++i) for (auto& x : f.update(DT, {6.f, -300.f, 0.f}, -300.f)) away += x.damage;
-            CHECK(burst == 30.f && burstAt > 0.95f && burstAt < 1.05f && burn > 50.f && burn < 65.f && away == 0.f,
-                  "a spit bursts a second after its marker (30), then burns there for 4 s at 15/s; 6 m away nothing");
+            float burnWant = LH::SPIT_DPS * (LH::SPIT_BURN - 0.25f);
+            CHECK(burst == LH::SPIT_DAMAGE && burstAt > 0.95f && burstAt < 1.05f && burn > burnWant - 6.f && burn < burnWant + 6.f && away == 0.f,
+                  "a spit bursts a second after its marker, then burns there for its 4 s; 6 m away nothing");
         }
         CHECK(LH::breachHits({0, -300, 0}, {5.f, -300.f, 0.f}) && !LH::breachHits({0, -300, 0}, {8.f, -300.f, 0.f}) &&
               !LH::breachHits({0, -300, 0}, {2.f, -293.f, 0.f}), "a breach erupts within 6 m of its well, not at 8 m, not up on a ledge");
@@ -4429,6 +4430,45 @@ int main() {
         auto r1 = check(A1, "act I"), r2 = check(A2, "act II");
         std::printf("      slams onto the floors: act I %d/%d under, act II %d/%d under\n", r1.first, r1.second, r2.first, r2.second);
         CHECK(r1.first == 0 && r2.first == 0, "slamming or dropping fast onto any arena's floor lands you on it, never under it");
+    }
+
+    // ---------------------------------------------------------------- the Leviathan: harder (review, Oct 8)
+    {
+        LevelData N = buildAct2Level(); SpatialGrid g; g.build(N.walls);
+        const Arena& M = N.arenas[4];
+        auto world = [&](glm::vec3 feet) {
+            EnemyWorld w; w.playerFeet = feet; w.playerEye = feet + glm::vec3{0, 1.7f, 0};
+            w.walls = N.walls.data(); w.wallCount = (int)N.walls.size(); w.grid = &g; w.bounds = M.bounds;
+            w.hasLair = true; w.lair = N.lair; w.lairFloor = N.lairFloor; w.wells = N.wells.data(); w.wellCount = (int)N.wells.size();
+            return w;
+        };
+        // From mid-ring (22 m out) it uses everything, not only crashes
+        {
+            Enemy e(EnemyType::LEVIATHAN, M.bossSpawn); e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE;
+            EnemyWorld w = world(MAW_C + glm::vec3{0.f, 0.f, 22.f});
+            std::set<int> seen;
+            for (int f = 0; f < 60 * 30; ++f) { e.update(DT, w); if (e.ev.telegraphStarted) seen.insert((int)e.attack); e.levBeached = std::min(e.levBeached, 0.5f); }
+            CHECK(seen.count((int)AttackKind::CRASH) && seen.count((int)AttackKind::TORRENT) && seen.count((int)AttackKind::TIDE),
+                  "fought from mid-ring it crashes, spits orbs and rolls tides (only someone hugging its pool gets nothing but crashes)");
+        }
+        // In the eclipse its crashes come in pairs: the first lands and it's straight back up for a second, re-aimed, that beaches it
+        {
+            Enemy e(EnemyType::LEVIATHAN, M.bossSpawn); e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE;
+            glm::vec3 feet = MAW_C + glm::vec3{0.f, 0.f, 24.f};
+            EnemyWorld w = world(feet);
+            for (int f = 0; f < 60 * 4; ++f) e.update(DT, w);
+            e.health = e.maxHealth * 0.2f;
+            int landed = 0; bool firstBeached = true, secondBeached = false; float follow = 0.f; glm::vec3 t1{0.f}, t2{0.f};
+            for (int f = 0; f < 60 * 60 && landed < 2; ++f) {
+                w.playerFeet = feet + glm::vec3{std::sin(f * 0.02f) * 8.f, 0.f, 0.f}; w.playerEye = w.playerFeet + glm::vec3{0, 1.7f, 0};
+                e.update(DT, w);
+                if (e.ev.telegraphStarted && e.attack == AttackKind::CRASH && e.tellFollow) follow = e.telegraphDuration;
+                if (e.ev.lvCrash) { ++landed; if (landed == 1) { firstBeached = e.levBeached > 0.f; t1 = e.ev.lvTo; } else { secondBeached = e.levBeached > 0.f; t2 = e.ev.lvTo; } }
+            }
+            std::printf("      pair: landed %d first beached %d second %d follow %.2f apart %.1f\n", landed, firstBeached, secondBeached, follow, glm::length(t1 - t2));
+            CHECK(landed == 2 && !firstBeached && secondBeached && follow >= Enemy::TELL_FLOOR_FOLLOW && follow < 0.75f && glm::length(t1 - t2) > 0.5f,
+                  "in the eclipse a crash comes back down a second time, re-aimed after a short tell, and only the second beaches it");
+        }
     }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");

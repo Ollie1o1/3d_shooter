@@ -35,7 +35,6 @@ inline void GameplayState::onLeviathanEvents(Enemy& e, const EnemyEvents& ev) {
         shifts.floodTo(level, director.arena, floorY + FLOOD_DEPTH, 4.f);
         lev.dropMarks();
     }
-    if (ev.lvCrashMark) lev.markCrash(ev.lvFrom, ev.lvTo);
     if (ev.lvCrash) {
         lev.landCrash();
         glm::vec3 at = ev.lvTo;
@@ -52,8 +51,9 @@ inline void GameplayState::onLeviathanEvents(Enemy& e, const EnemyEvents& ev) {
             side = glm::length(side) > 1e-3f ? glm::normalize(side) * (glm::dot(side, r) >= 0.f ? 1.f : -1.f) : glm::vec2{1.f, 0.f};
             player.velocity += glm::vec3{side.x, 0.f, side.y} * 12.f + glm::vec3{0.f, 6.f, 0.f};   // thrown out of the strip
         }
-        if (!beachHinted) { beachHinted = true; ui.toast("BEACHED", "THE EYE'S OPEN - THREE SECONDS", {1.f, 0.75f, 0.3f}, 2.f); }
+        if (!beachHinted && ev.lvBeached) { beachHinted = true; ui.toast("BEACHED", "THE EYE'S OPEN - TWO SECONDS", {1.f, 0.75f, 0.3f}, 2.f); }
     }
+    if (ev.lvCrashMark) lev.markCrash(ev.lvFrom, ev.lvMarkTo);   // (after a landing: the eclipse's second crash)
     if (ev.lvTide) {
         lev.addTide(ev.lvTideAt, e.levAtPool() ? Enemy::LV_POOL : 3.5f, ev.lvTideR);
         audio.playAt("slam", ev.lvTideAt, 120, SoundGroup::ENEMY, true);
