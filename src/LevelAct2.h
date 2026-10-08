@@ -29,6 +29,7 @@
 #include "Level.h"
 
 inline void buildDescent(LevelBuilder& B);
+inline void buildReliquary(LevelBuilder& B);
 
 inline void buildAct2(LevelBuilder& B) {
     using glm::vec3;
@@ -44,7 +45,8 @@ inline void buildAct2(LevelBuilder& B) {
     // All of Act II stands in one basin, 60 m down
     L.basins.push_back({aabb(-300, 0, -440, 300, 0, -668), F});          // the Nave
     L.basins.push_back({aabb(-300, 0, -668, 300, 0, -788), -140.f});    // the Orrery: its void bottoms out far below
-    L.basins.push_back({aabb(-300, 0, -788, 300, 0, -1000), -300.f});   // the Descent: open below the cage
+    L.basins.push_back({aabb(-300, 0, -788, 300, 0, -880), -300.f});    // the Descent: open below the cage
+    L.basins.push_back({aabb(-300, 0, -880, 300, 0, -1200), -500.f});   // the Reliquary: the void, far below
 
     Arena a;
     a.name = "THE DROWNED NAVE"; a.space = ReverbSpace::HALL;
@@ -393,6 +395,7 @@ inline void buildAct2(LevelBuilder& B) {
     L.arenas.push_back(std::move(o));
 
     buildDescent(B);
+    buildReliquary(B);
 }
 
 // =============================================================================
@@ -447,10 +450,18 @@ inline void buildDescent(LevelBuilder& B) {
         float ang = k * 6.2831853f / 72.f;
         vec3 p = C + vec3{std::cos(ang) * (RW + 1.2f), 0.f, std::sin(ang) * (RW + 1.2f)};
         bool door = std::fabs(p.x) < 5.5f && p.z > C.z;
+        bool exit = std::fabs(p.x) < 5.5f && p.z < C.z;   // the way on: the pit's south wall
+        if (exit) {
+            B.solid(p.x - 1.6f, PIT - 6.f, p.z - 1.6f, p.x + 1.6f, PIT, p.z + 1.6f);
+            B.solid(p.x - 1.6f, PIT + 8.f, p.z - 1.6f, p.x + 1.6f, TOP + 16.f, p.z + 1.6f);
+            continue;
+        }
         B.solid(p.x - 1.6f, PIT - 6.f, p.z - 1.6f, p.x + 1.6f, door ? TOP - 1.f : TOP + 16.f, p.z + 1.6f);
         if (door) B.solid(p.x - 1.6f, TOP + 8.f, p.z - 1.6f, p.x + 1.6f, TOP + 16.f, p.z + 1.6f);
     }
-    B.kit().curve({C.x, 0.f, C.z}, RW + 0.6f, 0.f, 6.2831853f, PIT - 6.f, TOP + 16.f, 1.2f, ironDark, 72);
+    // drawn round the shaft, leaving the pit's south door open (south is -Z: angle 3/2 pi)
+    B.kit().curve({C.x, 0.f, C.z}, RW + 0.6f, -1.5707963f + 0.17f, 4.712389f - 0.17f, PIT - 6.f, TOP + 16.f, 1.2f, ironDark, 70);
+    B.kit().curve({C.x, 0.f, C.z}, RW + 0.6f, 4.712389f - 0.17f, 4.712389f + 0.17f, PIT + 8.f, TOP + 16.f, 1.2f, ironDark, 4);
     for (float y = PIT + 5.f; y < TOP + 14.f; y += 10.f)
         B.kit(true).curve({C.x, 0.f, C.z}, RW - 0.05f, 0.f, 6.2831853f, y, y + 0.18f, 0.1f, amber * 0.35f, 72);
     for (int k = 0; k < 16; ++k) {                                      // ribs: arches climbing the wall
@@ -459,6 +470,7 @@ inline void buildDescent(LevelBuilder& B) {
         B.kit().rod({p.x, PIT, p.z}, {p.x, TOP + 16.f, p.z}, 0.5f, iron, 6);
     }
     a.entryGate = B.doorway(true, -4, 4, -809, -807, TOP, 7.f, amber, false);
+    a.exitDoor  = B.doorway(true, -4, 4, C.z - RW - 2.4f, C.z - RW - 0.2f, PIT, 7.f, blood, true);   // the way on, once the Penitent is still
 
     // ---- an annulus floor (galleries, the pit) built as strips, like the
     // Orrery's terrace: drawn exactly where it holds you ----
@@ -566,7 +578,6 @@ inline void buildDescent(LevelBuilder& B) {
         vec3 p = C + vec3{std::cos(yaw) * 30.f, PIT, std::sin(yaw) * 30.f};
         B.kit().rock({p.x, PIT, p.z}, 1.6f + 0.4f * (k % 3), 2.2f + 0.5f * (k % 2), iron, (uint32_t)k);
     }
-    L.finishPos = {C.x, PIT, C.z + 20.f};
 
     // ---- the cage: four overlapping driven boxes, top at the stop's height ----
     vec3 cageCol{0.2f, 0.19f, 0.2f}, cageGlow{1.2f, 0.7f, 0.3f};
@@ -628,6 +639,136 @@ inline void buildDescent(LevelBuilder& B) {
 }
 
 // ACT II mode's level
+// =============================================================================
+// THE RELIQUARY — pieces of the four Act I arenas, torn loose, drifting over
+// the void south of the Descent. They regroup between waves (LevelData::
+// Formation, ArenaShift::DRIFT): scattered, a ring, a stack, then a path to
+// the hole where something waits (piece 6).
+// =============================================================================
+static constexpr glm::vec3 RELIQUARY_Q{0.f, -240.f, -960.f};
+
+inline void buildReliquary(LevelBuilder& B) {
+    using vec3 = glm::vec3; using vec2 = glm::vec2;
+    LevelData& L = B.L;
+    const vec3 Q = RELIQUARY_Q;
+    const vec3 brick{0.45f, 0.25f, 0.2f}, rust{0.36f, 0.22f, 0.15f}, stone{0.55f, 0.53f, 0.5f}, slate{0.24f, 0.28f, 0.34f},
+               debrisCol{0.2f, 0.19f, 0.2f}, amber{1.2f, 0.7f, 0.3f}, ember{1.3f, 0.45f, 0.15f}, bone{0.9f, 0.85f, 0.75f},
+               cyan{0.2f, 1.f, 1.1f}, blood{1.f, 0.15f, 0.08f};
+    auto wall = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { return B.wall(x0, y0, z0, x1, y1, z1, c); };
+
+    // ---- the bridge out of the pit's south wall ----
+    wall(-3, Q.y - 1, -904.9f, 3, Q.y, -873, debrisCol);   // stops just short of the Yard (it moves)
+    L.corridors.push_back(LevelBuilder::aabb(-5, Q.y, -906, 5, Q.y + 12, -872));
+
+    // ---- a relic: boxes (local to its top centre, top at y 0) moving as one ----
+    struct Box { vec3 lo, hi; vec3 col; };
+    auto relic = [&](vec3 top, vec2 half, vec3 col, vec3 glow, const std::vector<Box>& extra, std::vector<vec3> at) {
+        LevelData::Formation::Chunk c; c.home = top; c.half = half; c.at = std::move(at);
+        auto add = [&](vec3 lo, vec3 hi, vec3 bc) {
+            int m = B.mover(top + (lo + hi) * 0.5f, (hi - lo) * 0.5f, Mover::Path::DRIVEN, {0, 0, 0}, {0, 0, 0}, 1.f, 0.f, glow);
+            L.movers[m].color = bc;
+            c.movers.push_back(m);
+        };
+        add({-half.x, -1.5f, -half.y}, {half.x, 0.f, half.y}, col);   // the slab
+        for (const Box& b : extra) add(b.lo, b.hi, b.col);
+        L.formation.chunks.push_back(c);
+    };
+    // Arrangements (offsets from where each is built): 0 scattered, 1 the ring, 2 the stack, 3 the path to the hole
+    // (positions are the tops' centres relative to Q; at[k] = pos[k] - pos[0])
+    auto offsets = [&](std::vector<vec3> pos) { std::vector<vec3> o; for (auto& p : pos) o.push_back(p - pos[0]); return o; };
+    // The Yard: brick, a corner of its low wall, the dais, a lamp post to grapple
+    std::vector<vec3> yardPos{{0, 0, 45}, {0, 0, 32}, {0, 0, 30}, {0, 0, 28}};
+    relic(Q + yardPos[0], {10, 10}, brick, amber,
+          {{{-10, 0, -10}, {10, 1.2f, -9.4f}, brick * 0.8f}, {{-10, 0, -10}, {-9.4f, 1.2f, 10}, brick * 0.8f},
+           {{-3, 0, -3}, {3, 0.8f, 3}, brick * 1.1f}, {{7.4f, 0, 7.4f}, {8.6f, 9, 8.6f}, debrisCol}}, offsets(yardPos));
+    // The Foundry: rust, a cold furnace, the empty channel's walls, a chimney to grapple
+    std::vector<vec3> foundryPos{{-38, 0, 0}, {-32, 0, 0}, {-24, 3, 8}, {0, 0, 9}};
+    relic(Q + foundryPos[0], {9, 8}, rust, ember,
+          {{{-9, 0, -8}, {-5, 5, -4}, rust * 0.7f}, {{-3, 0, -6}, {-2.4f, 1.f, 6}, rust * 0.9f}, {{2.4f, 0, -6}, {3, 1.f, 6}, rust * 0.9f},
+           {{6, 0, -7.2f}, {7.2f, 10, -6}, debrisCol}}, offsets(foundryPos));
+    // The Spire: pale stone, a raised ledge, columns
+    std::vector<vec3> spirePos{{38, 1, -8}, {32, 0, 0}, {22, 9, -6}, {17, 0, -24}};
+    relic(Q + spirePos[0], {7, 7}, stone, bone,
+          {{{-7, 0, -7}, {-1, 2.5f, 7}, stone * 0.9f}, {{3.5f, 0, -4.5f}, {4.5f, 8, -3.5f}, stone}, {{3.5f, 0, 3.5f}, {4.5f, 8, 4.5f}, stone}}, offsets(spirePos));
+    // The Core: slate, two of its pillars
+    std::vector<vec3> corePos{{0, 0, -40}, {0, 0, -32}, {-4, 6, -18}, {0, 0, -9}};
+    relic(Q + corePos[0], {9, 9}, slate, cyan,
+          {{{-6, 0, -1}, {-4, 7, 1}, slate * 0.8f}, {{4, 0, -1}, {6, 7, 1}, slate * 0.8f}}, offsets(corePos));
+    // Debris: stepping stones (5 x 5)
+    // scattered / the ring / the stack / the path - assigned so that no glide
+    // runs one relic through another (checked by the tests)
+    const vec3 DEBRIS[8][4] = {
+        {{-16, 0, 30}, {-21.2f, 0, 21.2f}, {-13, 1.5f, 19}, {-16, 0, 20}},
+        {{-27, 0, 17}, {-27.7f, 0, 11.5f}, {-30, 0, 24}, {8, 0, -44}},
+        {{16, 0, 30}, {21.2f, 0, 21.2f}, {9, 7.5f, -18}, {16, 0, -36}},
+        {{30, 0, 8}, {27.7f, 0, 11.5f}, {24, 4.5f, 12}, {16, 0, 20}},
+        {{-27, 0, -18}, {-27.7f, 0, -11.5f}, {-18, 4.5f, -6}, {-16, 0, -8}},
+        {{-14, 0, -32}, {-21.2f, 0, -21.2f}, {-36, 1.5f, -6}, {-14, 0, -22}},
+        {{27, 0, -24}, {27.7f, 0, -11.5f}, {30, 0, -24}, {16, 0, -8}},
+        {{14, 0, -32}, {21.2f, 0, -21.2f}, {13, 1.5f, 24}, {28, 0, -8}},
+    };
+    for (auto& d : DEBRIS) relic(Q + d[0], {2.5f, 2.5f}, debrisCol, blood * 0.6f, {}, offsets({d[0], d[1], d[2], d[3]}));
+    // Orbiters: small stones circling 6 m under the relics (a catch if you fall); no spawns on them
+    for (int k = 0; k < 3; ++k)
+        B.mover(Q + vec3{0, -6.5f, 0}, {1.8f, 0.5f, 1.8f}, Mover::Path::ORBIT, {16, 0, 0}, {0, 0, 16}, 40.f, k / 3.f, blood * 0.5f);
+    L.formation.reset(L);
+
+    // ---- the rim of the hole, and what waits below it (piece 6) ----
+    wall(-8, Q.y - 1, Q.z - 62, 8, Q.y, Q.z - 50, debrisCol);
+    B.kit(true).curve({Q.x, 0.f, Q.z - 80.f}, 18.f, 0.f, 6.2831853f, Q.y - 40.f, Q.y - 39.8f, 0.4f, blood, 48);   // a glow far down
+    for (int k = 0; k < 10; ++k) {
+        float yaw = k * 0.628f;
+        B.kit().rock({Q.x + std::cos(yaw) * 20.f, Q.y - 3.f, Q.z - 80.f + std::sin(yaw) * 20.f}, 2.f, 3.f, debrisCol, (uint32_t)(40 + k));
+    }
+    L.finishPos = {Q.x, Q.y, Q.z - 56.f};
+
+    // ---- the arena ----
+    Arena a;
+    a.name = "THE RELIQUARY"; a.space = ReverbSpace::HALL;
+    a.subtitle = "THE OLD WORLD, IN PIECES - SURVIVE 3 WAVES";
+    a.bounds = LevelBuilder::aabb(-56, Q.y - 20, Q.z - 66, 56, Q.y + 30, Q.z + 60);
+    a.zone   = LevelBuilder::aabb(-58, Q.y - 30, Q.z - 68, 58, Q.y + 40, Q.z + 92);
+    a.playerStart = {0.f, Q.y, -909.f};   // on the Yard, just off the bridge
+    a.startYaw = -90.f;
+    a.respawn = Q + yardPos[0]; a.hasRespawn = true;
+    a.voidY = Q.y - 22.f;
+    // Spawns: three on each relic in each wave's arrangement (clear of its props), fliers above the middle
+    const vec3 LOCAL[4][3] = {{{5, 0, 6}, {-5, 0, 6}, {-6, 0, -5}}, {{6, 0, 5}, {-6, 0, 4}, {5, 0, -2}},
+                              {{-4, 2.5f, 0}, {2, 0, 0}, {5, 0, -6}}, {{0, 0, 5}, {0, 0, -5}, {-6, 0, 6}}};
+    for (int w = 0; w < 3; ++w) {
+        std::vector<vec3> g, air;
+        for (int c = 0; c < 4; ++c)
+            for (const vec3& l : LOCAL[c]) g.push_back(L.formation.chunks[c].home + L.formation.chunks[c].at[w] + l);
+        for (int k = 0; k < 4; ++k) {
+            float yaw = k * 1.5707963f + 0.7853982f;
+            air.push_back(Q + vec3{std::cos(yaw) * 16.f, 12.f + 3.f * w, std::sin(yaw) * 16.f});
+        }
+        a.waveGround.push_back(g); a.waveAir.push_back(air);
+    }
+    a.groundSpawns = a.waveGround[0]; a.airSpawns = a.waveAir[0];
+    a.waves = {
+        {{EnemyType::HUSK, 4}, {EnemyType::RAPTOR, 3}, {EnemyType::HUSK /*REVENANT*/, 2},
+         WaveEntry(EnemyType::SHIELDBEARER, 2).with({EnemyType::HUSK}), {EnemyType::SERAPH, 1}},
+        {{EnemyType::SENTINEL /*WEAVER*/, 2}, {EnemyType::HUSK /*REVENANT*/, 2}, WaveEntry(EnemyType::HUSK /*REVENANT*/, 1).hollow(Hollow::ENRAGED),
+         {EnemyType::ANCHOR, 1}, {EnemyType::SENTINEL, 2}, {EnemyType::RIPPER, 3}, {EnemyType::MITE, 4}},
+        {{EnemyType::JUGGERNAUT, 1}, WaveEntry(EnemyType::HUSK /*REVENANT*/, 2).hollow(Hollow::HALOED), {EnemyType::SENTINEL /*WEAVER*/, 2},
+         {EnemyType::SERAPH, 2}, {EnemyType::CONDUCTOR, 1}, WaveEntry(EnemyType::HUSK, 3).hollow(Hollow::TWINNED)},
+    };
+    a.goals = {WaveGoal{}, WaveGoal{}, WaveGoal{}};
+    a.maxAlive = 12;
+    a.damageScale = 1.45f;
+    a.shift = ArenaShift::DRIFT;
+    a.ambient = Ambient::MOTES;
+    a.theme = Theme{
+        {0.012f,0.008f,0.014f}, {0.16f,0.06f,0.08f}, {0.006f,0.003f,0.004f},
+        glm::normalize(vec3{0.3f, 0.85f, -0.4f}), {0.55f,0.5f,0.6f}, 0.06f, 0.f,
+        {0.1f,0.03f,0.04f}, 1.f,
+        glm::normalize(vec3{-0.3f,-0.7f,0.6f}), {0.5f,0.2f,0.18f},
+        {0.12f,0.08f,0.1f}, {0.03f,0.02f,0.025f},
+        {0.08f,0.03f,0.04f}, 0.01f };
+    L.arenas.push_back(std::move(a));
+}
+
 inline LevelData buildAct2Level() {
     LevelData L;
     LevelBuilder B{L};

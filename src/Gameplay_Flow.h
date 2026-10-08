@@ -389,7 +389,7 @@ inline void GameplayState::handleDirectorEvents() {
         case DirectorEvent::VICTORY:
             if (act2()) {   // the run ends at the beacon on the Orrery's north terrace
                 finishOpen = true;
-                pushBanner("THE PENITENT FALLS SILENT", "REACH THE BEACON IN THE PIT", {1.f, 0.75f, 0.3f}, 3.f);
+                pushBanner("THE PENITENT FALLS SILENT", "THE SOUTH WALL HAS OPENED", {1.f, 0.75f, 0.3f}, 3.f);
                 audio.play("wave", 128, SoundGroup::UI);
             } else victoryDelay = 2.5f;
             break;
@@ -727,7 +727,7 @@ inline void GameplayState::updateMusic() {
     static const int ARENA_TRACK[] = {0, 1, 2, 3, 4};       // Yard, Foundry, Spire, Core, Sanctum
     static const int FAST_TRACK[]  = {0, 1, 2, 2, 1, 1, 3}; // Canal .. Tower
     int a = director.arena;
-    m.setTrack(fast() ? FAST_TRACK[a % 7] : act2() ? 5 + std::min(a, 2) : ARENA_TRACK[a % 5]);   // the Nave, the Orrery
+    m.setTrack(fast() ? FAST_TRACK[a % 7] : act2() ? 5 + std::min(a, 3) : ARENA_TRACK[a % 5]);   // the Nave, the Orrery
     float lv = 0.6f;
     switch (director.phase) {
         case WaveDirector::Phase::ACTIVE:   lv = director.bossWave() ? 1.35f : 1.f; break;

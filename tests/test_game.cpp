@@ -478,9 +478,9 @@ int main() {
     {
         LevelData N = buildAct2Level();
         SpatialGrid ng; ng.build(N.walls);
-        CHECK(N.arenas.size() == 3 && std::string(N.arenas[0].name) == "THE DROWNED NAVE" && std::string(N.arenas[1].name) == "THE ORRERY" &&
-              std::string(N.arenas[2].name) == "THE DESCENT" && N.corridors.size() == 2,
-              "act II: the Drowned Nave, the Orrery, then the Descent, joined by corridors");
+        CHECK(N.arenas.size() == 4 && std::string(N.arenas[0].name) == "THE DROWNED NAVE" && std::string(N.arenas[1].name) == "THE ORRERY" &&
+              std::string(N.arenas[2].name) == "THE DESCENT" && std::string(N.arenas[3].name) == "THE RELIQUARY" && N.corridors.size() == 3,
+              "act II: the Drowned Nave, the Orrery, the Descent, then the Reliquary, joined by corridors");
         const Arena& nave = N.arenas[0];
         bool groundOk = true, airOk = true, inB = true, under = true;
         for (auto& sp : allGround(nave)) {
@@ -575,7 +575,7 @@ int main() {
         CHECK(orr.exitDoor >= 0 && N.doors[orr.exitDoor].locked, "the Orrery's north arch, the way on down, starts locked");
         // The rings turn as rings
         auto ringOf = [&](int mi) { return mi < 26 ? 0 : 1; };
-        bool rings = N.movers.size() == 42 + 4;   // the Orrery's rings, then the Descent's cage
+        bool rings = N.movers.size() > 42 + 4;   // the Orrery's rings, then the Descent's cage (then the Reliquary's relics)
         LevelData R = N;
         for (float t : {0.f, 7.3f, 31.f}) {
             R.updateMovers(t);
@@ -751,8 +751,8 @@ int main() {
         bool levels = true;
         for (int w = 0; w < 3; ++w) for (auto& sp : D.waveGround[w]) levels &= std::fabs(sp.y - N.lift.stops[w + 1]) < 0.05f;
         CHECK(levels, "each wave spawns on its own stop's floor");
-        CHECK(std::fabs(N.finishPos.y - (-240.f)) < 1e-3f && glm::length(glm::vec2{N.finishPos.x, N.finishPos.z + 840.f}) < 34.f,
-              "the finish beacon stands in the Penitent's pit");
+        CHECK(D.exitDoor >= 0 && N.doors[D.exitDoor].locked && N.doors[D.exitDoor].closed.max.z < -873.f,
+              "the way on, a door in the pit's south wall, starts locked");
         CHECK(N.arenas[1].exitDoor >= 0, "the Orrery has a way on (its north arch)");
         // groundAt sees the cage
         N.lift.reset(); N.lift.update(0.f, N); N.updateMovers(0.f);
@@ -835,7 +835,14 @@ int main() {
             clock += DT; N.lift.update(DT, N); N.updateMovers(clock);
             if (d.phase == WaveDirector::Phase::CLEARED) player = N.arenas[d.arena + 1].playerStart;   // down the corridor
             else if (d.goal().kind == WaveGoal::HOLD) player = d.goalPos() + glm::vec3{0, 0.05f, 0};   // onto the ring
-            if (d.arena == 2) {   // the Descent: ride to each wave's stop first
+            if (d.arena == 3) {   // the Reliquary: the relics drift into the next wave's arrangement first
+                int want = std::min(d.wave + (d.phase == WaveDirector::Phase::BREAK ? 1 : 0), 3);
+                if (N.formation.at != want && !N.formation.gliding()) N.formation.glideTo(want);
+                N.formation.update(DT, N);
+                d.hold = N.formation.gliding();
+                player = N.formation.top(0) + glm::vec3{0, 0.05f, 0};
+            }
+            if (d.arena == 2 && d.phase != WaveDirector::Phase::CLEARED) {   // the Descent: ride to each wave's stop first
                 int want = std::min(d.wave + (d.phase == WaveDirector::Phase::BREAK ? 2 : 1), 4);
                 if (N.lift.at != want && !N.lift.busy()) { N.lift.request(want); N.lift.start(); }
                 d.hold = N.lift.busy();
@@ -856,12 +863,13 @@ int main() {
             for (auto& ev : d.events) if (ev.kind == DirectorEvent::GOAL_DONE) alive.clear();
             d.events.clear();
         }
-        CHECK(d.phase == WaveDirector::Phase::VICTORY && d.arena == 2,
-              "a simulated ACT II run clears the Nave and the Orrery, rides the Descent and kills the Penitent");
+        std::printf("      act II run ended: arena %d wave %d phase %d\n", d.arena, d.wave, (int)d.phase);
+        CHECK(d.phase == WaveDirector::Phase::VICTORY && d.arena == 3,
+              "a simulated ACT II run clears the Nave and the Orrery, rides the Descent, kills the Penitent and clears the Reliquary");
         std::printf("      nave run: %d seraphs, %d anchors, %d haloed, %d twinned, %d enraged\n", seraphs, anchors, haloed, twinned, enragedSpawns);
         CHECK(seraphs >= 3 && anchors >= 1 && haloed >= 3 && twinned >= 2 && enragedSpawns >= 1,
               "the Nave's waves bring Seraphs, an Anchor and every variant");
-        CHECK(MUSIC_TRACKS == 8 && std::string(musicTrack(5).name) == "NAVE" && std::string(musicTrack(6).name) == "ORRERY" &&
+        CHECK(MUSIC_TRACKS == 9 && std::string(musicTrack(5).name) == "NAVE" && std::string(musicTrack(6).name) == "ORRERY" &&
               std::string(musicTrack(7).name) == "DESCENT", "the Nave, the Orrery and the Descent have their own tracks");
     }
 
@@ -3337,6 +3345,79 @@ int main() {
             if (i > 10) stayed &= p.position.y > fm.top(0).y - 0.3f && p.position.y < fm.top(0).y + 1.2f;
         }
         CHECK(stayed && std::fabs(p.position.x - 14.6f) < 0.3f, "standing at a chunk's edge you're carried through the glide and stay on");
+    }
+
+    // ---------------------------------------------------------------- the Reliquary: the map
+    {
+        LevelData N = buildAct2Level();
+        CHECK(N.arenas.size() == 4 && std::string(N.arenas[3].name) == "THE RELIQUARY" && N.arenas[3].shift == ArenaShift::DRIFT &&
+              N.arenas[3].waves.size() == 3 && N.arenas[3].maxAlive == 12 && std::fabs(N.arenas[3].damageScale - 1.45f) < 1e-4f,
+              "the Reliquary: the fourth Act II arena, three waves, 12 at once, x1.45");
+        const Arena& R = N.arenas[3];
+        auto& fm = N.formation;
+        CHECK(fm.chunks.size() >= 12 && fm.arrangements() == 4, "four relics and their debris, in four arrangements (three waves and the way to the hole)");
+        SpatialGrid g; g.build(N.walls);
+        float clock = 0.f;
+        // Spawns stand on a chunk in their wave's arrangement, inside bounds, clear of walls
+        bool spawnsOk = true;
+        for (int w = 0; w < 3; ++w) {
+            fm.at = fm.to = w; fm.t = 0.f; fm.apply(N); N.updateMovers(clock);
+            for (auto& s : R.waveGround[w]) {
+                float top = N.groundAt(s.x, s.z, s.y + 0.5f);
+                bool clear = !overlapsWall(N, boxAt(s + glm::vec3{0, 0.05f, 0}, 0.6f, 1.8f));
+                if (std::fabs(top - s.y) > 0.05f || !inside(R.bounds, s) || !clear) { spawnsOk = false; std::printf("      wave %d spawn (%.1f %.1f %.1f) top %.2f clear %d\n", w, s.x, s.y, s.z, top, clear); }
+            }
+        }
+        CHECK(spawnsOk, "every wave's spawns stand on a chunk, inside the Reliquary, clear of walls");
+        // Every chunk can be reached from the landing in every arrangement: jump+dash gaps or a grapple point in reach
+        const float GRAPPLE = 50.f - 2.f;   // GrappleHook::maxLength (its header needs GL)
+        bool reach = true;
+        for (int k = 0; k < 4; ++k) {
+            fm.at = fm.to = k; fm.t = 0.f; fm.apply(N); N.updateMovers(clock);
+            int n = (int)fm.chunks.size();
+            auto rect = [&](int c) { glm::vec3 t = fm.top(c); return glm::vec4{t.x - fm.chunks[c].half.x, t.z - fm.chunks[c].half.y, t.x + fm.chunks[c].half.x, t.z + fm.chunks[c].half.y}; };
+            auto gap = [&](int a, int b) { glm::vec4 A = rect(a), Bq = rect(b);
+                float dx = std::max(0.f, std::max(A.x - Bq.z, Bq.x - A.z)), dz = std::max(0.f, std::max(A.y - Bq.w, Bq.y - A.w)); return std::sqrt(dx * dx + dz * dz); };
+            std::vector<char> seen(n, 0); std::vector<int> q{0}; seen[0] = 1;   // chunk 0: the Yard, where the bridge lands
+            while (!q.empty()) {
+                int a = q.back(); q.pop_back();
+                for (int b = 0; b < n; ++b) {
+                    if (seen[b]) continue;
+                    float up = fm.top(b).y - fm.top(a).y;
+                    bool hop = gap(a, b) <= 9.f && up <= 3.f;
+                    bool hook = fm.chunks[b].movers.size() > 1 && gap(a, b) <= GRAPPLE;   // big chunks carry a pillar
+                    if (hop || hook) { seen[b] = 1; q.push_back(b); }
+                }
+            }
+            for (int c = 0; c < n; ++c) if (!seen[c]) { reach = false; std::printf("      arrangement %d: chunk %d unreachable\n", k, c); }
+        }
+        CHECK(reach, "in every arrangement every chunk can be reached from the Yard (a jump and a dash, or a grapple)");
+        // Gliding, no chunk passes through another or through the static world
+        bool clean = true;
+        for (int k = 0; k < 3; ++k) {
+            fm.at = fm.to = k; fm.t = 0.f; fm.apply(N); N.updateMovers(clock); fm.glideTo(k + 1);
+            for (int i = 0; i < 60 * 7; ++i) {
+                clock += DT; fm.update(DT, N); N.updateMovers(clock);
+                if (i % 6) continue;
+                for (int a = 0; a < (int)fm.chunks.size(); ++a)
+                    for (int ma : fm.chunks[a].movers) {
+                        AABB A = N.walls[N.movers[ma].wall].box;
+                        for (int b = a + 1; b < (int)fm.chunks.size(); ++b)
+                            for (int mb : fm.chunks[b].movers) if (overlapsBox(A, N.walls[N.movers[mb].wall].box, 0.02f)) { if (clean) std::printf("      glide %d->%d at %.1f s: chunk %d meets chunk %d\n", k, k + 1, i * DT, a, b); clean = false; }
+                        for (auto& wl : N.walls) if (!wl.dynamic && overlapsBox(A, wl.box, 0.02f)) { if (clean) std::printf("      glide %d->%d at %.1f s: chunk %d meets a wall at (%.0f %.0f %.0f)\n", k, k + 1, i * DT, a, wl.box.min.x, wl.box.min.y, wl.box.min.z); clean = false; }
+                    }
+            }
+        }
+        CHECK(clean, "gliding, no relic passes through another or through the static world");
+        // The way in: a bridge from the pit's south wall to the Yard; the way out: the hole's rim
+        fm.reset(N); N.updateMovers(0.f);
+        float bridge = N.groundAt(0.f, -890.f, -239.f), landing = N.groundAt(fm.top(0).x + 5.f, fm.top(0).z + 6.f, fm.top(0).y + 0.5f);   // beside the dais
+        CHECK(std::fabs(bridge + 240.f) < 0.05f && std::fabs(landing - fm.top(0).y) < 0.05f && N.arenas[2].exitDoor >= 0,
+              "a bridge leads from a door in the pit's south wall out to the Yard");
+        fm.at = fm.to = 3; fm.apply(N); N.updateMovers(0.f);
+        CHECK(std::fabs(N.groundAt(N.finishPos.x, N.finishPos.z, N.finishPos.y + 0.5f) - N.finishPos.y) < 0.05f && N.finishPos.z < -1000.f,
+              "the finish stands on the hole's rim, past the last arrangement");
+        CHECK(MUSIC_TRACKS == 9 && std::string(musicTrack(8).name) == "RELIQUARY", "the Reliquary has its own track");
     }
 
     // ---------------------------------------------------------------- the lift (driven movers) and the director's hold
