@@ -203,6 +203,9 @@ inline void GameplayState::updateEnemies(float dt) {
     w.reactor    = level.reactorPos;              // the Warden feeds here
     w.hasReactor = level.hasReactor;
     w.voidUnder  = ar.shift == ArenaShift::DRIFT;   // the Reliquary: step off a relic and you fall
+    w.hasLair    = level.hasLair;                   // the Maw: where the Leviathan lives and breaches
+    w.lair       = level.lair; w.lairFloor = level.lairFloor;
+    w.wells      = level.wells.data(); w.wellCount = (int)level.wells.size();
     const bool descent = ar.shift == ArenaShift::DESCENT;
     const float dmgScale = ar.damageScale * tune().damage;
 

@@ -37,6 +37,7 @@ inline int xpForKill(EnemyType t) {
         case EnemyType::SOVEREIGN: return 1000;
         case EnemyType::REVENANT: return 45;
         case EnemyType::WEAVER:   return 50;
+        case EnemyType::LEVIATHAN: return 1500;
         default:                  return 10;
     }
 }

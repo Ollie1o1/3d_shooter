@@ -728,7 +728,7 @@ inline void GameplayState::updateMusic() {
     static const int ARENA_TRACK[] = {0, 1, 2, 3, 4};       // Yard, Foundry, Spire, Core, Sanctum
     static const int FAST_TRACK[]  = {0, 1, 2, 2, 1, 1, 3}; // Canal .. Tower
     int a = director.arena;
-    m.setTrack(fast() ? FAST_TRACK[a % 7] : act2() ? 5 + std::min(a, 3) : ARENA_TRACK[a % 5]);   // the Nave, the Orrery
+    m.setTrack(fast() ? FAST_TRACK[a % 7] : act2() ? 5 + std::min(a, 4) : ARENA_TRACK[a % 5]);   // the Nave, the Orrery
     float lv = 0.6f;
     switch (director.phase) {
         case WaveDirector::Phase::ACTIVE:   lv = director.bossWave() ? 1.35f : 1.f; break;

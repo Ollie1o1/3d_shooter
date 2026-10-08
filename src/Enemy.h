@@ -56,8 +56,8 @@
 // CONDUCTOR: doesn't attack either; it tethers nearby allies and shields them
 // (linkConductors below), so it's the one to kill first.
 enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, JUGGERNAUT, WARDEN, SOVEREIGN, SHIELDBEARER, CONDUIT,
-                       CONDUCTOR, SERAPH, ANCHOR, PENITENT, REVENANT, WEAVER, COUNT };
-inline bool isBoss(EnemyType t) { return t == EnemyType::WARDEN || t == EnemyType::SOVEREIGN || t == EnemyType::PENITENT; }
+                       CONDUCTOR, SERAPH, ANCHOR, PENITENT, REVENANT, WEAVER, LEVIATHAN, COUNT };
+inline bool isBoss(EnemyType t) { return t == EnemyType::WARDEN || t == EnemyType::SOVEREIGN || t == EnemyType::PENITENT || t == EnemyType::LEVIATHAN; }
 
 // Hollowed variants (Act II): a regular enemy made harder in one specific way.
 //   ENRAGED  faster, shorter wind-ups, hits harder
@@ -87,7 +87,8 @@ enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY,
                         BEAM,                                  // the SERAPH's
                         CENSER_LOW, CENSER_HIGH, PSLAM, PSTOMP, PLASH, SCOURGE,     // the PENITENT's
                         WVENT, LANCE, SEEKER, WLUNGE, DETONATE,        // the WARDEN's
-                        RAKE, SOULBOLT, STRING };                      // the REVENANT's, the WEAVER's
+                        RAKE, SOULBOLT, STRING,                        // the REVENANT's, the WEAVER's
+                        CRASH, TORRENT, TIDE, SPIT, BREACH, SWALLOW, SUBMERGE };   // the LEVIATHAN's
 
 struct EnemyStats {
     const char* name;
@@ -156,6 +157,9 @@ inline const EnemyStats& statsOf(EnemyType t) {
         {"WEAVER", 120.f, 0.9f, 1.3f, 4.2f, 0.8f, 6.f, false,
          {0.16f,0.13f,0.2f}, {0.75f,0.35f,1.1f}, {0.75f,0.35f,1.1f},
          "IT WIRES THE GAPS - CUT THE NODES OR DUCK UNDER"},
+        {"LEVIATHAN", 9000.f, 2.2f, 4.0f, 0.f, 1.1f, 2.4f, false,   // radius/height: the head's box
+         {0.11f,0.1f,0.12f}, {1.4f,1.0f,0.6f}, {0.3f,1.1f,0.9f},
+         "DASH THE CRASH - SHOOT THE EYE WHILE IT'S DOWN"},
     };
     return S[(int)t];
 }
@@ -210,6 +214,16 @@ struct EnemyEvents {
     bool      wLance = false; glm::vec3 wLanceFrom{0.f}; float wLanceYaw = 0.f, wLanceSign = 1.f;
     bool      wSeeker = false; glm::vec3 wSeekerAt{0.f};
     bool      wVent = false, wDetonate = false;
+    // LEVIATHAN (EnemyLeviathan.h): its phase changed (2 the hunt, 3 the
+    // eclipse); a crash marked from its root to where you stood, then landing
+    // there; a tide rolling out from its root; a spit marked where you'll be;
+    // a well boiling, then the breach out of it; an inhale began; it rose
+    int       lvPhase = 0;
+    bool      lvCrashMark = false, lvCrash = false; glm::vec3 lvFrom{0.f}, lvTo{0.f};
+    bool      lvTide = false; glm::vec3 lvTideAt{0.f}; float lvTideR = 0.f;
+    bool      lvSpit = false; glm::vec3 lvSpitAt{0.f};
+    bool      lvBreachTell = false, lvBreach = false; glm::vec3 lvSite{0.f};
+    bool      lvInhale = false, lvRise = false, lvBeached = false;
 };
 
 // What an enemy can sense each tick.
@@ -227,6 +241,11 @@ struct EnemyWorld {
     glm::vec3 reactor{0.f};       // the WARDEN's power: where it goes to feed (the Core's reactor)
     bool hasReactor = false;
     bool voidUnder = false;       // the floor under the arena is a void (the Reliquary): only real ground holds you up
+    // THE LEVIATHAN's lair (the Maw): the pool's centre at its surface, the
+    // ring floor's height, the wells it breaches from
+    bool hasLair = false;
+    glm::vec3 lair{0.f}; float lairFloor = 0.f;
+    const glm::vec3* wells = nullptr; int wellCount = 0;
 };
 
 // Ray vs AABB: distance along the ray to the first hit, or -1 on a miss.
@@ -387,6 +406,39 @@ struct Enemy {
     float spotBest = 1e9f, spotAt = 0.f;   // its walk to the reactor: closest yet, and when
     // REVENANT: how many times its soul has come back (the third death is final)
     int   reforms = 0;
+    // LEVIATHAN (EnemyLeviathan.h): `position` is its head's centre; the body
+    // curves up to it out of its root (the pool, or a well while it hunts)
+    enum class LevStage { RISE, FIGHT, HIDDEN };
+    static constexpr float LV_PHASE2 = 0.65f, LV_PHASE3 = 0.30f, LV_RISE = 3.f, LV_BEACHED = 3.f, LV_HIDDEN = 1.4f,
+                           LV_SPIT_AFTER = 4.f, LV_SPIT_FAR = 34.f, LV_SPIT_HIGH = 4.f, LV_REACH = 44.f, LV_INHALE = 3.f,
+                           LV_CHOKE = 450.f, LV_STAGGER = 4.f, LV_PARRY_REACH = 6.f, LV_POOL = 13.f;
+    int   levPhase = 1;
+    LevStage levStage = LevStage::RISE;
+    bool  levInit = false;
+    glm::vec3 levRoot{0.f}, levHome{0.f}, levTarget{0.f}, levWakeFrom{0.f};
+    float levFloor = 0.f;          // the ring floor's Y
+    float levStageT = 0.f;         // RISE / HIDDEN: time left
+    float levBeached = 0.f;        // > 0: its head lies on the ring after a crash, the eye open
+    float levInhale = 0.f;         // > 0: inhaling (SWALLOW), the throat open
+    float levChoke = 0.f;          // damage into the throat this inhale
+    float levPitch = 0.f, levJaw = 0.f;   // the head's tilt (+ up) and how far its jaw is open, 0..1
+    int   levSiteAttacks = 0;      // attacks made from this root (THE HUNT: two, then it dives)
+    int   levSeq = 0;              // where it is in its rotation
+    bool  levAtPool() const { return glm::length(glm::vec2{levRoot.x - levHome.x, levRoot.z - levHome.z}) < 1.f; }
+    bool  levHidden() const { return type == EnemyType::LEVIATHAN && (levStage != LevStage::FIGHT || attack == AttackKind::BREACH); }
+    bool  levEyeOpen() const { return levBeached > 0.f || staggerTimer > 0.f || levPhase == 3; }
+    // A hit on its eye: x3 beached or staggered, x2 in the eclipse, else as the head
+    float levEyeMult() const { return levBeached > 0.f || staggerTimer > 0.f ? 3.f : levPhase == 3 ? 2.f : 1.f; }
+    // Damage into its throat while it inhales: enough in one breath and it chokes
+    bool  levThroatHit(float dmg) {
+        if (levInhale <= 0.f) return false;
+        levChoke += dmg;
+        if (levChoke < LV_CHOKE) return false;
+        levInhale = 0.f; levChoke = 0.f; levJaw = 0.f;
+        stagger(LV_STAGGER);
+        return true;
+    }
+    void  levEndInhale() { levInhale = 0.f; levChoke = 0.f; recoverTimer = 0.8f; }
     bool  coreOpen() const { return type == EnemyType::WARDEN && (ventTimer > 0.f || wardenPhase == 3); }
     // A shot into an open weak point: the PENITENT's wound x3, the WARDEN's core x3 venting, x2 in meltdown
     float woundMult() const { return type == EnemyType::WARDEN ? (ventTimer > 0.f ? 3.f : 2.f) : 3.f; }
@@ -434,7 +486,7 @@ struct Enemy {
         if (type == EnemyType::PENITENT) return (risen ? 11.5f : 8.2f) * scale;   // kneeling, then standing
         return stats().height * scale;
     }
-    bool  targetable() const { return alive && state == EnemyState::ACTIVE; }
+    bool  targetable() const { return alive && state == EnemyState::ACTIVE && !levHidden(); }
     bool  staggered() const  { return staggerTimer > 0.f; }
     // The moment a melee blow can be punched back: a JUGGERNAUT's smash (its
     // last 0.4 s), a SOVEREIGN's sweep or cleave (its last quarter second)
@@ -445,6 +497,7 @@ struct Enemy {
         if (type == EnemyType::WARDEN) return attack == AttackKind::WLUNGE && telegraphTimer < 0.25f;
 
         if (type == EnemyType::JUGGERNAUT) return attack == AttackKind::SMASH && telegraphTimer < 0.4f;
+        if (type == EnemyType::LEVIATHAN) return attack == AttackKind::CRASH && telegraphTimer < 0.25f;   // (and you within LV_PARRY_REACH of where it lands)
         if (type == EnemyType::SHIELDBEARER) return attack == AttackKind::BASH && telegraphTimer < 0.3f;
         if (type == EnemyType::SOVEREIGN)
             return (attack == AttackKind::SWEEP || attack == AttackKind::CLEAVE || attack == AttackKind::THRUST) &&
@@ -468,7 +521,7 @@ struct Enemy {
     }
     void onDeflect() { if (riposteCd <= 0.f) { riposte = true; riposteCd = 1.4f; } }
     // How long a parry leaves it broken
-    float staggerTime() const { return type == EnemyType::SOVEREIGN ? 3.f : type == EnemyType::WARDEN ? 2.f : type == EnemyType::SHIELDBEARER ? 2.2f : 2.5f; }
+    float staggerTime() const { return type == EnemyType::LEVIATHAN ? LV_STAGGER : type == EnemyType::SOVEREIGN ? 3.f : type == EnemyType::WARDEN ? 2.f : type == EnemyType::SHIELDBEARER ? 2.2f : 2.5f; }
     // SHIELDBEARER: does its shield stop a shot travelling along dir? (From
     // the front, while it's standing; a broken one has its shield knocked aside)
     bool blocks(glm::vec3 dir) const {
@@ -483,7 +536,7 @@ struct Enemy {
     float armorMult() const {
         if (type == EnemyType::WARDEN) return (conduitsLeft > 0 && ventTimer <= 0.f ? 0.5f : 1.f) * (staggered() ? 2.f : 1.f);
         if (type == EnemyType::PENITENT) return (anchorsLeft > 0 ? 0.25f : 1.f) * (staggered() ? 2.f : 1.f);
-        if (type == EnemyType::SOVEREIGN) return staggered() ? 2.f : 1.f;
+        if (type == EnemyType::SOVEREIGN || type == EnemyType::LEVIATHAN) return staggered() ? 2.f : 1.f;
         if (type != EnemyType::JUGGERNAUT) return 1.f;
         return staggered() ? 2.f : 0.5f;
     }
@@ -500,6 +553,10 @@ struct Enemy {
     }
 
     AABB getAABB() const {
+        if (type == EnemyType::LEVIATHAN) {   // its head, round its centre
+            glm::vec3 h{2.2f, 2.f, 2.2f};
+            return {position - h, position + h};
+        }
         float r = radius();
         return { position + glm::vec3{-r, 0.f, -r}, position + glm::vec3{r, height(), r} };
     }
@@ -515,7 +572,7 @@ struct Enemy {
             state  = EnemyState::DEAD;
             return true;
         }
-        if (isBoss(type) && type != EnemyType::WARDEN && !enraged && health < maxHealth * 0.5f) {
+        if (isBoss(type) && type != EnemyType::WARDEN && type != EnemyType::LEVIATHAN && !enraged && health < maxHealth * 0.5f) {
             enraged    = true;
             ev.enraged = true;
         }
@@ -556,6 +613,7 @@ struct Enemy {
         if (staggerTimer > 0.f) {   // broken: stands there, open to punishment
             staggerTimer -= dt;
             velocity.x = velocity.z = 0.f;
+            if (type == EnemyType::LEVIATHAN) { levReel(dt); return; }   // its head down on the ring
             integrate(dt, w);
             return;
         }
@@ -579,6 +637,7 @@ struct Enemy {
             case EnemyType::PENITENT: thinkPenitent(dt, w, resolve); break;
             case EnemyType::REVENANT: thinkRevenant(dt, w, resolve); break;
             case EnemyType::WEAVER:   thinkWeaver(dt, w, resolve);   break;
+            case EnemyType::LEVIATHAN: thinkLeviathan(dt, w, resolve); return;   // it moves its head itself
             default: break;
         }
         integrate(dt, w);
@@ -611,7 +670,7 @@ private:
 
     void startAttack(AttackKind k, float windup, bool followUp = false) {
         windup *= tune_->windup;
-        if (type == EnemyType::SOVEREIGN || type == EnemyType::WARDEN)   // never too quick to read, whatever sped it up
+        if (type == EnemyType::SOVEREIGN || type == EnemyType::WARDEN || type == EnemyType::LEVIATHAN)   // never too quick to read, whatever sped it up
             windup = std::max(windup, followUp ? TELL_FLOOR_FOLLOW : TELL_FLOOR);
         attack            = k;
         tellFollow        = followUp;
@@ -738,7 +797,10 @@ private:
         return true;
     }
 
-    glm::vec3 eyePos() const { return position + glm::vec3{0.f, height() * 0.85f, 0.f}; }
+    glm::vec3 eyePos() const {
+        if (type == EnemyType::LEVIATHAN) return position + glm::vec3{std::sin(yaw), 0.f, std::cos(yaw)} * 2.4f - glm::vec3{0.f, 0.6f, 0.f};   // its mouth
+        return position + glm::vec3{0.f, height() * 0.85f, 0.f};
+    }
 
     // Fire n shots fanned across `spread` radians. Aimed ahead of a moving
     // player by the difficulty's lead (where they'll be when the shot lands).
@@ -1166,6 +1228,9 @@ private:
     }
 
     void thinkPenitent(float dt, const EnemyWorld& w, bool resolve);   // EnemyPenitent.h
+    void thinkLeviathan(float dt, const EnemyWorld& w, bool resolve);  // EnemyLeviathan.h
+    void levReel(float dt);                                            // EnemyLeviathan.h
+    void levPose(float dt, const EnemyWorld& w);
     void thinkRevenant(float dt, const EnemyWorld& w, bool resolve);   // EnemyRelic.h
     void thinkWeaver(float dt, const EnemyWorld& w, bool resolve);     // EnemyRelic.h
 
@@ -1617,5 +1682,6 @@ inline void linkConductors(std::vector<Enemy>& es, glm::vec3 player) {
 }
 
 #include "EnemyPenitent.h"   // THE PENITENT's mind (Enemy::thinkPenitent)
+#include "EnemyLeviathan.h"  // THE LEVIATHAN's mind (Enemy::thinkLeviathan)
 #include "EnemyWarden.h"     // THE WARDEN's mind (Enemy::thinkWarden)
 #include "EnemyRelic.h"      // the Reliquary's REVENANT and WEAVER

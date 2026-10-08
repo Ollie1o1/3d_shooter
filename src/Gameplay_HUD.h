@@ -53,7 +53,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
     if (!playerDead && !victory) ui.render(styleSystem, h);
 
     const Arena& ar = level.arenas[director.arena];
-    int nArenas = act2() ? 4 : (int)level.arenas.size();   // ACT II: the Nave is the first of four
+    int nArenas = (int)level.arenas.size();
     const char* tag = act2() ? "ACT II" : "ARENA";
     char buf[128];
 
