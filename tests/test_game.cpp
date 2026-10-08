@@ -31,6 +31,7 @@
 #include "../src/WardenHazards.h"
 #include "BossSim.h"
 #include "../src/RelicHazards.h"
+#include "../src/LeviathanHazards.h"
 #include <cstdio>
 #include <cstring>
 #include <limits>
@@ -4309,6 +4310,47 @@ int main() {
         CHECK(notYet && choked && s.staggered() && std::fabs(s.staggerTimer - 4.f) < 1e-4f && s.levInhale <= 0.f,
               "450 down its throat in one inhale and it chokes: the inhale ends, staggered 4 s");
         CHECK(!s.levThroatHit(500.f), "no throat to hit when it isn't inhaling");
+    }
+
+    // ---------------------------------------------------------------- the Leviathan's hazards
+    {
+        using LH = LeviathanHazards;
+        glm::vec3 from{0, -300, 0}, to{0, -300, 30};
+        CHECK(LH::inStrip(from, to, {0.f, -300.f, 20.f}, -300.f) && LH::inStrip(from, to, {2.f, -300.f, 33.f}, -300.f) &&
+              !LH::inStrip(from, to, {3.f, -300.f, 20.f}, -300.f) && !LH::inStrip(from, to, {0.f, -297.f, 20.f}, -300.f) &&
+              !LH::inStrip(from, to, {0.f, -300.f, 36.f}, -300.f), "a crash's strip: 5 m wide, out past where the head lands, on the ground; 3 m aside you're clear");
+        LH h;
+        h.markCrash(from, to); h.markCrash(from, to * 0.5f); h.landCrash();
+        bool newest = h.strips[1].landed && !h.strips[0].landed;
+        h.dropMarks();
+        CHECK(newest && h.strips.size() == 1 && h.strips[0].landed, "a crash lands along its newest mark; a mark it never strikes is dropped");
+        // A tide: hits a grounded player as it passes, misses one in the air
+        auto tideHits = [&](float up) {
+            LH t; t.addTide({0, -300, 0}, 13.f, 46.f);
+            int hits = 0;
+            for (int i = 0; i < 60 * 4; ++i) for (auto& x : t.update(DT, {20.f, -300.f + up, 0.f}, -300.f)) hits += x.damage == LH::TIDE_DAMAGE;
+            return hits;
+        };
+        CHECK(tideHits(0.f) == 1 && tideHits(1.5f) == 0, "a tide hits you on the ground as it passes (once), and passes under a jump");
+        // A spit: bursts after a second where it was marked, then burns
+        {
+            LH t; t.addSpit({0, -300, 0});
+            float burst = 0.f, burn = 0.f; float burstAt = -1.f;
+            for (int i = 0; i < 60 * 6; ++i)
+                for (auto& x : t.update(DT, {1.f, -300.f, 0.f}, -300.f)) {
+                    if (x.damage == LH::SPIT_DAMAGE) { burst += x.damage; burstAt = i * DT; } else burn += x.damage;
+                }
+            LH f; f.addSpit({0, -300, 0}); float away = 0.f;
+            for (int i = 0; i < 60 * 6; ++i) for (auto& x : f.update(DT, {6.f, -300.f, 0.f}, -300.f)) away += x.damage;
+            CHECK(burst == 30.f && burstAt > 0.95f && burstAt < 1.05f && burn > 50.f && burn < 65.f && away == 0.f,
+                  "a spit bursts a second after its marker (30), then burns there for 4 s at 15/s; 6 m away nothing");
+        }
+        CHECK(LH::breachHits({0, -300, 0}, {5.f, -300.f, 0.f}) && !LH::breachHits({0, -300, 0}, {8.f, -300.f, 0.f}) &&
+              !LH::breachHits({0, -300, 0}, {2.f, -293.f, 0.f}), "a breach erupts within 6 m of its well, not at 8 m, not up on a ledge");
+        glm::vec3 pl = LH::pull({0, -300, 0}, {10.f, -300.f, 0.f});
+        CHECK(std::fabs(glm::length(pl) - 3.5f) < 1e-4f && pl.x < 0.f && pl.y == 0.f &&
+              LH::PULL_SPEED < 7.f * Player::wadeFactor(0.6f), "the swallow drags you toward its mouth at 3.5 m/s, slower than you wade in its flood");
+        CHECK(LH::bites({0, -300, 0}, {4.f, -300.f, 0.f}) && !LH::bites({0, -300, 0}, {5.f, -300.f, 0.f}), "it bites inside 4.5 m");
     }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");
