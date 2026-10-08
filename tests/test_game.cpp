@@ -3474,6 +3474,46 @@ int main() {
               "each Twinned Revenant carries its own soul");
     }
 
+    // ---------------------------------------------------------------- the Weaver
+    {
+        LevelData N = buildAct2Level(); SpatialGrid g; g.build(N.walls);
+        const Arena& R = N.arenas[3];
+        N.formation.reset(N); N.updateMovers(0.f);
+        glm::vec3 core = N.formation.top(3);
+        Enemy wv(EnemyType::WEAVER, core + glm::vec3{0, 0, -5}); wv.spawnTimer = 0.f; wv.state = EnemyState::ACTIVE;
+        EnemyWorld w; w.playerFeet = core + glm::vec3{0, 0, 6}; w.playerEye = w.playerFeet + glm::vec3{0, 1.7f, 0};
+        w.walls = N.walls.data(); w.wallCount = (int)N.walls.size(); w.grid = &g; w.bounds = R.bounds; w.playerVel = {4, 0, 0};
+        int strung = 0; float tell = 0.f; glm::vec3 A{0.f}, Bw{0.f};
+        for (int f = 0; f < 60 * 14; ++f) {
+            wv.update(DT, w);
+            if (wv.ev.telegraphStarted && wv.attack == AttackKind::STRING) tell = wv.telegraphDuration;
+            if (wv.ev.wire) { ++strung; A = wv.ev.wireA; Bw = wv.ev.wireB; }
+        }
+        CHECK(strung >= 2 && std::fabs(tell - 0.8f * difficulty(DIFFICULTY_DEFAULT).windup) < 0.02f, "a Weaver strings a wire every ~6 s after a 0.8 s tell (x the difficulty's wind-up)");
+        CHECK(std::fabs(A.y - (w.playerFeet.y + RelicHazards::WIRE_HEIGHT)) < 0.05f && std::fabs(glm::length(Bw - A) - RelicHazards::WIRE_LEN) < 0.1f,
+              "its wire runs 10 m across your way at chest height");
+        RelicHazards hz;
+        glm::vec3 F{0, 0, 0};
+        hz.addWire(1, {-5, 1.2f, 0}, {5, 1.2f, 0});
+        // Review focus 3: not armed on the tick it's strung
+        int fresh = hz.touchedWire(F, 1.8f, 0.4f);
+        hz.age(DT * 7);
+        int standing = hz.touchedWire(F, 1.8f, 0.4f), sliding = hz.touchedWire(F, 0.9f, 0.4f), jumped = hz.touchedWire(F + glm::vec3{0, 1.4f, 0}, 1.8f, 0.4f),
+            beside = hz.touchedWire(F + glm::vec3{0, 0, 2}, 1.8f, 0.4f);
+        CHECK(fresh < 0, "a fresh wire doesn't snare where it's strung through you");
+        CHECK(standing == 0 && sliding < 0 && jumped < 0 && beside < 0, "standing in a wire snares you; sliding under or jumping over doesn't");
+        for (int k = 0; k < 4; ++k) hz.addWire(1, {-5, 1.2f, 3.f + k}, {5, 1.2f, 3.f + k});
+        CHECK(hz.wires.size() == 4 && hz.wires[0].a.z == 3.f, "at most 4 wires per Weaver: a fifth replaces its oldest");
+        float t = 0.f; int node = hz.rayNode({5, 1.2f, 10}, {0, 0, -1}, 50.f, t);
+        if (node >= 0) hz.cutWire(node);
+        CHECK(node >= 0 && hz.wires.size() == 3, "shooting a wire's node cuts it");
+        hz.addWire(2, {0, 1.2f, -5}, {0, 1.2f, 5});
+        hz.dropOwner(1);
+        CHECK(hz.wires.size() == 1 && hz.wires[0].owner == 2, "a Weaver's death drops all its wires (and only its)");
+        hz.clearWires();
+        CHECK(hz.wires.empty(), "a drift clears every wire");
+    }
+
     // ---------------------------------------------------------------- the lift (driven movers) and the director's hold
     {
         LevelData L; LevelBuilder B{L};

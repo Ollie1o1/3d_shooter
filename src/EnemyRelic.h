@@ -33,7 +33,34 @@ inline void Enemy::thinkRevenant(float dt, const EnemyWorld& w, bool resolve) {
     if (d < 3.2f) { comboLeft = 1; startAttack(AttackKind::RAKE, stats().telegraph); }
 }
 
+// It hangs back (14-20 m), and every ~6 s strings a wire across where you're
+// heading: 10 m long, at chest height, square to your movement
 inline void Enemy::thinkWeaver(float dt, const EnemyWorld& w, bool resolve) {
-    (void)resolve; velocity.x = velocity.z = 0.f;   // Task 4 gives it its wires
-    (void)dt; (void)w;
+    glm::vec3 to = flatTo(w.playerFeet);
+    float d = glm::length(to);
+    glm::vec3 dir = norm2(to), side{-dir.z, 0.f, dir.x};
+    if (telegraphTimer > 0.f) { velocity.x = velocity.z = 0.f; }
+    else {
+        strafeTimer -= dt;
+        if (strafeTimer <= 0.f) { strafeTimer = frand(2.f, 3.5f); strafeDir = -strafeDir; }
+        glm::vec3 mv = d < 14.f ? -dir + side * strafeDir * 0.5f : d > 20.f ? dir : side * strafeDir;
+        setMove(mv, stats().speed, w);
+        animPhase += dt * 5.f;
+    }
+    turnToward(to, dt, 4.f);
+    if (resolve && attack == AttackKind::STRING) {
+        attack = AttackKind::NONE;
+        glm::vec3 v{w.playerVel.x, 0.f, w.playerVel.z};
+        float sp = glm::length(v);
+        glm::vec3 fwd = sp > 0.5f ? v / sp : -dir;                 // across your path (or across the line to it)
+        glm::vec3 across{-fwd.z, 0.f, fwd.x};
+        glm::vec3 c = w.playerFeet + (sp > 0.5f ? fwd * 4.f : glm::vec3{0.f});
+        c.y = w.playerFeet.y + 1.2f;
+        ev.wire = true;
+        ev.wireA = c - across * 5.f;
+        ev.wireB = c + across * 5.f;
+    }
+    if (telegraphTimer > 0.f) return;
+    if (!attackReady(dt)) return;
+    if (lineOfSight(eyePos(), w)) startAttack(AttackKind::STRING, stats().telegraph);
 }
