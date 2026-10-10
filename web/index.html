@@ -91,18 +91,37 @@
   // snaps the view round. Browsers that don't support the option (or reject
   // it, e.g. some Linux setups) fall back to a plain lock; the game also
   // filters single-event spikes itself (MouseFilter.h).
+  //
+  // The game asks for the lock once, when it wants the mouse, and carries on
+  // whether or not it got it. A browser can say no (too soon after Escape
+  // freed the mouse, or in the middle of going fullscreen) or take the lock
+  // away again, and then the game runs with a free cursor that wanders off the
+  // screen: you can't turn, and a click outside takes the keyboard too. So
+  // remember that the game wants the mouse, and while it does and the lock
+  // isn't held, ask again on every key press and click.
+  let wantsMouse = false;
   (() => {
     const lock = HTMLCanvasElement.prototype.requestPointerLock;
     if (!lock) return;
     HTMLCanvasElement.prototype.requestPointerLock = function (opts) {
+      wantsMouse = true;
       try {
         const p = lock.call(this, Object.assign({ unadjustedMovement: true }, opts || {}));
-        if (p && typeof p.catch === 'function') return p.catch(() => lock.call(this));
+        if (p && typeof p.catch === 'function')
+          return p.catch(() => { const q = lock.call(this); q?.catch?.(() => {}); return q; });
         return p;
       } catch (e) {
         return lock.call(this);
       }
     };
+    const unlock = Document.prototype.exitPointerLock;
+    Document.prototype.exitPointerLock = function () { wantsMouse = false; return unlock.call(this); };
+    const regrab = (e) => {
+      if (!wantsMouse || document.pointerLockElement || e.key === 'Escape') return;
+      try { canvas.requestPointerLock()?.catch?.(() => {}); } catch (err) {}
+    };
+    document.addEventListener('keydown', regrab, true);
+    document.addEventListener('pointerdown', regrab, true);
   })();
 
   // Dismiss on the first interaction once the game is ready. Listening only for
