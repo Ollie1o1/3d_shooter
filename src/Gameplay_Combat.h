@@ -390,15 +390,21 @@ inline void GameplayState::showDamageFrom(glm::vec3 source) {
 inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float style, float heal, StyleSource src,
                                      bool crit, bool pierceArmor) {
     if (!e.targetable()) return false;
+    if (e.shielded) {   // a CONDUCTOR's tether: nothing gets through until the Conductor is dead
+        fx.spawnHitSparks(at, {0.3f, 1.f, 0.9f});
+        if (src != StyleSource::FRIENDLY && shieldClankCd <= 0.f) {
+            audio.playAt("clank", at, 70, SoundGroup::ENEMY);
+            static const char* told = "SHIELDED - KILL THE CONDUCTOR";   // once in the feed, not once a pellet
+            if (ui.feedLines.empty() || ui.feedLines.back().text != told) ui.feed(told, {0.3f, 1.f, 0.9f});
+            shieldClankCd = 0.12f;
+        }
+        return false;
+    }
     if (!pierceArmor) dmg *= e.armorMult();
     dmg *= e.incomingMult();   // a halo, or the window after one breaks
     if (e.onBeamHit(dmg, crit)) { ui.feed("BEAM BROKEN", {1.f, 0.85f, 0.5f}); styleSystem.addStyle(25.f, src); }
     if (e.halo) fx.spawnHitSparks(at, {1.f, 0.85f, 0.3f});
     if (modOn(DailyMod::GLASS_CANNON) && src != StyleSource::FRIENDLY && src != StyleSource::ENVIRONMENT) dmg *= 2.f;
-    if (e.shielded) {   // a CONDUCTOR's tether soaks most of it
-        dmg *= CONDUCTOR_SHIELD;
-        fx.spawnHitSparks(at, {0.3f, 1.f, 0.9f});
-    }
     float before = e.health;
     bool killed = e.takeDamage(dmg);
     // Enemies hurting each other: no hitmarker, no style or healing for the

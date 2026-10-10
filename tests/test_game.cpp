@@ -1610,6 +1610,17 @@ int main() {
               "a CONDUCTOR tethers its three nearest allies - not a boss, a conduit or one out of range - and each ally once");
         CHECK(es[0].hasAnchor && es[0].supportAnchor.z < -12.f && es[0].supportAnchor.y > 3.f,
               "a CONDUCTOR hovers above and behind the allies it shields");
+        // Tethered means untouchable: nothing gets through until the Conductor is dead
+        {
+            int ti = -1; for (int i = 0; i < (int)es.size(); ++i) if (es[i].shielded) { ti = i; break; }
+            float hp = es[ti].health;
+            bool killed = es[ti].takeDamage(100000.f);
+            CHECK(!killed && es[ti].alive && es[ti].health == hp, "an enemy tethered to a CONDUCTOR takes no damage at all");
+            float chp = es[0].health;
+            es[0].takeDamage(10.f);
+            CHECK(es[0].health == chp - 10.f, "the CONDUCTOR itself is never shielded");
+            es[0].health = chp;
+        }
         es.erase(es.begin());   // one down: the other takes up what it can (still three at most)
         linkConductors(es, player);
         shielded = 0; for (auto& e : es) shielded += e.shielded;
@@ -1618,6 +1629,8 @@ int main() {
         linkConductors(es, player);
         shielded = 0; for (auto& e : es) shielded += e.shielded;
         CHECK(regrouped && shielded == 0, "kill the CONDUCTORs and their tethers drop");
+        { float hp = es[0].health; es[0].takeDamage(10.f);
+          CHECK(es[0].health == hp - 10.f, "with its CONDUCTOR dead an enemy can be hurt again"); }
 
         auto s = simulate(L, grid, EnemyType::CONDUCTOR, {0, 6, -20}, P0, A0, 12.f);
         CHECK(!s.leftBounds && s.closest > 7.f && s.minY > 2.f && s.shots == 0 && s.melee == 0,

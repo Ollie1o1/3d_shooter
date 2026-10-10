@@ -291,7 +291,7 @@ struct Enemy {
     float      health, maxHealth;
     // CONDUCTOR tethers, set every tick by linkConductors (indices into this
     // tick's enemy list)
-    bool       shielded = false;     // tethered: takes CONDUCTOR_SHIELD x damage
+    bool       shielded = false;     // tethered: takes no damage (takeDamage)
     int        links[3] = {-1, -1, -1};
     int        linkCount = 0;
     glm::vec3  supportAnchor{0.f};   // a CONDUCTOR's: where it wants to hover
@@ -564,8 +564,9 @@ struct Enemy {
     }
 
     // Returns true if this hit killed the enemy.
+    // An enemy tethered to a CONDUCTOR takes none: kill the Conductor first.
     bool takeDamage(float dmg) {
-        if (!targetable()) return false;
+        if (!targetable() || shielded) return false;
         health -= dmg;
         hitFlashTimer = 0.12f;
         if (health <= 0.f) {
@@ -1650,11 +1651,10 @@ inline bool inAnchorField(const Enemy& a, glm::vec3 feet) {
 
 // CONDUCTORs: each tethers up to three allies within CONDUCTOR_RANGE (the
 // nearest that aren't already tethered; never a boss, a conduit or another
-// conductor). Tethered enemies take CONDUCTOR_SHIELD x damage. Each conductor
+// conductor). Tethered enemies take no damage (Enemy::takeDamage). Each conductor
 // is also given a spot to hover: above and behind its allies, as seen from
 // the player. Call once per tick, after dead enemies are removed.
 static constexpr float CONDUCTOR_RANGE  = 14.f;
-static constexpr float CONDUCTOR_SHIELD = 0.4f;
 inline void linkConductors(std::vector<Enemy>& es, glm::vec3 player) {
     for (auto& e : es) { e.shielded = false; e.linkCount = 0; e.hasAnchor = false; }
     for (auto& c : es) {
