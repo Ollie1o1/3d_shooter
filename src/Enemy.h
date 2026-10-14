@@ -838,7 +838,11 @@ private:
         strafeTimer -= dt;
         if (strafeTimer <= 0.f) { strafeTimer = frand(1.6f, 3.2f); strafeDir = -strafeDir; }
         glm::vec3 mv;
-        if (noLosTimer > 0.f)  mv = side * strafeDir + dir * 0.35f;      // sidestep out from behind cover
+        // On a perch what hides you is usually the perch's own lip: walk to the
+        // edge (the ledge check stops it there) and shoot down from it
+        bool perched = ledgeAware() && position.y > floorY + 0.3f;
+        if (noLosTimer > 0.f && perched) mv = dir + side * strafeDir * 0.3f;
+        else if (noLosTimer > 0.f) mv = side * strafeDir + dir * 0.35f;      // sidestep out from behind cover
         else if (d < nearR)    mv = -dir + side * strafeDir * 0.7f;
         else if (d > farR)     mv = dir + side * strafeDir * 0.3f;
         else                   mv = side * strafeDir;
@@ -928,6 +932,12 @@ private:
         if (attackReady(dt)) {
             if (lineOfSight(eyePos(), w)) startAttack(AttackKind::BURST, stats().telegraph);
             else blockedShot();
+        } else if (noLosTimer > 0.f && telegraphTimer <= 0.f && burstLeft <= 0 && lineOfSight(eyePos(), w)) {
+            // Moving to find a shot that was already due: take it the moment the
+            // way opens (a gap at the corner of a lip can be gone before the
+            // next re-check)
+            noLosTimer = 0.f; attackTimer = 0.f;
+            startAttack(AttackKind::BURST, stats().telegraph);
         }
     }
 
