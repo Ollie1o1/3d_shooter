@@ -88,7 +88,7 @@ run: all
 # Headless tests — no window or GL context needed: player physics, plus the
 # enemy AI, wave director, level data, weapons, XP and the mouse filter,
 # driven through simulated ARENA and FAST runs
-test: tests/test_physics.cpp tests/test_game.cpp tests/BossSim.h src/Player.h src/Camera.h \
+test: tests/test_physics.cpp tests/test_game.cpp tests/test_zenith.cpp tests/BossSim.h src/Player.h src/Camera.h src/Sword.h \
       src/Enemy.h src/EnemyPenitent.h src/EnemyLeviathan.h src/LeviathanHazards.h src/EnemyWarden.h src/EnemyRelic.h src/RelicHazards.h src/EnemyModel.h src/Level.h src/LevelGauntlet.h src/LevelAct2.h src/WaveDirector.h \
       src/Weapons.h src/Progression.h src/MouseFilter.h src/Persist.h src/Difficulty.h src/MusicSynth.h \
       src/StyleSystem.h src/Projectile.h src/ArenaShifts.h src/Score.h src/Daily.h src/EndlessWaves.h \
@@ -98,6 +98,8 @@ test: tests/test_physics.cpp tests/test_game.cpp tests/BossSim.h src/Player.h sr
 	$(CXX) $(CXXFLAGS) tests/test_game.cpp -o tests/test_game $(STDLIB)
 	./tests/test_physics
 	./tests/test_game
+	$(CXX) $(CXXFLAGS) tests/test_zenith.cpp -o tests/test_zenith $(STDLIB)
+	./tests/test_zenith
 
 # Browser build (WebGL2 + WebAssembly) → web/dist. Needs Emscripten on PATH:
 #   source ~/emsdk/emsdk_env.sh && make web && python3 -m http.server -d web/dist
@@ -117,5 +119,5 @@ web: $(SRC) $(HEADERS) web/index.html
 	cp web/index.html $(WEB_OUT)/
 
 clean:
-	rm -f shooter shooter.exe tests/test_physics tests/test_game
+	rm -f shooter shooter.exe tests/test_physics tests/test_game tests/test_zenith
 	rm -rf build web/dist
