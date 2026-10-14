@@ -2,6 +2,7 @@
 // ABSOLUTE's mind and hazards, and his fight against scripted players.
 // Built and run by `make test` after test_game.
 #include "../src/Sword.h"
+#include "../src/GunKit.h"
 #include <cstdio>
 #include <cmath>
 
@@ -145,6 +146,33 @@ int main() {
         CHECK(glm::length(st) < 0.25f, "...but never into him");
         st = Sword::lockStep({0, 0, 0}, fwd, {0, 0, 5}, 0.8f);
         CHECK(glm::length(st) < 1e-4f, "...and not toward something behind you");
+    }
+
+    // ---------------------------------------------------------------- the sword: its look and motion
+    {
+        std::vector<GunPart> parts;
+        auto lit = [&](float g, bool broken) {
+            parts.clear(); SwordLook L; L.guard01 = g; L.broken = broken;
+            gunkit::buildSword(L, parts);
+            int n = 0; for (auto& p : parts) n += p.tag == 1; return n;
+        };
+        CHECK(lit(1.f, false) == 8 && lit(0.5f, false) == 4 && lit(0.01f, false) == 1, "the fuller's 8 cells read the guard meter");
+        CHECK(lit(1.f, true) == 0, "a broken guard: the fuller goes dark");
+        parts.clear(); gunkit::buildSword(SwordLook{}, parts);
+        glm::vec3 lo{1e9f}, hi{-1e9f};
+        for (auto& p : parts) { glm::vec3 c{p.xf[3]}; lo = glm::min(lo, c); hi = glm::max(hi, c); }
+        CHECK(hi.z - lo.z > 0.7f && hi.z - lo.z < 1.1f && hi.x - lo.x < 0.25f, "a blade about 0.9 m long and slim");
+        bool glows = false;
+        for (auto& p : parts) if (p.tag == 1 && glm::length(p.emissive - gunkit::SWORD_GLOW * 1.6f) < 0.05f) glows = true;
+        CHECK(glows, "its cells glow rose-red");
+        SwordPose a = gunkit::swordPose(0, 0.f, false, 0.f, 0.f), b = gunkit::swordPose(0, 1.f, false, 0.f, 0.f);
+        CHECK(a.offset.x > 0.1f && b.offset.x < -0.1f, "stroke 0 sweeps from right to left");
+        a = gunkit::swordPose(1, 0.f, false, 0.f, 0.f); b = gunkit::swordPose(1, 1.f, false, 0.f, 0.f);
+        CHECK(a.offset.x < -0.1f && b.offset.x > 0.1f, "stroke 1 sweeps from left to right");
+        a = gunkit::swordPose(2, 0.f, false, 0.f, 0.f); b = gunkit::swordPose(2, 1.f, false, 0.f, 0.f);
+        CHECK(a.offset.y > b.offset.y + 0.2f, "stroke 2 comes down overhead");
+        SwordPose g = gunkit::swordPose(-1, -1.f, true, 0.f, 0.f), r = gunkit::swordPose(-1, -1.f, false, 0.f, 0.f);
+        CHECK(std::fabs(g.offset.x) < std::fabs(r.offset.x) && std::fabs(g.roll) > 60.f, "raised: the blade across the middle of the screen");
     }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");
