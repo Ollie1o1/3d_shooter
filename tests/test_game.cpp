@@ -1800,7 +1800,7 @@ int main() {
       auto husk = simulate(L, grid, EnemyType::HUSK, {-26, 6.05f, -156.f}, below, S, 15.f);
       auto rip = simulate(L, grid, EnemyType::RIPPER, {26, 6.05f, -156.f}, below, S, 15.f);
       std::printf("      summit sentinel lowest y=%.1f, ledge husk lowest y=%.1f, ledge ripper lowest y=%.1f\n", sen.minY, husk.minY, rip.minY);
-      CHECK(sen.minY > 25.5f && sen.shots >= 3, "a Sentinel on the Spire's summit holds it and keeps firing");
+      CHECK(sen.minY > 25.5f, "a Sentinel on the Spire's summit holds it");
       CHECK(husk.minY > 5.5f, "a Husk on a ledge doesn't walk off it");
       CHECK(rip.minY < 0.5f, "a Ripper on a ledge drops down to chase you"); }
 
@@ -4483,6 +4483,20 @@ int main() {
                   "in the eclipse a crash comes back down a second time, re-aimed after a short tell, and only the second beaches it");
         }
     }
+
+    // A Sentinel on the Spire's summit keeps firing at you below, every time and
+    // not with lucky dice: the summit's own lip and a platform under it hide
+    // you, so it has to walk to the edge and take the gap when it opens.
+    // (Last, because it reseeds rand() and would change every later test's dice)
+    { const Arena& S = L.arenas[2];
+      int held = 0, fewest = 1 << 30;
+      for (int seed = 0; seed < 20; ++seed) {
+          srand(2000 + seed);
+          auto s = simulate(L, grid, EnemyType::SENTINEL, {0, 26.05f, -156.f}, {0.f, 0.f, -134.f}, S, 15.f);
+          held += s.minY > 25.5f && s.shots >= 3; fewest = std::min(fewest, s.shots);
+      }
+      std::printf("      summit sentinel: %d/20 hold it and fire 3+ rounds in 15 s, fewest %d\n", held, fewest);
+      CHECK(held == 20, "a Sentinel on the Spire's summit holds it and keeps firing"); }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;
