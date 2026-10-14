@@ -3245,14 +3245,16 @@ int main() {
             CHECK(noBlast && volleyed && m.attack == AttackKind::DETONATE && m.telegraphTimer > 1.f,
                   "the meltdown never goes off unannounced: the attack landing that tick lands, then the meltdown winds up");
         }
-        {   // the lunge can be punched as it reaches you
-            Enemy u(EnemyType::WARDEN, R + glm::vec3{9, 0, 0}); u.spawnTimer = 0.f; u.state = EnemyState::ACTIVE;
+        {   // the lunge can be punched as it reaches you (a clear run north of the
+            // reactor: with the pedestal between you it goes round first, tested below)
+            EnemyWorld lw = worldFor(L, grid, R + glm::vec3{-9, 0, -12}, BOSS); lw.reactor = R; lw.hasReactor = true;
+            Enemy u(EnemyType::WARDEN, R + glm::vec3{9, 0, -12}); u.spawnTimer = 0.f; u.state = EnemyState::ACTIVE;
             u.wardenPhase = 3; u.meltClock = 40.f; u.health = u.maxHealth * 0.2f;
             bool punchable = false;
             for (int f = 0; f < 60 * 15 && !punchable; ++f) {
-                u.update(DT, cw);
+                u.update(DT, lw);
                 glm::vec3 mid = u.position + glm::vec3{0, u.height() * 0.5f, 0};
-                if (u.parryWindow() && glm::length(mid - cw.playerEye) < 5.5f) punchable = true;
+                if (u.parryWindow() && glm::length(mid - lw.playerEye) < 5.5f) punchable = true;
             }
             CHECK(punchable, "a lunge can be punched within the parry's reach as it arrives");
         }
@@ -4482,6 +4484,55 @@ int main() {
             CHECK(landed == 2 && !firstBeached && secondBeached && follow >= Enemy::TELL_FLOOR_FOLLOW && follow < 0.75f && glm::length(t1 - t2) > 0.5f,
                   "in the eclipse a crash comes back down a second time, re-aimed after a short tell, and only the second beaches it");
         }
+    }
+
+    // The Warden's meltdown goes round the reactor: with the pedestal (or the
+    // core on it) between you, it walks round to a clear run and lunges from
+    // there (or, that close, slams), instead of pressing into the pedestal or
+    // lunging into it. Every time, from several sides (last-but-one: it
+    // reseeds rand())
+    {
+        const glm::vec3 R = L.reactorPos, G{R.x, 0.f, R.z};
+        auto meltdown = [&](glm::vec3 from, glm::vec3 feet, float seconds) {
+            struct Out { bool punchable = false, attacked = false; } o;   // punchable: a lunge in reach, or a slam that catches you
+            EnemyWorld w = worldFor(L, grid, feet, BOSS); w.reactor = R; w.hasReactor = true;
+            Enemy u(EnemyType::WARDEN, from); u.spawnTimer = 0.f; u.state = EnemyState::ACTIVE;
+            u.wardenPhase = 3; u.meltClock = 40.f; u.health = u.maxHealth * 0.2f;
+            for (int f = 0; f < (int)(seconds / DT) && !o.punchable; ++f) {
+                u.update(DT, w);
+                glm::vec3 mid = u.position + glm::vec3{0, u.height() * 0.5f, 0};
+                if (u.parryWindow() && glm::length(mid - w.playerEye) < 5.5f) o.punchable = true;
+                if (u.ev.slam && glm::length(glm::vec2(u.position.x - feet.x, u.position.z - feet.z)) <= u.ev.slamRadius) o.punchable = true;   // or close enough to slam you
+                o.attacked |= u.ev.shots > 0 || u.ev.slam || u.ev.meleeHit || u.ev.dashStarted;
+            }
+            return o;
+        };
+        struct Case { glm::vec3 player, warden; const char* what; };
+        const Case cases[] = {
+            {G + glm::vec3{-9, 0, 0},  G + glm::vec3{9, 0, 0},   "straight across"},
+            {G + glm::vec3{-9, 0, 0},  G + glm::vec3{9, 0, 5},   "across, off-centre"},
+            {G + glm::vec3{0, 0, -10}, G + glm::vec3{0, 0, 10},  "across, north-south"},
+            {G + glm::vec3{0, 0, -10}, G + glm::vec3{-6, 0, 9},  "across, a corner"},
+        };
+        int made = 0, runs = 0;
+        for (const Case& c : cases)
+            for (int seed = 0; seed < 20; ++seed) {
+                srand(3000 + seed);
+                bool ok = meltdown(c.warden, c.player, 15.f).punchable;
+                made += ok; ++runs;
+                if (!ok && seed < 3) std::printf("      warden round the reactor (%s), seed %d: never punchable\n", c.what, seed);
+            }
+        std::printf("      warden round the reactor: %d/%d runs reach you (a punchable lunge or a slam that catches you) in 15 s\n", made, runs);
+        CHECK(made == runs, "in its meltdown the Warden goes round the reactor and gets to you, every time");
+
+        // You up on the pedestal, the core between you: it still comes for you
+        int attacked = 0;
+        for (int seed = 0; seed < 20; ++seed) {
+            srand(4000 + seed);
+            attacked += meltdown(G + glm::vec3{0, 0, 10}, glm::vec3{R.x, 1.5f, R.z - 3.5f}, 15.f).attacked;
+        }
+        std::printf("      warden vs a player on the pedestal: %d/20 runs attack\n", attacked);
+        CHECK(attacked == 20, "with you up on the reactor's pedestal the Warden still attacks");
     }
 
     // A Sentinel on the Spire's summit keeps firing at you below, every time and
