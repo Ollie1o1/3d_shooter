@@ -405,6 +405,7 @@ struct Enemy {
     bool  atReactor    = false;
     glm::vec3 reactorSpot{0.f};
     float spotBest = 1e9f, spotAt = 0.f;   // its walk to the reactor: closest yet, and when
+    glm::vec3 roundTo{0.f}; bool rounding = false;   // meltdown: the corner it's going round (EnemyWarden.h)
     // REVENANT: how many times its soul has come back (the third death is final)
     int   reforms = 0;
     // LEVIATHAN (EnemyLeviathan.h): `position` is its head's centre; the body

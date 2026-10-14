@@ -15,10 +15,50 @@
 //                        hurts you and heals to 25 %).
 // =============================================================================
 
+// The meltdown's way round the reactor. A "run" is the straight line along the
+// floor from a to b, as wide as the Warden: the first static box in its way, or
+// -1 when it's clear. Moving platforms and anything you're standing on top of
+// don't count (up on the pedestal, the pedestal isn't between you)
+inline int wardenRunBlocker(glm::vec3 a, glm::vec3 b, float girth, float standY, const EnemyWorld& w) {
+    if (!w.walls) return -1;
+    glm::vec3 from{a.x, a.y + 0.6f, a.z}, d{b.x - a.x, 0.f, b.z - a.z};
+    float len = glm::length(d);
+    if (len < 1e-3f) return -1;
+    d /= len;
+    int best = -1; float bestT = len;
+    for (int i = 0; i < w.wallCount; ++i) {
+        const Wall& wl = w.walls[i];
+        if (wl.dynamic || wl.box.max.y <= standY + 0.05f || wl.box.max.y <= from.y || wl.box.min.y > from.y) continue;
+        AABB fat{wl.box.min - glm::vec3{girth, 0.f, girth}, wl.box.max + glm::vec3{girth, 0.f, girth}};
+        float t = rayBoxHit(from, d, fat);
+        if (t > 0.f && t < bestT) { bestT = t; best = i; }
+    }
+    return best;
+}
+
+// Round box b to p: the corner of b (stood off by the Warden's girth and a
+// margin) it can walk to in a straight line that makes the shortest way to p.
+// Not the corner it's at (or it would stay there). False if none is reachable
+inline bool wardenCorner(glm::vec3 pos, glm::vec3 p, const AABB& b, float girth, float standY,
+                         const EnemyWorld& w, glm::vec3& out) {
+    const float m = girth + 1.f;
+    float best = 1e9f;
+    for (int k = 0; k < 4; ++k) {
+        glm::vec3 c{(k & 1) ? b.max.x + m : b.min.x - m, pos.y, (k & 2) ? b.max.z + m : b.min.z - m};
+        float toC = glm::length(glm::vec2(c.x - pos.x, c.z - pos.z));
+        if (toC < 0.5f || wardenRunBlocker(pos, c, girth * 0.9f, standY, w) >= 0) continue;
+        float len = toC + glm::length(glm::vec2(p.x - c.x, p.z - c.z));
+        if (len < best) { best = len; out = c; }
+    }
+    return best < 1e9f;
+}
+
 inline void Enemy::thinkWarden(float dt, const EnemyWorld& w, bool resolve) {
     const float hp = health / maxHealth;
     glm::vec3 to = flatTo(w.playerFeet);
     float d = glm::length(to);
+    // In the meltdown: is there a clear run at you (the lunge needs one)?
+    const int runBlocker = wardenPhase == 3 ? wardenRunBlocker(position, w.playerFeet, radius(), w.playerFeet.y, w) : -1;
     // ---- phases ----
     if (wardenPhase == 1 && hp <= W_PHASE2) {
         wardenPhase = 2; ev.wPhase = 2; ev.enraged = true; phaseHold = PHASE_PAUSE;
@@ -79,8 +119,24 @@ inline void Enemy::thinkWarden(float dt, const EnemyWorld& w, bool resolve) {
         glm::vec3 side{-dir.z, 0.f, dir.x};
         strafeTimer -= dt;
         if (strafeTimer <= 0.f) { strafeTimer = frand(3.f, 5.f); strafeDir = -strafeDir; }
-        glm::vec3 mv = d > 11.f ? dir + side * strafeDir * 0.4f : side * strafeDir;
-        setMove(mv, speed, w);
+        // Committed to a corner until it gets there or can't (re-picking every
+        // tick, two near-equal corners would have it dither between them)
+        if (runBlocker < 0) rounding = false;
+        else if (rounding && (glm::length(glm::vec2(roundTo.x - position.x, roundTo.z - position.z)) < 0.5f ||
+                              wardenRunBlocker(position, roundTo, radius() * 0.9f, w.playerFeet.y, w) >= 0))
+            rounding = false;
+        if (runBlocker >= 0 && !rounding)
+            rounding = wardenCorner(position, w.playerFeet, w.walls[runBlocker].box, radius(), w.playerFeet.y, w, roundTo);
+        if (rounding) {
+            // Something between you (the reactor's pedestal, a pillar): round it
+            // by its nearer corner, not into it. steer() directly: setMove's
+            // detours would turn it back toward you, into the pedestal again
+            glm::vec3 g = steer(flatTo(roundTo), w) * speed * tune_->moveSpeed;
+            velocity.x = g.x; velocity.z = g.z;
+        } else {
+            glm::vec3 mv = d > 11.f ? dir + side * strafeDir * 0.4f : side * strafeDir;
+            setMove(mv, speed, w);
+        }
         animPhase += dt * 3.f;
     }
     turnToward(to, dt, wardenPhase == 3 ? 3.f : 2.f);
@@ -141,6 +197,12 @@ inline void Enemy::thinkWarden(float dt, const EnemyWorld& w, bool resolve) {
     // ---- what it starts next (overloaded: once it's at the reactor) ----
     if (wardenPhase == 2 && !atReactor) return;
     if (!attackReady(dt / quick)) return;
+    // A lunge needs a clear run at you: blocked, it holds the lunge, keeps
+    // going round and tries again shortly (it would only dash into the pedestal)
+    if (wardenPhase == 3 && d >= 8.f && sinceVent < 3 && (attackCount + 1) % 2 == 1 && runBlocker >= 0) {
+        attackTimer = stats().attackEvery - 0.35f;
+        return;
+    }
     ++attackCount;
     if (sinceVent >= 3 && wardenPhase != 2) { sinceVent = 0; startAttack(AttackKind::WVENT, 0.6f); return; }
     ++sinceVent; ++wardenAttacks;
