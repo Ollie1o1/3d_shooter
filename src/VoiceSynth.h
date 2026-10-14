@@ -57,6 +57,7 @@ inline Profile profileOf(EnemyType t) {
         case EnemyType::REVENANT:     return {165.f, Vowel::OO,   3, 1.05f, Body::ARMOUR,     700.f, 0.35f};
         case EnemyType::WEAVER:       return {  0.f, Vowel::NONE, 0, 1.00f, Body::SKITTER,   1600.f, 0.30f};
         case EnemyType::LEVIATHAN:    return { 41.f, Vowel::OO,   6, 0.70f, Body::GRIND,       70.f, 1.00f};   // a whale's groan through grinding plates
+        case EnemyType::ABSOLUTE:     return {523.f, Vowel::EE,   5, 1.10f, Body::HUM,       1200.f, 0.40f};   // a bright high choir over a hum of light
         default:                      return {};
     }
 }

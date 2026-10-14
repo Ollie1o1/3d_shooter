@@ -69,6 +69,7 @@ inline HumanoidLook humanoidDims(EnemyType t) {
     case EnemyType::ANCHOR:     return {0.95f, 0.4f,  0.5f,  0.2f,  1.05f, 1.25f, 0.8f,  0.4f,  1.15f, 0.4f,  {}, {}, {}};
     case EnemyType::PENITENT:   return {4.5f,  1.35f, 1.9f,  0.75f, 4.25f, 4.5f,  2.5f,  1.5f,  5.5f,  1.1f,  {}, {}, {}};
     case EnemyType::REVENANT:   return {1.1f,  0.16f, 0.21f, 0.12f, 0.7f,  0.46f, 0.26f, 0.3f,  0.8f,  0.13f, {}, {}, {}};   // gaunt, long-limbed
+    case EnemyType::ABSOLUTE:   return {1.15f, 0.19f, 0.3f,  0.15f, 0.85f, 0.62f, 0.32f, 0.3f,  1.0f,  0.16f, {}, {}, {}};   // a lean athlete's build, broad shoulders
     default:                    return {};
     }
 }
@@ -626,6 +627,11 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         r.box(sh, {0.f, 0.1f, 0.09f},   {0.1f, 0.6f, 0.03f}, bronze * 0.5f, glow * 1.2f);   // sigil
         r.box(sh, {0.f, 0.1f, 0.09f},   {0.36f, 0.1f, 0.03f}, bronze * 0.5f, glow * 1.2f);
         r.box(f.head, {0.f, L.headS + 0.06f, -0.02f}, {0.06f, 0.14f, 0.3f}, bronze);        // helmet crest
+        break;
+    }
+    case EnemyType::ABSOLUTE: {   // provisional: Gameplay_Absolute's task builds the detailed rig
+        HumanoidLook L = humanoidLook(e.type, st.color, st.color * 0.8f, glow);
+        humanoid(r, root, L, e.animPhase, stride, ArmPose::SWING, 0.f);
         break;
     }
     case EnemyType::SOVEREIGN: {

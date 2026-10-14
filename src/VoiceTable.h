@@ -16,7 +16,7 @@ enum class VoiceKind : uint8_t { SPAWN, IDLE, MOVE, TELL, ATTACK, HURT, DEATH, S
 inline const char* voiceKey(EnemyType t) {
     static const char* K[] = {"husk", "ripper", "sentinel", "raptor", "brute", "mite", "juggernaut", "warden",
                               "sovereign", "shieldbearer", "conduit", "conductor", "seraph", "anchor", "penitent",
-                              "revenant", "weaver", "leviathan"};
+                              "revenant", "weaver", "leviathan", "absolute"};
     static_assert(sizeof(K) / sizeof(K[0]) == (size_t)EnemyType::COUNT, "a voice key per enemy type");
     return (int)t < (int)EnemyType::COUNT ? K[(int)t] : "any";
 }
@@ -90,7 +90,7 @@ inline bool hasRelease(AttackKind k) {
 
 // Steps (or wingbeats) a second at full speed; 0: it doesn't move
 inline float moveCadence(EnemyType t) {
-    static const float C[] = {2.2f, 7.f, 1.5f, 3.f, 1.4f, 9.f, 1.2f, 1.f, 2.4f, 1.8f, 0.f, 2.f, 1.6f, 1.f, 0.7f, 2.6f, 5.f, 0.f};
+    static const float C[] = {2.2f, 7.f, 1.5f, 3.f, 1.4f, 9.f, 1.2f, 1.f, 2.4f, 1.8f, 0.f, 2.f, 1.6f, 1.f, 0.7f, 2.6f, 5.f, 0.f, 3.f};
     static_assert(sizeof(C) / sizeof(C[0]) == (size_t)EnemyType::COUNT, "a cadence per enemy type");
     return C[(int)t];
 }

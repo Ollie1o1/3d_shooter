@@ -56,8 +56,9 @@
 // CONDUCTOR: doesn't attack either; it tethers nearby allies and shields them
 // (linkConductors below), so it's the one to kill first.
 enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, JUGGERNAUT, WARDEN, SOVEREIGN, SHIELDBEARER, CONDUIT,
-                       CONDUCTOR, SERAPH, ANCHOR, PENITENT, REVENANT, WEAVER, LEVIATHAN, COUNT };
-inline bool isBoss(EnemyType t) { return t == EnemyType::WARDEN || t == EnemyType::SOVEREIGN || t == EnemyType::PENITENT || t == EnemyType::LEVIATHAN; }
+                       CONDUCTOR, SERAPH, ANCHOR, PENITENT, REVENANT, WEAVER, LEVIATHAN, ABSOLUTE, COUNT };
+inline bool isBoss(EnemyType t) { return t == EnemyType::WARDEN || t == EnemyType::SOVEREIGN || t == EnemyType::PENITENT || t == EnemyType::LEVIATHAN ||
+                                         t == EnemyType::ABSOLUTE; }
 
 // Hollowed variants (Act II): a regular enemy made harder in one specific way.
 //   ENRAGED  faster, shorter wind-ups, hits harder
@@ -160,6 +161,9 @@ inline const EnemyStats& statsOf(EnemyType t) {
         {"LEVIATHAN", 15000.f, 3.0f, 5.2f, 0.f, 1.1f, 1.9f, false,   // radius/height: the head's box
          {0.2f,0.18f,0.21f}, {1.4f,1.0f,0.6f}, {0.3f,1.1f,0.9f},
          "DASH THE CRASH - SHOOT THE EYE WHILE IT'S DOWN"},
+        {"THE ABSOLUTE", 9000.f, 0.6f, 2.6f, 11.f, 0.45f, 0.9f, false,   // the encore (EnemyAbsolute.h)
+         {0.95f,0.95f,0.98f}, {1.6f,1.5f,1.2f}, {1.6f,1.55f,1.4f},
+         "WHITE: PARRY  GOLD: DODGE OR BLOCK  RED: GET OUT"},
     };
     return S[(int)t];
 }

@@ -482,7 +482,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
         case EnemyType::BRUTE:  for (int i = 0; i < 3; ++i) drop(PickupKind::ORB);
                                 if (rand() % 100 < 50) drop(PickupKind::POTION); break;
         case EnemyType::MITE:   if (rand() % 10 == 0) drop(PickupKind::ORB); break;
-        case EnemyType::WARDEN: case EnemyType::SOVEREIGN: case EnemyType::LEVIATHAN: break;
+        case EnemyType::WARDEN: case EnemyType::SOVEREIGN: case EnemyType::LEVIATHAN: case EnemyType::ABSOLUTE: break;
         case EnemyType::CONDUIT: drop(PickupKind::ORB); drop(PickupKind::ORB); break;
         case EnemyType::CONDUCTOR: drop(PickupKind::ORB); break;
         case EnemyType::ANCHOR: drop(PickupKind::ORB); drop(PickupKind::ORB); break;

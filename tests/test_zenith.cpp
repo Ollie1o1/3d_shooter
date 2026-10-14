@@ -3,6 +3,9 @@
 // Built and run by `make test` after test_game.
 #include "../src/Sword.h"
 #include "../src/GunKit.h"
+#include "../src/LevelAct2.h"
+#include "../src/MusicSynth.h"
+#include <string>
 #include <cstdio>
 #include <cmath>
 
@@ -181,6 +184,42 @@ int main() {
         CHECK(!swordKeyAllowed(false, true, 4, 5) && !swordKeyAllowed(false, false, 5, 5),
               "key 5 outside the Zenith keeps the gun");
         CHECK(swordKeyAllowed(true, false, 0, 5), "--sword allows it anywhere (dev)");
+    }
+
+    // ---------------------------------------------------------------- the Zenith
+    LevelData N = buildAct2Level();
+    SpatialGrid g; g.build(N.walls);
+    const glm::vec3 ZC = zenithCentre();
+    {
+        CHECK(N.arenas.size() == 6 && std::string(N.arenas[ZENITH_ARENA].name) == "THE ZENITH", "a sixth Act II arena: the Zenith");
+        const Arena& Z = N.arenas[ZENITH_ARENA];
+        CHECK(Z.waves.size() == 1 && Z.waves[0][0].type == EnemyType::ABSOLUTE && Z.maxAlive == 1 && Z.space == ReverbSpace::OPEN,
+              "one wave, THE ABSOLUTE, alone, under an open sky");
+        CHECK(std::fabs(Z.voidY - (ZC.y - 40.f)) < 1e-3f && Z.hasRespawn, "the void below, a respawn on the floor");
+        CHECK(N.arenaAt(Z.playerStart) == ZENITH_ARENA && N.arenaAt(zenithShard(3)) == ZENITH_ARENA,
+              "the Zenith's start and shards belong to the Zenith (arenaAt is XZ-only: it must not overlap the Maw)");
+        auto floorAt = [&](glm::vec3 p) { return N.groundAt(p.x, p.z, p.y + 3.f); };
+        bool floorOk = true;
+        for (int k = 0; k < 16; ++k) for (float r : {12.f, 25.f, 40.f}) {
+            float a = k * 0.3926991f;
+            glm::vec3 p = ZC + glm::vec3{std::cos(a) * r, 0.5f, std::sin(a) * r};
+            if (N.zenithPillarAt(p, 0.5f) >= 0) continue;
+            if (std::fabs(floorAt(p) - ZC.y) > 0.05f) floorOk = false;
+        }
+        CHECK(floorOk, "the floor is at the centre's height from r 9 to 44, all the way round");
+        CHECK(std::fabs(floorAt(ZC + glm::vec3{0.f, 2.f, 3.f}) - (ZC.y + ZEN_DAIS_UP)) < 0.05f, "the Dais is raised 1.2 m");
+        CHECK(floorAt(ZC + glm::vec3{48.f, 2.f, 0.f}) < ZC.y - 30.f, "a gap past the floor's edge (the void)");
+        CHECK(N.zenith.pillarWalls.size() == 8 && N.zenith.shardWalls.size() == 6, "eight pillars, six shards");
+        bool shardsOk = true;
+        for (int k = 0; k < 6; ++k) { glm::vec3 s = zenithShard(k); if (std::fabs(floorAt(s + glm::vec3{0, 3, 0}) - s.y) > 0.05f || !N.onZenithShard(s)) shardsOk = false; }
+        CHECK(shardsOk, "each shard is a floor you can stand on");
+        N.parkZenithPiece(false, 0);
+        CHECK(N.zenithPillarAt(zenithPillar(0), 0.5f) < 0 && !N.zenith.pillarUp[0], "a shattered pillar is gone: no collision");
+        N.parkZenithPiece(true, 2);
+        CHECK(!N.onZenithShard(zenithShard(2)), "a fallen shard is gone");
+        N.restoreZenith();
+        CHECK(N.zenithPillarAt(zenithPillar(0), 0.5f) == 0 && N.onZenithShard(zenithShard(2)), "a retry puts them back");
+        CHECK(MUSIC_TRACKS == 11 && std::string(musicTrack(10).name) == "ZENITH" && musicTrack(10).bpm >= 165.f, "the Zenith's own fast track");
     }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");
