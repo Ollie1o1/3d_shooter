@@ -67,7 +67,8 @@ public:
         base[3] = glm::vec4(cam.position + right * P.offset.x + up * P.offset.y + fwd * P.offset.z, 1.f);
         base = base * glm::rotate(glm::mat4(1.f), glm::radians(P.yaw), glm::vec3{0.f, 1.f, 0.f})
                     * glm::rotate(glm::mat4(1.f), glm::radians(P.pitch), glm::vec3{-1.f, 0.f, 0.f})
-                    * glm::rotate(glm::mat4(1.f), glm::radians(P.roll), glm::vec3{0.f, 0.f, 1.f});
+                    * glm::rotate(glm::mat4(1.f), glm::radians(P.roll), glm::vec3{0.f, 0.f, 1.f})
+                    * glm::scale(glm::mat4(1.f), glm::vec3{0.55f});   // a 1 m blade, framed like the guns
         glm::mat4 vmProj = glm::perspective(glm::radians(65.f), cam.aspectRatio, 0.03f, 10.f);
         glClear(GL_DEPTH_BUFFER_BIT);   // the sword always draws on top
         lastEmissive = glm::vec3{-1.f};

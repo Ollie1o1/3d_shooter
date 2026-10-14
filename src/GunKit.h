@@ -483,8 +483,8 @@ inline void buildSword(const SwordLook& L, std::vector<GunPart>& out) {
 // Where the sword sits on screen (camera space, as hipOf) through a stroke:
 // u 0..1 through it, or -1 at rest; raised: across the middle, edge up
 inline SwordPose swordPose(int stroke, float u, bool raised, float charge01, float thrust01) {
-    SwordPose p{{0.17f, -0.16f, 0.32f}, -8.f, 12.f, -18.f};   // at rest: low right, the point up and in
-    if (raised) return {{0.02f, -0.12f, 0.36f}, 0.f, 4.f, -82.f};
+    SwordPose p{{0.19f, -0.2f, 0.34f}, -14.f, 58.f, -12.f};   // at rest: low right, the point up and in
+    if (raised) return {{0.06f, -0.11f, 0.4f}, -78.f, 8.f, -82.f};   // across the screen, edge out
     if (thrust01 > 0.f) return {{0.06f, -0.12f, 0.36f + 0.2f * thrust01}, 0.f, -2.f, -10.f};
     if (charge01 > 0.f && u < 0.f) { p.offset += vec3{0.05f, 0.03f, -0.08f} * charge01; p.pitch += 30.f * charge01; return p; }
     if (u < 0.f) return p;

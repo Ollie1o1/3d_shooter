@@ -401,7 +401,8 @@ int main(int argc, char* argv[]) {
     // into the FAST time trial, --endless an ENDLESS run, --daily today's DAILY, --act2 ACT II. --arena N starts at a later arena / section
     // (implies --play), --wave N skips to a wave within it, --god disables
     // damage (for footage), --dev opens the level select. Dev: --cam X Y Z
-    // YAW PITCH, --shot FRAMES FILE.BMP, --audiodump FILE.WAV SECONDS (record the mix, then quit)
+    // YAW PITCH, --shot FRAMES FILE.BMP, --audiodump FILE.WAV SECONDS (record the mix, then quit),
+    // --sword (the sword on key 5 in any arena)
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--play") app->pending = App::NextState::Game;
@@ -424,6 +425,7 @@ int main(int argc, char* argv[]) {
         }
         if (arg == "--weapon" && i + 1 < argc) g_devWeapon = std::atoi(argv[++i]) - 1;
         if (arg == "--aim") g_devAim = true;
+        if (arg == "--sword") g_devSword = true;   // the sword (key 5) anywhere, for testing it
         if (arg == "--spawn" && i + 1 < argc) g_devSpawns.push_back(std::atoi(argv[++i]));
         if (arg == "--hollow" && i + 1 < argc) g_devHollow = std::atoi(argv[++i]) & 3;
         if (arg == "--overlay" && i + 1 < argc) g_devOverlay = argv[++i];

@@ -28,6 +28,8 @@
 // =============================================================================
 #include "Level.h"
 
+static constexpr int ZENITH_ARENA = 5;   // the encore: the sixth Act II arena, above the eclipse (buildZenith)
+
 inline void buildDescent(LevelBuilder& B);
 inline void buildReliquary(LevelBuilder& B);
 inline void buildMaw(LevelBuilder& B);

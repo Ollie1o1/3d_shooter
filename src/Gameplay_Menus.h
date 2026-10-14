@@ -74,8 +74,8 @@ inline void GameplayState::padButton(Uint8 b) {
         case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:  pendingGrapple = true; break;
         case SDL_CONTROLLER_BUTTON_DPAD_UP:       pendingGrenade = true; break;
         case SDL_CONTROLLER_BUTTON_DPAD_DOWN:     key(SDLK_v); break;
-        case SDL_CONTROLLER_BUTTON_DPAD_LEFT:     trySwitch((activeWeapon + WEAPON_COUNT - 1) % WEAPON_COUNT); break;
-        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:    trySwitch((activeWeapon + 1) % WEAPON_COUNT); break;
+        case SDL_CONTROLLER_BUTTON_DPAD_LEFT:     holsterSword(); trySwitch((activeWeapon + WEAPON_COUNT - 1) % WEAPON_COUNT); break;
+        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:    holsterSword(); trySwitch((activeWeapon + 1) % WEAPON_COUNT); break;
         default: break;
     }
 }
@@ -177,16 +177,18 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
     }
     // Grapple on its own button (Q by default, see Settings). Right mouse is
     // only ever aim (rifles), so scoping and grappling never fight over it.
-    if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) pendingFire = true;
+    if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT && !swordOut) pendingFire = true;   // (the sword reads the button itself)
     {
         GameSettings def;
         const GameSettings& gs = settings ? *settings : def;
         if (key != SDLK_UNKNOWN && gs.isGrappleEvent(0, (int)key)) pendingGrapple = true;
         if (e.type == SDL_MOUSEBUTTONDOWN && gs.isGrappleEvent(1, e.button.button)) pendingGrapple = true;
     }
-    if (e.type == SDL_MOUSEWHEEL && e.wheel.y != 0)
+    if (e.type == SDL_MOUSEWHEEL && e.wheel.y != 0 && swordOut) holsterSword();
+    else if (e.type == SDL_MOUSEWHEEL && e.wheel.y != 0)
         trySwitch((activeWeapon + (e.wheel.y > 0 ? WEAPON_COUNT - 1 : 1)) % WEAPON_COUNT);
-    if (key >= SDLK_1 && key <= SDLK_4) trySwitch(key - SDLK_1);
+    if (key >= SDLK_1 && key <= SDLK_4) { holsterSword(); trySwitch(key - SDLK_1); }
+    if (key == SDLK_5) drawSword();
     if (key == SDLK_g) pendingGrenade = true;
     if (key == SDLK_v && pendingWeapon < 0 && !weapons[activeWeapon].reloading) viewModel.triggerInspect();
     if (e.type == SDL_MOUSEMOTION && !g_devNoMouse) {

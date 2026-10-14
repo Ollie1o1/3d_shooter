@@ -175,6 +175,14 @@ int main() {
         CHECK(std::fabs(g.offset.x) < std::fabs(r.offset.x) && std::fabs(g.roll) > 60.f, "raised: the blade across the middle of the screen");
     }
 
+    // ---------------------------------------------------------------- the sword: where it can be drawn
+    {
+        CHECK(swordKeyAllowed(false, true, 5, 5), "key 5 in the Zenith draws the sword");
+        CHECK(!swordKeyAllowed(false, true, 4, 5) && !swordKeyAllowed(false, false, 5, 5),
+              "key 5 outside the Zenith keeps the gun");
+        CHECK(swordKeyAllowed(true, false, 0, 5), "--sword allows it anywhere (dev)");
+    }
+
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;
 }

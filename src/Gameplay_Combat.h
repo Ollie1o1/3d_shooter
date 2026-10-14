@@ -54,33 +54,36 @@ inline void GameplayState::pinnedCue() {
     ui.feed("PINNED - NO DASH OR GRAPPLE", {1.f, 0.3f, 0.3f});
 }
 
+// A projectile parried (the punch, or the sword's parry): sent back where you
+// look, or homing into the Warden's core / the Leviathan's eye
+inline void GameplayState::reflectProjectile(int pi, glm::vec3 fwd) {
+    Projectile& p = projSystem.pool[pi];
+    float speed = std::max(40.f, glm::length(p.velocity) * 2.f);
+    p.isPlayer = true;
+    p.parried  = true;
+    for (auto& o : enemies) if (o.alive && o.uid == p.owner && o.halo) { breakHalo(o); break; }
+    p.velocity = fwd * speed;                        // it goes where you look
+    for (auto& o : enemies) if (o.alive && o.uid == p.owner && (o.type == EnemyType::WARDEN || o.type == EnemyType::LEVIATHAN)) { p.homeOn = o.uid; break; }   // ...or into the Warden's core, the Leviathan's eye
+    p.lifetime = 4.f;
+    if (p.heavy) {
+        p.damage = p.parryDamage > 0.f ? p.parryDamage : 400.f; p.size *= 1.3f; p.emissiveColor = {1.6f, 1.1f, 0.3f};
+        styleSystem.addStyle(60.f, StyleSource::PARRY);
+        ui.toast("HEAVY PARRY", "", {1.f, 0.8f, 0.2f}, 1.2f);
+    } else {
+        p.damage = p.parryDamage > 0.f ? p.parryDamage : 60.f; p.emissiveColor = {1.f, 0.9f, 0.3f};
+        styleSystem.addStyle(25.f, StyleSource::PARRY);
+        ui.feed("PARRY", {1.f, 0.9f, 0.3f});
+    }
+    parryFeedback(p.position, p.heavy);
+}
+
 inline void GameplayState::punch(int boostable) {
     punchCooldown = PARRY_COOLDOWN;
     glm::vec3 eye = player.camera.position, fwd = player.camera.forward();
 
     if (catchSoulWithPunch()) return;   // a fleeing soul within reach, taken bare-handed
     int pi = findParryTarget();
-    if (pi >= 0) {
-        Projectile& p = projSystem.pool[pi];
-        float speed = std::max(40.f, glm::length(p.velocity) * 2.f);
-        p.isPlayer = true;
-        p.parried  = true;
-        for (auto& o : enemies) if (o.alive && o.uid == p.owner && o.halo) { breakHalo(o); break; }
-        p.velocity = fwd * speed;                        // it goes where you look
-        for (auto& o : enemies) if (o.alive && o.uid == p.owner && (o.type == EnemyType::WARDEN || o.type == EnemyType::LEVIATHAN)) { p.homeOn = o.uid; break; }   // ...or into the Warden's core, the Leviathan's eye
-        p.lifetime = 4.f;
-        if (p.heavy) {
-            p.damage = p.parryDamage > 0.f ? p.parryDamage : 400.f; p.size *= 1.3f; p.emissiveColor = {1.6f, 1.1f, 0.3f};
-            styleSystem.addStyle(60.f, StyleSource::PARRY);
-            ui.toast("HEAVY PARRY", "", {1.f, 0.8f, 0.2f}, 1.2f);
-        } else {
-            p.damage = p.parryDamage > 0.f ? p.parryDamage : 60.f; p.emissiveColor = {1.f, 0.9f, 0.3f};
-            styleSystem.addStyle(25.f, StyleSource::PARRY);
-            ui.feed("PARRY", {1.f, 0.9f, 0.3f});
-        }
-        parryFeedback(p.position, p.heavy);
-        return;
-    }
+    if (pi >= 0) { reflectProjectile(pi, fwd); return; }
     for (auto& e : enemies) {
         if (!e.targetable() || !e.parryWindow()) continue;
         glm::vec3 d = e.position + glm::vec3{0, e.height() * 0.5f, 0} - eye;

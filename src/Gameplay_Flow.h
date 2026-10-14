@@ -105,7 +105,9 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     if (fast()) ghost.load();
     if (fast() && start == 0) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
     if (g_devCam) countdown = 0.f;
-    if (g_devWeapon >= 0) activeWeapon = g_devWeapon % WEAPON_COUNT;
+    if (g_devWeapon >= 0 && g_devWeapon < WEAPON_COUNT) activeWeapon = g_devWeapon;
+    if (g_devWeapon == WEAPON_COUNT) drawSword();   // --weapon 5: the sword in hand (where it's allowed)
+    if (g_devOverlay == "guard" && swordOut) { sword.raised = true; sword.raisedFor = 1.f; sword.guard = 55.f; }   // (screenshots)
     if (g_devAim) aim = 1.f;
     if (g_devOverlay == "armory") { prog.points = 3; prog.up[2].tier[0] = 2; prog.up[3].mod = true; armoryOpen = true; armoryW = 2; }
     if (g_devOverlay == "pause") paused = true;
@@ -189,6 +191,7 @@ inline void GameplayState::enterArena(int a) {
     sov.clear(); lastStand = false; lastStandT = 0.f;
     banners.clear();
     grapple.release();
+    holsterSword(); sword = Sword{};
     playerDead = false; deadTimer = 0.f;
     victory = false; victoryDelay = -1.f;
     finishOpen = false;

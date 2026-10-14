@@ -204,20 +204,23 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
     for (auto& sl : fx.slashes) {
         float reveal = std::min(1.f, sl.t / 0.1f), fade = 1.f - sl.t / Effects::SLASH_LIFE;
         const int N = 18;
-        glm::vec3 hot = glm::vec3{1.9f, 1.4f, 0.8f} * fade * 2.f;
+        const bool mine = sl.kind >= 10;                           // the player's sword (Gameplay_Sword.h): smaller, rose
+        const int kind = sl.kind % 10;
+        const float sc = mine ? 0.5f : 1.f, lift = mine ? -1.0f : 0.f;
+        glm::vec3 hot = (mine ? gunkit::SWORD_GLOW * 1.4f : glm::vec3{1.9f, 1.4f, 0.8f}) * fade * 2.f;
         for (int i = 0; i < N; ++i) {
             float u = (i + 0.5f) / N;
             if (u > reveal) break;
             float w = 1.f - std::fabs(u * 2.f - 1.f);              // thickest mid-arc
-            if (sl.kind == 2) {                                    // overhead: a vertical arc down to the floor
-                float R = 3.2f, b = -0.4f + 2.1f * u;
-                glm::mat4 m = T(sl.pos + glm::vec3{0, 0.3f, 0}) * RY(sl.yaw) * T({0.f, R * std::cos(b) * 0.75f, R * std::sin(b)})
+            if (kind == 2) {                                       // overhead: a vertical arc down to the floor
+                float R = 3.2f * sc, b = -0.4f + 2.1f * u;
+                glm::mat4 m = T(sl.pos + glm::vec3{0, 0.3f + (mine ? 0.9f : 0.f), 0}) * RY(sl.yaw) * T({0.f, R * std::cos(b) * 0.75f, R * std::sin(b)})
                             * RX(b) * S({0.5f * w + 0.1f, 0.08f, R * 2.1f / N * 1.2f});
                 push(out, m, glm::vec3{0.1f}, hot);
             } else {                                               // sweeps: a flat arc at chest height
-                float R = sl.kind == 3 ? 3.4f : 4.4f, span = sl.kind == 3 ? 0.9f : 1.35f;
-                float a = (sl.kind == 1 ? 1.f - u : u) * 2.f * span - span;
-                glm::mat4 m = T(sl.pos + glm::vec3{0, 2.1f, 0}) * RY(sl.yaw + a) * T({0.f, 0.f, R})
+                float R = (kind == 3 ? 3.4f : 4.4f) * sc, span = kind == 3 ? 0.9f : 1.35f;
+                float a = (kind == 1 ? 1.f - u : u) * 2.f * span - span;
+                glm::mat4 m = T(sl.pos + glm::vec3{0, 2.1f + lift, 0}) * RY(sl.yaw + a) * T({0.f, 0.f, R})
                             * S({R * 2.f * span / N * 1.15f, 0.07f, 0.6f * w + 0.12f});
                 push(out, m, glm::vec3{0.1f}, hot);
             }
@@ -559,8 +562,9 @@ inline void GameplayState::render() {
         glBindTexture(GL_TEXTURE_2D, whiteTex);
         worldShader.setInt("uTexture", 0);
         float flash = glm::clamp(muzzleFlashTimer / 0.06f, 0.f, 1.f);
-        viewModel.draw(worldShader, renderCam, activeWeapon, flash, wd.canAim ? aim : 0.f,
-                       weapons[activeWeapon].ammo, weaponMag((WeaponId)activeWeapon, prog.up[activeWeapon]));
+        if (swordOut) viewModel.drawSword(worldShader, renderCam, sword);
+        else viewModel.draw(worldShader, renderCam, activeWeapon, flash, wd.canAim ? aim : 0.f,
+                            weapons[activeWeapon].ammo, weaponMag((WeaponId)activeWeapon, prog.up[activeWeapon]));
         worldShader.setMat4("projection", proj);
         worldShader.setMat4("view",       view);
     }

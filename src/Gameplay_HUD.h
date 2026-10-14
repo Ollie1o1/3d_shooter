@@ -34,6 +34,8 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         h.weapons[w].glow      = gunkit::glowOf(w);
     }
     h.grenades = grenadeCount; h.grenadeMax = grenadeMax;
+    h.swordSlot = swordAllowed(); h.swordOut = swordOut; h.swordBroken = sword.broken(); h.swordGuard = sword.guard01();
+    h.swordBar = swordOut && (sword.blocking() || sword.broken() || sword.riposteT > 0.f || sword.guard < Sword::GUARD_MAX);
     h.level = prog.level; h.xp = prog.xp; h.xpNext = Progression::xpToNext(prog.level); h.points = prog.points;
     const WeaponDef& wd = weaponDef((WeaponId)activeWeapon);
     h.aim = wd.canAim ? aim : 0.f;

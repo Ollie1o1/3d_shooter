@@ -17,6 +17,7 @@
 #include "GrappleHook.h"
 #include "Level.h"
 #include "LevelGauntlet.h"
+#include "LevelAct2.h"
 #include "WaveDirector.h"
 #include "PostProcess.h"
 #include "AudioSystem.h"
@@ -94,6 +95,7 @@ inline glm::vec3 g_devCamPos{0.f};
 inline float     g_devCamYaw = -90.f, g_devCamPitch = 0.f;
 // --weapon N --aim --overlay armory|pause|settings: pose a screenshot
 inline int       g_devWeapon = -1;
+inline bool      g_devSword = false;   // --sword / ?sword: the sword (key 5) anywhere, not just the Zenith
 inline bool      g_devAim = false;
 inline std::string g_devOverlay;
 inline bool      g_devNoMouse = false;   // screenshot runs: never grab or read the mouse
@@ -311,6 +313,11 @@ public:
 
     bool parryPrev        = false;
     float punchCooldown   = 0.f;
+    // OATHBREAKER, the sword (Gameplay_Sword.h): key 5, only in the Zenith
+    Sword sword;
+    bool  swordOut = false, lmbPrev = false, rmbPrev = false;
+    glm::vec3 thrustFrom{0.f}; bool thrustHit = false;
+    Sword::Guarded lastGuarded = Sword::Guarded::NONE;   // what the sword did with the last strike (damagePlayerStrike)
     static constexpr float PARRY_COOLDOWN = 1.0f;   // a punch / parry at most once a second: no spamming it
     bool prevDashKey      = false;
     int  boostPrev        = -1;     // booster the player was in last tick
@@ -557,6 +564,13 @@ public:
     float pinnedCueCd = 0.f;   // a HALOED enemy's halo shatters: feedback and style
 
     void punch(int boostable);
+    void reflectProjectile(int pi, glm::vec3 fwd);
+    bool swordAllowed() const;
+    void drawSword();
+    void holsterSword();
+    void updateSword(float dt);
+    void swordPlunge(glm::vec3 at);
+    bool damagePlayerStrike(float dmg, glm::vec3 from, Sword::Strike k, float dt = 0.f);
 
     // Where would the grapple hook if fired now? Static walls are hit exactly;
     // moving platforms get a generous 1.2 m of aim assist and pull you to just
@@ -711,3 +725,4 @@ public:
 #include "Gameplay_Warden.h"
 #include "Gameplay_Reliquary.h"
 #include "Gameplay_Leviathan.h"
+#include "Gameplay_Sword.h"
