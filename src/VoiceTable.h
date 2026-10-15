@@ -47,6 +47,15 @@ inline const char* attackKey(AttackKind k) {
         case AttackKind::TIDE: return "tide";         case AttackKind::SPIT: return "spit";
         case AttackKind::BREACH: return "breach";     case AttackKind::SWALLOW: return "swallow";
         case AttackKind::SUBMERGE: return "submerge";
+        case AttackKind::ATELEPORT: return "teleport"; case AttackKind::ADASH: return "adash";
+        case AttackKind::AJAB: return "jab";          case AttackKind::AHOOK: return "hook";
+        case AttackKind::AUPPER: return "upper";      case AttackKind::ADROP: return "drop";
+        case AttackKind::AHOP: return "hop";          case AttackKind::ARAY: return "ray";
+        case AttackKind::ASTOMP: return "astomp";     case AttackKind::ASERPENT: return "serpent";
+        case AttackKind::AHALO: return "halo";        case AttackKind::ASEAMS: return "seams";
+        case AttackKind::AZENITH: return "zenith";    case AttackKind::ASWEEP: return "asweep";
+        case AttackKind::ALUNGE: return "alunge";     case AttackKind::ACRESCENT: return "acrescent";
+        case AttackKind::AJUDGE: return "ajudge";
         default: return "none";
     }
 }
@@ -72,6 +81,9 @@ inline std::vector<AttackKind> attacksOf(EnemyType t) {
         case EnemyType::WEAVER:       return {A::STRING};
         case EnemyType::PENITENT:     return {A::CENSER_LOW, A::CENSER_HIGH, A::PSLAM, A::PSTOMP, A::PLASH, A::SCOURGE};
         case EnemyType::LEVIATHAN:    return {A::CRASH, A::TORRENT, A::TIDE, A::SPIT, A::BREACH, A::SWALLOW, A::SUBMERGE};
+        case EnemyType::ABSOLUTE:     return {A::ATELEPORT, A::ADASH, A::AJAB, A::AHOOK, A::AUPPER, A::ADROP, A::AHOP, A::ARAY,
+                                              A::ASTOMP, A::ASERPENT, A::AHALO, A::ASEAMS, A::AZENITH, A::ASWEEP, A::ALUNGE,
+                                              A::ACRESCENT, A::AJUDGE};
         default:                      return {};
     }
 }

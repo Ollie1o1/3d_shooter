@@ -2716,7 +2716,7 @@ int main() {
         CHECK(levels, "every voice sits within 2 dB of its mix class's level");
         CHECK(varied, "a voice's variants differ");
         CHECK(same, "the same voice builds the same every time");
-        CHECK(total <= 200.f, "the whole voice bank is at most 200 s of audio");   // (180 before the Leviathan)
+        CHECK(total <= 220.f, "the whole voice bank is at most 220 s of audio");   // (180 before the Leviathan, 200 before the Absolute)
     }
 
     // ---------------------------------------------------------------- enemy voices: who gets to speak

@@ -243,6 +243,147 @@ int main() {
               "the clear and both times survive a save and a load");
     }
 
+    // ---------------------------------------------------------------- THE ABSOLUTE: phase 1
+    const Arena& ZA = N.arenas[ZENITH_ARENA];
+    std::vector<AABB> standing;
+    auto zworld = [&](glm::vec3 feet) {
+        standing.clear();
+        for (size_t i = 0; i < N.zenith.pillarWalls.size(); ++i) if (N.zenith.pillarUp[i]) standing.push_back(N.walls[N.zenith.pillarWalls[i]].box);
+        EnemyWorld w; w.playerFeet = feet; w.playerEye = feet + glm::vec3{0, 1.7f, 0};
+        w.walls = N.walls.data(); w.wallCount = (int)N.walls.size(); w.grid = &g; w.bounds = ZA.bounds;
+        w.hasZenith = true; w.zenCentre = ZC; w.zenFloor = ZC.y;
+        w.zenPillars = standing.data(); w.zenPillarCount = (int)standing.size();
+        return w;
+    };
+    auto freshAbs = [&]() { Enemy e(EnemyType::ABSOLUTE, ZA.bossSpawn); e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE; return e; };
+    {
+        bool rule = true;
+        for (int id = 0; id < AB_STRINGS; ++id) {
+            const AbString& s = abString(id);
+            for (int k = 0; k < s.n; ++k)
+                if (s.steps[k].damage > 0.f && abTellOf(s.steps[k].k) == AbTell::NONE) rule = false;
+        }
+        CHECK(rule, "every damaging move in every string has a tell colour");
+        CHECK(abTellOf(AttackKind::AJAB) == AbTell::WHITE && abTellOf(AttackKind::AHOOK) == AbTell::WHITE &&
+              abTellOf(AttackKind::AUPPER) == AbTell::GOLD && abTellOf(AttackKind::ADROP) == AbTell::GOLD &&
+              abTellOf(AttackKind::ARAY) == AbTell::RED && abTellOf(AttackKind::ASTOMP) == AbTell::RED &&
+              abTellOf(AttackKind::ASERPENT) == AbTell::WHITE && abTellOf(AttackKind::ASWEEP) == AbTell::WHITE &&
+              abTellOf(AttackKind::ALUNGE) == AbTell::GOLD && abTellOf(AttackKind::ACRESCENT) == AbTell::WHITE,
+              "white: jab, hook, serpent, sweep, crescent; gold: uppercut, drop-kick, lunge; red: ray, stomp");
+        float full = 0.f;
+        for (int id : {AB_TOO_SLOW, AB_KNEEL, AB_JUDGED}) {
+            float sum = 0.f; const AbString& st = abString(id);
+            for (int k = 0; k < st.n; ++k) if (st.steps[k].minPhase <= 1) sum += st.steps[k].damage;
+            full = std::max(full, sum);
+            for (int k = 0; k < st.n; ++k) if (st.steps[k].damage > 0.f && (st.steps[k].damage < 18.f || st.steps[k].damage > 30.f)) full = 1e9f;
+        }
+        CHECK(full >= 60.f && full <= 70.f, "a whole phase 1 string taken costs 60-70; single hits 18-30");
+        CHECK(statsOf(EnemyType::ABSOLUTE).health == 9000.f && isBoss(EnemyType::ABSOLUTE), "9000 hp, a boss");
+        CHECK(ZEN_DAIS == Enemy::AB_DAIS_R && ZEN_DAIS_UP == Enemy::AB_DAIS_UP, "the mind and the map agree on the Dais");
+    }
+    {
+        Enemy e = freshAbs();
+        glm::vec3 me = ZC + glm::vec3{0, 0, 20};
+        e.update(DT, zworld(me));
+        CHECK(!e.targetable(), "arriving: untargetable");
+        for (int i = 0; i < 125; ++i) e.update(DT, zworld(me));
+        CHECK(e.targetable(), "after 2 s he's in the fight");
+        bool started = false;
+        for (int i = 0; i < 120 && !started; ++i) { e.update(DT, zworld(me)); started = e.abCur >= 0; }
+        CHECK(started, "...and opens a string within 2 s");
+    }
+    {
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = AB_TOO_SLOW;
+        glm::vec3 me = ZC + glm::vec3{0, 0, 20};
+        bool blinked = false; int whites = 0, parried = 0; float reeled = 0.f;
+        bool firstOk = false, secondOk = false;
+        for (int i = 0; i < 600 && parried < 2; ++i) {
+            e.update(DT, zworld(me));
+            if (e.ev.blinked) blinked = true;
+            if (e.ev.abTell == (int)AbTell::WHITE) ++whites;
+            if (e.parryWindow()) {
+                int r = e.abParried(false);
+                ++parried;
+                if (parried == 1) { firstOk = r == 1 && e.staggered() && e.abReeling && std::fabs(e.armorMult() - 1.5f) < 1e-4f; reeled = e.staggerTimer; }
+                if (parried == 2) secondOk = r == 2 && e.staggered() && !e.abReeling && std::fabs(e.armorMult() - 2.f) < 1e-4f && std::fabs(e.staggerTimer - 3.f) < 0.05f;
+            }
+        }
+        CHECK(blinked, "TOO SLOW opens with a teleport (an afterimage)");
+        CHECK(firstOk && whites >= 2 && std::fabs(reeled - Enemy::AB_REEL) < 0.05f, "the first parry: he reels 0.8 s (x1.5), and the string goes on");
+        CHECK(secondOk, "the second in one string breaks him: 3 s at x2");
+        CHECK(e.abParried(false) == 0, "a broken Absolute can't be parried again");
+    }
+    {
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = AB_KNEEL;
+        glm::vec3 me = ZC + glm::vec3{0, 0, 12};
+        bool goldWindow = false, launched = false;
+        for (int i = 0; i < 400; ++i) {
+            e.update(DT, zworld(me));
+            if (abTellOf(e.attack) == AbTell::GOLD && e.parryWindow()) goldWindow = true;
+            if (e.ev.abLaunch) launched = true;
+        }
+        CHECK(!goldWindow, "no parry window ever opens on a gold strike");
+        CHECK(launched, "KNEEL's uppercut launches you when it lands");
+    }
+    {
+        float least = 1e9f, leastFollow = 1e9f;
+        for (int d = 0; d < DIFFICULTY_LEVELS; ++d)
+            for (int id = 0; id < AB_STRINGS; ++id)
+                for (int ph = 1; ph <= 3; ++ph) {
+                    Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = id; e.abPhase = ph; e.abBlade = ph == 3;
+                    EnemyWorld w = zworld(ZC + glm::vec3{0, 0, 14}); w.tune = &difficulty(d);
+                    for (int i = 0; i < 400; ++i) {
+                        e.update(DT, w);
+                        if (e.ev.telegraphStarted && abTellOf(e.attack) != AbTell::NONE) {
+                            if (e.tellFollow) leastFollow = std::min(leastFollow, e.telegraphDuration);
+                            else least = std::min(least, e.telegraphDuration);
+                        }
+                    }
+                }
+        CHECK(least >= Enemy::TELL_FLOOR - 1e-4f && leastFollow >= Enemy::AB_FOLLOW_FLOOR - 1e-4f,
+              "every Absolute tell is at least 0.35 s (0.22 s within a string), every difficulty and phase");
+    }
+    {
+        // He starts beside the camper, mid-rotation, in a long string: only the
+        // camp clock can bring TOO SLOW (a teleport onto you) before 5 s
+        auto campTest = [&](glm::vec3 me, bool shard) {
+            Enemy e = freshAbs(); e.abArrive = 0.f; e.abRot = 1; e.abForce = AB_JUDGED;
+            glm::vec3 in = glm::normalize(glm::vec3{ZC.x - me.x, 0.f, ZC.z - me.z});
+            e.position = me + in * 8.f; e.position.y = ZC.y;
+            for (int i = 0; i < 5 * 60; ++i) {
+                EnemyWorld w = zworld(me); w.onShard = shard;
+                e.update(DT, w);
+                if (e.ev.blinked && e.abCur == AB_TOO_SLOW && glm::length(glm::vec2{e.position.x - me.x, e.position.z - me.z}) < 6.f) return i * DT;
+            }
+            return 99.f;
+        };
+        float far = campTest(ZC + glm::vec3{0, 0, 42.f}, false);
+        glm::vec3 pil = zenithPillar(0), out = glm::normalize(glm::vec3{pil.x - ZC.x, 0, pil.z - ZC.z});
+        float behind = campTest(pil + out * 2.f, false);
+        std::printf("      anti-camp: far %.1f s, behind a pillar %.1f s\n", far, behind);
+        CHECK(far < 5.f && behind < 5.f, "far away or behind a pillar: within 5 s he's on you (TOO SLOW)");
+    }
+    {
+        srand(77);
+        int bad = 0;
+        EnemyWorld w = zworld(ZC);
+        for (int i = 0; i < 500; ++i) {
+            float a = frand(0.f, 6.283f), r = frand(0.f, 48.f);
+            glm::vec3 want = ZC + glm::vec3{std::cos(a) * r, 0.f, std::sin(a) * r};
+            glm::vec3 p = absSafeSpot(w, want, ZC);
+            float pr = glm::length(glm::vec2{p.x - ZC.x, p.z - ZC.z});
+            if (pr > Enemy::AB_FLOOR_R + 0.01f || N.zenithPillarAt(p, 0.7f) >= 0) ++bad;
+            if (pr < Enemy::AB_DAIS_R - 0.5f && std::fabs(p.y - (ZC.y + Enemy::AB_DAIS_UP)) > 1e-3f) ++bad;
+        }
+        CHECK(bad == 0, "500 teleports, at the edge, past it or into pillars, all land on open floor (on the Dais at its height)");
+    }
+    {
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.yaw = 0.f;
+        CHECK(e.deflects({0, 0, -1}, 20.f) && !e.deflects({0, 0, -1}, 10.f), "beyond 14 m his guard turns shots aside; closer they land");
+        e.stagger(1.f);
+        CHECK(!e.deflects({0, 0, -1}, 20.f), "staggered, he's open from anywhere");
+    }
+
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;
 }
