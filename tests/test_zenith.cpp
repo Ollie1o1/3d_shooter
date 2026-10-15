@@ -473,6 +473,84 @@ int main() {
                 "clear() empties every hazard (a retry)"); }
     }
 
+    // ---------------------------------------------------------------- THE ABSOLUTE: phases 2 and 3
+    {
+        Enemy e = freshAbs(); e.abArrive = 0.f;
+        glm::vec3 me = ZC + glm::vec3{0, 0, 14};
+        e.health = e.maxHealth * 0.59f;
+        e.update(DT, zworld(me));
+        CHECK(e.abPhase == 2 && e.ev.abPhase == 2 && e.ev.abHalo && e.phaseHold > 0.f, "at 60 %: ASCENSION, the halo sweep, a pause");
+        Enemy a = freshAbs(); a.abArrive = 0.f; a.abForce = AB_TOO_SLOW;
+        Enemy b = freshAbs(); b.abArrive = 0.f; b.abForce = AB_TOO_SLOW; b.abPhase = 2;
+        int ja = 0, jb = 0; float ta = 0, tb = 0;
+        for (int i = 0; i < 400; ++i) {
+            a.update(DT, zworld(me)); b.update(DT, zworld(me));
+            if (a.ev.telegraphStarted && a.attack == AttackKind::AJAB && a.abCur == AB_TOO_SLOW) { ++ja; if (a.tellFollow) ta = a.telegraphDuration; }
+            if (b.ev.telegraphStarted && b.attack == AttackKind::AJAB && b.abCur == AB_TOO_SLOW) { ++jb; if (b.tellFollow && b.abLate == 0.f) tb = b.telegraphDuration; }
+            if (a.abCur != AB_TOO_SLOW && ja > 0 && b.abCur != AB_TOO_SLOW && jb > 0) break;
+        }
+        CHECK(jb == ja + 1 && tb > 0.f && tb < ta, "phase 2: one more jab, follow-ups 25 % quicker");
+        Enemy dl = freshAbs(); dl.abArrive = 0.f; dl.abForce = AB_TOO_SLOW; dl.abPhase = 2;
+        bool lateSeen = false, lateWindowOk = true;
+        for (int i = 0; i < 300; ++i) {
+            dl.update(DT, zworld(me));
+            if (dl.abLate > 0.f && dl.attack == AttackKind::AJAB && dl.telegraphTimer > 0.f && dl.telegraphTimer < 0.25f) { lateSeen = true; lateWindowOk &= dl.parryWindow(); }
+            if (dl.abLate > 0.f && dl.attack == AttackKind::AJAB && dl.telegraphTimer > 0.3f && dl.parryWindow()) lateWindowOk = false;
+        }
+        CHECK(lateSeen && lateWindowOk, "a delayed strike's parry window is its last 0.25 s, not its flash");
+        Enemy r = freshAbs(); r.abArrive = 0.f; r.abPhase = 2;
+        bool seams = false, mirages = false, zray = false;
+        for (int i = 0; i < 60 * 40; ++i) { r.update(DT, zworld(me)); seams |= r.ev.abSeams; mirages |= r.ev.abMirages > 0; }
+        Enemy sh = freshAbs(); sh.abArrive = 0.f; sh.abPhase = 2;
+        for (int i = 0; i < 60 * 6 && !zray; ++i) { EnemyWorld sw = zworld(zenithShard(0)); sw.onShard = true; sh.update(DT, sw); zray |= sh.ev.abZenith; }
+        CHECK(seams && mirages, "phase 2 brings the seams and mirages");
+        CHECK(zray, "camping on a shard in phase 2 brings the zenith ray");
+    }
+    {
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.abPhase = 2;
+        glm::vec3 me = ZC + glm::vec3{0, 0, 10};
+        e.health = e.maxHealth * 0.24f;
+        e.update(DT, zworld(me));
+        CHECK(e.abPhase == 3 && e.ev.abPhase == 3 && e.ev.abBladeDrawn && e.ev.abShards && e.abBlade, "at 25 %: the blade, the shards fall");
+        e.phaseHold = 0.f; e.abForce = AB_SWEEPS;
+        int res = 0; bool broke = false;
+        for (int i = 0; i < 400 && !res; ++i) { e.update(DT, zworld(me)); if (e.parryWindow()) { res = e.abParried(true); broke = e.ev.abBladeBroke; } }
+        CHECK(res == 3 && !e.abBlade && e.staggered() && std::fabs(e.armorMult() - 2.f) < 1e-4f && broke,
+              "a sword parry of a sweep shatters the blade: broken 3 s at x2");
+        bool redrawn = false;
+        for (int i = 0; i < (int)((Enemy::AB_BREAK + Enemy::AB_BLADE_BACK + 0.3f) * 60); ++i) { e.update(DT, zworld(me)); redrawn |= e.ev.abBladeDrawn; }
+        CHECK(e.abBlade && redrawn, "...and he draws it again");
+        Enemy f = freshAbs(); f.abArrive = 0.f; f.abPhase = 3; f.abBlade = true; f.abForce = AB_SWEEPS;
+        int rf = 0;
+        for (int i = 0; i < 400 && !rf; ++i) { f.update(DT, zworld(me)); if (f.parryWindow()) rf = f.abParried(false); }
+        CHECK(rf == 1 && f.abBlade, "an F parry only interrupts it");
+        Enemy c = freshAbs(); c.abArrive = 0.f; c.abPhase = 3; c.abBlade = true; c.abForce = AB_CRESCENTS;
+        int shots = 0; float parryVal = 0;
+        for (int i = 0; i < 120; ++i) { c.update(DT, zworld(ZC + glm::vec3{0, 0, 25})); shots += c.ev.shots; if (c.ev.shots) parryVal = c.ev.shotParry; }
+        CHECK(shots >= 2 && std::fabs(parryVal - 200.f) < 1e-3f, "crescents: thrown arcs that parry back for 200");
+        Enemy l = freshAbs(); l.abArrive = 0.f; l.abPhase = 3; l.abBlade = true; l.abForce = AB_LUNGE;
+        bool lunged = false; glm::vec3 lme = ZC + glm::vec3{0, 0, 16};
+        l.position = ZC + glm::vec3{0, Enemy::AB_DAIS_UP, 0};
+        for (int i = 0; i < 120 && !lunged; ++i) { l.update(DT, zworld(lme)); lunged = l.ev.meleeHit; }
+        CHECK(lunged && abTellOf(l.lastAbAttack) == AbTell::GOLD, "the lunge crosses 16 m and runs you through (gold)");
+    }
+    {
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.abPhase = 3; e.abBlade = true;
+        glm::vec3 me = ZC + glm::vec3{0, 0, 10};
+        e.health = e.maxHealth * 0.079f;
+        bool marked = false, landed = false; float spentAt = 0;
+        for (int i = 0; i < 60 * 4; ++i) {
+            e.update(DT, zworld(me));
+            marked |= e.ev.abJudgeMark;
+            if (e.ev.abJudge) { landed = true; spentAt = e.staggerTimer; }
+        }
+        CHECK(marked && landed && e.abJudged && std::fabs(spentAt - Enemy::AB_SPENT) < 0.05f && !e.abReeling,
+              "at 8 %: the last judgment, then he's spent 4 s (x2)");
+        e.health = e.maxHealth * 0.05f;
+        bool again = false; for (int i = 0; i < 60 * 10; ++i) { e.update(DT, zworld(me)); again |= e.ev.abJudgeMark; }
+        CHECK(!again, "only once");
+    }
+
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;
 }

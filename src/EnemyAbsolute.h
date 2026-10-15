@@ -112,7 +112,7 @@ inline int Enemy::abParried(bool bySword) {
     if (type != EnemyType::ABSOLUTE || staggered() || abParriedThis || !abMeleeWhite(attack)) return 0;
     abParriedThis = true;
     if (bySword && abBlade && attack == AttackKind::ASWEEP) {   // blade meets blade: his shatters
-        ev.abBladeBroke = true; abBlade = false; abBladeGone = AB_BLADE_BACK + AB_BREAK;
+        ev.abBladeBroke = true; abBlade = false; abBladeGone = AB_BLADE_BACK;   // (counts once he's back on his feet)
         stagger(AB_BREAK); abReeling = false; abParries = 0;
         return 3;
     }
@@ -193,18 +193,45 @@ inline void Enemy::thinkAbsolute(float dt, const EnemyWorld& w, bool resolve) {
     abBegin(abStep, abStruck, quick, w, feet);
 }
 
-inline void Enemy::abPhaseCheck(float) {}   // phases 2 and 3 arrive with the ascension (Task 8)
+// The phases: ASCENSION at 60 % (he rises over the Dais and sweeps the arena),
+// ABSOLUTE at 25 % (the blade; the shards fall), the last judgment at 8 %
+inline void Enemy::abPhaseCheck(float hp) {
+    const glm::vec3 dais{abCentre.x, abCentre.y + AB_DAIS_UP, abCentre.z};
+    if (abPhase == 1 && hp <= AB_PHASE2) {
+        abPhase = 2; ev.abPhase = 2; ev.abHalo = true; ev.abLine = 2; ev.enraged = true;
+        phaseHold = PHASE_PAUSE + AB_HALO_TIME;   // he hangs over the Dais while it sweeps
+        attack = AttackKind::NONE; telegraphTimer = 0.f; abCur = -1; abRot = 0;
+        ev.blinked = true; ev.blinkFrom = position;
+        position = dais;
+    }
+    if (abPhase == 2 && hp <= AB_PHASE3) {
+        abPhase = 3; ev.abPhase = 3; ev.abBladeDrawn = true; ev.abShards = true; ev.abLine = 0; ev.enraged = true;
+        abBlade = true; abBladeGone = 0.f;
+        phaseHold = PHASE_PAUSE; attack = AttackKind::NONE; telegraphTimer = 0.f; abCur = -1; abRot = 0;
+    }
+    if (abPhase == 3 && !abJudged && hp <= AB_JUDGE_AT) {   // every seam burns but a ring round him
+        abJudged = true; ev.abJudgeMark = true; ev.abLine = 3; ev.abTell = (int)AbTell::RED;
+        ev.blinked = true; ev.blinkFrom = position;
+        position = dais;
+        abCur = -1; recoverTimer = 0.f; phaseHold = 0.f;
+        attack = AttackKind::AJUDGE; telegraphDuration = telegraphTimer = AB_JUDGE_WARN; tellFollow = false;
+        ev.telegraphStarted = true;
+    }
+}
 
 inline int Enemy::abChoose(float d, const EnemyWorld& w) {
     if (abForce >= 0) { int f = abForce; abForce = -1; return f; }
     if (abCamp >= AB_CAMP) { abCamp = 0.f; return (abPhase == 2 && w.onShard) ? AB_ZENITH : AB_TOO_SLOW; }
-    if (d > AB_RANGE) return abPhase == 3 ? ((abRot++ & 1) ? AB_CRESCENTS : AB_LUNGE) : ((abRot++ & 1) ? AB_SERPENT : AB_TOO_SLOW);
+    auto bladeless = [&](int id) {   // his blade shattered: fists until it's back
+        return !abBlade && (id == AB_SWEEPS || id == AB_LUNGE || id == AB_CRESCENTS) ? ((abRot & 1) ? AB_KNEEL : AB_TOO_SLOW) : id;
+    };
+    if (d > AB_RANGE) return bladeless(abPhase == 3 ? ((abRot++ & 1) ? AB_CRESCENTS : AB_LUNGE) : ((abRot++ & 1) ? AB_SERPENT : AB_TOO_SLOW));
     static const int R1[] = {AB_TOO_SLOW, AB_KNEEL, AB_JUDGED, AB_KNEEL, AB_TOO_SLOW, AB_JUDGED};
     static const int R2[] = {AB_TOO_SLOW, AB_SEAMS, AB_KNEEL, AB_JUDGED, AB_TOO_SLOW, AB_KNEEL, AB_SEAMS, AB_JUDGED};
     static const int R3[] = {AB_SWEEPS, AB_KNEEL, AB_LUNGE, AB_TOO_SLOW, AB_CRESCENTS, AB_SWEEPS, AB_JUDGED, AB_SEAMS};
     if (abPhase == 1) return R1[abRot++ % 6];
     if (abPhase == 2) return R2[abRot++ % 8];
-    return R3[abRot++ % 8];
+    return bladeless(R3[abRot++ % 8]);
 }
 
 inline void Enemy::abBegin(int step, bool follow, float quick, const EnemyWorld& w, glm::vec3 feet) {
@@ -223,6 +250,10 @@ inline void Enemy::abBegin(int step, bool follow, float quick, const EnemyWorld&
             position = absSafeSpot(w, off ? front : behind, front);
             glm::vec3 back = flatTo(feet);
             if (glm::length(back) > 0.1f) yaw = std::atan2(back.x, back.z);
+            if (abPhase >= 2) {   // MIRAGE: two copies of him close in from either side
+                ev.abMirages = 2;
+                for (int k = 0; k < 2; ++k) ev.phantomPos[k] = absSafeSpot(w, feet + rotY(-dir, k ? 1.2f : -1.2f) * 3.f, feet - dir * 3.f);
+            }
             break;
         }
         case AttackKind::ADASH:
@@ -233,6 +264,7 @@ inline void Enemy::abBegin(int step, bool follow, float quick, const EnemyWorld&
             ev.blinked = true; ev.blinkFrom = position;
             position = absSafeSpot(w, position - dir * 6.f, position);
             break;
+        case AttackKind::AZENITH: abAim = feet; break;
         case AttackKind::ARAY: case AttackKind::ALUNGE:
             abAim = feet;
             ev.abFrom = position + glm::vec3{0.f, 1.6f, 0.f}; ev.abTo = feet + glm::vec3{0.f, 1.f, 0.f};
@@ -244,6 +276,7 @@ inline void Enemy::abBegin(int step, bool follow, float quick, const EnemyWorld&
 }
 
 inline void Enemy::abResolve(const EnemyWorld& w, glm::vec3 feet, float d) {
+    if (attack == AttackKind::AJUDGE) { abResolveLate(w, feet, d, 0.f); lastAbAttack = attack; attack = AttackKind::NONE; return; }
     if (abCur < 0) { attack = AttackKind::NONE; return; }
     const AbString& str = abString(abCur);
     const AbStep& s = str.steps[std::min(abStep, str.n - 1)];
@@ -275,4 +308,40 @@ inline void Enemy::abResolve(const EnemyWorld& w, glm::vec3 feet, float d) {
     ++abStep;
 }
 
-inline void Enemy::abResolveLate(const EnemyWorld&, glm::vec3, float, float) {}   // phases 2 and 3 (Task 8)
+// The later phases' moves landing
+inline void Enemy::abResolveLate(const EnemyWorld& w, glm::vec3 feet, float d, float damage) {
+    switch (attack) {
+        case AttackKind::ASEAMS: ev.abSeams = true; ev.abSeamFirst = (int)(age * 7.f) & 1; break;
+        case AttackKind::AZENITH:   // from the Halo, onto where you stood as it began
+            ev.abZenith = true; ev.abTo = abAim; ev.abFrom = abAim + glm::vec3{0.f, AB_HALO_UP, 0.f};
+            break;
+        case AttackKind::ASWEEP:
+            if (d < AB_REACH + 0.8f && feet.y - position.y > -2.2f && feet.y - position.y < 2.6f) { ev.meleeHit = true; ev.meleeDamage = damage; }
+            ev.slash = abStep & 1;   // the blade's arc (Effects, as the Sovereign's)
+            break;
+        case AttackKind::ALUNGE: {   // through where you stood, 20 m at most
+            glm::vec3 from = position, dir = norm2(abAim - position);
+            glm::vec3 end = absSafeSpot(w, position + dir * std::min(20.f, glm::length(flatTo(abAim)) + 3.f), position);
+            ev.blinked = true; ev.blinkFrom = from;
+            glm::vec3 ab = end - from;
+            float t = glm::clamp(glm::dot(feet - from, ab) / std::max(glm::dot(ab, ab), 1e-4f), 0.f, 1.f);
+            glm::vec3 q = from + ab * t;
+            if (glm::length(glm::vec2{feet.x - q.x, feet.z - q.z}) < 1.6f) { ev.meleeHit = true; ev.meleeDamage = damage; }
+            position = end;
+            ev.slash = 3;
+            break;
+        }
+        case AttackKind::ACRESCENT: {
+            ev.shotOrigin = position + glm::vec3{0.f, 1.6f, 0.f};
+            glm::vec3 aim = w.playerEye + leadVel_ * 0.4f - ev.shotOrigin;
+            float l = glm::length(aim);
+            aim = l > 1e-3f ? aim / l : glm::vec3{std::sin(yaw), 0.f, std::cos(yaw)};
+            ev.shots = 2; ev.shotDir[0] = rotY(aim, 0.06f); ev.shotDir[1] = rotY(aim, -0.06f);
+            ev.shotSpeed = 22.f; ev.shotDamage = damage; ev.shotSize = 1.6f; ev.shotParry = 200.f;
+            ev.slash = abStep & 1;
+            break;
+        }
+        case AttackKind::AJUDGE: ev.abJudge = true; stagger(AB_SPENT); abReeling = false; break;
+        default: break;
+    }
+}
