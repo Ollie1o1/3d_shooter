@@ -67,7 +67,8 @@ struct AbsoluteHazards {
     static bool blocked(const LevelData* lv, glm::vec3 a, glm::vec3 b) {
         if (!lv) return false;
         for (size_t i = 0; i < lv->zenith.pillarWalls.size(); ++i)
-            if (lv->zenith.pillarUp[i] && segmentHitsBox(a, b, lv->walls[lv->zenith.pillarWalls[i]].box)) return true;
+            if (lv->zenith.pillarUp[i] && b.y < lv->walls[lv->zenith.pillarWalls[i]].box.max.y &&   // (not the pillar you stand on)
+                segmentHitsBox(a, b, lv->walls[lv->zenith.pillarWalls[i]].box)) return true;
         return false;
     }
     static glm::vec3 chase(glm::vec3 at, glm::vec3 target, float speed, float dt) {

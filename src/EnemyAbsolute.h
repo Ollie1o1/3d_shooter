@@ -160,10 +160,11 @@ inline void Enemy::thinkAbsolute(float dt, const EnemyWorld& w, bool resolve) {
     // ---- a move landing ----
     if (resolve) { abResolve(w, feet, d); to = flatTo(feet); d = glm::length(to); }
     if (telegraphTimer > 0.f) {   // winding up: face you; a strike closes in, a dash covers ground
-        turnToward(to, dt, 12.f);
+        if (telegraphProgress() < 0.7f) turnToward(to, dt, 12.f);
         glm::vec3 dir = norm2(to);
+        // a strike closes in, then commits for the last 30 % of its tell: a dash then gets you out
         if ((attack == AttackKind::AJAB || attack == AttackKind::AHOOK || attack == AttackKind::AUPPER ||
-             attack == AttackKind::ASWEEP) && d > AB_REACH * 0.7f) {
+             attack == AttackKind::ASWEEP) && d > AB_REACH * 0.7f && telegraphProgress() < 0.7f) {
             float step = std::min(d - AB_REACH * 0.6f, AB_RUN * 1.3f * dt);
             position = abGround(w, position + dir * step);
             moveSpeed = AB_RUN * 1.3f;
@@ -182,7 +183,7 @@ inline void Enemy::thinkAbsolute(float dt, const EnemyWorld& w, bool resolve) {
     }
 
     // ---- the next move: the rest of this string, or a new one ----
-    if (abCamp >= AB_CAMP && abCur >= 0 && abCur != AB_TOO_SLOW && abCur != AB_ZENITH) abCur = -1;   // break off: come for the camper
+    if (abCamp >= AB_CAMP && abCur >= 0 && abCur != abCampAnswer(w)) abCur = -1;   // break off: go for the camper
     if (abCur < 0) {
         abCur = abChoose(d, w); abStep = 0; abParries = 0; abStruck = false;
         if (abString(abCur).line >= 0) ev.abLine = abString(abCur).line;
@@ -219,9 +220,22 @@ inline void Enemy::abPhaseCheck(float hp) {
     }
 }
 
+// Can he reach you on foot? (On the floor or the Dais: not on a shard, past the edge, or up a pillar)
+inline bool absReachable(const EnemyWorld& w, glm::vec3 feet) {
+    if (!w.hasZenith) return true;
+    float r = glm::length(glm::vec2{feet.x - w.zenCentre.x, feet.z - w.zenCentre.z});
+    return r <= Enemy::AB_FLOOR_R + 1.5f && feet.y < absFloorAt(w, feet) + 3.f && !w.onShard;
+}
+// What answers a camper: TOO SLOW (onto you) if he can reach you; else from
+// range: the ray (phase 1), the zenith ray from the Halo (from phase 2)
+inline int Enemy::abCampAnswer(const EnemyWorld& w) const {
+    if (absReachable(w, w.playerFeet)) return AB_TOO_SLOW;
+    return abPhase >= 2 ? AB_ZENITH : AB_JUDGED;   // the Halo burns where you stand; the ray finds you
+}
+
 inline int Enemy::abChoose(float d, const EnemyWorld& w) {
     if (abForce >= 0) { int f = abForce; abForce = -1; return f; }
-    if (abCamp >= AB_CAMP) { abCamp = 0.f; return (abPhase == 2 && w.onShard) ? AB_ZENITH : AB_TOO_SLOW; }
+    if (abCamp >= AB_CAMP) { abCamp = 0.f; return abCampAnswer(w); }
     auto bladeless = [&](int id) {   // his blade shattered: fists until it's back
         return !abBlade && (id == AB_SWEEPS || id == AB_LUNGE || id == AB_CRESCENTS) ? ((abRot & 1) ? AB_KNEEL : AB_TOO_SLOW) : id;
     };

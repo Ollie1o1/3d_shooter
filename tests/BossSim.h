@@ -1,4 +1,5 @@
 #pragma once
+#include "../src/AbsoluteHazards.h"   // THE ABSOLUTE's hazards (and the sword's block)
 // A scripted player against a boss's real AI, in its real arena: the boss's
 // events resolved the way the game resolves them (melee, slams you can jump,
 // projectiles, the Sovereign's blades, the Warden's hazards and conduits).
@@ -6,7 +7,7 @@
 // circles at 10 m, shoots at a fixed effective DPS, cuts conduits first, hits
 // open cores, and parries every other parry window.
 struct BossSim {
-    enum Policy { CORNER, PERCH, KITE, RANGED, SOLID };
+    enum Policy { CORNER, PERCH, KITE, RANGED, SOLID, DODGER, STILL };   // DODGER: SOLID's feet, guns only, no parries; STILL never moves
     static constexpr float SOLID_DPS = 55.f;   // a solid player's effective damage a second (misses and reloads included)
     const LevelData& L; const SpatialGrid& grid; const Arena& A; Policy policy;
     Enemy boss; ProjectileSystem proj; SovereignHazards sov; WardenHazards ward; ConduitClock clock; LeviathanHazards lev;
@@ -17,6 +18,14 @@ struct BossSim {
     float dodgeFrom = -1.f, dodgeUntil = -1.f; bool wasTelegraphing = false;
     glm::vec3 vel{0.f};   // the player's velocity (enemies lead their shots with it, as in the game)
     bool prevWindow = false;
+    // THE ABSOLUTE (the Zenith): his hazards, as Gameplay_Absolute.h resolves them
+    AbsoluteHazards abs;
+    std::vector<AABB> pillarsUp;
+    float dmgMelee = 0.f, dmgBeam = 0.f, dmgGround = 0.f, dmgWhite = 0.f, dmgShot = 0.f;   // where the hurt came from (tuning)
+    float health = 100.f, lowest = 100.f;   // SOLID's health with the sword's healing (6 a hit, 10 a parry), capped at 100
+    int dashes = 2;   // two dash charges, 1.2 s each to come back (as the game)
+    int parries = 0; float dashCd = 0.f; bool sliding = false, airborne = false, blocking = false;
+    bool zenith() const { return boss.type == EnemyType::ABSOLUTE && L.zenith.built; }
 
     BossSim(const LevelData& l, const SpatialGrid& g, const Arena& a, EnemyType type, Policy p)
         : L(l), grid(g), A(a), policy(p), boss(type, a.bossSpawn), lv(l) {
@@ -37,6 +46,12 @@ struct BossSim {
             float l = glm::length(d);
             feet = glm::vec3{boss.position.x, feet.y, boss.position.z} + (l > 0.1f ? d / l : glm::vec3{0, 0, 1}) * 30.f;
         }
+        if (type == EnemyType::ABSOLUTE && l.zenith.built) {   // the Zenith's cheeses: its rim, a pillar's top (PERCH below)
+            glm::vec3 c = l.zenith.centre;
+            if (p == CORNER) feet = c + glm::vec3{-30.f, 0.f, 30.f};   // r 42.4: the rim
+            if (p == RANGED) feet = c + glm::vec3{0.f, 0.f, 30.f};
+            if (p == SOLID || p == DODGER || p == STILL) feet = c + glm::vec3{0.f, 0.f, 14.f};
+        }
         if (p == PERCH) {   // the highest walkable top inside the arena
             float best = -1e9f;
             for (auto& w : L.walls) {
@@ -56,6 +71,10 @@ struct BossSim {
         w.walls = L.walls.data(); w.wallCount = (int)L.walls.size(); w.grid = &grid; w.bounds = A.bounds;
         w.reactor = L.reactorPos; w.hasReactor = L.hasReactor; w.playerVel = vel;
         w.hasLair = L.hasLair; w.lair = L.lair; w.lairFloor = L.lairFloor; w.wells = L.wells.data(); w.wellCount = (int)L.wells.size();
+        if (boss.type == EnemyType::ABSOLUTE && lv.zenith.built) {
+            w.hasZenith = true; w.zenCentre = lv.zenith.centre; w.zenFloor = lv.zenith.centre.y;
+            w.zenPillars = pillarsUp.data(); w.zenPillarCount = (int)pillarsUp.size(); w.onShard = lv.onZenithShard(feet);
+        }
         return w;
     }
     void hurt(float d) { damageTaken += d * A.damageScale * difficulty(DIFFICULTY_DEFAULT).damage; }
@@ -165,6 +184,7 @@ struct BossSim {
         feet.y = groundY();
     }
     void step(float dt) {
+        if (zenith()) { absoluteStep(dt); return; }
         t += dt;
         glm::vec3 was = feet;
         movePlayer(dt);
@@ -210,5 +230,124 @@ struct BossSim {
         if (policy == SOLID && window && !prevWindow) { if (parryNext) boss.stagger(boss.staggerTime()); parryNext = !parryNext; }
         prevWindow = window;
         shoot(dt);
+    }
+
+    // ---- THE ABSOLUTE --------------------------------------------------------
+    float zGround(glm::vec3 p) const { return lv.groundAt(p.x, p.z, p.y + 0.5f); }
+    // SOLID and DODGER: hold their range, read each tell and answer it
+    void absoluteMove(float dt) {
+        const glm::vec3 c = lv.zenith.centre;
+        if (policy == STILL || policy == CORNER || policy == PERCH) { feet.y = zGround(feet + glm::vec3{0.f, 0.3f, 0.f}); return; }
+        if (policy == KITE) {   // round the floor's edge at a run
+            kite += dt * 7.f / 40.f;
+            feet = c + glm::vec3{std::cos(kite) * 40.f, 0.f, std::sin(kite) * 40.f};
+            feet.y = zGround(feet + glm::vec3{0.f, 1.f, 0.f});
+            return;
+        }
+        glm::vec3 bp{boss.position.x, feet.y, boss.position.z};
+        glm::vec3 from = feet - bp; from.y = 0.f;
+        float d = glm::length(from);
+        glm::vec3 dir = d > 0.1f ? from / d : glm::vec3{0.f, 0.f, 1.f}, side{-dir.z, 0.f, dir.x};
+        float want = policy == RANGED ? 30.f : policy == DODGER ? 12.f : 2.4f;
+        glm::vec3 mv = side * 0.5f + dir * glm::clamp((want - d) * 0.6f, -1.f, 1.f);
+        if (policy == RANGED) mv = dir * glm::clamp((want - d) * 0.6f, -1.f, 1.f);
+        sliding = !abs.halos.empty() && policy != RANGED;
+        airborne = false; blocking = false;
+        if (policy == SOLID || policy == DODGER) {
+            bool reacting = t >= dodgeFrom;
+            AbTell tell = boss.telegraphTimer > 0.f ? abTellOf(boss.attack) : AbTell::NONE;
+            if (reacting && (boss.attack == AttackKind::ARAY || !abs.rays.empty())) mv = side * 2.f;   // strafe out of the ray
+            if (!abs.zrays.empty()) { glm::vec3 a = feet - abs.zrays.front().at; a.y = 0.f; if (glm::length(a) > 0.01f) mv = glm::normalize(a) * 2.f + side; }
+            for (auto& sp : abs.serpents) if (!sp.back && policy == DODGER) mv = glm::normalize(glm::cross(sp.dir, glm::vec3{0, 1, 0}) + glm::vec3{1e-4f}) * 2.f;
+            for (auto& st : abs.stomps) { float r = glm::length(glm::vec2{feet.x - st.at.x, feet.z - st.at.z}); if (r > st.r - 2.5f && r < st.r + 0.8f) airborne = true; }
+            if (reacting && boss.attack == AttackKind::ASTOMP) { float r = glm::length(glm::vec2{feet.x - boss.position.x, feet.z - boss.position.z}); if (r < 2.f) airborne = true; }
+            if (!abs.seams.empty()) {   // stand in a cell that isn't burning next, near its edge
+                auto& sm = abs.seams.front();
+                int safe = sm.done0 ? sm.first : (sm.first ^ 1);
+                glm::vec3 best = feet; float bd = 1e9f;
+                for (int dx = -1; dx <= 1; ++dx) for (int dz = -1; dz <= 1; ++dz) {
+                    glm::vec3 cc = feet + glm::vec3{dx * 6.f, 0.f, dz * 6.f};
+                    if (AbsoluteHazards::seamParity(c, cc) != safe) continue;
+                    float cx = std::floor((cc.x - c.x) / 6.f) * 6.f + c.x, cz = std::floor((cc.z - c.z) / 6.f) * 6.f + c.z;
+                    glm::vec3 q{glm::clamp(feet.x, cx + 0.6f, cx + 5.4f), feet.y, glm::clamp(feet.z, cz + 0.6f, cz + 5.4f)};
+                    float qd = glm::length(q - feet);
+                    if (qd < bd && glm::length(glm::vec2{q.x - c.x, q.z - c.z}) < 41.f) { bd = qd; best = q; }
+                }
+                if (bd > 0.05f) mv = (best - feet) / std::max(bd, 1e-3f) * 2.f;
+                else mv = glm::vec3{0.f};
+            }
+            if (!abs.judges.empty()) mv = d > 3.f ? -dir * 2.f : glm::vec3{0.f};   // be beside him
+            // gold (and the white strikes it won't parry): a dash out of reach as it lands, else block it
+            bool strike = tell == AbTell::GOLD || (tell == AbTell::WHITE && Enemy::abMeleeWhite(boss.attack));   // (a parried one never lands: he's staggered)
+            if (strike && boss.telegraphTimer < 0.22f && d < 6.f) {
+                if (dashes > 0) { feet += side * 5.f; if (dashes-- == 2) dashCd = 1.2f; }
+                else if (policy == SOLID) blocking = true;   // the sword up: a white strike or a gold one, from the front
+            }
+        }
+        if (dashes < 2) { dashCd -= dt; if (dashCd <= 0.f) { ++dashes; dashCd = dashes < 2 ? 1.2f : 0.f; } }
+        float ml = glm::length(mv);
+        if (ml > 1e-3f) feet += mv / ml * std::min(7.f, 7.f * ml) * dt;
+        glm::vec3 o = feet - c; o.y = 0.f;
+        float ol = glm::length(o);
+        if (ol > 41.5f) feet = c + o / ol * 41.5f;
+        feet.y = zGround(feet + glm::vec3{0.f, 1.5f, 0.f});
+    }
+    void heal(float h) { health = std::min(100.f, health + h); }
+    void absoluteStep(float dt) {
+        t += dt;
+        float before = damageTaken;
+        glm::vec3 was = feet;
+        pillarsUp.clear();
+        for (size_t i = 0; i < lv.zenith.pillarWalls.size(); ++i) if (lv.zenith.pillarUp[i]) pillarsUp.push_back(lv.walls[lv.zenith.pillarWalls[i]].box);
+        absoluteMove(dt);
+        vel = (feet - was) / dt;
+        // SOLID: the sword's parry on every other white strike, as it lands
+        bool window = boss.parryWindow();
+        if (policy == SOLID && window && !prevWindow) { if (parryNext && boss.abParried(true)) { ++parries; heal(Sword::HEAL_PARRY); } parryNext = !parryNext; }
+        prevWindow = window;
+        boss.update(dt, world());
+        const EnemyEvents& ev = boss.ev;
+        if (ev.telegraphStarted) { dodgeFrom = t + REACT; dodgeUntil = 1e9f; }
+        const glm::vec3 c = lv.zenith.centre;
+        if (ev.abHalo) abs.addHalo(c, c.y);
+        if (ev.abShards) for (int k = 0; k < (int)lv.zenith.shardWalls.size(); ++k) lv.parkZenithPiece(true, k);
+        if (ev.abRay) abs.addRay(ev.abFrom, ev.abTo);
+        if (ev.abStomp) abs.addStomp(ev.abFrom);
+        if (ev.abSerpent) abs.addSerpent(ev.abFrom, feet + glm::vec3{0.f, 1.7f, 0.f} - ev.abFrom);
+        if (ev.abSeams) abs.addSeams(c, ev.abSeamFirst);
+        if (ev.abZenith) abs.addZenith(ev.abFrom, ev.abTo);
+        for (int k = 0; k < ev.abMirages; ++k) abs.addMirage(ev.phantomPos[k]);
+        if (ev.abJudgeMark) abs.addJudge(c, boss.position);
+        if (ev.meleeHit) { float b = damageTaken; hurt(ev.meleeDamage * (blocking ? Sword::BLOCK_TAKEN : 1.f)); dmgMelee += damageTaken - b; }
+        for (int k = 0; k < ev.shots; ++k)
+            if (Projectile* pr = proj.fire(ev.shotOrigin, ev.shotDir[k] * ev.shotSpeed, ev.shotDamage, false, {1, 1, 1}, false, 0.f, ev.shotSize, false))
+                pr->owner = boss.uid;
+        auto r = proj.update(dt, lv.walls.data(), (int)lv.walls.size(), others, feet + glm::vec3{0, 1.7f, 0}, &grid);
+        if (r.hitPlayer) { float b = damageTaken; hurt(r.playerDamage); dmgShot += damageTaken - b; }
+        glm::vec3 hf = feet + glm::vec3{0.f, airborne ? 1.4f : 0.f, 0.f};
+        for (auto& h : abs.update(dt, hf, sliding ? 0.9f : 1.8f, !airborne, &lv, boss.position)) {
+            float b = damageTaken; hurt(h.damage);
+            (h.kind == Sword::Strike::BEAM ? dmgBeam : h.kind == Sword::Strike::GOLD ? dmgGround : dmgWhite) += damageTaken - b;
+        }
+        if (int m = abs.haloShatterMask()) for (int k = 0; k < 8; ++k) if (m & (1 << k)) lv.parkZenithPiece(false, k);
+        if (policy == SOLID) {   // serpents parried back, mirages cut down
+            int sp = abs.serpentNear(feet + glm::vec3{0.f, 1.7f, 0.f}, 2.4f);
+            if (sp >= 0) abs.reflectSerpent(sp);
+        }
+        if (policy == SOLID || policy == DODGER)
+            for (int m = (int)abs.mirages.size() - 1; m >= 0; --m)
+                if (policy == DODGER || glm::length(abs.mirages[m].at - feet) < 3.5f) abs.killMirage(m);
+        for (int n = abs.reflectedHits(boss.position + glm::vec3{0.f, 1.3f, 0.f}, 1.6f); n > 0; --n)
+            boss.takeDamage(AbsoluteHazards::SERPENT_PARRY * boss.armorMult());
+        health -= damageTaken - before; lowest = std::min(lowest, health);
+        // the damage: SOLID's sword up close; DODGER's guns (his guard turns most beyond 14 m)
+        if (!boss.targetable()) return;
+        float d = glm::length(glm::vec2{feet.x - boss.position.x, feet.z - boss.position.z});
+        if (policy == SOLID && d < Sword::REACH + 0.3f) {   // strokes of ~80: each heals 6
+            float dmg = SOLID_DPS * dt * boss.armorMult();
+            boss.takeDamage(dmg);
+            heal(dmg / 80.f * Sword::HEAL_HIT);
+        }
+        if (policy == DODGER) boss.takeDamage((d < Enemy::AB_DEFLECT || boss.telegraphTimer > 0.f || boss.staggered() ? 40.f : 6.f) * dt * boss.armorMult());
     }
 };

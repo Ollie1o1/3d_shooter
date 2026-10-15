@@ -9,6 +9,12 @@
 #include "../src/WaveDirector.h"
 #include "../src/AbsoluteHazards.h"
 #include "../src/EnemyModel.h"
+#include "../src/Projectile.h"
+#include "../src/ArenaShifts.h"
+#include "../src/SovereignHazards.h"
+#include "../src/WardenHazards.h"
+#include "../src/LeviathanHazards.h"
+#include "BossSim.h"
 #include <string>
 #include <cstdio>
 #include <cmath>
@@ -280,7 +286,7 @@ int main() {
             for (int k = 0; k < st.n; ++k) if (st.steps[k].damage > 0.f && (st.steps[k].damage < 18.f || st.steps[k].damage > 30.f)) full = 1e9f;
         }
         CHECK(full >= 60.f && full <= 70.f, "a whole phase 1 string taken costs 60-70; single hits 18-30");
-        CHECK(statsOf(EnemyType::ABSOLUTE).health == 9000.f && isBoss(EnemyType::ABSOLUTE), "9000 hp, a boss");
+        CHECK(statsOf(EnemyType::ABSOLUTE).health == 8200.f && isBoss(EnemyType::ABSOLUTE), "8200 hp (tuned from 9000), a boss");
         CHECK(ZEN_DAIS == Enemy::AB_DAIS_R && ZEN_DAIS_UP == Enemy::AB_DAIS_UP, "the mind and the map agree on the Dais");
     }
     {
@@ -581,6 +587,42 @@ int main() {
         CHECK(rd.x > rd.y * 3.f, "a red tell flashes red");
         AABB hb;
         CHECK(headBox(a, hb) && hb.min.y > 1.9f && hb.max.y < 2.8f, "his head can be shot (a head box where his head is)");
+    }
+
+    // ---------------------------------------------------------------- THE ABSOLUTE against scripted players
+    {
+        auto run = [&](BossSim::Policy p, float limit) {
+            srand(4242);
+            BossSim s(N, g, ZA, EnemyType::ABSOLUTE, p);
+            while (s.t < limit && s.bossAlive()) s.step(DT);
+            return s;
+        };
+        BossSim solid = run(BossSim::SOLID, 400.f);
+        std::printf("      absolute: solid kills in %.0f s (alive %d), taking %.0f; parries %d\n", solid.t, (int)solid.bossAlive(), solid.damageTaken, solid.parries);
+        std::printf("      solid hurt by: melee %.0f, beams %.0f, ground %.0f, serpents/mirages %.0f, crescents %.0f\n", solid.dmgMelee, solid.dmgBeam, solid.dmgGround, solid.dmgWhite, solid.dmgShot);
+        std::printf("      solid with the sword's healing: lowest health %.0f\n", solid.lowest);
+        CHECK(solid.lowest > 0.f, "a solid player, healing by the sword as the game does, survives the fight: hard, never impossible");
+        CHECK(!solid.bossAlive() && solid.t >= 150.f && solid.t <= 180.f, "a solid player (sword, half the parries) kills the Absolute in 150-180 s");
+        BossSim dodger = run(BossSim::DODGER, 900.f);
+        std::printf("      absolute: guns-only dodger kills in %.0f s (alive %d), taking %.0f\n", dodger.t, (int)dodger.bossAlive(), dodger.damageTaken);
+        std::printf("      dodger hurt by: melee %.0f, beams %.0f, ground %.0f, serpents/mirages %.0f, crescents %.0f\n", dodger.dmgMelee, dodger.dmgBeam, dodger.dmgGround, dodger.dmgWhite, dodger.dmgShot);
+        CHECK(!dodger.bossAlive() && dodger.t > solid.t, "a dodge-only, guns-only player can still win, more slowly");
+        BossSim still = run(BossSim::STILL, 30.f);
+        std::printf("      absolute: a player standing still takes %.0f in 30 s\n", still.damageTaken);
+        CHECK(still.damageTaken >= 100.f, "a player who stands still is dead inside 30 s");
+        bool punished = true;
+        for (auto pol : {BossSim::CORNER, BossSim::PERCH, BossSim::KITE, BossSim::RANGED})
+            for (int ph = 1; ph <= 3; ++ph) {
+                srand(77 + ph);
+                BossSim c(N, g, ZA, EnemyType::ABSOLUTE, pol);
+                c.boss.abArrive = 0.f; c.boss.abPhase = ph; c.boss.abBlade = ph == 3;
+                c.boss.health = c.boss.maxHealth * (ph == 1 ? 1.f : ph == 2 ? 0.55f : 0.2f);
+                float first = -1.f;
+                while (c.t < 8.f && first < 0.f) { c.step(DT); if (c.damageTaken > 0.f) first = c.t; }
+                std::printf("      cheese %d phase %d: first hurt at %.1f s\n", (int)pol, ph, first);
+                if (first < 0.f || first > 5.f) punished = false;
+            }
+        CHECK(punished, "every cheese (the rim, a pillar top, edge-kiting, ranged-only) is punished within 5 s, in every phase");
     }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");
