@@ -118,9 +118,12 @@ values and emissive colours; no renderer change.
 ## 4. Sound: fight by ear
 
 **The cue**: separate from the wind-up, every telegraphed move emits
-`ev.abCue` when its remaining tell reaches **0.12 s** (the strike's real
-landing, so a delayed strike's cue is late too). A parry pressed on the cue
-is open (the sword's window is 0.15 s) when the strike lands.
+`ev.abCue` when its remaining tell reaches **0.22 s** (the strike's real
+landing, so a delayed strike's cue is late too). 0.22 s is the shortest tell
+in a string, so every move has its cue at the same lead, and a press made in
+reaction to it (0.1-0.22 s later) has the sword's 0.15 s window open as the
+strike lands. (Written as 0.12 s in the brainstorm; that is shorter than a
+human reaction, so the cue could never be acted on.)
 
 | Colour | Wind-up (over the tell) | Cue | Means |
 |---|---|---|---|
@@ -186,7 +189,7 @@ track) keep their names.
 
 - Every move has a wind-up, cue and boom sound, and every named sound exists
   in the generated set.
-- The cue fires 0.12 s before every strike lands, delayed strikes and every
+- The cue fires 0.22 s before every strike lands, delayed strikes and every
   phase included; no gold move ever plays the ting.
 - Flight: shot down at 6 % in one flight; never airborne over 6 s; never
   inside a pillar; never past the floor's edge.
