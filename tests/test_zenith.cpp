@@ -189,6 +189,21 @@ int main() {
         CHECK(a.offset.y > b.offset.y + 0.2f, "stroke 2 comes down overhead");
         SwordPose g = gunkit::swordPose(-1, -1.f, true, 0.f, 0.f), r = gunkit::swordPose(-1, -1.f, false, 0.f, 0.f);
         CHECK(std::fabs(g.offset.x) < std::fabs(r.offset.x) && std::fabs(g.roll) > 60.f, "raised: the blade across the middle of the screen");
+        // Where the blade's point is on screen (camera space: x right, y up, z forward)
+        auto tip = [](int stroke, float u) {
+            SwordPose P = gunkit::swordPose(stroke, u, false, 0.f, 0.f);
+            glm::mat4 m = glm::rotate(glm::mat4(1.f), glm::radians(P.yaw), glm::vec3{0.f, 1.f, 0.f})
+                        * glm::rotate(glm::mat4(1.f), glm::radians(P.pitch), glm::vec3{-1.f, 0.f, 0.f})
+                        * glm::rotate(glm::mat4(1.f), glm::radians(P.roll), glm::vec3{0.f, 0.f, 1.f});
+            return P.offset + glm::vec3(m * glm::vec4(0.f, 0.f, 0.905f * 0.55f, 0.f));
+        };
+        CHECK(tip(2, 0.f).y > tip(2, 1.f).y + 0.6f && tip(2, 1.f).z > 0.2f,
+              "the overhead chops down: the point starts high and ends low in front (as its trail does)");
+        bool down = true;
+        for (int k = 1; k <= 10; ++k) down &= tip(2, k / 10.f).y <= tip(2, (k - 1) / 10.f).y + 1e-4f;
+        CHECK(down, "...and never flicks back up on the way");
+        CHECK(tip(0, 1.f).x < tip(0, 0.f).x - 0.4f, "the first stroke's point sweeps right to left");
+        CHECK(tip(1, 1.f).x > tip(1, 0.f).x + 0.4f, "the second's sweeps left to right");
     }
 
     // ---------------------------------------------------------------- the sword: where it can be drawn

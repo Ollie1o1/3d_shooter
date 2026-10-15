@@ -491,6 +491,6 @@ inline SwordPose swordPose(int stroke, float u, bool raised, float charge01, flo
     float e = smooth(std::clamp(u, 0.f, 1.f));
     if (stroke == 0) return {{glm::mix(0.32f, -0.30f, e), -0.10f, 0.40f}, glm::mix(40.f, -50.f, e), 4.f, -95.f};
     if (stroke == 1) return {{glm::mix(-0.30f, 0.32f, e), -0.14f, 0.40f}, glm::mix(-50.f, 40.f, e), 4.f, 85.f};
-    return {{0.04f, glm::mix(0.22f, -0.24f, e), 0.42f}, 0.f, glm::mix(-60.f, 50.f, e), -5.f};
+    return {{0.04f, glm::mix(0.22f, -0.24f, e), 0.42f}, 0.f, glm::mix(60.f, -50.f, e), -5.f};   // the point raised, then down in front
 }
 } // namespace gunkit
