@@ -247,6 +247,16 @@ int main() {
         CHECK(std::fabs(floorAt(ZC + glm::vec3{0.f, 2.f, 3.f}) - (ZC.y + ZEN_DAIS_UP)) < 0.05f, "the Dais is raised 1.2 m");
         CHECK(floorAt(ZC + glm::vec3{48.f, 2.f, 0.f}) < ZC.y - 30.f, "a gap past the floor's edge (the void)");
         CHECK(N.zenith.pillarWalls.size() == 8 && N.zenith.shardWalls.size() == 6, "eight pillars, six shards");
+        {
+            const Theme& th = N.arenas[ZENITH_ARENA].theme;
+            auto lum = [](glm::vec3 c) { return 0.2126f * c.x + 0.7152f * c.y + 0.0722f * c.z; };
+            CHECK(lum(th.zenith) < 0.08f && th.zenith.z > th.zenith.x, "a near-black indigo sky overhead");
+            CHECK(th.horizon.x > th.horizon.y * 2.f && th.horizon.x > th.horizon.z * 4.f, "a crimson-orange horizon");
+            CHECK(th.sunDir.y > 0.03f && th.sunDir.y < 0.16f && th.sunDir.z < -0.9f, "the sun low, straight behind the eclipse");
+            CHECK(th.lightColor.x > th.lightColor.z * 2.5f && th.lightDir.y > -0.45f, "a warm, low key light (long shadows)");
+            CHECK(lum(th.skyAmb) < 0.25f && th.skyAmb.z > th.skyAmb.y, "dim violet fill");
+            CHECK(th.stars > 0.f, "a few stars");
+        }
         bool shardsOk = true;
         for (int k = 0; k < 6; ++k) { glm::vec3 s = zenithShard(k); if (std::fabs(floorAt(s + glm::vec3{0, 3, 0}) - s.y) > 0.05f || !N.onZenithShard(s)) shardsOk = false; }
         CHECK(shardsOk, "each shard is a floor you can stand on");
@@ -612,6 +622,29 @@ int main() {
         CHECK(std::fabs(w.x - w.z) < 0.08f, "a white tell flashes white");
         CHECK(gld.x > gld.z * 2.f && gld.y > gld.z * 1.4f, "a gold tell flashes gold");
         CHECK(rd.x > rd.y * 3.f, "a red tell flashes red");
+        // red eyes: two crimson slits in his face, and nothing gold there
+        int eyes = 0, goldFace = 0;
+        for (auto& p : parts(a)) {
+            glm::vec3 c{p.model[3]}, m = p.emissive;
+            if (c.y < 2.25f || c.y > 2.7f || c.z < 0.05f) continue;   // his face (he faces +Z at yaw 0)
+            if (m.x > 1.5f && m.x > m.y * 6.f) ++eyes;
+            if (m.x > 1.f && m.y > m.x * 0.55f && m.z < m.x * 0.5f) ++goldFace;
+        }
+        CHECK(eyes >= 2 && goldFace == 0, "two glowing red eyes (the gold slit is gone)");
+        int runes = 0;
+        for (auto& p : parts(a)) { glm::vec3 m = p.emissive; if (m.z > 0.9f && m.z > m.x * 1.8f && m.z > m.y * 1.6f) ++runes; }
+        CHECK(runes >= 8, "his gauntlets: rune bands of pale violet-blue at knuckles and wrists");
+        // his guard: fists up (shoulders raised forward, elbows folded), side-on, standing or on the move
+        rig::AbsPose gp = rig::absolutePose(a, 0.f);
+        Enemy run = a; run.moveSpeed = Enemy::AB_RUN;
+        rig::AbsPose gr = rig::absolutePose(run, 0.3f);
+        // (an arm hangs down; a shoulder's negative swing takes it forward, the elbow folds the forearm up past it)
+        auto guard = [](float sh, float el) { return sh < -0.4f && sh > -1.1f && sh - el < -2.2f; };   // forearm up and forward
+        CHECK(guard(gp.shR, gp.elR) && guard(gp.shL, gp.elL) && gp.shL < gp.shR && std::fabs(gp.torsoYaw) > 0.2f,
+              "idle: a boxer's guard - elbows down, forearms up, fists by his chin, the lead hand further out, bladed");
+        CHECK(guard(gr.shR, gr.elR) && guard(gr.shL, gr.elL), "...and he keeps it up as he closes in");
+        glm::vec3 gt = tint(AttackKind::AUPPER);
+        CHECK(gt.y > gt.x * 0.72f, "the gold tell is a pale gold (it doesn't sink into the orange sky)");
         AABB hb;
         CHECK(headBox(a, hb) && hb.min.y > 1.9f && hb.max.y < 2.8f, "his head can be shot (a head box where his head is)");
     }

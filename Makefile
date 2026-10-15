@@ -73,7 +73,8 @@ HEADERS := src/gl.h \
            src/StyleSystem.h src/UIRenderer.h src/PostProcess.h \
            src/Level.h src/LevelGauntlet.h src/LevelAct2.h src/AudioSystem.h src/GunMotion.h src/GunKit.h src/AudioTypes.h src/SfxMixer.h src/MixTable.h src/VoiceTable.h src/VoiceSynth.h src/EnemyVoice.h src/WardenHazards.h src/ViewModel.h src/Interactable.h \
            src/Settings.h src/SettingsMenu.h src/Persist.h src/PixelFont.h src/UIBatch.h \
-           src/Weapons.h src/Progression.h src/MouseFilter.h src/Difficulty.h src/MusicSynth.h src/Display.h
+           src/Weapons.h src/Progression.h src/MouseFilter.h src/Difficulty.h src/MusicSynth.h src/Display.h \
+           src/AbsoluteRig.h src/Gameplay_Absolute.h src/Sword.h src/Gameplay_Sword.h $(wildcard src/AbsoluteFeel.h)
 
 .PHONY: all clean run test web
 

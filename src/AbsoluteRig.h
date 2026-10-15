@@ -24,18 +24,19 @@ inline AbsPose absolutePose(const Enemy& e, float time) {
     AbsPose P;
     const float tp = e.telegraphProgress(), stride = glm::clamp(e.moveSpeed / 11.f, 0.f, 1.2f);
     const float ph = e.animPhase;
-    // a fighter's guard, breathing; running, a sprinter's pumping arms
-    const float br = std::sin(time * 2.2f) * 0.03f;
-    P.crouch = 0.08f + br; P.torsoYaw = 0.18f;
-    P.shR = -0.95f; P.elR = 2.0f; P.shL = -1.05f; P.elL = 2.1f; P.shRz = 0.12f; P.shLz = 0.12f;
-    P.hipR = -0.12f; P.kneeR = 0.25f; P.hipL = 0.1f; P.kneeL = 0.2f;
-    if (stride > 0.1f) {
-        float sw = std::sin(ph) * 0.75f * stride;
-        P.hipR = sw; P.hipL = -sw;
-        P.kneeR = 0.3f + std::max(0.f, -std::sin(ph)) * 1.3f * stride;
-        P.kneeL = 0.3f + std::max(0.f, std::sin(ph)) * 1.3f * stride;
-        P.shR = -sw * 1.1f - 0.2f; P.shL = sw * 1.1f - 0.2f; P.elR = P.elL = 1.5f;
-        P.torsoPitch = 0.22f * stride; P.torsoYaw = std::sin(ph) * 0.15f * stride;
+    // a boxer's guard: fists by his chin, the lead (left) hand forward, side-on, a bounce on his toes
+    const float br = std::sin(time * 2.2f) * 0.03f, bounce = std::fabs(std::sin(time * 5.f)) * 0.035f;
+    P.crouch = 0.08f + br - bounce; P.torsoYaw = 0.25f;
+    P.shR = -0.6f; P.elR = 1.9f; P.shRz = -0.2f;             // rear hand: elbow tucked in, fist at the jaw
+    P.shL = -0.75f; P.elL = 1.6f; P.shLz = -0.35f;           // lead hand: further out in front, at chin height
+    P.hipR = -0.05f; P.kneeR = 0.28f; P.hipL = -0.22f; P.kneeL = 0.3f;
+    if (stride > 0.1f) {   // closing in: the guard stays up, the feet do the work
+        float sw = std::sin(ph) * 0.6f * stride;
+        P.hipR = sw - 0.05f; P.hipL = -sw - 0.3f;
+        P.kneeR = 0.35f + std::max(0.f, -std::sin(ph)) * 1.1f * stride;
+        P.kneeL = 0.35f + std::max(0.f, std::sin(ph)) * 1.1f * stride;
+        P.shR = -0.6f; P.shL = -0.75f; P.elR = 1.9f; P.elL = 1.6f;
+        P.torsoPitch = 0.18f * stride; P.torsoYaw = 0.25f + std::sin(ph) * 0.08f * stride;
     }
     const bool late = tp > 0.78f;   // the strike itself
     switch (e.telegraphTimer > 0.f ? e.attack : AttackKind::NONE) {
@@ -115,7 +116,7 @@ inline void buildAbsolute(const Enemy& e, float time, Rig& r, const mat4& root) 
     const vec3 seam = light * (hurt ? 0.5f : 1.3f) * pulse, soft = light * (hurt ? 0.04f : 0.1f);
     // the strike's colour, blazing as it comes
     const AbTell tell = e.telegraphTimer > 0.f ? abTellOf(e.attack) : AbTell::NONE;
-    const vec3 tc = tell == AbTell::GOLD ? vec3{2.2f, 1.5f, 0.35f} : tell == AbTell::RED ? vec3{2.4f, 0.25f, 0.15f} : vec3{1.9f, 1.9f, 2.0f};
+    const vec3 tc = tell == AbTell::GOLD ? vec3{2.2f, 1.72f, 0.7f} : tell == AbTell::RED ? vec3{2.4f, 0.25f, 0.15f} : vec3{1.9f, 1.9f, 2.0f};
     const float tk = 0.5f + 3.f * tp;   // (always the brightest thing on him by the end)
     auto lit = [&](int limb, vec3 base) {
         if (tell == AbTell::NONE || P.glow < 0) return base;
@@ -184,7 +185,12 @@ inline void buildAbsolute(const Enemy& e, float time, Rig& r, const mat4& root) 
     r.box(head, {0.f, 0.19f, -0.01f}, {0.24f, 0.3f, 0.27f}, plate, soft);
     r.box(head, {0.f, 0.07f, 0.04f}, {0.2f, 0.09f, 0.2f}, skin);
     r.box(head, {0.f, 0.26f, 0.13f}, {0.23f, 0.04f, 0.04f}, plate);
-    r.box(head, {0.f, 0.21f, 0.14f}, {0.17f, 0.025f, 0.01f}, gold, gold * (hurt ? 0.8f : 2.4f) * pulse);
+    const vec3 eye{2.8f, 0.18f, 0.12f};                    // two crimson eyes, blazing through a tell
+    const float eyeK = (hurt ? 0.5f : 1.f) * (tell != AbTell::NONE ? 1.f + 0.6f * tp : 1.f) * pulse;
+    for (float s : {-1.f, 1.f}) {
+        r.box(head * T({s * 0.055f, 0.21f, 0.142f}) * RZ(s * 0.18f), {0.f, 0.f, 0.f}, {0.07f, 0.022f, 0.012f}, dark, eye * eyeK);
+        r.box(head * T({s * 0.055f, 0.21f, 0.136f}) * RZ(s * 0.18f), {0.f, 0.f, 0.f}, {0.11f, 0.05f, 0.006f}, dark, eye * 0.35f * eyeK);   // their glow
+    }
     for (float s : {-1.f, 1.f}) r.box(head, {s * 0.085f, 0.15f, 0.12f}, {0.05f, 0.04f, 0.04f}, plate);
     r.box(head, {0.f, 0.35f, -0.02f}, {0.05f, 0.04f, 0.26f}, plate, soft);
     r.box(head, {0.f, 0.2f, -0.145f}, {0.2f, 0.22f, 0.03f}, skin);
@@ -209,11 +215,21 @@ inline void buildAbsolute(const Enemy& e, float time, Rig& r, const mat4& root) 
             r.box(elbow, {0.f, -0.3f - 0.05f * k, 0.f}, {0.13f, 0.025f, 0.13f}, dark, lit(limb, light * 0.7f));
         float trail = 0.5f + glm::clamp(e.moveSpeed / 20.f, 0.f, 1.2f) + 0.12f * std::sin(time * 4.f + s);
         for (int k = 0; k < 2; ++k)
-            r.box(elbow * T({(k ? 0.03f : -0.03f), -0.36f, -0.06f}) * RX(trail + 0.2f * k), {0.f, -0.16f, 0.f}, {0.025f, 0.32f, 0.008f}, dark, light * 0.5f);
+            r.box(elbow * T({(k ? 0.03f : -0.03f), -0.36f, -0.06f}) * RX(trail + 0.2f * k - (sh - el)),   // (they hang from the wrist, whichever way the forearm points)
+                  {0.f, -0.16f, 0.f}, {0.025f, 0.32f, 0.008f}, dark, light * 0.5f);
         mat4 hand = elbow * T({0.f, -0.44f, 0.f});
         if (right) handR = hand;
         r.box(hand, {0.f, -0.05f, 0.f}, {0.1f, 0.1f, 0.05f}, skin, lit(limb, soft));
         r.box(hand, {0.f, -0.1f, 0.02f}, {0.1f, 0.02f, 0.03f}, plate, lit(limb, soft));
+        // the gauntlet: a heavier shell, rune bands at the wrist and knuckles, pale violet-blue
+        // (no tell's colour); the striking one flares to its tell
+        const vec3 rune{0.6f, 0.7f, 1.7f};
+        const vec3 rk = lit(limb, rune * (0.85f + 0.15f * std::sin(time * 3.f + s)));
+        r.box(hand, {0.f, -0.06f, 0.f}, {0.125f, 0.12f, 0.075f}, dark * 1.4f, rune * 0.08f);
+        r.box(hand, {0.f, 0.02f, 0.f}, {0.135f, 0.022f, 0.085f}, dark, rk);            // the wrist band
+        r.box(hand, {0.f, -0.115f, 0.041f}, {0.115f, 0.018f, 0.012f}, dark, rk);       // across the knuckles
+        for (int f = 0; f < 4; ++f)
+            r.box(hand, {-0.035f + 0.023f * f, -0.09f, 0.043f}, {0.008f, 0.03f, 0.008f}, dark, rk * 0.8f);   // a rune per knuckle
         for (int f = 0; f < 4; ++f) {
             mat4 f1 = hand * T({-0.035f + 0.023f * f, -0.1f, 0.01f}) * RX(-fist * 0.8f);
             r.box(f1, {0.f, -0.03f, 0.f}, {0.02f, 0.06f, 0.022f}, skin, lit(limb, soft));
