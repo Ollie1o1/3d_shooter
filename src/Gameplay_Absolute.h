@@ -91,7 +91,7 @@ inline void GameplayState::onAbsoluteEvents(Enemy& e, const EnemyEvents& ev) {
         at("ab_zap", ev.blinkFrom, 1.f, 100, 0.f);
     }
     if (ev.abPhase == 2) { pushBanner("HE ASCENDS", "STAY CLOSE", {1.f, 0.95f, 0.8f}, 3.f); shake(0.5f, 0.06f); audio.duck(6.f, 0.6f); }
-    if (ev.abPhase == 3) { pushBanner("THE BLADE OF LIGHT", "MEET IT", {1.f, 0.5f, 0.6f}, 3.f); shake(0.5f, 0.06f); audio.duck(6.f, 0.6f); }
+    if (ev.abPhase == 3) { pushBanner("HE DRAWS HIS SWORD", "WATCH THE BLADE", {1.f, 0.5f, 0.6f}, 3.f); shake(0.5f, 0.06f); audio.duck(6.f, 0.6f); }
     if (ev.abHalo) { abh.addHalo(level.zenith.centre, level.zenith.centre.y); audio.play("explosion", 100, SoundGroup::WORLD); }
     if (ev.abTakeoff) {   // a burst and a ring of dust where he left the floor
         fx.spawnBurst(e.position + glm::vec3{0.f, 0.5f, 0.f}, white, 30, 9.f, 0.5f, 4.f);
