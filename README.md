@@ -6,7 +6,7 @@
 
 ![OVERDRIVE gameplay: Rippers breaking apart under shotgun fire in the Sunset Yard, a Shieldbearer and a Juggernaut in the Core at night, the walk into the Sanctum under an eclipse, and a duel with the Sovereign, the sword-wielding final boss](docs/overdrive.gif)
 
-A 3D arena shooter built with **SDL2**, **OpenGL 3.3 Core Profile**, and **GLM**, with no engine. ULTRAKILL-inspired movement with grapple hook, dashing, four weapons (including two bolt-action snipers) and style scoring, in four modes:
+A 3D arena shooter built with **SDL2**, **OpenGL 3.3 Core Profile**, and **GLM**, with no engine. ULTRAKILL-inspired movement with grapple hook, dashing, four guns (including two bolt-action snipers), a sword in the encore, and style scoring, in four modes:
 
 - **ARENA**: **four themed arenas** (sunset yard, foundry, a vertical spire you have to climb, a night-time reactor) of three waves each, **eight enemy types** built as animated block rigs (including the armored Juggernaut and the shield-carrying Shieldbearer, both built around the parry), the **Warden** at the end of the fourth, then **the Sanctum**: a huge arena under an eclipse where you duel the final boss, **the Sovereign**, a sword-wielding knight.
 - **ACT II**: unlocked by killing the Sovereign. Fall beneath the eclipse into **the Drowned Nave**, a flooded cathedral: the water slows you on foot but slides skim across it, and it rises every wave until only the galleries, bridges and the organ loft stay dry. Then down a shaft into **the Orrery**: a terrace round a void where two rings turn over a captive sun. The sun's flare sweeps the arena (get behind a pillar), and in wave 2 you hold a circle that rides the inner ring. Then through the north arch into **the Descent**: a cage that rides down a vast shaft, stopping at a different floor for each wave (bell galleries, the brake clamps you shoot to release it, a furnace ring), and at the bottom, **the Penitent**: a kneeling colossus chained to the pit's walls. Break its six chains (shoot the anchors, or grapple onto one and hang on to rip it out), jump its low censer sweeps and slide under the high ones; unchained it rises and stalks you, and near death it scourges itself, opening a wound on its back. Its death opens the pit's south wall onto **the Reliquary**: pieces of the four Act I arenas (the Yard, the Foundry, the Spire, the Core) drifting over a void, regrouping between waves (scattered, a ring, a stack, then a path to a dark hole), fought on with jumps, dashes and the grapple; fall and you're back on the last relic you stood on. Its two new enemies: **the Revenant**, whose soul flees to another relic when it dies (catch it or it comes back), and **the Weaver**, which strings snaring wires across your way. Clear it and the hole opens: jump in, and fall into **the Maw**, a cavern of cracked stone round a black pool, where **the Leviathan** rises: a colossal plated serpent with an eclipse for an eye. It crashes its head down along a strip it burns into the floor (dash out, then shoot its eye while it lies beached, or stand your ground and punch it as it lands), spits orbs you can parry back into its eye, and rolls tides over the ring to jump. Under 65 % it hunts from beneath the floor and breaches out of the well nearest you; under 30 % the Maw floods, its eye stays open, and it tries to swallow you whole (run, or shoot down its throat until it chokes). Its death ends the act (the clear is saved there and then), and the eclipse breaks: you rise into **the Zenith**, the encore, a floating ruin under an open sky, to face **the Absolute**: a figure of white light, faster than you, who fights in combos. Every strike flashes a colour: **white**, parry it (F, or the sword); **gold**, dodge or block it; **red**, get out of where it lands. Here, and only here, key 5 draws **Oathbreaker**, a sword: three-stroke combos and a charged thrust that heal you as they land, right click to parry (the first 0.15 s) or block (a guard meter that breaks). ACT II runs are not ranked yet; the act and the Zenith keep local best times.
@@ -216,6 +216,7 @@ In menus the D-pad moves, **A** confirms and **B** goes back; on the main menu *
 - **Shotgun** (slot 2) — 2-shell pump-action, 10 pellets per shot with spread
 - **Lancer** (slot 3) — a long, slim bolt rifle in blackened steel, its cells glowing cyan along the receiver. RMB raises the iron sights (a small zoom; the front post sits in the rear notch on screen centre). 120 damage, 3x on the head: a headshot one-shots anything but the boss. Accurate aimed, loose from the hip or in the air
 - **Longshot** (slot 4) — heavy .50 sniper. RMB brings up a full scope (mil-dot reticle, heavy zoom). 300 damage one-shots every regular enemy and punches through three of them (**COLLATERAL**). Fire as the scope settles for a **QUICKSCOPE** bonus; kill without aiming for a **NOSCOPE** bonus
+- **Oathbreaker** (slot 5, the Zenith only) — a sword in the arsenal's gunmetal, bone and brass, its fuller of eight rose-red cells showing the guard meter. LMB: a three-stroke combo (70/70/120) with a lock-on step; hold 0.5 s and release for a thrust 8 m forward (220); slam with it out to plunge (150). RMB: the first 0.15 s parries a white strike, a projectile or a ray just fired (the next stroke is a riposte, x2.5); held, it blocks hits from the front (25 % taken) until the guard meter breaks. Every hit heals 6, every parry 10
 - Aiming scales mouse sensitivity with the zoom (plus a ZOOM SENSITIVITY setting) and slows you a little
 - **Grenades** (G key) — parabolic arc, 5m blast radius, refill every 2 kills
 - **Punch / parry** (F) — a fist you can see, once a second (no spamming it). Parries an enemy shot in front of you (the window grows with the shot's speed) and sends it where you're looking for 60; a Juggernaut's siege shell comes back for 400 and ignores armor. Punch a Juggernaut in the last moment of its smash to **break** it (staggered, double damage). Otherwise it hits whatever's in front of you. A parry lands with a metal clank, a gold flash and a hit-stop
@@ -357,12 +358,19 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 │   ├── Camera.h              # view/projection, mouselook
 │   ├── Enemy.h               # enemy roster: stats + AI (no OpenGL, unit-tested)
 │   ├── EnemyModel.h          # each enemy's animated box rig (no OpenGL)
+│   ├── EnemyAbsolute.h       # THE ABSOLUTE's mind: combo strings, the colour rule, phases, anti-camp
+│   ├── AbsoluteHazards.h     # his rays, stomp rings, serpents, seams, zenith ray, sweep, mirages, judgment
+│   ├── AbsoluteRig.h         # his 151-box rig and a pose for every move
+│   ├── Gameplay_Absolute.h   # his fight in the Zenith: events, parries, pillars and shards, drawing
+│   ├── Sword.h               # the sword's logic: strokes, thrust, parry window, block, guard meter
+│   ├── Gameplay_Sword.h      # the sword in the game: input, hits, plunge, the guard against damage
 │   ├── BoxRenderer.h         # one instanced draw for every box-built thing
 │   ├── Projectile.h          # bullet/projectile system
 │   ├── GrappleHook.h         # grapple hook physics
 │   ├── StyleSystem.h         # style rank/score tracking
 │   ├── Level.h               # ARENA map: five arenas, corridors, doors, pads, lava, movers, themes
 │   ├── LevelGauntlet.h       # FAST map: the Gauntlet's seven rooms and their tubes
+│   ├── LevelAct2.h           # ACT II: its five arenas and the Zenith above them
 │   ├── Weapons.h             # the four guns' stats, upgrade maths, ammo/reload state
 │   ├── Progression.h         # XP, levels, upgrade purchases, records, the four leaderboards
 │   ├── Score.h               # a run's score: style, time or waves, damage, difficulty
@@ -411,8 +419,10 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 │   └── sfx/                  # procedurally-generated sound effects (.wav)
 ├── tests/
 │   ├── test_physics.cpp      # headless player-physics tests
-│   └── test_game.cpp         # both maps, movers, AI, rigs, weapons, XP, mouse filter and
-│                             # simulated ARENA and FAST runs (`make test`)
+│   ├── test_game.cpp         # both maps, movers, AI, rigs, weapons, XP, mouse filter and
+│   │                         # simulated ARENA and FAST runs (`make test`)
+│   ├── test_zenith.cpp       # the encore: the sword, the Zenith, the Absolute vs scripted players
+│   └── BossSim.h             # scripted players (cheeses, a solid player, a dodger) against a boss's real AI
 ├── tools/
 │   ├── gen_sfx.py            # synthesizes most of assets/sfx/*.wav
 │   ├── gen_arsenal.py        # the gun sounds: recorded crack + thump + ring + tail, and the foley
