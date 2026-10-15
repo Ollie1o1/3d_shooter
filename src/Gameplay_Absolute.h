@@ -35,6 +35,7 @@ inline bool GameplayState::parryAbsolute(Enemy& e, bool bySword) {
     gainXp(r >= 2 ? 40 : 15);
     audio.playAt("ab_ting", e.position, 128, SoundGroup::ENEMY, true);
     if (r == 1) ui.feed("REELING", {1.f, 1.f, 1.f});
+    if (r == 4) { ui.toast("KNOCKED DOWN", "ONE AND A HALF SECONDS", {1.f, 0.95f, 0.8f}, 1.4f); shake(0.4f, 0.06f); }
     if (r == 2) { ui.toast("BROKEN", "THREE SECONDS - DOUBLE DAMAGE", {1.f, 0.95f, 0.7f}, 1.6f); shake(0.4f, 0.06f); }
     if (r == 3) {
         ui.toast("HIS BLADE SHATTERS", "THREE SECONDS - DOUBLE DAMAGE", {1.f, 0.4f, 0.55f}, 1.8f); shake(0.6f, 0.08f);
@@ -59,6 +60,20 @@ inline void GameplayState::onAbsoluteEvents(Enemy& e, const EnemyEvents& ev) {
     if (ev.abPhase == 2) { pushBanner("HE ASCENDS", "STAY CLOSE", {1.f, 0.95f, 0.8f}, 3.f); shake(0.5f, 0.06f); audio.duck(6.f, 0.6f); }
     if (ev.abPhase == 3) { pushBanner("THE BLADE OF LIGHT", "MEET IT", {1.f, 0.5f, 0.6f}, 3.f); shake(0.5f, 0.06f); audio.duck(6.f, 0.6f); }
     if (ev.abHalo) { abh.addHalo(level.zenith.centre, level.zenith.centre.y); audio.play("explosion", 100, SoundGroup::WORLD); }
+    if (ev.abTakeoff) {   // a burst and a ring of dust where he left the floor
+        fx.spawnBurst(e.position + glm::vec3{0.f, 0.5f, 0.f}, white, 30, 9.f, 0.5f, 4.f);
+        fx.spawnShockwave(glm::vec3{e.position.x, level.zenith.centre.y, e.position.z}, 5.f, {0.9f, 0.75f, 0.65f});
+    }
+    if (ev.abMark) { abSkyMark = ev.abTo; abSkyMarkT = 0.f; }
+    if (ev.abCrater) {
+        abSkyMarkT = -1.f;
+        fx.spawnShockwave(ev.abTo, Enemy::AB_SKY_R + 1.f, {1.6f, 1.3f, 0.6f});
+        fx.spawnBurst(ev.abTo + glm::vec3{0.f, 0.3f, 0.f}, {0.7f, 0.65f, 0.6f}, 50, 11.f, 0.9f, 12.f);   // stone thrown up
+        shake(0.5f, 0.09f);
+        if (ev.abShardBreak) { int k = level.zenithShardAt(ev.abTo); if (k >= 0) { level.parkZenithPiece(true, k); shardFallT[k] = 0.f; } }
+    }
+    if (ev.abShotDown) { ui.feed("SHOT DOWN", {1.f, 0.95f, 0.8f}); shake(0.4f, 0.06f); }
+    if (ev.abFlare) fx.spawnBurst(e.position + glm::vec3{0.f, 1.5f, 0.f}, white, 24, 3.f, 0.4f, 0.f);
     if (ev.abShards)
         for (int k = 0; k < (int)level.zenith.shardWalls.size(); ++k)
             if (level.zenith.shardUp[k]) { level.parkZenithPiece(true, k); shardFallT[k] = 0.f; }
@@ -96,6 +111,7 @@ inline void GameplayState::updateAbsolute(float dt) {
     abGhosts.erase(std::remove_if(abGhosts.begin(), abGhosts.end(), [](const AbGhost& g) { return g.t > AB_GHOST_LIFE; }), abGhosts.end());
     for (auto& t : shardFallT) if (t >= 0.f) t += dt;
     for (auto& t : pillarFallT) if (t >= 0.f) t += dt;
+    if (abSkyMarkT >= 0.f) abSkyMarkT += dt;
     if (abLineT > 0.f) abLineT -= dt;
     if (abHintT > 0.f) abHintT -= dt;
     updateAbsoluteDeath(dt);
@@ -178,7 +194,7 @@ inline void GameplayState::gatherAbsoluteBoxes(std::vector<BoxInstance>& out) {
     if (!level.zenith.built || !act2() || director.arena != ZENITH_ARENA) return;
     const float t = gameClock;
     const glm::vec3 C = level.zenith.centre;
-    const glm::vec3 white{0.88f, 0.87f, 0.84f}, crack{1.4f, 1.3f, 1.05f}, gold{1.5f, 1.1f, 0.45f}, red{2.4f, 0.25f, 0.15f};
+    const glm::vec3 white{0.88f, 0.87f, 0.84f}, crack{1.4f, 1.3f, 1.05f}, gold{1.5f, 1.2f, 0.55f}, red{2.4f, 0.25f, 0.15f};
     // a long thin box from a to b
     auto along = [&](glm::vec3 a, glm::vec3 b, float w, glm::vec3 col, glm::vec3 emi) {
         glm::vec3 d = b - a; float l = glm::length(d);
@@ -250,6 +266,14 @@ inline void GameplayState::gatherAbsoluteBoxes(std::vector<BoxInstance>& out) {
             float a = k * 0.1570796f, R = AbsoluteHazards::JUDGE_SAFE;
             push(out, T(j.boss + glm::vec3{std::cos(a) * R, 0.08f, std::sin(a) * R}) * RY(-a) * S({0.15f, 0.1f, R * 0.17f}), gold * 0.3f, gold * 2.f);
         }
+    }
+    if (abSkyMarkT >= 0.f) {   // SKYFALL's circle: a gold rim closing in, the floor inside it lit
+        float u = glm::clamp(abSkyMarkT / Enemy::AB_MARK_T, 0.f, 1.f), R = Enemy::AB_SKY_R;
+        for (int k = 0; k < 40; ++k) {
+            float a = k * 0.1570796f, rr = R * (1.25f - 0.25f * u);
+            push(out, T(abSkyMark + glm::vec3{std::cos(a) * rr, 0.07f, std::sin(a) * rr}) * RY(-a) * S({0.16f, 0.08f, rr * 0.17f}), gold * 0.3f, gold * (1.4f + 1.6f * u));
+        }
+        push(out, T(abSkyMark + glm::vec3{0.f, 0.04f, 0.f}) * S({R * 1.8f, 0.02f, R * 1.8f}), gold * 0.1f, gold * (0.15f + 0.5f * u * u));
     }
     // rays: the red line of a tell, then the beam
     if (Enemy* e = absolute()) {

@@ -393,6 +393,15 @@ struct LevelData {
         }
         return -1;
     }
+    // The standing shard under p (XZ), or -1
+    int zenithShardAt(glm::vec3 p) const {
+        for (size_t i = 0; i < zenith.shardWalls.size(); ++i) {
+            if (!zenith.shardUp[i]) continue;
+            const AABB& b = walls[zenith.shardWalls[i]].box;
+            if (p.x > b.min.x && p.x < b.max.x && p.z > b.min.z && p.z < b.max.z) return (int)i;
+        }
+        return -1;
+    }
     bool onZenithShard(glm::vec3 f) const {
         for (size_t i = 0; i < zenith.shardWalls.size(); ++i) {
             if (!zenith.shardUp[i]) continue;

@@ -194,7 +194,7 @@ inline void GameplayState::enterArena(int a) {
     banners.clear();
     grapple.release();
     holsterSword(); sword = Sword{};
-    abh.clear(); level.restoreZenith(); abGhosts.clear(); abLineT = abHintT = 0.f; abLineShown = -1; abDeathT = 1e9f;   // the Zenith whole again
+    abh.clear(); level.restoreZenith(); abGhosts.clear(); abSkyMarkT = -1.f; abLineT = abHintT = 0.f; abLineShown = -1; abDeathT = 1e9f;   // the Zenith whole again
     pillarFallT.fill(-1.f); shardFallT.fill(-1.f); punchedThisTick = false;
     ascendT = -1.f; whiteFade = level.zenith.built && a == ZENITH_ARENA && act2() ? 1.f : 0.f;
     playerDead = false; deadTimer = 0.f;

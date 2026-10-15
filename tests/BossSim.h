@@ -248,7 +248,7 @@ struct BossSim {
         glm::vec3 from = feet - bp; from.y = 0.f;
         float d = glm::length(from);
         glm::vec3 dir = d > 0.1f ? from / d : glm::vec3{0.f, 0.f, 1.f}, side{-dir.z, 0.f, dir.x};
-        float want = policy == RANGED ? 30.f : policy == DODGER ? 12.f : 2.4f;
+        float want = policy == RANGED ? 30.f : policy == DODGER || boss.abAirborne() ? (policy == DODGER ? 12.f : 10.f) : 2.4f;   // (aloft: SOLID stands off and shoots)
         glm::vec3 mv = side * 0.5f + dir * glm::clamp((want - d) * 0.6f, -1.f, 1.f);
         if (policy == RANGED) mv = dir * glm::clamp((want - d) * 0.6f, -1.f, 1.f);
         sliding = !abs.halos.empty() && policy != RANGED;
@@ -277,9 +277,15 @@ struct BossSim {
                 else mv = glm::vec3{0.f};
             }
             if (!abs.judges.empty()) mv = d > 3.f ? -dir * 2.f : glm::vec3{0.f};   // be beside him
+            if (boss.attack == AttackKind::ASKYFALL && boss.telegraphTimer < 0.25f && reacting && dashes > 0 &&
+                glm::length(glm::vec2{feet.x - boss.abAim.x, feet.z - boss.abAim.z}) < Enemy::AB_SKY_R + 0.5f) {   // out of the circle
+                glm::vec3 out = feet - boss.abAim; out.y = 0.f;
+                feet += (glm::length(out) > 0.1f ? glm::normalize(out) : side) * 5.f; if (dashes-- == 2) dashCd = 1.2f;
+            }
             // gold (and the white strikes it won't parry): a dash out of reach as it lands, else block it
             bool strike = tell == AbTell::GOLD || (tell == AbTell::WHITE && Enemy::abMeleeWhite(boss.attack));   // (a parried one never lands: he's staggered)
-            if (strike && boss.telegraphTimer < 0.22f && d < 6.f) {
+            float sd = boss.attack == AttackKind::AMETEOR ? glm::length(boss.position - feet) : d;
+            if (strike && boss.attack != AttackKind::ASKYFALL && boss.telegraphTimer < 0.22f && sd < 6.f) {
                 if (dashes > 0) { feet += side * 5.f; if (dashes-- == 2) dashCd = 1.2f; }
                 else if (policy == SOLID) blocking = true;   // the sword up: a white strike or a gold one, from the front
             }
@@ -310,6 +316,7 @@ struct BossSim {
         if (ev.telegraphStarted) { dodgeFrom = t + REACT; dodgeUntil = 1e9f; }
         const glm::vec3 c = lv.zenith.centre;
         if (ev.abHalo) abs.addHalo(c, c.y);
+        if (ev.abShardBreak) { int k = lv.zenithShardAt(ev.abTo); if (k >= 0) lv.parkZenithPiece(true, k); }
         if (ev.abShards) for (int k = 0; k < (int)lv.zenith.shardWalls.size(); ++k) lv.parkZenithPiece(true, k);
         if (ev.abRay) abs.addRay(ev.abFrom, ev.abTo);
         if (ev.abStomp) abs.addStomp(ev.abFrom);
@@ -343,11 +350,12 @@ struct BossSim {
         // the damage: SOLID's sword up close; DODGER's guns (his guard turns most beyond 14 m)
         if (!boss.targetable()) return;
         float d = glm::length(glm::vec2{feet.x - boss.position.x, feet.z - boss.position.z});
-        if (policy == SOLID && d < Sword::REACH + 0.3f) {   // strokes of ~80: each heals 6
+        if (policy == SOLID && boss.abAirborne()) boss.takeDamage(SOLID_DPS * dt * boss.armorMult());   // aloft: his guard's down, the guns land
+        else if (policy == SOLID && d < Sword::REACH + 0.3f) {   // strokes of ~80: each heals 6
             float dmg = SOLID_DPS * dt * boss.armorMult();
             boss.takeDamage(dmg);
             heal(dmg / 80.f * Sword::HEAL_HIT);
         }
-        if (policy == DODGER) boss.takeDamage((d < Enemy::AB_DEFLECT || boss.telegraphTimer > 0.f || boss.staggered() ? 40.f : 6.f) * dt * boss.armorMult());
+        if (policy == DODGER) boss.takeDamage((d < Enemy::AB_DEFLECT || boss.abAirborne() || boss.telegraphTimer > 0.f || boss.staggered() ? 40.f : 6.f) * dt * boss.armorMult());
     }
 };

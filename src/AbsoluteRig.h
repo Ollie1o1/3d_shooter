@@ -85,6 +85,12 @@ inline AbsPose absolutePose(const Enemy& e, float time) {
     case AttackKind::ACRESCENT:
         P.glow = 4; P.shR = late ? -1.1f : -2.85f; P.elR = 0.2f; P.torsoPitch = late ? 0.25f : -0.2f;
         break;
+    case AttackKind::ASKYFALL:   // knees up, both fists raised over his head, then down like a hammer
+        P.glow = 3; P.shR = P.shL = late ? -0.4f : -2.9f; P.elR = P.elL = 0.3f; P.hipR = P.hipL = -1.1f; P.kneeR = P.kneeL = 1.6f; P.torsoPitch = late ? 0.4f : -0.2f;
+        break;
+    case AttackKind::AMETEOR:    // one fist first, the body behind it like a comet
+        P.glow = 0; P.shR = -2.9f; P.elR = 0.05f; P.shL = 0.6f; P.elL = 0.4f; P.torsoPitch = 0.9f; P.hipR = P.hipL = 0.4f; P.kneeR = 0.3f; P.kneeL = 0.6f;
+        break;
     case AttackKind::ATAKEOFF:   // a crouch, arms flung back, then up
         P.crouch = 0.4f * (1.f - tp); P.shR = P.shL = 0.6f; P.shRz = P.shLz = 0.6f;
         P.kneeR = P.kneeL = 1.1f * (1.f - tp); P.hipR = P.hipL = -0.6f * (1.f - tp);

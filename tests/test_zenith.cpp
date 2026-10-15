@@ -324,7 +324,7 @@ int main() {
             for (int k = 0; k < st.n; ++k) if (st.steps[k].damage > 0.f && (st.steps[k].damage < 18.f || st.steps[k].damage > 30.f)) full = 1e9f;
         }
         CHECK(full >= 60.f && full <= 70.f, "a whole phase 1 string taken costs 60-70; single hits 18-30");
-        CHECK(statsOf(EnemyType::ABSOLUTE).health == 8200.f && isBoss(EnemyType::ABSOLUTE), "8200 hp (tuned from 9000), a boss");
+        CHECK(statsOf(EnemyType::ABSOLUTE).health == 10000.f && isBoss(EnemyType::ABSOLUTE), "10000 hp (he flies now: retuned), a boss");
         CHECK(ZEN_DAIS == Enemy::AB_DAIS_R && ZEN_DAIS_UP == Enemy::AB_DAIS_UP, "the mind and the map agree on the Dais");
     }
     {
@@ -450,7 +450,7 @@ int main() {
                 if (e.position.x > b.min.x && e.position.x < b.max.x && e.position.z > b.min.z && e.position.z < b.max.z && e.position.y < b.max.y) inside = true;
             }
             float dxz = glm::length(glm::vec2{e.position.x - me.x, e.position.z - me.z});
-            if (e.abAlt > 8.f && !e.abDiving && e.telegraphTimer > 0.f && (dxz < AB_ORBIT_TEST_LO || dxz > 21.f)) orbit = false;
+            if (e.abAirT > 1.5f && e.abAlt > 8.f && !e.abDiving && e.telegraphTimer > 0.f && (dxz < AB_ORBIT_TEST_LO || dxz > 21.f)) orbit = false;   // (once he's settled up there)
         }
         std::printf("      flight: top %.1f m, longest %.1f s aloft\n", top, maxAir);
         CHECK(took, "he takes off (a takeoff event: the roar, the dust)");
@@ -504,6 +504,93 @@ int main() {
         CHECK(arr.position.y > ZC.y + ZEN_DAIS_UP + 8.f, "he arrives from above...");
         for (int i = 0; i < 125; ++i) arr.update(DT, zworld(me));
         CHECK(arr.abAlt < 0.1f, "...and stands on the Dais when the fight begins");
+    }
+    {
+        glm::vec3 me = ZC + glm::vec3{0, 0, 16};
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = AB_SKYFALL;
+        bool marked = false, gold = false; float markT = -1.f, landT = -1.f; glm::vec3 mark{0.f}; float t = 0.f;
+        for (; t < 6.f && landT < 0.f; t += DT) {
+            e.update(DT, zworld(me));
+            if (e.ev.abMark) { marked = true; mark = e.ev.abTo; markT = t; gold = abTellOf(e.attack) == AbTell::GOLD; }
+            if (e.ev.abCrater) landT = t;
+        }
+        CHECK(marked && gold && glm::length(glm::vec2{mark.x - me.x, mark.z - me.z}) < 0.5f, "SKYFALL: a gold circle locks onto where you stand");
+        CHECK(landT - markT >= 0.69f && e.abAlt < 0.1f, "...0.7 s, then he crashes down onto it");
+        CHECK(e.ev.meleeHit && std::fabs(e.ev.meleeDamage - 28.f) < 1e-3f, "standing in it: 28");
+        Enemy d = freshAbs(); d.abArrive = 0.f; d.abForce = AB_SKYFALL;
+        glm::vec3 p = me; bool hitD = false, moved = false;
+        for (float u = 0.f; u < 6.f; u += DT) {
+            d.update(DT, zworld(p));
+            if (d.ev.abMark && !moved) { p += glm::vec3{5.f, 0, 0}; moved = true; }   // a dash out of the circle
+            hitD |= d.ev.abCrater && d.ev.meleeHit;   // (the strings after it are another matter)
+        }
+        CHECK(moved && !hitD, "...a dash out of the circle and it misses");
+    }
+    {
+        glm::vec3 me = ZC + glm::vec3{0, 0, 16};
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = AB_METEOR;
+        bool flare = false, window = false; int r = 0;
+        for (int i = 0; i < 60 * 6 && !r; ++i) {
+            e.update(DT, zworld(me));
+            flare |= e.ev.abFlare;
+            if (e.attack == AttackKind::AMETEOR && e.parryWindow()) { window = true; r = e.abParried(true); }
+        }
+        CHECK(flare && window && abTellOf(AttackKind::AMETEOR) == AbTell::WHITE, "METEOR: a flare, a white dive at you, parryable");
+        CHECK(r == 4 && e.staggered() && std::fabs(e.staggerTimer - Enemy::AB_DOWNED) < 0.05f && e.abReeling,
+              "...parried: knocked out of the sky, 1.5 s at x1.5");
+        float fall = 0.f; while (e.abAlt > 0.01f && fall < 2.f) { e.update(DT, zworld(me)); fall += DT; }
+        CHECK(fall < 1.f, "...down on the floor");
+        Enemy u = freshAbs(); u.abArrive = 0.f; u.abForce = AB_METEOR;
+        bool hit = false; float dmg = 0.f;
+        for (int i = 0; i < 60 * 6 && !hit; ++i) { u.update(DT, zworld(me)); if (u.ev.meleeHit) { hit = true; dmg = u.ev.meleeDamage; } }
+        CHECK(hit && std::fabs(dmg - 24.f) < 1e-3f, "...unparried, it lands on you: 24");
+    }
+    {
+        // a shard camper: he flies over and SKYFALLs the shard (every phase)
+        bool all = true;
+        for (int ph = 1; ph <= 3; ++ph) {
+            glm::vec3 me = zenithShard(0); me.y = N.zenith.shardHome[0].max.y;
+            Enemy e = freshAbs(); e.abArrive = 0.f; e.abPhase = ph; e.abBlade = ph == 3; e.abRot = 1; e.abForce = AB_JUDGED;
+            e.health = e.maxHealth * (ph == 1 ? 1.f : ph == 2 ? 0.55f : 0.2f);
+            bool broke = false;
+            for (int i = 0; i < 60 * 8 && !broke; ++i) {
+                EnemyWorld w = zworld(me); w.onShard = true;
+                e.update(DT, w);
+                broke = e.ev.abShardBreak && N.zenithShardAt(e.ev.abTo) == 0;
+            }
+            if (!broke) std::printf("      phase %d: no shard break\n", ph);
+            all &= broke && glm::length(glm::vec2{e.position.x - ZC.x, e.position.z - ZC.z}) <= Enemy::AB_FLOOR_R + 0.01f;
+        }
+        CHECK(all, "camping a shard: SKYFALL breaks it under you, in every phase, and he lands back on the floor");
+        LevelData L2 = N;
+        L2.parkZenithPiece(true, 0);
+        L2.restoreZenith();
+        CHECK(L2.zenith.shardUp[0] && L2.onZenithShard(glm::vec3{zenithShard(0).x, N.zenith.shardHome[0].max.y, zenithShard(0).z}),
+              "a retry brings a broken shard back");
+    }
+    {
+        // Review Focus 5: a dive beside a pillar or the edge never lands in it
+        int bad = 0;
+        for (int k = 0; k < 8; ++k)
+            for (int which : {AB_SKYFALL, AB_METEOR}) {
+                glm::vec3 pil = zenithPillar(k), out = glm::normalize(glm::vec3{pil.x - ZC.x, 0, pil.z - ZC.z});
+                glm::vec3 me = pil + out * 1.8f; me.y = ZC.y;
+                Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = which;
+                for (int i = 0; i < 60 * 6; ++i) {
+                    e.update(DT, zworld(me));
+                    const AABB& b = N.zenith.pillarHome[k];
+                    if (e.position.x > b.min.x && e.position.x < b.max.x && e.position.z > b.min.z && e.position.z < b.max.z && e.position.y < b.max.y) ++bad;
+                    if (glm::length(glm::vec2{e.position.x - ZC.x, e.position.z - ZC.z}) > Enemy::AB_FLOOR_R + 0.01f) ++bad;
+                }
+            }
+        CHECK(bad == 0, "a SKYFALL or METEOR beside a pillar never ends inside it, or past the edge");
+    }
+    {
+        glm::vec3 me = ZC + glm::vec3{0, 0, 16};
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.abPhase = 3; e.abBlade = true; e.health = e.maxHealth * 0.2f; e.abForce = AB_BLADEDIVE;
+        bool lungeAir = false;
+        for (int i = 0; i < 60 * 6; ++i) { e.update(DT, zworld(me)); if (e.attack == AttackKind::ALUNGE && e.abAirborne()) lungeAir = true; }
+        CHECK(lungeAir && abTellOf(AttackKind::ALUNGE) == AbTell::GOLD, "phase 3: the blade dive, a gold LUNGE from the air");
     }
 
     // ---------------------------------------------------------------- the Absolute's hazards
@@ -623,9 +710,9 @@ int main() {
         bool seams = false, mirages = false, zray = false;
         for (int i = 0; i < 60 * 40; ++i) { r.update(DT, zworld(me)); seams |= r.ev.abSeams; mirages |= r.ev.abMirages > 0; }
         Enemy sh = freshAbs(); sh.abArrive = 0.f; sh.abPhase = 2;
-        for (int i = 0; i < 60 * 6 && !zray; ++i) { EnemyWorld sw = zworld(zenithShard(0)); sw.onShard = true; sh.update(DT, sw); zray |= sh.ev.abZenith; }
+        for (int i = 0; i < 60 * 8 && !zray; ++i) { EnemyWorld sw = zworld(zenithShard(0)); sw.onShard = true; sh.update(DT, sw); zray |= sh.ev.abMark; }
         CHECK(seams && mirages, "phase 2 brings the seams and mirages");
-        CHECK(zray, "camping on a shard in phase 2 brings the zenith ray");
+        CHECK(zray, "camping on a shard in phase 2 brings SKYFALL");
     }
     {
         Enemy e = freshAbs(); e.abArrive = 0.f; e.abPhase = 2;
