@@ -116,7 +116,7 @@ inline void buildAbsolute(const Enemy& e, float time, Rig& r, const mat4& root) 
     // the strike's colour, blazing as it comes
     const AbTell tell = e.telegraphTimer > 0.f ? abTellOf(e.attack) : AbTell::NONE;
     const vec3 tc = tell == AbTell::GOLD ? vec3{2.2f, 1.5f, 0.35f} : tell == AbTell::RED ? vec3{2.4f, 0.25f, 0.15f} : vec3{1.9f, 1.9f, 2.0f};
-    const float tk = 0.4f + 2.6f * tp;
+    const float tk = 0.5f + 3.f * tp;   // (always the brightest thing on him by the end)
     auto lit = [&](int limb, vec3 base) {
         if (tell == AbTell::NONE || P.glow < 0) return base;
         bool on = P.glow == limb || P.glow == 5 || (P.glow == 3 && (limb == 0 || limb == 1));
@@ -173,7 +173,7 @@ inline void buildAbsolute(const Enemy& e, float time, Rig& r, const mat4& root) 
     }
     r.box(torso, {0.f, 0.6f, 0.f}, {0.56f, 0.3f, 0.3f}, skin, soft);                              // chest
     r.box(torso, {0.f, 0.5f, 0.165f}, {0.025f, 0.5f, 0.015f}, dark, seam * 1.3f);                 // sternum seam
-    r.box(torso, {0.f, 0.62f, 0.17f}, {0.08f, 0.08f, 0.02f}, light, seam * (1.6f + 0.6f * std::sin(time * 6.f)));   // the light in his chest
+    r.box(torso, {0.f, 0.62f, 0.17f}, {0.08f, 0.08f, 0.02f}, light, seam * (1.2f + 0.4f * std::sin(time * 6.f)));   // the light in his chest
     for (int k = 0; k < 5; ++k)                                                                    // spine
         r.box(torso, {0.f, 0.1f + 0.15f * k, -0.14f}, {0.05f, 0.06f, 0.04f}, plate, seam * 0.4f);
     // ---- neck and head: throat seam, skull, jaw, brow, the gold slit, cheekbones, crown ridge ----
