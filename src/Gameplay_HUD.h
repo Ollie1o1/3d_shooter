@@ -45,7 +45,8 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
     if (wd.canAim && !player.onGround) spread += 0.03f * (1.f - h.aim);
     h.spread = spread * (SCREEN_H * 0.5f) / std::tan(glm::radians(player.camera.fov) * 0.5f) * 0.7f;
     h.hideCrosshair = (activeWeapon == (int)WeaponId::KAR && aim > 0.6f) || scopedView() || playerDead || victory;
-    h.grappleTarget = grappleTargetInSight && !grapple.active;
+    h.grappleTarget = grappleTargetInSight && !grapple.active && grappleCooldown <= 0.f;
+    h.grappleCool = std::max(0.f, grappleCooldown) / GRAPPLE_COOLDOWN;
     h.showTimer = fast() || (settings && settings->showTimer);
     h.speed = fast() ? playerXZSpeed : -1.f;
     h.time = elapsedTime;
