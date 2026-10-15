@@ -577,6 +577,76 @@ def gen_pump():
     return out
 
 
+def gen_sword_swing():
+    """A blade through the air: a fast band-passed whoosh that rises then falls."""
+    n = n_samples(0.22)
+    noise = highpass(lowpass([white() for _ in range(n)], 5000), 700)
+    return [noise[i] * math.sin(math.pi * i / n) ** 1.5 * 0.8 for i in range(n)]
+
+
+def gen_sword_hit():
+    """Steel through something hard: a bright inharmonic ring over a short crunch."""
+    n = n_samples(0.35)
+    crunch = lowpass([white() for _ in range(n)], 2500)
+    out = []
+    for i in range(n):
+        t = i / n
+        ring = sine(1870, i) * math.exp(-9 * t) + sine(2930, i) * 0.6 * math.exp(-12 * t) + sine(4410, i) * 0.3 * math.exp(-16 * t)
+        out.append(ring * 0.55 + crunch[i] * math.exp(-40 * t) * 0.9)
+    return out
+
+
+def gen_sword_draw():
+    """Drawing it: a scrape that brightens, ending on a ring."""
+    n = n_samples(0.5)
+    noise = highpass([white() for _ in range(n)], 3000)
+    out = []
+    for i in range(n):
+        t = i / n
+        ring = sine(2400, i) * 0.45 * math.exp(-8 * (t - 0.75)) if t > 0.75 else 0.0
+        out.append(noise[i] * 0.35 * t * (1.0 if t < 0.8 else math.exp(-20 * (t - 0.8))) + ring)
+    return out
+
+
+def gen_sword_thrust():
+    """The thrust: a heavy push of air with a steel edge on it."""
+    n = n_samples(0.3)
+    air = lowpass([white() for _ in range(n)], 1200)
+    return [air[i] * math.sin(math.pi * i / n) * 0.9 + sine(1600, i) * 0.15 * math.exp(-6 * i / n) for i in range(n)]
+
+
+def gen_sword_guard():
+    """Raising the guard: a short metallic shink."""
+    n = n_samples(0.12)
+    return [sine(3200, i) * math.exp(-25 * i / n) * 0.5 + white() * math.exp(-60 * i / n) * 0.4 for i in range(n)]
+
+
+def gen_sword_block():
+    """A blow on the blade: a hard clang."""
+    n = n_samples(0.4)
+    return [(sine(620, i) + sine(1340, i) * 0.7 + sine(2210, i) * 0.4) * math.exp(-8 * i / n) * 0.5
+            + white() * math.exp(-50 * i / n) * 0.5 for i in range(n)]
+
+
+def gen_sword_break():
+    """The guard breaks: a crack and a dying, detuned ring."""
+    n = n_samples(0.6)
+    return [white() * math.exp(-30 * i / n) * 0.9 + (sine(880, i) + sine(905, i)) * 0.35 * math.exp(-5 * i / n) for i in range(n)]
+
+
+def gen_ab_ting():
+    """THE ABSOLUTE's white tell: a pure high bell - parry this."""
+    n = n_samples(0.45)
+    return [(sine(2093, i) + sine(4186, i) * 0.35) * math.exp(-7 * i / n) * 0.6 for i in range(n)]
+
+
+def gen_ab_thrum():
+    """THE ABSOLUTE's gold tell: a low swelling thrum - don't parry this."""
+    n = n_samples(0.5)
+    return [(sine(73, i) + sine(146, i) * 0.6 + sine(219, i) * 0.3) * math.sin(math.pi * i / n) * 0.8 for i in range(n)]
+
+
+
 GENERATORS = {
     "jump": gen_jump,
     "land": gen_land,
@@ -614,6 +684,15 @@ GENERATORS = {
     "pump": gen_pump,
     "wade": gen_wade,
     "skim": gen_skim,
+    "sword_draw": gen_sword_draw,
+    "sword_swing": gen_sword_swing,
+    "sword_hit": gen_sword_hit,
+    "sword_thrust": gen_sword_thrust,
+    "sword_guard": gen_sword_guard,
+    "sword_block": gen_sword_block,
+    "sword_break": gen_sword_break,
+    "ab_ting": gen_ab_ting,
+    "ab_thrum": gen_ab_thrum,
 }
 
 

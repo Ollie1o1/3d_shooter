@@ -2917,7 +2917,9 @@ int main() {
                                 "parry", "telegraph", "explosion", "wave", "pickup", "kar", "longshot", "bolt", "scope", "levelup",
                                 "potion", "barrier", "split", "upgrade", "clank", "punch", "step1", "step2", "step3", "step4", "door",
                                 "door_close", "boost", "cyl_open", "cyl_close", "eject", "shell_in", "pump", "wade", "skim", "cell",
-                                "dry", "switch_up0", "switch_up1", "switch_up2", "switch_up3"};
+                                "dry", "switch_up0", "switch_up1", "switch_up2", "switch_up3",
+                                "sword_draw", "sword_swing", "sword_hit", "sword_thrust", "sword_guard", "sword_block", "sword_break",
+                                "ab_ting", "ab_thrum"};
         bool all = true; for (const char* n : loaded) all &= mixEntry(n) != nullptr;
         CHECK(all && mixTable().size() == sizeof(loaded) / sizeof(loaded[0]), "every sound file the game loads has exactly one place in the mix");
         CHECK(std::fabs(mixGain("jump") - std::pow(10.f, -4.1f / 20.f)) < 1e-4f && mixGain("v_husk_idle") == 1.f && mixGain("nope") == 1.f,

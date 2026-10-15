@@ -15,6 +15,9 @@
 #include "../src/WardenHazards.h"
 #include "../src/LeviathanHazards.h"
 #include "BossSim.h"
+#include "../src/MixTable.h"
+#include "../src/VoiceTable.h"
+#include <fstream>
 #include <string>
 #include <cstdio>
 #include <cmath>
@@ -623,6 +626,18 @@ int main() {
                 if (first < 0.f || first > 5.f) punished = false;
             }
         CHECK(punished, "every cheese (the rim, a pillar top, edge-kiting, ranged-only) is punished within 5 s, in every phase");
+    }
+
+    // ---------------------------------------------------------------- the encore's sounds
+    {
+        bool all = true;
+        for (const char* n : {"sword_draw", "sword_swing", "sword_hit", "sword_thrust", "sword_guard", "sword_block", "sword_break", "ab_ting", "ab_thrum"}) {
+            std::ifstream f(std::string("assets/sfx/") + n + ".wav", std::ios::binary);
+            if (!mixEntry(n) || !f.good()) { all = false; std::printf("      missing sound: %s\n", n); }
+        }
+        CHECK(all, "every sound the sword and his tells play is built and in the mix");
+        int lines = 0; for (auto& v : voiceBank()) lines += std::string(v.name) == "v_absolute_line";
+        CHECK(lines == 1, "his lines have a choir phrase in the voice bank");
     }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");

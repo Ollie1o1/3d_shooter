@@ -195,6 +195,7 @@ inline const std::vector<VoiceSpec>& voiceBank() {
         sp("v_leviathan_rise",   EnemyType::LEVIATHAN, 1, MixClass::TELL,    "rise");
         sp("v_leviathan_enrage", EnemyType::LEVIATHAN, 1, MixClass::TELL,    "enrage");
         sp("v_leviathan_choke",  EnemyType::LEVIATHAN, 1, MixClass::ACTION,  "choke");
+        sp("v_absolute_line",    EnemyType::ABSOLUTE,  1, MixClass::TELL,    "line");
         return v;
     }();
     return bank;

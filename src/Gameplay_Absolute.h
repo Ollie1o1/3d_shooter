@@ -49,7 +49,7 @@ inline void GameplayState::onAbsoluteEvents(Enemy& e, const EnemyEvents& ev) {
     if (ev.abTell == (int)AbTell::WHITE) audio.playAt("ab_ting", e.position, 110, SoundGroup::ENEMY, true);
     if (ev.abTell == (int)AbTell::GOLD)  audio.playAt("ab_thrum", e.position, 128, SoundGroup::ENEMY, true);
     if (ev.abTell == (int)AbTell::RED)   audio.playAt("telegraph", e.position, 128, SoundGroup::ENEMY, true);
-    if (ev.abLine >= 0) { abLineShown = ev.abLine; abLineT = 1.6f; }
+    if (ev.abLine >= 0) { abLineShown = ev.abLine; abLineT = 1.6f; audio.playAt("v_absolute_line", e.position, 128, SoundGroup::ENEMY, true); }
     if (ev.blinked) {   // a fading white copy where he was
         Enemy g = e; g.position = g.prevPosition = ev.blinkFrom; g.hitFlashTimer = 0.f;
         abGhosts.push_back({g, 0.f});
@@ -156,6 +156,7 @@ inline void GameplayState::onAbsoluteKilled(const Enemy& e) {
     abCorpse.attack = AttackKind::NONE; abCorpse.telegraphTimer = 0.f; abCorpse.abBlade = false;
     abDeathT = 0.f;
     abLineShown = 4; abLineT = 3.f;
+    audio.playAt("v_absolute_line", e.position, 128, SoundGroup::ENEMY, true, 0.8f);   // "...WORTHY.", lower
     fx.spawnShockwave(e.position, 20.f, {1.6f, 1.5f, 1.2f});
     explosionFlashTimer = 0.8f; explosionFlashPos = e.position;
     audio.duck(10.f, 2.f);

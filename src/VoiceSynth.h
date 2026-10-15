@@ -460,6 +460,14 @@ inline Buf specialV(const VoiceSpec& s, Rng& r) {
     if (k == "reform") { Buf out = choir(1.f, 140.f, 220.f, Vowel::OH, 4, 1.f, r, 0.8f, 0.15f, 0.2f); add(out, shimmer(1.f, 2400.f, r), 0.3f); return out; }
     if (k == "choke")  { Buf out = choir(0.8f, p.f0 * 2.5f, p.f0 * 1.5f, Vowel::AH, 4, p.formant, r, 0.01f, 0.3f, 0.8f, 11.f);   // gagging on its own breath
                          add(out, metal(0.5f, 300.f, r, 6.f), 0.6f); add(out, grind(0.8f, 30.f, 200.f, r), 0.5f); return out; }
+    if (k == "line") {   // THE ABSOLUTE speaks: three notes of a bright choir, falling, over a shimmer
+        Buf out;
+        const float notes[3] = {1.f, 0.84f, 0.67f};
+        for (int i = 0; i < 3; ++i)
+            add(out, choir(0.32f, p.f0 * notes[i], p.f0 * notes[i], i == 2 ? Vowel::AH : p.vowel, 5, p.formant, r, 0.02f, 0.18f, 0.15f, 6.f), 0.8f, 0.24f * i);
+        add(out, shimmer(0.9f, 3200.f, r), 0.25f);
+        return out;
+    }
     if (k == "twang")  { Buf out = metal(0.3f, 1300.f, r, 9.f); add(out, servo(0.25f, 900.f, 300.f, r, 0.002f, 0.2f), 0.5f); return out; }
     return Buf(N(0.1f), 0.f);
 }

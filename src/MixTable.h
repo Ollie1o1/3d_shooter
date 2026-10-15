@@ -55,8 +55,10 @@ inline const std::vector<MixEntry>& mixTable() {
         {"jump", C::PLAYER, -4.1f}, {"land", C::PLAYER, 1.3f}, {"dash", C::PLAYER, -2.6f}, {"grapple_fire", C::PLAYER, -0.6f},
         {"punch", C::PLAYER, 1.7f}, {"step1", C::PLAYER, 1.9f}, {"step2", C::PLAYER, 2.5f}, {"step3", C::PLAYER, 2.5f},
         {"step4", C::PLAYER, 2.5f}, {"skim", C::PLAYER, -3.2f}, {"boost", C::PLAYER, -1.9f}, {"player_hit", C::PLAYER, -2.f},
-        {"parry", C::PLAYER, 3.5f}, {"switch_up0", C::PLAYER, 1.3f}, {"switch_up1", C::PLAYER, 0.9f},
+        {"parry", C::PLAYER, 3.5f}, {"sword_draw", C::PLAYER, 1.f}, {"sword_swing", C::PLAYER, 0.f}, {"sword_hit", C::PLAYER, 2.f},
+        {"sword_thrust", C::PLAYER, 4.9f}, {"sword_guard", C::PLAYER, 9.7f}, {"sword_block", C::PLAYER, 2.f}, {"sword_break", C::PLAYER, 0.8f}, {"switch_up0", C::PLAYER, 1.3f}, {"switch_up1", C::PLAYER, 0.9f},
         {"switch_up2", C::PLAYER, 0.6f}, {"switch_up3", C::PLAYER, 0.2f},
+        {"ab_ting", C::ACTION, -0.1f}, {"ab_thrum", C::ACTION, -4.4f},   // THE ABSOLUTE's tells: white (parry), gold (don't)
         {"explosion", C::ACTION, -1.2f}, {"slam", C::ACTION, -1.8f}, {"clank", C::ACTION, 2.f},
         {"door", C::WORLD, -1.5f}, {"door_close", C::WORLD, 1.6f}, {"split", C::WORLD, 0.7f}, {"pickup", C::WORLD, -2.2f},
         {"potion", C::WORLD, 0.5f},
