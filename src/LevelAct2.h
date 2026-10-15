@@ -984,11 +984,12 @@ inline void buildZenith(LevelBuilder& B) {
         B.kit(true).box(C + vec3{0.f, 0.015f, u}, {2.f * half, 0.02f, 0.06f}, seam * 0.25f);
     }
     B.kit(true).curve({C.x, 0.f, C.z}, ZEN_FLOOR, 0.f, 6.2831853f, F - 0.2f, F + 0.04f, 0.3f, seam * 0.4f, 96);   // the rim
-    // the Dais: 3 m boxes inside r 8.5, raised 1.2 m, with steps every 90 degrees
-    for (float x = -9.f; x < 9.f; x += 3.f)
-        for (float z = -9.f; z < 9.f; z += 3.f)
-            if ((x + 1.5f) * (x + 1.5f) + (z + 1.5f) * (z + 1.5f) < 8.5f * 8.5f)
-                B.solid(C.x + x, F, C.z + z, C.x + x + 3.f, F + ZEN_DAIS_UP, C.z + z + 3.f);
+    // the Dais, raised 1.2 m: collision in 0.5 m strips tracing the drawn disc
+    // (each strip as wide as the disc at its middle), steps every 90 degrees
+    for (float z = -ZEN_DAIS; z < ZEN_DAIS - 1e-3f; z += 0.5f) {
+        float m = z + 0.25f, half = std::sqrt(std::max(0.f, ZEN_DAIS * ZEN_DAIS - m * m));
+        B.solid(C.x - half, F, C.z + z, C.x + half, F + ZEN_DAIS_UP, C.z + z + 0.5f);
+    }
     B.kit().column({C.x, F, C.z}, ZEN_DAIS, ZEN_DAIS_UP, white, 40);
     B.kit(true).curve({C.x, 0.f, C.z}, ZEN_DAIS - 1.2f, 0.f, 6.2831853f, F + ZEN_DAIS_UP, F + ZEN_DAIS_UP + 0.03f, 0.25f, gold * 0.6f, 48);
     for (int k = 0; k < 4; ++k) {

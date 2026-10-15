@@ -666,6 +666,41 @@ int main() {
         CHECK(two.freshRay() == 1, "a second ray, fired while the first still burns, can be parried");
     }
 
+    // ---------------------------------------------------------------- the deferred minors
+    {
+        bool onDais = true, offDais = true;
+        for (int k = 0; k < 72; ++k) {
+            float a = k * 0.0872665f;
+            glm::vec3 in = ZC + glm::vec3{std::cos(a) * 8.6f, 3.f, std::sin(a) * 8.6f};
+            glm::vec3 out = ZC + glm::vec3{std::cos(a) * 9.4f, 3.f, std::sin(a) * 9.4f};
+            if (std::fabs(N.groundAt(in.x, in.z, in.y) - (ZC.y + ZEN_DAIS_UP)) > 0.01f) onDais = false;
+            float fo = N.groundAt(out.x, out.z, out.y);
+            bool step = std::fabs(fo - (ZC.y + 0.6f)) < 0.01f;   // the four steps up onto it
+            if (!step && std::fabs(fo - ZC.y) > 0.01f) offDais = false;
+        }
+        CHECK(onDais && offDais, "the Dais you stand on is the Dais you see: solid to r 8.6 all round, gone by r 9.4");
+        int inside = 0;
+        for (int k = 0; k < 8; ++k) {
+            glm::vec3 pil = zenithPillar(k), out = glm::normalize(glm::vec3{pil.x - ZC.x, 0, pil.z - ZC.z});
+            Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = AB_KNEEL;
+            e.position = pil - out * 5.f; e.position.y = ZC.y;
+            glm::vec3 me = pil + out * 4.f; me.y = ZC.y;
+            for (int i = 0; i < 40; ++i) {
+                e.update(DT, zworld(me));
+                if (N.zenithPillarAt(e.position, 0.f) >= 0) ++inside;
+            }
+        }
+        CHECK(inside == 0, "a dash with a pillar in the way blinks past it, never through it");
+        Records r;
+        CHECK(act2Subtitle(r, false) == "DEFEAT THE SOVEREIGN TO UNLOCK" && act2Subtitle(r, true) == "5 ARENAS - BENEATH THE ECLIPSE",
+              "the ACT II row: locked, then the act");
+        r.bestAct2 = 1534.2f;
+        CHECK(act2Subtitle(r, true) == "5 ARENAS - BENEATH THE ECLIPSE   BEST " + formatTime(1534.2f), "...with the act's best time once you have one");
+        r.bestZenith = 1712.f;
+        CHECK(act2Subtitle(r, true) == "5 ARENAS - AND WHAT WAITS ABOVE   BEST " + formatTime(1534.2f) + "   ZENITH " + formatTime(1712.f),
+              "...and the Zenith's once it's cleared");
+    }
+
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;
 }
