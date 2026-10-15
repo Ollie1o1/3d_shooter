@@ -2745,6 +2745,12 @@ int main() {
             }
             CHECK(tells == 1, "the same enemy can't repeat its tell within 0.15 s");
         }
+        {   // THE ABSOLUTE: his wind-ups are his own (Gameplay_Absolute.h plays them, timed to each tell)
+            VoiceDirector d;
+            d.begin(O, F); d.enemy(in(1, EnemyType::ABSOLUTE, {5, 0, 0})); d.end();
+            d.begin(O, F); d.enemy(windup(in(1, EnemyType::ABSOLUTE, {5, 0, 0}), AttackKind::AJAB));
+            CHECK(count(d.end(), SoundRole::TELL, "tell_") == 0, "THE ABSOLUTE's wind-ups are his own: no generic voice tell over them");
+        }
         {   // six at once: the nearest four
             VoiceDirector d; d.begin(O, F); for (int i = 0; i < 6; ++i) d.enemy(in(i + 1, EnemyType::HUSK, {5.f + 5.f * i, 0, 0})); d.end();
             d.begin(O, F); for (int i = 0; i < 6; ++i) d.enemy(windup(in(i + 1, EnemyType::HUSK, {5.f + 5.f * i, 0, 0}), AttackKind::SHOT));

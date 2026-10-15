@@ -116,7 +116,7 @@ public:
             }
             s.lastSeen = now;
             // The wind-up
-            if (in.telegraphStarted && in.attack != AttackKind::NONE && now - s.lastTell >= TELL_REPEAT &&
+            if (in.telegraphStarted && in.attack != AttackKind::NONE && in.type != EnemyType::ABSOLUTE && now - s.lastTell >= TELL_REPEAT &&   // (his: Gameplay_Absolute.h)
                 d < (boss ? BOSS_RANGE : TELL_RANGE)) {
                 VoiceCue c = cue(in, voiceName(in.type, VoiceKind::TELL, in.attack), SoundRole::TELL);
                 c.priority = true;
