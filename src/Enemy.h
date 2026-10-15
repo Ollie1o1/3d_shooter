@@ -91,7 +91,7 @@ enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY,
                         RAKE, SOULBOLT, STRING,                        // the REVENANT's, the WEAVER's
                         CRASH, TORRENT, TIDE, SPIT, BREACH, SWALLOW, SUBMERGE,     // the LEVIATHAN's
                         ATELEPORT, ADASH, AJAB, AHOOK, AUPPER, ADROP, AHOP, ARAY, ASTOMP, ASERPENT,   // THE ABSOLUTE's
-                        AHALO, ASEAMS, AZENITH, ASWEEP, ALUNGE, ACRESCENT, AJUDGE };
+                        AHALO, ASEAMS, AZENITH, ASWEEP, ALUNGE, ACRESCENT, AJUDGE, ATAKEOFF };
 
 struct EnemyStats {
     const char* name;
@@ -240,6 +240,7 @@ struct EnemyEvents {
     int  abTell = -1, abPhase = 0, abLine = -1, abSeamFirst = 0, abMirages = 0;
     bool abRay = false, abStomp = false, abSerpent = false, abHalo = false, abSeams = false, abZenith = false,
          abBladeDrawn = false, abBladeBroke = false, abJudgeMark = false, abJudge = false, abLaunch = false, abShards = false;
+    bool abTakeoff = false, abShotDown = false;   // he left the floor; he was shot out of the sky
     glm::vec3 abFrom{0.f}, abTo{0.f};
 };
 
@@ -454,6 +455,17 @@ struct Enemy {
                            AB_DASH = 32.f, AB_REACH = 2.8f, AB_FOLLOW_FLOOR = 0.22f, AB_QUICK = 0.75f, AB_RANGE = 20.f,
                            AB_BLADE_BACK = 3.f, AB_HALO_TIME = 2.f, AB_JUDGE_WARN = 2.f,
                            AB_FLOOR_R = 42.f, AB_DAIS_R = 9.f, AB_DAIS_UP = 1.2f, AB_HALO_UP = 40.f;
+    // his flight (EnemyAbsolute.h): cruising height, climb / dive / fall speeds, a flight's limit, the share of
+    // his health that shoots him down and how long he lies there, how far he circles you, the height that clears pillars
+    static constexpr float AB_CRUISE_LO = 9.f, AB_CRUISE_HI = 14.f, AB_CLIMB = 18.f, AB_DIVE_V = 45.f, AB_FALL_V = 30.f,
+                           AB_AIR_MAX = 5.f, AB_SHOOTDOWN = 0.06f, AB_DOWNED = 1.5f, AB_ORBIT_LO = 14.f, AB_ORBIT_HI = 20.f,
+                           AB_OVER = 15.f, AB_ARRIVE_UP = 12.f, AB_ASCEND_UP = 12.f;
+    float abAlt = 0.f, abAltWant = 0.f;   // his height over the floor under him, and where it's going
+    float abAirT = 0.f;                   // this flight's time in the air
+    float abFlightHp = -1.f;              // his health as this flight began (< 0: on the ground)
+    bool  abDiving = false;               // coming down fast (a dive, a crash, a landing)
+    int   abOrbitDir = 1;                 // which way he circles you
+    bool  abAirborne() const { return abAlt > 1.5f; }
     int   abPhase = 1;
     int   abCur = -1, abStep = 0;      // the string running (an AB_* id), the move in it
     int   abForce = -1;                // tests / dev: the next string
@@ -561,7 +573,7 @@ struct Enemy {
     // his wind-ups, strokes and recoveries are the openings
     bool deflects(glm::vec3 dir, float dist) const {
         if (type == EnemyType::ABSOLUTE)   // all round, from beyond 14 m, while he isn't winding up, recovering or broken
-            return alive && !staggered() && dist >= AB_DEFLECT && telegraphTimer <= 0.f && recoverTimer <= 0.f && abArrive <= 0.f;
+            return alive && !staggered() && dist >= AB_DEFLECT && telegraphTimer <= 0.f && recoverTimer <= 0.f && abArrive <= 0.f && !abAirborne();   // (aloft: open)
         if (type != EnemyType::SOVEREIGN || !alive || staggered() || dist < DEFLECT_RANGE) return false;
         if (telegraphTimer > 0.f || recoverTimer > 0.f || dashTimer > 0.f || leapTimer > 0.f ||
             whirlTimer > 0.f || thrustTimer > 0.f) return false;
@@ -668,7 +680,7 @@ struct Enemy {
             staggerTimer -= dt;
             velocity.x = velocity.z = 0.f;
             if (type == EnemyType::LEVIATHAN) { levReel(dt); return; }   // its head down on the ring
-            if (type == EnemyType::ABSOLUTE) { if (staggerTimer <= 0.f) abReeling = false; return; }   // he stands where he was struck
+            if (type == EnemyType::ABSOLUTE) { abFly(dt, w); if (staggerTimer <= 0.f) abReeling = false; return; }   // he stands where he was struck (or falls there)
             integrate(dt, w);
             return;
         }
@@ -1302,6 +1314,10 @@ public:
     }
 private:
     void thinkAbsolute(float dt, const EnemyWorld& w, bool resolve);   // EnemyAbsolute.h
+    void thinkAbsoluteMind(float dt, const EnemyWorld& w, bool resolve);
+    void abFly(float dt, const EnemyWorld& w);
+    void abOrbit(float dt, const EnemyWorld& w, glm::vec3 feet);
+    void abDowned();
     void abPhaseCheck(float hp);
     int  abChoose(float d, const EnemyWorld& w);
     int  abCampAnswer(const EnemyWorld& w) const;

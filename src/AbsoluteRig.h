@@ -39,6 +39,10 @@ inline AbsPose absolutePose(const Enemy& e, float time) {
         P.torsoPitch = 0.18f * stride; P.torsoYaw = 0.25f + std::sin(ph) * 0.08f * stride;
     }
     const bool late = tp > 0.78f;   // the strike itself
+    if (e.abAirborne() && !e.abDiving) {   // aloft: arms swept back, legs trailing, the guard gone
+        P.shR = P.shL = 0.55f; P.shRz = P.shLz = 0.35f; P.elR = P.elL = 0.35f; P.fistR = P.fistL = 0.6f;
+        P.hipR = 0.35f; P.hipL = 0.2f; P.kneeR = 0.6f; P.kneeL = 0.9f; P.torsoPitch = 0.3f; P.crouch = 0.f;
+    }
     switch (e.telegraphTimer > 0.f ? e.attack : AttackKind::NONE) {
     case AttackKind::AJAB:
         P.glow = 0; P.torsoYaw = late ? -0.3f : 0.35f;
@@ -80,6 +84,10 @@ inline AbsPose absolutePose(const Enemy& e, float time) {
         break;
     case AttackKind::ACRESCENT:
         P.glow = 4; P.shR = late ? -1.1f : -2.85f; P.elR = 0.2f; P.torsoPitch = late ? 0.25f : -0.2f;
+        break;
+    case AttackKind::ATAKEOFF:   // a crouch, arms flung back, then up
+        P.crouch = 0.4f * (1.f - tp); P.shR = P.shL = 0.6f; P.shRz = P.shLz = 0.6f;
+        P.kneeR = P.kneeL = 1.1f * (1.f - tp); P.hipR = P.hipL = -0.6f * (1.f - tp);
         break;
     case AttackKind::AJUDGE:
         P.glow = 5; P.lift = 1.2f + 0.6f * tp; P.shR = P.shL = -1.57f; P.shRz = P.shLz = 1.25f; P.elR = P.elL = 0.f;

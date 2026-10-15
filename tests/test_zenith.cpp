@@ -27,6 +27,7 @@ static int failures = 0;
 #define CHECK(cond, msg) do { if (!(cond)) { std::printf("FAIL: %s\n", msg); ++failures; } \
                               else { std::printf("ok:   %s\n", msg); } } while (0)
 static constexpr float DT = 1.f / 60.f;
+static constexpr float AB_ORBIT_TEST_LO = 13.f;   // (a metre under the 14 m he circles at)
 
 // Hold an input for t seconds (a press only on the first tick)
 static Sword::Out run(Sword& s, SwordInput in, float t) {
@@ -427,6 +428,82 @@ int main() {
         CHECK(e.deflects({0, 0, -1}, 20.f) && !e.deflects({0, 0, -1}, 10.f), "beyond 14 m his guard turns shots aside; closer they land");
         e.stagger(1.f);
         CHECK(!e.deflects({0, 0, -1}, 20.f), "staggered, he's open from anywhere");
+    }
+
+    // ---------------------------------------------------------------- THE ABSOLUTE: flight
+    {
+        auto floorUnder = [&](const Enemy& e) {
+            float r = glm::length(glm::vec2{e.position.x - ZC.x, e.position.z - ZC.z});
+            return ZC.y + (r < ZEN_DAIS ? ZEN_DAIS_UP : 0.f);
+        };
+        glm::vec3 me = ZC + glm::vec3{0, 0, 16};
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = AB_SKYFALL;
+        float top = 0.f, airT = 0.f, maxAir = 0.f; bool took = false, below = false, inside = false, orbit = true;
+        for (int i = 0; i < 60 * 8; ++i) {
+            e.update(DT, zworld(me));
+            took |= e.ev.abTakeoff;
+            top = std::max(top, e.position.y - floorUnder(e));
+            below |= e.position.y < floorUnder(e) - 0.01f;
+            airT = e.abAirborne() ? airT + DT : 0.f; maxAir = std::max(maxAir, airT);
+            for (int k = 0; k < 8; ++k) {
+                const AABB& b = N.zenith.pillarHome[k];
+                if (e.position.x > b.min.x && e.position.x < b.max.x && e.position.z > b.min.z && e.position.z < b.max.z && e.position.y < b.max.y) inside = true;
+            }
+            float dxz = glm::length(glm::vec2{e.position.x - me.x, e.position.z - me.z});
+            if (e.abAlt > 8.f && !e.abDiving && e.telegraphTimer > 0.f && (dxz < AB_ORBIT_TEST_LO || dxz > 21.f)) orbit = false;
+        }
+        std::printf("      flight: top %.1f m, longest %.1f s aloft\n", top, maxAir);
+        CHECK(took, "he takes off (a takeoff event: the roar, the dust)");
+        CHECK(top >= 9.f && top <= 14.5f, "he climbs to 9-14 m");
+        CHECK(orbit, "up there he circles 14-20 m from you");
+        CHECK(maxAir <= 6.f, "never airborne longer than 6 s");
+        CHECK(!below && !inside, "never under the floor, never inside a pillar");
+    }
+    {
+        glm::vec3 me = ZC + glm::vec3{0, 0, 16};
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = AB_SKYFALL;
+        for (int i = 0; i < 120 && !e.abAirborne(); ++i) e.update(DT, zworld(me));
+        CHECK(e.abAirborne() && !e.deflects({0, 0, -1}, 30.f), "in the air his guard is down: gunfire lands from any range");
+        e.health -= e.maxHealth * (Enemy::AB_SHOOTDOWN + 0.005f);
+        e.update(DT, zworld(me));
+        CHECK(e.ev.abShotDown && e.staggered() && std::fabs(e.staggerTimer - Enemy::AB_DOWNED) < 0.05f &&
+              std::fabs(e.armorMult() - 1.5f) < 1e-4f, "6 % of his health in one flight shoots him down: 1.5 s at x1.5");
+        float fallT = 0.f;
+        while (e.abAlt > 0.01f && fallT < 2.f) { e.update(DT, zworld(me)); fallT += DT; }
+        CHECK(fallT < 1.f, "...and he crashes to the floor");
+        Enemy f = freshAbs(); f.abArrive = 0.f; f.abForce = AB_SKYFALL;
+        for (int i = 0; i < 120 && !f.abAirborne(); ++i) f.update(DT, zworld(me));
+        f.health -= f.maxHealth * 0.05f;
+        f.update(DT, zworld(me));
+        CHECK(!f.ev.abShotDown && f.abAirborne(), "5 % isn't enough");
+    }
+    {
+        // Review Focus 1: interrupted in the air, he always comes down
+        glm::vec3 me = ZC + glm::vec3{0, 0, 16};
+        bool down = true;
+        for (int how : {0, 2}) {   // (the ascension lifts him over the Dais on purpose: checked below)
+            Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = AB_SKYFALL;
+            for (int i = 0; i < 120 && !e.abAirborne(); ++i) e.update(DT, zworld(me));
+            if (how == 0) e.stagger(1.f);
+            if (how == 2) { e.abPhase = 3; e.abBlade = true; e.health = e.maxHealth * 0.07f; }   // the last judgment
+            float low = e.abAlt;
+            for (float t = 0.f; t < 1.2f; t += DT) {   // (he may take off again afterwards: what matters is that he came down)
+                e.update(DT, zworld(me));
+                low = std::min(low, e.abAlt);
+                down &= e.position.y >= ZC.y - 0.01f;
+            }
+            down &= low < 0.1f;
+        }
+        CHECK(down, "a stagger or the last judgment in the air brings him down within 1.2 s");
+        Enemy a = freshAbs(); a.abArrive = 0.f; a.health = a.maxHealth * 0.59f;
+        float hi = 0.f;
+        for (int i = 0; i < 60 * 3; ++i) { a.update(DT, zworld(me)); hi = std::max(hi, a.position.y - (ZC.y + ZEN_DAIS_UP)); }
+        CHECK(hi > 10.f, "ASCENSION really lifts him ~12 m over the Dais for the sweep");
+        Enemy arr = freshAbs();
+        arr.update(DT, zworld(me));
+        CHECK(arr.position.y > ZC.y + ZEN_DAIS_UP + 8.f, "he arrives from above...");
+        for (int i = 0; i < 125; ++i) arr.update(DT, zworld(me));
+        CHECK(arr.abAlt < 0.1f, "...and stands on the Dais when the fight begins");
     }
 
     // ---------------------------------------------------------------- the Absolute's hazards

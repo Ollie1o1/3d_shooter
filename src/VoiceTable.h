@@ -55,7 +55,7 @@ inline const char* attackKey(AttackKind k) {
         case AttackKind::AHALO: return "halo";        case AttackKind::ASEAMS: return "seams";
         case AttackKind::AZENITH: return "zenith";    case AttackKind::ASWEEP: return "asweep";
         case AttackKind::ALUNGE: return "alunge";     case AttackKind::ACRESCENT: return "acrescent";
-        case AttackKind::AJUDGE: return "ajudge";
+        case AttackKind::AJUDGE: return "ajudge";     case AttackKind::ATAKEOFF: return "takeoff";
         default: return "none";
     }
 }
@@ -83,7 +83,7 @@ inline std::vector<AttackKind> attacksOf(EnemyType t) {
         case EnemyType::LEVIATHAN:    return {A::CRASH, A::TORRENT, A::TIDE, A::SPIT, A::BREACH, A::SWALLOW, A::SUBMERGE};
         case EnemyType::ABSOLUTE:     return {A::ATELEPORT, A::ADASH, A::AJAB, A::AHOOK, A::AUPPER, A::ADROP, A::AHOP, A::ARAY,
                                               A::ASTOMP, A::ASERPENT, A::AHALO, A::ASEAMS, A::AZENITH, A::ASWEEP, A::ALUNGE,
-                                              A::ACRESCENT, A::AJUDGE};
+                                              A::ACRESCENT, A::AJUDGE, A::ATAKEOFF};
         default:                      return {};
     }
 }

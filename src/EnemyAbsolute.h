@@ -35,9 +35,9 @@ inline AbTell abTellOf(AttackKind k) {
 // One move of a string: its kind, its tell (s), its damage (a beam's: a
 // second of it), the first phase it's in, how much later than its flash a
 // delayed strike lands
-struct AbStep { AttackKind k; float tell, damage; int minPhase; float late; };
+struct AbStep { AttackKind k; float tell, damage; int minPhase; float late; bool air = false; };   // air: a move made aloft
 struct AbString { const char* name; int line; AbStep steps[6]; int n; };
-enum { AB_TOO_SLOW, AB_KNEEL, AB_JUDGED, AB_SERPENT, AB_SEAMS, AB_ZENITH, AB_SWEEPS, AB_LUNGE, AB_CRESCENTS, AB_STRINGS };
+enum { AB_TOO_SLOW, AB_KNEEL, AB_JUDGED, AB_SERPENT, AB_SEAMS, AB_ZENITH, AB_SWEEPS, AB_LUNGE, AB_CRESCENTS, AB_SKYFALL, AB_STRINGS };
 
 inline const AbString& abString(int id) {
     using A = AttackKind;
@@ -55,6 +55,7 @@ inline const AbString& abString(int id) {
                        {A::ASWEEP, 0.30f, 22.f, 3, 0.f}}, 4},
         {"LUNGE", -1, {{A::ALUNGE, 0.50f, 30.f, 3, 0.f}}, 1},
         {"CRESCENTS", -1, {{A::ACRESCENT, 0.45f, 18.f, 3, 0.f}, {A::ACRESCENT, 0.35f, 18.f, 3, 0.f}}, 2},
+        {"SKYFALL", -1, {{A::ATAKEOFF, 0.45f, 0.f, 1, 0.f, true}, {A::ARAY, 0.60f, 25.f, 1, 0.f, true}}, 2},
     };
     return S[std::clamp(id, 0, AB_STRINGS - 1)];
 }
@@ -81,7 +82,7 @@ inline float absFloorAt(const EnemyWorld& w, glm::vec3 p) {
 // A teleport's or a dash's landing: on the floor (r <= 42 from the centre),
 // clear of every standing pillar (pushed out the way it was going in), never
 // past the edge, at the height of what's under it
-inline glm::vec3 absSafeSpot(const EnemyWorld& w, glm::vec3 want, glm::vec3 fallback) {
+inline glm::vec3 absSafeXZ(const EnemyWorld& w, glm::vec3 want, glm::vec3 fallback) {
     if (!w.hasZenith) return want;
     const glm::vec3 c = w.zenCentre;
     auto clampR = [&](glm::vec3 p) {
@@ -103,7 +104,12 @@ inline glm::vec3 absSafeSpot(const EnemyWorld& w, glm::vec3 want, glm::vec3 fall
     }
     if (absPillarAt(w, p, 0.8f) >= 0) p = clampR(fallback);
     if (absPillarAt(w, p, 0.8f) >= 0) p = c;   // (never: the Dais is clear)
-    p.y = absFloorAt(w, p);
+    return p;
+}
+// ...and on whatever floor is there
+inline glm::vec3 absSafeSpot(const EnemyWorld& w, glm::vec3 want, glm::vec3 fallback) {
+    glm::vec3 p = absSafeXZ(w, want, fallback);
+    if (w.hasZenith) p.y = absFloorAt(w, p);
     return p;
 }
 
@@ -130,7 +136,49 @@ inline glm::vec3 Enemy::abGround(const EnemyWorld& w, glm::vec3 p) const {
     return p;
 }
 
+// His height: eased toward where it's going (fast in a dive or a fall), set over
+// whatever floor is under him. The one place his Y is decided.
+inline void Enemy::abFly(float dt, const EnemyWorld& w) {
+    if (staggered()) { abAltWant = 0.f; abDiving = true; }
+    float rate = abDiving ? AB_DIVE_V : abAltWant < abAlt ? AB_FALL_V : AB_CLIMB;
+    abAlt += glm::clamp(abAltWant - abAlt, -rate * dt, rate * dt);
+    if (abAlt > 0.5f) abAirT += dt;
+    else { abAirT = 0.f; if (abAltWant <= 0.f) { abFlightHp = -1.f; abDiving = false; } }   // (not on the tick he leaves the floor)
+    position.y = (w.hasZenith ? absFloorAt(w, position) : abCentre.y) + abAlt;
+}
+// Up there: round you at 14-20 m, never past the floor's edge, round a pillar (or over one)
+inline void Enemy::abOrbit(float dt, const EnemyWorld& w, glm::vec3 feet) {
+    glm::vec3 from = position - feet; from.y = 0.f;
+    float r = glm::length(from);
+    glm::vec3 dir = r > 0.1f ? from / r : -glm::vec3{std::sin(yaw), 0.f, std::cos(yaw)};
+    glm::vec3 side{-dir.z * abOrbitDir, 0.f, dir.x * abOrbitDir};
+    glm::vec3 goal = feet + dir * glm::clamp(r, AB_ORBIT_LO + 0.5f, AB_ORBIT_HI - 0.5f) + side * 5.f;
+    glm::vec3 g = goal - position; g.y = 0.f;
+    float l = glm::length(g);
+    if (l > 0.05f) {
+        glm::vec3 p = position + g / l * std::min(l, AB_RUN * 1.4f * dt);
+        if (abAlt < AB_OVER) p = absSafeXZ(w, p, position);   // (over the pillars only the edge matters)
+        if (w.hasZenith) {
+            glm::vec2 d{p.x - abCentre.x, p.z - abCentre.z};
+            if (glm::length(d) > AB_FLOOR_R) { d *= AB_FLOOR_R / glm::length(d); p.x = abCentre.x + d.x; p.z = abCentre.z + d.y; abOrbitDir = -abOrbitDir; }
+        }
+        position.x = p.x; position.z = p.z;
+        moveSpeed = AB_RUN * 1.4f;
+    }
+    turnToward(feet - position, dt, 10.f);
+}
+// Shot out of the sky: he spins down and lies there, open
+inline void Enemy::abDowned() {
+    ev.abShotDown = true;
+    stagger(AB_DOWNED); abReeling = true;   // (x1.5: the reel's multiplier)
+    abAltWant = 0.f; abDiving = true; abFlightHp = -1.f;
+}
+
 inline void Enemy::thinkAbsolute(float dt, const EnemyWorld& w, bool resolve) {
+    thinkAbsoluteMind(dt, w, resolve);
+    abFly(dt, w);
+}
+inline void Enemy::thinkAbsoluteMind(float dt, const EnemyWorld& w, bool resolve) {
     if (w.hasZenith) abCentre = w.zenCentre;
     else if (abCentre == glm::vec3{0.f}) abCentre = position;   // (dev: spawned somewhere else)
     const glm::vec3 feet = w.playerFeet;
@@ -138,11 +186,13 @@ inline void Enemy::thinkAbsolute(float dt, const EnemyWorld& w, bool resolve) {
     float d = glm::length(to);
     moveSpeed = 0.f;
 
-    if (abArrive > 0.f) {   // descending onto the Dais
+    if (abArrive > 0.f) {   // descending onto the Dais from above
         abArrive -= dt;
+        abAlt = abAltWant = AB_ARRIVE_UP * glm::clamp((abArrive - 0.3f) / (AB_ARRIVE - 0.3f), 0.f, 1.f);
         turnToward(to, dt, 6.f);
         return;
     }
+    if (abAirborne() && abFlightHp > 0.f && abFlightHp - health >= AB_SHOOTDOWN * maxHealth) { abDowned(); return; }
     if (abBladeGone > 0.f) {
         abBladeGone -= dt;
         if (abBladeGone <= 0.f && abPhase == 3) { abBlade = true; ev.abBladeDrawn = true; }
@@ -162,6 +212,7 @@ inline void Enemy::thinkAbsolute(float dt, const EnemyWorld& w, bool resolve) {
     // ---- a move landing ----
     if (resolve) { abResolve(w, feet, d); to = flatTo(feet); d = glm::length(to); }
     if (telegraphTimer > 0.f) {   // winding up: face you; a strike closes in, a dash covers ground
+        if (abAirborne() && !abDiving && attack != AttackKind::ADASH) { abOrbit(dt, w, feet); return; }   // aloft: round you
         if (telegraphProgress() < 0.7f) turnToward(to, dt, 12.f);
         glm::vec3 dir = norm2(to);
         // a strike closes in, then commits for the last 30 % of its tell: a dash then gets you out
@@ -179,12 +230,16 @@ inline void Enemy::thinkAbsolute(float dt, const EnemyWorld& w, bool resolve) {
         return;
     }
     if (recoverTimer > 0.f && abCamp < AB_CAMP) {   // a breath between strings: he keeps coming
+        if (abAirborne() && !abDiving) { abOrbit(dt, w, feet); return; }
         turnToward(to, dt, 8.f);
         if (d > 7.f) { position = absSafeSpot(w, position + norm2(to) * AB_RUN * dt, position); moveSpeed = AB_RUN; }
         return;
     }
 
     // ---- the next move: the rest of this string, or a new one ----
+    if (abAirT > AB_AIR_MAX && abCur >= 0 && abStep < abString(abCur).n && abString(abCur).steps[abStep].air) {
+        abCur = -1; abAltWant = 0.f; abDiving = true;   // long enough up there: down, and a string on the ground
+    }
     if (abCamp >= AB_CAMP && abCur >= 0 && abCur != abCampAnswer(w)) abCur = -1;   // break off: go for the camper
     if (abCur < 0) {
         abCur = abChoose(d, w); abStep = 0; abParries = 0; abStruck = false;
@@ -202,6 +257,7 @@ inline void Enemy::abPhaseCheck(float hp) {
     const glm::vec3 dais{abCentre.x, abCentre.y + AB_DAIS_UP, abCentre.z};
     if (abPhase == 1 && hp <= AB_PHASE2) {
         abPhase = 2; ev.abPhase = 2; ev.abHalo = true; ev.abLine = 2; ev.enraged = true;
+        abAltWant = AB_ASCEND_UP; abDiving = false;   // he rises over the Dais while the sweep turns
         phaseHold = PHASE_PAUSE + AB_HALO_TIME;   // he hangs over the Dais while it sweeps
         attack = AttackKind::NONE; telegraphTimer = 0.f; abCur = -1; abRot = 0;
         ev.blinked = true; ev.blinkFrom = position;
@@ -213,7 +269,7 @@ inline void Enemy::abPhaseCheck(float hp) {
         phaseHold = PHASE_PAUSE; attack = AttackKind::NONE; telegraphTimer = 0.f; abCur = -1; abRot = 0;
     }
     else if (abPhase == 3 && !abJudged && hp <= AB_JUDGE_AT) {   // every seam burns but a ring round him
-        abJudged = true; ev.abJudgeMark = true; ev.abTell = (int)AbTell::RED;
+        abJudged = true; ev.abJudgeMark = true; abAlt = abAltWant = 0.f; ev.abTell = (int)AbTell::RED;
         ev.blinked = true; ev.blinkFrom = position;
         position = dais;
         abCur = -1; recoverTimer = 0.f; phaseHold = 0.f;
@@ -253,6 +309,7 @@ inline int Enemy::abChoose(float d, const EnemyWorld& w) {
 inline void Enemy::abBegin(int step, bool follow, float quick, const EnemyWorld& w, glm::vec3 feet) {
     const AbStep& s = abString(abCur).steps[step];
     abParriedThis = false;
+    if (!s.air && abAlt > 0.5f) { abAltWant = 0.f; abDiving = true; }   // a move on the ground: down first (45 m/s; the tell covers it)
     abLate = s.late;
     float tell = (follow ? s.tell * quick : s.tell) + s.late;
     startAttack(s.k, tell, follow);
@@ -288,6 +345,12 @@ inline void Enemy::abBegin(int step, bool follow, float quick, const EnemyWorld&
             position = absSafeSpot(w, position - dir * 6.f, position);
             break;
         case AttackKind::AZENITH: abAim = feet; break;
+        case AttackKind::ATAKEOFF:
+            ev.abTakeoff = true;
+            abAltWant = AB_CRUISE_LO + (AB_CRUISE_HI - AB_CRUISE_LO) * std::fmod(age * 0.6180339f, 1.f);
+            abDiving = false; abAirT = 0.f; abFlightHp = health;
+            abOrbitDir = (abRot & 1) ? 1 : -1;
+            break;
         case AttackKind::ARAY: case AttackKind::ALUNGE:
             abAim = feet;
             ev.abFrom = position + glm::vec3{0.f, 1.6f, 0.f}; ev.abTo = feet + glm::vec3{0.f, 1.f, 0.f};
