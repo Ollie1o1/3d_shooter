@@ -29,6 +29,7 @@
 #include "Level.h"
 
 static constexpr int ZENITH_ARENA = 5;   // the encore: the sixth Act II arena, above the eclipse (buildZenith)
+inline constexpr const char* ZENITH_NAME = "!!!!!";   // the encore's name on screen (the code still calls it the Zenith)
 // THE ZENITH's measures: the Dais, the floor, the pillars, the shards past the
 // gap, the Halo overhead, the seams' cells
 constexpr float ZEN_DAIS = 9.f, ZEN_FLOOR = 44.f, ZEN_PILLAR_R = 34.f, ZEN_SHARD_R = 57.f, ZEN_HALO_R = 70.f,
@@ -1013,15 +1014,20 @@ inline void buildZenith(LevelBuilder& B) {
     }
     // the Halo and the shattered eclipse: backdrop, never in the way
     B.kit(true).curve({C.x, 0.f, C.z}, ZEN_HALO_R, 0.f, 6.2831853f, F + ZEN_HALO_UP, F + ZEN_HALO_UP + 1.6f, 1.2f, gold * 0.9f, 128);
-    vec3 E = C + vec3{0.f, 62.f, -130.f};
+    vec3 E = C + vec3{0.f, 14.f, -130.f};   // the eclipse low on the horizon, the setting sun behind it
     B.kit().rod(E, E + vec3{0.f, 0.f, 3.f}, 46.f, black, 48);   // the disc, facing the floor
     for (int k = 0; k < 9; ++k) {                               // light through its cracks
         float a = k * 0.698f + 0.2f;
         B.kit(true).box(E + vec3{std::cos(a) * 20.f, std::sin(a) * 20.f, 3.2f}, {38.f, 0.6f, 0.2f}, seam * 0.8f, 0.f, 0.f, a);
     }
+    for (int k = 0; k < 72; ++k) {                              // the setting sun's corona burning round its rim (behind it)
+        float a = k * 0.0872665f, seg = 2.f * 3.1415927f / 72.f;
+        B.kit(true).box(E + vec3{std::cos(a) * 47.5f, std::sin(a) * 47.5f, -1.f}, {47.5f * seg * 1.1f, 3.f, 0.2f}, vec3{2.6f, 1.f, 0.3f}, 0.f, 0.f, a + 1.5707963f);
+        B.kit(true).box(E + vec3{std::cos(a) * 52.f, std::sin(a) * 52.f, -2.f}, {52.f * seg * 1.1f, 6.f, 0.2f}, vec3{1.1f, 0.3f, 0.08f}, 0.f, 0.f, a + 1.5707963f);
+    }
 
     Arena a;
-    a.name = "THE ZENITH"; a.space = ReverbSpace::OPEN;
+    a.name = ZENITH_NAME; a.space = ReverbSpace::OPEN;
     a.subtitle = "ABOVE THE ECLIPSE";
     a.bounds = LevelBuilder::aabb(C.x - 64, F - 4, C.z - 64, C.x + 64, F + 30, C.z + 64);
     a.zone   = LevelBuilder::aabb(C.x - 66, F - 60, C.z - 66, C.x + 66, F + 60, C.z + 66);
@@ -1037,12 +1043,12 @@ inline void buildZenith(LevelBuilder& B) {
     a.damageScale = 1.f;
     a.ambient = Ambient::MOTES;
     a.theme = Theme{
-        {0.92f,0.9f,0.95f}, {0.55f,0.45f,0.75f}, {0.25f,0.18f,0.35f},           // a pale sky down to deep violet
-        glm::normalize(vec3{0.f, 0.35f, -1.f}), {1.6f,1.5f,1.3f}, 0.09f, 0.f,   // the cracked eclipse behind him
-        {0.5f,0.42f,0.7f}, 0.25f,
-        glm::normalize(vec3{-0.2f,-0.9f,-0.3f}), {1.15f,1.1f,1.05f},
-        {0.62f,0.6f,0.68f}, {0.3f,0.28f,0.35f},
-        {0.8f,0.78f,0.86f}, 0.0022f };
+        {0.03f,0.02f,0.08f}, {0.75f,0.18f,0.06f}, {0.08f,0.02f,0.05f},            // near-black indigo overhead, wine, a crimson-orange horizon
+        glm::normalize(vec3{0.f, 0.107f, -1.f}), {1.6f,0.45f,0.12f}, 0.12f, 0.f,    // the sun setting behind the cracked eclipse
+        {0.16f,0.05f,0.09f}, 0.35f,                                               // far ridges in silhouette; a few stars
+        glm::normalize(vec3{0.f,-0.3f,1.f}), {1.3f,0.6f,0.32f},                   // a low, warm key light: long shadows off the pillars
+        {0.2f,0.14f,0.3f}, {0.13f,0.06f,0.08f},                                   // dim violet fill
+        {0.36f,0.13f,0.16f}, 0.0026f };                                           // dusky red-violet haze
     L.arenas.push_back(std::move(a));
 }
 

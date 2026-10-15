@@ -28,9 +28,12 @@ inline void GameplayState::devAbsolutePose(Enemy& e) {
     e.yaw = e.prevYaw = std::atan2(to.x, to.z);
     e.prevPosition = e.position;
     e.attack = AttackKind::NONE; e.telegraphTimer = 0.f; e.telegraphDuration = 1.f; e.staggerTimer = 0.f;
-    static const AttackKind K[] = {AttackKind::NONE, AttackKind::AJAB, AttackKind::AHOOK, AttackKind::AUPPER, AttackKind::ADROP,
-                                   AttackKind::ARAY, AttackKind::ASTOMP, AttackKind::ASERPENT, AttackKind::ASWEEP, AttackKind::ALUNGE, AttackKind::AJUDGE};
-    if (n >= 1 && n <= 10) { e.attack = K[n]; e.telegraphTimer = 0.25f; e.abAim = player.position; }
+    using A = AttackKind;   // 11, 12: the reel and the break; 13-22 the arsenal and the air moves; 23 aloft
+    static const AttackKind K[] = {A::NONE, A::AJAB, A::AHOOK, A::AUPPER, A::ADROP, A::ARAY, A::ASTOMP, A::ASERPENT, A::ASWEEP, A::ALUNGE, A::AJUDGE,
+                                   A::NONE, A::NONE, A::ACROSS, A::ABACKFIST, A::AELBOW, A::AROUNDHOUSE, A::AHAYMAKER, A::ACHARGE, A::AAXE, A::ACLAP,
+                                   A::ASKYFALL, A::AMETEOR};
+    if (n >= 1 && n <= 22 && n != 11 && n != 12) { e.attack = K[n]; e.telegraphTimer = 0.25f; e.abAim = player.position; }
+    e.abAlt = e.abAltWant = n == 23 ? 11.f : 0.f;   // (the hover pose)
     e.abBlade = n == 8 || n == 9;
     if (n == 11) { e.staggerTimer = 0.5f; e.abReeling = true; }
     if (n == 12) { e.staggerTimer = 2.f; e.abReeling = false; }

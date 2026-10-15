@@ -17,6 +17,10 @@
 #include "BossSim.h"
 #include "../src/MixTable.h"
 #include "../src/VoiceTable.h"
+#include "../src/PixelFont.h"
+#include "../src/AbsoluteFeel.h"
+#include <set>
+#include <algorithm>
 #include <fstream>
 #include <string>
 #include <cstdio>
@@ -26,6 +30,7 @@ static int failures = 0;
 #define CHECK(cond, msg) do { if (!(cond)) { std::printf("FAIL: %s\n", msg); ++failures; } \
                               else { std::printf("ok:   %s\n", msg); } } while (0)
 static constexpr float DT = 1.f / 60.f;
+static constexpr float AB_ORBIT_TEST_LO = 13.f;   // (a metre under the 14 m he circles at)
 
 // Hold an input for t seconds (a press only on the first tick)
 static Sword::Out run(Sword& s, SwordInput in, float t) {
@@ -189,6 +194,21 @@ int main() {
         CHECK(a.offset.y > b.offset.y + 0.2f, "stroke 2 comes down overhead");
         SwordPose g = gunkit::swordPose(-1, -1.f, true, 0.f, 0.f), r = gunkit::swordPose(-1, -1.f, false, 0.f, 0.f);
         CHECK(std::fabs(g.offset.x) < std::fabs(r.offset.x) && std::fabs(g.roll) > 60.f, "raised: the blade across the middle of the screen");
+        // Where the blade's point is on screen (camera space: x right, y up, z forward)
+        auto tip = [](int stroke, float u) {
+            SwordPose P = gunkit::swordPose(stroke, u, false, 0.f, 0.f);
+            glm::mat4 m = glm::rotate(glm::mat4(1.f), glm::radians(P.yaw), glm::vec3{0.f, 1.f, 0.f})
+                        * glm::rotate(glm::mat4(1.f), glm::radians(P.pitch), glm::vec3{-1.f, 0.f, 0.f})
+                        * glm::rotate(glm::mat4(1.f), glm::radians(P.roll), glm::vec3{0.f, 0.f, 1.f});
+            return P.offset + glm::vec3(m * glm::vec4(0.f, 0.f, 0.905f * 0.55f, 0.f));
+        };
+        CHECK(tip(2, 0.f).y > tip(2, 1.f).y + 0.6f && tip(2, 1.f).z > 0.2f,
+              "the overhead chops down: the point starts high and ends low in front (as its trail does)");
+        bool down = true;
+        for (int k = 1; k <= 10; ++k) down &= tip(2, k / 10.f).y <= tip(2, (k - 1) / 10.f).y + 1e-4f;
+        CHECK(down, "...and never flicks back up on the way");
+        CHECK(tip(0, 1.f).x < tip(0, 0.f).x - 0.4f, "the first stroke's point sweeps right to left");
+        CHECK(tip(1, 1.f).x > tip(1, 0.f).x + 0.4f, "the second's sweeps left to right");
     }
 
     // ---------------------------------------------------------------- the sword: where it can be drawn
@@ -204,7 +224,15 @@ int main() {
     SpatialGrid g; g.build(N.walls);
     const glm::vec3 ZC = zenithCentre();
     {
-        CHECK(N.arenas.size() == 6 && std::string(N.arenas[ZENITH_ARENA].name) == "THE ZENITH", "a sixth Act II arena: the Zenith");
+        CHECK(std::string(ZENITH_NAME) == "!!!!!" && PIXEL_FONT['!' - ' '][0] != 0, "the encore's name is !!!!! (and the pixel font can draw it)");
+        bool gone = true;
+        for (int i = 0; i < 6; ++i) gone &= std::string(abLine(i)) != "BE JUDGED.";
+        CHECK(gone && abString(AB_JUDGED).line == -1, "\"BE JUDGED.\" is gone");
+        CHECK(std::string(abLine(0)) == "KNEEL." && std::string(abLine(1)) == "TOO SLOW." && std::string(abLine(2)) == "AGAIN." &&
+              std::string(abLine(AB_LINE_WORTHY)) == "...WORTHY.", "...and the other four lines stay");
+    }
+    {
+        CHECK(N.arenas.size() == 6 && std::string(N.arenas[ZENITH_ARENA].name) == "!!!!!", "a sixth Act II arena: the encore, called !!!!!");
         const Arena& Z = N.arenas[ZENITH_ARENA];
         CHECK(Z.waves.size() == 1 && Z.waves[0][0].type == EnemyType::ABSOLUTE && Z.maxAlive == 1 && Z.space == ReverbSpace::OPEN,
               "one wave, THE ABSOLUTE, alone, under an open sky");
@@ -223,6 +251,16 @@ int main() {
         CHECK(std::fabs(floorAt(ZC + glm::vec3{0.f, 2.f, 3.f}) - (ZC.y + ZEN_DAIS_UP)) < 0.05f, "the Dais is raised 1.2 m");
         CHECK(floorAt(ZC + glm::vec3{48.f, 2.f, 0.f}) < ZC.y - 30.f, "a gap past the floor's edge (the void)");
         CHECK(N.zenith.pillarWalls.size() == 8 && N.zenith.shardWalls.size() == 6, "eight pillars, six shards");
+        {
+            const Theme& th = N.arenas[ZENITH_ARENA].theme;
+            auto lum = [](glm::vec3 c) { return 0.2126f * c.x + 0.7152f * c.y + 0.0722f * c.z; };
+            CHECK(lum(th.zenith) < 0.08f && th.zenith.z > th.zenith.x, "a near-black indigo sky overhead");
+            CHECK(th.horizon.x > th.horizon.y * 2.f && th.horizon.x > th.horizon.z * 4.f, "a crimson-orange horizon");
+            CHECK(th.sunDir.y > 0.03f && th.sunDir.y < 0.16f && th.sunDir.z < -0.9f, "the sun low, straight behind the eclipse");
+            CHECK(th.lightColor.x > th.lightColor.z * 2.5f && th.lightDir.y > -0.45f, "a warm, low key light (long shadows)");
+            CHECK(lum(th.skyAmb) < 0.25f && th.skyAmb.z > th.skyAmb.y, "dim violet fill");
+            CHECK(th.stars > 0.f, "a few stars");
+        }
         bool shardsOk = true;
         for (int k = 0; k < 6; ++k) { glm::vec3 s = zenithShard(k); if (std::fabs(floorAt(s + glm::vec3{0, 3, 0}) - s.y) > 0.05f || !N.onZenithShard(s)) shardsOk = false; }
         CHECK(shardsOk, "each shard is a floor you can stand on");
@@ -281,15 +319,60 @@ int main() {
               abTellOf(AttackKind::ASERPENT) == AbTell::WHITE && abTellOf(AttackKind::ASWEEP) == AbTell::WHITE &&
               abTellOf(AttackKind::ALUNGE) == AbTell::GOLD && abTellOf(AttackKind::ACRESCENT) == AbTell::WHITE,
               "white: jab, hook, serpent, sweep, crescent; gold: uppercut, drop-kick, lunge; red: ray, stomp");
-        float full = 0.f;
-        for (int id : {AB_TOO_SLOW, AB_KNEEL, AB_JUDGED}) {
+        float longest = 0.f; bool capped = true, singles = true;
+        for (int id = 0; id < AB_STRINGS; ++id) {
             float sum = 0.f; const AbString& st = abString(id);
-            for (int k = 0; k < st.n; ++k) if (st.steps[k].minPhase <= 1) sum += st.steps[k].damage;
-            full = std::max(full, sum);
-            for (int k = 0; k < st.n; ++k) if (st.steps[k].damage > 0.f && (st.steps[k].damage < 18.f || st.steps[k].damage > 30.f)) full = 1e9f;
+            for (int k = 0; k < st.n; ++k) {
+                if (st.steps[k].minPhase > 1) continue;
+                sum += st.steps[k].damage;
+                if (st.steps[k].damage > 0.f && (st.steps[k].damage < 14.f || st.steps[k].damage > 30.f)) singles = false;
+            }
+            if (sum > 70.f) { capped = false; std::printf("      %s costs %.0f\n", st.name, sum); }
+            longest = std::max(longest, sum);
         }
-        CHECK(full >= 60.f && full <= 70.f, "a whole phase 1 string taken costs 60-70; single hits 18-30");
-        CHECK(statsOf(EnemyType::ABSOLUTE).health == 8200.f && isBoss(EnemyType::ABSOLUTE), "8200 hp (tuned from 9000), a boss");
+        CHECK(capped && longest >= 60.f, "no phase 1 string costs more than 70; the longest 60-70");
+        CHECK(singles, "single hits 14-30");
+    }
+    {
+        using A = AttackKind;
+        CHECK(abTellOf(A::ACROSS) == AbTell::WHITE && abTellOf(A::ABACKFIST) == AbTell::WHITE && abTellOf(A::AELBOW) == AbTell::WHITE &&
+              abTellOf(A::AROUNDHOUSE) == AbTell::WHITE && abTellOf(A::AHAYMAKER) == AbTell::GOLD && abTellOf(A::ACHARGE) == AbTell::GOLD &&
+              abTellOf(A::AAXE) == AbTell::GOLD && abTellOf(A::ACLAP) == AbTell::RED,
+              "white: cross, backfist, elbow, roundhouse; gold: haymaker, shoulder charge, axe kick; red: the clap");
+        bool parry = true;
+        for (A k : {A::ACROSS, A::ABACKFIST, A::AELBOW, A::AROUNDHOUSE}) parry &= Enemy::abMeleeWhite(k);
+        for (A k : {A::AHAYMAKER, A::ACHARGE, A::AAXE, A::ACLAP}) parry &= !Enemy::abMeleeWhite(k);
+        CHECK(parry, "...the whites parry, the rest never do");
+        auto kinds = [](int id) { std::vector<A> v; const AbString& s = abString(id); for (int k = 0; k < s.n; ++k) v.push_back(s.steps[k].k); return v; };
+        CHECK(kinds(AB_FLURRY) == std::vector<A>({A::AJAB, A::AJAB, A::AJAB, A::AJAB, A::ACROSS}) && abString(AB_FLURRY).steps[3].minPhase == 2,
+              "FLURRY: jab-jab-jab(-jab)-cross");
+        CHECK(kinds(AB_BREAKER) == std::vector<A>({A::AJAB, A::ACROSS, A::AHAYMAKER}), "BREAKER: jab, cross, then a gold haymaker");
+        CHECK(kinds(AB_CROSSUP) == std::vector<A>({A::ATELEPORT, A::ABACKFIST, A::AROUNDHOUSE}), "CROSS-UP: teleport, backfist, roundhouse");
+        CHECK(kinds(AB_BULLRUSH) == std::vector<A>({A::ACHARGE, A::AELBOW, A::ACLAP}), "BULLRUSH: charge, elbow, clap - all three colours");
+        CHECK(kinds(AB_HEEL) == std::vector<A>({A::AHOP, A::AAXE, A::ASTOMP}), "HEEL OF HEAVEN: hop, axe kick, the stomp ring");
+        auto lands = [&](int id, glm::vec3 me) {
+            Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = id;
+            e.position = me + glm::vec3{0, 0, -6}; e.position.y = ZC.y;
+            int hits = 0;
+            for (int i = 0; i < 60 * 6; ++i) {
+                e.update(DT, zworld(me));
+                if (e.abCur >= 0 && e.abCur != id) break;   // (only this string's blows)
+                hits += e.ev.meleeHit;
+            }
+            return hits;
+        };
+        glm::vec3 me = ZC + glm::vec3{0, 0, 18};
+        int br = lands(AB_BULLRUSH, me), fl = lands(AB_FLURRY, me);
+        std::printf("      bullrush lands %d, flurry %d\n", br, fl);
+        CHECK(br >= 2, "BULLRUSH lands on a player standing still");
+        CHECK(fl >= 4, "FLURRY lands every punch on one who doesn't answer");
+        Enemy c = freshAbs(); c.abArrive = 0.f; c.attack = A::ACLAP; c.abCur = AB_BULLRUSH; c.abStep = 2; c.telegraphDuration = 0.4f; c.telegraphTimer = DT * 0.5f;
+        c.position = me + glm::vec3{0, 0, -4}; c.position.y = ZC.y; c.yaw = 0.f;   // facing +Z, at you
+        Enemy c2 = c;
+        c.update(DT, zworld(me));
+        c2.update(DT, zworld(me + glm::vec3{5.f, 0, -4.f}));   // beside him
+        CHECK(c.ev.meleeHit && !c2.ev.meleeHit, "the clap: a 6 m cone in front of him (step aside or behind)");
+        CHECK(statsOf(EnemyType::ABSOLUTE).health == 10800.f && isBoss(EnemyType::ABSOLUTE), "10800 hp (he flies now: retuned), a boss");
         CHECK(ZEN_DAIS == Enemy::AB_DAIS_R && ZEN_DAIS_UP == Enemy::AB_DAIS_UP, "the mind and the map agree on the Dais");
     }
     {
@@ -393,6 +476,289 @@ int main() {
         CHECK(e.deflects({0, 0, -1}, 20.f) && !e.deflects({0, 0, -1}, 10.f), "beyond 14 m his guard turns shots aside; closer they land");
         e.stagger(1.f);
         CHECK(!e.deflects({0, 0, -1}, 20.f), "staggered, he's open from anywhere");
+    }
+
+    // ---------------------------------------------------------------- THE ABSOLUTE: flight
+    {
+        auto floorUnder = [&](const Enemy& e) {
+            float r = glm::length(glm::vec2{e.position.x - ZC.x, e.position.z - ZC.z});
+            return ZC.y + (r < ZEN_DAIS ? ZEN_DAIS_UP : 0.f);
+        };
+        glm::vec3 me = ZC + glm::vec3{0, 0, 16};
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = AB_SKYFALL;
+        float top = 0.f, airT = 0.f, maxAir = 0.f; bool took = false, below = false, inside = false, orbit = true;
+        for (int i = 0; i < 60 * 8; ++i) {
+            e.update(DT, zworld(me));
+            took |= e.ev.abTakeoff;
+            top = std::max(top, e.position.y - floorUnder(e));
+            below |= e.position.y < floorUnder(e) - 0.01f;
+            airT = e.abAirborne() ? airT + DT : 0.f; maxAir = std::max(maxAir, airT);
+            for (int k = 0; k < 8; ++k) {
+                const AABB& b = N.zenith.pillarHome[k];
+                if (e.position.x > b.min.x && e.position.x < b.max.x && e.position.z > b.min.z && e.position.z < b.max.z && e.position.y < b.max.y) inside = true;
+            }
+            float dxz = glm::length(glm::vec2{e.position.x - me.x, e.position.z - me.z});
+            if (e.abAirT > 1.5f && e.abAlt > 8.f && !e.abDiving && e.telegraphTimer > 0.f && (dxz < AB_ORBIT_TEST_LO || dxz > 21.f)) orbit = false;   // (once he's settled up there)
+        }
+        std::printf("      flight: top %.1f m, longest %.1f s aloft\n", top, maxAir);
+        CHECK(took, "he takes off (a takeoff event: the roar, the dust)");
+        CHECK(top >= 9.f && top <= 14.5f, "he climbs to 9-14 m");
+        CHECK(orbit, "up there he circles 14-20 m from you");
+        CHECK(maxAir <= 6.f, "never airborne longer than 6 s");
+        CHECK(!below && !inside, "never under the floor, never inside a pillar");
+    }
+    {
+        glm::vec3 me = ZC + glm::vec3{0, 0, 16};
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = AB_SKYFALL;
+        for (int i = 0; i < 120 && !e.abAirborne(); ++i) e.update(DT, zworld(me));
+        CHECK(e.abAirborne() && !e.deflects({0, 0, -1}, 30.f), "in the air his guard is down: gunfire lands from any range");
+        e.health -= e.maxHealth * (Enemy::AB_SHOOTDOWN + 0.005f);
+        e.update(DT, zworld(me));
+        CHECK(e.ev.abShotDown && e.staggered() && std::fabs(e.staggerTimer - Enemy::AB_DOWNED) < 0.05f &&
+              std::fabs(e.armorMult() - 1.5f) < 1e-4f, "6 % of his health in one flight shoots him down: 1.5 s at x1.5");
+        float fallT = 0.f;
+        while (e.abAlt > 0.01f && fallT < 2.f) { e.update(DT, zworld(me)); fallT += DT; }
+        CHECK(fallT < 1.f, "...and he crashes to the floor");
+        Enemy f = freshAbs(); f.abArrive = 0.f; f.abForce = AB_SKYFALL;
+        for (int i = 0; i < 120 && !f.abAirborne(); ++i) f.update(DT, zworld(me));
+        f.health -= f.maxHealth * 0.05f;
+        f.update(DT, zworld(me));
+        CHECK(!f.ev.abShotDown && f.abAirborne(), "5 % isn't enough");
+    }
+    {
+        // Review Focus 1: interrupted in the air, he always comes down
+        glm::vec3 me = ZC + glm::vec3{0, 0, 16};
+        bool down = true;
+        for (int how : {0, 2}) {   // (the ascension lifts him over the Dais on purpose: checked below)
+            Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = AB_SKYFALL;
+            for (int i = 0; i < 120 && !e.abAirborne(); ++i) e.update(DT, zworld(me));
+            if (how == 0) e.stagger(1.f);
+            if (how == 2) { e.abPhase = 3; e.abBlade = true; e.health = e.maxHealth * 0.07f; }   // the last judgment
+            float low = e.abAlt;
+            for (float t = 0.f; t < 1.2f; t += DT) {   // (he may take off again afterwards: what matters is that he came down)
+                e.update(DT, zworld(me));
+                low = std::min(low, e.abAlt);
+                down &= e.position.y >= ZC.y - 0.01f;
+            }
+            down &= low < 0.1f;
+        }
+        CHECK(down, "a stagger or the last judgment in the air brings him down within 1.2 s");
+        Enemy a = freshAbs(); a.abArrive = 0.f; a.health = a.maxHealth * 0.59f;
+        float hi = 0.f;
+        for (int i = 0; i < 60 * 3; ++i) { a.update(DT, zworld(me)); hi = std::max(hi, a.position.y - (ZC.y + ZEN_DAIS_UP)); }
+        CHECK(hi > 10.f, "ASCENSION really lifts him ~12 m over the Dais for the sweep");
+        Enemy arr = freshAbs();
+        arr.update(DT, zworld(me));
+        CHECK(arr.position.y > ZC.y + ZEN_DAIS_UP + 8.f, "he arrives from above...");
+        for (int i = 0; i < 125; ++i) arr.update(DT, zworld(me));
+        CHECK(arr.abAlt < 0.1f, "...and stands on the Dais when the fight begins");
+    }
+    {
+        glm::vec3 me = ZC + glm::vec3{0, 0, 16};
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = AB_SKYFALL;
+        bool marked = false, gold = false; float markT = -1.f, landT = -1.f; glm::vec3 mark{0.f}; float t = 0.f;
+        for (; t < 6.f && landT < 0.f; t += DT) {
+            e.update(DT, zworld(me));
+            if (e.ev.abMark) { marked = true; mark = e.ev.abTo; markT = t; gold = abTellOf(e.attack) == AbTell::GOLD; }
+            if (e.ev.abCrater) landT = t;
+        }
+        CHECK(marked && gold && glm::length(glm::vec2{mark.x - me.x, mark.z - me.z}) < 0.5f, "SKYFALL: a gold circle locks onto where you stand");
+        CHECK(landT - markT >= 0.69f && e.abAlt < 0.1f, "...0.7 s, then he crashes down onto it");
+        CHECK(e.ev.meleeHit && std::fabs(e.ev.meleeDamage - 28.f) < 1e-3f, "standing in it: 28");
+        Enemy d = freshAbs(); d.abArrive = 0.f; d.abForce = AB_SKYFALL;
+        glm::vec3 p = me; bool hitD = false, moved = false;
+        for (float u = 0.f; u < 6.f; u += DT) {
+            d.update(DT, zworld(p));
+            if (d.ev.abMark && !moved) { p += glm::vec3{5.f, 0, 0}; moved = true; }   // a dash out of the circle
+            hitD |= d.ev.abCrater && d.ev.meleeHit;   // (the strings after it are another matter)
+        }
+        CHECK(moved && !hitD, "...a dash out of the circle and it misses");
+    }
+    {
+        glm::vec3 me = ZC + glm::vec3{0, 0, 16};
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = AB_METEOR;
+        bool flare = false, window = false; int r = 0;
+        for (int i = 0; i < 60 * 6 && !r; ++i) {
+            e.update(DT, zworld(me));
+            flare |= e.ev.abFlare;
+            if (e.attack == AttackKind::AMETEOR && e.parryWindow()) { window = true; r = e.abParried(true); }
+        }
+        CHECK(flare && window && abTellOf(AttackKind::AMETEOR) == AbTell::WHITE, "METEOR: a flare, a white dive at you, parryable");
+        CHECK(r == 4 && e.staggered() && std::fabs(e.staggerTimer - Enemy::AB_DOWNED) < 0.05f && e.abReeling,
+              "...parried: knocked out of the sky, 1.5 s at x1.5");
+        float fall = 0.f; while (e.abAlt > 0.01f && fall < 2.f) { e.update(DT, zworld(me)); fall += DT; }
+        CHECK(fall < 1.f, "...down on the floor");
+        Enemy u = freshAbs(); u.abArrive = 0.f; u.abForce = AB_METEOR;
+        bool hit = false; float dmg = 0.f;
+        for (int i = 0; i < 60 * 6 && !hit; ++i) { u.update(DT, zworld(me)); if (u.ev.meleeHit) { hit = true; dmg = u.ev.meleeDamage; } }
+        CHECK(hit && std::fabs(dmg - 24.f) < 1e-3f, "...unparried, it lands on you: 24");
+    }
+    {
+        // a shard camper: he flies over and SKYFALLs the shard (every phase)
+        bool all = true;
+        for (int ph = 1; ph <= 3; ++ph) {
+            glm::vec3 me = zenithShard(0); me.y = N.zenith.shardHome[0].max.y;
+            Enemy e = freshAbs(); e.abArrive = 0.f; e.abPhase = ph; e.abBlade = ph == 3; e.abRot = 1; e.abForce = AB_JUDGED;
+            e.health = e.maxHealth * (ph == 1 ? 1.f : ph == 2 ? 0.55f : 0.2f);
+            bool broke = false;
+            for (int i = 0; i < 60 * 8 && !broke; ++i) {
+                EnemyWorld w = zworld(me); w.onShard = true;
+                e.update(DT, w);
+                broke = e.ev.abShardBreak && N.zenithShardAt(e.ev.abTo) == 0;
+            }
+            if (!broke) std::printf("      phase %d: no shard break\n", ph);
+            all &= broke && glm::length(glm::vec2{e.position.x - ZC.x, e.position.z - ZC.z}) <= Enemy::AB_FLOOR_R + 0.01f;
+        }
+        CHECK(all, "camping a shard: SKYFALL breaks it under you, in every phase, and he lands back on the floor");
+        LevelData L2 = N;
+        L2.parkZenithPiece(true, 0);
+        L2.restoreZenith();
+        CHECK(L2.zenith.shardUp[0] && L2.onZenithShard(glm::vec3{zenithShard(0).x, N.zenith.shardHome[0].max.y, zenithShard(0).z}),
+              "a retry brings a broken shard back");
+    }
+    {
+        // Review Focus 5: a dive beside a pillar or the edge never lands in it
+        int bad = 0;
+        for (int k = 0; k < 8; ++k)
+            for (int which : {AB_SKYFALL, AB_METEOR}) {
+                glm::vec3 pil = zenithPillar(k), out = glm::normalize(glm::vec3{pil.x - ZC.x, 0, pil.z - ZC.z});
+                glm::vec3 me = pil + out * 1.8f; me.y = ZC.y;
+                Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = which;
+                for (int i = 0; i < 60 * 6; ++i) {
+                    e.update(DT, zworld(me));
+                    const AABB& b = N.zenith.pillarHome[k];
+                    if (e.position.x > b.min.x && e.position.x < b.max.x && e.position.z > b.min.z && e.position.z < b.max.z && e.position.y < b.max.y) ++bad;
+                    if (glm::length(glm::vec2{e.position.x - ZC.x, e.position.z - ZC.z}) > Enemy::AB_FLOOR_R + 0.01f) ++bad;
+                }
+            }
+        CHECK(bad == 0, "a SKYFALL or METEOR beside a pillar never ends inside it, or past the edge");
+    }
+    {
+        glm::vec3 me = ZC + glm::vec3{0, 0, 16};
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.abPhase = 3; e.abBlade = true; e.health = e.maxHealth * 0.2f; e.abForce = AB_BLADEDIVE;
+        bool lungeAir = false;
+        for (int i = 0; i < 60 * 6; ++i) { e.update(DT, zworld(me)); if (e.attack == AttackKind::ALUNGE && e.abAirborne()) lungeAir = true; }
+        CHECK(lungeAir && abTellOf(AttackKind::ALUNGE) == AbTell::GOLD, "phase 3: the blade dive, a gold LUNGE from the air");
+    }
+    // ---------------------------------------------------------------- review fixes (the overhaul)
+    {
+        // shot down while SKYFALL's circle is on the floor: the circle goes with him
+        glm::vec3 me = ZC + glm::vec3{0, 0, 16};
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = AB_SKYFALL;
+        bool marked = false;
+        for (int i = 0; i < 60 * 6 && !marked; ++i) { e.update(DT, zworld(me)); marked = e.ev.abMark; }
+        bool liveThen = abSkyLive(&e);
+        e.health -= e.maxHealth * (Enemy::AB_SHOOTDOWN + 0.01f);
+        e.update(DT, zworld(me));
+        CHECK(marked && liveThen && e.ev.abShotDown && !abSkyLive(&e) && !abSkyLive(nullptr),
+              "shot down mid-SKYFALL, the gold circle is gone (it shows only while his SKYFALL winds up)");
+    }
+    {
+        // METEOR commits at its cue: a dash on the ting gets you out (the rule every blow keeps)
+        glm::vec3 me = ZC + glm::vec3{0, 0, 16};
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = AB_METEOR;
+        glm::vec3 p = me; bool dashed = false, hit = false, landed = false;
+        for (int i = 0; i < 60 * 6 && !landed; ++i) {
+            e.update(DT, zworld(p));
+            if (e.attack == AttackKind::AMETEOR && e.ev.abCue && !dashed) { p += glm::vec3{5.f, 0, 0}; dashed = true; }
+            if (e.ev.abImpact && e.ev.abImpactKind == AttackKind::AMETEOR) { landed = true; hit = e.ev.meleeHit; }
+        }
+        CHECK(dashed && landed && !hit, "a 5 m dash on METEOR's cue gets you out of it");
+    }
+    {
+        // a phase change in the air: never shot out of the ascension's hold, down at once for the blade
+        glm::vec3 me = ZC + glm::vec3{0, 0, 16};
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = AB_SKYFALL;
+        for (int i = 0; i < 120 && !e.abAirborne(); ++i) e.update(DT, zworld(me));
+        e.health = e.maxHealth * 0.59f;
+        e.update(DT, zworld(me));
+        e.health -= e.maxHealth * 0.055f;
+        bool shot = false;
+        for (int i = 0; i < 60; ++i) { e.update(DT, zworld(me)); shot |= e.ev.abShotDown; }
+        CHECK(e.abPhase == 2 && !shot, "the ascension's hold is no flight: damage through it can't shoot him down");
+        Enemy b = freshAbs(); b.abArrive = 0.f; b.abForce = AB_SKYFALL; b.abPhase = 2; b.health = b.maxHealth * 0.3f;
+        for (int i = 0; i < 120 && !b.abAirborne(); ++i) b.update(DT, zworld(me));
+        b.health = b.maxHealth * 0.24f;
+        float t = 0.f;
+        for (; t < 1.f && b.abAlt > 0.1f; t += DT) b.update(DT, zworld(me));
+        CHECK(b.abPhase == 3 && t < 0.5f, "drawing the blade in the air, he comes straight down (no hanging there)");
+    }
+    {
+        // the ascension mid-flight, then a camper on a shard: still never more than 6 s aloft
+        glm::vec3 me = zenithShard(0); me.y = N.zenith.shardHome[0].max.y;
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = AB_SKYFALL;
+        float air = 0.f, most = 0.f;
+        for (int i = 0; i < 60 * 14; ++i) {
+            if (i == 90) { e.health = e.maxHealth * 0.59f; e.abForce = AB_SKYFALL; }   // (already up; another flight straight after the hold)
+            EnemyWorld w = zworld(me); w.onShard = true;
+            e.update(DT, w);
+            air = e.abAirborne() ? air + DT : 0.f; most = std::max(most, air);
+        }
+        std::printf("      longest aloft through an ascension: %.1f s\n", most);
+        CHECK(most <= 6.f, "a second takeoff while still aloft doesn't restart the flight's clock");
+    }
+
+    // ---------------------------------------------------------------- THE ABSOLUTE: by ear
+    {
+        bool every = true;
+        for (AttackKind k : abAllAttacks()) {
+            const AbFeel& f = abFeel(k);
+            AbTell t = abTellOf(k);
+            if (t != AbTell::NONE && !f.wind) { every = false; std::printf("      no wind-up for %s\n", attackKey(k)); }
+            bool blow = Enemy::abMeleeWhite(k) || (t == AbTell::GOLD && k != AttackKind::ALUNGE) || k == AttackKind::ACLAP || k == AttackKind::ASTOMP;
+            if (blow && !f.boom) { every = false; std::printf("      no boom for %s\n", attackKey(k)); }
+        }
+        CHECK(every, "every telegraphed move has a wind-up; every blow a boom");
+        CHECK(std::string(abCueSound(AbTell::WHITE)) == "ab_ting" && std::string(abCueSound(AbTell::GOLD)) == "ab_doom" &&
+              std::string(abCueSound(AbTell::RED)) == "ab_pulse", "the cues: TING parry, DOOM dodge or block, a double pulse get out");
+        bool goldNoTing = true;
+        for (AttackKind k : abAllAttacks())
+            if (abTellOf(k) == AbTell::GOLD && abFeel(k).wind && std::string(abFeel(k).wind) == "ab_ting") goldNoTing = false;
+        CHECK(goldNoTing, "no gold move ever plays the ting");
+        std::set<std::string> booms;
+        for (AttackKind k : {AttackKind::AJAB, AttackKind::ACROSS, AttackKind::AHOOK, AttackKind::AHAYMAKER, AttackKind::AROUNDHOUSE, AttackKind::AAXE})
+            booms.insert(abFeel(k).boom);
+        CHECK(booms.size() == 6, "jab, cross, hook, haymaker, kick and axe kick each boom their own way");
+        bool listed = true;
+        for (AttackKind k : attacksOf(EnemyType::ABSOLUTE)) listed &= std::find(abAllAttacks().begin(), abAllAttacks().end(), k) != abAllAttacks().end();
+        CHECK(listed && abAllAttacks().size() == attacksOf(EnemyType::ABSOLUTE).size(), "the feel table knows every move he has");
+    }
+    {
+        // Review Focus 4: one cue per move, 0.22 s before it lands, every difficulty and phase (delayed strikes too)
+        bool once = true, lead = true; int seen = 0;
+        for (int dl = 0; dl < DIFFICULTY_LEVELS; ++dl)
+            for (int ph = 1; ph <= 3; ++ph) {
+                Enemy e = freshAbs(); e.abArrive = 0.f; e.abPhase = ph; e.abBlade = ph == 3;
+                e.health = e.maxHealth * (ph == 1 ? 1.f : ph == 2 ? 0.5f : 0.2f);
+                glm::vec3 me = ZC + glm::vec3{0, 0, 10};
+                int cues = 0; AttackKind cur = AttackKind::NONE;   // (no parries here: no move is cut short)
+                for (int i = 0; i < 60 * 30; ++i) {
+                    EnemyWorld w = zworld(me); w.tune = &difficulty(dl);
+                    e.update(DT, w);
+                    if (e.ev.telegraphStarted) {
+                        if (cur != AttackKind::NONE && abTellOf(cur) != AbTell::NONE && cues != 1) { once = false; std::printf("      %s cued %d times\n", attackKey(cur), cues); }
+                        cur = e.attack; cues = 0;
+                    }
+                    if (e.ev.abCue) {
+                        ++cues; ++seen;
+                        if (e.telegraphDuration > Enemy::AB_CUE + DT && std::fabs(e.telegraphTimer - Enemy::AB_CUE) > DT + 1e-4f) lead = false;
+                    }
+                }
+            }
+        std::printf("      cues heard: %d\n", seen);
+        CHECK(once && seen > 50, "every telegraphed move cues exactly once");
+        CHECK(lead, "...0.22 s before it lands, whatever sped it up");
+    }
+    {
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = AB_FLURRY;
+        glm::vec3 me = ZC + glm::vec3{0, 0, 30};   // well out of reach: every punch misses
+        int booms = 0;
+        for (int i = 0; i < 60 * 6; ++i) {
+            e.update(DT, zworld(me));
+            if (e.abCur >= 0 && e.abCur != AB_FLURRY) break;
+            booms += e.ev.abImpact && abFeel(e.ev.abImpactKind).boom != nullptr && !e.ev.meleeHit;
+        }
+        CHECK(booms >= 4, "a punch booms whether or not it lands (FLURRY: boom boom boom boom)");
     }
 
     // ---------------------------------------------------------------- the Absolute's hazards
@@ -512,9 +878,9 @@ int main() {
         bool seams = false, mirages = false, zray = false;
         for (int i = 0; i < 60 * 40; ++i) { r.update(DT, zworld(me)); seams |= r.ev.abSeams; mirages |= r.ev.abMirages > 0; }
         Enemy sh = freshAbs(); sh.abArrive = 0.f; sh.abPhase = 2;
-        for (int i = 0; i < 60 * 6 && !zray; ++i) { EnemyWorld sw = zworld(zenithShard(0)); sw.onShard = true; sh.update(DT, sw); zray |= sh.ev.abZenith; }
+        for (int i = 0; i < 60 * 8 && !zray; ++i) { EnemyWorld sw = zworld(zenithShard(0)); sw.onShard = true; sh.update(DT, sw); zray |= sh.ev.abMark; }
         CHECK(seams && mirages, "phase 2 brings the seams and mirages");
-        CHECK(zray, "camping on a shard in phase 2 brings the zenith ray");
+        CHECK(zray, "camping on a shard in phase 2 brings SKYFALL");
     }
     {
         Enemy e = freshAbs(); e.abArrive = 0.f; e.abPhase = 2;
@@ -588,6 +954,29 @@ int main() {
         CHECK(std::fabs(w.x - w.z) < 0.08f, "a white tell flashes white");
         CHECK(gld.x > gld.z * 2.f && gld.y > gld.z * 1.4f, "a gold tell flashes gold");
         CHECK(rd.x > rd.y * 3.f, "a red tell flashes red");
+        // red eyes: two crimson slits in his face, and nothing gold there
+        int eyes = 0, goldFace = 0;
+        for (auto& p : parts(a)) {
+            glm::vec3 c{p.model[3]}, m = p.emissive;
+            if (c.y < 2.25f || c.y > 2.7f || c.z < 0.05f) continue;   // his face (he faces +Z at yaw 0)
+            if (m.x > 1.5f && m.x > m.y * 6.f) ++eyes;
+            if (m.x > 1.f && m.y > m.x * 0.55f && m.z < m.x * 0.5f) ++goldFace;
+        }
+        CHECK(eyes >= 2 && goldFace == 0, "two glowing red eyes (the gold slit is gone)");
+        int runes = 0;
+        for (auto& p : parts(a)) { glm::vec3 m = p.emissive; if (m.z > 0.9f && m.z > m.x * 1.8f && m.z > m.y * 1.6f) ++runes; }
+        CHECK(runes >= 8, "his gauntlets: rune bands of pale violet-blue at knuckles and wrists");
+        // his guard: fists up (shoulders raised forward, elbows folded), side-on, standing or on the move
+        rig::AbsPose gp = rig::absolutePose(a, 0.f);
+        Enemy run = a; run.moveSpeed = Enemy::AB_RUN;
+        rig::AbsPose gr = rig::absolutePose(run, 0.3f);
+        // (an arm hangs down; a shoulder's negative swing takes it forward, the elbow folds the forearm up past it)
+        auto guard = [](float sh, float el) { return sh < -0.4f && sh > -1.1f && sh - el < -2.2f; };   // forearm up and forward
+        CHECK(guard(gp.shR, gp.elR) && guard(gp.shL, gp.elL) && gp.shL < gp.shR && std::fabs(gp.torsoYaw) > 0.2f,
+              "idle: a boxer's guard - elbows down, forearms up, fists by his chin, the lead hand further out, bladed");
+        CHECK(guard(gr.shR, gr.elR) && guard(gr.shL, gr.elL), "...and he keeps it up as he closes in");
+        glm::vec3 gt = tint(AttackKind::AUPPER);
+        CHECK(gt.y > gt.x * 0.72f, "the gold tell is a pale gold (it doesn't sink into the orange sky)");
         AABB hb;
         CHECK(headBox(a, hb) && hb.min.y > 1.9f && hb.max.y < 2.8f, "his head can be shot (a head box where his head is)");
     }
@@ -636,6 +1025,25 @@ int main() {
             if (!mixEntry(n) || !f.good()) { all = false; std::printf("      missing sound: %s\n", n); }
         }
         CHECK(all, "every sound the sword and his tells play is built and in the mix");
+    }
+    {
+        bool all = true;
+        for (const std::string& n : abAllSounds()) {
+            std::ifstream f("assets/sfx/" + n + ".wav", std::ios::binary);
+            if (!mixEntry(n) || !f.good()) { all = false; std::printf("      missing sound: %s\n", n.c_str()); }
+        }
+        CHECK(all, "every sound THE ABSOLUTE's fight plays is built and in the mix");
+        auto seconds = [](const std::string& n) {
+            std::ifstream f("assets/sfx/" + n + ".wav", std::ios::binary | std::ios::ate);
+            return f.good() ? (float)((long)f.tellg() - 44) / 2.f / 44100.f : 0.f;
+        };
+        CHECK(std::fabs(seconds("ab_ray_beam") - AbsoluteHazards::RAY_TIME) < 0.02f &&
+              std::fabs(seconds("ab_zray_beam") - AbsoluteHazards::ZRAY_TIME) < 0.02f, "each beam sounds exactly as long as it burns");
+        bool lens = true;
+        for (AttackKind k : abAllAttacks()) { const AbFeel& f = abFeel(k); if (f.wind && std::fabs(seconds(f.wind) - f.windLen) > 0.02f) { lens = false; std::printf("      %s is %.2f s\n", f.wind, seconds(f.wind)); } }
+        CHECK(lens, "the feel table knows each wind-up's real length (it stretches them to the tell)");
+        std::ifstream v1("assets/sfx/ab_boom_jab_1.wav"), v2("assets/sfx/ab_boom_jab_2.wav");
+        CHECK(v1.good() && v2.good(), "the jab's boom has variants: a FLURRY drums");
         int lines = 0; for (auto& v : voiceBank()) lines += std::string(v.name) == "v_absolute_line";
         CHECK(lines == 1, "his lines have a choir phrase in the voice bank");
     }
@@ -662,6 +1070,7 @@ int main() {
         j.health = j.maxHealth * 0.05f;
         j.update(DT, zworld(ZC + glm::vec3{0, 0, 10}));
         CHECK(j.ev.abJudgeMark && !j.ev.abJudge && !j.staggered(), "the last judgment never lands on the tick it begins");
+        CHECK(j.ev.abLine == -1, "the last judgment says nothing now");
         AbsoluteHazards two; two.addRay(ZC, ZC); two.update(0.5f, ZC + glm::vec3{0, 0, 9}, 1.8f, true, &N, ZC); two.addRay(ZC, ZC);
         CHECK(two.freshRay() == 1, "a second ray, fired while the first still burns, can be parried");
     }
@@ -697,8 +1106,8 @@ int main() {
         r.bestAct2 = 1534.2f;
         CHECK(act2Subtitle(r, true) == "5 ARENAS - BENEATH THE ECLIPSE   BEST " + formatTime(1534.2f), "...with the act's best time once you have one");
         r.bestZenith = 1712.f;
-        CHECK(act2Subtitle(r, true) == "5 ARENAS - AND WHAT WAITS ABOVE   BEST " + formatTime(1534.2f) + "   ZENITH " + formatTime(1712.f),
-              "...and the Zenith's once it's cleared");
+        CHECK(act2Subtitle(r, true) == "5 ARENAS - AND WHAT WAITS ABOVE   BEST " + formatTime(1534.2f) + "   !!!!! " + formatTime(1712.f),
+              "...and the encore's (!!!!!) once it's cleared");
     }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");

@@ -1,4 +1,5 @@
 #pragma once
+#include "AbsoluteFeel.h"   // his moves' sounds and impacts
 // =============================================================================
 // Gameplay_Absolute.h — GameplayState: THE ABSOLUTE's fight in the Zenith.
 // His events turned into hazards and damage (AbsoluteHazards.h), parries (the
@@ -33,8 +34,12 @@ inline bool GameplayState::parryAbsolute(Enemy& e, bool bySword) {
     styleSystem.addStyle(r >= 2 ? 80.f : 40.f, StyleSource::PARRY);
     styleSystem.heal((bySword ? Sword::HEAL_PARRY : 4.f) * tune().heal);
     gainXp(r >= 2 ? 40 : 15);
-    audio.playAt("ab_ting", e.position, 128, SoundGroup::ENEMY, true);
+    audio.play(r >= 2 ? "ab_shatter" : "ab_clang", 128, SoundGroup::PLAYER, true);   // the clang (a break: glass and a choir)
+    audio.duck(4.f, 0.4f);
+    audio.stop(abWindH); abWindH = 0;
+    hitStopFrames = std::max(hitStopFrames, r >= 2 ? 8 : 5);
     if (r == 1) ui.feed("REELING", {1.f, 1.f, 1.f});
+    if (r == 4) { ui.toast("KNOCKED DOWN", "ONE AND A HALF SECONDS", {1.f, 0.95f, 0.8f}, 1.4f); shake(0.4f, 0.06f); }
     if (r == 2) { ui.toast("BROKEN", "THREE SECONDS - DOUBLE DAMAGE", {1.f, 0.95f, 0.7f}, 1.6f); shake(0.4f, 0.06f); }
     if (r == 3) {
         ui.toast("HIS BLADE SHATTERS", "THREE SECONDS - DOUBLE DAMAGE", {1.f, 0.4f, 0.55f}, 1.8f); shake(0.6f, 0.08f);
@@ -46,31 +51,75 @@ inline bool GameplayState::parryAbsolute(Enemy& e, bool bySword) {
 inline void GameplayState::onAbsoluteEvents(Enemy& e, const EnemyEvents& ev) {
     const float scale = level.arenas[director.arena].damageScale * tune().damage;
     const glm::vec3 white{1.6f, 1.6f, 1.7f}, red{1.5f, 0.2f, 0.15f};
-    if (ev.abTell == (int)AbTell::WHITE) audio.playAt("ab_ting", e.position, 110, SoundGroup::ENEMY, true);
-    if (ev.abTell == (int)AbTell::GOLD)  audio.playAt("ab_thrum", e.position, 128, SoundGroup::ENEMY, true);
-    if (ev.abTell == (int)AbTell::RED)   audio.playAt("telegraph", e.position, 128, SoundGroup::ENEMY, true);
+    auto at = [&](const char* name, glm::vec3 p, float pitch, int vol, float floor) {   // placed, at priority, never quieter than floor
+        SfxMixer::Opts o; o.volume = vol / 128.f; o.group = SoundGroup::ENEMY; o.priority = true; o.positional = true; o.pos = p;
+        o.floor = floor; o.pitch = pitch;
+        return audio.playOpts(name, o);
+    };
+    const glm::vec3 chest = e.position + glm::vec3{0.f, 1.5f, 0.f};
+    if (ev.telegraphStarted) {   // the wind-up, stretched to the tell so it peaks as the blow lands; the music dips under it
+        const AbFeel& f = abFeel(e.attack);
+        audio.stop(abWindH); abWindH = 0;
+        if (f.wind) abWindH = at(f.wind, chest, f.windPitch * glm::clamp(f.windLen / std::max(e.telegraphDuration, 0.05f), 0.7f, 1.6f), 120, 0.3f);
+        if (abTellOf(e.attack) != AbTell::NONE) audio.duck(2.f, e.telegraphDuration);
+    }
+    if (ev.abCue) at(abCueSound(abTellOf(e.attack)), chest, 1.f, 128, 0.6f);   // the beat to act on
+    if (ev.abImpact) {   // the boom, hit or miss: light at the fist, a ring of air, shake by distance, a hitch up close
+        const AbFeel& f = abFeel(ev.abImpactKind);
+        if (f.boom) {
+            float c = std::cos(e.yaw), sn = std::sin(e.yaw);
+            glm::vec3 p = e.position + glm::vec3{f.at.x * c + f.at.z * sn, f.at.y, -f.at.x * sn + f.at.z * c};
+            at(f.boom, p, f.boomPitch * (0.96f + 0.08f * frand(0.f, 1.f)), 128, 0.5f);
+            fx.spawnBurst(p, {1.7f, 1.65f, 1.6f}, 22, 7.f, 0.25f, 0.f);
+            fx.spawnShockwave(glm::vec3{p.x, std::max(level.zenith.centre.y, p.y - 1.2f), p.z}, 2.2f + 2.f * f.shake, {1.2f, 1.15f, 1.1f});
+            float d = glm::length(player.position - e.position), k = glm::clamp(1.f - d / 25.f, 0.f, 1.f) * f.shake;
+            if (k > 0.02f) shake(0.15f + 0.25f * k, 0.03f + 0.07f * k);
+            if (d < 6.f) hitStopFrames = std::max(hitStopFrames, 2);
+        }
+    }
+    if (e.staggered() && abWindH) { audio.stop(abWindH); abWindH = 0; }   // cut short: the swell stops with him
+    if (ev.abTakeoff) {
+        at("ab_takeoff", e.position, 1.f, 128, 0.4f);
+        audio.stop(abFlightH); abFlightH = at("ab_flight", e.position, 1.f, 110, 0.f);
+    }
+    if (ev.abShotDown) at("ab_shotdown", e.position, 1.f, 128, 0.5f);
     if (ev.abLine >= 0) { abLineShown = ev.abLine; abLineT = 1.6f; audio.playAt("v_absolute_line", e.position, 128, SoundGroup::ENEMY, true); }
     if (ev.blinked) {   // a fading white copy where he was
         Enemy g = e; g.position = g.prevPosition = ev.blinkFrom; g.hitFlashTimer = 0.f;
         abGhosts.push_back({g, 0.f});
         fx.spawnBurst(ev.blinkFrom + glm::vec3{0.f, 1.3f, 0.f}, white, 10, 4.f, 0.3f, 0.f);
-        audio.playAt("dash", ev.blinkFrom, 90, SoundGroup::ENEMY);
+        at("ab_zap", ev.blinkFrom, 1.f, 100, 0.f);
     }
     if (ev.abPhase == 2) { pushBanner("HE ASCENDS", "STAY CLOSE", {1.f, 0.95f, 0.8f}, 3.f); shake(0.5f, 0.06f); audio.duck(6.f, 0.6f); }
     if (ev.abPhase == 3) { pushBanner("THE BLADE OF LIGHT", "MEET IT", {1.f, 0.5f, 0.6f}, 3.f); shake(0.5f, 0.06f); audio.duck(6.f, 0.6f); }
     if (ev.abHalo) { abh.addHalo(level.zenith.centre, level.zenith.centre.y); audio.play("explosion", 100, SoundGroup::WORLD); }
+    if (ev.abTakeoff) {   // a burst and a ring of dust where he left the floor
+        fx.spawnBurst(e.position + glm::vec3{0.f, 0.5f, 0.f}, white, 30, 9.f, 0.5f, 4.f);
+        fx.spawnShockwave(glm::vec3{e.position.x, level.zenith.centre.y, e.position.z}, 5.f, {0.9f, 0.75f, 0.65f});
+    }
+    if (ev.abMark) { abSkyMark = ev.abTo; abSkyMarkT = 0.f; }
+    if (ev.abCrack) { abCrackAt = ev.abTo; abCrackT = 0.f; }
+    if (ev.abCrater) {
+        abSkyMarkT = -1.f;
+        fx.spawnShockwave(ev.abTo, Enemy::AB_SKY_R + 1.f, {1.6f, 1.3f, 0.6f});
+        fx.spawnBurst(ev.abTo + glm::vec3{0.f, 0.3f, 0.f}, {0.7f, 0.65f, 0.6f}, 50, 11.f, 0.9f, 12.f);   // stone thrown up
+        shake(0.5f, 0.09f);
+        if (ev.abShardBreak) { int k = level.zenithShardAt(ev.abTo); if (k >= 0) { level.parkZenithPiece(true, k); shardFallT[k] = 0.f; } }
+    }
+    if (ev.abShotDown) { ui.feed("SHOT DOWN", {1.f, 0.95f, 0.8f}); shake(0.4f, 0.06f); }
+    if (ev.abFlare) fx.spawnBurst(e.position + glm::vec3{0.f, 1.5f, 0.f}, white, 24, 3.f, 0.4f, 0.f);
     if (ev.abShards)
         for (int k = 0; k < (int)level.zenith.shardWalls.size(); ++k)
             if (level.zenith.shardUp[k]) { level.parkZenithPiece(true, k); shardFallT[k] = 0.f; }
     if (ev.abBladeDrawn) { fx.spawnBurst(e.position + glm::vec3{0.f, 2.f, 0.f}, white, 30, 8.f, 0.5f, 0.f); audio.playAt("sword_draw", e.position, 128, SoundGroup::ENEMY, true); }
-    if (ev.abRay) { abh.addRay(ev.abFrom, ev.abTo); audio.playAt("explosion", ev.abFrom, 80, SoundGroup::ENEMY, true, 1.6f); }
-    if (ev.abStomp) { abh.addStomp(ev.abFrom); fx.spawnShockwave(ev.abFrom, 3.f, red); audio.playAt("slam", ev.abFrom, 128, SoundGroup::ENEMY, true); shake(0.4f, 0.06f); }
+    if (ev.abRay) { abh.addRay(ev.abFrom, ev.abTo); audio.stop(abBeamH); abBeamH = at("ab_ray_beam", ev.abFrom, 1.f, 128, 0.4f); }
+    if (ev.abStomp) { abh.addStomp(ev.abFrom); fx.spawnShockwave(ev.abFrom, 3.f, red); }   // (its boom and shake: the feel table)
     if (ev.abSerpent) {
         glm::vec3 d = player.camera.position - ev.abFrom;
         abh.addSerpent(ev.abFrom, glm::length(d) > 0.1f ? d : glm::vec3{0.f, 0.f, 1.f});
     }
     if (ev.abSeams) abh.addSeams(level.zenith.centre, ev.abSeamFirst);
-    if (ev.abZenith) { abh.addZenith(ev.abFrom, ev.abTo); audio.playAt("explosion", ev.abTo, 90, SoundGroup::ENEMY, true, 1.4f); }
+    if (ev.abZenith) { abh.addZenith(ev.abFrom, ev.abTo); audio.stop(abBeamH); abBeamH = at("ab_zray_beam", ev.abTo, 1.f, 128, 0.4f); }
     for (int k = 0; k < ev.abMirages; ++k) abh.addMirage(ev.phantomPos[k]);
     if (ev.abJudgeMark) { abh.addJudge(level.zenith.centre, e.position); shake(0.8f, 0.04f); audio.duck(8.f, 2.f); }
     if (ev.abJudge) {
@@ -81,13 +130,14 @@ inline void GameplayState::onAbsoluteEvents(Enemy& e, const EnemyEvents& ev) {
     if (ev.meleeHit) {   // his fists, feet or blade: the sword can meet them
         AbTell t = abTellOf(e.lastAbAttack);
         glm::vec3 from = e.position + glm::vec3{0.f, 1.5f, 0.f};
-        bool hit = damagePlayerStrike(ev.meleeDamage * scale, from, t == AbTell::GOLD ? Sword::Strike::GOLD : Sword::Strike::WHITE);
+        Sword::Strike sk = t == AbTell::GOLD ? Sword::Strike::GOLD : t == AbTell::RED ? Sword::Strike::AREA : Sword::Strike::WHITE;   // (red: never blocked)
+        bool hit = damagePlayerStrike(ev.meleeDamage * scale, from, sk);
         if (hit && lastGuarded == Sword::Guarded::NONE) {
             glm::vec3 away = player.position - e.position; away.y = 0.f;
             if (glm::length(away) > 0.01f) player.velocity += glm::normalize(away) * 7.f + glm::vec3{0.f, 2.5f, 0.f};
             if (ev.abLaunch) { player.velocity.y = 11.f; player.onGround = false; }   // KNEEL: launched for the drop-kick
+            if (ev.abHeavy && glm::length(away) > 0.01f) player.velocity += glm::normalize(away) * 9.f + glm::vec3{0.f, 3.f, 0.f};   // a haymaker sends you
         }
-        audio.playAt("punch", from, 120, SoundGroup::ENEMY, true);
     }
 }
 
@@ -96,11 +146,18 @@ inline void GameplayState::updateAbsolute(float dt) {
     abGhosts.erase(std::remove_if(abGhosts.begin(), abGhosts.end(), [](const AbGhost& g) { return g.t > AB_GHOST_LIFE; }), abGhosts.end());
     for (auto& t : shardFallT) if (t >= 0.f) t += dt;
     for (auto& t : pillarFallT) if (t >= 0.f) t += dt;
+    if (abSkyMarkT >= 0.f) abSkyMarkT += dt;
+    if (abCrackT >= 0.f) abCrackT += dt;
     if (abLineT > 0.f) abLineT -= dt;
     if (abHintT > 0.f) abHintT -= dt;
     updateAbsoluteDeath(dt);
     if (!(level.zenith.built && act2() && director.arena == ZENITH_ARENA)) return;
     Enemy* e = absolute();
+    if (abSkyMarkT >= 0.f && !abSkyLive(e)) abSkyMarkT = -1.f;   // shot down, a phase, his death: no SKYFALL, no circle
+    if (abFlightH) {   // his wind follows him; down on the floor, it stops
+        if (e && e->abAirborne()) audio.moveSource(abFlightH, e->position);
+        else { audio.stop(abFlightH); abFlightH = 0; }
+    }
     const glm::vec3 bp = e ? e->position : level.zenith.centre;
     const float scale = level.arenas[director.arena].damageScale * tune().damage;
     // A ray just fired, met by the sword's parry: it goes back into him
@@ -109,6 +166,7 @@ inline void GameplayState::updateAbsolute(float dt) {
         glm::vec3 to = abh.rays[fr].from - player.camera.position;
         if (glm::dot(glm::normalize(to), player.camera.forward()) > 0.3f && sword.tryParry()) {
             abh.rayParry(fr);
+            audio.stop(abBeamH); abBeamH = 0;
             hurtEnemy(*e, AbsoluteHazards::RAY_REFLECT, bp + glm::vec3{0.f, 1.6f, 0.f}, 50.f, Sword::HEAL_PARRY, StyleSource::PARRY);
             parryFeedback(player.camera.position + player.camera.forward() * 1.2f, true);
             ui.toast("RAY RETURNED", "", {1.f, 0.9f, 0.9f}, 1.2f);
@@ -153,10 +211,13 @@ inline void GameplayState::swordParryAbsolute(Enemy& e) {
 // His death: he kneels, his halo cracks, "...WORTHY.", and he goes up in light
 inline void GameplayState::onAbsoluteKilled(const Enemy& e) {
     abh.clear();
-    abCorpse = e; abCorpse.alive = true; abCorpse.staggerTimer = 1.f; abCorpse.abReeling = false;
+    audio.stop(abWindH); audio.stop(abFlightH); audio.stop(abBeamH); abWindH = abFlightH = abBeamH = 0;
+    abSkyMarkT = -1.f;
+    abCorpse = e; abCorpse.alive = true; abCorpse.abAlt = abCorpse.abAltWant = 0.f;   // (shot out of the sky or not, he dies on the floor)
+    abCorpse.position.y = level.zenith.centre.y + (glm::length(glm::vec2{e.position.x - level.zenith.centre.x, e.position.z - level.zenith.centre.z}) < ZEN_DAIS ? ZEN_DAIS_UP : 0.f); abCorpse.staggerTimer = 1.f; abCorpse.abReeling = false;
     abCorpse.attack = AttackKind::NONE; abCorpse.telegraphTimer = 0.f; abCorpse.abBlade = false;
     abDeathT = 0.f;
-    abLineShown = 4; abLineT = 3.f;
+    abLineShown = AB_LINE_WORTHY; abLineT = 3.f;
     audio.playAt("v_absolute_line", e.position, 128, SoundGroup::ENEMY, true, 0.8f);   // "...WORTHY.", lower
     fx.spawnShockwave(e.position, 20.f, {1.6f, 1.5f, 1.2f});
     explosionFlashTimer = 0.8f; explosionFlashPos = e.position;
@@ -178,7 +239,7 @@ inline void GameplayState::gatherAbsoluteBoxes(std::vector<BoxInstance>& out) {
     if (!level.zenith.built || !act2() || director.arena != ZENITH_ARENA) return;
     const float t = gameClock;
     const glm::vec3 C = level.zenith.centre;
-    const glm::vec3 white{0.88f, 0.87f, 0.84f}, crack{1.4f, 1.3f, 1.05f}, gold{1.5f, 1.1f, 0.45f}, red{2.4f, 0.25f, 0.15f};
+    const glm::vec3 white{0.88f, 0.87f, 0.84f}, crack{1.4f, 1.3f, 1.05f}, gold{1.5f, 1.2f, 0.55f}, red{2.4f, 0.25f, 0.15f};
     // a long thin box from a to b
     auto along = [&](glm::vec3 a, glm::vec3 b, float w, glm::vec3 col, glm::vec3 emi) {
         glm::vec3 d = b - a; float l = glm::length(d);
@@ -251,6 +312,20 @@ inline void GameplayState::gatherAbsoluteBoxes(std::vector<BoxInstance>& out) {
             push(out, T(j.boss + glm::vec3{std::cos(a) * R, 0.08f, std::sin(a) * R}) * RY(-a) * S({0.15f, 0.1f, R * 0.17f}), gold * 0.3f, gold * 2.f);
         }
     }
+    if (abSkyMarkT >= 0.f) {   // SKYFALL's circle: a gold rim closing in, the floor inside it lit
+        float u = glm::clamp(abSkyMarkT / Enemy::AB_MARK_T, 0.f, 1.f), R = Enemy::AB_SKY_R;
+        for (int k = 0; k < 40; ++k) {
+            float a = k * 0.1570796f, rr = R * (1.25f - 0.25f * u);
+            push(out, T(abSkyMark + glm::vec3{std::cos(a) * rr, 0.07f, std::sin(a) * rr}) * RY(-a) * S({0.16f, 0.08f, rr * 0.17f}), gold * 0.3f, gold * (1.4f + 1.6f * u));
+        }
+        push(out, T(abSkyMark + glm::vec3{0.f, 0.04f, 0.f}) * S({R * 1.8f, 0.02f, R * 1.8f}), gold * 0.1f, gold * (0.15f + 0.5f * u * u));
+    }
+    if (abCrackT >= 0.f && abCrackT < 0.5f)   // the axe kick's crack: red, radiating, fading
+        for (int k = 0; k < 7; ++k) {
+            float a = k * 0.8975979f + 0.3f, L = 1.2f + 0.8f * std::fmod(k * 0.37f, 1.f);
+            push(out, T(abCrackAt + glm::vec3{std::cos(a) * L * 0.5f, 0.05f, std::sin(a) * L * 0.5f}) * RY(-a + 1.5707963f) * S({0.06f, 0.03f, L}),
+                 red * 0.2f, red * (1.6f * (1.f - abCrackT / 0.5f)));
+        }
     // rays: the red line of a tell, then the beam
     if (Enemy* e = absolute()) {
         if (e->attack == AttackKind::ARAY && e->telegraphTimer > 0.f) {

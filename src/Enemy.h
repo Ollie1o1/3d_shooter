@@ -91,7 +91,8 @@ enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY,
                         RAKE, SOULBOLT, STRING,                        // the REVENANT's, the WEAVER's
                         CRASH, TORRENT, TIDE, SPIT, BREACH, SWALLOW, SUBMERGE,     // the LEVIATHAN's
                         ATELEPORT, ADASH, AJAB, AHOOK, AUPPER, ADROP, AHOP, ARAY, ASTOMP, ASERPENT,   // THE ABSOLUTE's
-                        AHALO, ASEAMS, AZENITH, ASWEEP, ALUNGE, ACRESCENT, AJUDGE };
+                        AHALO, ASEAMS, AZENITH, ASWEEP, ALUNGE, ACRESCENT, AJUDGE, ATAKEOFF, ASKYFALL, AMETEOR,
+                        ACROSS, ABACKFIST, AELBOW, AROUNDHOUSE, AHAYMAKER, ACHARGE, AAXE, ACLAP };   // (his fighter's arsenal)
 
 struct EnemyStats {
     const char* name;
@@ -163,7 +164,7 @@ inline const EnemyStats& statsOf(EnemyType t) {
         {"LEVIATHAN", 15000.f, 3.0f, 5.2f, 0.f, 1.1f, 1.9f, false,   // radius/height: the head's box
          {0.2f,0.18f,0.21f}, {1.4f,1.0f,0.6f}, {0.3f,1.1f,0.9f},
          "DASH THE CRASH - SHOOT THE EYE WHILE IT'S DOWN"},
-        {"THE ABSOLUTE", 8200.f, 0.6f, 2.6f, 11.f, 0.45f, 0.9f, false,   // the encore (EnemyAbsolute.h)
+        {"THE ABSOLUTE", 10800.f, 0.6f, 2.6f, 11.f, 0.45f, 0.9f, false,   // the encore (EnemyAbsolute.h)
          {0.95f,0.95f,0.98f}, {1.6f,1.5f,1.2f}, {1.6f,1.55f,1.4f},
          "WHITE: PARRY  GOLD: DODGE OR BLOCK  RED: GET OUT"},
     };
@@ -171,6 +172,10 @@ inline const EnemyStats& statsOf(EnemyType t) {
 }
 
 // Everything an enemy did this tick. Cleared at the top of every update().
+// THE ABSOLUTE's tell colours (EnemyAbsolute.h): white parry, gold dodge or block, red get out
+enum class AbTell : int8_t { NONE = -1, WHITE = 0, GOLD = 1, RED = 2 };
+inline AbTell abTellOf(AttackKind k);   // (EnemyAbsolute.h)
+
 struct EnemyEvents {
     static constexpr int MAX_SHOTS = 16;
     bool      telegraphStarted = false;
@@ -240,6 +245,10 @@ struct EnemyEvents {
     int  abTell = -1, abPhase = 0, abLine = -1, abSeamFirst = 0, abMirages = 0;
     bool abRay = false, abStomp = false, abSerpent = false, abHalo = false, abSeams = false, abZenith = false,
          abBladeDrawn = false, abBladeBroke = false, abJudgeMark = false, abJudge = false, abLaunch = false, abShards = false;
+    bool abTakeoff = false, abShotDown = false;   // he left the floor; he was shot out of the sky
+    bool abCue = false, abImpact = false; AttackKind abImpactKind = AttackKind::NONE;   // the beat to act on; a blow landing (hit or miss) and what it was
+    bool abHeavy = false, abCrack = false;   // a haymaker landed (a big knockback); an axe kick's crack (at abTo)
+    bool abMark = false, abCrater = false, abFlare = false, abShardBreak = false;   // SKYFALL's circle (at abTo) and its crater (a shard under it breaks); a METEOR's flare
     glm::vec3 abFrom{0.f}, abTo{0.f};
 };
 
@@ -454,6 +463,19 @@ struct Enemy {
                            AB_DASH = 32.f, AB_REACH = 2.8f, AB_FOLLOW_FLOOR = 0.22f, AB_QUICK = 0.75f, AB_RANGE = 20.f,
                            AB_BLADE_BACK = 3.f, AB_HALO_TIME = 2.f, AB_JUDGE_WARN = 2.f,
                            AB_FLOOR_R = 42.f, AB_DAIS_R = 9.f, AB_DAIS_UP = 1.2f, AB_HALO_UP = 40.f;
+    // his flight (EnemyAbsolute.h): cruising height, climb / dive / fall speeds, a flight's limit, the share of
+    // his health that shoots him down and how long he lies there, how far he circles you, the height that clears pillars
+    static constexpr float AB_CRUISE_LO = 9.f, AB_CRUISE_HI = 14.f, AB_CLIMB = 18.f, AB_DIVE_V = 45.f, AB_FALL_V = 30.f,
+                           AB_AIR_MAX = 5.f, AB_SHOOTDOWN = 0.06f, AB_DOWNED = 1.5f, AB_ORBIT_LO = 14.f, AB_ORBIT_HI = 20.f,
+                           AB_OVER = 15.f, AB_ARRIVE_UP = 12.f, AB_ASCEND_UP = 12.f, AB_SKY_R = 3.5f, AB_MARK_T = 0.7f, AB_CUE = 0.22f;   // (AB_CUE: the cue sounds this long before a blow lands)
+    // his arsenal: a kick's reach, the shoulder charge's run, the clap's cone (6 m, 35 degrees either side)
+    static constexpr float AB_KICK_REACH = 4.f, AB_CHARGE_LEN = 14.f, AB_CLAP_R = 6.f, AB_CLAP_COS = 0.819f;
+    float abAlt = 0.f, abAltWant = 0.f;   // his height over the floor under him, and where it's going
+    float abAirT = 0.f;                   // this flight's time in the air
+    float abFlightHp = -1.f;              // his health as this flight began (< 0: on the ground)
+    bool  abDiving = false;               // coming down fast (a dive, a crash, a landing)
+    int   abOrbitDir = 1;                 // which way he circles you
+    bool  abAirborne() const { return abAlt > 1.5f; }
     int   abPhase = 1;
     int   abCur = -1, abStep = 0;      // the string running (an AB_* id), the move in it
     int   abForce = -1;                // tests / dev: the next string
@@ -561,7 +583,7 @@ struct Enemy {
     // his wind-ups, strokes and recoveries are the openings
     bool deflects(glm::vec3 dir, float dist) const {
         if (type == EnemyType::ABSOLUTE)   // all round, from beyond 14 m, while he isn't winding up, recovering or broken
-            return alive && !staggered() && dist >= AB_DEFLECT && telegraphTimer <= 0.f && recoverTimer <= 0.f && abArrive <= 0.f;
+            return alive && !staggered() && dist >= AB_DEFLECT && telegraphTimer <= 0.f && recoverTimer <= 0.f && abArrive <= 0.f && !abAirborne();   // (aloft: open)
         if (type != EnemyType::SOVEREIGN || !alive || staggered() || dist < DEFLECT_RANGE) return false;
         if (telegraphTimer > 0.f || recoverTimer > 0.f || dashTimer > 0.f || leapTimer > 0.f ||
             whirlTimer > 0.f || thrustTimer > 0.f) return false;
@@ -660,7 +682,11 @@ struct Enemy {
 
         bool resolve = false;   // telegraph ran out this tick
         if (telegraphTimer > 0.f) {
+            const float before = telegraphTimer;
             telegraphTimer -= dt;
+            if (type == EnemyType::ABSOLUTE && abTellOf(attack) != AbTell::NONE &&
+                (before > AB_CUE || before >= telegraphDuration - 1e-5f) && telegraphTimer <= AB_CUE)
+                ev.abCue = true;   // the beat to act on: AB_CUE before the blow (a tell no longer than that cues on its first tick)
             if (telegraphTimer <= 0.f) { telegraphTimer = 0.f; resolve = true; }
         }
         if (recoverTimer > 0.f) recoverTimer -= dt;
@@ -668,7 +694,7 @@ struct Enemy {
             staggerTimer -= dt;
             velocity.x = velocity.z = 0.f;
             if (type == EnemyType::LEVIATHAN) { levReel(dt); return; }   // its head down on the ring
-            if (type == EnemyType::ABSOLUTE) { if (staggerTimer <= 0.f) abReeling = false; return; }   // he stands where he was struck
+            if (type == EnemyType::ABSOLUTE) { abFly(dt, w); if (staggerTimer <= 0.f) abReeling = false; return; }   // he stands where he was struck (or falls there)
             integrate(dt, w);
             return;
         }
@@ -1298,10 +1324,15 @@ private:
 public:
     int  abParried(bool bySword);                                     // EnemyAbsolute.h
     static bool abMeleeWhite(AttackKind k) {                          // a white strike from his body or blade (parryable)
-        return k == AttackKind::AJAB || k == AttackKind::AHOOK || k == AttackKind::ASWEEP;
+        return k == AttackKind::AJAB || k == AttackKind::AHOOK || k == AttackKind::ASWEEP || k == AttackKind::AMETEOR ||
+               k == AttackKind::ACROSS || k == AttackKind::ABACKFIST || k == AttackKind::AELBOW || k == AttackKind::AROUNDHOUSE;
     }
 private:
     void thinkAbsolute(float dt, const EnemyWorld& w, bool resolve);   // EnemyAbsolute.h
+    void thinkAbsoluteMind(float dt, const EnemyWorld& w, bool resolve);
+    void abFly(float dt, const EnemyWorld& w);
+    void abOrbit(float dt, const EnemyWorld& w, glm::vec3 feet);
+    void abDowned();
     void abPhaseCheck(float hp);
     int  abChoose(float d, const EnemyWorld& w);
     int  abCampAnswer(const EnemyWorld& w) const;

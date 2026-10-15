@@ -338,6 +338,6 @@ inline std::string act2Subtitle(const Records& r, bool unlocked) {
     if (!unlocked) return "DEFEAT THE SOVEREIGN TO UNLOCK";
     std::string s = r.bestZenith > 0.f ? "5 ARENAS - AND WHAT WAITS ABOVE" : "5 ARENAS - BENEATH THE ECLIPSE";
     if (r.bestAct2 > 0.f) s += "   BEST " + formatTime(r.bestAct2);
-    if (r.bestZenith > 0.f) s += "   ZENITH " + formatTime(r.bestZenith);
+    if (r.bestZenith > 0.f) s += "   !!!!! " + formatTime(r.bestZenith);   // (the encore's name: ZENITH_NAME)
     return s;
 }

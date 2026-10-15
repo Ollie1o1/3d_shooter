@@ -33,6 +33,10 @@ inline void GameplayState::updateSword(float dt) {
     SwordInput in{lmb && !lmbPrev, lmb, rmb && !rmbPrev, rmb};
     lmbPrev = lmb; rmbPrev = rmb;
     if (in.guardPressed && !sword.broken()) audio.play("sword_guard", 80);
+    if (in.guardPressed && act2() && director.arena == ZENITH_ARENA) {   // timing: a press just after a white blow hit you was late
+        abLastPressT = gameClock;
+        if (gameClock - abWhiteHitT < 0.25f) { ui.feed("LATE", {1.f, 1.f, 1.f}); audio.play("ab_tsk", 110, SoundGroup::UI); }
+    }
     Sword::Out o = sword.update(dt, in);
     glm::vec3 eye = player.camera.position, fwd = player.camera.forward();
 
@@ -109,6 +113,7 @@ inline bool GameplayState::damagePlayerStrike(float dmg, glm::vec3 from, Sword::
         glm::vec3 to = from - player.position; to.y = 0.f;
         glm::vec3 f = player.camera.forward(); f.y = 0.f;
         bool front = glm::length(to) < 0.3f || glm::length(f) < 1e-3f || glm::dot(glm::normalize(to), glm::normalize(f)) > 0.2f;
+        const bool tryingParry = sword.parryOpen();
         lastGuarded = sword.receive(k, front, dt);
         if (lastGuarded == Sword::Guarded::PARRIED) {
             viewModel.triggerParry(true);
@@ -116,14 +121,30 @@ inline bool GameplayState::damagePlayerStrike(float dmg, glm::vec3 from, Sword::
             styleSystem.heal(Sword::HEAL_PARRY * tune().heal);
             return false;
         }
+        if (k == Sword::Strike::GOLD && tryingParry) {   // the rule teaches itself
+            audio.play("ab_wrong", 120, SoundGroup::UI, true);
+            ui.feed("UNPARRYABLE", {1.f, 0.85f, 0.4f});
+        }
         if (lastGuarded != Sword::Guarded::NONE) {
             if (k != Sword::Strike::BEAM || std::fmod(gameClock, 0.15f) < dt)
                 fx.spawnHitSparks(player.camera.position + player.camera.forward() * 0.8f, gunkit::SWORD_GLOW * 1.4f);
-            if (k != Sword::Strike::BEAM || lastGuarded == Sword::Guarded::BROKE)
-                audio.play(lastGuarded == Sword::Guarded::BROKE ? "sword_break" : "sword_block", 120);
+            if (k != Sword::Strike::BEAM || lastGuarded == Sword::Guarded::BROKE) {
+                if (lastGuarded == Sword::Guarded::BROKE) audio.play("sword_break", 128);
+                else {
+                    SfxMixer::Opts o; o.volume = 120.f / 128.f; o.group = SoundGroup::PLAYER; o.pitch = 0.8f + 0.3f * sword.guard01();   // lower as it drains
+                    audio.playOpts("sword_block", o);
+                    if (sword.guard01() < 0.3f) audio.play("ab_creak", 120, SoundGroup::PLAYER, true);   // near empty: it creaks
+                }
+            }
             if (lastGuarded == Sword::Guarded::BROKE) ui.toast("GUARD BROKEN", "", {1.f, 0.3f, 0.4f}, 1.f);
             dmg *= Sword::BLOCK_TAKEN;
         }
+    }
+    if (k == Sword::Strike::WHITE && act2() && director.arena == ZENITH_ARENA) {   // timing: pressed, but too early
+        if (gameClock - abLastPressT > Sword::PARRY_WINDOW && gameClock - abLastPressT < Sword::PARRY_WINDOW + 0.25f) {
+            ui.feed("EARLY", {1.f, 1.f, 1.f}); audio.play("ab_tsk", 110, SoundGroup::UI);
+        }
+        abWhiteHitT = gameClock;
     }
     return damagePlayer(dmg, from, k == Sword::Strike::BEAM ? 0.f : 0.25f, k == Sword::Strike::BEAM ? 0.f : 0.05f,
                         k == Sword::Strike::BEAM ? 0.f : 0.15f);
