@@ -29,6 +29,7 @@
 #include "Level.h"
 
 static constexpr int ZENITH_ARENA = 5;   // the encore: the sixth Act II arena, above the eclipse (buildZenith)
+inline constexpr const char* ZENITH_NAME = "!!!!!";   // the encore's name on screen (the code still calls it the Zenith)
 // THE ZENITH's measures: the Dais, the floor, the pillars, the shards past the
 // gap, the Halo overhead, the seams' cells
 constexpr float ZEN_DAIS = 9.f, ZEN_FLOOR = 44.f, ZEN_PILLAR_R = 34.f, ZEN_SHARD_R = 57.f, ZEN_HALO_R = 70.f,
@@ -1021,7 +1022,7 @@ inline void buildZenith(LevelBuilder& B) {
     }
 
     Arena a;
-    a.name = "THE ZENITH"; a.space = ReverbSpace::OPEN;
+    a.name = ZENITH_NAME; a.space = ReverbSpace::OPEN;
     a.subtitle = "ABOVE THE ECLIPSE";
     a.bounds = LevelBuilder::aabb(C.x - 64, F - 4, C.z - 64, C.x + 64, F + 30, C.z + 64);
     a.zone   = LevelBuilder::aabb(C.x - 66, F - 60, C.z - 66, C.x + 66, F + 60, C.z + 66);

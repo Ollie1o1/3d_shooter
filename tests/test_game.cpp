@@ -480,10 +480,10 @@ int main() {
     {
         LevelData N = buildAct2Level();
         SpatialGrid ng; ng.build(N.walls);
-        CHECK(N.arenas.size() == 6 && std::string(N.arenas[5].name) == "THE ZENITH" && std::string(N.arenas[0].name) == "THE DROWNED NAVE" && std::string(N.arenas[1].name) == "THE ORRERY" &&
+        CHECK(N.arenas.size() == 6 && std::string(N.arenas[5].name) == "!!!!!" && std::string(N.arenas[0].name) == "THE DROWNED NAVE" && std::string(N.arenas[1].name) == "THE ORRERY" &&
               std::string(N.arenas[2].name) == "THE DESCENT" && std::string(N.arenas[3].name) == "THE RELIQUARY" &&
               std::string(N.arenas[4].name) == "THE MAW" && N.corridors.size() == 4,
-              "act II: the Drowned Nave, the Orrery, the Descent, the Reliquary, then the Maw, joined by corridors; the Zenith above");
+              "act II: the Drowned Nave, the Orrery, the Descent, the Reliquary, then the Maw, joined by corridors; the encore (!!!!!) above");
         const Arena& nave = N.arenas[0];
         bool groundOk = true, airOk = true, inB = true, under = true;
         for (auto& sp : allGround(nave)) {

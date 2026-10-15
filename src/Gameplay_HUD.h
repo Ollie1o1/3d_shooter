@@ -275,7 +275,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         } else if (act2()) {   // the act's end, up in the Zenith (no board yet: a local best)
             ui.renderVictoryArena(totalKills, totalShots, totalHits, deaths, elapsedTime, peakStyle,
                                   prog.level, zen ? records.bestZenith : 0.f, zen && newRecord, true, runScore(),
-                                  zen ? "ZENITH CLEARED" : "ACT II COMPLETE", zen ? "THE LIGHT FALLS" : "THE ECLIPSE BREAKS");
+                                  zen ? "!!!!! CLEARED" : "ACT II COMPLETE", zen ? "THE LIGHT FALLS" : "THE ECLIPSE BREAKS");
         } else {
             ui.renderVictoryArena(totalKills, totalShots, totalHits, deaths, elapsedTime, peakStyle,
                                   prog.level, records.bestArena, newRecord, !nameEntry, runScore());

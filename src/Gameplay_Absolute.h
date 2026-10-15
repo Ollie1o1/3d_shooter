@@ -156,7 +156,7 @@ inline void GameplayState::onAbsoluteKilled(const Enemy& e) {
     abCorpse = e; abCorpse.alive = true; abCorpse.staggerTimer = 1.f; abCorpse.abReeling = false;
     abCorpse.attack = AttackKind::NONE; abCorpse.telegraphTimer = 0.f; abCorpse.abBlade = false;
     abDeathT = 0.f;
-    abLineShown = 4; abLineT = 3.f;
+    abLineShown = AB_LINE_WORTHY; abLineT = 3.f;
     audio.playAt("v_absolute_line", e.position, 128, SoundGroup::ENEMY, true, 0.8f);   // "...WORTHY.", lower
     fx.spawnShockwave(e.position, 20.f, {1.6f, 1.5f, 1.2f});
     explosionFlashTimer = 0.8f; explosionFlashPos = e.position;

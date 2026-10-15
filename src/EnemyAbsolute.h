@@ -46,7 +46,7 @@ inline const AbString& abString(int id) {
                          {A::AJAB, 0.30f, 18.f, 2, 0.2f}, {A::AHOOK, 0.40f, 28.f, 1, 0.f}}, 5},
         {"KNEEL", 0, {{A::ADASH, 0.35f, 0.f, 1, 0.f}, {A::AUPPER, 0.50f, 26.f, 1, 0.f}, {A::ADROP, 0.45f, 30.f, 1, 0.f},
                       {A::ADROP, 0.40f, 30.f, 2, 0.f}}, 4},
-        {"BE JUDGED", 3, {{A::AHOP, 0.20f, 0.f, 1, 0.f}, {A::ARAY, 0.60f, 25.f, 1, 0.f}, {A::ARAY, 0.50f, 25.f, 2, 0.f},
+        {"BE JUDGED", -1, {{A::AHOP, 0.20f, 0.f, 1, 0.f}, {A::ARAY, 0.60f, 25.f, 1, 0.f}, {A::ARAY, 0.50f, 25.f, 2, 0.f},
                           {A::ASTOMP, 0.50f, 20.f, 1, 0.f}}, 4},
         {"SERPENT", -1, {{A::ASERPENT, 0.50f, 20.f, 1, 0.f}}, 1},
         {"SEAMS", 3, {{A::ASEAMS, 0.90f, 25.f, 2, 0.f}}, 1},
@@ -59,9 +59,10 @@ inline const AbString& abString(int id) {
     return S[std::clamp(id, 0, AB_STRINGS - 1)];
 }
 // His lines (shown as subtitles, a choir phrase under each)
+enum { AB_LINE_WORTHY = 3 };
 inline const char* abLine(int i) {
-    static const char* L[] = {"KNEEL.", "TOO SLOW.", "AGAIN.", "BE JUDGED.", "...WORTHY."};
-    return i >= 0 && i < 5 ? L[i] : "";
+    static const char* L[] = {"KNEEL.", "TOO SLOW.", "AGAIN.", "...WORTHY."};
+    return i >= 0 && i < 4 ? L[i] : "";
 }
 
 // A standing pillar within `pad` of p (XZ), or -1
@@ -212,7 +213,7 @@ inline void Enemy::abPhaseCheck(float hp) {
         phaseHold = PHASE_PAUSE; attack = AttackKind::NONE; telegraphTimer = 0.f; abCur = -1; abRot = 0;
     }
     else if (abPhase == 3 && !abJudged && hp <= AB_JUDGE_AT) {   // every seam burns but a ring round him
-        abJudged = true; ev.abJudgeMark = true; ev.abLine = 3; ev.abTell = (int)AbTell::RED;
+        abJudged = true; ev.abJudgeMark = true; ev.abTell = (int)AbTell::RED;
         ev.blinked = true; ev.blinkFrom = position;
         position = dais;
         abCur = -1; recoverTimer = 0.f; phaseHold = 0.f;

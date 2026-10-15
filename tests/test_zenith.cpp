@@ -17,6 +17,7 @@
 #include "BossSim.h"
 #include "../src/MixTable.h"
 #include "../src/VoiceTable.h"
+#include "../src/PixelFont.h"
 #include <fstream>
 #include <string>
 #include <cstdio>
@@ -219,7 +220,15 @@ int main() {
     SpatialGrid g; g.build(N.walls);
     const glm::vec3 ZC = zenithCentre();
     {
-        CHECK(N.arenas.size() == 6 && std::string(N.arenas[ZENITH_ARENA].name) == "THE ZENITH", "a sixth Act II arena: the Zenith");
+        CHECK(std::string(ZENITH_NAME) == "!!!!!" && PIXEL_FONT['!' - ' '][0] != 0, "the encore's name is !!!!! (and the pixel font can draw it)");
+        bool gone = true;
+        for (int i = 0; i < 6; ++i) gone &= std::string(abLine(i)) != "BE JUDGED.";
+        CHECK(gone && abString(AB_JUDGED).line == -1, "\"BE JUDGED.\" is gone");
+        CHECK(std::string(abLine(0)) == "KNEEL." && std::string(abLine(1)) == "TOO SLOW." && std::string(abLine(2)) == "AGAIN." &&
+              std::string(abLine(AB_LINE_WORTHY)) == "...WORTHY.", "...and the other four lines stay");
+    }
+    {
+        CHECK(N.arenas.size() == 6 && std::string(N.arenas[ZENITH_ARENA].name) == "!!!!!", "a sixth Act II arena: the encore, called !!!!!");
         const Arena& Z = N.arenas[ZENITH_ARENA];
         CHECK(Z.waves.size() == 1 && Z.waves[0][0].type == EnemyType::ABSOLUTE && Z.maxAlive == 1 && Z.space == ReverbSpace::OPEN,
               "one wave, THE ABSOLUTE, alone, under an open sky");
@@ -677,6 +686,7 @@ int main() {
         j.health = j.maxHealth * 0.05f;
         j.update(DT, zworld(ZC + glm::vec3{0, 0, 10}));
         CHECK(j.ev.abJudgeMark && !j.ev.abJudge && !j.staggered(), "the last judgment never lands on the tick it begins");
+        CHECK(j.ev.abLine == -1, "the last judgment says nothing now");
         AbsoluteHazards two; two.addRay(ZC, ZC); two.update(0.5f, ZC + glm::vec3{0, 0, 9}, 1.8f, true, &N, ZC); two.addRay(ZC, ZC);
         CHECK(two.freshRay() == 1, "a second ray, fired while the first still burns, can be parried");
     }
@@ -712,8 +722,8 @@ int main() {
         r.bestAct2 = 1534.2f;
         CHECK(act2Subtitle(r, true) == "5 ARENAS - BENEATH THE ECLIPSE   BEST " + formatTime(1534.2f), "...with the act's best time once you have one");
         r.bestZenith = 1712.f;
-        CHECK(act2Subtitle(r, true) == "5 ARENAS - AND WHAT WAITS ABOVE   BEST " + formatTime(1534.2f) + "   ZENITH " + formatTime(1712.f),
-              "...and the Zenith's once it's cleared");
+        CHECK(act2Subtitle(r, true) == "5 ARENAS - AND WHAT WAITS ABOVE   BEST " + formatTime(1534.2f) + "   !!!!! " + formatTime(1712.f),
+              "...and the encore's (!!!!!) once it's cleared");
     }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");
