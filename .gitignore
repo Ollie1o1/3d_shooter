@@ -48,3 +48,4 @@ web/dist/
 tests/test_game
 tests/test_zenith
 .superpowers/
+__pycache__/
