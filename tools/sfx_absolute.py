@@ -232,17 +232,20 @@ def gen_ab_rumble():
 # ---- the cues ------------------------------------------------------------------------------------
 
 def gen_ab_ting():
-    """White: parry now. A crystal bell, instant attack, a shimmer"""
-    L = n(0.35)
+    """White: parry now. A struck anvil with a kick under it: a punchy sub drop and a knuckle crack, then a
+    short steel ring an octave and a half lower than a bell's (it still rings, so it never reads as the DOOM)"""
+    L = n(0.32)
+    thump = sweep(190, 52, n(0.14), 0.4)
+    crack = onepole_lp(noise(n(0.006)), 4500)
     out = []
     for i in range(L):
         t = i / SR
-        a = min(1.0, i / n(0.001))
-        s = (math.sin(2 * math.pi * 2637 * t) * math.exp(-9 * t) + math.sin(2 * math.pi * 2637 * 2.76 * t) * 0.35 * math.exp(-16 * t)
-             + math.sin(2 * math.pi * 2637 * 5.4 * t) * 0.15 * math.exp(-28 * t))
-        s *= 1 + 0.15 * math.sin(2 * math.pi * 18 * t)
-        out.append(s * a * 0.8)
-    return fit(out, 0.35)
+        a = min(1.0, i / n(0.0015))
+        body = thump[i] * math.exp(-16 * t) * 1.1 if i < len(thump) else 0.0
+        hit = crack[i] * (1 - i / len(crack)) * 0.9 if i < len(crack) else 0.0
+        ring = (math.sin(2 * math.pi * 660 * t) * math.exp(-13 * t) + math.sin(2 * math.pi * 660 * 2.76 * t) * 0.3 * math.exp(-24 * t)) * 0.42
+        out.append((body + hit + ring) * a)
+    return fit(drive(out, 1.8), 0.32)
 
 
 def gen_ab_doom():

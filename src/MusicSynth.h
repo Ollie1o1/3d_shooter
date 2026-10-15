@@ -39,6 +39,7 @@ struct MusicTrack {
     const char* bass;
     const char* arp;
     const char* lead;      // 32 steps (two bars): chord tone 0-3, '-' hold, '.' rest
+    int   techno;          // 1: hard techno voicing (driven kick, clap, acid arp, a riser into every fourth bar)
 };
 
 constexpr int MUSIC_TRACKS = 11;
@@ -47,44 +48,46 @@ inline const MusicTrack& musicTrack(int i) {
     static const MusicTrack T[] = {
         {"SUNSET", 150.f, 57, {0, 5, 2, 6},
          "x...x...x...x...", "....x.......x...", "x.X.x.X.x.X.x.Xo",
-         "x.xxx.xxx.xxx.xo", "0123012301230123", "3---2---1-2-0---3---2---1---0---"},
+         "x.xxx.xxx.xxx.xo", "0123012301230123", "3---2---1-2-0---3---2---1---0---", 0},
         {"FOUNDRY", 156.f, 50, {0, 0, 5, 6},
          "x..x..x...x.x...", "....x..g....x...", "xxXxxxXxxxXxxxXo",
-         "xx.xxo.xxx.xxo.x", "0.1.2.1.3.2.1.2.", "0-0-3---2-1-0---0-0-3---1---2---"},
+         "xx.xxo.xxx.xxo.x", "0.1.2.1.3.2.1.2.", "0-0-3---2-1-0---0-0-3---1---2---", 0},
         {"SPIRE", 148.f, 52, {0, 5, 3, 4},
          "x.......x.x.....", "....x.......x...", "x.X.x.X.x.X.x.X.",
-         "x..xx..xx..xx.ox", "0213021302130213", "2-------1-------3-------2---1---"},
+         "x..xx..xx..xx.ox", "0213021302130213", "2-------1-------3-------2---1---", 0},
         {"CORE", 172.f, 49, {0, 5, 6, 4},
          "x.........x.....", "....x.......x..g", "xXxXxXxXxXxXxXxo",
-         "x-.xo-.xx-.xo-fx", "0123321001233210", "3---2-3-1---0---3-2-1-0-1---2---"},
+         "x-.xo-.xx-.xo-fx", "0123321001233210", "3---2-3-1---0---3-2-1-0-1---2---", 0},
         // The Sovereign: a slower, heavier march with a falling lead
         {"SOVEREIGN", 140.f, 46, {0, 6, 5, 4},
          "x..x..x...x..x..", "....x.......x.gx", "x.X.xxX.x.X.xxXo",
-         "x--fx--ox--fx-fo", "3210321032103201", "3-------2---1---0-------1-2-3---"},
+         "x--fx--ox--fx-fo", "3210321032103201", "3-------2---1---0-------1-2-3---", 0},
         // The Nave: slow and cold, a bell-like arp over a drowned pulse
         {"NAVE", 138.f, 45, {0, 3, 5, 4},
          "x.....x...x.....", "....x.......x...", "x.x.X.x.x.x.X.xo",
-         "x--.x--.o--.x-f.", "0.2.1.3.0.2.1.3.", "2-------3---1---0-------1---2---"},
+         "x--.x--.o--.x-f.", "0.2.1.3.0.2.1.3.", "2-------3---1---0-------1---2---", 0},
         // The Orrery: bright and turning, an arp that goes round and round
         {"ORRERY", 152.f, 48, {0, 4, 5, 3},
          "x...x...x..x....", "....x.......x..g", "xXx.xXx.xXx.xXxo",
-         "x.ox.fx.x.ox.fxo", "0123210301232103", "3---2---1---2---3---1---0-------"},
+         "x.ox.fx.x.ox.fxo", "0123210301232103", "3---2---1---2---3---1---0-------", 0},
         // The Descent: slow, heavy, low brass and chains, falling forever
         {"DESCENT", 132.f, 43, {0, 6, 3, 5},
          "x.....x.x.......", "....x.......x..g", "x.x.X.x.x.xxX.xo",
-         "x---o---x--fo---", "0..1..2..3..2..1", "3-------2-------1---0---1-------"},
+         "x---o---x--fo---", "0..1..2..3..2..1", "3-------2-------1---0---1-------", 0},
         // The Reliquary: sparse and hollow, a slow bell over a far-off choir pad
         {"RELIQUARY", 120.f, 41, {0, 3, 6, 4},
          "x.......x.......", "........x.......", "x...x.X.x...x.Xo",
-         "x---.---o---.--f", "0...2...1...3...", "3-------------2-1---------------"},
+         "x---.---o---.--f", "0...2...1...3...", "3-------------2-1---------------", 0},
         // The Maw: huge and slow, a half-time stomp, sub-bass swells, a lead that climbs and falls away
         {"LEVIATHAN", 110.f, 38, {0, 5, 6, 4},
          "x.......x..x....", "........x.......", "x...X...x...X.xo",
-         "x-------o---f---", "0.1.2.3.2.1.0.1.", "0-------1---2---3-------2-1-0---"},
-        // The Zenith: fast and bright, four on the floor, a busy hat, a lead that keeps climbing
-        {"ZENITH", 170.f, 50, {0, 3, 5, 6},
-         "x...x...x...x...", "....x.......x.gx", "xXxXxXxXxXxXxXxo",
-         "x.oxf.oxx.oxf.ox", "0123012301230123", "0---1---2---3---3-2-1-2-3---3---"},
+         "x-------o---f---", "0.1.2.3.2.1.0.1.", "0-------1---2---3-------2-1-0---", 0},
+        // The Zenith (!!!!!): hard techno. A driven four-on-the-floor, a rolling off-beat bass pumping
+        // under it, claps on two and four, an acid line whose filter opens over four bars, staccato stabs
+        // on top, and a riser and clap roll into every fourth bar. It never lets up.
+        {"ZENITH", 166.f, 50, {0, 0, 5, 6},
+         "x...x...x...x...", "....x.......x...", "xxoxxxoxxxoxxxoX",
+         ".xxx.xxx.xxx.xxx", "0030102300301023", "3.3.3.2.3.3.3.0.3.3.3.2.1.1.1.2.", 1},
     };
     return T[((i % MUSIC_TRACKS) + MUSIC_TRACKS) % MUSIC_TRACKS];
 }
@@ -196,6 +199,8 @@ private:
 
     float arpNote = 69.f, arpT = 1e9f; bool arpLeft = false;
     Osc   arpOsc; SVF arpF;
+    float acidBase = 400.f;          // techno: the acid filter's cutoff before its pluck, opening over four bars
+    SVF   riserF;
 
     float leadNote = 81.f, leadCur = 81.f, leadT = 1e9f, leadAmp = 0.f; bool leadOn = false;
     Osc   leadOsc, leadOsc2, vib; SVF leadF;
@@ -241,6 +246,8 @@ private:
         gMuf   = gOf(520.f);
         gSnareF = gOf(1600.f); gHatF = gOf(7200.f); gArpF = gOf(2600.f + 1800.f * sstep(1.f, 1.3f, lvl));
         gLeadF = gOf(3200.f); gPadF = gOf(700.f + 500.f * sstep(0.6f, 1.2f, lvl)); gCrashF = gOf(5000.f);
+        float cyc = (std::max(step, 0) + 1.f - sampleInStep / std::max(1.f, stepLen)) / 64.f;   // 0..1 across the four bars
+        acidBase = 320.f + 1900.f * cyc * cyc;
     }
 
     void nextStep() {
@@ -264,6 +271,8 @@ private:
         if (k == 'x') kick = Hit{0.f, 1.f};
         char sn = at(tr.snare, s);
         if (sn == 'x') snare = Hit{0.f, 1.f}; else if (sn == 'g') snare = Hit{0.f, 0.35f};
+        if (tr.techno && bar == 3 && s >= 8 && (s >= 12 || s % 2 == 0))   // the clap roll into the next phrase
+            snare = Hit{0.f, 0.35f + 0.65f * (s - 8) / 7.f};
         char h = at(tr.hat, s);
         if (h == 'x') hatC = Hit{0.f, 0.55f}; else if (h == 'X') hatC = Hit{0.f, 1.f}; else if (h == 'o') hatO = Hit{0.f, 1.f};
 
@@ -285,15 +294,22 @@ private:
 
     void synthSample(const MusicTrack& tr, float& L, float& R) {
         const float dt = 1.f / SR;
-        (void)tr;
+        const bool techno = tr.techno != 0;
         // ---- drums ----
         float drums = 0.f, hatOut = 0.f;
         if (kick.t < 0.6f) {
             float t = kick.t;
-            float hz = 46.f + 120.f * std::exp(-t * 32.f);
-            float body = kickOsc.sine(hz, SR) * std::exp(-t * 6.5f);
-            float click = noise() * std::exp(-t * 500.f) * 0.25f;
-            drums += (body * 1.05f + click) * gKick * kick.vel;
+            if (techno) {                                         // harder: a faster, deeper drop, driven, a sharper click
+                float hz = 47.f + 190.f * std::exp(-t * 40.f);
+                float body = std::tanh(kickOsc.sine(hz, SR) * std::exp(-t * 7.5f) * 2.6f) * 0.92f;
+                float click = noise() * std::exp(-t * 900.f) * 0.4f;
+                drums += (body + click) * gKick * kick.vel;
+            } else {
+                float hz = 46.f + 120.f * std::exp(-t * 32.f);
+                float body = kickOsc.sine(hz, SR) * std::exp(-t * 6.5f);
+                float click = noise() * std::exp(-t * 500.f) * 0.25f;
+                drums += (body * 1.05f + click) * gKick * kick.vel;
+            }
             kick.t += dt;
         }
         // Sidechain: the pad and bass duck under the kick
@@ -301,9 +317,16 @@ private:
         duck = 1.f - 0.55f * kd;
         if (snare.t < 0.5f) {
             float t = snare.t;
-            float n = snareF.hp(noise(), gSnareF, 1.2f) * std::exp(-t * 14.f);
-            float body = snareOsc.sine(185.f - 30.f * t, SR) * std::exp(-t * 28.f);
-            drums += (n * 0.55f + body * 0.45f) * gSnare * snare.vel;
+            if (techno) {                                         // a clap: three quick slaps and a short tail, band-passed
+                snareF.lp(noise(), gSnareF * 0.8f, 0.9f);
+                float e = std::exp(-t * 16.f) * 0.55f;
+                for (float o : {0.f, 0.011f, 0.022f}) if (t >= o) e += std::exp(-(t - o) * 190.f);
+                drums += snareF.band * e * 0.62f * gSnare * snare.vel;
+            } else {
+                float n = snareF.hp(noise(), gSnareF, 1.2f) * std::exp(-t * 14.f);
+                float body = snareOsc.sine(185.f - 30.f * t, SR) * std::exp(-t * 28.f);
+                drums += (n * 0.55f + body * 0.45f) * gSnare * snare.vel;
+            }
             snare.t += dt;
         }
         if (hatC.t < 0.12f || hatO.t < 0.6f) {
@@ -323,7 +346,8 @@ private:
         bassNote += (bassTarget - bassNote) * 0.02f;
         float bassOut = 0.f;
         {
-            float target = bassGate ? 0.35f + 0.65f * std::exp(-bassEnvT * 9.f) : 0.f;
+            float target = !bassGate ? 0.f : techno ? 0.15f + 0.85f * std::exp(-bassEnvT * 20.f)   // techno: short rolling plucks
+                                                    : 0.35f + 0.65f * std::exp(-bassEnvT * 9.f);
             bassAmp += (target - bassAmp) * 0.012f;               // ~2 ms: no clicks on or off
             float env = bassAmp;
             float hz = midiHz(bassNote);
@@ -347,14 +371,27 @@ private:
         float subOut = pad[6].sine(midiHz(padCur[3]), SR) * 0.24f;
         padL = padFL.lp(padL * 0.11f, gPadF, 0.4f);
         padR = padFR.lp(padR * 0.11f, gPadF, 0.4f);
-        float pg = gPad * (0.65f + 0.35f * duck);
+        float pg = gPad * (techno ? 0.4f + 0.3f * duck : 0.65f + 0.35f * duck);   // techno: a darker bed that pumps harder
 
         // ---- arp: a plucked square, alternating sides, into the delay ----
+        // (techno: an acid line - a saw an octave down through a screaming resonant filter)
         float arpOut = 0.f;
         if (arpT < 0.3f) {
-            float a = arpOsc.square(midiHz(arpNote), SR) * std::exp(-arpT * 16.f);
-            arpOut = arpF.lp(a, gArpF, 0.6f) * 0.13f * gArp;
+            if (techno) {
+                float a = arpOsc.saw(midiHz(arpNote - 12.f), SR) * std::exp(-arpT * 11.f);
+                float g = gOf(acidBase * (1.f + 3.f * std::exp(-arpT * 28.f)));
+                arpOut = std::tanh(arpF.lp(a, g, 0.22f) * 1.8f) * 0.1f * gArp;
+            } else {
+                float a = arpOsc.square(midiHz(arpNote), SR) * std::exp(-arpT * 16.f);
+                arpOut = arpF.lp(a, gArpF, 0.6f) * 0.13f * gArp;
+            }
             arpT += dt;
+        }
+        // ---- techno: a noise riser through the last bar of every four ----
+        float riser = 0.f;
+        if (techno && step >= 48) {
+            float u = (step - 48 + 1.f - sampleInStep / std::max(1.f, stepLen)) / 16.f;
+            riser = riserF.hp(noise(), gOf(600.f + 7000.f * u * u), 0.8f) * u * u * 0.1f * gArp;
         }
         // ---- lead: a saw with vibrato, legato, into the delay ----
         float leadOut = 0.f;
@@ -381,7 +418,7 @@ private:
         delayR[dpos] = sendR + dl * 0.38f;
         dpos = (dpos + 1) % dlen;
 
-        float mono = drums + bassOut + subOut * pg + crashOut;
+        float mono = drums + bassOut + subOut * pg + crashOut + riser;
         L = mono + padL * pg + hatOut * 0.8f + sendL + dl * 0.3f + leadOut * 0.3f;
         R = mono + padR * pg + hatOut * 1.0f + sendR + dr * 0.3f + leadOut * 0.3f;
     }
