@@ -350,6 +350,25 @@ int main() {
         CHECK(kinds(AB_CROSSUP) == std::vector<A>({A::ATELEPORT, A::ABACKFIST, A::AROUNDHOUSE}), "CROSS-UP: teleport, backfist, roundhouse");
         CHECK(kinds(AB_BULLRUSH) == std::vector<A>({A::ACHARGE, A::AELBOW, A::ACLAP}), "BULLRUSH: charge, elbow, clap - all three colours");
         CHECK(kinds(AB_HEEL) == std::vector<A>({A::AHOP, A::AAXE, A::ASTOMP}), "HEEL OF HEAVEN: hop, axe kick, the stomp ring");
+        {   // THUNDERCLAP: he rises, hangs, claps; the fan leaves the floor under him at you, and he comes back down
+            CHECK(kinds(AB_THUNDER) == std::vector<A>({A::ATHUNDER}) && abTellOf(A::ATHUNDER) == AbTell::RED && !Enemy::abMeleeWhite(A::ATHUNDER),
+                  "THUNDERCLAP: one red move (get out of the flames' way), never parried");
+            glm::vec3 me = ZC + glm::vec3{0, 0, 18};
+            Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = AB_THUNDER;
+            e.position = me + glm::vec3{0, 0, -8}; e.position.y = ZC.y;
+            float peak = 0.f; bool fan = false, cued = false; glm::vec3 from{0.f}, to{0.f}; float after = -1.f, altAfter = 99.f;
+            for (int i = 0; i < 60 * 4; ++i) {
+                e.update(DT, zworld(me));
+                if (e.attack == A::ATHUNDER) peak = std::max(peak, e.abAlt);
+                cued |= e.ev.abCue && e.attack == A::ATHUNDER;
+                if (e.ev.abFan) { fan = true; from = e.ev.abFrom; to = e.ev.abTo; after = 0.f; }
+                else if (after >= 0.f && (after += DT) > 0.8f && altAfter > 50.f) altAfter = e.abAlt;
+            }
+            CHECK(peak > Enemy::AB_THUNDER_UP - 0.5f, "...he rises before he claps");
+            CHECK(cued && fan && std::fabs(from.y - ZC.y) < 1.3f && glm::length(glm::vec2{to.x - me.x, to.z - me.z}) < 0.5f,
+                  "...the pulse cues it, then the fan leaves the floor under him, aimed where you stood");
+            CHECK(altAfter < 1.f, "...and he's back on the floor soon after");
+        }
         auto lands = [&](int id, glm::vec3 me) {
             Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = id;
             e.position = me + glm::vec3{0, 0, -6}; e.position.y = ZC.y;
@@ -790,6 +809,23 @@ int main() {
           AH j; j.addStomp(c);
           for (float t = 0; t < 1.f; t += DT) jumped += total(j.update(DT, me + glm::vec3{0, 1.4f, 0}, 1.8f, false, &N, c));
           CHECK(std::fabs(grounded - AH::STOMP_DAMAGE) < 1e-3f && jumped == 0.f, "the stomp ring hits once on the ground; jump it"); }
+        { glm::vec3 me = c + glm::vec3{0, 0, 12};   // THUNDERCLAP's fan, aimed at you
+          auto run = [&](glm::vec3 at, glm::vec3 feet, bool grounded) {
+              AH h; h.addFan(c, at); float got = 0;
+              for (float t = 0; t < 3.f; t += DT) got += total(h.update(DT, feet, 1.8f, grounded, &N, c));
+              return got;
+          };
+          float stand = run(me, me, true), jump = run(me, me + glm::vec3{0, 1.4f, 0}, false);
+          glm::vec3 gap = c + glm::vec3{std::sin(0.15f), 0.f, std::cos(0.15f)} * 20.f;   // between the middle lane and the next, 20 m out
+          float inGap = run(c + glm::vec3{0, 0, 20}, gap, true);
+          glm::vec3 pil = zenithPillar(0), toP = glm::normalize(glm::vec3{pil.x - c.x, 0.f, pil.z - c.z});
+          float hidden = run(pil, pil + toP * 4.f, true);
+          CHECK(std::fabs(stand - AH::FAN_DAMAGE) < 1e-3f, "THUNDERCLAP's fan hits a standing player once");
+          CHECK(jump == 0.f, "...jump the flame and it passes under you");
+          CHECK(inGap == 0.f, "...further out the lanes open: stand in a gap");
+          CHECK(hidden == 0.f, "...a pillar stops the flame that would reach you");
+          AH h; h.addFan(c, me); h.update(DT, me, 1.8f, true, &N, c); h.clear();
+          CHECK(h.fans.empty(), "a retry clears the fan"); }
         { glm::vec3 me = c + glm::vec3{0, 0, 15}, p = me;
           AH h; h.addSerpent(c + glm::vec3{0, 1.8f, 0}, {0, 0, 1});
           float got = 0;

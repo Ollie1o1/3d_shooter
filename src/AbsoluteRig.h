@@ -109,6 +109,7 @@ inline AbsPose absolutePose(const Enemy& e, float time) {
         P.glow = 2; P.hipR = late ? -0.3f : -2.6f; P.kneeR = late ? 0.1f : 0.05f; P.torsoPitch = late ? 0.25f : -0.3f; P.shR = P.shL = -0.5f; P.shRz = P.shLz = 0.7f;
         break;
     case AttackKind::ACLAP:      // both arms wide, then palms together in front
+    case AttackKind::ATHUNDER:   // (risen: the same, over your head)
         P.glow = 3; P.fistR = P.fistL = 0.f; P.shR = P.shL = -1.5f; P.shRz = P.shLz = late ? -0.2f : 1.3f; P.elR = P.elL = 0.15f;
         break;
     case AttackKind::ASKYFALL:   // knees up, both fists raised over his head, then down like a hammer

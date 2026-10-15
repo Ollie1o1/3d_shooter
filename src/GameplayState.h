@@ -233,7 +233,7 @@ public:
     int   dashCharges       = 2;
     float dashCooldown      = 0.f;
     float dashMomentumTimer = 0.f;
-    static constexpr float GRAPPLE_COOLDOWN = 1.5f;   // from the moment the rope lets go (arrival, release, or broken)
+    static constexpr float GRAPPLE_COOLDOWN = 1.5f;   // from the moment the rope lets go (arrival, release, or broken); arenas only, never FAST
     float grappleCooldown   = 0.f;
     bool  wasGrappling      = false;
     int   jumpsRemaining = 2;
@@ -390,6 +390,12 @@ public:
     float rageBlend = 0.f;   // 0..1, eases in once he enrages
     bool  sanctumRaged = false;
     static Theme bloodEclipse(const Theme& t);
+    // Dusk falls as a boss loses health: the sky, sun and light dim toward night (the tells' own glow
+    // stays bright); it eases back once no boss is alive
+    float bossDusk = 0.f;
+    static constexpr float BOSS_DUSK_MAX = 0.7f;   // how far toward night at 0 hp
+    static Theme nightfall(const Theme& t);
+    void updateBossDusk(float dt);
     void updateSanctumPhase(float dt);
 
     // The Sovereign's blades, eruptions and phantoms, and his last stand: under

@@ -225,6 +225,7 @@ inline void GameplayState::updateEnemies(float dt) {
         if (!e.alive) continue;
         if (g_devOverlay.rfind("pose", 0) == 0 && e.type == EnemyType::SOVEREIGN) { devPose(e); continue; }
         if (g_devOverlay.rfind("penitent", 0) == 0 && e.type == EnemyType::PENITENT) { devPenitentPose(e); continue; }
+        if (g_devOverlay == "thunder" && e.type == EnemyType::ABSOLUTE && e.abCur < 0) e.abForce = AB_THUNDER;   // dev: THUNDERCLAP, over and over
         if (e.type == EnemyType::WARDEN && (g_devOverlay == "warden2" || g_devOverlay == "warden3") && e.health > e.maxHealth * 0.62f)
             e.health = e.maxHealth * (g_devOverlay == "warden2" ? 0.5f : 0.2f);   // dev: straight into its later phases
         if (e.type == EnemyType::LEVIATHAN && (g_devOverlay == "leviathan2" || g_devOverlay == "leviathan3") && e.health > e.maxHealth * 0.66f && e.levStage == Enemy::LevStage::FIGHT)

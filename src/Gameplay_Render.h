@@ -466,6 +466,7 @@ inline void GameplayState::render() {
     glm::mat4 proj = renderCam.projectionMatrix();
     Theme th = level.themeAt(player.position);
     if (rageBlend > 0.f) th = lerpTheme(th, bloodEclipse(th), rageBlend);
+    if (bossDusk > 0.005f) th = lerpTheme(th, nightfall(th), bossDusk * BOSS_DUSK_MAX);
 
     postProcess.beginScene();
     glClearColor(th.fogColor.r, th.fogColor.g, th.fogColor.b, 1.f);

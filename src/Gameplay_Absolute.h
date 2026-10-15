@@ -114,6 +114,12 @@ inline void GameplayState::onAbsoluteEvents(Enemy& e, const EnemyEvents& ev) {
     if (ev.abBladeDrawn) { fx.spawnBurst(e.position + glm::vec3{0.f, 2.f, 0.f}, white, 30, 8.f, 0.5f, 0.f); audio.playAt("sword_draw", e.position, 128, SoundGroup::ENEMY, true); }
     if (ev.abRay) { abh.addRay(ev.abFrom, ev.abTo); audio.stop(abBeamH); abBeamH = at("ab_ray_beam", ev.abFrom, 1.f, 128, 0.4f); }
     if (ev.abStomp) { abh.addStomp(ev.abFrom); fx.spawnShockwave(ev.abFrom, 3.f, red); }   // (its boom and shake: the feel table)
+    if (ev.abFan) {   // THUNDERCLAP: the fan leaves the floor under him in a blast of fire
+        abh.addFan(ev.abFrom, ev.abTo);
+        fx.spawnShockwave(ev.abFrom + glm::vec3{0.f, 0.1f, 0.f}, 6.f, {2.4f, 0.8f, 0.2f});
+        fx.spawnBurst(ev.abFrom + glm::vec3{0.f, 0.4f, 0.f}, {2.4f, 0.9f, 0.25f}, 50, 10.f, 0.6f, 2.f);
+        shake(0.5f, 0.08f);
+    }
     if (ev.abSerpent) {
         glm::vec3 d = player.camera.position - ev.abFrom;
         abh.addSerpent(ev.abFrom, glm::length(d) > 0.1f ? d : glm::vec3{0.f, 0.f, 1.f});
@@ -338,6 +344,17 @@ inline void GameplayState::gatherAbsoluteBoxes(std::vector<BoxInstance>& out) {
                 float a = k * 0.2617994f, R = AbsoluteHazards::ZRAY_R;
                 push(out, T(e->abAim + glm::vec3{std::cos(a) * R, 0.06f, std::sin(a) * R}) * RY(-a) * S({0.12f, 0.06f, R * 0.28f}), red * 0.2f, red * 1.5f);
             }
+        if (e->attack == AttackKind::ATHUNDER && e->telegraphTimer > 0.f) {   // the fan's seven lanes, burning brighter toward the clap
+            const float u = e->telegraphProgress();
+            glm::vec3 g{e->position.x, e->position.y - e->abAlt, e->position.z}, d = e->abAim - g; d.y = 0.f;   // (the floor under him)
+            float base = glm::length(d) > 0.1f ? std::atan2(d.x, d.z) : e->yaw, L = 6.f + 26.f * u;
+            for (int k = 0; k < AbsoluteHazards::FAN_N; ++k) {
+                float a = base + AbsoluteHazards::FAN_HALF * (2.f * k / (AbsoluteHazards::FAN_N - 1) - 1.f);
+                glm::vec3 dir{std::sin(a), 0.f, std::cos(a)};
+                along(g + glm::vec3{0.f, 0.06f, 0.f} + dir * 1.f, g + glm::vec3{0.f, 0.06f, 0.f} + dir * L, 0.08f + 0.12f * u,
+                      red * 0.2f, red * (0.25f + 0.55f * u * u));   // (kept low: bright red blooms to white)
+            }
+        }
         if (e->attack == AttackKind::ASTOMP && e->telegraphTimer > 0.f)
             for (int k = 0; k < 24; ++k) {
                 float a = k * 0.2617994f, R = 1.2f + 1.5f * e->telegraphProgress();
@@ -359,6 +376,20 @@ inline void GameplayState::gatherAbsoluteBoxes(std::vector<BoxInstance>& out) {
         for (int k = 0; k < 48; ++k) {
             float a = k * 0.1308997f;
             push(out, T(s.at + glm::vec3{std::cos(a) * s.r, 0.35f, std::sin(a) * s.r}) * RY(-a) * S({0.2f, 0.7f, s.r * 0.14f}), red * 0.2f, red * 1.4f);
+        }
+    const glm::vec3 fire{1.5f, 0.32f, 0.05f}, flameHot{1.7f, 0.75f, 0.12f};   // (at this level orange stays orange under the tonemap)
+    for (auto& f : abh.fans)   // THUNDERCLAP: rolling flames, a white-hot core, licks trailing behind
+        for (int k = 0; k < AbsoluteHazards::FAN_N; ++k) {
+            if (f.out[k]) continue;
+            glm::vec3 p = AbsoluteHazards::fanFlame(f, k, &level);
+            float fl = 0.8f + 0.2f * std::sin(t * 37.f + k * 2.3f);
+            push(out, T(p + glm::vec3{0.f, 0.6f * fl, 0.f}) * RY(t * 6.f + k) * S({1.3f, 1.2f * fl, 1.3f}), fire * 0.2f, fire);
+            push(out, T(p + glm::vec3{0.f, 0.5f, 0.f}) * RY(-t * 9.f + k) * S({0.7f, 0.9f, 0.7f}), glm::vec3{1.f}, flameHot);
+            for (int j = 1; j <= 3; ++j) {
+                glm::vec3 q = p - f.dir[k] * (0.9f * j) + glm::vec3{0.f, 0.3f + 0.25f * j * fl, 0.f};
+                float s = 1.1f - 0.25f * j;
+                push(out, T(q) * RY(t * 4.f + j + k) * S(glm::vec3{s}), fire * 0.15f, fire * (0.9f - 0.2f * j));
+            }
         }
     for (auto& h : abh.halos) {   // the 360 sweep: a bar of light at chest height, turning
         float a = 6.2831853f * std::min(1.f, h.t / AbsoluteHazards::HALO_TIME);

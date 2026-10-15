@@ -126,7 +126,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         pendingGrapple = false;
     }
     grapple.update(dt, player.camera.position, player.velocity);
-    if (wasGrappling && !grapple.active) grappleCooldown = GRAPPLE_COOLDOWN;   // however it ended (arrival, release, a rip, a pin)
+    if (wasGrappling && !grapple.active && !fast()) grappleCooldown = GRAPPLE_COOLDOWN;   // however it ended (arrival, release, a rip, a pin); FAST runs grapple freely
     wasGrappling = grapple.active;
 
     // --- Aiming (rifles, RMB held) ---

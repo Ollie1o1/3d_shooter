@@ -16,6 +16,10 @@
 //             other pillar.
 //   MIRAGES   afterimages that jab once for half; one hit kills them.
 //   JUDGMENT  every seam burns but a ring round him: be beside him.
+//   FAN       THUNDERCLAP: seven flames roll out along the floor from under
+//             him in a fan at you. Up close they're shoulder to shoulder (jump
+//             one); further out the gaps open (stand in one). A pillar stops a
+//             flame.
 // No OpenGL or audio: Gameplay_Absolute.h draws and sounds them.
 // =============================================================================
 #include "Level.h"
@@ -31,7 +35,9 @@ struct AbsoluteHazards {
                            ZRAY_TIME = 2.5f, ZRAY_CHASE = 5.f, ZRAY_R = 1.6f, ZRAY_DPS = 20.f,
                            HALO_TIME = Enemy::AB_HALO_TIME, HALO_LO = 1.0f, HALO_HI = 1.6f, HALO_DAMAGE = 30.f, HALO_REACH = 46.f,
                            MIRAGE_TELL = 0.5f, MIRAGE_DAMAGE = 8.f, MIRAGE_R = 0.6f,
-                           JUDGE_WARN = Enemy::AB_JUDGE_WARN, JUDGE_SAFE = 6.f, JUDGE_DAMAGE = 60.f;
+                           JUDGE_WARN = Enemy::AB_JUDGE_WARN, JUDGE_SAFE = 6.f, JUDGE_DAMAGE = 60.f,
+                           FAN_SPEED = 19.f, FAN_HALF = 0.9f, FAN_R = 1.1f, FAN_H = 1.3f, FAN_MAX = 46.f, FAN_DAMAGE = 24.f;
+    static constexpr int FAN_N = 7;
     // A hit on the player: `tick` damage is already per tick (a beam)
     struct Hit { float damage; glm::vec3 from; Sword::Strike kind; bool tick; };
     struct Ray     { glm::vec3 from, at; float t = 0.f; };
@@ -42,13 +48,15 @@ struct AbsoluteHazards {
     struct Halo    { glm::vec3 centre; float floorY, t = 0.f, prevA = 0.f; bool hit = false; };
     struct Mirage  { glm::vec3 at; float t = 0.f; bool struck = false; };
     struct Judge   { glm::vec3 centre, boss; float t = 0.f; bool done = false; };
+    struct Fan     { glm::vec3 at; glm::vec3 dir[FAN_N]; bool out[FAN_N] = {}; float r = 0.f; bool hit = false; };   // out: a pillar stopped it
     std::vector<Ray> rays; std::vector<Stomp> stomps; std::vector<Serpent> serpents; std::vector<Seams> seams;
     std::vector<ZRay> zrays; std::vector<Halo> halos; std::vector<Mirage> mirages; std::vector<Judge> judges;
+    std::vector<Fan> fans;
     int shatterThisTick = 0;   // the pillars the halo sweep passed this tick (a mask)
 
     void clear() {
         rays.clear(); stomps.clear(); serpents.clear(); seams.clear();
-        zrays.clear(); halos.clear(); mirages.clear(); judges.clear(); shatterThisTick = 0;
+        zrays.clear(); halos.clear(); mirages.clear(); judges.clear(); fans.clear(); shatterThisTick = 0;
     }
     void addRay(glm::vec3 from, glm::vec3 at)       { rays.push_back({from, at}); }
     void addStomp(glm::vec3 at)                     { stomps.push_back({at}); }
@@ -58,6 +66,26 @@ struct AbsoluteHazards {
     void addHalo(glm::vec3 centre, float floorY)    { halos.push_back({centre, floorY}); }
     void addMirage(glm::vec3 at)                    { mirages.push_back({at}); }
     void addJudge(glm::vec3 centre, glm::vec3 boss) { judges.push_back({centre, boss}); }
+    // A fan from `at` (the floor under him) centred on `toward`
+    void addFan(glm::vec3 at, glm::vec3 toward) {
+        Fan f; f.at = at;
+        glm::vec3 d = toward - at; d.y = 0.f;
+        float base = glm::length(d) > 0.1f ? std::atan2(d.x, d.z) : 0.f;
+        for (int k = 0; k < FAN_N; ++k) {
+            float a = base + FAN_HALF * (2.f * k / (FAN_N - 1) - 1.f);
+            f.dir[k] = {std::sin(a), 0.f, std::cos(a)};
+        }
+        fans.push_back(f);
+    }
+    // Where flame k of a fan is, on whatever floor is under it (the Dais is higher)
+    static glm::vec3 fanFlame(const Fan& f, int k, const LevelData* lv) {
+        glm::vec3 p = f.at + f.dir[k] * f.r;
+        if (lv && lv->zenith.built) {
+            const glm::vec3 c = lv->zenith.centre;
+            p.y = c.y + (glm::length(glm::vec2{p.x - c.x, p.z - c.z}) < Enemy::AB_DAIS_R ? Enemy::AB_DAIS_UP : 0.f);
+        }
+        return p;
+    }
 
     // Which of the seams' two waves a point's cell burns in
     static int seamParity(glm::vec3 c, glm::vec3 p) {
@@ -176,6 +204,18 @@ struct AbsoluteHazards {
             }
         }
         judges.erase(std::remove_if(judges.begin(), judges.end(), [](const Judge& j) { return j.done; }), judges.end());
+        for (auto& f : fans) {
+            f.r += FAN_SPEED * dt;
+            for (int k = 0; k < FAN_N; ++k) {
+                if (f.out[k]) continue;
+                glm::vec3 p = fanFlame(f, k, lv);
+                if (blocked(lv, f.at + glm::vec3{0.f, 0.5f, 0.f}, p + glm::vec3{0.f, 0.5f, 0.f})) { f.out[k] = true; continue; }
+                if (!f.hit && glm::length(glm::vec2{feet.x - p.x, feet.z - p.z}) < FAN_R + 0.4f && feet.y < p.y + FAN_H) {
+                    f.hit = true; out.push_back({FAN_DAMAGE, p, Sword::Strike::AREA, false});
+                }
+            }
+        }
+        fans.erase(std::remove_if(fans.begin(), fans.end(), [](const Fan& f) { return f.r > FAN_MAX; }), fans.end());
         return out;
     }
 
