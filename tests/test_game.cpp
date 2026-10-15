@@ -6,6 +6,7 @@
 // ceilings above every spawn), each enemy type's AI, the box rigs, the wave
 // director driven through an entire simulated ARENA run and FAST run, the
 // weapon and upgrade numbers, XP, and the mouse spike filter.
+#include "../src/AbsoluteFeel.h"
 #include "../src/WaveDirector.h"
 #include "../src/LevelGauntlet.h"
 #include "../src/LevelAct2.h"
@@ -2918,10 +2919,11 @@ int main() {
                                 "potion", "barrier", "split", "upgrade", "clank", "punch", "step1", "step2", "step3", "step4", "door",
                                 "door_close", "boost", "cyl_open", "cyl_close", "eject", "shell_in", "pump", "wade", "skim", "cell",
                                 "dry", "switch_up0", "switch_up1", "switch_up2", "switch_up3",
-                                "sword_draw", "sword_swing", "sword_hit", "sword_thrust", "sword_guard", "sword_block", "sword_break",
-                                "ab_ting", "ab_thrum"};
-        bool all = true; for (const char* n : loaded) all &= mixEntry(n) != nullptr;
-        CHECK(all && mixTable().size() == sizeof(loaded) / sizeof(loaded[0]), "every sound file the game loads has exactly one place in the mix");
+                                "sword_draw", "sword_swing", "sword_hit", "sword_thrust", "sword_guard", "sword_block", "sword_break"};
+        std::vector<std::string> names(std::begin(loaded), std::end(loaded));
+        for (const std::string& n : abAllSounds()) names.push_back(n);   // THE ABSOLUTE's fight (AbsoluteFeel.h)
+        bool all = true; for (const std::string& n : names) all &= mixEntry(n) != nullptr;
+        CHECK(all && mixTable().size() == names.size(), "every sound file the game loads has exactly one place in the mix");
         CHECK(std::fabs(mixGain("jump") - std::pow(10.f, -4.1f / 20.f)) < 1e-4f && mixGain("v_husk_idle") == 1.f && mixGain("nope") == 1.f,
               "a sound's mix gain is its trim; built voices and unknown names pass at 1");
     }

@@ -968,6 +968,25 @@ int main() {
             if (!mixEntry(n) || !f.good()) { all = false; std::printf("      missing sound: %s\n", n); }
         }
         CHECK(all, "every sound the sword and his tells play is built and in the mix");
+    }
+    {
+        bool all = true;
+        for (const std::string& n : abAllSounds()) {
+            std::ifstream f("assets/sfx/" + n + ".wav", std::ios::binary);
+            if (!mixEntry(n) || !f.good()) { all = false; std::printf("      missing sound: %s\n", n.c_str()); }
+        }
+        CHECK(all, "every sound THE ABSOLUTE's fight plays is built and in the mix");
+        auto seconds = [](const std::string& n) {
+            std::ifstream f("assets/sfx/" + n + ".wav", std::ios::binary | std::ios::ate);
+            return f.good() ? (float)((long)f.tellg() - 44) / 2.f / 44100.f : 0.f;
+        };
+        CHECK(std::fabs(seconds("ab_ray_beam") - AbsoluteHazards::RAY_TIME) < 0.02f &&
+              std::fabs(seconds("ab_zray_beam") - AbsoluteHazards::ZRAY_TIME) < 0.02f, "each beam sounds exactly as long as it burns");
+        bool lens = true;
+        for (AttackKind k : abAllAttacks()) { const AbFeel& f = abFeel(k); if (f.wind && std::fabs(seconds(f.wind) - f.windLen) > 0.02f) { lens = false; std::printf("      %s is %.2f s\n", f.wind, seconds(f.wind)); } }
+        CHECK(lens, "the feel table knows each wind-up's real length (it stretches them to the tell)");
+        std::ifstream v1("assets/sfx/ab_boom_jab_1.wav"), v2("assets/sfx/ab_boom_jab_2.wav");
+        CHECK(v1.good() && v2.good(), "the jab's boom has variants: a FLURRY drums");
         int lines = 0; for (auto& v : voiceBank()) lines += std::string(v.name) == "v_absolute_line";
         CHECK(lines == 1, "his lines have a choir phrase in the voice bank");
     }

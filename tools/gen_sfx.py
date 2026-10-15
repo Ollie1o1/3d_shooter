@@ -634,19 +634,6 @@ def gen_sword_break():
     return [white() * math.exp(-30 * i / n) * 0.9 + (sine(880, i) + sine(905, i)) * 0.35 * math.exp(-5 * i / n) for i in range(n)]
 
 
-def gen_ab_ting():
-    """THE ABSOLUTE's white tell: a pure high bell - parry this."""
-    n = n_samples(0.45)
-    return [(sine(2093, i) + sine(4186, i) * 0.35) * math.exp(-7 * i / n) * 0.6 for i in range(n)]
-
-
-def gen_ab_thrum():
-    """THE ABSOLUTE's gold tell: a low swelling thrum - don't parry this."""
-    n = n_samples(0.5)
-    return [(sine(73, i) + sine(146, i) * 0.6 + sine(219, i) * 0.3) * math.sin(math.pi * i / n) * 0.8 for i in range(n)]
-
-
-
 GENERATORS = {
     "jump": gen_jump,
     "land": gen_land,
@@ -691,9 +678,10 @@ GENERATORS = {
     "sword_guard": gen_sword_guard,
     "sword_block": gen_sword_block,
     "sword_break": gen_sword_break,
-    "ab_ting": gen_ab_ting,
-    "ab_thrum": gen_ab_thrum,
 }
+
+from sfx_absolute import ABSOLUTE_GENERATORS  # THE ABSOLUTE's (tools/sfx_absolute.py)
+GENERATORS.update(ABSOLUTE_GENERATORS)
 
 
 def main():

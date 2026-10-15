@@ -58,7 +58,17 @@ inline const std::vector<MixEntry>& mixTable() {
         {"parry", C::PLAYER, 3.5f}, {"sword_draw", C::PLAYER, 1.f}, {"sword_swing", C::PLAYER, 0.f}, {"sword_hit", C::PLAYER, 2.f},
         {"sword_thrust", C::PLAYER, 4.9f}, {"sword_guard", C::PLAYER, 9.7f}, {"sword_block", C::PLAYER, 2.f}, {"sword_break", C::PLAYER, 0.8f}, {"switch_up0", C::PLAYER, 1.3f}, {"switch_up1", C::PLAYER, 0.9f},
         {"switch_up2", C::PLAYER, 0.6f}, {"switch_up3", C::PLAYER, 0.2f},
-        {"ab_ting", C::ACTION, -0.1f}, {"ab_thrum", C::ACTION, -4.4f},   // THE ABSOLUTE's tells: white (parry), gold (don't)
+        // THE ABSOLUTE: wind-ups (tells), the cues (must be heard), the booms, his flight, the player's side
+        {"ab_wind_jab", C::TELL, -1.4f}, {"ab_wind_cross", C::TELL, -1.7f}, {"ab_wind_hook", C::TELL, -0.7f}, {"ab_wind_spin", C::TELL, 1.6f},
+        {"ab_wind_meteor", C::TELL, -2.8f}, {"ab_wind_blade", C::TELL, -6.1f}, {"ab_thrum", C::TELL, -7.4f}, {"ab_whistle", C::TELL, -4.7f},
+        {"ab_ray_charge", C::TELL, -4.7f}, {"ab_rumble", C::TELL, -2.5f},
+        {"ab_ting", C::ACTION, -1.5f}, {"ab_doom", C::ACTION, -6.2f}, {"ab_pulse", C::ACTION, -5.1f},
+        {"ab_boom_jab", C::ACTION, -3.8f}, {"ab_boom_cross", C::ACTION, -4.4f}, {"ab_boom_hook", C::ACTION, -2.2f}, {"ab_boom_heavy", C::ACTION, -3.5f},
+        {"ab_boom_kick", C::ACTION, -5.3f}, {"ab_boom_stone", C::ACTION, -4.9f}, {"ab_boom_clap", C::ACTION, 0.7f},
+        {"ab_ray_beam", C::ACTION, -1.9f}, {"ab_zray_beam", C::ACTION, -2.3f}, {"ab_takeoff", C::ACTION, 1.0f}, {"ab_shotdown", C::ACTION, 0.3f},
+        {"ab_zap", C::ACTION, 1.5f}, {"ab_flight", C::WORLD, -2.0f},
+        {"ab_clang", C::PLAYER, 0.0f}, {"ab_shatter", C::PLAYER, 0.5f}, {"ab_creak", C::PLAYER, 1.5f},
+        {"ab_tsk", C::UI, 4.8f}, {"ab_wrong", C::UI, -6.8f},
         {"explosion", C::ACTION, -1.2f}, {"slam", C::ACTION, -1.8f}, {"clank", C::ACTION, 2.f},
         {"door", C::WORLD, -1.5f}, {"door_close", C::WORLD, 1.6f}, {"split", C::WORLD, 0.7f}, {"pickup", C::WORLD, -2.2f},
         {"potion", C::WORLD, 0.5f},
