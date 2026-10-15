@@ -372,3 +372,7 @@ private:
         return pts[best];
     }
 };
+
+// Where a death puts you back: the arena you were in, or the next one if you
+// died on the way out of a cleared one (or rising into the Zenith)
+inline int retryTarget(WaveDirector::Phase p, int arena) { return arena + (p == WaveDirector::Phase::CLEARED ? 1 : 0); }

@@ -104,11 +104,14 @@ struct Records {
     int   bestEndless = 0;                 // best ENDLESS score
     int   bestDaily = 0, dailyDate = 0;    // best DAILY score, and the day it's for (YYYYMMDD)
     bool  act2Unlocked = false;            // the Sovereign has fallen: ACT II is open
+    bool  act2Cleared = false;             // the Leviathan has fallen (saved as it dies)
+    float bestAct2 = 0.f, bestZenith = 0.f;   // ACT II to the Leviathan; ACT II + the Zenith (0 = none yet)
 
     static constexpr const char* kKey = "records.v2.cfg";
 
-    void load() {
-        std::istringstream f(persist::load(kKey));
+    void load() { parse(persist::load(kKey)); }
+    void parse(const std::string& text) {
+        std::istringstream f(text);
         std::string key;
         while (f >> key) {
             if (key == "bestArena") f >> bestArena;
@@ -117,6 +120,9 @@ struct Records {
             else if (key == "bestEndless") f >> bestEndless;
             else if (key == "bestDaily") f >> bestDaily >> dailyDate;
             else if (key == "act2Unlocked") { int v = 0; f >> v; act2Unlocked = v != 0; }
+            else if (key == "act2Cleared") { int v = 0; f >> v; act2Cleared = v != 0; }
+            else if (key == "bestAct2") f >> bestAct2;
+            else if (key == "bestZenith") f >> bestZenith;
             else if (key == "fastSplits") {
                 int n = 0; f >> n;
                 fastSplits.assign(std::max(0, std::min(n, 32)), 0.f);
@@ -125,7 +131,8 @@ struct Records {
             if (!f) break;
         }
     }
-    void save() const {
+    void save() const { persist::save(kKey, serialise()); }
+    std::string serialise() const {
         std::ostringstream f;
         f << "bestArena " << bestArena << "\n";
         f << "bestFast " << bestFast << "\n";
@@ -133,12 +140,30 @@ struct Records {
         f << "bestEndless " << bestEndless << "\n";
         f << "bestDaily " << bestDaily << " " << dailyDate << "\n";
         f << "act2Unlocked " << (act2Unlocked ? 1 : 0) << "\n";
+        f << "act2Cleared " << (act2Cleared ? 1 : 0) << "\n";
+        f << "bestAct2 " << bestAct2 << "\n";
+        f << "bestZenith " << bestZenith << "\n";
         f << "fastSplits " << fastSplits.size();
         for (float s : fastSplits) f << " " << s;
         f << "\n";
-        persist::save(kKey, f.str());
+        return f.str();
     }
 };
+
+// ACT II's clear, saved the moment the Leviathan dies (whatever happens above)
+inline void recordAct2Clear(Records& r, float t) {
+    r.act2Cleared = true;
+    if (r.bestAct2 <= 0.f || t < r.bestAct2) r.bestAct2 = t;
+}
+// ACT II + the Zenith: true when it's a new best
+inline bool recordZenith(Records& r, float t) {
+    if (r.bestZenith > 0.f && t >= r.bestZenith) return false;
+    r.bestZenith = t; return true;
+}
+// The arena just cleared is the Maw, and the Zenith waits above it
+inline bool zenithHandoff(bool act2, int clearedArena, int arenaCount) {
+    return act2 && arenaCount == 6 && clearedArena == 4;
+}
 
 // The main menu's ACT II row only starts a run once the Sovereign has fallen
 inline bool canStartAct2(const Records& r) { return r.act2Unlocked; }

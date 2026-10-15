@@ -203,6 +203,10 @@ public:
     float peakStyle   = 0.f;
     bool  victory      = false;
     float victoryDelay = -1.f;   // counts down after the boss dies, then shows the screen
+    // The ascension: the Leviathan dies, the act's card, a white-out, the Zenith (updateAscension)
+    float ascendT = -1.f;        // < 0: not rising; else seconds into it
+    float whiteFade = 0.f;       // the white-out fading off as the Zenith appears
+    static constexpr float ASCEND_SINK = 3.f, ASCEND_CARD = 2.f, ASCEND_WHITE = 1.f;
     bool  newRecord    = false;
     // Only a full run counts for records and the leaderboard: started at the
     // first arena, not in god mode, not from the dev level select
@@ -564,6 +568,7 @@ public:
     float pinnedCueCd = 0.f;   // a HALOED enemy's halo shatters: feedback and style
 
     void punch(int boostable);
+    void updateAscension(float dt);
     void reflectProjectile(int pi, glm::vec3 fwd);
     bool swordAllowed() const;
     void drawSword();

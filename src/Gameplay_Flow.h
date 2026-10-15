@@ -111,6 +111,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     if (g_devAim) aim = 1.f;
     if (g_devOverlay == "armory") { prog.points = 3; prog.up[2].tier[0] = 2; prog.up[3].mod = true; armoryOpen = true; armoryW = 2; }
     if (g_devOverlay == "pause") paused = true;
+    if (g_devOverlay == "ascend" && act2()) ascendT = ASCEND_SINK + 0.5f;   // the act's card, then the rise into the Zenith (screenshots)
     if (g_devOverlay == "victory") {   // the victory screen mid name entry (screenshots)
         elapsedTime = 754.3f; victory = true; ranked = true;
         bankedStyle = 6240.f; bankedDamage = 410.f; wavesCleared = endless() ? 14 : 0; totalKills = 187;
@@ -192,6 +193,7 @@ inline void GameplayState::enterArena(int a) {
     banners.clear();
     grapple.release();
     holsterSword(); sword = Sword{};
+    ascendT = -1.f; whiteFade = level.zenith.built && a == ZENITH_ARENA && act2() ? 1.f : 0.f;
     playerDead = false; deadTimer = 0.f;
     victory = false; victoryDelay = -1.f;
     finishOpen = false;
@@ -240,8 +242,7 @@ inline void GameplayState::retryArena() {
     ++deaths;
     if (fast()) { enterArena(director.arena); captureMouse(true); return; }
     // Died on the way out of a cleared arena? Pick up at the next one.
-    bool cleared = director.phase == WaveDirector::Phase::CLEARED;
-    enterArena(director.arena + (cleared ? 1 : 0));
+    enterArena(retryTarget(director.phase, director.arena));   // (the Zenith, if you died rising into it)
     captureMouse(true);
 }
 
@@ -376,6 +377,10 @@ inline void GameplayState::handleDirectorEvents() {
             styleSystem.heal(40.f);
             grenadeCount = grenadeMax;
             audio.play("wave", 128, SoundGroup::UI);
+            if (zenithHandoff(act2(), ev.value, (int)level.arenas.size())) {   // the Leviathan is dead: the act is done
+                if (!g_godMode && !g_practice) { recordAct2Clear(records, elapsedTime); records.save(); }
+                ascendT = 0.f;   // it sinks, ACT II COMPLETE, a white-out, then the Zenith (updateAscension)
+            }
             break;
         }
         case DirectorEvent::GOAL_DONE:
@@ -396,7 +401,7 @@ inline void GameplayState::handleDirectorEvents() {
             shake(0.3f, 0.05f);
             break;
         case DirectorEvent::VICTORY:
-            victoryDelay = act2() ? 3.f : 2.5f;   // ACT II: the Leviathan sinks first
+            victoryDelay = act2() ? 3.f : 2.5f;   // ACT II: the Absolute kneels and dissolves first
             break;
         case DirectorEvent::FINISH_OPEN:
             finishOpen = true;
@@ -448,6 +453,8 @@ inline void GameplayState::finishRun() {
         newRecord = me.score > best;
         if (newRecord) best = me.score;
         if (dailyRun()) records.save();   // today's date, best or not
+    } else if (act2()) {   // ACT II's end, up in the Zenith
+        if (director.arena == ZENITH_ARENA && !g_godMode && !g_practice) { newRecord = recordZenith(records, elapsedTime); records.save(); }
     } else {
         newRecord = records.bestArena <= 0.f || elapsedTime < records.bestArena;
         if (newRecord) records.bestArena = elapsedTime;
@@ -711,6 +718,8 @@ inline void GameplayState::update(float dt) {
         victoryDelay -= floatDt;
         if (victoryDelay <= 0.f) finishRun();
     }
+    updateAscension(floatDt);
+    whiteFade = std::max(0.f, whiteFade - floatDt);
     if (!styleSystem.isAlive() && !playerDead) {
         playerDead = true;
         deadTimer = 0.f;
@@ -747,4 +756,22 @@ inline void GameplayState::updateMusic() {
     if (playerDead) lv = 0.1f;
     m.setIntensity(lv);
     m.setMuffle(paused || armoryOpen || playerDead);
+}
+
+// Rising into the Zenith: the Leviathan sinks (3 s), ACT II COMPLETE (2 s), the
+// eclipse breaks into a white-out (1 s), then you stand in the Zenith. A death
+// before then (a last spit) retries the Zenith, never the Maw.
+inline void GameplayState::updateAscension(float dt) {
+    if (ascendT < 0.f || playerDead || paused) return;
+    float was = ascendT; ascendT += dt;
+    if (was < ASCEND_SINK && ascendT >= ASCEND_SINK) audio.play("wave", 128, SoundGroup::UI);
+    if (was < ASCEND_SINK + ASCEND_CARD && ascendT >= ASCEND_SINK + ASCEND_CARD) {
+        audio.duck(8.f, 1.5f);
+        shake(0.6f, 0.05f);
+    }
+    if (ascendT >= ASCEND_SINK + ASCEND_CARD + ASCEND_WHITE) {
+        enterArena(ZENITH_ARENA);
+        pushBanner("THE ECLIPSE BREAKS", "SOMETHING ABOVE IT DOES NOT", {1.f, 0.95f, 0.85f}, 3.5f);
+        captureMouse(true);
+    }
 }

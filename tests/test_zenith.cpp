@@ -5,6 +5,8 @@
 #include "../src/GunKit.h"
 #include "../src/LevelAct2.h"
 #include "../src/MusicSynth.h"
+#include "../src/Progression.h"
+#include "../src/WaveDirector.h"
 #include <string>
 #include <cstdio>
 #include <cmath>
@@ -220,6 +222,25 @@ int main() {
         N.restoreZenith();
         CHECK(N.zenithPillarAt(zenithPillar(0), 0.5f) == 0 && N.onZenithShard(zenithShard(2)), "a retry puts them back");
         CHECK(MUSIC_TRACKS == 11 && std::string(musicTrack(10).name) == "ZENITH" && musicTrack(10).bpm >= 165.f, "the Zenith's own fast track");
+    }
+
+    // ---------------------------------------------------------------- the hand-off and the records
+    {
+        Records r;
+        recordAct2Clear(r, 1500.f);
+        CHECK(r.act2Cleared && std::fabs(r.bestAct2 - 1500.f) < 1e-3f, "the Leviathan's death saves the Act II clear and its time");
+        recordAct2Clear(r, 1600.f);
+        CHECK(std::fabs(r.bestAct2 - 1500.f) < 1e-3f, "a slower clear doesn't replace the best");
+        CHECK(recordZenith(r, 1700.f) && !recordZenith(r, 1800.f) && std::fabs(r.bestZenith - 1700.f) < 1e-3f, "ACT II + ZENITH keeps its own best");
+        CHECK(zenithHandoff(true, 4, 6) && !zenithHandoff(true, 3, 6) && !zenithHandoff(false, 4, 6) && !zenithHandoff(true, 4, 5),
+              "only the Maw's clear in Act II hands off to the Zenith");
+        CHECK(retryTarget(WaveDirector::Phase::CLEARED, 4) == ZENITH_ARENA && retryTarget(WaveDirector::Phase::ACTIVE, ZENITH_ARENA) == ZENITH_ARENA,
+              "a death during the ascension retries the Zenith; a death in it, the Zenith again");
+        Records w; w.act2Cleared = true; w.bestAct2 = 1234.5f; w.bestZenith = 1500.25f;
+        std::string text = w.serialise();
+        Records back; back.parse(text);
+        CHECK(back.act2Cleared && std::fabs(back.bestAct2 - 1234.5f) < 0.01f && std::fabs(back.bestZenith - 1500.25f) < 0.01f,
+              "the clear and both times survive a save and a load");
     }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");

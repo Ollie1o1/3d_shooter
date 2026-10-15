@@ -370,7 +370,7 @@ inline void GameplayState::friendlySlam(const Enemy& slammer, float radius) {
 }
 
 inline bool GameplayState::damagePlayer(float dmg, glm::vec3 from, float shakeT, float shakeAmt, float iframes) {
-    if (invincFrames > 0.f || playerDead || g_godMode || victory ||
+    if (invincFrames > 0.f || playerDead || g_godMode || victory || ascendT >= 0.f ||
         (!fast() && director.phase == WaveDirector::Phase::VICTORY)) return false;
     if (modOn(DailyMod::GLASS_CANNON)) dmg *= 2.f;
     styleSystem.takeDamage(dmg);

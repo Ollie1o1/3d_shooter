@@ -390,7 +390,7 @@ inline void GameplayState::keepPlayerInZone(float dt) {
     } else {
         addArena(director.arena);
         if (director.phase == WaveDirector::Phase::CLEARED) {
-            zones.push_back(&level.corridors[director.arena]);
+            if (director.arena < (int)level.corridors.size()) zones.push_back(&level.corridors[director.arena]);   // (the Maw has none: the Zenith is reached by rising)
             addArena(director.arena + 1);
         }
     }
