@@ -36,6 +36,9 @@ struct HudState {
     StyleSource heldSource = StyleSource::NONE;   // the gun in hand, for its freshness
     HudWeapon weapons[WEAPON_COUNT];
     int   grenades = 0, grenadeMax = 2;
+    // OATHBREAKER (the Zenith): a fifth slot; out, the guard meter under the crosshair
+    bool  swordSlot = false, swordOut = false, swordBroken = false, swordBar = false;
+    float swordGuard = 1.f;
     int   level = 1, xp = 0, xpNext = 100, points = 0;
     float aim = 0.f;               // 0 hip .. 1 aimed
     bool  scoped = false;          // Longshot scope view
@@ -669,13 +672,32 @@ private:
 
     void drawWeaponSlots(const HudState& h) {
         int slotW = 70, slotH = 64, pad = 6;
-        int x0 = screenW - WEAPON_COUNT * (slotW + pad) - 14;
+        int slots = WEAPON_COUNT + (h.swordSlot ? 1 : 0);
+        int x0 = screenW - slots * (slotW + pad) - 14;
         int y0 = screenH - slotH - 14;
         char buf[24];
+        if (h.swordSlot) {   // slot 5: the sword, its guard as a bar
+            const glm::vec3 g{1.f, 0.25f, 0.45f};
+            int x = x0 + WEAPON_COUNT * (slotW + pad);
+            bool active = h.swordOut;
+            ui.rect(x - 2, y0 - 2, slotW + 4, slotH + 4, active ? glm::vec4(g, 0.95f) : glm::vec4(g * 0.35f, 0.5f));
+            ui.rect(x, y0, slotW, slotH, active ? glm::vec4{0.16f, 0.15f, 0.2f, 0.95f} : glm::vec4{0.06f, 0.06f, 0.08f, 0.85f});
+            ui.text("5", x + 4, y0 + 4, 1, active ? glm::vec4(glm::mix(g, glm::vec3{1.f}, 0.3f), 1.f) : glm::vec4{0.55f, 0.55f, 0.6f, 0.9f});
+            ui.text("SWORD", x + slotW / 2 + 3, y0 + 4, 1, {0.85f, 0.85f, 0.9f, active ? 1.f : 0.6f}, true);
+            glm::vec4 c = active ? glm::vec4{0.95f, 0.88f, 0.65f, 0.95f} : glm::vec4{0.6f, 0.58f, 0.5f, 0.6f};
+            ui.rect(x + 8, y0 + 24, 44, 3, c); ui.rect(x + 52, y0 + 22, 4, 7, c); ui.rect(x + 56, y0 + 24, 8, 3, c);   // blade, guard, grip
+            ui.rect(x + 4, y0 + slotH - 8, (int)((slotW - 8) * h.swordGuard), 4, h.swordBroken ? glm::vec4{0.4f, 0.1f, 0.12f, 0.9f} : glm::vec4(g, 0.95f));
+        }
+        if (h.swordBar) {   // the guard meter under the crosshair
+            const glm::vec3 g{1.f, 0.25f, 0.45f};
+            int bx = screenW / 2 - 60, by = screenH / 2 + 24;
+            ui.rect(bx - 1, by - 1, 122, 6, {0.f, 0.f, 0.f, 0.6f});
+            ui.rect(bx, by, (int)(120 * h.swordGuard), 4, h.swordBroken ? glm::vec4{0.45f, 0.1f, 0.12f, 0.9f} : glm::vec4(g, 0.95f));
+        }
         for (int s = 0; s < WEAPON_COUNT; ++s) {
             const HudWeapon& w = h.weapons[s];
             int x = x0 + s * (slotW + pad);
-            bool active = s == h.activeWeapon;
+            bool active = s == h.activeWeapon && !h.swordOut;
             ui.rect(x - 2, y0 - 2, slotW + 4, slotH + 4, active ? glm::vec4(w.glow, 0.95f) : glm::vec4(w.glow * 0.35f, 0.5f));
             ui.rect(x, y0, slotW, slotH, active ? glm::vec4{0.16f, 0.15f, 0.2f, 0.95f} : glm::vec4{0.06f, 0.06f, 0.08f, 0.85f});
             std::snprintf(buf, sizeof(buf), "%d", s + 1);

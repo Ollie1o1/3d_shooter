@@ -28,6 +28,23 @@
 // =============================================================================
 #include "Level.h"
 
+static constexpr int ZENITH_ARENA = 5;   // the encore: the sixth Act II arena, above the eclipse (buildZenith)
+// THE ZENITH's measures: the Dais, the floor, the pillars, the shards past the
+// gap, the Halo overhead, the seams' cells
+constexpr float ZEN_DAIS = 9.f, ZEN_FLOOR = 44.f, ZEN_PILLAR_R = 34.f, ZEN_SHARD_R = 57.f, ZEN_HALO_R = 70.f,
+                ZEN_HALO_UP = 40.f, ZEN_CELL = 6.f, ZEN_DAIS_UP = 1.2f;
+// High in the sky and well past the Maw: arenaAt is XZ-only, so it can't sit straight above it
+inline glm::vec3 zenithCentre() { return {0.f, 400.f, -1400.f}; }
+inline glm::vec3 zenithPillar(int k) {
+    float a = k * 0.7853982f + 0.3926991f;
+    return zenithCentre() + glm::vec3{std::cos(a) * ZEN_PILLAR_R, 0.f, std::sin(a) * ZEN_PILLAR_R};
+}
+inline glm::vec3 zenithShard(int k) {
+    float a = k * 1.0471976f + 0.5235988f;
+    return zenithCentre() + glm::vec3{std::cos(a) * ZEN_SHARD_R, 0.f, std::sin(a) * ZEN_SHARD_R};
+}
+inline void buildZenith(LevelBuilder& B);
+
 inline void buildDescent(LevelBuilder& B);
 inline void buildReliquary(LevelBuilder& B);
 inline void buildMaw(LevelBuilder& B);
@@ -398,6 +415,7 @@ inline void buildAct2(LevelBuilder& B) {
     buildDescent(B);
     buildReliquary(B);
     buildMaw(B);
+    buildZenith(B);
 }
 
 // =============================================================================
@@ -936,6 +954,94 @@ inline void buildMaw(LevelBuilder& B) {
         glm::normalize(vec3{0.1f,-0.9f,-0.3f}), {0.55f,0.5f,0.55f},          // cold light from above
         {0.16f,0.14f,0.19f}, {0.3f,0.08f,0.06f},                             // red from the pool below
         {0.05f,0.02f,0.025f}, 0.012f };
+    L.arenas.push_back(std::move(a));
+}
+
+// ---- THE ZENITH: the encore. A floating ruin in an open sky, far above and
+// past the Maw. A white Dais, a black floor seamed with white light (the seams
+// carry every area tell), eight pillars at r 34 (four shatter), six shards
+// past a 6 m gap (they fall), the Halo overhead, and the shattered eclipse
+// behind him. Pillars and shards are hidden walls drawn by Gameplay_Absolute.h.
+inline void buildZenith(LevelBuilder& B) {
+    using glm::vec3;
+    LevelData& L = B.L;
+    const vec3 C = zenithCentre();
+    const float F = C.y;
+    const vec3 white{0.86f, 0.85f, 0.82f}, black{0.05f, 0.05f, 0.06f}, gold{1.4f, 1.05f, 0.45f}, seam{1.2f, 1.2f, 1.25f};
+    B.mat = Mat::CONCRETE;
+    // the floor: a disc of slabs (collision: 4 m boxes inside r 43), the seams on it
+    for (float x = -44.f; x < 44.f; x += 4.f)
+        for (float z = -44.f; z < 44.f; z += 4.f) {
+            float cx = x + 2.f, cz = z + 2.f;
+            if (cx * cx + cz * cz > 43.f * 43.f) continue;
+            B.solid(C.x + x, F - 3.f, C.z + z, C.x + x + 4.f, F, C.z + z + 4.f);
+        }
+    B.kit().column({C.x, F - 3.f, C.z}, ZEN_FLOOR, 3.f, black, 48);
+    B.kit().column({C.x, F - 9.f, C.z}, ZEN_FLOOR - 4.f, 6.f, black * 1.6f, 24, 0.55f);   // the ruin's underside, tapering
+    for (float u = -42.f; u <= 42.f; u += ZEN_CELL) {   // the seams: a lit grid
+        float half = std::sqrt(std::max(0.f, 43.5f * 43.5f - u * u));
+        B.kit(true).box(C + vec3{u, 0.015f, 0.f}, {0.06f, 0.02f, 2.f * half}, seam * 0.25f);
+        B.kit(true).box(C + vec3{0.f, 0.015f, u}, {2.f * half, 0.02f, 0.06f}, seam * 0.25f);
+    }
+    B.kit(true).curve({C.x, 0.f, C.z}, ZEN_FLOOR, 0.f, 6.2831853f, F - 0.2f, F + 0.04f, 0.3f, seam * 0.4f, 96);   // the rim
+    // the Dais: 3 m boxes inside r 8.5, raised 1.2 m, with steps every 90 degrees
+    for (float x = -9.f; x < 9.f; x += 3.f)
+        for (float z = -9.f; z < 9.f; z += 3.f)
+            if ((x + 1.5f) * (x + 1.5f) + (z + 1.5f) * (z + 1.5f) < 8.5f * 8.5f)
+                B.solid(C.x + x, F, C.z + z, C.x + x + 3.f, F + ZEN_DAIS_UP, C.z + z + 3.f);
+    B.kit().column({C.x, F, C.z}, ZEN_DAIS, ZEN_DAIS_UP, white, 40);
+    B.kit(true).curve({C.x, 0.f, C.z}, ZEN_DAIS - 1.2f, 0.f, 6.2831853f, F + ZEN_DAIS_UP, F + ZEN_DAIS_UP + 0.03f, 0.25f, gold * 0.6f, 48);
+    for (int k = 0; k < 4; ++k) {
+        float a = k * 1.5707963f; vec3 o{std::cos(a), 0.f, std::sin(a)};
+        vec3 s = C + o * (ZEN_DAIS + 0.8f);
+        B.solid(s.x - 1.5f, F, s.z - 1.5f, s.x + 1.5f, F + 0.6f, s.z + 1.5f);
+        B.kit().box(s + vec3{0.f, 0.3f, 0.f}, {3.f, 0.6f, 3.f}, white * 0.9f, -a);
+    }
+    // eight pillars and six shards: hidden walls (they break)
+    L.zenith = LevelData::Zenith{};
+    L.zenith.built = true; L.zenith.centre = C;
+    for (int k = 0; k < 8; ++k) {
+        vec3 p = zenithPillar(k);
+        int w = B.solid(p.x - 1.25f, F, p.z - 1.25f, p.x + 1.25f, F + 14.f, p.z + 1.25f);
+        L.zenith.pillarWalls.push_back(w); L.zenith.pillarHome.push_back(L.walls[w].box); L.zenith.pillarUp.push_back(true);
+    }
+    for (int k = 0; k < 6; ++k) {
+        vec3 s = zenithShard(k);
+        int w = B.solid(s.x - 4.f, F - 2.5f, s.z - 4.f, s.x + 4.f, F, s.z + 4.f);
+        L.zenith.shardWalls.push_back(w); L.zenith.shardHome.push_back(L.walls[w].box); L.zenith.shardUp.push_back(true);
+    }
+    // the Halo and the shattered eclipse: backdrop, never in the way
+    B.kit(true).curve({C.x, 0.f, C.z}, ZEN_HALO_R, 0.f, 6.2831853f, F + ZEN_HALO_UP, F + ZEN_HALO_UP + 1.6f, 1.2f, gold * 0.9f, 128);
+    vec3 E = C + vec3{0.f, 62.f, -130.f};
+    B.kit().rod(E, E + vec3{0.f, 0.f, 3.f}, 46.f, black, 48);   // the disc, facing the floor
+    for (int k = 0; k < 9; ++k) {                               // light through its cracks
+        float a = k * 0.698f + 0.2f;
+        B.kit(true).box(E + vec3{std::cos(a) * 20.f, std::sin(a) * 20.f, 3.2f}, {38.f, 0.6f, 0.2f}, seam * 0.8f, 0.f, 0.f, a);
+    }
+
+    Arena a;
+    a.name = "THE ZENITH"; a.space = ReverbSpace::OPEN;
+    a.subtitle = "ABOVE THE ECLIPSE";
+    a.bounds = LevelBuilder::aabb(C.x - 64, F - 4, C.z - 64, C.x + 64, F + 30, C.z + 64);
+    a.zone   = LevelBuilder::aabb(C.x - 66, F - 60, C.z - 66, C.x + 66, F + 60, C.z + 66);
+    a.playerStart = C + vec3{0.f, 0.f, 38.f};
+    a.startYaw = -90.f;
+    a.respawn = C + vec3{0.f, 0.f, 38.f}; a.hasRespawn = true;
+    a.voidY = F - 40.f;
+    a.bossSpawn = C + vec3{0.f, ZEN_DAIS_UP, 0.f};
+    a.groundSpawns = {C + vec3{0, 0, 20}};
+    a.waves = {{{EnemyType::ABSOLUTE, 1}}};
+    a.goals = {WaveGoal{}};
+    a.maxAlive = 1;
+    a.damageScale = 1.f;
+    a.ambient = Ambient::MOTES;
+    a.theme = Theme{
+        {0.92f,0.9f,0.95f}, {0.55f,0.45f,0.75f}, {0.25f,0.18f,0.35f},           // a pale sky down to deep violet
+        glm::normalize(vec3{0.f, 0.35f, -1.f}), {1.6f,1.5f,1.3f}, 0.09f, 0.f,   // the cracked eclipse behind him
+        {0.5f,0.42f,0.7f}, 0.25f,
+        glm::normalize(vec3{-0.2f,-0.9f,-0.3f}), {1.15f,1.1f,1.05f},
+        {0.62f,0.6f,0.68f}, {0.3f,0.28f,0.35f},
+        {0.8f,0.78f,0.86f}, 0.0022f };
     L.arenas.push_back(std::move(a));
 }
 

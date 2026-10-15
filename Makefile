@@ -68,7 +68,7 @@ HEADERS := src/gl.h \
            src/GameState.h src/MenuState.h src/GameplayState.h \
            src/Gameplay_Flow.h src/Gameplay_Tick.h src/Gameplay_Combat.h \
            src/Gameplay_Menus.h src/Gameplay_Render.h src/Gameplay_HUD.h src/Gameplay_Dev.h src/WorldMesh.h src/WorldGeometry.h src/Vertex.h src/Effects.h src/ArenaShifts.h src/Gameplay_Shifts.h src/Gameplay_Sovereign.h src/Gameplay_Penitent.h src/Gameplay_Warden.h src/Gameplay_Reliquary.h src/SovereignHazards.h src/PenitentHazards.h src/Shapes.h src/Score.h src/Daily.h src/EndlessWaves.h \
-           src/Enemy.h src/EnemyPenitent.h src/EnemyLeviathan.h src/LeviathanHazards.h src/Gameplay_Leviathan.h src/EnemyWarden.h src/EnemyRelic.h src/RelicHazards.h src/EnemyModel.h src/BoxRenderer.h src/WaveDirector.h \
+           src/Enemy.h src/EnemyPenitent.h src/EnemyLeviathan.h src/EnemyAbsolute.h src/AbsoluteHazards.h src/LeviathanHazards.h src/Gameplay_Leviathan.h src/EnemyWarden.h src/EnemyRelic.h src/RelicHazards.h src/EnemyModel.h src/BoxRenderer.h src/WaveDirector.h \
            src/Projectile.h src/GrappleHook.h \
            src/StyleSystem.h src/UIRenderer.h src/PostProcess.h \
            src/Level.h src/LevelGauntlet.h src/LevelAct2.h src/AudioSystem.h src/GunMotion.h src/GunKit.h src/AudioTypes.h src/SfxMixer.h src/MixTable.h src/VoiceTable.h src/VoiceSynth.h src/EnemyVoice.h src/WardenHazards.h src/ViewModel.h src/Interactable.h \
@@ -88,8 +88,8 @@ run: all
 # Headless tests — no window or GL context needed: player physics, plus the
 # enemy AI, wave director, level data, weapons, XP and the mouse filter,
 # driven through simulated ARENA and FAST runs
-test: tests/test_physics.cpp tests/test_game.cpp tests/BossSim.h src/Player.h src/Camera.h \
-      src/Enemy.h src/EnemyPenitent.h src/EnemyLeviathan.h src/LeviathanHazards.h src/EnemyWarden.h src/EnemyRelic.h src/RelicHazards.h src/EnemyModel.h src/Level.h src/LevelGauntlet.h src/LevelAct2.h src/WaveDirector.h \
+test: tests/test_physics.cpp tests/test_game.cpp tests/test_zenith.cpp tests/BossSim.h src/Player.h src/Camera.h src/Sword.h \
+      src/Enemy.h src/EnemyPenitent.h src/EnemyLeviathan.h src/EnemyAbsolute.h src/AbsoluteHazards.h src/LeviathanHazards.h src/EnemyWarden.h src/EnemyRelic.h src/RelicHazards.h src/EnemyModel.h src/AbsoluteRig.h src/Level.h src/LevelGauntlet.h src/LevelAct2.h src/WaveDirector.h \
       src/Weapons.h src/Progression.h src/MouseFilter.h src/Persist.h src/Difficulty.h src/MusicSynth.h \
       src/StyleSystem.h src/Projectile.h src/ArenaShifts.h src/Score.h src/Daily.h src/EndlessWaves.h \
       src/AudioTypes.h src/SfxMixer.h src/PenitentHazards.h src/GunMotion.h src/GunKit.h \
@@ -98,6 +98,8 @@ test: tests/test_physics.cpp tests/test_game.cpp tests/BossSim.h src/Player.h sr
 	$(CXX) $(CXXFLAGS) tests/test_game.cpp -o tests/test_game $(STDLIB)
 	./tests/test_physics
 	./tests/test_game
+	$(CXX) $(CXXFLAGS) tests/test_zenith.cpp -o tests/test_zenith $(STDLIB)
+	./tests/test_zenith
 
 # Browser build (WebGL2 + WebAssembly) → web/dist. Needs Emscripten on PATH:
 #   source ~/emsdk/emsdk_env.sh && make web && python3 -m http.server -d web/dist
@@ -117,5 +119,5 @@ web: $(SRC) $(HEADERS) web/index.html
 	cp web/index.html $(WEB_OUT)/
 
 clean:
-	rm -f shooter shooter.exe tests/test_physics tests/test_game
+	rm -f shooter shooter.exe tests/test_physics tests/test_game tests/test_zenith
 	rm -rf build web/dist

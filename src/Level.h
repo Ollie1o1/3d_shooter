@@ -362,6 +362,45 @@ struct LevelData {
         float maxHp = 400.f;
     };
     std::vector<ChainAnchor> anchors;
+    // THE ZENITH (LevelAct2.h): its floor's centre, and the pieces that break:
+    // eight pillars (four shatter in the Absolute's ascension) and six shards
+    // (they fall at his blade). Hidden walls, drawn by Gameplay_Absolute.h.
+    struct Zenith {
+        bool built = false;
+        glm::vec3 centre{0.f};   // the floor's centre (Y = the floor)
+        std::vector<int> pillarWalls, shardWalls;
+        std::vector<AABB> pillarHome, shardHome;
+        std::vector<bool> pillarUp, shardUp;
+    } zenith;
+    // A pillar shattered / a shard fallen: its wall parked 500 m down (like a broken anchor)
+    void parkZenithPiece(bool shard, int i) {
+        auto& ws = shard ? zenith.shardWalls : zenith.pillarWalls;
+        auto& up = shard ? zenith.shardUp : zenith.pillarUp;
+        if (i < 0 || i >= (int)ws.size() || !up[i]) return;
+        up[i] = false;
+        AABB& b = walls[ws[i]].box; b.min.y -= 500.f; b.max.y = b.min.y + 0.01f;
+    }
+    void restoreZenith() {   // a retry: every pillar and shard back
+        for (size_t i = 0; i < zenith.pillarWalls.size(); ++i) { walls[zenith.pillarWalls[i]].box = zenith.pillarHome[i]; zenith.pillarUp[i] = true; }
+        for (size_t i = 0; i < zenith.shardWalls.size(); ++i) { walls[zenith.shardWalls[i]].box = zenith.shardHome[i]; zenith.shardUp[i] = true; }
+    }
+    // A standing pillar within `pad` of p (XZ), or -1
+    int zenithPillarAt(glm::vec3 p, float pad) const {
+        for (size_t i = 0; i < zenith.pillarWalls.size(); ++i) {
+            if (!zenith.pillarUp[i]) continue;
+            const AABB& b = walls[zenith.pillarWalls[i]].box;
+            if (p.x > b.min.x - pad && p.x < b.max.x + pad && p.z > b.min.z - pad && p.z < b.max.z + pad) return (int)i;
+        }
+        return -1;
+    }
+    bool onZenithShard(glm::vec3 f) const {
+        for (size_t i = 0; i < zenith.shardWalls.size(); ++i) {
+            if (!zenith.shardUp[i]) continue;
+            const AABB& b = walls[zenith.shardWalls[i]].box;
+            if (f.x > b.min.x && f.x < b.max.x && f.z > b.min.z && f.z < b.max.z && f.y > b.max.y - 0.5f && f.y < b.max.y + 3.f) return true;
+        }
+        return false;
+    }
     int addAnchor(int wall, glm::vec3 pos, float hp, ChainAnchor::Kind kind) {
         ChainAnchor a; a.wall = wall; a.pos = pos; a.hp = a.maxHp = hp; a.kind = kind; a.home = walls[wall].box;
         anchors.push_back(a);

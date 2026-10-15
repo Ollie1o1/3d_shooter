@@ -319,7 +319,7 @@ private:
         bool act2 = canStartAct2(records);
         Item items[NUM_ITEMS] = {
             {"ARENA", arenaSub.c_str()},
-            {"ACT II", act2 ? "5 ARENAS - BENEATH THE ECLIPSE" : "DEFEAT THE SOVEREIGN TO UNLOCK"},
+            {"ACT II", !act2 ? "DEFEAT THE SOVEREIGN TO UNLOCK" : records.bestZenith > 0.f ? "5 ARENAS - AND WHAT WAITS ABOVE" : "5 ARENAS - BENEATH THE ECLIPSE"},
             {"FAST",  fastSub.c_str()},
             {"ENDLESS", endSub.c_str()},
             {"DAILY", daySub.c_str()},

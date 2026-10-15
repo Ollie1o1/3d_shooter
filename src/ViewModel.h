@@ -20,6 +20,7 @@
 #include "ShaderProgram.h"
 #include "Mesh.h"
 #include "GunKit.h"
+#include "Sword.h"
 #include <vector>
 #include <cmath>
 #include <algorithm>
@@ -54,6 +55,36 @@ public:
     // Punch / parry: the gauntlet drives forward from the lower left, alongside
     // whatever the gun is doing
     void triggerParry(bool hit)   { parryTimer = PARRY_TIME; parryHit = hit; }
+
+    // OATHBREAKER instead of the gun (Gameplay_Render.h draws this while it's out)
+    void drawSword(ShaderProgram& shader, const Camera& cam, const Sword& s) {
+        float u = s.swinging() ? 1.f - s.swingT / Sword::SWING_TIME : -1.f;
+        float charge = s.heldFor > 0.12f ? std::min(1.f, s.heldFor / Sword::CHARGE_TIME) : 0.f;
+        SwordPose P = gunkit::swordPose(s.lastStroke, u, s.blocking(), charge, s.thrustT > 0.f ? 1.f : 0.f);
+        glm::vec3 fwd = cam.forward(), right = cam.right(), up = glm::normalize(glm::cross(right, fwd));
+        glm::mat4 base(1.f);
+        base[0] = glm::vec4(right, 0.f); base[1] = glm::vec4(up, 0.f); base[2] = glm::vec4(fwd, 0.f);
+        base[3] = glm::vec4(cam.position + right * P.offset.x + up * P.offset.y + fwd * P.offset.z, 1.f);
+        base = base * glm::rotate(glm::mat4(1.f), glm::radians(P.yaw), glm::vec3{0.f, 1.f, 0.f})
+                    * glm::rotate(glm::mat4(1.f), glm::radians(P.pitch), glm::vec3{-1.f, 0.f, 0.f})
+                    * glm::rotate(glm::mat4(1.f), glm::radians(P.roll), glm::vec3{0.f, 0.f, 1.f})
+                    * glm::scale(glm::mat4(1.f), glm::vec3{0.55f});   // a 1 m blade, framed like the guns
+        glm::mat4 vmProj = glm::perspective(glm::radians(65.f), cam.aspectRatio, 0.03f, 10.f);
+        glClear(GL_DEPTH_BUFFER_BIT);   // the sword always draws on top
+        lastEmissive = glm::vec3{-1.f};
+        shader.setMat4("projection", vmProj);
+        shader.setMat4("view", cam.viewMatrix());
+        glDisable(GL_CULL_FACE);
+        SwordLook L; L.guard01 = s.guard01(); L.broken = s.broken(); L.charge = s.charged ? 1.f : 0.f;
+        L.riposte = s.riposteT > 0.f ? 1.f : 0.f;
+        parts.clear();
+        gunkit::buildSword(L, parts);
+        for (const auto& p : parts) drawPart(shader, base * p.xf, p.color, p.emissive);
+        if (parryTimer > 0.f) drawFist(shader, cam, gunkit::SWORD_GLOW);   // F still punches
+        shader.setVec3("emissiveColor", {0.f, 0.f, 0.f});
+        lastEmissive = glm::vec3{-1.f};
+        glEnable(GL_CULL_FACE);
+    }
     static constexpr float PARRY_TIME = 0.3f;
     float parryTimer = 0.f;
     bool  parryHit = false;

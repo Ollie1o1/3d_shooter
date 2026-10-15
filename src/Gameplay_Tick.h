@@ -70,6 +70,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
             fx.spawnShockwave(player.position, 4.5f, {1.f, 0.8f, 0.4f});
             shake(0.3f, 0.08f);
             audio.play("slam");
+            if (swordOut) swordPlunge(player.position);
             slamming = false;
         }
     }
@@ -131,12 +132,14 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         bool want = d.canAim && rmb && pendingWeapon < 0 && !ws.reloading;
         float before = aim;
         if (g_devAim) want = d.canAim;
+        if (swordOut) want = false;
         if (want) aim = std::min(1.f, aim + dt / d.aimTime);
         else      aim = std::max(0.f, aim - dt / (d.canAim ? d.aimTime * 0.6f : 0.05f));
         if (before < 0.02f && aim >= 0.02f && d.scope) audio.play("scope", 70);
         if (before < 0.98f && aim >= 0.98f) aimFullAt = gameClock;
         player.horizontalSpeed = 7.f * glm::mix(1.f, d.aimMoveMult, aim);
     }
+    updateSword(dt);   // (sets the move speed while it's out)
 
     // --- Player physics ---
     player.dynWalls = level.moverWalls.data();
@@ -241,6 +244,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     if (ws.ammo <= 0 && !ws.reloading && ws.cooldown <= 0.f && pendingWeapon < 0) startReload(activeWeapon);
 
     bool switchBlocked = (pendingWeapon >= 0);
+    if (swordOut) pendingFire = false;   // the sword has the button
     if (pendingFire && ws.ready() && !switchBlocked) fireWeapon(activeWeapon);
     else if (pendingFire && !switchBlocked && (ws.ammo <= 0 || ws.reloading) && dryCd <= 0.f) {
         audio.play("dry", 100, SoundGroup::PLAYER);   // empty: the hammer falls on nothing
@@ -284,6 +288,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     updateWarden(dt);
     updateReliquary(dt);
     updateLeviathan(dt);
+    updateAbsolute(dt);
     steerParriedOrbs(dt);   // parried orbs into the Warden's core, the Leviathan's eye
     if (fast() && countdown <= 0.f && !victory) ghostRec.record(elapsedTime, player.position, player.camera.yaw);
 
@@ -319,7 +324,10 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         pendingBlasts.push_back({exp.pos, exp.radius, exp.damage, exp.radius * 0.5f, 20.f});
     processBlasts();
 
-    if (result.hitPlayer) damagePlayer(result.playerDamage, result.playerHitFrom, 0.2f, 0.04f);
+    if (result.hitPlayer) {   // with the sword out, a shot from the front meets the guard
+        if (swordOut) damagePlayerStrike(result.playerDamage, result.playerHitFrom, Sword::Strike::WHITE);
+        else damagePlayer(result.playerDamage, result.playerHitFrom, 0.2f, 0.04f);
+    }
 
     updatePickups(dt);
 
@@ -386,7 +394,7 @@ inline void GameplayState::keepPlayerInZone(float dt) {
     } else {
         addArena(director.arena);
         if (director.phase == WaveDirector::Phase::CLEARED) {
-            zones.push_back(&level.corridors[director.arena]);
+            if (director.arena < (int)level.corridors.size()) zones.push_back(&level.corridors[director.arena]);   // (the Maw has none: the Zenith is reached by rising)
             addArena(director.arena + 1);
         }
     }

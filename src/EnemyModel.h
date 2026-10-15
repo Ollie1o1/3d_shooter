@@ -69,6 +69,7 @@ inline HumanoidLook humanoidDims(EnemyType t) {
     case EnemyType::ANCHOR:     return {0.95f, 0.4f,  0.5f,  0.2f,  1.05f, 1.25f, 0.8f,  0.4f,  1.15f, 0.4f,  {}, {}, {}};
     case EnemyType::PENITENT:   return {4.5f,  1.35f, 1.9f,  0.75f, 4.25f, 4.5f,  2.5f,  1.5f,  5.5f,  1.1f,  {}, {}, {}};
     case EnemyType::REVENANT:   return {1.1f,  0.16f, 0.21f, 0.12f, 0.7f,  0.46f, 0.26f, 0.3f,  0.8f,  0.13f, {}, {}, {}};   // gaunt, long-limbed
+    case EnemyType::ABSOLUTE:   return {1.15f, 0.19f, 0.3f,  0.15f, 0.85f, 0.62f, 0.32f, 0.3f,  1.0f,  0.16f, {}, {}, {}};   // a lean athlete's build, broad shoulders
     default:                    return {};
     }
 }
@@ -263,6 +264,8 @@ inline PoseOverride penitentPose(const Enemy& e) {
 }
 
 inline vec3 brassOf() { return {0.6f, 0.45f, 0.22f}; }
+
+#include "AbsoluteRig.h"   // THE ABSOLUTE's body
 
 inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out) {
     const EnemyStats& st = e.stats();
@@ -628,6 +631,7 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         r.box(f.head, {0.f, L.headS + 0.06f, -0.02f}, {0.06f, 0.14f, 0.3f}, bronze);        // helmet crest
         break;
     }
+    case EnemyType::ABSOLUTE: buildAbsolute(e, time, r, root); break;   // the most detailed rig in the game (AbsoluteRig.h)
     case EnemyType::SOVEREIGN: {
         bool broken = e.staggered();
         vec3 g = e.enraged ? vec3{1.f, 0.12f, 0.08f} * (1.3f + 2.f * tp) : glow;
@@ -803,6 +807,12 @@ inline bool headBox(const Enemy& e, AABB& out) {
         if (e.type == EnemyType::PENITENT)   { w = 1.9f; top = 1.9f; }        // the hood
         centre = {0.f, top * 0.5f, 0.f};
         half   = {w * 0.5f, top * 0.5f, w * 0.5f};
+        break;
+    }
+    case EnemyType::ABSOLUTE: {   // his skull, as drawn (absoluteHeadFrame)
+        frame  = absoluteHeadFrame(e, root, absolutePose(e, 0.f));
+        centre = {0.f, 0.19f, -0.01f};
+        half   = {0.14f, 0.18f, 0.15f};
         break;
     }
     case EnemyType::RIPPER: {

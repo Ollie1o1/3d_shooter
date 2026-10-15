@@ -10,6 +10,7 @@
 #include "EnemyVoice.h"
 #include "WardenHazards.h"
 #include "LeviathanHazards.h"
+#include "AbsoluteHazards.h"
 #include "RelicHazards.h"
 #include "EnemyModel.h"
 #include "BoxRenderer.h"
@@ -17,6 +18,7 @@
 #include "GrappleHook.h"
 #include "Level.h"
 #include "LevelGauntlet.h"
+#include "LevelAct2.h"
 #include "WaveDirector.h"
 #include "PostProcess.h"
 #include "AudioSystem.h"
@@ -94,6 +96,7 @@ inline glm::vec3 g_devCamPos{0.f};
 inline float     g_devCamYaw = -90.f, g_devCamPitch = 0.f;
 // --weapon N --aim --overlay armory|pause|settings: pose a screenshot
 inline int       g_devWeapon = -1;
+inline bool      g_devSword = false;   // --sword / ?sword: the sword (key 5) anywhere, not just the Zenith
 inline bool      g_devAim = false;
 inline std::string g_devOverlay;
 inline bool      g_devNoMouse = false;   // screenshot runs: never grab or read the mouse
@@ -201,10 +204,15 @@ public:
     float peakStyle   = 0.f;
     bool  victory      = false;
     float victoryDelay = -1.f;   // counts down after the boss dies, then shows the screen
+    // The ascension: the Leviathan dies, the act's card, a white-out, the Zenith (updateAscension)
+    float ascendT = -1.f;        // < 0: not rising; else seconds into it
+    float whiteFade = 0.f;       // the white-out fading off as the Zenith appears
+    static constexpr float ASCEND_SINK = 3.f, ASCEND_CARD = 2.f, ASCEND_WHITE = 1.f;
     bool  newRecord    = false;
     // Only a full run counts for records and the leaderboard: started at the
     // first arena, not in god mode, not from the dev level select
     bool  ranked       = true;
+    bool  act2FromStart = false;   // an ACT II run from its first arena: its times count (act2RunRecords)
     bool  nameEntry    = false;  // victory screen: typing a name for the leaderboard
     std::string nameBuf;
     int   boardPlace   = -1;     // where the saved run landed (highlighted)
@@ -311,6 +319,11 @@ public:
 
     bool parryPrev        = false;
     float punchCooldown   = 0.f;
+    // OATHBREAKER, the sword (Gameplay_Sword.h): key 5, only in the Zenith
+    Sword sword;
+    bool  swordOut = false, lmbPrev = false, rmbPrev = false;
+    glm::vec3 thrustFrom{0.f}; bool thrustHit = false;
+    Sword::Guarded lastGuarded = Sword::Guarded::NONE;   // what the sword did with the last strike (damagePlayerStrike)
     static constexpr float PARRY_COOLDOWN = 1.0f;   // a punch / parry at most once a second: no spamming it
     bool prevDashKey      = false;
     int  boostPrev        = -1;     // booster the player was in last tick
@@ -413,6 +426,29 @@ public:
     static constexpr float LV_SINK = 3.f;
     static constexpr float FLOOD_DEPTH = 0.6f;   // the Maw's flood over the ring in its last phase
     Enemy* leviathan();
+    // THE ABSOLUTE (Gameplay_Absolute.h): what he leaves in the Zenith, his afterimages, his lines, his death
+    AbsoluteHazards abh;
+    struct AbGhost { Enemy pose; float t; };
+    std::vector<AbGhost> abGhosts;
+    static constexpr float AB_GHOST_LIFE = 0.35f, AB_DEATH = 3.f;
+    std::vector<AABB> zenPillarBoxes;               // the standing pillars, for his mind (fillZenithWorld)
+    std::array<float, 8> pillarFallT{};             // a shattered pillar's pieces falling (< 0: none)
+    std::array<float, 6> shardFallT{};              // a shard dropping away (< 0: none)
+    float abLineT = 0.f; int abLineShown = -1;      // his line on screen
+    float abHintT = 0.f;                            // the sword's hint as he arrives
+    float abDeathT = 1e9f;
+    Enemy abCorpse{EnemyType::ABSOLUTE, glm::vec3{0.f}};
+    bool  punchedThisTick = false;                  // F this tick: a serpent within reach goes back
+    Enemy* absolute();
+    void fillZenithWorld(EnemyWorld& w);
+    bool parryAbsolute(Enemy& e, bool bySword);
+    void swordParryAbsolute(Enemy& e);
+    void onAbsoluteEvents(Enemy& e, const EnemyEvents& ev);
+    void updateAbsolute(float dt);
+    void onAbsoluteKilled(const Enemy& e);
+    void updateAbsoluteDeath(float dt);
+    void gatherAbsoluteBoxes(std::vector<BoxInstance>& out);
+    void renderAbsoluteHUD();
     void onLeviathanEvents(Enemy& e, const EnemyEvents& ev);
     void updateLeviathan(float dt);
     void throatHit(Enemy& e, float dmg);
@@ -557,6 +593,16 @@ public:
     float pinnedCueCd = 0.f;   // a HALOED enemy's halo shatters: feedback and style
 
     void punch(int boostable);
+    void devAbsolutePose(Enemy& e);
+    void updateAscension(float dt);
+    void reflectProjectile(int pi, glm::vec3 fwd);
+    bool swordAllowed() const;
+    void drawSword();
+    void padCycle(int dir);
+    void holsterSword();
+    void updateSword(float dt);
+    void swordPlunge(glm::vec3 at);
+    bool damagePlayerStrike(float dmg, glm::vec3 from, Sword::Strike k, float dt = 0.f);
 
     // Where would the grapple hook if fired now? Static walls are hit exactly;
     // moving platforms get a generous 1.2 m of aim assist and pull you to just
@@ -711,3 +757,5 @@ public:
 #include "Gameplay_Warden.h"
 #include "Gameplay_Reliquary.h"
 #include "Gameplay_Leviathan.h"
+#include "Gameplay_Sword.h"
+#include "Gameplay_Absolute.h"

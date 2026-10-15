@@ -34,6 +34,8 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         h.weapons[w].glow      = gunkit::glowOf(w);
     }
     h.grenades = grenadeCount; h.grenadeMax = grenadeMax;
+    h.swordSlot = swordAllowed(); h.swordOut = swordOut; h.swordBroken = sword.broken(); h.swordGuard = sword.guard01();
+    h.swordBar = swordOut && (sword.blocking() || sword.broken() || sword.riposteT > 0.f || sword.guard < Sword::GUARD_MAX);
     h.level = prog.level; h.xp = prog.xp; h.xpNext = Progression::xpToNext(prog.level); h.points = prog.points;
     const WeaponDef& wd = weaponDef((WeaponId)activeWeapon);
     h.aim = wd.canAim ? aim : 0.f;
@@ -53,7 +55,8 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
     if (!playerDead && !victory) ui.render(styleSystem, h);
 
     const Arena& ar = level.arenas[director.arena];
-    int nArenas = (int)level.arenas.size();
+    const bool zen = act2() && director.arena == ZENITH_ARENA;
+    int nArenas = act2() ? ZENITH_ARENA : (int)level.arenas.size();   // ACT II counts its five; the Zenith is the encore
     const char* tag = act2() ? "ACT II" : "ARENA";
     char buf[128];
 
@@ -75,10 +78,12 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         case WaveDirector::Phase::APPROACH:   // FAST only
         case WaveDirector::Phase::INTRO:
             if (endless()) snprintf(buf, sizeof(buf), "%s  %s  GET READY", dailyRun() ? "DAILY" : "ENDLESS", ar.name);
+            else if (zen) snprintf(buf, sizeof(buf), "ENCORE  %s  GET READY", ar.name);
             else snprintf(buf, sizeof(buf), "%s %d/%d  %s  GET READY", tag, director.arena + 1, nArenas, ar.name);
             break;
         case WaveDirector::Phase::ACTIVE:
-            if (boss) snprintf(buf, sizeof(buf), "%s %d/%d  FINAL WAVE", tag, director.arena + 1, nArenas);
+            if (boss && zen) snprintf(buf, sizeof(buf), "ENCORE  %s", ar.name);
+            else if (boss) snprintf(buf, sizeof(buf), "%s %d/%d  FINAL WAVE", tag, director.arena + 1, nArenas);
             else if (director.hasGoal()) {
                 const WaveGoal& g = director.goal();
                 char what[48];
@@ -120,10 +125,12 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             ui.end2D();
         }
 
-        if (boss) ui.renderBossBar(boss->type == EnemyType::SOVEREIGN ? "THE SOVEREIGN" :
+        if (boss) ui.renderBossBar(boss->type == EnemyType::ABSOLUTE ? "THE ABSOLUTE" :
+                                   boss->type == EnemyType::SOVEREIGN ? "THE SOVEREIGN" :
                                    boss->type == EnemyType::PENITENT ? "THE PENITENT" :
                                    boss->type == EnemyType::LEVIATHAN ? "THE LEVIATHAN" : "THE WARDEN",
                                    boss->health / boss->maxHealth,
+                                   boss->type == EnemyType::ABSOLUTE ? boss->abPhase >= 2 :
                                    boss->type == EnemyType::LEVIATHAN ? boss->levPhase >= 2 :
                                    boss->type == EnemyType::PENITENT ? boss->scourging :
                                    boss->type == EnemyType::WARDEN ? boss->wardenPhase >= 2 : boss->enraged);
@@ -224,6 +231,20 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         ui.renderBanner(b.title.c_str(), b.subtitle.c_str(), b.color, a);
     }
     if (countdown > 0.f) ui.renderCountdown(countdown);
+    if (!playerDead && !victory) renderAbsoluteHUD();
+    if (ascendT >= ASCEND_SINK || whiteFade > 0.f) {   // the ascension: the act's card, then a white-out
+        ui.begin2D();
+        float c = ascendT >= ASCEND_SINK ? std::min(1.f, (ascendT - ASCEND_SINK) * 3.f) : 0.f;
+        if (c > 0.f) {
+            ui.ui.rect(0, 0, SCREEN_W, SCREEN_H, {0.f, 0.02f, 0.05f, 0.6f * c});
+            ui.ui.text("ACT II COMPLETE", SCREEN_W / 2, SCREEN_H / 2 - 60, 5, {0.2f, 1.f, 0.6f, c}, true);
+            snprintf(buf, sizeof(buf), "THE LEVIATHAN FALLS  -  %s", formatTime(elapsedTime).c_str());
+            ui.ui.text(buf, SCREEN_W / 2, SCREEN_H / 2, 2, {0.85f, 0.9f, 0.88f, c}, true);
+        }
+        float w = ascendT >= ASCEND_SINK + ASCEND_CARD ? std::min(1.f, (ascendT - ASCEND_SINK - ASCEND_CARD) / ASCEND_WHITE) : whiteFade;
+        if (w > 0.f) ui.ui.rect(0, 0, SCREEN_W, SCREEN_H, {1.f, 0.98f, 0.95f, w});
+        ui.end2D();
+    }
     if (g_practice && !victory && !paused) {
         ui.begin2D();
         ui.ui.textShadow("PRACTICE  F5 CLEAR WAVE  F6 HEAL", 12, SCREEN_H - 22, 1, {0.4f, 1.f, 0.85f, 0.8f});
@@ -233,6 +254,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
     if (playerDead && !victory) {   // (ENDLESS has no retry: a moment, then the run's score)
         if (fast()) snprintf(buf, sizeof(buf), "ROOM %d/%d  %s", director.arena + 1, nArenas, ar.name);
         else if (endless()) snprintf(buf, sizeof(buf), "%s - WAVE %d", ar.name, wavesCleared + 1);
+        else if (zen) snprintf(buf, sizeof(buf), "ENCORE  %s", ar.name);
         else snprintf(buf, sizeof(buf), "%s %d/%d %s - WAVE %d/%d", tag, director.arena + 1, nArenas, ar.name,
                       director.wave + 1, director.waveCount());
         ui.renderDeath(buf, totalKills, elapsedTime, fast(), !endless());
@@ -250,10 +272,10 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             std::string sub = dailyRun() ? std::string(daily.modName()) : "";
             ui.renderVictoryEndless(title.c_str(), sub.c_str(), runScore(), wavesCleared, totalKills, totalShots, totalHits,
                                     elapsedTime, dailyRun() ? records.bestDaily : records.bestEndless, newRecord, !nameEntry);
-        } else if (act2()) {   // the act's end (no records or board yet)
+        } else if (act2()) {   // the act's end, up in the Zenith (no board yet: a local best)
             ui.renderVictoryArena(totalKills, totalShots, totalHits, deaths, elapsedTime, peakStyle,
-                                  prog.level, 0.f, false, true, runScore(),
-                                  "ACT II COMPLETE", "THE ECLIPSE BREAKS");
+                                  prog.level, zen ? records.bestZenith : 0.f, zen && newRecord, true, runScore(),
+                                  zen ? "ZENITH CLEARED" : "ACT II COMPLETE", zen ? "THE LIGHT FALLS" : "THE ECLIPSE BREAKS");
         } else {
             ui.renderVictoryArena(totalKills, totalShots, totalHits, deaths, elapsedTime, peakStyle,
                                   prog.level, records.bestArena, newRecord, !nameEntry, runScore());

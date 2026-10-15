@@ -12,6 +12,7 @@ enum class StyleRank { D, C, B, A, S, SSS };
 enum class StyleSource { NONE, REVOLVER, SHOTGUN, KAR, LONGSHOT, PUNCH, PARRY, EXPLOSIVE, SLAM,
                          ENVIRONMENT,   // lava, the void
                          FRIENDLY,      // enemies hurting each other
+                         MELEE,         // the sword (Gameplay_Sword.h)
                          COUNT };
 enum class Freshness { FRESH, USED, STALE, DULL };
 

@@ -54,38 +54,43 @@ inline void GameplayState::pinnedCue() {
     ui.feed("PINNED - NO DASH OR GRAPPLE", {1.f, 0.3f, 0.3f});
 }
 
+// A projectile parried (the punch, or the sword's parry): sent back where you
+// look, or homing into the Warden's core / the Leviathan's eye
+inline void GameplayState::reflectProjectile(int pi, glm::vec3 fwd) {
+    Projectile& p = projSystem.pool[pi];
+    float speed = std::max(40.f, glm::length(p.velocity) * 2.f);
+    p.isPlayer = true;
+    p.parried  = true;
+    for (auto& o : enemies) if (o.alive && o.uid == p.owner && o.halo) { breakHalo(o); break; }
+    p.velocity = fwd * speed;                        // it goes where you look
+    for (auto& o : enemies) if (o.alive && o.uid == p.owner && (o.type == EnemyType::WARDEN || o.type == EnemyType::LEVIATHAN)) { p.homeOn = o.uid; break; }   // ...or into the Warden's core, the Leviathan's eye
+    p.lifetime = 4.f;
+    if (p.heavy) {
+        p.damage = p.parryDamage > 0.f ? p.parryDamage : 400.f; p.size *= 1.3f; p.emissiveColor = {1.6f, 1.1f, 0.3f};
+        styleSystem.addStyle(60.f, StyleSource::PARRY);
+        ui.toast("HEAVY PARRY", "", {1.f, 0.8f, 0.2f}, 1.2f);
+    } else {
+        p.damage = p.parryDamage > 0.f ? p.parryDamage : 60.f; p.emissiveColor = {1.f, 0.9f, 0.3f};
+        styleSystem.addStyle(25.f, StyleSource::PARRY);
+        ui.feed("PARRY", {1.f, 0.9f, 0.3f});
+    }
+    parryFeedback(p.position, p.heavy);
+}
+
 inline void GameplayState::punch(int boostable) {
     punchCooldown = PARRY_COOLDOWN;
     glm::vec3 eye = player.camera.position, fwd = player.camera.forward();
 
+    punchedThisTick = true;             // (a serpent within reach goes back: updateAbsolute)
     if (catchSoulWithPunch()) return;   // a fleeing soul within reach, taken bare-handed
     int pi = findParryTarget();
-    if (pi >= 0) {
-        Projectile& p = projSystem.pool[pi];
-        float speed = std::max(40.f, glm::length(p.velocity) * 2.f);
-        p.isPlayer = true;
-        p.parried  = true;
-        for (auto& o : enemies) if (o.alive && o.uid == p.owner && o.halo) { breakHalo(o); break; }
-        p.velocity = fwd * speed;                        // it goes where you look
-        for (auto& o : enemies) if (o.alive && o.uid == p.owner && (o.type == EnemyType::WARDEN || o.type == EnemyType::LEVIATHAN)) { p.homeOn = o.uid; break; }   // ...or into the Warden's core, the Leviathan's eye
-        p.lifetime = 4.f;
-        if (p.heavy) {
-            p.damage = p.parryDamage > 0.f ? p.parryDamage : 400.f; p.size *= 1.3f; p.emissiveColor = {1.6f, 1.1f, 0.3f};
-            styleSystem.addStyle(60.f, StyleSource::PARRY);
-            ui.toast("HEAVY PARRY", "", {1.f, 0.8f, 0.2f}, 1.2f);
-        } else {
-            p.damage = p.parryDamage > 0.f ? p.parryDamage : 60.f; p.emissiveColor = {1.f, 0.9f, 0.3f};
-            styleSystem.addStyle(25.f, StyleSource::PARRY);
-            ui.feed("PARRY", {1.f, 0.9f, 0.3f});
-        }
-        parryFeedback(p.position, p.heavy);
-        return;
-    }
+    if (pi >= 0) { reflectProjectile(pi, fwd); return; }
     for (auto& e : enemies) {
         if (!e.targetable() || !e.parryWindow()) continue;
         glm::vec3 d = e.position + glm::vec3{0, e.height() * 0.5f, 0} - eye;
         float dist = glm::length(d);
         bool inReach = dist < 5.5f && glm::dot(fwd, d / dist) > 0.2f;
+        if (e.type == EnemyType::ABSOLUTE) { if (inReach && parryAbsolute(e, false)) return; continue; }   // Gameplay_Absolute.h
         if (e.type == EnemyType::PENITENT) {   // a censer or its fists: punch it as it reaches you
             float flat = glm::length(glm::vec2{player.position.x - e.position.x, player.position.z - e.position.z});
             if (e.attack == AttackKind::CENSER_LOW || e.attack == AttackKind::CENSER_HIGH)
@@ -209,6 +214,7 @@ inline void GameplayState::updateEnemies(float dt) {
     w.hasLair    = level.hasLair;                   // the Maw: where the Leviathan lives and breaches
     w.lair       = level.lair; w.lairFloor = level.lairFloor;
     w.wells      = level.wells.data(); w.wellCount = (int)level.wells.size();
+    fillZenithWorld(w);                           // the Zenith: its centre and standing pillars, for the Absolute
     const bool descent = ar.shift == ArenaShift::DESCENT;
     const float dmgScale = ar.damageScale * tune().damage;
 
@@ -223,6 +229,12 @@ inline void GameplayState::updateEnemies(float dt) {
             e.health = e.maxHealth * (g_devOverlay == "warden2" ? 0.5f : 0.2f);   // dev: straight into its later phases
         if (e.type == EnemyType::LEVIATHAN && (g_devOverlay == "leviathan2" || g_devOverlay == "leviathan3") && e.health > e.maxHealth * 0.66f && e.levStage == Enemy::LevStage::FIGHT)
             e.health = e.maxHealth * (g_devOverlay == "leviathan2" ? 0.6f : 0.28f);
+        if (e.type == EnemyType::ABSOLUTE && g_devOverlay.rfind("absolute", 0) == 0 && e.abArrive <= 0.f && e.health > e.maxHealth * 0.61f) {
+            int ph = std::atoi(g_devOverlay.c_str() + 8);   // dev: absolute2 / absolute3 / absolute8
+            if (ph >= 2) e.health = e.maxHealth * (ph == 2 ? 0.59f : ph == 3 ? 0.24f : 0.079f);
+        }
+        if (g_devOverlay.rfind("abpose", 0) == 0 && e.type == EnemyType::ABSOLUTE) { devAbsolutePose(e); continue; }
+        if (e.type == EnemyType::ABSOLUTE) swordParryAbsolute(e);   // the sword's window meets a white strike as it lands
         // In the Descent the void runs to -300: stand on what's really under you (the cage included)
         e.floorY = level.enemyFloor(director.arena, e.position, e.stats().flying,
                                     descent ? groundHeightAt(e.position.x, e.position.z, e.position.y + 0.5f, true) : 0.f);
@@ -255,7 +267,7 @@ inline void GameplayState::updateEnemies(float dt) {
             }
             if (beamHissCd <= 0.f) { audio.playAt("skim", ev.beamTo, 55, SoundGroup::ENEMY); beamHissCd = 0.45f; }
         }
-        if (ev.meleeHit) {
+        if (ev.meleeHit && enemies[i].type != EnemyType::ABSOLUTE) {   // (his: onAbsoluteEvents, where the sword can meet them)
             if (damagePlayer(ev.meleeDamage * eScale, epos, 0.25f, 0.06f)) {
                 glm::vec3 away = player.position - epos; away.y = 0.f;
                 if (glm::length(away) > 0.001f)
@@ -302,6 +314,7 @@ inline void GameplayState::updateEnemies(float dt) {
         if (enemies[i].type == EnemyType::WARDEN) onWardenEvents(enemies[i], ev);
         if (enemies[i].type == EnemyType::WEAVER) onReliquaryEvents(enemies[i], ev);
         if (enemies[i].type == EnemyType::LEVIATHAN) onLeviathanEvents(enemies[i], ev);
+        if (enemies[i].type == EnemyType::ABSOLUTE) onAbsoluteEvents(enemies[i], ev);
         if (ev.enraged && enemies[i].type == EnemyType::SOVEREIGN) {   // the Penitent and the Warden announce their own phases
             pushBanner("HE STOPS HOLDING BACK", "LONGER CHAINS - WATCH THE BLADE", {1.f, 0.15f, 0.25f}, 2.4f);
             shake(0.5f, 0.06f);
@@ -367,7 +380,7 @@ inline void GameplayState::friendlySlam(const Enemy& slammer, float radius) {
 }
 
 inline bool GameplayState::damagePlayer(float dmg, glm::vec3 from, float shakeT, float shakeAmt, float iframes) {
-    if (invincFrames > 0.f || playerDead || g_godMode || victory ||
+    if (invincFrames > 0.f || playerDead || g_godMode || victory || ascendT >= 0.f ||
         (!fast() && director.phase == WaveDirector::Phase::VICTORY)) return false;
     if (modOn(DailyMod::GLASS_CANNON)) dmg *= 2.f;
     styleSystem.takeDamage(dmg);
@@ -479,7 +492,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
         case EnemyType::BRUTE:  for (int i = 0; i < 3; ++i) drop(PickupKind::ORB);
                                 if (rand() % 100 < 50) drop(PickupKind::POTION); break;
         case EnemyType::MITE:   if (rand() % 10 == 0) drop(PickupKind::ORB); break;
-        case EnemyType::WARDEN: case EnemyType::SOVEREIGN: case EnemyType::LEVIATHAN: break;
+        case EnemyType::WARDEN: case EnemyType::SOVEREIGN: case EnemyType::LEVIATHAN: case EnemyType::ABSOLUTE: break;
         case EnemyType::CONDUIT: drop(PickupKind::ORB); drop(PickupKind::ORB); break;
         case EnemyType::CONDUCTOR: drop(PickupKind::ORB); break;
         case EnemyType::ANCHOR: drop(PickupKind::ORB); drop(PickupKind::ORB); break;
@@ -531,6 +544,8 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
             fx.spawnShockwave(c, 30.f, {1.4f, 1.2f, 1.f});
             explosionFlashTimer = 0.8f; explosionFlashPos = e.position;
             pushBanner("THE LEVIATHAN SINKS", "", {1.f, 0.9f, 0.7f}, 3.f);
+        } else if (e.type == EnemyType::ABSOLUTE) {
+            onAbsoluteKilled(e);
         } else {
             pushBanner("THE WARDEN GOES DARK", "", {1.f, 0.85f, 0.3f}, 2.5f);
         }
@@ -740,6 +755,15 @@ inline void GameplayState::fireWeapon(int w) {
                 relic.cutWire(ni);
             }
         }
+        if (!abh.mirages.empty()) {   // a mirage in the way: one hit and it's gone (and so is the round)
+            int mi = abh.mirageAlong(origin, dir, hits.empty() ? wallT : hits[0].t);
+            if (mi >= 0) {
+                fx.spawnBurst(abh.mirages[mi].at + glm::vec3{0.f, 1.3f, 0.f}, {1.5f, 1.5f, 1.7f}, 24, 6.f, 0.4f, 0.f);
+                abh.killMirage(mi);
+                styleSystem.addStyle(10.f, StyleSource::NONE);
+                continue;
+            }
+        }
         float endT = n > 0 && n == pierce + 1 ? hits[n - 1].t : wallT;
         fx.spawnTracer(origin + dir * 0.25f - up * 0.08f, origin + dir * endT, sniper ? 0.09f : 0.055f, sniper ? 0.35f : 0.22f,
                        glm::mix(glm::vec3{1.f}, gunkit::glowOf(w), 0.6f));   // the gun's colour
@@ -754,7 +778,7 @@ inline void GameplayState::fireWeapon(int w) {
                 fx.spawnBurst(at, {1.f, 0.8f, 0.35f}, 10, 6.f, 0.3f, 10.f);
                 audio.playAt("clank", at, 100, SoundGroup::ENEMY, true, 0.6f);   // the deflect is the tell: GET CLOSE
                 e.onDeflect();
-                if (deflectHints < 2) { ++deflectHints; ui.toast("TURNED ASIDE", "HIS GUARD STOPS SHOTS FROM RANGE - GET CLOSE", {1.f, 0.8f, 0.3f}, 1.8f); }
+                if (deflectHints < 2) { ++deflectHints; ui.toast("TURNED ASIDE", e.type == EnemyType::ABSOLUTE ? "PAST 14 M HE TURNS SHOTS ASIDE - GET CLOSE" : "HIS GUARD STOPS SHOTS FROM RANGE - GET CLOSE", {1.f, 0.8f, 0.3f}, 1.8f); }
                 anyHit = true;
                 break;
             }

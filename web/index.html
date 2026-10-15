@@ -60,8 +60,10 @@
       if (q.has('fast')) args.push('--fast');
       if (q.has('endless')) args.push('--endless');
       if (q.has('daily')) args.push('--daily');
+      if (q.has('act2')) args.push('--act2');   // ?act2&arena=6: straight into the Zenith
       if (q.has('wave')) args.push('--wave', q.get('wave'));
       if (q.has('god')) args.push('--god');
+      if (q.has('sword')) args.push('--sword');
       if (q.has('dev')) args.push('--dev');   // ?dev opens the level select
       return args;
     })(),

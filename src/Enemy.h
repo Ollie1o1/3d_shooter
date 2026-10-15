@@ -56,8 +56,9 @@
 // CONDUCTOR: doesn't attack either; it tethers nearby allies and shields them
 // (linkConductors below), so it's the one to kill first.
 enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, JUGGERNAUT, WARDEN, SOVEREIGN, SHIELDBEARER, CONDUIT,
-                       CONDUCTOR, SERAPH, ANCHOR, PENITENT, REVENANT, WEAVER, LEVIATHAN, COUNT };
-inline bool isBoss(EnemyType t) { return t == EnemyType::WARDEN || t == EnemyType::SOVEREIGN || t == EnemyType::PENITENT || t == EnemyType::LEVIATHAN; }
+                       CONDUCTOR, SERAPH, ANCHOR, PENITENT, REVENANT, WEAVER, LEVIATHAN, ABSOLUTE, COUNT };
+inline bool isBoss(EnemyType t) { return t == EnemyType::WARDEN || t == EnemyType::SOVEREIGN || t == EnemyType::PENITENT || t == EnemyType::LEVIATHAN ||
+                                         t == EnemyType::ABSOLUTE; }
 
 // Hollowed variants (Act II): a regular enemy made harder in one specific way.
 //   ENRAGED  faster, shorter wind-ups, hits harder
@@ -88,7 +89,9 @@ enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY,
                         CENSER_LOW, CENSER_HIGH, PSLAM, PSTOMP, PLASH, SCOURGE,     // the PENITENT's
                         WVENT, LANCE, SEEKER, WLUNGE, DETONATE,        // the WARDEN's
                         RAKE, SOULBOLT, STRING,                        // the REVENANT's, the WEAVER's
-                        CRASH, TORRENT, TIDE, SPIT, BREACH, SWALLOW, SUBMERGE };   // the LEVIATHAN's
+                        CRASH, TORRENT, TIDE, SPIT, BREACH, SWALLOW, SUBMERGE,     // the LEVIATHAN's
+                        ATELEPORT, ADASH, AJAB, AHOOK, AUPPER, ADROP, AHOP, ARAY, ASTOMP, ASERPENT,   // THE ABSOLUTE's
+                        AHALO, ASEAMS, AZENITH, ASWEEP, ALUNGE, ACRESCENT, AJUDGE };
 
 struct EnemyStats {
     const char* name;
@@ -160,6 +163,9 @@ inline const EnemyStats& statsOf(EnemyType t) {
         {"LEVIATHAN", 15000.f, 3.0f, 5.2f, 0.f, 1.1f, 1.9f, false,   // radius/height: the head's box
          {0.2f,0.18f,0.21f}, {1.4f,1.0f,0.6f}, {0.3f,1.1f,0.9f},
          "DASH THE CRASH - SHOOT THE EYE WHILE IT'S DOWN"},
+        {"THE ABSOLUTE", 8200.f, 0.6f, 2.6f, 11.f, 0.45f, 0.9f, false,   // the encore (EnemyAbsolute.h)
+         {0.95f,0.95f,0.98f}, {1.6f,1.5f,1.2f}, {1.6f,1.55f,1.4f},
+         "WHITE: PARRY  GOLD: DODGE OR BLOCK  RED: GET OUT"},
     };
     return S[(int)t];
 }
@@ -225,6 +231,16 @@ struct EnemyEvents {
     bool      lvSpit = false; glm::vec3 lvSpitAt{0.f};
     bool      lvBreachTell = false, lvBreach = false; glm::vec3 lvSite{0.f};
     bool      lvInhale = false, lvRise = false, lvBeached = false;
+    // THE ABSOLUTE (EnemyAbsolute.h): the colour of the strike winding up (0
+    // white, 1 gold, 2 red), a phase change, a line to show, a ray fired from
+    // abFrom toward abTo, a stomp ring, a serpent, the halo sweep, the seams
+    // (which parity burns first), a zenith ray, mirages, the blade drawn or
+    // shattered, the last judgment marked / landing, an uppercut's launch,
+    // the shards falling
+    int  abTell = -1, abPhase = 0, abLine = -1, abSeamFirst = 0, abMirages = 0;
+    bool abRay = false, abStomp = false, abSerpent = false, abHalo = false, abSeams = false, abZenith = false,
+         abBladeDrawn = false, abBladeBroke = false, abJudgeMark = false, abJudge = false, abLaunch = false, abShards = false;
+    glm::vec3 abFrom{0.f}, abTo{0.f};
 };
 
 // What an enemy can sense each tick.
@@ -247,6 +263,12 @@ struct EnemyWorld {
     bool hasLair = false;
     glm::vec3 lair{0.f}; float lairFloor = 0.f;
     const glm::vec3* wells = nullptr; int wellCount = 0;
+    // THE ABSOLUTE's Zenith: the floor's centre and height, its standing
+    // pillars (boxes), and whether the player stands on a shard
+    bool hasZenith = false;
+    glm::vec3 zenCentre{0.f}; float zenFloor = 0.f;
+    const AABB* zenPillars = nullptr; int zenPillarCount = 0;
+    bool onShard = false;
 };
 
 // Ray vs AABB: distance along the ray to the first hit, or -1 on a miss.
@@ -426,6 +448,29 @@ struct Enemy {
     float levPitch = 0.f, levJaw = 0.f;   // the head's tilt (+ up) and how far its jaw is open, 0..1
     int   levSiteAttacks = 0;      // attacks made from this root (THE HUNT: two, then it dives)
     int   levSeq = 0;              // where it is in its rotation
+    // THE ABSOLUTE (EnemyAbsolute.h): he fights in strings (combos) from a table
+    static constexpr float AB_PHASE2 = 0.60f, AB_PHASE3 = 0.25f, AB_JUDGE_AT = 0.08f, AB_ARRIVE = 2.f, AB_REEL = 0.8f,
+                           AB_BREAK = 3.f, AB_SPENT = 4.f, AB_DEFLECT = 14.f, AB_CAMP = 3.f, AB_FAR = 30.f, AB_RUN = 11.f,
+                           AB_DASH = 32.f, AB_REACH = 2.8f, AB_FOLLOW_FLOOR = 0.22f, AB_QUICK = 0.75f, AB_RANGE = 20.f,
+                           AB_BLADE_BACK = 3.f, AB_HALO_TIME = 2.f, AB_JUDGE_WARN = 2.f,
+                           AB_FLOOR_R = 42.f, AB_DAIS_R = 9.f, AB_DAIS_UP = 1.2f, AB_HALO_UP = 40.f;
+    int   abPhase = 1;
+    int   abCur = -1, abStep = 0;      // the string running (an AB_* id), the move in it
+    int   abForce = -1;                // tests / dev: the next string
+    int   abParries = 0;               // white strikes parried in this string
+    bool  abReeling = false;           // this stagger is a reel (x1.5), not a break (x2)
+    bool  abParriedThis = false;       // the current strike has been parried
+    bool  abStruck = false;            // a strike has landed in this string (the next tell is a follow-up)
+    float abArrive = AB_ARRIVE;        // descending onto the Dais: untouchable
+    float abCamp = 0.f;                // how long you've camped (a shard, far off, one pillar)
+    int   abCampPillar = -1;
+    int   abRot = 0;                   // where he is in the phase's rotation
+    bool  abBlade = false; float abBladeGone = 0.f;   // the blade of light (phase 3); > 0: shattered, redrawing
+    bool  abJudged = false;            // the last judgment has happened
+    float abLate = 0.f;                // a delayed strike: how long after its flash it lands
+    glm::vec3 abAim{0.f};              // where a ray / dash / drop-kick / lunge is headed
+    glm::vec3 abCentre{0.f};           // the Zenith's centre (from the world, each tick)
+    AttackKind lastAbAttack = AttackKind::NONE;   // the strike that just resolved (the game reads its colour)
     bool  levAtPool() const { return glm::length(glm::vec2{levRoot.x - levHome.x, levRoot.z - levHome.z}) < 1.f; }
     bool  levHidden() const { return type == EnemyType::LEVIATHAN && (levStage != LevStage::FIGHT || attack == AttackKind::BREACH); }
     bool  levEyeOpen() const { return levBeached > 0.f || staggerTimer > 0.f || levPhase == 3; }
@@ -489,7 +534,7 @@ struct Enemy {
         if (type == EnemyType::PENITENT) return (risen ? 11.5f : 8.2f) * scale;   // kneeling, then standing
         return stats().height * scale;
     }
-    bool  targetable() const { return alive && state == EnemyState::ACTIVE && !levHidden(); }
+    bool  targetable() const { return alive && state == EnemyState::ACTIVE && !levHidden() && !(type == EnemyType::ABSOLUTE && abArrive > 0.f); }
     bool  staggered() const  { return staggerTimer > 0.f; }
     // The moment a melee blow can be punched back: a JUGGERNAUT's smash (its
     // last 0.4 s), a SOVEREIGN's sweep or cleave (its last quarter second)
@@ -501,6 +546,7 @@ struct Enemy {
 
         if (type == EnemyType::JUGGERNAUT) return attack == AttackKind::SMASH && telegraphTimer < 0.4f;
         if (type == EnemyType::LEVIATHAN) return attack == AttackKind::CRASH && telegraphTimer < 0.25f;   // (and you within LV_PARRY_REACH of where it lands)
+        if (type == EnemyType::ABSOLUTE) return abMeleeWhite(attack) && !abParriedThis && telegraphTimer < 0.25f;   // white strikes only
         if (type == EnemyType::SHIELDBEARER) return attack == AttackKind::BASH && telegraphTimer < 0.3f;
         if (type == EnemyType::SOVEREIGN)
             return (attack == AttackKind::SWEEP || attack == AttackKind::CLEAVE || attack == AttackKind::THRUST) &&
@@ -514,6 +560,8 @@ struct Enemy {
     // from `dist` away? From range, from the front, while he isn't mid-attack:
     // his wind-ups, strokes and recoveries are the openings
     bool deflects(glm::vec3 dir, float dist) const {
+        if (type == EnemyType::ABSOLUTE)   // all round, from beyond 14 m, while he isn't winding up, recovering or broken
+            return alive && !staggered() && dist >= AB_DEFLECT && telegraphTimer <= 0.f && recoverTimer <= 0.f && abArrive <= 0.f;
         if (type != EnemyType::SOVEREIGN || !alive || staggered() || dist < DEFLECT_RANGE) return false;
         if (telegraphTimer > 0.f || recoverTimer > 0.f || dashTimer > 0.f || leapTimer > 0.f ||
             whirlTimer > 0.f || thrustTimer > 0.f) return false;
@@ -524,7 +572,7 @@ struct Enemy {
     }
     void onDeflect() { if (riposteCd <= 0.f) { riposte = true; riposteCd = 1.4f; } }
     // How long a parry leaves it broken
-    float staggerTime() const { return type == EnemyType::LEVIATHAN ? LV_STAGGER : type == EnemyType::SOVEREIGN ? 3.f : type == EnemyType::WARDEN ? 2.f : type == EnemyType::SHIELDBEARER ? 2.2f : 2.5f; }
+    float staggerTime() const { return type == EnemyType::ABSOLUTE ? AB_BREAK : type == EnemyType::LEVIATHAN ? LV_STAGGER : type == EnemyType::SOVEREIGN ? 3.f : type == EnemyType::WARDEN ? 2.f : type == EnemyType::SHIELDBEARER ? 2.2f : 2.5f; }
     // SHIELDBEARER: does its shield stop a shot travelling along dir? (From
     // the front, while it's standing; a broken one has its shield knocked aside)
     bool blocks(glm::vec3 dir) const {
@@ -539,6 +587,7 @@ struct Enemy {
     float armorMult() const {
         if (type == EnemyType::WARDEN) return (conduitsLeft > 0 && ventTimer <= 0.f ? 0.5f : 1.f) * (staggered() ? 2.f : 1.f);
         if (type == EnemyType::PENITENT) return (anchorsLeft > 0 ? 0.25f : 1.f) * (staggered() ? 2.f : 1.f);
+        if (type == EnemyType::ABSOLUTE) return staggered() ? (abReeling ? 1.5f : 2.f) : 1.f;
         if (type == EnemyType::SOVEREIGN || type == EnemyType::LEVIATHAN) return staggered() ? 2.f : 1.f;
         if (type != EnemyType::JUGGERNAUT) return 1.f;
         return staggered() ? 2.f : 0.5f;
@@ -548,6 +597,7 @@ struct Enemy {
         staggerTimer = t; attack = AttackKind::NONE; telegraphTimer = 0.f; attackTimer = 0.f;
         comboStep = 0; chainLeft = 0; crescentLeft = 0; dashTimer = 0.f;
         whirlTimer = 0.f; thrustTimer = 0.f; riposte = false;
+        abCur = -1; abStep = 0;   // THE ABSOLUTE: the string is over (a reel resumes it: abParried)
         if (leapTimer <= 0.f) { velocity.x = velocity.z = 0.f; }
     }
     float telegraphProgress() const {
@@ -576,7 +626,7 @@ struct Enemy {
             state  = EnemyState::DEAD;
             return true;
         }
-        if (isBoss(type) && type != EnemyType::WARDEN && type != EnemyType::LEVIATHAN && !enraged && health < maxHealth * 0.5f) {
+        if (isBoss(type) && type != EnemyType::WARDEN && type != EnemyType::LEVIATHAN && type != EnemyType::ABSOLUTE && !enraged && health < maxHealth * 0.5f) {
             enraged    = true;
             ev.enraged = true;
         }
@@ -618,6 +668,7 @@ struct Enemy {
             staggerTimer -= dt;
             velocity.x = velocity.z = 0.f;
             if (type == EnemyType::LEVIATHAN) { levReel(dt); return; }   // its head down on the ring
+            if (type == EnemyType::ABSOLUTE) { if (staggerTimer <= 0.f) abReeling = false; return; }   // he stands where he was struck
             integrate(dt, w);
             return;
         }
@@ -642,6 +693,7 @@ struct Enemy {
             case EnemyType::REVENANT: thinkRevenant(dt, w, resolve); break;
             case EnemyType::WEAVER:   thinkWeaver(dt, w, resolve);   break;
             case EnemyType::LEVIATHAN: thinkLeviathan(dt, w, resolve); return;   // it moves its head itself
+            case EnemyType::ABSOLUTE: thinkAbsolute(dt, w, resolve); return;     // he places himself (EnemyAbsolute.h)
             default: break;
         }
         integrate(dt, w);
@@ -674,8 +726,8 @@ private:
 
     void startAttack(AttackKind k, float windup, bool followUp = false) {
         windup *= tune_->windup;
-        if (type == EnemyType::SOVEREIGN || type == EnemyType::WARDEN || type == EnemyType::LEVIATHAN)   // never too quick to read, whatever sped it up
-            windup = std::max(windup, followUp ? TELL_FLOOR_FOLLOW : TELL_FLOOR);
+        if (type == EnemyType::SOVEREIGN || type == EnemyType::WARDEN || type == EnemyType::LEVIATHAN || type == EnemyType::ABSOLUTE)   // never too quick to read, whatever sped it up
+            windup = std::max(windup, followUp ? (type == EnemyType::ABSOLUTE ? AB_FOLLOW_FLOOR : TELL_FLOOR_FOLLOW) : TELL_FLOOR);
         attack            = k;
         tellFollow        = followUp;
         telegraphDuration = windup;
@@ -1243,6 +1295,20 @@ private:
 
     void thinkPenitent(float dt, const EnemyWorld& w, bool resolve);   // EnemyPenitent.h
     void thinkLeviathan(float dt, const EnemyWorld& w, bool resolve);  // EnemyLeviathan.h
+public:
+    int  abParried(bool bySword);                                     // EnemyAbsolute.h
+    static bool abMeleeWhite(AttackKind k) {                          // a white strike from his body or blade (parryable)
+        return k == AttackKind::AJAB || k == AttackKind::AHOOK || k == AttackKind::ASWEEP;
+    }
+private:
+    void thinkAbsolute(float dt, const EnemyWorld& w, bool resolve);   // EnemyAbsolute.h
+    void abPhaseCheck(float hp);
+    int  abChoose(float d, const EnemyWorld& w);
+    int  abCampAnswer(const EnemyWorld& w) const;
+    void abBegin(int step, bool follow, float quick, const EnemyWorld& w, glm::vec3 feet);
+    void abResolve(const EnemyWorld& w, glm::vec3 feet, float d);
+    void abResolveLate(const EnemyWorld& w, glm::vec3 feet, float d, float damage);
+    glm::vec3 abGround(const EnemyWorld& w, glm::vec3 p) const;
     void levReel(float dt);                                            // EnemyLeviathan.h
     void aimCrash(const EnemyWorld& w, float windup, bool followUp);
     void levPose(float dt, const EnemyWorld& w);
@@ -1699,3 +1765,4 @@ inline void linkConductors(std::vector<Enemy>& es, glm::vec3 player) {
 #include "EnemyLeviathan.h"  // THE LEVIATHAN's mind (Enemy::thinkLeviathan)
 #include "EnemyWarden.h"     // THE WARDEN's mind (Enemy::thinkWarden)
 #include "EnemyRelic.h"      // the Reliquary's REVENANT and WEAVER
+#include "EnemyAbsolute.h"   // THE ABSOLUTE's mind (Enemy::thinkAbsolute)

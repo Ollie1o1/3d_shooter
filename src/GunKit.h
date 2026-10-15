@@ -15,6 +15,11 @@
 
 struct GunPart { glm::mat4 xf; glm::vec3 color, emissive; int tag; };   // tag 1: lit cell, 2: dark cell
 struct GunLook { int ammo = 8, mag = 8, lit = 8; float flash = 0.f, heat = 0.f, cylSpin = 0.f; int refill = 1; float aim = 0.f; };
+// OATHBREAKER's look (the sword, Sword.h): its guard meter on the fuller, dark
+// when broken, brighter charging a thrust or holding a riposte
+struct SwordLook { float guard01 = 1.f; bool broken = false; float charge = 0.f; float riposte = 0.f; };
+// Where the sword sits in camera space and how it's turned (degrees)
+struct SwordPose { glm::vec3 offset; float yaw, pitch, roll; };
 
 namespace gunkit {
 using glm::vec3; using glm::mat4;
@@ -452,5 +457,40 @@ inline void buildFist(vec3 glow, float punch, bool hit, std::vector<GunPart>& ou
     b.lit(glow * (0.8f + (hit ? 2.f * punch : 0.f)));
     b.box(base, {0.f, 0.03f, -0.02f}, {0.06f, 0.004f, 0.09f}, glow);              // the seam
     b.unlit();
+}
+
+// OATHBREAKER (Sword.h): the arsenal's body as a blade. Blackened gunmetal,
+// worn steel edges, a bone grip wound with brass wire, a brass crossguard,
+// and a fuller of 8 cells reading the guard meter (dark when it breaks).
+// Sword space: +Z along the blade from the guard, +Y the blade's back.
+const vec3 SWORD_GLOW{1.f, 0.25f, 0.45f};
+inline void buildSword(const SwordLook& L, std::vector<GunPart>& out) {
+    Builder b{out, SWORD_GLOW};
+    const mat4 base(1.f);
+    b.box(base, {0.f, 0.f, -0.09f}, {0.032f, 0.036f, 0.16f}, BONE);                 // grip
+    for (int i = 0; i < 4; ++i) b.box(base, {0.f, 0.f, -0.15f + 0.04f * i}, {0.036f, 0.04f, 0.008f}, BRASS);   // the wire
+    b.box(base, {0.f, 0.f, -0.18f}, {0.05f, 0.05f, 0.03f}, BRASS);                   // pommel
+    b.box(base, {0.f, 0.f, 0.f}, {0.2f, 0.045f, 0.04f}, BRASS);                      // crossguard
+    b.box(base, {0.f, 0.f, 0.45f}, {0.055f, 0.016f, 0.86f}, BLACK);                  // the blade
+    b.box(base, {0.f, -0.012f, 0.45f}, {0.062f, 0.006f, 0.86f}, EDGE);               // its edge
+    b.box(base, {0.f, 0.f, 0.905f}, {0.03f, 0.016f, 0.05f}, EDGE);                   // the point
+    int on = L.broken ? 0 : (int)std::ceil(std::clamp(L.guard01, 0.f, 1.f) * 8.f - 1e-4f);
+    float boost = 1.f + 0.8f * L.charge + 1.2f * L.riposte;
+    b.cells(base, {0.f, 0.011f, 0.09f}, {0.f, 0.f, 0.095f}, {0.f, 0.f, 0.f}, 8,
+            {0.018f, 0.006f, 0.07f}, 8, on, boost);
+}
+
+// Where the sword sits on screen (camera space, as hipOf) through a stroke:
+// u 0..1 through it, or -1 at rest; raised: across the middle, edge up
+inline SwordPose swordPose(int stroke, float u, bool raised, float charge01, float thrust01) {
+    SwordPose p{{0.19f, -0.2f, 0.34f}, -14.f, 58.f, -12.f};   // at rest: low right, the point up and in
+    if (raised) return {{0.06f, -0.11f, 0.4f}, -78.f, 8.f, -82.f};   // across the screen, edge out
+    if (thrust01 > 0.f) return {{0.06f, -0.12f, 0.36f + 0.2f * thrust01}, 0.f, -2.f, -10.f};
+    if (charge01 > 0.f && u < 0.f) { p.offset += vec3{0.05f, 0.03f, -0.08f} * charge01; p.pitch += 30.f * charge01; return p; }
+    if (u < 0.f) return p;
+    float e = smooth(std::clamp(u, 0.f, 1.f));
+    if (stroke == 0) return {{glm::mix(0.32f, -0.30f, e), -0.10f, 0.40f}, glm::mix(40.f, -50.f, e), 4.f, -95.f};
+    if (stroke == 1) return {{glm::mix(-0.30f, 0.32f, e), -0.14f, 0.40f}, glm::mix(-50.f, 40.f, e), 4.f, 85.f};
+    return {{0.04f, glm::mix(0.22f, -0.24f, e), 0.42f}, 0.f, glm::mix(-60.f, 50.f, e), -5.f};
 }
 } // namespace gunkit

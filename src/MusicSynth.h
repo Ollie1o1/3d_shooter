@@ -41,7 +41,7 @@ struct MusicTrack {
     const char* lead;      // 32 steps (two bars): chord tone 0-3, '-' hold, '.' rest
 };
 
-constexpr int MUSIC_TRACKS = 10;
+constexpr int MUSIC_TRACKS = 11;
 
 inline const MusicTrack& musicTrack(int i) {
     static const MusicTrack T[] = {
@@ -81,6 +81,10 @@ inline const MusicTrack& musicTrack(int i) {
         {"LEVIATHAN", 110.f, 38, {0, 5, 6, 4},
          "x.......x..x....", "........x.......", "x...X...x...X.xo",
          "x-------o---f---", "0.1.2.3.2.1.0.1.", "0-------1---2---3-------2-1-0---"},
+        // The Zenith: fast and bright, four on the floor, a busy hat, a lead that keeps climbing
+        {"ZENITH", 170.f, 50, {0, 3, 5, 6},
+         "x...x...x...x...", "....x.......x.gx", "xXxXxXxXxXxXxXxo",
+         "x.oxf.oxx.oxf.ox", "0123012301230123", "0---1---2---3---3-2-1-2-3---3---"},
     };
     return T[((i % MUSIC_TRACKS) + MUSIC_TRACKS) % MUSIC_TRACKS];
 }

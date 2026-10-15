@@ -480,10 +480,10 @@ int main() {
     {
         LevelData N = buildAct2Level();
         SpatialGrid ng; ng.build(N.walls);
-        CHECK(N.arenas.size() == 5 && std::string(N.arenas[0].name) == "THE DROWNED NAVE" && std::string(N.arenas[1].name) == "THE ORRERY" &&
+        CHECK(N.arenas.size() == 6 && std::string(N.arenas[5].name) == "THE ZENITH" && std::string(N.arenas[0].name) == "THE DROWNED NAVE" && std::string(N.arenas[1].name) == "THE ORRERY" &&
               std::string(N.arenas[2].name) == "THE DESCENT" && std::string(N.arenas[3].name) == "THE RELIQUARY" &&
               std::string(N.arenas[4].name) == "THE MAW" && N.corridors.size() == 4,
-              "act II: the Drowned Nave, the Orrery, the Descent, the Reliquary, then the Maw, joined by corridors");
+              "act II: the Drowned Nave, the Orrery, the Descent, the Reliquary, then the Maw, joined by corridors; the Zenith above");
         const Arena& nave = N.arenas[0];
         bool groundOk = true, airOk = true, inB = true, under = true;
         for (auto& sp : allGround(nave)) {
@@ -867,8 +867,8 @@ int main() {
             d.events.clear();
         }
         std::printf("      act II run ended: arena %d wave %d phase %d\n", d.arena, d.wave, (int)d.phase);
-        CHECK(d.phase == WaveDirector::Phase::VICTORY && d.arena == 4,
-              "a simulated ACT II run clears the Nave and the Orrery, rides the Descent, kills the Penitent, clears the Reliquary and kills the Leviathan");
+        CHECK(d.phase == WaveDirector::Phase::VICTORY && d.arena == ZENITH_ARENA,
+              "a simulated ACT II run clears the Nave and the Orrery, rides the Descent, kills the Penitent, clears the Reliquary, kills the Leviathan, and ends with the Absolute in the Zenith");
         std::printf("      nave run: %d seraphs, %d anchors, %d haloed, %d twinned, %d enraged\n", seraphs, anchors, haloed, twinned, enragedSpawns);
         CHECK(seraphs >= 3 && anchors >= 1 && haloed >= 3 && twinned >= 2 && enragedSpawns >= 1,
               "the Nave's waves bring Seraphs, an Anchor and every variant");
@@ -1912,7 +1912,7 @@ int main() {
               "every wave starts; the Core and the Sanctum end on their bosses");
         CHECK(counts[DirectorEvent::ARENA_CLEARED] == n && counts[DirectorEvent::VICTORY] == 1 &&
               counts[DirectorEvent::FINISH_OPEN] == 0, "each arena clears, then victory");
-        CHECK(counts[DirectorEvent::NEW_TYPE] == (int)EnemyType::COUNT - 6,   // the Seraph, the Anchor, the Penitent, the Revenant, the Weaver and the Leviathan are Act II's
+        CHECK(counts[DirectorEvent::NEW_TYPE] == (int)EnemyType::COUNT - 7,   // the Seraph, the Anchor, the Penitent, the Revenant, the Weaver, the Leviathan and the Absolute are Act II's
               "each Act I enemy type is introduced exactly once");
         CHECK(goalWaves >= 3 && (int)goalsDone.size() == goalWaves && counts[DirectorEvent::GOAL_DONE] == goalWaves,
               "every goal wave (hold, conduits, survive) is met once, and that ends it");
@@ -2716,7 +2716,7 @@ int main() {
         CHECK(levels, "every voice sits within 2 dB of its mix class's level");
         CHECK(varied, "a voice's variants differ");
         CHECK(same, "the same voice builds the same every time");
-        CHECK(total <= 200.f, "the whole voice bank is at most 200 s of audio");   // (180 before the Leviathan)
+        CHECK(total <= 220.f, "the whole voice bank is at most 220 s of audio");   // (180 before the Leviathan, 200 before the Absolute)
     }
 
     // ---------------------------------------------------------------- enemy voices: who gets to speak
@@ -2917,7 +2917,9 @@ int main() {
                                 "parry", "telegraph", "explosion", "wave", "pickup", "kar", "longshot", "bolt", "scope", "levelup",
                                 "potion", "barrier", "split", "upgrade", "clank", "punch", "step1", "step2", "step3", "step4", "door",
                                 "door_close", "boost", "cyl_open", "cyl_close", "eject", "shell_in", "pump", "wade", "skim", "cell",
-                                "dry", "switch_up0", "switch_up1", "switch_up2", "switch_up3"};
+                                "dry", "switch_up0", "switch_up1", "switch_up2", "switch_up3",
+                                "sword_draw", "sword_swing", "sword_hit", "sword_thrust", "sword_guard", "sword_block", "sword_break",
+                                "ab_ting", "ab_thrum"};
         bool all = true; for (const char* n : loaded) all &= mixEntry(n) != nullptr;
         CHECK(all && mixTable().size() == sizeof(loaded) / sizeof(loaded[0]), "every sound file the game loads has exactly one place in the mix");
         CHECK(std::fabs(mixGain("jump") - std::pow(10.f, -4.1f / 20.f)) < 1e-4f && mixGain("v_husk_idle") == 1.f && mixGain("nope") == 1.f,
@@ -3369,7 +3371,7 @@ int main() {
     // ---------------------------------------------------------------- the Reliquary: the map
     {
         LevelData N = buildAct2Level();
-        CHECK(N.arenas.size() == 5 && std::string(N.arenas[3].name) == "THE RELIQUARY" && N.arenas[3].shift == ArenaShift::DRIFT &&
+        CHECK(N.arenas.size() == 6 && std::string(N.arenas[3].name) == "THE RELIQUARY" && N.arenas[3].shift == ArenaShift::DRIFT &&
               N.arenas[3].waves.size() == 3 && N.arenas[3].maxAlive == 12 && std::fabs(N.arenas[3].damageScale - 1.45f) < 1e-4f,
               "the Reliquary: the fourth Act II arena, three waves, 12 at once, x1.45");
         const Arena& R = N.arenas[3];
@@ -4125,7 +4127,7 @@ int main() {
               "running off the Reliquary's rim you fall into the Maw and land on its ring");
         CHECK(N.arenaAt(M.playerStart) == 4 && M.playerStart.y > C.y + 20.f && std::fabs(N.groundAt(M.playerStart.x, M.playerStart.z, M.playerStart.y) - C.y) < 0.05f,
               "a retry drops you in again, over the ring");
-        CHECK(MUSIC_TRACKS == 10 && std::string(musicTrack(9).name) == "LEVIATHAN", "the Maw has its own track");
+        CHECK(MUSIC_TRACKS == 11 && std::string(musicTrack(9).name) == "LEVIATHAN", "the Maw has its own track");
     }
 
     // ---------------------------------------------------------------- the Leviathan: its mind
