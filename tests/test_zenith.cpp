@@ -18,6 +18,9 @@
 #include "../src/MixTable.h"
 #include "../src/VoiceTable.h"
 #include "../src/PixelFont.h"
+#include "../src/AbsoluteFeel.h"
+#include <set>
+#include <algorithm>
 #include <fstream>
 #include <string>
 #include <cstdio>
@@ -636,6 +639,69 @@ int main() {
         bool lungeAir = false;
         for (int i = 0; i < 60 * 6; ++i) { e.update(DT, zworld(me)); if (e.attack == AttackKind::ALUNGE && e.abAirborne()) lungeAir = true; }
         CHECK(lungeAir && abTellOf(AttackKind::ALUNGE) == AbTell::GOLD, "phase 3: the blade dive, a gold LUNGE from the air");
+    }
+
+    // ---------------------------------------------------------------- THE ABSOLUTE: by ear
+    {
+        bool every = true;
+        for (AttackKind k : abAllAttacks()) {
+            const AbFeel& f = abFeel(k);
+            AbTell t = abTellOf(k);
+            if (t != AbTell::NONE && !f.wind) { every = false; std::printf("      no wind-up for %s\n", attackKey(k)); }
+            bool blow = Enemy::abMeleeWhite(k) || (t == AbTell::GOLD && k != AttackKind::ALUNGE) || k == AttackKind::ACLAP || k == AttackKind::ASTOMP;
+            if (blow && !f.boom) { every = false; std::printf("      no boom for %s\n", attackKey(k)); }
+        }
+        CHECK(every, "every telegraphed move has a wind-up; every blow a boom");
+        CHECK(std::string(abCueSound(AbTell::WHITE)) == "ab_ting" && std::string(abCueSound(AbTell::GOLD)) == "ab_doom" &&
+              std::string(abCueSound(AbTell::RED)) == "ab_pulse", "the cues: TING parry, DOOM dodge or block, a double pulse get out");
+        bool goldNoTing = true;
+        for (AttackKind k : abAllAttacks())
+            if (abTellOf(k) == AbTell::GOLD && abFeel(k).wind && std::string(abFeel(k).wind) == "ab_ting") goldNoTing = false;
+        CHECK(goldNoTing, "no gold move ever plays the ting");
+        std::set<std::string> booms;
+        for (AttackKind k : {AttackKind::AJAB, AttackKind::ACROSS, AttackKind::AHOOK, AttackKind::AHAYMAKER, AttackKind::AROUNDHOUSE, AttackKind::AAXE})
+            booms.insert(abFeel(k).boom);
+        CHECK(booms.size() == 6, "jab, cross, hook, haymaker, kick and axe kick each boom their own way");
+        bool listed = true;
+        for (AttackKind k : attacksOf(EnemyType::ABSOLUTE)) listed &= std::find(abAllAttacks().begin(), abAllAttacks().end(), k) != abAllAttacks().end();
+        CHECK(listed && abAllAttacks().size() == attacksOf(EnemyType::ABSOLUTE).size(), "the feel table knows every move he has");
+    }
+    {
+        // Review Focus 4: one cue per move, 0.22 s before it lands, every difficulty and phase (delayed strikes too)
+        bool once = true, lead = true; int seen = 0;
+        for (int dl = 0; dl < DIFFICULTY_LEVELS; ++dl)
+            for (int ph = 1; ph <= 3; ++ph) {
+                Enemy e = freshAbs(); e.abArrive = 0.f; e.abPhase = ph; e.abBlade = ph == 3;
+                e.health = e.maxHealth * (ph == 1 ? 1.f : ph == 2 ? 0.5f : 0.2f);
+                glm::vec3 me = ZC + glm::vec3{0, 0, 10};
+                int cues = 0; AttackKind cur = AttackKind::NONE;   // (no parries here: no move is cut short)
+                for (int i = 0; i < 60 * 30; ++i) {
+                    EnemyWorld w = zworld(me); w.tune = &difficulty(dl);
+                    e.update(DT, w);
+                    if (e.ev.telegraphStarted) {
+                        if (cur != AttackKind::NONE && abTellOf(cur) != AbTell::NONE && cues != 1) { once = false; std::printf("      %s cued %d times\n", attackKey(cur), cues); }
+                        cur = e.attack; cues = 0;
+                    }
+                    if (e.ev.abCue) {
+                        ++cues; ++seen;
+                        if (e.telegraphDuration > Enemy::AB_CUE + DT && std::fabs(e.telegraphTimer - Enemy::AB_CUE) > DT + 1e-4f) lead = false;
+                    }
+                }
+            }
+        std::printf("      cues heard: %d\n", seen);
+        CHECK(once && seen > 50, "every telegraphed move cues exactly once");
+        CHECK(lead, "...0.22 s before it lands, whatever sped it up");
+    }
+    {
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = AB_FLURRY;
+        glm::vec3 me = ZC + glm::vec3{0, 0, 30};   // well out of reach: every punch misses
+        int booms = 0;
+        for (int i = 0; i < 60 * 6; ++i) {
+            e.update(DT, zworld(me));
+            if (e.abCur >= 0 && e.abCur != AB_FLURRY) break;
+            booms += e.ev.abImpact && abFeel(e.ev.abImpactKind).boom != nullptr && !e.ev.meleeHit;
+        }
+        CHECK(booms >= 4, "a punch booms whether or not it lands (FLURRY: boom boom boom boom)");
     }
 
     // ---------------------------------------------------------------- the Absolute's hazards

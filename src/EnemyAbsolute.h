@@ -21,7 +21,7 @@
 #include <cstdint>
 #include <iterator>
 
-enum class AbTell : int8_t { NONE = -1, WHITE = 0, GOLD = 1, RED = 2 };
+// (AbTell itself is in Enemy.h: the cue needs it)
 inline AbTell abTellOf(AttackKind k) {
     switch (k) {
         case AttackKind::AJAB: case AttackKind::AHOOK: case AttackKind::ASERPENT:
@@ -417,7 +417,7 @@ inline void Enemy::abBegin(int step, bool follow, float quick, const EnemyWorld&
 }
 
 inline void Enemy::abResolve(const EnemyWorld& w, glm::vec3 feet, float d) {
-    if (attack == AttackKind::AJUDGE) { abResolveLate(w, feet, d, 0.f); lastAbAttack = attack; attack = AttackKind::NONE; return; }
+    if (attack == AttackKind::AJUDGE) { abResolveLate(w, feet, d, 0.f); ev.abImpact = true; ev.abImpactKind = attack; lastAbAttack = attack; attack = AttackKind::NONE; return; }
     if (abCur < 0) { attack = AttackKind::NONE; return; }
     const AbString& str = abString(abCur);
     const AbStep& s = str.steps[std::min(abStep, str.n - 1)];
@@ -495,6 +495,7 @@ inline void Enemy::abResolve(const EnemyWorld& w, glm::vec3 feet, float d) {
         default: abResolveLate(w, feet, d, s.damage); break;
     }
     if (abTellOf(attack) != AbTell::NONE) abStruck = true;
+    ev.abImpact = true; ev.abImpactKind = attack;   // the boom, hit or miss (AbsoluteFeel.h decides what it sounds like)
     lastAbAttack = attack;
     attack = AttackKind::NONE;
     ++abStep;

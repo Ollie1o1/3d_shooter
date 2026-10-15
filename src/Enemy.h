@@ -172,6 +172,10 @@ inline const EnemyStats& statsOf(EnemyType t) {
 }
 
 // Everything an enemy did this tick. Cleared at the top of every update().
+// THE ABSOLUTE's tell colours (EnemyAbsolute.h): white parry, gold dodge or block, red get out
+enum class AbTell : int8_t { NONE = -1, WHITE = 0, GOLD = 1, RED = 2 };
+inline AbTell abTellOf(AttackKind k);   // (EnemyAbsolute.h)
+
 struct EnemyEvents {
     static constexpr int MAX_SHOTS = 16;
     bool      telegraphStarted = false;
@@ -242,6 +246,7 @@ struct EnemyEvents {
     bool abRay = false, abStomp = false, abSerpent = false, abHalo = false, abSeams = false, abZenith = false,
          abBladeDrawn = false, abBladeBroke = false, abJudgeMark = false, abJudge = false, abLaunch = false, abShards = false;
     bool abTakeoff = false, abShotDown = false;   // he left the floor; he was shot out of the sky
+    bool abCue = false, abImpact = false; AttackKind abImpactKind = AttackKind::NONE;   // the beat to act on; a blow landing (hit or miss) and what it was
     bool abHeavy = false, abCrack = false;   // a haymaker landed (a big knockback); an axe kick's crack (at abTo)
     bool abMark = false, abCrater = false, abFlare = false, abShardBreak = false;   // SKYFALL's circle (at abTo) and its crater (a shard under it breaks); a METEOR's flare
     glm::vec3 abFrom{0.f}, abTo{0.f};
@@ -462,7 +467,7 @@ struct Enemy {
     // his health that shoots him down and how long he lies there, how far he circles you, the height that clears pillars
     static constexpr float AB_CRUISE_LO = 9.f, AB_CRUISE_HI = 14.f, AB_CLIMB = 18.f, AB_DIVE_V = 45.f, AB_FALL_V = 30.f,
                            AB_AIR_MAX = 5.f, AB_SHOOTDOWN = 0.06f, AB_DOWNED = 1.5f, AB_ORBIT_LO = 14.f, AB_ORBIT_HI = 20.f,
-                           AB_OVER = 15.f, AB_ARRIVE_UP = 12.f, AB_ASCEND_UP = 12.f, AB_SKY_R = 3.5f, AB_MARK_T = 0.7f;
+                           AB_OVER = 15.f, AB_ARRIVE_UP = 12.f, AB_ASCEND_UP = 12.f, AB_SKY_R = 3.5f, AB_MARK_T = 0.7f, AB_CUE = 0.22f;   // (AB_CUE: the cue sounds this long before a blow lands)
     // his arsenal: a kick's reach, the shoulder charge's run, the clap's cone (6 m, 35 degrees either side)
     static constexpr float AB_KICK_REACH = 4.f, AB_CHARGE_LEN = 14.f, AB_CLAP_R = 6.f, AB_CLAP_COS = 0.819f;
     float abAlt = 0.f, abAltWant = 0.f;   // his height over the floor under him, and where it's going
@@ -677,7 +682,11 @@ struct Enemy {
 
         bool resolve = false;   // telegraph ran out this tick
         if (telegraphTimer > 0.f) {
+            const float before = telegraphTimer;
             telegraphTimer -= dt;
+            if (type == EnemyType::ABSOLUTE && abTellOf(attack) != AbTell::NONE &&
+                (before > AB_CUE || before >= telegraphDuration - 1e-5f) && telegraphTimer <= AB_CUE)
+                ev.abCue = true;   // the beat to act on: AB_CUE before the blow (a tell no longer than that cues on its first tick)
             if (telegraphTimer <= 0.f) { telegraphTimer = 0.f; resolve = true; }
         }
         if (recoverTimer > 0.f) recoverTimer -= dt;
