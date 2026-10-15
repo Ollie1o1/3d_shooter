@@ -61,10 +61,10 @@ inline const std::vector<MixEntry>& mixTable() {
         // THE ABSOLUTE: wind-ups (tells), the cues (must be heard), the booms, his flight, the player's side
         {"ab_wind_jab", C::TELL, -1.4f}, {"ab_wind_cross", C::TELL, -1.7f}, {"ab_wind_hook", C::TELL, -0.7f}, {"ab_wind_spin", C::TELL, 1.6f},
         {"ab_wind_meteor", C::TELL, -2.8f}, {"ab_wind_blade", C::TELL, -6.1f}, {"ab_thrum", C::TELL, -7.4f}, {"ab_whistle", C::TELL, -4.7f},
-        {"ab_ray_charge", C::TELL, -4.7f}, {"ab_rumble", C::TELL, -2.5f},
+        {"ab_ray_charge", C::TELL, -4.7f}, {"ab_rumble", C::TELL, -2.5f}, {"ab_zoop", C::TELL, -7.4f},
         {"ab_ting", C::ACTION, -5.9f}, {"ab_doom", C::ACTION, -6.2f}, {"ab_pulse", C::ACTION, -5.1f},
         {"ab_boom_jab", C::ACTION, -3.8f}, {"ab_boom_cross", C::ACTION, -4.4f}, {"ab_boom_hook", C::ACTION, -2.2f}, {"ab_boom_heavy", C::ACTION, -3.5f},
-        {"ab_boom_kick", C::ACTION, -5.3f}, {"ab_boom_stone", C::ACTION, -4.9f}, {"ab_boom_clap", C::ACTION, 0.7f},
+        {"ab_boom_kick", C::ACTION, -5.3f}, {"ab_boom_stone", C::ACTION, -4.9f}, {"ab_boom_clap", C::ACTION, 0.7f}, {"ab_boom_thunder", C::ACTION, 0.f},
         {"ab_ray_beam", C::ACTION, -1.9f}, {"ab_zray_beam", C::ACTION, -2.3f}, {"ab_takeoff", C::ACTION, 1.0f}, {"ab_shotdown", C::ACTION, 0.3f},
         {"ab_zap", C::ACTION, 1.5f}, {"ab_flight", C::WORLD, -2.0f},
         {"ab_clang", C::PLAYER, 0.0f}, {"ab_shatter", C::PLAYER, 0.5f}, {"ab_creak", C::PLAYER, 1.5f},

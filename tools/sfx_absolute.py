@@ -333,6 +333,41 @@ def gen_ab_boom_clap():
     return add(tail(blast, 0.6, decay=0.5), _boom(70, 40, 0.2, 0.002, 3000, 0.4, sub_amp=0.8, crack_amp=0.2))
 
 
+def gen_ab_zoop():
+    """THUNDERCLAP's rise: a big rising 'zooooop' as he leaves the floor, then a held breath - a hiss swelling
+    toward the clap (played stretched over the tell, so it peaks as his palms meet)"""
+    L, R = n(1.15), n(0.62)
+    rise = sweep(70, 1100, R, 2.2)
+    whoosh = bandsweep(noise(L), 300, 5200, q=2.5)
+    out = []
+    ph = 0.0
+    for i in range(L):
+        t = i / SR
+        if i < R:
+            u = i / R
+            f = 70 + (1100 - 70) * u ** 2.2
+            ph += f / SR
+            body = (rise[i] * 0.6 + (2 * (ph % 1.0) - 1) * 0.35) * min(1.0, i / n(0.02)) * (0.55 + 0.45 * u)
+            body *= 1.0 if u < 0.8 else (1 - u) / 0.2 * 0.7 + 0.3
+        else:
+            u = (i - R) / (L - R)
+            body = math.sin(2 * math.pi * 1100 * t) * 0.18 * (0.6 + 0.4 * u) * (1 + 0.3 * math.sin(2 * math.pi * 23 * t))
+        air = whoosh[i] * (0.5 * min(1.0, i / R) if i < R else 0.35 + 0.65 * ((i - R) / (L - R)) ** 2)
+        out.append(body + air * 0.9)
+    return fit(drive(onepole_lp(out, 9000), 1.4), 1.15)
+
+
+def gen_ab_boom_thunder():
+    """THUNDERCLAP: palms meeting like thunder - a huge slap, a sub that drops through the floor, a roar of
+    fire under it, and a long rolling sky tail"""
+    L = n(0.1)
+    slap = [s * math.exp(-28 * i / L) * 2.2 for i, s in enumerate(bandsweep(noise(L), 5000, 600, q=1.3))]
+    F = n(1.1)
+    roar = onepole_lp([random.uniform(-1, 1) * (min(1.0, i / n(0.05))) * math.exp(-3.2 * i / F) * 0.6 for i in range(F)], 900)
+    body = _boom(95, 28, 0.7, 0.004, 4000, 1.3, sub_amp=1.5, crack_amp=0.4, drive_k=2.8, decay=0.66)
+    return add(tail(slap, 1.0, decay=0.6, wet=0.45), body, roar)
+
+
 # ---- the beams -----------------------------------------------------------------------------------
 
 def _beam(f, sec):
@@ -463,6 +498,7 @@ ABSOLUTE_GENERATORS = {
     "ab_boom_jab": gen_ab_boom_jab, "ab_boom_jab_1": gen_ab_boom_jab, "ab_boom_jab_2": gen_ab_boom_jab,
     "ab_boom_cross": gen_ab_boom_cross, "ab_boom_hook": gen_ab_boom_hook, "ab_boom_heavy": gen_ab_boom_heavy,
     "ab_boom_kick": gen_ab_boom_kick, "ab_boom_stone": gen_ab_boom_stone, "ab_boom_clap": gen_ab_boom_clap,
+    "ab_zoop": gen_ab_zoop, "ab_boom_thunder": gen_ab_boom_thunder,
     "ab_ray_beam": gen_ab_ray_beam, "ab_zray_beam": gen_ab_zray_beam,
     "ab_takeoff": gen_ab_takeoff, "ab_flight": gen_ab_flight, "ab_shotdown": gen_ab_shotdown, "ab_zap": gen_ab_zap,
     "ab_clang": gen_ab_clang, "ab_shatter": gen_ab_shatter, "ab_creak": gen_ab_creak, "ab_tsk": gen_ab_tsk, "ab_wrong": gen_ab_wrong,

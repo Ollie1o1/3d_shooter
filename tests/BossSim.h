@@ -248,7 +248,8 @@ struct BossSim {
         glm::vec3 from = feet - bp; from.y = 0.f;
         float d = glm::length(from);
         glm::vec3 dir = d > 0.1f ? from / d : glm::vec3{0.f, 0.f, 1.f}, side{-dir.z, 0.f, dir.x};
-        float want = policy == RANGED ? 30.f : policy == DODGER || boss.abAirborne() ? (policy == DODGER ? 12.f : 10.f) : 2.4f;   // (aloft: SOLID stands off and shoots)
+        const bool flight = boss.abAirborne() && boss.attack != AttackKind::ATHUNDER;   // (THUNDERCLAP's hover: stay in and jump the flame)
+        float want = policy == RANGED ? 30.f : policy == DODGER || flight ? (policy == DODGER ? 12.f : 10.f) : 2.4f;   // (aloft: SOLID stands off and shoots)
         glm::vec3 mv = side * 0.5f + dir * glm::clamp((want - d) * 0.6f, -1.f, 1.f);
         if (policy == RANGED) mv = dir * glm::clamp((want - d) * 0.6f, -1.f, 1.f);
         sliding = !abs.halos.empty() && policy != RANGED;
@@ -260,6 +261,8 @@ struct BossSim {
             if (!abs.zrays.empty()) { glm::vec3 a = feet - abs.zrays.front().at; a.y = 0.f; if (glm::length(a) > 0.01f) mv = glm::normalize(a) * 2.f + side; }
             for (auto& sp : abs.serpents) if (!sp.back && policy == DODGER) mv = glm::normalize(glm::cross(sp.dir, glm::vec3{0, 1, 0}) + glm::vec3{1e-4f}) * 2.f;
             for (auto& st : abs.stomps) { float r = glm::length(glm::vec2{feet.x - st.at.x, feet.z - st.at.z}); if (r > st.r - 2.5f && r < st.r + 0.8f) airborne = true; }
+            for (auto& fn : abs.fans) for (int k = 0; k < AbsoluteHazards::FAN_N; ++k)   // jump a flame as it reaches you
+                if (!fn.out[k]) { glm::vec3 p = AbsoluteHazards::fanFlame(fn, k, &lv); if (glm::length(glm::vec2{feet.x - p.x, feet.z - p.z}) < 2.5f) airborne = true; }
             if (reacting && boss.attack == AttackKind::ASTOMP) { float r = glm::length(glm::vec2{feet.x - boss.position.x, feet.z - boss.position.z}); if (r < 2.f) airborne = true; }
             if (!abs.seams.empty()) {   // stand in a cell that isn't burning next, near its edge
                 auto& sm = abs.seams.front();
@@ -321,6 +324,7 @@ struct BossSim {
         if (ev.abShards) for (int k = 0; k < (int)lv.zenith.shardWalls.size(); ++k) lv.parkZenithPiece(true, k);
         if (ev.abRay) abs.addRay(ev.abFrom, ev.abTo);
         if (ev.abStomp) abs.addStomp(ev.abFrom);
+        if (ev.abFan) abs.addFan(ev.abFrom, ev.abTo);
         if (ev.abSerpent) abs.addSerpent(ev.abFrom, feet + glm::vec3{0.f, 1.7f, 0.f} - ev.abFrom);
         if (ev.abSeams) abs.addSeams(c, ev.abSeamFirst);
         if (ev.abZenith) abs.addZenith(ev.abFrom, ev.abTo);

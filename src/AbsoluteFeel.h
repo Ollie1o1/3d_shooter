@@ -47,6 +47,7 @@ inline const AbFeel& abFeel(AttackKind k) {
     static const AbFeel AREA{"ab_rumble", 0.90f, 1.f, nullptr, 1.f, 0.f, {0.f, 0.f, 0.f}};
     static const AbFeel STOMP{"ab_rumble", 0.90f, 1.15f, "ab_boom_stone", 0.9f, 0.6f, {0.3f, 0.05f, 0.3f}};
     static const AbFeel CLAP{"ab_rumble", 0.90f, 1.3f, "ab_boom_clap", 1.f, 0.6f, {0.f, 1.5f, 0.9f}};
+    static const AbFeel THUNDER{"ab_zoop", 1.15f, 1.f, "ab_boom_thunder", 1.f, 1.f, {0.f, 1.5f, 0.8f}};   // up with a zoop; a clap like thunder
     switch (k) {
         case A::AJAB: return JAB;            case A::ACROSS: return CROSS;      case A::AHOOK: return HOOK;
         case A::ABACKFIST: return BACKFIST;  case A::AELBOW: return ELBOW;      case A::AROUNDHOUSE: return ROUND;
@@ -56,7 +57,7 @@ inline const AbFeel& abFeel(AttackKind k) {
         case A::ASWEEP: return SWEEP;        case A::ACRESCENT: return BLADE;
         case A::ASERPENT: return SERPENT;    case A::ARAY: return RAY;          case A::AZENITH: return ZRAY;
         case A::ASEAMS: case A::AJUDGE: case A::AHALO: return AREA;
-        case A::ASTOMP: return STOMP;        case A::ACLAP: return CLAP;
+        case A::ASTOMP: return STOMP;        case A::ACLAP: return CLAP;        case A::ATHUNDER: return THUNDER;
         default: return NONE;
     }
 }
@@ -69,7 +70,7 @@ inline const std::vector<AttackKind>& abAllAttacks() {
     static const std::vector<AttackKind> V = {
         A::ATELEPORT, A::ADASH, A::AJAB, A::AHOOK, A::AUPPER, A::ADROP, A::AHOP, A::ARAY, A::ASTOMP, A::ASERPENT, A::AHALO,
         A::ASEAMS, A::AZENITH, A::ASWEEP, A::ALUNGE, A::ACRESCENT, A::AJUDGE, A::ATAKEOFF, A::ASKYFALL, A::AMETEOR,
-        A::ACROSS, A::ABACKFIST, A::AELBOW, A::AROUNDHOUSE, A::AHAYMAKER, A::ACHARGE, A::AAXE, A::ACLAP};
+        A::ACROSS, A::ABACKFIST, A::AELBOW, A::AROUNDHOUSE, A::AHAYMAKER, A::ACHARGE, A::AAXE, A::ACLAP, A::ATHUNDER};
     return V;
 }
 // Every sound the fight plays that isn't a gun's or the sword's: the feel table's, the cues, and the

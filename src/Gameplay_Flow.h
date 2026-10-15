@@ -534,6 +534,23 @@ inline Theme GameplayState::bloodEclipse(const Theme& t) {
     return o;
 }
 
+inline Theme GameplayState::nightfall(const Theme& t) {
+    Theme o = t;
+    o.zenith = t.zenith * 0.08f; o.horizon = t.horizon * 0.18f; o.ground = t.ground * 0.15f;
+    o.sunColor = t.sunColor * 0.3f; o.mountain = t.mountain * 0.15f; o.stars = std::max(t.stars, 1.f);
+    o.lightColor = t.lightColor * 0.22f; o.skyAmb = t.skyAmb * 0.25f; o.groundAmb = t.groundAmb * 0.25f;
+    o.fogColor = t.fogColor * 0.15f;
+    return o;
+}
+
+inline void GameplayState::updateBossDusk(float dt) {
+    float want = 0.f;
+    for (auto& e : enemies)
+        if (e.alive && isBoss(e.type) && e.maxHealth > 0.f) want = std::max(want, 1.f - glm::clamp(e.health / e.maxHealth, 0.f, 1.f));
+    bossDusk += glm::clamp(want - bossDusk, -dt / 3.f, dt * 0.5f);   // falls with his health; dawn comes back slower
+    if (g_devOverlay.rfind("dusk", 0) == 0) bossDusk = std::atoi(g_devOverlay.c_str() + 4) / 100.f;   // dev: --overlay duskNN (screenshots)
+}
+
 inline void GameplayState::updateSanctumPhase(float dt) {
     bool raged = false;
     for (auto& e : enemies) if (e.alive && e.type == EnemyType::SOVEREIGN && e.enraged) raged = true;
@@ -564,6 +581,7 @@ inline void GameplayState::shake(float t, float amount) {
 inline void GameplayState::update(float dt) {
     if (settings) audio.masterVolume = settings->audioVolume;
     updateMusic();
+    updateBossDusk(dt);
 
     // Banners keep animating on the death/victory screens, not while paused
     bool frozen = paused || armoryOpen;

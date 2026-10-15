@@ -92,7 +92,7 @@ enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY,
                         CRASH, TORRENT, TIDE, SPIT, BREACH, SWALLOW, SUBMERGE,     // the LEVIATHAN's
                         ATELEPORT, ADASH, AJAB, AHOOK, AUPPER, ADROP, AHOP, ARAY, ASTOMP, ASERPENT,   // THE ABSOLUTE's
                         AHALO, ASEAMS, AZENITH, ASWEEP, ALUNGE, ACRESCENT, AJUDGE, ATAKEOFF, ASKYFALL, AMETEOR,
-                        ACROSS, ABACKFIST, AELBOW, AROUNDHOUSE, AHAYMAKER, ACHARGE, AAXE, ACLAP };   // (his fighter's arsenal)
+                        ACROSS, ABACKFIST, AELBOW, AROUNDHOUSE, AHAYMAKER, ACHARGE, AAXE, ACLAP, ATHUNDER };   // (his fighter's arsenal; THUNDERCLAP)
 
 struct EnemyStats {
     const char* name;
@@ -248,6 +248,7 @@ struct EnemyEvents {
     bool abTakeoff = false, abShotDown = false;   // he left the floor; he was shot out of the sky
     bool abCue = false, abImpact = false; AttackKind abImpactKind = AttackKind::NONE;   // the beat to act on; a blow landing (hit or miss) and what it was
     bool abHeavy = false, abCrack = false;   // a haymaker landed (a big knockback); an axe kick's crack (at abTo)
+    bool abFan = false;                      // THUNDERCLAP: a fan of fire rolls out from the floor under him (abFrom) toward abTo
     bool abMark = false, abCrater = false, abFlare = false, abShardBreak = false;   // SKYFALL's circle (at abTo) and its crater (a shard under it breaks); a METEOR's flare
     glm::vec3 abFrom{0.f}, abTo{0.f};
 };
@@ -470,6 +471,8 @@ struct Enemy {
                            AB_OVER = 15.f, AB_ARRIVE_UP = 12.f, AB_ASCEND_UP = 12.f, AB_SKY_R = 3.5f, AB_MARK_T = 0.7f, AB_CUE = 0.22f;   // (AB_CUE: the cue sounds this long before a blow lands)
     // his arsenal: a kick's reach, the shoulder charge's run, the clap's cone (6 m, 35 degrees either side)
     static constexpr float AB_KICK_REACH = 4.f, AB_CHARGE_LEN = 14.f, AB_CLAP_R = 6.f, AB_CLAP_COS = 0.819f;
+    // THUNDERCLAP: how high he rises before the clap (he hangs there, open to fire, not a flight: it can't shoot him down)
+    static constexpr float AB_THUNDER_UP = 7.f;
     float abAlt = 0.f, abAltWant = 0.f;   // his height over the floor under him, and where it's going
     float abAirT = 0.f;                   // this flight's time in the air
     float abFlightHp = -1.f;              // his health as this flight began (< 0: on the ground)
