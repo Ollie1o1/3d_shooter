@@ -331,3 +331,13 @@ inline std::string formatTime(float t, bool hundredths = true) {
     else            std::snprintf(buf, sizeof(buf), "%d:%02d", m, (int)s);
     return buf;
 }
+
+// The main menu's ACT II row: locked, the act, then its best times (the act to
+// the Leviathan; with the Zenith once it's cleared)
+inline std::string act2Subtitle(const Records& r, bool unlocked) {
+    if (!unlocked) return "DEFEAT THE SOVEREIGN TO UNLOCK";
+    std::string s = r.bestZenith > 0.f ? "5 ARENAS - AND WHAT WAITS ABOVE" : "5 ARENAS - BENEATH THE ECLIPSE";
+    if (r.bestAct2 > 0.f) s += "   BEST " + formatTime(r.bestAct2);
+    if (r.bestZenith > 0.f) s += "   ZENITH " + formatTime(r.bestZenith);
+    return s;
+}

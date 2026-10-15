@@ -271,10 +271,17 @@ inline void Enemy::abBegin(int step, bool follow, float quick, const EnemyWorld&
             }
             break;
         }
-        case AttackKind::ADASH:
+        case AttackKind::ADASH: {
             ev.blinked = true; ev.blinkFrom = position;
             abAim = absSafeSpot(w, feet - dir * 2.2f, position);
+            glm::vec3 a = position + glm::vec3{0.f, 1.f, 0.f}, b = abAim + glm::vec3{0.f, 1.f, 0.f};
+            for (int i = 0; i < w.zenPillarCount; ++i) {   // a pillar in the way: he blinks past it, never through it
+                AABB p = w.zenPillars[i];
+                p.min -= glm::vec3{0.6f, 0.f, 0.6f}; p.max += glm::vec3{0.6f, 0.f, 0.6f};
+                if (segmentHitsBox(a, b, p)) { position = abAim; break; }
+            }
             break;
+        }
         case AttackKind::AHOP:
             ev.blinked = true; ev.blinkFrom = position;
             position = absSafeSpot(w, position - dir * 6.f, position);

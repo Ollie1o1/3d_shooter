@@ -317,9 +317,10 @@ private:
         if (records.bestEndless > 0) endSub += "   BEST " + std::to_string(records.bestEndless);
         if (records.bestDaily > 0 && records.dailyDate == daily.date) daySub += "   BEST " + std::to_string(records.bestDaily);
         bool act2 = canStartAct2(records);
+        std::string act2Sub = act2Subtitle(records, act2);   // (with its best times)
         Item items[NUM_ITEMS] = {
             {"ARENA", arenaSub.c_str()},
-            {"ACT II", !act2 ? "DEFEAT THE SOVEREIGN TO UNLOCK" : records.bestZenith > 0.f ? "5 ARENAS - AND WHAT WAITS ABOVE" : "5 ARENAS - BENEATH THE ECLIPSE"},
+            {"ACT II", act2Sub.c_str()},
             {"FAST",  fastSub.c_str()},
             {"ENDLESS", endSub.c_str()},
             {"DAILY", daySub.c_str()},
