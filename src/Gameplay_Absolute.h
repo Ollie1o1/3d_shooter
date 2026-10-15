@@ -153,6 +153,7 @@ inline void GameplayState::updateAbsolute(float dt) {
     updateAbsoluteDeath(dt);
     if (!(level.zenith.built && act2() && director.arena == ZENITH_ARENA)) return;
     Enemy* e = absolute();
+    if (abSkyMarkT >= 0.f && !abSkyLive(e)) abSkyMarkT = -1.f;   // shot down, a phase, his death: no SKYFALL, no circle
     if (abFlightH) {   // his wind follows him; down on the floor, it stops
         if (e && e->abAirborne()) audio.moveSource(abFlightH, e->position);
         else { audio.stop(abFlightH); abFlightH = 0; }
@@ -211,6 +212,7 @@ inline void GameplayState::swordParryAbsolute(Enemy& e) {
 inline void GameplayState::onAbsoluteKilled(const Enemy& e) {
     abh.clear();
     audio.stop(abWindH); audio.stop(abFlightH); audio.stop(abBeamH); abWindH = abFlightH = abBeamH = 0;
+    abSkyMarkT = -1.f;
     abCorpse = e; abCorpse.alive = true; abCorpse.abAlt = abCorpse.abAltWant = 0.f;   // (shot out of the sky or not, he dies on the floor)
     abCorpse.position.y = level.zenith.centre.y + (glm::length(glm::vec2{e.position.x - level.zenith.centre.x, e.position.z - level.zenith.centre.z}) < ZEN_DAIS ? ZEN_DAIS_UP : 0.f); abCorpse.staggerTimer = 1.f; abCorpse.abReeling = false;
     abCorpse.attack = AttackKind::NONE; abCorpse.telegraphTimer = 0.f; abCorpse.abBlade = false;

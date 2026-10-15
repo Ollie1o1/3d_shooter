@@ -80,6 +80,10 @@ inline const AbString& abString(int id) {
     };
     return S[std::clamp(id, 0, AB_STRINGS - 1)];
 }
+// SKYFALL's circle is on the floor only while his SKYFALL winds up (shot down, a phase, his death: it's gone)
+inline bool abSkyLive(const Enemy* e) {
+    return e && e->alive && e->attack == AttackKind::ASKYFALL && e->telegraphTimer > 0.f;
+}
 // A string with a blow in it (mirages open these): a white strike or a gold one
 inline bool abDamaging(int id) {
     const AbString& s = abString(id);
@@ -220,13 +224,14 @@ inline void Enemy::thinkAbsoluteMind(float dt, const EnemyWorld& w, bool resolve
         turnToward(to, dt, 6.f);
         return;
     }
-    if (abAirborne() && abFlightHp > 0.f && abFlightHp - health >= AB_SHOOTDOWN * maxHealth) { abDowned(); return; }
     if (abBladeGone > 0.f) {
         abBladeGone -= dt;
         if (abBladeGone <= 0.f && abPhase == 3) { abBlade = true; ev.abBladeDrawn = true; }
     }
     abPhaseCheck(health / maxHealth);
     if (ev.abJudgeMark) return;   // the last judgment begins: whatever was landing this tick is swept aside
+    // shot out of the sky (after the phases: the damage that crosses one ends the flight instead)
+    if (abAirborne() && abFlightHp > 0.f && abFlightHp - health >= AB_SHOOTDOWN * maxHealth) { abDowned(); return; }
     const float quick = abPhase >= 2 ? AB_QUICK : 1.f;
     if (phaseHold > 0.f) { phaseHold -= dt; turnToward(to, dt, 6.f); return; }
 
@@ -243,7 +248,8 @@ inline void Enemy::thinkAbsoluteMind(float dt, const EnemyWorld& w, bool resolve
         const float diveFrom = attack == AttackKind::AMETEOR ? 0.5f : 0.75f;   // (a METEOR dives from further: half its tell)
         if ((attack == AttackKind::ASKYFALL || attack == AttackKind::AMETEOR || (attack == AttackKind::ALUNGE && abAlt > 0.5f))
             && telegraphProgress() > diveFrom) {   // he dives, arriving exactly as it lands
-            glm::vec3 aim = attack == AttackKind::AMETEOR ? feet : attack == AttackKind::ASKYFALL ? abAim : position;   // (a blade dive drops; the lunge runs on)
+            if (attack == AttackKind::AMETEOR && telegraphTimer > AB_CUE) abAim = feet;   // a METEOR follows you until its cue, then commits: a dash on the ting escapes
+            glm::vec3 aim = attack == AttackKind::AMETEOR || attack == AttackKind::ASKYFALL ? abAim : position;   // (a blade dive drops; the lunge runs on)
             float k = std::min(1.f, dt / std::max(telegraphTimer, dt));   // this tick's share of what's left
             glm::vec3 g = aim - position; g.y = 0.f;
             glm::vec3 was = position;
@@ -278,7 +284,8 @@ inline void Enemy::thinkAbsoluteMind(float dt, const EnemyWorld& w, bool resolve
     }
 
     // ---- the next move: the rest of this string, or a new one ----
-    if (abAirT > AB_AIR_MAX && abCur >= 0 && abStep < abString(abCur).n && abString(abCur).steps[abStep].air) {
+    if (abCur >= 0 && abStep < abString(abCur).n && abString(abCur).steps[abStep].air &&
+        abAirT + abString(abCur).steps[abStep].tell > AB_AIR_MAX) {   // (the move would end past the limit)
         abCur = -1; abAltWant = 0.f; abDiving = true;   // long enough up there: down, and a string on the ground
     }
     if (abCamp >= AB_CAMP && abCur >= 0 && abCur != abCampAnswer(w)) abCur = -1;   // break off: go for the camper
@@ -298,7 +305,7 @@ inline void Enemy::abPhaseCheck(float hp) {
     const glm::vec3 dais{abCentre.x, abCentre.y + AB_DAIS_UP, abCentre.z};
     if (abPhase == 1 && hp <= AB_PHASE2) {
         abPhase = 2; ev.abPhase = 2; ev.abHalo = true; ev.abLine = 2; ev.enraged = true;
-        abAltWant = AB_ASCEND_UP; abDiving = false;   // he rises over the Dais while the sweep turns
+        abAltWant = AB_ASCEND_UP; abDiving = false; abFlightHp = -1.f;   // he rises over the Dais while the sweep turns (no flight: it can't be shot down)
         phaseHold = PHASE_PAUSE + AB_HALO_TIME;   // he hangs over the Dais while it sweeps
         attack = AttackKind::NONE; telegraphTimer = 0.f; abCur = -1; abRot = 0;
         ev.blinked = true; ev.blinkFrom = position;
@@ -306,6 +313,7 @@ inline void Enemy::abPhaseCheck(float hp) {
     }
     else if (abPhase == 2 && hp <= AB_PHASE3) {   // (one phase a tick: a burst still sees the ascension)
         abPhase = 3; ev.abPhase = 3; ev.abBladeDrawn = true; ev.abShards = true; ev.abLine = 0; ev.enraged = true;
+        abAltWant = 0.f; abDiving = true; abFlightHp = -1.f;   // he draws it standing: down at once if he was aloft
         abBlade = true; abBladeGone = 0.f;
         phaseHold = PHASE_PAUSE; attack = AttackKind::NONE; telegraphTimer = 0.f; abCur = -1; abRot = 0;
     }
@@ -403,7 +411,8 @@ inline void Enemy::abBegin(int step, bool follow, float quick, const EnemyWorld&
         case AttackKind::ATAKEOFF:
             ev.abTakeoff = true;
             abAltWant = AB_CRUISE_LO + (AB_CRUISE_HI - AB_CRUISE_LO) * std::fmod(age * 0.6180339f, 1.f);
-            abDiving = false; abAirT = 0.f; abFlightHp = health;
+            abDiving = false; abFlightHp = health;
+            if (abAlt <= 0.5f) abAirT = 0.f;   // (already up - the ascension: the same flight, the same clock)
             abOrbitDir = (abRot & 1) ? 1 : -1;
             break;
         case AttackKind::ARAY: case AttackKind::ALUNGE:

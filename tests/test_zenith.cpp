@@ -372,7 +372,7 @@ int main() {
         c.update(DT, zworld(me));
         c2.update(DT, zworld(me + glm::vec3{5.f, 0, -4.f}));   // beside him
         CHECK(c.ev.meleeHit && !c2.ev.meleeHit, "the clap: a 6 m cone in front of him (step aside or behind)");
-        CHECK(statsOf(EnemyType::ABSOLUTE).health == 10000.f && isBoss(EnemyType::ABSOLUTE), "10000 hp (he flies now: retuned), a boss");
+        CHECK(statsOf(EnemyType::ABSOLUTE).health == 10800.f && isBoss(EnemyType::ABSOLUTE), "10800 hp (he flies now: retuned), a boss");
         CHECK(ZEN_DAIS == Enemy::AB_DAIS_R && ZEN_DAIS_UP == Enemy::AB_DAIS_UP, "the mind and the map agree on the Dais");
     }
     {
@@ -639,6 +639,63 @@ int main() {
         bool lungeAir = false;
         for (int i = 0; i < 60 * 6; ++i) { e.update(DT, zworld(me)); if (e.attack == AttackKind::ALUNGE && e.abAirborne()) lungeAir = true; }
         CHECK(lungeAir && abTellOf(AttackKind::ALUNGE) == AbTell::GOLD, "phase 3: the blade dive, a gold LUNGE from the air");
+    }
+    // ---------------------------------------------------------------- review fixes (the overhaul)
+    {
+        // shot down while SKYFALL's circle is on the floor: the circle goes with him
+        glm::vec3 me = ZC + glm::vec3{0, 0, 16};
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = AB_SKYFALL;
+        bool marked = false;
+        for (int i = 0; i < 60 * 6 && !marked; ++i) { e.update(DT, zworld(me)); marked = e.ev.abMark; }
+        bool liveThen = abSkyLive(&e);
+        e.health -= e.maxHealth * (Enemy::AB_SHOOTDOWN + 0.01f);
+        e.update(DT, zworld(me));
+        CHECK(marked && liveThen && e.ev.abShotDown && !abSkyLive(&e) && !abSkyLive(nullptr),
+              "shot down mid-SKYFALL, the gold circle is gone (it shows only while his SKYFALL winds up)");
+    }
+    {
+        // METEOR commits at its cue: a dash on the ting gets you out (the rule every blow keeps)
+        glm::vec3 me = ZC + glm::vec3{0, 0, 16};
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = AB_METEOR;
+        glm::vec3 p = me; bool dashed = false, hit = false, landed = false;
+        for (int i = 0; i < 60 * 6 && !landed; ++i) {
+            e.update(DT, zworld(p));
+            if (e.attack == AttackKind::AMETEOR && e.ev.abCue && !dashed) { p += glm::vec3{5.f, 0, 0}; dashed = true; }
+            if (e.ev.abImpact && e.ev.abImpactKind == AttackKind::AMETEOR) { landed = true; hit = e.ev.meleeHit; }
+        }
+        CHECK(dashed && landed && !hit, "a 5 m dash on METEOR's cue gets you out of it");
+    }
+    {
+        // a phase change in the air: never shot out of the ascension's hold, down at once for the blade
+        glm::vec3 me = ZC + glm::vec3{0, 0, 16};
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = AB_SKYFALL;
+        for (int i = 0; i < 120 && !e.abAirborne(); ++i) e.update(DT, zworld(me));
+        e.health = e.maxHealth * 0.59f;
+        e.update(DT, zworld(me));
+        e.health -= e.maxHealth * 0.055f;
+        bool shot = false;
+        for (int i = 0; i < 60; ++i) { e.update(DT, zworld(me)); shot |= e.ev.abShotDown; }
+        CHECK(e.abPhase == 2 && !shot, "the ascension's hold is no flight: damage through it can't shoot him down");
+        Enemy b = freshAbs(); b.abArrive = 0.f; b.abForce = AB_SKYFALL; b.abPhase = 2; b.health = b.maxHealth * 0.3f;
+        for (int i = 0; i < 120 && !b.abAirborne(); ++i) b.update(DT, zworld(me));
+        b.health = b.maxHealth * 0.24f;
+        float t = 0.f;
+        for (; t < 1.f && b.abAlt > 0.1f; t += DT) b.update(DT, zworld(me));
+        CHECK(b.abPhase == 3 && t < 0.5f, "drawing the blade in the air, he comes straight down (no hanging there)");
+    }
+    {
+        // the ascension mid-flight, then a camper on a shard: still never more than 6 s aloft
+        glm::vec3 me = zenithShard(0); me.y = N.zenith.shardHome[0].max.y;
+        Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = AB_SKYFALL;
+        float air = 0.f, most = 0.f;
+        for (int i = 0; i < 60 * 14; ++i) {
+            if (i == 90) { e.health = e.maxHealth * 0.59f; e.abForce = AB_SKYFALL; }   // (already up; another flight straight after the hold)
+            EnemyWorld w = zworld(me); w.onShard = true;
+            e.update(DT, w);
+            air = e.abAirborne() ? air + DT : 0.f; most = std::max(most, air);
+        }
+        std::printf("      longest aloft through an ascension: %.1f s\n", most);
+        CHECK(most <= 6.f, "a second takeoff while still aloft doesn't restart the flight's clock");
     }
 
     // ---------------------------------------------------------------- THE ABSOLUTE: by ear
