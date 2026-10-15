@@ -104,10 +104,11 @@ inline void GameplayState::updateAbsolute(float dt) {
     const glm::vec3 bp = e ? e->position : level.zenith.centre;
     const float scale = level.arenas[director.arena].damageScale * tune().damage;
     // A ray just fired, met by the sword's parry: it goes back into him
-    if (e && swordOut && !abh.rays.empty() && abh.rays.front().t <= AbsoluteHazards::RAY_PARRY && sword.parryOpen()) {
-        glm::vec3 to = abh.rays.front().from - player.camera.position;
+    int fr = abh.freshRay();
+    if (e && swordOut && fr >= 0 && sword.parryOpen()) {
+        glm::vec3 to = abh.rays[fr].from - player.camera.position;
         if (glm::dot(glm::normalize(to), player.camera.forward()) > 0.3f && sword.tryParry()) {
-            abh.rayParry(0);
+            abh.rayParry(fr);
             hurtEnemy(*e, AbsoluteHazards::RAY_REFLECT, bp + glm::vec3{0.f, 1.6f, 0.f}, 50.f, Sword::HEAL_PARRY, StyleSource::PARRY);
             parryFeedback(player.camera.position + player.camera.forward() * 1.2f, true);
             ui.toast("RAY RETURNED", "", {1.f, 0.9f, 0.9f}, 1.2f);

@@ -12,7 +12,7 @@ inline bool GameplayState::swordAllowed() const {
 }
 inline void GameplayState::drawSword() {
     if (!swordAllowed() || swordOut) return;
-    swordOut = true; sword.holster(); aim = 0.f;
+    swordOut = true; sword.drawn(); aim = 0.f;
     pendingWeapon = -1;
     lmbPrev = rmbPrev = true;   // the click or key that drew it isn't a stroke
     audio.play("sword_draw", 110);
@@ -104,6 +104,7 @@ inline void GameplayState::swordPlunge(glm::vec3 at) {
 // the front (25 %), or breaking the guard. `dt` for a beam's drain.
 inline bool GameplayState::damagePlayerStrike(float dmg, glm::vec3 from, Sword::Strike k, float dt) {
     lastGuarded = Sword::Guarded::NONE;
+    if (invincFrames > 0.f || playerDead || g_godMode || victory || ascendT >= 0.f) return false;   // (nothing lands: the guard isn't spent)
     if (swordOut) {
         glm::vec3 to = from - player.position; to.y = 0.f;
         glm::vec3 f = player.camera.forward(); f.y = 0.f;

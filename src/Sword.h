@@ -32,7 +32,7 @@ struct Sword {
                            HEAL_HIT = 6.f, HEAL_PARRY = 10.f;   // a gun hit heals 2 (Gameplay_Combat.h): the sword 3x
     static constexpr float strokeBase(int s) { return s >= 2 ? 120.f : 70.f; }
 
-    enum class Strike { WHITE, GOLD, BEAM };
+    enum class Strike { WHITE, GOLD, BEAM, AREA };   // AREA: red, get out of it (never blocked)
     enum class Guarded { NONE, PARRIED, BLOCKED, BROKE };
     struct Out { int stroke = -1; bool thrust = false; };
 
@@ -50,6 +50,7 @@ struct Sword {
     bool  windowLive = false;  // this raise's parry window: not yet used or missed
     float sinceMiss = 1e9f;
     float riposteT = 0.f;
+    bool  swingLatch = false;  // drawn with the button already down: nothing until it's let go
 
     bool  broken() const    { return brokenT > 0.f; }
     bool  parryOpen() const { return raised && windowLive && raisedFor < PARRY_WINDOW; }
@@ -58,6 +59,8 @@ struct Sword {
     float moveMult() const  { return broken() ? BROKEN_SPEED : blocking() ? BLOCK_SPEED : 1.f; }
     float guard01() const   { return guard / GUARD_MAX; }
 
+    // Drawn: a button held from before counts for nothing until it's released
+    void drawn() { holster(); swingLatch = true; }
     // Put away (a gun drawn, a retry): nothing carries over but the meter
     void holster() {
         float g = guard, b = brokenT, m = sinceMiss;
@@ -81,6 +84,7 @@ struct Sword {
         if (!raised && !broken() && sinceBlock >= REFILL_DELAY) guard = std::min(GUARD_MAX, guard + REFILL * dt);
         // ---- strokes ----
         swingT = std::max(0.f, swingT - dt);
+        if (swingLatch) { if (!in.swingHeld) swingLatch = false; return o; }
         if (raised || broken()) { heldFor = 0.f; charged = false; buffered = false; return o; }
         if (in.swingPressed) { if (swingT > 0.f) buffered = true; else startStroke(o); }
         else if (buffered && swingT <= 0.f) { buffered = false; startStroke(o); }
@@ -95,7 +99,7 @@ struct Sword {
     // A strike reaching you. Only a white one in the window is parried; from
     // the front while raised, anything else is blocked.
     Guarded receive(Strike k, bool fromFront, float dt = 0.f) {
-        if (!fromFront || !blocking()) return Guarded::NONE;
+        if (k == Strike::AREA || !fromFront || !blocking()) return Guarded::NONE;
         if (k == Strike::WHITE && parryOpen()) { windowLive = false; riposteT = RIPOSTE_TIME; return Guarded::PARRIED; }
         guard -= k == Strike::WHITE ? DRAIN_WHITE : k == Strike::GOLD ? DRAIN_GOLD : DRAIN_BEAM * dt;
         if (guard <= 0.f) { guard = 0.f; brokenT = BREAK_TIME; raised = false; windowLive = false; return Guarded::BROKE; }

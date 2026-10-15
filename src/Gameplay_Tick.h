@@ -324,7 +324,10 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         pendingBlasts.push_back({exp.pos, exp.radius, exp.damage, exp.radius * 0.5f, 20.f});
     processBlasts();
 
-    if (result.hitPlayer) damagePlayer(result.playerDamage, result.playerHitFrom, 0.2f, 0.04f);
+    if (result.hitPlayer) {   // with the sword out, a shot from the front meets the guard
+        if (swordOut) damagePlayerStrike(result.playerDamage, result.playerHitFrom, Sword::Strike::WHITE);
+        else damagePlayer(result.playerDamage, result.playerHitFrom, 0.2f, 0.04f);
+    }
 
     updatePickups(dt);
 

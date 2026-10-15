@@ -100,6 +100,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     int start = endless() ? endlessArena : glm::clamp(g_startArena, 0, (int)level.arenas.size() - 1);
     // ACT II is a preview: unranked until the whole act exists
     ranked = (start == 0 || endless()) && g_startWave <= 0 && !g_godMode && !g_practice && !g_devCam && !act2();
+    act2FromStart = act2() && start == 0 && g_startWave <= 0 && !g_devCam;
     enterArena(start);
     director.wave = glm::clamp(g_startWave, 0, director.waveCount() - 1);
     if (fast()) ghost.load();
@@ -259,6 +260,7 @@ inline void GameplayState::newRun() {
     splits.clear();
     newRecord = false;
     ranked = !g_godMode && !g_practice && !act2();
+    act2FromStart = act2();
     nameEntry = false; boardPlace = -1;
     flareIntroduced = false;
     ghostRec.pts.clear();
@@ -384,7 +386,7 @@ inline void GameplayState::handleDirectorEvents() {
             grenadeCount = grenadeMax;
             audio.play("wave", 128, SoundGroup::UI);
             if (zenithHandoff(act2(), ev.value, (int)level.arenas.size())) {   // the Leviathan is dead: the act is done
-                if (!g_godMode && !g_practice) { recordAct2Clear(records, elapsedTime); records.save(); }
+                if (act2RunRecords(act2FromStart, g_godMode, g_practice)) { recordAct2Clear(records, elapsedTime); records.save(); }
                 ascendT = 0.f;   // it sinks, ACT II COMPLETE, a white-out, then the Zenith (updateAscension)
             }
             break;
@@ -437,6 +439,9 @@ inline void GameplayState::finishRun() {
     victory = true;
     captureMouse(false);
     newRecord = false;
+    if (act2() && director.arena == ZENITH_ARENA && act2RunRecords(act2FromStart, g_godMode, g_practice)) {   // (ACT II is never ranked: its own local best)
+        newRecord = recordZenith(records, elapsedTime); records.save();
+    }
     if (!ranked) return;
     board.daily = worldBoard.daily = daily.key();
     board.load();
@@ -459,8 +464,6 @@ inline void GameplayState::finishRun() {
         newRecord = me.score > best;
         if (newRecord) best = me.score;
         if (dailyRun()) records.save();   // today's date, best or not
-    } else if (act2()) {   // ACT II's end, up in the Zenith
-        if (director.arena == ZENITH_ARENA && !g_godMode && !g_practice) { newRecord = recordZenith(records, elapsedTime); records.save(); }
     } else {
         newRecord = records.bestArena <= 0.f || elapsedTime < records.bestArena;
         if (newRecord) records.bestArena = elapsedTime;

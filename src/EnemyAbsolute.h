@@ -147,6 +147,7 @@ inline void Enemy::thinkAbsolute(float dt, const EnemyWorld& w, bool resolve) {
         if (abBladeGone <= 0.f && abPhase == 3) { abBlade = true; ev.abBladeDrawn = true; }
     }
     abPhaseCheck(health / maxHealth);
+    if (ev.abJudgeMark) return;   // the last judgment begins: whatever was landing this tick is swept aside
     const float quick = abPhase >= 2 ? AB_QUICK : 1.f;
     if (phaseHold > 0.f) { phaseHold -= dt; turnToward(to, dt, 6.f); return; }
 
@@ -205,12 +206,12 @@ inline void Enemy::abPhaseCheck(float hp) {
         ev.blinked = true; ev.blinkFrom = position;
         position = dais;
     }
-    if (abPhase == 2 && hp <= AB_PHASE3) {
+    else if (abPhase == 2 && hp <= AB_PHASE3) {   // (one phase a tick: a burst still sees the ascension)
         abPhase = 3; ev.abPhase = 3; ev.abBladeDrawn = true; ev.abShards = true; ev.abLine = 0; ev.enraged = true;
         abBlade = true; abBladeGone = 0.f;
         phaseHold = PHASE_PAUSE; attack = AttackKind::NONE; telegraphTimer = 0.f; abCur = -1; abRot = 0;
     }
-    if (abPhase == 3 && !abJudged && hp <= AB_JUDGE_AT) {   // every seam burns but a ring round him
+    else if (abPhase == 3 && !abJudged && hp <= AB_JUDGE_AT) {   // every seam burns but a ring round him
         abJudged = true; ev.abJudgeMark = true; ev.abLine = 3; ev.abTell = (int)AbTell::RED;
         ev.blinked = true; ev.blinkFrom = position;
         position = dais;

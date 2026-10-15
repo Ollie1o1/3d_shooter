@@ -74,8 +74,8 @@ inline void GameplayState::padButton(Uint8 b) {
         case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:  pendingGrapple = true; break;
         case SDL_CONTROLLER_BUTTON_DPAD_UP:       pendingGrenade = true; break;
         case SDL_CONTROLLER_BUTTON_DPAD_DOWN:     key(SDLK_v); break;
-        case SDL_CONTROLLER_BUTTON_DPAD_LEFT:     holsterSword(); trySwitch((activeWeapon + WEAPON_COUNT - 1) % WEAPON_COUNT); break;
-        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:    holsterSword(); trySwitch((activeWeapon + 1) % WEAPON_COUNT); break;
+        case SDL_CONTROLLER_BUTTON_DPAD_LEFT:     padCycle(-1); break;
+        case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:    padCycle(+1); break;
         default: break;
     }
 }
@@ -199,6 +199,15 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
         if (settings && settings->invertY) dy = -dy;
         player.applyMouseLook(dx, dy, sens);
     }
+}
+
+// The D-pad's weapon cycle; in the Zenith the sword is a fifth stop on it
+inline void GameplayState::padCycle(int dir) {
+    const int stops = WEAPON_COUNT + (swordAllowed() ? 1 : 0);
+    int at = swordOut ? WEAPON_COUNT : activeWeapon;
+    int next = ((at + dir) % stops + stops) % stops;
+    if (next == WEAPON_COUNT) { drawSword(); return; }
+    holsterSword(); trySwitch(next);
 }
 
 inline void GameplayState::trySwitch(int w) {

@@ -640,6 +640,32 @@ int main() {
         CHECK(lines == 1, "his lines have a choir phrase in the voice bank");
     }
 
+    // ---------------------------------------------------------------- review fixes
+    {
+        Sword s; s.update(DT, {false, false, true, true});
+        CHECK(s.receive(Sword::Strike::AREA, true) == Sword::Guarded::NONE && std::fabs(s.guard - 100.f) < 1e-3f,
+              "red means get out: an area can't be blocked (or parried)");
+        Sword d; d.drawn();
+        run(d, {false, true, false, false}, Sword::CHARGE_TIME + 0.1f);   // LMB still held from before the draw
+        Sword::Out o = d.update(DT, {false, false, false, false});
+        CHECK(!o.thrust, "drawing with the mouse held never fires a thrust nobody pressed for");
+        CHECK(act2RunRecords(true, false, false) && !act2RunRecords(false, false, false) && !act2RunRecords(true, true, false) &&
+              !act2RunRecords(true, false, true), "ACT II and the Zenith keep times only for a run from the act's start (no god, no practice)");
+        Enemy e = freshAbs(); e.abArrive = 0.f;
+        e.health = e.maxHealth * 0.2f; e.staggerTimer = 0.f;
+        e.update(DT, zworld(ZC + glm::vec3{0, 0, 10}));
+        CHECK(e.abPhase == 2 && e.ev.abPhase == 2 && e.ev.abHalo, "a burst from 60 % to under 25 % still takes the ascension first");
+        for (int i = 0; i < 60 * 6; ++i) e.update(DT, zworld(ZC + glm::vec3{0, 0, 10}));
+        CHECK(e.abPhase == 3, "...and the blade after it");
+        Enemy j = freshAbs(); j.abArrive = 0.f; j.abPhase = 3; j.abBlade = true;
+        j.attack = AttackKind::AJAB; j.telegraphTimer = DT * 0.5f; j.telegraphDuration = 0.3f; j.abCur = AB_TOO_SLOW; j.abStep = 1;
+        j.health = j.maxHealth * 0.05f;
+        j.update(DT, zworld(ZC + glm::vec3{0, 0, 10}));
+        CHECK(j.ev.abJudgeMark && !j.ev.abJudge && !j.staggered(), "the last judgment never lands on the tick it begins");
+        AbsoluteHazards two; two.addRay(ZC, ZC); two.update(0.5f, ZC + glm::vec3{0, 0, 9}, 1.8f, true, &N, ZC); two.addRay(ZC, ZC);
+        CHECK(two.freshRay() == 1, "a second ray, fired while the first still burns, can be parried");
+    }
+
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");
     return failures ? 1 : 0;
 }

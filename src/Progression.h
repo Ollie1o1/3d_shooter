@@ -150,6 +150,9 @@ struct Records {
     }
 };
 
+// ACT II and the Zenith keep times only for a run from the act's start
+// (not a level-select or --arena start, not god mode, not practice)
+inline bool act2RunRecords(bool fromStart, bool god, bool practice) { return fromStart && !god && !practice; }
 // ACT II's clear, saved the moment the Leviathan dies (whatever happens above)
 inline void recordAct2Clear(Records& r, float t) {
     r.act2Cleared = true;

@@ -98,7 +98,7 @@ struct AbsoluteHazards {
             float was = s.r; s.r += STOMP_SPEED * dt;
             float d = glm::length(glm::vec2{feet.x - s.at.x, feet.z - s.at.z});
             if (!s.hit && d >= was - 0.5f && d < s.r + 0.5f && grounded && feet.y < s.at.y + STOMP_H) {
-                s.hit = true; out.push_back({STOMP_DAMAGE, s.at, Sword::Strike::GOLD, false});
+                s.hit = true; out.push_back({STOMP_DAMAGE, s.at, Sword::Strike::AREA, false});
             }
         }
         stomps.erase(std::remove_if(stomps.begin(), stomps.end(), [](const Stomp& s) { return s.r > STOMP_MAX; }), stomps.end());
@@ -128,7 +128,7 @@ struct AbsoluteHazards {
                 done = true;
                 if (grounded && feet.y < s.centre.y + 0.6f && seamParity(s.centre, feet) == parity &&
                     glm::length(glm::vec2{feet.x - s.centre.x, feet.z - s.centre.z}) < 44.f)
-                    out.push_back({SEAM_DAMAGE, feet, Sword::Strike::GOLD, false});
+                    out.push_back({SEAM_DAMAGE, feet, Sword::Strike::AREA, false});
             };
             burn(s.first, s.done0, SEAM_WARN);
             burn(s.first ^ 1, s.done1, SEAM_WARN + SEAM_GAP);
@@ -151,7 +151,7 @@ struct AbsoluteHazards {
             };
             if (!h.hit && swept(feet.x, feet.z) && glm::length(glm::vec2{feet.x - h.centre.x, feet.z - h.centre.z}) < HALO_REACH &&
                 feet.y + height > h.floorY + HALO_LO && feet.y < h.floorY + HALO_HI) {
-                h.hit = true; out.push_back({HALO_DAMAGE, h.centre, Sword::Strike::BEAM, false});
+                h.hit = true; out.push_back({HALO_DAMAGE, h.centre, Sword::Strike::AREA, false});
             }
             if (lv) for (size_t i = 0; i < lv->zenith.pillarHome.size(); i += 2) {   // every other pillar shatters
                 const AABB& b = lv->zenith.pillarHome[i];
@@ -172,7 +172,7 @@ struct AbsoluteHazards {
             j.t += dt;
             if (!j.done && j.t >= JUDGE_WARN) {
                 j.done = true;
-                if (glm::length(glm::vec2{feet.x - j.boss.x, feet.z - j.boss.z}) > JUDGE_SAFE) out.push_back({JUDGE_DAMAGE, j.boss, Sword::Strike::GOLD, false});
+                if (glm::length(glm::vec2{feet.x - j.boss.x, feet.z - j.boss.z}) > JUDGE_SAFE) out.push_back({JUDGE_DAMAGE, j.boss, Sword::Strike::AREA, false});
             }
         }
         judges.erase(std::remove_if(judges.begin(), judges.end(), [](const Judge& j) { return j.done; }), judges.end());
@@ -180,6 +180,8 @@ struct AbsoluteHazards {
     }
 
     int  haloShatterMask() const { return shatterThisTick; }
+    // A ray still in its first 0.15 s (a sword parry sends it back), or -1
+    int  freshRay() const { for (int i = 0; i < (int)rays.size(); ++i) if (rays[i].t <= RAY_PARRY) return i; return -1; }
     // A ray just fired, caught by the sword's parry: it ends (the game sends its damage back)
     bool rayParry(int i) {
         if (i < 0 || i >= (int)rays.size() || rays[i].t > RAY_PARRY) return false;

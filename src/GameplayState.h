@@ -212,6 +212,7 @@ public:
     // Only a full run counts for records and the leaderboard: started at the
     // first arena, not in god mode, not from the dev level select
     bool  ranked       = true;
+    bool  act2FromStart = false;   // an ACT II run from its first arena: its times count (act2RunRecords)
     bool  nameEntry    = false;  // victory screen: typing a name for the leaderboard
     std::string nameBuf;
     int   boardPlace   = -1;     // where the saved run landed (highlighted)
@@ -597,6 +598,7 @@ public:
     void reflectProjectile(int pi, glm::vec3 fwd);
     bool swordAllowed() const;
     void drawSword();
+    void padCycle(int dir);
     void holsterSword();
     void updateSword(float dt);
     void swordPlunge(glm::vec3 at);
