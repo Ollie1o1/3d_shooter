@@ -91,7 +91,8 @@ enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY,
                         RAKE, SOULBOLT, STRING,                        // the REVENANT's, the WEAVER's
                         CRASH, TORRENT, TIDE, SPIT, BREACH, SWALLOW, SUBMERGE,     // the LEVIATHAN's
                         ATELEPORT, ADASH, AJAB, AHOOK, AUPPER, ADROP, AHOP, ARAY, ASTOMP, ASERPENT,   // THE ABSOLUTE's
-                        AHALO, ASEAMS, AZENITH, ASWEEP, ALUNGE, ACRESCENT, AJUDGE, ATAKEOFF, ASKYFALL, AMETEOR };
+                        AHALO, ASEAMS, AZENITH, ASWEEP, ALUNGE, ACRESCENT, AJUDGE, ATAKEOFF, ASKYFALL, AMETEOR,
+                        ACROSS, ABACKFIST, AELBOW, AROUNDHOUSE, AHAYMAKER, ACHARGE, AAXE, ACLAP };   // (his fighter's arsenal)
 
 struct EnemyStats {
     const char* name;
@@ -241,6 +242,7 @@ struct EnemyEvents {
     bool abRay = false, abStomp = false, abSerpent = false, abHalo = false, abSeams = false, abZenith = false,
          abBladeDrawn = false, abBladeBroke = false, abJudgeMark = false, abJudge = false, abLaunch = false, abShards = false;
     bool abTakeoff = false, abShotDown = false;   // he left the floor; he was shot out of the sky
+    bool abHeavy = false, abCrack = false;   // a haymaker landed (a big knockback); an axe kick's crack (at abTo)
     bool abMark = false, abCrater = false, abFlare = false, abShardBreak = false;   // SKYFALL's circle (at abTo) and its crater (a shard under it breaks); a METEOR's flare
     glm::vec3 abFrom{0.f}, abTo{0.f};
 };
@@ -461,6 +463,8 @@ struct Enemy {
     static constexpr float AB_CRUISE_LO = 9.f, AB_CRUISE_HI = 14.f, AB_CLIMB = 18.f, AB_DIVE_V = 45.f, AB_FALL_V = 30.f,
                            AB_AIR_MAX = 5.f, AB_SHOOTDOWN = 0.06f, AB_DOWNED = 1.5f, AB_ORBIT_LO = 14.f, AB_ORBIT_HI = 20.f,
                            AB_OVER = 15.f, AB_ARRIVE_UP = 12.f, AB_ASCEND_UP = 12.f, AB_SKY_R = 3.5f, AB_MARK_T = 0.7f;
+    // his arsenal: a kick's reach, the shoulder charge's run, the clap's cone (6 m, 35 degrees either side)
+    static constexpr float AB_KICK_REACH = 4.f, AB_CHARGE_LEN = 14.f, AB_CLAP_R = 6.f, AB_CLAP_COS = 0.819f;
     float abAlt = 0.f, abAltWant = 0.f;   // his height over the floor under him, and where it's going
     float abAirT = 0.f;                   // this flight's time in the air
     float abFlightHp = -1.f;              // his health as this flight began (< 0: on the ground)
@@ -1311,7 +1315,8 @@ private:
 public:
     int  abParried(bool bySword);                                     // EnemyAbsolute.h
     static bool abMeleeWhite(AttackKind k) {                          // a white strike from his body or blade (parryable)
-        return k == AttackKind::AJAB || k == AttackKind::AHOOK || k == AttackKind::ASWEEP || k == AttackKind::AMETEOR;
+        return k == AttackKind::AJAB || k == AttackKind::AHOOK || k == AttackKind::ASWEEP || k == AttackKind::AMETEOR ||
+               k == AttackKind::ACROSS || k == AttackKind::ABACKFIST || k == AttackKind::AELBOW || k == AttackKind::AROUNDHOUSE;
     }
 private:
     void thinkAbsolute(float dt, const EnemyWorld& w, bool resolve);   // EnemyAbsolute.h

@@ -316,14 +316,59 @@ int main() {
               abTellOf(AttackKind::ASERPENT) == AbTell::WHITE && abTellOf(AttackKind::ASWEEP) == AbTell::WHITE &&
               abTellOf(AttackKind::ALUNGE) == AbTell::GOLD && abTellOf(AttackKind::ACRESCENT) == AbTell::WHITE,
               "white: jab, hook, serpent, sweep, crescent; gold: uppercut, drop-kick, lunge; red: ray, stomp");
-        float full = 0.f;
-        for (int id : {AB_TOO_SLOW, AB_KNEEL, AB_JUDGED}) {
+        float longest = 0.f; bool capped = true, singles = true;
+        for (int id = 0; id < AB_STRINGS; ++id) {
             float sum = 0.f; const AbString& st = abString(id);
-            for (int k = 0; k < st.n; ++k) if (st.steps[k].minPhase <= 1) sum += st.steps[k].damage;
-            full = std::max(full, sum);
-            for (int k = 0; k < st.n; ++k) if (st.steps[k].damage > 0.f && (st.steps[k].damage < 18.f || st.steps[k].damage > 30.f)) full = 1e9f;
+            for (int k = 0; k < st.n; ++k) {
+                if (st.steps[k].minPhase > 1) continue;
+                sum += st.steps[k].damage;
+                if (st.steps[k].damage > 0.f && (st.steps[k].damage < 14.f || st.steps[k].damage > 30.f)) singles = false;
+            }
+            if (sum > 70.f) { capped = false; std::printf("      %s costs %.0f\n", st.name, sum); }
+            longest = std::max(longest, sum);
         }
-        CHECK(full >= 60.f && full <= 70.f, "a whole phase 1 string taken costs 60-70; single hits 18-30");
+        CHECK(capped && longest >= 60.f, "no phase 1 string costs more than 70; the longest 60-70");
+        CHECK(singles, "single hits 14-30");
+    }
+    {
+        using A = AttackKind;
+        CHECK(abTellOf(A::ACROSS) == AbTell::WHITE && abTellOf(A::ABACKFIST) == AbTell::WHITE && abTellOf(A::AELBOW) == AbTell::WHITE &&
+              abTellOf(A::AROUNDHOUSE) == AbTell::WHITE && abTellOf(A::AHAYMAKER) == AbTell::GOLD && abTellOf(A::ACHARGE) == AbTell::GOLD &&
+              abTellOf(A::AAXE) == AbTell::GOLD && abTellOf(A::ACLAP) == AbTell::RED,
+              "white: cross, backfist, elbow, roundhouse; gold: haymaker, shoulder charge, axe kick; red: the clap");
+        bool parry = true;
+        for (A k : {A::ACROSS, A::ABACKFIST, A::AELBOW, A::AROUNDHOUSE}) parry &= Enemy::abMeleeWhite(k);
+        for (A k : {A::AHAYMAKER, A::ACHARGE, A::AAXE, A::ACLAP}) parry &= !Enemy::abMeleeWhite(k);
+        CHECK(parry, "...the whites parry, the rest never do");
+        auto kinds = [](int id) { std::vector<A> v; const AbString& s = abString(id); for (int k = 0; k < s.n; ++k) v.push_back(s.steps[k].k); return v; };
+        CHECK(kinds(AB_FLURRY) == std::vector<A>({A::AJAB, A::AJAB, A::AJAB, A::AJAB, A::ACROSS}) && abString(AB_FLURRY).steps[3].minPhase == 2,
+              "FLURRY: jab-jab-jab(-jab)-cross");
+        CHECK(kinds(AB_BREAKER) == std::vector<A>({A::AJAB, A::ACROSS, A::AHAYMAKER}), "BREAKER: jab, cross, then a gold haymaker");
+        CHECK(kinds(AB_CROSSUP) == std::vector<A>({A::ATELEPORT, A::ABACKFIST, A::AROUNDHOUSE}), "CROSS-UP: teleport, backfist, roundhouse");
+        CHECK(kinds(AB_BULLRUSH) == std::vector<A>({A::ACHARGE, A::AELBOW, A::ACLAP}), "BULLRUSH: charge, elbow, clap - all three colours");
+        CHECK(kinds(AB_HEEL) == std::vector<A>({A::AHOP, A::AAXE, A::ASTOMP}), "HEEL OF HEAVEN: hop, axe kick, the stomp ring");
+        auto lands = [&](int id, glm::vec3 me) {
+            Enemy e = freshAbs(); e.abArrive = 0.f; e.abForce = id;
+            e.position = me + glm::vec3{0, 0, -6}; e.position.y = ZC.y;
+            int hits = 0;
+            for (int i = 0; i < 60 * 6; ++i) {
+                e.update(DT, zworld(me));
+                if (e.abCur >= 0 && e.abCur != id) break;   // (only this string's blows)
+                hits += e.ev.meleeHit;
+            }
+            return hits;
+        };
+        glm::vec3 me = ZC + glm::vec3{0, 0, 18};
+        int br = lands(AB_BULLRUSH, me), fl = lands(AB_FLURRY, me);
+        std::printf("      bullrush lands %d, flurry %d\n", br, fl);
+        CHECK(br >= 2, "BULLRUSH lands on a player standing still");
+        CHECK(fl >= 4, "FLURRY lands every punch on one who doesn't answer");
+        Enemy c = freshAbs(); c.abArrive = 0.f; c.attack = A::ACLAP; c.abCur = AB_BULLRUSH; c.abStep = 2; c.telegraphDuration = 0.4f; c.telegraphTimer = DT * 0.5f;
+        c.position = me + glm::vec3{0, 0, -4}; c.position.y = ZC.y; c.yaw = 0.f;   // facing +Z, at you
+        Enemy c2 = c;
+        c.update(DT, zworld(me));
+        c2.update(DT, zworld(me + glm::vec3{5.f, 0, -4.f}));   // beside him
+        CHECK(c.ev.meleeHit && !c2.ev.meleeHit, "the clap: a 6 m cone in front of him (step aside or behind)");
         CHECK(statsOf(EnemyType::ABSOLUTE).health == 10000.f && isBoss(EnemyType::ABSOLUTE), "10000 hp (he flies now: retuned), a boss");
         CHECK(ZEN_DAIS == Enemy::AB_DAIS_R && ZEN_DAIS_UP == Enemy::AB_DAIS_UP, "the mind and the map agree on the Dais");
     }

@@ -85,6 +85,32 @@ inline AbsPose absolutePose(const Enemy& e, float time) {
     case AttackKind::ACRESCENT:
         P.glow = 4; P.shR = late ? -1.1f : -2.85f; P.elR = 0.2f; P.torsoPitch = late ? 0.25f : -0.2f;
         break;
+    case AttackKind::ACROSS:     // the rear hand, straight down the middle, hips turning through it
+        P.glow = 0; P.torsoYaw = late ? -0.55f : 0.55f; P.shR = late ? -1.65f : -1.0f; P.elR = late ? 0.05f : 2.4f; P.hipR = late ? 0.2f : -0.1f; P.crouch = 0.15f;
+        break;
+    case AttackKind::ABACKFIST:  // a spin, the back of the fist
+        P.glow = 1; P.torsoYaw = late ? 1.4f : -1.1f; P.shL = -1.5f; P.shLz = late ? 0.2f : 1.3f; P.elL = late ? 0.15f : 1.6f;
+        break;
+    case AttackKind::AELBOW:     // short, the elbow leading
+        P.glow = 0; P.torsoYaw = late ? -0.6f : 0.4f; P.shR = -1.5f; P.shRz = 0.9f; P.elR = 2.6f; P.crouch = 0.12f;
+        break;
+    case AttackKind::AROUNDHOUSE: // the shin round at your ribs
+        P.glow = 2; P.torsoYaw = late ? -1.2f : 0.6f; P.torsoPitch = -0.15f; P.hipR = late ? -1.5f : -0.5f; P.kneeR = late ? 0.15f : 1.6f;
+        P.shR = 0.3f; P.shRz = 0.6f; P.shL = -1.3f; P.elL = 2.f;
+        break;
+    case AttackKind::AHAYMAKER:  // wound right back, then over the top
+        P.glow = 0; P.torsoYaw = late ? -0.8f : 1.0f; P.torsoPitch = late ? 0.35f : -0.2f;
+        P.shR = late ? -2.2f : 0.9f; P.shRz = late ? 0.1f : 0.7f; P.elR = late ? 0.4f : 1.8f; P.crouch = 0.25f;
+        break;
+    case AttackKind::ACHARGE:    // head down, shoulder first
+        P.glow = 5; P.torsoPitch = 0.75f; P.torsoYaw = 0.6f; P.shL = -0.4f; P.elL = 2.2f; P.shR = 0.5f; P.elR = 1.2f; P.crouch = 0.3f;
+        break;
+    case AttackKind::AAXE:       // the heel up past his head, then straight down
+        P.glow = 2; P.hipR = late ? -0.3f : -2.6f; P.kneeR = late ? 0.1f : 0.05f; P.torsoPitch = late ? 0.25f : -0.3f; P.shR = P.shL = -0.5f; P.shRz = P.shLz = 0.7f;
+        break;
+    case AttackKind::ACLAP:      // both arms wide, then palms together in front
+        P.glow = 3; P.fistR = P.fistL = 0.f; P.shR = P.shL = -1.5f; P.shRz = P.shLz = late ? -0.2f : 1.3f; P.elR = P.elL = 0.15f;
+        break;
     case AttackKind::ASKYFALL:   // knees up, both fists raised over his head, then down like a hammer
         P.glow = 3; P.shR = P.shL = late ? -0.4f : -2.9f; P.elR = P.elL = 0.3f; P.hipR = P.hipL = -1.1f; P.kneeR = P.kneeL = 1.6f; P.torsoPitch = late ? 0.4f : -0.2f;
         break;

@@ -434,6 +434,7 @@ public:
     std::vector<AABB> zenPillarBoxes;               // the standing pillars, for his mind (fillZenithWorld)
     std::array<float, 8> pillarFallT{};             // a shattered pillar's pieces falling (< 0: none)
     glm::vec3 abSkyMark{0.f}; float abSkyMarkT = -1.f;   // SKYFALL's circle on the floor (< 0: none)
+    glm::vec3 abCrackAt{0.f}; float abCrackT = -1.f;     // an axe kick's crack
     std::array<float, 6> shardFallT{};              // a shard dropping away (< 0: none)
     float abLineT = 0.f; int abLineShown = -1;      // his line on screen
     float abHintT = 0.f;                            // the sword's hint as he arrives

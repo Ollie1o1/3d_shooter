@@ -65,6 +65,7 @@ inline void GameplayState::onAbsoluteEvents(Enemy& e, const EnemyEvents& ev) {
         fx.spawnShockwave(glm::vec3{e.position.x, level.zenith.centre.y, e.position.z}, 5.f, {0.9f, 0.75f, 0.65f});
     }
     if (ev.abMark) { abSkyMark = ev.abTo; abSkyMarkT = 0.f; }
+    if (ev.abCrack) { abCrackAt = ev.abTo; abCrackT = 0.f; }
     if (ev.abCrater) {
         abSkyMarkT = -1.f;
         fx.spawnShockwave(ev.abTo, Enemy::AB_SKY_R + 1.f, {1.6f, 1.3f, 0.6f});
@@ -96,11 +97,13 @@ inline void GameplayState::onAbsoluteEvents(Enemy& e, const EnemyEvents& ev) {
     if (ev.meleeHit) {   // his fists, feet or blade: the sword can meet them
         AbTell t = abTellOf(e.lastAbAttack);
         glm::vec3 from = e.position + glm::vec3{0.f, 1.5f, 0.f};
-        bool hit = damagePlayerStrike(ev.meleeDamage * scale, from, t == AbTell::GOLD ? Sword::Strike::GOLD : Sword::Strike::WHITE);
+        Sword::Strike sk = t == AbTell::GOLD ? Sword::Strike::GOLD : t == AbTell::RED ? Sword::Strike::AREA : Sword::Strike::WHITE;   // (red: never blocked)
+        bool hit = damagePlayerStrike(ev.meleeDamage * scale, from, sk);
         if (hit && lastGuarded == Sword::Guarded::NONE) {
             glm::vec3 away = player.position - e.position; away.y = 0.f;
             if (glm::length(away) > 0.01f) player.velocity += glm::normalize(away) * 7.f + glm::vec3{0.f, 2.5f, 0.f};
             if (ev.abLaunch) { player.velocity.y = 11.f; player.onGround = false; }   // KNEEL: launched for the drop-kick
+            if (ev.abHeavy && glm::length(away) > 0.01f) player.velocity += glm::normalize(away) * 9.f + glm::vec3{0.f, 3.f, 0.f};   // a haymaker sends you
         }
         audio.playAt("punch", from, 120, SoundGroup::ENEMY, true);
     }
@@ -112,6 +115,7 @@ inline void GameplayState::updateAbsolute(float dt) {
     for (auto& t : shardFallT) if (t >= 0.f) t += dt;
     for (auto& t : pillarFallT) if (t >= 0.f) t += dt;
     if (abSkyMarkT >= 0.f) abSkyMarkT += dt;
+    if (abCrackT >= 0.f) abCrackT += dt;
     if (abLineT > 0.f) abLineT -= dt;
     if (abHintT > 0.f) abHintT -= dt;
     updateAbsoluteDeath(dt);
@@ -275,6 +279,12 @@ inline void GameplayState::gatherAbsoluteBoxes(std::vector<BoxInstance>& out) {
         }
         push(out, T(abSkyMark + glm::vec3{0.f, 0.04f, 0.f}) * S({R * 1.8f, 0.02f, R * 1.8f}), gold * 0.1f, gold * (0.15f + 0.5f * u * u));
     }
+    if (abCrackT >= 0.f && abCrackT < 0.5f)   // the axe kick's crack: red, radiating, fading
+        for (int k = 0; k < 7; ++k) {
+            float a = k * 0.8975979f + 0.3f, L = 1.2f + 0.8f * std::fmod(k * 0.37f, 1.f);
+            push(out, T(abCrackAt + glm::vec3{std::cos(a) * L * 0.5f, 0.05f, std::sin(a) * L * 0.5f}) * RY(-a + 1.5707963f) * S({0.06f, 0.03f, L}),
+                 red * 0.2f, red * (1.6f * (1.f - abCrackT / 0.5f)));
+        }
     // rays: the red line of a tell, then the beam
     if (Enemy* e = absolute()) {
         if (e->attack == AttackKind::ARAY && e->telegraphTimer > 0.f) {

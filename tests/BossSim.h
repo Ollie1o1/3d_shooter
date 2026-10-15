@@ -277,6 +277,7 @@ struct BossSim {
                 else mv = glm::vec3{0.f};
             }
             if (!abs.judges.empty()) mv = d > 3.f ? -dir * 2.f : glm::vec3{0.f};   // be beside him
+            if (reacting && boss.attack == AttackKind::ACLAP && d < Enemy::AB_CLAP_R + 1.f) mv = side * 2.f;   // step out of the clap's cone
             if (boss.attack == AttackKind::ASKYFALL && boss.telegraphTimer < 0.25f && reacting && dashes > 0 &&
                 glm::length(glm::vec2{feet.x - boss.abAim.x, feet.z - boss.abAim.z}) < Enemy::AB_SKY_R + 0.5f) {   // out of the circle
                 glm::vec3 out = feet - boss.abAim; out.y = 0.f;
@@ -325,7 +326,7 @@ struct BossSim {
         if (ev.abZenith) abs.addZenith(ev.abFrom, ev.abTo);
         for (int k = 0; k < ev.abMirages; ++k) abs.addMirage(ev.phantomPos[k]);
         if (ev.abJudgeMark) abs.addJudge(c, boss.position);
-        if (ev.meleeHit) { float b = damageTaken; hurt(ev.meleeDamage * (blocking ? Sword::BLOCK_TAKEN : 1.f)); dmgMelee += damageTaken - b; }
+        if (ev.meleeHit) { float b = damageTaken; bool redBlow = abTellOf(boss.lastAbAttack) == AbTell::RED; hurt(ev.meleeDamage * (blocking && !redBlow ? Sword::BLOCK_TAKEN : 1.f)); dmgMelee += damageTaken - b; }
         for (int k = 0; k < ev.shots; ++k)
             if (Projectile* pr = proj.fire(ev.shotOrigin, ev.shotDir[k] * ev.shotSpeed, ev.shotDamage, false, {1, 1, 1}, false, 0.f, ev.shotSize, false))
                 pr->owner = boss.uid;
