@@ -7,6 +7,7 @@
 #include "../src/MusicSynth.h"
 #include "../src/Progression.h"
 #include "../src/WaveDirector.h"
+#include "../src/AbsoluteHazards.h"
 #include <string>
 #include <cstdio>
 #include <cmath>
@@ -382,6 +383,94 @@ int main() {
         CHECK(e.deflects({0, 0, -1}, 20.f) && !e.deflects({0, 0, -1}, 10.f), "beyond 14 m his guard turns shots aside; closer they land");
         e.stagger(1.f);
         CHECK(!e.deflects({0, 0, -1}, 20.f), "staggered, he's open from anywhere");
+    }
+
+    // ---------------------------------------------------------------- the Absolute's hazards
+    {
+        using AH = AbsoluteHazards;
+        const glm::vec3 c = ZC;
+        auto total = [](const std::vector<AH::Hit>& hs) { float s = 0; for (auto& h : hs) s += h.damage; return s; };
+        { AH h; glm::vec3 me = c + glm::vec3{0, 0, 12};
+          h.addRay(c + glm::vec3{0, 1.6f, 0}, me + glm::vec3{0, 1, 0});
+          float got = 0; for (float t = 0; t < 1.2f; t += DT) got += total(h.update(DT, me, 1.8f, true, &N, c));
+          CHECK(got > 20.f && got < 27.f, "standing in a ray: about 25 over its second");
+          AH r; glm::vec3 p = me + glm::vec3{7.f * 0.6f, 0, 0}; float got2 = 0;   // strafed through its 0.6 s tell
+          r.addRay(c + glm::vec3{0, 1.6f, 0}, me + glm::vec3{0, 1, 0});
+          for (float t = 0; t < 1.2f; t += DT) { p.x += 7.f * DT; got2 += total(r.update(DT, p, 1.8f, true, &N, c)); }
+          CHECK(got2 == 0.f, "strafing at a run outpaces it: it fires where its red line was, then chases at 5.5 m/s");
+          AH q; glm::vec3 pil = zenithPillar(0), out = glm::normalize(glm::vec3{pil.x - c.x, 0, pil.z - c.z});
+          glm::vec3 hide = pil + out * 2.f;
+          q.addRay(c + glm::vec3{0, 1.6f, 0}, hide + glm::vec3{0, 1, 0});
+          float got3 = 0; for (float t = 0; t < 1.2f; t += DT) got3 += total(q.update(DT, hide, 1.8f, true, &N, c));
+          CHECK(got3 < 1e-3f, "a pillar between you stops it");
+          AH pr; pr.addRay(c, me); pr.update(0.1f, me, 1.8f, true, &N, c);
+          CHECK(pr.rayParry(0) && pr.rays.empty(), "a ray caught in its first 0.15 s is parried and ends");
+          AH late; late.addRay(c, me); late.update(0.2f, me, 1.8f, true, &N, c);
+          CHECK(!late.rayParry(0), "...not after"); }
+        { glm::vec3 me = c + glm::vec3{0, 0, 9};
+          AH h; h.addStomp(c);
+          float grounded = 0, jumped = 0;
+          for (float t = 0; t < 1.f; t += DT) grounded += total(h.update(DT, me, 1.8f, true, &N, c));
+          AH j; j.addStomp(c);
+          for (float t = 0; t < 1.f; t += DT) jumped += total(j.update(DT, me + glm::vec3{0, 1.4f, 0}, 1.8f, false, &N, c));
+          CHECK(std::fabs(grounded - AH::STOMP_DAMAGE) < 1e-3f && jumped == 0.f, "the stomp ring hits once on the ground; jump it"); }
+        { glm::vec3 me = c + glm::vec3{0, 0, 15}, p = me;
+          AH h; h.addSerpent(c + glm::vec3{0, 1.8f, 0}, {0, 0, 1});
+          float got = 0;
+          for (float t = 0; t < AH::SERPENT_LIFE + 0.5f; t += DT) { p.x += 7.f * DT; got += total(h.update(DT, p, 1.8f, true, &N, c)); }
+          CHECK(got == 0.f, "a running player outruns a serpent");
+          AH s; s.addSerpent(c + glm::vec3{0, 1.8f, 0}, {0, 0, 1});
+          float hit = 0; for (float t = 0; t < 4.f; t += DT) hit += total(s.update(DT, me, 1.8f, true, &N, c));
+          CHECK(std::fabs(hit - AH::SERPENT_DAMAGE) < 1e-3f, "standing still, it reaches you once");
+          AH r; r.addSerpent(me + glm::vec3{0, 1.5f, -1.f}, {0, 0, 1});
+          int k = r.serpentNear(me + glm::vec3{0, 1.5f, 0}, 2.f);
+          CHECK(k == 0, "a serpent within reach can be found to parry");
+          r.reflectSerpent(k);
+          int back = 0; for (float t = 0; t < 4.f && !back; t += DT) { r.update(DT, me, 1.8f, true, &N, c); back = r.reflectedHits(c + glm::vec3{0, 1.3f, 0}, 1.4f); }
+          CHECK(back == 1, "parried, it flies back into him"); }
+        { glm::vec3 a = c + glm::vec3{3, 0, 3}, b = c + glm::vec3{9, 0, 3};
+          CHECK(AH::seamParity(c, a) != AH::seamParity(c, b), "neighbouring cells alternate");
+          glm::vec3 in0 = AH::seamParity(c, a) == 0 ? a : b, in1 = AH::seamParity(c, a) == 0 ? b : a;
+          AH h0; h0.addSeams(c, 0); float d0 = 0; for (float t = 0; t < AH::SEAM_WARN + 0.05f; t += DT) d0 += total(h0.update(DT, in0, 1.8f, true, &N, c));
+          AH h1; h1.addSeams(c, 0); float d1 = 0; for (float t = 0; t < AH::SEAM_WARN + 0.05f; t += DT) d1 += total(h1.update(DT, in1, 1.8f, true, &N, c));
+          CHECK(d0 == AH::SEAM_DAMAGE && d1 == 0.f, "the first wave burns one parity; the dark cells are safe");
+          AH h2; h2.addSeams(c, 0); float d2 = 0; for (float t = 0; t < AH::SEAM_WARN + AH::SEAM_GAP + 0.05f; t += DT) d2 += total(h2.update(DT, in1, 1.8f, true, &N, c));
+          CHECK(d2 == AH::SEAM_DAMAGE, "...then the other, 0.7 s later: step across"); }
+        { glm::vec3 me = c + glm::vec3{0, 0, 20}, p = me + glm::vec3{7.f * 0.6f, 0, 0};
+          AH h; h.addZenith(c + glm::vec3{0, 40, 0}, me);
+          float got = 0; for (float t = 0; t < AH::ZRAY_TIME; t += DT) { p.x += 7.f * DT; got += total(h.update(DT, p, 1.8f, true, &N, c)); }
+          AH s; s.addZenith(c + glm::vec3{0, 40, 0}, me);
+          float still = 0; for (float t = 0; t < AH::ZRAY_TIME; t += DT) still += total(s.update(DT, me, 1.8f, true, &N, c));
+          CHECK(got == 0.f && still > 40.f, "the zenith ray burns where you stand, and turns slower than you run"); }
+        { glm::vec3 me = c + glm::vec3{0, 0, 20};
+          AH h; h.addHalo(c, c.y);
+          float stand = 0; for (float t = 0; t < AH::HALO_TIME + 0.1f; t += DT) stand += total(h.update(DT, me, 1.8f, true, &N, c));
+          AH s; s.addHalo(c, c.y);
+          float slide = 0; for (float t = 0; t < AH::HALO_TIME + 0.1f; t += DT) slide += total(s.update(DT, me, 0.9f, true, &N, c));
+          CHECK(stand == AH::HALO_DAMAGE && slide == 0.f, "the 360 sweep hits you standing; slide under it");
+          AH m; m.addHalo(c, c.y); int mask = 0;
+          for (float t = 0; t < AH::HALO_TIME + 0.1f; t += DT) { m.update(DT, me, 1.8f, true, &N, c); mask |= m.haloShatterMask(); }
+          CHECK(mask == 0x55, "it shatters four pillars (every other one)"); }
+        { AH h; h.addJudge(c, c); AH f; f.addJudge(c, c);
+          float near = 0, far = 0;
+          for (float t = 0; t < AH::JUDGE_WARN + 0.1f; t += DT) {
+              near += total(h.update(DT, c + glm::vec3{0, 0, 4}, 1.8f, true, &N, c));
+              far += total(f.update(DT, c + glm::vec3{0, 6, 20}, 1.8f, false, &N, c));
+          }
+          CHECK(near == 0.f && far == AH::JUDGE_DAMAGE, "the last judgment: beside him you're safe; anywhere else (even in the air) it's 60"); }
+        { glm::vec3 me = c + glm::vec3{0, 0, 10};
+          AH h; h.addMirage(me + glm::vec3{2, 0, 0});
+          CHECK(h.mirageAlong(me + glm::vec3{0, 1.5f, 0}, glm::vec3{1, 0, 0}, 10.f) == 0, "a mirage can be shot");
+          h.killMirage(0);
+          float got = 0; for (float t = 0; t < 1.f; t += DT) got += total(h.update(DT, me, 1.8f, true, &N, c));
+          CHECK(h.mirages.empty() && got == 0.f, "one hit and it's gone");
+          AH k; k.addMirage(me + glm::vec3{2, 0, 0}); float hit = 0;
+          for (float t = 0; t < 1.f; t += DT) hit += total(k.update(DT, me, 1.8f, true, &N, c));
+          CHECK(hit == AH::MIRAGE_DAMAGE, "left alone its jab lands for half (8)"); }
+        { AH h; h.addRay(c, c); h.addStomp(c); h.addSerpent(c, {0, 0, 1}); h.addSeams(c, 0); h.addZenith(c, c); h.addHalo(c, c.y); h.addMirage(c); h.addJudge(c, c);
+          h.clear();
+          CHECK(h.rays.empty() && h.stomps.empty() && h.serpents.empty() && h.seams.empty() && h.zrays.empty() && h.halos.empty() && h.mirages.empty() && h.judges.empty(),
+                "clear() empties every hazard (a retry)"); }
     }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");

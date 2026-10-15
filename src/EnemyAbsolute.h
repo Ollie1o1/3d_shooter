@@ -262,7 +262,7 @@ inline void Enemy::abResolve(const EnemyWorld& w, glm::vec3 feet, float d) {
             break;
         }
         case AttackKind::ARAY:
-            ev.abRay = true; ev.abFrom = position + glm::vec3{0.f, 1.6f, 0.f}; ev.abTo = feet + glm::vec3{0.f, 1.f, 0.f};
+            ev.abRay = true; ev.abFrom = position + glm::vec3{0.f, 1.6f, 0.f}; ev.abTo = abAim + glm::vec3{0.f, 1.f, 0.f};   // along its red line
             recoverTimer = 0.6f;   // he holds the beam: the next move comes as it ends
             break;
         case AttackKind::ASTOMP:   ev.abStomp = true; ev.abFrom = position; break;
