@@ -19,6 +19,23 @@ inline void GameplayState::devPenitentPose(Enemy& e) {
     if (n == 4) e.yaw = e.prevYaw = e.yaw + 3.14159265f;   // its back to you: the wound
 }
 
+// --overlay abposeN: THE ABSOLUTE held mid-tell N (1 jab, 2 hook, 3 uppercut, 4 drop-kick, 5 ray, 6 stomp,
+// 7 serpent, 8 sweep (blade), 9 lunge, 10 judgment, 11 reeling, 12 broken, 13 idle guard) for screenshots
+inline void GameplayState::devAbsolutePose(Enemy& e) {
+    int n = std::atoi(g_devOverlay.c_str() + 6);
+    e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE; e.abArrive = 0.f;
+    glm::vec3 to = player.position - e.position;
+    e.yaw = e.prevYaw = std::atan2(to.x, to.z);
+    e.prevPosition = e.position;
+    e.attack = AttackKind::NONE; e.telegraphTimer = 0.f; e.telegraphDuration = 1.f; e.staggerTimer = 0.f;
+    static const AttackKind K[] = {AttackKind::NONE, AttackKind::AJAB, AttackKind::AHOOK, AttackKind::AUPPER, AttackKind::ADROP,
+                                   AttackKind::ARAY, AttackKind::ASTOMP, AttackKind::ASERPENT, AttackKind::ASWEEP, AttackKind::ALUNGE, AttackKind::AJUDGE};
+    if (n >= 1 && n <= 10) { e.attack = K[n]; e.telegraphTimer = 0.25f; e.abAim = player.position; }
+    e.abBlade = n == 8 || n == 9;
+    if (n == 11) { e.staggerTimer = 0.5f; e.abReeling = true; }
+    if (n == 12) { e.staggerTimer = 2.f; e.abReeling = false; }
+}
+
 inline void GameplayState::devPose(Enemy& e) {
     int n = std::atoi(g_devOverlay.c_str() + 4);
     e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE;

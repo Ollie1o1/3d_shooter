@@ -193,6 +193,8 @@ inline void GameplayState::enterArena(int a) {
     banners.clear();
     grapple.release();
     holsterSword(); sword = Sword{};
+    abh.clear(); level.restoreZenith(); abGhosts.clear(); abLineT = abHintT = 0.f; abLineShown = -1; abDeathT = 1e9f;   // the Zenith whole again
+    pillarFallT.fill(-1.f); shardFallT.fill(-1.f); punchedThisTick = false;
     ascendT = -1.f; whiteFade = level.zenith.built && a == ZENITH_ARENA && act2() ? 1.f : 0.f;
     playerDead = false; deadTimer = 0.f;
     victory = false; victoryDelay = -1.f;
@@ -332,6 +334,10 @@ inline void GameplayState::handleDirectorEvents() {
                 pushBanner("THE SOVEREIGN", "PARRY (F) THE BLADE AS IT LANDS", {1.f, 0.3f, 0.2f}, 4.f);
             else if (ar.waves[ev.value][0].type == EnemyType::PENITENT)
                 pushBanner("THE PENITENT", "BREAK ITS CHAINS - JUMP LOW SWEEPS, SLIDE UNDER HIGH ONES", {1.f, 0.5f, 0.2f}, 4.5f);
+            else if (ar.waves[ev.value][0].type == EnemyType::ABSOLUTE) {
+                pushBanner("THE ABSOLUTE", "WHITE: PARRY   GOLD: DODGE OR BLOCK   RED: GET OUT", {1.f, 0.97f, 0.9f}, 4.5f);
+                abHintT = 9.f;
+            }
             else if (ar.waves[ev.value][0].type == EnemyType::LEVIATHAN)
                 pushBanner("THE LEVIATHAN", "DASH THE CRASH - SHOOT THE EYE WHILE IT'S DOWN", {1.f, 0.35f, 0.2f}, 4.5f);
             else

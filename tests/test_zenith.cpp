@@ -8,6 +8,7 @@
 #include "../src/Progression.h"
 #include "../src/WaveDirector.h"
 #include "../src/AbsoluteHazards.h"
+#include "../src/EnemyModel.h"
 #include <string>
 #include <cstdio>
 #include <cmath>
@@ -549,6 +550,37 @@ int main() {
         e.health = e.maxHealth * 0.05f;
         bool again = false; for (int i = 0; i < 60 * 10; ++i) { e.update(DT, zworld(me)); again |= e.ev.abJudgeMark; }
         CHECK(!again, "only once");
+    }
+
+    // ---------------------------------------------------------------- his rig: the most detailed in the game
+    {
+        auto parts = [](Enemy e) { std::vector<BoxInstance> out; buildEnemy(e, 0.f, out); return out; };
+        Enemy a(EnemyType::ABSOLUTE, {0, 0, 0}); a.spawnTimer = 0.f; a.state = EnemyState::ACTIVE; a.abArrive = 0.f;
+        size_t mine = parts(a).size(), most = 0;
+        for (EnemyType t : {EnemyType::WARDEN, EnemyType::SOVEREIGN, EnemyType::PENITENT, EnemyType::LEVIATHAN}) {
+            Enemy b(t, {0, 0, 0}); b.spawnTimer = 0.f; b.state = EnemyState::ACTIVE;
+            if (t == EnemyType::LEVIATHAN) { b.levInit = true; b.levStage = Enemy::LevStage::FIGHT; b.position = {0.f, 12.f, 6.f}; }
+            most = std::max(most, parts(b).size());
+        }
+        std::printf("      the Absolute: %d parts (the most of any other boss: %d)\n", (int)mine, (int)most);
+        CHECK(mine >= 150 && mine > most, "his rig has more parts than any other boss's: fingers, ribs, plates, wraps, a broken halo");
+        Enemy bl = a; bl.abBlade = true;
+        CHECK(parts(bl).size() > mine, "phase 3: his blade of light in his hand");
+        glm::vec3 lo{1e9f}, hi{-1e9f};
+        for (auto& p : parts(a)) { glm::vec3 c{p.model[3]}; lo = glm::min(lo, c); hi = glm::max(hi, c); }
+        CHECK(hi.y > 2.3f && hi.y < 3.3f && lo.y > -0.1f, "about 2.6 m tall, standing on the floor");
+        auto tint = [&](AttackKind k) {
+            Enemy e = a; e.attack = k; e.telegraphDuration = 0.5f; e.telegraphTimer = 0.05f;   // the end of its tell: blazing
+            glm::vec3 best{0.f}; float bm = 0.f;
+            for (auto& p : parts(e)) { float m = p.emissive.x + p.emissive.y + p.emissive.z; if (m > bm) { bm = m; best = p.emissive; } }
+            return best / std::max(bm, 1e-4f);
+        };
+        glm::vec3 w = tint(AttackKind::AJAB), gld = tint(AttackKind::AUPPER), rd = tint(AttackKind::ARAY);
+        CHECK(std::fabs(w.x - w.z) < 0.08f, "a white tell flashes white");
+        CHECK(gld.x > gld.z * 2.f && gld.y > gld.z * 1.4f, "a gold tell flashes gold");
+        CHECK(rd.x > rd.y * 3.f, "a red tell flashes red");
+        AABB hb;
+        CHECK(headBox(a, hb) && hb.min.y > 1.9f && hb.max.y < 2.8f, "his head can be shot (a head box where his head is)");
     }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED", failures, failures == 1 ? "" : "s");

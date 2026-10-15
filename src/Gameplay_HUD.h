@@ -125,10 +125,12 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             ui.end2D();
         }
 
-        if (boss) ui.renderBossBar(boss->type == EnemyType::SOVEREIGN ? "THE SOVEREIGN" :
+        if (boss) ui.renderBossBar(boss->type == EnemyType::ABSOLUTE ? "THE ABSOLUTE" :
+                                   boss->type == EnemyType::SOVEREIGN ? "THE SOVEREIGN" :
                                    boss->type == EnemyType::PENITENT ? "THE PENITENT" :
                                    boss->type == EnemyType::LEVIATHAN ? "THE LEVIATHAN" : "THE WARDEN",
                                    boss->health / boss->maxHealth,
+                                   boss->type == EnemyType::ABSOLUTE ? boss->abPhase >= 2 :
                                    boss->type == EnemyType::LEVIATHAN ? boss->levPhase >= 2 :
                                    boss->type == EnemyType::PENITENT ? boss->scourging :
                                    boss->type == EnemyType::WARDEN ? boss->wardenPhase >= 2 : boss->enraged);
@@ -229,6 +231,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         ui.renderBanner(b.title.c_str(), b.subtitle.c_str(), b.color, a);
     }
     if (countdown > 0.f) ui.renderCountdown(countdown);
+    if (!playerDead && !victory) renderAbsoluteHUD();
     if (ascendT >= ASCEND_SINK || whiteFade > 0.f) {   // the ascension: the act's card, then a white-out
         ui.begin2D();
         float c = ascendT >= ASCEND_SINK ? std::min(1.f, (ascendT - ASCEND_SINK) * 3.f) : 0.f;

@@ -265,6 +265,8 @@ inline PoseOverride penitentPose(const Enemy& e) {
 
 inline vec3 brassOf() { return {0.6f, 0.45f, 0.22f}; }
 
+#include "AbsoluteRig.h"   // THE ABSOLUTE's body
+
 inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out) {
     const EnemyStats& st = e.stats();
     Rig r{out};
@@ -629,11 +631,7 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         r.box(f.head, {0.f, L.headS + 0.06f, -0.02f}, {0.06f, 0.14f, 0.3f}, bronze);        // helmet crest
         break;
     }
-    case EnemyType::ABSOLUTE: {   // provisional: Gameplay_Absolute's task builds the detailed rig
-        HumanoidLook L = humanoidLook(e.type, st.color, st.color * 0.8f, glow);
-        humanoid(r, root, L, e.animPhase, stride, ArmPose::SWING, 0.f);
-        break;
-    }
+    case EnemyType::ABSOLUTE: buildAbsolute(e, time, r, root); break;   // the most detailed rig in the game (AbsoluteRig.h)
     case EnemyType::SOVEREIGN: {
         bool broken = e.staggered();
         vec3 g = e.enraged ? vec3{1.f, 0.12f, 0.08f} * (1.3f + 2.f * tp) : glow;
@@ -809,6 +807,12 @@ inline bool headBox(const Enemy& e, AABB& out) {
         if (e.type == EnemyType::PENITENT)   { w = 1.9f; top = 1.9f; }        // the hood
         centre = {0.f, top * 0.5f, 0.f};
         half   = {w * 0.5f, top * 0.5f, w * 0.5f};
+        break;
+    }
+    case EnemyType::ABSOLUTE: {   // his skull, as drawn (absoluteHeadFrame)
+        frame  = absoluteHeadFrame(e, root, absolutePose(e, 0.f));
+        centre = {0.f, 0.19f, -0.01f};
+        half   = {0.14f, 0.18f, 0.15f};
         break;
     }
     case EnemyType::RIPPER: {

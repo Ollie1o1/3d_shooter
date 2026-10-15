@@ -63,6 +63,8 @@ inline void GameplayState::updateSword(float dt) {
             fx.spawnHitSparks(c, gunkit::SWORD_GLOW * 1.6f);
             landed = true;
         }
+        for (int m = (int)abh.mirages.size() - 1; m >= 0; --m)   // a stroke through a mirage ends it
+            if (Sword::inArc(eye, fwd, abh.mirages[m].at + glm::vec3{0.f, 1.3f, 0.f}, 0.6f)) { abh.killMirage(m); landed = true; }
         if (landed) { audio.play("sword_hit", 120); hitStopFrames = std::max(hitStopFrames, 3); shake(0.1f, 0.02f); }
     }
     if (o.thrust) {

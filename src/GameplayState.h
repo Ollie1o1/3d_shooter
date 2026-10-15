@@ -10,6 +10,7 @@
 #include "EnemyVoice.h"
 #include "WardenHazards.h"
 #include "LeviathanHazards.h"
+#include "AbsoluteHazards.h"
 #include "RelicHazards.h"
 #include "EnemyModel.h"
 #include "BoxRenderer.h"
@@ -424,6 +425,29 @@ public:
     static constexpr float LV_SINK = 3.f;
     static constexpr float FLOOD_DEPTH = 0.6f;   // the Maw's flood over the ring in its last phase
     Enemy* leviathan();
+    // THE ABSOLUTE (Gameplay_Absolute.h): what he leaves in the Zenith, his afterimages, his lines, his death
+    AbsoluteHazards abh;
+    struct AbGhost { Enemy pose; float t; };
+    std::vector<AbGhost> abGhosts;
+    static constexpr float AB_GHOST_LIFE = 0.35f, AB_DEATH = 3.f;
+    std::vector<AABB> zenPillarBoxes;               // the standing pillars, for his mind (fillZenithWorld)
+    std::array<float, 8> pillarFallT{};             // a shattered pillar's pieces falling (< 0: none)
+    std::array<float, 6> shardFallT{};              // a shard dropping away (< 0: none)
+    float abLineT = 0.f; int abLineShown = -1;      // his line on screen
+    float abHintT = 0.f;                            // the sword's hint as he arrives
+    float abDeathT = 1e9f;
+    Enemy abCorpse{EnemyType::ABSOLUTE, glm::vec3{0.f}};
+    bool  punchedThisTick = false;                  // F this tick: a serpent within reach goes back
+    Enemy* absolute();
+    void fillZenithWorld(EnemyWorld& w);
+    bool parryAbsolute(Enemy& e, bool bySword);
+    void swordParryAbsolute(Enemy& e);
+    void onAbsoluteEvents(Enemy& e, const EnemyEvents& ev);
+    void updateAbsolute(float dt);
+    void onAbsoluteKilled(const Enemy& e);
+    void updateAbsoluteDeath(float dt);
+    void gatherAbsoluteBoxes(std::vector<BoxInstance>& out);
+    void renderAbsoluteHUD();
     void onLeviathanEvents(Enemy& e, const EnemyEvents& ev);
     void updateLeviathan(float dt);
     void throatHit(Enemy& e, float dmg);
@@ -568,6 +592,7 @@ public:
     float pinnedCueCd = 0.f;   // a HALOED enemy's halo shatters: feedback and style
 
     void punch(int boostable);
+    void devAbsolutePose(Enemy& e);
     void updateAscension(float dt);
     void reflectProjectile(int pi, glm::vec3 fwd);
     bool swordAllowed() const;
@@ -731,3 +756,4 @@ public:
 #include "Gameplay_Reliquary.h"
 #include "Gameplay_Leviathan.h"
 #include "Gameplay_Sword.h"
+#include "Gameplay_Absolute.h"
