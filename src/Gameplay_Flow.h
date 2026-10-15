@@ -230,6 +230,7 @@ inline void GameplayState::resetPlayer(glm::vec3 start) {
     }
     aim = 0.f; aimFullAt = -1.f;
     dashCharges = 2; dashCooldown = 0.f; dashMomentumTimer = 0.f;
+    grappleCooldown = 0.f; wasGrappling = false;
     jumpsRemaining = 2; slamming = false; invincFrames = 0.f;
     activeWeapon = modOn(DailyMod::MARKSMAN) ? (int)WeaponId::KAR : 0; pendingWeapon = -1; weaponSwitchTimer = 0.f;
     recoilPitch = 0.f; peakFallSpeed = 0.f; landSquash = 0.f; fovKick = 0.f;

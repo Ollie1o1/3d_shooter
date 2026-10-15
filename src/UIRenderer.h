@@ -46,6 +46,7 @@ struct HudState {
     float spread = 0.f;            // crosshair gap in pixels from weapon spread
     bool  hideCrosshair = false;
     bool  grappleTarget = false;   // aiming at something the grapple can hook
+    float grappleCool = 0.f;       // 1 just released .. 0 ready: a cyan bar refills under the crosshair
     bool  showTimer = false;
     float time = 0.f;
     float speed = -1.f;       // FAST: horizontal speed in m/s (< 0: hidden)
@@ -753,6 +754,11 @@ private:
                 ui.rect(cx + sx * r - (sx < 0 ? 0 : 6), cy + sy * r - (sy < 0 ? 0 : 2), 6, 2, gc);
                 ui.rect(cx + sx * r - (sx < 0 ? 0 : 2), cy + sy * r - (sy < 0 ? 0 : 6), 2, 6, gc);
             }
+        }
+        if (h.grappleCool > 0.f) {   // the hook recoiling: a short bar that fills back up
+            int bx = cx - 20, by = cy + 34;
+            ui.rect(bx - 1, by - 1, 42, 5, {0.f, 0.f, 0.f, 0.5f});
+            ui.rect(bx, by, (int)(40 * (1.f - h.grappleCool)), 3, {0.3f, 1.f, 1.f, 0.75f});
         }
         float gap = 2.f + h.spread;
         ui.rect(cx - gap - 6, cy - 1, 6, 2, col);

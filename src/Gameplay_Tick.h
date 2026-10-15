@@ -106,9 +106,12 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     if (pendingGrapple && modOn(DailyMod::GROUNDED)) pendingGrapple = false;   // DAILY: no grapple today
     if (pendingGrapple && pinned && !grapple.active) { pendingGrapple = false; pinnedCue(); }
     if (pinned && grapple.active) grapple.release();
+    if (grappleCooldown > 0.f) grappleCooldown -= dt;
     if (pendingGrapple) {
         if (!grapple.active) {
-            if (canHook) {
+            if (grappleCooldown > 0.f) {
+                audio.play("dry", 100, SoundGroup::PLAYER);   // still coiling: no spamming the hook
+            } else if (canHook) {
                 glm::vec3 impulse{0.f};
                 grapple.attach(player.camera.position, gPoint, impulse, gWall,
                                gMover ? &level.walls[gWall].box : nullptr);
@@ -123,6 +126,8 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         pendingGrapple = false;
     }
     grapple.update(dt, player.camera.position, player.velocity);
+    if (wasGrappling && !grapple.active) grappleCooldown = GRAPPLE_COOLDOWN;   // however it ended (arrival, release, a rip, a pin)
+    wasGrappling = grapple.active;
 
     // --- Aiming (rifles, RMB held) ---
     {

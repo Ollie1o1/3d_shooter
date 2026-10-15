@@ -301,8 +301,8 @@ private:
             float t = kick.t;
             if (techno) {                                         // harder: a faster, deeper drop, driven, a sharper click
                 float hz = 47.f + 190.f * std::exp(-t * 40.f);
-                float body = std::tanh(kickOsc.sine(hz, SR) * std::exp(-t * 7.5f) * 2.6f) * 0.92f;
-                float click = noise() * std::exp(-t * 900.f) * 0.4f;
+                float body = std::tanh(kickOsc.sine(hz, SR) * std::exp(-t * 7.5f) * 3.2f) * 1.35f;
+                float click = noise() * std::exp(-t * 900.f) * 0.55f;
                 drums += (body + click) * gKick * kick.vel;
             } else {
                 float hz = 46.f + 120.f * std::exp(-t * 32.f);
@@ -355,7 +355,7 @@ private:
             float cut = gBassF * (0.8f + 1.4f * std::exp(-bassEnvT * 14.f));
             float f = bassF.lp(raw * 0.5f, std::min(cut, 2.f), 0.7f);
             float sb = sub.sine(hz * 0.5f, SR) * 0.6f;
-            bassOut = std::tanh((f * 1.6f + sb) * env) * 0.42f * gBass * duck;
+            bassOut = std::tanh((f * 1.6f + sb) * env) * (techno ? 0.32f : 0.42f) * gBass * duck;   // (techno: under the kick)
             bassEnvT += dt;
         }
 
@@ -380,7 +380,7 @@ private:
             if (techno) {
                 float a = arpOsc.saw(midiHz(arpNote - 12.f), SR) * std::exp(-arpT * 11.f);
                 float g = gOf(acidBase * (1.f + 3.f * std::exp(-arpT * 28.f)));
-                arpOut = std::tanh(arpF.lp(a, g, 0.22f) * 1.8f) * 0.1f * gArp;
+                arpOut = std::tanh(arpF.lp(a, g, 0.22f) * 1.8f) * 0.085f * gArp;
             } else {
                 float a = arpOsc.square(midiHz(arpNote), SR) * std::exp(-arpT * 16.f);
                 arpOut = arpF.lp(a, gArpF, 0.6f) * 0.13f * gArp;

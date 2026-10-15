@@ -233,6 +233,9 @@ public:
     int   dashCharges       = 2;
     float dashCooldown      = 0.f;
     float dashMomentumTimer = 0.f;
+    static constexpr float GRAPPLE_COOLDOWN = 1.5f;   // from the moment the rope lets go (arrival, release, or broken)
+    float grappleCooldown   = 0.f;
+    bool  wasGrappling      = false;
     int   jumpsRemaining = 2;
     bool  prevOnGround   = false;
     bool  slamming       = false;
