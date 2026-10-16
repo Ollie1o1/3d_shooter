@@ -459,6 +459,13 @@ public:
     float abLineT = 0.f; int abLineShown = -1;      // his line on screen
     float abHintT = 0.f;                            // the sword's hint as he arrives
     float abDeathT = 1e9f;
+    // The sky over the fight (skybox.frag): the eclipse flares at his entrance and his phases; a shaft
+    // of light from it as he draws his blade; on his death the eclipse slides off the sun (the dawn)
+    float eclipseFlare = 0.f, abShaftT = -1.f, abDawnT = -1.f;
+    static constexpr float AB_SHAFT = 1.2f, AB_DAWN_FROM = 1.6f, AB_DAWN_TIME = 6.f;
+    float dawn01() const { return abDawnT < 0.f ? 0.f : glm::smoothstep(AB_DAWN_FROM, AB_DAWN_FROM + AB_DAWN_TIME, abDawnT); }
+    static Theme dawnOf(const Theme& t);
+    float swordRoll = 0.f;                          // the camera leaning into a sword stroke (degrees)
     Enemy abCorpse{EnemyType::ABSOLUTE, glm::vec3{0.f}};
     bool  punchedThisTick = false;                  // F this tick: a serpent within reach goes back
     Enemy* absolute();

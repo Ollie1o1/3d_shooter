@@ -20,6 +20,8 @@ uniform float uStars;
 uniform float uEclipse;     // 1 = the sun is an eclipse with a corona, a blood horizon all round, a sea of cloud below
 uniform float uHeat;        // 0..1: the eclipse burns hotter (the Zenith: as the boss's health falls)
 uniform float uTime;
+uniform float uFlare;       // 0..1: a flash of the eclipse (his entrance, his phases), decaying
+uniform float uDawn;        // 0..1: the eclipse sliding off the sun (his death)
 
 float hash3(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
 float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -40,13 +42,16 @@ vec3 eclipseSky(vec3 dir, vec3 col) {
     float y = dir.y;
     vec3 blood = uSunColor;                        // the sunset's colour
     vec3 hot   = vec3(2.4, 1.5, 0.9);              // the rim
-    float heat = uHeat;
+    float heat = clamp(uHeat + 0.8 * uFlare, 0.0, 1.6);
+    float dawn = uDawn;
+    blood = mix(blood, vec3(1.5, 0.75, 0.3), dawn);   // the blood goes gold
 
     // the horizon: a band of blood all the way round, uneven, brightest at the line
     float az = atan(dir.z, dir.x);
     float swell = 0.75 + 0.25 * sin(az * 2.0 + 0.6) + 0.15 * sin(az * 5.0 + 2.2);
     float band = exp(-abs(y) * 9.0) * swell;
     col += blood * band * (0.75 + 0.5 * heat);
+    col += blood * uFlare * 0.18;                    // the whole sky catches the flare
     col += vec3(1.8, 0.7, 0.25) * exp(-abs(y) * 40.0) * swell * 0.55;   // the burning line itself
 
     // above: thin cloud streaks low in the sky, dark, lit red from beneath
@@ -83,14 +88,26 @@ vec3 eclipseSky(vec3 dir, vec3 col) {
     float fall = exp(-max(r - 1.0, 0.0) * 2.4 / (streak * reach));
     float corona = fall * step(1.0, r);
     vec3 coronaCol = mix(blood * 1.6, vec3(1.9, 1.3, 0.9), exp(-max(r - 1.0, 0.0) * 4.0));
-    col += coronaCol * corona * (0.9 + 0.8 * heat);
+    col += coronaCol * corona * (0.9 + 0.8 * heat) * (1.0 - 0.6 * dawn);
     col += blood * exp(-max(r - 1.0, 0.0) * 1.1) * (0.22 + 0.2 * heat) * step(1.0, r);   // the red bloom round it
     // the rim: a thin ring of fire, beaded where the light breaks through
-    float rim = exp(-pow((r - 1.0) / 0.025, 2.0));
+    float rq = (r - 1.0) / 0.025;
+    float rim = exp(-rq * rq);
     float beads = 0.75 + 0.25 * sin(phi * 23.0 + uTime * 0.7) + 0.6 * pow(vnoise(vec2(phi * 9.0, uTime * 0.3)), 6.0);
-    col += hot * rim * beads * (1.4 + heat);
-    // the disc: black, a faint ember along its limb
-    if (r < 1.0) col = mix(vec3(0.004, 0.0, 0.003), blood * 0.18, smoothstep(0.82, 1.0, r));
+    col += hot * rim * beads * (1.4 + heat + 2.0 * uFlare) * (1.0 - dawn);
+    // the sun behind it, and the moon's disc over it: black, a faint ember on its
+    // limb; at the dawn the moon slides off and the sun burns through
+    vec3 sunCol = vec3(3.2, 2.7, 2.0);
+    float off = dawn * 2.4 * uSunSize;
+    vec3 mdir = normalize(ax * cos(off) + t1 * sin(off));
+    float rm = acos(clamp(dot(dir, mdir), -1.0, 1.0)) / uSunSize;
+    float shown = smoothstep(0.0, 0.5, dawn);
+    col += sunCol * 0.45 * exp(-max(r - 1.0, 0.0) * 2.6) * shown * step(1.0, r);     // the sun's own glare
+    col += vec3(1.4, 0.75, 0.3) * exp(-max(r - 1.0, 0.0) * 0.9) * 0.3 * shown;       // and the warm sky round it
+    if (r < 1.0) col = mix(col, sunCol, step(1.0, rm) * shown);
+    float ring = dawn > 0.0 && dawn < 0.45 ? exp(-(r - 1.0) * (r - 1.0) / 0.0036) * smoothstep(0.98, 1.0, rm) * sin(dawn / 0.45 * 3.14159) : 0.0;
+    col += vec3(4.0, 3.6, 3.0) * ring * 2.0;                                           // the diamond ring as it breaks
+    if (rm < 1.0 && dawn < 0.999) col = mix(vec3(0.004, 0.0, 0.003), blood * 0.18, smoothstep(0.82, 1.0, rm));
     return col;
 }
 

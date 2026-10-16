@@ -462,11 +462,12 @@ inline void GameplayState::render() {
     float zoom = wd.canAim ? glm::mix(1.f, wd.aimFov, a) : 1.f;
     renderCam.fov = baseFov * zoom + fovKick * (1.f - a);
 
-    glm::mat4 view = renderCam.viewMatrix();
+    glm::mat4 view = glm::rotate(glm::mat4(1.f), glm::radians(swordRoll), glm::vec3{0.f, 0.f, 1.f}) * renderCam.viewMatrix();   // (leaning into a stroke)
     glm::mat4 proj = renderCam.projectionMatrix();
     Theme th = level.themeAt(player.position);
     if (rageBlend > 0.f) th = lerpTheme(th, bloodEclipse(th), rageBlend);
     if (bossDusk > 0.005f && th.eclipse < 0.5f) th = lerpTheme(th, nightfall(th), bossDusk * BOSS_DUSK_MAX);   // (under the eclipse: it burns hotter instead)
+    if (th.eclipse > 0.5f && dawn01() > 0.f) th = lerpTheme(th, dawnOf(th), dawn01());   // he's dead: the sun comes out
 
     postProcess.beginScene();
     glClearColor(th.fogColor.r, th.fogColor.g, th.fogColor.b, 1.f);
@@ -493,6 +494,8 @@ inline void GameplayState::render() {
         skyboxShader.setFloat("uEclipse", th.eclipse);
         skyboxShader.setFloat("uHeat",    bossDusk);
         skyboxShader.setFloat("uTime",    gameClock);
+        skyboxShader.setFloat("uFlare",   th.eclipse > 0.5f ? eclipseFlare : 0.f);
+        skyboxShader.setFloat("uDawn",    th.eclipse > 0.5f ? dawn01() : 0.f);
         glBindVertexArray(postProcess.quadVAO);
         glDrawArrays(GL_TRIANGLES,0,6);
         glBindVertexArray(0);

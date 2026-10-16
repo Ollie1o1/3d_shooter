@@ -19,7 +19,7 @@ inline void GameplayState::drawSword() {
 }
 inline void GameplayState::holsterSword() {
     if (!swordOut) return;
-    swordOut = false; sword.holster();
+    swordOut = false; sword.holster(); swordRoll = 0.f;
     player.horizontalSpeed = 7.f;
 }
 
@@ -37,6 +37,7 @@ inline void GameplayState::updateSword(float dt) {
         abLastPressT = gameClock;
         if (gameClock - abWhiteHitT < 0.25f) { ui.feed("LATE", {1.f, 1.f, 1.f}); audio.play("ab_tsk", 110, SoundGroup::UI); }
     }
+    swordRoll *= std::exp(-dt * 9.f);
     Sword::Out o = sword.update(dt, in);
     viewModel.tickSword(dt, swordShownFor(sword));
     glm::vec3 eye = player.camera.position, fwd = player.camera.forward();
@@ -59,6 +60,8 @@ inline void GameplayState::updateSword(float dt) {
             player.velocity.x += st.x / Sword::SWING_TIME; player.velocity.z += st.z / Sword::SWING_TIME;
         }
         fx.slashes.push_back({player.position, std::atan2(fwd.x, fwd.z), 10 + o.stroke, 0.f});   // kinds 10-12: the player's
+        swordRoll = o.stroke == 0 ? 2.2f : o.stroke == 1 ? -2.2f : 0.f;   // the head leans into the cut
+        if (o.stroke == 2) fovKick = std::max(fovKick, 3.f);
         bool landed = false;
         for (auto& e : enemies) {
             if (!e.targetable()) continue;

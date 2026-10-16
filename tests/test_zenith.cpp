@@ -337,15 +337,17 @@ int main() {
     {   // his entrance, from the spawn the arena gives him (not freshAbs: the real one)
         Enemy e(EnemyType::ABSOLUTE, ZA.bossSpawn);
         EnemyWorld w = zworld(ZC + glm::vec3{0.f, 0.f, 20.f});
-        float first = -1e9f, prev = 1e9f; bool neverRises = true;
+        float first = -1e9f, prev = 1e9f; bool neverRises = true; int landed = 0; float landedAt = -1.f;
         for (int i = 0; i < 4 * 60; ++i) {
             e.update(DT, w);
+            if (e.ev.abLanded) { ++landed; landedAt = e.position.y - absFloorAt(w, e.position); }
             if (i == 0) first = e.position.y;
             if (e.position.y > prev + 1e-4f) neverRises = false;
             prev = e.position.y;
         }
         CHECK(first > ZC.y + 10.f, "he enters from high above the Dais, from the first tick");
         CHECK(neverRises, "...and only comes down: never up again after he appears");
+        CHECK(landed == 1 && std::fabs(landedAt) < 0.05f, "...and lands once, on the Dais (the landing's ring and the eclipse's flare)");
         CHECK(e.abArrive <= 0.f && std::fabs(e.position.y - absFloorAt(w, e.position)) < 0.6f || e.abAirborne(),
               "...landing on the Dais");
     }

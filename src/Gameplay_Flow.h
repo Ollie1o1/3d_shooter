@@ -196,6 +196,7 @@ inline void GameplayState::enterArena(int a) {
     holsterSword(); sword = Sword{};
     abh.clear(); level.restoreZenith(); abGhosts.clear(); audio.stop(abWindH); audio.stop(abFlightH); audio.stop(abBeamH); abWindH = abFlightH = abBeamH = 0;
     abSkyMarkT = abCrackT = -1.f; abLineT = abHintT = 0.f; abLineShown = -1; abDeathT = 1e9f;   // the Zenith whole again
+    eclipseFlare = 0.f; abShaftT = abDawnT = -1.f; swordRoll = 0.f;
     pillarFallT.fill(-1.f); shardFallT.fill(-1.f); punchedThisTick = false;
     ascendT = -1.f; whiteFade = level.zenith.built && a == ZENITH_ARENA && act2() ? 1.f : 0.f;
     playerDead = false; deadTimer = 0.f;
@@ -540,6 +541,17 @@ inline Theme GameplayState::nightfall(const Theme& t) {
     o.sunColor = t.sunColor * 0.3f; o.mountain = t.mountain * 0.15f; o.stars = std::max(t.stars, 1.f);
     o.lightColor = t.lightColor * 0.22f; o.skyAmb = t.skyAmb * 0.25f; o.groundAmb = t.groundAmb * 0.25f;
     o.fogColor = t.fogColor * 0.15f;
+    return o;
+}
+
+// The Zenith after the Absolute: the eclipse gone, a gold sunrise over the cloud
+inline Theme GameplayState::dawnOf(const Theme& t) {
+    Theme o = t;
+    o.zenith = {0.05f, 0.07f, 0.2f}; o.horizon = {0.9f, 0.42f, 0.14f}; o.ground = {0.28f, 0.13f, 0.08f};
+    o.sunColor = {1.5f, 0.75f, 0.3f};
+    o.lightDir = glm::normalize(glm::vec3{0.1f, -0.85f, 0.4f}); o.lightColor = {1.7f, 1.35f, 0.95f};
+    o.skyAmb = {0.24f, 0.22f, 0.32f}; o.groundAmb = {0.36f, 0.2f, 0.1f};
+    o.fogColor = {0.5f, 0.3f, 0.16f}; o.fogDensity = t.fogDensity * 0.7f;
     return o;
 }
 
