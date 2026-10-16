@@ -60,6 +60,7 @@ struct Theme {
     glm::vec3 skyAmb, groundAmb;              // hemisphere ambient
     glm::vec3 fogColor;
     float     fogDensity;
+    float     eclipse = 0.f;                  // 1 = the sun is an eclipse (skybox.frag: corona, blood horizon, cloud sea)
 };
 
 inline Theme lerpTheme(const Theme& a, const Theme& b, float t) {
@@ -73,6 +74,7 @@ inline Theme lerpTheme(const Theme& a, const Theme& b, float t) {
     o.lightDir = glm::normalize(m(a.lightDir, b.lightDir)); o.lightColor = m(a.lightColor, b.lightColor);
     o.skyAmb = m(a.skyAmb, b.skyAmb); o.groundAmb = m(a.groundAmb, b.groundAmb);
     o.fogColor = m(a.fogColor, b.fogColor); o.fogDensity = f(a.fogDensity, b.fogDensity);
+    o.eclipse = f(a.eclipse, b.eclipse);
     return o;
 }
 

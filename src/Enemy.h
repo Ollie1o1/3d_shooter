@@ -674,6 +674,8 @@ struct Enemy {
         if (hitFlashTimer > 0.f) hitFlashTimer -= dt;
         if (haloOpenTimer > 0.f) haloOpenTimer = std::max(0.f, haloOpenTimer - dt);
 
+        // THE ABSOLUTE's entrance is his descent (abArrive): no materialising on the floor first
+        if (state == EnemyState::SPAWNING && type == EnemyType::ABSOLUTE) { spawnTimer = 0.f; state = EnemyState::ACTIVE; }
         if (state == EnemyState::SPAWNING) {
             spawnTimer -= dt;
             if (spawnTimer <= 0.f) { spawnTimer = 0.f; state = EnemyState::ACTIVE; }

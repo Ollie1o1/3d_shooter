@@ -18,8 +18,16 @@ struct GunLook { int ammo = 8, mag = 8, lit = 8; float flash = 0.f, heat = 0.f, 
 // OATHBREAKER's look (the sword, Sword.h): its guard meter on the fuller, dark
 // when broken, brighter charging a thrust or holding a riposte
 struct SwordLook { float guard01 = 1.f; bool broken = false; float charge = 0.f; float riposte = 0.f; };
-// Where the sword sits in camera space and how it's turned (degrees)
-struct SwordPose { glm::vec3 offset; float yaw, pitch, roll; };
+// Where the sword is in camera space (x right, y up, z forward): the sword
+// hand on the grip, the way the blade points, the way its edge faces, and the
+// off hand (on the grip below it, or bracing the flat in a guard)
+struct SwordPose {
+    glm::vec3 hand{0.2f, -0.22f, 0.36f};
+    glm::vec3 blade{0.f, 0.f, 1.f};
+    glm::vec3 edge{0.f, -1.f, 0.f};
+    float twoHand = 0.f;   // 0..1: the off hand comes up onto the grip
+    float brace = 0.f;     // 0..1: ...or onto the flat of the blade (the guard)
+};
 
 namespace gunkit {
 using glm::vec3; using glm::mat4;
@@ -459,38 +467,195 @@ inline void buildFist(vec3 glow, float punch, bool hit, std::vector<GunPart>& ou
     b.unlit();
 }
 
-// OATHBREAKER (Sword.h): the arsenal's body as a blade. Blackened gunmetal,
-// worn steel edges, a bone grip wound with brass wire, a brass crossguard,
-// and a fuller of 8 cells reading the guard meter (dark when it breaks).
+// OATHBREAKER (Sword.h): the arsenal's body as a blade, a hand and a half
+// long. Blackened gunmetal, worn steel edges bevelled to the point, a bone
+// grip wound with brass wire, a brass crossguard with down-swept quillons and
+// a ring, a ricasso, a lit gem in the pommel, and a fuller of 8 cells reading
+// the guard meter (dark when it breaks).
 // Sword space: +Z along the blade from the guard, +Y the blade's back.
 const vec3 SWORD_GLOW{1.f, 0.25f, 0.45f};
+constexpr float SWORD_SCALE = 0.55f;              // sword units to camera space (a 1 m blade, framed like the guns)
+constexpr float SWORD_HAND_Z = -0.055f, SWORD_OFFHAND_Z = -0.165f;   // where the hands close on the grip (sword units)
 inline void buildSword(const SwordLook& L, std::vector<GunPart>& out) {
     Builder b{out, SWORD_GLOW};
     const mat4 base(1.f);
-    b.box(base, {0.f, 0.f, -0.09f}, {0.032f, 0.036f, 0.16f}, BONE);                 // grip
-    for (int i = 0; i < 4; ++i) b.box(base, {0.f, 0.f, -0.15f + 0.04f * i}, {0.036f, 0.04f, 0.008f}, BRASS);   // the wire
-    b.box(base, {0.f, 0.f, -0.18f}, {0.05f, 0.05f, 0.03f}, BRASS);                   // pommel
+    const float boost = 1.f + 0.8f * L.charge + 1.2f * L.riposte;
+    b.box(base, {0.f, 0.f, -0.11f}, {0.03f, 0.034f, 0.2f}, BONE);                 // grip
+    for (int i = 0; i < 5; ++i) b.box(base, {0.f, 0.f, -0.195f + 0.042f * i}, {0.034f, 0.038f, 0.008f}, BRASS);   // the wire
+    b.box(base, {0.f, 0.f, -0.225f}, {0.046f, 0.046f, 0.032f}, BRASS);                 // pommel
+    b.lit(SWORD_GLOW * (L.broken ? 0.2f : 1.2f * boost));
+    b.box(base, {0.f, 0.f, -0.243f}, {0.02f, 0.02f, 0.01f}, SWORD_GLOW);         // its gem
+    b.unlit();
     b.box(base, {0.f, 0.f, 0.f}, {0.2f, 0.045f, 0.04f}, BRASS);                      // crossguard
-    b.box(base, {0.f, 0.f, 0.45f}, {0.055f, 0.016f, 0.86f}, BLACK);                  // the blade
-    b.box(base, {0.f, -0.012f, 0.45f}, {0.062f, 0.006f, 0.86f}, EDGE);               // its edge
-    b.box(base, {0.f, 0.f, 0.905f}, {0.03f, 0.016f, 0.05f}, EDGE);                   // the point
+    for (float sx : {-1.f, 1.f})                                                     // quillons, swept toward the edge
+        b.box(base * T({sx * 0.115f, -0.012f, -0.012f}) * R(sx * -28.f, {0.f, 0.f, 1.f}), {0.f, 0.f, 0.f}, {0.05f, 0.03f, 0.03f}, BRASS);
+    b.box(base, {0.f, 0.f, 0.03f}, {0.07f, 0.05f, 0.02f}, BRASS * 0.8f);            // the ring at the blade's root
+    b.box(base, {0.f, 0.f, 0.07f}, {0.05f, 0.022f, 0.06f}, STEEL);                   // ricasso
+    b.box(base, {0.f, 0.f, 0.47f}, {0.055f, 0.016f, 0.82f}, BLACK);                  // the blade
+    b.box(base, {0.f, -0.012f, 0.47f}, {0.062f, 0.006f, 0.82f}, EDGE);               // its edge
+    b.box(base, {0.f, 0.f, 0.89f}, {0.042f, 0.016f, 0.03f}, EDGE);                   // the point, tapering
+    b.box(base, {0.f, 0.f, 0.912f}, {0.026f, 0.014f, 0.022f}, EDGE);
+    b.box(base, {0.f, 0.f, 0.93f}, {0.011f, 0.012f, 0.018f}, EDGE * 1.15f);
     int on = L.broken ? 0 : (int)std::ceil(std::clamp(L.guard01, 0.f, 1.f) * 8.f - 1e-4f);
-    float boost = 1.f + 0.8f * L.charge + 1.2f * L.riposte;
-    b.cells(base, {0.f, 0.011f, 0.09f}, {0.f, 0.f, 0.095f}, {0.f, 0.f, 0.f}, 8,
-            {0.018f, 0.006f, 0.07f}, 8, on, boost);
+    b.cells(base, {0.f, 0.011f, 0.13f}, {0.f, 0.f, 0.09f}, {0.f, 0.f, 0.f}, 8,
+            {0.018f, 0.006f, 0.066f}, 8, on, boost);
 }
 
-// Where the sword sits on screen (camera space, as hipOf) through a stroke:
-// u 0..1 through it, or -1 at rest; raised: across the middle, edge up
-inline SwordPose swordPose(int stroke, float u, bool raised, float charge01, float thrust01) {
-    SwordPose p{{0.19f, -0.2f, 0.34f}, -14.f, 58.f, -12.f};   // at rest: low right, the point up and in
-    if (raised) return {{0.06f, -0.11f, 0.4f}, -78.f, 8.f, -82.f};   // across the screen, edge out
-    if (thrust01 > 0.f) return {{0.06f, -0.12f, 0.36f + 0.2f * thrust01}, 0.f, -2.f, -10.f};
-    if (charge01 > 0.f && u < 0.f) { p.offset += vec3{0.05f, 0.03f, -0.08f} * charge01; p.pitch += 30.f * charge01; return p; }
-    if (u < 0.f) return p;
-    float e = smooth(std::clamp(u, 0.f, 1.f));
-    if (stroke == 0) return {{glm::mix(0.32f, -0.30f, e), -0.10f, 0.40f}, glm::mix(40.f, -50.f, e), 4.f, -95.f};
-    if (stroke == 1) return {{glm::mix(-0.30f, 0.32f, e), -0.14f, 0.40f}, glm::mix(-50.f, 40.f, e), 4.f, 85.f};
-    return {{0.04f, glm::mix(0.22f, -0.24f, e), 0.42f}, 0.f, glm::mix(60.f, -50.f, e), -5.f};   // the point raised, then down in front
+// The sword's frame in camera space: origin at the crossguard, +Z down the
+// blade, -Y the edge (the edge kept square to the blade)
+inline mat4 swordFrame(const SwordPose& P) {
+    vec3 z = glm::normalize(P.blade);
+    vec3 e = P.edge - z * glm::dot(P.edge, z);
+    if (glm::length(e) < 1e-4f) e = std::fabs(z.y) < 0.9f ? vec3{0.f, -1.f, 0.f} : vec3{0.f, 0.f, 1.f};
+    vec3 y = -glm::normalize(e - z * glm::dot(e, z));
+    vec3 x = glm::cross(y, z);
+    mat4 m(1.f);
+    m[0] = glm::vec4(x, 0.f); m[1] = glm::vec4(y, 0.f); m[2] = glm::vec4(z, 0.f);
+    m[3] = glm::vec4(P.hand - z * (SWORD_HAND_Z * SWORD_SCALE), 1.f);   // the hand closes round the grip
+    return m;
 }
+// Where its point is (camera space)
+inline vec3 swordTip(const SwordPose& P) {
+    return vec3(swordFrame(P) * glm::vec4(0.f, 0.f, 0.94f * SWORD_SCALE, 1.f));
+}
+
+inline SwordPose mixPose(const SwordPose& a, const SwordPose& b, float t) {
+    SwordPose o;
+    o.hand = glm::mix(a.hand, b.hand, t);
+    vec3 bl = glm::mix(a.blade, b.blade, t), ed = glm::mix(a.edge, b.edge, t);
+    o.blade = glm::length(bl) > 1e-4f ? glm::normalize(bl) : b.blade;
+    o.edge  = glm::length(ed) > 1e-4f ? glm::normalize(ed) : b.edge;
+    o.twoHand = a.twoHand + (b.twoHand - a.twoHand) * t;
+    o.brace   = a.brace + (b.brace - a.brace) * t;
+    return o;
+}
+
+// A stroke as keyframes: a short wind-up (the cut lands as you click: Sword.h),
+// the cut itself fast and easing out, the follow-through settling
+struct SwordKey { float u; vec3 hand, blade, edge; float twoHand; };
+inline SwordPose keyed(const SwordKey* k, int n, float u) {
+    auto pose = [](const SwordKey& q) { SwordPose p; p.hand = q.hand; p.blade = glm::normalize(q.blade); p.edge = glm::normalize(q.edge); p.twoHand = q.twoHand; return p; };
+    if (u <= k[0].u) return pose(k[0]);
+    for (int i = 0; i + 1 < n; ++i) {
+        if (u > k[i + 1].u) continue;
+        float t = (u - k[i].u) / (k[i + 1].u - k[i].u);
+        t = i == 0 ? smooth(t) : 1.f - (1.f - t) * (1.f - t) * (1.f - t);   // wind-up eased; the cut and after, fast then slowing
+        // (two steps of nlerp: a quarter turn between keys stays even)
+        SwordPose a = pose(k[i]), b = pose(k[i + 1]);
+        return mixPose(a, b, t);
+    }
+    return pose(k[n - 1]);
+}
+// The rest pose: low right, the point up and in, a slow breath on it
+inline SwordPose swordRest() { return SwordPose{{0.2f, -0.19f, 0.35f}, glm::normalize(vec3{-0.3f, 0.85f, 0.45f}), glm::normalize(vec3{-0.6f, 0.f, 0.8f}), 0.f, 0.f}; }
+
+// Where the sword is through a stroke: u 0..1 through it, or -1 at rest;
+// raised: across the middle, edge out, the off hand braced on the flat
+inline SwordPose swordPose(int stroke, float u, bool raised, float charge01, float thrust01) {
+    SwordPose rest = swordRest();
+    if (raised) return SwordPose{{0.1f, -0.13f, 0.4f}, glm::normalize(vec3{-1.f, 0.2f, 0.12f}), glm::normalize(vec3{0.f, 0.25f, 1.f}), 0.f, 1.f};
+    if (thrust01 > 0.f)   // driven straight out, both hands behind it
+        return SwordPose{{0.05f, -0.12f, 0.36f + 0.2f * thrust01}, glm::normalize(vec3{-0.12f, 0.07f, 1.f}), {0.f, -1.f, 0.f}, 1.f, 0.f};
+    if (u < 0.f) {
+        if (charge01 <= 0.f) return rest;
+        SwordPose cocked{{0.17f, -0.15f, 0.2f}, glm::normalize(vec3{-0.22f, 0.12f, 1.f}), {0.f, -1.f, 0.1f}, 1.f, 0.f};   // drawn back, levelled
+        return mixPose(rest, cocked, smooth(std::clamp(charge01, 0.f, 1.f)));
+    }
+    u = std::clamp(u, 0.f, 1.f);
+    if (stroke == 0) {   // forehand: cocked high over the right shoulder, cutting down and across to the left
+        static const SwordKey K[] = {
+            {0.f,   {0.28f, -0.06f, 0.3f},   {0.7f, 0.6f, -0.2f},    {-0.3f, 0.f, 1.f},   0.f},
+            {0.1f,  {0.31f, -0.02f, 0.28f},  {0.8f, 0.55f, -0.3f},   {-0.1f, 0.f, 1.f},   0.f},
+            {0.28f, {0.17f, -0.06f, 0.36f},  {0.75f, 0.35f, 0.55f},  {-0.6f, -0.2f, 0.8f}, 0.f},
+            {0.4f,  {0.02f, -0.1f, 0.4f},    {0.05f, 0.2f, 0.98f},   {-1.f, -0.2f, 0.1f}, 0.f},
+            {0.55f, {-0.15f, -0.14f, 0.38f}, {-0.78f, -0.05f, 0.62f}, {-0.6f, -0.1f, -0.8f}, 0.f},
+            {0.75f, {-0.24f, -0.17f, 0.34f}, {-0.95f, -0.2f, 0.22f}, {-0.2f, -0.1f, -1.f}, 0.f},
+            {1.f,   {-0.2f, -0.2f, 0.33f},   {-0.8f, -0.4f, 0.45f},  {-0.4f, -0.2f, -1.f}, 0.f}};
+        return keyed(K, 7, u);
+    }
+    if (stroke == 1) {   // backhand: from low left, rising across to the right
+        static const SwordKey K[] = {
+            {0.f,   {-0.2f, -0.2f, 0.32f},   {-0.85f, 0.f, -0.1f},   {0.2f, 0.f, 1.f},    0.f},
+            {0.1f,  {-0.24f, -0.18f, 0.3f},  {-0.9f, 0.05f, -0.3f},  {0.1f, 0.1f, 1.f},   0.f},
+            {0.28f, {-0.14f, -0.15f, 0.36f}, {-0.75f, 0.12f, 0.55f}, {0.6f, 0.15f, 0.8f}, 0.f},
+            {0.4f,  {0.f, -0.13f, 0.4f},     {-0.05f, 0.22f, 0.98f}, {1.f, 0.15f, 0.1f},  0.f},
+            {0.55f, {0.16f, -0.11f, 0.38f},  {0.78f, 0.3f, 0.55f},   {0.6f, 0.15f, -0.8f}, 0.f},
+            {0.75f, {0.25f, -0.1f, 0.34f},   {0.93f, 0.35f, 0.1f},   {0.2f, 0.1f, -1.f},  0.f},
+            {1.f,   {0.23f, -0.15f, 0.34f},  {0.7f, 0.5f, 0.4f},     {0.4f, 0.f, -1.f},   0.f}};
+        return keyed(K, 7, u);
+    }
+    // the overhead: both hands, raised high, brought down in front
+    static const SwordKey K[] = {
+        {0.f,  {0.08f, 0.09f, 0.28f},  {0.08f, 0.97f, -0.2f}, {0.f, 0.2f, 1.f},   1.f},
+        {0.1f, {0.06f, 0.08f, 0.27f},  {0.05f, 0.93f, -0.36f}, {0.f, 0.36f, 0.93f}, 1.f},
+        {0.3f, {0.04f, 0.0f, 0.44f},   {0.02f, 0.55f, 0.83f}, {0.f, 0.83f, -0.55f}, 1.f},
+        {0.5f, {0.03f, -0.12f, 0.48f}, {0.f, -0.1f, 1.f},     {0.f, -1.f, -0.1f}, 1.f},
+        {0.7f, {0.03f, -0.22f, 0.45f}, {0.f, -0.55f, 0.83f},  {0.f, -0.83f, -0.55f}, 1.f},
+        {1.f,  {0.05f, -0.25f, 0.4f},  {0.04f, -0.6f, 0.8f},  {0.f, -0.8f, -0.6f}, 1.f}};
+    return keyed(K, 6, u);
+}
+
+// ---- the arms that hold it ----
+// A box from a to b (camera space), w wide, h deep, `up` roughly its top
+inline void limb(Builder& b, vec3 a, vec3 c, float w, float h, vec3 up, vec3 col, float pad = 0.f) {
+    vec3 z = c - a; float len = glm::length(z);
+    if (len < 1e-4f) return;
+    z /= len;
+    vec3 x = glm::cross(up, z);
+    if (glm::length(x) < 1e-4f) x = glm::cross(vec3{1.f, 0.f, 0.f}, z);
+    x = glm::normalize(x);
+    vec3 y = glm::cross(z, x);
+    mat4 m(1.f);
+    m[0] = glm::vec4(x, 0.f); m[1] = glm::vec4(y, 0.f); m[2] = glm::vec4(z, 0.f); m[3] = glm::vec4((a + c) * 0.5f, 1.f);
+    b.box(m, {0.f, 0.f, 0.f}, {w, h, len + pad}, col);
+}
+// Two bones from the shoulder to the wrist, the elbow bent toward `pole`
+inline vec3 elbowOf(vec3 sh, vec3 wr, float a, float c, vec3 pole) {
+    vec3 d = wr - sh; float l = glm::length(d);
+    l = std::clamp(l, std::fabs(a - c) + 1e-3f, a + c - 1e-3f);
+    vec3 dir = glm::normalize(d);
+    float x = (a * a - c * c + l * l) / (2.f * l), h = std::sqrt(std::max(0.f, a * a - x * x));
+    vec3 p = pole - dir * glm::dot(pole, dir);
+    p = glm::length(p) > 1e-4f ? glm::normalize(p) : vec3{0.f, -1.f, 0.f};
+    return sh + dir * x + p * h;
+}
+const vec3 SLEEVE{0.13f, 0.045f, 0.06f};   // a dark crimson coat
+// One arm: coat sleeve to the elbow, a blackened gauntlet with steel bands
+// and a seam glowing in the sword's colour, the gloved hand closed on the grip
+// (or flat on the blade: open). side: +1 right, -1 left. `fist` frames the
+// hand: +Z along the grip, -Y the edge (as the sword's frame).
+inline void buildArm(Builder& b, vec3 shoulder, const mat4& fist, float side, bool open, float glow) {
+    const float UPPER = 0.4f, FORE = 0.36f;
+    vec3 hand = vec3(fist[3]);
+    vec3 gx = vec3(fist[0]), gy = vec3(fist[1]);
+    vec3 wrist = hand - gx * (0.034f * side) - gy * 0.006f;   // the wrist sits beside the grip, the forearm's side
+    wrist += glm::normalize(shoulder - wrist) * 0.02f;
+    vec3 elbow = elbowOf(shoulder, wrist, UPPER, FORE, glm::normalize(vec3{side * 1.f, -1.3f, -0.3f}));
+    vec3 up{0.f, 1.f, 0.f};
+    limb(b, shoulder, elbow, 0.075f, 0.075f, up, SLEEVE, 0.03f);                        // the sleeve
+    limb(b, elbow, glm::mix(elbow, wrist, 0.3f), 0.07f, 0.068f, up, SLEEVE * 1.2f);   // its cuff, turned back
+    b.box(T(elbow) * glm::scale(mat4(1.f), vec3{1.f}), {0.f, 0.f, 0.f}, {0.055f, 0.055f, 0.055f}, STEEL * 0.8f);   // the elbow cop
+    limb(b, glm::mix(elbow, wrist, 0.3f), wrist, 0.05f, 0.046f, up, BLACK * 1.3f);   // the gauntlet's vambrace
+    for (float t : {0.42f, 0.7f, 0.94f})
+        limb(b, glm::mix(elbow, wrist, t - 0.03f), glm::mix(elbow, wrist, t + 0.03f), 0.056f, 0.052f, up, STEEL);   // its bands
+    {   // the seam along its top
+        vec3 a = glm::mix(elbow, wrist, 0.4f), c = glm::mix(elbow, wrist, 0.92f);
+        vec3 z = glm::normalize(c - a), x = glm::normalize(glm::cross(up, z)), y = glm::cross(z, x);
+        b.lit(SWORD_GLOW * glow);
+        limb(b, a + y * 0.024f, c + y * 0.024f, 0.008f, 0.004f, up, SWORD_GLOW);
+        b.unlit();
+    }
+    // the hand: framed by the grip
+    if (!open) {
+        b.box(fist, {0.f, 0.004f, 0.f}, {0.05f, 0.054f, 0.05f}, BLACK * 1.1f);                     // fingers round the grip
+        for (int k = 0; k < 4; ++k)                                                               // bone knuckle plates
+            b.box(fist, {side * -0.026f, 0.006f, 0.018f - 0.012f * k}, {0.01f, 0.02f, 0.01f}, BONE);
+        b.box(fist, {side * 0.02f, 0.022f, 0.016f}, {0.016f, 0.018f, 0.028f}, BLACK * 1.3f);         // the thumb over the top
+        b.box(fist, {side * 0.022f, -0.004f, -0.006f}, {0.02f, 0.04f, 0.04f}, BLACK * 1.2f);         // the back of the hand
+    } else {
+        b.box(fist, {0.f, 0.f, 0.f}, {0.058f, 0.02f, 0.07f}, BLACK * 1.1f);                          // a flat palm
+        for (int k = 0; k < 4; ++k) b.box(fist, {-0.021f + 0.014f * k, 0.003f, 0.044f}, {0.011f, 0.016f, 0.022f}, BONE);
+    }
+}
+
 } // namespace gunkit

@@ -182,33 +182,62 @@ int main() {
         parts.clear(); gunkit::buildSword(SwordLook{}, parts);
         glm::vec3 lo{1e9f}, hi{-1e9f};
         for (auto& p : parts) { glm::vec3 c{p.xf[3]}; lo = glm::min(lo, c); hi = glm::max(hi, c); }
-        CHECK(hi.z - lo.z > 0.7f && hi.z - lo.z < 1.1f && hi.x - lo.x < 0.25f, "a blade about 0.9 m long and slim");
+        CHECK(hi.z > 0.85f && hi.z < 1.f && lo.z > -0.3f && hi.x - lo.x < 0.25f, "a blade about 0.9 m long past the guard, a hand-and-a-half grip, slim");
         bool glows = false;
         for (auto& p : parts) if (p.tag == 1 && glm::length(p.emissive - gunkit::SWORD_GLOW * 1.6f) < 0.05f) glows = true;
         CHECK(glows, "its cells glow rose-red");
         SwordPose a = gunkit::swordPose(0, 0.f, false, 0.f, 0.f), b = gunkit::swordPose(0, 1.f, false, 0.f, 0.f);
-        CHECK(a.offset.x > 0.1f && b.offset.x < -0.1f, "stroke 0 sweeps from right to left");
+        CHECK(a.hand.x > 0.1f && b.hand.x < -0.1f, "stroke 0 sweeps from right to left");
         a = gunkit::swordPose(1, 0.f, false, 0.f, 0.f); b = gunkit::swordPose(1, 1.f, false, 0.f, 0.f);
-        CHECK(a.offset.x < -0.1f && b.offset.x > 0.1f, "stroke 1 sweeps from left to right");
+        CHECK(a.hand.x < -0.1f && b.hand.x > 0.1f, "stroke 1 sweeps from left to right");
         a = gunkit::swordPose(2, 0.f, false, 0.f, 0.f); b = gunkit::swordPose(2, 1.f, false, 0.f, 0.f);
-        CHECK(a.offset.y > b.offset.y + 0.2f, "stroke 2 comes down overhead");
+        CHECK(a.hand.y > b.hand.y + 0.2f, "stroke 2 comes down overhead");
+        CHECK(a.twoHand > 0.99f && b.twoHand > 0.99f && gunkit::swordPose(0, 0.5f, false, 0.f, 0.f).twoHand < 0.01f,
+              "the overhead is two-handed; the side cuts one");
         SwordPose g = gunkit::swordPose(-1, -1.f, true, 0.f, 0.f), r = gunkit::swordPose(-1, -1.f, false, 0.f, 0.f);
-        CHECK(std::fabs(g.offset.x) < std::fabs(r.offset.x) && std::fabs(g.roll) > 60.f, "raised: the blade across the middle of the screen");
+        CHECK(std::fabs(g.hand.x) < std::fabs(r.hand.x) && std::fabs(g.blade.x) > 0.9f && g.brace > 0.99f,
+              "raised: the blade across the middle of the screen, the off hand braced on it");
         // Where the blade's point is on screen (camera space: x right, y up, z forward)
-        auto tip = [](int stroke, float u) {
-            SwordPose P = gunkit::swordPose(stroke, u, false, 0.f, 0.f);
-            glm::mat4 m = glm::rotate(glm::mat4(1.f), glm::radians(P.yaw), glm::vec3{0.f, 1.f, 0.f})
-                        * glm::rotate(glm::mat4(1.f), glm::radians(P.pitch), glm::vec3{-1.f, 0.f, 0.f})
-                        * glm::rotate(glm::mat4(1.f), glm::radians(P.roll), glm::vec3{0.f, 0.f, 1.f});
-            return P.offset + glm::vec3(m * glm::vec4(0.f, 0.f, 0.905f * 0.55f, 0.f));
-        };
+        auto tip = [](int stroke, float u) { return gunkit::swordTip(gunkit::swordPose(stroke, u, false, 0.f, 0.f)); };
         CHECK(tip(2, 0.f).y > tip(2, 1.f).y + 0.6f && tip(2, 1.f).z > 0.2f,
               "the overhead chops down: the point starts high and ends low in front (as its trail does)");
         bool down = true;
-        for (int k = 1; k <= 10; ++k) down &= tip(2, k / 10.f).y <= tip(2, (k - 1) / 10.f).y + 1e-4f;
+        for (int k = 1; k <= 20; ++k) down &= tip(2, k / 20.f).y <= tip(2, (k - 1) / 20.f).y + 1e-4f;
         CHECK(down, "...and never flicks back up on the way");
         CHECK(tip(0, 1.f).x < tip(0, 0.f).x - 0.4f, "the first stroke's point sweeps right to left");
         CHECK(tip(1, 1.f).x > tip(1, 0.f).x + 0.4f, "the second's sweeps left to right");
+        bool across = true;   // through the cut the blade shows its length: never pointing straight into the screen for long
+        for (int st = 0; st < 2; ++st) {
+            int endOn = 0;
+            for (int k = 0; k <= 40; ++k) {
+                SwordPose P = gunkit::swordPose(st, k / 40.f, false, 0.f, 0.f);
+                if (glm::length(glm::vec2{P.blade.x, P.blade.y}) < 0.35f) ++endOn;
+            }
+            across &= endOn <= 4;   // (a tenth of the stroke at most)
+        }
+        CHECK(across, "the side cuts sweep the blade across the screen, not end-on");
+        bool smooth = true;   // no jumps between keyframes: the hand moves at most 6 cm in a 60th of the stroke
+        for (int st = 0; st < 3; ++st)
+            for (int k = 1; k <= 60; ++k)
+                smooth &= glm::length(gunkit::swordPose(st, k / 60.f, false, 0.f, 0.f).hand - gunkit::swordPose(st, (k - 1) / 60.f, false, 0.f, 0.f).hand) < 0.06f;
+        CHECK(smooth, "every stroke moves the hand continuously");
+        bool square = true;   // the sword's frame stays a rotation (the edge kept square to the blade)
+        for (int st = 0; st < 3; ++st)
+            for (int k = 0; k <= 20; ++k) {
+                glm::mat3 m{gunkit::swordFrame(gunkit::swordPose(st, k / 20.f, false, 0.f, 0.f))};
+                square &= std::fabs(glm::determinant(m) - 1.f) < 1e-3f && std::fabs(glm::dot(m[1], m[2])) < 1e-3f;
+            }
+        CHECK(square, "the sword's frame is a true rotation all through every stroke");
+        // the arm reaches the hand: its parts run from below the screen to the grip
+        {
+            std::vector<GunPart> arm; gunkit::Builder ab{arm, gunkit::SWORD_GLOW};
+            SwordPose P = gunkit::swordPose(0, 0.6f, false, 0.f, 0.f);
+            glm::mat4 fist = gunkit::swordFrame(P); fist[3] = glm::vec4(P.hand, 1.f);
+            gunkit::buildArm(ab, {0.34f, -0.62f, 0.f}, fist, 1.f, false, 1.f);
+            float lowest = 1e9f, nearHand = 1e9f;
+            for (auto& q : arm) { glm::vec3 c{q.xf[3]}; lowest = std::min(lowest, c.y); nearHand = std::min(nearHand, glm::length(c - P.hand)); }
+            CHECK(lowest < -0.35f && nearHand < 0.02f, "the arm runs from below the screen to the hand on the grip");
+        }
     }
 
     // ---------------------------------------------------------------- the sword: where it can be drawn
@@ -256,7 +285,7 @@ int main() {
             auto lum = [](glm::vec3 c) { return 0.2126f * c.x + 0.7152f * c.y + 0.0722f * c.z; };
             CHECK(lum(th.zenith) < 0.08f && th.zenith.z > th.zenith.x, "a near-black indigo sky overhead");
             CHECK(th.horizon.x > th.horizon.y * 2.f && th.horizon.x > th.horizon.z * 4.f, "a crimson-orange horizon");
-            CHECK(th.sunDir.y > 0.03f && th.sunDir.y < 0.16f && th.sunDir.z < -0.9f, "the sun low, straight behind the eclipse");
+            CHECK(th.sunDir.y > 0.99f && th.eclipse > 0.99f, "the eclipse straight overhead, drawn by the sky (out of reach)");
             CHECK(th.lightColor.x > th.lightColor.z * 2.5f && th.lightDir.y > -0.45f, "a warm, low key light (long shadows)");
             CHECK(lum(th.skyAmb) < 0.25f && th.skyAmb.z > th.skyAmb.y, "dim violet fill");
             CHECK(th.stars > 0.f, "a few stars");
@@ -305,6 +334,21 @@ int main() {
         return w;
     };
     auto freshAbs = [&]() { Enemy e(EnemyType::ABSOLUTE, ZA.bossSpawn); e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE; return e; };
+    {   // his entrance, from the spawn the arena gives him (not freshAbs: the real one)
+        Enemy e(EnemyType::ABSOLUTE, ZA.bossSpawn);
+        EnemyWorld w = zworld(ZC + glm::vec3{0.f, 0.f, 20.f});
+        float first = -1e9f, prev = 1e9f; bool neverRises = true;
+        for (int i = 0; i < 4 * 60; ++i) {
+            e.update(DT, w);
+            if (i == 0) first = e.position.y;
+            if (e.position.y > prev + 1e-4f) neverRises = false;
+            prev = e.position.y;
+        }
+        CHECK(first > ZC.y + 10.f, "he enters from high above the Dais, from the first tick");
+        CHECK(neverRises, "...and only comes down: never up again after he appears");
+        CHECK(e.abArrive <= 0.f && std::fabs(e.position.y - absFloorAt(w, e.position)) < 0.6f || e.abAirborne(),
+              "...landing on the Dais");
+    }
     {
         bool rule = true;
         for (int id = 0; id < AB_STRINGS; ++id) {

@@ -113,6 +113,15 @@ inline float     g_recProgress = 0.f;    // 0..1 through the recording
 inline bool      g_devAutoAim = false;
 inline bool      g_devClean = false;
 inline bool      g_devKite = false;      // --kite: the camera backs off from whatever gets close
+// What the view model shows: the sword, or (dev: --overlay swingSU) stroke S frozen at U/10, for screenshots
+inline Sword swordShownFor(const Sword& s) {
+    if (g_devOverlay == "guard") { Sword f = s; f.raised = true; f.raisedFor = 1.f; return f; }
+    if (g_devOverlay.rfind("swing", 0) != 0 || g_devOverlay.size() < 7) return s;
+    Sword f = s; f.lastStroke = g_devOverlay[5] - '0';
+    f.swingT = std::max(1e-4f, Sword::SWING_TIME * (1.f - (g_devOverlay[6] - '0') / 10.f)); f.sinceSwing = 0.f;
+    return f;
+}
+
 
 class GameplayState : public GameState {
 public:

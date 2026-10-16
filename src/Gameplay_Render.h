@@ -466,7 +466,7 @@ inline void GameplayState::render() {
     glm::mat4 proj = renderCam.projectionMatrix();
     Theme th = level.themeAt(player.position);
     if (rageBlend > 0.f) th = lerpTheme(th, bloodEclipse(th), rageBlend);
-    if (bossDusk > 0.005f) th = lerpTheme(th, nightfall(th), bossDusk * BOSS_DUSK_MAX);
+    if (bossDusk > 0.005f && th.eclipse < 0.5f) th = lerpTheme(th, nightfall(th), bossDusk * BOSS_DUSK_MAX);   // (under the eclipse: it burns hotter instead)
 
     postProcess.beginScene();
     glClearColor(th.fogColor.r, th.fogColor.g, th.fogColor.b, 1.f);
@@ -490,6 +490,9 @@ inline void GameplayState::render() {
         skyboxShader.setFloat("uSunStripes", th.sunStripes);
         skyboxShader.setVec3("uMountain", th.mountain);
         skyboxShader.setFloat("uStars",   th.stars);
+        skyboxShader.setFloat("uEclipse", th.eclipse);
+        skyboxShader.setFloat("uHeat",    bossDusk);
+        skyboxShader.setFloat("uTime",    gameClock);
         glBindVertexArray(postProcess.quadVAO);
         glDrawArrays(GL_TRIANGLES,0,6);
         glBindVertexArray(0);
@@ -564,7 +567,7 @@ inline void GameplayState::render() {
         glBindTexture(GL_TEXTURE_2D, whiteTex);
         worldShader.setInt("uTexture", 0);
         float flash = glm::clamp(muzzleFlashTimer / 0.06f, 0.f, 1.f);
-        if (swordOut) viewModel.drawSword(worldShader, renderCam, sword);
+        if (swordOut) viewModel.drawSword(worldShader, renderCam, swordShownFor(sword));
         else viewModel.draw(worldShader, renderCam, activeWeapon, flash, wd.canAim ? aim : 0.f,
                             weapons[activeWeapon].ammo, weaponMag((WeaponId)activeWeapon, prog.up[activeWeapon]));
         worldShader.setMat4("projection", proj);
