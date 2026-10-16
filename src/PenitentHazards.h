@@ -32,6 +32,37 @@ struct AnchorRip {
     }
 };
 
+// Its chains, from its collar to each anchor, hanging in a shallow sag (as Gameplay_Penitent.h draws
+// them). A point along one (u 0 the collar .. 1 the anchor); and where a shot along o + d t first
+// passes within CHAIN_R of one, beyond CHAIN_SKIP from the collar (its body takes those), or -1
+struct PenitentChain {
+    static constexpr float SAG = 0.06f, CHAIN_R = 0.5f, CHAIN_SKIP = 2.f;
+    static constexpr int PIECES = 8;
+    static glm::vec3 at(glm::vec3 from, glm::vec3 to, float u) {
+        float len = glm::length(to - from);
+        return from + (to - from) * u - glm::vec3{0.f, std::sin(u * 3.1415927f) * len * SAG, 0.f};
+    }
+    static float rayHit(glm::vec3 o, glm::vec3 d, glm::vec3 from, glm::vec3 to, float maxT) {
+        float best = -1.f, len = glm::length(to - from);
+        if (len < CHAIN_SKIP + 0.1f) return -1.f;
+        const float u0 = CHAIN_SKIP / len;
+        for (int k = 0; k < PIECES; ++k) {
+            glm::vec3 a = at(from, to, u0 + (1.f - u0) * k / PIECES), b = at(from, to, u0 + (1.f - u0) * (k + 1) / PIECES);
+            // closest approach between the ray and the piece a..b
+            glm::vec3 u = b - a, w = o - a;
+            float A = glm::dot(d, d), B = glm::dot(d, u), C = glm::dot(u, u), D = glm::dot(d, w), E = glm::dot(u, w);
+            float den = A * C - B * B, sc, tc;
+            if (den < 1e-8f) { sc = 0.f; tc = C > 1e-8f ? E / C : 0.f; }
+            else { sc = (B * E - C * D) / den; tc = (A * E - B * D) / den; }
+            tc = glm::clamp(tc, 0.f, 1.f);
+            sc = std::max(0.f, (glm::dot(a + u * tc - o, d)) / std::max(A, 1e-8f));   // the ray's nearest point to that spot
+            glm::vec3 pr = o + d * sc, pc = a + u * tc;
+            if (sc > 0.f && sc < maxT && glm::length(pr - pc) < CHAIN_R && (best < 0.f || sc < best)) best = sc;
+        }
+        return best;
+    }
+};
+
 class PenitentHazards {
 public:
     static constexpr float HALF_ARC = 1.7453293f;          // ±100°

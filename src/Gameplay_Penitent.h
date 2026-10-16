@@ -111,6 +111,27 @@ inline bool GameplayState::hitAnchor(glm::vec3 origin, glm::vec3 dir, float wall
     return true;
 }
 
+// A shot along o + d (no further than maxT) through one of its chains: the anchor it's tied to takes
+// the round. Returns where along the ray, or -1
+inline float GameplayState::hitChain(glm::vec3 o, glm::vec3 d, float maxT, float dmg) {
+    const Enemy* boss = nullptr;
+    for (auto& e : enemies) if (e.alive && e.type == EnemyType::PENITENT && !e.risen) boss = &e;
+    if (!boss) return -1.f;
+    const glm::vec3 from = boss->position + glm::vec3{0.f, boss->height() * 0.75f, 0.f};
+    int best = -1; float bt = maxT;
+    for (int i = 0; i < (int)level.anchors.size(); ++i) {
+        const auto& a = level.anchors[i];
+        if (!a.alive || a.kind != LevelData::ChainAnchor::CHAIN) continue;
+        float t = PenitentChain::rayHit(o, d, from, a.pos, bt);
+        if (t > 0.f && t < bt) { bt = t; best = i; }
+    }
+    if (best < 0) return -1.f;
+    fx.spawnHitSparks(o + d * bt, {1.2f, 0.7f, 0.3f});
+    audio.playAt("clank", o + d * bt, 70, SoundGroup::WORLD);
+    if (level.damageAnchor(best, dmg)) breakAnchor(best, false);
+    return bt;
+}
+
 inline void GameplayState::updatePenitent(float dt) {
     Enemy* boss = nullptr;
     for (auto& e : enemies) if (e.alive && e.type == EnemyType::PENITENT) boss = &e;
@@ -161,7 +182,7 @@ inline void GameplayState::gatherPenitentBoxes(std::vector<BoxInstance>& out) {
         int links = (int)(len / 0.9f);
         float yaw = std::atan2(d.x, d.z), pitch = -std::asin(d.y / std::max(len, 1e-3f));
         for (int k = 0; k < links; ++k) {
-            glm::vec3 p = from + d * ((k + 0.5f) / links) - glm::vec3{0.f, std::sin((k + 0.5f) / links * 3.1416f) * len * 0.06f, 0.f};
+            glm::vec3 p = PenitentChain::at(from, a.pos, (k + 0.5f) / links);   // (the shape its hitbox follows: hitChain)
             push(out, T(p) * RY(yaw) * RX(pitch) * RZ(k % 2 ? 1.5708f : 0.f) * S({0.22f, 0.5f, 0.75f}), {0.16f, 0.15f, 0.16f});
         }
     }

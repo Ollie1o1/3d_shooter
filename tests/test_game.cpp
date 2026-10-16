@@ -3861,6 +3861,20 @@ int main() {
         CHECK(lashAt(54.f, 0.f) == 1, "...and across the whole pit (54 m)");
         CHECK(lashAt(10.f, 9.f) == 1, "...and perched 9 m up, close in");
     }
+    {   // 3b. Its chains can be shot: a round through one hits the anchor it's tied to
+        const glm::vec3 collar{0.f, 6.f, 0.f}, anchor{20.f, 10.f, 0.f};
+        glm::vec3 mid = PenitentChain::at(collar, anchor, 0.5f);
+        glm::vec3 eye = mid + glm::vec3{0.f, 0.f, 15.f};
+        float t = PenitentChain::rayHit(eye, glm::normalize(mid - eye), collar, anchor, 100.f);
+        CHECK(t > 0.f && std::fabs(t - 15.f) < PenitentChain::CHAIN_R + 0.05f, "a shot at the middle of a chain hits it, where it hangs (the sag included)");
+        glm::vec3 straight = (collar + anchor) * 0.5f + glm::vec3{0.f, 0.f, 0.f};   // where it would be with no sag (1.2 m above)
+        CHECK(PenitentChain::rayHit(straight + glm::vec3{0, 0, 15}, glm::vec3{0, 0, -1}, collar, anchor, 100.f) < 0.f, "...and not where it doesn't hang");
+        CHECK(PenitentChain::rayHit(eye, glm::normalize(mid - eye), collar, anchor, 10.f) < 0.f, "...a wall in front stops the round first");
+        glm::vec3 nearCollar = PenitentChain::at(collar, anchor, 0.05f);
+        CHECK(PenitentChain::rayHit(nearCollar + glm::vec3{0, 0, 15}, glm::vec3{0, 0, -1}, collar, anchor, 100.f) < 0.f, "...right at its collar the body takes the shot, not the chain");
+        glm::vec3 nearAnchor = PenitentChain::at(collar, anchor, 0.9f);
+        CHECK(PenitentChain::rayHit(nearAnchor + glm::vec3{0, 15, 0}, glm::vec3{0, -1, 0}, collar, anchor, 100.f) > 0.f, "...anywhere else along it counts, from any side");
+    }
     {   // 4. Ripping: hook an anchor from anywhere; the hook letting go as you arrive still counts
         AnchorRip r;
         int broke = -1; float t = 0.f;

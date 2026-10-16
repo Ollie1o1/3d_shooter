@@ -744,8 +744,11 @@ inline void GameplayState::fireWeapon(int w) {
         glm::vec3 dir = glm::normalize(fwd + right * (std::cos(ang) * rad) + up * (std::sin(ang) * rad));
         float wallT = hitscanAll(origin, dir, d.range, hits);
         int n = std::min((int)hits.size(), pierce + 1);
-        if (!level.anchors.empty() && (hits.empty() || hits[0].t > wallT - 0.05f))
-            hitAnchor(origin, dir, wallT, dmg);   // the round stopped on a wall: one of the Penitent's anchors?
+        if (!level.anchors.empty()) {   // the Penitent's chains (before anything further along), then its anchors
+            float ct = hitChain(origin, dir, hits.empty() ? wallT : hits[0].t, dmg);
+            if (ct > 0.f) { n = 0; anyHit = true; wallT = ct; }   // (the chain takes the round)
+            else if (hits.empty() || hits[0].t > wallT - 0.05f) hitAnchor(origin, dir, wallT, dmg);   // the round stopped on a wall: one of its anchors?
+        }
         if (!relic.souls.empty() || !relic.wires.empty()) {   // the Reliquary: a fleeing soul, a wire's node, before what it hit
             float firstT = hits.empty() ? wallT : hits[0].t, st = 0.f;
             int si = relic.raySoul(origin, dir, firstT, st);

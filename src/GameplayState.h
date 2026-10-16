@@ -526,6 +526,7 @@ public:
     void updatePenitent(float dt);
     void breakAnchor(int i, bool ripped);
     bool hitAnchor(glm::vec3 origin, glm::vec3 dir, float wallT, float dmg);
+    float hitChain(glm::vec3 o, glm::vec3 d, float maxT, float dmg);
     void gatherPenitentBoxes(std::vector<BoxInstance>& out);
     glm::vec3 sanctumCentre() const;
 
