@@ -101,8 +101,10 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     // ACT II is a preview: unranked until the whole act exists
     ranked = (start == 0 || endless()) && g_startWave <= 0 && !g_godMode && !g_practice && !g_devCam && !act2();
     act2FromStart = act2() && start == 0 && g_startWave <= 0 && !g_devCam;
+    if (g_bossRun >= 0) { start = bossEntry(g_bossRun).arena; ranked = act2FromStart = false; }
+    if (g_bossRun >= 0) msCheckpoint = bossEntry(g_bossRun).morning;   // (MORNINGSTAR: from inside the eclipse)
     enterArena(start);
-    director.wave = glm::clamp(g_startWave, 0, director.waveCount() - 1);
+    if (g_bossRun < 0) director.wave = glm::clamp(g_startWave, 0, director.waveCount() - 1);
     if (fast()) ghost.load();
     if (fast() && start == 0) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
     if (g_devCam) countdown = 0.f;
@@ -132,6 +134,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
 
     captureMouse(true);
     if (act2()) beginAct2();   // after the capture: the armory frees the mouse to shop with
+    if (g_bossRun >= 0) startBossRun();
 }
 
 inline GameplayState::~GameplayState() {
@@ -215,6 +218,7 @@ inline void GameplayState::enterArena(int a) {
     if (fast() && (int)splits.size() > a) splits.resize(a);
     if (fast()) director.approach(a);   // the fight starts at the section's trigger
     else director.startArena(a);
+    if (g_bossRun >= 0 && !fast()) { director.wave = bossWaveOf(a); bossStartAt = -1.f; }   // BOSS: straight to its wave (a retry too), its clock afresh
 }
 
 inline void GameplayState::resetPlayer(glm::vec3 start) {
@@ -272,12 +276,41 @@ inline void GameplayState::newRun() {
     ghostRec.pts.clear();
     if (fast()) ghost.load();
     if (endless()) setupEndless();
-    enterArena(endless() ? endlessArena : 0);
+    if (g_bossRun >= 0) { ranked = act2FromStart = false; msCheckpoint = bossEntry(g_bossRun).morning; }
+    enterArena(g_bossRun >= 0 ? bossEntry(g_bossRun).arena : endless() ? endlessArena : 0);
     bankedStyle = bankedDamage = 0.f;   // after enterArena: that banked the last run's
     wavesCleared = 0;
     if (fast()) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
     captureMouse(true);
     if (act2()) beginAct2();   // after the capture: the armory frees the mouse to shop with
+    if (g_bossRun >= 0) startBossRun();
+}
+
+// BOSS: the wave its boss is in
+inline int GameplayState::bossWaveOf(int a) const {
+    const Arena& ar = level.arenas[a];
+    for (int w = 0; w < (int)ar.waves.size(); ++w)
+        for (auto& g : ar.waves[w]) if (isBoss(g.type)) return w;
+    return 0;
+}
+// BOSS: the upgrades a run would have by this boss, spent in the armory before the fight
+inline void GameplayState::startBossRun() {
+    const BossEntry& b = bossEntry(g_bossRun);
+    prog = Progression{};
+    prog.level = b.level; prog.points = b.points;
+    bossStartAt = -1.f; bossKillT = 0.f; bossDone = false;
+    banners.clear();
+    pushBanner(b.name, b.where, {1.f, 0.6f, 0.25f}, 3.f);
+    if (!g_devCam && g_devOverlay.empty() && !armoryOpen) openArmory();
+}
+// BOSS: it's down (for THE ABSOLUTE alone: as the eclipse takes him). The run ends; a best time is kept
+inline void GameplayState::bossRunDone() {
+    if (g_bossRun < 0 || bossDone) return;
+    bossDone = true;
+    bossKillT = bossStartAt >= 0.f ? elapsedTime - bossStartAt : elapsedTime;
+    newRecord = !g_godMode && !g_practice && recordBoss(records, g_bossRun, bossKillT);
+    if (newRecord) records.save();
+    victoryDelay = 3.f;
 }
 
 // ACT II: the head start (what an Act I run has by the Sanctum), spent in the
@@ -285,6 +318,7 @@ inline void GameplayState::newRun() {
 inline void GameplayState::beginAct2() {
     prog = Progression{};
     prog.level = 6; prog.points = 5;
+    if (g_bossRun >= 0) return;   // (BOSS: startBossRun sets the run up)
     pushBanner("ACT II", "BENEATH THE ECLIPSE", {0.35f, 0.95f, 0.9f}, 3.5f);
     if (!g_devCam && g_devOverlay.empty()) openArmory();
 }
@@ -338,6 +372,7 @@ inline void GameplayState::handleDirectorEvents() {
             audio.play("wave", 90, SoundGroup::UI); audio.duck(4.f, 0.4f);
             break;
         case DirectorEvent::BOSS_START:
+            if (bossStartAt < 0.f) bossStartAt = elapsedTime;   // BOSS: its clock
             if (ar.waves[ev.value][0].type == EnemyType::SOVEREIGN)
                 pushBanner("THE SOVEREIGN", "PARRY (F) THE BLADE AS IT LANDS", {1.f, 0.3f, 0.2f}, 4.f);
             else if (ar.waves[ev.value][0].type == EnemyType::PENITENT)
@@ -373,6 +408,7 @@ inline void GameplayState::handleDirectorEvents() {
             styleSystem.heal(10.f);
             break;
         case DirectorEvent::ARENA_CLEARED: {
+            if (g_bossRun >= 0) { bossRunDone(); break; }   // BOSS: that was the fight
             const Arena& done = level.arenas[ev.value];
             lockDoor(done.exitDoor, false);
             lockDoor(done.entryGate, false);
@@ -416,6 +452,7 @@ inline void GameplayState::handleDirectorEvents() {
             shake(0.3f, 0.05f);
             break;
         case DirectorEvent::VICTORY:
+            if (g_bossRun >= 0) { bossRunDone(); break; }
             victoryDelay = act2() ? 3.f : 2.5f;   // ACT II: the Absolute kneels and dissolves first
             break;
         case DirectorEvent::FINISH_OPEN:
@@ -445,6 +482,7 @@ inline void GameplayState::recordSplit(int section) {
 inline void GameplayState::finishRun() {
     victory = true;
     captureMouse(false);
+    if (g_bossRun >= 0) return;   // BOSS: its time is kept already (bossRunDone); no board
     newRecord = false;
     if (act2() && director.arena == ZENITH_ARENA && act2RunRecords(act2FromStart, g_godMode, g_practice)) {   // (ACT II is never ranked: its own local best)
         newRecord = recordZenith(records, elapsedTime); records.save();

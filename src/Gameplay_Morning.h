@@ -31,6 +31,7 @@ inline void GameplayState::onMorningEvents(Enemy& e, const EnemyEvents& ev) {
     const glm::vec3 C = level.zenith.centre;
     const glm::vec3 fire{2.2f, 0.7f, 0.2f}, white{1.8f, 1.75f, 1.7f};
     abh.morningEvents(ev, C, player.position, e.yaw);   // the hazards (AbsoluteHazards.h); the rest here is how it looks and sounds
+    if (ev.msSwallow && g_bossRun == 4) bossRunDone();   // BOSS: THE ABSOLUTE's first form is down
     if (ev.msSwallow) {   // he kneels; the eclipse comes down over everything
         audio.stop(abWindH); audio.stop(abFlightH); audio.stop(abBeamH); abWindH = abFlightH = abBeamH = 0;
         abSkyMarkT = -1.f;

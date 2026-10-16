@@ -262,7 +262,10 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
                       director.wave + 1, director.waveCount());
         ui.renderDeath(buf, totalKills, elapsedTime, fast(), !endless());
     }
-    if (victory) {
+    if (victory && g_bossRun >= 0) {
+        const BossEntry& b = bossEntry(g_bossRun);
+        ui.renderVictoryBoss(b.name, b.where, bossKillT, newRecord ? 0.f : records.bestBoss[g_bossRun], newRecord, deaths, totalShots, totalHits);
+    } else if (victory) {
         if (fast()) {
             const char* rank = elapsedTime < level.parTimes[0] ? "S" : elapsedTime < level.parTimes[1] ? "A"
                              : elapsedTime < level.parTimes[2] ? "B" : elapsedTime < level.parTimes[3] ? "C" : "D";

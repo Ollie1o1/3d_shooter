@@ -93,6 +93,23 @@ struct Progression {
     }
 };
 
+// BOSS (the main menu): every boss in the order you meet them, each fought on its own, straight
+// into its fight with the upgrades a run would have by then (spent in the armory first). THE
+// ABSOLUTE's first form ends as the eclipse takes him; MORNINGSTAR starts inside it
+struct BossEntry { const char* name; const char* where; bool act2; int arena; bool morning; int level, points; };
+constexpr int BOSS_COUNT = 6;
+inline const BossEntry& bossEntry(int i) {
+    static const BossEntry B[BOSS_COUNT] = {
+        {"THE WARDEN",    "THE CORE",                  false, 3, false, 4, 3},
+        {"THE SOVEREIGN", "THE SANCTUM",               false, 4, false, 5, 4},
+        {"THE PENITENT",  "ACT II - THE DESCENT",      true,  2, false, 6, 6},
+        {"THE LEVIATHAN", "ACT II - THE MAW",          true,  4, false, 6, 8},
+        {"THE ABSOLUTE",  "!!!!! - HIS FIRST FORM",    true,  5, false, 6, 9},
+        {"MORNINGSTAR",   "!!!!! - INSIDE THE ECLIPSE", true, 5, true,  6, 9},
+    };
+    return B[std::clamp(i, 0, BOSS_COUNT - 1)];
+}
+
 // Best times, kept across runs (file on desktop, localStorage on the web).
 // The key carries a version: bump it when the maps change enough that old
 // times no longer mean anything (v2: the Gauntlet's rooms, the Sanctum).
@@ -106,6 +123,7 @@ struct Records {
     bool  act2Unlocked = false;            // the Sovereign has fallen: ACT II is open
     bool  act2Cleared = false;             // the Leviathan has fallen (saved as it dies)
     float bestAct2 = 0.f, bestZenith = 0.f;   // ACT II to the Leviathan; ACT II + the Zenith (0 = none yet)
+    float bestBoss[BOSS_COUNT] = {};          // BOSS: each boss's fastest kill, from its fight starting (0 = none yet)
 
     static constexpr const char* kKey = "records.v2.cfg";
 
@@ -123,6 +141,7 @@ struct Records {
             else if (key == "act2Cleared") { int v = 0; f >> v; act2Cleared = v != 0; }
             else if (key == "bestAct2") f >> bestAct2;
             else if (key == "bestZenith") f >> bestZenith;
+            else if (key == "bestBoss") { int n = 0; f >> n; for (int i = 0; i < n; ++i) { float v = 0.f; f >> v; if (i < BOSS_COUNT) bestBoss[i] = v; } }
             else if (key == "fastSplits") {
                 int n = 0; f >> n;
                 fastSplits.assign(std::max(0, std::min(n, 32)), 0.f);
@@ -143,6 +162,9 @@ struct Records {
         f << "act2Cleared " << (act2Cleared ? 1 : 0) << "\n";
         f << "bestAct2 " << bestAct2 << "\n";
         f << "bestZenith " << bestZenith << "\n";
+        f << "bestBoss " << BOSS_COUNT;
+        for (float b : bestBoss) f << " " << b;
+        f << "\n";
         f << "fastSplits " << fastSplits.size();
         for (float s : fastSplits) f << " " << s;
         f << "\n";
@@ -170,6 +192,17 @@ inline bool zenithHandoff(bool act2, int clearedArena, int arenaCount) {
 
 // The main menu's ACT II row only starts a run once the Sovereign has fallen
 inline bool canStartAct2(const Records& r) { return r.act2Unlocked; }
+// BOSS: a boss is open once you've reached it (ACT II's once it's unlocked; the Zenith's once the Leviathan is dead)
+inline bool bossOpen(const Records& r, int i) {
+    const BossEntry& b = bossEntry(i);
+    return !b.act2 ? true : b.arena == 5 ? r.act2Cleared : r.act2Unlocked;
+}
+// A boss killed in t seconds: true when it's that boss's new best
+inline bool recordBoss(Records& r, int i, float t) {
+    if (i < 0 || i >= BOSS_COUNT || t <= 0.f) return false;
+    if (r.bestBoss[i] > 0.f && t >= r.bestBoss[i]) return false;
+    r.bestBoss[i] = t; return true;
+}
 
 // Finished runs a player chose to put their name to, fastest first, kept
 // per mode (the top KEEP of each). Only full runs count: not one started at

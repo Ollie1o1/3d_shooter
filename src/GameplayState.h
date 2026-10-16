@@ -90,6 +90,7 @@ inline int g_startWave  = 0;   // --wave N / ?wave=N (with --arena): skip to tha
 // --god / ?god: the player takes no damage (for recording footage)
 inline bool g_godMode = false;
 inline bool g_practice = false;   // dev level select: no records, no leaderboard
+inline int  g_bossRun = -1;       // BOSS (the main menu): which boss this run is, fought on its own (-1: not one)
 // --cam x y z yaw pitch: start the camera somewhere specific (screenshots)
 inline bool      g_devCam = false;
 inline glm::vec3 g_devCamPos{0.f};
@@ -476,6 +477,13 @@ public:
     static Theme totalityOf(const Theme& t);
     void gatherMorningBoxes(std::vector<BoxInstance>& out);
     void onMorningEvents(Enemy& e, const EnemyEvents& ev);
+    // BOSS runs (g_bossRun): straight into one boss's fight; its fall ends the run
+    float bossStartAt = -1.f;   // elapsedTime as the boss's fight began
+    float bossKillT = 0.f;      // how long it took
+    bool  bossDone = false;
+    int   bossWaveOf(int a) const;
+    void  startBossRun();
+    void  bossRunDone();
     float swordRoll = 0.f;                          // the camera leaning into a sword stroke (degrees)
     Enemy abCorpse{EnemyType::ABSOLUTE, glm::vec3{0.f}};
     bool  punchedThisTick = false;                  // F this tick: a serpent within reach goes back

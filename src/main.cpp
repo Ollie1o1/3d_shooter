@@ -155,10 +155,12 @@ struct App {
                 g_startArena = o.arena; g_startWave = o.wave;
                 g_godMode    = o.god || godFromCommandLine;
                 g_practice   = o.practice;
+                g_bossRun    = o.boss;
             };
             menu->onQuit   = [this]() { quit(); };
             if (openDevMenu) { menu->openDev(); openDevMenu = false; }
             if (g_devOverlay == "board") menu->page = MenuState::BOARD;
+            if (g_devOverlay == "bosses") menu->page = MenuState::BOSS;
             currentState.reset(menu);
         } else if (next == NextState::Game) {
             SDL_SetRelativeMouseMode(g_devNoMouse ? SDL_FALSE : SDL_TRUE);
@@ -410,6 +412,10 @@ int main(int argc, char* argv[]) {
         if (arg == "--act2") { app->mode = GameMode::ACT2; app->pending = App::NextState::Game; }
         if (arg == "--endless") { app->mode = GameMode::ENDLESS; app->pending = App::NextState::Game; }
         if (arg == "--daily")   { app->mode = GameMode::DAILY;   app->pending = App::NextState::Game; }
+        if (arg == "--boss" && i + 1 < argc) {   // --boss N: BOSS N (1 the Warden .. 6 MORNINGSTAR), on its own
+            g_bossRun = std::clamp(std::atoi(argv[++i]) - 1, 0, BOSS_COUNT - 1);
+            app->mode = bossEntry(g_bossRun).act2 ? GameMode::ACT2 : GameMode::ARENA; app->pending = App::NextState::Game;
+        }
         if (arg == "--god")  { g_godMode = true; app->godFromCommandLine = true; }
         if (arg == "--dev")  app->openDevMenu = true;
         if (arg == "--wave" && i + 1 < argc) g_startWave = std::atoi(argv[++i]) - 1;

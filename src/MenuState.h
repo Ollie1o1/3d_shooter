@@ -23,8 +23,8 @@
 #include <vector>
 
 // =============================================================================
-// MenuState — main menu (ARENA / FAST / ENDLESS / DAILY / LEADERBOARD /
-// SETTINGS / EXIT), the
+// MenuState — main menu (ARENA / ACT II / FAST / ENDLESS / BOSS / LEADERBOARD /
+// SETTINGS / EXIT), the BOSS page (every boss in order, fought on its own), the
 // settings page, the leaderboard page, and the DEV level select (press ` or
 // F2 on the main menu): jump straight to any arena, wave, FAST room or the
 // boss, optionally in god mode. Dev runs are practice: no records.
@@ -36,7 +36,8 @@ public:
 
     GameSettings* settings = nullptr;   // injected by main
 
-    enum Page { MAIN, SETTINGS, BOARD, DEV };
+    enum Page { MAIN, SETTINGS, BOARD, DEV, BOSS };
+    int   bossSel = 0;
     int   page      = MAIN;
     int   selected  = 0;
     float flashTime = 0.f;
@@ -98,6 +99,7 @@ public:
             return;
         }
         if (page == DEV) { handleDevEvent(e); return; }
+        if (page == BOSS) { handleBossEvent(e); return; }
         if (e.type == SDL_KEYDOWN && !e.key.repeat &&
             (e.key.keysym.sym == SDLK_BACKQUOTE || e.key.keysym.sym == SDLK_F2)) { openDev(); return; }
         if (e.type == SDL_KEYDOWN) {
@@ -151,6 +153,7 @@ public:
         if (page == MAIN) renderMain();
         else if (page == SETTINGS) settingsMenu.render(ui, flashTime);
         else if (page == BOARD) renderBoard();
+        else if (page == BOSS) renderBoss();
         else renderDev();
         ui.end();
     }
@@ -171,7 +174,7 @@ private:
         if (idx == 1 && onStart && canStartAct2(records)) onStart(GameMode::ACT2, StartOptions{});
         if (idx == 2 && onStart) onStart(GameMode::FAST, StartOptions{});
         if (idx == 3 && onStart) onStart(GameMode::ENDLESS, StartOptions{});
-        if (idx == 4 && onStart) onStart(GameMode::DAILY, StartOptions{});
+        if (idx == 4) { page = BOSS; bossSel = 0; }
         if (idx == 5) {
             daily = DailyInfo::today();
             board.daily = worldBoard.daily = daily.key();
@@ -182,6 +185,65 @@ private:
         }
         if (idx == 6) { page = SETTINGS; settingsMenu.selected = 1; }
         if (idx == 7 && onQuit) onQuit();
+    }
+
+    // ---- BOSS: every boss in the order you meet them ---------------------------
+    float bossY(int i) const { return 150.f + i * 66.f; }
+    static constexpr float BOSS_W = 640.f;
+    int bossAt(int mx, int my) const {
+        for (int i = 0; i < BOSS_COUNT; ++i)
+            if (mx > screenW / 2 - BOSS_W / 2 && mx < screenW / 2 + BOSS_W / 2 && my > bossY(i) && my < bossY(i) + 56) return i;
+        return -1;
+    }
+    void startBoss(int i) {
+        if (!onStart || !bossOpen(records, i)) return;
+        StartOptions o;
+        o.boss = i; o.arena = bossEntry(i).arena;
+        onStart(bossEntry(i).act2 ? GameMode::ACT2 : GameMode::ARENA, o);
+    }
+    void handleBossEvent(const SDL_Event& e) {
+        if (e.type == SDL_KEYDOWN) {
+            SDL_Keycode k = e.key.keysym.sym;
+            if (k == SDLK_ESCAPE || k == SDLK_BACKSPACE) { page = MAIN; selected = 4; return; }
+            if (k == SDLK_UP)   bossSel = (bossSel + BOSS_COUNT - 1) % BOSS_COUNT;
+            if (k == SDLK_DOWN) bossSel = (bossSel + 1) % BOSS_COUNT;
+            if (k == SDLK_LEFT || k == SDLK_RIGHT) cycleDifficulty(k == SDLK_LEFT ? -1 : 1);
+            if (k == SDLK_RETURN || k == SDLK_SPACE) startBoss(bossSel);
+        }
+        if (e.type == SDL_MOUSEMOTION) { int i = bossAt(e.motion.x, e.motion.y); if (i >= 0) bossSel = i; }
+        if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
+            int i = bossAt(e.button.x, e.button.y);
+            if (i >= 0) { bossSel = i; startBoss(i); }
+        }
+    }
+    void renderBoss() {
+        int cx = screenW / 2;
+        ui.text("BOSS", cx, 46, 5, {1.f, 0.55f, 0.08f, 1.f}, true);
+        ui.text("EVERY BOSS IN ORDER, ON ITS OWN - WITH THE UPGRADES A RUN WOULD HAVE BY THEN", cx, 104, 1, {0.75f, 0.72f, 0.7f, 0.9f}, true);
+        char buf[96];
+        for (int i = 0; i < BOSS_COUNT; ++i) {
+            const BossEntry& b = bossEntry(i);
+            bool sel = i == bossSel, open = bossOpen(records, i);
+            float x = cx - BOSS_W / 2, y = bossY(i);
+            float pulse = sel ? 0.5f + 0.5f * std::sin(flashTime * 5.f) : 0.f;
+            ui.rect(x, y, BOSS_W, 56, sel ? glm::vec4{0.13f + pulse * 0.06f, 0.08f, 0.04f, 0.92f} : glm::vec4{0.07f, 0.07f, 0.10f, 0.85f});
+            if (sel) ui.rect(x, y, 5, 56, {1.f, 0.6f + pulse * 0.2f, 0.1f, 1.f});
+            glm::vec4 c = !open ? glm::vec4{0.42f, 0.42f, 0.47f, 0.75f} : sel ? glm::vec4{1.f, 0.65f, 0.12f, 1.f} : glm::vec4{0.8f, 0.8f, 0.85f, 0.95f};
+            std::snprintf(buf, sizeof(buf), "%d", i + 1);
+            ui.text(buf, x + 22, y + 16, 3, {0.5f, 0.5f, 0.55f, 0.8f});
+            ui.text(b.name, x + 62, y + 8, 3, c);
+            ui.text(open ? b.where : b.act2 && b.arena == 5 ? "LOCKED - KILL THE LEVIATHAN" : "LOCKED - KILL THE SOVEREIGN", x + 62, y + 36, 1, {0.7f, 0.68f, 0.66f, 0.85f});
+            if (records.bestBoss[i] > 0.f) {
+                std::snprintf(buf, sizeof(buf), "BEST %s", formatTime(records.bestBoss[i]).c_str());
+                ui.textRight(buf, (int)(x + BOSS_W - 18), (int)y + 20, 2, {1.f, 0.85f, 0.45f, 0.9f});
+            }
+        }
+        if (settings) {
+            std::snprintf(buf, sizeof(buf), "DIFFICULTY   <  %s  >", difficulty(settings->difficulty).name);
+            ui.text(buf, cx, bossY(BOSS_COUNT) + 10, 2, {1.f, 0.8f, 0.45f, 0.95f}, true);
+        }
+        ui.text("UP/DOWN OR MOUSE TO PICK   ENTER OR CLICK TO FIGHT   LEFT/RIGHT DIFFICULTY   ESC BACK",
+                cx, screenH - 36, 1, {0.6f, 0.6f, 0.65f, 0.85f}, true);
     }
 
     // ---- DEV level select ----------------------------------------------------
@@ -284,12 +346,24 @@ private:
         const Leaderboard& shown = worldLoaded ? worldBoard : board;
         ui.text(worldLoaded ? "WORLD LEADERBOARD" : "LEADERBOARD", cx, 34, 4, {1.f, 0.55f, 0.08f, 1.f}, true);
         const int rows = 8;
-        std::string dl = "DAILY  " + daily.label();
         drawLeaderboardTable(ui, shown, Board::ARENA,   cx - 600.f, 84.f,  570.f, rows, -1, flashTime);
         drawLeaderboardTable(ui, shown, Board::FAST,    cx + 30.f,  84.f,  570.f, rows, -1, flashTime);
         drawLeaderboardTable(ui, shown, Board::ENDLESS, cx - 600.f, 338.f, 570.f, rows, -1, flashTime);
-        drawLeaderboardTable(ui, shown, Board::DAILY,   cx + 30.f,  338.f, 570.f, rows, -1, flashTime, dl.c_str());
-        ui.text("ARENA, ENDLESS AND DAILY RANK BY SCORE (STYLE, SPEED, DAMAGE AVOIDED, DIFFICULTY) - FAST BY TIME",
+        {   // BOSS: your best kill of each (kept on this machine)
+            float x = cx + 30.f, y = 338.f;
+            ui.rect(x, y, 570.f, 32.f + rows * 22.f, {0.06f, 0.06f, 0.09f, 0.85f});
+            ui.rect(x, y, 570.f, 3.f, {1.f, 0.6f, 0.25f, 0.9f});
+            ui.text("BOSS  -  YOUR BEST KILLS", x + 285.f, y + 8, 2, {1.f, 0.6f, 0.25f, 1.f}, true);
+            char buf[64];
+            for (int i = 0; i < BOSS_COUNT; ++i) {
+                float ry = y + 40.f + i * 22.f;
+                ui.text(bossEntry(i).name, x + 24, ry, 2, {0.8f, 0.8f, 0.85f, 0.95f});
+                if (records.bestBoss[i] > 0.f) std::snprintf(buf, sizeof(buf), "%s", formatTime(records.bestBoss[i]).c_str());
+                else std::snprintf(buf, sizeof(buf), "-");
+                ui.textRight(buf, (int)(x + 546), (int)ry, 2, {1.f, 0.85f, 0.45f, 0.9f});
+            }
+        }
+        ui.text("ARENA AND ENDLESS RANK BY SCORE (STYLE, SPEED, DAMAGE AVOIDED, DIFFICULTY) - FAST BY TIME",
                 cx, screenH - 64, 1, {0.7f, 0.7f, 0.75f, 0.9f}, true);
         ui.text("ESC, ENTER OR CLICK - BACK", cx, screenH - 40, 2, {0.6f, 0.6f, 0.65f, 0.85f}, true);
     }
@@ -311,11 +385,13 @@ private:
         std::string arenaSub = "5 ARENAS - WAVES - TWO BOSSES";
         std::string fastSub  = "TIME TRIAL - THE GAUNTLET";
         std::string endSub   = "THE CORE - NO EXIT, JUST THE NEXT WAVE";
-        std::string daySub   = "TODAY: " + arenaNames[daily.arena] + " - " + daily.modName();
+        int bossBest = 0;
+        for (float b : records.bestBoss) bossBest += b > 0.f;
+        std::string bossSub  = "EVERY BOSS IN ORDER - FIGHT ANY ONE ON ITS OWN";
+        if (bossBest > 0) bossSub = "EVERY BOSS IN ORDER   " + std::to_string(bossBest) + "/" + std::to_string(BOSS_COUNT) + " BEATEN";
         if (records.bestArenaScore > 0) arenaSub += "   BEST " + std::to_string(records.bestArenaScore);
         if (records.bestFast  > 0.f) fastSub  += "   BEST " + formatTime(records.bestFast);
         if (records.bestEndless > 0) endSub += "   BEST " + std::to_string(records.bestEndless);
-        if (records.bestDaily > 0 && records.dailyDate == daily.date) daySub += "   BEST " + std::to_string(records.bestDaily);
         bool act2 = canStartAct2(records);
         std::string act2Sub = act2Subtitle(records, act2);   // (with its best times)
         Item items[NUM_ITEMS] = {
@@ -323,7 +399,7 @@ private:
             {"ACT II", act2Sub.c_str()},
             {"FAST",  fastSub.c_str()},
             {"ENDLESS", endSub.c_str()},
-            {"DAILY", daySub.c_str()},
+            {"BOSS", bossSub.c_str()},
             {"LEADERBOARD", "EVERY MODE - THE WORLD'S BEST"},
             {"SETTINGS", "SENSITIVITY  FOV  GRAPHICS  MORE"},
             {"EXIT", ""},

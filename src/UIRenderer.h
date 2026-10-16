@@ -488,6 +488,27 @@ public:
         end2D();
     }
 
+    // BOSS: one boss down - the kill time against its best
+    void renderVictoryBoss(const char* name, const char* where, float time, float best, bool newRecord, int deaths, int shots, int hits) {
+        begin2D();
+        ui.rect(0, 0, screenW, screenH, {0.03f, 0.01f, 0.02f, 0.74f});
+        ui.text(name, screenW / 2, screenH / 2 - 150, 5, {1.f, 0.6f, 0.25f, 0.95f}, true);
+        ui.text(where, screenW / 2, screenH / 2 - 96, 2, {0.85f, 0.8f, 0.75f, 0.85f}, true);
+        std::string ts = formatTime(time);
+        ui.text(ts.c_str(), screenW / 2, screenH / 2 - 50, 6, {1.f, 0.95f, 0.85f, 1.f}, true);
+        char buf[96];
+        if (newRecord) ui.text("NEW BEST", screenW / 2, screenH / 2 + 8, 3, {1.f, 0.85f, 0.2f, 0.5f + 0.5f * std::sin(hudTime * 6.f)}, true);
+        else if (best > 0.f) {
+            std::snprintf(buf, sizeof(buf), "BEST %s   (+%.2f)", formatTime(best).c_str(), time - best);
+            ui.text(buf, screenW / 2, screenH / 2 + 12, 2, {0.75f, 0.6f, 0.55f, 0.9f}, true);
+        }
+        float acc = shots > 0 ? (float)hits / (float)shots * 100.f : 0.f;
+        std::snprintf(buf, sizeof(buf), "DEATHS %d    ACCURACY %d%%", deaths, (int)acc);
+        ui.text(buf, screenW / 2, screenH / 2 + 52, 2, {0.9f, 0.9f, 0.9f, 0.9f}, true);
+        ui.text("ENTER - FIGHT IT AGAIN    ESC - MENU", screenW / 2, screenH - 40, 2, {0.6f, 0.6f, 0.6f, 0.85f}, true);
+        end2D();
+    }
+
     void renderVictoryFast(float time, float best, bool newRecord, const char* rank, int kills, int shots, int hits,
                            int deaths, const std::vector<float>& splits, const std::vector<float>& bestSplits,
                            bool showKeys = true) {

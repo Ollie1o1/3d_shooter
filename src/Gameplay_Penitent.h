@@ -17,6 +17,11 @@ inline void GameplayState::updateLift(float dt) {
     if (g_devCam && lift.pending >= 0 && !lift.riding()) {   // dev camera (screenshots): the cage is simply there
         lift.at = lift.to = lift.pending; lift.pending = -1; lift.t = 0.f; lift.update(0.f, level);
     }
+    if (g_bossRun >= 0 && lift.pending >= 0 && !lift.riding()) {   // BOSS: no ride - you're on the cage, down at the pit
+        lift.at = lift.to = lift.pending; lift.pending = -1; lift.t = 0.f; lift.update(0.f, level);
+        player.position = glm::vec3{C.x, lift.y() + 0.3f, C.z + 4.f}; player.velocity = glm::vec3{0.f};
+        player.camera.position = player.position + glm::vec3{0.f, player.eyeHeight, 0.f}; prevCamPos = player.camera.position;
+    }
     if (lift.pending >= 0 && !lift.riding()) {
         if (player.onGround && level.onLift(player.groundWall)) {
             lift.start();

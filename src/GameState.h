@@ -24,4 +24,5 @@ struct StartOptions {
     int  wave  = 0;          // wave within it (ARENA)
     bool god   = false;
     bool practice = false;   // no records, no leaderboard
+    int  boss = -1;          // BOSS: which boss (bossEntry, Progression.h), fought on its own
 };

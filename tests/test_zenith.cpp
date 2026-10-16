@@ -304,6 +304,35 @@ int main() {
               "MORNINGSTAR's: faster than the Zenith's, the harder voicing");
     }
 
+    // ---------------------------------------------------------------- BOSS: every boss on its own
+    {
+        const char* want[] = {"THE WARDEN", "THE SOVEREIGN", "THE PENITENT", "THE LEVIATHAN", "THE ABSOLUTE", "MORNINGSTAR"};
+        bool order = BOSS_COUNT == 6;
+        for (int i = 0; i < BOSS_COUNT; ++i) order &= std::string(bossEntry(i).name) == want[i];
+        CHECK(order, "BOSS lists every boss in the order you meet them, the Absolute's two forms last");
+        LevelData A = buildLevel(), A2 = buildAct2Level();
+        bool where = true;
+        const EnemyType types[] = {EnemyType::WARDEN, EnemyType::SOVEREIGN, EnemyType::PENITENT, EnemyType::LEVIATHAN, EnemyType::ABSOLUTE, EnemyType::ABSOLUTE};
+        for (int i = 0; i < BOSS_COUNT; ++i) {
+            const BossEntry& b = bossEntry(i);
+            const Arena& ar = (b.act2 ? A2 : A).arenas[b.arena];
+            bool found = false;
+            for (auto& w : ar.waves) for (auto& g : w) found |= g.type == types[i];
+            if (!found) { where = false; std::printf("      boss %d: not in %s\n", i, ar.name); }
+        }
+        CHECK(where, "...and each one's arena is the one its boss fights in");
+        CHECK(bossEntry(5).morning && !bossEntry(4).morning, "...MORNINGSTAR starts inside the eclipse; the Absolute's entry is his first form");
+        Records r;
+        CHECK(bossOpen(r, 0) && bossOpen(r, 1) && !bossOpen(r, 2) && !bossOpen(r, 5), "Act I's bosses are open from the start; Act II's once you've reached them");
+        r.act2Unlocked = true;
+        CHECK(bossOpen(r, 3) && !bossOpen(r, 4), "...the Penitent and the Leviathan once the Sovereign falls");
+        r.act2Cleared = true;
+        CHECK(bossOpen(r, 4) && bossOpen(r, 5), "...the Absolute and MORNINGSTAR once the Leviathan does");
+        CHECK(recordBoss(r, 2, 95.f) && !recordBoss(r, 2, 100.f) && recordBoss(r, 2, 90.f) && r.bestBoss[2] == 90.f, "a boss's best kill is its fastest");
+        Records back; back.parse(r.serialise());
+        CHECK(back.bestBoss[2] == 90.f && back.bestBoss[0] == 0.f, "...and it's saved");
+    }
+
     // ---------------------------------------------------------------- the hand-off and the records
     {
         Records r;
