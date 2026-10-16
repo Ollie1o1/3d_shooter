@@ -20,6 +20,14 @@
 //             him in a fan at you. Up close they're shoulder to shoulder (jump
 //             one); further out the gaps open (stand in one). A pillar stops a
 //             flame.
+// MORNINGSTAR's (his second form):
+//   WAVES     SUNDER's ring of light rolling out along the floor (jump it); an
+//             aftershock is the same ring again, later, from the same place;
+//             the COLLAPSE is the ring of fire closing in from the edge.
+//   FISSURES  a crack ripping along the floor at you (step off its line); its
+//             aftershock: the whole line erupts again.
+//   LANES     the ring of fire's flares: seven lanes lit across the floor, one
+//             on you, then walls of fire run down them (stand between).
 // No OpenGL or audio: Gameplay_Absolute.h draws and sounds them.
 // =============================================================================
 #include "Level.h"
@@ -38,8 +46,13 @@ struct AbsoluteHazards {
                            JUDGE_WARN = Enemy::AB_JUDGE_WARN, JUDGE_SAFE = 6.f, JUDGE_DAMAGE = 60.f,
                            FAN_SPEED = 19.f, FAN_HALF = 0.9f, FAN_R = 1.1f, FAN_H = 1.3f, FAN_MAX = 46.f, FAN_DAMAGE = 24.f;
     static constexpr int FAN_N = 7;
+    static constexpr float WAVE_H = 1.2f, RING_SPEED = 20.f, RING_MAX = 46.f, RING_DAMAGE = 28.f, AFTER_DELAY = 0.6f, AFTER_DAMAGE = 22.f,
+                           FIS_LEN = 44.f, FIS_SPEED = 48.f, FIS_HALF = 1.1f, FIS_BURN = 0.45f, FIS_DAMAGE = 30.f, FIS_AFTER = 0.35f, FIS_AFTER_LEN = 0.35f,
+                           LANE_GAP = 9.f, LANE_HALF = 1.6f, LANE_WARN = 1.f, LANE_SPEED = 36.f, LANE_R = 46.f, LANE_DAMAGE = 26.f, LANE_H = 3.f,
+                           COLLAPSE_R = 44.f, COLLAPSE_SPEED = 14.f, COLLAPSE_DAMAGE = 40.f;
+    static constexpr int LANE_N = 7;
     // A hit on the player: `tick` damage is already per tick (a beam)
-    struct Hit { float damage; glm::vec3 from; Sword::Strike kind; bool tick; };
+    struct Hit { float damage; glm::vec3 from; Sword::Strike kind; bool tick; int src = 0; };   // src (tuning): MORNINGSTAR's 1 ring, 2 fissure, 3 lane, 4 collapse
     struct Ray     { glm::vec3 from, at; float t = 0.f; };
     struct Stomp   { glm::vec3 at; float r = 0.f; bool hit = false; };
     struct Serpent { glm::vec3 pos, dir; float t = 0.f; bool back = false; };
@@ -49,14 +62,19 @@ struct AbsoluteHazards {
     struct Mirage  { glm::vec3 at; float t = 0.f; bool struck = false; };
     struct Judge   { glm::vec3 centre, boss; float t = 0.f; bool done = false; };
     struct Fan     { glm::vec3 at; glm::vec3 dir[FAN_N]; bool out[FAN_N] = {}; float r = 0.f; bool hit = false; };   // out: a pillar stopped it
+    struct Wave    { glm::vec3 at; float r, speed, maxR, damage, delay; bool inward = false, hit = false; };   // (inward: from maxR to 0)
+    struct Fissure { glm::vec3 from, dir; float len, t = 0.f; bool after = false, hit = false, afterHit = false; };
+    struct Lanes   { glm::vec3 centre, dir, side; float off[LANE_N]; float t = 0.f; bool hit = false; };   // t < 0: not lit yet
     std::vector<Ray> rays; std::vector<Stomp> stomps; std::vector<Serpent> serpents; std::vector<Seams> seams;
     std::vector<ZRay> zrays; std::vector<Halo> halos; std::vector<Mirage> mirages; std::vector<Judge> judges;
     std::vector<Fan> fans;
+    std::vector<Wave> waves; std::vector<Fissure> fissures; std::vector<Lanes> lanes;
     int shatterThisTick = 0;   // the pillars the halo sweep passed this tick (a mask)
 
     void clear() {
         rays.clear(); stomps.clear(); serpents.clear(); seams.clear();
         zrays.clear(); halos.clear(); mirages.clear(); judges.clear(); fans.clear(); shatterThisTick = 0;
+        waves.clear(); fissures.clear(); lanes.clear();
     }
     void addRay(glm::vec3 from, glm::vec3 at)       { rays.push_back({from, at}); }
     void addStomp(glm::vec3 at)                     { stomps.push_back({at}); }
@@ -77,6 +95,53 @@ struct AbsoluteHazards {
         }
         fans.push_back(f);
     }
+    // MORNINGSTAR's: a ring rolling out from `at` (after `delay`); the ring of fire closing in on `centre`
+    void addRing(glm::vec3 at, float delay = 0.f, float damage = RING_DAMAGE) { waves.push_back({at, 0.f, RING_SPEED, RING_MAX, damage, delay}); }
+    void addCollapse(glm::vec3 centre) { Wave w{centre, COLLAPSE_R, COLLAPSE_SPEED, COLLAPSE_R, COLLAPSE_DAMAGE, 0.f}; w.inward = true; waves.push_back(w); }
+    // A fissure from `from` toward `toward`, as far as the floor's edge (radius 43 round `centre`)
+    void addFissure(glm::vec3 from, glm::vec3 toward, glm::vec3 centre, bool after) {
+        glm::vec3 d = toward - from; d.y = 0.f;
+        float l = glm::length(d);
+        d = l > 0.1f ? d / l : glm::vec3{0.f, 0.f, 1.f};
+        glm::vec2 o{from.x - centre.x, from.z - centre.z}, v{d.x, d.z};   // |o + v s| = 43
+        float b = glm::dot(o, v), c = glm::dot(o, o) - 43.f * 43.f, disc = b * b - c;
+        float len = disc > 0.f ? std::min(FIS_LEN, -b + std::sqrt(disc)) : FIS_LEN;
+        Fissure f{from, d, std::max(len, 4.f)}; f.after = after;
+        fissures.push_back(f);
+    }
+    // The flares: lanes across the floor along `dir` (from the far side of the ring), one centred on `on`
+    void addLanes(glm::vec3 centre, glm::vec3 on, glm::vec3 dir, float delay = 0.f) {
+        dir.y = 0.f; dir = glm::length(dir) > 0.1f ? glm::normalize(dir) : glm::vec3{0.f, 0.f, 1.f};
+        Lanes L; L.centre = centre; L.dir = dir; L.side = {-dir.z, 0.f, dir.x}; L.t = -delay;
+        float mine = glm::dot(on - centre, L.side);
+        for (int k = 0; k < LANE_N; ++k) L.off[k] = mine + (k - LANE_N / 2) * LANE_GAP;
+        lanes.push_back(L);
+    }
+    // MORNINGSTAR's moves landing, as hazards (the game and the boss sim both call this): his events,
+    // the floor's centre, where you are, which way he faces
+    static glm::vec3 flaresDir(glm::vec3 centre, glm::vec3 you, float yaw) {   // lanes running past you (across your line to the centre)
+        glm::vec3 r = you - centre; r.y = 0.f;
+        if (glm::length(r) < 2.f) r = glm::vec3{std::sin(yaw), 0.f, std::cos(yaw)};
+        r = glm::normalize(r);
+        return glm::vec3{-r.z, 0.f, r.x};
+    }
+    void morningEvents(const EnemyEvents& ev, glm::vec3 centre, glm::vec3 you, float yaw) {
+        if (ev.msSwallow) clear();
+        if (ev.msSunder) { addRing(ev.abFrom); if (ev.msAfter) addRing(ev.abFrom, AFTER_DELAY, AFTER_DAMAGE); }
+        if (ev.msFissure) addFissure(ev.abFrom, ev.abTo, centre, ev.msAfter);
+        if (ev.msDrop && ev.msAfter) addRing(ev.abTo, 0.35f, AFTER_DAMAGE);
+        if (ev.msGrasp && ev.msAfter) addRing(ev.abTo, 0.5f, AFTER_DAMAGE);
+        if (ev.msFlares) {
+            glm::vec3 d = flaresDir(centre, you, yaw);
+            addLanes(centre, you, d);
+            if (ev.msAfter) addLanes(centre, you, glm::vec3{-d.z, 0.f, d.x}, 0.9f);   // RISING: a second set across the first
+        }
+        if (ev.msFlaresUnder) addLanes(centre, you, flaresDir(centre, you, yaw), 0.4f);
+        if (ev.msCollapse) addCollapse(centre);
+    }
+    // Where a lane's wall of fire is along it (from -LANE_R), and is it running?
+    static float laneFront(const Lanes& L) { return -LANE_R + std::max(0.f, L.t - LANE_WARN) * LANE_SPEED; }
+
     // Where flame k of a fan is, on whatever floor is under it (the Dais is higher)
     static glm::vec3 fanFlame(const Fan& f, int k, const LevelData* lv) {
         glm::vec3 p = f.at + f.dir[k] * f.r;
@@ -216,6 +281,46 @@ struct AbsoluteHazards {
             }
         }
         fans.erase(std::remove_if(fans.begin(), fans.end(), [](const Fan& f) { return f.r > FAN_MAX; }), fans.end());
+        // ---- MORNINGSTAR's (heights from the floor under you: the Dais is higher) ----
+        float under = feet.y;
+        if (lv && lv->zenith.built) {
+            const glm::vec3 c = lv->zenith.centre;
+            under = c.y + (glm::length(glm::vec2{feet.x - c.x, feet.z - c.z}) < Enemy::AB_DAIS_R ? Enemy::AB_DAIS_UP : 0.f);
+        }
+        const float up = feet.y - under;   // how high you are off it
+        for (auto& w : waves) {
+            if (w.delay > 0.f) { w.delay -= dt; continue; }
+            float was = w.r; w.r += (w.inward ? -w.speed : w.speed) * dt;
+            float d = glm::length(glm::vec2{feet.x - w.at.x, feet.z - w.at.z});
+            float lo = std::min(was, w.r) - 0.5f, hi = std::max(was, w.r) + 0.5f;
+            if (!w.hit && d >= lo && d < hi && up < WAVE_H) { w.hit = true; out.push_back({w.damage, w.at, Sword::Strike::AREA, false, w.inward ? 4 : 1}); }
+        }
+        waves.erase(std::remove_if(waves.begin(), waves.end(), [](const Wave& w) { return w.inward ? w.r < 0.f : w.r > w.maxR; }), waves.end());
+        for (auto& f : fissures) {
+            f.t += dt;
+            glm::vec3 rel = feet - f.from;
+            float along = glm::dot(rel, f.dir), perp = glm::length(glm::vec2{rel.x - f.dir.x * along, rel.z - f.dir.z * along});
+            bool on = along > -0.5f && along < f.len && perp < FIS_HALF && up < 1.5f;
+            float since = f.t - std::max(along, 0.f) / FIS_SPEED;   // how long ago the crack passed here
+            if (!f.hit && on && since >= 0.f && since < FIS_BURN) { f.hit = true; out.push_back({FIS_DAMAGE, f.from, Sword::Strike::AREA, false, 2}); }
+            float ta = f.len / FIS_SPEED + FIS_AFTER;              // the aftershock: the whole line at once
+            if (f.after && !f.afterHit && on && f.t >= ta && f.t < ta + FIS_AFTER_LEN) { f.afterHit = true; out.push_back({AFTER_DAMAGE, f.from, Sword::Strike::AREA, false, 2}); }
+        }
+        fissures.erase(std::remove_if(fissures.begin(), fissures.end(), [](const Fissure& f) {
+            return f.t > f.len / FIS_SPEED + (f.after ? FIS_AFTER + FIS_AFTER_LEN : FIS_BURN); }), fissures.end());
+        for (auto& L : lanes) {
+            float was = laneFront(L);
+            L.t += dt;
+            if (L.t < LANE_WARN) continue;
+            float now = laneFront(L);
+            glm::vec3 rel = feet - L.centre;
+            float along = glm::dot(rel, L.dir), across = glm::dot(rel, L.side);
+            bool inLane = false;
+            for (int k = 0; k < LANE_N; ++k) if (std::fabs(across - L.off[k]) < LANE_HALF + 0.3f) inLane = true;
+            if (!L.hit && inLane && along >= was - 1.f && along < now + 1.f && up < LANE_H &&
+                glm::length(glm::vec2{rel.x, rel.z}) < 45.f) { L.hit = true; out.push_back({LANE_DAMAGE, feet, Sword::Strike::AREA, false, 3}); }
+        }
+        lanes.erase(std::remove_if(lanes.begin(), lanes.end(), [](const Lanes& L) { return laneFront(L) > LANE_R; }), lanes.end());
         return out;
     }
 

@@ -117,6 +117,7 @@ inline AbsPose absoluteGuard(const Enemy& e, float time) {
 inline void absoluteMove(AbsPose& P, AttackKind a, bool strike, float tp) {
     const bool k = strike;
     switch (a) {
+    case AttackKind::MJAB:        // MORNINGSTAR's jab: the same snap, the size of a man
     case AttackKind::AJAB:        // the lead hand, straight and snapping, a step in behind it
         P.glow = 1;
         if (!k) { P.torsoYaw = 0.12f; P.dip += 0.05f; P.shL = -0.85f; P.elL = 1.7f; }
@@ -176,8 +177,9 @@ inline void absoluteMove(AbsPose& P, AttackKind a, bool strike, float tp) {
         if (!k) { P.shR = -2.85f; P.shRz = 0.1f; P.elR = 0.4f; P.torsoPitch = -0.2f; }
         else { P.shR = -0.95f; P.elR = 0.15f; P.torsoPitch = 0.3f; P.dip += 0.12f; }
         break;
+    case AttackKind::MBACKHAND:   // MORNINGSTAR: the backfist as a colossus swings it, his whole body behind it
     case AttackKind::ABACKFIST:   // he spins away (his back to you), and the back of the fist comes round with him
-        P.glow = 1;
+        P.glow = a == AttackKind::MBACKHAND ? 5 : 1;
         if (!k) { P.hipYaw = -0.05f; P.torsoYaw = 1.1f; P.shL = -1.3f; P.shLz = -0.1f; P.elL = 1.95f; P.dip += 0.08f; }
         else { P.hipYaw = -0.95f; P.torsoYaw = -1.0f; P.shL = -1.5f; P.shLz = 1.25f; P.elL = 0.15f; }
         break;
@@ -212,6 +214,26 @@ inline void absoluteMove(AbsPose& P, AttackKind a, bool strike, float tp) {
         else { P.shRz = P.shLz = -0.2f; P.torsoPitch = 0.2f; }
         if (a == AttackKind::ATHUNDER) P.plant = 0.f;
         break;
+    case AttackKind::MGRASP:      // MORNINGSTAR: the right hand up and open, then down to the floor where you stand
+        P.glow = 0; P.fistR = 0.f;
+        if (!k) { P.shR = -2.6f; P.shRz = 0.15f; P.elR = 0.35f; P.torsoPitch = -0.2f; P.torsoYaw = 0.3f; }
+        else { P.shR = -0.95f; P.elR = 0.1f; P.torsoPitch = 0.75f; P.torsoYaw = 0.4f; P.dip += 0.35f; P.hipR = -0.6f; P.kneeR = 0.7f; }
+        break;
+    case AttackKind::MSUNDER:     // MORNINGSTAR: both fists over his head, then down into the floor like a hammer
+        P.glow = 3; P.fistR = P.fistL = 1.f;
+        if (!k) { P.shR = P.shL = -2.9f; P.shRz = P.shLz = 0.05f; P.elR = P.elL = 0.3f; P.torsoPitch = -0.25f; }
+        else { P.shR = P.shL = -0.6f; P.shRz = P.shLz = -0.1f; P.elR = P.elL = 0.2f; P.torsoPitch = 0.8f; P.dip += 0.4f; P.headPitch = 0.2f; }
+        break;
+    case AttackKind::MFISSURE:    // MORNINGSTAR: the right fist raised, a long step, and down into the floor at you
+        P.glow = 0;
+        if (!k) { P.shR = -2.7f; P.shRz = 0.1f; P.elR = 0.4f; P.torsoYaw = -0.3f; P.torsoPitch = -0.15f; }
+        else { P.shR = -0.7f; P.elR = 0.1f; P.torsoYaw = 0.35f; P.torsoPitch = 0.7f; P.dip += 0.35f; P.hipR = -0.6f; P.kneeR = 0.7f; }
+        break;
+    case AttackKind::MFLARES:     // MORNINGSTAR: both arms flung up to the ring of fire
+        P.glow = 5; P.fistR = P.fistL = 0.f; P.shR = P.shL = -2.8f; P.shRz = P.shLz = k ? 0.9f : 0.5f; P.elR = P.elL = 0.1f;
+        P.headPitch = -0.35f; P.torsoPitch = -0.15f;
+        break;
+    case AttackKind::MDROP:       // MORNINGSTAR's Eclipse drop: SKYFALL's hammer from much higher
     case AttackKind::ASKYFALL:    // knees up, both fists over his head, then down like a hammer
         P.glow = 3; P.plant = 0.f; P.ankle = 0.3f; P.hipYaw = 0.f; P.torsoYaw = 0.f;
         P.shR = P.shL = k ? -0.4f : -2.9f; P.elR = P.elL = 0.3f; P.hipR = P.hipL = -1.1f; P.kneeR = P.kneeL = 1.6f; P.torsoPitch = k ? 0.4f : -0.2f;
@@ -224,6 +246,7 @@ inline void absoluteMove(AbsPose& P, AttackKind a, bool strike, float tp) {
         P.shR = P.shL = 0.6f; P.shRz = P.shLz = 0.6f; P.elR = P.elL = 0.3f; P.torsoPitch = 0.3f;
         P.dip += k ? 0.f : 0.38f;
         break;
+    case AttackKind::MCOLLAPSE:   // MORNINGSTAR: the last judgment's shape as he pulls the ring of fire in
     case AttackKind::AJUDGE:
         P.glow = 5; P.plant = 0.f; P.lift = 1.2f + 0.6f * tp; P.hipYaw = 0.f; P.torsoYaw = 0.f; P.torsoRoll = 0.f; P.torsoPitch = 0.f;
         P.shR = P.shL = -1.57f; P.shRz = P.shLz = 1.25f; P.elR = P.elL = 0.f;
@@ -279,9 +302,9 @@ inline AbsPose absolutePose(const Enemy& e, float time) {
             P.glow = -1; P.omega = 20.f;
         }
     }
-    if (e.staggered()) {
+    if (e.staggered() || e.abSwallow > Enemy::MS_RISE) {   // (the swallow: on his knees, as if broken)
         P = AbsPose{}; P.omega = 20.f;
-        if (e.abReeling) {   // thrown back on his heels, the guard knocked open
+        if (e.abReeling && e.abSwallow <= 0.f) {   // thrown back on his heels, the guard knocked open
             P.plant = 1.f; P.ankle = 1.f; P.stanceW = 0.12f; P.hipR = 0.3f; P.kneeR = 0.35f; P.hipL = -0.2f; P.kneeL = 0.3f;
             P.torsoPitch = -0.4f; P.torsoRoll = 0.12f; P.shR = P.shL = 0.25f; P.shRz = P.shLz = 0.55f; P.elR = P.elL = 0.4f; P.headPitch = -0.3f;
             P.fistR = P.fistL = 0.5f;
@@ -344,11 +367,20 @@ inline void buildAbsolute(const Enemy& e, float time, Rig& r, const mat4& root) 
     const float tp = e.telegraphProgress();
     const bool  hurt = e.staggered() && !e.abReeling;
     const float pulse = 0.85f + 0.15f * std::sin(time * 3.f) * (hurt ? 3.f : 1.f);
-    const vec3 skin{0.58f, 0.58f, 0.64f}, plate{0.96f, 0.96f, 0.99f}, dark{0.16f, 0.16f, 0.2f};
-    const vec3 light{1.6f, 1.5f, 1.25f}, gold{1.5f, 1.1f, 0.45f};
-    const vec3 seam = light * (hurt ? 0.5f : 1.3f) * pulse, soft = light * (hurt ? 0.04f : 0.1f);
-    // the strike's colour, blazing as it comes
-    const AbTell tell = e.telegraphTimer > 0.f ? abTellOf(e.attack) : AbTell::NONE;
+    // MORNINGSTAR: blood orange, lit from within, white light through the cracks, white eyes. In
+    // TOTALITY the light goes out of him: only his eyes and his white flashes are left
+    const bool ms = e.morning();
+    const float dim = ms && e.abPhase >= 6 ? 0.08f : 1.f;
+    const vec3 skin = ms ? vec3{0.8f, 0.15f, 0.03f} * (0.3f + 0.7f * dim) : vec3{0.58f, 0.58f, 0.64f};
+    const vec3 plate = ms ? vec3{0.95f, 0.27f, 0.05f} * (0.3f + 0.7f * dim) : vec3{0.96f, 0.96f, 0.99f};
+    const vec3 dark = ms ? vec3{0.1f, 0.03f, 0.02f} : vec3{0.16f, 0.16f, 0.2f};
+    const vec3 light = ms ? vec3{2.f, 1.9f, 1.8f} * dim : vec3{1.6f, 1.5f, 1.25f}, gold = ms ? vec3{2.f, 1.9f, 1.8f} * dim : vec3{1.5f, 1.1f, 0.45f};
+    const vec3 seam = light * (hurt ? 0.5f : 1.3f) * pulse;
+    const vec3 soft = ms ? vec3{1.f, 0.17f, 0.02f} * (hurt ? 0.35f : 0.6f) * dim : light * (hurt ? 0.04f : 0.1f);   // (he glows)
+    // the strike's colour, blazing as it comes (MORNINGSTAR shows only white on his body: gold and red are on the floor)
+    const AbTell tell0 = e.telegraphTimer > 0.f ? abTellOf(e.attack) : AbTell::NONE;
+    const AbTell tell = ms && tell0 != AbTell::WHITE ? AbTell::NONE : tell0;
+    const size_t first = r.out.size();
     const vec3 tc = tell == AbTell::GOLD ? vec3{2.2f, 1.72f, 0.7f} : tell == AbTell::RED ? vec3{2.4f, 0.25f, 0.15f} : vec3{1.9f, 1.9f, 2.0f};
     const float tk = 0.5f + 3.f * tp;   // (always the brightest thing on him by the end)
     auto lit = [&](int limb, vec3 base) {
@@ -418,10 +450,11 @@ inline void buildAbsolute(const Enemy& e, float time, Rig& r, const mat4& root) 
     r.box(head, {0.f, 0.19f, -0.01f}, {0.24f, 0.3f, 0.27f}, plate, soft);
     r.box(head, {0.f, 0.07f, 0.04f}, {0.2f, 0.09f, 0.2f}, skin);
     r.box(head, {0.f, 0.26f, 0.13f}, {0.23f, 0.04f, 0.04f}, plate);
-    const vec3 eye{2.8f, 0.18f, 0.12f};                    // two crimson eyes, blazing through a tell
+    const vec3 eye = ms ? vec3{3.2f, 3.1f, 3.f} : vec3{2.8f, 0.18f, 0.12f};   // two crimson eyes (MORNINGSTAR's: white), blazing through a tell
     const float eyeK = (hurt ? 0.5f : 1.f) * (tell != AbTell::NONE ? 1.f + 0.6f * tp : 1.f) * pulse;
     for (float s : {-1.f, 1.f}) {
-        r.box(head * T({s * 0.055f, 0.21f, 0.142f}) * RZ(s * 0.18f), {0.f, 0.f, 0.f}, {0.07f, 0.022f, 0.012f}, dark, eye * eyeK);
+        const float es = ms ? 1.35f : 1.f;   // (MORNINGSTAR's: wider, blank)
+        r.box(head * T({s * 0.055f, 0.21f, 0.142f}) * RZ(s * 0.18f), {0.f, 0.f, 0.f}, vec3{0.07f, 0.022f, 0.012f} * vec3{es, es * 1.3f, 1.f}, dark, eye * eyeK);
         r.box(head * T({s * 0.055f, 0.21f, 0.136f}) * RZ(s * 0.18f), {0.f, 0.f, 0.f}, {0.11f, 0.05f, 0.006f}, dark, eye * 0.35f * eyeK);   // their glow
     }
     for (float s : {-1.f, 1.f}) r.box(head, {s * 0.085f, 0.15f, 0.12f}, {0.05f, 0.04f, 0.04f}, plate);
@@ -456,7 +489,7 @@ inline void buildAbsolute(const Enemy& e, float time, Rig& r, const mat4& root) 
         r.box(hand, {0.f, -0.1f, 0.02f}, {0.1f, 0.02f, 0.03f}, plate, lit(limb, soft));
         // the gauntlet: a heavier shell, rune bands at the wrist and knuckles, pale violet-blue
         // (no tell's colour); the striking one flares to its tell
-        const vec3 rune{0.6f, 0.7f, 1.7f};
+        const vec3 rune = ms ? vec3{1.9f, 1.8f, 1.7f} * dim : vec3{0.6f, 0.7f, 1.7f};
         const vec3 rk = lit(limb, rune * (0.85f + 0.15f * std::sin(time * 3.f + s)));
         r.box(hand, {0.f, -0.06f, 0.f}, {0.125f, 0.12f, 0.075f}, dark * 1.4f, rune * 0.08f);
         r.box(hand, {0.f, 0.02f, 0.f}, {0.135f, 0.022f, 0.085f}, dark, rk);            // the wrist band
@@ -491,5 +524,13 @@ inline void buildAbsolute(const Enemy& e, float time, Rig& r, const mat4& root) 
         for (int k = 0; k < 3; ++k)
             r.box(sw, {0.f, -0.35f - 0.45f * k, 0.f}, {0.09f - 0.02f * k, 0.46f, 0.025f}, plate, bl * (0.9f + 0.1f * k));
         r.box(sw, {0.f, -0.75f, 0.015f}, {0.02f, 1.3f, 0.01f}, light, bl * 1.4f);
+    }
+    // MORNINGSTAR's white tell: his whole body goes white-hot as the blow comes (the one thing to parry)
+    if (ms && tell == AbTell::WHITE) {
+        const float k = smooth01(tp * 1.2f);
+        for (size_t j = first; j < r.out.size(); ++j) {
+            r.out[j].color = glm::mix(r.out[j].color, vec3{1.f}, 0.7f * k);
+            r.out[j].emissive = glm::mix(r.out[j].emissive, vec3{2.2f, 2.15f, 2.1f}, 0.25f + 0.65f * k);
+        }
     }
 }

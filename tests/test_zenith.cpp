@@ -1121,15 +1121,21 @@ int main() {
             while (s.t < limit && s.bossAlive()) s.step(DT);
             return s;
         };
-        BossSim solid = run(BossSim::SOLID, 400.f);
-        std::printf("      absolute: solid kills in %.0f s (alive %d), taking %.0f; parries %d\n", solid.t, (int)solid.bossAlive(), solid.damageTaken, solid.parries);
+        BossSim solid = run(BossSim::SOLID, 700.f);
+        const float form1 = solid.formAt, form2 = solid.formAt >= 0.f ? solid.t - solid.formAt : -1.f;
+        std::printf("      absolute: solid fells him in %.0f s, then MORNINGSTAR in %.0f s more (alive %d), taking %.0f (%.0f of it to MORNINGSTAR); parries %d\n",
+                    form1, form2, (int)solid.bossAlive(), solid.damageTaken, solid.taken2, solid.parries);
+        std::printf("      lowest health against MORNINGSTAR: %.0f; hurt by his body %.0f, rings %.0f, fissures %.0f, lanes %.0f, the collapse %.0f\n",
+                    solid.lowest2, solid.msBy[0], solid.msBy[1], solid.msBy[2], solid.msBy[3], solid.msBy[4]);
         std::printf("      solid hurt by: melee %.0f, beams %.0f, ground %.0f, serpents/mirages %.0f, crescents %.0f\n", solid.dmgMelee, solid.dmgBeam, solid.dmgGround, solid.dmgWhite, solid.dmgShot);
         std::printf("      solid with the sword's healing: lowest health %.0f\n", solid.lowest);
         CHECK(solid.lowest > 0.f, "a solid player, healing by the sword as the game does, survives the fight: hard, never impossible");
-        CHECK(!solid.bossAlive() && solid.t >= 150.f && solid.t <= 180.f, "a solid player (sword, half the parries) kills the Absolute in 150-180 s");
-        BossSim dodger = run(BossSim::DODGER, 900.f);
+        CHECK(form1 >= 150.f && form1 <= 180.f, "a solid player (sword, half the parries) fells the Absolute in 150-180 s");
+        CHECK(!solid.bossAlive() && form2 >= form1 && form2 <= 240.f, "...and MORNINGSTAR takes as long again or longer (up to 240 s)");
+        BossSim dodger = run(BossSim::DODGER, 2000.f);
         std::printf("      absolute: guns-only dodger kills in %.0f s (alive %d), taking %.0f\n", dodger.t, (int)dodger.bossAlive(), dodger.damageTaken);
         std::printf("      dodger hurt by: melee %.0f, beams %.0f, ground %.0f, serpents/mirages %.0f, crescents %.0f\n", dodger.dmgMelee, dodger.dmgBeam, dodger.dmgGround, dodger.dmgWhite, dodger.dmgShot);
+        std::printf("      dodger: MORNINGSTAR from %.0f s\n", dodger.formAt);
         CHECK(!dodger.bossAlive() && dodger.t > solid.t, "a dodge-only, guns-only player can still win, more slowly");
         BossSim still = run(BossSim::STILL, 30.f);
         std::printf("      absolute: a player standing still takes %.0f in 30 s\n", still.damageTaken);
@@ -1147,6 +1153,51 @@ int main() {
                 if (first < 0.f || first > 5.f) punished = false;
             }
         CHECK(punished, "every cheese (the rim, a pillar top, edge-kiting, ranged-only) is punished within 5 s, in every phase");
+        bool msPunished = true;
+        for (auto pol : {BossSim::CORNER, BossSim::PERCH, BossSim::KITE, BossSim::RANGED, BossSim::STILL})
+            for (int ph = 4; ph <= 6; ++ph) {
+                srand(91 + ph);
+                BossSim c(N, g, ZA, EnemyType::ABSOLUTE, pol);
+                c.boss.abArrive = 0.f; c.boss.abSwallow = 0.01f; c.boss.abAlt = c.boss.abAltWant = Enemy::MS_UP;
+                float first = -1.f, hpAt = ph == 4 ? 1.f : ph == 5 ? 0.5f : 0.11f, from = -1.f;
+                while (c.t < 20.f && first < 0.f) {
+                    c.step(DT);
+                    if (from < 0.f && c.boss.morning() && c.boss.abCur != AB_M_ENTRY) {   // his entrance done: from here
+                        from = c.t; c.damageTaken = 0.f;
+                        if (c.boss.health > c.boss.maxHealth * hpAt) c.boss.health = c.boss.maxHealth * hpAt;
+                    }
+                    if (from >= 0.f && c.damageTaken > 0.f) first = c.t - from;
+                }
+                std::printf("      MORNINGSTAR cheese %d phase %d: first hurt %.1f s after his entrance\n", (int)pol, ph, first);
+                if (first < 0.f || first > 7.f) msPunished = false;
+            }
+        CHECK(msPunished, "...and against MORNINGSTAR (his entrance included), in every one of his phases");
+    }
+
+    // ---------------------------------------------------------------- MORNINGSTAR: the blow that should kill him doesn't
+    {
+        srand(5);
+        BossSim s(N, g, ZA, EnemyType::ABSOLUTE, BossSim::STILL);
+        s.boss.abArrive = 0.f; s.boss.abPhase = 3; s.boss.abJudged = true; s.boss.health = 10.f;
+        const float firstMax = s.boss.maxHealth;
+        bool killed = s.boss.takeDamage(500.f);
+        CHECK(!killed && s.boss.alive && !s.boss.targetable() && s.boss.abSwallow > 0.f,
+              "the Absolute's lethal blow doesn't kill him: he's alive, untouchable, and the swallow begins");
+        bool swallowEv = false, formEv = false; float formT = -1.f;
+        while (s.t < Enemy::MS_SWALLOW + 4.f) {
+            s.step(DT);
+            swallowEv |= s.boss.ev.msSwallow;
+            if (s.boss.ev.msForm) { formEv = true; formT = s.t; }
+        }
+        std::printf("      MORNINGSTAR arrives %.2f s after the swallow begins\n", formT);
+        CHECK(swallowEv && formEv && std::fabs(formT - Enemy::MS_SWALLOW) < 0.1f, "...it runs MS_SWALLOW, then he's MORNINGSTAR (one event each)");
+        CHECK(s.boss.morning() && s.boss.scale == Enemy::MS_SCALE && s.boss.abPhase == 4 &&
+              std::fabs(s.boss.maxHealth - firstMax * Enemy::MS_HP / statsOf(EnemyType::ABSOLUTE).health) < 1.f,
+              "...1.65 times the size, phase 4, a fresh bar of MS_HP (the difficulty's share carried over)");
+        CHECK(s.damageTaken > 0.f, "...and his entrance comes down on a player who stands there");
+        while (!s.boss.targetable() && s.t < 30.f) s.step(DT);
+        s.boss.health = 1.f;
+        CHECK(s.boss.takeDamage(5.f) && !s.boss.alive, "MORNINGSTAR's lethal blow is lethal");
     }
 
     // ---------------------------------------------------------------- the encore's sounds

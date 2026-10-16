@@ -234,6 +234,12 @@ inline void GameplayState::updateEnemies(float dt) {
             int ph = std::atoi(g_devOverlay.c_str() + 8);   // dev: absolute2 / absolute3 / absolute8
             if (ph >= 2) e.health = e.maxHealth * (ph == 2 ? 0.59f : ph == 3 ? 0.24f : 0.079f);
         }
+        if (e.type == EnemyType::ABSOLUTE && g_devOverlay.rfind("morning", 0) == 0) {   // dev: morning / morning5 / morning6: MORNINGSTAR (RISING, TOTALITY)
+            if (e.abForm == 0 && e.abSwallow <= 0.f) { e.abArrive = 0.f; e.abSwallow = 0.05f; e.abAlt = e.abAltWant = Enemy::MS_UP; msSwallowT = Enemy::MS_SWALLOW; }
+            int ph = std::atoi(g_devOverlay.c_str() + 7);
+            if (e.morning() && e.abCur != AB_M_ENTRY && ph >= 5 && e.health > e.maxHealth * (ph == 5 ? 0.56f : 0.13f))
+                e.health = e.maxHealth * (ph == 5 ? 0.54f : 0.11f);
+        }
         if (g_devOverlay.rfind("abpose", 0) == 0 && e.type == EnemyType::ABSOLUTE) { devAbsolutePose(e); rig::tickAbsoluteBody(e, dt); continue; }
         if (e.type == EnemyType::ABSOLUTE) swordParryAbsolute(e);   // the sword's window meets a white strike as it lands
         // In the Descent the void runs to -300: stand on what's really under you (the cage included)

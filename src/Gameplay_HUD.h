@@ -126,12 +126,14 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             ui.end2D();
         }
 
-        if (boss) ui.renderBossBar(boss->type == EnemyType::ABSOLUTE ? "THE ABSOLUTE" :
+        const bool msBar = boss && boss->type == EnemyType::ABSOLUTE && (boss->morning() || boss->abSwallow > 0.f);   // (the swallow: his new bar filling)
+        if (boss) ui.renderBossBar(msBar ? "MORNINGSTAR" : boss->type == EnemyType::ABSOLUTE ? "THE ABSOLUTE" :
                                    boss->type == EnemyType::SOVEREIGN ? "THE SOVEREIGN" :
                                    boss->type == EnemyType::PENITENT ? "THE PENITENT" :
                                    boss->type == EnemyType::LEVIATHAN ? "THE LEVIATHAN" : "THE WARDEN",
-                                   boss->health / boss->maxHealth,
-                                   boss->type == EnemyType::ABSOLUTE ? boss->abPhase >= 2 :
+                                   boss->abSwallow > 0.f ? glm::clamp(1.f - (boss->abSwallow - Enemy::MS_RISE) / (Enemy::MS_SWALLOW - Enemy::MS_RISE), 0.f, 1.f)
+                                                         : boss->health / boss->maxHealth,
+                                   msBar ? boss->abPhase >= 5 : boss->type == EnemyType::ABSOLUTE ? boss->abPhase >= 2 :
                                    boss->type == EnemyType::LEVIATHAN ? boss->levPhase >= 2 :
                                    boss->type == EnemyType::PENITENT ? boss->scourging :
                                    boss->type == EnemyType::WARDEN ? boss->wardenPhase >= 2 : boss->enraged);
