@@ -473,7 +473,7 @@ struct Enemy {
                            AB_BREAK = 3.f, AB_SPENT = 4.f, AB_DEFLECT = 14.f, AB_CAMP = 3.f, AB_FAR = 30.f, AB_RUN = 11.f,
                            AB_DASH = 32.f, AB_REACH = 2.8f, AB_FOLLOW_FLOOR = 0.22f, AB_QUICK = 0.75f, AB_RANGE = 20.f,
                            AB_BLADE_BACK = 3.f, AB_HALO_TIME = 2.f, AB_JUDGE_WARN = 2.f,
-                           AB_FLOOR_R = 42.f, AB_DAIS_R = 9.f, AB_DAIS_UP = 1.2f, AB_HALO_UP = 40.f;
+                           AB_FLOOR_R = 42.f, AB_DAIS_R = 9.f, AB_DAIS_UP = 0.15f, AB_HALO_UP = 40.f;
     // his flight (EnemyAbsolute.h): cruising height, climb / dive / fall speeds, a flight's limit, the share of
     // his health that shoots him down and how long he lies there, how far he circles you, the height that clears pillars
     static constexpr float AB_CRUISE_LO = 9.f, AB_CRUISE_HI = 14.f, AB_CLIMB = 18.f, AB_DIVE_V = 45.f, AB_FALL_V = 30.f,

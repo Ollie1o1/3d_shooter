@@ -277,7 +277,7 @@ int main() {
             if (std::fabs(floorAt(p) - ZC.y) > 0.05f) floorOk = false;
         }
         CHECK(floorOk, "the floor is at the centre's height from r 9 to 44, all the way round");
-        CHECK(std::fabs(floorAt(ZC + glm::vec3{0.f, 2.f, 3.f}) - (ZC.y + ZEN_DAIS_UP)) < 0.05f, "the Dais is raised 1.2 m");
+        CHECK(std::fabs(floorAt(ZC + glm::vec3{0.f, 2.f, 3.f}) - (ZC.y + ZEN_DAIS_UP)) < 0.05f, "the Dais is raised a hand's breadth (0.15 m)");
         CHECK(floorAt(ZC + glm::vec3{48.f, 2.f, 0.f}) < ZC.y - 30.f, "a gap past the floor's edge (the void)");
         CHECK(N.zenith.pillarWalls.size() == 8 && N.zenith.shardWalls.size() == 6, "eight pillars, six shards");
         {

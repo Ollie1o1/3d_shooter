@@ -33,7 +33,7 @@ inline constexpr const char* ZENITH_NAME = "!!!!!";   // the encore's name on sc
 // THE ZENITH's measures: the Dais, the floor, the pillars, the shards past the
 // gap, the Halo overhead, the seams' cells
 constexpr float ZEN_DAIS = 9.f, ZEN_FLOOR = 44.f, ZEN_PILLAR_R = 34.f, ZEN_SHARD_R = 57.f, ZEN_HALO_R = 70.f,
-                ZEN_HALO_UP = 40.f, ZEN_CELL = 6.f, ZEN_DAIS_UP = 1.2f;
+                ZEN_HALO_UP = 40.f, ZEN_CELL = 6.f, ZEN_DAIS_UP = 0.15f;
 // High in the sky and well past the Maw: arenaAt is XZ-only, so it can't sit straight above it
 inline glm::vec3 zenithCentre() { return {0.f, 400.f, -1400.f}; }
 inline glm::vec3 zenithPillar(int k) {
@@ -985,19 +985,37 @@ inline void buildZenith(LevelBuilder& B) {
         B.kit(true).box(C + vec3{0.f, 0.015f, u}, {2.f * half, 0.02f, 0.06f}, seam * 0.25f);
     }
     B.kit(true).curve({C.x, 0.f, C.z}, ZEN_FLOOR, 0.f, 6.2831853f, F - 0.2f, F + 0.04f, 0.3f, seam * 0.4f, 96);   // the rim
-    // the Dais, raised 1.2 m: collision in 0.5 m strips tracing the drawn disc
-    // (each strip as wide as the disc at its middle), steps every 90 degrees
+    // the Dais, a hand's breadth high (0.15 m: you walk on and off it): collision in 0.5 m strips
+    // tracing the drawn disc (each strip as wide as the disc at its middle). On it, an eclipse
+    // inlaid in the stone: a black disc with a gold corona in the middle, twelve rays of light out
+    // to a ring of runes, a lit lip round its edge and four gold glyphs at the quarters
     for (float z = -ZEN_DAIS; z < ZEN_DAIS - 1e-3f; z += 0.5f) {
         float m = z + 0.25f, half = std::sqrt(std::max(0.f, ZEN_DAIS * ZEN_DAIS - m * m));
         B.solid(C.x - half, F, C.z + z, C.x + half, F + ZEN_DAIS_UP, C.z + z + 0.5f);
     }
-    B.kit().column({C.x, F, C.z}, ZEN_DAIS, ZEN_DAIS_UP, white, 40);
-    B.kit(true).curve({C.x, 0.f, C.z}, ZEN_DAIS - 1.2f, 0.f, 6.2831853f, F + ZEN_DAIS_UP, F + ZEN_DAIS_UP + 0.03f, 0.25f, gold * 0.6f, 48);
-    for (int k = 0; k < 4; ++k) {
-        float a = k * 1.5707963f; vec3 o{std::cos(a), 0.f, std::sin(a)};
-        vec3 s = C + o * (ZEN_DAIS + 0.8f);
-        B.solid(s.x - 1.5f, F, s.z - 1.5f, s.x + 1.5f, F + 0.6f, s.z + 1.5f);
-        B.kit().box(s + vec3{0.f, 0.3f, 0.f}, {3.f, 0.6f, 3.f}, white * 0.9f, -a);
+    {
+        const float top = F + ZEN_DAIS_UP;
+        B.kit().column({C.x, F, C.z}, ZEN_DAIS, ZEN_DAIS_UP, white * 0.92f, 48);
+        B.kit(true).curve({C.x, 0.f, C.z}, ZEN_DAIS - 0.12f, 0.f, 6.2831853f, top, top + 0.025f, 0.18f, gold * 0.9f, 64);   // the lip
+        B.kit().column({C.x, top, C.z}, 2.2f, 0.02f, black, 32);                                                            // the eclipse
+        B.kit(true).curve({C.x, 0.f, C.z}, 2.2f, 0.f, 6.2831853f, top, top + 0.035f, 0.16f, gold * 1.3f, 40);              // its corona
+        B.kit(true).curve({C.x, 0.f, C.z}, 2.75f, 0.f, 6.2831853f, top, top + 0.02f, 0.05f, gold * 0.5f, 40);
+        for (int k = 0; k < 12; ++k) {                                                                                       // twelve rays
+            float a = k * 0.5235988f; vec3 o{std::cos(a), 0.f, std::sin(a)};
+            float len = (k % 3 == 0) ? 3.6f : 2.6f, from = 3.f;
+            B.kit(true).box(C + o * (from + len * 0.5f) + vec3{0.f, ZEN_DAIS_UP + 0.012f, 0.f}, {len, 0.02f, k % 3 == 0 ? 0.14f : 0.07f},
+                            k % 3 == 0 ? gold * 1.1f : seam * 0.6f, -a);
+        }
+        B.kit(true).curve({C.x, 0.f, C.z}, 6.9f, 0.f, 6.2831853f, top, top + 0.02f, 0.06f, seam * 0.5f, 64);              // the rune ring
+        for (int k = 0; k < 24; ++k) {                                                                                       // its runes
+            float a = (k + 0.5f) * 0.2617994f; vec3 o{std::cos(a), 0.f, std::sin(a)};
+            B.kit(true).box(C + o * 7.35f + vec3{0.f, ZEN_DAIS_UP + 0.012f, 0.f}, {k % 2 ? 0.45f : 0.25f, 0.02f, 0.08f}, seam * 0.55f, -a + 1.5707963f);
+        }
+        for (int k = 0; k < 4; ++k) {                                                                                        // glyphs at the quarters
+            float a = k * 1.5707963f; vec3 o{std::cos(a), 0.f, std::sin(a)};
+            B.kit(true).box(C + o * 8.1f + vec3{0.f, ZEN_DAIS_UP + 0.014f, 0.f}, {0.6f, 0.025f, 0.6f}, gold * 1.2f, -a + 0.7853982f);
+            B.kit().box(C + o * 8.1f + vec3{0.f, ZEN_DAIS_UP + 0.01f, 0.f}, {0.9f, 0.02f, 0.9f}, black, -a + 0.7853982f);
+        }
     }
     // eight pillars and six shards: hidden walls (they break)
     L.zenith = LevelData::Zenith{};

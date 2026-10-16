@@ -151,7 +151,7 @@ public:
         glEnable(GL_CULL_FACE);
     }
     const SwordPose& swordPoseShown() const { return swordShown; }
-    static constexpr float PARRY_TIME = 0.42f;   // (how long the punch is drawn; the parry window itself is the game's)
+    static constexpr float PARRY_TIME = 0.56f;   // (how long the punch is drawn; the parry window itself is the game's)
     float parryTimer = 0.f;
     bool  parryHit = false;
     int   reloadShells = 1;
@@ -247,13 +247,13 @@ private:
     // wide off the left of the frame, the back of the hand leading; a parry jars it back toward the
     // centre, then it drops away. u: 0..1 through it. lead: the way the back of the hand faces.
     struct FistAt { glm::vec3 p; glm::vec3 lead; float out; };
-    static constexpr float WHACK_AT = 0.16f, WHACK_END = 0.34f, WHACK_CONTACT = 0.18f;
+    static constexpr float WHACK_AT = 0.2f, WHACK_END = 0.44f, WHACK_CONTACT = 0.228f, WHACK_HOLD = 0.64f;
     static glm::vec3 whackArc(float t) {   // quadratic: cocked -> through the crosshair -> wide left
-        const glm::vec3 a{0.17f, -0.1f, 0.24f}, c{0.f, -0.02f, 0.66f}, e{-0.52f, -0.13f, 0.4f};
+        const glm::vec3 a{0.17f, -0.1f, 0.24f}, c{0.f, -0.02f, 0.66f}, e{-0.34f, -0.1f, 0.46f};   // (it ends in frame: the arm stays in view)
         return (1.f - t) * (1.f - t) * a + 2.f * (1.f - t) * t * c + t * t * e;
     }
     static glm::vec3 whackLead(float t) {  // the arc's tangent, tipped a little forward
-        const glm::vec3 a{0.17f, -0.1f, 0.24f}, c{0.f, -0.02f, 0.66f}, e{-0.52f, -0.13f, 0.4f};
+        const glm::vec3 a{0.17f, -0.1f, 0.24f}, c{0.f, -0.02f, 0.66f}, e{-0.34f, -0.1f, 0.46f};
         return glm::normalize(2.f * (1.f - t) * (c - a) + 2.f * t * (e - c) + glm::vec3{0.f, 0.f, 0.15f});
     }
     static FistAt fistAt(float u, bool hit) {
@@ -269,13 +269,13 @@ private:
             return {whackArc(t), whackLead(std::min(t, 1.f)), std::min(t * 1.6f, 1.f)};
         }
         const glm::vec3 end = whackArc(1.f), lead = whackLead(1.f);
-        if (u < 0.55f) {      // hold the follow-through; a parry jars it back toward the centre
-            float h = (u - WHACK_END) / (0.55f - WHACK_END);
+        if (u < WHACK_HOLD) { // hold the follow-through; a parry jars it back toward the centre
+            float h = (u - WHACK_END) / (WHACK_HOLD - WHACK_END);
             float jolt = hit ? std::sin(std::min(h * 2.5f, 1.f) * 3.14159f) : 0.f;
             float buzz = hit ? std::sin(h * 70.f) * 0.006f * (1.f - h) : 0.f;
             return {end + glm::vec3{0.07f * jolt, 0.02f * jolt + buzz, -0.03f * jolt - 0.02f * h}, lead, 1.f};
         }
-        float k = sm((u - 0.55f) / 0.45f);
+        float k = sm((u - WHACK_HOLD) / (1.f - WHACK_HOLD));
         return {glm::mix(end + glm::vec3{0.f, 0.f, -0.02f}, rest + glm::vec3{0.f, -0.12f, 0.f}, k),
                 glm::normalize(glm::mix(lead, glm::vec3{0.f, 1.f, 0.f}, k)), 1.f - k};
     }
@@ -310,16 +310,16 @@ private:
         gunkit::Builder b{parts, glow};
         gunkit::buildArm(b, glm::vec3{-0.3f, -0.56f, 0.02f}, ff, -1.f, false, 0.8f + 2.5f * flare);
         gunkit::buildGauntlet(b, ff, glow, flare);
-        if (u > WHACK_AT && u < 0.48f) {   // the crescent: the arc it just cut, thick at the fist, thinning back
-            const float fade = 1.f - std::clamp((u - WHACK_END) / (0.48f - WHACK_END), 0.f, 1.f);
+        if (u > WHACK_AT && u < WHACK_END + 0.1f) {   // the smear: a soft band of the gauntlet's light along the arc it swept
+            const float fade = 1.f - std::clamp((u - WHACK_END) / 0.1f, 0.f, 1.f);
             const glm::vec3 view{0.f, 0.f, 1.f};
             glm::vec3 prev = F.p;
-            for (int k = 1; k <= 10; ++k) {
-                glm::vec3 was = fistAt(std::max(WHACK_AT, u - 0.012f * k), parryHit).p;
+            for (int k = 1; k <= 7; ++k) {
+                glm::vec3 was = fistAt(std::max(WHACK_AT, u - 0.014f * k), parryHit).p;
                 if (glm::length(was - prev) < 0.004f) break;
-                float w = (1.f - k / 11.f) * fade;
-                b.lit(glm::mix(glm::vec3{2.2f, 2.f, 1.8f}, glow * 2.f, std::min(1.f, k / 3.f)) * (1.2f * w));
-                gunkit::limb(b, prev, was, 0.026f * w + 0.003f, 0.012f * w + 0.002f, view, glow);
+                float w = (1.f - k / 8.f) * fade;
+                b.lit(glow * (1.1f * w));
+                gunkit::limb(b, prev, was, 0.032f * w + 0.006f, 0.004f, view, glm::vec3{0.f});   // flat light, fading: motion, not an edge
                 prev = was;
             }
             b.unlit();
