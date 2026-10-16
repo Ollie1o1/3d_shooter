@@ -465,6 +465,17 @@ public:
     static constexpr float AB_SHAFT = 1.2f, AB_DAWN_FROM = 1.6f, AB_DAWN_TIME = 6.f;
     float dawn01() const { return abDawnT < 0.f ? 0.f : glm::smoothstep(AB_DAWN_FROM, AB_DAWN_FROM + AB_DAWN_TIME, abDawnT); }
     static Theme dawnOf(const Theme& t);
+    // MORNINGSTAR: the swallow (the eclipse grows over the whole sky, then its ring of fire settles on
+    // the horizon round the floor), seconds since it began (< 0: not yet); TOTALITY, since the ring
+    // collapsed (the light going out); a death to him retries from his form (the checkpoint)
+    float msSwallowT = -1.f, msTotalityT = -1.f;
+    bool  msCheckpoint = false;
+    float swallow01() const { return msSwallowT < 0.f ? 0.f : glm::smoothstep(0.4f, Enemy::MS_SWALLOW - 0.8f, msSwallowT); }
+    float totality01() const { return msTotalityT < 0.f ? 0.f : glm::smoothstep(0.5f, 2.f, msTotalityT); }
+    static Theme swallowedOf(const Theme& t);
+    static Theme totalityOf(const Theme& t);
+    void gatherMorningBoxes(std::vector<BoxInstance>& out);
+    void onMorningEvents(Enemy& e, const EnemyEvents& ev);
     float swordRoll = 0.f;                          // the camera leaning into a sword stroke (degrees)
     Enemy abCorpse{EnemyType::ABSOLUTE, glm::vec3{0.f}};
     bool  punchedThisTick = false;                  // F this tick: a serpent within reach goes back

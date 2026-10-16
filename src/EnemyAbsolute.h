@@ -16,6 +16,18 @@
 // Parry a white strike: he reels 0.8 s (x1.5) and the string goes on; twice
 // in one string: broken 3 s (x2). Camp 3 s (a shard, 30 m off, one pillar):
 // he breaks off and comes for you.
+//
+// MORNINGSTAR: his lethal blow doesn't kill him. He kneels, the eclipse
+// swallows the Zenith, he rises into the black and comes down on you as
+// MORNINGSTAR (1.65x, blood orange, white eyes), a fresh health bar:
+//   MORNINGSTAR (100-55 %)  SOLAR STRING, COLOSSUS, SUNDER, FISSURE, GRASP,
+//                           ECLIPSE (his drop), CORONA (the ring's flares).
+//   RISING      (55-12 %)   every slam leaves an aftershock; 18 % quicker;
+//                           the ring fires under every third string.
+//   TOTALITY    (< 12 %)    the ring collapses on you (jump it); then the
+//                           light goes out of him: 28 % quicker.
+// On his body only white shows (the whole of him, white-hot: parry it); his
+// gold and red moves are read from the floor.
 // =============================================================================
 
 #include <cstdint>
@@ -26,7 +38,10 @@ inline AbTell abTellOf(AttackKind k) {
     switch (k) {
         case AttackKind::AJAB: case AttackKind::AHOOK: case AttackKind::ASERPENT:
         case AttackKind::ASWEEP: case AttackKind::ACRESCENT: case AttackKind::AMETEOR:
-        case AttackKind::ACROSS: case AttackKind::ABACKFIST: case AttackKind::AELBOW: case AttackKind::AROUNDHOUSE: return AbTell::WHITE;
+        case AttackKind::ACROSS: case AttackKind::ABACKFIST: case AttackKind::AELBOW: case AttackKind::AROUNDHOUSE:
+        case AttackKind::MJAB: case AttackKind::MBACKHAND: return AbTell::WHITE;
+        case AttackKind::MGRASP: case AttackKind::MDROP: return AbTell::GOLD;
+        case AttackKind::MSUNDER: case AttackKind::MFISSURE: case AttackKind::MFLARES: case AttackKind::MCOLLAPSE: return AbTell::RED;
         case AttackKind::AUPPER: case AttackKind::ADROP: case AttackKind::ALUNGE: case AttackKind::ASKYFALL:
         case AttackKind::AHAYMAKER: case AttackKind::ACHARGE: case AttackKind::AAXE: return AbTell::GOLD;
         case AttackKind::ARAY: case AttackKind::ASTOMP: case AttackKind::AHALO: case AttackKind::ASEAMS:
@@ -41,12 +56,15 @@ inline AbTell abTellOf(AttackKind k) {
 struct AbStep { AttackKind k; float tell, damage; int minPhase; float late; bool air = false; };   // air: a move made aloft
 struct AbString { const char* name; int line; AbStep steps[6]; int n; };
 enum { AB_TOO_SLOW, AB_KNEEL, AB_JUDGED, AB_SERPENT, AB_SEAMS, AB_ZENITH, AB_SWEEPS, AB_LUNGE, AB_CRESCENTS, AB_SKYFALL, AB_METEOR, AB_BLADEDIVE,
-       AB_FLURRY, AB_BREAKER, AB_CROSSUP, AB_BULLRUSH, AB_HEEL, AB_THUNDER, AB_STRINGS };
+       AB_FLURRY, AB_BREAKER, AB_CROSSUP, AB_BULLRUSH, AB_HEEL, AB_THUNDER,
+       AB_M_ENTRY, AB_M_SOLAR, AB_M_COLOSSUS, AB_M_SUNDER, AB_M_FISSURE, AB_M_GRASP, AB_M_ECLIPSE, AB_M_CORONA,   // MORNINGSTAR's
+       AB_M_DAYBREAK, AB_M_WEIGHT, AB_M_COLLAPSE, AB_STRINGS };
 
 inline bool abClosesIn(AttackKind k) {   // a blow he walks you down for (the last 30 % of its tell is committed)
     using A = AttackKind;
     return k == A::AJAB || k == A::AHOOK || k == A::AUPPER || k == A::ASWEEP || k == A::ACROSS || k == A::ABACKFIST ||
-           k == A::AELBOW || k == A::AROUNDHOUSE || k == A::AHAYMAKER || k == A::AAXE || k == A::ACLAP;
+           k == A::AELBOW || k == A::AROUNDHOUSE || k == A::AHAYMAKER || k == A::AAXE || k == A::ACLAP ||
+           k == A::MJAB || k == A::MBACKHAND || k == A::MSUNDER;
 }
 inline const AbString& abString(int id) {
     using A = AttackKind;
@@ -79,6 +97,21 @@ inline const AbString& abString(int id) {
         {"HEEL OF HEAVEN", -1, {{A::AHOP, 0.20f, 0.f, 1, 0.f}, {A::AAXE, 0.50f, 26.f, 1, 0.f}, {A::ASTOMP, 0.50f, 20.f, 1, 0.f}}, 3},
         // he rises (a zoop), hangs, claps: a fan of fire rolls out along the floor at you. Jump a flame, or stand in a gap
         {"THUNDERCLAP", -1, {{A::ATHUNDER, 1.15f, 24.f, 1, 0.f}}, 1},
+        // ---- MORNINGSTAR (phases 4-6; a step's minPhase 5 is RISING's addition) ----
+        // his entrance: down out of the black onto you, a long first tell
+        {"MORNINGSTAR", -1, {{A::MDROP, Enemy::MS_ENTRY, 36.f, 4, 0.f, true}}, 1},
+        {"SOLAR STRING", -1, {{A::ADASH, 0.35f, 0.f, 4, 0.f}, {A::MJAB, 0.45f, 20.f, 4, 0.f}, {A::MJAB, 0.30f, 20.f, 4, 0.f},
+                              {A::MJAB, 0.28f, 20.f, 5, 0.f}, {A::MBACKHAND, 0.40f, 34.f, 4, 0.f}}, 5},
+        {"COLOSSUS", -1, {{A::ADASH, 0.35f, 0.f, 4, 0.f}, {A::MBACKHAND, 0.65f, 34.f, 4, 0.f}, {A::MSUNDER, 0.55f, 28.f, 4, 0.f}}, 3},
+        {"SUNDER", -1, {{A::MSUNDER, 0.75f, 28.f, 4, 0.f}, {A::MSUNDER, 0.50f, 28.f, 5, 0.f}}, 2},
+        {"FISSURE", -1, {{A::MFISSURE, 0.70f, 30.f, 4, 0.f}, {A::MFISSURE, 0.50f, 30.f, 5, 0.f}}, 2},
+        {"GRASP", -1, {{A::MGRASP, 0.85f, 45.f, 4, 0.f}}, 1},
+        {"ECLIPSE", -1, {{A::MDROP, 1.5f, 36.f, 4, 0.f, true}}, 1},
+        {"CORONA", -1, {{A::MFLARES, 0.6f, 26.f, 4, 0.f}}, 1},
+        {"DAYBREAK", -1, {{A::ADASH, 0.35f, 0.f, 5, 0.f}, {A::MJAB, 0.40f, 20.f, 5, 0.f}, {A::MJAB, 0.28f, 20.f, 5, 0.f},
+                          {A::MBACKHAND, 0.38f, 34.f, 5, 0.f}, {A::MFISSURE, 0.45f, 30.f, 5, 0.f}}, 5},
+        {"HEAVEN'S WEIGHT", -1, {{A::MSUNDER, 0.60f, 28.f, 5, 0.f}, {A::MDROP, 1.2f, 36.f, 5, 0.f, true}}, 2},
+        {"TOTALITY", -1, {{A::MCOLLAPSE, 2.2f, 40.f, 6, 0.f}}, 1},
     };
     return S[std::clamp(id, 0, AB_STRINGS - 1)];
 }
@@ -93,10 +126,10 @@ inline bool abDamaging(int id) {
     return false;
 }
 // His lines (shown as subtitles, a choir phrase under each)
-enum { AB_LINE_WORTHY = 3 };
+enum { AB_LINE_WORTHY = 3, AB_LINE_NOT_YET = 4 };
 inline const char* abLine(int i) {
-    static const char* L[] = {"KNEEL.", "TOO SLOW.", "AGAIN.", "...WORTHY."};
-    return i >= 0 && i < 4 ? L[i] : "";
+    static const char* L[] = {"KNEEL.", "TOO SLOW.", "AGAIN.", "...WORTHY.", "...NOT YET."};
+    return i >= 0 && i < 5 ? L[i] : "";
 }
 
 // A standing pillar within `pad` of p (XZ), or -1
@@ -157,7 +190,7 @@ inline int Enemy::abParried(bool bySword) {
         stagger(AB_BREAK); abReeling = false; abParries = 0;
         return 3;
     }
-    if (++abParries >= 2) { stagger(AB_BREAK); abReeling = false; abParries = 0; return 2; }
+    if (attack == AttackKind::MBACKHAND || ++abParries >= 2) { stagger(AB_BREAK); abReeling = false; abParries = 0; return 2; }   // (MORNINGSTAR's backhand, met: broken)
     int cur = abCur, next = abStep + 1;
     stagger(AB_REEL);                 // the strike is cancelled...
     abCur = cur; abStep = next;       // ...and after the reel the string goes on
@@ -227,6 +260,13 @@ inline void Enemy::thinkAbsoluteMind(float dt, const EnemyWorld& w, bool resolve
         turnToward(to, dt, 6.f);
         return;
     }
+    if (abSwallow > 0.f) {   // the eclipse takes him: on his knees, then up into the black
+        if (abSwallowFresh) { abSwallowFresh = false; ev.msSwallow = true; }
+        abSwallow -= dt;
+        if (abSwallow < MS_RISE) { abAltWant = MS_UP; abDiving = false; }
+        if (abSwallow <= 0.f) { abSwallow = 0.f; abBecomeMorning(w, feet); }
+        return;
+    }
     if (abBladeGone > 0.f) {
         abBladeGone -= dt;
         if (abBladeGone <= 0.f && abPhase == 3) { abBlade = true; ev.abBladeDrawn = true; }
@@ -235,7 +275,7 @@ inline void Enemy::thinkAbsoluteMind(float dt, const EnemyWorld& w, bool resolve
     if (ev.abJudgeMark) return;   // the last judgment begins: whatever was landing this tick is swept aside
     // shot out of the sky (after the phases: the damage that crosses one ends the flight instead)
     if (abAirborne() && abFlightHp > 0.f && abFlightHp - health >= AB_SHOOTDOWN * maxHealth) { abDowned(); return; }
-    const float quick = abPhase >= 2 ? AB_QUICK : 1.f;
+    const float quick = morning() ? (abPhase >= 6 ? 0.72f : abPhase >= 5 ? 0.82f : 1.f) : abPhase >= 2 ? AB_QUICK : 1.f;
     if (phaseHold > 0.f) { phaseHold -= dt; turnToward(to, dt, 6.f); return; }
 
     // ---- the anti-camp clock: a shard, far off, or the same pillar ----
@@ -263,6 +303,29 @@ inline void Enemy::thinkAbsoluteMind(float dt, const EnemyWorld& w, bool resolve
             moveSpeed = std::max(AB_DIVE_V, glm::length(g) / std::max(telegraphTimer, dt));
             return;
         }
+        if (attack == AttackKind::MDROP) {   // the Eclipse drop: up there over its shadow, which follows you, then sets; he falls onto it
+            const float p = telegraphProgress();
+            if (p < 0.5f) abAim = feet;   // (up a pillar too: the crater is where you are; he lands beside it)
+            glm::vec3 g = abAim - position; g.y = 0.f;
+            float k = p > 0.75f ? std::min(1.f, dt / std::max(telegraphTimer, dt)) : std::min(1.f, dt * 5.f);
+            position.x += g.x * k; position.z += g.z * k;
+            if (w.hasZenith) {   // (never out past the floor's edge)
+                glm::vec2 o{position.x - abCentre.x, position.z - abCentre.z};
+                if (glm::length(o) > AB_FLOOR_R) { o *= AB_FLOOR_R / glm::length(o); position.x = abCentre.x + o.x; position.z = abCentre.z + o.y; }
+            }
+            if (p > 0.75f) { abAlt -= abAlt * std::min(1.f, dt / std::max(telegraphTimer, dt)); abAltWant = abAlt; abDiving = true; }
+            moveSpeed = AB_DIVE_V;
+            turnToward(to, dt, 8.f);
+            return;
+        }
+        if (attack == AttackKind::MGRASP || attack == AttackKind::MFISSURE) {   // the mark follows you, then sets
+            if (telegraphProgress() < (attack == AttackKind::MGRASP ? 0.55f : 0.6f)) {
+                glm::vec3 dir = d > 0.1f ? to / d : glm::vec3{std::sin(yaw), 0.f, std::cos(yaw)};
+                abAim = attack == AttackKind::MGRASP ? abGround(w, position + dir * std::min(d, MS_GRASP_REACH)) : feet;
+                turnToward(to, dt, 10.f);
+            }
+            return;
+        }
         if (attack == AttackKind::ATHUNDER) {   // risen: he hangs there facing you; the fan follows you until its cue, then commits
             if (telegraphTimer > AB_CUE) abAim = feet;
             turnToward(flatTo(abAim), dt, 10.f);
@@ -272,10 +335,11 @@ inline void Enemy::thinkAbsoluteMind(float dt, const EnemyWorld& w, bool resolve
         if (telegraphProgress() < 0.7f) turnToward(to, dt, 12.f);
         glm::vec3 dir = norm2(to);
         // a strike closes in, then commits for the last 30 % of its tell: a dash then gets you out
-        if (abClosesIn(attack) && d > AB_REACH * 0.7f && telegraphProgress() < 0.7f) {
-            float step = std::min(d - AB_REACH * 0.6f, AB_RUN * 1.3f * dt);
+        const float reach = morning() ? MS_REACH : AB_REACH, run = morning() ? MS_RUN : AB_RUN;
+        if (abClosesIn(attack) && d > reach * 0.7f && telegraphProgress() < 0.7f) {
+            float step = std::min(d - reach * 0.6f, run * 1.3f * dt);
             position = absSafeSpot(w, position + dir * step, position);   // (round a pillar, not through it)
-            moveSpeed = AB_RUN * 1.3f;
+            moveSpeed = run * 1.3f;
         }
         if (attack == AttackKind::ADASH) {
             glm::vec3 g = abAim - position; g.y = 0.f;
@@ -311,6 +375,20 @@ inline void Enemy::thinkAbsoluteMind(float dt, const EnemyWorld& w, bool resolve
 // ABSOLUTE at 25 % (the blade; the shards fall), the last judgment at 8 %
 inline void Enemy::abPhaseCheck(float hp) {
     const glm::vec3 dais{abCentre.x, abCentre.y + AB_DAIS_UP, abCentre.z};
+    if (morning()) {   // RISING at 55 %; TOTALITY at 12 %: he takes the Dais and pulls the ring of fire in
+        if (abPhase == 4 && hp <= MS_PHASE5) {
+            abPhase = 5; ev.abPhase = 5; ev.enraged = true;
+            phaseHold = PHASE_PAUSE; attack = AttackKind::NONE; telegraphTimer = 0.f; abCur = -1; abRot = 0;
+            abAltWant = 0.f; abDiving = true;
+        } else if (abPhase == 5 && hp <= MS_TOTALITY) {
+            abPhase = 6; ev.abPhase = 6; ev.enraged = true;
+            ev.blinked = true; ev.blinkFrom = position;
+            position = dais; abAlt = abAltWant = 0.f;
+            phaseHold = PHASE_PAUSE; attack = AttackKind::NONE; telegraphTimer = 0.f; abCur = -1; abRot = 0;
+            abForce = AB_M_COLLAPSE;
+        }
+        return;
+    }
     if (abPhase == 1 && hp <= AB_PHASE2) {
         abPhase = 2; ev.abPhase = 2; ev.abHalo = true; ev.abLine = 2; ev.enraged = true;
         abAltWant = AB_ASCEND_UP; abDiving = false; abFlightHp = -1.f;   // he rises over the Dais while the sweep turns (no flight: it can't be shot down)
@@ -344,6 +422,7 @@ inline bool absReachable(const EnemyWorld& w, glm::vec3 feet) {
 // What answers a camper: TOO SLOW (onto you) if he can reach you; else from
 // range: the ray (phase 1), the zenith ray from the Halo (from phase 2)
 inline int Enemy::abCampAnswer(const EnemyWorld& w) const {
+    if (morning()) return absReachable(w, w.playerFeet) ? AB_M_SOLAR : AB_M_ECLIPSE;   // he comes for you, or down on you
     if (w.onShard) return AB_SKYFALL;                        // he flies over and breaks it under you
     if (absReachable(w, w.playerFeet)) return AB_TOO_SLOW;
     return abPhase >= 2 ? AB_ZENITH : AB_SKYFALL;            // up a pillar, past the edge: the Halo burns there, or he comes down on you
@@ -352,6 +431,17 @@ inline int Enemy::abCampAnswer(const EnemyWorld& w) const {
 inline int Enemy::abChoose(float d, const EnemyWorld& w) {
     if (abForce >= 0) { int f = abForce; abForce = -1; return f; }
     if (abCamp >= AB_CAMP) { abCamp = 0.f; return abCampAnswer(w); }
+    if (morning()) {
+        static const int MF[] = {AB_M_FISSURE, AB_M_ECLIPSE, AB_M_CORONA};   // from range
+        static const int M4[] = {AB_M_SOLAR, AB_M_SUNDER, AB_M_GRASP, AB_M_COLOSSUS, AB_M_FISSURE, AB_M_ECLIPSE,
+                                 AB_M_SOLAR, AB_M_CORONA, AB_M_COLOSSUS, AB_M_GRASP, AB_M_SUNDER, AB_M_ECLIPSE};
+        static const int M5[] = {AB_M_DAYBREAK, AB_M_WEIGHT, AB_M_SOLAR, AB_M_CORONA, AB_M_COLOSSUS, AB_M_FISSURE,
+                                 AB_M_GRASP, AB_M_DAYBREAK, AB_M_ECLIPSE, AB_M_SUNDER, AB_M_CORONA, AB_M_WEIGHT};
+        int id = d > AB_RANGE ? MF[abRot % std::size(MF)] : abPhase == 4 ? M4[abRot % std::size(M4)] : M5[abRot % std::size(M5)];
+        if (abPhase >= 5 && abRot % 3 == 2 && id != AB_M_CORONA) ev.msFlaresUnder = true;   // the ring of fire joins in
+        ++abRot;
+        return id;
+    }
     auto bladeless = [&](int id) -> int {   // his blade shattered: fists until it's back
         if (abBlade) return id;
         if (id == AB_BLADEDIVE) return AB_SKYFALL;
@@ -374,7 +464,7 @@ inline void Enemy::abBegin(int step, bool follow, float quick, const EnemyWorld&
     const AbStep& s = abString(abCur).steps[step];
     abParriedThis = false;
     if (!s.air && abAlt > 0.5f) { abAltWant = 0.f; abDiving = true; }   // a move on the ground: down first (45 m/s; the tell covers it)
-    if (abPhase >= 2 && step == 0 && !s.air && abDamaging(abCur)) {   // MIRAGE: two copies open any blow string with him
+    if (!morning() && abPhase >= 2 && step == 0 && !s.air && abDamaging(abCur)) {   // MIRAGE: two copies open any blow string with him
         glm::vec3 to0 = flatTo(feet);
         glm::vec3 dd = glm::length(to0) > 0.1f ? norm2(to0) : glm::vec3{std::sin(yaw), 0.f, std::cos(yaw)};
         ev.abMirages = 2;
@@ -429,6 +519,12 @@ inline void Enemy::abBegin(int step, bool follow, float quick, const EnemyWorld&
             break;
         case AttackKind::ADROP: abAim = feet + leadVel_ * tell; break;
         case AttackKind::ATHUNDER: abAim = feet; abAltWant = AB_THUNDER_UP; abDiving = false; break;   // up (zoop)
+        case AttackKind::MDROP:    // up into the black (from the floor: a takeoff), its shadow on you
+            abAim = feet;
+            if (abAlt < 2.f) ev.abTakeoff = true;
+            abAltWant = std::max(abAlt, MS_DROP_UP); abDiving = false; abFlightHp = -1.f; abAirT = 0.f;
+            break;
+        case AttackKind::MGRASP: case AttackKind::MFISSURE: abAim = feet; break;
         default: break;
     }
     ev.abTell = (int)abTellOf(s.k);
@@ -514,6 +610,44 @@ inline void Enemy::abResolve(const EnemyWorld& w, glm::vec3 feet, float d) {
             break;
         }
         case AttackKind::ASERPENT: ev.abSerpent = true; ev.abFrom = position + glm::vec3{0.f, 1.8f, 0.f}; break;
+        // ---- MORNINGSTAR ----
+        case AttackKind::MJAB: melee(MS_REACH); break;
+        case AttackKind::MBACKHAND: {   // wide: anything in front of him within its sweep
+            glm::vec3 f{std::sin(yaw), 0.f, std::cos(yaw)}, to2 = flatTo(feet);
+            if (d < MS_BACK_REACH && (d < 0.5f || glm::dot(to2 / d, f) > -0.2f) && vert > -2.2f && vert < 3.5f) {
+                ev.meleeHit = true; ev.meleeDamage = s.damage; ev.abHeavy = true;
+            }
+            break;
+        }
+        case AttackKind::MSUNDER: {   // both fists into the floor in front of him: a ring rolls out from them
+            glm::vec3 f{std::sin(yaw), 0.f, std::cos(yaw)};
+            ev.msSunder = true; ev.abFrom = abGround(w, position + f * (1.4f * scale)); ev.msAfter = abPhase >= 5;
+            break;
+        }
+        case AttackKind::MFISSURE: {   // a crack of light rips along the floor at where you stood
+            glm::vec3 dir = norm2(abAim - position);
+            if (glm::length(dir) < 0.5f) dir = glm::vec3{std::sin(yaw), 0.f, std::cos(yaw)};
+            ev.msFissure = true; ev.abFrom = abGround(w, position + dir * (1.4f * scale)); ev.abTo = abAim; ev.msAfter = abPhase >= 5;
+            break;
+        }
+        case AttackKind::MGRASP: {   // the hand closes where it came down: caught, you're lifted and thrown
+            ev.msGrasp = true; ev.abTo = abAim; ev.msAfter = abPhase >= 5;
+            float dd = glm::length(glm::vec2{feet.x - abAim.x, feet.z - abAim.z});
+            if (dd < MS_GRASP_R && feet.y - abAim.y < 2.5f) { ev.meleeHit = true; ev.meleeDamage = s.damage; ev.abLaunch = true; }
+            else recover(1.4f);   // a miss leaves him bent over the floor: the opening
+            break;
+        }
+        case AttackKind::MDROP: {   // the crater; he stands up out of it
+            ev.msDrop = true; ev.abTo = abAim; ev.msAfter = abPhase >= 5 || (abStep == 0 && abCur == AB_M_ENTRY);
+            float dd = glm::length(glm::vec2{feet.x - abAim.x, feet.z - abAim.z});
+            if (dd < MS_DROP_R && feet.y - abAim.y < 3.f) { ev.meleeHit = true; ev.meleeDamage = s.damage; }
+            position = absSafeSpot(w, abAim, position);
+            abAlt = abAltWant = 0.f;
+            recover(1.f);
+            break;
+        }
+        case AttackKind::MFLARES: ev.msFlares = true; ev.abFrom = abCentre; ev.abTo = feet; ev.msAfter = abPhase >= 5; break;
+        case AttackKind::MCOLLAPSE: ev.msCollapse = true; ev.abFrom = abCentre; break;
         default: abResolveLate(w, feet, d, s.damage); break;
     }
     if (abTellOf(attack) != AbTell::NONE) abStruck = true;
@@ -560,4 +694,25 @@ inline void Enemy::abResolveLate(const EnemyWorld& w, glm::vec3 feet, float d, f
         case AttackKind::AJUDGE: ev.abJudge = true; stagger(AB_SPENT); abReeling = false; break;
         default: break;
     }
+}
+
+// ---- MORNINGSTAR ----
+// His lethal blow (Enemy::takeDamage): he doesn't die. Everything he was doing stops; he kneels
+inline void Enemy::abBeginSwallow() {
+    abSwallow = MS_SWALLOW; abSwallowFresh = true;
+    attack = AttackKind::NONE; telegraphTimer = 0.f; recoverTimer = 0.f; staggerTimer = 0.f; phaseHold = 0.f;
+    abCur = -1; abStep = 0; abParries = 0; abReeling = false; abForce = -1;
+    abBlade = false; abBladeGone = 0.f; abAltWant = 0.f; abDiving = true; abFlightHp = -1.f;
+}
+// ...and out of the black he comes down on you as MORNINGSTAR: bigger, a fresh health bar, phase 4
+inline void Enemy::abBecomeMorning(const EnemyWorld& w, glm::vec3 feet) {
+    abForm = 1; scale = MS_SCALE;
+    maxHealth *= MS_HP / statsOf(EnemyType::ABSOLUTE).health;   // (the difficulty's share carried over)
+    health = maxHealth;
+    abPhase = 4; ev.abPhase = 4; ev.msForm = true; enraged = false;
+    abJudged = true; abBlade = false; abRot = 0; abCamp = 0.f; abAirT = 0.f; abParries = 0;
+    glm::vec3 over = absSafeXZ(w, feet, abCentre);
+    position.x = over.x; position.z = over.z;
+    abCur = AB_M_ENTRY; abStep = 0; abStruck = false;
+    abBegin(0, false, 1.f, w, feet);
 }

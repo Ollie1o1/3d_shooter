@@ -92,7 +92,8 @@ enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY,
                         CRASH, TORRENT, TIDE, SPIT, BREACH, SWALLOW, SUBMERGE,     // the LEVIATHAN's
                         ATELEPORT, ADASH, AJAB, AHOOK, AUPPER, ADROP, AHOP, ARAY, ASTOMP, ASERPENT,   // THE ABSOLUTE's
                         AHALO, ASEAMS, AZENITH, ASWEEP, ALUNGE, ACRESCENT, AJUDGE, ATAKEOFF, ASKYFALL, AMETEOR,
-                        ACROSS, ABACKFIST, AELBOW, AROUNDHOUSE, AHAYMAKER, ACHARGE, AAXE, ACLAP, ATHUNDER };   // (his fighter's arsenal; THUNDERCLAP)
+                        ACROSS, ABACKFIST, AELBOW, AROUNDHOUSE, AHAYMAKER, ACHARGE, AAXE, ACLAP, ATHUNDER,   // (his fighter's arsenal; THUNDERCLAP)
+                        MJAB, MBACKHAND, MGRASP, MDROP, MSUNDER, MFISSURE, MFLARES, MCOLLAPSE };   // MORNINGSTAR's (EnemyAbsolute.h)
 
 struct EnemyStats {
     const char* name;
@@ -252,6 +253,14 @@ struct EnemyEvents {
     bool abFan = false;                      // THUNDERCLAP: a fan of fire rolls out from the floor under him (abFrom) toward abTo
     bool abMark = false, abCrater = false, abFlare = false, abShardBreak = false;   // SKYFALL's circle (at abTo) and its crater (a shard under it breaks); a METEOR's flare
     glm::vec3 abFrom{0.f}, abTo{0.f};
+    // MORNINGSTAR (his second form): the eclipse swallows the Zenith; he comes back as MORNINGSTAR
+    bool msSwallow = false, msForm = false;
+    // his moves landing: SUNDER's ring (from abFrom), a FISSURE (abFrom toward abTo), the Eclipse drop's
+    // crater (abTo), a GRASP's hand (abTo, caught or not), the ring of fire's flares (lanes across the floor,
+    // set by abTo), the corona collapsing; msAfter: an aftershock follows (RISING on); msFlaresUnder: the
+    // ring fires under the string he's starting
+    bool msSunder = false, msFissure = false, msDrop = false, msGrasp = false, msFlares = false, msCollapse = false;
+    bool msAfter = false, msFlaresUnder = false;
 };
 
 // What an enemy can sense each tick.
@@ -494,6 +503,17 @@ struct Enemy {
     bool  abBlade = false; float abBladeGone = 0.f;   // the blade of light (phase 3); > 0: shattered, redrawing
     bool  abJudged = false;            // the last judgment has happened
     float abLate = 0.f;                // a delayed strike: how long after its flash it lands
+    // MORNINGSTAR (EnemyAbsolute.h): his lethal blow in phase 3 doesn't kill him. He kneels, the eclipse
+    // swallows the Zenith, he rises into the black and comes down as MORNINGSTAR: MS_SCALE times the size,
+    // a fresh health bar, phases 4 (MORNINGSTAR), 5 (RISING, aftershocks) and 6 (TOTALITY)
+    static constexpr float MS_SCALE = 1.65f, MS_HP = 11000.f, MS_SWALLOW = 5.f, MS_RISE = 1.4f, MS_UP = 30.f,
+                           MS_PHASE5 = 0.55f, MS_TOTALITY = 0.12f, MS_ENTRY = 2.6f, MS_DROP_R = 5.5f, MS_DROP_UP = 22.f;
+    // his reach (a jab's, the backhand's), GRASP's hand (how far it reaches, how wide it closes), his run
+    static constexpr float MS_REACH = 4.6f, MS_BACK_REACH = 6.5f, MS_GRASP_REACH = 8.f, MS_GRASP_R = 3.2f, MS_RUN = 12.f;
+    int   abForm = 0;                  // 0 THE ABSOLUTE, 1 MORNINGSTAR
+    float abSwallow = 0.f;             // > 0: the swallow running (he kneels, then rises): untouchable
+    bool  abSwallowFresh = false;      // the swallow began since his last tick (its event goes out then)
+    bool  morning() const { return abForm == 1; }
     glm::vec3 abAim{0.f};              // where a ray / dash / drop-kick / lunge is headed
     glm::vec3 abCentre{0.f};           // the Zenith's centre (from the world, each tick)
     AttackKind lastAbAttack = AttackKind::NONE;   // the strike that just resolved (the game reads its colour)
@@ -567,7 +587,7 @@ struct Enemy {
         if (type == EnemyType::PENITENT) return (risen ? 11.5f : 8.2f) * scale;   // kneeling, then standing
         return stats().height * scale;
     }
-    bool  targetable() const { return alive && state == EnemyState::ACTIVE && !levHidden() && !(type == EnemyType::ABSOLUTE && abArrive > 0.f); }
+    bool  targetable() const { return alive && state == EnemyState::ACTIVE && !levHidden() && !(type == EnemyType::ABSOLUTE && (abArrive > 0.f || abSwallow > 0.f)); }
     bool  staggered() const  { return staggerTimer > 0.f; }
     // The moment a melee blow can be punched back: a JUGGERNAUT's smash (its
     // last 0.4 s), a SOVEREIGN's sweep or cleave (its last quarter second)
@@ -653,6 +673,11 @@ struct Enemy {
         if (!targetable() || shielded) return false;
         health -= dmg;
         hitFlashTimer = 0.12f;
+        if (health <= 0.f && type == EnemyType::ABSOLUTE && abForm == 0) {   // not yet: the eclipse takes him (MORNINGSTAR)
+            health = 0.f;
+            abBeginSwallow();
+            return false;
+        }
         if (health <= 0.f) {
             health = 0.f;
             alive  = false;
@@ -1338,8 +1363,11 @@ public:
     int  abParried(bool bySword);                                     // EnemyAbsolute.h
     static bool abMeleeWhite(AttackKind k) {                          // a white strike from his body or blade (parryable)
         return k == AttackKind::AJAB || k == AttackKind::AHOOK || k == AttackKind::ASWEEP || k == AttackKind::AMETEOR ||
-               k == AttackKind::ACROSS || k == AttackKind::ABACKFIST || k == AttackKind::AELBOW || k == AttackKind::AROUNDHOUSE;
+               k == AttackKind::ACROSS || k == AttackKind::ABACKFIST || k == AttackKind::AELBOW || k == AttackKind::AROUNDHOUSE ||
+               k == AttackKind::MJAB || k == AttackKind::MBACKHAND;
     }
+    void abBeginSwallow();                                            // EnemyAbsolute.h
+    void abBecomeMorning(const EnemyWorld& w, glm::vec3 feet);
 private:
     void thinkAbsolute(float dt, const EnemyWorld& w, bool resolve);   // EnemyAbsolute.h
     void thinkAbsoluteMind(float dt, const EnemyWorld& w, bool resolve);

@@ -4146,7 +4146,7 @@ int main() {
               "running off the Reliquary's rim you fall into the Maw and land on its ring");
         CHECK(N.arenaAt(M.playerStart) == 4 && M.playerStart.y > C.y + 20.f && std::fabs(N.groundAt(M.playerStart.x, M.playerStart.z, M.playerStart.y) - C.y) < 0.05f,
               "a retry drops you in again, over the ring");
-        CHECK(MUSIC_TRACKS == 11 && std::string(musicTrack(9).name) == "LEVIATHAN", "the Maw has its own track");
+        CHECK(MUSIC_TRACKS >= 11 && std::string(musicTrack(9).name) == "LEVIATHAN", "the Maw has its own track");
     }
 
     // ---------------------------------------------------------------- the Leviathan: its mind

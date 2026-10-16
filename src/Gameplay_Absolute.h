@@ -68,7 +68,7 @@ inline void GameplayState::onAbsoluteEvents(Enemy& e, const EnemyEvents& ev) {
         const AbFeel& f = abFeel(ev.abImpactKind);
         if (f.boom) {
             float c = std::cos(e.yaw), sn = std::sin(e.yaw);
-            glm::vec3 p = e.position + glm::vec3{f.at.x * c + f.at.z * sn, f.at.y, -f.at.x * sn + f.at.z * c};
+            glm::vec3 p = e.position + glm::vec3{f.at.x * c + f.at.z * sn, f.at.y, -f.at.x * sn + f.at.z * c} * e.scale;   // (MORNINGSTAR: his size)
             at(f.boom, p, f.boomPitch * (0.96f + 0.08f * frand(0.f, 1.f)), 128, 0.5f);
             fx.spawnBurst(p, {1.7f, 1.65f, 1.6f}, 22, 7.f, 0.25f, 0.f);
             fx.spawnShockwave(glm::vec3{p.x, std::max(level.zenith.centre.y, p.y - 1.2f), p.z}, 2.2f + 2.f * f.shake, {1.2f, 1.15f, 1.1f});
@@ -143,6 +143,7 @@ inline void GameplayState::onAbsoluteEvents(Enemy& e, const EnemyEvents& ev) {
         shake(1.0f, 0.1f);
         ui.toast("SPENT", "FOUR SECONDS - DOUBLE DAMAGE", {1.f, 0.95f, 0.7f}, 2.f);
     }
+    onMorningEvents(e, ev);   // MORNINGSTAR (Gameplay_Morning.h)
     if (ev.meleeHit) {   // his fists, feet or blade: the sword can meet them
         AbTell t = abTellOf(e.lastAbAttack);
         glm::vec3 from = e.position + glm::vec3{0.f, 1.5f, 0.f};
@@ -151,7 +152,7 @@ inline void GameplayState::onAbsoluteEvents(Enemy& e, const EnemyEvents& ev) {
         if (hit && lastGuarded == Sword::Guarded::NONE) {
             glm::vec3 away = player.position - e.position; away.y = 0.f;
             if (glm::length(away) > 0.01f) player.velocity += glm::normalize(away) * 7.f + glm::vec3{0.f, 2.5f, 0.f};
-            if (ev.abLaunch) { player.velocity.y = 11.f; player.onGround = false; }   // KNEEL: launched for the drop-kick
+            if (ev.abLaunch) { player.velocity.y = e.morning() ? 15.f : 11.f; player.onGround = false; }   // KNEEL: launched for the drop-kick (GRASP: thrown)
             if (ev.abHeavy && glm::length(away) > 0.01f) player.velocity += glm::normalize(away) * 9.f + glm::vec3{0.f, 3.f, 0.f};   // a haymaker sends you
         }
     }
@@ -170,10 +171,17 @@ inline void GameplayState::updateAbsolute(float dt) {
     eclipseFlare *= std::exp(-dt * 1.4f);
     if (abShaftT >= 0.f && (abShaftT += dt) > AB_SHAFT) abShaftT = -1.f;
     if (abDawnT >= 0.f) abDawnT = std::min(abDawnT + dt, 60.f);
+    if (msSwallowT >= 0.f) msSwallowT = std::min(msSwallowT + dt, 60.f);
+    if (msTotalityT >= 0.f) msTotalityT = std::min(msTotalityT + dt, 60.f);
+    if (g_devOverlay.rfind("swallow", 0) == 0) msSwallowT = Enemy::MS_SWALLOW * std::atoi(g_devOverlay.c_str() + 7) / 100.f;   // dev: --overlay swallowNN (screenshots)
     if (g_devOverlay.rfind("dawn", 0) == 0) abDawnT = AB_DAWN_FROM + AB_DAWN_TIME * std::atoi(g_devOverlay.c_str() + 4) / 100.f;   // dev: --overlay dawnNN (screenshots)
     if (g_devOverlay == "flare") eclipseFlare = 1.f;
     if (!(level.zenith.built && act2() && director.arena == ZENITH_ARENA)) return;
     Enemy* e = absolute();
+    if (e && msCheckpoint && e->abForm == 0 && e->abSwallow <= 0.f && e->abArrive > 0.f) {   // retried from MORNINGSTAR: straight to him
+        e->abArrive = 0.f; e->abSwallow = 0.05f; e->abAlt = e->abAltWant = Enemy::MS_UP;
+        msSwallowT = Enemy::MS_SWALLOW;
+    }
     if (abSkyMarkT >= 0.f && !abSkyLive(e)) abSkyMarkT = -1.f;   // shot down, a phase, his death: no SKYFALL, no circle
     if (abFlightH) {   // his wind follows him; down on the floor, it stops
         if (e && e->abAirborne()) audio.moveSource(abFlightH, e->position);
@@ -225,7 +233,8 @@ inline void GameplayState::swordParryAbsolute(Enemy& e) {
     glm::vec3 to = e.position - player.position; to.y = 0.f;
     float d = glm::length(to);
     glm::vec3 f = player.camera.forward(); f.y = 0.f;
-    if (d > Enemy::AB_REACH + 1.8f || (d > 0.3f && glm::dot(to / d, glm::normalize(f + glm::vec3{1e-4f, 0.f, 0.f})) < 0.2f)) return;
+    const float reach = e.morning() ? (e.attack == AttackKind::MBACKHAND ? Enemy::MS_BACK_REACH : Enemy::MS_REACH) : Enemy::AB_REACH;   // (MORNINGSTAR's reach)
+    if (d > reach + 1.8f || (d > 0.3f && glm::dot(to / d, glm::normalize(f + glm::vec3{1e-4f, 0.f, 0.f})) < 0.2f)) return;
     if (sword.tryParry()) parryAbsolute(e, true);
 }
 
@@ -239,6 +248,7 @@ inline void GameplayState::onAbsoluteKilled(const Enemy& e) {
     abCorpse.attack = AttackKind::NONE; abCorpse.telegraphTimer = 0.f; abCorpse.abBlade = false;
     abDeathT = 0.f; abDawnT = 0.f; abShaftT = -1.f; eclipseFlare = 1.f;
     abLineShown = AB_LINE_WORTHY; abLineT = 3.f;
+    msCheckpoint = false; msTotalityT = -1.f;   // (the dawn takes the swallow away: Gameplay_Render.h)
     audio.playAt("v_absolute_line", e.position, 128, SoundGroup::ENEMY, true, 0.8f);   // "...WORTHY.", lower
     fx.spawnShockwave(e.position, 20.f, {1.6f, 1.5f, 1.2f});
     explosionFlashTimer = 0.8f; explosionFlashPos = e.position;
@@ -451,6 +461,7 @@ inline void GameplayState::gatherAbsoluteBoxes(std::vector<BoxInstance>& out) {
         ghost(pose, 0.55f + 0.25f * std::sin(t * 30.f + m.at.x), glm::vec3{1.5f, 1.5f, 1.7f});
     }
     for (auto& g : abGhosts) ghost(g.pose, 1.f - g.t / AB_GHOST_LIFE, glm::vec3{1.4f, 1.4f, 1.6f});
+    gatherMorningBoxes(out);
     if (abDeathT < AB_DEATH) {   // on his knees, then rising away in light
         Enemy pose = abCorpse;
         float up = std::max(0.f, abDeathT - 1.8f);
@@ -477,3 +488,5 @@ inline void GameplayState::renderAbsoluteHUD() {
         ui.end2D();
     }
 }
+
+#include "Gameplay_Morning.h"   // MORNINGSTAR

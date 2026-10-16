@@ -48,6 +48,15 @@ inline const AbFeel& abFeel(AttackKind k) {
     static const AbFeel STOMP{"ab_rumble", 0.90f, 1.15f, "ab_boom_stone", 0.9f, 0.6f, {0.3f, 0.05f, 0.3f}};
     static const AbFeel CLAP{"ab_rumble", 0.90f, 1.3f, "ab_boom_clap", 1.f, 0.6f, {0.f, 1.5f, 0.9f}};
     static const AbFeel THUNDER{"ab_zoop", 1.15f, 1.f, "ab_boom_thunder", 1.f, 1.f, {0.f, 1.5f, 0.8f}};   // up with a zoop; a clap like thunder
+    // MORNINGSTAR's: his own moves' sounds, pitched down for his size (where: in his unscaled frame, scaled by the game)
+    static const AbFeel MJAB{"ab_wind_jab", 0.30f, 0.8f, "ab_boom_jab", 0.75f, 0.55f, {0.1f, 1.6f, 1.3f}};
+    static const AbFeel MBACK{"ab_wind_spin", 0.50f, 0.8f, "ab_boom_heavy", 0.8f, 0.85f, {0.7f, 1.6f, 0.9f}};
+    static const AbFeel MGRASP{"ab_thrum", 0.80f, 0.8f, "ab_boom_stone", 0.8f, 0.8f, {0.f, 0.05f, 1.6f}};
+    static const AbFeel MDROP{"ab_whistle", 0.75f, 0.8f, "ab_boom_stone", 0.6f, 1.f, {0.f, 0.f, 0.f}};
+    static const AbFeel MSUNDER{"ab_rumble", 0.90f, 0.85f, "ab_boom_stone", 0.7f, 1.f, {0.f, 0.05f, 1.4f}};
+    static const AbFeel MFISSURE{"ab_thrum", 0.80f, 0.9f, "ab_boom_stone", 0.85f, 0.7f, {0.f, 0.05f, 1.4f}};
+    static const AbFeel MFLARES{"ab_ray_charge", 0.65f, 0.7f, "ab_boom_thunder", 0.8f, 0.6f, {0.f, 2.f, 0.f}};
+    static const AbFeel MCOLLAPSE{"ab_rumble", 0.90f, 0.7f, "ab_boom_thunder", 0.6f, 1.f, {0.f, 1.5f, 0.f}};
     switch (k) {
         case A::AJAB: return JAB;            case A::ACROSS: return CROSS;      case A::AHOOK: return HOOK;
         case A::ABACKFIST: return BACKFIST;  case A::AELBOW: return ELBOW;      case A::AROUNDHOUSE: return ROUND;
@@ -58,6 +67,9 @@ inline const AbFeel& abFeel(AttackKind k) {
         case A::ASERPENT: return SERPENT;    case A::ARAY: return RAY;          case A::AZENITH: return ZRAY;
         case A::ASEAMS: case A::AJUDGE: case A::AHALO: return AREA;
         case A::ASTOMP: return STOMP;        case A::ACLAP: return CLAP;        case A::ATHUNDER: return THUNDER;
+        case A::MJAB: return MJAB;           case A::MBACKHAND: return MBACK;   case A::MGRASP: return MGRASP;
+        case A::MDROP: return MDROP;         case A::MSUNDER: return MSUNDER;   case A::MFISSURE: return MFISSURE;
+        case A::MFLARES: return MFLARES;     case A::MCOLLAPSE: return MCOLLAPSE;
         default: return NONE;
     }
 }
@@ -70,7 +82,8 @@ inline const std::vector<AttackKind>& abAllAttacks() {
     static const std::vector<AttackKind> V = {
         A::ATELEPORT, A::ADASH, A::AJAB, A::AHOOK, A::AUPPER, A::ADROP, A::AHOP, A::ARAY, A::ASTOMP, A::ASERPENT, A::AHALO,
         A::ASEAMS, A::AZENITH, A::ASWEEP, A::ALUNGE, A::ACRESCENT, A::AJUDGE, A::ATAKEOFF, A::ASKYFALL, A::AMETEOR,
-        A::ACROSS, A::ABACKFIST, A::AELBOW, A::AROUNDHOUSE, A::AHAYMAKER, A::ACHARGE, A::AAXE, A::ACLAP, A::ATHUNDER};
+        A::ACROSS, A::ABACKFIST, A::AELBOW, A::AROUNDHOUSE, A::AHAYMAKER, A::ACHARGE, A::AAXE, A::ACLAP, A::ATHUNDER,
+        A::MJAB, A::MBACKHAND, A::MGRASP, A::MDROP, A::MSUNDER, A::MFISSURE, A::MFLARES, A::MCOLLAPSE};
     return V;
 }
 // Every sound the fight plays that isn't a gun's or the sword's: the feel table's, the cues, and the

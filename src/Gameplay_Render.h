@@ -469,6 +469,8 @@ inline void GameplayState::render() {
     Theme th = level.themeAt(player.position);
     if (rageBlend > 0.f) th = lerpTheme(th, bloodEclipse(th), rageBlend);
     if (bossDusk > 0.005f && th.eclipse < 0.5f) th = lerpTheme(th, nightfall(th), bossDusk * BOSS_DUSK_MAX);   // (under the eclipse: it burns hotter instead)
+    if (th.eclipse > 0.5f && swallow01() > 0.f) th = lerpTheme(th, swallowedOf(th), swallow01());   // MORNINGSTAR: inside the eclipse
+    if (th.eclipse > 0.5f && totality01() > 0.f) th = lerpTheme(th, totalityOf(th), totality01());   // TOTALITY: the light goes out
     if (th.eclipse > 0.5f && dawn01() > 0.f) th = lerpTheme(th, dawnOf(th), dawn01());   // he's dead: the sun comes out
 
     postProcess.beginScene();
@@ -498,6 +500,8 @@ inline void GameplayState::render() {
         skyboxShader.setFloat("uTime",    gameClock);
         skyboxShader.setFloat("uFlare",   th.eclipse > 0.5f ? eclipseFlare : 0.f);
         skyboxShader.setFloat("uDawn",    th.eclipse > 0.5f ? dawn01() : 0.f);
+        skyboxShader.setFloat("uSwallow", th.eclipse > 0.5f ? std::min(msSwallowT < 0.f ? 0.f : msSwallowT / (Enemy::MS_SWALLOW - 0.5f), 1.f) * (1.f - dawn01()) : 0.f);
+        skyboxShader.setFloat("uDark",    th.eclipse > 0.5f ? totality01() * (1.f - dawn01()) : 0.f);
         glBindVertexArray(postProcess.quadVAO);
         glDrawArrays(GL_TRIANGLES,0,6);
         glBindVertexArray(0);

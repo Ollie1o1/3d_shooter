@@ -89,7 +89,7 @@ inline void GameplayState::punch(int boostable) {
         if (!e.targetable() || !e.parryWindow()) continue;
         glm::vec3 d = e.position + glm::vec3{0, e.height() * 0.5f, 0} - eye;
         float dist = glm::length(d);
-        bool inReach = dist < 5.5f && glm::dot(fwd, d / dist) > 0.2f;
+        bool inReach = dist < (e.type == EnemyType::ABSOLUTE && e.morning() ? Enemy::MS_BACK_REACH + 1.5f : 5.5f) && glm::dot(fwd, d / dist) > 0.2f;   // (MORNINGSTAR: as far as his backhand reaches)
         if (e.type == EnemyType::ABSOLUTE) { if (inReach && parryAbsolute(e, false)) return; continue; }   // Gameplay_Absolute.h
         if (e.type == EnemyType::PENITENT) {   // a censer or its fists: punch it as it reaches you
             float flat = glm::length(glm::vec2{player.position.x - e.position.x, player.position.z - e.position.z});
@@ -233,6 +233,12 @@ inline void GameplayState::updateEnemies(float dt) {
         if (e.type == EnemyType::ABSOLUTE && g_devOverlay.rfind("absolute", 0) == 0 && e.abArrive <= 0.f && e.health > e.maxHealth * 0.61f) {
             int ph = std::atoi(g_devOverlay.c_str() + 8);   // dev: absolute2 / absolute3 / absolute8
             if (ph >= 2) e.health = e.maxHealth * (ph == 2 ? 0.59f : ph == 3 ? 0.24f : 0.079f);
+        }
+        if (e.type == EnemyType::ABSOLUTE && g_devOverlay.rfind("morning", 0) == 0) {   // dev: morning / morning5 / morning6: MORNINGSTAR (RISING, TOTALITY)
+            if (e.abForm == 0 && e.abSwallow <= 0.f) { e.abArrive = 0.f; e.abSwallow = 0.05f; e.abAlt = e.abAltWant = Enemy::MS_UP; msSwallowT = Enemy::MS_SWALLOW; }
+            int ph = std::atoi(g_devOverlay.c_str() + 7);
+            if (e.morning() && e.abCur != AB_M_ENTRY && ph >= 5 && e.health > e.maxHealth * (ph == 5 ? 0.56f : 0.13f))
+                e.health = e.maxHealth * (ph == 5 ? 0.54f : 0.11f);
         }
         if (g_devOverlay.rfind("abpose", 0) == 0 && e.type == EnemyType::ABSOLUTE) { devAbsolutePose(e); rig::tickAbsoluteBody(e, dt); continue; }
         if (e.type == EnemyType::ABSOLUTE) swordParryAbsolute(e);   // the sword's window meets a white strike as it lands

@@ -22,6 +22,8 @@ uniform float uHeat;        // 0..1: the eclipse burns hotter (the Zenith: as th
 uniform float uTime;
 uniform float uFlare;       // 0..1: a flash of the eclipse (his entrance, his phases), decaying
 uniform float uDawn;        // 0..1: the eclipse sliding off the sun (his death)
+uniform float uSwallow;     // 0..1: MORNINGSTAR: the eclipse grows over the whole sky, then its ring of fire settles on the horizon
+uniform float uDark;        // 0..1: TOTALITY: the ring dims to embers
 
 float hash3(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
 float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -78,7 +80,9 @@ vec3 eclipseSky(vec3 dir, vec3 col) {
     vec3 t2 = cross(ax, t1);
     float c0  = dot(dir, ax);
     float ang = acos(clamp(c0, -1.0, 1.0));
-    float r   = ang / uSunSize;                      // 1 at the disc's edge
+    float grow = clamp(uSwallow * 1.35, 0.0, 1.0);
+    float size = uSunSize * (1.0 + 70.0 * grow * grow * grow);   // the swallow: the disc spreads over everything
+    float r   = ang / size;                          // 1 at the disc's edge
     float phi = atan(dot(dir, t2), dot(dir, t1));
 
     // the corona: long streamers, slowly turning, reaching further as it burns
@@ -98,9 +102,9 @@ vec3 eclipseSky(vec3 dir, vec3 col) {
     // the sun behind it, and the moon's disc over it: black, a faint ember on its
     // limb; at the dawn the moon slides off and the sun burns through
     vec3 sunCol = vec3(3.2, 2.7, 2.0);
-    float off = dawn * 2.4 * uSunSize;
+    float off = dawn * 2.4 * size;
     vec3 mdir = normalize(ax * cos(off) + t1 * sin(off));
-    float rm = acos(clamp(dot(dir, mdir), -1.0, 1.0)) / uSunSize;
+    float rm = acos(clamp(dot(dir, mdir), -1.0, 1.0)) / size;
     float shown = smoothstep(0.0, 0.5, dawn);
     col += sunCol * 0.45 * exp(-max(r - 1.0, 0.0) * 2.6) * shown * step(1.0, r);     // the sun's own glare
     col += vec3(1.4, 0.75, 0.3) * exp(-max(r - 1.0, 0.0) * 0.9) * 0.3 * shown;       // and the warm sky round it
@@ -108,6 +112,21 @@ vec3 eclipseSky(vec3 dir, vec3 col) {
     float ring = dawn > 0.0 && dawn < 0.45 ? exp(-(r - 1.0) * (r - 1.0) / 0.0036) * smoothstep(0.98, 1.0, rm) * sin(dawn / 0.45 * 3.14159) : 0.0;
     col += vec3(4.0, 3.6, 3.0) * ring * 2.0;                                           // the diamond ring as it breaks
     if (rm < 1.0 && dawn < 0.999) col = mix(vec3(0.004, 0.0, 0.003), blood * 0.18, smoothstep(0.82, 1.0, rm));
+
+    // inside the eclipse (MORNINGSTAR): black overhead, a ring of white fire low all the way round,
+    // streamers of flame licking up off it, its light lying on the black below the line
+    float inside = smoothstep(0.62, 1.0, uSwallow);
+    if (inside > 0.0) {
+        float lit = 1.0 - 0.8 * uDark;
+        float lick = vnoise(vec2(az * 14.0 + uTime * 0.6, uTime * 0.4)), lick2 = vnoise(vec2(az * 31.0 - uTime * 0.9, 5.0));
+        float flame = (0.5 + 0.8 * pow(lick, 2.0) + 0.5 * pow(lick2, 3.0)) * exp(-max(y, 0.0) * (11.0 - 5.0 * lick));
+        vec3 sky = vec3(0.004, 0.001, 0.0);
+        sky += vec3(1.7, 0.5, 0.12) * flame * step(0.0, y) * 0.55 * lit;                       // the flames above the line
+        sky += vec3(2.6, 2.2, 1.8) * exp(-abs(y - 0.004) * 140.0) * (0.8 + 0.4 * lick) * lit;   // the ring itself, white-hot
+        sky += vec3(1.5, 0.45, 0.12) * exp(-abs(y) * 22.0) * 0.5 * lit;                         // its glow
+        sky += vec3(0.9, 0.25, 0.06) * exp(y * 30.0) * step(y, 0.0) * 0.35 * lit;               // its light on the black below
+        col = mix(col, sky, inside);
+    }
     return col;
 }
 

@@ -20,7 +20,8 @@ inline void GameplayState::devPenitentPose(Enemy& e) {
 }
 
 // --overlay abposeN: THE ABSOLUTE held mid-tell N (1 jab, 2 hook, 3 uppercut, 4 drop-kick, 5 ray, 6 stomp,
-// 7 serpent, 8 sweep (blade), 9 lunge, 10 judgment, 11 reeling, 12 broken, 13 idle guard) for screenshots
+// 7 serpent, 8 sweep (blade), 9 lunge, 10 judgment, 11 reeling, 12 broken, 13 idle guard; 24-30 MORNINGSTAR's jab, backhand,
+// grasp, sunder, fissure, flares, drop; ...ms: any pose as MORNINGSTAR, ...ms6 in TOTALITY) for screenshots
 // (abposeN@T: T s before the blow lands - 0 is the blow; abposeN~T: T s into its follow-through; ...side / ...three: turned side-on / three-quarters)
 inline void GameplayState::devAbsolutePose(Enemy& e) {
     int n = std::atoi(g_devOverlay.c_str() + 6);
@@ -32,12 +33,16 @@ inline void GameplayState::devAbsolutePose(Enemy& e) {
     using A = AttackKind;   // 11, 12: the reel and the break; 13-22 the arsenal and the air moves; 23 aloft
     static const AttackKind K[] = {A::NONE, A::AJAB, A::AHOOK, A::AUPPER, A::ADROP, A::ARAY, A::ASTOMP, A::ASERPENT, A::ASWEEP, A::ALUNGE, A::AJUDGE,
                                    A::NONE, A::NONE, A::ACROSS, A::ABACKFIST, A::AELBOW, A::AROUNDHOUSE, A::AHAYMAKER, A::ACHARGE, A::AAXE, A::ACLAP,
-                                   A::ASKYFALL, A::AMETEOR};
+                                   A::ASKYFALL, A::AMETEOR, A::NONE,
+                                   A::MJAB, A::MBACKHAND, A::MGRASP, A::MSUNDER, A::MFISSURE, A::MFLARES, A::MDROP};   // 24-30: MORNINGSTAR's
     const char* at = std::strchr(g_devOverlay.c_str(), '@');
     const char* after = std::strchr(g_devOverlay.c_str(), '~');
     if (g_devOverlay.find("side") != std::string::npos) e.yaw = e.prevYaw = e.yaw + 1.5707963f;
     if (g_devOverlay.find("three") != std::string::npos) e.yaw = e.prevYaw = e.yaw + 0.7853982f;
-    if (n >= 1 && n <= 22 && n != 11 && n != 12) {
+    if (g_devOverlay.find("ms") != std::string::npos || n >= 24) {   // ...ms (and 24-30): as MORNINGSTAR
+        e.abForm = 1; e.scale = Enemy::MS_SCALE; e.abPhase = g_devOverlay.find("ms6") != std::string::npos ? 6 : 4;
+    }
+    if (n >= 1 && n <= 30 && n != 11 && n != 12 && n != 23) {
         if (after) { e.abBodyLanded = K[n]; e.abBodySince = (float)std::atof(after + 1); }   // (tickAbsoluteBody adds its tick)
         else { e.attack = K[n]; e.telegraphTimer = at ? std::max(0.001f, (float)std::atof(at + 1)) : 0.25f; e.abAim = player.position; }
     }

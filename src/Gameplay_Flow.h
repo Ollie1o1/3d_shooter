@@ -196,6 +196,8 @@ inline void GameplayState::enterArena(int a) {
     holsterSword(); sword = Sword{};
     abh.clear(); level.restoreZenith(); abGhosts.clear(); audio.stop(abWindH); audio.stop(abFlightH); audio.stop(abBeamH); abWindH = abFlightH = abBeamH = 0;
     abSkyMarkT = abCrackT = -1.f; abLineT = abHintT = 0.f; abLineShown = -1; abDeathT = 1e9f;   // the Zenith whole again
+    if (!(act2() && a == ZENITH_ARENA)) msCheckpoint = false;   // MORNINGSTAR's checkpoint holds only for a retry in the Zenith
+    msSwallowT = msCheckpoint ? Enemy::MS_SWALLOW : -1.f; msTotalityT = -1.f;   // (retried from him: already inside the eclipse)
     eclipseFlare = 0.f; abShaftT = abDawnT = -1.f; swordRoll = 0.f;
     pillarFallT.fill(-1.f); shardFallT.fill(-1.f); punchedThisTick = false;
     ascendT = -1.f; whiteFade = level.zenith.built && a == ZENITH_ARENA && act2() ? 1.f : 0.f;
@@ -253,6 +255,7 @@ inline void GameplayState::retryArena() {
 }
 
 inline void GameplayState::newRun() {
+    msCheckpoint = false;
     director = WaveDirector{};
     director.level = &level;
     director.fast  = fast();
@@ -339,6 +342,7 @@ inline void GameplayState::handleDirectorEvents() {
                 pushBanner("THE SOVEREIGN", "PARRY (F) THE BLADE AS IT LANDS", {1.f, 0.3f, 0.2f}, 4.f);
             else if (ar.waves[ev.value][0].type == EnemyType::PENITENT)
                 pushBanner("THE PENITENT", "BREAK ITS CHAINS - JUMP LOW SWEEPS, SLIDE UNDER HIGH ONES", {1.f, 0.5f, 0.2f}, 4.5f);
+            else if (ar.waves[ev.value][0].type == EnemyType::ABSOLUTE && msCheckpoint) { abHintT = 6.f; }   // (MORNINGSTAR announces himself)
             else if (ar.waves[ev.value][0].type == EnemyType::ABSOLUTE) {
                 pushBanner("THE ABSOLUTE", "WHITE: PARRY   GOLD: DODGE OR BLOCK   RED: GET OUT", {1.f, 0.97f, 0.9f}, 4.5f);
                 abHintT = 9.f;
@@ -788,7 +792,8 @@ inline void GameplayState::updateMusic() {
     static const int FAST_TRACK[]  = {0, 1, 2, 2, 1, 1, 3}; // Canal .. Tower
     int a = director.arena;
     bool zenith = act2() && a == ZENITH_ARENA;
-    m.setTrack(fast() ? FAST_TRACK[a % 7] : zenith ? 10 : act2() ? 5 + std::min(a, 4) : ARENA_TRACK[a % 5]);   // the Nave .. the Maw; !!!!! has its own
+    const bool morning = zenith && msSwallowT >= 0.f;   // inside the eclipse: MORNINGSTAR's track (from the next bar line)
+    m.setTrack(fast() ? FAST_TRACK[a % 7] : morning ? 11 : zenith ? 10 : act2() ? 5 + std::min(a, 4) : ARENA_TRACK[a % 5]);   // the Nave .. the Maw; !!!!! has its own
     float lv = 0.6f;
     switch (director.phase) {
         case WaveDirector::Phase::ACTIVE:   lv = director.bossWave() ? 1.35f : 1.f; break;
@@ -800,6 +805,7 @@ inline void GameplayState::updateMusic() {
     if (lv >= 1.f && styleSystem.overdrive) lv = 1.35f;
     if (countdown > 0.f) lv = 0.45f;
     if (zenith) lv = std::max(lv, 1.15f);    // !!!!!: the techno never lets up, kick, bass, clap and acid from the first second
+    if (morning && victoryDelay < 0.f && !victory) lv = std::max(lv, 1.32f);   // MORNINGSTAR: everything, stabs and all
     if (victory) lv = 0.55f;
     if (playerDead) lv = 0.1f;
     m.setIntensity(lv);

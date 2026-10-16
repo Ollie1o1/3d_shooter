@@ -22,6 +22,8 @@ struct BossSim {
     AbsoluteHazards abs;
     std::vector<AABB> pillarsUp;
     float dmgMelee = 0.f, dmgBeam = 0.f, dmgGround = 0.f, dmgWhite = 0.f, dmgShot = 0.f;   // where the hurt came from (tuning)
+    float formAt = -1.f, lowest2 = 100.f, taken2 = 0.f;
+    float msBy[5] = {};   // MORNINGSTAR's damage by source (AbsoluteHazards::Hit::src; 0: his body)   // MORNINGSTAR: when his second form began; the lowest health and the damage taken in it
     float health = 100.f, lowest = 100.f;   // SOLID's health with the sword's healing (6 a hit, 10 a parry), capped at 100
     int dashes = 2;   // two dash charges, 1.2 s each to come back (as the game)
     int parries = 0; float dashCd = 0.f; bool sliding = false, airborne = false, blocking = false;
@@ -286,10 +288,48 @@ struct BossSim {
                 glm::vec3 out = feet - boss.abAim; out.y = 0.f;
                 feet += (glm::length(out) > 0.1f ? glm::normalize(out) : side) * 5.f; if (dashes-- == 2) dashCd = 1.2f;
             }
+            if (boss.morning()) {   // MORNINGSTAR: read the floor
+                auto flat = [](glm::vec3 a, glm::vec3 b) { return glm::length(glm::vec2{a.x - b.x, a.z - b.z}); };
+                for (auto& w : abs.waves) {   // jump a ring as it reaches you
+                    if (w.delay > 0.f) continue;
+                    float r = flat(feet, w.at);
+                    if (w.inward ? (r < w.r + 2.5f && r > w.r - 0.8f) : (r > w.r - 2.5f && r < w.r + 0.8f)) airborne = true;
+                }
+                if (reacting && boss.attack == AttackKind::MSUNDER && boss.telegraphTimer < 0.15f) {   // his fists landing near you: be in the air
+                    glm::vec3 f{std::sin(boss.yaw), 0.f, std::cos(boss.yaw)};
+                    if (flat(feet, boss.position + f * (1.4f * boss.scale)) < 3.f) airborne = true;
+                }
+                auto offLine = [&](glm::vec3 from, glm::vec3 dir, float len) {   // on a line: step off it, sideways
+                    glm::vec3 rel = feet - from; rel.y = 0.f;
+                    float along = glm::dot(rel, dir);
+                    glm::vec3 s2{-dir.z, 0.f, dir.x};
+                    float across = glm::dot(rel, s2);
+                    if (along > -1.f && along < len && std::fabs(across) < AbsoluteHazards::FIS_HALF + 1.2f) mv = s2 * (across >= 0.f ? 2.f : -2.f);
+                };
+                for (auto& f : abs.fissures) offLine(f.from, f.dir, f.len);
+                if (reacting && boss.attack == AttackKind::MFISSURE && boss.telegraphProgress() > 0.6f) {
+                    glm::vec3 l = boss.abAim - boss.position; l.y = 0.f;
+                    if (glm::length(l) > 0.1f) offLine(boss.position, glm::normalize(l), 44.f);
+                }
+                for (auto& L : abs.lanes) {   // in a lit lane: to the gap beside it
+                    if (AbsoluteHazards::laneFront(L) > glm::dot(feet - L.centre, L.dir) + 1.5f) continue;   // (past you)
+                    float across = glm::dot(feet - L.centre, L.side);
+                    for (int k = 0; k < AbsoluteHazards::LANE_N; ++k)
+                        if (std::fabs(across - L.off[k]) < AbsoluteHazards::LANE_HALF + 0.8f) mv = L.side * (across >= L.off[k] ? 2.f : -2.f);
+                }
+                if (reacting && (boss.attack == AttackKind::MGRASP || boss.attack == AttackKind::MDROP)) {   // out of the hand's circle, the shadow
+                    float R = boss.attack == AttackKind::MGRASP ? Enemy::MS_GRASP_R : Enemy::MS_DROP_R, dd = flat(feet, boss.abAim);
+                    glm::vec3 out = feet - boss.abAim; out.y = 0.f;
+                    out = glm::length(out) > 0.1f ? glm::normalize(out) : side;
+                    if (dd < R + 1.5f) mv = out * 2.f;
+                    if (dd < R + 0.5f && boss.telegraphTimer < 0.3f && dashes > 0) { feet += out * 5.f; if (dashes-- == 2) dashCd = 1.2f; }
+                }
+            }
             // gold (and the white strikes it won't parry): a dash out of reach as it lands, else block it
             bool strike = tell == AbTell::GOLD || (tell == AbTell::WHITE && Enemy::abMeleeWhite(boss.attack));   // (a parried one never lands: he's staggered)
             float sd = boss.attack == AttackKind::AMETEOR ? glm::length(boss.position - feet) : d;
-            if (strike && boss.attack != AttackKind::ASKYFALL && boss.telegraphTimer < 0.22f && sd < 6.f) {
+            const bool floorRead = boss.attack == AttackKind::ASKYFALL || boss.attack == AttackKind::MGRASP || boss.attack == AttackKind::MDROP;
+            if (strike && !floorRead && boss.telegraphTimer < 0.22f && sd < (boss.morning() ? 7.5f : 6.f)) {
                 if (dashes > 0) { feet += side * 5.f; if (dashes-- == 2) dashCd = 1.2f; }
                 else if (policy == SOLID) blocking = true;   // the sword up: a white strike or a gold one, from the front
             }
@@ -330,7 +370,9 @@ struct BossSim {
         if (ev.abZenith) abs.addZenith(ev.abFrom, ev.abTo);
         for (int k = 0; k < ev.abMirages; ++k) abs.addMirage(ev.phantomPos[k]);
         if (ev.abJudgeMark) abs.addJudge(c, boss.position);
-        if (ev.meleeHit) { float b = damageTaken; bool redBlow = abTellOf(boss.lastAbAttack) == AbTell::RED; hurt(ev.meleeDamage * (blocking && !redBlow ? Sword::BLOCK_TAKEN : 1.f)); dmgMelee += damageTaken - b; }
+        abs.morningEvents(ev, c, feet, boss.yaw);
+        if (ev.msForm) formAt = t;
+        if (ev.meleeHit) { float b = damageTaken; bool redBlow = abTellOf(boss.lastAbAttack) == AbTell::RED; hurt(ev.meleeDamage * (blocking && !redBlow ? Sword::BLOCK_TAKEN : 1.f)); dmgMelee += damageTaken - b; if (boss.morning()) msBy[0] += damageTaken - b; }
         for (int k = 0; k < ev.shots; ++k)
             if (Projectile* pr = proj.fire(ev.shotOrigin, ev.shotDir[k] * ev.shotSpeed, ev.shotDamage, false, {1, 1, 1}, false, 0.f, ev.shotSize, false))
                 pr->owner = boss.uid;
@@ -339,6 +381,7 @@ struct BossSim {
         glm::vec3 hf = feet + glm::vec3{0.f, airborne ? 1.4f : 0.f, 0.f};
         for (auto& h : abs.update(dt, hf, sliding ? 0.9f : 1.8f, !airborne, &lv, boss.position)) {
             float b = damageTaken; hurt(h.damage);
+            msBy[h.src] += h.src ? damageTaken - b : 0.f;
             (h.kind == Sword::Strike::BEAM ? dmgBeam : h.kind == Sword::Strike::GOLD ? dmgGround : dmgWhite) += damageTaken - b;
         }
         if (int m = abs.haloShatterMask()) for (int k = 0; k < 8; ++k) if (m & (1 << k)) lv.parkZenithPiece(false, k);
@@ -352,6 +395,7 @@ struct BossSim {
         for (int n = abs.reflectedHits(boss.position + glm::vec3{0.f, 1.3f, 0.f}, 1.6f); n > 0; --n)
             boss.takeDamage(AbsoluteHazards::SERPENT_PARRY * boss.armorMult());
         health -= damageTaken - before; lowest = std::min(lowest, health);
+        if (formAt >= 0.f) { lowest2 = std::min(lowest2, health); taken2 += damageTaken - before; }
         // the damage: SOLID's sword up close; DODGER's guns (his guard turns most beyond 14 m)
         if (!boss.targetable()) return;
         float d = glm::length(glm::vec2{feet.x - boss.position.x, feet.z - boss.position.z});

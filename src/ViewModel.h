@@ -242,38 +242,59 @@ private:
     int   magSeen = 8;
     std::vector<GunPart> parts; // this frame's boxes (kept: no allocation after the first)
 
-    // The parry, in camera space: a left straight from below the frame. It coils (drawn back and
-    // down), snaps out past the crosshair with the forearm corkscrewing over and a touch past the
-    // mark, holds as it lands (jolted back on a parry), then drops away. u: 0..1 through it.
-    struct FistAt { glm::vec3 p; float roll; float out; };
+    // The parry, in camera space: a backhand whack with the left gauntlet. It cocks across the body
+    // (fist up by the right cheek, elbow high), then rips out along an arc through the crosshair and
+    // wide off the left of the frame, the back of the hand leading; a parry jars it back toward the
+    // centre, then it drops away. u: 0..1 through it. lead: the way the back of the hand faces.
+    struct FistAt { glm::vec3 p; glm::vec3 lead; float out; };
+    static constexpr float WHACK_AT = 0.16f, WHACK_END = 0.34f, WHACK_CONTACT = 0.18f;
+    static glm::vec3 whackArc(float t) {   // quadratic: cocked -> through the crosshair -> wide left
+        const glm::vec3 a{0.17f, -0.1f, 0.24f}, c{0.f, -0.02f, 0.66f}, e{-0.52f, -0.13f, 0.4f};
+        return (1.f - t) * (1.f - t) * a + 2.f * (1.f - t) * t * c + t * t * e;
+    }
+    static glm::vec3 whackLead(float t) {  // the arc's tangent, tipped a little forward
+        const glm::vec3 a{0.17f, -0.1f, 0.24f}, c{0.f, -0.02f, 0.66f}, e{-0.52f, -0.13f, 0.4f};
+        return glm::normalize(2.f * (1.f - t) * (c - a) + 2.f * t * (e - c) + glm::vec3{0.f, 0.f, 0.15f});
+    }
     static FistAt fistAt(float u, bool hit) {
-        const glm::vec3 rest{-0.4f, -0.62f, 0.12f}, coil{-0.3f, -0.36f, 0.14f}, at{-0.1f, -0.15f, 0.56f};
+        const glm::vec3 rest{-0.4f, -0.62f, 0.12f};
         auto sm = [](float x) { x = std::clamp(x, 0.f, 1.f); return x * x * (3.f - 2.f * x); };
-        if (u < 0.12f) { float k = sm(u / 0.12f); return {glm::mix(rest, coil, k), 10.f + 18.f * k, 0.f}; }
-        if (u < 0.32f) {
-            float x = (u - 0.12f) / 0.2f - 1.f, k = 1.f + x * x * (2.6f * x + 1.6f);   // out, past the mark, and back
-            return {glm::mix(coil, at, k), 28.f - 68.f * std::min(k, 1.f), std::min(k, 1.f)};
+        if (u < WHACK_AT) {   // cock it: up and across, the last stretch pulling back a hair further
+            float k = sm(u / WHACK_AT), pull = std::sin(k * 3.14159f) * 0.03f;
+            return {glm::mix(rest, whackArc(0.f) + glm::vec3{0.02f, 0.f, -0.02f}, k) + glm::vec3{pull, pull, 0.f},
+                    glm::normalize(glm::mix(glm::vec3{0.f, 1.f, 0.f}, whackLead(0.f), k)), 0.f};
         }
-        if (u < 0.55f) {
-            float h = (u - 0.32f) / 0.23f;
-            float jolt = hit ? std::sin(std::min(h * 3.f, 1.f) * 3.14159f) * 0.07f : 0.f;   // the blow comes back up the arm
-            return {at + glm::vec3{0.f, -0.01f * h, -jolt - 0.02f * h}, -40.f, 1.f};
+        if (u < WHACK_END) {  // rip it out: through the mark early, overshoot the end and settle
+            float x = (u - WHACK_AT) / (WHACK_END - WHACK_AT) - 1.f, t = 1.f + x * x * (2.6f * x + 1.6f);
+            return {whackArc(t), whackLead(std::min(t, 1.f)), std::min(t * 1.6f, 1.f)};
+        }
+        const glm::vec3 end = whackArc(1.f), lead = whackLead(1.f);
+        if (u < 0.55f) {      // hold the follow-through; a parry jars it back toward the centre
+            float h = (u - WHACK_END) / (0.55f - WHACK_END);
+            float jolt = hit ? std::sin(std::min(h * 2.5f, 1.f) * 3.14159f) : 0.f;
+            float buzz = hit ? std::sin(h * 70.f) * 0.006f * (1.f - h) : 0.f;
+            return {end + glm::vec3{0.07f * jolt, 0.02f * jolt + buzz, -0.03f * jolt - 0.02f * h}, lead, 1.f};
         }
         float k = sm((u - 0.55f) / 0.45f);
-        return {glm::mix(at + glm::vec3{0.f, -0.01f, -0.02f}, rest + glm::vec3{0.f, -0.12f, 0.f}, k), -40.f + 40.f * k, 1.f - k};
+        return {glm::mix(end + glm::vec3{0.f, 0.f, -0.02f}, rest + glm::vec3{0.f, -0.12f, 0.f}, k),
+                glm::normalize(glm::mix(lead, glm::vec3{0.f, 1.f, 0.f}, k)), 1.f - k};
     }
     float parryU() const { return 1.f - parryTimer / PARRY_TIME; }
-    // the fist's frame in camera space: +Z at a point far down the crosshair, rolled over
+    // the fist's frame in camera space: +Z on along the forearm (from the shoulder), +Y the back of
+    // the hand turned to lead
     static glm::mat4 fistFrame(const FistAt& F) {
-        glm::vec3 z = glm::normalize(glm::vec3{0.f, -0.03f, 4.f} - F.p);
-        glm::vec3 x = glm::normalize(glm::cross(glm::vec3{0.f, 1.f, 0.f}, z)), y = glm::cross(z, x);
+        glm::vec3 z = glm::normalize(F.p - glm::vec3{-0.3f, -0.56f, -0.1f});
+        glm::vec3 y = F.lead - z * glm::dot(F.lead, z);
+        y = glm::length(y) < 1e-4f ? glm::vec3{0.f, 1.f, 0.f} : glm::normalize(y);
+        glm::vec3 x = glm::cross(y, z);
         glm::mat4 m(1.f);
         m[0] = glm::vec4(x, 0.f); m[1] = glm::vec4(y, 0.f); m[2] = glm::vec4(z, 0.f); m[3] = glm::vec4(F.p, 1.f);
-        return m * glm::rotate(glm::mat4(1.f), glm::radians(F.roll), glm::vec3{0.f, 0.f, 1.f});
+        return m;
     }
 
-    // The arm and gauntlet, then what the punch leaves in the air: smears of light along its path;
-    // on a parry a white-hot flash off the knuckles, a ring of shards blown out round it, sparks
+    // The arm and gauntlet, then what the whack leaves in the air: a crescent of light along the arc;
+    // on a parry a white-hot burst where it crossed the crosshair, a ring of
+    // shards and sparks flung off the way the hand was going
     void drawFist(ShaderProgram& shader, const Camera& cam, glm::vec3 glow) {
         const float u = parryU();
         const FistAt F = fistAt(u, parryHit);
@@ -282,41 +303,45 @@ private:
         glm::mat4 base(1.f);
         base[0] = glm::vec4(right, 0.f); base[1] = glm::vec4(up, 0.f); base[2] = glm::vec4(fwd, 0.f);
         base[3] = glm::vec4(cam.position, 1.f);
-        const float hu = (u - 0.3f) / 0.4f;                                   // the parry's burst, 0..1
+        const float hu = (u - WHACK_CONTACT) / 0.38f;                         // the parry's burst, 0..1
         const float flare = parryHit ? std::clamp(1.f - std::fabs(hu - 0.05f) * 2.2f, 0.f, 1.f) : 0.f;
         const glm::mat4 ff = fistFrame(F);
         parts.clear();
         gunkit::Builder b{parts, glow};
         gunkit::buildArm(b, glm::vec3{-0.3f, -0.56f, 0.02f}, ff, -1.f, false, 0.8f + 2.5f * flare);
         gunkit::buildGauntlet(b, ff, glow, flare);
-        if (u > 0.13f && u < 0.4f) {   // afterimages: where the fist just was, in light, shrinking away
-            const float fade = 1.f - std::clamp((u - 0.28f) / 0.12f, 0.f, 1.f);
-            for (int k = 1; k <= 4; ++k) {
-                FistAt was = fistAt(std::max(0.12f, u - 0.022f * k), parryHit);
-                if (glm::length(was.p - F.p) < 0.03f) continue;
-                float sz = (1.f - 0.18f * k) * fade;
-                b.lit(glow * (1.3f * fade / k));
-                b.box(fistFrame(was), {0.f, 0.f, 0.f}, glm::vec3{0.07f, 0.06f, 0.06f} * sz, glow * 0.12f);
+        if (u > WHACK_AT && u < 0.48f) {   // the crescent: the arc it just cut, thick at the fist, thinning back
+            const float fade = 1.f - std::clamp((u - WHACK_END) / (0.48f - WHACK_END), 0.f, 1.f);
+            const glm::vec3 view{0.f, 0.f, 1.f};
+            glm::vec3 prev = F.p;
+            for (int k = 1; k <= 10; ++k) {
+                glm::vec3 was = fistAt(std::max(WHACK_AT, u - 0.012f * k), parryHit).p;
+                if (glm::length(was - prev) < 0.004f) break;
+                float w = (1.f - k / 11.f) * fade;
+                b.lit(glm::mix(glm::vec3{2.2f, 2.f, 1.8f}, glow * 2.f, std::min(1.f, k / 3.f)) * (1.2f * w));
+                gunkit::limb(b, prev, was, 0.026f * w + 0.003f, 0.012f * w + 0.002f, view, glow);
+                prev = was;
             }
             b.unlit();
         }
         if (parryHit && hu > 0.f && hu < 1.f) {
-            const glm::vec3 c = glm::vec3(ff * glm::vec4(0.f, 0.f, 0.085f, 1.f));   // just off the knuckles
-            const glm::vec3 z = glm::vec3(ff[2]), x = glm::vec3(ff[0]), y = glm::vec3(ff[1]);
+            const glm::vec3 c = whackArc(0.42f) + glm::vec3{0.f, 0.02f, 0.06f};   // where it crossed the crosshair
+            const glm::vec3 z{0.f, 0.f, 1.f}, x{1.f, 0.f, 0.f}, y{0.f, 1.f, 0.f};
+            const glm::vec3 fling = whackLead(0.42f);                              // the way it was going
             const float g = 1.f - hu, e = 1.f - g * g * g;
             const glm::vec3 hot{2.8f, 2.5f, 2.f};
-            b.lit(hot * (5.f * g * g));                                            // the flash
-            b.box(glm::translate(glm::mat4(1.f), c), {0.f, 0.f, 0.f}, glm::vec3{0.11f * g + 0.02f}, glm::vec3{1.f});
+            b.lit(hot * (4.f * g * g));                                            // the flash
+            b.box(glm::translate(glm::mat4(1.f), c), {0.f, 0.f, 0.f}, glm::vec3{0.06f * g * g + 0.012f}, glm::vec3{1.f});
             for (int k = 0; k < 14; ++k) {                                         // the ring of shards
                 float a = k * 0.4487989f + 0.2f * std::sin(k * 3.7f);
                 glm::vec3 d = x * std::cos(a) + y * std::sin(a);
-                glm::vec3 p0 = c + d * (0.04f + 0.3f * e) - z * (0.04f * e), p1 = p0 + d * (0.07f * g + 0.012f);
+                glm::vec3 p0 = c + d * (0.03f + 0.26f * e) + fling * (0.12f * e), p1 = p0 + d * (0.05f * g + 0.01f);
                 b.lit(glm::mix(hot, glow * 2.f, hu) * (2.5f * g));
-                gunkit::limb(b, p0, p1, 0.016f * g + 0.003f, 0.008f * g + 0.002f, z, glow);
+                gunkit::limb(b, p0, p1, 0.01f * g + 0.002f, 0.005f * g + 0.0015f, z, glow);
             }
-            for (int k = 0; k < 10; ++k) {                                         // sparks, thrown out and falling
-                float a = k * 2.399963f, sp = 0.35f + 0.25f * std::fmod(k * 0.618f, 1.f);
-                glm::vec3 d = glm::normalize(x * std::cos(a) + y * std::sin(a) + z * 0.6f);
+            for (int k = 0; k < 12; ++k) {                                         // sparks, flung along the swing and falling
+                float a = k * 2.399963f, sp = 0.35f + 0.3f * std::fmod(k * 0.618f, 1.f);
+                glm::vec3 d = glm::normalize(x * std::cos(a) * 0.6f + y * std::sin(a) * 0.6f + fling * 1.1f + z * 0.3f);
                 glm::vec3 p = c + d * (sp * e) - glm::vec3{0.f, 0.25f * hu * hu, 0.f};
                 b.lit(hot * (3.f * g));
                 b.box(glm::translate(glm::mat4(1.f), p), {0.f, 0.f, 0.f}, glm::vec3{0.014f * g + 0.003f}, glm::vec3{1.f});
