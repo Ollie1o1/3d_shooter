@@ -187,15 +187,25 @@ inline int Enemy::abParried(bool bySword) {
     if (attack == AttackKind::AMETEOR) { abDowned(); ev.abShotDown = false; return 4; }   // knocked out of the sky (not shot down)
     if (bySword && abBlade && attack == AttackKind::ASWEEP) {   // blade meets blade: his shatters
         ev.abBladeBroke = true; abBlade = false; abBladeGone = AB_BLADE_BACK;   // (counts once he's back on his feet)
-        stagger(AB_BREAK); abReeling = false; abParries = 0;
+        stagger(AB_BREAK); abReeling = false; abParries = 0; abShoveBack(6.f);
         return 3;
     }
-    if (attack == AttackKind::MBACKHAND || ++abParries >= 2) { stagger(AB_BREAK); abReeling = false; abParries = 0; return 2; }   // (MORNINGSTAR's backhand, met: broken)
+    if (attack == AttackKind::MBACKHAND || ++abParries >= 2) { stagger(AB_BREAK); abReeling = false; abParries = 0; abShoveBack(6.f); return 2; }   // (MORNINGSTAR's backhand, met: broken)
     int cur = abCur, next = abStep + 1;
-    stagger(AB_REEL);                 // the strike is cancelled...
+    stagger(AB_REEL);                 // the strike is cancelled, his stance broken...
     abCur = cur; abStep = next;       // ...and after the reel the string goes on
-    abReeling = true; abStruck = false;
+    abReeling = true; abStruck = false; abShoveBack(6.f);
     return 1;
+}
+// Driven straight back from where he faces (you): a burst that dies away, about v/5 metres (MORNINGSTAR's mass takes less of it)
+inline void Enemy::abShoveBack(float v) {
+    abShove = -glm::vec3{std::sin(yaw), 0.f, std::cos(yaw)} * v * (morning() ? 0.6f : 1.f);
+}
+inline void Enemy::abShoveTick(float dt, const EnemyWorld& w) {
+    if (glm::length(abShove) < 0.05f) { abShove = glm::vec3{0.f}; return; }
+    const glm::vec3 p = absSafeXZ(w, position + abShove * dt, position);   // (round a pillar, never off the edge)
+    position.x = p.x; position.z = p.z;
+    abShove *= std::exp(-5.f * dt);
 }
 
 inline glm::vec3 Enemy::abGround(const EnemyWorld& w, glm::vec3 p) const {
@@ -242,8 +252,25 @@ inline void Enemy::abDowned() {
 }
 
 inline void Enemy::thinkAbsolute(float dt, const EnemyWorld& w, bool resolve) {
+    const glm::vec3 was = position;
     thinkAbsoluteMind(dt, w, resolve);
     abFly(dt, w);
+    abGaitTick(dt, was);
+}
+// His steps: he places himself (no integrate), so animPhase walks with the floor he actually
+// covers, a stride per stride's length, and his feet never skate. Aloft, diving, dashing or
+// blinking across the floor his feet aren't stepping, and the gait settles out.
+inline void Enemy::abGaitTick(float dt, glm::vec3 was) {
+    const glm::vec2 dv{position.x - was.x, position.z - was.z};
+    const float dist = glm::length(dv);
+    const bool stepping = dt > 0.f && abAlt < 0.3f && !abDiving && dist < AB_DASH * 0.9f * dt &&
+                          !(telegraphTimer > 0.f && attack == AttackKind::ADASH);
+    const float dir = glm::dot(dv, glm::vec2{std::sin(yaw), std::cos(yaw)}) < -0.3f * dist ? -1.f : 1.f;   // (backing off: the steps run backwards)
+    const float v = stepping ? dir * dist / dt : 0.f;
+    abGait += (v - abGait) * (1.f - std::exp(-8.f * dt));
+    if (!stepping) return;
+    const float stride = glm::clamp(0.75f + 0.15f * std::fabs(abGait), 0.75f, 2.4f) * scale;   // a shuffle .. a sprinter's bound (MORNINGSTAR's longer, slower)
+    animPhase += dir * dist / stride * 3.1415927f;   // (a step is half a cycle)
 }
 inline void Enemy::thinkAbsoluteMind(float dt, const EnemyWorld& w, bool resolve) {
     if (w.hasZenith) abCentre = w.zenCentre;

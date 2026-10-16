@@ -469,7 +469,7 @@ struct Enemy {
     int   levSiteAttacks = 0;      // attacks made from this root (THE HUNT: two, then it dives)
     int   levSeq = 0;              // where it is in its rotation
     // THE ABSOLUTE (EnemyAbsolute.h): he fights in strings (combos) from a table
-    static constexpr float AB_PHASE2 = 0.60f, AB_PHASE3 = 0.25f, AB_JUDGE_AT = 0.08f, AB_ARRIVE = 2.f, AB_REEL = 0.8f,
+    static constexpr float AB_PHASE2 = 0.60f, AB_PHASE3 = 0.25f, AB_JUDGE_AT = 0.08f, AB_ARRIVE = 2.f, AB_REEL = 1.25f,
                            AB_BREAK = 3.f, AB_SPENT = 4.f, AB_DEFLECT = 14.f, AB_CAMP = 3.f, AB_FAR = 30.f, AB_RUN = 11.f,
                            AB_DASH = 32.f, AB_REACH = 2.8f, AB_FOLLOW_FLOOR = 0.22f, AB_QUICK = 0.75f, AB_RANGE = 20.f,
                            AB_BLADE_BACK = 3.f, AB_HALO_TIME = 2.f, AB_JUDGE_WARN = 2.f,
@@ -494,6 +494,7 @@ struct Enemy {
     int   abForce = -1;                // tests / dev: the next string
     int   abParries = 0;               // white strikes parried in this string
     bool  abReeling = false;           // this stagger is a reel (x1.5), not a break (x2)
+    glm::vec3 abShove{0.f};            // a parry's shove: he's driven back on his heels while staggered (abShoveTick)
     bool  abParriedThis = false;       // the current strike has been parried
     bool  abStruck = false;            // a strike has landed in this string (the next tell is a follow-up)
     float abArrive = AB_ARRIVE;        // descending onto the Dais: untouchable
@@ -522,6 +523,7 @@ struct Enemy {
     static constexpr int AB_BODY = 24;
     float abBody[AB_BODY] = {}, abBodyV[AB_BODY] = {}, abBodyPrev[AB_BODY] = {};
     bool  abBodyLive = false;
+    float abGait = 0.f;                // his feet's speed over the floor, smoothed (+ forward, - backing off): his steps (abGaitTick)
     AttackKind abBodyAtk = AttackKind::NONE, abBodyLanded = AttackKind::NONE;
     float abBodyTT = 0.f, abBodySince = 9.f;
     bool  levAtPool() const { return glm::length(glm::vec2{levRoot.x - levHome.x, levRoot.z - levHome.z}) < 1.f; }
@@ -732,7 +734,12 @@ struct Enemy {
             staggerTimer -= dt;
             velocity.x = velocity.z = 0.f;
             if (type == EnemyType::LEVIATHAN) { levReel(dt); return; }   // its head down on the ring
-            if (type == EnemyType::ABSOLUTE) { abFly(dt, w); if (staggerTimer <= 0.f) abReeling = false; return; }   // he stands where he was struck (or falls there)
+            if (type == EnemyType::ABSOLUTE) {   // he stands where he was struck (or falls there), unless a parry drives him back
+                const glm::vec3 was = position;
+                abShoveTick(dt, w); abFly(dt, w); abGaitTick(dt, was);
+                if (staggerTimer <= 0.f) { abReeling = false; abShove = glm::vec3{0.f}; }
+                return;
+            }   // he stands where he was struck (or falls there)
             integrate(dt, w);
             return;
         }
@@ -1361,6 +1368,7 @@ private:
     void thinkLeviathan(float dt, const EnemyWorld& w, bool resolve);  // EnemyLeviathan.h
 public:
     int  abParried(bool bySword);                                     // EnemyAbsolute.h
+    void abShoveBack(float v);
     static bool abMeleeWhite(AttackKind k) {                          // a white strike from his body or blade (parryable)
         return k == AttackKind::AJAB || k == AttackKind::AHOOK || k == AttackKind::ASWEEP || k == AttackKind::AMETEOR ||
                k == AttackKind::ACROSS || k == AttackKind::ABACKFIST || k == AttackKind::AELBOW || k == AttackKind::AROUNDHOUSE ||
@@ -1372,6 +1380,8 @@ private:
     void thinkAbsolute(float dt, const EnemyWorld& w, bool resolve);   // EnemyAbsolute.h
     void thinkAbsoluteMind(float dt, const EnemyWorld& w, bool resolve);
     void abFly(float dt, const EnemyWorld& w);
+    void abGaitTick(float dt, glm::vec3 was);
+    void abShoveTick(float dt, const EnemyWorld& w);
     void abOrbit(float dt, const EnemyWorld& w, glm::vec3 feet);
     void abDowned();
     void abPhaseCheck(float hp);

@@ -30,15 +30,22 @@ inline bool GameplayState::parryAbsolute(Enemy& e, bool bySword) {
     int r = e.abParried(bySword);
     if (!r) return false;
     viewModel.triggerParry(true);
-    parryFeedback(e.position + glm::vec3{0.f, 1.6f, 0.f}, r >= 2);
-    styleSystem.addStyle(r >= 2 ? 80.f : 40.f, StyleSource::PARRY);
+    // every parry of his is a heavy one: the blow stopped dead, a ring of air off the contact, his stance broken
+    const glm::vec3 contact = glm::mix(player.camera.position + player.camera.forward() * 1.2f, e.position + glm::vec3{0.f, 1.6f * e.scale, 0.f}, 0.5f);
+    parryFeedback(contact, true);
+    fx.spawnShockwave(contact, r >= 2 ? 5.f : 3.5f, {1.6f, 1.55f, 1.5f});
+    explosionFlashTimer = 0.3f; explosionFlashPos = contact;
+    styleSystem.addStyle(r >= 2 ? 80.f : 50.f, StyleSource::PARRY);
     styleSystem.heal((bySword ? Sword::HEAL_PARRY : 4.f) * tune().heal);
-    gainXp(r >= 2 ? 40 : 15);
+    gainXp(r >= 2 ? 40 : 20);
     audio.play(r >= 2 ? "ab_shatter" : "ab_clang", 128, SoundGroup::PLAYER, true);   // the clang (a break: glass and a choir)
-    audio.duck(4.f, 0.4f);
+    { SfxMixer::Opts o; o.volume = 1.f; o.group = SoundGroup::PLAYER; o.priority = true; o.pitch = 0.55f;   // under it, the same clang an octave down: the weight
+      audio.playOpts("ab_clang", o); }
+    audio.duck(5.f, 0.5f);
     audio.stop(abWindH); abWindH = 0;
-    hitStopFrames = std::max(hitStopFrames, r >= 2 ? 8 : 5);
-    if (r == 1) ui.feed("REELING", {1.f, 1.f, 1.f});
+    hitStopFrames = std::max(hitStopFrames, r >= 2 ? 10 : 8);
+    shake(r >= 2 ? 0.45f : 0.3f, r >= 2 ? 0.07f : 0.05f);
+    if (r == 1) ui.toast("STANCE BROKEN", "PUNISH HIM", {1.f, 1.f, 1.f}, 0.9f);
     if (r == 4) { ui.toast("KNOCKED DOWN", "ONE AND A HALF SECONDS", {1.f, 0.95f, 0.8f}, 1.4f); shake(0.4f, 0.06f); }
     if (r == 2) { ui.toast("BROKEN", "THREE SECONDS - DOUBLE DAMAGE", {1.f, 0.95f, 0.7f}, 1.6f); shake(0.4f, 0.06f); }
     if (r == 3) {

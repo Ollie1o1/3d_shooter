@@ -97,19 +97,34 @@ inline AbsPose absoluteGuard(const Enemy& e, float time) {
     const float feint = std::pow(std::max(0.f, std::sin(t * 1.37f + 2.f)), 14.f);
     P.dip += 0.08f * feint; P.torsoYaw += 0.2f * feint; P.torsoRoll += 0.08f * feint; P.shR -= 0.25f * feint; P.elR -= 0.35f * feint;
     P.shrug += 0.015f * std::sin(t * 1.1f);                                   // breathing
-    // on the move: short shuffling steps that keep the stance; at a run he squares up, leans in, guard still up
-    const float stride = glm::clamp(e.moveSpeed / Enemy::AB_RUN, 0.f, 1.2f), ph = e.animPhase;
-    if (stride > 0.05f) {
+    // on the move (animPhase walks with his feet: abGaitTick): short steps that keep the stance; at
+    // a run he squares up and leans in, the guard still up. The swinging leg's knee folds as it
+    // passes under him; the hips turn with the legs, the shoulders and arms against them
+    const float stride = glm::clamp(std::fabs(e.abGait) / Enemy::AB_RUN, 0.f, 1.2f), ph = e.animPhase;
+    if (stride > 0.03f) {
         const float run = glm::clamp((stride - 0.35f) / 0.5f, 0.f, 1.f);
-        const float sw = std::sin(ph) * (0.25f + 0.4f * run) * stride;
+        const float on = glm::clamp(stride * 2.5f, 0.f, 1.f);   // (even a slow step is a real step)
+        const float dir = e.abGait < 0.f ? -1.f : 1.f;          // (backing off: the swing runs the other way)
+        const float sn = std::sin(ph), cs = std::cos(ph);
+        const float sw = sn * (0.22f + 0.43f * run) * on;
         P.hipR += sw; P.hipL -= sw;
-        P.kneeR += std::max(0.f, -std::sin(ph)) * (0.5f + 0.7f * run) * stride;
-        P.kneeL += std::max(0.f, std::sin(ph)) * (0.5f + 0.7f * run) * stride;
-        P.hipYaw += 0.35f * run; P.torsoYaw -= 0.1f * run; P.torsoPitch += 0.2f * run;
-        P.shR += 0.12f * std::sin(ph) * run; P.shL -= 0.12f * std::sin(ph) * run;
-        P.torsoRoll += 0.05f * std::sin(ph) * stride; P.dip += 0.04f * stride;
+        const float fold = (0.45f + 0.95f * run) * on;
+        P.kneeR += 0.08f * on + std::max(0.f, -cs * dir) * fold;
+        P.kneeL += 0.08f * on + std::max(0.f, cs * dir) * fold;
+        P.ankle -= 0.35f * run;                                   // (off the toes at a run)
+        P.hipYaw += 0.38f * glm::clamp(stride * 1.5f, 0.f, 1.f) - 0.2f * sn * (0.4f + 0.6f * run) * on;
+        P.torsoYaw += -0.1f * run + 0.32f * sn * (0.4f + 0.6f * run) * on;
+        P.torsoPitch += 0.22f * run;
+        const float pump = (0.1f + 0.3f * run) * on;
+        P.shR -= pump * sn; P.shL += pump * sn;                   // each arm with the opposite leg
+        P.elR += 0.15f * pump * cs; P.elL -= 0.15f * pump * cs;
+        P.torsoRoll += 0.05f * cs * on; P.dip += 0.04f * stride;
     }
     return P;
+}
+// (his body's rise and fall over a stride: highest as the legs scissor, in a run's flight)
+inline float absBob(const Enemy& e) {
+    return std::fabs(std::sin(e.animPhase)) * 0.06f * glm::clamp(std::fabs(e.abGait) / 11.f, 0.f, 1.f);
 }
 
 // A move's two keys on top of his guard: the chamber it winds into (strike false) and the blow at
@@ -161,6 +176,9 @@ inline void absoluteMove(AbsPose& P, AttackKind a, bool strike, float tp) {
         break;
     case AttackKind::ATELEPORT: case AttackKind::AHOP: case AttackKind::ADASH:
         P.torsoPitch = 0.4f; P.shR = P.shL = 0.7f; P.elR = P.elL = 0.4f; P.dip += 0.18f;
+        if (a == AttackKind::ADASH) {   // one long burst of a step, lead foot out, the rear leg driving
+            P.hipYaw = -0.15f; P.hipL = -0.85f; P.kneeL = 0.55f; P.hipR = 0.6f; P.kneeR = 0.35f; P.ankle = 0.6f;
+        }
         break;
     case AttackKind::ASWEEP:      // the blade cocked back behind his right shoulder, then flat across
         P.glow = 4; P.shL = -0.8f; P.elL = 1.6f; P.dip += 0.12f;
@@ -308,6 +326,11 @@ inline AbsPose absolutePose(const Enemy& e, float time) {
             P.plant = 1.f; P.ankle = 1.f; P.stanceW = 0.12f; P.hipR = 0.3f; P.kneeR = 0.35f; P.hipL = -0.2f; P.kneeL = 0.3f;
             P.torsoPitch = -0.4f; P.torsoRoll = 0.12f; P.shR = P.shL = 0.25f; P.shRz = P.shLz = 0.55f; P.elR = P.elL = 0.4f; P.headPitch = -0.3f;
             P.fistR = P.fistL = 0.5f;
+            // driven back by the shove: stumbling steps (abGait runs backwards), not a slide
+            const float st = glm::clamp(std::fabs(e.abGait) / Enemy::AB_RUN * 2.5f, 0.f, 1.f), sn = std::sin(e.animPhase), cs = std::cos(e.animPhase);
+            P.hipR += 0.35f * sn * st; P.hipL -= 0.35f * sn * st;
+            P.kneeR += std::max(0.f, cs) * 0.7f * st; P.kneeL += std::max(0.f, -cs) * 0.7f * st;
+            P.torsoPitch -= 0.15f * st;
         } else {             // broken: down on one knee, head bowed
             P.omega = 12.f;
             P.crouch = 0.62f; P.hipR = -1.45f; P.kneeR = 1.5f; P.hipL = 0.55f; P.kneeL = 2.3f;
@@ -354,8 +377,7 @@ inline AbsPose absoluteLivePose(const Enemy& e, float time) {
 
 // His torso's frame (the rig and headBox share it, so the head you see is the head you hit)
 inline mat4 absoluteTorsoFrame(const Enemy& e, const mat4& root, const AbsPose& P) {
-    float bob = std::fabs(std::sin(e.animPhase)) * 0.04f * glm::clamp(e.moveSpeed / 11.f, 0.f, 1.f);
-    return root * T({0.f, P.lift - P.crouch + bob, 0.f}) * RY(P.hipYaw) * T({0.f, 1.30f, 0.f})
+    return root * T({0.f, P.lift - P.crouch + absBob(e), 0.f}) * RY(P.hipYaw) * T({0.f, 1.30f, 0.f})
          * RY(P.torsoYaw) * RZ(P.torsoRoll) * RX(P.torsoPitch);
 }
 inline mat4 absoluteHeadFrame(const Enemy& e, const mat4& root, const AbsPose& P) {
@@ -388,8 +410,7 @@ inline void buildAbsolute(const Enemy& e, float time, Rig& r, const mat4& root) 
         bool on = P.glow == limb || P.glow == 5 || (P.glow == 3 && (limb == 0 || limb == 1));
         return on ? tc * tk : base;
     };
-    const float bob = std::fabs(std::sin(e.animPhase)) * 0.04f * glm::clamp(e.moveSpeed / 11.f, 0.f, 1.f);
-    const mat4 body = root * T({0.f, P.lift - P.crouch + bob, 0.f}) * RY(P.hipYaw);
+    const mat4 body = root * T({0.f, P.lift - P.crouch + absBob(e), 0.f}) * RY(P.hipYaw);
 
     // ---- legs: thigh, its plate and two veins, knee cap, shin, calf, its seam, foot, two toes, heel, an ankle wrap ----
     for (float s : {-1.f, 1.f}) {

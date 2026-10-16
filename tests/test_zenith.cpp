@@ -497,7 +497,7 @@ int main() {
             }
         }
         CHECK(blinked, "TOO SLOW opens with a teleport (an afterimage)");
-        CHECK(firstOk && whites >= 2 && std::fabs(reeled - Enemy::AB_REEL) < 0.05f, "the first parry: he reels 0.8 s (x1.5), and the string goes on");
+        CHECK(firstOk && whites >= 2 && std::fabs(reeled - Enemy::AB_REEL) < 0.05f, "the first parry breaks his stance: 1.25 s (x1.5), and the string goes on");
         CHECK(secondOk, "the second in one string breaks him: 3 s at x2");
         CHECK(e.abParried(false) == 0, "a broken Absolute can't be parried again");
     }
