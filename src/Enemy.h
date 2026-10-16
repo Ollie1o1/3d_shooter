@@ -246,6 +246,7 @@ struct EnemyEvents {
     bool abRay = false, abStomp = false, abSerpent = false, abHalo = false, abSeams = false, abZenith = false,
          abBladeDrawn = false, abBladeBroke = false, abJudgeMark = false, abJudge = false, abLaunch = false, abShards = false;
     bool abTakeoff = false, abShotDown = false;   // he left the floor; he was shot out of the sky
+    bool abLanded = false;                        // his entrance: down on the Dais
     bool abCue = false, abImpact = false; AttackKind abImpactKind = AttackKind::NONE;   // the beat to act on; a blow landing (hit or miss) and what it was
     bool abHeavy = false, abCrack = false;   // a haymaker landed (a big knockback); an axe kick's crack (at abTo)
     bool abFan = false;                      // THUNDERCLAP: a fan of fire rolls out from the floor under him (abFrom) toward abTo
@@ -674,6 +675,8 @@ struct Enemy {
         if (hitFlashTimer > 0.f) hitFlashTimer -= dt;
         if (haloOpenTimer > 0.f) haloOpenTimer = std::max(0.f, haloOpenTimer - dt);
 
+        // THE ABSOLUTE's entrance is his descent (abArrive): no materialising on the floor first
+        if (state == EnemyState::SPAWNING && type == EnemyType::ABSOLUTE) { spawnTimer = 0.f; state = EnemyState::ACTIVE; }
         if (state == EnemyState::SPAWNING) {
             spawnTimer -= dt;
             if (spawnTimer <= 0.f) { spawnTimer = 0.f; state = EnemyState::ACTIVE; }

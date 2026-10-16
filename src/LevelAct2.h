@@ -1012,19 +1012,9 @@ inline void buildZenith(LevelBuilder& B) {
         int w = B.solid(s.x - 4.f, F - 2.5f, s.z - 4.f, s.x + 4.f, F, s.z + 4.f);
         L.zenith.shardWalls.push_back(w); L.zenith.shardHome.push_back(L.walls[w].box); L.zenith.shardUp.push_back(true);
     }
-    // the Halo and the shattered eclipse: backdrop, never in the way
+    // the Halo: backdrop, never in the way. The eclipse is the sky's (straight
+    // overhead, out of reach: skybox.frag, Theme::eclipse)
     B.kit(true).curve({C.x, 0.f, C.z}, ZEN_HALO_R, 0.f, 6.2831853f, F + ZEN_HALO_UP, F + ZEN_HALO_UP + 1.6f, 1.2f, gold * 0.9f, 128);
-    vec3 E = C + vec3{0.f, 14.f, -130.f};   // the eclipse low on the horizon, the setting sun behind it
-    B.kit().rod(E, E + vec3{0.f, 0.f, 3.f}, 46.f, black, 48);   // the disc, facing the floor
-    for (int k = 0; k < 9; ++k) {                               // light through its cracks
-        float a = k * 0.698f + 0.2f;
-        B.kit(true).box(E + vec3{std::cos(a) * 20.f, std::sin(a) * 20.f, 3.2f}, {38.f, 0.6f, 0.2f}, seam * 0.8f, 0.f, 0.f, a);
-    }
-    for (int k = 0; k < 72; ++k) {                              // the setting sun's corona burning round its rim (behind it)
-        float a = k * 0.0872665f, seg = 2.f * 3.1415927f / 72.f;
-        B.kit(true).box(E + vec3{std::cos(a) * 47.5f, std::sin(a) * 47.5f, -1.f}, {47.5f * seg * 1.1f, 3.f, 0.2f}, vec3{2.6f, 1.f, 0.3f}, 0.f, 0.f, a + 1.5707963f);
-        B.kit(true).box(E + vec3{std::cos(a) * 52.f, std::sin(a) * 52.f, -2.f}, {52.f * seg * 1.1f, 6.f, 0.2f}, vec3{1.1f, 0.3f, 0.08f}, 0.f, 0.f, a + 1.5707963f);
-    }
 
     Arena a;
     a.name = ZENITH_NAME; a.space = ReverbSpace::OPEN;
@@ -1043,12 +1033,13 @@ inline void buildZenith(LevelBuilder& B) {
     a.damageScale = 1.f;
     a.ambient = Ambient::MOTES;
     a.theme = Theme{
-        {0.03f,0.02f,0.08f}, {0.75f,0.18f,0.06f}, {0.08f,0.02f,0.05f},            // near-black indigo overhead, wine, a crimson-orange horizon
-        glm::normalize(vec3{0.f, 0.107f, -1.f}), {1.6f,0.45f,0.12f}, 0.12f, 0.f,    // the sun setting behind the cracked eclipse
-        {0.16f,0.05f,0.09f}, 0.35f,                                               // far ridges in silhouette; a few stars
-        glm::normalize(vec3{0.f,-0.3f,1.f}), {1.3f,0.6f,0.32f},                   // a low, warm key light: long shadows off the pillars
-        {0.2f,0.14f,0.3f}, {0.13f,0.06f,0.08f},                                   // dim violet fill
-        {0.36f,0.13f,0.16f}, 0.0026f };                                           // dusky red-violet haze
+        {0.012f,0.004f,0.02f}, {0.42f,0.05f,0.04f}, {0.1f,0.02f,0.03f},            // near-black overhead, blood at the horizon, the cloud sea below
+        vec3{0.f, 1.f, 0.f}, {1.25f,0.16f,0.06f}, 0.19f, 0.f,                       // the eclipse straight overhead; its corona's colour
+        {0.16f,0.05f,0.09f}, 0.4f,                                                // (no ridges up here); stars round the eclipse
+        glm::normalize(vec3{0.35f,-0.28f,0.9f}), {1.0f,0.32f,0.18f},             // a low blood-orange key: the sunset all round
+        {0.16f,0.08f,0.14f}, {0.34f,0.07f,0.06f},                                 // dark above, red thrown up from the clouds below
+        {0.3f,0.06f,0.06f}, 0.0024f,                                              // blood haze
+        1.f };                                                                    // the eclipse sky
     L.arenas.push_back(std::move(a));
 }
 

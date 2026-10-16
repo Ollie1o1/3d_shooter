@@ -90,6 +90,16 @@ inline void GameplayState::onAbsoluteEvents(Enemy& e, const EnemyEvents& ev) {
         fx.spawnBurst(ev.blinkFrom + glm::vec3{0.f, 1.3f, 0.f}, white, 10, 4.f, 0.3f, 0.f);
         at("ab_zap", ev.blinkFrom, 1.f, 100, 0.f);
     }
+    if (ev.abLanded) {   // his entrance comes down: the Dais rings, the eclipse flares
+        fx.spawnShockwave(e.position, 12.f, {1.6f, 1.5f, 1.3f});
+        fx.spawnBurst(e.position + glm::vec3{0.f, 0.3f, 0.f}, {1.6f, 1.55f, 1.4f}, 50, 12.f, 0.6f, 3.f);
+        at("ab_boom_stone", e.position, 0.8f, 128, 0.6f);
+        float d = glm::length(player.position - e.position);
+        shake(0.35f + 0.3f * glm::clamp(1.f - d / 40.f, 0.f, 1.f), 0.07f);
+        eclipseFlare = std::max(eclipseFlare, 0.7f);
+    }
+    if (ev.abPhase >= 2) eclipseFlare = 1.f;
+    if (ev.abBladeDrawn) abShaftT = 0.f;   // the blade comes down to him out of the eclipse
     if (ev.abPhase == 2) { pushBanner("HE ASCENDS", "STAY CLOSE", {1.f, 0.95f, 0.8f}, 3.f); shake(0.5f, 0.06f); audio.duck(6.f, 0.6f); }
     if (ev.abPhase == 3) { pushBanner("HE DRAWS HIS SWORD", "WATCH THE BLADE", {1.f, 0.5f, 0.6f}, 3.f); shake(0.5f, 0.06f); audio.duck(6.f, 0.6f); }
     if (ev.abHalo) { abh.addHalo(level.zenith.centre, level.zenith.centre.y); audio.play("explosion", 100, SoundGroup::WORLD); }
@@ -157,6 +167,11 @@ inline void GameplayState::updateAbsolute(float dt) {
     if (abLineT > 0.f) abLineT -= dt;
     if (abHintT > 0.f) abHintT -= dt;
     updateAbsoluteDeath(dt);
+    eclipseFlare *= std::exp(-dt * 1.4f);
+    if (abShaftT >= 0.f && (abShaftT += dt) > AB_SHAFT) abShaftT = -1.f;
+    if (abDawnT >= 0.f) abDawnT = std::min(abDawnT + dt, 60.f);
+    if (g_devOverlay.rfind("dawn", 0) == 0) abDawnT = AB_DAWN_FROM + AB_DAWN_TIME * std::atoi(g_devOverlay.c_str() + 4) / 100.f;   // dev: --overlay dawnNN (screenshots)
+    if (g_devOverlay == "flare") eclipseFlare = 1.f;
     if (!(level.zenith.built && act2() && director.arena == ZENITH_ARENA)) return;
     Enemy* e = absolute();
     if (abSkyMarkT >= 0.f && !abSkyLive(e)) abSkyMarkT = -1.f;   // shot down, a phase, his death: no SKYFALL, no circle
@@ -222,7 +237,7 @@ inline void GameplayState::onAbsoluteKilled(const Enemy& e) {
     abCorpse = e; abCorpse.alive = true; abCorpse.abAlt = abCorpse.abAltWant = 0.f;   // (shot out of the sky or not, he dies on the floor)
     abCorpse.position.y = level.zenith.centre.y + (glm::length(glm::vec2{e.position.x - level.zenith.centre.x, e.position.z - level.zenith.centre.z}) < ZEN_DAIS ? ZEN_DAIS_UP : 0.f); abCorpse.staggerTimer = 1.f; abCorpse.abReeling = false;
     abCorpse.attack = AttackKind::NONE; abCorpse.telegraphTimer = 0.f; abCorpse.abBlade = false;
-    abDeathT = 0.f;
+    abDeathT = 0.f; abDawnT = 0.f; abShaftT = -1.f; eclipseFlare = 1.f;
     abLineShown = AB_LINE_WORTHY; abLineT = 3.f;
     audio.playAt("v_absolute_line", e.position, 128, SoundGroup::ENEMY, true, 0.8f);   // "...WORTHY.", lower
     fx.spawnShockwave(e.position, 20.f, {1.6f, 1.5f, 1.2f});
@@ -254,6 +269,22 @@ inline void GameplayState::gatherAbsoluteBoxes(std::vector<BoxInstance>& out) {
         float yaw = std::atan2(d.x, d.z), pitch = -std::asin(glm::clamp(d.y, -1.f, 1.f));
         push(out, T((a + b) * 0.5f) * RY(yaw) * RX(pitch) * S({w, w, l}), col, emi);
     };
+    // light out of the eclipse: the pillar he comes down in, the shaft that brings his blade
+    if (const Enemy* a = absolute()) {
+        const float sky = 170.f;
+        if (a->abArrive > 0.f) {
+            float k = glm::clamp(a->abArrive / Enemy::AB_ARRIVE, 0.f, 1.f), pulse = 0.85f + 0.15f * std::sin(t * 31.f);
+            glm::vec3 foot{a->position.x, C.y + ZEN_DAIS_UP + 0.05f, a->position.z};
+            along(foot, foot + glm::vec3{0.f, sky, 0.f}, 0.5f + 1.1f * k, glm::vec3{1.f}, glm::vec3{2.4f, 2.1f, 1.8f} * (0.6f + k) * pulse);
+            along(foot, foot + glm::vec3{0.f, sky, 0.f}, 0.15f + 0.2f * k, glm::vec3{1.f}, glm::vec3{4.f, 3.8f, 3.5f});   // (thin: the white-hot core shows through bloom)
+            push(out, T(foot) * RY(t * 2.f) * S({ZEN_DAIS * 1.6f * (1.f - k * 0.5f), 0.04f, ZEN_DAIS * 1.6f * (1.f - k * 0.5f)}), glm::vec3{1.f}, gold * (1.f - k) * 1.2f);
+        }
+        if (abShaftT >= 0.f) {
+            float u = abShaftT / AB_SHAFT, w = (u < 0.15f ? u / 0.15f : 1.f - (u - 0.15f) / 0.85f);
+            glm::vec3 hand = a->position + glm::vec3{0.f, 2.f, 0.f};
+            along(hand, hand + glm::vec3{0.f, sky, 0.f}, 0.25f + 0.6f * w, glm::vec3{1.f}, glm::mix(red, glm::vec3{2.6f, 2.3f, 2.2f}, 0.6f) * w * 1.4f);
+        }
+    }
     // pillars: white columns with glowing cracks and a capital; a shattered one falls apart
     for (int k = 0; k < (int)level.zenith.pillarHome.size(); ++k) {
         const AABB& b = level.zenith.pillarHome[k];

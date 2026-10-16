@@ -222,6 +222,7 @@ inline void Enemy::thinkAbsoluteMind(float dt, const EnemyWorld& w, bool resolve
 
     if (abArrive > 0.f) {   // descending onto the Dais from above
         abArrive -= dt;
+        if (abArrive <= 0.f) ev.abLanded = true;
         abAlt = abAltWant = AB_ARRIVE_UP * glm::clamp((abArrive - 0.3f) / (AB_ARRIVE - 0.3f), 0.f, 1.f);
         turnToward(to, dt, 6.f);
         return;

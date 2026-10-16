@@ -56,35 +56,101 @@ public:
     // whatever the gun is doing
     void triggerParry(bool hit)   { parryTimer = PARRY_TIME; parryHit = hit; }
 
-    // OATHBREAKER instead of the gun (Gameplay_Render.h draws this while it's out)
-    void drawSword(ShaderProgram& shader, const Camera& cam, const Sword& s) {
+    // OATHBREAKER instead of the gun. tickSword moves it (every frame it's out:
+    // a new stroke takes over from wherever the blade was, anything else eases
+    // there), drawSword draws it and the arms holding it.
+    void tickSword(float dt, const Sword& s) {
         float u = s.swinging() ? 1.f - s.swingT / Sword::SWING_TIME : -1.f;
         float charge = s.heldFor > 0.12f ? std::min(1.f, s.heldFor / Sword::CHARGE_TIME) : 0.f;
-        SwordPose P = gunkit::swordPose(s.lastStroke, u, s.blocking(), charge, s.thrustT > 0.f ? 1.f : 0.f);
+        SwordPose target = gunkit::swordPose(s.lastStroke, u, s.blocking(), charge, s.thrustT > 0.f ? 1.f : 0.f);
+        if (!s.swinging() && !s.blocking() && s.thrustT <= 0.f && charge <= 0.f && s.sinceSwing < Sword::SWING_TIME + SETTLE) {
+            // just after a stroke: settle from its end back to rest (a quick stroke chained on starts from here)
+            float k = gunkit::smooth(std::clamp((s.sinceSwing - Sword::SWING_TIME) / SETTLE, 0.f, 1.f));
+            target = gunkit::mixPose(gunkit::swordPose(s.lastStroke, 1.f, false, 0.f, 0.f), target, k);
+        }
+        if (s.swinging() && s.sinceSwing < swordSince) swordFrom = swordShown;   // a new stroke: from here
+        swordSince = s.sinceSwing;
+        if (s.swinging()) swordShown = gunkit::mixPose(swordFrom, target, gunkit::smooth(std::clamp(u / 0.1f, 0.f, 1.f)));
+        else              swordShown = gunkit::mixPose(swordShown, target, 1.f - std::exp(-dt * (s.blocking() ? 30.f : 18.f)));
+        swordStroke = s.swinging() ? s.lastStroke : -1; swordU = u;
+    }
+    void drawSword(ShaderProgram& shader, const Camera& cam, const Sword& s) {
+        SwordPose P = swordShown;
+        float calm = swordStroke < 0 && !s.blocking() ? 1.f : 0.f;   // a slow breath on it at rest
+        P.hand += calm * glm::vec3{std::sin(bobTimer * 1.3f) * 0.004f, std::sin(bobTimer * 0.9f) * 0.006f, 0.f};
         glm::vec3 fwd = cam.forward(), right = cam.right(), up = glm::normalize(glm::cross(right, fwd));
         glm::mat4 base(1.f);
         base[0] = glm::vec4(right, 0.f); base[1] = glm::vec4(up, 0.f); base[2] = glm::vec4(fwd, 0.f);
-        base[3] = glm::vec4(cam.position + right * P.offset.x + up * P.offset.y + fwd * P.offset.z, 1.f);
-        base = base * glm::rotate(glm::mat4(1.f), glm::radians(P.yaw), glm::vec3{0.f, 1.f, 0.f})
-                    * glm::rotate(glm::mat4(1.f), glm::radians(P.pitch), glm::vec3{-1.f, 0.f, 0.f})
-                    * glm::rotate(glm::mat4(1.f), glm::radians(P.roll), glm::vec3{0.f, 0.f, 1.f})
-                    * glm::scale(glm::mat4(1.f), glm::vec3{0.55f});   // a 1 m blade, framed like the guns
+        base[3] = glm::vec4(cam.position, 1.f);
         glm::mat4 vmProj = glm::perspective(glm::radians(65.f), cam.aspectRatio, 0.03f, 10.f);
         glClear(GL_DEPTH_BUFFER_BIT);   // the sword always draws on top
         lastEmissive = glm::vec3{-1.f};
         shader.setMat4("projection", vmProj);
         shader.setMat4("view", cam.viewMatrix());
         glDisable(GL_CULL_FACE);
+        const glm::mat4 S = glm::scale(glm::mat4(1.f), glm::vec3{gunkit::SWORD_SCALE});
+        const glm::mat4 frame = gunkit::swordFrame(P);
         SwordLook L; L.guard01 = s.guard01(); L.broken = s.broken(); L.charge = s.charged ? 1.f : 0.f;
         L.riposte = s.riposteT > 0.f ? 1.f : 0.f;
         parts.clear();
         gunkit::buildSword(L, parts);
+        for (const auto& p : parts) drawPart(shader, base * frame * S * p.xf, p.color, p.emissive);
+        // the cut's smear: the band the outer blade swept through, fading behind it
+        if (swordStroke >= 0 && swordU > 0.08f && swordU < 0.85f) {
+            glm::vec3 g = gunkit::SWORD_GLOW * (1.f + 1.2f * L.riposte);
+            const int N = 8; const float STEP = 0.022f;
+            glm::mat4 prev = frame;
+            for (int k = 1; k <= N; ++k) {
+                glm::mat4 f = gunkit::swordFrame(gunkit::swordPose(swordStroke, std::max(0.f, swordU - k * STEP), false, 0.f, 0.f));
+                float fade = 1.f - (k - 1) / (float)N;
+                // a panel along the blade's outer part, reaching from this ghost to the one after it
+                glm::vec3 tipA{prev * glm::vec4(0.f, 0.f, 0.74f * gunkit::SWORD_SCALE, 1.f)}, tipB{f * glm::vec4(0.f, 0.f, 0.74f * gunkit::SWORD_SCALE, 1.f)};
+                glm::vec3 along = glm::normalize(glm::vec3{f[2]} + glm::vec3{prev[2]});
+                glm::vec3 across = tipA - tipB;
+                float gap = glm::length(across);
+                if (gap > 1e-4f) {
+                    glm::vec3 x = glm::normalize(glm::cross(across, along)), y = glm::normalize(glm::cross(along, x));
+                    glm::mat4 m(1.f);
+                    m[0] = glm::vec4(x * 0.002f, 0.f); m[1] = glm::vec4(y * gap, 0.f); m[2] = glm::vec4(along * (0.4f * gunkit::SWORD_SCALE), 0.f);
+                    m[3] = glm::vec4((tipA + tipB) * 0.5f, 1.f);
+                    drawPart(shader, base * m, g * 0.04f, g * (1.1f * fade * fade));
+                }
+                // its leading line: the point's path, brightest
+                glm::vec3 pA{prev * glm::vec4(0.f, 0.f, 0.94f * gunkit::SWORD_SCALE, 1.f)}, pB{f * glm::vec4(0.f, 0.f, 0.94f * gunkit::SWORD_SCALE, 1.f)};
+                if (glm::length(pA - pB) > 1e-4f) {
+                    glm::vec3 z = glm::normalize(pA - pB), x = glm::normalize(glm::cross(along, z)), y = glm::cross(z, x);
+                    glm::mat4 m(1.f);
+                    m[0] = glm::vec4(x * 0.006f * fade, 0.f); m[1] = glm::vec4(y * 0.006f * fade, 0.f); m[2] = glm::vec4(z * glm::length(pA - pB) * 1.1f, 0.f);
+                    m[3] = glm::vec4((pA + pB) * 0.5f, 1.f);
+                    drawPart(shader, base * m, glm::vec3{1.f}, glm::mix(g, glm::vec3{1.6f}, 0.5f) * 2.f * fade);
+                }
+                prev = f;
+            }
+        }
+        // the arms: the right on the grip; the left on the grip under it, or flat on the blade in a guard
+        parts.clear();
+        gunkit::Builder b{parts, gunkit::SWORD_GLOW};
+        const float glow = s.broken() ? 0.15f : 0.7f + 1.2f * L.riposte + 0.6f * L.charge;
+        glm::vec3 twist{0.3f * (P.hand.x - 0.2f), 0.12f * (P.hand.y + 0.22f), 0.1f * (P.hand.z - 0.36f)};   // the body turns into the cut
+        glm::mat4 fist = frame; fist[3] = glm::vec4(P.hand, 1.f);
+        gunkit::buildArm(b, glm::vec3{0.34f, -0.62f, 0.f} + twist, fist, 1.f, false, glow);
+        float off = std::max(P.twoHand, P.brace);
+        if (off > 0.02f) {
+            glm::vec3 z{frame[2]}, y{frame[1]}, root{frame[3]};
+            glm::vec3 onGrip = root + z * (gunkit::SWORD_OFFHAND_Z * gunkit::SWORD_SCALE);
+            glm::vec3 onFlat = root + z * 0.3f + y * 0.03f;
+            glm::vec3 at = P.brace > P.twoHand ? onFlat : onGrip;
+            glm::vec3 away{-0.3f, -0.6f, 0.12f};   // below the screen
+            glm::mat4 lf = frame; lf[3] = glm::vec4(glm::mix(away, at, gunkit::smooth(std::min(off, 1.f))), 1.f);
+            gunkit::buildArm(b, glm::vec3{-0.34f, -0.62f, 0.f} + twist * 0.6f, lf, -1.f, P.brace > P.twoHand, glow);
+        }
         for (const auto& p : parts) drawPart(shader, base * p.xf, p.color, p.emissive);
         if (parryTimer > 0.f) drawFist(shader, cam, gunkit::SWORD_GLOW);   // F still punches
         shader.setVec3("emissiveColor", {0.f, 0.f, 0.f});
         lastEmissive = glm::vec3{-1.f};
         glEnable(GL_CULL_FACE);
     }
+    const SwordPose& swordPoseShown() const { return swordShown; }
     static constexpr float PARRY_TIME = 0.3f;
     float parryTimer = 0.f;
     bool  parryHit = false;
@@ -162,7 +228,10 @@ public:
     }
 
 private:
-    static constexpr float GRENADE_TIME = 0.5f, GRAPPLE_TIME = 0.28f;
+    static constexpr float GRENADE_TIME = 0.5f, GRAPPLE_TIME = 0.28f, SETTLE = 0.22f;
+    SwordPose swordShown = gunkit::swordRest(), swordFrom = gunkit::swordRest();
+    float swordSince = 1e9f, swordU = -1.f;
+    int   swordStroke = -1;
     float grenadeT = 0.f, grappleT = 0.f;
     float heat = 0.f;           // the revolver's heat stripe: hotter as you fan it
     float cylSpin = 0.f;        // degrees still to turn to the next chamber
