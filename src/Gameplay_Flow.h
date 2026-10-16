@@ -687,6 +687,11 @@ inline void GameplayState::update(float dt) {
     if (g_devOverlay.rfind("inspect", 0) == 0) viewModel.motion.devInspect(std::atoi(g_devOverlay.c_str() + 7) / 100.f);
     if (g_devOverlay.rfind("switch", 0) == 0) viewModel.motion.devSwitch(std::atoi(g_devOverlay.c_str() + 6) / 100.f, activeWeapon);
     if (g_devOverlay == "punch") { viewModel.parryTimer = ViewModel::PARRY_TIME * 0.62f; viewModel.parryHit = true; }
+    // --overlay punchNN / whiffNN: the parry's punch held NN% through it, landing a parry or not
+    if ((g_devOverlay.rfind("punch", 0) == 0 || g_devOverlay.rfind("whiff", 0) == 0) && g_devOverlay.size() > 5) {
+        viewModel.parryTimer = ViewModel::PARRY_TIME * (1.f - std::atoi(g_devOverlay.c_str() + 5) / 100.f);
+        viewModel.parryHit = g_devOverlay[0] == 'p';
+    }
     // Baseline FOV widens with horizontal speed on top of the dash kick
     float speedKick = glm::clamp((playerXZSpeed - 7.f) / 15.f, 0.f, 1.f) * 6.f;
     fovKick = glm::mix(fovKick, speedKick, std::min(1.f, floatDt * 7.f));

@@ -467,6 +467,29 @@ inline void buildFist(vec3 glow, float punch, bool hit, std::vector<GunPart>& ou
     b.unlit();
 }
 
+// The parrying gauntlet, over the fist the arm closes (buildArm): a blackened shell, a steel
+// knuckle-duster with four bone studs, curled plated fingers, the thumb across them, a plate over
+// the back of the hand with a rune line, a cuff with a ring of light. flare: 0..1, the studs and
+// runes blazing as it lands a parry. Frame: +Z the punch, +Y the back of the hand.
+inline void buildGauntlet(Builder& b, const mat4& f, vec3 glow, float flare) {
+    b.box(f, {0.f, 0.f, 0.f}, {0.085f, 0.075f, 0.08f}, BLACK * 1.1f);                   // the shell
+    b.box(f, {0.f, -0.022f, 0.036f}, {0.08f, 0.03f, 0.036f}, BLACK * 1.3f);             // curled fingers
+    for (int k = 0; k < 4; ++k)                                                          // their plates
+        b.box(f, {-0.03f + 0.02f * k, -0.006f, 0.05f}, {0.017f, 0.012f, 0.016f}, STEEL * 0.85f);
+    b.box(f, {0.f, 0.012f, 0.046f}, {0.092f, 0.046f, 0.02f}, STEEL);                     // the knuckle-duster
+    b.lit(glow * (0.7f + 3.5f * flare) + vec3{1.f, 0.9f, 0.7f} * (2.f * flare));
+    for (int k = 0; k < 4; ++k)                                                          // bone studs, lit
+        b.box(f, {-0.03f + 0.02f * k, 0.016f, 0.059f}, {0.015f, 0.02f, 0.01f}, BONE);
+    b.unlit();
+    b.box(f, {0.04f, -0.012f, 0.024f}, {0.02f, 0.026f, 0.05f}, BLACK * 1.3f);            // the thumb across them
+    b.box(f, {0.f, 0.041f, -0.004f}, {0.076f, 0.012f, 0.07f}, STEEL * 0.9f);             // the back-of-hand plate
+    b.lit(glow * (1.f + 3.f * flare));
+    b.box(f, {0.f, 0.048f, -0.004f}, {0.012f, 0.004f, 0.06f}, glow);                     // its rune line
+    b.box(f, {0.f, 0.f, -0.056f}, {0.094f, 0.089f, 0.008f}, glow);                       // the cuff's ring
+    b.unlit();
+    b.box(f, {0.f, 0.f, -0.068f}, {0.09f, 0.085f, 0.022f}, STEEL);                       // the cuff
+}
+
 // OATHBREAKER (Sword.h): the arsenal's body as a blade, a hand and a half
 // long. Blackened gunmetal, worn steel edges bevelled to the point, a bone
 // grip wound with brass wire, a brass crossguard with down-swept quillons and
