@@ -234,13 +234,14 @@ inline void GameplayState::updateEnemies(float dt) {
             int ph = std::atoi(g_devOverlay.c_str() + 8);   // dev: absolute2 / absolute3 / absolute8
             if (ph >= 2) e.health = e.maxHealth * (ph == 2 ? 0.59f : ph == 3 ? 0.24f : 0.079f);
         }
-        if (g_devOverlay.rfind("abpose", 0) == 0 && e.type == EnemyType::ABSOLUTE) { devAbsolutePose(e); continue; }
+        if (g_devOverlay.rfind("abpose", 0) == 0 && e.type == EnemyType::ABSOLUTE) { devAbsolutePose(e); rig::tickAbsoluteBody(e, dt); continue; }
         if (e.type == EnemyType::ABSOLUTE) swordParryAbsolute(e);   // the sword's window meets a white strike as it lands
         // In the Descent the void runs to -300: stand on what's really under you (the cage included)
         e.floorY = level.enemyFloor(director.arena, e.position, e.stats().flying,
                                     descent ? groundHeightAt(e.position.x, e.position.z, e.position.y + 0.5f, true) : 0.f);
         e.wadeMul = e.stats().flying ? 1.f : 1.f - 0.5f * (1.f - Player::wadeFactor(level.waterDepthAt(e.position)));
         e.update(dt, w);
+        if (e.type == EnemyType::ABSOLUTE) rig::tickAbsoluteBody(e, dt);   // his body chasing his pose
         if (e.hollow == Hollow::ENRAGED && std::fmod(e.age, 0.15f) < dt)   // embers off an Enraged one
             fx.spawnBurst(e.position + glm::vec3{0, e.height() * 0.6f, 0}, {1.f, 0.3f, 0.1f}, 2, 1.5f, 0.6f, -2.f);
         const float eScale = dmgScale * e.damageMult();   // ENRAGED hits harder

@@ -1038,9 +1038,11 @@ int main() {
         CHECK(rd.x > rd.y * 3.f, "a red tell flashes red");
         // red eyes: two crimson slits in his face, and nothing gold there
         int eyes = 0, goldFace = 0;
+        AABB face; headBox(a, face);
+        const float faceZ = 0.5f * (face.min.z + face.max.z);
         for (auto& p : parts(a)) {
             glm::vec3 c{p.model[3]}, m = p.emissive;
-            if (c.y < 2.25f || c.y > 2.7f || c.z < 0.05f) continue;   // his face (he faces +Z at yaw 0)
+            if (glm::any(glm::lessThan(c, face.min - 0.03f)) || glm::any(glm::greaterThan(c, face.max + 0.03f)) || c.z < faceZ) continue;   // his face (the front of his head: he faces +Z at yaw 0)
             if (m.x > 1.5f && m.x > m.y * 6.f) ++eyes;
             if (m.x > 1.f && m.y > m.x * 0.55f && m.z < m.x * 0.5f) ++goldFace;
         }
@@ -1048,19 +1050,67 @@ int main() {
         int runes = 0;
         for (auto& p : parts(a)) { glm::vec3 m = p.emissive; if (m.z > 0.9f && m.z > m.x * 1.8f && m.z > m.y * 1.6f) ++runes; }
         CHECK(runes >= 8, "his gauntlets: rune bands of pale violet-blue at knuckles and wrists");
-        // his guard: fists up (shoulders raised forward, elbows folded), side-on, standing or on the move
+        // his guard: an MMA stance - bladed, lead (left) side forward, sat in his knees, hunched, the lead fist
+        // out at you and the rear one at his cheek, standing or on the move
         rig::AbsPose gp = rig::absolutePose(a, 0.f);
         Enemy run = a; run.moveSpeed = Enemy::AB_RUN;
         rig::AbsPose gr = rig::absolutePose(run, 0.3f);
         // (an arm hangs down; a shoulder's negative swing takes it forward, the elbow folds the forearm up past it)
-        auto guard = [](float sh, float el) { return sh < -0.4f && sh > -1.1f && sh - el < -2.2f; };   // forearm up and forward
-        CHECK(guard(gp.shR, gp.elR) && guard(gp.shL, gp.elL) && gp.shL < gp.shR && std::fabs(gp.torsoYaw) > 0.2f,
-              "idle: a boxer's guard - elbows down, forearms up, fists by his chin, the lead hand further out, bladed");
+        auto guard = [](float sh, float el) { return sh < -0.4f && sh > -1.1f && sh - el < -2.f; };   // forearm up and forward
+        CHECK(guard(gp.shR, gp.elR) && guard(gp.shL, gp.elL) && gp.shL < gp.shR && gp.elL < gp.elR,
+              "idle: elbows down, forearms up, the lead fist further out, the rear one folded back to his cheek");
+        CHECK(gp.hipYaw + gp.torsoYaw < -0.2f && gp.torsoPitch > 0.25f && gp.crouch > 0.08f && gp.kneeR > 0.4f && gp.kneeL > 0.4f,
+              "...bladed (lead shoulder forward), hunched over, sat low in bent knees");
         CHECK(guard(gr.shR, gr.elR) && guard(gr.shL, gr.elL), "...and he keeps it up as he closes in");
+        {   // his feet on the floor however his knees bend (the hips sit on the legs)
+            float lowest = 1e9f;
+            for (auto& p : parts(a)) lowest = std::min(lowest, p.model[3].y);
+            CHECK(lowest > -0.08f && lowest < 0.06f, "...his feet on the floor in his crouch, not in it or over it");
+        }
+        {   // he never stands still: his guard lives (weight, head, the lead hand pawing)
+            float most = 0.f;
+            for (float t = 0.f; t < 6.f; t += 0.05f) {
+                rig::AbsPose q = rig::absolutePose(a, t);
+                most = std::max({most, std::fabs(q.torsoRoll - gp.torsoRoll), std::fabs(q.shL - gp.shL)});
+            }
+            CHECK(most > 0.1f, "...his guard lives: his head slips, his lead hand paws");
+        }
+        {   // in motion: thirty seconds of strings at 120 Hz, his drawn body springing after his pose
+            glm::vec3 me = ZC + glm::vec3{0, 0, 14};
+            Enemy f = freshAbs(); f.abArrive = 0.f; f.position = me + glm::vec3{0, 0, -5}; f.position.y = ZC.y;
+            const float H = 1.f / 120.f;
+            float worst = 0.f; int blows = 0, home = 0, follows = 0, back = 0;
+            rig::AbsPose prev{}; bool have = false;
+            srand(77);
+            for (int i = 0; i < 120 * 30; ++i) {
+                f.update(H, zworld(me));
+                rig::tickAbsoluteBody(f, H);
+                rig::AbsPose L = rig::absoluteLivePose(f, f.age);
+                if (have && !f.staggered())
+                    for (int k = 0; k < rig::AB_NCH; ++k) worst = std::max(worst, std::fabs(L.*rig::AB_CH[k] - prev.*rig::AB_CH[k]));
+                prev = L; have = true;
+                // a straight punch, as it lands: the arm out straight (the drawn arm, not just the goal)
+                if (f.abBodySince == 0.f && (f.abBodyLanded == AttackKind::AJAB || f.abBodyLanded == AttackKind::ACROSS)) {
+                    ++blows;
+                    float el = f.abBodyLanded == AttackKind::AJAB ? L.elL : L.elR;
+                    home += el < 0.6f;
+                }
+                if (f.abBodySince < 0.5f && f.abBodySince + H >= 0.5f && f.telegraphTimer <= 0.f && !f.staggered() && !f.abAirborne()) {
+                    ++follows;   // half a second after a blow, with nothing new begun: back in his guard
+                    rig::AbsPose G = rig::absoluteGuard(f, f.age);
+                    back += std::fabs(L.elR - G.elR) < 0.5f && std::fabs(L.elL - G.elL) < 0.5f && std::fabs(L.torsoYaw - G.torsoYaw) < 0.4f;
+                }
+            }
+            std::printf("      his body: worst joint step %.3f rad/tick; straights landing extended %d/%d; back to guard %d/%d\n",
+                        worst, home, blows, back, follows);
+            CHECK(worst < 0.4f, "...nothing he does snaps: no joint past 0.4 rad in a 1/120 s tick (a punch's elbow whips at ~0.3)");
+            CHECK(blows >= 3 && home == blows, "...a straight punch is at full stretch as it lands (the blow you see is the blow that hits)");
+            CHECK(follows == 0 || back * 10 >= follows * 8, "...and after a blow he gathers himself back into his guard");
+        }
         glm::vec3 gt = tint(AttackKind::AUPPER);
         CHECK(gt.y > gt.x * 0.72f, "the gold tell is a pale gold (it doesn't sink into the orange sky)");
         AABB hb;
-        CHECK(headBox(a, hb) && hb.min.y > 1.9f && hb.max.y < 2.8f, "his head can be shot (a head box where his head is)");
+        CHECK(headBox(a, hb) && hb.min.y > 1.75f && hb.max.y < 2.7f, "his head can be shot (a head box where his head is)");
     }
 
     // ---------------------------------------------------------------- THE ABSOLUTE against scripted players

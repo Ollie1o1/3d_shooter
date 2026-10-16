@@ -497,6 +497,13 @@ struct Enemy {
     glm::vec3 abAim{0.f};              // where a ray / dash / drop-kick / lunge is headed
     glm::vec3 abCentre{0.f};           // the Zenith's centre (from the world, each tick)
     AttackKind lastAbAttack = AttackKind::NONE;   // the strike that just resolved (the game reads its colour)
+    // his body in motion (AbsoluteRig.h tickAbsoluteBody): the drawn pose, one spring per joint, chasing
+    // where the rig says he's going; the blow that last landed and how long ago (its follow-through)
+    static constexpr int AB_BODY = 24;
+    float abBody[AB_BODY] = {}, abBodyV[AB_BODY] = {}, abBodyPrev[AB_BODY] = {};
+    bool  abBodyLive = false;
+    AttackKind abBodyAtk = AttackKind::NONE, abBodyLanded = AttackKind::NONE;
+    float abBodyTT = 0.f, abBodySince = 9.f;
     bool  levAtPool() const { return glm::length(glm::vec2{levRoot.x - levHome.x, levRoot.z - levHome.z}) < 1.f; }
     bool  levHidden() const { return type == EnemyType::LEVIATHAN && (levStage != LevStage::FIGHT || attack == AttackKind::BREACH); }
     bool  levEyeOpen() const { return levBeached > 0.f || staggerTimer > 0.f || levPhase == 3; }

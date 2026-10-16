@@ -810,7 +810,7 @@ inline bool headBox(const Enemy& e, AABB& out) {
         break;
     }
     case EnemyType::ABSOLUTE: {   // his skull, as drawn (absoluteHeadFrame)
-        frame  = absoluteHeadFrame(e, root, absolutePose(e, 0.f));
+        frame  = absoluteHeadFrame(e, root, absoluteLivePose(e, 0.f));
         centre = {0.f, 0.19f, -0.01f};
         half   = {0.14f, 0.18f, 0.15f};
         break;
