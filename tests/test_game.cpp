@@ -4018,6 +4018,17 @@ int main() {
         std::vector<GunPart> fist; gunkit::buildFist(gunkit::glowOf(1), 1.f, true, fist);
         bool seam = false; for (auto& p : fist) seam |= glm::length(p.emissive) > 0.1f;
         CHECK(fist.size() >= 8 && seam, "the gauntlet: a fist with a seam glowing in the current gun's colour");
+        {   // the parrying gauntlet: a knuckle-duster whose studs and runes blaze as it lands a parry
+            auto glowOf = [](float flare) {
+                std::vector<GunPart> g; gunkit::Builder b{g, gunkit::glowOf(1)};
+                gunkit::buildGauntlet(b, glm::mat4(1.f), gunkit::glowOf(1), flare);
+                float most = 0.f; for (auto& p : g) most = std::max(most, glm::length(p.emissive));
+                return std::make_pair(g.size(), most);
+            };
+            auto idle = glowOf(0.f), lit = glowOf(1.f);
+            CHECK(idle.first >= 14 && idle.second > 0.3f && lit.second > idle.second * 3.f,
+                  "the parry gauntlet: plated, its runes lit, blazing when it lands a parry");
+        }
         CHECK(std::string(weaponDef(WeaponId::KAR).name) == "LANCER" && weaponDef(WeaponId::KAR).damage == 120.f &&
               weaponDef(WeaponId::KAR).magSize == 5 && std::fabs(weaponDef(WeaponId::KAR).reloadTime - 2.0f) < 1e-4f,
               "the Kar98 is now the LANCER, with the same stats");

@@ -55,6 +55,8 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
         pose.position = lerpPos(e.prevPosition, e.position);
         e.shownPos = pose.position; e.hasShown = true;
         pose.yaw = e.prevYaw + std::remainder(e.yaw - e.prevYaw, 6.2831853f) * renderAlpha;
+        if (e.abBodyLive)   // (his sprung body, between ticks too)
+            for (int k = 0; k < Enemy::AB_BODY; ++k) pose.abBody[k] = e.abBodyPrev[k] + (e.abBody[k] - e.abBodyPrev[k]) * renderAlpha;
         size_t from = out.size();
         buildEnemy(pose, t, out);
         if (e.hollow == Hollow::ENRAGED)   // everything that glows burns red

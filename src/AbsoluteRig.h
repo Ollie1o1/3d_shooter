@@ -12,143 +12,335 @@
 // Joints: hip / knee / ankle, shoulder / elbow / wrist / knuckle. Right is -X.
 // =============================================================================
 
+
+// Motion: absolutePose says where his body is going (an MMA guard that never stands still, each
+// blow a chamber that winds through the tell, a stroke that whips out in the last instant and
+// lands as the blow does, and a follow-through back to guard); tickAbsoluteBody springs the drawn
+// pose after it, so nothing he does ever jumps. The hips lead every stroke, the limb follows.
+// Signs: + torsoYaw / hipYaw bring his RIGHT shoulder forward; + torsoRoll tips his head to his right.
+
 struct AbsPose {
     float crouch = 0.f, lift = 0.f, torsoYaw = 0.f, torsoPitch = 0.f, headPitch = 0.f;
     float shR = 0.f, shRz = 0.f, elR = 0.f, shL = 0.f, shLz = 0.f, elL = 0.f;   // shoulder swing (- forward/up), splay (+ out), elbow bend
     float hipR = 0.f, kneeR = 0.f, hipL = 0.f, kneeL = 0.f;                      // thigh swing (- forward), knee bend
     float fistR = 1.f, fistL = 1.f;                                              // 0 an open hand .. 1 a fist
+    float hipYaw = 0.f, torsoRoll = 0.f, shrug = 0.f;                            // his hips' turn, a lean to the side, shoulders up
+    float stanceW = 0.04f, ankle = 0.6f;                                         // legs' splay; how flat the feet stay (1: flat on the floor)
+    float plant = 0.f, dip = 0.f;                                                // 1: feet on the floor (crouch from the legs); a sink into the knees
     int   glow = -1;   // what lights with the tell: 0 right arm, 1 left arm, 2 right leg, 3 both arms, 4 the blade, 5 all of him
+    float omega = 14.f;   // how hard his body chases this pose (a spring's rate, per second)
 };
+// (the springs' channels, in Enemy::abBody)
+static float AbsPose::* const AB_CH[] = {
+    &AbsPose::crouch, &AbsPose::lift, &AbsPose::torsoYaw, &AbsPose::torsoPitch, &AbsPose::headPitch,
+    &AbsPose::shR, &AbsPose::shRz, &AbsPose::elR, &AbsPose::shL, &AbsPose::shLz, &AbsPose::elL,
+    &AbsPose::hipR, &AbsPose::kneeR, &AbsPose::hipL, &AbsPose::kneeL, &AbsPose::fistR, &AbsPose::fistL,
+    &AbsPose::hipYaw, &AbsPose::torsoRoll, &AbsPose::shrug, &AbsPose::stanceW, &AbsPose::ankle, &AbsPose::plant};
+static constexpr int AB_NCH = (int)(sizeof(AB_CH) / sizeof(AB_CH[0]));
+static_assert(AB_NCH <= Enemy::AB_BODY, "Enemy::abBody holds every channel");
+static constexpr int AB_CORE = 5;   // (channels before this, and hipYaw / torsoRoll / shrug, are his core: they lead a stroke)
+inline bool absCore(int k) { return k < AB_CORE || k == 17 || k == 18 || k == 19; }
 
-inline AbsPose absolutePose(const Enemy& e, float time) {
+// How far his hips sit below standing tall, for these legs (the longer leg's foot on the floor)
+inline float absLegDrop(const AbsPose& P) {
+    auto len = [&](float h, float k) {
+        const float cw = std::cos(P.stanceW);
+        return 0.58f * cw * std::cos(h) + 0.55f * (std::cos(k) * cw * std::cos(h) - std::sin(k) * std::sin(h));
+    };
+    return 1.129f - std::max(len(P.hipR, P.kneeR), len(P.hipL, P.kneeL));
+}
+// Sink his hips by d, by bending both knees (hips forward as they go) - his feet stay where they are
+inline void absSink(AbsPose& P, float d) {
+    if (d <= 0.f) return;
+    const float base = absLegDrop(P);
+    float lo = 0.f, hi = 1.2f;
+    for (int i = 0; i < 12; ++i) {
+        float a = 0.5f * (lo + hi);
+        AbsPose Q = P; Q.hipR -= a; Q.hipL -= a; Q.kneeR += 2.f * a; Q.kneeL += 2.f * a;
+        (absLegDrop(Q) - base < d ? lo : hi) = a;
+    }
+    P.hipR -= lo; P.hipL -= lo; P.kneeR += 2.f * lo; P.kneeL += 2.f * lo;
+}
+
+inline float absEaseOut(float x) { x = glm::clamp(x, 0.f, 1.f); return 1.f - (1.f - x) * (1.f - x) * (1.f - x); }
+inline float absBackOut(float x) { x = glm::clamp(x, 0.f, 1.f) - 1.f; return 1.f + x * x * (2.4f * x + 1.4f); }   // past it, and back
+
+inline AbsPose absMix(const AbsPose& a, const AbsPose& b, float core, float limb) {
+    AbsPose o = b;
+    for (int k = 0; k < AB_NCH; ++k) {
+        const float t = absCore(k) ? core : limb;
+        o.*AB_CH[k] = a.*AB_CH[k] + (b.*AB_CH[k] - a.*AB_CH[k]) * t;
+    }
+    return o;
+}
+
+// His guard: an MMA stance, orthodox - hips bladed, lead (left) foot forward, sat low in the knees,
+// shoulders hunched over a tucked chin, the lead hand out and half open, measuring you, the rear
+// fist on his cheek. It lives: his weight rocks, his head slips side to side, the lead hand paws,
+// and every few seconds a feint - the rear shoulder dips as if the cross were coming.
+inline AbsPose absoluteGuard(const Enemy& e, float time) {
     AbsPose P;
-    const float tp = e.telegraphProgress(), stride = glm::clamp(e.moveSpeed / 11.f, 0.f, 1.2f);
-    const float ph = e.animPhase;
-    // a boxer's guard: fists by his chin, the lead (left) hand forward, side-on, a bounce on his toes
-    const float br = std::sin(time * 2.2f) * 0.03f, bounce = std::fabs(std::sin(time * 5.f)) * 0.035f;
-    P.crouch = 0.08f + br - bounce; P.torsoYaw = 0.25f;
-    P.shR = -0.6f; P.elR = 1.9f; P.shRz = -0.2f;             // rear hand: elbow tucked in, fist at the jaw
-    P.shL = -0.75f; P.elL = 1.6f; P.shLz = -0.35f;           // lead hand: further out in front, at chin height
-    P.hipR = -0.05f; P.kneeR = 0.28f; P.hipL = -0.22f; P.kneeL = 0.3f;
-    if (stride > 0.1f) {   // closing in: the guard stays up, the feet do the work
-        float sw = std::sin(ph) * 0.6f * stride;
-        P.hipR = sw - 0.05f; P.hipL = -sw - 0.3f;
-        P.kneeR = 0.35f + std::max(0.f, -std::sin(ph)) * 1.1f * stride;
-        P.kneeL = 0.35f + std::max(0.f, std::sin(ph)) * 1.1f * stride;
-        P.shR = -0.6f; P.shL = -0.75f; P.elR = 1.9f; P.elL = 1.6f;
-        P.torsoPitch = 0.18f * stride; P.torsoYaw = 0.25f + std::sin(ph) * 0.08f * stride;
-    }
-    const bool late = tp > 0.78f;   // the strike itself
-    if (e.abAirborne() && !e.abDiving) {   // aloft: arms swept back, legs trailing, the guard gone
-        P.shR = P.shL = 0.55f; P.shRz = P.shLz = 0.35f; P.elR = P.elL = 0.35f; P.fistR = P.fistL = 0.6f;
-        P.hipR = 0.35f; P.hipL = 0.2f; P.kneeR = 0.6f; P.kneeL = 0.9f; P.torsoPitch = 0.3f; P.crouch = 0.f;
-    }
-    switch (e.telegraphTimer > 0.f ? e.attack : AttackKind::NONE) {
-    case AttackKind::AJAB:
-        P.glow = 0; P.torsoYaw = late ? -0.3f : 0.35f;
-        P.shR = late ? -1.6f : -0.55f; P.elR = late ? 0.08f : 2.3f; P.crouch = 0.14f;
-        break;
-    case AttackKind::AHOOK:
-        P.glow = 1; P.torsoYaw = late ? 0.65f : -0.55f;
-        P.shL = -1.45f; P.shLz = late ? -0.35f : 1.0f; P.elL = 1.35f; P.crouch = 0.16f;
-        break;
-    case AttackKind::AUPPER:
-        P.glow = 0; P.crouch = 0.42f * smooth01(tp * 1.3f); P.torsoPitch = late ? -0.25f : 0.35f;
-        P.shR = late ? -2.7f : 0.55f; P.elR = late ? 0.6f : 1.4f; P.kneeR = P.kneeL = 0.9f; P.hipR = P.hipL = -0.5f;
-        break;
-    case AttackKind::ADROP:
-        P.glow = 2; P.lift = 2.6f * smooth01(tp); P.torsoPitch = -0.35f;
-        P.hipR = -1.55f; P.kneeR = 0.05f; P.hipL = 0.45f; P.kneeL = 1.7f; P.shR = 0.6f; P.shL = 0.5f; P.shRz = P.shLz = 0.7f;
-        break;
-    case AttackKind::ARAY: case AttackKind::AZENITH: case AttackKind::ASEAMS: case AttackKind::AHALO:
-        P.glow = 0; P.fistR = 0.f;
-        if (e.attack == AttackKind::ARAY) { P.shR = -1.57f; P.elR = 0.f; P.torsoYaw = -0.25f; P.shL = -0.3f; P.elL = 0.6f; }
-        else { P.shR = -3.0f; P.elR = 0.1f; P.shL = -0.2f; P.shLz = 0.5f; P.headPitch = -0.35f; }   // one hand to the sky
-        break;
-    case AttackKind::ASTOMP:
-        P.glow = 2; P.hipR = -1.45f * smooth01(tp * 1.5f); P.kneeR = 1.7f; P.shRz = P.shLz = 0.9f; P.shR = P.shL = -0.4f; P.elR = P.elL = 0.5f;
-        break;
-    case AttackKind::ASERPENT:
-        P.glow = 3; P.fistR = P.fistL = 0.2f;
-        P.shR = P.shL = -1.45f; P.shRz = P.shLz = -0.25f; P.elR = P.elL = 0.25f;
-        break;
-    case AttackKind::ATELEPORT: case AttackKind::AHOP: case AttackKind::ADASH:
-        P.torsoPitch = 0.4f; P.shR = P.shL = 0.7f; P.elR = P.elL = 0.4f; P.crouch = 0.2f;
-        break;
-    case AttackKind::ASWEEP:
-        P.glow = 4; P.torsoYaw = late ? -0.75f : 0.85f; P.shR = -1.35f; P.shRz = late ? -0.2f : 0.75f; P.elR = 0.3f;
-        P.shL = -0.8f; P.elL = 1.6f; P.crouch = 0.2f;
-        break;
-    case AttackKind::ALUNGE:
-        P.glow = 4; P.crouch = 0.32f; P.torsoPitch = 0.32f; P.shR = -1.6f; P.elR = 0.05f; P.hipR = -0.9f; P.kneeR = 0.9f; P.hipL = 0.6f;
-        break;
-    case AttackKind::ACRESCENT:
-        P.glow = 4; P.shR = late ? -1.1f : -2.85f; P.elR = 0.2f; P.torsoPitch = late ? 0.25f : -0.2f;
-        break;
-    case AttackKind::ACROSS:     // the rear hand, straight down the middle, hips turning through it
-        P.glow = 0; P.torsoYaw = late ? -0.55f : 0.55f; P.shR = late ? -1.65f : -1.0f; P.elR = late ? 0.05f : 2.4f; P.hipR = late ? 0.2f : -0.1f; P.crouch = 0.15f;
-        break;
-    case AttackKind::ABACKFIST:  // a spin, the back of the fist
-        P.glow = 1; P.torsoYaw = late ? 1.4f : -1.1f; P.shL = -1.5f; P.shLz = late ? 0.2f : 1.3f; P.elL = late ? 0.15f : 1.6f;
-        break;
-    case AttackKind::AELBOW:     // short, the elbow leading
-        P.glow = 0; P.torsoYaw = late ? -0.6f : 0.4f; P.shR = -1.5f; P.shRz = 0.9f; P.elR = 2.6f; P.crouch = 0.12f;
-        break;
-    case AttackKind::AROUNDHOUSE: // the shin round at your ribs
-        P.glow = 2; P.torsoYaw = late ? -1.2f : 0.6f; P.torsoPitch = -0.15f; P.hipR = late ? -1.5f : -0.5f; P.kneeR = late ? 0.15f : 1.6f;
-        P.shR = 0.3f; P.shRz = 0.6f; P.shL = -1.3f; P.elL = 2.f;
-        break;
-    case AttackKind::AHAYMAKER:  // wound right back, then over the top
-        P.glow = 0; P.torsoYaw = late ? -0.8f : 1.0f; P.torsoPitch = late ? 0.35f : -0.2f;
-        P.shR = late ? -2.2f : 0.9f; P.shRz = late ? 0.1f : 0.7f; P.elR = late ? 0.4f : 1.8f; P.crouch = 0.25f;
-        break;
-    case AttackKind::ACHARGE:    // head down, shoulder first
-        P.glow = 5; P.torsoPitch = 0.75f; P.torsoYaw = 0.6f; P.shL = -0.4f; P.elL = 2.2f; P.shR = 0.5f; P.elR = 1.2f; P.crouch = 0.3f;
-        break;
-    case AttackKind::AAXE:       // the heel up past his head, then straight down
-        P.glow = 2; P.hipR = late ? -0.3f : -2.6f; P.kneeR = late ? 0.1f : 0.05f; P.torsoPitch = late ? 0.25f : -0.3f; P.shR = P.shL = -0.5f; P.shRz = P.shLz = 0.7f;
-        break;
-    case AttackKind::ACLAP:      // both arms wide, then palms together in front
-    case AttackKind::ATHUNDER:   // (risen: the same, over your head)
-        P.glow = 3; P.fistR = P.fistL = 0.f; P.shR = P.shL = -1.5f; P.shRz = P.shLz = late ? -0.2f : 1.3f; P.elR = P.elL = 0.15f;
-        break;
-    case AttackKind::ASKYFALL:   // knees up, both fists raised over his head, then down like a hammer
-        P.glow = 3; P.shR = P.shL = late ? -0.4f : -2.9f; P.elR = P.elL = 0.3f; P.hipR = P.hipL = -1.1f; P.kneeR = P.kneeL = 1.6f; P.torsoPitch = late ? 0.4f : -0.2f;
-        break;
-    case AttackKind::AMETEOR:    // one fist first, the body behind it like a comet
-        P.glow = 0; P.shR = -2.9f; P.elR = 0.05f; P.shL = 0.6f; P.elL = 0.4f; P.torsoPitch = 0.9f; P.hipR = P.hipL = 0.4f; P.kneeR = 0.3f; P.kneeL = 0.6f;
-        break;
-    case AttackKind::ATAKEOFF:   // a crouch, arms flung back, then up
-        P.crouch = 0.4f * (1.f - tp); P.shR = P.shL = 0.6f; P.shRz = P.shLz = 0.6f;
-        P.kneeR = P.kneeL = 1.1f * (1.f - tp); P.hipR = P.hipL = -0.6f * (1.f - tp);
-        break;
-    case AttackKind::AJUDGE:
-        P.glow = 5; P.lift = 1.2f + 0.6f * tp; P.shR = P.shL = -1.57f; P.shRz = P.shLz = 1.25f; P.elR = P.elL = 0.f;
-        P.fistR = P.fistL = 0.f; P.headPitch = -0.3f; P.hipR = P.hipL = 0.15f; P.kneeR = P.kneeL = 0.3f;
-        break;
-    default: break;
-    }
-    if (e.staggered()) {
-        P = AbsPose{};
-        if (e.abReeling) {   // thrown back on his heels
-            P.torsoPitch = -0.4f; P.shR = P.shL = 0.25f; P.shRz = P.shLz = 0.55f; P.elR = P.elL = 0.4f; P.headPitch = -0.3f; P.crouch = 0.05f;
-        } else {             // broken: down on one knee, head bowed
-            P.crouch = 0.62f; P.hipR = -1.45f; P.kneeR = 1.5f; P.hipL = 0.55f; P.kneeL = 2.3f;
-            P.torsoPitch = 0.38f; P.headPitch = 0.4f; P.shR = P.shL = 0.15f; P.shRz = P.shLz = 0.2f; P.elR = P.elL = 0.3f;
-        }
+    P.plant = 1.f; P.ankle = 1.f; P.stanceW = 0.2f; P.shrug = 0.05f;
+    P.hipYaw = -0.45f; P.torsoYaw = 0.17f; P.torsoPitch = 0.42f; P.headPitch = -0.32f;
+    P.hipL = -0.45f; P.kneeL = 0.65f; P.hipR = 0.f; P.kneeR = 0.5f;
+    P.shL = -0.85f; P.shLz = -0.06f; P.elL = 1.3f; P.fistL = 0.9f;
+    P.shR = -0.5f; P.shRz = -0.1f; P.elR = 2.05f; P.fistR = 1.f;
+    P.dip = 0.08f;
+    const float t = time;
+    P.dip += 0.035f * (0.5f + 0.5f * std::sin(t * 4.8f));                    // a bounce in the knees
+    P.torsoPitch += 0.035f * std::sin(t * 2.4f);                              // his weight rocking
+    const float weave = std::sin(t * 1.25f) * 0.65f + std::sin(t * 0.77f + 1.3f) * 0.35f;
+    P.torsoRoll = 0.09f * weave; P.torsoYaw += 0.07f * weave;                  // head movement
+    const float paw = std::pow(std::max(0.f, std::sin(t * 2.1f)), 8.f) * (std::sin(t * 0.61f) > 0.f ? 1.f : 0.35f);
+    P.shL -= 0.3f * paw; P.elL -= 0.55f * paw; P.torsoYaw -= 0.06f * paw;   // the lead hand reaching, measuring
+    P.shR += 0.05f * std::sin(t * 3.3f); P.elR += 0.07f * std::cos(t * 3.3f);
+    const float feint = std::pow(std::max(0.f, std::sin(t * 1.37f + 2.f)), 14.f);
+    P.dip += 0.08f * feint; P.torsoYaw += 0.2f * feint; P.torsoRoll += 0.08f * feint; P.shR -= 0.25f * feint; P.elR -= 0.35f * feint;
+    P.shrug += 0.015f * std::sin(t * 1.1f);                                   // breathing
+    // on the move: short shuffling steps that keep the stance; at a run he squares up, leans in, guard still up
+    const float stride = glm::clamp(e.moveSpeed / Enemy::AB_RUN, 0.f, 1.2f), ph = e.animPhase;
+    if (stride > 0.05f) {
+        const float run = glm::clamp((stride - 0.35f) / 0.5f, 0.f, 1.f);
+        const float sw = std::sin(ph) * (0.25f + 0.4f * run) * stride;
+        P.hipR += sw; P.hipL -= sw;
+        P.kneeR += std::max(0.f, -std::sin(ph)) * (0.5f + 0.7f * run) * stride;
+        P.kneeL += std::max(0.f, std::sin(ph)) * (0.5f + 0.7f * run) * stride;
+        P.hipYaw += 0.35f * run; P.torsoYaw -= 0.1f * run; P.torsoPitch += 0.2f * run;
+        P.shR += 0.12f * std::sin(ph) * run; P.shL -= 0.12f * std::sin(ph) * run;
+        P.torsoRoll += 0.05f * std::sin(ph) * stride; P.dip += 0.04f * stride;
     }
     return P;
 }
 
-// His head's frame (the rig and headBox share it, so the head you see is the head you hit)
-inline mat4 absoluteHeadFrame(const Enemy& e, const mat4& root, const AbsPose& P) {
+// A move's two keys on top of his guard: the chamber it winds into (strike false) and the blow at
+// full stretch (strike true). Moves with no stroke hold one shape.
+inline void absoluteMove(AbsPose& P, AttackKind a, bool strike, float tp) {
+    const bool k = strike;
+    switch (a) {
+    case AttackKind::AJAB:        // the lead hand, straight and snapping, a step in behind it
+        P.glow = 1;
+        if (!k) { P.torsoYaw = 0.12f; P.dip += 0.05f; P.shL = -0.85f; P.elL = 1.7f; }
+        else { P.hipYaw = -0.7f; P.torsoYaw = -0.18f; P.torsoRoll = -0.05f; P.shL = -1.55f; P.shLz = -0.08f; P.elL = 0.06f; P.fistL = 1.f; P.hipL = -0.48f; P.kneeL = 0.42f; }
+        break;
+    case AttackKind::ACROSS:      // the rear hand down the middle, the hips turning through it, the lead hand home to his chin
+        P.glow = 0;
+        if (!k) { P.hipYaw = -0.75f; P.torsoYaw = -0.15f; P.dip += 0.08f; P.shR = -0.5f; P.elR = 2.35f; }
+        else { P.hipYaw = -0.15f; P.torsoYaw = 0.7f; P.torsoPitch = 0.26f; P.torsoRoll = -0.06f; P.shR = -1.6f; P.shRz = -0.06f; P.elR = 0.05f;
+               P.hipR = 0.38f; P.kneeR = 0.38f; P.shL = -0.65f; P.elL = 2.05f; P.fistL = 1.f; }
+        break;
+    case AttackKind::AHOOK:       // the lead hand round the side: coiled back, then the hips whip it across
+        P.glow = 1;
+        if (!k) { P.torsoYaw = 0.5f; P.torsoRoll = -0.14f; P.dip += 0.1f; P.shL = -1.2f; P.shLz = 0.85f; P.elL = 1.45f; P.fistL = 1.f; }
+        else { P.hipYaw = -0.85f; P.torsoYaw = -0.7f; P.torsoRoll = 0.1f; P.shL = -1.5f; P.shLz = -0.3f; P.elL = 1.45f; P.fistL = 1.f; P.dip += 0.04f; }
+        break;
+    case AttackKind::AUPPER:      // down low on his right, then up through you, his whole body rising behind the fist
+        P.glow = 0;
+        if (!k) { P.dip += 0.32f; P.torsoRoll = 0.2f; P.torsoPitch = 0.34f; P.torsoYaw = -0.2f; P.shR = 0.35f; P.shRz = 0.05f; P.elR = 1.5f; }
+        else { P.dip = 0.f; P.torsoPitch = -0.22f; P.torsoYaw = 0.5f; P.torsoRoll = -0.08f; P.headPitch = -0.12f; P.shR = -2.55f; P.shRz = -0.1f; P.elR = 0.95f;
+               P.hipR = 0.3f; P.kneeR = 0.2f; P.hipL = -0.15f; P.kneeL = 0.2f; }
+        break;
+    case AttackKind::ADROP:       // up off the floor, the right leg chambered, then driven out
+        P.glow = 2; P.plant = 0.f; P.ankle = 0.3f; P.crouch = 0.f; P.lift = 2.6f * smooth01(tp); P.torsoPitch = -0.35f; P.hipYaw = 0.f;
+        P.hipR = k ? -1.55f : -0.7f; P.kneeR = k ? 0.05f : 1.9f; P.hipL = 0.45f; P.kneeL = 1.7f;
+        P.shR = 0.6f; P.shL = 0.5f; P.shRz = P.shLz = 0.7f; P.elR = P.elL = 0.4f;
+        break;
+    case AttackKind::ARAY: case AttackKind::AZENITH: case AttackKind::ASEAMS: case AttackKind::AHALO:
+        P.glow = 0; P.fistR = 0.f;
+        if (a == AttackKind::ARAY) { P.hipYaw = -0.2f; P.shR = -1.57f; P.shRz = -0.05f; P.elR = 0.f; P.torsoYaw = 0.45f; P.shL = -0.3f; P.elL = 0.6f; }
+        else { P.shR = -3.0f; P.elR = 0.1f; P.shL = -0.2f; P.shLz = 0.5f; P.elL = 0.5f; P.headPitch = -0.35f; P.torsoPitch = -0.1f; }   // one hand to the sky
+        break;
+    case AttackKind::ASTOMP:      // the right knee up to his chest, then down through the floor
+        P.glow = 2; P.shRz = P.shLz = 0.8f; P.shR = P.shL = -0.4f; P.elR = P.elL = 0.6f;
+        if (!k) { P.hipR = -1.5f; P.kneeR = 1.8f; P.torsoPitch = -0.08f; P.ankle = 0.4f; }
+        else { P.hipR = -0.25f; P.kneeR = 0.45f; P.dip += 0.18f; P.torsoPitch = 0.35f; P.headPitch = 0.1f; }
+        break;
+    case AttackKind::ASERPENT:
+        P.glow = 3; P.fistR = P.fistL = 0.2f; P.hipYaw = -0.25f; P.torsoYaw = 0.25f;
+        P.shR = P.shL = -1.45f; P.shRz = P.shLz = -0.25f; P.elR = P.elL = 0.25f;
+        break;
+    case AttackKind::ATELEPORT: case AttackKind::AHOP: case AttackKind::ADASH:
+        P.torsoPitch = 0.4f; P.shR = P.shL = 0.7f; P.elR = P.elL = 0.4f; P.dip += 0.18f;
+        break;
+    case AttackKind::ASWEEP:      // the blade cocked back behind his right shoulder, then flat across
+        P.glow = 4; P.shL = -0.8f; P.elL = 1.6f; P.dip += 0.12f;
+        if (!k) { P.torsoYaw = -0.85f; P.shR = -1.3f; P.shRz = 0.8f; P.elR = 0.6f; }
+        else { P.hipYaw = -0.25f; P.torsoYaw = 0.85f; P.shR = -1.35f; P.shRz = -0.25f; P.elR = 0.15f; }
+        break;
+    case AttackKind::ALUNGE:      // the blade drawn back, then the long step and the point
+        P.glow = 4;
+        if (!k) { P.dip += 0.22f; P.torsoYaw = -0.2f; P.shR = -0.4f; P.elR = 1.8f; }
+        else { P.hipYaw = 0.2f; P.torsoYaw = 0.45f; P.torsoPitch = 0.35f; P.shR = -1.6f; P.elR = 0.05f; P.hipR = -0.9f; P.kneeR = 0.95f; P.hipL = 0.6f; P.kneeL = 0.3f; }
+        break;
+    case AttackKind::ACRESCENT:   // over his head, then down
+        P.glow = 4;
+        if (!k) { P.shR = -2.85f; P.shRz = 0.1f; P.elR = 0.4f; P.torsoPitch = -0.2f; }
+        else { P.shR = -0.95f; P.elR = 0.15f; P.torsoPitch = 0.3f; P.dip += 0.12f; }
+        break;
+    case AttackKind::ABACKFIST:   // he spins away (his back to you), and the back of the fist comes round with him
+        P.glow = 1;
+        if (!k) { P.hipYaw = -0.05f; P.torsoYaw = 1.1f; P.shL = -1.3f; P.shLz = -0.1f; P.elL = 1.95f; P.dip += 0.08f; }
+        else { P.hipYaw = -0.95f; P.torsoYaw = -1.0f; P.shL = -1.5f; P.shLz = 1.25f; P.elL = 0.15f; }
+        break;
+    case AttackKind::AELBOW:      // short: the rear elbow, flat and turning over
+        P.glow = 0;
+        if (!k) { P.torsoYaw = -0.4f; P.shR = -0.9f; P.shRz = 0.3f; P.elR = 2.5f; }
+        else { P.hipYaw = -0.2f; P.torsoYaw = 0.65f; P.shR = -1.5f; P.shRz = 0.95f; P.elR = 2.7f; P.dip += 0.1f; }
+        break;
+    case AttackKind::AROUNDHOUSE: // the knee up, then the hips turn over and the shin comes round at your ribs
+        P.glow = 2; P.ankle = 0.35f; P.shL = -1.25f; P.elL = 2.f;
+        if (!k) { P.hipR = -0.7f; P.kneeR = 1.8f; P.torsoRoll = -0.15f; P.torsoPitch = -0.1f; }
+        else { P.hipYaw = 0.75f; P.torsoYaw = -0.2f; P.hipR = -1.5f; P.kneeR = 0.15f; P.torsoRoll = -0.35f; P.torsoPitch = -0.15f; P.shR = 0.4f; P.shRz = 0.6f; P.elR = 0.6f; }
+        break;
+    case AttackKind::AHAYMAKER:   // wound right back, then over the top with everything behind it
+        P.glow = 0;
+        if (!k) { P.hipYaw = -0.8f; P.torsoYaw = -1.0f; P.torsoPitch = -0.2f; P.shR = 0.9f; P.shRz = 0.7f; P.elR = 1.8f; P.dip += 0.1f; }
+        else { P.hipYaw = -0.1f; P.torsoYaw = 0.85f; P.torsoPitch = 0.38f; P.shR = -2.2f; P.shRz = 0.1f; P.elR = 0.4f; P.dip += 0.2f; }
+        break;
+    case AttackKind::ACHARGE:     // head down, lead shoulder first
+        P.glow = 5; P.torsoPitch = 0.75f; P.hipYaw = -0.6f; P.torsoYaw = -0.4f; P.shL = -0.3f; P.shLz = -0.2f; P.elL = 2.3f;
+        P.shR = 0.4f; P.elR = 1.2f; P.dip += 0.25f;
+        break;
+    case AttackKind::AAXE:        // the heel up past his head, then straight down
+        P.glow = 2; P.ankle = 0.3f; P.shR = P.shL = -0.5f; P.shRz = P.shLz = 0.7f;
+        if (!k) { P.hipR = -2.6f; P.kneeR = 0.05f; P.torsoPitch = -0.3f; }
+        else { P.hipR = -0.3f; P.kneeR = 0.1f; P.torsoPitch = 0.3f; P.dip += 0.15f; }
+        break;
+    case AttackKind::ACLAP:       // both arms wide, chest open, then palms together in front
+    case AttackKind::ATHUNDER:    // (risen: the same, over your head)
+        P.glow = 3; P.fistR = P.fistL = 0.f; P.shR = P.shL = -1.5f; P.elR = P.elL = 0.15f; P.hipYaw = -0.15f; P.torsoYaw = 0.15f;
+        if (!k) { P.shRz = P.shLz = 1.3f; P.torsoPitch = -0.15f; }
+        else { P.shRz = P.shLz = -0.2f; P.torsoPitch = 0.2f; }
+        if (a == AttackKind::ATHUNDER) P.plant = 0.f;
+        break;
+    case AttackKind::ASKYFALL:    // knees up, both fists over his head, then down like a hammer
+        P.glow = 3; P.plant = 0.f; P.ankle = 0.3f; P.hipYaw = 0.f; P.torsoYaw = 0.f;
+        P.shR = P.shL = k ? -0.4f : -2.9f; P.elR = P.elL = 0.3f; P.hipR = P.hipL = -1.1f; P.kneeR = P.kneeL = 1.6f; P.torsoPitch = k ? 0.4f : -0.2f;
+        break;
+    case AttackKind::AMETEOR:     // one fist first, the body behind it like a comet
+        P.glow = 0; P.plant = 0.f; P.ankle = 0.3f; P.hipYaw = 0.f; P.torsoYaw = 0.f;
+        P.shR = -2.9f; P.elR = 0.05f; P.shL = 0.6f; P.elL = 0.4f; P.torsoPitch = 0.9f; P.hipR = P.hipL = 0.4f; P.kneeR = 0.3f; P.kneeL = 0.6f;
+        break;
+    case AttackKind::ATAKEOFF:    // a deep crouch, arms flung back, then up
+        P.shR = P.shL = 0.6f; P.shRz = P.shLz = 0.6f; P.elR = P.elL = 0.3f; P.torsoPitch = 0.3f;
+        P.dip += k ? 0.f : 0.38f;
+        break;
+    case AttackKind::AJUDGE:
+        P.glow = 5; P.plant = 0.f; P.lift = 1.2f + 0.6f * tp; P.hipYaw = 0.f; P.torsoYaw = 0.f; P.torsoRoll = 0.f; P.torsoPitch = 0.f;
+        P.shR = P.shL = -1.57f; P.shRz = P.shLz = 1.25f; P.elR = P.elL = 0.f;
+        P.fistR = P.fistL = 0.f; P.headPitch = -0.3f; P.hipR = P.hipL = 0.15f; P.kneeR = P.kneeL = 0.3f; P.ankle = 0.3f;
+        break;
+    default: break;
+    }
+}
+
+// (where his feet are: planted, the hips sit on the legs; otherwise crouch is as given)
+inline void absPlant(AbsPose& P) {
+    if (P.plant <= 0.f) return;
+    absSink(P, P.dip); P.dip = 0.f;
+    P.crouch += (absLegDrop(P) - P.crouch) * glm::clamp(P.plant, 0.f, 1.f);
+}
+
+constexpr float AB_FOLLOW_T = 0.42f;   // a blow's follow-through, back to guard
+
+inline AbsPose absolutePose(const Enemy& e, float time) {
+    AbsPose G = absoluteGuard(e, time);
+    if (e.abAirborne() && !e.abDiving) {   // aloft: arms swept back, legs trailing, the guard gone
+        G = AbsPose{}; G.omega = 8.f; G.ankle = 0.3f;
+        G.shR = G.shL = 0.55f; G.shRz = G.shLz = 0.35f; G.elR = G.elL = 0.35f; G.fistR = G.fistL = 0.6f;
+        G.hipR = 0.35f; G.hipL = 0.2f; G.kneeR = 0.6f; G.kneeL = 0.9f; G.torsoPitch = 0.3f;
+        G.torsoRoll = 0.05f * std::sin(time * 1.3f);
+    }
+    AbsPose P = G;
+    const AttackKind atk = e.telegraphTimer > 0.f ? e.attack : AttackKind::NONE;
+    if (atk != AttackKind::NONE) {
+        const float tp = e.telegraphProgress();
+        const float dur = std::max(e.telegraphDuration, 1e-3f), rem = e.telegraphTimer;
+        const float stroke = glm::clamp(0.3f * dur, 0.08f, 0.16f);         // the blow itself: the last instant of the tell
+        const float w = smooth01((dur - rem) / std::max(dur - stroke, 1e-3f));
+        const float s = glm::clamp(1.f - rem / stroke, 0.f, 1.f);
+        AbsPose C = G; absoluteMove(C, atk, false, tp);
+        AbsPose K = G; absoluteMove(K, atk, true, tp);
+        // winding up: the core turns first, the limb draws after it; held there (a tremor) if the tell runs long
+        P = absMix(G, C, absEaseOut(w * 1.15f), smooth01(w));
+        const float tremor = 0.02f * std::sin(time * 37.f) * w * (1.f - s);
+        P.torsoYaw += tremor; P.shR += tremor; P.shL -= tremor;
+        P.omega = 18.f;
+        if (s > 0.f) {   // the stroke: the hips snap round, the limb whips out after them, past the mark and back
+            P = absMix(P, K, absBackOut(s * 1.4f), absBackOut((s - 0.15f) / 0.85f));
+            P.omega = 42.f;
+        }
+        P.glow = C.glow;
+    } else if (e.abBodyLanded != AttackKind::NONE && e.abBodySince < AB_FOLLOW_T && !e.staggered() && !(e.abAirborne() && !e.abDiving)) {
+        // the follow-through: held at full stretch a beat, then gathered back into his guard
+        AbsPose K = G; absoluteMove(K, e.abBodyLanded, true, 1.f);
+        if (K.plant > 0.f || G.plant <= 0.f) {
+            const float r = smooth01((e.abBodySince - 0.06f) / (AB_FOLLOW_T - 0.06f));
+            P = absMix(K, G, r, smooth01(r * 1.2f));
+            P.glow = -1; P.omega = 20.f;
+        }
+    }
+    if (e.staggered()) {
+        P = AbsPose{}; P.omega = 20.f;
+        if (e.abReeling) {   // thrown back on his heels, the guard knocked open
+            P.plant = 1.f; P.ankle = 1.f; P.stanceW = 0.12f; P.hipR = 0.3f; P.kneeR = 0.35f; P.hipL = -0.2f; P.kneeL = 0.3f;
+            P.torsoPitch = -0.4f; P.torsoRoll = 0.12f; P.shR = P.shL = 0.25f; P.shRz = P.shLz = 0.55f; P.elR = P.elL = 0.4f; P.headPitch = -0.3f;
+            P.fistR = P.fistL = 0.5f;
+        } else {             // broken: down on one knee, head bowed
+            P.omega = 12.f;
+            P.crouch = 0.62f; P.hipR = -1.45f; P.kneeR = 1.5f; P.hipL = 0.55f; P.kneeL = 2.3f;
+            P.torsoPitch = 0.38f; P.headPitch = 0.4f; P.shR = P.shL = 0.15f; P.shRz = P.shLz = 0.2f; P.elR = P.elL = 0.3f;
+        }
+    }
+    absPlant(P);
+    return P;
+}
+
+// Each tick: note a blow landing (its follow-through starts), then spring his drawn body after
+// absolutePose. Critically damped, solved exactly, so it's steady at any tick length.
+inline void tickAbsoluteBody(Enemy& e, float dt) {
+    const bool tele = e.telegraphTimer > 0.f;
+    const bool ended = e.abBodyTT > 0.f && (!tele || e.attack != e.abBodyAtk || e.telegraphTimer > e.abBodyTT + 1e-4f);
+    if (ended && e.abBodyTT < 0.12f && !e.staggered()) { e.abBodyLanded = e.abBodyAtk; e.abBodySince = 0.f; }
+    else e.abBodySince += dt;
+    e.abBodyTT = tele ? e.telegraphTimer : 0.f;
+    e.abBodyAtk = tele ? e.attack : AttackKind::NONE;
+
+    const AbsPose goal = absolutePose(e, e.age);
+    if (!e.abBodyLive) {
+        for (int k = 0; k < AB_NCH; ++k) { e.abBody[k] = e.abBodyPrev[k] = goal.*AB_CH[k]; e.abBodyV[k] = 0.f; }
+        e.abBodyLive = true;
+        return;
+    }
+    const float w = goal.omega, ex = std::exp(-w * dt);
+    for (int k = 0; k < AB_NCH; ++k) {
+        e.abBodyPrev[k] = e.abBody[k];
+        const float x0 = e.abBody[k] - goal.*AB_CH[k], v0 = e.abBodyV[k], c = v0 + w * x0;
+        e.abBody[k]  = goal.*AB_CH[k] + (x0 + c * dt) * ex;
+        e.abBodyV[k] = (v0 - w * c * dt) * ex;
+    }
+}
+
+// The pose as drawn: his sprung body (what tickAbsoluteBody has), the tell's glow from where he's going
+inline AbsPose absoluteLivePose(const Enemy& e, float time) {
+    AbsPose P = absolutePose(e, time);
+    if (!e.abBodyLive) return P;
+    for (int k = 0; k < AB_NCH; ++k) P.*AB_CH[k] = e.abBody[k];
+    if (P.plant > 0.f) P.crouch += (absLegDrop(P) - P.crouch) * glm::clamp(P.plant, 0.f, 1.f);   // (the feet stay on the floor)
+    return P;
+}
+
+// His torso's frame (the rig and headBox share it, so the head you see is the head you hit)
+inline mat4 absoluteTorsoFrame(const Enemy& e, const mat4& root, const AbsPose& P) {
     float bob = std::fabs(std::sin(e.animPhase)) * 0.04f * glm::clamp(e.moveSpeed / 11.f, 0.f, 1.f);
-    mat4 torso = root * T({0.f, P.lift - P.crouch + bob + 1.30f, 0.f}) * RY(P.torsoYaw) * RX(P.torsoPitch);
-    return torso * T({0.f, 0.95f, 0.f}) * RX(P.headPitch);
+    return root * T({0.f, P.lift - P.crouch + bob, 0.f}) * RY(P.hipYaw) * T({0.f, 1.30f, 0.f})
+         * RY(P.torsoYaw) * RZ(P.torsoRoll) * RX(P.torsoPitch);
+}
+inline mat4 absoluteHeadFrame(const Enemy& e, const mat4& root, const AbsPose& P) {
+    return absoluteTorsoFrame(e, root, P) * T({0.f, 0.95f, 0.f}) * RY(-0.4f * (P.torsoYaw + P.hipYaw)) * RX(P.headPitch);   // (his eyes stay on you)
 }
 
 inline void buildAbsolute(const Enemy& e, float time, Rig& r, const mat4& root) {
-    const AbsPose P = absolutePose(e, time);
+    const AbsPose P = absoluteLivePose(e, time);
     const float tp = e.telegraphProgress();
     const bool  hurt = e.staggered() && !e.abReeling;
     const float pulse = 0.85f + 0.15f * std::sin(time * 3.f) * (hurt ? 3.f : 1.f);
@@ -165,13 +357,13 @@ inline void buildAbsolute(const Enemy& e, float time, Rig& r, const mat4& root) 
         return on ? tc * tk : base;
     };
     const float bob = std::fabs(std::sin(e.animPhase)) * 0.04f * glm::clamp(e.moveSpeed / 11.f, 0.f, 1.f);
-    const mat4 body = root * T({0.f, P.lift - P.crouch + bob, 0.f});
+    const mat4 body = root * T({0.f, P.lift - P.crouch + bob, 0.f}) * RY(P.hipYaw);
 
     // ---- legs: thigh, its plate and two veins, knee cap, shin, calf, its seam, foot, two toes, heel, an ankle wrap ----
     for (float s : {-1.f, 1.f}) {
         const bool right = s < 0.f;
         const int limb = right ? 2 : 6;
-        mat4 hip = body * T({s * 0.15f, 1.15f, 0.f}) * RX(right ? P.hipR : P.hipL) * RZ(s * 0.04f);
+        mat4 hip = body * T({s * 0.15f, 1.15f, 0.f}) * RX(right ? P.hipR : P.hipL) * RZ(s * P.stanceW);
         r.box(hip, {0.f, -0.29f, 0.f}, {0.2f, 0.58f, 0.22f}, skin, soft);
         r.box(hip, {0.f, -0.27f, 0.08f}, {0.14f, 0.42f, 0.08f}, plate, soft);
         r.box(hip, {s * 0.105f, -0.3f, 0.f}, {0.02f, 0.4f, 0.03f}, dark, lit(limb, seam));
@@ -181,7 +373,7 @@ inline void buildAbsolute(const Enemy& e, float time, Rig& r, const mat4& root) 
         r.box(kn, {0.f, -0.27f, 0.f}, {0.15f, 0.52f, 0.16f}, skin, soft);
         r.box(kn, {0.f, -0.22f, -0.06f}, {0.12f, 0.32f, 0.08f}, plate);
         r.box(kn, {0.f, -0.27f, 0.085f}, {0.03f, 0.46f, 0.02f}, dark, lit(limb, seam));
-        mat4 an = kn * T({0.f, -0.55f, 0.f}) * RX(-(right ? P.kneeR + P.hipR : P.kneeL + P.hipL) * 0.6f);
+        mat4 an = kn * T({0.f, -0.55f, 0.f}) * RX(-(right ? P.kneeR + P.hipR : P.kneeL + P.hipL) * P.ankle);
         r.box(an, {0.f, -0.03f, 0.05f}, {0.13f, 0.06f, 0.24f}, plate);
         r.box(an, {-0.03f, -0.035f, 0.19f}, {0.06f, 0.05f, 0.07f}, dark);
         r.box(an, {0.035f, -0.035f, 0.185f}, {0.05f, 0.045f, 0.06f}, dark);
@@ -199,7 +391,7 @@ inline void buildAbsolute(const Enemy& e, float time, Rig& r, const mat4& root) 
         r.box(body * T({x, 1.3f, z}) * RX((k < 2 ? -1.f : 1.f) * (sway + 0.05f * k)), {0.f, -0.28f, 0.f}, {0.1f, 0.56f, 0.015f}, dark, light * 0.3f);
     }
     // ---- the torso ----
-    const mat4 torso = body * T({0.f, 1.30f, 0.f}) * RY(P.torsoYaw) * RX(P.torsoPitch);
+    const mat4 torso = absoluteTorsoFrame(e, root, P);
     r.box(torso, {0.f, 0.2f, 0.f}, {0.34f, 0.4f, 0.24f}, skin, soft);                             // abdomen
     for (int row = 0; row < 3; ++row) for (float s : {-1.f, 1.f})                                  // its plates
         r.box(torso, {s * 0.06f, 0.08f + 0.12f * row, 0.125f}, {0.1f, 0.1f, 0.03f}, plate, soft);
@@ -209,7 +401,7 @@ inline void buildAbsolute(const Enemy& e, float time, Rig& r, const mat4& root) 
             r.box(torso, {s * 0.22f, 0.42f + 0.08f * k, 0.04f}, {0.08f, 0.04f, 0.22f}, plate);
         r.box(torso, {s * 0.13f, 0.62f, 0.15f}, {0.22f, 0.2f, 0.04f}, plate, soft);              // pectorals
         r.box(torso * T({s * 0.13f, 0.78f, 0.1f}) * RZ(s * 0.15f), {0.f, 0.f, 0.f}, {0.24f, 0.035f, 0.04f}, plate);   // collarbones
-        r.box(torso, {s * 0.14f, 0.8f, -0.04f}, {0.16f, 0.1f, 0.18f}, skin);                      // trapezius
+        r.box(torso, {s * 0.14f, 0.8f + P.shrug * 0.6f, -0.04f}, {0.16f, 0.1f + P.shrug, 0.18f}, skin);   // trapezius
         r.box(torso, {s * 0.13f, 0.6f, -0.15f}, {0.16f, 0.2f, 0.03f}, plate);                     // shoulder blades
         r.box(torso * T({s * 0.1f, 0.32f, 0.15f}) * RZ(s * 0.5f), {0.f, 0.f, 0.f}, {0.02f, 0.3f, 0.01f}, dark, seam);   // veins
     }
@@ -243,7 +435,7 @@ inline void buildAbsolute(const Enemy& e, float time, Rig& r, const mat4& root) 
         const int limb = right ? 0 : 1;
         const float sh = right ? P.shR : P.shL, shz = right ? P.shRz : P.shLz, el = right ? P.elR : P.elL;
         const float fist = right ? P.fistR : P.fistL;
-        mat4 shoulder = torso * T({s * 0.31f, 0.76f, 0.f}) * RX(sh) * RZ(s * (0.1f + shz));
+        mat4 shoulder = torso * T({s * 0.31f, 0.76f + P.shrug, 0.f}) * RX(sh) * RZ(s * (0.1f + shz));
         r.box(shoulder, {s * 0.02f, -0.02f, 0.f}, {0.18f, 0.16f, 0.18f}, plate, soft);
         r.box(shoulder, {0.f, -0.25f, 0.03f}, {0.12f, 0.36f, 0.11f}, skin, soft);
         r.box(shoulder, {0.f, -0.24f, -0.04f}, {0.11f, 0.32f, 0.08f}, plate);

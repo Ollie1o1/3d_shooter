@@ -21,6 +21,7 @@ inline void GameplayState::devPenitentPose(Enemy& e) {
 
 // --overlay abposeN: THE ABSOLUTE held mid-tell N (1 jab, 2 hook, 3 uppercut, 4 drop-kick, 5 ray, 6 stomp,
 // 7 serpent, 8 sweep (blade), 9 lunge, 10 judgment, 11 reeling, 12 broken, 13 idle guard) for screenshots
+// (abposeN@T: T s before the blow lands - 0 is the blow; abposeN~T: T s into its follow-through; ...side / ...three: turned side-on / three-quarters)
 inline void GameplayState::devAbsolutePose(Enemy& e) {
     int n = std::atoi(g_devOverlay.c_str() + 6);
     e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE; e.abArrive = 0.f;
@@ -32,7 +33,14 @@ inline void GameplayState::devAbsolutePose(Enemy& e) {
     static const AttackKind K[] = {A::NONE, A::AJAB, A::AHOOK, A::AUPPER, A::ADROP, A::ARAY, A::ASTOMP, A::ASERPENT, A::ASWEEP, A::ALUNGE, A::AJUDGE,
                                    A::NONE, A::NONE, A::ACROSS, A::ABACKFIST, A::AELBOW, A::AROUNDHOUSE, A::AHAYMAKER, A::ACHARGE, A::AAXE, A::ACLAP,
                                    A::ASKYFALL, A::AMETEOR};
-    if (n >= 1 && n <= 22 && n != 11 && n != 12) { e.attack = K[n]; e.telegraphTimer = 0.25f; e.abAim = player.position; }
+    const char* at = std::strchr(g_devOverlay.c_str(), '@');
+    const char* after = std::strchr(g_devOverlay.c_str(), '~');
+    if (g_devOverlay.find("side") != std::string::npos) e.yaw = e.prevYaw = e.yaw + 1.5707963f;
+    if (g_devOverlay.find("three") != std::string::npos) e.yaw = e.prevYaw = e.yaw + 0.7853982f;
+    if (n >= 1 && n <= 22 && n != 11 && n != 12) {
+        if (after) { e.abBodyLanded = K[n]; e.abBodySince = (float)std::atof(after + 1); }   // (tickAbsoluteBody adds its tick)
+        else { e.attack = K[n]; e.telegraphTimer = at ? std::max(0.001f, (float)std::atof(at + 1)) : 0.25f; e.abAim = player.position; }
+    }
     e.abAlt = e.abAltWant = n == 23 ? 11.f : 0.f;   // (the hover pose)
     e.abBlade = n == 8 || n == 9;
     if (n == 11) { e.staggerTimer = 0.5f; e.abReeling = true; }
