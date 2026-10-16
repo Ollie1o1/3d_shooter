@@ -323,11 +323,9 @@ int main() {
         CHECK(where, "...and each one's arena is the one its boss fights in");
         CHECK(bossEntry(5).morning && !bossEntry(4).morning, "...MORNINGSTAR starts inside the eclipse; the Absolute's entry is his first form");
         Records r;
-        CHECK(bossOpen(r, 0) && bossOpen(r, 1) && !bossOpen(r, 2) && !bossOpen(r, 5), "Act I's bosses are open from the start; Act II's once you've reached them");
-        r.act2Unlocked = true;
-        CHECK(bossOpen(r, 3) && !bossOpen(r, 4), "...the Penitent and the Leviathan once the Sovereign falls");
-        r.act2Cleared = true;
-        CHECK(bossOpen(r, 4) && bossOpen(r, 5), "...the Absolute and MORNINGSTAR once the Leviathan does");
+        bool allOpen = true;
+        for (int i = 0; i < BOSS_COUNT; ++i) allOpen &= bossOpen(r, i);
+        CHECK(allOpen, "every boss is open from the start, on a fresh save");
         CHECK(recordBoss(r, 2, 95.f) && !recordBoss(r, 2, 100.f) && recordBoss(r, 2, 90.f) && r.bestBoss[2] == 90.f, "a boss's best kill is its fastest");
         Records back; back.parse(r.serialise());
         CHECK(back.bestBoss[2] == 90.f && back.bestBoss[0] == 0.f, "...and it's saved");

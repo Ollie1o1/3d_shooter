@@ -232,7 +232,7 @@ private:
             std::snprintf(buf, sizeof(buf), "%d", i + 1);
             ui.text(buf, x + 22, y + 16, 3, {0.5f, 0.5f, 0.55f, 0.8f});
             ui.text(b.name, x + 62, y + 8, 3, c);
-            ui.text(open ? b.where : b.act2 && b.arena == 5 ? "LOCKED - KILL THE LEVIATHAN" : "LOCKED - KILL THE SOVEREIGN", x + 62, y + 36, 1, {0.7f, 0.68f, 0.66f, 0.85f});
+            ui.text(b.where, x + 62, y + 36, 1, {0.7f, 0.68f, 0.66f, 0.85f});
             if (records.bestBoss[i] > 0.f) {
                 std::snprintf(buf, sizeof(buf), "BEST %s", formatTime(records.bestBoss[i]).c_str());
                 ui.textRight(buf, (int)(x + BOSS_W - 18), (int)y + 20, 2, {1.f, 0.85f, 0.45f, 0.9f});

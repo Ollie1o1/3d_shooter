@@ -192,11 +192,8 @@ inline bool zenithHandoff(bool act2, int clearedArena, int arenaCount) {
 
 // The main menu's ACT II row only starts a run once the Sovereign has fallen
 inline bool canStartAct2(const Records& r) { return r.act2Unlocked; }
-// BOSS: a boss is open once you've reached it (ACT II's once it's unlocked; the Zenith's once the Leviathan is dead)
-inline bool bossOpen(const Records& r, int i) {
-    const BossEntry& b = bossEntry(i);
-    return !b.act2 ? true : b.arena == 5 ? r.act2Cleared : r.act2Unlocked;
-}
+// BOSS: every boss is open from the start (Oliver's call: no need to have reached it)
+inline bool bossOpen(const Records&, int i) { return i >= 0 && i < BOSS_COUNT; }
 // A boss killed in t seconds: true when it's that boss's new best
 inline bool recordBoss(Records& r, int i, float t) {
     if (i < 0 || i >= BOSS_COUNT || t <= 0.f) return false;
