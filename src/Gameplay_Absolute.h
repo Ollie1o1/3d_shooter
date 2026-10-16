@@ -233,7 +233,8 @@ inline void GameplayState::swordParryAbsolute(Enemy& e) {
     glm::vec3 to = e.position - player.position; to.y = 0.f;
     float d = glm::length(to);
     glm::vec3 f = player.camera.forward(); f.y = 0.f;
-    if (d > Enemy::AB_REACH + 1.8f || (d > 0.3f && glm::dot(to / d, glm::normalize(f + glm::vec3{1e-4f, 0.f, 0.f})) < 0.2f)) return;
+    const float reach = e.morning() ? (e.attack == AttackKind::MBACKHAND ? Enemy::MS_BACK_REACH : Enemy::MS_REACH) : Enemy::AB_REACH;   // (MORNINGSTAR's reach)
+    if (d > reach + 1.8f || (d > 0.3f && glm::dot(to / d, glm::normalize(f + glm::vec3{1e-4f, 0.f, 0.f})) < 0.2f)) return;
     if (sword.tryParry()) parryAbsolute(e, true);
 }
 

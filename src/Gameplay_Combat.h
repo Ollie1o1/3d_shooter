@@ -89,7 +89,7 @@ inline void GameplayState::punch(int boostable) {
         if (!e.targetable() || !e.parryWindow()) continue;
         glm::vec3 d = e.position + glm::vec3{0, e.height() * 0.5f, 0} - eye;
         float dist = glm::length(d);
-        bool inReach = dist < 5.5f && glm::dot(fwd, d / dist) > 0.2f;
+        bool inReach = dist < (e.type == EnemyType::ABSOLUTE && e.morning() ? Enemy::MS_BACK_REACH + 1.5f : 5.5f) && glm::dot(fwd, d / dist) > 0.2f;   // (MORNINGSTAR: as far as his backhand reaches)
         if (e.type == EnemyType::ABSOLUTE) { if (inReach && parryAbsolute(e, false)) return; continue; }   // Gameplay_Absolute.h
         if (e.type == EnemyType::PENITENT) {   // a censer or its fists: punch it as it reaches you
             float flat = glm::length(glm::vec2{player.position.x - e.position.x, player.position.z - e.position.z});

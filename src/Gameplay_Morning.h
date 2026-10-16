@@ -61,7 +61,7 @@ inline void GameplayState::onMorningEvents(Enemy& e, const EnemyEvents& ev) {
     if (ev.msFissure) quake(ev.abFrom, 3.f, 0.5f);
     if (ev.msDrop) {   // the crater (RISING and his entrance: a ring after it)
         quake(ev.abTo, Enemy::MS_DROP_R + 2.f, 1.f);
-        fx.spawnBurst(ev.abTo + glm::vec3{0.f, 0.3f, 0.f}, {0.5f, 0.3f, 0.25f}, 60, 13.f, 1.f, 12.f);   // glass thrown up
+        fx.spawnBurst(ev.abTo + glm::vec3{0.f, 0.3f, 0.f}, {1.4f, 0.5f, 0.15f}, 40, 13.f, 0.8f, 12.f);   // embers thrown up
         eclipseFlare = std::max(eclipseFlare, 0.6f);
     }
     if (ev.msGrasp) quake(ev.abTo, 4.f, 0.6f);
@@ -151,8 +151,12 @@ inline void GameplayState::gatherMorningBoxes(std::vector<BoxInstance>& out) {
             ring(w.at + glm::vec3{0.f, 0.04f, 0.f}, 1.5f, 0.12f, 0.04f, 24, red * 0.2f, red * (0.6f + 0.5f * std::sin(t * 30.f)));
             continue;
         }
-        float h = w.inward ? 3.f : 1.1f;
-        ring(w.at, std::max(w.r, 0.2f), 0.35f, h, w.inward ? 120 : 64, fire * 0.3f, (w.inward ? red * 1.3f : hot * 0.9f) * lights + fire * 0.3f);
+        // a wave of fire: a low white-hot core and a band of orange over it (the COLLAPSE: a red wall, taller).
+        // (Never dimmed: in TOTALITY the floor's tells are what you have)
+        const float R = std::max(w.r, 0.2f);
+        const int n = w.inward ? 120 : std::clamp((int)(R * 3.f), 24, 96);
+        ring(w.at, R, 0.3f, w.inward ? 3.f : 1.f, n, glm::vec3{0.05f, 0.01f, 0.f}, w.inward ? red * 1.1f : glm::vec3{1.6f, 0.45f, 0.08f});
+        ring(w.at, R, 0.4f, 0.25f, n, glm::vec3{0.1f, 0.05f, 0.02f}, glm::vec3{2.2f, 1.4f, 0.7f});
     }
     for (auto& f : abh.fissures) {
         float tip = std::min(f.len, f.t * AbsoluteHazards::FIS_SPEED);

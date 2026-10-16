@@ -67,11 +67,16 @@ What makes it Radahn-hard, beyond the numbers:
 - **Escalation:** stages inside the form (open question: where the cuts are),
   each adding aftershocks / speed, ending in Totality.
 
-## 3. Open questions
+## 3. As built (Oct 16 2026)
 
-- Stage breakpoints inside the form, and whether Totality ends in a final
-  set piece (the dawn breaking through as he dies).
-- HP and damage numbers: set by BossSim once the moves exist (bigger hitbox
-  means more of your shots land, so HP goes up to compensate).
-- The scaled rig: reach, hitbox and parry range all scale; parry/dodge
-  windows don't.
+- Stages: MORNINGSTAR 100-55 %, RISING 55-12 % (aftershocks on every slam,
+  18 % quicker, the ring's flares under every third string), TOTALITY < 12 %
+  (opens with the COLLAPSE: the ring of fire closing in, jump it; then the
+  light goes out of him and the arena, 28 % quicker).
+- 11000 HP (difficulty-scaled like his first bar). BossSim SOLID: first form
+  174 s, MORNINGSTAR 199 s, lowest health 28 (50 against the first form).
+- Parrying his backhand breaks him outright (3 s, double damage).
+- Track 11 MORNINGSTAR: 178 BPM, techno voicing 2.
+- Dev: `--overlay morning|morning5|morning6`, `swallowNN`, `abposeNms` /
+  `abposeNms6`, poses 24-30 for his moves.
+- Not play-tested; tuned by the sim.
