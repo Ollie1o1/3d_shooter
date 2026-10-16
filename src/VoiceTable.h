@@ -62,6 +62,10 @@ inline const char* attackKey(AttackKind k) {
         case AttackKind::AHAYMAKER: return "haymaker"; case AttackKind::ACHARGE: return "charge";
         case AttackKind::AAXE: return "axe";          case AttackKind::ACLAP: return "clap";
         case AttackKind::ATHUNDER: return "thunder";
+        case AttackKind::MJAB: return "msjab";        case AttackKind::MBACKHAND: return "msbackhand";   // MORNINGSTAR's (no voice clips: his are the game's)
+        case AttackKind::MGRASP: return "msgrasp";    case AttackKind::MDROP: return "msdrop";
+        case AttackKind::MSUNDER: return "mssunder";  case AttackKind::MFISSURE: return "msfissure";
+        case AttackKind::MFLARES: return "msflares";  case AttackKind::MCOLLAPSE: return "mscollapse";
         default: return "none";
     }
 }

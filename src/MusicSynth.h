@@ -39,10 +39,11 @@ struct MusicTrack {
     const char* bass;
     const char* arp;
     const char* lead;      // 32 steps (two bars): chord tone 0-3, '-' hold, '.' rest
-    int   techno;          // 1: hard techno voicing (driven kick, clap, acid arp, a riser into every fourth bar)
+    int   techno;          // 1: hard techno voicing (driven kick, clap, acid arp, a riser into every fourth bar); 2: harder still
+                           // (a distorted kick with a long tail, a snare under the clap, a dirtier bass and sub, a deeper pump)
 };
 
-constexpr int MUSIC_TRACKS = 11;
+constexpr int MUSIC_TRACKS = 12;
 
 inline const MusicTrack& musicTrack(int i) {
     static const MusicTrack T[] = {
@@ -88,6 +89,12 @@ inline const MusicTrack& musicTrack(int i) {
         {"ZENITH", 166.f, 50, {0, 0, 5, 6},
          "x...x...x...x...", "....x.......x...", "xxoxxxoxxxoxxxoX",
          ".xxx.xxx.xxx.xxx", "0030102300301023", "3.3.3.2.3.3.3.0.3.3.3.2.1.1.1.2.", 1},
+        // MORNINGSTAR (inside the eclipse): faster and harder than the Zenith. A distorted kick with a long
+        // tail and a pickup into every bar, clap and snare together, a dirty rolling bass over a heavy sub,
+        // sixteenth hats, the acid line, stabs on top
+        {"MORNINGSTAR", 178.f, 47, {0, 5, 3, 6},
+         "x...x...x...x..x", "....x.......x..g", "xXoxxXoxxXoxxXoX",
+         ".xxx.xxx.xxx.xfx", "0303102303031023", "3...3...2.1.0...3...3...1.2.3...", 2},
     };
     return T[((i % MUSIC_TRACKS) + MUSIC_TRACKS) % MUSIC_TRACKS];
 }
@@ -294,12 +301,17 @@ private:
 
     void synthSample(const MusicTrack& tr, float& L, float& R) {
         const float dt = 1.f / SR;
-        const bool techno = tr.techno != 0;
+        const bool techno = tr.techno != 0, hard = tr.techno >= 2;
         // ---- drums ----
         float drums = 0.f, hatOut = 0.f;
         if (kick.t < 0.6f) {
             float t = kick.t;
-            if (techno) {                                         // harder: a faster, deeper drop, driven, a sharper click
+            if (hard) {                                           // harder still: a distorted body with a long tail, a hard click
+                float hz = 44.f + 260.f * std::exp(-t * 48.f);
+                float body = std::tanh(kickOsc.sine(hz, SR) * std::exp(-t * 5.f) * 5.5f) * 1.f;
+                float click = noise() * std::exp(-t * 1100.f) * 0.7f;
+                drums += (body + click) * gKick * kick.vel;
+            } else if (techno) {                                  // harder: a faster, deeper drop, driven, a sharper click
                 float hz = 47.f + 190.f * std::exp(-t * 40.f);
                 float body = std::tanh(kickOsc.sine(hz, SR) * std::exp(-t * 7.5f) * 3.2f) * 1.35f;
                 float click = noise() * std::exp(-t * 900.f) * 0.55f;
@@ -314,7 +326,7 @@ private:
         }
         // Sidechain: the pad and bass duck under the kick
         float kd = kick.t < 0.4f ? std::exp(-kick.t * 9.f) * gKick : 0.f;
-        duck = 1.f - 0.55f * kd;
+        duck = 1.f - (hard ? 0.7f : 0.55f) * kd;
         if (snare.t < 0.5f) {
             float t = snare.t;
             if (techno) {                                         // a clap: three quick slaps and a short tail, band-passed
@@ -322,6 +334,7 @@ private:
                 float e = std::exp(-t * 16.f) * 0.55f;
                 for (float o : {0.f, 0.011f, 0.022f}) if (t >= o) e += std::exp(-(t - o) * 190.f);
                 drums += snareF.band * e * 0.62f * gSnare * snare.vel;
+                if (hard) drums += snareOsc.sine(200.f - 40.f * t, SR) * std::exp(-t * 24.f) * 0.4f * gSnare * snare.vel;   // a snare's body under it
             } else {
                 float n = snareF.hp(noise(), gSnareF, 1.2f) * std::exp(-t * 14.f);
                 float body = snareOsc.sine(185.f - 30.f * t, SR) * std::exp(-t * 28.f);
@@ -355,7 +368,8 @@ private:
             float cut = gBassF * (0.8f + 1.4f * std::exp(-bassEnvT * 14.f));
             float f = bassF.lp(raw * 0.5f, std::min(cut, 2.f), 0.7f);
             float sb = sub.sine(hz * 0.5f, SR) * 0.6f;
-            bassOut = std::tanh((f * 1.6f + sb) * env) * (techno ? 0.32f : 0.42f) * gBass * duck;   // (techno: under the kick)
+            bassOut = hard ? std::tanh((f * 2.6f + sb * 1.4f) * env) * 0.28f * gBass * duck   // (dirtier, a heavier sub)
+                           : std::tanh((f * 1.6f + sb) * env) * (techno ? 0.32f : 0.42f) * gBass * duck;   // (techno: under the kick)
             bassEnvT += dt;
         }
 

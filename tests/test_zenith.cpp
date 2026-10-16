@@ -299,7 +299,9 @@ int main() {
         CHECK(!N.onZenithShard(zenithShard(2)), "a fallen shard is gone");
         N.restoreZenith();
         CHECK(N.zenithPillarAt(zenithPillar(0), 0.5f) == 0 && N.onZenithShard(zenithShard(2)), "a retry puts them back");
-        CHECK(MUSIC_TRACKS == 11 && std::string(musicTrack(10).name) == "ZENITH" && musicTrack(10).bpm >= 165.f, "the Zenith's own fast track");
+        CHECK(MUSIC_TRACKS == 12 && std::string(musicTrack(10).name) == "ZENITH" && musicTrack(10).bpm >= 165.f, "the Zenith's own fast track");
+        CHECK(std::string(musicTrack(11).name) == "MORNINGSTAR" && musicTrack(11).bpm > musicTrack(10).bpm && musicTrack(11).techno == 2,
+              "MORNINGSTAR's: faster than the Zenith's, the harder voicing");
     }
 
     // ---------------------------------------------------------------- the hand-off and the records
@@ -786,7 +788,7 @@ int main() {
         CHECK(booms.size() == 6, "jab, cross, hook, haymaker, kick and axe kick each boom their own way");
         bool listed = true;
         for (AttackKind k : attacksOf(EnemyType::ABSOLUTE)) listed &= std::find(abAllAttacks().begin(), abAllAttacks().end(), k) != abAllAttacks().end();
-        CHECK(listed && abAllAttacks().size() == attacksOf(EnemyType::ABSOLUTE).size(), "the feel table knows every move he has");
+        CHECK(listed && abAllAttacks().size() == attacksOf(EnemyType::ABSOLUTE).size() + 8, "the feel table knows every move he has (MORNINGSTAR's eight too)");
     }
     {
         // Review Focus 4: one cue per move, 0.22 s before it lands, every difficulty and phase (delayed strikes too)

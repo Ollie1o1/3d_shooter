@@ -792,7 +792,8 @@ inline void GameplayState::updateMusic() {
     static const int FAST_TRACK[]  = {0, 1, 2, 2, 1, 1, 3}; // Canal .. Tower
     int a = director.arena;
     bool zenith = act2() && a == ZENITH_ARENA;
-    m.setTrack(fast() ? FAST_TRACK[a % 7] : zenith ? 10 : act2() ? 5 + std::min(a, 4) : ARENA_TRACK[a % 5]);   // the Nave .. the Maw; !!!!! has its own
+    const bool morning = zenith && msSwallowT >= 0.f;   // inside the eclipse: MORNINGSTAR's track (from the next bar line)
+    m.setTrack(fast() ? FAST_TRACK[a % 7] : morning ? 11 : zenith ? 10 : act2() ? 5 + std::min(a, 4) : ARENA_TRACK[a % 5]);   // the Nave .. the Maw; !!!!! has its own
     float lv = 0.6f;
     switch (director.phase) {
         case WaveDirector::Phase::ACTIVE:   lv = director.bossWave() ? 1.35f : 1.f; break;
@@ -804,6 +805,7 @@ inline void GameplayState::updateMusic() {
     if (lv >= 1.f && styleSystem.overdrive) lv = 1.35f;
     if (countdown > 0.f) lv = 0.45f;
     if (zenith) lv = std::max(lv, 1.15f);    // !!!!!: the techno never lets up, kick, bass, clap and acid from the first second
+    if (morning && victoryDelay < 0.f && !victory) lv = std::max(lv, 1.32f);   // MORNINGSTAR: everything, stabs and all
     if (victory) lv = 0.55f;
     if (playerDead) lv = 0.1f;
     m.setIntensity(lv);

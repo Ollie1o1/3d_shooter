@@ -68,7 +68,7 @@ inline void GameplayState::onAbsoluteEvents(Enemy& e, const EnemyEvents& ev) {
         const AbFeel& f = abFeel(ev.abImpactKind);
         if (f.boom) {
             float c = std::cos(e.yaw), sn = std::sin(e.yaw);
-            glm::vec3 p = e.position + glm::vec3{f.at.x * c + f.at.z * sn, f.at.y, -f.at.x * sn + f.at.z * c};
+            glm::vec3 p = e.position + glm::vec3{f.at.x * c + f.at.z * sn, f.at.y, -f.at.x * sn + f.at.z * c} * e.scale;   // (MORNINGSTAR: his size)
             at(f.boom, p, f.boomPitch * (0.96f + 0.08f * frand(0.f, 1.f)), 128, 0.5f);
             fx.spawnBurst(p, {1.7f, 1.65f, 1.6f}, 22, 7.f, 0.25f, 0.f);
             fx.spawnShockwave(glm::vec3{p.x, std::max(level.zenith.centre.y, p.y - 1.2f), p.z}, 2.2f + 2.f * f.shake, {1.2f, 1.15f, 1.1f});
