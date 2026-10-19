@@ -100,7 +100,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     }
 
     // --- Grapple fire / release ---
-    glm::vec3 gPoint; int gWall = -1; bool gMover = false;
+    glm::vec3 gPoint{0.f}; int gWall = -1; bool gMover = false;
     bool canHook = findGrappleTarget(gPoint, gWall, gMover);
     grappleTargetInSight = canHook && gMover;
     if (pendingGrapple && pinned && !grapple.active) { pendingGrapple = false; pinnedCue(); }

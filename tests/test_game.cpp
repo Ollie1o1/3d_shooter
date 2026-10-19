@@ -3046,8 +3046,10 @@ int main() {
         ConduitClock k; k.allCut();
         int at19 = 0, at21 = 0, at26 = 0, at36 = 0;
         for (int f = 0; f < 60 * 37; ++f) { int n = k.update(DT); float t = (f + 1) * DT;
-            if (std::fabs(t - 19.f) < DT / 2) at19 = n; if (std::fabs(t - 21.f) < DT / 2) at21 = n;
-            if (std::fabs(t - 26.f) < DT / 2) at26 = n; if (std::fabs(t - 36.f) < DT / 2) at36 = n; }
+            if (std::fabs(t - 19.f) < DT / 2) at19 = n;
+            if (std::fabs(t - 21.f) < DT / 2) at21 = n;
+            if (std::fabs(t - 26.f) < DT / 2) at26 = n;
+            if (std::fabs(t - 36.f) < DT / 2) at36 = n; }
         CHECK(at19 == 0 && at21 == 1 && at26 == 2 && at36 == 4, "conduits re-attach one at a time, 5 s apart, from 20 s after the last is cut");
         ConduitClock idle;
         CHECK(idle.update(1.f) == 0, "nothing re-attaches until all four have been cut");

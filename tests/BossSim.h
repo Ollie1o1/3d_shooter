@@ -246,6 +246,7 @@ struct BossSim {
             feet.y = zGround(feet + glm::vec3{0.f, 1.f, 0.f});
             return;
         }
+        const glm::vec3 start = feet;   // where this tick began (a step onto no floor is taken back, below)
         glm::vec3 bp{boss.position.x, feet.y, boss.position.z};
         glm::vec3 from = feet - bp; from.y = 0.f;
         float d = glm::length(from);
@@ -340,7 +341,12 @@ struct BossSim {
         glm::vec3 o = feet - c; o.y = 0.f;
         float ol = glm::length(o);
         if (ol > 41.5f) feet = c + o / ol * 41.5f;
-        feet.y = zGround(feet + glm::vec3{0.f, 1.5f, 0.f});
+        // The floor under you, looked for from the floor's own height (not your feet's: one bad step
+        // would leave you under the world for good). No floor there (a gap at the rim, a broken
+        // shard): a player doesn't step into the void, so the move is taken back
+        float gy = lv.groundAt(feet.x, feet.z, std::max(feet.y, c.y) + 2.f);
+        if (gy < c.y - 1.f) feet = start;
+        else feet.y = gy;
     }
     void heal(float h) { health = std::min(100.f, health + h); }
     void absoluteStep(float dt) {

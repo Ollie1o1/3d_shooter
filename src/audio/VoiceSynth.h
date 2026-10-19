@@ -378,7 +378,8 @@ inline Buf tellV(EnemyType t, AttackKind a, const Profile& p, Rng& r) {
         case AttackKind::RAKE:     add(out, vent(d, 2600.f, r, d * 0.7f, 0.03f)); add(out, metal(0.12f, 900.f, r, 30.f), 0.6f, d - 0.12f); break;
         case AttackKind::SOULBOLT: add(out, choir(d, f * 0.9f, f * 1.6f, Vowel::OO, p.voices, p.formant, r, d * 0.8f, 0.05f, 0.4f)); break;
         case AttackKind::STRING:   add(out, servo(d, 300.f, 1400.f, r, d * 0.8f, 0.03f), 0.8f);
-                                   for (float tt = 0.f; tt < d - 0.05f; tt += 0.06f) add(out, click(2200.f, r, 0.02f), 0.4f, tt); break;
+                                   for (float tt = 0.f; tt < d - 0.05f; tt += 0.06f) { add(out, click(2200.f, r, 0.02f), 0.4f, tt); }
+                                   break;
         // THE LEVIATHAN
         case AttackKind::CRASH:     // rearing back: a roar climbing out of the deep
             add(out, choir(d, f * 0.8f, f * 1.7f, Vowel::UH, p.voices, p.formant, r, d * 0.7f, 0.05f, 0.3f));
