@@ -6,33 +6,32 @@
 // ceilings above every spawn), each enemy type's AI, the box rigs, the wave
 // director driven through an entire simulated ARENA run and FAST run, the
 // weapon and upgrade numbers, XP, and the mouse spike filter.
-#include "../src/AbsoluteFeel.h"
-#include "../src/WaveDirector.h"
-#include "../src/LevelGauntlet.h"
-#include "../src/LevelAct2.h"
-#include "../src/WorldGeometry.h"
-#include "../src/EnemyModel.h"
-#include "../src/Weapons.h"
-#include "../src/Progression.h"
-#include "../src/MouseFilter.h"
-#include "../src/MusicSynth.h"
-#include "../src/Ghost.h"
-#include "../src/StyleSystem.h"
-#include "../src/Projectile.h"
-#include "../src/ArenaShifts.h"
-#include "../src/Score.h"
-#include "../src/Daily.h"
-#include "../src/EndlessWaves.h"
-#include "../src/SovereignHazards.h"
-#include "../src/SfxMixer.h"
-#include "../src/PenitentHazards.h"
-#include "../src/GunKit.h"
-#include "../src/VoiceSynth.h"
-#include "../src/EnemyVoice.h"
-#include "../src/WardenHazards.h"
-#include "../src/LeviathanHazards.h"
+#include "bosses/absolute/AbsoluteFeel.h"
+#include "game/WaveDirector.h"
+#include "world/LevelGauntlet.h"
+#include "world/LevelAct2.h"
+#include "render/WorldGeometry.h"
+#include "render/EnemyModel.h"
+#include "player/Weapons.h"
+#include "game/Progression.h"
+#include "core/MouseFilter.h"
+#include "audio/MusicSynth.h"
+#include "game/Ghost.h"
+#include "player/StyleSystem.h"
+#include "player/Projectile.h"
+#include "world/ArenaShifts.h"
+#include "game/Score.h"
+#include "game/EndlessWaves.h"
+#include "bosses/sovereign/SovereignHazards.h"
+#include "audio/SfxMixer.h"
+#include "bosses/penitent/PenitentHazards.h"
+#include "render/GunKit.h"
+#include "audio/VoiceSynth.h"
+#include "audio/EnemyVoice.h"
+#include "bosses/warden/WardenHazards.h"
+#include "bosses/leviathan/LeviathanHazards.h"
 #include "BossSim.h"
-#include "../src/RelicHazards.h"
+#include "enemies/RelicHazards.h"
 #include <cstdio>
 #include <cstring>
 #include <limits>
@@ -549,6 +548,11 @@ int main() {
         Records b; b.load();
         CHECK(b.act2Unlocked && canStartAct2(b), "the unlock is saved and loaded");
         keep.save();   // leave the developer's records as they were
+        // A records file from before DAILY was removed still has its line (two values): the rest must still read
+        Records old;
+        old.parse("bestArena 600\nbestEndless 1200\nbestDaily 3400 20261012\nact2Unlocked 1\nact2Cleared 1\nbestAct2 900\n");
+        CHECK(old.bestArena == 600.f && old.bestEndless == 1200 && old.act2Unlocked && old.act2Cleared && old.bestAct2 == 900.f,
+              "an old records file's DAILY line is skipped and everything after it still loads");
     }
 
     // ---------------------------------------------------------------- ACT II: the Orrery
@@ -2163,21 +2167,6 @@ int main() {
         CHECK(e.waves == 3500 && e.total == (int)std::lround(5500 * 1.25f), "ENDLESS score = style + 500 a wave, x difficulty");
     }
     {
-        // The daily challenge: the same date is always the same run; days differ
-        DailyInfo d1 = DailyInfo::forDate(20261005), d2 = DailyInfo::forDate(20261005), d3 = DailyInfo::forDate(20261006);
-        bool variety = false;
-        for (int day = 1; day <= 28; ++day) {
-            DailyInfo x = DailyInfo::forDate(20261100 + day);
-            if (x.arena != d1.arena || x.mod != d1.mod) variety = true;
-            if (x.arena < 0 || x.arena > 3) variety = false;
-        }
-        CHECK(d1.seed == d2.seed && d1.arena == d2.arena && d1.mod == d2.mod && d1.seed != d3.seed && variety,
-              "a DAILY is the same for everyone on a date, and changes from day to day");
-        CHECK(d1.key() == "20261005" && d1.label() == "2026-10-05", "a DAILY's board is named by its date");
-        int today = DailyInfo::todayUtc();
-        CHECK(today > 20250000 && today < 21000000, "today's date (UTC) reads as YYYYMMDD");
-    }
-    {
         // ENDLESS waves: deterministic from the seed, growing, unlocking, with
         // an objective every 4th wave and a heavy wave every 10th
         LevelData M = buildLevel();
@@ -3279,8 +3268,8 @@ int main() {
             auto lp = [&](float hz) { std::vector<float> o(x.size()); float a = 1.f - std::exp(-6.2831853f * hz / sr), y = 0.f;
                                       for (size_t i = 0; i < x.size(); ++i) { y += a * (x[i] - y); o[i] = y; } return o; };
             auto l1 = lp(300.f), l2 = lp(3000.f);
-            double low = 0, mid = 0, all = 0;
-            for (size_t i = 0; i < x.size(); ++i) { low += l1[i] * l1[i]; mid += (l2[i] - l1[i]) * (l2[i] - l1[i]); all += x[i] * x[i]; }
+            double mid = 0, all = 0;
+            for (size_t i = 0; i < x.size(); ++i) { mid += (l2[i] - l1[i]) * (l2[i] - l1[i]); all += x[i] * x[i]; }
             float pk = 0.f; for (float v : x) pk = std::max(pk, std::fabs(v));
             size_t last = 0; for (size_t i = 0; i < x.size(); ++i) if (std::fabs(x[i]) > 0.01f * pk) last = i;
             int n = 0, z = 0; for (size_t i = 1; i < x.size(); ++i) if (std::fabs(x[i]) > 0.05f * pk) { ++n; z += (x[i] > 0.f) != (x[i - 1] > 0.f); }
@@ -3772,8 +3761,8 @@ int main() {
         (void)yaw;
         // A slam ring hits once, as its edge passes; not if you're in the air
         PH h; h.addRing(c, PH::SLAM_RADIUS, PH::SLAM_DAMAGE, 0);
-        int hits = 0; float t = 0.f;
-        for (int i = 0; i < 120; ++i) { auto hs = h.update(DT, c + glm::vec3{0, 0, 8.f}, -240.f); hits += (int)hs.size(); t += DT; }
+        int hits = 0;
+        for (int i = 0; i < 120; ++i) hits += (int)h.update(DT, c + glm::vec3{0, 0, 8.f}, -240.f).size();
         PH j; j.addRing(c, PH::SLAM_RADIUS, PH::SLAM_DAMAGE, 0);
         int airHits = 0;
         for (int i = 0; i < 120; ++i) airHits += (int)j.update(DT, c + glm::vec3{0, 1.5f, 8.f}, -240.f).size();

@@ -13,14 +13,14 @@ ifeq ($(UNAME), Darwin)
 # can't find the C++ stdlib headers); fall back to Apple clang if it's absent.
 LLVM     := $(shell brew --prefix llvm 2>/dev/null)
 SDK      := $(shell xcrun --show-sdk-path 2>/dev/null)
-BASEFLAGS := -std=c++17 -O3 -ffast-math -Wall -Wextra \
+BASEFLAGS := -std=c++17 -O3 -ffast-math -Wall -Wextra -Isrc \
              -DGL_SILENCE_DEPRECATION \
              -I/opt/homebrew/include \
              $(shell sdl2-config --cflags)
 ifneq ($(wildcard $(LLVM)/bin/clang++),)
 CXX      := $(LLVM)/bin/clang++
 CXXFLAGS := $(BASEFLAGS) -isysroot $(SDK) -I$(LLVM)/include/c++/v1
-STDLIB   := -L$(LLVM)/lib/c++ -Wl,-rpath,$(LLVM)/lib/c++ -lc++
+STDLIB   := -L$(LLVM)/lib/c++ -Wl,-rpath,$(LLVM)/lib/c++   # clang++ adds -lc++ itself
 else
 CXX      := clang++
 CXXFLAGS := $(BASEFLAGS)
@@ -36,7 +36,7 @@ TARGET   := shooter
 # -----------------------------------------------------------------------------
 else ifeq ($(UNAME), Linux)
 CXX      := g++
-CXXFLAGS := -std=c++17 -O3 -ffast-math -Wall -Wextra \
+CXXFLAGS := -std=c++17 -O3 -ffast-math -Wall -Wextra -Isrc \
             $(shell sdl2-config --cflags)
 LDFLAGS  := $(shell sdl2-config --libs) -lSDL2_mixer -lGLEW -lGL
 STDLIB   :=
@@ -49,7 +49,7 @@ else
 UCRT64   := /c/msys64/ucrt64
 export PATH := $(UCRT64)/bin:$(PATH)
 CXX      := $(UCRT64)/bin/g++
-CXXFLAGS := -std=c++17 -O2 -Wall -Wextra \
+CXXFLAGS := -std=c++17 -O2 -Wall -Wextra -Isrc \
             -I$(UCRT64)/include \
             -I$(UCRT64)/include/SDL2
 LDFLAGS  := -L$(UCRT64)/lib \
@@ -62,19 +62,12 @@ endif
 # -----------------------------------------------------------------------------
 # Sources
 # -----------------------------------------------------------------------------
+# The whole game is one translation unit: main.cpp includes the headers, which
+# are grouped by area under src/ (see the README's "Code layout"). Any header
+# change rebuilds it, so new headers never need listing here.
 SRC     := src/main.cpp
-HEADERS := src/gl.h \
-           src/Camera.h src/Player.h src/Mesh.h src/ShaderProgram.h \
-           src/GameState.h src/MenuState.h src/GameplayState.h \
-           src/Gameplay_Flow.h src/Gameplay_Tick.h src/Gameplay_Combat.h \
-           src/Gameplay_Menus.h src/Gameplay_Render.h src/Gameplay_HUD.h src/Gameplay_Dev.h src/WorldMesh.h src/WorldGeometry.h src/Vertex.h src/Effects.h src/ArenaShifts.h src/Gameplay_Shifts.h src/Gameplay_Sovereign.h src/Gameplay_Penitent.h src/Gameplay_Warden.h src/Gameplay_Reliquary.h src/SovereignHazards.h src/PenitentHazards.h src/Shapes.h src/Score.h src/Daily.h src/EndlessWaves.h \
-           src/Enemy.h src/EnemyPenitent.h src/EnemyLeviathan.h src/EnemyAbsolute.h src/AbsoluteHazards.h src/LeviathanHazards.h src/Gameplay_Leviathan.h src/Gameplay_Morning.h src/EnemyWarden.h src/EnemyRelic.h src/RelicHazards.h src/EnemyModel.h src/BoxRenderer.h src/WaveDirector.h \
-           src/Projectile.h src/GrappleHook.h \
-           src/StyleSystem.h src/UIRenderer.h src/PostProcess.h \
-           src/Level.h src/LevelGauntlet.h src/LevelAct2.h src/AudioSystem.h src/GunMotion.h src/GunKit.h src/AudioTypes.h src/SfxMixer.h src/MixTable.h src/VoiceTable.h src/VoiceSynth.h src/EnemyVoice.h src/WardenHazards.h src/ViewModel.h src/Interactable.h \
-           src/Settings.h src/SettingsMenu.h src/Persist.h src/PixelFont.h src/UIBatch.h \
-           src/Weapons.h src/Progression.h src/MouseFilter.h src/Difficulty.h src/MusicSynth.h src/Display.h \
-           src/AbsoluteRig.h src/Gameplay_Absolute.h src/Sword.h src/Gameplay_Sword.h $(wildcard src/AbsoluteFeel.h)
+HEADERS := $(shell find src -name '*.h')
+TESTS   := tests/test_physics.cpp tests/test_game.cpp tests/test_zenith.cpp tests/BossSim.h
 
 .PHONY: all clean run test web
 
@@ -86,15 +79,10 @@ $(TARGET): $(SRC) $(HEADERS)
 run: all
 	./$(TARGET)
 
-# Headless tests — no window or GL context needed: player physics, plus the
-# enemy AI, wave director, level data, weapons, XP and the mouse filter,
-# driven through simulated ARENA and FAST runs
-test: tests/test_physics.cpp tests/test_game.cpp tests/test_zenith.cpp tests/BossSim.h src/Player.h src/Camera.h src/Sword.h \
-      src/Enemy.h src/EnemyPenitent.h src/EnemyLeviathan.h src/EnemyAbsolute.h src/AbsoluteHazards.h src/LeviathanHazards.h src/EnemyWarden.h src/EnemyRelic.h src/RelicHazards.h src/EnemyModel.h src/AbsoluteRig.h src/Level.h src/LevelGauntlet.h src/LevelAct2.h src/WaveDirector.h \
-      src/Weapons.h src/Progression.h src/MouseFilter.h src/Persist.h src/Difficulty.h src/MusicSynth.h \
-      src/StyleSystem.h src/Projectile.h src/ArenaShifts.h src/Score.h src/Daily.h src/EndlessWaves.h \
-      src/AudioTypes.h src/SfxMixer.h src/PenitentHazards.h src/GunMotion.h src/GunKit.h \
-      src/MixTable.h src/VoiceTable.h src/VoiceSynth.h src/EnemyVoice.h src/WardenHazards.h
+# Headless tests (no window or GL context): player physics; the enemy AI, wave
+# director, level data, weapons and XP through simulated ARENA, FAST and ACT II
+# runs; and the Zenith (the Absolute, the sword, BossSim's kill times)
+test: $(TESTS) $(HEADERS)
 	$(CXX) $(CXXFLAGS) tests/test_physics.cpp -o tests/test_physics $(STDLIB)
 	$(CXX) $(CXXFLAGS) tests/test_game.cpp -o tests/test_game $(STDLIB)
 	./tests/test_physics
@@ -107,12 +95,12 @@ test: tests/test_physics.cpp tests/test_game.cpp tests/test_zenith.cpp tests/Bos
 WEB_OUT  := web/dist
 WEB_DATA := build/web-data
 web: $(SRC) $(HEADERS) web/index.html
-	rm -rf $(WEB_DATA) build/web-include && mkdir -p $(WEB_DATA)/src build/web-include $(WEB_OUT)
-	cp src/*.vert src/*.frag $(WEB_DATA)/src/
+	rm -rf $(WEB_DATA) build/web-include && mkdir -p $(WEB_DATA)/src/shaders build/web-include $(WEB_OUT)
+	cp src/shaders/*.vert src/shaders/*.frag $(WEB_DATA)/src/shaders/
 	cp -R assets $(WEB_DATA)/assets
 	rm -rf $(WEB_DATA)/assets/sfx/src   # the frozen recordings gen_arsenal.py reads: the game never loads them
 	ln -s $$(brew --prefix glm 2>/dev/null || echo /usr)/include/glm build/web-include/glm
-	em++ -std=c++17 -O3 -Ibuild/web-include $(SRC) -o $(WEB_OUT)/overdrive.js \
+	em++ -std=c++17 -O3 -Isrc -Ibuild/web-include $(SRC) -o $(WEB_OUT)/overdrive.js \
 	    -sUSE_SDL=2 -sUSE_SDL_MIXER=2 \
 	    -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 \
 	    -sALLOW_MEMORY_GROWTH=1 -sENVIRONMENT=web \

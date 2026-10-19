@@ -1,5 +1,5 @@
 #include <SDL2/SDL.h>
-#include "gl.h"
+#include "core/gl.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
@@ -19,14 +19,14 @@
 #  include <unistd.h>
 #endif
 
-#include "GameState.h"
-#include "Settings.h"
-#include "MenuState.h"
-#include "GameplayState.h"
-#include "AudioSystem.h"
-#include "Display.h"
-#include "Gamepad.h"
-#include "VoiceSynth.h"
+#include "core/GameState.h"
+#include "core/Settings.h"
+#include "ui/MenuState.h"
+#include "game/GameplayState.h"
+#include "audio/AudioSystem.h"
+#include "core/Display.h"
+#include "core/Gamepad.h"
+#include "audio/VoiceSynth.h"
 
 #ifdef __EMSCRIPTEN__
 #  include <emscripten.h>
@@ -400,7 +400,7 @@ int main(int argc, char* argv[]) {
     app->settings.load();  // restore every option (settings.cfg on desktop, localStorage on the web)
 
     // --play skips the main menu and drops straight into an ARENA run; --fast
-    // into the FAST time trial, --endless an ENDLESS run, --daily today's DAILY, --act2 ACT II. --arena N starts at a later arena / section
+    // into the FAST time trial, --endless an ENDLESS run, --act2 ACT II. --arena N starts at a later arena / section
     // (implies --play), --wave N skips to a wave within it, --god disables
     // damage (for footage), --dev opens the level select. Dev: --cam X Y Z
     // YAW PITCH, --shot FRAMES FILE.BMP, --audiodump FILE.WAV SECONDS (record the mix, then quit),
@@ -411,7 +411,6 @@ int main(int argc, char* argv[]) {
         if (arg == "--fast") { app->mode = GameMode::FAST; app->pending = App::NextState::Game; }
         if (arg == "--act2") { app->mode = GameMode::ACT2; app->pending = App::NextState::Game; }
         if (arg == "--endless") { app->mode = GameMode::ENDLESS; app->pending = App::NextState::Game; }
-        if (arg == "--daily")   { app->mode = GameMode::DAILY;   app->pending = App::NextState::Game; }
         if (arg == "--boss" && i + 1 < argc) {   // --boss N: BOSS N (1 the Warden .. 6 MORNINGSTAR), on its own
             g_bossRun = std::clamp(std::atoi(argv[++i]) - 1, 0, BOSS_COUNT - 1);
             app->mode = bossEntry(g_bossRun).act2 ? GameMode::ACT2 : GameMode::ARENA; app->pending = App::NextState::Game;

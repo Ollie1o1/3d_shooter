@@ -1,6 +1,6 @@
 // Headless physics tests — no window or GL context needed.
 // Build + run with `make test`.
-#include "../src/Player.h"
+#include "player/Player.h"
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
@@ -141,7 +141,7 @@ int main() {
     // long drop puts the feet more than half a slab deep in one tick. They
     // must land on top, never be pushed out underneath
     {
-        int clipped = 0, cases = 0;
+        int clipped = 0;
         for (float thick : {0.3f, 0.5f, 1.f, 1.5f, 2.f})
             for (float speed : {10.f, 25.f, 40.f, 54.f, 70.f})
                 for (float x : {0.f, 1.f}) {   // over the middle of a slab, and over the seam between two
@@ -152,7 +152,6 @@ int main() {
                     p.floorY = -100.f;
                     p.velocity = {0.f, -speed, 0.f};
                     for (int i = 0; i < 90; ++i) p.update(DT, keys, walls.data(), (int)walls.size(), false, &grid);
-                    ++cases;
                     if (p.position.y < -0.01f) { ++clipped; std::printf("      thick %.1f, %.0f m/s at x %.0f: ended at y %.2f\n", thick, speed, x, p.position.y); }
                 }
         CHECK(clipped == 0, "landing fast on a thin floor (a slam, a long drop) stands you on top, never under it");

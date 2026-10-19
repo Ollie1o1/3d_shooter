@@ -1,0 +1,1069 @@
+#pragma once
+// =============================================================================
+// LevelAct2.h — ACT II, BENEATH THE ECLIPSE: the arenas under the Sanctum.
+//
+// When the Sovereign falls the Sanctum cracks and you drop into the machine
+// beneath it. Act II is built in its own region, 60 m under Act I and north
+// of it (floors at Y -60, everything at Z < -440), so ASCENT can build both
+// acts into one world and the fall is a real fall.
+//
+//                N (-Z)
+//        ┌───────────────────┐  Z -622..-652  CHANCEL (+3 m) and the drowned
+//        │  ORGAN    (loft)  │                organ: pipes climb to a +12 m loft
+//   ┌────┴───┐ CROSSING ┌────┴───┐  Z -592..-622  transepts (+1.5 m) to X ±50,
+//   │TRANSEPT│ (light   │TRANSEPT│                rose windows; ring walkway (+9 m)
+//   └────┬───┘  shaft)  └───┬────┘
+//        │ ║  NAVE  (0) ║   │  Z -473..-592  nave X ±16; aisles (+1.5) to ±29,
+//        │ ║═══════════ ║   │                galleries (+6) over them, buttress
+//        │ ║  bridges   ║   │                bridges (+9), clerestory (+12)
+//        └─┴──┐ door ┌──┴───┘
+//             │NARTHEX│     Z -450..-472  the shaft you fall down
+//             └───────┘
+//                S (+Z)
+//
+// The water: one volume over the whole floor. FLOOD raises it each wave
+// (0.4 m, 2.0 m, 2.6 m over the nave floor).
+// Waves: Haloed Husks and Twinned Rippers; Seraphs over the conduits; then an
+// Anchor first, with Twinned Shieldbearers, Seraphs and a Haloed Juggernaut.
+// =============================================================================
+#include "world/Level.h"
+
+static constexpr int ZENITH_ARENA = 5;   // the encore: the sixth Act II arena, above the eclipse (buildZenith)
+inline constexpr const char* ZENITH_NAME = "!!!!!";   // the encore's name on screen (the code still calls it the Zenith)
+// THE ZENITH's measures: the Dais, the floor, the pillars, the shards past the
+// gap, the Halo overhead, the seams' cells
+constexpr float ZEN_DAIS = 9.f, ZEN_FLOOR = 44.f, ZEN_PILLAR_R = 34.f, ZEN_SHARD_R = 57.f, ZEN_HALO_R = 70.f,
+                ZEN_HALO_UP = 40.f, ZEN_CELL = 6.f, ZEN_DAIS_UP = 0.15f;
+// High in the sky and well past the Maw: arenaAt is XZ-only, so it can't sit straight above it
+inline glm::vec3 zenithCentre() { return {0.f, 400.f, -1400.f}; }
+inline glm::vec3 zenithPillar(int k) {
+    float a = k * 0.7853982f + 0.3926991f;
+    return zenithCentre() + glm::vec3{std::cos(a) * ZEN_PILLAR_R, 0.f, std::sin(a) * ZEN_PILLAR_R};
+}
+inline glm::vec3 zenithShard(int k) {
+    float a = k * 1.0471976f + 0.5235988f;
+    return zenithCentre() + glm::vec3{std::cos(a) * ZEN_SHARD_R, 0.f, std::sin(a) * ZEN_SHARD_R};
+}
+inline void buildZenith(LevelBuilder& B);
+
+inline void buildDescent(LevelBuilder& B);
+inline void buildReliquary(LevelBuilder& B);
+inline void buildMaw(LevelBuilder& B);
+
+inline void buildAct2(LevelBuilder& B) {
+    using glm::vec3;
+    LevelData& L = B.L;
+    auto aabb = &LevelBuilder::aabb;
+    auto wall = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { return B.wall(x0,y0,z0,x1,y1,z1,c); };
+    auto neon = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { B.neon(x0,y0,z0,x1,y1,z1,c); };
+
+    const float F = -60.f;   // the Nave's floor
+    vec3 bone{0.74f,0.70f,0.62f}, boneDark{0.46f,0.44f,0.40f}, slate{0.15f,0.19f,0.21f},
+         teal{0.2f,0.9f,0.85f}, red{1.f,0.16f,0.08f}, brass{0.62f,0.5f,0.3f}, light{1.4f,1.25f,1.0f};
+
+    // All of Act II stands in one basin, 60 m down
+    L.basins.push_back({aabb(-300, 0, -440, 300, 0, -668), F});          // the Nave
+    L.basins.push_back({aabb(-300, 0, -668, 300, 0, -788), -140.f});    // the Orrery: its void bottoms out far below
+    L.basins.push_back({aabb(-300, 0, -788, 300, 0, -880), -300.f});    // the Descent: open below the cage
+    L.basins.push_back({aabb(-300, 0, -880, 300, 0, -1200), -500.f});   // the Reliquary: the void, far below
+
+    Arena a;
+    a.name = "THE DROWNED NAVE"; a.space = ReverbSpace::HALL;
+    a.subtitle = "THE WATER RISES - SURVIVE 3 WAVES";
+    a.bounds = aabb(-49, F, -651, 49, F + 26, -451);
+    a.zone   = aabb(-50.5f, F, -652.5f, 50.5f, F + 28, -449.5f);   // ceiling under the dome
+    a.extraZones.push_back(aabb(-11.5f, F, -471.5f, 11.5f, -2.f, -450.5f));   // the shaft over the narthex
+    a.extraZones.push_back(aabb(-2.9f, F + 3, -662.f, 2.9f, F + 9, -652.f));   // the sealed passage
+    a.playerStart = {0.f, -8.f, -460.f};
+    a.startYaw = -90.f;
+
+    // ---- floors (drawn) ----
+    L.floors.push_back({-300.f, -668.f, 300.f, -440.f, F - 0.3f, {0.05f, 0.06f, 0.07f}});    // seen from wall tops
+    L.floors.push_back({-12.f, -472.f, 12.f, -450.f, F, slate});                             // narthex
+    L.floors.push_back({-16.f, -622.f, 16.f, -472.f, F, {0.2f, 0.22f, 0.22f}});              // nave + crossing
+
+    // ---- the narthex and its shaft ----
+    B.mat = Mat::BRICK;
+    wall(-13, F, -472, -12, -2, -450, boneDark);
+    wall( 12, F, -472,  13, -2, -450, boneDark);
+    wall(-13, F, -450,  13, -2, -449, boneDark);
+    for (float y = F + 8.f; y < -4.f; y += 7.f) {                 // rings of light down the shaft
+        neon(-11.95f, y, -471.9f, -11.85f, y + 0.25f, -450.1f, teal * 0.7f);
+        neon(11.85f, y, -471.9f, 11.95f, y + 0.25f, -450.1f, teal * 0.7f);
+    }
+    // the great doorway into the nave (open), and the wall above it up to the shaft's top
+    B.wallX(-29, 29, -473, -472, F, F + 26, bone, {{-5.f, 5.f, F, F + 8.f}});
+    wall(-13, F + 26, -473, 13, -2, -472, bone);
+    B.kit().arch({0.f, F + 8.f, -472.5f}, 10.f, 3.f, 0.8f, 1.4f, boneDark);
+
+    // ---- the nave: outer walls, aisles, arcades, galleries ----
+    for (int s : {-1, 1}) {
+        float sx = (float)s;
+        auto lo = [&](float u, float v) { return std::min(sx * u, sx * v); };
+        auto hi = [&](float u, float v) { return std::max(sx * u, sx * v); };
+        wall(lo(29, 30), F, -592, hi(29, 30), F + 26, -473, bone);                     // outer wall
+        wall(lo(16, 29), F, -592, hi(16, 29), F + 1.5f, -473, boneDark);               // aisle floor (+1.5)
+        // arcade columns every 12 m; the galleries rest on them
+        for (float z = -479.f; z > -592.f; z -= 12.f) {
+            wall(sx * 16.f - 0.8f, F, z - 0.8f, sx * 16.f + 0.8f, F + 5.f, z + 0.8f, bone);
+            B.kit().column({sx * 16.f, F, z}, 0.95f, 5.f, bone, 12);
+        }
+        // gallery deck (+6), broken where the arcade collapsed (west Z -528..-536, east -552..-560)
+        float g0 = s < 0 ? -528.f : -552.f, g1 = s < 0 ? -536.f : -560.f;
+        wall(lo(15.2f, 29), F + 5, g0, hi(15.2f, 29), F + 6, -473, boneDark);
+        wall(lo(15.2f, 29), F + 5, -592, hi(15.2f, 29), F + 6, g1, boneDark);
+        neon(lo(15.2f, 29), F + 5.9f, g0 - 0.12f, hi(15.2f, 29), F + 6.02f, g0, red * 0.6f);   // broken edges
+        neon(lo(15.2f, 29), F + 5.9f, g1, hi(15.2f, 29), F + 6.02f, g1 + 0.12f, red * 0.6f);
+        // pointed arches between the columns, except over the collapse
+        for (float z = -485.f; z > -592.f; z -= 12.f) {
+            if (z < g0 + 6.f && z > g1 - 6.f) continue;
+            B.kit().arch({sx * 16.f, F + 1.5f, z}, 10.4f, 3.4f, 0.7f, 1.2f, bone, 1.5707963f);
+        }
+        // the collapsed span: rubble in the water under it
+        for (int k = 0; k < 4; ++k)
+            B.kit().rock({sx * (19.f + 2.5f * k), F + 1.5f, (g0 + g1) * 0.5f + (k % 2 ? 1.5f : -1.5f)}, 1.3f, 1.2f,
+                         boneDark, 900u + (uint32_t)k + (s > 0 ? 10u : 0u));
+        // a pad in the aisle under the gap: up through it onto the gallery beyond
+        L.pads.push_back({{sx * 22.f, F + 1.5f, (g0 + g1) * 0.5f}, {1.2f, 1.2f}, {0.f, 17.f, 5.f}});
+        // clerestory ledges (+12) and pads up to them from the gallery
+        wall(lo(26, 29), F + 11, -589, hi(26, 29), F + 12, -476, boneDark);
+        for (float z : {-482.f, -584.f}) L.pads.push_back({{sx * 23.5f, F + 6.f, z}, {1.1f, 1.1f}, {sx * 2.2f, 18.5f, 0.f}});
+        // tall windows glowing red from below
+        for (float z = -485.f; z > -592.f; z -= 24.f)
+            neon(lo(28.9f, 28.95f), F + 13.f, z - 2.f, hi(28.9f, 28.95f), F + 22.f, z + 2.f, red * 0.9f);
+    }
+    // the buttress bridges (+9) across the nave, with steps up from the galleries
+    for (float z : {-500.f, -545.f}) {
+        wall(-17, F + 8, z - 1.5f, 17, F + 9, z + 1.5f, bone);
+        B.kit().arch({0.f, F + 2.f, z}, 32.f, 6.f, 0.9f, 2.6f, boneDark);    // the flying buttress under it
+        for (int s : {-1, 1})
+            wall(std::min(s * 17.f, s * 20.f), F + 6, z - 1.5f, std::max(s * 17.f, s * 20.f), F + 7.5f, z + 1.5f, boneDark);
+        neon(-17, F + 8.95f, z - 0.15f, 17, F + 9.02f, z + 0.15f, teal * 0.5f);
+    }
+    // pews: low cover on the nave floor, two blocks of rows
+    for (int s : {-1, 1}) for (float z = -486.f; z > -580.f; z -= 9.f) {
+        if (((int)(-z) / 9) % 4 == 2) continue;   // gaps where pews were swept away
+        wall(std::min(s * 3.f, s * 13.f), F, z - 0.35f, std::max(s * 3.f, s * 13.f), F + 0.9f, z + 0.35f, slate);
+    }
+    // a fallen column lying across the nave (collision as three blocks under it)
+    B.kit().rod({-12.f, F + 0.9f, -560.f}, {8.f, F + 0.9f, -571.f}, 1.0f, bone, 12);
+    B.solid(-12.5f, F, -563.5f, -5.f, F + 1.8f, -558.f);
+    B.solid(-5.f, F, -567.5f, 2.5f, F + 1.8f, -562.f);
+    B.solid(2.5f, F, -571.5f, 8.5f, F + 1.8f, -566.f);
+
+    // ---- the crossing, the transepts, the light ----
+    for (int s : {-1, 1}) {
+        float sx = (float)s;
+        auto lo = [&](float u, float v) { return std::min(sx * u, sx * v); };
+        auto hi = [&](float u, float v) { return std::max(sx * u, sx * v); };
+        wall(lo(16, 50), F, -622, hi(16, 50), F + 1.5f, -592, boneDark);     // transept floor (+1.5)
+        wall(lo(29, 51), F, -593, hi(29, 51), F + 26, -592, bone);           // south wall
+        wall(lo(16, 51), F, -623, hi(16, 51), F + 26, -622, bone);           // north wall
+        wall(lo(50, 51), F, -622, hi(50, 51), F + 26, -592, bone);           // end wall
+        // rose window: eight spokes of red light round a hub
+        vec3 c{sx * 49.9f, F + 15.f, -607.f};
+        for (int k = 0; k < 8; ++k) {
+            float ang = k * 0.7853982f;
+            B.kit(true).rod(c, c + vec3{0.f, std::sin(ang) * 6.f, std::cos(ang) * 6.f}, 0.18f, red * 0.9f, 6);
+        }
+        B.kit(true).column(c - vec3{sx * 0.2f, 0.8f, 0.f}, 0.9f, 1.6f, red, 10);
+        // plinth pads up to the ring walkway
+        wall(sx * 10.f - 1.3f, F, -601.3f, sx * 10.f + 1.3f, F + 1.5f, -598.7f, slate);
+        L.pads.push_back({{sx * 10.f, F + 1.5f, -600.f}, {1.1f, 1.1f}, {sx * 3.5f, 22.f, 0.f}});
+    }
+    // ring walkway (+9) round the crossing
+    wall(-16, F + 8, -594.5f, 16, F + 9, -592, boneDark);
+    wall(-16, F + 8, -622, 16, F + 9, -619.5f, boneDark);
+    wall(-16, F + 8, -619.5f, -13.5f, F + 9, -594.5f, boneDark);
+    wall(13.5f, F + 8, -619.5f, 16, F + 9, -594.5f, boneDark);
+    // the crossing piers, and the cracked dome over it (seen through the ceiling's force field)
+    for (int sx : {-1, 1}) for (int sz : {-1, 1})
+        wall(sx * 16.f - 1.5f, F, -607.f + sz * 15.f - 1.5f, sx * 16.f + 1.5f, F + 26, -607.f + sz * 15.f + 1.5f, bone);
+    B.kit().curve({0.f, 0.f, -607.f}, 17.f, 0.f, 6.2831853f, F + 26.f, F + 30.f, 1.2f, boneDark, 24);
+    B.kit().dome({0.f, F + 30.f, -607.f}, 17.f, boneDark, 6, 18);
+    B.kit(true).rod({-3.f, F + 46.f, -607.f}, {5.f, F + 44.f, -603.f}, 0.4f, light * 0.6f, 6);   // the crack
+    // the eclipse light falling through it: thin rays, slightly splayed, round a beam
+    for (int k = 0; k < 7; ++k) {
+        float ang = k * 0.8975979f;
+        vec3 top{std::cos(ang) * 1.2f, F + 44.f, -607.f + std::sin(ang) * 1.2f};
+        vec3 foot{std::cos(ang + 0.4f) * 2.8f, F + 0.2f, -607.f + std::sin(ang + 0.4f) * 2.8f};
+        B.kit(true).rod(foot, top, 0.07f + 0.03f * (k % 3), light * 0.55f, 5);
+    }
+    L.gems.push_back({{0.f, F + 0.4f, -607.f}, light, 1.2f, true});
+
+    // ---- the chancel and the drowned organ ----
+    wall(-16, F, -652, 16, F + 3, -622, slate);                    // chancel (+3)
+    wall(-16, F, -622, 16, F + 1.5f, -619, slate);                 // its step
+    wall(-17, F, -652, -16, F + 26, -622, bone);
+    wall( 16, F, -652,  17, F + 26, -622, bone);
+    // back wall with the sealed way on
+    B.wallX(-17, 17, -653, -652, F, F + 26, bone, {{-3.f, 3.f, F + 3.f, F + 8.f}});
+    a.exitDoor = B.doorway(true, -3, 3, -653, -652, F + 3, 5.f, red, true);
+    // the passage on, north to the shaft down to the Orrery
+    wall(-4, F, -668, -3, F + 9, -653, slate); wall(3, F, -668, 4, F + 9, -653, slate);
+    wall(-3, F, -668, 3, F + 3, -653, slate);                      // passage floor (+3)
+    wall(-4, F + 9, -668, 4, F + 10, -653, slate);
+    // organ pipes: a staircase of double jumps from the chancel to the loft (+12)
+    B.mat = Mat::METAL;
+    const float pipeX[] = {-9.f, -6.f, -3.f, 0.f, 3.f, 6.f};
+    for (int k = 0; k < 6; ++k) {
+        float h = 4.5f + 1.5f * k;
+        wall(pipeX[k] - 0.7f, F + 3, -646.7f, pipeX[k] + 0.7f, F + h, -645.3f, brass);
+        B.kit().column({pipeX[k], F + 3.f, -646.f}, 0.75f, h - 3.f, brass, 12);
+        B.kit(true).column({pipeX[k], F + h - 0.15f, -646.f}, 0.78f, 0.15f, red, 12);
+    }
+    for (float x : {-12.f, -10.5f, 9.f, 10.5f, 12.f})
+        B.kit().column({x, F + 3.f, -649.f}, 0.55f, 14.f + std::fabs(x) * 0.4f, brass * 0.8f, 10);
+    B.mat = Mat::BRICK;
+    wall(-14, F + 11, -652, 14, F + 12, -648.5f, boneDark);        // organ loft (+12)
+
+    // ---- the water ----
+    L.water.push_back({aabb(-50, F, -652, 50, F, -450), F + 0.4f});
+
+    // ---- spawns, waves ----
+    a.groundSpawns = {
+        {-8, F, -490}, {8, F, -509}, {-8, F, -538}, {8, F, -578},                                   // nave floor
+        {-22, F + 1.5f, -500}, {22, F + 1.5f, -520}, {-22, F + 1.5f, -575}, {22, F + 1.5f, -585},   // aisles
+        {-38, F + 1.5f, -607}, {38, F + 1.5f, -607},                                                // transepts
+        {-8, F + 3, -634}, {8, F + 3, -634},                                                        // chancel
+        {-23, F + 6, -490}, {23, F + 6, -505}, {-23, F + 6, -580}, {23, F + 6, -575},               // galleries
+    };
+    a.airSpawns = {{0, F + 13, -495}, {0, F + 13, -560}, {-32, F + 11, -607}, {32, F + 11, -607}};
+    // Wave 3 opens with the Anchor (first in the queue): kill it before the rest pile in
+    a.waves = {
+        {{EnemyType::HUSK, 4}, WaveEntry(EnemyType::HUSK, 3).hollow(Hollow::HALOED), {EnemyType::RIPPER, 3},
+         WaveEntry(EnemyType::RIPPER, 2).hollow(Hollow::TWINNED), {EnemyType::SENTINEL, 3},
+         WaveEntry(EnemyType::SHIELDBEARER, 2).with({EnemyType::HUSK})},
+        {{EnemyType::RAPTOR, 3}, {EnemyType::SERAPH, 2}, {EnemyType::BRUTE, 1},
+         WaveEntry(EnemyType::BRUTE, 1).hollow(Hollow::ENRAGED), {EnemyType::CONDUCTOR, 2}, {EnemyType::MITE, 6}},
+        {{EnemyType::ANCHOR, 1}, {EnemyType::BRUTE, 2},
+         WaveEntry(EnemyType::SHIELDBEARER, 2).with({EnemyType::SENTINEL}).hollow(Hollow::TWINNED),
+         {EnemyType::CONDUCTOR, 2}, {EnemyType::SERAPH, 2}, WaveEntry(EnemyType::JUGGERNAUT, 1).hollow(Hollow::HALOED),
+         {EnemyType::RIPPER, 4}},
+    };
+    a.goals = {WaveGoal{},
+               WaveGoal::conduits("DESTROY THE CONDUITS ON THE GALLERIES",
+                                  {{-23.f, F + 6.f, -497.f}, {23.f, F + 6.f, -522.f}, {23.f, F + 6.f, -582.f}}),
+               WaveGoal{}};
+    a.maxAlive = 11;
+    a.damageScale = 1.3f;
+    a.shift = ArenaShift::FLOOD;
+    a.floodLevels = {F + 0.4f, F + 2.0f, F + 2.6f};
+    a.ambient = Ambient::MOTES;
+    a.theme = Theme{
+        {0.01f,0.03f,0.04f}, {0.06f,0.16f,0.17f}, {0.12f,0.02f,0.02f},
+        glm::normalize(vec3{0.f, 0.95f, -0.2f}), {1.6f,1.4f,1.1f}, 0.05f, 0.f,
+        {0.02f,0.05f,0.06f}, 0.3f,
+        // Pale light falls through the crack; the red comes up from the water
+        glm::normalize(vec3{0.15f,-1.f,0.1f}), {0.85f,0.9f,0.95f},
+        {0.16f,0.3f,0.32f}, {0.28f,0.06f,0.05f},
+        {0.05f,0.12f,0.13f}, 0.012f };
+    L.arenas.push_back(std::move(a));
+
+    // =========================================================================
+    // The corridor down: the Nave's passage drops down a shaft to an apron at
+    // the Orrery's south gate. Lighting blends from teal to gold on the way.
+    // =========================================================================
+    const float O = -80.f;                  // the Orrery's terrace
+    const vec3 C{0.f, O, -732.f};           // its centre (the sun's axis)
+    vec3 stone{0.42f,0.36f,0.30f}, stoneDark{0.24f,0.2f,0.17f}, brassO{0.75f,0.58f,0.3f},
+         gold{1.f,0.72f,0.3f}, sunCol{1.6f,1.05f,0.45f};
+    B.mat = Mat::BRICK;
+    wall(-4, O - 2, -669, 4, -57, -668, slate);                    // under the passage's end
+    wall(-6, O - 2, -669, -4, -49, -653, slate);                   // no slot beside the passage's end
+    wall( 4, O - 2, -669,  6, -49, -653, slate);
+    wall(-6, O - 2, -681, -5, -50, -664, slate);                   // the shaft's sides
+    wall( 5, O - 2, -681,  6, -50, -664, slate);
+    wall(-6, -50, -681, 6, -49, -664, slate);                      // its roof
+    wall(-5, O - 1, -680, 5, O, -668, stoneDark);                  // the apron at the bottom
+    for (float y = O + 4.f; y < -54.f; y += 5.f) {                 // rings of light down the shaft
+        neon(-4.95f, y, -679.9f, -4.85f, y + 0.2f, -668.1f, gold * 0.6f);
+        neon(4.85f, y, -679.9f, 4.95f, y + 0.2f, -668.1f, gold * 0.6f);
+    }
+    L.corridors.push_back(aabb(-6, O, -684, 6, -50, -652));
+
+    // =========================================================================
+    // THE ORRERY — a solid terrace round a void; two rings turn over a captive
+    // sun, the outer one clockwise, the inner one (2 m higher) against it
+    // =========================================================================
+    Arena o;
+    o.name = "THE ORRERY"; o.space = ReverbSpace::HALL;
+    o.subtitle = "MIND THE SUN - SURVIVE 3 WAVES";
+    o.bounds = aabb(-52, O, -784, 52, O + 28, -680);
+    o.zone   = aabb(-53.5f, O, -785.5f, 53.5f, O + 30, -678.5f);
+    o.playerStart = {0.f, O, -686.f};
+    o.startYaw = -90.f;
+    o.respawn = {0.f, O, -690.f}; o.hasRespawn = true;
+    o.voidY = -105.f;
+    o.sunPos = {C.x, -92.f, C.z};
+
+    // ---- the terrace: an annulus R 30-52, built of strips. East and west of
+    // the pit the strips run along X, north and south along Z, so the pit's
+    // edge is never more than a strip's width out of round anywhere. Drawn
+    // exactly as you stand on it: what you see is what holds you.
+    const float RIN = 30.f, ROUT = 53.f, STRIP = 0.75f;
+    auto band = [&](bool alongX, float side, float u0, float u1) {
+        // u: across the strip (z for alongX, x otherwise); the strip runs outward along the other axis
+        float un = (u0 < 0.f && u1 > 0.f) ? 0.f : std::min(std::fabs(u0), std::fabs(u1));
+        float edge = std::sqrt(std::max(0.f, RIN * RIN - un * un));     // the pit's widest point in the strip
+        float from = std::max(edge, un), to = std::sqrt(std::max(0.f, ROUT * ROUT - un * un));
+        if (from >= to) return;
+        float a0 = side * from, a1 = side * to;
+        if (alongX) wall(C.x + std::min(a0, a1), O - 1, C.z + u0, C.x + std::max(a0, a1), O, C.z + u1, stone);
+        else        wall(C.x + u0, O - 1, C.z + std::min(a0, a1), C.x + u1, O, C.z + std::max(a0, a1), stone);
+        if (edge > un + 1e-3f) {   // this end meets the pit: its lit lip
+            float e = side * edge;
+            if (alongX) neon(C.x + e - 0.06f, O - 0.3f, C.z + u0, C.x + e + 0.06f, O + 0.03f, C.z + u1, gold * 0.7f);
+            else        neon(C.x + u0, O - 0.3f, C.z + e - 0.06f, C.x + u1, O + 0.03f, C.z + e + 0.06f, gold * 0.7f);
+        }
+    };
+    for (float u = -ROUT; u < ROUT - 1e-3f; u += STRIP) {
+        float u1 = std::min(u + STRIP, ROUT);
+        for (float side : {-1.f, 1.f}) { band(true, side, u, u1); band(false, side, u, u1); }
+    }
+
+    // ---- the outer wall (posts round R 53) with a gate on the south ----
+    for (int k = 0; k < 96; ++k) {
+        float ang = k * 6.2831853f / 96.f;
+        vec3 p = C + vec3{std::cos(ang) * 54.f, 0.f, std::sin(ang) * 54.f};
+        if (std::fabs(p.x) < 5.5f && p.z > C.z) continue;          // the south gate
+        if (std::fabs(p.x) < 5.5f && p.z < C.z) continue;          // the north arch, the way down
+        B.solid(p.x - 1.8f, O, p.z - 1.8f, p.x + 1.8f, O + 14.f, p.z + 1.8f);
+    }
+    B.kit().curve({C.x, 0.f, C.z}, 54.f, 0.f, 6.2831853f, O, O + 14.f, 2.f, stoneDark, 64);
+    B.kit(true).curve({C.x, 0.f, C.z}, 52.9f, 0.f, 6.2831853f, O + 13.f, O + 13.3f, 0.2f, gold * 0.8f, 64);
+    wall(-6, O, -682, -4, O + 14, -678, stoneDark); wall(4, O, -682, 6, O + 14, -678, stoneDark);   // gate posts
+    wall(-4, O + 7, -681, 4, O + 14, -679, stoneDark);
+    o.entryGate = B.doorway(true, -4, 4, -681, -679, O, 7.f, gold, false);
+    wall(-6, O, -790, -4, O + 14, -782, stoneDark); wall(4, O, -790, 6, O + 14, -782, stoneDark);   // north arch posts
+    wall(-4, O + 7, -789, 4, O + 14, -783, stoneDark);
+    o.exitDoor = B.doorway(true, -4, 4, -787, -785, O, 7.f, gold, true);
+
+    // ---- eight great pillars (cover from the flare, grapple anchors) ----
+    for (int k = 0; k < 8; ++k) {
+        float ang = (k + 0.5f) * 0.7853982f;
+        vec3 p = C + vec3{std::cos(ang) * 41.f, 0.f, std::sin(ang) * 41.f};
+        wall(p.x - 1.3f, O, p.z - 1.3f, p.x + 1.3f, O + 18.f, p.z + 1.3f, stone);
+        B.kit().column({p.x, O, p.z}, 1.5f, 18.f, stone, 12);
+        B.kit(true).column({p.x, O + 17.6f, p.z}, 1.6f, 0.3f, gold, 12);
+        B.kit().column({p.x, O + 18.f, p.z}, 2.1f, 1.f, brassO, 12, 0.7f);
+    }
+
+    // ---- four spokes reaching in to R 25 (a short jump onto the outer ring) ----
+    for (int k = 0; k < 4; ++k) {
+        float cx = k == 0 ? 1.f : k == 1 ? -1.f : 0.f, cz = k == 2 ? 1.f : k == 3 ? -1.f : 0.f;
+        float x0 = C.x + cx * 25.f, x1 = C.x + cx * 31.f, z0 = C.z + cz * 25.f, z1 = C.z + cz * 31.f;
+        if (cx != 0.f) wall(std::min(x0, x1), O - 1, C.z - 1.5f, std::max(x0, x1), O, C.z + 1.5f, stoneDark);
+        else           wall(C.x - 1.5f, O - 1, std::min(z0, z1), C.x + 1.5f, O, std::max(z0, z1), stoneDark);
+        vec3 tip = C + vec3{cx * 25.1f, 0.f, cz * 25.1f};
+        neon(tip.x - 1.5f, O - 0.05f, tip.z - 1.5f, tip.x + 1.5f, O + 0.04f, tip.z + 1.5f, gold * 0.5f);
+    }
+
+    // ---- the rings: segments orbiting the sun's axis ----
+    vec3 ringGlow{1.f, 0.7f, 0.3f};
+    for (int k = 0; k < 26; ++k)       // outer: R 22, tops at the terrace's height, clockwise
+        B.mover({C.x, O - 0.5f, C.z}, {2.5f, 0.5f, 2.5f}, Mover::Path::ORBIT,
+                {22.f, 0.f, 0.f}, {0.f, 0.f, 22.f}, 62.83f, k / 26.f, ringGlow);
+    int firstInner = (int)L.movers.size();
+    for (int k = 0; k < 16; ++k)       // inner: R 12, 2 m higher, the other way
+        B.mover({C.x, O + 1.5f, C.z}, {2.2f, 0.5f, 2.2f}, Mover::Path::ORBIT,
+                {12.f, 0.f, 0.f}, {0.f, 0.f, -12.f}, 34.27f, k / 16.f, ringGlow);
+
+    // ---- the sun, sunk in the pit, and the armillary arcs over everything ----
+    for (int k = 0; k < 9; ++k) {
+        float y0 = -101.f + k * 2.f, yc = y0 + 1.f;
+        float r = std::sqrt(std::max(1.f, 81.f - (yc + 92.f) * (yc + 92.f)));
+        B.kit(true).column({C.x, y0, C.z}, r, 2.f, sunCol * (0.7f + 0.05f * k), 20);
+    }
+    for (float yaw : {0.f, 1.5707963f, 0.7853982f})
+        B.kit().arch({C.x, O, C.z}, 96.f, 40.f, 0.7f, 0.7f, brassO, yaw, 24);
+    B.kit(true).curve({C.x, 0.f, C.z}, 48.f, 0.f, 6.2831853f, O + 38.f, O + 38.4f, 0.3f, gold * 0.6f, 48);
+
+
+    // ---- spawns, waves ----
+    for (int k = 0; k < 8; ++k) {
+        float ang = k * 0.7853982f;
+        float r = k % 2 ? 46.f : 36.f;
+        o.groundSpawns.push_back(C + vec3{std::cos(ang) * r, 0.f, std::sin(ang) * r});
+    }
+    o.airSpawns = {C + vec3{0, 12, 18}, C + vec3{0, 12, -18}, C + vec3{18, 14, 0}, C + vec3{-18, 14, 0}};
+    o.waves = {
+        {{EnemyType::HUSK, 5}, WaveEntry(EnemyType::SENTINEL, 2).hollow(Hollow::HALOED), {EnemyType::RAPTOR, 3},
+         {EnemyType::SERAPH, 1}, WaveEntry(EnemyType::SHIELDBEARER, 2).with({EnemyType::HUSK})},
+        {{EnemyType::SERAPH, 2}, {EnemyType::RAPTOR, 3}, {EnemyType::CONDUCTOR, 2}, {EnemyType::MITE, 6},
+         WaveEntry(EnemyType::RIPPER, 2).hollow(Hollow::TWINNED)},
+        {{EnemyType::ANCHOR, 2}, WaveEntry(EnemyType::BRUTE, 2).hollow(Hollow::ENRAGED),
+         WaveEntry(EnemyType::SHIELDBEARER, 2).with({EnemyType::SENTINEL}).hollow(Hollow::TWINNED),
+         {EnemyType::SERAPH, 2}, {EnemyType::HUSK, 4}},
+    };
+    o.goals = {WaveGoal{},
+               WaveGoal::hold("HOLD THE CIRCLE ON THE INNER RING", {C.x, O + 2.f, C.z}, 3.f, 12.f).onMover(firstInner),
+               WaveGoal{}};
+    o.maxAlive = 12;
+    o.damageScale = 1.35f;
+    o.shift = ArenaShift::SOLAR;
+    o.ambient = Ambient::EMBERS;
+    o.theme = Theme{
+        {0.03f,0.02f,0.04f}, {0.32f,0.18f,0.08f}, {0.015f,0.008f,0.004f},   // below: an abyss
+        glm::normalize(vec3{0.f, -0.3f, -1.f}), {1.6f,1.1f,0.5f}, 0.08f, 0.f,
+        {0.08f,0.05f,0.03f}, 0.5f,
+        // The sun is below you: warm light from underneath, cool from the dark above
+        glm::normalize(vec3{0.2f, 0.6f, 0.1f}), {1.1f,0.8f,0.45f},
+        {0.12f,0.12f,0.18f}, {0.45f,0.28f,0.12f},
+        {0.16f,0.09f,0.05f}, 0.009f };
+    L.arenas.push_back(std::move(o));
+
+    buildDescent(B);
+    buildReliquary(B);
+    buildMaw(B);
+    buildZenith(B);
+}
+
+// =============================================================================
+// THE DESCENT — a cage that rides down a vast round shaft. It hangs at a
+// different floor for each wave (bell galleries, the clamps, the furnace
+// ring) and comes to rest in the Penitent's pit, 160 m below the Orrery.
+//
+//   Y  -80  the landing (the corridor from the Orrery's north arch)
+//   Y -120  the bell galleries     arcades and great bells round the shaft
+//   Y -160  the clamps             four brake clamps bite the cage's rim
+//   Y -200  the furnace ring       catwalks round furnace mouths, red below
+//   Y -240  the pit                the Penitent, chained to six anchors
+// =============================================================================
+inline void buildDescent(LevelBuilder& B) {
+    using glm::vec3;
+    LevelData& L = B.L;
+    auto aabb = &LevelBuilder::aabb;
+    auto wall = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { return B.wall(x0,y0,z0,x1,y1,z1,c); };
+    auto neon = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { B.neon(x0,y0,z0,x1,y1,z1,c); };
+
+    const vec3 C{0.f, 0.f, -840.f};
+    const float TOP = -80.f, PIT = -240.f, RW = 34.f, RCAGE = 12.f, RGAL = 20.f;
+    // The cage: four overlapping boxes, a 12-sided platform ~13 m across the radius
+    struct Rect { float hx, hz; };
+    const Rect CAGE[4] = {{12.f, 5.f}, {5.f, 12.f}, {10.5f, 8.f}, {8.f, 10.5f}};
+    const float STOP[5] = {-80.f, -120.f, -160.f, -200.f, -240.f};
+    vec3 iron{0.16f,0.15f,0.16f}, ironDark{0.09f,0.085f,0.09f}, bone{0.7f,0.66f,0.58f}, brass{0.62f,0.48f,0.26f},
+         ember{1.4f,0.45f,0.12f}, amber{1.3f,0.8f,0.35f}, blood{1.2f,0.12f,0.08f};
+    B.mat = Mat::METAL;
+
+    // ---- the corridor from the Orrery's north arch to the landing ----
+    wall(-4, TOP - 1, -808, 4, TOP, -786, iron);
+    wall(-5, TOP, -808, -4, TOP + 8, -786, ironDark); wall(4, TOP, -808, 5, TOP + 8, -786, ironDark);
+    wall(-5, TOP + 8, -808, 5, TOP + 9, -786, ironDark);
+    for (float z = -806.f; z < -787.f; z += 4.f) neon(-3.95f, TOP + 7.6f, z, 3.95f, TOP + 7.75f, z + 0.3f, amber * 0.5f);
+    L.corridors.push_back(aabb(-6, TOP, -810, 6, TOP + 14, -784));
+
+    Arena a;
+    a.name = "THE DESCENT"; a.space = ReverbSpace::SHAFT;
+    a.subtitle = "RIDE THE CAGE DOWN - SURVIVE 3 WAVES";
+    a.bounds = aabb(C.x - 33, PIT, C.z - 33, C.x + 33, TOP + 14, C.z + 33);
+    a.zone   = aabb(C.x - 34.5f, PIT, C.z - 34.5f, C.x + 34.5f, TOP + 16, C.z + 34.5f);
+    a.playerStart = {0.f, TOP, -812.f};
+    a.startYaw = -90.f;
+    a.respawn = {C.x, TOP, C.z}; a.hasRespawn = true;
+    a.voidY = TOP - 25.f;
+    a.bossSpawn = {C.x, PIT, C.z - 24.f};
+
+    // ---- the shaft wall: posts round R 35 (collision), a curved wall drawn
+    // inside them, ribs of light every 10 m, a gap for the landing's door ----
+    for (int k = 0; k < 72; ++k) {
+        float ang = k * 6.2831853f / 72.f;
+        vec3 p = C + vec3{std::cos(ang) * (RW + 1.2f), 0.f, std::sin(ang) * (RW + 1.2f)};
+        bool door = std::fabs(p.x) < 5.5f && p.z > C.z;
+        bool exit = std::fabs(p.x) < 5.5f && p.z < C.z;   // the way on: the pit's south wall
+        if (exit) {
+            B.solid(p.x - 1.6f, PIT - 6.f, p.z - 1.6f, p.x + 1.6f, PIT, p.z + 1.6f);
+            B.solid(p.x - 1.6f, PIT + 8.f, p.z - 1.6f, p.x + 1.6f, TOP + 16.f, p.z + 1.6f);
+            continue;
+        }
+        B.solid(p.x - 1.6f, PIT - 6.f, p.z - 1.6f, p.x + 1.6f, door ? TOP - 1.f : TOP + 16.f, p.z + 1.6f);
+        if (door) B.solid(p.x - 1.6f, TOP + 8.f, p.z - 1.6f, p.x + 1.6f, TOP + 16.f, p.z + 1.6f);
+    }
+    // drawn round the shaft, leaving the pit's south door open (south is -Z: angle 3/2 pi)
+    B.kit().curve({C.x, 0.f, C.z}, RW + 0.6f, -1.5707963f + 0.17f, 4.712389f - 0.17f, PIT - 6.f, TOP + 16.f, 1.2f, ironDark, 70);
+    B.kit().curve({C.x, 0.f, C.z}, RW + 0.6f, 4.712389f - 0.17f, 4.712389f + 0.17f, PIT + 8.f, TOP + 16.f, 1.2f, ironDark, 4);
+    for (float y = PIT + 5.f; y < TOP + 14.f; y += 10.f)
+        B.kit(true).curve({C.x, 0.f, C.z}, RW - 0.05f, 0.f, 6.2831853f, y, y + 0.18f, 0.1f, amber * 0.35f, 72);
+    for (int k = 0; k < 16; ++k) {                                      // ribs: arches climbing the wall
+        float yaw = k * 6.2831853f / 16.f;
+        vec3 p = C + vec3{std::cos(yaw) * (RW - 0.5f), 0.f, std::sin(yaw) * (RW - 0.5f)};
+        B.kit().rod({p.x, PIT, p.z}, {p.x, TOP + 16.f, p.z}, 0.5f, iron, 6);
+    }
+    a.entryGate = B.doorway(true, -4, 4, -809, -807, TOP, 7.f, amber, false);
+    a.exitDoor  = B.doorway(true, -4, 4, C.z - RW - 2.4f, C.z - RW - 0.2f, PIT, 7.f, blood, true);   // the way on, once the Penitent is still
+
+    // ---- an annulus floor (galleries, the pit) built as strips, like the
+    // Orrery's terrace: drawn exactly where it holds you ----
+    auto annulus = [&](float y, float rIn, float rOut, vec3 col, vec3 lip) {
+        const float STRIP = 0.75f;
+        auto band = [&](bool alongX, float side, float u0, float u1) {
+            float un = (u0 < 0.f && u1 > 0.f) ? 0.f : std::min(std::fabs(u0), std::fabs(u1));
+            float edge = std::sqrt(std::max(0.f, rIn * rIn - un * un));
+            float from = std::max(edge, un), to = std::sqrt(std::max(0.f, rOut * rOut - un * un));
+            if (from >= to) return;
+            float a0 = side * from, a1 = side * to;
+            if (alongX) wall(C.x + std::min(a0, a1), y - 1, C.z + u0, C.x + std::max(a0, a1), y, C.z + u1, col);
+            else        wall(C.x + u0, y - 1, C.z + std::min(a0, a1), C.x + u1, y, C.z + std::max(a0, a1), col);
+            if (edge > un + 1e-3f) {
+                float e = side * edge;
+                if (alongX) neon(C.x + e - 0.06f, y - 0.3f, C.z + u0, C.x + e + 0.06f, y + 0.03f, C.z + u1, lip);
+                else        neon(C.x + u0, y - 0.3f, C.z + e - 0.06f, C.x + u1, y + 0.03f, C.z + e + 0.06f, lip);
+            }
+        };
+        for (float u = -rOut; u < rOut - 1e-3f; u += STRIP) {
+            float u1 = std::min(u + STRIP, rOut);
+            for (float side : {-1.f, 1.f}) { band(true, side, u, u1); band(false, side, u, u1); }
+        }
+    };
+    auto bridges = [&](float y, vec3 col, vec3 lip) {
+        for (int k = 0; k < 4; ++k) {
+            float cx = k == 0 ? 1.f : k == 1 ? -1.f : 0.f, cz = k == 2 ? 1.f : k == 3 ? -1.f : 0.f;
+            float r0 = RCAGE + 0.3f, r1 = RGAL + 0.5f;   // RCAGE: the cage's reach along an axis
+            if (cx != 0.f) wall(C.x + std::min(cx * r0, cx * r1), y - 0.8f, C.z - 1.5f, C.x + std::max(cx * r0, cx * r1), y, C.z + 1.5f, col);
+            else           wall(C.x - 1.5f, y - 0.8f, C.z + std::min(cz * r0, cz * r1), C.x + 1.5f, y, C.z + std::max(cz * r0, cz * r1), col);
+            vec3 tip = C + vec3{cx * r0, y, cz * r0};
+            neon(tip.x - 1.5f, y - 0.05f, tip.z - 1.5f, tip.x + 1.5f, y + 0.04f, tip.z + 1.5f, lip);
+        }
+    };
+
+    // ---- the landing: a south apron and a bridge onto the cage (no ring:
+    // the cage is the only floor up here, so you're aboard when it drops) ----
+    wall(-5, TOP - 1, -810, 5, TOP, C.z + RW - 0.5f, iron);
+    wall(-1.5f, TOP - 0.8f, C.z + RCAGE + 0.3f, 1.5f, TOP, C.z + RW - 0.5f, iron);
+
+    // ---- stop 1: the bell galleries ----
+    annulus(STOP[1], RGAL, RW, iron, amber * 0.6f);
+    bridges(STOP[1], iron, amber * 0.5f);
+    for (int k = 0; k < 8; ++k) {
+        float yaw = (k + 0.5f) * 0.7853982f;
+        vec3 p = C + vec3{std::cos(yaw) * (RW - 1.5f), STOP[1], std::sin(yaw) * (RW - 1.5f)};
+        B.kit().arch({p.x, STOP[1], p.z}, 9.f, 7.f, 0.8f, 1.2f, bone * 0.8f, -yaw + 1.5707963f, 12);   // arcades
+        vec3 b = C + vec3{std::cos(yaw) * 27.f, 0.f, std::sin(yaw) * 27.f};
+        B.kit().dome({b.x, STOP[1] + 5.2f, b.z}, 1.8f, brass, 4, 12);                                 // a bell
+        B.kit().column({b.x, STOP[1] + 6.8f, b.z}, 0.12f, 3.f, ironDark, 6);
+        B.kit(true).column({b.x, STOP[1] + 4.0f, b.z}, 0.35f, 0.5f, amber, 8);                       // its clapper glows
+    }
+    // ---- stop 2: the clamps ----
+    annulus(STOP[2], RGAL, RW, ironDark, blood * 0.5f);
+    bridges(STOP[2], ironDark, blood * 0.4f);
+    std::vector<vec3> clamps;
+    for (int k = 0; k < 4; ++k) {
+        float yaw = k * 1.5707963f + 0.7853982f;                        // between the bridges
+        vec3 p = C + vec3{std::cos(yaw) * 17.5f, STOP[2], std::sin(yaw) * 17.5f};
+        wall(p.x - 2.f, STOP[2] - 1.f, p.z - 2.f, p.x + 2.f, STOP[2], p.z + 2.f, ironDark);   // the clamp's footing
+        B.kit().box({p.x, STOP[2] + 4.5f, p.z}, {1.2f, 9.f, 3.2f}, brass, -yaw, 0.3f, 0.f);    // jaws over the rim
+        clamps.push_back(p);
+    }
+    // ---- stop 3: the furnace ring ----
+    annulus(STOP[3], RGAL, RW, iron, ember * 0.6f);
+    bridges(STOP[3], iron, ember * 0.5f);
+    for (int k = 0; k < 6; ++k) {
+        float yaw = k * 1.0471976f;
+        vec3 p = C + vec3{std::cos(yaw) * (RW - 0.3f), STOP[3], std::sin(yaw) * (RW - 0.3f)};
+        B.kit().arch({p.x, STOP[3], p.z}, 6.f, 5.f, 0.9f, 1.4f, ironDark, -yaw + 1.5707963f, 10);   // furnace mouths
+        B.kit(true).dome({p.x, STOP[3] + 1.2f, p.z}, 2.2f, ember, 3, 10);
+    }
+    B.kit(true).curve({C.x, 0.f, C.z}, RGAL + 0.4f, 0.f, 6.2831853f, STOP[3] + 1.0f, STOP[3] + 1.15f, 0.12f, ember, 48);   // rail light
+
+    // ---- the pit: a round floor fitted round the cage's outline (strips along
+    // X, each split where the cage is), so it docks flush; six anchors, rubble ----
+    {
+        const float STRIP = 0.5f;
+        for (float z0 = -RW; z0 < RW - 1e-3f; z0 += STRIP) {
+            float z1 = std::min(z0 + STRIP, RW);
+            float zf = std::max(std::fabs(z0), std::fabs(z1));
+            float xOut = std::sqrt(std::max(0.f, RW * RW - zf * zf));
+            if (xOut < 0.3f) continue;
+            float xIn = 0.f;
+            for (const Rect& r : CAGE) if (z1 > -r.hz + 1e-3f && z0 < r.hz - 1e-3f) xIn = std::max(xIn, r.hx);
+            if (xIn <= 0.f) { wall(C.x - xOut, PIT - 1, C.z + z0, C.x + xOut, PIT, C.z + z1, iron); continue; }
+            xIn += 0.02f;
+            if (xOut <= xIn) continue;
+            wall(C.x - xOut, PIT - 1, C.z + z0, C.x - xIn, PIT, C.z + z1, iron);
+            wall(C.x + xIn, PIT - 1, C.z + z0, C.x + xOut, PIT, C.z + z1, iron);
+        }
+    }
+    for (int k = 0; k < 6; ++k) {
+        static const float ANG[6] = {-170.f, -130.f, -105.f, -75.f, -50.f, -10.f};   // round the north half and the sides
+        float yaw = glm::radians(ANG[k]);
+        float h = 8.f + 4.f * (k % 3) / 2.f;                                          // 8, 10, 12 m up
+        vec3 p = C + vec3{std::cos(yaw) * (RW - 1.0f), PIT + h, std::sin(yaw) * (RW - 1.0f)};
+        int w = wall(p.x - 0.9f, p.y - 0.9f, p.z - 0.9f, p.x + 0.9f, p.y + 0.9f, p.z + 0.9f, ironDark);
+        L.walls[w].hidden = true;                                                     // drawn live (glow, breaking)
+        L.addAnchor(w, p, 400.f, LevelData::ChainAnchor::CHAIN);
+    }
+    B.kit(true).curve({C.x, 0.f, C.z}, 15.5f, 0.f, 6.2831853f, PIT + 0.02f, PIT + 0.08f, 0.15f, blood, 48);   // a red ring round the dock
+    for (int k = 0; k < 9; ++k) {                                                     // rubble round the edge
+        float yaw = k * 0.698f + 0.2f;
+        vec3 p = C + vec3{std::cos(yaw) * 30.f, PIT, std::sin(yaw) * 30.f};
+        B.kit().rock({p.x, PIT, p.z}, 1.6f + 0.4f * (k % 3), 2.2f + 0.5f * (k % 2), iron, (uint32_t)k);
+    }
+
+    // ---- the cage: four overlapping driven boxes, top at the stop's height ----
+    vec3 cageCol{0.2f, 0.19f, 0.2f}, cageGlow{1.2f, 0.7f, 0.3f};
+    vec3 drop{0.f, PIT - TOP, 0.f};
+    auto cagePart = [&](float x0, float z0, float x1, float z1) {
+        int m = B.mover({C.x + (x0 + x1) * 0.5f, TOP - 0.5f, C.z + (z0 + z1) * 0.5f}, {(x1 - x0) * 0.5f, 0.5f, (z1 - z0) * 0.5f},
+                        Mover::Path::DRIVEN, {0.f, 0.f, 0.f}, drop, 1.f, 0.f, cageGlow);
+        L.movers[m].color = cageCol;
+        L.lift.movers.push_back(m);
+    };
+    for (const Rect& r : CAGE) cagePart(-r.hx, -r.hz, r.hx, r.hz);
+    L.lift.stops.assign(STOP, STOP + 5);
+
+    // ---- spawns per stop: galleries round the shaft + the cage ----
+    for (int w = 0; w < 3; ++w) {
+        float y = STOP[w + 1];
+        std::vector<vec3> g, air;
+        for (int k = 0; k < 8; ++k) {
+            float yaw = k * 0.7853982f + 0.3927f;                        // between bridges and clamps
+            g.push_back(C + vec3{std::cos(yaw) * 27.f, y, std::sin(yaw) * 27.f});
+        }
+        g.push_back(C + vec3{-6.f, y, -6.f}); g.push_back(C + vec3{6.f, y, 6.f});   // on the cage
+        for (int k = 0; k < 4; ++k) {
+            float yaw = k * 1.5707963f;
+            air.push_back(C + vec3{std::cos(yaw) * 17.f, y + 10.f, std::sin(yaw) * 17.f});
+        }
+        a.waveGround.push_back(g);
+        a.waveAir.push_back(air);
+    }
+    a.waveGround.push_back({a.bossSpawn});
+    a.waveAir.push_back({C + vec3{0.f, PIT + 12.f, 0.f}});
+    a.groundSpawns = a.waveGround[0];
+    a.airSpawns = a.waveAir[0];
+
+    a.waves = {
+        {{EnemyType::HUSK, 4}, {EnemyType::RAPTOR, 3}, {EnemyType::SERAPH, 2},
+         WaveEntry(EnemyType::SHIELDBEARER, 2).with({EnemyType::HUSK}), WaveEntry(EnemyType::RIPPER, 2).hollow(Hollow::ENRAGED)},
+        {{EnemyType::ANCHOR, 1}, {EnemyType::CONDUCTOR, 2}, {EnemyType::SENTINEL, 3}, {EnemyType::MITE, 6},
+         WaveEntry(EnemyType::BRUTE, 2).hollow(Hollow::HALOED)},
+        {{EnemyType::ANCHOR, 2}, {EnemyType::JUGGERNAUT, 1},
+         WaveEntry(EnemyType::SHIELDBEARER, 2).with({EnemyType::SENTINEL}).hollow(Hollow::TWINNED),
+         {EnemyType::SERAPH, 2}, WaveEntry(EnemyType::RAPTOR, 3).hollow(Hollow::ENRAGED), {EnemyType::HUSK, 4}},
+        {{EnemyType::PENITENT, 1}},
+    };
+    a.goals = {WaveGoal{}, WaveGoal::conduits("RELEASE THE CLAMPS", clamps), WaveGoal{}, WaveGoal{}};
+    a.maxAlive = 12;
+    a.damageScale = 1.4f;
+    a.shift = ArenaShift::DESCENT;
+    a.ambient = Ambient::ASH;
+    a.theme = Theme{
+        {0.02f,0.015f,0.02f}, {0.22f,0.08f,0.05f}, {0.01f,0.004f,0.003f},
+        glm::normalize(vec3{0.f, -1.f, -0.2f}), {1.2f,0.75f,0.4f}, 0.06f, 0.f,
+        {0.05f,0.03f,0.025f}, 0.45f,
+        // The light comes from the furnaces below; cold grey from the mouth above
+        glm::normalize(vec3{0.1f, 0.8f, 0.2f}), {1.5f,0.75f,0.4f},
+        {0.22f,0.21f,0.26f}, {0.55f,0.2f,0.1f},
+        {0.12f,0.05f,0.03f}, 0.01f };
+    L.arenas.push_back(std::move(a));
+}
+
+// ACT II mode's level
+// =============================================================================
+// THE RELIQUARY — pieces of the four Act I arenas, torn loose, drifting over
+// the void south of the Descent. They regroup between waves (LevelData::
+// Formation, ArenaShift::DRIFT): scattered, a ring, a stack, then a path to
+// the hole where something waits (piece 6).
+// =============================================================================
+static constexpr glm::vec3 RELIQUARY_Q{0.f, -240.f, -960.f};
+
+inline void buildReliquary(LevelBuilder& B) {
+    using vec3 = glm::vec3; using vec2 = glm::vec2;
+    LevelData& L = B.L;
+    const vec3 Q = RELIQUARY_Q;
+    const vec3 brick{0.45f, 0.25f, 0.2f}, rust{0.36f, 0.22f, 0.15f}, stone{0.55f, 0.53f, 0.5f}, slate{0.24f, 0.28f, 0.34f},
+               debrisCol{0.2f, 0.19f, 0.2f}, amber{1.2f, 0.7f, 0.3f}, ember{1.3f, 0.45f, 0.15f}, bone{0.9f, 0.85f, 0.75f},
+               cyan{0.2f, 1.f, 1.1f}, blood{1.f, 0.15f, 0.08f};
+    auto wall = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { return B.wall(x0, y0, z0, x1, y1, z1, c); };
+
+    // ---- the bridge out of the pit's south wall ----
+    wall(-3, Q.y - 1, -904.9f, 3, Q.y, -873, debrisCol);   // stops just short of the Yard (it moves)
+    L.corridors.push_back(LevelBuilder::aabb(-5, Q.y, -906, 5, Q.y + 12, -872));
+
+    // ---- a relic: boxes (local to its top centre, top at y 0) moving as one ----
+    struct Box { vec3 lo, hi; vec3 col; };
+    auto relic = [&](vec3 top, vec2 half, vec3 col, vec3 glow, const std::vector<Box>& extra, std::vector<vec3> at) {
+        LevelData::Formation::Chunk c; c.home = top; c.half = half; c.at = std::move(at);
+        auto add = [&](vec3 lo, vec3 hi, vec3 bc) {
+            int m = B.mover(top + (lo + hi) * 0.5f, (hi - lo) * 0.5f, Mover::Path::DRIVEN, {0, 0, 0}, {0, 0, 0}, 1.f, 0.f, glow);
+            L.movers[m].color = bc;
+            c.movers.push_back(m);
+        };
+        add({-half.x, -1.5f, -half.y}, {half.x, 0.f, half.y}, col);   // the slab
+        for (const Box& b : extra) add(b.lo, b.hi, b.col);
+        L.formation.chunks.push_back(c);
+    };
+    // Arrangements (offsets from where each is built): 0 scattered, 1 the ring, 2 the stack, 3 the path to the hole
+    // (positions are the tops' centres relative to Q; at[k] = pos[k] - pos[0])
+    auto offsets = [&](std::vector<vec3> pos) { std::vector<vec3> o; for (auto& p : pos) o.push_back(p - pos[0]); return o; };
+    // The Yard: brick, a corner of its low wall, the dais, a lamp post to grapple
+    std::vector<vec3> yardPos{{0, 0, 45}, {0, 0, 32}, {0, 0, 30}, {0, 0, 28}};
+    relic(Q + yardPos[0], {10, 10}, brick, amber,
+          {{{-10, 0, -10}, {10, 1.2f, -9.4f}, brick * 0.8f}, {{-10, 0, -10}, {-9.4f, 1.2f, 10}, brick * 0.8f},
+           {{-3, 0, -3}, {3, 0.8f, 3}, brick * 1.1f}, {{7.4f, 0, 7.4f}, {8.6f, 9, 8.6f}, debrisCol}}, offsets(yardPos));
+    // The Foundry: rust, a cold furnace, the empty channel's walls, a chimney to grapple
+    std::vector<vec3> foundryPos{{-38, 0, 0}, {-32, 0, 0}, {-24, 3, 8}, {0, 0, 9}};
+    relic(Q + foundryPos[0], {9, 8}, rust, ember,
+          {{{-9, 0, -8}, {-5, 5, -4}, rust * 0.7f}, {{-3, 0, -6}, {-2.4f, 1.f, 6}, rust * 0.9f}, {{2.4f, 0, -6}, {3, 1.f, 6}, rust * 0.9f},
+           {{6, 0, -7.2f}, {7.2f, 10, -6}, debrisCol}}, offsets(foundryPos));
+    // The Spire: pale stone, a raised ledge, columns
+    std::vector<vec3> spirePos{{38, 1, -8}, {32, 0, 0}, {22, 9, -6}, {17, 0, -24}};
+    relic(Q + spirePos[0], {7, 7}, stone, bone,
+          {{{-7, 0, -7}, {-1, 2.5f, 7}, stone * 0.9f}, {{3.5f, 0, -4.5f}, {4.5f, 8, -3.5f}, stone}, {{3.5f, 0, 3.5f}, {4.5f, 8, 4.5f}, stone}}, offsets(spirePos));
+    // The Core: slate, two of its pillars
+    std::vector<vec3> corePos{{0, 0, -40}, {0, 0, -32}, {-4, 6, -18}, {0, 0, -9}};
+    relic(Q + corePos[0], {9, 9}, slate, cyan,
+          {{{-6, 0, -1}, {-4, 7, 1}, slate * 0.8f}, {{4, 0, -1}, {6, 7, 1}, slate * 0.8f}}, offsets(corePos));
+    // Debris: stepping stones (5 x 5)
+    // scattered / the ring / the stack / the path - assigned so that no glide
+    // runs one relic through another (checked by the tests)
+    const vec3 DEBRIS[8][4] = {
+        {{-16, 0, 30}, {-21.2f, 0, 21.2f}, {-13, 1.5f, 19}, {-16, 0, 20}},
+        {{-27, 0, 17}, {-27.7f, 0, 11.5f}, {-30, 0, 24}, {8, 0, -44}},
+        {{16, 0, 30}, {21.2f, 0, 21.2f}, {9, 7.5f, -18}, {16, 0, -36}},
+        {{30, 0, 8}, {27.7f, 0, 11.5f}, {24, 4.5f, 12}, {16, 0, 20}},
+        {{-27, 0, -18}, {-27.7f, 0, -11.5f}, {-18, 4.5f, -6}, {-16, 0, -8}},
+        {{-14, 0, -32}, {-21.2f, 0, -21.2f}, {-36, 1.5f, -6}, {-14, 0, -22}},
+        {{27, 0, -24}, {27.7f, 0, -11.5f}, {30, 0, -24}, {16, 0, -8}},
+        {{14, 0, -32}, {21.2f, 0, -21.2f}, {13, 1.5f, 24}, {28, 0, -8}},
+    };
+    for (auto& d : DEBRIS) relic(Q + d[0], {2.5f, 2.5f}, debrisCol, blood * 0.6f, {}, offsets({d[0], d[1], d[2], d[3]}));
+    // Orbiters: small stones circling 6 m under the relics (a catch if you fall); no spawns on them
+    for (int k = 0; k < 3; ++k)
+        B.mover(Q + vec3{0, -6.5f, 0}, {1.8f, 0.5f, 1.8f}, Mover::Path::ORBIT, {16, 0, 0}, {0, 0, 16}, 40.f, k / 3.f, blood * 0.5f);
+    L.formation.reset(L);
+
+    // ---- the rim, over the Maw: jump in (buildMaw) ----
+    wall(-8, Q.y - 1, Q.z - 62, 8, Q.y, Q.z - 50, debrisCol);
+    B.kit(true).box({0.f, Q.y + 0.02f, Q.z - 61.9f}, {15.6f, 0.06f, 0.2f}, blood);   // its edge, glowing
+    L.finishPos = {0.f, Q.y + 1.f, Q.z - 61.f};   // ACT II's way on once the Reliquary is clear (a waypoint, no beacon)
+    // ---- the arena ----
+    Arena a;
+    a.name = "THE RELIQUARY"; a.space = ReverbSpace::HALL;
+    a.subtitle = "THE OLD WORLD, IN PIECES - SURVIVE 3 WAVES";
+    a.bounds = LevelBuilder::aabb(-56, Q.y - 20, Q.z - 61, 56, Q.y + 30, Q.z + 60);
+    a.zone   = LevelBuilder::aabb(-58, Q.y - 30, Q.z - 62, 58, Q.y + 40, Q.z + 92);   // ends at the rim: past it is the Maw's
+    a.playerStart = {0.f, Q.y, -909.f};   // on the Yard, just off the bridge
+    a.startYaw = -90.f;
+    a.respawn = Q + yardPos[0]; a.hasRespawn = true;
+    a.voidY = Q.y - 22.f;
+    // Spawns: three on each relic in each wave's arrangement (clear of its props), fliers above the middle
+    const vec3 LOCAL[4][3] = {{{5, 0, 6}, {-5, 0, 6}, {-6, 0, -5}}, {{6, 0, 5}, {-6, 0, 4}, {5, 0, -2}},
+                              {{-4, 2.5f, 0}, {2, 0, 0}, {5, 0, -6}}, {{0, 0, 5}, {0, 0, -5}, {-6, 0, 6}}};
+    for (int w = 0; w < 3; ++w) {
+        std::vector<vec3> g, air;
+        for (int c = 0; c < 4; ++c)
+            for (const vec3& l : LOCAL[c]) g.push_back(L.formation.chunks[c].home + L.formation.chunks[c].at[w] + l);
+        for (int k = 0; k < 4; ++k) {
+            float yaw = k * 1.5707963f + 0.7853982f;
+            air.push_back(Q + vec3{std::cos(yaw) * 16.f, 12.f + 3.f * w, std::sin(yaw) * 16.f});
+        }
+        a.waveGround.push_back(g); a.waveAir.push_back(air);
+    }
+    a.groundSpawns = a.waveGround[0]; a.airSpawns = a.waveAir[0];
+    a.waves = {
+        {{EnemyType::HUSK, 4}, {EnemyType::RAPTOR, 3}, {EnemyType::REVENANT, 2},
+         WaveEntry(EnemyType::SHIELDBEARER, 2).with({EnemyType::HUSK}), {EnemyType::SERAPH, 1}},
+        {{EnemyType::WEAVER, 2}, {EnemyType::REVENANT, 2}, WaveEntry(EnemyType::REVENANT, 1).hollow(Hollow::ENRAGED),
+         {EnemyType::ANCHOR, 1}, {EnemyType::SENTINEL, 2}, {EnemyType::RIPPER, 3}, {EnemyType::MITE, 4}},
+        {{EnemyType::JUGGERNAUT, 1}, WaveEntry(EnemyType::REVENANT, 2).hollow(Hollow::HALOED), {EnemyType::WEAVER, 2},
+         {EnemyType::SERAPH, 2}, {EnemyType::CONDUCTOR, 1}, WaveEntry(EnemyType::HUSK, 3).hollow(Hollow::TWINNED)},
+    };
+    a.goals = {WaveGoal{}, WaveGoal{}, WaveGoal{}};
+    a.maxAlive = 12;
+    a.damageScale = 1.45f;
+    a.shift = ArenaShift::DRIFT;
+    a.ambient = Ambient::MOTES;
+    a.theme = Theme{
+        {0.012f,0.008f,0.014f}, {0.16f,0.06f,0.08f}, {0.006f,0.003f,0.004f},
+        glm::normalize(vec3{0.3f, 0.85f, -0.4f}), {0.55f,0.5f,0.6f}, 0.06f, 0.f,
+        {0.1f,0.03f,0.04f}, 1.f,
+        glm::normalize(vec3{-0.3f,-0.7f,0.6f}), {0.5f,0.2f,0.18f},
+        {0.12f,0.08f,0.1f}, {0.03f,0.02f,0.025f},
+        {0.08f,0.03f,0.04f}, 0.01f };
+    L.arenas.push_back(std::move(a));
+}
+
+// =============================================================================
+// THE MAW — the cavern under the Reliquary, open to the void above: you jump
+// in off the rim. A ring of cracked stone round a black pool where THE
+// LEVIATHAN lives; four wells it breaches from, six machine ribs arching
+// overhead with dry ledges on them, broken pipes for cover. Its water lies
+// under the ring until the last phase floods it (Gameplay_Leviathan.h).
+//
+//                 N (-Z)
+//            rib   ___   rib
+//          well  /     \  well        pool    r 0-13   (an open void under black water)
+//     rib  pipe |  POOL | pipe  rib   ring    r 13-46  (Y -300)
+//          well  \_____/  well        wells   r 29, on the diagonals
+//            rib  pipe   rib          ribs    r 42, ledges +5 m, steps +2.5 m
+//                 (rim)
+//                 S (+Z)
+// =============================================================================
+static constexpr glm::vec3 MAW_C{0.f, -300.f, -1072.f};
+static constexpr float MAW_POOL = 13.f, MAW_RING = 46.f, MAW_WELL_R = 29.f, MAW_WELL = 3.5f, MAW_RIB_R = 42.f,
+                       MAW_LEDGE_UP = 5.f, MAW_STEP_UP = 2.5f;
+inline glm::vec3 mawWell(int k) {   // on the diagonals
+    float a = 0.7853982f + k * 1.5707963f;
+    return MAW_C + glm::vec3{std::cos(a) * MAW_WELL_R, 0.f, std::sin(a) * MAW_WELL_R};
+}
+inline float mawRibAngle(int k) { return k * 1.0471976f; }   // 0, 60, ... 300 degrees from +X toward +Z
+
+inline void buildMaw(LevelBuilder& B) {
+    using vec3 = glm::vec3;
+    LevelData& L = B.L;
+    const vec3 C = MAW_C;
+    const float F = C.y;
+    const vec3 stone{0.2f, 0.19f, 0.2f}, stoneDark{0.11f, 0.1f, 0.11f}, iron{0.15f, 0.14f, 0.15f}, bone{0.52f, 0.49f, 0.44f},
+               blood{1.2f, 0.14f, 0.08f}, eclipse{1.3f, 1.2f, 1.05f}, ember{1.3f, 0.45f, 0.15f};
+    auto wall = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { return B.wall(x0, y0, z0, x1, y1, z1, c); };
+    auto neon = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { B.neon(x0, y0, z0, x1, y1, z1, c); };
+
+    // ---- the way in: off the Reliquary's rim, down through the open top ----
+    L.corridors.push_back(LevelBuilder::aabb(-12, F, -1032, 12, -200, -1010));
+
+    // ---- the ring: rows along X between the pool and the wall (no overlaps,
+    // so the water rows laid the same way never blend twice) ----
+    B.mat = Mat::ROCK;
+    auto rows = [&](float rIn, float rOut, float strip, auto fn) {
+        for (float u = -rOut; u < rOut - 1e-3f; u += strip) {
+            float u1 = std::min(u + strip, rOut);
+            float un = (u < 0.f && u1 > 0.f) ? 0.f : std::min(std::fabs(u), std::fabs(u1));   // the row's edge nearest the centre
+            float uf = std::max(std::fabs(u), std::fabs(u1));
+            float outer = std::sqrt(std::max(0.f, rOut * rOut - un * un));
+            if (outer <= 0.f) continue;
+            if (uf < rIn) {   // the row crosses the pool: two pieces
+                float inner = std::sqrt(std::max(0.f, rIn * rIn - uf * uf));
+                fn(-outer, -inner, u, u1, true);
+                fn(inner, outer, u, u1, true);
+            } else fn(-outer, outer, u, u1, false);
+        }
+    };
+    rows(MAW_POOL, MAW_RING, 1.f, [&](float x0, float x1, float z0, float z1, bool lip) {
+        wall(C.x + x0, F - 1.f, C.z + z0, C.x + x1, F, C.z + z1, stone);
+        if (lip) {   // a glowing seam round the pool's lip
+            float e = x0 < 0.f ? x1 : x0;
+            neon(C.x + e - 0.08f, F - 0.4f, C.z + z0, C.x + e + 0.08f, F + 0.03f, C.z + z1, blood * 0.8f);
+        }
+    });
+    // the flood waits under the ring (raised in the Leviathan's last phase)
+    rows(MAW_POOL, MAW_RING, 2.f, [&](float x0, float x1, float z0, float z1, bool) {
+        L.water.push_back({LevelBuilder::aabb(C.x + x0, F - 1.f, C.z + z0, C.x + x1, F + 4.f, C.z + z1), F - 1.f});
+    });
+    L.floors.push_back({C.x - 60.f, C.z - 60.f, C.x + 60.f, C.z + 60.f, -500.f, {0.01f, 0.005f, 0.005f}});   // far below the pool
+    // the pool: black water over the dark, lit red from beneath; a low kerb
+    B.kit().column({C.x, F - 2.2f, C.z}, MAW_POOL - 0.2f, 0.05f, {0.02f, 0.015f, 0.02f}, 40);
+    B.kit(true).curve({C.x, 0.f, C.z}, MAW_POOL * 0.6f, 0.f, 6.2831853f, F - 9.f, F - 8.8f, 0.6f, blood * 0.6f, 32);
+    B.kit().curve({C.x, 0.f, C.z}, MAW_POOL + 0.4f, 0.f, 6.2831853f, F, F + 0.35f, 0.8f, stoneDark, 40);
+    // cracks with a glow in them, radiating out across the ring
+    for (int k = 0; k < 18; ++k) {
+        float a = k * 0.3490659f + 0.11f, r0 = MAW_POOL + 1.5f + (k % 3) * 2.f, r1 = MAW_RING - 3.f - (k % 4) * 3.f;
+        vec3 m = C + vec3{std::cos(a) * (r0 + r1) * 0.5f, 0.02f, std::sin(a) * (r0 + r1) * 0.5f};
+        B.kit(true).box(m, {r1 - r0, 0.04f, 0.12f}, blood * 0.35f, -a);
+    }
+
+    // ---- the wall: posts round r 47.5 (collision), drawn as a curved wall to
+    // the open top; low on the south arc, under the rim, where you drop in ----
+    for (int k = 0; k < 100; ++k) {
+        float ang = k * 6.2831853f / 100.f;
+        vec3 p = C + vec3{std::cos(ang) * (MAW_RING + 1.5f), 0.f, std::sin(ang) * (MAW_RING + 1.5f)};
+        bool south = std::fabs(p.x) < 12.f && p.z > C.z;
+        B.solid(p.x - 1.5f, F - 6.f, p.z - 1.5f, p.x + 1.5f, south ? F + 3.f : -262.f, p.z + 1.5f);
+    }
+    B.mat = Mat::ROCK;
+    B.kit().curve({C.x, 0.f, C.z}, MAW_RING + 1.2f, 1.5707963f + 0.27f, 1.5707963f + 6.2831853f - 0.27f, F - 6.f, -262.f, 1.4f, stoneDark, 90);
+    B.kit().curve({C.x, 0.f, C.z}, MAW_RING + 1.2f, 1.5707963f - 0.27f, 1.5707963f + 0.27f, F - 6.f, F + 3.f, 1.4f, stoneDark, 8);
+    for (float y = F + 6.f; y < -266.f; y += 9.f)   // seams of red climbing the wall
+        B.kit(true).curve({C.x, 0.f, C.z}, MAW_RING - 0.05f, 1.5707963f + 0.3f, 1.5707963f + 6.2831853f - 0.3f, y, y + 0.15f, 0.1f, blood * 0.3f, 80);
+    for (int k = 0; k < 14; ++k) {   // the lip of the hole: broken rock round the open top
+        float a = k * 0.4487989f + 0.2f;
+        if (std::fabs(std::remainder(a - 1.5707963f, 6.2831853f)) < 0.45f) continue;   // the rim's side: open
+        B.kit().rock({C.x + std::cos(a) * (MAW_RING + 2.5f), -263.f, C.z + std::sin(a) * (MAW_RING + 2.5f)}, 3.f, 5.f, stoneDark, (uint32_t)(70 + k));
+    }
+
+    // ---- four wells: shallow round basins flush with the ring, dark water
+    // with a red glow; the Leviathan breaches out of them ----
+    for (int k = 0; k < 4; ++k) {
+        vec3 w = mawWell(k);
+        B.kit().column({w.x, F + 0.01f, w.z}, MAW_WELL, 0.03f, {0.02f, 0.02f, 0.03f}, 24);
+        B.kit(true).curve({w.x, 0.f, w.z}, MAW_WELL, 0.f, 6.2831853f, F, F + 0.08f, 0.25f, blood * 0.7f, 24);
+        B.kit().curve({w.x, 0.f, w.z}, MAW_WELL + 0.45f, 0.f, 6.2831853f, F, F + 0.25f, 0.5f, stoneDark, 24);
+    }
+
+    // ---- six ribs: a pillar at r 42 (a grapple point), a dry ledge on it at
+    // +5 m and a step up at +2.5 m, and the rib itself arching in overhead ----
+    B.mat = Mat::METAL;
+    for (int k = 0; k < 6; ++k) {
+        float a = mawRibAngle(k);
+        vec3 out{std::cos(a), 0.f, std::sin(a)}, side{-out.z, 0.f, out.x};
+        vec3 p = C + out * MAW_RIB_R;
+        wall(p.x - 1.6f, F, p.z - 1.6f, p.x + 1.6f, F + 22.f, p.z + 1.6f, iron);         // the pillar
+        vec3 l = C + out * (MAW_RIB_R - 3.8f);
+        wall(l.x - 2.4f, F + MAW_LEDGE_UP - 0.6f, l.z - 2.4f, l.x + 2.4f, F + MAW_LEDGE_UP, l.z + 2.4f, iron);   // the ledge
+        B.ring(l.x - 2.4f, l.z - 2.4f, l.x + 2.4f, l.z + 2.4f, F + MAW_LEDGE_UP - 0.1f, F + MAW_LEDGE_UP, ember * 0.5f);
+        vec3 s = l + side * 3.6f - out * 1.2f;
+        wall(s.x - 1.3f, F, s.z - 1.3f, s.x + 1.3f, F + MAW_STEP_UP, s.z + 1.3f, stone);   // the step
+        // the rib: from the pillar's top, up and in, over the ring
+        vec3 prev = p + vec3{0.f, 22.f, 0.f};
+        for (int i = 1; i <= 8; ++i) {
+            float t = i / 8.f;
+            vec3 q = C + out * (MAW_RIB_R - 20.f * t) + vec3{0.f, 22.f + 14.f * std::sin(t * 1.5707963f), 0.f};
+            B.kit().rod(prev, q, 1.1f - 0.06f * i, bone * 0.7f, 7);
+            prev = q;
+        }
+        B.kit(true).box(p + vec3{0.f, 21.f, 0.f} - out * 1.65f, {0.12f, 2.f, 0.6f}, blood * 0.8f, -a);   // a light on its face
+    }
+
+    // ---- cover: broken conduit pipes between the wells ----
+    for (int k = 0; k < 4; ++k) {
+        float a = k * 1.5707963f;
+        vec3 out{std::cos(a), 0.f, std::sin(a)}, side{-out.z, 0.f, out.x};
+        vec3 p = C + out * 21.f;
+        vec3 h = glm::abs(side) * 4.f + glm::abs(out) * 0.6f;
+        B.solid(p.x - h.x, F, p.z - h.z, p.x + h.x, F + 1.6f, p.z + h.z);
+        B.kit().rod(p - side * 4.f + vec3{0.f, 0.8f, 0.f}, p + side * 4.f + vec3{0.f, 0.8f, 0.f}, 0.8f, iron, 10);
+        B.kit(true).rod(p - side * 4.05f + vec3{0.f, 0.8f, 0.f}, p - side * 3.9f + vec3{0.f, 0.8f, 0.f}, 0.82f, blood * 0.6f, 10);
+    }
+
+    // ---- the eclipse's light through the open top, onto the south ring ----
+    B.kit(true).column({C.x, F + 0.03f, C.z + 30.f}, 9.f, 0.02f, eclipse * 0.05f, 32);
+
+    // ---- the arena ----
+    Arena a;
+    a.name = "THE MAW"; a.space = ReverbSpace::HALL;
+    a.subtitle = "SOMETHING BELOW";
+    a.bounds = LevelBuilder::aabb(C.x - 45, F - 4, C.z - 45, C.x + 45, F + 40, C.z + 45);
+    a.zone   = LevelBuilder::aabb(C.x - 50, F - 20, C.z - 50, C.x + 50, -200.f, -1022.f);   // up through the open top to the rim
+    a.playerStart = {0.f, -262.f, C.z + 36.f};   // in the air over the south ring: a retry drops you in again
+    a.startYaw = -90.f;
+    a.respawn = {0.f, F, C.z + 36.f}; a.hasRespawn = true;
+    a.voidY = F - 15.f;
+    a.bossSpawn = {C.x, F - 2.f, C.z};
+    L.hasLair = true; L.lair = a.bossSpawn; L.lairFloor = F;
+    for (int k = 0; k < 4; ++k) L.wells.push_back(mawWell(k));
+    a.groundSpawns = {C + vec3{0, 0, 30}};
+    a.waves = {{{EnemyType::LEVIATHAN, 1}}};
+    a.goals = {WaveGoal{}};
+    a.maxAlive = 1;
+    a.damageScale = 1.5f;
+    a.ambient = Ambient::MOTES;
+    a.theme = Theme{
+        {0.01f,0.01f,0.016f}, {0.1f,0.05f,0.07f}, {0.01f,0.003f,0.003f},
+        glm::normalize(vec3{0.f, 0.9f, 0.4f}), {1.2f,1.1f,1.0f}, 0.05f, 0.f,   // the eclipse, overhead through the hole
+        {0.05f,0.02f,0.03f}, 0.6f,
+        glm::normalize(vec3{0.1f,-0.9f,-0.3f}), {0.55f,0.5f,0.55f},          // cold light from above
+        {0.16f,0.14f,0.19f}, {0.3f,0.08f,0.06f},                             // red from the pool below
+        {0.05f,0.02f,0.025f}, 0.012f };
+    L.arenas.push_back(std::move(a));
+}
+
+// ---- THE ZENITH: the encore. A floating ruin in an open sky, far above and
+// past the Maw. A white Dais, a black floor seamed with white light (the seams
+// carry every area tell), eight pillars at r 34 (four shatter), six shards
+// past a 6 m gap (they fall), the Halo overhead, and the shattered eclipse
+// behind him. Pillars and shards are hidden walls drawn by Gameplay_Absolute.h.
+inline void buildZenith(LevelBuilder& B) {
+    using glm::vec3;
+    LevelData& L = B.L;
+    const vec3 C = zenithCentre();
+    const float F = C.y;
+    const vec3 white{0.86f, 0.85f, 0.82f}, black{0.05f, 0.05f, 0.06f}, gold{1.4f, 1.05f, 0.45f}, seam{1.2f, 1.2f, 1.25f};
+    B.mat = Mat::CONCRETE;
+    // the floor: a disc of slabs (collision: 4 m boxes inside r 43), the seams on it
+    for (float x = -44.f; x < 44.f; x += 4.f)
+        for (float z = -44.f; z < 44.f; z += 4.f) {
+            float cx = x + 2.f, cz = z + 2.f;
+            if (cx * cx + cz * cz > 43.f * 43.f) continue;
+            B.solid(C.x + x, F - 3.f, C.z + z, C.x + x + 4.f, F, C.z + z + 4.f);
+        }
+    B.kit().column({C.x, F - 3.f, C.z}, ZEN_FLOOR, 3.f, black, 48);
+    B.kit().column({C.x, F - 9.f, C.z}, ZEN_FLOOR - 4.f, 6.f, black * 1.6f, 24, 0.55f);   // the ruin's underside, tapering
+    for (float u = -42.f; u <= 42.f; u += ZEN_CELL) {   // the seams: a lit grid
+        float half = std::sqrt(std::max(0.f, 43.5f * 43.5f - u * u));
+        B.kit(true).box(C + vec3{u, 0.015f, 0.f}, {0.06f, 0.02f, 2.f * half}, seam * 0.25f);
+        B.kit(true).box(C + vec3{0.f, 0.015f, u}, {2.f * half, 0.02f, 0.06f}, seam * 0.25f);
+    }
+    B.kit(true).curve({C.x, 0.f, C.z}, ZEN_FLOOR, 0.f, 6.2831853f, F - 0.2f, F + 0.04f, 0.3f, seam * 0.4f, 96);   // the rim
+    // the Dais, a hand's breadth high (0.15 m: you walk on and off it): collision in 0.5 m strips
+    // tracing the drawn disc (each strip as wide as the disc at its middle). On it, an eclipse
+    // inlaid in the stone: a black disc with a gold corona in the middle, twelve rays of light out
+    // to a ring of runes, a lit lip round its edge and four gold glyphs at the quarters
+    for (float z = -ZEN_DAIS; z < ZEN_DAIS - 1e-3f; z += 0.5f) {
+        float m = z + 0.25f, half = std::sqrt(std::max(0.f, ZEN_DAIS * ZEN_DAIS - m * m));
+        B.solid(C.x - half, F, C.z + z, C.x + half, F + ZEN_DAIS_UP, C.z + z + 0.5f);
+    }
+    {
+        const float top = F + ZEN_DAIS_UP;
+        B.kit().column({C.x, F, C.z}, ZEN_DAIS, ZEN_DAIS_UP, white * 0.92f, 48);
+        B.kit(true).curve({C.x, 0.f, C.z}, ZEN_DAIS - 0.12f, 0.f, 6.2831853f, top, top + 0.025f, 0.18f, gold * 0.9f, 64);   // the lip
+        B.kit().column({C.x, top, C.z}, 2.2f, 0.02f, black, 32);                                                            // the eclipse
+        B.kit(true).curve({C.x, 0.f, C.z}, 2.2f, 0.f, 6.2831853f, top, top + 0.035f, 0.16f, gold * 1.3f, 40);              // its corona
+        B.kit(true).curve({C.x, 0.f, C.z}, 2.75f, 0.f, 6.2831853f, top, top + 0.02f, 0.05f, gold * 0.5f, 40);
+        for (int k = 0; k < 12; ++k) {                                                                                       // twelve rays
+            float a = k * 0.5235988f; vec3 o{std::cos(a), 0.f, std::sin(a)};
+            float len = (k % 3 == 0) ? 3.6f : 2.6f, from = 3.f;
+            B.kit(true).box(C + o * (from + len * 0.5f) + vec3{0.f, ZEN_DAIS_UP + 0.012f, 0.f}, {len, 0.02f, k % 3 == 0 ? 0.14f : 0.07f},
+                            k % 3 == 0 ? gold * 1.1f : seam * 0.6f, -a);
+        }
+        B.kit(true).curve({C.x, 0.f, C.z}, 6.9f, 0.f, 6.2831853f, top, top + 0.02f, 0.06f, seam * 0.5f, 64);              // the rune ring
+        for (int k = 0; k < 24; ++k) {                                                                                       // its runes
+            float a = (k + 0.5f) * 0.2617994f; vec3 o{std::cos(a), 0.f, std::sin(a)};
+            B.kit(true).box(C + o * 7.35f + vec3{0.f, ZEN_DAIS_UP + 0.012f, 0.f}, {k % 2 ? 0.45f : 0.25f, 0.02f, 0.08f}, seam * 0.55f, -a + 1.5707963f);
+        }
+        for (int k = 0; k < 4; ++k) {                                                                                        // glyphs at the quarters
+            float a = k * 1.5707963f; vec3 o{std::cos(a), 0.f, std::sin(a)};
+            B.kit(true).box(C + o * 8.1f + vec3{0.f, ZEN_DAIS_UP + 0.014f, 0.f}, {0.6f, 0.025f, 0.6f}, gold * 1.2f, -a + 0.7853982f);
+            B.kit().box(C + o * 8.1f + vec3{0.f, ZEN_DAIS_UP + 0.01f, 0.f}, {0.9f, 0.02f, 0.9f}, black, -a + 0.7853982f);
+        }
+    }
+    // eight pillars and six shards: hidden walls (they break)
+    L.zenith = LevelData::Zenith{};
+    L.zenith.built = true; L.zenith.centre = C;
+    for (int k = 0; k < 8; ++k) {
+        vec3 p = zenithPillar(k);
+        int w = B.solid(p.x - 1.25f, F, p.z - 1.25f, p.x + 1.25f, F + 14.f, p.z + 1.25f);
+        L.zenith.pillarWalls.push_back(w); L.zenith.pillarHome.push_back(L.walls[w].box); L.zenith.pillarUp.push_back(true);
+    }
+    for (int k = 0; k < 6; ++k) {
+        vec3 s = zenithShard(k);
+        int w = B.solid(s.x - 4.f, F - 2.5f, s.z - 4.f, s.x + 4.f, F, s.z + 4.f);
+        L.zenith.shardWalls.push_back(w); L.zenith.shardHome.push_back(L.walls[w].box); L.zenith.shardUp.push_back(true);
+    }
+    // the Halo: backdrop, never in the way. The eclipse is the sky's (straight
+    // overhead, out of reach: skybox.frag, Theme::eclipse)
+    B.kit(true).curve({C.x, 0.f, C.z}, ZEN_HALO_R, 0.f, 6.2831853f, F + ZEN_HALO_UP, F + ZEN_HALO_UP + 1.6f, 1.2f, gold * 0.9f, 128);
+
+    Arena a;
+    a.name = ZENITH_NAME; a.space = ReverbSpace::OPEN;
+    a.subtitle = "ABOVE THE ECLIPSE";
+    a.bounds = LevelBuilder::aabb(C.x - 64, F - 4, C.z - 64, C.x + 64, F + 30, C.z + 64);
+    a.zone   = LevelBuilder::aabb(C.x - 66, F - 60, C.z - 66, C.x + 66, F + 60, C.z + 66);
+    a.playerStart = C + vec3{0.f, 0.f, 38.f};
+    a.startYaw = -90.f;
+    a.respawn = C + vec3{0.f, 0.f, 38.f}; a.hasRespawn = true;
+    a.voidY = F - 40.f;
+    a.bossSpawn = C + vec3{0.f, ZEN_DAIS_UP, 0.f};
+    a.groundSpawns = {C + vec3{0, 0, 20}};
+    a.waves = {{{EnemyType::ABSOLUTE, 1}}};
+    a.goals = {WaveGoal{}};
+    a.maxAlive = 1;
+    a.damageScale = 1.f;
+    a.ambient = Ambient::MOTES;
+    a.theme = Theme{
+        {0.012f,0.004f,0.02f}, {0.42f,0.05f,0.04f}, {0.1f,0.02f,0.03f},            // near-black overhead, blood at the horizon, the cloud sea below
+        vec3{0.f, 1.f, 0.f}, {1.25f,0.16f,0.06f}, 0.19f, 0.f,                       // the eclipse straight overhead; its corona's colour
+        {0.16f,0.05f,0.09f}, 0.4f,                                                // (no ridges up here); stars round the eclipse
+        glm::normalize(vec3{0.35f,-0.28f,0.9f}), {1.0f,0.32f,0.18f},             // a low blood-orange key: the sunset all round
+        {0.16f,0.08f,0.14f}, {0.34f,0.07f,0.06f},                                 // dark above, red thrown up from the clouds below
+        {0.3f,0.06f,0.06f}, 0.0024f,                                              // blood haze
+        1.f };                                                                    // the eclipse sky
+    L.arenas.push_back(std::move(a));
+}
+
+inline LevelData buildAct2Level() {
+    LevelData L;
+    LevelBuilder B{L};
+    buildAct2(B);
+    return L;
+}

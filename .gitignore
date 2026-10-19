@@ -49,3 +49,6 @@ tests/test_game
 tests/test_zenith
 .superpowers/
 __pycache__/
+
+# Editor (clangd) flags: machine-specific paths
+compile_flags.txt
