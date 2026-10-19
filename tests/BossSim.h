@@ -1,5 +1,5 @@
 #pragma once
-#include "../src/AbsoluteHazards.h"   // THE ABSOLUTE's hazards (and the sword's block)
+#include "bosses/absolute/AbsoluteHazards.h"   // THE ABSOLUTE's hazards (and the sword's block)
 // A scripted player against a boss's real AI, in its real arena: the boss's
 // events resolved the way the game resolves them (melee, slams you can jump,
 // projectiles, the Sovereign's blades, the Warden's hazards and conduits).
