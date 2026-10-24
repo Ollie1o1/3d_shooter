@@ -325,6 +325,7 @@ inline void GameplayState::updateEnemies(float dt) {
         if (enemies[i].type == EnemyType::WEAVER) onReliquaryEvents(enemies[i], ev);
         if (enemies[i].type == EnemyType::LEVIATHAN) onLeviathanEvents(enemies[i], ev);
         if (enemies[i].type == EnemyType::ABSOLUTE) onAbsoluteEvents(enemies[i], ev);
+        if (ev.enraged && isBoss(enemies[i].type)) hitStopFrames = glm::max(hitStopFrames, 6);   // a phase turning: the world catches its breath
         if (ev.enraged && enemies[i].type == EnemyType::SOVEREIGN) {   // the Penitent and the Warden announce their own phases
             pushBanner("HE STOPS HOLDING BACK", "LONGER CHAINS - WATCH THE BLADE", {1.f, 0.15f, 0.25f}, 2.4f);
             shake(0.5f, 0.06f);
@@ -442,7 +443,9 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
     if (!settings || settings->damageNumbers) ui.spawnDamageNumber(at, std::min(dmg, before), crit);
     if (killed) {
         onEnemyKilled(e, src);
-        hitStopFrames = glm::max(hitStopFrames, isBoss(e.type) ? 12 : 2);
+        hitStopFrames = glm::max(hitStopFrames, isBoss(e.type) ? 12 : crit ? 3 : 2);
+        if (!isBoss(e.type))   // a kill confirm that says what did it (bosses have their own deaths)
+            if (const char* tag = killTag(src)) audio.play(tag, crit ? 85 : 70, SoundGroup::UI);
     }
     return killed;
 }

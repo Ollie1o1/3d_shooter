@@ -1,6 +1,8 @@
 #pragma once
 #include "core/Persist.h"
 #include "core/Difficulty.h"
+#include "core/Bindings.h"
+#include "core/Accessibility.h"
 #include <sstream>
 #include <cstdio>
 #include <string>
@@ -46,22 +48,7 @@ struct GameSettings {
     float zoomSens    = 1.0f;   // multiplier while aiming down sights (after FOV scaling), 0.3..1.5
     bool  invertY     = false;
     bool  mouseFilter = true;   // drop single-event mouse spikes (see MouseFilter.h)
-    int   grappleKey  = 0;      // see grappleLabel(): Q by default; right mouse always aims
-    static constexpr int GRAPPLE_KEYS = 5;
-    static const char* grappleLabel(int i) {
-        static const char* N[] = {"Q", "E", "MOUSE 4", "MOUSE 5", "MIDDLE MOUSE"};
-        return N[(i % GRAPPLE_KEYS + GRAPPLE_KEYS) % GRAPPLE_KEYS];
-    }
-    // Does this SDL event press the grapple button?
-    bool isGrappleEvent(int sdlType, int keyOrButton) const {
-        switch (grappleKey) {
-            case 1:  return sdlType == 0 && keyOrButton == 'e';
-            case 2:  return sdlType == 1 && keyOrButton == 4;   // SDL_BUTTON_X1
-            case 3:  return sdlType == 1 && keyOrButton == 5;   // SDL_BUTTON_X2
-            case 4:  return sdlType == 1 && keyOrButton == 2;   // SDL_BUTTON_MIDDLE
-            default: return sdlType == 0 && keyOrButton == 'q';
-        }
-    }
+    Bindings binds;             // every key and button (Bindings.h); right mouse always aims
     // Audio
     float audioVolume = 0.8f;   // 0.0..1.0, everything
     float musicVolume = 0.6f;   // 0.0..1.0, the soundtrack on top of that
@@ -71,6 +58,9 @@ struct GameSettings {
     bool  ghost        = true;  // FAST: race the ghost of your best run
     bool  damageNumbers = true;
     int   crosshair    = 0;     // colour index, see crosshairColor()
+    // Accessibility (Accessibility.h)
+    bool  tellsColourblind = false;   // the Absolute's gold tells shown blue
+    bool  reduceFlashing   = false;   // full-screen flashes and sky flares dimmed
 
     static constexpr int CROSSHAIR_COLORS = 5;
     static const char* crosshairLabel(int i) {
@@ -107,14 +97,18 @@ struct GameSettings {
 
     static constexpr const char* kSaveKey = "settings.cfg";
 
-    void save() const {
+    void save() const { persist::save(kSaveKey, text()); }
+    void load() { parse(persist::load(kSaveKey)); }
+
+    std::string text() const {
         std::ostringstream f;
         f << "fov "           << fov           << "\n";
         f << "sensitivity "   << sensitivity   << "\n";
         f << "zoomSens "      << zoomSens      << "\n";
         f << "invertY "       << (invertY ? 1 : 0) << "\n";
         f << "mouseFilter "   << (mouseFilter ? 1 : 0) << "\n";
-        f << "grappleKey "    << grappleKey    << "\n";
+        for (int a = 0; a < ACTS; ++a)
+            f << "bind_" << Bindings::actKey((Act)a) << " " << binds.slot[a][0] << " " << binds.slot[a][1] << "\n";
         f << "audioVolume "   << audioVolume   << "\n";
         f << "musicVolume "   << musicVolume   << "\n";
         f << "frameCap "      << frameCap      << "\n";
@@ -129,21 +123,33 @@ struct GameSettings {
         f << "ghost "         << (ghost ? 1 : 0) << "\n";
         f << "damageNumbers " << (damageNumbers ? 1 : 0) << "\n";
         f << "crosshair "     << crosshair     << "\n";
+        f << "tellsColourblind " << (tellsColourblind ? 1 : 0) << "\n";
+        f << "reduceFlashing " << (reduceFlashing ? 1 : 0) << "\n";
         f << "difficulty "    << difficulty    << "\n";
-        persist::save(kSaveKey, f.str());
+        return f.str();
     }
 
-    void load() {
-        std::istringstream f(persist::load(kSaveKey));
+    void parse(const std::string& saved) {
+        std::istringstream f(saved);
         std::string key;
         auto flag = [&](bool& b) { int v = 0; f >> v; b = v != 0; };
+        bool boundGrapple = false;
         while (f >> key) {
             if      (key == "fov")           f >> fov;
             else if (key == "sensitivity")   f >> sensitivity;
             else if (key == "zoomSens")      f >> zoomSens;
             else if (key == "invertY")       flag(invertY);
             else if (key == "mouseFilter")   flag(mouseFilter);
-            else if (key == "grappleKey")    f >> grappleKey;
+            else if (key == "grappleKey")    { int g = 0; f >> g; if (!boundGrapple) binds.fromOldGrapple(g); }   // (older saves)
+            else if (key.rfind("bind_", 0) == 0) {
+                int c0 = 0, c1 = 0; f >> c0 >> c1;
+                for (int a = 0; a < ACTS; ++a)
+                    if (key == std::string("bind_") + Bindings::actKey((Act)a)) {
+                        binds.slot[a][0] = Bindings::valid(c0) ? c0 : Bindings::NONE;
+                        binds.slot[a][1] = Bindings::valid(c1) ? c1 : Bindings::NONE;
+                        if ((Act)a == Act::GRAPPLE) boundGrapple = true;
+                    }
+            }
             else if (key == "audioVolume")   f >> audioVolume;
             else if (key == "musicVolume")   f >> musicVolume;
             else if (key == "frameCap")      f >> frameCap;
@@ -163,6 +169,8 @@ struct GameSettings {
             else if (key == "ghost")         flag(ghost);
             else if (key == "damageNumbers") flag(damageNumbers);
             else if (key == "crosshair")     f >> crosshair;
+            else if (key == "tellsColourblind") flag(tellsColourblind);
+            else if (key == "reduceFlashing") flag(reduceFlashing);
             else if (key == "difficulty")    f >> difficulty;
             else { std::string skip; f >> skip; } // unknown key — skip its value
             if (!f) break;
@@ -181,7 +189,8 @@ struct GameSettings {
         quality = wrapQuality(quality);
         crosshair = (crosshair % CROSSHAIR_COLORS + CROSSHAIR_COLORS) % CROSSHAIR_COLORS;
         if (difficulty < 0 || difficulty >= DIFFICULTY_LEVELS) difficulty = DIFFICULTY_DEFAULT;
-        grappleKey = (grappleKey % GRAPPLE_KEYS + GRAPPLE_KEYS) % GRAPPLE_KEYS;
+        binds.tidy();
+        g_tellsColourblind = tellsColourblind; g_reduceFlashing = reduceFlashing;   // (everything else reads these)
     }
 
     static float clampf(float v, float lo, float hi) {

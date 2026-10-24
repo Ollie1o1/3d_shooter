@@ -403,7 +403,7 @@ inline void buildAbsolute(const Enemy& e, float time, Rig& r, const mat4& root) 
     const AbTell tell0 = e.telegraphTimer > 0.f ? abTellOf(e.attack) : AbTell::NONE;
     const AbTell tell = ms && tell0 != AbTell::WHITE ? AbTell::NONE : tell0;
     const size_t first = r.out.size();
-    const vec3 tc = tell == AbTell::GOLD ? vec3{2.2f, 1.72f, 0.7f} : tell == AbTell::RED ? vec3{2.4f, 0.25f, 0.15f} : vec3{1.9f, 1.9f, 2.0f};
+    const vec3 tc = tell == AbTell::GOLD ? abGoldTell(vec3{2.2f, 1.72f, 0.7f}) : tell == AbTell::RED ? vec3{2.4f, 0.25f, 0.15f} : vec3{1.9f, 1.9f, 2.0f};
     const float tk = 0.5f + 3.f * tp;   // (always the brightest thing on him by the end)
     auto lit = [&](int limb, vec3 base) {
         if (tell == AbTell::NONE || P.glow < 0) return base;

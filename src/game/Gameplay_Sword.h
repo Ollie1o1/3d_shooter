@@ -127,7 +127,7 @@ inline bool GameplayState::damagePlayerStrike(float dmg, glm::vec3 from, Sword::
         }
         if (k == Sword::Strike::GOLD && tryingParry) {   // the rule teaches itself
             audio.play("ab_wrong", 120, SoundGroup::UI, true);
-            ui.feed("UNPARRYABLE", {1.f, 0.85f, 0.4f});
+            ui.feed("UNPARRYABLE", abGoldTell({1.f, 0.85f, 0.4f}));
         }
         if (lastGuarded != Sword::Guarded::NONE) {
             if (k != Sword::Strike::BEAM || std::fmod(gameClock, 0.15f) < dt)
@@ -148,7 +148,7 @@ inline bool GameplayState::damagePlayerStrike(float dmg, glm::vec3 from, Sword::
         if (gameClock - abLastPressT > Sword::PARRY_WINDOW && gameClock - abLastPressT < Sword::PARRY_WINDOW + 0.25f) {
             ui.feed("EARLY", {1.f, 1.f, 1.f}); audio.play("ab_tsk", 110, SoundGroup::UI);
         }
-        abWhiteHitT = gameClock;
+        if (lastGuarded == Sword::Guarded::NONE) abWhiteHitT = gameClock;   // a blocked blow didn't hit you: no LATE for it
     }
     return damagePlayer(dmg, from, k == Sword::Strike::BEAM ? 0.f : 0.25f, k == Sword::Strike::BEAM ? 0.f : 0.05f,
                         k == Sword::Strike::BEAM ? 0.f : 0.15f);

@@ -81,6 +81,7 @@ inline void GameplayState::gatherMorningBoxes(std::vector<BoxInstance>& out) {
     const glm::vec3 C = level.zenith.centre;
     const float lights = 1.f - 0.75f * totality01();
     const glm::vec3 fire{1.5f, 0.42f, 0.1f}, hot{2.1f, 1.6f, 1.1f}, gold{1.5f, 1.2f, 0.55f}, red{1.6f, 0.2f, 0.1f};
+    const glm::vec3 gold0 = gold;   // (a tell's gold goes through abGoldTell: the colour-blind palette)
     auto along = [&](glm::vec3 a, glm::vec3 b, float w, float h, glm::vec3 col, glm::vec3 emi) {
         glm::vec3 d = b - a; float l = glm::length(d);
         if (l < 1e-3f) return;
@@ -129,12 +130,14 @@ inline void GameplayState::gatherMorningBoxes(std::vector<BoxInstance>& out) {
             break;
         }
         case AttackKind::MGRASP: {    // where the hand comes down: a gold circle closing in
+            const glm::vec3 gold = abGoldTell(gold0);
             float R = Enemy::MS_GRASP_R * (1.3f - 0.3f * u);
             ring(e->abAim + glm::vec3{0.f, 0.05f, 0.f}, R, 0.16f, 0.06f, 40, gold * 0.3f, gold * (1.2f + 1.6f * u));
             push(out, T(e->abAim + glm::vec3{0.f, 0.03f, 0.f}) * S({R * 1.8f, 0.02f, R * 1.8f}), gold * 0.03f, gold * (0.04f + 0.22f * u * u));
             break;
         }
         case AttackKind::MDROP: {     // his shadow: dark, a gold rim, growing as he falls
+            const glm::vec3 gold = abGoldTell(gold0);
             float R = Enemy::MS_DROP_R * (0.7f + 0.3f * u);
             push(out, T(e->abAim + glm::vec3{0.f, 0.03f, 0.f}) * S({R * 1.7f, 0.02f, R * 1.7f}), glm::vec3{0.01f}, glm::vec3{0.f});
             ring(e->abAim + glm::vec3{0.f, 0.06f, 0.f}, R, 0.18f, 0.06f, 48, gold * 0.3f, gold * (1.f + 2.f * u));

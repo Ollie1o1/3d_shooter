@@ -490,6 +490,9 @@ public:
     Enemy* absolute();
     void fillZenithWorld(EnemyWorld& w);
     bool parryAbsolute(Enemy& e, bool bySword);
+    // Your key bindings (the defaults when there are no settings: tests, dev runs)
+    const Bindings& binds() const { static const Bindings def; return settings ? settings->binds : def; }
+    void inspect() { if (pendingWeapon < 0 && !weapons[activeWeapon].reloading) viewModel.triggerInspect(); }
     void swordParryAbsolute(Enemy& e);
     void onAbsoluteEvents(Enemy& e, const EnemyEvents& ev);
     void updateAbsolute(float dt);
@@ -677,6 +680,16 @@ public:
 
     // The style source for a gun
     static StyleSource weaponSource(WeaponId id) { return (StyleSource)((int)StyleSource::REVOLVER + (int)id); }
+    // The kill confirm for what made the kill (nullptr: none, e.g. the void or friendly fire)
+    static const char* killTag(StyleSource s) {
+        switch (s) {
+            case StyleSource::REVOLVER: return "kill_light";
+            case StyleSource::SHOTGUN: case StyleSource::EXPLOSIVE: case StyleSource::SLAM: case StyleSource::PUNCH: return "kill_heavy";
+            case StyleSource::KAR: case StyleSource::LONGSHOT: return "kill_rifle";
+            case StyleSource::MELEE: case StyleSource::PARRY: return "kill_blade";
+            default: return nullptr;
+        }
+    }
 
     // Brute slams and Juggernaut smashes hurt the enemies around them too
     void friendlySlam(const Enemy& slammer, float radius);

@@ -7,6 +7,7 @@
 // =============================================================================
 #include <glm/glm.hpp>
 #include <cstdint>
+#include "core/Accessibility.h"
 
 // CONDUIT: not a fighter but a spawner pylon (a wave objective, WaveDirector.h):
 // it stands still and the wave keeps coming out of it until it's destroyed.
@@ -132,3 +133,12 @@ inline const EnemyStats& statsOf(EnemyType t) {
 // THE ABSOLUTE's tell colours (EnemyAbsolute.h): white parry, gold dodge or block, red get out
 enum class AbTell : int8_t { NONE = -1, WHITE = 0, GOLD = 1, RED = 2 };
 inline AbTell abTellOf(AttackKind k);   // (EnemyAbsolute.h)
+// A gold tell's colour as shown: gold, or the blue that stands in for it (same strength)
+inline glm::vec3 abGoldTell(glm::vec3 gold) {
+    if (!g_tellsColourblind) return gold;
+    float m = gold.x > gold.y ? (gold.x > gold.z ? gold.x : gold.z) : (gold.y > gold.z ? gold.y : gold.z);
+    return glm::vec3{0.25f, 0.6f, 1.f} * m;
+}
+inline const char* abTellLegend() {
+    return g_tellsColourblind ? "WHITE: PARRY  BLUE: DODGE OR BLOCK  RED: GET OUT" : "WHITE: PARRY  GOLD: DODGE OR BLOCK  RED: GET OUT";
+}

@@ -72,6 +72,7 @@ inline const std::vector<MixEntry>& mixTable() {
         {"explosion", C::ACTION, -1.2f}, {"slam", C::ACTION, -1.8f}, {"clank", C::ACTION, 2.f},
         {"door", C::WORLD, -1.5f}, {"door_close", C::WORLD, 1.6f}, {"split", C::WORLD, 0.7f}, {"pickup", C::WORLD, -2.2f},
         {"potion", C::WORLD, 0.5f},
+        {"kill_light", C::UI, 8.5f}, {"kill_heavy", C::UI, -3.7f}, {"kill_rifle", C::UI, 0.f}, {"kill_blade", C::UI, 0.f},   // kill confirms
         {"wave", C::UI, -4.2f}, {"levelup", C::UI, -0.1f}, {"upgrade", C::UI, 0.1f},
     };
     return T;

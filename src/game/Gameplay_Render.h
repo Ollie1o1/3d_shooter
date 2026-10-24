@@ -498,7 +498,7 @@ inline void GameplayState::render() {
         skyboxShader.setFloat("uEclipse", th.eclipse);
         skyboxShader.setFloat("uHeat",    bossDusk);
         skyboxShader.setFloat("uTime",    gameClock);
-        skyboxShader.setFloat("uFlare",   th.eclipse > 0.5f ? eclipseFlare : 0.f);
+        skyboxShader.setFloat("uFlare",   th.eclipse > 0.5f ? eclipseFlare * flashScale() : 0.f);
         skyboxShader.setFloat("uDawn",    th.eclipse > 0.5f ? dawn01() : 0.f);
         skyboxShader.setFloat("uSwallow", th.eclipse > 0.5f ? std::min(msSwallowT < 0.f ? 0.f : msSwallowT / (Enemy::MS_SWALLOW - 0.5f), 1.f) * (1.f - dawn01()) : 0.f);
         skyboxShader.setFloat("uDark",    th.eclipse > 0.5f ? totality01() * (1.f - dawn01()) : 0.f);

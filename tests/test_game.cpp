@@ -15,6 +15,7 @@
 #include "player/Weapons.h"
 #include "game/Progression.h"
 #include "core/MouseFilter.h"
+#include "core/Settings.h"
 #include "audio/MusicSynth.h"
 #include "game/Ghost.h"
 #include "player/StyleSystem.h"
@@ -2914,7 +2915,8 @@ int main() {
                                 "potion", "barrier", "split", "upgrade", "clank", "punch", "step1", "step2", "step3", "step4", "door",
                                 "door_close", "boost", "cyl_open", "cyl_close", "eject", "shell_in", "pump", "wade", "skim", "cell",
                                 "dry", "switch_up0", "switch_up1", "switch_up2", "switch_up3",
-                                "sword_draw", "sword_swing", "sword_hit", "sword_thrust", "sword_guard", "sword_block", "sword_break"};
+                                "sword_draw", "sword_swing", "sword_hit", "sword_thrust", "sword_guard", "sword_block", "sword_break",
+                                "kill_light", "kill_heavy", "kill_rifle", "kill_blade"};
         std::vector<std::string> names(std::begin(loaded), std::end(loaded));
         for (const std::string& n : abAllSounds()) names.push_back(n);   // THE ABSOLUTE's fight (AbsoluteFeel.h)
         bool all = true; for (const std::string& n : names) all &= mixEntry(n) != nullptr;
@@ -4073,6 +4075,56 @@ int main() {
         int k = 0; bool leftSide = true;
         for (auto& p : parts) if (p.tag) { if (k >= 8) leftSide &= p.xf[3].x < -0.026f; ++k; }
         CHECK(k == 14 && leftSide, "rounds past the eighth show on the revolver's left side, where you can see them");
+    }
+
+    // ---------------------------------------------------------------- key bindings
+    {
+        Bindings b;
+        Uint8 raw[SDL_NUM_SCANCODES] = {}, out[SDL_NUM_SCANCODES];
+        raw[SDL_SCANCODE_C] = 1;
+        b.remap(raw, 0, out);
+        CHECK(out[SDL_SCANCODE_LCTRL] && !out[SDL_SCANCODE_C], "defaults: C slides, read as the slide's own key");
+        CHECK(b.bind(Act::FORWARD, 0, SDL_SCANCODE_I), "FORWARD moves to I");
+        std::memset(raw, 0, sizeof(raw)); raw[SDL_SCANCODE_W] = 1;
+        b.remap(raw, 0, out);
+        CHECK(!out[SDL_SCANCODE_W], "...and W does nothing any more");
+        raw[SDL_SCANCODE_I] = 1;
+        b.remap(raw, 0, out);
+        CHECK(out[SDL_SCANCODE_W], "...while I reads as the forward key");
+        b.bind(Act::DASH, 1, Bindings::MOUSE + SDL_BUTTON_X1);
+        std::memset(raw, 0, sizeof(raw));
+        b.remap(raw, SDL_BUTTON(SDL_BUTTON_X1), out);
+        CHECK(out[SDL_SCANCODE_LSHIFT], "a mouse button can hold an action (MOUSE 4 dashes)");
+        b.bind(Act::JUMP, 0, SDL_SCANCODE_I);
+        CHECK(b.slot[(int)Act::JUMP][0] == SDL_SCANCODE_I && b.slot[(int)Act::FORWARD][0] == Bindings::NONE,
+              "one key, one job: binding I to JUMP takes it off FORWARD");
+        b.bind(Act::SLIDE, 0, SDL_SCANCODE_Z);
+        b.bind(Act::GRENADE, 0, SDL_SCANCODE_C);
+        CHECK(b.slot[(int)Act::SLIDE][0] == SDL_SCANCODE_Z && b.slot[(int)Act::SLIDE][1] == Bindings::NONE &&
+              b.slot[(int)Act::GRENADE][0] == SDL_SCANCODE_C, "...from either slot");
+        CHECK(!b.bind(Act::JUMP, 0, SDL_SCANCODE_ESCAPE) && !b.bind(Act::JUMP, 0, SDL_SCANCODE_1) &&
+              !b.bind(Act::JUMP, 0, Bindings::MOUSE + SDL_BUTTON_LEFT) && b.slot[(int)Act::JUMP][0] == SDL_SCANCODE_I,
+              "Escape, the weapon keys and fire can't be taken");
+        SDL_Event e{}; e.type = SDL_KEYDOWN; e.key.keysym.scancode = SDL_SCANCODE_C;
+        CHECK(b.pressed(Act::GRENADE, e) && !b.pressed(Act::SLIDE, e), "an event presses what it's bound to");
+        e.key.repeat = 1;
+        CHECK(!b.pressed(Act::GRENADE, e), "...but not on key repeat");
+        b.slot[(int)Act::INSPECT][0] = Bindings::NONE; b.slot[(int)Act::INSPECT][1] = SDL_SCANCODE_B; b.tidy();
+        CHECK(b.slot[(int)Act::INSPECT][0] == SDL_SCANCODE_B, "a second key alone moves up to first");
+
+        GameSettings g; g.binds = b;
+        GameSettings back; back.parse(g.text());
+        bool same = true;
+        for (int a = 0; a < ACTS; ++a) same &= back.binds.slot[a][0] == b.slot[a][0] && back.binds.slot[a][1] == b.slot[a][1];
+        CHECK(same, "bindings survive a save and a load");
+        GameSettings old; old.parse("fov 100\ngrappleKey 2\nsensitivity 0.2\n");
+        CHECK(old.binds.slot[(int)Act::GRAPPLE][0] == Bindings::MOUSE + SDL_BUTTON_X1 && old.binds.slot[(int)Act::JUMP][0] == SDL_SCANCODE_SPACE &&
+              std::fabs(old.sensitivity - 0.2f) < 1e-6f, "an older save's grapple button (MOUSE 4) carries over");
+        GameSettings oldE; oldE.parse("grappleKey 1\n");
+        CHECK(oldE.binds.slot[(int)Act::GRAPPLE][0] == SDL_SCANCODE_E && oldE.binds.slot[(int)Act::INTERACT][0] == SDL_SCANCODE_E,
+              "...and E stays INTERACT too, as it was");
+        CHECK(Bindings::codeName(Bindings::MOUSE + SDL_BUTTON_X2) == "MOUSE 5" && Bindings::codeName(Bindings::NONE) == "---",
+              "mouse buttons and empty slots have names");
     }
 
     // ---------------------------------------------------------------- mouse filter

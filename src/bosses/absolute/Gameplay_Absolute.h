@@ -70,7 +70,10 @@ inline void GameplayState::onAbsoluteEvents(Enemy& e, const EnemyEvents& ev) {
         if (f.wind) abWindH = at(f.wind, chest, f.windPitch * glm::clamp(f.windLen / std::max(e.telegraphDuration, 0.05f), 0.7f, 1.6f), 120, 0.3f);
         if (abTellOf(e.attack) != AbTell::NONE) audio.duck(2.f, e.telegraphDuration);
     }
-    if (ev.abCue) at(abCueSound(abTellOf(e.attack)), chest, 1.f, 128, 0.6f);   // the beat to act on
+    if (ev.abCue) {   // the beat to act on. His techno runs ~6 dB over the other tracks, so it gets out of the cue's way until the blow
+        at(abCueSound(abTellOf(e.attack)), chest, 1.f, 128, 0.6f);
+        audio.duck(5.f, 0.35f);
+    }
     if (ev.abImpact) {   // the boom, hit or miss: light at the fist, a ring of air, shake by distance, a hitch up close
         const AbFeel& f = abFeel(ev.abImpactKind);
         if (f.boom) {
@@ -84,7 +87,7 @@ inline void GameplayState::onAbsoluteEvents(Enemy& e, const EnemyEvents& ev) {
             if (d < 6.f) hitStopFrames = std::max(hitStopFrames, 2);
         }
     }
-    if (e.staggered() && abWindH) { audio.stop(abWindH); abWindH = 0; }   // cut short: the swell stops with him
+    if ((e.staggered() || ev.abPhase > 0) && abWindH) { audio.stop(abWindH); abWindH = 0; }   // cut short (a stagger, or a phase change dropping the strike): the swell stops with him
     if (ev.abTakeoff) {
         at("ab_takeoff", e.position, 1.f, 128, 0.4f);
         audio.stop(abFlightH); abFlightH = at("ab_flight", e.position, 1.f, 110, 0.f);
@@ -240,8 +243,7 @@ inline void GameplayState::swordParryAbsolute(Enemy& e) {
     glm::vec3 to = e.position - player.position; to.y = 0.f;
     float d = glm::length(to);
     glm::vec3 f = player.camera.forward(); f.y = 0.f;
-    const float reach = e.morning() ? (e.attack == AttackKind::MBACKHAND ? Enemy::MS_BACK_REACH : Enemy::MS_REACH) : Enemy::AB_REACH;   // (MORNINGSTAR's reach)
-    if (d > reach + 1.8f || (d > 0.3f && glm::dot(to / d, glm::normalize(f + glm::vec3{1e-4f, 0.f, 0.f})) < 0.2f)) return;
+    if (d > abSwordParryReach(e) || (d > 0.3f && glm::dot(to / d, glm::normalize(f + glm::vec3{1e-4f, 0.f, 0.f})) < 0.2f)) return;
     if (sword.tryParry()) parryAbsolute(e, true);
 }
 
@@ -274,10 +276,24 @@ inline void GameplayState::updateAbsoluteDeath(float dt) {
 // ---- drawing: pillars, shards, his tells and hazards, mirages, afterimages, his death ----
 inline void GameplayState::gatherAbsoluteBoxes(std::vector<BoxInstance>& out) {
     using namespace rig;
-    if (!level.zenith.built || !act2() || director.arena != ZENITH_ARENA) return;
+    if (!level.zenith.built || !act2()) return;
     const float t = gameClock;
     const glm::vec3 C = level.zenith.centre;
     const glm::vec3 white{0.88f, 0.87f, 0.84f}, crack{1.4f, 1.3f, 1.05f}, gold{1.5f, 1.2f, 0.55f}, red{2.4f, 0.25f, 0.15f};
+    const glm::vec3 gold0 = gold;   // (a tell's gold goes through abGoldTell: the colour-blind palette)
+    // the Halo overhead: backdrop, never in the way. Inside the eclipse it's gone (swallowed with
+    // the sky), and it comes back with the dawn
+    if (const float k = 1.f - swallow01() * (1.f - dawn01()); k > 0.01f) {
+        const int n = 128;
+        const float da = 6.2831853f / n, chord = 2.f * (ZEN_HALO_R + 0.6f) * std::sin(da * 0.5f) + 0.06f;
+        const glm::vec3 halo{1.26f, 0.945f, 0.405f};   // (the old static neon's gold)
+        for (int i = 0; i < n; ++i) {
+            float a = da * (i + 0.5f);
+            glm::vec3 p = C + glm::vec3{std::cos(a) * ZEN_HALO_R, ZEN_HALO_UP + 0.8f, std::sin(a) * ZEN_HALO_R};
+            push(out, T(p) * RY(-a) * S({1.2f, 1.6f, chord}), halo * 0.1f * k, halo * k);
+        }
+    }
+    if (director.arena != ZENITH_ARENA) return;
     // a long thin box from a to b
     auto along = [&](glm::vec3 a, glm::vec3 b, float w, glm::vec3 col, glm::vec3 emi) {
         glm::vec3 d = b - a; float l = glm::length(d);
@@ -363,10 +379,11 @@ inline void GameplayState::gatherAbsoluteBoxes(std::vector<BoxInstance>& out) {
             }
         for (int k = 0; k < 40; ++k) {   // the safe ring round him, gold
             float a = k * 0.1570796f, R = AbsoluteHazards::JUDGE_SAFE;
-            push(out, T(j.boss + glm::vec3{std::cos(a) * R, 0.08f, std::sin(a) * R}) * RY(-a) * S({0.15f, 0.1f, R * 0.17f}), gold * 0.3f, gold * 2.f);
+            push(out, T(j.boss + glm::vec3{std::cos(a) * R, 0.08f, std::sin(a) * R}) * RY(-a) * S({0.15f, 0.1f, R * 0.17f}), abGoldTell(gold) * 0.3f, abGoldTell(gold) * 2.f);
         }
     }
     if (abSkyMarkT >= 0.f) {   // SKYFALL's circle: a gold rim closing in, the floor inside it lit
+        const glm::vec3 gold = abGoldTell(gold0);
         float u = glm::clamp(abSkyMarkT / Enemy::AB_MARK_T, 0.f, 1.f), R = Enemy::AB_SKY_R;
         for (int k = 0; k < 40; ++k) {
             float a = k * 0.1570796f, rr = R * (1.25f - 0.25f * u);
@@ -490,7 +507,7 @@ inline void GameplayState::renderAbsoluteHUD() {
     }
     if (abHintT > 0.f && !swordOut) {
         ui.begin2D();
-        ui.ui.textShadow("PRESS 5 - THE SWORD: RMB PARRIES WHITE, BLOCKS GOLD - EVERY CUT HEALS", SCREEN_W / 2, 82, 2,
+        ui.ui.textShadow(g_tellsColourblind ? "PRESS 5 - THE SWORD: RMB PARRIES WHITE, BLOCKS BLUE - EVERY CUT HEALS" : "PRESS 5 - THE SWORD: RMB PARRIES WHITE, BLOCKS GOLD - EVERY CUT HEALS", SCREEN_W / 2, 82, 2,
                          {1.f, 0.55f, 0.7f, std::min(1.f, abHintT)}, true);
         ui.end2D();
     }

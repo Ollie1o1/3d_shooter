@@ -11,6 +11,7 @@
 #include "core/ShaderProgram.h"
 #include "player/StyleSystem.h"
 #include "ui/UIBatch.h"
+#include "core/Accessibility.h"
 #include "game/Progression.h"
 #include "game/Score.h"
 #include <algorithm>
@@ -189,7 +190,7 @@ public:
 
         drawVignettes(style, h);
         if (parryFlash > 0.f)   // a bright gold flash the instant a parry lands
-            ui.rect(0, 0, screenW, screenH, {1.f, 0.9f, 0.6f, parryFlash / 0.15f * 0.35f});
+            ui.rect(0, 0, screenW, screenH, {1.f, 0.9f, 0.6f, parryFlash / 0.15f * 0.35f * flashScale()});
         if (h.scoped) drawReticle(h);
 
         drawHealthPanel(style, h);
@@ -353,7 +354,7 @@ public:
     // Pause overlay — drawn on top of the (frozen) gameplay frame.
     static constexpr int PAUSE_ITEMS = 6;
     int pauseButtonY(int i) const { return screenH / 2 - 92 + i * 52; }
-    void renderPause(int selected, const char* const labels[PAUSE_ITEMS], const char* modeLine, const char* grappleKey) {
+    void renderPause(int selected, const char* const labels[PAUSE_ITEMS], const char* modeLine, const char* controls1, const char* controls2) {
         begin2D();
         ui.rect(0, 0, screenW, screenH, {0.0f, 0.0f, 0.02f, 0.6f});
         ui.text("PAUSED", screenW / 2, screenH / 2 - 170, 5, {0.9f, 0.9f, 0.95f, 0.95f}, true);
@@ -368,13 +369,10 @@ public:
             ui.text(labels[i], screenW / 2, by + 16, 2, sel ? glm::vec4{1.f, 0.7f, 0.15f, 1.f} : glm::vec4{0.75f, 0.75f, 0.8f, 0.9f}, true);
         }
         ui.text("ESC TO RESUME   UP/DOWN + ENTER OR CLICK   BACKSPACE IN GAME RESTARTS THE ROOM", screenW / 2, screenH / 2 + 232, 1, {0.55f, 0.55f, 0.6f, 0.85f}, true);
-        // Every control, for reference
-        char l2[160];
-        std::snprintf(l2, sizeof(l2), "%s GRAPPLE  RMB AIM  1-4 / SCROLL WEAPONS  V INSPECT  TAB ARMORY  R RELOAD  BKSP RESTART", grappleKey);
-        ui.rect(screenW / 2 - 380, screenH - 104, 760, 50, {0.05f, 0.05f, 0.08f, 0.6f});
-        ui.text("WASD MOVE  SPACE JUMP (TWICE)  SHIFT DASH  CTRL SLIDE / SLAM  LMB FIRE  F PARRY  G GRENADE", screenW / 2, screenH - 96, 1,
-                {0.85f, 0.85f, 0.9f, 0.9f}, true);
-        ui.text(l2, screenW / 2, screenH - 74, 1, {0.85f, 0.85f, 0.9f, 0.9f}, true);
+        // Every control, for reference (as you've bound them)
+        ui.rect(screenW / 2 - 420, screenH - 104, 840, 50, {0.05f, 0.05f, 0.08f, 0.6f});
+        ui.text(controls1, screenW / 2, screenH - 96, 1, {0.85f, 0.85f, 0.9f, 0.9f}, true);
+        ui.text(controls2, screenW / 2, screenH - 74, 1, {0.85f, 0.85f, 0.9f, 0.9f}, true);
         end2D();
     }
 

@@ -23,12 +23,18 @@
   .bar i { display: block; height: 100%; width: 0; background: #f5b83d; transition: width 150ms; }
   .overlay[data-state="loading"] .go { color: #8d8b99; }
   .overlay[data-state="error"] .go { color: #ff8a7a; }
+  /* the game wants the mouse but the browser hasn't given it (refused, or lost going fullscreen) */
+  .aim { position: absolute; left: 50%; bottom: 14%; transform: translateX(-50%); pointer-events: none;
+         padding: 6px 14px; background: rgb(0 0 0 / 0.7); border: 1px solid #f5b83d; color: #f5b83d;
+         letter-spacing: 0.12em; text-transform: uppercase; opacity: 0; transition: opacity 120ms; }
+  .aim[data-on] { opacity: 1; }
   kbd { border: 1px solid #3a3746; border-radius: 3px; padding: 0 4px; color: #d9d8e0; }
 </style>
 </head>
 <body>
 <div class="stage">
   <canvas id="canvas" tabindex="-1" oncontextmenu="event.preventDefault()"></canvas>
+  <div class="aim" id="aim" aria-live="polite">Click to aim</div>
   <button class="overlay" id="overlay" data-state="loading" disabled>
     <h1>OVERDRIVE</h1>
     <div class="bar"><i id="progress"></i></div>
@@ -123,6 +129,19 @@
     };
     document.addEventListener('keydown', regrab, true);
     document.addEventListener('pointerdown', regrab, true);
+    // Going fullscreen (here, or the portfolio page fullscreening its iframe)
+    // drops the lock in some browsers: ask again as soon as the size settles
+    const settle = () => setTimeout(() => regrab({}), 150);
+    document.addEventListener('fullscreenchange', settle);
+    window.addEventListener('resize', settle);
+    // If it still isn't held, say so instead of leaving a cursor that can't turn you
+    const badge = document.getElementById('aim');
+    let since = 0;
+    setInterval(() => {
+      const missing = wantsMouse && !document.pointerLockElement && overlay.dataset.state !== 'loading';
+      since = missing ? since + 1 : 0;
+      if (since >= 2) badge.dataset.on = ''; else delete badge.dataset.on;   // (after ~0.5 s: not on a normal re-lock)
+    }, 250);
   })();
 
   // Dismiss on the first interaction once the game is ready. Listening only for
