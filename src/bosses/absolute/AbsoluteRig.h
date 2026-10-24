@@ -27,6 +27,10 @@ struct AbsPose {
     float hipYaw = 0.f, torsoRoll = 0.f, shrug = 0.f;                            // his hips' turn, a lean to the side, shoulders up
     float stanceW = 0.04f, ankle = 0.6f;                                         // legs' splay; how flat the feet stay (1: flat on the floor)
     float plant = 0.f, dip = 0.f;                                                // 1: feet on the floor (crouch from the legs); a sink into the knees
+    // the sword hand's wrist (phase 3): the blade leaves the fist out of the thumb side, cocked
+    // `bladeCock` toward the forearm's line (0: square to it, pi/2: along it), the fist turned
+    // `bladeRoll` about the forearm. Solved per pose (hand where it should be, blade where it points)
+    float bladeRoll = 0.f, bladeCock = 1.3f;
     int   glow = -1;   // what lights with the tell: 0 right arm, 1 left arm, 2 right leg, 3 both arms, 4 the blade, 5 all of him
     float omega = 14.f;   // how hard his body chases this pose (a spring's rate, per second)
 };
@@ -35,7 +39,8 @@ static float AbsPose::* const AB_CH[] = {
     &AbsPose::crouch, &AbsPose::lift, &AbsPose::torsoYaw, &AbsPose::torsoPitch, &AbsPose::headPitch,
     &AbsPose::shR, &AbsPose::shRz, &AbsPose::elR, &AbsPose::shL, &AbsPose::shLz, &AbsPose::elL,
     &AbsPose::hipR, &AbsPose::kneeR, &AbsPose::hipL, &AbsPose::kneeL, &AbsPose::fistR, &AbsPose::fistL,
-    &AbsPose::hipYaw, &AbsPose::torsoRoll, &AbsPose::shrug, &AbsPose::stanceW, &AbsPose::ankle, &AbsPose::plant};
+    &AbsPose::hipYaw, &AbsPose::torsoRoll, &AbsPose::shrug, &AbsPose::stanceW, &AbsPose::ankle, &AbsPose::plant,
+    &AbsPose::bladeRoll, &AbsPose::bladeCock};
 static constexpr int AB_NCH = (int)(sizeof(AB_CH) / sizeof(AB_CH[0]));
 static_assert(AB_NCH <= Enemy::AB_BODY, "Enemy::abBody holds every channel");
 static constexpr int AB_CORE = 5;   // (channels before this, and hipYaw / torsoRoll / shrug, are his core: they lead a stroke)
@@ -85,6 +90,9 @@ inline AbsPose absoluteGuard(const Enemy& e, float time) {
     P.hipL = -0.45f; P.kneeL = 0.65f; P.hipR = 0.f; P.kneeR = 0.5f;
     P.shL = -0.85f; P.shLz = -0.06f; P.elL = 1.3f; P.fistL = 0.9f;
     P.shR = -0.5f; P.shRz = -0.1f; P.elR = 2.05f; P.fistR = 1.f;
+    if (e.abBlade) {   // the sword up in front of his chest, point high and toward you, across his centre line
+        P.shR = -0.13f; P.shRz = -0.6f; P.elR = 2.06f; P.bladeRoll = -0.54f; P.bladeCock = 0.52f;
+    }
     P.dip = 0.08f;
     const float t = time;
     P.dip += 0.035f * (0.5f + 0.5f * std::sin(t * 4.8f));                    // a bounce in the knees
@@ -129,7 +137,37 @@ inline float absBob(const Enemy& e) {
 
 // A move's two keys on top of his guard: the chamber it winds into (strike false) and the blow at
 // full stretch (strike true). Moves with no stroke hold one shape.
-inline void absoluteMove(AbsPose& P, AttackKind a, bool strike, float tp) {
+// The sword arm (phase 3) for a move: hand and blade solved together so the edge leads every cut.
+// His right-hand punches become sword work: the cross a backhand cut, the uppercut a rising cut,
+// the haymaker a diagonal cut from over his right shoulder. (Only the look: tells and reach are the
+// punches'.) Moves that fling the arm out carry the blade along it; the rest keep the guard's grip.
+inline void absoluteMoveBody(AbsPose& P, AttackKind a, bool strike, float tp);
+inline void absSwordArm(AbsPose& P, AttackKind a, bool k) {
+    using A = AttackKind;
+    auto arm = [&](float sh, float shz, float el, float roll, float cock) { P.shR = sh; P.shRz = shz; P.elR = el; P.bladeRoll = roll; P.bladeCock = cock; };
+    P.fistR = 1.f;
+    switch (a) {
+    case A::ASWEEP:    if (!k) arm(-0.62f, -0.6f, 2.51f, -2.72f, 0.67f); else arm(-0.63f, 0.4f, 1.7f, -2.f, 1.9f);   break;   // cocked back over the shoulder, flat across
+    case A::ALUNGE:    if (!k) arm(1.f, -0.05f, 2.37f, -0.73f, 0.62f);  else arm(-1.02f, 0.6f, 0.7f, -0.67f, 1.66f); break;   // drawn back at the hip, the point driven out
+    case A::ACRESCENT: if (!k) arm(-1.73f, -0.36f, 1.57f, -1.56f, 0.77f); else arm(-0.69f, -0.6f, 0.84f, -1.18f, 1.9f); break;  // over his head, then down through you
+    case A::ACROSS:    // a backhand cut: wound over his left shoulder, then flat out to his right (the torso turns the other way to the punch)
+        if (!k) { arm(-0.23f, -0.6f, 2.48f, -0.31f, -0.37f); P.hipYaw = -0.2f; P.torsoYaw = 0.6f; P.torsoPitch = 0.3f; }
+        else    { arm(-1.25f, -0.6f, 0.54f, -0.24f, 1.65f);  P.hipYaw = -0.7f; P.torsoYaw = -0.5f; P.torsoPitch = 0.3f; }
+        break;
+    case A::AUPPER:    if (!k) arm(0.04f, -0.6f, 1.49f, -1.45f, 1.9f);  else arm(-0.9f, -0.38f, 1.17f, -1.41f, 1.27f); break;  // point low, then a rising cut
+    case A::AHAYMAKER: if (!k) arm(-1.85f, -0.26f, 0.f, -3.08f, 0.57f); else arm(-0.28f, 0.37f, 1.5f, -2.f, 1.9f);   break;   // over the right shoulder, down across
+    case A::ARAY: case A::AZENITH: case A::ASEAMS: case A::AHALO: case A::ASERPENT: case A::ACLAP: case A::ATHUNDER:
+    case A::AJUDGE: case A::AMETEOR: case A::AELBOW:
+        P.bladeRoll = 0.f; P.bladeCock = 1.3f; break;   // the blade carried along the arm
+    default: break;
+    }
+}
+
+inline void absoluteMove(AbsPose& P, AttackKind a, bool strike, float tp, bool blade = false) {
+    absoluteMoveBody(P, a, strike, tp);
+    if (blade) absSwordArm(P, a, strike);
+}
+inline void absoluteMoveBody(AbsPose& P, AttackKind a, bool strike, float tp) {
     const bool k = strike;
     switch (a) {
     case AttackKind::MJAB:        // MORNINGSTAR's jab: the same snap, the size of a man
@@ -182,18 +220,18 @@ inline void absoluteMove(AbsPose& P, AttackKind a, bool strike, float tp) {
         break;
     case AttackKind::ASWEEP:      // the blade cocked back behind his right shoulder, then flat across
         P.glow = 4; P.shL = -0.8f; P.elL = 1.6f; P.dip += 0.12f;
-        if (!k) { P.torsoYaw = -0.85f; P.shR = -1.3f; P.shRz = 0.8f; P.elR = 0.6f; }
-        else { P.hipYaw = -0.25f; P.torsoYaw = 0.85f; P.shR = -1.35f; P.shRz = -0.25f; P.elR = 0.15f; }
-        break;
+        if (!k) { P.torsoYaw = -0.85f; }
+        else { P.hipYaw = -0.25f; P.torsoYaw = 0.85f; }
+        break;   // (the sword arm: absSwordArm)
     case AttackKind::ALUNGE:      // the blade drawn back, then the long step and the point
         P.glow = 4;
-        if (!k) { P.dip += 0.22f; P.torsoYaw = -0.2f; P.shR = -0.4f; P.elR = 1.8f; }
-        else { P.hipYaw = 0.2f; P.torsoYaw = 0.45f; P.torsoPitch = 0.35f; P.shR = -1.6f; P.elR = 0.05f; P.hipR = -0.9f; P.kneeR = 0.95f; P.hipL = 0.6f; P.kneeL = 0.3f; }
+        if (!k) { P.dip += 0.22f; P.torsoYaw = -0.2f; }
+        else { P.hipYaw = 0.2f; P.torsoYaw = 0.45f; P.torsoPitch = 0.35f; P.hipR = -0.9f; P.kneeR = 0.95f; P.hipL = 0.6f; P.kneeL = 0.3f; }
         break;
     case AttackKind::ACRESCENT:   // over his head, then down
         P.glow = 4;
-        if (!k) { P.shR = -2.85f; P.shRz = 0.1f; P.elR = 0.4f; P.torsoPitch = -0.2f; }
-        else { P.shR = -0.95f; P.elR = 0.15f; P.torsoPitch = 0.3f; P.dip += 0.12f; }
+        if (!k) { P.torsoPitch = -0.2f; }
+        else { P.torsoPitch = 0.3f; P.dip += 0.12f; }
         break;
     case AttackKind::MBACKHAND:   // MORNINGSTAR: the backfist as a colossus swings it, his whole body behind it
     case AttackKind::ABACKFIST:   // he spins away (his back to you), and the back of the fist comes round with him
@@ -299,8 +337,8 @@ inline AbsPose absolutePose(const Enemy& e, float time) {
         const float stroke = glm::clamp(0.3f * dur, 0.08f, 0.16f);         // the blow itself: the last instant of the tell
         const float w = smooth01((dur - rem) / std::max(dur - stroke, 1e-3f));
         const float s = glm::clamp(1.f - rem / stroke, 0.f, 1.f);
-        AbsPose C = G; absoluteMove(C, atk, false, tp);
-        AbsPose K = G; absoluteMove(K, atk, true, tp);
+        AbsPose C = G; absoluteMove(C, atk, false, tp, e.abBlade);
+        AbsPose K = G; absoluteMove(K, atk, true, tp, e.abBlade);
         // winding up: the core turns first, the limb draws after it; held there (a tremor) if the tell runs long
         P = absMix(G, C, absEaseOut(w * 1.15f), smooth01(w));
         const float tremor = 0.02f * std::sin(time * 37.f) * w * (1.f - s);
@@ -313,7 +351,7 @@ inline AbsPose absolutePose(const Enemy& e, float time) {
         P.glow = C.glow;
     } else if (e.abBodyLanded != AttackKind::NONE && e.abBodySince < AB_FOLLOW_T && !e.staggered() && !(e.abAirborne() && !e.abDiving)) {
         // the follow-through: held at full stretch a beat, then gathered back into his guard
-        AbsPose K = G; absoluteMove(K, e.abBodyLanded, true, 1.f);
+        AbsPose K = G; absoluteMove(K, e.abBodyLanded, true, 1.f, e.abBlade);
         if (K.plant > 0.f || G.plant <= 0.f) {
             const float r = smooth01((e.abBodySince - 0.06f) / (AB_FOLLOW_T - 0.06f));
             P = absMix(K, G, r, smooth01(r * 1.2f));
@@ -505,6 +543,10 @@ inline void buildAbsolute(const Enemy& e, float time, Rig& r, const mat4& root) 
             r.box(elbow * T({(k ? 0.03f : -0.03f), -0.36f, -0.06f}) * RX(trail + 0.2f * k - (sh - el)),   // (they hang from the wrist, whichever way the forearm points)
                   {0.f, -0.16f, 0.f}, {0.025f, 0.32f, 0.008f}, dark, light * 0.5f);
         mat4 hand = elbow * T({0.f, -0.44f, 0.f});
+        if (right && e.abBlade) {   // the sword hand: the fist turns on the wrist about the grip (AbsPose::bladeRoll / bladeCock)
+            const vec3 grip{0.f, -0.07f, 0.03f};
+            hand = hand * T(grip) * RY(P.bladeRoll) * RZ(-P.bladeCock) * T(-grip);
+        }
         if (right) handR = hand;
         r.box(hand, {0.f, -0.05f, 0.f}, {0.1f, 0.1f, 0.05f}, skin, lit(limb, soft));
         r.box(hand, {0.f, -0.1f, 0.02f}, {0.1f, 0.02f, 0.03f}, plate, lit(limb, soft));
@@ -538,7 +580,7 @@ inline void buildAbsolute(const Enemy& e, float time, Rig& r, const mat4& root) 
         r.box(halo * RZ(k * 0.7853982f + 0.39f), {0.f, 0.34f, 0.f}, {0.16f, 0.02f, 0.02f}, light, seam * 0.9f);
     // ---- the blade of light (phase 3): grip, guard, three lengths of blade, its edge ----
     if (e.abBlade) {
-        const mat4 sw = handR * T({0.f, -0.07f, 0.03f}) * RX(1.5707963f);
+        const mat4 sw = handR * T({0.f, -0.07f, 0.03f}) * RZ(1.5707963f);   // (through the fist, out of the thumb side)
         const vec3 bl = tell != AbTell::NONE && P.glow == 4 ? tc * tk : vec3{1.9f, 1.75f, 2.1f};
         r.box(sw, {0.f, 0.f, 0.f}, {0.05f, 0.18f, 0.05f}, dark, light * 0.5f);
         r.box(sw, {0.f, -0.1f, 0.f}, {0.32f, 0.04f, 0.07f}, plate, gold);

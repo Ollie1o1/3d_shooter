@@ -21,7 +21,8 @@ inline void GameplayState::devPenitentPose(Enemy& e) {
 
 // --overlay abposeN: THE ABSOLUTE held mid-tell N (1 jab, 2 hook, 3 uppercut, 4 drop-kick, 5 ray, 6 stomp,
 // 7 serpent, 8 sweep (blade), 9 lunge, 10 judgment, 11 reeling, 12 broken, 13 idle guard; 24-30 MORNINGSTAR's jab, backhand,
-// grasp, sunder, fissure, flares, drop; ...ms: any pose as MORNINGSTAR, ...ms6 in TOTALITY) for screenshots
+// grasp, sunder, fissure, flares, drop; 31 the overhead cut; ...ms: any pose as MORNINGSTAR, ...ms6 in TOTALITY;
+// ...blade: the sword in his hand; ...front: facing a --cam looking down -Z) for screenshots
 // (abposeN@T: T s before the blow lands - 0 is the blow; abposeN~T: T s into its follow-through; ...side / ...three: turned side-on / three-quarters)
 inline void GameplayState::devAbsolutePose(Enemy& e) {
     int n = std::atoi(g_devOverlay.c_str() + 6);
@@ -34,20 +35,25 @@ inline void GameplayState::devAbsolutePose(Enemy& e) {
     static const AttackKind K[] = {A::NONE, A::AJAB, A::AHOOK, A::AUPPER, A::ADROP, A::ARAY, A::ASTOMP, A::ASERPENT, A::ASWEEP, A::ALUNGE, A::AJUDGE,
                                    A::NONE, A::NONE, A::ACROSS, A::ABACKFIST, A::AELBOW, A::AROUNDHOUSE, A::AHAYMAKER, A::ACHARGE, A::AAXE, A::ACLAP,
                                    A::ASKYFALL, A::AMETEOR, A::NONE,
-                                   A::MJAB, A::MBACKHAND, A::MGRASP, A::MSUNDER, A::MFISSURE, A::MFLARES, A::MDROP};   // 24-30: MORNINGSTAR's
+                                   A::MJAB, A::MBACKHAND, A::MGRASP, A::MSUNDER, A::MFISSURE, A::MFLARES, A::MDROP,   // 24-30: MORNINGSTAR's
+                                   A::ACRESCENT};   // 31: the overhead cut (blade)
     const char* at = std::strchr(g_devOverlay.c_str(), '@');
     const char* after = std::strchr(g_devOverlay.c_str(), '~');
     if (g_devOverlay.find("side") != std::string::npos) e.yaw = e.prevYaw = e.yaw + 1.5707963f;
     if (g_devOverlay.find("three") != std::string::npos) e.yaw = e.prevYaw = e.yaw + 0.7853982f;
-    if (g_devOverlay.find("ms") != std::string::npos || n >= 24) {   // ...ms (and 24-30): as MORNINGSTAR
+    if (g_devOverlay.find("front") != std::string::npos) {   // facing the screenshot camera: what you see
+        glm::vec3 c = player.camera.position - e.position;
+        e.yaw = e.prevYaw = std::atan2(c.x, c.z);
+    }
+    if (g_devOverlay.find("ms") != std::string::npos || (n >= 24 && n <= 30)) {   // ...ms (and 24-30): as MORNINGSTAR
         e.abForm = 1; e.scale = Enemy::MS_SCALE; e.abPhase = g_devOverlay.find("ms6") != std::string::npos ? 6 : 4;
     }
-    if (n >= 1 && n <= 30 && n != 11 && n != 12 && n != 23) {
+    if (n >= 1 && n <= 31 && n != 11 && n != 12 && n != 23) {
         if (after) { e.abBodyLanded = K[n]; e.abBodySince = (float)std::atof(after + 1); }   // (tickAbsoluteBody adds its tick)
         else { e.attack = K[n]; e.telegraphTimer = at ? std::max(0.001f, (float)std::atof(at + 1)) : 0.25f; e.abAim = player.position; }
     }
     e.abAlt = e.abAltWant = n == 23 ? 11.f : 0.f;   // (the hover pose)
-    e.abBlade = n == 8 || n == 9;
+    e.abBlade = n == 8 || n == 9 || n == 31 || g_devOverlay.find("blade") != std::string::npos;   // (...blade: any pose with the sword in hand)
     if (n == 11) { e.staggerTimer = 0.5f; e.abReeling = true; }
     if (n == 12) { e.staggerTimer = 2.f; e.abReeling = false; }
 }

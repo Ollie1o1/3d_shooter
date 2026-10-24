@@ -63,7 +63,7 @@ struct AbsoluteState {
     AttackKind lastAbAttack = AttackKind::NONE;   // the strike that just resolved (the game reads its colour)
     // his body in motion (AbsoluteRig.h tickAbsoluteBody): the drawn pose, one spring per joint, chasing
     // where the rig says he's going; the blow that last landed and how long ago (its follow-through)
-    static constexpr int AB_BODY = 24;
+    static constexpr int AB_BODY = 26;
     float abBody[AB_BODY] = {}, abBodyV[AB_BODY] = {}, abBodyPrev[AB_BODY] = {};
     bool  abBodyLive = false;
     float abGait = 0.f;                // his feet's speed over the floor, smoothed (+ forward, - backing off): his steps (abGaitTick)

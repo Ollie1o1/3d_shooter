@@ -1136,6 +1136,24 @@ int main() {
             CHECK(blows >= 3 && home == blows, "...a straight punch is at full stretch as it lands (the blow you see is the blow that hits)");
             CHECK(follows == 0 || back * 10 >= follows * 8, "...and after a blow he gathers himself back into his guard");
         }
+        {   // the blade is held like a sword: its direction (in his own frame: +Z toward you, -X his right)
+            auto bladeDir = [](AttackKind k, bool blow) {
+                Enemy b(EnemyType::ABSOLUTE, glm::vec3{0.f});
+                b.abBlade = true; b.spawnTimer = 0.f; b.state = EnemyState::ACTIVE;
+                if (k != AttackKind::NONE) { b.attack = k; b.telegraphDuration = 1.f; b.telegraphTimer = blow ? 0.001f : 0.3f; }
+                for (int i = 0; i < 400; ++i) rig::tickAbsoluteBody(b, 1.f / 120.f);
+                std::vector<BoxInstance> out; rig::Rig r{out};
+                rig::buildAbsolute(b, 1.f, r, glm::mat4(1.f));
+                return glm::normalize(glm::vec3(out.back().model[1]) * -1.f);   // (the edge: the last box, along its -Y)
+            };
+            glm::vec3 g = bladeDir(AttackKind::NONE, false), sw = bladeDir(AttackKind::ASWEEP, true), bh = bladeDir(AttackKind::ACROSS, true);
+            glm::vec3 lu = bladeDir(AttackKind::ALUNGE, true), cr = bladeDir(AttackKind::ACRESCENT, true);
+            CHECK(g.y > 0.6f && g.z > 0.2f, "his sword guard: the blade up in front of him, point toward you");
+            CHECK(std::fabs(sw.y) < 0.35f && sw.x > 0.35f, "the sweep lands flat, the blade across to his left (a cut you see, not a poke)");
+            CHECK(std::fabs(bh.y) < 0.35f && bh.x < -0.5f, "the backhand (his cross, with the sword) lands flat out to his right");
+            CHECK(lu.z > 0.9f, "the lunge lands point first");
+            CHECK(cr.y < -0.3f && cr.z > 0.5f, "the overhead cut lands down and forward");
+        }
         glm::vec3 gt = tint(AttackKind::AUPPER);
         CHECK(gt.y > gt.x * 0.72f, "the gold tell is a pale gold (it doesn't sink into the orange sky)");
         AABB hb;
