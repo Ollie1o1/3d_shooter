@@ -178,7 +178,7 @@ private:
             emscripten_run_script("window.overdriveBoard&&window.overdriveBoard.refresh()");
 #endif
         }
-        if (idx == 6) { page = SETTINGS; settingsMenu.selected = 1; }
+        if (idx == 6) { page = SETTINGS; settingsMenu.selected = 1; settingsMenu.bindsPage = false; }
         if (idx == 7 && onQuit) onQuit();
     }
 

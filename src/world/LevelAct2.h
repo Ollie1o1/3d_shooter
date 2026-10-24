@@ -1030,9 +1030,8 @@ inline void buildZenith(LevelBuilder& B) {
         int w = B.solid(s.x - 4.f, F - 2.5f, s.z - 4.f, s.x + 4.f, F, s.z + 4.f);
         L.zenith.shardWalls.push_back(w); L.zenith.shardHome.push_back(L.walls[w].box); L.zenith.shardUp.push_back(true);
     }
-    // the Halo: backdrop, never in the way. The eclipse is the sky's (straight
-    // overhead, out of reach: skybox.frag, Theme::eclipse)
-    B.kit(true).curve({C.x, 0.f, C.z}, ZEN_HALO_R, 0.f, 6.2831853f, F + ZEN_HALO_UP, F + ZEN_HALO_UP + 1.6f, 1.2f, gold * 0.9f, 128);
+    // (the Halo overhead is drawn each frame, so the eclipse can swallow it:
+    // Gameplay_Absolute.h. The eclipse is the sky's: skybox.frag, Theme::eclipse)
 
     Arena a;
     a.name = ZENITH_NAME; a.space = ReverbSpace::OPEN;

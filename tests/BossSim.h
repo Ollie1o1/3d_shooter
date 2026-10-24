@@ -359,7 +359,12 @@ struct BossSim {
         vel = (feet - was) / dt;
         // SOLID: the sword's parry on every other white strike, as it lands
         bool window = boss.parryWindow();
-        if (policy == SOLID && window && !prevWindow) { if (parryNext && boss.abParried(true)) { ++parries; heal(Sword::HEAL_PARRY); } parryNext = !parryNext; }
+        if (policy == SOLID && window && !prevWindow) {   // (only within the game's reach: a METEOR met from too far off isn't parried)
+            glm::vec3 to = boss.position - feet; to.y = 0.f;
+            bool inReach = glm::length(to) <= abSwordParryReach(boss);
+            if (parryNext && inReach && boss.abParried(true)) { ++parries; heal(Sword::HEAL_PARRY); }
+            parryNext = !parryNext;
+        }
         prevWindow = window;
         boss.update(dt, world());
         const EnemyEvents& ev = boss.ev;

@@ -127,6 +127,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
         spawnEnemy((EnemyType)g_devSpawns[k], at + glm::vec3{0, groundHeightAt(at.x, at.z, player.position.y + 1.f), 0}, (Hollow)g_devHollow);
     }
     if (g_devOverlay == "settings") { paused = true; pauseSettings = true; }
+    if (g_devOverlay == "binds") { paused = true; pauseSettings = true; settingsMenu.openBinds(); settingsMenu.bindSel = 6; settingsMenu.capturing = true; }   // (screenshots)
 
     prevTicks = SDL_GetPerformanceCounter();
     freq      = SDL_GetPerformanceFrequency();
@@ -376,7 +377,7 @@ inline void GameplayState::handleDirectorEvents() {
                 pushBanner("THE PENITENT", "BREAK ITS CHAINS - JUMP LOW SWEEPS, SLIDE UNDER HIGH ONES", {1.f, 0.5f, 0.2f}, 4.5f);
             else if (ar.waves[ev.value][0].type == EnemyType::ABSOLUTE && msCheckpoint) { abHintT = 6.f; }   // (MORNINGSTAR announces himself)
             else if (ar.waves[ev.value][0].type == EnemyType::ABSOLUTE) {
-                pushBanner("THE ABSOLUTE", "WHITE: PARRY   GOLD: DODGE OR BLOCK   RED: GET OUT", {1.f, 0.97f, 0.9f}, 4.5f);
+                pushBanner("THE ABSOLUTE", g_tellsColourblind ? "WHITE: PARRY   BLUE: DODGE OR BLOCK   RED: GET OUT" : "WHITE: PARRY   GOLD: DODGE OR BLOCK   RED: GET OUT", {1.f, 0.97f, 0.9f}, 4.5f);
                 abHintT = 9.f;
             }
             else if (ar.waves[ev.value][0].type == EnemyType::LEVIATHAN)
@@ -392,7 +393,7 @@ inline void GameplayState::handleDirectorEvents() {
             if (isBoss(t)) break;
             std::string name = h == Hollow::NONE ? std::string(statsOf(t).name)
                                                  : std::string(hollowName(h)) + " " + statsOf(t).name;
-            const char* hint = h == Hollow::NONE ? statsOf(t).hint : hollowHint(h);
+            const char* hint = h == Hollow::NONE ? (t == EnemyType::ABSOLUTE ? abTellLegend() : statsOf(t).hint) : hollowHint(h);
             ui.introduce(name, hint, statsOf(t).glow);   // a small card at the left edge, not a title card
             break;
         }
@@ -661,7 +662,10 @@ inline void GameplayState::update(float dt) {
     accumulator += elapsed;
     if (accumulator > 0.25) accumulator = 0.25;
 
-    const Uint8* keys = SDL_GetKeyboardState(nullptr);
+    // Your bindings, read as the default keys the game knows (Bindings.h)
+    static Uint8 bound[SDL_NUM_SCANCODES];
+    binds().remap(SDL_GetKeyboardState(nullptr), g_devNoMouse ? 0 : SDL_GetMouseState(nullptr, nullptr), bound);
+    const Uint8* keys = bound;
     // A controller holds keys too (Gamepad.h): fold it in
     static Uint8 merged[SDL_NUM_SCANCODES];
     gamepad::poll();
@@ -760,7 +764,7 @@ inline void GameplayState::update(float dt) {
         explosionFlashTimer -= floatDt;
         float t = glm::clamp(explosionFlashTimer / 0.35f, 0.f, 1.f);
         pointLightPos[0]   = explosionFlashPos;
-        pointLightColor[0] = glm::vec3{1.6f, 0.9f, 0.4f} * t;
+        pointLightColor[0] = glm::vec3{1.6f, 0.9f, 0.4f} * t * (g_reduceFlashing ? 0.5f : 1.f);
     } else if (muzzleFlashTimer > 0.f) {
         muzzleFlashTimer -= floatDt;
         pointLightPos[0]   = muzzleFlashPos;

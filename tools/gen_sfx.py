@@ -222,6 +222,59 @@ def gen_parry():
     return out
 
 
+# ---- kill confirms: a short tag on a kill that says what did it (Gameplay_Combat.h) ----
+def gen_kill_light():
+    """Revolver: a crisp double tick with a short bright ring."""
+    n = n_samples(0.16)
+    noise = highpass([white() for _ in range(n)], 3000)
+    out = []
+    for i in range(n):
+        t = i / SR
+        tick = noise[i] * (math.exp(-t * 260.0) + (0.7 * math.exp(-(t - 0.035) * 260.0) if t >= 0.035 else 0.0))
+        ring = (sine(1760, i) + 0.4 * sine(2640, i)) * math.exp(-t * 32.0) * (1.0 if t >= 0.035 else 0.0)
+        out.append(tick * 0.8 + ring * 0.35)
+    return out
+
+
+def gen_kill_heavy():
+    """Shotgun and blasts: a low chesty thunk with a dry crack on top."""
+    n = n_samples(0.2)
+    noise = lowpass([white() for _ in range(n)], 2200)
+    out = []
+    for i in range(n):
+        t = i / SR
+        body = sine(95 - 40 * min(1.0, t / 0.12), i) * math.exp(-t * 22.0)
+        crack = noise[i] * math.exp(-t * 120.0)
+        out.append(body * 0.9 + crack * 0.6)
+    return out
+
+
+def gen_kill_rifle():
+    """Rifles: a high metallic ping that hangs a moment (a plate rung at range)."""
+    n = n_samples(0.4)
+    noise = highpass([white() for _ in range(n)], 4000)
+    out = []
+    for i in range(n):
+        t = i / SR
+        ping = (sine(2350, i) + 0.55 * sine(3790, i) * math.exp(-t * 6.0) + 0.3 * sine(5170, i) * math.exp(-t * 14.0))
+        out.append(ping * math.exp(-t * 9.0) * 0.5 + noise[i] * math.exp(-t * 300.0) * 0.6)
+    return out
+
+
+def gen_kill_blade():
+    """The sword: a steel shing that rises a hair as it rings out."""
+    n = n_samples(0.32)
+    noise = highpass([white() for _ in range(n)], 5000)
+    out = []
+    for i in range(n):
+        t = i / SR
+        f = 1480 + 120 * min(1.0, t / 0.08)
+        ring = (math.sin(2 * math.pi * (1480 * t + 60 * min(t, 0.08) ** 2 / 0.08)) + 0.5 * sine(f * 2.01, i))
+        swish = noise[i] * math.exp(-((t - 0.02) / 0.025) ** 2)
+        out.append(ring * math.exp(-t * 11.0) * 0.45 + swish * 0.5)
+    return out
+
+
 def gen_telegraph():
     """An enemy winding up: a short dry tick with a muted low blip under it.
     (It used to be a rising 500-1200 Hz sine, the "woop" that played every
@@ -678,6 +731,10 @@ GENERATORS = {
     "sword_guard": gen_sword_guard,
     "sword_block": gen_sword_block,
     "sword_break": gen_sword_break,
+    "kill_light": gen_kill_light,
+    "kill_heavy": gen_kill_heavy,
+    "kill_rifle": gen_kill_rifle,
+    "kill_blade": gen_kill_blade,
 }
 
 from sfx_absolute import ABSOLUTE_GENERATORS  # THE ABSOLUTE's (tools/sfx_absolute.py)

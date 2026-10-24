@@ -297,7 +297,15 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             std::string line = fast() ? "FAST - THE GAUNTLET  " + formatTime(elapsedTime)
                                       : std::string(act2() ? "ACT II - " : "ARENA - ") + ar.name;
             line += std::string("   ") + tune().name;
-            ui.renderPause(pauseSelected, labels, line.c_str(), GameSettings::grappleLabel(settings ? settings->grappleKey : 0));
+            const Bindings& kb = binds();
+            auto k = [&](Act a) { return kb.label(a); };
+            std::string move = k(Act::FORWARD) + k(Act::LEFT) + k(Act::BACK) + k(Act::RIGHT);
+            if (move.size() != 4) move = k(Act::FORWARD) + "/" + k(Act::LEFT) + "/" + k(Act::BACK) + "/" + k(Act::RIGHT);   // (WASD, unless rebound to long names)
+            std::string c1 = move + " MOVE  " + k(Act::JUMP) + " JUMP (TWICE)  " + k(Act::DASH) + " DASH  " + k(Act::SLIDE) +
+                             " SLIDE / SLAM  LMB FIRE  " + k(Act::PARRY) + " PARRY  " + k(Act::GRENADE) + " GRENADE";
+            std::string c2 = k(Act::GRAPPLE) + " GRAPPLE  RMB AIM  1-4 / SCROLL WEAPONS  " + k(Act::INSPECT) + " INSPECT  TAB ARMORY  " +
+                             k(Act::RELOAD) + " RELOAD  BKSP RESTART";
+            ui.renderPause(pauseSelected, labels, line.c_str(), c1.c_str(), c2.c_str());
         }
     }
 }

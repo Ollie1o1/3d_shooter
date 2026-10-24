@@ -197,6 +197,12 @@ inline int Enemy::abParried(bool bySword) {
     abReeling = true; abStruck = false; abShoveBack(6.f);
     return 1;
 }
+// How far from him the sword's parry can meet his white strike: his reach plus a lunge's
+// worth (MORNINGSTAR reaches further, his backhand furthest). Shared by the game and BossSim.
+inline float abSwordParryReach(const Enemy& e) {
+    const float reach = e.morning() ? (e.attack == AttackKind::MBACKHAND ? Enemy::MS_BACK_REACH : Enemy::MS_REACH) : Enemy::AB_REACH;
+    return reach + 1.8f;
+}
 // Driven straight back from where he faces (you): a burst that dies away, about v/5 metres (MORNINGSTAR's mass takes less of it)
 inline void Enemy::abShoveBack(float v) {
     abShove = -glm::vec3{std::sin(yaw), 0.f, std::cos(yaw)} * v * (morning() ? 0.6f : 1.f);
