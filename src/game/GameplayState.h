@@ -2,6 +2,7 @@
 #include "core/GameState.h"
 #include "player/Player.h"
 #include "core/Camera.h"
+#include "core/FrameTimer.h"
 #include "core/Mesh.h"
 #include "core/ShaderProgram.h"
 #include "player/StyleSystem.h"

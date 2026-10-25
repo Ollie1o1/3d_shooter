@@ -443,6 +443,7 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
 }
 
 inline void GameplayState::render() {
+    frametimer::Lap ftLap;
     applyTextureQuality();
     float alpha = (float)(accumulator / PHYSICS_DT);
     renderAlpha = glm::clamp(alpha, 0.f, 1.f);
@@ -533,6 +534,7 @@ inline void GameplayState::render() {
     worldShader.setFloat("uVertexGlow", 0.0f);
     worldShader.setVec3("objectColor", {1.f,1.f,1.f});
 
+    ftLap.to(frametimer::R_WORLD);
     // --- Everything made of boxes: one instanced draw ---
     {
         static std::vector<BoxInstance> boxes;
@@ -547,6 +549,7 @@ inline void GameplayState::render() {
         boxRenderer.draw(boxes);
     }
 
+    ftLap.to(frametimer::R_BOXES);
     renderWater(view, proj, th, renderCamPos);
 
     worldShader.use();
@@ -562,6 +565,7 @@ inline void GameplayState::render() {
     bool warm = warmupFrames > 0;
     if (warm) warmPipelines(renderCamPos, view, proj);
 
+    ftLap.to(frametimer::R_FX);
     // --- View model (inside the FBO so it gets bloom; no fog). Hidden
     // behind the Longshot's scope once it's up. ---
     if (!scopedView()) {
@@ -583,11 +587,14 @@ inline void GameplayState::render() {
         worldShader.setMat4("view",       view);
     }
 
+    ftLap.to(frametimer::R_VIEWMODEL);
     postProcess.crtEnabled = settings ? settings->crtFilter : false;
     postProcess.endScene();
+    ftLap.to(frametimer::R_POST);
 
     renderHUD(view, proj);
     if (warm) { ui.warmScope(); --warmupFrames; }
+    ftLap.to(frametimer::R_HUD);
 }
 
 inline void GameplayState::renderDecals() {

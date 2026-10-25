@@ -319,6 +319,10 @@ tools/record_showcase.sh         # re-record docs/overdrive.gif (needs gifski)
 
 # Frame times
 ./shooter --bench 2000 --arena 4 --wave 2 --god [--cap HZ] [--res LINES]
+#   prints a per-zone breakdown (events, sim parts, render passes, present, swap) and the worst frames
+#   --frametimes FILE  per-zone CSV of every frame, written on exit (works in normal play too)
+#   --gpu-timer        add GPU time via GL timer queries; on macOS reading them stalls the CPU, so
+#                      frame times run ~2x slower while it's on. ACT II needs --cam or it times the armory
 
 # Record the final mix (music + effects) to a WAV, then quit
 ./shooter --arena 5 --god --kite --audiodump mix.wav 15

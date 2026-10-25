@@ -746,6 +746,7 @@ inline void GameplayState::update(float dt) {
     if (!act2Falling) elapsedTime += floatDt;   // ACT II's clock starts when you land
     if (styleSystem.style > peakStyle) peakStyle = styleSystem.style;
 
+    frametimer::Lap ftFx;
     fx.updateParticles(floatDt);
     fx.spawnAmbientParticles(level, player.position, fast(), floatDt);
     for (auto& p : projSystem.pool) {           // projectile trails
@@ -758,6 +759,7 @@ inline void GameplayState::update(float dt) {
     }
     fx.updateDebris(floatDt);
     fx.updateRings(floatDt);
+    ftFx.to(frametimer::EFFECTS);
 
     // Point light 0: explosion or muzzle flash. 1..3: nearest enemy shots.
     if (explosionFlashTimer > 0.f) {
