@@ -72,13 +72,14 @@ public:
 #endif
     }
 
-    // path (…/name.wav) plus any variants beside it (name_1.wav … name_8.wav)
+    // path (…/name.wav) plus any variants beside it (name_1.wav … name_8.wav).
+    // An .ogg beside a name wins over its .wav: the web build ships Ogg Vorbis (Makefile)
     void loadSound(const std::string& name, const std::string& path) {
 #if HAS_SDL_MIXER
         if (!initialized || started) return;
-        loadInto(name, path);
         std::string stem = path.size() > 4 ? path.substr(0, path.size() - 4) : path;
-        for (int k = 1; k <= 8; ++k) loadInto(name, stem + "_" + std::to_string(k) + ".wav");
+        loadAny(name, stem);
+        for (int k = 1; k <= 8; ++k) loadAny(name, stem + "_" + std::to_string(k));
 #else
         (void)name; (void)path;
 #endif
@@ -154,15 +155,35 @@ private:
     int    outChannels = 2;
     std::vector<float> musicBuf;
 
+    void loadAny(const std::string& name, const std::string& stem) {
+        if (!loadOgg(name, stem + ".ogg")) loadWav(name, stem + ".wav");
+    }
+
     // One WAV → mono float at the device rate, into the bank (missing files are skipped)
-    void loadInto(const std::string& name, const std::string& path) {
+    void loadWav(const std::string& name, const std::string& path) {
         SDL_AudioSpec spec; Uint8* raw = nullptr; Uint32 len = 0;
         if (!SDL_LoadWAV(path.c_str(), &spec, &raw, &len)) return;
+        addConverted(name, raw, len, spec.format, spec.channels, spec.freq);
+        SDL_FreeWAV(raw);
+    }
+
+    // One Ogg Vorbis: SDL_mixer decodes it to the device's format, then the same path as a WAV
+    bool loadOgg(const std::string& name, const std::string& path) {
+        SDL_RWops* rw = SDL_RWFromFile(path.c_str(), "rb");
+        if (!rw) return false;
+        Mix_Chunk* c = Mix_LoadWAV_RW(rw, 1);
+        if (!c) { std::cerr << "could not decode " << path << ": " << Mix_GetError() << "\n"; return false; }
+        addConverted(name, c->abuf, c->alen, outFormat, outChannels, outRate);
+        Mix_FreeChunk(c);
+        return true;
+    }
+
+    // Any PCM → mono float at the device rate, into the bank
+    void addConverted(const std::string& name, const Uint8* raw, Uint32 len, SDL_AudioFormat fmt, int channels, int rate) {
         SDL_AudioCVT cvt;
-        if (SDL_BuildAudioCVT(&cvt, spec.format, spec.channels, spec.freq, AUDIO_F32SYS, 1, outRate) < 0) { SDL_FreeWAV(raw); return; }
+        if (SDL_BuildAudioCVT(&cvt, fmt, (Uint8)channels, rate, AUDIO_F32SYS, 1, outRate) < 0) return;
         std::vector<Uint8> work((size_t)len * (size_t)std::max(1, cvt.len_mult));
         std::memcpy(work.data(), raw, len);
-        SDL_FreeWAV(raw);
         int bytes = (int)len;
         if (cvt.needed) {
             cvt.len = (int)len; cvt.buf = work.data();
