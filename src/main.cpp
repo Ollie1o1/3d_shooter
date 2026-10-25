@@ -433,6 +433,12 @@ int main(int argc, char* argv[]) {
 
     for (const MixEntry& m : mixTable())   // every sound file has its place in the mix (MixTable.h)
         app->audio.loadSound(m.name, std::string("assets/sfx/") + m.name + ".wav");
+    if (app->audio.initialized) {   // a sound that didn't load just plays nothing: say so
+        int missing = 0;
+        for (const MixEntry& m : mixTable())
+            if (!app->audio.sfx.sample(m.name, 0)) { std::fprintf(stderr, "sfx: %s did not load\n", m.name); ++missing; }
+        std::fprintf(stderr, "sfx: %d of %d sounds loaded\n", (int)mixTable().size() - missing, (int)mixTable().size());
+    }
     if (app->audio.initialized) {   // the enemy voices, built in code (VoiceSynth.h)
         const Uint32 t0 = SDL_GetTicks();
         float secs = 0.f;

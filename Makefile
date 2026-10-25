@@ -99,6 +99,9 @@ web: $(SRC) $(HEADERS) web/index.html
 	cp src/shaders/*.vert src/shaders/*.frag $(WEB_DATA)/src/shaders/
 	cp -R assets $(WEB_DATA)/assets
 	rm -rf $(WEB_DATA)/assets/sfx/src   # the frozen recordings gen_arsenal.py reads: the game never loads them
+	@command -v oggenc >/dev/null || { echo "make web needs oggenc (brew install vorbis-tools / apt install vorbis-tools)"; exit 1; }
+	# Sounds ship as Ogg Vorbis q7: ~1.2 MB instead of ~5.8 MB of WAV (the game prefers .ogg when both exist)
+	for f in $(WEB_DATA)/assets/sfx/*.wav; do oggenc -Q -q 7 -o "$${f%.wav}.ogg" "$$f" && rm "$$f" || exit 1; done
 	ln -s $$(brew --prefix glm 2>/dev/null || echo /usr)/include/glm build/web-include/glm
 	em++ -std=c++17 -O3 -Isrc -Ibuild/web-include $(SRC) -o $(WEB_OUT)/overdrive.js \
 	    -sUSE_SDL=2 -sUSE_SDL_MIXER=2 \
