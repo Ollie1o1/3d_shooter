@@ -34,7 +34,7 @@ float vnoise(vec2 p) {
 }
 float fbm(vec2 p) {
     float s = 0.0, a = 0.5;
-    for (int k = 0; k < 5; ++k) { s += a * vnoise(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; }
+    for (int k = 0; k < 4; ++k) { s += a * vnoise(p); p = p * 2.03 + vec2(1.7, 9.2); a *= 0.5; }
     return s;
 }
 
@@ -118,16 +118,21 @@ vec3 eclipseSky(vec3 dir, vec3 col) {
     col += hot * rim * beads * (1.4 + heat + 2.0 * uFlare) * (1.0 - dawn);
     // the sun behind it, and the moon's disc over it: black, a faint ember on its
     // limb; at the dawn the moon slides off and the sun burns through
-    vec3 sunCol = vec3(3.2, 2.7, 2.0);
-    float off = dawn * 2.4 * size;
-    vec3 mdir = normalize(ax * cos(off) + t1 * sin(off));
-    float rm = acos(clamp(dot(dir, mdir), -1.0, 1.0)) / size;
-    float shown = smoothstep(0.0, 0.5, dawn);
-    col += sunCol * 0.45 * exp(-max(r - 1.0, 0.0) * 2.6) * shown * step(1.0, r);     // the sun's own glare
-    col += vec3(1.4, 0.75, 0.3) * exp(-max(r - 1.0, 0.0) * 0.9) * 0.3 * shown;       // and the warm sky round it
-    if (r < 1.0) col = mix(col, sunCol, step(1.0, rm) * shown);
-    float ring = dawn > 0.0 && dawn < 0.45 ? exp(-(r - 1.0) * (r - 1.0) / 0.0036) * smoothstep(0.98, 1.0, rm) * sin(dawn / 0.45 * 3.14159) : 0.0;
-    col += vec3(4.0, 3.6, 3.0) * ring * 2.0;                                           // the diamond ring as it breaks
+    // (Before the dawn the moon sits square on the sun, so rm = r and none of it shows:
+    // the whole block is skipped for every pixel of the fight.)
+    float rm = r;
+    if (dawn > 0.0) {
+        vec3 sunCol = vec3(3.2, 2.7, 2.0);
+        float off = dawn * 2.4 * size;
+        vec3 mdir = normalize(ax * cos(off) + t1 * sin(off));
+        rm = acos(clamp(dot(dir, mdir), -1.0, 1.0)) / size;
+        float shown = smoothstep(0.0, 0.5, dawn);
+        col += sunCol * 0.45 * exp(-max(r - 1.0, 0.0) * 2.6) * shown * step(1.0, r);     // the sun's own glare
+        col += vec3(1.4, 0.75, 0.3) * exp(-max(r - 1.0, 0.0) * 0.9) * 0.3 * shown;       // and the warm sky round it
+        if (r < 1.0) col = mix(col, sunCol, step(1.0, rm) * shown);
+        float ring = dawn < 0.45 ? exp(-(r - 1.0) * (r - 1.0) / 0.0036) * smoothstep(0.98, 1.0, rm) * sin(dawn / 0.45 * 3.14159) : 0.0;
+        col += vec3(4.0, 3.6, 3.0) * ring * 2.0;                                           // the diamond ring as it breaks
+    }
     if (rm < 1.0 && dawn < 0.999) col = mix(vec3(0.004, 0.0, 0.003), blood * 0.18, smoothstep(0.82, 1.0, rm));
 
     if (inside > 0.0) col = mix(col, insideSky(az, y), inside);
