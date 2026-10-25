@@ -122,7 +122,16 @@ public:
         glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
     }
 
+    bool skipBloom = false;   // dev (--skip bloom): composite without the bright pass and blurs
+
     void endScene() {
+        if (!skipBloom) bloomPasses();
+        compositeToCanvas();
+        glEnable(GL_DEPTH_TEST);
+    }
+
+private:
+    void bloomPasses() {
         glBindFramebuffer(GL_FRAMEBUFFER,bloomFBO[0]);
         glViewport(0,0,BW,BH);
         glDisable(GL_DEPTH_TEST);
@@ -142,7 +151,10 @@ public:
             drawQuad();
             horizontal = !horizontal;
         }
+    }
 
+    void compositeToCanvas() {
+        glDisable(GL_DEPTH_TEST);
         if (crtEnabled) {
             // Composite bloom to CRT intermediate FBO
             glBindFramebuffer(GL_FRAMEBUFFER,crtFBO);
@@ -176,10 +188,8 @@ public:
             glBindTexture(GL_TEXTURE_2D,bloomTex[0]);
             drawQuad();
         }
-        glEnable(GL_DEPTH_TEST);
     }
 
-private:
     void drawQuad() {
         glBindVertexArray(quadVAO);
         glDrawArrays(GL_TRIANGLES,0,6);

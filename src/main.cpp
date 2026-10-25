@@ -498,6 +498,7 @@ int main(int argc, char* argv[]) {
         if (arg == "--hollow" && i + 1 < argc) g_devHollow = std::atoi(argv[++i]) & 3;
         if (arg == "--overlay" && i + 1 < argc) g_devOverlay = argv[++i];
         if (arg == "--bench" && i + 1 < argc) { app->benchFrames = std::atoi(argv[++i]); g_devNoMouse = true; frametimer::enabled() = true; }
+        if (arg == "--skip" && i + 1 < argc) g_devSkip = argv[++i];
         if (arg == "--gpu-timer") { app->gpuTimer = true; frametimer::enabled() = true; }
         if (arg == "--frametimes" && i + 1 < argc) { app->frameTimesPath = argv[++i]; frametimer::enabled() = true; }
         if (arg == "--cap" && i + 1 < argc) app->capOverride = std::atoi(argv[++i]);

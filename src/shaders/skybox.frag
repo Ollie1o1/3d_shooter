@@ -38,6 +38,20 @@ float fbm(vec2 p) {
     return s;
 }
 
+// Inside the eclipse (MORNINGSTAR): black overhead, a ring of white fire low all the way round,
+// streamers of flame licking up off it, its light lying on the black below the line
+vec3 insideSky(float az, float y) {
+    float lit = 1.0 - 0.8 * uDark;
+    float lick = vnoise(vec2(az * 14.0 + uTime * 0.6, uTime * 0.4)), lick2 = vnoise(vec2(az * 31.0 - uTime * 0.9, 5.0));
+    float flame = (0.5 + 0.8 * pow(lick, 2.0) + 0.5 * pow(lick2, 3.0)) * exp(-max(y, 0.0) * (11.0 - 5.0 * lick));
+    vec3 sky = vec3(0.004, 0.001, 0.0);
+    sky += vec3(1.7, 0.5, 0.12) * flame * step(0.0, y) * 0.55 * lit;                       // the flames above the line
+    sky += vec3(2.6, 2.2, 1.8) * exp(-abs(y - 0.004) * 140.0) * (0.8 + 0.4 * lick) * lit;   // the ring itself, white-hot
+    sky += vec3(1.5, 0.45, 0.12) * exp(-abs(y) * 22.0) * 0.5 * lit;                         // its glow
+    sky += vec3(0.9, 0.25, 0.06) * exp(y * 30.0) * step(y, 0.0) * 0.35 * lit;               // its light on the black below
+    return sky;
+}
+
 // The eclipse: a black disc at uSunDir with a burning rim, a corona of
 // streamers turning slowly round it, and blood all round the horizon
 vec3 eclipseSky(vec3 dir, vec3 col) {
@@ -50,6 +64,9 @@ vec3 eclipseSky(vec3 dir, vec3 col) {
 
     // the horizon: a band of blood all the way round, uneven, brightest at the line
     float az = atan(dir.z, dir.x);
+    // swallowed whole: the inside is all there is to see, so skip the sky it covers
+    float inside = smoothstep(0.62, 1.0, uSwallow);
+    if (inside >= 1.0) return insideSky(az, y);
     float swell = 0.75 + 0.25 * sin(az * 2.0 + 0.6) + 0.15 * sin(az * 5.0 + 2.2);
     float band = exp(-abs(y) * 9.0) * swell;
     col += blood * band * (0.75 + 0.5 * heat);
@@ -113,20 +130,7 @@ vec3 eclipseSky(vec3 dir, vec3 col) {
     col += vec3(4.0, 3.6, 3.0) * ring * 2.0;                                           // the diamond ring as it breaks
     if (rm < 1.0 && dawn < 0.999) col = mix(vec3(0.004, 0.0, 0.003), blood * 0.18, smoothstep(0.82, 1.0, rm));
 
-    // inside the eclipse (MORNINGSTAR): black overhead, a ring of white fire low all the way round,
-    // streamers of flame licking up off it, its light lying on the black below the line
-    float inside = smoothstep(0.62, 1.0, uSwallow);
-    if (inside > 0.0) {
-        float lit = 1.0 - 0.8 * uDark;
-        float lick = vnoise(vec2(az * 14.0 + uTime * 0.6, uTime * 0.4)), lick2 = vnoise(vec2(az * 31.0 - uTime * 0.9, 5.0));
-        float flame = (0.5 + 0.8 * pow(lick, 2.0) + 0.5 * pow(lick2, 3.0)) * exp(-max(y, 0.0) * (11.0 - 5.0 * lick));
-        vec3 sky = vec3(0.004, 0.001, 0.0);
-        sky += vec3(1.7, 0.5, 0.12) * flame * step(0.0, y) * 0.55 * lit;                       // the flames above the line
-        sky += vec3(2.6, 2.2, 1.8) * exp(-abs(y - 0.004) * 140.0) * (0.8 + 0.4 * lick) * lit;   // the ring itself, white-hot
-        sky += vec3(1.5, 0.45, 0.12) * exp(-abs(y) * 22.0) * 0.5 * lit;                         // its glow
-        sky += vec3(0.9, 0.25, 0.06) * exp(y * 30.0) * step(y, 0.0) * 0.35 * lit;               // its light on the black below
-        col = mix(col, sky, inside);
-    }
+    if (inside > 0.0) col = mix(col, insideSky(az, y), inside);
     return col;
 }
 
