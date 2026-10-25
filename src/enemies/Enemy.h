@@ -154,6 +154,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     // from here to `position` so it moves smoothly at any frame rate
     glm::vec3  prevPosition{0.f};
     float      prevYaw = 0.f;
+    float      prevAnimPhase = 0.f;   // animPhase at the last tick: limbs drawn between ticks (above 60 fps)
     // Where it was last drawn (set by the renderer). Hitscan aims at this, so
     // a shot lands on what you saw, not on where the simulation has already
     // moved it (up to a tick ahead)

@@ -182,10 +182,11 @@ inline void GameplayState::gatherLeviathanBoxes(std::vector<BoxInstance>& out) {
     }
     // Tides: a wall of black water and red foam rolling outward
     for (const auto& w : lev.tides) {
-        const int SEG = 56; float segLen = 6.2832f * std::max(w.radius, 0.5f) / SEG;
+        const float R = glm::mix(w.prev, w.radius, renderAlpha);   // between ticks: smooth above 60 fps
+        const int SEG = 56; float segLen = 6.2832f * std::max(R, 0.5f) / SEG;
         for (int k = 0; k < SEG; ++k) {
             float a = (k + 0.5f) / SEG * 6.2832f;
-            glm::vec3 p = w.centre + glm::vec3{std::cos(a) * w.radius, 0.55f, std::sin(a) * w.radius};
+            glm::vec3 p = w.centre + glm::vec3{std::cos(a) * R, 0.55f, std::sin(a) * R};
             push(out, T(p) * RY(-a) * S({0.6f, 1.1f, segLen * 0.9f}), {0.03f, 0.02f, 0.03f}, red * 0.5f);
             push(out, T(p + glm::vec3{0.f, 0.6f, 0.f}) * RY(-a) * S({0.7f, 0.12f, segLen * 0.9f}), {0.1f, 0.05f, 0.05f}, red * 1.4f);
         }

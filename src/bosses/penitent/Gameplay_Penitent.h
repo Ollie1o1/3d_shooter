@@ -198,10 +198,11 @@ inline void GameplayState::gatherPenitentBoxes(std::vector<BoxInstance>& out) {
     }
     // Rings: segments round the expanding circle (embers redder)
     for (const auto& r : pen.rings) {
-        const int SEG = 40; float segLen = 6.2832f * std::max(r.radius, 0.5f) / SEG;
+        const float R = glm::mix(r.prev, r.radius, renderAlpha);   // between ticks: smooth above 60 fps
+        const int SEG = 40; float segLen = 6.2832f * std::max(R, 0.5f) / SEG;
         for (int k = 0; k < SEG; ++k) {
             float a = (k + 0.5f) / SEG * 6.2832f;
-            push(out, T(r.centre + glm::vec3{std::cos(a) * r.radius, 0.35f, std::sin(a) * r.radius}) * RY(-a) * S({0.2f, 0.7f, segLen * 0.85f}),
+            push(out, T(r.centre + glm::vec3{std::cos(a) * R, 0.35f, std::sin(a) * R}) * RY(-a) * S({0.2f, 0.7f, segLen * 0.85f}),
                  {0.1f, 0.04f, 0.02f}, (r.kind == 1 ? blood : ember) * 1.5f);
         }
     }
