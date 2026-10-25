@@ -810,7 +810,7 @@ inline void GameplayState::update(float dt) {
 }
 
 inline void GameplayState::snapshotForInterpolation() {
-    for (auto& e : enemies) { e.prevPosition = e.position; e.prevYaw = e.yaw; }
+    for (auto& e : enemies) { e.prevPosition = e.position; e.prevYaw = e.yaw; e.prevAnimPhase = e.animPhase; }
     for (auto& p : projSystem.pool) if (p.alive) p.prevPosition = p.position;
     for (auto& p : pickups) p.prev = p.pos;
     for (auto& m : level.movers) m.delta = glm::vec3{0.f};

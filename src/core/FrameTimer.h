@@ -20,7 +20,7 @@
 namespace frametimer {
 
 enum Zone {
-    LOAD, EVENTS,
+    GPU_WAIT, LOAD, EVENTS,
     UPDATE, SIM, SIM_PLAYER, SIM_DIRECTOR, SIM_ENEMIES, SIM_BOSSES, SIM_SHOTS, SIM_REST, EFFECTS,
     RENDER, R_WORLD, R_BOXES, R_FX, R_VIEWMODEL, R_POST, R_HUD,
     PRESENT, GPU_SYNC, SWAP, LIMIT,
@@ -31,7 +31,7 @@ enum Zone {
 struct ZoneInfo { const char* name; int parent; };
 inline const ZoneInfo& info(int z) {
     static const ZoneInfo t[COUNT] = {
-        {"load", -1}, {"events", -1},
+        {"wait for gpu", -1}, {"load", -1}, {"events", -1},
         {"update", -1}, {"sim", UPDATE}, {"player", SIM}, {"director", SIM}, {"enemies", SIM},
         {"bosses", SIM}, {"shots", SIM}, {"pickups+cleanup", SIM}, {"effects", UPDATE},
         {"render", -1}, {"sky+world", RENDER}, {"boxes", RENDER}, {"fx", RENDER},

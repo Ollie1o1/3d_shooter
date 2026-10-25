@@ -62,7 +62,7 @@ struct AbsoluteHazards {
     struct Mirage  { glm::vec3 at; float t = 0.f; bool struck = false; };
     struct Judge   { glm::vec3 centre, boss; float t = 0.f; bool done = false; };
     struct Fan     { glm::vec3 at; glm::vec3 dir[FAN_N]; bool out[FAN_N] = {}; float r = 0.f; bool hit = false; };   // out: a pillar stopped it
-    struct Wave    { glm::vec3 at; float r, speed, maxR, damage, delay; bool inward = false, hit = false; };   // (inward: from maxR to 0)
+    struct Wave    { glm::vec3 at; float r, speed, maxR, damage, delay; bool inward = false, hit = false; float prevR = -1.f; };   // (inward: from maxR to 0; prevR: r a tick ago, for drawing)
     struct Fissure { glm::vec3 from, dir; float len, t = 0.f; bool after = false, hit = false, afterHit = false; };
     struct Lanes   { glm::vec3 centre, dir, side; float off[LANE_N]; float t = 0.f; bool hit = false; };   // t < 0: not lit yet
     std::vector<Ray> rays; std::vector<Stomp> stomps; std::vector<Serpent> serpents; std::vector<Seams> seams;
@@ -289,8 +289,9 @@ struct AbsoluteHazards {
         }
         const float up = feet.y - under;   // how high you are off it
         for (auto& w : waves) {
-            if (w.delay > 0.f) { w.delay -= dt; continue; }
+            if (w.delay > 0.f) { w.delay -= dt; w.prevR = w.r; continue; }
             float was = w.r; w.r += (w.inward ? -w.speed : w.speed) * dt;
+            w.prevR = was;
             float d = glm::length(glm::vec2{feet.x - w.at.x, feet.z - w.at.z});
             float lo = std::min(was, w.r) - 0.5f, hi = std::max(was, w.r) + 0.5f;
             if (!w.hit && d >= lo && d < hi && up < WAVE_H) { w.hit = true; out.push_back({w.damage, w.at, Sword::Strike::AREA, false, w.inward ? 4 : 1}); }

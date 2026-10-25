@@ -86,12 +86,13 @@ inline void GameplayState::gatherShiftBoxes(std::vector<BoxInstance>& out) {
     // Overload rings: a band of light racing out along the floor
     glm::vec3 col{1.6f, 0.35f, 0.15f};
     for (auto& r : shifts.rings) {
-        float fade = 1.f - r.radius / ArenaShifts::PULSE_RANGE;
-        int seg = (int)glm::clamp(r.radius * 2.4f, 24.f, 110.f);
-        float segLen = 6.2832f * r.radius / seg;
+        const float R = glm::mix(r.prev, r.radius, renderAlpha);   // between ticks: smooth above 60 fps
+        float fade = 1.f - R / ArenaShifts::PULSE_RANGE;
+        int seg = (int)glm::clamp(R * 2.4f, 24.f, 110.f);
+        float segLen = 6.2832f * R / seg;
         for (int k = 0; k < seg; ++k) {
             float ang = (k + 0.5f) / seg * 6.2832f;
-            glm::vec3 p = r.centre + glm::vec3{std::cos(ang) * r.radius, ArenaShifts::PULSE_HEIGHT * 0.5f, std::sin(ang) * r.radius};
+            glm::vec3 p = r.centre + glm::vec3{std::cos(ang) * R, ArenaShifts::PULSE_HEIGHT * 0.5f, std::sin(ang) * R};
             push(out, T(p) * RY(-ang) * S({0.22f, ArenaShifts::PULSE_HEIGHT, segLen * 0.9f}), col * 0.3f, col * (1.2f + 1.5f * fade));
         }
     }

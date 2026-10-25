@@ -324,6 +324,7 @@ tools/record_showcase.sh         # re-record docs/overdrive.gif (needs gifski)
 #   --gpu-timer        add GPU time via GL timer queries; on macOS reading them stalls the CPU, so
 #                      frame times run ~2x slower while it's on. ACT II needs --cam or it times the armory
 #   --skip sky,world,boxes,water,fx,viewmodel,bloom,hud   leave render passes out to see what each costs
+#   --inflight N       frames the CPU may run ahead of the GPU (default 2; 0 = no fence, 1 halves the rate on macOS)
 #   (--fast means FAST mode, not "start quickly": use --play for ARENA)
 
 # Record the final mix (music + effects) to a WAV, then quit

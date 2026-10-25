@@ -72,6 +72,30 @@ struct App {
     Uint64 benchLast = 0;
     std::string frameTimesPath;   // --frametimes FILE: per-zone CSV of every frame, written on exit
     bool gpuTimer = false;        // --gpu-timer: also time the GPU (GL timer queries)
+#ifndef __EMSCRIPTEN__
+    // Frames in flight: before a frame starts, wait until the GPU has finished the
+    // frame `inFlight` back. Without it the CPU runs ahead and the driver stalls it
+    // at uneven moments, so frames alternate short and long. (The browser paces itself.)
+    int inFlight = 2;
+    static constexpr int MAX_FENCES = 4;
+    GLsync fences[MAX_FENCES] = {};
+    int fenceAt = 0;
+    void waitForGpu() {
+        if (inFlight <= 0) return;
+        GLsync& f = fences[(fenceAt + MAX_FENCES - inFlight) % MAX_FENCES];
+        if (!f) return;
+        glClientWaitSync(f, GL_SYNC_FLUSH_COMMANDS_BIT, 100000000);   // 100 ms at most
+        glDeleteSync(f);
+        f = nullptr;
+    }
+    void fenceFrame() {
+        if (inFlight <= 0) return;
+        GLsync& f = fences[fenceAt];
+        if (f) glDeleteSync(f);
+        f = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+        fenceAt = (fenceAt + 1) % MAX_FENCES;
+    }
+#endif
     Uint64 ftLast = 0;            // frame timer's start-to-start clock
 #ifndef __EMSCRIPTEN__
     // GPU time per frame: a ring of GL timer queries, read back a few frames late
@@ -210,6 +234,12 @@ struct App {
     }
 
     void frame() {
+#ifndef __EMSCRIPTEN__
+        {
+            frametimer::Scope ftWait(frametimer::GPU_WAIT);
+            waitForGpu();
+        }
+#endif
         Uint64 frameStart = SDL_GetPerformanceCounter();
         float frameDt = (float)((double)(frameStart - lastCounter) / (double)freq);
         lastCounter = frameStart;
@@ -301,6 +331,9 @@ struct App {
             frametimer::Scope ftSwap(frametimer::SWAP);
             SDL_GL_SwapWindow(window);
         }
+#ifndef __EMSCRIPTEN__
+        fenceFrame();
+#endif
 
 #ifndef __EMSCRIPTEN__
         applyVsync();
@@ -504,6 +537,7 @@ int main(int argc, char* argv[]) {
         if (arg == "--hollow" && i + 1 < argc) g_devHollow = std::atoi(argv[++i]) & 3;
         if (arg == "--overlay" && i + 1 < argc) g_devOverlay = argv[++i];
         if (arg == "--bench" && i + 1 < argc) { app->benchFrames = std::atoi(argv[++i]); g_devNoMouse = true; frametimer::enabled() = true; }
+        if (arg == "--inflight" && i + 1 < argc) app->inFlight = std::max(0, std::min(3, std::atoi(argv[++i])));   // dev: frames the CPU may run ahead (0 = no fence)
         if (arg == "--skip" && i + 1 < argc) g_devSkip = argv[++i];
         if (arg == "--gpu-timer") { app->gpuTimer = true; frametimer::enabled() = true; }
         if (arg == "--frametimes" && i + 1 < argc) { app->frameTimesPath = argv[++i]; frametimer::enabled() = true; }

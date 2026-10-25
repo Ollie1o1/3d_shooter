@@ -157,7 +157,7 @@ inline void GameplayState::gatherMorningBoxes(std::vector<BoxInstance>& out) {
         }
         // a wave of fire: a low white-hot core and a band of orange over it (the COLLAPSE: a red wall, taller).
         // (Never dimmed: in TOTALITY the floor's tells are what you have)
-        const float R = std::max(w.r, 0.2f);
+        const float R = std::max(w.prevR < 0.f ? w.r : glm::mix(w.prevR, w.r, renderAlpha), 0.2f);   // between ticks: smooth above 60 fps
         const int n = w.inward ? 120 : std::clamp((int)(R * 3.f), 24, 96);
         ring(w.at, R, 0.3f, w.inward ? 3.f : 1.f, n, glm::vec3{0.05f, 0.01f, 0.f}, w.inward ? red * 1.1f : glm::vec3{1.6f, 0.45f, 0.08f});
         ring(w.at, R, 0.4f, 0.25f, n, glm::vec3{0.1f, 0.05f, 0.02f}, glm::vec3{2.2f, 1.4f, 0.7f});
