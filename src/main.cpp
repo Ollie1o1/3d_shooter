@@ -26,6 +26,7 @@
 #include "audio/AudioSystem.h"
 #include "core/Display.h"
 #include "core/Gamepad.h"
+#include "core/FrameTimer.h"
 #include "audio/VoiceSynth.h"
 
 #ifdef __EMSCRIPTEN__
@@ -69,6 +70,27 @@ struct App {
     int capOverride = -1;       // --cap HZ: hold this rate whatever the settings say (0 = unlimited)
     std::vector<double> benchTimes;
     Uint64 benchLast = 0;
+    std::string frameTimesPath;   // --frametimes FILE: per-zone CSV of every frame, written on exit
+    bool gpuTimer = false;        // --gpu-timer: also time the GPU (GL timer queries)
+    Uint64 ftLast = 0;            // frame timer's start-to-start clock
+#ifndef __EMSCRIPTEN__
+    // GPU time per frame: a ring of GL timer queries, read back a few frames late
+    static constexpr int GPU_Q = 4;
+    GLuint gpuQ[GPU_Q] = {};
+    int gpuQFrame[GPU_Q] = {-1, -1, -1, -1};
+    int gpuQSlot = 0;
+    bool gpuQPending[GPU_Q] = {};
+    void collectGpu(int slot, bool wait) {
+        if (!gpuQPending[slot]) return;
+        GLint ready = 0;
+        glGetQueryObjectiv(gpuQ[slot], GL_QUERY_RESULT_AVAILABLE, &ready);
+        if (!ready && !wait) { gpuQPending[slot] = false; return; }   // still in flight: drop it rather than stall
+        GLuint64 ns = 0;
+        glGetQueryObjectui64v(gpuQ[slot], GL_QUERY_RESULT, &ns);
+        frametimer::setGpu(gpuQFrame[slot], (double)ns / 1e6);
+        gpuQPending[slot] = false;
+    }
+#endif
 
     double seconds() const { return (double)SDL_GetPerformanceCounter() / (double)freq; }
 
@@ -195,10 +217,12 @@ struct App {
         if (g_fixedDt > 0.0) frameDt = (float)g_fixedDt;
 
         if (pending != NextState::None) {
+            frametimer::Scope ftLoad(frametimer::LOAD);
             applyPendingState();
             lastCounter = SDL_GetPerformanceCounter(); // don't bill load time to the first frame
         }
 
+        frametimer::Lap ftLap;
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (e.type == SDL_QUIT) { running = false; break; }
@@ -218,10 +242,21 @@ struct App {
         }
         applyFullscreen();
         sizeCanvas();
+        ftLap.to(frametimer::EVENTS);
+#ifndef __EMSCRIPTEN__
+        const bool gpuTiming = gpuTimer && frametimer::enabled();
+        if (gpuTiming) {
+            if (!gpuQ[0]) glGenQueries(GPU_Q, gpuQ);
+            collectGpu(gpuQSlot, false);
+            glBeginQuery(GL_TIME_ELAPSED, gpuQ[gpuQSlot]);
+        }
+#endif
         if (currentState) {
             currentState->update(frameDt);
+            ftLap.to(frametimer::UPDATE);
             display::bind();
             currentState->render();
+            ftLap.to(frametimer::RENDER);
         }
         if (dynamic_cast<MenuState*>(currentState.get())) {   // the menu's music: a groove, no fight
             audio.masterVolume = settings.audioVolume;
@@ -255,15 +290,24 @@ struct App {
 #else
             SDL_GL_GetDrawableSize(window, &dw, &dh);
 #endif
+            ftLap = frametimer::Lap{};
             display::present(dw, dh);
+            ftLap.to(frametimer::PRESENT);
         }
-        SDL_GL_SwapWindow(window);
+#ifndef __EMSCRIPTEN__
+        if (gpuTiming) { frametimer::Scope ftq(frametimer::GPU_SYNC); glEndQuery(GL_TIME_ELAPSED); }
+#endif
+        {
+            frametimer::Scope ftSwap(frametimer::SWAP);
+            SDL_GL_SwapWindow(window);
+        }
 
 #ifndef __EMSCRIPTEN__
         applyVsync();
         // Frame limiter (the browser paces the web build itself). It keeps an
         // absolute schedule and sleeps most of each gap, then spins the last
         // 1.5 ms: millisecond sleeps alone can't hold 144 or 240 Hz evenly.
+        frametimer::Lap ftLimit;
         int capValue = capOverride >= 0 ? capOverride : (benchFrames > 0 || vsyncOn) ? 0 : settings.getFPSCapValue();
         if (capValue > 0) {
             double period = 1.0 / capValue;
@@ -277,6 +321,21 @@ struct App {
         } else {
             nextFrameAt = 0.0;
         }
+        ftLimit.to(frametimer::LIMIT);
+#endif
+        if (frametimer::enabled()) {
+            Uint64 nowC = SDL_GetPerformanceCounter();
+            int idx = ftLast ? frametimer::endFrame(frametimer::ms(ftLast, nowC)) : (frametimer::cur() = frametimer::Frame{}, -1);
+            ftLast = nowC;
+#ifndef __EMSCRIPTEN__
+            if (gpuTiming) {
+                gpuQFrame[gpuQSlot] = idx;
+                gpuQPending[gpuQSlot] = idx >= 0;
+                gpuQSlot = (gpuQSlot + 1) % GPU_Q;
+            }
+#endif
+        }
+#ifndef __EMSCRIPTEN__
         if (benchFrames > 0) {
             Uint64 nowC = SDL_GetPerformanceCounter();
             if (benchLast) benchTimes.push_back((double)(nowC - benchLast) / (double)freq);   // start-to-start: what the screen sees
@@ -288,6 +347,9 @@ struct App {
 
     void reportBench() {
         if (benchTimes.size() < 10) return;
+#ifndef __EMSCRIPTEN__
+        for (int i = 0; i < GPU_Q; ++i) collectGpu(i, true);
+#endif
         std::vector<double> t(benchTimes.begin() + benchTimes.size() / 10, benchTimes.end());   // skip warm-up
         double sum = 0; for (double v : t) sum += v;
         std::sort(t.begin(), t.end());
@@ -297,6 +359,7 @@ struct App {
         std::fprintf(stderr, "bench: %d frames  avg %.2f ms (%.0f fps)  1%% low %.2f ms (%.0f fps)  worst %.2f ms  jitter %.3f ms\n",
                      (int)t.size(), avg * 1000.0, 1.0 / avg, p99 * 1000.0, 1.0 / p99, t.back() * 1000.0,
                      std::sqrt(var / t.size()) * 1000.0);
+        frametimer::report(frametimer::history().size() / 10);
     }
 };
 
@@ -434,7 +497,9 @@ int main(int argc, char* argv[]) {
         if (arg == "--spawn" && i + 1 < argc) g_devSpawns.push_back(std::atoi(argv[++i]));
         if (arg == "--hollow" && i + 1 < argc) g_devHollow = std::atoi(argv[++i]) & 3;
         if (arg == "--overlay" && i + 1 < argc) g_devOverlay = argv[++i];
-        if (arg == "--bench" && i + 1 < argc) { app->benchFrames = std::atoi(argv[++i]); g_devNoMouse = true; }
+        if (arg == "--bench" && i + 1 < argc) { app->benchFrames = std::atoi(argv[++i]); g_devNoMouse = true; frametimer::enabled() = true; }
+        if (arg == "--gpu-timer") { app->gpuTimer = true; frametimer::enabled() = true; }
+        if (arg == "--frametimes" && i + 1 < argc) { app->frameTimesPath = argv[++i]; frametimer::enabled() = true; }
         if (arg == "--cap" && i + 1 < argc) app->capOverride = std::atoi(argv[++i]);
         if (arg == "--res" && i + 1 < argc) app->renderOverride = std::atoi(argv[++i]);
         if (arg == "--record" && i + 3 < argc) {
@@ -471,6 +536,11 @@ int main(int argc, char* argv[]) {
     return 0;
 #else
     while (app->running) app->frame();
+    if (!app->frameTimesPath.empty()) {
+        for (int i = 0; i < App::GPU_Q; ++i) app->collectGpu(i, true);
+        if (frametimer::writeCsv(app->frameTimesPath)) std::fprintf(stderr, "frametimes: %zu frames -> %s\n", frametimer::history().size(), app->frameTimesPath.c_str());
+        else std::fprintf(stderr, "frametimes: could not write %s\n", app->frameTimesPath.c_str());
+    }
 
     app->currentState.reset();
     SDL_GL_DeleteContext(app->ctx);

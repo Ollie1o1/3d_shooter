@@ -6,6 +6,9 @@
 // =============================================================================
 
 inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKey) {
+    frametimer::Scope ftSim(frametimer::SIM);
+    frametimer::tick();
+    frametimer::Lap ftLap;
     if (director.arena != spaceArena && director.arena >= 0 && director.arena < (int)level.arenas.size()) {
         spaceArena = director.arena;   // a new place: its reverb
         audio.setSpace(level.arenas[spaceArena].space);
@@ -266,6 +269,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         player.camera.pitch = glm::clamp(player.camera.pitch, -89.f, 89.f);
     }
 
+    ftLap.to(frametimer::SIM_PLAYER);
     // --- Waves ---
     int alive = 0;
     for (auto& e : enemies) if (e.alive) ++alive;
@@ -284,8 +288,10 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     if (!act2Falling) director.update(dt, alive, player.position, spawns);   // ACT II: the fight waits for you to land
     for (auto& s : spawns) spawnEnemy(s.type, s.pos, s.hollow);
 
+    ftLap.to(frametimer::SIM_DIRECTOR);
     // --- Enemies ---
     updateEnemies(dt);
+    ftLap.to(frametimer::SIM_ENEMIES);
     updateSanctumPhase(dt);
     updateSovereign(dt);
     updatePenitent(dt);
@@ -296,6 +302,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     steerParriedOrbs(dt);   // parried orbs into the Warden's core, the Leviathan's eye
     if (fast() && countdown <= 0.f && !victory) ghostRec.record(elapsedTime, player.position, player.camera.yaw);
 
+    ftLap.to(frametimer::SIM_BOSSES);
     // --- Projectiles ---
     projSystem.floorY = level.lowestFloor();
     auto result = projSystem.update(dt, level.walls.data(), (int)level.walls.size(),
@@ -327,6 +334,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     for (auto& exp : result.explosions)
         pendingBlasts.push_back({exp.pos, exp.radius, exp.damage, exp.radius * 0.5f, 20.f});
     processBlasts();
+    ftLap.to(frametimer::SIM_SHOTS);
 
     if (result.hitPlayer) {   // with the sword out, a shot from the front meets the guard
         if (swordOut) damagePlayerStrike(result.playerDamage, result.playerHitFrom, Sword::Strike::WHITE);
@@ -357,6 +365,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     for (auto& t : pendingTwins) { enemies.push_back(t); enemies.back().uid = nextEnemyUid++; }
     pendingTwins.clear();
     linkConductors(enemies, player.position);   // tethers for the next tick (and this frame's beams)
+    ftLap.to(frametimer::SIM_REST);
 }
 
 inline bool GameplayState::findGrappleTarget(glm::vec3& point, int& wall, bool& isMover) const {
