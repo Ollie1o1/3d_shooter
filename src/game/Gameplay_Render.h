@@ -480,8 +480,49 @@ inline void GameplayState::render() {
     glEnable(GL_CULL_FACE);
     glEnable(GL_DEPTH_TEST);
 
-    // --- Sky ---
+    // --- Static world ---
+    worldShader.use();
+    worldShader.setMat4("projection", proj);
+    worldShader.setMat4("view",       view);
+    worldShader.setMat4("model",      glm::mat4(1.f));
+    applyLighting(worldShader, th, renderCamPos);
+    worldShader.setVec3 ("emissiveColor", {0.f,0.f,0.f});
+    worldShader.setVec3 ("objectColor",   {1.f,1.f,1.f});
+    worldShader.setFloat("uPSXStrength",  0.0f);
+    worldShader.setFloat("uVertexGlow",   0.0f);
+    worldShader.setInt("uTexture",0);
+    glActiveTexture(GL_TEXTURE0);
+    for (int t = 0; t < TEX_COUNT && !devSkip("world"); ++t) {
+        if (world.byTex[t].indexCount == 0) continue;
+        glBindTexture(GL_TEXTURE_2D, worldTex[t]);
+        world.byTex[t].draw();
+    }
+    glBindTexture(GL_TEXTURE_2D, whiteTex);
+    worldShader.setVec3("objectColor", {0.25f,0.25f,0.25f});
+    worldShader.setFloat("uVertexGlow", 1.5f);
+    if (!devSkip("world")) world.neon.draw();
+    worldShader.setFloat("uVertexGlow", 0.0f);
+    worldShader.setVec3("objectColor", {1.f,1.f,1.f});
+
+    ftLap.to(frametimer::R_WORLD);
+    // --- Everything made of boxes: one instanced draw ---
     {
+        static std::vector<BoxInstance> boxes;
+        boxes.clear();
+        gatherBoxes(boxes, view);
+        boxRenderer.shader.use();
+        boxRenderer.shader.setMat4("projection", proj);
+        boxRenderer.shader.setMat4("view",       view);
+        boxRenderer.shader.setInt ("uTexture",   0);
+        applyLighting(boxRenderer.shader, th, renderCamPos);
+        glBindTexture(GL_TEXTURE_2D, whiteTex);
+        if (!devSkip("boxes")) boxRenderer.draw(boxes);
+    }
+
+    ftLap.to(frametimer::R_BOXES);
+    // --- Sky: after the opaque world, at the far plane, so it only shades the
+    // pixels nothing covers (it's the costliest shader per pixel, the eclipse most) ---
+    if (!devSkip("sky")) {
         glDepthFunc(GL_LEQUAL);
         glDepthMask(GL_FALSE);
         skyboxShader.use();
@@ -510,65 +551,29 @@ inline void GameplayState::render() {
         glDepthFunc(GL_LESS);
     }
 
-    // --- Static world ---
-    worldShader.use();
-    worldShader.setMat4("projection", proj);
-    worldShader.setMat4("view",       view);
-    worldShader.setMat4("model",      glm::mat4(1.f));
-    applyLighting(worldShader, th, renderCamPos);
-    worldShader.setVec3 ("emissiveColor", {0.f,0.f,0.f});
-    worldShader.setVec3 ("objectColor",   {1.f,1.f,1.f});
-    worldShader.setFloat("uPSXStrength",  0.0f);
-    worldShader.setFloat("uVertexGlow",   0.0f);
-    worldShader.setInt("uTexture",0);
-    glActiveTexture(GL_TEXTURE0);
-    for (int t = 0; t < TEX_COUNT; ++t) {
-        if (world.byTex[t].indexCount == 0) continue;
-        glBindTexture(GL_TEXTURE_2D, worldTex[t]);
-        world.byTex[t].draw();
-    }
-    glBindTexture(GL_TEXTURE_2D, whiteTex);
-    worldShader.setVec3("objectColor", {0.25f,0.25f,0.25f});
-    worldShader.setFloat("uVertexGlow", 1.5f);
-    world.neon.draw();
-    worldShader.setFloat("uVertexGlow", 0.0f);
-    worldShader.setVec3("objectColor", {1.f,1.f,1.f});
-
     ftLap.to(frametimer::R_WORLD);
-    // --- Everything made of boxes: one instanced draw ---
-    {
-        static std::vector<BoxInstance> boxes;
-        boxes.clear();
-        gatherBoxes(boxes, view);
-        boxRenderer.shader.use();
-        boxRenderer.shader.setMat4("projection", proj);
-        boxRenderer.shader.setMat4("view",       view);
-        boxRenderer.shader.setInt ("uTexture",   0);
-        applyLighting(boxRenderer.shader, th, renderCamPos);
-        glBindTexture(GL_TEXTURE_2D, whiteTex);
-        boxRenderer.draw(boxes);
-    }
 
-    ftLap.to(frametimer::R_BOXES);
-    renderWater(view, proj, th, renderCamPos);
+    if (!devSkip("water")) renderWater(view, proj, th, renderCamPos);
+    const bool skipFx = devSkip("fx");
 
     worldShader.use();
     worldShader.setMat4("model", glm::mat4(1.f));
-    grapple.drawLine(renderCamPos, view, proj);
-    renderDecals();
-
-    renderTracers(view, proj);
-    renderLasers(view, proj);
-    renderFlare(view, proj);
-    renderTethers(view, proj);
-    renderParticles(view, proj);
+    if (!skipFx) {
+        grapple.drawLine(renderCamPos, view, proj);
+        renderDecals();
+        renderTracers(view, proj);
+        renderLasers(view, proj);
+        renderFlare(view, proj);
+        renderTethers(view, proj);
+        renderParticles(view, proj);
+    }
     bool warm = warmupFrames > 0;
     if (warm) warmPipelines(renderCamPos, view, proj);
 
     ftLap.to(frametimer::R_FX);
     // --- View model (inside the FBO so it gets bloom; no fog). Hidden
     // behind the Longshot's scope once it's up. ---
-    if (!scopedView()) {
+    if (!scopedView() && !devSkip("viewmodel")) {
         worldShader.use();
         worldShader.setVec3("lightDir",    glm::normalize(glm::vec3{0.4f,-1.f,0.3f}));
         worldShader.setVec3("lightColor",  {1.f,0.9f,0.8f});
@@ -589,10 +594,11 @@ inline void GameplayState::render() {
 
     ftLap.to(frametimer::R_VIEWMODEL);
     postProcess.crtEnabled = settings ? settings->crtFilter : false;
+    postProcess.skipBloom = devSkip("bloom");
     postProcess.endScene();
     ftLap.to(frametimer::R_POST);
 
-    renderHUD(view, proj);
+    if (!devSkip("hud")) renderHUD(view, proj);
     if (warm) { ui.warmScope(); --warmupFrames; }
     ftLap.to(frametimer::R_HUD);
 }

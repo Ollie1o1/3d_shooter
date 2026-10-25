@@ -323,6 +323,8 @@ tools/record_showcase.sh         # re-record docs/overdrive.gif (needs gifski)
 #   --frametimes FILE  per-zone CSV of every frame, written on exit (works in normal play too)
 #   --gpu-timer        add GPU time via GL timer queries; on macOS reading them stalls the CPU, so
 #                      frame times run ~2x slower while it's on. ACT II needs --cam or it times the armory
+#   --skip sky,world,boxes,water,fx,viewmodel,bloom,hud   leave render passes out to see what each costs
+#   (--fast means FAST mode, not "start quickly": use --play for ARENA)
 
 # Record the final mix (music + effects) to a WAV, then quit
 ./shooter --arena 5 --god --kite --audiodump mix.wav 15

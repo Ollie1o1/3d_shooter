@@ -28,6 +28,13 @@ inline int       g_devWeapon = -1;
 inline bool      g_devSword = false;   // --sword / ?sword: the sword (key 5) anywhere, not just the Zenith
 inline bool      g_devAim = false;
 inline std::string g_devOverlay;
+// --skip sky,world,boxes,water,fx,viewmodel,bloom,hud: leave render passes out (finding what the GPU spends)
+inline std::string g_devSkip;
+inline bool devSkip(const char* pass) {
+    if (g_devSkip.empty()) return false;
+    std::string list = "," + g_devSkip + ",";
+    return list.find("," + std::string(pass) + ",") != std::string::npos;
+}
 inline bool      g_devNoMouse = false;   // screenshot runs: never grab or read the mouse
 inline int g_devHollow = 0;            // --hollow N: --spawn enemies get Hollow variant N (1 ENRAGED, 2 TWINNED, 3 HALOED)
 inline std::vector<int> g_devSpawns;    // --spawn N (repeatable): enemies of type N in an arc 9-12 m in front of the camera
