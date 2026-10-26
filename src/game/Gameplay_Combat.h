@@ -822,8 +822,8 @@ inline void GameplayState::fireWeapon(int w) {
     const WeaponUpgrades& u = prog.up[w];
     WeaponState& ws = weapons[w];
     const bool od = overdriveOn();   // OVERDRIVE: harder, faster, and the magazine never runs down
-    if (!od) --ws.ammo;
-    ws.cooldown = weaponCooldown(id, u) * (od ? 0.75f : 1.f);
+    if (!od) { --ws.ammo; if (doubleShot && ws.ammo > 0) --ws.ammo; }   // (both barrels: both shells)
+    ws.cooldown = weaponCooldown(id, u) * (od ? 0.75f : 1.f) * (doubleShot ? 1.5f : 1.f);
     ++runLog.shots[w];
 
     glm::vec3 origin = player.camera.position;
@@ -837,7 +837,9 @@ inline void GameplayState::fireWeapon(int w) {
     float spread = weaponSpread(id, u, aimNow);
     // Rifles are wild in the air unless aimed
     if (d.canAim && !player.onGround) spread += 0.03f * (1.f - aimNow);
-    int   pellets = weaponPellets(id, u);
+    if (fanning) spread = std::max(spread, 0.05f);   // fanned from the hip: loose
+    if (doubleShot) spread *= 1.2f;
+    int   pellets = weaponPellets(id, u) * (doubleShot ? 2 : 1);
     int   pierce  = weaponPierce(id, u);
     float dmg     = weaponDamage(id, u) * (od ? 1.3f : 1.f);
     bool  sniper  = id == WeaponId::KAR || id == WeaponId::LONGSHOT;
@@ -931,7 +933,8 @@ inline void GameplayState::fireWeapon(int w) {
             anyHit = true;
             // The shove: each gun's own, the shotgun's hardest up close (HitReact.h)
             float shove = hitreact::gunPush(w) * falloff * (pellets > 1 ? glm::clamp(1.5f - hits[k].t / 10.f, 0.3f, 1.3f) : 1.f);
-            HitPush hp{dir, shove, hitreact::gunPoise(w)};
+            if (doubleShot) shove *= 1.7f;
+            HitPush hp{dir, shove, hitreact::gunPoise(w) * (fanning ? 1.6f : doubleShot ? 1.3f : 1.f)};
             if (hurtEnemy(e, dmg * m * falloff, at, sniper ? 12.f : (pellets > 1 ? 3.f : 13.f), pellets > 1 ? 0.5f : 2.f,
                           weaponSource(id), head, false, &hp)) {
                 ++killCount;
@@ -968,7 +971,7 @@ inline void GameplayState::fireWeapon(int w) {
     if (killCount > 0 && sniper) hitStopFrames = glm::max(hitStopFrames, 3);
     if (headKill && id == WeaponId::REVOLVER) hitStopFrames = glm::max(hitStopFrames, 2);   // a magnum headshot: the world catches for a beat
 
-    float recoil = d.recoil * (1.f - 0.4f * aimNow);
+    float recoil = d.recoil * (1.f - 0.4f * aimNow) * (fanning ? 0.55f : doubleShot ? 1.7f : 1.f);
     recoilPitch = std::min(recoilPitch + recoil, 14.f);
     player.camera.pitch = glm::clamp(player.camera.pitch + recoil, -89.f, 89.f);
 
@@ -977,8 +980,8 @@ inline void GameplayState::fireWeapon(int w) {
         static const float KICK[4][3] = {   // pitch, yaw jitter, roll jitter (degrees a second)
             {55.f, 8.f, 12.f}, {125.f, 22.f, 45.f}, {105.f, 14.f, 26.f}, {165.f, 20.f, 40.f}};   // (the revolver: a firm jolt, not a wobble)
         const float* k = KICK[std::clamp(w, 0, 3)];
-        float hold = 1.f - 0.55f * aimNow;
-        camFeel.punch(k[0] * hold, frand(-1.f, 1.f) * k[1] * hold, frand(-1.f, 1.f) * k[2] * hold);
+        float hold = (1.f - 0.55f * aimNow) * (doubleShot ? 1.6f : fanning ? 0.8f : 1.f);
+        camFeel.punch(k[0] * hold, frand(-1.f, 1.f) * k[1] * hold, frand(-1.f, 1.f) * k[2] * hold * (fanning ? 2.f : 1.f));
     }
     {   // running low: a dry tick under the last rounds, higher as the mag empties
         int mag = weaponMag(id, u), low = std::max(1, mag / 4);
@@ -994,6 +997,17 @@ inline void GameplayState::fireWeapon(int w) {
     shake(sniper ? 0.14f : pellets > 1 ? 0.12f : 0.06f, sniper ? 0.03f : pellets > 1 ? 0.025f : 0.012f);
     static const char* SND[] = {"revolver", "shotgun", "kar", "longshot"};
     audio.play(SND[w], 128, SoundGroup::PLAYER, true);
+    if (doubleShot) {   // the second barrel under the first: lower, a hair late, and the blast throws you back
+        SfxMixer::Opts o; o.group = SoundGroup::PLAYER; o.pitch = 0.8f; o.delay = 0.012f; o.priority = true;
+        audio.playOpts("shotgun", o);
+        audio.play("slam", 70, SoundGroup::PLAYER);
+        glm::vec3 kick = -fwd * 11.f;
+        if (fwd.y < -0.4f) kick.y = std::max(kick.y, -fwd.y * 15.f);   // aimed down: a shotgun jump
+        player.velocity += kick;
+        if (kick.y > 2.f) { player.onGround = false; player.launched(); }
+        shake(0.2f, 0.04f);
+        fovKick = std::max(fovKick, 6.f);
+    }
     shotEchoes(SND[w], sniper ? 1.f : pellets > 1 ? 0.9f : 0.75f);
     {   // the spent brass lands a moment later, by your feet (on the ground: higher up, a long way down)
         SfxMixer::Opts c; c.group = SoundGroup::WORLD; c.positional = true;

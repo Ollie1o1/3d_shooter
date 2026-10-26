@@ -17,6 +17,7 @@ inline void GameplayState::shootInput() {
         dryCd = 0.3f;
     }
     pendingFire = false;
+    if (pendingAlt) { altFire(); pendingAlt = false; }
     if (pendingGrenade && grenadeCount > 0 && grenadeTimer <= 0.f) throwGrenade();
     pendingGrenade = false;
     flushHitSounds();
@@ -246,6 +247,21 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         if (before < 0.02f && aim >= 0.02f && d.scope) audio.play("scope", 70);
         if (before < 0.98f && aim >= 0.98f) aimFullAt = gameClock;
         player.horizontalSpeed = 7.f * glm::mix(1.f, d.aimMoveMult, aim);
+        // RMB on a gun that doesn't aim is its alt fire (the revolver fans, the shotgun lets both barrels go)
+        if (rmb && !altPrev && !d.canAim && !swordOut && pendingWeapon < 0) pendingAlt = true;
+        altPrev = rmb;
+    }
+    // The revolver fanned: the rest of the cylinder, a round every 75 ms
+    if (fanLeft > 0) {
+        fanTimer -= dt;
+        if (fanTimer <= 0.f) {
+            WeaponState& fw = weapons[(int)WeaponId::REVOLVER];
+            if (activeWeapon == (int)WeaponId::REVOLVER && fw.ammo > 0 && !fw.reloading && pendingWeapon < 0) {
+                fanning = true; fireWeapon((int)WeaponId::REVOLVER); fanning = false;
+                if (--fanLeft <= 0) fw.cooldown = std::max(fw.cooldown, 0.35f);
+                fanTimer = 0.075f;
+            } else fanLeft = 0;
+        }
     }
     updateSword(dt);   // (sets the move speed while it's out)
 

@@ -315,8 +315,8 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             std::string move = k(Act::FORWARD) + k(Act::LEFT) + k(Act::BACK) + k(Act::RIGHT);
             if (move.size() != 4) move = k(Act::FORWARD) + "/" + k(Act::LEFT) + "/" + k(Act::BACK) + "/" + k(Act::RIGHT);   // (WASD, unless rebound to long names)
             std::string c1 = move + " MOVE  " + k(Act::JUMP) + " JUMP (TWICE)  " + k(Act::DASH) + " DASH  " + k(Act::SLIDE) +
-                             " SLIDE / SLAM  LMB FIRE  " + k(Act::PARRY) + " PARRY  " + k(Act::GRENADE) + " GRENADE";
-            std::string c2 = k(Act::GRAPPLE) + " GRAPPLE  RMB AIM  1-4 / SCROLL WEAPONS  " + k(Act::INSPECT) + " INSPECT  TAB ARMORY  " +
+                             " SLIDE / SLAM  LMB FIRE  " + k(Act::PARRY) + " PARRY  " + k(Act::INTERACT) + " FINISH  " + k(Act::GRENADE) + " GRENADE";
+            std::string c2 = k(Act::GRAPPLE) + " GRAPPLE  RMB AIM / ALT FIRE  1-4 / SCROLL WEAPONS  " + k(Act::INSPECT) + " INSPECT  TAB ARMORY  " +
                              k(Act::RELOAD) + " RELOAD  BKSP RESTART";
             ui.renderPause(pauseSelected, labels, line.c_str(), c1.c_str(), c2.c_str());
         }

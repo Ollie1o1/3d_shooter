@@ -331,3 +331,21 @@ inline bool GameplayState::unseenWindup(const Enemy& e, glm::vec3 flatFwd) const
     float d = glm::length(to);
     return d > 2.f && d < 40.f && glm::dot(flatFwd, to / d) < 0.5f;
 }
+
+// ---- alt fire ------------------------------------------------------------------------
+inline void GameplayState::altFire() {
+    WeaponState& ws = weapons[activeWeapon];
+    if (!ws.ready()) {
+        if ((ws.ammo <= 0 || ws.reloading) && dryCd <= 0.f) { audio.play("dry", 100, SoundGroup::PLAYER); dryCd = 0.3f; }
+        return;
+    }
+    if (activeWeapon == (int)WeaponId::REVOLVER) {   // FAN: the rest of the cylinder (six at most), one every 75 ms
+        fanLeft = overdriveOn() ? 6 : std::min(ws.ammo, 6);
+        fanTimer = 0.f;
+        audio.play("cyl_close", 80, SoundGroup::PLAYER);   // the palm on the hammer
+    } else if (activeWeapon == (int)WeaponId::SHOTGUN) {   // BOTH BARRELS (one shell left: just the one)
+        doubleShot = ws.ammo >= 2 || overdriveOn();
+        fireWeapon(activeWeapon);
+        doubleShot = false;
+    }
+}

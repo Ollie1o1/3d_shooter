@@ -149,6 +149,8 @@ inline void GameplayState::devCamera(float dt) {
     player.camera.yaw += dy * k; player.camera.pitch += dp * k;
     devFireCd -= dt;
     if (std::fabs(dy) < 3.f && std::fabs(dp) < 3.f && devFireCd <= 0.f) { pendingFire = true; devFireCd = 0.3f; }
+    // --overlay alt: alt fire instead of the trigger (the fan, both barrels)
+    if (g_devOverlay == "alt" && pendingFire) { pendingFire = false; pendingAlt = true; }
     // --overlay hook: the grapple on whatever it's aimed at, every couple of seconds (the yank, on film)
     if (g_devOverlay == "hook" && std::fabs(dy) < 2.f && std::fabs(dp) < 2.f && grappleCooldown <= 0.f && std::fmod(elapsedTime, 2.5f) < dt)
         pendingGrapple = true;
