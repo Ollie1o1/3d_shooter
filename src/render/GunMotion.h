@@ -23,7 +23,7 @@ struct GunWeight { float kickBack, kickUp, pitchKick, roll, settle, swayAmp, rel
 inline const GunWeight& gunWeight(int gun) {
     static const GunWeight W[4] = {
         //  back    up      pitch  roll  settle  sway  reloadRoll
-        {0.045f, 0.030f,  4.f,  1.f,  0.12f, 1.0f, 32.f},   // revolver: light, snappy
+        {0.055f, 0.022f,  3.5f, 0.8f, 0.13f, 1.0f, 32.f},   // revolver: heavy, planted (straight back into the hand)
         {0.070f, 0.026f,  7.f,  4.f,  0.30f, 1.3f, 55.f},   // shotgun:  heavy, short
         {0.080f, 0.020f,  6.f,  2.f,  0.26f, 1.1f, 14.f},   // lancer:   medium, long
         {0.110f, 0.030f, 10.f,  5.f,  0.45f, 1.5f, 18.f},   // longshot: heavy, long

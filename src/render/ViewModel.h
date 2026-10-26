@@ -209,6 +209,8 @@ public:
         grenadeT = std::max(0.f, grenadeT - dt);
         grappleT = std::max(0.f, grappleT - dt);
         heat     = std::max(0.f, heat - dt * 0.7f);
+        breathPh += dt * (0.3f + 1.4f * heat);   // a slow breath at rest (~3 s), panting as you fan it
+        breathPh -= std::floor(breathPh);
         cylSpin *= std::exp(-dt * 22.f);          // the cylinder clicks round to the next chamber
         bobTimer += dt * (xzSpeed > 0.5f ? xzSpeed * 0.38f : 0.8f);
     }
@@ -235,6 +237,7 @@ public:
         GunLook L;
         L.ammo = ammo; L.mag = magSeen; L.lit = motion.litCells(ammo, magSeen);
         L.flash = flash; L.heat = heat; L.cylSpin = cylSpin; L.refill = reloadShells; L.aim = aim;
+        L.breath = 0.5f + 0.5f * std::sin(breathPh * 6.2831853f);
 
         glm::vec3 fwd = cam.forward(), right = cam.right();
         glm::vec3 up = glm::normalize(glm::cross(right, fwd));
@@ -276,6 +279,7 @@ private:
     float grenadeT = 0.f, grappleT = 0.f;
     float heat = 0.f;           // the revolver's heat stripe: hotter as you fan it
     float cylSpin = 0.f;        // degrees still to turn to the next chamber
+    float breathPh = 0.f;       // the revolver's breath, 0..1 round
     int   magSeen = 8;
     std::vector<GunPart> parts; // this frame's boxes (kept: no allocation after the first)
 

@@ -98,11 +98,20 @@ GUNS = {   # name: recording, thump (from, to, s), ring Hz, gains (thump, ring)
     # The recording carries the shot - its whole crack and its own tail; the
     # thump adds weight under it and the ring a faint metallic tint in the
     # gun's pitch (the family sound), never louder than the gun itself
-    "revolver": ("revolver", (90, 50, 0.14), 520, (0.30, 0.07)),
+    "revolver": ("revolver", (75, 40, 0.20), 520, (0.40, 0.025)),  # a magnum: a deep, long thump, barely a ring
     "shotgun":  ("shotgun",  (70, 40, 0.20), 330, (0.30, 0.06)),
     "kar":      ("kar",      (80, 45, 0.18), 440, (0.28, 0.07)),
     "longshot": ("longshot", (55, 30, 0.30), 220, (0.35, 0.08)),
 }
+# Extra layers for a gun that needs more weight than the recipe gives:
+#   punch: a short low burst on the attack (the shove in your chest)
+#   boom:  a low roll after it (a heavy round going off, the room answering)
+#   clack: the cylinder indexing a moment after the shot (the mechanism)
+#   under: another recording's low end layered under it (real weight, not a sine)
+#   drive: soft saturation over the whole shot (denser, fuller)
+#   echo:  also write <name>_echo: the shot darkened and smeared, for the walls
+#          to send back (the dry shot a few ms late comb-filters: hollow)
+EXTRA = {"revolver": {"punch": 0.5, "boom": 0.12, "clack": 0.05, "under": ("longshot", 0.45, 500), "drive": 1.6, "echo": True}}
 GLOW_HZ = [520, 330, 440, 220]   # the switch chime of each gun, in its ring's pitch
 PITCH = [1.0, 0.97, 1.03]        # the three variants: the same gun, a hair lower or higher
 
@@ -120,16 +129,51 @@ def faded(x, sec=0.03):
     for i in range(n): x[len(x) - 1 - i] *= i / n
     return x
 
+def punch(dur, seed, pitch=1.0):
+    """The shove: a low sine knocked down an octave, and a burst of dark noise, both gone in tens of ms."""
+    rnd = random.Random(seed)
+    out, ph = [], 0.0
+    for i in range(n_of(dur)):
+        t = i / SR
+        f = (140 + 70 * math.exp(-t * 60)) * pitch
+        ph += 2 * math.pi * f / SR
+        out.append(math.sin(ph) * math.exp(-t * 4 / dur) + 0.6 * rnd.uniform(-1, 1) * math.exp(-t * 9 / dur))
+    return onepole_lp(out, 900)
+
+def boom(dur, seed):
+    """A low roll that swells in over 20 ms and dies away."""
+    rnd = random.Random(seed)
+    x = [rnd.uniform(-1, 1) * min(1, i / n_of(0.02)) * math.exp(-3.5 * (i / SR) / dur) for i in range(n_of(dur))]
+    return onepole_lp(onepole_lp(x, 260), 260)
+
 def shots():
     energy = {}
     for name, (rec, th, rf, (gt, gr)) in GUNS.items():
         src = load(os.path.join(SRC, rec + "_rec.wav"))
+        ex = EXTRA.get(name, {})
         for v in range(3):
             body = faded(resample(src, PITCH[v]))
-            x = mix(len(body),
-                    (1.0, 0, body),
-                    (gt, 0, thump(th[0] * PITCH[v], th[1] * PITCH[v], th[2])),
-                    (gr, n_of(0.004), ring(rf * PITCH[v], 0.12)))
+            parts = [(1.0, 0, body),
+                     (gt, 0, thump(th[0] * PITCH[v], th[1] * PITCH[v], th[2])),
+                     (gr, n_of(0.004), ring(rf * PITCH[v], 0.12))]
+            if "punch" in ex: parts.append((ex["punch"], 0, punch(0.06, 11 + v, PITCH[v])))
+            if "boom" in ex:  parts.append((ex["boom"], n_of(0.01), boom(0.55, 21 + v)))
+            if "clack" in ex: parts.append((ex["clack"], n_of(0.11), ring(2100 * PITCH[v], 0.03)))
+            if "under" in ex:
+                rec2, g2, hz2 = ex["under"]
+                low = onepole_lp(onepole_lp(resample(load(os.path.join(SRC, rec2 + "_rec.wav")), PITCH[v]), hz2), hz2)
+                low = onepole_hp(onepole_hp(low, 120), 120)   # its chest, not its rumble
+                parts.append((g2 / max(1e-9, max(abs(s) for s in low)) * max(abs(s) for s in body), 0, faded(low[:n_of(0.6)], 0.15)))
+            length = max(len(p[2]) + p[1] for p in parts)
+            x = mix(length, *parts)
+            if "drive" in ex:
+                m = max(1e-9, max(abs(s) for s in x)); k = ex["drive"]
+                x = [math.tanh(k * s / m) for s in x]
+            if ex.get("echo") and v == 0:
+                e = onepole_lp(onepole_lp(x, 1400), 1400)
+                for i in range(min(len(e), n_of(0.006))): e[i] *= i / n_of(0.006)   # no crack: the wall returns a thud
+                e = mix(len(e) + n_of(0.02), (1.0, 0, e), (0.6, n_of(0.007), e), (0.4, n_of(0.013), e))
+                save(name + "_echo", e, peak=0.6)
             save(name if v == 0 else f"{name}_{v}", x, peak=0.75)   # headroom: shots stack over the music
             if v == 0: energy[name] = sum(s * s for s in x[:n_of(0.3)]) * (len(x) / SR)
     order = sorted(energy, key=energy.get)
