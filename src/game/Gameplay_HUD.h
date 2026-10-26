@@ -54,6 +54,17 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
     h.viewProj = proj * view;
     h.damageNumbers = !settings || settings->damageNumbers;
     h.finishHint = finishHint;
+    {   // attacks winding up out of sight (Gameplay_Feel.h): which way, how soon
+        h.threatCount = 0;
+        glm::vec3 fwd = player.camera.flatForward();
+        for (const auto& e : enemies) {
+            if (h.threatCount >= 6) break;
+            if (!e.targetable() || isBoss(e.type) || !unseenWindup(e, fwd)) continue;
+            glm::vec3 to = e.position - player.camera.position;
+            float ang = std::atan2(to.x, to.z) - glm::radians(player.camera.yaw + 90.f);
+            h.threats[h.threatCount++] = {ang, e.telegraphProgress()};
+        }
+    }
     h.finishKey  = gamepad::state().pad ? "R3" : binds().label(Act::INTERACT);
     if (!playerDead && !victory) ui.render(styleSystem, h);
 

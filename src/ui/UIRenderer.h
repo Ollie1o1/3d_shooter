@@ -56,6 +56,10 @@ struct HudState {
     bool  damageNumbers = true;
     float finishHint = 0.f;        // 0..1 a finisher is in reach: the crosshair says so
     std::string finishKey = "E";   // what to press for it (the FINISH binding, R3 on a pad)
+    // Attacks winding up where you can't see them: which way (as the damage indicators), how close to landing (0..1)
+    struct Threat { float angle, urgency; };
+    Threat threats[6];
+    int    threatCount = 0;
 };
 
 class UIRenderer {
@@ -199,6 +203,24 @@ public:
         drawStyleMeter(style, h.heldSource);
         drawWeaponSlots(h);
         drawCrosshair(h, cx, cy);
+
+        // Unseen wind-ups: an amber chevron out past the damage ring, closing in and burning hotter as the blow comes
+        for (int i = 0; i < h.threatCount; ++i) {
+            const auto& t = h.threats[i];
+            float u = glm::clamp(t.urgency, 0.f, 1.f);
+            float r = 150.f - 34.f * u;
+            float pulse = 0.65f + 0.35f * std::sin(hudTime * (10.f + 20.f * u));
+            glm::vec4 col = glm::mix(glm::vec4{1.f, 0.75f, 0.2f, 0.55f}, glm::vec4{1.f, 0.3f, 0.1f, 0.95f}, u);
+            col.a *= pulse;
+            for (int k = -3; k <= 3; ++k) {   // a chevron: two arms meeting at the point toward it
+                float side = (float)std::abs(k);
+                float ak = t.angle + k * 0.035f;
+                float rr = r - side * 5.f;
+                float ix = cx + std::sin(ak) * rr, iy = cy - std::cos(ak) * rr;
+                float sz = 9.f - side * 0.7f + 3.f * u;
+                ui.rect(ix - sz * 0.5f, iy - sz * 0.5f, sz, sz, col);
+            }
+        }
 
         // Damage direction indicators
         for (int i = 0; i < damageIndicatorCount; ++i) {

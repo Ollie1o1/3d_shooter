@@ -751,6 +751,10 @@ public:
     void  enterOverdrive();
     void  leaveOverdrive();
     void  updateFeel(float dt);
+    // UNSEEN WIND-UPS: a regular enemy out of view (or behind cover you can't see round) starting an
+    // attack gets a chevron at the screen's edge and a tick from where it is
+    bool  unseenWindup(const Enemy& e, glm::vec3 flatFwd) const;
+    float threatTickCd = 0.f;
     // MOVEMENT INTO COMBAT: the grapple hooks enemies (light ones are yanked to you,
     // stunned; you zip to heavy ones), a slide kicks what it runs into, a slam
     // hits harder the further it fell, kills in the air score more

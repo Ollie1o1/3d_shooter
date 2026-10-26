@@ -200,6 +200,7 @@ inline void GameplayState::playVoice(const VoiceCue& c) {
 
 inline void GameplayState::updateEnemies(float dt) {
     voices.begin(player.camera.position, dt);
+    threatTickCd = std::max(0.f, threatTickCd - dt);
     beamHissCd -= dt;
     shieldClankCd -= dt;
     const Arena& ar = level.arenas[director.arena];
@@ -262,6 +263,10 @@ inline void GameplayState::updateEnemies(float dt) {
             fx.spawnBurst(e.position + glm::vec3{0, e.height() * 0.6f, 0}, {1.f, 0.3f, 0.1f}, 2, 1.5f, 0.6f, -2.f);
         const float eScale = dmgScale * e.damageMult();   // ENRAGED hits harder
         const EnemyEvents ev = e.ev;   // copy: spawning below may reallocate
+        if (ev.telegraphStarted && !isBoss(e.type) && threatTickCd <= 0.f && unseenWindup(e, player.camera.flatForward())) {   // behind you: a tick from where it is
+            threatTickCd = 0.25f;
+            audio.playAt("telegraph", e.position + glm::vec3{0.f, e.height() * 0.7f, 0.f}, 110, SoundGroup::ENEMY, true, 0.6f);
+        }
         if (e.alive) voices.enemy(voiceIn(e, &ev));
         glm::vec3 epos = e.position;
 
