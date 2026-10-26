@@ -28,6 +28,7 @@ inline void GameplayState::bodyHit(const Enemy& e, glm::vec3 at, float push, boo
 // Its footing breaks: the attack it was winding up is gone
 inline void GameplayState::onStunned(Enemy& e, glm::vec3 at) {
     ++runLog.stuns;
+    teach(TEACH_STUN);
     const bool heavy = hitreact::bodyOf(e.type).heavy;
     fx.spawnBurst(at, {1.f, 0.85f, 0.45f}, heavy ? 26 : 12, heavy ? 8.f : 5.f, 0.3f, 12.f);
     fx.spawnBurst(e.position + glm::vec3{0.f, e.height() + 0.2f, 0.f}, e.stats().glow, 8, 2.5f, 0.45f, -3.f);   // its eyes sparking out
@@ -149,6 +150,7 @@ inline bool GameplayState::finishKey() {
 // ---- OVERDRIVE -------------------------------------------------------------------
 inline void GameplayState::enterOverdrive() {
     ++runLog.overdrives;
+    teach(TEACH_OVERDRIVE);
     ui.onOverdrive();
     audio.play("overdrive_on", 128, SoundGroup::UI);
     audio.duck(6.f, 0.5f);
@@ -183,6 +185,12 @@ inline void GameplayState::updateFeel(float dt) {
     float hint = fi >= 0 ? 1.f : 0.f;
     finishHint += (hint - finishHint) * (1.f - std::exp(-dt * 18.f));
     finishCueCd = std::max(0.f, finishCueCd - dt);
+    if (fi >= 0) teach(TEACH_FINISH);
+    static bool devTaught = false;
+    if (g_devOverlay.rfind("teach", 0) == 0 && elapsedTime > 1.5f && !devTaught) {
+        devTaught = true;
+        if (g_devOverlay == "teach2") { teach(TEACH_HOOK); teach(TEACH_ALT); } else { teach(TEACH_FINISH); teach(TEACH_OVERDRIVE); }
+    }
     if (fi >= 0 && enemies[fi].uid != finishReadyUid && finishCueCd <= 0.f) {   // a new one in reach: a soft, low cue
         finishReadyUid = enemies[fi].uid; finishCueCd = 0.5f;
         audio.playAt("finish_ready", enemies[fi].position + glm::vec3{0.f, enemies[fi].height() * 0.6f, 0.f}, 100, SoundGroup::UI, true);
@@ -347,5 +355,23 @@ inline void GameplayState::altFire() {
         doubleShot = ws.ammo >= 2 || overdriveOn();
         fireWeapon(activeWeapon);
         doubleShot = false;
+    }
+}
+
+// ---- teaching --------------------------------------------------------------------------
+// The first time a move comes up: one small card at the left edge, then never again
+inline void GameplayState::teach(int bit) {
+    const bool dev = g_devOverlay.rfind("teach", 0) == 0;   // dev: --overlay teach / teach2: the cards, every time (screenshots)
+    if (!dev && (!settings || (settings->taught & bit) || g_devNoMouse || fast())) return;
+    if (!dev) { settings->taught |= bit; settings->save(); }
+    const Bindings& kb = binds();
+    const glm::vec3 c{1.f, 0.65f, 0.25f};
+    switch (bit) {
+        case TEACH_FINISH:    ui.introduce("FINISHER", kb.label(Act::INTERACT) + " ON A GLOWING ENEMY - HEALTH BACK, GUN RELOADED", c, "NEW MOVE"); break;
+        case TEACH_STUN:      ui.introduce("STAGGER", "HITS CLOSE TOGETHER BREAK ITS ATTACK", c, "NEW MOVE"); break;
+        case TEACH_OVERDRIVE: ui.introduce("OVERDRIVE", "HARDER, FASTER, NO RELOADS - KILLS KEEP IT BURNING", c, "NEW MOVE"); break;
+        case TEACH_HOOK:      ui.introduce("GRAPPLE AN ENEMY", kb.label(Act::GRAPPLE) + " - LIGHT ONES COME TO YOU, YOU GO TO HEAVY ONES", c, "NEW MOVE"); break;
+        case TEACH_ALT:       ui.introduce("ALT FIRE", "RMB - THE REVOLVER FANS ITS HAMMER, THE SHOTGUN FIRES BOTH BARRELS", c, "NEW MOVE"); break;
+        default: break;
     }
 }
