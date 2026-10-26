@@ -876,6 +876,56 @@ def gen_hit_armor():
     return out
 
 
+# ---- surfaces and moments (Gameplay_Tick.h) ----
+def _read(name):
+    """A sound already in assets/sfx (mono 16-bit), as floats: the recorded steps are built on."""
+    w = wave.open(os.path.join(OUT_DIR, name + ".wav"))
+    raw = w.readframes(w.getnframes())
+    return [v / 32768.0 for v in struct.unpack("<%dh" % w.getnframes(), raw)]
+
+
+def _metal_ring(n, f, amp, decay):
+    return [(sine(f, i) + 0.6 * sine(f * 2.41, i) + 0.35 * sine(f * 3.93, i)) * amp * math.exp(-(i / SR) * decay) for i in range(n)]
+
+
+def _step_metal(src, f):
+    """A boot on a steel plate: the recorded step, a hollow knock under it and the plate ringing."""
+    step = _read(src)
+    n = len(step) + n_samples(0.12)
+    ring = _metal_ring(n, f, 0.18, 26.0)
+    knock = [sine(190, i) * math.exp(-(i / SR) * 40.0) * 0.35 for i in range(n)]
+    return mix(step + [0.0] * (n - len(step)), ring, knock)
+
+
+def gen_step_metal():   return _step_metal("step1", 610)
+def gen_step_metal_1(): return _step_metal("step2", 680)
+def gen_step_metal_2(): return _step_metal("step3", 560)
+
+
+def gen_land_metal():
+    """Landing on metal: the land thump with a big plate clang over it."""
+    land = _read("land")
+    n = len(land) + n_samples(0.35)
+    ring = _metal_ring(n, 430, 0.32, 9.0)
+    clank = [white() * math.exp(-(i / SR) * 300.0) * 0.4 for i in range(n)]
+    return mix(land + [0.0] * (n - len(land)), ring, clank)
+
+
+def gen_lastkill():
+    """The last of a wave falls: a deep slowed boom and a low swell that draws in under it."""
+    n = n_samples(1.3)
+    rumble = lowpass([white() for _ in range(n)], 160)
+    out, ph = [], 0.0
+    for i in range(n):
+        t = i / SR
+        f = 55 * math.exp(-t * 1.2) + 30
+        ph += 2 * math.pi * f / SR
+        boom = math.sin(ph) * math.exp(-t * 2.6)
+        swell = sine(110, i) * 0.25 * math.sin(math.pi * min(1.0, t / 1.3)) * math.exp(-t * 1.5)
+        out.append(boom * 0.9 + rumble[i] * math.exp(-t * 3.0) * 1.2 + swell)
+    return out
+
+
 GENERATORS = {
     "jump": gen_jump,
     "land": gen_land,
@@ -934,6 +984,9 @@ GENERATORS = {
     "casing": gen_casing, "casing_1": gen_casing_1, "casing_2": gen_casing_2,
     "whiz": gen_whiz, "whiz_1": gen_whiz_1,
     "hit_armor": gen_hit_armor,
+    "step_metal": gen_step_metal, "step_metal_1": gen_step_metal_1, "step_metal_2": gen_step_metal_2,
+    "land_metal": gen_land_metal,
+    "lastkill": gen_lastkill,
 }
 
 from sfx_absolute import ABSOLUTE_GENERATORS  # THE ABSOLUTE's (tools/sfx_absolute.py)

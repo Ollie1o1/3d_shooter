@@ -454,6 +454,7 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
     if (killed) {
         onEnemyKilled(e, src);
         hitStopFrames = glm::max(hitStopFrames, isBoss(e.type) ? 12 : crit ? 3 : 2);
+        if (src != StyleSource::FRIENDLY) camFeel.punch(crit ? 32.f : 14.f, 0.f, frand(-1.f, 1.f) * (crit ? 22.f : 10.f));   // the kill lands in your hands
         if (!isBoss(e.type))   // a kill confirm that says what did it (bosses have their own deaths)
             if (const char* tag = killTag(src)) audio.play(tag, crit ? 85 : 70, SoundGroup::UI);
     }
@@ -543,7 +544,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
             fx.spawnExplosionParticles(e.position + glm::vec3{frand(-1.5f,1.5f), frand(1.f,4.f), frand(-1.5f,1.5f)}, 4.f);
         explosionFlashTimer = 0.35f; explosionFlashPos = e.position + glm::vec3{0, 2.f, 0};
         shake(1.0f, 0.12f);
-        audio.playAt("explosion", e.position + glm::vec3{0, 2.f, 0}, 128, SoundGroup::WORLD, true);
+        playBoom("explosion", e.position + glm::vec3{0, 2.f, 0}, 128, SoundGroup::WORLD, true);
         if (e.type == EnemyType::SOVEREIGN) {
             for (int k = 0; k < 6; ++k)
                 fx.spawnBurst(e.position + glm::vec3{frand(-1.f, 1.f), frand(0.5f, 3.5f), frand(-1.f, 1.f)},
@@ -592,7 +593,7 @@ inline void GameplayState::processBlasts() {
         fx.spawnExplosionParticles(b.pos, b.radius);
         shake(0.3f, 0.06f);
         explosionFlashTimer = 0.35f; explosionFlashPos = b.pos;
-        audio.playAt("explosion", b.pos, 128, SoundGroup::WORLD);
+        playBoom("explosion", b.pos, 128, SoundGroup::WORLD);
         for (int si = (int)relic.souls.size() - 1; si >= 0; --si)   // a blast catches a fleeing soul
             if (glm::length(relic.souls[si].pos - b.pos) < b.radius && relic.hurtSoul(si, b.damage)) ui.feed("SOUL TAKEN", {0.75f, 0.9f, 1.3f});
         for (int wi = (int)relic.wires.size() - 1; wi >= 0; --wi)    // ...and cuts any wire whose node it reaches

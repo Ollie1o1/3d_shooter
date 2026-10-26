@@ -38,7 +38,7 @@ inline void GameplayState::onWardenEvents(Enemy& e, const EnemyEvents& ev) {
         glm::vec3 c = e.position + glm::vec3{0.f, 2.f, 0.f};
         fx.spawnExplosionParticles(c, 12.f); explosionFlashTimer = 0.4f; explosionFlashPos = c;
         shake(0.9f, 0.09f);
-        audio.playAt("explosion", c, 128, SoundGroup::WORLD, true, 0.6f);
+        playBoom("explosion", c, 128, SoundGroup::WORLD, true, 0.6f);
         float dmg = WardenHazards::DETONATE_DAMAGE * scale;
         float cap = std::max(styleSystem.health - 1.f, 0.f);   // a setback, never the killing blow
         dmg = std::min(dmg, cap);

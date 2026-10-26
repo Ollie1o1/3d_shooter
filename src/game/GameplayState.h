@@ -26,6 +26,7 @@
 #include "render/ViewModel.h"
 #include "render/CameraFeel.h"
 #include "world/Interactable.h"
+#include "world/Stuck.h"
 #include "core/Settings.h"
 #include "ui/SettingsMenu.h"
 #include "render/TextureGen.h"
@@ -226,6 +227,17 @@ public:
     float heartT  = 0.f;   // seconds since the last heartbeat
     float heartPulse = 0.f;
     float windFx  = 0.f;   // 0..1 the air rushing past (AudioSystem::setWind)
+    float embeddedT = 0.f;          // how long the body has been inside something solid
+    glm::vec3 safeGround{0.f};      // the last firm ground stood on (keepPlayerInZone: unstuck)
+    bool  hasSafeGround = false;
+    static constexpr float SLOW_TIME = 0.65f;   // a wave's last kill: real seconds of slow motion
+    float slowT = 0.f;                          // counting down; time runs at timeScale() meanwhile
+    float timeScale() const {                   // a quarter speed, easing back to full
+        if (slowT <= 0.f) return 1.f;
+        float u = 1.f - slowT / SLOW_TIME;
+        return 0.25f + 0.75f * u * u * (3.f - 2.f * u);
+    }
+    float ropeFx = 0.f;                         // 0..1 the grapple's rope singing (AudioSystem::setRope)
     glm::vec2 lookDelta{0.f};   // degrees of mouse / stick look this frame (yaw, pitch): the gun's sway
 
     float muzzleFlashTimer = 0.f;
@@ -569,6 +581,9 @@ public:
     void updateScreenFx(float dt);
     void shootInput();
     void whizPast();
+    bool onMetal() const;
+    void waveEnded();
+    void playBoom(const char* name, glm::vec3 at, int volume = 128, SoundGroup g = SoundGroup::WORLD, bool priority = false, float floor = 0.f);
     float wallAlong(glm::vec3 origin, glm::vec3 dir, float range) const;
     void shotEchoes(const char* sound, float loud);
     void flushHitSounds();

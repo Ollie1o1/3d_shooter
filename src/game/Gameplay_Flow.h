@@ -140,7 +140,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
 
 inline GameplayState::~GameplayState() {
     audio.setMuffle(0.f);   // back to the menu: the world isn't dull any more
-    audio.setWind(0.f);
+    audio.setWind(0.f); audio.setRope(0.f);
     glDeleteTextures(1,&whiteTex);
     glDeleteTextures(TEX_COUNT, worldTex);
     if (tracerVAO)   glDeleteVertexArrays(1, &tracerVAO);
@@ -245,6 +245,7 @@ inline void GameplayState::resetPlayer(glm::vec3 start) {
     activeWeapon = 0; pendingWeapon = -1; weaponSwitchTimer = 0.f;
     recoilPitch = 0.f; peakFallSpeed = 0.f; fovKick = 0.f; camFeel.reset();
     dashFx = speedFx = lowFx = heartT = heartPulse = windFx = 0.f; audio.setMuffle(0.f); audio.setWind(0.f);
+    hasSafeGround = false; embeddedT = 0.f; slowT = 0.f; ropeFx = 0.f; audio.setRope(0.f);
     paused = false; pauseSettings = false; pauseSelected = 0; armoryOpen = false;
     ui.clearIndicators();
 }
@@ -644,6 +645,10 @@ inline void GameplayState::updateScreenFx(float dt) {
     float wantWind = glm::clamp((spd - 9.f) / 32.f, 0.f, 1.f);
     windFx += (wantWind - windFx) * (1.f - std::exp(-dt * (wantWind > windFx ? 6.f : 3.f)));
     audio.setWind(playerDead ? 0.f : windFx);
+    // The rope singing while the grapple pulls: higher the faster it drags you
+    float wantRope = grapple.active ? glm::clamp(spd / 38.f, 0.15f, 1.f) : 0.f;
+    ropeFx += (wantRope - ropeFx) * (1.f - std::exp(-dt * (wantRope > ropeFx ? 14.f : 9.f)));
+    audio.setRope(playerDead ? 0.f : ropeFx);
 }
 
 inline void GameplayState::update(float dt) {
@@ -665,7 +670,7 @@ inline void GameplayState::update(float dt) {
         accumulator = 0.0;
         if (playerDead) deadTimer += dt;
         if (victory) audio.setMuffle(0.f);
-        audio.setWind(0.f);   // paused, dead or won: no air moving
+        audio.setWind(0.f); audio.setRope(0.f);   // paused, dead or won: no air moving
         if (countdown > 0.f && !frozen) {
             float before = countdown;
             countdown -= dt;
@@ -686,7 +691,8 @@ inline void GameplayState::update(float dt) {
     double elapsed = g_fixedDt > 0.0 ? g_fixedDt : (double)(now - prevTicks) / (double)freq;
     prevTicks = now;
     if (g_devCam && g_devNoMouse) devCamera((float)elapsed);
-    accumulator += elapsed;
+    accumulator += elapsed * timeScale();   // (a wave's last kill: slow motion)
+    if (slowT > 0.f) slowT -= (float)elapsed;
     if (accumulator > 0.25) accumulator = 0.25;
 
     // Your bindings, read as the default keys the game knows (Bindings.h)
@@ -801,7 +807,7 @@ inline void GameplayState::update(float dt) {
     if (styleSystem.style > peakStyle) peakStyle = styleSystem.style;
 
     frametimer::Lap ftFx;
-    fx.updateParticles(floatDt);
+    fx.updateParticles(floatDt * timeScale());
     fx.spawnAmbientParticles(level, player.position, fast(), floatDt);
     for (auto& p : projSystem.pool) {           // projectile trails
         if (!p.alive) continue;
@@ -811,8 +817,8 @@ inline void GameplayState::update(float dt) {
         q->color = p.emissiveColor * 0.8f; q->gravity = 0.f;
         q->maxLife = q->life = 0.22f; q->alive = true;
     }
-    fx.updateDebris(floatDt);
-    fx.updateRings(floatDt);
+    fx.updateDebris(floatDt * timeScale());
+    fx.updateRings(floatDt * timeScale());
     ftFx.to(frametimer::EFFECTS);
 
     // Point light 0: explosion or muzzle flash. 1..3: nearest enemy shots.

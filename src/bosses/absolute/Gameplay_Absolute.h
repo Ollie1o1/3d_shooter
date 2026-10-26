@@ -220,7 +220,7 @@ inline void GameplayState::updateAbsolute(float dt) {
             level.parkZenithPiece(false, k);
             pillarFallT[k] = 0.f;
             fx.spawnBurst(p + glm::vec3{0.f, 7.f, 0.f}, {0.9f, 0.88f, 0.85f}, 80, 12.f, 1.2f, 14.f);
-            audio.playAt("explosion", p, 128, SoundGroup::WORLD);
+            playBoom("explosion", p, 128, SoundGroup::WORLD);
             shake(0.3f, 0.05f);
         }
     // A serpent within reach of a parry: the punch's, or the sword's window

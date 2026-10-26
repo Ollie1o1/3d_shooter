@@ -69,7 +69,7 @@ SRC     := src/main.cpp
 HEADERS := $(shell find src -name '*.h')
 TESTS   := tests/test_physics.cpp tests/test_game.cpp tests/test_zenith.cpp tests/BossSim.h
 
-.PHONY: all clean run test web
+.PHONY: all clean run test web scan
 
 all: $(TARGET)
 
@@ -89,6 +89,11 @@ test: $(TESTS) $(HEADERS)
 	./tests/test_game
 	$(CXX) $(CXXFLAGS) tests/test_zenith.cpp -o tests/test_zenith $(STDLIB)
 	./tests/test_zenith
+
+# Every arena's traps: places you could stand and not get back from by yourself (tests/BoundsScan.h)
+scan: tests/scan_bounds.cpp tests/BoundsScan.h $(HEADERS)
+	$(CXX) $(CXXFLAGS) tests/scan_bounds.cpp -o tests/scan_bounds $(STDLIB)
+	./tests/scan_bounds
 
 # Browser build (WebGL2 + WebAssembly) → web/dist. Needs Emscripten on PATH:
 #   source ~/emsdk/emsdk_env.sh && make web && python3 -m http.server -d web/dist

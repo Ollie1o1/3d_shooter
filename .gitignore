@@ -52,3 +52,4 @@ __pycache__/
 
 # Editor (clangd) flags: machine-specific paths
 compile_flags.txt
+tests/scan_bounds

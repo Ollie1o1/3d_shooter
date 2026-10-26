@@ -121,6 +121,8 @@ public:
     void setMuffle(float m) { muffle.store(std::max(0.f, std::min(1.f, m)), std::memory_order_relaxed); }
     // 0..1: the rush of air past you (fast falls, the grapple, a dash), made in the callback
     void setWind(float w) { wind.store(std::max(0.f, std::min(1.f, w)), std::memory_order_relaxed); }
+    // 0..1: the grapple's rope singing under load, made in the callback with the wind
+    void setRope(float r) { rope.store(std::max(0.f, std::min(1.f, r)), std::memory_order_relaxed); }
 
     // --audiodump FILE SECONDS: capture the final mix, written as a 16-bit WAV
     void startDump(const std::string& path, float seconds) {
@@ -156,6 +158,8 @@ private:
     std::atomic<bool> dumping{false};
     std::atomic<float> muffle{0.f};
     std::atomic<float> wind{0.f};
+    std::atomic<float> rope{0.f};
+    float ropeNow = 0.f, ropePh = 0.f, ropePh2 = 0.f, ropeLP = 0.f;   // audio thread only
     float windNow = 0.f, wL1 = 0.f, wL2 = 0.f, wR1 = 0.f, wR2 = 0.f, gustPh = 0.f; uint32_t windRng = 0x1234567u;   // audio thread only
     float muffleNow = 0.f, lpL = 0.f, lpR = 0.f;   // audio thread only
 #if HAS_SDL_MIXER
@@ -203,9 +207,31 @@ private:
         sfx.addSound(name, std::move(mono));
     }
 
+    // Audio thread: the rope. A taut line humming: two slightly detuned tones that
+    // climb with the pull, a little bowed grit on them, softened by a low-pass
+    void addRope(float* buf, int frames) {
+        float target = rope.load(std::memory_order_relaxed) * masterVolume;
+        if (target < 0.001f && ropeNow < 0.001f) { ropeNow = 0.f; return; }
+        float step = (target - ropeNow) / (float)std::max(1, frames);
+        const float twoPi = 6.2831853f, k = 1.f - std::exp(-twoPi * 1800.f / (float)outRate);
+        for (int f = 0; f < frames; ++f) {
+            ropeNow += step;
+            float hz = 150.f + 330.f * ropeNow;
+            ropePh += hz / (float)outRate; ropePh2 += hz * 1.007f / (float)outRate;
+            ropePh -= std::floor(ropePh); ropePh2 -= std::floor(ropePh2);
+            windRng ^= windRng << 13; windRng ^= windRng >> 17; windRng ^= windRng << 5;
+            float grit = (float)(windRng & 0xFFFF) / 32768.f - 1.f;
+            float saw = (2.f * ropePh - 1.f) * 0.6f + std::sin(twoPi * ropePh2) * 0.5f;
+            ropeLP += k * (saw * (1.f + 0.25f * grit) - ropeLP);
+            float v = ropeLP * ropeNow * 0.05f;
+            buf[2 * f] += v; buf[2 * f + 1] += v;
+        }
+    }
+
     // Audio thread: wind. Noise through a band that opens with speed (a low roar
     // that brightens into a hiss), separate noise per ear, a slow gust in it
     void addWind(float* buf, int frames) {
+        addRope(buf, frames);
         float target = wind.load(std::memory_order_relaxed) * masterVolume;
         if (target < 0.001f && windNow < 0.001f) { windNow = 0.f; return; }
         float step = (target - windNow) / (float)std::max(1, frames);
