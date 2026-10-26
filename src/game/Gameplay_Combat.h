@@ -446,7 +446,7 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
         styleSystem.addStyle(style, src);
         styleSystem.heal(heal * tune().heal);
     }
-    if (!friendly) { ++hitSoundCount; hitSoundCrit |= crit; }   // played once at the tick's end (physicsTick)
+    if (!friendly) { ++hitSoundCount; hitSoundCrit |= crit; hitSoundArmor |= !pierceArmor && e.armorMult() < 0.99f; }   // played once (flushHitSounds)
     if (!e.stats().flying && e.type != EnemyType::LEVIATHAN) fx.spawnDecal(e.position);
     fx.spawnHitSparks(at, e.stats().color * 1.4f);
     if (!friendly) ui.onHit(killed, crit);
@@ -723,6 +723,47 @@ inline void GameplayState::startReload(int w) {
     if (w == activeWeapon) viewModel.triggerReload(weapons[w].reloadTotal, mag - weapons[w].ammo, weapons[w].ammo, mag);
 }
 
+// The nearest wall (or the floor) along a ray, walls only: the echo probes and
+// where a round stops. -1: nothing within range
+inline float GameplayState::wallAlong(glm::vec3 origin, glm::vec3 dir, float range) const {
+    float best = range;
+    for (auto& w : level.walls) {
+        float t = rayBoxHit(origin, dir, w.box);
+        if (t > 0.f && t < best) best = t;
+    }
+    if (dir.y < -1e-3f) {   // the hard floor under you
+        float t = (level.baseFloor(origin.x, origin.z) - origin.y) / dir.y;
+        if (t > 0.f && t < best) best = t;
+    }
+    return best < range ? best : -1.f;
+}
+
+// The room answers a shot: the walls near you send it back, each from its own
+// side, as late as sound takes to get there and back (2d / 343 m/s) and quieter
+// the further it went. A corridor slaps, a yard gives almost nothing.
+inline void GameplayState::shotEchoes(const char* sound, float loud) {
+    glm::vec3 o = player.camera.position, f = player.camera.flatForward();
+    glm::vec3 r = glm::normalize(glm::cross(f, glm::vec3{0, 1, 0}));
+    const glm::vec3 dirs[6] = {r, -r, f, -f, glm::normalize(r + f), glm::normalize(-r + f)};
+    struct Echo { glm::vec3 at; float d; };
+    Echo found[6]; int n = 0;
+    for (const auto& d : dirs) {
+        float t = wallAlong(o, d, 45.f);
+        if (t > 1.5f) found[n++] = {o + d * t * 0.95f, t};
+    }
+    std::sort(found, found + n, [](const Echo& a, const Echo& b) { return a.d < b.d; });
+    float up = wallAlong(o, {0.f, 1.f, 0.f}, 30.f);   // a ceiling over you: a closed room rings more
+    float roof = up > 0.f ? 1.25f : 1.f;
+    for (int i = 0; i < std::min(n, 3); ++i) {
+        SfxMixer::Opts e;
+        e.volume = loud * 0.42f * roof * (1.f - found[i].d / 50.f) * (i == 0 ? 1.f : 0.7f);
+        e.group = SoundGroup::WORLD; e.positional = true; e.pos = found[i].at;
+        e.delay = 2.f * found[i].d / 343.f;
+        e.pitch = 0.94f - 0.02f * i;   // the wall takes the top off
+        audio.playOpts(sound, e);
+    }
+}
+
 inline void GameplayState::fireWeapon(int w) {
     WeaponId id = (WeaponId)w;
     const WeaponDef& d = weaponDef(id);
@@ -790,6 +831,12 @@ inline void GameplayState::fireWeapon(int w) {
             }
         }
         float endT = n > 0 && n == pierce + 1 ? hits[n - 1].t : wallT;
+        if (n < pierce + 1 && endT < d.range - 0.1f) {   // it stopped on a wall: sparks, dust, a crack off the surface
+            glm::vec3 at = origin + dir * (endT - 0.05f);
+            fx.spawnBurst(at, {1.f, 0.85f, 0.55f}, sniper ? 8 : 3, sniper ? 7.f : 4.f, 0.18f, 14.f);
+            fx.spawnBurst(at, {0.55f, 0.5f, 0.46f}, sniper ? 6 : 2, 1.5f, 0.6f, -1.f);
+            if (p < 2) audio.playAt("impact", at, sniper ? 115 : pellets > 1 ? 70 : 90, SoundGroup::WORLD);
+        }
         fx.spawnTracer(origin + dir * 0.25f - up * 0.08f, origin + dir * endT, sniper ? 0.09f : 0.055f, sniper ? 0.35f : 0.22f,
                        glm::mix(glm::vec3{1.f}, gunkit::glowOf(w), 0.6f));   // the gun's colour
         for (int k = 0; k < n; ++k) {
@@ -888,6 +935,15 @@ inline void GameplayState::fireWeapon(int w) {
     shake(sniper ? 0.14f : pellets > 1 ? 0.12f : 0.06f, sniper ? 0.03f : pellets > 1 ? 0.025f : 0.012f);
     static const char* SND[] = {"revolver", "shotgun", "kar", "longshot"};
     audio.play(SND[w], 128, SoundGroup::PLAYER, true);
+    shotEchoes(SND[w], sniper ? 1.f : pellets > 1 ? 0.9f : 0.75f);
+    {   // the spent brass lands a moment later, by your feet (on the ground: higher up, a long way down)
+        SfxMixer::Opts c; c.group = SoundGroup::WORLD; c.positional = true;
+        c.pos = player.position + right * 0.6f + glm::vec3{0.f, 0.05f, 0.f};
+        c.delay = player.onGround ? frand(0.34f, 0.46f) : 0.75f;
+        c.volume = player.onGround ? 0.5f : 0.3f;
+        c.pitch = pellets > 1 ? 0.62f : sniper ? 0.85f : 1.f;   // a shotgun shell is a duller, plastic tock
+        audio.playOpts("casing", c);
+    }
     ++totalShots;
     if (anyHit) ++totalHits;
     fx.spawnShellCasing(origin, right, gunkit::glowOf(w));

@@ -194,6 +194,7 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
         float sens = (settings ? settings->sensitivity : 0.1f) * aimSensScale();
         if (settings && settings->invertY) dy = -dy;
         player.applyMouseLook(dx, dy, sens);
+        lookDelta += glm::vec2{dx * sens, -dy * sens};
     }
 }
 

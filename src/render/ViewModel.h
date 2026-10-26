@@ -78,6 +78,7 @@ public:
         SwordPose P = swordShown;
         float calm = swordStroke < 0 && !s.blocking() ? 1.f : 0.f;   // a slow breath on it at rest
         P.hand += calm * glm::vec3{std::sin(bobTimer * 1.3f) * 0.004f, std::sin(bobTimer * 0.9f) * 0.006f, 0.f};
+        { glm::vec3 o{0.f}; float pi = 0.f, ya = 0.f, ro = 0.f; applySway(o, pi, ya, ro, 0.f); P.hand += o * 1.4f; }   // (the blade sways with the hand)
         glm::vec3 fwd = cam.forward(), right = cam.right(), up = glm::normalize(glm::cross(right, fwd));
         glm::mat4 base(1.f);
         base[0] = glm::vec4(right, 0.f); base[1] = glm::vec4(up, 0.f); base[2] = glm::vec4(fwd, 0.f);
@@ -159,6 +160,49 @@ public:
     void land(float fallSpeed) { motion.land(fallSpeed); }
     std::vector<GunCue> takeCues() { std::vector<GunCue> c; c.swap(motion.cues); return c; }
 
+    // ---- Sway (every frame, GameplayState::update): the gun is left behind by a turn
+    // and swings past a little when you stop, leans into a strafe, pulls in at a
+    // sprint, and bobs with the same stride as the camera (CameraFeel)
+    glm::vec2 swayX{0.f}, swayV{0.f};      // yaw, pitch lag (degrees) and their speed
+    float leanRoll = 0.f, leanX = 0.f, pullZ = 0.f;
+    float stridePh = 0.f, strideAmt = 0.f;
+    // Down the sights: a small tip into a strafe (visual only: the shot goes where you aim)
+    float leanSide = 0.f;                       // -1 strafing left .. 1 right, eased
+    static constexpr float ADS_LEAN = 3.5f;     // degrees at a full strafe
+    static constexpr float SWAY_PER_DPS = 0.011f, SWAY_MAX = 5.5f;   // degrees of lag per degree/s of turn, capped
+    void feel(float dt, glm::vec2 lookDeg, float lateral, float forward, float stridePhase, float bobAmt) {
+        if (dt <= 0.f) return;
+        glm::vec2 rate = lookDeg / dt;
+        glm::vec2 target = glm::clamp(-rate * SWAY_PER_DPS, glm::vec2(-SWAY_MAX), glm::vec2(SWAY_MAX));
+        const float W = 13.f, Z = 0.62f, H = 1.f / 480.f;   // a little under critical: it swings past, once
+        for (float t = dt; t > 1e-6f; t -= H) {
+            float h = std::min(t, H);
+            swayV += (W * W * (target - swayX) - 2.f * Z * W * swayV) * h;
+            swayX += swayV * h;
+        }
+        float k = 1.f - std::exp(-dt * 10.f);
+        float side = glm::clamp(lateral / 7.f, -1.5f, 1.5f);
+        leanRoll += (-side * 2.6f - leanRoll) * k;   // the top of the gun tips into the strafe
+        leanX    += (-side * 0.009f - leanX) * k;
+        pullZ    += (-glm::clamp((forward - 7.f) / 15.f, 0.f, 1.f) * 0.025f - pullZ) * k;
+        stridePh = stridePhase; strideAmt = bobAmt;
+        leanSide += (glm::clamp(lateral / 7.f, -1.f, 1.f) - leanSide) * (1.f - std::exp(-dt * 8.f));
+    }
+    // What the sway adds to a pose (aim: 0 hip .. 1 aimed: almost none down the sights)
+    void applySway(glm::vec3& offset, float& pitch, float& yaw, float& roll, float aim) const {
+        float h = 1.f - 0.85f * aim;
+        // Down the sights: the gun tips into a strafe (its own lean: the hip lean above fades out when aimed)
+        float a = aim * aim * (3.f - 2.f * aim);
+        roll     -= leanSide * ADS_LEAN * a;   // (- roll tips the top of the gun to the right)
+        offset.x += leanSide * 0.0025f * a;
+        yaw   += swayX.x * h;
+        pitch += -swayX.y * h;
+        roll  += (leanRoll + swayX.x * 0.6f + std::sin(stridePh) * 0.9f * strideAmt) * h;
+        offset += glm::vec3{leanX - swayX.x * 0.0018f + std::sin(stridePh) * 0.007f * strideAmt,
+                            swayX.y * 0.0015f - (1.f - std::fabs(std::sin(stridePh))) * 0.009f * strideAmt,
+                            pullZ} * h;
+    }
+
     void update(float dt, float xzSpeed, bool /*onGround*/) {
         motion.update(dt);
         parryTimer = std::max(0.f, parryTimer - dt);
@@ -186,6 +230,7 @@ public:
             float o = fistAt(parryU(), parryHit).out;
             P.offset += glm::vec3{0.03f, -0.045f, -0.04f} * o; P.roll += 7.f * o; P.yaw += 4.f * o;
         }
+        applySway(P.offset, P.pitch, P.yaw, P.roll, aim);
 
         GunLook L;
         L.ammo = ammo; L.mag = magSeen; L.lit = motion.litCells(ammo, magSeen);

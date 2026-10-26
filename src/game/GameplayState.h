@@ -214,6 +214,7 @@ public:
     // Hit sounds this tick, played once at its end (ten pellets: one sound, not ten)
     int  hitSoundCount = 0;
     bool hitSoundCrit  = false;
+    bool hitSoundArmor = false;
     static constexpr float HEAVY_LAND = 15.f;   // fall speed (m/s) for the heavy landing
     float landFall   = 0.f;   // the fall speed of the last landing
     bool  slidePrev  = false;
@@ -224,6 +225,8 @@ public:
     float lowFx   = 0.f;   // 0 above 35 % health .. 1 at 8 %, eased
     float heartT  = 0.f;   // seconds since the last heartbeat
     float heartPulse = 0.f;
+    float windFx  = 0.f;   // 0..1 the air rushing past (AudioSystem::setWind)
+    glm::vec2 lookDelta{0.f};   // degrees of mouse / stick look this frame (yaw, pitch): the gun's sway
 
     float muzzleFlashTimer = 0.f;
     glm::vec3 muzzleFlashPos{0.f};
@@ -565,6 +568,9 @@ public:
     void shake(float t, float amount);
     void updateScreenFx(float dt);
     void shootInput();
+    void whizPast();
+    float wallAlong(glm::vec3 origin, glm::vec3 dir, float range) const;
+    void shotEchoes(const char* sound, float loud);
     void flushHitSounds();
 
     // =========================================================================

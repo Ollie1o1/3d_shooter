@@ -119,6 +119,8 @@ public:
     void duck(float dB, float seconds) { if (initialized) sfx.duck(dB, seconds); }
     // 0..1: how much of the whole mix goes through a low-pass (low health: the world goes dull)
     void setMuffle(float m) { muffle.store(std::max(0.f, std::min(1.f, m)), std::memory_order_relaxed); }
+    // 0..1: the rush of air past you (fast falls, the grapple, a dash), made in the callback
+    void setWind(float w) { wind.store(std::max(0.f, std::min(1.f, w)), std::memory_order_relaxed); }
 
     // --audiodump FILE SECONDS: capture the final mix, written as a 16-bit WAV
     void startDump(const std::string& path, float seconds) {
@@ -153,6 +155,8 @@ private:
     std::atomic<int>  dumpWritten{0};
     std::atomic<bool> dumping{false};
     std::atomic<float> muffle{0.f};
+    std::atomic<float> wind{0.f};
+    float windNow = 0.f, wL1 = 0.f, wL2 = 0.f, wR1 = 0.f, wR2 = 0.f, gustPh = 0.f; uint32_t windRng = 0x1234567u;   // audio thread only
     float muffleNow = 0.f, lpL = 0.f, lpR = 0.f;   // audio thread only
 #if HAS_SDL_MIXER
     Uint16 outFormat = AUDIO_S16SYS;
@@ -199,6 +203,29 @@ private:
         sfx.addSound(name, std::move(mono));
     }
 
+    // Audio thread: wind. Noise through a band that opens with speed (a low roar
+    // that brightens into a hiss), separate noise per ear, a slow gust in it
+    void addWind(float* buf, int frames) {
+        float target = wind.load(std::memory_order_relaxed) * masterVolume;
+        if (target < 0.001f && windNow < 0.001f) { windNow = 0.f; return; }
+        float step = (target - windNow) / (float)std::max(1, frames);
+        auto noise = [this]() { windRng ^= windRng << 13; windRng ^= windRng >> 17; windRng ^= windRng << 5; return (float)(windRng & 0xFFFF) / 32768.f - 1.f; };
+        const float twoPi = 6.2831853f;
+        for (int f = 0; f < frames; ++f) {
+            windNow += step;
+            float cut = 250.f + 2200.f * windNow * windNow;
+            float kHi = 1.f - std::exp(-twoPi * cut / (float)outRate), kLo = 1.f - std::exp(-twoPi * cut * 0.2f / (float)outRate);
+            float nl = noise(), nr = noise();
+            wL1 += kHi * (nl - wL1); wL2 += kLo * (nl - wL2);
+            wR1 += kHi * (nr - wR1); wR2 += kLo * (nr - wR2);
+            gustPh += 0.7f / (float)outRate;
+            float gust = 0.8f + 0.2f * std::sin(twoPi * gustPh) * std::sin(twoPi * gustPh * 0.37f + 1.f);
+            float g = windNow * windNow * 0.22f * gust;
+            buf[2 * f]     += (wL1 - wL2) * g;
+            buf[2 * f + 1] += (wR1 - wR2) * g;
+        }
+    }
+
     // Audio thread: a one-pole low-pass (~900 Hz) blended in by `muffle`, eased across the buffer
     void applyMuffle(float* buf, int frames) {
         float target = muffle.load(std::memory_order_relaxed);
@@ -223,6 +250,7 @@ private:
         if ((int)a->musicBuf.size() < frames * 2) a->musicBuf.resize(frames * 2);
         a->music.render(a->musicBuf.data(), frames);
         a->sfx.render(a->musicBuf.data(), frames);
+        a->addWind(a->musicBuf.data(), frames);
         a->applyMuffle(a->musicBuf.data(), frames);
         const float* src = a->musicBuf.data();
         if (a->dumping.load(std::memory_order_acquire)) {

@@ -26,6 +26,7 @@ struct Projectile {
     int       owner      = -1;     // uid of the enemy that fired it
     float     parryDamage = 0.f;   // > 0: what it does when parried back (else 60, or 400 heavy)
     int       homeOn     = -1;     // uid: a parried orb steering into the WARDEN's core
+    bool      whizzed    = false;  // its near-miss whizz has played (GameplayState::whizPast)
 };
 
 class ProjectileSystem {
@@ -58,6 +59,7 @@ public:
                 p.owner       = -1;
                 p.parryDamage = 0.f;
                 p.homeOn      = -1;
+                p.whizzed     = false;
                 return &p;
             }
         }
