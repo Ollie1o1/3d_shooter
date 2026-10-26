@@ -60,6 +60,7 @@ inline void buildAct2(LevelBuilder& B) {
     const float F = -60.f;   // the Nave's floor
     vec3 bone{0.74f,0.70f,0.62f}, boneDark{0.46f,0.44f,0.40f}, slate{0.15f,0.19f,0.21f},
          teal{0.2f,0.9f,0.85f}, red{1.f,0.16f,0.08f}, brass{0.62f,0.5f,0.3f}, light{1.4f,1.25f,1.0f};
+    const LevelBuilder::Mark m0 = B.mark();
 
     // All of Act II stands in one basin, 60 m down
     L.basins.push_back({aabb(-300, 0, -440, 300, 0, -668), F});          // the Nave
@@ -68,7 +69,7 @@ inline void buildAct2(LevelBuilder& B) {
     L.basins.push_back({aabb(-300, 0, -880, 300, 0, -1200), -500.f});   // the Reliquary: the void, far below
 
     Arena a;
-    a.name = "THE DROWNED NAVE"; a.space = ReverbSpace::HALL;
+    a.name = "THE DROWNED NAVE"; a.space = ReverbSpace::HALL; a.tone = RoomTone::NAVE;
     a.subtitle = "THE WATER RISES - SURVIVE 3 WAVES";
     a.bounds = aabb(-49, F, -651, 49, F + 26, -451);
     a.zone   = aabb(-50.5f, F, -652.5f, 50.5f, F + 28, -449.5f);   // ceiling under the dome
@@ -258,6 +259,10 @@ inline void buildAct2(LevelBuilder& B) {
         glm::normalize(vec3{0.15f,-1.f,0.1f}), {0.85f,0.9f,0.95f},
         {0.16f,0.3f,0.32f}, {0.28f,0.06f,0.05f},
         {0.05f,0.12f,0.13f}, 0.012f };
+    B.paint(m0, Mat::MARBLE, [&](vec3 c, Mat m) {   // the drowned cathedral: limestone, dark slate, brass
+        if (LevelBuilder::shade(c, brass)) return Mat::BRASS;
+        if (LevelBuilder::shade(c, slate)) return Mat::MARBLE;
+        return m == Mat::BRICK ? Mat::LIMESTONE : m; });
     L.arenas.push_back(std::move(a));
 
     // =========================================================================
@@ -268,6 +273,7 @@ inline void buildAct2(LevelBuilder& B) {
     const vec3 C{0.f, O, -732.f};           // its centre (the sun's axis)
     vec3 stone{0.42f,0.36f,0.30f}, stoneDark{0.24f,0.2f,0.17f}, brassO{0.75f,0.58f,0.3f},
          gold{1.f,0.72f,0.3f}, sunCol{1.6f,1.05f,0.45f};
+    const LevelBuilder::Mark m1 = B.mark();
     B.mat = Mat::BRICK;
     wall(-4, O - 2, -669, 4, -57, -668, slate);                    // under the passage's end
     wall(-6, O - 2, -669, -4, -49, -653, slate);                   // no slot beside the passage's end
@@ -287,7 +293,7 @@ inline void buildAct2(LevelBuilder& B) {
     // sun, the outer one clockwise, the inner one (2 m higher) against it
     // =========================================================================
     Arena o;
-    o.name = "THE ORRERY"; o.space = ReverbSpace::HALL;
+    o.name = "THE ORRERY"; o.space = ReverbSpace::HALL; o.tone = RoomTone::ORRERY;
     o.subtitle = "MIND THE SUN - SURVIVE 3 WAVES";
     o.bounds = aabb(-52, O, -784, 52, O + 28, -680);
     o.zone   = aabb(-53.5f, O, -785.5f, 53.5f, O + 30, -678.5f);
@@ -411,6 +417,10 @@ inline void buildAct2(LevelBuilder& B) {
         glm::normalize(vec3{0.2f, 0.6f, 0.1f}), {1.1f,0.8f,0.45f},
         {0.12f,0.12f,0.18f}, {0.45f,0.28f,0.12f},
         {0.16f,0.09f,0.05f}, 0.009f };
+    B.paint(m1, Mat::LIMESTONE, [&](vec3 c, Mat m) {   // warm stone and engraved brass
+        if (LevelBuilder::shade(c, brassO) || LevelBuilder::shade(c, gold)) return Mat::BRASS;
+        if (LevelBuilder::shade(c, slate)) return Mat::MARBLE;
+        return m == Mat::BRICK ? Mat::LIMESTONE : m; });
     L.arenas.push_back(std::move(o));
 
     buildDescent(B);
@@ -445,6 +455,7 @@ inline void buildDescent(LevelBuilder& B) {
     const float STOP[5] = {-80.f, -120.f, -160.f, -200.f, -240.f};
     vec3 iron{0.16f,0.15f,0.16f}, ironDark{0.09f,0.085f,0.09f}, bone{0.7f,0.66f,0.58f}, brass{0.62f,0.48f,0.26f},
          ember{1.4f,0.45f,0.12f}, amber{1.3f,0.8f,0.35f}, blood{1.2f,0.12f,0.08f};
+    const LevelBuilder::Mark m0 = B.mark();
     B.mat = Mat::METAL;
 
     // ---- the corridor from the Orrery's north arch to the landing ----
@@ -455,7 +466,7 @@ inline void buildDescent(LevelBuilder& B) {
     L.corridors.push_back(aabb(-6, TOP, -810, 6, TOP + 14, -784));
 
     Arena a;
-    a.name = "THE DESCENT"; a.space = ReverbSpace::SHAFT;
+    a.name = "THE DESCENT"; a.space = ReverbSpace::SHAFT; a.tone = RoomTone::DESCENT;
     a.subtitle = "RIDE THE CAGE DOWN - SURVIVE 3 WAVES";
     a.bounds = aabb(C.x - 33, PIT, C.z - 33, C.x + 33, TOP + 14, C.z + 33);
     a.zone   = aabb(C.x - 34.5f, PIT, C.z - 34.5f, C.x + 34.5f, TOP + 16, C.z + 34.5f);
@@ -656,6 +667,10 @@ inline void buildDescent(LevelBuilder& B) {
         glm::normalize(vec3{0.1f, 0.8f, 0.2f}), {1.5f,0.75f,0.4f},
         {0.22f,0.21f,0.26f}, {0.55f,0.2f,0.1f},
         {0.12f,0.05f,0.03f}, 0.01f };
+    B.paint(m0, Mat::PLATE, [&](vec3 c, Mat m) {   // riveted iron, brass fittings, pale stone
+        if (LevelBuilder::shade(c, brass)) return Mat::BRASS;
+        if (LevelBuilder::shade(c, bone)) return Mat::LIMESTONE;
+        return m == Mat::METAL || m == Mat::BRICK ? Mat::PLATE : m; });
     L.arenas.push_back(std::move(a));
 }
 
@@ -740,7 +755,7 @@ inline void buildReliquary(LevelBuilder& B) {
     L.finishPos = {0.f, Q.y + 1.f, Q.z - 61.f};   // ACT II's way on once the Reliquary is clear (a waypoint, no beacon)
     // ---- the arena ----
     Arena a;
-    a.name = "THE RELIQUARY"; a.space = ReverbSpace::HALL;
+    a.name = "THE RELIQUARY"; a.space = ReverbSpace::HALL; a.tone = RoomTone::RELIQUARY;
     a.subtitle = "THE OLD WORLD, IN PIECES - SURVIVE 3 WAVES";
     a.bounds = LevelBuilder::aabb(-56, Q.y - 20, Q.z - 61, 56, Q.y + 30, Q.z + 60);
     a.zone   = LevelBuilder::aabb(-58, Q.y - 30, Q.z - 62, 58, Q.y + 40, Q.z + 92);   // ends at the rim: past it is the Maw's
@@ -817,6 +832,7 @@ inline void buildMaw(LevelBuilder& B) {
     const float F = C.y;
     const vec3 stone{0.2f, 0.19f, 0.2f}, stoneDark{0.11f, 0.1f, 0.11f}, iron{0.15f, 0.14f, 0.15f}, bone{0.52f, 0.49f, 0.44f},
                blood{1.2f, 0.14f, 0.08f}, eclipse{1.3f, 1.2f, 1.05f}, ember{1.3f, 0.45f, 0.15f};
+    const LevelBuilder::Mark m0 = B.mark();
     auto wall = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { return B.wall(x0, y0, z0, x1, y1, z1, c); };
     auto neon = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { B.neon(x0, y0, z0, x1, y1, z1, c); };
 
@@ -931,7 +947,7 @@ inline void buildMaw(LevelBuilder& B) {
 
     // ---- the arena ----
     Arena a;
-    a.name = "THE MAW"; a.space = ReverbSpace::HALL;
+    a.name = "THE MAW"; a.space = ReverbSpace::HALL; a.tone = RoomTone::MAW;
     a.subtitle = "SOMETHING BELOW";
     a.bounds = LevelBuilder::aabb(C.x - 45, F - 4, C.z - 45, C.x + 45, F + 40, C.z + 45);
     a.zone   = LevelBuilder::aabb(C.x - 50, F - 20, C.z - 50, C.x + 50, -200.f, -1022.f);   // up through the open top to the rim
@@ -955,6 +971,7 @@ inline void buildMaw(LevelBuilder& B) {
         glm::normalize(vec3{0.1f,-0.9f,-0.3f}), {0.55f,0.5f,0.55f},          // cold light from above
         {0.16f,0.14f,0.19f}, {0.3f,0.08f,0.06f},                             // red from the pool below
         {0.05f,0.02f,0.025f}, 0.012f };
+    B.paint(m0, Mat::ROCK, [&](vec3 c, Mat m) { return LevelBuilder::shade(c, bone) ? Mat::LIMESTONE : m; });   // its ribs are pale stone
     L.arenas.push_back(std::move(a));
 }
 
@@ -969,6 +986,7 @@ inline void buildZenith(LevelBuilder& B) {
     const vec3 C = zenithCentre();
     const float F = C.y;
     const vec3 white{0.86f, 0.85f, 0.82f}, black{0.05f, 0.05f, 0.06f}, gold{1.4f, 1.05f, 0.45f}, seam{1.2f, 1.2f, 1.25f};
+    const LevelBuilder::Mark m0 = B.mark();
     B.mat = Mat::CONCRETE;
     // the floor: a disc of slabs (collision: 4 m boxes inside r 43), the seams on it
     for (float x = -44.f; x < 44.f; x += 4.f)
@@ -1034,7 +1052,7 @@ inline void buildZenith(LevelBuilder& B) {
     // Gameplay_Absolute.h. The eclipse is the sky's: skybox.frag, Theme::eclipse)
 
     Arena a;
-    a.name = ZENITH_NAME; a.space = ReverbSpace::OPEN;
+    a.name = ZENITH_NAME; a.space = ReverbSpace::OPEN; a.tone = RoomTone::ZENITH;
     a.subtitle = "ABOVE THE ECLIPSE";
     a.bounds = LevelBuilder::aabb(C.x - 64, F - 4, C.z - 64, C.x + 64, F + 30, C.z + 64);
     a.zone   = LevelBuilder::aabb(C.x - 66, F - 60, C.z - 66, C.x + 66, F + 60, C.z + 66);
@@ -1057,6 +1075,7 @@ inline void buildZenith(LevelBuilder& B) {
         {0.16f,0.08f,0.14f}, {0.34f,0.07f,0.06f},                                 // dark above, red thrown up from the clouds below
         {0.3f,0.06f,0.06f}, 0.0024f,                                              // blood haze
         1.f };                                                                    // the eclipse sky
+    B.paint(m0, Mat::MARBLE, [&](vec3 c, Mat m) { return LevelBuilder::shade(c, white) || LevelBuilder::shade(c, black) || m == Mat::CONCRETE ? Mat::MARBLE : m; });   // white and black veined marble
     L.arenas.push_back(std::move(a));
 }
 
