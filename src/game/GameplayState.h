@@ -218,6 +218,12 @@ public:
     float landFall   = 0.f;   // the fall speed of the last landing
     bool  slidePrev  = false;
     float slideDustT = 0.f;
+    // Screen effects (bloom_composite.frag): a dash's rush, low health's drain and heartbeat
+    float dashFx  = 0.f;   // 1 on a dash, gone in 0.35 s
+    float speedFx = 0.f;   // what the shader gets: the dash, or just going very fast (a grapple, a tube)
+    float lowFx   = 0.f;   // 0 above 35 % health .. 1 at 8 %, eased
+    float heartT  = 0.f;   // seconds since the last heartbeat
+    float heartPulse = 0.f;
 
     float muzzleFlashTimer = 0.f;
     glm::vec3 muzzleFlashPos{0.f};
@@ -557,6 +563,7 @@ public:
     void handleNameEntry(const SDL_Event& e);
 
     void shake(float t, float amount);
+    void updateScreenFx(float dt);
 
     // =========================================================================
     // Input

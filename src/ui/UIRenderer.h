@@ -630,9 +630,9 @@ private:
     }
 
     void drawVignettes(const StyleSystem& style, const HudState& h) {
-        float low = h.health < 30.f ? (0.5f + 0.5f * std::sin(hudTime * 6.f)) * (1.f - h.health / 30.f) : 0.f;
+        // (low health is drawn in the composite now: bloom_composite.frag's drain and heartbeat)
         float dmg = std::max(0.f, damageVignette) * 1.2f;
-        float a = std::min(0.85f, dmg + low * 0.5f);
+        float a = std::min(0.85f, dmg);
         if (a <= 0.01f) return;
         for (int i = 0; i < 10; ++i) {
             float t = 1.f - i / 10.f;
@@ -643,7 +643,7 @@ private:
             ui.rect(i * w, (i + 1) * w, w, screenH - 2 * (i + 1) * w, c);
             ui.rect(screenW - (i + 1) * w, (i + 1) * w, w, screenH - 2 * (i + 1) * w, c);
         }
-        (void)style;
+        (void)style; (void)h;
     }
 
     void drawHealthPanel(const StyleSystem& style, const HudState& h) {
