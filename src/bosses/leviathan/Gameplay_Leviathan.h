@@ -20,7 +20,7 @@ inline void GameplayState::onLeviathanEvents(Enemy& e, const EnemyEvents& ev) {
     if (ev.lvRise) {
         glm::vec3 c{e.levRoot.x, floorY, e.levRoot.z};
         shake(1.0f, 0.06f); audio.duck(6.f, 1.2f);
-        audio.playAt("explosion", c, 128, SoundGroup::WORLD, true, 0.5f);
+        playBoom("explosion", c, 128, SoundGroup::WORLD, true, 0.5f);
         fx.spawnBurst(c + glm::vec3{0.f, 1.f, 0.f}, water, 80, 14.f, 1.2f, 9.f);
         fx.spawnShockwave(c, Enemy::LV_POOL + 2.f, red);
     }
@@ -40,7 +40,7 @@ inline void GameplayState::onLeviathanEvents(Enemy& e, const EnemyEvents& ev) {
         glm::vec3 at = ev.lvTo;
         shake(0.9f, 0.09f);
         audio.playAt("slam", at, 128, SoundGroup::ENEMY, true, 0.6f);
-        audio.playAt("explosion", at, 110, SoundGroup::WORLD);
+        playBoom("explosion", at, 110, SoundGroup::WORLD);
         fx.spawnShockwave(at, 7.f, red);
         fx.spawnBurst(at + glm::vec3{0.f, 0.5f, 0.f}, {0.4f, 0.35f, 0.3f}, 40, 10.f, 0.9f, 14.f);   // the ring breaking
         if (LeviathanHazards::inStrip(ev.lvFrom, ev.lvTo, player.position, floorY) &&
@@ -71,7 +71,7 @@ inline void GameplayState::onLeviathanEvents(Enemy& e, const EnemyEvents& ev) {
     if (ev.lvBreach) {
         glm::vec3 at = ev.lvSite;
         shake(0.8f, 0.08f);
-        audio.playAt("explosion", at, 128, SoundGroup::WORLD, true, 0.5f);
+        playBoom("explosion", at, 128, SoundGroup::WORLD, true, 0.5f);
         fx.spawnBurst(at + glm::vec3{0.f, 1.f, 0.f}, water, 60, 16.f, 1.f, 9.f);
         fx.spawnShockwave(at, LeviathanHazards::BREACH_RADIUS, red);
         if (LeviathanHazards::breachHits(at, player.position) && damagePlayer(LeviathanHazards::BREACH_DAMAGE * scale, at, 0.4f, 0.09f)) {

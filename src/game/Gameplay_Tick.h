@@ -40,6 +40,30 @@ inline void GameplayState::whizPast() {
     }
 }
 
+// The last of a wave falls: a quarter speed easing back over SLOW_TIME, a deep boom, the music ducked
+inline void GameplayState::waveEnded() {
+    slowT = SLOW_TIME;
+    audio.play("lastkill", 110, SoundGroup::UI);
+    audio.duck(4.f, 0.7f);
+    camFeel.punch(-30.f, 0.f, frand(-1.f, 1.f) * 25.f);
+    if (g_devOverlay == "lastkill") std::fprintf(stderr, "last kill at %.2f s\n", elapsedTime);
+}
+
+// What you're standing on rings? (a steel deck, a panel floor)
+inline bool GameplayState::onMetal() const {
+    if (player.groundWall < 0 || player.groundWall >= (int)level.walls.size()) return false;
+    Mat m = level.walls[player.groundWall].mat;
+    return m == Mat::METAL || m == Mat::PANEL;
+}
+
+// Something big and far off: heard as late as sound takes to get here (a blast 60 m away lands 0.15 s after its flash)
+inline void GameplayState::playBoom(const char* name, glm::vec3 at, int volume, SoundGroup g, bool priority, float floor) {
+    SfxMixer::Opts o; o.volume = volume / 128.f; o.group = g; o.priority = priority;
+    o.positional = true; o.pos = at; o.floor = floor;
+    o.delay = std::max(0.f, glm::length(at - player.camera.position) - 8.f) / 343.f;
+    audio.playOpts(name, o);
+}
+
 // Every hit since the last call as one sound: fuller for more, a ping on a crit
 inline void GameplayState::flushHitSounds() {
     if (hitSoundCount <= 0) return;
@@ -294,11 +318,13 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         static const char* STEPS[] = {"step1", "step2", "step3", "step4"};
         static int last = -1;
         int k = rand() % 3; if (k >= last) ++k; last = k;   // never the same step twice running
+        int vol = 50 + (int)std::min(14.f, playerXZSpeed * 1.5f);
         if (player.wadeDepth >= 0.1f) audio.play("wade", 60);
-        else audio.play(STEPS[k], 50 + (int)std::min(14.f, playerXZSpeed * 1.5f));
+        else if (onMetal()) audio.play("step_metal", vol);   // a steel deck rings under you
+        else audio.play(STEPS[k], vol);
     }
     // The land sound grows with the fall (a hop is a tap, a drop is a thud)
-    if (justLanded && landFall > 2.f) audio.play("land", 45 + (int)std::min(83.f, landFall * 5.f));
+    if (justLanded && landFall > 2.f) audio.play(onMetal() ? "land_metal" : "land", 45 + (int)std::min(83.f, landFall * 5.f));
     // Sliding over dry ground: grit thrown up from under you
     if (player.sliding && player.onGround && player.wadeDepth < 0.1f && playerXZSpeed > 6.f) {
         slideDustT -= dt;
@@ -356,7 +382,12 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         for (auto& e : enemies)
             if (e.targetable() && !e.stats().flying && e.type != EnemyType::CONDUIT && director.inHoldZone(e.position + glm::vec3{0, 0.3f, 0}))
                 director.zoneContested = true;
+    WaveDirector::Phase phaseBefore = director.phase;
     if (!act2Falling) director.update(dt, alive, player.position, spawns);   // ACT II: the fight waits for you to land
+    // The last of a wave falls: time drops to a quarter and eases back (not in FAST: the clock is the point)
+    if (phaseBefore == WaveDirector::Phase::ACTIVE && !fast() &&
+        (director.phase == WaveDirector::Phase::BREAK || director.phase == WaveDirector::Phase::CLEARED)) waveEnded();
+    if (g_devOverlay == "lastkill" && slowT <= 0.f && elapsedTime > 3.f && elapsedTime < 3.1f) waveEnded();   // dev: the moment, on cue
     for (auto& s : spawns) spawnEnemy(s.type, s.pos, s.hollow);
 
     ftLap.to(frametimer::SIM_DIRECTOR);
@@ -390,7 +421,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         const Projectile& pr = projSystem.pool[pi];
         if (pr.parried && pr.heavy) {
             fx.spawnExplosionParticles(pr.position, 3.f);
-            audio.playAt("explosion", pr.position, 100, SoundGroup::WORLD);
+            playBoom("explosion", pr.position, 100, SoundGroup::WORLD);
             shake(0.3f, 0.07f);
         }
         hurtEnemy(e, pr.damage, pr.position, pr.parried ? 25.f : 10.f, 2.f,
@@ -400,7 +431,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     for (auto& [pi, ei] : result.friendlyHits) {
         const Projectile& pr = projSystem.pool[pi];
         fx.spawnExplosionParticles(pr.position, 2.f);
-        audio.playAt("explosion", pr.position, 80, SoundGroup::WORLD);
+        playBoom("explosion", pr.position, 80, SoundGroup::WORLD);
         hurtEnemy(enemies[ei], FRIENDLY_SHELL_DAMAGE, pr.position, 0.f, 0.f, StyleSource::FRIENDLY);
     }
     for (auto& exp : result.explosions)
@@ -519,6 +550,24 @@ inline void GameplayState::keepPlayerInZone(float dt) {
     }
     player.camera.position = p + glm::vec3{0, player.eyeHeight, 0};
 
+    // Never stuck: inside something solid for a moment (a platform, a rising floor or a
+    // closing door pushed you in) and you're put back on the last safe ground you stood on.
+    // (tests/BoundsScan.h checks that the static level itself has nowhere to get stuck.)
+    {
+        bool embedded = bodyEmbedded(level.walls, level.moverWalls, spatialGrid, p, player.radius, player.height);
+        embeddedT = embedded ? embeddedT + dt : 0.f;
+        bool firm = player.onGround && (player.groundWall < 0 || level.moverOfWall(player.groundWall) < 0);   // not riding anything
+        if (!embedded && firm) { safeGround = p; hasSafeGround = true; }
+        if (embeddedT > 0.25f && hasSafeGround) {
+            std::fprintf(stderr, "unstuck: (%.1f %.1f %.1f) -> (%.1f %.1f %.1f)\n", player.position.x, player.position.y, player.position.z, safeGround.x, safeGround.y, safeGround.z);
+            p = safeGround; player.velocity = glm::vec3{0.f}; embeddedT = 0.f;
+            grapple.release();
+            prevCamPos = p + glm::vec3{0, player.eyeHeight, 0};
+            ui.feed("UNSTUCK", {0.4f, 0.9f, 1.f});
+            audio.play("barrier", 90);
+        }
+    }
+
     // Void: back to the start of the section you fell out of
     int a = level.arenaAt(p);
     if (a >= 0 && p.y < level.arenas[a].voidY) {
@@ -540,6 +589,7 @@ inline void GameplayState::resetToCheckpoint(int a) {
     prevCamPos = player.camera.position;
     grapple.release();
     slamming = false; peakFallSpeed = 0.f;
+    hasSafeGround = false; embeddedT = 0.f; slowT = 0.f;
     dashFx = speedFx = lowFx = heartT = heartPulse = windFx = 0.f; audio.setMuffle(0.f); audio.setWind(0.f);
 }
 

@@ -873,7 +873,7 @@ inline void buildAct1(LevelBuilder& B) {
         a.name = "SUNSET YARD"; a.space = ReverbSpace::OPEN;
         a.subtitle = "SURVIVE 3 WAVES";
         a.bounds = aabb(-30, 0, -30, 30, 12, 30);
-        a.zone   = aabb(-31.5f, 0, -31.5f, 31.5f, 18, 31.5f);   // ceiling 18 m
+        a.zone   = aabb(-30.9f, 0, -30.9f, 30.9f, 18, 30.9f);   // ceiling 18 m; 0.9 m past the interior: onto the wall top, never off its far side
         a.playerStart = {0.f, 0.f, 24.f};
         L.floors.push_back({-31.f, -31.f, 31.f, 31.f, 0.f, {0.62f, 0.46f, 0.34f}});
 
@@ -1013,7 +1013,7 @@ inline void buildAct1(LevelBuilder& B) {
         a.name = "THE FOUNDRY";
         a.subtitle = "SURVIVE 3 WAVES";
         a.bounds = aabb(-32, 0, -110, 32, 13, -46);
-        a.zone   = aabb(-33.5f, 0, -111.5f, 33.5f, 14, -44.5f);  // roofed at 14 m
+        a.zone   = aabb(-32.9f, 0, -110.9f, 32.9f, 14, -45.1f);  // roofed at 14 m (0.9 m past the interior)
         a.playerStart = {0.f, 0.f, -50.f};
         L.floors.push_back({-33.f, -111.f, 33.f, -45.f, 0.f, {0.25f,0.23f,0.22f}});
 
@@ -1146,7 +1146,7 @@ inline void buildAct1(LevelBuilder& B) {
         a.name = "THE SPIRE";
         a.subtitle = "CLIMB - THEY HOLD THE HIGH GROUND";
         a.bounds = aabb(-30, 0, -186, 30, 34, -126);
-        a.zone   = aabb(-31.5f, 0, -187.5f, 31.5f, 36, -124.5f);   // ceiling 36 m
+        a.zone   = aabb(-30.9f, 0, -186.9f, 30.9f, 36, -125.1f);   // ceiling 36 m (0.9 m past the interior)
         a.playerStart = {0.f, 0.f, -130.f};
         L.floors.push_back({-31.f, -187.f, 31.f, -125.f, 0.f, {0.44f,0.45f,0.50f}});
 
@@ -1297,7 +1297,7 @@ inline void buildAct1(LevelBuilder& B) {
         a.name = "THE CORE";
         a.subtitle = "SURVIVE 2 WAVES - THEN THE WARDEN";
         a.bounds = aabb(-36, 0, -274, 36, 14, -202);
-        a.zone   = aabb(-37.5f, 0, -275.5f, 37.5f, 18, -200.5f);   // ceiling 18 m
+        a.zone   = aabb(-36.9f, 0, -274.9f, 36.9f, 18, -201.1f);   // ceiling 18 m (0.9 m past the interior)
         a.playerStart = {0.f, 0.f, -206.f};
         a.bossSpawn   = {20.f, 0.f, CZ};   // mirrored to whichever side is farther from you
         L.floors.push_back({-37.f, -275.f, 37.f, -201.f, 0.f, {0.20f,0.24f,0.28f}});
@@ -1451,7 +1451,7 @@ inline void buildAct1(LevelBuilder& B) {
         a.name = "THE SANCTUM"; a.space = ReverbSpace::HALL;
         a.subtitle = "HE'S WAITING";
         a.bounds = aabb(-56, 0, -404, 56, 30, -292);
-        a.zone   = aabb(-57.5f, 0, -405.5f, 57.5f, 34, -290.5f);   // ceiling 34 m
+        a.zone   = aabb(-56.9f, 0, -404.9f, 56.9f, 34, -291.1f);   // ceiling 34 m (0.9 m past the interior)
         a.playerStart = {0.f, 0.f, -296.f};
         a.bossSpawn   = {0.f, 0.f, CZ - 30.f};
         // The floor: a dark plaza with a ringed seal in the middle

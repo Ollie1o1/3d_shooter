@@ -33,6 +33,8 @@
 #include "bosses/warden/WardenHazards.h"
 #include "bosses/leviathan/LeviathanHazards.h"
 #include "BossSim.h"
+#include "BoundsScan.h"
+#include "world/Stuck.h"
 #include "enemies/RelicHazards.h"
 #include <cstdio>
 #include <cstring>
@@ -2918,13 +2920,88 @@ int main() {
                                 "dry", "switch_up0", "switch_up1", "switch_up2", "switch_up3",
                                 "sword_draw", "sword_swing", "sword_hit", "sword_thrust", "sword_guard", "sword_block", "sword_break",
                                 "kill_light", "kill_heavy", "kill_rifle", "kill_blade",
-                                "jump_air", "land_heavy", "slide", "hit_head", "ammo_low", "heartbeat", "hit_armor", "impact", "casing", "whiz"};
+                                "jump_air", "land_heavy", "slide", "hit_head", "ammo_low", "heartbeat", "hit_armor", "impact", "casing", "whiz", "step_metal", "land_metal", "lastkill"};
         std::vector<std::string> names(std::begin(loaded), std::end(loaded));
         for (const std::string& n : abAllSounds()) names.push_back(n);   // THE ABSOLUTE's fight (AbsoluteFeel.h)
         bool all = true; for (const std::string& n : names) all &= mixEntry(n) != nullptr;
         CHECK(all && mixTable().size() == names.size(), "every sound file the game loads has exactly one place in the mix");
         CHECK(std::fabs(mixGain("jump") - std::pow(10.f, -2.3f / 20.f)) < 1e-4f && mixGain("v_husk_idle") == 1.f && mixGain("nope") == 1.f,
               "a sound's mix gain is its trim; built voices and unknown names pass at 1");
+    }
+
+    // ---------------------------------------------------------------- out of bounds: nowhere to get stuck (BoundsScan.h)
+    {
+        // Every place you could stand in every arena (any box top, the floor, the far side of a wall),
+        // reached however you like; from each you must get back by walking, dropping and jumping alone
+        struct Lvl { const char* name; LevelData L; };
+        Lvl lv[] = {{"ACT I", buildLevel()}, {"FAST", buildGauntlet()}, {"ACT II", buildAct2Level()}};
+        int traps = 0, places = 0;
+        for (auto& l : lv) {
+            std::vector<int> doors = bscan::doorWalls(l.L);
+            for (int a = 0; a < (int)l.L.arenas.size(); ++a) {
+                const Arena& ar = l.L.arenas[a];
+                auto r = bscan::scan(l.L, bscan::zonesOf(ar), ar.playerStart, ar.voidY, {ar.bounds}, &doors);
+                traps += r.traps; places += r.nodes;
+                if (r.traps) std::printf("      %s %s: %d traps, e.g. (%.1f %.1f %.1f)\n", l.name, ar.name, r.traps, r.samples[0].at.x, r.samples[0].at.y, r.samples[0].at.z);
+            }
+            for (int a = 0; a + 1 < (int)l.L.arenas.size() && a < (int)l.L.corridors.size(); ++a) {   // cleared: the corridor and the next arena open too
+                const Arena& A = l.L.arenas[a]; const Arena& B = l.L.arenas[a + 1];
+                std::vector<AABB> zones = bscan::zonesOf(A), zb = bscan::zonesOf(B);
+                zones.insert(zones.end(), zb.begin(), zb.end()); zones.push_back(l.L.corridors[a]);
+                AABB cor = l.L.corridors[a]; cor.max.y = cor.min.y + 6.f;
+                auto r = bscan::scan(l.L, zones, A.playerStart, std::min(A.voidY, B.voidY), {A.bounds, B.bounds, cor}, &doors);
+                traps += r.traps; places += r.nodes;
+                if (r.traps) std::printf("      %s corridor %d: %d traps, e.g. (%.1f %.1f %.1f)\n", l.name, a, r.traps, r.samples[0].at.x, r.samples[0].at.y, r.samples[0].at.z);
+            }
+        }
+        std::printf("      %d places you could stand, %d you couldn't get back from\n", places, traps);
+        CHECK(traps == 0, "out of bounds: nowhere in any arena (or corridor) you can get onto and not back from without the grapple");
+        // The unstuck net (Stuck.h) never goes off in ordinary play: bots run into walls, hug them,
+        // jump, slide, double jump and dash round every arena, colliding for real
+        {
+            int worstTicks = 0; const char* worstAt = ""; long ticks = 0;
+            for (auto& l : lv) {
+                SpatialGrid g; g.build(l.L.walls);
+                for (int a = 0; a < (int)l.L.arenas.size(); ++a) {
+                    const Arena& ar = l.L.arenas[a];
+                    for (int bot = 0; bot < 4; ++bot) {
+                        srand(1000 + a * 17 + bot);
+                        Player p(ar.playerStart); p.camera.yaw = (float)(rand() % 360);
+                        p.dynWalls = l.L.moverWalls.data(); p.dynCount = (int)l.L.moverWalls.size();
+                        int run = 0, jumpsLeft = 1;
+                        for (int i = 0; i < 60 * 25; ++i, ++ticks) {
+                            Uint8 k[SDL_NUM_SCANCODES]; std::memset(k, 0, sizeof(k));
+                            k[SDL_SCANCODE_W] = 1;
+                            if (bot & 1) k[(i / 50) % 2 ? SDL_SCANCODE_A : SDL_SCANCODE_D] = 1;   // strafing into the walls
+                            if (i % 90 < 10) k[SDL_SCANCODE_SPACE] = 1;
+                            if (bot == 2 && i % 120 == 60) k[SDL_SCANCODE_LCTRL] = 1;
+                            if (i % 40 == 0) p.camera.yaw += (float)(rand() % 120 - 60);
+                            if (p.onGround) jumpsLeft = 1;
+                            if (!p.onGround && jumpsLeft && p.velocity.y < 0.f && i % 90 == 30) { p.airJump(); jumpsLeft = 0; }
+                            if (bot == 3 && i % 150 == 75) { p.velocity = p.camera.forward() * 28.f; p.launched(); }   // a dash
+                            p.floorY = l.L.baseFloor(p.position.x, p.position.z);
+                            p.update(DT, k, l.L.walls.data(), (int)l.L.walls.size(), false, &g);
+                            // the zone, as the game holds you in it
+                            glm::vec3& q = p.position;
+                            q.x = glm::clamp(q.x, ar.zone.min.x, ar.zone.max.x); q.z = glm::clamp(q.z, ar.zone.min.z, ar.zone.max.z);
+                            if (q.y + p.height > ar.zone.max.y) { q.y = ar.zone.max.y - p.height; if (p.velocity.y > 0.f) p.velocity.y = -1.f; }
+                            if (q.y < ar.voidY) break;
+                            if (bodyEmbedded(l.L.walls, l.L.moverWalls, g, q, p.radius, p.height)) {
+                                if (++run > worstTicks) { worstTicks = run; worstAt = ar.name; }
+                            } else run = 0;
+                        }
+                    }
+                }
+            }
+            std::printf("      bots: %ld ticks of running into walls; longest inside something: %d ticks%s%s\n", ticks, worstTicks, worstTicks ? " in " : "", worstAt);
+            CHECK(worstTicks < 15, "out of bounds: ordinary play never sets off the unstuck net (it waits 0.25 s = 15 ticks)");
+        }
+        // ...and the scan does find one when it's there: Sunset Yard's old zone reached past its wall
+        LevelData L = buildLevel();
+        Arena old = L.arenas[0]; old.zone = AABB{{-31.5f, 0.f, -31.5f}, {31.5f, 18.f, 31.5f}};
+        std::vector<int> doors = bscan::doorWalls(L);
+        auto r = bscan::scan(L, bscan::zonesOf(old), old.playerStart, old.voidY, {old.bounds}, &doors);
+        CHECK(r.traps > 100, "out of bounds: the scan catches the strip behind a wall (the old Sunset Yard zone)");
     }
 
     // ---------------------------------------------------------------- camera feel (CameraFeel.h)

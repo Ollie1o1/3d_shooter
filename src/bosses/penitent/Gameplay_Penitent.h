@@ -73,7 +73,7 @@ inline void GameplayState::onPenitentEvents(Enemy& e, const EnemyEvents& ev) {
     }
     if (ev.penSlam)  { pen.addRing(e.position, PenitentHazards::SLAM_RADIUS, PenitentHazards::SLAM_DAMAGE, 0);  audio.playAt("slam", e.position, 128, SoundGroup::ENEMY, true); shake(0.5f, 0.07f); }
     if (ev.penStomp) { pen.addRing(e.position, PenitentHazards::STOMP_RADIUS, PenitentHazards::SLAM_DAMAGE, 0); audio.playAt("slam", e.position, 110, SoundGroup::ENEMY, true); shake(0.3f, 0.05f); }
-    if (ev.penEmbers) { pen.addRing(e.position, PenitentHazards::EMBER_RANGE, PenitentHazards::EMBER_DAMAGE, 1); audio.playAt("explosion", at, 100, SoundGroup::ENEMY, true); }
+    if (ev.penEmbers) { pen.addRing(e.position, PenitentHazards::EMBER_RANGE, PenitentHazards::EMBER_DAMAGE, 1); playBoom("explosion", at, 100, SoundGroup::ENEMY, true); }
     if (ev.penLash) { pen.addLash(ev.penLashFrom, ev.penLashDir, e.risen); audio.playAt("clank", at, 128, SoundGroup::ENEMY, true); audio.duck(6.f, 0.5f); }
     for (int k = 0; k < ev.penIncense; ++k) pen.addPool(ev.penIncensePos[k]);
     if (ev.penIncense > 0) audio.playAt("skim", player.position, 80, SoundGroup::ENEMY);
@@ -95,7 +95,7 @@ inline void GameplayState::breakAnchor(int i, bool ripped) {
     const glm::vec3 p = level.anchors[i].pos;
     fx.spawnBurst(p, {1.2f, 0.6f, 0.25f}, 40, 9.f, 0.7f, 6.f);
     audio.playAt("clank", p, 128, SoundGroup::ENEMY, true, 0.5f);
-    audio.playAt("explosion", p, 90, SoundGroup::WORLD);
+    playBoom("explosion", p, 90, SoundGroup::WORLD);
     styleSystem.addStyle(ripped ? 40.f : 25.f, ripped ? StyleSource::PARRY : StyleSource::EXPLOSIVE);
     ui.feed(ripped ? "RIPPED" : "CHAIN BROKEN", {1.f, 0.7f, 0.3f});
     if (ripped) grapple.release();
