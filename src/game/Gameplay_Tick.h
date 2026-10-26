@@ -45,6 +45,7 @@ inline void GameplayState::whizPast() {
 inline void GameplayState::waveEnded() {
     slowMo(SLOW_TIME, 0.25f);
     audio.play("lastkill", 110, SoundGroup::UI);
+    audio.music.stinger();   // the track rings its chord over it
     audio.duck(4.f, 0.7f);
     camFeel.punch(-30.f, 0.f, frand(-1.f, 1.f) * 25.f);
     if (g_devOverlay == "lastkill") std::fprintf(stderr, "last kill at %.2f s\n", elapsedTime);
