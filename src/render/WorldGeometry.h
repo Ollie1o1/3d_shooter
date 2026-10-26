@@ -17,6 +17,8 @@ enum WorldTex { TEX_GRID, TEX_BRICK, TEX_METAL, TEX_PANEL, TEX_ROCK, TEX_CONCRET
                 // Act I's own (MaterialTex.h)
                 TEX_ADOBE, TEX_TERRACOTTA, TEX_WOOD, TEX_PLATE, TEX_TREAD, TEX_MARBLE, TEX_FLAG,
                 TEX_CIRCUIT, TEX_CIRCUIT_FLOOR, TEX_BASALT,
+                // ACT II and FAST's own
+                TEX_LIMESTONE, TEX_BRASS,
                 TEX_COUNT };
 
 inline WorldTex sideTex(Mat m) {
@@ -26,6 +28,7 @@ inline WorldTex sideTex(Mat m) {
         case Mat::ADOBE: return TEX_ADOBE;  case Mat::PLATE: return TEX_PLATE;
         case Mat::MARBLE: return TEX_MARBLE; case Mat::CIRCUIT: return TEX_CIRCUIT;
         case Mat::BASALT: return TEX_BASALT; case Mat::WOOD: return TEX_WOOD;
+        case Mat::LIMESTONE: return TEX_LIMESTONE; case Mat::BRASS: return TEX_BRASS;
         default: return TEX_BRICK;
     }
 }
@@ -38,12 +41,11 @@ inline WorldTex topTex(Mat m) {
         case Mat::MARBLE: case Mat::BASALT: return TEX_FLAG;
         case Mat::CIRCUIT: return TEX_CIRCUIT_FLOOR;
         case Mat::WOOD: return TEX_WOOD;
+        case Mat::LIMESTONE: return TEX_LIMESTONE;
+        case Mat::BRASS: return TEX_BRASS;
         default: return TEX_GRID;
     }
 }
-// The newer textures wrap cleanly and carry their own joints: no dark seam
-// drawn every 4 m over them (the world shader's uNoSeams)
-inline bool texHasSeams(int t) { return t < TEX_ADOBE; }
 
 // The level's static geometry on the CPU, batched by texture (no OpenGL:
 // tests check it). WorldMesh.h uploads it.

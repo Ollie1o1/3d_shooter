@@ -553,6 +553,7 @@ inline void GameplayState::render() {
     pickNeon(neonLights, renderCamPos, neonSet, renderCam.forward());
     if (devSkip("neonlight")) neonSet.n = 0;
     applyNeon(worldShader, true);
+    worldShader.setFloat("uNoSeams", 1.f);   // every world texture wraps and carries its own joints (MaterialTex.h)
     for (int t = 0; t < TEX_COUNT && !devSkip("world"); ++t) {
         if (world.byTex[t].indexCount == 0) continue;
         // What glows in the texture (MaterialTex.h: alpha < 1), in its own colour
@@ -560,7 +561,6 @@ inline void GameplayState::render() {
                        : t == TEX_CIRCUIT_FLOOR ? glm::vec3{0.15f, 0.85f, 1.0f} * 0.45f
                        : t == TEX_BASALT ? glm::vec3{1.0f, 0.24f, 0.10f} * 0.75f : glm::vec3{0.f};
         worldShader.setVec3("uTexGlow", glow);
-        worldShader.setFloat("uNoSeams", texHasSeams(t) ? 0.f : 1.f);
         glBindTexture(GL_TEXTURE_2D, worldTex[t]);
         world.byTex[t].draw();
     }

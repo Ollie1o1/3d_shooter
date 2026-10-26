@@ -18,7 +18,8 @@ struct AABB {
 // The second row are Act I's own: one look per arena (WorldGeometry.h maps
 // each to the texture of its sides and of its top).
 enum class Mat : unsigned char { BRICK, PANEL, ROCK, METAL, CONCRETE,
-                                 ADOBE, PLATE, MARBLE, CIRCUIT, BASALT, WOOD };
+                                 ADOBE, PLATE, MARBLE, CIRCUIT, BASALT, WOOD,
+                                 LIMESTONE, BRASS };   // ACT II and FAST
 
 struct Wall {
     AABB      box;
