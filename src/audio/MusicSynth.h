@@ -15,6 +15,10 @@
 //              1.0   + snare, open filter, arpeggio         (fighting)
 //              1.3   + lead, crash on every bar             (the boss, OVERDRIVE)
 //
+// The fight can push it further (Gameplay_Flow.h updateMusic): OVERDRIVE (setDrive) adds a
+// distorted power-chord stab on every eighth, sixteenth hats and the bass wide open; the last
+// enemy of a wave (setSolo) strips it to the drums and the sub; a wave's end (stinger) rings a
+// chord in the track's key over a crash.
 // muffle() runs everything through a low-pass (pause menu). Parameters are
 // atomics: the game thread sets them, the audio thread reads them.
 // =============================================================================
@@ -106,6 +110,9 @@ public:
     void setIntensity(float x) { wantLevel.store(x); }
     void setVolume(float v)    { volume.store(v); }
     void setMuffle(bool m)     { muffled.store(m); }
+    void setDrive(bool d)      { wantDrive.store(d); }
+    void setSolo(bool s)       { wantSolo.store(s); }
+    void stinger()             { stingWanted.store(true); }
     void setSampleRate(float sr) { SR = sr; delayL.assign((size_t)(sr * 1.5f), 0.f); delayR = delayL; dpos = 0; }
 
     MusicSynth() { setSampleRate(44100.f); }
@@ -141,6 +148,7 @@ private:
     std::atomic<float> wantLevel{0.5f};
     std::atomic<float> volume{0.6f};
     std::atomic<bool>  muffled{false};
+    std::atomic<bool>  wantDrive{false}, wantSolo{false}, stingWanted{false};
 
     float SR = 44100.f;
     int   track = 0;
@@ -215,6 +223,11 @@ private:
     std::vector<float> delayL, delayR; size_t dpos = 0;
     SVF mufL, mufR;
 
+    // The fight's layers: OVERDRIVE's stabs, the last enemy's solo, a wave's stinger
+    float drive = 0.f, solo = 0.f;   // smoothed 0..1
+    float stabT = 1e9f; Osc stab[6]; SVF stabF;
+    float stingT = 1e9f; float stingNotes[4] = {0, 0, 0, 0}; Osc sting[8]; SVF stingF;
+
     // Per-block parameters
     float gKick = 0, gBass = 0, gHat = 0, gSnare = 0, gArp = 0, gLead = 0, gPad = 0;
     float gBassF = 0, gMuf = 0, kMuf = 1.4f, gSnareF = 0, gHatF = 0, gArpF = 0, gLeadF = 0, gPadF = 0, gCrashF = 0;
@@ -240,6 +253,15 @@ private:
         float target = wantLevel.load();
         float rate = 32.f / SR;                                   // per block
         lvl += (target - lvl) * std::min(1.f, rate * (target > lvl ? 1.2f : 0.6f));
+        float dw = wantDrive.load() ? 1.f : 0.f, sw = wantSolo.load() ? 1.f : 0.f;
+        drive += (dw - drive) * std::min(1.f, rate * (dw > drive ? 8.f : 1.5f));
+        solo  += (sw - solo)  * std::min(1.f, rate * 4.f);
+        if (stingWanted.exchange(false)) {   // a chord in the track's key (on the current bar's chord), over a crash
+            const MusicTrack& st = musicTrack(track);
+            int deg = st.chords[std::max(step, 0) / 16];
+            for (int k = 0; k < 4; ++k) stingNotes[k] = (float)chordTone(st, deg, k, 1);
+            stingT = 0.f; crash = Hit{0.f, 1.f};
+        }
         float mt = muffled.load() ? 1.f : 0.f;
         muffleAmt += (mt - muffleAmt) * std::min(1.f, rate * 6.f);
         gPad   = 0.55f + 0.2f * (1.f - sstep(0.9f, 1.3f, lvl));
@@ -249,7 +271,7 @@ private:
         gSnare = sstep(0.7f, 1.f, lvl);
         gArp   = sstep(0.8f, 1.1f, lvl);
         gLead  = sstep(1.12f, 1.32f, lvl);
-        gBassF = gOf(260.f + 2400.f * sstep(0.45f, 1.2f, lvl));
+        gBassF = gOf(260.f + 2400.f * std::max(sstep(0.45f, 1.2f, lvl), drive));
         gMuf   = gOf(520.f);
         gSnareF = gOf(1600.f); gHatF = gOf(7200.f); gArpF = gOf(2600.f + 1800.f * sstep(1.f, 1.3f, lvl));
         gLeadF = gOf(3200.f); gPadF = gOf(700.f + 500.f * sstep(0.6f, 1.2f, lvl)); gCrashF = gOf(5000.f);
@@ -282,6 +304,8 @@ private:
             snare = Hit{0.f, 0.35f + 0.65f * (s - 8) / 7.f};
         char h = at(tr.hat, s);
         if (h == 'x') hatC = Hit{0.f, 0.55f}; else if (h == 'X') hatC = Hit{0.f, 1.f}; else if (h == 'o') hatO = Hit{0.f, 1.f};
+        else if (h == '.' && drive > 0.3f) hatC = Hit{0.f, 0.4f * drive};   // OVERDRIVE: the gaps fill with sixteenths
+        if (drive > 0.02f && s % 2 == 0) stabT = 0.f;                         // OVERDRIVE: a stab on every eighth
 
         char b = at(tr.bass, s);
         if (b != '.' && b != '-') {
@@ -351,7 +375,7 @@ private:
         }
         float crashOut = 0.f;
         if (crash.t < 2.f) {
-            crashOut = crashF.hp(noise(), gCrashF, 1.f) * std::exp(-crash.t * 2.4f) * 0.08f * gLead;
+            crashOut = crashF.hp(noise(), gCrashF, 1.f) * std::exp(-crash.t * 2.4f) * 0.08f * std::max(gLead, stingT < 2.f ? 0.8f : 0.f);
             crash.t += dt;
         }
 
@@ -432,8 +456,30 @@ private:
         delayR[dpos] = sendR + dl * 0.38f;
         dpos = (dpos + 1) % dlen;
 
-        float mono = drums + bassOut + subOut * pg + crashOut + riser;
-        L = mono + padL * pg + hatOut * 0.8f + sendL + dl * 0.3f + leadOut * 0.3f;
-        R = mono + padR * pg + hatOut * 1.0f + sendR + dr * 0.3f + leadOut * 0.3f;
+        // ---- OVERDRIVE: a distorted power chord (root, fifth, octave, detuned) stabbing every eighth, pumping with the kick ----
+        float stabOut = 0.f;
+        if (drive > 0.002f && stabT < 0.25f) {
+            int deg = tr.chords[std::max(step, 0) / 16];
+            float notes[3] = {(float)chordTone(tr, deg, 0, 0), (float)chordTone(tr, deg, 2, 0), (float)chordTone(tr, deg, 3, 0)};
+            float raw = 0.f;
+            for (int k = 0; k < 3; ++k) raw += stab[2 * k].saw(midiHz(notes[k]) * 1.004f, SR) + stab[2 * k + 1].saw(midiHz(notes[k]) * 0.996f, SR);
+            float e = std::exp(-stabT * 13.f) * std::min(1.f, stabT * 400.f);
+            stabOut = std::tanh(stabF.lp(raw * 0.25f, gOf(1800.f + 2600.f * std::exp(-stabT * 20.f)), 0.6f) * 2.2f) * e * 0.32f * drive * duck;
+            stabT += dt;
+        }
+        // ---- a wave's end: the chord rings out, bright, into the delay ----
+        float stingOut = 0.f;
+        if (stingT < 3.f) {
+            float raw = 0.f;
+            for (int k = 0; k < 4; ++k) raw += sting[2 * k].saw(midiHz(stingNotes[k]) * 1.003f, SR) + sting[2 * k + 1].square(midiHz(stingNotes[k]) * 0.997f, SR) * 0.5f;
+            float e = std::min(1.f, stingT * 150.f) * std::exp(-stingT * 1.6f);
+            stingOut = stingF.lp(raw * 0.1f, gOf(2400.f * std::exp(-stingT * 0.8f) + 400.f), 0.5f) * e * 0.75f;
+            stingT += dt;
+        }
+        // The last enemy: everything but the drums and the sub falls away
+        const float keep = 1.f - 0.9f * solo;
+        float mono = drums * (1.f + 0.15f * solo) + bassOut * (1.f - 0.75f * solo) + subOut * pg + crashOut + riser * keep + stabOut;
+        L = mono + padL * pg * keep + hatOut * 0.8f + (sendL + dl * 0.3f + leadOut * 0.3f) * keep + stingOut;
+        R = mono + padR * pg * keep + hatOut * 1.0f + (sendR + dr * 0.3f + leadOut * 0.3f) * keep + stingOut;
     }
 };

@@ -54,6 +54,18 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
     h.viewProj = proj * view;
     h.damageNumbers = !settings || settings->damageNumbers;
     h.finishHint = finishHint;
+    {   // attacks winding up out of sight (Gameplay_Feel.h): which way, how soon
+        h.threatCount = 0;
+        glm::vec3 fwd = player.camera.flatForward();
+        for (const auto& e : enemies) {
+            if (h.threatCount >= 6) break;
+            if (!e.targetable() || isBoss(e.type) || !unseenWindup(e, fwd)) continue;
+            glm::vec3 to = e.position - player.camera.position;
+            float ang = std::atan2(to.x, to.z) - glm::radians(player.camera.yaw + 90.f);
+            h.threats[h.threatCount++] = {ang, e.telegraphProgress()};
+        }
+    }
+    h.finishKey  = gamepad::state().pad ? "R3" : binds().label(Act::INTERACT);
     if (!playerDead && !victory) ui.render(styleSystem, h);
 
     const Arena& ar = level.arenas[director.arena];
@@ -303,8 +315,8 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             std::string move = k(Act::FORWARD) + k(Act::LEFT) + k(Act::BACK) + k(Act::RIGHT);
             if (move.size() != 4) move = k(Act::FORWARD) + "/" + k(Act::LEFT) + "/" + k(Act::BACK) + "/" + k(Act::RIGHT);   // (WASD, unless rebound to long names)
             std::string c1 = move + " MOVE  " + k(Act::JUMP) + " JUMP (TWICE)  " + k(Act::DASH) + " DASH  " + k(Act::SLIDE) +
-                             " SLIDE / SLAM  LMB FIRE  " + k(Act::PARRY) + " PARRY  " + k(Act::GRENADE) + " GRENADE";
-            std::string c2 = k(Act::GRAPPLE) + " GRAPPLE  RMB AIM  1-4 / SCROLL WEAPONS  " + k(Act::INSPECT) + " INSPECT  TAB ARMORY  " +
+                             " SLIDE / SLAM  LMB FIRE  " + k(Act::PARRY) + " PARRY  " + k(Act::INTERACT) + " FINISH  " + k(Act::GRENADE) + " GRENADE";
+            std::string c2 = k(Act::GRAPPLE) + " GRAPPLE  RMB AIM / ALT FIRE  1-4 / SCROLL WEAPONS  " + k(Act::INSPECT) + " INSPECT  TAB ARMORY  " +
                              k(Act::RELOAD) + " RELOAD  BKSP RESTART";
             ui.renderPause(pauseSelected, labels, line.c_str(), c1.c_str(), c2.c_str());
         }

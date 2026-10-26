@@ -55,6 +55,11 @@ struct HudState {
     glm::mat4 viewProj{1.f};       // for floating damage numbers
     bool  damageNumbers = true;
     float finishHint = 0.f;        // 0..1 a finisher is in reach: the crosshair says so
+    std::string finishKey = "E";   // what to press for it (the FINISH binding, R3 on a pad)
+    // Attacks winding up where you can't see them: which way (as the damage indicators), how close to landing (0..1)
+    struct Threat { float angle, urgency; };
+    Threat threats[6];
+    int    threatCount = 0;
 };
 
 class UIRenderer {
@@ -143,12 +148,12 @@ public:
 
     // ---- new-enemy cards (left edge): an enemy you haven't met this run, and how to beat it ----
     // Small and off to the side, so the fight stays clear; two at most at once, the rest wait
-    struct EnemyCard { std::string name, hint; glm::vec3 color; float timer; };
+    struct EnemyCard { std::string name, hint; glm::vec3 color; float timer; std::string kicker = "NEW ENEMY"; };
     static constexpr float CARD_TIME = 4.f;
     static constexpr int   CARD_SHOWN = 2;
     std::deque<EnemyCard> cards;
-    void introduce(const std::string& name, const std::string& hint, glm::vec3 color) {
-        cards.push_back({name, hint, color, 0.f});
+    void introduce(const std::string& name, const std::string& hint, glm::vec3 color, const char* kicker = "NEW ENEMY") {
+        cards.push_back({name, hint, color, 0.f, kicker});
     }
 
     // ---- split (under the timer) ----
@@ -199,6 +204,24 @@ public:
         drawWeaponSlots(h);
         drawCrosshair(h, cx, cy);
 
+        // Unseen wind-ups: an amber chevron out past the damage ring, closing in and burning hotter as the blow comes
+        for (int i = 0; i < h.threatCount; ++i) {
+            const auto& t = h.threats[i];
+            float u = glm::clamp(t.urgency, 0.f, 1.f);
+            float r = 150.f - 34.f * u;
+            float pulse = 0.65f + 0.35f * std::sin(hudTime * (10.f + 20.f * u));
+            glm::vec4 col = glm::mix(glm::vec4{1.f, 0.75f, 0.2f, 0.55f}, glm::vec4{1.f, 0.3f, 0.1f, 0.95f}, u);
+            col.a *= pulse;
+            for (int k = -3; k <= 3; ++k) {   // a chevron: two arms meeting at the point toward it
+                float side = (float)std::abs(k);
+                float ak = t.angle + k * 0.035f;
+                float rr = r - side * 5.f;
+                float ix = cx + std::sin(ak) * rr, iy = cy - std::cos(ak) * rr;
+                float sz = 9.f - side * 0.7f + 3.f * u;
+                ui.rect(ix - sz * 0.5f, iy - sz * 0.5f, sz, sz, col);
+            }
+        }
+
         // Damage direction indicators
         for (int i = 0; i < damageIndicatorCount; ++i) {
             auto& di = damageIndicators[i];
@@ -240,7 +263,7 @@ public:
             int x = (int)(-(1.f - in) * w), y = 190 + (int)i * 78;
             ui.rect(x, y, w, 68, {0.03f, 0.03f, 0.06f, 0.72f * a});
             ui.rect(x, y, 4, 68, {c.color.r, c.color.g, c.color.b, a});
-            ui.text("NEW ENEMY", x + 18, y + 8, 1, {0.65f, 0.65f, 0.7f, 0.9f * a});
+            ui.text(c.kicker.c_str(), x + 18, y + 8, 1, {0.65f, 0.65f, 0.7f, 0.9f * a});
             ui.textShadow(c.name.c_str(), x + 18, y + 22, 3, {c.color.r, c.color.g, c.color.b, a});
             ui.text(c.hint.c_str(), x + 18, y + 50, 1, {0.9f, 0.9f, 0.92f, 0.9f * a});
         }
@@ -808,6 +831,10 @@ private:
             int r = (int)(9 + 7 * (1.f - h.finishHint));
             for (int sx : {-1, 1}) for (int sy : {-1, 1})
                 ui.rect(cx + sx * r - 2, cy + sy * r - 2, 4, 4, fc);
+            if (h.finishHint > 0.5f) {   // what to press, small, just under it (only while one is in reach)
+                std::string t = h.finishKey + "  FINISH";
+                ui.textShadow(t.c_str(), cx, cy + 22, 1, {1.f, 0.7f, 0.3f, h.finishHint}, true);
+            }
         }
         float gap = 2.f + h.spread;
         ui.rect(cx - gap - 6, cy - 1, 6, 2, col);

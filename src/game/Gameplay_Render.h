@@ -635,6 +635,13 @@ inline void GameplayState::render() {
     worldShader.setMat4("model", glm::mat4(1.f));
     if (!skipFx) {
         grapple.drawLine(renderCamPos, view, proj);
+        if (yankT > 0.f)   // a light one on the end of the rope, coming in
+            for (const auto& e : enemies)
+                if (e.uid == yankUid && e.alive) {
+                    glm::vec3 p = lerpPos(e.prevPosition, e.position) + glm::vec3{0.f, std::min(e.height() * 0.5f, 1.2f), 0.f};
+                    grapple.drawRope(renderCamPos, p, view, proj);
+                    break;
+                }
         renderDecals();
         renderTracers(view, proj);
         renderLasers(view, proj);

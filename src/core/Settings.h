@@ -67,6 +67,7 @@ struct GameSettings {
     // Accessibility (Accessibility.h)
     bool  tellsColourblind = false;   // the Absolute's gold tells shown blue
     bool  reduceFlashing   = false;   // full-screen flashes and sky flares dimmed
+    int   taught = 0;                 // the fighting moves already explained once (a card each, Gameplay_Feel.h teach)
 
     static constexpr int CROSSHAIR_COLORS = 5;
     static const char* crosshairLabel(int i) {
@@ -139,6 +140,7 @@ struct GameSettings {
         f << "crosshair "     << crosshair     << "\n";
         f << "tellsColourblind " << (tellsColourblind ? 1 : 0) << "\n";
         f << "reduceFlashing " << (reduceFlashing ? 1 : 0) << "\n";
+        f << "taught "        << taught        << "\n";
         f << "difficulty "    << difficulty    << "\n";
         return f.str();
     }
@@ -186,6 +188,7 @@ struct GameSettings {
             else if (key == "crosshair")     f >> crosshair;
             else if (key == "tellsColourblind") flag(tellsColourblind);
             else if (key == "reduceFlashing") flag(reduceFlashing);
+            else if (key == "taught")        f >> taught;
             else if (key == "difficulty")    f >> difficulty;
             else { std::string skip; f >> skip; } // unknown key — skip its value
             if (!f) break;

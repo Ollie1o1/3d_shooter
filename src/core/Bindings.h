@@ -37,7 +37,7 @@ struct Bindings {
     }
     static const char* actName(Act a) {
         static const char* N[ACTS] = {"FORWARD", "BACK", "LEFT", "RIGHT", "JUMP", "DASH", "SLIDE / SLAM", "PARRY",
-                                      "GRAPPLE", "RELOAD", "GRENADE", "INSPECT", "INTERACT"};
+                                      "GRAPPLE", "RELOAD", "GRENADE", "INSPECT", "FINISH / INTERACT"};
         return N[(int)a];
     }
     // The save file's word for it (no spaces)

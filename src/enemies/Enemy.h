@@ -81,6 +81,7 @@ struct EnemyEvents : SovereignEvents, PenitentEvents, WardenEvents, LeviathanEve
     // 0 sweep to the left, 1 sweep to the right, 2 overhead cleave, 3 a dash's cut
     int       slash = -1;
     bool      dashStarted = false;   // a dash (a lunge, a whirl, a thrust) began
+    bool      dodged = false;        // it sidestepped your aim
     // Strikes marked where they'll land (the SOVEREIGN's blades from the sky,
     // kind 0, and eruptions out of the floor, kind 1; others reuse them)
     static constexpr int MAX_STRIKES = 32;
@@ -103,6 +104,7 @@ struct EnemyWorld {
     const SpatialGrid* grid = nullptr;
     AABB bounds{{-1e9f,-1e9f,-1e9f},{1e9f,1e9f,1e9f}}; // arena interior; enemies stay inside
     glm::vec3 playerVel{0.f};      // for leading shots
+    glm::vec3 playerAim{0.f};      // where you're looking (unit; zero: unknown): gunners sidestep a crosshair held on them
     const DifficultyTuning* tune = nullptr;   // null: the default difficulty
     const int* dynWalls = nullptr;   // moving platforms (not in the grid): the Descent's cage
     int  dynCount = 0;
@@ -259,6 +261,26 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     bool  mayAttack  = true;
     float attackPace = 1.f;
     float finishGlow = 0.f;      // render only: 0..1, a punch would finish it (set per frame on the drawn copy)
+    // Feeling your aim on it (the light gunners): held there a moment, it sidesteps
+    float aimedT = 0.f, dodgeT = 0.f, dodgeCd = 0.f;
+    glm::vec3 dodgeDir{0.f};
+    static constexpr float DODGE_AFTER = 0.45f, DODGE_TIME = 0.24f, DODGE_SPEED = 13.f, DODGE_CD = 2.6f;
+    bool dodges() const { return type == EnemyType::HUSK || type == EnemyType::REVENANT || type == EnemyType::WEAVER; }
+    // Yanked by the grapple (GameplayState::hookEnemy): dragged toward pullTo, stunned all the way
+    glm::vec3 pullTo{0.f};
+    float pullT = 0.f;
+    static constexpr float PULL_SPEED = 30.f;
+    // Hooked and pulled toward `to`; it arrives stunned. Returns how long the pull takes
+    float yank(glm::vec3 to) {
+        glm::vec3 d = to - position;
+        if (!stats().flying) d.y = 0.f;
+        float l = glm::length(d);
+        pullTo = position + d;
+        pullT = l / PULL_SPEED + 0.05f;
+        knockVel = glm::vec3{0.f};
+        stun(pullT + 0.45f);
+        return pullT;
+    }
     float floorY        = 0.f;   // hard floor under it (GameplayState sets it each tick)
     float wadeMul       = 1.f;   // wading slows its steps (set each tick)
     float age           = 0.f;
@@ -524,6 +546,15 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
             if (stunTimer > 0.f) {
                 stunTimer = std::max(0.f, stunTimer - dt);
                 velocity.x = velocity.z = 0.f;
+                if (pullT > 0.f) {   // on the end of the rope: dragged in, walls still in the way
+                    pullT -= dt;
+                    glm::vec3 d = pullTo - position;
+                    if (!stats().flying) d.y = 0.f;
+                    float l = glm::length(d), step = PULL_SPEED * dt;
+                    if (l <= step || pullT <= 0.f) { pullT = 0.f; if (l > 1e-4f) knockVel = d / l * 4.f; }   // (it lands with a little carry)
+                    else position += d / l * step;
+                    if (stats().flying) velocity.y = 0.f;
+                }
                 if (stats().flying) velocity.y = -1.5f;   // a flyer sags
                 if (type == EnemyType::RAPTOR) pitch = glm::mix(pitch, 0.f, std::min(1.f, dt * 6.f));
                 integrate(dt, w);
@@ -532,6 +563,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         }
         if (noLosTimer   > 0.f) noLosTimer   -= dt;
         if (avoidTimer   > 0.f) avoidTimer   -= dt;
+        if (dodges() && dodgeTick(dt, w)) { integrate(dt, w); return; }
 
         switch (type) {
             case EnemyType::HUSK:     thinkHusk(dt, w, resolve);     break;
@@ -749,14 +781,19 @@ private:
         strafeTimer -= dt;
         if (strafeTimer <= 0.f) { strafeTimer = frand(1.6f, 3.2f); strafeDir = -strafeDir; }
         glm::vec3 mv;
+        // Its own bearing round you (golden-angle spaced by uid): drift round toward it, so a squad
+        // spreads out and comes at you from several sides rather than all from the front
+        float want = (float)uid * 2.39996f, have = std::atan2(-to.x, -to.z);
+        float off = std::remainder(want - have, 6.2831853f);
+        glm::vec3 spread = side * glm::clamp(off * 1.2f, -1.f, 1.f) * (d > nearR ? 0.6f : 0.3f);
         // On a perch what hides you is usually the perch's own lip: walk to the
         // edge (the ledge check stops it there) and shoot down from it
         bool perched = ledgeAware() && position.y > floorY + 0.3f;
         if (noLosTimer > 0.f && perched) mv = dir + side * strafeDir * 0.3f;
         else if (noLosTimer > 0.f) mv = side * strafeDir + dir * 0.35f;      // sidestep out from behind cover
-        else if (d < nearR)    mv = -dir + side * strafeDir * 0.7f;
-        else if (d > farR)     mv = dir + side * strafeDir * 0.3f;
-        else                   mv = side * strafeDir;
+        else if (d < nearR)    mv = -dir + side * strafeDir * 0.7f + spread;
+        else if (d > farR)     mv = dir + side * strafeDir * 0.3f + spread;
+        else                   mv = side * strafeDir * 0.6f + spread * 1.4f;
         setMove(mv, speed, w);
     }
 
@@ -768,6 +805,34 @@ private:
         if (!mayAttack) { attackTimer = stats().attackEvery * 0.8f; return false; }   // ready, but someone else has the floor
         attackTimer = 0.f;
         return true;
+    }
+
+    // Your crosshair held on it a moment (and it isn't mid-attack): a quick sidestep, the side that's
+    // clear. True while dodging (the caller just integrates)
+    bool dodgeTick(float dt, const EnemyWorld& w) {
+        if (dodgeCd > 0.f) dodgeCd -= dt;
+        if (dodgeT > 0.f) {
+            dodgeT -= dt;
+            velocity.x = dodgeDir.x * DODGE_SPEED * tune_->moveSpeed; velocity.z = dodgeDir.z * DODGE_SPEED * tune_->moveSpeed;
+            animPhase += dt * 12.f;
+            return true;
+        }
+        if (glm::dot(w.playerAim, w.playerAim) < 0.5f) return false;
+        glm::vec3 c = position + glm::vec3{0.f, height() * 0.6f, 0.f}, to = c - w.playerEye;
+        float t = glm::dot(to, w.playerAim), dist = glm::length(to);
+        bool onIt = t > 6.f && dist < 22.f && glm::length(to - w.playerAim * t) < radius() + 0.35f;
+        aimedT = onIt ? aimedT + dt : std::max(0.f, aimedT - dt * 2.f);
+        if (aimedT < DODGE_AFTER || dodgeCd > 0.f || telegraphTimer > 0.f || burstLeft > 0) return false;
+        glm::vec3 across = norm2(glm::cross(w.playerAim, glm::vec3{0.f, 1.f, 0.f}));
+        float sgn = (uid + (int)(age * 3.f)) % 2 ? 1.f : -1.f;
+        for (int k = 0; k < 2; ++k, sgn = -sgn)
+            if (canStepTo(position + across * sgn * (radius() + 1.6f), w)) {
+                dodgeDir = across * sgn; dodgeT = DODGE_TIME; dodgeCd = DODGE_CD; aimedT = 0.f;
+                ev.dodged = true;
+                return true;
+            }
+        dodgeCd = 0.6f;   // boxed in: look again in a moment
+        return false;
     }
 
     // No clear shot: sidestep for a moment and look again soon, rather than
