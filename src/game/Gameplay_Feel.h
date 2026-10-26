@@ -82,7 +82,7 @@ inline int GameplayState::findFinisher() const {
         float len = glm::length(d);
         if (len < 1e-3f) continue;
         float reach = len - e.radius(), facing = glm::dot(fwd, d / len);
-        if (reach > FINISH_REACH || facing < 0.62f) continue;
+        if (reach > FINISH_REACH || facing < 0.55f) continue;
         float score = (1.f - facing) * 12.f + reach * 0.4f;   // the one under the crosshair, then the nearest
         if (score < bestScore) { bestScore = score; best = i; }
     }
@@ -103,7 +103,7 @@ inline bool GameplayState::tryFinisher() {
     float reach = len - e.radius();
     if (glm::length(flat) > 1e-3f && reach > 1.f) {
         flat = glm::normalize(flat);
-        float v = std::min(20.f, reach * 7.f);
+        float v = std::min(24.f, reach * 7.5f);
         player.velocity.x = flat.x * v; player.velocity.z = flat.z * v;
         dashMomentumTimer = std::max(dashMomentumTimer, 0.14f);
         fovKick = std::max(fovKick, 7.f);
@@ -141,6 +141,11 @@ inline bool GameplayState::tryFinisher() {
     return true;
 }
 
+inline bool GameplayState::finishKey() {
+    if (playerDead || victory || paused || hitStopFrames > 0 || punchCooldown > 0.f) return false;
+    return tryFinisher();
+}
+
 // ---- OVERDRIVE -------------------------------------------------------------------
 inline void GameplayState::enterOverdrive() {
     ++runLog.overdrives;
@@ -174,8 +179,15 @@ inline void GameplayState::updateFeel(float dt) {
     overdriveFx += (want - overdriveFx) * (1.f - std::exp(-dt * (want > overdriveFx ? 9.f : 2.5f)));
     if (overdriveOn()) runLog.overdriveTime += dt;
     killFx = std::max(0.f, killFx - dt / 0.2f);
-    float hint = !playerDead && punchCooldown <= 0.f && findFinisher() >= 0 ? 1.f : 0.f;
+    int fi = !playerDead && punchCooldown <= 0.f ? findFinisher() : -1;
+    float hint = fi >= 0 ? 1.f : 0.f;
     finishHint += (hint - finishHint) * (1.f - std::exp(-dt * 18.f));
+    finishCueCd = std::max(0.f, finishCueCd - dt);
+    if (fi >= 0 && enemies[fi].uid != finishReadyUid && finishCueCd <= 0.f) {   // a new one in reach: a soft, low cue
+        finishReadyUid = enemies[fi].uid; finishCueCd = 0.5f;
+        audio.playAt("finish_ready", enemies[fi].position + glm::vec3{0.f, enemies[fi].height() * 0.6f, 0.f}, 100, SoundGroup::UI, true);
+    }
+    if (fi < 0 && finishCueCd <= 0.f) finishReadyUid = -1;
 }
 
 // ---- the run log -------------------------------------------------------------------

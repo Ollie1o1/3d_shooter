@@ -72,6 +72,7 @@ inline void GameplayState::padButton(Uint8 b) {
         case SDL_CONTROLLER_BUTTON_START:         key(SDLK_ESCAPE); break;
         case SDL_CONTROLLER_BUTTON_BACK:          key(SDLK_TAB); break;
         case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:  pendingGrapple = true; break;
+        case SDL_CONTROLLER_BUTTON_RIGHTSTICK:    finishKey(); break;   // R3: finish
         case SDL_CONTROLLER_BUTTON_DPAD_UP:       pendingGrenade = true; break;
         case SDL_CONTROLLER_BUTTON_DPAD_DOWN:     inspect(); break;
         case SDL_CONTROLLER_BUTTON_DPAD_LEFT:     padCycle(-1); break;
@@ -172,9 +173,11 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
         return;
     }
     const Bindings& kb = binds();
-    if (kb.pressed(Act::INTERACT, e)) {
-        int idx = findInteractTarget();
-        if (idx >= 0 && interactables[idx].onInteract) interactables[idx].onInteract();
+    if (kb.pressed(Act::INTERACT, e)) {   // FINISH / INTERACT: one in reach to finish comes first (it never parries)
+        if (!finishKey()) {
+            int idx = findInteractTarget();
+            if (idx >= 0 && interactables[idx].onInteract) interactables[idx].onInteract();
+        }
     }
     // Grapple on its own button (Q by default, see Bindings.h). Right mouse is
     // only ever aim (rifles), so scoping and grappling never fight over it.

@@ -2925,7 +2925,7 @@ int main() {
                                 "sword_draw", "sword_swing", "sword_hit", "sword_thrust", "sword_guard", "sword_block", "sword_break",
                                 "kill_light", "kill_heavy", "kill_rifle", "kill_blade",
                                 "jump_air", "land_heavy", "slide", "hit_head", "ammo_low", "heartbeat", "hit_armor", "impact", "casing", "whiz", "step_metal", "land_metal", "lastkill",
-                                "hit_body", "stun", "finisher", "overdrive_on", "overdrive_off"};
+                                "hit_body", "stun", "finisher", "overdrive_on", "overdrive_off", "finish_ready"};
         std::vector<std::string> names(std::begin(loaded), std::end(loaded));
         for (const std::string& n : abAllSounds()) names.push_back(n);   // THE ABSOLUTE's fight (AbsoluteFeel.h)
         bool all = true; for (const std::string& n : names) all &= mixEntry(n) != nullptr;

@@ -1015,6 +1015,18 @@ def gen_overdrive_off():
     return out
 
 
+def gen_finish_ready():
+    """One in reach to finish: a soft low metallic 'tung' and a quick rise above it, short so it never crowds the fight."""
+    n = n_samples(0.32)
+    out = []
+    for i in range(n):
+        t = i / SR
+        body = (sine(196, i) + 0.5 * sine(311, i)) * math.exp(-t * 11.0) * min(1.0, t / 0.004)
+        rise = sine(784 + 400 * min(1.0, t / 0.08), i) * 0.25 * math.exp(-t * 18.0)
+        out.append(body * 0.7 + rise + white() * math.exp(-t * 500.0) * 0.15)
+    return out
+
+
 GENERATORS = {
     "jump": gen_jump,
     "land": gen_land,
@@ -1077,7 +1089,7 @@ GENERATORS = {
     "land_metal": gen_land_metal,
     "lastkill": gen_lastkill,
     "hit_body": gen_hit_body, "stun": gen_stun, "finisher": gen_finisher,
-    "overdrive_on": gen_overdrive_on, "overdrive_off": gen_overdrive_off,
+    "overdrive_on": gen_overdrive_on, "overdrive_off": gen_overdrive_off, "finish_ready": gen_finish_ready,
 }
 
 from sfx_absolute import ABSOLUTE_GENERATORS  # THE ABSOLUTE's (tools/sfx_absolute.py)

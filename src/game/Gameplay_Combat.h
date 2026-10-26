@@ -467,7 +467,7 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
     }
     bool killed = e.takeDamage(dmg);
     if (!friendly) {
-        styleSystem.addStyle(style, src);
+        styleSystem.addStyle(style, src, StyleSystem::HIT_METER);   // (hits score in full but barely move the meter: kills fill it)
         styleSystem.heal(heal * tune().heal);
     }
     if (!friendly) { ++hitSoundCount; hitSoundCrit |= crit; hitSoundArmor |= !pierceArmor && e.armorMult() < 0.99f; }   // played once (flushHitSounds)
