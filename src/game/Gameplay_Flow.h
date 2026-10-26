@@ -71,12 +71,14 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     glBindVertexArray(0);
 
     whiteTex = makeGreyTexture();
-    worldTex[TEX_GRID]     = TextureGen::generateGridFloor(128);
-    worldTex[TEX_BRICK]    = TextureGen::generateBrickWall(128);
-    worldTex[TEX_METAL]    = TextureGen::generateMetalCeiling(128);
-    worldTex[TEX_PANEL]    = TextureGen::generatePanel(128);
-    worldTex[TEX_ROCK]     = TextureGen::generateRock(128);
-    worldTex[TEX_CONCRETE] = TextureGen::generateConcrete(128);
+    worldTex[TEX_GRID]          = TextureGen::uploadMaterial(MaterialTex::gridFloor());
+    worldTex[TEX_BRICK]         = TextureGen::uploadMaterial(MaterialTex::brick());
+    worldTex[TEX_METAL]         = TextureGen::uploadMaterial(MaterialTex::metal());
+    worldTex[TEX_PANEL]         = TextureGen::uploadMaterial(MaterialTex::panel());
+    worldTex[TEX_ROCK]          = TextureGen::uploadMaterial(MaterialTex::rock());
+    worldTex[TEX_CONCRETE]      = TextureGen::uploadMaterial(MaterialTex::concrete());
+    worldTex[TEX_LIMESTONE]     = TextureGen::uploadMaterial(MaterialTex::limestone());
+    worldTex[TEX_BRASS]         = TextureGen::uploadMaterial(MaterialTex::brass());
     worldTex[TEX_ADOBE]         = TextureGen::uploadMaterial(MaterialTex::adobe());
     worldTex[TEX_TERRACOTTA]    = TextureGen::uploadMaterial(MaterialTex::terracotta());
     worldTex[TEX_WOOD]          = TextureGen::uploadMaterial(MaterialTex::wood());

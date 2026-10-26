@@ -37,6 +37,7 @@
 // theme, crossfaded down the tubes by LevelData::blends.
 // =============================================================================
 #include "world/Level.h"
+#include <string>
 
 inline LevelData buildGauntlet() {
     using glm::vec3;
@@ -78,6 +79,10 @@ inline LevelData buildGauntlet() {
         a.zone = zone; a.bounds = bounds; a.playerStart = start; a.startYaw = yaw;
         a.trigger = trigger; a.hasTrigger = true;
         a.maxAlive = 99; a.ambient = amb; a.theme = th;
+        const std::pair<const char*, RoomTone> tones[] = {{"THE CANAL", RoomTone::CANAL}, {"THE SLUICE", RoomTone::SLUICE},
+            {"THE ASCENT", RoomTone::ASCENT}, {"THE SPAN", RoomTone::SPAN}, {"THE WELL", RoomTone::WELL},
+            {"THE PUMPWORKS", RoomTone::PUMPWORKS}, {"THE TOWER", RoomTone::TOWER}};
+        for (auto& [n, t] : tones) if (std::string(n) == name) a.tone = t;   // each room's own air (RoomTone.h)
         a.damageScale = 1.f + 0.05f * (float)L.arenas.size();   // harder the further in
         L.arenas.push_back(std::move(a));
         return L.arenas.back();
@@ -91,6 +96,7 @@ inline LevelData buildGauntlet() {
     {
         vec3 conc{0.52f,0.54f,0.58f}, dark{0.32f,0.34f,0.39f}, crate{0.45f,0.33f,0.22f}, cyan{0.2f,0.9f,1.f},
              panel{0.30f,0.32f,0.38f}, teal{0.2f,1.f,0.8f};
+        const LevelBuilder::Mark m0 = B.mark();
         Arena& a = section("THE CANAL", "PUSH UP THE CANAL",
                            aabb(-15, 0, -125, 15, 22, -46), aabb(-15, 0, -125, 15, 16, -46),
                            {0.f, 3.f, 0.f}, -90.f, aabb(-15, -1, -125, 15, 40, -63), Ambient::DUST,
@@ -295,6 +301,7 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::RAPTOR, 0, {{0,12,-110}}},
             },
         };
+        B.paint(m0, Mat::BRICK, [&](vec3 c, Mat m) { return LevelBuilder::shade(c, crate) ? Mat::WOOD : m; });   // the canal's crates are wood
     }
 
     // =========================================================================
@@ -305,6 +312,7 @@ inline LevelData buildGauntlet() {
     {
         vec3 conc{0.40f,0.45f,0.46f}, steel{0.30f,0.33f,0.36f}, rust{0.44f,0.30f,0.20f}, amber{1.f,0.62f,0.15f},
              green{0.35f,1.f,0.55f}, panel{0.30f,0.32f,0.38f};
+        const LevelBuilder::Mark m0 = B.mark();
         Arena& a = section("THE SLUICE", "CLOSE QUARTERS",
                            aabb(-81, 0, -131, -57, 12, -107), aabb(-81, 0, -131, -57, 11, -107),
                            {-18.f, 3.f, -118.5f}, 180.f, aabb(-80, -1, -131, -59, 40, -107), Ambient::STEAM,
@@ -400,6 +408,8 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::MITE, 0, {{-66,0,-113},{-78,0,-128}}},
             },
         };
+        B.paint(m0, Mat::BRICK, [&](vec3 c, Mat m) {   // the pump room's steel and rust are riveted plate
+            return m != Mat::PANEL && (LevelBuilder::shade(c, steel) || LevelBuilder::shade(c, rust)) ? Mat::PLATE : m; });
     }
 
     // =========================================================================
@@ -409,6 +419,7 @@ inline LevelData buildGauntlet() {
     // =========================================================================
     {
         vec3 sand{0.66f,0.52f,0.38f}, sandD{0.48f,0.36f,0.27f}, gold{1.f,0.7f,0.3f}, panel{0.34f,0.31f,0.28f};
+        const LevelBuilder::Mark m0 = B.mark();
         Arena& a = section("THE ASCENT", "CLIMB THE TERRACES",
                            aabb(-201, 0, -133, -113, 34, -104), aabb(-201, 0, -133, -113, 33, -104),
                            {-84.f, 0.f, -118.5f}, 180.f, aabb(-201, -1, -133, -128, 60, -104), Ambient::DUST,
@@ -529,6 +540,8 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::MITE, 0, {{-176,16,-110},{-180,16,-122},{-184,16,-114}}},
             },
         };
+        B.paint(m0, Mat::LIMESTONE, [&](vec3 c, Mat m) {   // the terraces are cut sandstone
+            return m != Mat::PANEL && (LevelBuilder::shade(c, sand) || LevelBuilder::shade(c, sandD)) ? Mat::LIMESTONE : m; });
     }
 
     // =========================================================================
@@ -680,6 +693,7 @@ inline LevelData buildGauntlet() {
     {
         vec3 brick{0.40f,0.30f,0.30f}, brickD{0.26f,0.20f,0.21f}, steel{0.30f,0.32f,0.36f}, red{1.f,0.35f,0.25f},
              panel{0.34f,0.28f,0.30f};
+        const LevelBuilder::Mark m0 = B.mark();
         Arena& a = section("THE WELL", "DROP THROUGH THE FLOORS",
                            aabb(-160, 0, -283, -121, 34, -244), aabb(-160, 0, -283, -121, 30, -244),
                            {-167.5f, 20.f, -263.5f}, 0.f, aabb(-152, -1, -283, -121, 60, -244), Ambient::MOTES,
@@ -779,6 +793,8 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::RIPPER, 0, {{-152,0,-274},{-126,0,-250}}},
             },
         };
+        B.paint(m0, Mat::BRICK, [&](vec3 c, Mat m) {   // the well's floors and stairs are plate
+            return m != Mat::PANEL && LevelBuilder::shade(c, steel) ? Mat::PLATE : m; });
     }
 
     // =========================================================================
@@ -790,6 +806,7 @@ inline LevelData buildGauntlet() {
     {
         vec3 iron{0.34f,0.31f,0.30f}, rust{0.50f,0.28f,0.17f}, dark{0.18f,0.17f,0.18f}, orange{1.f,0.4f,0.08f},
              panel{0.33f,0.30f,0.28f}, screen{0.3f,1.f,0.6f};
+        const LevelBuilder::Mark m0 = B.mark();
         Arena& a = section("THE PUMPWORKS", "CLEAR THE HALL",
                            aabb(-79, 0, -283, -19, 14, -244), aabb(-79, 0, -296, -19, 13, -231),
                            {-117.5f, 0.f, -263.5f}, 0.f, aabb(-77, -1, -296, -19, 60, -231), Ambient::EMBERS,
@@ -894,6 +911,7 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::HUSK, 0, {{-70,5,-280},{-70,5,-247}}},
             },
         };
+        B.paint(m0, Mat::PLATE, [&](vec3, Mat m) { return m == Mat::PANEL ? m : Mat::PLATE; });   // the pumpworks: all riveted iron
     }
 
     // =========================================================================
@@ -905,6 +923,7 @@ inline LevelData buildGauntlet() {
         vec3 slate{0.26f,0.26f,0.34f}, slateD{0.16f,0.16f,0.22f}, mag{1.f,0.25f,0.75f}, cyan{0.25f,0.9f,1.f},
              panel{0.28f,0.27f,0.36f};
         const float TX = 56.f, TZ = -263.5f;
+        const LevelBuilder::Mark m0 = B.mark();
         Arena& a = section("THE TOWER", "WIN THE YARD - THEN CLIMB",
                            aabb(21, 0, -299, 91, 42, -228), aabb(21, 0, -299, 91, 32, -228),
                            {-15.5f, 0.f, -263.5f}, 0.f, aabb(28, -1, -299, 91, 60, -228), Ambient::ASH,
@@ -1010,6 +1029,8 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::SENTINEL, 0, {{28,5,-293},{28,5,-233}}},
             },
         };
+        B.paint(m0, Mat::MARBLE, [&](vec3 c, Mat m) {   // the courtyard and keep are dark veined slate
+            return m != Mat::PANEL && (LevelBuilder::shade(c, slate) || LevelBuilder::shade(c, slateD)) ? Mat::MARBLE : m; });
     }
 
     // Lighting crossfades down each tube

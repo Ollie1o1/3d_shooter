@@ -332,4 +332,187 @@ inline std::vector<unsigned char> basalt() {
     }, BRICK_MEAN * 1.0f);
 }
 
+// --- The shared surfaces (every mode: the tubes, FAST, ACT II) ---------------
+// The original six, redone to wrap and with more to look at, each scaled to
+// the old one's brightness so the places lit for them stay as they were.
+
+// Dark concrete floor in half-metre squares: worn, scuffed, stained
+inline std::vector<unsigned char> gridFloor() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        const int C = M / 2;
+        int cx = x / C, cy = y / C, lx = x % C, ly = y % C;
+        float b = 0.30f + (hashI(cx, cy, 101) - 0.5f) * 0.05f + (fbm(u, v, 8, 4, 102) - 0.5f) * 0.12f;
+        b += (noise(u, v, 128, 6, 103) - 0.5f) * 0.03f;                 // scuffs, run along it
+        b *= 1.f - 0.30f * sstep(0.6f, 0.75f, fbm(u, v, 3, 4, 104));     // stains
+        b += (hashI(x, y, 105) - 0.5f) * 0.03f;                          // grit
+        if (lx < 2 || ly < 2) b *= 0.62f;                                // the grooves
+        else if (lx < 3 || ly < 3) b *= 1.10f;                           // their lit edge
+        return Px{b * glm::vec3{1.0f, 0.95f, 0.88f}};
+    }, 0.320f);
+}
+
+// Brick: half-metre bricks, each its own tone, recessed mortar, chipped
+// corners, a few scorched, soot and damp coming through
+inline std::vector<unsigned char> brick() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        const int BW = 32, BH = 16;
+        int row = y / BH, ly = y % BH;
+        int sx = x + (row & 1) * (BW / 2), lx = sx % BW, col = (sx / BW) % (SIZE / BW);
+        float tone = 0.85f + 0.3f * hashI(col, row, 111);
+        bool burnt = hashI(col, row, 112) < 0.08f;
+        float b = 0.42f * tone + (noise(u, v, 64, 64, 113) - 0.5f) * 0.08f + (fbm(u, v, 8, 3, 114) - 0.5f) * 0.08f;
+        glm::vec3 c = b * (burnt ? glm::vec3{0.75f, 0.62f, 0.58f} : glm::vec3{1.10f, 0.92f, 0.80f});
+        // Mortar, set back: a shadow under each course
+        int cornerX = std::min(lx, BW - 1 - lx), cornerY = std::min(ly, BH - 1 - ly);
+        bool chip = hashI(col, row, 115) < 0.35f && cornerX + cornerY < 3;
+        if (lx < 2 || ly < 2 || chip) c = glm::vec3{0.30f, 0.29f, 0.27f} * (0.9f + 0.2f * hashI(x, y, 116));
+        else if (ly == BH - 1) c *= 0.75f;
+        float soot = sstep(0.55f, 0.75f, fbm(u, v, 3, 4, 117));
+        return Px{c * (1.f - 0.35f * soot)};
+    }, 0.374f);
+}
+
+// Brushed steel ceiling plates a metre square, bolted at the corners
+inline std::vector<unsigned char> metal() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        int px = x % M, py = y % M, pl = (x / M) + 7 * (y / M);
+        float b = 0.22f + (noise(u, v, 4, 96, 121) - 0.5f) * 0.10f + (noise(u, v, 2, 256, 122) - 0.5f) * 0.05f;   // brushed
+        b += (hashI(pl, 0, 123) - 0.5f) * 0.04f;
+        b *= 1.f - 0.3f * sstep(0.62f, 0.78f, fbm(u, v, 4, 3, 124));    // oily smears
+        if (px < 2 || py < 2) b *= 0.45f;
+        else if (px < 3 || py < 3) b *= 1.25f;
+        for (int bx : {6, M - 6}) for (int by : {6, M - 6}) {
+            int d2 = (px - bx) * (px - bx) + (py - by) * (py - by);
+            if (d2 < 5) b = py > by ? 0.42f : 0.30f;
+            else if (d2 < 9 && py < by) b *= 0.6f;
+        }
+        return Px{b * glm::vec3{0.90f, 0.93f, 1.0f}};
+    }, 0.227f);
+}
+
+// Sci-fi plates two metres square: bevelled seams, a recessed strip, rivets,
+// scratches; now and then a plate with hazard chevrons or a stencilled code
+inline std::vector<unsigned char> panel() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        const int P = 2 * M;
+        int px = x % P, py = y % P, pl = (x / P) + 3 * (y / P);
+        float b = 0.36f + (fbm(u, v, 8, 3, 131) - 0.5f) * 0.08f + (hashI(pl, 1, 132) - 0.5f) * 0.05f;
+        // Scratches: short bright hairlines at a slant
+        float sc = std::fabs(std::fmod((float)(x + 2 * y) + 400.f, 37.f) - 18.f);
+        if (sc < 0.5f && noise(u, v, 32, 32, 133) > 0.72f) b *= 1.18f;
+        glm::vec3 c = b * glm::vec3{0.94f, 0.97f, 1.0f};
+        // The strip across the middle; on a few plates, hazard chevrons in it
+        bool strip = py > P * 0.62f && py < P * 0.70f && px > 10 && px < P - 10;
+        if (strip) {
+            if (hashI(pl, 2, 134) < 0.25f) c = (((px + py) / 6) % 2) ? glm::vec3{0.62f, 0.50f, 0.16f} : glm::vec3{0.10f};
+            else c *= 0.62f;
+        }
+        // A stencilled block of code on others
+        if (hashI(pl, 3, 135) < 0.3f && px > 14 && px < 44 && py > 14 && py < 22 && ((px / 3) % 2 == 0) && hashI(px / 3, pl, 136) < 0.7f)
+            c *= 0.55f;
+        if (px < 2 || py < 2) c = glm::vec3{0.10f};
+        else if (px < 4 || py > P - 4) c *= 1.22f;
+        else if (px > P - 4 || py < 4) c *= 0.70f;
+        for (int cx : {8, P - 8}) for (int cy : {8, P - 8}) {
+            int d2 = (px - cx) * (px - cx) + (py - cy) * (py - cy);
+            if (d2 < 6) c = glm::vec3{0.55f} * (py > cy ? 1.f : 0.75f);
+        }
+        return Px{c};
+    }, 0.362f);
+}
+
+// Rock: wavy strata, cracks, grain, a few lichen spots
+inline std::vector<unsigned char> rock() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        float n = fbm(u, v, 4, 6, 141);
+        float band = std::sin((v * 14.f + fbm(u, v, 2, 4, 142) * 3.f) * 6.2831853f / 2.f);
+        float b = 0.38f + (n - 0.5f) * 0.32f + band * 0.04f;
+        float crack = std::fabs(fbm(u, v, 3, 5, 143) - 0.5f);
+        if (crack < 0.007f) b *= 0.55f + 0.45f * crack / 0.007f;
+        b += (hashI(x, y, 144) - 0.5f) * 0.04f;
+        glm::vec3 c = b * glm::vec3{1.02f, 0.98f, 0.92f};
+        float lichen = sstep(0.68f, 0.76f, fbm(u, v, 8, 3, 145));
+        c = glm::mix(c, glm::vec3{0.42f, 0.44f, 0.30f} * (0.8f + 0.4f * hashI(x, y, 146)), lichen * 0.6f);
+        return Px{c};
+    }, 0.387f);
+}
+
+// Poured concrete: 2 x 1 m formwork, tie holes weeping rust, run-off, aggregate, hairline cracks
+inline std::vector<unsigned char> concrete() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        const int W = 2 * M, H = M;
+        int fx = x % W, fy = y % H;
+        float b = 0.42f + (fbm(u, v, 8, 4, 151) - 0.5f) * 0.12f + (hashI(x / W, y / H, 152) - 0.5f) * 0.05f;
+        b -= (noise(u, v, 24, 2, 153) - 0.5f) * 0.08f;                  // run-off, down the face
+        if (hashI(x, y, 154) < 0.04f) b *= 0.8f;                          // aggregate
+        float crack = std::fabs(fbm(u, v, 2, 5, 155) - 0.5f);
+        if (crack < 0.008f && noise(u, v, 4, 4, 156) > 0.55f) b *= 0.6f;
+        glm::vec3 c = b * glm::vec3{1.0f, 1.0f, 0.97f};
+        // Tie holes, a streak of rust below each
+        for (int hx : {W / 4, 3 * W / 4}) {
+            int dx = fx - hx, dy = fy - H / 2;
+            if (dx * dx + dy * dy < 7) c *= 0.4f;
+            else if (std::abs(dx) <= 1 + (H / 2 - fy) / 12 && dy < 0 && dy > -H / 2 + 4)
+                c = glm::mix(c, glm::vec3{0.45f, 0.30f, 0.20f} * (b / 0.42f), 0.35f * (1.f + dy / (float)(H / 2)));
+        }
+        if (fx < 1 || fy < 1) c *= 0.7f;
+        return Px{c};
+    }, 0.405f);
+}
+
+// --- ACT II and FAST's own ---------------------------------------------------
+
+// Limestone ashlar, pitted and chamfered, with tide lines and dark streaks
+// where water has run: the drowned cathedral, the sandstone terraces
+inline std::vector<unsigned char> limestone() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        const int W = 2 * M, H = M;                                        // big ashlar: 2 x 1 m
+        int row = y / H, ly = y % H;
+        int sx = x + (row & 1) * M, lx = sx % W, col = (sx / W) % (SIZE / W);
+        float b = 0.55f + (hashI(col, row, 161) - 0.5f) * 0.10f + (fbm(u, v, 8, 4, 162) - 0.5f) * 0.14f;
+        b *= 0.9f + 0.1f * noise(u, v, 128, 128, 163);                    // pitting
+        float tide = std::fabs(std::sin((v * 6.f + (fbm(u, v, 4, 3, 164) - 0.5f) * 0.4f) * 3.14159f));
+        if (tide < 0.03f) b *= 0.82f;
+        float streak = noise(u, v, 40, 3, 165);
+        b *= 1.f - 0.35f * sstep(0.62f, 0.85f, streak) * sstep(0.45f, 0.7f, fbm(u, v, 2, 3, 166));
+        glm::vec3 c = b * glm::vec3{1.04f, 1.0f, 0.92f};
+        if (lx < 1 || ly < 1) c *= 0.45f;                                  // a fine joint
+        else if (lx < 3 || ly < 3) c *= 0.85f;                             // the chamfer
+        else if (lx > W - 3 || ly > H - 3) c *= 1.06f;
+        return Px{c};
+    }, 0.45f);
+}
+
+// Engraved brass: plates ringed like dials, ticks round them, rivets, green
+// patina in the hollows. The Orrery's instruments, the Descent's cage
+inline std::vector<unsigned char> brass() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        const int P = 2 * M;
+        int px = x % P, py = y % P;
+        float dx = px - P * 0.5f + 0.5f, dy = py - P * 0.5f + 0.5f, r = std::sqrt(dx * dx + dy * dy);
+        float b = 0.48f + (noise(u, v, 6, 128, 171) - 0.5f) * 0.10f + (fbm(u, v, 8, 3, 172) - 0.5f) * 0.08f;
+        bool groove = (std::fabs(r - 22.f) < 0.8f) || (std::fabs(r - 40.f) < 0.8f) || (std::fabs(r - 54.f) < 0.6f);
+        float ang = std::atan2(dy, dx), tick = std::fabs(std::fmod(ang * 24.f / 6.2831853f + 100.f, 1.f) - 0.5f);
+        if (r > 42.f && r < 52.f && tick < 0.06f) groove = true;
+        if (groove) b *= 0.55f;
+        glm::vec3 c = b * glm::vec3{1.18f, 0.92f, 0.55f};
+        float patina = sstep(0.6f, 0.74f, fbm(u, v, 4, 4, 173)) + (groove ? 0.4f : 0.f);
+        c = glm::mix(c, glm::vec3{0.28f, 0.42f, 0.34f} * (0.8f + 0.4f * hashI(x, y, 174)), std::min(patina, 1.f) * 0.4f);
+        if (px < 2 || py < 2) c = glm::vec3{0.12f, 0.09f, 0.05f};
+        for (int cx : {6, P - 6}) for (int cy = 6; cy < P; cy += 20) {
+            int d2 = (px - cx) * (px - cx) + (py - cy) * (py - cy);
+            if (d2 < 5) c = glm::vec3{0.70f, 0.56f, 0.32f};
+        }
+        return Px{c};
+    }, 0.40f);
+}
+
 } // namespace MaterialTex

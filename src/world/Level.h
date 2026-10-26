@@ -704,6 +704,23 @@ struct LevelBuilder {
     void neon(float x0, float y0, float z0, float x1, float y1, float z1, glm::vec3 c) {
         L.neon.push_back(Wall{aabb(x0,y0,z0,x1,y1,z1), c});
     }
+    // Giving a place its own surfaces: everything built since `mark()` (walls,
+    // props, shapes, floors) is given a material at the end, picked by its colour
+    struct Mark { size_t w, p, s, f; };
+    Mark mark() const { return Mark{L.walls.size(), L.props.size(), L.shapes.size(), L.floors.size()}; }
+    template <class Pick>
+    void paint(Mark m, Mat floorMat, Pick pick) {
+        for (size_t i = m.w; i < L.walls.size(); ++i) L.walls[i].mat = pick(L.walls[i].color, L.walls[i].mat);
+        for (size_t i = m.p; i < L.props.size(); ++i) L.props[i].mat = pick(L.props[i].color, L.props[i].mat);
+        for (size_t i = m.s; i < L.shapes.size(); ++i) L.shapes[i].mat = (int)pick(L.shapes[i].color, (Mat)L.shapes[i].mat);
+        for (size_t i = m.f; i < L.floors.size(); ++i) L.floors[i].mat = floorMat;
+    }
+    static bool same(glm::vec3 a, glm::vec3 b) { return glm::length(a - b) < 0.01f; }
+    // Any shade of b (b * 0.8, b * 1.2...): the same hue
+    static bool shade(glm::vec3 a, glm::vec3 b) {
+        float la = glm::length(a), lb = glm::length(b);
+        return la > 1e-4f && lb > 1e-4f && glm::dot(a / la, b / lb) > 0.9995f;
+    }
     // Non-box geometry in the current material (Shapes.h); `glow` for self-lit
     ShapeKit kit(bool glow = false) { return ShapeKit{L.shapes, (int)mat, glow}; }
     // Collision with nothing drawn: what a shape stands on, or stops you
@@ -842,16 +859,10 @@ inline void buildAct1(LevelBuilder& B) {
     auto prop = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { B.prop(x0,y0,z0,x1,y1,z1,c); };
     auto neon = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { B.neon(x0,y0,z0,x1,y1,z1,c); };
     auto ring = [&](float x0, float z0, float x1, float z1, float y0, float y1, vec3 c) { B.ring(x0,z0,x1,z1,y0,y1,c); };
-    // Each arena has its own surfaces: everything an arena built (walls, props,
-    // floors since `mark`) is given a material at the end, by its colour
-    struct Mark { size_t w, p, f; };
-    auto mark = [&]() { return Mark{L.walls.size(), L.props.size(), L.floors.size()}; };
-    auto paint = [&](Mark m, Mat floorMat, auto pick) {
-        for (size_t i = m.w; i < L.walls.size(); ++i) L.walls[i].mat = pick(L.walls[i].color);
-        for (size_t i = m.p; i < L.props.size(); ++i) L.props[i].mat = pick(L.props[i].color);
-        for (size_t i = m.f; i < L.floors.size(); ++i) L.floors[i].mat = floorMat;
-    };
-    auto same = [](vec3 a, vec3 b) { return glm::length(a - b) < 0.01f; };
+    auto mark = [&]() { return B.mark(); };
+    auto same = &LevelBuilder::same;
+    using Mark = LevelBuilder::Mark;
+    auto paint = [&](Mark m, Mat floorMat, auto pick) { B.paint(m, floorMat, [&](vec3 c, Mat) { return pick(c); }); };
     // A blocky synthwave palm: a leaning trunk and drooping fronds
     auto palm = [&](float x, float z, float h, float lean) {
         vec3 trunk{0.20f, 0.09f, 0.13f}, leaf{0.09f, 0.04f, 0.10f};
