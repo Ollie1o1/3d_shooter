@@ -751,6 +751,13 @@ public:
     void  enterOverdrive();
     void  leaveOverdrive();
     void  updateFeel(float dt);
+    // ALT FIRE (RMB on the guns that don't aim): the revolver FANS the rest of its cylinder in a
+    // fast, loose, staggering burst; the shotgun lets BOTH BARRELS go at once: twice the pellets,
+    // a huge shove, and a kick that throws you back (aimed at the floor: a shotgun jump)
+    bool  pendingAlt = false, altPrev = false;
+    int   fanLeft = 0; float fanTimer = 0.f;
+    bool  fanning = false, doubleShot = false;   // set around fireWeapon for the alt shots
+    void  altFire();
     // UNSEEN WIND-UPS: a regular enemy out of view (or behind cover you can't see round) starting an
     // attack gets a chevron at the screen's edge and a tick from where it is
     bool  unseenWindup(const Enemy& e, glm::vec3 flatFwd) const;
