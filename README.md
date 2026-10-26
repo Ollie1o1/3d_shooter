@@ -143,7 +143,8 @@ What the port needed (all behind `#ifdef __EMSCRIPTEN__`, so the desktop build i
 | Tab | Armory: spend upgrade points (pauses the game) |
 | G | Throw grenade |
 | R | Reload / Retry the arena (on death) |
-| F | Punch: parries projectiles, breaks a Juggernaut's smash, **finishes** a glowing enemy, detonates your grenade, hits what's in front |
+| F | Punch: parries projectiles, breaks a Juggernaut's smash, detonates your grenade, hits what's in front (and finishes a glowing enemy when there's nothing to parry) |
+| E | **Finish** a glowing enemy in reach (never parries); otherwise interact |
 | Left Ctrl / C | Crouch / Ground slam |
 | Enter | New run (on death/win) |
 | Escape / P | Pause / Resume (Escape quits to menu from death/win screens; in a browser, Escape releases the mouse and pauses). The pause menu also toggles fullscreen |
@@ -160,7 +161,8 @@ What the port needed (all behind `#ifdef __EMSCRIPTEN__`, so the desktop build i
 | B | Slide / ground slam |
 | RB | Dash |
 | LB | Grapple |
-| Y | Punch / parry / finisher |
+| Y | Punch / parry |
+| R3 (right stick click) | Finish |
 | X | Reload |
 | D-pad left / right | Previous / next weapon |
 | D-pad up / down | Grenade / inspect |
@@ -317,6 +319,8 @@ Everything below runs without touching the mouse, so it works from scripts.
 #   --clean    no title cards or enemy cards
 #   OVERDRIVE_RUNLOG=1 ./shooter ...   write runs.jsonl from dev runs too (normally only real play)
 #   --overlay driveNN   the OVERDRIVE screen look at NN %
+#   --overlay hook | alt   with --autoaim: grapple whatever it's aimed at every 2.5 s / use alt fire instead of the trigger
+#   --overlay teach | teach2   the NEW MOVE cards, every time (screenshots)
 tools/record_showcase.sh         # re-record docs/overdrive.gif (needs gifski)
 
 # Frame times
@@ -497,7 +501,13 @@ The regular enemies (not the bosses, which have their own answers) take a hit wi
 
 - **Shove and flinch**: every round pushes what it hits, by the gun (a magnum round rocks a Husk back half a metre, a point-blank shotgun blast throws it off its feet, a Brute barely rocks) and tips it over at the feet, away from the shot, snapping back in a fraction of a second. A thump plays from the body, deeper on the big ones
 - **Stuns**: each enemy has poise. Enough damage close together breaks it: the enemy staggers, its eyes gutter, and the attack it was winding up is lost (a magnum round stops a Husk's shot or a Ripper's lunge; two shotgun blasts in a row stop a Brute's slam). Then it can't be stunned again for a moment
-- **Finishers**: an enemy low enough (under 35 %, heavies 25 %, or under 60 % while stunned) throbs orange and four ticks close on the crosshair: **F** lunges in and finishes it, for health back (25, heavies 35, times the difficulty's healing), the gun in hand reloaded, a moment of safety and style. The punch cools down fast after one, so they chain
+- **Finishers**: an enemy low enough (under 35 %, heavies 25 %, or under 60 % while stunned) throbs orange, four ticks close on the crosshair with "E FINISH" under it, and a soft cue sounds: **E** (R3 on a pad) lunges in from up to 6 m and finishes it, for health back (25, heavies 35, times the difficulty's healing), the gun in hand reloaded, a moment of safety and style. F finishes too, but only when there's nothing to parry. The punch cools down fast after one, so they chain
+- **Movement into combat**: the grapple hooks an enemy under the crosshair: light ones (Husks, Rippers, Raptors out of the sky) are yanked to your feet and stunned; you zip to heavy ones and let go in their face. A slide kicks what it runs into (a light one stunned, a heavy one stops you dead). A slam hits harder and wider the further it fell. Gun kills in the air score more (AIRBORNE)
+- **Alt fire** (RMB on the guns that don't aim): the revolver **fans** the rest of its cylinder in a fast, loose, staggering burst; the shotgun fires **both barrels**: twice the pellets, a huge shove, and a kick that throws you back (aimed at the floor, a shotgun jump)
+- **Unseen wind-ups**: a regular enemy winding up out of view gets an amber chevron at the screen's edge pointing at it (closing in as the blow comes) and a tick from where it is
+- **Enemies that move like a squad**: gunners each hold their own bearing round you, so they spread out and press from several sides; Husks, Revenants and Weavers sidestep a crosshair held on them up close
+- **Music that follows the fight**: OVERDRIVE brings in a distorted power-chord stab and sixteenth hats; the last enemy of a wave strips the track to its drums; a wave's end rings a chord over a crash
+- **One card per move**: the first time each of these comes up (a finisher, a stagger, OVERDRIVE, a grapple on an enemy, alt fire) a small NEW MOVE card says what it is, once, ever
 - **Deaths** break the rig along the killing blow: the pieces fly the way the shot went (a headshot takes the head first), white-hot for a moment
 - **Attack tokens**: only a few regular enemies wind up at once (2 on LENIENT to 5 on BRUTAL, one more in a big crowd); the nearest ones you can see go first, and the ones behind you are slower to get to it
 - **The run log**: each death, finished run or quit adds a line to `runs.jsonl` beside the binary (desktop only): what hurt you and what killed you, each gun's shots, hits and kills, time to kill per enemy, stuns, finishers and OVERDRIVE. `python3 tools/runlog.py` sums it up
@@ -512,8 +522,8 @@ The regular enemies (not the bosses, which have their own answers) take a hit wi
 - **Freshness**: scoring with the same thing over and over earns less. Each gun, the punch, parries, explosives, the slam and the environment wear out as they score (FRESH x1.5, USED x1, STALE x0.5, DULL x0.2) and recover while you use something else; the gun in hand's freshness shows beside the style bar. Movement style (dashes, grapples, jumps) isn't affected
 - Kills you only set up (lava, the void, enemies hurting each other) can carry the meter into rank B but no further: the top ranks and Overdrive come from what you do yourself
 - **Friendly fire**: a Juggernaut's siege shell ploughs into any enemy in its path, and a Brute's slam or a Juggernaut's smash hurts the enemies around it (bosses are immune). Bait them into a crowd: those kills count as yours (+10 XP, half the kill style)
-- The run's score takes every point of style; the meter fills at under half of it, so a few good kills in a row fill it, not a few hits
-- **OVERDRIVE** at a full meter: a slow-motion beat, a gold shockwave and every gun full; then for 6 s your shots hit 30 % harder, fire a third faster and never run the magazine down, every hit staggers twice as hard, a punch finishes anything under half, and dash charges refill on each kill. Each kill keeps it burning half a second longer (8 s at most). When it burns out the meter drops back to B and it needs 15 s to recharge (a gold line under the meter)
+- The run's score takes every point of style; the meter fills at about a third of it, and hits move it barely at all, so it's a run of good kills that fills it
+- **OVERDRIVE** at a full meter: a slow-motion beat, a gold shockwave and every gun full; then for 6 s your shots hit 30 % harder, fire a third faster and never run the magazine down, every hit staggers twice as hard, a punch finishes anything under half, and dash charges refill on each kill. Each kill keeps it burning half a second longer (8 s at most). When it burns out the meter drops back to C and it needs 25 s to recharge (a gold line under the meter)
 - Style decays after 3 seconds of inactivity
 
 </details>

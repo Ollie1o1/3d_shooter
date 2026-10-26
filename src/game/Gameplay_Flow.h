@@ -923,6 +923,14 @@ inline void GameplayState::updateMusic() {
         default: break;
     }
     if (lv >= 1.f && styleSystem.overdrive) lv = 1.35f;
+    m.setDrive(overdriveOn() && !playerDead && !victory);   // OVERDRIVE: the stabs come in
+    {   // the last one standing: the drums alone (not a boss's fight, not a wave that refills)
+        int left = 0;
+        for (const auto& e : enemies) if (e.targetable() && e.type != EnemyType::CONDUIT) ++left;
+        bool last = director.fighting() && !director.bossWave() && director.queue.empty() && pendingTwins.empty() &&
+                    director.goal().kind == WaveGoal::KILL_ALL && left == 1 && !playerDead;
+        m.setSolo(last);
+    }
     if (countdown > 0.f) lv = 0.45f;
     if (zenith) lv = std::max(lv, 1.15f);    // !!!!!: the techno never lets up, kick, bass, clap and acid from the first second
     if (morning && victoryDelay < 0.f && !victory) lv = std::max(lv, 1.32f);   // MORNINGSTAR: everything, stabs and all

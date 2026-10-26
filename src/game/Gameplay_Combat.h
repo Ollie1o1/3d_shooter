@@ -200,6 +200,7 @@ inline void GameplayState::playVoice(const VoiceCue& c) {
 
 inline void GameplayState::updateEnemies(float dt) {
     voices.begin(player.camera.position, dt);
+    threatTickCd = std::max(0.f, threatTickCd - dt);
     beamHissCd -= dt;
     shieldClankCd -= dt;
     const Arena& ar = level.arenas[director.arena];
@@ -211,6 +212,7 @@ inline void GameplayState::updateEnemies(float dt) {
     w.grid       = &spatialGrid;
     w.bounds     = ar.bounds;
     w.playerVel  = player.velocity;
+    w.playerAim  = player.camera.forward();
     w.tune       = &tune();
     w.dynWalls   = level.moverWalls.data();   // the Descent's cage: walkers step onto it
     w.dynCount   = (int)level.moverWalls.size();
@@ -262,6 +264,10 @@ inline void GameplayState::updateEnemies(float dt) {
             fx.spawnBurst(e.position + glm::vec3{0, e.height() * 0.6f, 0}, {1.f, 0.3f, 0.1f}, 2, 1.5f, 0.6f, -2.f);
         const float eScale = dmgScale * e.damageMult();   // ENRAGED hits harder
         const EnemyEvents ev = e.ev;   // copy: spawning below may reallocate
+        if (ev.telegraphStarted && !isBoss(e.type) && threatTickCd <= 0.f && unseenWindup(e, player.camera.flatForward())) {   // behind you: a tick from where it is
+            threatTickCd = 0.25f;
+            audio.playAt("telegraph", e.position + glm::vec3{0.f, e.height() * 0.7f, 0.f}, 110, SoundGroup::ENEMY, true, 0.6f);
+        }
         if (e.alive) voices.enemy(voiceIn(e, &ev));
         glm::vec3 epos = e.position;
 
@@ -326,6 +332,7 @@ inline void GameplayState::updateEnemies(float dt) {
             fx.slashes.push_back({epos, enemies[i].yaw, ev.slash, 0.f});
             audio.playAt("dash", epos, ev.slash == 2 ? 120 : 95, SoundGroup::ENEMY, true);
         }
+        if (ev.dodged) audio.playAt("dash", epos, 55, SoundGroup::ENEMY);   // a scuff as it jinks aside
         if (ev.dashStarted) { audio.playAt("dash", epos, 128, SoundGroup::ENEMY, isBoss(enemies[i].type)); shake(0.12f, 0.03f); }
         if (ev.leapStarted) { audio.playAt("jump", epos, 128, SoundGroup::ENEMY, isBoss(enemies[i].type)); fx.spawnShockwave(epos, 3.f, statsOf(enemies[i].type).glow); }
         if (enemies[i].type == EnemyType::SOVEREIGN) onSovereignEvents(enemies[i], ev);
@@ -467,7 +474,7 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
     }
     bool killed = e.takeDamage(dmg);
     if (!friendly) {
-        styleSystem.addStyle(style, src);
+        styleSystem.addStyle(style, src, StyleSystem::HIT_METER);   // (hits score in full but barely move the meter: kills fill it)
         styleSystem.heal(heal * tune().heal);
     }
     if (!friendly) { ++hitSoundCount; hitSoundCrit |= crit; hitSoundArmor |= !pierceArmor && e.armorMult() < 0.99f; }   // played once (flushHitSounds)
@@ -495,6 +502,7 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
 
 inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     ++totalKills;
+    if (++killsThisSession == 4) teach(TEACH_ALT);   // a few kills in: the guns have more to them
     runLog.killed(e.type, src, e.firstHitAge >= 0.f ? e.age - e.firstHitAge : -1.f);
     if (src != StyleSource::FRIENDLY && src != StyleSource::ENVIRONMENT) styleSystem.extendOverdrive(0.5f);   // kills keep OVERDRIVE burning
     if (e.type == EnemyType::CONDUIT) director.onConduitDestroyed(e.position);
@@ -526,10 +534,13 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     }
 
     // XP, scaled by how stylishly you're playing
-    int xp = (int)std::round(xpForKill(e.type) * styleXpMultiplier(styleSystem.getRank()) * hm);
+    // In the air (a gun kill a moment after leaving the ground): more style, more XP, and it says so
+    const bool air = airT > 0.35f && src >= StyleSource::REVOLVER && src <= StyleSource::LONGSHOT;
+    if (air) styleSystem.addStyle(15.f);
+    int xp = (int)std::round(xpForKill(e.type) * styleXpMultiplier(styleSystem.getRank()) * hm * (air ? 1.25f : 1.f));
     gainXp(xp);
     char buf[64];
-    snprintf(buf, sizeof(buf), "%s  +%d XP", e.stats().name, xp);
+    snprintf(buf, sizeof(buf), air ? "%s  +%d XP  AIRBORNE" : "%s  +%d XP", e.stats().name, xp);
     ui.feed(buf, {0.8f, 0.85f, 0.9f});
     if (src == StyleSource::FRIENDLY) {
         gainXp(10);
@@ -814,8 +825,8 @@ inline void GameplayState::fireWeapon(int w) {
     const WeaponUpgrades& u = prog.up[w];
     WeaponState& ws = weapons[w];
     const bool od = overdriveOn();   // OVERDRIVE: harder, faster, and the magazine never runs down
-    if (!od) --ws.ammo;
-    ws.cooldown = weaponCooldown(id, u) * (od ? 0.75f : 1.f);
+    if (!od) { --ws.ammo; if (doubleShot && ws.ammo > 0) --ws.ammo; }   // (both barrels: both shells)
+    ws.cooldown = weaponCooldown(id, u) * (od ? 0.75f : 1.f) * (doubleShot ? 1.5f : 1.f);
     ++runLog.shots[w];
 
     glm::vec3 origin = player.camera.position;
@@ -829,7 +840,9 @@ inline void GameplayState::fireWeapon(int w) {
     float spread = weaponSpread(id, u, aimNow);
     // Rifles are wild in the air unless aimed
     if (d.canAim && !player.onGround) spread += 0.03f * (1.f - aimNow);
-    int   pellets = weaponPellets(id, u);
+    if (fanning) spread = std::max(spread, 0.05f);   // fanned from the hip: loose
+    if (doubleShot) spread *= 1.2f;
+    int   pellets = weaponPellets(id, u) * (doubleShot ? 2 : 1);
     int   pierce  = weaponPierce(id, u);
     float dmg     = weaponDamage(id, u) * (od ? 1.3f : 1.f);
     bool  sniper  = id == WeaponId::KAR || id == WeaponId::LONGSHOT;
@@ -923,7 +936,8 @@ inline void GameplayState::fireWeapon(int w) {
             anyHit = true;
             // The shove: each gun's own, the shotgun's hardest up close (HitReact.h)
             float shove = hitreact::gunPush(w) * falloff * (pellets > 1 ? glm::clamp(1.5f - hits[k].t / 10.f, 0.3f, 1.3f) : 1.f);
-            HitPush hp{dir, shove, hitreact::gunPoise(w)};
+            if (doubleShot) shove *= 1.7f;
+            HitPush hp{dir, shove, hitreact::gunPoise(w) * (fanning ? 1.6f : doubleShot ? 1.3f : 1.f)};
             if (hurtEnemy(e, dmg * m * falloff, at, sniper ? 12.f : (pellets > 1 ? 3.f : 13.f), pellets > 1 ? 0.5f : 2.f,
                           weaponSource(id), head, false, &hp)) {
                 ++killCount;
@@ -960,7 +974,7 @@ inline void GameplayState::fireWeapon(int w) {
     if (killCount > 0 && sniper) hitStopFrames = glm::max(hitStopFrames, 3);
     if (headKill && id == WeaponId::REVOLVER) hitStopFrames = glm::max(hitStopFrames, 2);   // a magnum headshot: the world catches for a beat
 
-    float recoil = d.recoil * (1.f - 0.4f * aimNow);
+    float recoil = d.recoil * (1.f - 0.4f * aimNow) * (fanning ? 0.55f : doubleShot ? 1.7f : 1.f);
     recoilPitch = std::min(recoilPitch + recoil, 14.f);
     player.camera.pitch = glm::clamp(player.camera.pitch + recoil, -89.f, 89.f);
 
@@ -969,8 +983,8 @@ inline void GameplayState::fireWeapon(int w) {
         static const float KICK[4][3] = {   // pitch, yaw jitter, roll jitter (degrees a second)
             {55.f, 8.f, 12.f}, {125.f, 22.f, 45.f}, {105.f, 14.f, 26.f}, {165.f, 20.f, 40.f}};   // (the revolver: a firm jolt, not a wobble)
         const float* k = KICK[std::clamp(w, 0, 3)];
-        float hold = 1.f - 0.55f * aimNow;
-        camFeel.punch(k[0] * hold, frand(-1.f, 1.f) * k[1] * hold, frand(-1.f, 1.f) * k[2] * hold);
+        float hold = (1.f - 0.55f * aimNow) * (doubleShot ? 1.6f : fanning ? 0.8f : 1.f);
+        camFeel.punch(k[0] * hold, frand(-1.f, 1.f) * k[1] * hold, frand(-1.f, 1.f) * k[2] * hold * (fanning ? 2.f : 1.f));
     }
     {   // running low: a dry tick under the last rounds, higher as the mag empties
         int mag = weaponMag(id, u), low = std::max(1, mag / 4);
@@ -986,6 +1000,17 @@ inline void GameplayState::fireWeapon(int w) {
     shake(sniper ? 0.14f : pellets > 1 ? 0.12f : 0.06f, sniper ? 0.03f : pellets > 1 ? 0.025f : 0.012f);
     static const char* SND[] = {"revolver", "shotgun", "kar", "longshot"};
     audio.play(SND[w], 128, SoundGroup::PLAYER, true);
+    if (doubleShot) {   // the second barrel under the first: lower, a hair late, and the blast throws you back
+        SfxMixer::Opts o; o.group = SoundGroup::PLAYER; o.pitch = 0.8f; o.delay = 0.012f; o.priority = true;
+        audio.playOpts("shotgun", o);
+        audio.play("slam", 70, SoundGroup::PLAYER);
+        glm::vec3 kick = -fwd * 11.f;
+        if (fwd.y < -0.4f) kick.y = std::max(kick.y, -fwd.y * 15.f);   // aimed down: a shotgun jump
+        player.velocity += kick;
+        if (kick.y > 2.f) { player.onGround = false; player.launched(); }
+        shake(0.2f, 0.04f);
+        fovKick = std::max(fovKick, 6.f);
+    }
     shotEchoes(SND[w], sniper ? 1.f : pellets > 1 ? 0.9f : 0.75f);
     {   // the spent brass lands a moment later, by your feet (on the ground: higher up, a long way down)
         SfxMixer::Opts c; c.group = SoundGroup::WORLD; c.positional = true;

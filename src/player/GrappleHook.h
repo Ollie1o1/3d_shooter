@@ -55,9 +55,10 @@ public:
 
     int       moverWall = -1;       // wall index of the platform we're hooked to, or -1
     int       hookedWall = -1;      // wall index of whatever we're hooked to (a PENITENT's chain anchor: rip it out)
+    int       enemyUid = -1;        // hooked into a heavy enemy: you zip to it (GameplayState moves `target` with it)
     glm::vec3 anchorLocal{0.f};
 
-    void release() { active = false; moverWall = -1; hookedWall = -1; }
+    void release() { active = false; moverWall = -1; hookedWall = -1; enemyUid = -1; }
 
     // Called every physics tick while active. Strongly pulls toward anchor +
     // cancels gravity entirely so you fly straight at the attachment point.
@@ -84,6 +85,12 @@ public:
     void drawLine(const glm::vec3& playerPos,
                   const glm::mat4& view, const glm::mat4& proj) {
         if (!active) return;
+        drawRope(playerPos, target, view, proj);
+    }
+
+    // The rope from you to `to` (also the yank's rope on an enemy being dragged in)
+    void drawRope(const glm::vec3& playerPos, const glm::vec3& target,
+                  const glm::mat4& view, const glm::mat4& proj) {
 
         lineShader.use();
         lineShader.setMat4("view",       view);

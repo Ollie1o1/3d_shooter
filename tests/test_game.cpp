@@ -2333,6 +2333,32 @@ int main() {
         CHECK(sane, "every soundtrack renders clean: finite, never clipping, at a sensible level");
         CHECK(layers, "the music gets bigger when a fight starts");
         CHECK(hm < h * 0.5f, "the pause menu muffles the music");
+        // The fight's own layers. Same tracks, same dice (the drums' noise doesn't depend on the gains), so
+        // what changes between two renders is exactly what the layer added or took away
+        {
+            auto render = [](int track, bool drive, bool solo, bool sting) {
+                MusicSynth m; m.setTrack(track); m.setIntensity(1.f); m.setVolume(1.f);
+                std::vector<float> buf(44100 * 2 * 2);
+                m.render(buf.data(), 44100 * 2);
+                m.setDrive(drive); m.setSolo(solo); if (sting) m.stinger();
+                m.render(buf.data(), 44100 * 2);
+                return buf;
+            };
+            auto rms = [](const std::vector<float>& a) { double s2 = 0; for (float v : a) s2 += v * v; return (float)std::sqrt(s2 / a.size()); };
+            auto diff = [](const std::vector<float>& a, const std::vector<float>& b) { double s2 = 0; for (size_t i = 0; i < a.size(); ++i) s2 += (a[i] - b[i]) * (a[i] - b[i]); return (float)std::sqrt(s2 / a.size()); };
+            auto peak = [](const std::vector<float>& a) { float p = 0.f; for (float v : a) p = std::max(p, std::isfinite(v) ? std::fabs(v) : 99.f); return p; };
+            bool driveUp = true, soloDown = true, stingOk = true;
+            for (int t = 0; t < MUSIC_TRACKS; ++t) {
+                auto b = render(t, false, false, false), d = render(t, true, false, false), so = render(t, false, true, false), g = render(t, false, false, true);
+                float rb = rms(b);
+                driveUp  &= (musicTrack(t).techno || diff(d, b) > 0.15f * rb) && peak(d) <= 1.f;   // (the encore's techno is already flat out)
+                soloDown &= diff(so, b) > 0.12f * rb && peak(so) <= 1.f;
+                stingOk  &= peak(g) <= 1.f && diff(g, b) > 0.07f * rb;
+            }
+            CHECK(driveUp, "OVERDRIVE's layer is plainly there in every track, still clean");
+            CHECK(soloDown, "the last enemy strips every track back to its drums");
+            CHECK(stingOk, "a wave's stinger rings over every track, clean");
+        }
         MusicSynth m; m.setTrack(2);
         std::vector<float> buf(2 * 4410);
         m.render(buf.data(), 4410);
@@ -2925,7 +2951,7 @@ int main() {
                                 "sword_draw", "sword_swing", "sword_hit", "sword_thrust", "sword_guard", "sword_block", "sword_break",
                                 "kill_light", "kill_heavy", "kill_rifle", "kill_blade",
                                 "jump_air", "land_heavy", "slide", "hit_head", "ammo_low", "heartbeat", "hit_armor", "impact", "casing", "whiz", "step_metal", "land_metal", "lastkill",
-                                "hit_body", "stun", "finisher", "overdrive_on", "overdrive_off"};
+                                "hit_body", "stun", "finisher", "overdrive_on", "overdrive_off", "finish_ready", "hook_yank"};
         std::vector<std::string> names(std::begin(loaded), std::end(loaded));
         for (const std::string& n : abAllSounds()) names.push_back(n);   // THE ABSOLUTE's fight (AbsoluteFeel.h)
         bool all = true; for (const std::string& n : names) all &= mixEntry(n) != nullptr;
@@ -4243,6 +4269,8 @@ int main() {
 
         GameSettings g; g.binds = b;
         GameSettings back; back.parse(g.text());
+        { GameSettings t; t.taught = 21; GameSettings tb; tb.parse(t.text());
+          CHECK(tb.taught == 21 && GameSettings{}.taught == 0, "which fighting moves have had their card is kept between launches"); }
         bool same = true;
         for (int a = 0; a < ACTS; ++a) same &= back.binds.slot[a][0] == b.slot[a][0] && back.binds.slot[a][1] == b.slot[a][1];
         CHECK(same, "bindings survive a save and a load");
@@ -4916,6 +4944,51 @@ int main() {
         CHECK(!sov.takeHit({1.f, 0.f, 0.f}, 50.f, 2000.f, 2.f, true, 0.f) && glm::length(sov.knockVel) == 0.f && !sov.reacts(),
               "bosses don't take a shove or a stun");
 
+        // The grapple's yank: a Husk 12 m off is dragged to the spot, stunned all the way, its shot lost
+        {
+            Enemy y = standing(EnemyType::HUSK);
+            y.attack = AttackKind::SHOT; y.telegraphTimer = y.telegraphDuration = 0.4f;
+            float t = y.yank({0.f, 0.f, 12.f});
+            int shots = 0; bool stunnedAll = true;
+            for (int i = 0; i < (int)((t + 0.05f) / DT); ++i) { y.update(DT, near); shots += y.ev.shots; stunnedAll &= y.stunned(); }
+            CHECK(std::fabs(y.position.z - 12.f) < 0.3f && std::fabs(y.position.x) < 0.1f && shots == 0 && stunnedAll && y.stunTimer > 0.2f,
+                  "a yanked Husk is dragged to where the hook pulled it, stunned the whole way and a moment after, its shot lost");
+        }
+        // Aim held on a Husk: it sidesteps after a moment (not while it's winding up a shot)
+        {
+            EnemyWorld aimW = near; aimW.playerFeet = {0.f, 0.f, 15.f}; aimW.playerEye = aimW.playerFeet + glm::vec3{0, 1.7f, 0};
+            Enemy a = standing(EnemyType::HUSK); a.mayAttack = false;
+            float dodgedAt = -1.f; glm::vec3 from = a.position;
+            for (int i = 0; i < 60 * 2 && dodgedAt < 0.f; ++i) {
+                glm::vec3 c = a.position + glm::vec3{0.f, a.height() * 0.6f, 0.f};
+                aimW.playerAim = glm::normalize(c - aimW.playerEye);
+                from = a.position;
+                a.update(DT, aimW);
+                if (a.ev.dodged) dodgedAt = i * DT;
+            }
+            for (int i = 0; i < 20; ++i) a.update(DT, aimW);
+            float side = std::fabs(a.position.x - from.x);
+            Enemy b = standing(EnemyType::HUSK); b.attack = AttackKind::SHOT; b.telegraphTimer = b.telegraphDuration = 5.f; b.mayAttack = false;
+            bool still = true;
+            for (int i = 0; i < 60; ++i) { aimW.playerAim = glm::normalize(b.position + glm::vec3{0.f, 1.2f, 0.f} - aimW.playerEye); b.update(DT, aimW); still &= !b.ev.dodged; }
+            std::printf("      a Husk under the crosshair sidesteps after %.2f s, %.1f m\n", dodgedAt, side);
+            CHECK(dodgedAt >= Enemy::DODGE_AFTER - 0.02f && dodgedAt < 1.f && side > 1.5f && still,
+                  "a Husk with your crosshair held on it sidesteps after a moment, but not mid-wind-up");
+        }
+        // A squad of gunners spreads round you instead of coming at you from one side
+        {
+            std::vector<Enemy> sq;
+            for (int k = 0; k < 4; ++k) { Enemy e = standing(EnemyType::HUSK); e.uid = k + 1; e.position = {-3.f + 2.f * k, 0.f, -14.f}; e.mayAttack = false; sq.push_back(e); }
+            EnemyWorld cw; cw.playerFeet = {0.f, 0.f, 0.f}; cw.playerEye = {0.f, 1.7f, 0.f};
+            for (int i = 0; i < 60 * 12; ++i) for (auto& e : sq) e.update(DT, cw);
+            float minGap = 7.f;
+            for (size_t i = 0; i < sq.size(); ++i) for (size_t j = i + 1; j < sq.size(); ++j) {
+                float ai = std::atan2(sq[i].position.x, sq[i].position.z), aj = std::atan2(sq[j].position.x, sq[j].position.z);
+                minGap = std::min(minGap, std::fabs(std::remainder(ai - aj, 6.2831853f)));
+            }
+            std::printf("      four Husks that started bunched end at least %.0f degrees apart round you\n", glm::degrees(minGap));
+            CHECK(minGap > glm::radians(35.f), "a squad of gunners spreads round you instead of all coming from one side");
+        }
         // Finishable: low enough, or stunned, or in OVERDRIVE; never a Mite
         Enemy f = standing(EnemyType::HUSK);
         f.health = f.maxHealth * 0.3f; bool low = f.finishable(false);

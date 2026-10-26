@@ -739,8 +739,11 @@ public:
     // FINISHERS: F on an enemy low enough (it glows) finishes it: health back, the gun full
     int  findFinisher() const;
     bool tryFinisher();
-    static constexpr float FINISH_REACH = 4.6f;
+    bool finishKey();                   // the FINISH key (E / R3): a finisher if one's in reach; never a parry
+    static constexpr float FINISH_REACH = 6.f;
     float finishHint = 0.f;             // 0..1 the crosshair says a finisher is in reach
+    float finishCueCd = 0.f;            // the "ready" cue: not more than this often
+    int   finishReadyUid = -1;          // the last one it cued for
     // OVERDRIVE: the meter full is a power state: harder, faster shots that never need
     // reloading, every hit staggers, a punch finishes anything under half
     bool  overdriveOn() const { return styleSystem.overdrive; }
@@ -748,6 +751,36 @@ public:
     void  enterOverdrive();
     void  leaveOverdrive();
     void  updateFeel(float dt);
+    // ALT FIRE (RMB on the guns that don't aim): the revolver FANS the rest of its cylinder in a
+    // fast, loose, staggering burst; the shotgun lets BOTH BARRELS go at once: twice the pellets,
+    // a huge shove, and a kick that throws you back (aimed at the floor: a shotgun jump)
+    bool  pendingAlt = false, altPrev = false;
+    int   fanLeft = 0; float fanTimer = 0.f;
+    bool  fanning = false, doubleShot = false;   // set around fireWeapon for the alt shots
+    void  altFire();
+    // TEACHING: each fighting move gets one small card (the enemy cards' kind), the first time
+    // it comes up, ever; then never again (GameSettings::taught)
+    enum Teach { TEACH_FINISH = 1, TEACH_STUN = 2, TEACH_OVERDRIVE = 4, TEACH_HOOK = 8, TEACH_ALT = 16 };
+    void  teach(int bit);
+    int   killsThisSession = 0;
+    // UNSEEN WIND-UPS: a regular enemy out of view (or behind cover you can't see round) starting an
+    // attack gets a chevron at the screen's edge and a tick from where it is
+    bool  unseenWindup(const Enemy& e, glm::vec3 flatFwd) const;
+    float threatTickCd = 0.f;
+    // MOVEMENT INTO COMBAT: the grapple hooks enemies (light ones are yanked to you,
+    // stunned; you zip to heavy ones), a slide kicks what it runs into, a slam
+    // hits harder the further it fell, kills in the air score more
+    static constexpr float HOOK_RANGE = 36.f;
+    static constexpr float HOOK_PULL_MASS = 1.65f;   // up to this: yanked to you; heavier: you go to it
+    int   findEnemyHook() const;
+    void  hookEnemy(int i);
+    void  updateEnemyZip();          // hooked into a heavy one: the rope follows it, and lets go as you arrive
+    float yankT = 0.f; int yankUid = -1;   // a light one on the end of the rope (its rope is drawn while yankT > 0)
+    float airT = 0.f;                // how long you've been off the ground
+    float slamFromY = 0.f;           // where the slam began: the drop sets its strength
+    std::vector<int> slideKicked;    // already kicked this slide (uids)
+    void  slideKicks();
+    void  slamLands();
     // The run log (RunLog.h): what hurt you, what killed you, each gun's numbers
     RunLog runLog;
     EnemyType hurtBy = EnemyType::COUNT;   // set around enemy events and shots: who's hitting you now

@@ -29,11 +29,12 @@ public:
     float overdriveTimer = 0.f;
     static constexpr float OVERDRIVE_DURATION = 6.f;
     static constexpr float OVERDRIVE_MAX      = 8.f;    // what kills can stretch it to
-    static constexpr float OVERDRIVE_AFTER    = 40.f;   // where the meter lands when it burns out
-    static constexpr float OVERDRIVE_COOL     = 15.f;   // after it burns out, this long before it can start again
+    static constexpr float OVERDRIVE_AFTER    = 30.f;   // where the meter lands when it burns out
+    static constexpr float OVERDRIVE_COOL     = 25.f;   // after it burns out, this long before it can start again
     // The meter fills at this share of what's scored (the run's score, `earned`, takes it all):
-    // a few good kills in a row, not a few hits, fill it
-    static constexpr float METER_GAIN = 0.45f;
+    // a run of good kills fills it, not a few hits (the game passes hits a smaller share still: HIT_METER)
+    static constexpr float METER_GAIN = 0.35f;
+    static constexpr float HIT_METER  = 0.35f;
     float driveCool = 0.f;
     bool  overdriveBegan = false, overdriveEnded = false;   // set as it starts / ends; the game takes them
     void  extendOverdrive(float s) { if (overdrive) overdriveTimer = std::min(OVERDRIVE_MAX, overdriveTimer + s); }
@@ -96,18 +97,19 @@ public:
     }
 
     // Returns the style actually scored, after freshness
-    float addStyle(float amount, StyleSource src = StyleSource::NONE) {
+    // meter: how much of it reaches the meter on top of METER_GAIN (a hit: HIT_METER; the score takes it all)
+    float addStyle(float amount, StyleSource src = StyleSource::NONE, float meter = 1.f) {
         if (src != StyleSource::NONE) {
             float worn = amount * WEAR;
             amount *= freshnessMult(freshness(src));
             if (src == StyleSource::FRIENDLY || src == StyleSource::ENVIRONMENT)
-                amount = std::min(amount, std::max(0.f, PASSIVE_CAP - style) / METER_GAIN);
+                amount = std::min(amount, std::max(0.f, PASSIVE_CAP - style) / (METER_GAIN * std::max(meter, 1e-3f)));
             for (int i = 1; i < (int)StyleSource::COUNT; ++i)
                 fresh[i] = i == (int)src ? std::max(0.f, fresh[i] - worn) : std::min(1.f, fresh[i] + worn * SHARE);
         }
         idleTimer = 0.f;
         earned += amount;
-        style = std::min(maxStyle, style + amount * METER_GAIN);
+        style = std::min(maxStyle, style + amount * METER_GAIN * meter);
         if (style >= maxStyle && !overdrive && driveCool <= 0.f) startOverdrive();
         return amount;
     }
