@@ -155,13 +155,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         landFall = slamming ? 0.f : peakFallSpeed;   // (a slam has its own sound)
         peakFallSpeed = 0.f;
         if (slamming) {
-            for (auto& e : enemies) {
-                if (!e.targetable()) continue;
-                if (glm::length(e.position - player.position) < 4.5f)
-                    hurtEnemy(e, 30.f, e.position + glm::vec3{0, e.height() * 0.5f, 0}, 15.f, 2.f, StyleSource::SLAM);
-            }
-            fx.spawnShockwave(player.position, 4.5f, {1.f, 0.8f, 0.4f});
-            shake(0.3f, 0.08f);
+            slamLands();   // harder and wider the further it fell (Gameplay_Feel.h)
             camFeel.dip(-4.f);
             camFeel.punch(-140.f, 0.f, frand(-1.f, 1.f) * 30.f);
             audio.play("slam");
@@ -199,12 +193,14 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     if (crouchKey && !player.onGround && !slamming && player.velocity.y < 0.f) {
         player.velocity.y = -40.f;
         slamming = true;
+        slamFromY = player.position.y;
     }
 
     // --- Grapple fire / release ---
     glm::vec3 gPoint{0.f}; int gWall = -1; bool gMover = false;
     bool canHook = findGrappleTarget(gPoint, gWall, gMover);
-    grappleTargetInSight = canHook && gMover;
+    int hookE = grapple.active || pinned ? -1 : findEnemyHook();   // an enemy under the crosshair: the hook takes it first
+    grappleTargetInSight = (canHook && gMover) || hookE >= 0;
     if (pendingGrapple && pinned && !grapple.active) { pendingGrapple = false; pinnedCue(); }
     if (pinned && grapple.active) grapple.release();
     if (grappleCooldown > 0.f) grappleCooldown -= dt;
@@ -212,6 +208,8 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         if (!grapple.active) {
             if (grappleCooldown > 0.f) {
                 audio.play("dry", 100, SoundGroup::PLAYER);   // still coiling: no spamming the hook
+            } else if (hookE >= 0) {
+                hookEnemy(hookE);
             } else if (canHook) {
                 glm::vec3 impulse{0.f};
                 grapple.attach(player.camera.position, gPoint, impulse, gWall,
@@ -227,7 +225,9 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         }
         pendingGrapple = false;
     }
+    updateEnemyZip();
     grapple.update(dt, player.camera.position, player.velocity);
+    if (yankT > 0.f) yankT -= dt;
     if (grapple.active) player.launched();   // swung: the rope's arc, not a jump's
     if (wasGrappling && !grapple.active && !fast()) grappleCooldown = GRAPPLE_COOLDOWN;   // however it ended (arrival, release, a rip, a pin); FAST runs grapple freely
     wasGrappling = grapple.active;
@@ -270,6 +270,8 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
             fovKick = std::max(fovKick, 5.f);
         }
         slidePrev = player.sliding;
+        slideKicks();
+        airT = player.onGround ? 0.f : airT + dt;
     }
     if (act2Falling && player.onGround) act2Falling = false;
     if (boost >= 0 && boostPrev < 0) {

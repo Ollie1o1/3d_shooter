@@ -526,10 +526,13 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     }
 
     // XP, scaled by how stylishly you're playing
-    int xp = (int)std::round(xpForKill(e.type) * styleXpMultiplier(styleSystem.getRank()) * hm);
+    // In the air (a gun kill a moment after leaving the ground): more style, more XP, and it says so
+    const bool air = airT > 0.35f && src >= StyleSource::REVOLVER && src <= StyleSource::LONGSHOT;
+    if (air) styleSystem.addStyle(15.f);
+    int xp = (int)std::round(xpForKill(e.type) * styleXpMultiplier(styleSystem.getRank()) * hm * (air ? 1.25f : 1.f));
     gainXp(xp);
     char buf[64];
-    snprintf(buf, sizeof(buf), "%s  +%d XP", e.stats().name, xp);
+    snprintf(buf, sizeof(buf), air ? "%s  +%d XP  AIRBORNE" : "%s  +%d XP", e.stats().name, xp);
     ui.feed(buf, {0.8f, 0.85f, 0.9f});
     if (src == StyleSource::FRIENDLY) {
         gainXp(10);

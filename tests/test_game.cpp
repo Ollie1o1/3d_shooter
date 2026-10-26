@@ -2925,7 +2925,7 @@ int main() {
                                 "sword_draw", "sword_swing", "sword_hit", "sword_thrust", "sword_guard", "sword_block", "sword_break",
                                 "kill_light", "kill_heavy", "kill_rifle", "kill_blade",
                                 "jump_air", "land_heavy", "slide", "hit_head", "ammo_low", "heartbeat", "hit_armor", "impact", "casing", "whiz", "step_metal", "land_metal", "lastkill",
-                                "hit_body", "stun", "finisher", "overdrive_on", "overdrive_off", "finish_ready"};
+                                "hit_body", "stun", "finisher", "overdrive_on", "overdrive_off", "finish_ready", "hook_yank"};
         std::vector<std::string> names(std::begin(loaded), std::end(loaded));
         for (const std::string& n : abAllSounds()) names.push_back(n);   // THE ABSOLUTE's fight (AbsoluteFeel.h)
         bool all = true; for (const std::string& n : names) all &= mixEntry(n) != nullptr;
@@ -4916,6 +4916,16 @@ int main() {
         CHECK(!sov.takeHit({1.f, 0.f, 0.f}, 50.f, 2000.f, 2.f, true, 0.f) && glm::length(sov.knockVel) == 0.f && !sov.reacts(),
               "bosses don't take a shove or a stun");
 
+        // The grapple's yank: a Husk 12 m off is dragged to the spot, stunned all the way, its shot lost
+        {
+            Enemy y = standing(EnemyType::HUSK);
+            y.attack = AttackKind::SHOT; y.telegraphTimer = y.telegraphDuration = 0.4f;
+            float t = y.yank({0.f, 0.f, 12.f});
+            int shots = 0; bool stunnedAll = true;
+            for (int i = 0; i < (int)((t + 0.05f) / DT); ++i) { y.update(DT, near); shots += y.ev.shots; stunnedAll &= y.stunned(); }
+            CHECK(std::fabs(y.position.z - 12.f) < 0.3f && std::fabs(y.position.x) < 0.1f && shots == 0 && stunnedAll && y.stunTimer > 0.2f,
+                  "a yanked Husk is dragged to where the hook pulled it, stunned the whole way and a moment after, its shot lost");
+        }
         // Finishable: low enough, or stunned, or in OVERDRIVE; never a Mite
         Enemy f = standing(EnemyType::HUSK);
         f.health = f.maxHealth * 0.3f; bool low = f.finishable(false);

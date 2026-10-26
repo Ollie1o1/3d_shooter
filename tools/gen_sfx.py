@@ -1027,6 +1027,22 @@ def gen_finish_ready():
     return out
 
 
+def gen_hook_yank():
+    """The hook biting into an enemy: a chain snapping taut (a bright metallic crack and rattle) over a short heavy whoosh."""
+    n = n_samples(0.42)
+    whoosh = _bandnoise(n, 300, 2500)
+    out = []
+    for i in range(n):
+        t = i / SR
+        crack = white() * math.exp(-t * 300.0)
+        ring = (sine(1180, i) + 0.6 * sine(1730, i) + 0.4 * sine(2610, i)) * math.exp(-t * 22.0)
+        rattle = white() * (0.5 + 0.5 * math.sin(2 * math.pi * 55 * t)) * math.exp(-t * 14.0) * 0.3
+        sw = math.sin(math.pi * min(1.0, t / 0.42)) ** 2
+        thump = math.sin(2 * math.pi * (90 * math.exp(-t * 8.0) + 40) * t) * math.exp(-t * 16.0)
+        out.append(crack * 0.7 + ring * 0.3 + rattle + whoosh[i] * sw * 0.5 + thump * 0.6)
+    return out
+
+
 GENERATORS = {
     "jump": gen_jump,
     "land": gen_land,
@@ -1089,7 +1105,7 @@ GENERATORS = {
     "land_metal": gen_land_metal,
     "lastkill": gen_lastkill,
     "hit_body": gen_hit_body, "stun": gen_stun, "finisher": gen_finisher,
-    "overdrive_on": gen_overdrive_on, "overdrive_off": gen_overdrive_off, "finish_ready": gen_finish_ready,
+    "overdrive_on": gen_overdrive_on, "overdrive_off": gen_overdrive_off, "finish_ready": gen_finish_ready, "hook_yank": gen_hook_yank,
 }
 
 from sfx_absolute import ABSOLUTE_GENERATORS  # THE ABSOLUTE's (tools/sfx_absolute.py)

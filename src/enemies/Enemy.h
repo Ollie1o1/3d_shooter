@@ -259,6 +259,21 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     bool  mayAttack  = true;
     float attackPace = 1.f;
     float finishGlow = 0.f;      // render only: 0..1, a punch would finish it (set per frame on the drawn copy)
+    // Yanked by the grapple (GameplayState::hookEnemy): dragged toward pullTo, stunned all the way
+    glm::vec3 pullTo{0.f};
+    float pullT = 0.f;
+    static constexpr float PULL_SPEED = 30.f;
+    // Hooked and pulled toward `to`; it arrives stunned. Returns how long the pull takes
+    float yank(glm::vec3 to) {
+        glm::vec3 d = to - position;
+        if (!stats().flying) d.y = 0.f;
+        float l = glm::length(d);
+        pullTo = position + d;
+        pullT = l / PULL_SPEED + 0.05f;
+        knockVel = glm::vec3{0.f};
+        stun(pullT + 0.45f);
+        return pullT;
+    }
     float floorY        = 0.f;   // hard floor under it (GameplayState sets it each tick)
     float wadeMul       = 1.f;   // wading slows its steps (set each tick)
     float age           = 0.f;
@@ -524,6 +539,15 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
             if (stunTimer > 0.f) {
                 stunTimer = std::max(0.f, stunTimer - dt);
                 velocity.x = velocity.z = 0.f;
+                if (pullT > 0.f) {   // on the end of the rope: dragged in, walls still in the way
+                    pullT -= dt;
+                    glm::vec3 d = pullTo - position;
+                    if (!stats().flying) d.y = 0.f;
+                    float l = glm::length(d), step = PULL_SPEED * dt;
+                    if (l <= step || pullT <= 0.f) { pullT = 0.f; if (l > 1e-4f) knockVel = d / l * 4.f; }   // (it lands with a little carry)
+                    else position += d / l * step;
+                    if (stats().flying) velocity.y = 0.f;
+                }
                 if (stats().flying) velocity.y = -1.5f;   // a flyer sags
                 if (type == EnemyType::RAPTOR) pitch = glm::mix(pitch, 0.f, std::min(1.f, dt * 6.f));
                 integrate(dt, w);
