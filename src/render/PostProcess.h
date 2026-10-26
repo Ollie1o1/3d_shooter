@@ -2,17 +2,24 @@
 #include "core/gl.h"
 #include "core/ShaderProgram.h"
 #include "core/Display.h"
+#include <algorithm>
+#include <cstdio>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 // Scene → bloom → (CRT) → the display canvas. The scene targets follow the
 // render resolution (resized on the fly); bloom always works at 640x360, so
-// the glow looks the same at any resolution.
+// the glow looks the same at any resolution. With anti-aliasing on, the scene
+// is drawn into a multisampled target and resolved into sceneTex before bloom.
 class PostProcess {
 public:
     int W, H;
     static constexpr int BW = 640, BH = 360;
     GLuint sceneFBO = 0, sceneTex = 0, sceneDepth = 0;
+    int samples = 0;         // MSAA asked for (0 or 1 = off); set every frame from the settings
+    int activeSamples = 0;   // what the targets were built with (0 if the GPU said no)
+    GLuint msFBO = 0, msColor = 0, msDepth = 0;
+    static constexpr GLenum SCENE_FORMAT = GL_R11F_G11F_B10F;
     GLuint bloomFBO[2] = {0,0};
     GLuint bloomTex[2] = {0,0};
 
@@ -61,7 +68,9 @@ public:
         glBindFramebuffer(GL_FRAMEBUFFER,sceneFBO);
         glGenTextures(1,&sceneTex);
         glBindTexture(GL_TEXTURE_2D,sceneTex);
-        glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA16F,W,H,0,GL_RGBA,GL_FLOAT,nullptr);
+        // Packed HDR (4 bytes a pixel, no alpha: nothing reads it): half the memory traffic of
+        // RGBA16F, which with 4x MSAA was most of its cost. Banding checked: same as before
+        glTexImage2D(GL_TEXTURE_2D,0,SCENE_FORMAT,W,H,0,GL_RGB,GL_FLOAT,nullptr);
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
         glFramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,sceneTex,0);
@@ -70,6 +79,7 @@ public:
         glRenderbufferStorage(GL_RENDERBUFFER,GL_DEPTH_COMPONENT24,W,H);
         glFramebufferRenderbuffer(GL_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,GL_RENDERBUFFER,sceneDepth);
         glBindFramebuffer(GL_FRAMEBUFFER,0);
+        createMultisample();
 
         for (int i=0;i<2;++i) {
             glGenFramebuffers(1,&bloomFBO[i]);
@@ -98,7 +108,42 @@ public:
         glBindFramebuffer(GL_FRAMEBUFFER,0);
     }
 
+    // The multisampled scene, if asked for: same formats as the scene, `samples` per pixel
+    void createMultisample() {
+        activeSamples = 0;
+        if (samples <= 1) return;
+        GLint maxS = 0;
+        glGetIntegerv(GL_MAX_SAMPLES, &maxS);
+        int n = std::min(samples, (int)maxS);
+        if (n <= 1) return;
+        glGenFramebuffers(1, &msFBO);
+        glBindFramebuffer(GL_FRAMEBUFFER, msFBO);
+        glGenRenderbuffers(1, &msColor);
+        glBindRenderbuffer(GL_RENDERBUFFER, msColor);
+        glRenderbufferStorageMultisample(GL_RENDERBUFFER, n, SCENE_FORMAT, W, H);   // (a resolve needs matching formats)
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, msColor);
+        glGenRenderbuffers(1, &msDepth);
+        glBindRenderbuffer(GL_RENDERBUFFER, msDepth);
+        glRenderbufferStorageMultisample(GL_RENDERBUFFER, n, GL_DEPTH_COMPONENT24, W, H);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, msDepth);
+        bool ok = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        if (ok) activeSamples = n;
+        else destroyMultisample();   // (no multisampled float targets here: render without)
+        if (activeSamples != loggedSamples) {
+            std::fprintf(stderr, ok ? "anti-aliasing: %dx MSAA\n" : "anti-aliasing: %dx MSAA not available, off\n", ok ? activeSamples : n);
+            loggedSamples = activeSamples;
+        }
+    }
+    void destroyMultisample() {
+        if (msFBO) glDeleteFramebuffers(1, &msFBO);
+        if (msColor) glDeleteRenderbuffers(1, &msColor);
+        if (msDepth) glDeleteRenderbuffers(1, &msDepth);
+        msFBO = msColor = msDepth = 0;
+    }
+
     void destroyTargets() {
+        destroyMultisample();
         glDeleteFramebuffers(1,&sceneFBO);
         glDeleteTextures(1,&sceneTex);
         glDeleteRenderbuffers(1,&sceneDepth);
@@ -117,14 +162,28 @@ public:
             W = display::renderW(); H = display::renderH();
             createTargets();
         }
-        glBindFramebuffer(GL_FRAMEBUFFER,sceneFBO);
+        int want = samples > 1 ? samples : 0;
+        if (want != wantedSamples) {   // the setting changed: rebuild just the multisampled target
+            wantedSamples = want;
+            destroyMultisample();
+            createMultisample();
+        }
+        glBindFramebuffer(GL_FRAMEBUFFER, activeSamples ? msFBO : sceneFBO);
         glViewport(0,0,W,H);
         glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
     }
 
+    int wantedSamples = -1;   // the samples the targets were last built for
+    int loggedSamples = 0;
     bool skipBloom = false;   // dev (--skip bloom): composite without the bright pass and blurs
 
     void endScene() {
+        if (activeSamples) {   // resolve: average each pixel's samples into the scene texture
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, msFBO);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, sceneFBO);
+            glBlitFramebuffer(0, 0, W, H, 0, 0, W, H, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        }
         if (!skipBloom) bloomPasses();
         compositeToCanvas();
         glEnable(GL_DEPTH_TEST);

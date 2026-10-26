@@ -537,7 +537,10 @@ int main(int argc, char* argv[]) {
         if (arg == "--hollow" && i + 1 < argc) g_devHollow = std::atoi(argv[++i]) & 3;
         if (arg == "--overlay" && i + 1 < argc) g_devOverlay = argv[++i];
         if (arg == "--bench" && i + 1 < argc) { app->benchFrames = std::atoi(argv[++i]); g_devNoMouse = true; frametimer::enabled() = true; }
+#ifndef __EMSCRIPTEN__
         if (arg == "--inflight" && i + 1 < argc) app->inFlight = std::max(0, std::min(3, std::atoi(argv[++i])));   // dev: frames the CPU may run ahead (0 = no fence)
+#endif
+        if (arg == "--aa" && i + 1 < argc) g_devAA = std::atoi(argv[++i]);
         if (arg == "--skip" && i + 1 < argc) g_devSkip = argv[++i];
         if (arg == "--gpu-timer") { app->gpuTimer = true; frametimer::enabled() = true; }
         if (arg == "--frametimes" && i + 1 < argc) { app->frameTimesPath = argv[++i]; frametimer::enabled() = true; }

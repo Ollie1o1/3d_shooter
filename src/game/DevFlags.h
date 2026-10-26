@@ -30,6 +30,7 @@ inline bool      g_devAim = false;
 inline std::string g_devOverlay;
 // --skip sky,world,boxes,water,fx,viewmodel,bloom,hud: leave render passes out (finding what the GPU spends)
 inline std::string g_devSkip;
+inline int g_devAA = -1;   // --aa N: MSAA samples whatever the settings say (0 = off)
 inline bool devSkip(const char* pass) {
     if (g_devSkip.empty()) return false;
     std::string list = "," + g_devSkip + ",";

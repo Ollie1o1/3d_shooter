@@ -476,6 +476,7 @@ inline void GameplayState::render() {
     if (th.eclipse > 0.5f && totality01() > 0.f) th = lerpTheme(th, totalityOf(th), totality01());   // TOTALITY: the light goes out
     if (th.eclipse > 0.5f && dawn01() > 0.f) th = lerpTheme(th, dawnOf(th), dawn01());   // he's dead: the sun comes out
 
+    postProcess.samples = g_devAA >= 0 ? g_devAA : settings ? GameSettings::aaSamples(settings->antiAlias) : 4;
     postProcess.beginScene();
     glClearColor(th.fogColor.r, th.fogColor.g, th.fogColor.b, 1.f);
     glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);

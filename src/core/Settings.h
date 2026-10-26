@@ -39,6 +39,12 @@ struct GameSettings {
         static const char* N[QUALITY_LEVELS] = {"LOW (720P)", "MEDIUM (1080P)", "HIGH (1440P)", "EXTREME (4K)"};
         return N[wrapQuality(i)];
     }
+    // Anti-aliasing: MSAA samples per pixel. Smooths the edges of boxes and keeps thin
+    // neon lines whole in the distance. (No 8X: Apple GPUs stop at 4, and 4X is the sweet spot.)
+    static constexpr int AA_LEVELS = 3, AA_DEFAULT = 2;   // 4X
+    int   antiAlias = AA_DEFAULT;
+    static int aaSamples(int i) { static const int S[AA_LEVELS] = {0, 2, 4}; return S[(i % AA_LEVELS + AA_LEVELS) % AA_LEVELS]; }
+    static const char* aaLabel(int i) { static const char* N[AA_LEVELS] = {"OFF", "2X", "4X"}; return N[(i % AA_LEVELS + AA_LEVELS) % AA_LEVELS]; }
     bool  showFPS     = false;
     bool  crtFilter   = false;  // CRT post-process effect
     float screenShake = 1.0f;   // 0..1
@@ -115,6 +121,7 @@ struct GameSettings {
         f << "vsync "         << (vsync ? 1 : 0) << "\n";
         f << "fullscreen "    << (fullscreen ? 1 : 0) << "\n";
         f << "quality "       << quality       << "\n";
+        f << "antiAlias "     << antiAlias     << "\n";
         f << "showFPS "       << (showFPS   ? 1 : 0) << "\n";
         f << "crtFilter "     << (crtFilter ? 1 : 0) << "\n";
         f << "screenShake "   << screenShake   << "\n";
@@ -156,6 +163,7 @@ struct GameSettings {
             else if (key == "vsync")         flag(vsync);
             else if (key == "fullscreen")    flag(fullscreen);
             else if (key == "quality")       f >> quality;
+            else if (key == "antiAlias")     f >> antiAlias;
             else if (key == "fpsCap") {      // older saves: 0 uncapped, 1 60, 2 144, 3 180, 4 240
                 int old = 0; f >> old;
                 static const int MAP[] = {0, 2, 4, 4, 6};
@@ -187,6 +195,7 @@ struct GameSettings {
         screenShake = clampf(screenShake, 0.f, 1.f);
         frameCap = (frameCap % FRAME_CAPS + FRAME_CAPS) % FRAME_CAPS;
         quality = wrapQuality(quality);
+        antiAlias = (antiAlias % AA_LEVELS + AA_LEVELS) % AA_LEVELS;
         crosshair = (crosshair % CROSSHAIR_COLORS + CROSSHAIR_COLORS) % CROSSHAIR_COLORS;
         if (difficulty < 0 || difficulty >= DIFFICULTY_LEVELS) difficulty = DIFFICULTY_DEFAULT;
         binds.tidy();
