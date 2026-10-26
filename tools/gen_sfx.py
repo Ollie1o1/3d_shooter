@@ -781,6 +781,19 @@ def gen_ammo_low():
     return out
 
 
+def gen_heartbeat():
+    """Low health: lub-dub, two soft low thumps felt more than heard."""
+    n = n_samples(0.42)
+    out = [0.0] * n
+    for at, amp, f0 in ((0.0, 1.0, 58.0), (0.17, 0.7, 52.0)):
+        s0 = int(at * SR)
+        for j in range(n - s0):
+            t = j / SR
+            env = min(1.0, t / 0.008) * math.exp(-t * 22.0)
+            out[s0 + j] += (sine(f0 - 18.0 * t, j) + 0.35 * sine(2 * f0, j)) * env * amp
+    return lowpass(out, 400)
+
+
 GENERATORS = {
     "jump": gen_jump,
     "land": gen_land,
@@ -834,6 +847,7 @@ GENERATORS = {
     "slide": gen_slide,
     "hit_head": gen_hit_head,
     "ammo_low": gen_ammo_low,
+    "heartbeat": gen_heartbeat,
 }
 
 from sfx_absolute import ABSOLUTE_GENERATORS  # THE ABSOLUTE's (tools/sfx_absolute.py)

@@ -598,6 +598,15 @@ inline void GameplayState::render() {
     ftLap.to(frametimer::R_VIEWMODEL);
     postProcess.crtEnabled = settings ? settings->crtFilter : false;
     postProcess.skipBloom = devSkip("bloom");
+    postProcess.fx.speed = scopedView() ? 0.f : speedFx;
+    postProcess.fx.low   = lowFx;
+    postProcess.fx.pulse = playerDead ? 0.f : heartPulse;
+    postProcess.fx.hurt  = glm::clamp(ui.damageVignette * 2.f, 0.f, 1.f);
+    postProcess.fx.time  = gameClock;
+    // --overlay rushNN / lowNN / hurt: hold a screen effect for screenshots (lowNN on a heartbeat's peak)
+    if (g_devOverlay.rfind("rush", 0) == 0) postProcess.fx.speed = std::atoi(g_devOverlay.c_str() + 4) / 100.f;
+    if (g_devOverlay.rfind("low", 0) == 0) { postProcess.fx.low = std::atoi(g_devOverlay.c_str() + 3) / 100.f; postProcess.fx.pulse = 1.f; }
+    if (g_devOverlay == "hurt") postProcess.fx.hurt = 1.f;
     postProcess.endScene();
     ftLap.to(frametimer::R_POST);
 

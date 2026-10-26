@@ -117,6 +117,8 @@ public:
     void setListener(glm::vec3 pos, glm::vec3 right, glm::vec3 fwd) { if (initialized) sfx.setListener(pos, right, fwd); }
     void setSpace(ReverbSpace s) { if (initialized) sfx.setSpace(s); }
     void duck(float dB, float seconds) { if (initialized) sfx.duck(dB, seconds); }
+    // 0..1: how much of the whole mix goes through a low-pass (low health: the world goes dull)
+    void setMuffle(float m) { muffle.store(std::max(0.f, std::min(1.f, m)), std::memory_order_relaxed); }
 
     // --audiodump FILE SECONDS: capture the final mix, written as a 16-bit WAV
     void startDump(const std::string& path, float seconds) {
@@ -150,6 +152,8 @@ private:
     std::vector<float> dumpBuf;
     std::atomic<int>  dumpWritten{0};
     std::atomic<bool> dumping{false};
+    std::atomic<float> muffle{0.f};
+    float muffleNow = 0.f, lpL = 0.f, lpR = 0.f;   // audio thread only
 #if HAS_SDL_MIXER
     Uint16 outFormat = AUDIO_S16SYS;
     int    outChannels = 2;
@@ -195,6 +199,21 @@ private:
         sfx.addSound(name, std::move(mono));
     }
 
+    // Audio thread: a one-pole low-pass (~900 Hz) blended in by `muffle`, eased across the buffer
+    void applyMuffle(float* buf, int frames) {
+        float target = muffle.load(std::memory_order_relaxed);
+        if (target < 0.001f && muffleNow < 0.001f) { muffleNow = 0.f; lpL = lpR = 0.f; return; }
+        const float k = 1.f - std::exp(-6.2831853f * 900.f / (float)outRate);
+        float step = (target - muffleNow) / (float)std::max(1, frames);
+        for (int f = 0; f < frames; ++f) {
+            muffleNow += step;
+            lpL += k * (buf[2 * f] - lpL); lpR += k * (buf[2 * f + 1] - lpR);
+            float m = muffleNow * 0.85f;   // never all the way: the cues still have to read
+            buf[2 * f]     += (lpL - buf[2 * f]) * m;
+            buf[2 * f + 1] += (lpR - buf[2 * f + 1]) * m;
+        }
+    }
+
     // Audio thread: music, then effects on top, then convert to the device's format
     static void musicCallback(void* self, Uint8* stream, int len) {
         auto* a = static_cast<AudioSystem*>(self);
@@ -204,6 +223,7 @@ private:
         if ((int)a->musicBuf.size() < frames * 2) a->musicBuf.resize(frames * 2);
         a->music.render(a->musicBuf.data(), frames);
         a->sfx.render(a->musicBuf.data(), frames);
+        a->applyMuffle(a->musicBuf.data(), frames);
         const float* src = a->musicBuf.data();
         if (a->dumping.load(std::memory_order_acquire)) {
             int w = a->dumpWritten.load(std::memory_order_relaxed), cap = (int)(a->dumpBuf.size() / 2);

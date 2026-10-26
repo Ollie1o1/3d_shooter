@@ -39,6 +39,8 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         --dashCharges;
         dashCooldown = 1.2f;
         fovKick = 13.f;
+        dashFx = 1.f;
+        camFeel.punch(-20.f);   // the head tucks into the rush
         invincFrames = std::max(invincFrames, 0.15f);   // a sliver of i-frames rewards well-timed dodges
         styleSystem.addStyle(8.f);
         audio.play("dash");
@@ -508,6 +510,7 @@ inline void GameplayState::resetToCheckpoint(int a) {
     prevCamPos = player.camera.position;
     grapple.release();
     slamming = false; peakFallSpeed = 0.f;
+    dashFx = speedFx = lowFx = heartT = heartPulse = 0.f; audio.setMuffle(0.f);
 }
 
 inline void GameplayState::pushPlayerOutOfEnemies() {

@@ -139,6 +139,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
 }
 
 inline GameplayState::~GameplayState() {
+    audio.setMuffle(0.f);   // back to the menu: the world isn't dull any more
     glDeleteTextures(1,&whiteTex);
     glDeleteTextures(TEX_COUNT, worldTex);
     if (tracerVAO)   glDeleteVertexArrays(1, &tracerVAO);
@@ -242,6 +243,7 @@ inline void GameplayState::resetPlayer(glm::vec3 start) {
     jumpsRemaining = 2; slamming = false; invincFrames = 0.f;
     activeWeapon = 0; pendingWeapon = -1; weaponSwitchTimer = 0.f;
     recoilPitch = 0.f; peakFallSpeed = 0.f; fovKick = 0.f; camFeel.reset();
+    dashFx = speedFx = lowFx = heartT = heartPulse = 0.f; audio.setMuffle(0.f);
     paused = false; pauseSettings = false; pauseSelected = 0; armoryOpen = false;
     ui.clearIndicators();
 }
@@ -618,6 +620,26 @@ inline void GameplayState::shake(float t, float amount) {
     camFeel.shake(t, amount, settings ? settings->screenShake : 1.f);
 }
 
+// The dash's rush and low health's drain (drawn in bloom_composite.frag), the heartbeat and the muffle
+inline void GameplayState::updateScreenFx(float dt) {
+    float motion = settings ? settings->screenShake : 1.f;   // the rush is motion: SCREEN SHAKE scales it
+    dashFx = std::max(0.f, dashFx - dt / 0.35f);
+    float fast = glm::clamp((glm::length(player.velocity) - 18.f) / 22.f, 0.f, 1.f) * 0.6f;
+    float want = std::max(dashFx * dashFx * (3.f - 2.f * dashFx), fast) * motion;
+    speedFx = want > speedFx ? want : speedFx + (want - speedFx) * (1.f - std::exp(-dt * 8.f));   // in at once, out eased
+
+    float hp = styleSystem.maxHealth > 0.f ? styleSystem.health / styleSystem.maxHealth : 1.f;
+    float low = glm::clamp((0.35f - hp) / 0.27f, 0.f, 1.f);
+    lowFx += (low - lowFx) * (1.f - std::exp(-dt * 3.f));
+    if (lowFx > 0.05f) {   // lub-dub, quicker the closer you are to dying
+        heartT += dt;
+        if (heartT >= glm::mix(0.95f, 0.5f, lowFx)) { heartT = 0.f; audio.play("heartbeat", 55 + (int)(70.f * lowFx), SoundGroup::UI); }
+    } else heartT = 0.f;
+    float dub = heartT > 0.17f ? std::exp(-(heartT - 0.17f) * 10.f) * 0.6f : 0.f;
+    heartPulse = lowFx > 0.05f ? std::min(1.f, std::exp(-heartT * 10.f) + dub) : 0.f;
+    audio.setMuffle(lowFx * 0.75f);   // the world goes dull and far away
+}
+
 inline void GameplayState::update(float dt) {
     if (settings) audio.masterVolume = settings->audioVolume;
     updateMusic();
@@ -636,6 +658,7 @@ inline void GameplayState::update(float dt) {
         prevTicks   = SDL_GetPerformanceCounter();
         accumulator = 0.0;
         if (playerDead) deadTimer += dt;
+        if (victory) audio.setMuffle(0.f);
         if (countdown > 0.f && !frozen) {
             float before = countdown;
             countdown -= dt;
@@ -726,6 +749,7 @@ inline void GameplayState::update(float dt) {
     float speedKick = glm::clamp((playerXZSpeed - 7.f) / 15.f, 0.f, 1.f) * 6.f;
     fovKick = glm::mix(fovKick, speedKick, std::min(1.f, floatDt * 7.f));
     camFeel.kickScale = settings ? settings->screenShake : 1.f;
+    updateScreenFx(floatDt);
     camFeel.update(floatDt, glm::dot(player.velocity, player.camera.right()), playerXZSpeed, player.onGround);
 
     if (pendingWeapon >= 0) {

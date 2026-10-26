@@ -189,7 +189,20 @@ public:
         glEnable(GL_DEPTH_TEST);
     }
 
+    // Screen effects in the final composite (bloom_composite.frag): set by the game each frame, 0 = off
+    struct ScreenFx { float speed = 0.f, low = 0.f, pulse = 0.f, hurt = 0.f, time = 0.f; };
+    ScreenFx fx;
+
 private:
+    void setScreenFx() {
+        compositeShader.setFloat("uSpeed", fx.speed);
+        compositeShader.setFloat("uLow",   fx.low);
+        compositeShader.setFloat("uPulse", fx.pulse);
+        compositeShader.setFloat("uHurt",  fx.hurt);
+        compositeShader.setFloat("uTime",  fx.time);
+        compositeShader.setFloat("uAspect", H > 0 ? (float)W / (float)H : 16.f / 9.f);
+    }
+
     void bloomPasses() {
         glBindFramebuffer(GL_FRAMEBUFFER,bloomFBO[0]);
         glViewport(0,0,BW,BH);
@@ -221,6 +234,7 @@ private:
             compositeShader.use();
             compositeShader.setInt("scene",0);
             compositeShader.setInt("bloomBlur",1);
+            setScreenFx();
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D,sceneTex);
             glActiveTexture(GL_TEXTURE1);
@@ -241,6 +255,7 @@ private:
             compositeShader.use();
             compositeShader.setInt("scene",0);
             compositeShader.setInt("bloomBlur",1);
+            setScreenFx();
             glActiveTexture(GL_TEXTURE0);
             glBindTexture(GL_TEXTURE_2D,sceneTex);
             glActiveTexture(GL_TEXTURE1);
