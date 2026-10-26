@@ -54,6 +54,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
     h.viewProj = proj * view;
     h.damageNumbers = !settings || settings->damageNumbers;
     h.finishHint = finishHint;
+    h.finishKey  = gamepad::state().pad ? "R3" : binds().label(Act::INTERACT);
     if (!playerDead && !victory) ui.render(styleSystem, h);
 
     const Arena& ar = level.arenas[director.arena];

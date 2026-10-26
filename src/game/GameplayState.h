@@ -739,8 +739,11 @@ public:
     // FINISHERS: F on an enemy low enough (it glows) finishes it: health back, the gun full
     int  findFinisher() const;
     bool tryFinisher();
-    static constexpr float FINISH_REACH = 4.6f;
+    bool finishKey();                   // the FINISH key (E / R3): a finisher if one's in reach; never a parry
+    static constexpr float FINISH_REACH = 6.f;
     float finishHint = 0.f;             // 0..1 the crosshair says a finisher is in reach
+    float finishCueCd = 0.f;            // the "ready" cue: not more than this often
+    int   finishReadyUid = -1;          // the last one it cued for
     // OVERDRIVE: the meter full is a power state: harder, faster shots that never need
     // reloading, every hit staggers, a punch finishes anything under half
     bool  overdriveOn() const { return styleSystem.overdrive; }
