@@ -4975,19 +4975,29 @@ int main() {
             CHECK(dodgedAt >= Enemy::DODGE_AFTER - 0.02f && dodgedAt < 1.f && side > 1.5f && still,
                   "a Husk with your crosshair held on it sidesteps after a moment, but not mid-wind-up");
         }
-        // A squad of gunners spreads round you instead of coming at you from one side
+        // A squad of gunners spreads round you instead of coming at you from one side. Their strafing
+        // rolls dice (and libc's dice differ between Mac and Linux), so: the median over seeds, against
+        // the same squad all wanting the same bearing
         {
-            std::vector<Enemy> sq;
-            for (int k = 0; k < 4; ++k) { Enemy e = standing(EnemyType::HUSK); e.uid = k + 1; e.position = {-3.f + 2.f * k, 0.f, -14.f}; e.mayAttack = false; sq.push_back(e); }
-            EnemyWorld cw; cw.playerFeet = {0.f, 0.f, 0.f}; cw.playerEye = {0.f, 1.7f, 0.f};
-            for (int i = 0; i < 60 * 12; ++i) for (auto& e : sq) e.update(DT, cw);
-            float minGap = 7.f;
-            for (size_t i = 0; i < sq.size(); ++i) for (size_t j = i + 1; j < sq.size(); ++j) {
-                float ai = std::atan2(sq[i].position.x, sq[i].position.z), aj = std::atan2(sq[j].position.x, sq[j].position.z);
-                minGap = std::min(minGap, std::fabs(std::remainder(ai - aj, 6.2831853f)));
-            }
-            std::printf("      four Husks that started bunched end at least %.0f degrees apart round you\n", glm::degrees(minGap));
-            CHECK(minGap > glm::radians(35.f), "a squad of gunners spreads round you instead of all coming from one side");
+            auto gap = [&](bool spread, unsigned seed) {
+                srand(seed);
+                std::vector<Enemy> sq;
+                for (int k = 0; k < 4; ++k) { Enemy e = standing(EnemyType::HUSK); e.uid = spread ? k + 1 : 1; e.position = {-3.f + 2.f * k, 0.f, -14.f}; e.mayAttack = false; sq.push_back(e); }
+                EnemyWorld cw; cw.playerFeet = {0.f, 0.f, 0.f}; cw.playerEye = {0.f, 1.7f, 0.f};
+                for (int i = 0; i < 60 * 12; ++i) for (auto& e : sq) e.update(DT, cw);
+                float minGap = 7.f;
+                for (size_t i = 0; i < sq.size(); ++i) for (size_t j = i + 1; j < sq.size(); ++j) {
+                    float ai = std::atan2(sq[i].position.x, sq[i].position.z), aj = std::atan2(sq[j].position.x, sq[j].position.z);
+                    minGap = std::min(minGap, std::fabs(std::remainder(ai - aj, 6.2831853f)));
+                }
+                return minGap;
+            };
+            std::vector<float> on, off;
+            for (unsigned sd = 0; sd < 7; ++sd) { on.push_back(gap(true, 900 + sd)); off.push_back(gap(false, 900 + sd)); }
+            std::sort(on.begin(), on.end()); std::sort(off.begin(), off.end());
+            std::printf("      four Husks that started bunched: median closest pair %.0f degrees apart spread, %.0f all on one bearing\n",
+                        glm::degrees(on[3]), glm::degrees(off[3]));
+            CHECK(on[3] > glm::radians(15.f) && on[3] > off[3] * 3.f, "a squad of gunners spreads round you instead of all coming from one side");
         }
         // Finishable: low enough, or stunned, or in OVERDRIVE; never a Mite
         Enemy f = standing(EnemyType::HUSK);
