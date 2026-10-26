@@ -30,6 +30,7 @@ inline void GameplayState::parryFeedback(glm::vec3 at, bool heavy) {
     invincFrames  = std::max(invincFrames, 0.5f);
     hitStopFrames = glm::max(hitStopFrames, heavy ? 9 : 4);
     shake(heavy ? 0.25f : 0.12f, heavy ? 0.06f : 0.03f);
+    camFeel.punch(heavy ? 70.f : 40.f, -25.f, -45.f);   // the backhand carries the head with it
 }
 
 inline void GameplayState::breakHalo(Enemy& e) {
@@ -397,6 +398,15 @@ inline bool GameplayState::damagePlayer(float dmg, glm::vec3 from, float shakeT,
     ui.onDamage();
     showDamageFrom(from);
     shake(shakeT, shakeAmt);
+    {   // knocked away from the blow: the head snaps back and turns off it
+        glm::vec3 d = from - player.camera.position;
+        float len = glm::length(d);
+        if (len > 1e-3f) {
+            d /= len;
+            float side = glm::dot(d, player.camera.right()), k = glm::clamp(dmg / 20.f, 0.5f, 1.6f);
+            camFeel.punch(40.f * k, -side * 45.f * k, -side * 70.f * k);
+        }
+    }
     audio.play("player_hit");
     audio.duck(5.f, 0.15f);   // you got hit: that is the sound that matters
     invincFrames = std::max(invincFrames, iframes);
@@ -436,7 +446,7 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
         styleSystem.addStyle(style, src);
         styleSystem.heal(heal * tune().heal);
     }
-    if (!friendly) audio.play("hit");
+    if (!friendly) { ++hitSoundCount; hitSoundCrit |= crit; }   // played once at the tick's end (physicsTick)
     if (!e.stats().flying && e.type != EnemyType::LEVIATHAN) fx.spawnDecal(e.position);
     fx.spawnHitSparks(at, e.stats().color * 1.4f);
     if (!friendly) ui.onHit(killed, crit);
@@ -857,6 +867,21 @@ inline void GameplayState::fireWeapon(int w) {
     player.camera.pitch = glm::clamp(player.camera.pitch + recoil, -89.f, 89.f);
 
     viewModel.triggerFire();
+    {   // the view kicks with the gun (seen, not aimed with: the aim kick is recoilPitch)
+        static const float KICK[4][3] = {   // pitch, yaw jitter, roll jitter (degrees a second)
+            {70.f, 14.f, 22.f}, {125.f, 22.f, 45.f}, {105.f, 14.f, 26.f}, {165.f, 20.f, 40.f}};
+        const float* k = KICK[std::clamp(w, 0, 3)];
+        float hold = 1.f - 0.55f * aimNow;
+        camFeel.punch(k[0] * hold, frand(-1.f, 1.f) * k[1] * hold, frand(-1.f, 1.f) * k[2] * hold);
+    }
+    {   // running low: a dry tick under the last rounds, higher as the mag empties
+        int mag = weaponMag(id, u), low = std::max(1, mag / 4);
+        if (mag >= 4 && ws.ammo > 0 && ws.ammo <= low) {
+            SfxMixer::Opts o; o.volume = 0.8f; o.group = SoundGroup::UI;
+            o.pitch = 1.f + 0.12f * (float)(low - ws.ammo);
+            audio.playOpts("ammo_low", o);
+        }
+    }
     ui.onShoot();
     muzzleFlashPos   = origin + fwd * 0.6f;
     muzzleFlashTimer = sniper ? 0.08f : pellets > 1 ? 0.07f : 0.04f;

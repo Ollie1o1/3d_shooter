@@ -241,7 +241,7 @@ inline void GameplayState::resetPlayer(glm::vec3 start) {
     grappleCooldown = 0.f; wasGrappling = false;
     jumpsRemaining = 2; slamming = false; invincFrames = 0.f;
     activeWeapon = 0; pendingWeapon = -1; weaponSwitchTimer = 0.f;
-    recoilPitch = 0.f; peakFallSpeed = 0.f; landSquash = 0.f; fovKick = 0.f;
+    recoilPitch = 0.f; peakFallSpeed = 0.f; fovKick = 0.f; camFeel.reset();
     paused = false; pauseSettings = false; pauseSelected = 0; armoryOpen = false;
     ui.clearIndicators();
 }
@@ -615,10 +615,7 @@ inline void GameplayState::updateSanctumPhase(float dt) {
 }
 
 inline void GameplayState::shake(float t, float amount) {
-    float s = settings ? settings->screenShake : 1.f;
-    if (s <= 0.f) return;
-    shakeTimer = std::max(shakeTimer, t);
-    shakeIntensity = std::max(shakeIntensity, amount * s);
+    camFeel.shake(t, amount, settings ? settings->screenShake : 1.f);
 }
 
 inline void GameplayState::update(float dt) {
@@ -728,7 +725,8 @@ inline void GameplayState::update(float dt) {
     // Baseline FOV widens with horizontal speed on top of the dash kick
     float speedKick = glm::clamp((playerXZSpeed - 7.f) / 15.f, 0.f, 1.f) * 6.f;
     fovKick = glm::mix(fovKick, speedKick, std::min(1.f, floatDt * 7.f));
-    landSquash = glm::mix(landSquash, 0.f, std::min(1.f, floatDt * 10.f));
+    camFeel.kickScale = settings ? settings->screenShake : 1.f;
+    camFeel.update(floatDt, glm::dot(player.velocity, player.camera.right()), playerXZSpeed, player.onGround);
 
     if (pendingWeapon >= 0) {
         weaponSwitchTimer -= floatDt;

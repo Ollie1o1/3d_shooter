@@ -60,9 +60,18 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     if (justLanded) {
         jumpsRemaining = 1;
         if (!slamming && peakFallSpeed > 4.f) {
-            landSquash = glm::clamp(peakFallSpeed / 22.f, 0.f, 1.f) * 0.22f;
-            viewModel.land(peakFallSpeed);   // the gun dips too, more after a bigger fall
+            // The head sinks with the fall and nods (a spring: it eases down and back), the gun dips too
+            float f = std::min(peakFallSpeed, 30.f);
+            camFeel.dip(-f * 0.11f);
+            camFeel.punch(-f * 2.4f, 0.f, frand(-1.f, 1.f) * f * 0.6f);
+            viewModel.land(peakFallSpeed);
+            if (peakFallSpeed > HEAVY_LAND) {   // a real drop: the floor answers
+                shake(0.3f, 0.025f + 0.025f * std::min(1.f, (peakFallSpeed - HEAVY_LAND) / 14.f));
+                audio.play("land_heavy", 70 + (int)std::min(58.f, (peakFallSpeed - HEAVY_LAND) * 5.f));
+                fx.spawnShockwave(player.position + glm::vec3{0, 0.05f, 0}, 2.2f, {0.75f, 0.7f, 0.65f});
+            }
         }
+        landFall = slamming ? 0.f : peakFallSpeed;   // (a slam has its own sound)
         peakFallSpeed = 0.f;
         if (slamming) {
             for (auto& e : enemies) {
@@ -72,6 +81,8 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
             }
             fx.spawnShockwave(player.position, 4.5f, {1.f, 0.8f, 0.4f});
             shake(0.3f, 0.08f);
+            camFeel.dip(-4.f);
+            camFeel.punch(-140.f, 0.f, frand(-1.f, 1.f) * 30.f);
             audio.play("slam");
             if (swordOut) swordPlunge(player.position);
             slamming = false;
@@ -90,7 +101,13 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
             player.velocity.y = player.jumpForce;
             --jumpsRemaining;
             styleSystem.addStyle(3.f);
-            audio.play("jump");
+            // The air jump has its own sound and a ring kicked off under your feet
+            audio.play("jump_air", 110);
+            fx.spawnShockwave(player.position + glm::vec3{0, -0.1f, 0}, 1.6f, {0.45f, 0.85f, 1.f});
+            fx.spawnBurst(player.position, {0.5f, 0.85f, 1.f}, 10, 4.f, 0.3f, -2.f);
+            camFeel.punch(-38.f);
+            camFeel.dip(0.5f);
+            fovKick = std::max(fovKick, 4.f);
         }
     }
     prevJumpKey = jumpKey;
@@ -158,6 +175,17 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
                       grapple.active || dashMomentumTimer > 0.f || boost >= 0, &spatialGrid);
         if (boost >= 0) applyBooster(level.boosters[boost], player, dt);
         keepPlayerInZone(dt);
+        if (player.jumpedThisTick) {   // the push-off: a soft scuff and the head lifting off the legs
+            audio.play("jump", 90);
+            camFeel.dip(0.35f);
+            camFeel.punch(-14.f);
+        }
+        if (player.sliding && !slidePrev) {   // into a slide: a scrape, the head drops and leans in
+            audio.play("slide", 110);
+            camFeel.punch(-28.f, 0.f, glm::dot(player.velocity, player.camera.right()) > 0.f ? 18.f : -18.f);
+            fovKick = std::max(fovKick, 5.f);
+        }
+        slidePrev = player.sliding;
     }
     if (act2Falling && player.onGround) act2Falling = false;
     if (boost >= 0 && boostPrev < 0) {
@@ -210,18 +238,25 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     }
 
     // --- Footsteps / landing ---
-    if (player.onGround && playerXZSpeed > 1.5f && !player.sliding) {
-        footstepTimer -= dt;
-        if (footstepTimer <= 0.f) {
-            footstepTimer = glm::clamp(0.55f / (playerXZSpeed / 5.f), 0.2f, 0.5f);
-            static const char* STEPS[] = {"step1", "step2", "step3", "step4"};
-            if (player.wadeDepth >= 0.1f) audio.play("wade", 60);
-            else audio.play(STEPS[rand() % 4], 55);
-        }
-    } else {
-        footstepTimer = 0.f;
+    // A step each time a foot comes down in the stride (CameraFeel): the bob's low point
+    if (camFeel.stepTick(playerXZSpeed, player.onGround && !player.sliding, dt)) {
+        static const char* STEPS[] = {"step1", "step2", "step3", "step4"};
+        static int last = -1;
+        int k = rand() % 3; if (k >= last) ++k; last = k;   // never the same step twice running
+        if (player.wadeDepth >= 0.1f) audio.play("wade", 60);
+        else audio.play(STEPS[k], 50 + (int)std::min(14.f, playerXZSpeed * 1.5f));
     }
-    if (justLanded && !slamming) audio.play("land", 70);
+    // The land sound grows with the fall (a hop is a tap, a drop is a thud)
+    if (justLanded && landFall > 2.f) audio.play("land", 45 + (int)std::min(83.f, landFall * 5.f));
+    // Sliding over dry ground: grit thrown up from under you
+    if (player.sliding && player.onGround && player.wadeDepth < 0.1f && playerXZSpeed > 6.f) {
+        slideDustT -= dt;
+        if (slideDustT <= 0.f) {
+            slideDustT = 0.05f;
+            glm::vec3 back = -glm::normalize(glm::vec3{player.velocity.x, 0.f, player.velocity.z});
+            fx.spawnBurst(player.position + back * 0.3f + glm::vec3{0, 0.05f, 0}, {0.7f, 0.62f, 0.55f}, 3, 2.5f, 0.35f, -6.f);
+        }
+    }
     // Water: a splash on landing in it, spray and a hiss while a slide skims it
     if (justLanded && player.wadeDepth >= 0.1f) {
         fx.spawnBurst(player.position + glm::vec3{0, 0.1f, 0}, {0.6f, 0.85f, 0.9f}, 20, 6.f, 0.5f, 9.f);
@@ -263,7 +298,8 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     pendingGrenade = false;
 
     if (recoilPitch > 0.f) {
-        float applied = std::min(14.f * dt, recoilPitch);
+        // Settle back quickly at first, then ease in (was a flat 14 degrees a second)
+        float applied = std::min(recoilPitch, std::max(recoilPitch * (1.f - std::exp(-dt * 11.f)), 1.5f * dt));
         player.camera.pitch -= applied;
         recoilPitch -= applied;
         player.camera.pitch = glm::clamp(player.camera.pitch, -89.f, 89.f);
@@ -354,7 +390,11 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         }
     }
 
-    if (shakeTimer > 0.f) shakeTimer -= dt;
+    if (hitSoundCount > 0) {   // every hit this tick as one sound: fuller for more, a ping on a crit
+        audio.play("hit", 92 + std::min(36, (hitSoundCount - 1) * 9), SoundGroup::PLAYER);
+        if (hitSoundCrit) audio.play("hit_head", 110, SoundGroup::PLAYER);
+        hitSoundCount = 0; hitSoundCrit = false;
+    }
     if (ceilingFxTimer > 0.f) ceilingFxTimer -= dt;
     nearInteractable = findInteractTarget() >= 0;
     fx.tickMarks(dt);

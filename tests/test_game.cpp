@@ -27,6 +27,7 @@
 #include "audio/SfxMixer.h"
 #include "bosses/penitent/PenitentHazards.h"
 #include "render/GunKit.h"
+#include "render/CameraFeel.h"
 #include "audio/VoiceSynth.h"
 #include "audio/EnemyVoice.h"
 #include "bosses/warden/WardenHazards.h"
@@ -2916,13 +2917,59 @@ int main() {
                                 "door_close", "boost", "cyl_open", "cyl_close", "eject", "shell_in", "pump", "wade", "skim", "cell",
                                 "dry", "switch_up0", "switch_up1", "switch_up2", "switch_up3",
                                 "sword_draw", "sword_swing", "sword_hit", "sword_thrust", "sword_guard", "sword_block", "sword_break",
-                                "kill_light", "kill_heavy", "kill_rifle", "kill_blade"};
+                                "kill_light", "kill_heavy", "kill_rifle", "kill_blade",
+                                "jump_air", "land_heavy", "slide", "hit_head", "ammo_low"};
         std::vector<std::string> names(std::begin(loaded), std::end(loaded));
         for (const std::string& n : abAllSounds()) names.push_back(n);   // THE ABSOLUTE's fight (AbsoluteFeel.h)
         bool all = true; for (const std::string& n : names) all &= mixEntry(n) != nullptr;
         CHECK(all && mixTable().size() == names.size(), "every sound file the game loads has exactly one place in the mix");
-        CHECK(std::fabs(mixGain("jump") - std::pow(10.f, -4.1f / 20.f)) < 1e-4f && mixGain("v_husk_idle") == 1.f && mixGain("nope") == 1.f,
+        CHECK(std::fabs(mixGain("jump") - std::pow(10.f, -2.3f / 20.f)) < 1e-4f && mixGain("v_husk_idle") == 1.f && mixGain("nope") == 1.f,
               "a sound's mix gain is its trim; built voices and unknown names pass at 1");
+    }
+
+    // ---------------------------------------------------------------- camera feel (CameraFeel.h)
+    {
+        using camfeel::CameraFeel;
+        // Trauma: a small knock barely moves the view, a big one moves it a lot (shake = trauma squared)
+        CameraFeel small, big;
+        small.shake(0.06f, 0.012f); big.shake(0.3f, 0.08f);
+        CHECK(small.shakeK() < 0.03f && big.shakeK() > 0.5f, "trauma: a pistol shot barely shakes, a slam shakes hard");
+        CameraFeel off; off.shake(1.f, 0.12f, 0.f);
+        CHECK(off.trauma == 0.f, "trauma: SCREEN SHAKE 0 means no shake");
+        // It drains, and a long one holds first
+        CameraFeel quick, rumble;
+        quick.shake(0.2f, 0.1f); rumble.shake(1.0f, 0.1f);
+        for (int i = 0; i < 36; ++i) { quick.update(1.f / 60.f, 0.f, 0.f, true); rumble.update(1.f / 60.f, 0.f, 0.f, true); }
+        CHECK(quick.trauma < 0.01f && rumble.trauma > 0.9f, "trauma: a knock is gone in 0.6 s, a 1 s rumble is still going");
+        // Smooth: the shake never jumps between two frames at 240 fps
+        CameraFeel s; s.shake(0.5f, 0.1f);
+        float worst = 0.f; glm::vec3 last = s.angles(0.f, false, 1.f);
+        for (int i = 0; i < 120; ++i) { s.update(1.f / 240.f, 0.f, 0.f, true); glm::vec3 a = s.angles(0.f, false, 1.f); worst = std::max(worst, glm::length(a - last)); last = a; }
+        CHECK(worst < 0.6f, "trauma: the shake is continuous (no frame-to-frame jitter)");
+        // Punch: same motion at 30 fps and 240 fps, peaks, then settles
+        CameraFeel p30, p240; p30.punch(100.f); p240.punch(100.f);
+        float peak = 0.f;
+        for (int i = 0; i < 240; ++i) { p240.update(1.f / 240.f, 0.f, 0.f, true); peak = std::max(peak, p240.punchS.x.x); }
+        for (int i = 0; i < 30; ++i) p30.update(1.f / 30.f, 0.f, 0.f, true);
+        CHECK(peak > 2.f && peak < 8.f && std::fabs(p240.punchS.x.x) < 0.05f && std::fabs(p30.punchS.x.x - p240.punchS.x.x) < 0.02f,
+              "punch: kicks a few degrees, settles in a second, the same at any frame rate");
+        CameraFeel calm; calm.kickScale = 0.f; calm.punch(100.f); calm.dip(-3.f); calm.update(0.1f, 0.f, 0.f, true);
+        CHECK(calm.punchS.x.x == 0.f && calm.dipS.x.y == 0.f, "punch: SCREEN SHAKE 0 turns the kicks off too");
+        // Strafe lean: toward the strafe, capped, off while aimed
+        CameraFeel r; for (int i = 0; i < 60; ++i) r.update(1.f / 60.f, 20.f, 7.f, false);
+        CHECK(r.angles(0.f, true, 1.f).z > 1.2f && r.angles(0.f, true, 1.f).z <= CameraFeel::ROLL_MAX + 1e-3f &&
+              std::fabs(r.angles(1.f, true, 1.f).z) < 1e-3f && std::fabs(r.angles(0.f, false, 1.f).z) < 1e-3f,
+              "roll: leans into a strafe, capped, none when aimed or with VIEW BOB off");
+        // Stride: a run gives ~2.7 steps a second, each on the bob's low point; none in the air
+        CameraFeel w; int steps = 0; bool lowOnStep = true;
+        for (int i = 0; i < 600; ++i) {
+            if (w.stepTick(7.f, true, 1.f / 60.f)) { ++steps; w.update(0.f, 0.f, 7.f, true); }
+            w.update(1.f / 60.f, 0.f, 7.f, true);
+        }
+        CameraFeel w2; for (int i = 0; i < 120; ++i) w2.update(1.f / 60.f, 0.f, 7.f, true);
+        for (int i = 0; i < 300; ++i) if (w2.stepTick(7.f, true, 1.f / 60.f) && w2.offset(0.f, true, 1.f).y > -CameraFeel::BOB_Y * 0.6f) lowOnStep = false;
+        int air = 0; CameraFeel a2; for (int i = 0; i < 120; ++i) air += a2.stepTick(7.f, false, 1.f / 60.f);
+        CHECK(steps >= 24 && steps <= 30 && lowOnStep && air == 0, "stride: ~2.7 steps a second at a run, each at the bob's lowest, none airborne");
     }
 
     // ---------------------------------------------------------------- review fixes: enemy voices

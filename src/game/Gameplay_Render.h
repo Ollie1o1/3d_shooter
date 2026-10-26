@@ -453,13 +453,13 @@ inline void GameplayState::render() {
     Camera renderCam = player.camera;
     renderCam.position = renderCamPos;
 
-    if (shakeTimer > 0.f) {
-        float s = shakeIntensity * (shakeTimer / 0.2f) * (1.f - 0.7f * aim);
-        renderCam.position += glm::vec3{frand(-1.f,1.f) * s, frand(-1.f,1.f) * s, 0.f};
-    }
-    if (!settings || settings->viewBob)
-        renderCam.position += viewModel.getBobOffset(playerXZSpeed, player.onGround, renderCam.right()) * (1.f - aim);
-    renderCam.position.y -= landSquash;
+    // Shake, punches, the landing dip, the strafe lean and the stride (CameraFeel.h): seen, not aimed with
+    bool bob = !settings || settings->viewBob;
+    glm::vec3 feelAng = camFeel.angles(aim, bob, renderAlpha);
+    glm::vec2 feelOff = camFeel.offset(aim, bob, renderAlpha);
+    renderCam.position += renderCam.right() * feelOff.x + glm::vec3{0.f, feelOff.y, 0.f};
+    renderCam.pitch = glm::clamp(renderCam.pitch + feelAng.x, -89.f, 89.f);
+    renderCam.yaw  += feelAng.y;
     audio.setListener(renderCam.position, renderCam.right(), renderCam.forward());
     const WeaponDef& wd = weaponDef((WeaponId)activeWeapon);
     float baseFov = settings ? settings->fov : 90.f;
@@ -467,7 +467,7 @@ inline void GameplayState::render() {
     float zoom = wd.canAim ? glm::mix(1.f, wd.aimFov, a) : 1.f;
     renderCam.fov = baseFov * zoom + fovKick * (1.f - a);
 
-    glm::mat4 view = glm::rotate(glm::mat4(1.f), glm::radians(swordRoll), glm::vec3{0.f, 0.f, 1.f}) * renderCam.viewMatrix();   // (leaning into a stroke)
+    glm::mat4 view = glm::rotate(glm::mat4(1.f), glm::radians(swordRoll + feelAng.z), glm::vec3{0.f, 0.f, 1.f}) * renderCam.viewMatrix();   // (leaning into a stroke, a strafe, a hit)
     glm::mat4 proj = renderCam.projectionMatrix();
     Theme th = level.themeAt(player.position);
     if (rageBlend > 0.f) th = lerpTheme(th, bloodEclipse(th), rageBlend);

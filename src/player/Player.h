@@ -40,6 +40,7 @@ public:
     float height    = 1.8f;  // full height of player AABB
 
     bool  onGround = false;
+    bool  jumpedThisTick = false;   // a ground / coyote / buffered jump left the ground this tick (feedback only)
 
     // Slide state — activated by crouching while moving fast on the ground.
     bool  sliding  = false;
@@ -112,6 +113,7 @@ public:
     // grid (optional): if non-null, used to skip walls that are far away.
     void update(float dt, const Uint8* keys, const Wall* walls, int wallCount,
                 bool grappling = false, const SpatialGrid* grid = nullptr) {
+        jumpedThisTick = false;
         handleMovement(dt, keys, grappling);
         applyGravity(dt);
         tickFrom = position;   // where it was before this tick's move (resolveAABB: what you ran into, you ran into from there)
@@ -240,6 +242,7 @@ private:
         if (onGround && jumpBufferTimer > 0.f && !jumpKey) {
             velocity.y      = jumpForce;
             onGround        = false;
+            jumpedThisTick  = true;
             jumpBufferTimer = 0.f;
             coyoteTimer     = 0.f;
             if (sliding) { sliding = false; eyeHeight = NORMAL_EYE_H; height = NORMAL_HEIGHT; }
@@ -248,6 +251,7 @@ private:
         else if (jumpKey && canGroundJump) {
             velocity.y      = jumpForce;
             onGround        = false;
+            jumpedThisTick  = true;
             coyoteTimer     = 0.f;
             jumpBufferTimer = 0.f;
             if (sliding) { sliding = false; eyeHeight = NORMAL_EYE_H; height = NORMAL_HEIGHT; }

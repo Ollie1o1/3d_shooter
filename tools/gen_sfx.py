@@ -83,16 +83,6 @@ def mix(*tracks):
     return out
 
 
-def gen_jump():
-    n = n_samples(0.16)
-    out = []
-    for i in range(n):
-        t = i / n
-        freq = 300 + 500 * t
-        out.append(sine(freq, i) * math.exp(-4.0 * t))
-    return out
-
-
 def gen_land():
     n = n_samples(0.14)
     noise = [white() for _ in range(n)]
@@ -176,16 +166,6 @@ def gen_grapple_fire():
         sweep = sine(500 + 2200 * t, i)
         ring = sine(1800, i) * 0.3
         out.append((sweep * 0.7 + ring) * math.exp(-6.0 * t))
-    return out
-
-
-def gen_hit():
-    n = n_samples(0.09)
-    noise = highpass([white() for _ in range(n)], 1500)
-    out = []
-    for i in range(n):
-        t = i / n
-        out.append(noise[i] * math.exp(-22.0 * t))
     return out
 
 
@@ -687,6 +667,120 @@ def gen_sword_break():
     return [white() * math.exp(-30 * i / n) * 0.9 + (sine(880, i) + sine(905, i)) * 0.35 * math.exp(-5 * i / n) for i in range(n)]
 
 
+# ---- movement and hit feel (CameraFeel.h / Gameplay_Tick.h) ----
+def _bandnoise(n, lo, hi):
+    return lowpass(highpass([white() for _ in range(n)], lo), hi)
+
+
+def gen_jump():
+    """The push-off: a short low thump under a soft scuff (was a bright chirp)."""
+    n = n_samples(0.14)
+    scuff = _bandnoise(n, 500, 2500)
+    out = []
+    for i in range(n):
+        t = i / SR
+        thump = sine(115 - 300 * t, i) * math.exp(-t * 38.0)
+        att = min(1.0, t / 0.004)
+        out.append(thump * 0.9 + scuff[i] * att * math.exp(-t * 30.0) * 0.55)
+    return out
+
+
+def gen_jump_air():
+    """The air jump: a rising whoosh with a faint thrust tone and a kick at its start."""
+    n = n_samples(0.30)
+    air = highpass([white() for _ in range(n)], 900)
+    # sweep a one-pole lowpass upward across the sound
+    out, prev = [], 0.0
+    for i in range(n):
+        u = i / n
+        t = i / SR
+        cut = 1200 + 5000 * u
+        rc = 1.0 / (2 * math.pi * cut)
+        a = (1.0 / SR) / (rc + 1.0 / SR)
+        prev += a * (air[i] - prev)
+        env = math.sin(math.pi * min(1.0, u * 1.6)) ** 1.5 if u < 0.625 else math.exp(-(u - 0.625) * 9.0)
+        tone = sine(260 + 280 * u, i) * 0.18 * env
+        kick = sine(90 - 120 * t, i) * math.exp(-t * 45.0) * 0.7
+        out.append(prev * env * 0.9 + tone + kick)
+    return out
+
+
+def gen_land_heavy():
+    """A big drop: a deep thump, a gritty crunch and a few bits of debris settling."""
+    n = n_samples(0.5)
+    crunch = lowpass([white() for _ in range(n)], 1800)
+    out = [0.0] * n
+    for i in range(n):
+        t = i / SR
+        thump = sine(62 - 50 * t, i) * math.exp(-t * 9.0)
+        sub = sine(38, i) * math.exp(-t * 7.0) * 0.5
+        out[i] = thump * 1.0 + sub + crunch[i] * math.exp(-t * 22.0) * 0.8
+    for k in range(5):   # debris ticks
+        at = int(SR * random.uniform(0.06, 0.32))
+        f = random.uniform(1800, 3800)
+        amp = random.uniform(0.08, 0.18)
+        for j in range(int(SR * 0.025)):
+            if at + j < n:
+                tt = j / SR
+                out[at + j] += (sine(f, j) * 0.6 + white() * 0.4) * amp * math.exp(-tt * 180.0)
+    return out
+
+
+def gen_slide():
+    """Into a slide: a gritty scrape (grainy band of noise) over a low rumble, easing off."""
+    n = n_samples(0.6)
+    grit = _bandnoise(n, 1200, 4500)
+    rumble = lowpass([white() for _ in range(n)], 220)
+    out, grain = [], 1.0
+    for i in range(n):
+        t = i / SR
+        u = i / n
+        if i % 90 == 0:
+            grain = random.uniform(0.45, 1.0)   # the surface's texture
+        env = min(1.0, t / 0.02) * (1.0 - u) ** 1.4
+        out.append(grit[i] * grain * env * 0.8 + rumble[i] * env * 1.6 + sine(70, i) * env * 0.12)
+    return out
+
+
+def gen_hit():
+    """A hit landing: a hard click, a quick tonal thwack falling in pitch, a low knock."""
+    n = n_samples(0.11)
+    click = highpass([white() for _ in range(n)], 2500)
+    out, ph = [], 0.0
+    for i in range(n):
+        t = i / SR
+        f = 900 + 700 * math.exp(-t * 60.0)
+        ph += 2 * math.pi * f / SR
+        body = math.sin(ph) * math.exp(-t * 48.0)
+        knock = sine(150 - 300 * t, i) * math.exp(-t * 55.0)
+        out.append(click[i] * math.exp(-t * 900.0) * 0.9 + body * 0.55 + knock * 0.7)
+    return out
+
+
+def gen_hit_head():
+    """A crit on top of the hit: a short bright metallic ping (inharmonic, so it reads as armour)."""
+    n = n_samples(0.26)
+    out = []
+    for i in range(n):
+        t = i / SR
+        ring = (sine(2350, i) * math.exp(-t * 16.0) + sine(3470, i) * 0.6 * math.exp(-t * 22.0)
+                + sine(5230, i) * 0.35 * math.exp(-t * 30.0))
+        tick = white() * math.exp(-t * 700.0) * 0.6
+        out.append(ring * 0.55 + tick)
+    return out
+
+
+def gen_ammo_low():
+    """The last rounds: a small dry mechanical tick (pitched up by the game as the mag empties)."""
+    n = n_samples(0.07)
+    out = []
+    for i in range(n):
+        t = i / SR
+        out.append(white() * math.exp(-t * 900.0) * 0.6 + sine(3100, i) * math.exp(-t * 110.0) * 0.5
+                   + sine(1550, i) * math.exp(-t * 140.0) * 0.25)
+    return out
+
+
 GENERATORS = {
     "jump": gen_jump,
     "land": gen_land,
@@ -735,6 +829,11 @@ GENERATORS = {
     "kill_heavy": gen_kill_heavy,
     "kill_rifle": gen_kill_rifle,
     "kill_blade": gen_kill_blade,
+    "jump_air": gen_jump_air,
+    "land_heavy": gen_land_heavy,
+    "slide": gen_slide,
+    "hit_head": gen_hit_head,
+    "ammo_low": gen_ammo_low,
 }
 
 from sfx_absolute import ABSOLUTE_GENERATORS  # THE ABSOLUTE's (tools/sfx_absolute.py)
