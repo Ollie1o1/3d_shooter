@@ -212,6 +212,7 @@ inline void GameplayState::updateEnemies(float dt) {
     w.grid       = &spatialGrid;
     w.bounds     = ar.bounds;
     w.playerVel  = player.velocity;
+    w.playerAim  = player.camera.forward();
     w.tune       = &tune();
     w.dynWalls   = level.moverWalls.data();   // the Descent's cage: walkers step onto it
     w.dynCount   = (int)level.moverWalls.size();
@@ -331,6 +332,7 @@ inline void GameplayState::updateEnemies(float dt) {
             fx.slashes.push_back({epos, enemies[i].yaw, ev.slash, 0.f});
             audio.playAt("dash", epos, ev.slash == 2 ? 120 : 95, SoundGroup::ENEMY, true);
         }
+        if (ev.dodged) audio.playAt("dash", epos, 55, SoundGroup::ENEMY);   // a scuff as it jinks aside
         if (ev.dashStarted) { audio.playAt("dash", epos, 128, SoundGroup::ENEMY, isBoss(enemies[i].type)); shake(0.12f, 0.03f); }
         if (ev.leapStarted) { audio.playAt("jump", epos, 128, SoundGroup::ENEMY, isBoss(enemies[i].type)); fx.spawnShockwave(epos, 3.f, statsOf(enemies[i].type).glow); }
         if (enemies[i].type == EnemyType::SOVEREIGN) onSovereignEvents(enemies[i], ev);
