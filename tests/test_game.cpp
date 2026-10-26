@@ -4853,6 +4853,30 @@ int main() {
         }
         CHECK(finite && levels, "each arena's air is there and sits well under the music (-42..-28 dBFS)");
         CHECK(tail < 1e-3f, "leaving for the menu, the air fades to nothing");
+
+        // FAST and ACT II: every room its own air; ACT II has no brick left (all its own stone, brass, plate)
+        {
+            LevelData F = buildGauntlet(), A = buildAct2Level();
+            std::set<int> seen; bool toned = true;
+            for (auto* lv : {&F, &A})
+                for (auto& ar : lv->arenas) { toned = toned && ar.tone != RoomTone::NONE; seen.insert((int)ar.tone); }
+            CHECK(toned && seen.size() == F.arenas.size() + A.arenas.size(), "every FAST room and ACT II arena has its own air");
+            int brick = 0;
+            for (auto& w : A.walls) if (!w.hidden && w.mat == Mat::BRICK) ++brick;
+            for (auto& sh : A.shapes) if (sh.mat == (int)Mat::BRICK) ++brick;
+            std::printf("      act II: %d brick surfaces left\n", brick);
+            CHECK(brick == 0, "ACT II is built in its own materials (no brick left)");
+            // Walking from one kit room to the next blends them without a jump
+            RoomToneSynth k; k.setSampleRate(44100.f); k.setRoom(RoomTone::CANAL);
+            std::vector<float> b2(1024);
+            float peak = 0.f, step = 0.f, last = 0.f; bool fin = true;
+            for (int i = 0; i < 44100 * 12 / 512; ++i) {
+                if (i == 44100 * 5 / 512) k.setRoom(RoomTone::SLUICE);
+                std::fill(b2.begin(), b2.end(), 0.f); k.render(b2.data(), 512);
+                for (int f = 0; f < 512; ++f) { float v = b2[2 * f]; fin = fin && std::isfinite(v); peak = std::max(peak, std::fabs(v)); step = std::max(step, std::fabs(v - last)); last = v; }
+            }
+            CHECK(fin && peak < 0.4f && step < 0.2f, "crossing from one FAST room to the next blends their air, no clicks");
+        }
     }
 
     // A Sentinel on the Spire's summit keeps firing at you below, every time and
