@@ -502,6 +502,7 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
 
 inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     ++totalKills;
+    if (++killsThisSession == 4) teach(TEACH_ALT);   // a few kills in: the guns have more to them
     runLog.killed(e.type, src, e.firstHitAge >= 0.f ? e.age - e.firstHitAge : -1.f);
     if (src != StyleSource::FRIENDLY && src != StyleSource::ENVIRONMENT) styleSystem.extendOverdrive(0.5f);   // kills keep OVERDRIVE burning
     if (e.type == EnemyType::CONDUIT) director.onConduitDestroyed(e.position);

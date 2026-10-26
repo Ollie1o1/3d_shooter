@@ -4269,6 +4269,8 @@ int main() {
 
         GameSettings g; g.binds = b;
         GameSettings back; back.parse(g.text());
+        { GameSettings t; t.taught = 21; GameSettings tb; tb.parse(t.text());
+          CHECK(tb.taught == 21 && GameSettings{}.taught == 0, "which fighting moves have had their card is kept between launches"); }
         bool same = true;
         for (int a = 0; a < ACTS; ++a) same &= back.binds.slot[a][0] == b.slot[a][0] && back.binds.slot[a][1] == b.slot[a][1];
         CHECK(same, "bindings survive a save and a load");

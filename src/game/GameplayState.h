@@ -758,6 +758,11 @@ public:
     int   fanLeft = 0; float fanTimer = 0.f;
     bool  fanning = false, doubleShot = false;   // set around fireWeapon for the alt shots
     void  altFire();
+    // TEACHING: each fighting move gets one small card (the enemy cards' kind), the first time
+    // it comes up, ever; then never again (GameSettings::taught)
+    enum Teach { TEACH_FINISH = 1, TEACH_STUN = 2, TEACH_OVERDRIVE = 4, TEACH_HOOK = 8, TEACH_ALT = 16 };
+    void  teach(int bit);
+    int   killsThisSession = 0;
     // UNSEEN WIND-UPS: a regular enemy out of view (or behind cover you can't see round) starting an
     // attack gets a chevron at the screen's edge and a tick from where it is
     bool  unseenWindup(const Enemy& e, glm::vec3 flatFwd) const;

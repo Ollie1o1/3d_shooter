@@ -203,6 +203,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     bool canHook = findGrappleTarget(gPoint, gWall, gMover);
     int hookE = grapple.active || pinned ? -1 : findEnemyHook();   // an enemy under the crosshair: the hook takes it first
     grappleTargetInSight = (canHook && gMover) || hookE >= 0;
+    if (hookE >= 0 && grappleCooldown <= 0.f) teach(TEACH_HOOK);
     if (pendingGrapple && pinned && !grapple.active) { pendingGrapple = false; pinnedCue(); }
     if (pinned && grapple.active) grapple.release();
     if (grappleCooldown > 0.f) grappleCooldown -= dt;

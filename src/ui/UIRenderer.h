@@ -148,12 +148,12 @@ public:
 
     // ---- new-enemy cards (left edge): an enemy you haven't met this run, and how to beat it ----
     // Small and off to the side, so the fight stays clear; two at most at once, the rest wait
-    struct EnemyCard { std::string name, hint; glm::vec3 color; float timer; };
+    struct EnemyCard { std::string name, hint; glm::vec3 color; float timer; std::string kicker = "NEW ENEMY"; };
     static constexpr float CARD_TIME = 4.f;
     static constexpr int   CARD_SHOWN = 2;
     std::deque<EnemyCard> cards;
-    void introduce(const std::string& name, const std::string& hint, glm::vec3 color) {
-        cards.push_back({name, hint, color, 0.f});
+    void introduce(const std::string& name, const std::string& hint, glm::vec3 color, const char* kicker = "NEW ENEMY") {
+        cards.push_back({name, hint, color, 0.f, kicker});
     }
 
     // ---- split (under the timer) ----
@@ -263,7 +263,7 @@ public:
             int x = (int)(-(1.f - in) * w), y = 190 + (int)i * 78;
             ui.rect(x, y, w, 68, {0.03f, 0.03f, 0.06f, 0.72f * a});
             ui.rect(x, y, 4, 68, {c.color.r, c.color.g, c.color.b, a});
-            ui.text("NEW ENEMY", x + 18, y + 8, 1, {0.65f, 0.65f, 0.7f, 0.9f * a});
+            ui.text(c.kicker.c_str(), x + 18, y + 8, 1, {0.65f, 0.65f, 0.7f, 0.9f * a});
             ui.textShadow(c.name.c_str(), x + 18, y + 22, 3, {c.color.r, c.color.g, c.color.b, a});
             ui.text(c.hint.c_str(), x + 18, y + 50, 1, {0.9f, 0.9f, 0.92f, 0.9f * a});
         }
