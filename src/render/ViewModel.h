@@ -10,8 +10,8 @@
 // never clips into walls. The sounds come out of GunMotion as timed cues; the
 // game plays them (takeCues).
 //
-// It also draws the gauntlet that punches (GunKit's fist), and keeps the
-// camera's head bob.
+// It also draws the gauntlet that punches (GunKit's fist). The camera's own
+// bob, shake and kicks live in CameraFeel.h.
 // =============================================================================
 #include "core/gl.h"
 #include <glm/glm.hpp>
@@ -167,14 +167,6 @@ public:
         heat     = std::max(0.f, heat - dt * 0.7f);
         cylSpin *= std::exp(-dt * 22.f);          // the cylinder clicks round to the next chamber
         bobTimer += dt * (xzSpeed > 0.5f ? xzSpeed * 0.38f : 0.8f);
-    }
-
-    // A world-space nudge for the camera's head bob
-    glm::vec3 getBobOffset(float xzSpeed, bool onGround, const glm::vec3& camRight) const {
-        if (!onGround || xzSpeed < 0.3f)
-            return camRight * (sinf(bobTimer * 1.1f) * 0.003f) + glm::vec3{0, sinf(bobTimer * 0.65f) * 0.002f, 0};
-        float amp = std::min(xzSpeed / 9.f, 1.f) * 0.016f;
-        return camRight * (sinf(bobTimer * 2.f) * amp * 0.4f) + glm::vec3{0, fabsf(sinf(bobTimer)) * amp, 0};
     }
 
     // flash: muzzle flash 0..1; aim: 0 hip .. 1 aimed (rifles); ammo / mag: the cells

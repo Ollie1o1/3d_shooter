@@ -24,6 +24,7 @@
 #include "render/PostProcess.h"
 #include "audio/AudioSystem.h"
 #include "render/ViewModel.h"
+#include "render/CameraFeel.h"
 #include "world/Interactable.h"
 #include "core/Settings.h"
 #include "ui/SettingsMenu.h"
@@ -197,7 +198,6 @@ public:
     struct Banner { std::string title, subtitle; glm::vec3 color; float time, duration; };
     std::deque<Banner> banners;
 
-    float footstepTimer = 0.f;
 
     int   dashCharges       = 2;
     float dashCooldown      = 0.f;
@@ -210,8 +210,14 @@ public:
     bool  slamming       = false;
     float invincFrames   = 0.f;
 
-    float shakeTimer     = 0.f;
-    float shakeIntensity = 0.f;
+    camfeel::CameraFeel camFeel;   // shake, punches, the landing dip, strafe lean, the stride (CameraFeel.h)
+    // Hit sounds this tick, played once at its end (ten pellets: one sound, not ten)
+    int  hitSoundCount = 0;
+    bool hitSoundCrit  = false;
+    static constexpr float HEAVY_LAND = 15.f;   // fall speed (m/s) for the heavy landing
+    float landFall   = 0.f;   // the fall speed of the last landing
+    bool  slidePrev  = false;
+    float slideDustT = 0.f;
 
     float muzzleFlashTimer = 0.f;
     glm::vec3 muzzleFlashPos{0.f};
@@ -238,7 +244,6 @@ public:
     float fovKick        = 0.f;
     float playerXZSpeed  = 0.f;
     float peakFallSpeed  = 0.f;
-    float landSquash     = 0.f;
 
     bool  paused        = false;
     bool  pauseSettings = false;   // the settings page is open inside the pause menu

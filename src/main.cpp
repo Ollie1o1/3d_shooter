@@ -397,7 +397,50 @@ struct App {
 };
 
 #ifdef __EMSCRIPTEN__
-static void webFrame(void* app) { static_cast<App*>(app)->frame(); }
+// The browser paces the web build. DISPLAY rides requestAnimationFrame; a cap
+// at or under the screen's rate rides it too and skips frames; a cap above it
+// (240, 360) or UNLIMITED runs off setImmediate with a time limiter. The page
+// still only shows what the screen refreshes, but input and the simulation run
+// at the higher rate. The screen's rate is measured from rAF's own spacing.
+static void webFrame(void* p) {
+    App* app = static_cast<App*>(p);
+    static int mode = 0;                  // 0 rAF, 1 setImmediate
+    static double nextAt = 0.0, lastRaf = 0.0, rafMs = 1000.0 / 60.0;
+    static int rafSamples = 0;
+    double now = emscripten_get_now();
+    int hz = GameSettings::frameCapHz(app->settings.frameCap);
+    int want = (hz == 0 || hz > GameSettings::displayHz() + 5) ? 1 : 0;
+    if (want != mode) {
+        mode = want; nextAt = 0.0; lastRaf = 0.0;
+        if (mode) emscripten_set_main_loop_timing(EM_TIMING_SETIMMEDIATE, 0);
+        else      emscripten_set_main_loop_timing(EM_TIMING_RAF, 1);
+    }
+    if (mode == 0) {   // learn the screen's rate (a median-ish running average that ignores hitches)
+        if (lastRaf > 0.0) {
+            double d = now - lastRaf;
+            if (d > 2.0 && d < 60.0 && (rafSamples < 10 || std::fabs(d - rafMs) < rafMs * 0.3)) {
+                rafMs += (d - rafMs) * (rafSamples < 10 ? 0.5 : 0.05);
+                if (++rafSamples >= 10) GameSettings::displayHz() = std::max(30, (int)std::lround(1000.0 / rafMs));
+            }
+        }
+        lastRaf = now;
+    }
+    static int frames = 0; static double since = 0.0;
+    if (g_devFpsLog && now - since > 2000.0) {   // --fps / ?fps=: the rate this loop really runs at
+        if (since > 0.0) std::printf("web fps %.0f (cap %d, display %d, %s)\n", frames * 1000.0 / (now - since), hz,
+                                     GameSettings::displayHz(), mode ? "setImmediate" : "rAF");
+        since = now; frames = 0;
+    }
+    int cap = hz < 0 ? 0 : hz;   // DISPLAY: every rAF
+    if (cap > 0) {
+        double period = 1000.0 / cap, slack = mode == 0 ? rafMs * 0.5 : 0.0;
+        if (nextAt == 0.0 || now - nextAt > period * 2.0) nextAt = now;   // fell behind: start over
+        if (now + slack < nextAt) return;
+        nextAt += period;
+    } else nextAt = 0.0;
+    ++frames;
+    app->frame();
+}
 
 // The browser consumes Escape to release the pointer lock, so the game never
 // sees the key. Treat losing the lock mid-run as a pause instead.
@@ -545,6 +588,11 @@ int main(int argc, char* argv[]) {
         if (arg == "--gpu-timer") { app->gpuTimer = true; frametimer::enabled() = true; }
         if (arg == "--frametimes" && i + 1 < argc) { app->frameTimesPath = argv[++i]; frametimer::enabled() = true; }
         if (arg == "--cap" && i + 1 < argc) app->capOverride = std::atoi(argv[++i]);
+        if (arg == "--fps" && i + 1 < argc) {   // dev: pick the FRAME RATE setting by its Hz (0 = UNLIMITED, -1 = DISPLAY); the web build logs its rate
+            int want = std::atoi(argv[++i]);
+            for (int k = 0; k < GameSettings::FRAME_CAPS; ++k) if (GameSettings::frameCapHz(k) == want) app->settings.frameCap = k;
+            g_devFpsLog = true;
+        }
         if (arg == "--res" && i + 1 < argc) app->renderOverride = std::atoi(argv[++i]);
         if (arg == "--record" && i + 3 < argc) {
             app->recordFrames = std::atoi(argv[i + 1]); app->recordSkip = std::atoi(argv[i + 2]);

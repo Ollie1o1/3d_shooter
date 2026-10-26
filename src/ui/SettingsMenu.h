@@ -44,7 +44,9 @@ public:
         slider("FIELD OF VIEW", &g->fov, 60.f, 120.f, 1.f, 0);
 #ifndef __EMSCRIPTEN__
         toggle("FULLSCREEN", &g->fullscreen);
-        cycle ("FRAME RATE", &g->frameCap, GameSettings::FRAME_CAPS, [g](int) { return g->getFPSCapLabel(); });
+#endif
+        cycle ("FRAME RATE", &g->frameCap, GameSettings::FRAME_CAPS, [g](int) { return g->getFPSCapLabel(); });   // (the web build paces it in main.cpp's webFrame)
+#ifndef __EMSCRIPTEN__
         toggle("VSYNC", &g->vsync);
 #endif
         cycle ("GRAPHICS QUALITY", &g->quality, GameSettings::QUALITY_LEVELS, [](int i) { return GameSettings::qualityLabel(i); });
