@@ -17,6 +17,61 @@ inline void GameplayState::applyLighting(ShaderProgram& sh, const Theme& th, glm
     sh.setVec3Array("pointLightColor", pointLightColor, MAX_POINT_LIGHTS);
 }
 
+// The neon picked for this frame (pickNeon, in render), or none (the view
+// model and anything not in world space)
+inline void GameplayState::applyNeon(ShaderProgram& sh, bool on) {
+    sh.setInt("uNeonCount", on ? neonSet.n : 0);
+    if (!on || neonSet.n == 0) return;
+    sh.setVec3Array("uNeonMin",   neonSet.mn,  MAX_NEON);
+    sh.setVec3Array("uNeonMax",   neonSet.mx,  MAX_NEON);
+    sh.setVec3Array("uNeonColor", neonSet.col, MAX_NEON);
+}
+
+// Soft shadows on the ground: the world's (built with it) and one under each
+// enemy, fainter the higher it is. A multiply blend over the opaque world.
+inline void GameplayState::drawContactShadows(const glm::mat4& view, const glm::mat4& proj, const Theme& th, glm::vec3 camPos) {
+    static std::vector<ContactVert> blobs;
+    blobs.clear();
+    for (auto& e : enemies) {
+        if (!e.alive || blobs.size() + 6 > 1536) continue;
+        glm::vec3 p = e.hasShown ? e.shownPos : e.position;
+        if (glm::length(p - camPos) > 60.f) continue;
+        float g = level.groundAt(p.x, p.z, p.y);
+        float h = p.y - g;
+        if (h < -0.5f || h > 8.f) continue;
+        float r = std::max(0.3f, e.radius());
+        float s = 0.5f * (1.f - std::max(h, 0.f) / 8.f);
+        float core = r * 0.55f, reach = r * 1.3f + std::max(h, 0.f) * 0.2f;
+        glm::vec4 rect{p.x - core, p.z - core, p.x + core, p.z + core};
+        float y = g + 0.03f, x0 = rect.x - reach, z0 = rect.y - reach, x1 = rect.z + reach, z1 = rect.w + reach;
+        glm::vec2 sr{s, reach};
+        ContactVert q[4] = {{{x0, y, z0}, rect, sr}, {{x0, y, z1}, rect, sr}, {{x1, y, z1}, rect, sr}, {{x1, y, z0}, rect, sr}};
+        blobs.insert(blobs.end(), {q[0], q[1], q[2], q[0], q[2], q[3]});
+    }
+    movingShadows.upload(blobs, true);
+
+    contactShader.use();
+    contactShader.setMat4("view", view);
+    contactShader.setMat4("projection", proj);
+    contactShader.setVec3("viewPos", camPos);
+    contactShader.setFloat("uFogDensity", th.fogDensity);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_DST_COLOR, GL_ZERO);
+    glDepthMask(GL_FALSE);
+    glDepthFunc(GL_LEQUAL);
+    glDisable(GL_CULL_FACE);
+    glEnable(GL_POLYGON_OFFSET_FILL);
+    glPolygonOffset(-1.f, -2.f);
+    world.contact.draw();
+    movingShadows.draw();
+    glDisable(GL_POLYGON_OFFSET_FILL);
+    glEnable(GL_CULL_FACE);
+    glDepthFunc(GL_LESS);
+    glDepthMask(GL_TRUE);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDisable(GL_BLEND);
+}
+
 inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm::mat4& view) {
     using namespace rig;
     float t = gameClock;
@@ -495,17 +550,30 @@ inline void GameplayState::render() {
     worldShader.setFloat("uVertexGlow",   0.0f);
     worldShader.setInt("uTexture",0);
     glActiveTexture(GL_TEXTURE0);
+    pickNeon(neonLights, renderCamPos, neonSet, renderCam.forward());
+    if (devSkip("neonlight")) neonSet.n = 0;
+    applyNeon(worldShader, true);
     for (int t = 0; t < TEX_COUNT && !devSkip("world"); ++t) {
         if (world.byTex[t].indexCount == 0) continue;
+        // What glows in the texture (MaterialTex.h: alpha < 1), in its own colour
+        glm::vec3 glow = t == TEX_CIRCUIT ? glm::vec3{0.15f, 0.85f, 1.0f} * 0.9f
+                       : t == TEX_CIRCUIT_FLOOR ? glm::vec3{0.15f, 0.85f, 1.0f} * 0.45f
+                       : t == TEX_BASALT ? glm::vec3{1.0f, 0.24f, 0.10f} * 0.75f : glm::vec3{0.f};
+        worldShader.setVec3("uTexGlow", glow);
+        worldShader.setFloat("uNoSeams", texHasSeams(t) ? 0.f : 1.f);
         glBindTexture(GL_TEXTURE_2D, worldTex[t]);
         world.byTex[t].draw();
     }
+    worldShader.setVec3("uTexGlow", {0.f, 0.f, 0.f});
+    worldShader.setFloat("uNoSeams", 0.f);
+    applyNeon(worldShader, false);   // (the neon doesn't light itself; nor the view model, later)
     glBindTexture(GL_TEXTURE_2D, whiteTex);
     worldShader.setVec3("objectColor", {0.25f,0.25f,0.25f});
     worldShader.setFloat("uVertexGlow", 1.5f);
     if (!devSkip("world")) world.neon.draw();
     worldShader.setFloat("uVertexGlow", 0.0f);
     worldShader.setVec3("objectColor", {1.f,1.f,1.f});
+    if (!devSkip("contact")) drawContactShadows(view, proj, th, renderCamPos);
 
     ftLap.to(frametimer::R_WORLD);
     // --- Everything made of boxes: one instanced draw ---
@@ -518,6 +586,7 @@ inline void GameplayState::render() {
         boxRenderer.shader.setMat4("view",       view);
         boxRenderer.shader.setInt ("uTexture",   0);
         applyLighting(boxRenderer.shader, th, renderCamPos);
+        applyNeon(boxRenderer.shader, true);
         glBindTexture(GL_TEXTURE_2D, whiteTex);
         if (!devSkip("boxes")) boxRenderer.draw(boxes);
     }

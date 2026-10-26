@@ -14,8 +14,11 @@ struct AABB {
     glm::vec3 min, max; // min = bottom-left-front, max = top-right-back
 };
 
-// Surface material: picks the texture a wall is drawn with (GameplayState)
-enum class Mat : unsigned char { BRICK, PANEL, ROCK, METAL, CONCRETE };
+// Surface material: picks the texture a wall is drawn with (GameplayState).
+// The second row are Act I's own: one look per arena (WorldGeometry.h maps
+// each to the texture of its sides and of its top).
+enum class Mat : unsigned char { BRICK, PANEL, ROCK, METAL, CONCRETE,
+                                 ADOBE, PLATE, MARBLE, CIRCUIT, BASALT, WOOD };
 
 struct Wall {
     AABB      box;

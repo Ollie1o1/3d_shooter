@@ -38,6 +38,7 @@
 #include "core/Gamepad.h"
 #include "core/MouseFilter.h"
 #include "render/WorldMesh.h"
+#include "render/NeonLights.h"
 #include "render/Effects.h"
 #include "world/ArenaShifts.h"
 #include "game/Score.h"
@@ -152,6 +153,14 @@ public:
     int         textureQuality = -1;   // graphics quality the world textures are filtered for
     void applyTextureQuality();
     WorldMeshes world;
+    // The world's light from its neon and lava (NeonLights.h), and the soft
+    // shadows on the ground under things (contact.frag; enemies' each frame)
+    ShaderProgram          contactShader;
+    ContactMesh            movingShadows;
+    std::vector<NeonLight> neonLights;
+    NeonSet                neonSet;
+    void applyNeon(ShaderProgram& sh, bool on);
+    void drawContactShadows(const glm::mat4& view, const glm::mat4& proj, const Theme& th, glm::vec3 camPos);
 
     std::vector<Enemy> enemies;
     SpatialGrid        spatialGrid;   // built once; door boxes move only in Y, movers are tested separately

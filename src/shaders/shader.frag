@@ -22,6 +22,34 @@ uniform vec3  uGroundAmb;
 uniform vec3  uFogColor;
 uniform float uFogDensity;   // 0 = no fog (view model, HUD-ish geometry)
 uniform float uVertexGlow;   // > 0: per-vertex colour is also emitted (neon strips)
+uniform vec3  uTexGlow;      // what the texture marks as glowing (alpha < 1) gives off this
+uniform float uNoSeams;      // 1: no dark seam every 4 m (the newer textures carry their own joints)
+
+// Light from the neon and lava near this point (NeonLights.h picks them):
+// each is a box of light; distance to its nearest point, a soft wrap so the
+// surface a strip is mounted on glows around it, nothing past 7 m
+const int MAX_NEON = 8;
+uniform int  uNeonCount;
+uniform vec3 uNeonMin[MAX_NEON];
+uniform vec3 uNeonMax[MAX_NEON];
+uniform vec3 uNeonColor[MAX_NEON];
+
+vec3 neonLight(vec3 P, vec3 N) {
+    vec3 sum = vec3(0.0);
+    if (uNeonCount == 0) return sum;
+    for (int i = 0; i < MAX_NEON; ++i) {   // a fixed count, so it unrolls: unused slots sit far away
+        vec3 d = clamp(P, uNeonMin[i], uNeonMax[i]) - P;
+        float d2 = dot(d, d);
+        if (d2 > 49.0) continue;
+        float dist = sqrt(d2);
+        float ndl  = dist > 0.02 ? dot(N, d / dist) : 0.0;
+        float wrap = clamp(ndl * 0.5 + 0.5, 0.0, 1.0);
+        float fall = (1.0 - smoothstep(3.5, 7.0, dist)) / (1.0 + d2 * 0.8);
+        sum += uNeonColor[i] * (wrap * fall);
+    }
+    // Soft ceiling: right up against a big panel (a jump pad) it glows, it doesn't blow out
+    return sum / (1.0 + 0.35 * max(max(sum.r, sum.g), sum.b));
+}
 
 void main()
 {
@@ -69,9 +97,11 @@ void main()
     float edgeFactor = smoothstep(0.0, 0.02, min(eu, ev));
     // edgeFactor = 0 at edges (dark), 1 at face centre (full colour)
 
-    vec3 lighting = ambient + diff * lightColor + pointContrib;
+    vec3 lighting = ambient + diff * lightColor + pointContrib + neonLight(FragPos, norm);
     vec3 result   = (lighting * texColor.rgb + specular + rimColor + emissiveColor)
-                  * mix(0.6, 1.0, edgeFactor);   // darken at tile seams
+                  * mix(0.6, 1.0, max(edgeFactor, uNoSeams));   // darken at tile seams
+    float glowMask = 1.0 - texture(uTexture, TexCoord).a;
+    result += uTexGlow * glowMask;
     result += VertColor * uVertexGlow;
 
     // Exponential-squared distance fog toward the arena's horizon colour
@@ -79,5 +109,5 @@ void main()
     float fog = 1.0 - exp(-d * d);
     result = mix(result, uFogColor, fog * 0.85);
 
-    FragColor = vec4(result, texColor.a);
+    FragColor = vec4(result, dot(uTexGlow, uTexGlow) > 0.0 ? 1.0 : texColor.a);
 }
