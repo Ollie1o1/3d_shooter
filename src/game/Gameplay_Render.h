@@ -114,6 +114,8 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
             pose.animPhase = e.prevAnimPhase + (e.animPhase - e.prevAnimPhase) * renderAlpha;
         if (e.abBodyLive)   // (his sprung body, between ticks too)
             for (int k = 0; k < Enemy::AB_BODY; ++k) pose.abBody[k] = e.abBodyPrev[k] + (e.abBody[k] - e.abBodyPrev[k]) * renderAlpha;
+        // Low enough to finish: it throbs hot (a punch takes it, Gameplay_Feel.h)
+        pose.finishGlow = e.finishable(overdriveOn()) ? 0.45f + 0.35f * std::sin(t * 13.f + e.uid) : 0.f;
         size_t from = out.size();
         buildEnemy(pose, t, out);
         if (e.hollow == Hollow::ENRAGED)   // everything that glows burns red
@@ -217,7 +219,8 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
         float k = glm::clamp(d.life / d.maxLife, 0.f, 1.f);
         glm::mat4 m = T(d.pos) * glm::rotate(glm::mat4(1.f), d.angle, d.axis)
                     * glm::mat4(d.shape) * S(glm::vec3{0.3f + 0.7f * k});
-        push(out, m, d.color * (0.4f + 0.6f * k), d.emissive * k);
+        float hot = glm::clamp(d.hot / 0.12f, 0.f, 1.f);   // white-hot off the killing blow, cooling to its colours
+        push(out, m, glm::mix(d.color * (0.4f + 0.6f * k), glm::vec3{1.f, 0.9f, 0.8f}, hot * 0.7f), d.emissive * k + glm::vec3{2.2f, 1.5f, 0.9f} * hot);
     }
 
     // Projectiles: a spinning bright core inside a darker shell
@@ -672,10 +675,13 @@ inline void GameplayState::render() {
     postProcess.fx.pulse = playerDead ? 0.f : heartPulse;
     postProcess.fx.hurt  = glm::clamp(ui.damageVignette * 2.f, 0.f, 1.f);
     postProcess.fx.time  = gameClock;
+    postProcess.fx.drive = overdriveFx;
+    postProcess.fx.kick  = killFx * killFx * flashScale() * (settings ? std::min(1.f, settings->screenShake + 0.3f) : 1.f);
     // --overlay rushNN / lowNN / hurt: hold a screen effect for screenshots (lowNN on a heartbeat's peak)
     if (g_devOverlay.rfind("rush", 0) == 0) postProcess.fx.speed = std::atoi(g_devOverlay.c_str() + 4) / 100.f;
     if (g_devOverlay.rfind("low", 0) == 0) { postProcess.fx.low = std::atoi(g_devOverlay.c_str() + 3) / 100.f; postProcess.fx.pulse = 1.f; }
     if (g_devOverlay == "hurt") postProcess.fx.hurt = 1.f;
+    if (g_devOverlay.rfind("drive", 0) == 0) postProcess.fx.drive = std::atoi(g_devOverlay.c_str() + 5) / 100.f;   // dev: driveNN, the OVERDRIVE look
     postProcess.endScene();
     ftLap.to(frametimer::R_POST);
 

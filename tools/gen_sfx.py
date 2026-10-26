@@ -926,6 +926,95 @@ def gen_lastkill():
     return out
 
 
+# ---- how a fight feels (Gameplay_Feel.h) ----
+def gen_hit_body():
+    """A round landing in a body: a short heavy thump with a dull plate knock and a crunch on the front.
+    The game pitches it down for the big ones."""
+    n = n_samples(0.16)
+    crunch = highpass([white() for _ in range(n)], 1800)
+    out, ph = [], 0.0
+    for i in range(n):
+        t = i / SR
+        f = 70 + 160 * math.exp(-t * 45.0)
+        ph += 2 * math.pi * f / SR
+        thump = math.sin(ph) * math.exp(-t * 26.0)
+        knock = (sine(410, i) + 0.6 * sine(673, i)) * math.exp(-t * 60.0)
+        out.append(math.tanh(1.6 * thump) * 0.9 + knock * 0.3 + crunch[i] * math.exp(-t * 160.0) * 0.55)
+    return out
+
+
+def gen_stun():
+    """Its footing breaks: a hard crack, a metal clunk ringing down, a short electric fizz as its eyes gutter."""
+    n = n_samples(0.38)
+    fizz = _bandnoise(n, 2500, 7000)
+    out = []
+    for i in range(n):
+        t = i / SR
+        crack = white() * math.exp(-t * 400.0)
+        f = 520 * math.exp(-t * 3.0)
+        clunk = (math.sin(2 * math.pi * f * t) + 0.5 * math.sin(2 * math.pi * f * 1.51 * t)) * math.exp(-t * 14.0)
+        gate = 1.0 if math.sin(2 * math.pi * 38 * t) > 0.2 else 0.25
+        out.append(crack * 0.8 + clunk * 0.45 + fizz[i] * math.exp(-t * 9.0) * 0.35 * gate)
+    return out
+
+
+def gen_finisher():
+    """The finisher: a gauntlet into a body. A deep slugging punch, a crunch of plate giving way,
+    a low boom under it, and a bright ring as it breaks."""
+    n = n_samples(0.75)
+    crunch = lowpass([white() for _ in range(n)], 3200)
+    rumble = lowpass([white() for _ in range(n)], 140)
+    out, ph = [], 0.0
+    for i in range(n):
+        t = i / SR
+        f = 48 + 190 * math.exp(-t * 30.0)
+        ph += 2 * math.pi * f / SR
+        punch = math.tanh(2.2 * math.sin(ph) * math.exp(-t * 9.0))
+        cr = crunch[i] * (math.exp(-t * 28.0) + 0.5 * math.exp(-abs(t - 0.035) * 120.0))
+        ring = (sine(880, i) + 0.6 * sine(1394, i) + 0.4 * sine(2117, i)) * math.exp(-t * 7.0) * min(1.0, t / 0.01)
+        out.append(punch * 0.85 + cr * 0.9 + rumble[i] * math.exp(-t * 4.0) * 1.4 + ring * 0.12)
+    return out
+
+
+def gen_overdrive_on():
+    """OVERDRIVE: a fast rising rush into a big impact, a power chord swelling out of it and a sub drop."""
+    n = n_samples(1.6)
+    rush = _bandnoise(n, 800, 6000)
+    out, ph, ph2 = [], 0.0, 0.0
+    hit = 0.22
+    for i in range(n):
+        t = i / SR
+        pre = rush[i] * (t / hit) ** 2 * 0.6 if t < hit else 0.0
+        u = t - hit
+        if u >= 0:
+            f = 38 + 90 * math.exp(-u * 12.0)
+            ph += 2 * math.pi * f / SR
+            sub = math.sin(ph) * math.exp(-u * 2.2)
+            crack = white() * math.exp(-u * 70.0)
+            sw = min(1.0, u / 0.08) * math.exp(-u * 1.6)
+            chord = sum(math.tanh(2.5 * sine(fr, i)) for fr in (110, 164.8, 220, 329.6)) * 0.12 * sw
+            ph2 += 2 * math.pi * (220 + 30 * u) / SR
+            out.append(sub * 0.9 + crack * 0.7 + chord + math.sin(ph2) * 0.05 * sw)
+        else:
+            out.append(pre)
+    return lowpass(out, 9000)
+
+
+def gen_overdrive_off():
+    """OVERDRIVE burning out: the chord sagging down and away, a breath of air, a soft thud."""
+    n = n_samples(0.9)
+    air = _bandnoise(n, 400, 3000)
+    out = []
+    for i in range(n):
+        t = i / SR
+        bend = math.exp(-t * 1.2)
+        env = math.exp(-t * 3.5)
+        chord = sum(math.tanh(2.0 * math.sin(2 * math.pi * fr * (0.6 + 0.4 * bend) * t)) for fr in (110, 164.8, 220)) * 0.14 * env
+        thud = math.sin(2 * math.pi * (60 * bend) * t) * math.exp(-t * 9.0)
+        out.append(chord + air[i] * 0.25 * math.sin(math.pi * min(1.0, t / 0.9)) + thud * 0.6)
+    return out
+
+
 GENERATORS = {
     "jump": gen_jump,
     "land": gen_land,
@@ -987,6 +1076,8 @@ GENERATORS = {
     "step_metal": gen_step_metal, "step_metal_1": gen_step_metal_1, "step_metal_2": gen_step_metal_2,
     "land_metal": gen_land_metal,
     "lastkill": gen_lastkill,
+    "hit_body": gen_hit_body, "stun": gen_stun, "finisher": gen_finisher,
+    "overdrive_on": gen_overdrive_on, "overdrive_off": gen_overdrive_off,
 }
 
 from sfx_absolute import ABSOLUTE_GENERATORS  # THE ABSOLUTE's (tools/sfx_absolute.py)

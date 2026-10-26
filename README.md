@@ -143,7 +143,7 @@ What the port needed (all behind `#ifdef __EMSCRIPTEN__`, so the desktop build i
 | Tab | Armory: spend upgrade points (pauses the game) |
 | G | Throw grenade |
 | R | Reload / Retry the arena (on death) |
-| F | Punch: parries projectiles, breaks a Juggernaut's smash, detonates your grenade, hits what's in front |
+| F | Punch: parries projectiles, breaks a Juggernaut's smash, **finishes** a glowing enemy, detonates your grenade, hits what's in front |
 | Left Ctrl / C | Crouch / Ground slam |
 | Enter | New run (on death/win) |
 | Escape / P | Pause / Resume (Escape quits to menu from death/win screens; in a browser, Escape releases the mouse and pauses). The pause menu also toggles fullscreen |
@@ -160,7 +160,7 @@ What the port needed (all behind `#ifdef __EMSCRIPTEN__`, so the desktop build i
 | B | Slide / ground slam |
 | RB | Dash |
 | LB | Grapple |
-| Y | Punch / parry |
+| Y | Punch / parry / finisher |
 | X | Reload |
 | D-pad left / right | Previous / next weapon |
 | D-pad up / down | Grenade / inspect |
@@ -313,8 +313,10 @@ Everything below runs without touching the mouse, so it works from scripts.
 # Footage: fixed 1/30 s frames; skip SKIP, then save FRAMES as PREFIX_0001.bmp ...
 ./shooter --arena 5 --god --cam 0 1.8 -310 -90 2 --spawn 8 --autoaim --kite --clean --record 180 30 out/boss
 #   --campath X Y Z YAW PITCH  glide the camera there over the recording
-#   --autoaim  turn onto the nearest enemy in sight and fire      --kite  back off from whatever gets close
+#   --autoaim  turn onto the nearest enemy in sight and fire (and take any finisher in reach)      --kite  back off from whatever gets close
 #   --clean    no title cards or enemy cards
+#   OVERDRIVE_RUNLOG=1 ./shooter ...   write runs.jsonl from dev runs too (normally only real play)
+#   --overlay driveNN   the OVERDRIVE screen look at NN %
 tools/record_showcase.sh         # re-record docs/overdrive.gif (needs gifski)
 
 # Frame times
@@ -408,7 +410,7 @@ seven rooms, each reached down a ribbed **boost tube** (a breather: health waiti
 - **Oathbreaker** (slot 5, the Zenith only) — a sword in the arsenal's gunmetal, bone and brass, its fuller of eight rose-red cells showing the guard meter. LMB: a three-stroke combo (70/70/120) with a lock-on step; hold 0.5 s and release for a thrust 8 m forward (220); slam with it out to plunge (150). RMB: the first 0.15 s parries a white strike, a projectile or a ray just fired (the next stroke is a riposte, x2.5); held, it blocks hits from the front (25 % taken) until the guard meter breaks. Every hit heals 6, every parry 10
 - Aiming scales mouse sensitivity with the zoom (plus a ZOOM SENSITIVITY setting) and slows you a little
 - **Grenades** (G key) — parabolic arc, 5m blast radius, refill every 2 kills
-- **Punch / parry** (F) — a fist you can see, once a second (no spamming it). Parries an enemy shot in front of you (the window grows with the shot's speed) and sends it where you're looking for 60; a Juggernaut's siege shell comes back for 400 and ignores armor. Punch a Juggernaut in the last moment of its smash to **break** it (staggered, double damage). Otherwise it hits whatever's in front of you. A parry lands with a metal clank, a gold flash and a hit-stop
+- **Punch / parry** (F) — a fist you can see, once a second (no spamming it). Parries an enemy shot in front of you (the window grows with the shot's speed) and sends it where you're looking for 60; a Juggernaut's siege shell comes back for 400 and ignores armor. Punch a Juggernaut in the last moment of its smash to **break** it (staggered, double damage). A glowing enemy in reach is **finished** instead (see *How hits land*). Otherwise it hits whatever's in front of you, hard enough to stun a light one. A parry lands with a metal clank, a gold flash and a hit-stop
 - **Projectile Boost** (F near own grenade) — detonate for 3x damage AoE
 
 </details>
@@ -489,6 +491,20 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 </details>
 
 <details>
+<summary><b>How hits land</b></summary>
+
+The regular enemies (not the bosses, which have their own answers) take a hit with their bodies (`src/enemies/HitReact.h`, `src/game/Gameplay_Feel.h`):
+
+- **Shove and flinch**: every round pushes what it hits, by the gun (a magnum round rocks a Husk back half a metre, a point-blank shotgun blast throws it off its feet, a Brute barely rocks) and tips it over at the feet, away from the shot, snapping back in a fraction of a second. A thump plays from the body, deeper on the big ones
+- **Stuns**: each enemy has poise. Enough damage close together breaks it: the enemy staggers, its eyes gutter, and the attack it was winding up is lost (a magnum round stops a Husk's shot or a Ripper's lunge; two shotgun blasts in a row stop a Brute's slam). Then it can't be stunned again for a moment
+- **Finishers**: an enemy low enough (under 35 %, heavies 25 %, or under 60 % while stunned) throbs orange and four ticks close on the crosshair: **F** lunges in and finishes it, for health back (25, heavies 35, times the difficulty's healing), the gun in hand reloaded, a moment of safety and style. The punch cools down fast after one, so they chain
+- **Deaths** break the rig along the killing blow: the pieces fly the way the shot went (a headshot takes the head first), white-hot for a moment
+- **Attack tokens**: only a few regular enemies wind up at once (2 on LENIENT to 5 on BRUTAL, one more in a big crowd); the nearest ones you can see go first, and the ones behind you are slower to get to it
+- **The run log**: each death, finished run or quit adds a line to `runs.jsonl` beside the binary (desktop only): what hurt you and what killed you, each gun's shots, hits and kills, time to kill per enemy, stuns, finishers and OVERDRIVE. `python3 tools/runlog.py` sums it up
+
+</details>
+
+<details>
 <summary><b>The style system</b></summary>
 
 - ULTRAKILL-inspired style meter (D → C → B → A → S → SSS)
@@ -496,7 +512,8 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 - **Freshness**: scoring with the same thing over and over earns less. Each gun, the punch, parries, explosives, the slam and the environment wear out as they score (FRESH x1.5, USED x1, STALE x0.5, DULL x0.2) and recover while you use something else; the gun in hand's freshness shows beside the style bar. Movement style (dashes, grapples, jumps) isn't affected
 - Kills you only set up (lava, the void, enemies hurting each other) can carry the meter into rank B but no further: the top ranks and Overdrive come from what you do yourself
 - **Friendly fire**: a Juggernaut's siege shell ploughs into any enemy in its path, and a Brute's slam or a Juggernaut's smash hurts the enemies around it (bosses are immune). Bait them into a crowd: those kills count as yours (+10 XP, half the kill style)
-- Overdrive mode at max style — dash charges refill on kill
+- The run's score takes every point of style; the meter fills at under half of it, so a few good kills in a row fill it, not a few hits
+- **OVERDRIVE** at a full meter: a slow-motion beat, a gold shockwave and every gun full; then for 6 s your shots hit 30 % harder, fire a third faster and never run the magazine down, every hit staggers twice as hard, a punch finishes anything under half, and dash charges refill on each kill. Each kill keeps it burning half a second longer (8 s at most). When it burns out the meter drops back to B and it needs 15 s to recharge (a gold line under the meter)
 - Style decays after 3 seconds of inactivity
 
 </details>

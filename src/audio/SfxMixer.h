@@ -448,7 +448,8 @@ private:
         }
         v.curL = tL; v.curR = tR; v.lp = tlp;
     }
-    // Leaves anything under 0.8 alone, rounds the rest off toward 1
+public:
+    // Leaves anything under 0.8 alone, rounds the rest off toward 1 (AudioSystem rounds the final mix off with it too)
     static float softClip(float x) {
         float a = std::fabs(x);
         if (!(a < 1e6f)) return 0.f;   // NaN / inf: silence rather than a screech

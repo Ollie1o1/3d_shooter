@@ -87,6 +87,7 @@ public:
     void devSwitch(float u, int g) { gun = toGun = g; switching = true; upCued = true; switchT = SWITCH_DOWN + u * SWITCH_UP; cues.clear(); }
 
     bool reloading() const { return reloadT >= 0.f; }
+    void stopReload() { reloadT = -1.f; }   // the gun is full now (a finisher, OVERDRIVE): straight back to ready
     bool switchingNow() const { return switching; }
     int  shownGun() const { return switching && switchT < SWITCH_DOWN ? gun : (switching ? toGun : gun); }
     float kickAmount() const {   // critically damped: (1 + w t) e^-wt, ~2 % left at `settle`

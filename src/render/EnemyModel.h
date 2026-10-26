@@ -43,9 +43,12 @@ struct Rig {
     std::vector<BoxInstance>& out;
     float flash = 0.f;   // 0..1 white hit flash
     float spawn = 1.f;   // 0..1 materialise progress
+    float finish = 0.f;  // 0..1 a punch would finish it: the whole body pulses hot
+    float dim = 1.f;     // stunned: its glow gutters
     void box(const mat4& parent, vec3 centre, vec3 size, vec3 col, vec3 emi = vec3{0.f}) {
         vec3 c = glm::mix(col, vec3{1.f}, flash * 0.85f);
-        vec3 e = glm::mix(emi, vec3{0.9f}, flash * 0.6f);
+        vec3 e = glm::mix(emi * dim, vec3{0.9f}, flash * 0.6f);
+        if (finish > 0.f) { c = glm::mix(c, vec3{1.f, 0.6f, 0.25f}, 0.25f * finish); e += vec3{1.1f, 0.42f, 0.08f} * finish; }
         if (spawn < 1.f) e += vec3{0.5f, 0.85f, 1.f} * (1.f - spawn) * 2.5f;
         push(out, parent * T(centre) * S(size), c, e);
     }
@@ -273,12 +276,24 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
     r.flash = glm::clamp(e.hitFlashTimer / 0.12f, 0.f, 1.f);
     r.spawn = 1.f - e.spawnTimer / Enemy::SPAWN_TIME;
     float grow = 0.05f + 0.95f * smooth01(r.spawn);
+    r.finish = e.finishGlow;
+    if (e.stunTimer > 0.f) r.dim = 0.25f + 0.75f * (std::sin(time * 55.f) > 0.3f ? 1.f : 0.f);   // its eyes gutter while it's stunned
 
     float tp   = e.telegraphProgress();
     vec3  glow = st.glow * (1.f + 2.5f * tp);           // eyes flare during a wind-up
     float stride = glm::clamp(e.moveSpeed / std::max(0.1f, st.speed), 0.f, 1.2f);
 
     mat4 root = T(e.position) * RY(e.yaw) * S(vec3{e.scale}) * S({1.f, grow, 1.f});
+    {   // A hit tips it over at the feet, away from the shot, squashed a touch, turned a little; it snaps back (HitReact.h)
+        float ang = hitreact::flinchAt(e.flinchAmp, time - e.flinchAt);
+        if (ang > 1e-3f) {
+            float k = ang / hitreact::FLINCH_MAX;
+            vec3 axis = glm::cross(vec3{0.f, 1.f, 0.f}, vec3{e.flinchDir.x, 0.f, e.flinchDir.y});
+            if (glm::length(axis) > 1e-4f)
+                root = T(e.position) * glm::rotate(mat4(1.f), ang, glm::normalize(axis)) * RY(e.yaw + e.flinchTwist * k)
+                     * S(vec3{e.scale}) * S({1.f + 0.07f * k, grow * (1.f - 0.1f * k), 1.f + 0.07f * k});
+        }
+    }
 
     switch (e.type) {
     case EnemyType::HUSK: {

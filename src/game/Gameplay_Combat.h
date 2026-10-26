@@ -115,6 +115,7 @@ inline void GameplayState::punch(int boostable) {
             return;
         }
     }
+    if (tryFinisher()) return;   // one low enough to finish (it glows): Gameplay_Feel.h
     if (boostable >= 0) {
         // Projectile boost: detonate your own projectile for a massive explosion.
         auto& p = projSystem.pool[boostable];
@@ -137,9 +138,13 @@ inline void GameplayState::punch(int boostable) {
         glm::vec3 d = c - eye;
         float dist = glm::length(d) - e.radius();
         if (dist < 2.4f && glm::dot(fwd, glm::normalize(d)) > 0.5f) {
-            hurtEnemy(e, 25.f, c, 6.f, 1.f, StyleSource::PUNCH);
-            glm::vec3 push = glm::normalize(glm::vec3{d.x, 0.f, d.z}) * (e.type == EnemyType::JUGGERNAUT ? 0.3f : 1.4f);
-            e.position += push;
+            HitPush hp{glm::normalize(d), 10.f, 3.f};   // a punch shoves hard and breaks a light one's footing
+            hurtEnemy(e, 25.f, c, 6.f, 1.f, StyleSource::PUNCH, false, false, &hp);
+            if (!e.reacts()) {   // (the ones that don't take a shove still give a little)
+                glm::vec3 push = glm::normalize(glm::vec3{d.x, 0.f, d.z}) * (e.type == EnemyType::JUGGERNAUT ? 0.3f : 1.4f);
+                e.position += push;
+            }
+            camFeel.punch(22.f, 0.f, -14.f);
             audio.playAt("clank", c, 50, SoundGroup::ENEMY);
             shake(0.08f, 0.02f);
             break;
@@ -219,11 +224,13 @@ inline void GameplayState::updateEnemies(float dt) {
     const bool descent = ar.shift == ArenaShift::DESCENT;
     const float dmgScale = ar.damageScale * tune().damage;
 
+    assignAttackers();   // who may wind up this tick (Gameplay_Feel.h)
     // Iterate by index: summons push_back into `enemies` mid-loop
     size_t n = enemies.size();
     for (size_t i = 0; i < n; ++i) {
         Enemy& e = enemies[i];
         if (!e.alive) continue;
+        hurtBy = e.type;   // whatever hurts you from here on, until the next one: this one did
         if (g_devOverlay.rfind("pose", 0) == 0 && e.type == EnemyType::SOVEREIGN) { devPose(e); continue; }
         if (g_devOverlay.rfind("penitent", 0) == 0 && e.type == EnemyType::PENITENT) { devPenitentPose(e); continue; }
         if (g_devOverlay == "thunder" && e.type == EnemyType::ABSOLUTE && e.abCur < 0) e.abForce = AB_THUNDER;   // dev: THUNDERCLAP, over and over
@@ -262,6 +269,7 @@ inline void GameplayState::updateEnemies(float dt) {
             if (Projectile* pr = projSystem.fire(ev.shotOrigin, ev.shotDir[k] * ev.shotSpeed, ev.shotDamage * eScale, false,
                                                  enemies[i].stats().shotColor, false, 0.f, ev.shotSize, ev.shotHeavy)) {
                 pr->owner = enemies[i].uid;
+                pr->ownerType = (int)enemies[i].type;
                 pr->parryDamage = ev.shotParry;
             }
         if (ev.beamOn) {   // a SERAPH's beam: 30/s while it touches you, sparks (or steam) where it lands
@@ -300,7 +308,7 @@ inline void GameplayState::updateEnemies(float dt) {
         }
         if (ev.detonated) {
             // A mite that reached you: hurts you AND its friends
-            pendingBlasts.push_back({epos + glm::vec3{0, 0.3f, 0}, 4.f, 30.f, 4.f, 30.f * eScale, StyleSource::FRIENDLY});
+            pendingBlasts.push_back({epos + glm::vec3{0, 0.3f, 0}, 4.f, 30.f, 4.f, 30.f * eScale, StyleSource::FRIENDLY, EnemyType::MITE});
             spawnDebrisFor(enemies[i]);
         }
         if (ev.summonMites + ev.summonRippers > 0) {
@@ -335,6 +343,7 @@ inline void GameplayState::updateEnemies(float dt) {
         }
     }
 
+    hurtBy = EnemyType::COUNT;
     for (auto& e : enemies) {
         if (!e.targetable() || e.type == EnemyType::LEVIATHAN) continue;   // (it lives in the pool's void)
         // Fell into the void: counts as your kill
@@ -395,6 +404,7 @@ inline bool GameplayState::damagePlayer(float dmg, glm::vec3 from, float shakeT,
     if (invincFrames > 0.f || playerDead || g_godMode || victory || ascendT >= 0.f ||
         (!fast() && director.phase == WaveDirector::Phase::VICTORY)) return false;
     styleSystem.takeDamage(dmg);
+    runLog.took(hurtBy, dmg);
     ui.onDamage();
     showDamageFrom(from);
     shake(shakeT, shakeAmt);
@@ -421,7 +431,7 @@ inline void GameplayState::showDamageFrom(glm::vec3 source) {
 }
 
 inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float style, float heal, StyleSource src,
-                                     bool crit, bool pierceArmor) {
+                                     bool crit, bool pierceArmor, const HitPush* push) {
     if (!e.targetable()) return false;
     if (e.shielded) {   // a CONDUCTOR's tether: nothing gets through until the Conductor is dead
         fx.spawnHitSparks(at, {0.3f, 1.f, 0.9f});
@@ -438,10 +448,24 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
     if (e.onBeamHit(dmg, crit)) { ui.feed("BEAM BROKEN", {1.f, 0.85f, 0.5f}); styleSystem.addStyle(25.f, src); }
     if (e.halo) fx.spawnHitSparks(at, {1.f, 0.85f, 0.3f});
     float before = e.health;
-    bool killed = e.takeDamage(dmg);
     // Enemies hurting each other: no hitmarker, no style or healing for the
     // hit (a kill still scores, in onEnemyKilled)
     bool friendly = src == StyleSource::FRIENDLY;
+    if (push || (!friendly && src != StyleSource::ENVIRONMENT)) {   // the hit lands in a body: shoved, flinched, maybe stunned (HitReact.h)
+        HitPush hp;
+        if (push) hp = *push;
+        else {   // no say: away from you, by how hard it hit
+            glm::vec3 d = at - player.camera.position;
+            hp.dir = glm::length(d) > 1e-3f ? glm::normalize(d) : player.camera.forward();
+            hp.push = std::min(dmg * 0.06f, 12.f);
+        }
+        float poiseMul = dmg >= e.health ? 0.f : hp.poise * (overdriveOn() ? 2.f : 1.f);   // (a killing blow stuns nothing)
+        float pushK = overdriveOn() ? 1.25f : 1.f;
+        bool stunned = e.takeHit(hp.dir, hp.push * pushK, dmg, poiseMul, crit, gameClock);
+        if (stunned) onStunned(e, at);
+        if (!friendly) bodyHit(e, at, hp.push * pushK, stunned);
+    }
+    bool killed = e.takeDamage(dmg);
     if (!friendly) {
         styleSystem.addStyle(style, src);
         styleSystem.heal(heal * tune().heal);
@@ -454,6 +478,14 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
     if (killed) {
         onEnemyKilled(e, src);
         hitStopFrames = glm::max(hitStopFrames, isBoss(e.type) ? 12 : crit ? 3 : 2);
+        if (!friendly && !isBoss(e.type)) {   // the kill itself: a spray out along the blow, a pop of light, the screen kicks
+            const bool heavy = hitreact::bodyOf(e.type).heavy;
+            glm::vec3 mid = e.position + glm::vec3{0.f, e.height() * 0.5f, 0.f};
+            fx.spawnSpray(mid, e.hitDir, e.stats().glow * 1.3f, heavy ? 30 : 16, 9.f + std::min(e.hitPush, 14.f) * 0.6f, 0.45f, 0.55f);
+            if (explosionFlashTimer < 0.08f) { explosionFlashTimer = 0.1f; explosionFlashPos = mid; }
+            killFx = std::max(killFx, heavy ? 1.f : crit ? 0.75f : 0.5f);
+            if (heavy) { fx.spawnShockwave(e.position + glm::vec3{0.f, 0.08f, 0.f}, 3.f + e.radius() * 2.f, e.stats().glow); shake(0.25f, 0.05f); }
+        }
         if (src != StyleSource::FRIENDLY) camFeel.punch(crit ? 32.f : 14.f, 0.f, frand(-1.f, 1.f) * (crit ? 22.f : 10.f));   // the kill lands in your hands
         if (!isBoss(e.type))   // a kill confirm that says what did it (bosses have their own deaths)
             if (const char* tag = killTag(src)) audio.play(tag, crit ? 85 : 70, SoundGroup::UI);
@@ -463,6 +495,8 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
 
 inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     ++totalKills;
+    runLog.killed(e.type, src, e.firstHitAge >= 0.f ? e.age - e.firstHitAge : -1.f);
+    if (src != StyleSource::FRIENDLY && src != StyleSource::ENVIRONMENT) styleSystem.extendOverdrive(0.5f);   // kills keep OVERDRIVE burning
     if (e.type == EnemyType::CONDUIT) director.onConduitDestroyed(e.position);
     if (e.splitsOnDeath()) {   // not into `enemies` yet: callers may be iterating it
         for (auto& t : twinsOf(e)) pendingTwins.push_back(t);
@@ -613,17 +647,24 @@ inline void GameplayState::processBlasts() {
                     for (auto& s : seg) dh = std::min(dh, std::max(0.f, glm::length(s.c - b.pos) - s.r));
                     m = 0.2f;
                 } else dh = std::max(0.f, dh - 2.f);
-                if (dh < b.radius) hurtEnemy(e, b.damage * m * (1.f - dh / b.radius), b.pos, 15.f, 3.f, b.src);
+                if (dh < b.radius) hurtEnemy(e, b.damage * m * (1.f - dh / b.radius), b.pos, 15.f, 3.f, b.src);   // (it doesn't take a shove)
                 continue;
             }
-            float d = glm::length(e.position + glm::vec3{0, e.height() * 0.5f, 0} - b.pos);
-            if (d < b.radius)
-                hurtEnemy(e, b.damage * (1.f - d / b.radius), e.position + glm::vec3{0, e.height() * 0.6f, 0}, 15.f, 3.f, b.src);
+            glm::vec3 off = e.position + glm::vec3{0, e.height() * 0.5f, 0} - b.pos;
+            float d = glm::length(off);
+            if (d < b.radius) {   // thrown out from the blast, and up
+                float k = 1.f - d / b.radius;
+                HitPush hp{glm::normalize((d > 1e-3f ? off / d : glm::vec3{0.f, 1.f, 0.f}) + glm::vec3{0.f, 0.6f, 0.f}), std::min(b.damage * 0.2f, 24.f) * k, 1.2f};
+                hurtEnemy(e, b.damage * k, e.position + glm::vec3{0, e.height() * 0.6f, 0}, 15.f, 3.f, b.src, false, false, &hp);
+            }
         }
         if (b.playerDamage > 0.f) {
             float pd = glm::length(player.camera.position - b.pos);
-            if (pd < b.playerRadius)
+            if (pd < b.playerRadius) {
+                hurtBy = b.by;
                 damagePlayer(b.playerDamage * (1.f - pd / b.playerRadius) + 2.f, b.pos, 0.3f, 0.07f);
+                hurtBy = EnemyType::COUNT;
+            }
         }
     }
     pendingBlasts.clear();
@@ -772,8 +813,10 @@ inline void GameplayState::fireWeapon(int w) {
     const WeaponDef& d = weaponDef(id);
     const WeaponUpgrades& u = prog.up[w];
     WeaponState& ws = weapons[w];
-    --ws.ammo;
-    ws.cooldown = weaponCooldown(id, u);
+    const bool od = overdriveOn();   // OVERDRIVE: harder, faster, and the magazine never runs down
+    if (!od) --ws.ammo;
+    ws.cooldown = weaponCooldown(id, u) * (od ? 0.75f : 1.f);
+    ++runLog.shots[w];
 
     glm::vec3 origin = player.camera.position;
     glm::vec3 fwd    = player.camera.forward();
@@ -788,7 +831,7 @@ inline void GameplayState::fireWeapon(int w) {
     if (d.canAim && !player.onGround) spread += 0.03f * (1.f - aimNow);
     int   pellets = weaponPellets(id, u);
     int   pierce  = weaponPierce(id, u);
-    float dmg     = weaponDamage(id, u);
+    float dmg     = weaponDamage(id, u) * (od ? 1.3f : 1.f);
     bool  sniper  = id == WeaponId::KAR || id == WeaponId::LONGSHOT;
 
     bool anyHit = false, headKill = false, kills = 0;
@@ -841,7 +884,7 @@ inline void GameplayState::fireWeapon(int w) {
             if (p < 2) audio.playAt("impact", at, sniper ? 115 : pellets > 1 ? 70 : 90, SoundGroup::WORLD);
         }
         fx.spawnTracer(origin + dir * 0.25f - up * 0.08f, origin + dir * endT, sniper ? 0.09f : 0.055f, sniper ? 0.35f : 0.22f,
-                       glm::mix(glm::vec3{1.f}, gunkit::glowOf(w), 0.6f));   // the gun's colour
+                       od ? glm::vec3{1.4f, 0.8f, 0.25f} : glm::mix(glm::vec3{1.f}, gunkit::glowOf(w), 0.6f));   // the gun's colour (OVERDRIVE: gold)
         for (int k = 0; k < n; ++k) {
             Enemy& e = enemies[hits[k].enemy];
             glm::vec3 at = origin + dir * hits[k].t;
@@ -876,9 +919,13 @@ inline void GameplayState::fireWeapon(int w) {
             float falloff = 1.f - 0.15f * k;    // each body it punches through costs a little
             if (head) fx.spawnHitSparks(at, {1.f, 0.9f, 0.3f});
             fx.spawnHitSparks(at, gunkit::glowOf(w) * 1.2f);   // the gun's colour where it lands
+            if (k == 0 && p < 3) fx.spawnSpray(at, -dir, e.stats().color * 1.6f + glm::vec3{0.4f, 0.3f, 0.2f}, sniper ? 10 : 4, sniper ? 9.f : 6.f, 0.22f);   // chips off it, back at you
             anyHit = true;
+            // The shove: each gun's own, the shotgun's hardest up close (HitReact.h)
+            float shove = hitreact::gunPush(w) * falloff * (pellets > 1 ? glm::clamp(1.5f - hits[k].t / 10.f, 0.3f, 1.3f) : 1.f);
+            HitPush hp{dir, shove, hitreact::gunPoise(w)};
             if (hurtEnemy(e, dmg * m * falloff, at, sniper ? 12.f : (pellets > 1 ? 3.f : 13.f), pellets > 1 ? 0.5f : 2.f,
-                          weaponSource(id), head)) {
+                          weaponSource(id), head, false, &hp)) {
                 ++killCount;
                 if (head) headKill = true;
             }
@@ -908,7 +955,7 @@ inline void GameplayState::fireWeapon(int w) {
         ui.feed("HEADSHOT", {1.f, 0.85f, 0.25f});
         styleSystem.addStyle(10.f, weaponSource(id));
         // HEADHUNTER: the round comes back and the bolt is skipped
-        if (id == WeaponId::KAR && u.mod) { ++ws.ammo; ws.cooldown = 0.1f; }
+        if (id == WeaponId::KAR && u.mod) { ws.ammo = std::min(ws.ammo + 1, weaponMag(id, u)); ws.cooldown = 0.1f; }
     }
     if (killCount > 0 && sniper) hitStopFrames = glm::max(hitStopFrames, 3);
     if (headKill && id == WeaponId::REVOLVER) hitStopFrames = glm::max(hitStopFrames, 2);   // a magnum headshot: the world catches for a beat
@@ -949,7 +996,7 @@ inline void GameplayState::fireWeapon(int w) {
         audio.playOpts("casing", c);
     }
     ++totalShots;
-    if (anyHit) ++totalHits;
+    if (anyHit) { ++totalHits; ++runLog.hits[w]; }
     fx.spawnShellCasing(origin, right, gunkit::glowOf(w));
     if (pellets > 1) fx.spawnShellCasing(origin + right * 0.1f, right, gunkit::glowOf(w));
 
