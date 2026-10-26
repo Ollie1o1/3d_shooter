@@ -761,7 +761,9 @@ inline void GameplayState::shotEchoes(const char* sound, float loud) {
         e.group = SoundGroup::WORLD; e.positional = true; e.pos = found[i].at;
         e.delay = 2.f * found[i].d / 343.f;
         e.pitch = 0.94f - 0.02f * i;   // the wall takes the top off
-        audio.playOpts(sound, e);
+        // The revolver's walls send back its own darkened, smeared echo: the
+        // dry shot a few ms late comb-filters with itself and sounds hollow
+        audio.playOpts(std::strcmp(sound, "revolver") == 0 ? "revolver_echo" : sound, e);
     }
 }
 
@@ -875,7 +877,7 @@ inline void GameplayState::fireWeapon(int w) {
             if (head) fx.spawnHitSparks(at, {1.f, 0.9f, 0.3f});
             fx.spawnHitSparks(at, gunkit::glowOf(w) * 1.2f);   // the gun's colour where it lands
             anyHit = true;
-            if (hurtEnemy(e, dmg * m * falloff, at, sniper ? 12.f : (pellets > 1 ? 3.f : 10.f), pellets > 1 ? 0.5f : 2.f,
+            if (hurtEnemy(e, dmg * m * falloff, at, sniper ? 12.f : (pellets > 1 ? 3.f : 13.f), pellets > 1 ? 0.5f : 2.f,
                           weaponSource(id), head)) {
                 ++killCount;
                 if (head) headKill = true;
@@ -909,6 +911,7 @@ inline void GameplayState::fireWeapon(int w) {
         if (id == WeaponId::KAR && u.mod) { ++ws.ammo; ws.cooldown = 0.1f; }
     }
     if (killCount > 0 && sniper) hitStopFrames = glm::max(hitStopFrames, 3);
+    if (headKill && id == WeaponId::REVOLVER) hitStopFrames = glm::max(hitStopFrames, 2);   // a magnum headshot: the world catches for a beat
 
     float recoil = d.recoil * (1.f - 0.4f * aimNow);
     recoilPitch = std::min(recoilPitch + recoil, 14.f);
@@ -917,7 +920,7 @@ inline void GameplayState::fireWeapon(int w) {
     viewModel.triggerFire();
     {   // the view kicks with the gun (seen, not aimed with: the aim kick is recoilPitch)
         static const float KICK[4][3] = {   // pitch, yaw jitter, roll jitter (degrees a second)
-            {70.f, 14.f, 22.f}, {125.f, 22.f, 45.f}, {105.f, 14.f, 26.f}, {165.f, 20.f, 40.f}};
+            {55.f, 8.f, 12.f}, {125.f, 22.f, 45.f}, {105.f, 14.f, 26.f}, {165.f, 20.f, 40.f}};   // (the revolver: a firm jolt, not a wobble)
         const float* k = KICK[std::clamp(w, 0, 3)];
         float hold = 1.f - 0.55f * aimNow;
         camFeel.punch(k[0] * hold, frand(-1.f, 1.f) * k[1] * hold, frand(-1.f, 1.f) * k[2] * hold);
@@ -932,7 +935,7 @@ inline void GameplayState::fireWeapon(int w) {
     }
     ui.onShoot();
     muzzleFlashPos   = origin + fwd * 0.6f;
-    muzzleFlashTimer = sniper ? 0.08f : pellets > 1 ? 0.07f : 0.04f;
+    muzzleFlashTimer = sniper ? 0.08f : pellets > 1 ? 0.07f : 0.055f;
     shake(sniper ? 0.14f : pellets > 1 ? 0.12f : 0.06f, sniper ? 0.03f : pellets > 1 ? 0.025f : 0.012f);
     static const char* SND[] = {"revolver", "shotgun", "kar", "longshot"};
     audio.play(SND[w], 128, SoundGroup::PLAYER, true);
