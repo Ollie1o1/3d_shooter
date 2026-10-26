@@ -50,6 +50,7 @@ public:
         glm::mat3 shape;          // rotation * scale of the original part
         glm::vec3 pos, vel, axis, color, emissive;
         float angle = 0.f, spin = 0.f, life = 0.f, maxLife = 1.f, floorY = 0.f;
+        float hot = 0.f;          // seconds left glowing white-hot from the killing blow
     };
     std::vector<Debris> debris;
 
@@ -95,6 +96,20 @@ public:
 
     void spawnDeathParticles(glm::vec3 center, glm::vec3 color) { spawnBurst(center, color, 22, 12.f, 1.0f, 18.f); }
     void spawnHitSparks(glm::vec3 pos, glm::vec3 color)         { spawnBurst(pos, color, 5, 5.f, 0.25f, 18.f); }
+    // A cone of sparks along `dir` (a hit's spray: back at you off the armour, or out through it)
+    void spawnSpray(glm::vec3 pos, glm::vec3 dir, glm::vec3 color, int n, float speed, float life, float spread = 0.6f) {
+        for (int i = 0; i < n; ++i) {
+            Particle* p = freeParticle();
+            if (!p) return;
+            glm::vec3 v = dir + glm::vec3{frand(-spread, spread), frand(-spread, spread) + 0.15f, frand(-spread, spread)};
+            float l = glm::length(v);
+            p->pos = pos; p->vel = (l > 1e-3f ? v / l : glm::vec3{0, 1, 0}) * speed * frand(0.5f, 1.f);
+            p->maxLife = p->life = life * frand(0.6f, 1.f);
+            p->color = color * frand(0.8f, 1.3f);
+            p->gravity = 16.f;
+            p->alive = true;
+        }
+    }
 
     void spawnShellCasing(glm::vec3 origin, glm::vec3 right, glm::vec3 glow = {0.85f, 0.7f, 0.15f}) {
         Particle* p = freeParticle();
@@ -225,14 +240,28 @@ public:
         pose.spawnTimer    = 0.f;
         buildEnemy(pose, clock, parts);
         glm::vec3 c = e.position + glm::vec3{0, e.height() * 0.5f, 0};
+        // The killing blow carries it: the pieces go the way the shot went, harder the
+        // harder it hit (and light ones further than heavies); a headshot takes the head off first
+        float mass = std::min(hitreact::bodyOf(e.type).mass, 12.f);
+        float carry = std::min(e.hitPush / std::max(mass, 0.5f), 18.f);
+        glm::vec3 along = e.hitDir;
+        float headY = e.position.y + e.height() * 0.78f;
         for (auto& b : parts) {
             Debris d;
             d.shape = glm::mat3(b.model);
             d.pos   = glm::vec3(b.model[3]);
             glm::vec3 out = d.pos - c; out.y = std::max(out.y, 0.f);
             float ol = glm::length(out);
-            d.vel   = (ol > 1e-3f ? out / ol : glm::vec3{0,1,0}) * frand(3.f, 8.f)
-                    + glm::vec3{frand(-2.f,2.f), frand(3.f,7.f), frand(-2.f,2.f)} + e.velocity * 0.3f;
+            d.vel   = (ol > 1e-3f ? out / ol : glm::vec3{0,1,0}) * frand(3.f, 8.f) * (1.f - 0.35f * std::min(1.f, carry / 10.f))
+                    + glm::vec3{frand(-2.f,2.f), frand(3.f,7.f), frand(-2.f,2.f)} + e.velocity * 0.3f + e.knockVel * 0.5f
+                    + along * carry * frand(0.5f, 1.25f);
+            if (e.hitHead && d.pos.y > headY) d.vel += glm::vec3{0.f, frand(5.f, 8.f), 0.f} + along * frand(3.f, 6.f);   // the head goes first
+            if (carry > 2.f) {   // a hard blow: nothing much comes back at the one who struck it
+                glm::vec3 flat{along.x, 0.f, along.z};
+                float fl = glm::length(flat), back = fl > 1e-3f ? glm::dot(d.vel, flat / fl) : 0.f;
+                if (back < 0.f) d.vel -= flat / fl * back * 0.85f;
+            }
+            d.hot = carry > 2.f || e.hitHead ? frand(0.12f, 0.22f) : 0.08f;
             d.axis  = glm::normalize(glm::vec3{frand(-1.f,1.f), frand(-1.f,1.f), frand(-1.f,1.f)} + glm::vec3{0.01f});
             d.spin  = frand(4.f, 12.f);
             d.color = b.color; d.emissive = b.emissive;
@@ -250,6 +279,7 @@ public:
             d.angle += d.spin * dt;
             if (d.pos.y < d.floorY) { d.pos.y = d.floorY; d.vel.y = std::fabs(d.vel.y) * 0.35f; d.vel.x *= 0.6f; d.vel.z *= 0.6f; d.spin *= 0.6f; }
             d.life -= dt;
+            if (d.hot > 0.f) d.hot -= dt;
         }
         debris.erase(std::remove_if(debris.begin(), debris.end(),
                      [](const Debris& d){ return d.life <= 0.f; }), debris.end());

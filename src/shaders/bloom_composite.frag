@@ -10,6 +10,8 @@ uniform float uLow;      // 0..1 low health: the colour drains, red closes in fr
 uniform float uPulse;    // 0..1 the heartbeat's throb (on its beats)
 uniform float uHurt;     // 0..1 just hit: a jolt of colour fringe
 uniform float uTime;     // seconds (the speed lines' flicker)
+uniform float uDrive;    // 0..1 OVERDRIVE: richer colour, a gold heat breathing in from the edges
+uniform float uKick;     // 0..1 a kill: a quick pop of light and fringe
 uniform float uAspect;   // width / height
 
 // ACES filmic curve (Narkowicz 2015 fit). Keeps darks dark and colours
@@ -43,14 +45,14 @@ void main() {
     }
 
     // Colour fringe at the edges: red out, blue in (a hit, a dash, a heartbeat)
-    float fringe = 0.006 * uHurt + 0.004 * uSpeed + 0.003 * uPulse * uLow;
+    float fringe = 0.006 * uHurt + 0.004 * uSpeed + 0.003 * uPulse * uLow + 0.004 * uKick;
     if (fringe > 0.0002) {
         vec2 off = c * fringe * (0.4 + r);
         hdr.r = mix(hdr.r, hdrAt(uv + off).r, 0.85);
         hdr.b = mix(hdr.b, hdrAt(uv - off).b, 0.85);
     }
 
-    vec3 col = aces(hdr * 1.35);
+    vec3 col = aces(hdr * (1.35 + 0.12 * uKick));
 
     if (uSpeed > 0.01) {   // speed lines: thin streaks radiating out, flickering, only past mid-screen
         float ang = atan(ca.y, ca.x) / 6.2831853 + 0.5;
@@ -58,6 +60,14 @@ void main() {
         float h = hash1(slice + floor(uTime * 24.0) * 13.0);
         float line = step(0.9, h) * smoothstep(0.45, 0.95, r);
         col = mix(col, vec3(0.92, 0.97, 1.0), line * 0.22 * uSpeed);
+    }
+
+    if (uDrive > 0.001) {
+        float g = dot(col, vec3(0.299, 0.587, 0.114));
+        col = max(mix(vec3(g), col, 1.0 + 0.3 * uDrive), 0.0);              // more colour
+        col *= mix(vec3(1.0), vec3(1.05, 0.99, 0.92), uDrive);               // warmer
+        float heat = smoothstep(0.62, 1.25, r) * (0.75 + 0.25 * sin(uTime * 8.0));
+        col += vec3(1.0, 0.5, 0.1) * heat * 0.3 * uDrive;                    // gold at the edges, breathing
     }
 
     if (uLow > 0.001) {

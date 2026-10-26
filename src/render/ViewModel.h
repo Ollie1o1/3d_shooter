@@ -45,6 +45,7 @@ public:
         reloadShells = std::max(1, shells);
         motion.reload(t, ammo, std::max(1, mag), reloadShells, startU);
     }
+    void cancelReload() { motion.stopReload(); }
     void reset(int gun) { motion.reset(gun); parryTimer = grenadeT = grappleT = 0.f; }
     void triggerBolt(float t)     { motion.cycle(std::max(t, 0.2f)); }
     void triggerPump()            { motion.cycle(0.45f); }

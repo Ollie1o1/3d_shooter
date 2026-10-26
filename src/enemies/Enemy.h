@@ -51,6 +51,7 @@
 #include "core/Collision.h"   // AABB, Wall, SpatialGrid
 #include "core/Difficulty.h"
 #include "enemies/EnemyTypes.h"       // EnemyType, AttackKind, statsOf
+#include "enemies/HitReact.h"         // how a regular enemy takes a hit: shove, flinch, stun, finish
 // Each boss's own state and events, inherited by Enemy and EnemyEvents
 #include "bosses/sovereign/SovereignState.h"
 #include "bosses/penitent/PenitentState.h"
@@ -239,6 +240,25 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     float moveSpeed     = 0.f;   // horizontal speed this tick
     float hitFlashTimer = 0.f;
     float staggerTimer  = 0.f;   // JUGGERNAUT, after its smash was parried
+
+    // ---- taking a hit (HitReact.h; regular enemies only) ----------------------
+    glm::vec3 knockVel{0.f};     // the shove from hits, on top of its own movement; dies away fast
+    float poise      = 0.f;      // damage taken lately: past its bar, it's stunned
+    float stunTimer  = 0.f;      // > 0: stunned, its attack lost
+    float stunGuard  = 0.f;      // > 0: just recovered from a stun, can't be stunned yet
+    bool  stunBegan  = false;    // set by takeHit the moment a stun starts (the game's cue)
+    float flinchAmp  = 0.f, flinchAt = -100.f;   // the drawn flinch: its size and the clock it snapped at
+    glm::vec2 flinchDir{0.f, 1.f};               // which way it tips (the shove's, flat)
+    float flinchTwist = 0.f;                     // and a little turn off the hit
+    glm::vec3 hitDir{0.f, 0.f, 1.f};             // the last hit: its direction, its push, a headshot?
+    float hitPush = 0.f;
+    bool  hitHead = false;
+    float firstHitAge = -1.f;    // age at its first hit (the run log's time to kill)
+    // Attack tokens (GameplayState::assignAttackers): only so many enemies wind up at once,
+    // and the ones you can't see take longer to get round to it. True / 1 outside the game
+    bool  mayAttack  = true;
+    float attackPace = 1.f;
+    float finishGlow = 0.f;      // render only: 0..1, a punch would finish it (set per frame on the drawn copy)
     float floorY        = 0.f;   // hard floor under it (GameplayState sets it each tick)
     float wadeMul       = 1.f;   // wading slows its steps (set each tick)
     float age           = 0.f;
@@ -371,6 +391,50 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
              ? 1.f - telegraphTimer / telegraphDuration : 0.f;
     }
 
+    // ---- taking a hit --------------------------------------------------------
+    bool reacts() const { return hitreact::reacts(type); }
+    bool stunned() const { return stunTimer > 0.f; }
+    // A punch would finish it: a regular enemy low enough (or stunned, or you in OVERDRIVE)
+    bool finishable(bool overdrive) const {
+        if (!reacts() || !targetable() || shielded || type == EnemyType::MITE) return false;
+        return health <= maxHealth * hitreact::finishShare(type, stunned(), overdrive);
+    }
+    // A hit lands: shoved along `dir` by `push` (m/s on a 1-mass body), flinched,
+    // and `dmg * poiseMul` against its poise. `clock` is the game clock (the drawn
+    // flinch). True if this hit stunned it: its attack is lost
+    bool takeHit(glm::vec3 dir, float push, float dmg, float poiseMul, bool head, float clock) {
+        hitDir = dir; hitPush = push; hitHead = head;
+        if (firstHitAge < 0.f) firstHitAge = age;
+        if (!reacts() || !alive) return false;
+        const hitreact::Body& b = hitreact::bodyOf(type);
+        float mass = b.mass * scale * scale;
+        float shove = push / mass;
+        glm::vec3 d = dir;
+        if (!stats().flying) { d.y = 0.f; float l = glm::length(d); d = l > 1e-4f ? d / l : glm::vec3{0.f}; }
+        knockVel += d * shove;
+        float kl = glm::length(knockVel);
+        if (kl > 16.f) knockVel *= 16.f / kl;
+        if (!stats().flying && grounded && shove > 6.f) velocity.y = std::max(velocity.y, std::min(5.5f, (shove - 6.f) * 0.7f));   // a big one lifts it off its feet
+        // The drawn flinch: snaps over from wherever it is now, a little further for each hit
+        float now = hitreact::flinchAt(flinchAmp, clock - flinchAt);
+        flinchAmp = std::min(hitreact::FLINCH_MAX, now + shove * hitreact::FLINCH_PER_PUSH + (head ? hitreact::FLINCH_HEAD : 0.f));
+        flinchAt = clock;
+        glm::vec2 fd{dir.x, dir.z};
+        if (glm::length(fd) > 1e-4f) flinchDir = glm::normalize(fd);
+        flinchTwist = 0.18f * std::sin(clock * 37.f + (float)uid * 2.3f) * std::min(1.f, shove / 5.f);   // (no rand(): the sim stays repeatable)
+        // Poise: enough, close enough together, breaks its footing
+        poise += dmg * poiseMul;
+        if (poise >= b.poise && stunGuard <= 0.f && stunTimer <= 0.f && b.stun > 0.f) { stun(b.stun); return true; }
+        return false;
+    }
+    void stun(float t) {
+        stunTimer = t; stunGuard = t + hitreact::STUN_GUARD; poise = 0.f; stunBegan = true;
+        attack = AttackKind::NONE; telegraphTimer = 0.f; burstLeft = 0; comboLeft = 0;
+        if (diveTimer > 0.f) { diveTimer = 0.f; recoverTimer = std::max(recoverTimer, 0.6f); }
+        if (beamTimer > 0.f) { beamTimer = 0.f; attackTimer = 0.f; }
+        attackTimer = std::min(attackTimer, stats().attackEvery * 0.5f);   // it has to work back up to it
+    }
+
     AABB getAABB() const {
         if (type == EnemyType::LEVIATHAN) {   // its head, round its centre
             glm::vec3 h{3.0f, 2.6f, 3.0f};
@@ -453,6 +517,18 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
             }   // he stands where he was struck (or falls there)
             integrate(dt, w);
             return;
+        }
+        if (reacts()) {   // poise drains; a stun holds it where it was hit (the shove still carries it)
+            poise = std::max(0.f, poise - hitreact::bodyOf(type).poise * hitreact::POISE_DRAIN * dt);
+            if (stunGuard > 0.f) stunGuard -= dt;
+            if (stunTimer > 0.f) {
+                stunTimer = std::max(0.f, stunTimer - dt);
+                velocity.x = velocity.z = 0.f;
+                if (stats().flying) velocity.y = -1.5f;   // a flyer sags
+                if (type == EnemyType::RAPTOR) pitch = glm::mix(pitch, 0.f, std::min(1.f, dt * 6.f));
+                integrate(dt, w);
+                return;
+            }
         }
         if (noLosTimer   > 0.f) noLosTimer   -= dt;
         if (avoidTimer   > 0.f) avoidTimer   -= dt;
@@ -687,8 +763,9 @@ private:
     // Ticks the attack clock; returns true when it's time to start a new attack.
     bool attackReady(float dt) {
         if (telegraphTimer > 0.f || burstLeft > 0 || diveTimer > 0.f || beamTimer > 0.f) return false;
-        attackTimer += dt * (enraged ? 1.5f : 1.f) * tune_->attackRate;
+        attackTimer += dt * (enraged ? 1.5f : 1.f) * tune_->attackRate * attackPace;
         if (attackTimer < stats().attackEvery) return false;
+        if (!mayAttack) { attackTimer = stats().attackEvery * 0.8f; return false; }   // ready, but someone else has the floor
         attackTimer = 0.f;
         return true;
     }
@@ -738,8 +815,8 @@ private:
         } else {
             float zig = d < 5.f ? 0.15f : 0.75f;
             setMove(dir + side * strafeDir * zig, stats().speed, w);
-            attackTimer += dt * tune_->attackRate;
-            if (attackTimer >= stats().attackEvery && d < 4.2f) {
+            attackTimer += dt * tune_->attackRate * attackPace;
+            if (attackTimer >= stats().attackEvery && d < 4.2f && mayAttack) {
                 attackTimer = 0.f;
                 startAttack(AttackKind::LUNGE, stats().telegraph);
             }
@@ -767,7 +844,7 @@ private:
         if (attackReady(dt)) {
             if (lineOfSight(eyePos(), w)) startAttack(AttackKind::BURST, stats().telegraph);
             else blockedShot();
-        } else if (noLosTimer > 0.f && telegraphTimer <= 0.f && burstLeft <= 0 && lineOfSight(eyePos(), w)) {
+        } else if (noLosTimer > 0.f && telegraphTimer <= 0.f && burstLeft <= 0 && mayAttack && lineOfSight(eyePos(), w)) {
             // Moving to find a shot that was already due: take it the moment the
             // way opens (a gap at the corner of a lip can be gone before the
             // next re-check)
@@ -1112,6 +1189,11 @@ private:
         }
         float slow = flying ? 1.f : wadeMul;
         position += glm::vec3{velocity.x * slow, velocity.y, velocity.z * slow} * dt;
+        if (knockVel.x != 0.f || knockVel.y != 0.f || knockVel.z != 0.f) {   // the shove from hits: fast, and gone in a quarter second
+            position += knockVel * dt;
+            knockVel *= std::exp(-dt * 9.f);
+            if (glm::dot(knockVel, knockVel) < 0.01f) knockVel = glm::vec3{0.f};
+        }
         grounded = false;
 
         if (position.y < floorY) { position.y = floorY; if (velocity.y < 0.f) velocity.y = 0.f; grounded = true; }

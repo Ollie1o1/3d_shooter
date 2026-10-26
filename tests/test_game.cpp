@@ -26,6 +26,7 @@
 #include "world/ArenaShifts.h"
 #include "game/Score.h"
 #include "game/EndlessWaves.h"
+#include "game/RunLog.h"
 #include "bosses/sovereign/SovereignHazards.h"
 #include "audio/SfxMixer.h"
 #include "bosses/penitent/PenitentHazards.h"
@@ -2259,7 +2260,7 @@ int main() {
         pv.addStyle(40.f, StyleSource::KAR);
         CHECK(pv.style > StyleSystem::PASSIVE_CAP, "your own kills take it on from there");
         float s0 = st.style; st.addStyle(8.f);
-        CHECK(std::fabs(st.style - std::min(st.maxStyle, s0 + 8.f)) < 1e-3f, "movement style isn't tracked or scaled");
+        CHECK(std::fabs(st.style - std::min(st.maxStyle, s0 + 8.f * StyleSystem::METER_GAIN)) < 1e-3f, "movement style isn't tracked or scaled by freshness");
     }
     {
         // Friendly fire: a Juggernaut's siege shell hits the enemies in its path, but not its own Juggernaut or a boss
@@ -2923,7 +2924,8 @@ int main() {
                                 "dry", "revolver_echo", "switch_up0", "switch_up1", "switch_up2", "switch_up3",
                                 "sword_draw", "sword_swing", "sword_hit", "sword_thrust", "sword_guard", "sword_block", "sword_break",
                                 "kill_light", "kill_heavy", "kill_rifle", "kill_blade",
-                                "jump_air", "land_heavy", "slide", "hit_head", "ammo_low", "heartbeat", "hit_armor", "impact", "casing", "whiz", "step_metal", "land_metal", "lastkill"};
+                                "jump_air", "land_heavy", "slide", "hit_head", "ammo_low", "heartbeat", "hit_armor", "impact", "casing", "whiz", "step_metal", "land_metal", "lastkill",
+                                "hit_body", "stun", "finisher", "overdrive_on", "overdrive_off"};
         std::vector<std::string> names(std::begin(loaded), std::end(loaded));
         for (const std::string& n : abAllSounds()) names.push_back(n);   // THE ABSOLUTE's fight (AbsoluteFeel.h)
         bool all = true; for (const std::string& n : names) all &= mixEntry(n) != nullptr;
@@ -4877,6 +4879,88 @@ int main() {
             }
             CHECK(fin && peak < 0.4f && step < 0.2f, "crossing from one FAST room to the next blends their air, no clicks");
         }
+    }
+
+    // ---------------------------------------------------------------- taking a hit (HitReact.h, Gameplay_Feel.h)
+    {
+        auto standing = [](EnemyType t) { Enemy e(t, {0.f, 0.f, 0.f}); e.state = EnemyState::ACTIVE; e.grounded = true; return e; };
+        EnemyWorld far; far.playerFeet = {0.f, 0.f, 60.f}; far.playerEye = far.playerFeet + glm::vec3{0, 1.7f, 0};
+        // A shove: the same round throws a Husk and barely rocks a Brute
+        Enemy h = standing(EnemyType::HUSK), b = standing(EnemyType::BRUTE);
+        h.takeHit({1.f, 0.f, 0.f}, hitreact::gunPush(0), 1.f, 1.f, false, 0.f);
+        b.takeHit({1.f, 0.f, 0.f}, hitreact::gunPush(0), 1.f, 1.f, false, 0.f);
+        h.staggerTimer = b.staggerTimer = 10.f;   // stand still: only the shove moves them
+        for (int i = 0; i < 60; ++i) { h.update(DT, far); b.update(DT, far); }
+        std::printf("      a magnum round shoves a Husk %.2f m, a Brute %.2f m\n", h.position.x, b.position.x);
+        CHECK(h.position.x > 0.35f && h.position.x < 0.8f && b.position.x < 0.15f && glm::length(h.knockVel) < 0.2f,
+              "a hit shoves a light enemy back and barely rocks a heavy one; the shove dies away");
+        CHECK(hitreact::flinchAt(0.3f, 0.f) == 0.3f && hitreact::flinchAt(0.3f, 0.5f) < 0.01f, "the drawn flinch snaps over on the hit and has settled in half a second");
+
+        // A stun: a magnum round in a Husk winding up loses the shot
+        EnemyWorld near; near.playerFeet = {0.f, 0.f, 10.f}; near.playerEye = near.playerFeet + glm::vec3{0, 1.7f, 0};
+        Enemy s = standing(EnemyType::HUSK);
+        s.attack = AttackKind::SHOT; s.telegraphTimer = s.telegraphDuration = 0.4f;
+        bool st = s.takeHit({0.f, 0.f, -1.f}, hitreact::gunPush(0), 42.f, 1.f, false, 0.f);
+        int shots = 0;
+        for (int i = 0; i < 24; ++i) { s.update(DT, near); shots += s.ev.shots; }
+        CHECK(st && shots == 0 && s.attack == AttackKind::NONE, "a magnum round stuns a Husk: the shot it was winding up is lost");
+        bool again = s.takeHit({0.f, 0.f, -1.f}, hitreact::gunPush(0), 42.f, 1.f, false, 0.f);
+        CHECK(!again, "...and it can't be stunned again straight away (no stunlock)");
+        // A Brute takes two shotgun blasts close together; one isn't enough
+        Enemy br = standing(EnemyType::BRUTE);
+        bool one = br.takeHit({0.f, 0.f, -1.f}, 16.f, 90.f, hitreact::gunPoise(1), false, 0.f);
+        for (int i = 0; i < 33; ++i) br.update(DT, far);
+        bool two = br.takeHit({0.f, 0.f, -1.f}, 16.f, 90.f, hitreact::gunPoise(1), false, 0.f);
+        CHECK(!one && two, "a Brute's footing breaks on the second shotgun blast in a row, not the first");
+        Enemy sov = standing(EnemyType::SOVEREIGN);
+        CHECK(!sov.takeHit({1.f, 0.f, 0.f}, 50.f, 2000.f, 2.f, true, 0.f) && glm::length(sov.knockVel) == 0.f && !sov.reacts(),
+              "bosses don't take a shove or a stun");
+
+        // Finishable: low enough, or stunned, or in OVERDRIVE; never a Mite
+        Enemy f = standing(EnemyType::HUSK);
+        f.health = f.maxHealth * 0.3f; bool low = f.finishable(false);
+        f.health = f.maxHealth * 0.5f; bool mid = f.finishable(false), od = f.finishable(true);
+        f.stunTimer = 0.3f; bool stun = f.finishable(false);
+        Enemy j = standing(EnemyType::JUGGERNAUT); j.health = j.maxHealth * 0.3f; bool jh = j.finishable(false);
+        j.health = j.maxHealth * 0.2f; bool jl = j.finishable(false);
+        Enemy m = standing(EnemyType::MITE); m.health = 1.f;
+        CHECK(low && !mid && od && stun && !jh && jl && !m.finishable(true), "a punch finishes one under 35 % (heavies 25 %), stunned under 60 %, in OVERDRIVE under half");
+
+        // Attack tokens: an enemy without one never winds up; given one, it does
+        Enemy q = standing(EnemyType::HUSK);
+        q.mayAttack = false;
+        bool wound = false;
+        for (int i = 0; i < 60 * 4; ++i) { q.update(DT, near); wound |= q.ev.telegraphStarted; }
+        CHECK(!wound, "without a token a gunner holds its fire");
+        q.mayAttack = true;
+        for (int i = 0; i < 60 * 2 && !wound; ++i) { q.update(DT, near); wound |= q.ev.telegraphStarted; }
+        CHECK(wound, "...and given one it winds up within a moment (it was ready)");
+
+        // OVERDRIVE burns for its time (kills stretch it, to a limit), then the meter drops back to A
+        StyleSystem ss;
+        ss.addStyle(100.f / StyleSystem::METER_GAIN + 1.f);
+        bool began = ss.overdrive && ss.overdriveBegan;
+        for (int k = 0; k < 20; ++k) ss.extendOverdrive(0.5f);
+        bool capped = std::fabs(ss.overdriveTimer - StyleSystem::OVERDRIVE_MAX) < 1e-4f;
+        ss.update(StyleSystem::OVERDRIVE_MAX + 0.1f);
+        CHECK(began && capped && !ss.overdrive && ss.overdriveEnded && ss.style <= StyleSystem::OVERDRIVE_AFTER,
+              "OVERDRIVE starts on a full meter, kills stretch it only so far, and burning out drops the meter back");
+        ss.overdriveBegan = false;
+        for (int k = 0; k < 10; ++k) ss.addStyle(100.f);
+        bool held = !ss.overdrive;
+        ss.update(StyleSystem::OVERDRIVE_COOL);
+        CHECK(held && ss.overdrive && ss.overdriveBegan, "...then it can't start again until it has cooled down (and starts as it does, the meter still full)");
+        StyleSystem sc; float scored = sc.addStyle(40.f, StyleSource::KAR);
+        CHECK(std::fabs(sc.earned - 60.f) < 1e-3f && std::fabs(scored - 60.f) < 1e-3f && std::fabs(sc.style - 60.f * StyleSystem::METER_GAIN) < 1e-3f,
+              "the run's score takes all the style; the meter fills at its share");
+
+        // The run log: one line of JSON with what hurt you and what killed you
+        RunLog rl; rl.took(EnemyType::HUSK, 15.f); rl.took(EnemyType::RIPPER, 22.f); rl.shots[1] = 4; rl.hits[1] = 3;
+        rl.killed(EnemyType::HUSK, StyleSource::SHOTGUN, 1.25f);
+        std::string js = rl.json("death", "ARENA", 1, "SUNSET YARD", 2, 30.f);
+        CHECK(js.find("\"killedBy\":\"RIPPER\"") != std::string::npos && js.find("\"HUSK\":[15,1]") != std::string::npos &&
+              js.find("\"SHOTGUN\":[4,3,1]") != std::string::npos && js.find("\"HUSK\":[1.25,1]") != std::string::npos && js.find('\n') == std::string::npos,
+              "the run log writes what hurt you, what killed you, each gun's shots, hits and kills, and time to kill, on one line");
     }
 
     // A Sentinel on the Spire's summit keeps firing at you below, every time and

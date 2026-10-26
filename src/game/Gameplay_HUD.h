@@ -53,6 +53,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
     if (settings) settings->crosshairColor(h.crosshairColor.r, h.crosshairColor.g, h.crosshairColor.b);
     h.viewProj = proj * view;
     h.damageNumbers = !settings || settings->damageNumbers;
+    h.finishHint = finishHint;
     if (!playerDead && !victory) ui.render(styleSystem, h);
 
     const Arena& ar = level.arenas[director.arena];
