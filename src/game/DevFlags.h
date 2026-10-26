@@ -48,6 +48,7 @@ inline glm::vec3 g_devCamPos2{0.f};
 inline float     g_devCamYaw2 = -90.f, g_devCamPitch2 = 0.f;
 inline float     g_recProgress = 0.f;    // 0..1 through the recording
 inline bool      g_devAutoAim = false;
+inline bool      g_devFpsLog = false;    // --fps HZ: the web build logs the rate its loop runs at
 inline bool      g_devClean = false;
 inline bool      g_devKite = false;      // --kite: the camera backs off from whatever gets close
 // What the view model shows: the sword, or (dev: --overlay swingSU) stroke S frozen at U/10, for screenshots
