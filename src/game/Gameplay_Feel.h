@@ -322,3 +322,12 @@ inline void GameplayState::slamLands() {
     shake(0.3f + std::min(0.3f, h * 0.02f), 0.08f);
     hitStopFrames = std::max(hitStopFrames, h > 6.f ? 3 : 1);
 }
+
+// ---- unseen wind-ups ---------------------------------------------------------------
+// A regular enemy within 40 m winding up an attack where you can't see it: outside ~60 degrees of where you look
+inline bool GameplayState::unseenWindup(const Enemy& e, glm::vec3 flatFwd) const {
+    if (e.telegraphTimer <= 0.f || e.type == EnemyType::MITE) return false;
+    glm::vec3 to = e.position - player.camera.position; to.y = 0.f;
+    float d = glm::length(to);
+    return d > 2.f && d < 40.f && glm::dot(flatFwd, to / d) < 0.5f;
+}
