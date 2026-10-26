@@ -2333,6 +2333,32 @@ int main() {
         CHECK(sane, "every soundtrack renders clean: finite, never clipping, at a sensible level");
         CHECK(layers, "the music gets bigger when a fight starts");
         CHECK(hm < h * 0.5f, "the pause menu muffles the music");
+        // The fight's own layers. Same tracks, same dice (the drums' noise doesn't depend on the gains), so
+        // what changes between two renders is exactly what the layer added or took away
+        {
+            auto render = [](int track, bool drive, bool solo, bool sting) {
+                MusicSynth m; m.setTrack(track); m.setIntensity(1.f); m.setVolume(1.f);
+                std::vector<float> buf(44100 * 2 * 2);
+                m.render(buf.data(), 44100 * 2);
+                m.setDrive(drive); m.setSolo(solo); if (sting) m.stinger();
+                m.render(buf.data(), 44100 * 2);
+                return buf;
+            };
+            auto rms = [](const std::vector<float>& a) { double s2 = 0; for (float v : a) s2 += v * v; return (float)std::sqrt(s2 / a.size()); };
+            auto diff = [](const std::vector<float>& a, const std::vector<float>& b) { double s2 = 0; for (size_t i = 0; i < a.size(); ++i) s2 += (a[i] - b[i]) * (a[i] - b[i]); return (float)std::sqrt(s2 / a.size()); };
+            auto peak = [](const std::vector<float>& a) { float p = 0.f; for (float v : a) p = std::max(p, std::isfinite(v) ? std::fabs(v) : 99.f); return p; };
+            bool driveUp = true, soloDown = true, stingOk = true;
+            for (int t = 0; t < MUSIC_TRACKS; ++t) {
+                auto b = render(t, false, false, false), d = render(t, true, false, false), so = render(t, false, true, false), g = render(t, false, false, true);
+                float rb = rms(b);
+                driveUp  &= (musicTrack(t).techno || diff(d, b) > 0.15f * rb) && peak(d) <= 1.f;   // (the encore's techno is already flat out)
+                soloDown &= diff(so, b) > 0.12f * rb && peak(so) <= 1.f;
+                stingOk  &= peak(g) <= 1.f && diff(g, b) > 0.07f * rb;
+            }
+            CHECK(driveUp, "OVERDRIVE's layer is plainly there in every track, still clean");
+            CHECK(soloDown, "the last enemy strips every track back to its drums");
+            CHECK(stingOk, "a wave's stinger rings over every track, clean");
+        }
         MusicSynth m; m.setTrack(2);
         std::vector<float> buf(2 * 4410);
         m.render(buf.data(), 4410);
