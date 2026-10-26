@@ -11,6 +11,9 @@
 #include "world/LevelGauntlet.h"
 #include "world/LevelAct2.h"
 #include "render/WorldGeometry.h"
+#include "render/MaterialTex.h"
+#include "render/NeonLights.h"
+#include "audio/RoomTone.h"
 #include "render/EnemyModel.h"
 #include "player/Weapons.h"
 #include "game/Progression.h"
@@ -4735,6 +4738,121 @@ int main() {
         }
         std::printf("      warden vs a player on the pedestal: %d/20 runs attack\n", attacked);
         CHECK(attacked == 20, "with you up on the reactor's pedestal the Warden still attacks");
+    }
+
+    // ---- Each arena's look and air (MaterialTex.h, WorldGeometry.h, NeonLights.h, RoomTone.h) ----
+    {
+        const LevelData L = buildLevel();   // as built (earlier tests open doors, move things)
+        // Every Act I arena is built in its own materials, floor included
+        const Mat want[5] = {Mat::ADOBE, Mat::PLATE, Mat::MARBLE, Mat::CIRCUIT, Mat::BASALT};
+        bool floorsOk = true, wallsOk = true;
+        for (int a = 0; a < 5; ++a) {
+            const AABB& z = L.arenas[a].zone;
+            auto in = [&](const AABB& b) { glm::vec3 c = (b.min + b.max) * 0.5f;
+                return c.x > z.min.x && c.x < z.max.x && c.z > z.min.z && c.z < z.max.z; };
+            for (auto& f : L.floors)
+                if (in(AABB{{f.x0, f.y, f.z0}, {f.x1, f.y, f.z1}}) && f.y >= 0.f && f.mat != want[a]) floorsOk = false;
+            int own = 0, other = 0;
+            for (auto& w : L.walls) if (!w.hidden && !w.dynamic && in(w.box)) (w.mat == Mat::BRICK || w.mat == Mat::PANEL ? other : own)++;
+            if (own == 0 || other > own / 10) { wallsOk = false; std::printf("      %s: %d own, %d brick/panel\n", L.arenas[a].name, own, other); }
+        }
+        CHECK(floorsOk, "every Act I arena's floor is its own material");
+        CHECK(wallsOk, "every Act I arena's walls are its own material (only the tubes' panel left over)");
+
+        // The materials: glow only where meant, brightness near the brick the colours were tuned on
+        auto glows = [](const std::vector<unsigned char>& t) { int n = 0; for (size_t i = 3; i < t.size(); i += 4) n += t[i] < 255; return n; };
+        auto mean = [](const std::vector<unsigned char>& t) { double s = 0; for (size_t i = 0; i < t.size(); i += 4) s += t[i] + t[i + 1] + t[i + 2]; return s / (t.size() / 4) / 765.0; };
+        using namespace MaterialTex;
+        std::vector<std::vector<unsigned char>> lit = {adobe(), terracotta(), wood(), plate(), tread(), marble(), flagstone()};
+        bool noGlow = true, bright = true;
+        for (auto& t : lit) { noGlow = noGlow && glows(t) == 0; bright = bright && mean(t) > 0.25 && mean(t) < 0.55; }
+        CHECK(noGlow && glows(circuit()) > 0 && glows(circuitFloor()) > 0 && glows(basalt()) > 0,
+              "only the circuit traces, the Core's floor seams and the Sanctum's runes glow");
+        CHECK(bright && mean(circuit()) > 0.2 && mean(basalt()) > 0.25, "the materials sit near the old brick's brightness");
+        // They're built from noise that wraps exactly at the tile edge (no seam every 4 m)
+        bool wraps = true;
+        for (int k = 0; k < 64; ++k) {
+            float v = k / 64.f;
+            wraps = wraps && std::fabs(MaterialTex::noise(0.f, v, 7, 5, k) - MaterialTex::noise(1.f, v, 7, 5, k)) < 1e-5f
+                          && std::fabs(MaterialTex::noise(v, 0.f, 3, 9, k) - MaterialTex::noise(v, 1.f, 3, 9, k)) < 1e-5f
+                          && std::fabs(MaterialTex::fbm(0.f, v, 4, 5, k) - MaterialTex::fbm(1.f, v, 4, 5, k)) < 1e-5f;
+        }
+        CHECK(wraps, "the materials' noise wraps at the tile edge");
+
+        // Contact shadows lie on a surface, under something that stands there
+        WorldGeometry G = buildWorldGeometry(L);
+        bool onSurface = true, underSomething = true;
+        for (size_t i = 0; i < G.contact.size(); i += 6) {
+            const ContactVert& v = G.contact[i];
+            float y = v.pos.y - 0.02f;
+            bool surf = std::fabs(y) < 0.01f;
+            for (auto& f : L.floors) surf = surf || std::fabs(f.y - y) < 0.01f;
+            for (auto& w : L.walls) surf = surf || std::fabs(w.box.max.y - y) < 0.01f;
+            bool owner = false;
+            auto stands = [&](const Wall& w) { return std::fabs(w.box.min.y - y) < 0.07f && std::fabs(w.box.min.x - v.rect.x) < 1e-3f &&
+                                                      std::fabs(w.box.min.z - v.rect.y) < 1e-3f && std::fabs(w.box.max.x - v.rect.z) < 1e-3f; };
+            for (auto& w : L.walls) owner = owner || stands(w);
+            for (auto& p : L.props) owner = owner || stands(p);
+            onSurface = onSurface && surf; underSomething = underSomething && owner;
+        }
+        std::printf("      %zu contact shadows\n", G.contact.size() / 6);
+        CHECK(G.contact.size() > 150 * 6 && onSurface && underSomething, "every contact shadow lies on a surface, under what stands on it");
+        // A bridge in the air isn't darkened at its base like a wall standing on the ground
+        Support sup;
+        CHECK(!findSupport(L, AABB{{-19.f, 4.6f, -26.f}, {19.f, 5.f, -23.f}}, nullptr, sup) &&
+              findSupport(L, AABB{{-31.f, 0.f, 30.f}, {31.f, 5.f, 31.f}}, nullptr, sup) &&
+              sideShade(0.f, 5.f, true) < 0.5f && sideShade(1.f, 5.f, true) > sideShade(0.f, 5.f, false) * 0.95f &&
+              sideShade(0.f, 0.4f, false) > 0.75f,
+              "a wall on the ground darkens where it meets it (gone by a metre); the Yard's bridges don't");
+
+        // The neon: the nearest lights, and none pops in or out as you walk
+        std::vector<NeonLight> lights = buildNeonLights(L);
+        NeonSet a, b;
+        float worstJump = 0.f; bool nearest = true;
+        auto full = [&](glm::vec3 mn) { for (auto& l : lights) if (l.box.min == mn) return glm::length(l.color); return 1.f; };
+        auto w = [&](const NeonSet& s, glm::vec3 mn) { for (int i = 0; i < s.n; ++i) if (s.mn[i] == mn) return glm::length(s.col[i]) / full(mn); return 0.f; };
+        for (float z = 25.f; z > -400.f; z -= 0.25f) {
+            glm::vec3 cam{std::sin(z * 0.05f) * 12.f, 1.7f, z};
+            pickNeon(lights, cam, b);
+            if (b.n > MAX_NEON) nearest = false;
+            if (z < 25.f) {   // each light's weight (0..1) vs. the last step (gone = 0)
+                for (int i = 0; i < b.n; ++i) worstJump = std::max(worstJump, std::fabs(w(b, b.mn[i]) - w(a, b.mn[i])));
+                for (int i = 0; i < a.n; ++i) worstJump = std::max(worstJump, std::fabs(w(b, a.mn[i]) - w(a, a.mn[i])));
+            }
+            a = b;
+        }
+        bool rings = true;   // the Yard's dais ring lights as four strips, not an 8 m panel
+        for (auto& l : lights) if (l.box.min.y > 0.8f && l.box.max.y < 1.f && l.box.max.x - l.box.min.x > 7.f && l.box.max.z - l.box.min.z > 7.f) rings = false;
+        std::printf("      neon: %zu lights, worst change in one light's weight over a 25 cm step %.3f\n", lights.size(), worstJump);
+        CHECK(rings, "a band of light round a box lights as its four sides");
+        CHECK(nearest && worstJump < 0.35f, "neon lights fade in and out as you walk (nothing pops)");
+
+        // The air: each arena's is there, well under the music, and stops when asked
+        bool levels = true, finite = true;
+        for (int r = 1; r < (int)RoomTone::COUNT; ++r) {
+            RoomToneSynth s; s.setSampleRate(44100.f); s.setRoom((RoomTone)r);
+            std::vector<float> buf(1024);
+            double sum = 0; long n = 0; float peak = 0.f;
+            for (int k = 0; k < 44100 * 20 / 512; ++k) {
+                std::fill(buf.begin(), buf.end(), 0.f); s.render(buf.data(), 512);
+                if (k * 512 < 44100 * 4) continue;
+                for (float v : buf) { finite = finite && std::isfinite(v); sum += v * v; peak = std::max(peak, std::fabs(v)); ++n; }
+            }
+            float db = 20.f * std::log10((float)std::sqrt(sum / n) + 1e-9f);
+            std::printf("      room %d: %.1f dBFS, peak %.2f\n", r, db, peak);
+            levels = levels && db > -42.f && db < -28.f && peak < 0.4f;
+        }
+        RoomToneSynth s; s.setSampleRate(44100.f); s.setRoom(RoomTone::FOUNDRY);
+        std::vector<float> buf(1024);
+        for (int k = 0; k < 44100 * 6 / 512; ++k) s.render(buf.data(), 512);
+        s.setRoom(RoomTone::NONE);
+        float tail = 0.f;
+        for (int k = 0; k < 44100 * 8 / 512; ++k) {
+            std::fill(buf.begin(), buf.end(), 0.f); s.render(buf.data(), 512);
+            if (k * 512 > 44100 * 6) for (float v : buf) tail = std::max(tail, std::fabs(v));
+        }
+        CHECK(finite && levels, "each arena's air is there and sits well under the music (-42..-28 dBFS)");
+        CHECK(tail < 1e-3f, "leaving for the menu, the air fades to nothing");
     }
 
     // A Sentinel on the Spire's summit keeps firing at you below, every time and

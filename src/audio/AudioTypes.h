@@ -10,6 +10,8 @@ enum class SoundGroup : uint8_t { PLAYER, ENEMY, WORLD, UI, COUNT };
 // The reverb of a place (Arena::space): OPEN yard, METAL halls, a long dark
 // HALL, a tight echoing SHAFT
 enum class ReverbSpace : uint8_t { OPEN, METAL, HALL, SHAFT, COUNT };
+// A place's own background air (RoomTone.h). NONE: silence, as Act II and the Gauntlet have
+enum class RoomTone : uint8_t { NONE, YARD, FOUNDRY, SPIRE, CORE, SANCTUM, COUNT };
 
 // What a sound is for, so the mix can rank it (SfxMixer): a wind-up TELL cuts
 // through, enemy CHATTER (idles, steps) steps back under it; ACTION is the

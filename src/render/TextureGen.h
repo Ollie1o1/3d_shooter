@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <algorithm>
+#include "render/MaterialTex.h"
 #ifdef __EMSCRIPTEN__
 #  include <emscripten/html5.h>
 #endif
@@ -267,5 +268,8 @@ inline GLuint generateCrateSurface(int size = 64) {
     }
     return uploadTexture(pixels, size, size);
 }
+
+// One of Act I's materials (MaterialTex.h): alpha marks what glows
+inline GLuint uploadMaterial(const std::vector<unsigned char>& px) { return uploadTexture(px, MaterialTex::SIZE, MaterialTex::SIZE); }
 
 } // namespace TextureGen
