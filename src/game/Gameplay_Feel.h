@@ -202,3 +202,123 @@ inline void GameplayState::logRun(const char* how) {
     }
     runLog.reset(elapsedTime);
 }
+
+// ---- movement into combat --------------------------------------------------------
+// The enemy the grapple would hook: under the crosshair (a little give at range),
+// in reach, with nothing solid in the way. Bosses have their own fights
+inline int GameplayState::findEnemyHook() const {
+    glm::vec3 o = player.camera.position, d = player.camera.forward();
+    int best = -1; float bestT = HOOK_RANGE;
+    for (int i = 0; i < (int)enemies.size(); ++i) {
+        const Enemy& e = enemies[i];
+        if (!e.targetable() || isBoss(e.type)) continue;
+        glm::vec3 c = e.position + glm::vec3{0.f, e.height() * 0.5f, 0.f};
+        float t = glm::dot(c - o, d);
+        if (t < 2.f || t > bestT) continue;
+        float miss = glm::length(c - (o + d * t));
+        if (miss > std::max(e.radius() + 0.45f, std::min(e.height() * 0.5f, 1.4f)) + t * 0.025f) continue;   // within its body, plus a little give at range
+        bool clear = true;
+        for (const auto& w : level.walls) { float wt = rayBoxHit(o, (c - o) / glm::length(c - o), w.box); if (wt > 0.f && wt < glm::length(c - o) - e.radius()) { clear = false; break; } }
+        if (!clear) continue;
+        bestT = t; best = i;
+    }
+    return best;
+}
+
+inline void GameplayState::hookEnemy(int i) {
+    Enemy& e = enemies[i];
+    glm::vec3 eye = player.camera.position;
+    glm::vec3 c = e.position + glm::vec3{0.f, std::min(e.height() * 0.5f, 1.2f), 0.f};
+    glm::vec3 toMe = eye - c;
+    float dist = glm::length(toMe);
+    glm::vec3 dir = toMe / std::max(dist, 1e-3f);
+    float mass = hitreact::bodyOf(e.type).mass * e.scale * e.scale;
+    viewModel.triggerGrapple();
+    audio.play("grapple_fire");
+    styleSystem.addStyle(6.f);
+    if (e.reacts() && mass <= HOOK_PULL_MASS) {   // light: dragged to your feet, stunned on arrival
+        glm::vec3 to = c + dir * std::max(0.f, dist - 2.6f);                  // its centre, 2.6 m in front of you
+        if (e.stats().flying) to -= glm::vec3{0.f, std::min(e.height() * 0.5f, 1.2f), 0.f};   // (a flyer: out of the sky to eye level)
+        else to.y = e.position.y;                                             // (on foot: along the ground)
+        float t = e.yank(to);
+        e.takeHit(-dir, 3.f, 0.f, 0.f, false, gameClock);   // the jerk of the hook: a flinch toward you
+        yankUid = e.uid; yankT = t + 0.08f;
+        grappleCooldown = 0.8f;
+        audio.playAt("hook_yank", c, 120, SoundGroup::PLAYER, true);
+        fx.spawnBurst(c, {0.5f, 1.f, 1.f}, 12, 5.f, 0.25f, 0.f);
+        camFeel.punch(-26.f, 0.f, frand(-1.f, 1.f) * 12.f);   // you haul on it
+    } else {                                      // heavy: the rope takes you to it
+        glm::vec3 impulse{0.f};
+        grapple.attach(eye, c, impulse);
+        grapple.enemyUid = e.uid;
+        impulse.y = std::min(impulse.y, 8.f);     // (a flat zip, not the wall hook's lob)
+        player.velocity = impulse;
+        player.launched();
+        invincFrames = std::max(invincFrames, 0.2f);
+        fovKick = std::max(fovKick, 9.f);
+        audio.playAt("hook_yank", c, 100, SoundGroup::PLAYER, true);
+        camFeel.punch(-34.f);
+    }
+}
+
+inline void GameplayState::updateEnemyZip() {
+    if (!grapple.active || grapple.enemyUid < 0) return;
+    const Enemy* z = nullptr;
+    for (const auto& e : enemies) if (e.uid == grapple.enemyUid) { z = &e; break; }
+    if (!z || !z->targetable()) { grapple.release(); return; }
+    grapple.target = z->position + glm::vec3{0.f, std::min(z->height() * 0.5f, 1.2f), 0.f};
+    glm::vec3 d = grapple.target - player.camera.position;
+    if (glm::length(glm::vec2{d.x, d.z}) < z->radius() + 2.3f) {   // arrived: let go in its face, ready to hit it
+        grapple.release();
+        glm::vec3 v = player.velocity;
+        player.velocity = glm::vec3{v.x * 0.15f, std::max(v.y * 0.3f, 3.5f), v.z * 0.15f};
+        invincFrames = std::max(invincFrames, 0.3f);
+        camFeel.punch(30.f);
+        shake(0.1f, 0.02f);
+        styleSystem.addStyle(6.f);
+    }
+}
+
+// Sliding into one: a kick that shoves it on and breaks a light one's footing; a heavy one stops you dead
+inline void GameplayState::slideKicks() {
+    if (!player.sliding) { slideKicked.clear(); return; }
+    float spd = glm::length(glm::vec2{player.velocity.x, player.velocity.z});
+    if (!player.onGround || spd < 7.5f) return;
+    glm::vec3 fwd = glm::normalize(glm::vec3{player.velocity.x, 0.f, player.velocity.z});
+    for (auto& e : enemies) {
+        if (!e.targetable() || !e.reacts() || e.stats().flying) continue;
+        if (std::find(slideKicked.begin(), slideKicked.end(), e.uid) != slideKicked.end()) continue;
+        glm::vec3 d = e.position - player.position;
+        if (std::fabs(d.y) > 1.6f || glm::length(glm::vec2{d.x, d.z}) > e.radius() + 0.9f) continue;
+        slideKicked.push_back(e.uid);
+        const bool heavy = hitreact::bodyOf(e.type).heavy;
+        glm::vec3 at = e.position + glm::vec3{0.f, std::min(e.height() * 0.35f, 0.9f), 0.f};
+        HitPush hp{glm::normalize(fwd + glm::vec3{0.f, 0.35f, 0.f}), 12.f + spd * 0.4f, 3.f};
+        hurtEnemy(e, 20.f, at, 10.f, 1.f, StyleSource::SLAM, false, false, &hp);
+        audio.playAt("punch", at, 110, SoundGroup::PLAYER, true);
+        camFeel.punch(heavy ? 40.f : 22.f, 0.f, frand(-1.f, 1.f) * 16.f);
+        shake(heavy ? 0.18f : 0.1f, heavy ? 0.04f : 0.02f);
+        hitStopFrames = std::max(hitStopFrames, heavy ? 3 : 2);
+        fx.spawnSpray(at, fwd, {1.f, 0.85f, 0.6f}, 12, 7.f, 0.3f);
+        if (heavy) { player.velocity.x *= 0.3f; player.velocity.z *= 0.3f; }   // like kicking a wall
+    }
+}
+
+// A slam lands: the further it fell, the harder and wider it hits (and it throws them out and up)
+inline void GameplayState::slamLands() {
+    float h = std::max(0.f, slamFromY - player.position.y);
+    float dmg = 30.f + std::min(50.f, h * 4.f), r = 4.5f + std::min(2.5f, h * 0.15f);
+    for (auto& e : enemies) {
+        if (!e.targetable()) continue;
+        glm::vec3 off = e.position - player.position;
+        float d = glm::length(off);
+        if (d >= r) continue;
+        glm::vec3 out = glm::length(glm::vec2{off.x, off.z}) > 1e-3f ? glm::normalize(glm::vec3{off.x, 0.f, off.z}) : glm::vec3{1.f, 0.f, 0.f};
+        HitPush hp{glm::normalize(out + glm::vec3{0.f, 0.8f, 0.f}), (10.f + std::min(10.f, h * 0.5f)) * (1.f - 0.5f * d / r), 2.5f};
+        hurtEnemy(e, dmg * (1.f - 0.4f * d / r), e.position + glm::vec3{0, e.height() * 0.5f, 0}, 15.f, 2.f, StyleSource::SLAM, false, false, &hp);
+    }
+    fx.spawnShockwave(player.position, r, {1.f, 0.8f, 0.4f});
+    if (h > 6.f) fx.spawnBurst(player.position + glm::vec3{0.f, 0.2f, 0.f}, {1.f, 0.85f, 0.5f}, 30, 9.f, 0.4f, 12.f);
+    shake(0.3f + std::min(0.3f, h * 0.02f), 0.08f);
+    hitStopFrames = std::max(hitStopFrames, h > 6.f ? 3 : 1);
+}

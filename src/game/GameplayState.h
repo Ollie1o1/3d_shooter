@@ -751,6 +751,20 @@ public:
     void  enterOverdrive();
     void  leaveOverdrive();
     void  updateFeel(float dt);
+    // MOVEMENT INTO COMBAT: the grapple hooks enemies (light ones are yanked to you,
+    // stunned; you zip to heavy ones), a slide kicks what it runs into, a slam
+    // hits harder the further it fell, kills in the air score more
+    static constexpr float HOOK_RANGE = 36.f;
+    static constexpr float HOOK_PULL_MASS = 1.65f;   // up to this: yanked to you; heavier: you go to it
+    int   findEnemyHook() const;
+    void  hookEnemy(int i);
+    void  updateEnemyZip();          // hooked into a heavy one: the rope follows it, and lets go as you arrive
+    float yankT = 0.f; int yankUid = -1;   // a light one on the end of the rope (its rope is drawn while yankT > 0)
+    float airT = 0.f;                // how long you've been off the ground
+    float slamFromY = 0.f;           // where the slam began: the drop sets its strength
+    std::vector<int> slideKicked;    // already kicked this slide (uids)
+    void  slideKicks();
+    void  slamLands();
     // The run log (RunLog.h): what hurt you, what killed you, each gun's numbers
     RunLog runLog;
     EnemyType hurtBy = EnemyType::COUNT;   // set around enemy events and shots: who's hitting you now
