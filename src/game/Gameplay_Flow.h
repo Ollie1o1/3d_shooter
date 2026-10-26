@@ -706,6 +706,8 @@ inline void GameplayState::update(float dt) {
     if (g_devNoMouse) keys = noKeys;   // screenshot runs: the real keyboard doesn't reach the game
     bool parryKey = keys[SDL_SCANCODE_F] != 0;
 
+    if (hitStopFrames <= 0) shootInput();   // the click's shot in this frame, not the next tick's
+
     while (accumulator >= PHYSICS_DT) {
         prevCamPos = player.camera.position;
         snapshotForInterpolation();
@@ -719,6 +721,15 @@ inline void GameplayState::update(float dt) {
 
     float floatDt = (float)elapsed;
     gameClock += floatDt;
+    // Per frame, not per tick: the aim settling after a shot and the sword's lean stay smooth above 60 fps
+    if (recoilPitch > 0.f) {
+        // Settle back quickly at first, then ease in (was a flat 14 degrees a second)
+        float applied = std::min(recoilPitch, std::max(recoilPitch * (1.f - std::exp(-floatDt * 11.f)), 1.5f * floatDt));
+        player.camera.pitch -= applied;
+        recoilPitch -= applied;
+        player.camera.pitch = glm::clamp(player.camera.pitch, -89.f, 89.f);
+    }
+    swordRoll *= std::exp(-floatDt * 9.f);
     styleSystem.update(floatDt);
 
     // Doors part as you run at them (unless locked) and shut behind you

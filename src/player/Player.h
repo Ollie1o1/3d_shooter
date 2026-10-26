@@ -30,7 +30,7 @@ public:
     // -------------------------------------------------------------------------
     float horizontalSpeed = 7.0f;    // max ground speed (m/s)
     float gravity         = -24.0f;  // downward acceleration (m/s^2) — stronger than real for snappier jumps
-    float jumpForce       = 8.5f;    // initial vertical velocity on jump
+    float jumpForce       = 9.1f;    // initial vertical velocity on jump (8.5 before the heavier fall: same air time, 0.23 m higher)
     float acceleration    = 80.0f;   // how fast you reach max speed on the ground
     float airAcceleration = 42.0f;   // responsive air control — lets you steer momentum mid-air
     float friction        = 10.0f;   // how fast horizontal speed bleeds off when grounded
@@ -41,6 +41,23 @@ public:
 
     bool  onGround = false;
     bool  jumpedThisTick = false;   // a ground / coyote / buffered jump left the ground this tick (feedback only)
+
+    // Heavier on the way down, but only when you're the one in the air: a jump
+    // of your own or a step off a ledge. Pads, tubes, the dash and the grapple
+    // call launched() and keep the old, even gravity, so their arcs land where
+    // they were built to.
+    static constexpr float FALL_MULT = 1.35f;
+    bool  fastFall = false;
+    // Jump cut: let go of jump while still rising and the rise is cut short.
+    // A press always gets JUMP_CUT_MIN of full rise first (a tap is a hop, not
+    // a twitch); a buffered jump (pressed before landing) always goes full.
+    static constexpr float JUMP_CUT     = 0.55f;   // what's left of the upward speed
+    static constexpr float JUMP_CUT_MIN = 0.12f;   // seconds of full rise first
+    float jumpAge  = -1.f;    // seconds since a jump that can still be cut (-1: none)
+    bool  jumpLetGo = false;  // jump released since that jump
+    void launched() { fastFall = false; jumpAge = -1.f; }
+    // The double jump (GameplayState): a cuttable rise; how it falls stays as it was
+    void airJump() { velocity.y = jumpForce; jumpAge = 0.f; jumpLetGo = false; }
 
     // Slide state — activated by crouching while moving fast on the ground.
     bool  sliding  = false;
@@ -142,11 +159,15 @@ private:
         if (!onGround) {
             if (prevGroundForCoyote) {
                 coyoteTimer = COYOTE_DURATION; // just left solid ground
+                // stepped off on your own (a walk, a run, a slide - not a dash or a throw)
+                float flat = std::sqrt(velocity.x * velocity.x + velocity.z * velocity.z);
+                if (velocity.y <= 0.f && flat <= SLIDE_SPEED + 1.f && !grappling) fastFall = true;
             } else {
                 coyoteTimer = glm::max(0.f, coyoteTimer - dt);
             }
         } else {
             coyoteTimer = 0.f; // grounded — no coyote needed
+            fastFall = false;
         }
         prevGroundForCoyote = onGround;
 
@@ -154,6 +175,13 @@ private:
         // If jump is pressed while airborne (and coyote window isn't active),
         // store it so the next landing executes it automatically.
         bool jumpKey = keys[SDL_SCANCODE_SPACE] != 0;
+        // Jump cut: once let go while rising (after the first JUMP_CUT_MIN), the rise is cut short, once
+        if (jumpAge >= 0.f) {
+            jumpAge += dt;
+            if (!jumpKey) jumpLetGo = true;
+            if (velocity.y <= 0.f || onGround) jumpAge = -1.f;
+            else if (jumpLetGo && jumpAge >= JUMP_CUT_MIN) { velocity.y *= JUMP_CUT; jumpAge = -1.f; }
+        }
         if (jumpKey && !onGround && coyoteTimer <= 0.f) {
             jumpBufferTimer = JUMP_BUFFER_DURATION;
         } else if (jumpBufferTimer > 0.f) {
@@ -243,6 +271,8 @@ private:
             velocity.y      = jumpForce;
             onGround        = false;
             jumpedThisTick  = true;
+            fastFall        = true;
+            jumpAge         = -1.f;   // pressed before landing: always the full jump
             jumpBufferTimer = 0.f;
             coyoteTimer     = 0.f;
             if (sliding) { sliding = false; eyeHeight = NORMAL_EYE_H; height = NORMAL_HEIGHT; }
@@ -252,6 +282,8 @@ private:
             velocity.y      = jumpForce;
             onGround        = false;
             jumpedThisTick  = true;
+            fastFall        = true;
+            jumpAge         = 0.f; jumpLetGo = false;
             coyoteTimer     = 0.f;
             jumpBufferTimer = 0.f;
             if (sliding) { sliding = false; eyeHeight = NORMAL_EYE_H; height = NORMAL_HEIGHT; }
@@ -262,7 +294,7 @@ private:
     // to prevent slowly accumulating negative Y velocity while idle.
     void applyGravity(float dt) {
         if (!onGround) {
-            velocity.y += gravity * dt;
+            velocity.y += gravity * dt * (fastFall && velocity.y < 0.f ? FALL_MULT : 1.f);
         }
     }
 

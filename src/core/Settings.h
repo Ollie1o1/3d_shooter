@@ -95,6 +95,13 @@ struct GameSettings {
     const char* getFPSCapLabel() const {
         static char buf[32];
         int hz = frameCapHz(frameCap);
+#ifdef __EMSCRIPTEN__
+        // In a browser nothing shows faster than the screen: say what you'll get (main.cpp's webFrame)
+        if (hz == 0 || hz >= displayHz() - 2) {
+            std::snprintf(buf, sizeof(buf), "%s (SCREEN %d)", hz == 0 ? "UNLIMITED" : hz < 0 ? "DISPLAY" : std::to_string(hz).c_str(), displayHz());
+            return buf;
+        }
+#endif
         if (hz == 0) return "UNLIMITED";
         if (hz < 0) std::snprintf(buf, sizeof(buf), "DISPLAY (%d)", displayHz());
         else        std::snprintf(buf, sizeof(buf), "%d", hz);

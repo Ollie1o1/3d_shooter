@@ -564,6 +564,8 @@ public:
 
     void shake(float t, float amount);
     void updateScreenFx(float dt);
+    void shootInput();
+    void flushHitSounds();
 
     // =========================================================================
     // Input

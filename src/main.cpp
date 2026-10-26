@@ -27,6 +27,7 @@
 #include "core/Display.h"
 #include "core/Gamepad.h"
 #include "core/FrameTimer.h"
+#include "core/Pacer.h"
 #include "audio/VoiceSynth.h"
 
 #ifdef __EMSCRIPTEN__
@@ -62,6 +63,9 @@ struct App {
 
     Uint64 freq = 0, lastCounter = 0;
     double nextFrameAt = 0.0;   // frame limiter's schedule (seconds)
+    Pacer  pacer;               // low-latency pacing (core/Pacer.h)
+    double gpuWaitS = 0.0;      // how long this frame waited on the GPU before starting
+    bool   usePacing = true;    // --nopace: off (to compare)
     bool   vsyncOn = false;
 
     // --bench N: render N frames flat out (no cap, no vsync), then print the
@@ -237,7 +241,9 @@ struct App {
 #ifndef __EMSCRIPTEN__
         {
             frametimer::Scope ftWait(frametimer::GPU_WAIT);
+            double w0 = seconds();
             waitForGpu();
+            gpuWaitS = seconds() - w0;
         }
 #endif
         Uint64 frameStart = SDL_GetPerformanceCounter();
@@ -342,10 +348,16 @@ struct App {
         // 1.5 ms: millisecond sleeps alone can't hold 144 or 240 Hz evenly.
         frametimer::Lap ftLimit;
         int capValue = capOverride >= 0 ? capOverride : (benchFrames > 0 || vsyncOn) ? 0 : settings.getFPSCapValue();
-        if (capValue > 0) {
-            double period = 1.0 / capValue;
-            if (nextFrameAt == 0.0 || seconds() - nextFrameAt > period * 2.0) nextFrameAt = seconds();   // fell behind: start over
-            nextFrameAt += period;
+        // Low-latency pacing (core/Pacer.h): never let the CPU queue frames up behind a busy GPU (--nopace: off)
+        const bool pace = usePacing && benchFrames == 0 && !vsyncOn;
+        if (pace) pacer.onWait(gpuWaitS);
+        else pacer.reset();
+        double capPeriod = capValue > 0 ? 1.0 / capValue : 0.0;
+        double period = std::max(capPeriod, pacer.period);
+        if (period > 0.0) {
+            double now = seconds();
+            if (nextFrameAt == 0.0 || now - nextFrameAt > period * 2.0) nextFrameAt = now;   // fell behind: start again from now (no extra wait on top of a late frame)
+            else nextFrameAt += period;
             for (;;) {
                 double left = nextFrameAt - seconds();
                 if (left <= 0.0) break;
@@ -397,43 +409,33 @@ struct App {
 };
 
 #ifdef __EMSCRIPTEN__
-// The browser paces the web build. DISPLAY rides requestAnimationFrame; a cap
-// at or under the screen's rate rides it too and skips frames; a cap above it
-// (240, 360) or UNLIMITED runs off setImmediate with a time limiter. The page
-// still only shows what the screen refreshes, but input and the simulation run
-// at the higher rate. The screen's rate is measured from rAF's own spacing.
+// The browser paces the web build off requestAnimationFrame: the page can only
+// show what the screen refreshes, and frames made faster than that (setImmediate)
+// pile up in the browser's GPU process - seconds of lag at "unlimited". So a cap
+// at or above the screen's rate runs at the screen's rate; a cap under it skips
+// frames. The screen's rate is measured from rAF's own spacing.
 static void webFrame(void* p) {
     App* app = static_cast<App*>(p);
-    static int mode = 0;                  // 0 rAF, 1 setImmediate
     static double nextAt = 0.0, lastRaf = 0.0, rafMs = 1000.0 / 60.0;
     static int rafSamples = 0;
     double now = emscripten_get_now();
     int hz = GameSettings::frameCapHz(app->settings.frameCap);
-    int want = (hz == 0 || hz > GameSettings::displayHz() + 5) ? 1 : 0;
-    if (want != mode) {
-        mode = want; nextAt = 0.0; lastRaf = 0.0;
-        if (mode) emscripten_set_main_loop_timing(EM_TIMING_SETIMMEDIATE, 0);
-        else      emscripten_set_main_loop_timing(EM_TIMING_RAF, 1);
-    }
-    if (mode == 0) {   // learn the screen's rate (a median-ish running average that ignores hitches)
-        if (lastRaf > 0.0) {
-            double d = now - lastRaf;
-            if (d > 2.0 && d < 60.0 && (rafSamples < 10 || std::fabs(d - rafMs) < rafMs * 0.3)) {
-                rafMs += (d - rafMs) * (rafSamples < 10 ? 0.5 : 0.05);
-                if (++rafSamples >= 10) GameSettings::displayHz() = std::max(30, (int)std::lround(1000.0 / rafMs));
-            }
+    if (lastRaf > 0.0) {   // learn the screen's rate (a running average that ignores hitches)
+        double d = now - lastRaf;
+        if (d > 2.0 && d < 60.0 && (rafSamples < 10 || std::fabs(d - rafMs) < rafMs * 0.3)) {
+            rafMs += (d - rafMs) * (rafSamples < 10 ? 0.5 : 0.05);
+            if (++rafSamples >= 10) GameSettings::displayHz() = std::max(30, (int)std::lround(1000.0 / rafMs));
         }
-        lastRaf = now;
     }
+    lastRaf = now;
     static int frames = 0; static double since = 0.0;
     if (g_devFpsLog && now - since > 2000.0) {   // --fps / ?fps=: the rate this loop really runs at
-        if (since > 0.0) std::printf("web fps %.0f (cap %d, display %d, %s)\n", frames * 1000.0 / (now - since), hz,
-                                     GameSettings::displayHz(), mode ? "setImmediate" : "rAF");
+        if (since > 0.0) std::printf("web fps %.0f (cap %d, display %d)\n", frames * 1000.0 / (now - since), hz, GameSettings::displayHz());
         since = now; frames = 0;
     }
-    int cap = hz < 0 ? 0 : hz;   // DISPLAY: every rAF
+    int cap = (hz <= 0 || hz >= GameSettings::displayHz() - 2) ? 0 : hz;   // DISPLAY / UNLIMITED / above the screen: every rAF
     if (cap > 0) {
-        double period = 1000.0 / cap, slack = mode == 0 ? rafMs * 0.5 : 0.0;
+        double period = 1000.0 / cap, slack = rafMs * 0.5;
         if (nextAt == 0.0 || now - nextAt > period * 2.0) nextAt = now;   // fell behind: start over
         if (now + slack < nextAt) return;
         nextAt += period;
@@ -588,6 +590,7 @@ int main(int argc, char* argv[]) {
         if (arg == "--gpu-timer") { app->gpuTimer = true; frametimer::enabled() = true; }
         if (arg == "--frametimes" && i + 1 < argc) { app->frameTimesPath = argv[++i]; frametimer::enabled() = true; }
         if (arg == "--cap" && i + 1 < argc) app->capOverride = std::atoi(argv[++i]);
+        if (arg == "--nopace") app->usePacing = false;
         if (arg == "--fps" && i + 1 < argc) {   // dev: pick the FRAME RATE setting by its Hz (0 = UNLIMITED, -1 = DISPLAY); the web build logs its rate
             int want = std::atoi(argv[++i]);
             for (int k = 0; k < GameSettings::FRAME_CAPS; ++k) if (GameSettings::frameCapHz(k) == want) app->settings.frameCap = k;
