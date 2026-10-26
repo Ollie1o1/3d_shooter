@@ -37,7 +37,6 @@ inline void GameplayState::updateSword(float dt) {
         abLastPressT = gameClock;
         if (gameClock - abWhiteHitT < 0.25f) { ui.feed("LATE", {1.f, 1.f, 1.f}); audio.play("ab_tsk", 110, SoundGroup::UI); }
     }
-    swordRoll *= std::exp(-dt * 9.f);
     Sword::Out o = sword.update(dt, in);
     viewModel.tickSword(dt, swordShownFor(sword));
     glm::vec3 eye = player.camera.position, fwd = player.camera.forward();

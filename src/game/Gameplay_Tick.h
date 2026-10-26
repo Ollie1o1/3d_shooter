@@ -5,6 +5,31 @@
 // Included at the end of GameplayState.h.
 // =============================================================================
 
+// The trigger and the grenade, read every frame (not on the 60 Hz tick): the shot
+// goes off in the frame you click, up to 16 ms sooner
+inline void GameplayState::shootInput() {
+    WeaponState& ws = weapons[activeWeapon];
+    bool switchBlocked = (pendingWeapon >= 0);
+    if (swordOut) pendingFire = false;   // the sword has the button
+    if (pendingFire && ws.ready() && !switchBlocked) fireWeapon(activeWeapon);
+    else if (pendingFire && !switchBlocked && (ws.ammo <= 0 || ws.reloading) && dryCd <= 0.f) {
+        audio.play("dry", 100, SoundGroup::PLAYER);   // empty: the hammer falls on nothing
+        dryCd = 0.3f;
+    }
+    pendingFire = false;
+    if (pendingGrenade && grenadeCount > 0 && grenadeTimer <= 0.f) throwGrenade();
+    pendingGrenade = false;
+    flushHitSounds();
+}
+
+// Every hit since the last call as one sound: fuller for more, a ping on a crit
+inline void GameplayState::flushHitSounds() {
+    if (hitSoundCount <= 0) return;
+    audio.play("hit", 92 + std::min(36, (hitSoundCount - 1) * 9), SoundGroup::PLAYER);
+    if (hitSoundCrit) audio.play("hit_head", 110, SoundGroup::PLAYER);
+    hitSoundCount = 0; hitSoundCrit = false;
+}
+
 inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKey) {
     frametimer::Scope ftSim(frametimer::SIM);
     frametimer::tick();
@@ -35,6 +60,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         // Full 3D dash in the direction the camera faces
         glm::vec3 dashDir = player.camera.forward();
         player.velocity = dashDir * 28.f;
+        player.launched();
         dashMomentumTimer = 0.30f;
         --dashCharges;
         dashCooldown = 1.2f;
@@ -97,10 +123,11 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
             // Slingshot: release grapple mid-swing and keep all momentum + upward kick.
             grapple.release();
             player.velocity.y += 6.f;
+            player.launched();
             styleSystem.addStyle(10.f);
             audio.play("jump");
         } else if (jumpsRemaining > 0 && !player.onGround && player.coyoteTimer <= 0.f) {
-            player.velocity.y = player.jumpForce;
+            player.airJump();
             --jumpsRemaining;
             styleSystem.addStyle(3.f);
             // The air jump has its own sound and a ring kicked off under your feet
@@ -137,6 +164,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
                 grapple.attach(player.camera.position, gPoint, impulse, gWall,
                                gMover ? &level.walls[gWall].box : nullptr);
                 player.velocity = impulse;
+                player.launched();
                 viewModel.triggerGrapple();
                 audio.play("grapple_fire");
                 if (gMover) styleSystem.addStyle(4.f);
@@ -147,6 +175,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         pendingGrapple = false;
     }
     grapple.update(dt, player.camera.position, player.velocity);
+    if (grapple.active) player.launched();   // swung: the rope's arc, not a jump's
     if (wasGrappling && !grapple.active && !fast()) grappleCooldown = GRAPPLE_COOLDOWN;   // however it ended (arrival, release, a rip, a pin); FAST runs grapple freely
     wasGrappling = grapple.active;
 
@@ -175,7 +204,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     if (!(g_devCam && g_devNoMouse)) {   // screenshot runs: the camera stays exactly where it was put
         player.update(dt, keys, level.walls.data(), (int)level.walls.size(),
                       grapple.active || dashMomentumTimer > 0.f || boost >= 0, &spatialGrid);
-        if (boost >= 0) applyBooster(level.boosters[boost], player, dt);
+        if (boost >= 0) { applyBooster(level.boosters[boost], player, dt); player.launched(); }
         keepPlayerInZone(dt);
         if (player.jumpedThisTick) {   // the push-off: a soft scuff and the head lifting off the legs
             audio.play("jump", 90);
@@ -209,6 +238,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         if (padCooldown <= 0.f && player.velocity.y <= 0.5f && p.y < pad.centre.y + 0.4f && p.y > pad.centre.y - 0.6f &&
             std::fabs(p.x - pad.centre.x) < pad.half.x && std::fabs(p.z - pad.centre.z) < pad.half.y) {
             player.velocity = pad.launch;
+            player.launched();
             player.onGround = false;
             jumpsRemaining = 1;
             padCooldown = 0.4f;
@@ -287,25 +317,9 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     // Empty: reload once the last shot's cycle is done
     if (ws.ammo <= 0 && !ws.reloading && ws.cooldown <= 0.f && pendingWeapon < 0) startReload(activeWeapon);
 
-    bool switchBlocked = (pendingWeapon >= 0);
-    if (swordOut) pendingFire = false;   // the sword has the button
-    if (pendingFire && ws.ready() && !switchBlocked) fireWeapon(activeWeapon);
-    else if (pendingFire && !switchBlocked && (ws.ammo <= 0 || ws.reloading) && dryCd <= 0.f) {
-        audio.play("dry", 100, SoundGroup::PLAYER);   // empty: the hammer falls on nothing
-        dryCd = 0.3f;
-    }
     dryCd = std::max(0.f, dryCd - dt);
-    pendingFire = false;
-    if (pendingGrenade && grenadeCount > 0 && grenadeTimer <= 0.f) throwGrenade();
-    pendingGrenade = false;
+    shootInput();   // (again here: a click held over from a frame with no tick)
 
-    if (recoilPitch > 0.f) {
-        // Settle back quickly at first, then ease in (was a flat 14 degrees a second)
-        float applied = std::min(recoilPitch, std::max(recoilPitch * (1.f - std::exp(-dt * 11.f)), 1.5f * dt));
-        player.camera.pitch -= applied;
-        recoilPitch -= applied;
-        player.camera.pitch = glm::clamp(player.camera.pitch, -89.f, 89.f);
-    }
 
     ftLap.to(frametimer::SIM_PLAYER);
     // --- Waves ---
@@ -392,11 +406,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         }
     }
 
-    if (hitSoundCount > 0) {   // every hit this tick as one sound: fuller for more, a ping on a crit
-        audio.play("hit", 92 + std::min(36, (hitSoundCount - 1) * 9), SoundGroup::PLAYER);
-        if (hitSoundCrit) audio.play("hit_head", 110, SoundGroup::PLAYER);
-        hitSoundCount = 0; hitSoundCrit = false;
-    }
+    flushHitSounds();
     if (ceilingFxTimer > 0.f) ceilingFxTimer -= dt;
     nearInteractable = findInteractTarget() >= 0;
     fx.tickMarks(dt);

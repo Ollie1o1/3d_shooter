@@ -1,6 +1,7 @@
 // Headless physics tests — no window or GL context needed.
 // Build + run with `make test`.
 #include "player/Player.h"
+#include "core/Pacer.h"
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
@@ -71,8 +72,83 @@ int main() {
         keys[SDL_SCANCODE_SPACE] = 0;
         float peak = 0.f;
         for (int i = 0; i < 120; ++i) { p.update(DT, keys, nullptr, 0); peak = std::max(peak, p.position.y); }
-        CHECK(peak > 1.2f, "jump reaches a reasonable height");
+        CHECK(peak > 1.05f && peak < 1.35f, "a tap is a hop (the jump cut), not a twitch");
         CHECK(p.onGround && p.position.y == 0.f, "jump lands back on the floor");
+    }
+
+    // 4b. The jump cut and the heavier fall
+    {
+        // airtime / peak of a jump with space held for `hold` seconds, running at 7 m/s
+        auto arc = [&](float hold, float& peak, float& air, float& dist) {
+            Player p({0.f, 0.f, 0.f});
+            Uint8 k[SDL_NUM_SCANCODES]; std::memset(k, 0, sizeof(k));
+            p.velocity = {7.f, 0.f, 0.f}; p.update(DT, k, nullptr, 0);
+            peak = 0.f; air = 0.f;
+            k[SDL_SCANCODE_SPACE] = 1;
+            for (int i = 0; i < 240; ++i) {
+                if (i * DT >= hold) k[SDL_SCANCODE_SPACE] = 0;
+                p.velocity.x = 7.f; p.velocity.z = 0.f;
+                p.update(DT, k, nullptr, 0);
+                if (!p.onGround) air += DT;
+                peak = std::max(peak, p.position.y);
+                if (i > 2 && p.onGround) break;
+            }
+            dist = air * 7.f;
+        };
+        float pk, air, d, pk2, air2, d2;
+        arc(1.f, pk, air, d);
+        arc(0.15f, pk2, air2, d2);
+        std::printf("      held: peak %.2f m, %.3f s in the air; let go at 0.15 s: peak %.2f m, %.3f s\n", pk, air, pk2, air2);
+        // Before the change: 8.5 m/s up at 24 m/s^2 both ways = 1.505 m, 0.708 s in the air
+        CHECK(pk > 1.6f && air >= 0.69f, "a held jump goes higher than before and stays up as long (every old jump still makes it)");
+        CHECK(pk2 < pk - 0.3f && air2 < air - 0.12f, "letting go early cuts the jump short");
+        // Heavier on the way down: falling 3 m off a ledge vs launched from the same height
+        Player walk({0.f, 3.f, 0.f}), thrown({0.f, 3.f, 0.f});
+        Uint8 k[SDL_NUM_SCANCODES]; std::memset(k, 0, sizeof(k));
+        std::vector<Wall> ledge{ Wall{ AABB{{-5.f, 0.f, -5.f}, {0.2f, 3.f, 5.f}} } };
+        walk.update(DT, k, ledge.data(), 1);   // standing on it
+        float tWalk = 0.f, tThrown = 0.f;
+        for (int i = 0; i < 300 && !(i > 5 && walk.onGround && walk.position.y < 0.01f); ++i) {
+            walk.velocity.x = 5.f; walk.update(DT, k, ledge.data(), 1); if (walk.position.x > 0.6f) tWalk += DT; }
+        thrown.velocity = {0.f, 0.f, 0.f}; thrown.launched();
+        for (int i = 0; i < 300 && !thrown.onGround; ++i) { thrown.update(DT, k, nullptr, 0); tThrown += DT; }
+        CHECK(walk.onGround && tWalk < tThrown * 0.92f, "stepping off a ledge falls faster than being thrown off one (pads, tubes and the grapple keep their arcs)");
+        // A buffered jump (pressed before landing, let go before it fires) still goes full height
+        Player b({0.f, 0.15f, 0.f}); b.velocity.y = -2.f;
+        k[SDL_SCANCODE_SPACE] = 1; b.update(DT, k, nullptr, 0); k[SDL_SCANCODE_SPACE] = 0;
+        float bpk = 0.f;
+        for (int i = 0; i < 200; ++i) { b.update(DT, k, nullptr, 0); bpk = std::max(bpk, b.position.y); }
+        CHECK(bpk > 1.6f, "a buffered jump is never cut");
+    }
+
+    // 4c. Frame pacing (core/Pacer.h) against a simulated GPU that needs G seconds a frame,
+    //     with the CPU allowed two frames ahead (main.cpp's fences)
+    {
+        auto run = [](double gpu, double capPeriod, bool pace, double& fps, double& avgWait) {
+            Pacer p; double t = 0.0, gpuFree = 0.0, waitSum = 0.0; int n = 0;
+            double done[2] = {0.0, 0.0};   // when the last two frames finish on the GPU
+            for (int f = 0; f < 4000; ++f) {
+                double start = std::max(t, done[f % 2]);   // wait for the frame two back
+                double waited = start - t;
+                if (f > 2000) { waitSum += waited; ++n; }
+                t = start + 0.001;                          // 1 ms of CPU work
+                gpuFree = std::max(gpuFree, t) + gpu;       // the GPU takes it when free
+                done[f % 2] = gpuFree;
+                if (pace) p.onWait(waited); else p.reset();
+                double period = std::max(capPeriod, p.period);
+                if (period > 0.0) t = std::max(t, start + period);
+            }
+            fps = 4000.0 / t; avgWait = waitSum / n;
+        };
+        double fpsOff, waitOff, fpsOn, waitOn, fpsCap, waitCap;
+        run(0.005, 0.0, false, fpsOff, waitOff);      // a 5 ms GPU, unlimited, no pacing
+        run(0.005, 0.0, true,  fpsOn,  waitOn);       // ...paced
+        run(0.005, 1.0 / 144, true, fpsCap, waitCap); // under the GPU's limit: pacing stays out of it
+        std::printf("      unpaced %.0f fps, %.2f ms queued; paced %.0f fps, %.2f ms; 144 cap paced %.0f fps\n",
+                    fpsOff, waitOff * 1e3, fpsOn, waitOn * 1e3, fpsCap);
+        CHECK(waitOff > 0.003 && waitOn < 0.0005, "pacing: unlimited no longer queues frames behind the GPU (old input on screen)");
+        CHECK(fpsOn > fpsOff * 0.93, "pacing: and keeps nearly all the frame rate");
+        CHECK(std::fabs(fpsCap - 144.0) < 1.0 && waitCap < 1e-6, "pacing: a cap the GPU can hold is left exactly as it was");
     }
 
     // 5. Walking into a wall does not pass through it.
