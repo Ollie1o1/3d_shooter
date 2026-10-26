@@ -42,7 +42,7 @@ inline void GameplayState::whizPast() {
 
 // The last of a wave falls: a quarter speed easing back over SLOW_TIME, a deep boom, the music ducked
 inline void GameplayState::waveEnded() {
-    slowT = SLOW_TIME;
+    slowMo(SLOW_TIME, 0.25f);
     audio.play("lastkill", 110, SoundGroup::UI);
     audio.duck(4.f, 0.7f);
     camFeel.punch(-30.f, 0.f, frand(-1.f, 1.f) * 25.f);
@@ -66,6 +66,15 @@ inline void GameplayState::playBoom(const char* name, glm::vec3 at, int volume, 
 
 // Every hit since the last call as one sound: fuller for more, a ping on a crit
 inline void GameplayState::flushHitSounds() {
+    if (bodyHitPush > 0.f) {   // the round landing in the body: a thump from where it hit, deeper and duller on the big ones
+        SfxMixer::Opts o; o.group = SoundGroup::ENEMY; o.positional = true; o.pos = bodyHitAt; o.priority = true;
+        o.volume = 0.5f + 0.5f * std::min(1.f, bodyHitPush / 10.f);
+        o.pitch  = glm::clamp(1.18f - 0.07f * bodyHitMass, 0.7f, 1.15f) * (0.96f + 0.08f * frand(0.f, 1.f));
+        o.floor  = 0.55f;   // heard over the fight, whatever's further off
+        audio.playOpts("hit_body", o);
+        if (bodyHitStun) audio.playAt("stun", bodyHitAt, 115, SoundGroup::ENEMY, true, 0.6f);
+        bodyHitPush = 0.f; bodyHitStun = false;
+    }
     if (hitSoundCount <= 0) return;
     audio.play("hit", 92 + std::min(36, (hitSoundCount - 1) * 9), SoundGroup::PLAYER);
     if (hitSoundArmor) audio.play("hit_armor", 115, SoundGroup::PLAYER);   // armour: you hear the metal turn it
@@ -395,6 +404,8 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     // --- Enemies ---
     updateEnemies(dt);
     ftLap.to(frametimer::SIM_ENEMIES);
+    hurtBy = EnemyType::COUNT;   // a boss fight's hazards: put down to the boss
+    for (const auto& o : enemies) if (o.alive && isBoss(o.type)) { hurtBy = o.type; break; }
     updateSanctumPhase(dt);
     updateSovereign(dt);
     updatePenitent(dt);
@@ -425,8 +436,10 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
             playBoom("explosion", pr.position, 100, SoundGroup::WORLD);
             shake(0.3f, 0.07f);
         }
+        float spd = glm::length(pr.velocity);
+        HitPush hp{spd > 1e-3f ? pr.velocity / spd : player.camera.forward(), std::min(pr.damage * 0.08f, 30.f), 1.5f};   // a parried orb hits like a truck
         hurtEnemy(e, pr.damage, pr.position, pr.parried ? 25.f : 10.f, 2.f,
-                  pr.parried ? StyleSource::PARRY : StyleSource::EXPLOSIVE, false, pr.parried);
+                  pr.parried ? StyleSource::PARRY : StyleSource::EXPLOSIVE, false, pr.parried, &hp);
     }
     // A Juggernaut's shell into one of its own
     for (auto& [pi, ei] : result.friendlyHits) {
@@ -440,6 +453,8 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     processBlasts();
     ftLap.to(frametimer::SIM_SHOTS);
 
+    hurtBy = EnemyType::COUNT;
+    if (result.hitPlayer && result.playerHitOwner >= 0) hurtBy = (EnemyType)result.playerHitOwner;
     if (result.hitPlayer) {   // with the sword out, a shot from the front meets the guard
         if (swordOut) damagePlayerStrike(result.playerDamage, result.playerHitFrom, Sword::Strike::WHITE);
         else damagePlayer(result.playerDamage, result.playerHitFrom, 0.2f, 0.04f);

@@ -24,6 +24,7 @@ struct Projectile {
     bool      heavy      = false;  // JUGGERNAUT siege shell
     bool      parried    = false;  // sent back by the player: ignores armor
     int       owner      = -1;     // uid of the enemy that fired it
+    int       ownerType  = -1;     // its EnemyType (the run log: who hurt you, even once it's dead)
     float     parryDamage = 0.f;   // > 0: what it does when parried back (else 60, or 400 heavy)
     int       homeOn     = -1;     // uid: a parried orb steering into the WARDEN's core
     bool      whizzed    = false;  // its near-miss whizz has played (GameplayState::whizPast)
@@ -57,6 +58,7 @@ public:
                 p.heavy       = heavy;
                 p.parried     = false;
                 p.owner       = -1;
+                p.ownerType   = -1;
                 p.parryDamage = 0.f;
                 p.homeOn      = -1;
                 p.whizzed     = false;
@@ -79,6 +81,7 @@ public:
         bool  hitPlayer    = false;
         float playerDamage = 0.f;
         glm::vec3 playerHitFrom{0.f};  // world point the hitting shot came from
+        int   playerHitOwner = -1;     // the EnemyType of whoever fired it (the run log); -1 unknown
         int   parryableIndex  = -1;  // closest enemy projectile within parry range
         int   boostableIndex  = -1;  // closest PLAYER projectile within parry range
     };
@@ -194,6 +197,7 @@ inline ProjectileSystem::HitResult ProjectileSystem::update(
             if (dist < 0.6f * std::max(1.f, p.size * 0.8f)) {
                 result.hitPlayer = true;
                 result.playerDamage += p.damage;
+                result.playerHitOwner = p.ownerType;
                 float spd = glm::length(p.velocity);
                 result.playerHitFrom = spd > 0.001f ? p.position - p.velocity / spd * 5.f
                                                     : p.position;

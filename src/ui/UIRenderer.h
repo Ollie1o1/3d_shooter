@@ -54,6 +54,7 @@ struct HudState {
     glm::vec3 crosshairColor{1.f};
     glm::mat4 viewProj{1.f};       // for floating damage numbers
     bool  damageNumbers = true;
+    float finishHint = 0.f;        // 0..1 a finisher is in reach: the crosshair says so
 };
 
 class UIRenderer {
@@ -690,6 +691,8 @@ private:
         ui.rect(sx - 2, sy - 2, 224, 16, {0.05f, 0.05f, 0.07f, 0.85f});
         ui.rect(sx, sy, 220, 12, {0.1f, 0.1f, 0.15f, 0.8f});
         ui.rect(sx, sy, 220 * displayStyle / style.maxStyle, 12, rc);
+        if (style.driveCool > 0.f)   // OVERDRIVE recharging: a thin gold line fills under the meter
+            ui.rect(sx, sy + 14, (int)(220 * (1.f - style.driveCool / StyleSystem::OVERDRIVE_COOL)), 2, {1.f, 0.7f, 0.15f, 0.7f});
         static const char* NAMES[] = {"D", "C", "B", "A", "S", "SSS"};
         if (displayStyle > 1.f) ui.textShadow(NAMES[(int)rank], screenW / 2, sy - 40, 4, rc, true);
         // How fresh the gun in hand is: the same gun over and over scores less
@@ -706,6 +709,8 @@ private:
             ui.rect(screenW / 2 - 120, oy, 240, 3, {1.f, 0.7f, 0.1f, alpha});
             ui.rect(screenW / 2 - 120, oy + 27, 240, 3, {1.f, 0.7f, 0.1f, alpha});
             ui.text("OVERDRIVE", screenW / 2, oy + 8, 2, {1.f, 0.75f, 0.2f, alpha}, true);
+            if (style.overdrive)   // burning down
+                ui.rect(screenW / 2 - 118, oy + 22, (int)(236 * glm::clamp(style.overdriveTimer / StyleSystem::OVERDRIVE_DURATION, 0.f, 1.f)), 3, {1.f, 0.9f, 0.5f, alpha});
         }
     }
 
@@ -797,6 +802,12 @@ private:
             int bx = cx - 20, by = cy + 34;
             ui.rect(bx - 1, by - 1, 42, 5, {0.f, 0.f, 0.f, 0.5f});
             ui.rect(bx, by, (int)(40 * (1.f - h.grappleCool)), 3, {0.3f, 1.f, 1.f, 0.75f});
+        }
+        if (h.finishHint > 0.02f) {   // a finisher in reach: four hot ticks closing on the crosshair
+            glm::vec4 fc{1.f, 0.6f, 0.2f, 0.95f * h.finishHint};
+            int r = (int)(9 + 7 * (1.f - h.finishHint));
+            for (int sx : {-1, 1}) for (int sy : {-1, 1})
+                ui.rect(cx + sx * r - 2, cy + sy * r - 2, 4, 4, fc);
         }
         float gap = 2.f + h.spread;
         ui.rect(cx - gap - 6, cy - 1, 6, 2, col);

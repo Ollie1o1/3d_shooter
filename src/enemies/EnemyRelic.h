@@ -24,7 +24,7 @@ inline void Enemy::thinkRevenant(float dt, const EnemyWorld& w, bool resolve) {
     }
     // At range a soul bolt, on its own clock (it closes fast, so it doesn't wait for one)
     if (burstTimer > 0.f) burstTimer -= dt;
-    if (telegraphTimer <= 0.f && d > 8.f && burstTimer <= 0.f && lineOfSight(eyePos(), w)) {
+    if (telegraphTimer <= 0.f && d > 8.f && burstTimer <= 0.f && mayAttack && lineOfSight(eyePos(), w)) {
         burstTimer = 3.f;
         startAttack(AttackKind::SOULBOLT, 0.6f);
         return;

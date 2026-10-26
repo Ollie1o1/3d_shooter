@@ -124,6 +124,7 @@ inline void GameplayState::devCamera(float dt) {
         }
         return;
     }
+    if (punchCooldown <= 0.f && hitStopFrames <= 0 && findFinisher() >= 0) punch(-1);   // one to finish in reach: take it
     // Nearest enemy in sight, in front of us first
     const Enemy* best = nullptr; float bestScore = 1e9f;
     glm::vec3 fwd = player.camera.forward();

@@ -43,6 +43,7 @@
 #include "world/ArenaShifts.h"
 #include "game/Score.h"
 #include "game/EndlessWaves.h"
+#include "game/RunLog.h"
 #include "bosses/sovereign/SovereignHazards.h"
 #include "bosses/penitent/PenitentHazards.h"
 #include <SDL2/SDL.h>
@@ -241,11 +242,13 @@ public:
     bool  hasSafeGround = false;
     static constexpr float SLOW_TIME = 0.65f;   // a wave's last kill: real seconds of slow motion
     float slowT = 0.f;                          // counting down; time runs at timeScale() meanwhile
+    float slowLen = SLOW_TIME, slowLow = 0.25f; // this slow-down's length and how slow it starts (OVERDRIVE's is shorter)
     float timeScale() const {                   // a quarter speed, easing back to full
         if (slowT <= 0.f) return 1.f;
-        float u = 1.f - slowT / SLOW_TIME;
-        return 0.25f + 0.75f * u * u * (3.f - 2.f * u);
+        float u = 1.f - slowT / slowLen;
+        return slowLow + (1.f - slowLow) * u * u * (3.f - 2.f * u);
     }
+    void slowMo(float len, float low) { if (slowT > 0.f && slowLow <= low) return; slowT = slowLen = len; slowLow = low; }
     float ropeFx = 0.f;                         // 0..1 the grapple's rope singing (AudioSystem::setRope)
     glm::vec2 lookDelta{0.f};   // degrees of mouse / stick look this frame (yaw, pitch): the gun's sway
 
@@ -297,7 +300,7 @@ public:
 
     // src: whose blast it is, for style (a Mite that reaches you hurts its friends: FRIENDLY)
     struct Blast { glm::vec3 pos; float radius, damage; float playerRadius, playerDamage;
-                   StyleSource src = StyleSource::EXPLOSIVE; };
+                   StyleSource src = StyleSource::EXPLOSIVE; EnemyType by = EnemyType::COUNT; };   // by: whose it was, if it can hurt you (the run log)
 
     // Friendly fire: a Juggernaut's siege shell kills the small fry it hits;
     // a Brute's slam kills Rippers and Mites around it and leaves a Husk on
@@ -718,8 +721,38 @@ public:
     // All player damage to enemies goes through here. Returns true on a kill.
     // src: what did it, for style freshness (FRIENDLY: another enemy did).
     // pierceArmor: parried shots go straight through a Juggernaut's plating.
+    // push: which way the hit shoves it and how hard (HitReact.h); none: away from you, by its damage
+    struct HitPush { glm::vec3 dir{0.f}; float push = 0.f; float poise = 1.f; };
     bool hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float style, float heal, StyleSource src,
-                   bool crit = false, bool pierceArmor = false);
+                   bool crit = false, bool pierceArmor = false, const HitPush* push = nullptr);
+
+    // ---- how a fight feels (Gameplay_Feel.h) ------------------------------------
+    // A hit's thump at the body it landed in, once a tick: the hardest shove of the tick
+    glm::vec3 bodyHitAt{0.f}; float bodyHitPush = 0.f, bodyHitMass = 1.f; bool bodyHitStun = false;
+    void bodyHit(const Enemy& e, glm::vec3 at, float push, bool stunned);
+    void onStunned(Enemy& e, glm::vec3 at);
+    float killFx = 0.f;                 // 0..1 the screen's jolt on a kill (bloom_composite.frag uKick)
+    // ATTACK TOKENS: only so many regular enemies wind up at once (more on harder
+    // difficulties); the nearest you can see go first, the ones behind you wait longer
+    int  attackersAllowed() const;
+    void assignAttackers();
+    // FINISHERS: F on an enemy low enough (it glows) finishes it: health back, the gun full
+    int  findFinisher() const;
+    bool tryFinisher();
+    static constexpr float FINISH_REACH = 4.6f;
+    float finishHint = 0.f;             // 0..1 the crosshair says a finisher is in reach
+    // OVERDRIVE: the meter full is a power state: harder, faster shots that never need
+    // reloading, every hit staggers, a punch finishes anything under half
+    bool  overdriveOn() const { return styleSystem.overdrive; }
+    float overdriveFx = 0.f;            // 0..1 the screen's gold (uDrive)
+    void  enterOverdrive();
+    void  leaveOverdrive();
+    void  updateFeel(float dt);
+    // The run log (RunLog.h): what hurt you, what killed you, each gun's numbers
+    RunLog runLog;
+    EnemyType hurtBy = EnemyType::COUNT;   // set around enemy events and shots: who's hitting you now
+    bool  loggedDeath = false;
+    void  logRun(const char* how);
 
     void onEnemyKilled(Enemy& e, StyleSource src);
 
@@ -829,6 +862,7 @@ public:
 #include "game/Gameplay_Flow.h"
 #include "game/Gameplay_Tick.h"
 #include "game/Gameplay_Combat.h"
+#include "game/Gameplay_Feel.h"
 #include "game/Gameplay_Menus.h"
 #include "game/Gameplay_Render.h"
 #include "game/Gameplay_HUD.h"
