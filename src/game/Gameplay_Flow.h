@@ -16,6 +16,7 @@ inline void GameplayState::applyTextureQuality() {
 inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode m)
     : settings(s), mode(m), audio(aud) {
     worldShader.loadFiles("src/shaders/shader.vert","src/shaders/shader.frag");
+    contactShader.loadFiles("src/shaders/contact.vert","src/shaders/contact.frag");
     skyboxShader.loadFiles("src/shaders/skybox.vert","src/shaders/skybox.frag");
     tracerShader.loadFiles("src/shaders/tracer.vert","src/shaders/tracer.frag");
     particleShader.loadFiles("src/shaders/particle.vert","src/shaders/particle.frag");
@@ -76,10 +77,21 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     worldTex[TEX_PANEL]    = TextureGen::generatePanel(128);
     worldTex[TEX_ROCK]     = TextureGen::generateRock(128);
     worldTex[TEX_CONCRETE] = TextureGen::generateConcrete(128);
+    worldTex[TEX_ADOBE]         = TextureGen::uploadMaterial(MaterialTex::adobe());
+    worldTex[TEX_TERRACOTTA]    = TextureGen::uploadMaterial(MaterialTex::terracotta());
+    worldTex[TEX_WOOD]          = TextureGen::uploadMaterial(MaterialTex::wood());
+    worldTex[TEX_PLATE]         = TextureGen::uploadMaterial(MaterialTex::plate());
+    worldTex[TEX_TREAD]         = TextureGen::uploadMaterial(MaterialTex::tread());
+    worldTex[TEX_MARBLE]        = TextureGen::uploadMaterial(MaterialTex::marble());
+    worldTex[TEX_FLAG]          = TextureGen::uploadMaterial(MaterialTex::flagstone());
+    worldTex[TEX_CIRCUIT]       = TextureGen::uploadMaterial(MaterialTex::circuit());
+    worldTex[TEX_CIRCUIT_FLOOR] = TextureGen::uploadMaterial(MaterialTex::circuitFloor());
+    worldTex[TEX_BASALT]        = TextureGen::uploadMaterial(MaterialTex::basalt());
 
     level = fast() ? buildGauntlet() : act2() ? buildAct2Level() : buildLevel();
     spatialGrid.build(level.walls);
     world = buildWorldMeshes(level);
+    neonLights = buildNeonLights(level);
     shifts.capture(level);
     anchorsBuilt = level.anchors;   // the Penitent's anchors as built: a retry restores them
     anchorBoxes.clear();
@@ -141,8 +153,11 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
 inline GameplayState::~GameplayState() {
     audio.setMuffle(0.f);   // back to the menu: the world isn't dull any more
     audio.setWind(0.f); audio.setRope(0.f);
+    audio.setRoom(RoomTone::NONE);   // the menu has no air of its own
     glDeleteTextures(1,&whiteTex);
     glDeleteTextures(TEX_COUNT, worldTex);
+    world.contact.release();
+    movingShadows.release();
     if (tracerVAO)   glDeleteVertexArrays(1, &tracerVAO);
     if (tracerVBO)   glDeleteBuffers(1, &tracerVBO);
     if (waterVAO)    glDeleteVertexArrays(1, &waterVAO);
@@ -654,6 +669,14 @@ inline void GameplayState::updateScreenFx(float dt) {
 inline void GameplayState::update(float dt) {
     if (settings) audio.masterVolume = settings->audioVolume;
     updateMusic();
+    // The place's own air (RoomTone.h): full between fights, under a fight,
+    // low while paused or dead; the Yard's night comes with its nightfall
+    audio.setRoomLevel(paused || armoryOpen || playerDead ? 0.35f : director.fighting() ? 0.7f : 1.f);
+    {
+        int a = director.arena;
+        bool dusk = a >= 0 && a < (int)level.arenas.size() && level.arenas[a].shift == ArenaShift::NIGHTFALL;
+        audio.setRoomNight(dusk ? shifts.night[a] : 0.f);
+    }
     updateBossDusk(dt);
 
     // Banners keep animating on the death/victory screens, not while paused
