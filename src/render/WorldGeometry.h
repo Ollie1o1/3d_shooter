@@ -13,12 +13,19 @@
 // Static level geometry, batched by texture. Each wall's material picks the
 // texture of its sides and of its top; undersides are always metal, and the
 // self-lit neon is drawn untextured.
-enum WorldTex { TEX_GRID, TEX_BRICK, TEX_METAL, TEX_PANEL, TEX_ROCK, TEX_CONCRETE, TEX_COUNT };
+enum WorldTex { TEX_GRID, TEX_BRICK, TEX_METAL, TEX_PANEL, TEX_ROCK, TEX_CONCRETE,
+                // Act I's own (MaterialTex.h)
+                TEX_ADOBE, TEX_TERRACOTTA, TEX_WOOD, TEX_PLATE, TEX_TREAD, TEX_MARBLE, TEX_FLAG,
+                TEX_CIRCUIT, TEX_CIRCUIT_FLOOR, TEX_BASALT,
+                TEX_COUNT };
 
 inline WorldTex sideTex(Mat m) {
     switch (m) {
         case Mat::PANEL: return TEX_PANEL;  case Mat::ROCK: return TEX_ROCK;
         case Mat::METAL: return TEX_METAL;  case Mat::CONCRETE: return TEX_CONCRETE;
+        case Mat::ADOBE: return TEX_ADOBE;  case Mat::PLATE: return TEX_PLATE;
+        case Mat::MARBLE: return TEX_MARBLE; case Mat::CIRCUIT: return TEX_CIRCUIT;
+        case Mat::BASALT: return TEX_BASALT; case Mat::WOOD: return TEX_WOOD;
         default: return TEX_BRICK;
     }
 }
@@ -26,16 +33,72 @@ inline WorldTex topTex(Mat m) {
     switch (m) {
         case Mat::PANEL: case Mat::METAL: return TEX_METAL;
         case Mat::ROCK: return TEX_ROCK;
+        case Mat::ADOBE: return TEX_TERRACOTTA;
+        case Mat::PLATE: return TEX_TREAD;
+        case Mat::MARBLE: case Mat::BASALT: return TEX_FLAG;
+        case Mat::CIRCUIT: return TEX_CIRCUIT_FLOOR;
+        case Mat::WOOD: return TEX_WOOD;
         default: return TEX_GRID;
     }
 }
+// The newer textures wrap cleanly and carry their own joints: no dark seam
+// drawn every 4 m over them (the world shader's uNoSeams)
+inline bool texHasSeams(int t) { return t < TEX_ADOBE; }
 
 // The level's static geometry on the CPU, batched by texture (no OpenGL:
 // tests check it). WorldMesh.h uploads it.
+// A soft contact shadow on the ground around something standing on it: a
+// quad over the footprint grown by `reach`, darkest at the footprint's edge
+// (contact.frag measures the distance to `rect`: x0 z0 x1 z1)
+struct ContactVert { glm::vec3 pos; glm::vec4 rect; glm::vec2 strengthReach; };
+
 struct WorldGeometry {
     std::vector<Vertex> V[TEX_COUNT], nV;
     std::vector<unsigned int> I[TEX_COUNT], nI;
+    std::vector<ContactVert> contact;   // triangles
 };
+
+// What a box with this bottom rests on: the surface's height and its extent
+// in X and Z (the shadow stays on it). False: it's floating (a canopy, a bridge)
+struct Support { float y; glm::vec4 rect; };
+inline bool findSupport(const LevelData& L, const AABB& b, const Wall* self, Support& out) {
+    const float EPS = 0.06f;
+    float best = 0.f;
+    auto overlap = [&](float x0, float z0, float x1, float z1) {
+        float w = std::min(x1, b.max.x) - std::max(x0, b.min.x), d = std::min(z1, b.max.z) - std::max(z0, b.min.z);
+        return w > 0.f && d > 0.f ? w * d : 0.f;
+    };
+    auto consider = [&](float y, float x0, float z0, float x1, float z1) {
+        if (std::fabs(y - b.min.y) > EPS) return;
+        float a = overlap(x0, z0, x1, z1);
+        if (a > best) { best = a; out = {y, {x0, z0, x1, z1}}; }
+    };
+    for (const FloorPatch& f : L.floors)
+        consider(f.y, std::min(f.x0, f.x1), std::min(f.z0, f.z1), std::max(f.x0, f.x1), std::max(f.z0, f.z1));
+    for (const Wall& w : L.walls) {
+        if (&w == self || w.dynamic || w.hidden) continue;
+        consider(w.box.max.y, w.box.min.x, w.box.min.z, w.box.max.x, w.box.max.z);
+    }
+    if (best <= 0.f) {   // the hard ground under it, with no floor drawn there
+        float cx = (b.min.x + b.max.x) * 0.5f, cz = (b.min.z + b.max.z) * 0.5f;
+        if (std::fabs(L.baseFloor(cx, cz) - b.min.y) > EPS) return false;
+        out = {b.min.y, {-1e5f, -1e5f, 1e5f, 1e5f}};
+    }
+    return true;
+}
+
+// Brightness of a side at height h above the base of a box `span` tall. Over
+// the whole side a gentle fall toward the base (tall rock and towers: their
+// bottom 12 m); grounded, also a contact band, dark where it meets the floor
+// and gone by 0.9 m
+inline float sideShade(float h, float span, bool grounded) {
+    float t = span > 12.f ? std::clamp(h / 12.f + 0.35f, 0.f, 1.f) : span > 0.01f ? std::clamp(h / span, 0.f, 1.f) : 1.f;
+    float overall = 0.78f + 0.22f * t;
+    if (!grounded) return overall;
+    float c = std::clamp(h / 0.9f, 0.f, 1.f);
+    c = c * c * (3.f - 2.f * c);
+    return overall * (0.45f + 0.55f * c);
+}
 
 inline WorldGeometry buildWorldGeometry(const LevelData& L) {
     WorldGeometry G;
@@ -111,17 +174,63 @@ inline WorldGeometry buildWorldGeometry(const LevelData& L) {
         });
     };
 
-    auto pushBox = [&](const AABB& b, glm::vec3 col, bool neon, Mat m) {
+    // A side in horizontal bands, so the contact shade can follow its curve
+    // (vertex colours only interpolate linearly). Its low corners are at yLo
+    auto pushSide = [&](std::vector<Vertex>& verts, std::vector<unsigned int>& idx,
+                        glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3 d, glm::vec3 n, glm::vec3 col, bool grounded) {
+        float yLo = std::min({a.y, b.y, c.y, d.y}), yHi = std::max({a.y, b.y, c.y, d.y}), span = yHi - yLo;
+        float hs[6]; int nCuts = 0;
+        hs[nCuts++] = 0.f;
+        if (grounded) for (float h : {0.12f, 0.3f, 0.55f, 0.9f}) if (h < span - 0.02f) hs[nCuts++] = h;
+        hs[nCuts++] = span;
+        auto worldUV = [&](glm::vec3 p) -> glm::vec2 {
+            if (std::fabs(n.x) > std::fabs(n.z)) return {p.z * texScale, p.y * texScale};
+            return {p.x * texScale, p.y * texScale};
+        };
+        for (int k = 0; k + 1 < nCuts; ++k) {
+            glm::vec3 q[4] = {a, b, c, d};
+            for (auto& p : q) p.y = yLo + (p.y < yLo + 1e-4f ? hs[k] : hs[k + 1]);
+            unsigned int base = (unsigned int)verts.size();
+            for (auto& p : q) verts.push_back({p, worldUV(p), n, col * sideShade(p.y - yLo, span, grounded)});
+            idx.insert(idx.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
+        }
+    };
+
+    auto pushBox = [&](const AABB& b, glm::vec3 col, bool neon, Mat m, const Wall* self) {
         glm::vec3 mn = b.min, mx = b.max;
         int st = sideTex(m), tt = topTex(m);
         auto& sv = neon ? nV : V[st];      auto& si = neon ? nI : I[st];
         auto& tv = neon ? nV : V[tt];      auto& ti = neon ? nI : I[tt];
         auto& bv = neon ? nV : V[TEX_METAL]; auto& bi = neon ? nI : I[TEX_METAL];
-        bool shade = !neon;
-        pushFace(sv, si, {mx.x,mn.y,mn.z},{mx.x,mx.y,mn.z},{mx.x,mx.y,mx.z},{mx.x,mn.y,mx.z},{ 1, 0, 0}, col, shade);
-        pushFace(sv, si, {mn.x,mn.y,mx.z},{mn.x,mx.y,mx.z},{mn.x,mx.y,mn.z},{mn.x,mn.y,mn.z},{-1, 0, 0}, col, shade);
-        pushFace(sv, si, {mn.x,mn.y,mx.z},{mx.x,mn.y,mx.z},{mx.x,mx.y,mx.z},{mn.x,mx.y,mx.z},{ 0, 0, 1}, col, shade);
-        pushFace(sv, si, {mx.x,mn.y,mn.z},{mn.x,mn.y,mn.z},{mn.x,mx.y,mn.z},{mx.x,mx.y,mn.z},{ 0, 0,-1}, col, shade);
+        if (neon) {
+            pushFace(sv, si, {mx.x,mn.y,mn.z},{mx.x,mx.y,mn.z},{mx.x,mx.y,mx.z},{mx.x,mn.y,mx.z},{ 1, 0, 0}, col, false);
+            pushFace(sv, si, {mn.x,mn.y,mx.z},{mn.x,mx.y,mx.z},{mn.x,mx.y,mn.z},{mn.x,mn.y,mn.z},{-1, 0, 0}, col, false);
+            pushFace(sv, si, {mn.x,mn.y,mx.z},{mx.x,mn.y,mx.z},{mx.x,mx.y,mx.z},{mn.x,mx.y,mx.z},{ 0, 0, 1}, col, false);
+            pushFace(sv, si, {mx.x,mn.y,mn.z},{mn.x,mn.y,mn.z},{mn.x,mx.y,mn.z},{mx.x,mx.y,mn.z},{ 0, 0,-1}, col, false);
+        } else {
+            Support sup;
+            bool grounded = findSupport(L, b, self, sup);
+            pushSide(sv, si, {mx.x,mn.y,mn.z},{mx.x,mx.y,mn.z},{mx.x,mx.y,mx.z},{mx.x,mn.y,mx.z},{ 1, 0, 0}, col, grounded);
+            pushSide(sv, si, {mn.x,mn.y,mx.z},{mn.x,mx.y,mx.z},{mn.x,mx.y,mn.z},{mn.x,mn.y,mn.z},{-1, 0, 0}, col, grounded);
+            pushSide(sv, si, {mn.x,mn.y,mx.z},{mx.x,mn.y,mx.z},{mx.x,mx.y,mx.z},{mn.x,mx.y,mx.z},{ 0, 0, 1}, col, grounded);
+            pushSide(sv, si, {mx.x,mn.y,mn.z},{mn.x,mn.y,mn.z},{mn.x,mx.y,mn.z},{mx.x,mx.y,mn.z},{ 0, 0,-1}, col, grounded);
+            // Its shadow on what it stands on: reaching further for taller
+            // things, and kept on that surface (never hanging off its edge)
+            float h = mx.y - mn.y;
+            if (grounded && h > 0.08f) {
+                float reach = std::clamp(0.3f + 0.3f * h, 0.35f, 1.1f);
+                float strength = std::clamp(0.30f + 0.12f * h, 0.30f, 0.55f);
+                float x0 = std::max(mn.x - reach, sup.rect.x), z0 = std::max(mn.z - reach, sup.rect.y);
+                float x1 = std::min(mx.x + reach, sup.rect.z), z1 = std::min(mx.z + reach, sup.rect.w);
+                if (x1 > x0 && z1 > z0) {
+                    float y = sup.y + 0.02f;
+                    glm::vec4 r{mn.x, mn.z, mx.x, mx.z};
+                    glm::vec2 sr{strength, reach};
+                    ContactVert q[4] = {{{x0, y, z0}, r, sr}, {{x0, y, z1}, r, sr}, {{x1, y, z1}, r, sr}, {{x1, y, z0}, r, sr}};
+                    G.contact.insert(G.contact.end(), {q[0], q[1], q[2], q[0], q[2], q[3]});
+                }
+            }
+        }
         pushFace(tv, ti, {mn.x,mx.y,mx.z},{mx.x,mx.y,mx.z},{mx.x,mx.y,mn.z},{mn.x,mx.y,mn.z},{ 0, 1, 0}, col, false);
         // The underside, unless it sits on the ground under it (Act I's at Y 0, Act II's far lower)
         if (b.min.y > L.baseFloor((mn.x + mx.x) * 0.5f, (mn.z + mx.z) * 0.5f) + 0.1f || neon)
@@ -129,11 +238,11 @@ inline WorldGeometry buildWorldGeometry(const LevelData& L) {
     };
 
     for (auto& f : L.floors)
-        pushFace(V[TEX_GRID], I[TEX_GRID], {f.x0,f.y,f.z1},{f.x1,f.y,f.z1},{f.x1,f.y,f.z0},{f.x0,f.y,f.z0},{0,1,0}, f.color, false);
+        pushFace(V[topTex(f.mat)], I[topTex(f.mat)], {f.x0,f.y,f.z1},{f.x1,f.y,f.z1},{f.x1,f.y,f.z0},{f.x0,f.y,f.z0},{0,1,0}, f.color, false);
     for (int i = 0; i < (int)L.walls.size(); ++i)
-        if (!L.walls[i].hidden && !L.isDoorWall(i)) pushBox(L.walls[i].box, L.walls[i].color, false, L.walls[i].mat);
-    for (auto& p : L.props) pushBox(p.box, p.color, false, p.mat);
-    for (auto& n : L.neon)  pushBox(n.box, n.color, true, Mat::BRICK);
+        if (!L.walls[i].hidden && !L.isDoorWall(i)) pushBox(L.walls[i].box, L.walls[i].color, false, L.walls[i].mat, &L.walls[i]);
+    for (auto& p : L.props) pushBox(p.box, p.color, false, p.mat, &p);
+    for (auto& n : L.neon)  pushBox(n.box, n.color, true, Mat::BRICK, nullptr);
     for (auto& s : L.shapes) pushShape(s);
 
     return G;

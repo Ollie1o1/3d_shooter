@@ -53,7 +53,7 @@ inline void GameplayState::waveEnded() {
 inline bool GameplayState::onMetal() const {
     if (player.groundWall < 0 || player.groundWall >= (int)level.walls.size()) return false;
     Mat m = level.walls[player.groundWall].mat;
-    return m == Mat::METAL || m == Mat::PANEL;
+    return m == Mat::METAL || m == Mat::PANEL || m == Mat::PLATE;
 }
 
 // Something big and far off: heard as late as sound takes to get here (a blast 60 m away lands 0.15 s after its flash)
@@ -80,6 +80,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     if (director.arena != spaceArena && director.arena >= 0 && director.arena < (int)level.arenas.size()) {
         spaceArena = director.arena;   // a new place: its reverb
         audio.setSpace(level.arenas[spaceArena].space);
+        audio.setRoom(level.arenas[spaceArena].tone);   // and its air
     }
 
     // --- Moving platforms: move them, then carry whoever stands on one ---

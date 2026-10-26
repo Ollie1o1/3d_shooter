@@ -9,6 +9,7 @@
 #include "audio/MusicSynth.h"
 #include "audio/SfxMixer.h"
 #include "audio/MixTable.h"
+#include "audio/RoomTone.h"
 
 // SDL_mixer may not be available — guard the include
 #ifdef __has_include
@@ -33,6 +34,7 @@ public:
     float masterVolume = 1.f;   // 0..1, from GameSettings::audioVolume
     MusicSynth music;           // the live soundtrack (MusicSynth.h), always running
     SfxMixer   sfx;             // the effects (SfxMixer.h)
+    RoomToneSynth room;         // each arena's background air (RoomTone.h)
 
     AudioSystem() {
 #if HAS_SDL_MIXER
@@ -46,6 +48,7 @@ public:
         outFormat = fmt; outChannels = ch; outRate = freq;
         music.setSampleRate((float)freq);
         sfx.setSampleRate((float)freq);
+        room.setSampleRate((float)freq);
         musicBuf.resize(16384);          // so the audio thread never has to allocate
         if (const char* solo = std::getenv("OVERDRIVE_SOLO")) {   // dev: hear one role (tell / chatter / action / ui)
             const std::string s = solo;
@@ -123,6 +126,11 @@ public:
     void setWind(float w) { wind.store(std::max(0.f, std::min(1.f, w)), std::memory_order_relaxed); }
     // 0..1: the grapple's rope singing under load, made in the callback with the wind
     void setRope(float r) { rope.store(std::max(0.f, std::min(1.f, r)), std::memory_order_relaxed); }
+    // The place's background air (crossfades), how loud it is now (1 = between
+    // fights), and how far night has fallen (the Yard's birds give way to cicadas)
+    void setRoom(RoomTone t)    { room.setRoom(t); }
+    void setRoomLevel(float l)  { room.setLevel(l); room.setVolume(masterVolume); }
+    void setRoomNight(float n)  { room.setNight(n); }
 
     // --audiodump FILE SECONDS: capture the final mix, written as a 16-bit WAV
     void startDump(const std::string& path, float seconds) {
@@ -276,6 +284,7 @@ private:
         if ((int)a->musicBuf.size() < frames * 2) a->musicBuf.resize(frames * 2);
         a->music.render(a->musicBuf.data(), frames);
         a->sfx.render(a->musicBuf.data(), frames);
+        a->room.render(a->musicBuf.data(), frames);
         a->addWind(a->musicBuf.data(), frames);
         a->applyMuffle(a->musicBuf.data(), frames);
         const float* src = a->musicBuf.data();

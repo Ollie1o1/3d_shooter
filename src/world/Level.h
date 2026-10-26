@@ -141,7 +141,7 @@ struct Booster { AABB box; glm::vec3 dir; float speed; };
 
 struct Hazard { AABB box; float dps; };
 
-struct FloorPatch { float x0, z0, x1, z1, y; glm::vec3 color; };
+struct FloorPatch { float x0, z0, x1, z1, y; glm::vec3 color; Mat mat = Mat::BRICK; };   // drawn with mat's top texture (BRICK: the grid)
 
 // Ground that isn't at Y 0: inside `xz` (its X and Z only) the hard floor is
 // at `y`. Act II sits in one, 60 m under Act I.
@@ -191,6 +191,7 @@ struct Arena {
     const char* name;
     const char* subtitle;
     ReverbSpace space = ReverbSpace::METAL;   // its reverb (AudioSystem::setSpace)
+    RoomTone    tone  = RoomTone::NONE;       // its background air (RoomTone.h)
     AABB        bounds;          // interior; enemies are clamped inside, max.y caps flyers
     AABB        zone;            // where the player may be (XZ); max.y is the ceiling
     // More boxes that count as this arena/section: the tubes and side rooms
@@ -841,6 +842,16 @@ inline void buildAct1(LevelBuilder& B) {
     auto prop = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { B.prop(x0,y0,z0,x1,y1,z1,c); };
     auto neon = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { B.neon(x0,y0,z0,x1,y1,z1,c); };
     auto ring = [&](float x0, float z0, float x1, float z1, float y0, float y1, vec3 c) { B.ring(x0,z0,x1,z1,y0,y1,c); };
+    // Each arena has its own surfaces: everything an arena built (walls, props,
+    // floors since `mark`) is given a material at the end, by its colour
+    struct Mark { size_t w, p, f; };
+    auto mark = [&]() { return Mark{L.walls.size(), L.props.size(), L.floors.size()}; };
+    auto paint = [&](Mark m, Mat floorMat, auto pick) {
+        for (size_t i = m.w; i < L.walls.size(); ++i) L.walls[i].mat = pick(L.walls[i].color);
+        for (size_t i = m.p; i < L.props.size(); ++i) L.props[i].mat = pick(L.props[i].color);
+        for (size_t i = m.f; i < L.floors.size(); ++i) L.floors[i].mat = floorMat;
+    };
+    auto same = [](vec3 a, vec3 b) { return glm::length(a - b) < 0.01f; };
     // A blocky synthwave palm: a leaning trunk and drooping fronds
     auto palm = [&](float x, float z, float h, float lean) {
         vec3 trunk{0.20f, 0.09f, 0.13f}, leaf{0.09f, 0.04f, 0.10f};
@@ -870,7 +881,8 @@ inline void buildAct1(LevelBuilder& B) {
         vec3 adobe{0.66f,0.40f,0.30f}, adobeDark{0.50f,0.28f,0.22f}, stone{0.56f,0.48f,0.43f},
              crate{0.47f,0.31f,0.21f}, pink{1.0f,0.25f,0.62f}, cyan{0.2f,0.9f,1.0f};
         Arena a;
-        a.name = "SUNSET YARD"; a.space = ReverbSpace::OPEN;
+        const Mark m0 = mark();
+        a.name = "SUNSET YARD"; a.space = ReverbSpace::OPEN; a.tone = RoomTone::YARD;
         a.subtitle = "SURVIVE 3 WAVES";
         a.bounds = aabb(-30, 0, -30, 30, 12, 30);
         a.zone   = aabb(-30.9f, 0, -30.9f, 30.9f, 18, 30.9f);   // ceiling 18 m; 0.9 m past the interior: onto the wall top, never off its far side
@@ -992,6 +1004,10 @@ inline void buildAct1(LevelBuilder& B) {
             glm::normalize(vec3{0.25f,-0.45f,0.85f}), {1.15f,0.72f,0.5f},
             {0.34f,0.22f,0.36f}, {0.16f,0.09f,0.08f},
             {0.58f,0.30f,0.30f}, 0.006f };
+        paint(m0, Mat::ADOBE, [&](vec3 c) {
+            if (same(c, crate) || same(c, {0.20f, 0.09f, 0.13f}) || same(c, {0.09f, 0.04f, 0.10f})) return Mat::WOOD;   // crates, stalls, palms
+            return same(c, stone) ? Mat::MARBLE : Mat::ADOBE;
+        });
         L.arenas.push_back(std::move(a));
     }
 
@@ -1010,7 +1026,8 @@ inline void buildAct1(LevelBuilder& B) {
         vec3 iron{0.32f,0.29f,0.28f}, rust{0.48f,0.25f,0.15f}, dark{0.18f,0.17f,0.17f},
              orange{1.0f,0.30f,0.04f}, lava{1.0f,0.24f,0.02f};
         Arena a;
-        a.name = "THE FOUNDRY";
+        const Mark m0 = mark();
+        a.name = "THE FOUNDRY"; a.tone = RoomTone::FOUNDRY;
         a.subtitle = "SURVIVE 3 WAVES";
         a.bounds = aabb(-32, 0, -110, 32, 13, -46);
         a.zone   = aabb(-32.9f, 0, -110.9f, 32.9f, 14, -45.1f);  // roofed at 14 m (0.9 m past the interior)
@@ -1112,6 +1129,7 @@ inline void buildAct1(LevelBuilder& B) {
             glm::normalize(vec3{0.2f,-1.f,0.15f}), {0.55f,0.38f,0.28f},
             {0.10f,0.08f,0.08f}, {0.42f,0.16f,0.05f},
             {0.16f,0.06f,0.03f}, 0.016f };
+        paint(m0, Mat::PLATE, [](vec3) { return Mat::PLATE; });
         L.arenas.push_back(std::move(a));
     }
 
@@ -1143,7 +1161,8 @@ inline void buildAct1(LevelBuilder& B) {
              ice{0.35f,0.9f,1.0f}, gold{1.0f,0.72f,0.28f};
         const float CZ = -156.f;    // tower centre (z)
         Arena a;
-        a.name = "THE SPIRE";
+        const Mark m0 = mark();
+        a.name = "THE SPIRE"; a.tone = RoomTone::SPIRE;
         a.subtitle = "CLIMB - THEY HOLD THE HIGH GROUND";
         a.bounds = aabb(-30, 0, -186, 30, 34, -126);
         a.zone   = aabb(-30.9f, 0, -186.9f, 30.9f, 36, -125.1f);   // ceiling 36 m (0.9 m past the interior)
@@ -1275,6 +1294,10 @@ inline void buildAct1(LevelBuilder& B) {
             glm::normalize(vec3{0.45f,-0.5f,0.8f}), {1.15f,0.98f,0.82f},
             {0.40f,0.45f,0.60f}, {0.17f,0.16f,0.20f},
             {0.60f,0.58f,0.66f}, 0.0075f };
+        paint(m0, Mat::MARBLE, [&](vec3 c) {   // the far peaks are rock
+            bool peak = same(c, {0.30f,0.33f,0.42f}) || same(c, {0.34f,0.37f,0.47f}) || same(c, {0.85f,0.88f,0.95f});
+            return peak ? Mat::ROCK : Mat::MARBLE;
+        });
         L.arenas.push_back(std::move(a));
     }
 
@@ -1294,7 +1317,8 @@ inline void buildAct1(LevelBuilder& B) {
              cyan{0.15f,0.95f,1.0f}, magenta{1.0f,0.2f,0.7f};
         const float CZ = -238.f;    // reactor centre (z)
         Arena a;
-        a.name = "THE CORE";
+        const Mark m0 = mark();
+        a.name = "THE CORE"; a.tone = RoomTone::CORE;
         a.subtitle = "SURVIVE 2 WAVES - THEN THE WARDEN";
         a.bounds = aabb(-36, 0, -274, 36, 14, -202);
         a.zone   = aabb(-36.9f, 0, -274.9f, 36.9f, 18, -201.1f);   // ceiling 18 m (0.9 m past the interior)
@@ -1426,6 +1450,7 @@ inline void buildAct1(LevelBuilder& B) {
             glm::normalize(vec3{-0.35f,-0.6f,0.7f}), {0.55f,0.75f,0.95f},
             {0.14f,0.22f,0.32f}, {0.04f,0.06f,0.08f},
             {0.04f,0.12f,0.16f}, 0.012f };
+        paint(m0, Mat::CIRCUIT, [](vec3) { return Mat::CIRCUIT; });
         L.arenas.push_back(std::move(a));
     }
 
@@ -1448,7 +1473,8 @@ inline void buildAct1(LevelBuilder& B) {
              crimson{1.0f,0.22f,0.12f}, gold{1.0f,0.72f,0.3f};
         const float CZ = -348.f;    // centre (z)
         Arena a;
-        a.name = "THE SANCTUM"; a.space = ReverbSpace::HALL;
+        const Mark m0 = mark();
+        a.name = "THE SANCTUM"; a.space = ReverbSpace::HALL; a.tone = RoomTone::SANCTUM;
         a.subtitle = "HE'S WAITING";
         a.bounds = aabb(-56, 0, -404, 56, 30, -292);
         a.zone   = aabb(-56.9f, 0, -404.9f, 56.9f, 34, -291.1f);   // ceiling 34 m (0.9 m past the interior)
@@ -1554,6 +1580,7 @@ inline void buildAct1(LevelBuilder& B) {
             glm::normalize(vec3{-0.25f,-0.55f,-1.f}), {1.2f,0.85f,0.7f},
             {0.32f,0.16f,0.15f}, {0.09f,0.04f,0.04f},
             {0.16f,0.04f,0.04f}, 0.007f };
+        paint(m0, Mat::BASALT, [](vec3) { return Mat::BASALT; });
         L.arenas.push_back(std::move(a));
     }
 }
