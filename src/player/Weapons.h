@@ -4,7 +4,7 @@
 // No OpenGL, so the tests can check the numbers (a scoped Longshot one-shots
 // everything except the boss, upgrades always make a gun better, …).
 //
-//   1 REVOLVER  8-round hitscan sidearm
+//   1 REVOLVER  8-round hitscan magnum: heavy, planted, a headshot drops any light enemy
 //   2 SHOTGUN   2-shell pump, 10 pellets
 //   3 LANCER    bolt-action rifle. RMB: iron sights (small zoom). Headshots
 //               do 3x, a one-shot kill on anything but the armored heavies.
@@ -53,7 +53,7 @@ struct WeaponDef {
 inline const WeaponDef& weaponDef(WeaponId w) {
     static const WeaponDef D[] = {
         {"REVOLVER", "PIERCING ROUNDS", "SHOTS PASS THROUGH 2 MORE ENEMIES",
-         35.f, 1, 0.f, 0.f, 0.15f, 8, 2, 1.2f, 90.f, 1.5f, false, false, 1.f, 0.f, 0, 0.7f, 1.f},
+         42.f, 1, 0.f, 0.f, 0.15f, 8, 2, 1.2f, 90.f, 1.5f, false, false, 1.f, 0.f, 0, 0.45f, 1.f},   // a magnum: a headshot drops anything light
         {"SHOTGUN", "DRAGON BREATH", "+5 PELLETS, TIGHTER SPREAD",
          9.f, 10, 0.18f, 0.18f, 0.55f, 2, 1, 1.4f, 60.f, 1.f, false, false, 1.f, 0.f, 0, 2.2f, 1.f},
         {"LANCER", "HEADHUNTER", "HEADSHOT KILLS REFUND THE ROUND AND SKIP THE BOLT",

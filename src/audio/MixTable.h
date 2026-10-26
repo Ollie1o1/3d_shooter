@@ -47,7 +47,7 @@ struct MixEntry { const char* name; MixClass cls; float trimDb; };
 inline const std::vector<MixEntry>& mixTable() {
     using C = MixClass;
     static const std::vector<MixEntry> T = {
-        {"revolver", C::GUN, 0.2f}, {"shotgun", C::GUN, -2.5f}, {"kar", C::GUN, 0.f}, {"longshot", C::GUN, 0.f},
+        {"revolver", C::GUN, -2.0f}, {"revolver_echo", C::GUN, 2.4f}, {"shotgun", C::GUN, -2.5f}, {"kar", C::GUN, 0.f}, {"longshot", C::GUN, 0.f},
         {"bolt", C::FOLEY, -6.0f}, {"cell", C::FOLEY, 7.5f}, {"cyl_close", C::FOLEY, 1.0f}, {"cyl_open", C::FOLEY, 8.8f},
         {"dry", C::FOLEY, 5.0f}, {"eject", C::FOLEY, 0.7f}, {"pump", C::FOLEY, -3.2f}, {"reload", C::FOLEY, 8.6f},
         {"shell_in", C::FOLEY, -0.3f}, {"scope", C::FOLEY, 0.8f}, {"telegraph", C::FOLEY, 5.f},
