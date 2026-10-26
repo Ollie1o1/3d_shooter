@@ -153,6 +153,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
 }
 
 inline GameplayState::~GameplayState() {
+    logRun("quit");   // whatever was played since the last death or finish (RunLog.h)
     audio.setMuffle(0.f);   // back to the menu: the world isn't dull any more
     audio.setWind(0.f); audio.setRope(0.f);
     audio.setRoom(RoomTone::NONE);   // the menu has no air of its own
@@ -498,6 +499,7 @@ inline void GameplayState::recordSplit(int section) {
 }
 
 inline void GameplayState::finishRun() {
+    if (!victory) logRun("end");
     victory = true;
     captureMouse(false);
     if (g_bossRun >= 0) return;   // BOSS: its time is kept already (bossRunDone); no board
@@ -813,6 +815,7 @@ inline void GameplayState::update(float dt) {
     fovKick = glm::mix(fovKick, speedKick, std::min(1.f, floatDt * 7.f));
     camFeel.kickScale = settings ? settings->screenShake : 1.f;
     updateScreenFx(floatDt);
+    updateFeel(floatDt);   // OVERDRIVE in and out, the kill kick, the finisher hint (Gameplay_Feel.h)
     camFeel.update(floatDt, glm::dot(player.velocity, player.camera.right()), playerXZSpeed, player.onGround);
 
     if (pendingWeapon >= 0) {
@@ -889,6 +892,7 @@ inline void GameplayState::update(float dt) {
     if (!styleSystem.isAlive() && !playerDead) {
         playerDead = true;
         deadTimer = 0.f;
+        logRun("death");
         grapple.release();
         if (endless()) victoryDelay = 2.4f;   // no retries: YOU DIED, then on to the run's score
     }

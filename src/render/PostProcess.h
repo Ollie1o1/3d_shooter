@@ -190,7 +190,7 @@ public:
     }
 
     // Screen effects in the final composite (bloom_composite.frag): set by the game each frame, 0 = off
-    struct ScreenFx { float speed = 0.f, low = 0.f, pulse = 0.f, hurt = 0.f, time = 0.f; };
+    struct ScreenFx { float speed = 0.f, low = 0.f, pulse = 0.f, hurt = 0.f, time = 0.f, drive = 0.f, kick = 0.f; };
     ScreenFx fx;
 
 private:
@@ -200,6 +200,8 @@ private:
         compositeShader.setFloat("uPulse", fx.pulse);
         compositeShader.setFloat("uHurt",  fx.hurt);
         compositeShader.setFloat("uTime",  fx.time);
+        compositeShader.setFloat("uDrive", fx.drive);
+        compositeShader.setFloat("uKick",  fx.kick);
         compositeShader.setFloat("uAspect", H > 0 ? (float)W / (float)H : 16.f / 9.f);
     }
 
