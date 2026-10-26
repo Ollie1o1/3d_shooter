@@ -22,12 +22,31 @@ inline void GameplayState::shootInput() {
     flushHitSounds();
 }
 
+// An enemy shot that just went past your head: a whizz from where it is, louder the closer it came
+inline void GameplayState::whizPast() {
+    glm::vec3 ear = player.camera.position;
+    for (auto& p : projSystem.pool) {
+        if (!p.alive || p.isPlayer || p.whizzed || p.isGrenade) continue;
+        glm::vec3 to = ear - p.position;
+        float d = glm::length(to);
+        if (d > 3.f || glm::dot(p.velocity, to) > 0.f) continue;   // too far, or still coming
+        p.whizzed = true;
+        if (d < 0.6f) continue;   // (that one hit you)
+        SfxMixer::Opts o; o.group = SoundGroup::ENEMY; o.positional = true; o.pos = p.position;
+        o.volume = 0.55f + 0.45f * (1.f - d / 3.f);
+        o.pitch = glm::clamp(glm::length(p.velocity) / 28.f, 0.7f, 1.4f) * (p.size > 1.5f ? 0.7f : 1.f);   // big orbs: a lower rush
+        o.floor = 0.5f;
+        audio.playOpts("whiz", o);
+    }
+}
+
 // Every hit since the last call as one sound: fuller for more, a ping on a crit
 inline void GameplayState::flushHitSounds() {
     if (hitSoundCount <= 0) return;
     audio.play("hit", 92 + std::min(36, (hitSoundCount - 1) * 9), SoundGroup::PLAYER);
+    if (hitSoundArmor) audio.play("hit_armor", 115, SoundGroup::PLAYER);   // armour: you hear the metal turn it
     if (hitSoundCrit) audio.play("hit_head", 110, SoundGroup::PLAYER);
-    hitSoundCount = 0; hitSoundCrit = false;
+    hitSoundCount = 0; hitSoundCrit = false; hitSoundArmor = false;
 }
 
 inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKey) {
@@ -360,6 +379,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     auto result = projSystem.update(dt, level.walls.data(), (int)level.walls.size(),
                                     enemies, player.camera.position, &spatialGrid);
 
+    whizPast();
     bool parryPressed = parryKey && !parryPrev;
     parryPrev = parryKey;
     punchCooldown = std::max(0.f, punchCooldown - dt);
@@ -520,7 +540,7 @@ inline void GameplayState::resetToCheckpoint(int a) {
     prevCamPos = player.camera.position;
     grapple.release();
     slamming = false; peakFallSpeed = 0.f;
-    dashFx = speedFx = lowFx = heartT = heartPulse = 0.f; audio.setMuffle(0.f);
+    dashFx = speedFx = lowFx = heartT = heartPulse = windFx = 0.f; audio.setMuffle(0.f); audio.setWind(0.f);
 }
 
 inline void GameplayState::pushPlayerOutOfEnemies() {

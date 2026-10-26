@@ -794,6 +794,88 @@ def gen_heartbeat():
     return lowpass(out, 400)
 
 
+# ---- the world answering a shot (Gameplay_Combat.h fireWeapon) ----
+def _impact(seed_pitch):
+    """A round hitting a wall: a hard crack, a short ring off the surface and grit falling away."""
+    n = n_samples(0.32)
+    crack = highpass([white() for _ in range(n)], 1800)
+    grit = _bandnoise(n, 900, 5000)
+    out = [0.0] * n
+    f = 1150 * seed_pitch
+    for i in range(n):
+        t = i / SR
+        ring = (sine(f, i) * 0.6 + sine(f * 1.53, i) * 0.4) * math.exp(-t * 45.0)
+        thud = sine(140 * seed_pitch, i) * math.exp(-t * 60.0)
+        out[i] = crack[i] * math.exp(-t * 400.0) * 1.0 + ring * 0.35 + thud * 0.5
+    for k in range(6):   # bits of the wall pattering down
+        at = int(SR * random.uniform(0.03, 0.22))
+        amp = random.uniform(0.05, 0.14) * (1.0 - k / 8.0)
+        for j in range(int(SR * 0.012)):
+            if at + j < n:
+                out[at + j] += grit[at + j] * amp * math.exp(-(j / SR) * 300.0)
+    return out
+
+
+def gen_impact():   return _impact(1.0)
+def gen_impact_1(): return _impact(0.86)
+def gen_impact_2(): return _impact(1.17)
+
+
+def _casing(base):
+    """Brass hitting the floor: two or three bright tinks, each softer and sooner, and a small roll."""
+    n = n_samples(0.5)
+    out = [0.0] * n
+    at, amp, gap = 0.0, 1.0, random.uniform(0.09, 0.13)
+    for b in range(3):
+        s0 = int(at * SR)
+        f = base * random.uniform(0.97, 1.03)
+        for j in range(n - s0):
+            t = j / SR
+            v = (sine(f, j) + 0.5 * sine(f * 2.76, j) + 0.25 * sine(f * 5.4, j)) * math.exp(-t * 38.0)
+            v += white() * math.exp(-t * 900.0) * 0.4
+            out[s0 + j] += v * amp
+        at += gap; gap *= 0.62; amp *= 0.45
+    return out
+
+
+def gen_casing():   return _casing(3300)
+def gen_casing_1(): return _casing(3700)
+def gen_casing_2(): return _casing(2950)
+
+
+def _whiz(drop):
+    """Something passing close by your head: band-passed air that swells and falls in pitch."""
+    n = n_samples(0.28)
+    air = [white() for _ in range(n)]
+    out, lp1, lp2 = [], 0.0, 0.0
+    for i in range(n):
+        u = i / n
+        cut = 2600 * (1.0 - drop * u) + 300
+        a = 1.0 - math.exp(-2 * math.pi * cut / SR)
+        lp1 += a * (air[i] - lp1)
+        lp2 += a * 0.25 * (air[i] - lp2)
+        env = math.exp(-((u - 0.38) ** 2) / 0.018)
+        tone = sine(700 * (1.0 - 0.45 * u), i) * 0.12
+        out.append(((lp1 - lp2) * 1.6 + tone) * env)
+    return out
+
+
+def gen_whiz():   return _whiz(0.75)
+def gen_whiz_1(): return _whiz(0.6)
+
+
+def gen_hit_armor():
+    """A hit on armour: a dull metal clank (inharmonic, low-mid) with a short scrape."""
+    n = n_samples(0.2)
+    scrape = _bandnoise(n, 1500, 6000)
+    out = []
+    for i in range(n):
+        t = i / SR
+        ring = (sine(620, i) + 0.7 * sine(1013, i) + 0.45 * sine(1690, i)) * math.exp(-t * 30.0)
+        out.append(ring * 0.5 + scrape[i] * math.exp(-t * 90.0) * 0.6 + white() * math.exp(-t * 800.0) * 0.5)
+    return out
+
+
 GENERATORS = {
     "jump": gen_jump,
     "land": gen_land,
@@ -848,6 +930,10 @@ GENERATORS = {
     "hit_head": gen_hit_head,
     "ammo_low": gen_ammo_low,
     "heartbeat": gen_heartbeat,
+    "impact": gen_impact, "impact_1": gen_impact_1, "impact_2": gen_impact_2,
+    "casing": gen_casing, "casing_1": gen_casing_1, "casing_2": gen_casing_2,
+    "whiz": gen_whiz, "whiz_1": gen_whiz_1,
+    "hit_armor": gen_hit_armor,
 }
 
 from sfx_absolute import ABSOLUTE_GENERATORS  # THE ABSOLUTE's (tools/sfx_absolute.py)

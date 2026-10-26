@@ -54,7 +54,7 @@ inline const std::vector<MixEntry>& mixTable() {
         {"wade", C::FOLEY, -0.7f}, {"barrier", C::FOLEY, 0.6f}, {"ammo_low", C::FOLEY, 0.2f},
         {"jump", C::PLAYER, -2.3f}, {"hit", C::PLAYER, 1.5f}, {"land", C::PLAYER, 1.3f}, {"dash", C::PLAYER, -2.6f}, {"grapple_fire", C::PLAYER, -0.6f},
         {"punch", C::PLAYER, 1.7f}, {"step1", C::PLAYER, 1.9f}, {"step2", C::PLAYER, 2.5f}, {"step3", C::PLAYER, 2.5f},
-        {"step4", C::PLAYER, 2.5f}, {"jump_air", C::PLAYER, 0.4f}, {"land_heavy", C::PLAYER, -3.9f}, {"slide", C::PLAYER, 4.1f}, {"heartbeat", C::PLAYER, -3.9f}, {"skim", C::PLAYER, -3.2f}, {"boost", C::PLAYER, -1.9f}, {"player_hit", C::PLAYER, -2.f},
+        {"step4", C::PLAYER, 2.5f}, {"jump_air", C::PLAYER, 0.4f}, {"land_heavy", C::PLAYER, -3.9f}, {"slide", C::PLAYER, 4.1f}, {"heartbeat", C::PLAYER, -3.9f}, {"hit_armor", C::PLAYER, 2.7f}, {"skim", C::PLAYER, -3.2f}, {"boost", C::PLAYER, -1.9f}, {"player_hit", C::PLAYER, -2.f},
         {"parry", C::PLAYER, 3.5f}, {"sword_draw", C::PLAYER, 1.f}, {"sword_swing", C::PLAYER, 0.f}, {"sword_hit", C::PLAYER, 2.f},
         {"sword_thrust", C::PLAYER, 4.9f}, {"sword_guard", C::PLAYER, 9.7f}, {"sword_block", C::PLAYER, 2.f}, {"sword_break", C::PLAYER, 0.8f}, {"switch_up0", C::PLAYER, 1.3f}, {"switch_up1", C::PLAYER, 0.9f},
         {"switch_up2", C::PLAYER, 0.6f}, {"switch_up3", C::PLAYER, 0.2f},
@@ -71,7 +71,7 @@ inline const std::vector<MixEntry>& mixTable() {
         {"ab_tsk", C::UI, 4.8f}, {"ab_wrong", C::UI, -6.8f},
         {"explosion", C::ACTION, -1.2f}, {"slam", C::ACTION, -1.8f}, {"clank", C::ACTION, 2.f},
         {"door", C::WORLD, -1.5f}, {"door_close", C::WORLD, 1.6f}, {"split", C::WORLD, 0.7f}, {"pickup", C::WORLD, -2.2f},
-        {"potion", C::WORLD, 0.5f},
+        {"potion", C::WORLD, 0.5f}, {"impact", C::WORLD, 3.2f}, {"casing", C::FOLEY, -4.6f}, {"whiz", C::ACTION, 2.8f},
         {"hit_head", C::UI, -1.0f}, {"kill_light", C::UI, 8.5f}, {"kill_heavy", C::UI, -3.7f}, {"kill_rifle", C::UI, 0.f}, {"kill_blade", C::UI, 0.f},   // kill confirms
         {"wave", C::UI, -4.2f}, {"levelup", C::UI, -0.1f}, {"upgrade", C::UI, 0.1f},
     };

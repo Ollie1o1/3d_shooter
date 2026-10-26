@@ -140,6 +140,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
 
 inline GameplayState::~GameplayState() {
     audio.setMuffle(0.f);   // back to the menu: the world isn't dull any more
+    audio.setWind(0.f);
     glDeleteTextures(1,&whiteTex);
     glDeleteTextures(TEX_COUNT, worldTex);
     if (tracerVAO)   glDeleteVertexArrays(1, &tracerVAO);
@@ -243,7 +244,7 @@ inline void GameplayState::resetPlayer(glm::vec3 start) {
     jumpsRemaining = 2; slamming = false; invincFrames = 0.f;
     activeWeapon = 0; pendingWeapon = -1; weaponSwitchTimer = 0.f;
     recoilPitch = 0.f; peakFallSpeed = 0.f; fovKick = 0.f; camFeel.reset();
-    dashFx = speedFx = lowFx = heartT = heartPulse = 0.f; audio.setMuffle(0.f);
+    dashFx = speedFx = lowFx = heartT = heartPulse = windFx = 0.f; audio.setMuffle(0.f); audio.setWind(0.f);
     paused = false; pauseSettings = false; pauseSelected = 0; armoryOpen = false;
     ui.clearIndicators();
 }
@@ -638,6 +639,11 @@ inline void GameplayState::updateScreenFx(float dt) {
     float dub = heartT > 0.17f ? std::exp(-(heartT - 0.17f) * 10.f) * 0.6f : 0.f;
     heartPulse = lowFx > 0.05f ? std::min(1.f, std::exp(-heartT * 10.f) + dub) : 0.f;
     audio.setMuffle(lowFx * 0.75f);   // the world goes dull and far away
+    // The air going past: nothing at a run (7 m/s), building through a slide and a fall, a roar at grapple speed
+    float spd = glm::length(player.velocity);
+    float wantWind = glm::clamp((spd - 9.f) / 32.f, 0.f, 1.f);
+    windFx += (wantWind - windFx) * (1.f - std::exp(-dt * (wantWind > windFx ? 6.f : 3.f)));
+    audio.setWind(playerDead ? 0.f : windFx);
 }
 
 inline void GameplayState::update(float dt) {
@@ -659,6 +665,7 @@ inline void GameplayState::update(float dt) {
         accumulator = 0.0;
         if (playerDead) deadTimer += dt;
         if (victory) audio.setMuffle(0.f);
+        audio.setWind(0.f);   // paused, dead or won: no air moving
         if (countdown > 0.f && !frozen) {
             float before = countdown;
             countdown -= dt;
@@ -700,6 +707,7 @@ inline void GameplayState::update(float dt) {
             float dy = gp.look.y * speed;
             if (settings && settings->invertY) dy = -dy;
             player.applyMouseLook(gp.look.x * speed, dy, aimSensScale());
+            lookDelta += glm::vec2{gp.look.x * speed, -dy} * aimSensScale();
         }
     }
     static Uint8 noKeys[SDL_NUM_SCANCODES] = {};
@@ -740,6 +748,19 @@ inline void GameplayState::update(float dt) {
 
     viewModel.setMove(dashMomentumTimer > 0.f, player.sliding);
     viewModel.update(floatDt, playerXZSpeed, player.onGround);
+    {   // the gun's sway: the look this frame, the strafe, the stride (same phase as the camera's bob)
+        bool bob = !settings || settings->viewBob;
+        viewModel.feel(floatDt, lookDelta, glm::dot(player.velocity, player.camera.right()),
+                       glm::dot(player.velocity, player.camera.flatForward()), camFeel.strideAt(renderAlpha), bob ? camFeel.bobAmt : 0.f);
+        lookDelta = glm::vec2{0.f};
+    }
+    // --overlay swayL / swayR: the gun as if turning hard left / right (screenshots)
+    if (g_devOverlay == "swayR" || g_devOverlay == "swayL") { viewModel.swayX = {g_devOverlay == "swayR" ? -5.5f : 5.5f, 0.f}; viewModel.swayV = glm::vec2{0.f}; }
+    // --overlay leanL / leanR: strafing hard left / right (with --aim: the sights' tip)
+    if (g_devOverlay == "leanR" || g_devOverlay == "leanL") {
+        float sd = g_devOverlay == "leanR" ? 1.f : -1.f;
+        viewModel.leanSide = sd; viewModel.leanRoll = -sd * 2.6f; viewModel.leanX = -sd * 0.009f;
+    }
     for (const auto& c : viewModel.takeCues()) audio.play(c.name, c.volume, SoundGroup::PLAYER);   // on the motion's beats
     // --overlay reloadNN / inspectNN / switchNN: hold the gun NN% through it (screenshots)
     if (g_devOverlay.rfind("reload", 0) == 0) {
