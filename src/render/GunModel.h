@@ -56,6 +56,19 @@ inline int lookup(const char* (*name)(int), const std::string& s) {
     for (int i = 0; i < N; ++i) if (s == name(i)) return i;
     return -1;
 }
+inline int lookupN(int n, const char* (*name)(int), const std::string& s) {
+    for (int i = 0; i < n; ++i) if (s == name(i)) return i;
+    return -1;
+}
+// The words a file may use: its joints (0 is the root, never named), glow
+// channels and show flags. The guns' are above; an enemy's are in EnemyFile.h.
+struct Names {
+    int joints, chans, flags;
+    const char* (*joint)(int);
+    const char* (*chan)(int);
+    const char* (*flag)(int);
+};
+inline const Names& gunNames() { static const Names n{J_COUNT, C_COUNT, F_COUNT, jointName, chanName, flagName}; return n; }
 
 // One frame's rig state
 struct GunRig {
