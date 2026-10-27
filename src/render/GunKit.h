@@ -2,11 +2,15 @@
 // =============================================================================
 // GunKit.h — the arsenal's look: one body for every gun (blackened gunmetal,
 // worn steel, bone grips, a little brass), one glow colour per gun, ammo cells
-// you can read on the gun, and each gun's recipe built from those parts. No
-// OpenGL: buildGun() returns boxes in gun space (+X right, +Y up, +Z along the
-// barrel) that ViewModel draws, so tests can count cells and check framing.
+// you can read on the gun. Each gun's shape is a file (assets/guns/*.glb, made
+// in Blender: GunModel.h, GunFile.h); here are the rigs that move it and the
+// extras code still draws on it. No OpenGL: buildGun() returns boxes in gun
+// space (+X right, +Y up, +Z along the barrel) that ViewModel draws, so tests
+// can count cells and check framing.
 // =============================================================================
 #include "render/GunMotion.h"
+#include "render/GunModel.h"
+#include "render/GunFile.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <vector>
@@ -57,13 +61,59 @@ inline mat4 R(float deg, vec3 axis) { return glm::rotate(mat4(1.f), glm::radians
 inline float seg(float u, float a, float b) { return std::clamp((u - a) / (b - a), 0.f, 1.f); }
 inline float smooth(float t) { return t * t * (3.f - 2.f * t); }
 
+// A place on a rigged gun: a joint, and a transform within it. Boxes placed
+// from one of these ride that joint (and, recorded, keep it in the file).
+struct JM { int j; mat4 rel; };
+inline JM operator*(const JM& a, const mat4& m) { return {a.j, a.rel * m}; }
+
 struct Builder {
     std::vector<GunPart>& out;
     vec3 glow;
     vec3 emi{0.f};
+    Builder(std::vector<GunPart>& o, vec3 g) : out(o), glow(g) {}
+    // ---- rigged guns (GunModel.h): this frame's rig, where each joint is ----
+    const GunRig* rig = nullptr;
+    GunModel* rec = nullptr;          // recording a gun's shape into a model (the exporter)
+    mat4 W[J_COUNT], F[J_COUNT];      // each joint now / at rest, in gun space
+    int chan = -1; vec3 k{0.f}; bool hasPhase = false; float phase = 0.f;
+    int flag = -1; bool want = true;
+
     void box(const mat4& base, vec3 c, vec3 size, vec3 col) { out.push_back({base * T(c) * glm::scale(mat4(1.f), size), col, emi, 0}); }
     void lit(vec3 e) { emi = e; }
     void unlit() { emi = vec3{0.f}; }
+
+    void rigged(const GunRig& r) { rig = &r; for (int j = 0; j < J_COUNT; ++j) W[j] = F[j] = mat4(1.f); }
+    // A joint at rest at `frame` (gun space), riding `parent`, moved by the rig
+    void joint(int j, int parent, const mat4& frame) {
+        F[j] = frame;
+        W[j] = W[parent] * glm::inverse(F[parent]) * frame * rig->motion[j];
+        if (rec) rec->joints.push_back({j, parent, frame});
+    }
+    JM at(int j) const { return {j, glm::inverse(F[j])}; }   // a joint, placing in gun space (at rest)
+    JM in(int j) const { return {j, mat4(1.f)}; }            // a joint, placing in its own frame
+    void glowOn(int c, vec3 kk) { chan = c; k = kk; hasPhase = false; }
+    void glowOn(int c, float kk) { glowOn(c, vec3{kk}); }
+    void pulse(float ph) { hasPhase = true; phase = ph; }
+    void glowOff() { chan = -1; k = vec3{0.f}; hasPhase = false; }
+    void when(int f, bool w) { flag = f; want = w; }
+    void always() { flag = -1; want = true; }
+    void box(const JM& b, vec3 c, vec3 size, vec3 col) {
+        ModelPart p;
+        p.joint = b.j; p.rel = b.rel * T(c) * glm::scale(mat4(1.f), size); p.color = col;
+        p.chan = chan; p.k = k; p.hasPhase = hasPhase; p.phase = phase; p.flag = flag; p.want = want;
+        if (rec) {
+            float s = glm::dot(col, glow) / glm::dot(glow, glow);   // a shade of the glow: kept as one
+            if (s > 0.f && glm::length(col - glow * s) < 1e-6f) p.glowScale = s;
+            rec->parts.push_back(p);
+        }
+        place(p);
+    }
+    // A model's part, posed by this frame's rig
+    void place(const ModelPart& p) {
+        if (p.flag >= 0 && rig->flag[p.flag] != p.want) return;
+        out.push_back({W[p.joint] * p.rel, p.glowScale >= 0.f ? glow * p.glowScale : p.color, emission(*rig, p), 0});
+    }
+
     // n ammo cells laid out from `start` stepping `step` (wrapping into rows of
     // `perRow` along `rowStep`), the first `on` lit
     void cells(const mat4& base, vec3 start, vec3 step, vec3 rowStep, int perRow, vec3 size, int n, int on, float boost = 1.f) {
@@ -79,12 +129,6 @@ struct Builder {
         out.push_back({base * T(c) * glm::scale(mat4(1.f), size), on ? glow * 0.5f : BLACK * 0.6f,
                        on ? glow * (1.6f * boost) : vec3{0.f}, on ? 1 : 2});
     }
-    // The accent strip: brighter the fuller the gun, flaring as it fires
-    vec3 accent(const GunLook& L) const {
-        float fill = L.mag > 0 ? (float)L.ammo / L.mag : 0.f;
-        float k = L.ammo == 0 ? 0.15f : 0.35f + 0.65f * fill;
-        return glow * (k + 1.5f * L.flash);
-    }
     void muzzleFlash(const mat4& base, vec3 at, float size, float flash) {
         if (flash <= 0.f) return;
         vec3 hot = glm::mix(glow, vec3{1.f}, 0.45f);
@@ -95,36 +139,35 @@ struct Builder {
     }
 };
 
-inline void buildRevolver(Builder& b, const GunLook& L, const GunPose& P);
-inline void buildShotgun (Builder& b, const GunLook& L, const GunPose& P);
-inline void buildLancer  (Builder& b, const GunLook& L, const GunPose& P);
-inline void buildLongshot(Builder& b, const GunLook& L, const GunPose& P);
-
-inline void buildGun(int gun, const GunLook& L, const GunPose& P, std::vector<GunPart>& out) {
-    Builder b{out, glowOf(gun)};
-    switch (gun) {
-        case 0: buildRevolver(b, L, P); break;
-        case 1: buildShotgun(b, L, P);  break;
-        case 2: buildLancer(b, L, P);   break;
-        default: buildLongshot(b, L, P); break;
-    }
+// The accent strip: brighter the fuller the gun, flaring as it fires
+inline vec3 accentOf(vec3 glow, const GunLook& L) {
+    float fill = L.mag > 0 ? (float)L.ammo / L.mag : 0.f;
+    float k = L.ammo == 0 ? 0.15f : 0.35f + 0.65f * fill;
+    return glow * (k + 1.5f * L.flash);
 }
 } // namespace gunkit
 
 // =============================================================================
-// The recipes. Gun space: +X right, +Y up, +Z along the barrel; the origin is
-// where the shared hip puts it. Reload timings follow GunMotion's beats:
-// OPEN 0-0.25, FEED 0.25-0.85 (the cells relight), CLOSE 0.85-1.
+// The arsenal. Each gun is three pieces:
+//   rig     (here) how it moves and glows this frame: GunLook/GunPose in,
+//           joint motions, channel strengths and flags out
+//   shape   (assets/guns/<name>.glb) its boxes, on their joints
+//   extras  (here) what code still draws on it: the ammo cells (one per
+//           round, whatever the mag), the muzzle flash, the brass, the
+//           speedloader, the shells and clips of a reload
+// Gun space: +X right, +Y up, +Z along the barrel; the origin is where the
+// shared hip puts it. Reload timings follow GunMotion's beats: OPEN 0-0.25,
+// FEED 0.25-0.85 (the cells relight), CLOSE 0.85-1.
 // =============================================================================
 namespace gunkit {
+// The arsenal's files: the four guns, and (GUN_SWORD) OATHBREAKER, the sword
+constexpr int GUN_SWORD = 4, GUN_FILES = 5;
+inline const char* gunName(int g) {
+    static const char* N[GUN_FILES] = {"revolver", "shotgun", "lancer", "longshot", "sword"};
+    return N[std::clamp(g, 0, GUN_FILES - 1)];
+}
 
 // The rifles' bolt: rotated up, drawn back (both 0..1)
-inline void bolt(Builder& b, const mat4& base, vec3 pivot, float len, float lift, float pull, vec3 knob) {
-    mat4 m = base * T(pivot + vec3{0.f, 0.f, -pull * 0.07f}) * glm::rotate(mat4(1.f), lift * 1.4f, vec3{0.f, 0.f, 1.f});
-    b.box(m, {len * 0.5f, 0.f, 0.f}, {len, 0.011f, 0.011f}, STEEL);
-    b.box(m, {len, -0.004f, 0.f}, {0.016f, 0.016f, 0.016f}, knob);
-}
-// Where the rifles' bolt is: the cycle after a shot, or the reload's OPEN/CLOSE
 inline void boltState(const GunPose& P, float& lift, float& pull) {
     lift = pull = 0.f;
     if (P.cycleU >= 0.f) {
@@ -138,256 +181,108 @@ inline void boltState(const GunPose& P, float& lift, float& pull) {
         pull = seg(u, 0.08f, 0.15f) - seg(u, 0.86f, 0.92f);
     }
 }
+inline mat4 boltMotion(const GunPose& P) {
+    float lift, pull;
+    boltState(P, lift, pull);
+    return T({0.f, 0.f, -pull * 0.07f}) * glm::rotate(mat4(1.f), lift * 1.4f, vec3{0.f, 0.f, 1.f});
+}
 
-// THE REVOLVER — a hand cannon: a Desert Eagle's slab-sided bulk built round a
-// swing-out cylinder. A tall bevelled barrel with a slotted top rail, a ported
-// brake, the hooked guard, a raked grip with a beavertail. Industrial
-// dressing - brass hex bolts, a heat gauge, hazard pinstripes, lightening
-// cuts - and it breathes: a row of etched glyphs and the vents behind its cuts
-// glow and fade on a slow breath (GunLook::breath), quicker and hotter as you
-// fan it, dimmer as the cylinder empties. The chambers glow amber while loaded
-// (the cells: one per round, a second ring when upgrades take it past eight).
-inline void buildRevolver(Builder& b, const GunLook& L, const GunPose& P) {
-    const mat4 base(1.f);
-    const float CY = 0.018f, CZ = 0.036f;
-    const vec3 acc = b.accent(L);
+// ---- the rigs -----------------------------------------------------------------
+// THE REVOLVER breathes: its glyphs and vents glow and fade on a slow breath
+// (GunLook::breath), quicker and hotter as you fan it, dimmer as the cylinder
+// empties. The crane swings out to reload, the cylinder spins, the hammer
+// falls as it fires, the heat gauge's needle climbs.
+inline GunRig rigRevolver(vec3 glow, const GunLook& L, const GunPose& P) {
+    GunRig r;
     float u = P.reloadU;
     bool  rl = u >= 0.f;
     float boost = 0.4f + 0.6f * P.boot;
     float swing = rl ? smooth(seg(u, 0.03f, 0.12f)) * (1.f - smooth(seg(u, 0.86f, 0.92f))) : 0.f;
     float spin  = rl ? smooth(seg(u, 0.86f, 0.97f)) * 540.f : 0.f;
     float fill  = L.mag > 0 ? (float)L.ammo / L.mag : 0.f;
-    // The breath: what the glyphs and vents glow with
     float br = 0.18f + 0.82f * L.breath * L.breath;
-    vec3 breath = b.glow * ((0.25f + 0.75f * fill) * br * (0.7f + 0.9f * L.heat) * boost + 2.0f * L.flash);
-    const float S = 1.f;   // (both sides of a symmetric part)
-    const float FTOP = 0.051f;   // the top of the frame behind the cylinder: what the sight and the pin sit on
+    vec3 acc = accentOf(glow, L);
+    r.motion[J_CRANE]    = R(swing * 82.f, {0.f, 0.f, 1.f});
+    r.motion[J_CYLINDER] = R(L.cylSpin + spin, {0.f, 0.f, 1.f});
+    r.motion[J_HAMMER]   = R(P.fireU * 28.f, {1.f, 0.f, 0.f});
+    r.motion[J_TRIGGER]  = T({0.f, 0.f, P.fireU * 0.004f});
+    r.motion[J_NEEDLE]   = R(-120.f * L.heat, {1.f, 0.f, 0.f});
+    r.chan[C_GLOW]   = glow;
+    r.chan[C_ACCENT] = acc;
+    r.chan[C_BREATH] = glow * ((0.25f + 0.75f * fill) * br * (0.7f + 0.9f * L.heat) * boost + 2.0f * L.flash);
+    r.chan[C_STRIPE] = acc * (0.5f + L.heat * 0.8f);
+    r.chan[C_RIM]    = acc * (0.6f + L.heat);
+    r.chan[C_NEEDLE] = glow * (0.6f + 1.4f * L.heat);
+    r.chan[C_PORT]   = glow * (0.15f + 1.6f * L.heat + 2.5f * L.flash);
+    r.wave = L.breath * 3.14159f;   // the breath runs along the glyphs
+    r.flag[F_LOADED] = L.ammo > 0;
+    r.flag[F_BIGMAG] = std::max(1, L.mag) > 8;
+    return r;
+}
+// THE SHOTGUN: the pump slides back after a shot and on a reload's CLOSE
+inline GunRig rigShotgun(vec3 glow, const GunLook& L, const GunPose& P) {
+    GunRig r;
+    float slide = 0.f;
+    if (P.cycleU >= 0.f) slide = -0.08f * std::sin(P.cycleU * 3.14159265f);
+    if (P.reloadU >= 0.f) slide = -0.08f * std::sin(seg(P.reloadU, 0.86f, 0.98f) * 3.14159265f);
+    r.motion[J_PUMP] = T({0.f, 0.f, slide});
+    r.chan[C_GLOW] = glow; r.chan[C_ACCENT] = accentOf(glow, L);
+    r.flag[F_LOADED] = L.ammo > 0; r.flag[F_BIGMAG] = std::max(1, L.mag) > 8;
+    return r;
+}
+// THE LANCER and THE LONGSHOT: the bolt lifts and draws back; the Longshot's
+// magazine drops out (OPEN) and a new one goes up (FEED)
+inline GunRig rigRifle(vec3 glow, const GunLook& L, const GunPose& P, bool longshot) {
+    GunRig r;
+    r.motion[J_BOLT] = boltMotion(P);
+    if (longshot && P.reloadU >= 0.f) {
+        float u = P.reloadU;
+        float magDrop = u < 0.25f ? smooth(seg(u, 0.05f, 0.22f)) : 1.f - smooth(seg(u, 0.25f, 0.45f));
+        r.motion[J_MAG] = T({0.f, -magDrop * 0.18f, 0.f});
+    }
+    r.chan[C_GLOW] = glow; r.chan[C_ACCENT] = accentOf(glow, L);
+    r.flag[F_LOADED] = L.ammo > 0; r.flag[F_BIGMAG] = std::max(1, L.mag) > 8;
+    return r;
+}
+inline GunRig rigOf(int gun, const GunLook& L, const GunPose& P) {
+    vec3 glow = glowOf(gun);
+    switch (gun) {
+        case 0: return rigRevolver(glow, L, P);
+        case 1: return rigShotgun(glow, L, P);
+        case 2: return rigRifle(glow, L, P, false);
+        default: return rigRifle(glow, L, P, true);
+    }
+}
+// The joints and sockets each gun's file must have (the rig moves them; the extras hang on them)
+inline std::vector<int> jointsNeeded(int gun) {
+    switch (gun) {
+        case 0: return {J_CRANE, J_CYLINDER, J_HAMMER, J_TRIGGER, J_NEEDLE, J_MUZZLE, J_CELLS};
+        case 1: return {J_PUMP, J_MUZZLE, J_CELLS};
+        case 2: return {J_BOLT, J_MUZZLE, J_CELLS};
+        case GUN_SWORD: return {J_CELLS};
+        default: return {J_BOLT, J_MAG, J_MUZZLE, J_CELLS};
+    }
+}
 
-    // ---- the frame behind the cylinder: slab sides, bolts, levers ----
-    b.box(base, {0.f, 0.008f, -0.036f}, {0.052f, 0.086f, 0.064f}, BLACK);
-    b.box(base, {0.f, 0.050f, -0.036f}, {0.044f, 0.004f, 0.062f}, EDGE * 0.8f);         // worn top edge
-    for (float sx : {-1.f, 1.f}) {
-        b.box(base, {sx * 0.0262f, 0.006f, -0.036f}, {0.002f, 0.066f, 0.056f}, STEEL * 0.8f);   // side plate
-        b.lit(acc * (0.5f + L.heat * 0.8f));
-        b.box(base, {sx * 0.0275f, 0.044f, -0.036f}, {0.001f, 0.003f, 0.054f}, b.glow);        // heat stripe
-        b.unlit();
-        for (vec3 at : {vec3{0.f, 0.034f, -0.062f}, vec3{0.f, 0.034f, -0.010f}, vec3{0.f, -0.022f, -0.062f}}) {
-            b.box(base, at + vec3{sx * 0.0275f, 0.f, 0.f}, {0.002f, 0.006f, 0.006f}, BRASS);   // hex bolts
-            b.box(base, at + vec3{sx * 0.0283f, 0.f, 0.f}, {0.001f, 0.0025f, 0.0025f}, BRASS * 0.5f);
-        }
-    }
-    // The frame's dressing: it's the part that faces you at the hip
-    {
-        const float FZ0 = -0.068f, FZ1 = -0.004f;
-        int n8 = std::max(1, L.mag);
-        for (float sx : {-1.f, 1.f}) {
-            float x = sx * 0.0274f;
-            // a recessed panel, framed in bevelled steel
-            b.box(base, {x, 0.010f, -0.036f}, {0.001f, 0.032f, 0.044f}, BLACK * 0.55f);
-            b.box(base, {x + sx * 0.0004f, 0.0265f, -0.036f}, {0.001f, 0.0015f, 0.046f}, EDGE * 0.9f);
-            b.box(base, {x + sx * 0.0004f, -0.0065f, -0.036f}, {0.001f, 0.0015f, 0.046f}, EDGE * 0.6f);
-            for (float z : {-0.0585f, -0.0135f}) b.box(base, {x + sx * 0.0004f, 0.010f, z}, {0.001f, 0.034f, 0.0015f}, EDGE * 0.75f);
-            // in it: a vent grille breathing (an upgraded cylinder's extra cells take its place on the left)
-            if (sx > 0.f || n8 <= 8) {
-                for (int k = 0; k < 5; ++k) {
-                    float z = -0.052f + k * 0.0075f;
-                    b.box(base, {x + sx * 0.0003f, 0.012f, z}, {0.001f, 0.022f, 0.0035f}, BLACK * 0.25f);
-                    b.lit(breath * (0.55f + 0.15f * k));
-                    b.box(base, {x + sx * 0.0006f, 0.012f, z}, {0.0005f, 0.016f, 0.0012f}, b.glow * 0.5f);
-                    b.unlit();
-                }
-                // and a round seal beside it: a ring, a glyph breathing inside
-                vec3 c{x + sx * 0.0003f, 0.012f, -0.0215f};
-                b.box(base, c, {0.001f, 0.011f, 0.011f}, STEEL * 0.9f);
-                b.box(base * T(c) * R(45.f, {1.f, 0.f, 0.f}), {}, {0.001f, 0.011f, 0.011f}, STEEL * 0.9f);
-                b.box(base, c + vec3{sx * 0.0004f, 0.f, 0.f}, {0.001f, 0.008f, 0.008f}, BLACK * 0.4f);
-                b.lit(breath);
-                b.box(base, c + vec3{sx * 0.0008f, 0.f, 0.f}, {0.0005f, 0.0062f, 0.0011f}, b.glow * 0.7f);
-                b.box(base, c + vec3{sx * 0.0008f, 0.0016f, 0.0016f}, {0.0005f, 0.0011f, 0.0034f}, b.glow * 0.7f);
-                b.box(base, c + vec3{sx * 0.0008f, -0.0016f, -0.0016f}, {0.0005f, 0.0011f, 0.0034f}, b.glow * 0.7f);
-                b.unlit();
-            }
-            // the serial plate under it: two lines of stamped marks
-            b.box(base, {x, -0.019f, -0.044f}, {0.001f, 0.009f, 0.026f}, STEEL);
-            for (int r = 0; r < 2; ++r)
-                for (int k = 0; k < 9; ++k)
-                    if ((k * 7 + r * 3) % 5 != 0)
-                        b.box(base, {x + sx * 0.0005f, -0.0168f - r * 0.0042f, -0.0545f + k * 0.0026f}, {0.0005f, 0.0018f, 0.0012f}, BLACK * 0.6f);
-            // chamfers down its back and front corners
-            for (float z : {FZ0 + 0.001f, FZ1 - 0.001f})
-                b.box(base * T({sx * 0.0255f, 0.008f, z}) * R(45.f, {0.f, 1.f, 0.f}), {}, {0.003f, 0.084f, 0.003f}, EDGE * 0.7f);
-        }
-        // the cylinder release: a ridged thumb latch on the left, just behind the cylinder
-        b.box(base, {-0.0285f, 0.004f, -0.0075f}, {0.003f, 0.010f, 0.008f}, STEEL);
-        for (int k = 0; k < 4; ++k) b.box(base, {-0.0302f, 0.0005f + k * 0.0024f, -0.0075f}, {0.0006f, 0.001f, 0.0085f}, EDGE);
-        // a brass line running forward along the frame's lower edge, clipped down
-        b.box(base, {-0.0245f, -0.031f, 0.010f}, {0.003f, 0.003f, 0.11f}, BRASS * 0.85f);
-        for (float z : {-0.040f, 0.010f, 0.058f}) b.box(base, {-0.0247f, -0.031f, z}, {0.004f, 0.005f, 0.004f}, STEEL);
-        b.box(base, {-0.0245f, -0.031f, -0.046f}, {0.004f, 0.004f, 0.004f}, BRASS);
-        // the back face: an inset plate, two screws, a breathing slot under the hammer, grooves either side
-        b.box(base, {0.f, 0.002f, FZ0 - 0.0005f}, {0.040f, 0.060f, 0.001f}, STEEL * 0.7f);
-        for (float sx : {-1.f, 1.f}) {
-            b.box(base, {sx * 0.015f, -0.022f, FZ0 - 0.0012f}, {0.005f, 0.005f, 0.001f}, BRASS);
-            b.box(base, {sx * 0.015f, -0.022f, FZ0 - 0.0018f}, {0.0045f, 0.001f, 0.0005f}, BRASS * 0.4f);
-            for (int k = 0; k < 4; ++k) b.box(base, {sx * 0.0155f, 0.008f + k * 0.0055f, FZ0 - 0.0012f}, {0.008f, 0.0015f, 0.001f}, BLACK * 0.5f);
-        }
-        b.box(base, {0.f, 0.000f, FZ0 - 0.0012f}, {0.005f, 0.026f, 0.001f}, BLACK * 0.3f);
-        b.lit(breath * 0.9f);
-        b.box(base, {0.f, 0.000f, FZ0 - 0.0018f}, {0.0018f, 0.020f, 0.0005f}, b.glow * 0.6f);
-        b.unlit();
-        // on top: the rail's slots carry on over the frame; glowing dots either side of the notch
-        for (int k = 0; k < 2; ++k) b.box(base, {0.f, 0.0515f, -0.046f + k * 0.018f}, {0.020f, 0.002f, 0.006f}, BLACK * 0.6f);
-        b.lit(b.glow * 1.1f);
-        for (float sx : {-1.f, 1.f}) b.box(base, {sx * 0.008f, FTOP + 0.0125f, -0.0645f}, {0.0025f, 0.0025f, 0.001f}, b.glow);
-        b.unlit();
-        // a loaded-chamber pin that stands up while there's a round left
-        float pin = L.ammo > 0 ? 0.004f : 0.f;
-        b.box(base, {0.f, FTOP + (0.004f + pin) * 0.5f - 0.001f, -0.010f}, {0.004f, 0.004f + pin, 0.004f}, L.ammo > 0 ? BRASS : STEEL * 0.6f);
-        // the recoil shield: a steel ring behind the cylinder
-        for (int k = 0; k < 4; ++k) b.box(base * T({0.f, CY, -0.0035f}) * R(k * 45.f, {0.f, 0.f, 1.f}), {}, {0.024f, 0.058f, 0.002f}, STEEL * 0.75f);
-        b.box(base, {0.f, CY, -0.0045f}, {0.006f, 0.006f, 0.002f}, EDGE);   // the firing pin's bushing
-    }
-    b.box(base, {0.0275f, -0.004f, -0.020f}, {0.003f, 0.012f, 0.016f}, STEEL);             // the release, right side
-    b.box(base, {0.0285f, 0.002f, -0.020f}, {0.002f, 0.004f, 0.020f}, EDGE);
-    b.box(base, {-0.0272f, 0.050f, -0.066f}, {0.004f, 0.006f, 0.010f}, STEEL);              // safety lever, left
-    // top strap over the cylinder, and the frame under it
-    b.box(base, {0.f, 0.056f, CZ}, {0.040f, 0.014f, 0.082f}, BLACK);
-    b.box(base, {0.f, 0.0635f, CZ}, {0.024f, 0.002f, 0.080f}, EDGE * 0.8f);
-    b.box(base, {0.f, -0.026f, CZ}, {0.046f, 0.020f, 0.080f}, BLACK);
-    b.box(base, {0.f, 0.022f, 0.078f}, {0.046f, 0.070f, 0.014f}, BLACK);                  // the face the barrel bolts to
-    b.box(base, {0.f, 0.022f, 0.0715f}, {0.050f, 0.074f, 0.002f}, STEEL * 0.6f);
-    // rear sight: a wide block with a notch, sat on the frame
-    b.box(base, {0.f, FTOP + 0.002f, -0.058f}, {0.024f, 0.004f, 0.014f}, STEEL * 0.7f);
-    for (float sx : {-1.f, 1.f}) b.box(base, {sx * 0.008f, FTOP + 0.010f, -0.058f}, {0.007f, 0.012f, 0.012f}, BLACK);
-
-    // ---- the barrel: a tall slab, bevelled to a ribbed rail ----
-    const float BZ = 0.21f, BL = 0.25f;
-    b.box(base, {0.f, 0.010f, BZ}, {0.044f, 0.040f, BL}, BLACK);                          // lower slab
-    b.box(base, {0.f, 0.042f, BZ}, {0.030f, 0.026f, BL}, BLACK);                          // upper slab
-    for (float sx : {-1.f, 1.f}) {
-        mat4 bev = base * T({sx * 0.0185f, 0.0315f, BZ}) * R(sx * 38.f, {0.f, 0.f, 1.f});
-        b.box(bev, {}, {0.014f, 0.004f, BL}, STEEL * 0.9f);                                // the bevel, worn bright
-        b.box(base, {sx * 0.0222f, 0.029f, BZ}, {0.001f, 0.002f, BL - 0.01f}, EDGE);        // its lower arris
-    }
-    b.box(base, {0.f, 0.0585f, BZ}, {0.020f, 0.005f, BL - 0.01f}, STEEL);                 // top rail
-    for (int k = 0; k < 10; ++k) b.box(base, {0.f, 0.0605f, 0.100f + k * 0.024f}, {0.022f, 0.002f, 0.009f}, BLACK);
-    // lightening cuts down both sides, the vents breathing behind them
-    for (float sx : {-1.f, 1.f})
-        for (int k = 0; k < 3; ++k) {
-            float z = 0.150f + k * 0.052f;
-            b.box(base, {sx * 0.0221f, 0.013f, z}, {0.002f, 0.014f, 0.040f}, BLACK * 0.3f);
-            b.lit(breath * 0.8f);
-            b.box(base, {sx * 0.0226f, 0.013f, z}, {0.001f, 0.004f, 0.030f}, b.glow * 0.6f);
-            b.unlit();
-            for (int f = -1; f <= 1; f += 2) b.box(base, {sx * 0.0226f, 0.013f + f * 0.0045f, z}, {0.001f, 0.001f, 0.032f}, BLACK * 0.5f);   // the vent's fins
-        }
-    // the etched glyphs along the lower slab, the side you see most: each a few strokes
-    static const float GLYPH[6][3][4] = {   // per stroke: dy, dz, height, length (mm-ish, scaled below)
-        {{0, 0, 7, 1}, {3, 2, 1, 5}, {-3, 2, 1, 5}},
-        {{0, -2, 7, 1}, {0, 2, 7, 1}, {0, 0, 1, 5}},
-        {{3, 0, 1, 6}, {0, 0, 1, 6}, {-3, 0, 1, 6}},
-        {{0, 0, 7, 1}, {3, 2, 1, 4}, {0, 2, 1, 4}},
-        {{2, -1, 3, 1}, {-2, 1, 3, 1}, {0, 0, 1, 6}},
-        {{0, 0, 1, 6}, {2, 0, 3, 1}, {-2, 0, 3, 1}}};
-    for (float sx : {-1.f, 1.f})
-        for (int g = 0; g < 6; ++g) {
-            float z0 = 0.118f + g * 0.011f + (g >= 3 ? 0.006f : 0.f);
-            float pulse = 0.75f + 0.25f * std::sin(L.breath * 3.14159f + g * 0.6f);   // the breath runs along the row
-            b.lit(breath * pulse);
-            for (auto& s : GLYPH[g]) b.box(base, {sx * 0.0223f, -0.003f + s[0] * 0.0008f, z0 + s[1] * 0.0008f},
-                                           {0.001f, s[2] * 0.0008f + 0.0006f, s[3] * 0.0008f + 0.0006f}, b.glow * 0.7f);
-            b.unlit();
-        }
-    // a heat gauge on the left of the slab: its needle climbs as you fan it
-    {
-        vec3 c{-0.0225f, 0.010f, 0.104f};
-        b.box(base, c, {0.002f, 0.018f, 0.018f}, EDGE);
-        b.box(base * T(c) * R(45.f, {1.f, 0.f, 0.f}), {}, {0.002f, 0.018f, 0.018f}, EDGE);
-        b.box(base, c + vec3{-0.0008f, 0.f, 0.f}, {0.002f, 0.015f, 0.015f}, BLACK * 0.4f);
-        for (int t = 0; t < 5; ++t) {   // its ticks
-            float a = glm::radians(-60.f + t * 30.f);
-            b.box(base, c + vec3{-0.0016f, std::cos(a) * 0.006f, std::sin(a) * 0.006f}, {0.001f, 0.0012f, 0.0012f}, t == 4 ? vec3{0.6f, 0.15f, 0.1f} : BONE);
-        }
-        b.lit(b.glow * (0.6f + 1.4f * L.heat));
-        mat4 nd = base * T(c + vec3{-0.0018f, 0.f, 0.f}) * R(60.f - 120.f * L.heat, {1.f, 0.f, 0.f});
-        b.box(nd, {0.f, 0.0028f, 0.f}, {0.001f, 0.0056f, 0.0008f}, b.glow);
-        b.unlit();
-        b.box(base, c + vec3{-0.0019f, 0.f, 0.f}, {0.001f, 0.0018f, 0.0018f}, BRASS);
-    }
-    // the underlug: hazard pinstripes and a line of bolts
-    b.box(base, {0.f, -0.018f, BZ + 0.005f}, {0.034f, 0.018f, BL - 0.02f}, BLACK);
-    b.box(base, {0.f, -0.0275f, BZ + 0.005f}, {0.028f, 0.002f, BL - 0.03f}, STEEL * 0.7f);
-    for (float sx : {-1.f, 1.f}) {
-        for (int k = 0; k < 14; ++k) {
-            mat4 st = base * T({sx * 0.0172f, -0.018f, 0.130f + k * 0.009f}) * R(40.f, {1.f, 0.f, 0.f});
-            if (k % 2) { b.lit(b.glow * 0.25f); b.box(st, {}, {0.001f, 0.012f, 0.003f}, b.glow * 0.5f); b.unlit(); }
-            else b.box(st, {}, {0.001f, 0.012f, 0.003f}, BLACK * 0.5f);
-        }
-        for (int k = 0; k < 3; ++k) b.box(base, {sx * 0.0173f, -0.018f, 0.272f + k * 0.018f}, {0.002f, 0.004f, 0.004f}, BRASS);
-    }
-    // the brake: a heavy block, ported both sides and on top, the bore
-    const float MZ = 0.356f;
-    b.box(base, {0.f, 0.020f, MZ}, {0.048f, 0.068f, 0.042f}, BLACK);
-    b.box(base, {0.f, 0.020f, MZ + 0.0215f}, {0.040f, 0.060f, 0.002f}, STEEL * 0.7f);
-    b.box(base, {0.f, 0.026f, MZ + 0.0222f}, {0.016f, 0.016f, 0.002f}, BLACK * 0.15f);    // the bore
-    vec3 port = b.glow * (0.15f + 1.6f * L.heat + 2.5f * L.flash);
-    for (float sx : {-1.f, 1.f})
-        for (int k = 0; k < 3; ++k) {
-            b.box(base, {sx * 0.0242f, 0.024f, MZ - 0.012f + k * 0.012f}, {0.002f, 0.042f, 0.006f}, BLACK * 0.2f);
-            b.lit(port);
-            b.box(base, {sx * 0.0236f, 0.024f, MZ - 0.012f + k * 0.012f}, {0.001f, 0.034f, 0.003f}, b.glow * 0.4f);
-            b.unlit();
-        }
-    for (int k = 0; k < 2; ++k) {
-        b.box(base, {0.f, 0.0545f, MZ - 0.006f + k * 0.013f}, {0.030f, 0.002f, 0.006f}, BLACK * 0.2f);
-        b.lit(port); b.box(base, {0.f, 0.0538f, MZ - 0.006f + k * 0.013f}, {0.024f, 0.001f, 0.003f}, b.glow * 0.4f); b.unlit();
-    }
-    // front sight: a blade with a glowing insert
-    b.box(base, {0.f, 0.063f, 0.320f}, {0.006f, 0.012f, 0.020f}, BLACK);
-    b.lit(b.glow * 1.4f);
-    b.box(base, {0.f, 0.067f, 0.326f}, {0.004f, 0.004f, 0.004f}, b.glow);
-    b.unlit();
-
-    // ---- hammer: a ring with a grooved spur, falls as it fires ----
-    mat4 hm = base * T({0.f, 0.040f, -0.068f}) * R(-28.f + P.fireU * 28.f, {1.f, 0.f, 0.f});
-    for (float sx : {-1.f, 1.f}) b.box(hm, {sx * 0.0045f, 0.012f, -0.004f}, {0.003f, 0.024f, 0.010f}, BLACK);
-    b.box(hm, {0.f, 0.025f, -0.006f}, {0.012f, 0.005f, 0.014f}, STEEL);
-    for (int k = 0; k < 3; ++k) b.box(hm, {0.f, 0.0278f, -0.011f + k * 0.004f}, {0.012f, 0.001f, 0.0015f}, BLACK);
-
-    // ---- the cylinder on its crane ----
-    vec3 pivot{-0.024f, -0.022f, CZ};
-    mat4 crane = base * T(pivot) * R(swing * 82.f, {0.f, 0.f, 1.f}) * T(-pivot);
-    b.box(crane, {-0.012f, -0.022f, CZ + 0.044f}, {0.012f, 0.008f, 0.02f}, STEEL);
-    mat4 cm = crane * T({0.f, CY, CZ}) * R(L.cylSpin + spin, {0.f, 0.f, 1.f});
-    for (int k = 0; k < 8; ++k)   // sixteen-sided: it reads round
-        b.box(cm * R(k * 22.5f, {0.f, 0.f, 1.f}), {}, {0.0123f, 0.062f, 0.070f}, k % 2 ? STEEL * 0.85f : STEEL);
-    for (int k = 0; k < 8; ++k) {   // the flutes between the chambers
-        mat4 f = cm * R(22.5f + k * 45.f, {0.f, 0.f, 1.f});
-        b.box(f, {0.f, 0.0305f, 0.f}, {0.006f, 0.002f, 0.052f}, BLACK * 0.6f);
-    }
-    for (float z : {0.034f, -0.034f})   // bevelled rims, front and back
-        for (int k = 0; k < 4; ++k) b.box(cm * R(k * 45.f, {0.f, 0.f, 1.f}), {0.f, 0.f, z}, {0.0245f, 0.0595f, 0.003f}, EDGE);
-    b.lit(acc * (0.6f + L.heat));
-    for (int k = 0; k < 4; ++k) b.box(cm * R(k * 45.f, {0.f, 0.f, 1.f}), {0.f, 0.f, 0.03f}, {0.027f, 0.0645f, 0.003f}, b.glow);
-    b.unlit();
+// ---- the extras ---------------------------------------------------------------
+inline void extrasRevolver(Builder& b, const GunLook& L, const GunPose& P) {
+    const float CY = 0.018f, CZ = 0.036f;
+    float u = P.reloadU;
+    bool  rl = u >= 0.f;
+    float boost = 0.4f + 0.6f * P.boot;
+    const mat4 crane = b.W[J_CRANE] * glm::inverse(b.F[J_CRANE]);   // gun space as the crane has it
+    const mat4 cm = b.W[J_CYLINDER];
     // The cells: slots round the cylinder's side for the first eight rounds;
-    // any beyond (an upgraded cylinder) in rows of four on the frame's left
-    // side plate, the side you see
+    // any beyond (an upgraded cylinder) in rows of four at the cells socket,
+    // on the frame's left side plate, the side you see
     int n = std::max(1, L.mag), ring1 = std::min(n, 8);
     for (int k = 0; k < ring1; ++k) {
         mat4 f = cm * R(k * 360.f / ring1, {0.f, 0.f, 1.f});
         b.cell(f, {0.f, 0.0313f, -0.006f}, {0.011f, 0.002f, 0.044f}, k < L.lit, boost);
     }
     if (n > 8)
-        b.cells(base, {-0.0285f, 0.018f, -0.054f}, {0.f, 0.f, 0.011f}, {0.f, -0.012f, 0.f}, 4,
+        b.cells(b.W[J_CELLS], {0.f, 0.f, 0.f}, {0.f, 0.f, 0.011f}, {0.f, -0.012f, 0.f}, 4,
                 {0.002f, 0.008f, 0.008f}, n - 8, std::max(0, L.lit - 8), boost);
-    for (int k = 0; k < 8; ++k) {   // the chamber faces, front and back (dressing)
-        float a = glm::radians(90.f + k * 45.f);
-        vec3 c{std::cos(a) * 0.021f, std::sin(a) * 0.021f, 0.f};
-        for (float z : {0.0365f, -0.0365f}) b.box(cm, c + vec3{0.f, 0.f, z}, {0.011f, 0.011f, 0.003f}, BLACK * 0.5f);
-    }
-    b.box(crane, {0.f, CY, CZ + 0.05f}, {0.006f, 0.006f, 0.03f}, EDGE);
-    b.box(crane, {0.f, CY, CZ}, {0.012f, 0.012f, 0.076f}, EDGE);
     // the brass tumbling out (OPEN), the speedloader (FEED)
     if (rl && u > 0.10f && u < 0.30f) {
         float t = seg(u, 0.10f, 0.30f);
@@ -416,68 +311,20 @@ inline void buildRevolver(Builder& b, const GunLook& L, const GunPose& P) {
                 b.unlit();
             }
     }
-
-    // ---- the guard (squared, hooked at the front), the trigger ----
-    b.box(base, {0.f, -0.058f, 0.004f}, {0.016f, 0.007f, 0.070f}, BLACK);
-    b.box(base, {0.f, -0.042f, 0.037f}, {0.016f, 0.034f, 0.007f}, BLACK);
-    b.box(base, {0.f, -0.061f, 0.044f}, {0.016f, 0.010f, 0.012f}, BLACK);                 // the hook
-    b.box(base, {0.f, -0.0545f, 0.004f}, {0.010f, 0.001f, 0.060f}, EDGE * 0.7f);
-    b.box(base, {0.f, -0.036f, -0.002f + P.fireU * 0.004f}, {0.007f, 0.028f, 0.008f}, EDGE);
-    b.box(base, {0.f, -0.049f, 0.000f + P.fireU * 0.004f}, {0.008f, 0.004f, 0.010f}, EDGE);
-
-    // ---- the grip: raked, stippled bone panels, a beavertail, a flared butt ----
-    mat4 gm = base * T({0.f, -0.034f, -0.052f}) * R(-20.f, {1.f, 0.f, 0.f});
-    b.box(gm, {0.f, -0.056f, -0.004f}, {0.044f, 0.116f, 0.054f}, BLACK);
-    b.box(gm, {0.f, 0.006f, -0.034f}, {0.040f, 0.012f, 0.026f}, BLACK);                     // beavertail
-    for (int k = 0; k < 3; ++k) b.box(gm, {0.f, -0.040f - k * 0.024f, 0.024f}, {0.040f, 0.010f, 0.006f}, BLACK * 1.4f);   // finger ridges
-    for (float sx : {-1.f, 1.f}) {
-        b.box(gm, {sx * 0.0225f, -0.060f, -0.004f}, {0.004f, 0.094f, 0.046f}, BONE);
-        for (int r = 0; r < 6; ++r)       // stippling
-            for (int c = 0; c < 3; ++c)
-                if ((r + c) % 2 == 0) b.box(gm, {sx * 0.0246f, -0.094f + r * 0.010f, -0.016f + c * 0.012f}, {0.001f, 0.004f, 0.004f}, BONE * 0.62f);
-        b.lit(BRASS * 0.3f);
-        b.box(gm, {sx * 0.0248f, -0.026f, -0.004f}, {0.002f, 0.014f, 0.014f}, BRASS);       // medallion
-        b.unlit();
-        b.lit(breath * 0.6f);
-        b.box(gm, {sx * 0.0251f, -0.026f, -0.004f}, {0.001f, 0.006f, 0.002f}, b.glow * 0.5f);   // its glyph, breathing too
-        b.box(gm, {sx * 0.0251f, -0.026f, -0.004f}, {0.001f, 0.002f, 0.006f}, b.glow * 0.5f);
-        b.unlit();
-    }
-    b.box(gm, {0.f, -0.118f, -0.004f}, {0.050f, 0.014f, 0.062f}, STEEL);                   // the butt, flared
-    b.box(gm, {0.f, -0.1255f, -0.004f}, {0.040f, 0.002f, 0.050f}, BLACK);
-    b.box(gm, {0.f, -0.122f, -0.036f}, {0.010f, 0.008f, 0.006f}, EDGE);                   // lanyard loop
-
-    b.muzzleFlash(base, {0.f, 0.026f, 0.392f}, 0.05f, L.flash);
+    const mat4 mz = b.W[J_MUZZLE];
+    b.muzzleFlash(mz, {0.f, 0.f, 0.f}, 0.05f, L.flash);
     if (L.flash > 0.f) {   // the brake throws its jets sideways and up
         b.lit(b.glow * L.flash * 1.5f);
-        for (float sx : {-1.f, 1.f}) b.box(base, {sx * (0.034f + 0.02f * L.flash), 0.024f, MZ}, {0.03f * L.flash, 0.008f, 0.01f}, glm::mix(b.glow, vec3{1.f}, 0.5f));
-        b.box(base, {0.f, 0.066f + L.flash * 0.02f, MZ}, {0.012f, 0.03f * L.flash, 0.012f}, glm::mix(b.glow, vec3{1.f}, 0.5f));
+        for (float sx : {-1.f, 1.f}) b.box(mz, {sx * (0.034f + 0.02f * L.flash), -0.002f, -0.036f}, {0.03f * L.flash, 0.008f, 0.01f}, glm::mix(b.glow, vec3{1.f}, 0.5f));
+        b.box(mz, {0.f, 0.040f + L.flash * 0.02f, -0.036f}, {0.012f, 0.03f * L.flash, 0.012f}, glm::mix(b.glow, vec3{1.f}, 0.5f));
         b.unlit();
     }
-    (void)S;
 }
-
-// THE SHOTGUN — a short, wide pump gun: a heavy barrel over its tube, a bone
-// pump grip, a shell window on the right that glows ember for each shell
-// loaded, an ember strip along the barrel.
-inline void buildShotgun(Builder& b, const GunLook& L, const GunPose& P) {
+inline void extrasShotgun(Builder& b, const GunLook& L, const GunPose& P) {
     const mat4 base(1.f);
-    const vec3 acc = b.accent(L);
     float boost = 0.4f + 0.6f * P.boot;
-    float slide = 0.f;
-    if (P.cycleU >= 0.f) slide = -0.08f * std::sin(P.cycleU * 3.14159265f);
-    if (P.reloadU >= 0.f) slide = -0.08f * std::sin(seg(P.reloadU, 0.86f, 0.98f) * 3.14159265f);
-
-    b.box(base, {0.f, 0.028f, 0.12f}, {0.048f, 0.048f, 0.32f}, STEEL);           // barrel
-    b.lit(acc);
-    b.box(base, {0.f, 0.053f, 0.12f}, {0.006f, 0.003f, 0.30f}, b.glow);          // the strip along its top
-    b.unlit();
-    b.box(base, {0.f, -0.018f, 0.14f}, {0.032f, 0.032f, 0.26f}, BLACK);          // magazine tube
-    b.box(base, {0.f, 0.005f, -0.04f}, {0.065f, 0.075f, 0.14f}, BLACK);          // receiver
-    b.box(base, {0.f, 0.042f, -0.04f}, {0.04f, 0.004f, 0.12f}, EDGE);            // its top rail
     // the shell window on top of the receiver (the side you see): a cell per shell
-    b.box(base, {0.f, 0.044f, -0.04f}, {0.03f, 0.003f, 0.13f}, STEEL);
-    b.cells(base, {-0.007f, 0.0465f, -0.09f}, {0.f, 0.f, 0.024f}, {0.014f, 0.f, 0.f}, 5,
+    b.cells(b.W[J_CELLS], {0.f, 0.f, 0.f}, {0.f, 0.f, 0.024f}, {0.014f, 0.f, 0.f}, 5,
             {0.01f, 0.004f, 0.018f}, std::max(1, L.mag), L.lit, boost);
     // shells fed one by one through the loading port (FEED), thumb behind
     if (P.reloadU >= 0.f) {
@@ -499,60 +346,13 @@ inline void buildShotgun(Builder& b, const GunLook& L, const GunPose& P) {
             b.box(sm, {-0.016f, -0.012f, -0.04f + push * 0.01f}, {0.022f, 0.026f, 0.03f}, BLACK * 1.3f);
         }
     }
-    // the pump: bone grip on the slide
-    b.box(base, {0.f, -0.005f, 0.08f + slide}, {0.050f, 0.044f, 0.10f}, BONE);
-    for (int k = 0; k < 4; ++k) b.box(base, {0.f, -0.005f, 0.044f + k * 0.024f + slide}, {0.052f, 0.046f, 0.006f}, BONE * 0.7f);
-    // side saddle: four spares on the left
-    b.box(base, {-0.036f, 0.004f, -0.04f}, {0.008f, 0.05f, 0.11f}, BLACK);
-    for (int k = 0; k < 4; ++k) {
-        b.box(base, {-0.044f, 0.004f, -0.08f + k * 0.026f}, {0.012f, 0.044f, 0.02f}, BLACK * 1.6f);
-        b.box(base, {-0.044f, -0.022f, -0.08f + k * 0.026f}, {0.013f, 0.009f, 0.021f}, BRASS);
-    }
-    b.box(base, {0.f, -0.046f, -0.02f}, {0.026f, 0.004f, 0.05f}, {0.05f, 0.05f, 0.05f});   // loading port
-    b.box(base, {0.f, -0.035f, -0.16f}, {0.048f, 0.065f, 0.10f}, BLACK);                   // stock
-    b.box(base, {0.f, -0.060f, -0.22f}, {0.040f, 0.055f, 0.06f}, BLACK);
-    b.box(base, {0.f, -0.050f, -0.04f}, {0.020f, 0.022f, 0.070f}, BLACK);                  // guard
-    b.box(base, {0.f, -0.120f, -0.08f}, {0.044f, 0.100f, 0.055f}, BLACK);                  // grip
-    for (float sx : {-1.f, 1.f}) b.box(base, {sx * 0.023f, -0.120f, -0.08f}, {0.003f, 0.085f, 0.045f}, BONE);
-    b.muzzleFlash(base, {0.f, 0.028f, 0.30f}, 0.05f, L.flash);
+    b.muzzleFlash(b.W[J_MUZZLE], {0.f, 0.f, 0.f}, 0.05f, L.flash);
 }
-
-// THE LANCER — a long, slim bolt rifle in blackened steel: a bone wrist and
-// cheek panel, worn-steel bands, a cyan strip down the forend and a row of
-// cyan cells along the receiver. Rear notch at z 0.11 and front post at
-// z 0.63 both peak at LANCER_SIGHT_Y, so aiming lines them up on the crosshair.
-inline void buildLancer(Builder& b, const GunLook& L, const GunPose& P) {
+inline void extrasLancer(Builder& b, const GunLook& L, const GunPose& P) {
     const mat4 base(1.f);
-    const vec3 acc = b.accent(L);
     float boost = 0.4f + 0.6f * P.boot;
-    b.box(base, {0.f, -0.040f, -0.150f}, {0.050f, 0.066f, 0.30f}, BLACK);         // stock
-    b.box(base, {0.f, -0.080f, -0.270f}, {0.052f, 0.100f, 0.07f}, BLACK);
-    b.box(base, {0.f, -0.082f, -0.308f}, {0.054f, 0.104f, 0.012f}, STEEL);         // butt plate
-    b.box(base, {0.f, -0.068f, -0.040f}, {0.040f, 0.070f, 0.07f}, BONE);           // the wrist
-    b.box(base, {0.f, -0.012f, -0.170f}, {0.052f, 0.012f, 0.12f}, STEEL);          // cheek plate (in your eye line when aimed)
-    b.box(base, {0.f, 0.014f, 0.020f}, {0.040f, 0.044f, 0.17f}, BLACK);            // receiver
-    b.box(base, {0.f, -0.034f, 0.050f}, {0.034f, 0.026f, 0.08f}, BLACK);
-    b.box(base, {0.f, -0.056f, -0.005f}, {0.016f, 0.020f, 0.05f}, BLACK);          // guard
-    b.cells(base, {-0.0215f, 0.026f, -0.03f}, {0.f, 0.f, 0.022f}, {0.f, -0.012f, 0.f}, 8,   // the left side: the one you see
+    b.cells(b.W[J_CELLS], {0.f, 0.f, 0.f}, {0.f, 0.f, 0.022f}, {0.f, -0.012f, 0.f}, 8,   // the left side: the one you see
             {0.004f, 0.008f, 0.016f}, std::max(1, L.mag), L.lit, boost);
-    b.box(base, {0.f, -0.004f, 0.250f}, {0.044f, 0.040f, 0.32f}, BLACK);           // forend
-    b.lit(acc);
-    b.box(base, {0.0225f, -0.004f, 0.25f}, {0.002f, 0.006f, 0.30f}, b.glow);      // its strip
-    b.unlit();
-    b.box(base, {0.f, 0.004f, 0.200f}, {0.048f, 0.050f, 0.012f}, EDGE);            // bands
-    b.box(base, {0.f, 0.004f, 0.380f}, {0.048f, 0.050f, 0.012f}, EDGE);
-    b.box(base, {0.f, 0.028f, 0.360f}, {0.020f, 0.020f, 0.58f}, STEEL);            // barrel
-    b.box(base, {-0.010f, 0.044f, 0.110f}, {0.008f, 0.024f, 0.012f}, EDGE);        // rear sight
-    b.box(base, { 0.010f, 0.044f, 0.110f}, {0.008f, 0.024f, 0.012f}, EDGE);
-    b.box(base, { 0.f,    0.036f, 0.110f}, {0.028f, 0.008f, 0.016f}, EDGE);
-    b.lit(b.glow * 0.8f);
-    b.box(base, { 0.f, 0.044f, 0.630f}, {0.004f, 0.016f, 0.008f}, glm::mix(b.glow, vec3{1.f}, 0.5f));   // front post
-    b.unlit();
-    b.box(base, {-0.011f, 0.046f, 0.630f}, {0.004f, 0.024f, 0.014f}, BLACK);
-    b.box(base, { 0.011f, 0.046f, 0.630f}, {0.004f, 0.024f, 0.014f}, BLACK);
-    float lift, pull;
-    boltState(P, lift, pull);
-    bolt(b, base, {0.020f, 0.022f, -0.035f}, 0.036f, lift, pull, EDGE);
     // the stripper-clip reload: the empty (OPEN), the clip in, the rounds pressed (FEED), the clip flicked
     if (P.reloadU >= 0.f) {
         float u = P.reloadU;
@@ -590,59 +390,68 @@ inline void buildLancer(Builder& b, const GunLook& L, const GunPose& P) {
             }
         }
     }
-    b.muzzleFlash(base, {0.f, 0.028f, 0.68f}, 0.05f, L.flash);
+    b.muzzleFlash(b.W[J_MUZZLE], {0.f, 0.f, 0.f}, 0.05f, L.flash);
+}
+inline void extrasLongshot(Builder& b, const GunLook& L, const GunPose& P) {
+    float boost = 0.4f + 0.6f * P.boot;
+    b.cells(b.W[J_CELLS], {0.f, 0.f, 0.f}, {0.f, 0.f, 0.028f}, {0.f, -0.012f, 0.f}, 8,
+            {0.004f, 0.01f, 0.02f}, std::max(1, L.mag), L.lit, boost);
+    b.muzzleFlash(b.W[J_MUZZLE], {0.f, 0.f, 0.f}, 0.07f, L.flash);
+}
+inline void extrasOf(int gun, Builder& b, const GunLook& L, const GunPose& P) {
+    switch (gun) {
+        case 0: extrasRevolver(b, L, P); break;
+        case 1: extrasShotgun(b, L, P);  break;
+        case 2: extrasLancer(b, L, P);   break;
+        default: extrasLongshot(b, L, P); break;
+    }
 }
 
-// THE LONGSHOT — a huge .50 in blackened steel: a skeleton stock, a fluted
-// barrel with a violet strip, a muzzle brake, a big scope whose lenses glow
-// violet and whose side carries the cells. Its scope axis is LONG_SCOPE_Y.
-inline void buildLongshot(Builder& b, const GunLook& L, const GunPose& P) {
-    const mat4 base(1.f);   // no offset: the scope axis must stay at LONG_SCOPE_Y
-    const vec3 acc = b.accent(L);
-    float boost = 0.4f + 0.6f * P.boot;
-    b.box(base, {0.f, -0.030f, -0.200f}, {0.050f, 0.050f, 0.20f}, BLACK);          // stock
-    b.box(base, {0.f, -0.090f, -0.250f}, {0.046f, 0.030f, 0.14f}, BLACK);
-    b.box(base, {0.f, 0.020f, -0.210f}, {0.044f, 0.030f, 0.14f}, BONE);            // cheek riser
-    b.box(base, {0.f, -0.040f, -0.315f}, {0.056f, 0.140f, 0.030f}, STEEL);
-    b.box(base, {0.f, 0.012f, 0.020f}, {0.066f, 0.066f, 0.25f}, BLACK);            // receiver
-    b.box(base, {0.f, -0.085f, -0.060f}, {0.040f, 0.110f, 0.050f}, BLACK);         // grip
-    for (float sx : {-1.f, 1.f}) b.box(base, {sx * 0.021f, -0.085f, -0.060f}, {0.003f, 0.095f, 0.04f}, BONE);
-    // the magazine: out and dropped (OPEN), a new one up (FEED)
-    float magDrop = 0.f;
-    if (P.reloadU >= 0.f) {
-        float u = P.reloadU;
-        magDrop = u < 0.25f ? smooth(seg(u, 0.05f, 0.22f)) : 1.f - smooth(seg(u, 0.25f, 0.45f));
-    }
-    b.box(base, {0.f, -0.070f - magDrop * 0.18f, 0.060f}, {0.046f, 0.090f, 0.070f}, STEEL);
-    b.box(base, {0.f, 0.026f, 0.440f}, {0.034f, 0.034f, 0.62f}, BLACK);            // fluted barrel
-    b.box(base, {0.f, 0.026f, 0.300f}, {0.040f, 0.012f, 0.30f}, STEEL);
-    b.lit(acc);
-    b.box(base, {0.f, 0.044f, 0.30f}, {0.006f, 0.003f, 0.30f}, b.glow);           // its strip
-    b.unlit();
-    b.box(base, {0.f, 0.026f, 0.770f}, {0.062f, 0.046f, 0.075f}, STEEL);           // muzzle brake
-    b.box(base, {0.f, 0.026f, 0.770f}, {0.070f, 0.016f, 0.030f}, BLACK);
-    b.box(base, {-0.016f, -0.012f, 0.380f}, {0.010f, 0.010f, 0.24f}, EDGE);        // folded bipod
-    b.box(base, { 0.016f, -0.012f, 0.380f}, {0.010f, 0.010f, 0.24f}, EDGE);
-    b.box(base, { 0.f, 0.000f, 0.260f}, {0.050f, 0.018f, 0.030f}, BLACK);
-    // the scope: rings, tube, bells, turrets, glowing lenses, the cells on its side
-    b.box(base, {0.f, 0.058f, -0.020f}, {0.030f, 0.030f, 0.022f}, BLACK);
-    b.box(base, {0.f, 0.058f,  0.110f}, {0.030f, 0.030f, 0.022f}, BLACK);
-    b.box(base, {0.f, LONG_SCOPE_Y, 0.040f}, {0.044f, 0.044f, 0.30f}, STEEL);
-    b.box(base, {0.f, LONG_SCOPE_Y, 0.215f}, {0.066f, 0.066f, 0.070f}, STEEL);
-    b.box(base, {0.f, LONG_SCOPE_Y, -0.135f}, {0.056f, 0.056f, 0.060f}, STEEL);
-    b.box(base, {0.f, LONG_SCOPE_Y + 0.030f, 0.045f}, {0.022f, 0.022f, 0.026f}, EDGE);
-    b.box(base, {0.030f, LONG_SCOPE_Y, 0.045f}, {0.022f, 0.022f, 0.026f}, EDGE);
-    b.cells(base, {-0.0235f, LONG_SCOPE_Y, -0.04f}, {0.f, 0.f, 0.028f}, {0.f, -0.012f, 0.f}, 8,
-            {0.004f, 0.01f, 0.02f}, std::max(1, L.mag), L.lit, boost);
-    b.lit(b.glow * 0.4f);
-    b.box(base, {0.f, LONG_SCOPE_Y, 0.251f}, {0.054f, 0.054f, 0.004f}, BLACK);
-    b.box(base, {0.f, LONG_SCOPE_Y, -0.166f}, {0.044f, 0.044f, 0.004f}, BLACK);
-    b.unlit();
-    float lift, pull;
-    boltState(P, lift, pull);
-    bolt(b, base, {0.034f, 0.025f, -0.060f}, 0.055f, lift, pull, STEEL);
-    b.muzzleFlash(base, {0.f, 0.026f, 0.84f}, 0.07f, L.flash);
+// ---- the guns, from their files -------------------------------------------------
+inline std::string gunPath(int gun) { return std::string("assets/guns/") + gunName(gun) + ".glb"; }
+inline GunModel& gunModelSlot(int gun) { static GunModel M[GUN_FILES]; return M[std::clamp(gun, 0, GUN_FILES - 1)]; }
+// (Re)load a gun's file; false (and the model's error says why) if it couldn't be.
+// A gun whose file is missing or broken draws only its extras.
+inline bool loadGunModel(int gun, const std::string& path) {
+    GunModel m = readGunFile(path);
+    if (m.error.empty())
+        for (int j : jointsNeeded(gun))
+            if (!m.has(j)) { m.error = path + ": no '" + jointName(j) + "' (the " + gunName(gun) + "'s rig needs it)"; break; }
+    if (!m.error.empty()) std::fprintf(stderr, "gun: %s\n", m.error.c_str());
+    bool ok = m.error.empty();
+    if (ok || gunModelSlot(gun).parts.empty()) gunModelSlot(gun) = std::move(m);   // a broken save keeps the last good one
+    else gunModelSlot(gun).error = m.error;
+    return ok;
 }
+inline const GunModel& gunModel(int gun) {
+    static bool loaded[GUN_FILES] = {};
+    int g = std::clamp(gun, 0, GUN_FILES - 1);
+    if (!loaded[g]) { loaded[g] = true; loadGunModel(g, gunPath(g)); }
+    return gunModelSlot(g);
+}
+// Pose a model with this frame's rig, then hang the extras on it
+inline void buildGunFrom(const GunModel& m, int gun, const GunLook& L, const GunPose& P, std::vector<GunPart>& out) {
+    Builder b{out, glowOf(gun)};
+    GunRig r = rigOf(gun, L, P);
+    b.rigged(r);
+    for (const auto& J : m.joints) b.joint(J.id, J.parent, J.frame);
+    for (const auto& p : m.parts) b.place(p);
+    extrasOf(gun, b, L, P);
+}
+inline void buildGun(int gun, const GunLook& L, const GunPose& P, std::vector<GunPart>& out) {
+    buildGunFrom(gunModel(gun), gun, L, P, out);
+}
+// Where each of a model's joints is this frame, in gun space (the viewer marks them)
+inline void jointWorlds(const GunModel& m, const GunRig& r, mat4 W[J_COUNT]) {
+    std::vector<GunPart> sink;
+    Builder b{sink, vec3{1.f}};
+    b.rigged(r);
+    for (const auto& J : m.joints) b.joint(J.id, J.parent, J.frame);
+    for (int j = 0; j < J_COUNT; ++j) W[j] = b.W[j];
+}
+
+// ---- the gauntlet and the arm (recipes), the sword (a file) ----
+
 
 // The gauntlet that punches: blackened metal, bone knuckles, a seam glowing in
 // the gun's colour (blazing on a parry). Fist space: +Z the way it punches.
@@ -684,38 +493,34 @@ inline void buildGauntlet(Builder& b, const mat4& f, vec3 glow, float flare) {
     b.box(f, {0.f, 0.f, -0.068f}, {0.09f, 0.085f, 0.022f}, STEEL);                       // the cuff
 }
 
-// OATHBREAKER (Sword.h): the arsenal's body as a blade, a hand and a half
-// long. Blackened gunmetal, worn steel edges bevelled to the point, a bone
-// grip wound with brass wire, a brass crossguard with down-swept quillons and
-// a ring, a ricasso, a lit gem in the pommel, and a fuller of 8 cells reading
-// the guard meter (dark when it breaks).
-// Sword space: +Z along the blade from the guard, +Y the blade's back.
+// OATHBREAKER (Sword.h): its shape is a file like the guns' (assets/guns/sword.glb,
+// made in Blender); the rig lights it, and code draws the fuller's 8 cells (the
+// guard meter, dark when it breaks) at its "cells" socket.
+// Sword space: +Z along the blade from the guard, the flats facing +-Y (+Y the
+// side you see at rest), the edges along +-X.
 const vec3 SWORD_GLOW{1.f, 0.25f, 0.45f};
 constexpr float SWORD_SCALE = 0.55f;              // sword units to camera space (a 1 m blade, framed like the guns)
 constexpr float SWORD_HAND_Z = -0.055f, SWORD_OFFHAND_Z = -0.165f;   // where the hands close on the grip (sword units)
+inline GunRig rigSword(const SwordLook& L) {
+    GunRig r;
+    const float boost = 1.f + 0.8f * L.charge + 1.2f * L.riposte;
+    r.chan[C_GLOW]   = SWORD_GLOW * boost;
+    r.chan[C_GEM]    = SWORD_GLOW * (L.broken ? 0.2f : 1.2f * boost);
+    r.chan[C_CHARGE] = SWORD_GLOW * (L.broken ? 0.05f : 0.25f + 1.4f * L.charge + 2.2f * L.riposte);
+    r.flag[F_BROKEN] = L.broken;
+    r.flag[F_LOADED] = !L.broken;
+    return r;
+}
 inline void buildSword(const SwordLook& L, std::vector<GunPart>& out) {
     Builder b{out, SWORD_GLOW};
-    const mat4 base(1.f);
+    GunRig r = rigSword(L);
+    b.rigged(r);
+    const GunModel& m = gunModel(GUN_SWORD);
+    for (const auto& J : m.joints) b.joint(J.id, J.parent, J.frame);
+    for (const auto& p : m.parts) b.place(p);
     const float boost = 1.f + 0.8f * L.charge + 1.2f * L.riposte;
-    b.box(base, {0.f, 0.f, -0.11f}, {0.03f, 0.034f, 0.2f}, BONE);                 // grip
-    for (int i = 0; i < 5; ++i) b.box(base, {0.f, 0.f, -0.195f + 0.042f * i}, {0.034f, 0.038f, 0.008f}, BRASS);   // the wire
-    b.box(base, {0.f, 0.f, -0.225f}, {0.046f, 0.046f, 0.032f}, BRASS);                 // pommel
-    b.lit(SWORD_GLOW * (L.broken ? 0.2f : 1.2f * boost));
-    b.box(base, {0.f, 0.f, -0.243f}, {0.02f, 0.02f, 0.01f}, SWORD_GLOW);         // its gem
-    b.unlit();
-    b.box(base, {0.f, 0.f, 0.f}, {0.2f, 0.045f, 0.04f}, BRASS);                      // crossguard
-    for (float sx : {-1.f, 1.f})                                                     // quillons, swept toward the edge
-        b.box(base * T({sx * 0.115f, -0.012f, -0.012f}) * R(sx * -28.f, {0.f, 0.f, 1.f}), {0.f, 0.f, 0.f}, {0.05f, 0.03f, 0.03f}, BRASS);
-    b.box(base, {0.f, 0.f, 0.03f}, {0.07f, 0.05f, 0.02f}, BRASS * 0.8f);            // the ring at the blade's root
-    b.box(base, {0.f, 0.f, 0.07f}, {0.05f, 0.022f, 0.06f}, STEEL);                   // ricasso
-    b.box(base, {0.f, 0.f, 0.47f}, {0.055f, 0.016f, 0.82f}, BLACK);                  // the blade
-    b.box(base, {0.f, -0.012f, 0.47f}, {0.062f, 0.006f, 0.82f}, EDGE);               // its edge
-    b.box(base, {0.f, 0.f, 0.89f}, {0.042f, 0.016f, 0.03f}, EDGE);                   // the point, tapering
-    b.box(base, {0.f, 0.f, 0.912f}, {0.026f, 0.014f, 0.022f}, EDGE);
-    b.box(base, {0.f, 0.f, 0.93f}, {0.011f, 0.012f, 0.018f}, EDGE * 1.15f);
     int on = L.broken ? 0 : (int)std::ceil(std::clamp(L.guard01, 0.f, 1.f) * 8.f - 1e-4f);
-    b.cells(base, {0.f, 0.011f, 0.13f}, {0.f, 0.f, 0.09f}, {0.f, 0.f, 0.f}, 8,
-            {0.018f, 0.006f, 0.066f}, 8, on, boost);
+    b.cells(b.W[J_CELLS], {0.f, 0.f, 0.f}, {0.f, 0.f, 0.09f}, {0.f, 0.f, 0.f}, 8, {0.018f, 0.006f, 0.066f}, 8, on, boost);
 }
 
 // The sword's frame in camera space: origin at the crossguard, +Z down the
