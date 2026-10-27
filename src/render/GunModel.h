@@ -94,6 +94,7 @@ struct ModelPart {
     float phase = 0.f;
     int flag = -1;               // shown only while flag == want (-1: always)
     bool want = true;
+    int mesh = 0;                // not a box: a mesh (MeshLib.h), centred where rel puts it; 0 the unit box
 };
 struct GunModel {
     std::vector<ModelJoint> joints;   // parents before children

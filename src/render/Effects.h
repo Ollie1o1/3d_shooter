@@ -48,6 +48,7 @@ public:
     // Enemies come apart into their boxes when they die
     struct Debris {
         glm::mat3 shape;          // rotation * scale of the original part
+        float mesh = 0.f;         // its shape (BoxInstance::mesh)
         glm::vec3 pos, vel, axis, color, emissive;
         float angle = 0.f, spin = 0.f, life = 0.f, maxLife = 1.f, floorY = 0.f;
         float hot = 0.f;          // seconds left glowing white-hot from the killing blow
@@ -249,6 +250,7 @@ public:
         for (auto& b : parts) {
             Debris d;
             d.shape = glm::mat3(b.model);
+            d.mesh  = b.mesh;
             d.pos   = glm::vec3(b.model[3]);
             glm::vec3 out = d.pos - c; out.y = std::max(out.y, 0.f);
             float ol = glm::length(out);

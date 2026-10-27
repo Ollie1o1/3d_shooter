@@ -17,7 +17,8 @@
 #               you turn it off or restart Blender.
 #
 # The rules the game reads (src/render/GunFile.h has them all):
-#   - every mesh is a box: the game takes its bounds, nothing finer
+#   - a gun's meshes are boxes (the game takes their bounds); an enemy's may be any shape
+#     (bevelled, round: kept whole), and a mesh that is a box is drawn as one
 #   - an object named after a joint is that joint; its children ride it
 #   - material "glow" / "glow*0.5" is the gun's glow colour; any other uses its base colour
 #   - custom properties: glow (channel), k (strength), phase, show ("loaded", "!bigmag")
@@ -288,8 +289,8 @@ def check_scene(gun):
         errors.append("unknown glow channel on " + ", ".join(glow[:5]) + " (channels: " + " ".join(ENEMY_CHANNELS if gun in ENEMIES else CHANNELS) + ")")
     if show:
         errors.append("unknown show flag on " + ", ".join(show[:5]) + " (flags: " + " ".join(FLAGS) + ")")
-    if odd:
-        warnings.append("%d mesh(es) aren't boxes; the game uses their bounds: %s" % (len(odd), ", ".join(odd[:5])))
+    if odd and gun not in ENEMIES:   # (an enemy keeps its meshes whole: src/render/MeshLib.h)
+        warnings.append("%d mesh(es) aren't boxes; a gun is drawn from their bounds (so far): %s" % (len(odd), ", ".join(odd[:5])))
     return errors, warnings
 
 
@@ -338,7 +339,7 @@ def save_gun(gun=None):
     with contextlib.redirect_stdout(io.StringIO()):
         bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", export_extras=True,
                                   export_yup=True, export_apply=True, use_selection=False,
-                                  use_active_scene=True)   # (only this scene: another may hold a different gun)
+                                  use_active_scene=True, export_texcoords=False)   # (only this scene: another may hold a different gun)
     return path, warnings
 
 
