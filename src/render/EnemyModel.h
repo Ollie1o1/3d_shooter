@@ -14,6 +14,7 @@
 #include <vector>
 #include <cmath>
 #include "enemies/Enemy.h"
+#include "render/EnemyFile.h"
 
 // One unit cube ([-0.5, 0.5]^3) placed by `model`. Layout matches the
 // per-instance vertex attributes in BoxRenderer (locations 4-9).
@@ -46,11 +47,14 @@ struct Rig {
     float finish = 0.f;  // 0..1 a punch would finish it: the whole body pulses hot
     float dim = 1.f;     // stunned: its glow gutters
     void box(const mat4& parent, vec3 centre, vec3 size, vec3 col, vec3 emi = vec3{0.f}) {
+        part(parent * T(centre) * S(size), col, emi);
+    }
+    void part(const mat4& m, vec3 col, vec3 emi = vec3{0.f}) {
         vec3 c = glm::mix(col, vec3{1.f}, flash * 0.85f);
         vec3 e = glm::mix(emi * dim, vec3{0.9f}, flash * 0.6f);
         if (finish > 0.f) { c = glm::mix(c, vec3{1.f, 0.6f, 0.25f}, 0.25f * finish); e += vec3{1.1f, 0.42f, 0.08f} * finish; }
         if (spawn < 1.f) e += vec3{0.5f, 0.85f, 1.f} * (1.f - spawn) * 2.5f;
-        push(out, parent * T(centre) * S(size), c, e);
+        push(out, m, c, e);
     }
 };
 
@@ -94,27 +98,54 @@ struct PoseOverride {
     float grip = 0.f;   // the blade's angle in the right hand (0: continues the arm)
 };
 
+// How a humanoid's joints turn this frame (the same for one built in code
+// and one from a file): [0] the left side (+X), [1] the right (-X)
+struct HumanoidMotion {
+    float lift;               // the body's bob, less any crouch
+    float hip[2];             // leg swing
+    mat4  torso;              // its sway, turn and lean
+    float armRx[2], armRz[2];
+};
+inline HumanoidMotion humanoidMotion(float phase, float stride, ArmPose pose, float amt, const PoseOverride* ov) {
+    HumanoidMotion m;
+    m.lift = std::fabs(std::sin(phase)) * 0.05f * stride - (ov ? ov->crouch : 0.f);
+    m.torso = RY(std::sin(phase) * 0.08f * stride);
+    if (ov) m.torso = m.torso * RY(ov->torsoYaw) * RX(ov->torsoPitch);
+    for (int i = 0; i < 2; ++i) {
+        float s = i == 0 ? 1.f : -1.f;
+        float legSwing = std::sin(phase + (s > 0.f ? 0.f : 3.14159f)) * 0.6f * stride;
+        m.hip[i] = legSwing;
+        float rx = legSwing;                                 // arms swing against the legs
+        bool  right = s < 0.f;
+        if (pose == ArmPose::AIM_RIGHT && right) rx = -1.5708f * amt + rx * (1.f - amt);
+        if (pose == ArmPose::AIM_BOTH)           rx = -1.5708f * amt + rx * (1.f - amt);
+        if (pose == ArmPose::RAISED)             rx = -2.9f * amt + rx * (1.f - amt);
+        float rz = 0.f;
+        if (ov) { rx = right ? ov->rxR : ov->rxL; rz = right ? ov->rzR : ov->rzL; }
+        m.armRx[i] = rx; m.armRz[i] = s * 0.08f + rz;
+    }
+    return m;
+}
+
 // Two legs, pelvis, torso with a glowing chest stripe, head with a visor, two
 // arms with hands: 13 parts. Right side is local -X (the model faces +Z).
 inline HumanoidFrames humanoid(Rig& r, const mat4& root, const HumanoidLook& L,
                                float phase, float stride, ArmPose pose, float amt,
                                bool visor = true, const PoseOverride* ov = nullptr) {
     HumanoidFrames f;
-    float bob = std::fabs(std::sin(phase)) * 0.05f * stride;
-    f.body = root * T({0.f, bob - (ov ? ov->crouch : 0.f), 0.f});
+    HumanoidMotion mo = humanoidMotion(phase, stride, pose, amt, ov);
+    f.body = root * T({0.f, mo.lift, 0.f});
     float hipY = L.legLen;
 
     for (float s : {-1.f, 1.f}) {
-        float swing = std::sin(phase + (s > 0.f ? 0.f : 3.14159f)) * 0.6f * stride;
-        mat4 hip = f.body * T({s * L.hipW * 0.5f, hipY, 0.f}) * RX(swing);
+        mat4 hip = f.body * T({s * L.hipW * 0.5f, hipY, 0.f}) * RX(mo.hip[s > 0.f ? 0 : 1]);
         r.box(hip, {0.f, -L.legLen * 0.5f, 0.f}, {L.legW, L.legLen, L.legW * 1.1f}, L.under);
         r.box(hip, {0.f, -L.legLen + 0.05f, 0.07f}, {L.legW * 1.15f, 0.12f, L.legW * 1.7f}, L.armor);
     }
     r.box(f.body, {0.f, hipY + L.pelvisH * 0.5f, 0.f},
           {L.hipW + L.legW, L.pelvisH, L.torsoD * 0.8f}, L.under);
 
-    f.torso = f.body * T({0.f, hipY + L.pelvisH, 0.f}) * RY(std::sin(phase) * 0.08f * stride);
-    if (ov) f.torso = f.torso * RY(ov->torsoYaw) * RX(ov->torsoPitch);
+    f.torso = f.body * T({0.f, hipY + L.pelvisH, 0.f}) * mo.torso;
     r.box(f.torso, {0.f, L.torsoH * 0.5f, 0.f}, {L.torsoW, L.torsoH, L.torsoD}, L.armor);
     r.box(f.torso, {0.f, L.torsoH * 0.62f, L.torsoD * 0.5f + 0.01f},
           {L.torsoW * 0.45f, L.torsoH * 0.12f, 0.05f}, L.glow * 0.3f, L.glow * 1.2f);
@@ -126,21 +157,48 @@ inline HumanoidFrames humanoid(Rig& r, const mat4& root, const HumanoidLook& L,
               {L.headS * 0.8f, L.headS * 0.2f, 0.05f}, L.glow * 0.3f, L.glow * 2.f);
 
     for (float s : {-1.f, 1.f}) {
-        float legSwing = std::sin(phase + (s > 0.f ? 0.f : 3.14159f)) * 0.6f * stride;
-        float rx = legSwing;                                 // arms swing against the legs
-        bool  right = s < 0.f;
-        if (pose == ArmPose::AIM_RIGHT && right) rx = -1.5708f * amt + rx * (1.f - amt);
-        if (pose == ArmPose::AIM_BOTH)           rx = -1.5708f * amt + rx * (1.f - amt);
-        if (pose == ArmPose::RAISED)             rx = -2.9f * amt + rx * (1.f - amt);
-        float rz = 0.f;
-        if (ov) { rx = right ? ov->rxR : ov->rxL; rz = right ? ov->rzR : ov->rzL; }
+        bool right = s < 0.f;
+        int  i = right ? 1 : 0;
         mat4 sh = f.torso * T({s * (L.torsoW * 0.5f + L.armW * 0.5f), L.torsoH - L.armW * 0.5f, 0.f})
-                * RX(rx) * RZ(s * 0.08f + rz);
+                * RX(mo.armRx[i]) * RZ(mo.armRz[i]);
         r.box(sh, {0.f, -L.armLen * 0.5f, 0.f}, {L.armW, L.armLen, L.armW}, L.armor * 0.9f);
         r.box(sh, {0.f, -L.armLen - L.armW * 0.3f, 0.f}, vec3{L.armW * 1.2f}, L.under);
         (right ? f.armR : f.armL) = sh;
     }
     return f;
+}
+
+// A humanoid from its file (EnemyFile.h): the same motion, turning the
+// file's joints where the file put them. Returns the frames like humanoid().
+inline HumanoidFrames humanoidFile(Rig& r, const mat4& root, const gunkit::GunModel& m, vec3 glow, vec3 shot,
+                                   float phase, float stride, ArmPose pose, float amt, const PoseOverride* ov = nullptr) {
+    using namespace enemyfile;
+    HumanoidMotion mo = humanoidMotion(phase, stride, pose, amt, ov);
+    mat4 local[E_COUNT]; int parent[E_COUNT];
+    restLocals(m, local, parent);
+    mat4 W[E_COUNT];
+    W[E_ROOT] = root * T({0.f, mo.lift, 0.f});
+    for (const auto& J : m.joints) {   // (parents come first)
+        mat4 motion(1.f);
+        switch (J.id) {
+            case E_HIPL:  motion = RX(mo.hip[0]); break;
+            case E_HIPR:  motion = RX(mo.hip[1]); break;
+            case E_TORSO: motion = mo.torso; break;
+            case E_ARML:  motion = RX(mo.armRx[0]) * RZ(mo.armRz[0]); break;
+            case E_ARMR:  motion = RX(mo.armRx[1]) * RZ(mo.armRz[1]); break;
+            default: break;
+        }
+        W[J.id] = W[J.parent] * local[J.id] * motion;
+    }
+    for (const auto& p : m.parts) {
+        vec3 col = p.glowScale >= 0.f ? glow * p.glowScale : p.color;
+        vec3 emi{0.f};
+        if (p.chan == C_GLOW)  emi = glow * p.k;
+        if (p.chan == C_SHOT)  emi = shot * p.k;
+        if (p.chan == C_CONST) emi = p.k;
+        r.part(W[p.joint] * p.rel, col, emi);
+    }
+    return {W[E_ROOT], W[E_TORSO], W[E_HEAD], W[E_ARML], W[E_ARMR]};
 }
 
 inline float smooth01(float t) { t = glm::clamp(t, 0.f, 1.f); return t * t * (3.f - 2.f * t); }
@@ -297,8 +355,12 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
 
     switch (e.type) {
     case EnemyType::HUSK: {
-        HumanoidLook L = humanoidLook(e.type, st.color, st.color * 0.45f, glow);
         float aim = e.attack == AttackKind::SHOT ? smooth01(tp * 3.f) : 0.35f;
+        if (const auto* m = enemyfile::model(e.type)) {   // its file (assets/enemies/husk.glb)
+            humanoidFile(r, root, *m, glow, st.shotColor * (0.3f + 3.f * tp), e.animPhase, stride, ArmPose::AIM_RIGHT, aim);
+            break;
+        }
+        HumanoidLook L = humanoidLook(e.type, st.color, st.color * 0.45f, glow);   // (no file: the old rig, in code)
         auto f = humanoid(r, root, L, e.animPhase, stride, ArmPose::AIM_RIGHT, aim);
         vec3 gun{0.16f, 0.15f, 0.17f};
         r.box(f.armR, {0.f, -0.78f, 0.06f}, {0.12f, 0.5f, 0.15f}, gun);

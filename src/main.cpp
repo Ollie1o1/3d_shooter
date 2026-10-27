@@ -24,6 +24,7 @@
 #include "ui/MenuState.h"
 #include "game/GameplayState.h"
 #include "ui/GunViewer.h"
+#include "ui/EnemyViewer.h"
 #include "ui/BalancePanel.h"
 #include "audio/AudioSystem.h"
 #include "core/Display.h"
@@ -52,6 +53,7 @@ struct App {
     // state while one of its methods is still on the stack is a use-after-free.
     enum class NextState { None, Menu, Game, Viewer };
     int viewerGun = 0;                    // --viewer [gun]: which gun the viewer opens on
+    int viewerEnemy = -1;                 // --viewer husk: an enemy instead (EnemyViewer.h)
     NextState pending = NextState::Menu;
     GameMode  mode    = GameMode::ARENA;   // which game the next Game state runs
 
@@ -224,9 +226,15 @@ struct App {
             currentState.reset(game);
         } else if (next == NextState::Viewer) {   // --viewer: one gun on a stand, its file watched (GunViewer.h)
             SDL_SetRelativeMouseMode(SDL_FALSE);
-            auto* v = new GunViewerState(SCREEN_W, SCREEN_H, viewerGun);
-            v->onQuit = [this]() { quit(); };
-            currentState.reset(v);
+            if (viewerEnemy >= 0) {
+                auto* v = new EnemyViewerState(SCREEN_W, SCREEN_H, (EnemyType)viewerEnemy);
+                v->onQuit = [this]() { quit(); };
+                currentState.reset(v);
+            } else {
+                auto* v = new GunViewerState(SCREEN_W, SCREEN_H, viewerGun);
+                v->onQuit = [this]() { quit(); };
+                currentState.reset(v);
+            }
         }
     }
 
@@ -626,11 +634,13 @@ int main(int argc, char* argv[]) {
             g_balanceOpen = true;
             if (g_devOverlay.size() > 8) std::snprintf(balancepanel::st().filter, sizeof balancepanel::st().filter, "%s", g_devOverlay.c_str() + 8);
         }   // the balance panel (F1) in the web build (?balance); desktop always has it
-        if (arg == "--viewer") {   // --viewer [revolver|shotgun|lancer|longshot|sword|1-5]: the gun viewer (work on assets/guns in Blender)
+        if (arg == "--viewer") {   // --viewer [revolver|shotgun|lancer|longshot|sword|1-5|husk]: the gun (or enemy) viewer (work on assets/ in Blender)
             app->pending = App::NextState::Viewer;
             if (i + 1 < argc && argv[i + 1][0] != '-') {
                 std::string g = argv[++i];
                 for (int k = 0; k < gunkit::GUN_FILES; ++k) if (g == gunkit::gunName(k) || g == std::to_string(k + 1)) app->viewerGun = k;
+                for (int k = 0; k < (int)EnemyType::COUNT; ++k)
+                    if (const char* n = enemyfile::fileName((EnemyType)k); n && g == n) app->viewerEnemy = k;
             }
         }
         if (arg == "--record" && i + 3 < argc) {
