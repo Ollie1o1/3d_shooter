@@ -225,8 +225,10 @@ int main() {
     {
         CHECK(L.arenas.size() == 5, "five arenas");
         // Act I as built before the Act II split: nothing added, nothing lost
-        CHECK(L.walls.size() == 256 && L.props.size() == 274 && L.neon.size() == 296 && L.shapes.size() == 0 &&
-              L.floors.size() == 13 && L.doors.size() == 8 && L.pads.size() == 29 && L.movers.size() == 13,
+        // (since: 60 boxes dressed with props made in Blender, and the CORE's and SANCTUM's pillar rings, 24 neon
+        // boxes, now lit bands on those props)
+        CHECK(L.walls.size() == 256 && L.props.size() == 274 && L.neon.size() == 272 && L.shapes.size() == 0 &&
+              L.floors.size() == 13 && L.doors.size() == 8 && L.pads.size() == 29 && L.movers.size() == 13 && L.models.size() == 60,
               "buildAct1 builds exactly what buildLevel did");
         CHECK(L.corridors.size() == 4, "four corridors join them");
         bool groundOk = true, airOk = true, inBounds = true, starts = true, underCeiling = true;
@@ -1206,9 +1208,11 @@ int main() {
                     undersides = false;
                 }
             };
+            std::vector<char> dw(L.walls.size(), 0), dp(L.props.size(), 0);   // (a box a prop dresses: the prop has its own underside)
+            for (auto& pm : L.models) { if (pm.wall >= 0) dw[pm.wall] = 1; if (pm.prop >= 0) dp[pm.prop] = 1; }
             for (int i = 0; i < (int)L.walls.size(); ++i)
-                if (!L.walls[i].hidden && !L.walls[i].dynamic && !L.isDoorWall(i)) checkBox(L.walls[i].box);
-            for (auto& p : L.props) checkBox(p.box);
+                if (!L.walls[i].hidden && !L.walls[i].dynamic && !L.isDoorWall(i) && !dw[i]) checkBox(L.walls[i].box);
+            for (size_t i = 0; i < L.props.size(); ++i) if (!dp[i]) checkBox(L.props[i].box);
             // Every shape is closed, or drawn from both sides
             int open = 0;
             for (auto& sh : L.shapes) {
@@ -4261,6 +4265,32 @@ int main() {
         CHECK(weaponDef(WeaponId::REVOLVER).damage == 50.f && statsOf(EnemyType::HUSK).health == 75.f && text.find("weapon.revolver.damage = 50") != std::string::npos
               && text.find("enemy.ripper") == std::string::npos, "saved and read back: the same numbers, and only the changed ones are written");
         for (size_t k = 0; k < V.size(); ++k) V[k].set(was[k]);
+    }
+
+    // ---------------------------------------------------------------- level props made in Blender (assets/props)
+    {
+        LevelData A = buildLevel();
+        bool load = true, fits = true, drawn = true;
+        for (const PlacedModel& pm : A.models) {
+            const propfile::Prop* pr = propfile::get(pm.name);
+            if (!pr) { if (load) std::printf("      no prop '%s'\n", pm.name.c_str()); load = false; continue; }
+            if (pm.free) continue;
+            // fitted: every corner of it inside the box it dresses (a hair over for bevels)
+            glm::mat4 w = propfile::placement(*pr, false, pm.xf, pm.fit, pm.yaw);
+            int tris = 0;
+            propfile::forEachTri(*pr, w, [&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3, glm::vec3, glm::vec3, glm::vec3, bool, int) {
+                ++tris;
+                for (glm::vec3 v : {a, b, c})
+                    if (glm::any(glm::lessThan(v, pm.fit.min - glm::vec3{0.02f})) || glm::any(glm::greaterThan(v, pm.fit.max + glm::vec3{0.02f}))) fits = false;
+            });
+            drawn &= tris > 12;
+        }
+        CHECK(load && !A.models.empty(), "every prop the levels place has its file");
+        CHECK(fits, "a prop over a box stays inside that box (what you see is what you collide with)");
+        CHECK(drawn, "and draws more than a box's worth of faces");
+        WorldGeometry G = buildWorldGeometry(A);
+        size_t verts = 0; for (int t = 0; t < TEX_COUNT; ++t) verts += G.V[t].size();
+        CHECK(verts < 2000000, "the static world stays under 2M vertices with the props baked in");
     }
 
     // ---------------------------------------------------------------- a death breaks the body at its joints
