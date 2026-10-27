@@ -36,8 +36,15 @@ def new_gun(name, joints):
 
 
 def save_built(name):
+    """Saved by the add-on (checked first), then pruned to this gun's scene: the exporter, run over the live
+    link, can write every open scene into the file (tools/glb_prune.py)"""
+    sc = bpy.data.scenes[name.upper()]
     path, warnings = _og.save_gun(name)
-    sc = bpy.context.scene
+    _prune = {}
+    exec(open(os.path.join(REPO, "tools", "glb_prune.py")).read(), _prune)
+    before, after = _prune["prune"](path)
+    if after < before:
+        print("(%s: other scenes dropped from the file, %d -> %d bytes)" % (name, before, after))
     n = sum(1 for o in sc.objects if o.type == "MESH")
     print("%s: %d parts saved to %s" % (name, n, path))
     for w in warnings:
