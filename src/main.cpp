@@ -24,6 +24,7 @@
 #include "ui/MenuState.h"
 #include "game/GameplayState.h"
 #include "ui/GunViewer.h"
+#include "ui/BalancePanel.h"
 #include "audio/AudioSystem.h"
 #include "core/Display.h"
 #include "core/Gamepad.h"
@@ -229,6 +230,15 @@ struct App {
         }
     }
 
+    // F1: open or close the balance panel. Opening frees the mouse (the game is frozen
+    // under it); closing hands it back to a run that's being played
+    void toggleBalance() {
+        g_balanceOpen = !g_balanceOpen;
+        if (g_balanceOpen) { SDL_SetRelativeMouseMode(SDL_FALSE); return; }
+        if (auto* g = dynamic_cast<GameplayState*>(currentState.get()))
+            if (!g->paused && !g->armoryOpen && !g->playerDead) g->captureMouse(true);
+    }
+
     // Saves the canvas (the frame at render resolution, before scaling to the window)
     void saveScreenshot(const std::string& path) {
         int W = display::renderW(), H = display::renderH();
@@ -279,6 +289,9 @@ struct App {
                 continue;
             }
             if (e.type == SDL_CONTROLLERDEVICEADDED || e.type == SDL_CONTROLLERDEVICEREMOVED) gamepad::onDeviceEvent(e);
+            // F1: the balance panel (BalancePanel.h): the game freezes, the mouse comes free
+            if (e.type == SDL_KEYDOWN && !e.key.repeat && e.key.keysym.sym == SDLK_F1 && g_balanceAllowed) { toggleBalance(); continue; }
+            if (balancepanel::handleEvent(e)) continue;
             mapMouse(e);
             if (currentState && shotFrames == 0) currentState->handleEvent(e);   // screenshot runs ignore all input
             if (pending != NextState::None) break; // remaining events go to the next state
@@ -320,6 +333,7 @@ struct App {
         }
         if (audio.dumpDone()) { audio.writeDump(); running = false; }
         if (shotFrames > 0 && --shotFrames == 0) {
+            if (g_balanceOpen) balancepanel::draw(display::canvas().fbo, display::renderW(), display::renderH());   // (--overlay balance: in the shot)
             saveScreenshot(shotPath); running = false;
             if (auto* g = dynamic_cast<GameplayState*>(currentState.get()))
                 std::fprintf(stderr, "shot: feet (%.2f %.2f %.2f) yaw %.1f pitch %.1f arena %d\n", g->player.position.x,
@@ -335,6 +349,7 @@ struct App {
 #endif
             ftLap = frametimer::Lap{};
             display::present(dw, dh);
+            balancepanel::draw(0, dw, dh);   // (F1) over the frame, at the window's own resolution
             ftLap.to(frametimer::PRESENT);
         }
 #ifndef __EMSCRIPTEN__
@@ -515,6 +530,8 @@ int main(int argc, char* argv[]) {
     glViewport(0, 0, SCREEN_W, SCREEN_H);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
+    balanceInit();                               // the game's numbers, as assets/balance.txt has them (core/Balance.h)
+    balancepanel::init(app->window, app->ctx);   // F1
 
     for (const MixEntry& m : mixTable())   // every sound file has its place in the mix (MixTable.h)
         app->audio.loadSound(m.name, std::string("assets/sfx/") + m.name + ".wav");
@@ -604,6 +621,11 @@ int main(int argc, char* argv[]) {
             g_devFpsLog = true;
         }
         if (arg == "--res" && i + 1 < argc) app->renderOverride = std::atoi(argv[++i]);
+        if (arg == "--balance") g_balanceAllowed = true;
+        if (g_devOverlay.rfind("balance", 0) == 0) {   // --overlay balance[:search]: start with it open (screenshots)
+            g_balanceOpen = true;
+            if (g_devOverlay.size() > 8) std::snprintf(balancepanel::st().filter, sizeof balancepanel::st().filter, "%s", g_devOverlay.c_str() + 8);
+        }   // the balance panel (F1) in the web build (?balance); desktop always has it
         if (arg == "--viewer") {   // --viewer [revolver|shotgun|lancer|longshot|sword|1-5]: the gun viewer (work on assets/guns in Blender)
             app->pending = App::NextState::Viewer;
             if (i + 1 < argc && argv[i + 1][0] != '-') {
