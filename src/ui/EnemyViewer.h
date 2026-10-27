@@ -85,6 +85,7 @@ public:
             case SDLK_e:
                 if (type == EnemyType::WARDEN) { wardenLook = (wardenLook + 1) % 3; setWardenLook(); break; }   // its core open, then meltdown
                 if (type == EnemyType::LEVIATHAN) { e.levPhase = e.levPhase == 3 ? 1 : 3; break; }   // phase 3: its eye open, raging
+                if (type == EnemyType::CONDUCTOR) { e.linkCount = e.linkCount > 0 ? 0 : 2; break; }     // holding tethers
                 if (type == EnemyType::PENITENT) { penLook = (penLook + 1) % 3; e.scourging = penLook == 1; e.risen = penLook != 2; break; }   // scourging, then kneeling
                 e.enraged = !e.enraged; if (type == EnemyType::ABSOLUTE) e.abBlade = !e.abBlade; break;
             case SDLK_t: turntable = !turntable; break;
@@ -231,6 +232,11 @@ private:
         static const A ms[] = {A::MJAB, A::MBACKHAND, A::MGRASP, A::MSUNDER};
         static const A war[] = {A::SLAM, A::LANCE, A::WLUNGE, A::VOLLEY, A::SUMMON, A::WVENT};
         if (type == EnemyType::WARDEN) return war[attackIx % 6];
+        static const A rev[] = {A::RAKE, A::SOULBOLT};
+        if (type == EnemyType::REVENANT) return rev[attackIx % 2];
+        if (type == EnemyType::WEAVER) return A::STRING;
+        if (type == EnemyType::SERAPH) return A::BEAM;
+        if (type == EnemyType::ANCHOR) return A::VOLLEY;
         static const A lev[] = {A::CRASH, A::TORRENT, A::SWALLOW, A::SPIT};
         if (type == EnemyType::LEVIATHAN) return lev[attackIx % 4];
         static const A pen[] = {A::CENSER_LOW, A::CENSER_HIGH, A::PSLAM, A::PSTOMP, A::PLASH, A::SCOURGE};

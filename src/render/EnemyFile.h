@@ -13,6 +13,12 @@
 //              MITE       body legL1-3 legR1-3
 //              WARDEN     a humanoid's, and cape and capeTip (its hem), crown (rides the head)
 //              PENITENT   a humanoid's (its censers ride its fists: "tellR"/"tellL" light them)
+//              REVENANT, ANCHOR  a humanoid's
+//              WEAVER     body (rears to string a wire), legL1-3 / legR1-3 (hips, front to back),
+//                         shinL1-3 / shinR1-3 (knees): legs up to a high knee, down to the floor
+//              SERAPH     head (its ring), wingL/R (the upper pair), tipL/R (the lower pair, off its body)
+//              CONDUIT    halo and crown (its two rings, turning), head (the crystal on top)
+//              CONDUCTOR  body (bobbing), halo (its three fins, spinning)
 //              LEVIATHAN  head (its skull, in the head rig's units: drawn x1.5), jaw (hinged under it),
 //                         halo (its eye's corona, turning); body: ONE segment of its serpent body,
 //                         r 2.5 m, running 2.5 m along +Z from the joint (12 m behind the head, out of
@@ -65,6 +71,7 @@ enum Joint { E_ROOT, E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR,
              E_ELBOW_L, E_ELBOW_R, E_HAND_L, E_HAND_R, E_FINGERS_L, E_FINGERS_R, E_TIPS_L, E_TIPS_R,
              E_THUMB_L, E_THUMB_R, E_THUMB_TIP_L, E_THUMB_TIP_R, E_RIBBON_L, E_RIBBON_R,
              E_JAW,   // THE LEVIATHAN's
+             E_SHIN_L1, E_SHIN_L2, E_SHIN_L3, E_SHIN_R1, E_SHIN_R2, E_SHIN_R3,   // a WEAVER's knees
              E_COUNT };
 inline const char* jointName(int j) {
     static const char* N[E_COUNT] = {"root", "hipL", "hipR", "torso", "head", "armL", "armR",
@@ -74,7 +81,8 @@ inline const char* jointName(int j) {
                                      "weapon", "cape", "capeTip", "halo", "crown",
                                      "kneeL", "kneeR", "ankleL", "ankleR", "waist", "clothF", "clothB",
                                      "elbowL", "elbowR", "handL", "handR", "fingersL", "fingersR", "tipsL", "tipsR",
-                                     "thumbL", "thumbR", "thumbTipL", "thumbTipR", "ribbonL", "ribbonR", "jaw"};
+                                     "thumbL", "thumbR", "thumbTipL", "thumbTipR", "ribbonL", "ribbonR", "jaw",
+                                     "shinL1", "shinL2", "shinL3", "shinR1", "shinR2", "shinR3"};
     return N[j];
 }
 enum Chan { C_CONST, C_GLOW, C_SHOT, C_PULSE, C_DIVE, C_FUSE, C_BLADE, C_SMASH, C_RIM,
@@ -113,6 +121,12 @@ inline const char* fileName(EnemyType t) {
         case EnemyType::WARDEN:       return "warden";
         case EnemyType::PENITENT:     return "penitent";
         case EnemyType::LEVIATHAN:    return "leviathan";
+        case EnemyType::REVENANT:     return "revenant";
+        case EnemyType::WEAVER:       return "weaver";
+        case EnemyType::SERAPH:       return "seraph";
+        case EnemyType::ANCHOR:       return "anchor";
+        case EnemyType::CONDUIT:      return "conduit";
+        case EnemyType::CONDUCTOR:    return "conductor";
         case EnemyType::SOVEREIGN:    return "sovereign";
         case EnemyType::ABSOLUTE:     return "absolute";
         default: return nullptr;
@@ -133,6 +147,11 @@ inline std::vector<int> neededJoints(EnemyType t) {
         case EnemyType::MITE:   return {E_BODY, E_LEG_L1, E_LEG_L2, E_LEG_L3, E_LEG_R1, E_LEG_R2, E_LEG_R3};
         case EnemyType::SHIELDBEARER: return {E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR, E_SHIELD};
         case EnemyType::LEVIATHAN: return {E_HEAD, E_JAW, E_HALO, E_BODY};
+        case EnemyType::WEAVER: return {E_BODY, E_LEG_L1, E_LEG_L2, E_LEG_L3, E_LEG_R1, E_LEG_R2, E_LEG_R3,
+                                        E_SHIN_L1, E_SHIN_L2, E_SHIN_L3, E_SHIN_R1, E_SHIN_R2, E_SHIN_R3};
+        case EnemyType::SERAPH: return {E_HEAD, E_WING_L, E_WING_R, E_TIP_L, E_TIP_R};
+        case EnemyType::CONDUIT: return {E_HALO, E_CROWN, E_HEAD};
+        case EnemyType::CONDUCTOR: return {E_BODY, E_HALO};
         case EnemyType::WARDEN: return {E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR, E_CAPE, E_CAPE_TIP, E_CROWN};
         case EnemyType::SOVEREIGN: return {E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR, E_SWORD, E_CAPE, E_CAPE_TIP, E_HALO, E_CROWN};
         case EnemyType::ABSOLUTE:
