@@ -227,7 +227,7 @@ struct App {
         } else if (next == NextState::Viewer) {   // --viewer: one gun on a stand, its file watched (GunViewer.h)
             SDL_SetRelativeMouseMode(SDL_FALSE);
             if (viewerEnemy >= 0) {
-                auto* v = new EnemyViewerState(SCREEN_W, SCREEN_H, (EnemyType)viewerEnemy);
+                auto* v = new EnemyViewerState(SCREEN_W, SCREEN_H, viewerEnemy);
                 v->onQuit = [this]() { quit(); };
                 currentState.reset(v);
             } else {
@@ -639,8 +639,8 @@ int main(int argc, char* argv[]) {
             if (i + 1 < argc && argv[i + 1][0] != '-') {
                 std::string g = argv[++i];
                 for (int k = 0; k < gunkit::GUN_FILES; ++k) if (g == gunkit::gunName(k) || g == std::to_string(k + 1)) app->viewerGun = k;
-                for (int k = 0; k < (int)EnemyType::COUNT; ++k)
-                    if (const char* n = enemyfile::fileName((EnemyType)k); n && g == n) app->viewerEnemy = k;
+                for (int k = 0; k < enemyfile::FILE_COUNT; ++k)   // (an enemy's file id: morningstar too)
+                    if (const char* n = enemyfile::fileNameOf(k); n && g == n) app->viewerEnemy = k;
             }
         }
         if (arg == "--record" && i + 3 < argc) {

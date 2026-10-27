@@ -415,7 +415,7 @@ Each gun needs its joints (`jointsNeeded()` in `GunKit.h`): the revolver its cra
 
 ### Add a boss
 
-Make a folder under `bosses/` with the four files every boss has: `<Boss>State.h` (add its `State` and `Events` structs to the base lists of `Enemy` and `EnemyEvents` in `enemies/Enemy.h`), `Enemy<Boss>.h` (its `think…()`, included at the end of `Enemy.h`), `<Boss>Hazards.h`, and `Gameplay_<Boss>.h` (included at the end of `game/GameplayState.h`). Add it to `isBoss()`, give it a BOSS mode row in `game/Progression.h`, and a BossSim case if its fight should be held to a kill time.
+Make a folder under `bosses/` with the four files every boss has: `<Boss>State.h` (add its `State` and `Events` structs to the base lists of `Enemy` and `EnemyEvents` in `enemies/Enemy.h`), `Enemy<Boss>.h` (its `think…()`, included at the end of `Enemy.h`), `<Boss>Hazards.h`, and `Gameplay_<Boss>.h` (included at the end of `game/GameplayState.h`). Add it to `isBoss()`, give it a BOSS mode row in `game/Progression.h`, and a BossSim case if its fight should be held to a kill time. Its body can be a file made in Blender, like the Sovereign's, the Absolute's and Morningstar's (`assets/enemies/<name>.glb`): give it joints in `render/EnemyFile.h` and `restJointsOf()`, its motion in `filePoseOf()`, write a skeleton with `tools/enemy_export --joints <name> <file>`, and build on it with a script in `tools/blender/` (`sovereign_build.py` is one); `./shooter --viewer <name>` shows it as you go.
 
 ## Features in depth
 
