@@ -105,6 +105,9 @@ struct PoseOverride {
     float grip = 0.f;   // the blade's angle in the right hand (0: continues the arm)
 };
 
+// A RAPTOR's bob in the air (none in a dive): from its own state, not the clock, so its head
+// hitbox (headBox) bobs with the head you see
+inline float raptorBob(const Enemy& e) { return e.diveTimer > 0.f ? 0.f : std::sin(e.age * 3.f + e.animPhase * 0.1f) * 0.15f; }
 inline float smooth01c(float t) { t = glm::clamp(t, 0.f, 1.f); return t * t * (3.f - 2.f * t); }
 
 // How a humanoid's joints turn this frame (the same for one built in code
@@ -262,7 +265,7 @@ inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileR
     case EnemyType::RAPTOR: {   // its own frame: it pitches into a dive, and bobs in the air
         bool diving = e.diveTimer > 0.f;
         float grow = 0.05f + 0.95f * smooth01c(1.f - e.spawnTimer / Enemy::SPAWN_TIME);
-        float bob = diving ? 0.f : std::sin(time * 3.f + e.animPhase * 0.1f) * 0.15f;
+        float bob = raptorBob(e);   // (from its own state, so headBox can follow it)
         fileRoot = T(e.position + vec3{0.f, bob, 0.f}) * RY(e.yaw) * RX(e.pitch) * S(vec3{e.scale}) * S(vec3{grow});
         P.motion[E_TAIL] = RX(0.2f + std::sin(e.animPhase * 0.5f) * 0.1f);
         float flap = diving ? 0.1f : std::sin(e.animPhase) * 0.65f + 0.1f;
@@ -293,6 +296,46 @@ inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileR
     }
     default: return false;
     }
+}
+
+// Where each file rig's joints sit at rest, in the rig's own space (the frame filePoseOf draws
+// from), and their parents: where the code rig turns them (tools/enemy_export.cpp, the tests)
+inline std::vector<gunkit::ModelJoint> restJointsOf(EnemyType t) {
+    using namespace enemyfile;
+    std::vector<gunkit::ModelJoint> J;
+    auto add = [&](int id, int parent, vec3 at) { J.push_back({id, parent, T(at)}); };
+    switch (t) {
+    case EnemyType::RIPPER: {
+        add(E_BODY, E_ROOT, {0.f, 0.62f, 0.f});
+        add(E_HEAD, E_BODY, {0.f, 0.72f, 0.6f});
+        add(E_LEG_FL, E_BODY, {0.27f, 0.50f, 0.42f});  add(E_LEG_FR, E_BODY, {-0.27f, 0.50f, 0.42f});
+        add(E_LEG_BL, E_BODY, {0.27f, 0.50f, -0.42f}); add(E_LEG_BR, E_BODY, {-0.27f, 0.50f, -0.42f});
+        add(E_BLADE_L, E_BODY, {0.36f, 0.67f, 0.42f}); add(E_BLADE_R, E_BODY, {-0.36f, 0.67f, 0.42f});
+        break;
+    }
+    case EnemyType::RAPTOR:
+        add(E_HEAD, E_ROOT, {0.f, 0.62f, 0.55f});
+        add(E_TAIL, E_ROOT, {0.f, 0.5f, -0.5f});
+        add(E_WING_L, E_ROOT, {0.25f, 0.55f, 0.05f}); add(E_TIP_L, E_WING_L, {1.25f, 0.55f, 0.05f});
+        add(E_WING_R, E_ROOT, {-0.25f, 0.55f, 0.05f}); add(E_TIP_R, E_WING_R, {-1.25f, 0.55f, 0.05f});
+        break;
+    case EnemyType::MITE:
+        add(E_BODY, E_ROOT, {0.f, 0.32f, 0.f});
+        for (int i = 0; i < 3; ++i) {
+            add(E_LEG_L1 + i, E_BODY, {0.22f, 0.32f, 0.18f - i * 0.2f});
+            add(E_LEG_R1 + i, E_BODY, {-0.22f, 0.32f, 0.18f - i * 0.2f});
+        }
+        break;
+    default: {   // a humanoid
+        HumanoidLook L = humanoidDims(t);
+        float chest = L.legLen + L.pelvisH, shX = L.torsoW * 0.5f + L.armW * 0.5f, shY = chest + L.torsoH - L.armW * 0.5f;
+        add(E_HIPL, E_ROOT, {L.hipW * 0.5f, L.legLen, 0.f}); add(E_HIPR, E_ROOT, {-L.hipW * 0.5f, L.legLen, 0.f});
+        add(E_TORSO, E_ROOT, {0.f, chest, 0.f});
+        add(E_HEAD, E_TORSO, {0.f, chest + L.torsoH, 0.f});
+        add(E_ARML, E_TORSO, {shX, shY, 0.f}); add(E_ARMR, E_TORSO, {-shX, shY, 0.f});
+    }
+    }
+    return J;
 }
 
 inline float smooth01(float t) { t = glm::clamp(t, 0.f, 1.f); return t * t * (3.f - 2.f * t); }
@@ -731,7 +774,7 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
     }
     case EnemyType::RAPTOR: {
         bool diving = e.diveTimer > 0.f;
-        float bob = diving ? 0.f : std::sin(time * 3.f + e.animPhase * 0.1f) * 0.15f;
+        float bob = raptorBob(e);   // (from its own state, so headBox can follow it)
         mat4 base = T(e.position + vec3{0.f, bob, 0.f}) * RY(e.yaw) * RX(e.pitch) * S(vec3{e.scale}) * S(vec3{grow});
         vec3 armor = st.color, under = st.color * 0.5f;
         r.box(base, {0.f, 0.45f, 0.f},    {0.5f, 0.42f, 1.0f}, armor);
@@ -1003,7 +1046,7 @@ inline bool headBox(const Enemy& e, AABB& out) {
         break;
     }
     case EnemyType::RAPTOR: {
-        mat4 base = T(e.position) * RY(e.yaw) * RX(e.pitch) * S(vec3{e.scale}) * S(vec3{grow});
+        mat4 base = T(e.position + vec3{0.f, raptorBob(e), 0.f}) * RY(e.yaw) * RX(e.pitch) * S(vec3{e.scale}) * S(vec3{grow});
         frame  = base * T({0.f, 0.62f, 0.55f});
         centre = {0.f, 0.05f, 0.26f};
         half   = {0.17f, 0.17f, 0.33f};

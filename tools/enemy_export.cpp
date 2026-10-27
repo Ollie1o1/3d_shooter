@@ -14,44 +14,6 @@
 using namespace rig;
 using namespace enemyfile;
 
-// Each joint at rest, in the rig's own space (the frame filePoseOf draws from), and its parent
-static std::vector<gunkit::ModelJoint> restJoints(EnemyType t) {
-    std::vector<gunkit::ModelJoint> J;
-    auto add = [&](int id, int parent, vec3 at) { J.push_back({id, parent, T(at)}); };
-    switch (t) {
-    case EnemyType::RIPPER: {
-        add(E_BODY, E_ROOT, {0.f, 0.62f, 0.f});
-        add(E_HEAD, E_BODY, {0.f, 0.72f, 0.6f});
-        add(E_LEG_FL, E_BODY, {0.27f, 0.50f, 0.42f});  add(E_LEG_FR, E_BODY, {-0.27f, 0.50f, 0.42f});
-        add(E_LEG_BL, E_BODY, {0.27f, 0.50f, -0.42f}); add(E_LEG_BR, E_BODY, {-0.27f, 0.50f, -0.42f});
-        add(E_BLADE_L, E_BODY, {0.36f, 0.67f, 0.42f}); add(E_BLADE_R, E_BODY, {-0.36f, 0.67f, 0.42f});
-        break;
-    }
-    case EnemyType::RAPTOR:
-        add(E_HEAD, E_ROOT, {0.f, 0.62f, 0.55f});
-        add(E_TAIL, E_ROOT, {0.f, 0.5f, -0.5f});
-        add(E_WING_L, E_ROOT, {0.25f, 0.55f, 0.05f}); add(E_TIP_L, E_WING_L, {1.25f, 0.55f, 0.05f});
-        add(E_WING_R, E_ROOT, {-0.25f, 0.55f, 0.05f}); add(E_TIP_R, E_WING_R, {-1.25f, 0.55f, 0.05f});
-        break;
-    case EnemyType::MITE:
-        add(E_BODY, E_ROOT, {0.f, 0.32f, 0.f});
-        for (int i = 0; i < 3; ++i) {
-            add(E_LEG_L1 + i, E_BODY, {0.22f, 0.32f, 0.18f - i * 0.2f});
-            add(E_LEG_R1 + i, E_BODY, {-0.22f, 0.32f, 0.18f - i * 0.2f});
-        }
-        break;
-    default: {   // a humanoid
-        HumanoidLook L = humanoidDims(t);
-        float chest = L.legLen + L.pelvisH, shX = L.torsoW * 0.5f + L.armW * 0.5f, shY = chest + L.torsoH - L.armW * 0.5f;
-        add(E_HIPL, E_ROOT, {L.hipW * 0.5f, L.legLen, 0.f}); add(E_HIPR, E_ROOT, {-L.hipW * 0.5f, L.legLen, 0.f});
-        add(E_TORSO, E_ROOT, {0.f, chest, 0.f});
-        add(E_HEAD, E_TORSO, {0.f, chest + L.torsoH, 0.f});
-        add(E_ARML, E_TORSO, {shX, shY, 0.f}); add(E_ARMR, E_TORSO, {-shX, shY, 0.f});
-    }
-    }
-    return J;
-}
-
 struct State { Enemy e; float time; };
 static std::vector<State> states(EnemyType t) {
     const EnemyStats& st = statsOf(t);
@@ -96,7 +58,7 @@ int main(int argc, char** argv) {
     model(t);           // (marks it tried) ...
     slot(t) = {};       // ... and empties it: buildEnemy draws the code rig
 
-    gunkit::GunModel jm; jm.joints = restJoints(t);   // (just the joints: drawFile gives their frames)
+    gunkit::GunModel jm; jm.joints = restJointsOf(t);   // (just the joints: drawFile gives their frames)
 
     auto S = states(t);
     std::vector<std::vector<TracedBox>> traces;

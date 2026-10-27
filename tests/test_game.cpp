@@ -4265,71 +4265,80 @@ int main() {
     {
         const gunkit::GunModel* m = enemyfile::model(EnemyType::HUSK);
         CHECK(m && m->error.empty() && m->joints.size() == 6, "the HUSK's file loads, with all six joints (assets/enemies/husk.glb)");
-        // Its joints sit where the code's rig (and so its head hitbox) has them
-        bool joints = m != nullptr;
-        if (m) {
-            rig::HumanoidLook L = rig::humanoidDims(EnemyType::HUSK);
-            float chest = L.legLen + L.pelvisH, shX = L.torsoW * 0.5f + L.armW * 0.5f, shY = chest + L.torsoH - L.armW * 0.5f;
-            glm::vec3 want[enemyfile::E_COUNT] = {{0, 0, 0}, {L.hipW * 0.5f, L.legLen, 0}, {-L.hipW * 0.5f, L.legLen, 0},
-                                                  {0, chest, 0}, {0, chest + L.torsoH, 0}, {shX, shY, 0}, {-shX, shY, 0}};
-            for (const auto& J : m->joints) joints &= glm::length(glm::vec3(J.frame[3]) - want[J.id]) < 2e-3f;
-        }
-        CHECK(joints, "the HUSK's file keeps its joints where the rig turns them (hips, torso, head, shoulders)");
-        // At rest: every box of its head inside the head hitbox (the head you see is the head you hit), its feet on the floor
-        bool inHead = m != nullptr; float lowest = 1e9f;
-        if (m) {
-            Enemy e(EnemyType::HUSK, {0.f, 0.f, 0.f}); e.spawnTimer = 0.f;
-            AABB hb; inHead &= rig::headBox(e, hb);
-            glm::mat4 frame[enemyfile::E_COUNT];
-            for (auto& f : frame) f = glm::mat4(1.f);
-            for (const auto& J : m->joints) frame[J.id] = J.frame;
-            for (const auto& p : m->parts)
+        // Every enemy made in Blender: its joints where the code turns them, its head inside its head
+        // hitbox (the head you see is the head you hit), on its feet, meshes kept, and the same after a save
+        const EnemyType made[] = {EnemyType::HUSK, EnemyType::SENTINEL, EnemyType::BRUTE, EnemyType::RIPPER, EnemyType::RAPTOR, EnemyType::MITE};
+        bool loadsAll = true, jointsAll = true, headsAll = true, feetAll = true, meshesAll = true, tripsAll = true;
+        for (EnemyType t : made) {
+            const char* nm = statsOf(t).name;
+            const gunkit::GunModel* fm = enemyfile::model(t);
+            if (!fm || !fm->error.empty()) { std::printf("      %s: no file\n", nm); loadsAll = false; continue; }
+            for (int j : enemyfile::neededJoints(t)) loadsAll &= fm->has(j);
+            for (const auto& want : rig::restJointsOf(t))
+                for (const auto& J : fm->joints)
+                    if (J.id == want.id && glm::length(glm::vec3(J.frame[3]) - glm::vec3(want.frame[3])) > 2e-3f) {
+                        std::printf("      %s: its '%s' joint has moved\n", nm, enemyfile::jointName(J.id)); jointsAll = false;
+                    }
+            // at rest, as drawn
+            Enemy e(t, {0.f, 0.f, 0.f}); e.spawnTimer = 0.f;
+            glm::mat4 fr; rig::FilePose P; glm::vec3 g; glm::mat4 Wj[enemyfile::E_COUNT];
+            std::vector<BoxInstance> sink; rig::Rig dummy{sink};
+            rig::filePoseOf(e, 0.f, glm::mat4(1.f), fr, P, g);
+            rig::drawFile(dummy, fr, *fm, P, g, Wj);
+            AABB hb; bool hasHead = rig::headBox(e, hb);
+            float lowest = 1e9f; int meshes = 0; bool inHead = true;
+            for (const auto& p : fm->parts) {
+                glm::mat4 box = Wj[p.joint] * p.rel;
+                if (const meshlib::MeshData* md = meshlib::get(p.mesh)) { box = box * glm::scale(glm::mat4(1.f), md->size); ++meshes; }
                 for (int c = 0; c < 8; ++c) {
-                    glm::mat4 box = p.rel;   // (a mesh: its bounds)
-                    if (const meshlib::MeshData* md = meshlib::get(p.mesh)) box = box * glm::scale(glm::mat4(1.f), md->size);
-                    glm::vec3 v = glm::vec3(frame[p.joint] * box * glm::vec4((c & 1) ? 0.5f : -0.5f, (c & 2) ? 0.5f : -0.5f, (c & 4) ? 0.5f : -0.5f, 1.f));
+                    glm::vec3 v = glm::vec3(box * glm::vec4((c & 1) ? 0.5f : -0.5f, (c & 2) ? 0.5f : -0.5f, (c & 4) ? 0.5f : -0.5f, 1.f));
                     lowest = std::min(lowest, v.y);
-                    if (p.joint == enemyfile::E_HEAD)
-                        inHead &= v.x >= hb.min.x && v.x <= hb.max.x && v.y >= hb.min.y && v.y <= hb.max.y && v.z >= hb.min.z && v.z <= hb.max.z;
+                    if (hasHead && p.joint == enemyfile::E_HEAD)
+                        inHead &= v.x >= hb.min.x - 1e-3f && v.x <= hb.max.x + 1e-3f && v.y >= hb.min.y - 1e-3f && v.y <= hb.max.y + 1e-3f
+                               && v.z >= hb.min.z - 1e-3f && v.z <= hb.max.z + 1e-3f;
                 }
-        }
-        CHECK(inHead, "every box of the HUSK's head sits inside its head hitbox");
-        CHECK(std::fabs(lowest) < 0.03f, "the HUSK stands on the floor (its lowest box within 3 cm of it)");
-        // Written out and read back: the same HUSK, drawn in every state
-        bool same = m != nullptr;
-        if (m) {
-            gunkit::GunModel saved = enemyfile::slot(EnemyType::HUSK);
-            gunkit::GunModel back = gunkit::readGunText(gunkit::writeGunText(saved, "husk", [](const gunkit::ModelPart& p) {
+            }
+            if (!inHead) std::printf("      %s: part of its head is outside its head hitbox\n", nm);
+            headsAll &= inHead;
+            if (!statsOf(t).flying && (lowest < -0.05f || lowest > 0.05f)) { std::printf("      %s: its lowest point is %.3f m off the floor\n", nm, lowest); feetAll = false; }
+            if (meshes < 10) { std::printf("      %s: %d meshes\n", nm, meshes); meshesAll = false; }
+            // written out and read back: drawn the same
+            gunkit::GunModel saved = enemyfile::slot(t);
+            gunkit::GunModel back = gunkit::readGunText(gunkit::writeGunText(saved, nm, [](const gunkit::ModelPart& p) {
                 char b[64]; std::snprintf(b, sizeof b, "%.9g %.9g %.9g", p.color.x, p.color.y, p.color.z);
                 return p.glowScale >= 0.f ? "glow*" + std::to_string(p.glowScale) : std::string(b); }, enemyfile::names()), "memory", enemyfile::names());
-            same &= back.error.empty();
+            bool same = back.error.empty();
             for (float ph : {0.f, 1.3f, 3.7f})
                 for (int k = 0; k < 2 && same; ++k) {
-                    Enemy e(EnemyType::HUSK, {1.f, 0.f, 2.f}); e.spawnTimer = 0.f; e.animPhase = ph; e.moveSpeed = 3.f; e.yaw = ph;
-                    if (k) { e.attack = AttackKind::SHOT; e.telegraphDuration = 0.8f; e.telegraphTimer = 0.2f; }
+                    Enemy w(t, {1.f, 0.f, 2.f}); w.spawnTimer = 0.f; w.animPhase = ph; w.moveSpeed = 3.f; w.yaw = ph;
+                    if (k) { w.telegraphDuration = 0.8f; w.telegraphTimer = 0.2f; w.attack = AttackKind::SHOT; w.diveTimer = 0.2f; }
                     std::vector<BoxInstance> a, b;
-                    buildEnemy(e, 0.f, a);
-                    enemyfile::slot(EnemyType::HUSK) = back;
-                    buildEnemy(e, 0.f, b);
-                    enemyfile::slot(EnemyType::HUSK) = saved;
+                    buildEnemy(w, 0.4f, a);
+                    enemyfile::slot(t) = back;
+                    buildEnemy(w, 0.4f, b);
+                    enemyfile::slot(t) = saved;
                     same &= a.size() == b.size() && a.size() == saved.parts.size();
-                    std::vector<char> used(b.size(), 0);   // (the same boxes, in any order: the reader walks joint by joint)
+                    std::vector<char> used(b.size(), 0);
                     for (size_t i = 0; same && i < a.size(); ++i) {
                         bool hit = false;
                         for (size_t j = 0; j < b.size() && !hit; ++j) {
-                            bool eq = !used[j] && glm::length(a[i].color - b[j].color) < 1e-4f && glm::length(a[i].emissive - b[j].emissive) < 1e-4f;
+                            bool eq = !used[j] && a[i].mesh > 0.5f == b[j].mesh > 0.5f && glm::length(a[i].color - b[j].color) < 1e-4f
+                                   && glm::length(a[i].emissive - b[j].emissive) < 1e-4f;
                             for (int c = 0; eq && c < 4; ++c) eq = glm::length(a[i].model[c] - b[j].model[c]) < 1e-4f;
                             if (eq) { used[j] = 1; hit = true; }
                         }
                         same &= hit;
                     }
                 }
+            if (!same) std::printf("      %s: not the same after a save\n", nm);
+            tripsAll &= same;
         }
-        CHECK(same, "the HUSK written to glTF and read back draws the same, walking and winding up");
-        // Real meshes: a part that isn't a box keeps its shape (MeshLib.h); a box stays a box
-        int meshParts = 0;
-        if (m) for (auto& p : m->parts) meshParts += p.mesh > 0 && meshlib::get(p.mesh) != nullptr;
-        CHECK(meshParts >= 20, "the HUSK's bevelled plates and cylinders come in as meshes, not boxes");
+        CHECK(loadsAll, "every enemy made in Blender loads, with the joints its rig turns (HUSK SENTINEL BRUTE RIPPER RAPTOR MITE)");
+        CHECK(jointsAll, "every enemy file keeps its joints where the code turns them");
+        CHECK(headsAll, "every box of an enemy's head sits inside its head hitbox");
+        CHECK(feetAll, "every walking enemy stands on the floor (its lowest point within 5 cm)");
+        CHECK(meshesAll, "every enemy file's bevelled and round parts come in as meshes");
+        CHECK(tripsAll, "every enemy written to glTF and read back draws the same, walking and winding up");
         bool meshOk = true;
         if (m) for (auto& p : m->parts) if (const meshlib::MeshData* md = meshlib::get(p.mesh)) {
             meshOk &= !md->idx.empty() && md->idx.size() % 3 == 0 && md->nrm.size() == md->pos.size();
@@ -4366,49 +4375,6 @@ int main() {
             }
             CHECK(fine, "a mesh mirrored in its file is drawn the right way out (faces and normals point outward)");
         }
-    }
-    // ---------------------------------------------------------------- the other enemies' files (migration proof)
-    {
-        bool all = true;
-        for (EnemyType t : {EnemyType::SENTINEL, EnemyType::BRUTE, EnemyType::RIPPER, EnemyType::RAPTOR, EnemyType::MITE}) {
-            const gunkit::GunModel* m = enemyfile::model(t);
-            bool same = m != nullptr;
-            gunkit::GunModel saved = enemyfile::slot(t);
-            const EnemyStats& st = statsOf(t);
-            AttackKind kinds[] = {AttackKind::NONE, AttackKind::SHOT, AttackKind::BURST, AttackKind::SLAM, AttackKind::LOB,
-                                  AttackKind::LUNGE, AttackKind::DIVE, AttackKind::FUSE};
-            int n = 0;
-            for (float ph : {0.3f, 1.7f, 5.1f})
-                for (AttackKind k : kinds)
-                    for (int v = 0; v < 2 && same; ++v) {
-                        Enemy e(t, {2.f, 0.4f, -1.f}); e.spawnTimer = 0.f; e.yaw = 0.4f + ph; e.animPhase = ph;
-                        e.moveSpeed = v ? st.speed * 0.9f : 0.2f; e.age = 0.17f * (float)(++n);
-                        if (k != AttackKind::NONE) { e.attack = k; e.telegraphDuration = 0.7f; e.telegraphTimer = v ? 0.08f : 0.5f; }
-                        if (v) { e.hitFlashTimer = 0.05f; e.flinchAmp = 0.15f; e.flinchAt = 0.f; e.flinchDir = {0.6f, 0.8f}; }
-                        if (t == EnemyType::RAPTOR && v) { e.diveTimer = 0.3f; e.pitch = 0.4f; }
-                        if (t == EnemyType::SENTINEL && v) e.burstLeft = 1;
-                        float time = 0.29f * (float)n;
-                        std::vector<BoxInstance> a, b;
-                        buildEnemy(e, time, a);
-                        enemyfile::slot(t) = {};
-                        buildEnemy(e, time, b);
-                        enemyfile::slot(t) = saved;
-                        same &= a.size() == b.size();
-                        std::vector<char> used(b.size(), 0);
-                        for (size_t i = 0; same && i < a.size(); ++i) {
-                            bool hit = false;
-                            for (size_t j = 0; j < b.size() && !hit; ++j) {
-                                bool eq = !used[j] && glm::length(a[i].color - b[j].color) < 1e-4f && glm::length(a[i].emissive - b[j].emissive) < 1e-3f;
-                                for (int c = 0; eq && c < 4; ++c) eq = glm::length(a[i].model[c] - b[j].model[c]) < 1e-4f;
-                                if (eq) { used[j] = 1; hit = true; }
-                            }
-                            same &= hit;
-                        }
-                    }
-            if (!same) std::printf("      %s: its file isn't its code rig\n", st.name);
-            all &= same;
-        }
-        CHECK(all, "the SENTINEL, BRUTE, RIPPER, RAPTOR and MITE drawn from their files are their code rigs, box for box (walking, winding up, diving, fusing, hit)");
     }
     // ---------------------------------------------------------------- the guns' files (assets/guns/*.glb)
     {

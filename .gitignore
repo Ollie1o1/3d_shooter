@@ -57,3 +57,5 @@ tests/scan_bounds
 # Play telemetry (RunLog.h)
 runs.jsonl
 tools/enemy_export
+tests/export_guns
+tests/test_gun_migration
