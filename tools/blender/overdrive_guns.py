@@ -48,15 +48,15 @@ import traceback
 import bpy
 from mathutils import Euler, Matrix, Vector
 
-GUNS = ["revolver", "shotgun", "lancer", "longshot", "sword", "husk", "sentinel", "brute", "ripper", "raptor", "mite"]
+GUNS = ["revolver", "shotgun", "lancer", "longshot", "sword", "husk", "sentinel", "brute", "ripper", "raptor", "mite", "juggernaut", "shieldbearer"]
 # Enemies (assets/enemies/*.glb, src/render/EnemyFile.h): a humanoid's joints. The code turns
 # them where the file puts them; anything not under a joint rides the body (bob, crouch)
-ENEMIES = ["husk", "sentinel", "brute", "ripper", "raptor", "mite"]
+ENEMIES = ["husk", "sentinel", "brute", "ripper", "raptor", "mite", "juggernaut", "shieldbearer"]
 HUMANOID = ["hipL", "hipR", "torso", "head", "armL", "armR"]
 RIPPER = ["body", "head", "legFL", "legFR", "legBL", "legBR", "bladeL", "bladeR"]
 RAPTOR = ["head", "tail", "wingL", "wingR", "tipL", "tipR"]
 MITE = ["body", "legL1", "legL2", "legL3", "legR1", "legR2", "legR3"]
-ENEMY_JOINTS = sorted(set(HUMANOID + RIPPER + RAPTOR + MITE))
+ENEMY_JOINTS = sorted(set(HUMANOID + RIPPER + RAPTOR + MITE + ["shield"]))
 JOINTS = ["crane", "cylinder", "hammer", "trigger", "needle", "pump", "bolt", "mag", "muzzle", "cells"] + ENEMY_JOINTS
 # What each gun's rig and extras need (jointsNeeded() in src/render/GunKit.h)
 NEEDED = {
@@ -67,11 +67,12 @@ NEEDED = {
     "sword": ["cells"],
     "husk": HUMANOID, "sentinel": HUMANOID, "brute": HUMANOID,
     "ripper": RIPPER, "raptor": RAPTOR, "mite": MITE,
+    "juggernaut": HUMANOID, "shieldbearer": HUMANOID + ["shield"],
 }
 CHANNELS = ["const", "glow", "accent", "breath", "stripe", "rim", "needle", "port", "gem", "charge"]
 # glow: the enemy's glow, flaring in a wind-up; shot: its shot colour; pulse: a throb (BRUTE's core);
 # dive: lit while diving (RAPTOR); fuse: the MITE's core; blade: the RIPPER's blades (src/render/EnemyFile.h)
-ENEMY_CHANNELS = ["const", "glow", "shot", "pulse", "dive", "fuse", "blade"]
+ENEMY_CHANNELS = ["const", "glow", "shot", "pulse", "dive", "fuse", "blade", "smash", "rim"]   # smash: JUGGERNAUT's fist; rim: the shield's
 FLAGS = ["loaded", "!loaded", "bigmag", "!bigmag", "broken", "!broken"]
 # The arsenal's palette (GunKit.h): blackened gunmetal, worn steel, edges, bone, brass, and the glow
 PALETTE = {
@@ -82,6 +83,7 @@ PALETTE = {
     # the other enemies' armour (EnemyTypes.h)
     "sentinel": (0.20, 0.32, 0.62), "brute": (0.58, 0.24, 0.17), "ripper": (0.80, 0.64, 0.14),
     "raptor": (0.40, 0.16, 0.52), "mite": (0.18, 0.30, 0.16),
+    "juggernaut": (0.36, 0.38, 0.44), "shieldbearer": (0.34, 0.37, 0.42), "gold": (0.85, 0.62, 0.18), "bronze": (0.62, 0.46, 0.20),
 }
 LIVE_DIR = os.environ.get("OVERDRIVE_LIVE_DIR") or os.path.join(os.path.expanduser("~"), ".overdrive_blender")
 

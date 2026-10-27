@@ -4267,7 +4267,8 @@ int main() {
         CHECK(m && m->error.empty() && m->joints.size() == 6, "the HUSK's file loads, with all six joints (assets/enemies/husk.glb)");
         // Every enemy made in Blender: its joints where the code turns them, its head inside its head
         // hitbox (the head you see is the head you hit), on its feet, meshes kept, and the same after a save
-        const EnemyType made[] = {EnemyType::HUSK, EnemyType::SENTINEL, EnemyType::BRUTE, EnemyType::RIPPER, EnemyType::RAPTOR, EnemyType::MITE};
+        const EnemyType made[] = {EnemyType::HUSK, EnemyType::SENTINEL, EnemyType::BRUTE, EnemyType::RIPPER, EnemyType::RAPTOR, EnemyType::MITE,
+                                  EnemyType::JUGGERNAUT, EnemyType::SHIELDBEARER};
         bool loadsAll = true, jointsAll = true, headsAll = true, feetAll = true, meshesAll = true, tripsAll = true;
         for (EnemyType t : made) {
             const char* nm = statsOf(t).name;
@@ -4334,7 +4335,7 @@ int main() {
             if (!same) std::printf("      %s: not the same after a save\n", nm);
             tripsAll &= same;
         }
-        CHECK(loadsAll, "every enemy made in Blender loads, with the joints its rig turns (HUSK SENTINEL BRUTE RIPPER RAPTOR MITE)");
+        CHECK(loadsAll, "every enemy made in Blender loads, with the joints its rig turns (HUSK SENTINEL BRUTE RIPPER RAPTOR MITE JUGGERNAUT SHIELDBEARER)");
         CHECK(jointsAll, "every enemy file keeps its joints where the code turns them");
         CHECK(headsAll, "every box of an enemy's head sits inside its head hitbox");
         CHECK(feetAll, "every walking enemy stands on the floor (its lowest point within 5 cm)");

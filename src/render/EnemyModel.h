@@ -180,6 +180,9 @@ inline HumanoidFrames humanoid(Rig& r, const mat4& root, const HumanoidLook& L,
     return f;
 }
 
+// Where a SHIELDBEARER's shield sits at rest, from its torso (the code rig's numbers)
+inline vec3 shieldRest() { HumanoidLook L = humanoidDims(EnemyType::SHIELDBEARER); return {0.12f, -0.15f, L.torsoD * 0.5f + 0.32f}; }
+
 // A rig from its file (EnemyFile.h): the code sets each joint's motion (in the
 // joint's own frame, where the file put it) and each glow channel; the parts
 // ride their joints. `root` already carries the body's lift.
@@ -224,26 +227,54 @@ inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileR
     vec3 glow = st.glow * (1.f + 2.5f * tp);
     float stride = glm::clamp(e.moveSpeed / std::max(0.1f, st.speed), 0.f, 1.2f);
     glowOut = glow;
-    auto humanoidOf = [&](float strideH, ArmPose pose, float amt) {
+    auto humanoidOf = [&](float strideH, ArmPose pose, float amt, const mat4& base) {
         HumanoidMotion mo = humanoidMotion(e.animPhase, strideH, pose, amt, nullptr);
         P = humanoidPose(mo, glow);
-        fileRoot = root * T({0.f, mo.lift, 0.f});
+        fileRoot = base * T({0.f, mo.lift, 0.f});
     };
     switch (e.type) {
     case EnemyType::HUSK:
-        humanoidOf(stride, ArmPose::AIM_RIGHT, e.attack == AttackKind::SHOT ? smooth01c(tp * 3.f) : 0.35f);
+        humanoidOf(stride, ArmPose::AIM_RIGHT, e.attack == AttackKind::SHOT ? smooth01c(tp * 3.f) : 0.35f, root);
         P.chan[C_SHOT] = st.shotColor * (0.3f + 3.f * tp);
         return true;
     case EnemyType::SENTINEL:
-        humanoidOf(stride, ArmPose::AIM_RIGHT, (e.attack == AttackKind::BURST || e.burstLeft > 0) ? 1.f : 0.55f);
+        humanoidOf(stride, ArmPose::AIM_RIGHT, (e.attack == AttackKind::BURST || e.burstLeft > 0) ? 1.f : 0.55f, root);
         return true;
     case EnemyType::BRUTE: {
         ArmPose pose = ArmPose::SWING; float amt = 0.f;
         if (e.attack == AttackKind::SLAM) { pose = ArmPose::RAISED;   amt = smooth01c(tp * 1.6f); }
         if (e.attack == AttackKind::LOB)  { pose = ArmPose::AIM_BOTH; amt = smooth01c(tp * 2.f); }
-        humanoidOf(std::max(stride, 0.4f), pose, amt);
+        humanoidOf(std::max(stride, 0.4f), pose, amt, root);
         float throb = 0.6f + 0.4f * std::sin(time * 4.f);
         P.chan[C_PULSE] = glow * (1.2f * throb + 2.f * tp);
+        return true;
+    }
+    case EnemyType::JUGGERNAUT: {   // broken (parried): slumps forward, its core strobing
+        bool broken = e.staggered();
+        vec3 core = broken ? (std::fmod(time * 10.f, 1.f) > 0.5f ? vec3{3.f, 2.6f, 1.2f} : vec3{1.f, 0.5f, 0.1f}) : glow;
+        glowOut = core;   // (the glow its visor and core shine with)
+        ArmPose pose = ArmPose::SWING; float amt = 0.f;
+        if (e.attack == AttackKind::SHELL) { pose = ArmPose::AIM_RIGHT; amt = smooth01c(tp * 2.f); }
+        if (e.attack == AttackKind::SMASH) { pose = ArmPose::RAISED;    amt = smooth01c(tp * 1.4f); }
+        if (broken) { pose = ArmPose::SWING; amt = 0.f; }
+        humanoidOf(broken ? 0.f : std::max(stride, 0.3f), pose, amt, broken ? root * T({0.f, -0.25f, 0.f}) * RX(0.32f) : root);
+        P.chan[C_GLOW] = core;
+        float throb = 0.6f + 0.4f * std::sin(time * 4.f);
+        P.chan[C_PULSE] = core * (1.3f * throb + 2.f * tp);
+        P.chan[C_SHOT] = st.shotColor * (e.attack == AttackKind::SHELL ? 0.5f + 4.f * tp : 0.4f);
+        P.chan[C_SMASH] = e.attack == AttackKind::SMASH ? glow * (0.3f + 2.f * tp) : vec3{0.f};
+        return true;
+    }
+    case EnemyType::SHIELDBEARER: {   // the tower shield: braced in front, drawn back to bash, knocked aside when broken
+        humanoidOf(stride, ArmPose::AIM_RIGHT, e.attack == AttackKind::SHOT ? smooth01c(tp * 2.5f) : 0.3f, root);
+        P.chan[C_SHOT] = st.shotColor * (0.3f + 3.f * tp);
+        P.chan[C_RIM] = glow * (0.5f + 2.f * tp);   // (the flaring glow, flaring harder)
+        float bash = e.attack == AttackKind::BASH ? smooth01c(tp * 1.5f) : 0.f;
+        if (e.staggered())   // knocked aside: placed from the torso
+            P.motion[E_SHIELD] = T(-shieldRest()) * T({0.55f, -0.5f, 0.3f}) * RY(1.1f) * RZ(0.5f);
+        else {
+            P.motion[E_SHIELD] = T({0.f, 0.f, -0.22f * bash}) * RX(-0.12f * bash);
+        }
         return true;
     }
     case EnemyType::RIPPER: {
@@ -333,6 +364,7 @@ inline std::vector<gunkit::ModelJoint> restJointsOf(EnemyType t) {
         add(E_TORSO, E_ROOT, {0.f, chest, 0.f});
         add(E_HEAD, E_TORSO, {0.f, chest + L.torsoH, 0.f});
         add(E_ARML, E_TORSO, {shX, shY, 0.f}); add(E_ARMR, E_TORSO, {-shX, shY, 0.f});
+        if (t == EnemyType::SHIELDBEARER) add(E_SHIELD, E_TORSO, vec3{0.f, chest, 0.f} + shieldRest());
     }
     }
     return J;

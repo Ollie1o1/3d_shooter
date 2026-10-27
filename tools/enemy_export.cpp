@@ -9,6 +9,7 @@
 // glow channel (the one its emission follows in every state). Any box it can't explain is
 // an error, not a guess. The test suite then holds the file to the code, box for box.
 #include "render/EnemyModel.h"
+#include <array>
 #include <cstdio>
 #include <string>
 using namespace rig;
@@ -28,6 +29,8 @@ static std::vector<State> states(EnemyType t) {
         case EnemyType::RIPPER: kinds[0] = AttackKind::LUNGE; break;
         case EnemyType::RAPTOR: kinds[0] = AttackKind::DIVE; break;
         case EnemyType::MITE: kinds[0] = AttackKind::FUSE; break;
+        case EnemyType::JUGGERNAUT: kinds[0] = AttackKind::SHELL; kinds[1] = AttackKind::SMASH; break;
+        case EnemyType::SHIELDBEARER: kinds[0] = AttackKind::SHOT; kinds[1] = AttackKind::BASH; break;
         default: break;
     }
     int n = 0;
@@ -43,6 +46,11 @@ static std::vector<State> states(EnemyType t) {
                     if (t == EnemyType::SENTINEL && a == 2) s.e.burstLeft = 2;
                     v.push_back(s);
                 }
+    for (float ph : {0.4f, 2.9f}) {   // broken (parried): the JUGGERNAUT slumps, the SHIELDBEARER's shield is knocked aside
+        State s{base(), 0.23f + 0.41f * (float)(n++)};
+        s.e.animPhase = ph; s.e.staggerTimer = 1.f;
+        v.push_back(s);
+    }
     return v;
 }
 
@@ -63,7 +71,7 @@ int main(int argc, char** argv) {
     auto S = states(t);
     std::vector<std::vector<TracedBox>> traces;
     std::vector<FilePose> poses; std::vector<vec3> glows;
-    mat4 W0[E_COUNT];
+    std::vector<std::array<mat4, E_COUNT>> Ws;   // every joint's frame, in every state
     for (size_t si = 0; si < S.size(); ++si) {
         std::vector<TracedBox> tr; std::vector<BoxInstance> sink;
         traceSink() = &tr;
@@ -71,7 +79,8 @@ int main(int argc, char** argv) {
         traceSink() = nullptr;
         mat4 fr; FilePose P; vec3 g;
         if (!filePoseOf(S[si].e, S[si].time, mat4(1.f), fr, P, g)) { std::fprintf(stderr, "no file pose for %s\n", name.c_str()); return 1; }
-        if (si == 0) { Rig dummy{sink}; drawFile(dummy, fr, jm, P, g, W0); }
+        std::array<mat4, E_COUNT> W; { Rig dummy{sink}; drawFile(dummy, fr, jm, P, g, W.data()); }
+        Ws.push_back(W);
         if (si && tr.size() != traces[0].size()) { std::fprintf(stderr, "state %zu draws %zu boxes, not %zu\n", si, tr.size(), traces[0].size()); return 1; }
         traces.push_back(tr); poses.push_back(P); glows.push_back(g);
     }
@@ -81,15 +90,21 @@ int main(int argc, char** argv) {
     for (size_t i = 0; i < traces[0].size(); ++i) {
         const TracedBox& b0 = traces[0][i];
         gunkit::ModelPart p;
-        // its joint: the frame it was drawn from
-        int joint = -1;
+        // its joint: the one it keeps the same offset from in every state (usually none at all:
+        // drawn from the joint's own frame; a JUGGERNAUT's cannon rings are turned on its arm)
+        int joint = -1; mat4 off(1.f);
         for (int j = E_COUNT - 1; j >= 0 && joint < 0; --j) {
-            bool eq = true;
-            for (int c = 0; c < 4 && eq; ++c) eq = glm::length(b0.parent[c] - W0[j][c]) < 1e-4f;
-            if (eq && (j == E_ROOT || jm.has(j))) joint = j;
+            if (j != E_ROOT && !jm.has(j)) continue;
+            mat4 R0 = glm::inverse(Ws[0][j]) * b0.parent;
+            bool rigid = true;
+            for (size_t s = 1; s < traces.size() && rigid; ++s) {
+                mat4 R = glm::inverse(Ws[s][j]) * traces[s][i].parent;
+                for (int c = 0; c < 4 && rigid; ++c) rigid = glm::length(R[c] - R0[c]) < 1e-4f;
+            }
+            if (rigid) { joint = j; off = R0; }
         }
-        if (joint < 0) { std::fprintf(stderr, "box %zu: drawn from no joint's frame\n", i); return 1; }
-        p.joint = joint; p.rel = b0.local;
+        if (joint < 0) { std::fprintf(stderr, "box %zu: rides no joint\n", i); return 1; }
+        p.joint = joint; p.rel = off * b0.local;
         // its colour: fixed, or a shade of the (flaring) glow
         bool fixed = true;
         for (auto& tr : traces) fixed &= close(tr[i].col, b0.col);
@@ -105,7 +120,7 @@ int main(int argc, char** argv) {
         bool dark = true;
         for (auto& tr : traces) dark &= glm::length(tr[i].emi) < 1e-6f;
         if (!dark) {
-            const int order[] = {C_GLOW, C_SHOT, C_PULSE, C_DIVE, C_FUSE, C_BLADE, C_CONST};
+            const int order[] = {C_GLOW, C_SHOT, C_PULSE, C_DIVE, C_FUSE, C_BLADE, C_SMASH, C_RIM, C_CONST};
             for (int c : order) {
                 vec3 k{0.f}; bool have[3] = {false, false, false}, ok = true;
                 for (size_t s = 0; s < traces.size() && ok; ++s)
