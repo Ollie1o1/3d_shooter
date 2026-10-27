@@ -311,8 +311,7 @@ def check_scene(gun):
         errors.append("unknown glow channel on " + ", ".join(glow[:5]) + " (channels: " + " ".join(ENEMY_CHANNELS if gun in ENEMIES else CHANNELS) + ")")
     if show:
         errors.append("unknown show flag on " + ", ".join(show[:5]) + " (flags: " + " ".join(FLAGS) + ")")
-    if odd and gun not in ENEMIES:   # (an enemy keeps its meshes whole: src/render/MeshLib.h)
-        warnings.append("%d mesh(es) aren't boxes; a gun is drawn from their bounds (so far): %s" % (len(odd), ", ".join(odd[:5])))
+    # (a part that isn't a box is kept whole, for guns and enemies alike: src/render/MeshLib.h)
     return errors, warnings
 
 
