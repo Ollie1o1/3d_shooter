@@ -199,15 +199,18 @@ src/
 │                           and MORNINGSTAR (Gameplay_Morning.h)
 ├── world/              the maps: Level.h (Act I), LevelAct2.h, LevelGauntlet.h (FAST), ArenaShifts, Shapes, Interactable
 ├── render/             BoxRenderer (one instanced draw), PostProcess (bloom, CRT), TextureGen, WorldMesh,
-│                       Effects, EnemyModel (every enemy's box rig), GunKit / GunMotion / ViewModel (the guns)
+│                       Effects, EnemyModel (every enemy's box rig), GunKit / GunMotion / ViewModel (the guns),
+│                       GunModel / GunFile (a gun's shape as data: assets/guns/*.glb)
 ├── audio/              AudioSystem, SfxMixer (positional mixing), MixTable, MusicSynth (the live soundtrack),
 │                       VoiceSynth / VoiceTable / EnemyVoice (the enemies' voices, built in code)
 ├── ui/                 MenuState (main menu), SettingsMenu, UIRenderer (HUD and overlays), UIBatch, PixelFont,
-│                       LeaderboardView
+│                       LeaderboardView, GunViewer (--viewer)
 └── shaders/            GLSL 3.30 (rewritten to GLSL ES 3.00 for the web at load time)
 tests/                  test_physics.cpp, test_game.cpp, test_zenith.cpp, BossSim.h (see Testing)
 tools/                  sound generators (gen_sfx.py, gen_arsenal.py, sfx_absolute.py, import_sfx.py),
-                        record_showcase.sh (re-records docs/overdrive.gif)
+                        record_showcase.sh (re-records docs/overdrive.gif),
+                        blender/overdrive_guns.py (the Blender add-on for assets/guns)
+assets/guns/            the four guns' shapes, glTF (see "Edit a gun")
 web/index.html          the browser shell for `make web`
 docs/superpowers/       the design specs and plans each feature was built from
 ```
@@ -323,6 +326,9 @@ Everything below runs without touching the mouse, so it works from scripts.
 #   --overlay teach | teach2   the NEW MOVE cards, every time (screenshots)
 tools/record_showcase.sh         # re-record docs/overdrive.gif (needs gifski)
 
+# The gun viewer: one gun on a stand, reloaded whenever its file changes (see "Edit a gun")
+./shooter --viewer [revolver|shotgun|lancer|longshot]
+
 # Frame times
 ./shooter --bench 2000 --arena 4 --wave 2 --god [--cap HZ] [--res LINES]
 #   prints a per-zone breakdown (events, sim parts, render passes, present, swap) and the worst frames
@@ -363,9 +369,35 @@ In `world/Level.h` (or `LevelGauntlet.h`, `LevelAct2.h`): `B.mover(centre, halfS
 ### Add a weapon
 
 1. Add an id to `WeaponId` and a row to the table in `player/Weapons.h` (damage, pellets, spread, fire rate, magazine, reload, aim zoom, pierce, recoil, mod).
-2. Give it a recipe in `render/GunKit.h` (like `buildRevolver`) and its motion in `render/GunMotion.h`.
+2. Build its shape in Blender as `assets/guns/<name>.glb` (see "Edit a gun"), add the name to `gunName()` in `render/GunKit.h`, write its rig (`rigOf()`: what moves, what glows), its extras (`extrasOf()`: cells, muzzle flash, reload props) and the joints it needs (`jointsNeeded()`), and its motion in `render/GunMotion.h`.
 3. Add its sound name to `SND[]` in `GameplayState::fireWeapon()` (`game/Gameplay_Combat.h`).
 4. Give it an icon in `UIRenderer::drawWeaponIcon()`. The slots, Armory, ammo and reload all follow from the table.
+
+### Edit a gun
+
+Each gun's shape is a file, `assets/guns/<name>.glb` (glTF, made of boxes), so you can work on it in Blender. The code still owns how a gun moves and glows; the file owns what it's made of.
+
+1. Install Blender (4.1 or later) and the add-on: Preferences > Add-ons > the ⌄ menu (top right) > **Install from Disk...** > `tools/blender/overdrive_guns.py`. Its panel is in the 3D view's sidebar (N) > **OVERDRIVE**.
+2. Set **Repo** to this folder, pick a gun, **Open gun** (it replaces the scene).
+3. Run `./shooter --viewer <gun>` beside Blender. Each **Save gun** reloads it in the viewer; if the file has a problem, the viewer says what and keeps the last good version.
+
+**Save gun** checks the scene first and won't save a gun over a different one (the scene remembers which gun it was opened from), a gun missing a joint its rig needs (a copied `crane.001` isn't `crane`), or an unknown glow channel or show flag; a mesh that isn't a box saves with a warning (the game uses its bounds). Work in Object Mode; a box mirrored with a negative scale is fine.
+
+**Live link** (the panel's button, off until you click it) lets Claude edit the open scene: Claude runs `python3 tools/blender/live.py -c "..."`, which drops the script in `~/.overdrive_blender/inbox`; Blender runs it as one undo step (Ctrl+Z takes it back) and writes back what happened. The add-on's helpers (`add_box`, `add_joint`, `set_glow`, `set_show`, `describe`, `open_gun`, `save_gun`...) work in game space. Quitting Blender or clicking the button again turns it off.
+
+What the game reads from the file (`render/GunFile.h` has the details):
+
+| In Blender | In the game |
+|---|---|
+| a mesh object | one box: the mesh's bounds, placed by the object (move, rotate and scale it in Object Mode) |
+| an object named `crane`, `cylinder`, `hammer`, `trigger`, `needle`, `pump`, `bolt`, `mag` | a **joint** the gun's rig moves; whatever is parented under it moves with it, about its origin |
+| an object named `muzzle` or `cells` | a **socket**: where the muzzle flash and the ammo cells go (the sword: its fuller's guard-meter cells) |
+| material `glow` or `glow*0.5` | the gun's glow colour (times 0.5); any other material: its base colour |
+| custom property `glow` = `const` `glow` `accent` `breath` `stripe` `rim` `needle` `port` `gem` `charge` | the box glows on that channel, `k` times as strongly (`k` a number or an RGB); `gem` and `charge` are the sword's (its gems; its edges, lit by a charged thrust and a riposte) |
+| custom property `phase` | its glow pulses along a wave (the revolver's glyphs) |
+| custom property `show` = `loaded` / `!loaded` / `bigmag` / `!bigmag` / `broken` / `!broken` | the box only shows while that holds (`broken`: the sword's guard) |
+
+Each gun needs its joints (`jointsNeeded()` in `GunKit.h`): the revolver its crane, cylinder, hammer, trigger and needle; the shotgun its pump; the rifles their bolt (and the Longshot its mag); every gun a muzzle and cells. The sword, OATHBREAKER, is a file too (`assets/guns/sword.glb`, rebuilt from `tools/blender/sword_build.py`; `./shooter --viewer sword`), needing only its `cells` socket. `make test` checks every file loads, has its joints, and survives a write and read back. The ammo cells, muzzle flash, falling brass, speedloader, shells and stripper clip are drawn by code (`extrasOf()`), because they depend on the magazine and the moment.
 
 ### Add an enemy type
 
