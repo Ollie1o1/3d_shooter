@@ -164,7 +164,7 @@ inline bool gltfJson(const std::string& bytes, std::string& json, std::string& e
     return true;
 }
 
-inline GunModel readGunText(const std::string& bytes, const std::string& path) {
+inline GunModel readGunText(const std::string& bytes, const std::string& path, const Names& N = gunNames()) {
     GunModel m;
     auto bad = [&](const std::string& why) { m = GunModel{}; m.error = path + ": " + why; return m; };
     std::string json, err;
@@ -203,9 +203,8 @@ inline GunModel readGunText(const std::string& bytes, const std::string& path) {
         }
     }
     const auto& nodes = doc.arr("nodes");
-    glm::mat4 frame[J_COUNT];
-    for (auto& f : frame) f = glm::mat4(1.f);
-    bool seen[J_COUNT] = {};
+    std::vector<glm::mat4> frame(N.joints, glm::mat4(1.f));
+    std::vector<char> seen(N.joints, 0);
     std::string problem;
     std::vector<int> visiting(nodes.size(), 0);
     std::function<void(int, const glm::mat4&, int)> walk = [&](int ni, const glm::mat4& parentWorld, int ctx) {
@@ -215,7 +214,7 @@ inline GunModel readGunText(const std::string& bytes, const std::string& path) {
         const JVal& n = nodes[ni];
         glm::mat4 world = parentWorld * nodeMatrix(n);
         std::string name = n.str("name");
-        int j = lookup<J_COUNT>(jointName, name);
+        int j = lookupN(N.joints, N.joint, name);
         if (j > J_ROOT) {
             if (seen[j]) { problem = "two joints named '" + name + "'"; return; }
             seen[j] = true; frame[j] = world;
@@ -230,10 +229,10 @@ inline GunModel readGunText(const std::string& bytes, const std::string& path) {
             if (const JVal* x = n.get("extras")) {
                 std::string g = x->str("glow");
                 if (!g.empty()) {
-                    p.chan = lookup<C_COUNT>(chanName, g);
+                    p.chan = lookupN(N.chans, N.chan, g);
                     if (p.chan < 0) {
                         problem = "'" + name + "' glows on '" + g + "' - the channels are:";
-                        for (int c = 0; c < C_COUNT; ++c) problem += std::string(" ") + chanName(c);
+                        for (int c = 0; c < N.chans; ++c) problem += std::string(" ") + N.chan(c);
                         return;
                     }
                     p.k = glm::vec3(1.f);
@@ -246,10 +245,10 @@ inline GunModel readGunText(const std::string& bytes, const std::string& path) {
                 std::string show = x->str("show");
                 if (!show.empty()) {
                     p.want = show[0] != '!';
-                    p.flag = lookup<F_COUNT>(flagName, p.want ? show : show.substr(1));
+                    p.flag = lookupN(N.flags, N.flag, p.want ? show : show.substr(1));
                     if (p.flag < 0) {
                         problem = "'" + name + "' shows on '" + show + "' - the flags are:";
-                        for (int f = 0; f < F_COUNT; ++f) problem += std::string(" ") + flagName(f);
+                        for (int f = 0; f < N.flags; ++f) problem += std::string(" ") + N.flag(f);
                         problem += " (! for not)";
                         return;
                     }
@@ -277,11 +276,11 @@ inline GunModel readGunText(const std::string& bytes, const std::string& path) {
     if (m.parts.empty()) return bad("no boxes in it");
     return m;
 }
-inline GunModel readGunFile(const std::string& path) {
+inline GunModel readGunFile(const std::string& path, const Names& N = gunNames()) {
     std::ifstream f(path, std::ios::binary);
     if (!f) { GunModel m; m.error = path + ": can't open it"; return m; }
     std::stringstream ss; ss << f.rdbuf();
-    return readGunText(ss.str(), path);
+    return readGunText(ss.str(), path, N);
 }
 
 // ---- writing ----------------------------------------------------------------------
@@ -289,7 +288,8 @@ inline GunModel readGunFile(const std::string& path) {
 // `materialName` names a part's material (it's what you see in Blender);
 // parts of a shade of the glow must get "glow" / "glow*s" (readGunText reads them back so).
 inline std::string writeGunText(const GunModel& m, const std::string& rootName,
-                                const std::function<std::string(const ModelPart&)>& materialName) {
+                                const std::function<std::string(const ModelPart&)>& materialName,
+                                const Names& N = gunNames()) {
     auto num = [](double v) { char b[32]; std::snprintf(b, sizeof b, "%.9g", v); return std::string(b); };
     auto quote = [](const std::string& s) { std::string o = "\""; for (char c : s) { if (c == '"' || c == '\\') o += '\\'; o += c; } return o + "\""; };
     auto mat16 = [&](const glm::mat4& x) {
@@ -324,12 +324,12 @@ inline std::string writeGunText(const GunModel& m, const std::string& rootName,
         kids[jointNode.at(p.joint)].push_back(ni);
         std::string x;
         if (p.chan >= 0) {
-            x += "\"glow\":" + quote(chanName(p.chan));
+            x += "\"glow\":" + quote(N.chan(p.chan));
             if (p.k.x == p.k.y && p.k.y == p.k.z) { if (p.k.x != 1.f) x += ",\"k\":" + num(p.k.x); }
             else x += ",\"k\":[" + num(p.k.x) + "," + num(p.k.y) + "," + num(p.k.z) + "]";
             if (p.hasPhase) x += ",\"phase\":" + num(p.phase);
         }
-        if (p.flag >= 0) x += std::string(x.empty() ? "" : ",") + "\"show\":" + quote(std::string(p.want ? "" : "!") + flagName(p.flag));
+        if (p.flag >= 0) x += std::string(x.empty() ? "" : ",") + "\"show\":" + quote(std::string(p.want ? "" : "!") + N.flag(p.flag));
         partNodes.push_back("{\"name\":" + quote(matNames[partMat[i]]) + ",\"mesh\":" + std::to_string(partMat[i]) +
                             ",\"matrix\":" + mat16(p.rel) + (x.empty() ? "" : ",\"extras\":{" + x + "}") + "}");
     }
@@ -342,7 +342,7 @@ inline std::string writeGunText(const GunModel& m, const std::string& rootName,
     nodeJson.push_back("{\"name\":" + quote(rootName) + children(0) + "}");
     for (size_t i = 0; i < m.joints.size(); ++i) {
         const ModelJoint& J = m.joints[i];
-        nodeJson.push_back("{\"name\":" + quote(jointName(J.id)) + ",\"matrix\":" + mat16(glm::inverse(frameOf(J.parent)) * J.frame) + children((int)(1 + i)) + "}");
+        nodeJson.push_back("{\"name\":" + quote(N.joint(J.id)) + ",\"matrix\":" + mat16(glm::inverse(frameOf(J.parent)) * J.frame) + children((int)(1 + i)) + "}");
     }
     for (auto& s : partNodes) nodeJson.push_back(s);
 
@@ -387,10 +387,10 @@ inline std::string writeGunText(const GunModel& m, const std::string& rootName,
     return out;
 }
 inline bool writeGunFile(const std::string& path, const GunModel& m, const std::string& rootName,
-                         const std::function<std::string(const ModelPart&)>& materialName) {
+                         const std::function<std::string(const ModelPart&)>& materialName, const Names& N = gunNames()) {
     std::ofstream f(path, std::ios::binary);
     if (!f) return false;
-    std::string bytes = writeGunText(m, rootName, materialName);
+    std::string bytes = writeGunText(m, rootName, materialName, N);
     f.write(bytes.data(), (std::streamsize)bytes.size());
     return (bool)f;
 }
