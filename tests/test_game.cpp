@@ -4377,6 +4377,47 @@ int main() {
             CHECK(fine, "a mesh mirrored in its file is drawn the right way out (faces and normals point outward)");
         }
     }
+    // ---------------------------------------------------------------- JUGGERNAUT and SHIELDBEARER files (migration proof)
+    {
+        bool all = true;
+        for (EnemyType t : {EnemyType::JUGGERNAUT, EnemyType::SHIELDBEARER}) {
+            const gunkit::GunModel* m = enemyfile::model(t);
+            bool same = m != nullptr;
+            gunkit::GunModel saved = enemyfile::slot(t);
+            const EnemyStats& st = statsOf(t);
+            AttackKind kinds[] = {AttackKind::NONE, AttackKind::SHELL, AttackKind::SMASH, AttackKind::SHOT, AttackKind::BASH};
+            int n = 0;
+            for (float ph : {0.3f, 1.7f, 5.1f})
+                for (AttackKind k : kinds)
+                    for (int v = 0; v < 3 && same; ++v) {
+                        Enemy e(t, {2.f, 0.4f, -1.f}); e.spawnTimer = 0.f; e.yaw = 0.4f + ph; e.animPhase = ph;
+                        e.moveSpeed = v ? st.speed * 0.9f : 0.2f; e.age = 0.17f * (float)(++n);
+                        if (k != AttackKind::NONE) { e.attack = k; e.telegraphDuration = 0.7f; e.telegraphTimer = v ? 0.08f : 0.5f; }
+                        if (v == 1) { e.hitFlashTimer = 0.05f; e.flinchAmp = 0.15f; e.flinchAt = 0.f; e.flinchDir = {0.6f, 0.8f}; }
+                        if (v == 2) e.staggerTimer = 1.f;
+                        float time = 0.29f * (float)n;
+                        std::vector<BoxInstance> a, b;
+                        buildEnemy(e, time, a);
+                        enemyfile::slot(t) = {};
+                        buildEnemy(e, time, b);
+                        enemyfile::slot(t) = saved;
+                        same &= a.size() == b.size();
+                        std::vector<char> used(b.size(), 0);
+                        for (size_t i = 0; same && i < a.size(); ++i) {
+                            bool hit = false;
+                            for (size_t j = 0; j < b.size() && !hit; ++j) {
+                                bool eq = !used[j] && glm::length(a[i].color - b[j].color) < 1e-4f && glm::length(a[i].emissive - b[j].emissive) < 1e-3f;
+                                for (int c = 0; eq && c < 4; ++c) eq = glm::length(a[i].model[c] - b[j].model[c]) < 1e-4f;
+                                if (eq) { used[j] = 1; hit = true; }
+                            }
+                            same &= hit;
+                        }
+                    }
+            if (!same) std::printf("      %s: its file isn't its code rig\n", st.name);
+            all &= same;
+        }
+        CHECK(all, "the JUGGERNAUT and SHIELDBEARER drawn from their files are their code rigs, box for box (walking, shelling, smashing, bashing, broken, hit)");
+    }
     // ---------------------------------------------------------------- the guns' files (assets/guns/*.glb)
     {
         using namespace gunkit;
