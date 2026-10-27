@@ -4232,6 +4232,52 @@ int main() {
         CHECK(k == 14 && leftSide, "rounds past the eighth show on the revolver's left side, where you can see them");
     }
 
+    // ---------------------------------------------------------------- the guns' files (assets/guns/*.glb)
+    {
+        using namespace gunkit;
+        bool loads = true, joints = true, trips = true;
+        for (int g = 0; g < 4; ++g) {
+            const GunModel& m = gunModel(g);
+            if (!m.error.empty() || m.parts.empty()) { std::printf("      %s\n", m.error.c_str()); loads = false; continue; }
+            for (int j : jointsNeeded(g)) joints &= m.has(j);
+            // written out (as Blender would get it) and read back: the same gun, firing, mid-reload, heated
+            GunModel back = readGunText(writeGunText(m, gunName(g), [](const ModelPart& p) {
+                char b[64]; std::snprintf(b, sizeof b, "%.9g %.9g %.9g", p.color.x, p.color.y, p.color.z);
+                return p.glowScale >= 0.f ? "glow*" + std::to_string(p.glowScale) : std::string(b); }), "memory");
+            GunLook L; L.heat = 0.7f; L.breath = 0.4f; L.flash = 0.5f; L.ammo = 3;
+            for (float u : {-1.f, 0.1f, 0.5f, 0.9f}) {
+                GunPose P; P.reloadU = u; P.fireU = 0.6f;
+                std::vector<GunPart> a, b;
+                buildGunFrom(m, g, L, P, a); buildGunFrom(back, g, L, P, b);
+                trips &= back.error.empty() && a.size() == b.size();
+                for (size_t i = 0; trips && i < a.size(); ++i)
+                    trips &= glm::length(glm::vec3(a[i].xf[3] - b[i].xf[3])) < 1e-5f && glm::length(a[i].emissive - b[i].emissive) < 1e-4f
+                          && glm::length(a[i].color - b[i].color) < 1e-5f;
+            }
+        }
+        CHECK(loads, "every gun's file loads (assets/guns/*.glb)");
+        CHECK(joints, "every gun's file has the joints its rig moves and the sockets its extras hang on");
+        CHECK(trips, "a gun written to glTF and read back is the same gun (firing, mid-reload, heated)");
+        // What the viewer shows when a save is wrong: the problem, by name
+        auto err = [](const char* nodeExtras, const char* name2 = "x") {
+            std::string j = std::string("{\"scenes\":[{\"nodes\":[0,1]}],\"nodes\":[{\"name\":\"a\",\"mesh\":0") + nodeExtras + "},{\"name\":\"" + name2 + "\"}],"
+                "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0}}]}],\"accessors\":[{\"min\":[0,0,0],\"max\":[1,1,1]}]}";
+            return readGunText(j, "t").error;
+        };
+        CHECK(err("").empty(), "a minimal glTF (one box) reads");
+        CHECK(err(",\"extras\":{\"glow\":\"breth\"}").find("'breth'") != std::string::npos, "a glow channel that doesn't exist is named in the error");
+        CHECK(err(",\"extras\":{\"show\":\"!loded\"}").find("loded") != std::string::npos, "so is a show flag that doesn't exist");
+        CHECK(!readGunText("{\"scenes\":[{\"nodes\":[0,1]}],\"nodes\":[{\"name\":\"bolt\"},{\"name\":\"bolt\"}]}", "t").error.empty(),
+              "two joints with one name are an error");
+        CHECK(readGunText("{\"nodes\": [", "t").error.find("bad JSON") != std::string::npos, "a cut-off file is an error, not a crash");
+        GunModel scaled = readGunText("{\"scenes\":[{\"nodes\":[0]}],\"nodes\":[{\"name\":\"crane\",\"translation\":[0,1,0],\"children\":[1]},"
+            "{\"name\":\"a\",\"mesh\":0,\"scale\":[2,2,2]}],\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0},\"material\":0}]}],"
+            "\"materials\":[{\"name\":\"glow*0.5\"}],\"accessors\":[{\"min\":[-1,-1,-1],\"max\":[1,1,1]}]}", "t");
+        CHECK(scaled.error.empty() && scaled.parts.size() == 1 && scaled.parts[0].joint == J_CRANE && std::fabs(scaled.parts[0].rel[0][0] - 4.f) < 1e-5f
+              && std::fabs(scaled.parts[0].glowScale - 0.5f) < 1e-6f,
+              "a Blender cube (2 m, scaled) under a joint: a box of the right size, riding that joint, glow-coloured by its material");
+    }
+
     // ---------------------------------------------------------------- key bindings
     {
         Bindings b;
