@@ -19,6 +19,7 @@
 #include "render/PostProcess.h"
 #include "render/WorldMesh.h"
 #include "render/EnemyModel.h"
+#include "render/BoxRenderer.h"
 #include "ui/UIBatch.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -132,9 +133,6 @@ public:
         glBindTexture(GL_TEXTURE_2D, whiteTex);
         shader.setInt("uTexture", 0);
 
-        boxes.clear();
-        buildEnemy(e, clock, boxes);
-        for (const auto& b : boxes) draw(b.model, b.color, b.emissive);
         draw(glm::translate(glm::mat4(1.f), {0.f, -0.02f, 0.f}) * glm::scale(glm::mat4(1.f), {h * 1.2f, 0.04f, h * 1.2f}),
              {0.08f, 0.08f, 0.09f}, glm::vec3{0.f});
         labels.clear();
@@ -153,6 +151,23 @@ public:
             }
         }
         shader.setVec3("emissiveColor", {0.f, 0.f, 0.f});
+        // the enemy: the game's instanced renderer and shader (boxes and meshes)
+        boxes.clear();
+        buildEnemy(e, clock, boxes);
+        ShaderProgram& bs = boxer.shader;
+        bs.use();
+        bs.setMat4("projection", proj);
+        bs.setMat4("view", view);
+        bs.setVec3("lightDir", glm::normalize(glm::vec3{0.4f, -1.f, 0.3f}));
+        bs.setVec3("lightColor", {1.f, 0.9f, 0.8f});
+        bs.setVec3("uSkyAmb", {0.32f, 0.32f, 0.38f});
+        bs.setVec3("uGroundAmb", {0.12f, 0.11f, 0.10f});
+        bs.setFloat("uFogDensity", 0.f);
+        bs.setInt("uNeonCount", 0);
+        bs.setVec3("viewPos", eye);
+        bs.setInt("uTexture", 0);
+        glBindTexture(GL_TEXTURE_2D, whiteTex);
+        boxer.draw(boxes);
         post.endScene();
         overlay();
     }
@@ -167,6 +182,7 @@ private:
     EnemyType type;
     Enemy e;
     std::vector<BoxInstance> boxes;
+    BoxRenderer boxer;
     float yaw = 200.f, pitch = 8.f, zoom = 1.f, clock = 0.f;
     bool dragging = false, turntable = true, showJoints = false, walking = false, winding = false, loop = false;
     float windT = 0.f, holdWind = -1.f;
@@ -189,7 +205,9 @@ private:
         char buf[200];
         std::snprintf(buf, sizeof buf, "%s   %s", e.stats().name, enemyfile::path(type).c_str());
         ui.textShadow(buf, 20, 18, 3, {0.95f, 0.92f, 0.85f, 1.f});
-        std::snprintf(buf, sizeof buf, "%zu boxes, %zu joints%s%s", m.parts.size(), m.joints.size(),
+        int nMesh = 0;
+        for (auto& p : m.parts) nMesh += p.mesh > 0;
+        std::snprintf(buf, sizeof buf, "%zu parts (%d meshes), %zu joints%s%s", m.parts.size(), nMesh, m.joints.size(),
                       walking ? "   WALKING" : "", e.attack == AttackKind::SHOT ? "   WINDING UP" : "");
         ui.textShadow(buf, 20, 52, 2, {0.7f, 0.72f, 0.78f, 1.f});
         if (!m.error.empty()) {

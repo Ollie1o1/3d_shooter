@@ -414,6 +414,8 @@ inline GunModel& gunModelSlot(int gun) { static GunModel M[GUN_FILES]; return M[
 // A gun whose file is missing or broken draws only its extras.
 inline bool loadGunModel(int gun, const std::string& path) {
     GunModel m = readGunFile(path);
+    for (auto& p : m.parts)   // (the view model draws boxes only, so far: a mesh is drawn as its bounds)
+        if (const meshlib::MeshData* md = meshlib::get(p.mesh)) { p.rel = p.rel * glm::scale(glm::mat4(1.f), md->size); p.mesh = 0; }
     if (m.error.empty())
         for (int j : jointsNeeded(gun))
             if (!m.has(j)) { m.error = path + ": no '" + jointName(j) + "' (the " + gunName(gun) + "'s rig needs it)"; break; }

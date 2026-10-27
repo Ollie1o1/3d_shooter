@@ -221,6 +221,7 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
                     * glm::mat4(d.shape) * S(glm::vec3{0.3f + 0.7f * k});
         float hot = glm::clamp(d.hot / 0.12f, 0.f, 1.f);   // white-hot off the killing blow, cooling to its colours
         push(out, m, glm::mix(d.color * (0.4f + 0.6f * k), glm::vec3{1.f, 0.9f, 0.8f}, hot * 0.7f), d.emissive * k + glm::vec3{2.2f, 1.5f, 0.9f} * hot);
+        out.back().mesh = d.mesh;
     }
 
     // Projectiles: a spinning bright core inside a darker shell
