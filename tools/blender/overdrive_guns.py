@@ -41,8 +41,22 @@ PALETTE = {
 }
 
 
+def guns_dir(folder):
+    """The assets/guns folder, whether Repo points at the repo, at assets, at assets/guns or inside it"""
+    d = os.path.normpath(bpy.path.abspath(folder or "."))
+    for _ in range(4):
+        if os.path.basename(d) == "guns" and os.path.basename(os.path.dirname(d)) == "assets":
+            return d
+        if os.path.isdir(os.path.join(d, "assets", "guns")):
+            return os.path.join(d, "assets", "guns")
+        if os.path.basename(d) == "assets" and os.path.isdir(os.path.join(d, "guns")):
+            return os.path.join(d, "guns")
+        d = os.path.dirname(d)
+    return os.path.join(os.path.normpath(bpy.path.abspath(folder or ".")), "assets", "guns")
+
+
 def gun_path(scene):
-    return os.path.join(bpy.path.abspath(scene.overdrive_repo), "assets", "guns", scene.overdrive_gun + ".glb")
+    return os.path.join(guns_dir(scene.overdrive_repo), scene.overdrive_gun + ".glb")
 
 
 def palette_material(name):
