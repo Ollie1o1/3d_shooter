@@ -35,6 +35,7 @@ public:
         shader.loadFiles("src/shaders/shader.vert", "src/shaders/shader.frag");
         whiteTex = makeGreyTexture();
         pick(gun);
+        if (g_devCam) { yaw = g_devCamYaw; pitch = g_devCamPitch; zoom = std::max(0.15f, g_devCamPos.x); turntable = false; }   // --cam ZOOM 0 0 YAW PITCH: a fixed view (screenshots)
     }
     ~GunViewerState() override { glDeleteTextures(1, &whiteTex); }
 

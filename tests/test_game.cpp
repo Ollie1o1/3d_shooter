@@ -4250,9 +4250,15 @@ int main() {
                 std::vector<GunPart> a, b;
                 buildGunFrom(m, g, L, P, a); buildGunFrom(back, g, L, P, b);
                 trips &= back.error.empty() && a.size() == b.size();
-                for (size_t i = 0; trips && i < a.size(); ++i)
-                    trips &= glm::length(glm::vec3(a[i].xf[3] - b[i].xf[3])) < 1e-5f && glm::length(a[i].emissive - b[i].emissive) < 1e-4f
-                          && glm::length(a[i].color - b[i].color) < 1e-5f;
+                std::vector<char> used(b.size(), 0);   // the same boxes, in any order (a file from Blender lists them its own way)
+                for (size_t i = 0; trips && i < a.size(); ++i) {
+                    bool hit = false;
+                    for (size_t j = 0; j < b.size() && !hit; ++j)
+                        if (!used[j] && glm::length(glm::vec3(a[i].xf[3] - b[j].xf[3])) < 1e-5f && glm::length(glm::vec3(a[i].xf[0] - b[j].xf[0])) < 1e-5f
+                            && glm::length(glm::vec3(a[i].xf[1] - b[j].xf[1])) < 1e-5f && glm::length(glm::vec3(a[i].xf[2] - b[j].xf[2])) < 1e-5f
+                            && glm::length(a[i].emissive - b[j].emissive) < 1e-4f && glm::length(a[i].color - b[j].color) < 1e-5f) { used[j] = 1; hit = true; }
+                    trips &= hit;
+                }
             }
         }
         CHECK(loads, "every gun's file loads (assets/guns/*.glb)");
