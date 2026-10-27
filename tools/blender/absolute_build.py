@@ -14,7 +14,7 @@
 #   torso (0, 1.30, 0)  head (0, 2.25, 0)  crown (on the head)  halo (0, 2.49, -0.34)
 #   armL/R (+-0.31, 2.06, 0)  elbowL/R (y 1.58)  ribbonL/R (y 1.22, z -0.06)  handL/R (y 1.14)
 #   fingersL/R (y 1.04, z 0.01)  tipsL/R (y 0.98)  thumbL/R (x +-0.255, y 1.10, z 0.03)  thumbTipL/R (y 1.05)
-#   weapon (-0.31, 1.07, 0.03): the blade of light (shown with the "blade" flag), out of the fist's thumb side
+#   weapon (-0.31, 1.07, -0.035): the blade of light (shown with the "blade" flag), out of the fist's thumb side
 #   head hitbox: x within +-0.20, y 2.19..2.69, z -0.22..0.20 (the crown's fins and horns ride "crown": outside it)
 # The first build starts from a skeleton (tools/enemy_export --joints absolute <file>, its path set as SKELETON).
 import math
@@ -327,7 +327,7 @@ else:
 
 # ---- the blade of light (phase 3: the "blade" flag): a grip in the fist, a pommel, a gold crescent guard, the blade in
 #      three lengths of light, its edge, a point ----
-W0x, W0y, W0z, SW = -0.31, 1.07, 0.03, "weapon"
+W0x, W0y, W0z, SW = -0.31, 1.07, -0.035, "weapon"   # (the grip, inside the fist)
 show(C((W0x, W0y, W0z), 0.026, 0.20, SEAM, SW, sides=8, glow="light", k=0.5), "blade")
 show(E((W0x, W0y + 0.11, W0z), (0.05, 0.05, 0.05), GOLD, SW, glow="halo", k=0.6), "blade")
 show(R((W0x, W0y - 0.05, W0z), 0.15, 0.014, GOLD, SW, rot=(0, 0, 180), sides=20, tsides=4, arc=180, glow="halo", k=0.8), "blade")   # guard
