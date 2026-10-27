@@ -40,6 +40,11 @@ inline void push(std::vector<BoxInstance>& out, const mat4& m, vec3 col, vec3 em
     out.push_back(b);
 }
 
+// Every box a code rig draws, with the frame it hangs off (tools/enemy_export.cpp
+// turns a rig into a file from this). Off unless set.
+struct TracedBox { mat4 parent, local; vec3 col, emi; };
+inline std::vector<TracedBox>*& traceSink() { static std::vector<TracedBox>* t = nullptr; return t; }
+
 struct Rig {
     std::vector<BoxInstance>& out;
     float flash = 0.f;   // 0..1 white hit flash
@@ -47,6 +52,7 @@ struct Rig {
     float finish = 0.f;  // 0..1 a punch would finish it: the whole body pulses hot
     float dim = 1.f;     // stunned: its glow gutters
     void box(const mat4& parent, vec3 centre, vec3 size, vec3 col, vec3 emi = vec3{0.f}) {
+        if (traceSink()) traceSink()->push_back({parent, T(centre) * S(size), col, emi});
         part(parent * T(centre) * S(size), col, emi);
     }
     void part(const mat4& m, vec3 col, vec3 emi = vec3{0.f}, int mesh = 0) {
@@ -98,6 +104,11 @@ struct PoseOverride {
     float rxR = 0.f, rzR = 0.f, rxL = 0.f, rzL = 0.f;
     float grip = 0.f;   // the blade's angle in the right hand (0: continues the arm)
 };
+
+// A RAPTOR's bob in the air (none in a dive): from its own state, not the clock, so its head
+// hitbox (headBox) bobs with the head you see
+inline float raptorBob(const Enemy& e) { return e.diveTimer > 0.f ? 0.f : std::sin(e.age * 3.f + e.animPhase * 0.1f) * 0.15f; }
+inline float smooth01c(float t) { t = glm::clamp(t, 0.f, 1.f); return t * t * (3.f - 2.f * t); }
 
 // How a humanoid's joints turn this frame (the same for one built in code
 // and one from a file): [0] the left side (+X), [1] the right (-X)
@@ -169,37 +180,162 @@ inline HumanoidFrames humanoid(Rig& r, const mat4& root, const HumanoidLook& L,
     return f;
 }
 
-// A humanoid from its file (EnemyFile.h): the same motion, turning the
-// file's joints where the file put them. Returns the frames like humanoid().
-inline HumanoidFrames humanoidFile(Rig& r, const mat4& root, const gunkit::GunModel& m, vec3 glow, vec3 shot,
-                                   float phase, float stride, ArmPose pose, float amt, const PoseOverride* ov = nullptr) {
+// A rig from its file (EnemyFile.h): the code sets each joint's motion (in the
+// joint's own frame, where the file put it) and each glow channel; the parts
+// ride their joints. `root` already carries the body's lift.
+struct FilePose {
+    mat4 motion[enemyfile::E_COUNT];
+    vec3 chan[enemyfile::C_COUNT];
+    FilePose() { for (auto& m : motion) m = mat4(1.f); for (auto& c : chan) c = vec3(0.f); chan[enemyfile::C_CONST] = vec3(1.f); }
+};
+inline void drawFile(Rig& r, const mat4& root, const gunkit::GunModel& m, const FilePose& P, vec3 glow, mat4* Wout = nullptr) {
     using namespace enemyfile;
-    HumanoidMotion mo = humanoidMotion(phase, stride, pose, amt, ov);
     mat4 local[E_COUNT]; int parent[E_COUNT];
     restLocals(m, local, parent);
     mat4 W[E_COUNT];
-    W[E_ROOT] = root * T({0.f, mo.lift, 0.f});
-    for (const auto& J : m.joints) {   // (parents come first)
-        mat4 motion(1.f);
-        switch (J.id) {
-            case E_HIPL:  motion = RX(mo.hip[0]); break;
-            case E_HIPR:  motion = RX(mo.hip[1]); break;
-            case E_TORSO: motion = mo.torso; break;
-            case E_ARML:  motion = RX(mo.armRx[0]) * RZ(mo.armRz[0]); break;
-            case E_ARMR:  motion = RX(mo.armRx[1]) * RZ(mo.armRz[1]); break;
-            default: break;
-        }
-        W[J.id] = W[J.parent] * local[J.id] * motion;
-    }
+    for (auto& w : W) w = root;
+    for (const auto& J : m.joints) W[J.id] = W[J.parent] * local[J.id] * P.motion[J.id];   // (parents come first)
     for (const auto& p : m.parts) {
         vec3 col = p.glowScale >= 0.f ? glow * p.glowScale : p.color;
-        vec3 emi{0.f};
-        if (p.chan == C_GLOW)  emi = glow * p.k;
-        if (p.chan == C_SHOT)  emi = shot * p.k;
-        if (p.chan == C_CONST) emi = p.k;
+        vec3 emi = p.chan >= 0 && p.chan < C_COUNT ? P.chan[p.chan] * p.k : vec3{0.f};
         r.part(W[p.joint] * p.rel, col, emi, p.mesh);
     }
-    return {W[E_ROOT], W[E_TORSO], W[E_HEAD], W[E_ARML], W[E_ARMR]};
+    if (Wout) for (int j = 0; j < E_COUNT; ++j) Wout[j] = W[j];
+}
+// A humanoid's motion as a file pose (the same numbers humanoid() turns its boxes by)
+inline FilePose humanoidPose(const HumanoidMotion& mo, vec3 glow) {
+    using namespace enemyfile;
+    FilePose P;
+    P.motion[E_HIPL] = RX(mo.hip[0]); P.motion[E_HIPR] = RX(mo.hip[1]);
+    P.motion[E_TORSO] = mo.torso;
+    P.motion[E_ARML] = RX(mo.armRx[0]) * RZ(mo.armRz[0]);
+    P.motion[E_ARMR] = RX(mo.armRx[1]) * RZ(mo.armRz[1]);
+    P.chan[C_GLOW] = glow;
+    return P;
+}
+
+// Every enemy with a file: where its file is drawn from (fileRoot) and how its joints
+// turn and its glow channels shine this frame, from its state: the same numbers its
+// code rig uses. false for a type with no file rig. (Also what tools/enemy_export.cpp reads.)
+inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileRoot, FilePose& P, vec3& glowOut) {
+    using namespace enemyfile;
+    const EnemyStats& st = e.stats();
+    float tp = e.telegraphProgress();
+    vec3 glow = st.glow * (1.f + 2.5f * tp);
+    float stride = glm::clamp(e.moveSpeed / std::max(0.1f, st.speed), 0.f, 1.2f);
+    glowOut = glow;
+    auto humanoidOf = [&](float strideH, ArmPose pose, float amt) {
+        HumanoidMotion mo = humanoidMotion(e.animPhase, strideH, pose, amt, nullptr);
+        P = humanoidPose(mo, glow);
+        fileRoot = root * T({0.f, mo.lift, 0.f});
+    };
+    switch (e.type) {
+    case EnemyType::HUSK:
+        humanoidOf(stride, ArmPose::AIM_RIGHT, e.attack == AttackKind::SHOT ? smooth01c(tp * 3.f) : 0.35f);
+        P.chan[C_SHOT] = st.shotColor * (0.3f + 3.f * tp);
+        return true;
+    case EnemyType::SENTINEL:
+        humanoidOf(stride, ArmPose::AIM_RIGHT, (e.attack == AttackKind::BURST || e.burstLeft > 0) ? 1.f : 0.55f);
+        return true;
+    case EnemyType::BRUTE: {
+        ArmPose pose = ArmPose::SWING; float amt = 0.f;
+        if (e.attack == AttackKind::SLAM) { pose = ArmPose::RAISED;   amt = smooth01c(tp * 1.6f); }
+        if (e.attack == AttackKind::LOB)  { pose = ArmPose::AIM_BOTH; amt = smooth01c(tp * 2.f); }
+        humanoidOf(std::max(stride, 0.4f), pose, amt);
+        float throb = 0.6f + 0.4f * std::sin(time * 4.f);
+        P.chan[C_PULSE] = glow * (1.2f * throb + 2.f * tp);
+        return true;
+    }
+    case EnemyType::RIPPER: {
+        fileRoot = root;
+        float crouch = e.attack == AttackKind::LUNGE ? smooth01c(tp * 2.f) : 0.f;
+        bool  spring = e.attack == AttackKind::LUNGE && e.telegraphTimer < 0.1f;
+        P.motion[E_BODY] = T({0.f, -crouch * 0.22f, 0.f}) * RX(spring ? -0.25f : crouch * 0.12f);
+        P.motion[E_HEAD] = RX(-0.12f + crouch * 0.3f);
+        float ph = e.animPhase * 1.4f;
+        const int legs[4] = {E_LEG_FL, E_LEG_FR, E_LEG_BL, E_LEG_BR};
+        const float offs[4] = {0.f, 3.14159f, 3.14159f, 0.f};
+        for (int i = 0; i < 4; ++i) P.motion[legs[i]] = RX(std::sin(ph + offs[i]) * 0.7f * stride - crouch * 0.4f);
+        P.motion[E_BLADE_L] = RX(-0.35f - crouch * 0.9f) * RY(-0.2f);
+        P.motion[E_BLADE_R] = RX(-0.35f - crouch * 0.9f) * RY(0.2f);
+        P.chan[C_GLOW] = glow;
+        P.chan[C_BLADE] = glow * (0.8f + 1.5f * crouch);
+        return true;
+    }
+    case EnemyType::RAPTOR: {   // its own frame: it pitches into a dive, and bobs in the air
+        bool diving = e.diveTimer > 0.f;
+        float grow = 0.05f + 0.95f * smooth01c(1.f - e.spawnTimer / Enemy::SPAWN_TIME);
+        float bob = raptorBob(e);   // (from its own state, so headBox can follow it)
+        fileRoot = T(e.position + vec3{0.f, bob, 0.f}) * RY(e.yaw) * RX(e.pitch) * S(vec3{e.scale}) * S(vec3{grow});
+        P.motion[E_TAIL] = RX(0.2f + std::sin(e.animPhase * 0.5f) * 0.1f);
+        float flap = diving ? 0.1f : std::sin(e.animPhase) * 0.65f + 0.1f;
+        float windFlap = e.attack == AttackKind::DIVE ? -0.5f * smooth01c(tp * 2.f) : 0.f;   // rears up before diving
+        for (float s : {-1.f, 1.f}) {
+            P.motion[s > 0.f ? E_WING_L : E_WING_R] = (diving ? RY(-s * 0.9f) : mat4(1.f)) * RZ(s * (flap + windFlap));
+            P.motion[s > 0.f ? E_TIP_L : E_TIP_R] = RZ(s * flap * 0.6f);
+        }
+        P.chan[C_GLOW] = glow;
+        P.chan[C_DIVE] = diving ? glow : vec3{0.f};
+        return true;
+    }
+    case EnemyType::MITE: {
+        fileRoot = root;
+        P.motion[E_BODY] = T({0.f, std::fabs(std::sin(e.animPhase)) * 0.04f, 0.f});
+        const int L[3] = {E_LEG_L1, E_LEG_L2, E_LEG_L3}, R[3] = {E_LEG_R1, E_LEG_R2, E_LEG_R3};
+        for (float s : {-1.f, 1.f})
+            for (int i = 0; i < 3; ++i) {
+                float lift = std::sin(e.animPhase + i * 2.1f + (s > 0.f ? 0.f : 1.f)) * 0.25f;
+                P.motion[s > 0.f ? L[i] : R[i]] = RY(s * (0.5f - i * 0.5f)) * RZ(s * (-0.6f + lift));
+            }
+        P.chan[C_GLOW] = glow;
+        vec3 core = glow * 1.5f;
+        if (e.attack == AttackKind::FUSE)
+            core = std::fmod(e.age * 14.f, 1.f) > 0.5f ? vec3{3.f, 0.4f, 0.2f} : vec3{0.6f, 0.05f, 0.f};
+        P.chan[C_FUSE] = core;
+        return true;
+    }
+    default: return false;
+    }
+}
+
+// Where each file rig's joints sit at rest, in the rig's own space (the frame filePoseOf draws
+// from), and their parents: where the code rig turns them (tools/enemy_export.cpp, the tests)
+inline std::vector<gunkit::ModelJoint> restJointsOf(EnemyType t) {
+    using namespace enemyfile;
+    std::vector<gunkit::ModelJoint> J;
+    auto add = [&](int id, int parent, vec3 at) { J.push_back({id, parent, T(at)}); };
+    switch (t) {
+    case EnemyType::RIPPER: {
+        add(E_BODY, E_ROOT, {0.f, 0.62f, 0.f});
+        add(E_HEAD, E_BODY, {0.f, 0.72f, 0.6f});
+        add(E_LEG_FL, E_BODY, {0.27f, 0.50f, 0.42f});  add(E_LEG_FR, E_BODY, {-0.27f, 0.50f, 0.42f});
+        add(E_LEG_BL, E_BODY, {0.27f, 0.50f, -0.42f}); add(E_LEG_BR, E_BODY, {-0.27f, 0.50f, -0.42f});
+        add(E_BLADE_L, E_BODY, {0.36f, 0.67f, 0.42f}); add(E_BLADE_R, E_BODY, {-0.36f, 0.67f, 0.42f});
+        break;
+    }
+    case EnemyType::RAPTOR:
+        add(E_HEAD, E_ROOT, {0.f, 0.62f, 0.55f});
+        add(E_TAIL, E_ROOT, {0.f, 0.5f, -0.5f});
+        add(E_WING_L, E_ROOT, {0.25f, 0.55f, 0.05f}); add(E_TIP_L, E_WING_L, {1.25f, 0.55f, 0.05f});
+        add(E_WING_R, E_ROOT, {-0.25f, 0.55f, 0.05f}); add(E_TIP_R, E_WING_R, {-1.25f, 0.55f, 0.05f});
+        break;
+    case EnemyType::MITE:
+        add(E_BODY, E_ROOT, {0.f, 0.32f, 0.f});
+        for (int i = 0; i < 3; ++i) {
+            add(E_LEG_L1 + i, E_BODY, {0.22f, 0.32f, 0.18f - i * 0.2f});
+            add(E_LEG_R1 + i, E_BODY, {-0.22f, 0.32f, 0.18f - i * 0.2f});
+        }
+        break;
+    default: {   // a humanoid
+        HumanoidLook L = humanoidDims(t);
+        float chest = L.legLen + L.pelvisH, shX = L.torsoW * 0.5f + L.armW * 0.5f, shY = chest + L.torsoH - L.armW * 0.5f;
+        add(E_HIPL, E_ROOT, {L.hipW * 0.5f, L.legLen, 0.f}); add(E_HIPR, E_ROOT, {-L.hipW * 0.5f, L.legLen, 0.f});
+        add(E_TORSO, E_ROOT, {0.f, chest, 0.f});
+        add(E_HEAD, E_TORSO, {0.f, chest + L.torsoH, 0.f});
+        add(E_ARML, E_TORSO, {shX, shY, 0.f}); add(E_ARMR, E_TORSO, {-shX, shY, 0.f});
+    }
+    }
+    return J;
 }
 
 inline float smooth01(float t) { t = glm::clamp(t, 0.f, 1.f); return t * t * (3.f - 2.f * t); }
@@ -354,13 +490,13 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         }
     }
 
+    if (const auto* m = enemyfile::model(e.type)) {   // made in Blender (assets/enemies/<name>.glb)
+        mat4 fileRoot; FilePose P; vec3 g;
+        if (filePoseOf(e, time, root, fileRoot, P, g)) { drawFile(r, fileRoot, *m, P, g); return; }
+    }
     switch (e.type) {
     case EnemyType::HUSK: {
         float aim = e.attack == AttackKind::SHOT ? smooth01(tp * 3.f) : 0.35f;
-        if (const auto* m = enemyfile::model(e.type)) {   // its file (assets/enemies/husk.glb)
-            humanoidFile(r, root, *m, glow, st.shotColor * (0.3f + 3.f * tp), e.animPhase, stride, ArmPose::AIM_RIGHT, aim);
-            break;
-        }
         HumanoidLook L = humanoidLook(e.type, st.color, st.color * 0.45f, glow);   // (no file: the old rig, in code)
         auto f = humanoid(r, root, L, e.animPhase, stride, ArmPose::AIM_RIGHT, aim);
         vec3 gun{0.16f, 0.15f, 0.17f};
@@ -638,7 +774,7 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
     }
     case EnemyType::RAPTOR: {
         bool diving = e.diveTimer > 0.f;
-        float bob = diving ? 0.f : std::sin(time * 3.f + e.animPhase * 0.1f) * 0.15f;
+        float bob = raptorBob(e);   // (from its own state, so headBox can follow it)
         mat4 base = T(e.position + vec3{0.f, bob, 0.f}) * RY(e.yaw) * RX(e.pitch) * S(vec3{e.scale}) * S(vec3{grow});
         vec3 armor = st.color, under = st.color * 0.5f;
         r.box(base, {0.f, 0.45f, 0.f},    {0.5f, 0.42f, 1.0f}, armor);
@@ -910,7 +1046,7 @@ inline bool headBox(const Enemy& e, AABB& out) {
         break;
     }
     case EnemyType::RAPTOR: {
-        mat4 base = T(e.position) * RY(e.yaw) * RX(e.pitch) * S(vec3{e.scale}) * S(vec3{grow});
+        mat4 base = T(e.position + vec3{0.f, raptorBob(e), 0.f}) * RY(e.yaw) * RX(e.pitch) * S(vec3{e.scale}) * S(vec3{grow});
         frame  = base * T({0.f, 0.62f, 0.55f});
         centre = {0.f, 0.05f, 0.26f};
         half   = {0.17f, 0.17f, 0.33f};
