@@ -6,6 +6,7 @@
 // =============================================================================
 #include "world/Level.h"
 #include "core/Vertex.h"
+#include "render/PropFile.h"
 #include <vector>
 #include <algorithm>
 #include <cmath>
@@ -239,11 +240,46 @@ inline WorldGeometry buildWorldGeometry(const LevelData& L) {
             pushFace(bv, bi, {mn.x,mn.y,mn.z},{mx.x,mn.y,mn.z},{mx.x,mn.y,mx.z},{mn.x,mn.y,mx.z},{ 0,-1, 0}, col * 0.8f, false);
     };
 
+    // Props made in Blender (PropFile.h): each triangle with its own normals, shaded toward the prop's
+    // base like a shape; self-lit parts with the neon. A box a prop dresses isn't drawn itself.
+    std::vector<char> dressedWall(L.walls.size(), 0), dressedProp(L.props.size(), 0);
+    for (const PlacedModel& pm : L.models) {
+        const propfile::Prop* pr = propfile::get(pm.name);
+        if (!pr) continue;   // (no file: the box draws as it always did)
+        if (pm.wall >= 0 && pm.wall < (int)L.walls.size()) dressedWall[pm.wall] = 1;
+        if (pm.prop >= 0 && pm.prop < (int)L.props.size()) dressedProp[pm.prop] = 1;
+        const Mat own = pm.wall >= 0 ? L.walls[pm.wall].mat : pm.prop >= 0 ? L.props[pm.prop].mat : pm.mat;
+        const glm::mat4 world = propfile::placement(*pr, pm.free, pm.xf, pm.fit, pm.yaw);
+        const float yLo = glm::vec3(world * glm::vec4(0.f, pr->lo.y, 0.f, 1.f)).y;
+        const float ySpan = std::max(0.01f, glm::vec3(world * glm::vec4(0.f, pr->hi.y, 0.f, 1.f)).y - yLo);
+        propfile::forEachTri(*pr, world, [&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3 na, glm::vec3 nb, glm::vec3 nc,
+                                              glm::vec3 col, bool glows, int tex) {
+            glm::vec3 fn = glm::normalize(glm::cross(b - a, c - a));
+            int t = 0;
+            if (!glows) { Mat m = tex >= 0 ? (Mat)tex : own; t = fn.y > 0.7f ? topTex(m) : fn.y < -0.7f ? TEX_METAL : sideTex(m); }
+            std::vector<Vertex>& vv = glows ? nV : V[t];
+            std::vector<unsigned int>& ii = glows ? nI : I[t];
+            float ax = std::fabs(fn.x), ay = std::fabs(fn.y), az = std::fabs(fn.z);
+            auto uv = [&](glm::vec3 p) -> glm::vec2 {
+                if (ay > ax && ay > az) return {p.x * texScale, p.z * texScale};
+                if (ax > az)            return {p.z * texScale, p.y * texScale};
+                return {p.x * texScale, p.y * texScale};
+            };
+            auto shadeAt = [&](float y) { return glows ? col : col * glm::mix(0.6f, 1.0f, glm::clamp((y - yLo) / std::min(ySpan, 4.f), 0.f, 1.f)); };
+            unsigned int base = (unsigned int)vv.size();
+            vv.push_back({a, uv(a), na, shadeAt(a.y)});
+            vv.push_back({b, uv(b), nb, shadeAt(b.y)});
+            vv.push_back({c, uv(c), nc, shadeAt(c.y)});
+            ii.insert(ii.end(), {base, base + 1, base + 2});
+        });
+    }
+
     for (auto& f : L.floors)
         pushFace(V[topTex(f.mat)], I[topTex(f.mat)], {f.x0,f.y,f.z1},{f.x1,f.y,f.z1},{f.x1,f.y,f.z0},{f.x0,f.y,f.z0},{0,1,0}, f.color, false);
     for (int i = 0; i < (int)L.walls.size(); ++i)
-        if (!L.walls[i].hidden && !L.isDoorWall(i)) pushBox(L.walls[i].box, L.walls[i].color, false, L.walls[i].mat, &L.walls[i]);
-    for (auto& p : L.props) pushBox(p.box, p.color, false, p.mat, &p);
+        if (!L.walls[i].hidden && !L.isDoorWall(i) && !dressedWall[i]) pushBox(L.walls[i].box, L.walls[i].color, false, L.walls[i].mat, &L.walls[i]);
+    for (size_t i = 0; i < L.props.size(); ++i)
+        if (!dressedProp[i]) pushBox(L.props[i].box, L.props[i].color, false, L.props[i].mat, &L.props[i]);
     for (auto& n : L.neon)  pushBox(n.box, n.color, true, Mat::BRICK, nullptr);
     for (auto& s : L.shapes) pushShape(s);
 

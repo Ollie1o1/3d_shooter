@@ -95,6 +95,7 @@ struct ModelPart {
     int flag = -1;               // shown only while flag == want (-1: always)
     bool want = true;
     int mesh = 0;                // not a box: a mesh (MeshLib.h), centred where rel puts it; 0 the unit box
+    int tex = -1;                // a level prop's surface (a Mat: "wood", "metal"...; -1 the placement's own)
 };
 struct GunModel {
     std::vector<ModelJoint> joints;   // parents before children
