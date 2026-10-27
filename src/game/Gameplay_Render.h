@@ -223,6 +223,16 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
         push(out, m, glm::mix(d.color * (0.4f + 0.6f * k), glm::vec3{1.f, 0.9f, 0.8f}, hot * 0.7f), d.emissive * k + glm::vec3{2.2f, 1.5f, 0.9f} * hot);
         out.back().mesh = d.mesh;
     }
+    for (auto& ch : fx.chunks) {   // a limb, whole: each part shrinks away where it is on it
+        float k = glm::clamp(ch.life / ch.maxLife * 1.6f, 0.f, 1.f);
+        glm::mat4 base = T(ch.pos) * glm::rotate(glm::mat4(1.f), ch.angle, ch.axis);
+        float hot = glm::clamp(ch.hot / 0.12f, 0.f, 1.f);
+        for (auto& p : ch.pieces) {
+            push(out, base * p.local * S(glm::vec3{0.15f + 0.85f * k}),
+                 glm::mix(p.color * (0.4f + 0.6f * k), glm::vec3{1.f, 0.9f, 0.8f}, hot * 0.7f), p.emissive * k + glm::vec3{2.2f, 1.5f, 0.9f} * hot);
+            out.back().mesh = p.mesh;
+        }
+    }
 
     // Projectiles: a spinning bright core inside a darker shell
     for (auto& p : projSystem.pool) {

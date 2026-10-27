@@ -44,6 +44,10 @@ inline void push(std::vector<BoxInstance>& out, const mat4& m, vec3 col, vec3 em
 // turns a rig into a file from this). Off unless set.
 struct TracedBox { mat4 parent, local; vec3 col, emi; };
 inline std::vector<TracedBox>*& traceSink() { static std::vector<TracedBox>* t = nullptr; return t; }
+// Which joint each part drawn from a file hangs off: (its index in the output, the joint), for a
+// death that breaks the body at its joints (Effects.h). Off unless set. A LEVIATHAN segment is 1000 + i.
+struct PartJoint { int index, joint; };
+inline std::vector<PartJoint>*& jointSink() { static std::vector<PartJoint>* t = nullptr; return t; }
 
 struct Rig {
     std::vector<BoxInstance>& out;
@@ -208,6 +212,7 @@ inline void drawFile(Rig& r, const mat4& root, const gunkit::GunModel& m, const 
         vec3 emi = p.chan >= 0 && p.chan < C_COUNT ? P.chan[p.chan] * p.k : vec3{0.f};
         if (p.hasPhase) emi *= 0.75f + 0.25f * std::sin(P.wave + p.phase);
         r.part(W[p.joint] * p.rel, col, emi, p.mesh);
+        if (jointSink()) jointSink()->push_back({(int)r.out.size() - 1, p.joint});
     }
     if (Wout) for (int j = 0; j < E_COUNT; ++j) Wout[j] = W[j];
 }
@@ -793,6 +798,7 @@ inline void leviathanSegments(const Enemy& e, float time, Rig& r, const gunkit::
             vec3 col = p.glowScale >= 0.f ? glow * p.glowScale : p.color * P.tint;
             vec3 emi = p.chan >= 0 && p.chan < C_COUNT ? P.chan[p.chan] * p.k : vec3{0.f};
             r.part(f * p.rel, col, emi, p.mesh);
+            if (jointSink()) jointSink()->push_back({(int)r.out.size() - 1, 1000 + i});
         }
     }
 }
