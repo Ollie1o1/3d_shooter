@@ -44,7 +44,9 @@ public:
         enemyfile::modelOf(file);
         if (g_devOverlay.find("enraged") != std::string::npos) e.enraged = true;
         if (g_devOverlay.find("blade") != std::string::npos) e.abBlade = true;
+        if (g_devOverlay.find("plain") != std::string::npos) rig::absPlainTells() = true;   // (no tell glow: see the wrists)
         if (size_t at = g_devOverlay.find("atk"); at != std::string::npos) attackIx = std::atoi(g_devOverlay.c_str() + at + 3);
+        if (size_t at = g_devOverlay.find('@'); at != std::string::npos) holdAt = (float)std::atof(g_devOverlay.c_str() + at + 1);   // @T: T s before the blow
         if (g_devOverlay.find("walk") != std::string::npos) walking = true;   // --overlay walk / aim / windup: hold a state (screenshots)
         if (g_devOverlay.find("windup") != std::string::npos) holdWind = 0.75f;
         else if (g_devOverlay.find("aim") != std::string::npos) holdWind = 0.4f;
@@ -91,7 +93,8 @@ public:
         const float WIND = 0.8f;
         e.attack = AttackKind::NONE; e.telegraphTimer = 0.f;
         const AttackKind atk = attackKind();
-        if (holdWind >= 0.f) { e.attack = atk; e.telegraphDuration = WIND; e.telegraphTimer = WIND * (1.f - holdWind); }
+        if (holdAt >= 0.f) { e.attack = atk; e.telegraphDuration = WIND; e.telegraphTimer = std::max(0.001f, holdAt); }
+        else if (holdWind >= 0.f) { e.attack = atk; e.telegraphDuration = WIND; e.telegraphTimer = WIND * (1.f - holdWind); }
         else if (winding) {
             windT += dt;
             if (windT >= WIND + 0.4f) { windT = 0.f; winding = loop; }
@@ -203,18 +206,19 @@ private:
     AttackKind attackKind() const {
         using A = AttackKind;
         static const A sov[] = {A::CLEAVE, A::SWEEP, A::DASH, A::JUDGMENT, A::THRUST};
-        static const A abs[] = {A::AHOOK, A::AUPPER, A::ASTOMP, A::AJAB, A::AROUNDHOUSE};
+        static const A abs[] = {A::AJAB, A::ACROSS, A::AHOOK, A::AUPPER, A::AHAYMAKER, A::ABACKFIST, A::AELBOW,
+                                A::AROUNDHOUSE, A::AAXE, A::ASTOMP, A::ADROP, A::ASWEEP, A::ALUNGE, A::ACRESCENT};
         static const A ms[] = {A::MJAB, A::MBACKHAND, A::MGRASP, A::MSUNDER};
         if (file == enemyfile::FILE_MORNINGSTAR) return ms[attackIx % 4];
         if (type == EnemyType::SOVEREIGN) return sov[attackIx % 5];
-        if (type == EnemyType::ABSOLUTE) return abs[attackIx % 5];
+        if (type == EnemyType::ABSOLUTE) return abs[attackIx % 14];
         return A::SHOT;
     }
     std::vector<BoxInstance> boxes;
     BoxRenderer boxer;
     float yaw = 200.f, pitch = 8.f, zoom = 1.f, clock = 0.f;
     bool dragging = false, turntable = true, showJoints = false, walking = false, winding = false, loop = false, broken = false;
-    float windT = 0.f, holdWind = -1.f;
+    float windT = 0.f, holdWind = -1.f, holdAt = -1.f;
     std::filesystem::file_time_type fileTime{};
     float pollT = 0.f, retryAt = 0.f, statusT = 0.f;
     bool retry = false;
