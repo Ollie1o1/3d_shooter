@@ -232,6 +232,38 @@ inline void sovereignCape(const Enemy& e, float time, float& cape, float& hem) {
     hem = sway * 1.4f + lift * 0.35f + 0.05f * std::sin(time * 2.3f + 0.8f);
 }
 
+// THE WARDEN, from its state (its code rig and its file both): its glow (magenta fed, angrier
+// overloaded, white-hot with its core open, burning in meltdown), its arms for each attack, the
+// reel when its conduits are cut (broken), its cape, and the four shards orbiting over it
+inline vec3 wardenGlow(const Enemy& e, vec3 glow, float tp) {
+    return e.ventTimer > 0.f ? vec3{1.6f, 1.5f, 1.3f}
+         : e.wardenPhase == 3 ? vec3{1.6f, 0.45f, 0.15f} * (1.f + 1.5f * tp)
+         : e.wardenPhase == 2 ? vec3{1.f, 0.1f, 0.25f} * (1.f + 2.5f * tp) : glow;
+}
+inline void wardenArms(const Enemy& e, float tp, ArmPose& pose, float& amt) {
+    pose = ArmPose::SWING; amt = 0.f;
+    if (e.attack == AttackKind::LANCE || e.lanceTimer > 0.f) { pose = ArmPose::RAISED; amt = e.lanceTimer > 0.f ? 1.f : smooth01c(tp * 1.5f); }
+    if (e.attack == AttackKind::WLUNGE || e.dashTimer > 0.f) { pose = ArmPose::AIM_BOTH; amt = 1.f; }
+    if (e.attack == AttackKind::WVENT || e.attack == AttackKind::DETONATE) { pose = ArmPose::RAISED; amt = 0.5f * smooth01c(tp * 2.f); }
+    if (e.attack == AttackKind::SLAM)   { pose = ArmPose::RAISED;   amt = smooth01c(tp * 1.5f); }
+    if (e.attack == AttackKind::VOLLEY) { pose = ArmPose::AIM_BOTH; amt = smooth01c(tp * 2.f); }
+    if (e.attack == AttackKind::SUMMON) { pose = ArmPose::RAISED;   amt = 0.6f * smooth01c(tp * 2.f); }
+}
+inline mat4 wardenBase(const Enemy& e, const mat4& root) { return e.staggered() ? root * T({0.f, -0.35f, 0.f}) * RX(0.22f) : root; }
+inline void wardenCape(const Enemy& e, float time, float& cape, float& hem) {
+    float sway = std::sin(time * 1.3f + e.animPhase * 0.15f) * 0.06f;
+    cape = 0.1f + sway + 0.12f * glm::clamp(e.moveSpeed / 3.f, 0.f, 1.f);
+    hem = 0.05f + sway * 1.3f + 0.04f * std::sin(time * 2.1f + 0.6f);
+}
+inline void wardenShards(const Enemy& e, float time, float grow, vec3 g, std::vector<BoxInstance>& out) {
+    for (int i = 0; i < 4; ++i) {
+        float a = time * 1.6f + i * 1.5708f;
+        mat4 m = T(e.position + vec3{std::cos(a) * 2.6f, 4.0f + std::sin(time * 2.f + i) * 0.3f, std::sin(a) * 2.6f})
+               * RY(a * 2.f) * RX(0.785f) * S(vec3{0.35f * grow});
+        push(out, m, g * 0.3f, g * 1.8f);
+    }
+}
+
 // Every enemy with a file: where its file is drawn from (fileRoot) and how its joints
 // turn and its glow channels shine this frame, from its state: the same numbers its
 // code rig uses. false for a type with no file rig. (Also what tools/enemy_export.cpp reads.)
@@ -352,6 +384,28 @@ inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileR
         return true;
     }
     case EnemyType::ABSOLUTE: return absoluteFilePose(e, time, root, fileRoot, P, glowOut);
+    case EnemyType::WARDEN: {   // its core behind plates that draw back when it vents; reels (broken) when its conduits are cut
+        vec3 g = wardenGlow(e, glow, tp);
+        bool broken = e.staggered();
+        ArmPose pose; float amt;
+        wardenArms(e, tp, pose, amt);
+        if (broken) { pose = ArmPose::SWING; amt = 0.f; }
+        humanoidOf(broken ? 0.f : std::max(stride, 0.35f), pose, amt, wardenBase(e, root));
+        glowOut = g;
+        P.chan[C_GLOW] = g;
+        float pulse = 0.6f + 0.4f * std::sin(time * 5.f);
+        P.chan[C_CORE] = g * (1.5f * pulse + 2.f * tp + (e.coreOpen() ? 2.f : 0.f));
+        P.chan[C_PULSE] = g * (0.55f + 0.25f * std::sin(time * 3.f) + 1.5f * tp);   // the conduit lines over its plate
+        float cape, hem;
+        wardenCape(e, time, cape, hem);
+        P.motion[E_CAPE] = RX(cape);
+        P.motion[E_CAPE_TIP] = RX(hem);
+        P.flag[F_OPEN] = e.coreOpen();
+        P.flag[F_ENRAGED] = e.wardenPhase == 3;
+        P.flag[F_BROKEN] = broken;
+        P.wave = time * 4.f;
+        return true;
+    }
     case EnemyType::MITE: {
         fileRoot = root;
         P.motion[E_BODY] = T({0.f, std::fabs(std::sin(e.animPhase)) * 0.04f, 0.f});
@@ -433,6 +487,12 @@ inline std::vector<gunkit::ModelJoint> restJointsOf(EnemyType t) {
         add(E_HEAD, E_TORSO, {0.f, chest + L.torsoH, 0.f});
         add(E_ARML, E_TORSO, {shX, shY, 0.f}); add(E_ARMR, E_TORSO, {-shX, shY, 0.f});
         if (t == EnemyType::SHIELDBEARER) add(E_SHIELD, E_TORSO, vec3{0.f, chest, 0.f} + shieldRest());
+        if (t == EnemyType::WARDEN) {   // the cape off its back, its hem lower down; the crown on its helm
+            const float capeY = chest + L.torsoH - 0.15f, capeZ = -L.torsoD * 0.5f - 0.08f;
+            add(E_CAPE, E_TORSO, {0.f, capeY, capeZ});
+            add(E_CAPE_TIP, E_CAPE, {0.f, capeY - 1.7f, capeZ});
+            add(E_CROWN, E_HEAD, {0.f, chest + L.torsoH, 0.f});
+        }
         if (t == EnemyType::SOVEREIGN) {   // (sovereignPose's frames: the sword in the right fist, cape off his shoulders, halo behind his helm)
             const float head = chest + L.torsoH;
             add(E_SWORD, E_ARMR, {-shX, shY - L.armLen - L.armW * 0.3f, 0.f});
@@ -604,6 +664,7 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         if (filePoseOf(e, time, root, fileRoot, P, g)) {
             drawFile(r, fileRoot, *m, P, g);
             if (e.type == EnemyType::ABSOLUTE) absoluteWhiteHot(e, r, first);
+            if (e.type == EnemyType::WARDEN) wardenShards(e, time, grow, g, out);
             return;
         }
     }
@@ -799,18 +860,10 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         break;
     }
     case EnemyType::WARDEN: {
-        // Its glow: magenta fed, angrier overloaded, white-hot with its core open, burning in meltdown
-        vec3 g = e.ventTimer > 0.f ? vec3{1.6f, 1.5f, 1.3f}
-               : e.wardenPhase == 3 ? vec3{1.6f, 0.45f, 0.15f} * (1.f + 1.5f * tp)
-               : e.wardenPhase == 2 ? vec3{1.f, 0.1f, 0.25f} * (1.f + 2.5f * tp) : glow;
+        vec3 g = wardenGlow(e, glow, tp);
         HumanoidLook L = humanoidLook(e.type, st.color, st.color * 0.6f, g);
-        ArmPose pose = ArmPose::SWING; float amt = 0.f;
-        if (e.attack == AttackKind::LANCE || e.lanceTimer > 0.f) { pose = ArmPose::RAISED; amt = e.lanceTimer > 0.f ? 1.f : smooth01(tp * 1.5f); }
-        if (e.attack == AttackKind::WLUNGE || e.dashTimer > 0.f) { pose = ArmPose::AIM_BOTH; amt = 1.f; }
-        if (e.attack == AttackKind::WVENT || e.attack == AttackKind::DETONATE) { pose = ArmPose::RAISED; amt = 0.5f * smooth01(tp * 2.f); }
-        if (e.attack == AttackKind::SLAM)   { pose = ArmPose::RAISED;   amt = smooth01(tp * 1.5f); }
-        if (e.attack == AttackKind::VOLLEY) { pose = ArmPose::AIM_BOTH; amt = smooth01(tp * 2.f); }
-        if (e.attack == AttackKind::SUMMON) { pose = ArmPose::RAISED;   amt = 0.6f * smooth01(tp * 2.f); }
+        ArmPose pose; float amt;
+        wardenArms(e, tp, pose, amt);
         auto f = humanoid(r, root, L, e.animPhase, std::max(stride, 0.35f), pose, amt);
         vec3 gold{0.78f, 0.56f, 0.16f};
         for (float s : {-1.f, 1.f}) {
@@ -828,12 +881,7 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
             float hgt = (i == 2) ? 0.45f : (i % 2 ? 0.3f : 0.22f);
             r.box(f.head, {x, 0.64f + hgt * 0.5f, 0.f}, {0.07f, hgt, 0.07f}, gold, g * 0.8f);
         }
-        for (int i = 0; i < 4; ++i) {                                                // orbiting shards
-            float a = time * 1.6f + i * 1.5708f;
-            mat4 m = T(e.position + vec3{std::cos(a) * 2.6f, 4.0f + std::sin(time * 2.f + i) * 0.3f, std::sin(a) * 2.6f})
-                   * RY(a * 2.f) * RX(0.785f) * S(vec3{0.35f * grow});
-            push(out, m, g * 0.3f, g * 1.8f);
-        }
+        wardenShards(e, time, grow, g, out);
         break;
     }
     case EnemyType::RIPPER: {
@@ -1118,6 +1166,7 @@ inline bool headBox(const Enemy& e, AABB& out) {
         mat4 base = root;
         if (e.type == EnemyType::ANCHOR) base = root * RX(0.18f);   // hunched, as drawn
         if (e.type == EnemyType::JUGGERNAUT && e.staggered()) base = root * T({0.f, -0.25f, 0.f}) * RX(0.32f);
+        if (e.type == EnemyType::WARDEN) base = wardenBase(e, root);
         PoseOverride ov;
         if (e.type == EnemyType::SOVEREIGN) {
             if (e.staggered()) { base = root * T({0.f, -0.2f, 0.f}) * RX(0.28f); ov.torsoPitch = 0.2f; }
@@ -1180,7 +1229,7 @@ inline bool headBox(const Enemy& e, AABB& out) {
 inline bool coreBox(const Enemy& e, AABB& out) {
     if (!e.coreOpen()) return false;
     HumanoidLook L = humanoidDims(e.type);
-    mat4 torso = T(e.position) * RY(e.yaw) * T({0.f, L.legLen + L.pelvisH, 0.f});
+    mat4 torso = wardenBase(e, T(e.position) * RY(e.yaw)) * T({0.f, L.legLen + L.pelvisH, 0.f});
     vec3 c = vec3(torso * glm::vec4(0.f, L.torsoH * 0.55f, L.torsoD * 0.5f + 0.25f, 1.f));
     vec3 half{0.9f, 1.0f, 0.9f};
     out = {c - half, c + half};

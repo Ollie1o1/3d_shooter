@@ -7,7 +7,8 @@
 //   drag     orbit          wheel  zoom          T  turntable on/off
 //   W        walk on/off    F      wind up a shot (loops while held on: P)
 //   H        hit flash      J      show joints   B  broken (parried) on/off   Esc quit
-//   N        the next attack to wind up (a boss's)   E  enraged (SOVEREIGN) / blade of light (ABSOLUTE)
+//   N        the next attack to wind up (a boss's)   E  enraged (SOVEREIGN) / blade of light (ABSOLUTE) /
+//            the WARDEN venting, then in meltdown
 // `--viewer morningstar`: THE ABSOLUTE's second form, his own file.
 //
 // It's posed by the game's own buildEnemy and drawn with the game's shader
@@ -43,6 +44,8 @@ public:
         fileTime = std::filesystem::last_write_time(enemyfile::pathOf(file), ec);
         enemyfile::modelOf(file);
         if (g_devOverlay.find("enraged") != std::string::npos) e.enraged = true;
+        if (g_devOverlay.find("vent") != std::string::npos) { wardenLook = 1; setWardenLook(); }        // (the WARDEN's core open)
+        if (g_devOverlay.find("meltdown") != std::string::npos) { wardenLook = 2; setWardenLook(); }
         if (g_devOverlay.find("blade") != std::string::npos) e.abBlade = true;
         if (g_devOverlay.find("plain") != std::string::npos) rig::absPlainTells() = true;   // (no tell glow: see the wrists)
         if (size_t at = g_devOverlay.find("atk"); at != std::string::npos) attackIx = std::atoi(g_devOverlay.c_str() + at + 3);
@@ -74,7 +77,9 @@ public:
             case SDLK_j: showJoints = !showJoints; break;
             case SDLK_b: broken = !broken; break;
             case SDLK_n: ++attackIx; windT = 0.f; break;
-            case SDLK_e: e.enraged = !e.enraged; if (type == EnemyType::ABSOLUTE) e.abBlade = !e.abBlade; break;
+            case SDLK_e:
+                if (type == EnemyType::WARDEN) { wardenLook = (wardenLook + 1) % 3; setWardenLook(); break; }   // its core open, then meltdown
+                e.enraged = !e.enraged; if (type == EnemyType::ABSOLUTE) e.abBlade = !e.abBlade; break;
             case SDLK_t: turntable = !turntable; break;
             default: break;
         }
@@ -202,6 +207,8 @@ private:
     EnemyType type;
     Enemy e;
     int attackIx = 0;
+    int wardenLook = 0;   // the WARDEN: 0 fed, 1 venting (core open), 2 meltdown
+    void setWardenLook() { e.ventTimer = wardenLook == 1 ? 1e6f : 0.f; e.wardenPhase = wardenLook == 2 ? 3 : 1; }
     // What F winds up: a boss's own moves (N steps through them), else a shot
     AttackKind attackKind() const {
         using A = AttackKind;
@@ -209,6 +216,8 @@ private:
         static const A abs[] = {A::AJAB, A::ACROSS, A::AHOOK, A::AUPPER, A::AHAYMAKER, A::ABACKFIST, A::AELBOW,
                                 A::AROUNDHOUSE, A::AAXE, A::ASTOMP, A::ADROP, A::ASWEEP, A::ALUNGE, A::ACRESCENT};
         static const A ms[] = {A::MJAB, A::MBACKHAND, A::MGRASP, A::MSUNDER};
+        static const A war[] = {A::SLAM, A::LANCE, A::WLUNGE, A::VOLLEY, A::SUMMON, A::WVENT};
+        if (type == EnemyType::WARDEN) return war[attackIx % 6];
         if (file == enemyfile::FILE_MORNINGSTAR) return ms[attackIx % 4];
         if (type == EnemyType::SOVEREIGN) return sov[attackIx % 5];
         if (type == EnemyType::ABSOLUTE) return abs[attackIx % 14];

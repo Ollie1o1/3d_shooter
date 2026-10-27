@@ -11,6 +11,7 @@
 //              RIPPER     body head legFL legFR legBL legBR bladeL bladeR
 //              RAPTOR     head tail wingL wingR tipL tipR (tips ride the wings)
 //              MITE       body legL1-3 legR1-3
+//              WARDEN     a humanoid's, and cape and capeTip (its hem), crown (rides the head)
 //              SOVEREIGN  a humanoid's, and weapon (the greatsword, turned in his fist), cape and
 //                         capeTip (its hem, lagging it), halo (turning), crown (rides the head)
 //              ABSOLUTE   (and MORNINGSTAR, his own file on the same joints) hips, knees, ankles,
@@ -29,7 +30,8 @@
 //            THE ABSOLUTE's: "seam" "soft" "light" "eye" "core" "halo" "sword"; a limb's seams, glow
 //            and runes ("tellR", "auraLegL", "runeR"...) take his tell's colour when it strikes
 //            "const" k itself
-//   flags    "blade" (THE ABSOLUTE's blade of light is drawn), "enraged", "broken": a part with
+//   flags    "blade" (THE ABSOLUTE's blade of light is drawn), "enraged", "broken", "open" (the
+//            WARDEN's core plates drawn back while it vents and in meltdown): a part with
 //            show = "enraged" is drawn only then ("!enraged": only not)
 //   colours  material base colours; "glow*0.3": the (flaring) glow colour x 0.3
 //
@@ -80,10 +82,10 @@ inline const char* chanName(int c) {
     return N[c];
 }
 // Flags a part can show on (or, "!enraged", off): THE ABSOLUTE's blade of light (phase 3),
-// the SOVEREIGN enraged, a boss broken (parried)
-enum Flag { F_BLADE, F_ENRAGED, F_BROKEN, F_COUNT };
+// the SOVEREIGN enraged (the WARDEN in meltdown), a boss broken (parried), the WARDEN's core open
+enum Flag { F_BLADE, F_ENRAGED, F_BROKEN, F_OPEN, F_COUNT };
 inline const char* flagName(int f) {
-    static const char* N[F_COUNT] = {"blade", "enraged", "broken"};
+    static const char* N[F_COUNT] = {"blade", "enraged", "broken", "open"};
     return N[f];
 }
 inline const gunkit::Names& names() { static const gunkit::Names n{E_COUNT, C_COUNT, F_COUNT, jointName, chanName, flagName}; return n; }
@@ -99,6 +101,7 @@ inline const char* fileName(EnemyType t) {
         case EnemyType::MITE:     return "mite";
         case EnemyType::JUGGERNAUT:   return "juggernaut";
         case EnemyType::SHIELDBEARER: return "shieldbearer";
+        case EnemyType::WARDEN:       return "warden";
         case EnemyType::SOVEREIGN:    return "sovereign";
         case EnemyType::ABSOLUTE:     return "absolute";
         default: return nullptr;
@@ -118,6 +121,7 @@ inline std::vector<int> neededJoints(EnemyType t) {
         case EnemyType::RAPTOR: return {E_HEAD, E_TAIL, E_WING_L, E_WING_R, E_TIP_L, E_TIP_R};
         case EnemyType::MITE:   return {E_BODY, E_LEG_L1, E_LEG_L2, E_LEG_L3, E_LEG_R1, E_LEG_R2, E_LEG_R3};
         case EnemyType::SHIELDBEARER: return {E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR, E_SHIELD};
+        case EnemyType::WARDEN: return {E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR, E_CAPE, E_CAPE_TIP, E_CROWN};
         case EnemyType::SOVEREIGN: return {E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR, E_SWORD, E_CAPE, E_CAPE_TIP, E_HALO, E_CROWN};
         case EnemyType::ABSOLUTE:
             return {E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR, E_HALO, E_CROWN, E_SWORD,

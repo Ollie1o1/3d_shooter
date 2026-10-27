@@ -33,7 +33,7 @@ for _c in ["shot", "pulse", "dive", "fuse", "blade", "smash", "rim", "edge", "ca
            "core", "tellR", "tellL", "tellLegR", "tellLegL", "auraR", "auraL", "auraLegR", "auraLegL", "runeR", "runeL", "sword"]:
     if _c not in _og.CHANNELS:
         _og.CHANNELS.append(_c)
-for _f in ["blade", "!blade", "enraged", "!enraged"]:   # (the bosses' flags: EnemyFile.h; "broken" the guns have already)
+for _f in ["blade", "!blade", "enraged", "!enraged", "open", "!open"]:   # (the bosses' flags: EnemyFile.h; "broken" the guns have already)
     if _f not in _og.FLAGS:
         _og.FLAGS.append(_f)
 _og.PALETTE.update({"husk": (0.70, 0.26, 0.18), "gunmetal": (0.16, 0.15, 0.17), "sentinel": (0.20, 0.32, 0.62),
@@ -46,26 +46,34 @@ _og.PALETTE.update({"husk": (0.70, 0.26, 0.18), "gunmetal": (0.16, 0.15, 0.17), 
                     "sovereign": (0.12, 0.11, 0.14), "crimson": (0.32, 0.04, 0.05), "silver": (0.50, 0.52, 0.58),
                     "plate": (0.96, 0.96, 0.99), "skin": (0.58, 0.58, 0.64), "seam": (0.16, 0.16, 0.20),
                     "gauntlet": (0.22, 0.22, 0.28), "ember": (0.95, 0.27, 0.05), "blood": (0.80, 0.15, 0.03),
-                    "char": (0.10, 0.03, 0.02), "obsidian": (0.05, 0.04, 0.05)})
+                    "char": (0.10, 0.03, 0.02), "obsidian": (0.05, 0.04, 0.05),
+                    "warden": (0.34, 0.27, 0.40)})
 
 
 ENEMY_SCENES = ["HUSK", "SENTINEL", "BRUTE", "RIPPER", "RAPTOR", "MITE", "JUGGERNAUT", "SHIELDBEARER",
-                "SOVEREIGN", "ABSOLUTE", "MORNINGSTAR"]
+                "SOVEREIGN", "ABSOLUTE", "MORNINGSTAR", "WARDEN"]
 _ABS = ("hipL hipR torso head armL armR halo crown weapon kneeL kneeR ankleL ankleR waist clothF clothB elbowL elbowR "
         "handL handR fingersL fingersR tipsL tipsR thumbL thumbR thumbTipL thumbTipR ribbonL ribbonR")
 NEEDED = {"husk": "hipL hipR torso head armL armR", "sentinel": "hipL hipR torso head armL armR",
           "brute": "hipL hipR torso head armL armR", "ripper": "body head legFL legFR legBL legBR bladeL bladeR",
           "raptor": "head tail wingL wingR tipL tipR", "mite": "body legL1 legL2 legL3 legR1 legR2 legR3",
           "juggernaut": "hipL hipR torso head armL armR", "shieldbearer": "hipL hipR torso head armL armR shield",
-          "sovereign": "hipL hipR torso head armL armR weapon cape capeTip halo crown", "absolute": _ABS, "morningstar": _ABS}
+          "sovereign": "hipL hipR torso head armL armR weapon cape capeTip halo crown",
+          "warden": "hipL hipR torso head armL armR cape capeTip crown", "absolute": _ABS, "morningstar": _ABS}
 
 
 def open_enemy(name, joints=None):
     """Its own scene, its file imported. Object names are shared by every scene in Blender, so the other
     enemy scenes these scripts made (each saved to its file) are removed first, or 'hipL' would come in
     as 'hipL.001' and the game wouldn't find it. Other scenes (a gun you're working on) are left alone."""
-    sc = bpy.data.scenes.get(name.upper()) or bpy.data.scenes.new(name.upper())
-    bpy.context.window_manager.windows[0].scene = sc
+    wins = bpy.context.window_manager.windows
+    sc = bpy.data.scenes.get(name.upper())
+    if not sc and not wins:   # (headless.py, no window to switch: the one scene there is becomes this enemy's)
+        sc = bpy.context.scene
+        sc.name = name.upper()
+    sc = sc or bpy.data.scenes.new(name.upper())
+    if wins:
+        wins[0].scene = sc
     for other in [x for x in bpy.data.scenes if x.name in ENEMY_SCENES and x != sc]:
         for ob in list(other.objects):
             bpy.data.objects.remove(ob, do_unlink=True)
