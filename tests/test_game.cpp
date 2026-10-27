@@ -32,6 +32,9 @@
 #include "audio/SfxMixer.h"
 #include "bosses/penitent/PenitentHazards.h"
 #include "render/GunKit.h"
+#include "render/ArmFile.h"
+#include "render/Effects.h"
+#include "render/PropDraw.h"
 #include "render/CameraFeel.h"
 #include "audio/VoiceSynth.h"
 #include "audio/EnemyVoice.h"
@@ -223,8 +226,10 @@ int main() {
     {
         CHECK(L.arenas.size() == 5, "five arenas");
         // Act I as built before the Act II split: nothing added, nothing lost
-        CHECK(L.walls.size() == 256 && L.props.size() == 274 && L.neon.size() == 296 && L.shapes.size() == 0 &&
-              L.floors.size() == 13 && L.doors.size() == 8 && L.pads.size() == 29 && L.movers.size() == 13,
+        // (since: 60 boxes dressed with props made in Blender, and the CORE's and SANCTUM's pillar rings, 24 neon
+        // boxes, now lit bands on those props)
+        CHECK(L.walls.size() == 256 && L.props.size() == 274 && L.neon.size() == 272 && L.shapes.size() == 0 &&
+              L.floors.size() == 13 && L.doors.size() == 8 && L.pads.size() == 29 && L.movers.size() == 13 && L.models.size() == 60,
               "buildAct1 builds exactly what buildLevel did");
         CHECK(L.corridors.size() == 4, "four corridors join them");
         bool groundOk = true, airOk = true, inBounds = true, starts = true, underCeiling = true;
@@ -1204,9 +1209,11 @@ int main() {
                     undersides = false;
                 }
             };
+            std::vector<char> dw(L.walls.size(), 0), dp(L.props.size(), 0);   // (a box a prop dresses: the prop has its own underside)
+            for (auto& pm : L.models) { if (pm.wall >= 0) dw[pm.wall] = 1; if (pm.prop >= 0) dp[pm.prop] = 1; }
             for (int i = 0; i < (int)L.walls.size(); ++i)
-                if (!L.walls[i].hidden && !L.walls[i].dynamic && !L.isDoorWall(i)) checkBox(L.walls[i].box);
-            for (auto& p : L.props) checkBox(p.box);
+                if (!L.walls[i].hidden && !L.walls[i].dynamic && !L.isDoorWall(i) && !dw[i]) checkBox(L.walls[i].box);
+            for (size_t i = 0; i < L.props.size(); ++i) if (!dp[i]) checkBox(L.props[i].box);
             // Every shape is closed, or drawn from both sides
             int open = 0;
             for (auto& sh : L.shapes) {
@@ -4261,6 +4268,87 @@ int main() {
         for (size_t k = 0; k < V.size(); ++k) V[k].set(was[k]);
     }
 
+    // ---------------------------------------------------------------- level props made in Blender (assets/props)
+    {
+        LevelData A = buildLevel();
+        bool load = true, fits = true, drawn = true;
+        for (const PlacedModel& pm : A.models) {
+            const propfile::Prop* pr = propfile::get(pm.name);
+            if (!pr) { if (load) std::printf("      no prop '%s'\n", pm.name.c_str()); load = false; continue; }
+            if (pm.free) continue;
+            // fitted: every corner of it inside the box it dresses (a hair over for bevels)
+            glm::mat4 w = propfile::placement(*pr, false, pm.xf, pm.fit, pm.yaw);
+            int tris = 0;
+            propfile::forEachTri(*pr, w, [&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3, glm::vec3, glm::vec3, glm::vec3, bool, int) {
+                ++tris;
+                for (glm::vec3 v : {a, b, c})
+                    if (glm::any(glm::lessThan(v, pm.fit.min - glm::vec3{0.02f})) || glm::any(glm::greaterThan(v, pm.fit.max + glm::vec3{0.02f}))) fits = false;
+            });
+            drawn &= tris > 12;
+        }
+        CHECK(load && !A.models.empty(), "every prop the levels place has its file");
+        CHECK(fits, "a prop over a box stays inside that box (what you see is what you collide with)");
+        CHECK(drawn, "and draws more than a box's worth of faces");
+        WorldGeometry G = buildWorldGeometry(A);
+        size_t verts = 0; for (int t = 0; t < TEX_COUNT; ++t) verts += G.V[t].size();
+        CHECK(verts < 2000000, "the static world stays under 2M vertices with the props baked in");
+    }
+    {   // the small things drawn live: pickups, shots, the grapple's claw (PropDraw.h)
+        bool all = true;
+        for (const char* n : {"pickup_orb", "pickup_potion", "pickup_xp", "shot_orb", "shot_shell", "shot_grenade", "hook"}) {
+            std::vector<BoxInstance> out;
+            bool ok = propdraw::push(out, n, glm::mat4(1.f), glm::vec3{1.f, 0.5f, 0.2f}) && out.size() >= 5;
+            bool lit = false; for (auto& b : out) lit |= glm::length(b.emissive) > 0.1f;
+            if (!ok || !lit) { std::printf("      %s: %s\n", n, ok ? "nothing glows" : "no file"); all = false; }
+        }
+        CHECK(all, "every pickup, shot and the grapple's claw has its file, with a part that glows in its colour");
+    }
+
+    // ---------------------------------------------------------------- a death breaks the body at its joints
+    {
+        Effects fx;
+        Enemy e(EnemyType::BRUTE, {0.f, 0.f, 0.f}); e.spawnTimer = 0.f; e.hitDir = {1.f, 0.f, 0.f}; e.hitPush = 30.f;
+        std::vector<BoxInstance> drawn; buildEnemy(e, 0.f, drawn);
+        fx.spawnDebrisFor(e, 0.f, 0.f);
+        size_t pieces = fx.debris.size();
+        for (auto& ch : fx.chunks) pieces += ch.pieces.size();
+        CHECK(fx.chunks.size() >= 5 && pieces == drawn.size(), "a BRUTE breaks at its joints: legs, torso, head and arms fly whole (every part, once)");
+        bool shape = true;   // each chunk holds its shape: its pieces as they were, about its centre
+        for (auto& ch : fx.chunks)
+            for (auto& p : ch.pieces) {
+                glm::vec3 at = glm::vec3(p.local[3]) + ch.pos;
+                bool found = false;
+                for (auto& d : drawn) found |= glm::length(glm::vec3(d.model[3]) - at) < 1e-4f;
+                shape &= found;
+            }
+        CHECK(shape, "each limb keeps its shape as it comes off");
+        bool away = true;
+        for (auto& ch : fx.chunks) away &= ch.vel.x > -2.f;   // nothing much comes back at the one who struck it
+        CHECK(away, "the limbs go the way the killing blow went");
+        for (int i = 0; i < 400; ++i) fx.updateDebris(1.f / 60.f);
+        CHECK(fx.chunks.empty() && fx.debris.empty(), "and they're gone a few seconds later");
+    }
+
+    // ---------------------------------------------------------------- your arms' file (assets/guns/arm.glb)
+    {
+        const gunkit::GunModel* am = armfile::model();
+        CHECK(am && am->has(armfile::A_UPPER) && am->has(armfile::A_FORE) && am->has(armfile::A_FIST), "your arms' file loads, with its three joints");
+        auto count = [&](float side, bool open, bool gauntlet) {
+            std::vector<GunPart> out; gunkit::Builder b{out, glm::vec3{1.f}};
+            armfile::ArmLook L; L.open = open; L.gauntlet = gauntlet;
+            glm::mat4 fist = glm::translate(glm::mat4(1.f), {side * 0.1f, -0.2f, 0.4f});
+            armfile::draw(b, {side * 0.34f, -0.62f, 0.f}, fist, side, L);
+            return out;
+        };
+        auto closed = count(1.f, false, false), palm = count(1.f, true, false), parry = count(-1.f, false, true), left = count(-1.f, false, false);
+        CHECK(!closed.empty() && closed.size() != palm.size() && parry.size() > closed.size(), "a closed hand, an open palm and the gauntlet each draw their own parts");
+        CHECK(left.size() == closed.size(), "the left arm is the right one, mirrored");
+        bool reach = true;   // the sleeve starts at the shoulder; the hand is at the fist
+        { glm::vec3 lo{1e9f}, hi{-1e9f}; for (auto& p : closed) { glm::vec3 c{p.xf[3]}; lo = glm::min(lo, c); hi = glm::max(hi, c); }
+          reach = lo.y < -0.5f && hi.z > 0.35f; }
+        CHECK(reach, "the arm runs from the shoulder (below the screen) to the hand");
+    }
+
     // ---------------------------------------------------------------- the enemies' files (assets/enemies/*.glb)
     {
         const gunkit::GunModel* m = enemyfile::model(EnemyType::HUSK);
@@ -4270,8 +4358,12 @@ int main() {
         // (the bosses too: THE ABSOLUTE's second form, MORNINGSTAR, is a file of its own on his joints)
         const int made[] = {(int)EnemyType::HUSK, (int)EnemyType::SENTINEL, (int)EnemyType::BRUTE, (int)EnemyType::RIPPER, (int)EnemyType::RAPTOR,
                             (int)EnemyType::MITE, (int)EnemyType::JUGGERNAUT, (int)EnemyType::SHIELDBEARER,
-                            (int)EnemyType::SOVEREIGN, (int)EnemyType::ABSOLUTE, enemyfile::FILE_MORNINGSTAR};
-        auto formOf = [](int f, Enemy& e) { if (f == enemyfile::FILE_MORNINGSTAR) { e.abForm = 1; e.scale = Enemy::MS_SCALE; e.abPhase = 4; } };
+                            (int)EnemyType::WARDEN, (int)EnemyType::PENITENT, (int)EnemyType::LEVIATHAN, (int)EnemyType::SOVEREIGN,
+                            (int)EnemyType::REVENANT, (int)EnemyType::WEAVER, (int)EnemyType::SERAPH, (int)EnemyType::ANCHOR,
+                            (int)EnemyType::CONDUIT, (int)EnemyType::CONDUCTOR, (int)EnemyType::ABSOLUTE, enemyfile::FILE_MORNINGSTAR};
+        auto formOf = [](int f, Enemy& e) { if (f == enemyfile::FILE_MORNINGSTAR) { e.abForm = 1; e.scale = Enemy::MS_SCALE; e.abPhase = 4; }
+                                            if (f == (int)EnemyType::PENITENT) e.risen = true;   // (standing: kneeling, it's sunk into the floor)
+                                            if (f == (int)EnemyType::LEVIATHAN) { e.levInit = true; e.levStage = Enemy::LevStage::FIGHT; } };   // (risen)
         bool loadsAll = true, jointsAll = true, headsAll = true, feetAll = true, meshesAll = true, tripsAll = true;
         for (int f : made) {
             const EnemyType t = enemyfile::typeOfFile(f);
@@ -4307,7 +4399,8 @@ int main() {
             }
             if (!inHead) std::printf("      %s: part of its head is outside its head hitbox\n", nm);
             headsAll &= inHead;
-            if (!statsOf(t).flying && (lowest < -0.05f || lowest > 0.05f)) { std::printf("      %s: its lowest point is %.3f m off the floor\n", nm, lowest); feetAll = false; }
+            // (THE LEVIATHAN: a serpent out of the water, no feet)
+            if (!statsOf(t).flying && t != EnemyType::LEVIATHAN && (lowest < -0.05f || lowest > 0.05f)) { std::printf("      %s: its lowest point is %.3f m off the floor\n", nm, lowest); feetAll = false; }
             if (meshes < 10) { std::printf("      %s: %d meshes\n", nm, meshes); meshesAll = false; }
             // written out and read back: drawn the same
             gunkit::GunModel saved = enemyfile::slotOf(f);
@@ -4327,7 +4420,10 @@ int main() {
                     enemyfile::slotOf(f) = saved;
                     size_t shown = 0;   // (a part with a flag: shown only while it holds)
                     { rig::FilePose Q; glm::mat4 fr2; glm::vec3 g2; rig::filePoseOf(w, 0.4f, glm::mat4(1.f), fr2, Q, g2);
-                      for (const auto& p : saved.parts) shown += p.flag < 0 || Q.flag[p.flag] == p.want; }
+                      for (const auto& p : saved.parts) shown += p.flag < 0 || Q.flag[p.flag] == p.want;
+                      if (t == EnemyType::WARDEN) shown += 4;   // (and the WARDEN's four orbiting shards, drawn in code)
+                      if (t == EnemyType::LEVIATHAN)            // (its one body segment, drawn once per stretch of its body)
+                          for (const auto& p : saved.parts) shown += p.joint == enemyfile::E_BODY ? LV_SEGMENTS - 1 : 0; }
                     same &= a.size() == b.size() && a.size() == shown;
                     std::vector<char> used(b.size(), 0);
                     for (size_t i = 0; same && i < a.size(); ++i) {
@@ -4345,7 +4441,7 @@ int main() {
             tripsAll &= same;
         }
         CHECK(loadsAll, "every enemy made in Blender loads, with the joints its rig turns (HUSK SENTINEL BRUTE RIPPER RAPTOR MITE JUGGERNAUT SHIELDBEARER,"
-                        " the SOVEREIGN, THE ABSOLUTE and MORNINGSTAR)");
+                        " REVENANT WEAVER SERAPH ANCHOR CONDUIT CONDUCTOR, the WARDEN, the PENITENT, THE LEVIATHAN, the SOVEREIGN, THE ABSOLUTE and MORNINGSTAR)");
         CHECK(jointsAll, "every enemy file keeps its joints where the code turns them");
         CHECK(headsAll, "every box of an enemy's head sits inside its head hitbox");
         CHECK(feetAll, "every walking enemy stands on the floor (its lowest point within 5 cm)");

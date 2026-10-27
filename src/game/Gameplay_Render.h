@@ -223,16 +223,34 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
         push(out, m, glm::mix(d.color * (0.4f + 0.6f * k), glm::vec3{1.f, 0.9f, 0.8f}, hot * 0.7f), d.emissive * k + glm::vec3{2.2f, 1.5f, 0.9f} * hot);
         out.back().mesh = d.mesh;
     }
+    for (auto& ch : fx.chunks) {   // a limb, whole: each part shrinks away where it is on it
+        float k = glm::clamp(ch.life / ch.maxLife * 1.6f, 0.f, 1.f);
+        glm::mat4 base = T(ch.pos) * glm::rotate(glm::mat4(1.f), ch.angle, ch.axis);
+        float hot = glm::clamp(ch.hot / 0.12f, 0.f, 1.f);
+        for (auto& p : ch.pieces) {
+            push(out, base * p.local * S(glm::vec3{0.15f + 0.85f * k}),
+                 glm::mix(p.color * (0.4f + 0.6f * k), glm::vec3{1.f, 0.9f, 0.8f}, hot * 0.7f), p.emissive * k + glm::vec3{2.2f, 1.5f, 0.9f} * hot);
+            out.back().mesh = p.mesh;
+        }
+    }
 
-    // Projectiles: a spinning bright core inside a darker shell
+    // Projectiles (their files, PropDraw.h): an orb of its light, spinning; a siege shell nose-first
+    // along its flight; a lobbed bomb tumbling. (No file: a bright core in a darker shell.)
     for (auto& p : projSystem.pool) {
         if (!p.alive) continue;
-        float s = (p.isGrenade ? 0.22f : 0.26f) * p.size;
         float spin = t * 9.f + p.position.x;
-        glm::mat4 base = T(lerpPos(p.prevPosition, p.position)) * RY(spin) * RX(spin * 0.7f);
+        glm::vec3 at = lerpPos(p.prevPosition, p.position);
+        glm::mat4 base = T(at) * RY(spin) * RX(spin * 0.7f);
+        bool drawn = p.heavy ? propdraw::push(out, "shot_shell", propdraw::along(at, p.velocity) * glm::rotate(glm::mat4(1.f), spin * 0.5f, glm::vec3{0, 0, 1}) * S(glm::vec3{p.size}), p.emissiveColor)
+                   : p.isGrenade ? propdraw::push(out, "shot_grenade", base * S(glm::vec3{p.size * 0.85f}), p.emissiveColor)
+                   : propdraw::push(out, "shot_orb", base * S(glm::vec3{p.size * 0.7f}), p.emissiveColor);
+        if (drawn) continue;
+        float s = (p.isGrenade ? 0.22f : 0.26f) * p.size;
         push(out, base * S(glm::vec3{s}), p.emissiveColor * 0.3f, p.emissiveColor * 0.8f);
         push(out, base * RZ(0.785f) * S(glm::vec3{s * 0.75f}), p.emissiveColor, p.emissiveColor * 3.f);
     }
+    // The grapple's claw on the end of the rope
+    if (grapple.active) propdraw::push(out, "hook", propdraw::along(grapple.target, grapple.target - player.position), {0.4f, 0.9f, 1.f});
 
     // Drops
     for (auto& p : pickups) {
@@ -242,6 +260,7 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
         switch (p.kind) {
         case PickupKind::ORB: {
             float pulse = 1.f + 0.3f * std::sin(t * 8.f);
+            if (propdraw::push(out, "pickup_orb", T(bob) * RY(t * 3.f) * RX(0.3f) * S(glm::vec3{1.2f}), glm::vec3{0.3f, 1.6f, 0.6f} * pulse * blink)) break;
             push(out, T(bob) * RY(t * 3.f) * RX(0.6f) * S(glm::vec3{0.32f}),
                  {0.2f, 0.9f, 0.4f}, glm::vec3{0.3f, 1.6f, 0.6f} * pulse * blink);
             break;
@@ -250,15 +269,18 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
             // A red flask: body, neck, cork, and a loot beam
             glm::mat4 m = T(bob) * RY(t * 1.5f);
             glm::vec3 red{0.9f, 0.1f, 0.15f}, glow = glm::vec3{1.8f, 0.2f, 0.3f} * (0.7f + 0.3f * std::sin(t * 5.f)) * blink;
-            push(out, m * T({0, 0.f, 0}) * S({0.42f, 0.42f, 0.42f}), red, glow);
-            push(out, m * T({0, 0.3f, 0}) * S({0.16f, 0.2f, 0.16f}), {0.8f, 0.85f, 0.9f}, glm::vec3{0.4f} * blink);
-            push(out, m * T({0, 0.45f, 0}) * S({0.18f, 0.1f, 0.18f}), {0.45f, 0.3f, 0.15f});
+            if (!propdraw::push(out, "pickup_potion", m * S(glm::vec3{1.2f}), glow)) {
+                push(out, m * T({0, 0.f, 0}) * S({0.42f, 0.42f, 0.42f}), red, glow);
+                push(out, m * T({0, 0.3f, 0}) * S({0.16f, 0.2f, 0.16f}), {0.8f, 0.85f, 0.9f}, glm::vec3{0.4f} * blink);
+                push(out, m * T({0, 0.45f, 0}) * S({0.18f, 0.1f, 0.18f}), {0.45f, 0.3f, 0.15f});
+            }
             push(out, T(p.pos + glm::vec3{0, 3.f, 0}) * S({0.08f, 6.f, 0.08f}), red * 0.2f, glow * 0.6f);
             break;
         }
         case PickupKind::XP: {
             glm::vec3 c{0.55f, 0.4f, 1.f}, g = glm::vec3{1.0f, 0.7f, 2.f} * (0.8f + 0.4f * std::sin(t * 6.f)) * blink;
-            push(out, T(bob) * RY(t * 4.f) * RX(0.785f) * RZ(0.785f) * S(glm::vec3{0.36f}), c, g);
+            if (!propdraw::push(out, "pickup_xp", T(bob) * RY(t * 4.f) * S(glm::vec3{1.1f}), g))
+                push(out, T(bob) * RY(t * 4.f) * RX(0.785f) * RZ(0.785f) * S(glm::vec3{0.36f}), c, g);
             push(out, T(p.pos + glm::vec3{0, 3.f, 0}) * S({0.06f, 6.f, 0.06f}), c * 0.2f, g * 0.5f);
             break;
         }

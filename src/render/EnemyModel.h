@@ -44,6 +44,10 @@ inline void push(std::vector<BoxInstance>& out, const mat4& m, vec3 col, vec3 em
 // turns a rig into a file from this). Off unless set.
 struct TracedBox { mat4 parent, local; vec3 col, emi; };
 inline std::vector<TracedBox>*& traceSink() { static std::vector<TracedBox>* t = nullptr; return t; }
+// Which joint each part drawn from a file hangs off: (its index in the output, the joint), for a
+// death that breaks the body at its joints (Effects.h). Off unless set. A LEVIATHAN segment is 1000 + i.
+struct PartJoint { int index, joint; };
+inline std::vector<PartJoint>*& jointSink() { static std::vector<PartJoint>* t = nullptr; return t; }
 
 struct Rig {
     std::vector<BoxInstance>& out;
@@ -194,7 +198,7 @@ struct FilePose {
     float tint = 1.f;                     // every fixed colour x this (MORNINGSTAR's light going out in TOTALITY)
     FilePose() { for (auto& m : motion) m = mat4(1.f); for (auto& c : chan) c = vec3(0.f); chan[enemyfile::C_CONST] = vec3(1.f); }
 };
-inline void drawFile(Rig& r, const mat4& root, const gunkit::GunModel& m, const FilePose& P, vec3 glow, mat4* Wout = nullptr) {
+inline void drawFile(Rig& r, const mat4& root, const gunkit::GunModel& m, const FilePose& P, vec3 glow, mat4* Wout = nullptr, int skipJoint = -1) {
     using namespace enemyfile;
     mat4 local[E_COUNT]; int parent[E_COUNT];
     restLocals(m, local, parent);
@@ -203,10 +207,12 @@ inline void drawFile(Rig& r, const mat4& root, const gunkit::GunModel& m, const 
     for (const auto& J : m.joints) W[J.id] = W[J.parent] * local[J.id] * P.motion[J.id];   // (parents come first)
     for (const auto& p : m.parts) {
         if (p.flag >= 0 && p.flag < F_COUNT && P.flag[p.flag] != p.want) continue;
+        if (p.joint == skipJoint) continue;
         vec3 col = p.glowScale >= 0.f ? glow * p.glowScale : p.color * P.tint;
         vec3 emi = p.chan >= 0 && p.chan < C_COUNT ? P.chan[p.chan] * p.k : vec3{0.f};
         if (p.hasPhase) emi *= 0.75f + 0.25f * std::sin(P.wave + p.phase);
         r.part(W[p.joint] * p.rel, col, emi, p.mesh);
+        if (jointSink()) jointSink()->push_back({(int)r.out.size() - 1, p.joint});
     }
     if (Wout) for (int j = 0; j < E_COUNT; ++j) Wout[j] = W[j];
 }
@@ -223,6 +229,7 @@ inline FilePose humanoidPose(const HumanoidMotion& mo, vec3 glow) {
 }
 
 inline PoseOverride sovereignPose(const Enemy& e);   // (below)
+inline PoseOverride penitentPose(const Enemy& e);    // (below)
 inline bool absoluteFilePose(const Enemy& e, float time, const mat4& root, mat4& fileRoot, FilePose& P, vec3& glowOut);   // (AbsoluteRig.h)
 // The SOVEREIGN's cape (and its hem, which lags it), from how fast he's going
 inline void sovereignCape(const Enemy& e, float time, float& cape, float& hem) {
@@ -230,6 +237,38 @@ inline void sovereignCape(const Enemy& e, float time, float& cape, float& hem) {
     float sway = std::sin(time * 1.7f + e.animPhase * 0.2f) * 0.05f;
     cape = 0.12f + sway + lift * 0.9f;
     hem = sway * 1.4f + lift * 0.35f + 0.05f * std::sin(time * 2.3f + 0.8f);
+}
+
+// THE WARDEN, from its state (its code rig and its file both): its glow (magenta fed, angrier
+// overloaded, white-hot with its core open, burning in meltdown), its arms for each attack, the
+// reel when its conduits are cut (broken), its cape, and the four shards orbiting over it
+inline vec3 wardenGlow(const Enemy& e, vec3 glow, float tp) {
+    return e.ventTimer > 0.f ? vec3{1.6f, 1.5f, 1.3f}
+         : e.wardenPhase == 3 ? vec3{1.6f, 0.45f, 0.15f} * (1.f + 1.5f * tp)
+         : e.wardenPhase == 2 ? vec3{1.f, 0.1f, 0.25f} * (1.f + 2.5f * tp) : glow;
+}
+inline void wardenArms(const Enemy& e, float tp, ArmPose& pose, float& amt) {
+    pose = ArmPose::SWING; amt = 0.f;
+    if (e.attack == AttackKind::LANCE || e.lanceTimer > 0.f) { pose = ArmPose::RAISED; amt = e.lanceTimer > 0.f ? 1.f : smooth01c(tp * 1.5f); }
+    if (e.attack == AttackKind::WLUNGE || e.dashTimer > 0.f) { pose = ArmPose::AIM_BOTH; amt = 1.f; }
+    if (e.attack == AttackKind::WVENT || e.attack == AttackKind::DETONATE) { pose = ArmPose::RAISED; amt = 0.5f * smooth01c(tp * 2.f); }
+    if (e.attack == AttackKind::SLAM)   { pose = ArmPose::RAISED;   amt = smooth01c(tp * 1.5f); }
+    if (e.attack == AttackKind::VOLLEY) { pose = ArmPose::AIM_BOTH; amt = smooth01c(tp * 2.f); }
+    if (e.attack == AttackKind::SUMMON) { pose = ArmPose::RAISED;   amt = 0.6f * smooth01c(tp * 2.f); }
+}
+inline mat4 wardenBase(const Enemy& e, const mat4& root) { return e.staggered() ? root * T({0.f, -0.35f, 0.f}) * RX(0.22f) : root; }
+inline void wardenCape(const Enemy& e, float time, float& cape, float& hem) {
+    float sway = std::sin(time * 1.3f + e.animPhase * 0.15f) * 0.06f;
+    cape = 0.1f + sway + 0.12f * glm::clamp(e.moveSpeed / 3.f, 0.f, 1.f);
+    hem = 0.05f + sway * 1.3f + 0.04f * std::sin(time * 2.1f + 0.6f);
+}
+inline void wardenShards(const Enemy& e, float time, float grow, vec3 g, std::vector<BoxInstance>& out) {
+    for (int i = 0; i < 4; ++i) {
+        float a = time * 1.6f + i * 1.5708f;
+        mat4 m = T(e.position + vec3{std::cos(a) * 2.6f, 4.0f + std::sin(time * 2.f + i) * 0.3f, std::sin(a) * 2.6f})
+               * RY(a * 2.f) * RX(0.785f) * S(vec3{0.35f * grow});
+        push(out, m, g * 0.3f, g * 1.8f);
+    }
 }
 
 // Every enemy with a file: where its file is drawn from (fileRoot) and how its joints
@@ -352,6 +391,137 @@ inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileR
         return true;
     }
     case EnemyType::ABSOLUTE: return absoluteFilePose(e, time, root, fileRoot, P, glowOut);
+    case EnemyType::WARDEN: {   // its core behind plates that draw back when it vents; reels (broken) when its conduits are cut
+        vec3 g = wardenGlow(e, glow, tp);
+        bool broken = e.staggered();
+        ArmPose pose; float amt;
+        wardenArms(e, tp, pose, amt);
+        if (broken) { pose = ArmPose::SWING; amt = 0.f; }
+        humanoidOf(broken ? 0.f : std::max(stride, 0.35f), pose, amt, wardenBase(e, root));
+        glowOut = g;
+        P.chan[C_GLOW] = g;
+        float pulse = 0.6f + 0.4f * std::sin(time * 5.f);
+        P.chan[C_CORE] = g * (1.5f * pulse + 2.f * tp + (e.coreOpen() ? 2.f : 0.f));
+        P.chan[C_PULSE] = g * (0.55f + 0.25f * std::sin(time * 3.f) + 1.5f * tp);   // the conduit lines over its plate
+        float cape, hem;
+        wardenCape(e, time, cape, hem);
+        P.motion[E_CAPE] = RX(cape);
+        P.motion[E_CAPE_TIP] = RX(hem);
+        P.flag[F_OPEN] = e.coreOpen();
+        P.flag[F_ENRAGED] = e.wardenPhase == 3;
+        P.flag[F_BROKEN] = broken;
+        P.wave = time * 4.f;
+        return true;
+    }
+    case EnemyType::REVENANT: {   // its soul in its cracked chest, flaring for a soulbolt; claws up to rake
+        bool rake = e.attack == AttackKind::RAKE, bolt = e.attack == AttackKind::SOULBOLT;
+        humanoidOf(std::max(stride, 0.25f), rake ? ArmPose::RAISED : ArmPose::SWING, rake ? smooth01c(tp * 3.f) : 0.f, root);
+        const vec3 soul{0.75f, 0.9f, 1.3f};
+        P.chan[C_CORE] = soul * (1.2f + (bolt ? 4.f * tp : 0.f) + 0.4f * std::sin(time * 6.f));
+        P.chan[C_BLADE] = soul * (rake ? 1.5f : 0.3f);
+        P.chan[C_EYE] = soul * 2.f;
+        return true;
+    }
+    case EnemyType::ANCHOR: {   // hunched under its ring core; both fists up to fire
+        bool firing = e.attack == AttackKind::VOLLEY;
+        humanoidOf(std::max(stride, 0.3f), firing ? ArmPose::AIM_BOTH : ArmPose::SWING, firing ? smooth01c(tp * 1.5f) : 0.f, root);
+        P.motion[E_TORSO] = P.motion[E_TORSO] * RX(0.18f);   // (bent at the waist: its feet stay flat)
+        float pulse = 0.6f + 0.4f * std::sin(time * 2.5f);
+        P.chan[C_PULSE] = glow * (0.6f + pulse);
+        P.chan[C_CORE] = glow * (2.f * pulse + 2.f * tp);
+        return true;
+    }
+    case EnemyType::WEAVER: {   // six legs, each lifting as it swings forward; it rears up to string a wire
+        fileRoot = root;
+        float rear = e.attack == AttackKind::STRING ? smooth01c(tp * 2.f) : 0.f;
+        P.motion[E_BODY] = T({0.f, 0.25f * rear, 0.f}) * RX(-0.35f * rear);
+        float ph = e.animPhase * 1.6f;
+        const int hips[2][3] = {{E_LEG_L1, E_LEG_L2, E_LEG_L3}, {E_LEG_R1, E_LEG_R2, E_LEG_R3}};
+        const int knees[2][3] = {{E_SHIN_L1, E_SHIN_L2, E_SHIN_L3}, {E_SHIN_R1, E_SHIN_R2, E_SHIN_R3}};
+        for (int side = 0; side < 2; ++side)
+            for (int k = 0; k < 3; ++k) {
+                float s = side == 0 ? 1.f : -1.f, at = ph + (side * 3 + k) * 2.1f;
+                float swing = std::sin(at) * 0.45f * stride, lift = std::max(0.f, std::cos(at)) * 0.3f * stride;
+                P.motion[hips[side][k]] = RY(swing) * RZ(s * lift);
+                P.motion[knees[side][k]] = RZ(-s * lift * 0.8f);
+            }
+        P.chan[C_GLOW] = glow;
+        P.chan[C_CORE] = glow * (0.4f + 3.f * rear);   // the spinner
+        return true;
+    }
+    case EnemyType::SERAPH: {   // its own frame (it bobs from its own state: headBox follows); wings flare to charge and sweep
+        bool charging = e.attack == AttackKind::BEAM && e.telegraphTimer > 0.f, sweeping = e.beamTimer > 0.f;
+        float grow = 0.05f + 0.95f * smooth01c(1.f - e.spawnTimer / Enemy::SPAWN_TIME);
+        float bob = std::sin(e.animPhase * 0.5f) * 0.2f;
+        fileRoot = T(e.position + vec3{0.f, bob, 0.f}) * RY(e.yaw) * S(vec3{e.scale}) * S(vec3{grow});
+        float flare = charging ? smooth01c(tp) : sweeping ? 1.f : 0.f;
+        for (float s : {-1.f, 1.f})
+            for (int pair = 0; pair < 2; ++pair)   // (the rest angle is in the file: only the beat and the flare here)
+                P.motion[pair == 0 ? (s > 0.f ? E_WING_L : E_WING_R) : (s > 0.f ? E_TIP_L : E_TIP_R)]
+                    = RZ(s * (std::sin(e.animPhase + pair) * 0.18f + flare * 0.5f));
+        P.chan[C_GLOW] = glow;
+        P.chan[C_CORE] = glow * (1.5f + (sweeping ? 3.f : 3.f * tp));   // the chest lens
+        P.chan[C_EDGE] = glow * (1.f + 2.f * flare);                     // the wings' edges
+        return true;
+    }
+    case EnemyType::CONDUIT: {   // a pylon: its core beats faster as it's hurt; two rings turn round it, a crystal on top
+        fileRoot = root;
+        float hurt = 1.f - e.health / e.maxHealth;
+        float beat = 0.6f + 0.4f * std::sin(time * (3.f + 6.f * hurt) + e.animPhase);
+        for (int i = 0; i < 2; ++i)
+            P.motion[i ? E_CROWN : E_HALO] = T({0.f, 0.15f * std::sin(time * 1.3f + i * 1.7f), 0.f}) * RY(time * (i ? -1.1f : 0.8f));
+        P.motion[E_HEAD] = T({0.f, 0.08f * std::sin(time * 2.f), 0.f}) * RY(time * 0.6f);
+        P.chan[C_GLOW] = glow;
+        P.chan[C_CORE] = glow * (1.2f + 1.6f * beat);
+        P.chan[C_PULSE] = glow * beat;
+        return true;
+    }
+    case EnemyType::CONDUCTOR: {   // hovering, its fins spinning; its core brightens while it holds tethers
+        fileRoot = root;
+        P.motion[E_BODY] = T({0.f, std::sin(time * 2.2f + e.animPhase) * 0.08f, 0.f});
+        P.motion[E_HALO] = RY(time * 2.f);
+        P.chan[C_GLOW] = glow;
+        P.chan[C_CORE] = glow * (e.linkCount > 0 ? 2.4f + 0.6f * std::sin(time * 9.f) : 1.2f);
+        return true;
+    }
+    case EnemyType::LEVIATHAN: {   // its head: the skull (x1.5), the jaw opening, the eye's corona turning (the body: leviathanSegments)
+        if (!e.levInit || (e.levHidden() && e.levStage != Enemy::LevStage::RISE)) return false;   // not risen / under the floor
+        const vec3 seam{1.3f, 0.3f, 0.12f}, corona = st.glow;
+        float rage = e.levPhase == 3 ? 1.6f : 1.f;
+        bool crash = e.attack == AttackKind::CRASH, torrent = e.attack == AttackKind::TORRENT,
+             swallow = e.attack == AttackKind::SWALLOW || e.levInhale > 0.f;
+        vec3 col = crash ? glm::mix(corona, vec3{1.8f, 0.2f, 0.1f}, glm::clamp(tp * 2.f, 0.f, 1.f)) : corona;
+        float open = e.levEyeOpen() ? 2.2f : 1.f;
+        fileRoot = T(e.position) * RY(e.yaw) * RX(-e.levPitch) * S(vec3{1.5f});
+        P.motion[E_JAW] = RX(0.9f * e.levJaw);
+        P.motion[E_HALO] = RZ(time * 0.6f);
+        glowOut = col;
+        P.chan[C_GLOW] = col * (1.4f + 1.5f * tp) * open * rage;                      // the corona
+        P.chan[C_EYE] = e.levEyeOpen() ? col * 0.25f : vec3{0.f};                    // the black disc, lit when it opens
+        P.chan[C_SEAM] = seam * (0.9f + 0.6f * tp) * rage;                           // seams of light along its skull
+        P.chan[C_SHOT] = torrent ? vec3{0.3f, 1.1f, 0.9f} * (0.5f + 3.f * tp)
+                       : swallow ? vec3{1.6f, 1.5f, 1.4f} * (0.6f + 2.f * (e.levInhale > 0.f ? 1.f : tp)) : seam * 0.4f;   // its throat
+        P.chan[C_LIGHT] = seam * 0.25f * rage;                                       // its fins
+        P.chan[C_PULSE] = seam * rage;                                               // (each segment's seam: leviathanSegments)
+        P.wave = time * 9.f;                                                         // (the corona's flicker)
+        return true;
+    }
+    case EnemyType::PENITENT: {   // kneeling in its chains (sunk 3.3 m), then risen; censers lit for their sweeps; the wound on its back
+        PoseOverride ov = penitentPose(e);
+        HumanoidMotion mo = humanoidMotion(e.animPhase, e.risen ? std::max(stride, 0.3f) : 0.f, ArmPose::SWING, 0.f, &ov);
+        P = humanoidPose(mo, st.glow);
+        fileRoot = root * T({0.f, mo.lift, 0.f});
+        glowOut = st.glow;
+        P.chan[C_EYE] = st.glow * (1.5f + 2.5f * tp);
+        P.chan[C_LIGHT] = st.glow;   // its hood's rim, its hem, the seam down its front
+        vec3 hot = e.attack == AttackKind::CENSER_HIGH ? vec3{1.6f, 1.6f, 1.5f} : st.glow;
+        bool sweep = e.attack == AttackKind::CENSER_LOW || e.attack == AttackKind::CENSER_HIGH;
+        P.chan[C_TELL_R] = hot * (sweep ? 1.f + 3.f * tp : 0.8f) * 1.4f;   // (the right hand's censer sweeps)
+        P.chan[C_TELL_L] = hot * 0.8f * 1.4f;
+        P.chan[C_CORE] = vec3{2.2f, 0.25f, 0.1f} * (0.6f + 0.4f * std::sin(time * 9.f));
+        P.flag[F_OPEN] = e.scourging;
+        return true;
+    }
     case EnemyType::MITE: {
         fileRoot = root;
         P.motion[E_BODY] = T({0.f, std::fabs(std::sin(e.animPhase)) * 0.04f, 0.f});
@@ -387,6 +557,31 @@ inline std::vector<gunkit::ModelJoint> restJointsOf(EnemyType t) {
         add(E_BLADE_L, E_BODY, {0.36f, 0.67f, 0.42f}); add(E_BLADE_R, E_BODY, {-0.36f, 0.67f, 0.42f});
         break;
     }
+    case EnemyType::WEAVER:   // hips round its body, knees up and out from them (its feet reach the floor)
+        add(E_BODY, E_ROOT, {0.f, 0.85f, 0.f});
+        for (int k = 0; k < 3; ++k) {
+            const float z = 0.45f - 0.45f * k;   // (1 the front pair)
+            add(E_LEG_L1 + k, E_BODY, {0.45f, 0.85f, z});         add(E_LEG_R1 + k, E_BODY, {-0.45f, 0.85f, z});
+            add(E_SHIN_L1 + k, E_LEG_L1 + k, {1.15f, 1.45f, z * 1.25f}); add(E_SHIN_R1 + k, E_LEG_R1 + k, {-1.15f, 1.45f, z * 1.25f});
+        }
+        break;
+    case EnemyType::SERAPH:   // (the code rig's frames: its ring for a head, two pairs of wings off its body)
+        add(E_HEAD, E_ROOT, {0.f, 1.42f, 0.f});
+        add(E_WING_L, E_ROOT, {0.2f, 1.05f, -0.05f}); add(E_WING_R, E_ROOT, {-0.2f, 1.05f, -0.05f});
+        add(E_TIP_L, E_ROOT, {0.2f, 0.70f, -0.05f});  add(E_TIP_R, E_ROOT, {-0.2f, 0.70f, -0.05f});
+        break;
+    case EnemyType::CONDUIT:
+        add(E_HALO, E_ROOT, {0.f, 1.2f, 0.f}); add(E_CROWN, E_ROOT, {0.f, 2.3f, 0.f}); add(E_HEAD, E_ROOT, {0.f, 3.1f, 0.f});
+        break;
+    case EnemyType::CONDUCTOR:
+        add(E_BODY, E_ROOT, {0.f, 0.85f, 0.f}); add(E_HALO, E_BODY, {0.f, 0.85f, 0.f});
+        break;
+    case EnemyType::LEVIATHAN:   // (the head rig's frame: the skull at its origin, x1.5 when drawn)
+        add(E_HEAD, E_ROOT, {0.f, 0.f, 0.f});
+        add(E_JAW, E_HEAD, {0.f, -0.7f, -1.2f});
+        add(E_HALO, E_HEAD, {0.f, 1.25f, 2.2f});
+        add(E_BODY, E_ROOT, {0.f, 0.f, -12.f});   // (one body segment, laid out from here: set apart from the head in Blender)
+        break;
     case EnemyType::RAPTOR:
         add(E_HEAD, E_ROOT, {0.f, 0.62f, 0.55f});
         add(E_TAIL, E_ROOT, {0.f, 0.5f, -0.5f});
@@ -433,6 +628,12 @@ inline std::vector<gunkit::ModelJoint> restJointsOf(EnemyType t) {
         add(E_HEAD, E_TORSO, {0.f, chest + L.torsoH, 0.f});
         add(E_ARML, E_TORSO, {shX, shY, 0.f}); add(E_ARMR, E_TORSO, {-shX, shY, 0.f});
         if (t == EnemyType::SHIELDBEARER) add(E_SHIELD, E_TORSO, vec3{0.f, chest, 0.f} + shieldRest());
+        if (t == EnemyType::WARDEN) {   // the cape off its back, its hem lower down; the crown on its helm
+            const float capeY = chest + L.torsoH - 0.15f, capeZ = -L.torsoD * 0.5f - 0.08f;
+            add(E_CAPE, E_TORSO, {0.f, capeY, capeZ});
+            add(E_CAPE_TIP, E_CAPE, {0.f, capeY - 1.7f, capeZ});
+            add(E_CROWN, E_HEAD, {0.f, chest + L.torsoH, 0.f});
+        }
         if (t == EnemyType::SOVEREIGN) {   // (sovereignPose's frames: the sword in the right fist, cape off his shoulders, halo behind his helm)
             const float head = chest + L.torsoH;
             add(E_SWORD, E_ARMR, {-shX, shY - L.armLen - L.armW * 0.3f, 0.f});
@@ -555,15 +756,18 @@ inline PoseOverride penitentPose(const Enemy& e) {
     o.crouch = e.risen ? 0.f : 3.3f;
     if (!e.risen && e.riseTimer > 0.f) o.crouch = 3.3f * (e.riseTimer / Enemy::PEN_RISE_TIME);
     float tp = smooth01(e.telegraphProgress() * 1.3f);
-    o.rxR = o.rxL = 0.15f; o.rzR = o.rzL = 0.25f;
+    // at rest both arms hang a little out from its sides, the censers clear of its robe (each move blends from there)
+    const float RX0 = 0.15f, RZR0 = -0.25f, RZL0 = 0.25f;
+    o.rxR = o.rxL = RX0; o.rzR = RZR0; o.rzL = RZL0;
+    auto to = [&](float from, float target) { return from + (target - from) * tp; };
     o.torsoPitch = e.scourging ? 0.25f : 0.1f;
     switch (e.attack) {
-        case AttackKind::CENSER_LOW:  o.rxR = 0.9f * tp; o.rzR = 1.2f * tp; o.torsoYaw = -0.5f * tp; break;   // drawn back low
-        case AttackKind::CENSER_HIGH: o.rxR = -2.3f * tp; o.rzR = 0.6f * tp; o.torsoYaw = -0.4f * tp; break;  // raised high
-        case AttackKind::PSLAM:       o.rxR = o.rxL = -2.8f * tp; o.torsoPitch = -0.2f * tp; break;           // both fists up
+        case AttackKind::CENSER_LOW:  o.rxR = to(RX0, 0.9f); o.rzR = to(RZR0, 1.2f); o.torsoYaw = -0.5f * tp; break;   // drawn back low
+        case AttackKind::CENSER_HIGH: o.rxR = to(RX0, -2.3f); o.rzR = to(RZR0, 0.6f); o.torsoYaw = -0.4f * tp; break;  // raised high
+        case AttackKind::PSLAM:       o.rxR = o.rxL = to(RX0, -2.8f); o.torsoPitch = -0.2f * tp; break;              // both fists up
         case AttackKind::PSTOMP:      o.torsoPitch = 0.3f * tp; break;
-        case AttackKind::PLASH:       o.rxL = -1.6f * tp; o.rzL = -0.4f; break;
-        case AttackKind::SCOURGE:     o.rxR = -3.0f * tp; o.rzR = -0.9f * tp; o.torsoPitch = 0.4f; break;    // over its shoulder
+        case AttackKind::PLASH:       o.rxL = to(RX0, -1.6f); o.rzL = to(RZL0, -0.4f); break;
+        case AttackKind::SCOURGE:     o.rxR = to(RX0, -3.0f); o.rzR = to(RZR0, -0.9f); o.torsoPitch = 0.4f; break;   // over its shoulder
         default: break;
     }
     return o;
@@ -572,6 +776,32 @@ inline PoseOverride penitentPose(const Enemy& e) {
 inline vec3 brassOf() { return {0.6f, 0.45f, 0.22f}; }
 
 #include "bosses/absolute/AbsoluteRig.h"   // THE ABSOLUTE's body
+
+// THE LEVIATHAN's body from its file: the one segment there (on "body") laid along each stretch of its
+// curve (leviathanBody), scaled to the stretch's radius and length; each seam pulses a beat after the last
+inline void leviathanSegments(const Enemy& e, float time, Rig& r, const gunkit::GunModel& m, FilePose P, vec3 glow) {
+    using namespace enemyfile;
+    const float RS = 2.5f, LS = 2.5f;   // the file's segment: radius and length
+    const vec3 seamCol = P.chan[C_PULSE];
+    LevSegment seg[LV_SEGMENTS];
+    leviathanBody(e, seg);
+    for (int i = 0; i < LV_SEGMENTS; ++i) {
+        vec3 a = seg[i].c, b = i + 1 < LV_SEGMENTS ? seg[i + 1].c : e.position;
+        vec3 dir = b - a; float len = glm::length(dir);
+        if (len < 1e-3f) continue;
+        dir /= len;
+        float yawS = std::atan2(dir.x, dir.z), pitchS = -std::asin(glm::clamp(dir.y, -1.f, 1.f));
+        mat4 f = T(a) * RY(yawS) * RX(pitchS) * S({seg[i].r / RS, seg[i].r / RS, len / LS});
+        P.chan[C_PULSE] = seamCol * (0.5f + 0.6f + 0.4f * std::sin(time * 3.f - i * 0.7f));
+        for (const auto& p : m.parts) {
+            if (p.joint != E_BODY) continue;
+            vec3 col = p.glowScale >= 0.f ? glow * p.glowScale : p.color * P.tint;
+            vec3 emi = p.chan >= 0 && p.chan < C_COUNT ? P.chan[p.chan] * p.k : vec3{0.f};
+            r.part(f * p.rel, col, emi, p.mesh);
+            if (jointSink()) jointSink()->push_back({(int)r.out.size() - 1, 1000 + i});
+        }
+    }
+}
 
 inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out) {
     const EnemyStats& st = e.stats();
@@ -602,8 +832,10 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         mat4 fileRoot; FilePose P; vec3 g;
         const size_t first = out.size();
         if (filePoseOf(e, time, root, fileRoot, P, g)) {
-            drawFile(r, fileRoot, *m, P, g);
+            drawFile(r, fileRoot, *m, P, g, nullptr, e.type == EnemyType::LEVIATHAN ? (int)enemyfile::E_BODY : -1);
+            if (e.type == EnemyType::LEVIATHAN) leviathanSegments(e, time, r, *m, P, g);
             if (e.type == EnemyType::ABSOLUTE) absoluteWhiteHot(e, r, first);
+            if (e.type == EnemyType::WARDEN) wardenShards(e, time, grow, g, out);
             return;
         }
     }
@@ -799,18 +1031,10 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         break;
     }
     case EnemyType::WARDEN: {
-        // Its glow: magenta fed, angrier overloaded, white-hot with its core open, burning in meltdown
-        vec3 g = e.ventTimer > 0.f ? vec3{1.6f, 1.5f, 1.3f}
-               : e.wardenPhase == 3 ? vec3{1.6f, 0.45f, 0.15f} * (1.f + 1.5f * tp)
-               : e.wardenPhase == 2 ? vec3{1.f, 0.1f, 0.25f} * (1.f + 2.5f * tp) : glow;
+        vec3 g = wardenGlow(e, glow, tp);
         HumanoidLook L = humanoidLook(e.type, st.color, st.color * 0.6f, g);
-        ArmPose pose = ArmPose::SWING; float amt = 0.f;
-        if (e.attack == AttackKind::LANCE || e.lanceTimer > 0.f) { pose = ArmPose::RAISED; amt = e.lanceTimer > 0.f ? 1.f : smooth01(tp * 1.5f); }
-        if (e.attack == AttackKind::WLUNGE || e.dashTimer > 0.f) { pose = ArmPose::AIM_BOTH; amt = 1.f; }
-        if (e.attack == AttackKind::WVENT || e.attack == AttackKind::DETONATE) { pose = ArmPose::RAISED; amt = 0.5f * smooth01(tp * 2.f); }
-        if (e.attack == AttackKind::SLAM)   { pose = ArmPose::RAISED;   amt = smooth01(tp * 1.5f); }
-        if (e.attack == AttackKind::VOLLEY) { pose = ArmPose::AIM_BOTH; amt = smooth01(tp * 2.f); }
-        if (e.attack == AttackKind::SUMMON) { pose = ArmPose::RAISED;   amt = 0.6f * smooth01(tp * 2.f); }
+        ArmPose pose; float amt;
+        wardenArms(e, tp, pose, amt);
         auto f = humanoid(r, root, L, e.animPhase, std::max(stride, 0.35f), pose, amt);
         vec3 gold{0.78f, 0.56f, 0.16f};
         for (float s : {-1.f, 1.f}) {
@@ -828,12 +1052,7 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
             float hgt = (i == 2) ? 0.45f : (i % 2 ? 0.3f : 0.22f);
             r.box(f.head, {x, 0.64f + hgt * 0.5f, 0.f}, {0.07f, hgt, 0.07f}, gold, g * 0.8f);
         }
-        for (int i = 0; i < 4; ++i) {                                                // orbiting shards
-            float a = time * 1.6f + i * 1.5708f;
-            mat4 m = T(e.position + vec3{std::cos(a) * 2.6f, 4.0f + std::sin(time * 2.f + i) * 0.3f, std::sin(a) * 2.6f})
-                   * RY(a * 2.f) * RX(0.785f) * S(vec3{0.35f * grow});
-            push(out, m, g * 0.3f, g * 1.8f);
-        }
+        wardenShards(e, time, grow, g, out);
         break;
     }
     case EnemyType::RIPPER: {
@@ -1116,9 +1335,10 @@ inline bool headBox(const Enemy& e, AABB& out) {
     case EnemyType::ANCHOR: case EnemyType::PENITENT: {
         HumanoidLook L = humanoidDims(e.type);
         mat4 base = root;
-        if (e.type == EnemyType::ANCHOR) base = root * RX(0.18f);   // hunched, as drawn
         if (e.type == EnemyType::JUGGERNAUT && e.staggered()) base = root * T({0.f, -0.25f, 0.f}) * RX(0.32f);
+        if (e.type == EnemyType::WARDEN) base = wardenBase(e, root);
         PoseOverride ov;
+        if (e.type == EnemyType::ANCHOR) ov.torsoPitch = 0.18f;   // hunched at the waist, as drawn
         if (e.type == EnemyType::SOVEREIGN) {
             if (e.staggered()) { base = root * T({0.f, -0.2f, 0.f}) * RX(0.28f); ov.torsoPitch = 0.2f; }
             else ov = sovereignPose(e);
@@ -1180,7 +1400,7 @@ inline bool headBox(const Enemy& e, AABB& out) {
 inline bool coreBox(const Enemy& e, AABB& out) {
     if (!e.coreOpen()) return false;
     HumanoidLook L = humanoidDims(e.type);
-    mat4 torso = T(e.position) * RY(e.yaw) * T({0.f, L.legLen + L.pelvisH, 0.f});
+    mat4 torso = wardenBase(e, T(e.position) * RY(e.yaw)) * T({0.f, L.legLen + L.pelvisH, 0.f});
     vec3 c = vec3(torso * glm::vec4(0.f, L.torsoH * 0.55f, L.torsoD * 0.5f + 0.25f, 1.f));
     vec3 half{0.9f, 1.0f, 0.9f};
     out = {c - half, c + half};

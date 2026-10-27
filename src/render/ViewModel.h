@@ -12,7 +12,8 @@
 // never clips into walls. The sounds come out of GunMotion as timed cues; the
 // game plays them (takeCues).
 //
-// It also draws the gauntlet that punches (GunKit's fist). The camera's own
+// It also draws your arms: on the sword, and the gauntlet that punches (their
+// file, ArmFile.h; GunKit's recipes if there's none). The camera's own
 // bob, shake and kicks live in CameraFeel.h.
 // =============================================================================
 #include "core/gl.h"
@@ -22,6 +23,7 @@
 #include "core/ShaderProgram.h"
 #include "core/Mesh.h"
 #include "render/GunKit.h"
+#include "render/ArmFile.h"
 #include "player/Sword.h"
 #include <vector>
 #include <cmath>
@@ -137,7 +139,8 @@ public:
         const float glow = s.broken() ? 0.15f : 0.7f + 1.2f * L.riposte + 0.6f * L.charge;
         glm::vec3 twist{0.3f * (P.hand.x - 0.2f), 0.12f * (P.hand.y + 0.22f), 0.1f * (P.hand.z - 0.36f)};   // the body turns into the cut
         glm::mat4 fist = frame; fist[3] = glm::vec4(P.hand, 1.f);
-        gunkit::buildArm(b, glm::vec3{0.34f, -0.62f, 0.f} + twist, fist, 1.f, false, glow);
+        armfile::ArmLook arm; arm.seam = glow;
+        gunkit::drawArm(b, glm::vec3{0.34f, -0.62f, 0.f} + twist, fist, 1.f, arm);
         float off = std::max(P.twoHand, P.brace);
         if (off > 0.02f) {
             glm::vec3 z{frame[2]}, y{frame[1]}, root{frame[3]};
@@ -146,7 +149,8 @@ public:
             glm::vec3 at = P.brace > P.twoHand ? onFlat : onGrip;
             glm::vec3 away{-0.3f, -0.6f, 0.12f};   // below the screen
             glm::mat4 lf = frame; lf[3] = glm::vec4(glm::mix(away, at, gunkit::smooth(std::min(off, 1.f))), 1.f);
-            gunkit::buildArm(b, glm::vec3{-0.34f, -0.62f, 0.f} + twist * 0.6f, lf, -1.f, P.brace > P.twoHand, glow);
+            arm.open = P.brace > P.twoHand;
+            gunkit::drawArm(b, glm::vec3{-0.34f, -0.62f, 0.f} + twist * 0.6f, lf, -1.f, arm);
         }
         for (const auto& p : parts) drawPart(shader, base * p.xf, p.color, p.emissive, p.mesh);
         if (parryTimer > 0.f) drawFist(shader, cam, gunkit::SWORD_GLOW);   // F still punches
@@ -352,8 +356,8 @@ private:
         const glm::mat4 ff = fistFrame(F);
         parts.clear();
         gunkit::Builder b{parts, glow};
-        gunkit::buildArm(b, glm::vec3{-0.3f, -0.56f, 0.02f}, ff, -1.f, false, 0.8f + 2.5f * flare);
-        gunkit::buildGauntlet(b, ff, glow, flare);
+        armfile::ArmLook arm; arm.gauntlet = true; arm.seam = 0.8f + 2.5f * flare; arm.glow = glow; arm.flare = flare;
+        gunkit::drawArm(b, glm::vec3{-0.3f, -0.56f, 0.02f}, ff, -1.f, arm);
         if (u > WHACK_AT && u < WHACK_END + 0.1f) {   // the smear: a soft band of the gauntlet's light along the arc it swept
             const float fade = 1.f - std::clamp((u - WHACK_END) / 0.1f, 0.f, 1.f);
             const glm::vec3 view{0.f, 0.f, 1.f};

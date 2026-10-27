@@ -11,6 +11,19 @@
 //              RIPPER     body head legFL legFR legBL legBR bladeL bladeR
 //              RAPTOR     head tail wingL wingR tipL tipR (tips ride the wings)
 //              MITE       body legL1-3 legR1-3
+//              WARDEN     a humanoid's, and cape and capeTip (its hem), crown (rides the head)
+//              PENITENT   a humanoid's (its censers ride its fists: "tellR"/"tellL" light them)
+//              REVENANT, ANCHOR  a humanoid's
+//              WEAVER     body (rears to string a wire), legL1-3 / legR1-3 (hips, front to back),
+//                         shinL1-3 / shinR1-3 (knees): legs up to a high knee, down to the floor
+//              SERAPH     head (its ring), wingL/R (the upper pair), tipL/R (the lower pair, off its body)
+//              CONDUIT    halo and crown (its two rings, turning), head (the crystal on top)
+//              CONDUCTOR  body (bobbing), halo (its three fins, spinning)
+//              LEVIATHAN  head (its skull, in the head rig's units: drawn x1.5), jaw (hinged under it),
+//                         halo (its eye's corona, turning); body: ONE segment of its serpent body,
+//                         r 2.5 m, running 2.5 m along +Z from the joint (12 m behind the head, out of
+//                         its way in Blender), drawn once per segment
+//                         along the curve and scaled to it ("pulse" its seam ring, "light" its fin)
 //              SOVEREIGN  a humanoid's, and weapon (the greatsword, turned in his fist), cape and
 //                         capeTip (its hem, lagging it), halo (turning), crown (rides the head)
 //              ABSOLUTE   (and MORNINGSTAR, his own file on the same joints) hips, knees, ankles,
@@ -29,7 +42,9 @@
 //            THE ABSOLUTE's: "seam" "soft" "light" "eye" "core" "halo" "sword"; a limb's seams, glow
 //            and runes ("tellR", "auraLegL", "runeR"...) take his tell's colour when it strikes
 //            "const" k itself
-//   flags    "blade" (THE ABSOLUTE's blade of light is drawn), "enraged", "broken": a part with
+//   flags    "blade" (THE ABSOLUTE's blade of light is drawn), "enraged", "broken", "open" (the
+//            WARDEN's core plates drawn back while it vents and in meltdown; the PENITENT's wound
+//            while it scourges itself): a part with
 //            show = "enraged" is drawn only then ("!enraged": only not)
 //   colours  material base colours; "glow*0.3": the (flaring) glow colour x 0.3
 //
@@ -54,7 +69,10 @@ enum Joint { E_ROOT, E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR,
              E_SWORD, E_CAPE, E_CAPE_TIP, E_HALO, E_CROWN,
              E_KNEE_L, E_KNEE_R, E_ANKLE_L, E_ANKLE_R, E_WAIST, E_CLOTH_F, E_CLOTH_B,
              E_ELBOW_L, E_ELBOW_R, E_HAND_L, E_HAND_R, E_FINGERS_L, E_FINGERS_R, E_TIPS_L, E_TIPS_R,
-             E_THUMB_L, E_THUMB_R, E_THUMB_TIP_L, E_THUMB_TIP_R, E_RIBBON_L, E_RIBBON_R, E_COUNT };
+             E_THUMB_L, E_THUMB_R, E_THUMB_TIP_L, E_THUMB_TIP_R, E_RIBBON_L, E_RIBBON_R,
+             E_JAW,   // THE LEVIATHAN's
+             E_SHIN_L1, E_SHIN_L2, E_SHIN_L3, E_SHIN_R1, E_SHIN_R2, E_SHIN_R3,   // a WEAVER's knees
+             E_COUNT };
 inline const char* jointName(int j) {
     static const char* N[E_COUNT] = {"root", "hipL", "hipR", "torso", "head", "armL", "armR",
                                      "body", "legFL", "legFR", "legBL", "legBR", "bladeL", "bladeR",
@@ -63,7 +81,8 @@ inline const char* jointName(int j) {
                                      "weapon", "cape", "capeTip", "halo", "crown",
                                      "kneeL", "kneeR", "ankleL", "ankleR", "waist", "clothF", "clothB",
                                      "elbowL", "elbowR", "handL", "handR", "fingersL", "fingersR", "tipsL", "tipsR",
-                                     "thumbL", "thumbR", "thumbTipL", "thumbTipR", "ribbonL", "ribbonR"};
+                                     "thumbL", "thumbR", "thumbTipL", "thumbTipR", "ribbonL", "ribbonR", "jaw",
+                                     "shinL1", "shinL2", "shinL3", "shinR1", "shinR2", "shinR3"};
     return N[j];
 }
 enum Chan { C_CONST, C_GLOW, C_SHOT, C_PULSE, C_DIVE, C_FUSE, C_BLADE, C_SMASH, C_RIM,
@@ -80,10 +99,10 @@ inline const char* chanName(int c) {
     return N[c];
 }
 // Flags a part can show on (or, "!enraged", off): THE ABSOLUTE's blade of light (phase 3),
-// the SOVEREIGN enraged, a boss broken (parried)
-enum Flag { F_BLADE, F_ENRAGED, F_BROKEN, F_COUNT };
+// the SOVEREIGN enraged (the WARDEN in meltdown), a boss broken (parried), the WARDEN's core open
+enum Flag { F_BLADE, F_ENRAGED, F_BROKEN, F_OPEN, F_COUNT };
 inline const char* flagName(int f) {
-    static const char* N[F_COUNT] = {"blade", "enraged", "broken"};
+    static const char* N[F_COUNT] = {"blade", "enraged", "broken", "open"};
     return N[f];
 }
 inline const gunkit::Names& names() { static const gunkit::Names n{E_COUNT, C_COUNT, F_COUNT, jointName, chanName, flagName}; return n; }
@@ -99,6 +118,15 @@ inline const char* fileName(EnemyType t) {
         case EnemyType::MITE:     return "mite";
         case EnemyType::JUGGERNAUT:   return "juggernaut";
         case EnemyType::SHIELDBEARER: return "shieldbearer";
+        case EnemyType::WARDEN:       return "warden";
+        case EnemyType::PENITENT:     return "penitent";
+        case EnemyType::LEVIATHAN:    return "leviathan";
+        case EnemyType::REVENANT:     return "revenant";
+        case EnemyType::WEAVER:       return "weaver";
+        case EnemyType::SERAPH:       return "seraph";
+        case EnemyType::ANCHOR:       return "anchor";
+        case EnemyType::CONDUIT:      return "conduit";
+        case EnemyType::CONDUCTOR:    return "conductor";
         case EnemyType::SOVEREIGN:    return "sovereign";
         case EnemyType::ABSOLUTE:     return "absolute";
         default: return nullptr;
@@ -118,6 +146,13 @@ inline std::vector<int> neededJoints(EnemyType t) {
         case EnemyType::RAPTOR: return {E_HEAD, E_TAIL, E_WING_L, E_WING_R, E_TIP_L, E_TIP_R};
         case EnemyType::MITE:   return {E_BODY, E_LEG_L1, E_LEG_L2, E_LEG_L3, E_LEG_R1, E_LEG_R2, E_LEG_R3};
         case EnemyType::SHIELDBEARER: return {E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR, E_SHIELD};
+        case EnemyType::LEVIATHAN: return {E_HEAD, E_JAW, E_HALO, E_BODY};
+        case EnemyType::WEAVER: return {E_BODY, E_LEG_L1, E_LEG_L2, E_LEG_L3, E_LEG_R1, E_LEG_R2, E_LEG_R3,
+                                        E_SHIN_L1, E_SHIN_L2, E_SHIN_L3, E_SHIN_R1, E_SHIN_R2, E_SHIN_R3};
+        case EnemyType::SERAPH: return {E_HEAD, E_WING_L, E_WING_R, E_TIP_L, E_TIP_R};
+        case EnemyType::CONDUIT: return {E_HALO, E_CROWN, E_HEAD};
+        case EnemyType::CONDUCTOR: return {E_BODY, E_HALO};
+        case EnemyType::WARDEN: return {E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR, E_CAPE, E_CAPE_TIP, E_CROWN};
         case EnemyType::SOVEREIGN: return {E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR, E_SWORD, E_CAPE, E_CAPE_TIP, E_HALO, E_CROWN};
         case EnemyType::ABSOLUTE:
             return {E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR, E_HALO, E_CROWN, E_SWORD,
