@@ -26,7 +26,8 @@ for _j in ["hipL", "hipR", "torso", "head", "armL", "armR", "body", "legFL", "le
            "legL1", "legL2", "legL3", "legR1", "legR2", "legR3", "shield",
            "weapon", "cape", "capeTip", "halo", "crown", "kneeL", "kneeR", "ankleL", "ankleR", "waist", "clothF", "clothB",
            "elbowL", "elbowR", "handL", "handR", "fingersL", "fingersR", "tipsL", "tipsR",
-           "thumbL", "thumbR", "thumbTipL", "thumbTipR", "ribbonL", "ribbonR", "jaw"]:
+           "thumbL", "thumbR", "thumbTipL", "thumbTipR", "ribbonL", "ribbonR", "jaw",
+           "shinL1", "shinL2", "shinL3", "shinR1", "shinR2", "shinR3"]:
     if _j not in _og.JOINTS:
         _og.JOINTS.append(_j)
 for _c in ["shot", "pulse", "dive", "fuse", "blade", "smash", "rim", "edge", "cape", "halo", "seam", "soft", "light", "eye",
@@ -48,11 +49,14 @@ _og.PALETTE.update({"husk": (0.70, 0.26, 0.18), "gunmetal": (0.16, 0.15, 0.17), 
                     "gauntlet": (0.22, 0.22, 0.28), "ember": (0.95, 0.27, 0.05), "blood": (0.80, 0.15, 0.03),
                     "char": (0.10, 0.03, 0.02), "obsidian": (0.05, 0.04, 0.05),
                     "warden": (0.34, 0.27, 0.40),
-                    "iron": (0.26, 0.24, 0.25), "leviathan": (0.20, 0.18, 0.21), "rag": (0.15, 0.10, 0.11), "brass": (0.60, 0.45, 0.22)})
+                    "iron": (0.26, 0.24, 0.25), "leviathan": (0.20, 0.18, 0.21),
+                    "revenant": (0.20, 0.21, 0.26), "weaver": (0.16, 0.13, 0.20), "seraph": (0.82, 0.78, 0.66),
+                    "anchor": (0.24, 0.27, 0.32), "conduit": (0.22, 0.20, 0.26), "conductor": (0.18, 0.30, 0.34), "rag": (0.15, 0.10, 0.11), "brass": (0.60, 0.45, 0.22)})
 
 
 ENEMY_SCENES = ["HUSK", "SENTINEL", "BRUTE", "RIPPER", "RAPTOR", "MITE", "JUGGERNAUT", "SHIELDBEARER",
-                "SOVEREIGN", "ABSOLUTE", "MORNINGSTAR", "WARDEN", "PENITENT", "LEVIATHAN"]
+                "SOVEREIGN", "ABSOLUTE", "MORNINGSTAR", "WARDEN", "PENITENT", "LEVIATHAN",
+                "REVENANT", "WEAVER", "SERAPH", "ANCHOR", "CONDUIT", "CONDUCTOR"]
 _ABS = ("hipL hipR torso head armL armR halo crown weapon kneeL kneeR ankleL ankleR waist clothF clothB elbowL elbowR "
         "handL handR fingersL fingersR tipsL tipsR thumbL thumbR thumbTipL thumbTipR ribbonL ribbonR")
 NEEDED = {"husk": "hipL hipR torso head armL armR", "sentinel": "hipL hipR torso head armL armR",
@@ -61,7 +65,10 @@ NEEDED = {"husk": "hipL hipR torso head armL armR", "sentinel": "hipL hipR torso
           "juggernaut": "hipL hipR torso head armL armR", "shieldbearer": "hipL hipR torso head armL armR shield",
           "sovereign": "hipL hipR torso head armL armR weapon cape capeTip halo crown",
           "warden": "hipL hipR torso head armL armR cape capeTip crown",
-          "penitent": "hipL hipR torso head armL armR", "leviathan": "head jaw halo body", "absolute": _ABS, "morningstar": _ABS}
+          "penitent": "hipL hipR torso head armL armR", "leviathan": "head jaw halo body",
+          "revenant": "hipL hipR torso head armL armR", "anchor": "hipL hipR torso head armL armR",
+          "weaver": "body legL1 legL2 legL3 legR1 legR2 legR3 shinL1 shinL2 shinL3 shinR1 shinR2 shinR3",
+          "seraph": "head wingL wingR tipL tipR", "conduit": "halo crown head", "conductor": "body halo", "absolute": _ABS, "morningstar": _ABS}
 
 
 def open_enemy(name, joints=None):
@@ -334,3 +341,25 @@ def tube(points, radii, mat, parent, sides=8, glow=None, k=1.0, tip=0.0, show=No
 def aimed(c, d):
     """Euler degrees turning +Y along d (for P/K/C/B placed by hand)"""
     return _aim(d)
+
+
+def parts_now():
+    """The scene's objects now (pass to new_since to get the parts made after)"""
+    return set(bpy.context.scene.objects)
+
+
+def new_since(before):
+    return [o for o in bpy.context.scene.objects if o not in before]
+
+
+def turn_about(obs, at, m):
+    """Turn objects about the game-space point `at` by the game-space 4x4 rotation m (e.g. a wing built
+    flat, set at its rest angle)"""
+    T = Matrix.Translation(Vector(at))
+    M = _og.game_to_blender(T @ m @ T.inverted())
+    for ob in obs:
+        ob.matrix_world = M @ ob.matrix_world
+
+
+def rot_game(axis, deg):
+    return Matrix.Rotation(deg * 3.14159265358979 / 180.0, 4, axis)
