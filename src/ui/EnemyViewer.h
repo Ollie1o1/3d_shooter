@@ -40,7 +40,10 @@ public:
         whiteTex = makeGreyTexture();
         e.spawnTimer = 0.f;
         if (file == enemyfile::FILE_MORNINGSTAR) { e.abForm = 1; e.scale = Enemy::MS_SCALE; e.abPhase = 4; }
-        if (type == EnemyType::PENITENT) e.risen = true;   // (kneeling, it's sunk 3.3 m into the floor: E kneels it)
+        if (type == EnemyType::PENITENT) e.risen = true;
+        if (type == EnemyType::LEVIATHAN) {   // risen out of a pool behind it, its head up at 12 m
+            e.levInit = true; e.levStage = Enemy::LevStage::FIGHT; e.levRoot = {0.f, 0.f, -12.f}; e.levFloor = 0.f; e.position = {0.f, 12.f, 0.f};
+        }   // (kneeling, it's sunk 3.3 m into the floor: E kneels it)
         std::error_code ec;
         fileTime = std::filesystem::last_write_time(enemyfile::pathOf(file), ec);
         enemyfile::modelOf(file);
@@ -81,6 +84,7 @@ public:
             case SDLK_n: ++attackIx; windT = 0.f; break;
             case SDLK_e:
                 if (type == EnemyType::WARDEN) { wardenLook = (wardenLook + 1) % 3; setWardenLook(); break; }   // its core open, then meltdown
+                if (type == EnemyType::LEVIATHAN) { e.levPhase = e.levPhase == 3 ? 1 : 3; break; }   // phase 3: its eye open, raging
                 if (type == EnemyType::PENITENT) { penLook = (penLook + 1) % 3; e.scourging = penLook == 1; e.risen = penLook != 2; break; }   // scourging, then kneeling
                 e.enraged = !e.enraged; if (type == EnemyType::ABSOLUTE) e.abBlade = !e.abBlade; break;
             case SDLK_t: turntable = !turntable; break;
@@ -109,6 +113,11 @@ public:
             if (windT < WIND) { e.attack = atk; e.telegraphDuration = WIND; e.telegraphTimer = WIND - windT; }
         }
         if (type == EnemyType::ABSOLUTE) rig::tickAbsoluteBody(e, dt);   // (his body springs after the pose)
+        if (type == EnemyType::LEVIATHAN) {   // (its jaw and head, as its mind would move them)
+            bool gape = e.attack == AttackKind::TORRENT || e.attack == AttackKind::SWALLOW || e.attack == AttackKind::SPIT;
+            e.levJaw = gape ? e.telegraphProgress() : 0.f;
+            e.levPitch = e.attack == AttackKind::CRASH ? 0.5f * e.telegraphProgress() : 0.f;
+        }
         pollT -= dt;
         if (pollT <= 0.f) {   // the file: reload it when it changes (and once more a moment later if a read failed mid-save)
             pollT = 0.5f;
@@ -136,6 +145,7 @@ public:
 
         float h = e.height();
         glm::vec3 centre{0.f, h * 0.5f, 0.f};
+        if (type == EnemyType::LEVIATHAN) centre = zoom < 1.4f ? glm::vec3{0.f, 12.f, 1.f} : glm::vec3{0.f, 8.f, -5.f};   // (its head 12 m up; zoomed out, its body too)
         float aspect = (float)display::renderW() / (float)std::max(1, display::renderH());
         glm::vec3 dir{std::cos(glm::radians(pitch)) * std::sin(glm::radians(yaw)), std::sin(glm::radians(pitch)),
                       std::cos(glm::radians(pitch)) * std::cos(glm::radians(yaw))};
@@ -221,6 +231,8 @@ private:
         static const A ms[] = {A::MJAB, A::MBACKHAND, A::MGRASP, A::MSUNDER};
         static const A war[] = {A::SLAM, A::LANCE, A::WLUNGE, A::VOLLEY, A::SUMMON, A::WVENT};
         if (type == EnemyType::WARDEN) return war[attackIx % 6];
+        static const A lev[] = {A::CRASH, A::TORRENT, A::SWALLOW, A::SPIT};
+        if (type == EnemyType::LEVIATHAN) return lev[attackIx % 4];
         static const A pen[] = {A::CENSER_LOW, A::CENSER_HIGH, A::PSLAM, A::PSTOMP, A::PLASH, A::SCOURGE};
         if (type == EnemyType::PENITENT) return pen[attackIx % 6];
         if (file == enemyfile::FILE_MORNINGSTAR) return ms[attackIx % 4];

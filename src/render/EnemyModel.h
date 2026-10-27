@@ -194,7 +194,7 @@ struct FilePose {
     float tint = 1.f;                     // every fixed colour x this (MORNINGSTAR's light going out in TOTALITY)
     FilePose() { for (auto& m : motion) m = mat4(1.f); for (auto& c : chan) c = vec3(0.f); chan[enemyfile::C_CONST] = vec3(1.f); }
 };
-inline void drawFile(Rig& r, const mat4& root, const gunkit::GunModel& m, const FilePose& P, vec3 glow, mat4* Wout = nullptr) {
+inline void drawFile(Rig& r, const mat4& root, const gunkit::GunModel& m, const FilePose& P, vec3 glow, mat4* Wout = nullptr, int skipJoint = -1) {
     using namespace enemyfile;
     mat4 local[E_COUNT]; int parent[E_COUNT];
     restLocals(m, local, parent);
@@ -203,6 +203,7 @@ inline void drawFile(Rig& r, const mat4& root, const gunkit::GunModel& m, const 
     for (const auto& J : m.joints) W[J.id] = W[J.parent] * local[J.id] * P.motion[J.id];   // (parents come first)
     for (const auto& p : m.parts) {
         if (p.flag >= 0 && p.flag < F_COUNT && P.flag[p.flag] != p.want) continue;
+        if (p.joint == skipJoint) continue;
         vec3 col = p.glowScale >= 0.f ? glow * p.glowScale : p.color * P.tint;
         vec3 emi = p.chan >= 0 && p.chan < C_COUNT ? P.chan[p.chan] * p.k : vec3{0.f};
         if (p.hasPhase) emi *= 0.75f + 0.25f * std::sin(P.wave + p.phase);
@@ -407,6 +408,28 @@ inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileR
         P.wave = time * 4.f;
         return true;
     }
+    case EnemyType::LEVIATHAN: {   // its head: the skull (x1.5), the jaw opening, the eye's corona turning (the body: leviathanSegments)
+        if (!e.levInit || (e.levHidden() && e.levStage != Enemy::LevStage::RISE)) return false;   // not risen / under the floor
+        const vec3 seam{1.3f, 0.3f, 0.12f}, corona = st.glow;
+        float rage = e.levPhase == 3 ? 1.6f : 1.f;
+        bool crash = e.attack == AttackKind::CRASH, torrent = e.attack == AttackKind::TORRENT,
+             swallow = e.attack == AttackKind::SWALLOW || e.levInhale > 0.f;
+        vec3 col = crash ? glm::mix(corona, vec3{1.8f, 0.2f, 0.1f}, glm::clamp(tp * 2.f, 0.f, 1.f)) : corona;
+        float open = e.levEyeOpen() ? 2.2f : 1.f;
+        fileRoot = T(e.position) * RY(e.yaw) * RX(-e.levPitch) * S(vec3{1.5f});
+        P.motion[E_JAW] = RX(0.9f * e.levJaw);
+        P.motion[E_HALO] = RZ(time * 0.6f);
+        glowOut = col;
+        P.chan[C_GLOW] = col * (1.4f + 1.5f * tp) * open * rage;                      // the corona
+        P.chan[C_EYE] = e.levEyeOpen() ? col * 0.25f : vec3{0.f};                    // the black disc, lit when it opens
+        P.chan[C_SEAM] = seam * (0.9f + 0.6f * tp) * rage;                           // seams of light along its skull
+        P.chan[C_SHOT] = torrent ? vec3{0.3f, 1.1f, 0.9f} * (0.5f + 3.f * tp)
+                       : swallow ? vec3{1.6f, 1.5f, 1.4f} * (0.6f + 2.f * (e.levInhale > 0.f ? 1.f : tp)) : seam * 0.4f;   // its throat
+        P.chan[C_LIGHT] = seam * 0.25f * rage;                                       // its fins
+        P.chan[C_PULSE] = seam * rage;                                               // (each segment's seam: leviathanSegments)
+        P.wave = time * 9.f;                                                         // (the corona's flicker)
+        return true;
+    }
     case EnemyType::PENITENT: {   // kneeling in its chains (sunk 3.3 m), then risen; censers lit for their sweeps; the wound on its back
         PoseOverride ov = penitentPose(e);
         HumanoidMotion mo = humanoidMotion(e.animPhase, e.risen ? std::max(stride, 0.3f) : 0.f, ArmPose::SWING, 0.f, &ov);
@@ -458,6 +481,12 @@ inline std::vector<gunkit::ModelJoint> restJointsOf(EnemyType t) {
         add(E_BLADE_L, E_BODY, {0.36f, 0.67f, 0.42f}); add(E_BLADE_R, E_BODY, {-0.36f, 0.67f, 0.42f});
         break;
     }
+    case EnemyType::LEVIATHAN:   // (the head rig's frame: the skull at its origin, x1.5 when drawn)
+        add(E_HEAD, E_ROOT, {0.f, 0.f, 0.f});
+        add(E_JAW, E_HEAD, {0.f, -0.7f, -1.2f});
+        add(E_HALO, E_HEAD, {0.f, 1.25f, 2.2f});
+        add(E_BODY, E_ROOT, {0.f, 0.f, -12.f});   // (one body segment, laid out from here: set apart from the head in Blender)
+        break;
     case EnemyType::RAPTOR:
         add(E_HEAD, E_ROOT, {0.f, 0.62f, 0.55f});
         add(E_TAIL, E_ROOT, {0.f, 0.5f, -0.5f});
@@ -653,6 +682,31 @@ inline vec3 brassOf() { return {0.6f, 0.45f, 0.22f}; }
 
 #include "bosses/absolute/AbsoluteRig.h"   // THE ABSOLUTE's body
 
+// THE LEVIATHAN's body from its file: the one segment there (on "body") laid along each stretch of its
+// curve (leviathanBody), scaled to the stretch's radius and length; each seam pulses a beat after the last
+inline void leviathanSegments(const Enemy& e, float time, Rig& r, const gunkit::GunModel& m, FilePose P, vec3 glow) {
+    using namespace enemyfile;
+    const float RS = 2.5f, LS = 2.5f;   // the file's segment: radius and length
+    const vec3 seamCol = P.chan[C_PULSE];
+    LevSegment seg[LV_SEGMENTS];
+    leviathanBody(e, seg);
+    for (int i = 0; i < LV_SEGMENTS; ++i) {
+        vec3 a = seg[i].c, b = i + 1 < LV_SEGMENTS ? seg[i + 1].c : e.position;
+        vec3 dir = b - a; float len = glm::length(dir);
+        if (len < 1e-3f) continue;
+        dir /= len;
+        float yawS = std::atan2(dir.x, dir.z), pitchS = -std::asin(glm::clamp(dir.y, -1.f, 1.f));
+        mat4 f = T(a) * RY(yawS) * RX(pitchS) * S({seg[i].r / RS, seg[i].r / RS, len / LS});
+        P.chan[C_PULSE] = seamCol * (0.5f + 0.6f + 0.4f * std::sin(time * 3.f - i * 0.7f));
+        for (const auto& p : m.parts) {
+            if (p.joint != E_BODY) continue;
+            vec3 col = p.glowScale >= 0.f ? glow * p.glowScale : p.color * P.tint;
+            vec3 emi = p.chan >= 0 && p.chan < C_COUNT ? P.chan[p.chan] * p.k : vec3{0.f};
+            r.part(f * p.rel, col, emi, p.mesh);
+        }
+    }
+}
+
 inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out) {
     const EnemyStats& st = e.stats();
     Rig r{out};
@@ -682,7 +736,8 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         mat4 fileRoot; FilePose P; vec3 g;
         const size_t first = out.size();
         if (filePoseOf(e, time, root, fileRoot, P, g)) {
-            drawFile(r, fileRoot, *m, P, g);
+            drawFile(r, fileRoot, *m, P, g, nullptr, e.type == EnemyType::LEVIATHAN ? (int)enemyfile::E_BODY : -1);
+            if (e.type == EnemyType::LEVIATHAN) leviathanSegments(e, time, r, *m, P, g);
             if (e.type == EnemyType::ABSOLUTE) absoluteWhiteHot(e, r, first);
             if (e.type == EnemyType::WARDEN) wardenShards(e, time, grow, g, out);
             return;

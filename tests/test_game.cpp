@@ -4270,9 +4270,10 @@ int main() {
         // (the bosses too: THE ABSOLUTE's second form, MORNINGSTAR, is a file of its own on his joints)
         const int made[] = {(int)EnemyType::HUSK, (int)EnemyType::SENTINEL, (int)EnemyType::BRUTE, (int)EnemyType::RIPPER, (int)EnemyType::RAPTOR,
                             (int)EnemyType::MITE, (int)EnemyType::JUGGERNAUT, (int)EnemyType::SHIELDBEARER,
-                            (int)EnemyType::WARDEN, (int)EnemyType::PENITENT, (int)EnemyType::SOVEREIGN, (int)EnemyType::ABSOLUTE, enemyfile::FILE_MORNINGSTAR};
+                            (int)EnemyType::WARDEN, (int)EnemyType::PENITENT, (int)EnemyType::LEVIATHAN, (int)EnemyType::SOVEREIGN, (int)EnemyType::ABSOLUTE, enemyfile::FILE_MORNINGSTAR};
         auto formOf = [](int f, Enemy& e) { if (f == enemyfile::FILE_MORNINGSTAR) { e.abForm = 1; e.scale = Enemy::MS_SCALE; e.abPhase = 4; }
-                                            if (f == (int)EnemyType::PENITENT) e.risen = true; };   // (standing: kneeling, it's sunk into the floor)
+                                            if (f == (int)EnemyType::PENITENT) e.risen = true;   // (standing: kneeling, it's sunk into the floor)
+                                            if (f == (int)EnemyType::LEVIATHAN) { e.levInit = true; e.levStage = Enemy::LevStage::FIGHT; } };   // (risen)
         bool loadsAll = true, jointsAll = true, headsAll = true, feetAll = true, meshesAll = true, tripsAll = true;
         for (int f : made) {
             const EnemyType t = enemyfile::typeOfFile(f);
@@ -4308,7 +4309,8 @@ int main() {
             }
             if (!inHead) std::printf("      %s: part of its head is outside its head hitbox\n", nm);
             headsAll &= inHead;
-            if (!statsOf(t).flying && (lowest < -0.05f || lowest > 0.05f)) { std::printf("      %s: its lowest point is %.3f m off the floor\n", nm, lowest); feetAll = false; }
+            // (THE LEVIATHAN: a serpent out of the water, no feet)
+            if (!statsOf(t).flying && t != EnemyType::LEVIATHAN && (lowest < -0.05f || lowest > 0.05f)) { std::printf("      %s: its lowest point is %.3f m off the floor\n", nm, lowest); feetAll = false; }
             if (meshes < 10) { std::printf("      %s: %d meshes\n", nm, meshes); meshesAll = false; }
             // written out and read back: drawn the same
             gunkit::GunModel saved = enemyfile::slotOf(f);
@@ -4329,7 +4331,9 @@ int main() {
                     size_t shown = 0;   // (a part with a flag: shown only while it holds)
                     { rig::FilePose Q; glm::mat4 fr2; glm::vec3 g2; rig::filePoseOf(w, 0.4f, glm::mat4(1.f), fr2, Q, g2);
                       for (const auto& p : saved.parts) shown += p.flag < 0 || Q.flag[p.flag] == p.want;
-                      if (t == EnemyType::WARDEN) shown += 4; }   // (and the WARDEN's four orbiting shards, drawn in code)
+                      if (t == EnemyType::WARDEN) shown += 4;   // (and the WARDEN's four orbiting shards, drawn in code)
+                      if (t == EnemyType::LEVIATHAN)            // (its one body segment, drawn once per stretch of its body)
+                          for (const auto& p : saved.parts) shown += p.joint == enemyfile::E_BODY ? LV_SEGMENTS - 1 : 0; }
                     same &= a.size() == b.size() && a.size() == shown;
                     std::vector<char> used(b.size(), 0);
                     for (size_t i = 0; same && i < a.size(); ++i) {
@@ -4347,7 +4351,7 @@ int main() {
             tripsAll &= same;
         }
         CHECK(loadsAll, "every enemy made in Blender loads, with the joints its rig turns (HUSK SENTINEL BRUTE RIPPER RAPTOR MITE JUGGERNAUT SHIELDBEARER,"
-                        " the WARDEN, the PENITENT, the SOVEREIGN, THE ABSOLUTE and MORNINGSTAR)");
+                        " the WARDEN, the PENITENT, THE LEVIATHAN, the SOVEREIGN, THE ABSOLUTE and MORNINGSTAR)");
         CHECK(jointsAll, "every enemy file keeps its joints where the code turns them");
         CHECK(headsAll, "every box of an enemy's head sits inside its head hitbox");
         CHECK(feetAll, "every walking enemy stands on the floor (its lowest point within 5 cm)");

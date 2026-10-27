@@ -26,7 +26,7 @@ for _j in ["hipL", "hipR", "torso", "head", "armL", "armR", "body", "legFL", "le
            "legL1", "legL2", "legL3", "legR1", "legR2", "legR3", "shield",
            "weapon", "cape", "capeTip", "halo", "crown", "kneeL", "kneeR", "ankleL", "ankleR", "waist", "clothF", "clothB",
            "elbowL", "elbowR", "handL", "handR", "fingersL", "fingersR", "tipsL", "tipsR",
-           "thumbL", "thumbR", "thumbTipL", "thumbTipR", "ribbonL", "ribbonR"]:
+           "thumbL", "thumbR", "thumbTipL", "thumbTipR", "ribbonL", "ribbonR", "jaw"]:
     if _j not in _og.JOINTS:
         _og.JOINTS.append(_j)
 for _c in ["shot", "pulse", "dive", "fuse", "blade", "smash", "rim", "edge", "cape", "halo", "seam", "soft", "light", "eye",
@@ -48,11 +48,11 @@ _og.PALETTE.update({"husk": (0.70, 0.26, 0.18), "gunmetal": (0.16, 0.15, 0.17), 
                     "gauntlet": (0.22, 0.22, 0.28), "ember": (0.95, 0.27, 0.05), "blood": (0.80, 0.15, 0.03),
                     "char": (0.10, 0.03, 0.02), "obsidian": (0.05, 0.04, 0.05),
                     "warden": (0.34, 0.27, 0.40),
-                    "iron": (0.26, 0.24, 0.25), "rag": (0.15, 0.10, 0.11), "brass": (0.60, 0.45, 0.22)})
+                    "iron": (0.26, 0.24, 0.25), "leviathan": (0.20, 0.18, 0.21), "rag": (0.15, 0.10, 0.11), "brass": (0.60, 0.45, 0.22)})
 
 
 ENEMY_SCENES = ["HUSK", "SENTINEL", "BRUTE", "RIPPER", "RAPTOR", "MITE", "JUGGERNAUT", "SHIELDBEARER",
-                "SOVEREIGN", "ABSOLUTE", "MORNINGSTAR", "WARDEN", "PENITENT"]
+                "SOVEREIGN", "ABSOLUTE", "MORNINGSTAR", "WARDEN", "PENITENT", "LEVIATHAN"]
 _ABS = ("hipL hipR torso head armL armR halo crown weapon kneeL kneeR ankleL ankleR waist clothF clothB elbowL elbowR "
         "handL handR fingersL fingersR tipsL tipsR thumbL thumbR thumbTipL thumbTipR ribbonL ribbonR")
 NEEDED = {"husk": "hipL hipR torso head armL armR", "sentinel": "hipL hipR torso head armL armR",
@@ -61,7 +61,7 @@ NEEDED = {"husk": "hipL hipR torso head armL armR", "sentinel": "hipL hipR torso
           "juggernaut": "hipL hipR torso head armL armR", "shieldbearer": "hipL hipR torso head armL armR shield",
           "sovereign": "hipL hipR torso head armL armR weapon cape capeTip halo crown",
           "warden": "hipL hipR torso head armL armR cape capeTip crown",
-          "penitent": "hipL hipR torso head armL armR", "absolute": _ABS, "morningstar": _ABS}
+          "penitent": "hipL hipR torso head armL armR", "leviathan": "head jaw halo body", "absolute": _ABS, "morningstar": _ABS}
 
 
 def open_enemy(name, joints=None):

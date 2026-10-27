@@ -13,6 +13,11 @@
 //              MITE       body legL1-3 legR1-3
 //              WARDEN     a humanoid's, and cape and capeTip (its hem), crown (rides the head)
 //              PENITENT   a humanoid's (its censers ride its fists: "tellR"/"tellL" light them)
+//              LEVIATHAN  head (its skull, in the head rig's units: drawn x1.5), jaw (hinged under it),
+//                         halo (its eye's corona, turning); body: ONE segment of its serpent body,
+//                         r 2.5 m, running 2.5 m along +Z from the joint (12 m behind the head, out of
+//                         its way in Blender), drawn once per segment
+//                         along the curve and scaled to it ("pulse" its seam ring, "light" its fin)
 //              SOVEREIGN  a humanoid's, and weapon (the greatsword, turned in his fist), cape and
 //                         capeTip (its hem, lagging it), halo (turning), crown (rides the head)
 //              ABSOLUTE   (and MORNINGSTAR, his own file on the same joints) hips, knees, ankles,
@@ -58,7 +63,9 @@ enum Joint { E_ROOT, E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR,
              E_SWORD, E_CAPE, E_CAPE_TIP, E_HALO, E_CROWN,
              E_KNEE_L, E_KNEE_R, E_ANKLE_L, E_ANKLE_R, E_WAIST, E_CLOTH_F, E_CLOTH_B,
              E_ELBOW_L, E_ELBOW_R, E_HAND_L, E_HAND_R, E_FINGERS_L, E_FINGERS_R, E_TIPS_L, E_TIPS_R,
-             E_THUMB_L, E_THUMB_R, E_THUMB_TIP_L, E_THUMB_TIP_R, E_RIBBON_L, E_RIBBON_R, E_COUNT };
+             E_THUMB_L, E_THUMB_R, E_THUMB_TIP_L, E_THUMB_TIP_R, E_RIBBON_L, E_RIBBON_R,
+             E_JAW,   // THE LEVIATHAN's
+             E_COUNT };
 inline const char* jointName(int j) {
     static const char* N[E_COUNT] = {"root", "hipL", "hipR", "torso", "head", "armL", "armR",
                                      "body", "legFL", "legFR", "legBL", "legBR", "bladeL", "bladeR",
@@ -67,7 +74,7 @@ inline const char* jointName(int j) {
                                      "weapon", "cape", "capeTip", "halo", "crown",
                                      "kneeL", "kneeR", "ankleL", "ankleR", "waist", "clothF", "clothB",
                                      "elbowL", "elbowR", "handL", "handR", "fingersL", "fingersR", "tipsL", "tipsR",
-                                     "thumbL", "thumbR", "thumbTipL", "thumbTipR", "ribbonL", "ribbonR"};
+                                     "thumbL", "thumbR", "thumbTipL", "thumbTipR", "ribbonL", "ribbonR", "jaw"};
     return N[j];
 }
 enum Chan { C_CONST, C_GLOW, C_SHOT, C_PULSE, C_DIVE, C_FUSE, C_BLADE, C_SMASH, C_RIM,
@@ -105,6 +112,7 @@ inline const char* fileName(EnemyType t) {
         case EnemyType::SHIELDBEARER: return "shieldbearer";
         case EnemyType::WARDEN:       return "warden";
         case EnemyType::PENITENT:     return "penitent";
+        case EnemyType::LEVIATHAN:    return "leviathan";
         case EnemyType::SOVEREIGN:    return "sovereign";
         case EnemyType::ABSOLUTE:     return "absolute";
         default: return nullptr;
@@ -124,6 +132,7 @@ inline std::vector<int> neededJoints(EnemyType t) {
         case EnemyType::RAPTOR: return {E_HEAD, E_TAIL, E_WING_L, E_WING_R, E_TIP_L, E_TIP_R};
         case EnemyType::MITE:   return {E_BODY, E_LEG_L1, E_LEG_L2, E_LEG_L3, E_LEG_R1, E_LEG_R2, E_LEG_R3};
         case EnemyType::SHIELDBEARER: return {E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR, E_SHIELD};
+        case EnemyType::LEVIATHAN: return {E_HEAD, E_JAW, E_HALO, E_BODY};
         case EnemyType::WARDEN: return {E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR, E_CAPE, E_CAPE_TIP, E_CROWN};
         case EnemyType::SOVEREIGN: return {E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR, E_SWORD, E_CAPE, E_CAPE_TIP, E_HALO, E_CROWN};
         case EnemyType::ABSOLUTE:
