@@ -236,11 +236,26 @@ struct Arena {
     }
 };
 
+// A prop made in Blender (assets/props/<name>.glb, PropFile.h), baked into the static world mesh.
+// Fitted: stretched into `fit` (turned `yaw`, a multiple of 90 degrees) - over a wall it dresses
+// (`wall`: that box's collision stays, its own faces aren't drawn) or a visual-only prop (`prop`).
+// Free: placed by xf at its own size (skylines). Its parts' surfaces are their own (tex) or `mat`.
+struct PlacedModel {
+    std::string name;
+    AABB  fit{};
+    float yaw = 0.f;
+    int   wall = -1, prop = -1;
+    bool  free = false;
+    glm::mat4 xf{1.f};
+    Mat   mat = Mat::BRICK;
+};
+
 struct LevelData {
     std::vector<Wall>       walls;     // collidable (doors and movers included)
     std::vector<Wall>       props;     // visual only
     std::vector<Wall>       neon;      // visual only, self-lit (drawn with vertex glow)
     std::vector<Shape>      shapes;    // visual only: round, curved, turned (Shapes.h)
+    std::vector<PlacedModel> models;   // visual only: props made in Blender (PropFile.h)
     std::vector<FloorPatch> floors;
     std::vector<Door>       doors;
     std::vector<JumpPad>    pads;
@@ -696,10 +711,28 @@ struct LevelBuilder {
         L.walls.push_back(w);
         return (int)L.walls.size() - 1;
     }
-    void prop(float x0, float y0, float z0, float x1, float y1, float z1, glm::vec3 c) {
+    int prop(float x0, float y0, float z0, float x1, float y1, float z1, glm::vec3 c) {
         Wall w{aabb(x0,y0,z0,x1,y1,z1), c};
         w.mat = mat;
         L.props.push_back(w);
+        return (int)L.props.size() - 1;
+    }
+    // A wall (or a visual-only prop) dressed with a prop made in Blender: the box keeps its collision,
+    // the prop is drawn in its place, stretched to fill it (yaw: 0, 90, 180, 270 degrees)
+    void dress(int w, const char* name, float yawDeg = 0.f) {
+        PlacedModel m; m.name = name; m.fit = L.walls[w].box; m.yaw = glm::radians(yawDeg); m.wall = w;
+        L.models.push_back(m);
+    }
+    void dressProp(int p, const char* name, float yawDeg = 0.f) {
+        PlacedModel m; m.name = name; m.fit = L.props[p].box; m.yaw = glm::radians(yawDeg); m.prop = p;
+        L.models.push_back(m);
+    }
+    // A prop at its own size, standing at `base` (visual only: keep it out of reach, or add solid())
+    void place(const char* name, glm::vec3 base, float yawDeg = 0.f, float scale = 1.f) {
+        PlacedModel m; m.name = name; m.free = true; m.mat = mat;
+        m.xf = glm::translate(glm::mat4(1.f), base) * glm::rotate(glm::mat4(1.f), glm::radians(yawDeg), glm::vec3{0.f, 1.f, 0.f})
+             * glm::scale(glm::mat4(1.f), glm::vec3{scale});
+        L.models.push_back(m);
     }
     void neon(float x0, float y0, float z0, float x1, float y1, float z1, glm::vec3 c) {
         L.neon.push_back(Wall{aabb(x0,y0,z0,x1,y1,z1), c});
@@ -856,7 +889,10 @@ inline void buildAct1(LevelBuilder& B) {
     LevelData& L = B.L;
     auto aabb = &LevelBuilder::aabb;
     auto wall = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { return B.wall(x0,y0,z0,x1,y1,z1,c); };
-    auto prop = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { B.prop(x0,y0,z0,x1,y1,z1,c); };
+    auto prop = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { return B.prop(x0,y0,z0,x1,y1,z1,c); };
+    auto dress = [&](int w, const char* name, float yawDeg = 0.f) { B.dress(w, name, yawDeg); };              // a box, drawn as a prop (PropFile.h)
+    auto dressProp = [&](int p, const char* name, float yawDeg = 0.f) { B.dressProp(p, name, yawDeg); };
+    auto place = [&](const char* name, vec3 base, float yawDeg = 0.f, float scale = 1.f) { B.place(name, base, yawDeg, scale); };
     auto neon = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { B.neon(x0,y0,z0,x1,y1,z1,c); };
     auto ring = [&](float x0, float z0, float x1, float z1, float y0, float y1, vec3 c) { B.ring(x0,z0,x1,z1,y0,y1,c); };
     auto mark = [&]() { return B.mark(); };
@@ -950,13 +986,13 @@ inline void buildAct1(LevelBuilder& B) {
             neon(sx * 19.f,4.7f,sz * 18.9f, sx * 30.f,4.95f,sz * 18.96f, pink);
             neon(sx * 18.94f,3.0f,sz * 22.5f, sx * 18.98f,3.6f,sz * 25.5f, warm * 0.8f);   // lit windows over the arches
             neon(sx * 22.5f,3.0f,sz * 18.94f, sx * 25.5f,3.6f,sz * 18.98f, warm * 0.8f);
-            prop(sx * 18.2f,2.65f,sz * 21.5f, sx * 19.f,2.8f,sz * 27.f, adobeDark);     // awnings
+            dressProp(prop(sx * 18.2f,2.65f,sz * 21.5f, sx * 19.f,2.8f,sz * 27.f, adobeDark), "stall_canopy", 90.f);   // awnings
             wall(sx * 17.f,0,sz * 19.f, sx * 19.f,2.5f,sz * 21.f, stone);               // step up to the roof
-            wall(sx * 23.f,5,sz * 23.f, sx * 25.f,6.2f,sz * 25.f, crate);               // rooftop cover
+            dress(wall(sx * 23.f,5,sz * 23.f, sx * 25.f,6.2f,sz * 25.f, crate), "crates");   // rooftop cover
             // Inside: a lamp, a bench, a crate, and a health orb
             float cx = sx * 25.f, cz = sz * 25.f;
             neon(cx - 1.2f, 4.48f, cz - 1.2f, cx + 1.2f, 4.6f, cz + 1.2f, warm * 0.7f);
-            wall(sx * 27.f, 0, sz * 21.f, sx * 29.f, 0.9f, sz * 23.f, crate);
+            dress(wall(sx * 27.f, 0, sz * 21.f, sx * 29.f, 0.9f, sz * 23.f, crate), "crates");
             wall(sx * 21.f, 0, sz * 27.5f, sx * 24.f, 0.6f, sz * 29.f, adobeDark);
             L.placedPickups.push_back({{sx * 26.f, 0.f, sz * 26.5f}, 0});
         }
@@ -975,16 +1011,18 @@ inline void buildAct1(LevelBuilder& B) {
 
         // Market stalls in the arms: a counter to duck behind, a canopy to hop on
         const float stalls[][4] = {{-8,-16,-4,-14},{4,-14,8,-12},{-8,12,-4,14},{4,14,8,16},{-16,-6,-14,-2},{14,2,16,6}};
-        for (auto& st : stalls) {
-            wall(st[0],0,st[1], st[2],1.2f,st[3], crate);
-            wall(st[0] - 0.3f,2.6f,st[1] - 0.3f, st[2] + 0.3f,2.8f,st[3] + 0.3f, adobeDark);
+        const float stallFace[] = {0.f, 0.f, 180.f, 180.f, 90.f, 270.f};   // (each turned to the plaza)
+        for (int si = 0; si < 6; ++si) {
+            const float* st = stalls[si];
+            dress(wall(st[0],0,st[1], st[2],1.2f,st[3], crate), "stall_counter", stallFace[si]);
+            dress(wall(st[0] - 0.3f,2.6f,st[1] - 0.3f, st[2] + 0.3f,2.8f,st[3] + 0.3f, adobeDark), "stall_canopy", stallFace[si]);
             prop(st[0],1.2f,st[1], st[0] + 0.2f,2.6f,st[1] + 0.2f, stone);
             prop(st[2] - 0.2f,1.2f,st[3] - 0.2f, st[2],2.6f,st[3], stone);
         }
         // Broken columns around the plaza
         for (int sx : {-1, 1}) for (int sz : {-1, 1}) {
             float h = 2.5f + 1.5f * ((sx + sz + 2) % 3);
-            wall(sx * 10.f - 0.75f,0,sz * 10.f - 0.75f, sx * 10.f + 0.75f,h,sz * 10.f + 0.75f, stone);
+            dress(wall(sx * 10.f - 0.75f,0,sz * 10.f - 0.75f, sx * 10.f + 0.75f,h,sz * 10.f + 0.75f, stone), "column_broken", 90.f * (sx + sz + 2));
         }
 
         // Palms outside the walls, silhouetted against the sunset
@@ -992,6 +1030,11 @@ inline void buildAct1(LevelBuilder& B) {
         palm( 37, -16, 11.f, -0.4f); palm( 38, 6, 9.f,  0.3f); palm( 36, 24, 8.f, -0.2f);
         palm(-16, -38, 9.f, 0.3f);   palm(14, -37, 11.f, -0.3f); palm(-28, -40, 12.f, 0.2f);
         palm(26, -41, 9.f, 0.2f);    palm(-12, 38, 9.f, 0.3f);   palm(14, 37, 10.f, -0.2f);
+        // A town on the rises beyond them, its windows lit as the sun goes
+        place("skyline_town", {-88.f, 0.f, -8.f}, 90.f, 1.5f);
+        place("skyline_town", {90.f, 0.f, 14.f}, -90.f, 1.6f);
+        place("skyline_town", {-30.f, 0.f, 88.f}, 180.f, 1.4f);
+        place("skyline_town", {44.f, 0.f, 96.f}, 165.f, 1.7f);
 
         a.groundSpawns = {{-12,0,-20},{12,0,-20},{0,0,-19},{-24,0,-10},{24,0,-10},{-24,0,10},{24,0,10},
                           {-24.5f,5.05f,-27},{24.5f,5.05f,-27},{-27,5.05f,24.5f},{27,5.05f,24.5f},
@@ -1102,13 +1145,13 @@ inline void buildAct1(LevelBuilder& B) {
 
         // Full-height pillars for cover
         for (int sx : {-1, 1}) for (float z : {-70.f, -90.f}) {
-            wall(sx * 13.f,0,z, sx * 15.f,14,z + 2.f, iron);
+            dress(wall(sx * 13.f,0,z, sx * 15.f,14,z + 2.f, iron), "foundry_pillar", sx > 0 ? 0.f : 180.f);
             ring(std::min(sx * 13.f, sx * 15.f), z, std::max(sx * 13.f, sx * 15.f), z + 2.f, 3.0f, 3.25f, orange);
         }
         // Ingot stacks: low cover with a step on top
         for (auto c : {std::pair<float,float>{-7.f, -103.f}, {7.f, -103.f}, {7.f, -54.f}, {-7.f, -54.f}}) {
-            wall(c.first - 3,0,c.second - 1, c.first + 3,1.2f,c.second + 1, rust);
-            wall(c.first - 1.5f,1.2f,c.second - 1, c.first + 1.5f,2.4f,c.second + 1, rust * 0.8f);
+            dress(wall(c.first - 3,0,c.second - 1, c.first + 3,1.2f,c.second + 1, rust), "ingots");
+            dress(wall(c.first - 1.5f,1.2f,c.second - 1, c.first + 1.5f,2.4f,c.second + 1, rust * 0.8f), "ingots");
         }
         wall(-22,0,-84, -18,1.4f,-80,  iron);
         wall( 18,0,-84,  22,1.4f,-80,  iron);
@@ -1369,9 +1412,8 @@ inline void buildAct1(LevelBuilder& B) {
         for (int k = 0; k < 8; ++k) {
             float ang = glm::radians(22.5f + 45.f * k);
             float cx = std::cos(ang) * 18.f, cz = CZ + std::sin(ang) * 18.f;
-            wall(cx - 1,0,cz - 1, cx + 1,7,cz + 1, slate);
+            dress(wall(cx - 1,0,cz - 1, cx + 1,7,cz + 1, slate), "core_pillar", 45.f * (k % 2) * 2.f);   // (its lit band at 2 m is its own)
             neon(cx - 1.05f,7,cz - 1.05f, cx + 1.05f,7.25f,cz + 1.05f, cyan);
-            ring(cx - 1,cz - 1, cx + 1,cz + 1, 2.0f, 2.15f, cyan);
         }
 
         // The Warden's four conduits: a node on every other pillar, 3 m up,
@@ -1522,9 +1564,7 @@ inline void buildAct1(LevelBuilder& B) {
         for (int k = 0; k < 8; ++k) {
             float ang = glm::radians(22.5f + 45.f * k);
             float cx = std::cos(ang) * 34.f, cz = CZ + std::sin(ang) * 34.f;
-            wall(cx - 1.5f,0,cz - 1.5f, cx + 1.5f,18,cz + 1.5f, basalt);
-            ring(cx - 1.5f,cz - 1.5f, cx + 1.5f,cz + 1.5f, 6.f, 6.2f, gold * 0.8f);
-            ring(cx - 1.5f,cz - 1.5f, cx + 1.5f,cz + 1.5f, 12.f, 12.2f, gold * 0.8f);
+            dress(wall(cx - 1.5f,0,cz - 1.5f, cx + 1.5f,18,cz + 1.5f, basalt), "sanctum_pillar");   // (its lit bands at 6 and 12 m are its own)
             neon(cx - 1.55f,18,cz - 1.55f, cx + 1.55f,18.2f,cz + 1.55f, crimson);
         }
 

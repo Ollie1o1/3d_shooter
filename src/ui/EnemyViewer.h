@@ -7,7 +7,8 @@
 //   drag     orbit          wheel  zoom          T  turntable on/off
 //   W        walk on/off    F      wind up a shot (loops while held on: P)
 //   H        hit flash      J      show joints   B  broken (parried) on/off   Esc quit
-//   N        the next attack to wind up (a boss's)   E  enraged (SOVEREIGN) / blade of light (ABSOLUTE)
+//   N        the next attack to wind up (a boss's)   E  enraged (SOVEREIGN) / blade of light (ABSOLUTE) /
+//            the WARDEN venting, then in meltdown
 // `--viewer morningstar`: THE ABSOLUTE's second form, his own file.
 //
 // It's posed by the game's own buildEnemy and drawn with the game's shader
@@ -39,10 +40,17 @@ public:
         whiteTex = makeGreyTexture();
         e.spawnTimer = 0.f;
         if (file == enemyfile::FILE_MORNINGSTAR) { e.abForm = 1; e.scale = Enemy::MS_SCALE; e.abPhase = 4; }
+        if (type == EnemyType::PENITENT) e.risen = true;
+        if (type == EnemyType::LEVIATHAN) {   // risen out of a pool behind it, its head up at 12 m
+            e.levInit = true; e.levStage = Enemy::LevStage::FIGHT; e.levRoot = {0.f, 0.f, -12.f}; e.levFloor = 0.f; e.position = {0.f, 12.f, 0.f};
+        }   // (kneeling, it's sunk 3.3 m into the floor: E kneels it)
         std::error_code ec;
         fileTime = std::filesystem::last_write_time(enemyfile::pathOf(file), ec);
         enemyfile::modelOf(file);
         if (g_devOverlay.find("enraged") != std::string::npos) e.enraged = true;
+        if (g_devOverlay.find("vent") != std::string::npos) { wardenLook = 1; setWardenLook(); }        // (the WARDEN's core open)
+        if (g_devOverlay.find("scourge") != std::string::npos) { penLook = 1; e.scourging = true; }      // (the PENITENT's wound)
+        if (g_devOverlay.find("meltdown") != std::string::npos) { wardenLook = 2; setWardenLook(); }
         if (g_devOverlay.find("blade") != std::string::npos) e.abBlade = true;
         if (g_devOverlay.find("plain") != std::string::npos) rig::absPlainTells() = true;   // (no tell glow: see the wrists)
         if (size_t at = g_devOverlay.find("atk"); at != std::string::npos) attackIx = std::atoi(g_devOverlay.c_str() + at + 3);
@@ -74,7 +82,12 @@ public:
             case SDLK_j: showJoints = !showJoints; break;
             case SDLK_b: broken = !broken; break;
             case SDLK_n: ++attackIx; windT = 0.f; break;
-            case SDLK_e: e.enraged = !e.enraged; if (type == EnemyType::ABSOLUTE) e.abBlade = !e.abBlade; break;
+            case SDLK_e:
+                if (type == EnemyType::WARDEN) { wardenLook = (wardenLook + 1) % 3; setWardenLook(); break; }   // its core open, then meltdown
+                if (type == EnemyType::LEVIATHAN) { e.levPhase = e.levPhase == 3 ? 1 : 3; break; }   // phase 3: its eye open, raging
+                if (type == EnemyType::CONDUCTOR) { e.linkCount = e.linkCount > 0 ? 0 : 2; break; }     // holding tethers
+                if (type == EnemyType::PENITENT) { penLook = (penLook + 1) % 3; e.scourging = penLook == 1; e.risen = penLook != 2; break; }   // scourging, then kneeling
+                e.enraged = !e.enraged; if (type == EnemyType::ABSOLUTE) e.abBlade = !e.abBlade; break;
             case SDLK_t: turntable = !turntable; break;
             default: break;
         }
@@ -101,6 +114,11 @@ public:
             if (windT < WIND) { e.attack = atk; e.telegraphDuration = WIND; e.telegraphTimer = WIND - windT; }
         }
         if (type == EnemyType::ABSOLUTE) rig::tickAbsoluteBody(e, dt);   // (his body springs after the pose)
+        if (type == EnemyType::LEVIATHAN) {   // (its jaw and head, as its mind would move them)
+            bool gape = e.attack == AttackKind::TORRENT || e.attack == AttackKind::SWALLOW || e.attack == AttackKind::SPIT;
+            e.levJaw = gape ? e.telegraphProgress() : 0.f;
+            e.levPitch = e.attack == AttackKind::CRASH ? 0.5f * e.telegraphProgress() : 0.f;
+        }
         pollT -= dt;
         if (pollT <= 0.f) {   // the file: reload it when it changes (and once more a moment later if a read failed mid-save)
             pollT = 0.5f;
@@ -128,6 +146,7 @@ public:
 
         float h = e.height();
         glm::vec3 centre{0.f, h * 0.5f, 0.f};
+        if (type == EnemyType::LEVIATHAN) centre = zoom < 1.4f ? glm::vec3{0.f, 12.f, 1.f} : glm::vec3{0.f, 8.f, -5.f};   // (its head 12 m up; zoomed out, its body too)
         float aspect = (float)display::renderW() / (float)std::max(1, display::renderH());
         glm::vec3 dir{std::cos(glm::radians(pitch)) * std::sin(glm::radians(yaw)), std::sin(glm::radians(pitch)),
                       std::cos(glm::radians(pitch)) * std::cos(glm::radians(yaw))};
@@ -202,6 +221,8 @@ private:
     EnemyType type;
     Enemy e;
     int attackIx = 0;
+    int wardenLook = 0, penLook = 0;   // the PENITENT: 0 standing, 1 scourging, 2 kneeling   // the WARDEN: 0 fed, 1 venting (core open), 2 meltdown
+    void setWardenLook() { e.ventTimer = wardenLook == 1 ? 1e6f : 0.f; e.wardenPhase = wardenLook == 2 ? 3 : 1; }
     // What F winds up: a boss's own moves (N steps through them), else a shot
     AttackKind attackKind() const {
         using A = AttackKind;
@@ -209,6 +230,17 @@ private:
         static const A abs[] = {A::AJAB, A::ACROSS, A::AHOOK, A::AUPPER, A::AHAYMAKER, A::ABACKFIST, A::AELBOW,
                                 A::AROUNDHOUSE, A::AAXE, A::ASTOMP, A::ADROP, A::ASWEEP, A::ALUNGE, A::ACRESCENT};
         static const A ms[] = {A::MJAB, A::MBACKHAND, A::MGRASP, A::MSUNDER};
+        static const A war[] = {A::SLAM, A::LANCE, A::WLUNGE, A::VOLLEY, A::SUMMON, A::WVENT};
+        if (type == EnemyType::WARDEN) return war[attackIx % 6];
+        static const A rev[] = {A::RAKE, A::SOULBOLT};
+        if (type == EnemyType::REVENANT) return rev[attackIx % 2];
+        if (type == EnemyType::WEAVER) return A::STRING;
+        if (type == EnemyType::SERAPH) return A::BEAM;
+        if (type == EnemyType::ANCHOR) return A::VOLLEY;
+        static const A lev[] = {A::CRASH, A::TORRENT, A::SWALLOW, A::SPIT};
+        if (type == EnemyType::LEVIATHAN) return lev[attackIx % 4];
+        static const A pen[] = {A::CENSER_LOW, A::CENSER_HIGH, A::PSLAM, A::PSTOMP, A::PLASH, A::SCOURGE};
+        if (type == EnemyType::PENITENT) return pen[attackIx % 6];
         if (file == enemyfile::FILE_MORNINGSTAR) return ms[attackIx % 4];
         if (type == EnemyType::SOVEREIGN) return sov[attackIx % 5];
         if (type == EnemyType::ABSOLUTE) return abs[attackIx % 14];

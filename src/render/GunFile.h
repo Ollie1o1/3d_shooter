@@ -16,6 +16,7 @@
 //                k     = 0.8 or [r, g, b]   how strongly (default 1)
 //                phase = 1.2       its glow pulses along a wave, at this phase
 //                show  = "loaded" / "!bigmag"   only while the flag holds (or doesn't)
+//                tex   = "wood"    a level prop's surface (PropFile.h; the Mat names, in order)
 //
 // Gun space is glTF's: +Y up, +Z along the barrel (Blender: -Y), metres.
 // No OpenGL; a tiny JSON reader below, standard library only.
@@ -323,6 +324,12 @@ inline GunModel readGunText(const std::string& bytes, const std::string& path, c
                         else if (k->t == JVal::ARR && k->a.size() == 3) p.k = {(float)k->a[0].n, (float)k->a[1].n, (float)k->a[2].n};
                     }
                     if (const JVal* ph = x->get("phase"); ph && ph->t == JVal::NUM) { p.hasPhase = true; p.phase = (float)ph->n; }
+                }
+                if (std::string tx = x->str("tex"); !tx.empty()) {   // (Mat's order: Collision.h)
+                    static const char* TEX[] = {"brick", "panel", "rock", "metal", "concrete", "adobe", "plate", "marble",
+                                                "circuit", "basalt", "wood", "limestone", "brass"};
+                    for (int t = 0; t < 13; ++t) if (tx == TEX[t]) p.tex = t;
+                    if (p.tex < 0) { problem = "'" + name + "' has an unknown tex '" + tx + "'"; return; }
                 }
                 std::string show = x->str("show");
                 if (!show.empty()) {
