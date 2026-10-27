@@ -223,6 +223,7 @@ inline FilePose humanoidPose(const HumanoidMotion& mo, vec3 glow) {
 }
 
 inline PoseOverride sovereignPose(const Enemy& e);   // (below)
+inline PoseOverride penitentPose(const Enemy& e);    // (below)
 inline bool absoluteFilePose(const Enemy& e, float time, const mat4& root, mat4& fileRoot, FilePose& P, vec3& glowOut);   // (AbsoluteRig.h)
 // The SOVEREIGN's cape (and its hem, which lags it), from how fast he's going
 inline void sovereignCape(const Enemy& e, float time, float& cape, float& hem) {
@@ -404,6 +405,22 @@ inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileR
         P.flag[F_ENRAGED] = e.wardenPhase == 3;
         P.flag[F_BROKEN] = broken;
         P.wave = time * 4.f;
+        return true;
+    }
+    case EnemyType::PENITENT: {   // kneeling in its chains (sunk 3.3 m), then risen; censers lit for their sweeps; the wound on its back
+        PoseOverride ov = penitentPose(e);
+        HumanoidMotion mo = humanoidMotion(e.animPhase, e.risen ? std::max(stride, 0.3f) : 0.f, ArmPose::SWING, 0.f, &ov);
+        P = humanoidPose(mo, st.glow);
+        fileRoot = root * T({0.f, mo.lift, 0.f});
+        glowOut = st.glow;
+        P.chan[C_EYE] = st.glow * (1.5f + 2.5f * tp);
+        P.chan[C_LIGHT] = st.glow;   // its hood's rim, its hem, the seam down its front
+        vec3 hot = e.attack == AttackKind::CENSER_HIGH ? vec3{1.6f, 1.6f, 1.5f} : st.glow;
+        bool sweep = e.attack == AttackKind::CENSER_LOW || e.attack == AttackKind::CENSER_HIGH;
+        P.chan[C_TELL_R] = hot * (sweep ? 1.f + 3.f * tp : 0.8f) * 1.4f;   // (the right hand's censer sweeps)
+        P.chan[C_TELL_L] = hot * 0.8f * 1.4f;
+        P.chan[C_CORE] = vec3{2.2f, 0.25f, 0.1f} * (0.6f + 0.4f * std::sin(time * 9.f));
+        P.flag[F_OPEN] = e.scourging;
         return true;
     }
     case EnemyType::MITE: {
@@ -615,15 +632,18 @@ inline PoseOverride penitentPose(const Enemy& e) {
     o.crouch = e.risen ? 0.f : 3.3f;
     if (!e.risen && e.riseTimer > 0.f) o.crouch = 3.3f * (e.riseTimer / Enemy::PEN_RISE_TIME);
     float tp = smooth01(e.telegraphProgress() * 1.3f);
-    o.rxR = o.rxL = 0.15f; o.rzR = o.rzL = 0.25f;
+    // at rest both arms hang a little out from its sides, the censers clear of its robe (each move blends from there)
+    const float RX0 = 0.15f, RZR0 = -0.25f, RZL0 = 0.25f;
+    o.rxR = o.rxL = RX0; o.rzR = RZR0; o.rzL = RZL0;
+    auto to = [&](float from, float target) { return from + (target - from) * tp; };
     o.torsoPitch = e.scourging ? 0.25f : 0.1f;
     switch (e.attack) {
-        case AttackKind::CENSER_LOW:  o.rxR = 0.9f * tp; o.rzR = 1.2f * tp; o.torsoYaw = -0.5f * tp; break;   // drawn back low
-        case AttackKind::CENSER_HIGH: o.rxR = -2.3f * tp; o.rzR = 0.6f * tp; o.torsoYaw = -0.4f * tp; break;  // raised high
-        case AttackKind::PSLAM:       o.rxR = o.rxL = -2.8f * tp; o.torsoPitch = -0.2f * tp; break;           // both fists up
+        case AttackKind::CENSER_LOW:  o.rxR = to(RX0, 0.9f); o.rzR = to(RZR0, 1.2f); o.torsoYaw = -0.5f * tp; break;   // drawn back low
+        case AttackKind::CENSER_HIGH: o.rxR = to(RX0, -2.3f); o.rzR = to(RZR0, 0.6f); o.torsoYaw = -0.4f * tp; break;  // raised high
+        case AttackKind::PSLAM:       o.rxR = o.rxL = to(RX0, -2.8f); o.torsoPitch = -0.2f * tp; break;              // both fists up
         case AttackKind::PSTOMP:      o.torsoPitch = 0.3f * tp; break;
-        case AttackKind::PLASH:       o.rxL = -1.6f * tp; o.rzL = -0.4f; break;
-        case AttackKind::SCOURGE:     o.rxR = -3.0f * tp; o.rzR = -0.9f * tp; o.torsoPitch = 0.4f; break;    // over its shoulder
+        case AttackKind::PLASH:       o.rxL = to(RX0, -1.6f); o.rzL = to(RZL0, -0.4f); break;
+        case AttackKind::SCOURGE:     o.rxR = to(RX0, -3.0f); o.rzR = to(RZR0, -0.9f); o.torsoPitch = 0.4f; break;   // over its shoulder
         default: break;
     }
     return o;

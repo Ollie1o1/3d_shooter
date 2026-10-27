@@ -4270,8 +4270,9 @@ int main() {
         // (the bosses too: THE ABSOLUTE's second form, MORNINGSTAR, is a file of its own on his joints)
         const int made[] = {(int)EnemyType::HUSK, (int)EnemyType::SENTINEL, (int)EnemyType::BRUTE, (int)EnemyType::RIPPER, (int)EnemyType::RAPTOR,
                             (int)EnemyType::MITE, (int)EnemyType::JUGGERNAUT, (int)EnemyType::SHIELDBEARER,
-                            (int)EnemyType::WARDEN, (int)EnemyType::SOVEREIGN, (int)EnemyType::ABSOLUTE, enemyfile::FILE_MORNINGSTAR};
-        auto formOf = [](int f, Enemy& e) { if (f == enemyfile::FILE_MORNINGSTAR) { e.abForm = 1; e.scale = Enemy::MS_SCALE; e.abPhase = 4; } };
+                            (int)EnemyType::WARDEN, (int)EnemyType::PENITENT, (int)EnemyType::SOVEREIGN, (int)EnemyType::ABSOLUTE, enemyfile::FILE_MORNINGSTAR};
+        auto formOf = [](int f, Enemy& e) { if (f == enemyfile::FILE_MORNINGSTAR) { e.abForm = 1; e.scale = Enemy::MS_SCALE; e.abPhase = 4; }
+                                            if (f == (int)EnemyType::PENITENT) e.risen = true; };   // (standing: kneeling, it's sunk into the floor)
         bool loadsAll = true, jointsAll = true, headsAll = true, feetAll = true, meshesAll = true, tripsAll = true;
         for (int f : made) {
             const EnemyType t = enemyfile::typeOfFile(f);
@@ -4346,7 +4347,7 @@ int main() {
             tripsAll &= same;
         }
         CHECK(loadsAll, "every enemy made in Blender loads, with the joints its rig turns (HUSK SENTINEL BRUTE RIPPER RAPTOR MITE JUGGERNAUT SHIELDBEARER,"
-                        " the WARDEN, the SOVEREIGN, THE ABSOLUTE and MORNINGSTAR)");
+                        " the WARDEN, the PENITENT, the SOVEREIGN, THE ABSOLUTE and MORNINGSTAR)");
         CHECK(jointsAll, "every enemy file keeps its joints where the code turns them");
         CHECK(headsAll, "every box of an enemy's head sits inside its head hitbox");
         CHECK(feetAll, "every walking enemy stands on the floor (its lowest point within 5 cm)");
