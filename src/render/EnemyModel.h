@@ -21,7 +21,7 @@
 struct BoxInstance {
     glm::mat4 model{1.f};
     glm::vec3 color{1.f};
-    float     _pad0 = 0.f;
+    float     mesh = 0.f;    // what's drawn: 0 the unit cube, else a mesh from MeshLib.h (centred, at its own size)
     glm::vec3 emissive{0.f};
     float     _pad1 = 0.f;
 };
@@ -49,12 +49,13 @@ struct Rig {
     void box(const mat4& parent, vec3 centre, vec3 size, vec3 col, vec3 emi = vec3{0.f}) {
         part(parent * T(centre) * S(size), col, emi);
     }
-    void part(const mat4& m, vec3 col, vec3 emi = vec3{0.f}) {
+    void part(const mat4& m, vec3 col, vec3 emi = vec3{0.f}, int mesh = 0) {
         vec3 c = glm::mix(col, vec3{1.f}, flash * 0.85f);
         vec3 e = glm::mix(emi * dim, vec3{0.9f}, flash * 0.6f);
         if (finish > 0.f) { c = glm::mix(c, vec3{1.f, 0.6f, 0.25f}, 0.25f * finish); e += vec3{1.1f, 0.42f, 0.08f} * finish; }
         if (spawn < 1.f) e += vec3{0.5f, 0.85f, 1.f} * (1.f - spawn) * 2.5f;
         push(out, m, c, e);
+        out.back().mesh = (float)mesh;
     }
 };
 
@@ -196,7 +197,7 @@ inline HumanoidFrames humanoidFile(Rig& r, const mat4& root, const gunkit::GunMo
         if (p.chan == C_GLOW)  emi = glow * p.k;
         if (p.chan == C_SHOT)  emi = shot * p.k;
         if (p.chan == C_CONST) emi = p.k;
-        r.part(W[p.joint] * p.rel, col, emi);
+        r.part(W[p.joint] * p.rel, col, emi, p.mesh);
     }
     return {W[E_ROOT], W[E_TORSO], W[E_HEAD], W[E_ARML], W[E_ARMR]};
 }

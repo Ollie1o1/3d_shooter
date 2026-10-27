@@ -4285,7 +4285,9 @@ int main() {
             for (const auto& J : m->joints) frame[J.id] = J.frame;
             for (const auto& p : m->parts)
                 for (int c = 0; c < 8; ++c) {
-                    glm::vec3 v = glm::vec3(frame[p.joint] * p.rel * glm::vec4((c & 1) ? 0.5f : -0.5f, (c & 2) ? 0.5f : -0.5f, (c & 4) ? 0.5f : -0.5f, 1.f));
+                    glm::mat4 box = p.rel;   // (a mesh: its bounds)
+                    if (const meshlib::MeshData* md = meshlib::get(p.mesh)) box = box * glm::scale(glm::mat4(1.f), md->size);
+                    glm::vec3 v = glm::vec3(frame[p.joint] * box * glm::vec4((c & 1) ? 0.5f : -0.5f, (c & 2) ? 0.5f : -0.5f, (c & 4) ? 0.5f : -0.5f, 1.f));
                     lowest = std::min(lowest, v.y);
                     if (p.joint == enemyfile::E_HEAD)
                         inHead &= v.x >= hb.min.x && v.x <= hb.max.x && v.y >= hb.min.y && v.y <= hb.max.y && v.z >= hb.min.z && v.z <= hb.max.z;
@@ -4324,6 +4326,46 @@ int main() {
                 }
         }
         CHECK(same, "the HUSK written to glTF and read back draws the same, walking and winding up");
+        // Real meshes: a part that isn't a box keeps its shape (MeshLib.h); a box stays a box
+        int meshParts = 0;
+        if (m) for (auto& p : m->parts) meshParts += p.mesh > 0 && meshlib::get(p.mesh) != nullptr;
+        CHECK(meshParts >= 20, "the HUSK's bevelled plates and cylinders come in as meshes, not boxes");
+        bool meshOk = true;
+        if (m) for (auto& p : m->parts) if (const meshlib::MeshData* md = meshlib::get(p.mesh)) {
+            meshOk &= !md->idx.empty() && md->idx.size() % 3 == 0 && md->nrm.size() == md->pos.size();
+            glm::vec3 lo{1e9f}, hi{-1e9f};
+            for (auto& v : md->pos) { lo = glm::min(lo, v); hi = glm::max(hi, v); }
+            meshOk &= glm::length(lo + hi) < 1e-4f && glm::length((hi - lo) - md->size) < 1e-4f;   // centred, its size its bounds
+            for (auto& n : md->nrm) meshOk &= std::fabs(glm::length(n) - 1.f) < 0.02f;
+        }
+        CHECK(meshOk, "every mesh is whole triangles, centred on its bounds, with a unit normal per vertex");
+        {   // a mirrored mesh (a negative scale in Blender) is turned back the right way out
+            meshlib::MeshData wedge;
+            wedge.pos = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+            wedge.idx = {0, 2, 1, 0, 1, 3, 0, 3, 2, 1, 2, 3};
+            meshlib::flatNormals(wedge);
+            meshlib::centre(wedge);
+            int id = meshlib::add(wedge);
+            gunkit::GunModel w; w.joints.push_back({enemyfile::E_HEAD, enemyfile::E_ROOT, glm::mat4(1.f)});
+            gunkit::ModelPart wp; wp.joint = enemyfile::E_HEAD; wp.mesh = id; wp.rel = glm::scale(glm::mat4(1.f), {-1.f, 1.f, 1.f});
+            w.parts.push_back(wp);
+            gunkit::GunModel r = gunkit::readGunText(gunkit::writeGunText(w, "t", [](const gunkit::ModelPart&) { return std::string("m"); }, enemyfile::names()),
+                                                     "memory", enemyfile::names());
+            bool fine = r.error.empty() && r.parts.size() == 1 && r.parts[0].mesh > 0 && glm::determinant(glm::mat3(r.parts[0].rel)) > 0.f;
+            if (fine) {   // every face still points out of the solid
+                const meshlib::MeshData& md = *meshlib::get(r.parts[0].mesh);
+                glm::mat3 R(r.parts[0].rel);
+                glm::vec3 mid{0.f};
+                for (auto& v : md.pos) mid += R * v;
+                mid /= (float)md.pos.size();
+                for (size_t i = 0; i + 2 < md.idx.size(); i += 3) {
+                    glm::vec3 a = R * md.pos[md.idx[i]], b = R * md.pos[md.idx[i + 1]], c = R * md.pos[md.idx[i + 2]];
+                    fine &= glm::dot(glm::cross(b - a, c - a), (a + b + c) / 3.f - mid) > 0.f;
+                    fine &= glm::dot(R * md.nrm[md.idx[i]], (a + b + c) / 3.f - mid) > 0.f;
+                }
+            }
+            CHECK(fine, "a mesh mirrored in its file is drawn the right way out (faces and normals point outward)");
+        }
     }
     // ---------------------------------------------------------------- the guns' files (assets/guns/*.glb)
     {
