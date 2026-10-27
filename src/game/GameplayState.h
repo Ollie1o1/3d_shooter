@@ -41,6 +41,7 @@
 #include "render/WorldMesh.h"
 #include "render/NeonLights.h"
 #include "render/Effects.h"
+#include "render/PropDraw.h"
 #include "world/ArenaShifts.h"
 #include "game/Score.h"
 #include "game/EndlessWaves.h"

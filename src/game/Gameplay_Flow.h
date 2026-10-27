@@ -805,6 +805,23 @@ inline void GameplayState::update(float dt) {
     if (g_devOverlay.rfind("inspect", 0) == 0) viewModel.motion.devInspect(std::atoi(g_devOverlay.c_str() + 7) / 100.f);
     if (g_devOverlay.rfind("switch", 0) == 0) viewModel.motion.devSwitch(std::atoi(g_devOverlay.c_str() + 6) / 100.f, activeWeapon);
     if (g_devOverlay == "punch") { viewModel.parryTimer = ViewModel::PARRY_TIME * 0.62f; viewModel.parryHit = true; }
+    // --overlay showcase: one of each pickup and shot hanging in a row in front of you, the hook beside them
+    if (g_devOverlay == "showcase") {
+        glm::vec3 f = player.camera.flatForward(), r{-f.z, 0.f, f.x};
+        glm::vec3 c = player.camera.position + f * 3.2f - glm::vec3{0.f, 0.4f, 0.f};
+        const PickupKind kinds[3] = {PickupKind::ORB, PickupKind::POTION, PickupKind::XP};
+        for (int k = 0; k < 3; ++k) { glm::vec3 p = c + f * 5.f + r * (-1.6f + 1.2f * k) + glm::vec3{0.f, 1.4f, 0.f}; pickups.push_back({p, glm::vec3{0.f}, 1e9f, kinds[k], p.y - 5.f, p}); }
+        for (int k = 0; k < 3; ++k) {
+            glm::vec3 p = c + r * (0.3f + 0.6f * k) + glm::vec3{0.f, 0.3f, 0.f};
+            if (Projectile* q = projSystem.fire(p, r * 0.001f, 0.f, false, k == 1 ? glm::vec3{1.f, 0.72f, 0.12f} : glm::vec3{1.f, 0.3f, 0.6f}, k == 2, 0.f, 1.f, k == 1))
+                { q->lifetime = 1e9f; q->hasGravity = false; }
+        }
+        g_devOverlay = "showcased";
+    }
+    if (g_devOverlay == "showcased") {   // (the hook, held out there)
+        glm::vec3 f = player.camera.flatForward(), r{-f.z, 0.f, f.x};
+        grapple.active = true; grapple.target = player.camera.position + f * 2.4f + r * 0.9f - glm::vec3{0.f, 0.2f, 0.f};
+    }
     // --overlay dieT: at T s every enemy dies of a hard blow from you (the pieces, on film); "dieTh" a headshot
     if (g_devOverlay.rfind("die", 0) == 0 && g_devOverlay.size() > 3 && elapsedTime > (float)std::atof(g_devOverlay.c_str() + 3)) {
         for (auto& e : enemies)
