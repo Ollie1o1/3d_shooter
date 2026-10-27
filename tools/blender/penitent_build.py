@@ -14,7 +14,7 @@ open_enemy("penitent", joints=globals().get("SKELETON")); clear_parts()
 IRON, IRON2, IRON3 = "iron", "iron*1.5", "iron*2.2"     # blackened iron: base, raised, a worn edge
 RAG, RAG2, RAG3 = "rag", "rag*1.35", "rag*0.7"          # its robe: base, a lighter wrap, the shadowed folds
 BONE, BONE2 = "bone", "bone*0.75"
-BRASS, BRASS2 = "brass", "brass*0.7"
+BRASS, BRASS2 = "censer", "censer*0.7"
 LIT = "glow*0.3"                                        # (lit by "light": its hood's rim, its hem, its seam)
 RT = "penitent"
 

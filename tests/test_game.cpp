@@ -32,6 +32,7 @@
 #include "audio/SfxMixer.h"
 #include "bosses/penitent/PenitentHazards.h"
 #include "render/GunKit.h"
+#include "render/ArmFile.h"
 #include "render/CameraFeel.h"
 #include "audio/VoiceSynth.h"
 #include "audio/EnemyVoice.h"
@@ -4259,6 +4260,26 @@ int main() {
         CHECK(weaponDef(WeaponId::REVOLVER).damage == 50.f && statsOf(EnemyType::HUSK).health == 75.f && text.find("weapon.revolver.damage = 50") != std::string::npos
               && text.find("enemy.ripper") == std::string::npos, "saved and read back: the same numbers, and only the changed ones are written");
         for (size_t k = 0; k < V.size(); ++k) V[k].set(was[k]);
+    }
+
+    // ---------------------------------------------------------------- your arms' file (assets/guns/arm.glb)
+    {
+        const gunkit::GunModel* am = armfile::model();
+        CHECK(am && am->has(armfile::A_UPPER) && am->has(armfile::A_FORE) && am->has(armfile::A_FIST), "your arms' file loads, with its three joints");
+        auto count = [&](float side, bool open, bool gauntlet) {
+            std::vector<GunPart> out; gunkit::Builder b{out, glm::vec3{1.f}};
+            armfile::ArmLook L; L.open = open; L.gauntlet = gauntlet;
+            glm::mat4 fist = glm::translate(glm::mat4(1.f), {side * 0.1f, -0.2f, 0.4f});
+            armfile::draw(b, {side * 0.34f, -0.62f, 0.f}, fist, side, L);
+            return out;
+        };
+        auto closed = count(1.f, false, false), palm = count(1.f, true, false), parry = count(-1.f, false, true), left = count(-1.f, false, false);
+        CHECK(!closed.empty() && closed.size() != palm.size() && parry.size() > closed.size(), "a closed hand, an open palm and the gauntlet each draw their own parts");
+        CHECK(left.size() == closed.size(), "the left arm is the right one, mirrored");
+        bool reach = true;   // the sleeve starts at the shoulder; the hand is at the fist
+        { glm::vec3 lo{1e9f}, hi{-1e9f}; for (auto& p : closed) { glm::vec3 c{p.xf[3]}; lo = glm::min(lo, c); hi = glm::max(hi, c); }
+          reach = lo.y < -0.5f && hi.z > 0.35f; }
+        CHECK(reach, "the arm runs from the shoulder (below the screen) to the hand");
     }
 
     // ---------------------------------------------------------------- the enemies' files (assets/enemies/*.glb)
