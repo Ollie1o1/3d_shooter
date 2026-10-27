@@ -4276,6 +4276,11 @@ int main() {
         CHECK(scaled.error.empty() && scaled.parts.size() == 1 && scaled.parts[0].joint == J_CRANE && std::fabs(scaled.parts[0].rel[0][0] - 4.f) < 1e-5f
               && std::fabs(scaled.parts[0].glowScale - 0.5f) < 1e-6f,
               "a Blender cube (2 m, scaled) under a joint: a box of the right size, riding that joint, glow-coloured by its material");
+        GunModel mirrored = readGunText("{\"scenes\":[{\"nodes\":[0]}],\"nodes\":[{\"name\":\"a\",\"mesh\":0,\"translation\":[0.1,0,0],\"scale\":[-2,1,1]}],"
+            "\"meshes\":[{\"primitives\":[{\"attributes\":{\"POSITION\":0}}]}],\"accessors\":[{\"min\":[-0.5,-0.5,-0.5],\"max\":[0.5,0.5,0.5]}]}", "t");
+        CHECK(mirrored.error.empty() && glm::determinant(glm::mat3(mirrored.parts[0].rel)) > 0.f
+              && std::fabs(mirrored.parts[0].rel[3][0] - 0.1f) < 1e-6f && std::fabs(glm::length(glm::vec3(mirrored.parts[0].rel[0])) - 2.f) < 1e-5f,
+              "a box mirrored in Blender (negative scale) is the same box, right side out (lit from the right side)");
     }
 
     // ---------------------------------------------------------------- key bindings

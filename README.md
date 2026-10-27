@@ -377,9 +377,13 @@ In `world/Level.h` (or `LevelGauntlet.h`, `LevelAct2.h`): `B.mover(centre, halfS
 
 Each gun's shape is a file, `assets/guns/<name>.glb` (glTF, made of boxes), so you can work on it in Blender. The code still owns how a gun moves and glows; the file owns what it's made of.
 
-1. Install Blender 4.x and the add-on: Edit > Preferences > Add-ons > Install... > `tools/blender/overdrive_guns.py`. Its panel is in the 3D view's sidebar (N) > **OVERDRIVE**.
-2. Set **Repo** to this folder, pick a gun, **Open gun**.
+1. Install Blender (4.1 or later) and the add-on: Preferences > Add-ons > the ⌄ menu (top right) > **Install from Disk...** > `tools/blender/overdrive_guns.py`. Its panel is in the 3D view's sidebar (N) > **OVERDRIVE**.
+2. Set **Repo** to this folder, pick a gun, **Open gun** (it replaces the scene).
 3. Run `./shooter --viewer <gun>` beside Blender. Each **Save gun** reloads it in the viewer; if the file has a problem, the viewer says what and keeps the last good version.
+
+**Save gun** checks the scene first and won't save a gun over a different one (the scene remembers which gun it was opened from), a gun missing a joint its rig needs (a copied `crane.001` isn't `crane`), or an unknown glow channel or show flag; a mesh that isn't a box saves with a warning (the game uses its bounds). Work in Object Mode; a box mirrored with a negative scale is fine.
+
+**Live link** (the panel's button, off until you click it) lets Claude edit the open scene: Claude runs `python3 tools/blender/live.py -c "..."`, which drops the script in `~/.overdrive_blender/inbox`; Blender runs it as one undo step (Ctrl+Z takes it back) and writes back what happened. The add-on's helpers (`add_box`, `add_joint`, `set_glow`, `set_show`, `describe`, `open_gun`, `save_gun`...) work in game space. Quitting Blender or clicking the button again turns it off.
 
 What the game reads from the file (`render/GunFile.h` has the details):
 
