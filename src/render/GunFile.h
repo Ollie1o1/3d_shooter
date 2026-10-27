@@ -21,10 +21,13 @@
 // No OpenGL; a tiny JSON reader below, standard library only.
 // =============================================================================
 #include "render/GunModel.h"
+#include "render/MeshLib.h"
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -151,6 +154,47 @@ inline glm::mat4 nodeMatrix(const JVal& n) {
     return glm::translate(glm::mat4(1.f), t) * glm::mat4_cast(q) * glm::scale(glm::mat4(1.f), s);
 }
 
+// The binary chunk of a .glb ("" if there isn't one: a .gltf, or a glb with no data)
+inline std::string glbBin(const std::string& bytes) {
+    auto u32 = [&](size_t at) { uint32_t v = 0; std::memcpy(&v, bytes.data() + at, 4); return v; };
+    if (bytes.size() < 20 || u32(0) != 0x46546C67u) return {};
+    size_t at = 20 + (size_t)u32(12);
+    if (at + 8 > bytes.size() || u32(at + 4) != 0x004E4942u) return {};
+    size_t len = u32(at);
+    if (at + 8 + len > bytes.size()) return {};
+    return bytes.substr(at + 8, len);
+}
+// An accessor's values as floats (positions, normals) or indices; false if it can't be read
+inline bool accessorData(const JVal& doc, const std::string& bin, int a, std::vector<float>* f, std::vector<uint32_t>* u, int& comps) {
+    const auto& acc = doc.arr("accessors");
+    if (a < 0 || a >= (int)acc.size() || bin.empty()) return false;
+    const JVal& A = acc[a];
+    int bv = A.idx("bufferView"), count = (int)A.num("count", 0), ct = (int)A.num("componentType", 0);
+    std::string type = A.str("type");
+    comps = type == "SCALAR" ? 1 : type == "VEC2" ? 2 : type == "VEC3" ? 3 : type == "VEC4" ? 4 : 0;
+    const auto& views = doc.arr("bufferViews");
+    if (bv < 0 || bv >= (int)views.size() || comps == 0 || count <= 0) return false;
+    const JVal& V = views[bv];
+    if (V.num("buffer", 0) != 0) return false;
+    int csize = ct == 5126 || ct == 5125 ? 4 : ct == 5123 ? 2 : ct == 5121 ? 1 : 0;
+    if (!csize) return false;
+    size_t base = (size_t)V.num("byteOffset", 0) + (size_t)A.num("byteOffset", 0);
+    size_t stride = (size_t)V.num("byteStride", 0);
+    if (!stride) stride = (size_t)(csize * comps);
+    if (base + stride * (size_t)(count - 1) + (size_t)(csize * comps) > bin.size()) return false;
+    for (int i = 0; i < count; ++i)
+        for (int c = 0; c < comps; ++c) {
+            const char* d = bin.data() + base + stride * (size_t)i + (size_t)(c * csize);
+            if (ct == 5126) { float v; std::memcpy(&v, d, 4); if (f) f->push_back(v); else return false; }
+            else {
+                uint32_t v = 0;
+                if (csize == 4) std::memcpy(&v, d, 4); else if (csize == 2) { uint16_t w; std::memcpy(&w, d, 2); v = w; } else v = (uint8_t)*d;
+                if (u) u->push_back(v); else return false;
+            }
+        }
+    return true;
+}
+
 // The JSON text of a .glb (binary glTF) or a .gltf file
 inline bool gltfJson(const std::string& bytes, std::string& json, std::string& err) {
     auto u32 = [&](size_t at) { uint32_t v = 0; std::memcpy(&v, bytes.data() + at, 4); return v; };   // glb is little-endian, as is every target
@@ -187,7 +231,10 @@ inline GunModel readGunText(const std::string& bytes, const std::string& path, c
         }
         mats.push_back(mt);
     }
-    struct Box { glm::mat4 box; int mat; };
+    // Each primitive: a box (every vertex on a corner of its bounds: the game takes the bounds) or,
+    // with its data in the glb, a mesh kept whole (MeshLib.h), centred on its bounds
+    const std::string bin = glbBin(bytes);
+    struct Box { glm::mat4 box; int mat; int mesh = 0; };
     const auto& accessors = doc.arr("accessors");
     std::vector<std::vector<Box>> meshes;
     for (auto& jm : doc.arr("meshes")) {
@@ -199,7 +246,42 @@ inline GunModel readGunText(const std::string& bytes, const std::string& path, c
             auto& lo = accessors[a].arr("min"); auto& hi = accessors[a].arr("max");
             if (lo.size() != 3 || hi.size() != 3) return bad("a mesh's positions have no bounds (min/max)");
             glm::vec3 l{(float)lo[0].n, (float)lo[1].n, (float)lo[2].n}, h{(float)hi[0].n, (float)hi[1].n, (float)hi[2].n};
-            meshes.back().push_back({glm::translate(glm::mat4(1.f), (l + h) * 0.5f) * glm::scale(glm::mat4(1.f), h - l), pr.idx("material")});
+            // A box: every vertex on a corner of the bounds, and every triangle flat on one of its sides
+            // (a wedge or a tetrahedron has its corners on the bounds' corners too)
+            std::vector<float> P; int comps = 0;
+            std::vector<uint32_t> I;
+            bool isBox = true;
+            if (accessorData(doc, bin, a, &P, nullptr, comps) && comps == 3) {
+                float eps = 1e-5f + 1e-4f * std::max({h.x - l.x, h.y - l.y, h.z - l.z});
+                for (size_t i = 0; i < P.size() && isBox; ++i) {
+                    int c = (int)(i % 3);
+                    isBox = std::fabs(P[i] - l[c]) < eps || std::fabs(P[i] - h[c]) < eps;
+                }
+                int ic = 0;
+                if (pr.idx("indices") >= 0) { if (!accessorData(doc, bin, pr.idx("indices"), nullptr, &I, ic)) return bad("a mesh's triangles can't be read"); }
+                else for (uint32_t i = 0; i < (uint32_t)(P.size() / 3); ++i) I.push_back(i);
+                for (uint32_t i : I) if ((size_t)i * 3 + 2 >= P.size()) return bad("a mesh's triangles point past its vertices");
+                for (size_t t = 0; t + 2 < I.size() && isBox; t += 3) {
+                    bool flat = false;
+                    for (int c = 0; c < 3 && !flat; ++c)
+                        flat = std::fabs(P[I[t] * 3 + c] - P[I[t + 1] * 3 + c]) < eps && std::fabs(P[I[t] * 3 + c] - P[I[t + 2] * 3 + c]) < eps;
+                    isBox = flat;
+                }
+            }
+            if (isBox) {
+                meshes.back().push_back({glm::translate(glm::mat4(1.f), (l + h) * 0.5f) * glm::scale(glm::mat4(1.f), h - l), pr.idx("material")});
+                continue;
+            }
+            if (pr.num("mode", 4) != 4) return bad("a mesh that isn't triangles");
+            meshlib::MeshData md;
+            for (size_t i = 0; i + 2 < P.size(); i += 3) md.pos.push_back({P[i], P[i + 1], P[i + 2]});
+            md.idx = I;
+            std::vector<float> Nr; int nc = 0;
+            if (at->idx("NORMAL") >= 0 && accessorData(doc, bin, at->idx("NORMAL"), &Nr, nullptr, nc) && nc == 3 && Nr.size() == P.size())
+                for (size_t i = 0; i + 2 < Nr.size(); i += 3) md.nrm.push_back({Nr[i], Nr[i + 1], Nr[i + 2]});
+            else meshlib::flatNormals(md);
+            glm::vec3 c = meshlib::centre(md);
+            meshes.back().push_back({glm::translate(glm::mat4(1.f), c), pr.idx("material"), meshlib::add(std::move(md))});
         }
     }
     const auto& nodes = doc.arr("nodes");
@@ -258,9 +340,14 @@ inline GunModel readGunText(const std::string& bytes, const std::string& path, c
             for (const Box& bx : meshes[mi]) {
                 ModelPart q = p;
                 q.rel = toJoint * bx.box;
+                q.mesh = bx.mesh;
                 // Mirrored in Blender (a negative scale): the same box, but drawn inside out
-                // (its normals flipped, lit from the wrong side). A box is its own mirror image: flip it back
-                if (glm::determinant(glm::mat3(q.rel)) < 0.f) q.rel = q.rel * glm::scale(glm::mat4(1.f), glm::vec3(-1.f, 1.f, 1.f));
+                // (its normals flipped, lit from the wrong side). A box is its own mirror image: flip it back;
+                // a mesh gets a mirrored copy
+                if (glm::determinant(glm::mat3(q.rel)) < 0.f) {
+                    q.rel = q.rel * glm::scale(glm::mat4(1.f), glm::vec3(-1.f, 1.f, 1.f));
+                    if (q.mesh) q.mesh = meshlib::add(meshlib::mirrorX(*meshlib::get(q.mesh)));
+                }
                 if (bx.mat >= 0 && bx.mat < (int)mats.size()) { q.color = mats[bx.mat].color; q.glowScale = mats[bx.mat].glowScale; }
                 m.parts.push_back(q);
             }
@@ -317,6 +404,16 @@ inline std::string writeGunText(const GunModel& m, const std::string& rootName,
         jointNode[m.joints[i].id] = (int)(1 + i);
         kids[jointNode.at(m.joints[i].parent)].push_back((int)(1 + i));
     }
+    // the meshes (parts that aren't boxes): one glTF mesh per (mesh, material) after the box meshes
+    std::vector<std::pair<int, int>> meshMat;   // (mesh id, material)
+    auto gltfMesh = [&](size_t i) {
+        const ModelPart& p = m.parts[i];
+        if (!p.mesh || !meshlib::get(p.mesh)) return partMat[i];
+        std::pair<int, int> key{p.mesh, partMat[i]};
+        for (size_t k = 0; k < meshMat.size(); ++k) if (meshMat[k] == key) return (int)(matNames.size() + k);
+        meshMat.push_back(key);
+        return (int)(matNames.size() + meshMat.size() - 1);
+    };
     std::vector<std::string> partNodes;
     for (size_t i = 0; i < m.parts.size(); ++i) {
         const ModelPart& p = m.parts[i];
@@ -330,7 +427,7 @@ inline std::string writeGunText(const GunModel& m, const std::string& rootName,
             if (p.hasPhase) x += ",\"phase\":" + num(p.phase);
         }
         if (p.flag >= 0) x += std::string(x.empty() ? "" : ",") + "\"show\":" + quote(std::string(p.want ? "" : "!") + N.flag(p.flag));
-        partNodes.push_back("{\"name\":" + quote(matNames[partMat[i]]) + ",\"mesh\":" + std::to_string(partMat[i]) +
+        partNodes.push_back("{\"name\":" + quote(matNames[partMat[i]]) + ",\"mesh\":" + std::to_string(gltfMesh(i)) +
                             ",\"matrix\":" + mat16(p.rel) + (x.empty() ? "" : ",\"extras\":{" + x + "}") + "}");
     }
     auto children = [&](int ni) {
@@ -354,14 +451,6 @@ inline std::string writeGunText(const GunModel& m, const std::string& rootName,
         j += (i ? ",\n" : "\n") + std::string("{\"name\":") + quote(matNames[i]) + ",\"pbrMetallicRoughness\":{\"baseColorFactor\":[" +
              num(c.x) + "," + num(c.y) + "," + num(c.z) + ",1],\"metallicFactor\":0,\"roughnessFactor\":1}}";
     }
-    j += "],\"meshes\":[";
-    for (size_t i = 0; i < matNames.size(); ++i)
-        j += (i ? "," : "") + std::string("{\"name\":") + quote(matNames[i]) + ",\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1,\"material\":" + std::to_string(i) + "}]}";
-    j += "],\"accessors\":[{\"bufferView\":0,\"componentType\":5126,\"count\":8,\"type\":\"VEC3\",\"min\":[-0.5,-0.5,-0.5],\"max\":[0.5,0.5,0.5]},"
-         "{\"bufferView\":1,\"componentType\":5123,\"count\":36,\"type\":\"SCALAR\"}],"
-         "\"bufferViews\":[{\"buffer\":0,\"byteOffset\":0,\"byteLength\":96,\"target\":34962},{\"buffer\":0,\"byteOffset\":96,\"byteLength\":72,\"target\":34963}],"
-         "\"buffers\":[{\"byteLength\":168}]}";
-
     // the cube: corner i at (x, y, z) = bits of i; each face two triangles wound outward
     std::string bin;
     auto put = [&](const void* d, size_t n) { bin.append((const char*)d, n); };
@@ -378,6 +467,48 @@ inline std::string writeGunText(const GunModel& m, const std::string& rootName,
             uint16_t tri[6] = {(uint16_t)q[0], (uint16_t)q[1], (uint16_t)q[2], (uint16_t)q[0], (uint16_t)q[2], (uint16_t)q[3]};
             put(tri, 12);
         }
+    std::string acc = "{\"bufferView\":0,\"componentType\":5126,\"count\":8,\"type\":\"VEC3\",\"min\":[-0.5,-0.5,-0.5],\"max\":[0.5,0.5,0.5]},"
+                      "{\"bufferView\":1,\"componentType\":5123,\"count\":36,\"type\":\"SCALAR\"}";
+    std::string views = "{\"buffer\":0,\"byteOffset\":0,\"byteLength\":96,\"target\":34962},{\"buffer\":0,\"byteOffset\":96,\"byteLength\":72,\"target\":34963}";
+    int nAcc = 2, nView = 2;
+    std::vector<int> meshAcc;   // per mesh id written: its first accessor (positions, normals, indices)
+    std::vector<int> meshIds;
+    auto view = [&](size_t from, size_t len, int target) {
+        views += ",{\"buffer\":0,\"byteOffset\":" + std::to_string(from) + ",\"byteLength\":" + std::to_string(len) + ",\"target\":" + std::to_string(target) + "}";
+        return nView++;
+    };
+    std::string meshJson;
+    for (size_t i = 0; i < matNames.size(); ++i)
+        meshJson += (i ? "," : "") + std::string("{\"name\":") + quote(matNames[i]) + ",\"primitives\":[{\"attributes\":{\"POSITION\":0},\"indices\":1,\"material\":" + std::to_string(i) + "}]}";
+    for (auto& mm : meshMat) {
+        int first = -1;
+        for (size_t k = 0; k < meshIds.size(); ++k) if (meshIds[k] == mm.first) first = meshAcc[k];
+        if (first < 0) {
+            const meshlib::MeshData& md = *meshlib::get(mm.first);
+            glm::vec3 lo{1e30f}, hi{-1e30f};
+            for (auto& v : md.pos) { lo = glm::min(lo, v); hi = glm::max(hi, v); }
+            size_t at = bin.size();
+            for (auto& v : md.pos) put(&v.x, 12);
+            int vp = view(at, bin.size() - at, 34962);
+            at = bin.size();
+            for (auto& v : md.nrm) put(&v.x, 12);
+            int vn = view(at, bin.size() - at, 34962);
+            at = bin.size();
+            for (uint32_t ix : md.idx) put(&ix, 4);
+            int vi = view(at, bin.size() - at, 34963);
+            first = nAcc;
+            acc += ",{\"bufferView\":" + std::to_string(vp) + ",\"componentType\":5126,\"count\":" + std::to_string(md.pos.size()) +
+                   ",\"type\":\"VEC3\",\"min\":[" + num(lo.x) + "," + num(lo.y) + "," + num(lo.z) + "],\"max\":[" + num(hi.x) + "," + num(hi.y) + "," + num(hi.z) + "]}";
+            acc += ",{\"bufferView\":" + std::to_string(vn) + ",\"componentType\":5126,\"count\":" + std::to_string(md.nrm.size()) + ",\"type\":\"VEC3\"}";
+            acc += ",{\"bufferView\":" + std::to_string(vi) + ",\"componentType\":5125,\"count\":" + std::to_string(md.idx.size()) + ",\"type\":\"SCALAR\"}";
+            nAcc += 3;
+            meshIds.push_back(mm.first); meshAcc.push_back(first);
+        }
+        meshJson += ",{\"name\":\"mesh\",\"primitives\":[{\"attributes\":{\"POSITION\":" + std::to_string(first) + ",\"NORMAL\":" + std::to_string(first + 1) +
+                    "},\"indices\":" + std::to_string(first + 2) + ",\"material\":" + std::to_string(mm.second) + "}]}";
+    }
+    j += "],\"meshes\":[" + meshJson + "],\"accessors\":[" + acc + "],\"bufferViews\":[" + views + "],\"buffers\":[{\"byteLength\":" +
+         std::to_string(bin.size()) + "}]}";
     while (j.size() % 4) j += ' ';
     std::string out;
     auto u32 = [&](uint32_t v) { out.append((const char*)&v, 4); };
