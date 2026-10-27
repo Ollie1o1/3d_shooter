@@ -254,6 +254,9 @@ inline GunModel readGunText(const std::string& bytes, const std::string& path) {
             for (const Box& bx : meshes[mi]) {
                 ModelPart q = p;
                 q.rel = toJoint * bx.box;
+                // Mirrored in Blender (a negative scale): the same box, but drawn inside out
+                // (its normals flipped, lit from the wrong side). A box is its own mirror image: flip it back
+                if (glm::determinant(glm::mat3(q.rel)) < 0.f) q.rel = q.rel * glm::scale(glm::mat4(1.f), glm::vec3(-1.f, 1.f, 1.f));
                 if (bx.mat >= 0 && bx.mat < (int)mats.size()) { q.color = mats[bx.mat].color; q.glowScale = mats[bx.mat].glowScale; }
                 m.parts.push_back(q);
             }
