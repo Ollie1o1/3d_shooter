@@ -4267,7 +4267,8 @@ int main() {
         CHECK(m && m->error.empty() && m->joints.size() == 6, "the HUSK's file loads, with all six joints (assets/enemies/husk.glb)");
         // Every enemy made in Blender: its joints where the code turns them, its head inside its head
         // hitbox (the head you see is the head you hit), on its feet, meshes kept, and the same after a save
-        const EnemyType made[] = {EnemyType::HUSK, EnemyType::SENTINEL, EnemyType::BRUTE, EnemyType::RIPPER, EnemyType::RAPTOR, EnemyType::MITE};
+        const EnemyType made[] = {EnemyType::HUSK, EnemyType::SENTINEL, EnemyType::BRUTE, EnemyType::RIPPER, EnemyType::RAPTOR, EnemyType::MITE,
+                                  EnemyType::JUGGERNAUT, EnemyType::SHIELDBEARER};
         bool loadsAll = true, jointsAll = true, headsAll = true, feetAll = true, meshesAll = true, tripsAll = true;
         for (EnemyType t : made) {
             const char* nm = statsOf(t).name;
@@ -4334,7 +4335,7 @@ int main() {
             if (!same) std::printf("      %s: not the same after a save\n", nm);
             tripsAll &= same;
         }
-        CHECK(loadsAll, "every enemy made in Blender loads, with the joints its rig turns (HUSK SENTINEL BRUTE RIPPER RAPTOR MITE)");
+        CHECK(loadsAll, "every enemy made in Blender loads, with the joints its rig turns (HUSK SENTINEL BRUTE RIPPER RAPTOR MITE JUGGERNAUT SHIELDBEARER)");
         CHECK(jointsAll, "every enemy file keeps its joints where the code turns them");
         CHECK(headsAll, "every box of an enemy's head sits inside its head hitbox");
         CHECK(feetAll, "every walking enemy stands on the floor (its lowest point within 5 cm)");
@@ -4376,47 +4377,6 @@ int main() {
             }
             CHECK(fine, "a mesh mirrored in its file is drawn the right way out (faces and normals point outward)");
         }
-    }
-    // ---------------------------------------------------------------- JUGGERNAUT and SHIELDBEARER files (migration proof)
-    {
-        bool all = true;
-        for (EnemyType t : {EnemyType::JUGGERNAUT, EnemyType::SHIELDBEARER}) {
-            const gunkit::GunModel* m = enemyfile::model(t);
-            bool same = m != nullptr;
-            gunkit::GunModel saved = enemyfile::slot(t);
-            const EnemyStats& st = statsOf(t);
-            AttackKind kinds[] = {AttackKind::NONE, AttackKind::SHELL, AttackKind::SMASH, AttackKind::SHOT, AttackKind::BASH};
-            int n = 0;
-            for (float ph : {0.3f, 1.7f, 5.1f})
-                for (AttackKind k : kinds)
-                    for (int v = 0; v < 3 && same; ++v) {
-                        Enemy e(t, {2.f, 0.4f, -1.f}); e.spawnTimer = 0.f; e.yaw = 0.4f + ph; e.animPhase = ph;
-                        e.moveSpeed = v ? st.speed * 0.9f : 0.2f; e.age = 0.17f * (float)(++n);
-                        if (k != AttackKind::NONE) { e.attack = k; e.telegraphDuration = 0.7f; e.telegraphTimer = v ? 0.08f : 0.5f; }
-                        if (v == 1) { e.hitFlashTimer = 0.05f; e.flinchAmp = 0.15f; e.flinchAt = 0.f; e.flinchDir = {0.6f, 0.8f}; }
-                        if (v == 2) e.staggerTimer = 1.f;
-                        float time = 0.29f * (float)n;
-                        std::vector<BoxInstance> a, b;
-                        buildEnemy(e, time, a);
-                        enemyfile::slot(t) = {};
-                        buildEnemy(e, time, b);
-                        enemyfile::slot(t) = saved;
-                        same &= a.size() == b.size();
-                        std::vector<char> used(b.size(), 0);
-                        for (size_t i = 0; same && i < a.size(); ++i) {
-                            bool hit = false;
-                            for (size_t j = 0; j < b.size() && !hit; ++j) {
-                                bool eq = !used[j] && glm::length(a[i].color - b[j].color) < 1e-4f && glm::length(a[i].emissive - b[j].emissive) < 1e-3f;
-                                for (int c = 0; eq && c < 4; ++c) eq = glm::length(a[i].model[c] - b[j].model[c]) < 1e-4f;
-                                if (eq) { used[j] = 1; hit = true; }
-                            }
-                            same &= hit;
-                        }
-                    }
-            if (!same) std::printf("      %s: its file isn't its code rig\n", st.name);
-            all &= same;
-        }
-        CHECK(all, "the JUGGERNAUT and SHIELDBEARER drawn from their files are their code rigs, box for box (walking, shelling, smashing, bashing, broken, hit)");
     }
     // ---------------------------------------------------------------- the guns' files (assets/guns/*.glb)
     {

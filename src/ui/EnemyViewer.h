@@ -6,7 +6,7 @@
 //
 //   drag     orbit          wheel  zoom          T  turntable on/off
 //   W        walk on/off    F      wind up a shot (loops while held on: P)
-//   H        hit flash      J      show joints   Esc quit
+//   H        hit flash      J      show joints   B  broken (parried) on/off   Esc quit
 //
 // It's posed by the game's own buildEnemy and drawn with the game's shader
 // and bloom, so what you see is what the game will show.
@@ -42,6 +42,7 @@ public:
         if (g_devOverlay.find("windup") != std::string::npos) holdWind = 0.75f;
         else if (g_devOverlay.find("aim") != std::string::npos) holdWind = 0.4f;
         if (g_devOverlay.find("joints") != std::string::npos) showJoints = true;
+        if (g_devOverlay.find("broken") != std::string::npos) broken = true;
         if (g_devCam) { yaw = g_devCamYaw; pitch = g_devCamPitch; zoom = std::max(0.15f, g_devCamPos.x); turntable = false; }   // --cam ZOOM 0 0 YAW PITCH
     }
     ~EnemyViewerState() override { glDeleteTextures(1, &whiteTex); }
@@ -62,6 +63,7 @@ public:
             case SDLK_p: loop = !loop; winding = loop; windT = 0.f; break;
             case SDLK_h: e.hitFlashTimer = 0.12f; e.flinchAmp = hitreact::FLINCH_MAX * 0.6f; e.flinchAt = clock; break;
             case SDLK_j: showJoints = !showJoints; break;
+            case SDLK_b: broken = !broken; break;
             case SDLK_t: turntable = !turntable; break;
             default: break;
         }
@@ -74,6 +76,7 @@ public:
         e.moveSpeed = walking ? st.speed : 0.f;
         if (walking) e.animPhase += dt * 9.f;
         e.hitFlashTimer = std::max(0.f, e.hitFlashTimer - dt);
+        e.staggerTimer = broken ? 1.f : 0.f;
         const float WIND = 0.8f;
         e.attack = AttackKind::NONE; e.telegraphTimer = 0.f;
         if (holdWind >= 0.f) { e.attack = AttackKind::SHOT; e.telegraphDuration = WIND; e.telegraphTimer = WIND * (1.f - holdWind); }
@@ -184,7 +187,7 @@ private:
     std::vector<BoxInstance> boxes;
     BoxRenderer boxer;
     float yaw = 200.f, pitch = 8.f, zoom = 1.f, clock = 0.f;
-    bool dragging = false, turntable = true, showJoints = false, walking = false, winding = false, loop = false;
+    bool dragging = false, turntable = true, showJoints = false, walking = false, winding = false, loop = false, broken = false;
     float windT = 0.f, holdWind = -1.f;
     std::filesystem::file_time_type fileTime{};
     float pollT = 0.f, retryAt = 0.f, statusT = 0.f;
@@ -216,7 +219,7 @@ private:
         } else if (statusT > 0.f) {
             ui.textShadow(status.c_str(), 20, 84, 2, {0.5f, 1.f, 0.6f, statusT});
         }
-        ui.textShadow("W walk   F wind up a shot   P loop it   H hit   J head hitbox", 20, screenH - 56, 2, {0.6f, 0.62f, 0.68f, 0.9f});
+        ui.textShadow("W walk   F wind up an attack   P loop it   H hit   B broken   J head hitbox", 20, screenH - 56, 2, {0.6f, 0.62f, 0.68f, 0.9f});
         ui.textShadow("drag orbit   wheel zoom   T turntable   Esc quit", 20, screenH - 30, 2, {0.6f, 0.62f, 0.68f, 0.9f});
         ui.end();
     }

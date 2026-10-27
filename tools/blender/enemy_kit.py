@@ -23,21 +23,24 @@ REPO = "/Users/ollie/Projects/overdrive/3d_shooter"
 # (an add-on loaded before the enemies were added: teach it their words)
 for _j in ["hipL", "hipR", "torso", "head", "armL", "armR", "body", "legFL", "legFR", "legBL", "legBR",
            "bladeL", "bladeR", "tail", "wingL", "wingR", "tipL", "tipR",
-           "legL1", "legL2", "legL3", "legR1", "legR2", "legR3"]:
+           "legL1", "legL2", "legL3", "legR1", "legR2", "legR3", "shield"]:
     if _j not in _og.JOINTS:
         _og.JOINTS.append(_j)
-for _c in ["shot", "pulse", "dive", "fuse", "blade"]:
+for _c in ["shot", "pulse", "dive", "fuse", "blade", "smash", "rim"]:
     if _c not in _og.CHANNELS:
         _og.CHANNELS.append(_c)
 _og.PALETTE.update({"husk": (0.70, 0.26, 0.18), "gunmetal": (0.16, 0.15, 0.17), "sentinel": (0.20, 0.32, 0.62),
                     "brute": (0.58, 0.24, 0.17), "ripper": (0.80, 0.64, 0.14), "raptor": (0.40, 0.16, 0.52),
-                    "mite": (0.18, 0.30, 0.16), "bone": (0.76, 0.71, 0.61), "beak": (0.9, 0.6, 0.15)})
+                    "mite": (0.18, 0.30, 0.16), "bone": (0.76, 0.71, 0.61), "beak": (0.9, 0.6, 0.15),
+                    "juggernaut": (0.36, 0.38, 0.44), "shieldbearer": (0.34, 0.37, 0.42),
+                    "gold": (0.85, 0.62, 0.18), "bronze": (0.62, 0.46, 0.20)})
 
 
-ENEMY_SCENES = ["HUSK", "SENTINEL", "BRUTE", "RIPPER", "RAPTOR", "MITE"]
+ENEMY_SCENES = ["HUSK", "SENTINEL", "BRUTE", "RIPPER", "RAPTOR", "MITE", "JUGGERNAUT", "SHIELDBEARER"]
 NEEDED = {"husk": "hipL hipR torso head armL armR", "sentinel": "hipL hipR torso head armL armR",
           "brute": "hipL hipR torso head armL armR", "ripper": "body head legFL legFR legBL legBR bladeL bladeR",
-          "raptor": "head tail wingL wingR tipL tipR", "mite": "body legL1 legL2 legL3 legR1 legR2 legR3"}
+          "raptor": "head tail wingL wingR tipL tipR", "mite": "body legL1 legL2 legL3 legR1 legR2 legR3",
+          "juggernaut": "hipL hipR torso head armL armR", "shieldbearer": "hipL hipR torso head armL armR shield"}
 
 
 def open_enemy(name):
