@@ -142,7 +142,7 @@ public:
         GunPose P = motion.pose(false);
         parts.clear();
         build(L, P, parts);
-        for (const auto& p : parts) draw(p.xf, p.color, p.emissive);
+        for (const auto& p : parts) draw(p.xf, p.color, p.emissive, p.mesh);
         // the stand: a dark plinth under the gun
         draw(glm::translate(glm::mat4(1.f), {centre.x, lowest - 0.012f, centre.z}) * glm::scale(glm::mat4(1.f), {radius * 1.6f, 0.01f, radius * 2.2f}),
              {0.08f, 0.08f, 0.09f}, glm::vec3{0.f});
@@ -245,11 +245,11 @@ private:
         L.breath = 0.5f + 0.5f * std::sin(breathPh * 6.2831853f);
         return L;
     }
-    void draw(const glm::mat4& model, glm::vec3 color, glm::vec3 emissive) {
+    void draw(const glm::mat4& model, glm::vec3 color, glm::vec3 emissive, int mesh = 0) {
         shader.setMat4("model", model);
         shader.setVec3("objectColor", color);
         shader.setVec3("emissiveColor", emissive);
-        vm.cubeMesh.draw();
+        vm.drawShape(mesh);   // (a mesh part whole, as the game draws it)
     }
     void jointLabels(const gunkit::GunModel& m, const glm::mat4* W, const glm::mat4& vp) {
         labels.clear();
