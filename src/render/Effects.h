@@ -54,6 +54,17 @@ public:
         float hot = 0.f;          // seconds left glowing white-hot from the killing blow
     };
     std::vector<Debris> debris;
+    // A body made in Blender breaks at its joints: each limb (every part on one joint) flies as one
+    // rigid piece, holding its shape, and shrinks away
+    struct Piece { glm::mat4 local; glm::vec3 color, emissive; float mesh; };   // about the chunk's centre
+    struct Chunk {
+        std::vector<Piece> pieces;
+        glm::vec3 pos, vel, axis;
+        float angle = 0.f, spin = 0.f, life = 0.f, maxLife = 1.f, floorY = 0.f, hot = 0.f;
+        float low = 0.f;          // how far below its centre it reaches (it bounces there)
+    };
+    std::vector<Chunk> chunks;
+    static constexpr size_t MAX_CHUNK_PIECES = 2400;
 
     struct Shockwave { glm::vec3 pos; float radius, t; glm::vec3 color; };
     std::vector<Shockwave> shockwaves;
@@ -67,7 +78,7 @@ public:
     void clear() {
         for (auto& d : decals)    d.alive = false;
         for (auto& p : particles) p.alive = false;
-        debris.clear(); shockwaves.clear();
+        debris.clear(); chunks.clear(); shockwaves.clear();
     }
 
     // Round-robin search from the last allocation: O(1) on average instead of
@@ -235,11 +246,27 @@ public:
     // the pieces bounce on the ground at floorY
     void spawnDebrisFor(const Enemy& e, float clock, float floorY) {
         static std::vector<BoxInstance> parts;
-        parts.clear();
+        static std::vector<rig::PartJoint> joints;
+        parts.clear(); joints.clear();
         Enemy pose = e;             // the pieces keep the enemy's own colours,
         pose.hitFlashTimer = 0.f;   // not the white flash of the killing blow
         pose.spawnTimer    = 0.f;
+        rig::jointSink() = &joints;
         buildEnemy(pose, clock, parts);
+        rig::jointSink() = nullptr;
+        // parts on one joint (three or more) go as one chunk; the rest one by one
+        static std::vector<int> group;
+        group.assign(parts.size(), -1);
+        {
+            std::vector<std::pair<int, int>> count;   // (joint, parts)
+            for (auto& pj : joints) {
+                auto it = std::find_if(count.begin(), count.end(), [&](auto& c) { return c.first == pj.joint; });
+                if (it == count.end()) count.push_back({pj.joint, 1}); else ++it->second;
+            }
+            for (auto& pj : joints)
+                for (auto& c : count)
+                    if (c.first == pj.joint && c.second >= 3 && pj.index >= 0 && pj.index < (int)parts.size()) group[pj.index] = pj.joint;
+        }
         glm::vec3 c = e.position + glm::vec3{0, e.height() * 0.5f, 0};
         // The killing blow carries it: the pieces go the way the shot went, harder the
         // harder it hit (and light ones further than heavies); a headshot takes the head off first
@@ -247,22 +274,60 @@ public:
         float carry = std::min(e.hitPush / std::max(mass, 0.5f), 18.f);
         glm::vec3 along = e.hitDir;
         float headY = e.position.y + e.height() * 0.78f;
-        for (auto& b : parts) {
+        // where a piece flies: out from the body's middle, up, the way the killing blow went
+        auto launch = [&](glm::vec3 at, float scatter) {
+            glm::vec3 out = at - c; out.y = std::max(out.y, 0.f);
+            float ol = glm::length(out);
+            glm::vec3 v = (ol > 1e-3f ? out / ol : glm::vec3{0,1,0}) * frand(3.f, 8.f) * scatter * (1.f - 0.35f * std::min(1.f, carry / 10.f))
+                        + glm::vec3{frand(-2.f,2.f), frand(3.f,7.f), frand(-2.f,2.f)} * scatter + e.velocity * 0.3f + e.knockVel * 0.5f
+                        + along * carry * frand(0.5f, 1.25f);
+            if (carry > 2.f) {   // a hard blow: nothing much comes back at the one who struck it
+                glm::vec3 flat{along.x, 0.f, along.z};
+                float fl = glm::length(flat), back = fl > 1e-3f ? glm::dot(v, flat / fl) : 0.f;
+                if (back < 0.f) v -= flat / fl * back * 0.85f;
+            }
+            return v;
+        };
+        {   // the chunks: one per joint
+            std::vector<int> done;
+            for (size_t i = 0; i < parts.size(); ++i) {
+                int g = group[i];
+                if (g < 0 || std::find(done.begin(), done.end(), g) != done.end()) continue;
+                done.push_back(g);
+                Chunk ch;
+                glm::vec3 lo{1e9f}, hi{-1e9f};
+                for (size_t j = i; j < parts.size(); ++j)
+                    if (group[j] == g) { glm::vec3 p{parts[j].model[3]}; lo = glm::min(lo, p); hi = glm::max(hi, p); }
+                ch.pos = (lo + hi) * 0.5f;
+                for (size_t j = i; j < parts.size(); ++j)
+                    if (group[j] == g) {
+                        glm::mat4 local = parts[j].model; local[3] -= glm::vec4(ch.pos, 0.f);
+                        ch.pieces.push_back({local, parts[j].color, parts[j].emissive, parts[j].mesh});
+                    }
+                float size = glm::length(hi - lo);
+                ch.low = std::max(0.05f, 0.35f * size);
+                ch.vel = launch(ch.pos, 0.8f);
+                if (e.hitHead && (g == enemyfile::E_HEAD || g == enemyfile::E_CROWN)) ch.vel += glm::vec3{0.f, frand(5.f, 8.f), 0.f} + along * frand(3.f, 6.f);   // the head goes first
+                ch.hot = carry > 2.f || e.hitHead ? frand(0.12f, 0.22f) : 0.08f;
+                ch.axis = glm::normalize(glm::vec3{frand(-1.f,1.f), frand(-1.f,1.f), frand(-1.f,1.f)} + glm::vec3{0.01f});
+                ch.spin = frand(3.f, 8.f) / std::max(1.f, std::sqrt(size));   // big pieces turn slower
+                ch.maxLife = ch.life = frand(1.6f, 2.3f);
+                ch.floorY = floorY;
+                chunks.push_back(std::move(ch));
+            }
+            size_t total = 0;
+            for (auto& ch : chunks) total += ch.pieces.size();
+            while (total > MAX_CHUNK_PIECES && !chunks.empty()) { total -= chunks.front().pieces.size(); chunks.erase(chunks.begin()); }
+        }
+        for (size_t i = 0; i < parts.size(); ++i) {
+            if (group[i] >= 0) continue;   // (in a chunk)
+            const BoxInstance& b = parts[i];
             Debris d;
             d.shape = glm::mat3(b.model);
             d.mesh  = b.mesh;
             d.pos   = glm::vec3(b.model[3]);
-            glm::vec3 out = d.pos - c; out.y = std::max(out.y, 0.f);
-            float ol = glm::length(out);
-            d.vel   = (ol > 1e-3f ? out / ol : glm::vec3{0,1,0}) * frand(3.f, 8.f) * (1.f - 0.35f * std::min(1.f, carry / 10.f))
-                    + glm::vec3{frand(-2.f,2.f), frand(3.f,7.f), frand(-2.f,2.f)} + e.velocity * 0.3f + e.knockVel * 0.5f
-                    + along * carry * frand(0.5f, 1.25f);
+            d.vel   = launch(d.pos, 1.f);
             if (e.hitHead && d.pos.y > headY) d.vel += glm::vec3{0.f, frand(5.f, 8.f), 0.f} + along * frand(3.f, 6.f);   // the head goes first
-            if (carry > 2.f) {   // a hard blow: nothing much comes back at the one who struck it
-                glm::vec3 flat{along.x, 0.f, along.z};
-                float fl = glm::length(flat), back = fl > 1e-3f ? glm::dot(d.vel, flat / fl) : 0.f;
-                if (back < 0.f) d.vel -= flat / fl * back * 0.85f;
-            }
             d.hot = carry > 2.f || e.hitHead ? frand(0.12f, 0.22f) : 0.08f;
             d.axis  = glm::normalize(glm::vec3{frand(-1.f,1.f), frand(-1.f,1.f), frand(-1.f,1.f)} + glm::vec3{0.01f});
             d.spin  = frand(4.f, 12.f);
@@ -285,6 +350,18 @@ public:
         }
         debris.erase(std::remove_if(debris.begin(), debris.end(),
                      [](const Debris& d){ return d.life <= 0.f; }), debris.end());
+        for (auto& ch : chunks) {
+            ch.vel.y -= 20.f * dt;
+            ch.pos   += ch.vel * dt;
+            ch.angle += ch.spin * dt;
+            if (ch.pos.y - ch.low < ch.floorY) {   // it lands: bounces low, skids, its spin dying
+                ch.pos.y = ch.floorY + ch.low;
+                ch.vel.y = std::fabs(ch.vel.y) * 0.3f; ch.vel.x *= 0.55f; ch.vel.z *= 0.55f; ch.spin *= 0.5f;
+            }
+            ch.life -= dt;
+            if (ch.hot > 0.f) ch.hot -= dt;
+        }
+        chunks.erase(std::remove_if(chunks.begin(), chunks.end(), [](const Chunk& c){ return c.life <= 0.f; }), chunks.end());
     }
 
     // Shockwave rings and sword strokes grow, fade and go

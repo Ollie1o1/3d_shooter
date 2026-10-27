@@ -33,6 +33,7 @@
 #include "bosses/penitent/PenitentHazards.h"
 #include "render/GunKit.h"
 #include "render/ArmFile.h"
+#include "render/Effects.h"
 #include "render/CameraFeel.h"
 #include "audio/VoiceSynth.h"
 #include "audio/EnemyVoice.h"
@@ -4260,6 +4261,31 @@ int main() {
         CHECK(weaponDef(WeaponId::REVOLVER).damage == 50.f && statsOf(EnemyType::HUSK).health == 75.f && text.find("weapon.revolver.damage = 50") != std::string::npos
               && text.find("enemy.ripper") == std::string::npos, "saved and read back: the same numbers, and only the changed ones are written");
         for (size_t k = 0; k < V.size(); ++k) V[k].set(was[k]);
+    }
+
+    // ---------------------------------------------------------------- a death breaks the body at its joints
+    {
+        Effects fx;
+        Enemy e(EnemyType::BRUTE, {0.f, 0.f, 0.f}); e.spawnTimer = 0.f; e.hitDir = {1.f, 0.f, 0.f}; e.hitPush = 30.f;
+        std::vector<BoxInstance> drawn; buildEnemy(e, 0.f, drawn);
+        fx.spawnDebrisFor(e, 0.f, 0.f);
+        size_t pieces = fx.debris.size();
+        for (auto& ch : fx.chunks) pieces += ch.pieces.size();
+        CHECK(fx.chunks.size() >= 5 && pieces == drawn.size(), "a BRUTE breaks at its joints: legs, torso, head and arms fly whole (every part, once)");
+        bool shape = true;   // each chunk holds its shape: its pieces as they were, about its centre
+        for (auto& ch : fx.chunks)
+            for (auto& p : ch.pieces) {
+                glm::vec3 at = glm::vec3(p.local[3]) + ch.pos;
+                bool found = false;
+                for (auto& d : drawn) found |= glm::length(glm::vec3(d.model[3]) - at) < 1e-4f;
+                shape &= found;
+            }
+        CHECK(shape, "each limb keeps its shape as it comes off");
+        bool away = true;
+        for (auto& ch : fx.chunks) away &= ch.vel.x > -2.f;   // nothing much comes back at the one who struck it
+        CHECK(away, "the limbs go the way the killing blow went");
+        for (int i = 0; i < 400; ++i) fx.updateDebris(1.f / 60.f);
+        CHECK(fx.chunks.empty() && fx.debris.empty(), "and they're gone a few seconds later");
     }
 
     // ---------------------------------------------------------------- your arms' file (assets/guns/arm.glb)

@@ -805,6 +805,18 @@ inline void GameplayState::update(float dt) {
     if (g_devOverlay.rfind("inspect", 0) == 0) viewModel.motion.devInspect(std::atoi(g_devOverlay.c_str() + 7) / 100.f);
     if (g_devOverlay.rfind("switch", 0) == 0) viewModel.motion.devSwitch(std::atoi(g_devOverlay.c_str() + 6) / 100.f, activeWeapon);
     if (g_devOverlay == "punch") { viewModel.parryTimer = ViewModel::PARRY_TIME * 0.62f; viewModel.parryHit = true; }
+    // --overlay dieT: at T s every enemy dies of a hard blow from you (the pieces, on film); "dieTh" a headshot
+    if (g_devOverlay.rfind("die", 0) == 0 && g_devOverlay.size() > 3 && elapsedTime > (float)std::atof(g_devOverlay.c_str() + 3)) {
+        for (auto& e : enemies)
+            if (e.alive) {
+                glm::vec3 d = e.position - player.position; d.y = 0.f;
+                e.hitDir = glm::length(d) > 1e-3f ? glm::normalize(d) : glm::vec3{0.f, 0.f, 1.f};
+                e.hitPush = 40.f; e.hitHead = g_devOverlay.back() == 'h';
+                e.alive = false; e.state = EnemyState::DEAD; e.health = 0.f;
+                spawnDebrisFor(e);
+            }
+        g_devOverlay.clear();
+    }
     // --overlay punchNN / whiffNN: the parry's punch held NN% through it, landing a parry or not
     if ((g_devOverlay.rfind("punch", 0) == 0 || g_devOverlay.rfind("whiff", 0) == 0) && g_devOverlay.size() > 5) {
         viewModel.parryTimer = ViewModel::PARRY_TIME * (1.f - std::atoi(g_devOverlay.c_str() + 5) / 100.f);
