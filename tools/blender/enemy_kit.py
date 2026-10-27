@@ -51,7 +51,7 @@ _og.PALETTE.update({"husk": (0.70, 0.26, 0.18), "gunmetal": (0.16, 0.15, 0.17), 
                     "warden": (0.34, 0.27, 0.40),
                     "iron": (0.26, 0.24, 0.25), "leviathan": (0.20, 0.18, 0.21),
                     "revenant": (0.20, 0.21, 0.26), "weaver": (0.16, 0.13, 0.20), "seraph": (0.82, 0.78, 0.66),
-                    "anchor": (0.24, 0.27, 0.32), "conduit": (0.22, 0.20, 0.26), "conductor": (0.18, 0.30, 0.34), "rag": (0.15, 0.10, 0.11), "brass": (0.60, 0.45, 0.22)})
+                    "anchor": (0.24, 0.27, 0.32), "conduit": (0.22, 0.20, 0.26), "conductor": (0.18, 0.30, 0.34), "rag": (0.15, 0.10, 0.11), "censer": (0.60, 0.45, 0.22)})
 
 
 ENEMY_SCENES = ["HUSK", "SENTINEL", "BRUTE", "RIPPER", "RAPTOR", "MITE", "JUGGERNAUT", "SHIELDBEARER",
