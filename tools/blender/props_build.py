@@ -203,3 +203,82 @@ if want("sanctum_pillar"):   # 3 x 18 x 3: carved basalt, a stepped base, a flut
         a = k * math.pi / 4
         K((1.3 * math.cos(a), 17.85, 1.3 * math.sin(a)), 0.12, 0.15, "gold", None, sides=4)
     save("sanctum_pillar")
+
+# ---- SMALL MODELS (drawn live, PropDraw.h): their own size. "glow*s" parts take the tint's colour (x s);
+#      parts glowing on "glow" take the tint (x k) as it pulses; on "const", k ----
+def tglow(ob, k=1.0):
+    set_glow(ob, "glow", k=k)
+    return ob
+
+
+if want("pickup_orb"):   # a health orb: a green heart in a cage of three steel rings, a cross on each face
+    begin()
+    tglow(E((0, 0, 0), (0.26, 0.26, 0.26), "glow*0.6", None, seg=14, rings=8), 1.0)
+    for rot in ((0, 0, 0), (90, 0, 0), (0, 90, 0)):
+        R((0, 0, 0), 0.17, 0.014, "girder*1.4", None, rot=rot, sides=24, tsides=5)
+    for z in (0.135, -0.135):
+        tglow(B((0, 0, z), (0.1, 0.03, 0.012), "glow*0.9", None), 1.6)
+        tglow(B((0, 0, z), (0.03, 0.1, 0.012), "glow*0.9", None), 1.6)
+    save("pickup_orb")
+
+if want("pickup_potion"):   # a flask: a round glass belly lit from inside, a neck, a steel collar, a cork
+    begin()
+    tglow(E((0, 0, 0), (0.36, 0.36, 0.36), "glow*0.5", None, seg=14, rings=8), 1.0)
+    E((0.07, 0.07, 0.12), (0.08, 0.1, 0.05), "cloth2*1.1", None, seg=8, rings=4)                         # a highlight
+    C((0, 0.22, 0), 0.06, 0.14, "glow*0.35", None, sides=10)                                             # neck
+    C((0, 0.29, 0), 0.075, 0.03, "girder*1.4", None, sides=12)                                           # collar
+    C((0, 0.34, 0), 0.05, 0.08, "plank", None, sides=10, r2=0.055)                                       # cork
+    R((0, 0.0, 0), 0.185, 0.012, "girder*1.4", None, rot=(90, 0, 0), sides=24, tsides=4)                 # a band round it
+    save("pickup_potion")
+
+if want("pickup_xp"):   # a crystal of experience: a long violet diamond, three shards turning with it
+    begin()
+    tglow(E((0, 0, 0), (0.22, 0.44, 0.22), "glow*0.55", None, seg=4, rings=2), 1.0)
+    for k in range(3):
+        a = k * 2 * math.pi / 3
+        tglow(E((0.24 * math.cos(a), 0.06 * (k - 1), 0.24 * math.sin(a)), (0.07, 0.14, 0.07), "glow*0.55", None, seg=4, rings=2), 0.8)
+    R((0, 0, 0), 0.15, 0.01, "gold", None, rot=(90, 0, 0), sides=20, tsides=4)
+    save("pickup_xp")
+
+if want("shot_orb"):   # an enemy's shot: a burning core, six spikes of its light, a ring round it (~0.5 m)
+    begin()
+    tglow(E((0, 0, 0), (0.28, 0.28, 0.28), "glow*0.9", None, seg=12, rings=6), 3.0)
+    E((0, 0, 0), (0.36, 0.36, 0.36), "glow*0.25", None, seg=12, rings=6)                                 # its dark shell (the core shows through the spikes)
+    for d in ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)):
+        tglow(K((d[0] * 0.15, d[1] * 0.15, d[2] * 0.15), 0.07, 0.16, "glow*0.6", None, rot=_aim(d), sides=5), 1.6)
+    tglow(R((0, 0, 0), 0.26, 0.015, "glow*0.5", None, rot=(90, 0, 0), sides=20, tsides=4), 1.2)
+    save("shot_orb")
+
+if want("shot_shell"):   # a JUGGERNAUT's siege shell: a steel body, a lit band, a pointed nose, fins (+Z: its way)
+    begin()
+    C((0, 0, -0.05), 0.16, 0.5, "girder*1.2", None, rot=(90, 0, 0), sides=12)
+    K((0, 0, 0.2), 0.16, 0.28, "girder*1.5", None, rot=(90, 0, 0), sides=12)
+    tglow(C((0, 0, 0.08), 0.165, 0.06, "glow*0.8", None, rot=(90, 0, 0), sides=12), 2.0)
+    for k in range(4):
+        a = k * math.pi / 2 + math.pi / 4
+        P((0.2 * math.cos(a), 0.2 * math.sin(a), -0.25), (0.02, 0.16, 0.18), "girder", None, rot=(90, 0, math.degrees(a) - 90), top=(1.0, 0.4))
+    tglow(C((0, 0, -0.32), 0.1, 0.04, "glow*0.9", None, rot=(90, 0, 0), sides=10), 3.0)                  # its exhaust
+    save("shot_shell")
+
+if want("shot_grenade"):   # a lobbed bomb: a round iron case in bands, a lit seam, a fuse cap
+    begin()
+    E((0, 0, 0), (0.3, 0.3, 0.3), "iron*1.3", None, seg=14, rings=8)
+    for rot in ((0, 0, 0), (0, 90, 0)):
+        R((0, 0, 0), 0.152, 0.012, "girder*1.4", None, rot=rot, sides=24, tsides=4)
+    tglow(R((0, 0, 0), 0.152, 0.008, "glow*0.8", None, rot=(90, 0, 0), sides=24, tsides=4), 2.0)
+    C((0, 0.16, 0), 0.04, 0.05, "girder*1.4", None, sides=8)
+    tglow(E((0, 0.2, 0), (0.05, 0.05, 0.05), "glow*0.9", None, seg=6, rings=3), 3.0)
+    save("shot_grenade")
+
+if want("hook"):   # the grapple's claw: a shaft, a collar, three prongs curving back (+Z: the way it flew)
+    begin()
+    C((0, 0, -0.12), 0.025, 0.24, "girder*1.4", None, rot=(90, 0, 0), sides=8)
+    C((0, 0, 0.0), 0.045, 0.05, "girder", None, rot=(90, 0, 0), sides=10)
+    tglow(R((0, 0, -0.03), 0.04, 0.008, "glow*0.6", None, sides=14, tsides=4), 1.5)
+    K((0, 0, 0.03), 0.035, 0.08, "girder*1.6", None, rot=(90, 0, 0), sides=8)
+    for k in range(3):
+        a = k * 2 * math.pi / 3
+        ca, sa = math.cos(a), math.sin(a)
+        tube([(0.03 * ca, 0.03 * sa, 0.02), (0.1 * ca, 0.1 * sa, -0.01), (0.12 * ca, 0.12 * sa, -0.09)], [0.014, 0.011, 0.007], "girder*1.5", None,
+             sides=6, tip=0.03)
+    save("hook")

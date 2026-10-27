@@ -34,6 +34,7 @@
 #include "render/GunKit.h"
 #include "render/ArmFile.h"
 #include "render/Effects.h"
+#include "render/PropDraw.h"
 #include "render/CameraFeel.h"
 #include "audio/VoiceSynth.h"
 #include "audio/EnemyVoice.h"
@@ -4291,6 +4292,16 @@ int main() {
         WorldGeometry G = buildWorldGeometry(A);
         size_t verts = 0; for (int t = 0; t < TEX_COUNT; ++t) verts += G.V[t].size();
         CHECK(verts < 2000000, "the static world stays under 2M vertices with the props baked in");
+    }
+    {   // the small things drawn live: pickups, shots, the grapple's claw (PropDraw.h)
+        bool all = true;
+        for (const char* n : {"pickup_orb", "pickup_potion", "pickup_xp", "shot_orb", "shot_shell", "shot_grenade", "hook"}) {
+            std::vector<BoxInstance> out;
+            bool ok = propdraw::push(out, n, glm::mat4(1.f), glm::vec3{1.f, 0.5f, 0.2f}) && out.size() >= 5;
+            bool lit = false; for (auto& b : out) lit |= glm::length(b.emissive) > 0.1f;
+            if (!ok || !lit) { std::printf("      %s: %s\n", n, ok ? "nothing glows" : "no file"); all = false; }
+        }
+        CHECK(all, "every pickup, shot and the grapple's claw has its file, with a part that glows in its colour");
     }
 
     // ---------------------------------------------------------------- a death breaks the body at its joints
