@@ -103,6 +103,16 @@ def open_enemy(name, joints=None):
     return sc
 
 
+def shrink(path):
+    """Share what the exporter wrote twice (tools/glb_dedupe.py: lossless; every rivet once, not once a part)"""
+    env = {"__name__": "glb_dedupe"}
+    exec(open(os.path.join(REPO, "tools", "glb_dedupe.py")).read(), env)
+    js, b = env["read_glb"](path)
+    js2, b2 = env["dedupe"](js, b)
+    if js2 is not None:
+        env["write_glb"](path, js2, b2)
+
+
 def clear_parts():
     for ob in [o for o in bpy.context.scene.objects if o.type == "MESH"]:
         bpy.data.objects.remove(ob, do_unlink=True)
@@ -118,6 +128,7 @@ def save_enemy(name):
         bpy.ops.export_scene.gltf(filepath=os.path.join(REPO, "assets", "enemies", name + ".glb"), export_format="GLB",
                                   export_extras=True, export_yup=True, export_apply=True, use_selection=False,
                                   use_active_scene=True, export_texcoords=False)
+    shrink(os.path.join(REPO, "assets", "enemies", name + ".glb"))
     n = sum(1 for o in sc.objects if o.type == "MESH")
     print("%s: %d parts saved" % (name, n))
 

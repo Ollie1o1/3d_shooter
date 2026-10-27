@@ -45,6 +45,7 @@ def save_built(name):
     before, after = _prune["prune"](path)
     if after < before:
         print("(%s: other scenes dropped from the file, %d -> %d bytes)" % (name, before, after))
+    shrink(path)
     n = sum(1 for o in sc.objects if o.type == "MESH")
     print("%s: %d parts saved to %s" % (name, n, path))
     for w in warnings:

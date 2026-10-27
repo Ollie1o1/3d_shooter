@@ -42,6 +42,7 @@ def save(name):
         bpy.ops.export_scene.gltf(filepath=os.path.join(REPO, "assets", "props", name + ".glb"), export_format="GLB",
                                   export_extras=True, export_yup=True, export_apply=True, use_selection=False,
                                   use_active_scene=True, export_texcoords=False)
+    shrink(os.path.join(REPO, "assets", "props", name + ".glb"))
     report(name)
 
 
