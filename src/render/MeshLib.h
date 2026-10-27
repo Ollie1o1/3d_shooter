@@ -4,7 +4,8 @@
 // (a bevelled plate, a cannon's barrel), kept on the CPU, numbered from 1.
 // Mesh 0 is the unit cube every box is drawn with. BoxRenderer uploads each
 // mesh the first time it's drawn; a model reloaded in the viewer adds new
-// ones (the old stay, unused: a few KB). No OpenGL here.
+// ones (the old stay, unused: a few KB). A shape that's already here is shared
+// (addShared): one draw call however many parts repeat it. No OpenGL here.
 //
 // A mesh is centred on its bounds, so a part's transform puts its centre
 // (debris spins about it) and the mesh's own size is its size.
@@ -12,6 +13,7 @@
 #include <glm/glm.hpp>
 #include <cstdint>
 #include <deque>
+#include <unordered_map>
 #include <vector>
 
 namespace meshlib {
@@ -26,6 +28,23 @@ inline std::deque<MeshData>& all() { static std::deque<MeshData> M; return M; } 
 inline int add(MeshData m) { all().push_back(std::move(m)); return (int)all().size(); }
 inline const MeshData* get(int id) { return id >= 1 && id <= (int)all().size() ? &all()[(size_t)id - 1] : nullptr; }
 inline int count() { return (int)all().size(); }
+// The same shape already in the library (a finger, a rivet, a halo's bead: a boss repeats dozens):
+// its id, so every copy is drawn in one instanced call; else it's added
+inline int addShared(MeshData m) {
+    uint64_t h = 1469598103934665603ull;   // FNV-1a over its data
+    auto mix = [&](const void* p, size_t n) { auto* b = (const unsigned char*)p; for (size_t i = 0; i < n; ++i) { h ^= b[i]; h *= 1099511628211ull; } };
+    mix(m.pos.data(), m.pos.size() * sizeof(glm::vec3)); mix(m.nrm.data(), m.nrm.size() * sizeof(glm::vec3));
+    mix(m.idx.data(), m.idx.size() * sizeof(uint32_t));
+    static std::unordered_multimap<uint64_t, int> byHash;
+    auto range = byHash.equal_range(h);
+    for (auto it = range.first; it != range.second; ++it) {
+        const MeshData& o = all()[(size_t)it->second - 1];
+        if (o.pos == m.pos && o.nrm == m.nrm && o.idx == m.idx) return it->second;
+    }
+    int id = add(std::move(m));
+    byHash.emplace(h, id);
+    return id;
+}
 
 // Recentre on its bounds; returns the centre it had
 inline glm::vec3 centre(MeshData& m) {

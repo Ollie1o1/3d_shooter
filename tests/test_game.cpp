@@ -4267,12 +4267,16 @@ int main() {
         CHECK(m && m->error.empty() && m->joints.size() == 6, "the HUSK's file loads, with all six joints (assets/enemies/husk.glb)");
         // Every enemy made in Blender: its joints where the code turns them, its head inside its head
         // hitbox (the head you see is the head you hit), on its feet, meshes kept, and the same after a save
-        const EnemyType made[] = {EnemyType::HUSK, EnemyType::SENTINEL, EnemyType::BRUTE, EnemyType::RIPPER, EnemyType::RAPTOR, EnemyType::MITE,
-                                  EnemyType::JUGGERNAUT, EnemyType::SHIELDBEARER};
+        // (the bosses too: THE ABSOLUTE's second form, MORNINGSTAR, is a file of its own on his joints)
+        const int made[] = {(int)EnemyType::HUSK, (int)EnemyType::SENTINEL, (int)EnemyType::BRUTE, (int)EnemyType::RIPPER, (int)EnemyType::RAPTOR,
+                            (int)EnemyType::MITE, (int)EnemyType::JUGGERNAUT, (int)EnemyType::SHIELDBEARER,
+                            (int)EnemyType::SOVEREIGN, (int)EnemyType::ABSOLUTE, enemyfile::FILE_MORNINGSTAR};
+        auto formOf = [](int f, Enemy& e) { if (f == enemyfile::FILE_MORNINGSTAR) { e.abForm = 1; e.scale = Enemy::MS_SCALE; e.abPhase = 4; } };
         bool loadsAll = true, jointsAll = true, headsAll = true, feetAll = true, meshesAll = true, tripsAll = true;
-        for (EnemyType t : made) {
-            const char* nm = statsOf(t).name;
-            const gunkit::GunModel* fm = enemyfile::model(t);
+        for (int f : made) {
+            const EnemyType t = enemyfile::typeOfFile(f);
+            const char* nm = f == enemyfile::FILE_MORNINGSTAR ? "MORNINGSTAR" : statsOf(t).name;
+            const gunkit::GunModel* fm = enemyfile::modelOf(f);
             if (!fm || !fm->error.empty()) { std::printf("      %s: no file\n", nm); loadsAll = false; continue; }
             for (int j : enemyfile::neededJoints(t)) loadsAll &= fm->has(j);
             for (const auto& want : rig::restJointsOf(t))
@@ -4283,9 +4287,10 @@ int main() {
             // at rest, as drawn (its walk cycle at 0: the constructor picks a random phase, and
             // rand() differs between libcs, so leaving it would make this check differ by platform)
             Enemy e(t, {0.f, 0.f, 0.f}); e.spawnTimer = 0.f; e.animPhase = 0.f; e.age = 0.f;
+            formOf(f, e);
             glm::mat4 fr; rig::FilePose P; glm::vec3 g; glm::mat4 Wj[enemyfile::E_COUNT];
             std::vector<BoxInstance> sink; rig::Rig dummy{sink};
-            rig::filePoseOf(e, 0.f, glm::mat4(1.f), fr, P, g);
+            rig::filePoseOf(e, 0.f, glm::scale(glm::mat4(1.f), glm::vec3(e.scale)), fr, P, g);   // (at its size: MORNINGSTAR's 1.65)
             rig::drawFile(dummy, fr, *fm, P, g, Wj);
             AABB hb; bool hasHead = rig::headBox(e, hb);
             float lowest = 1e9f; int meshes = 0; bool inHead = true;
@@ -4305,7 +4310,7 @@ int main() {
             if (!statsOf(t).flying && (lowest < -0.05f || lowest > 0.05f)) { std::printf("      %s: its lowest point is %.3f m off the floor\n", nm, lowest); feetAll = false; }
             if (meshes < 10) { std::printf("      %s: %d meshes\n", nm, meshes); meshesAll = false; }
             // written out and read back: drawn the same
-            gunkit::GunModel saved = enemyfile::slot(t);
+            gunkit::GunModel saved = enemyfile::slotOf(f);
             gunkit::GunModel back = gunkit::readGunText(gunkit::writeGunText(saved, nm, [](const gunkit::ModelPart& p) {
                 char b[64]; std::snprintf(b, sizeof b, "%.9g %.9g %.9g", p.color.x, p.color.y, p.color.z);
                 return p.glowScale >= 0.f ? "glow*" + std::to_string(p.glowScale) : std::string(b); }, enemyfile::names()), "memory", enemyfile::names());
@@ -4313,13 +4318,17 @@ int main() {
             for (float ph : {0.f, 1.3f, 3.7f})
                 for (int k = 0; k < 2 && same; ++k) {
                     Enemy w(t, {1.f, 0.f, 2.f}); w.spawnTimer = 0.f; w.animPhase = ph; w.moveSpeed = 3.f; w.yaw = ph;
+                    formOf(f, w); w.enraged = k == 1; w.abBlade = k == 1;
                     if (k) { w.telegraphDuration = 0.8f; w.telegraphTimer = 0.2f; w.attack = AttackKind::SHOT; w.diveTimer = 0.2f; }
                     std::vector<BoxInstance> a, b;
                     buildEnemy(w, 0.4f, a);
-                    enemyfile::slot(t) = back;
+                    enemyfile::slotOf(f) = back;
                     buildEnemy(w, 0.4f, b);
-                    enemyfile::slot(t) = saved;
-                    same &= a.size() == b.size() && a.size() == saved.parts.size();
+                    enemyfile::slotOf(f) = saved;
+                    size_t shown = 0;   // (a part with a flag: shown only while it holds)
+                    { rig::FilePose Q; glm::mat4 fr2; glm::vec3 g2; rig::filePoseOf(w, 0.4f, glm::mat4(1.f), fr2, Q, g2);
+                      for (const auto& p : saved.parts) shown += p.flag < 0 || Q.flag[p.flag] == p.want; }
+                    same &= a.size() == b.size() && a.size() == shown;
                     std::vector<char> used(b.size(), 0);
                     for (size_t i = 0; same && i < a.size(); ++i) {
                         bool hit = false;
@@ -4335,7 +4344,8 @@ int main() {
             if (!same) std::printf("      %s: not the same after a save\n", nm);
             tripsAll &= same;
         }
-        CHECK(loadsAll, "every enemy made in Blender loads, with the joints its rig turns (HUSK SENTINEL BRUTE RIPPER RAPTOR MITE JUGGERNAUT SHIELDBEARER)");
+        CHECK(loadsAll, "every enemy made in Blender loads, with the joints its rig turns (HUSK SENTINEL BRUTE RIPPER RAPTOR MITE JUGGERNAUT SHIELDBEARER,"
+                        " the SOVEREIGN, THE ABSOLUTE and MORNINGSTAR)");
         CHECK(jointsAll, "every enemy file keeps its joints where the code turns them");
         CHECK(headsAll, "every box of an enemy's head sits inside its head hitbox");
         CHECK(feetAll, "every walking enemy stands on the floor (its lowest point within 5 cm)");

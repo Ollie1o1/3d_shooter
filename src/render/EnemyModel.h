@@ -189,6 +189,9 @@ inline vec3 shieldRest() { HumanoidLook L = humanoidDims(EnemyType::SHIELDBEARER
 struct FilePose {
     mat4 motion[enemyfile::E_COUNT];
     vec3 chan[enemyfile::C_COUNT];
+    bool flag[enemyfile::F_COUNT] = {};   // a part with a flag shows only while it holds (or, "!flag", doesn't)
+    float wave = 0.f;                     // a part with a phase pulses along it: x (0.75 + 0.25 sin(wave + phase))
+    float tint = 1.f;                     // every fixed colour x this (MORNINGSTAR's light going out in TOTALITY)
     FilePose() { for (auto& m : motion) m = mat4(1.f); for (auto& c : chan) c = vec3(0.f); chan[enemyfile::C_CONST] = vec3(1.f); }
 };
 inline void drawFile(Rig& r, const mat4& root, const gunkit::GunModel& m, const FilePose& P, vec3 glow, mat4* Wout = nullptr) {
@@ -199,8 +202,10 @@ inline void drawFile(Rig& r, const mat4& root, const gunkit::GunModel& m, const 
     for (auto& w : W) w = root;
     for (const auto& J : m.joints) W[J.id] = W[J.parent] * local[J.id] * P.motion[J.id];   // (parents come first)
     for (const auto& p : m.parts) {
-        vec3 col = p.glowScale >= 0.f ? glow * p.glowScale : p.color;
+        if (p.flag >= 0 && p.flag < F_COUNT && P.flag[p.flag] != p.want) continue;
+        vec3 col = p.glowScale >= 0.f ? glow * p.glowScale : p.color * P.tint;
         vec3 emi = p.chan >= 0 && p.chan < C_COUNT ? P.chan[p.chan] * p.k : vec3{0.f};
+        if (p.hasPhase) emi *= 0.75f + 0.25f * std::sin(P.wave + p.phase);
         r.part(W[p.joint] * p.rel, col, emi, p.mesh);
     }
     if (Wout) for (int j = 0; j < E_COUNT; ++j) Wout[j] = W[j];
@@ -215,6 +220,16 @@ inline FilePose humanoidPose(const HumanoidMotion& mo, vec3 glow) {
     P.motion[E_ARMR] = RX(mo.armRx[1]) * RZ(mo.armRz[1]);
     P.chan[C_GLOW] = glow;
     return P;
+}
+
+inline PoseOverride sovereignPose(const Enemy& e);   // (below)
+inline bool absoluteFilePose(const Enemy& e, float time, const mat4& root, mat4& fileRoot, FilePose& P, vec3& glowOut);   // (AbsoluteRig.h)
+// The SOVEREIGN's cape (and its hem, which lags it), from how fast he's going
+inline void sovereignCape(const Enemy& e, float time, float& cape, float& hem) {
+    float lift = glm::clamp(e.moveSpeed / 20.f, 0.f, 1.f);
+    float sway = std::sin(time * 1.7f + e.animPhase * 0.2f) * 0.05f;
+    cape = 0.12f + sway + lift * 0.9f;
+    hem = sway * 1.4f + lift * 0.35f + 0.05f * std::sin(time * 2.3f + 0.8f);
 }
 
 // Every enemy with a file: where its file is drawn from (fileRoot) and how its joints
@@ -309,6 +324,34 @@ inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileR
         P.chan[C_DIVE] = diving ? glow : vec3{0.f};
         return true;
     }
+    case EnemyType::SOVEREIGN: {   // the greatsword in his right hand, his cape, the halo turning behind his helm
+        bool broken = e.staggered();
+        vec3 g = e.enraged ? vec3{1.f, 0.12f, 0.08f} * (1.3f + 2.f * tp) : glow;
+        glowOut = g;
+        PoseOverride ov = sovereignPose(e);
+        mat4 base = broken ? root * T({0.f, -0.2f, 0.f}) * RX(0.28f) : root;
+        if (broken) { ov.rxR = 0.2f; ov.rxL = 0.1f; ov.grip = -1.3f; ov.torsoYaw = 0.f; ov.torsoPitch = 0.2f; }
+        HumanoidMotion mo = humanoidMotion(e.animPhase, stride, ArmPose::SWING, 0.f, &ov);
+        P = humanoidPose(mo, g);
+        fileRoot = base * T({0.f, mo.lift, 0.f});
+        P.motion[E_SWORD] = RX(ov.grip);
+        float cape, hem;
+        sovereignCape(e, time, cape, hem);
+        P.motion[E_CAPE] = RX(cape);
+        P.motion[E_CAPE_TIP] = RX(hem);
+        P.motion[E_HALO] = RZ(time * 0.8f);
+        const vec3 gold{0.86f, 0.64f, 0.22f};
+        float pulse = 0.6f + 0.4f * std::sin(time * 4.f);
+        P.chan[C_PULSE] = g * (1.2f * pulse + 2.f * tp);
+        P.chan[C_EDGE] = (e.enraged ? vec3{2.2f, 0.5f, 0.35f} : vec3{1.7f, 1.35f, 0.75f}) * (1.f + 1.5f * tp);
+        P.chan[C_HALO] = g * 0.6f + gold * 0.8f;
+        P.chan[C_CAPE] = e.enraged ? vec3{0.32f, 0.04f, 0.05f} * (2.5f + 1.5f * pulse) : vec3{0.f};
+        P.flag[F_ENRAGED] = e.enraged;
+        P.flag[F_BROKEN] = broken;
+        P.wave = time * 3.f;
+        return true;
+    }
+    case EnemyType::ABSOLUTE: return absoluteFilePose(e, time, root, fileRoot, P, glowOut);
     case EnemyType::MITE: {
         fileRoot = root;
         P.motion[E_BODY] = T({0.f, std::fabs(std::sin(e.animPhase)) * 0.04f, 0.f});
@@ -357,6 +400,31 @@ inline std::vector<gunkit::ModelJoint> restJointsOf(EnemyType t) {
             add(E_LEG_R1 + i, E_BODY, {-0.22f, 0.32f, 0.18f - i * 0.2f});
         }
         break;
+    case EnemyType::ABSOLUTE: {   // (MORNINGSTAR's too): AbsoluteRig.h's frames, from his body at the hips
+        add(E_TORSO, E_ROOT, {0.f, 1.30f, 0.f});
+        add(E_HEAD, E_TORSO, {0.f, 2.25f, 0.f});
+        add(E_CROWN, E_HEAD, {0.f, 2.25f, 0.f});
+        add(E_HALO, E_HEAD, {0.f, 2.49f, -0.34f});
+        add(E_WAIST, E_ROOT, {0.f, 1.33f, 0.f});
+        add(E_CLOTH_F, E_ROOT, {0.f, 1.30f, 0.14f}); add(E_CLOTH_B, E_ROOT, {0.f, 1.30f, -0.14f});
+        for (float s : {1.f, -1.f}) {
+            const bool L = s > 0.f;
+            const float x = s * 0.15f, a = s * 0.31f;
+            add(L ? E_HIPL : E_HIPR, E_ROOT, {x, 1.15f, 0.f});
+            add(L ? E_KNEE_L : E_KNEE_R, L ? E_HIPL : E_HIPR, {x, 0.57f, 0.f});
+            add(L ? E_ANKLE_L : E_ANKLE_R, L ? E_KNEE_L : E_KNEE_R, {x, 0.02f, 0.f});
+            add(L ? E_ARML : E_ARMR, E_TORSO, {a, 2.06f, 0.f});
+            add(L ? E_ELBOW_L : E_ELBOW_R, L ? E_ARML : E_ARMR, {a, 1.58f, 0.f});
+            add(L ? E_RIBBON_L : E_RIBBON_R, L ? E_ELBOW_L : E_ELBOW_R, {a, 1.22f, -0.06f});
+            add(L ? E_HAND_L : E_HAND_R, L ? E_ELBOW_L : E_ELBOW_R, {a, 1.14f, 0.f});
+            add(L ? E_FINGERS_L : E_FINGERS_R, L ? E_HAND_L : E_HAND_R, {a, 1.04f, 0.01f});
+            add(L ? E_TIPS_L : E_TIPS_R, L ? E_FINGERS_L : E_FINGERS_R, {a, 0.98f, 0.01f});
+            add(L ? E_THUMB_L : E_THUMB_R, L ? E_HAND_L : E_HAND_R, {a - s * 0.055f, 1.10f, 0.03f});
+            add(L ? E_THUMB_TIP_L : E_THUMB_TIP_R, L ? E_THUMB_L : E_THUMB_R, {a - s * 0.055f, 1.05f, 0.03f});
+        }
+        add(E_SWORD, E_HAND_R, {-0.31f, 1.07f, 0.03f});
+        break;
+    }
     default: {   // a humanoid
         HumanoidLook L = humanoidDims(t);
         float chest = L.legLen + L.pelvisH, shX = L.torsoW * 0.5f + L.armW * 0.5f, shY = chest + L.torsoH - L.armW * 0.5f;
@@ -365,6 +433,14 @@ inline std::vector<gunkit::ModelJoint> restJointsOf(EnemyType t) {
         add(E_HEAD, E_TORSO, {0.f, chest + L.torsoH, 0.f});
         add(E_ARML, E_TORSO, {shX, shY, 0.f}); add(E_ARMR, E_TORSO, {-shX, shY, 0.f});
         if (t == EnemyType::SHIELDBEARER) add(E_SHIELD, E_TORSO, vec3{0.f, chest, 0.f} + shieldRest());
+        if (t == EnemyType::SOVEREIGN) {   // (sovereignPose's frames: the sword in the right fist, cape off his shoulders, halo behind his helm)
+            const float head = chest + L.torsoH;
+            add(E_SWORD, E_ARMR, {-shX, shY - L.armLen - L.armW * 0.3f, 0.f});
+            add(E_CAPE, E_TORSO, {0.f, chest + L.torsoH - 0.05f, -L.torsoD * 0.5f - 0.05f});
+            add(E_CAPE_TIP, E_CAPE, {0.f, chest + L.torsoH - 1.15f, -L.torsoD * 0.5f - 0.05f});
+            add(E_CROWN, E_HEAD, {0.f, head, 0.f});
+            add(E_HALO, E_HEAD, {0.f, head + L.headS * 0.6f, -0.42f});
+        }
     }
     }
     return J;
@@ -522,9 +598,14 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         }
     }
 
-    if (const auto* m = enemyfile::model(e.type)) {   // made in Blender (assets/enemies/<name>.glb)
+    if (const auto* m = enemyfile::modelOf(enemyfile::fileOf(e))) {   // made in Blender (assets/enemies/<name>.glb)
         mat4 fileRoot; FilePose P; vec3 g;
-        if (filePoseOf(e, time, root, fileRoot, P, g)) { drawFile(r, fileRoot, *m, P, g); return; }
+        const size_t first = out.size();
+        if (filePoseOf(e, time, root, fileRoot, P, g)) {
+            drawFile(r, fileRoot, *m, P, g);
+            if (e.type == EnemyType::ABSOLUTE) absoluteWhiteHot(e, r, first);
+            return;
+        }
     }
     switch (e.type) {
     case EnemyType::HUSK: {
