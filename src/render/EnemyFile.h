@@ -12,6 +12,7 @@
 //              RAPTOR     head tail wingL wingR tipL tipR (tips ride the wings)
 //              MITE       body legL1-3 legR1-3
 //              WARDEN     a humanoid's, and cape and capeTip (its hem), crown (rides the head)
+//              PENITENT   a humanoid's (its censers ride its fists: "tellR"/"tellL" light them)
 //              SOVEREIGN  a humanoid's, and weapon (the greatsword, turned in his fist), cape and
 //                         capeTip (its hem, lagging it), halo (turning), crown (rides the head)
 //              ABSOLUTE   (and MORNINGSTAR, his own file on the same joints) hips, knees, ankles,
@@ -31,7 +32,8 @@
 //            and runes ("tellR", "auraLegL", "runeR"...) take his tell's colour when it strikes
 //            "const" k itself
 //   flags    "blade" (THE ABSOLUTE's blade of light is drawn), "enraged", "broken", "open" (the
-//            WARDEN's core plates drawn back while it vents and in meltdown): a part with
+//            WARDEN's core plates drawn back while it vents and in meltdown; the PENITENT's wound
+//            while it scourges itself): a part with
 //            show = "enraged" is drawn only then ("!enraged": only not)
 //   colours  material base colours; "glow*0.3": the (flaring) glow colour x 0.3
 //
@@ -102,6 +104,7 @@ inline const char* fileName(EnemyType t) {
         case EnemyType::JUGGERNAUT:   return "juggernaut";
         case EnemyType::SHIELDBEARER: return "shieldbearer";
         case EnemyType::WARDEN:       return "warden";
+        case EnemyType::PENITENT:     return "penitent";
         case EnemyType::SOVEREIGN:    return "sovereign";
         case EnemyType::ABSOLUTE:     return "absolute";
         default: return nullptr;

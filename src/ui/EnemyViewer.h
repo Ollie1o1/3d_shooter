@@ -40,11 +40,13 @@ public:
         whiteTex = makeGreyTexture();
         e.spawnTimer = 0.f;
         if (file == enemyfile::FILE_MORNINGSTAR) { e.abForm = 1; e.scale = Enemy::MS_SCALE; e.abPhase = 4; }
+        if (type == EnemyType::PENITENT) e.risen = true;   // (kneeling, it's sunk 3.3 m into the floor: E kneels it)
         std::error_code ec;
         fileTime = std::filesystem::last_write_time(enemyfile::pathOf(file), ec);
         enemyfile::modelOf(file);
         if (g_devOverlay.find("enraged") != std::string::npos) e.enraged = true;
         if (g_devOverlay.find("vent") != std::string::npos) { wardenLook = 1; setWardenLook(); }        // (the WARDEN's core open)
+        if (g_devOverlay.find("scourge") != std::string::npos) { penLook = 1; e.scourging = true; }      // (the PENITENT's wound)
         if (g_devOverlay.find("meltdown") != std::string::npos) { wardenLook = 2; setWardenLook(); }
         if (g_devOverlay.find("blade") != std::string::npos) e.abBlade = true;
         if (g_devOverlay.find("plain") != std::string::npos) rig::absPlainTells() = true;   // (no tell glow: see the wrists)
@@ -79,6 +81,7 @@ public:
             case SDLK_n: ++attackIx; windT = 0.f; break;
             case SDLK_e:
                 if (type == EnemyType::WARDEN) { wardenLook = (wardenLook + 1) % 3; setWardenLook(); break; }   // its core open, then meltdown
+                if (type == EnemyType::PENITENT) { penLook = (penLook + 1) % 3; e.scourging = penLook == 1; e.risen = penLook != 2; break; }   // scourging, then kneeling
                 e.enraged = !e.enraged; if (type == EnemyType::ABSOLUTE) e.abBlade = !e.abBlade; break;
             case SDLK_t: turntable = !turntable; break;
             default: break;
@@ -207,7 +210,7 @@ private:
     EnemyType type;
     Enemy e;
     int attackIx = 0;
-    int wardenLook = 0;   // the WARDEN: 0 fed, 1 venting (core open), 2 meltdown
+    int wardenLook = 0, penLook = 0;   // the PENITENT: 0 standing, 1 scourging, 2 kneeling   // the WARDEN: 0 fed, 1 venting (core open), 2 meltdown
     void setWardenLook() { e.ventTimer = wardenLook == 1 ? 1e6f : 0.f; e.wardenPhase = wardenLook == 2 ? 3 : 1; }
     // What F winds up: a boss's own moves (N steps through them), else a shot
     AttackKind attackKind() const {
@@ -218,6 +221,8 @@ private:
         static const A ms[] = {A::MJAB, A::MBACKHAND, A::MGRASP, A::MSUNDER};
         static const A war[] = {A::SLAM, A::LANCE, A::WLUNGE, A::VOLLEY, A::SUMMON, A::WVENT};
         if (type == EnemyType::WARDEN) return war[attackIx % 6];
+        static const A pen[] = {A::CENSER_LOW, A::CENSER_HIGH, A::PSLAM, A::PSTOMP, A::PLASH, A::SCOURGE};
+        if (type == EnemyType::PENITENT) return pen[attackIx % 6];
         if (file == enemyfile::FILE_MORNINGSTAR) return ms[attackIx % 4];
         if (type == EnemyType::SOVEREIGN) return sov[attackIx % 5];
         if (type == EnemyType::ABSOLUTE) return abs[attackIx % 14];

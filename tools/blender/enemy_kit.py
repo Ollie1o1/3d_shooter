@@ -47,11 +47,12 @@ _og.PALETTE.update({"husk": (0.70, 0.26, 0.18), "gunmetal": (0.16, 0.15, 0.17), 
                     "plate": (0.96, 0.96, 0.99), "skin": (0.58, 0.58, 0.64), "seam": (0.16, 0.16, 0.20),
                     "gauntlet": (0.22, 0.22, 0.28), "ember": (0.95, 0.27, 0.05), "blood": (0.80, 0.15, 0.03),
                     "char": (0.10, 0.03, 0.02), "obsidian": (0.05, 0.04, 0.05),
-                    "warden": (0.34, 0.27, 0.40)})
+                    "warden": (0.34, 0.27, 0.40),
+                    "iron": (0.26, 0.24, 0.25), "rag": (0.15, 0.10, 0.11), "brass": (0.60, 0.45, 0.22)})
 
 
 ENEMY_SCENES = ["HUSK", "SENTINEL", "BRUTE", "RIPPER", "RAPTOR", "MITE", "JUGGERNAUT", "SHIELDBEARER",
-                "SOVEREIGN", "ABSOLUTE", "MORNINGSTAR", "WARDEN"]
+                "SOVEREIGN", "ABSOLUTE", "MORNINGSTAR", "WARDEN", "PENITENT"]
 _ABS = ("hipL hipR torso head armL armR halo crown weapon kneeL kneeR ankleL ankleR waist clothF clothB elbowL elbowR "
         "handL handR fingersL fingersR tipsL tipsR thumbL thumbR thumbTipL thumbTipR ribbonL ribbonR")
 NEEDED = {"husk": "hipL hipR torso head armL armR", "sentinel": "hipL hipR torso head armL armR",
@@ -59,7 +60,8 @@ NEEDED = {"husk": "hipL hipR torso head armL armR", "sentinel": "hipL hipR torso
           "raptor": "head tail wingL wingR tipL tipR", "mite": "body legL1 legL2 legL3 legR1 legR2 legR3",
           "juggernaut": "hipL hipR torso head armL armR", "shieldbearer": "hipL hipR torso head armL armR shield",
           "sovereign": "hipL hipR torso head armL armR weapon cape capeTip halo crown",
-          "warden": "hipL hipR torso head armL armR cape capeTip crown", "absolute": _ABS, "morningstar": _ABS}
+          "warden": "hipL hipR torso head armL armR cape capeTip crown",
+          "penitent": "hipL hipR torso head armL armR", "absolute": _ABS, "morningstar": _ABS}
 
 
 def open_enemy(name, joints=None):
