@@ -28,8 +28,8 @@ struct DifficultyTuning {
 constexpr int DIFFICULTY_LEVELS = 4;
 constexpr int DIFFICULTY_DEFAULT = 1;   // STANDARD
 
-inline const DifficultyTuning& difficulty(int level) {
-    static const DifficultyTuning T[DIFFICULTY_LEVELS] = {
+inline DifficultyTuning& difficultyEdit(int level) {   // (the balance panel edits it live)
+    static DifficultyTuning T[DIFFICULTY_LEVELS] = {
         //  name        dmg   hp    rate  shot  lead  wind  move  heal  drop  wave  +alive
         {"LENIENT",   0.85f, 1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,  0},
         {"STANDARD",  1.3f,  1.1f, 1.25f,1.12f,0.5f, 0.92f,1.06f,0.7f, 0.85f,1.3f,  2},
@@ -38,3 +38,4 @@ inline const DifficultyTuning& difficulty(int level) {
     };
     return T[level < 0 ? 0 : level >= DIFFICULTY_LEVELS ? DIFFICULTY_LEVELS - 1 : level];
 }
+inline const DifficultyTuning& difficulty(int level) { return difficultyEdit(level); }

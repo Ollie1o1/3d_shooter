@@ -2,6 +2,7 @@
 // ABSOLUTE's mind and hazards, and his fight against scripted players.
 // Built and run by `make test` after test_game.
 #include "player/Sword.h"
+#include "core/Balance.h"
 #include "render/GunKit.h"
 #include "world/LevelAct2.h"
 #include "audio/MusicSynth.h"
@@ -45,6 +46,7 @@ static Sword::Out run(Sword& s, SwordInput in, float t) {
 }
 
 int main() {
+    balanceInit();   // the numbers as assets/balance.txt ships them (core/Balance.h)
     // ---------------------------------------------------------------- the sword: strokes
     {
         Sword s;

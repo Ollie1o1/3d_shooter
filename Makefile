@@ -13,7 +13,7 @@ ifeq ($(UNAME), Darwin)
 # can't find the C++ stdlib headers); fall back to Apple clang if it's absent.
 LLVM     := $(shell brew --prefix llvm 2>/dev/null)
 SDK      := $(shell xcrun --show-sdk-path 2>/dev/null)
-BASEFLAGS := -std=c++17 -O3 -ffast-math -Wall -Wextra -Isrc \
+BASEFLAGS := -std=c++17 -O3 -ffast-math -Wall -Wextra -Isrc -Isrc/third_party/imgui \
              -DGL_SILENCE_DEPRECATION \
              -I/opt/homebrew/include \
              $(shell sdl2-config --cflags)
@@ -36,7 +36,7 @@ TARGET   := shooter
 # -----------------------------------------------------------------------------
 else ifeq ($(UNAME), Linux)
 CXX      := g++
-CXXFLAGS := -std=c++17 -O3 -ffast-math -Wall -Wextra -Isrc \
+CXXFLAGS := -std=c++17 -O3 -ffast-math -Wall -Wextra -Isrc -Isrc/third_party/imgui \
             $(shell sdl2-config --cflags)
 LDFLAGS  := $(shell sdl2-config --libs) -lSDL2_mixer -lGLEW -lGL
 STDLIB   :=
@@ -49,7 +49,7 @@ else
 UCRT64   := /c/msys64/ucrt64
 export PATH := $(UCRT64)/bin:$(PATH)
 CXX      := $(UCRT64)/bin/g++
-CXXFLAGS := -std=c++17 -O2 -Wall -Wextra -Isrc \
+CXXFLAGS := -std=c++17 -O2 -Wall -Wextra -Isrc -Isrc/third_party/imgui \
             -I$(UCRT64)/include \
             -I$(UCRT64)/include/SDL2
 LDFLAGS  := -L$(UCRT64)/lib \
@@ -108,7 +108,7 @@ web: $(SRC) $(HEADERS) web/index.html
 	# Sounds ship as Ogg Vorbis q7: ~1.2 MB instead of ~5.8 MB of WAV (the game prefers .ogg when both exist)
 	for f in $(WEB_DATA)/assets/sfx/*.wav; do oggenc -Q -q 7 -o "$${f%.wav}.ogg" "$$f" && rm "$$f" || exit 1; done
 	ln -s $$(brew --prefix glm 2>/dev/null || echo /usr)/include/glm build/web-include/glm
-	em++ -std=c++17 -O3 -Isrc -Ibuild/web-include $(SRC) -o $(WEB_OUT)/overdrive.js \
+	em++ -std=c++17 -O3 -Isrc -Isrc/third_party/imgui -Ibuild/web-include $(WEB_FLAGS) $(SRC) -o $(WEB_OUT)/overdrive.js \
 	    -sUSE_SDL=2 -sUSE_SDL_MIXER=2 \
 	    -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 \
 	    -sALLOW_MEMORY_GROWTH=1 -sENVIRONMENT=web \
