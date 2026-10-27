@@ -7,6 +7,8 @@
 //   drag     orbit          wheel  zoom          T  turntable on/off
 //   W        walk on/off    F      wind up a shot (loops while held on: P)
 //   H        hit flash      J      show joints   B  broken (parried) on/off   Esc quit
+//   N        the next attack to wind up (a boss's)   E  enraged (SOVEREIGN) / blade of light (ABSOLUTE)
+// `--viewer morningstar`: THE ABSOLUTE's second form, his own file.
 //
 // It's posed by the game's own buildEnemy and drawn with the game's shader
 // and bloom, so what you see is what the game will show.
@@ -31,13 +33,18 @@ class EnemyViewerState : public GameState {
 public:
     std::function<void()> onQuit;
 
-    EnemyViewerState(int w, int h, EnemyType t) : ui(w, h), screenW(w), screenH(h), type(t), e(t, {0.f, 0.f, 0.f}) {
+    EnemyViewerState(int w, int h, int fileId) : ui(w, h), screenW(w), screenH(h), file(fileId), type(enemyfile::typeOfFile(fileId)),
+                                                 e(enemyfile::typeOfFile(fileId), {0.f, 0.f, 0.f}) {
         shader.loadFiles("src/shaders/shader.vert", "src/shaders/shader.frag");
         whiteTex = makeGreyTexture();
         e.spawnTimer = 0.f;
+        if (file == enemyfile::FILE_MORNINGSTAR) { e.abForm = 1; e.scale = Enemy::MS_SCALE; e.abPhase = 4; }
         std::error_code ec;
-        fileTime = std::filesystem::last_write_time(enemyfile::path(type), ec);
-        enemyfile::model(type);
+        fileTime = std::filesystem::last_write_time(enemyfile::pathOf(file), ec);
+        enemyfile::modelOf(file);
+        if (g_devOverlay.find("enraged") != std::string::npos) e.enraged = true;
+        if (g_devOverlay.find("blade") != std::string::npos) e.abBlade = true;
+        if (size_t at = g_devOverlay.find("atk"); at != std::string::npos) attackIx = std::atoi(g_devOverlay.c_str() + at + 3);
         if (g_devOverlay.find("walk") != std::string::npos) walking = true;   // --overlay walk / aim / windup: hold a state (screenshots)
         if (g_devOverlay.find("windup") != std::string::npos) holdWind = 0.75f;
         else if (g_devOverlay.find("aim") != std::string::npos) holdWind = 0.4f;
@@ -64,6 +71,8 @@ public:
             case SDLK_h: e.hitFlashTimer = 0.12f; e.flinchAmp = hitreact::FLINCH_MAX * 0.6f; e.flinchAt = clock; break;
             case SDLK_j: showJoints = !showJoints; break;
             case SDLK_b: broken = !broken; break;
+            case SDLK_n: ++attackIx; windT = 0.f; break;
+            case SDLK_e: e.enraged = !e.enraged; if (type == EnemyType::ABSOLUTE) e.abBlade = !e.abBlade; break;
             case SDLK_t: turntable = !turntable; break;
             default: break;
         }
@@ -75,27 +84,31 @@ public:
         const EnemyStats& st = e.stats();
         e.moveSpeed = walking ? st.speed : 0.f;
         if (walking) e.animPhase += dt * 9.f;
+        e.age = clock;
+        if (type == EnemyType::ABSOLUTE) e.abGait = walking ? Enemy::AB_RUN * 0.5f : 0.f;
         e.hitFlashTimer = std::max(0.f, e.hitFlashTimer - dt);
         e.staggerTimer = broken ? 1.f : 0.f;
         const float WIND = 0.8f;
         e.attack = AttackKind::NONE; e.telegraphTimer = 0.f;
-        if (holdWind >= 0.f) { e.attack = AttackKind::SHOT; e.telegraphDuration = WIND; e.telegraphTimer = WIND * (1.f - holdWind); }
+        const AttackKind atk = attackKind();
+        if (holdWind >= 0.f) { e.attack = atk; e.telegraphDuration = WIND; e.telegraphTimer = WIND * (1.f - holdWind); }
         else if (winding) {
             windT += dt;
             if (windT >= WIND + 0.4f) { windT = 0.f; winding = loop; }
-            if (windT < WIND) { e.attack = AttackKind::SHOT; e.telegraphDuration = WIND; e.telegraphTimer = WIND - windT; }
+            if (windT < WIND) { e.attack = atk; e.telegraphDuration = WIND; e.telegraphTimer = WIND - windT; }
         }
+        if (type == EnemyType::ABSOLUTE) rig::tickAbsoluteBody(e, dt);   // (his body springs after the pose)
         pollT -= dt;
         if (pollT <= 0.f) {   // the file: reload it when it changes (and once more a moment later if a read failed mid-save)
             pollT = 0.5f;
             std::error_code ec;
-            auto t = std::filesystem::last_write_time(enemyfile::path(type), ec);
+            auto t = std::filesystem::last_write_time(enemyfile::pathOf(file), ec);
             bool changed = !ec && t != fileTime;
             if (changed || (retry && clock > retryAt)) {
                 if (changed) fileTime = t;
                 bool again = retry && !changed;
                 retry = false;
-                if (enemyfile::load(type, enemyfile::path(type))) { status = "reloaded"; statusT = 2.f; }
+                if (enemyfile::loadFile(file, enemyfile::pathOf(file))) { status = "reloaded"; statusT = 2.f; }
                 else if (!again) { retry = true; retryAt = clock + 1.f; }
             }
         }
@@ -182,8 +195,21 @@ private:
     UIBatch ui;
     int screenW, screenH;
     GLuint whiteTex = 0;
+    int file;
     EnemyType type;
     Enemy e;
+    int attackIx = 0;
+    // What F winds up: a boss's own moves (N steps through them), else a shot
+    AttackKind attackKind() const {
+        using A = AttackKind;
+        static const A sov[] = {A::CLEAVE, A::SWEEP, A::DASH, A::JUDGMENT, A::THRUST};
+        static const A abs[] = {A::AHOOK, A::AUPPER, A::ASTOMP, A::AJAB, A::AROUNDHOUSE};
+        static const A ms[] = {A::MJAB, A::MBACKHAND, A::MGRASP, A::MSUNDER};
+        if (file == enemyfile::FILE_MORNINGSTAR) return ms[attackIx % 4];
+        if (type == EnemyType::SOVEREIGN) return sov[attackIx % 5];
+        if (type == EnemyType::ABSOLUTE) return abs[attackIx % 5];
+        return A::SHOT;
+    }
     std::vector<BoxInstance> boxes;
     BoxRenderer boxer;
     float yaw = 200.f, pitch = 8.f, zoom = 1.f, clock = 0.f;
@@ -203,15 +229,15 @@ private:
         vm.cubeMesh.draw();
     }
     void overlay() {
-        const auto& m = enemyfile::slot(type);
+        const auto& m = enemyfile::slotOf(file);
         ui.begin();
         char buf[200];
-        std::snprintf(buf, sizeof buf, "%s   %s", e.stats().name, enemyfile::path(type).c_str());
+        std::snprintf(buf, sizeof buf, "%s   %s", file == enemyfile::FILE_MORNINGSTAR ? "MORNINGSTAR" : e.stats().name, enemyfile::pathOf(file).c_str());
         ui.textShadow(buf, 20, 18, 3, {0.95f, 0.92f, 0.85f, 1.f});
         int nMesh = 0;
         for (auto& p : m.parts) nMesh += p.mesh > 0;
         std::snprintf(buf, sizeof buf, "%zu parts (%d meshes), %zu joints%s%s", m.parts.size(), nMesh, m.joints.size(),
-                      walking ? "   WALKING" : "", e.attack == AttackKind::SHOT ? "   WINDING UP" : "");
+                      walking ? "   WALKING" : "", e.telegraphTimer > 0.f ? "   WINDING UP" : "");
         ui.textShadow(buf, 20, 52, 2, {0.7f, 0.72f, 0.78f, 1.f});
         if (!m.error.empty()) {
             ui.rect(14, 80, screenW - 28, 30, {0.35f, 0.05f, 0.05f, 0.85f});
@@ -219,7 +245,7 @@ private:
         } else if (statusT > 0.f) {
             ui.textShadow(status.c_str(), 20, 84, 2, {0.5f, 1.f, 0.6f, statusT});
         }
-        ui.textShadow("W walk   F wind up an attack   P loop it   H hit   B broken   J head hitbox", 20, screenH - 56, 2, {0.6f, 0.62f, 0.68f, 0.9f});
+        ui.textShadow("W walk   F wind up an attack   N next attack   P loop it   H hit   B broken   E enraged/blade   J head hitbox", 20, screenH - 56, 2, {0.6f, 0.62f, 0.68f, 0.9f});
         ui.textShadow("drag orbit   wheel zoom   T turntable   Esc quit", 20, screenH - 30, 2, {0.6f, 0.62f, 0.68f, 0.9f});
         ui.end();
     }
