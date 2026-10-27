@@ -1,5 +1,6 @@
 #pragma once
 #include "core/GameState.h"
+#include "core/Balance.h"
 #include "player/Player.h"
 #include "core/Camera.h"
 #include "core/FrameTimer.h"

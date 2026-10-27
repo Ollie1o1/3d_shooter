@@ -27,14 +27,14 @@ public:
     // drops back to A, so it has to be earned again
     bool  overdrive = false;
     float overdriveTimer = 0.f;
-    static constexpr float OVERDRIVE_DURATION = 6.f;
-    static constexpr float OVERDRIVE_MAX      = 8.f;    // what kills can stretch it to
-    static constexpr float OVERDRIVE_AFTER    = 30.f;   // where the meter lands when it burns out
-    static constexpr float OVERDRIVE_COOL     = 25.f;   // after it burns out, this long before it can start again
+    static inline float OVERDRIVE_DURATION = 6.f;
+    static inline float OVERDRIVE_MAX      = 8.f;    // what kills can stretch it to
+    static inline float OVERDRIVE_AFTER    = 30.f;   // where the meter lands when it burns out
+    static inline float OVERDRIVE_COOL     = 25.f;   // after it burns out, this long before it can start again
     // The meter fills at this share of what's scored (the run's score, `earned`, takes it all):
     // a run of good kills fills it, not a few hits (the game passes hits a smaller share still: HIT_METER)
-    static constexpr float METER_GAIN = 0.35f;
-    static constexpr float HIT_METER  = 0.35f;
+    static inline float METER_GAIN = 0.35f;
+    static inline float HIT_METER  = 0.35f;
     float driveCool = 0.f;
     bool  overdriveBegan = false, overdriveEnded = false;   // set as it starts / ends; the game takes them
     void  extendOverdrive(float s) { if (overdrive) overdriveTimer = std::min(OVERDRIVE_MAX, overdriveTimer + s); }

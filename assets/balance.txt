@@ -1,0 +1,2 @@
+# OVERDRIVE balance: what differs from the code's defaults (src/core/Balance.h).
+# Loaded at startup by the game and the tests. Edit here or in the game (F1).

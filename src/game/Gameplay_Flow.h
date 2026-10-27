@@ -684,7 +684,7 @@ inline void GameplayState::update(float dt) {
     updateBossDusk(dt);
 
     // Banners keep animating on the death/victory screens, not while paused
-    bool frozen = paused || armoryOpen;
+    bool frozen = paused || armoryOpen || g_balanceOpen;   // (F1: the balance panel)
     if (!banners.empty() && !frozen) {
         banners.front().time += dt;
         if (banners.front().time >= banners.front().duration) banners.pop_front();

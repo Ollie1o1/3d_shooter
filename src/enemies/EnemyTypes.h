@@ -67,8 +67,9 @@ struct EnemyStats {
     const char* hint;           // shown the first time the type appears
 };
 
-inline const EnemyStats& statsOf(EnemyType t) {
-    static const EnemyStats S[] = {
+// The table (the balance panel, Balance.h, edits it live; statsOf() is how everything reads it)
+inline EnemyStats& statsEdit(EnemyType t) {
+    static EnemyStats S[] = {
         {"HUSK",     60.f, 0.45f, 1.95f, 3.9f, 0.45f, 1.9f, false,
          {0.70f,0.26f,0.18f}, {1.0f,0.78f,0.20f}, {1.0f,0.50f,0.12f},
          "SLOW ORBS - PRESS F AS ONE REACHES YOU TO SEND IT BACK"},
@@ -129,6 +130,8 @@ inline const EnemyStats& statsOf(EnemyType t) {
     };
     return S[(int)t];
 }
+inline const EnemyStats& statsOf(EnemyType t) { return statsEdit(t); }
+
 
 // THE ABSOLUTE's tell colours (EnemyAbsolute.h): white parry, gold dodge or block, red get out
 enum class AbTell : int8_t { NONE = -1, WHITE = 0, GOLD = 1, RED = 2 };
