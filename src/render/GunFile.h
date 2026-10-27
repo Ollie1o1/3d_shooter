@@ -281,7 +281,7 @@ inline GunModel readGunText(const std::string& bytes, const std::string& path, c
                 for (size_t i = 0; i + 2 < Nr.size(); i += 3) md.nrm.push_back({Nr[i], Nr[i + 1], Nr[i + 2]});
             else meshlib::flatNormals(md);
             glm::vec3 c = meshlib::centre(md);
-            meshes.back().push_back({glm::translate(glm::mat4(1.f), c), pr.idx("material"), meshlib::add(std::move(md))});
+            meshes.back().push_back({glm::translate(glm::mat4(1.f), c), pr.idx("material"), meshlib::addShared(std::move(md))});
         }
     }
     const auto& nodes = doc.arr("nodes");
@@ -346,7 +346,7 @@ inline GunModel readGunText(const std::string& bytes, const std::string& path, c
                 // a mesh gets a mirrored copy
                 if (glm::determinant(glm::mat3(q.rel)) < 0.f) {
                     q.rel = q.rel * glm::scale(glm::mat4(1.f), glm::vec3(-1.f, 1.f, 1.f));
-                    if (q.mesh) q.mesh = meshlib::add(meshlib::mirrorX(*meshlib::get(q.mesh)));
+                    if (q.mesh) q.mesh = meshlib::addShared(meshlib::mirrorX(*meshlib::get(q.mesh)));
                 }
                 if (bx.mat >= 0 && bx.mat < (int)mats.size()) { q.color = mats[bx.mat].color; q.glowScale = mats[bx.mat].glowScale; }
                 m.parts.push_back(q);

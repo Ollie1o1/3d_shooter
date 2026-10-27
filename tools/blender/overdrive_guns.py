@@ -48,15 +48,22 @@ import traceback
 import bpy
 from mathutils import Euler, Matrix, Vector
 
-GUNS = ["revolver", "shotgun", "lancer", "longshot", "sword", "husk", "sentinel", "brute", "ripper", "raptor", "mite", "juggernaut", "shieldbearer"]
+GUNS = ["revolver", "shotgun", "lancer", "longshot", "sword", "husk", "sentinel", "brute", "ripper", "raptor", "mite", "juggernaut", "shieldbearer",
+        "sovereign", "absolute", "morningstar"]
 # Enemies (assets/enemies/*.glb, src/render/EnemyFile.h): a humanoid's joints. The code turns
 # them where the file puts them; anything not under a joint rides the body (bob, crouch)
-ENEMIES = ["husk", "sentinel", "brute", "ripper", "raptor", "mite", "juggernaut", "shieldbearer"]
+ENEMIES = ["husk", "sentinel", "brute", "ripper", "raptor", "mite", "juggernaut", "shieldbearer", "sovereign", "absolute", "morningstar"]
 HUMANOID = ["hipL", "hipR", "torso", "head", "armL", "armR"]
 RIPPER = ["body", "head", "legFL", "legFR", "legBL", "legBR", "bladeL", "bladeR"]
 RAPTOR = ["head", "tail", "wingL", "wingR", "tipL", "tipR"]
 MITE = ["body", "legL1", "legL2", "legL3", "legR1", "legR2", "legR3"]
-ENEMY_JOINTS = sorted(set(HUMANOID + RIPPER + RAPTOR + MITE + ["shield"]))
+# the bosses (tools/blender/sovereign_build.py, absolute_build.py): the SOVEREIGN's sword, cape and halo; THE
+# ABSOLUTE's (and MORNINGSTAR's) whole body
+SOVEREIGN = HUMANOID + ["weapon", "cape", "capeTip", "halo", "crown"]
+ABSOLUTE = HUMANOID + ["halo", "crown", "weapon", "kneeL", "kneeR", "ankleL", "ankleR", "waist", "clothF", "clothB",
+                       "elbowL", "elbowR", "handL", "handR", "fingersL", "fingersR", "tipsL", "tipsR",
+                       "thumbL", "thumbR", "thumbTipL", "thumbTipR", "ribbonL", "ribbonR"]
+ENEMY_JOINTS = sorted(set(HUMANOID + RIPPER + RAPTOR + MITE + ["shield"] + SOVEREIGN + ABSOLUTE))
 JOINTS = ["crane", "cylinder", "hammer", "trigger", "needle", "pump", "bolt", "mag", "muzzle", "cells"] + ENEMY_JOINTS
 # What each gun's rig and extras need (jointsNeeded() in src/render/GunKit.h)
 NEEDED = {
@@ -68,12 +75,15 @@ NEEDED = {
     "husk": HUMANOID, "sentinel": HUMANOID, "brute": HUMANOID,
     "ripper": RIPPER, "raptor": RAPTOR, "mite": MITE,
     "juggernaut": HUMANOID, "shieldbearer": HUMANOID + ["shield"],
+    "sovereign": SOVEREIGN, "absolute": ABSOLUTE, "morningstar": ABSOLUTE,
 }
 CHANNELS = ["const", "glow", "accent", "breath", "stripe", "rim", "needle", "port", "gem", "charge"]
 # glow: the enemy's glow, flaring in a wind-up; shot: its shot colour; pulse: a throb (BRUTE's core);
 # dive: lit while diving (RAPTOR); fuse: the MITE's core; blade: the RIPPER's blades (src/render/EnemyFile.h)
-ENEMY_CHANNELS = ["const", "glow", "shot", "pulse", "dive", "fuse", "blade", "smash", "rim"]   # smash: JUGGERNAUT's fist; rim: the shield's
-FLAGS = ["loaded", "!loaded", "bigmag", "!bigmag", "broken", "!broken"]
+ENEMY_CHANNELS = ["const", "glow", "shot", "pulse", "dive", "fuse", "blade", "smash", "rim",   # smash: JUGGERNAUT's fist; rim: the shield's
+                  "edge", "cape", "halo", "seam", "soft", "light", "eye", "core",                 # the bosses' (src/render/EnemyFile.h)
+                  "tellR", "tellL", "tellLegR", "tellLegL", "auraR", "auraL", "auraLegR", "auraLegL", "runeR", "runeL", "sword"]
+FLAGS = ["loaded", "!loaded", "bigmag", "!bigmag", "broken", "!broken", "blade", "!blade", "enraged", "!enraged"]
 # The arsenal's palette (GunKit.h): blackened gunmetal, worn steel, edges, bone, brass, and the glow
 PALETTE = {
     "black": (0.10, 0.10, 0.11), "steel": (0.32, 0.32, 0.34), "edge": (0.46, 0.46, 0.49),

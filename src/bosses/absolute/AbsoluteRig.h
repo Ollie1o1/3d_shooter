@@ -422,6 +422,7 @@ inline mat4 absoluteHeadFrame(const Enemy& e, const mat4& root, const AbsPose& P
     return absoluteTorsoFrame(e, root, P) * T({0.f, 0.95f, 0.f}) * RY(-0.4f * (P.torsoYaw + P.hipYaw)) * RX(P.headPitch);   // (his eyes stay on you)
 }
 
+inline void absoluteWhiteHot(const Enemy& e, Rig& r, size_t first);
 inline void buildAbsolute(const Enemy& e, float time, Rig& r, const mat4& root) {
     const AbsPose P = absoluteLivePose(e, time);
     const float tp = e.telegraphProgress();
@@ -588,12 +589,100 @@ inline void buildAbsolute(const Enemy& e, float time, Rig& r, const mat4& root) 
             r.box(sw, {0.f, -0.35f - 0.45f * k, 0.f}, {0.09f - 0.02f * k, 0.46f, 0.025f}, plate, bl * (0.9f + 0.1f * k));
         r.box(sw, {0.f, -0.75f, 0.015f}, {0.02f, 1.3f, 0.01f}, light, bl * 1.4f);
     }
-    // MORNINGSTAR's white tell: his whole body goes white-hot as the blow comes (the one thing to parry)
-    if (ms && tell == AbTell::WHITE) {
-        const float k = smooth01(tp * 1.2f);
-        for (size_t j = first; j < r.out.size(); ++j) {
-            r.out[j].color = glm::mix(r.out[j].color, vec3{1.f}, 0.7f * k);
-            r.out[j].emissive = glm::mix(r.out[j].emissive, vec3{2.2f, 2.15f, 2.1f}, 0.25f + 0.65f * k);
-        }
+    absoluteWhiteHot(e, r, first);
+}
+
+// MORNINGSTAR's white tell: his whole body (the boxes from `first` on) goes white-hot as the blow
+// comes (the one thing to parry)
+inline void absoluteWhiteHot(const Enemy& e, Rig& r, size_t first) {
+    if (!e.morning() || e.telegraphTimer <= 0.f || abTellOf(e.attack) != AbTell::WHITE) return;
+    const float k = smooth01(e.telegraphProgress() * 1.2f);
+    for (size_t j = first; j < r.out.size(); ++j) {
+        r.out[j].color = glm::mix(r.out[j].color, vec3{1.f}, 0.7f * k);
+        r.out[j].emissive = glm::mix(r.out[j].emissive, vec3{2.2f, 2.15f, 2.1f}, 0.25f + 0.65f * k);
     }
+}
+
+// His body from a file (assets/enemies/absolute.glb; MORNINGSTAR's, morningstar.glb): the joints turn
+// by the same sprung pose buildAbsolute draws, and each glow channel shines as its parts do there.
+// A limb's seams (tell*), its glow (aura*) and its gauntlet's runes (rune*) take the tell's colour
+// when it's the striking limb. Every fixed colour dims with MORNINGSTAR's light in TOTALITY (tint).
+inline bool absoluteFilePose(const Enemy& e, float time, const mat4& root, mat4& fileRoot, FilePose& F, vec3& glowOut) {
+    using namespace enemyfile;
+    const AbsPose P = absoluteLivePose(e, time);
+    const float tp = e.telegraphProgress();
+    const bool  hurt = e.staggered() && !e.abReeling;
+    const float pulse = 0.85f + 0.15f * std::sin(time * 3.f) * (hurt ? 3.f : 1.f);
+    const bool ms = e.morning();
+    const float dim = ms && e.abPhase >= 6 ? 0.08f : 1.f;
+    const vec3 light = ms ? vec3{2.f, 1.9f, 1.8f} * dim : vec3{1.6f, 1.5f, 1.25f}, gold = ms ? vec3{2.f, 1.9f, 1.8f} * dim : vec3{1.5f, 1.1f, 0.45f};
+    const vec3 seam = light * (hurt ? 0.5f : 1.3f) * pulse;
+    const vec3 soft = ms ? vec3{1.f, 0.17f, 0.02f} * (hurt ? 0.35f : 0.6f) * dim : light * (hurt ? 0.04f : 0.1f);
+    const AbTell tell0 = e.telegraphTimer > 0.f ? abTellOf(e.attack) : AbTell::NONE;
+    const AbTell tell = ms && tell0 != AbTell::WHITE ? AbTell::NONE : tell0;
+    const vec3 tc = tell == AbTell::GOLD ? abGoldTell(vec3{2.2f, 1.72f, 0.7f}) : tell == AbTell::RED ? vec3{2.4f, 0.25f, 0.15f} : vec3{1.9f, 1.9f, 2.0f};
+    const float tk = 0.5f + 3.f * tp;
+    auto lit = [&](int limb, vec3 base) {
+        if (tell == AbTell::NONE || P.glow < 0) return base;
+        bool on = P.glow == limb || P.glow == 5 || (P.glow == 3 && (limb == 0 || limb == 1));
+        return on ? tc * tk : base;
+    };
+    fileRoot = root * T({0.f, P.lift - P.crouch + absBob(e), 0.f}) * RY(P.hipYaw);
+    // legs
+    F.motion[E_HIPR] = RX(P.hipR) * RZ(-P.stanceW);  F.motion[E_HIPL] = RX(P.hipL) * RZ(P.stanceW);
+    F.motion[E_KNEE_R] = RX(P.kneeR);                F.motion[E_KNEE_L] = RX(P.kneeL);
+    F.motion[E_ANKLE_R] = RX(-(P.kneeR + P.hipR) * P.ankle);
+    F.motion[E_ANKLE_L] = RX(-(P.kneeL + P.hipL) * P.ankle);
+    // the waist, the wraps that hang from it
+    F.motion[E_WAIST] = RY(P.torsoYaw * 0.5f);
+    const float sway = std::sin(time * 1.9f) * 0.08f + glm::clamp(e.moveSpeed / 30.f, 0.f, 0.6f);
+    F.motion[E_CLOTH_F] = RX(-(sway + 0.025f));
+    F.motion[E_CLOTH_B] = RX(sway + 0.125f);
+    // torso, head (his eyes stay on you), the halo turning behind it
+    F.motion[E_TORSO] = RY(P.torsoYaw) * RZ(P.torsoRoll) * RX(P.torsoPitch);
+    F.motion[E_HEAD] = RY(-0.4f * (P.torsoYaw + P.hipYaw)) * RX(P.headPitch);
+    F.motion[E_HALO] = RX(0.15f + P.torsoPitch * 0.3f) * RZ(time * 0.35f);
+    // arms: shoulder, elbow, the sword hand's wrist, fingers and thumb curling into a fist, the wraps trailing
+    for (float s : {-1.f, 1.f}) {
+        const bool right = s < 0.f;
+        const float sh = right ? P.shR : P.shL, shz = right ? P.shRz : P.shLz, el = right ? P.elR : P.elL;
+        const float fist = right ? P.fistR : P.fistL;
+        F.motion[right ? E_ARMR : E_ARML] = T({0.f, P.shrug, 0.f}) * RX(sh) * RZ(s * (0.1f + shz));
+        F.motion[right ? E_ELBOW_R : E_ELBOW_L] = RX(-el);
+        if (right && e.abBlade) {
+            const vec3 grip{0.f, -0.07f, 0.03f};
+            F.motion[E_HAND_R] = T(grip) * RY(P.bladeRoll) * RZ(-P.bladeCock) * T(-grip);
+        }
+        F.motion[right ? E_FINGERS_R : E_FINGERS_L] = RX(-fist * 0.8f);
+        F.motion[right ? E_TIPS_R : E_TIPS_L] = RX(-fist * 1.1f);
+        F.motion[right ? E_THUMB_R : E_THUMB_L] = RZ(-s * 0.5f) * RX(-fist * 0.6f);
+        F.motion[right ? E_THUMB_TIP_R : E_THUMB_TIP_L] = RX(-fist * 0.6f);
+        const float trail = 0.5f + glm::clamp(e.moveSpeed / 20.f, 0.f, 1.2f) + 0.12f * std::sin(time * 4.f + s);
+        F.motion[right ? E_RIBBON_R : E_RIBBON_L] = RX(trail + 0.1f - (sh - el));
+    }
+    F.motion[E_SWORD] = RZ(1.5707963f);   // (through the fist, out of the thumb side)
+    // what glows
+    const vec3 eye = ms ? vec3{3.2f, 3.1f, 3.f} : vec3{2.8f, 0.18f, 0.12f};
+    const float eyeK = (hurt ? 0.5f : 1.f) * (tell != AbTell::NONE ? 1.f + 0.6f * tp : 1.f) * pulse;
+    const vec3 rune = ms ? vec3{1.9f, 1.8f, 1.7f} * dim : vec3{0.6f, 0.7f, 1.7f};
+    F.chan[C_GLOW] = light;
+    F.chan[C_SEAM] = seam;
+    F.chan[C_SOFT] = soft;
+    F.chan[C_LIGHT] = light;
+    F.chan[C_EYE] = eye * eyeK;
+    F.chan[C_CORE] = seam * (1.2f + 0.4f * std::sin(time * 6.f));
+    F.chan[C_HALO] = gold * (hurt ? 0.5f : 1.6f) * pulse;
+    F.chan[C_TELL_R] = lit(0, seam);    F.chan[C_TELL_L] = lit(1, seam);
+    F.chan[C_TELL_LEG_R] = lit(2, seam); F.chan[C_TELL_LEG_L] = lit(6, seam);
+    F.chan[C_AURA_R] = lit(0, soft);    F.chan[C_AURA_L] = lit(1, soft);
+    F.chan[C_AURA_LEG_R] = lit(2, soft); F.chan[C_AURA_LEG_L] = lit(6, soft);
+    F.chan[C_RUNE_R] = lit(0, rune * (0.85f + 0.15f * std::sin(time * 3.f - 1.f)));
+    F.chan[C_RUNE_L] = lit(1, rune * (0.85f + 0.15f * std::sin(time * 3.f + 1.f)));
+    F.chan[C_SWORD] = tell != AbTell::NONE && P.glow == 4 ? tc * tk : vec3{1.9f, 1.75f, 2.1f};
+    F.flag[F_BLADE] = e.abBlade;
+    F.flag[F_BROKEN] = hurt;
+    F.wave = time * 2.5f;
+    F.tint = ms ? 0.3f + 0.7f * dim : 1.f;
+    glowOut = light;
+    return true;
 }

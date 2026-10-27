@@ -11,6 +11,11 @@
 //              RIPPER     body head legFL legFR legBL legBR bladeL bladeR
 //              RAPTOR     head tail wingL wingR tipL tipR (tips ride the wings)
 //              MITE       body legL1-3 legR1-3
+//              SOVEREIGN  a humanoid's, and weapon (the greatsword, turned in his fist), cape and
+//                         capeTip (its hem, lagging it), halo (turning), crown (rides the head)
+//              ABSOLUTE   (and MORNINGSTAR, his own file on the same joints) hips, knees, ankles,
+//                         waist, clothF/B, torso, head, crown, halo, shoulders (armL/R), elbows,
+//                         ribbons, hands, fingers, tips, thumbs, thumbTips, weapon (the blade of light)
 //   glow     a channel the code sets every frame, x the part's k:
 //            "glow"  the enemy's glow colour, flaring through a wind-up
 //            "shot"  its shot colour, blazing as the shot is about to leave
@@ -20,14 +25,19 @@
 //            "blade" a RIPPER's blades, brightening as it crouches to lunge
 //            "smash" a JUGGERNAUT's hammer fist, lit only while it winds up a smash
 //            "rim"   a SHIELDBEARER's shield rim, brightening through a wind-up
+//            the SOVEREIGN's: "edge" his blade's edge and runes, "halo", "cape" (smoulders, enraged)
+//            THE ABSOLUTE's: "seam" "soft" "light" "eye" "core" "halo" "sword"; a limb's seams, glow
+//            and runes ("tellR", "auraLegL", "runeR"...) take his tell's colour when it strikes
 //            "const" k itself
+//   flags    "blade" (THE ABSOLUTE's blade of light is drawn), "enraged", "broken": a part with
+//            show = "enraged" is drawn only then ("!enraged": only not)
 //   colours  material base colours; "glow*0.3": the (flaring) glow colour x 0.3
 //
 // The head hitbox doesn't read the file (headBox, EnemyModel.h): a test holds
 // every head box inside it. No OpenGL.
 // =============================================================================
 #include "render/GunFile.h"
-#include "enemies/EnemyTypes.h"
+#include "enemies/Enemy.h"
 #include <array>
 #include <cstdio>
 #include <string>
@@ -39,21 +49,44 @@ using gunkit::GunModel;
 enum Joint { E_ROOT, E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR,
              E_BODY, E_LEG_FL, E_LEG_FR, E_LEG_BL, E_LEG_BR, E_BLADE_L, E_BLADE_R,
              E_TAIL, E_WING_L, E_WING_R, E_TIP_L, E_TIP_R,
-             E_LEG_L1, E_LEG_L2, E_LEG_L3, E_LEG_R1, E_LEG_R2, E_LEG_R3, E_SHIELD, E_COUNT };
+             E_LEG_L1, E_LEG_L2, E_LEG_L3, E_LEG_R1, E_LEG_R2, E_LEG_R3, E_SHIELD,
+             // the bosses: the SOVEREIGN's sword, cape and halo; THE ABSOLUTE's (and MORNINGSTAR's) whole body
+             E_SWORD, E_CAPE, E_CAPE_TIP, E_HALO, E_CROWN,
+             E_KNEE_L, E_KNEE_R, E_ANKLE_L, E_ANKLE_R, E_WAIST, E_CLOTH_F, E_CLOTH_B,
+             E_ELBOW_L, E_ELBOW_R, E_HAND_L, E_HAND_R, E_FINGERS_L, E_FINGERS_R, E_TIPS_L, E_TIPS_R,
+             E_THUMB_L, E_THUMB_R, E_THUMB_TIP_L, E_THUMB_TIP_R, E_RIBBON_L, E_RIBBON_R, E_COUNT };
 inline const char* jointName(int j) {
     static const char* N[E_COUNT] = {"root", "hipL", "hipR", "torso", "head", "armL", "armR",
                                      "body", "legFL", "legFR", "legBL", "legBR", "bladeL", "bladeR",
                                      "tail", "wingL", "wingR", "tipL", "tipR",
-                                     "legL1", "legL2", "legL3", "legR1", "legR2", "legR3", "shield"};
+                                     "legL1", "legL2", "legL3", "legR1", "legR2", "legR3", "shield",
+                                     "weapon", "cape", "capeTip", "halo", "crown",
+                                     "kneeL", "kneeR", "ankleL", "ankleR", "waist", "clothF", "clothB",
+                                     "elbowL", "elbowR", "handL", "handR", "fingersL", "fingersR", "tipsL", "tipsR",
+                                     "thumbL", "thumbR", "thumbTipL", "thumbTipR", "ribbonL", "ribbonR"};
     return N[j];
 }
-enum Chan { C_CONST, C_GLOW, C_SHOT, C_PULSE, C_DIVE, C_FUSE, C_BLADE, C_SMASH, C_RIM, C_COUNT };
+enum Chan { C_CONST, C_GLOW, C_SHOT, C_PULSE, C_DIVE, C_FUSE, C_BLADE, C_SMASH, C_RIM,
+            C_EDGE, C_CAPE, C_HALO,                                   // the SOVEREIGN's
+            C_SEAM, C_SOFT, C_LIGHT, C_EYE, C_CORE,                   // THE ABSOLUTE's (and MORNINGSTAR's) ...
+            C_TELL_R, C_TELL_L, C_TELL_LEG_R, C_TELL_LEG_L,           // ... a limb's seams, lit by its tell
+            C_AURA_R, C_AURA_L, C_AURA_LEG_R, C_AURA_LEG_L,           // ... a limb's glow, lit by its tell
+            C_RUNE_R, C_RUNE_L, C_SWORD, C_COUNT };
 inline const char* chanName(int c) {
-    static const char* N[C_COUNT] = {"const", "glow", "shot", "pulse", "dive", "fuse", "blade", "smash", "rim"};
+    static const char* N[C_COUNT] = {"const", "glow", "shot", "pulse", "dive", "fuse", "blade", "smash", "rim",
+                                     "edge", "cape", "halo", "seam", "soft", "light", "eye", "core",
+                                     "tellR", "tellL", "tellLegR", "tellLegL", "auraR", "auraL", "auraLegR", "auraLegL",
+                                     "runeR", "runeL", "sword"};
     return N[c];
 }
-inline const char* flagName(int) { return ""; }
-inline const gunkit::Names& names() { static const gunkit::Names n{E_COUNT, C_COUNT, 0, jointName, chanName, flagName}; return n; }
+// Flags a part can show on (or, "!enraged", off): THE ABSOLUTE's blade of light (phase 3),
+// the SOVEREIGN enraged, a boss broken (parried)
+enum Flag { F_BLADE, F_ENRAGED, F_BROKEN, F_COUNT };
+inline const char* flagName(int f) {
+    static const char* N[F_COUNT] = {"blade", "enraged", "broken"};
+    return N[f];
+}
+inline const gunkit::Names& names() { static const gunkit::Names n{E_COUNT, C_COUNT, F_COUNT, jointName, chanName, flagName}; return n; }
 
 // The enemies that have a file
 inline const char* fileName(EnemyType t) {
@@ -66,9 +99,18 @@ inline const char* fileName(EnemyType t) {
         case EnemyType::MITE:     return "mite";
         case EnemyType::JUGGERNAUT:   return "juggernaut";
         case EnemyType::SHIELDBEARER: return "shieldbearer";
+        case EnemyType::SOVEREIGN:    return "sovereign";
+        case EnemyType::ABSOLUTE:     return "absolute";
         default: return nullptr;
     }
 }
+// A file's id: an EnemyType's, or MORNINGSTAR's (THE ABSOLUTE's second form has a file of its own,
+// on his joints: assets/enemies/morningstar.glb)
+constexpr int FILE_MORNINGSTAR = (int)EnemyType::COUNT, FILE_COUNT = FILE_MORNINGSTAR + 1;
+inline const char* fileNameOf(int f) { return f == FILE_MORNINGSTAR ? "morningstar" : f >= 0 && f < FILE_MORNINGSTAR ? fileName((EnemyType)f) : nullptr; }
+inline EnemyType typeOfFile(int f) { return f == FILE_MORNINGSTAR ? EnemyType::ABSOLUTE : (EnemyType)f; }
+inline int fileOf(const Enemy& e) { return e.type == EnemyType::ABSOLUTE && e.morning() ? FILE_MORNINGSTAR : (int)e.type; }
+
 // The joints a type's rig turns (a file must have them all)
 inline std::vector<int> neededJoints(EnemyType t) {
     switch (t) {
@@ -76,33 +118,43 @@ inline std::vector<int> neededJoints(EnemyType t) {
         case EnemyType::RAPTOR: return {E_HEAD, E_TAIL, E_WING_L, E_WING_R, E_TIP_L, E_TIP_R};
         case EnemyType::MITE:   return {E_BODY, E_LEG_L1, E_LEG_L2, E_LEG_L3, E_LEG_R1, E_LEG_R2, E_LEG_R3};
         case EnemyType::SHIELDBEARER: return {E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR, E_SHIELD};
+        case EnemyType::SOVEREIGN: return {E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR, E_SWORD, E_CAPE, E_CAPE_TIP, E_HALO, E_CROWN};
+        case EnemyType::ABSOLUTE:
+            return {E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR, E_HALO, E_CROWN, E_SWORD,
+                    E_KNEE_L, E_KNEE_R, E_ANKLE_L, E_ANKLE_R, E_WAIST, E_CLOTH_F, E_CLOTH_B,
+                    E_ELBOW_L, E_ELBOW_R, E_HAND_L, E_HAND_R, E_FINGERS_L, E_FINGERS_R, E_TIPS_L, E_TIPS_R,
+                    E_THUMB_L, E_THUMB_R, E_THUMB_TIP_L, E_THUMB_TIP_R, E_RIBBON_L, E_RIBBON_R};
         default:                return {E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR};
     }
 }
-inline std::string path(EnemyType t) { const char* n = fileName(t); return n ? std::string("assets/enemies/") + n + ".glb" : std::string(); }
+inline std::string pathOf(int f) { const char* n = fileNameOf(f); return n ? std::string("assets/enemies/") + n + ".glb" : std::string(); }
+inline std::string path(EnemyType t) { return pathOf((int)t); }
 
-inline GunModel& slot(EnemyType t) { static std::array<GunModel, (size_t)EnemyType::COUNT> M; return M[(size_t)t]; }
+inline GunModel& slotOf(int f) { static std::array<GunModel, (size_t)FILE_COUNT> M; return M[(size_t)f]; }
+inline GunModel& slot(EnemyType t) { return slotOf((int)t); }
 // (Re)load an enemy's file; false (and the model's error says why) if it couldn't be.
 // A broken save keeps the last good model; with none, the enemy is drawn from code.
-inline bool load(EnemyType t, const std::string& p) {
+inline bool loadFile(int f, const std::string& p) {
     GunModel m = gunkit::readGunFile(p, names());
     if (m.error.empty())
-        for (int j : neededJoints(t))
+        for (int j : neededJoints(typeOfFile(f)))
             if (!m.has(j)) { m.error = p + ": no '" + jointName(j) + "' joint"; break; }
     if (!m.error.empty()) std::fprintf(stderr, "enemy: %s\n", m.error.c_str());
     bool ok = m.error.empty();
-    if (ok || slot(t).parts.empty()) slot(t) = std::move(m);
-    else slot(t).error = m.error;
+    if (ok || slotOf(f).parts.empty()) slotOf(f) = std::move(m);
+    else slotOf(f).error = m.error;
     return ok;
 }
-// The model for a type: nullptr if it has no file (or never loaded one)
-inline const GunModel* model(EnemyType t) {
-    if (!fileName(t)) return nullptr;
-    static std::array<bool, (size_t)EnemyType::COUNT> tried{};
-    if (!tried[(size_t)t]) { tried[(size_t)t] = true; load(t, path(t)); }
-    const GunModel& m = slot(t);
+inline bool load(EnemyType t, const std::string& p) { return loadFile((int)t, p); }
+// The model for a file: nullptr if there's no such file (or it never loaded)
+inline const GunModel* modelOf(int f) {
+    if (!fileNameOf(f)) return nullptr;
+    static std::array<bool, (size_t)FILE_COUNT> tried{};
+    if (!tried[(size_t)f]) { tried[(size_t)f] = true; loadFile(f, pathOf(f)); }
+    const GunModel& m = slotOf(f);
     return m.parts.empty() ? nullptr : &m;
 }
+inline const GunModel* model(EnemyType t) { return modelOf((int)t); }
 
 // Each joint at rest relative to its parent joint (from the file)
 inline void restLocals(const GunModel& m, glm::mat4 local[E_COUNT], int parent[E_COUNT]) {

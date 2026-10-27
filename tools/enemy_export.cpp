@@ -55,7 +55,20 @@ static std::vector<State> states(EnemyType t) {
 }
 
 int main(int argc, char** argv) {
-    if (argc < 2) { std::fprintf(stderr, "usage: enemy_export <husk|sentinel|brute|ripper|raptor|mite> [out.glb]\n"); return 2; }
+    if (argc < 2) { std::fprintf(stderr, "usage: enemy_export <husk|sentinel|brute|ripper|raptor|mite> [out.glb]\n"
+                                         "       enemy_export --joints <name> out.glb   (just its joints: a boss's start in Blender)\n"); return 2; }
+    if (std::string(argv[1]) == "--joints") {   // a skeleton: the joints where the code turns them, no parts
+        if (argc < 4) { std::fprintf(stderr, "usage: enemy_export --joints <name> out.glb\n"); return 2; }
+        int f = -1;
+        for (int k = 0; k < FILE_COUNT; ++k) if (fileNameOf(k) && std::string(argv[2]) == fileNameOf(k)) f = k;
+        if (f < 0) { std::fprintf(stderr, "no file rig called '%s'\n", argv[2]); return 2; }
+        gunkit::GunModel m; m.joints = restJointsOf(typeOfFile(f));
+        if (!gunkit::writeGunFile(argv[3], m, argv[2], [](const gunkit::ModelPart&) { return std::string("x"); }, names())) {
+            std::fprintf(stderr, "can't write %s\n", argv[3]); return 1;
+        }
+        std::printf("%s: %zu joints -> %s\n", argv[2], m.joints.size(), argv[3]);
+        return 0;
+    }
     std::string name = argv[1];
     EnemyType t = EnemyType::COUNT;
     for (int k = 0; k < (int)EnemyType::COUNT; ++k) if (fileName((EnemyType)k) && name == fileName((EnemyType)k)) t = (EnemyType)k;
