@@ -4279,8 +4279,9 @@ int main() {
                     if (J.id == want.id && glm::length(glm::vec3(J.frame[3]) - glm::vec3(want.frame[3])) > 2e-3f) {
                         std::printf("      %s: its '%s' joint has moved\n", nm, enemyfile::jointName(J.id)); jointsAll = false;
                     }
-            // at rest, as drawn
-            Enemy e(t, {0.f, 0.f, 0.f}); e.spawnTimer = 0.f;
+            // at rest, as drawn (its walk cycle at 0: the constructor picks a random phase, and
+            // rand() differs between libcs, so leaving it would make this check differ by platform)
+            Enemy e(t, {0.f, 0.f, 0.f}); e.spawnTimer = 0.f; e.animPhase = 0.f; e.age = 0.f;
             glm::mat4 fr; rig::FilePose P; glm::vec3 g; glm::mat4 Wj[enemyfile::E_COUNT];
             std::vector<BoxInstance> sink; rig::Rig dummy{sink};
             rig::filePoseOf(e, 0.f, glm::mat4(1.f), fr, P, g);
@@ -4322,7 +4323,7 @@ int main() {
                     for (size_t i = 0; same && i < a.size(); ++i) {
                         bool hit = false;
                         for (size_t j = 0; j < b.size() && !hit; ++j) {
-                            bool eq = !used[j] && a[i].mesh > 0.5f == b[j].mesh > 0.5f && glm::length(a[i].color - b[j].color) < 1e-4f
+                            bool eq = !used[j] && (a[i].mesh > 0.5f) == (b[j].mesh > 0.5f) && glm::length(a[i].color - b[j].color) < 1e-4f
                                    && glm::length(a[i].emissive - b[j].emissive) < 1e-4f;
                             for (int c = 0; eq && c < 4; ++c) eq = glm::length(a[i].model[c] - b[j].model[c]) < 1e-4f;
                             if (eq) { used[j] = 1; hit = true; }
