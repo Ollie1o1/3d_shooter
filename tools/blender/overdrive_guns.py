@@ -47,8 +47,12 @@ import traceback
 import bpy
 from mathutils import Euler, Matrix, Vector
 
-GUNS = ["revolver", "shotgun", "lancer", "longshot", "sword"]
-JOINTS = ["crane", "cylinder", "hammer", "trigger", "needle", "pump", "bolt", "mag", "muzzle", "cells"]
+GUNS = ["revolver", "shotgun", "lancer", "longshot", "sword", "husk"]
+# Enemies (assets/enemies/*.glb, src/render/EnemyFile.h): a humanoid's joints. The code turns
+# them where the file puts them; anything not under a joint rides the body (bob, crouch)
+ENEMIES = ["husk"]
+ENEMY_JOINTS = ["hipL", "hipR", "torso", "head", "armL", "armR"]
+JOINTS = ["crane", "cylinder", "hammer", "trigger", "needle", "pump", "bolt", "mag", "muzzle", "cells"] + ENEMY_JOINTS
 # What each gun's rig and extras need (jointsNeeded() in src/render/GunKit.h)
 NEEDED = {
     "revolver": ["crane", "cylinder", "hammer", "trigger", "needle", "muzzle", "cells"],
@@ -56,13 +60,17 @@ NEEDED = {
     "lancer": ["bolt", "muzzle", "cells"],
     "longshot": ["bolt", "mag", "muzzle", "cells"],
     "sword": ["cells"],
+    "husk": ENEMY_JOINTS,
 }
 CHANNELS = ["const", "glow", "accent", "breath", "stripe", "rim", "needle", "port", "gem", "charge"]
+ENEMY_CHANNELS = ["const", "glow", "shot"]   # glow: the enemy's glow, flaring in a wind-up; shot: its shot colour
 FLAGS = ["loaded", "!loaded", "bigmag", "!bigmag", "broken", "!broken"]
 # The arsenal's palette (GunKit.h): blackened gunmetal, worn steel, edges, bone, brass, and the glow
 PALETTE = {
     "black": (0.10, 0.10, 0.11), "steel": (0.32, 0.32, 0.34), "edge": (0.46, 0.46, 0.49),
     "bone": (0.76, 0.71, 0.61), "brass": (0.70, 0.52, 0.24), "glow": (1.0, 0.68, 0.22),
+    # the HUSK's: its rust-red plate, dark gunmetal
+    "husk": (0.70, 0.26, 0.18), "gunmetal": (0.16, 0.15, 0.17),
 }
 LIVE_DIR = os.environ.get("OVERDRIVE_LIVE_DIR") or os.path.join(os.path.expanduser("~"), ".overdrive_blender")
 
@@ -104,7 +112,11 @@ def guns_dir(folder):
 
 
 def gun_path(scene, gun=None):
-    return os.path.join(guns_dir(scene.overdrive_repo), (gun or scene.overdrive_gun) + ".glb")
+    gun = gun or scene.overdrive_gun
+    d = guns_dir(scene.overdrive_repo)
+    if gun in ENEMIES:   # assets/enemies, beside assets/guns
+        d = os.path.join(os.path.dirname(d), "enemies")
+    return os.path.join(d, gun + ".glb")
 
 
 # ---- building blocks (data API only: they work from the live link, scripts, anywhere) ----
@@ -189,8 +201,8 @@ def set_glow(ob, channel=None, k=1.0, phase=None):
             del ob[key]
     if channel is None:
         return
-    if channel not in CHANNELS:
-        raise ValueError("'%s' isn't a glow channel: %s" % (channel, ", ".join(CHANNELS)))
+    if channel not in CHANNELS + ENEMY_CHANNELS:
+        raise ValueError("'%s' isn't a glow channel: %s" % (channel, ", ".join(CHANNELS + ENEMY_CHANNELS)))
     ob["glow"] = channel
     if isinstance(k, (tuple, list)):
         ob["k"] = [float(x) for x in k]
@@ -266,14 +278,14 @@ def check_scene(gun):
             warnings.append("'%s' looks like a copied joint: it won't move (only '%s' does)" % (ob.name, ob.name.split(".")[0]))
         if ob.type == "MESH" and not _is_box(ob):
             odd.append(ob.name)
-        if "glow" in ob and ob["glow"] not in CHANNELS:
+        if "glow" in ob and ob["glow"] not in (ENEMY_CHANNELS if gun in ENEMIES else CHANNELS):
             glow.append("%s (%s)" % (ob.name, ob["glow"]))
         if "show" in ob and ob["show"] not in FLAGS:
             show.append("%s (%s)" % (ob.name, ob["show"]))
         if ob.type not in ("MESH", "EMPTY"):
             warnings.append("'%s' (a %s) isn't used by the game" % (ob.name, ob.type.lower()))
     if glow:
-        errors.append("unknown glow channel on " + ", ".join(glow[:5]) + " (channels: " + " ".join(CHANNELS) + ")")
+        errors.append("unknown glow channel on " + ", ".join(glow[:5]) + " (channels: " + " ".join(ENEMY_CHANNELS if gun in ENEMIES else CHANNELS) + ")")
     if show:
         errors.append("unknown show flag on " + ", ".join(show[:5]) + " (flags: " + " ".join(FLAGS) + ")")
     if odd:
@@ -325,7 +337,8 @@ def save_gun(gun=None):
     path = gun_path(s, gun)
     with contextlib.redirect_stdout(io.StringIO()):
         bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", export_extras=True,
-                                  export_yup=True, export_apply=True, use_selection=False)
+                                  export_yup=True, export_apply=True, use_selection=False,
+                                  use_active_scene=True)   # (only this scene: another may hold a different gun)
     return path, warnings
 
 
