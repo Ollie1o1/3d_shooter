@@ -7,6 +7,7 @@
 //            moving a shoulder in Blender moves the arm that hangs off it).
 //            Each rig uses its own (neededJoints):
 //              humanoids  hipL hipR torso head armL armR; the rest rides the body (bob, crouch)
+//                         (a SHIELDBEARER's shield too: braced, drawn back to bash, knocked aside)
 //              RIPPER     body head legFL legFR legBL legBR bladeL bladeR
 //              RAPTOR     head tail wingL wingR tipL tipR (tips ride the wings)
 //              MITE       body legL1-3 legR1-3
@@ -17,6 +18,8 @@
 //            "dive"  lit only while it dives (a RAPTOR's talons)
 //            "fuse"  a MITE's core: steady, then flashing red as its fuse burns
 //            "blade" a RIPPER's blades, brightening as it crouches to lunge
+//            "smash" a JUGGERNAUT's hammer fist, lit only while it winds up a smash
+//            "rim"   a SHIELDBEARER's shield rim, brightening through a wind-up
 //            "const" k itself
 //   colours  material base colours; "glow*0.3": the (flaring) glow colour x 0.3
 //
@@ -36,17 +39,17 @@ using gunkit::GunModel;
 enum Joint { E_ROOT, E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR,
              E_BODY, E_LEG_FL, E_LEG_FR, E_LEG_BL, E_LEG_BR, E_BLADE_L, E_BLADE_R,
              E_TAIL, E_WING_L, E_WING_R, E_TIP_L, E_TIP_R,
-             E_LEG_L1, E_LEG_L2, E_LEG_L3, E_LEG_R1, E_LEG_R2, E_LEG_R3, E_COUNT };
+             E_LEG_L1, E_LEG_L2, E_LEG_L3, E_LEG_R1, E_LEG_R2, E_LEG_R3, E_SHIELD, E_COUNT };
 inline const char* jointName(int j) {
     static const char* N[E_COUNT] = {"root", "hipL", "hipR", "torso", "head", "armL", "armR",
                                      "body", "legFL", "legFR", "legBL", "legBR", "bladeL", "bladeR",
                                      "tail", "wingL", "wingR", "tipL", "tipR",
-                                     "legL1", "legL2", "legL3", "legR1", "legR2", "legR3"};
+                                     "legL1", "legL2", "legL3", "legR1", "legR2", "legR3", "shield"};
     return N[j];
 }
-enum Chan { C_CONST, C_GLOW, C_SHOT, C_PULSE, C_DIVE, C_FUSE, C_BLADE, C_COUNT };
+enum Chan { C_CONST, C_GLOW, C_SHOT, C_PULSE, C_DIVE, C_FUSE, C_BLADE, C_SMASH, C_RIM, C_COUNT };
 inline const char* chanName(int c) {
-    static const char* N[C_COUNT] = {"const", "glow", "shot", "pulse", "dive", "fuse", "blade"};
+    static const char* N[C_COUNT] = {"const", "glow", "shot", "pulse", "dive", "fuse", "blade", "smash", "rim"};
     return N[c];
 }
 inline const char* flagName(int) { return ""; }
@@ -61,6 +64,8 @@ inline const char* fileName(EnemyType t) {
         case EnemyType::RIPPER:   return "ripper";
         case EnemyType::RAPTOR:   return "raptor";
         case EnemyType::MITE:     return "mite";
+        case EnemyType::JUGGERNAUT:   return "juggernaut";
+        case EnemyType::SHIELDBEARER: return "shieldbearer";
         default: return nullptr;
     }
 }
@@ -70,6 +75,7 @@ inline std::vector<int> neededJoints(EnemyType t) {
         case EnemyType::RIPPER: return {E_BODY, E_HEAD, E_LEG_FL, E_LEG_FR, E_LEG_BL, E_LEG_BR, E_BLADE_L, E_BLADE_R};
         case EnemyType::RAPTOR: return {E_HEAD, E_TAIL, E_WING_L, E_WING_R, E_TIP_L, E_TIP_R};
         case EnemyType::MITE:   return {E_BODY, E_LEG_L1, E_LEG_L2, E_LEG_L3, E_LEG_R1, E_LEG_R2, E_LEG_R3};
+        case EnemyType::SHIELDBEARER: return {E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR, E_SHIELD};
         default:                return {E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR};
     }
 }
