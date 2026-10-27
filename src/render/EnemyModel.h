@@ -422,7 +422,7 @@ inline std::vector<gunkit::ModelJoint> restJointsOf(EnemyType t) {
             add(L ? E_THUMB_L : E_THUMB_R, L ? E_HAND_L : E_HAND_R, {a - s * 0.055f, 1.10f, 0.03f});
             add(L ? E_THUMB_TIP_L : E_THUMB_TIP_R, L ? E_THUMB_L : E_THUMB_R, {a - s * 0.055f, 1.05f, 0.03f});
         }
-        add(E_SWORD, E_HAND_R, {-0.31f, 1.07f, 0.03f});
+        add(E_SWORD, E_HAND_R, {-0.31f, 1.07f, -0.035f});   // (the grip, inside the fist)
         break;
     }
     default: {   // a humanoid
