@@ -23,6 +23,7 @@
 #include "core/Settings.h"
 #include "ui/MenuState.h"
 #include "game/GameplayState.h"
+#include "ui/GunViewer.h"
 #include "audio/AudioSystem.h"
 #include "core/Display.h"
 #include "core/Gamepad.h"
@@ -48,7 +49,8 @@ struct App {
     // State changes are requested from inside a state's own handleEvent/update,
     // so they're deferred to the top of the next frame: destroying the active
     // state while one of its methods is still on the stack is a use-after-free.
-    enum class NextState { None, Menu, Game };
+    enum class NextState { None, Menu, Game, Viewer };
+    int viewerGun = 0;                    // --viewer [gun]: which gun the viewer opens on
     NextState pending = NextState::Menu;
     GameMode  mode    = GameMode::ARENA;   // which game the next Game state runs
 
@@ -219,6 +221,11 @@ struct App {
             game->onReturnToMenu = [this]() { pending = NextState::Menu; };
             game->onQuit         = [this]() { quit(); };
             currentState.reset(game);
+        } else if (next == NextState::Viewer) {   // --viewer: one gun on a stand, its file watched (GunViewer.h)
+            SDL_SetRelativeMouseMode(SDL_FALSE);
+            auto* v = new GunViewerState(SCREEN_W, SCREEN_H, viewerGun);
+            v->onQuit = [this]() { quit(); };
+            currentState.reset(v);
         }
     }
 
@@ -597,6 +604,13 @@ int main(int argc, char* argv[]) {
             g_devFpsLog = true;
         }
         if (arg == "--res" && i + 1 < argc) app->renderOverride = std::atoi(argv[++i]);
+        if (arg == "--viewer") {   // --viewer [revolver|shotgun|lancer|longshot|1-4]: the gun viewer (work on assets/guns in Blender)
+            app->pending = App::NextState::Viewer;
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                std::string g = argv[++i];
+                for (int k = 0; k < 4; ++k) if (g == gunkit::gunName(k) || g == std::to_string(k + 1)) app->viewerGun = k;
+            }
+        }
         if (arg == "--record" && i + 3 < argc) {
             app->recordFrames = std::atoi(argv[i + 1]); app->recordSkip = std::atoi(argv[i + 2]);
             app->recordPrefix = argv[i + 3]; i += 3;
