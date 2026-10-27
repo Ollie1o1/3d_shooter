@@ -438,6 +438,15 @@ inline void buildGunFrom(const GunModel& m, int gun, const GunLook& L, const Gun
 inline void buildGun(int gun, const GunLook& L, const GunPose& P, std::vector<GunPart>& out) {
     buildGunFrom(gunModel(gun), gun, L, P, out);
 }
+// Where each of a model's joints is this frame, in gun space (the viewer marks them)
+inline void jointWorlds(const GunModel& m, int gun, const GunLook& L, const GunPose& P, mat4 W[J_COUNT]) {
+    std::vector<GunPart> sink;
+    Builder b{sink, glowOf(gun)};
+    GunRig r = rigOf(gun, L, P);
+    b.rigged(r);
+    for (const auto& J : m.joints) b.joint(J.id, J.parent, J.frame);
+    for (int j = 0; j < J_COUNT; ++j) W[j] = b.W[j];
+}
 
 // ---- the gauntlet, the sword, the arm (still recipes: not rigged guns) ----
 
