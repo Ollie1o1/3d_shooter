@@ -247,7 +247,12 @@ inline GunModel readGunText(const std::string& bytes, const std::string& path) {
                 if (!show.empty()) {
                     p.want = show[0] != '!';
                     p.flag = lookup<F_COUNT>(flagName, p.want ? show : show.substr(1));
-                    if (p.flag < 0) { problem = "'" + name + "' shows on '" + show + "' - the flags are: loaded bigmag (! for not)"; return; }
+                    if (p.flag < 0) {
+                        problem = "'" + name + "' shows on '" + show + "' - the flags are:";
+                        for (int f = 0; f < F_COUNT; ++f) problem += std::string(" ") + flagName(f);
+                        problem += " (! for not)";
+                        return;
+                    }
                 }
             }
             glm::mat4 toJoint = glm::inverse(frame[ctx]) * world;

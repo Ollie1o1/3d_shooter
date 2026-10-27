@@ -4261,7 +4261,10 @@ int main() {
                 }
             }
         }
-        CHECK(loads, "every gun's file loads (assets/guns/*.glb)");
+        const GunModel& sw = gunModel(GUN_SWORD);
+        loads &= sw.error.empty() && sw.parts.size() > 40;
+        joints &= sw.has(J_CELLS);
+        CHECK(loads, "every gun's file loads, and the sword's (assets/guns/*.glb)");
         CHECK(joints, "every gun's file has the joints its rig moves and the sockets its extras hang on");
         CHECK(trips, "a gun written to glTF and read back is the same gun (firing, mid-reload, heated)");
         // What the viewer shows when a save is wrong: the problem, by name

@@ -47,7 +47,7 @@ import traceback
 import bpy
 from mathutils import Euler, Matrix, Vector
 
-GUNS = ["revolver", "shotgun", "lancer", "longshot"]
+GUNS = ["revolver", "shotgun", "lancer", "longshot", "sword"]
 JOINTS = ["crane", "cylinder", "hammer", "trigger", "needle", "pump", "bolt", "mag", "muzzle", "cells"]
 # What each gun's rig and extras need (jointsNeeded() in src/render/GunKit.h)
 NEEDED = {
@@ -55,9 +55,10 @@ NEEDED = {
     "shotgun": ["pump", "muzzle", "cells"],
     "lancer": ["bolt", "muzzle", "cells"],
     "longshot": ["bolt", "mag", "muzzle", "cells"],
+    "sword": ["cells"],
 }
-CHANNELS = ["const", "glow", "accent", "breath", "stripe", "rim", "needle", "port"]
-FLAGS = ["loaded", "!loaded", "bigmag", "!bigmag"]
+CHANNELS = ["const", "glow", "accent", "breath", "stripe", "rim", "needle", "port", "gem", "charge"]
+FLAGS = ["loaded", "!loaded", "bigmag", "!bigmag", "broken", "!broken"]
 # The arsenal's palette (GunKit.h): blackened gunmetal, worn steel, edges, bone, brass, and the glow
 PALETTE = {
     "black": (0.10, 0.10, 0.11), "steel": (0.32, 0.32, 0.34), "edge": (0.46, 0.46, 0.49),
