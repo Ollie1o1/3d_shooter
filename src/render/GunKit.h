@@ -160,9 +160,11 @@ inline vec3 accentOf(vec3 glow, const GunLook& L) {
 // FEED 0.25-0.85 (the cells relight), CLOSE 0.85-1.
 // =============================================================================
 namespace gunkit {
+// The arsenal's files: the four guns, and (GUN_SWORD) OATHBREAKER, the sword
+constexpr int GUN_SWORD = 4, GUN_FILES = 5;
 inline const char* gunName(int g) {
-    static const char* N[4] = {"revolver", "shotgun", "lancer", "longshot"};
-    return N[std::clamp(g, 0, 3)];
+    static const char* N[GUN_FILES] = {"revolver", "shotgun", "lancer", "longshot", "sword"};
+    return N[std::clamp(g, 0, GUN_FILES - 1)];
 }
 
 // The rifles' bolt: rotated up, drawn back (both 0..1)
@@ -257,6 +259,7 @@ inline std::vector<int> jointsNeeded(int gun) {
         case 0: return {J_CRANE, J_CYLINDER, J_HAMMER, J_TRIGGER, J_NEEDLE, J_MUZZLE, J_CELLS};
         case 1: return {J_PUMP, J_MUZZLE, J_CELLS};
         case 2: return {J_BOLT, J_MUZZLE, J_CELLS};
+        case GUN_SWORD: return {J_CELLS};
         default: return {J_BOLT, J_MAG, J_MUZZLE, J_CELLS};
     }
 }
@@ -406,7 +409,7 @@ inline void extrasOf(int gun, Builder& b, const GunLook& L, const GunPose& P) {
 
 // ---- the guns, from their files -------------------------------------------------
 inline std::string gunPath(int gun) { return std::string("assets/guns/") + gunName(gun) + ".glb"; }
-inline GunModel& gunModelSlot(int gun) { static GunModel M[4]; return M[std::clamp(gun, 0, 3)]; }
+inline GunModel& gunModelSlot(int gun) { static GunModel M[GUN_FILES]; return M[std::clamp(gun, 0, GUN_FILES - 1)]; }
 // (Re)load a gun's file; false (and the model's error says why) if it couldn't be.
 // A gun whose file is missing or broken draws only its extras.
 inline bool loadGunModel(int gun, const std::string& path) {
@@ -421,8 +424,8 @@ inline bool loadGunModel(int gun, const std::string& path) {
     return ok;
 }
 inline const GunModel& gunModel(int gun) {
-    static bool loaded[4] = {};
-    int g = std::clamp(gun, 0, 3);
+    static bool loaded[GUN_FILES] = {};
+    int g = std::clamp(gun, 0, GUN_FILES - 1);
     if (!loaded[g]) { loaded[g] = true; loadGunModel(g, gunPath(g)); }
     return gunModelSlot(g);
 }
@@ -439,16 +442,15 @@ inline void buildGun(int gun, const GunLook& L, const GunPose& P, std::vector<Gu
     buildGunFrom(gunModel(gun), gun, L, P, out);
 }
 // Where each of a model's joints is this frame, in gun space (the viewer marks them)
-inline void jointWorlds(const GunModel& m, int gun, const GunLook& L, const GunPose& P, mat4 W[J_COUNT]) {
+inline void jointWorlds(const GunModel& m, const GunRig& r, mat4 W[J_COUNT]) {
     std::vector<GunPart> sink;
-    Builder b{sink, glowOf(gun)};
-    GunRig r = rigOf(gun, L, P);
+    Builder b{sink, vec3{1.f}};
     b.rigged(r);
     for (const auto& J : m.joints) b.joint(J.id, J.parent, J.frame);
     for (int j = 0; j < J_COUNT; ++j) W[j] = b.W[j];
 }
 
-// ---- the gauntlet, the sword, the arm (still recipes: not rigged guns) ----
+// ---- the gauntlet and the arm (recipes), the sword (a file) ----
 
 
 // The gauntlet that punches: blackened metal, bone knuckles, a seam glowing in
@@ -491,38 +493,34 @@ inline void buildGauntlet(Builder& b, const mat4& f, vec3 glow, float flare) {
     b.box(f, {0.f, 0.f, -0.068f}, {0.09f, 0.085f, 0.022f}, STEEL);                       // the cuff
 }
 
-// OATHBREAKER (Sword.h): the arsenal's body as a blade, a hand and a half
-// long. Blackened gunmetal, worn steel edges bevelled to the point, a bone
-// grip wound with brass wire, a brass crossguard with down-swept quillons and
-// a ring, a ricasso, a lit gem in the pommel, and a fuller of 8 cells reading
-// the guard meter (dark when it breaks).
-// Sword space: +Z along the blade from the guard, +Y the blade's back.
+// OATHBREAKER (Sword.h): its shape is a file like the guns' (assets/guns/sword.glb,
+// made in Blender); the rig lights it, and code draws the fuller's 8 cells (the
+// guard meter, dark when it breaks) at its "cells" socket.
+// Sword space: +Z along the blade from the guard, the flats facing +-Y (+Y the
+// side you see at rest), the edges along +-X.
 const vec3 SWORD_GLOW{1.f, 0.25f, 0.45f};
 constexpr float SWORD_SCALE = 0.55f;              // sword units to camera space (a 1 m blade, framed like the guns)
 constexpr float SWORD_HAND_Z = -0.055f, SWORD_OFFHAND_Z = -0.165f;   // where the hands close on the grip (sword units)
+inline GunRig rigSword(const SwordLook& L) {
+    GunRig r;
+    const float boost = 1.f + 0.8f * L.charge + 1.2f * L.riposte;
+    r.chan[C_GLOW]   = SWORD_GLOW * boost;
+    r.chan[C_GEM]    = SWORD_GLOW * (L.broken ? 0.2f : 1.2f * boost);
+    r.chan[C_CHARGE] = SWORD_GLOW * (L.broken ? 0.05f : 0.25f + 1.4f * L.charge + 2.2f * L.riposte);
+    r.flag[F_BROKEN] = L.broken;
+    r.flag[F_LOADED] = !L.broken;
+    return r;
+}
 inline void buildSword(const SwordLook& L, std::vector<GunPart>& out) {
     Builder b{out, SWORD_GLOW};
-    const mat4 base(1.f);
+    GunRig r = rigSword(L);
+    b.rigged(r);
+    const GunModel& m = gunModel(GUN_SWORD);
+    for (const auto& J : m.joints) b.joint(J.id, J.parent, J.frame);
+    for (const auto& p : m.parts) b.place(p);
     const float boost = 1.f + 0.8f * L.charge + 1.2f * L.riposte;
-    b.box(base, {0.f, 0.f, -0.11f}, {0.03f, 0.034f, 0.2f}, BONE);                 // grip
-    for (int i = 0; i < 5; ++i) b.box(base, {0.f, 0.f, -0.195f + 0.042f * i}, {0.034f, 0.038f, 0.008f}, BRASS);   // the wire
-    b.box(base, {0.f, 0.f, -0.225f}, {0.046f, 0.046f, 0.032f}, BRASS);                 // pommel
-    b.lit(SWORD_GLOW * (L.broken ? 0.2f : 1.2f * boost));
-    b.box(base, {0.f, 0.f, -0.243f}, {0.02f, 0.02f, 0.01f}, SWORD_GLOW);         // its gem
-    b.unlit();
-    b.box(base, {0.f, 0.f, 0.f}, {0.2f, 0.045f, 0.04f}, BRASS);                      // crossguard
-    for (float sx : {-1.f, 1.f})                                                     // quillons, swept toward the edge
-        b.box(base * T({sx * 0.115f, -0.012f, -0.012f}) * R(sx * -28.f, {0.f, 0.f, 1.f}), {0.f, 0.f, 0.f}, {0.05f, 0.03f, 0.03f}, BRASS);
-    b.box(base, {0.f, 0.f, 0.03f}, {0.07f, 0.05f, 0.02f}, BRASS * 0.8f);            // the ring at the blade's root
-    b.box(base, {0.f, 0.f, 0.07f}, {0.05f, 0.022f, 0.06f}, STEEL);                   // ricasso
-    b.box(base, {0.f, 0.f, 0.47f}, {0.055f, 0.016f, 0.82f}, BLACK);                  // the blade
-    b.box(base, {0.f, -0.012f, 0.47f}, {0.062f, 0.006f, 0.82f}, EDGE);               // its edge
-    b.box(base, {0.f, 0.f, 0.89f}, {0.042f, 0.016f, 0.03f}, EDGE);                   // the point, tapering
-    b.box(base, {0.f, 0.f, 0.912f}, {0.026f, 0.014f, 0.022f}, EDGE);
-    b.box(base, {0.f, 0.f, 0.93f}, {0.011f, 0.012f, 0.018f}, EDGE * 1.15f);
     int on = L.broken ? 0 : (int)std::ceil(std::clamp(L.guard01, 0.f, 1.f) * 8.f - 1e-4f);
-    b.cells(base, {0.f, 0.011f, 0.13f}, {0.f, 0.f, 0.09f}, {0.f, 0.f, 0.f}, 8,
-            {0.018f, 0.006f, 0.066f}, 8, on, boost);
+    b.cells(b.W[J_CELLS], {0.f, 0.f, 0.f}, {0.f, 0.f, 0.09f}, {0.f, 0.f, 0.f}, 8, {0.018f, 0.006f, 0.066f}, 8, on, boost);
 }
 
 // The sword's frame in camera space: origin at the crossguard, +Z down the

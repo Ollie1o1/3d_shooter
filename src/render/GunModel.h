@@ -37,15 +37,18 @@ inline const char* jointName(int j) {
 //   breath   the revolver's slow breath      stripe  its heat stripe
 //   rim      its cylinder's rims             needle  its heat gauge's needle
 //   port     its brake's ports (heat and flash)
-enum Chan { C_CONST, C_GLOW, C_ACCENT, C_BREATH, C_STRIPE, C_RIM, C_NEEDLE, C_PORT, C_COUNT };
+//   gem      the sword's gems (dim when its guard is broken, blazing as it charges or ripostes)
+//   charge   the sword's edges: a faint line, lit up by a charged thrust, flaring on a riposte
+enum Chan { C_CONST, C_GLOW, C_ACCENT, C_BREATH, C_STRIPE, C_RIM, C_NEEDLE, C_PORT, C_GEM, C_CHARGE, C_COUNT };
 inline const char* chanName(int c) {
-    static const char* N[C_COUNT] = {"const", "glow", "accent", "breath", "stripe", "rim", "needle", "port"};
+    static const char* N[C_COUNT] = {"const", "glow", "accent", "breath", "stripe", "rim", "needle", "port", "gem", "charge"};
     return N[c];
 }
-// Flags a part can show on: "loaded" (a round left), "bigmag" (an upgraded mag past eight)
-enum Flag { F_LOADED, F_BIGMAG, F_COUNT };
+// Flags a part can show on: "loaded" (a round left), "bigmag" (an upgraded mag past eight),
+// "broken" (the sword's guard is broken)
+enum Flag { F_LOADED, F_BIGMAG, F_BROKEN, F_COUNT };
 inline const char* flagName(int f) {
-    static const char* N[F_COUNT] = {"loaded", "bigmag"};
+    static const char* N[F_COUNT] = {"loaded", "bigmag", "broken"};
     return N[f];
 }
 template <int N>

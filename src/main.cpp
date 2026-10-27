@@ -604,11 +604,11 @@ int main(int argc, char* argv[]) {
             g_devFpsLog = true;
         }
         if (arg == "--res" && i + 1 < argc) app->renderOverride = std::atoi(argv[++i]);
-        if (arg == "--viewer") {   // --viewer [revolver|shotgun|lancer|longshot|1-4]: the gun viewer (work on assets/guns in Blender)
+        if (arg == "--viewer") {   // --viewer [revolver|shotgun|lancer|longshot|sword|1-5]: the gun viewer (work on assets/guns in Blender)
             app->pending = App::NextState::Viewer;
             if (i + 1 < argc && argv[i + 1][0] != '-') {
                 std::string g = argv[++i];
-                for (int k = 0; k < 4; ++k) if (g == gunkit::gunName(k) || g == std::to_string(k + 1)) app->viewerGun = k;
+                for (int k = 0; k < gunkit::GUN_FILES; ++k) if (g == gunkit::gunName(k) || g == std::to_string(k + 1)) app->viewerGun = k;
             }
         }
         if (arg == "--record" && i + 3 < argc) {
