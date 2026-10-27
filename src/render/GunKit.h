@@ -17,7 +17,8 @@
 #include <cmath>
 #include <algorithm>
 
-struct GunPart { glm::mat4 xf; glm::vec3 color, emissive; int tag; };   // tag 1: lit cell, 2: dark cell
+struct GunPart { glm::mat4 xf; glm::vec3 color, emissive; int tag; int mesh = 0; };   // tag 1: lit cell, 2: dark cell;
+                                                                                    // mesh: a MeshLib shape (0: the unit cube)
 struct GunLook { int ammo = 8, mag = 8, lit = 8; float flash = 0.f, heat = 0.f, cylSpin = 0.f; int refill = 1; float aim = 0.f;
                  float breath = 0.5f; };   // 0..1: the revolver's slow breath (its glyphs and vents), quicker as it heats
 // OATHBREAKER's look (the sword, Sword.h): its guard meter on the fuller, dark
@@ -111,7 +112,7 @@ struct Builder {
     // A model's part, posed by this frame's rig
     void place(const ModelPart& p) {
         if (p.flag >= 0 && rig->flag[p.flag] != p.want) return;
-        out.push_back({W[p.joint] * p.rel, p.glowScale >= 0.f ? glow * p.glowScale : p.color, emission(*rig, p), 0});
+        out.push_back({W[p.joint] * p.rel, p.glowScale >= 0.f ? glow * p.glowScale : p.color, emission(*rig, p), 0, p.mesh});
     }
 
     // n ammo cells laid out from `start` stepping `step` (wrapping into rows of
@@ -413,9 +414,7 @@ inline GunModel& gunModelSlot(int gun) { static GunModel M[GUN_FILES]; return M[
 // (Re)load a gun's file; false (and the model's error says why) if it couldn't be.
 // A gun whose file is missing or broken draws only its extras.
 inline bool loadGunModel(int gun, const std::string& path) {
-    GunModel m = readGunFile(path);
-    for (auto& p : m.parts)   // (the view model draws boxes only, so far: a mesh is drawn as its bounds)
-        if (const meshlib::MeshData* md = meshlib::get(p.mesh)) { p.rel = p.rel * glm::scale(glm::mat4(1.f), md->size); p.mesh = 0; }
+    GunModel m = readGunFile(path);   // (a part that isn't a box keeps its mesh: the view model draws it whole)
     if (m.error.empty())
         for (int j : jointsNeeded(gun))
             if (!m.has(j)) { m.error = path + ": no '" + jointName(j) + "' (the " + gunName(gun) + "'s rig needs it)"; break; }

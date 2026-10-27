@@ -1,4 +1,6 @@
 #pragma once
+#include <memory>
+#include "render/MeshLib.h"
 // =============================================================================
 // ViewModel.h — the gun in your hands, drawn over the world.
 //
@@ -96,7 +98,7 @@ public:
         L.riposte = s.riposteT > 0.f ? 1.f : 0.f;
         parts.clear();
         gunkit::buildSword(L, parts);
-        for (const auto& p : parts) drawPart(shader, base * frame * S * p.xf, p.color, p.emissive);
+        for (const auto& p : parts) drawPart(shader, base * frame * S * p.xf, p.color, p.emissive, p.mesh);
         // the cut's smear: the band the outer blade swept through, fading behind it
         if (swordStroke >= 0 && swordU > 0.08f && swordU < 0.85f) {
             glm::vec3 g = gunkit::SWORD_GLOW * (1.f + 1.2f * L.riposte);
@@ -146,7 +148,7 @@ public:
             glm::mat4 lf = frame; lf[3] = glm::vec4(glm::mix(away, at, gunkit::smooth(std::min(off, 1.f))), 1.f);
             gunkit::buildArm(b, glm::vec3{-0.34f, -0.62f, 0.f} + twist * 0.6f, lf, -1.f, P.brace > P.twoHand, glow);
         }
-        for (const auto& p : parts) drawPart(shader, base * p.xf, p.color, p.emissive);
+        for (const auto& p : parts) drawPart(shader, base * p.xf, p.color, p.emissive, p.mesh);
         if (parryTimer > 0.f) drawFist(shader, cam, gunkit::SWORD_GLOW);   // F still punches
         shader.setVec3("emissiveColor", {0.f, 0.f, 0.f});
         lastEmissive = glm::vec3{-1.f};
@@ -264,7 +266,7 @@ public:
         if (!P.hidden) {
             parts.clear();
             gunkit::buildGun(g, L, P, parts);
-            for (const auto& p : parts) drawPart(shader, base * p.xf, p.color, p.emissive);
+            for (const auto& p : parts) drawPart(shader, base * p.xf, p.color, p.emissive, p.mesh);
         }
         if (parryTimer > 0.f) drawFist(shader, cam, gunkit::glowOf(g));
         shader.setVec3("emissiveColor", {0.f, 0.f, 0.f});
@@ -390,15 +392,35 @@ private:
             }
             b.unlit();
         }
-        for (const auto& p : parts) drawPart(shader, base * p.xf, p.color, p.emissive);
+        for (const auto& p : parts) drawPart(shader, base * p.xf, p.color, p.emissive, p.mesh);
     }
 
-    void drawPart(ShaderProgram& shader, const glm::mat4& model, glm::vec3 color, glm::vec3 emissive) {
+    void drawPart(ShaderProgram& shader, const glm::mat4& model, glm::vec3 color, glm::vec3 emissive, int mesh = 0) {
         shader.setMat4("model", model);
         shader.setVec3("objectColor", color);
         if (emissive != lastEmissive) { shader.setVec3("emissiveColor", emissive); lastEmissive = emissive; }   // most parts share it
-        cubeMesh.draw();
+        drawShape(mesh);
     }
+public:
+    // A part's shape: a MeshLib mesh (a bevelled plate, a barrel: uploaded the first time it's drawn,
+    // centred at its own size) or the unit cube
+    void drawShape(int mesh) {
+        const meshlib::MeshData* md = mesh > 0 ? meshlib::get(mesh) : nullptr;
+        if (!md) { cubeMesh.draw(); return; }
+        if ((int)meshes.size() < mesh) meshes.resize((size_t)mesh);
+        auto& g = meshes[(size_t)mesh - 1];
+        if (!g) {
+            std::vector<Vertex> v; v.reserve(md->pos.size());
+            for (size_t i = 0; i < md->pos.size(); ++i)   // (uv 0.5: no box-edge darkening on a curved part)
+                v.push_back({md->pos[i], {0.5f, 0.5f}, i < md->nrm.size() ? md->nrm[i] : glm::vec3{0.f, 1.f, 0.f}, {1.f, 1.f, 1.f}});
+            std::vector<unsigned int> idx(md->idx.begin(), md->idx.end());
+            g = std::make_unique<Mesh>();
+            g->upload(v, idx);
+        }
+        g->draw();
+    }
+    std::vector<std::unique_ptr<Mesh>> meshes;   // [id - 1]
+private:
     glm::vec3 lastEmissive{-1.f};
 
     // A unit cube (-0.5..0.5) with 0..1 UVs per face so the shader's edge-darkening works
