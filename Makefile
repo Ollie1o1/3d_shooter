@@ -69,7 +69,7 @@ SRC     := src/main.cpp
 HEADERS := $(shell find src -name '*.h')
 TESTS   := tests/test_physics.cpp tests/test_game.cpp tests/test_zenith.cpp tests/BossSim.h
 
-.PHONY: all clean run test web scan
+.PHONY: all clean run test web scan export-guns test-migration
 
 all: $(TARGET)
 
@@ -89,6 +89,15 @@ test: $(TESTS) $(HEADERS)
 	./tests/test_game
 	$(CXX) $(CXXFLAGS) tests/test_zenith.cpp -o tests/test_zenith $(STDLIB)
 	./tests/test_zenith
+
+# TEMPORARY (gun-files migration): write the C++ gun shapes to assets/guns/*.glb, and prove
+# the files draw the same guns as the old recipes
+export-guns: tests/export_guns.cpp $(HEADERS)
+	$(CXX) $(CXXFLAGS) -Itests tests/export_guns.cpp -o tests/export_guns $(STDLIB)
+	mkdir -p assets/guns && ./tests/export_guns
+test-migration: tests/test_gun_migration.cpp $(HEADERS)
+	$(CXX) $(CXXFLAGS) -Itests tests/test_gun_migration.cpp -o tests/test_gun_migration $(STDLIB)
+	./tests/test_gun_migration
 
 # Every arena's traps: places you could stand and not get back from by yourself (tests/BoundsScan.h)
 scan: tests/scan_bounds.cpp tests/BoundsScan.h $(HEADERS)
