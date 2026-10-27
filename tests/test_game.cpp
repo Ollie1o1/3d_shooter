@@ -7,6 +7,7 @@
 // director driven through an entire simulated ARENA run and FAST run, the
 // weapon and upgrade numbers, XP, and the mouse spike filter.
 #include "bosses/absolute/AbsoluteFeel.h"
+#include "core/Balance.h"
 #include "game/WaveDirector.h"
 #include "world/LevelGauntlet.h"
 #include "world/LevelAct2.h"
@@ -211,6 +212,7 @@ static Player ride(LevelData L, const SpatialGrid& grid, glm::vec3 p, float seco
 }
 
 int main() {
+    balanceInit();   // the numbers as assets/balance.txt ships them (core/Balance.h)
     srand(7);
     LevelData L = buildLevel();
     SpatialGrid grid; grid.build(L.walls);
@@ -4230,6 +4232,33 @@ int main() {
         int k = 0; bool leftSide = true;
         for (auto& p : parts) if (p.tag) { if (k >= 8) leftSide &= p.xf[3].x < -0.026f; ++k; }
         CHECK(k == 14 && leftSide, "rounds past the eighth show on the revolver's left side, where you can see them");
+    }
+
+    // ---------------------------------------------------------------- balance (core/Balance.h, the F1 panel)
+    {
+        auto& V = balanceVars();
+        std::vector<float> was; for (auto& b : V) was.push_back(b.get());   // (put back at the end: later tests see the shipped numbers)
+        std::set<std::string> keys; bool unique = true, inRange = true;
+        for (auto& b : V) { unique &= keys.insert(b.key).second; inRange &= b.get() >= b.lo - 1e-6f && b.get() <= b.hi + 1e-6f && b.def >= b.lo && b.def <= b.hi; }
+        CHECK(V.size() > 100 && unique, ("every balance value has its own name (" + std::to_string(V.size()) + " of them)").c_str());
+        CHECK(inRange, "every value, and every default, sits inside its slider's range");
+        std::vector<std::string> problems;
+        bool had = balanceLoad(BALANCE_PATH, &problems);
+        CHECK(problems.empty(), ("assets/balance.txt loads cleanly" + std::string(had ? "" : " (none yet: the defaults)")).c_str());
+        balanceResetAll();
+        std::vector<std::string> pr;
+        balanceResetAll();
+        int set = balanceApply("weapon.revolver.damage = 50\n# a comment\nenemy.husk.health=75   # trailing\nnot.a.thing = 3\nstyle.meter_gain = x\nweapon.shotgun.pellets = 99\n", &pr);
+        CHECK(set == 3 && weaponDef(WeaponId::REVOLVER).damage == 50.f && statsOf(EnemyType::HUSK).health == 75.f && weaponDef(WeaponId::SHOTGUN).pellets == 30,
+              "a balance file sets what it names (the game reads the new numbers at once); out of range is clamped");
+        CHECK(pr.size() == 3, "...and says which lines it couldn't use (an unknown name, a non-number, an out-of-range value)");
+        std::string text = balanceText();
+        balanceResetAll();
+        CHECK(weaponDef(WeaponId::REVOLVER).damage != 50.f, "DEFAULTS puts the code's numbers back");
+        balanceApply(text);
+        CHECK(weaponDef(WeaponId::REVOLVER).damage == 50.f && statsOf(EnemyType::HUSK).health == 75.f && text.find("weapon.revolver.damage = 50") != std::string::npos
+              && text.find("enemy.ripper") == std::string::npos, "saved and read back: the same numbers, and only the changed ones are written");
+        for (size_t k = 0; k < V.size(); ++k) V[k].set(was[k]);
     }
 
     // ---------------------------------------------------------------- the guns' files (assets/guns/*.glb)

@@ -1,6 +1,7 @@
 // Headless physics tests — no window or GL context needed.
 // Build + run with `make test`.
 #include "player/Player.h"
+#include "core/Balance.h"
 #include "core/Pacer.h"
 #include <cstdio>
 #include <cstring>
@@ -15,6 +16,7 @@ static int failures = 0;
 static constexpr float DT = 1.f / 60.f;
 
 int main() {
+    balanceInit();   // the numbers as assets/balance.txt ships them (core/Balance.h)
     Uint8 keys[SDL_NUM_SCANCODES];
     std::memset(keys, 0, sizeof(keys));
 

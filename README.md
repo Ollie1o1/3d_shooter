@@ -204,8 +204,9 @@ src/
 ├── audio/              AudioSystem, SfxMixer (positional mixing), MixTable, MusicSynth (the live soundtrack),
 │                       VoiceSynth / VoiceTable / EnemyVoice (the enemies' voices, built in code)
 ├── ui/                 MenuState (main menu), SettingsMenu, UIRenderer (HUD and overlays), UIBatch, PixelFont,
-│                       LeaderboardView, GunViewer (--viewer)
-└── shaders/            GLSL 3.30 (rewritten to GLSL ES 3.00 for the web at load time)
+│                       LeaderboardView, GunViewer (--viewer), BalancePanel (F1)
+├── shaders/            GLSL 3.30 (rewritten to GLSL ES 3.00 for the web at load time)
+└── third_party/imgui/  Dear ImGui 1.91.9 (MIT), only for the balance panel
 tests/                  test_physics.cpp, test_game.cpp, test_zenith.cpp, BossSim.h (see Testing)
 tools/                  sound generators (gen_sfx.py, gen_arsenal.py, sfx_absolute.py, import_sfx.py),
                         record_showcase.sh (re-records docs/overdrive.gif),
@@ -372,6 +373,12 @@ In `world/Level.h` (or `LevelGauntlet.h`, `LevelAct2.h`): `B.mover(centre, halfS
 2. Build its shape in Blender as `assets/guns/<name>.glb` (see "Edit a gun"), add the name to `gunName()` in `render/GunKit.h`, write its rig (`rigOf()`: what moves, what glows), its extras (`extrasOf()`: cells, muzzle flash, reload props) and the joints it needs (`jointsNeeded()`), and its motion in `render/GunMotion.h`.
 3. Add its sound name to `SND[]` in `GameplayState::fireWeapon()` (`game/Gameplay_Combat.h`).
 4. Give it an icon in `UIRenderer::drawWeaponIcon()`. The slots, Armory, ammo and reload all follow from the table.
+
+### Balance the game (F1)
+
+Every gun's stats, every enemy's and boss's health, speed and timing, OVERDRIVE and the style meter, and the four difficulties are on sliders: press **F1** in the desktop game. The game freezes and the mouse comes free; drag a slider (Ctrl+click to type a value) and press F1 again to play with it. Changes apply at once (enemy health from the next spawn, magazines from the next reload); a changed value turns amber, with a **reset** beside it. **SAVE** writes what you've changed to `assets/balance.txt`, **REVERT** goes back to that file, **DEFAULTS** to the code's numbers.
+
+`assets/balance.txt` is plain text (`weapon.revolver.damage = 50   # default 42`), loaded at startup by the game (desktop and web) and by the tests, so `make test` checks the game as it ships: if a change breaks a promise the tests hold (a scoped Longshot one-shots any regular enemy, say), they'll say so. The names and ranges are in `src/core/Balance.h`; adding a value there puts it on the panel. The web build leaves the panel out (it adds ~190 KB to the download); `make web WEB_FLAGS=-DWEB_BALANCE_PANEL` puts it in, opened with `?balance`.
 
 ### Edit a gun
 

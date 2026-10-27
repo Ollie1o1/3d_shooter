@@ -69,6 +69,7 @@
       if (q.has('wave')) args.push('--wave', q.get('wave'));
       if (q.has('god')) args.push('--god');
       if (q.has('sword')) args.push('--sword');
+      if (q.has('balance')) args.push('--balance');   // ?balance: the balance panel on F1 (it can't save here)
       if (q.has('dev')) args.push('--dev');   // ?dev opens the level select
       if (q.has('fps')) args.push('--fps', q.get('fps'));   // ?fps=240 / 0 (unlimited): that FRAME RATE, its rate logged
       return args;

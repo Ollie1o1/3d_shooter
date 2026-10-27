@@ -50,8 +50,9 @@ struct WeaponDef {
     float aimMoveMult;   // movement speed while aimed
 };
 
-inline const WeaponDef& weaponDef(WeaponId w) {
-    static const WeaponDef D[] = {
+// The table (the balance panel, Balance.h, edits it live; weaponDef() is how everything reads it)
+inline WeaponDef& weaponDefEdit(WeaponId w) {
+    static WeaponDef D[] = {
         {"REVOLVER", "PIERCING ROUNDS", "SHOTS PASS THROUGH 2 MORE ENEMIES",
          42.f, 1, 0.f, 0.f, 0.15f, 8, 2, 1.2f, 90.f, 1.5f, false, false, 1.f, 0.f, 0, 0.45f, 1.f},   // a magnum: a headshot drops anything light
         {"SHOTGUN", "DRAGON BREATH", "+5 PELLETS, TIGHTER SPREAD",
@@ -63,6 +64,7 @@ inline const WeaponDef& weaponDef(WeaponId w) {
     };
     return D[(int)w];
 }
+inline const WeaponDef& weaponDef(WeaponId w) { return weaponDefEdit(w); }
 
 struct WeaponUpgrades {
     int  tier[3] = {0, 0, 0};   // DAMAGE, RATE, MAG
