@@ -258,7 +258,13 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
             if (g_devOverlay == "hang") std::fprintf(stderr, "hang: caught at %.2f s, feet (%.1f %.1f %.1f)\n", elapsedTime, hangPos.x, hangPos.y, hangPos.z);
         }
         hangT += dt;
-        if (!grapple.holding || hangT > HANG_MAX) {
+        bool gone = false;   // what it caught on has moved away (a door opening): nothing to hold
+        if (grapple.hookedWall >= 0 && grapple.hookedWall < (int)level.walls.size()) {
+            const AABB& b = level.walls[grapple.hookedWall].box;
+            glm::vec3 q = glm::clamp(grapple.target, b.min, b.max);
+            gone = glm::length(q - grapple.target) > 0.5f;
+        }
+        if (!grapple.holding || hangT > HANG_MAX || gone) {
             grapple.release();
             if (g_devOverlay == "hang") std::fprintf(stderr, "hang: let go at %.2f s after %.2f s, feet (%.1f %.1f %.1f)\n", elapsedTime, hangT, player.position.x, player.position.y, player.position.z);
         }

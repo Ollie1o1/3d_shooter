@@ -444,7 +444,7 @@ seven rooms, each reached down a ribbed **boost tube** (a breather: health waiti
   6. **The Pumpworks** (east): a roofed tunnel with a lava strip opening into a hall with galleries. **The Foreman** floats along the crane line tethered to its crew: while a tether holds it takes a third. It lobs shells (parry them for 150) and calls Mites
   7. **The Tower**: win the yard, then **the Pacemaker** (above). It ends on the roof, by the beacon
 
-  **Kill a room's mini-boss and the room is won**: whatever's still standing falls apart with it, and each one left standing costs a second on the clock. Every second wave comes at you from ahead, never back where you've been.
+  Every room is **two waves, then its mini-boss**: the second wave is shorter, comes from a new angle and sets up what's next (a Shieldbearer before the Bulwark, Raptors before the Harrier, a Juggernaut before the Foreman). **Kill a room's mini-boss and the room is won**: whatever's still standing falls apart with it, and each one left standing costs a second on the clock. Later waves come at you from ahead, never back where you've been.
 
   A 3-2-1 countdown starts the clock; every room clear rings an anvil and shows a split (green ahead / red behind your best run) and the room's **medal** (bronze, silver, gold, and a hidden dev time, timed from the room's fight starting to its clear). The clock stops at the beacon. Ranked S/A/B/C/D against par times; the end screen lists every room's time and medal. Dying (or Backspace) restarts the room with the clock still running. A glowing **ghost** runs the route of your best time alongside you (FAST GHOST in Settings turns it off). Each room's best time and medal are kept; **ROOM ATTACK** (the FAST page on the menu, or `--room N`) runs one room on its own, with the level a full run would have by then.
 
@@ -474,7 +474,7 @@ seven rooms, each reached down a ribbed **boost tube** (a breather: health waiti
 - Kills give XP by enemy type, multiplied by your style rank (D x1 up to SSS x2); trick shots give bonuses
 - Each level is an upgrade point. **Armory (Tab)**: per gun, three tiers each of DAMAGE (+20%), FIRE RATE (-15% between shots) and MAGAZINE (more rounds, faster reload), plus one MOD (2 points): Piercing Rounds, Dragon Breath (+5 pellets), Headhunter (Kar headshot kills refund the round and skip the bolt), Explosive Tips
 - Upgrades survive dying and retrying; a new run starts at level 1
-- **Drops**: health orbs (20%, small heal, magnetic), **health potions** (18%, +40 HP, red loot beam, only picked up when you're hurt so they wait for you) and **XP shards** (10%). Brutes always drop orbs and often a potion
+- **Drops**: health orbs (20%, small heal, magnetic), **health potions** (18%, +40 HP, red loot beam, only picked up when you're hurt so they wait for you) and **XP shards** (10%). Brutes always drop orbs and often a potion. **Bosses shed a potion every fifth of their bar** you take off them, landing a few metres from where you stand
 
 </details>
 
@@ -483,7 +483,7 @@ seven rooms, each reached down a ribbed **boost tube** (a breather: health waiti
 
 - Quake-style air strafing with momentum preservation
 - Double jump, directional dash (2 charges), ground slam
-- Grapple hook with slingshot release (a 1.5 s cooldown in arenas, none in FAST); **moving platforms** (lifts, sweepers, ferries, orbiting platforms) can be hooked with generous aim assist (cyan brackets on the crosshair) and pull you to land on top; standing on one carries you with it
+- Grapple hook with slingshot release (a 1.5 s cooldown in arenas, none in FAST); **hold** its key as you arrive at a surface and you hang there, aiming and shooting, for up to 3 s (let go to drop, jump to kick off the wall); **moving platforms** (lifts, sweepers, ferries, orbiting platforms) can be hooked with generous aim assist (cyan brackets on the crosshair) and pull you to land on top; standing on one carries you with it
 - Sliding with momentum boost
 - Every arena has an **invisible ceiling** (a force field that flashes when you hit it) so dashes and grapples can't launch you out over the walls
 
@@ -555,7 +555,8 @@ The regular enemies (not the bosses, which have their own answers) take a hit wi
 - **Alt fire** (RMB on the guns that don't aim): the revolver **fans** the rest of its cylinder in a fast, loose, staggering burst; the shotgun fires **both barrels**: twice the pellets, a huge shove, and a kick that throws you back (aimed at the floor, a shotgun jump)
 - **Unseen wind-ups**: a regular enemy winding up out of view gets an amber chevron at the screen's edge pointing at it (closing in as the blow comes) and a tick from where it is
 - **Enemies that move like a squad**: gunners each hold their own bearing round you, so they spread out and press from several sides; Husks, Revenants and Weavers sidestep a crosshair held on them up close
-- **Music that follows the fight**: OVERDRIVE brings in a distorted power-chord stab and sixteenth hats; the last enemy of a wave strips the track to its drums; a wave's end rings a chord over a crash
+- **Music that follows the fight**: OVERDRIVE brings in a distorted power-chord stab and sixteenth hats; the last enemy of a wave strips the track to its drums; a wave's end rings a chord over a crash. It doesn't just loop: every other pass round a track's four bars is its B side (the arp and lead an octave up) with a drum fill into the top, and a plate reverb gives it room
+- **You can hear OVERDRIVE**: for as long as it burns, a growling hum in the music's key throbs on its eighths (sixteenths in its last 1.5 s: it's running out), the enemies and the world step back and darken, and your own guns come up and get driven; a wind-up still cuts through all of it
 - **One card per move**: the first time each of these comes up (a finisher, a stagger, OVERDRIVE, a grapple on an enemy, alt fire) a small NEW MOVE card says what it is, once, ever
 - **Deaths** break the rig along the killing blow: the pieces fly the way the shot went (a headshot takes the head first), white-hot for a moment
 - **Attack tokens**: only a few regular enemies wind up at once (2 on LENIENT to 5 on BRUTAL, one more in a big crowd); the nearest ones you can see go first, and the ones behind you are slower to get to it
@@ -600,7 +601,7 @@ The regular enemies (not the bosses, which have their own answers) take a hit wi
 - **Procedural sound effects** — synthesized in Python (`tools/gen_sfx.py`): jumps, landings, slams, reloads, bolts, hits, kills, telegraphs, explosions, stingers, spawns, pickups, level-ups
 - **Recorded sounds** from free CC0 (public domain) packs, cut, trimmed and layered by `tools/import_sfx.py`: the four gunshots (real pistol, shotgun and rifle recordings), the dash whoosh, the grapple, footsteps (four variations), the punch and the parry clank. Sources in [`assets/sfx/CREDITS.md`](assets/sfx/CREDITS.md)
 - Every sound is trimmed to start within a few milliseconds of being triggered, so shots never feel late
-- **Our own effects mixer** (`audio/SfxMixer.h`, in the same audio callback as the music): enemies, doors, blasts and boss attacks sound from where they happen (quieter and darker with distance, panned to their side, muffled behind you); every play varies a little in pitch and level, and a sound with numbered variants (`name_1.wav` …) never repeats one twice running; voice caps per group (player, enemies, world, UI) keep a crowd from turning to noise without ever cutting your gun or the boss; the music and the world duck when you're hit, a wave starts or a boss winds up; each arena has its own reverb (the open Yard, metal halls, the long dark Sanctum, Nave and Orrery)
+- **Our own effects mixer** (`audio/SfxMixer.h`, in the same audio callback as the music): enemies, doors, blasts and boss attacks sound from where they happen (quieter and darker with distance, panned to their side, muffled behind you); every play varies a little in pitch and level, and a sound with numbered variants (`name_1.wav` …) never repeats one twice running; voice caps per group (player, enemies, world, UI) keep a crowd from turning to noise without ever cutting your gun or the boss, and past six enemy and world sounds at once they share the level of about six, so a big fight never buries a wind-up; the music and the world duck when you're hit, a wave starts or a boss winds up; each arena has its own reverb (the open Yard, metal halls, the long dark Sanctum, Nave and Orrery)
 
 </details>
 
