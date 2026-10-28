@@ -1,3 +1,4 @@
+#include "core/MouseCapture.h"
 #include <SDL2/SDL.h>
 #include "core/gl.h"
 #include <glm/glm.hpp>
@@ -201,7 +202,7 @@ struct App {
         NextState next = pending;
         pending = NextState::None;
         if (next == NextState::Menu) {
-            SDL_SetRelativeMouseMode(SDL_FALSE);
+            setMouseCaptured(false);
             audio.setSpace(ReverbSpace::OPEN);
             auto* menu = new MenuState(SCREEN_W, SCREEN_H);
             menu->settings = &settings;
@@ -219,14 +220,14 @@ struct App {
             if (g_devOverlay == "bosses") menu->page = MenuState::BOSS;
             currentState.reset(menu);
         } else if (next == NextState::Game) {
-            SDL_SetRelativeMouseMode(g_devNoMouse ? SDL_FALSE : SDL_TRUE);
+            setMouseCaptured(!g_devNoMouse);
             audio.masterVolume = settings.audioVolume;
             auto* game = new GameplayState(audio, &settings, mode);
             game->onReturnToMenu = [this]() { pending = NextState::Menu; };
             game->onQuit         = [this]() { quit(); };
             currentState.reset(game);
         } else if (next == NextState::Viewer) {   // --viewer: one gun on a stand, its file watched (GunViewer.h)
-            SDL_SetRelativeMouseMode(SDL_FALSE);
+            setMouseCaptured(false);
             if (viewerEnemy >= 0) {
                 auto* v = new EnemyViewerState(SCREEN_W, SCREEN_H, viewerEnemy);
                 v->onQuit = [this]() { quit(); };
@@ -243,7 +244,7 @@ struct App {
     // under it); closing hands it back to a run that's being played
     void toggleBalance() {
         g_balanceOpen = !g_balanceOpen;
-        if (g_balanceOpen) { SDL_SetRelativeMouseMode(SDL_FALSE); return; }
+        if (g_balanceOpen) { setMouseCaptured(false); return; }
         if (auto* g = dynamic_cast<GameplayState*>(currentState.get()))
             if (!g->paused && !g->armoryOpen && !g->playerDead) g->captureMouse(true);
     }
@@ -540,6 +541,7 @@ int main(int argc, char* argv[]) {
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
     balanceInit();                               // the game's numbers, as assets/balance.txt has them (core/Balance.h)
+    GameplayState::sharedWorldTex();             // the world's textures, made now (behind the loading screen), not as a run starts
     balancepanel::init(app->window, app->ctx);   // F1
 
     for (const MixEntry& m : mixTable())   // every sound file has its place in the mix (MixTable.h)
