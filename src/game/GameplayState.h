@@ -690,6 +690,7 @@ public:
     int   fastLeftStanding = 0;                    // FAST: how many were left this run (the end screen)
     // FAST: each room's time (its fight starting to its clear) and medal this run; ROOM ATTACK's result
     float roomStartT = 0.f;
+    float ghostWhooshCd = 0.f;   // the ghost's whoosh: not more than this often
     std::vector<float> roomTimes;
     std::vector<int>   roomMedals;
     bool  roomNewBest = false;
