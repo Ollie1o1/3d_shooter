@@ -1204,6 +1204,19 @@ def gen_drive_ready():
     return out
 
 
+def gen_dash_ready():
+    """A dash charge back: a short airy flick (the dash's whoosh, tiny and bright) and a small clean tick."""
+    n = n_samples(0.14)
+    air = _bandnoise(n, 3000, 9000)
+    out = []
+    for i in range(n):
+        t = i / SR
+        flick = air[i] * math.sin(math.pi * min(1.0, t / 0.07)) * (1.0 if t < 0.07 else 0.0) * 0.5
+        tick = (sine(2350, i) + 0.3 * sine(4700, i)) * math.exp(-t * 55.0) * min(1.0, t / 0.001) * 0.35
+        out.append(flick + tick)
+    return out
+
+
 def gen_mini_sting():
     """A Gauntlet room's mini-boss arrives: a heavy low clank on the anvil, a sub boom, and a dark brass chord
     swelling and falling a semitone, so the room knows something big just walked in."""
@@ -1315,7 +1328,7 @@ GENERATORS = {
     "overdrive_on": gen_overdrive_on, "overdrive_off": gen_overdrive_off, "finish_ready": gen_finish_ready, "hook_yank": gen_hook_yank,
     "anvil": gen_anvil, "anvil_1": gen_anvil_1, "anvil_2": gen_anvil_2, "anvil_final": gen_anvil_final, "record": gen_record,
     "split_behind": gen_split_behind, "count_tick": gen_count_tick, "count_go": gen_count_go,
-    "drive_warn": gen_drive_warn, "drive_ready": gen_drive_ready,
+    "drive_warn": gen_drive_warn, "drive_ready": gen_drive_ready, "dash_ready": gen_dash_ready,
     "mini_sting": gen_mini_sting, "bell": gen_bell, "medal": gen_medal,
 }
 

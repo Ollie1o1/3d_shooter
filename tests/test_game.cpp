@@ -21,6 +21,7 @@
 #include "core/MouseFilter.h"
 #include "core/Settings.h"
 #include "audio/MusicSynth.h"
+#include "audio/DriveBed.h"
 #include "game/Ghost.h"
 #include "player/StyleSystem.h"
 #include "player/Projectile.h"
@@ -2758,6 +2759,122 @@ int main() {
         }
     }
 
+    // ---------------------------------------------------------------- the crowd, OVERDRIVE's focus and its hum
+    {
+        using G = SoundGroup; using R = SoundRole;
+        auto eo = [](R role, float vol, G g = G::ENEMY) { SfxMixer::Opts o; o.volume = vol; o.group = g; o.role = role; return o; };
+        auto mean = [](const std::vector<float>& b) { double s = 0; for (size_t i = 0; i < b.size(); i += 2) s += b[i]; return (float)(s / (b.size() / 2)); };
+        {   // a few at once are left alone; a crowd shares its level; a tell in it is untouched
+            SfxMixer few(44100.f, 3); few.addSound("noise", sfxNoise(44100));
+            for (int i = 0; i < 5; ++i) few.play("noise", eo(R::ACTION, 0.3f));
+            sfxRender(few, 8820);
+            SfxMixer many(44100.f, 3); many.addSound("noise", sfxNoise(44100));
+            for (int i = 0; i < 12; ++i) many.play("noise", eo(R::ACTION, 0.3f));
+            sfxRender(many, 8820);
+            CHECK(few.crowdGain() > 0.99f && std::fabs(many.crowdGain() - std::sqrt(6.f / 12.f)) < 0.03f,
+                  "up to 6 enemy sounds play at their own level; 12 share the level of about 6 (-3 dB each)");
+            // (the crowd plays silence: loud enough to count, or too quiet to; the same dice either way, so all
+            // that's heard is the tell)
+            SfxMixer alone(44100.f, 3), crowded(44100.f, 3);
+            for (SfxMixer* m : {&alone, &crowded}) { m->addSound("dc", std::vector<float>(44100, 0.2f)); m->addSound("zero", std::vector<float>(44100, 0.f)); }
+            for (int i = 0; i < 14; ++i) { alone.play("zero", eo(R::ACTION, 0.01f)); crowded.play("zero", eo(R::ACTION, 0.3f)); }
+            alone.play("dc", eo(R::TELL, 1.f)); crowded.play("dc", eo(R::TELL, 1.f));
+            sfxRender(alone, 8820); sfxRender(crowded, 8820);
+            float a = mean(sfxRender(alone, 8820)), c = mean(sfxRender(crowded, 8820));
+            CHECK(alone.crowdGain() > 0.99f && crowded.crowdGain() < 0.75f && std::fabs(a - c) < 0.01f * std::fabs(a),
+                  "...and a tell in the crowd keeps its full level");
+        }
+        {   // OVERDRIVE's focus: the crowd steps back and goes dark, your own sounds come up, a tell stays as it was
+            auto crowdOut = [&](bool focus) {
+                SfxMixer m(44100.f, 3); m.addSound("noise", sfxNoise(44100));
+                m.setFocus(focus ? 1.f : 0.f); sfxRender(m, 8820);
+                m.play("noise", eo(R::ACTION, 0.3f)); return sfxRender(m, 8820);
+            };
+            auto mine = [&](bool focus) {
+                SfxMixer m(44100.f, 3); m.addSound("noise", sfxNoise(44100));
+                m.setFocus(focus ? 1.f : 0.f); sfxRender(m, 8820);
+                m.play("noise", eo(R::ACTION, 0.3f, G::PLAYER)); return sfxRender(m, 8820);
+            };
+            auto tellOut = [&](bool focus) {
+                SfxMixer m(44100.f, 3); m.addSound("dc", std::vector<float>(44100, 0.2f));
+                m.setFocus(focus ? 1.f : 0.f); sfxRender(m, 8820);
+                m.play("dc", eo(R::TELL, 1.f)); sfxRender(m, 2048); return mean(sfxRender(m, 4410));
+            };
+            auto c0 = crowdOut(false), c1 = crowdOut(true), p0 = mine(false), p1 = mine(true);
+            float dCrowd = 20.f * std::log10(sfxRms(c1, 0) / sfxRms(c0, 0)), dMine = 20.f * std::log10(sfxRms(p1, 0) / sfxRms(p0, 0));
+            std::printf("      focus: the crowd %+.1f dB (brightness %.2f -> %.2f), your own %+.1f dB\n", dCrowd,
+                        sfxHf(c0, 0) / sfxRms(c0, 0), sfxHf(c1, 0) / sfxRms(c1, 0), dMine);
+            CHECK(dCrowd < -6.f && sfxHf(c1, 0) / sfxRms(c1, 0) < 0.6f * sfxHf(c0, 0) / sfxRms(c0, 0),
+                  "in OVERDRIVE the enemies and the world step back and go dark");
+            CHECK(dMine > 0.5f && sfxPeak(p1) <= 1.f, "...your own sounds come up (driven, still clean)");
+            float t0 = tellOut(false), t1 = tellOut(true);
+            CHECK(std::fabs(t0 - t1) < 0.01f * std::fabs(t0), "...and an enemy's tell is untouched by it: you can still read every wind-up");
+            SfxMixer m(44100.f, 3); m.setFocus(1.f); sfxRender(m, 8820); m.setFocus(0.f); sfxRender(m, 44100);
+            CHECK(m.focusLevel() < 0.1f, "...and it lets go within about a second of OVERDRIVE ending");
+        }
+        {   // the hum: off is silence; on, in time with the music, clean, under the guns; urgent, it doubles
+            const float stepLen = 44100.f * 60.f / 150.f / 4.f;   // a sixteenth at 150 BPM
+            auto run = [&](DriveBed& b, double& clock, int frames) {
+                std::vector<float> buf(2 * frames, 0.f);
+                for (int done = 0; done < frames; done += 512) {
+                    int n = std::min(512, frames - done);
+                    clock += n / stepLen;
+                    b.render(buf.data() + 2 * done, n, 44100.f, 57.f, stepLen, clock, 1.f);
+                }
+                return buf;
+            };
+            // Energy in the first and last quarter of each pulse (eighths, or sixteenths)
+            auto throb = [&](const std::vector<float>& buf, double clockEnd, int every) {
+                double early = 0, late = 0; int frames = (int)buf.size() / 2;
+                for (int f = 0; f < frames; ++f) {
+                    double pos = clockEnd - (double)(frames - 1 - f) / stepLen;
+                    double u = std::fmod(pos, (double)every) / every;
+                    float x = buf[2 * f] * buf[2 * f];
+                    if (u < 0.25) early += x; else if (u >= 0.75) late += x;
+                }
+                return (float)(early / std::max(late, 1e-12));
+            };
+            DriveBed b; double clock = 0.0;
+            auto off = run(b, clock, 4410);
+            b.set(true, 0.f); run(b, clock, 22050);
+            auto on = run(b, clock, 44100);
+            float rms = sfxRms(on, 0), eighths = throb(on, clock, 2);
+            b.set(true, 1.f); run(b, clock, 22050);
+            auto urgent = run(b, clock, 44100);
+            float sixteenths = throb(urgent, clock, 1), urgentEighths = throb(urgent, clock, 2);
+            b.set(false, 0.f); run(b, clock, 88200);
+            auto after = run(b, clock, 4410);
+            std::printf("      OVERDRIVE hum: rms %.3f peak %.3f, eighth throb x%.1f, urgent: sixteenth throb x%.1f\n", rms, sfxPeak(on), eighths, sixteenths);
+            CHECK(sfxPeak(off) == 0.f && sfxPeak(after) == 0.f && b.level() < 0.001f, "OVERDRIVE's hum is silent until it starts, and gone once it ends");
+            CHECK(sfxFinite(on) && rms > 0.012f && rms < 0.05f && sfxPeak(on) < 0.16f, "...on, it's clearly there but well under the guns");
+            CHECK(eighths > 2.f, "...it throbs on the music's eighths");
+            CHECK(sixteenths > 2.f && urgentEighths < eighths, "...and in OVERDRIVE's last 1.5 s it throbs twice as fast: it's running out");
+        }
+        {   // the music doesn't just loop: every other pass is its B side (an octave up), and still clean
+            bool counted = true, clean = true; int brighter = 0, tracks = 0; float sumA = 0.f, sumB = 0.f;
+            for (int t = 0; t < MUSIC_TRACKS; ++t) {
+                if (musicTrack(t).techno) continue;
+                MusicSynth m; m.setTrack(t); m.setIntensity(1.f); m.setVolume(1.f);
+                const int bars4 = (int)(44100.f * 60.f / musicTrack(t).bpm * 16.f);   // four bars
+                std::vector<float> a(2 * bars4), bb(2 * bars4), warm(2 * 44100);
+                m.render(warm.data(), 44100);
+                while (m.pass() % 2 == 1 || m.stepPos() > 1.0) m.render(warm.data(), 64);   // to the top of an A side
+                m.render(a.data(), bars4);
+                int pa = m.pass();
+                m.render(bb.data(), bars4);
+                counted &= m.pass() == pa + 1;
+                float ha = sfxHf(a, 0) / sfxRms(a, 0), hb = sfxHf(bb, 0) / sfxRms(bb, 0);
+                brighter += hb > ha; ++tracks; sumA += ha; sumB += hb;
+                clean &= sfxFinite(bb) && sfxPeak(bb) <= 1.f;
+            }
+            CHECK(counted, "the music counts its passes round the four bars");
+            std::printf("      B sides brighter in %d of %d tracks (brightness %.3f -> %.3f on average)\n", brighter, tracks, sumA / tracks, sumB / tracks);
+            CHECK(brighter >= tracks - 2 && sumB > sumA * 1.04f,
+                  "...every other pass (its B side) goes up an octave: brighter (measured over the drums, so all but a track or two)");
+            CHECK(clean, "...and stays clean");
+        }
+    }
+
     // ---------------------------------------------------------------- enemy voices: the bank
     {
         const auto& bank = voiceBank();
@@ -3030,7 +3147,7 @@ int main() {
                                 "kill_light", "kill_heavy", "kill_rifle", "kill_blade",
                                 "jump_air", "land_heavy", "slide", "hit_head", "ammo_low", "heartbeat", "hit_armor", "impact", "casing", "whiz", "step_metal", "land_metal", "lastkill",
                                 "hit_body", "stun", "finisher", "overdrive_on", "overdrive_off", "finish_ready", "hook_yank",
-                                "anvil", "anvil_final", "record", "split_behind", "count_tick", "count_go", "drive_warn", "drive_ready",
+                                "anvil", "anvil_final", "record", "split_behind", "count_tick", "count_go", "drive_warn", "drive_ready", "dash_ready",
                                 "mini_sting", "bell", "medal"};
         std::vector<std::string> names(std::begin(loaded), std::end(loaded));
         for (const std::string& n : abAllSounds()) names.push_back(n);   // THE ABSOLUTE's fight (AbsoluteFeel.h)
