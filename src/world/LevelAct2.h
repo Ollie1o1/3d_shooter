@@ -1083,5 +1083,6 @@ inline LevelData buildAct2Level() {
     LevelData L;
     LevelBuilder B{L};
     buildAct2(B);
+    layout::applyFile(L, "act2");
     return L;
 }

@@ -42,6 +42,73 @@ inline GLuint* GameplayState::sharedWorldTex() {
     return tex;
 }
 
+// The level's baked light: read and uploaded the first time the level's played, then kept. A bake
+// of an older level (or none, or a GPU without big enough 3D textures): the world as it was
+inline GameplayState::SharedBake& GameplayState::sharedBake(const std::string& level, const LevelData& L) {
+    static std::map<std::string, SharedBake> cache;
+    SharedBake& sb = cache[level];
+    if (sb.tried) return sb;
+    sb.tried = true;
+    std::string err;
+    sb.bake = lightbake::load(level, L, err);
+    // (none: a one-cell texture all the same, so the shader's 3D sampler always has something on its unit)
+    auto placeholder = [&]() {
+        const uint8_t one[2] = {255, 255};
+        glGenTextures(1, &sb.tex);
+        glBindTexture(GL_TEXTURE_3D, sb.tex);
+        glTexImage3D(GL_TEXTURE_3D, 0, GL_RG8, 1, 1, 1, 0, GL_RG, GL_UNSIGNED_BYTE, one);
+        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glBindTexture(GL_TEXTURE_3D, 0);
+    };
+    if (sb.bake.empty()) {
+        std::fprintf(stderr, "%s: %s - drawn without it\n", lightbake::pathFor(level).c_str(), err.c_str());
+        placeholder();
+        return sb;
+    }
+    GLint maxSize = 0;
+    glGetIntegerv(GL_MAX_3D_TEXTURE_SIZE, &maxSize);
+    const glm::ivec3 a = sb.bake.atlas;
+    if (std::max({a.x, a.y, a.z}) > maxSize) {
+        std::fprintf(stderr, "%s: %d x %d x %d is past this GPU's 3D textures (%d) - drawn without it\n",
+                     lightbake::pathFor(level).c_str(), a.x, a.y, a.z, maxSize);
+        sb.bake = {};
+        placeholder();
+        return sb;
+    }
+    glGenTextures(1, &sb.tex);
+    glBindTexture(GL_TEXTURE_3D, sb.tex);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage3D(GL_TEXTURE_3D, 0, GL_RG8, a.x, a.y, a.z, 0, GL_RG, GL_UNSIGNED_BYTE, sb.bake.cells.data());
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    glBindTexture(GL_TEXTURE_3D, 0);
+    std::vector<uint8_t>().swap(sb.bake.cells);   // (on the GPU now: the regions are all that's kept)
+    return sb;
+}
+inline void GameplayState::applyBake() {
+    worldShader.use();
+    const int n = bake && bake->tex ? (int)bake->bake.regions.size() : 0;
+    worldShader.setInt("uBakeCount", n);
+    worldShader.setInt("uBake", 3);
+    if (!n) return;
+    glm::vec3 mn[lightbake::MAX_REGIONS], dims[lightbake::MAX_REGIONS], off[lightbake::MAX_REGIONS], sun[lightbake::MAX_REGIONS];
+    for (int i = 0; i < lightbake::MAX_REGIONS; ++i) {
+        const lightbake::Region* r = i < n ? &bake->bake.regions[i] : nullptr;
+        mn[i] = r ? r->min : glm::vec3(0.f); dims[i] = r ? glm::vec3(r->dims) : glm::vec3(0.f);
+        off[i] = r ? glm::vec3(r->off) : glm::vec3(0.f); sun[i] = r ? r->sunDir : glm::vec3(0.f, -1.f, 0.f);
+    }
+    worldShader.setVec3Array("uBakeMin", mn, lightbake::MAX_REGIONS);
+    worldShader.setVec3Array("uBakeDims", dims, lightbake::MAX_REGIONS);
+    worldShader.setVec3Array("uBakeOff", off, lightbake::MAX_REGIONS);
+    worldShader.setVec3Array("uBakeSun", sun, lightbake::MAX_REGIONS);
+    worldShader.setVec3("uBakeAtlas", glm::vec3(bake->bake.atlas));
+}
+
 inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode m)
     : settings(s), mode(m), audio(aud) {
     worldShader.loadFiles("src/shaders/shader.vert","src/shaders/shader.frag");
@@ -105,6 +172,8 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     level = fast() ? buildGauntlet() : act2() ? buildAct2Level() : buildLevel();
     spatialGrid.build(level.walls);
     world = buildWorldMeshes(level);
+    bake = &sharedBake(fast() ? "fast" : act2() ? "act2" : "act1", level);
+    applyBake();
     neonLights = buildNeonLights(level);
     shifts.capture(level);
     anchorsBuilt = level.anchors;   // the Penitent's anchors as built: a retry restores them
@@ -129,6 +198,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     act2FromStart = act2() && start == 0 && g_startWave <= 0 && !g_devCam;
     if (g_bossRun >= 0) { start = bossEntry(g_bossRun).arena; ranked = act2FromStart = false; }
     if (roomAttack()) { start = glm::clamp(g_roomAttack, 0, (int)level.arenas.size() - 1); ranked = false; }
+    if (arenaSolo()) { start = glm::clamp(g_arenaSolo, 0, (int)level.arenas.size() - 1); ranked = act2FromStart = false; }
     if (g_bossRun >= 0) msCheckpoint = bossEntry(g_bossRun).morning;   // (MORNINGSTAR: from inside the eclipse)
     enterArena(start);
     if (g_bossRun < 0) director.wave = glm::clamp(g_startWave, 0, director.waveCount() - 1);
@@ -141,6 +211,8 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     if (g_devAim) aim = 1.f;
     if (g_devOverlay == "armory") { prog.points = 3; prog.up[2].tier[0] = 2; prog.up[3].mod = true; armoryOpen = true; armoryW = 2; }
     if (g_devOverlay == "pause") paused = true;
+    if (g_devOverlay == "broken")   // every piece that breaks, broken (screenshots)
+        for (int i = 0; i < (int)level.destructibles.size(); ++i) breakDestructible(i, {1.f, 0.f, 0.f});
     if (g_devOverlay == "ascend" && act2()) ascendT = ASCEND_SINK + 0.5f;   // the act's card, then the rise into the Zenith (screenshots)
     if (g_devOverlay == "victory") {   // the victory screen mid name entry (screenshots)
         elapsedTime = 754.3f; victory = true; ranked = true;
@@ -163,6 +235,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     captureMouse(true);
     if (roomAttack()) startRoomAttack();   // after the capture: a later room opens the armory, which frees the mouse to shop with
     if (act2()) beginAct2();   // after the capture: the armory frees the mouse to shop with
+    if (arenaSolo()) startArenaSolo();
     if (g_bossRun >= 0) startBossRun();
 }
 
@@ -232,6 +305,7 @@ inline void GameplayState::enterArena(int a) {
     banners.clear();
     grapple.release();
     holsterSword(); sword = Sword{};
+    restoreDestructibles();
     abh.clear(); level.restoreZenith(); abGhosts.clear(); audio.stop(abWindH); audio.stop(abFlightH); audio.stop(abBeamH); abWindH = abFlightH = abBeamH = 0;
     abSkyMarkT = abCrackT = -1.f; abLineT = abHintT = 0.f; abLineShown = -1; abDeathT = 1e9f;   // the Zenith whole again
     if (!(act2() && a == ZENITH_ARENA)) msCheckpoint = false;   // MORNINGSTAR's checkpoint holds only for a retry in the Zenith
@@ -289,7 +363,7 @@ inline void GameplayState::restartHere() {
 
 inline void GameplayState::retryArena() {
     ++deaths;
-    if (fast()) { enterArena(director.arena); captureMouse(true); return; }
+    if (fast() || arenaSolo()) { enterArena(director.arena); captureMouse(true); return; }   // (one arena on its own: that arena again)
     // Died on the way out of a cleared arena? Pick up at the next one.
     enterArena(retryTarget(director.phase, director.arena));   // (the Zenith, if you died rising into it)
     captureMouse(true);
@@ -315,13 +389,16 @@ inline void GameplayState::newRun() {
     if (fast()) ghost.load();
     if (endless()) setupEndless();
     if (g_bossRun >= 0) { ranked = act2FromStart = false; msCheckpoint = bossEntry(g_bossRun).morning; }
-    enterArena(g_bossRun >= 0 ? bossEntry(g_bossRun).arena : endless() ? endlessArena : roomAttack() ? g_roomAttack : 0);
+    if (arenaSolo()) ranked = act2FromStart = false;
+    enterArena(g_bossRun >= 0 ? bossEntry(g_bossRun).arena : endless() ? endlessArena : roomAttack() ? g_roomAttack
+               : arenaSolo() ? glm::clamp(g_arenaSolo, 0, (int)level.arenas.size() - 1) : 0);
     bankedStyle = bankedDamage = 0.f;   // after enterArena: that banked the last run's
     wavesCleared = 0;
     if (fast() && !roomAttack()) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
     captureMouse(true);
     if (roomAttack()) startRoomAttack();   // after the capture, like ACT II: a later room opens the armory, which frees the mouse to shop with
     if (act2()) beginAct2();   // after the capture: the armory frees the mouse to shop with
+    if (arenaSolo()) startArenaSolo();
     if (g_bossRun >= 0) startBossRun();
 }
 
@@ -369,12 +446,35 @@ inline void GameplayState::bossRunDone() {
     victoryDelay = 3.f;
 }
 
+// The ARENA page: one Act I / Act II arena on its own, with the upgrades a whole run would have
+// by it (spent in the armory first). It ends as the arena's cleared (arenaSoloDone)
+inline void GameplayState::startArenaSolo() {
+    const int a = glm::clamp(g_arenaSolo, 0, (int)level.arenas.size() - 1);
+    const SoloStart st = soloStart(act2(), a);
+    prog = Progression{};
+    prog.level = st.level; prog.points = st.points;
+    soloDone = false;
+    banners.clear();
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%s  ARENA %d", act2() ? "ACT II" : "ACT I", a + 1);
+    pushBanner(buf, level.arenas[a].name, act2() ? glm::vec3{0.35f, 0.95f, 0.9f} : glm::vec3{1.f, 0.78f, 0.3f}, 3.f);
+    if (prog.points > 0 && !g_devCam && g_devOverlay.empty() && !armoryOpen) openArmory();
+}
+// The arena on its own is cleared: its time (kept if it's its best), then the victory screen
+inline void GameplayState::arenaSoloDone() {
+    if (soloDone) return;
+    soloDone = true;
+    newRecord = !g_godMode && !g_practice && !g_devCam && records.soloTime(act2(), glm::clamp(g_arenaSolo, 0, 31), elapsedTime);
+    if (newRecord) records.save();
+    victoryDelay = act2() ? 3.f : 2.5f;
+}
+
 // ACT II: the head start (what an Act I run has by the Sanctum), spent in the
 // armory before the fall
 inline void GameplayState::beginAct2() {
     prog = Progression{};
     prog.level = 6; prog.points = 5;
-    if (g_bossRun >= 0) return;   // (BOSS: startBossRun sets the run up)
+    if (g_bossRun >= 0 || arenaSolo()) return;   // (BOSS: startBossRun sets the run up; one arena: startArenaSolo)
     pushBanner("ACT II", "BENEATH THE ECLIPSE", {0.35f, 0.95f, 0.9f}, 3.5f);
     if (!g_devCam && g_devOverlay.empty()) openArmory();
 }
@@ -477,6 +577,12 @@ inline void GameplayState::handleDirectorEvents() {
             const Arena& done = level.arenas[ev.value];
             lockDoor(done.exitDoor, false);
             lockDoor(done.entryGate, false);
+            if (arenaSolo()) {   // the ARENA page's one arena: that was it
+                audio.play("anvil", 128, SoundGroup::UI, true);
+                pushBanner("ARENA CLEARED", done.name, {0.4f, 1.f, 0.6f}, 2.5f);
+                arenaSoloDone();
+                break;
+            }
             if (fast()) {
                 int vs = recordSplit(ev.value);
                 styleSystem.heal(25.f);
@@ -534,6 +640,7 @@ inline void GameplayState::handleDirectorEvents() {
             break;
         case DirectorEvent::VICTORY:
             if (g_bossRun >= 0) { bossRunDone(); break; }
+            if (arenaSolo()) { arenaSoloDone(); break; }
             victoryDelay = act2() ? 3.f : 2.5f;   // ACT II: the Absolute kneels and dissolves first
             break;
         case DirectorEvent::FINISH_OPEN:
@@ -581,6 +688,7 @@ inline void GameplayState::finishRun() {
         if (bossPost && !bossPosted) { board.load(); nameEntry = true; nameBuf = board.lastName; }
         return;
     }
+    if (arenaSolo()) { if (newRecord) recordCue(); return; }   // (its time is kept already: arenaSoloDone)
     newRecord = false;
     if (act2() && director.arena == ZENITH_ARENA && act2RunRecords(act2FromStart, g_godMode, g_practice)) {   // (ACT II is never ranked: its own local best)
         newRecord = recordZenith(records, elapsedTime); records.save();
@@ -985,6 +1093,7 @@ inline void GameplayState::update(float dt) {
         q->maxLife = q->life = 0.22f; q->alive = true;
     }
     fx.updateDebris(floatDt * timeScale());
+    updateDestructibles(floatDt);
     fx.updateRings(floatDt * timeScale());
     ftFx.to(frametimer::EFFECTS);
 

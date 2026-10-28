@@ -79,6 +79,7 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
     gatherShiftBoxes(out);
     gatherSovereignBoxes(out);
     gatherPenitentBoxes(out);
+    gatherDestructibleBoxes(out);
     gatherWardenBoxes(out);
     gatherReliquaryBoxes(out);
     gatherLeviathanBoxes(out);
@@ -217,6 +218,12 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
 
     for (auto& d : fx.debris) {
         float k = glm::clamp(d.life / d.maxLife, 0.f, 1.f);
+        if (d.fade > 0.f) {   // rubble: its own colour, whole until it fades
+            float f = glm::clamp(d.life / d.fade, 0.f, 1.f);
+            push(out, T(d.pos) * glm::rotate(glm::mat4(1.f), d.angle, d.axis) * glm::mat4(d.shape) * S(glm::vec3{f}), d.color, d.emissive);
+            out.back().mesh = d.mesh;
+            continue;
+        }
         glm::mat4 m = T(d.pos) * glm::rotate(glm::mat4(1.f), d.angle, d.axis)
                     * glm::mat4(d.shape) * S(glm::vec3{0.3f + 0.7f * k});
         float hot = glm::clamp(d.hot / 0.12f, 0.f, 1.f);   // white-hot off the killing blow, cooling to its colours
@@ -604,6 +611,14 @@ inline void GameplayState::render() {
     if (devSkip("neonlight")) neonSet.n = 0;
     applyNeon(worldShader, true);
     worldShader.setFloat("uNoSeams", 1.f);   // every world texture wraps and carries its own joints (MaterialTex.h)
+    const bool baked = bake && bake->tex && !devSkip("bake");
+    if (bake && bake->tex) {   // the baked light (LightBake.h), on unit 3
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_3D, bake->tex);
+        glActiveTexture(GL_TEXTURE0);
+    }
+    worldShader.setFloat("uBakeOn", baked ? 1.f : 0.f);
+    worldShader.setFloat("uBakeDebug", baked && g_devOverlay == "bake" ? 1.f : 0.f);   // (--overlay bake: what's baked, as colour)
     for (int t = 0; t < TEX_COUNT && !devSkip("world"); ++t) {
         if (world.byTex[t].indexCount == 0) continue;
         // What glows in the texture (MaterialTex.h: alpha < 1), in its own colour
@@ -616,6 +631,8 @@ inline void GameplayState::render() {
     }
     worldShader.setVec3("uTexGlow", {0.f, 0.f, 0.f});
     worldShader.setFloat("uNoSeams", 0.f);
+    worldShader.setFloat("uBakeOn", 0.f);
+    worldShader.setFloat("uBakeDebug", 0.f);
     applyNeon(worldShader, false);   // (the neon doesn't light itself; nor the view model, later)
     glBindTexture(GL_TEXTURE_2D, whiteTex);
     worldShader.setVec3("objectColor", {0.25f,0.25f,0.25f});

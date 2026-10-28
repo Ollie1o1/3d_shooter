@@ -40,6 +40,42 @@ public:
     ~UIBatch() {
         if (vao) glDeleteVertexArrays(1, &vao);
         if (vbo) glDeleteBuffers(1, &vbo);
+        if (imgVao) glDeleteVertexArrays(1, &imgVao);
+        if (imgVbo) glDeleteBuffers(1, &imgVbo);
+    }
+
+    // A picture (a GL texture), drawn now over what's been batched so far: x, y, w, h in pixels, the
+    // texture's u0 v0 u1 v1 (v0 at the top), tint x its colour (alpha fades it)
+    void image(unsigned int tex, float x, float y, float w, float h, glm::vec4 tint = glm::vec4(1.f),
+               glm::vec4 uv = {0.f, 0.f, 1.f, 1.f}) {
+        if (!tex || w <= 0.f || h <= 0.f || tint.a <= 0.f) return;
+        flush();
+        if (!imgVao) {
+            imgShader.loadFiles("src/shaders/ui_img.vert", "src/shaders/ui_img.frag");
+            glGenVertexArrays(1, &imgVao);
+            glGenBuffers(1, &imgVbo);
+            glBindVertexArray(imgVao);
+            glBindBuffer(GL_ARRAY_BUFFER, imgVbo);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+            glEnableVertexAttribArray(1);
+            glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+            glBindVertexArray(0);
+        }
+        const float x1 = x + w, y1 = y + h;
+        const float v[24] = {x, y, uv.x, uv.y,   x1, y, uv.z, uv.y,   x1, y1, uv.z, uv.w,
+                             x, y, uv.x, uv.y,   x1, y1, uv.z, uv.w,  x, y1, uv.x, uv.w};
+        imgShader.use();
+        imgShader.setMat4("projection", glm::ortho(0.f, (float)screenW, (float)screenH, 0.f));
+        imgShader.setVec4("uTint", tint);
+        imgShader.setInt("uImage", 0);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, tex);
+        glBindVertexArray(imgVao);
+        glBindBuffer(GL_ARRAY_BUFFER, imgVbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(v), v, GL_STREAM_DRAW);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glBindVertexArray(0);
     }
     UIBatch(const UIBatch&) = delete;
     UIBatch& operator=(const UIBatch&) = delete;
@@ -129,4 +165,6 @@ private:
     ShaderProgram      shader;
     GLuint             vao = 0, vbo = 0;
     std::vector<float> verts;
+    ShaderProgram      imgShader;               // (image(): made the first time a picture's drawn)
+    GLuint             imgVao = 0, imgVbo = 0;
 };
