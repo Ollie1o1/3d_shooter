@@ -609,7 +609,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
                 fx.spawnBurst(e.position + glm::vec3{frand(-1.f, 1.f), frand(0.5f, 3.5f), frand(-1.f, 1.f)},
                            {1.f, 0.8f, 0.4f}, 30, 10.f, 0.8f, 2.f);
             pushBanner("THE SOVEREIGN FALLS", "", {1.f, 0.85f, 0.3f}, 3.f);
-            if (!g_godMode && !records.act2Unlocked) {
+            if (!g_godMode && g_bossRun < 0 && g_arenaSolo < 0 && !records.act2Unlocked) {   // (a whole Act I run: not the BOSS page's fight, not the arena on its own)
                 records.act2Unlocked = true;
                 records.save();
                 ui.feed("ACT II UNLOCKED - BENEATH THE ECLIPSE", {0.35f, 0.95f, 0.9f});
@@ -691,6 +691,7 @@ inline void GameplayState::processBlasts() {
             if (glm::length(relic.souls[si].pos - b.pos) < b.radius && relic.hurtSoul(si, b.damage)) ui.feed("SOUL TAKEN", {0.75f, 0.9f, 1.3f});
         for (int wi = (int)relic.wires.size() - 1; wi >= 0; --wi)    // ...and cuts any wire whose node it reaches
             if (glm::length(relic.wires[wi].a - b.pos) < b.radius || glm::length(relic.wires[wi].b - b.pos) < b.radius) relic.cutWire(wi);
+        blastDestructibles(b.pos, b.radius, b.damage);
         for (int ai = 0; ai < (int)level.anchors.size(); ++ai)   // a blast against the Penitent's anchors
             if (level.anchors[ai].alive && glm::length(level.anchors[ai].pos - b.pos) < b.radius + 1.f &&
                 (level.anchors[ai].kind != LevelData::ChainAnchor::CONDUIT || conduitShootable(wardenAlive(), wardenPhase())) &&
@@ -909,6 +910,8 @@ inline void GameplayState::fireWeapon(int w) {
             if (ct > 0.f) { n = 0; anyHit = true; wallT = ct; }   // (the chain takes the round)
             else if (hits.empty() || hits[0].t > wallT - 0.05f) hitAnchor(origin, dir, wallT, dmg);   // the round stopped on a wall: one of its anchors?
         }
+        if (!level.destructibles.empty() && (n == 0 || hits[0].t > wallT - 0.05f))   // the round stopped on a wall: one that breaks?
+            hitDestructible(origin, dir, wallT, dmg);
         if (!relic.souls.empty() || !relic.wires.empty()) {   // the Reliquary: a fleeing soul, a wire's node, before what it hit
             float firstT = hits.empty() ? wallT : hits[0].t, st = 0.f;
             int si = relic.raySoul(origin, dir, firstT, st);

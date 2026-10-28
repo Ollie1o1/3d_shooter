@@ -52,6 +52,8 @@ public:
         glm::vec3 pos, vel, axis, color, emissive;
         float angle = 0.f, spin = 0.f, life = 0.f, maxLife = 1.f, floorY = 0.f;
         float hot = 0.f;          // seconds left glowing white-hot from the killing blow
+        float fade = 0.f;         // > 0: whole until this long before its end, then shrinking away (rubble)
+        bool  rest = false;       // settles where it lands (rubble), rather than skidding on
     };
     std::vector<Debris> debris;
     // A body made in Blender breaks at its joints: each limb (every part on one joint) flies as one
@@ -365,7 +367,10 @@ public:
             d.vel.y -= 20.f * dt;
             d.pos   += d.vel * dt;
             d.angle += d.spin * dt;
-            if (d.pos.y < d.floorY) { d.pos.y = d.floorY; d.vel.y = std::fabs(d.vel.y) * 0.35f; d.vel.x *= 0.6f; d.vel.z *= 0.6f; d.spin *= 0.6f; }
+            if (d.pos.y < d.floorY) {
+                d.pos.y = d.floorY; d.vel.y = std::fabs(d.vel.y) * 0.35f; d.vel.x *= 0.6f; d.vel.z *= 0.6f; d.spin *= 0.6f;
+                if (d.rest && d.vel.y < 1.2f) { d.vel = glm::vec3{0.f}; d.spin = 0.f; }   // (rubble: down, and it stays)
+            }
             d.life -= dt;
             if (d.hot > 0.f) d.hot -= dt;
         }

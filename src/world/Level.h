@@ -254,12 +254,25 @@ struct PlacedModel {
     Mat   mat = Mat::BRICK;
 };
 
+// A piece of the level that breaks (made in Blender: a whole prop and its pieces, PropFile.h): its
+// wall collides and is drawn whole by the game until its hp is gone, then it's parked away and the
+// pieces fly (Gameplay_Destruct.h). Placed by a layout file (LevelLayout.h)
+struct Destructible {
+    std::string name;          // assets/props/<name>.glb whole, <name>_pieces.glb broken
+    int   wall = -1;           // its collision box (a hidden wall: not baked into the world)
+    AABB  home{};              // that box as built (a retry restores it)
+    float hp = 300.f, maxHp = 300.f;
+    bool  broken = false;
+    float hitFlash = 0.f;      // flashes as it's hit
+};
+
 struct LevelData {
     std::vector<Wall>       walls;     // collidable (doors and movers included)
     std::vector<Wall>       props;     // visual only
     std::vector<Wall>       neon;      // visual only, self-lit (drawn with vertex glow)
     std::vector<Shape>      shapes;    // visual only: round, curved, turned (Shapes.h)
     std::vector<PlacedModel> models;   // visual only: props made in Blender (PropFile.h)
+    std::vector<Destructible> destructibles;   // pieces that break (LevelLayout.h places them)
     std::vector<FloorPatch> floors;
     std::vector<Door>       doors;
     std::vector<JumpPad>    pads;
@@ -1640,10 +1653,13 @@ inline void buildAct1(LevelBuilder& B) {
     }
 }
 
-// ARENA mode's level: Act I alone
+#include "world/LevelLayout.h"
+
+// ARENA mode's level: Act I alone (and its layout from Blender, if it has one)
 inline LevelData buildLevel() {
     LevelData L;
     LevelBuilder B{L};
     buildAct1(B);
+    layout::applyFile(L, "act1");
     return L;
 }

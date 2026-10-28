@@ -69,7 +69,7 @@ SRC     := src/main.cpp
 HEADERS := $(shell find src -name '*.h')
 TESTS   := tests/test_physics.cpp tests/test_game.cpp tests/test_zenith.cpp tests/BossSim.h
 
-.PHONY: all clean run test web scan
+.PHONY: all clean run test web scan level-dump light
 
 all: $(TARGET)
 
@@ -94,6 +94,17 @@ test: $(TESTS) $(HEADERS)
 scan: tests/scan_bounds.cpp tests/BoundsScan.h $(HEADERS)
 	$(CXX) $(CXXFLAGS) tests/scan_bounds.cpp -o tests/scan_bounds $(STDLIB)
 	./tests/scan_bounds
+
+# Every level's light baked (ambient occlusion and sun shadows: render/LightBake.h) into assets/levels/<level>.light.
+# Rerun after changing a level: the game leaves out a stale bake, and `make test` says which
+light: tools/light_bake.cpp $(HEADERS)
+	$(CXX) $(CXXFLAGS) tools/light_bake.cpp -o tools/light_bake $(STDLIB)
+	./tools/light_bake
+
+# Every level out for Blender (build/levels/<level>/: tools/blender/level_import.py builds a scene from it)
+level-dump: tools/level_dump.cpp $(HEADERS)
+	$(CXX) $(CXXFLAGS) tools/level_dump.cpp -o tools/level_dump $(STDLIB)
+	mkdir -p build/levels && for l in act1 act2 fast; do ./tools/level_dump $$l build/levels/$$l || exit 1; done
 
 # Browser build (WebGL2 + WebAssembly) → web/dist. Needs Emscripten on PATH:
 #   source ~/emsdk/emsdk_env.sh && make web && python3 -m http.server -d web/dist
