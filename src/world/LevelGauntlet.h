@@ -308,6 +308,12 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::RIPPER, 0, {{0,0,-88},{-4,0,-103},{4,0,-115}}},
                 W{EnemyType::RAPTOR, 0, {{-5,9,-96},{5,9,-110}}},
             },
+            {   // the lane's far end: a Brute holds it, mites run at you, Raptors over the water
+                W{EnemyType::BRUTE, 0, {{0,0,-118}}},
+                W{EnemyType::MITE, 0, {{-6,0,-112},{6,0,-116},{0,0,-122}}},
+                W{EnemyType::HUSK, 0, {{12,3,-118},{-12,3,-120}}},
+                W{EnemyType::RAPTOR, 0, {{0,12,-110}}},
+            },
             {   // THE COURIER, up the lane with the room's key: run it down
                 W{EnemyType::COURIER, 0, {{0,0,-104}}},
                 W{EnemyType::MITE, 0, {{-6,0,-112},{6,0,-116}}},
@@ -419,6 +425,12 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::RIPPER, 0, {{-78,0,-119},{-64,0,-114}}},
                 W{EnemyType::MITE, 0, {{-75,0,-113},{-64,0,-124}}},
                 W{EnemyType::SENTINEL, 0, {{-71.5f,6,-117}}},
+            },
+            {   // a Shieldbearer in the pit: get round it (the Bulwark is next, and bigger)
+                W{EnemyType::SHIELDBEARER, 0, {{-77,0,-119}}},
+                W{EnemyType::RIPPER, 0, {{-63,0,-119},{-64,0,-125}}},
+                W{EnemyType::HUSK, 0, {{-64,3,-109},{-66,3,-129}}},
+                W{EnemyType::MITE, 0, {{-77,0,-124},{-78,0,-128}}},
             },
             {   // THE BULWARK, its gate between you and the exit: vault the pads, hit its back
                 W{EnemyType::BULWARK, 0, {{-76,0,-123}}},
@@ -551,6 +563,12 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::HUSK, 0, {{-150,8,-109},{-152,8,-127},{-182,16,-110},{-196,20,-114}}},
                 W{EnemyType::SENTINEL, 0, {{-161,12,-114},{-184,16,-126},{-198,20,-126}}},
                 W{EnemyType::BRUTE, 0, {{-164,12,-109}}},
+            },
+            {   // the upper terraces: Raptors under the vault, gunners above you
+                W{EnemyType::RAPTOR, 0, {{-150,24,-118},{-180,24,-112}}},
+                W{EnemyType::HUSK, 0, {{-160,12,-128},{-182,16,-110}}},
+                W{EnemyType::RIPPER, 0, {{-164,12,-109},{-152,8,-127}}},
+                W{EnemyType::SENTINEL, 0, {{-198,20,-126}}},
             },
             {   // THE CANTOR under the rose window: climb to it through the beam and the rings
                 W{EnemyType::CANTOR, 0, {{-192,25,-118.5f}}},
@@ -697,6 +715,11 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::BRUTE, 0, {{-193,20,-226}}},
                 W{EnemyType::RAPTOR, 0, {{-193,27,-212},{-199,27,-250}}},
             },
+            {   // the sky fills: Raptors over the gaps (the Harrier is one of them, grown)
+                W{EnemyType::RAPTOR, 0, {{-200,30,-200},{-184,30,-250},{-193,28,-212}}},
+                W{EnemyType::HUSK, 0, {{-207,20,-224},{-177,20,-230}}},
+                W{EnemyType::RIPPER, 0, {{-193,20,-226}}},
+            },
             {   // THE HARRIER over the far half: when it dives, it skims low - hook it
                 W{EnemyType::HARRIER, 0, {{-193,30,-236}}},
                 W{EnemyType::HUSK, 0, {{-202,20,-240},{-182,20,-226}}},
@@ -806,6 +829,11 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::MITE, 0, {{-138,6.5f,-274},{-126,6.5f,-260},{-150,6.5f,-256}}},
                 W{EnemyType::BRUTE, 0, {{-128,0,-272}}},
                 W{EnemyType::RIPPER, 0, {{-150,0,-256},{-130,0,-252}}},
+            },
+            {   // the ground floor: a rush across the bottom, nothing left above you
+                W{EnemyType::RIPPER, 0, {{-152,0,-274},{-126,0,-250},{-130,0,-272}}},
+                W{EnemyType::MITE, 0, {{-135,0,-250},{-150,0,-252},{-126,0,-278}}},
+                W{EnemyType::BRUTE, 0, {{-135,0,-278}}},
             },
             {   // THE PLUMB LINE, hung down the hole into the bottom floor: wait out its volley, then its core
                 W{EnemyType::PLUMB, 0, {{-150,1.5f,-276}}},
@@ -926,6 +954,11 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::BRUTE, 0, {{-49,6,-263.5f}}},
                 W{EnemyType::MITE, 0, {{-40,0,-252},{-38,0,-275},{-24,0,-263}}},
             },
+            {   // the far end: a Juggernaut across the lava, gunners up on the galleries
+                W{EnemyType::JUGGERNAUT, 0, {{-28,0,-268}}},
+                W{EnemyType::SENTINEL, 0, {{-35,5,-281},{-35,5,-246}}},
+                W{EnemyType::MITE, 0, {{-24,0,-263},{-38,0,-275}}},
+            },
             {   // THE FOREMAN along the crane line; its crew shields it - break the tethers
                 W{EnemyType::FOREMAN, 0, {{-42,7.5f,-263.5f}}},
                 W{EnemyType::HUSK, 0, {{-32,5,-281},{-32,5,-246}}},
@@ -938,7 +971,7 @@ inline LevelData buildGauntlet() {
 
     // =========================================================================
     // 7 THE TOWER — the finale. Down the last tube into a courtyard with
-    // corner bastions and a 34 m tower: win two waves, then ride the lifts,
+    // corner bastions and a 34 m tower: win the yard's two waves, then ride the lifts,
     // the lift shaft or the pads up to the beacon on top.
     // =========================================================================
     {
@@ -1048,6 +1081,12 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::BRUTE, 0, {{66,0,-263.5f}}},
                 W{EnemyType::MITE, 0, {{48,0,-280},{48,0,-247}}},
             },
+            {   // the yard's second line: a Juggernaut by the far wall, Raptors off the keep
+                W{EnemyType::JUGGERNAUT, 0, {{85,0,-273}}},
+                W{EnemyType::RAPTOR, 0, {{56,20,-284},{66,20,-243}}},
+                W{EnemyType::HUSK, 0, {{TX,12,TZ - 8},{TX,12,TZ + 8}}},
+                W{EnemyType::MITE, 0, {{81,0,-283},{81,0,-244}}},
+            },
             {   // THE PACEMAKER: the yard, the climb, the crown
                 W{EnemyType::PACEMAKER, 0, {{TX + 16.f, 0, TZ}}},
             },
@@ -1069,18 +1108,18 @@ inline LevelData buildGauntlet() {
     // Each room's medals (seconds from its fight starting to its clear, the second for each enemy left
     // standing included): gold, silver, bronze, and the dev time
     const float medals[7][4] = {
-        { 42.f,  58.f,  80.f,  30.f},   // the Canal: two waves up the lane, the Courier run down
-        { 38.f,  52.f,  72.f,  27.f},   // the Sluice: close quarters, the Bulwark
-        { 52.f,  72.f,  98.f,  38.f},   // the Ascent: the climb, the Cantor
-        { 50.f,  70.f,  95.f,  37.f},   // the Span: the islands, the Harrier
-        { 40.f,  56.f,  78.f,  29.f},   // the Well: the drop, the Plumb Line
-        { 46.f,  64.f,  88.f,  34.f},   // the Pumpworks: the hall, the Foreman
-        {100.f, 135.f, 180.f,  78.f},   // the Tower: the yard, then the Pacemaker
+        { 52.f,  71.f,  97.f,  37.f},   // the Canal: two waves up the lane, the Courier run down
+        { 46.f,  63.f,  87.f,  33.f},   // the Sluice: close quarters, a Shieldbearer, the Bulwark
+        { 62.f,  85.f, 116.f,  45.f},   // the Ascent: the climb, the upper terraces, the Cantor
+        { 60.f,  83.f, 112.f,  44.f},   // the Span: the islands, the Raptors, the Harrier
+        { 49.f,  68.f,  94.f,  35.f},   // the Well: the drop, the ground floor, the Plumb Line
+        { 56.f,  77.f, 105.f,  41.f},   // the Pumpworks: the hall, the Juggernaut, the Foreman
+        {112.f, 151.f, 201.f,  87.f},   // the Tower: the yard, its second line, then the Pacemaker
     };
     for (int i = 0; i < 7 && i < (int)L.arenas.size(); ++i)
         for (int k = 0; k < 4; ++k) L.arenas[i].medals[k] = medals[i][k];
 
     // Par times for the whole run (seconds): S, A, B, C (the rooms' golds plus the tubes, and up)
-    L.parTimes[0] = 420.f; L.parTimes[1] = 560.f; L.parTimes[2] = 720.f; L.parTimes[3] = 950.f;
+    L.parTimes[0] = 490.f; L.parTimes[1] = 650.f; L.parTimes[2] = 830.f; L.parTimes[3] = 1080.f;
     return L;
 }
