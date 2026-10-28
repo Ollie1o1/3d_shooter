@@ -192,6 +192,24 @@ inline bool zenithHandoff(bool act2, int clearedArena, int arenaCount) {
 inline bool canStartAct2(const Records& r) { return r.act2Unlocked; }
 // BOSS: every boss is open from the start (Oliver's call: no need to have reached it)
 inline bool bossOpen(const Records&, int i) { return i >= 0 && i < BOSS_COUNT; }
+// BOSS on the world board (the site's API, one board per boss, fastest first): its key, and its
+// world record as the web page caches it ("TIME DIFFICULTY NAME" lines, best first). Off the web,
+// or before the fetch lands, there's none (time 0)
+inline std::string bossBoardKey(int i) { return "boss" + std::to_string(std::clamp(i, 0, BOSS_COUNT - 1)); }
+struct WorldBest { float time = 0.f; int difficulty = 0; std::string name; };
+inline WorldBest parseWorldBest(const std::string& text) {
+    WorldBest w;
+    std::istringstream f(text);
+    std::string line;
+    if (std::getline(f, line)) {
+        std::istringstream ls(line);
+        float t = 0.f; int d = 0; std::string rest;
+        if (ls >> t >> d && t > 0.f) { std::getline(ls, rest); w.time = t; w.difficulty = d; w.name = rest.empty() ? "" : rest.substr(1); }
+    }
+    return w;
+}
+inline WorldBest loadBossWorld(int i) { return parseWorldBest(persist::load("leaderboard.online." + bossBoardKey(i))); }
+
 // A boss killed in t seconds: true when it's that boss's new best
 inline bool recordBoss(Records& r, int i, float t) {
     if (i < 0 || i >= BOSS_COUNT || t <= 0.f) return false;

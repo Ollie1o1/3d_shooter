@@ -586,6 +586,7 @@ public:
     // Web: post the run to the shared board (web/index.html does the request;
     // the name is already restricted to A-Z 0-9 space - . _)
     void submitWorld(const std::string& name, int diff);
+    void submitBossWorld(float t);
 
     // Victory screen: type a name (letters, digits, space - . _), ENTER saves
     // it to the leaderboard, ESC skips

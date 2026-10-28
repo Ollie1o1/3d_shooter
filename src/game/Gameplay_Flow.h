@@ -332,6 +332,7 @@ inline void GameplayState::bossRunDone() {
     bossKillT = bossStartAt >= 0.f ? elapsedTime - bossStartAt : elapsedTime;
     newRecord = !g_godMode && !g_practice && recordBoss(records, g_bossRun, bossKillT);
     if (newRecord) records.save();
+    if (!g_godMode && !g_practice) submitBossWorld(bossKillT);   // (the web: onto the world board for this boss)
     victoryDelay = 3.f;
 }
 
