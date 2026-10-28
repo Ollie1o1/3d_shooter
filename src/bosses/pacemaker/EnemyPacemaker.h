@@ -124,6 +124,8 @@ inline void Enemy::thinkPacemaker(float dt, const EnemyWorld& w, bool resolve) {
         else turnToward(to, dt, 3.f);
     } else if (recoverTimer > 0.f) {
         velocity.x = velocity.z = 0.f;
+    } else if ((pmPhase == 0 || level) && evadeTick(dt, w)) {   // in a duel, hurt hard and fast: it breaks away across your aim
+        turnToward(to, dt, 6.f);
     } else {
         strafeTimer -= dt;
         if (strafeTimer <= 0.f) { strafeTimer = frand(1.2f, 2.2f); strafeDir = -strafeDir; }

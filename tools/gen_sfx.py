@@ -1217,6 +1217,22 @@ def gen_dash_ready():
     return out
 
 
+def gen_potion_drop():
+    """A health potion lands near you: a glass flask set down hard, two clear clinks and a little slosh."""
+    n = n_samples(0.45)
+    slosh = _bandnoise(n, 300, 1400)
+    out = []
+    for i in range(n):
+        t = i / SR
+        c1 = (sine(2637, i) + 0.6 * sine(3951, i) + 0.3 * sine(5274, i)) * math.exp(-t * 18.0) * min(1.0, t / 0.0008)
+        u = t - 0.07
+        c2 = (math.sin(2 * math.pi * 3136 * u) + 0.5 * math.sin(2 * math.pi * 4699 * u)) * math.exp(-u * 22.0) * min(1.0, u / 0.0008) if u > 0 else 0.0
+        sl = slosh[i] * math.sin(math.pi * min(1.0, max(0.0, t - 0.02) / 0.3)) * (1.0 if t < 0.32 else 0.0) * 0.25
+        thud = sine(140, i) * math.exp(-t * 40.0) * 0.4
+        out.append(c1 * 0.35 + c2 * 0.3 + sl + thud)
+    return out
+
+
 def gen_mini_sting():
     """A Gauntlet room's mini-boss arrives: a heavy low clank on the anvil, a sub boom, and a dark brass chord
     swelling and falling a semitone, so the room knows something big just walked in."""
@@ -1328,7 +1344,7 @@ GENERATORS = {
     "overdrive_on": gen_overdrive_on, "overdrive_off": gen_overdrive_off, "finish_ready": gen_finish_ready, "hook_yank": gen_hook_yank,
     "anvil": gen_anvil, "anvil_1": gen_anvil_1, "anvil_2": gen_anvil_2, "anvil_final": gen_anvil_final, "record": gen_record,
     "split_behind": gen_split_behind, "count_tick": gen_count_tick, "count_go": gen_count_go,
-    "drive_warn": gen_drive_warn, "drive_ready": gen_drive_ready, "dash_ready": gen_dash_ready,
+    "drive_warn": gen_drive_warn, "drive_ready": gen_drive_ready, "dash_ready": gen_dash_ready, "potion_drop": gen_potion_drop,
     "mini_sting": gen_mini_sting, "bell": gen_bell, "medal": gen_medal,
 }
 

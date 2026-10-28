@@ -3147,7 +3147,7 @@ int main() {
                                 "kill_light", "kill_heavy", "kill_rifle", "kill_blade",
                                 "jump_air", "land_heavy", "slide", "hit_head", "ammo_low", "heartbeat", "hit_armor", "impact", "casing", "whiz", "step_metal", "land_metal", "lastkill",
                                 "hit_body", "stun", "finisher", "overdrive_on", "overdrive_off", "finish_ready", "hook_yank",
-                                "anvil", "anvil_final", "record", "split_behind", "count_tick", "count_go", "drive_warn", "drive_ready", "dash_ready",
+                                "anvil", "anvil_final", "record", "split_behind", "count_tick", "count_go", "drive_warn", "drive_ready", "dash_ready", "potion_drop",
                                 "mini_sting", "bell", "medal"};
         std::vector<std::string> names(std::begin(loaded), std::end(loaded));
         for (const std::string& n : abAllSounds()) names.push_back(n);   // THE ABSOLUTE's fight (AbsoluteFeel.h)
@@ -3357,6 +3357,32 @@ int main() {
         }
         std::printf("      sovereign's shortest recovery: %.2f s\n", minRec);
         CHECK(windows, "every Sovereign recovery leaves at least 0.8 s, enraged on the hardest difficulty");
+        {   // hurt hard and fast, he breaks away across your aim (the side that's clear), then not again for a while;
+            // a hit tips him a little, never far
+            Enemy s(EnemyType::SOVEREIGN, C + glm::vec3{0, 0, -9}); s.spawnTimer = 0.f; s.state = EnemyState::ACTIVE;
+            EnemyWorld w = worldFor(SL, grid, C, SA);
+            w.playerFeet = C; w.playerEye = C + glm::vec3{0, 1.7f, 0};
+            w.playerAim = glm::normalize(s.position + glm::vec3{0, 1.5f, 0} - w.playerEye);
+            auto neutral = [&](Enemy& e) { return e.telegraphTimer <= 0.f && e.recoverTimer <= 0.f && !e.staggered(); };
+            for (int f = 0; f < 600 && !neutral(s); ++f) s.update(DT, w);
+            s.attackTimer = 0.f;
+            s.takeHit(glm::vec3{0, 0, -1}, 14.f, 0.f, 1.f, true, 1.f);
+            const float tipped = s.flinchAmp;
+            s.takeDamage(s.maxHealth * 0.035f);
+            glm::vec3 before = s.position; bool broke = false;
+            for (int f = 0; f < 30; ++f) { s.update(DT, w); broke |= s.ev.dodged; }
+            glm::vec3 moved = s.position - before;
+            float across = std::fabs(glm::dot(moved, glm::normalize(glm::cross(w.playerAim, glm::vec3{0, 1, 0}))));
+            s.takeDamage(s.maxHealth * 0.035f); bool again = false;
+            for (int f = 0; f < 60 * 3; ++f) { s.update(DT, w); again |= s.ev.dodged; }
+            std::printf("      sovereign under fire: broke away %.1f m across your aim; flinch %.3f rad\n", across, tipped);
+            CHECK(broke && across > 2.5f, "a duelling boss hurt hard and fast breaks away across your aim");
+            CHECK(!again, "...and not again for a few seconds");
+            CHECK(tipped > 0.02f && tipped <= hitreact::BOSS_FLINCH_MAX + 1e-5f, "a boss flinches at a hit, a little (it doesn't stagger to your gun)");
+            Enemy lev(EnemyType::LEVIATHAN, C); lev.spawnTimer = 0.f; lev.state = EnemyState::ACTIVE;
+            lev.takeHit(glm::vec3{0, 0, -1}, 14.f, 0.f, 1.f, true, 1.f);
+            CHECK(lev.flinchAmp == 0.f, "...but the Leviathan's huge body doesn't");
+        }
         // A parry: 3 s at x2
         Enemy p(EnemyType::SOVEREIGN, C); p.spawnTimer = 0.f; p.state = EnemyState::ACTIVE;
         p.stagger(p.staggerTime());
