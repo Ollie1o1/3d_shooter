@@ -442,6 +442,18 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     updateAbsolute(dt);
     steerParriedOrbs(dt);   // parried orbs into the Warden's core, the Leviathan's eye
     if (fast() && countdown <= 0.f && !victory) ghostRec.record(elapsedTime, player.position, player.camera.yaw);
+    // FAST: your best run's ghost going by close (it passing you, or you it): a whoosh from where it is
+    if (ghostWhooshCd > 0.f) ghostWhooshCd -= dt;
+    if (fast() && countdown <= 0.f && !victory && ghostWhooshCd <= 0.f && (!settings || settings->ghost)) {
+        glm::vec3 gf; float gy;
+        if (ghost.at(elapsedTime, gf, gy)) {
+            glm::vec3 d = gf - player.position;
+            if (glm::length(glm::vec2(d.x, d.z)) < 2.2f && std::fabs(d.y) < 2.5f && playerXZSpeed > 6.f) {
+                audio.playAt("whiz", gf + glm::vec3{0.f, 1.2f, 0.f}, 110, SoundGroup::UI, true);
+                ghostWhooshCd = 3.f;
+            }
+        }
+    }
 
     ftLap.to(frametimer::SIM_BOSSES);
     // --- Projectiles ---
