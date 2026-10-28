@@ -253,6 +253,10 @@ public:
     }
     void slowMo(float len, float low) { if (slowT > 0.f && slowLow <= low) return; slowT = slowLen = len; slowLow = low; }
     float ropeFx = 0.f;                         // 0..1 the grapple's rope singing (AudioSystem::setRope)
+    // Hanging off the grapple (GrappleHook::latched): how long, and where you're held
+    static constexpr float HANG_MAX = 3.f;      // then it lets go (no camping on a wall)
+    float hangT = 0.f; glm::vec3 hangPos{0.f}; bool hangPrev = false;
+    glm::vec3 hangNormal() const;               // the face of the surface you're hanging on
     glm::vec2 lookDelta{0.f};   // degrees of mouse / stick look this frame (yaw, pitch): the gun's sway
 
     float muzzleFlashTimer = 0.f;
