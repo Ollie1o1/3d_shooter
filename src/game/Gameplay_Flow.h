@@ -157,7 +157,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
 inline GameplayState::~GameplayState() {
     logRun("quit");   // whatever was played since the last death or finish (RunLog.h)
     audio.setMuffle(0.f);   // back to the menu: the world isn't dull any more
-    audio.setWind(0.f); audio.setRope(0.f);
+    audio.setWind(0.f); audio.setRope(0.f); audio.setOverdrive(false, 0.f);
     audio.setRoom(RoomTone::NONE);   // the menu has no air of its own
     glDeleteTextures(1,&whiteTex);
     glDeleteTextures(TEX_COUNT, worldTex);
@@ -1034,7 +1034,11 @@ inline void GameplayState::updateMusic() {
         default: break;
     }
     if (lv >= 1.f && styleSystem.overdrive) lv = 1.35f;
-    m.setDrive(overdriveOn() && !playerDead && !victory);   // OVERDRIVE: the stabs come in
+    {   // OVERDRIVE: the stabs come in, its hum under everything (faster in its last 1.5 s), the world steps back
+        const bool on = overdriveOn() && !playerDead && !victory;
+        m.setDrive(on);
+        audio.setOverdrive(on && !paused && !armoryOpen, std::clamp((1.5f - styleSystem.overdriveTimer) / 1.5f, 0.f, 1.f));
+    }
     {   // the last one standing: the drums alone (not a boss's fight, not a wave that refills)
         int left = 0;
         for (const auto& e : enemies) if (e.targetable() && e.type != EnemyType::CONDUIT) ++left;

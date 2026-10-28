@@ -139,6 +139,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         if (dashCooldown <= 0.f && dashCharges < 2) {
             ++dashCharges;
             dashCooldown = dashCharges < 2 ? 1.2f : 0.f;
+            audio.play("dash_ready", 72, SoundGroup::UI);   // a charge back: a small flick, so you needn't look at the pips
         }
     }
 

@@ -10,6 +10,7 @@
 #include "audio/SfxMixer.h"
 #include "audio/MixTable.h"
 #include "audio/RoomTone.h"
+#include "audio/DriveBed.h"
 
 // SDL_mixer may not be available — guard the include
 #ifdef __has_include
@@ -35,6 +36,7 @@ public:
     MusicSynth music;           // the live soundtrack (MusicSynth.h), always running
     SfxMixer   sfx;             // the effects (SfxMixer.h)
     RoomToneSynth room;         // each arena's background air (RoomTone.h)
+    DriveBed   drive;           // OVERDRIVE's hum, in time and in key with the music (DriveBed.h)
 
     AudioSystem() {
 #if HAS_SDL_MIXER
@@ -120,6 +122,12 @@ public:
     void setListener(glm::vec3 pos, glm::vec3 right, glm::vec3 fwd) { if (initialized) sfx.setListener(pos, right, fwd); }
     void setSpace(ReverbSpace s) { if (initialized) sfx.setSpace(s); }
     void duck(float dB, float seconds) { if (initialized) sfx.duck(dB, seconds); }
+    // OVERDRIVE: its hum (urgency 0..1: running out) and the mix's focus (SfxMixer THE CROWD)
+    void setOverdrive(bool on, float urgency) {
+        if (!initialized) return;
+        drive.set(on, urgency);
+        sfx.setFocus(on ? 1.f : 0.f);
+    }
     // 0..1: how much of the whole mix goes through a low-pass (low health: the world goes dull)
     void setMuffle(float m) { muffle.store(std::max(0.f, std::min(1.f, m)), std::memory_order_relaxed); }
     // 0..1: the rush of air past you (fast falls, the grapple, a dash), made in the callback
@@ -284,6 +292,9 @@ private:
         if ((int)a->musicBuf.size() < frames * 2) a->musicBuf.resize(frames * 2);
         a->music.render(a->musicBuf.data(), frames);
         a->sfx.render(a->musicBuf.data(), frames);
+        // OVERDRIVE's hum after the effects (their duck is for the music: the hum is a cue)
+        a->drive.render(a->musicBuf.data(), frames, (float)a->outRate, (float)a->music.rootNote(), a->music.samplesPerStep(),
+                        a->music.stepPos(), a->masterVolume);
         a->room.render(a->musicBuf.data(), frames);
         a->addWind(a->musicBuf.data(), frames);
         a->applyMuffle(a->musicBuf.data(), frames);

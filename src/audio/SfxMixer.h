@@ -18,6 +18,13 @@
 // oldest), TELL (a wind-up: never silenced by another tell, takes chatter
 // first in a full group), ACTION, UI. While a TELL plays, enemy chatter dips
 // 3 dB (a gentle sidechain); the music is left alone.
+//
+// THE CROWD (enemy and world sounds that aren't a tell or a floored must-hear
+// cue) shares a budget: past CROWD_FREE voices at once, each one is turned down
+// so the crowd together stays about as loud as CROWD_FREE of them. A big fight
+// stops burying the cues that matter. FOCUS (OVERDRIVE, setFocus) pushes the
+// crowd back further and darkens it, and lifts and drives your own sounds:
+// the world goes distant and you get loud. A tell is never touched by either.
 // =============================================================================
 #include "audio/AudioTypes.h"
 #include <glm/glm.hpp>
@@ -42,6 +49,11 @@ public:
     static constexpr int   CHATTER_CAP    = 6;            // enemy idle/step voices at once
     static constexpr float SIDE_CHATTER   = 0.70795f;     // -3 dB under a TELL
     static constexpr float DRIVE_TRIM     = 0.86f;        // the drive's shape adds ~1.3 dB at drive 0.35: taken back
+    static constexpr float CROWD_FREE     = 6.f;          // crowd voices before the crowd shares its level
+    static constexpr float FOCUS_CROWD    = 0.6f;         // the crowd's gain at full FOCUS (-4.4 dB)...
+    static constexpr float FOCUS_CUT      = 2400.f;       // ...and the low-pass it's darkened to (Hz)
+    static constexpr float FOCUS_PLAYER   = 1.1f;         // your own sounds at full FOCUS (+0.8 dB)...
+    static constexpr float FOCUS_DRIVE    = 0.3f;         // ...and driven this hard
 
     struct Opts {
         float      volume     = 1.f;                 // linear, before jitter
@@ -149,6 +161,8 @@ public:
     void duck(float dB, float seconds) { Cmd c{}; c.kind = Cmd::DUCK; c.x = dB; c.y = seconds; push(c); }
     // The reverb of the place; its parameters crossfade over about a second
     void setSpace(ReverbSpace s) { Cmd c{}; c.kind = Cmd::SPACE; c.x = (float)(int)s; push(c); }
+    // 0..1: OVERDRIVE's focus (see THE CROWD); eased in over ~80 ms, out over ~350 ms
+    void setFocus(float f) { Cmd c{}; c.kind = Cmd::FOCUS; c.x = f; push(c); }
     float lastPlayPitch() const { return lastPitch; }
     int   lastPlayVariant() const { return lastPick; }
 
@@ -186,6 +200,8 @@ public:
         for (const auto& v : voices) n += v.active && v.role == r;
         return n;
     }
+    float focusLevel() const { return focusNow; }
+    float crowdGain() const { return crowdNow; }                              // the crowd's shared gain now (1: not crowded)
     float sidechainLevel() const { return sideEnv; }                          // 0 none .. 1 a tell is playing
     float chatterGain() const { return 1.f - sideEnv * (1.f - SIDE_CHATTER); }
     float musicGain() const { return duckGain; }
@@ -194,7 +210,7 @@ public:
 
 private:
     struct Cmd {
-        enum Kind : uint8_t { PLAY, MOVE, STOP, LISTENER, SPACE, DUCK } kind;
+        enum Kind : uint8_t { PLAY, MOVE, STOP, LISTENER, SPACE, DUCK, FOCUS } kind;
         uint32_t   serial;
         int        sample;
         float      gain, pitch, x, y, drive;
@@ -214,6 +230,7 @@ private:
         float      curL = 0.f, curR = 0.f, lp = 1.f;   // smoothed gains and low-pass coefficient
         float      z = 0.f;                            // low-pass state
         float      loud = 0.f;                         // last target level (for stealing)
+        float      heard = 0.f;                        // ...before THE CROWD's share and the focus (what counts as crowded)
         float      floor = 0.f;                        // positional: lowest distance attenuation
         SoundRole  role = SoundRole::ACTION;
         float      drive = 0.f;
@@ -243,6 +260,7 @@ private:
     float sideEnv = 0.f, sideAtk = 0.f, sideRel = 0.f, driveDec = 0.f;
     std::atomic<int> soloMask{0};
     uint32_t births = 0;
+    float focusWant = 0.f, focusNow = 0.f, crowdNow = 1.f;   // audio thread (THE CROWD)
     std::vector<float> bankRate;   // per bank entry: its source rate (0 = the device's)
 
     // Reverb: Freeverb-lite, 4 damped combs + 2 allpasses a side
@@ -314,8 +332,13 @@ private:
                 duckHold = std::max(duckHold, c.y);
                 break;
             }
+            case Cmd::FOCUS: focusWant = std::clamp(c.x, 0.f, 1.f); break;
             default: break;
         }
+    }
+    // An enemy or world sound that isn't a tell or a must-hear cue (THE CROWD)
+    static bool crowd(const Voice& v) {
+        return (v.group == SoundGroup::ENEMY || v.group == SoundGroup::WORLD) && v.role != SoundRole::TELL && v.floor <= 0.f;
     }
     void startVoice(const Cmd& c) {
         if (c.sample < 0 || c.sample >= (int)bank.size()) return;
@@ -352,19 +375,30 @@ private:
     // Target left/right gain and low-pass coefficient for a voice right now:
     // distance falloff, a pan law that keeps the centre at full level, and a
     // low-pass that closes with distance and when the source is behind you
-    void target(const Voice& v, float& L, float& R, float& lp) const {
+    void target(const Voice& v, float& L, float& R, float& lp, float* heard = nullptr) const {
         const int solo = soloMask.load(std::memory_order_relaxed);
-        if (solo && !(solo & (1 << (int)v.role))) { L = R = 0.f; lp = 1.f; return; }
+        if (solo && !(solo & (1 << (int)v.role))) { L = R = 0.f; lp = 1.f; if (heard) *heard = 0.f; return; }
         float g = v.gain * (v.group == SoundGroup::ENEMY || v.group == SoundGroup::WORLD ? duckGain : 1.f);
         if (v.role == SoundRole::CHATTER) g *= 1.f - sideEnv * (1.f - SIDE_CHATTER);   // steps back under a tell
+        const bool inCrowd = crowd(v);
+        const float base = g;
+        if (heard) *heard = base;
+        if (inCrowd) g *= crowdNow * (1.f + (FOCUS_CROWD - 1.f) * focusNow);
+        else if (v.group == SoundGroup::PLAYER) g *= 1.f + (FOCUS_PLAYER - 1.f) * focusNow;
+        const float focusCut = inCrowd && focusNow > 0.001f ? 20000.f * std::pow(FOCUS_CUT / 20000.f, focusNow) : 1e9f;
         lp = 1.f;
-        if (!v.positional) { L = R = g; return; }
+        if (!v.positional) {
+            L = R = g;
+            if (focusCut < 1e8f) lp = 1.f - std::exp(-6.2831853f * std::min(focusCut, 0.45f * rate) / rate);
+            return;
+        }
         glm::vec3 d = v.at - lis.pos;
         float dist = glm::length(d);
         float att = 0.f;
         if (dist < MAX_DIST)
             att = REF_DIST / (REF_DIST + ROLLOFF * std::max(0.f, dist - REF_DIST)) * std::min(1.f, (MAX_DIST - dist) / 10.f);
         att = std::max(att, v.floor);   // a must-hear cue never fades below its floor
+        if (heard) *heard = base * att;
         if (!(att > 0.f)) { L = R = 0.f; return; }
         g *= att;
         float pan = 0.f, behind = 0.f;
@@ -379,7 +413,7 @@ private:
         L = g * std::min(1.f, 1.41421356f * std::cos(th));
         R = g * std::min(1.f, 1.41421356f * std::sin(th));
         float fc = 18000.f * std::pow(2500.f / 18000.f, std::min(audible, MAX_DIST) / MAX_DIST) * (1.f - 0.5f * behind);
-        fc = std::min(fc, 0.45f * rate);
+        fc = std::min(std::min(fc, focusCut), 0.45f * rate);
         lp = 1.f - std::exp(-6.2831853f * fc / rate);
     }
 
@@ -387,6 +421,15 @@ private:
         bool tellOn = false;
         for (const auto& v : voices) if (v.active && v.role == SoundRole::TELL && v.wait <= 0) { tellOn = true; break; }
         const float side = tellOn ? 1.f : 0.f;
+        {   // THE CROWD: how many are sounding, and the focus, eased per chunk
+            int crowded = 0;
+            for (const auto& v : voices) crowded += v.active && v.wait <= 0 && crowd(v) && v.heard > 0.03f;   // (-30 dB: one you'd notice)
+            const float want = crowded > CROWD_FREE ? std::sqrt(CROWD_FREE / (float)crowded) : 1.f;
+            const float kc = 1.f - std::exp(-(float)n / ((want < crowdNow ? 0.03f : 0.3f) * rate));
+            crowdNow += (want - crowdNow) * kc;
+            const float kf = 1.f - std::exp(-(float)n / ((focusWant > focusNow ? 0.08f : 0.35f) * rate));
+            focusNow += (focusWant - focusNow) * kf;
+        }
         const float music = soloMask.load(std::memory_order_relaxed) ? 0.f : 1.f;
         // The duck, sample by sample, on the music already in io (the tell sidechain only follows along)
         for (int i = 0; i < n; ++i) {
@@ -415,7 +458,7 @@ private:
     }
     void mixVoice(Voice& v, float* io, int n) {
         float tL, tR, tlp;
-        target(v, tL, tR, tlp);
+        target(v, tL, tR, tlp, &v.heard);
         if (v.fresh) { v.curL = tL; v.curR = tR; v.lp = tlp; v.fresh = false; }
         v.loud = std::max(tL, tR);
         int i0 = 0;
@@ -429,13 +472,14 @@ private:
             return;
         }
         const float dL = (tL - v.curL) / m, dR = (tR - v.curR) / m, dlp = (tlp - v.lp) / m;
+        const float drive = v.group == SoundGroup::PLAYER ? std::max(v.drive, FOCUS_DRIVE * focusNow) : v.drive;
         for (int i = i0; i < n; ++i) {
             if (v.pos >= end) { v.active = false; break; }
             size_t k = (size_t)v.pos;
             float f = (float)(v.pos - (double)k);
             float x = s[k] + (s[k + 1] - s[k]) * f;
-            if (v.drive > 0.f) {   // saturate relative to the voice's own level: more edge, the same loudness
-                const float k2 = 1.f + 4.f * v.drive;
+            if (drive > 0.f) {   // saturate relative to the voice's own level: more edge, the same loudness
+                const float k2 = 1.f + 4.f * drive;
                 v.driveEnv = std::max(std::max(std::fabs(x), v.driveEnv * driveDec), 1e-4f);
                 x = DRIVE_TRIM * v.driveEnv * std::tanh(k2 * x / v.driveEnv) / std::tanh(k2);
             }
