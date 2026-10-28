@@ -139,6 +139,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         if (dashCooldown <= 0.f && dashCharges < 2) {
             ++dashCharges;
             dashCooldown = dashCharges < 2 ? 1.2f : 0.f;
+            audio.play("dash_ready", 72, SoundGroup::UI);   // a charge back: a small flick, so you needn't look at the pips
         }
     }
 
@@ -173,7 +174,17 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     prevOnGround = player.onGround;
 
     if (jumpKey && !prevJumpKey) {
-        if (grapple.active) {
+        if (grapple.active && grapple.latched) {
+            // Off the wall: pushed out from its face, up, and a little the way you're looking
+            glm::vec3 n = hangNormal();
+            grapple.release();
+            glm::vec3 look = player.camera.flatForward();
+            player.velocity = n.y < -0.5f ? look * 6.f : glm::vec3{n.x, 0.f, n.z} * 8.f + look * 4.f + glm::vec3{0.f, 9.f, 0.f};
+            player.launched();
+            styleSystem.addStyle(10.f);
+            audio.play("jump_air", 110);
+            camFeel.punch(-30.f);
+        } else if (grapple.active) {
             // Slingshot: release grapple mid-swing and keep all momentum + upward kick.
             grapple.release();
             player.velocity.y += 6.f;
@@ -234,7 +245,31 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         pendingGrapple = false;
     }
     updateEnemyZip();
+    grapple.holding = keys[SDL_SCANCODE_Q] != 0;   // (whatever's bound to GRAPPLE reads as Q; the pad's LB too)
+    if (g_devOverlay == "hang") {   // dev: the grapple fired once at whatever's ahead, held for 6 s (the hang and its limit)
+        static bool fired = false;
+        if (!fired && elapsedTime > 1.f) { fired = true; pendingGrapple = true; }
+        grapple.holding = elapsedTime < 7.f;
+    }
     grapple.update(dt, player.camera.position, player.velocity);
+    if (grapple.active && grapple.latched) {   // hanging: until you let go, jump off, or it's been too long
+        if (!hangPrev) {
+            hangT = 0.f; hangPos = player.position; audio.play("land_metal", 70); camFeel.dip(0.25f);
+            if (g_devOverlay == "hang") std::fprintf(stderr, "hang: caught at %.2f s, feet (%.1f %.1f %.1f)\n", elapsedTime, hangPos.x, hangPos.y, hangPos.z);
+        }
+        hangT += dt;
+        bool gone = false;   // what it caught on has moved away (a door opening): nothing to hold
+        if (grapple.hookedWall >= 0 && grapple.hookedWall < (int)level.walls.size()) {
+            const AABB& b = level.walls[grapple.hookedWall].box;
+            glm::vec3 q = glm::clamp(grapple.target, b.min, b.max);
+            gone = glm::length(q - grapple.target) > 0.5f;
+        }
+        if (!grapple.holding || hangT > HANG_MAX || gone) {
+            grapple.release();
+            if (g_devOverlay == "hang") std::fprintf(stderr, "hang: let go at %.2f s after %.2f s, feet (%.1f %.1f %.1f)\n", elapsedTime, hangT, player.position.x, player.position.y, player.position.z);
+        }
+    }
+    hangPrev = grapple.active && grapple.latched;
     if (yankT > 0.f) yankT -= dt;
     if (grapple.active) player.launched();   // swung: the rope's arc, not a jump's
     if (wasGrappling && !grapple.active && !fast()) grappleCooldown = GRAPPLE_COOLDOWN;   // however it ended (arrival, release, a rip, a pin); FAST runs grapple freely
@@ -281,6 +316,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         player.update(dt, keys, level.walls.data(), (int)level.walls.size(),
                       grapple.active || dashMomentumTimer > 0.f || boost >= 0, &spatialGrid);
         if (boost >= 0) { applyBooster(level.boosters[boost], player, dt); player.launched(); }
+        if (grapple.active && grapple.latched) { player.position = hangPos; player.velocity = glm::vec3{0.f}; }   // held where it caught
         keepPlayerInZone(dt);
         if (player.jumpedThisTick) {   // the push-off: a soft scuff and the head lifting off the legs
             audio.play("jump", 90);
@@ -486,6 +522,12 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         fx.spawnExplosionParticles(pr.position, 2.f);
         playBoom("explosion", pr.position, 80, SoundGroup::WORLD);
         hurtEnemy(enemies[ei], FRIENDLY_SHELL_DAMAGE, pr.position, 0.f, 0.f, StyleSource::FRIENDLY);
+    }
+    for (int pi : result.wallHits) {   // a shot breaks on the wall: its cubes thrown back off it
+        const Projectile& pr = projSystem.pool[pi];
+        float spd = glm::length(pr.velocity);
+        glm::vec3 back = spd > 1e-3f ? -pr.velocity / spd : glm::vec3{0.f, 1.f, 0.f};
+        fx.spawnShards(pr.prevPosition, back, pr.emissiveColor, pr.size, groundHeightAt(pr.prevPosition.x, pr.prevPosition.z, pr.prevPosition.y + 0.2f));
     }
     for (auto& exp : result.explosions)
         pendingBlasts.push_back({exp.pos, exp.radius, exp.damage, exp.radius * 0.5f, 20.f});
@@ -695,4 +737,18 @@ inline int GameplayState::findInteractTarget() const {
         if (t > 0.f && t < bestT) { bestT = t; best = i; }
     }
     return best;
+}
+
+// The face of what the grapple's hanging on: the side of its box nearest the hook (no box: back toward you)
+inline glm::vec3 GameplayState::hangNormal() const {
+    glm::vec3 away = player.camera.position - grapple.target; away.y = 0.f;
+    glm::vec3 fallback = glm::length(away) > 1e-3f ? glm::normalize(away) : -player.camera.flatForward();
+    if (grapple.hookedWall < 0 || grapple.hookedWall >= (int)level.walls.size()) return fallback;
+    const AABB& b = level.walls[grapple.hookedWall].box;
+    const glm::vec3 p = grapple.target;
+    const float d[6] = {p.x - b.min.x, b.max.x - p.x, p.y - b.min.y, b.max.y - p.y, p.z - b.min.z, b.max.z - p.z};
+    static const glm::vec3 N[6] = {{-1, 0, 0}, {1, 0, 0}, {0, -1, 0}, {0, 1, 0}, {0, 0, -1}, {0, 0, 1}};
+    int best = 0;
+    for (int i = 1; i < 6; ++i) if (std::fabs(d[i]) < std::fabs(d[best])) best = i;
+    return N[best];
 }

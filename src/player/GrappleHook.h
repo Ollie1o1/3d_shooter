@@ -40,6 +40,7 @@ public:
                 int wall = -1, const AABB* box = nullptr) {
         target = point;
         active = true;
+        latched = false;
         hookedWall = wall;
         moverWall = box ? wall : -1;
         if (box) anchorLocal = point - box->min;
@@ -58,15 +59,24 @@ public:
     int       enemyUid = -1;        // hooked into a heavy enemy: you zip to it (GameplayState moves `target` with it)
     glm::vec3 anchorLocal{0.f};
 
-    void release() { active = false; moverWall = -1; hookedWall = -1; enemyUid = -1; }
+    void release() { active = false; latched = false; moverWall = -1; hookedWall = -1; enemyUid = -1; }
+
+    // Hold the grapple key as you arrive at a surface (not an enemy, not a moving platform) and you hang
+    // there, held where it caught, until you let go (or jump off). Tap it and it lets go as you arrive
+    bool holding = false;   // set by the caller every tick: the key is down
+    bool latched = false;   // hanging on
 
     // Called every physics tick while active. Strongly pulls toward anchor +
     // cancels gravity entirely so you fly straight at the attachment point.
     void update(float dt, const glm::vec3& playerPos, glm::vec3& playerVel) {
         if (!active) return;
+        if (latched) { playerVel = glm::vec3{0.f, 24.f * dt, 0.f}; return; }   // hanging: gravity cancelled, held still
         glm::vec3 delta = target - playerPos;
         float dist = glm::length(delta);
-        if (dist < 2.0f) { active = false; return; }
+        if (dist < 2.0f) {
+            if (holding && enemyUid < 0 && moverWall < 0) { latched = true; playerVel = glm::vec3{0.f, 24.f * dt, 0.f}; return; }
+            active = false; return;
+        }
         glm::vec3 dir = delta / dist;
 
         // Strong continued pull — enough to clearly accelerate toward target.

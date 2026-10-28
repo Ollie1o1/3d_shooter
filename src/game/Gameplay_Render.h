@@ -236,11 +236,35 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
 
     // Projectiles (their files, PropDraw.h): an orb of its light, spinning; a siege shell nose-first
     // along its flight; a lobbed bomb tumbling. (No file: a bright core in a darker shell.)
-    for (auto& p : projSystem.pool) {
+    // Each shot tumbles about its own axis at its own rate (backwards and twice as fast once parried), pops into
+    // being as it's fired, stretches along a fast flight and leaves a short trail of fading cubes
+    for (int pi = 0; pi < ProjectileSystem::POOL_SIZE; ++pi) {
+        const Projectile& p = projSystem.pool[pi];
         if (!p.alive) continue;
-        float spin = t * 9.f + p.position.x;
+        const float seed = (float)pi * 1.618034f;
+        glm::vec3 ax{std::sin(seed * 3.1f), std::cos(seed * 1.7f) + 0.3f, std::sin(seed * 2.3f + 1.f)};
+        ax = glm::length(ax) > 1e-3f ? glm::normalize(ax) : glm::vec3{0.f, 1.f, 0.f};
+        const float rate = (7.f + 5.f * (seed - std::floor(seed))) * (p.parried ? -2.f : 1.f);
+        const float age = p.age + renderAlpha * (1.f / 60.f);
+        const float spin = age * rate + seed;
+        const float u = std::min(1.f, age / 0.1f);
+        const float pop = u + 0.3f * std::sin(3.1415927f * u);   // 0 to 1 in 0.1 s, overshooting a little
         glm::vec3 at = lerpPos(p.prevPosition, p.position);
-        glm::mat4 base = T(at) * RY(spin) * RX(spin * 0.7f);
+        const float spd = glm::length(p.velocity);
+        const float st = 1.f + std::min(spd / 40.f, 0.5f);
+        glm::mat4 A = propdraw::along(glm::vec3{0.f}, p.velocity);
+        glm::mat4 stretch = A * S(glm::vec3{1.f / std::sqrt(st), 1.f / std::sqrt(st), st}) * glm::transpose(A);
+        glm::mat4 base = T(at) * stretch * glm::rotate(glm::mat4(1.f), spin, ax) * S(glm::vec3{pop});
+        if (!p.heavy && spd > 1.f) {   // the trail: three cubes behind it, smaller and dimmer
+            for (int k = 1; k <= 3; ++k) {
+                const float back = std::min(0.022f * (float)k, age);
+                if (back <= 0.f) break;
+                const float f = std::pow(0.6f, (float)k);
+                glm::vec3 tp = at - p.velocity * back;
+                push(out, T(tp) * glm::rotate(glm::mat4(1.f), spin - 0.4f * (float)k, ax) * S(glm::vec3{0.18f * p.size * f * pop}),
+                     p.emissiveColor * 0.15f, p.emissiveColor * 1.4f * f);
+            }
+        }
         bool drawn = p.heavy ? propdraw::push(out, "shot_shell", propdraw::along(at, p.velocity) * glm::rotate(glm::mat4(1.f), spin * 0.5f, glm::vec3{0, 0, 1}) * S(glm::vec3{p.size}), p.emissiveColor)
                    : p.isGrenade ? propdraw::push(out, "shot_grenade", base * S(glm::vec3{p.size * 0.85f}), p.emissiveColor)
                    : propdraw::push(out, "shot_orb", base * S(glm::vec3{p.size * 0.7f}), p.emissiveColor);

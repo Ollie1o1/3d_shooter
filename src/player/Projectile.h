@@ -28,6 +28,7 @@ struct Projectile {
     float     parryDamage = 0.f;   // > 0: what it does when parried back (else 60, or 400 heavy)
     int       homeOn     = -1;     // uid: a parried orb steering into the WARDEN's core
     bool      whizzed    = false;  // its near-miss whizz has played (GameplayState::whizPast)
+    float     age        = 0.f;    // seconds since it was fired (drawn: it pops into being)
 };
 
 class ProjectileSystem {
@@ -62,6 +63,7 @@ public:
                 p.parryDamage = 0.f;
                 p.homeOn      = -1;
                 p.whizzed     = false;
+                p.age         = 0.f;
                 return &p;
             }
         }
@@ -78,6 +80,7 @@ public:
         std::vector<std::pair<int,int>> enemyHits; // proj idx, enemy idx
         std::vector<std::pair<int,int>> friendlyHits; // an enemy's siege shell into another enemy
         std::vector<ExplosionEvent>     explosions;
+        std::vector<int>                wallHits;     // proj idx: a shot that broke on a wall or the floor (no blast)
         bool  hitPlayer    = false;
         float playerDamage = 0.f;
         glm::vec3 playerHitFrom{0.f};  // world point the hitting shot came from
@@ -114,6 +117,7 @@ inline ProjectileSystem::HitResult ProjectileSystem::update(
         if (!p.alive) continue;
 
         p.lifetime -= dt;
+        p.age += dt;
         if (p.lifetime <= 0.f) { p.alive = false; continue; }
 
         if (p.hasGravity) p.velocity.y -= 20.f * dt;
@@ -147,7 +151,7 @@ inline ProjectileSystem::HitResult ProjectileSystem::update(
         if (hitSolid) {
             if (p.isGrenade && p.blastRadius > 0.f) {
                 result.explosions.push_back({p.position, p.blastRadius, p.damage});
-            }
+            } else result.wallHits.push_back(i);
             p.alive = false;
             continue;
         }

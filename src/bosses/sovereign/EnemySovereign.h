@@ -135,6 +135,8 @@ inline void Enemy::thinkSovereign(float dt, const EnemyWorld& w, bool resolve) {
     } else if (recoverTimer > 0.f) {
         velocity.x = velocity.z = 0.f;
         turnToward(to, dt, 1.5f);
+    } else if (evadeTick(dt, w)) {   // hurt hard and fast: he breaks away across your aim
+        turnToward(to, dt, 5.f);
     } else {
         glm::vec3 side{-dir.z, 0.f, dir.x};
         strafeTimer -= dt;

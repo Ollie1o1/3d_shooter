@@ -19,6 +19,10 @@
 // distorted power-chord stab on every eighth, sixteenth hats and the bass wide open; the last
 // enemy of a wave (setSolo) strips it to the drums and the sub; a wave's end (stinger) rings a
 // chord in the track's key over a crash.
+// It doesn't just loop: every second pass through a track's four bars is its B side (the arp
+// an octave up, the lead doubled an octave over itself), and the end of each B side has a drum
+// fill into the next (the techno tracks have their own clap roll and riser). The snare, the lead,
+// the arp, the pad and the stinger go into a plate reverb, the drums' kick and the bass stay dry.
 // muffle() runs everything through a low-pass (pause menu). Parameters are
 // atomics: the game thread sets them, the audio thread reads them.
 // =============================================================================
@@ -113,7 +117,21 @@ public:
     void setDrive(bool d)      { wantDrive.store(d); }
     void setSolo(bool s)       { wantSolo.store(s); }
     void stinger()             { stingWanted.store(true); }
-    void setSampleRate(float sr) { SR = sr; delayL.assign((size_t)(sr * 1.5f), 0.f); delayR = delayL; dpos = 0; }
+    void setSampleRate(float sr) {
+        SR = sr; delayL.assign((size_t)(sr * 1.5f), 0.f); delayR = delayL; dpos = 0;
+        static const int COMB[4] = {1309, 1427, 1559, 1663}, AP[2] = {556, 441};
+        const float k = sr / 44100.f;
+        for (int i = 0; i < 4; ++i) {
+            combL[i].buf.assign((size_t)std::max(1, (int)(COMB[i] * k)), 0.f);
+            combR[i].buf.assign((size_t)std::max(1, (int)((COMB[i] + 23) * k)), 0.f);
+            combL[i].i = combR[i].i = 0; combL[i].store = combR[i].store = 0.f;
+        }
+        for (int i = 0; i < 2; ++i) {
+            apL[i].buf.assign((size_t)std::max(1, (int)(AP[i] * k)), 0.f);
+            apR[i].buf.assign((size_t)std::max(1, (int)((AP[i] + 23) * k)), 0.f);
+            apL[i].i = apR[i].i = 0;
+        }
+    }
 
     MusicSynth() { setSampleRate(44100.f); }
 
@@ -142,6 +160,11 @@ public:
 
     float level() const { return lvl; }       // smoothed intensity (tests)
     int   currentTrack() const { return track; }
+    // The clock, for layers made in time and in key with it (DriveBed.h): the audio thread, after render()
+    double stepPos() const { return (double)std::max(step, 0) + 1.0 - (double)sampleInStep / std::max(1.f, stepLen); }   // in sixteenths
+    float  samplesPerStep() const { return stepLen; }
+    int    rootNote() const { return musicTrack(track).root; }
+    int    pass() const { return cycle; }   // times round the four bars (odd: the B side)
 
 private:
     std::atomic<int>   wantTrack{0};
@@ -154,6 +177,8 @@ private:
     int   track = 0;
     float lvl = 0.5f, muffleAmt = 0.f;
     int   step = -1;                 // 0..63 across the four-bar progression
+    int   cycle = 0;                 // times round it on this track (odd: the B side)
+    float bSide = 0.f;               // smoothed 0..1: the B side's octaves (no clicks)
     float sampleInStep = 0.f, stepLen = 1.f;
     uint32_t blockPos = 0, rng = 0x9E3779B9u;
 
@@ -221,6 +246,31 @@ private:
     Osc   leadOsc, leadOsc2, vib; SVF leadF;
 
     std::vector<float> delayL, delayR; size_t dpos = 0;
+    // The plate: 4 damped combs and 2 allpasses a side (SfxMixer's Freeverb-lite, longer and darker)
+    struct Comb {
+        std::vector<float> buf; size_t i = 0; float store = 0.f;
+        float run(float in, float fb, float damp) {
+            float out = buf[i];
+            store = out * (1.f - damp) + store * damp;
+            if (std::fabs(store) < 1e-15f) store = 0.f;
+            float w = in + store * fb;
+            buf[i] = std::fabs(w) < 1e-15f ? 0.f : w;
+            if (++i >= buf.size()) i = 0;
+            return out;
+        }
+    };
+    struct Allpass {
+        std::vector<float> buf; size_t i = 0;
+        float run(float in) {
+            float b = buf[i], out = b - in, w = in + b * 0.5f;
+            buf[i] = std::fabs(w) < 1e-15f ? 0.f : w;
+            if (++i >= buf.size()) i = 0;
+            return out;
+        }
+    };
+    Comb  combL[4], combR[4];
+    Allpass apL[2], apR[2];
+    Osc   leadHi, leadHi2;
     SVF mufL, mufR;
 
     // The fight's layers: OVERDRIVE's stabs, the last enemy's solo, a wave's stinger
@@ -262,6 +312,7 @@ private:
             for (int k = 0; k < 4; ++k) stingNotes[k] = (float)chordTone(st, deg, k, 1);
             stingT = 0.f; crash = Hit{0.f, 1.f};
         }
+        bSide += ((cycle & 1 ? 1.f : 0.f) - bSide) * std::min(1.f, rate * 6.f);
         float mt = muffled.load() ? 1.f : 0.f;
         muffleAmt += (mt - muffleAmt) * std::min(1.f, rate * 6.f);
         gPad   = 0.55f + 0.2f * (1.f - sstep(0.9f, 1.3f, lvl));
@@ -281,9 +332,10 @@ private:
 
     void nextStep() {
         step = (step + 1) % 64;
+        if (step == 0) ++cycle;
         if (step % 16 == 0) {                                     // bar line: maybe change track
             int want = ((wantTrack.load() % MUSIC_TRACKS) + MUSIC_TRACKS) % MUSIC_TRACKS;
-            if (want != track) { track = want; step = 0; }
+            if (want != track) { track = want; step = 0; cycle = 0; }
         }
         const MusicTrack& tr = musicTrack(track);
         stepLen = SR * 60.f / tr.bpm / 4.f;
@@ -302,6 +354,8 @@ private:
         if (sn == 'x') snare = Hit{0.f, 1.f}; else if (sn == 'g') snare = Hit{0.f, 0.35f};
         if (tr.techno && bar == 3 && s >= 8 && (s >= 12 || s % 2 == 0))   // the clap roll into the next phrase
             snare = Hit{0.f, 0.35f + 0.65f * (s - 8) / 7.f};
+        else if (!tr.techno && bar == 3 && (cycle & 1) && s >= 12 && gSnare > 0.3f)   // the B side's last beat: a fill into the top
+            snare = Hit{0.f, 0.5f + 0.5f * (s - 12) / 3.f};
         char h = at(tr.hat, s);
         if (h == 'x') hatC = Hit{0.f, 0.55f}; else if (h == 'X') hatC = Hit{0.f, 1.f}; else if (h == 'o') hatO = Hit{0.f, 1.f};
         else if (h == '.' && drive > 0.3f) hatC = Hit{0.f, 0.4f * drive};   // OVERDRIVE: the gaps fill with sixteenths
@@ -351,20 +405,22 @@ private:
         // Sidechain: the pad and bass duck under the kick
         float kd = kick.t < 0.4f ? std::exp(-kick.t * 9.f) * gKick : 0.f;
         duck = 1.f - (hard ? 0.7f : 0.55f) * kd;
+        float snareOut = 0.f;
         if (snare.t < 0.5f) {
             float t = snare.t;
             if (techno) {                                         // a clap: three quick slaps and a short tail, band-passed
                 snareF.lp(noise(), gSnareF * 0.8f, 0.9f);
                 float e = std::exp(-t * 16.f) * 0.55f;
                 for (float o : {0.f, 0.011f, 0.022f}) if (t >= o) e += std::exp(-(t - o) * 190.f);
-                drums += snareF.band * e * 0.62f * gSnare * snare.vel;
-                if (hard) drums += snareOsc.sine(200.f - 40.f * t, SR) * std::exp(-t * 24.f) * 0.4f * gSnare * snare.vel;   // a snare's body under it
+                snareOut += snareF.band * e * 0.62f * gSnare * snare.vel;
+                if (hard) snareOut += snareOsc.sine(200.f - 40.f * t, SR) * std::exp(-t * 24.f) * 0.4f * gSnare * snare.vel;   // a snare's body under it
             } else {
                 float n = snareF.hp(noise(), gSnareF, 1.2f) * std::exp(-t * 14.f);
                 float body = snareOsc.sine(185.f - 30.f * t, SR) * std::exp(-t * 28.f);
-                drums += (n * 0.55f + body * 0.45f) * gSnare * snare.vel;
+                snareOut += (n * 0.55f + body * 0.45f) * gSnare * snare.vel;
             }
             snare.t += dt;
+            drums += snareOut;
         }
         if (hatC.t < 0.12f || hatO.t < 0.6f) {
             float n = hatF.hp(noise(), gHatF, 1.0f);
@@ -420,7 +476,7 @@ private:
                 float g = gOf(acidBase * (1.f + 3.f * std::exp(-arpT * 28.f)));
                 arpOut = std::tanh(arpF.lp(a, g, 0.22f) * 1.8f) * 0.085f * gArp;
             } else {
-                float a = arpOsc.square(midiHz(arpNote), SR) * std::exp(-arpT * 16.f);
+                float a = arpOsc.square(midiHz(arpNote + (bSide > 0.5f ? 12.f : 0.f)), SR) * std::exp(-arpT * 16.f);
                 arpOut = arpF.lp(a, gArpF, 0.6f) * 0.13f * gArp;
             }
             arpT += dt;
@@ -441,6 +497,7 @@ private:
             leadAmp += (target - leadAmp) * 0.004f;
             float env = leadAmp;
             float raw = leadOsc.saw(hz, SR) * 0.6f + leadOsc2.saw(hz * 1.006f, SR) * 0.4f;
+            if (bSide > 0.001f) raw += (leadHi.saw(hz * 2.f, SR) * 0.6f + leadHi2.saw(hz * 2.012f, SR) * 0.4f) * 0.35f * bSide;   // the B side: an octave over it
             leadOut = leadF.lp(raw, gLeadF, 0.5f) * env * 0.12f * gLead;
             leadT += dt;
         }
@@ -476,10 +533,20 @@ private:
             stingOut = stingF.lp(raw * 0.1f, gOf(2400.f * std::exp(-stingT * 0.8f) + 400.f), 0.5f) * e * 0.75f;
             stingT += dt;
         }
+        // ---- the plate: the snare (the clap a little), the lead, the arp, the pad, the stinger ----
+        float plateL = 0.f, plateR = 0.f;
+        {
+            const float keepS = 1.f - 0.9f * solo;
+            float in = (snareOut * (techno ? 0.25f : 0.5f) + leadOut * 0.6f + arpOut * 0.3f + (padL + padR) * pg * 0.12f * keepS
+                        + stingOut * 0.5f + stabOut * 0.1f) * 0.05f;
+            for (int c = 0; c < 4; ++c) { plateL += combL[c].run(in, 0.84f, 0.38f); plateR += combR[c].run(in, 0.84f, 0.38f); }
+            for (int a2 = 0; a2 < 2; ++a2) { plateL = apL[a2].run(plateL); plateR = apR[a2].run(plateR); }
+            plateL *= 0.9f; plateR *= 0.9f;
+        }
         // The last enemy: everything but the drums and the sub falls away
         const float keep = 1.f - 0.9f * solo;
         float mono = drums * (1.f + 0.15f * solo) + bassOut * (1.f - 0.75f * solo) + subOut * pg + crashOut + riser * keep + stabOut;
-        L = mono + padL * pg * keep + hatOut * 0.8f + (sendL + dl * 0.3f + leadOut * 0.3f) * keep + stingOut;
-        R = mono + padR * pg * keep + hatOut * 1.0f + (sendR + dr * 0.3f + leadOut * 0.3f) * keep + stingOut;
+        L = mono + padL * pg * keep + hatOut * 0.8f + (sendL + dl * 0.3f + leadOut * 0.3f) * keep + stingOut + plateL;
+        R = mono + padR * pg * keep + hatOut * 1.0f + (sendR + dr * 0.3f + leadOut * 0.3f) * keep + stingOut + plateR;
     }
 };

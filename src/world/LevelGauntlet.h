@@ -38,6 +38,7 @@
 // =============================================================================
 #include "world/Level.h"
 #include <string>
+#include <tuple>
 
 inline LevelData buildGauntlet() {
     using glm::vec3;
@@ -308,6 +309,12 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::RIPPER, 0, {{0,0,-88},{-4,0,-103},{4,0,-115}}},
                 W{EnemyType::RAPTOR, 0, {{-5,9,-96},{5,9,-110}}},
             },
+            {   // the lane's far end: a Brute holds it, mites run at you, Raptors over the water
+                W{EnemyType::BRUTE, 0, {{0,0,-118}}},
+                W{EnemyType::MITE, 0, {{-6,0,-112},{6,0,-116},{0,0,-122}}},
+                W{EnemyType::HUSK, 0, {{12,3,-118},{-12,3,-120}}},
+                W{EnemyType::RAPTOR, 0, {{0,12,-110}}},
+            },
             {   // THE COURIER, up the lane with the room's key: run it down
                 W{EnemyType::COURIER, 0, {{0,0,-104}}},
                 W{EnemyType::MITE, 0, {{-6,0,-112},{6,0,-116}}},
@@ -419,6 +426,12 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::RIPPER, 0, {{-78,0,-119},{-64,0,-114}}},
                 W{EnemyType::MITE, 0, {{-75,0,-113},{-64,0,-124}}},
                 W{EnemyType::SENTINEL, 0, {{-71.5f,6,-117}}},
+            },
+            {   // a Shieldbearer in the pit: get round it (the Bulwark is next, and bigger)
+                W{EnemyType::SHIELDBEARER, 0, {{-77,0,-119}}},
+                W{EnemyType::RIPPER, 0, {{-63,0,-119},{-64,0,-125}}},
+                W{EnemyType::HUSK, 0, {{-64,3,-109},{-66,3,-129}}},
+                W{EnemyType::MITE, 0, {{-77,0,-124},{-78,0,-128}}},
             },
             {   // THE BULWARK, its gate between you and the exit: vault the pads, hit its back
                 W{EnemyType::BULWARK, 0, {{-76,0,-123}}},
@@ -551,6 +564,12 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::HUSK, 0, {{-150,8,-109},{-152,8,-127},{-182,16,-110},{-196,20,-114}}},
                 W{EnemyType::SENTINEL, 0, {{-161,12,-114},{-184,16,-126},{-198,20,-126}}},
                 W{EnemyType::BRUTE, 0, {{-164,12,-109}}},
+            },
+            {   // the upper terraces: Raptors under the vault, gunners above you
+                W{EnemyType::RAPTOR, 0, {{-150,24,-118},{-180,24,-112}}},
+                W{EnemyType::HUSK, 0, {{-160,12,-128},{-182,16,-110}}},
+                W{EnemyType::RIPPER, 0, {{-164,12,-109},{-152,8,-127}}},
+                W{EnemyType::SENTINEL, 0, {{-198,20,-126}}},
             },
             {   // THE CANTOR under the rose window: climb to it through the beam and the rings
                 W{EnemyType::CANTOR, 0, {{-192,25,-118.5f}}},
@@ -685,6 +704,38 @@ inline LevelData buildGauntlet() {
         neon(-213,19.7f,-186.1f, -173,20,-185.98f, ice * 0.7f); neon(-213,19.7f,-206.02f, -173,20,-205.9f, ice * 0.7f);
         neon(-214,19.7f,-221.1f, -172,20,-220.98f, ice * 0.7f); neon(-214,19.7f,-246.02f, -172,20,-245.9f, ice * 0.7f);
         neon(-215,19.7f,-258.02f, -171,20,-257.9f, ice);
+        {   // What's below, what to hold on to, what the wind does
+            ShapeKit k = B.kit(), g = B.kit(true);
+            uint32_t sd = 901;
+            // A frozen river winding down the canyon floor, lit faintly from under the ice, banked in snow: the drop has a bottom
+            const float riv[][2] = {{-196,-152},{-201,-172},{-189,-192},{-184,-212},{-198,-228},{-203,-244},{-191,-258},{-186,-272}};
+            for (int i = 0; i + 1 < 8; ++i) {
+                vec3 a{riv[i][0], 0.f, riv[i][1]}, b{riv[i + 1][0], 0.f, riv[i + 1][1]};
+                vec3 d = b - a; float len = glm::length(d) + 1.2f, yaw = std::atan2(d.x, d.z);
+                vec3 c = (a + b) * 0.5f;
+                k.box(c + vec3{0, 0.12f, 0}, {9.f, 0.24f, len}, {0.72f, 0.78f, 0.88f}, yaw);            // the banks
+                g.box(c + vec3{0, 0.27f, 0}, {3.6f, 0.08f, len}, ice * 0.32f, yaw);                    // the ice
+            }
+            // Two frozen falls down the canyon walls, from the rim to the river
+            for (auto [x, z, side] : {std::tuple<float, float, float>{-214.6f, -203.f, 1.f}, {-171.4f, -250.f, -1.f}}) {
+                for (float y = 0.f; y < 38.f; y += 3.f) {
+                    float v = (float)(((int)(y * 7.f + z)) % 10) / 10.f;
+                    k.box({x + side * 0.35f, y + 1.6f, z}, {0.7f, 3.3f, 3.2f + 1.4f * v}, {0.8f, 0.86f, 0.95f});
+                    g.box({x + side * 0.75f, y + 1.6f, z + (v - 0.5f) * 0.8f}, {0.12f, 3.3f, 1.2f + 0.8f * v}, ice * 0.55f);
+                }
+                k.rock({x + side * 3.f, -0.2f, z}, 3.2f, 2.f, {0.78f, 0.84f, 0.94f}, ++sd, 0.4f, 7);   // where it piles up at the foot
+            }
+            // Ice growing on the ledges you can hook: glowing crystals, so you can read them from across the canyon
+            const float ledges[][3] = {{-214.f, 29.f, -214.f}, {-172.f, 29.f, -214.f}, {-213.5f, 33.f, -182.5f}, {-172.5f, 33.f, -242.5f},
+                                       {-214.f, 26.f, -252.5f}, {-172.f, 26.f, -176.f}};
+            for (auto& l : ledges)
+                for (int c = 0; c < 3; ++c)
+                    g.rock({l[0] + (c - 1) * 0.45f, l[1], l[2] + ((c * 7) % 3 - 1) * 0.9f}, 0.22f + 0.08f * c, 0.9f + 0.5f * c, ice * 0.9f, ++sd, 0.15f, 5);
+        }
+        // Pennants streaming in the canyon wind along the rims (THE SPAN's own, made in Blender)
+        for (auto& f : {vec3{-213.f, 20.f, -160.f}, vec3{-173.f, 20.f, -162.f}, vec3{-212.f, 20.f, -188.f}, vec3{-174.f, 20.f, -204.f},
+                        vec3{-213.f, 20.f, -244.f}, vec3{-173.f, 20.f, -223.f}, vec3{-212.f, 20.f, -260.f}})
+            model("wind_flag", f, 0.f);
         B.mat = Mat::BRICK;
         place({-190.5f, 20.f, -158.f}, 1); place({-200.f, 20.f, -160.f}, 0);
         station({-192.85f, 21.2f, -158.f}, 90.f);
@@ -696,6 +747,11 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::SENTINEL, 0, {{-193,23,-234},{-207,20,-266}}},
                 W{EnemyType::BRUTE, 0, {{-193,20,-226}}},
                 W{EnemyType::RAPTOR, 0, {{-193,27,-212},{-199,27,-250}}},
+            },
+            {   // the sky fills: Raptors over the gaps (the Harrier is one of them, grown)
+                W{EnemyType::RAPTOR, 0, {{-200,30,-200},{-184,30,-250},{-193,28,-212}}},
+                W{EnemyType::HUSK, 0, {{-207,20,-224},{-177,20,-230}}},
+                W{EnemyType::RIPPER, 0, {{-193,20,-226}}},
             },
             {   // THE HARRIER over the far half: when it dives, it skims low - hook it
                 W{EnemyType::HARRIER, 0, {{-193,30,-236}}},
@@ -806,6 +862,11 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::MITE, 0, {{-138,6.5f,-274},{-126,6.5f,-260},{-150,6.5f,-256}}},
                 W{EnemyType::BRUTE, 0, {{-128,0,-272}}},
                 W{EnemyType::RIPPER, 0, {{-150,0,-256},{-130,0,-252}}},
+            },
+            {   // the ground floor: a rush across the bottom, nothing left above you
+                W{EnemyType::RIPPER, 0, {{-152,0,-274},{-126,0,-250},{-130,0,-272}}},
+                W{EnemyType::MITE, 0, {{-135,0,-250},{-150,0,-252},{-126,0,-278}}},
+                W{EnemyType::BRUTE, 0, {{-135,0,-278}}},
             },
             {   // THE PLUMB LINE, hung down the hole into the bottom floor: wait out its volley, then its core
                 W{EnemyType::PLUMB, 0, {{-150,1.5f,-276}}},
@@ -926,6 +987,11 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::BRUTE, 0, {{-49,6,-263.5f}}},
                 W{EnemyType::MITE, 0, {{-40,0,-252},{-38,0,-275},{-24,0,-263}}},
             },
+            {   // the far end: a Juggernaut across the lava, gunners up on the galleries
+                W{EnemyType::JUGGERNAUT, 0, {{-28,0,-268}}},
+                W{EnemyType::SENTINEL, 0, {{-35,5,-281},{-35,5,-246}}},
+                W{EnemyType::MITE, 0, {{-24,0,-263},{-38,0,-275}}},
+            },
             {   // THE FOREMAN along the crane line; its crew shields it - break the tethers
                 W{EnemyType::FOREMAN, 0, {{-42,7.5f,-263.5f}}},
                 W{EnemyType::HUSK, 0, {{-32,5,-281},{-32,5,-246}}},
@@ -938,7 +1004,7 @@ inline LevelData buildGauntlet() {
 
     // =========================================================================
     // 7 THE TOWER — the finale. Down the last tube into a courtyard with
-    // corner bastions and a 34 m tower: win two waves, then ride the lifts,
+    // corner bastions and a 34 m tower: win the yard's two waves, then ride the lifts,
     // the lift shaft or the pads up to the beacon on top.
     // =========================================================================
     {
@@ -1034,6 +1100,41 @@ inline LevelData buildGauntlet() {
         B.ring(SX - 2.2f, SZ - 2.2f, SX + 2.2f, SZ + 2.2f, 27.3f, 27.5f, cyan);
         B.booster(aabb(SX - 1.8f, 0, SZ - 1.8f, SX + 1.8f, 27.f, SZ + 1.8f), {0, 1, 0}, 20.f);
         B.booster(aabb(SX - 2.5f, 27.f, SZ - 2.5f, SX + 2.5f, 33.f, SZ + 2.5f), {0, 0, -1}, 9.f);
+        {   // THE PACEMAKER's yard is a clock: a dial inlaid round the keep, and on four faces of the keep
+            // a clock at two minutes to midnight
+            ShapeKit k = B.kit(), g = B.kit(true);
+            const vec3 C{TX, 0.f, TZ};
+            g.curve(C, 15.f, 0.f, 6.2831853f, 0.01f, 0.04f, 0.3f, mag * 0.7f, 48);
+            g.curve(C, 11.2f, 0.f, 6.2831853f, 0.01f, 0.04f, 0.12f, mag * 0.45f, 40);
+            for (int i = 0; i < 12; ++i) {
+                const float an = -1.5707963f + i * 0.5235988f;   // 12 to the north (-Z)
+                const bool big = i % 3 == 0;
+                const float len = big ? 2.6f : 1.3f;
+                vec3 dir{std::cos(an), 0.f, std::sin(an)};
+                g.box(C + dir * (14.6f - len * 0.5f) + vec3{0, 0.025f, 0}, {len, 0.03f, big ? 0.45f : 0.22f}, i == 0 ? cyan : mag * 0.8f, -an);
+            }
+            for (int f = 0; f < 4; ++f) {
+                const float fa = 0.7853982f + f * 1.5707963f;                  // the four diagonal faces (the banners hang on the others)
+                const vec3 n{std::cos(fa), 0.f, std::sin(fa)}, side{std::sin(fa), 0.f, -std::cos(fa)}, up{0.f, 1.f, 0.f};   // side: your right, facing it
+                const vec3 at = C + n * 6.f + vec3{0, 27.5f, 0};
+                Shape& rim = g.column({0, 0, 0}, 2.35f, 0.08f, mag * 0.8f, 24);
+                rim.xf = ShapeKit::T(at) * ShapeKit::R(-fa, up) * ShapeKit::R(-1.5707963f, {0, 0, 1}) * ShapeKit::Sc({2.35f, 0.08f, 2.35f});
+                Shape& dial = k.column({0, 0, 0}, 2.22f, 0.12f, slateD * 0.6f, 24);
+                dial.xf = ShapeKit::T(at) * ShapeKit::R(-fa, up) * ShapeKit::R(-1.5707963f, {0, 0, 1}) * ShapeKit::Sc({2.22f, 0.12f, 2.22f});
+                const vec3 front = at + n * 0.15f;
+                for (int i = 0; i < 12; ++i) {
+                    const float ph = i * 0.5235988f, rr = 1.85f;
+                    g.box(front + up * (std::cos(ph) * rr) + side * (std::sin(ph) * rr), {0.04f, i % 3 == 0 ? 0.45f : 0.25f, 0.09f}, mag, -fa, ph);
+                }
+                auto hand = [&](float ph, float len, float w, vec3 col) {
+                    g.box(front + n * 0.03f + (up * std::cos(ph) + side * std::sin(ph)) * (len * 0.5f - 0.2f), {0.04f, len, w}, col, -fa, ph);
+                };
+                hand((11.f + 58.f / 60.f) * 0.5235988f, 1.2f, 0.15f, cyan);    // the hour, all but there
+                hand(58.f * 0.1047198f, 1.8f, 0.09f, vec3{1.4f, 1.4f, 1.6f});   // two minutes to go
+            }
+        }
+        for (float x : {46.f, 66.f}) for (float z : {-297.4f, -229.6f}) model("brazier", {x, 0.f, z}, 0.f);   // fires along the yard's walls
+        for (float z : {-276.f, -251.f}) model("brazier", {89.4f, 0.f, z}, 0.f);
         // Cover in the yard
         wall(40,0,-282, 44,1.3f,-280, slateD); wall(68,0,-247, 72,1.3f,-245, slateD);
         wall(40,0,-247, 42,1.6f,-243, slateD); wall(70,0,-284, 72,1.6f,-280, slateD);
@@ -1047,6 +1148,12 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::SENTINEL, 0, {{84,5,-293},{84,5,-234}}},
                 W{EnemyType::BRUTE, 0, {{66,0,-263.5f}}},
                 W{EnemyType::MITE, 0, {{48,0,-280},{48,0,-247}}},
+            },
+            {   // the yard's second line: a Juggernaut by the far wall, Raptors off the keep
+                W{EnemyType::JUGGERNAUT, 0, {{85,0,-273}}},
+                W{EnemyType::RAPTOR, 0, {{56,20,-284},{66,20,-243}}},
+                W{EnemyType::HUSK, 0, {{TX,12,TZ - 8},{TX,12,TZ + 8}}},
+                W{EnemyType::MITE, 0, {{81,0,-283},{81,0,-244}}},
             },
             {   // THE PACEMAKER: the yard, the climb, the crown
                 W{EnemyType::PACEMAKER, 0, {{TX + 16.f, 0, TZ}}},
@@ -1069,18 +1176,18 @@ inline LevelData buildGauntlet() {
     // Each room's medals (seconds from its fight starting to its clear, the second for each enemy left
     // standing included): gold, silver, bronze, and the dev time
     const float medals[7][4] = {
-        { 42.f,  58.f,  80.f,  30.f},   // the Canal: two waves up the lane, the Courier run down
-        { 38.f,  52.f,  72.f,  27.f},   // the Sluice: close quarters, the Bulwark
-        { 52.f,  72.f,  98.f,  38.f},   // the Ascent: the climb, the Cantor
-        { 50.f,  70.f,  95.f,  37.f},   // the Span: the islands, the Harrier
-        { 40.f,  56.f,  78.f,  29.f},   // the Well: the drop, the Plumb Line
-        { 46.f,  64.f,  88.f,  34.f},   // the Pumpworks: the hall, the Foreman
-        {100.f, 135.f, 180.f,  78.f},   // the Tower: the yard, then the Pacemaker
+        { 52.f,  71.f,  97.f,  37.f},   // the Canal: two waves up the lane, the Courier run down
+        { 46.f,  63.f,  87.f,  33.f},   // the Sluice: close quarters, a Shieldbearer, the Bulwark
+        { 62.f,  85.f, 116.f,  45.f},   // the Ascent: the climb, the upper terraces, the Cantor
+        { 60.f,  83.f, 112.f,  44.f},   // the Span: the islands, the Raptors, the Harrier
+        { 49.f,  68.f,  94.f,  35.f},   // the Well: the drop, the ground floor, the Plumb Line
+        { 56.f,  77.f, 105.f,  41.f},   // the Pumpworks: the hall, the Juggernaut, the Foreman
+        {112.f, 151.f, 201.f,  87.f},   // the Tower: the yard, its second line, then the Pacemaker
     };
     for (int i = 0; i < 7 && i < (int)L.arenas.size(); ++i)
         for (int k = 0; k < 4; ++k) L.arenas[i].medals[k] = medals[i][k];
 
     // Par times for the whole run (seconds): S, A, B, C (the rooms' golds plus the tubes, and up)
-    L.parTimes[0] = 420.f; L.parTimes[1] = 560.f; L.parTimes[2] = 720.f; L.parTimes[3] = 950.f;
+    L.parTimes[0] = 490.f; L.parTimes[1] = 650.f; L.parTimes[2] = 830.f; L.parTimes[3] = 1080.f;
     return L;
 }

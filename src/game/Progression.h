@@ -122,6 +122,10 @@ inline int medalFor(const float m[4], float t) {
     for (int k = 0; k < 3; ++k) if (m[k] > 0.f && t <= m[k]) return 3 - k;
     return 0;
 }
+// The Gauntlet's layout, as far as times go. Bumped when its rooms change enough that old FAST
+// times can't be compared (3: two waves, then the mini-boss, in every room); older bests, medals,
+// splits, the ghost and the board's FAST times are dropped as they load
+constexpr int FAST_COURSE = 3;
 inline const char* medalName(int m) { static const char* N[] = {"", "BRONZE", "SILVER", "GOLD", "DEV TIME"}; return N[m < 0 || m > 4 ? 0 : m]; }
 inline glm::vec3 medalColor(int m) {
     static const glm::vec3 C[] = {{0.6f, 0.6f, 0.65f}, {0.85f, 0.5f, 0.25f}, {0.8f, 0.85f, 0.95f}, {1.f, 0.82f, 0.25f}, {0.45f, 1.f, 0.9f}};
@@ -140,6 +144,7 @@ struct Records {
     bool  act2Cleared = false;             // the Leviathan has fallen (saved as it dies)
     float bestAct2 = 0.f, bestZenith = 0.f;   // ACT II to the Leviathan; ACT II + the Zenith (0 = none yet)
     float bestBoss[BOSS_COUNT] = {};          // BOSS: each boss's fastest kill, from its fight starting (0 = none yet)
+    int   fastCourse = FAST_COURSE;           // the Gauntlet layout the FAST records were set on
 
     static constexpr const char* kKey = "records.v2.cfg";
 
@@ -147,8 +152,10 @@ struct Records {
     void parse(const std::string& text) {
         std::istringstream f(text);
         std::string key;
+        int course = 0;
         while (f >> key) {
             if (key == "bestArena") f >> bestArena;
+            else if (key == "fastCourse") f >> course;
             else if (key == "bestFast") f >> bestFast;
             else if (key == "bestArenaScore") f >> bestArenaScore;
             else if (key == "bestEndless") f >> bestEndless;
@@ -173,12 +180,17 @@ struct Records {
             } else { std::string skip; f >> skip; }
             if (!f) break;
         }
+        if (course != FAST_COURSE && !text.empty()) {   // set on an older Gauntlet: not comparable
+            bestFast = 0.f; fastSplits.clear(); fastRooms.clear(); fastMedals.clear();
+        }
+        fastCourse = FAST_COURSE;
     }
     void save() const { persist::save(kKey, serialise()); }
     std::string serialise() const {
         std::ostringstream f;
         f << "bestArena " << bestArena << "\n";
         f << "bestFast " << bestFast << "\n";
+        f << "fastCourse " << fastCourse << "\n";
         f << "bestArenaScore " << bestArenaScore << "\n";
         f << "bestEndless " << bestEndless << "\n";
         f << "act2Unlocked " << (act2Unlocked ? 1 : 0) << "\n";
@@ -358,11 +370,13 @@ struct Leaderboard {
         if (migrate) text = persist::load(kOldKey);   // keep the FAST times from before scores
         std::istringstream f(text);
         std::string line;
+        int course = 0;
         while (std::getline(f, line)) {
             std::istringstream ls(line);
             std::string key; ls >> key;
             Entry e;
-            if (key == "fast") { if (parseTimed(ls, e)) list(Board::FAST).push_back(e); }
+            if (key == "fastCourse") ls >> course;
+            else if (key == "fast") { if (parseTimed(ls, e)) list(Board::FAST).push_back(e); }
             else if (key == "arena" && !migrate) { if (parseScored(ls, e)) list(Board::ARENA).push_back(e); }
             else if (key == "endless") { if (parseScored(ls, e)) list(Board::ENDLESS).push_back(e); }
             else if (key == "lastName") {
@@ -370,6 +384,7 @@ struct Leaderboard {
                 lastName = cleanName(rest);
             }
         }
+        if (course != FAST_COURSE) list(Board::FAST).clear();   // times from an older Gauntlet
         sortAll();
     }
 
@@ -396,6 +411,7 @@ struct Leaderboard {
 
     void save() const {
         std::ostringstream f;
+        f << "fastCourse " << FAST_COURSE << "\n";
         for (auto& e : list(Board::FAST)) f << "fast " << e.time << " " << e.difficulty << " " << e.name << "\n";
         for (Board b : {Board::ARENA, Board::ENDLESS})
             for (auto& e : list(b)) {
