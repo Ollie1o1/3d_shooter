@@ -244,7 +244,7 @@ inline void GameplayState::updateEnemies(float dt) {
             int ph = std::atoi(g_devOverlay.c_str() + 8);   // dev: absolute2 / absolute3 / absolute8
             if (ph >= 2) e.health = e.maxHealth * (ph == 2 ? 0.59f : ph == 3 ? 0.24f : 0.079f);
         }
-        if (g_devOverlay == "bossdown" && isBoss(e.type) && e.targetable() && bossStartAt >= 0.f && elapsedTime - bossStartAt > 2.f)   // dev: the boss falls (a BOSS run's end)
+        if (g_devOverlay.find("bossdown") != std::string::npos && isBoss(e.type) && e.targetable() && bossStartAt >= 0.f && elapsedTime - bossStartAt > 2.f)   // dev: the boss falls (a BOSS run's end)
             hurtEnemy(e, e.health + 1.f, e.position + glm::vec3{0.f, 1.f, 0.f}, 0.f, 0.f, StyleSource::REVOLVER);
         if (e.type == EnemyType::ABSOLUTE && g_devOverlay.rfind("morning", 0) == 0) {   // dev: morning / morning5 / morning6: MORNINGSTAR (RISING, TOTALITY)
             if (e.abForm == 0 && e.abSwallow <= 0.f) { e.abArrive = 0.f; e.abSwallow = 0.05f; e.abAlt = e.abAltWant = Enemy::MS_UP; msSwallowT = Enemy::MS_SWALLOW; }

@@ -530,7 +530,9 @@ public:
     }
 
     // BOSS: one boss down - the kill time against its best
-    void renderVictoryBoss(const char* name, const char* where, float time, float best, bool newRecord, int deaths, int shots, int hits) {
+    // naming: the world board's name prompt is up (typed: what's typed so far); posted: the kill went on it
+    void renderVictoryBoss(const char* name, const char* where, float time, float best, bool newRecord, int deaths, int shots, int hits,
+                           bool naming = false, const std::string& typed = {}, bool posted = false) {
         begin2D();
         ui.rect(0, 0, screenW, screenH, {0.03f, 0.01f, 0.02f, 0.74f});
         ui.text(name, screenW / 2, screenH / 2 - 150, 5, {1.f, 0.6f, 0.25f, 0.95f}, true);
@@ -546,7 +548,18 @@ public:
         float acc = shots > 0 ? (float)hits / (float)shots * 100.f : 0.f;
         std::snprintf(buf, sizeof(buf), "DEATHS %d    ACCURACY %d%%", deaths, (int)acc);
         ui.text(buf, screenW / 2, screenH / 2 + 52, 2, {0.9f, 0.9f, 0.9f, 0.9f}, true);
-        ui.text("ENTER - FIGHT IT AGAIN    ESC - MENU", screenW / 2, screenH - 40, 2, {0.6f, 0.6f, 0.6f, 0.85f}, true);
+        if (naming) {   // a name for the world board (Enter saves, Esc skips: nothing goes up without one)
+            const float w = 420.f, x = screenW / 2 - w / 2, y = screenH / 2 + 92;
+            ui.rect(x, y, w, 112, {0.08f, 0.05f, 0.02f, 0.9f});
+            ui.frame(x, y, w, 112, 2, {1.f, 0.75f, 0.2f, 0.9f});
+            ui.text("PUT YOUR NAME ON THE WORLD BOARD", screenW / 2, y + 12, 2, {1.f, 0.85f, 0.3f, 1.f}, true);
+            ui.rect(x + 20, y + 40, w - 40, 32, {0.f, 0.f, 0.f, 0.7f});
+            ui.text(typed.empty() ? " " : typed.c_str(), x + 30, y + 48, 3, {1.f, 1.f, 1.f, 1.f});
+            ui.text("TYPE YOUR NAME   ENTER - SAVE   ESC - SKIP", screenW / 2, y + 88, 1, {0.8f, 0.75f, 0.65f, 0.9f}, true);
+        } else if (posted) {
+            ui.text("SAVED TO THE WORLD BOARD", screenW / 2, screenH / 2 + 100, 2, {1.f, 0.85f, 0.3f, 0.95f}, true);
+        }
+        if (!naming) ui.text("ENTER - FIGHT IT AGAIN    ESC - MENU", screenW / 2, screenH - 40, 2, {0.6f, 0.6f, 0.6f, 0.85f}, true);
         end2D();
     }
 
