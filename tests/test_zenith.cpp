@@ -331,6 +331,11 @@ int main() {
         CHECK(recordBoss(r, 2, 95.f) && !recordBoss(r, 2, 100.f) && recordBoss(r, 2, 90.f) && r.bestBoss[2] == 90.f, "a boss's best kill is its fastest");
         Records back; back.parse(r.serialise());
         CHECK(back.bestBoss[2] == 90.f && back.bestBoss[0] == 0.f, "...and it's saved");
+        // The world record, as web/index.html caches a boss's board ("TIME DIFFICULTY NAME", fastest first)
+        WorldBest w = parseWorldBest("84.31 2 OLLIE R\n90.5 1 SAM\n");
+        CHECK(w.time > 84.3f && w.time < 84.32f && w.difficulty == 2 && w.name == "OLLIE R" && bossBoardKey(1) == "boss1",
+              "a boss's world record is read from the shared board's cache (the fastest, with who holds it)");
+        CHECK(parseWorldBest("").time == 0.f && parseWorldBest("junk\n").time == 0.f, "...and with no board (or a bad one) there's none to show");
     }
 
     // ---------------------------------------------------------------- the hand-off and the records

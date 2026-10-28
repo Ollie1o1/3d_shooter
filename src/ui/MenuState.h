@@ -49,6 +49,19 @@ public:
     Leaderboard  worldBoard;          // web: the shared board, cached by web/index.html
     bool         worldLoaded = false;
     float        boardPoll = 0.f;
+    WorldBest    bossWorld[BOSS_COUNT];   // web: each boss's world record (the site's board), as the page caches it
+    float        bossPoll = 0.f;
+    // Re-read the world records every second (the fetch lands a moment after the page opens)
+    void pollBossWorld() {
+        if ((bossPoll -= 1.f / 60.f) > 0.f) return;
+        bossPoll = 1.f;
+        for (int i = 0; i < BOSS_COUNT; ++i) bossWorld[i] = loadBossWorld(i);
+    }
+    static void refreshWorld() {
+#ifdef __EMSCRIPTEN__
+        emscripten_run_script("window.overdriveBoard&&window.overdriveBoard.refresh()");
+#endif
+    }
 
     static constexpr int NUM_ITEMS = 8;
     std::vector<std::string> arenaNames;
@@ -171,9 +184,9 @@ private:
         if (idx == 1 && onStart && canStartAct2(records)) onStart(GameMode::ACT2, StartOptions{});
         if (idx == 2 && onStart) onStart(GameMode::FAST, StartOptions{});
         if (idx == 3 && onStart) onStart(GameMode::ENDLESS, StartOptions{});
-        if (idx == 4) { page = BOSS; bossSel = 0; }
+        if (idx == 4) { page = BOSS; bossSel = 0; bossPoll = 0.f; refreshWorld(); }
         if (idx == 5) {
-            page = BOARD; board.load(); boardPoll = 0.f;
+            page = BOARD; board.load(); boardPoll = 0.f; bossPoll = 0.f;
 #ifdef __EMSCRIPTEN__
             emscripten_run_script("window.overdriveBoard&&window.overdriveBoard.refresh()");
 #endif
@@ -213,6 +226,7 @@ private:
     }
     void renderBoss() {
         int cx = screenW / 2;
+        pollBossWorld();
         ui.text("BOSS", cx, 46, 5, {1.f, 0.55f, 0.08f, 1.f}, true);
         ui.text("EVERY BOSS IN ORDER, ON ITS OWN - WITH THE UPGRADES A RUN WOULD HAVE BY THEN", cx, 104, 1, {0.75f, 0.72f, 0.7f, 0.9f}, true);
         char buf[96];
@@ -228,9 +242,15 @@ private:
             ui.text(buf, x + 22, y + 16, 3, {0.5f, 0.5f, 0.55f, 0.8f});
             ui.text(b.name, x + 62, y + 8, 3, c);
             ui.text(b.where, x + 62, y + 36, 1, {0.7f, 0.68f, 0.66f, 0.85f});
-            if (records.bestBoss[i] > 0.f) {
-                std::snprintf(buf, sizeof(buf), "BEST %s", formatTime(records.bestBoss[i]).c_str());
-                ui.textRight(buf, (int)(x + BOSS_W - 18), (int)y + 20, 2, {1.f, 0.85f, 0.45f, 0.9f});
+            // your best kill, and the world's (who holds it) when the site's board has one
+            const WorldBest& w = bossWorld[i];
+            std::snprintf(buf, sizeof(buf), "YOU %s", records.bestBoss[i] > 0.f ? formatTime(records.bestBoss[i]).c_str() : "-");
+            ui.textRight(buf, (int)(x + BOSS_W - 18), (int)y + (w.time > 0.f ? 9 : 20), 2, {1.f, 0.85f, 0.45f, 0.9f});
+            if (w.time > 0.f) {
+                const bool mine = records.bestBoss[i] > 0.f && std::fabs(records.bestBoss[i] - w.time) < 0.02f;
+                std::snprintf(buf, sizeof(buf), "WORLD %s  %s", formatTime(w.time).c_str(), w.name.c_str());
+                ui.textRight(buf, (int)(x + BOSS_W - 18), (int)y + 34, 1,
+                             mine ? glm::vec4{0.45f, 1.f, 0.6f, 0.95f} : glm::vec4{0.55f, 0.85f, 1.f, 0.9f});
             }
         }
         if (settings) {
@@ -344,15 +364,24 @@ private:
         drawLeaderboardTable(ui, shown, Board::ARENA,   cx - 600.f, 84.f,  570.f, rows, -1, flashTime);
         drawLeaderboardTable(ui, shown, Board::FAST,    cx + 30.f,  84.f,  570.f, rows, -1, flashTime);
         drawLeaderboardTable(ui, shown, Board::ENDLESS, cx - 600.f, 338.f, 570.f, rows, -1, flashTime);
-        {   // BOSS: your best kill of each (kept on this machine)
+        {   // BOSS: each boss's world record (who holds it) and your own best kill
+            pollBossWorld();
             float x = cx + 30.f, y = 338.f;
             ui.rect(x, y, 570.f, 32.f + rows * 22.f, {0.06f, 0.06f, 0.09f, 0.85f});
             ui.rect(x, y, 570.f, 3.f, {1.f, 0.6f, 0.25f, 0.9f});
-            ui.text("BOSS  -  YOUR BEST KILLS", x + 285.f, y + 8, 2, {1.f, 0.6f, 0.25f, 1.f}, true);
+            ui.text("BOSS  -  FASTEST KILLS", x + 285.f, y + 8, 2, {1.f, 0.6f, 0.25f, 1.f}, true);
+            ui.textRight("WORLD", (int)(x + 300), (int)y + 30, 1, {0.55f, 0.85f, 1.f, 0.8f});
+            ui.textRight("YOU", (int)(x + 546), (int)y + 30, 1, {1.f, 0.85f, 0.45f, 0.8f});
             char buf[64];
             for (int i = 0; i < BOSS_COUNT; ++i) {
-                float ry = y + 40.f + i * 22.f;
+                float ry = y + 44.f + i * 22.f;
                 ui.text(bossEntry(i).name, x + 24, ry, 2, {0.8f, 0.8f, 0.85f, 0.95f});
+                const WorldBest& w = bossWorld[i];
+                if (w.time > 0.f) {
+                    std::snprintf(buf, sizeof(buf), "%s", formatTime(w.time).c_str());
+                    ui.textRight(buf, (int)(x + 300), (int)ry, 2, {0.55f, 0.85f, 1.f, 0.95f});
+                    ui.text(w.name.c_str(), x + 310, ry + 4, 1, {0.55f, 0.75f, 0.9f, 0.8f});
+                } else ui.textRight("-", (int)(x + 300), (int)ry, 2, {0.55f, 0.85f, 1.f, 0.6f});
                 if (records.bestBoss[i] > 0.f) std::snprintf(buf, sizeof(buf), "%s", formatTime(records.bestBoss[i]).c_str());
                 else std::snprintf(buf, sizeof(buf), "-");
                 ui.textRight(buf, (int)(x + 546), (int)ry, 2, {1.f, 0.85f, 0.45f, 0.9f});
