@@ -339,7 +339,7 @@ inline void GameplayState::updateEnemies(float dt) {
             fx.slashes.push_back({epos, enemies[i].yaw, ev.slash, 0.f});
             audio.playAt("dash", epos, ev.slash == 2 ? 120 : 95, SoundGroup::ENEMY, true);
         }
-        if (ev.dodged) audio.playAt("dash", epos, 55, SoundGroup::ENEMY);   // a scuff as it jinks aside
+        if (ev.dodged) audio.playAt("dash", epos, isBoss(e.type) ? 105 : 55, SoundGroup::ENEMY);   // a scuff as it jinks aside (a boss's: a whoosh)
         if (ev.dashStarted) { audio.playAt("dash", epos, 128, SoundGroup::ENEMY, isBoss(enemies[i].type)); shake(0.12f, 0.03f); }
         if (ev.leapStarted) { audio.playAt("jump", epos, 128, SoundGroup::ENEMY, isBoss(enemies[i].type)); fx.spawnShockwave(epos, 3.f, statsOf(enemies[i].type).glow); }
         if (enemies[i].type == EnemyType::SOVEREIGN) onSovereignEvents(enemies[i], ev);
@@ -481,6 +481,7 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
         if (!friendly) bodyHit(e, at, hp.push * pushK, stunned);
     }
     bool killed = e.takeDamage(dmg);
+    if (!killed && isBoss(e.type)) shedBossPotions(e);
     if (!friendly) {
         styleSystem.addStyle(style, src, StyleSystem::HIT_METER);   // (hits score in full but barely move the meter: kills fill it)
         styleSystem.heal(heal * tune().heal);
@@ -1092,4 +1093,45 @@ inline void GameplayState::throwGrenade() {
     viewModel.triggerGrenade();
     shake(0.05f, 0.008f);
     audio.play("jump");
+}
+
+// ---- a boss's potions -----------------------------------------------------------------------------
+// Somewhere to put one: a few metres from your last firm footing, on ground about that high, with nothing
+// in between (eight ways round, then right there)
+inline bool GameplayState::potionSpot(glm::vec3& out) {
+    if (!hasSafeGround) return false;
+    const glm::vec3 base = safeGround;
+    const float start = frand(0.f, 6.2831853f);
+    for (int k = 0; k < 8; ++k) {
+        const float a = start + 0.785398f * (float)k;
+        glm::vec3 p = base + glm::vec3{std::cos(a), 0.f, std::sin(a)} * 4.f;
+        const float g = groundHeightAt(p.x, p.z, base.y + 0.6f);
+        if (std::fabs(g - base.y) > 0.8f) continue;   // a drop, a step up, or nothing under it
+        p.y = g;
+        bool blocked = false;
+        const glm::vec3 from = base + glm::vec3{0.f, 0.8f, 0.f}, to = p + glm::vec3{0.f, 0.8f, 0.f};
+        for (const auto& w : level.walls) if (segmentHitsBox(from, to, w.box)) { blocked = true; break; }
+        if (blocked) continue;
+        out = p; return true;
+    }
+    out = base; return true;
+}
+
+inline void GameplayState::shedBossPotions(Enemy& e) {
+    if (e.type == EnemyType::ABSOLUTE && e.abForm != e.potionForm) { e.potionForm = e.abForm; e.potionsShed = 0; }   // MORNINGSTAR: a fresh bar, fresh potions
+    const float lost = 1.f - e.health / std::max(1.f, e.maxHealth);
+    const int due = std::min(BOSS_POTIONS, (int)(lost / BOSS_POTION_EVERY + 1e-4f));
+    while (e.potionsShed < due) {
+        ++e.potionsShed;
+        glm::vec3 at;
+        if (!potionSpot(at)) return;
+        const glm::vec3 from = e.position + glm::vec3{0.f, std::min(e.height() * 0.6f, 3.f), 0.f};
+        const glm::vec3 drop = at + glm::vec3{0.f, 1.2f, 0.f};
+        pickups.push_back({drop, glm::vec3{0.f, 2.f, 0.f}, 30.f, PickupKind::POTION, at.y, drop});
+        glm::vec3 d = drop - from; const float len = glm::length(d);
+        if (len > 0.5f) fx.spawnSpray(from, d / len, {1.f, 0.25f, 0.35f}, 14, std::min(30.f, len * 2.f), 0.5f, 0.3f);   // a red streak from it to the potion
+        fx.spawnBurst(drop, {1.f, 0.25f, 0.35f}, 16, 2.5f, 0.5f, 0.f);
+        audio.playAt("potion_drop", drop, 128, SoundGroup::WORLD, false, 0.35f);   // where it landed (and heard from anywhere)
+        ui.feed("THE BOSS SHED A HEALTH POTION", {1.f, 0.35f, 0.4f});
+    }
 }

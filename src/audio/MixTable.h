@@ -76,7 +76,7 @@ inline const std::vector<MixEntry>& mixTable() {
         {"wave", C::UI, -4.2f}, {"levelup", C::UI, -0.1f}, {"upgrade", C::UI, 0.1f},
         // the forge: a room cleared (three variants), the beacon, a new best; splits, the countdown, OVERDRIVE's cues
         {"anvil", C::ACTION, -3.5f}, {"anvil_final", C::ACTION, -2.8f}, {"record", C::UI, -5.0f}, {"split_behind", C::WORLD, 1.7f},
-        {"count_tick", C::UI, -2.9f}, {"count_go", C::UI, -0.8f}, {"drive_warn", C::UI, 0.7f}, {"drive_ready", C::UI, -1.7f}, {"dash_ready", C::UI, 4.9f},
+        {"count_tick", C::UI, -2.9f}, {"count_go", C::UI, -0.8f}, {"drive_warn", C::UI, 0.7f}, {"drive_ready", C::UI, -1.7f}, {"dash_ready", C::UI, 4.9f}, {"potion_drop", C::WORLD, -0.4f},
         {"mini_sting", C::UI, -4.2f}, {"bell", C::ACTION, -0.8f}, {"medal", C::UI, -0.9f},   // the Gauntlet's: a mini-boss arrives, the Cantor's bell, a room's medal
     };
     return T;

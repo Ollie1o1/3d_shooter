@@ -63,7 +63,10 @@ constexpr float POISE_DRAIN = 0.55f;
 constexpr float STUN_GUARD  = 0.9f;
 // The visual flinch (radians): how much a shove tips it, a headshot's extra, the most it tips
 constexpr float FLINCH_PER_PUSH = 0.034f, FLINCH_HEAD = 0.12f, FLINCH_MAX = 0.42f;
-constexpr float FLINCH_TAU = 0.07f;   // seconds: it snaps over on the hit and settles back critically damped
+constexpr float FLINCH_TAU = 0.07f;
+// A boss doesn't stagger to your gun, but it feels every hit: a smaller flinch, capped low (its tells stay readable)
+constexpr float BOSS_FLINCH_PER_PUSH = 0.004f, BOSS_FLINCH_HEAD = 0.02f, BOSS_FLINCH_MAX = 0.08f;
+inline bool bossFlinches(EnemyType t) { return isBoss(t) && t != EnemyType::LEVIATHAN; }   // seconds: it snaps over on the hit and settles back critically damped
 
 // How far over it is, `t` seconds after a flinch of `amp`: the snap, then the settle
 inline float flinchAt(float amp, float t) {

@@ -299,6 +299,12 @@ public:
     // big heal, only taken when hurt) and XP shards (rare, bonus XP)
     enum class PickupKind { ORB, POTION, XP };
     struct Pickup { glm::vec3 pos, vel; float life; PickupKind kind; float floorY; glm::vec3 prev{0.f}; };
+    // A boss sheds a health potion every fifth of its bar you take off it (four a bar): health earned by hitting it.
+    // It lands a few metres from where you last stood firm, so it's always somewhere you can reach
+    static constexpr float BOSS_POTION_EVERY = 0.2f;
+    static constexpr int   BOSS_POTIONS = 4;
+    void shedBossPotions(Enemy& e);
+    bool potionSpot(glm::vec3& out);
     std::vector<Pickup> pickups;
 
     // src: whose blast it is, for style (a Mite that reaches you hurts its friends: FRIENDLY)
