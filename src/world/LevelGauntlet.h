@@ -38,6 +38,7 @@
 // =============================================================================
 #include "world/Level.h"
 #include <string>
+#include <tuple>
 
 inline LevelData buildGauntlet() {
     using glm::vec3;
@@ -703,6 +704,38 @@ inline LevelData buildGauntlet() {
         neon(-213,19.7f,-186.1f, -173,20,-185.98f, ice * 0.7f); neon(-213,19.7f,-206.02f, -173,20,-205.9f, ice * 0.7f);
         neon(-214,19.7f,-221.1f, -172,20,-220.98f, ice * 0.7f); neon(-214,19.7f,-246.02f, -172,20,-245.9f, ice * 0.7f);
         neon(-215,19.7f,-258.02f, -171,20,-257.9f, ice);
+        {   // What's below, what to hold on to, what the wind does
+            ShapeKit k = B.kit(), g = B.kit(true);
+            uint32_t sd = 901;
+            // A frozen river winding down the canyon floor, lit faintly from under the ice, banked in snow: the drop has a bottom
+            const float riv[][2] = {{-196,-152},{-201,-172},{-189,-192},{-184,-212},{-198,-228},{-203,-244},{-191,-258},{-186,-272}};
+            for (int i = 0; i + 1 < 8; ++i) {
+                vec3 a{riv[i][0], 0.f, riv[i][1]}, b{riv[i + 1][0], 0.f, riv[i + 1][1]};
+                vec3 d = b - a; float len = glm::length(d) + 1.2f, yaw = std::atan2(d.x, d.z);
+                vec3 c = (a + b) * 0.5f;
+                k.box(c + vec3{0, 0.12f, 0}, {9.f, 0.24f, len}, {0.72f, 0.78f, 0.88f}, yaw);            // the banks
+                g.box(c + vec3{0, 0.27f, 0}, {3.6f, 0.08f, len}, ice * 0.32f, yaw);                    // the ice
+            }
+            // Two frozen falls down the canyon walls, from the rim to the river
+            for (auto [x, z, side] : {std::tuple<float, float, float>{-214.6f, -203.f, 1.f}, {-171.4f, -250.f, -1.f}}) {
+                for (float y = 0.f; y < 38.f; y += 3.f) {
+                    float v = (float)(((int)(y * 7.f + z)) % 10) / 10.f;
+                    k.box({x + side * 0.35f, y + 1.6f, z}, {0.7f, 3.3f, 3.2f + 1.4f * v}, {0.8f, 0.86f, 0.95f});
+                    g.box({x + side * 0.75f, y + 1.6f, z + (v - 0.5f) * 0.8f}, {0.12f, 3.3f, 1.2f + 0.8f * v}, ice * 0.55f);
+                }
+                k.rock({x + side * 3.f, -0.2f, z}, 3.2f, 2.f, {0.78f, 0.84f, 0.94f}, ++sd, 0.4f, 7);   // where it piles up at the foot
+            }
+            // Ice growing on the ledges you can hook: glowing crystals, so you can read them from across the canyon
+            const float ledges[][3] = {{-214.f, 29.f, -214.f}, {-172.f, 29.f, -214.f}, {-213.5f, 33.f, -182.5f}, {-172.5f, 33.f, -242.5f},
+                                       {-214.f, 26.f, -252.5f}, {-172.f, 26.f, -176.f}};
+            for (auto& l : ledges)
+                for (int c = 0; c < 3; ++c)
+                    g.rock({l[0] + (c - 1) * 0.45f, l[1], l[2] + ((c * 7) % 3 - 1) * 0.9f}, 0.22f + 0.08f * c, 0.9f + 0.5f * c, ice * 0.9f, ++sd, 0.15f, 5);
+        }
+        // Pennants streaming in the canyon wind along the rims (THE SPAN's own, made in Blender)
+        for (auto& f : {vec3{-213.f, 20.f, -160.f}, vec3{-173.f, 20.f, -162.f}, vec3{-212.f, 20.f, -188.f}, vec3{-174.f, 20.f, -204.f},
+                        vec3{-213.f, 20.f, -244.f}, vec3{-173.f, 20.f, -223.f}, vec3{-212.f, 20.f, -260.f}})
+            model("wind_flag", f, 0.f);
         B.mat = Mat::BRICK;
         place({-190.5f, 20.f, -158.f}, 1); place({-200.f, 20.f, -160.f}, 0);
         station({-192.85f, 21.2f, -158.f}, 90.f);
@@ -1067,6 +1100,41 @@ inline LevelData buildGauntlet() {
         B.ring(SX - 2.2f, SZ - 2.2f, SX + 2.2f, SZ + 2.2f, 27.3f, 27.5f, cyan);
         B.booster(aabb(SX - 1.8f, 0, SZ - 1.8f, SX + 1.8f, 27.f, SZ + 1.8f), {0, 1, 0}, 20.f);
         B.booster(aabb(SX - 2.5f, 27.f, SZ - 2.5f, SX + 2.5f, 33.f, SZ + 2.5f), {0, 0, -1}, 9.f);
+        {   // THE PACEMAKER's yard is a clock: a dial inlaid round the keep, and on four faces of the keep
+            // a clock at two minutes to midnight
+            ShapeKit k = B.kit(), g = B.kit(true);
+            const vec3 C{TX, 0.f, TZ};
+            g.curve(C, 15.f, 0.f, 6.2831853f, 0.01f, 0.04f, 0.3f, mag * 0.7f, 48);
+            g.curve(C, 11.2f, 0.f, 6.2831853f, 0.01f, 0.04f, 0.12f, mag * 0.45f, 40);
+            for (int i = 0; i < 12; ++i) {
+                const float an = -1.5707963f + i * 0.5235988f;   // 12 to the north (-Z)
+                const bool big = i % 3 == 0;
+                const float len = big ? 2.6f : 1.3f;
+                vec3 dir{std::cos(an), 0.f, std::sin(an)};
+                g.box(C + dir * (14.6f - len * 0.5f) + vec3{0, 0.025f, 0}, {len, 0.03f, big ? 0.45f : 0.22f}, i == 0 ? cyan : mag * 0.8f, -an);
+            }
+            for (int f = 0; f < 4; ++f) {
+                const float fa = 0.7853982f + f * 1.5707963f;                  // the four diagonal faces (the banners hang on the others)
+                const vec3 n{std::cos(fa), 0.f, std::sin(fa)}, side{std::sin(fa), 0.f, -std::cos(fa)}, up{0.f, 1.f, 0.f};   // side: your right, facing it
+                const vec3 at = C + n * 6.f + vec3{0, 27.5f, 0};
+                Shape& rim = g.column({0, 0, 0}, 2.35f, 0.08f, mag * 0.8f, 24);
+                rim.xf = ShapeKit::T(at) * ShapeKit::R(-fa, up) * ShapeKit::R(-1.5707963f, {0, 0, 1}) * ShapeKit::Sc({2.35f, 0.08f, 2.35f});
+                Shape& dial = k.column({0, 0, 0}, 2.22f, 0.12f, slateD * 0.6f, 24);
+                dial.xf = ShapeKit::T(at) * ShapeKit::R(-fa, up) * ShapeKit::R(-1.5707963f, {0, 0, 1}) * ShapeKit::Sc({2.22f, 0.12f, 2.22f});
+                const vec3 front = at + n * 0.15f;
+                for (int i = 0; i < 12; ++i) {
+                    const float ph = i * 0.5235988f, rr = 1.85f;
+                    g.box(front + up * (std::cos(ph) * rr) + side * (std::sin(ph) * rr), {0.04f, i % 3 == 0 ? 0.45f : 0.25f, 0.09f}, mag, -fa, ph);
+                }
+                auto hand = [&](float ph, float len, float w, vec3 col) {
+                    g.box(front + n * 0.03f + (up * std::cos(ph) + side * std::sin(ph)) * (len * 0.5f - 0.2f), {0.04f, len, w}, col, -fa, ph);
+                };
+                hand((11.f + 58.f / 60.f) * 0.5235988f, 1.2f, 0.15f, cyan);    // the hour, all but there
+                hand(58.f * 0.1047198f, 1.8f, 0.09f, vec3{1.4f, 1.4f, 1.6f});   // two minutes to go
+            }
+        }
+        for (float x : {46.f, 66.f}) for (float z : {-297.4f, -229.6f}) model("brazier", {x, 0.f, z}, 0.f);   // fires along the yard's walls
+        for (float z : {-276.f, -251.f}) model("brazier", {89.4f, 0.f, z}, 0.f);
         // Cover in the yard
         wall(40,0,-282, 44,1.3f,-280, slateD); wall(68,0,-247, 72,1.3f,-245, slateD);
         wall(40,0,-247, 42,1.6f,-243, slateD); wall(70,0,-284, 72,1.6f,-280, slateD);
