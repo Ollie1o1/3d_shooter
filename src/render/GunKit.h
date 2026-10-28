@@ -200,6 +200,7 @@ inline GunRig rigRevolver(vec3 glow, const GunLook& L, const GunPose& P) {
     float boost = 0.4f + 0.6f * P.boot;
     float swing = rl ? smooth(seg(u, 0.03f, 0.12f)) * (1.f - smooth(seg(u, 0.86f, 0.92f))) : 0.f;
     float spin  = rl ? smooth(seg(u, 0.86f, 0.97f)) * 540.f : 0.f;
+    if (P.drawU >= 0.f) spin += smooth(seg(P.drawU, 0.f, 0.8f)) * 720.f;   // drawn: the cylinder whirs as it twirls
     float fill  = L.mag > 0 ? (float)L.ammo / L.mag : 0.f;
     float br = 0.18f + 0.82f * L.breath * L.breath;
     vec3 acc = accentOf(glow, L);

@@ -135,6 +135,7 @@ public:
         if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
             int i = itemAt(e.button.x, e.button.y);
             if (i >= 0) activate(i);
+            else if (int d = difficultyClick(e.button.x, e.button.y, itemY(NUM_ITEMS - 1) + 58.f)) cycleDifficulty(d);
         }
         if (e.type == SDL_MOUSEMOTION) {
             int i = itemAt(e.motion.x, e.motion.y);
@@ -231,6 +232,7 @@ private:
         if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
             int i = fastAt(e.button.x, e.button.y);
             if (i >= 0) { fastSel = i; startFast(i); }
+            else if (int d = difficultyClick(e.button.x, e.button.y, fastY(fastRows()) + 4.f)) cycleDifficulty(d);
         }
     }
     void renderFast() {
@@ -306,6 +308,7 @@ private:
         if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
             int i = bossAt(e.button.x, e.button.y);
             if (i >= 0) { bossSel = i; startBoss(i); }
+            else if (int d = difficultyClick(e.button.x, e.button.y, bossY(BOSS_COUNT) + 10.f)) cycleDifficulty(d);
         }
     }
     void renderBoss() {
@@ -476,6 +479,20 @@ private:
         ui.text("ESC, ENTER OR CLICK - BACK", cx, screenH - 40, 2, {0.6f, 0.6f, 0.65f, 0.85f}, true);
     }
 
+    // The DIFFICULTY  <  NAME  > line (drawn centred at lineY, scale 2): a click on its left half (the < side,
+    // up to the middle of the name) goes down a level, on its right half up one. 0: the click missed it
+    int difficultyClick(int mx, int my, float lineY) const {
+        if (!settings) return 0;
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "DIFFICULTY   <  %s  >", difficulty(settings->difficulty).name);
+        const float w = (float)UIBatch::textWidth(buf, 2), x0 = screenW / 2.f - w / 2.f;
+        if (my < lineY - 8.f || my > lineY + 24.f || mx < x0 - 12.f || mx > x0 + w + 12.f) return 0;
+        const float lt = x0 + 13 * 12.f;   // the "<" (13 characters in, 12 px each at scale 2)
+        if (mx < lt - 40.f) return 0;      // the word DIFFICULTY itself: not a button
+        const float nameMid = lt + (3.f + std::strlen(difficulty(settings->difficulty).name) * 0.5f) * 12.f;
+        return mx < nameMid ? -1 : 1;
+    }
+
     // LEFT/RIGHT on the main menu: pick the difficulty for the next run
     void cycleDifficulty(int dir) {
         if (!settings) return;
@@ -533,7 +550,7 @@ private:
             std::snprintf(d, sizeof(d), "DIFFICULTY   <  %s  >", difficulty(settings->difficulty).name);
             glm::vec4 dc = settings->difficulty >= 2 ? glm::vec4{1.f, 0.35f, 0.25f, 0.95f} : glm::vec4{1.f, 0.8f, 0.45f, 0.95f};
             ui.text(d, cx, itemY(NUM_ITEMS - 1) + 58, 2, dc, true);
-            ui.text("LEFT / RIGHT TO CHANGE", cx, itemY(NUM_ITEMS - 1) + 80, 1, {0.6f, 0.6f, 0.65f, 0.8f}, true);
+            ui.text("LEFT / RIGHT OR CLICK TO CHANGE", cx, itemY(NUM_ITEMS - 1) + 80, 1, {0.6f, 0.6f, 0.65f, 0.8f}, true);
         }
         float hint = 0.35f + 0.35f * std::sin(flashTime * 1.8f);
         ui.text("UP/DOWN OR MOUSE TO SELECT  -  ENTER OR CLICK TO CONFIRM  -  ` FOR DEV LEVEL SELECT",
