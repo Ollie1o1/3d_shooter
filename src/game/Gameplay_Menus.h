@@ -94,6 +94,19 @@ inline void GameplayState::submitWorld(const std::string& name, int diff) {
 #endif
 }
 
+// BOSS: a kill's time onto that boss's world board, under the name you last put to a run
+inline void GameplayState::submitBossWorld(float t) {
+#ifdef __EMSCRIPTEN__
+    const std::string name = board.lastName.empty() ? std::string("PLAYER") : board.lastName;
+    char js[240];
+    std::snprintf(js, sizeof(js), "window.overdriveBoard&&window.overdriveBoard.submit({mode:'%s',name:'%s',time:%.2f,difficulty:%d})",
+                  bossBoardKey(g_bossRun).c_str(), name.c_str(), t, settings ? settings->difficulty : DIFFICULTY_DEFAULT);
+    emscripten_run_script(js);
+#else
+    (void)t;
+#endif
+}
+
 inline void GameplayState::handleNameEntry(const SDL_Event& e) {
     if (e.type != SDL_KEYDOWN) return;
     SDL_Keycode k = e.key.keysym.sym;
