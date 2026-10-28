@@ -887,6 +887,21 @@ inline void GameplayState::update(float dt) {
         viewModel.devFan(std::atoi(g_devOverlay.c_str() + (in ? 5 : out ? 6 : 3)) / 100.f, in ? 1 : out ? 2 : 0);
     }
     if (g_devOverlay == "punch") { viewModel.parryTimer = ViewModel::PARRY_TIME * 0.62f; viewModel.parryHit = true; }
+    // --overlay volley: orbs fired across your view every 0.2 s, a heavy shell every second (screenshots: their tumble,
+    // trail and stretch), into the ground ahead (their shatter)
+    if (g_devOverlay == "volley") {
+        static float volleyT = 0.f; static int volleyN = 0;
+        volleyT += dt;
+        if (volleyT >= 0.2f) {
+            volleyT = 0.f; ++volleyN;
+            glm::vec3 f = player.camera.flatForward(), r{-f.z, 0.f, f.x};
+            glm::vec3 from = player.camera.position + f * 7.f + r * 9.f + glm::vec3{0.f, 0.6f + 0.5f * (float)(volleyN % 3), 0.f};
+            glm::vec3 vel = -r * 22.f + f * 4.f - glm::vec3{0.f, 1.2f, 0.f};
+            const bool heavy = volleyN % 5 == 0;
+            if (Projectile* q = projSystem.fire(from, vel, 0.f, false, heavy ? glm::vec3{1.f, 0.72f, 0.12f} : glm::vec3{1.f, 0.3f, 0.6f}, false, 0.f, heavy ? 1.6f : 1.f, heavy))
+                q->lifetime = 1.2f;
+        }
+    }
     // --overlay showcase: one of each pickup and shot hanging in a row in front of you, the hook beside them
     if (g_devOverlay == "showcase") {
         glm::vec3 f = player.camera.flatForward(), r{-f.z, 0.f, f.x};
