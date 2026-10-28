@@ -13,6 +13,35 @@ inline void GameplayState::applyTextureQuality() {
     for (GLuint t : worldTex) if (t) TextureGen::setAnisotropy(t, GameSettings::qualityAnisotropy(q));
 }
 
+// The world's textures, made once and kept for every run after. They never change, and making them was most
+// of starting a run: a freeze the web build's music stuttered through. main() makes them behind the loading screen
+inline GLuint* GameplayState::sharedWorldTex() {
+    static GLuint tex[TEX_COUNT] = {};
+    static bool made = false;
+    if (!made) {
+        made = true;
+        tex[TEX_GRID]          = TextureGen::uploadMaterial(MaterialTex::gridFloor());
+        tex[TEX_BRICK]         = TextureGen::uploadMaterial(MaterialTex::brick());
+        tex[TEX_METAL]         = TextureGen::uploadMaterial(MaterialTex::metal());
+        tex[TEX_PANEL]         = TextureGen::uploadMaterial(MaterialTex::panel());
+        tex[TEX_ROCK]          = TextureGen::uploadMaterial(MaterialTex::rock());
+        tex[TEX_CONCRETE]      = TextureGen::uploadMaterial(MaterialTex::concrete());
+        tex[TEX_LIMESTONE]     = TextureGen::uploadMaterial(MaterialTex::limestone());
+        tex[TEX_BRASS]         = TextureGen::uploadMaterial(MaterialTex::brass());
+        tex[TEX_ADOBE]         = TextureGen::uploadMaterial(MaterialTex::adobe());
+        tex[TEX_TERRACOTTA]    = TextureGen::uploadMaterial(MaterialTex::terracotta());
+        tex[TEX_WOOD]          = TextureGen::uploadMaterial(MaterialTex::wood());
+        tex[TEX_PLATE]         = TextureGen::uploadMaterial(MaterialTex::plate());
+        tex[TEX_TREAD]         = TextureGen::uploadMaterial(MaterialTex::tread());
+        tex[TEX_MARBLE]        = TextureGen::uploadMaterial(MaterialTex::marble());
+        tex[TEX_FLAG]          = TextureGen::uploadMaterial(MaterialTex::flagstone());
+        tex[TEX_CIRCUIT]       = TextureGen::uploadMaterial(MaterialTex::circuit());
+        tex[TEX_CIRCUIT_FLOOR] = TextureGen::uploadMaterial(MaterialTex::circuitFloor());
+        tex[TEX_BASALT]        = TextureGen::uploadMaterial(MaterialTex::basalt());
+    }
+    return tex;
+}
+
 inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode m)
     : settings(s), mode(m), audio(aud) {
     worldShader.loadFiles("src/shaders/shader.vert","src/shaders/shader.frag");
@@ -71,24 +100,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     glBindVertexArray(0);
 
     whiteTex = makeGreyTexture();
-    worldTex[TEX_GRID]          = TextureGen::uploadMaterial(MaterialTex::gridFloor());
-    worldTex[TEX_BRICK]         = TextureGen::uploadMaterial(MaterialTex::brick());
-    worldTex[TEX_METAL]         = TextureGen::uploadMaterial(MaterialTex::metal());
-    worldTex[TEX_PANEL]         = TextureGen::uploadMaterial(MaterialTex::panel());
-    worldTex[TEX_ROCK]          = TextureGen::uploadMaterial(MaterialTex::rock());
-    worldTex[TEX_CONCRETE]      = TextureGen::uploadMaterial(MaterialTex::concrete());
-    worldTex[TEX_LIMESTONE]     = TextureGen::uploadMaterial(MaterialTex::limestone());
-    worldTex[TEX_BRASS]         = TextureGen::uploadMaterial(MaterialTex::brass());
-    worldTex[TEX_ADOBE]         = TextureGen::uploadMaterial(MaterialTex::adobe());
-    worldTex[TEX_TERRACOTTA]    = TextureGen::uploadMaterial(MaterialTex::terracotta());
-    worldTex[TEX_WOOD]          = TextureGen::uploadMaterial(MaterialTex::wood());
-    worldTex[TEX_PLATE]         = TextureGen::uploadMaterial(MaterialTex::plate());
-    worldTex[TEX_TREAD]         = TextureGen::uploadMaterial(MaterialTex::tread());
-    worldTex[TEX_MARBLE]        = TextureGen::uploadMaterial(MaterialTex::marble());
-    worldTex[TEX_FLAG]          = TextureGen::uploadMaterial(MaterialTex::flagstone());
-    worldTex[TEX_CIRCUIT]       = TextureGen::uploadMaterial(MaterialTex::circuit());
-    worldTex[TEX_CIRCUIT_FLOOR] = TextureGen::uploadMaterial(MaterialTex::circuitFloor());
-    worldTex[TEX_BASALT]        = TextureGen::uploadMaterial(MaterialTex::basalt());
+    std::copy(sharedWorldTex(), sharedWorldTex() + TEX_COUNT, worldTex);   // (made once: see sharedWorldTex)
 
     level = fast() ? buildGauntlet() : act2() ? buildAct2Level() : buildLevel();
     spatialGrid.build(level.walls);
@@ -122,7 +134,6 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     if (g_bossRun < 0) director.wave = glm::clamp(g_startWave, 0, director.waveCount() - 1);
     if (fast()) ghost.load();
     if (fast() && start == 0 && !roomAttack()) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
-    if (roomAttack()) startRoomAttack();
     if (g_devCam) countdown = 0.f;
     if (g_devWeapon >= 0 && g_devWeapon < WEAPON_COUNT) activeWeapon = g_devWeapon;
     if (g_devWeapon == WEAPON_COUNT) drawSword();   // --weapon 5: the sword in hand (where it's allowed)
@@ -150,6 +161,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     prevCamPos = player.camera.position;
 
     captureMouse(true);
+    if (roomAttack()) startRoomAttack();   // after the capture: a later room opens the armory, which frees the mouse to shop with
     if (act2()) beginAct2();   // after the capture: the armory frees the mouse to shop with
     if (g_bossRun >= 0) startBossRun();
 }
@@ -160,7 +172,7 @@ inline GameplayState::~GameplayState() {
     audio.setWind(0.f); audio.setRope(0.f); audio.setOverdrive(false, 0.f);
     audio.setRoom(RoomTone::NONE);   // the menu has no air of its own
     glDeleteTextures(1,&whiteTex);
-    glDeleteTextures(TEX_COUNT, worldTex);
+    // (worldTex: shared by every run, kept: sharedWorldTex)
     world.contact.release();
     movingShadows.release();
     if (tracerVAO)   glDeleteVertexArrays(1, &tracerVAO);
@@ -171,12 +183,12 @@ inline GameplayState::~GameplayState() {
     if (particleVBO) glDeleteBuffers(1, &particleVBO);
     if (decalVAO)    glDeleteVertexArrays(1, &decalVAO);
     if (decalVBO)    glDeleteBuffers(1, &decalVBO);
-    SDL_SetRelativeMouseMode(SDL_FALSE);
+    setMouseCaptured(false);
 }
 
 inline void GameplayState::captureMouse(bool on) {
     if (g_devNoMouse) on = false;
-    SDL_SetRelativeMouseMode(on ? SDL_TRUE : SDL_FALSE);
+    setMouseCaptured(on);
     if (on) mouseFilter.onCapture();
 }
 
@@ -307,8 +319,8 @@ inline void GameplayState::newRun() {
     bankedStyle = bankedDamage = 0.f;   // after enterArena: that banked the last run's
     wavesCleared = 0;
     if (fast() && !roomAttack()) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
-    if (roomAttack()) startRoomAttack();
     captureMouse(true);
+    if (roomAttack()) startRoomAttack();   // after the capture, like ACT II: a later room opens the armory, which frees the mouse to shop with
     if (act2()) beginAct2();   // after the capture: the armory frees the mouse to shop with
     if (g_bossRun >= 0) startBossRun();
 }
@@ -337,7 +349,7 @@ inline void GameplayState::startRoomAttack() {
     const Arena& a = level.arenas[r];
     prog = Progression{};
     prog.level = 1 + r; prog.points = r;
-    countdown = 3.f;
+    countdown = g_devCam ? 0.f : 3.f;   // (a fixed dev camera: no countdown)
     char sub[96];
     snprintf(sub, sizeof(sub), "GOLD %s   SILVER %s   BRONZE %s", formatTime(a.medals[0], false).c_str(),
              formatTime(a.medals[1], false).c_str(), formatTime(a.medals[2], false).c_str());
