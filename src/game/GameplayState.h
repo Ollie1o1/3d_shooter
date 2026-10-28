@@ -395,6 +395,7 @@ public:
     float bossStartAt = -1.f;   // elapsedTime as the boss's fight began
     float bossKillT = 0.f;      // how long it took
     bool  bossDone = false;
+    bool  bossPost = false, bossPosted = false;   // BOSS: the kill may go on the world board (asked for a name); it went
     int   bossWaveOf(int a) const;
     void  startBossRun();
     void  bossRunDone();
@@ -586,7 +587,7 @@ public:
     // Web: post the run to the shared board (web/index.html does the request;
     // the name is already restricted to A-Z 0-9 space - . _)
     void submitWorld(const std::string& name, int diff);
-    void submitBossWorld(float t);
+    void submitBossWorld(const std::string& name, float t);
 
     // Victory screen: type a name (letters, digits, space - . _), ENTER saves
     // it to the leaderboard, ESC skips

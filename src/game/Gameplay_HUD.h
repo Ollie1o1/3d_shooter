@@ -274,7 +274,10 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
     }
     if (victory && g_bossRun >= 0) {
         const BossEntry& b = bossEntry(g_bossRun);
-        ui.renderVictoryBoss(b.name, b.where, bossKillT, newRecord ? 0.f : records.bestBoss[g_bossRun], newRecord, deaths, totalShots, totalHits);
+        std::string shown;
+        if (nameEntry) { shown = nameBuf; if (std::fmod(ui.hudTime, 1.f) < 0.55f && (int)nameBuf.size() < Leaderboard::MAX_NAME_LEN) shown += "_"; }
+        ui.renderVictoryBoss(b.name, b.where, bossKillT, newRecord ? 0.f : records.bestBoss[g_bossRun], newRecord, deaths, totalShots, totalHits,
+                             nameEntry, shown, bossPosted);
     } else if (victory) {
         if (fast()) {
             const char* rank = elapsedTime < level.parTimes[0] ? "S" : elapsedTime < level.parTimes[1] ? "A"
