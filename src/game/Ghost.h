@@ -16,7 +16,7 @@
 struct GhostRun {
     static constexpr float STEP = 0.1f;         // seconds between samples
     static constexpr int   MAX_SAMPLES = 20000; // over half an hour; plenty
-    static constexpr const char* kKey = "ghost.v2.cfg";
+    static constexpr const char* kKey = "ghost.v3.cfg";   // v3: the three-wave Gauntlet (FAST_COURSE)
     std::vector<glm::vec4> pts;                 // feet x y z, yaw (degrees)
 
     bool  empty() const { return pts.size() < 2; }
