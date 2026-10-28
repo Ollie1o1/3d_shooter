@@ -483,7 +483,7 @@ seven rooms, each reached down a ribbed **boost tube** (a breather: health waiti
 
 - Quake-style air strafing with momentum preservation
 - Double jump, directional dash (2 charges), ground slam
-- Grapple hook with slingshot release (a 1.5 s cooldown in arenas, none in FAST); **hold** its key as you arrive at a surface and you hang there, aiming and shooting, for up to 3 s (let go to drop, jump to kick off the wall); **moving platforms** (lifts, sweepers, ferries, orbiting platforms) can be hooked with generous aim assist (cyan brackets on the crosshair) and pull you to land on top; standing on one carries you with it
+- Grapple hook with slingshot release (a 1.5 s cooldown in arenas, none in FAST); reach a surface and you **stay attached**, aiming and shooting, until you press the grapple again to let go (or jump to kick off the wall); **moving platforms** (lifts, sweepers, ferries, orbiting platforms) can be hooked with generous aim assist (cyan brackets on the crosshair) and pull you to land on top; standing on one carries you with it
 - Sliding with momentum boost
 - Every arena has an **invisible ceiling** (a force field that flashes when you hit it) so dashes and grapples can't launch you out over the walls
 
