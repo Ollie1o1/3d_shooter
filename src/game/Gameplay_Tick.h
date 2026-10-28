@@ -112,8 +112,13 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     bool dashKey = keys[SDL_SCANCODE_LSHIFT] != 0;
     if (dashKey && !prevDashKey && pinned) pinnedCue();
     if (dashKey && !prevDashKey && dashCharges > 0 && !pinned && snareTimer <= 0.f) {   // (snared by a wire: no dash)
-        // Full 3D dash in the direction the camera faces
+        // Dash by the keys held, W first: W (or nothing) along the camera in full 3D, else A/D flat to the
+        // side, else S straight back along the camera
+        bool w = keys[SDL_SCANCODE_W], s = keys[SDL_SCANCODE_S];
+        int side = (keys[SDL_SCANCODE_D] ? 1 : 0) - (keys[SDL_SCANCODE_A] ? 1 : 0);
         glm::vec3 dashDir = player.camera.forward();
+        if (!w && side != 0) dashDir = player.camera.right() * (float)side;
+        else if (!w && s)    dashDir = -dashDir;
         player.velocity = dashDir * 28.f;
         player.launched();
         dashMomentumTimer = 0.30f;
