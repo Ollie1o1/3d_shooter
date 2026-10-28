@@ -1,5 +1,6 @@
 #pragma once
 #include "core/GameState.h"
+#include "core/MouseCapture.h"
 #include "core/Balance.h"
 #include "player/Player.h"
 #include "core/Camera.h"
@@ -154,6 +155,7 @@ public:
 
     GLuint      whiteTex = 0;
     GLuint      worldTex[TEX_COUNT] = {};
+    static GLuint* sharedWorldTex();   // made once, kept for every run (Gameplay_Flow.h)
     int         textureQuality = -1;   // graphics quality the world textures are filtered for
     void applyTextureQuality();
     WorldMeshes world;
