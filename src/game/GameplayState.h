@@ -43,6 +43,7 @@
 #include "render/NeonLights.h"
 #include "render/Effects.h"
 #include "render/PropDraw.h"
+#include "render/LightBake.h"
 #include "world/ArenaShifts.h"
 #include "game/Score.h"
 #include "game/EndlessWaves.h"
@@ -110,6 +111,7 @@ public:
     bool fast() const { return mode == GameMode::FAST; }
     bool roomAttack() const { return fast() && g_roomAttack >= 0; }   // FAST's ROOM ATTACK: one room, for its medal
     bool act2() const { return mode == GameMode::ACT2; }
+    bool arenaSolo() const { return (mode == GameMode::ARENA || act2()) && g_arenaSolo >= 0; }   // the ARENA page: one arena on its own
     bool endless() const { return mode == GameMode::ENDLESS; }
     Board boardFor() const { return fast() ? Board::FAST : endless() ? Board::ENDLESS : Board::ARENA; }
 
@@ -156,6 +158,11 @@ public:
     GLuint      whiteTex = 0;
     GLuint      worldTex[TEX_COUNT] = {};
     static GLuint* sharedWorldTex();   // made once, kept for every run (Gameplay_Flow.h)
+    // The level's baked light (LightBake.h): loaded and uploaded once a level, kept (Gameplay_Flow.h)
+    struct SharedBake { bool tried = false; GLuint tex = 0; lightbake::Bake bake; };
+    static SharedBake& sharedBake(const std::string& level, const LevelData& L);
+    const SharedBake* bake = nullptr;
+    void applyBake();   // its regions to the world shader (once: they stay set)
     int         textureQuality = -1;   // graphics quality the world textures are filtered for
     void applyTextureQuality();
     WorldMeshes world;
@@ -199,6 +206,7 @@ public:
     // Only a full run counts for records and the leaderboard: started at the
     // first arena, not in god mode, not from the dev level select
     bool  ranked       = true;
+    bool  soloDone = false;        // the ARENA page's one arena: cleared, its time kept (arenaSoloDone)
     bool  act2FromStart = false;   // an ACT II run from its first arena: its times count (act2RunRecords)
     bool  nameEntry    = false;  // victory screen: typing a name for the leaderboard
     std::string nameBuf;
@@ -707,6 +715,18 @@ public:
     bool  roomNewBest = false;
     bool  keepsRoomTimes() const { return fast() && !g_godMode && !g_practice && !g_devCam && g_startWave <= 0; }
     void  startRoomAttack();
+    // ---- what breaks (Gameplay_Destruct.h) ----
+    float chipCd = 0.f;   // (a chip's knock, at most this often)
+    glm::mat4 destructiblePlacement(const Destructible& d, const char* suffix) const;
+    bool hitDestructible(glm::vec3 origin, glm::vec3 dir, float wallT, float dmg);
+    void damageDestructible(int i, float dmg, glm::vec3 at, glm::vec3 push);
+    void breakDestructible(int i, glm::vec3 push);
+    void blastDestructibles(glm::vec3 at, float radius, float dmg);
+    void restoreDestructibles();
+    void updateDestructibles(float dt);
+    void gatherDestructibleBoxes(std::vector<BoxInstance>& out);
+    void  startArenaSolo();
+    void  arenaSoloDone();
     void breakHalo(Enemy& e);
     bool anchoredAt(glm::vec3 feet) const;   // inside an ANCHOR's field: no dash, no grapple
     void pinnedCue();                        // the dull thunk when one of those is refused
@@ -940,4 +960,5 @@ public:
 #include "game/Gameplay_Reliquary.h"
 #include "bosses/leviathan/Gameplay_Leviathan.h"
 #include "game/Gameplay_Sword.h"
+#include "game/Gameplay_Destruct.h"
 #include "bosses/absolute/Gameplay_Absolute.h"

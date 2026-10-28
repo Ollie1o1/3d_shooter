@@ -144,6 +144,7 @@ struct Records {
     bool  act2Cleared = false;             // the Leviathan has fallen (saved as it dies)
     float bestAct2 = 0.f, bestZenith = 0.f;   // ACT II to the Leviathan; ACT II + the Zenith (0 = none yet)
     float bestBoss[BOSS_COUNT] = {};          // BOSS: each boss's fastest kill, from its fight starting (0 = none yet)
+    std::vector<float> arenaSolo, act2Solo;   // the ARENA page: each arena's best clear on its own (Act I, Act II; 0 = none yet)
     int   fastCourse = FAST_COURSE;           // the Gauntlet layout the FAST records were set on
 
     static constexpr const char* kKey = "records.v2.cfg";
@@ -173,6 +174,11 @@ struct Records {
                 int n = 0; f >> n;
                 fastRooms.assign(std::max(0, std::min(n, 32)), 0.f);
                 for (auto& s : fastRooms) f >> s;
+            } else if (key == "arenaSolo" || key == "act2Solo") {
+                auto& v = key == "arenaSolo" ? arenaSolo : act2Solo;
+                int n = 0; f >> n;
+                v.assign(std::max(0, std::min(n, 32)), 0.f);
+                for (auto& s : v) f >> s;
             } else if (key == "fastMedals") {
                 int n = 0; f >> n;
                 fastMedals.assign(std::max(0, std::min(n, 32)), 0);
@@ -209,6 +215,12 @@ struct Records {
         f << "fastMedals " << fastMedals.size();
         for (int m : fastMedals) f << " " << m;
         f << "\n";
+        f << "arenaSolo " << arenaSolo.size();
+        for (float s : arenaSolo) f << " " << s;
+        f << "\n";
+        f << "act2Solo " << act2Solo.size();
+        for (float s : act2Solo) f << " " << s;
+        f << "\n";
         return f.str();
     }
     // A FAST room's time: kept if it's its best (and its medal if better); true if it was a new best
@@ -221,7 +233,30 @@ struct Records {
         fastRooms[room] = t;
         return true;
     }
+
+    // The ARENA page: an arena cleared on its own; kept if it's its best (true: a new best)
+    bool soloTime(bool act2, int arena, float t) {
+        auto& v = act2 ? act2Solo : arenaSolo;
+        if (arena < 0 || arena >= 32 || t <= 0.f) return false;
+        if ((int)v.size() <= arena) v.resize(arena + 1, 0.f);
+        if (v[arena] > 0.f && t >= v[arena]) return false;
+        v[arena] = t;
+        return true;
+    }
+    float soloBest(bool act2, int arena) const {
+        const auto& v = act2 ? act2Solo : arenaSolo;
+        return arena >= 0 && arena < (int)v.size() ? v[arena] : 0.f;
+    }
 };
+
+// The ARENA page's single arenas: the level and points a whole run would have by the
+// arena (as the BOSS page's fights have), spent in the armory before it starts
+struct SoloStart { int level, points; };
+inline SoloStart soloStart(bool act2, int arena) {
+    arena = std::max(0, arena);
+    if (!act2) return {1 + arena, arena};
+    return {6, std::min(5 + std::max(0, arena - 1), 9)};   // (Act II starts at 6 with 5 to spend)
+}
 
 // ACT II and the Zenith keep times only for a run from the act's start
 // (not a level-select or --arena start, not god mode, not practice)
@@ -241,7 +276,7 @@ inline bool zenithHandoff(bool act2, int clearedArena, int arenaCount) {
     return act2 && arenaCount == 6 && clearedArena == 4;
 }
 
-// The main menu's ACT II row only starts a run once the Sovereign has fallen
+// The ARENA page's ACT II card only starts a whole-act run once the Sovereign has fallen in an Act I run
 inline bool canStartAct2(const Records& r) { return r.act2Unlocked; }
 // BOSS: every boss is open from the start (Oliver's call: no need to have reached it)
 inline bool bossOpen(const Records&, int i) { return i >= 0 && i < BOSS_COUNT; }
@@ -434,7 +469,7 @@ inline std::string formatTime(float t, bool hundredths = true) {
     return buf;
 }
 
-// The main menu's ACT II row: locked, the act, then its best times (the act to
+// The ARENA page's ACT II card: locked, the act, then its best times (the act to
 // the Leviathan; with the Zenith once it's cleared)
 inline std::string act2Subtitle(const Records& r, bool unlocked) {
     if (!unlocked) return "DEFEAT THE SOVEREIGN TO UNLOCK";

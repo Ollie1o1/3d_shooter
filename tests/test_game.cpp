@@ -14,6 +14,7 @@
 #include "render/WorldGeometry.h"
 #include "render/MaterialTex.h"
 #include "render/NeonLights.h"
+#include "render/LightBake.h"
 #include "audio/RoomTone.h"
 #include "render/EnemyModel.h"
 #include "player/Weapons.h"
@@ -229,9 +230,15 @@ int main() {
         // Act I as built before the Act II split: nothing added, nothing lost
         // (since: 60 boxes dressed with props made in Blender, and the CORE's and SANCTUM's pillar rings, 24 neon
         // boxes, now lit bands on those props)
-        CHECK(L.walls.size() == 256 && L.props.size() == 274 && L.neon.size() == 272 && L.shapes.size() == 0 &&
-              L.floors.size() == 13 && L.doors.size() == 8 && L.pads.size() == 29 && L.movers.size() == 13 && L.models.size() == 60,
+        // (the code's level: assets/levels/act1.json, made in Blender, goes on top - LevelLayout.h)
+        g_skipLayout = true;
+        LevelData raw = buildLevel();
+        g_skipLayout = false;
+        CHECK(raw.walls.size() == 256 && raw.props.size() == 274 && raw.neon.size() == 272 && raw.shapes.size() == 0 &&
+              raw.floors.size() == 13 && raw.doors.size() == 8 && raw.pads.size() == 29 && raw.movers.size() == 13 && raw.models.size() == 60,
               "buildAct1 builds exactly what buildLevel did");
+        CHECK(L.destructibles.size() == 4 && L.walls.size() == raw.walls.size() + L.destructibles.size(),
+              "the yard's layout from Blender adds its four pieces that break (two pillars, two stacks of crates), after the code's walls");
         CHECK(L.corridors.size() == 4, "four corridors join them");
         bool groundOk = true, airOk = true, inBounds = true, starts = true, underCeiling = true;
         for (auto& a : L.arenas) {
@@ -569,6 +576,138 @@ int main() {
         old.parse("bestArena 600\nbestEndless 1200\nbestDaily 3400 20261012\nact2Unlocked 1\nact2Cleared 1\nbestAct2 900\n");
         CHECK(old.bestArena == 600.f && old.bestEndless == 1200 && old.act2Unlocked && old.act2Cleared && old.bestAct2 == 900.f,
               "an old records file's DAILY line is skipped and everything after it still loads");
+    }
+
+    // ---------------------------------------------------------------- a layout from Blender (LevelLayout.h)
+    {
+        LevelData base = buildLevel();
+        LevelData L = base;
+        const glm::vec3 inside = base.arenas[1].playerStart + glm::vec3{2.f, 0.f, -3.f};
+        char text[1024];
+        std::snprintf(text, sizeof text,
+            "{\"objects\": [\n"
+            " {\"kind\": \"wall\", \"min\": [12, 3, -18], \"max\": [10, 0, -20], \"mat\": \"concrete\", \"color\": [0.5, 0.4, 0.3]},\n"
+            " {\"kind\": \"spawn_ground\", \"pos\": [%g, %g, %g]},\n"
+            " {\"kind\": \"spawn_air\", \"pos\": [0, 9, 0], \"arena\": 0},\n"
+            " {\"kind\": \"model\", \"name\": \"brazier\", \"xf\": [1,0,0,0, 0,1,0,0, 0,0,1,0, 4,0,-25,1]},\n"
+            " {\"kind\": \"destructible\", \"name\": \"pillar\", \"min\": [0, 0, 0], \"max\": [1, 4, 1], \"hp\": 250}\n"
+            "]}", inside.x, inside.y, inside.z);
+        std::string err;
+        CHECK(layout::apply(L, text, err), ("a layout reads: " + err).c_str());
+        CHECK(L.walls.size() == base.walls.size() + 2, "its wall and its destructible's box join the level's walls...");
+        const Wall& w = L.walls[base.walls.size()];
+        CHECK(w.box.min == glm::vec3(10, 0, -20) && w.box.max == glm::vec3(12, 3, -18) && w.mat == Mat::CONCRETE && !w.hidden,
+              "...after the code's (no index the code keeps moves), its corners in order, its surface read");
+        CHECK(L.arenas[1].groundSpawns.size() == base.arenas[1].groundSpawns.size() + 1 && L.arenas[1].groundSpawns.back() == inside,
+              "a spawn with no arena goes to the arena it's inside");
+        CHECK(L.arenas[0].airSpawns.size() == base.arenas[0].airSpawns.size() + 1, "...one with an arena, to that one");
+        CHECK(L.models.size() == base.models.size() + 1 && L.models.back().free && L.models.back().xf[3] == glm::vec4(4, 0, -25, 1),
+              "a placed prop keeps its matrix");
+        CHECK(L.destructibles.size() == base.destructibles.size() + 1 && L.destructibles.back().hp == 250.f &&
+              L.destructibles.back().wall == (int)base.walls.size() + 1 && L.walls[L.destructibles.back().wall].hidden,
+              "a destructible: its hp, its own hidden wall (the game draws it, not the world mesh)");
+        LevelData M = base;
+        CHECK(!layout::apply(M, "{\"objects\": [{\"kind\": \"wall\", \"min\": [0,0,0], \"max\": [1,1,1]}, {\"kind\": \"wall\", \"mat\": \"cheese\", \"min\": [0,0,0], \"max\": [1,1,1]}]}", err) &&
+              M.walls.size() == base.walls.size() && err.find("cheese") != std::string::npos,
+              "a broken layout says what's wrong and changes nothing (not even what came before the mistake)");
+        CHECK(!layout::apply(M, "{\"objects\": [{\"kind\": \"spawn_ground\", \"pos\": [9999, 0, 9999]}]}", err), "a spawn outside every arena is refused");
+    }
+
+    // ---------------------------------------------------------------- the baked light (LightBake.h)
+    {
+        const char* names[3] = {"act1", "act2", "fast"};
+        LevelData levels[3] = {buildLevel(), buildAct2Level(), buildGauntlet()};
+        for (int i = 0; i < 3; ++i) {
+            std::string err;
+            lightbake::Bake B = lightbake::load(names[i], levels[i], err);
+            CHECK(!B.empty(), (std::string("assets/levels/") + names[i] + ".light is the level as it is now (" + err +
+                               ": run make light)").c_str());
+        }
+        std::string err;
+        lightbake::Bake B = lightbake::load("act1", levels[0], err);
+        if (!B.empty()) {
+            const Arena& yard = levels[0].arenas[0];
+            glm::vec3 open = yard.playerStart + glm::vec3{0.f, 1.5f, -20.f};
+            CHECK(B.sample(open).x > 0.85f, "the middle of the yard is open");
+            const Wall* big = nullptr;   // the biggest wall standing in the yard's floor
+            for (const Wall& w : levels[0].walls)
+                if (!w.hidden && !w.dynamic && w.box.min.y <= 0.05f && w.box.min.x >= yard.bounds.min.x && w.box.max.x <= yard.bounds.max.x && w.box.min.z >= yard.bounds.min.z && w.box.max.z <= yard.bounds.max.z &&
+                    (!big || (w.box.max.x - w.box.min.x) * (w.box.max.z - w.box.min.z) > (big->box.max.x - big->box.min.x) * (big->box.max.z - big->box.min.z)))
+                    big = &w;
+            if (big) CHECK(B.sample((big->box.min + big->box.max) * 0.5f).x < 0.1f, "inside a wall it's shut");
+            CHECK(B.sample({9999.f, 0.f, 9999.f}) == glm::vec2(1.f), "outside every region nothing changes");
+            lightbake::Bake C;
+            CHECK(lightbake::parse(lightbake::serialise(B), C, err) && C.hash == B.hash && C.regions.size() == B.regions.size(),
+                  "a bake reads back as it was written");
+            LevelData moved = levels[0];
+            moved.walls.push_back({{{0, 0, 0}, {1, 3, 1}}});
+            CHECK(lightbake::levelHash(moved) != B.hash, "a level changed since its bake: the bake no longer matches");
+            std::string cut = lightbake::serialise(B).substr(0, 200);
+            CHECK(!lightbake::parse(cut, C, err), "a cut-short bake is refused");
+        }
+    }
+    {   // (a bake from scratch: a slab over open ground shades what's under it, and only from its sun)
+        LevelData L;
+        Arena a{};
+        a.name = "test"; a.subtitle = "";
+        a.bounds = {{-10, 0, -10}, {10, 8, 10}}; a.zone = a.bounds;
+        a.theme.lightDir = {0.f, -1.f, 0.f};
+        L.arenas.push_back(a);
+        L.walls.push_back({{{-3, 1.2f, -3}, {3, 1.5f, 3}}});   // (a table top)
+        lightbake::Bake B = lightbake::bake(L, 2);
+        CHECK(B.sample({0.f, 0.5f, 0.f}).y < 0.1f, "under a slab, with the sun overhead: in its shadow");
+        CHECK(B.sample({7.f, 0.5f, 7.f}).y > 0.9f, "out from under it: in the sun");
+        CHECK(B.sample({0.f, 0.5f, 0.f}).x < B.sample({7.f, 0.5f, 7.f}).x - 0.3f, "and darker there: the slab shuts out the sky");
+        CHECK(B.sample({7.f, 0.5f, 7.f}).x > 0.9f, "open ground away from it is as open as it gets");
+    }
+
+    // ---------------------------------------------------------------- keyframes from Blender (AnimClip.h)
+    {
+        using namespace enemyfile;
+        const anim::ClipFile* F = anim::file("sovereign", names());
+        const anim::Clip* c = F ? F->clip("judgment") : nullptr;
+        CHECK(c != nullptr, "the Sovereign's JUDGMENT clip loads (assets/enemies/anim/sovereign.glb)");
+        if (c) {
+            auto near = [](const glm::mat4& a, const glm::mat4& b) {
+                for (int i = 0; i < 4; ++i) for (int k = 0; k < 4; ++k) if (std::fabs(a[i][k] - b[i][k]) > 0.02f) return false;
+                return true;
+            };
+            const anim::Track* arm = c->track(E_ARMR);
+            const anim::Track* root = c->track(anim::ROOT_TRACK);
+            CHECK(arm && root && c->track(E_SWORD) && c->track(E_TORSO), "it keys his arms, his sword, his torso and his whole body");
+            if (arm && root) {
+                CHECK(near(anim::motionAt(*arm, c->length), rig::RX(-3.05f) * rig::RZ(-0.08f)),
+                      "it ends on the hold the code's follow-through swings down from (the blade to the sky)");
+                CHECK(near(anim::motionAt(*arm, c->length * 0.75f), rig::RX(-3.3f) * rig::RZ(-0.08f)), "...past it first (the overshoot)");
+                glm::vec3 low = glm::vec3(anim::motionAt(*root, c->length * 0.28f)[3]);
+                CHECK(std::fabs(low.y + 0.28f) < 0.02f && std::fabs(low.x) < 0.01f && std::fabs(low.z) < 0.01f,
+                      "the gather sinks him 0.28 m (Blender's up is the game's up)");
+            }
+            Enemy sov(EnemyType::SOVEREIGN, {0.f, 0.f, 0.f});
+            sov.spawnTimer = 0.f; sov.attack = AttackKind::JUDGMENT; sov.telegraphDuration = 1.f; sov.telegraphTimer = 0.01f;
+            rig::FilePose P; glm::mat4 fileRoot; glm::vec3 g;
+            rig::filePoseOf(sov, 0.f, glm::mat4(1.f), fileRoot, P, g);
+            CHECK(near(P.motion[E_ARMR], anim::motionAt(*arm, c->length * 0.99f)), "a Sovereign winding JUDGMENT up is posed by the clip");
+            CHECK(near(anim::blend(rig::RX(0.f), rig::RX(1.f), 0.5f), rig::RX(0.5f)), "a clip mixes in by turning, not by mixing matrices");
+        }
+    }
+
+    // ---------------------------------------------------------------- the ARENA page: one arena on its own
+    {
+        Records r;
+        CHECK(r.soloBest(false, 2) == 0.f && r.soloBest(true, 0) == 0.f, "no arena has a best clear to start with");
+        CHECK(r.soloTime(false, 2, 95.f) && r.soloBest(false, 2) == 95.f, "an Act I arena's first clear is its best");
+        CHECK(!r.soloTime(false, 2, 120.f) && r.soloBest(false, 2) == 95.f, "a slower clear doesn't replace it");
+        CHECK(r.soloTime(false, 2, 80.f) && r.soloBest(false, 2) == 80.f, "a faster one does");
+        CHECK(r.soloTime(true, 4, 200.f) && r.soloBest(true, 4) == 200.f && r.soloBest(false, 4) == 0.f, "Act II's arenas keep their own times");
+        Records back; back.parse(r.serialise());
+        CHECK(back.soloBest(false, 2) == 80.f && back.soloBest(true, 4) == 200.f, "the arenas' best clears are saved and loaded");
+        CHECK(soloStart(false, 0).level == 1 && soloStart(false, 0).points == 0, "Act I's first arena starts from nothing");
+        CHECK(soloStart(false, 3).level == bossEntry(0).level && soloStart(false, 3).points == bossEntry(0).points,
+              "the Core on its own starts with what the BOSS page gives the Warden");
+        CHECK(soloStart(false, 4).level == bossEntry(1).level && soloStart(false, 4).points == bossEntry(1).points, "...the Sanctum, the Sovereign's");
+        CHECK(soloStart(true, 2).points == bossEntry(2).points && soloStart(true, 4).points == bossEntry(3).points &&
+              soloStart(true, 5).points == bossEntry(4).points, "...and Act II's arenas, their bosses'");
     }
 
     // ---------------------------------------------------------------- ACT II: the Orrery

@@ -150,7 +150,7 @@ private:
         // line and declaring default precision is all that's needed.
         std::string es = src;
         auto nl = es.find('\n');
-        es = "#version 300 es\nprecision highp float;\nprecision highp int;\n"
+        es = "#version 300 es\nprecision highp float;\nprecision highp int;\nprecision highp sampler3D;\n"
            + (nl == std::string::npos ? std::string() : es.substr(nl + 1));
         src = es.c_str();
 #endif
