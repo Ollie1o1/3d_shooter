@@ -282,7 +282,7 @@ inline void Enemy::thinkPlumb(float dt, const EnemyWorld& w, bool resolve) {
         attack = AttackKind::NONE;
         if (k == AttackKind::VOLLEY) {   // a ring of orbs out from its core, and the core opens
             const int n = enraged ? 16 : 12;
-            ev.shotOrigin = position + glm::vec3{0.f, height() * 0.5f, 0.f};
+            ev.shotOrigin = position + glm::vec3{0.f, height() * 0.3f, 0.f};   // (out of its belly: the vents)
             ev.shotSpeed = 12.f * tune_->shotSpeed; ev.shotDamage = 12.f; ev.shotSize = 1.4f; ev.shotParry = 80.f;
             float tilt = glm::clamp((w.playerEye.y - ev.shotOrigin.y) / 12.f, -0.4f, 0.4f);
             for (int i = 0; i < n; ++i) {

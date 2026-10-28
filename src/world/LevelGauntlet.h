@@ -289,16 +289,15 @@ inline LevelData buildGauntlet() {
         place({0.f, 3.f, -50.f}, 0);
         a.waves = {
             {
-                W{EnemyType::HUSK, 0, {{-12,3,-80},{12,3,-92},{12,3,-118},{-12,3,-104},{0,0,-122}}},
+                W{EnemyType::HUSK, 0, {{-12,3,-80},{12,3,-92},{-12,3,-104},{0,0,-118}}},
                 W{EnemyType::SENTINEL, 0, {{-5,3,-106},{5,3,-82}}},
-                W{EnemyType::RIPPER, 0, {{0,0,-92},{-4,0,-103},{4,0,-116}}},
-                W{EnemyType::RAPTOR, 0, {{-5,11,-100},{5,11,-114}}},
+                W{EnemyType::RIPPER, 0, {{0,0,-88},{-4,0,-103},{4,0,-115}}},
+                W{EnemyType::RAPTOR, 0, {{-5,9,-96},{5,9,-110}}},
             },
-            {
-                W{EnemyType::BRUTE, 0, {{0,0,-118}}},
-                W{EnemyType::MITE, 0, {{-6,0,-86},{6,0,-90},{0,0,-76}}},
-                W{EnemyType::HUSK, 0, {{-12,3,-120},{12,3,-66}}},
-                W{EnemyType::RAPTOR, 0, {{0,12,-110}}},
+            {   // THE COURIER, up the lane with the room's key: run it down
+                W{EnemyType::COURIER, 0, {{0,0,-104}}},
+                W{EnemyType::MITE, 0, {{-6,0,-112},{6,0,-116}}},
+                W{EnemyType::HUSK, 0, {{-12,3,-120},{12,3,-117}}},
             },
         };
         B.paint(m0, Mat::BRICK, [&](vec3 c, Mat m) { return LevelBuilder::shade(c, crate) ? Mat::WOOD : m; });   // the canal's crates are wood
@@ -396,16 +395,14 @@ inline LevelData buildGauntlet() {
         B.mat = Mat::BRICK;
         a.waves = {
             {
-                W{EnemyType::HUSK, 0, {{-76,3,-129},{-66,3,-129},{-76,3,-109},{-64,3,-109}}},
+                W{EnemyType::HUSK, 0, {{-76,3,-129},{-66,3,-129},{-76,3,-109}}},
                 W{EnemyType::RIPPER, 0, {{-78,0,-119},{-64,0,-114}}},
-                W{EnemyType::MITE, 0, {{-75,0,-113},{-64,0,-124},{-77,0,-124}}},
+                W{EnemyType::MITE, 0, {{-75,0,-113},{-64,0,-124}}},
                 W{EnemyType::SENTINEL, 0, {{-71.5f,6,-117}}},
             },
-            {
-                W{EnemyType::JUGGERNAUT, 0, {{-77,0,-119}}},
-                W{EnemyType::RIPPER, 0, {{-63,0,-119},{-64,0,-125}}},
-                W{EnemyType::HUSK, 0, {{-59,3,-125},{-59,3,-112}}},
-                W{EnemyType::MITE, 0, {{-66,0,-113},{-78,0,-128}}},
+            {   // THE BULWARK, its gate between you and the exit: vault the pads, hit its back
+                W{EnemyType::BULWARK, 0, {{-76,0,-123}}},
+                W{EnemyType::HUSK, 0, {{-78,3,-129},{-78,3,-109}}},
             },
         };
         B.paint(m0, Mat::BRICK, [&](vec3 c, Mat m) {   // the pump room's steel and rust are riveted plate
@@ -533,11 +530,10 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::SENTINEL, 0, {{-161,12,-114},{-184,16,-126},{-198,20,-126}}},
                 W{EnemyType::BRUTE, 0, {{-164,12,-109}}},
             },
-            {
-                W{EnemyType::RAPTOR, 0, {{-150,24,-118},{-180,24,-112}}},
-                W{EnemyType::JUGGERNAUT, 0, {{-194,20,-114}}},
-                W{EnemyType::HUSK, 0, {{-160,12,-128},{-176,16,-128}}},
-                W{EnemyType::MITE, 0, {{-176,16,-110},{-180,16,-122},{-184,16,-114}}},
+            {   // THE CANTOR under the rose window: climb to it through the beam and the rings
+                W{EnemyType::CANTOR, 0, {{-192,25,-118.5f}}},
+                W{EnemyType::HUSK, 0, {{-176,16,-128},{-186,20,-110}}},
+                W{EnemyType::MITE, 0, {{-176,16,-110},{-180,16,-122}}},
             },
         };
         B.paint(m0, Mat::LIMESTONE, [&](vec3 c, Mat m) {   // the terraces are cut sandstone
@@ -675,12 +671,11 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::RIPPER, 0, {{-193,20,-190},{-185,20,-200}}},
                 W{EnemyType::SENTINEL, 0, {{-193,23,-234},{-207,20,-266}}},
                 W{EnemyType::BRUTE, 0, {{-193,20,-226}}},
-                W{EnemyType::RAPTOR, 0, {{-193,28,-212},{-187,28,-240},{-199,28,-262}}},
+                W{EnemyType::RAPTOR, 0, {{-193,27,-212},{-199,27,-250}}},
             },
-            {
-                W{EnemyType::JUGGERNAUT, 0, {{-193,20,-266}}},
+            {   // THE HARRIER over the far half: when it dives, it skims low - hook it
+                W{EnemyType::HARRIER, 0, {{-193,30,-236}}},
                 W{EnemyType::HUSK, 0, {{-202,20,-240},{-182,20,-226}}},
-                W{EnemyType::RAPTOR, 0, {{-200,30,-200},{-184,30,-250}}},
             },
         };
     }
@@ -786,11 +781,10 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::BRUTE, 0, {{-128,0,-272}}},
                 W{EnemyType::RIPPER, 0, {{-150,0,-256},{-130,0,-252}}},
             },
-            {
-                W{EnemyType::JUGGERNAUT, 0, {{-135,0,-278}}},
-                W{EnemyType::HUSK, 0, {{-128,13,-262},{-148,6.5f,-262}}},
-                W{EnemyType::RAPTOR, 0, {{-140,24,-255}}},
-                W{EnemyType::RIPPER, 0, {{-152,0,-274},{-126,0,-250}}},
+            {   // THE PLUMB LINE, hung down the hole into the bottom floor: wait out its volley, then its core
+                W{EnemyType::PLUMB, 0, {{-150,1.5f,-276}}},
+                W{EnemyType::RIPPER, 0, {{-130,0,-252},{-126,0,-278}}},
+                W{EnemyType::MITE, 0, {{-135,0,-250},{-150,0,-252}}},
             },
         };
         B.paint(m0, Mat::BRICK, [&](vec3 c, Mat m) {   // the well's floors and stairs are plate
@@ -903,12 +897,11 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::BRUTE, 0, {{-49,6,-263.5f}}},
                 W{EnemyType::MITE, 0, {{-40,0,-252},{-38,0,-275},{-24,0,-263}}},
             },
-            {
-                W{EnemyType::JUGGERNAUT, 0, {{-28,0,-268}}},
-                W{EnemyType::SENTINEL, 0, {{-56,5,-290},{-44,5,-236}}},
-                W{EnemyType::RAPTOR, 0, {{-62,9,-263}}},
-                W{EnemyType::MITE, 0, {{-62,0,-276},{-62,0,-250},{-40,0,-276}}},
-                W{EnemyType::HUSK, 0, {{-70,5,-280},{-70,5,-247}}},
+            {   // THE FOREMAN along the crane line; its crew shields it - break the tethers
+                W{EnemyType::FOREMAN, 0, {{-42,7.5f,-263.5f}}},
+                W{EnemyType::HUSK, 0, {{-32,5,-281},{-32,5,-246}}},
+                W{EnemyType::SHIELDBEARER, 0, {{-30,0,-263.5f}}},
+                W{EnemyType::MITE, 0, {{-40,0,-276},{-40,0,-250}}},
             },
         };
         B.paint(m0, Mat::PLATE, [&](vec3, Mat m) { return m == Mat::PANEL ? m : Mat::PLATE; });   // the pumpworks: all riveted iron
@@ -924,7 +917,7 @@ inline LevelData buildGauntlet() {
              panel{0.28f,0.27f,0.36f};
         const float TX = 56.f, TZ = -263.5f;
         const LevelBuilder::Mark m0 = B.mark();
-        Arena& a = section("THE TOWER", "WIN THE YARD - THEN CLIMB",
+        Arena& a = section("THE TOWER", "WIN THE YARD - THEN BEAT IT TO THE BEACON",
                            aabb(21, 0, -299, 91, 42, -228), aabb(21, 0, -299, 91, 32, -228),
                            {-15.5f, 0.f, -263.5f}, 0.f, aabb(28, -1, -299, 91, 60, -228), Ambient::ASH,
                            theme({0.03f,0.01f,0.06f}, {0.36f,0.10f,0.30f}, {0.06f,0.02f,0.06f}, {-0.3f,0.25f,-1.f}, {1.6f,0.4f,1.1f}, 0.12f, 1.f,
@@ -1015,18 +1008,15 @@ inline LevelData buildGauntlet() {
         L.finishPos = {TX, 34.f, TZ};
         L.gems.push_back({{TX, 37.5f, TZ}, {1.8f, 0.5f, 1.4f}, 1.3f, true});
         a.waves = {
-            {
-                W{EnemyType::HUSK, 0, {{45,0,-293},{67,0,-293},{45,0,-234},{67,0,-234}}},
-                W{EnemyType::RIPPER, 0, {{85,0,-255},{80,0,-280},{80,0,-246}}},
-                W{EnemyType::SENTINEL, 0, {{85,5,-293},{85,5,-233}}},
-                W{EnemyType::RAPTOR, 0, {{56,20,-284},{40,20,-263}}},
+            {   // the yard, held from its far side
+                W{EnemyType::HUSK, 0, {{70,0,-285},{70,0,-242},{TX,12,TZ - 8},{TX,12,TZ + 8}}},
+                W{EnemyType::RIPPER, 0, {{80,0,-263},{75,0,-250},{75,0,-277}}},
+                W{EnemyType::SENTINEL, 0, {{84,5,-293},{84,5,-234}}},
+                W{EnemyType::BRUTE, 0, {{66,0,-263.5f}}},
+                W{EnemyType::MITE, 0, {{48,0,-280},{48,0,-247}}},
             },
-            {
-                W{EnemyType::BRUTE, 0, {{65,0,-292}}},
-                W{EnemyType::JUGGERNAUT, 0, {{85,0,-273}}},
-                W{EnemyType::MITE, 0, {{81,0,-283},{81,0,-244},{70,0,-236},{70,0,-291}}},
-                W{EnemyType::HUSK, 0, {{TX,12,TZ - 8},{TX,12,TZ + 8}}},
-                W{EnemyType::SENTINEL, 0, {{28,5,-293},{28,5,-233}}},
+            {   // THE PACEMAKER: the yard, the climb, the crown
+                W{EnemyType::PACEMAKER, 0, {{TX + 16.f, 0, TZ}}},
             },
         };
         B.paint(m0, Mat::MARBLE, [&](vec3 c, Mat m) {   // the courtyard and keep are dark veined slate
