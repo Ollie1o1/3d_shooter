@@ -94,16 +94,15 @@ inline void GameplayState::submitWorld(const std::string& name, int diff) {
 #endif
 }
 
-// BOSS: a kill's time onto that boss's world board, under the name you last put to a run
-inline void GameplayState::submitBossWorld(float t) {
+// BOSS: a kill's time onto that boss's world board, under the name typed on the victory screen
+inline void GameplayState::submitBossWorld(const std::string& name, float t) {
 #ifdef __EMSCRIPTEN__
-    const std::string name = board.lastName.empty() ? std::string("PLAYER") : board.lastName;
     char js[240];
     std::snprintf(js, sizeof(js), "window.overdriveBoard&&window.overdriveBoard.submit({mode:'%s',name:'%s',time:%.2f,difficulty:%d})",
                   bossBoardKey(g_bossRun).c_str(), name.c_str(), t, settings ? settings->difficulty : DIFFICULTY_DEFAULT);
     emscripten_run_script(js);
 #else
-    (void)t;
+    (void)name; (void)t;
 #endif
 }
 
@@ -113,6 +112,15 @@ inline void GameplayState::handleNameEntry(const SDL_Event& e) {
     if (k == SDLK_BACKSPACE) { if (!nameBuf.empty()) nameBuf.pop_back(); return; }
     if (e.key.repeat) return;
     if (k == SDLK_ESCAPE) { nameEntry = false; return; }
+    if ((k == SDLK_RETURN || k == SDLK_KP_ENTER) && g_bossRun >= 0) {   // BOSS: onto that boss's world board (a name, or nothing)
+        const std::string name = Leaderboard::cleanName(nameBuf);
+        if (name.empty()) return;
+        submitBossWorld(name, bossKillT);
+        board.lastName = name; board.save();   // (offered again next time)
+        audio.play("upgrade", 128, SoundGroup::UI);
+        bossPosted = true; nameEntry = false;
+        return;
+    }
     if (k == SDLK_RETURN || k == SDLK_KP_ENTER) {
         int diff = settings ? settings->difficulty : DIFFICULTY_DEFAULT;
         std::string name = Leaderboard::cleanName(nameBuf);

@@ -320,7 +320,7 @@ inline void GameplayState::startBossRun() {
     const BossEntry& b = bossEntry(g_bossRun);
     prog = Progression{};
     prog.level = b.level; prog.points = b.points;
-    bossStartAt = -1.f; bossKillT = 0.f; bossDone = false;
+    bossStartAt = -1.f; bossKillT = 0.f; bossDone = false; bossPost = bossPosted = false;
     banners.clear();
     pushBanner(b.name, b.where, {1.f, 0.6f, 0.25f}, 3.f);
     if (!g_devCam && g_devOverlay.empty() && !armoryOpen) openArmory();
@@ -332,7 +332,7 @@ inline void GameplayState::bossRunDone() {
     bossKillT = bossStartAt >= 0.f ? elapsedTime - bossStartAt : elapsedTime;
     newRecord = !g_godMode && !g_practice && recordBoss(records, g_bossRun, bossKillT);
     if (newRecord) records.save();
-    if (!g_godMode && !g_practice) submitBossWorld(bossKillT);   // (the web: onto the world board for this boss)
+    bossPost = (WORLD_BOARD || g_devOverlay.find("worldboard") != std::string::npos) && !g_godMode && !g_practice;   // (the web: the victory screen asks for a name to post it under)
     victoryDelay = 3.f;
 }
 
@@ -503,7 +503,10 @@ inline void GameplayState::finishRun() {
     if (!victory) logRun("end");
     victory = true;
     captureMouse(false);
-    if (g_bossRun >= 0) return;   // BOSS: its time is kept already (bossRunDone); no board
+    if (g_bossRun >= 0) {   // BOSS: its time is kept already (bossRunDone); a name for the world board
+        if (bossPost && !bossPosted) { board.load(); nameEntry = true; nameBuf = board.lastName; }
+        return;
+    }
     newRecord = false;
     if (act2() && director.arena == ZENITH_ARENA && act2RunRecords(act2FromStart, g_godMode, g_practice)) {   // (ACT II is never ranked: its own local best)
         newRecord = recordZenith(records, elapsedTime); records.save();
