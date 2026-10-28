@@ -245,14 +245,13 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         pendingGrapple = false;
     }
     updateEnemyZip();
-    grapple.holding = keys[SDL_SCANCODE_Q] != 0;   // (whatever's bound to GRAPPLE reads as Q; the pad's LB too)
-    if (g_devOverlay == "hang") {   // dev: the grapple fired once at whatever's ahead, held for 6 s (the hang and its limit)
-        static bool fired = false;
-        if (!fired && elapsedTime > 1.f) { fired = true; pendingGrapple = true; }
-        grapple.holding = elapsedTime < 7.f;
+    if (g_devOverlay == "hang") {   // dev: the grapple fired at whatever's ahead, pressed again 4 s later (the hang, then the let-go)
+        static int presses = 0;
+        if (presses == 0 && elapsedTime > 1.f) { ++presses; pendingGrapple = true; }
+        else if (presses == 1 && elapsedTime > 5.f) { ++presses; pendingGrapple = true; }
     }
     grapple.update(dt, player.camera.position, player.velocity);
-    if (grapple.active && grapple.latched) {   // hanging: until you let go, jump off, or it's been too long
+    if (grapple.active && grapple.latched) {   // hanging: until you press the grapple again or jump off
         if (!hangPrev) {
             hangT = 0.f; hangPos = player.position; audio.play("land_metal", 70); camFeel.dip(0.25f);
             if (g_devOverlay == "hang") std::fprintf(stderr, "hang: caught at %.2f s, feet (%.1f %.1f %.1f)\n", elapsedTime, hangPos.x, hangPos.y, hangPos.z);
@@ -264,11 +263,10 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
             glm::vec3 q = glm::clamp(grapple.target, b.min, b.max);
             gone = glm::length(q - grapple.target) > 0.5f;
         }
-        if (!grapple.holding || hangT > HANG_MAX || gone) {
-            grapple.release();
-            if (g_devOverlay == "hang") std::fprintf(stderr, "hang: let go at %.2f s after %.2f s, feet (%.1f %.1f %.1f)\n", elapsedTime, hangT, player.position.x, player.position.y, player.position.z);
-        }
+        if (gone) grapple.release();
     }
+    if (hangPrev && !(grapple.active && grapple.latched) && g_devOverlay == "hang")
+        std::fprintf(stderr, "hang: let go at %.2f s after %.2f s, feet (%.1f %.1f %.1f)\n", elapsedTime, hangT, player.position.x, player.position.y, player.position.z);
     hangPrev = grapple.active && grapple.latched;
     if (yankT > 0.f) yankT -= dt;
     if (grapple.active) player.launched();   // swung: the rope's arc, not a jump's

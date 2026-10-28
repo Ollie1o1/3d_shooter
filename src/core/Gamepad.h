@@ -67,7 +67,6 @@ inline void poll() {
     if (button(SDL_CONTROLLER_BUTTON_RIGHTSHOULDER)) s.held[SDL_SCANCODE_LSHIFT] = 1;
     if (button(SDL_CONTROLLER_BUTTON_Y))             s.held[SDL_SCANCODE_F]      = 1;
     if (button(SDL_CONTROLLER_BUTTON_X))             s.held[SDL_SCANCODE_R]      = 1;
-    if (button(SDL_CONTROLLER_BUTTON_LEFTSHOULDER))  s.held[SDL_SCANCODE_Q]      = 1;   // the grapple, held (a hang)
     // Look: a small deadzone, then a squared curve for fine aim near the centre
     glm::vec2 r{axis(SDL_CONTROLLER_AXIS_RIGHTX), axis(SDL_CONTROLLER_AXIS_RIGHTY)};
     float m = glm::length(r);
