@@ -488,6 +488,12 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         playBoom("explosion", pr.position, 80, SoundGroup::WORLD);
         hurtEnemy(enemies[ei], FRIENDLY_SHELL_DAMAGE, pr.position, 0.f, 0.f, StyleSource::FRIENDLY);
     }
+    for (int pi : result.wallHits) {   // a shot breaks on the wall: its cubes thrown back off it
+        const Projectile& pr = projSystem.pool[pi];
+        float spd = glm::length(pr.velocity);
+        glm::vec3 back = spd > 1e-3f ? -pr.velocity / spd : glm::vec3{0.f, 1.f, 0.f};
+        fx.spawnShards(pr.prevPosition, back, pr.emissiveColor, pr.size, groundHeightAt(pr.prevPosition.x, pr.prevPosition.z, pr.prevPosition.y + 0.2f));
+    }
     for (auto& exp : result.explosions)
         pendingBlasts.push_back({exp.pos, exp.radius, exp.damage, exp.radius * 0.5f, 20.f});
     processBlasts();
