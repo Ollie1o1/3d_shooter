@@ -116,11 +116,13 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     ranked = (start == 0 || endless()) && g_startWave <= 0 && !g_godMode && !g_practice && !g_devCam && !act2();
     act2FromStart = act2() && start == 0 && g_startWave <= 0 && !g_devCam;
     if (g_bossRun >= 0) { start = bossEntry(g_bossRun).arena; ranked = act2FromStart = false; }
+    if (roomAttack()) { start = glm::clamp(g_roomAttack, 0, (int)level.arenas.size() - 1); ranked = false; }
     if (g_bossRun >= 0) msCheckpoint = bossEntry(g_bossRun).morning;   // (MORNINGSTAR: from inside the eclipse)
     enterArena(start);
     if (g_bossRun < 0) director.wave = glm::clamp(g_startWave, 0, director.waveCount() - 1);
     if (fast()) ghost.load();
-    if (fast() && start == 0) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
+    if (fast() && start == 0 && !roomAttack()) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
+    if (roomAttack()) startRoomAttack();
     if (g_devCam) countdown = 0.f;
     if (g_devWeapon >= 0 && g_devWeapon < WEAPON_COUNT) activeWeapon = g_devWeapon;
     if (g_devWeapon == WEAPON_COUNT) drawSword();   // --weapon 5: the sword in hand (where it's allowed)
@@ -291,6 +293,7 @@ inline void GameplayState::newRun() {
     elapsedTime = 0.f; peakStyle = 0.f;
     splits.clear();
     fastLeftStanding = 0;
+    roomTimes.clear(); roomMedals.clear(); roomNewBest = false;
     newRecord = false;
     ranked = !g_godMode && !g_practice && !act2();
     act2FromStart = act2();
@@ -300,10 +303,11 @@ inline void GameplayState::newRun() {
     if (fast()) ghost.load();
     if (endless()) setupEndless();
     if (g_bossRun >= 0) { ranked = act2FromStart = false; msCheckpoint = bossEntry(g_bossRun).morning; }
-    enterArena(g_bossRun >= 0 ? bossEntry(g_bossRun).arena : endless() ? endlessArena : 0);
+    enterArena(g_bossRun >= 0 ? bossEntry(g_bossRun).arena : endless() ? endlessArena : roomAttack() ? g_roomAttack : 0);
     bankedStyle = bankedDamage = 0.f;   // after enterArena: that banked the last run's
     wavesCleared = 0;
-    if (fast()) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
+    if (fast() && !roomAttack()) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
+    if (roomAttack()) startRoomAttack();
     captureMouse(true);
     if (act2()) beginAct2();   // after the capture: the armory frees the mouse to shop with
     if (g_bossRun >= 0) startBossRun();
@@ -326,6 +330,22 @@ inline void GameplayState::startBossRun() {
     pushBanner(b.name, b.where, {1.f, 0.6f, 0.25f}, 3.f);
     if (!g_devCam && g_devOverlay.empty() && !armoryOpen) openArmory();
 }
+// FAST's ROOM ATTACK: the room on its own, with the level a whole run would have reached by it, the
+// armory open to spend it, and the medals to beat on its card
+inline void GameplayState::startRoomAttack() {
+    const int r = glm::clamp(g_roomAttack, 0, (int)level.arenas.size() - 1);
+    const Arena& a = level.arenas[r];
+    prog = Progression{};
+    prog.level = 1 + r; prog.points = r;
+    countdown = 3.f;
+    char sub[96];
+    snprintf(sub, sizeof(sub), "GOLD %s   SILVER %s   BRONZE %s", formatTime(a.medals[0], false).c_str(),
+             formatTime(a.medals[1], false).c_str(), formatTime(a.medals[2], false).c_str());
+    banners.clear();
+    pushBanner(std::string("ROOM ATTACK  ") + a.name, sub, {1.f, 0.6f, 0.2f}, 3.f);
+    if (r > 0 && !g_devCam && g_devOverlay.empty() && !armoryOpen) openArmory();
+}
+
 // BOSS: it's down (for THE ABSOLUTE alone: as the eclipse takes him). The run ends; a best time is kept
 inline void GameplayState::bossRunDone() {
     if (g_bossRun < 0 || bossDone) return;
@@ -358,6 +378,7 @@ inline void GameplayState::handleDirectorEvents() {
         switch (ev.kind) {
         case DirectorEvent::ARENA_START:
             lockDoor(ar.entryGate, true);   // no way back out mid-fight
+            if (fast()) roomStartT = elapsedTime;   // (the room's own clock: its medal)
             if (fast()) {
                 snprintf(buf, sizeof(buf), "ROOM %d/%d  %s", ev.value + 1, (int)level.arenas.size(), ar.name);
                 pushBanner(buf, ar.subtitle, {1.f, 0.7f, 0.3f}, 1.8f);
@@ -453,6 +474,18 @@ inline void GameplayState::handleDirectorEvents() {
                     SfxMixer::Opts o; o.volume = 1.f; o.group = SoundGroup::UI; o.delay = 0.18f;
                     audio.playOpts(vs < 0 ? "split" : "split_behind", o);
                 }
+                if (!roomMedals.empty() && roomMedals.back() > 0) {   // a medal: bells, higher for a better one
+                    SfxMixer::Opts o; o.volume = 1.f; o.group = SoundGroup::UI; o.delay = 0.5f; o.priority = true;
+                    o.pitch = 0.8f + 0.12f * (float)roomMedals.back();
+                    audio.playOpts("medal", o);
+                }
+                if (roomAttack()) {   // ROOM ATTACK: that was the room
+                    victory = true;
+                    captureMouse(false);
+                    newRecord = roomNewBest;
+                    if (newRecord) recordCue();
+                    logRun("end");
+                }
                 break;
             }
             if (done.exitDoor >= 0 && !act2())
@@ -504,14 +537,26 @@ inline void GameplayState::handleDirectorEvents() {
 inline int GameplayState::recordSplit(int section) {
     if ((int)splits.size() > section) splits.resize(section);
     splits.push_back(elapsedTime);
+    // The room on its own: its time, its medal, kept if it's its best
+    const float rt = elapsedTime - roomStartT;
+    const int medal = medalFor(level.arenas[section].medals, rt);
+    if ((int)roomTimes.size() > section) { roomTimes.resize(section); roomMedals.resize(section); }
+    roomTimes.push_back(rt); roomMedals.push_back(medal);
+    roomNewBest = false;
+    if (keepsRoomTimes()) { roomNewBest = records.roomTime(section, rt, medal); records.save(); }
     char buf[96];
+    if (roomAttack()) {
+        snprintf(buf, sizeof(buf), "%s  %s  %s", level.arenas[section].name, formatTime(rt).c_str(), medal ? medalName(medal) : "NO MEDAL");
+        ui.showSplit(buf, medalColor(medal));
+        return 0;
+    }
     if (section < (int)records.fastSplits.size()) {
         float d = elapsedTime - records.fastSplits[section];
-        snprintf(buf, sizeof(buf), "ROOM %d  %s  %+.2f", section + 1, formatTime(elapsedTime).c_str(), d);
+        snprintf(buf, sizeof(buf), "ROOM %d  %s  %+.2f%s%s", section + 1, formatTime(elapsedTime).c_str(), d, medal ? "  " : "", medalName(medal));
         ui.showSplit(buf, d <= 0.f ? glm::vec3{0.3f, 1.f, 0.5f} : glm::vec3{1.f, 0.4f, 0.35f});
         return d <= 0.f ? -1 : 1;
     }
-    snprintf(buf, sizeof(buf), "ROOM %d  %s", section + 1, formatTime(elapsedTime).c_str());
+    snprintf(buf, sizeof(buf), "ROOM %d  %s%s%s", section + 1, formatTime(elapsedTime).c_str(), medal ? "  " : "", medalName(medal));
     ui.showSplit(buf, {1.f, 0.9f, 0.6f});
     return 0;
 }

@@ -35,7 +35,10 @@ public:
 
     GameSettings* settings = nullptr;   // injected by main
 
-    enum Page { MAIN, SETTINGS, BOARD, DEV, BOSS };
+    enum Page { MAIN, SETTINGS, BOARD, DEV, BOSS, FASTPAGE };
+    int   fastSel = 0;   // the FAST page: 0 the whole Gauntlet, 1.. a room on its own (ROOM ATTACK)
+    struct FastRoom { std::string name; float medals[4]; };
+    std::vector<FastRoom> fastRooms;
     int   bossSel = 0;
     int   page      = MAIN;
     int   selected  = 0;
@@ -82,8 +85,12 @@ public:
         for (auto& a : A.arenas) arenaNames.push_back(a.name);
         for (int i = 0; i < (int)A.arenas.size(); ++i)
             devRows.push_back({"ARENA", A.arenas[i].name, GameMode::ARENA, i, (int)A.arenas[i].waves.size()});
-        for (int i = 0; i < (int)F.arenas.size(); ++i)
+        for (int i = 0; i < (int)F.arenas.size(); ++i) {
             devRows.push_back({"FAST", F.arenas[i].name, GameMode::FAST, i, (int)F.arenas[i].waves.size()});
+            FastRoom r{F.arenas[i].name, {}};
+            for (int k = 0; k < 4; ++k) r.medals[k] = F.arenas[i].medals[k];
+            fastRooms.push_back(r);
+        }
         act1Rows = (int)A.arenas.size();
         LevelData A2 = buildAct2Level();
         for (int i = 0; i < (int)A2.arenas.size(); ++i)
@@ -110,6 +117,7 @@ public:
         }
         if (page == DEV) { handleDevEvent(e); return; }
         if (page == BOSS) { handleBossEvent(e); return; }
+        if (page == FASTPAGE) { handleFastEvent(e); return; }
         if (e.type == SDL_KEYDOWN && !e.key.repeat &&
             (e.key.keysym.sym == SDLK_BACKQUOTE || e.key.keysym.sym == SDLK_F2)) { openDev(); return; }
         if (e.type == SDL_KEYDOWN) {
@@ -164,6 +172,7 @@ public:
         else if (page == SETTINGS) settingsMenu.render(ui, flashTime);
         else if (page == BOARD) renderBoard();
         else if (page == BOSS) renderBoss();
+        else if (page == FASTPAGE) renderFast();
         else renderDev();
         ui.end();
     }
@@ -182,7 +191,7 @@ private:
     void activate(int idx) {
         if (idx == 0 && onStart) onStart(GameMode::ARENA, StartOptions{});
         if (idx == 1 && onStart && canStartAct2(records)) onStart(GameMode::ACT2, StartOptions{});
-        if (idx == 2 && onStart) onStart(GameMode::FAST, StartOptions{});
+        if (idx == 2) { page = FASTPAGE; fastSel = 0; }
         if (idx == 3 && onStart) onStart(GameMode::ENDLESS, StartOptions{});
         if (idx == 4) { page = BOSS; bossSel = 0; bossPoll = 0.f; refreshWorld(); }
         if (idx == 5) {
@@ -193,6 +202,81 @@ private:
         }
         if (idx == 6) { page = SETTINGS; settingsMenu.selected = 1; settingsMenu.bindsPage = false; }
         if (idx == 7 && onQuit) onQuit();
+    }
+
+    // ---- FAST: the whole Gauntlet, or ROOM ATTACK (a room on its own, for its medal) ----
+    int fastRows() const { return 1 + (int)fastRooms.size(); }
+    float fastY(int i) const { return i == 0 ? 140.f : 214.f + (i - 1) * 54.f; }
+    int fastAt(int mx, int my) const {
+        for (int i = 0; i < fastRows(); ++i)
+            if (mx > screenW / 2 - BOSS_W / 2 && mx < screenW / 2 + BOSS_W / 2 && my > fastY(i) && my < fastY(i) + (i == 0 ? 60 : 48)) return i;
+        return -1;
+    }
+    void startFast(int i) {
+        if (!onStart) return;
+        StartOptions o;
+        if (i > 0) { o.room = i - 1; o.arena = i - 1; }
+        onStart(GameMode::FAST, o);
+    }
+    void handleFastEvent(const SDL_Event& e) {
+        if (e.type == SDL_KEYDOWN) {
+            SDL_Keycode k = e.key.keysym.sym;
+            if (k == SDLK_ESCAPE || k == SDLK_BACKSPACE) { page = MAIN; selected = 2; return; }
+            if (k == SDLK_UP)   fastSel = (fastSel + fastRows() - 1) % fastRows();
+            if (k == SDLK_DOWN) fastSel = (fastSel + 1) % fastRows();
+            if (k == SDLK_LEFT || k == SDLK_RIGHT) cycleDifficulty(k == SDLK_LEFT ? -1 : 1);
+            if (k == SDLK_RETURN || k == SDLK_SPACE) startFast(fastSel);
+        }
+        if (e.type == SDL_MOUSEMOTION) { int i = fastAt(e.motion.x, e.motion.y); if (i >= 0) fastSel = i; }
+        if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
+            int i = fastAt(e.button.x, e.button.y);
+            if (i >= 0) { fastSel = i; startFast(i); }
+        }
+    }
+    void renderFast() {
+        int cx = screenW / 2;
+        ui.text("FAST", cx, 46, 5, {1.f, 0.55f, 0.08f, 1.f}, true);
+        ui.text("THE WHOLE GAUNTLET AGAINST THE CLOCK - OR ONE ROOM ON ITS OWN FOR ITS MEDAL", cx, 104, 1, {0.75f, 0.72f, 0.7f, 0.9f}, true);
+        char buf[96];
+        int golds = 0;
+        for (int m : records.fastMedals) golds += m >= 3;
+        for (int i = 0; i < fastRows(); ++i) {
+            bool sel = i == fastSel;
+            float x = cx - BOSS_W / 2, y = fastY(i), h = i == 0 ? 60.f : 48.f;
+            float pulse = sel ? 0.5f + 0.5f * std::sin(flashTime * 5.f) : 0.f;
+            ui.rect(x, y, BOSS_W, h, sel ? glm::vec4{0.13f + pulse * 0.06f, 0.08f, 0.04f, 0.92f} : glm::vec4{0.07f, 0.07f, 0.10f, 0.85f});
+            if (sel) ui.rect(x, y, 5, h, {1.f, 0.6f + pulse * 0.2f, 0.1f, 1.f});
+            glm::vec4 c = sel ? glm::vec4{1.f, 0.65f, 0.12f, 1.f} : glm::vec4{0.8f, 0.8f, 0.85f, 0.95f};
+            if (i == 0) {
+                ui.text("THE GAUNTLET", x + 22, y + 10, 3, c);
+                ui.text("SEVEN ROOMS, A MINI-BOSS IN EACH, THEN THE PACEMAKER - SPLITS, GHOST, RANK", x + 22, y + 40, 1, {0.7f, 0.68f, 0.66f, 0.85f});
+                std::snprintf(buf, sizeof(buf), "BEST %s", records.bestFast > 0.f ? formatTime(records.bestFast).c_str() : "-");
+                ui.textRight(buf, (int)(x + BOSS_W - 18), (int)y + 12, 2, {1.f, 0.85f, 0.45f, 0.9f});
+                std::snprintf(buf, sizeof(buf), "GOLD IN %d/%d ROOMS", golds, (int)fastRooms.size());
+                ui.textRight(buf, (int)(x + BOSS_W - 18), (int)y + 38, 1, {1.f, 0.82f, 0.25f, 0.85f});
+                continue;
+            }
+            const int r = i - 1;
+            const FastRoom& fr = fastRooms[r];
+            std::snprintf(buf, sizeof(buf), "%d", i);
+            ui.text(buf, x + 22, y + 12, 3, {0.5f, 0.5f, 0.55f, 0.8f});
+            ui.text(fr.name.c_str(), x + 62, y + 6, 2, c);
+            std::snprintf(buf, sizeof(buf), "GOLD %s  SILVER %s  BRONZE %s", formatTime(fr.medals[0], false).c_str(),
+                          formatTime(fr.medals[1], false).c_str(), formatTime(fr.medals[2], false).c_str());
+            ui.text(buf, x + 62, y + 30, 1, {0.7f, 0.68f, 0.66f, 0.85f});
+            const float best = r < (int)records.fastRooms.size() ? records.fastRooms[r] : 0.f;
+            const int medal = r < (int)records.fastMedals.size() ? records.fastMedals[r] : 0;
+            glm::vec3 mc = medalColor(medal);
+            std::snprintf(buf, sizeof(buf), "%s", best > 0.f ? formatTime(best).c_str() : "-");
+            ui.textRight(buf, (int)(x + BOSS_W - 18), (int)y + 6, 2, {1.f, 0.85f, 0.45f, 0.9f});
+            if (medal) ui.textRight(medalName(medal), (int)(x + BOSS_W - 18), (int)y + 30, 1, {mc.x, mc.y, mc.z, 1.f});
+        }
+        if (settings) {
+            std::snprintf(buf, sizeof(buf), "DIFFICULTY   <  %s  >", difficulty(settings->difficulty).name);
+            ui.text(buf, cx, fastY(fastRows()) + 4, 2, {1.f, 0.8f, 0.45f, 0.95f}, true);
+        }
+        ui.text("UP/DOWN OR MOUSE TO PICK   ENTER OR CLICK TO RUN   LEFT/RIGHT DIFFICULTY   ESC BACK",
+                cx, screenH - 36, 1, {0.6f, 0.6f, 0.65f, 0.85f}, true);
     }
 
     // ---- BOSS: every boss in the order you meet them ---------------------------

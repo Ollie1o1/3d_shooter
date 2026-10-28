@@ -302,6 +302,11 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         if (nameEntry) { shown = nameBuf; if (std::fmod(ui.hudTime, 1.f) < 0.55f && (int)nameBuf.size() < Leaderboard::MAX_NAME_LEN) shown += "_"; }
         ui.renderVictoryBoss(b.name, b.where, bossKillT, newRecord ? 0.f : records.bestBoss[g_bossRun], newRecord, deaths, totalShots, totalHits,
                              nameEntry, shown, bossPosted);
+    } else if (victory && roomAttack() && !roomTimes.empty()) {   // ROOM ATTACK: the room, its time, its medal
+        const int r = glm::clamp(g_roomAttack, 0, (int)level.arenas.size() - 1);
+        const float best = r < (int)records.fastRooms.size() ? records.fastRooms[r] : 0.f;
+        ui.renderVictoryRoom(level.arenas[r].name, roomTimes.back(), roomMedals.back(), level.arenas[r].medals,
+                             newRecord, best, fastLeftStanding, deaths, totalShots, totalHits);
     } else if (victory) {
         if (fast()) {
             const char* rank = elapsedTime < level.parTimes[0] ? "S" : elapsedTime < level.parTimes[1] ? "A"
@@ -309,7 +314,8 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             // Show the best run as it was before this one (newRecord already replaced it)
             static std::vector<float> none;
             ui.renderVictoryFast(elapsedTime, newRecord ? 0.f : records.bestFast, newRecord, rank, totalKills,
-                                 totalShots, totalHits, deaths, splits, newRecord ? none : records.fastSplits, !nameEntry);
+                                 totalShots, totalHits, deaths, splits, newRecord ? none : records.fastSplits, !nameEntry,
+                                 &roomTimes, &roomMedals, fastLeftStanding);
         } else if (endless()) {
             std::string title = std::string("ENDLESS  ") + ar.name;
             ui.renderVictoryEndless(title.c_str(), "", runScore(), wavesCleared, totalKills, totalShots, totalHits,

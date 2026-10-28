@@ -107,6 +107,7 @@ public:
     GameSettings* settings = nullptr;   // injected by main — may be null (safe)
     GameMode      mode = GameMode::ARENA;
     bool fast() const { return mode == GameMode::FAST; }
+    bool roomAttack() const { return fast() && g_roomAttack >= 0; }   // FAST's ROOM ATTACK: one room, for its medal
     bool act2() const { return mode == GameMode::ACT2; }
     bool endless() const { return mode == GameMode::ENDLESS; }
     Board boardFor() const { return fast() ? Board::FAST : endless() ? Board::ENDLESS : Board::ARENA; }
@@ -687,6 +688,13 @@ public:
     void onPacemakerKilled(Enemy& e);
     static constexpr float MINI_LEFT_COST = 1.f;   // FAST: seconds on the clock for each enemy left standing when a room's mini-boss dies
     int   fastLeftStanding = 0;                    // FAST: how many were left this run (the end screen)
+    // FAST: each room's time (its fight starting to its clear) and medal this run; ROOM ATTACK's result
+    float roomStartT = 0.f;
+    std::vector<float> roomTimes;
+    std::vector<int>   roomMedals;
+    bool  roomNewBest = false;
+    bool  keepsRoomTimes() const { return fast() && !g_godMode && !g_practice && !g_devCam && g_startWave <= 0; }
+    void  startRoomAttack();
     void breakHalo(Enemy& e);
     bool anchoredAt(glm::vec3 feet) const;   // inside an ANCHOR's field: no dash, no grapple
     void pinnedCue();                        // the dull thunk when one of those is refused

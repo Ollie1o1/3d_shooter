@@ -1033,7 +1033,21 @@ inline LevelData buildGauntlet() {
         {aabb(-18, 0, -266, 21, 60, -261),    5, 6, 0, false},
     };
 
-    // Par times (seconds): S, A, B, C
-    L.parTimes[0] = 300.f; L.parTimes[1] = 420.f; L.parTimes[2] = 570.f; L.parTimes[3] = 780.f;
+    // Each room's medals (seconds from its fight starting to its clear, the second for each enemy left
+    // standing included): gold, silver, bronze, and the dev time
+    const float medals[7][4] = {
+        { 42.f,  58.f,  80.f,  30.f},   // the Canal: two waves up the lane, the Courier run down
+        { 38.f,  52.f,  72.f,  27.f},   // the Sluice: close quarters, the Bulwark
+        { 52.f,  72.f,  98.f,  38.f},   // the Ascent: the climb, the Cantor
+        { 50.f,  70.f,  95.f,  37.f},   // the Span: the islands, the Harrier
+        { 40.f,  56.f,  78.f,  29.f},   // the Well: the drop, the Plumb Line
+        { 46.f,  64.f,  88.f,  34.f},   // the Pumpworks: the hall, the Foreman
+        {100.f, 135.f, 180.f,  78.f},   // the Tower: the yard, then the Pacemaker
+    };
+    for (int i = 0; i < 7 && i < (int)L.arenas.size(); ++i)
+        for (int k = 0; k < 4; ++k) L.arenas[i].medals[k] = medals[i][k];
+
+    // Par times for the whole run (seconds): S, A, B, C (the rooms' golds plus the tubes, and up)
+    L.parTimes[0] = 420.f; L.parTimes[1] = 560.f; L.parTimes[2] = 720.f; L.parTimes[3] = 950.f;
     return L;
 }
