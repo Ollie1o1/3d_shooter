@@ -375,9 +375,10 @@ public:
     void handleDirectorEvents();
 
     // FAST mode: note the clock at a section clear and compare with the best run
-    void recordSplit(int section);
+    int  recordSplit(int section);   // -1 ahead of the best run's split, 1 behind, 0 no best yet
 
     void finishRun();
+    void recordCue();
 
     // =========================================================================
     // The bosses. Each one's fight is in its own Gameplay_<Boss>.h (and its
@@ -415,6 +416,7 @@ public:
     int   deflectHints = 0;
     static constexpr float LAST_STAND_WARN = 2.5f;
     void onSovereignEvents(const Enemy& e, const EnemyEvents& ev);
+    void onPacemakerEvents(const Enemy& e, const EnemyEvents& ev);   // (Gameplay_Pacemaker.h)
     void updateSovereign(float dt);
     void gatherSovereignBoxes(std::vector<BoxInstance>& out);
     glm::vec3 sanctumCentre() const;
@@ -681,6 +683,10 @@ public:
     int findParryTarget() const;
 
     void parryFeedback(glm::vec3 at, bool heavy);
+    void onMiniBossKilled(Enemy& e);
+    void onPacemakerKilled(Enemy& e);
+    static constexpr float MINI_LEFT_COST = 1.f;   // FAST: seconds on the clock for each enemy left standing when a room's mini-boss dies
+    int   fastLeftStanding = 0;                    // FAST: how many were left this run (the end screen)
     void breakHalo(Enemy& e);
     bool anchoredAt(glm::vec3 feet) const;   // inside an ANCHOR's field: no dash, no grapple
     void pinnedCue();                        // the dull thunk when one of those is refused
@@ -752,6 +758,8 @@ public:
     // reloading, every hit staggers, a punch finishes anything under half
     bool  overdriveOn() const { return styleSystem.overdrive; }
     float overdriveFx = 0.f;            // 0..1 the screen's gold (uDrive)
+    float driveLeftPrev = 0.f;          // OVERDRIVE's time left last frame (its burn-out ticks)
+    float driveCoolPrev = 0.f;          // its cooldown last frame (the chime when it can burn again)
     void  enterOverdrive();
     void  leaveOverdrive();
     void  updateFeel(float dt);
@@ -906,6 +914,7 @@ public:
 #include "game/Gameplay_Dev.h"
 #include "game/Gameplay_Shifts.h"
 #include "bosses/sovereign/Gameplay_Sovereign.h"
+#include "bosses/pacemaker/Gameplay_Pacemaker.h"
 #include "bosses/penitent/Gameplay_Penitent.h"
 #include "bosses/warden/Gameplay_Warden.h"
 #include "game/Gameplay_Reliquary.h"

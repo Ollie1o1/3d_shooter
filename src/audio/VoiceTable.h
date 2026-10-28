@@ -16,7 +16,8 @@ enum class VoiceKind : uint8_t { SPAWN, IDLE, MOVE, TELL, ATTACK, HURT, DEATH, S
 inline const char* voiceKey(EnemyType t) {
     static const char* K[] = {"husk", "ripper", "sentinel", "raptor", "brute", "mite", "juggernaut", "warden",
                               "sovereign", "shieldbearer", "conduit", "conductor", "seraph", "anchor", "penitent",
-                              "revenant", "weaver", "leviathan", "absolute"};
+                              "revenant", "weaver", "leviathan", "absolute",
+                              "courier", "bulwark", "cantor", "harrier", "plumb", "foreman", "pacemaker"};
     static_assert(sizeof(K) / sizeof(K[0]) == (size_t)EnemyType::COUNT, "a voice key per enemy type");
     return (int)t < (int)EnemyType::COUNT ? K[(int)t] : "any";
 }
@@ -89,6 +90,13 @@ inline std::vector<AttackKind> attacksOf(EnemyType t) {
         case EnemyType::ANCHOR:       return {A::VOLLEY};
         case EnemyType::REVENANT:     return {A::RAKE, A::SOULBOLT};
         case EnemyType::WEAVER:       return {A::STRING};
+        case EnemyType::COURIER:      return {A::LUNGE, A::SUMMON};   // the Gauntlet's
+        case EnemyType::BULWARK:      return {A::SHOT, A::BASH, A::SLAM};
+        case EnemyType::CANTOR:       return {A::BEAM, A::VOLLEY, A::SHOT};
+        case EnemyType::HARRIER:      return {A::SHOT, A::DIVE};
+        case EnemyType::PLUMB:        return {A::VOLLEY, A::SHOT};
+        case EnemyType::FOREMAN:      return {A::LOB, A::SHOT, A::SUMMON};
+        case EnemyType::PACEMAKER:    return {A::DASH, A::SWEEP, A::THRUST, A::VOLLEY, A::SLAM, A::LEAP, A::CRESCENT};
         case EnemyType::PENITENT:     return {A::CENSER_LOW, A::CENSER_HIGH, A::PSLAM, A::PSTOMP, A::PLASH, A::SCOURGE};
         case EnemyType::LEVIATHAN:    return {A::CRASH, A::TORRENT, A::TIDE, A::SPIT, A::BREACH, A::SWALLOW, A::SUBMERGE};
         case EnemyType::ABSOLUTE:     return {A::ATELEPORT, A::ADASH, A::AJAB, A::AHOOK, A::AUPPER, A::ADROP, A::AHOP, A::ARAY,
@@ -113,7 +121,8 @@ inline bool hasRelease(AttackKind k) {
 
 // Steps (or wingbeats) a second at full speed; 0: it doesn't move
 inline float moveCadence(EnemyType t) {
-    static const float C[] = {2.2f, 7.f, 1.5f, 3.f, 1.4f, 9.f, 1.2f, 1.f, 2.4f, 1.8f, 0.f, 2.f, 1.6f, 1.f, 0.7f, 2.6f, 5.f, 0.f, 3.f};
+    static const float C[] = {2.2f, 7.f, 1.5f, 3.f, 1.4f, 9.f, 1.2f, 1.f, 2.4f, 1.8f, 0.f, 2.f, 1.6f, 1.f, 0.7f, 2.6f, 5.f, 0.f, 3.f,
+                              6.f, 1.1f, 1.2f, 2.2f, 0.f, 1.5f, 3.f};   // (the Gauntlet's)
     static_assert(sizeof(C) / sizeof(C[0]) == (size_t)EnemyType::COUNT, "a cadence per enemy type");
     return C[(int)t];
 }
@@ -178,17 +187,20 @@ inline const std::vector<VoiceSpec>& voiceBank() {
         std::vector<VoiceSpec> v;
         for (int i = 0; i < (int)EnemyType::COUNT; ++i) {
             const EnemyType t = (EnemyType)i;
+            // The Gauntlet's bosses are one at a time: a voice each, not a set of variants (EnemyVoice picks among what's there)
+            const bool one = isMiniBoss(t) || t == EnemyType::PACEMAKER;
+            auto n = [&](int many) { return one ? (many >= 3 ? 2 : 1) : many; };
             v.push_back({voiceName(t, VoiceKind::SPAWN), t, VoiceKind::SPAWN, AttackKind::NONE, 1, MixClass::WORLD});
-            v.push_back({voiceName(t, VoiceKind::IDLE),  t, VoiceKind::IDLE,  AttackKind::NONE, 2, MixClass::CHATTER});
+            v.push_back({voiceName(t, VoiceKind::IDLE),  t, VoiceKind::IDLE,  AttackKind::NONE, n(2), MixClass::CHATTER});
             if (moveCadence(t) > 0.f)
-                v.push_back({voiceName(t, VoiceKind::MOVE), t, VoiceKind::MOVE, AttackKind::NONE, 3, MixClass::CHATTER});
-            v.push_back({voiceName(t, VoiceKind::HURT),  t, VoiceKind::HURT,  AttackKind::NONE, 3, MixClass::FOLEY});
-            v.push_back({voiceName(t, VoiceKind::DEATH), t, VoiceKind::DEATH, AttackKind::NONE, 2, MixClass::ACTION});
+                v.push_back({voiceName(t, VoiceKind::MOVE), t, VoiceKind::MOVE, AttackKind::NONE, n(3), MixClass::CHATTER});
+            v.push_back({voiceName(t, VoiceKind::HURT),  t, VoiceKind::HURT,  AttackKind::NONE, n(3), MixClass::FOLEY});
+            v.push_back({voiceName(t, VoiceKind::DEATH), t, VoiceKind::DEATH, AttackKind::NONE, n(2), MixClass::ACTION});
             for (AttackKind a : attacksOf(t)) {
-                v.push_back({voiceName(t, VoiceKind::TELL, a), t, VoiceKind::TELL, a, 2, MixClass::TELL});
+                v.push_back({voiceName(t, VoiceKind::TELL, a), t, VoiceKind::TELL, a, n(2), MixClass::TELL});
                 if (hasRelease(a))
                     v.push_back({voiceName(t, VoiceKind::ATTACK, a), t, VoiceKind::ATTACK, a,
-                                 a == AttackKind::BEAM ? 1 : 2, a == AttackKind::BEAM ? MixClass::TELL : MixClass::ACTION});
+                                 a == AttackKind::BEAM ? 1 : n(2), a == AttackKind::BEAM ? MixClass::TELL : MixClass::ACTION});
             }
         }
         auto sp = [&](const char* name, EnemyType t, int n, MixClass c, const char* key) {

@@ -58,6 +58,14 @@ inline Profile profileOf(EnemyType t) {
         case EnemyType::WEAVER:       return {  0.f, Vowel::NONE, 0, 1.00f, Body::SKITTER,   1600.f, 0.30f};
         case EnemyType::LEVIATHAN:    return { 41.f, Vowel::OO,   6, 0.70f, Body::GRIND,       70.f, 1.00f};   // a whale's groan through grinding plates
         case EnemyType::ABSOLUTE:     return {523.f, Vowel::EE,   5, 1.10f, Body::HUM,       1200.f, 0.40f};   // a bright high choir over a hum of light
+        // The Gauntlet's: each a bigger, darker cousin of the enemy it moves like
+        case EnemyType::COURIER:      return {185.f, Vowel::AH,   3, 1.10f, Body::SKITTER,   1200.f, 0.35f};   // a hound's snarl with a whine in it
+        case EnemyType::BULWARK:      return { 62.f, Vowel::AH,   5, 0.85f, Body::SCRAPE,     380.f, 0.80f};   // a gate dragged over stone
+        case EnemyType::CANTOR:       return {294.f, Vowel::AH,   6, 1.00f, Body::WINGS,      150.f, 0.70f};   // a low choir
+        case EnemyType::HARRIER:      return {330.f, Vowel::EE,   3, 1.05f, Body::WINGS,      160.f, 0.50f};   // a hawk's cry, an octave down
+        case EnemyType::PLUMB:        return { 55.f, Vowel::OO,   5, 0.80f, Body::CRACKLE,   1400.f, 0.85f};   // iron humming on a chain
+        case EnemyType::FOREMAN:      return {165.f, Vowel::OH,   4, 0.95f, Body::HUM,        300.f, 0.60f};   // a tannoy's bark
+        case EnemyType::PACEMAKER:    return {220.f, Vowel::AH,   3, 1.00f, Body::SERVO,      600.f, 0.50f};   // clockwork and breath
         default:                      return {};
     }
 }

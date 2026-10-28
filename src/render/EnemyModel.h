@@ -88,6 +88,7 @@ inline HumanoidLook humanoidDims(EnemyType t) {
     case EnemyType::PENITENT:   return {4.5f,  1.35f, 1.9f,  0.75f, 4.25f, 4.5f,  2.5f,  1.5f,  5.5f,  1.1f,  {}, {}, {}};
     case EnemyType::REVENANT:   return {1.1f,  0.16f, 0.21f, 0.12f, 0.7f,  0.46f, 0.26f, 0.3f,  0.8f,  0.13f, {}, {}, {}};   // gaunt, long-limbed
     case EnemyType::ABSOLUTE:   return {1.15f, 0.19f, 0.3f,  0.15f, 0.85f, 0.62f, 0.32f, 0.3f,  1.0f,  0.16f, {}, {}, {}};   // a lean athlete's build, broad shoulders
+    case EnemyType::PACEMAKER:  return {1.2f,  0.2f,  0.3f,  0.15f, 0.8f,  0.6f,  0.32f, 0.3f,  0.95f, 0.17f, {}, {}, {}};   // a runner's build, long in the leg
     default:                    return {};
     }
 }
@@ -231,6 +232,7 @@ inline FilePose humanoidPose(const HumanoidMotion& mo, vec3 glow) {
 inline PoseOverride sovereignPose(const Enemy& e);   // (below)
 inline PoseOverride penitentPose(const Enemy& e);    // (below)
 inline bool absoluteFilePose(const Enemy& e, float time, const mat4& root, mat4& fileRoot, FilePose& P, vec3& glowOut);   // (AbsoluteRig.h)
+inline bool pacemakerFilePose(const Enemy& e, float time, const mat4& root, mat4& fileRoot, FilePose& P, vec3& glowOut);  // (below)
 // The SOVEREIGN's cape (and its hem, which lags it), from how fast he's going
 inline void sovereignCape(const Enemy& e, float time, float& cape, float& hem) {
     float lift = glm::clamp(e.moveSpeed / 20.f, 0.f, 1.f);
@@ -286,7 +288,8 @@ inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileR
         P = humanoidPose(mo, glow);
         fileRoot = base * T({0.f, mo.lift, 0.f});
     };
-    switch (e.type) {
+    if (e.type == EnemyType::PACEMAKER) return pacemakerFilePose(e, time, root, fileRoot, P, glowOut);
+    switch (rigBase(e.type)) {   // (a mini-boss moves as its rig's enemy)
     case EnemyType::HUSK:
         humanoidOf(stride, ArmPose::AIM_RIGHT, e.attack == AttackKind::SHOT ? smooth01c(tp * 3.f) : 0.35f, root);
         P.chan[C_SHOT] = st.shotColor * (0.3f + 3.f * tp);
@@ -474,6 +477,11 @@ inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileR
         P.chan[C_GLOW] = glow;
         P.chan[C_CORE] = glow * (1.2f + 1.6f * beat);
         P.chan[C_PULSE] = glow * beat;
+        if (e.type == EnemyType::PLUMB) {   // its rings race as it winds up a volley; its core blazes white while open
+            for (int i = 0; i < 2; ++i)
+                P.motion[i ? E_CROWN : E_HALO] = RY(time * (i ? -1.1f : 0.8f) * (1.f + 4.f * tp));
+            if (e.miniOpen > 0.f) { P.chan[C_CORE] = vec3{2.6f, 2.2f, 1.6f} * (0.8f + 0.2f * std::sin(time * 30.f)); glowOut = P.chan[C_CORE]; }
+        }
         return true;
     }
     case EnemyType::CONDUCTOR: {   // hovering, its fins spinning; its core brightens while it holds tethers
@@ -542,12 +550,46 @@ inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileR
     }
 }
 
+// THE PACEMAKER, from its state: a runner's stride, its arm blades ("edge") white-hot through a white
+// tell, the clock face in its chest ("core") ticking each second and racing as it winds up, "enraged"
+// (its overclock: past 30 %) showing its vents
+inline bool pacemakerFilePose(const Enemy& e, float time, const mat4& root, mat4& fileRoot, FilePose& P, vec3& glowOut) {
+    using namespace enemyfile;
+    const EnemyStats& st = e.stats();
+    float tp = e.telegraphProgress();
+    float stride = glm::clamp(e.moveSpeed / std::max(0.1f, st.speed), 0.f, 1.3f);
+    ArmPose pose = ArmPose::SWING; float amt = 0.f;
+    switch (e.attack) {
+        case AttackKind::DASH: case AttackKind::THRUST: pose = ArmPose::AIM_BOTH; amt = smooth01c(tp * 1.6f); break;
+        case AttackKind::SWEEP: case AttackKind::WHIRL: pose = ArmPose::RAISED; amt = 0.55f * smooth01c(tp * 2.f); break;
+        case AttackKind::SLAM: case AttackKind::LEAP:   pose = ArmPose::RAISED; amt = smooth01c(tp * 1.5f); break;
+        case AttackKind::VOLLEY: case AttackKind::CRESCENT: pose = ArmPose::AIM_RIGHT; amt = smooth01c(tp * 2.5f); break;
+        default: break;
+    }
+    if (e.dashTimer > 0.f) { pose = ArmPose::AIM_BOTH; amt = 1.f; }
+    mat4 base = e.staggered() ? root * T({0.f, -0.3f, 0.f}) * RX(0.3f) : root;
+    HumanoidMotion mo = humanoidMotion(e.animPhase, e.staggered() ? 0.f : stride, pose, amt, nullptr);
+    const bool over = e.enraged;
+    vec3 glow = (over ? vec3{1.6f, 0.35f, 0.1f} : st.glow) * (1.f + 2.f * tp);
+    P = humanoidPose(mo, glow);
+    fileRoot = base * T({0.f, mo.lift, 0.f});
+    glowOut = glow;
+    const bool white = e.attack == AttackKind::DASH || e.attack == AttackKind::SWEEP || e.attack == AttackKind::THRUST || e.dashTimer > 0.f;
+    P.chan[C_EDGE] = white ? vec3{1.7f, 1.7f, 1.6f} * (0.6f + 1.6f * tp) : glow * 0.6f;
+    float tick = std::fmod(time * (1.f + 5.f * tp + (over ? 2.f : 0.f)), 1.f);
+    P.chan[C_CORE] = glow * (1.2f + 1.8f * (tick < 0.15f ? 1.f : 0.f));
+    P.flag[F_ENRAGED] = over;
+    P.flag[F_BROKEN] = e.staggered();
+    return true;
+}
+
 // Where each file rig's joints sit at rest, in the rig's own space (the frame filePoseOf draws
 // from), and their parents: where the code rig turns them (tools/enemy_export.cpp, the tests)
 inline std::vector<gunkit::ModelJoint> restJointsOf(EnemyType t) {
     using namespace enemyfile;
     std::vector<gunkit::ModelJoint> J;
     auto add = [&](int id, int parent, vec3 at) { J.push_back({id, parent, T(at)}); };
+    t = rigBase(t);   // (a mini-boss: its rig's enemy's)
     switch (t) {
     case EnemyType::RIPPER: {
         add(E_BODY, E_ROOT, {0.f, 0.62f, 0.f});
@@ -1329,11 +1371,11 @@ inline bool headBox(const Enemy& e, AABB& out) {
     mat4  frame;          // the head's frame
     vec3  centre, half;   // the head box within it
 
-    switch (e.type) {
+    switch (e.type == EnemyType::PACEMAKER ? EnemyType::HUSK : rigBase(e.type)) {   // (a mini-boss: its rig's enemy's head)
     case EnemyType::HUSK: case EnemyType::SENTINEL: case EnemyType::BRUTE:
     case EnemyType::JUGGERNAUT: case EnemyType::WARDEN: case EnemyType::SOVEREIGN: case EnemyType::SHIELDBEARER: case EnemyType::REVENANT:
     case EnemyType::ANCHOR: case EnemyType::PENITENT: {
-        HumanoidLook L = humanoidDims(e.type);
+        HumanoidLook L = humanoidDims(e.type == EnemyType::PACEMAKER ? e.type : rigBase(e.type));
         mat4 base = root;
         if (e.type == EnemyType::JUGGERNAUT && e.staggered()) base = root * T({0.f, -0.25f, 0.f}) * RX(0.32f);
         if (e.type == EnemyType::WARDEN) base = wardenBase(e, root);
