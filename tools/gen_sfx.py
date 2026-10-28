@@ -977,7 +977,7 @@ def gen_finisher():
 
 
 def gen_overdrive_on():
-    """OVERDRIVE: a fast rising rush into a big impact, a power chord swelling out of it and a sub drop."""
+    """OVERDRIVE: a fast rising rush into a big impact struck on an anvil, a power chord swelling out of it and a sub drop."""
     n = n_samples(1.6)
     rush = _bandnoise(n, 800, 6000)
     out, ph, ph2 = [], 0.0, 0.0
@@ -997,7 +997,9 @@ def gen_overdrive_on():
             out.append(sub * 0.9 + crack * 0.7 + chord + math.sin(ph2) * 0.05 * sw)
         else:
             out.append(pre)
-    return lowpass(out, 9000)
+    # Struck on the forge's anvil at the impact, a fourth below a room clear's: the same family of sound
+    strike = _anvil_strikes(n, ((hit, 0.55, 0.75),))
+    return lowpass([o + s for o, s in zip(out, strike)], 11000)
 
 
 def gen_overdrive_off():
@@ -1041,6 +1043,211 @@ def gen_hook_yank():
         thump = math.sin(2 * math.pi * (90 * math.exp(-t * 8.0) + 40) * t) * math.exp(-t * 16.0)
         out.append(crack * 0.7 + ring * 0.3 + rattle + whoosh[i] * sw * 0.5 + thump * 0.6)
     return out
+
+
+# ---- the forge: clearing a room, the finish, a record (and OVERDRIVE's strike) ----
+def _reverb(x, wet=0.25, size=1.0):
+    """A small Schroeder hall (four combs, two allpasses) so a strike blooms instead of stopping dead."""
+    n = len(x)
+    out = [0.0] * n
+    for d, g in ((1557, 0.84), (1617, 0.83), (1491, 0.85), (1422, 0.86)):
+        d = int(d * size)
+        buf, lp = [0.0] * d, 0.0
+        for i in range(n):
+            y = buf[i % d]
+            lp = y * 0.7 + lp * 0.3   # damped: the tail darkens as it dies
+            buf[i % d] = x[i] + lp * g
+            out[i] += y * 0.25
+    for d, g in ((225, 0.5), (556, 0.5)):
+        buf = [0.0] * d
+        for i in range(n):
+            b = buf[i % d]
+            y = -out[i] * g + b
+            buf[i % d] = out[i] + b * g
+            out[i] = y
+    return [x[i] + out[i] * wet for i in range(n)]
+
+
+# A steel anvil's modes: inharmonic (a block, not a string), the high ones dying first.
+# (ratio to the fundamental, amplitude, decay per second)
+_ANVIL_MODES = ((1.0, 1.0, 2.2), (1.0045, 0.4, 2.3), (2.31, 0.55, 3.4), (2.97, 0.35, 4.4),
+                (4.38, 0.25, 6.0), (5.83, 0.15, 8.0), (7.49, 0.08, 11.0))
+ANVIL_F0 = 330.0   # a big block struck low: a clank, not a ting
+
+
+def _anvil_strikes(n, strikes, f0=ANVIL_F0):
+    """Hammer blows on a heavy anvil: strikes are (time s, strength, pitch factor). Each blow is a gritty
+    clank, the hammer's heavy thunk, a sub boom felt more than heard and the ring of the steel, driven a
+    little so it bites."""
+    out = [0.0] * n
+    for at, amp, p in strikes:
+        a = int(at * SR)
+        f = f0 * p
+        bite = highpass(lowpass([white() for _ in range(int(0.08 * SR))], 5000), 900)
+        for j in range(n - a):
+            t = j / SR
+            s = 0.0
+            for r, m, dk in _ANVIL_MODES:
+                s += m * math.sin(2 * math.pi * f * r * t) * math.exp(-t * dk)
+            s *= 0.34 * min(1.0, t / 0.001)
+            if j < len(bite):
+                s += bite[j] * math.exp(-t * 90.0) * 1.0
+            s += math.sin(2 * math.pi * (110 * p * math.exp(-t * 18.0) + 45) * t) * math.exp(-t * 16.0) * 0.8
+            s += math.sin(2 * math.pi * (42 + 50 * math.exp(-t * 10.0)) * t) * math.exp(-t * 3.5) * 0.7
+            out[a + j] += math.tanh(1.6 * s) / math.tanh(1.6) * amp
+    return out
+
+
+def _anvil(p=1.0):
+    """A room cleared: a heavy hammer comes down on the anvil (CLANK), bounces once and the steel rings low."""
+    n = n_samples(2.6)
+    return _reverb(lowpass(_anvil_strikes(n, ((0.0, 1.0, p), (0.12, 0.22, p))), 7000), wet=0.38, size=1.4)
+
+
+def gen_anvil():   return _anvil(1.0)
+def gen_anvil_1(): return _anvil(0.94)
+def gen_anvil_2(): return _anvil(1.06)
+
+
+def gen_anvil_final():
+    """The beacon: the smith's last three blows (clank... clank-CLANG), the last one bigger and lower, over a
+    deep boom and a swell, and a long ring to the end of the run."""
+    n = n_samples(4.0)
+    ring = _anvil_strikes(n, ((0.0, 0.8, 1.0), (0.42, 0.7, 1.0), (0.64, 1.25, 0.75), (0.76, 0.3, 0.75)))
+    out = []
+    for i in range(n):
+        t = i / SR
+        u = t - 0.64
+        boom = swell = 0.0
+        if u >= 0:
+            boom = math.sin(2 * math.pi * (45 + 40 * math.exp(-u * 8.0)) * u) * math.exp(-u * 2.2) * 0.9
+            sw = min(1.0, u / 0.25) * math.exp(-u * 0.9)
+            swell = sum(math.tanh(1.8 * sine(fr, i)) for fr in (130.8, 196.0, 261.6, 392.0)) * 0.08 * sw
+        out.append(ring[i] + boom + swell)
+    return _reverb(lowpass(out, 7000), wet=0.4, size=1.5)
+
+
+def gen_record():
+    """A new best: a bright strike and a rising major arpeggio ringing over it like struck bells."""
+    n = n_samples(2.4)
+    out = _anvil_strikes(n, ((0.0, 0.7, 1.0),), ANVIL_F0 * 2)   # an octave over a room clear: brighter, it's a celebration
+    for k, fr in enumerate((523.3, 659.3, 784.0, 1046.5)):
+        a = int((0.12 + k * 0.11) * SR)
+        for j in range(n - a):
+            t = j / SR
+            bell = sine(fr, j) + 0.4 * sine(fr * 2.0, j) + 0.2 * sine(fr * 3.01, j)
+            out[a + j] += bell * math.exp(-t * (2.2 + k * 0.3)) * min(1.0, t / 0.003) * 0.22
+    return _reverb(out, wet=0.3)
+
+
+def gen_split_behind():
+    """Behind your best at a room's end: two lower blips that fall (the ahead one, `split`, rises)."""
+    n = n_samples(0.26)
+    out = []
+    for i in range(n):
+        t = i / n
+        f = 880 if t < 0.45 else 698
+        u = t % 0.45
+        tone = sine(f, i) + 0.3 * sine(f * 2, i)
+        out.append(tone * math.exp(-7.0 * u) * min(1.0, u * 400) * 0.45)
+    return lowpass(out, 3500)
+
+
+def gen_count_tick():
+    """3, 2, 1: a clean beep on a hard mechanical tick."""
+    n = n_samples(0.22)
+    out = []
+    for i in range(n):
+        t = i / SR
+        beep = (sine(880, i) + 0.25 * sine(1760, i)) * math.exp(-t * 9.0) * min(1.0, t / 0.002)
+        out.append(beep * 0.6 + white() * math.exp(-t * 600.0) * 0.5)
+    return out
+
+
+def gen_count_go():
+    """GO: the starting gun (a crack and a thump) under a higher, longer beep."""
+    n = n_samples(0.9)
+    crack = highpass([white() for _ in range(n)], 1200)
+    out = []
+    for i in range(n):
+        t = i / SR
+        gun = crack[i] * math.exp(-t * 60.0) * 1.1 + math.sin(2 * math.pi * (110 * math.exp(-t * 20.0) + 40) * t) * math.exp(-t * 18.0)
+        beep = (sine(1760, i) + 0.3 * sine(3520, i)) * math.exp(-t * 3.2) * min(1.0, t / 0.003) * 0.5
+        out.append(gun + beep)
+    return _reverb(out, wet=0.25)
+
+
+def gen_drive_warn():
+    """OVERDRIVE about to burn out: a short bright metal tick with a falling tone (the game plays three, higher each time)."""
+    n = n_samples(0.16)
+    out = []
+    for i in range(n):
+        t = i / SR
+        f = 1320 * (1.0 - 0.25 * min(1.0, t / 0.16))
+        tick = (math.sin(2 * math.pi * f * t) + 0.5 * math.sin(2 * math.pi * f * 2.31 * t)) * math.exp(-t * 26.0)
+        out.append(tick * 0.6 + white() * math.exp(-t * 700.0) * 0.4)
+    return out
+
+
+def gen_drive_ready():
+    """OVERDRIVE can burn again: a soft rising shing and two notes climbing a fifth, a little metal in them."""
+    n = n_samples(0.8)
+    air = _bandnoise(n, 2000, 8000)
+    out = []
+    for i in range(n):
+        t = i / SR
+        sh = air[i] * math.sin(math.pi * min(1.0, t / 0.35)) * (1.0 if t < 0.35 else 0.0) * 0.35
+        n1 = (sine(659.3, i) + 0.35 * sine(659.3 * 2.31, i)) * math.exp(-t * 6.0) * min(1.0, t / 0.004)
+        u = t - 0.12
+        n2 = (math.sin(2 * math.pi * 987.8 * u) + 0.35 * math.sin(2 * math.pi * 987.8 * 2.31 * u)) * math.exp(-u * 3.5) * min(1.0, u / 0.004) if u > 0 else 0.0
+        out.append(sh + n1 * 0.35 + n2 * 0.4)
+    return out
+
+
+def gen_mini_sting():
+    """A Gauntlet room's mini-boss arrives: a heavy low clank on the anvil, a sub boom, and a dark brass chord
+    swelling and falling a semitone, so the room knows something big just walked in."""
+    n = n_samples(2.6)
+    out = _anvil_strikes(n, ((0.0, 1.0, 0.62),))
+    for i in range(n):
+        t = i / SR
+        sw = min(1.0, t / 0.18) * math.exp(-t * 1.3)
+        bend = 1.0 - 0.0595 * min(1.0, max(0.0, t - 0.6) / 0.8)   # down a semitone
+        brass = sum(math.tanh(2.2 * math.sin(2 * math.pi * fr * bend * t)) for fr in (55.0, 82.4, 110.0, 130.8)) * 0.11 * sw
+        out[i] += brass + math.sin(2 * math.pi * (38 + 30 * math.exp(-t * 6.0)) * t) * math.exp(-t * 2.0) * 0.6
+    return _reverb(lowpass(out, 6000), wet=0.4, size=1.4)
+
+
+def gen_bell():
+    """THE CANTOR's bell: a big bronze toll - a hum note, the strike, the bell's inharmonic partials (0.5, 1, 1.2,
+    1.5, 2, 2.5, 3) beating slowly - and a long hall."""
+    n = n_samples(3.2)
+    f0 = 196.0
+    parts = ((0.5, 0.6, 0.6), (1.0, 1.0, 0.9), (1.19, 0.7, 1.3), (1.5, 0.5, 1.6), (2.0, 0.55, 2.0), (2.51, 0.35, 2.8), (3.0, 0.25, 3.6))
+    out = []
+    for i in range(n):
+        t = i / SR
+        s = 0.0
+        for r, a, dk in parts:
+            s += a * math.sin(2 * math.pi * f0 * r * t) * math.exp(-t * dk) * (1.0 + 0.15 * math.sin(2 * math.pi * 1.3 * r * t))
+        s *= min(1.0, t / 0.003) * 0.3
+        s += white() * math.exp(-t * 200.0) * 0.5
+        out.append(s)
+    return _reverb(out, wet=0.45, size=1.5)
+
+
+def gen_medal():
+    """A medal for a room: three bells ringing up a major triad after the room's anvil (the game pitches it up for a
+    better medal)."""
+    n = n_samples(1.8)
+    out = [0.0] * n
+    for k, fr in enumerate((659.3, 830.6, 987.8)):
+        a = int(k * 0.09 * SR)
+        for j in range(n - a):
+            t = j / SR
+            bell = sine(fr, j) + 0.45 * sine(fr * 2.0, j) + 0.2 * sine(fr * 2.76, j)
+            out[a + j] += bell * math.exp(-t * (3.0 + k * 0.4)) * min(1.0, t / 0.002) * 0.28
+    return _reverb(out, wet=0.3)
 
 
 GENERATORS = {
@@ -1106,6 +1313,10 @@ GENERATORS = {
     "lastkill": gen_lastkill,
     "hit_body": gen_hit_body, "stun": gen_stun, "finisher": gen_finisher,
     "overdrive_on": gen_overdrive_on, "overdrive_off": gen_overdrive_off, "finish_ready": gen_finish_ready, "hook_yank": gen_hook_yank,
+    "anvil": gen_anvil, "anvil_1": gen_anvil_1, "anvil_2": gen_anvil_2, "anvil_final": gen_anvil_final, "record": gen_record,
+    "split_behind": gen_split_behind, "count_tick": gen_count_tick, "count_go": gen_count_go,
+    "drive_warn": gen_drive_warn, "drive_ready": gen_drive_ready,
+    "mini_sting": gen_mini_sting, "bell": gen_bell, "medal": gen_medal,
 }
 
 from sfx_absolute import ABSOLUTE_GENERATORS  # THE ABSOLUTE's (tools/sfx_absolute.py)

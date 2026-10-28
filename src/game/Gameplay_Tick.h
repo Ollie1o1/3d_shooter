@@ -423,6 +423,8 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     if (phaseBefore == WaveDirector::Phase::ACTIVE && !fast() &&
         (director.phase == WaveDirector::Phase::BREAK || director.phase == WaveDirector::Phase::CLEARED)) waveEnded();
     if (g_devOverlay == "lastkill" && slowT <= 0.f && elapsedTime > 3.f && elapsedTime < 3.1f) waveEnded();   // dev: the moment, on cue
+    if (g_devOverlay == "clearwaves" && director.phase == WaveDirector::Phase::ACTIVE && std::fmod(elapsedTime, 4.f) < dt)
+        devClearWave();   // dev: every fight won for you, one wave every 4 s (to hear the clears: --audiodump)
     for (auto& s : spawns) spawnEnemy(s.type, s.pos, s.hollow);
 
     ftLap.to(frametimer::SIM_DIRECTOR);
@@ -493,7 +495,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         if (glm::length(glm::vec2(d.x, d.z)) < 3.f && std::fabs(d.y) < 4.f) {
             finishOpen = false;
             fx.spawnBurst(level.finishPos + glm::vec3{0, 1.f, 0}, {1.f, 0.6f, 0.2f}, 60, 10.f, 1.2f, -2.f);
-            audio.play("wave", 128, SoundGroup::UI); audio.play("split", 128, SoundGroup::UI);
+            audio.play("anvil_final", 128, SoundGroup::UI, true);   // the smith's last three blows
             finishRun();
         }
     }
@@ -509,6 +511,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     for (auto& t : pendingTwins) { enemies.push_back(t); enemies.back().uid = nextEnemyUid++; }
     pendingTwins.clear();
     linkConductors(enemies, player.position);   // tethers for the next tick (and this frame's beams)
+    linkForemen(enemies);                       // THE FOREMAN's crew (EnemyMini.h)
     ftLap.to(frametimer::SIM_REST);
 }
 

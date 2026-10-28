@@ -54,7 +54,7 @@ inline const std::vector<MixEntry>& mixTable() {
         {"wade", C::FOLEY, -0.7f}, {"barrier", C::FOLEY, 0.6f}, {"ammo_low", C::FOLEY, 0.2f},
         {"jump", C::PLAYER, -2.3f}, {"hit", C::PLAYER, 1.5f}, {"land", C::PLAYER, 1.3f}, {"dash", C::PLAYER, -2.6f}, {"grapple_fire", C::PLAYER, -0.6f},
         {"punch", C::PLAYER, 1.7f}, {"step1", C::PLAYER, 1.9f}, {"step2", C::PLAYER, 2.5f}, {"step3", C::PLAYER, 2.5f},
-        {"step4", C::PLAYER, 2.5f}, {"jump_air", C::PLAYER, 0.4f}, {"land_heavy", C::PLAYER, -3.9f}, {"slide", C::PLAYER, 4.1f}, {"heartbeat", C::PLAYER, -3.9f}, {"hit_armor", C::PLAYER, 2.7f}, {"step_metal", C::PLAYER, -0.2f}, {"land_metal", C::PLAYER, 1.2f}, {"lastkill", C::ACTION, -3.5f}, {"hit_body", C::ACTION, 1.2f}, {"stun", C::ACTION, 3.4f}, {"finisher", C::ACTION, -2.9f}, {"overdrive_on", C::ACTION, -2.7f}, {"overdrive_off", C::UI, -3.8f}, {"finish_ready", C::TELL, -5.8f}, {"hook_yank", C::PLAYER, 1.4f}, {"skim", C::PLAYER, -3.2f}, {"boost", C::PLAYER, -1.9f}, {"player_hit", C::PLAYER, -2.f},
+        {"step4", C::PLAYER, 2.5f}, {"jump_air", C::PLAYER, 0.4f}, {"land_heavy", C::PLAYER, -3.9f}, {"slide", C::PLAYER, 4.1f}, {"heartbeat", C::PLAYER, -3.9f}, {"hit_armor", C::PLAYER, 2.7f}, {"step_metal", C::PLAYER, -0.2f}, {"land_metal", C::PLAYER, 1.2f}, {"lastkill", C::ACTION, -3.5f}, {"hit_body", C::ACTION, 1.2f}, {"stun", C::ACTION, 3.4f}, {"finisher", C::ACTION, -2.9f}, {"overdrive_on", C::ACTION, -0.9f}, {"overdrive_off", C::UI, -3.8f}, {"finish_ready", C::TELL, -5.8f}, {"hook_yank", C::PLAYER, 1.4f}, {"skim", C::PLAYER, -3.2f}, {"boost", C::PLAYER, -1.9f}, {"player_hit", C::PLAYER, -2.f},
         {"parry", C::PLAYER, 3.5f}, {"sword_draw", C::PLAYER, 1.f}, {"sword_swing", C::PLAYER, 0.f}, {"sword_hit", C::PLAYER, 2.f},
         {"sword_thrust", C::PLAYER, 4.9f}, {"sword_guard", C::PLAYER, 9.7f}, {"sword_block", C::PLAYER, 2.f}, {"sword_break", C::PLAYER, 0.8f}, {"switch_up0", C::PLAYER, 1.3f}, {"switch_up1", C::PLAYER, 0.9f},
         {"switch_up2", C::PLAYER, 0.6f}, {"switch_up3", C::PLAYER, 0.2f},
@@ -74,6 +74,10 @@ inline const std::vector<MixEntry>& mixTable() {
         {"potion", C::WORLD, 0.5f}, {"impact", C::WORLD, 3.2f}, {"casing", C::FOLEY, -4.6f}, {"whiz", C::ACTION, 2.8f},
         {"hit_head", C::UI, -1.0f}, {"kill_light", C::UI, 8.5f}, {"kill_heavy", C::UI, -3.7f}, {"kill_rifle", C::UI, 0.f}, {"kill_blade", C::UI, 0.f},   // kill confirms
         {"wave", C::UI, -4.2f}, {"levelup", C::UI, -0.1f}, {"upgrade", C::UI, 0.1f},
+        // the forge: a room cleared (three variants), the beacon, a new best; splits, the countdown, OVERDRIVE's cues
+        {"anvil", C::ACTION, -3.5f}, {"anvil_final", C::ACTION, -2.8f}, {"record", C::UI, -5.0f}, {"split_behind", C::WORLD, 1.7f},
+        {"count_tick", C::UI, -2.9f}, {"count_go", C::UI, -0.8f}, {"drive_warn", C::UI, 0.7f}, {"drive_ready", C::UI, -1.7f},
+        {"mini_sting", C::UI, -4.2f}, {"bell", C::ACTION, -0.8f}, {"medal", C::UI, -0.9f},   // the Gauntlet's: a mini-boss arrives, the Cantor's bell, a room's medal
     };
     return T;
 }

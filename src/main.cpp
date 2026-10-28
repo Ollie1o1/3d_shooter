@@ -211,6 +211,7 @@ struct App {
                 g_godMode    = o.god || godFromCommandLine;
                 g_practice   = o.practice;
                 g_bossRun    = o.boss;
+                g_roomAttack = o.room;
             };
             menu->onQuit   = [this]() { quit(); };
             if (openDevMenu) { menu->openDev(); openDevMenu = false; }
@@ -588,6 +589,10 @@ int main(int argc, char* argv[]) {
         std::string arg = argv[i];
         if (arg == "--play") app->pending = App::NextState::Game;
         if (arg == "--fast") { app->mode = GameMode::FAST; app->pending = App::NextState::Game; }
+        if (arg == "--room" && i + 1 < argc) {   // --room N: FAST's ROOM ATTACK, room N (1-7) on its own
+            app->mode = GameMode::FAST; app->pending = App::NextState::Game;
+            g_roomAttack = std::max(0, std::atoi(argv[++i]) - 1); g_startArena = g_roomAttack;
+        }
         if (arg == "--act2") { app->mode = GameMode::ACT2; app->pending = App::NextState::Game; }
         if (arg == "--endless") { app->mode = GameMode::ENDLESS; app->pending = App::NextState::Game; }
         if (arg == "--boss" && i + 1 < argc) {   // --boss N: BOSS N (1 the Warden .. 6 MORNINGSTAR), on its own

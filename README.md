@@ -19,7 +19,7 @@ A fast 3D arena shooter in the spirit of ULTRAKILL, written from scratch in C++1
 |------|------------|
 | **ARENA** | Act I. Four themed arenas of three waves each (the **Sunset Yard**, **the Foundry**, **the Spire**, **the Core** and its boss **the Warden**), then **the Sanctum**, a duel under an eclipse with **the Sovereign**. Scored and ranked on the leaderboard. |
 | **ACT II** | Unlocked by killing the Sovereign. Down beneath the eclipse: **the Drowned Nave** (rising water), **the Orrery** (a sun whose flare sweeps the arena), **the Descent** (a cage riding down a shaft to **the Penitent**), **the Reliquary** (pieces of Act I drifting over a void) and **the Maw** (**the Leviathan**). Then the encore, **!!!!!**: **the Absolute**, who comes back as **MORNINGSTAR**. Keeps local best times; not ranked yet. |
-| **FAST** | **The Gauntlet**: a time trial through seven rooms joined by boost tubes, with splits against your best run, par ranks and a ghost of your best route. |
+| **FAST** | **The Gauntlet**: a time trial through seven rooms joined by boost tubes, a **mini-boss** in each room and **the Pacemaker** at the end, with splits against your best run, par ranks, a ghost of your best route and **medals for every room**. **ROOM ATTACK** runs any one room on its own for its medal. |
 | **ENDLESS** | Generated waves in the Core until you die, tougher every wave, with an objective every 4th wave and the Warden every 10th. |
 | **BOSS** | Any boss on its own, with a level and upgrades to match. Your best kill time for each is kept. |
 
@@ -35,6 +35,7 @@ Kills earn **XP** (more for stylish play) that buys **weapon upgrades** in the A
 | **The Leviathan** | the Maw (Act II) | Dash out of its crash, then shoot its eye while it lies beached |
 | **The Absolute** | !!!!! (the encore) | A boxer of white light. **White** strikes: parry. **Gold**: dodge or block. **Red**: get out. Each also has a sound cue, so you can fight him by ear. Key 5 draws the sword Oathbreaker here |
 | **MORNINGSTAR** | inside the eclipse | The Absolute's second form: bigger, faster, and only his white strikes show on his body |
+| **The Pacemaker** | the Tower (FAST) | The machine that set the par times. It duels you in the yard, races you up the Tower's balconies to the roof and overclocks there; parry its white cuts, jump its rings, and break its channel when it tries to light the beacon |
 
 Full details on every enemy and boss are under [Features in depth](#features-in-depth).
 
@@ -90,6 +91,7 @@ make clean  # delete binaries
 ./shooter --arena 5              # the Sanctum: the Sovereign
 ./shooter --dev                  # open the DEV level select (also ` or F2 on the main menu)
 ./shooter --fast --arena 3       # jump to a FAST room (here: the Ascent)
+./shooter --room 7               # ROOM ATTACK: one FAST room on its own, for its medal (here: the Tower and the Pacemaker)
 ./shooter --god                  # take no damage (for recording footage)
 ```
 
@@ -314,6 +316,7 @@ Everything below runs without touching the mouse, so it works from scripts.
 #   --spawn TYPE (repeatable): enemies in an arc in front of the camera
 #     0 Husk  1 Ripper  2 Sentinel  3 Raptor  4 Brute  5 Mite  6 Juggernaut  7 Warden  8 Sovereign  9 Shieldbearer
 #     10 Conduit  11 Conductor  12 Seraph  13 Anchor  14 Penitent  15 Revenant  16 Weaver  17 Leviathan  18 Absolute
+#     19 Courier  20 Bulwark  21 Cantor  22 Harrier  23 Plumb Line  24 Foreman  25 Pacemaker (the Gauntlet's)
 #   --hollow N: --spawn enemies are Hollowed (1 Enraged, 2 Twinned, 3 Haloed)
 
 # Footage: fixed 1/30 s frames; skip SKIP, then save FRAMES as PREFIX_0001.bmp ...
@@ -323,6 +326,7 @@ Everything below runs without touching the mouse, so it works from scripts.
 #   --clean    no title cards or enemy cards
 #   OVERDRIVE_RUNLOG=1 ./shooter ...   write runs.jsonl from dev runs too (normally only real play)
 #   --overlay driveNN   the OVERDRIVE screen look at NN %
+#   --overlay clearwaves  every wave cleared for you, one every 4 s (with --audiodump: hear the room clears)
 #   --overlay hook | alt   with --autoaim: grapple whatever it's aimed at every 2.5 s / use alt fire instead of the trigger
 #   --overlay teach | teach2   the NEW MOVE cards, every time (screenshots)
 tools/record_showcase.sh         # re-record docs/overdrive.gif (needs gifski)
@@ -430,15 +434,19 @@ unlocked by killing the Sovereign. Fall beneath the eclipse into **the Drowned N
 <summary><b>FAST: the Gauntlet, room by room</b></summary>
 
 seven rooms, each reached down a ribbed **boost tube** (a breather: health waiting, nothing shooting at you) that fires you along at 26 m/s. Step into the room and the fight starts: the door behind you locks, and the exit unlocks when the room is clear. A waypoint points to the exit.
-  1. **The Canal** (north): a sunken lane between raised walkways, bridges across it
-  2. **The Sluice**: close quarters
-  3. **The Ascent** (turn left, climb): five terraces up 20 m, each riser with a pad and a step block; gunners hold the high ground
-  4. **The Span** (north, 23 m up): islands, a beam, ferries and grapple anchors over a void (fall and you're back at the landing)
-  5. **The Well** (turn right, drop): a tower you fall through, floor by floor, gunners on each
-  6. **The Pumpworks** (east): a roofed tunnel with a lava strip opening into a hall with galleries
-  7. **The Tower**: win the courtyard (two waves), then ride the lifts or grapple to the beacon on top
+  1. **The Canal** (north): a sunken lane between raised walkways, bridges across it. **The Courier**, a hi-vis hound with the room's key in a lit canister on its back, runs from you up the lane dropping Mites; cornered, it lunges. Hook it (it's heavy: you fly to it) and punch it
+  2. **The Sluice**: close quarters round a turbine. **The Bulwark** holds the pit behind a riveted sluice gate: nothing gets through the front. It fires fans of orbs, slams a shockwave you jump and bashes (parry it: the gate drops, x2). It turns slowly: vault the pads and hit its back
+  3. **The Ascent** (turn left, climb): five terraces up 20 m, each riser with a pad and a candlelit altar. **The Cantor** hangs under the rose window: it sweeps a beam down the terraces, tolls its bell (a ring along your floor: jump it) and fires fans
+  4. **The Span** (north, 23 m up): islands, a beam, ferries and grapple anchors over a void (fall and you're back at the landing). **The Harrier**, a storm-steel hawk, strafes with fans and dives; after a dive it skims low and slow (x1.6): hook it
+  5. **The Well** (turn right, drop): a tower you fall through, floor by floor, gunners on each. **The Plumb Line** hangs down the last hole on its chain and follows you to the floor. A third of your damage gets through until it fires its ring of orbs (parry them): then its core opens (x2)
+  6. **The Pumpworks** (east): a roofed tunnel with a lava strip opening into a hall with galleries. **The Foreman** floats along the crane line tethered to its crew: while a tether holds it takes a third. It lobs shells (parry them for 150) and calls Mites
+  7. **The Tower**: win the yard, then **the Pacemaker** (above). It ends on the roof, by the beacon
 
-  A 3-2-1 countdown starts the clock; every room clear shows a split (green ahead / red behind your best run); the clock stops at the beacon. Ranked S/A/B/C/D against par times. Dying (or Backspace) restarts the room with the clock still running. A glowing **ghost** runs the route of your best time alongside you (FAST GHOST in Settings turns it off).
+  **Kill a room's mini-boss and the room is won**: whatever's still standing falls apart with it, and each one left standing costs a second on the clock. Every second wave comes at you from ahead, never back where you've been.
+
+  A 3-2-1 countdown starts the clock; every room clear rings an anvil and shows a split (green ahead / red behind your best run) and the room's **medal** (bronze, silver, gold, and a hidden dev time, timed from the room's fight starting to its clear). The clock stops at the beacon. Ranked S/A/B/C/D against par times; the end screen lists every room's time and medal. Dying (or Backspace) restarts the room with the clock still running. A glowing **ghost** runs the route of your best time alongside you (FAST GHOST in Settings turns it off). Each room's best time and medal are kept; **ROOM ATTACK** (the FAST page on the menu, or `--room N`) runs one room on its own, with the level a full run would have by then.
+
+  Every room is dressed with props made in Blender (`tools/blender/props_build.py`): a lit arch with a beacon frames each exit, and a medical cabinet marks each breather's potion.
 
 </details>
 
@@ -606,6 +614,7 @@ The regular enemies (not the bosses, which have their own answers) take a hit wi
 - **Settings** (main menu and pause menu, keyboard or mouse, sliders drag): field of view, fullscreen (also F11 / Alt+Enter), frame rate (match display, 60–360, unlimited), VSync, **graphics quality** (LOW 720p / MEDIUM 1080p / HIGH 1440p / EXTREME 4K render resolution, plus anisotropic texture filtering above LOW; in the browser the canvas gets the screen's real pixels), show FPS, CRT filter, screen shake, view bob, mouse sensitivity, zoom sensitivity, invert Y, mouse spike filter, master and music volume, **difficulty** (LENIENT / STANDARD / VIOLENT / BRUTAL — also LEFT/RIGHT on the main menu), run timer, damage numbers, FAST ghost, crosshair colour
 - **Enemy voices** — every enemy is a machine body carrying a hollow choir, built in code when the game loads (`VoiceSynth.h`, no audio files): its own spawn, idle murmur, steps or wingbeats, a wind-up tell for every attack (the Sovereign sings a different syllable for each stroke, the Penitent groans before a low sweep and rings a bell before a high one), a release, a hurt and a death. The voice director (`EnemyVoice.h`) decides who speaks: every wind-up within 40 m is heard, even out of sight; only the nearest few chatter; hurts and spawns are rationed. Hollowed enemies sound changed (Enraged higher and driven, Twinned doubled, Haloed shimmering, and their halo shatters)
 - **A threat-aware mix** — every sound has a role: while a wind-up plays, enemy chatter steps back 3 dB (the music is left alone) and chatter never takes a tell's voice. Every sound's level lives in one table (`MixTable.h`, held by a test; `./shooter --mixreport` prints them all); `OVERDRIVE_SOLO=tell|chatter|action|ui` hears one role alone
+- **The forge**: a room or arena won is struck on an anvil (a low, heavy clank with a bounce; three of them, so it never repeats exactly), the Gauntlet's beacon on three blows (clank... clank-CLANG), a new best on bells; a split rises when you're ahead of your best run and falls when behind, a medal rings higher the better it is; 3, 2, 1 beep and GO is a starting gun. OVERDRIVE starts on the anvil too, ticks three times as it's about to burn out, and chimes when it's recharged. A mini-boss arrives on a heavy sting; the Cantor tolls a bell. All synthesized in `tools/gen_sfx.py`
 - **Soundtrack** — synthesized live (`MusicSynth.h`, no audio files): darksynth/industrial, a track per area (and one for the Sovereign), layers that build from the tubes into the fight and up again for the boss, muffled while paused
 - **High refresh rates** — physics stays at a fixed 60 Hz while enemies, projectiles, pickups and platforms are interpolated between ticks, so 144/240/360 Hz is smooth; the frame limiter sleeps then spins to hold a cap to within microseconds. `./shooter --bench N [--cap HZ] [--res H]` prints frame times
 - Settings, best times, the leaderboard and your best FAST ghost persist across launches (`settings.cfg`, `records.v2.cfg`, `leaderboard.cfg`, `ghost.v2.cfg` next to the binary; `localStorage` in the browser)

@@ -39,6 +39,9 @@ inline int xpForKill(EnemyType t) {
         case EnemyType::WEAVER:   return 50;
         case EnemyType::LEVIATHAN: return 1500;
         case EnemyType::ABSOLUTE: return 2000;
+        case EnemyType::PACEMAKER: return 1200;
+        case EnemyType::COURIER: case EnemyType::BULWARK: case EnemyType::CANTOR:
+        case EnemyType::HARRIER: case EnemyType::PLUMB: case EnemyType::FOREMAN: return 300;   // the Gauntlet's mini-bosses
         default:                  return 10;
     }
 }
@@ -113,10 +116,24 @@ inline const BossEntry& bossEntry(int i) {
 // Best times, kept across runs (file on desktop, localStorage on the web).
 // The key carries a version: bump it when the maps change enough that old
 // times no longer mean anything (v2: the Gauntlet's rooms, the Sanctum).
+// A FAST room's medal for a time (Arena::medals: gold, silver, bronze, dev): 0 none .. 4 dev
+inline int medalFor(const float m[4], float t) {
+    if (m[3] > 0.f && t <= m[3]) return 4;
+    for (int k = 0; k < 3; ++k) if (m[k] > 0.f && t <= m[k]) return 3 - k;
+    return 0;
+}
+inline const char* medalName(int m) { static const char* N[] = {"", "BRONZE", "SILVER", "GOLD", "DEV TIME"}; return N[m < 0 || m > 4 ? 0 : m]; }
+inline glm::vec3 medalColor(int m) {
+    static const glm::vec3 C[] = {{0.6f, 0.6f, 0.65f}, {0.85f, 0.5f, 0.25f}, {0.8f, 0.85f, 0.95f}, {1.f, 0.82f, 0.25f}, {0.45f, 1.f, 0.9f}};
+    return C[m < 0 || m > 4 ? 0 : m];
+}
+
 struct Records {
     float bestArena = 0.f;                 // full Arena run, seconds (0 = none yet)
     float bestFast  = 0.f;                 // FAST mode total
     std::vector<float> fastSplits;         // cumulative time at each section clear, from the best run
+    std::vector<float> fastRooms;          // FAST: each room's best time on its own (fight start to clear; 0 = none)
+    std::vector<int>   fastMedals;         // FAST: each room's best medal (0 none, 1 bronze, 2 silver, 3 gold, 4 dev)
     int   bestArenaScore = 0;              // best ARENA score (Score.h)
     int   bestEndless = 0;                 // best ENDLESS score
     bool  act2Unlocked = false;            // the Sovereign has fallen: ACT II is open
@@ -145,6 +162,14 @@ struct Records {
                 int n = 0; f >> n;
                 fastSplits.assign(std::max(0, std::min(n, 32)), 0.f);
                 for (auto& s : fastSplits) f >> s;
+            } else if (key == "fastRooms") {
+                int n = 0; f >> n;
+                fastRooms.assign(std::max(0, std::min(n, 32)), 0.f);
+                for (auto& s : fastRooms) f >> s;
+            } else if (key == "fastMedals") {
+                int n = 0; f >> n;
+                fastMedals.assign(std::max(0, std::min(n, 32)), 0);
+                for (auto& m : fastMedals) f >> m;
             } else { std::string skip; f >> skip; }
             if (!f) break;
         }
@@ -166,7 +191,23 @@ struct Records {
         f << "fastSplits " << fastSplits.size();
         for (float s : fastSplits) f << " " << s;
         f << "\n";
+        f << "fastRooms " << fastRooms.size();
+        for (float s : fastRooms) f << " " << s;
+        f << "\n";
+        f << "fastMedals " << fastMedals.size();
+        for (int m : fastMedals) f << " " << m;
+        f << "\n";
         return f.str();
+    }
+    // A FAST room's time: kept if it's its best (and its medal if better); true if it was a new best
+    bool roomTime(int room, float t, int medal) {
+        if (room < 0 || room >= 32) return false;
+        if ((int)fastRooms.size() <= room) fastRooms.resize(room + 1, 0.f);
+        if ((int)fastMedals.size() <= room) fastMedals.resize(room + 1, 0);
+        fastMedals[room] = std::max(fastMedals[room], medal);
+        if (fastRooms[room] > 0.f && t >= fastRooms[room]) return false;
+        fastRooms[room] = t;
+        return true;
     }
 };
 

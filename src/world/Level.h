@@ -212,6 +212,9 @@ struct Arena {
     std::vector<std::vector<glm::vec3>> waveAir;
     glm::vec3   bossSpawn{0.f};
     std::vector<std::vector<WaveEntry>> waves;
+    // FAST: the room's medals (seconds from its fight starting to its clear): gold, silver, bronze, and the
+    // dev time (hidden until you beat it). 0: none
+    float medals[4] = {0.f, 0.f, 0.f, 0.f};
     std::vector<WaveGoal> goals;    // per wave; missing: KILL_ALL
     int         maxAlive = 8;    // concurrent enemies; the rest trickle in as you kill
     float       damageScale = 1.f;  // enemy damage multiplier: the first arena is forgiving

@@ -158,6 +158,7 @@ inline void GameplayState::spawnEnemy(EnemyType t, glm::vec3 pos, Hollow h) {
     enemies.back().setHollow(h);
     enemies.back().maxHealth *= tune().health * endlessToughness();
     enemies.back().health = enemies.back().maxHealth;
+    if (t == EnemyType::PACEMAKER) enemies.back().pmKeep = {level.finishPos.x, level.baseFloor(pos.x, pos.z), level.finishPos.z};   // (its Tower)
     glm::vec3 c = statsOf(t).glow;
     fx.spawnBurst(pos + glm::vec3{0, 0.3f, 0}, c, 14, 3.f, 0.7f, -6.f);
     if (level.waterDepthAt(pos) > 0.3f) {   // materialising in the water: a splash and a ring
@@ -312,6 +313,12 @@ inline void GameplayState::updateEnemies(float dt) {
                     player.velocity += glm::vec3{flat.x, 0.f, flat.y} / glm::length(flat) * 10.f + glm::vec3{0, 6.f, 0};
             }
         }
+        if (ev.ring) {   // THE CANTOR's bell: a ring racing out along the floor (Gameplay_Shifts.h hurts and draws it)
+            shifts.rings.push_back({ev.ringAt, 1.5f, 1.5f});
+            audio.playAt("bell", epos, 128, SoundGroup::ENEMY, true);
+            fx.spawnShockwave(ev.ringAt + glm::vec3{0.f, 0.1f, 0.f}, 3.f, statsOf(enemies[i].type).glow);
+            shake(0.2f, 0.04f);
+        }
         if (ev.detonated) {
             // A mite that reached you: hurts you AND its friends
             pendingBlasts.push_back({epos + glm::vec3{0, 0.3f, 0}, 4.f, 30.f, 4.f, 30.f * eScale, StyleSource::FRIENDLY, EnemyType::MITE});
@@ -341,6 +348,7 @@ inline void GameplayState::updateEnemies(float dt) {
         if (enemies[i].type == EnemyType::WEAVER) onReliquaryEvents(enemies[i], ev);
         if (enemies[i].type == EnemyType::LEVIATHAN) onLeviathanEvents(enemies[i], ev);
         if (enemies[i].type == EnemyType::ABSOLUTE) onAbsoluteEvents(enemies[i], ev);
+        if (enemies[i].type == EnemyType::PACEMAKER) onPacemakerEvents(enemies[i], ev);
         if (ev.enraged && isBoss(enemies[i].type)) hitStopFrames = glm::max(hitStopFrames, 6);   // a phase turning: the world catches its breath
         if (ev.enraged && enemies[i].type == EnemyType::SOVEREIGN) {   // the Penitent and the Warden announce their own phases
             pushBanner("HE STOPS HOLDING BACK", "LONGER CHAINS - WATCH THE BLADE", {1.f, 0.15f, 0.25f}, 2.4f);
@@ -560,7 +568,10 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
                                 if (rand() % 100 < 50) drop(PickupKind::POTION);
                                 break;
         case EnemyType::MITE:   if (rand() % 10 == 0) drop(PickupKind::ORB); break;
-        case EnemyType::WARDEN: case EnemyType::SOVEREIGN: case EnemyType::LEVIATHAN: case EnemyType::ABSOLUTE: break;
+        case EnemyType::WARDEN: case EnemyType::SOVEREIGN: case EnemyType::LEVIATHAN: case EnemyType::ABSOLUTE: case EnemyType::PACEMAKER: break;
+        case EnemyType::COURIER: case EnemyType::BULWARK: case EnemyType::CANTOR:
+        case EnemyType::HARRIER: case EnemyType::PLUMB: case EnemyType::FOREMAN:   // the room's prize: health to carry on
+            drop(PickupKind::POTION); drop(PickupKind::ORB); drop(PickupKind::ORB); drop(PickupKind::XP); break;
         case EnemyType::CONDUIT: drop(PickupKind::ORB); drop(PickupKind::ORB); break;
         case EnemyType::CONDUCTOR: drop(PickupKind::ORB); break;
         case EnemyType::ANCHOR: drop(PickupKind::ORB); drop(PickupKind::ORB); break;
@@ -575,6 +586,8 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
         pendingBlasts.push_back({e.position + glm::vec3{0, 0.3f, 0}, 4.f, 30.f, 0.f, 0.f,
                                  src == StyleSource::FRIENDLY || src == StyleSource::ENVIRONMENT ? StyleSource::FRIENDLY
                                                                                                  : StyleSource::EXPLOSIVE});
+
+    if (isMiniBoss(e.type)) onMiniBossKilled(e);
 
     if (isBoss(e.type)) {
         // The boss takes his summons with him
@@ -614,10 +627,44 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
             pushBanner("THE LEVIATHAN SINKS", "", {1.f, 0.9f, 0.7f}, 3.f);
         } else if (e.type == EnemyType::ABSOLUTE) {
             onAbsoluteKilled(e);
+        } else if (e.type == EnemyType::PACEMAKER) {
+            onPacemakerKilled(e);
         } else {
             pushBanner("THE WARDEN GOES DARK", "", {1.f, 0.85f, 0.3f}, 2.5f);
         }
     }
+}
+
+// A Gauntlet room's mini-boss falls: the room is won. Whatever's still standing falls apart with it,
+// and in FAST each one costs a second on the clock (clean the room, or pay for the time you saved)
+inline void GameplayState::onMiniBossKilled(Enemy& e) {
+    int left = 0;
+    for (auto& o : enemies)
+        if (o.alive && &o != &e) {
+            ++left;
+            o.alive = false; o.state = EnemyState::DEAD;
+            for (const VoiceCue& c : voices.forget(o.uid)) playVoice(c);
+            spawnDebrisFor(o);
+            fx.spawnDeathParticles(o.position + glm::vec3{0, o.height() * 0.5f, 0}, o.stats().color);
+        }
+    const glm::vec3 c = e.position + glm::vec3{0.f, e.height() * 0.5f, 0.f};
+    for (int k = 0; k < 3; ++k)
+        fx.spawnExplosionParticles(c + glm::vec3{frand(-1.2f, 1.2f), frand(-0.5f, 1.5f), frand(-1.2f, 1.2f)}, 3.5f);
+    fx.spawnBurst(c, e.stats().glow, 50, 11.f, 0.9f, 2.f);
+    fx.spawnShockwave(e.position + glm::vec3{0.f, 0.1f, 0.f}, 7.f, e.stats().glow);
+    explosionFlashTimer = 0.3f; explosionFlashPos = c;
+    shake(0.8f, 0.1f);
+    hitStopFrames = glm::max(hitStopFrames, 8);
+    playBoom("explosion", c, 128, SoundGroup::WORLD, true);
+    styleSystem.addStyle(60.f);
+    char title[64], sub[64];
+    snprintf(title, sizeof(title), "%s FALLS", e.stats().name);
+    if (fast() && left > 0) {
+        elapsedTime += (float)left * MINI_LEFT_COST;
+        fastLeftStanding += left;
+        snprintf(sub, sizeof(sub), "+%d S - %d LEFT STANDING", (int)std::round(left * MINI_LEFT_COST), left);
+    } else snprintf(sub, sizeof(sub), left > 0 ? "THE REST FALL WITH IT" : "ROOM CLEAN");
+    pushBanner(title, sub, left > 0 && fast() ? glm::vec3{1.f, 0.55f, 0.35f} : glm::vec3{1.f, 0.85f, 0.4f}, 2.6f);
 }
 
 inline void GameplayState::gainXp(int xp) {

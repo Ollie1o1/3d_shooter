@@ -80,7 +80,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         int left = alive + director.queued();
         glm::vec3 accent{1.f, 0.75f, 0.3f};
         const Enemy* boss = nullptr;
-        for (auto& e : enemies) if (e.alive && isBoss(e.type)) boss = &e;
+        for (auto& e : enemies) if (e.alive && (isBoss(e.type) || isMiniBoss(e.type))) boss = &e;
 
         if (fast()) {
             if (finishOpen) { snprintf(buf, sizeof(buf), "FINISH OPEN - CLIMB TO THE BEACON"); accent = {1.f, 0.6f, 0.2f}; }
@@ -143,7 +143,8 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         if (boss) ui.renderBossBar(msBar ? "MORNINGSTAR" : boss->type == EnemyType::ABSOLUTE ? "THE ABSOLUTE" :
                                    boss->type == EnemyType::SOVEREIGN ? "THE SOVEREIGN" :
                                    boss->type == EnemyType::PENITENT ? "THE PENITENT" :
-                                   boss->type == EnemyType::LEVIATHAN ? "THE LEVIATHAN" : "THE WARDEN",
+                                   boss->type == EnemyType::LEVIATHAN ? "THE LEVIATHAN" :
+                                   boss->type == EnemyType::WARDEN ? "THE WARDEN" : boss->stats().name,
                                    boss->abSwallow > 0.f ? glm::clamp(1.f - (boss->abSwallow - Enemy::MS_RISE) / (Enemy::MS_SWALLOW - Enemy::MS_RISE), 0.f, 1.f)
                                                          : boss->health / boss->maxHealth,
                                    msBar ? boss->abPhase >= 5 : boss->type == EnemyType::ABSOLUTE ? boss->abPhase >= 2 :
@@ -168,6 +169,29 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             if (boss->levInhale > 0.f) ui.ui.textShadow("SHOOT DOWN ITS THROAT", SCREEN_W / 2, 82, 2, {1.f, 0.9f, 0.8f, 1.f}, true);
             else ui.ui.textShadow("IT HUNTS BELOW - WATCH THE WELLS", SCREEN_W / 2, 82, 2, {1.f, 0.45f, 0.3f, 0.95f}, true);
             ui.end2D();
+        }
+        if (boss && boss->type == EnemyType::PACEMAKER && boss->pmChannel > 0.f) {   // the beacon: how long, how close to breaking it
+            char pb[80];
+            snprintf(pb, sizeof(pb), "LIGHTING THE BEACON %.0f  -  BREAK IT %.0f%%", std::ceil(boss->pmChannel),
+                     100.f * std::min(1.f, boss->pmChannelDmg / (boss->maxHealth * Enemy::PM_BREAK_SHARE)));
+            ui.begin2D(); ui.ui.textShadow(pb, SCREEN_W / 2, 82, 2, {1.f, 0.85f, 0.45f, 1.f}, true); ui.end2D();
+        }
+        if (boss && isMiniBoss(boss->type)) {   // a mini-boss: what to do about it, under the bar
+            char mb[64]; mb[0] = 0; glm::vec4 col{1.f, 0.85f, 0.5f, 0.95f};
+            switch (boss->type) {
+                case EnemyType::FOREMAN:
+                    if (boss->linkCount > 0) snprintf(mb, sizeof(mb), "CREW %d - KILL THE TETHERED TO BREAK ITS GUARD", boss->linkCount);
+                    else { snprintf(mb, sizeof(mb), "GUARD BROKEN"); col = {1.f, 0.6f, 0.2f, 1.f}; }
+                    break;
+                case EnemyType::PLUMB:
+                    if (boss->miniOpen > 0.f) { snprintf(mb, sizeof(mb), "CORE OPEN - NOW"); col = {1.f, 1.f, 0.85f, 1.f}; }
+                    else snprintf(mb, sizeof(mb), "ARMOURED - WAIT FOR THE VOLLEY");
+                    break;
+                case EnemyType::HARRIER: if (boss->miniPerch > 0.f) { snprintf(mb, sizeof(mb), "IT'S LOW - HOOK IT"); col = {0.5f, 0.9f, 1.f, 1.f}; } break;
+                case EnemyType::BULWARK: if (boss->staggered()) { snprintf(mb, sizeof(mb), "GATE DOWN - x2"); col = {0.4f, 1.f, 0.75f, 1.f}; } break;
+                default: break;
+            }
+            if (mb[0]) { ui.begin2D(); ui.ui.textShadow(mb, SCREEN_W / 2, 82, 2, col, true); ui.end2D(); }
         }
         if (boss && boss->type == EnemyType::PENITENT && boss->anchorsLeft > 0) {   // its chains, under the bar
             char cb[48];
@@ -278,6 +302,11 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         if (nameEntry) { shown = nameBuf; if (std::fmod(ui.hudTime, 1.f) < 0.55f && (int)nameBuf.size() < Leaderboard::MAX_NAME_LEN) shown += "_"; }
         ui.renderVictoryBoss(b.name, b.where, bossKillT, newRecord ? 0.f : records.bestBoss[g_bossRun], newRecord, deaths, totalShots, totalHits,
                              nameEntry, shown, bossPosted);
+    } else if (victory && roomAttack() && !roomTimes.empty()) {   // ROOM ATTACK: the room, its time, its medal
+        const int r = glm::clamp(g_roomAttack, 0, (int)level.arenas.size() - 1);
+        const float best = r < (int)records.fastRooms.size() ? records.fastRooms[r] : 0.f;
+        ui.renderVictoryRoom(level.arenas[r].name, roomTimes.back(), roomMedals.back(), level.arenas[r].medals,
+                             newRecord, best, fastLeftStanding, deaths, totalShots, totalHits);
     } else if (victory) {
         if (fast()) {
             const char* rank = elapsedTime < level.parTimes[0] ? "S" : elapsedTime < level.parTimes[1] ? "A"
@@ -285,7 +314,8 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             // Show the best run as it was before this one (newRecord already replaced it)
             static std::vector<float> none;
             ui.renderVictoryFast(elapsedTime, newRecord ? 0.f : records.bestFast, newRecord, rank, totalKills,
-                                 totalShots, totalHits, deaths, splits, newRecord ? none : records.fastSplits, !nameEntry);
+                                 totalShots, totalHits, deaths, splits, newRecord ? none : records.fastSplits, !nameEntry,
+                                 &roomTimes, &roomMedals, fastLeftStanding);
         } else if (endless()) {
             std::string title = std::string("ENDLESS  ") + ar.name;
             ui.renderVictoryEndless(title.c_str(), "", runScore(), wavesCleared, totalKills, totalShots, totalHits,
