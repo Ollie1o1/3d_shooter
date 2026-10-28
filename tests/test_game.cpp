@@ -3030,7 +3030,8 @@ int main() {
                                 "kill_light", "kill_heavy", "kill_rifle", "kill_blade",
                                 "jump_air", "land_heavy", "slide", "hit_head", "ammo_low", "heartbeat", "hit_armor", "impact", "casing", "whiz", "step_metal", "land_metal", "lastkill",
                                 "hit_body", "stun", "finisher", "overdrive_on", "overdrive_off", "finish_ready", "hook_yank",
-                                "anvil", "anvil_final", "record", "split_behind", "count_tick", "count_go", "drive_warn", "drive_ready"};
+                                "anvil", "anvil_final", "record", "split_behind", "count_tick", "count_go", "drive_warn", "drive_ready",
+                                "mini_sting", "bell", "medal"};
         std::vector<std::string> names(std::begin(loaded), std::end(loaded));
         for (const std::string& n : abAllSounds()) names.push_back(n);   // THE ABSOLUTE's fight (AbsoluteFeel.h)
         bool all = true; for (const std::string& n : names) all &= mixEntry(n) != nullptr;

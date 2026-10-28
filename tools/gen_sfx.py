@@ -1204,6 +1204,52 @@ def gen_drive_ready():
     return out
 
 
+def gen_mini_sting():
+    """A Gauntlet room's mini-boss arrives: a heavy low clank on the anvil, a sub boom, and a dark brass chord
+    swelling and falling a semitone, so the room knows something big just walked in."""
+    n = n_samples(2.6)
+    out = _anvil_strikes(n, ((0.0, 1.0, 0.62),))
+    for i in range(n):
+        t = i / SR
+        sw = min(1.0, t / 0.18) * math.exp(-t * 1.3)
+        bend = 1.0 - 0.0595 * min(1.0, max(0.0, t - 0.6) / 0.8)   # down a semitone
+        brass = sum(math.tanh(2.2 * math.sin(2 * math.pi * fr * bend * t)) for fr in (55.0, 82.4, 110.0, 130.8)) * 0.11 * sw
+        out[i] += brass + math.sin(2 * math.pi * (38 + 30 * math.exp(-t * 6.0)) * t) * math.exp(-t * 2.0) * 0.6
+    return _reverb(lowpass(out, 6000), wet=0.4, size=1.4)
+
+
+def gen_bell():
+    """THE CANTOR's bell: a big bronze toll - a hum note, the strike, the bell's inharmonic partials (0.5, 1, 1.2,
+    1.5, 2, 2.5, 3) beating slowly - and a long hall."""
+    n = n_samples(3.2)
+    f0 = 196.0
+    parts = ((0.5, 0.6, 0.6), (1.0, 1.0, 0.9), (1.19, 0.7, 1.3), (1.5, 0.5, 1.6), (2.0, 0.55, 2.0), (2.51, 0.35, 2.8), (3.0, 0.25, 3.6))
+    out = []
+    for i in range(n):
+        t = i / SR
+        s = 0.0
+        for r, a, dk in parts:
+            s += a * math.sin(2 * math.pi * f0 * r * t) * math.exp(-t * dk) * (1.0 + 0.15 * math.sin(2 * math.pi * 1.3 * r * t))
+        s *= min(1.0, t / 0.003) * 0.3
+        s += white() * math.exp(-t * 200.0) * 0.5
+        out.append(s)
+    return _reverb(out, wet=0.45, size=1.5)
+
+
+def gen_medal():
+    """A medal for a room: three bells ringing up a major triad after the room's anvil (the game pitches it up for a
+    better medal)."""
+    n = n_samples(1.8)
+    out = [0.0] * n
+    for k, fr in enumerate((659.3, 830.6, 987.8)):
+        a = int(k * 0.09 * SR)
+        for j in range(n - a):
+            t = j / SR
+            bell = sine(fr, j) + 0.45 * sine(fr * 2.0, j) + 0.2 * sine(fr * 2.76, j)
+            out[a + j] += bell * math.exp(-t * (3.0 + k * 0.4)) * min(1.0, t / 0.002) * 0.28
+    return _reverb(out, wet=0.3)
+
+
 GENERATORS = {
     "jump": gen_jump,
     "land": gen_land,
@@ -1270,6 +1316,7 @@ GENERATORS = {
     "anvil": gen_anvil, "anvil_1": gen_anvil_1, "anvil_2": gen_anvil_2, "anvil_final": gen_anvil_final, "record": gen_record,
     "split_behind": gen_split_behind, "count_tick": gen_count_tick, "count_go": gen_count_go,
     "drive_warn": gen_drive_warn, "drive_ready": gen_drive_ready,
+    "mini_sting": gen_mini_sting, "bell": gen_bell, "medal": gen_medal,
 }
 
 from sfx_absolute import ABSOLUTE_GENERATORS  # THE ABSOLUTE's (tools/sfx_absolute.py)
