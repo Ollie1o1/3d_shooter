@@ -19,6 +19,7 @@ inline int g_startWave  = 0;   // --wave N / ?wave=N (with --arena): skip to tha
 inline bool g_godMode = false;
 inline bool g_practice = false;   // dev level select: no records, no leaderboard
 inline int  g_bossRun = -1;       // BOSS (the main menu): which boss this run is, fought on its own (-1: not one)
+inline int  g_roomAttack = -1;    // FAST's ROOM ATTACK (the FAST page, --room N): one room on its own, for its medal (-1: the whole run)
 // --cam x y z yaw pitch: start the camera somewhere specific (screenshots)
 inline bool      g_devCam = false;
 inline glm::vec3 g_devCamPos{0.f};

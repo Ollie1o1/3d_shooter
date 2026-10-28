@@ -52,6 +52,14 @@ inline LevelData buildGauntlet() {
     auto prop = [&](float x0, float y0, float z0, float x1, float y1, float z1, vec3 c) { B.prop(x0,y0,z0,x1,y1,z1,c); };
     auto pad  = [&](vec3 at, vec3 launch) { L.pads.push_back({at, {1.3f, 1.3f}, launch}); };
     auto place = [&](vec3 at, int kind) { L.placedPickups.push_back({at, kind}); };
+    // Props made in Blender (assets/props, tools/blender/props_build.py: THE GAUNTLET): a box dressed as one (its
+    // collision kept), or one standing at its own size (visual only)
+    auto dress = [&](int w, const char* name, float yawDeg = 0.f) { B.dress(w, name, yawDeg); };
+    auto model = [&](const char* name, vec3 base, float yawDeg = 0.f, float scale = 1.f) { B.place(name, base, yawDeg, scale); };
+    // Every room's exit framed by a lit arch (its beacon: the way on), facing into the room
+    auto exitArch = [&](vec3 base, float yawDeg) { model("exit_arch", base, yawDeg); };
+    // A health station on a breather's wall, by its potion
+    auto station = [&](vec3 base, float yawDeg) { model("health_station", base, yawDeg); };
     using W = WaveEntry;
     using Gap = LevelBuilder::Gap;
     const float TW = 5.f, TH = 4.5f;    // every tube: 5 m wide, 4.5 m tall inside
@@ -200,8 +208,14 @@ inline LevelData buildGauntlet() {
         }
         B.mat = Mat::CONCRETE;
         // Cover in the lane and on the walkways
-        wall(-3,0,-66, 3,1.2f,-64, dark); wall(-6,0,-100, -2,1.2f,-98, dark); wall(2,0,-112, 6,1.2f,-110, dark);
-        wall(-14,3,-96, -11.5f,4.2f,-95, dark); wall(10,3,-74, 14,4.2f,-73, dark);
+        dress(wall(-3,0,-66, 3,1.2f,-64, dark), "jersey_barrier"); dress(wall(-6,0,-100, -2,1.2f,-98, dark), "jersey_barrier");
+        dress(wall(2,0,-112, 6,1.2f,-110, dark), "jersey_barrier");
+        dress(wall(-14,3,-96, -11.5f,4.2f,-95, dark), "jersey_barrier"); dress(wall(10,3,-74, 14,4.2f,-73, dark), "jersey_barrier");
+        for (float z : {-74.5f, -92.5f, -101.5f}) {   // lamps on the parapets, leaning out over the lane
+            model("canal_lamp", {14.6f, 3.f, z}, -90.f);
+            model("canal_lamp", {-14.6f, 3.f, z}, 90.f);
+        }
+        exitArch({-14.55f, 3.f, -118.5f}, 90.f);
         pad({-5.f, 0.f, -90.f}, {-7.f, 14.f, 0.f});
         pad({ 5.f, 0.f, -100.f}, { 7.f, 14.f, 0.f});
         // The sluice gate the canal runs out of, at the north end
@@ -289,16 +303,15 @@ inline LevelData buildGauntlet() {
         place({0.f, 3.f, -50.f}, 0);
         a.waves = {
             {
-                W{EnemyType::HUSK, 0, {{-12,3,-80},{12,3,-92},{12,3,-118},{-12,3,-104},{0,0,-122}}},
+                W{EnemyType::HUSK, 0, {{-12,3,-80},{12,3,-92},{-12,3,-104},{0,0,-118}}},
                 W{EnemyType::SENTINEL, 0, {{-5,3,-106},{5,3,-82}}},
-                W{EnemyType::RIPPER, 0, {{0,0,-92},{-4,0,-103},{4,0,-116}}},
-                W{EnemyType::RAPTOR, 0, {{-5,11,-100},{5,11,-114}}},
+                W{EnemyType::RIPPER, 0, {{0,0,-88},{-4,0,-103},{4,0,-115}}},
+                W{EnemyType::RAPTOR, 0, {{-5,9,-96},{5,9,-110}}},
             },
-            {
-                W{EnemyType::BRUTE, 0, {{0,0,-118}}},
-                W{EnemyType::MITE, 0, {{-6,0,-86},{6,0,-90},{0,0,-76}}},
-                W{EnemyType::HUSK, 0, {{-12,3,-120},{12,3,-66}}},
-                W{EnemyType::RAPTOR, 0, {{0,12,-110}}},
+            {   // THE COURIER, up the lane with the room's key: run it down
+                W{EnemyType::COURIER, 0, {{0,0,-104}}},
+                W{EnemyType::MITE, 0, {{-6,0,-112},{6,0,-116}}},
+                W{EnemyType::HUSK, 0, {{-12,3,-120},{12,3,-117}}},
             },
         };
         B.paint(m0, Mat::BRICK, [&](vec3 c, Mat m) { return LevelBuilder::shade(c, crate) ? Mat::WOOD : m; });   // the canal's crates are wood
@@ -393,19 +406,23 @@ inline LevelData buildGauntlet() {
         L.fans.push_back({{-70.f, 11.9f, -112.5f}, 1.6f, 1, amber});
         neon(-79,0,-114, -75,0.03f,-112, green * 0.35f);
         neon(-66,0,-126, -62,0.03f,-124, green * 0.35f);
+        for (float x : {-74.f, -66.f}) {   // valve panels on the walls under the mezzanine
+            model("valve_panel", {x, 0.6f, -130.85f}, 0.f);
+            model("valve_panel", {x, 0.6f, -107.15f}, 180.f);
+        }
+        exitArch({-80.65f, 0.f, -118.5f}, 90.f);
+        station({-26.f, 4.2f, -120.85f}, 0.f);
         B.mat = Mat::BRICK;
         a.waves = {
             {
-                W{EnemyType::HUSK, 0, {{-76,3,-129},{-66,3,-129},{-76,3,-109},{-64,3,-109}}},
+                W{EnemyType::HUSK, 0, {{-76,3,-129},{-66,3,-129},{-76,3,-109}}},
                 W{EnemyType::RIPPER, 0, {{-78,0,-119},{-64,0,-114}}},
-                W{EnemyType::MITE, 0, {{-75,0,-113},{-64,0,-124},{-77,0,-124}}},
+                W{EnemyType::MITE, 0, {{-75,0,-113},{-64,0,-124}}},
                 W{EnemyType::SENTINEL, 0, {{-71.5f,6,-117}}},
             },
-            {
-                W{EnemyType::JUGGERNAUT, 0, {{-77,0,-119}}},
-                W{EnemyType::RIPPER, 0, {{-63,0,-119},{-64,0,-125}}},
-                W{EnemyType::HUSK, 0, {{-59,3,-125},{-59,3,-112}}},
-                W{EnemyType::MITE, 0, {{-66,0,-113},{-78,0,-128}}},
+            {   // THE BULWARK, its gate between you and the exit: vault the pads, hit its back
+                W{EnemyType::BULWARK, 0, {{-76,0,-123}}},
+                W{EnemyType::HUSK, 0, {{-78,3,-129},{-78,3,-109}}},
             },
         };
         B.paint(m0, Mat::BRICK, [&](vec3 c, Mat m) {   // the pump room's steel and rust are riveted plate
@@ -457,7 +474,7 @@ inline LevelData buildGauntlet() {
         for (int i = 0; i < 5; ++i) {
             float xb = terr[i + 1].x1, lo = terr[i].top;      // riser between terrace i and i+1
             pad({xb + 3.f, lo, -110.f}, {-6.f, 15.f, 0.f});
-            wall(xb, lo, -131, xb + 2.f, lo + 2.f, -127, sandD);   // step block
+            dress(wall(xb, lo, -131, xb + 2.f, lo + 2.f, -127, sandD), "altar");   // step block: an altar, candles burning
         }
         // Columns along both walls, beams across at 28 m (grapple them)
         for (float x : {-120.f, -135.f, -150.f, -165.f, -180.f, -195.f})
@@ -526,6 +543,8 @@ inline LevelData buildGauntlet() {
         wall(-168,12,-122, -164,14.5f,-120, sandD); wall(-180,16,-118, -177,17.3f,-115, sandD);
         wall(-199,20,-121, -196,21.3f,-118, sandD); wall(-192,20,-110, -190,22,-107, sandD);
         place({-118.f, 0.f, -108.f}, 1); place({-118.f, 0.f, -128.f}, 0);
+        station({-118.f, 1.2f, -104.15f}, 180.f);
+        exitArch({-190.5f, 20.f, -132.65f}, 0.f);
         a.waves = {
             {
                 W{EnemyType::MITE, 0, {{-133,4,-110},{-135,4,-128},{-138,4,-117}}},
@@ -533,11 +552,10 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::SENTINEL, 0, {{-161,12,-114},{-184,16,-126},{-198,20,-126}}},
                 W{EnemyType::BRUTE, 0, {{-164,12,-109}}},
             },
-            {
-                W{EnemyType::RAPTOR, 0, {{-150,24,-118},{-180,24,-112}}},
-                W{EnemyType::JUGGERNAUT, 0, {{-194,20,-114}}},
-                W{EnemyType::HUSK, 0, {{-160,12,-128},{-176,16,-128}}},
-                W{EnemyType::MITE, 0, {{-176,16,-110},{-180,16,-122},{-184,16,-114}}},
+            {   // THE CANTOR under the rose window: climb to it through the beam and the rings
+                W{EnemyType::CANTOR, 0, {{-192,25,-118.5f}}},
+                W{EnemyType::HUSK, 0, {{-176,16,-128},{-186,20,-110}}},
+                W{EnemyType::MITE, 0, {{-176,16,-110},{-180,16,-122}}},
             },
         };
         B.paint(m0, Mat::LIMESTONE, [&](vec3 c, Mat m) {   // the terraces are cut sandstone
@@ -669,18 +687,19 @@ inline LevelData buildGauntlet() {
         neon(-215,19.7f,-258.02f, -171,20,-257.9f, ice);
         B.mat = Mat::BRICK;
         place({-190.5f, 20.f, -158.f}, 1); place({-200.f, 20.f, -160.f}, 0);
+        station({-192.85f, 21.2f, -158.f}, 90.f);
+        exitArch({-171.35f, 20.f, -263.5f}, -90.f);
         a.waves = {
             {
                 W{EnemyType::HUSK, 0, {{-205,20,-190},{-181,20,-194},{-207,20,-224},{-177,20,-230}}},
                 W{EnemyType::RIPPER, 0, {{-193,20,-190},{-185,20,-200}}},
                 W{EnemyType::SENTINEL, 0, {{-193,23,-234},{-207,20,-266}}},
                 W{EnemyType::BRUTE, 0, {{-193,20,-226}}},
-                W{EnemyType::RAPTOR, 0, {{-193,28,-212},{-187,28,-240},{-199,28,-262}}},
+                W{EnemyType::RAPTOR, 0, {{-193,27,-212},{-199,27,-250}}},
             },
-            {
-                W{EnemyType::JUGGERNAUT, 0, {{-193,20,-266}}},
+            {   // THE HARRIER over the far half: when it dives, it skims low - hook it
+                W{EnemyType::HARRIER, 0, {{-193,30,-236}}},
                 W{EnemyType::HUSK, 0, {{-202,20,-240},{-182,20,-226}}},
-                W{EnemyType::RAPTOR, 0, {{-200,30,-200},{-184,30,-250}}},
             },
         };
     }
@@ -757,8 +776,9 @@ inline LevelData buildGauntlet() {
                 neon(-120.95f - 0.07f, y, z - 0.6f, -120.95f, y + 1.4f, z + 0.6f, vec3{1.f,0.55f,0.35f} * 0.8f);
                 neon(-160.05f, y, z - 0.6f, -159.98f, y + 1.4f, z + 0.6f, vec3{1.f,0.55f,0.35f} * 0.8f);
             }
-        wall(-128,13,-276, -124,14.3f,-274, brickD);  wall(-150,6.5f,-252, -146,7.8f,-250, brickD);
-        wall(-155,0,-250, -151,1.3f,-248, brickD);    wall(-127,0,-282, -123,1.3f,-280, brickD);
+        dress(wall(-128,13,-276, -124,14.3f,-274, brickD), "crates");  dress(wall(-150,6.5f,-252, -146,7.8f,-250, brickD), "crates");
+        dress(wall(-155,0,-250, -151,1.3f,-248, brickD), "crates");    dress(wall(-127,0,-282, -123,1.3f,-280, brickD), "crates");
+        exitArch({-121.35f, 0.f, -263.5f}, -90.f);
         // Chains and a hanging cage in the shaft; fans in the roof
         for (float x : {-148.f, -130.f}) prop(x - 0.08f, 22.f, -270.08f, x + 0.08f, 34.f, -269.92f, steel);
         {   // the cage: round, on a chain
@@ -778,6 +798,7 @@ inline LevelData buildGauntlet() {
         L.fans.push_back({{-130.f, 33.9f, -275.f}, 2.2f, 1, red});
         L.fans.push_back({{-150.f, 33.9f, -275.f}, 2.2f, 1, red});
         place({-156.f, 20.f, -250.f}, 1); place({-156.f, 20.f, -278.f}, 0);
+        station({-156.f, 21.2f, -244.15f}, 180.f);
         a.waves = {
             {
                 W{EnemyType::HUSK, 0, {{-140,13,-275},{-146,13,-250},{-128,6.5f,-250}}},
@@ -786,11 +807,10 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::BRUTE, 0, {{-128,0,-272}}},
                 W{EnemyType::RIPPER, 0, {{-150,0,-256},{-130,0,-252}}},
             },
-            {
-                W{EnemyType::JUGGERNAUT, 0, {{-135,0,-278}}},
-                W{EnemyType::HUSK, 0, {{-128,13,-262},{-148,6.5f,-262}}},
-                W{EnemyType::RAPTOR, 0, {{-140,24,-255}}},
-                W{EnemyType::RIPPER, 0, {{-152,0,-274},{-126,0,-250}}},
+            {   // THE PLUMB LINE, hung down the hole into the bottom floor: wait out its volley, then its core
+                W{EnemyType::PLUMB, 0, {{-150,1.5f,-276}}},
+                W{EnemyType::RIPPER, 0, {{-130,0,-252},{-126,0,-278}}},
+                W{EnemyType::MITE, 0, {{-135,0,-250},{-150,0,-252}}},
             },
         };
         B.paint(m0, Mat::BRICK, [&](vec3 c, Mat m) {   // the well's floors and stairs are plate
@@ -818,6 +838,9 @@ inline LevelData buildGauntlet() {
         B.booster(aabb(-96, 0, -266, -84, TH, -261), {1, 0, 0}, BOOST);
         tubeDoor(-100.f, -263.5f, orange);
         place({-110.f, 0.f, -263.5f}, 1);
+        station({-110.f, 1.2f, -265.85f}, 0.f);
+        model("console", {-50.f, 5.f, -295.f}, 0.f); model("console", {-50.f, 5.f, -232.f}, 180.f);   // the control rooms
+        exitArch({-19.35f, 0.f, -263.5f}, -90.f);
 
         // The hall
         B.mat = Mat::METAL;
@@ -903,12 +926,11 @@ inline LevelData buildGauntlet() {
                 W{EnemyType::BRUTE, 0, {{-49,6,-263.5f}}},
                 W{EnemyType::MITE, 0, {{-40,0,-252},{-38,0,-275},{-24,0,-263}}},
             },
-            {
-                W{EnemyType::JUGGERNAUT, 0, {{-28,0,-268}}},
-                W{EnemyType::SENTINEL, 0, {{-56,5,-290},{-44,5,-236}}},
-                W{EnemyType::RAPTOR, 0, {{-62,9,-263}}},
-                W{EnemyType::MITE, 0, {{-62,0,-276},{-62,0,-250},{-40,0,-276}}},
-                W{EnemyType::HUSK, 0, {{-70,5,-280},{-70,5,-247}}},
+            {   // THE FOREMAN along the crane line; its crew shields it - break the tethers
+                W{EnemyType::FOREMAN, 0, {{-42,7.5f,-263.5f}}},
+                W{EnemyType::HUSK, 0, {{-32,5,-281},{-32,5,-246}}},
+                W{EnemyType::SHIELDBEARER, 0, {{-30,0,-263.5f}}},
+                W{EnemyType::MITE, 0, {{-40,0,-276},{-40,0,-250}}},
             },
         };
         B.paint(m0, Mat::PLATE, [&](vec3, Mat m) { return m == Mat::PANEL ? m : Mat::PLATE; });   // the pumpworks: all riveted iron
@@ -924,7 +946,7 @@ inline LevelData buildGauntlet() {
              panel{0.28f,0.27f,0.36f};
         const float TX = 56.f, TZ = -263.5f;
         const LevelBuilder::Mark m0 = B.mark();
-        Arena& a = section("THE TOWER", "WIN THE YARD - THEN CLIMB",
+        Arena& a = section("THE TOWER", "WIN THE YARD - THEN BEAT IT TO THE BEACON",
                            aabb(21, 0, -299, 91, 42, -228), aabb(21, 0, -299, 91, 32, -228),
                            {-15.5f, 0.f, -263.5f}, 0.f, aabb(28, -1, -299, 91, 60, -228), Ambient::ASH,
                            theme({0.03f,0.01f,0.06f}, {0.36f,0.10f,0.30f}, {0.06f,0.02f,0.06f}, {-0.3f,0.25f,-1.f}, {1.6f,0.4f,1.1f}, 0.12f, 1.f,
@@ -935,6 +957,10 @@ inline LevelData buildGauntlet() {
         B.booster(aabb(5, 0, -266, 15, TH, -261), {1, 0, 0}, BOOST);
         tubeDoor(1.f, -263.5f, mag);
         place({-9.f, 0.f, -263.5f}, 1);
+        station({-9.f, 1.2f, -265.85f}, 0.f);
+        model("banner", {TX, 25.4f, TZ - 6.15f}, 180.f); model("banner", {TX, 25.4f, TZ + 6.15f}, 0.f);   // the keep's banners, over the top balcony
+        model("banner", {TX + 6.15f, 25.4f, TZ}, 90.f);  model("banner", {TX - 6.15f, 25.4f, TZ}, -90.f);
+        for (float cx : {24.5f, 87.5f}) for (float cz : {-295.5f, -231.5f}) model("brazier", {cx, 14.f, cz}, 0.f);   // fires on the turrets
         a.extraZones = {t6};
 
         L.floors.push_back({21.f, -299.f, 91.f, -228.f, 0.f, {0.24f,0.22f,0.28f}});
@@ -1015,18 +1041,15 @@ inline LevelData buildGauntlet() {
         L.finishPos = {TX, 34.f, TZ};
         L.gems.push_back({{TX, 37.5f, TZ}, {1.8f, 0.5f, 1.4f}, 1.3f, true});
         a.waves = {
-            {
-                W{EnemyType::HUSK, 0, {{45,0,-293},{67,0,-293},{45,0,-234},{67,0,-234}}},
-                W{EnemyType::RIPPER, 0, {{85,0,-255},{80,0,-280},{80,0,-246}}},
-                W{EnemyType::SENTINEL, 0, {{85,5,-293},{85,5,-233}}},
-                W{EnemyType::RAPTOR, 0, {{56,20,-284},{40,20,-263}}},
+            {   // the yard, held from its far side
+                W{EnemyType::HUSK, 0, {{70,0,-285},{70,0,-242},{TX,12,TZ - 8},{TX,12,TZ + 8}}},
+                W{EnemyType::RIPPER, 0, {{80,0,-263},{75,0,-250},{75,0,-277}}},
+                W{EnemyType::SENTINEL, 0, {{84,5,-293},{84,5,-234}}},
+                W{EnemyType::BRUTE, 0, {{66,0,-263.5f}}},
+                W{EnemyType::MITE, 0, {{48,0,-280},{48,0,-247}}},
             },
-            {
-                W{EnemyType::BRUTE, 0, {{65,0,-292}}},
-                W{EnemyType::JUGGERNAUT, 0, {{85,0,-273}}},
-                W{EnemyType::MITE, 0, {{81,0,-283},{81,0,-244},{70,0,-236},{70,0,-291}}},
-                W{EnemyType::HUSK, 0, {{TX,12,TZ - 8},{TX,12,TZ + 8}}},
-                W{EnemyType::SENTINEL, 0, {{28,5,-293},{28,5,-233}}},
+            {   // THE PACEMAKER: the yard, the climb, the crown
+                W{EnemyType::PACEMAKER, 0, {{TX + 16.f, 0, TZ}}},
             },
         };
         B.paint(m0, Mat::MARBLE, [&](vec3 c, Mat m) {   // the courtyard and keep are dark veined slate
@@ -1043,7 +1066,21 @@ inline LevelData buildGauntlet() {
         {aabb(-18, 0, -266, 21, 60, -261),    5, 6, 0, false},
     };
 
-    // Par times (seconds): S, A, B, C
-    L.parTimes[0] = 300.f; L.parTimes[1] = 420.f; L.parTimes[2] = 570.f; L.parTimes[3] = 780.f;
+    // Each room's medals (seconds from its fight starting to its clear, the second for each enemy left
+    // standing included): gold, silver, bronze, and the dev time
+    const float medals[7][4] = {
+        { 42.f,  58.f,  80.f,  30.f},   // the Canal: two waves up the lane, the Courier run down
+        { 38.f,  52.f,  72.f,  27.f},   // the Sluice: close quarters, the Bulwark
+        { 52.f,  72.f,  98.f,  38.f},   // the Ascent: the climb, the Cantor
+        { 50.f,  70.f,  95.f,  37.f},   // the Span: the islands, the Harrier
+        { 40.f,  56.f,  78.f,  29.f},   // the Well: the drop, the Plumb Line
+        { 46.f,  64.f,  88.f,  34.f},   // the Pumpworks: the hall, the Foreman
+        {100.f, 135.f, 180.f,  78.f},   // the Tower: the yard, then the Pacemaker
+    };
+    for (int i = 0; i < 7 && i < (int)L.arenas.size(); ++i)
+        for (int k = 0; k < 4; ++k) L.arenas[i].medals[k] = medals[i][k];
+
+    // Par times for the whole run (seconds): S, A, B, C (the rooms' golds plus the tubes, and up)
+    L.parTimes[0] = 420.f; L.parTimes[1] = 560.f; L.parTimes[2] = 720.f; L.parTimes[3] = 950.f;
     return L;
 }

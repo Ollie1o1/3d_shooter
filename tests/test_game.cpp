@@ -1551,6 +1551,75 @@ int main() {
     };
     glm::vec3 P0 = A0.playerStart;
 
+    // ---------------------------------------------------------------- the Gauntlet's bosses (EnemyMini.h, EnemyPacemaker.h)
+    {
+        LevelData G = buildGauntlet();
+        SpatialGrid gg; gg.build(G.walls);
+        bool every = true, fight = true, home = true;
+        int minis = 0;
+        for (size_t r = 0; r < G.arenas.size(); ++r) {
+            const Arena& a = G.arenas[r];
+            const WaveEntry* mini = nullptr;
+            for (auto& e : a.waves.back()) if (isMiniBoss(e.type)) mini = &e;
+            if (r + 1 < G.arenas.size() && !mini) { every = false; continue; }   // a mini-boss in every room's last wave (the Tower: THE PACEMAKER)
+            if (!mini) continue;
+            ++minis;
+            const glm::vec3 at = mini->at[0], player = a.waves[0][0].at[0];   // (where the room's first enemy stands: open floor)
+            auto sm = simulate(G, gg, mini->type, at, player, a, 15.f);
+            std::printf("      %-14s %2d shots %d melee %d slams %d summons, closest %.1f m, y %.1f..%.1f\n", statsOf(mini->type).name,
+                        sm.shots, sm.melee, sm.slams, sm.summons, sm.closest, sm.minY, sm.maxY);
+            if (sm.shots + sm.melee + sm.slams + sm.summons == 0 || sm.leftBounds || sm.inWall) fight = false;
+            Enemy e(mini->type, at);
+            EnemyWorld w = worldFor(G, gg, player, a);
+            float far = 0.f;
+            for (int i = 0; i < (int)(15.f / DT); ++i) { e.update(DT, w); far = std::max(far, glm::length(glm::vec2(e.position.x - at.x, e.position.z - at.z))); }
+            if (!std::isfinite(e.position.x + e.position.y + e.position.z)) fight = false;
+            if (mini->type == EnemyType::PLUMB && (far > 3.f || e.position.y > at.y + 0.01f)) home = false;   // on its line, never above where it hung
+            if (mini->type == EnemyType::CANTOR && far > 9.f) home = false;                                   // at its window
+            if (mini->type == EnemyType::FOREMAN && far > 22.f) home = false;                                 // along its crane line
+        }
+        CHECK(every && minis == 6, "every Gauntlet room but the Tower ends with a mini-boss (the Tower: THE PACEMAKER)");
+        CHECK(fight, "each mini-boss fights in its own room: it attacks, keeps out of walls and inside the room");
+        CHECK(home, "the Plumb Line keeps to its line, the Cantor to its window, the Foreman to its crane");
+        {   // Mini-bosses: big, heavy (you fly to them on the hook), no finisher, a room-winning kill
+            Enemy c(EnemyType::COURIER, {0, 0, 0}); c.spawnTimer = 0.f; c.state = EnemyState::ACTIVE;
+            c.health = c.maxHealth * 0.1f;
+            CHECK(c.scale > 1.4f && hitreact::bodyOf(c.type).mass * c.scale * c.scale > 1.65f && !c.finishable(true),
+                  "a mini-boss is drawn big, is too heavy for the hook to yank, and can't be finished with a punch");
+            Enemy p(EnemyType::PLUMB, {0, 0, 0});
+            float shut = p.armorMult(); p.miniOpen = 1.f;
+            CHECK(shut < 0.5f && p.armorMult() >= 2.f, "the Plumb Line takes a third shut and double with its core open");
+            Enemy b(EnemyType::BULWARK, {0, 0, 0}); b.yaw = 0.f;
+            CHECK(b.blocks({0, 0, -1}) && !b.blocks({0, 0, 1}), "the Bulwark's gate stops shots from the front, not the back");
+        }
+        {   // THE PACEMAKER: up the Tower phase by phase, landing on each perch; the beacon at 10 %, broken by damage
+            const Arena& T = G.arenas.back();
+            const WaveEntry& pw = T.waves.back()[0];
+            Enemy e(EnemyType::PACEMAKER, pw.at[0]);
+            e.pmKeep = {G.finishPos.x, 0.f, G.finishPos.z};
+            EnemyWorld w = worldFor(G, gg, {40.f, 0.f, -263.5f}, T);
+            int phases = 0; bool landed = true, channelled = false, broke = false, attacked = false;
+            float t = 0.f;
+            for (; t < 120.f && e.alive; t += DT) {
+                e.update(DT, w);
+                attacked |= e.ev.shots > 0 || e.ev.meleeHit || e.ev.dashStarted || e.ev.ring;
+                if (e.ev.pmPhaseStarted > 0) ++phases;
+                if (e.ev.pmChannel == 1) channelled = true;
+                if (e.ev.pmChannel == -1) broke = true;
+                if (e.pmLeapT <= 0.f && e.pmPhase > 0 && e.recoverTimer > 0.85f &&
+                    glm::length(e.position - e.pmPerch(e.pmPhase)) > 0.6f) landed = false;
+                if (e.targetable() && std::fmod(t, 1.f) < DT)   // a steady 2.5 % a second; into a channel, enough to break it
+                    e.takeDamage(e.maxHealth * (e.pmChannel > 0.f ? 0.05f : (e.health > e.maxHealth * 0.12f ? 0.025f : 0.01f)));
+            }
+            std::printf("      the Pacemaker: %d phases, %s, channel %s, %s at %.0f s\n", phases, landed ? "on its perches" : "OFF ITS PERCH",
+                        channelled ? (broke ? "broken" : "not broken") : "never", e.alive ? "alive" : "dead", t);
+            CHECK(phases == 3 && landed, "the Pacemaker leaps to the first balcony, the second, then the roof, landing on each");
+            CHECK(attacked, "the Pacemaker fights (cuts, shots, rings)");
+            CHECK(channelled && broke, "under 10 % it lights the beacon, and damage breaks the channel");
+            CHECK(!e.alive, "the Pacemaker can be killed");
+        }
+    }
+
     { auto s = simulate(L, grid, EnemyType::HUSK, {0,0,-20}, P0, A0, 12.f);
       CHECK(s.shots >= 3, "HUSK keeps shooting at a player in the open");
       CHECK(!s.inWall && !s.leftBounds, "HUSK stays out of walls and inside the arena"); }
@@ -1934,7 +2003,7 @@ int main() {
               "every wave starts; the Core and the Sanctum end on their bosses");
         CHECK(counts[DirectorEvent::ARENA_CLEARED] == n && counts[DirectorEvent::VICTORY] == 1 &&
               counts[DirectorEvent::FINISH_OPEN] == 0, "each arena clears, then victory");
-        CHECK(counts[DirectorEvent::NEW_TYPE] == (int)EnemyType::COUNT - 7,   // the Seraph, the Anchor, the Penitent, the Revenant, the Weaver, the Leviathan and the Absolute are Act II's
+        CHECK(counts[DirectorEvent::NEW_TYPE] == (int)EnemyType::COUNT - 14,   // the Seraph, the Anchor, the Penitent, the Revenant, the Weaver, the Leviathan and the Absolute are Act II's; the 7 Gauntlet bosses FAST's
               "each Act I enemy type is introduced exactly once");
         CHECK(goalWaves >= 3 && (int)goalsDone.size() == goalWaves && counts[DirectorEvent::GOAL_DONE] == goalWaves,
               "every goal wave (hold, conduits, survive) is met once, and that ends it");
@@ -2111,7 +2180,7 @@ int main() {
         WeaponUpgrades none;
         float maxRegular = 0.f;
         for (int t = 0; t < (int)EnemyType::COUNT; ++t)
-            if (!isBoss((EnemyType)t) && (EnemyType)t != EnemyType::JUGGERNAUT)   // the heavies: parry them
+            if (!isBoss((EnemyType)t) && !isMiniBoss((EnemyType)t) && (EnemyType)t != EnemyType::JUGGERNAUT)   // the heavies: parry them; the Gauntlet's mini-bosses
                 maxRegular = std::max(maxRegular, statsOf((EnemyType)t).health);
         CHECK(weaponDamage(WeaponId::LONGSHOT, none) >= maxRegular, "the Longshot one-shots every regular enemy");
         CHECK(weaponDamage(WeaponId::KAR, none) * weaponDef(WeaponId::KAR).headMult >= maxRegular,
@@ -2749,7 +2818,7 @@ int main() {
         CHECK(levels, "every voice sits within 2 dB of its mix class's level");
         CHECK(varied, "a voice's variants differ");
         CHECK(same, "the same voice builds the same every time");
-        CHECK(total <= 225.f, "the whole voice bank is at most 225 s of audio");   // (180 before the Leviathan, 200 before the Absolute, 220 before THUNDERCLAP)
+        CHECK(total <= 270.f, "the whole voice bank is at most 270 s of audio");   // (180 before the Leviathan, 200 before the Absolute, 220 before THUNDERCLAP, 225 before the Gauntlet's seven bosses)
     }
 
     // ---------------------------------------------------------------- enemy voices: who gets to speak
@@ -2960,7 +3029,9 @@ int main() {
                                 "sword_draw", "sword_swing", "sword_hit", "sword_thrust", "sword_guard", "sword_block", "sword_break",
                                 "kill_light", "kill_heavy", "kill_rifle", "kill_blade",
                                 "jump_air", "land_heavy", "slide", "hit_head", "ammo_low", "heartbeat", "hit_armor", "impact", "casing", "whiz", "step_metal", "land_metal", "lastkill",
-                                "hit_body", "stun", "finisher", "overdrive_on", "overdrive_off", "finish_ready", "hook_yank"};
+                                "hit_body", "stun", "finisher", "overdrive_on", "overdrive_off", "finish_ready", "hook_yank",
+                                "anvil", "anvil_final", "record", "split_behind", "count_tick", "count_go", "drive_warn", "drive_ready",
+                                "mini_sting", "bell", "medal"};
         std::vector<std::string> names(std::begin(loaded), std::end(loaded));
         for (const std::string& n : abAllSounds()) names.push_back(n);   // THE ABSOLUTE's fight (AbsoluteFeel.h)
         bool all = true; for (const std::string& n : names) all &= mixEntry(n) != nullptr;

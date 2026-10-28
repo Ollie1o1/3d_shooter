@@ -13,10 +13,40 @@
 // it stands still and the wave keeps coming out of it until it's destroyed.
 // CONDUCTOR: doesn't attack either; it tethers nearby allies and shields them
 // (linkConductors below), so it's the one to kill first.
+// The Gauntlet's (FAST): a mini-boss in each room, THE COURIER .. THE FOREMAN (EnemyMini.h), and its
+// final boss, THE PACEMAKER (bosses/pacemaker). Each mini-boss moves on an older enemy's skeleton
+// (rigBase) at a bigger size, with a body of its own made in Blender.
 enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, JUGGERNAUT, WARDEN, SOVEREIGN, SHIELDBEARER, CONDUIT,
-                       CONDUCTOR, SERAPH, ANCHOR, PENITENT, REVENANT, WEAVER, LEVIATHAN, ABSOLUTE, COUNT };
+                       CONDUCTOR, SERAPH, ANCHOR, PENITENT, REVENANT, WEAVER, LEVIATHAN, ABSOLUTE,
+                       COURIER, BULWARK, CANTOR, HARRIER, PLUMB, FOREMAN, PACEMAKER, COUNT };
 inline bool isBoss(EnemyType t) { return t == EnemyType::WARDEN || t == EnemyType::SOVEREIGN || t == EnemyType::PENITENT || t == EnemyType::LEVIATHAN ||
-                                         t == EnemyType::ABSOLUTE; }
+                                         t == EnemyType::ABSOLUTE || t == EnemyType::PACEMAKER; }
+// A Gauntlet room's mini-boss: a boss bar and a death of its own, no finisher; kill it and the room is won
+inline bool isMiniBoss(EnemyType t) { return t >= EnemyType::COURIER && t <= EnemyType::FOREMAN; }
+// Whose skeleton (and pose, head box, joints) a type moves on
+inline EnemyType rigBase(EnemyType t) {
+    switch (t) {
+        case EnemyType::COURIER: return EnemyType::RIPPER;
+        case EnemyType::BULWARK: return EnemyType::SHIELDBEARER;
+        case EnemyType::CANTOR:  return EnemyType::SERAPH;
+        case EnemyType::HARRIER: return EnemyType::RAPTOR;
+        case EnemyType::PLUMB:   return EnemyType::CONDUIT;
+        case EnemyType::FOREMAN: return EnemyType::CONDUCTOR;
+        default: return t;
+    }
+}
+// How much bigger than its rig's enemy a mini-boss is drawn (and hit)
+inline float miniScale(EnemyType t) {
+    switch (t) {
+        case EnemyType::COURIER: return 1.55f;
+        case EnemyType::BULWARK: return 1.7f;
+        case EnemyType::CANTOR:  return 1.9f;
+        case EnemyType::HARRIER: return 2.3f;
+        case EnemyType::PLUMB:   return 1.45f;
+        case EnemyType::FOREMAN: return 1.7f;
+        default: return 1.f;
+    }
+}
 
 // Hollowed variants (Act II): a regular enemy made harder in one specific way.
 //   ENRAGED  faster, shorter wind-ups, hits harder
@@ -24,7 +54,7 @@ inline bool isBoss(EnemyType t) { return t == EnemyType::WARDEN || t == EnemyTyp
 //   HALOED   takes a tenth of the damage until a headshot or a parry breaks its halo
 enum class Hollow { NONE, ENRAGED, TWINNED, HALOED };
 inline bool canBeHollow(EnemyType t) {
-    return !isBoss(t) && t != EnemyType::CONDUIT && t != EnemyType::CONDUCTOR;
+    return !isBoss(t) && !isMiniBoss(t) && t != EnemyType::CONDUIT && t != EnemyType::CONDUCTOR;
 }
 inline const char* hollowName(Hollow h) {
     switch (h) { case Hollow::ENRAGED: return "ENRAGED"; case Hollow::TWINNED: return "TWINNED";
@@ -127,6 +157,28 @@ inline EnemyStats& statsEdit(EnemyType t) {
         {"THE ABSOLUTE", 10800.f, 0.6f, 2.6f, 11.f, 0.45f, 0.9f, false,   // the encore (EnemyAbsolute.h)
          {0.95f,0.95f,0.98f}, {1.6f,1.5f,1.2f}, {1.6f,1.55f,1.4f},
          "WHITE: PARRY  GOLD: DODGE OR BLOCK  RED: GET OUT"},
+        // The Gauntlet's mini-boss (radius and height: their rig's enemy's; miniScale makes them big)
+        {"THE COURIER", 560.f, 0.55f, 1.10f, 9.5f, 0.45f, 3.6f, false,
+         {0.78f,0.36f,0.10f}, {1.0f,0.86f,0.30f}, {1.0f,0.8f,0.3f},
+         "IT HAS THE KEY - RUN IT DOWN (HOOK IT, PUNCH IT)"},
+        {"THE BULWARK", 1150.f, 0.6f, 2.20f, 2.7f, 0.7f, 2.6f, false,
+         {0.30f,0.36f,0.38f}, {0.3f,1.0f,0.75f}, {0.4f,1.0f,0.8f},
+         "ITS GATE STOPS EVERYTHING - VAULT THE PADS, HIT ITS BACK"},
+        {"THE CANTOR", 900.f, 0.8f, 1.6f, 4.0f, 1.0f, 3.0f, true,
+         {0.86f,0.74f,0.52f}, {1.0f,0.75f,0.35f}, {1.0f,0.8f,0.45f},
+         "CLIMB THROUGH ITS BEAM - JUMP THE BELL'S RINGS"},
+        {"THE HARRIER", 760.f, 1.00f, 0.90f, 9.0f, 0.55f, 2.2f, true,
+         {0.24f,0.26f,0.34f}, {0.4f,0.85f,1.0f}, {0.45f,0.85f,1.0f},
+         "WHEN IT DIVES, IT LANDS - HOOK IT AND HIT IT THERE"},
+        {"THE PLUMB LINE", 1000.f, 0.8f, 3.4f, 6.0f, 0.9f, 3.2f, true,
+         {0.26f,0.22f,0.20f}, {1.0f,0.55f,0.2f}, {1.0f,0.6f,0.25f},
+         "ARMOURED - SHOOT ITS CORE WHEN IT OPENS AFTER A VOLLEY"},
+        {"THE FOREMAN", 700.f, 0.75f, 1.7f, 5.0f, 0.9f, 2.8f, true,
+         {0.62f,0.48f,0.14f}, {1.0f,0.7f,0.15f}, {1.0f,0.6f,0.15f},
+         "ITS CREW SHIELDS IT - CUT THE TETHERS, THEN BRING IT DOWN"},
+        {"THE PACEMAKER", 5200.f, 0.55f, 2.6f, 7.0f, 0.5f, 1.0f, false,
+         {0.16f,0.17f,0.20f}, {1.0f,0.55f,0.12f}, {1.0f,0.7f,0.3f},
+         "WHITE: PARRY - IT RACES YOU TO THE BEACON"},
     };
     return S[(int)t];
 }

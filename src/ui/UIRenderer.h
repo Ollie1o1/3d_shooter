@@ -563,9 +563,44 @@ public:
         end2D();
     }
 
+    // FAST's ROOM ATTACK: the room on its own, its time against its medals
+    void renderVictoryRoom(const char* name, float time, int medal, const float medals[4], bool newBest, float best,
+                           int left, int deaths, int shots, int hits) {
+        begin2D();
+        ui.rect(0, 0, screenW, screenH, {0.03f, 0.0f, 0.02f, 0.75f});
+        ui.text("ROOM ATTACK", screenW / 2, 60, 2, {1.f, 0.6f, 0.2f, 0.85f}, true);
+        ui.text(name, screenW / 2, 86, 4, {1.f, 0.6f, 0.2f, 0.95f}, true);
+        std::string ts = formatTime(time);
+        ui.text(ts.c_str(), screenW / 2, 136, 6, {1.f, 0.95f, 0.85f, 1.f}, true);
+        glm::vec3 mc = medalColor(medal);
+        ui.text(medal ? medalName(medal) : "NO MEDAL", screenW / 2, 196, 4, {mc.x, mc.y, mc.z, 1.f}, true);
+        char buf[96];
+        if (newBest) ui.text("NEW BEST", screenW / 2, 244, 3, {1.f, 0.85f, 0.2f, 0.5f + 0.5f * std::sin(hudTime * 6.f)}, true);
+        else if (best > 0.f) {
+            std::snprintf(buf, sizeof(buf), "BEST %s   (+%.2f)", formatTime(best).c_str(), time - best);
+            ui.text(buf, screenW / 2, 248, 2, {0.75f, 0.55f, 0.5f, 0.9f}, true);
+        }
+        int y = 290;
+        static const int order[4] = {3, 0, 1, 2};   // the dev time (once beaten), gold, silver, bronze
+        for (int k : order) {
+            if (k == 3 && medal < 4) continue;
+            const int m = k == 3 ? 4 : 3 - k;
+            glm::vec3 c = medalColor(m);
+            std::snprintf(buf, sizeof(buf), "%-9s %s", medalName(m), formatTime(medals[k]).c_str());
+            ui.text(buf, screenW / 2, y, 2, {c.x, c.y, c.z, time <= medals[k] ? 1.f : 0.45f}, true);
+            y += 24;
+        }
+        float acc = shots > 0 ? (float)hits / (float)shots * 100.f : 0.f;
+        std::snprintf(buf, sizeof(buf), "LEFT STANDING %d    ACCURACY %d%%    DEATHS %d", left, (int)acc, deaths);
+        ui.text(buf, screenW / 2, y + 18, 2, {0.9f, 0.9f, 0.9f, 0.9f}, true);
+        ui.text("ENTER - RUN IT AGAIN    ESC - MENU", screenW / 2, screenH - 40, 2, {0.6f, 0.6f, 0.6f, 0.85f}, true);
+        end2D();
+    }
+
     void renderVictoryFast(float time, float best, bool newRecord, const char* rank, int kills, int shots, int hits,
                            int deaths, const std::vector<float>& splits, const std::vector<float>& bestSplits,
-                           bool showKeys = true) {
+                           bool showKeys = true, const std::vector<float>* roomTimes = nullptr,
+                           const std::vector<int>* roomMedals = nullptr, int left = 0) {
         begin2D();
         ui.rect(0, 0, screenW, screenH, {0.03f, 0.0f, 0.02f, 0.75f});
         ui.text("GAUNTLET COMPLETE", screenW / 2, 70, 4, {1.f, 0.6f, 0.2f, 0.95f}, true);
@@ -580,17 +615,24 @@ public:
         // Splits table
         int y = 216;
         for (size_t i = 0; i < splits.size(); ++i, y += 22) {
-            std::snprintf(buf, sizeof(buf), "LEVEL %d", (int)i + 1);
-            ui.text(buf, screenW / 2 - 220, y, 2, {0.75f, 0.75f, 0.8f, 0.9f});
+            std::snprintf(buf, sizeof(buf), "ROOM %d", (int)i + 1);
+            ui.text(buf, screenW / 2 - 300, y, 2, {0.75f, 0.75f, 0.8f, 0.9f});
             std::string st = formatTime(splits[i]);
-            ui.text(st.c_str(), screenW / 2 + 10, y, 2, {0.95f, 0.95f, 0.95f, 0.95f});
+            ui.text(st.c_str(), screenW / 2 - 110, y, 2, {0.95f, 0.95f, 0.95f, 0.95f});
             if (i < bestSplits.size()) {
                 float d = splits[i] - bestSplits[i];
                 std::snprintf(buf, sizeof(buf), "%+.2f", d);
-                ui.text(buf, screenW / 2 + 140, y, 2, d <= 0.f ? glm::vec4{0.3f, 1.f, 0.5f, 1.f} : glm::vec4{1.f, 0.4f, 0.35f, 1.f});
+                ui.text(buf, screenW / 2 + 40, y, 2, d <= 0.f ? glm::vec4{0.3f, 1.f, 0.5f, 1.f} : glm::vec4{1.f, 0.4f, 0.35f, 1.f});
+            }
+            if (roomTimes && roomMedals && i < roomTimes->size() && i < roomMedals->size()) {   // the room on its own, and its medal
+                const int m = (*roomMedals)[i];
+                glm::vec3 c = medalColor(m);
+                std::snprintf(buf, sizeof(buf), "%s %s", formatTime((*roomTimes)[i]).c_str(), m ? medalName(m) : "");
+                ui.text(buf, screenW / 2 + 150, y, 2, {c.x, c.y, c.z, 0.95f});
             }
         }
         float acc = shots > 0 ? (float)hits / (float)shots * 100.f : 0.f;
+        if (left > 0) { std::snprintf(buf, sizeof(buf), "LEFT STANDING %d  (+%d S)", left, left); ui.text(buf, screenW / 2, y + 2, 1, {1.f, 0.6f, 0.4f, 0.9f}, true); y += 14; }
         std::snprintf(buf, sizeof(buf), "KILLS %d    ACCURACY %d%%    DEATHS %d", kills, (int)acc, deaths);
         ui.text(buf, screenW / 2, y + 16, 2, {0.9f, 0.9f, 0.9f, 0.9f}, true);
         ui.text(rank, screenW / 2, y + 48, 7, {1.f, 0.85f, 0.2f, 0.95f}, true);

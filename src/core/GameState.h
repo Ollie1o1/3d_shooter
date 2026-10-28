@@ -23,4 +23,5 @@ struct StartOptions {
     bool god   = false;
     bool practice = false;   // no records, no leaderboard
     int  boss = -1;          // BOSS: which boss (bossEntry, Progression.h), fought on its own
+    int  room = -1;          // FAST: ROOM ATTACK, one room on its own (-1: the whole Gauntlet)
 };

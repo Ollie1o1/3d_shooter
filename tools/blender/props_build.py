@@ -283,3 +283,134 @@ if want("hook"):   # the grapple's claw: a shaft, a collar, three prongs curving
         tube([(0.03 * ca, 0.03 * sa, 0.02), (0.1 * ca, 0.1 * sa, -0.01), (0.12 * ca, 0.12 * sa, -0.09)], [0.014, 0.011, 0.007], "girder*1.5", None,
              sides=6, tip=0.03)
     save("hook")
+
+# ---- THE GAUNTLET (FAST) --------------------------------------------------------------------------
+_og.PALETTE.update({"concrete": (0.52, 0.54, 0.58), "steel": (0.30, 0.33, 0.36), "medic": (0.80, 0.82, 0.84),
+                    "sand": (0.62, 0.50, 0.36), "slate2": (0.26, 0.26, 0.34), "banner": (0.42, 0.06, 0.24), "wax": (0.92, 0.88, 0.74)})
+TEX.update({"concrete": "concrete", "steel": "metal", "sand": "limestone", "slate2": "marble"})
+
+if want("exit_arch"):   # 6.6 x 6.4 x 0.7, free-standing (its own size): the frame round a room's exit door (5 x 4.5) -
+    begin()             # steel pillars with lit chevrons running toward the opening, a lintel, a beacon that says GO
+    for s in (-1, 1):
+        B((s * 2.95, 3.0, 0), (0.7, 6.0, 0.7), "steel", None, bev=0.05, seg=2)                              # pillars
+        B((s * 2.95, 0.2, 0), (0.9, 0.4, 0.9), "steel*0.7", None, bev=0.04)                                 # their feet
+        for k in range(5):                                                                                   # chevrons up them
+            glow(P((s * 2.6, 0.8 + k * 0.9, 0.36), (0.12, 0.5, 0.04), "lit", None, rot=(0, 0, s * 35), top=(1.0, 1.0)), (0.3, 1.4, 0.6))
+    B((0, 5.3, 0), (6.6, 0.8, 0.7), "steel", None, bev=0.05, seg=2)                                         # lintel
+    glow(B((0, 4.82, 0.36), (5.2, 0.12, 0.04), "lit", None), (0.3, 1.4, 0.6))                               # a lit edge over the opening
+    for k in range(5):                                                                                       # arrows across the lintel
+        glow(W((-2.0 + k, 5.3, 0.37), (0.36, 0.36, 0.04), "lit", None, rot=(0, 0, -90), taper=0.05), (0.4, 1.6, 0.7))
+    C((0, 6.0, 0), 0.32, 0.5, "steel*0.8", None, sides=12)                                                  # the beacon's housing
+    glow(E((0, 6.3, 0), (0.42, 0.42, 0.42), "lit", None, seg=12, rings=6), (0.4, 1.8, 0.8))                 # the beacon
+    save("exit_arch")
+
+if want("health_station"):   # 1.2 x 1.4 x 0.3, on a tube wall (free): a medical cabinet with a lit cross, a hose and a gauge
+    begin()
+    B((0, 0.7, 0), (1.2, 1.4, 0.3), "medic", None, bev=0.04, seg=2)
+    B((0, 0.7, 0.14), (1.0, 1.2, 0.04), "medic*0.8", None, bev=0.01)
+    glow(B((0, 0.82, 0.17), (0.5, 0.14, 0.02), "lit", None), (1.6, 0.25, 0.2))                              # the cross
+    glow(B((0, 0.82, 0.17), (0.14, 0.5, 0.02), "lit", None), (1.6, 0.25, 0.2))
+    C((0.38, 0.32, 0.17), 0.08, 0.03, "steel", None, rot=(90, 0, 0), sides=14)                              # a gauge
+    glow(C((0.38, 0.32, 0.185), 0.06, 0.01, "lit", None, rot=(90, 0, 0), sides=14), (0.4, 1.4, 0.5))
+    tube([(-0.4, 0.3, 0.17), (-0.48, 0.12, 0.2), (-0.3, 0.04, 0.22)], [0.03, 0.03, 0.03], "iron", None, sides=8)   # hose
+    save("health_station")
+
+if want("jersey_barrier"):   # 4 x 1.2 x 1: a concrete barrier, a hazard stripe, a lamp on top (dresses the Canal's cover)
+    begin()
+    P((0, 0.25, 0), (4.0, 0.5, 1.0), "concrete", None, top=(1.0, 0.7), bev=0.03)
+    P((0, 0.85, 0), (4.0, 0.7, 0.7), "concrete*1.05", None, top=(1.0, 0.55), bev=0.03)
+    for k in range(5):
+        P((-1.6 + 0.8 * k, 0.75, 0.37), (0.3, 0.2, 0.02), "hazard", None, rot=(-20, 0, 0), top=(1.0, 1.0))
+        P((-1.6 + 0.8 * k, 0.75, -0.37), (0.3, 0.2, 0.02), "hazard", None, rot=(20, 0, 0), top=(1.0, 1.0))
+    C((1.6, 1.12, 0), 0.07, 0.12, "iron", None, sides=10)
+    glow(C((1.6, 1.16, 0), 0.05, 0.06, "lit", None, sides=10), (1.6, 0.7, 0.2))                             # warning lamp
+    save("jersey_barrier")
+
+if want("canal_lamp"):   # free (0.6 x 5.4 x 1.2): a cast-iron lamp post leaning out over the lane, a lantern on its arm
+    begin()
+    C((0, 0.15, 0), 0.25, 0.3, "iron", None, sides=10)
+    C((0, 2.5, 0), 0.08, 4.6, "iron*1.2", None, sides=8, r2=0.06)
+    for y in (0.6, 4.4):
+        R((0, y, 0), 0.1, 0.02, "brass", None, rot=(90, 0, 0), sides=12, tsides=4)
+    tube([(0, 4.6, 0), (0, 5.1, 0.25), (0, 5.05, 0.75)], [0.05, 0.045, 0.04], "iron*1.2", None, sides=8)     # the arm
+    C((0, 4.8, 0.85), 0.16, 0.3, "iron", None, sides=6, r2=0.1)                                              # the lantern
+    glow(C((0, 4.62, 0.85), 0.12, 0.2, "lit", None, sides=6), (1.6, 1.0, 0.55))
+    save("canal_lamp")
+
+if want("valve_panel"):   # free (1.6 x 1.2 x 0.25, on a wall): two valve wheels, gauges, a run of pipe and a lit status strip
+    begin()
+    B((0, 0.6, 0), (1.6, 1.2, 0.16), "steel*0.8", None, bev=0.02)
+    for x in (-0.42, 0.42):
+        C((x, 0.6, 0.1), 0.05, 0.12, "iron", None, rot=(90, 0, 0), sides=8)
+        R((x, 0.6, 0.17), 0.2, 0.025, "rust", None, sides=20, tsides=5)                                     # valve wheels
+        for a in (0, 60, 120):
+            B((x, 0.6, 0.17), (0.38, 0.03, 0.025), "rust", None, rot=(0, 0, a))
+    for x in (-0.15, 0.15):
+        C((x, 1.0, 0.1), 0.08, 0.03, "brass", None, rot=(90, 0, 0), sides=14)                               # gauges
+        glow(C((x, 1.0, 0.115), 0.065, 0.01, "lit", None, rot=(90, 0, 0), sides=14), (0.3, 1.4, 0.7))
+    C((0, 0.12, 0.12), 0.06, 1.5, "rust*0.8", None, rot=(0, 0, 90), sides=10)                               # pipe
+    glow(B((0, 0.28, 0.09), (1.2, 0.04, 0.02), "lit", None), (0.3, 1.4, 0.6))
+    save("valve_panel")
+
+if want("altar"):   # 2 x 2 x 4 (dresses the Ascent's step blocks): carved sandstone, a cloth, candles burning on it
+    begin()
+    B((0, 0.12, 0), (2.0, 0.24, 4.0), "sand*0.85", None, bev=0.04)
+    B((0, 0.95, 0), (1.7, 1.45, 3.7), "sand", None, bev=0.06, seg=2)
+    for z in (-1.2, 0, 1.2):
+        for s in (-1, 1):
+            B((s * 0.86, 0.95, z), (0.04, 1.0, 0.7), "sand*0.7", None, bev=0.01)                            # carved panels
+    B((0, 1.7, 0), (1.9, 0.06, 3.9), "banner", None)                                                         # the cloth
+    B((0, 1.45, 1.86), (1.0, 0.5, 0.04), "banner", None)
+    for x, z, h in ((-0.6, -1.4, 0.22), (-0.3, -1.6, 0.16), (0.5, -1.3, 0.25), (0.6, 1.2, 0.18), (-0.5, 1.4, 0.24), (0.2, 1.6, 0.14)):
+        C((x, 1.73 + h * 0.5, z), 0.035, h, "wax", None, sides=8)                                            # candles
+        glow(E((x, 1.75 + h + 0.03, z), (0.03, 0.06, 0.03), "lit", None, seg=6, rings=4), (1.6, 0.9, 0.35))
+    save("altar")
+
+if want("wind_flag"):   # free (1 x 5 x 1.6): a pole and a long pennant streaming in the canyon wind
+    begin()
+    C((0, 0.1, 0), 0.18, 0.2, "iron", None, sides=8)
+    C((0, 2.5, 0), 0.04, 4.8, "steel", None, sides=6)
+    for k in range(6):
+        P((0, 4.4 - 0.02 * k, 0.15 + 0.25 * k), (0.02, 0.5 - 0.06 * k, 0.26), "banner" if k % 2 == 0 else "medic", None,
+          rot=(4 * k, 0, 0), top=(1.0, 0.9))
+    glow(E((0, 4.95, 0), (0.08, 0.08, 0.08), "lit", None, seg=6, rings=4), (0.4, 1.2, 1.6))
+    save("wind_flag")
+
+if want("console"):   # free (2.4 x 1.2 x 0.8): a control desk - a slanted panel of lit keys, two screens, a lever bank
+    begin()
+    B((0, 0.45, 0), (2.4, 0.9, 0.8), "steel*0.8", None, bev=0.03)
+    P((0, 1.0, 0.05), (2.3, 0.2, 0.7), "steel", None, rot=(-25, 0, 0), top=(1.0, 0.9), bev=0.02)
+    for k in range(10):
+        glow(B((-1.0 + 0.22 * k, 1.05, 0.1), (0.12, 0.03, 0.08), "lit", None, rot=(-25, 0, 0)), (1.5, 0.8, 0.2) if k % 3 else (0.3, 1.4, 0.6))
+    for x in (-0.6, 0.6):
+        B((x, 1.5, -0.3), (0.9, 0.6, 0.08), "iron", None, bev=0.02)                                         # screens
+        glow(B((x, 1.5, -0.25), (0.78, 0.48, 0.02), "lit", None), (0.9, 0.55, 0.15))
+    for k in range(4):
+        C((0.75 + 0.12 * k, 1.18, 0.25), 0.015, 0.22, "iron", None, rot=(-30, 0, 0), sides=6)               # levers
+        glow(E((0.75 + 0.12 * k, 1.3, 0.31), (0.04, 0.04, 0.04), "lit", None, seg=6, rings=4), (1.6, 0.3, 0.2))
+    save("console")
+
+if want("banner"):   # free (2.2 x 7 x 0.3, on a wall): a long banner on a rod, a clock face sewn on it, a fringe
+    begin()
+    C((0, 6.9, 0), 0.05, 2.4, "brass", None, rot=(0, 0, 90), sides=8)
+    B((0, 3.6, 0), (2.0, 6.6, 0.04), "banner", None)
+    for k in range(5):
+        W((-0.8 + 0.4 * k, 0.15, 0), (0.36, 0.3, 0.04), "banner", None, rot=(0, 0, 180), taper=0.1)        # its points
+    C((0, 4.6, 0.03), 0.6, 0.02, "brass*0.8", None, rot=(90, 0, 0), sides=24)                               # the clock on it
+    glow(R((0, 4.6, 0.05), 0.6, 0.03, "lit", None, sides=28, tsides=4), (1.4, 0.4, 1.0))
+    B((0, 4.75, 0.05), (0.04, 0.34, 0.02), "lit", None)
+    B((0.1, 4.6, 0.05), (0.24, 0.04, 0.02), "lit", None)
+    save("banner")
+
+if want("brazier"):   # free (1.6 x 1.8 x 1.6): an iron bowl on three legs, a fire of light in it
+    begin()
+    for k in range(3):
+        a = k * 2 * math.pi / 3
+        P((0.55 * math.cos(a), 0.55, 0.55 * math.sin(a)), (0.1, 1.1, 0.1), "iron", None, rot=(0, -math.degrees(a), -12), top=(0.6, 0.6))
+    C((0, 1.25, 0), 0.75, 0.4, "iron*1.2", None, sides=16, r2=0.5)                                          # the bowl
+    R((0, 1.45, 0), 0.76, 0.04, "brass", None, rot=(90, 0, 0), sides=24, tsides=4)
+    glow(E((0, 1.5, 0), (1.1, 0.35, 1.1), "lit", None, seg=12, rings=6), (1.7, 0.5, 1.2))                   # coals
+    for k in range(5):
+        a = k * 2 * math.pi / 5
+        glow(K((0.25 * math.cos(a), 1.5, 0.25 * math.sin(a)), 0.16, 0.4 + 0.1 * (k % 3), "lit", None, sides=6), (1.8, 0.6, 1.3))   # flames
+    save("brazier")
