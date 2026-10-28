@@ -11,9 +11,9 @@
 //            overshoot (0.2 s) while its cells boot up in sequence, a chime
 //   RELOAD   three beats: OPEN (0-25 %) tilt in, action opens; FEED (25-85 %)
 //            the cells relight one by one, a tick each; CLOSE (85-100 %) snap
-//   DRAW     once it's up, a flourish of its own (0.45 s, never on a quick swap): the revolver tipped to show
-//            its cylinder and a click, the shotgun racked, the Lancer's bolt checked, the Longshot settled
-//            into the shoulder. Firing, reloading, inspecting or switching cuts it: it never costs a shot
+//   DRAW     once it's up, a flourish of its own (0.45 s, never on a quick swap): the revolver twirled
+//            once round, its cylinder whirring, a click as it lands; the shotgun racked; the Lancer's bolt
+//            checked and the Longshot settled into the shoulder (both small). Firing, reloading, inspecting or switching cuts it: it never costs a shot
 //   INSPECT  turn it to show its side, run the cells
 //   + idle breathing sway, a landing dip, a tilt on a dash, a dip on a slide
 // =============================================================================
@@ -46,6 +46,7 @@ struct GunPose {
     float fireU = 0.f;                // the kick: 1 as it fires .. 0 settled
     float boot = 1.f;                 // 0..1 cells booting after a switch (1: all on)
     float inspectU = -1.f;
+    float drawU = -1.f;               // 0..1 through the draw's flourish, -1: none (the revolver's cylinder whirs)
     bool  hidden = false;             // all the way down mid-switch
 };
 
@@ -120,7 +121,7 @@ public:
             }
         }
         if (drawT >= 0.f) {
-            static const float AT[4] = {0.55f, 0.35f, 0.45f, 0.5f};
+            static const float AT[4] = {0.8f, 0.35f, 0.45f, 0.5f};
             static const char* CUE[4] = {"cyl_close", "pump", "bolt", "bolt"};
             drawT += dt;
             if (!drawCued && drawT >= AT[std::clamp(gun, 0, 3)] * DRAW_LEN) { cues.push_back({CUE[std::clamp(gun, 0, 3)], gun == 0 ? 90 : 75}); drawCued = true; }
@@ -187,11 +188,14 @@ public:
         p.boot = bootT();
         if (drawT >= 0.f) {   // DRAW: its flourish, in and back out (sin), the action's beat a sharper bump on top
             const float u = std::min(1.f, drawT / DRAW_LEN), e = std::sin(u * 3.14159265f);
+            p.drawU = u;
             switch (gun) {
-                case 0: {   // tipped in to show the cylinder, then the click
-                    const float c = std::exp(-std::pow((u - 0.55f) / 0.07f, 2.f));
-                    p.yaw += 22.f * e; p.roll += -26.f * e; p.pitch += 5.f * e - 3.f * c;
-                    p.offset += glm::vec3{-0.03f * e, 0.02f * e, 0.f};
+                case 0: {   // twirled once round on the finger (muzzle up and back over), tipped in a touch, landing with a click
+                    const float s = 1.f - std::pow(1.f - std::min(1.f, u / 0.8f), 3.f);
+                    const float c = std::exp(-std::pow((u - 0.8f) / 0.06f, 2.f));
+                    p.pitch += 360.f * s - 2.5f * c;
+                    p.yaw += 6.f * e; p.roll += -6.f * e;
+                    p.offset += glm::vec3{-0.01f * e, 0.03f * e, 0.f};
                     break;
                 }
                 case 1: {   // racked: dips, the pump pulls back and shoves home
@@ -200,14 +204,14 @@ public:
                     p.offset += glm::vec3{0.f, -0.02f * e, -0.035f * r};
                     break;
                 }
-                case 2: {   // the bolt checked: rolled over to look at the breech
-                    p.roll += -18.f * e; p.yaw += 8.f * e; p.pitch += 3.f * e;
-                    p.offset += glm::vec3{-0.02f * e, 0.015f * e, 0.f};
+                case 2: {   // the bolt checked: rolled a little toward you
+                    p.roll += -8.f * e; p.yaw += 3.f * e; p.pitch += 1.5f * e;
+                    p.offset += glm::vec3{-0.008f * e, 0.006f * e, 0.f};
                     break;
                 }
-                default: {   // settled into the shoulder: a lift, then down onto it
+                default: {   // settled into the shoulder: a small lift, then down onto it
                     const float s2 = std::sin(u * 6.2831853f);
-                    p.pitch += 6.f * s2 * (1.f - u); p.offset += glm::vec3{0.f, 0.015f * s2 * (1.f - u), -0.02f * e};
+                    p.pitch += 2.5f * s2 * (1.f - u); p.offset += glm::vec3{0.f, 0.006f * s2 * (1.f - u), -0.008f * e};
                     break;
                 }
             }
