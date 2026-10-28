@@ -878,6 +878,14 @@ inline void GameplayState::update(float dt) {
     }
     if (g_devOverlay.rfind("inspect", 0) == 0) viewModel.motion.devInspect(std::atoi(g_devOverlay.c_str() + 7) / 100.f);
     if (g_devOverlay.rfind("switch", 0) == 0) viewModel.motion.devSwitch(std::atoi(g_devOverlay.c_str() + 6) / 100.f, activeWeapon);
+    if (g_devOverlay.rfind("hand", 0) == 0 && g_devOverlay.size() >= 6) {   // --overlay handPV: a hand up close (ViewModel::drawDevHand)
+        viewModel.devHand = std::atoi(g_devOverlay.substr(4, g_devOverlay.size() - 5).c_str()); viewModel.devHandView = g_devOverlay.back() - '0';
+    }
+    // --overlay fanNN / faninNN / fanoutNN: the fanning hand NN% round a slap / of the way in / of the way put away
+    if (g_devOverlay.rfind("fan", 0) == 0 && g_devOverlay.size() > 3) {
+        const bool in = g_devOverlay.rfind("fanin", 0) == 0, out = g_devOverlay.rfind("fanout", 0) == 0;
+        viewModel.devFan(std::atoi(g_devOverlay.c_str() + (in ? 5 : out ? 6 : 3)) / 100.f, in ? 1 : out ? 2 : 0);
+    }
     if (g_devOverlay == "punch") { viewModel.parryTimer = ViewModel::PARRY_TIME * 0.62f; viewModel.parryHit = true; }
     // --overlay showcase: one of each pickup and shot hanging in a row in front of you, the hook beside them
     if (g_devOverlay == "showcase") {

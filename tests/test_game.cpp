@@ -4403,17 +4403,31 @@ int main() {
     // ---------------------------------------------------------------- your arms' file (assets/guns/arm.glb)
     {
         const gunkit::GunModel* am = armfile::model();
-        CHECK(am && am->has(armfile::A_UPPER) && am->has(armfile::A_FORE) && am->has(armfile::A_FIST), "your arms' file loads, with its three joints");
-        auto count = [&](float side, bool open, bool gauntlet) {
+        bool joints = am != nullptr;
+        for (int j = armfile::A_UPPER; j < armfile::A_COUNT && am; ++j) joints &= am->has(j);
+        CHECK(joints, "your arms' file loads, with the arm's three joints and five fingers of three joints each");
+        auto count = [&](float side, const armfile::HandPose& hp, bool gauntlet) {
             std::vector<GunPart> out; gunkit::Builder b{out, glm::vec3{1.f}};
-            armfile::ArmLook L; L.open = open; L.gauntlet = gauntlet;
+            armfile::ArmLook L; L.hand = hp; L.gauntlet = gauntlet;
             glm::mat4 fist = glm::translate(glm::mat4(1.f), {side * 0.1f, -0.2f, 0.4f});
             armfile::draw(b, {side * 0.34f, -0.62f, 0.f}, fist, side, L);
             return out;
         };
-        auto closed = count(1.f, false, false), palm = count(1.f, true, false), parry = count(-1.f, false, true), left = count(-1.f, false, false);
-        CHECK(!closed.empty() && closed.size() != palm.size() && parry.size() > closed.size(), "a closed hand, an open palm and the gauntlet each draw their own parts");
+        auto closed = count(1.f, armfile::handGrip(), false), palm = count(1.f, armfile::handFlat(), false);
+        auto parry = count(-1.f, armfile::handFist(), true), left = count(-1.f, armfile::handGrip(), false);
+        CHECK(!closed.empty() && closed.size() == palm.size() && parry.size() > closed.size(), "one hand bends from a grip to a flat palm; the gauntlet adds its plates");
         CHECK(left.size() == closed.size(), "the left arm is the right one, mirrored");
+        // the fingers bend: from flat to closed, the fingertips come back toward the palm (closer to the hand's origin)
+        float flatReach = 0.f, gripReach = 0.f;
+        // (the hand's fingers reach out along its +X: the furthest part out that way, round the hand)
+        auto reachOf = [](const std::vector<GunPart>& v) { float r = 0.f; for (auto& p : v) if (std::fabs(p.xf[3].z - 0.4f) < 0.06f && p.xf[3].y > -0.26f) r = std::max(r, p.xf[3].x); return r; };
+        flatReach = reachOf(palm); gripReach = reachOf(closed);
+        CHECK(gripReach < flatReach - 0.02f, "closing the hand curls the fingers in");
+        // a hand on a spring settles on the pose it's given, and isn't stiff: it overshoots a hair on the way
+        armfile::HandSpring hs; hs.step(armfile::handFlat(), 0.016f);
+        float peak = 0.f;
+        for (int i = 0; i < 60; ++i) { hs.step(armfile::handFist(), 1.f / 60.f); peak = std::max(peak, hs.cur.curl[2][1]); }
+        CHECK(std::fabs(hs.cur.curl[2][1] - armfile::handFist().curl[2][1]) < 1.f && peak > armfile::handFist().curl[2][1], "a hand springs to its pose, overshooting a little, and settles");
         bool reach = true;   // the sleeve starts at the shoulder; the hand is at the fist
         { glm::vec3 lo{1e9f}, hi{-1e9f}; for (auto& p : closed) { glm::vec3 c{p.xf[3]}; lo = glm::min(lo, c); hi = glm::max(hi, c); }
           reach = lo.y < -0.5f && hi.z > 0.35f; }
