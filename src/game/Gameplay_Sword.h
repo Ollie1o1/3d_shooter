@@ -72,7 +72,7 @@ inline void GameplayState::updateSword(float dt) {
         }
         for (int m = (int)abh.mirages.size() - 1; m >= 0; --m)   // a stroke through a mirage ends it
             if (Sword::inArc(eye, fwd, abh.mirages[m].at + glm::vec3{0.f, 1.3f, 0.f}, 0.6f)) { abh.killMirage(m); landed = true; }
-        if (landed) { audio.play("sword_hit", 120); hitStopFrames = std::max(hitStopFrames, 3); shake(0.1f, 0.02f); }
+        if (landed) { viewModel.swordImpact(false); audio.play("sword_hit", 120); hitStopFrames = std::max(hitStopFrames, 3); shake(0.1f, 0.02f); }
     }
     if (o.thrust) {
         glm::vec3 flat{fwd.x, 0.f, fwd.z};
@@ -90,6 +90,7 @@ inline void GameplayState::updateSword(float dt) {
             if (!e.targetable() || !Sword::thrustHits(thrustFrom, player.position, e.position + glm::vec3{0, 1.f, 0}, e.radius())) continue;
             hurtEnemy(e, sword.thrustDamage(), e.position + glm::vec3{0, 1.2f, 0}, 25.f, Sword::HEAL_HIT, StyleSource::MELEE);
             audio.play("sword_hit", 128); hitStopFrames = std::max(hitStopFrames, 5); shake(0.2f, 0.04f);
+            viewModel.swordImpact(true);
             thrustHit = true;
             break;
         }
@@ -132,6 +133,7 @@ inline bool GameplayState::damagePlayerStrike(float dmg, glm::vec3 from, Sword::
             if (k != Sword::Strike::BEAM || std::fmod(gameClock, 0.15f) < dt)
                 fx.spawnHitSparks(player.camera.position + player.camera.forward() * 0.8f, gunkit::SWORD_GLOW * 1.4f);
             if (k != Sword::Strike::BEAM || lastGuarded == Sword::Guarded::BROKE) {
+                viewModel.swordImpact(true);   // the blow jars the blade in your hands
                 if (lastGuarded == Sword::Guarded::BROKE) audio.play("sword_break", 128);
                 else {
                     SfxMixer::Opts o; o.volume = 120.f / 128.f; o.group = SoundGroup::PLAYER; o.pitch = 0.8f + 0.3f * sword.guard01();   // lower as it drains
