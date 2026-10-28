@@ -42,13 +42,20 @@ inline const Body& bodyOf(EnemyType t) {
         {1.6f,   55.f, 0.45f, false},   // WEAVER
         INF,                            // LEVIATHAN
         INF,                            // THE ABSOLUTE
+        // The Gauntlet's mini-bosses: heavy (the hook takes you to them), hard to break
+        {3.0f,  240.f, 0.60f, true },   // THE COURIER
+        {12.f,  1e9f, 0.f,   true },    // THE BULWARK: parry its bash instead
+        {4.0f,  280.f, 0.60f, true },   // THE CANTOR
+        {3.5f,  220.f, 0.70f, true },   // THE HARRIER
+        INF,                            // THE PLUMB LINE: a hanging weight
+        {3.5f,  240.f, 0.60f, true },   // THE FOREMAN
     };
     int i = (int)t;
     if (isBoss(t) || i < 0 || i >= (int)(sizeof(B) / sizeof(B[0]))) return INF;
     return B[i];
 }
 
-inline bool reacts(EnemyType t) { return !isBoss(t) && t != EnemyType::CONDUIT && t != EnemyType::LEVIATHAN; }
+inline bool reacts(EnemyType t) { return !isBoss(t) && t != EnemyType::CONDUIT && t != EnemyType::LEVIATHAN && t != EnemyType::PLUMB; }
 
 // Poise drains this fraction of its bar a second: hits have to come close together
 constexpr float POISE_DRAIN = 0.55f;

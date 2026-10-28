@@ -1934,7 +1934,7 @@ int main() {
               "every wave starts; the Core and the Sanctum end on their bosses");
         CHECK(counts[DirectorEvent::ARENA_CLEARED] == n && counts[DirectorEvent::VICTORY] == 1 &&
               counts[DirectorEvent::FINISH_OPEN] == 0, "each arena clears, then victory");
-        CHECK(counts[DirectorEvent::NEW_TYPE] == (int)EnemyType::COUNT - 7,   // the Seraph, the Anchor, the Penitent, the Revenant, the Weaver, the Leviathan and the Absolute are Act II's
+        CHECK(counts[DirectorEvent::NEW_TYPE] == (int)EnemyType::COUNT - 14,   // the Seraph, the Anchor, the Penitent, the Revenant, the Weaver, the Leviathan and the Absolute are Act II's; the 7 Gauntlet bosses FAST's
               "each Act I enemy type is introduced exactly once");
         CHECK(goalWaves >= 3 && (int)goalsDone.size() == goalWaves && counts[DirectorEvent::GOAL_DONE] == goalWaves,
               "every goal wave (hold, conduits, survive) is met once, and that ends it");
@@ -2111,7 +2111,7 @@ int main() {
         WeaponUpgrades none;
         float maxRegular = 0.f;
         for (int t = 0; t < (int)EnemyType::COUNT; ++t)
-            if (!isBoss((EnemyType)t) && (EnemyType)t != EnemyType::JUGGERNAUT)   // the heavies: parry them
+            if (!isBoss((EnemyType)t) && !isMiniBoss((EnemyType)t) && (EnemyType)t != EnemyType::JUGGERNAUT)   // the heavies: parry them; the Gauntlet's mini-bosses
                 maxRegular = std::max(maxRegular, statsOf((EnemyType)t).health);
         CHECK(weaponDamage(WeaponId::LONGSHOT, none) >= maxRegular, "the Longshot one-shots every regular enemy");
         CHECK(weaponDamage(WeaponId::KAR, none) * weaponDef(WeaponId::KAR).headMult >= maxRegular,
@@ -2749,7 +2749,7 @@ int main() {
         CHECK(levels, "every voice sits within 2 dB of its mix class's level");
         CHECK(varied, "a voice's variants differ");
         CHECK(same, "the same voice builds the same every time");
-        CHECK(total <= 225.f, "the whole voice bank is at most 225 s of audio");   // (180 before the Leviathan, 200 before the Absolute, 220 before THUNDERCLAP)
+        CHECK(total <= 270.f, "the whole voice bank is at most 270 s of audio");   // (180 before the Leviathan, 200 before the Absolute, 220 before THUNDERCLAP, 225 before the Gauntlet's seven bosses)
     }
 
     // ---------------------------------------------------------------- enemy voices: who gets to speak
@@ -2960,7 +2960,8 @@ int main() {
                                 "sword_draw", "sword_swing", "sword_hit", "sword_thrust", "sword_guard", "sword_block", "sword_break",
                                 "kill_light", "kill_heavy", "kill_rifle", "kill_blade",
                                 "jump_air", "land_heavy", "slide", "hit_head", "ammo_low", "heartbeat", "hit_armor", "impact", "casing", "whiz", "step_metal", "land_metal", "lastkill",
-                                "hit_body", "stun", "finisher", "overdrive_on", "overdrive_off", "finish_ready", "hook_yank"};
+                                "hit_body", "stun", "finisher", "overdrive_on", "overdrive_off", "finish_ready", "hook_yank",
+                                "anvil", "anvil_final", "record", "split_behind", "count_tick", "count_go", "drive_warn", "drive_ready"};
         std::vector<std::string> names(std::begin(loaded), std::end(loaded));
         for (const std::string& n : abAllSounds()) names.push_back(n);   // THE ABSOLUTE's fight (AbsoluteFeel.h)
         bool all = true; for (const std::string& n : names) all &= mixEntry(n) != nullptr;

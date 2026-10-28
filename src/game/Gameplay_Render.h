@@ -200,7 +200,7 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
     glm::vec3 camRight = glm::normalize(glm::vec3(view[0][0], view[1][0], view[2][0]));
     glm::vec3 camFwdFlat = glm::normalize(glm::cross(camRight, glm::vec3(0,1,0)));
     for (auto& e : enemies) {
-        if (!e.targetable() || e.health >= e.maxHealth || isBoss(e.type)) continue;
+        if (!e.targetable() || e.health >= e.maxHealth || isBoss(e.type) || isMiniBoss(e.type)) continue;
         float barW = std::max(1.0f, e.radius() * 1.8f), barH = 0.12f;
         float fill = e.health / e.maxHealth;
         glm::vec3 barPos = lerpPos(e.prevPosition, e.position) + glm::vec3{0, e.height() + 0.45f, 0};
@@ -965,19 +965,22 @@ inline void GameplayState::renderFlare(const glm::mat4& view, const glm::mat4& p
 
 // CONDUCTOR tethers: a flickering line from each conductor to every ally it shields
 inline void GameplayState::renderTethers(const glm::mat4& view, const glm::mat4& proj) {
+    // (and THE FOREMAN's, amber, to the crew that shields it)
     static std::vector<Beam> beams;
-    beams.clear();
-    for (auto& c : enemies) {
-        if (!c.alive || c.type != EnemyType::CONDUCTOR) continue;
-        glm::vec3 from = (c.hasShown ? c.shownPos : c.position) + glm::vec3{0, 0.3f, 0};
-        for (int k = 0; k < c.linkCount; ++k) {
-            const Enemy& o = enemies[c.links[k]];
-            if (!o.alive) continue;
-            glm::vec3 to = (o.hasShown ? o.shownPos : o.position) + glm::vec3{0, o.height() * 0.6f, 0};
-            float a = 0.75f + 0.25f * std::sin(gameClock * 13.f + k * 2.f);
-            beams.push_back({glm::vec4(from, a), glm::vec4(to, a * 0.85f), 0.1f});
+    for (EnemyType kind : {EnemyType::CONDUCTOR, EnemyType::FOREMAN}) {
+        beams.clear();
+        for (auto& c : enemies) {
+            if (!c.alive || c.type != kind) continue;
+            glm::vec3 from = (c.hasShown ? c.shownPos : c.position) + glm::vec3{0, 0.3f * c.scale, 0};
+            for (int k = 0; k < c.linkCount; ++k) {
+                const Enemy& o = enemies[c.links[k]];
+                if (!o.alive) continue;
+                glm::vec3 to = (o.hasShown ? o.shownPos : o.position) + glm::vec3{0, o.height() * 0.6f, 0};
+                float a = 0.75f + 0.25f * std::sin(gameClock * 13.f + k * 2.f);
+                beams.push_back({glm::vec4(from, a), glm::vec4(to, a * 0.85f), kind == EnemyType::FOREMAN ? 0.14f : 0.1f});
+            }
         }
+        drawBeams(beams, kind == EnemyType::FOREMAN ? glm::vec3{1.f, 0.65f, 0.15f} : glm::vec3{0.3f, 1.f, 0.9f}, view, proj);
     }
-    drawBeams(beams, {0.3f, 1.f, 0.9f}, view, proj);
 }
 

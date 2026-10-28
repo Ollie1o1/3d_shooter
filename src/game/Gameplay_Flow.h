@@ -290,6 +290,7 @@ inline void GameplayState::newRun() {
     totalKills = totalShots = totalHits = deaths = 0;
     elapsedTime = 0.f; peakStyle = 0.f;
     splits.clear();
+    fastLeftStanding = 0;
     newRecord = false;
     ranked = !g_godMode && !g_practice && !act2();
     act2FromStart = act2();
@@ -384,7 +385,16 @@ inline void GameplayState::handleDirectorEvents() {
             if (ar.shift == ArenaShift::SPEED_UP && ev.value > 0) ui.feed("THE PLATFORMS SPEED UP", {0.4f, 0.9f, 1.f});
             if (ar.shift == ArenaShift::SOLAR && ev.value > 0)
                 ui.feed(ev.value >= 2 ? "THE RINGS QUICKEN - A SECOND FLARE" : "THE RINGS QUICKEN", {1.f, 0.75f, 0.3f});
-            if (fast()) { if (ev.value > 0) pushBanner("SECOND WAVE", "", {1.f, 0.5f, 0.3f}, 1.4f); break; }
+            if (fast()) {
+                const EnemyType* mini = nullptr;   // the room's mini-boss arriving: its name and how to beat it
+                for (auto& we : ar.waves[ev.value]) if (isMiniBoss(we.type)) mini = &we.type;
+                if (mini) {
+                    pushBanner(statsOf(*mini).name, statsOf(*mini).hint, statsOf(*mini).glow, 3.f);
+                    audio.play("mini_sting", 128, SoundGroup::UI, true);
+                    audio.duck(5.f, 0.6f);
+                } else if (ev.value > 0) pushBanner("SECOND WAVE", "", {1.f, 0.5f, 0.3f}, 1.4f);
+                break;
+            }
             if (endless()) {
                 level.arenas[director.arena].maxAlive = endlessBaseAlive + std::min(6, ev.value / 3);   // more at once as it goes on
                 snprintf(buf, sizeof(buf), "WAVE %d", ev.value + 1);
@@ -405,6 +415,8 @@ inline void GameplayState::handleDirectorEvents() {
             }
             else if (ar.waves[ev.value][0].type == EnemyType::LEVIATHAN)
                 pushBanner("THE LEVIATHAN", "DASH THE CRASH - SHOOT THE EYE WHILE IT'S DOWN", {1.f, 0.35f, 0.2f}, 4.5f);
+            else if (ar.waves[ev.value][0].type == EnemyType::PACEMAKER)
+                pushBanner("THE PACEMAKER", "PARRY THE WHITE - IT RACES YOU TO THE BEACON", {1.f, 0.6f, 0.15f}, 4.f);
             else
                 pushBanner("THE WARDEN", "CUT ITS CONDUITS - HIT THE CORE WHEN IT VENTS", {1.f, 0.2f, 0.65f}, 3.5f);
             audio.play("wave", 128, SoundGroup::UI); audio.play("explosion", 70, SoundGroup::UI); audio.duck(4.f, 0.4f);
@@ -413,7 +425,7 @@ inline void GameplayState::handleDirectorEvents() {
         case DirectorEvent::NEW_TYPE: {
             EnemyType t = (EnemyType)(ev.value & 255);
             Hollow h = (Hollow)(ev.value >> 8);
-            if (isBoss(t)) break;
+            if (isBoss(t) || isMiniBoss(t)) break;   // (they get a title card of their own)
             std::string name = h == Hollow::NONE ? std::string(statsOf(t).name)
                                                  : std::string(hollowName(h)) + " " + statsOf(t).name;
             const char* hint = h == Hollow::NONE ? (t == EnemyType::ABSOLUTE ? abTellLegend() : statsOf(t).hint) : hollowHint(h);
@@ -433,10 +445,14 @@ inline void GameplayState::handleDirectorEvents() {
             lockDoor(done.exitDoor, false);
             lockDoor(done.entryGate, false);
             if (fast()) {
-                recordSplit(ev.value);
+                int vs = recordSplit(ev.value);
                 styleSystem.heal(25.f);
                 grenadeCount = grenadeMax;
-                audio.play("split", 128, SoundGroup::UI);
+                audio.play("anvil", 128, SoundGroup::UI, true);   // the room's done: struck on the anvil
+                if (vs != 0) {   // ahead of the best run: two rising blips; behind: two falling
+                    SfxMixer::Opts o; o.volume = 1.f; o.group = SoundGroup::UI; o.delay = 0.18f;
+                    audio.playOpts(vs < 0 ? "split" : "split_behind", o);
+                }
                 break;
             }
             if (done.exitDoor >= 0 && !act2())
@@ -447,7 +463,7 @@ inline void GameplayState::handleDirectorEvents() {
                 pushBanner("THE WAY DOWN IS OPEN", ev.value == 0 ? "BEHIND THE ORGAN" : "THROUGH THE NORTH ARCH", {0.35f, 0.95f, 0.9f}, 3.5f);
             styleSystem.heal(40.f);
             grenadeCount = grenadeMax;
-            audio.play("wave", 128, SoundGroup::UI);
+            audio.play("anvil", 128, SoundGroup::UI, true);   // an arena won: struck on the anvil
             if (zenithHandoff(act2(), ev.value, (int)level.arenas.size())) {   // the Leviathan is dead: the act is done
                 if (act2RunRecords(act2FromStart, g_godMode, g_practice)) { recordAct2Clear(records, elapsedTime); records.save(); }
                 ascendT = 0.f;   // it sinks, ACT II COMPLETE, a white-out, then the Zenith (updateAscension)
@@ -485,7 +501,7 @@ inline void GameplayState::handleDirectorEvents() {
     director.events.clear();
 }
 
-inline void GameplayState::recordSplit(int section) {
+inline int GameplayState::recordSplit(int section) {
     if ((int)splits.size() > section) splits.resize(section);
     splits.push_back(elapsedTime);
     char buf[96];
@@ -493,10 +509,11 @@ inline void GameplayState::recordSplit(int section) {
         float d = elapsedTime - records.fastSplits[section];
         snprintf(buf, sizeof(buf), "ROOM %d  %s  %+.2f", section + 1, formatTime(elapsedTime).c_str(), d);
         ui.showSplit(buf, d <= 0.f ? glm::vec3{0.3f, 1.f, 0.5f} : glm::vec3{1.f, 0.4f, 0.35f});
-    } else {
-        snprintf(buf, sizeof(buf), "ROOM %d  %s", section + 1, formatTime(elapsedTime).c_str());
-        ui.showSplit(buf, {1.f, 0.9f, 0.6f});
+        return d <= 0.f ? -1 : 1;
     }
+    snprintf(buf, sizeof(buf), "ROOM %d  %s", section + 1, formatTime(elapsedTime).c_str());
+    ui.showSplit(buf, {1.f, 0.9f, 0.6f});
+    return 0;
 }
 
 inline void GameplayState::finishRun() {
@@ -510,6 +527,7 @@ inline void GameplayState::finishRun() {
     newRecord = false;
     if (act2() && director.arena == ZENITH_ARENA && act2RunRecords(act2FromStart, g_godMode, g_practice)) {   // (ACT II is never ranked: its own local best)
         newRecord = recordZenith(records, elapsedTime); records.save();
+        if (newRecord) recordCue();
     }
     if (!ranked) return;
     board.load();
@@ -535,7 +553,13 @@ inline void GameplayState::finishRun() {
         int sc = me.score;
         if (sc > records.bestArenaScore) { records.bestArenaScore = sc; newRecord = true; }
     }
-    if (newRecord) records.save();
+    if (newRecord) { records.save(); recordCue(); }
+}
+
+// A new best: bells over a bright strike, after the finish has rung out a moment
+inline void GameplayState::recordCue() {
+    SfxMixer::Opts o; o.volume = 1.f; o.group = SoundGroup::UI; o.priority = true; o.delay = 1.3f;
+    audio.playOpts("record", o);
 }
 
 inline RunScore GameplayState::runScore() const {
@@ -705,7 +729,8 @@ inline void GameplayState::update(float dt) {
         if (countdown > 0.f && !frozen) {
             float before = countdown;
             countdown -= dt;
-            if (std::ceil(before) != std::ceil(countdown)) audio.play(countdown <= 0.f ? "wave" : "telegraph", 90, SoundGroup::UI);
+            if (std::ceil(before) != std::ceil(countdown) || before >= 3.f)   // 3, 2, 1: beeps (the 3 as it appears); GO: the starting gun
+                audio.play(countdown <= 0.f ? "count_go" : "count_tick", 128, SoundGroup::UI, true);
             if (countdown <= 0.f) countdown = 0.f;
             handleDirectorEvents();
         }

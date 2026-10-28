@@ -93,6 +93,11 @@ struct EnemyEvents : SovereignEvents, PenitentEvents, WardenEvents, LeviathanEve
     glm::vec3 blinkFrom{0.f};
     // WEAVER: a wire strung between A and B
     bool      wire = false; glm::vec3 wireA{0.f}, wireB{0.f};
+    // THE CANTOR's bell: a ring racing out along the floor from ringAt (jump it)
+    bool      ring = false; glm::vec3 ringAt{0.f};
+    // THE PACEMAKER: a phase began (1-3: it leapt to its next perch); its beacon channel began (1),
+    // was broken (-1) or finished (2)
+    int       pmPhaseStarted = 0, pmChannel = 0;
 };
 
 // What an enemy can sense each tick.
@@ -297,6 +302,21 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     // REVENANT: how many times its soul has come back (the third death is final)
     int   reforms = 0;
 
+    // The Gauntlet's mini-bosses (EnemyMini.h)
+    glm::vec3 miniHome{0.f};   // where it hung / started: the Cantor's window, the Plumb's line, the Foreman's crane
+    bool  miniHomeSet = false;
+    float miniOpen  = 0.f;     // THE PLUMB LINE: > 0 its core is open
+    float miniPerch = 0.f;     // THE HARRIER: > 0 skimming low after a dive
+    // THE PACEMAKER (bosses/pacemaker/EnemyPacemaker.h)
+    glm::vec3 pmKeep{0.f};     // the Tower's keep, at the yard's floor (set by the game when it spawns)
+    int   pmPhase = 0;         // 0 the yard, 1 and 2 the balconies, 3 the roof (overclocked)
+    float pmLeapT = 0.f;       // > 0 in the air between perches
+    float pmChannel = 0.f;     // > 0 lighting the beacon
+    float pmChannelDmg = 0.f;  // damage taken this channel (enough breaks it)
+    float pmBeaconCd = 0.f;    // before it can try again
+    int   pmBeacons = 0;       // tries so far (two at most)
+    static constexpr float PM_CHANNEL = 8.f, PM_BREAK_SHARE = 0.04f;
+
     // ---- the bosses' openings: hidden, open eyes / cores / wounds ------------
     bool  levHidden() const { return type == EnemyType::LEVIATHAN && (levStage != LevStage::FIGHT || attack == AttackKind::BREACH); }
     bool  levEyeOpen() const { return levBeached > 0.f || staggerTimer > 0.f || levPhase == 3; }
@@ -327,6 +347,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         floorY = floor;
         const EnemyStats& s = statsOf(t);
         health = maxHealth = s.health;
+        scale = miniScale(t);   // (1 for everything but the Gauntlet's mini-bosses)
         attackTimer = frand(0.f, s.attackEvery * 0.6f);   // desync the squad
         strafeDir   = (rand() & 1) ? 1.f : -1.f;
         animPhase   = frand(0.f, 6.28f);
@@ -348,14 +369,15 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     // last 0.4 s), a SOVEREIGN's sweep or cleave (its last quarter second)
     bool  parryWindow() const {
         // THE WARDEN's lunge: its last quarter second, or in flight until it connects (it comes into reach)
-        if (type == EnemyType::WARDEN && dashTimer > 0.f && !dashHit) return true;
+        if ((type == EnemyType::WARDEN || type == EnemyType::PACEMAKER) && dashTimer > 0.f && !dashHit) return true;   // (and THE PACEMAKER's dash)
         if (telegraphTimer <= 0.f) return false;
         if (type == EnemyType::WARDEN) return attack == AttackKind::WLUNGE && telegraphTimer < 0.25f;
 
         if (type == EnemyType::JUGGERNAUT) return attack == AttackKind::SMASH && telegraphTimer < 0.4f;
         if (type == EnemyType::LEVIATHAN) return attack == AttackKind::CRASH && telegraphTimer < 0.25f;   // (and you within LV_PARRY_REACH of where it lands)
         if (type == EnemyType::ABSOLUTE) return abMeleeWhite(attack) && !abParriedThis && telegraphTimer < 0.25f;   // white strikes only
-        if (type == EnemyType::SHIELDBEARER) return attack == AttackKind::BASH && telegraphTimer < 0.3f;
+        if (type == EnemyType::SHIELDBEARER || type == EnemyType::BULWARK) return attack == AttackKind::BASH && telegraphTimer < 0.3f;
+        if (type == EnemyType::PACEMAKER) return (attack == AttackKind::DASH || attack == AttackKind::SWEEP || attack == AttackKind::THRUST) && telegraphTimer < 0.25f;
         if (type == EnemyType::SOVEREIGN)
             return (attack == AttackKind::SWEEP || attack == AttackKind::CLEAVE || attack == AttackKind::THRUST) &&
                    telegraphTimer < 0.25f;
@@ -380,11 +402,11 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     }
     void onDeflect() { if (riposteCd <= 0.f) { riposte = true; riposteCd = 1.4f; } }
     // How long a parry leaves it broken
-    float staggerTime() const { return type == EnemyType::ABSOLUTE ? AB_BREAK : type == EnemyType::LEVIATHAN ? LV_STAGGER : type == EnemyType::SOVEREIGN ? 3.f : type == EnemyType::WARDEN ? 2.f : type == EnemyType::SHIELDBEARER ? 2.2f : 2.5f; }
+    float staggerTime() const { return type == EnemyType::ABSOLUTE ? AB_BREAK : type == EnemyType::LEVIATHAN ? LV_STAGGER : type == EnemyType::SOVEREIGN ? 3.f : type == EnemyType::WARDEN ? 2.f : type == EnemyType::SHIELDBEARER ? 2.2f : type == EnemyType::BULWARK ? 2.8f : type == EnemyType::PACEMAKER ? 2.6f : 2.5f; }
     // SHIELDBEARER: does its shield stop a shot travelling along dir? (From
     // the front, while it's standing; a broken one has its shield knocked aside)
     bool blocks(glm::vec3 dir) const {
-        if (type != EnemyType::SHIELDBEARER || staggered() || !alive) return false;
+        if ((type != EnemyType::SHIELDBEARER && type != EnemyType::BULWARK) || staggered() || !alive) return false;
         glm::vec2 d{-dir.x, -dir.z};
         float l = glm::length(d);
         if (l < 1e-4f) return false;
@@ -396,7 +418,8 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         if (type == EnemyType::WARDEN) return (conduitsLeft > 0 && ventTimer <= 0.f ? 0.5f : 1.f) * (staggered() ? 2.f : 1.f);
         if (type == EnemyType::PENITENT) return (anchorsLeft > 0 ? 0.25f : 1.f) * (staggered() ? 2.f : 1.f);
         if (type == EnemyType::ABSOLUTE) return staggered() ? (abReeling ? 1.5f : 2.f) : 1.f;
-        if (type == EnemyType::SOVEREIGN || type == EnemyType::LEVIATHAN) return staggered() ? 2.f : 1.f;
+        if (type == EnemyType::SOVEREIGN || type == EnemyType::LEVIATHAN || type == EnemyType::PACEMAKER) return staggered() ? 2.f : 1.f;
+        if (isMiniBoss(type)) return miniArmor();
         if (type != EnemyType::JUGGERNAUT) return 1.f;
         return staggered() ? 2.f : 0.5f;
     }
@@ -418,7 +441,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     bool stunned() const { return stunTimer > 0.f; }
     // A punch would finish it: a regular enemy low enough (or stunned, or you in OVERDRIVE)
     bool finishable(bool overdrive) const {
-        if (!reacts() || !targetable() || shielded || type == EnemyType::MITE) return false;
+        if (!reacts() || !targetable() || shielded || type == EnemyType::MITE || isMiniBoss(type)) return false;
         return health <= maxHealth * hitreact::finishShare(type, stunned(), overdrive);
     }
     // A hit lands: shoved along `dir` by `push` (m/s on a 1-mass body), flinched,
@@ -483,7 +506,8 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
             state  = EnemyState::DEAD;
             return true;
         }
-        if (isBoss(type) && type != EnemyType::WARDEN && type != EnemyType::LEVIATHAN && type != EnemyType::ABSOLUTE && !enraged && health < maxHealth * 0.5f) {
+        if (type == EnemyType::PACEMAKER && pmChannel > 0.f) pmChannelDmg += dmg;   // into its beacon channel: enough breaks it
+        if (isBoss(type) && type != EnemyType::WARDEN && type != EnemyType::LEVIATHAN && type != EnemyType::ABSOLUTE && type != EnemyType::PACEMAKER && !enraged && health < maxHealth * 0.5f) {
             enraged    = true;
             ev.enraged = true;
         }
@@ -584,6 +608,13 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
             case EnemyType::WEAVER:   thinkWeaver(dt, w, resolve);   break;
             case EnemyType::LEVIATHAN: thinkLeviathan(dt, w, resolve); return;   // it moves its head itself
             case EnemyType::ABSOLUTE: thinkAbsolute(dt, w, resolve); return;     // he places himself (EnemyAbsolute.h)
+            case EnemyType::COURIER: case EnemyType::BULWARK: case EnemyType::CANTOR:
+            case EnemyType::HARRIER: case EnemyType::PLUMB: case EnemyType::FOREMAN:
+                thinkMini(dt, w, resolve); break;                                 // the Gauntlet's (EnemyMini.h)
+            case EnemyType::PACEMAKER:                                            // (EnemyPacemaker.h; mid-leap it flies its arc)
+                thinkPacemaker(dt, w, resolve);
+                if (pmLeapT <= 0.f) integrate(dt, w);
+                return;
             default: break;
         }
         integrate(dt, w);
@@ -1239,6 +1270,21 @@ private:
     void thinkWeaver(float dt, const EnemyWorld& w, bool resolve);     // EnemyRelic.h
 
     void thinkSovereign(float dt, const EnemyWorld& w, bool resolve);  // EnemySovereign.h
+    // The Gauntlet's mini-bosses (EnemyMini.h)
+    void thinkMini(float dt, const EnemyWorld& w, bool resolve);
+    void thinkCourier(float dt, const EnemyWorld& w, bool resolve);
+    void thinkBulwark(float dt, const EnemyWorld& w, bool resolve);
+    void thinkCantor(float dt, const EnemyWorld& w, bool resolve);
+    void thinkHarrier(float dt, const EnemyWorld& w, bool resolve);
+    void thinkPlumb(float dt, const EnemyWorld& w, bool resolve);
+    void thinkForeman(float dt, const EnemyWorld& w, bool resolve);
+    bool miniBeam(float dt, const EnemyWorld& w, float speed);
+    void thinkPacemaker(float dt, const EnemyWorld& w, bool resolve);   // bosses/pacemaker/EnemyPacemaker.h
+    void pmLeapTo(glm::vec3 p);
+public:
+    glm::vec3 pmPerch(int phase) const;
+    float miniArmor() const;
+private:
 
     // ---- physics -------------------------------------------------------------
     void integrate(float dt, const EnemyWorld& w) {
@@ -1370,4 +1416,6 @@ inline void linkConductors(std::vector<Enemy>& es, glm::vec3 player) {
 #include "bosses/leviathan/EnemyLeviathan.h"  // THE LEVIATHAN's mind (Enemy::thinkLeviathan)
 #include "bosses/warden/EnemyWarden.h"     // THE WARDEN's mind (Enemy::thinkWarden)
 #include "enemies/EnemyRelic.h"      // the Reliquary's REVENANT and WEAVER
+#include "enemies/EnemyMini.h"       // the Gauntlet's mini-bosses
+#include "bosses/pacemaker/EnemyPacemaker.h"   // THE PACEMAKER's mind (Enemy::thinkPacemaker)
 #include "bosses/absolute/EnemyAbsolute.h"   // THE ABSOLUTE's mind (Enemy::thinkAbsolute)

@@ -323,6 +323,7 @@ Everything below runs without touching the mouse, so it works from scripts.
 #   --clean    no title cards or enemy cards
 #   OVERDRIVE_RUNLOG=1 ./shooter ...   write runs.jsonl from dev runs too (normally only real play)
 #   --overlay driveNN   the OVERDRIVE screen look at NN %
+#   --overlay clearwaves  every wave cleared for you, one every 4 s (with --audiodump: hear the room clears)
 #   --overlay hook | alt   with --autoaim: grapple whatever it's aimed at every 2.5 s / use alt fire instead of the trigger
 #   --overlay teach | teach2   the NEW MOVE cards, every time (screenshots)
 tools/record_showcase.sh         # re-record docs/overdrive.gif (needs gifski)

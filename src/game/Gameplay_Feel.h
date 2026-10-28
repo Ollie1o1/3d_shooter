@@ -180,6 +180,24 @@ inline void GameplayState::updateFeel(float dt) {
     float want = overdriveOn() && !playerDead ? 1.f : 0.f;
     overdriveFx += (want - overdriveFx) * (1.f - std::exp(-dt * (want > overdriveFx ? 9.f : 2.5f)));
     if (overdriveOn()) runLog.overdriveTime += dt;
+    // OVERDRIVE's cues: three ticks as it burns out (1.5, 1 and 0.5 s left, each higher), and a chime
+    // when its cooldown runs out and it can burn again (not if it starts at once: the meter was full)
+    if (overdriveOn() && !playerDead) {
+        const float left = styleSystem.overdriveTimer;
+        for (int k = 0; k < 3; ++k) {
+            const float at = 1.5f - 0.5f * (float)k;
+            if (driveLeftPrev > at && left <= at) {
+                SfxMixer::Opts o; o.volume = 0.9f; o.group = SoundGroup::UI; o.pitch = 1.f + 0.12f * (float)k;
+                audio.playOpts("drive_warn", o);
+            }
+        }
+        driveLeftPrev = left;
+    } else driveLeftPrev = 0.f;
+    if (driveCoolPrev > 0.f && driveCoolPrev < 0.5f && styleSystem.driveCool <= 0.f && !overdriveOn() && !playerDead && !victory) {
+        audio.play("drive_ready", 110, SoundGroup::UI);
+        ui.feed("OVERDRIVE RECHARGED", {1.f, 0.7f, 0.2f});
+    }
+    driveCoolPrev = styleSystem.driveCool;
     killFx = std::max(0.f, killFx - dt / 0.2f);
     int fi = !playerDead && punchCooldown <= 0.f ? findFinisher() : -1;
     float hint = fi >= 0 ? 1.f : 0.f;
@@ -219,7 +237,7 @@ inline int GameplayState::findEnemyHook() const {
     int best = -1; float bestT = HOOK_RANGE;
     for (int i = 0; i < (int)enemies.size(); ++i) {
         const Enemy& e = enemies[i];
-        if (!e.targetable() || isBoss(e.type)) continue;
+        if (!e.targetable() || (isBoss(e.type) && e.type != EnemyType::PACEMAKER)) continue;   // (THE PACEMAKER: you zip to it)
         glm::vec3 c = e.position + glm::vec3{0.f, e.height() * 0.5f, 0.f};
         float t = glm::dot(c - o, d);
         if (t < 2.f || t > bestT) continue;
