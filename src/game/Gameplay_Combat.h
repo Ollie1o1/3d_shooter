@@ -1026,6 +1026,7 @@ inline void GameplayState::fireWeapon(int w) {
     player.camera.pitch = glm::clamp(player.camera.pitch + recoil, -89.f, 89.f);
 
     viewModel.triggerFire();
+    if (fanning) viewModel.fanStrike();   // the left hand slapped the hammer back
     {   // the view kicks with the gun (seen, not aimed with: the aim kick is recoilPitch)
         static const float KICK[4][3] = {   // pitch, yaw jitter, roll jitter (degrees a second)
             {55.f, 8.f, 12.f}, {125.f, 22.f, 45.f}, {105.f, 14.f, 26.f}, {165.f, 20.f, 40.f}};   // (the revolver: a firm jolt, not a wobble)

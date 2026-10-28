@@ -367,7 +367,8 @@ inline void GameplayState::altFire() {
     }
     if (activeWeapon == (int)WeaponId::REVOLVER) {   // FAN: the rest of the cylinder (six at most), one every 75 ms
         fanLeft = overdriveOn() ? 6 : std::min(ws.ammo, 6);
-        fanTimer = 0.f;
+        fanTimer = ViewModel::FAN_ENTER;   // (the first when the left hand reaches the hammer)
+        viewModel.triggerFan(fanLeft);
         audio.play("cyl_close", 80, SoundGroup::PLAYER);   // the palm on the hammer
     } else if (activeWeapon == (int)WeaponId::SHOTGUN) {   // BOTH BARRELS (one shell left: just the one)
         doubleShot = ws.ammo >= 2 || overdriveOn();
