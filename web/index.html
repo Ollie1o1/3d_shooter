@@ -108,12 +108,30 @@
   // screen: you can't turn, and a click outside takes the keyboard too. So
   // remember that the game wants the mouse, and while it does and the lock
   // isn't held, ask again on every key press and click.
+  //
+  // What the game wants is what it says (core/MouseCapture.h calls
+  // overdriveMouseWanted every time it takes or frees the mouse), not what it
+  // last asked the browser for: a lock request made between clicks is held by
+  // the browser until the next click or key, and by then the game may be in a
+  // menu or the armory. So a request that arrives when the game no longer
+  // wants the mouse is dropped, and a lock that lands anyway is let go at once:
+  // in fullscreen (where Escape belongs to the game) it would trap the cursor.
   let wantsMouse = false;
   (() => {
     const lock = HTMLCanvasElement.prototype.requestPointerLock;
     if (!lock) return;
+    const unlock = Document.prototype.exitPointerLock;
+    let told = false;   // (a build that never says: fall back to its requests)
+    window.overdriveMouseWanted = (on) => {
+      told = true; wantsMouse = on;
+      if (!on && document.pointerLockElement) unlock.call(document);
+    };
+    document.addEventListener('pointerlockchange', () => {
+      if (document.pointerLockElement && told && !wantsMouse) unlock.call(document);
+    });
     HTMLCanvasElement.prototype.requestPointerLock = function (opts) {
-      wantsMouse = true;
+      if (!told) wantsMouse = true;
+      else if (!wantsMouse) return Promise.resolve();   // too late: the game has moved on
       try {
         const p = lock.call(this, Object.assign({ unadjustedMovement: true }, opts || {}));
         if (p && typeof p.catch === 'function')
@@ -123,8 +141,7 @@
         return lock.call(this);
       }
     };
-    const unlock = Document.prototype.exitPointerLock;
-    Document.prototype.exitPointerLock = function () { wantsMouse = false; return unlock.call(this); };
+    Document.prototype.exitPointerLock = function () { if (!told) wantsMouse = false; return unlock.call(this); };
     const regrab = (e) => {
       if (!wantsMouse || document.pointerLockElement || e.key === 'Escape') return;
       try { canvas.requestPointerLock()?.catch?.(() => {}); } catch (err) {}
