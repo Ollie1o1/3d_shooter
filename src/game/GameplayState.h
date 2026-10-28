@@ -253,6 +253,10 @@ public:
     }
     void slowMo(float len, float low) { if (slowT > 0.f && slowLow <= low) return; slowT = slowLen = len; slowLow = low; }
     float ropeFx = 0.f;                         // 0..1 the grapple's rope singing (AudioSystem::setRope)
+    // Hanging off the grapple (GrappleHook::latched): how long, and where you're held
+    static constexpr float HANG_MAX = 3.f;      // then it lets go (no camping on a wall)
+    float hangT = 0.f; glm::vec3 hangPos{0.f}; bool hangPrev = false;
+    glm::vec3 hangNormal() const;               // the face of the surface you're hanging on
     glm::vec2 lookDelta{0.f};   // degrees of mouse / stick look this frame (yaw, pitch): the gun's sway
 
     float muzzleFlashTimer = 0.f;
@@ -299,6 +303,12 @@ public:
     // big heal, only taken when hurt) and XP shards (rare, bonus XP)
     enum class PickupKind { ORB, POTION, XP };
     struct Pickup { glm::vec3 pos, vel; float life; PickupKind kind; float floorY; glm::vec3 prev{0.f}; };
+    // A boss sheds a health potion every fifth of its bar you take off it (four a bar): health earned by hitting it.
+    // It lands a few metres from where you last stood firm, so it's always somewhere you can reach
+    static constexpr float BOSS_POTION_EVERY = 0.2f;
+    static constexpr int   BOSS_POTIONS = 4;
+    void shedBossPotions(Enemy& e);
+    bool potionSpot(glm::vec3& out);
     std::vector<Pickup> pickups;
 
     // src: whose blast it is, for style (a Mite that reaches you hurts its friends: FRIENDLY)

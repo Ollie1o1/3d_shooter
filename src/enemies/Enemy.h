@@ -270,6 +270,11 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     float aimedT = 0.f, dodgeT = 0.f, dodgeCd = 0.f;
     glm::vec3 dodgeDir{0.f};
     static constexpr float DODGE_AFTER = 0.45f, DODGE_TIME = 0.24f, DODGE_SPEED = 13.f, DODGE_CD = 2.6f;
+    // A duelling boss under fire (evadeTick): this share of its health lost in about a second and it
+    // breaks away sideways, at most once every EVADE_CD
+    static constexpr float EVADE_AT = 0.03f, EVADE_TIME = 0.3f, EVADE_SPEED = 15.f, EVADE_CD = 5.f;
+    float pressure = 0.f, evadeCd = 0.f;
+    int   potionsShed = 0, potionForm = 0;   // a boss: health potions earned off it so far (every BOSS_POTION_EVERY of its bar), and on which bar   // its recent hurt (share of its health, fading over ~1 s); the evade's cooldown
     bool dodges() const { return type == EnemyType::HUSK || type == EnemyType::REVENANT || type == EnemyType::WEAVER; }
     // Yanked by the grapple (GameplayState::hookEnemy): dragged toward pullTo, stunned all the way
     glm::vec3 pullTo{0.f};
@@ -450,6 +455,14 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     bool takeHit(glm::vec3 dir, float push, float dmg, float poiseMul, bool head, float clock) {
         hitDir = dir; hitPush = push; hitHead = head;
         if (firstHitAge < 0.f) firstHitAge = age;
+        if (alive && hitreact::bossFlinches(type)) {   // it feels it, a little (HitReact.h): no shove, no stun
+            float now = hitreact::flinchAt(flinchAmp, clock - flinchAt);
+            flinchAmp = std::min(hitreact::BOSS_FLINCH_MAX, now + push * hitreact::BOSS_FLINCH_PER_PUSH + (head ? hitreact::BOSS_FLINCH_HEAD : 0.f));
+            flinchAt = clock;
+            glm::vec2 fd{dir.x, dir.z};
+            if (glm::length(fd) > 1e-4f) flinchDir = glm::normalize(fd);
+            flinchTwist = 0.f;
+        }
         if (!reacts() || !alive) return false;
         const hitreact::Body& b = hitreact::bodyOf(type);
         float mass = b.mass * scale * scale;
@@ -495,6 +508,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         if (!targetable() || shielded) return false;
         health -= dmg;
         hitFlashTimer = 0.12f;
+        if (isBoss(type)) pressure += dmg / std::max(1.f, maxHealth);   // (evadeTick)
         if (health <= 0.f && type == EnemyType::ABSOLUTE && abForm == 0) {   // not yet: the eclipse takes him (MORNINGSTAR)
             health = 0.f;
             abBeginSwallow();
@@ -528,6 +542,8 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         leadVel_ = w.playerVel * tune_->lead;
         age += dt;
         if (hitFlashTimer > 0.f) hitFlashTimer -= dt;
+        pressure *= std::exp(-dt);
+        if (evadeCd > 0.f) evadeCd -= dt;
         if (haloOpenTimer > 0.f) haloOpenTimer = std::max(0.f, haloOpenTimer - dt);
 
         // THE ABSOLUTE's entrance is his descent (abArrive): no materialising on the floor first
@@ -863,6 +879,30 @@ private:
                 return true;
             }
         dodgeCd = 0.6f;   // boxed in: look again in a moment
+        return false;
+    }
+
+    // A duelling boss, free to move (not winding up or recovering): hurt hard enough, fast enough, it breaks
+    // sideways across your aim, the side that's clear, and keeps strafing that way. True while it's breaking away
+    bool evadeTick(float dt, const EnemyWorld& w) {
+        if (dodgeT > 0.f) {
+            dodgeT -= dt;
+            velocity.x = dodgeDir.x * EVADE_SPEED * tune_->moveSpeed; velocity.z = dodgeDir.z * EVADE_SPEED * tune_->moveSpeed;
+            animPhase += dt * 12.f;
+            return true;
+        }
+        if (pressure < EVADE_AT || evadeCd > 0.f || staggered()) return false;
+        glm::vec3 aim = glm::dot(w.playerAim, w.playerAim) > 0.5f ? w.playerAim : position - w.playerEye;
+        glm::vec3 across = norm2(glm::cross(aim, glm::vec3{0.f, 1.f, 0.f}));
+        float sgn = strafeDir < 0.f ? 1.f : -1.f;   // against the way it was going: your aim was leading it
+        for (int k = 0; k < 2; ++k, sgn = -sgn)
+            if (canStepTo(position + across * sgn * (radius() + 2.5f), w)) {
+                dodgeDir = across * sgn; dodgeT = EVADE_TIME; evadeCd = EVADE_CD; pressure = 0.f;
+                strafeTimer = std::max(strafeTimer, 0.8f);
+                ev.dodged = true;
+                return true;
+            }
+        evadeCd = 1.f;   // boxed in: look again in a moment
         return false;
     }
 

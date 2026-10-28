@@ -355,6 +355,12 @@ int main() {
         Records back; back.parse(text);
         CHECK(back.act2Cleared && std::fabs(back.bestAct2 - 1234.5f) < 0.01f && std::fabs(back.bestZenith - 1500.25f) < 0.01f,
               "the clear and both times survive a save and a load");
+        // FAST times set on an older Gauntlet are dropped as they load; the rest of the save is kept
+        Records old; old.parse("bestFast 400\nfastRooms 2 40 50\nfastMedals 2 3 4\nfastSplits 1 40\nbestAct2 900\n");
+        Records cur; cur.bestFast = 500.f; cur.fastMedals = {3}; Records cur2; cur2.parse(cur.serialise());
+        CHECK(old.bestFast == 0.f && old.fastRooms.empty() && old.fastMedals.empty() && old.fastSplits.empty() &&
+              std::fabs(old.bestAct2 - 900.f) < 1e-3f && cur2.bestFast == 500.f && cur2.fastMedals.size() == 1,
+              "FAST bests from an older Gauntlet are dropped (the rest kept); this one's survive a save and a load");
     }
 
     // ---------------------------------------------------------------- THE ABSOLUTE: phase 1

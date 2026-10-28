@@ -11,6 +11,9 @@
 //            overshoot (0.2 s) while its cells boot up in sequence, a chime
 //   RELOAD   three beats: OPEN (0-25 %) tilt in, action opens; FEED (25-85 %)
 //            the cells relight one by one, a tick each; CLOSE (85-100 %) snap
+//   DRAW     once it's up, a flourish of its own (0.45 s, never on a quick swap): the revolver tipped to show
+//            its cylinder and a click, the shotgun racked, the Lancer's bolt checked, the Longshot settled
+//            into the shoulder. Firing, reloading, inspecting or switching cuts it: it never costs a shot
 //   INSPECT  turn it to show its side, run the cells
 //   + idle breathing sway, a landing dip, a tilt on a dash, a dip on a slide
 // =============================================================================
@@ -51,7 +54,7 @@ public:
     int gun = 0;
     std::vector<GunCue> cues;
 
-    void fire() { kickAge = 0.f; inspectT = -1.f; }   // shooting puts an inspect away
+    void fire() { kickAge = 0.f; inspectT = -1.f; drawT = -1.f; }   // shooting puts an inspect (or a flourish) away
     void cycle(float duration) { cycleT = 0.f; cycleLen = std::max(0.15f, duration); cycleCued = false; inspectT = -1.f; }
     void reload(float total, int ammoBefore, int mag, int refill) {
         reloadT = 0.f; reloadLen = std::max(0.3f, total); inspectT = -1.f;
@@ -63,13 +66,13 @@ public:
     }
     void switchTo(int g) {
         toGun = g; switchT = 0.f; switching = true; upCued = false;
-        reloadT = -1.f; cycleT = -1.f; inspectT = -1.f;   // whatever the old gun was doing stops here
+        reloadT = -1.f; cycleT = -1.f; inspectT = -1.f; drawT = -1.f;   // whatever the old gun was doing stops here
     }
-    void inspect() { if (reloadT < 0.f && !switching) inspectT = 0.f; }
+    void inspect() { if (reloadT < 0.f && !switching) { inspectT = 0.f; drawT = -1.f; } }
     // A retry / restart: the gun is simply there, doing nothing
     void reset(int g) {
         gun = toGun = g; switching = false; upCued = true;
-        reloadT = cycleT = inspectT = -1.f; kickAge = 10.f; landDip = 0.f;
+        reloadT = cycleT = inspectT = drawT = -1.f; kickAge = 10.f; landDip = 0.f;
         cues.clear();
     }
     // Pick a reload up part-way (switching back to a gun still reloading):
@@ -85,6 +88,8 @@ public:
     void devReload(float u, int ammoBefore, int mag, int refill) { reload(1.f, ammoBefore, mag, refill); reloadT = u; cues.clear(); }
     void devInspect(float u) { inspectT = u * INSPECT_LEN; }
     void devSwitch(float u, int g) { gun = toGun = g; switching = true; upCued = true; switchT = SWITCH_DOWN + u * SWITCH_UP; cues.clear(); }
+    void devDraw(float u, int g) { gun = toGun = g; switching = false; drawT = u * DRAW_LEN; drawCued = true; cues.clear(); }
+    bool flourishing() const { return drawT >= 0.f; }
 
     bool reloading() const { return reloadT >= 0.f; }
     void stopReload() { reloadT = -1.f; }   // the gun is full now (a finisher, OVERDRIVE): straight back to ready
@@ -108,7 +113,18 @@ public:
                 gun = toGun; upCued = true; kickAge = 10.f;
                 cues.push_back({SWITCH_CUE[std::clamp(gun, 0, 3)], 90});
             }
-            if (switchT >= SWITCH_DOWN + SWITCH_UP) switching = false;
+            if (switchT >= SWITCH_DOWN + SWITCH_UP) {
+                switching = false;
+                if (clock - lastUp > QUICK_SWAP) { drawT = 0.f; drawCued = false; }   // (swapping fast: straight to work)
+                lastUp = clock;
+            }
+        }
+        if (drawT >= 0.f) {
+            static const float AT[4] = {0.55f, 0.35f, 0.45f, 0.5f};
+            static const char* CUE[4] = {"cyl_close", "pump", "bolt", "bolt"};
+            drawT += dt;
+            if (!drawCued && drawT >= AT[std::clamp(gun, 0, 3)] * DRAW_LEN) { cues.push_back({CUE[std::clamp(gun, 0, 3)], gun == 0 ? 90 : 75}); drawCued = true; }
+            if (drawT >= DRAW_LEN) drawT = -1.f;
         }
         if (cycleT >= 0.f) {
             float before = cycleT / cycleLen;
@@ -121,6 +137,7 @@ public:
             if (cycleT >= cycleLen) cycleT = -1.f;
         }
         if (inspectT >= 0.f) { inspectT += dt; if (inspectT >= INSPECT_LEN) inspectT = -1.f; }
+        if (reloadT >= 0.f) drawT = -1.f;
         if (reloadT >= 0.f) {
             float before = reloadT / reloadLen;
             reloadT += dt;
@@ -168,6 +185,33 @@ public:
             }
         }
         p.boot = bootT();
+        if (drawT >= 0.f) {   // DRAW: its flourish, in and back out (sin), the action's beat a sharper bump on top
+            const float u = std::min(1.f, drawT / DRAW_LEN), e = std::sin(u * 3.14159265f);
+            switch (gun) {
+                case 0: {   // tipped in to show the cylinder, then the click
+                    const float c = std::exp(-std::pow((u - 0.55f) / 0.07f, 2.f));
+                    p.yaw += 22.f * e; p.roll += -26.f * e; p.pitch += 5.f * e - 3.f * c;
+                    p.offset += glm::vec3{-0.03f * e, 0.02f * e, 0.f};
+                    break;
+                }
+                case 1: {   // racked: dips, the pump pulls back and shoves home
+                    const float r = std::sin(seg(u, 0.2f, 0.6f) * 3.14159265f);
+                    p.roll += 10.f * e; p.pitch += -4.f * e;
+                    p.offset += glm::vec3{0.f, -0.02f * e, -0.035f * r};
+                    break;
+                }
+                case 2: {   // the bolt checked: rolled over to look at the breech
+                    p.roll += -18.f * e; p.yaw += 8.f * e; p.pitch += 3.f * e;
+                    p.offset += glm::vec3{-0.02f * e, 0.015f * e, 0.f};
+                    break;
+                }
+                default: {   // settled into the shoulder: a lift, then down onto it
+                    const float s2 = std::sin(u * 6.2831853f);
+                    p.pitch += 6.f * s2 * (1.f - u); p.offset += glm::vec3{0.f, 0.015f * s2 * (1.f - u), -0.02f * e};
+                    break;
+                }
+            }
+        }
         // Reload: OPEN tilt in, CLOSE snap back
         if (reloadT >= 0.f) {
             float u = std::min(1.f, reloadT / reloadLen);
@@ -203,6 +247,8 @@ public:
 
 private:
     static constexpr float INSPECT_LEN = 2.2f;
+    static constexpr float DRAW_LEN = 0.45f, QUICK_SWAP = 0.6f;
+    float drawT = -1.f, lastUp = -10.f; bool drawCued = true;
     static constexpr const char* SWITCH_CUE[4] = {"switch_up0", "switch_up1", "switch_up2", "switch_up3"};
     float clock = 0.f, kickAge = 10.f, landDip = 0.f, dashAmt = 0.f, slideAmt = 0.f;
     bool  dash = false, slide = false;

@@ -242,6 +242,27 @@ public:
         }
     }
 
+    // A shot breaking on a wall: a spray of small glowing cubes thrown back off it, tumbling, bouncing on floorY
+    void spawnShards(glm::vec3 pos, glm::vec3 back, glm::vec3 glow, float size, float floorY) {
+        const int n = 5 + (int)std::min(6.f, size * 3.f);
+        for (int i = 0; i < n; ++i) {
+            Debris d;
+            const float s = (0.05f + 0.06f * frand(0.f, 1.f)) * std::max(0.7f, size);
+            d.shape = glm::mat3(glm::scale(glm::mat4(1.f), glm::vec3{s}));
+            d.pos = pos + glm::vec3{frand(0.f, 1.f) - 0.5f, frand(0.f, 1.f) - 0.5f, frand(0.f, 1.f) - 0.5f} * 0.2f;
+            glm::vec3 r{frand(0.f, 1.f) * 2.f - 1.f, frand(0.f, 1.f) * 2.f - 1.f, frand(0.f, 1.f) * 2.f - 1.f};
+            d.vel = back * (2.f + 4.f * frand(0.f, 1.f)) + r * 3.f + glm::vec3{0.f, 2.5f, 0.f};
+            glm::vec3 ax{frand(0.f, 1.f) - 0.5f, frand(0.f, 1.f) - 0.5f, frand(0.f, 1.f) - 0.5f};
+            d.axis = glm::length(ax) > 1e-3f ? glm::normalize(ax) : glm::vec3{0.f, 1.f, 0.f};
+            d.spin = 8.f + 14.f * frand(0.f, 1.f);
+            d.maxLife = d.life = 0.5f + 0.4f * frand(0.f, 1.f);
+            d.color = glow * 0.35f; d.emissive = glow * 1.6f;
+            d.floorY = floorY + s;
+            debris.push_back(d);
+        }
+        if (debris.size() > 900) debris.erase(debris.begin(), debris.begin() + (debris.size() - 900));
+    }
+
     // Break an enemy into the boxes of its rig, posed as it was at `clock`;
     // the pieces bounce on the ground at floorY
     void spawnDebrisFor(const Enemy& e, float clock, float floorY) {
