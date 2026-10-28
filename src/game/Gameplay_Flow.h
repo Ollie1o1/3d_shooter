@@ -738,7 +738,7 @@ inline void GameplayState::updateScreenFx(float dt) {
     windFx += (wantWind - windFx) * (1.f - std::exp(-dt * (wantWind > windFx ? 6.f : 3.f)));
     audio.setWind(playerDead ? 0.f : windFx);
     // The rope singing while the grapple pulls: higher the faster it drags you
-    float wantRope = grapple.active ? glm::clamp(spd / 38.f, 0.15f, 1.f) : 0.f;
+    float wantRope = grapple.active && !grapple.latched ? glm::clamp(spd / 38.f, 0.15f, 1.f) : 0.f;   // (hanging still: quiet)
     ropeFx += (wantRope - ropeFx) * (1.f - std::exp(-dt * (wantRope > ropeFx ? 14.f : 9.f)));
     audio.setRope(playerDead ? 0.f : ropeFx);
 }
