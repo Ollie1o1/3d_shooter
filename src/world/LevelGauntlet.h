@@ -1189,5 +1189,6 @@ inline LevelData buildGauntlet() {
 
     // Par times for the whole run (seconds): S, A, B, C (the rooms' golds plus the tubes, and up)
     L.parTimes[0] = 490.f; L.parTimes[1] = 650.f; L.parTimes[2] = 830.f; L.parTimes[3] = 1080.f;
+    layout::applyFile(L, "fast");
     return L;
 }

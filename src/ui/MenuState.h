@@ -8,6 +8,7 @@
 #include "world/LevelGauntlet.h"
 #include "world/LevelAct2.h"
 #include "ui/UIBatch.h"
+#include "ui/MenuArt.h"
 #include "core/Gamepad.h"
 #include <SDL2/SDL.h>
 #ifdef __EMSCRIPTEN__
@@ -22,8 +23,9 @@
 #include <vector>
 
 // =============================================================================
-// MenuState — main menu (ARENA / ACT II / FAST / ENDLESS / BOSS / LEADERBOARD /
-// SETTINGS / EXIT), the BOSS page (every boss in order, fought on its own), the
+// MenuState — main menu (ARENA / STORY / FAST / ENDLESS / BOSS / LEADERBOARD /
+// SETTINGS / EXIT), the ARENA page (the whole of Act I, the whole of Act II once
+// Act I is beaten, or any arena of either on its own), the BOSS page (every boss in order, fought on its own), the
 // settings page, the leaderboard page, and the DEV level select (press ` or
 // F2 on the main menu): jump straight to any arena, wave, FAST room or the
 // boss, optionally in god mode. Dev runs are practice: no records.
@@ -35,7 +37,15 @@ public:
 
     GameSettings* settings = nullptr;   // injected by main
 
-    enum Page { MAIN, SETTINGS, BOARD, DEV, BOSS, FASTPAGE };
+    enum Page { MAIN, SETTINGS, BOARD, DEV, BOSS, FASTPAGE, ARENAPAGE };
+    // The ARENA page: two columns, each the whole act then its arenas one by one
+    struct ArenaRow { std::string name, subtitle; };
+    std::vector<ArenaRow> act1Arenas, act2Arenas;
+    int   arenaSel = 0;
+    float storyNudge = 0.f;   // STORY was picked: it isn't here yet (the row flashes COMING SOON)
+    // The pictures behind the pages (MenuArt.h): an arena, fading to the next; the BOSS page's boss
+    menuart::Fade backdrop, portrait;
+    float slideT = 0.f;       // the main menu's slideshow of the arenas
     int   fastSel = 0;   // the FAST page: 0 the whole Gauntlet, 1.. a room on its own (ROOM ATTACK)
     struct FastRoom { std::string name; float medals[4]; };
     std::vector<FastRoom> fastRooms;
@@ -82,7 +92,7 @@ public:
         records.load();
         board.load();
         LevelData A = buildLevel(), F = buildGauntlet();
-        for (auto& a : A.arenas) arenaNames.push_back(a.name);
+        for (auto& a : A.arenas) { arenaNames.push_back(a.name); act1Arenas.push_back({a.name ? a.name : "", a.subtitle ? a.subtitle : ""}); }
         for (int i = 0; i < (int)A.arenas.size(); ++i)
             devRows.push_back({"ARENA", A.arenas[i].name, GameMode::ARENA, i, (int)A.arenas[i].waves.size()});
         for (int i = 0; i < (int)F.arenas.size(); ++i) {
@@ -93,6 +103,7 @@ public:
         }
         act1Rows = (int)A.arenas.size();
         LevelData A2 = buildAct2Level();
+        for (auto& a : A2.arenas) act2Arenas.push_back({a.name ? a.name : "", a.subtitle ? a.subtitle : ""});
         for (int i = 0; i < (int)A2.arenas.size(); ++i)
             devRows.push_back({"ACT II", A2.arenas[i].name, GameMode::ACT2, i, (int)A2.arenas[i].waves.size()});
     }
@@ -118,6 +129,7 @@ public:
         if (page == DEV) { handleDevEvent(e); return; }
         if (page == BOSS) { handleBossEvent(e); return; }
         if (page == FASTPAGE) { handleFastEvent(e); return; }
+        if (page == ARENAPAGE) { handleArenaEvent(e); return; }
         if (e.type == SDL_KEYDOWN && !e.key.repeat &&
             (e.key.keysym.sym == SDLK_BACKQUOTE || e.key.keysym.sym == SDLK_F2)) { openDev(); return; }
         if (e.type == SDL_KEYDOWN) {
@@ -143,7 +155,12 @@ public:
         }
     }
 
-    void update(float dt) override { flashTime += dt; }
+    void update(float dt) override {
+        flashTime += dt; storyNudge = std::max(0.f, storyNudge - dt);
+        slideT += dt;
+        backdrop.update(dt, page == MAIN ? 1.6f : 0.35f);
+        portrait.update(dt, 0.25f);
+    }
 
     void render() override {
         glClearColor(0.04f, 0.03f, 0.08f, 1.f);
@@ -154,6 +171,7 @@ public:
             float t = (float)i / 24.f;
             ui.rect(0, t * screenH, screenW, screenH / 24.f + 1, {0.04f + t * 0.05f, 0.02f + t * 0.015f, 0.08f + t * 0.07f, 1.f});
         }
+        drawBackdrop();
         float horizon = screenH * 0.62f;
         for (int i = 0; i < 14; ++i) {
             float z = std::fmod(i + flashTime * 0.6f, 14.f) / 14.f;
@@ -174,6 +192,7 @@ public:
         else if (page == BOARD) renderBoard();
         else if (page == BOSS) renderBoss();
         else if (page == FASTPAGE) renderFast();
+        else if (page == ARENAPAGE) renderArena();
         else renderDev();
         ui.end();
     }
@@ -190,8 +209,8 @@ private:
     }
 
     void activate(int idx) {
-        if (idx == 0 && onStart) onStart(GameMode::ARENA, StartOptions{});
-        if (idx == 1 && onStart && canStartAct2(records)) onStart(GameMode::ACT2, StartOptions{});
+        if (idx == 0) { page = ARENAPAGE; arenaSel = 0; }
+        if (idx == 1) storyNudge = 1.2f;   // STORY: not yet
         if (idx == 2) { page = FASTPAGE; fastSel = 0; }
         if (idx == 3 && onStart) onStart(GameMode::ENDLESS, StartOptions{});
         if (idx == 4) { page = BOSS; bossSel = 0; bossPoll = 0.f; refreshWorld(); }
@@ -203,6 +222,149 @@ private:
         }
         if (idx == 6) { page = SETTINGS; settingsMenu.selected = 1; settingsMenu.bindsPage = false; }
         if (idx == 7 && onQuit) onQuit();
+    }
+
+    // ---- the pictures behind the pages ---------------------------------------
+    // The main menu: every arena in turn, slowly; the ARENA page: the arena picked; the BOSS page: the
+    // boss's arena. Faint, so the page stays the thing you read
+    void drawBackdrop() {
+        const menuart::Pic* want = nullptr;
+        float alpha = 0.f;
+        if (page == MAIN) {
+            const int n1 = (int)act1Arenas.size(), n = n1 + (int)act2Arenas.size();
+            const int k = n ? (int)(slideT / 7.f) % n : 0;
+            want = &menuart::arena(k >= n1, k >= n1 ? k - n1 : k);
+            alpha = 0.22f;
+        } else if (page == ARENAPAGE) {
+            int col, row; arenaCell(arenaSel, col, row);
+            want = &menuart::arena(col == 1, std::max(0, row - 1));
+            alpha = 0.34f;
+        } else if (page == BOSS) {
+            const BossEntry& b = bossEntry(bossSel);
+            want = &menuart::arena(b.act2, b.arena);
+            alpha = 0.3f;
+        }
+        backdrop.show(want && want->tex ? want : nullptr);
+        auto draw = [&](const menuart::Pic* p, float a) {
+            if (!p || !p->tex || a <= 0.f) return;
+            // cover the screen, cropped to its shape
+            float sx = (float)screenW / p->w, sy = (float)screenH / p->h, k = std::max(sx, sy);
+            float w = p->w * k, h = p->h * k;
+            ui.image(p->tex, (screenW - w) * 0.5f, (screenH - h) * 0.5f, w, h, {1.f, 1.f, 1.f, a});
+        };
+        float t = backdrop.t * backdrop.t * (3.f - 2.f * backdrop.t);
+        draw(backdrop.was, alpha * (1.f - t));
+        draw(backdrop.now, alpha * t);
+    }
+
+    // ---- ARENA: the whole of Act I, the whole of Act II (once Act I is beaten), or any arena on its own ----
+    // Rows: column 0 is ACT I then its arenas, column 1 ACT II then its arenas (Up/Down walk both in turn)
+    static constexpr float ARENA_COL_W = 600.f;
+    int arenaRows() const { return 2 + (int)act1Arenas.size() + (int)act2Arenas.size(); }
+    // which column (0 Act I, 1 Act II) and which row in it (0 the whole act, 1.. an arena)
+    void arenaCell(int i, int& col, int& row) const {
+        const int n0 = 1 + (int)act1Arenas.size();
+        col = i < n0 ? 0 : 1; row = i < n0 ? i : i - n0;
+    }
+    glm::vec4 arenaRect(int i) const {   // x, y, w, h
+        int col, row; arenaCell(i, col, row);
+        const float x = screenW / 2.f + (col == 0 ? -ARENA_COL_W - 10.f : 10.f);
+        if (row == 0) return {x, 124.f, ARENA_COL_W, 62.f};
+        return {x, 222.f + (row - 1) * 50.f, ARENA_COL_W, 44.f};
+    }
+    float arenaBottom() const {
+        return 222.f + (float)std::max(act1Arenas.size(), act2Arenas.size()) * 50.f;
+    }
+    int arenaAt(int mx, int my) const {
+        for (int i = 0; i < arenaRows(); ++i) {
+            glm::vec4 r = arenaRect(i);
+            if (mx > r.x && mx < r.x + r.z && my > r.y && my < r.y + r.w) return i;
+        }
+        return -1;
+    }
+    void startArena(int i) {
+        if (!onStart) return;
+        int col, row; arenaCell(i, col, row);
+        const GameMode m = col == 0 ? GameMode::ARENA : GameMode::ACT2;
+        if (row == 0) {   // the whole act: Act II only once Act I is beaten
+            if (col == 1 && !canStartAct2(records)) return;
+            onStart(m, StartOptions{});
+            return;
+        }
+        StartOptions o;   // one arena on its own: always open
+        o.arena = o.solo = row - 1;
+        onStart(m, o);
+    }
+    void handleArenaEvent(const SDL_Event& e) {
+        if (e.type == SDL_KEYDOWN) {
+            SDL_Keycode k = e.key.keysym.sym;
+            const int n = arenaRows();
+            if (k == SDLK_ESCAPE || k == SDLK_BACKSPACE) { page = MAIN; selected = 0; return; }
+            if (k == SDLK_UP)   arenaSel = (arenaSel + n - 1) % n;
+            if (k == SDLK_DOWN) arenaSel = (arenaSel + 1) % n;
+            if (k == SDLK_LEFT || k == SDLK_RIGHT) cycleDifficulty(k == SDLK_LEFT ? -1 : 1);
+            if (k == SDLK_RETURN || k == SDLK_SPACE) startArena(arenaSel);
+        }
+        if (e.type == SDL_MOUSEMOTION) { int i = arenaAt(e.motion.x, e.motion.y); if (i >= 0) arenaSel = i; }
+        if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
+            int i = arenaAt(e.button.x, e.button.y);
+            if (i >= 0) { arenaSel = i; startArena(i); }
+            else if (int d = difficultyClick(e.button.x, e.button.y, arenaBottom() + 8.f)) cycleDifficulty(d);
+        }
+    }
+    void renderArena() {
+        const int cx = screenW / 2;
+        ui.text("ARENA", cx, 40, 5, {1.f, 0.55f, 0.08f, 1.f}, true);
+        ui.text("A WHOLE ACT, START TO FINISH - OR ANY ARENA ON ITS OWN", cx, 96, 1, {0.75f, 0.72f, 0.7f, 0.9f}, true);
+        const bool act2Open = canStartAct2(records);
+        char buf[96];
+        for (int i = 0; i < arenaRows(); ++i) {
+            int col, row; arenaCell(i, col, row);
+            const glm::vec4 r = arenaRect(i);
+            const float x = r.x, y = r.y, w = r.z, h = r.w;
+            const bool sel = i == arenaSel, locked = col == 1 && row == 0 && !act2Open;
+            const float pulse = sel ? 0.5f + 0.5f * std::sin(flashTime * 5.f) : 0.f;
+            const glm::vec3 accent = col == 0 ? glm::vec3{1.f, 0.6f, 0.1f} : glm::vec3{0.35f, 0.95f, 0.9f};
+            ui.rect(x, y, w, h, sel ? glm::vec4{0.13f + pulse * 0.06f, 0.08f, 0.04f + col * 0.05f, 0.92f} : glm::vec4{0.07f, 0.07f, 0.10f, 0.85f});
+            if (sel) ui.rect(x, y, 5, h, {accent.x, accent.y + pulse * 0.1f, accent.z, 1.f});
+            glm::vec4 c = locked ? glm::vec4{0.42f, 0.42f, 0.47f, 0.75f}
+                        : sel ? glm::vec4{accent, 1.f} : glm::vec4{0.8f, 0.8f, 0.85f, 0.95f};
+            const glm::vec4 dim{0.7f, 0.68f, 0.66f, 0.85f}, gold{1.f, 0.85f, 0.45f, 0.9f};
+            if (row == 0) {   // the whole act
+                ui.text(col == 0 ? "ACT I" : "ACT II", x + 22, y + 10, 3, c);
+                if (col == 0) {
+                    ui.text("EVERY ARENA IN A ROW - TWO BOSSES - RANKED", x + 22, y + 40, 1, dim);
+                    if (records.bestArenaScore > 0) {
+                        std::snprintf(buf, sizeof(buf), "BEST %d", records.bestArenaScore);
+                        ui.textRight(buf, (int)(x + w - 18), (int)y + 12, 2, gold);
+                    }
+                } else {
+                    std::string sub = act2Subtitle(records, act2Open);
+                    if (!act2Open) sub = "CLEAR ACT I TO RUN THE WHOLE ACT";
+                    ui.text(sub.substr(0, 90).c_str(), x + 22, y + 40, 1, locked ? glm::vec4{1.f, 0.55f, 0.3f, 0.9f} : dim);
+                    if (locked) ui.textRight("LOCKED", (int)(x + w - 18), (int)y + 12, 2, {1.f, 0.55f, 0.3f, 0.9f});
+                }
+                continue;
+            }
+            const int a = row - 1;
+            const ArenaRow& ar = col == 0 ? act1Arenas[a] : act2Arenas[a];
+            std::snprintf(buf, sizeof(buf), "%d", row);
+            ui.text(buf, x + 18, y + 10, 3, {0.5f, 0.5f, 0.55f, 0.8f});
+            ui.text(ar.name.c_str(), x + 56, y + 5, 2, c);
+            ui.text(ar.subtitle.substr(0, 60).c_str(), x + 56, y + 28, 1, dim);
+            const float best = records.soloBest(col == 1, a);
+            ui.textRight(best > 0.f ? formatTime(best).c_str() : "-", (int)(x + w - 18), (int)y + 12, 2, gold);
+        }
+        ui.text("ACT I ARENAS", cx - (int)(ARENA_COL_W / 2) - 10, 204, 1, {1.f, 0.65f, 0.25f, 0.9f}, true);
+        ui.text("ACT II ARENAS - ALWAYS OPEN", cx + (int)(ARENA_COL_W / 2) + 10, 204, 1, {0.35f, 0.95f, 0.9f, 0.9f}, true);
+        if (settings) {
+            std::snprintf(buf, sizeof(buf), "DIFFICULTY   <  %s  >", difficulty(settings->difficulty).name);
+            ui.text(buf, cx, arenaBottom() + 8, 2, {1.f, 0.8f, 0.45f, 0.95f}, true);
+        }
+        ui.text("ONE ARENA ON ITS OWN: THE UPGRADES A RUN WOULD HAVE BY THEN, YOUR BEST CLEAR TIME KEPT",
+                cx, screenH - 58, 1, {0.6f, 0.6f, 0.65f, 0.85f}, true);
+        ui.text("UP/DOWN OR MOUSE TO PICK   ENTER OR CLICK TO PLAY   LEFT/RIGHT DIFFICULTY   ESC BACK",
+                cx, screenH - 36, 1, {0.6f, 0.6f, 0.65f, 0.85f}, true);
     }
 
     // ---- FAST: the whole Gauntlet, or ROOM ATTACK (a room on its own, for its medal) ----
@@ -314,6 +476,14 @@ private:
     void renderBoss() {
         int cx = screenW / 2;
         pollBossWorld();
+        {   // the boss picked, beside the list (its render: MenuArt.h)
+            const menuart::Pic& pic = menuart::boss(bossSel);
+            portrait.show(pic.tex ? &pic : nullptr);
+            const float x = cx + BOSS_W / 2 + 16.f, w = screenW - x - 16.f, h = w * 1.25f, y = 150.f;
+            float t = portrait.t * portrait.t * (3.f - 2.f * portrait.t);
+            if (portrait.was && portrait.was->tex) ui.image(portrait.was->tex, x, y, w, h, {1.f, 1.f, 1.f, 1.f - t});
+            if (portrait.now && portrait.now->tex) ui.image(portrait.now->tex, x, y, w, h, {1.f, 1.f, 1.f, t});
+        }
         ui.text("BOSS", cx, 46, 5, {1.f, 0.55f, 0.08f, 1.f}, true);
         ui.text("EVERY BOSS IN ORDER, ON ITS OWN - WITH THE UPGRADES A RUN WOULD HAVE BY THEN", cx, 104, 1, {0.75f, 0.72f, 0.7f, 0.9f}, true);
         char buf[96];
@@ -507,7 +677,7 @@ private:
         ui.rect(cx - 300, screenH / 2 - 172, 600, 3, {1.f, 0.55f, 0.05f, 0.9f});
 
         struct Item { const char* label; const char* sub; };
-        std::string arenaSub = "5 ARENAS - WAVES - TWO BOSSES";
+        std::string arenaSub = "ACT I - ACT II - OR ANY ARENA ON ITS OWN";
         std::string fastSub  = "TIME TRIAL - THE GAUNTLET";
         std::string endSub   = "THE CORE - NO EXIT, JUST THE NEXT WAVE";
         int bossBest = 0;
@@ -517,11 +687,10 @@ private:
         if (records.bestArenaScore > 0) arenaSub += "   BEST " + std::to_string(records.bestArenaScore);
         if (records.bestFast  > 0.f) fastSub  += "   BEST " + formatTime(records.bestFast);
         if (records.bestEndless > 0) endSub += "   BEST " + std::to_string(records.bestEndless);
-        bool act2 = canStartAct2(records);
-        std::string act2Sub = act2Subtitle(records, act2);   // (with its best times)
+        const bool nudge = storyNudge > 0.f;
         Item items[NUM_ITEMS] = {
             {"ARENA", arenaSub.c_str()},
-            {"ACT II", act2Sub.c_str()},
+            {"STORY", nudge ? "COMING SOON - WE'RE STILL WRITING IT" : "COMING SOON"},
             {"FAST",  fastSub.c_str()},
             {"ENDLESS", endSub.c_str()},
             {"BOSS", bossSub.c_str()},
@@ -540,7 +709,8 @@ private:
             ui.rect(cx - 200, y + ITEM_H - 2, 400, 2, border);
             if (sel) ui.rect(cx - 200, y, 5, ITEM_H, {1.f, 0.6f + pulse * 0.2f, 0.1f, 1.f});
             glm::vec4 c = sel ? glm::vec4{1.f, 0.65f, 0.12f, 1.f} : glm::vec4{0.65f, 0.65f, 0.7f, 0.95f};
-            if (i == 1 && !act2) c = {0.42f, 0.42f, 0.47f, 0.75f};   // locked
+            if (i == 1) c = nudge ? glm::vec4{1.f, 0.55f, 0.3f, 0.6f + 0.4f * std::sin(flashTime * 12.f)}
+                                  : glm::vec4{0.42f, 0.42f, 0.47f, 0.75f};   // STORY: not yet
             bool hasSub = items[i].sub[0] != 0;
             ui.text(items[i].label, cx, y + (hasSub ? 6 : 12), 3, c, true);
             if (hasSub) ui.text(items[i].sub, cx, y + 31, 1, {0.75f, 0.72f, 0.7f, 0.9f}, true);

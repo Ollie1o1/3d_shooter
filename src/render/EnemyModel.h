@@ -15,6 +15,7 @@
 #include <cmath>
 #include "enemies/Enemy.h"
 #include "render/EnemyFile.h"
+#include "render/AnimClip.h"
 
 // One unit cube ([-0.5, 0.5]^3) placed by `model`. Layout matches the
 // per-instance vertex attributes in BoxRenderer (locations 4-9).
@@ -273,6 +274,22 @@ inline void wardenShards(const Enemy& e, float time, float grow, vec3 g, std::ve
     }
 }
 
+// A clip made in Blender (AnimClip.h) over the code's pose: at `progress` (0..1) through it, eased in over
+// its first 15 %. Each joint it keys takes the clip's motion; "root" moves the whole body. False: no clip
+inline bool playClip(const char* fileName, const char* clipName, float progress, FilePose& P, mat4& fileRoot) {
+    const anim::ClipFile* F = anim::file(fileName, enemyfile::names());
+    const anim::Clip* c = F ? F->clip(clipName) : nullptr;
+    if (!c) return false;
+    const float t = glm::clamp(progress, 0.f, 1.f) * c->length;
+    float w = glm::clamp(progress / 0.15f, 0.f, 1.f);
+    w = w * w * (3.f - 2.f * w);
+    for (const anim::Track& tr : c->tracks) {
+        if (tr.joint == anim::ROOT_TRACK) fileRoot = fileRoot * anim::blend(mat4(1.f), anim::motionAt(tr, t), w);
+        else if (tr.joint > 0 && tr.joint < enemyfile::E_COUNT) P.motion[tr.joint] = anim::blend(P.motion[tr.joint], anim::motionAt(tr, t), w);
+    }
+    return true;
+}
+
 // Every enemy with a file: where its file is drawn from (fileRoot) and how its joints
 // turn and its glow channels shine this frame, from its state: the same numbers its
 // code rig uses. false for a type with no file rig. (Also what tools/enemy_export.cpp reads.)
@@ -391,6 +408,10 @@ inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileR
         P.flag[F_ENRAGED] = e.enraged;
         P.flag[F_BROKEN] = broken;
         P.wave = time * 3.f;
+        // JUDGMENT's wind-up keyed in Blender (assets/enemies/anim/sovereign.glb, "judgment"): played over
+        // the wind-up, eased in from whatever he was doing; no file, the code's pose above
+        if (!broken && e.telegraphTimer > 0.f && e.attack == AttackKind::JUDGMENT)
+            playClip("sovereign", "judgment", tp, P, fileRoot);
         return true;
     }
     case EnemyType::ABSOLUTE: return absoluteFilePose(e, time, root, fileRoot, P, glowOut);

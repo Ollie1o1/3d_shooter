@@ -307,6 +307,12 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         const float best = r < (int)records.fastRooms.size() ? records.fastRooms[r] : 0.f;
         ui.renderVictoryRoom(level.arenas[r].name, roomTimes.back(), roomMedals.back(), level.arenas[r].medals,
                              newRecord, best, fastLeftStanding, deaths, totalShots, totalHits);
+    } else if (victory && arenaSolo()) {   // the ARENA page's one arena: its time against its best
+        const int a = glm::clamp(g_arenaSolo, 0, (int)level.arenas.size() - 1);
+        char title[64];
+        snprintf(title, sizeof(title), "%s  ARENA %d CLEARED", act2() ? "ACT II" : "ACT I", a + 1);
+        ui.renderVictoryArena(totalKills, totalShots, totalHits, deaths, elapsedTime, peakStyle, prog.level,
+                              newRecord ? 0.f : records.soloBest(act2(), a), newRecord, true, runScore(), title, level.arenas[a].name);
     } else if (victory) {
         if (fast()) {
             const char* rank = elapsedTime < level.parTimes[0] ? "S" : elapsedTime < level.parTimes[1] ? "A"
@@ -328,7 +334,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             ui.renderVictoryArena(totalKills, totalShots, totalHits, deaths, elapsedTime, peakStyle,
                                   prog.level, records.bestArena, newRecord, !nameEntry, runScore());
         }
-        if (!act2()) renderLeaderboardPanel();
+        if (!act2() && !arenaSolo()) renderLeaderboardPanel();   // (one arena on its own: no board)
     }
     if (armoryOpen) ui.renderArmory(prog, armoryW, armoryS);
     if (paused) {

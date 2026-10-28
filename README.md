@@ -17,8 +17,9 @@ A fast 3D arena shooter in the spirit of ULTRAKILL, written from scratch in C++1
 
 | Mode | What it is |
 |------|------------|
-| **ARENA** | Act I. Four themed arenas of three waves each (the **Sunset Yard**, **the Foundry**, **the Spire**, **the Core** and its boss **the Warden**), then **the Sanctum**, a duel under an eclipse with **the Sovereign**. Scored and ranked on the leaderboard. |
-| **ACT II** | Unlocked by killing the Sovereign. Down beneath the eclipse: **the Drowned Nave** (rising water), **the Orrery** (a sun whose flare sweeps the arena), **the Descent** (a cage riding down a shaft to **the Penitent**), **the Reliquary** (pieces of Act I drifting over a void) and **the Maw** (**the Leviathan**). Then the encore, **!!!!!**: **the Absolute**, who comes back as **MORNINGSTAR**. Keeps local best times; not ranked yet. |
+| **ARENA** | A page (like FAST's) of the whole of **Act I**, the whole of **Act II** once Act I is beaten, or **any arena of either act on its own** (always open: the upgrades a run would have by then, your best clear time kept). Act I: four themed arenas of three waves each (the **Sunset Yard**, **the Foundry**, **the Spire**, **the Core** and its boss **the Warden**), then **the Sanctum**, a duel under an eclipse with **the Sovereign**. Scored and ranked on the leaderboard. |
+| **ACT II** | (On the ARENA page.) The whole act unlocks when the Sovereign falls in an Act I run. Down beneath the eclipse: **the Drowned Nave** (rising water), **the Orrery** (a sun whose flare sweeps the arena), **the Descent** (a cage riding down a shaft to **the Penitent**), **the Reliquary** (pieces of Act I drifting over a void) and **the Maw** (**the Leviathan**). Then the encore, **!!!!!**: **the Absolute**, who comes back as **MORNINGSTAR**. Keeps local best times; not ranked yet. |
+| **STORY** | Coming soon: a new mode, still being written. |
 | **FAST** | **The Gauntlet**: a time trial through seven rooms joined by boost tubes, a **mini-boss** in each room and **the Pacemaker** at the end, with splits against your best run, par ranks, a ghost of your best route and **medals for every room**. **ROOM ATTACK** runs any one room on its own for its medal. |
 | **ENDLESS** | Generated waves in the Core until you die, tougher every wave, with an objective every 4th wave and the Warden every 10th. |
 | **BOSS** | Any boss on its own, with a level and upgrades to match. Your best kill time for each is kept. |
@@ -411,6 +412,30 @@ What the game reads from the file (`render/GunFile.h` has the details):
 Each gun needs its joints (`jointsNeeded()` in `GunKit.h`): the revolver its crane, cylinder, hammer, trigger and needle; the shotgun its pump; the rifles their bolt (and the Longshot its mag); every gun a muzzle and cells. The sword, OATHBREAKER, is a file too (`assets/guns/sword.glb`, rebuilt from `tools/blender/sword_build.py`; `./shooter --viewer sword`), needing only its `cells` socket. `make test` checks every file loads, has its joints, and survives a write and read back. The ammo cells, muzzle flash, falling brass, speedloader, shells and stripper clip are drawn by code (`extrasOf()`), because they depend on the magazine and the moment.
 
 Your arms are a file as well (`assets/guns/arm.glb`, rebuilt from `tools/blender/arm_build.py`; `ArmFile.h`): the sleeve, the vambrace, and a gloved hand with five fingers of three joints each (`thumb1-3`, `index1-3`, `middle1-3`, `ring1-3`, `pinky1-3`, laid flat in the file), with the parrying gauntlet's plates on every finger bone (`show` = `gauntlet`). The code bends the fingers into poses (`handGrip`, `handFist`, `handFlat`, `handRelaxed`, `handSpread`, `handFan`) and every joint follows its pose on its own spring (`HandSpring`), so the fingers settle with a little overshoot, out of step with each other, and flex slightly at rest. To see a hand up close: `--overlay handPV` (pose P: 0 grip, 1 fist, 2 flat, 3 relaxed, 4 spread, 5 fan, +6 in the gauntlet; view V: 0 back, 1 palm, 2 knuckles, 3 thumb side). `--overlay fanNN` holds the revolver's fanning hand NN% of the way between two slaps (`faninNN` / `fanoutNN`: coming up into place / being put away).
+
+### Lay out a level in Blender
+
+The levels are built in C++ (`world/Level.h`, `LevelAct2.h`, `LevelGauntlet.h`); a layout made in Blender goes on top (`assets/levels/<level>.json`, `world/LevelLayout.h`): walls, props, neon, prop files placed anywhere, spawns, and pieces that break. New walls go after the code's, so nothing the code points at by number moves.
+
+1. `make level-dump` writes every level as the game draws it into `build/levels/<level>/` (its faces, textures, collision boxes, arenas).
+2. `blender --python tools/blender/level_import.py -- act1` (or `act2`, `fast`) opens it: **World** (what the game draws, for looking at), **Arenas** (bounds, starts, spawns), and **OD_LAYOUT**, the collection you edit. Each object in it carries `od_kind`: a mesh is a `wall`, `prop`, `neon` or `destructible` (its box; `od_mat` its surface, `od_name`/`od_hp` a destructible's prop and health), an empty a `spawn_ground`, `spawn_air` or `model` (`od_name`: `assets/props/<name>.glb`).
+3. Run `tools/blender/layout_export.py` (Scripting tab) to write `assets/levels/<level>.json`, then `make light` to rebake (below). A broken layout is reported and left out; `make test` checks it.
+
+### Baked light
+
+Every level's ambient occlusion and its arenas' sun shadows are baked into a 1 m grid (`render/LightBake.h`, `make light` → `assets/levels/<level>.light`, about 20 s for all three) and looked up by the world shader. Rebake after changing a level: a bake of an older level is left out (the game says so, and `make test` fails until it's rebaked). Roofed arenas keep their hand-set light (no baked sun). `--skip bake` draws without it, `--overlay bake` shows what's baked (red open, green sun).
+
+### Keyframe a boss move
+
+A move can be keyed in Blender and played over the code's pose (`render/AnimClip.h`): `tools/blender/anim_build.py` writes a rig's clips to `assets/enemies/anim/<rig>.glb` (only its joints and their keys: the model file is untouched) and saves `build/anim/<rig>.blend` to keep working in (then `-- --export-only <rig>`). A clip plays over the move's wind-up, eased in from whatever came before; `root` moves the whole body. The Sovereign's JUDGMENT is the first.
+
+### Menu art
+
+`tools/blender/render_art.py` renders every arena (in its own light) and every boss into `assets/art/` (after `make level-dump`); the menus draw them behind their pages (`ui/MenuArt.h`, stb_image for the JPEGs).
+
+### Something that breaks
+
+`tools/blender/destruct_build.py` makes a prop whole (`<name>.glb`) and cut into chunks (`<name>_pieces.glb`, each a closed convex piece). Place it with a layout (`destructible`); shots and blasts wear it down (it darkens as it goes), then its box is gone and its pieces fly, settle and fade (`game/Gameplay_Destruct.h`). A retry puts it back. `--overlay broken` breaks them all for a screenshot. The Sunset Yard has four.
 
 ### Add an enemy type
 

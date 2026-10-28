@@ -213,11 +213,13 @@ struct App {
                 g_practice   = o.practice;
                 g_bossRun    = o.boss;
                 g_roomAttack = o.room;
+                g_arenaSolo  = o.solo;
             };
             menu->onQuit   = [this]() { quit(); };
             if (openDevMenu) { menu->openDev(); openDevMenu = false; }
             if (g_devOverlay == "board") menu->page = MenuState::BOARD;
             if (g_devOverlay == "bosses") menu->page = MenuState::BOSS;
+            if (g_devOverlay == "arenas") menu->page = MenuState::ARENAPAGE;
             currentState.reset(menu);
         } else if (next == NextState::Game) {
             setMouseCaptured(!g_devNoMouse);
@@ -596,6 +598,11 @@ int main(int argc, char* argv[]) {
             g_roomAttack = std::max(0, std::atoi(argv[++i]) - 1); g_startArena = g_roomAttack;
         }
         if (arg == "--act2") { app->mode = GameMode::ACT2; app->pending = App::NextState::Game; }
+        if (arg == "--solo" && i + 1 < argc) {   // --solo N: the ARENA page's arena N on its own (with --act2 first: Act II's)
+            if (app->mode != GameMode::ACT2) app->mode = GameMode::ARENA;
+            app->pending = App::NextState::Game;
+            g_arenaSolo = std::max(0, std::atoi(argv[++i]) - 1); g_startArena = g_arenaSolo;
+        }
         if (arg == "--endless") { app->mode = GameMode::ENDLESS; app->pending = App::NextState::Game; }
         if (arg == "--boss" && i + 1 < argc) {   // --boss N: BOSS N (1 the Warden .. 6 MORNINGSTAR), on its own
             g_bossRun = std::clamp(std::atoi(argv[++i]) - 1, 0, BOSS_COUNT - 1);
