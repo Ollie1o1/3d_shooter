@@ -44,6 +44,7 @@
 #include "audio/AudioTypes.h"
 #include "enemies/Enemy.h"
 #include "world/Shapes.h"
+#include <string>
 #include <vector>
 #include <algorithm>
 #include <cmath>
