@@ -4340,14 +4340,31 @@ int main() {
         for (int i = 0; i < 20; ++i) c.update(DT);
         c.cues.clear(); c.switchTo(3);
         bool quiet = true;
-        for (int i = 0; i < 60; ++i) { c.update(DT); for (auto& q : c.cues) quiet &= std::string(q.name) == "switch_up3"; c.cues.clear(); }
-        CHECK(quiet && !c.reloading() && c.pose().reloadU < 0.f, "switching mid-reload drops the reload and its sounds");
+        int newBolts = 0;
+        for (int i = 0; i < 60; ++i) { c.update(DT); for (auto& q : c.cues) { newBolts += std::string(q.name) == "bolt"; quiet &= std::string(q.name) == "switch_up3" || std::string(q.name) == "bolt"; } c.cues.clear(); }
+        CHECK(quiet && newBolts <= 1 && !c.reloading() && c.pose().reloadU < 0.f, "switching mid-reload drops the reload and its sounds (the new gun's chime and flourish only)");
         // A second switch mid-switch restarts cleanly to the newest gun
         GunMotion d; d.gun = 0; d.switchTo(1);
         for (int i = 0; i < 4; ++i) d.update(DT);
         d.switchTo(2);
-        for (int i = 0; i < 40; ++i) d.update(DT);
-        CHECK(d.shownGun() == 2 && glm::length(d.pose(false).offset) < 1e-3f, "switching again mid-switch lands on the newest gun");
+        for (int i = 0; i < 70; ++i) d.update(DT);
+        CHECK(d.shownGun() == 2 && glm::length(d.pose(false).offset) < 1e-3f, "switching again mid-switch lands on the newest gun (its flourish played out)");
+        {   // DRAW: a flourish once it's up, with its sound; a shot cuts it; swapping fast skips it
+            GunMotion f; f.gun = 0; f.switchTo(1);
+            int pumps = 0; bool flourished = false;
+            for (int i = 0; i < 60; ++i) { f.update(DT); flourished |= f.flourishing(); for (auto& q : f.cues) pumps += std::string(q.name) == "pump"; f.cues.clear(); }
+            CHECK(flourished && pumps == 1 && !f.flourishing(), "a gun drawn comes up with a flourish of its own (the shotgun racked, its pump heard once)");
+            GunMotion g; g.gun = 0; g.switchTo(2);
+            for (int i = 0; i < 22; ++i) g.update(DT);
+            bool was = g.flourishing(); g.fire();
+            CHECK(was && !g.flourishing(), "...and firing cuts it at once: it never costs a shot");
+            GunMotion h; h.gun = 0; h.switchTo(1);
+            for (int i = 0; i < 20; ++i) h.update(DT);   // up (0.32 s)...
+            h.switchTo(2);                               // ...and straight on to the next
+            bool skipped = true;
+            for (int i = 0; i < 25; ++i) { h.update(DT); skipped &= !h.flourishing(); }
+            CHECK(skipped, "...swapping guns fast skips it");
+        }
         // Cycling cues: the shotgun pumps, the rifles work the bolt
         GunMotion b; b.gun = 2; b.cycle(0.7f);
         int bolts = 0; for (int i = 0; i < 60; ++i) { b.update(DT); for (auto& q : b.cues) bolts += std::string(q.name) == "bolt"; b.cues.clear(); }

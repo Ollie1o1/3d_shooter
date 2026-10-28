@@ -878,6 +878,7 @@ inline void GameplayState::update(float dt) {
     }
     if (g_devOverlay.rfind("inspect", 0) == 0) viewModel.motion.devInspect(std::atoi(g_devOverlay.c_str() + 7) / 100.f);
     if (g_devOverlay.rfind("switch", 0) == 0) viewModel.motion.devSwitch(std::atoi(g_devOverlay.c_str() + 6) / 100.f, activeWeapon);
+    if (g_devOverlay.rfind("draw", 0) == 0 && g_devOverlay.size() > 4) viewModel.motion.devDraw(std::atoi(g_devOverlay.c_str() + 4) / 100.f, activeWeapon);   // --overlay drawNN: the flourish, NN% in
     if (g_devOverlay.rfind("hand", 0) == 0 && g_devOverlay.size() >= 6) {   // --overlay handPV: a hand up close (ViewModel::drawDevHand)
         viewModel.devHand = std::atoi(g_devOverlay.substr(4, g_devOverlay.size() - 5).c_str()); viewModel.devHandView = g_devOverlay.back() - '0';
     }
