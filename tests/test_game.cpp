@@ -1644,6 +1644,26 @@ int main() {
         CHECK(tris < 120000, "the gauntlet's shapes stay within the triangle budget");
     }
 
+    // Dome apices and half-bin coordinates exposed stale bake fingerprints on
+    // GCC/x86 despite matching source geometry on Clang/ARM.
+    {
+        std::vector<Shape> shapes;ShapeKit kit{shapes};
+        kit.dome({24.9447f,-113.137f,-829.667f},1.3f,glm::vec3{.5f},5,12);
+        int capTriangles=0;shapes.back().forEachTri([&](glm::vec3,glm::vec3,glm::vec3,glm::vec3){++capTriangles;});
+        CHECK(shapes.back().topScale==0.f && capTriangles==24,"a dome closes at an exact apex without inverted cap slivers");
+        bool stable=true;
+        for(float tie:{.3828125f,.2734375f,-.3828125f,-.2734375f}) {
+            LevelData a;a.walls.push_back({{{tie-2e-7f,0,0},{2,2,2}},glm::vec3{.5f}});
+            auto b=a;b.walls[0].box.min.x=tie+2e-7f;
+            stable &= lightbake::levelHash(a)==lightbake::levelHash(b);
+            b.walls[0].box.min.x+=.03125f;
+            stable &= lightbake::levelHash(a)!=lightbake::levelHash(b);
+        }
+        CHECK(stable,"bake fingerprints ignore compiler noise at half bins but detect real geometry changes");
+        LevelData a;a.shapes=shapes;auto b=a;b.shapes.back().topScale=.5f;
+        CHECK(lightbake::levelHash(a)!=lightbake::levelHash(b),"changing a procedural shape's recipe invalidates its bake");
+    }
+
     // ---------------------------------------------------------------- AI
     const Arena& A0 = L.arenas[0];
     const Arena& BOSS = L.arenas[3];          // the Core: the Warden

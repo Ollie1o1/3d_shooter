@@ -167,7 +167,10 @@ struct ShapeKit {
     void dome(glm::vec3 centre, float r, glm::vec3 col, int rings = 5, int sides = 14) {
         for (int i = 0; i < rings; ++i) {
             float a0 = 1.5708f * i / rings, a1 = 1.5708f * (i + 1) / rings;
-            float r0 = std::cos(a0) * r, r1 = std::cos(a1) * r;
+            // The last ring closes at one exact point. cos(pi/2) is a tiny
+            // negative radius in float; transformed sliver triangles then pass
+            // the degeneracy cutoff on one compiler and fail on another.
+            float r0 = std::cos(a0) * r, r1 = i+1==rings ? 0.f : std::cos(a1) * r;
             float y0 = std::sin(a0) * r, y1 = std::sin(a1) * r;
             Shape& s = column(centre + glm::vec3{0, y0, 0}, r0, y1 - y0, col, sides, r1 / r0);
             s.caps = i == rings - 1;
