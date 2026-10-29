@@ -1007,6 +1007,7 @@ inline void GameplayState::update(float dt) {
         const bool in = g_devOverlay.rfind("fanin", 0) == 0, out = g_devOverlay.rfind("fanout", 0) == 0;
         viewModel.devFan(std::atoi(g_devOverlay.c_str() + (in ? 5 : out ? 6 : 3)) / 100.f, in ? 1 : out ? 2 : 0);
     }
+    viewModel.devOrbit = g_devSwordOrbit;
     if (g_devOverlay == "punch") { viewModel.parryTimer = ViewModel::PARRY_TIME * 0.62f; viewModel.parryHit = true; }
     // --overlay volley: orbs fired across your view every 0.2 s, a heavy shell every second (screenshots: their tumble,
     // trail and stretch), into the ground ahead (their shatter)
