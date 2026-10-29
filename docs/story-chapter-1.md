@@ -119,3 +119,10 @@ commit and push the website's main branch. Do not add story scores to arena boar
 Next story work starts beyond the ash exit: define Chapter 2's route and sibling
 before expanding the map. The creator's final answer and UNIT 24's ultimate
 purpose remain open. Human feedback should guide further difficulty and art tuning.
+
+The release also fixes the older maps' cross-compiler bake fingerprints. Format
+5 hashes procedural shape recipes and file-space prop geometry before floating-
+point triangle culling, and handles rounding ties consistently. Dome apices close
+at an exact point. All four map fingerprints agree between Clang/ARM macOS and
+GCC/x86 Ubuntu; the full four-suite test target passes on both. All map bakes are
+regenerated together when the format changes.

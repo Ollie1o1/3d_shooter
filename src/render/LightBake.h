@@ -37,7 +37,7 @@ constexpr float AO_REACH = 4.f;        // how far an occluder still darkens
 constexpr float SUN_REACH = 80.f;      // how far a shadow can be cast from
 constexpr int   MAX_REGIONS = 16;
 constexpr uint32_t MAGIC = 0x4B414C4F;  // "OLAK"
-constexpr uint32_t VERSION = 4;
+constexpr uint32_t VERSION = 5;
 
 struct Region {
     glm::vec3 min{0.f};       // world corner of cell (0,0,0)
@@ -74,7 +74,7 @@ struct Bake {
 // props, floor patches, shapes, the props made in Blender. (Destructibles are hidden walls: they
 // break, so they don't shadow.) The ground under it all is the level's base floor.
 inline void forEachOccluder(const LevelData& L, const std::function<void(const AABB&)>& box,
-                            const std::function<void(glm::vec3, glm::vec3, glm::vec3)>& tri) {
+                            const std::function<void(glm::vec3, glm::vec3, glm::vec3)>& tri, bool includeShapes = true, bool includeModels = true) {
     for (int i = 0; i < (int)L.walls.size(); ++i) {
         const Wall& w = L.walls[i];
         if (w.hidden || w.dynamic || L.isDoorWall(i)) continue;
@@ -84,8 +84,8 @@ inline void forEachOccluder(const LevelData& L, const std::function<void(const A
     for (const FloorPatch& f : L.floors)
         box({{std::min(f.x0, f.x1), f.y - 0.2f, std::min(f.z0, f.z1)}, {std::max(f.x0, f.x1), f.y, std::max(f.z0, f.z1)}});
     for (const Shape& s : L.shapes)
-        if (!s.neon) s.forEachTri([&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3) { tri(a, b, c); });
-    for (const PlacedModel& pm : L.models) {
+        if (includeShapes && !s.neon) s.forEachTri([&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3) { tri(a, b, c); });
+    if (includeModels) for (const PlacedModel& pm : L.models) {
         const propfile::Prop* pr = propfile::get(pm.name);
         if (!pr) continue;
         const glm::mat4 world = propfile::placement(*pr, pm.free, pm.xf, pm.fit, pm.yaw);
@@ -99,9 +99,37 @@ inline void forEachOccluder(const LevelData& L, const std::function<void(const A
 inline uint64_t levelHash(const LevelData& L) {
     uint64_t h = 1469598103934665603ull;
     auto mix = [&](const void* p, size_t n) { const uint8_t* b = (const uint8_t*)p; for (size_t i = 0; i < n; ++i) { h ^= b[i]; h *= 1099511628211ull; } };
-    auto q = [&](float v) { int32_t i = (int32_t)std::lround(v * 64.f); mix(&i, 4); };   // (to 1/64 m: float noise doesn't count)
+    auto q = [&](float v) {
+        double scaled=(double)v*64.0, half=std::floor(scaled)+0.5;
+        // Transform arithmetic can land just above/below an exact half bin.
+        // Treat a 16-micrometre neighbourhood as that tie on every compiler.
+        if(std::fabs(scaled-half)<1e-3)scaled=half;
+        int32_t i=(int32_t)std::lround(scaled);mix(&i,4);
+    };
     auto qv = [&](glm::vec3 v) { q(v.x); q(v.y); q(v.z); };
-    forEachOccluder(L, [&](const AABB& b) { qv(b.min); qv(b.max); }, [&](glm::vec3 a, glm::vec3 b, glm::vec3 c) { qv(a); qv(b); qv(c); });
+    forEachOccluder(L, [&](const AABB& b) { qv(b.min); qv(b.max); }, [&](glm::vec3 a, glm::vec3 b, glm::vec3 c) { qv(a); qv(b); qv(c); }, false, false);
+    // Hash a procedural shape's recipe, not its culled triangle stream. Nearly
+    // degenerate dome/cap triangles can cross the area cutoff differently on
+    // GCC/x86 and Clang/ARM, even though the source geometry is identical.
+    for (const Shape& s : L.shapes) if (!s.neon) {
+        int32_t fields[]={(int32_t)s.kind,s.sides,(int32_t)s.seed,s.inward,s.caps};
+        mix(fields,sizeof(fields));
+        for(int col=0;col<4;++col)for(int row=0;row<4;++row)q(s.xf[col][row]);
+        q(s.topScale*100.f);q(s.jitter*100.f);
+    }
+    // Blender props have the same near-zero triangle issue. Their file-space
+    // mesh data and joint transforms are stable; world-space area culling is not.
+    auto qm=[&](const glm::mat4& m,float precision){for(int col=0;col<4;++col)for(int row=0;row<4;++row)q(m[col][row]*precision);};
+    for(const PlacedModel& pm:L.models) {
+        const auto* prop=propfile::get(pm.name);if(!prop)continue;
+        qm(propfile::placement(*prop,pm.free,pm.xf,pm.fit,pm.yaw),1.f);
+        for(const auto& part:prop->model.parts) if(part.chan<0) {
+            qm(part.rel,100.f);
+            const auto* mesh=meshlib::get(part.mesh);
+            uint32_t counts[]={mesh?(uint32_t)mesh->pos.size():0u,mesh?(uint32_t)mesh->idx.size():0u};mix(counts,sizeof(counts));
+            if(mesh){for(auto p:mesh->pos)qv(p*100.f);mix(mesh->idx.data(),mesh->idx.size()*sizeof(uint32_t));}
+        }
+    }
     for (const Arena& a : L.arenas) { qv(a.bounds.min); qv(a.bounds.max); qv(a.zone.min); qv(a.zone.max); qv(a.theme.lightDir * 100.f); }
     uint32_t v = VERSION; mix(&v, 4);
     return h;
