@@ -104,6 +104,10 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         player.position += level.movers[rideMover].delta;
         player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0};
     }
+    if (int cv = player.onGround ? level.conveyorOfWall(player.groundWall) : -1; cv >= 0) {   // a conveyor carries you along it
+        player.position += level.conveyors[cv].dir * (level.conveyors[cv].speed * dt);
+        player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0};
+    }
     if (grapple.active && grapple.moverWall >= 0) grapple.follow(level.walls[grapple.moverWall].box);
 
     // --- Dash ---
@@ -316,6 +320,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         if (boost >= 0) { applyBooster(level.boosters[boost], player, dt); player.launched(); }
         if (grapple.active && grapple.latched) { player.position = hangPos; player.velocity = glm::vec3{0.f}; }   // held where it caught
         keepPlayerInZone(dt);
+        if (story()) { updateStory(dt); player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0}; }
         if (player.jumpedThisTick) {   // the push-off: a soft scuff and the head lifting off the legs
             audio.play("jump", 90);
             camFeel.dip(0.35f);
@@ -330,6 +335,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         slideKicks();
         airT = player.onGround ? 0.f : airT + dt;
     }
+    if(story() && g_devCam && g_devNoMouse) updateStory(dt);
     if (act2Falling && player.onGround) act2Falling = false;
     if (boost >= 0 && boostPrev < 0) {
         audio.play("boost", 100);
@@ -601,7 +607,9 @@ inline void GameplayState::keepPlayerInZone(float dt) {
         zones.push_back(&level.arenas[i].zone);
         for (auto& z : level.arenas[i].extraZones) zones.push_back(&z);
     };
-    if (fast()) {
+    if (story()) {   // STORY: every section you've reached, and the next one (walked into)
+        for (int i = 0; i <= std::min(director.arena + (director.fighting() ? 0 : 1), (int)level.arenas.size() - 1); ++i) addArena(i);
+    } else if (fast()) {
         for (int i = 0; i <= director.arena; ++i) addArena(i);
     } else {
         addArena(director.arena);
@@ -616,6 +624,7 @@ inline void GameplayState::keepPlayerInZone(float dt) {
     for (auto* z : zones) {
         glm::vec2 c{glm::clamp(p.x, z->min.x, z->max.x), glm::clamp(p.z, z->min.z, z->max.z)};
         float d = glm::length(c - glm::vec2{p.x, p.z});
+        if (story()) d += std::max({z->min.y-p.y, p.y+player.height-z->max.y, 0.f})*2.f;
         // Inside several (a doorway where a tube meets a room): the higher ceiling wins
         if (d < bestD - 1e-4f || (d < 1e-4f && bestD < 1e-4f && z->max.y > in->max.y)) { bestD = d; best = c; in = z; }
     }

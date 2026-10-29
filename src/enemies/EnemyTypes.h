@@ -18,9 +18,9 @@
 // (rigBase) at a bigger size, with a body of its own made in Blender.
 enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, JUGGERNAUT, WARDEN, SOVEREIGN, SHIELDBEARER, CONDUIT,
                        CONDUCTOR, SERAPH, ANCHOR, PENITENT, REVENANT, WEAVER, LEVIATHAN, ABSOLUTE,
-                       COURIER, BULWARK, CANTOR, HARRIER, PLUMB, FOREMAN, PACEMAKER, COUNT };
+                       COURIER, BULWARK, CANTOR, HARRIER, PLUMB, FOREMAN, PACEMAKER, SORTER, COUNT };
 inline bool isBoss(EnemyType t) { return t == EnemyType::WARDEN || t == EnemyType::SOVEREIGN || t == EnemyType::PENITENT || t == EnemyType::LEVIATHAN ||
-                                         t == EnemyType::ABSOLUTE || t == EnemyType::PACEMAKER; }
+                                         t == EnemyType::ABSOLUTE || t == EnemyType::PACEMAKER || t == EnemyType::SORTER; }
 // A Gauntlet room's mini-boss: a boss bar and a death of its own, no finisher; kill it and the room is won
 inline bool isMiniBoss(EnemyType t) { return t >= EnemyType::COURIER && t <= EnemyType::FOREMAN; }
 // Whose skeleton (and pose, head box, joints) a type moves on
@@ -81,7 +81,7 @@ enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY,
                         ATELEPORT, ADASH, AJAB, AHOOK, AUPPER, ADROP, AHOP, ARAY, ASTOMP, ASERPENT,   // THE ABSOLUTE's
                         AHALO, ASEAMS, AZENITH, ASWEEP, ALUNGE, ACRESCENT, AJUDGE, ATAKEOFF, ASKYFALL, AMETEOR,
                         ACROSS, ABACKFIST, AELBOW, AROUNDHOUSE, AHAYMAKER, ACHARGE, AAXE, ACLAP, ATHUNDER,   // (his fighter's arsenal; THUNDERCLAP)
-                        MJAB, MBACKHAND, MGRASP, MDROP, MSUNDER, MFISSURE, MFLARES, MCOLLAPSE };   // MORNINGSTAR's (EnemyAbsolute.h)
+                        MJAB, MBACKHAND, MGRASP, MDROP, MSUNDER, MFISSURE, MFLARES, MCOLLAPSE, SORT_GRAB, SORT_STAMP, SORT_SCAN, SORT_THROW };   // MORNINGSTAR's (EnemyAbsolute.h)
 
 struct EnemyStats {
     const char* name;
@@ -179,6 +179,9 @@ inline EnemyStats& statsEdit(EnemyType t) {
         {"THE PACEMAKER", 5200.f, 0.55f, 2.6f, 7.0f, 0.5f, 1.0f, false,
          {0.16f,0.17f,0.20f}, {1.0f,0.55f,0.12f}, {1.0f,0.7f,0.3f},
          "WHITE: PARRY - IT RACES YOU TO THE BEACON"},
+        {"THE SORTER", 7200.f, 2.8f, 6.5f, 6.f, 1.1f, 1.f, true,
+         {.32f,.33f,.34f}, {1.8f,.6f,.12f}, {1.f,.65f,.25f},
+         "WHITE: PARRY THE CLAW - RED: LEAVE THE STAMP - COVER CLEARS THE MARK"},
     };
     return S[(int)t];
 }

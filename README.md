@@ -6,7 +6,7 @@
 
 ![OVERDRIVE gameplay: Rippers breaking apart under shotgun fire in the Sunset Yard, a Shieldbearer and a Juggernaut in the Core at night, the walk into the Sanctum under an eclipse, and a duel with the Sovereign](docs/overdrive.gif)
 
-A fast 3D arena shooter in the spirit of ULTRAKILL, written from scratch in C++17 with **SDL2**, **OpenGL 3.3** and **GLM**: no engine. Grapple, dash, slide and slam through waves of enemies built from animated boxes, parry their shots back at them, and take on six bosses, each with its own trick to learn.
+A fast 3D arena shooter in the spirit of ULTRAKILL, written from scratch in C++17 with **SDL2**, **OpenGL 3.3** and **GLM**: no engine. Grapple, dash, slide and slam through waves of enemies built from animated boxes, parry their shots back at them, and take on seven bosses, each with its own trick to learn.
 
 - **No engine, no asset pipeline**: textures, the sky, the soundtrack and every enemy voice are generated in code at load time
 - **Desktop and browser**: runs on macOS, Windows (MSYS2) and in the browser (the same C++ compiled to WebAssembly + WebGL2); it also builds and passes its tests on Linux, though it hasn't been play-tested on a Linux desktop
@@ -19,17 +19,24 @@ A fast 3D arena shooter in the spirit of ULTRAKILL, written from scratch in C++1
 |------|------------|
 | **ARENA** | A page (like FAST's) of the whole of **Act I**, the whole of **Act II** once Act I is beaten, or **any arena of either act on its own** (always open: the upgrades a run would have by then, your best clear time kept). Act I: four themed arenas of three waves each (the **Sunset Yard**, **the Foundry**, **the Spire**, **the Core** and its boss **the Warden**), then **the Sanctum**, a duel under an eclipse with **the Sovereign**. Scored and ranked on the leaderboard. |
 | **ACT II** | (On the ARENA page.) The whole act unlocks when the Sovereign falls in an Act I run. Down beneath the eclipse: **the Drowned Nave** (rising water), **the Orrery** (a sun whose flare sweeps the arena), **the Descent** (a cage riding down a shaft to **the Penitent**), **the Reliquary** (pieces of Act I drifting over a void) and **the Maw** (**the Leviathan**). Then the encore, **!!!!!**: **the Absolute**, who comes back as **MORNINGSTAR**. Keeps local best times; not ranked yet. |
-| **STORY** | Coming soon: a new mode, still being written. |
+| **STORY** | **Chapter 1: THE CRADLE**. Wake as UNIT 24 on a furnace belt, find your weapons on earlier copies, climb nine connected factory rooms, and confront **the Sorter**. Room checkpoints, two hidden wrecks, optional logs and terminals, a chapter rank, and an exit into the ash wasteland. |
 | **FAST** | **The Gauntlet**: a time trial through seven rooms joined by boost tubes, a **mini-boss** in each room and **the Pacemaker** at the end, with splits against your best run, par ranks, a ghost of your best route and **medals for every room**. **ROOM ATTACK** runs any one room on its own for its medal. |
 | **ENDLESS** | Generated waves in the Core until you die, tougher every wave, with an objective every 4th wave and the Warden every 10th. |
 | **BOSS** | Any boss on its own, with a level and upgrades to match. Your best kill time for each is kept. |
 
 Kills earn **XP** (more for stylish play) that buys **weapon upgrades** in the Armory. Every ranked run is **scored** (style, minus damage taken, plus a time or wave bonus, times the difficulty) and good runs go on a **leaderboard** shared by every player on the website.
 
+Story starts unarmed. UNIT 01 holds the revolver, UNIT 02 the Lancer, and UNIT 06 the shotgun.
+The grapple is recovered at the Inspection Line. Guns and found logs survive a checkpoint retry;
+a new chapter run resets them. The chapter ends after the Sorter falls and you walk through its gate.
+See [the Chapter 1 implementation and playtest notes](docs/story-chapter-1.md) for the route, controls,
+source files and developer starts.
+
 ## The bosses
 
 | Boss | Where | The trick |
 |------|-------|-----------|
+| **The Sorter** | the Sorting Floor (Story, Chapter 1) | Parry its white claw, leave the red stamp, break sight to clear a scanner mark; hit its exposed core and survive the collapsing belts |
 | **The Warden** | the Core (Act I) | Cut the four conduits feeding it; hit its core when it vents; survive its meltdown |
 | **The Sovereign** | the Sanctum (Act I) | A sword duellist: parry (F) his sweeps and cleave as they land to break his guard |
 | **The Penitent** | the Descent (Act II) | Chained to the pit wall: break the chains, jump its low sweeps, slide under the high ones |

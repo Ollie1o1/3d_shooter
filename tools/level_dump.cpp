@@ -3,7 +3,7 @@
 //
 //   $(CXX) $(CXXFLAGS) tools/level_dump.cpp -o tools/level_dump && tools/level_dump act1 build/levels/act1
 //
-// Levels: act1 (ARENA), act2 (ACT II), fast (the Gauntlet). Into the folder go:
+// Levels: act1 (ARENA), act2 (ACT II), fast (the Gauntlet), story1 (STORY: THE CRADLE). Into the folder go:
 //   level.json        the world as the game draws it (WorldGeometry.h: every face, its UVs and its
 //                     shading, batched by texture; the neon apart), the collision boxes, and every
 //                     arena (bounds, start, spawns, its light). Game space: +Y up, metres.
@@ -13,6 +13,7 @@
 #include "world/Level.h"
 #include "world/LevelAct2.h"
 #include "world/LevelGauntlet.h"
+#include "world/LevelStory.h"
 #include "render/WorldGeometry.h"
 #include "render/MaterialTex.h"
 #include <cstdio>
@@ -97,11 +98,11 @@ static std::string batch(const char* tex, bool emit, const std::vector<Vertex>& 
 }
 
 int main(int argc, char** argv) {
-    if (argc < 3) { std::fprintf(stderr, "usage: level_dump act1|act2|fast OUTDIR\n"); return 2; }
+    if (argc < 3) { std::fprintf(stderr, "usage: level_dump act1|act2|fast|story1 OUTDIR\n"); return 2; }
     const std::string which = argv[1], out = argv[2];
     g_skipLayout = true;   // the level as the code builds it (LevelLayout.h)
-    LevelData L = which == "act1" ? buildLevel() : which == "act2" ? buildAct2Level() : which == "fast" ? buildGauntlet() : LevelData{};
-    if (L.arenas.empty()) { std::fprintf(stderr, "no level '%s' (act1, act2, fast)\n", which.c_str()); return 2; }
+    LevelData L = which == "act1" ? buildLevel() : which == "act2" ? buildAct2Level() : which == "fast" ? buildGauntlet() : which == "story1" ? buildCradle() : LevelData{};
+    if (L.arenas.empty()) { std::fprintf(stderr, "no level '%s' (act1, act2, fast, story1)\n", which.c_str()); return 2; }
     mkdir(out.c_str(), 0755);
 
     // The world as the game draws it, and the moving walls where they're built (a lift, the Reliquary's

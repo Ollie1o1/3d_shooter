@@ -13,7 +13,8 @@ public:
 // FAST:    the Gauntlet, a time trial through seven rooms of hand-placed fights (LevelGauntlet.h).
 // ENDLESS: generated waves in the Core until you die (EndlessWaves.h).
 // ACT2:    Act II, beneath the eclipse (LevelAct2.h). Unlocked by killing the Sovereign.
-enum class GameMode { ARENA, FAST, ENDLESS, ACT2 };
+// STORY:   UNIT 24's story, chapter by chapter (LevelStory.h, Gameplay_Story.h)
+enum class GameMode { ARENA, FAST, ENDLESS, ACT2, STORY };
 
 // Where a run starts. The dev level select fills it in; a normal start from
 // the menu is the default (first arena, ranked).

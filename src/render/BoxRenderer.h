@@ -23,7 +23,7 @@ public:
     ShaderProgram shader;
     GLuint  vao = 0, vbo = 0, ebo = 0, instanceVBO = 0;
     GLsizei indexCount = 0;
-    static constexpr int MAX_INSTANCES = 4096;
+    static constexpr int MAX_INSTANCES = 16384;   // (STORY: a belt of bodies, ~250 parts each up close)
 
     BoxRenderer() {
         shader.loadFiles("src/shaders/box_inst.vert", "src/shaders/box_inst.frag");

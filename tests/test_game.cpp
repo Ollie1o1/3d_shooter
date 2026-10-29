@@ -2143,7 +2143,7 @@ int main() {
               "every wave starts; the Core and the Sanctum end on their bosses");
         CHECK(counts[DirectorEvent::ARENA_CLEARED] == n && counts[DirectorEvent::VICTORY] == 1 &&
               counts[DirectorEvent::FINISH_OPEN] == 0, "each arena clears, then victory");
-        CHECK(counts[DirectorEvent::NEW_TYPE] == (int)EnemyType::COUNT - 14,   // the Seraph, the Anchor, the Penitent, the Revenant, the Weaver, the Leviathan and the Absolute are Act II's; the 7 Gauntlet bosses FAST's
+        CHECK(counts[DirectorEvent::NEW_TYPE] == (int)EnemyType::COUNT - 15,   // the Seraph, the Anchor, the Penitent, the Revenant, the Weaver, the Leviathan and the Absolute are Act II's; the 7 Gauntlet bosses FAST's
               "each Act I enemy type is introduced exactly once");
         CHECK(goalWaves >= 3 && (int)goalsDone.size() == goalWaves && counts[DirectorEvent::GOAL_DONE] == goalWaves,
               "every goal wave (hold, conduits, survive) is met once, and that ends it");

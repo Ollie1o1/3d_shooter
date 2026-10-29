@@ -176,7 +176,7 @@ public:
                 updateGoal(dt, playerPos);
                 if (queue.empty() && !goalDone) buildQueue(false);   // they keep coming until it's done
             }
-            if (queue.empty() && aliveCount == 0 && (!hasGoal() || goalDone)) {
+            if (queue.empty() && aliveCount == 0 && (!hasGoal() || goalDone) && !hold) {
                 if (wave + 1 < waveCount()) {
                     events.push_back({DirectorEvent::WAVE_CLEARED, wave});
                     if (fast) { ++wave; beginWave(); }
@@ -207,7 +207,8 @@ public:
         }
         case Phase::APPROACH: {
             const Arena& a = current();
-            if (!a.hasTrigger) { startArena(arena); break; }
+            if (a.scripted) break;   // (STORY: the game calls startArena itself)
+            if (!a.hasTrigger) { if (!a.waves.empty()) startArena(arena); break; }   // (no waves: a walk-through, STORY's furnace line)
             const AABB& t = a.trigger;
             if (playerPos.x >= t.min.x && playerPos.x <= t.max.x && playerPos.y >= t.min.y && playerPos.y <= t.max.y &&
                 playerPos.z >= t.min.z && playerPos.z <= t.max.z)

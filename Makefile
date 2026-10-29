@@ -67,7 +67,7 @@ endif
 # change rebuilds it, so new headers never need listing here.
 SRC     := src/main.cpp
 HEADERS := $(shell find src -name '*.h')
-TESTS   := tests/test_physics.cpp tests/test_game.cpp tests/test_zenith.cpp tests/BossSim.h
+TESTS   := tests/test_story.cpp tests/test_physics.cpp tests/test_game.cpp tests/test_zenith.cpp tests/BossSim.h
 
 .PHONY: all clean run test web scan level-dump light
 
@@ -89,6 +89,8 @@ test: $(TESTS) $(HEADERS)
 	./tests/test_game
 	$(CXX) $(CXXFLAGS) tests/test_zenith.cpp -o tests/test_zenith $(STDLIB)
 	./tests/test_zenith
+	$(CXX) $(CXXFLAGS) tests/test_story.cpp -o tests/test_story $(STDLIB)
+	./tests/test_story
 
 # Every arena's traps: places you could stand and not get back from by yourself (tests/BoundsScan.h)
 scan: tests/scan_bounds.cpp tests/BoundsScan.h $(HEADERS)
@@ -104,7 +106,7 @@ light: tools/light_bake.cpp $(HEADERS)
 # Every level out for Blender (build/levels/<level>/: tools/blender/level_import.py builds a scene from it)
 level-dump: tools/level_dump.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) tools/level_dump.cpp -o tools/level_dump $(STDLIB)
-	mkdir -p build/levels && for l in act1 act2 fast; do ./tools/level_dump $$l build/levels/$$l || exit 1; done
+	mkdir -p build/levels && for l in act1 act2 fast story1; do ./tools/level_dump $$l build/levels/$$l || exit 1; done
 
 # Browser build (WebGL2 + WebAssembly) → web/dist. Needs Emscripten on PATH:
 #   source ~/emsdk/emsdk_env.sh && make web && python3 -m http.server -d web/dist
@@ -127,5 +129,5 @@ web: $(SRC) $(HEADERS) web/index.html
 	cp web/index.html $(WEB_OUT)/
 
 clean:
-	rm -f shooter shooter.exe tests/test_physics tests/test_game tests/test_zenith
+	rm -f shooter shooter.exe tests/test_physics tests/test_game tests/test_zenith tests/test_story
 	rm -rf build web/dist

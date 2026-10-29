@@ -22,6 +22,7 @@
 #include "world/Level.h"
 #include "world/LevelGauntlet.h"
 #include "world/LevelAct2.h"
+#include "world/LevelStory.h"
 #include "game/WaveDirector.h"
 #include "render/PostProcess.h"
 #include "audio/AudioSystem.h"
@@ -65,6 +66,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <string>
+#include <map>
 #include <cstdio>
 
 // =============================================================================
@@ -113,6 +115,52 @@ public:
     bool act2() const { return mode == GameMode::ACT2; }
     bool arenaSolo() const { return (mode == GameMode::ARENA || act2()) && g_arenaSolo >= 0; }   // the ARENA page: one arena on its own
     bool endless() const { return mode == GameMode::ENDLESS; }
+    bool story() const { return mode == GameMode::STORY; }
+
+    // ---- STORY (Gameplay_Story.h): UNIT 24 waking on the furnace line ----
+    float wakeT = -1.f;            // the wake-up's clock (< 0: not playing)
+    bool  wakeSeen = false;        // seen once: a retry starts on your feet
+    float skipHold = 0.f;          // jump held through the wake-up skips it
+    bool  storySkipKey = false;
+    bool  storyArmed = false;      // UNIT 24 has no gun until he finds one
+    int   storyOwned = 0;          // the guns he's taken (bit per WeaponId): kept through retries
+    bool  storyOwns(int w) const { return (storyOwned >> w) & 1; }
+    int   storySeenSection = 0;    // the furthest section he's walked into (its name on the screen once)
+    float storyFindT = 0.f;        // seconds in the pit without the revolver: the way to it is pointed out
+    float pitWakeT = -1.f;         // a retry in the pit with the gun: the scrap wakes after a moment
+    int   storyLog = -1;           // the wreck whose last log is on screen
+    float storyLogT = 0.f;
+    unsigned storyLogsSeen = 0;
+    bool storyGrapple = false, storyBossDown = false, storyPodsBroken = false;
+    int storyCheckpoint = 0, storyTerminal = -1, storyLiftStop = 0;
+    float storyScanCooldown = 0.f, storyCollapseT = -1.f;
+    std::vector<AABB> storyGlassBoxes, storyTileBoxes;
+    void updateStoryFactory(float dt);
+    void gatherStoryFactory(std::vector<BoxInstance>& out);
+    void gatherStoryProjectile(std::vector<BoxInstance>& out,const Projectile& p,glm::vec3 at,float spin);
+    void storySorterEvents(Enemy& e, const EnemyEvents& ev);
+    void resetStoryFactory();
+    void  storyTakeGun(int wreck);
+    glm::mat4 wreckRoot(int wreck) const;
+    glm::mat4 wreckGunXf(int wreck) const;
+    struct BeltBody { glm::vec3 pos{0.f}, vel{0.f}; int lane = 0; float yaw = 0.f, tip = 0.f, spinV = 0.f, pose = 0.f;
+                      bool falling = false, dropped = false; };
+    std::vector<BeltBody> beltBodies;
+    float beltSpawn[3] = {0.f, 0.f, 0.f};
+    float clawT = -1.f;            // the claw over the west belt, lowering a body (< 0: parked)
+    glm::vec3 clawAt{0.f};
+    int   prevFinger = -1;
+    float storyEndT = -1.f;        // down the chute: fading out to what's next
+    bool  offBeltShown = false;
+    armfile::HandSpring wakeHand;
+    void  beginStory();
+    void  updateStory(float dt);
+    bool  storyLocked() const { return story() && wakeT >= 0.f; }
+    bool  storyLookFree() const { return wakeT >= 18.4f; }   // (story::W_SAT)
+    float storyWakeFx() const;
+    void  gatherStoryBoxes(std::vector<BoxInstance>& out);
+    void  drawStoryArms(const Camera& cam);
+    void  renderStoryOverlay(const glm::mat4& viewProj = glm::mat4(1.f));
     Board boardFor() const { return fast() ? Board::FAST : endless() ? Board::ENDLESS : Board::ARENA; }
 
     // ---- ENDLESS (Gameplay_Flow.h) ----
@@ -961,4 +1009,5 @@ public:
 #include "bosses/leviathan/Gameplay_Leviathan.h"
 #include "game/Gameplay_Sword.h"
 #include "game/Gameplay_Destruct.h"
+#include "game/Gameplay_Story.h"
 #include "bosses/absolute/Gameplay_Absolute.h"

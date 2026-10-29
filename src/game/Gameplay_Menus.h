@@ -165,6 +165,7 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
     if (paused && pauseSettings) { settingsMenu.handleEvent(e); return; }
     if (victory && nameEntry) { handleNameEntry(e); return; }
 
+    if(story() && storyEndT>3.f && (key==SDLK_RETURN || key==SDLK_ESCAPE)) {if(onReturnToMenu)onReturnToMenu();return;}
     if (key == SDLK_ESCAPE || key == SDLK_p) {
         if (playerDead || victory) {
             if (key != SDLK_ESCAPE) return;  // P only pauses
@@ -182,7 +183,7 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
         if (key == SDLK_F5) { devClearWave(); return; }    // practice: skip the fight in progress
         if (key == SDLK_F6) { styleSystem.heal(1000.f); ui.feed("HEALTH REFILLED", {0.4f, 1.f, 0.6f}); return; }
     }
-    if (key == SDLK_TAB && !playerDead && !victory) { openArmory(); return; }
+    if (key == SDLK_TAB && !playerDead && !victory && !story()) { openArmory(); return; }   // (STORY: no armory yet)
     // Backspace: straight back to the checkpoint and the start of this fight
     if (key == SDLK_BACKSPACE && !victory) {
         if (!playerDead) restartHere(); else if (!endless()) retryArena();   // ENDLESS: one life
@@ -192,6 +193,25 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
         if (key == SDLK_r && playerDead && !endless()) { retryArena(); return; }   // ENDLESS: one life
         if (key == SDLK_RETURN)          { newRun();     return; }
         return;
+    }
+    if (story() && (storyLocked() || storyEndT >= 0.f)) {   // STORY: the wake-up has the controls; the mouse looks only once he sits up
+        if (e.type == SDL_MOUSEMOTION && storyLookFree() && storyEndT < 0.f && !g_devNoMouse) {
+            float sens = settings ? settings->sensitivity : 0.1f;
+            float dy = settings && settings->invertY ? -(float)e.motion.yrel : (float)e.motion.yrel;
+            player.applyMouseLook((float)e.motion.xrel, dy, sens * 0.7f);
+        }
+        return;
+    }
+    if (story() && e.type == SDL_MOUSEWHEEL && storyArmed) {   // STORY: the wheel cycles only the guns he's found
+        int n = activeWeapon;
+        for (int k = 0; k < WEAPON_COUNT; ++k) { n = (n + (e.wheel.y > 0 ? WEAPON_COUNT - 1 : 1)) % WEAPON_COUNT; if (storyOwns(n)) break; }
+        trySwitch(n);
+        return;
+    }
+    if (story() && key == SDLK_5) return;   // (no sword in the story yet)
+    if (story() && !storyArmed) {   // STORY, no gun yet: nothing to switch to, reload or draw
+        if (e.type == SDL_MOUSEWHEEL || (key >= SDLK_1 && key <= SDLK_5)) return;
+        if (e.type == SDL_KEYDOWN && (binds().pressed(Act::INSPECT, e) || binds().pressed(Act::RELOAD, e))) return;
     }
     const Bindings& kb = binds();
     if (kb.pressed(Act::INTERACT, e)) {   // FINISH / INTERACT: one in reach to finish comes first (it never parries)
@@ -232,6 +252,7 @@ inline void GameplayState::padCycle(int dir) {
 }
 
 inline void GameplayState::trySwitch(int w) {
+    if (story() && !storyOwns(w)) return;   // STORY: only the guns he's found
     if (w != activeWeapon && pendingWeapon < 0) {
         pendingWeapon = w;
         weaponSwitchTimer = 0.15f;
