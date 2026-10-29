@@ -25,7 +25,8 @@ struct GunLook { int ammo = 8, mag = 8, lit = 8; float flash = 0.f, heat = 0.f, 
 // when broken, brighter charging a thrust or holding a riposte
 struct SwordLook { float guard01 = 1.f; bool broken = false; float charge = 0.f; float riposte = 0.f; };
 // Where the sword is in camera space (x right, y up, z forward): the sword
-// hand on the grip, the way the blade points, the way its edge faces, and the
+// hand on the grip, the way the blade points, the way its leading edge faces
+// (and the knuckles with it), and the
 // off hand (on the grip below it, or bracing the flat in a guard)
 struct SwordPose {
     glm::vec3 hand{0.2f, -0.22f, 0.36f};
@@ -526,13 +527,14 @@ inline void buildSword(const SwordLook& L, std::vector<GunPart>& out) {
 }
 
 // The sword's frame in camera space: origin at the crossguard, +Z down the
-// blade, -Y the edge (the edge kept square to the blade)
+// blade, +X the leading edge (P.edge, kept square to the blade), the flats +-Y.
+// The hand's frame is this one, so its knuckles face the edge and lead the cut.
 inline mat4 swordFrame(const SwordPose& P) {
     vec3 z = glm::normalize(P.blade);
     vec3 e = P.edge - z * glm::dot(P.edge, z);
     if (glm::length(e) < 1e-4f) e = std::fabs(z.y) < 0.9f ? vec3{0.f, -1.f, 0.f} : vec3{0.f, 0.f, 1.f};
-    vec3 y = -glm::normalize(e - z * glm::dot(e, z));
-    vec3 x = glm::cross(y, z);
+    vec3 x = glm::normalize(e - z * glm::dot(e, z));
+    vec3 y = glm::cross(z, x);
     mat4 m(1.f);
     m[0] = glm::vec4(x, 0.f); m[1] = glm::vec4(y, 0.f); m[2] = glm::vec4(z, 0.f);
     m[3] = glm::vec4(P.hand - z * (SWORD_HAND_Z * SWORD_SCALE), 1.f);   // the hand closes round the grip
@@ -570,14 +572,14 @@ inline SwordPose keyed(const SwordKey* k, int n, float u) {
     }
     return pose(k[n - 1]);
 }
-// The rest pose: low right, the point up and in, a slow breath on it
-inline SwordPose swordRest() { return SwordPose{{0.2f, -0.19f, 0.35f}, glm::normalize(vec3{-0.3f, 0.85f, 0.45f}), glm::normalize(vec3{-0.6f, 0.f, 0.8f}), 0.f, 0.f}; }
+// The rest pose: low right, the point raised ahead (a ready guard), a slow breath on it
+inline SwordPose swordRest() { return SwordPose{{0.2f, -0.18f, 0.35f}, glm::normalize(vec3{-0.12f, 0.66f, 0.74f}), glm::normalize(vec3{-0.8f, 0.3f, -0.2f}), 0.f, 0.f}; }
 
 // Where the sword is through a stroke: u 0..1 through it, or -1 at rest;
 // raised: across the middle, edge out, the off hand braced on the flat
 inline SwordPose swordPose(int stroke, float u, bool raised, float charge01, float thrust01) {
     SwordPose rest = swordRest();
-    if (raised) return SwordPose{{0.1f, -0.13f, 0.4f}, glm::normalize(vec3{-1.f, 0.2f, 0.12f}), glm::normalize(vec3{0.f, 0.25f, 1.f}), 0.f, 1.f};
+    if (raised) return SwordPose{{0.1f, -0.13f, 0.4f}, glm::normalize(vec3{-0.95f, -0.12f, 0.25f}), glm::normalize(vec3{0.f, 0.35f, 1.f}), 0.f, 1.f};
     if (thrust01 > 0.f)   // driven straight out, both hands behind it
         return SwordPose{{0.05f, -0.12f, 0.36f + 0.2f * thrust01}, glm::normalize(vec3{-0.12f, 0.07f, 1.f}), {0.f, -1.f, 0.f}, 1.f, 0.f};
     if (u < 0.f) {
@@ -608,14 +610,14 @@ inline SwordPose swordPose(int stroke, float u, bool raised, float charge01, flo
             {1.f,   {0.23f, -0.15f, 0.34f},  {0.7f, 0.5f, 0.4f},     {0.4f, 0.f, -1.f},   0.f}};
         return keyed(K, 7, u);
     }
-    // the overhead: both hands, raised high, brought down in front
+    // the overhead: both hands, raised in a high guard (the blade cocked back over the head), brought down in front
     static const SwordKey K[] = {
-        {0.f,  {0.08f, 0.09f, 0.28f},  {0.08f, 0.97f, -0.2f}, {0.f, 0.2f, 1.f},   1.f},
-        {0.1f, {0.06f, 0.08f, 0.27f},  {0.05f, 0.93f, -0.36f}, {0.f, 0.36f, 0.93f}, 1.f},
-        {0.3f, {0.04f, 0.0f, 0.44f},   {0.02f, 0.55f, 0.83f}, {0.f, 0.83f, -0.55f}, 1.f},
+        {0.f,  {0.07f, -0.02f, 0.41f},  {0.08f, 0.97f, -0.2f}, {0.f, 0.2f, 1.f},   1.f},
+        {0.1f, {0.06f, -0.01f, 0.4f},   {0.05f, 0.93f, -0.36f}, {0.f, 0.36f, 0.93f}, 1.f},
+        {0.3f, {0.04f, 0.0f, 0.44f},   {0.02f, 0.55f, 0.83f}, {0.f, -0.83f, 0.55f}, 1.f},
         {0.5f, {0.03f, -0.12f, 0.48f}, {0.f, -0.1f, 1.f},     {0.f, -1.f, -0.1f}, 1.f},
-        {0.7f, {0.03f, -0.22f, 0.45f}, {0.f, -0.55f, 0.83f},  {0.f, -0.83f, -0.55f}, 1.f},
-        {1.f,  {0.05f, -0.25f, 0.4f},  {0.04f, -0.6f, 0.8f},  {0.f, -0.8f, -0.6f}, 1.f}};
+        {0.7f, {0.03f, -0.22f, 0.45f}, {0.f, -0.32f, 0.95f},  {0.f, -0.95f, -0.32f}, 1.f},
+        {1.f,  {0.05f, -0.25f, 0.4f},  {0.04f, -0.38f, 0.92f}, {0.f, -0.92f, -0.38f}, 1.f}};
     return keyed(K, 6, u);
 }
 

@@ -28,6 +28,7 @@ inline float     g_devCamYaw = -90.f, g_devCamPitch = 0.f;
 // --weapon N --aim --overlay armory|pause|settings: pose a screenshot
 inline int       g_devWeapon = -1;
 inline bool      g_devSword = false;   // --sword / ?sword: the sword (key 5) anywhere, not just the Zenith
+inline float     g_devSwordOrbit = 0.f;   // --swordorbit DEG: see the sword and its arms from the side (DEG round them; 0 off)
 inline bool      g_devAim = false;
 inline std::string g_devOverlay;
 // --skip sky,world,boxes,water,fx,viewmodel,bloom,hud: leave render passes out (finding what the GPU spends)

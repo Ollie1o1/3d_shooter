@@ -314,6 +314,8 @@ Everything below runs without touching the mouse, so it works from scripts.
 #   --act2 --arena 5: straight into the Maw and the Leviathan
 #   --act2 --arena 6: straight into !!!!! (the Zenith) and the Absolute (add --cam ... so the armory doesn't open)
 #   --sword: the sword on key 5 in any arena; --weapon 5: start with it drawn
+#   --overlay swingSU: hold sword stroke S (0 forehand, 1 backhand, 2 overhead) U/10 through it; guard: its guard
+#   --swordorbit DEG: see the sword and the arms holding it from the side (DEG round them), to check the wrists
 #   --spawn TYPE (repeatable): enemies in an arc in front of the camera
 #     0 Husk  1 Ripper  2 Sentinel  3 Raptor  4 Brute  5 Mite  6 Juggernaut  7 Warden  8 Sovereign  9 Shieldbearer
 #     10 Conduit  11 Conductor  12 Seraph  13 Anchor  14 Penitent  15 Revenant  16 Weaver  17 Leviathan  18 Absolute

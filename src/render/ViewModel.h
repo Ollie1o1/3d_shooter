@@ -96,14 +96,17 @@ public:
         if (!s.swinging()) swordLanded = false;
         swordStroke = s.swinging() ? s.lastStroke : -1; swordU = u;
         // The wrist: the blade chases the hand's pose on a loose spring, so it trails into a cut, whips
-        // through and overshoots a hair at the end (a guard snaps in stiffer)
+        // through and overshoots a hair at the end (a guard snaps in stiffer). Its edge is rolled to
+        // where the wrist can take it first (ArmFile.h), so a roll the wrist can't make is turned smoothly.
         {
+            const glm::vec3 wasHeld = heldEdge;
+            heldEdge = armfile::swordHeld(swordShown, whipPrimed ? &wasHeld : nullptr).edge;
             const float w = s.blocking() ? 62.f : s.swinging() ? 40.f : 30.f, Z = s.blocking() ? 0.8f : 0.5f, H = 1.f / 240.f;
-            if (!whipPrimed) { bladeW = swordShown.blade; edgeW = swordShown.edge; whipPrimed = true; }
+            if (!whipPrimed) { bladeW = swordShown.blade; edgeW = heldEdge; whipPrimed = true; }
             for (float left = std::min(dt, 0.1f); left > 1e-6f; left -= H) {
                 float h = std::min(left, H);
                 bladeV += (w * w * (swordShown.blade - bladeW) - 2.f * Z * w * bladeV) * h; bladeW += bladeV * h;
-                edgeV  += (w * w * (swordShown.edge - edgeW) - 2.f * Z * w * edgeV) * h;  edgeW += edgeV * h;
+                edgeV  += (w * w * (heldEdge - edgeW) - 2.f * Z * w * edgeV) * h;  edgeW += edgeV * h;
             }
             if (glm::length(bladeW) > 1e-4f) bladeW = glm::normalize(bladeW);
             if (glm::length(edgeW) > 1e-4f) edgeW = glm::normalize(edgeW);
@@ -149,6 +152,12 @@ public:
         lastEmissive = glm::vec3{-1.f};
         shader.setMat4("projection", vmProj);
         shader.setMat4("view", cam.viewMatrix());
+        if (devOrbit != 0.f) {   // dev: the camera swung round the arms (camera space), looking back at them
+            const glm::vec3 at{0.05f, -0.2f, 0.25f};
+            float a = glm::radians(devOrbit);
+            glm::vec3 eye = at + glm::vec3{std::sin(a), 0.15f, -std::cos(a)} * 0.95f;
+            shader.setMat4("view", glm::lookAt(eye, at, glm::vec3{0.f, 1.f, 0.f}) * glm::inverse(base));
+        }
         glDisable(GL_CULL_FACE);
         const glm::mat4 S = glm::scale(glm::mat4(1.f), glm::vec3{gunkit::SWORD_SCALE});
         const glm::mat4 frame = gunkit::swordFrame(P);
@@ -193,27 +202,32 @@ public:
         parts.clear();
         gunkit::Builder b{parts, gunkit::SWORD_GLOW};
         const float glow = s.broken() ? 0.15f : 0.7f + 1.2f * L.riposte + 0.6f * L.charge;
-        glm::vec3 twist{0.3f * (P.hand.x - 0.2f), 0.12f * (P.hand.y + 0.22f), 0.1f * (P.hand.z - 0.36f)};   // the body turns into the cut
         glm::mat4 fist = frame; fist[3] = glm::vec4(P.hand, 1.f);
-        armfile::ArmLook arm; arm.seam = glow;
+        armfile::ArmLook arm; arm.seam = glow; arm.wrist = true;
         arm.hand = handR.shown(swordStroke < 0 && !s.blocking() ? 0.7f : 0.15f);
-        gunkit::drawArm(b, glm::vec3{0.34f, -0.62f, 0.f} + twist, fist, 1.f, arm);
+        gunkit::drawArm(b, armfile::swordShoulder(P, 1.f), fist, 1.f, arm);
         float off = std::max(P.twoHand, P.brace);
         if (off > 0.02f) {
-            glm::vec3 z{frame[2]}, y{frame[1]}, root{frame[3]};
-            glm::vec3 onGrip = root + z * (gunkit::SWORD_OFFHAND_Z * gunkit::SWORD_SCALE);
-            glm::vec3 onFlat = root + z * 0.3f - y * 0.008f;
+            glm::vec3 x{frame[0]}, y{frame[1]}, z{frame[2]}, root{frame[3]};
             bool flat = P.brace > P.twoHand;
-            glm::vec3 at = flat ? onFlat : onGrip;
             glm::vec3 away{-0.3f, -0.6f, 0.12f};   // below the screen
-            // the left hand on the grip: its knuckles to the same edge as the right's (the frame turned over);
-            // flat on the blade: the palm on the flat, the fingers toward the point
-            glm::mat4 lf = frame * (flat ? glm::rotate(glm::mat4(1.f), glm::radians(90.f), glm::vec3{0.f, 1.f, 0.f})
-                                         : glm::rotate(glm::mat4(1.f), glm::radians(180.f), glm::vec3{0.f, 0.f, 1.f}));
+            glm::mat4 lf;
+            if (flat) {
+                // braced: the palm pressed flat on the back edge partway up the blade, the fingers
+                // pointing up across it, the wrist under it (the right hand's knuckles face the other edge)
+                glm::vec3 fingers = y.y >= 0.f ? y : -y;
+                glm::vec3 spine = root + z * 0.27f - x * (0.034f * gunkit::SWORD_SCALE);
+                lf = armfile::handFrame(spine - x * 0.01f + fingers * 0.01f, fingers, -x, -1.f);
+            } else {
+                // on the grip under the right: its knuckles to the same edge (the frame turned over)
+                lf = frame * glm::rotate(glm::mat4(1.f), glm::radians(180.f), glm::vec3{0.f, 0.f, 1.f});
+                lf[3] = glm::vec4(root + z * (gunkit::SWORD_OFFHAND_Z * gunkit::SWORD_SCALE), 1.f);
+            }
+            glm::vec3 at{lf[3]};
             lf[3] = glm::vec4(glm::mix(away, at, gunkit::smooth(std::min(off, 1.f))), 1.f);
             arm.open = flat;
             arm.hand = handL.shown(0.3f);
-            gunkit::drawArm(b, glm::vec3{-0.34f, -0.62f, 0.f} + twist * 0.6f, lf, -1.f, arm);
+            gunkit::drawArm(b, armfile::swordShoulder(P, -1.f), lf, -1.f, arm);
         }
         for (const auto& p : parts) drawPart(shader, base * p.xf, p.color, p.emissive, p.mesh);
         if (parryTimer > 0.f) drawFist(shader, cam, gunkit::SWORD_GLOW);   // F still punches
@@ -224,6 +238,7 @@ public:
     // Dev (--overlay handPV): one right hand up close in pose P (0 grip 1 fist 2 flat 3 relaxed 4 spread 5 fan;
     // +6 in the gauntlet), seen from side V (0 its back, 1 its palm, 2 its knuckles, 3 its thumb's side)
     int devHand = -1, devHandView = 0;
+    float devOrbit = 0.f;   // --swordorbit DEG (drawSword)
     void drawDevHand(ShaderProgram& shader, const Camera& cam) {
         glm::vec3 fwd = cam.forward(), right = cam.right(), up = glm::normalize(glm::cross(right, fwd));
         glm::mat4 base(1.f);
@@ -397,7 +412,7 @@ private:
     SwordPose swordShown = gunkit::swordRest(), swordFrom = gunkit::swordRest();
     float swordSince = 1e9f, swordU = -1.f;
     armfile::HandSpring handR, handL, handParry, handFan;   // the hands' fingers (ArmFile.h)
-    glm::vec3 bladeW{0.f, 1.f, 0.f}, bladeV{0.f}, edgeW{0.f, 0.f, 1.f}, edgeV{0.f};   // the blade as the wrist carries it
+    glm::vec3 bladeW{0.f, 1.f, 0.f}, bladeV{0.f}, edgeW{0.f, 0.f, 1.f}, edgeV{0.f}, heldEdge{0.f, 0.f, 1.f};   // the blade as the wrist carries it
     bool  whipPrimed = false, swordLanded = false;
     float fanT = -1.f, fanAge = 0.f;   // the fan: since it began (-1: not fanning), since the last slap
     int   fanLeft = 0, fanStruck = 0;   // slaps still to come, slaps so far

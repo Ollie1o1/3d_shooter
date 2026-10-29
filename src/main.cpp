@@ -624,6 +624,7 @@ int main(int argc, char* argv[]) {
         if (arg == "--weapon" && i + 1 < argc) g_devWeapon = std::atoi(argv[++i]) - 1;
         if (arg == "--aim") g_devAim = true;
         if (arg == "--sword") g_devSword = true;   // the sword (key 5) anywhere, for testing it
+        if (arg == "--swordorbit" && i + 1 < argc) g_devSwordOrbit = (float)std::atof(argv[++i]);
         if (arg == "--spawn" && i + 1 < argc) g_devSpawns.push_back(std::atoi(argv[++i]));
         if (arg == "--hollow" && i + 1 < argc) g_devHollow = std::atoi(argv[++i]) & 3;
         if (arg == "--overlay" && i + 1 < argc) g_devOverlay = argv[++i];
