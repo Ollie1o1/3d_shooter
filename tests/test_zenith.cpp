@@ -4,6 +4,7 @@
 #include "player/Sword.h"
 #include "core/Balance.h"
 #include "render/GunKit.h"
+#include "render/ArmFile.h"
 #include "world/LevelAct2.h"
 #include "audio/MusicSynth.h"
 #include "game/Progression.h"
@@ -230,6 +231,38 @@ int main() {
                 square &= std::fabs(glm::determinant(m) - 1.f) < 1e-3f && std::fabs(glm::dot(m[1], m[2])) < 1e-3f;
             }
         CHECK(square, "the sword's frame is a true rotation all through every stroke");
+        // the hand's frame is the sword's: its knuckles (+X) face the edge, and the side cuts lead with it
+        bool leads = true;
+        for (int st = 0; st < 2; ++st)
+            for (int k = 30; k <= 50; k += 5) {   // (through the cut itself)
+                float u = k / 100.f;
+                glm::vec3 v = gunkit::swordTip(gunkit::swordPose(st, u + 0.01f, false, 0.f, 0.f)) - gunkit::swordTip(gunkit::swordPose(st, u - 0.01f, false, 0.f, 0.f));
+                glm::vec3 x{gunkit::swordFrame(gunkit::swordPose(st, u, false, 0.f, 0.f))[0]};
+                leads &= glm::dot(glm::normalize(v), x) > 0.5f;
+            }
+        CHECK(leads, "the side cuts lead with the edge, not the flat");
+        // a wrist: the knuckles never face far from where the forearm points, and the roll it
+        // makes the blade take stays smooth through every stroke
+        {
+            bool reach = true, smoothRoll = true;
+            for (int st = 0; st < 3; ++st) {
+                glm::vec3 prev = armfile::swordHeld(gunkit::swordPose(st, 0.f, false, 0.f, 0.f)).edge;
+                for (int k = 0; k <= 100; ++k) {
+                    SwordPose P = armfile::swordHeld(gunkit::swordPose(st, k / 100.f, false, 0.f, 0.f), &prev);
+                    smoothRoll &= st == 2 || glm::dot(P.edge, prev) > std::cos(glm::radians(12.f));   // (the overhead's rolls through its cock: the wrist spring takes it)
+                    prev = P.edge;
+                    if (P.twoHand > 0.5f) continue;
+                    glm::mat4 fist = gunkit::swordFrame(P); fist[3] = glm::vec4(P.hand, 1.f);
+                    glm::vec3 el, wr; armfile::chain(armfile::swordShoulder(P, 1.f), fist, 1.f, el, wr, glm::vec3{0.f}, true);
+                    glm::vec3 d = glm::inverse(glm::mat3(fist)) * glm::normalize(el - wr);   // the forearm, in hand space
+                    reach &= d.x < -std::cos(glm::radians(armfile::FLEX + 1.f));   // (straight out of the back of the hand: -X)
+                }
+            }
+            CHECK(reach, "the sword hand's forearm always runs from the wrist within a wrist's bend");
+            CHECK(smoothRoll, "the side cuts roll the blade smoothly");
+            glm::vec3 w = armfile::wristReach({1.f, 0.f, 0.f});
+            CHECK(w.x < 0.f, "a forearm asked to come from the fingers' side is brought round behind the wrist");
+        }
         // the arm reaches the hand: its parts run from below the screen to the grip
         {
             std::vector<GunPart> arm; gunkit::Builder ab{arm, gunkit::SWORD_GLOW};

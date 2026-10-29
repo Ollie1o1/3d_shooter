@@ -208,6 +208,7 @@ struct ArmLook {
     float flare = 0.f;         // 0..1: the gauntlet blazing as it lands a parry
     HandPose hand = handGrip();
     vec3  pole{0.f};           // the way the elbow bends out (zero: out and down)
+    bool  wrist = false;       // the forearm follows the hand: held within a wrist's reach of it, and rolled with it
 };
 
 // A frame at a, +Z toward c (stretched by |c - a| / rest), +Y as near `up` as it can be (limb()'s frame)
@@ -224,12 +225,85 @@ inline mat4 along(vec3 a, vec3 c, float rest, vec3 up = {0.f, 1.f, 0.f}) {
 }
 inline mat4 mirrorOf(float side) { return side < 0.f ? glm::scale(mat4(1.f), vec3{-1.f, 1.f, 1.f}) : mat4(1.f); }
 
+// How far a wrist bends (degrees, from the forearm running straight out of the
+// back of the hand): toward the thumb / the little finger, back / toward the palm
+constexpr float RADIAL = 22.f, ULNAR = 42.f, EXTEND = 55.f, FLEX = 62.f;
+// Where the forearm runs from the wrist (hand space, toward the elbow), brought within
+// the wrist's reach: hand space -X is straight, +Z the thumb's side, +Y the back of the hand
+inline vec3 wristReach(vec3 d) {
+    d = glm::normalize(d);
+    float th = std::acos(std::clamp(-d.x, -1.f, 1.f));   // how far it's bent
+    float rz = d.z > 0.f ? RADIAL : ULNAR, ry = d.y > 0.f ? EXTEND : FLEX;   // (+Z: the forearm on the blade's side, the hand bent back toward the thumb)
+    float ph = std::atan2(d.y, d.z), c = std::cos(ph) / glm::radians(rz), s = std::sin(ph) / glm::radians(ry);
+    float lim = 1.f / std::sqrt(c * c + s * s);   // the ellipse of reach, that way round
+    if (th <= lim) return d;
+    return vec3{-std::cos(lim), std::sin(lim) * std::sin(ph), std::sin(lim) * std::cos(ph)};
+}
+// Holding the sword (ViewModel::drawSword): where the shoulders are as the body turns into the cut
+inline vec3 swordShoulder(const SwordPose& P, float side) {
+    vec3 twist{0.3f * (P.hand.x - 0.2f), 0.12f * (P.hand.y + 0.22f), 0.1f * (P.hand.z - 0.36f)};
+    return vec3{0.34f * side, -0.62f, 0.f} + twist * (side > 0.f ? 1.f : 0.6f);
+}
+// The pose with its edge rolled about the blade to where the wrists can take it: the
+// knuckles face the edge, and they can't face far (`most` degrees) from where the forearm
+// points (both forearms, between them, with both hands on the grip). The point doesn't move.
+// near: the edge it had last frame. Where the wanted edge could be reached either way round
+// (it faces straight back up the forearm), the roll keeps to the side it was on.
+inline SwordPose swordHeld(SwordPose P, const vec3* near = nullptr, float most = 50.f) {
+    vec3 z = glm::normalize(P.blade);
+    auto flat = [&](vec3 v) { v -= z * glm::dot(v, z); return glm::length(v) > 1e-4f ? glm::normalize(v) : v; };   // seen down the blade
+    auto forearm = [&](float side) {   // (its length: how square to the blade it is)
+        vec3 sh = swordShoulder(P, side);
+        vec3 f = glm::normalize(P.hand - gunkit::elbowOf(sh, P.hand, UPPER, FORE, glm::normalize(vec3{side * 1.f, -1.3f, -0.3f})));
+        return f - z * glm::dot(f, z);
+    };
+    vec3 e = flat(P.edge);
+    vec3 f = forearm(1.f);
+    float square = glm::length(f);
+    if (square < 1e-4f || glm::length(e) < 1e-4f) return P;
+    f /= square;
+    const vec3 ref = near ? flat(*near) : e;
+    if (P.twoHand > 0.f) {
+        float k = 0.5f * std::min(P.twoHand, 1.f);
+        vec3 fl = forearm(-1.f);
+        square = square * (1.f - k) + glm::length(fl) * k;
+        if (glm::length(fl) > 1e-4f) fl = glm::normalize(fl);
+        vec3 g = f * (1.f - k) + fl * k;
+        // the forearms near opposite (seen down the blade): between them is either way round, so keep to one
+        vec3 side = glm::cross(z, f); if (glm::dot(side, ref) < 0.f) side = -side;
+        float l = glm::length(g), w = std::clamp((0.6f - l) / 0.4f, 0.f, 1.f);
+        f = glm::normalize(g + side * (w * w * (3.f - 2.f * w)));
+        most *= 1.f - 0.8f * std::min(P.twoHand, 1.f);   // (the edge between the forearms, each wrist bent half the gap)
+    }
+    // with the blade near in line with the forearm (the wrist bent hard toward the little finger)
+    // the hand can roll it any way: the limit lets go
+    float free = std::clamp((0.6f - square) / 0.35f, 0.f, 1.f);
+    most += (180.f - most) * free * free * (3.f - 2.f * free);
+    float a = std::atan2(glm::dot(glm::cross(f, e), z), glm::dot(f, e)), lim = glm::radians(most);
+    if (std::fabs(a) > lim) {
+        auto at = [&](float t) { return f * std::cos(t) + glm::cross(z, f) * std::sin(t); };
+        vec3 lo = at(-lim), hi = at(lim);
+        if (near && std::fabs(a) > glm::radians(120.f)) e = glm::dot(lo, ref) > glm::dot(hi, ref) ? lo : hi;   // (either way round: stay)
+        else e = a > 0.f ? hi : lo;
+    }
+    P.edge = e;
+    return P;
+}
 // The shoulder-elbow-wrist chain for a hand framed at `fist`: side +1 right, -1 left
-// (pole: the way the elbow bends out; zero: out and down, the usual)
-inline void chain(vec3 shoulder, const mat4& fist, float side, vec3& elbow, vec3& wrist, vec3 pole = vec3{0.f}) {
-    wrist = vec3(fist * mirrorOf(side) * glm::vec4(WRIST, 1.f));
+// (pole: the way the elbow bends out; zero: out and down, the usual). keepWrist: the
+// forearm kept within the wrist's reach of the hand (the elbow moves for it; the upper
+// arm, off the bottom of the screen, takes up the difference)
+inline void chain(vec3 shoulder, const mat4& fist, float side, vec3& elbow, vec3& wrist, vec3 pole = vec3{0.f}, bool keepWrist = false) {
+    const mat4 hand = fist * mirrorOf(side);
+    wrist = vec3(hand * glm::vec4(WRIST, 1.f));
     if (glm::length(pole) < 1e-4f) pole = vec3{side * 1.f, -1.3f, -0.3f};
     elbow = gunkit::elbowOf(shoulder, wrist, UPPER, FORE, glm::normalize(pole));
+    if (keepWrist) {
+        glm::mat3 R{hand};   // (hand space: the mirrored left's is the right's)
+        glm::mat3 inv = glm::inverse(R);
+        vec3 d = wristReach(inv * (elbow - wrist));
+        elbow = wrist + glm::normalize(R * d) * FORE;
+    }
 }
 
 // A hand frame (for fist) from where its fingers point and where the back of the hand faces;
@@ -245,13 +319,14 @@ inline mat4 handFrame(vec3 at, vec3 fingers, vec3 back, float side) {
 }
 
 // Every joint's frame this frame: the arm's chain, then the fingers bent down from the hand
-inline void pose(vec3 shoulder, const mat4& fist, float side, const HandPose& hp, mat4 W[A_COUNT], vec3 pole = vec3{0.f}) {
+inline void pose(vec3 shoulder, const mat4& fist, float side, const HandPose& hp, mat4 W[A_COUNT], vec3 pole = vec3{0.f}, bool keepWrist = false) {
     vec3 elbow, wrist;
-    chain(shoulder, fist, side, elbow, wrist, pole);
+    chain(shoulder, fist, side, elbow, wrist, pole, keepWrist);
     const mat4 mirror = mirrorOf(side);
     W[A_ROOT] = mat4(1.f);
     W[A_UPPER] = along(shoulder, elbow, UPPER) * mirror;
-    W[A_FORE] = along(elbow, wrist, FORE) * mirror;
+    // the forearm's top: up, or (keepWrist) the back of the hand, the forearm turning with it
+    W[A_FORE] = along(elbow, wrist, FORE, keepWrist ? vec3(fist[1]) : vec3{0.f, 1.f, 0.f}) * mirror;
     W[A_FIST] = fist * mirror;
     const auto& rel = restRel();
     for (int f = 0; f < FINGERS; ++f)
@@ -271,7 +346,7 @@ inline bool draw(gunkit::Builder& b, vec3 shoulder, const mat4& fist, float side
     const gunkit::GunModel* m = model();
     if (!m) return false;
     mat4 W[A_COUNT];
-    pose(shoulder, fist, side, L.hand, W, L.pole);
+    pose(shoulder, fist, side, L.hand, W, L.pole, L.wrist);
     vec3 chan[AC_COUNT];
     chan[AC_CONST] = vec3{1.f};
     chan[AC_SEAM] = gunkit::SWORD_GLOW * L.seam;
