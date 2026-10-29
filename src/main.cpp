@@ -604,6 +604,7 @@ int main(int argc, char* argv[]) {
             g_arenaSolo = std::max(0, std::atoi(argv[++i]) - 1); g_startArena = g_arenaSolo;
         }
         if (arg == "--endless") { app->mode = GameMode::ENDLESS; app->pending = App::NextState::Game; }
+        if (arg == "--story") { app->mode = GameMode::STORY; app->pending = App::NextState::Game; }   // STORY: CHAPTER 1 (the wake-up first)
         if (arg == "--boss" && i + 1 < argc) {   // --boss N: BOSS N (1 the Warden .. 6 MORNINGSTAR), on its own
             g_bossRun = std::clamp(std::atoi(argv[++i]) - 1, 0, BOSS_COUNT - 1);
             app->mode = bossEntry(g_bossRun).act2 ? GameMode::ACT2 : GameMode::ARENA; app->pending = App::NextState::Game;

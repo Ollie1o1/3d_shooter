@@ -75,6 +75,7 @@ inline void GameplayState::reflectProjectile(int pi, glm::vec3 fwd) {
         styleSystem.addStyle(25.f, StyleSource::PARRY);
         ui.feed("PARRY", {1.f, 0.9f, 0.3f});
     }
+    for(auto& e:enemies) if(e.type==EnemyType::SORTER) e.sortMark=0;
     parryFeedback(p.position, p.heavy);
 }
 
@@ -99,6 +100,8 @@ inline void GameplayState::punch(int boostable) {
                                                      e.sweepReach(), player.position, player.height, e.floorY);
             else inReach = flat < (e.attack == AttackKind::PSLAM ? PenitentHazards::SLAM_RADIUS : PenitentHazards::STOMP_RADIUS);
         }
+        if (e.type == EnemyType::SORTER)
+            inReach = glm::length(player.position-e.sortAim)<Enemy::SORT_GRAB_R+1.f;
         if (e.type == EnemyType::LEVIATHAN)   // its head coming down on you: punch it as it lands
             inReach = glm::length(glm::vec2{player.position.x - e.levTarget.x, player.position.z - e.levTarget.z}) < Enemy::LV_PARRY_REACH;
         if (inReach) {
@@ -237,6 +240,8 @@ inline void GameplayState::updateEnemies(float dt) {
         if (g_devOverlay.rfind("pose", 0) == 0 && e.type == EnemyType::SOVEREIGN) { devPose(e); continue; }
         if (g_devOverlay.rfind("penitent", 0) == 0 && e.type == EnemyType::PENITENT) { devPenitentPose(e); continue; }
         if (g_devOverlay == "thunder" && e.type == EnemyType::ABSOLUTE && e.abCur < 0) e.abForce = AB_THUNDER;   // dev: THUNDERCLAP, over and over
+        if(e.type==EnemyType::SORTER && (g_devOverlay=="sorter2"||g_devOverlay=="sorter3") && e.health>e.maxHealth*.67f)
+            e.health=e.maxHealth*(g_devOverlay=="sorter2"?.5f:.2f);
         if (e.type == EnemyType::WARDEN && (g_devOverlay == "warden2" || g_devOverlay == "warden3") && e.health > e.maxHealth * 0.62f)
             e.health = e.maxHealth * (g_devOverlay == "warden2" ? 0.5f : 0.2f);   // dev: straight into its later phases
         if (e.type == EnemyType::LEVIATHAN && (g_devOverlay == "leviathan2" || g_devOverlay == "leviathan3") && e.health > e.maxHealth * 0.66f && e.levStage == Enemy::LevStage::FIGHT)
@@ -279,7 +284,8 @@ inline void GameplayState::updateEnemies(float dt) {
                 pr->ownerType = (int)enemies[i].type;
                 pr->parryDamage = ev.shotParry;
             }
-        if (ev.beamOn) {   // a SERAPH's beam: 30/s while it touches you, sparks (or steam) where it lands
+        if (story() && e.type == EnemyType::SORTER) storySorterEvents(e,ev);
+        if (ev.beamOn && e.type != EnemyType::SORTER) {   // a SERAPH's beam: 30/s while it touches you, sparks (or steam) where it lands
             AABB pb{player.position + glm::vec3{-player.radius, 0.f, -player.radius},
                     player.position + glm::vec3{player.radius, player.height, player.radius}};
             if (segmentHitsBox(ev.beamFrom, ev.beamTo, pb)) {
@@ -628,6 +634,10 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
             pushBanner("THE LEVIATHAN SINKS", "", {1.f, 0.9f, 0.7f}, 3.f);
         } else if (e.type == EnemyType::ABSOLUTE) {
             onAbsoluteKilled(e);
+        } else if (e.type == EnemyType::SORTER) {
+            storyBossDown=true;
+            for(auto& b:level.conveyors) b.speed=std::fabs(b.speed);
+            pushBanner("I JUDGED THEM ALL.","I NEVER KNEW WHAT FOR.",{.8f,.85f,.9f},6.f);
         } else if (e.type == EnemyType::PACEMAKER) {
             onPacemakerKilled(e);
         } else {
@@ -905,6 +915,14 @@ inline void GameplayState::fireWeapon(int w) {
         glm::vec3 dir = glm::normalize(fwd + right * (std::cos(ang) * rad) + up * (std::sin(ang) * rad));
         float wallT = hitscanAll(origin, dir, d.range, hits);
         int n = std::min((int)hits.size(), pierce + 1);
+        if(story()) {
+            float nearest=hits.empty()?wallT:hits[0].t;Projectile* body=nullptr;
+            for(auto& shot:projSystem.pool) if(shot.alive&&!shot.isPlayer&&shot.ownerType==(int)EnemyType::SORTER) {
+                AABB b{shot.position-glm::vec3{.7f},shot.position+glm::vec3{.7f}};
+                float t=rayBoxHit(origin,dir,b);if(t>0&&t<nearest){nearest=t;body=&shot;}
+            }
+            if(body){body->alive=false;n=0;wallT=nearest;fx.spawnBurst(body->position,{.7f,.7f,.65f},18,6,.6f,12);audio.playAt("clank",body->position,90,SoundGroup::WORLD);styleSystem.addStyle(10,StyleSource::PARRY);}
+        }
         if (!level.anchors.empty()) {   // the Penitent's chains (before anything further along), then its anchors
             float ct = hitChain(origin, dir, hits.empty() ? wallT : hits[0].t, dmg);
             if (ct > 0.f) { n = 0; anyHit = true; wallT = ct; }   // (the chain takes the round)

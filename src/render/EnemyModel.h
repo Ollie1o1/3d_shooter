@@ -305,6 +305,18 @@ inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileR
         P = humanoidPose(mo, glow);
         fileRoot = base * T({0.f, mo.lift, 0.f});
     };
+    if(e.type==EnemyType::SORTER) {
+        fileRoot=root;
+        vec3 tell=e.attack==AttackKind::SORT_GRAB?vec3{2}:e.attack==AttackKind::SORT_STAMP?vec3{2,.1f,.04f}:abGoldTell({2,1.3f,.2f});
+        P.chan[C_EYE]=e.sortOpen>0||e.staggered()?vec3{.2f,1.5f,2}:glow;
+        P.chan[C_CORE]=e.sortOpen>0||e.staggered()?vec3{.2f,1.5f,2}:vec3{.35f,.1f,.02f};
+        P.chan[C_EDGE]=e.telegraphTimer>0?tell:glow*.4f;
+        P.motion[E_HEAD]=RY(std::sin(time*.5f)*.12f);
+        float flex=e.telegraphTimer>0?tp*.5f:.08f*std::sin(time*2);
+        P.motion[E_ARML]=RZ(flex);P.motion[E_ARMR]=RZ(-flex);
+        P.motion[E_ELBOW_L]=RX(-flex);P.motion[E_ELBOW_R]=RX(-flex);
+        return true;
+    }
     if (e.type == EnemyType::PACEMAKER) return pacemakerFilePose(e, time, root, fileRoot, P, glowOut);
     switch (rigBase(e.type)) {   // (a mini-boss moves as its rig's enemy)
     case EnemyType::HUSK:
@@ -903,6 +915,19 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         }
     }
     switch (e.type) {
+    case EnemyType::SORTER: {
+        r.box(root,{0,3.4f,0},{5.4f,1.25f,2.6f},st.color);
+        r.box(root,{0,4.9f,.5f},{2.4f,1.15f,1.7f},{.7f,.7f,.65f});
+        r.box(root,{0,4.92f,1.4f},{2.1f,.6f,.15f},glow,glow);
+        for(float s:{-1.f,1.f}) {
+            r.box(root,{s*2.5f,5.4f,0},{.5f,2.8f,.5f},st.color);
+            r.box(root,{s*3.1f,2.8f,0},{.8f,2.4f,.8f},st.color);
+            r.box(root,{s*3.7f,1.f,.5f},{.4f,1.7f,.4f},{.6f,.6f,.6f});
+            for(float dx:{-.5f,.5f})r.box(root,{s*3.6f+dx,.1f,1},{.2f,.9f,.7f},{.75f,.74f,.7f});
+        }
+        r.box(root,{0,1.5f,0},{.4f,2.4f,.4f},{.6f,.6f,.6f});
+        r.box(root,{0,.5f,0},{2.5f,.5f,2},st.color);break;
+    }
     case EnemyType::HUSK: {
         float aim = e.attack == AttackKind::SHOT ? smooth01(tp * 3.f) : 0.35f;
         HumanoidLook L = humanoidLook(e.type, st.color, st.color * 0.45f, glow);   // (no file: the old rig, in code)
@@ -1384,6 +1409,12 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
 // slump, a RIPPER's crouch, a RAPTOR's dive. False for a type without a head
 // (MITE). Uses the physics position, like the rest of the hitscan.
 inline bool headBox(const Enemy& e, AABB& out) {
+    if(e.type==EnemyType::SORTER) {
+        mat4 frame=T(e.position)*RY(e.yaw)*T({0,4.4f,0})*RY(std::sin(e.age*.5f)*.12f);
+        vec3 c=vec3(frame*glm::vec4(0,.5f,.55f,1)),half{1.25f,.65f,1.05f};
+        glm::mat3 m(frame);vec3 ext=glm::abs(m[0])*half.x+glm::abs(m[1])*half.y+glm::abs(m[2])*half.z;
+        out={c-ext,c+ext};return true;
+    }
     const EnemyStats& st = e.stats();
     float grow   = 0.05f + 0.95f * smooth01(1.f - e.spawnTimer / Enemy::SPAWN_TIME);
     float tp     = e.telegraphProgress();

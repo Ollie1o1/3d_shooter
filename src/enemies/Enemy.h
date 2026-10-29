@@ -58,10 +58,11 @@
 #include "bosses/warden/WardenState.h"
 #include "bosses/leviathan/LeviathanState.h"
 #include "bosses/absolute/AbsoluteState.h"
+#include "bosses/sorter/SorterState.h"
 
 // Everything an enemy did this tick. Cleared at the top of every update().
 // The common channels are here; each boss adds its own (its *Events).
-struct EnemyEvents : SovereignEvents, PenitentEvents, WardenEvents, LeviathanEvents, AbsoluteEvents {
+struct EnemyEvents : SovereignEvents, PenitentEvents, WardenEvents, LeviathanEvents, AbsoluteEvents, SorterEvents {
     static constexpr int MAX_SHOTS = 16;
     bool      telegraphStarted = false;
     int       shots = 0;
@@ -152,7 +153,7 @@ inline bool segmentHitsBox(glm::vec3 a, glm::vec3 b, const AABB& box) {
 
 inline float frand(float lo, float hi) { return lo + (hi - lo) * (float)(rand() % 10001) / 10000.f; }
 
-struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, AbsoluteState {
+struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, AbsoluteState, SorterState {
     EnemyType  type;
     EnemyState state = EnemyState::SPAWNING;
     glm::vec3  position;
@@ -376,6 +377,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         // THE WARDEN's lunge: its last quarter second, or in flight until it connects (it comes into reach)
         if ((type == EnemyType::WARDEN || type == EnemyType::PACEMAKER) && dashTimer > 0.f && !dashHit) return true;   // (and THE PACEMAKER's dash)
         if (telegraphTimer <= 0.f) return false;
+        if (type == EnemyType::SORTER) return attack == AttackKind::SORT_GRAB && telegraphTimer < .25f;
         if (type == EnemyType::WARDEN) return attack == AttackKind::WLUNGE && telegraphTimer < 0.25f;
 
         if (type == EnemyType::JUGGERNAUT) return attack == AttackKind::SMASH && telegraphTimer < 0.4f;
@@ -420,6 +422,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     // Damage multiplier from armor: the JUGGERNAUT shrugs off half unless
     // broken; a broken SOVEREIGN takes half again
     float armorMult() const {
+        if (type == EnemyType::SORTER) return staggered() || sortOpen > 0.f ? 2.f : 1.f;
         if (type == EnemyType::WARDEN) return (conduitsLeft > 0 && ventTimer <= 0.f ? 0.5f : 1.f) * (staggered() ? 2.f : 1.f);
         if (type == EnemyType::PENITENT) return (anchorsLeft > 0 ? 0.25f : 1.f) * (staggered() ? 2.f : 1.f);
         if (type == EnemyType::ABSOLUTE) return staggered() ? (abReeling ? 1.5f : 2.f) : 1.f;
@@ -557,6 +560,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
             return;
         }
 
+        if(type == EnemyType::SORTER && staggerTimer > 0.f) { staggerTimer=std::max(0.f,staggerTimer-dt); sortMark=0; sortScan=0; velocity=glm::vec3{0}; return; }
         bool resolve = false;   // telegraph ran out this tick
         if (telegraphTimer > 0.f) {
             const float before = telegraphTimer;
@@ -627,6 +631,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
             case EnemyType::COURIER: case EnemyType::BULWARK: case EnemyType::CANTOR:
             case EnemyType::HARRIER: case EnemyType::PLUMB: case EnemyType::FOREMAN:
                 thinkMini(dt, w, resolve); break;                                 // the Gauntlet's (EnemyMini.h)
+            case EnemyType::SORTER: thinkSorter(dt,w,resolve); return;
             case EnemyType::PACEMAKER:                                            // (EnemyPacemaker.h; mid-leap it flies its arc)
                 thinkPacemaker(dt, w, resolve);
                 if (pmLeapT <= 0.f) integrate(dt, w);
@@ -1319,6 +1324,7 @@ private:
     void thinkPlumb(float dt, const EnemyWorld& w, bool resolve);
     void thinkForeman(float dt, const EnemyWorld& w, bool resolve);
     bool miniBeam(float dt, const EnemyWorld& w, float speed);
+    void thinkSorter(float dt, const EnemyWorld& w, bool resolve);
     void thinkPacemaker(float dt, const EnemyWorld& w, bool resolve);   // bosses/pacemaker/EnemyPacemaker.h
     void pmLeapTo(glm::vec3 p);
 public:
@@ -1459,3 +1465,5 @@ inline void linkConductors(std::vector<Enemy>& es, glm::vec3 player) {
 #include "enemies/EnemyMini.h"       // the Gauntlet's mini-bosses
 #include "bosses/pacemaker/EnemyPacemaker.h"   // THE PACEMAKER's mind (Enemy::thinkPacemaker)
 #include "bosses/absolute/EnemyAbsolute.h"   // THE ABSOLUTE's mind (Enemy::thinkAbsolute)
+
+#include "bosses/sorter/EnemySorter.h"

@@ -27,6 +27,7 @@ struct HudWeapon {
     int   ammo = 0, mag = 0;
     bool  reloading = false;
     float reload01 = 1.f;
+    bool  owned = true;            // STORY: not found yet (an empty slot)
     glm::vec3 glow{1.f, 0.7f, 0.2f};   // the gun's colour (GunKit)
 };
 
@@ -46,6 +47,7 @@ struct HudState {
     glm::vec2 scopeSway{0.f};      // pixels
     float spread = 0.f;            // crosshair gap in pixels from weapon spread
     bool  hideCrosshair = false;
+    bool  noWeapons = false;       // STORY: nothing in hand yet (no slots, no style meter)
     bool  grappleTarget = false;   // aiming at something the grapple can hook
     float grappleCool = 0.f;       // 1 just released .. 0 ready: a cyan bar refills under the crosshair
     bool  showTimer = false;
@@ -200,8 +202,10 @@ public:
         if (h.scoped) drawReticle(h);
 
         drawHealthPanel(style, h);
-        drawStyleMeter(style, h.heldSource);
-        drawWeaponSlots(h);
+        if (!h.noWeapons) {
+            drawStyleMeter(style, h.heldSource);
+            drawWeaponSlots(h);
+        }
         drawCrosshair(h, cx, cy);
 
         // Unseen wind-ups: an amber chevron out past the damage ring, closing in and burning hotter as the blow comes
@@ -640,7 +644,7 @@ public:
         end2D();
     }
 
-    void renderDeath(const char* where, int kills, float gameTime, bool fast, bool retry = true) {
+    void renderDeath(const char* where, int kills, float gameTime, bool fast, bool retry = true, const char* retryLine = nullptr) {
         begin2D();
         ui.rect(0, 0, screenW, screenH, {0.3f, 0.0f, 0.0f, 0.5f});
         ui.text("YOU DIED", screenW / 2, screenH / 2 - 90, 5, {0.95f, 0.15f, 0.1f, 0.95f}, true);
@@ -649,7 +653,7 @@ public:
         std::snprintf(buf, sizeof(buf), "TIME %s   KILLS %d", formatTime(gameTime, fast).c_str(), kills);
         ui.text(buf, screenW / 2, screenH / 2 - 6, 2, {0.8f, 0.7f, 0.7f, 0.85f}, true);
         if (retry) {
-            ui.text(fast ? "R - RESTART ROOM (CLOCK KEEPS RUNNING)" : "R - RETRY THIS ARENA (UPGRADES KEPT)",
+            ui.text(retryLine ? retryLine : fast ? "R - RESTART ROOM (CLOCK KEEPS RUNNING)" : "R - RETRY THIS ARENA (UPGRADES KEPT)",
                     screenW / 2, screenH / 2 + 40, 2, {1.f, 0.85f, 0.5f, 0.95f}, true);
             ui.text("ENTER - NEW RUN    ESC - MENU", screenW / 2, screenH / 2 + 68, 2, {0.6f, 0.5f, 0.5f, 0.8f}, true);
         } else {
@@ -819,6 +823,13 @@ private:
         for (int s = 0; s < WEAPON_COUNT; ++s) {
             const HudWeapon& w = h.weapons[s];
             int x = x0 + s * (slotW + pad);
+            if (!w.owned) {   // (STORY: not found yet: an empty slot)
+                ui.rect(x, y0, slotW, slotH, {0.04f, 0.04f, 0.05f, 0.5f});
+                std::snprintf(buf, sizeof(buf), "%d", s + 1);
+                ui.text(buf, x + 4, y0 + 4, 1, {0.35f, 0.35f, 0.4f, 0.6f});
+                ui.text("--", x + slotW / 2, y0 + slotH / 2 - 6, 2, {0.3f, 0.3f, 0.35f, 0.6f}, true);
+                continue;
+            }
             bool active = s == h.activeWeapon && !h.swordOut;
             ui.rect(x - 2, y0 - 2, slotW + 4, slotH + 4, active ? glm::vec4(w.glow, 0.95f) : glm::vec4(w.glow * 0.35f, 0.5f));
             ui.rect(x, y0, slotW, slotH, active ? glm::vec4{0.16f, 0.15f, 0.2f, 0.95f} : glm::vec4{0.06f, 0.06f, 0.08f, 0.85f});
@@ -839,7 +850,7 @@ private:
         int gx = x0 + WEAPON_COUNT * (slotW + pad) - pad;
         for (int i = 0; i < h.grenadeMax; ++i)
             ui.rect(gx - (i + 1) * 16, y0 - 18, 12, 10, i < h.grenades ? glm::vec4{0.45f, 1.f, 0.25f, 0.95f} : glm::vec4{0.2f, 0.25f, 0.2f, 0.6f});
-        ui.textRight("G", gx - h.grenadeMax * 16 - 8, y0 - 17, 1, {0.7f, 0.9f, 0.6f, 0.9f});
+        if (h.grenadeMax > 0) ui.textRight("G", gx - h.grenadeMax * 16 - 8, y0 - 17, 1, {0.7f, 0.9f, 0.6f, 0.9f});
     }
 
     void drawWeaponIcon(int s, int x, int y, bool active) {

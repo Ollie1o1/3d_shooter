@@ -186,6 +186,7 @@ struct BossSim {
         feet.y = groundY();
     }
     void step(float dt) {
+        if(boss.type==EnemyType::SORTER){sorterStep(dt);return;}
         if (zenith()) { absoluteStep(dt); return; }
         t += dt;
         glm::vec3 was = feet;
@@ -232,6 +233,34 @@ struct BossSim {
         if (policy == SOLID && window && !prevWindow) { if (parryNext) boss.stagger(boss.staggerTime()); parryNext = !parryNext; }
         prevWindow = window;
         shoot(dt);
+    }
+
+    // THE SORTER: the actual AI and projectile collisions; SOLID reads its locked
+    // floor target after REACT and answers alternating claw windows with a parry.
+    void sorterStep(float dt) {
+        t+=dt;glm::vec3 was=feet;
+        movePlayer(dt);
+        if(policy==SOLID && boss.telegraphTimer>0 && t>dodgeFrom &&
+           (boss.attack==AttackKind::SORT_STAMP || boss.attack==AttackKind::SORT_GRAB)) {
+            glm::vec3 out=feet-boss.sortAim;out.y=0;
+            if(glm::length(out)<.1f)out={1,0,0};
+            feet+=glm::normalize(out)*8.f*dt;
+        }
+        feet.x=glm::clamp(feet.x,A.bounds.min.x+.6f,A.bounds.max.x-.6f);
+        feet.z=glm::clamp(feet.z,A.bounds.min.z+.6f,A.bounds.max.z-.6f);
+        vel=(feet-was)/dt;
+        bool window=boss.parryWindow();
+        if(policy==SOLID && window && !prevWindow && glm::length(feet-boss.sortAim)<Enemy::SORT_GRAB_R+1.f) {
+            if(parryNext){boss.stagger(boss.staggerTime());boss.sortMark=0;++parries;}
+            parryNext=!parryNext;
+        }
+        prevWindow=window;boss.update(dt,world());const auto& ev=boss.ev;
+        if(ev.telegraphStarted){dodgeFrom=t+REACT;dodgeUntil=t+.8f;}
+        if(ev.meleeHit)hurt(ev.meleeDamage);
+        for(int k=0;k<ev.shots;++k)proj.fire(ev.shotOrigin,ev.shotDir[k]*ev.shotSpeed,ev.shotDamage,false,{1,1,1},false,0,ev.shotSize,true);
+        auto hit=proj.update(dt,L.walls.data(),(int)L.walls.size(),others,feet+glm::vec3{0,1.7f,0},&grid);
+        if(hit.hitPlayer)hurt(hit.playerDamage);
+        if(policy==SOLID)shoot(dt);
     }
 
     // ---- THE ABSOLUTE --------------------------------------------------------

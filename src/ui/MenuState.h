@@ -42,7 +42,6 @@ public:
     struct ArenaRow { std::string name, subtitle; };
     std::vector<ArenaRow> act1Arenas, act2Arenas;
     int   arenaSel = 0;
-    float storyNudge = 0.f;   // STORY was picked: it isn't here yet (the row flashes COMING SOON)
     // The pictures behind the pages (MenuArt.h): an arena, fading to the next; the BOSS page's boss
     menuart::Fade backdrop, portrait;
     float slideT = 0.f;       // the main menu's slideshow of the arenas
@@ -156,7 +155,7 @@ public:
     }
 
     void update(float dt) override {
-        flashTime += dt; storyNudge = std::max(0.f, storyNudge - dt);
+        flashTime += dt;
         slideT += dt;
         backdrop.update(dt, page == MAIN ? 1.6f : 0.35f);
         portrait.update(dt, 0.25f);
@@ -210,7 +209,7 @@ private:
 
     void activate(int idx) {
         if (idx == 0) { page = ARENAPAGE; arenaSel = 0; }
-        if (idx == 1) storyNudge = 1.2f;   // STORY: not yet
+        if (idx == 1 && onStart) onStart(GameMode::STORY, StartOptions{});   // STORY: CHAPTER 1, THE CRADLE
         if (idx == 2) { page = FASTPAGE; fastSel = 0; }
         if (idx == 3 && onStart) onStart(GameMode::ENDLESS, StartOptions{});
         if (idx == 4) { page = BOSS; bossSel = 0; bossPoll = 0.f; refreshWorld(); }
@@ -687,10 +686,9 @@ private:
         if (records.bestArenaScore > 0) arenaSub += "   BEST " + std::to_string(records.bestArenaScore);
         if (records.bestFast  > 0.f) fastSub  += "   BEST " + formatTime(records.bestFast);
         if (records.bestEndless > 0) endSub += "   BEST " + std::to_string(records.bestEndless);
-        const bool nudge = storyNudge > 0.f;
         Item items[NUM_ITEMS] = {
             {"ARENA", arenaSub.c_str()},
-            {"STORY", nudge ? "COMING SOON - WE'RE STILL WRITING IT" : "COMING SOON"},
+            {"STORY", "CHAPTER 1 - THE CRADLE"},
             {"FAST",  fastSub.c_str()},
             {"ENDLESS", endSub.c_str()},
             {"BOSS", bossSub.c_str()},
@@ -709,8 +707,6 @@ private:
             ui.rect(cx - 200, y + ITEM_H - 2, 400, 2, border);
             if (sel) ui.rect(cx - 200, y, 5, ITEM_H, {1.f, 0.6f + pulse * 0.2f, 0.1f, 1.f});
             glm::vec4 c = sel ? glm::vec4{1.f, 0.65f, 0.12f, 1.f} : glm::vec4{0.65f, 0.65f, 0.7f, 0.95f};
-            if (i == 1) c = nudge ? glm::vec4{1.f, 0.55f, 0.3f, 0.6f + 0.4f * std::sin(flashTime * 12.f)}
-                                  : glm::vec4{0.42f, 0.42f, 0.47f, 0.75f};   // STORY: not yet
             bool hasSub = items[i].sub[0] != 0;
             ui.text(items[i].label, cx, y + (hasSub ? 6 : 12), 3, c, true);
             if (hasSub) ui.text(items[i].sub, cx, y + 31, 1, {0.75f, 0.72f, 0.7f, 0.9f}, true);

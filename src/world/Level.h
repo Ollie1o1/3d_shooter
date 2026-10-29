@@ -142,6 +142,9 @@ struct Booster { AABB box; glm::vec3 dir; float speed; };
 
 struct Hazard { AABB box; float dps; };
 
+// A conveyor belt: standing on its wall carries you along `dir` at `speed` (STORY: the furnace line)
+struct Conveyor { int wall = -1; glm::vec3 dir{0.f, 0.f, -1.f}; float speed = 1.f; };
+
 struct FloorPatch { float x0, z0, x1, z1, y; glm::vec3 color; Mat mat = Mat::BRICK; };   // drawn with mat's top texture (BRICK: the grid)
 
 // Ground that isn't at Y 0: inside `xz` (its X and Z only) the hard floor is
@@ -226,6 +229,7 @@ struct Arena {
     // before it (from playerStart) is a breather with health to pick up.
     AABB        trigger{{0, 0, 0}, {0, 0, 0}};
     bool        hasTrigger = false;
+    bool        scripted = false;   // STORY: the fight starts when the game says (a gun picked up), not at a trigger
     Ambient     ambient = Ambient::DUST;
     ArenaShift  shift = ArenaShift::NONE;
     std::vector<float> floodLevels;   // FLOOD: the water's surface (Y) for each wave
@@ -278,6 +282,7 @@ struct LevelData {
     std::vector<JumpPad>    pads;
     std::vector<Booster>    boosters;
     std::vector<Hazard>     hazards;
+    std::vector<Conveyor>   conveyors;
     std::vector<Basin>      basins;
     std::vector<WaterVolume> water;
     std::vector<Arena>      arenas;
@@ -524,6 +529,41 @@ struct LevelData {
     float     lairFloor = 0.f;
     std::vector<glm::vec3> wells;
 
+    // STORY (LevelStory.h): what the story's own code needs to know about a chapter's level
+    struct Story {
+        bool  built = false;
+        glm::vec3 wake{0.f};              // where UNIT 24 wakes, lying on the belt
+        std::vector<float> lanes;         // the belts' centre lines (X); they run toward -Z
+        float beltTop = 0.f, beltStart = 0.f, beltEnd = 0.f, beltSpeed = 1.f;
+        AABB  furnace{};                  // fall into this: burned
+        float pitFloor = 0.f;             // the furnace pit's bottom (bodies land there)
+        AABB  chute{};                    // the way down out of the furnace line
+        glm::vec3 clawRail{0.f};          // the gantry rail over the line (X, Y; it runs along Z)
+        // The wrecks of the units before you (unit<NN>.glb), slumped where they stopped: one may hold a gun
+        // (WeaponId; -1 none) to take, and each has its last log
+        struct Wreck { glm::vec3 pos{0.f}; float yaw = 0.f; int number = 1; int weapon = -1; const char* log = ""; int section = 0; bool secret = false; };
+        std::vector<Wreck> wrecks;
+        // Bodies dumped in the scrap (unit_blank.glb), lying where they were thrown: on the back or the front
+        struct Dumped { glm::vec3 pos{0.f}; float yaw = 0.f; bool face = false; float pose = 0.f; float tilt = 0.f; };
+        std::vector<Dumped> dumped;
+        struct Terminal { glm::vec3 pos; const char* title; const char* line; };
+        std::vector<Terminal> terminals;
+        struct Scanner { glm::vec3 a, b; float phase; };
+        std::vector<Scanner> scanners;
+        std::vector<glm::vec3> assemblyUnits, pods;
+        std::vector<int> podGlass, sortingTiles;
+        int elevator = -1, bossSection = 8;
+        glm::vec3 grappleAt{0.f};
+        int   pitSection = -1;            // the section whose fight its revolver starts
+        AABB  end{};                      // reach this: the chapter so far is over
+        const char* nextName = "";        // ... and the card says what's next
+    } story;
+    int conveyorOfWall(int w) const {
+        if (w < 0) return -1;
+        for (int i = 0; i < (int)conveyors.size(); ++i) if (conveyors[i].wall == w) return i;
+        return -1;
+    }
+
     // FAST mode
     bool      fast = false;
     glm::vec3 finishPos{0.f};      // touch this once the last section is clear
@@ -568,7 +608,13 @@ struct LevelData {
     // Arena whose zone (or one of its extra zones) contains p, or -1 if p is
     // in an ARENA corridor / outside.
     int arenaAt(glm::vec3 p) const {
-        for (int i = 0; i < (int)arenas.size(); ++i) if (arenas[i].containsXZ(p)) return i;
+        for (int i = 0; i < (int)arenas.size(); ++i) {
+            if (!arenas[i].containsXZ(p)) continue;
+            if (!story.built) return i;
+            auto inside = [&](const AABB& b) { return p.x >= b.min.x && p.x <= b.max.x && p.z >= b.min.z && p.z <= b.max.z && p.y >= b.min.y && p.y < b.max.y; };
+            if (inside(arenas[i].zone)) return i;
+            for (const auto& b : arenas[i].extraZones) if (inside(b)) return i;
+        }
         return -1;
     }
 

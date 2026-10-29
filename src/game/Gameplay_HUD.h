@@ -20,6 +20,7 @@ inline bool GameplayState::projectToScreen(glm::vec3 p, const glm::mat4& view, c
 }
 
 inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& proj) {
+    if (story() && (storyLocked() || storyEndT >= 0.f)) { renderStoryOverlay(proj * view); return; }   // the wake-up, the end: no HUD
     // ---- the HUD proper ----
     HudState h;
     h.health = styleSystem.health; h.maxHealth = styleSystem.maxHealth;
@@ -66,7 +67,10 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         }
     }
     h.finishKey  = gamepad::state().pad ? "R3" : binds().label(Act::INTERACT);
+    if (story() && !storyArmed) { h.noWeapons = true; h.hideCrosshair = true; }
+    if (story()) { for (int w = 0; w < WEAPON_COUNT; ++w) h.weapons[w].owned = storyOwns(w); h.grenades = h.grenadeMax = 0; }
     if (!playerDead && !victory) ui.render(styleSystem, h);
+    if (story()) renderStoryOverlay(proj * view);   // a gun's waypoint and prompt, a wreck's log
 
     const Arena& ar = level.arenas[director.arena];
     const bool zen = act2() && director.arena == ZENITH_ARENA;
@@ -82,7 +86,27 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         const Enemy* boss = nullptr;
         for (auto& e : enemies) if (e.alive && (isBoss(e.type) || isMiniBoss(e.type))) boss = &e;
 
-        if (fast()) {
+        if (story()) {   // the room, and what to do in it
+            const int here = std::max(0, level.arenaAt(player.position));
+            const char* what = "FIND A WAY OUT";
+            accent = {0.35f, 0.85f, 1.f};
+            if (here == 0 && level.conveyorOfWall(player.groundWall) >= 0 && player.onGround) { what = "GET OFF THE BELT"; accent = {1.f, 0.45f, 0.2f}; }
+            else if (director.fighting()) {
+                snprintf(buf, sizeof(buf), "%s   HOSTILES %d", here == level.story.pitSection ? "THE SCRAP IS AWAKE" : level.arenas[director.arena].name, left);
+                what = nullptr; accent = {1.f, 0.45f, 0.2f};
+            }
+            else if (here == level.story.pitSection && !storyOwns(0)) what = "FIND SOMETHING TO FIGHT WITH";
+            else if (here == level.story.pitSection) what = "CLIMB OUT";
+            else if (here > level.story.pitSection && !storyOwns(2) && director.arena == here && director.phase == WaveDirector::Phase::APPROACH && player.position.z > 40.f) what = "TAKE THE LANCER";
+            else if(here==2)what="FOLLOW THE DUCTS";
+            else if(here==3)what="DESCEND TO THE PRODUCTION FLOOR";
+            else if(here==4)what="READ THE RECORDS / CONTINUE WEST";
+            else if(here==5)what="THROUGH THE PODS";
+            else if(here==6)what="BOARD THE FREIGHT LIFT";
+            else if(here==7)what=storyGrapple?"MEET YOUR JUDGE":"STAY BELOW THE SCANNERS / FIND THE GRAPPLE";
+            else if(here==8)what=storyBossDown?"THE GATE IS OPEN / WALK OUT":"THE SORTER IS WAITING";
+            if (what) snprintf(buf, sizeof(buf), "%s   %s", level.arenas[here].name, what);
+        } else if (fast()) {
             if (finishOpen) { snprintf(buf, sizeof(buf), "FINISH OPEN - CLIMB TO THE BEACON"); accent = {1.f, 0.6f, 0.2f}; }
             else if (director.phase == WaveDirector::Phase::APPROACH) {
                 snprintf(buf, sizeof(buf), "ROOM %d/%d  %s   ADVANCE", director.arena + 1, nArenas, ar.name);
@@ -141,6 +165,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
 
         const bool msBar = boss && boss->type == EnemyType::ABSOLUTE && (boss->morning() || boss->abSwallow > 0.f);   // (the swallow: his new bar filling)
         if (boss) ui.renderBossBar(msBar ? "MORNINGSTAR" : boss->type == EnemyType::ABSOLUTE ? "THE ABSOLUTE" :
+                                   boss->type == EnemyType::SORTER ? "THE SORTER" :
                                    boss->type == EnemyType::SOVEREIGN ? "THE SOVEREIGN" :
                                    boss->type == EnemyType::PENITENT ? "THE PENITENT" :
                                    boss->type == EnemyType::LEVIATHAN ? "THE LEVIATHAN" :
@@ -289,12 +314,13 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
     }
 
     if (playerDead && !victory) {   // (ENDLESS has no retry: a moment, then the run's score)
-        if (fast()) snprintf(buf, sizeof(buf), "ROOM %d/%d  %s", director.arena + 1, nArenas, ar.name);
+        if (story()) snprintf(buf, sizeof(buf), "CHAPTER 1  THE CRADLE  -  %s", ar.name);
+        else if (fast()) snprintf(buf, sizeof(buf), "ROOM %d/%d  %s", director.arena + 1, nArenas, ar.name);
         else if (endless()) snprintf(buf, sizeof(buf), "%s - WAVE %d", ar.name, wavesCleared + 1);
         else if (zen) snprintf(buf, sizeof(buf), "ENCORE  %s", ar.name);
         else snprintf(buf, sizeof(buf), "%s %d/%d %s - WAVE %d/%d", tag, director.arena + 1, nArenas, ar.name,
                       director.wave + 1, director.waveCount());
-        ui.renderDeath(buf, totalKills, elapsedTime, fast(), !endless());
+        ui.renderDeath(buf, totalKills, elapsedTime, fast(), !endless(), story() ? "R - TRY AGAIN" : nullptr);
     }
     if (victory && g_bossRun >= 0) {
         const BossEntry& b = bossEntry(g_bossRun);

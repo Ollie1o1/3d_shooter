@@ -220,7 +220,8 @@ inline void GameplayState::updateFeel(float dt) {
 inline void GameplayState::logRun(const char* how) {
     const bool force = std::getenv("OVERDRIVE_RUNLOG") != nullptr;   // dev: log screenshot / dump runs too
     if (runLog.any() && ((!g_devNoMouse && !g_godMode) || force)) {
-        static const char* MODE[] = {"ARENA", "FAST", "ENDLESS", "ACT2"};
+        static const char* MODE[] = {"ARENA", "FAST", "ENDLESS", "ACT2", "STORY"};
+        static_assert(sizeof(MODE)/sizeof(MODE[0])==(size_t)GameMode::STORY+1,"a log name for every game mode");
         int a = std::clamp(director.arena, 0, std::max(0, (int)level.arenas.size() - 1));
         const char* arena = level.arenas.empty() ? "" : level.arenas[a].name;
         RunLog::append(runLog.json(how, g_bossRun >= 0 ? "BOSS" : MODE[(int)mode], settings ? settings->difficulty : DIFFICULTY_DEFAULT,

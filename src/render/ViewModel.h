@@ -260,6 +260,24 @@ public:
         gunkit::drawArm(b, at + glm::vec3{0.f, -0.5f, -0.25f}, hf, 1.f, L);
         for (const auto& p : parts) drawPart(shader, base * p.xf, p.color, p.emissive, p.mesh);
     }
+    // Arms posed by the caller (STORY: UNIT 24's hands as he wakes, and empty while he has no gun), in camera space
+    // (x right, y up, z forward): each a shoulder, a hand frame (armfile::handFrame) and a hand pose. side +1 right.
+    struct FreeArm { glm::vec3 shoulder{0.f}; glm::mat4 fist{1.f}; float side = 1.f; armfile::HandPose hand = armfile::handRelaxed(); };
+    void drawFreeArms(ShaderProgram& shader, const Camera& cam, const FreeArm* arms, int n) {
+        glm::vec3 fwd = cam.forward(), right = cam.right(), up = glm::normalize(glm::cross(right, fwd));
+        glm::mat4 base(1.f);
+        base[0] = glm::vec4(right, 0.f); base[1] = glm::vec4(up, 0.f); base[2] = glm::vec4(fwd, 0.f);
+        base[3] = glm::vec4(cam.position, 1.f);
+        glClear(GL_DEPTH_BUFFER_BIT);
+        parts.clear();
+        gunkit::Builder b{parts, gunkit::SWORD_GLOW};
+        for (int i = 0; i < n; ++i) {
+            armfile::ArmLook L; L.hand = arms[i].hand; L.seam = 0.f; L.glow = glm::vec3{0.2f, 0.85f, 1.f};
+            gunkit::drawArm(b, arms[i].shoulder, arms[i].fist, arms[i].side, L);
+        }
+        for (const auto& p : parts) drawPart(shader, base * p.xf, p.color, p.emissive, p.mesh);
+    }
+    void drawPunch(ShaderProgram& shader, const Camera& cam, glm::vec3 glow) { drawFist(shader, cam, glow); }   // (empty-handed: F still punches)
     const SwordPose& swordPoseShown() const { return swordShown; }
     static constexpr float PARRY_TIME = 0.56f;   // (how long the punch is drawn; the parry window itself is the game's)
     float parryTimer = 0.f;

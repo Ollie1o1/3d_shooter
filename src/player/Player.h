@@ -110,6 +110,19 @@ public:
     static constexpr float SLIDE_EYE_H          = 0.65f;
     static constexpr float NORMAL_HEIGHT        = 1.8f;
     static constexpr float SLIDE_HEIGHT_VAL     = 0.9f;
+    static constexpr float CRAWL_SPEED          = 3.5f;   // under something too low to stand in: on at this, still low
+    const Wall* headWalls = nullptr;                      // (this tick's walls: is there room to stand up?)
+    int headCount = 0;
+    bool roomToStand() const {
+        if (!headWalls) return true;
+        const glm::vec3 lo{position.x - radius, position.y + 0.05f, position.z - radius},
+                        hi{position.x + radius, position.y + NORMAL_HEIGHT, position.z + radius};
+        for (int i = 0; i < headCount; ++i) {
+            const AABB& b = headWalls[i].box;
+            if (lo.x < b.max.x && hi.x > b.min.x && lo.y < b.max.y && hi.y > b.min.y && lo.z < b.max.z && hi.z > b.min.z) return false;
+        }
+        return true;
+    }
     static constexpr float COYOTE_DURATION      = 0.10f; // seconds after leaving a ledge
     static constexpr float JUMP_BUFFER_DURATION = 0.10f; // seconds to buffer a jump input
 
@@ -131,6 +144,7 @@ public:
     void update(float dt, const Uint8* keys, const Wall* walls, int wallCount,
                 bool grappling = false, const SpatialGrid* grid = nullptr) {
         jumpedThisTick = false;
+        headWalls = walls; headCount = wallCount;
         handleMovement(dt, keys, grappling);
         applyGravity(dt);
         tickFrom = position;   // where it was before this tick's move (resolveAABB: what you ran into, you ran into from there)
@@ -210,8 +224,15 @@ private:
             }
         } else {
             slideTimer -= dt;
-            // End slide when: timer runs out, crouch released, or left the ground.
-            if (slideTimer <= 0.f || !crouchKey || !onGround) {
+            // End slide when: timer runs out, crouch released, or left the ground. Not under something too low to stand
+            // in (a crawlspace): there you stay down and crawl on at a walk until there's room
+            const bool ending = slideTimer <= 0.f || !crouchKey || !onGround;
+            if (ending && onGround && !roomToStand()) {
+                slideTimer = std::max(slideTimer, 0.05f);
+                glm::vec3 flat{velocity.x, 0.f, velocity.z};
+                glm::vec3 dir = glm::length(flat) > 0.5f ? glm::normalize(flat) : flatFwd;
+                if (glm::length(flat) < CRAWL_SPEED) { velocity.x = dir.x * CRAWL_SPEED; velocity.z = dir.z * CRAWL_SPEED; }
+            } else if (ending) {
                 sliding   = false;
                 eyeHeight = NORMAL_EYE_H;
                 height    = NORMAL_HEIGHT;

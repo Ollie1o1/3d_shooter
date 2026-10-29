@@ -78,6 +78,7 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
 
     gatherShiftBoxes(out);
     gatherSovereignBoxes(out);
+    if (story()) gatherStoryBoxes(out);
     gatherPenitentBoxes(out);
     gatherDestructibleBoxes(out);
     gatherWardenBoxes(out);
@@ -272,6 +273,7 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
                      p.emissiveColor * 0.15f, p.emissiveColor * 1.4f * f);
             }
         }
+        if(story() && p.ownerType==(int)EnemyType::SORTER){gatherStoryProjectile(out,p,at,spin);continue;}
         bool drawn = p.heavy ? propdraw::push(out, "shot_shell", propdraw::along(at, p.velocity) * glm::rotate(glm::mat4(1.f), spin * 0.5f, glm::vec3{0, 0, 1}) * S(glm::vec3{p.size}), p.emissiveColor)
                    : p.isGrenade ? propdraw::push(out, "shot_grenade", base * S(glm::vec3{p.size * 0.85f}), p.emissiveColor)
                    : propdraw::push(out, "shot_orb", base * S(glm::vec3{p.size * 0.7f}), p.emissiveColor);
@@ -731,7 +733,11 @@ inline void GameplayState::render() {
         glBindTexture(GL_TEXTURE_2D, whiteTex);
         worldShader.setInt("uTexture", 0);
         float flash = glm::clamp(muzzleFlashTimer / 0.06f, 0.f, 1.f);
-        if (swordOut) viewModel.drawSword(worldShader, renderCam, swordShownFor(sword));
+        if (story() && (!storyArmed || storyLocked())) {   // UNIT 24's empty hands (and the one he wakes looking at)
+            if (viewModel.parryTimer > 0.f && !storyLocked()) viewModel.drawPunch(worldShader, renderCam, glm::vec3{0.2f, 0.85f, 1.f});
+            else drawStoryArms(renderCam);
+        }
+        else if (swordOut) viewModel.drawSword(worldShader, renderCam, swordShownFor(sword));
         else viewModel.draw(worldShader, renderCam, activeWeapon, flash, wd.canAim ? aim : 0.f,
                             weapons[activeWeapon].ammo, weaponMag((WeaponId)activeWeapon, prog.up[activeWeapon]));
         worldShader.setMat4("projection", proj);
@@ -748,6 +754,7 @@ inline void GameplayState::render() {
     postProcess.fx.time  = gameClock;
     postProcess.fx.drive = overdriveFx;
     postProcess.fx.kick  = killFx * killFx * flashScale() * (settings ? std::min(1.f, settings->screenShake + 0.3f) : 1.f);
+    postProcess.fx.wake  = story() ? storyWakeFx() : 0.f;
     // --overlay rushNN / lowNN / hurt: hold a screen effect for screenshots (lowNN on a heartbeat's peak)
     if (g_devOverlay.rfind("rush", 0) == 0) postProcess.fx.speed = std::atoi(g_devOverlay.c_str() + 4) / 100.f;
     if (g_devOverlay.rfind("low", 0) == 0) { postProcess.fx.low = std::atoi(g_devOverlay.c_str() + 3) / 100.f; postProcess.fx.pulse = 1.f; }
