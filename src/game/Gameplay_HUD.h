@@ -284,17 +284,38 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             snprintf(buf, sizeof(buf), "HOLD %dM", (int)glm::length(target - player.position));
             ui.renderMarker(sx, sy, on, {0.4f, 1.f, 0.85f}, buf);
         }
-        // The last few enemies get markers so you never hunt for a straggler
-        if (director.fighting() && !director.hasGoal() && director.queued() == 0 && alive > 0 && alive <= 3) {
-            for (auto& e : enemies) {
-                if (!e.targetable()) continue;
+        // Cleanup help, never a boss tracker. Detailed retains the full labels;
+        // Low leaves visible enemies unobstructed and labels one lost target.
+        const bool detailed=settings&&settings->enemyMarkers==1;
+        if (director.fighting() && !director.hasGoal() && director.queued() == 0 && alive > 0 && alive <= 3 && (!boss||detailed)) {
+            std::vector<const Enemy*> remaining;
+            for(const auto& e:enemies)
+                if(e.targetable()&&!isBoss(e.type)&&!isMiniBoss(e.type))remaining.push_back(&e);
+            if(!detailed)std::sort(remaining.begin(),remaining.end(),[&](const Enemy* a,const Enemy* b) {
+                return glm::length(a->position-player.position)<glm::length(b->position-player.position);
+            });
+            std::vector<glm::vec2> drawn;bool labelled=false;
+            for (const Enemy* enemy:remaining) {
+                const auto& e=*enemy;
                 glm::vec3 feet=e.hasShown?e.shownPos:e.position;
-                glm::vec3 target=feet+glm::vec3{0,e.height()*.55f,0};
+                glm::vec3 target=feet+glm::vec3{0,detailed?e.height()*.55f:e.height()+.6f,0};
                 const auto marker=projectWorldMarker(target,proj*view,SCREEN_W,SCREEN_H);
+                if(!detailed) {
+                    bool clustered=false;
+                    for(auto at:drawn)clustered|=glm::length(at-glm::vec2{marker.x,marker.y})<24.f;
+                    if(clustered)continue;
+                    drawn.push_back({marker.x,marker.y});
+                }
                 bool covered=!marker.behind && markerBehindCover(player.camera.position,target,level.walls);
                 const char* height=feet.y>player.position.y+4.f?" / ABOVE":feet.y<player.position.y-4.f?" / BELOW":"";
-                snprintf(buf,sizeof(buf),"%s %dM%s%s",e.stats().name,(int)glm::length(target-player.camera.position),height,covered?" / BEHIND COVER":"");
-                ui.renderMarker(marker.x,marker.y,marker.onScreen,{1.f,.3f,.25f},buf,marker.behind);
+                const int distance=(int)glm::length(target-player.camera.position);
+                buf[0]='\0';
+                if(detailed)snprintf(buf,sizeof(buf),"%s %dM%s%s",e.stats().name,distance,height,covered?" / BEHIND COVER":"");
+                else if(!labelled&&(!marker.onScreen||covered||distance>20)) {
+                    snprintf(buf,sizeof(buf),"%dM%s%s",distance,height,marker.behind?" / BEHIND":"");
+                    labelled=true;
+                }
+                ui.renderMarker(marker.x,marker.y,marker.onScreen,{1.f,.3f,.25f},buf,detailed&&marker.behind,!detailed);
             }
         }
     }

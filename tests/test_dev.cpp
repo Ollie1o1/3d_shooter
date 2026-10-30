@@ -90,7 +90,26 @@ int main() {
         for (const auto& o : checkpoints) {
             g_storyChapter = o.storyChapter; g_startArena = o.arena; g_startWave = o.wave;
             g_practice = o.practice; g_godMode = o.god;
-            GameplayState game(audio, nullptr, GameMode::STORY);
+            // Use the same deferred handoff as App: finish the menu event,
+            // construct gameplay, then destroy the old menu before drawing.
+            std::unique_ptr<GameState> live=std::make_unique<MenuState>(SCREEN_W,SCREEN_H);
+            auto* chooser=static_cast<MenuState*>(live.get());chooser->openDev();
+            bool requested=false;
+            chooser->onStart=[&](GameMode m,StartOptions start) {
+                requested=m==GameMode::STORY&&start.storyChapter==o.storyChapter&&start.arena==o.arena;
+                g_storyChapter=start.storyChapter;g_startArena=start.arena;g_startWave=start.wave;
+                g_practice=start.practice;g_godMode=start.god;
+            };
+            for(int row=0;row<(int)chooser->devRows.size();++row) {
+                const auto& entry=chooser->devRows[row];
+                if(entry.mode==GameMode::STORY&&entry.chapter==o.storyChapter&&entry.arena==o.arena)
+                    chooser->devSel=MenuState::DEV_OPTIONS+row;
+            }
+            press(*chooser,SDLK_RETURN);
+            CHECK(requested,"real dev-menu input requests the selected Story checkpoint");
+            auto* gameplay=new GameplayState(audio,nullptr,GameMode::STORY);
+            live.reset(gameplay);
+            auto& game=*gameplay;
             int expectedGuns = o.storyChapter == 1 ? expectedGuns1[o.arena] : o.arena > 4 ? 15 : 7;
             bool expectedGrapple = o.storyChapter == 2 || o.arena > 7;
             char label[128];
@@ -100,6 +119,10 @@ int main() {
                   game.storyOwned == expectedGuns && game.storyGrapple == expectedGrapple && game.storyArmed == (expectedGuns != 0) && !game.ranked, label);
             game.retryArena();
             CHECK(game.director.arena == o.arena && game.storyOwned == expectedGuns && !game.storyLocked(), "retry preserves the selected checkpoint and gear");
+            // Launching a checkpoint must survive its first drawn frames too:
+            // those load the chapter's nearby rigs, scenery and HUD paths.
+            for (int frame=0;frame<3;++frame) { game.update(1.f/60.f);game.render(); }
+            CHECK(!game.playerDead, "Story checkpoint survives its first gameplay and render frames");
             if (o.arena == game.level.story.bossSection) {
                 for (bool queued : {false, true}) {
                     game.enterArena(o.arena);
@@ -122,6 +145,25 @@ int main() {
             game.styleSystem.takeDamage(50.f);
             press(game, SDLK_F6);
             CHECK(game.styleSystem.health >= 99.f, "F6 refills health in Story practice");
+        }
+        // Capture both marker styles against the same cleanup encounter.
+        g_storyChapter=1;g_startArena=8;g_startWave=0;g_practice=g_godMode=true;
+        {
+            GameSettings hints;
+            GameplayState game(audio,&hints,GameMode::STORY);
+            game.director.phase=WaveDirector::Phase::ACTIVE;game.director.queue.clear();game.banners.clear();
+            game.enemies.clear();game.player.camera.yaw=-45.f;
+            for(glm::vec3 at: {glm::vec3{74,18.8f,-2},glm::vec3{91,18.8f,-12},glm::vec3{100,18.8f,-27}}) {
+                game.enemies.emplace_back(EnemyType::HUSK,at);
+                auto& e=game.enemies.back();e.state=EnemyState::ACTIVE;e.spawnTimer=0;
+            }
+            for(int detail:{0,1}) {
+                hints.enemyMarkers=detail;game.render();
+                screenshot(detail?"build/enemy-markers-detailed.bmp":"build/enemy-markers-low.bmp");
+            }
+            game.enemies.clear();game.enemies.emplace_back(EnemyType::SORTER,game.level.arenas[8].bossSpawn);
+            game.enemies.back().state=EnemyState::ACTIVE;game.enemies.back().spawnTimer=0;
+            game.render();screenshot("build/boss-no-tracking-marker.bmp");
         }
         // Real weapon raycasts must release all three locks and open the gate.
         g_startArena=4;g_startWave=0;g_storyChapter=2;g_practice=g_godMode=true;
@@ -156,6 +198,12 @@ int main() {
         }
         GameSettings visualSettings;visualSettings.ambientDetail=3;
         menu.settings=&visualSettings;menu.settingsMenu.s=&visualSettings;menu.page=MenuState::SETTINGS;
+        const auto settingsRows=menu.settingsMenu.rows();
+        bool markerSetting=false;
+        for(const auto& row:settingsRows)if(std::string(row.label)=="ENEMY MARKERS")
+            markerSetting=row.i==&visualSettings.enemyMarkers&&row.count==2&&std::string(row.name(0))=="LOW"&&std::string(row.name(1))=="DETAILED";
+        CHECK(markerSetting,"shared settings expose Low and Detailed enemy markers");
+        CHECK(menu.settingsMenu.rowY(settingsRows,(int)settingsRows.size()-1)+20<=SCREEN_H-24,"all settings including Back fit above the control legend");
         menu.render();screenshot("build/story-ambient-settings.bmp");
         g_startArena = g_startWave = 0; g_storyChapter = 1; g_practice = g_godMode = false;
         GameplayState normal(audio, nullptr, GameMode::STORY);

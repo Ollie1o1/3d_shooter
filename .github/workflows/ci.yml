@@ -31,3 +31,4 @@ jobs:
       - uses: mymindstorm/setup-emsdk@v14
       - run: sudo apt-get install -y libglm-dev vorbis-tools
       - run: make web
+      - run: make test-web-story

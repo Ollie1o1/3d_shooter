@@ -899,42 +899,14 @@ inline void leviathanSegments(const Enemy& e, float time, Rig& r, const gunkit::
     }
 }
 
-inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out) {
-    const EnemyStats& st = e.stats();
-    Rig r{out};
-    r.flash = glm::clamp(e.hitFlashTimer / 0.12f, 0.f, 1.f);
-    r.spawn = 1.f - e.spawnTimer / Enemy::SPAWN_TIME;
-    float grow = 0.05f + 0.95f * smooth01(r.spawn);
-    r.finish = e.finishGlow;
-    if (e.stunTimer > 0.f) r.dim = 0.25f + 0.75f * (std::sin(time * 55.f) > 0.3f ? 1.f : 0.f);   // its eyes gutter while it's stunned
-
-    float tp   = e.telegraphProgress();
-    vec3  glow = st.glow * (1.f + 2.5f * tp);           // eyes flare during a wind-up
-    float stride = glm::clamp(e.moveSpeed / std::max(0.1f, st.speed), 0.f, 1.2f);
-
-    mat4 root = T(e.position) * RY(e.yaw) * S(vec3{e.scale}) * S({1.f, grow, 1.f});
-    {   // A hit tips it over at the feet, away from the shot, squashed a touch, turned a little; it snaps back (HitReact.h)
-        float ang = hitreact::flinchAt(e.flinchAmp, time - e.flinchAt);
-        if (ang > 1e-3f) {
-            float k = ang / hitreact::FLINCH_MAX;
-            vec3 axis = glm::cross(vec3{0.f, 1.f, 0.f}, vec3{e.flinchDir.x, 0.f, e.flinchDir.y});
-            if (glm::length(axis) > 1e-4f)
-                root = T(e.position) * glm::rotate(mat4(1.f), ang, glm::normalize(axis)) * RY(e.yaw + e.flinchTwist * k)
-                     * S(vec3{e.scale}) * S({1.f + 0.07f * k, grow * (1.f - 0.1f * k), 1.f + 0.07f * k});
-        }
-    }
-
-    if (const auto* m = enemyfile::modelOf(enemyfile::fileOf(e))) {   // made in Blender (assets/enemies/<name>.glb)
-        mat4 fileRoot; FilePose P; vec3 g;
-        const size_t first = out.size();
-        if (filePoseOf(e, time, root, fileRoot, P, g)) {
-            drawFile(r, fileRoot, *m, P, g, nullptr, e.type == EnemyType::LEVIATHAN ? (int)enemyfile::E_BODY : -1);
-            if (e.type == EnemyType::LEVIATHAN) leviathanSegments(e, time, r, *m, P, g);
-            if (e.type == EnemyType::ABSOLUTE) absoluteWhiteHot(e, r, first);
-            if (e.type == EnemyType::WARDEN) wardenShards(e, time, grow, g, out);
-            return;
-        }
-    }
+// Keep legacy procedural rigs off the file-model drawing stack. In WebAssembly
+// this switch otherwise reserves every rig's temporary pose arrays even when a
+// Story preview only draws its model file.
+[[gnu::noinline]] inline void buildEnemyFallback(const Enemy& e, float time, Rig& r,
+                                                const mat4& root, float grow, float tp,
+                                                vec3 glow, float stride) {
+    const EnemyStats& st=e.stats();
+    auto& out=r.out;
     switch (e.type) {
     case EnemyType::BALLAST: {
         r.box(root,{0,2.9f,0},{5.6f,1.8f,5.2f},st.color);
@@ -1432,6 +1404,45 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
     }
     default: break;
     }
+}
+
+inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out) {
+    const EnemyStats& st = e.stats();
+    Rig r{out};
+    r.flash = glm::clamp(e.hitFlashTimer / 0.12f, 0.f, 1.f);
+    r.spawn = 1.f - e.spawnTimer / Enemy::SPAWN_TIME;
+    float grow = 0.05f + 0.95f * smooth01(r.spawn);
+    r.finish = e.finishGlow;
+    if (e.stunTimer > 0.f) r.dim = 0.25f + 0.75f * (std::sin(time * 55.f) > 0.3f ? 1.f : 0.f);   // its eyes gutter while it's stunned
+
+    float tp   = e.telegraphProgress();
+    vec3  glow = st.glow * (1.f + 2.5f * tp);           // eyes flare during a wind-up
+    float stride = glm::clamp(e.moveSpeed / std::max(0.1f, st.speed), 0.f, 1.2f);
+
+    mat4 root = T(e.position) * RY(e.yaw) * S(vec3{e.scale}) * S({1.f, grow, 1.f});
+    {   // A hit tips it over at the feet, away from the shot, squashed a touch, turned a little; it snaps back (HitReact.h)
+        float ang = hitreact::flinchAt(e.flinchAmp, time - e.flinchAt);
+        if (ang > 1e-3f) {
+            float k = ang / hitreact::FLINCH_MAX;
+            vec3 axis = glm::cross(vec3{0.f, 1.f, 0.f}, vec3{e.flinchDir.x, 0.f, e.flinchDir.y});
+            if (glm::length(axis) > 1e-4f)
+                root = T(e.position) * glm::rotate(mat4(1.f), ang, glm::normalize(axis)) * RY(e.yaw + e.flinchTwist * k)
+                     * S(vec3{e.scale}) * S({1.f + 0.07f * k, grow * (1.f - 0.1f * k), 1.f + 0.07f * k});
+        }
+    }
+
+    if (const auto* m = enemyfile::modelOf(enemyfile::fileOf(e))) {   // made in Blender (assets/enemies/<name>.glb)
+        mat4 fileRoot; FilePose P; vec3 g;
+        const size_t first = out.size();
+        if (filePoseOf(e, time, root, fileRoot, P, g)) {
+            drawFile(r, fileRoot, *m, P, g, nullptr, e.type == EnemyType::LEVIATHAN ? (int)enemyfile::E_BODY : -1);
+            if (e.type == EnemyType::LEVIATHAN) leviathanSegments(e, time, r, *m, P, g);
+            if (e.type == EnemyType::ABSOLUTE) absoluteWhiteHot(e, r, first);
+            if (e.type == EnemyType::WARDEN) wardenShards(e, time, grow, g, out);
+            return;
+        }
+    }
+    buildEnemyFallback(e,time,r,root,grow,tp,glow,stride);
 }
 // The head hitbox, world space: the box around the drawn head (helmet, crown,
 // beak) a little oversized so a shot that grazes it still counts. It follows

@@ -69,7 +69,7 @@ SRC     := src/main.cpp
 HEADERS := $(shell find src -name '*.h')
 TESTS   := tests/test_wasteland.cpp tests/test_story.cpp tests/test_physics.cpp tests/test_game.cpp tests/test_zenith.cpp tests/BossSim.h
 
-.PHONY: all clean run test test-story test-wasteland test-render test-dev test-story-overhaul web scan level-dump light
+.PHONY: all clean run test test-story test-wasteland test-render test-dev test-story-overhaul test-web-story web scan level-dump light
 
 all: $(TARGET)
 
@@ -150,9 +150,19 @@ web: $(SRC) $(HEADERS) web/index.html
 	em++ -std=c++17 -O3 -Isrc -Isrc/third_party/imgui -Ibuild/web-include $(WEB_FLAGS) $(SRC) -o $(WEB_OUT)/overdrive.js \
 	    -sUSE_SDL=2 -sUSE_SDL_MIXER=2 \
 	    -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 \
-	    -sALLOW_MEMORY_GROWTH=1 -sENVIRONMENT=web \
+	    -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576 -sSTACK_OVERFLOW_CHECK=1 -sENVIRONMENT=web \
 	    --preload-file $(WEB_DATA)@/
 	cp web/index.html $(WEB_OUT)/
+
+# Exercise Story boss previews as real WebAssembly with a deliberately small
+# stack. Run after `make web` (which prepares the portable GLM include path).
+test-web-story: tests/test_web_story.cpp $(HEADERS)
+	mkdir -p build/web-story
+	em++ -std=c++17 -O3 -Isrc -Ibuild/web-include tests/test_web_story.cpp -o build/web-story/story.js \
+	    -sENVIRONMENT=node -sASSERTIONS=2 -sSTACK_OVERFLOW_CHECK=2 -sSTACK_SIZE=32768 -sALLOW_MEMORY_GROWTH=1 \
+	    --preload-file assets/enemies@/assets/enemies
+	cd build/web-story && node story.js 26
+	cd build/web-story && node story.js 27
 
 clean:
 	rm -f shooter shooter.exe tests/test_physics tests/test_game tests/test_zenith tests/test_story tests/test_wasteland tests/test_render tests/test_dev tests/test_story_overhaul

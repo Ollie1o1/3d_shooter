@@ -81,6 +81,22 @@ removes optional particles. Attack markers, projectiles, objectives, collision
 and encounter timing remain identical. Keep ambient allocations bounded and
 leave most of the particle pool available to combat.
 
+## Developer launch and HUD checks
+
+The WebAssembly build reserves a 1 MiB stack with overflow detection. File-based
+enemy rendering calls a separate procedural fallback only when it is needed;
+the fallback's large temporary rig arrays no longer consume stack while Story
+previews draw their model files. `make test-web-story` renders both Story boss
+previews as real WebAssembly under a deliberately restricted 32 KiB stack.
+The native dev check now selects every checkpoint through menu input, destroys
+the menu during the deferred handoff, and draws the first gameplay frames.
+
+Settings → GAMEPLAY → **ENEMY MARKERS** saves LOW / DETAILED. LOW is the default:
+small icons above the last three regular enemies, one short direction/distance
+label when needed, and overlapping icons combined. DETAILED retains the full
+names, distance and cover labels. Bosses and mini-bosses have no tracking pings
+in either mode; their health bars and attack warnings remain.
+
 ## References and application
 
 - [Michael Booth, Valve: The AI Systems of Left 4 Dead](https://steamcdn-a.akamaihd.net/apps/valve/2009/ai_systems_of_l4d_mike_booth.pdf):

@@ -71,6 +71,9 @@ struct GameSettings {
     bool  showTimer    = true;  // run clock in Arena mode (FAST mode always shows it)
     bool  ghost        = true;  // FAST: race the ghost of your best run
     bool  damageNumbers = true;
+    int   enemyMarkers = 0;     // 0 LOW, 1 DETAILED; boss tracking icons are never shown
+    static constexpr int ENEMY_MARKER_LEVELS = 2;
+    static const char* enemyMarkerLabel(int i) { return i==1 ? "DETAILED" : "LOW"; }
     int   crosshair    = 0;     // colour index, see crosshairColor()
     // Accessibility (Accessibility.h)
     bool  tellsColourblind = false;   // the Absolute's gold tells shown blue
@@ -146,6 +149,7 @@ struct GameSettings {
         f << "showTimer "     << (showTimer ? 1 : 0) << "\n";
         f << "ghost "         << (ghost ? 1 : 0) << "\n";
         f << "damageNumbers " << (damageNumbers ? 1 : 0) << "\n";
+        f << "enemyMarkers " << enemyMarkers << "\n";
         f << "crosshair "     << crosshair     << "\n";
         f << "tellsColourblind " << (tellsColourblind ? 1 : 0) << "\n";
         f << "reduceFlashing " << (reduceFlashing ? 1 : 0) << "\n";
@@ -195,6 +199,7 @@ struct GameSettings {
             else if (key == "showTimer")     flag(showTimer);
             else if (key == "ghost")         flag(ghost);
             else if (key == "damageNumbers") flag(damageNumbers);
+            else if (key == "enemyMarkers")  f >> enemyMarkers;
             else if (key == "crosshair")     f >> crosshair;
             else if (key == "tellsColourblind") flag(tellsColourblind);
             else if (key == "reduceFlashing") flag(reduceFlashing);
@@ -215,6 +220,7 @@ struct GameSettings {
         screenShake = clampf(screenShake, 0.f, 1.f);
         frameCap = (frameCap % FRAME_CAPS + FRAME_CAPS) % FRAME_CAPS;
         quality = wrapQuality(quality);
+        enemyMarkers = std::clamp(enemyMarkers, 0, ENEMY_MARKER_LEVELS - 1);
         ambientDetail = std::clamp(ambientDetail, 0, AMBIENT_LEVELS - 1);
         antiAlias = (antiAlias % AA_LEVELS + AA_LEVELS) % AA_LEVELS;
         crosshair = (crosshair % CROSSHAIR_COLORS + CROSSHAIR_COLORS) % CROSSHAIR_COLORS;
