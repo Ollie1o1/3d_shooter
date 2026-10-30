@@ -67,7 +67,11 @@ int main() {
         CHECK(recordsFit,"every chapter record fits its panel without losing dialogue or instructions");
     }
     {
-        GameSettings s;s.ambientDetail=0;GameSettings restored;restored.parse(s.text());
+        GameSettings s;s.enemyMarkers=1;GameSettings restored;restored.parse(s.text());
+        CHECK(restored.enemyMarkers==1,"detailed enemy markers round-trip through saved settings");
+        restored.parse("enemyMarkers -5\n");CHECK(restored.enemyMarkers==0,"invalid enemy marker detail clamps to Low");
+        restored.parse("enemyMarkers 100\n");CHECK(restored.enemyMarkers==1,"enemy marker detail clamps to the available choices");
+        s.ambientDetail=0;restored.parse(s.text());
         CHECK(restored.ambientDetail==0,"ambient detail round-trips through saved settings");
         restored.parse("ambientDetail 999\n");CHECK(restored.ambientDetail==3,"invalid detail values clamp safely");
         int counts[4]={};bool reserve=true;

@@ -356,10 +356,10 @@ public:
 
     // A diamond marker at a screen position; when the target is off-screen the
     // caller passes onScreen=false and the marker sits on the screen edge.
-    void renderMarker(float sx, float sy, bool onScreen, glm::vec3 color, const char* label, bool behind=false) {
+    void renderMarker(float sx, float sy, bool onScreen, glm::vec3 color, const char* label, bool behind=false, bool compact=false) {
         begin2D();
-        glm::vec4 c{color.r,color.g,color.b,.9f};
-        int s=onScreen?7:9;
+        glm::vec4 c{color.r,color.g,color.b,compact?.65f:.9f};
+        int s=onScreen?(compact?4:7):(compact?6:9);
         if(onScreen) {
             for(int i=-s;i<=s;i+=2) {
                 int half=s-std::abs(i);
@@ -371,7 +371,7 @@ public:
             glm::vec2 d{sx-screenW*.5f,sy-screenH*.5f};
             float len=glm::length(d);d=len>.01f?d/len:glm::vec2{1,0};
             glm::vec2 side{-d.y,d.x};
-            for(int i=0;i<=8;++i)for(float sign:{-1.f,1.f}) {
+            for(int i=0;i<=(compact?6:8);++i)for(float sign:{-1.f,1.f}) {
                 glm::vec2 p=glm::vec2{sx,sy}-d*(float)i+side*((float)i*.65f*sign);
                 ui.rect(p.x-1,p.y-1,3,3,c);
             }

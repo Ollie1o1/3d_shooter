@@ -32,7 +32,7 @@ a new run resets discoveries. Enter on Chapter 1's completion card continues int
 with your equipment. STORY also offers a direct Chapter 2 start with the Cradle's three guns and grapple.
 See [the Chapter 1 implementation and playtest notes](docs/story-chapter-1.md) for the route, controls,
 source files and developer starts. [Chapter 2 notes](docs/story-chapter-2.md) cover the wasteland
-route, Blender assets and verification. Launch it directly with `./shooter --story2`. The current [Story revision](docs/story-overhaul.md) documents the writing, research and encounter direction. Settings → VIDEO → **AMBIENT DETAIL** reduces optional ash, grit, vents and moving decoration independently of resolution; required attack tells and objectives remain visible.
+route, Blender assets and verification. Launch it directly with `./shooter --story2`. The current [Story revision](docs/story-overhaul.md) documents the writing, research and encounter direction. Settings → VIDEO → **AMBIENT DETAIL** reduces optional ash, grit, vents and moving decoration independently of resolution; required attack tells and objectives remain visible. Settings → GAMEPLAY → **ENEMY MARKERS** selects LOW (small cleanup icons, one short direction label) or DETAILED (full names, distance and cover labels). Bosses do not receive tracking icons in either mode.
 
 ## The bosses
 
