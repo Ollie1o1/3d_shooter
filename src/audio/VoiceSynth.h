@@ -312,6 +312,12 @@ inline Buf tellV(EnemyType t, AttackKind a, const Profile& p, Rng& r) {
     const float d = tellDur(t, a), f = p.f0 > 0.f ? p.f0 : 200.f;
     Buf out(N(d), 0.f);
     switch (a) {
+        case AttackKind::BALL_WINCH: add(out,servo(d,170.f,1350.f,r,.02f,.08f));add(out,metal(d,320.f,r,14.f),.45f);break;
+        case AttackKind::BALL_RIP: add(out,grind(d,18.f,180.f,r));add(out,metal(d,95.f,r,8.f),.7f);break;
+        case AttackKind::BALL_SWEEP: add(out,servo(d,95.f,430.f,r,.04f,.08f));add(out,vent(d,1100.f,r,.15f,.08f),.6f);break;
+        case AttackKind::SORT_RUSH: add(out,servo(d,120.f,900.f,r,.02f,.08f));add(out,siren(d,350.f,700.f),.4f);break;
+        case AttackKind::SORT_ROW: add(out,grind(d,24.f,200.f,r));for(int i=0;i<3;++i)add(out,click(1500.f,r),.7f,i*d*.3f);break;
+        case AttackKind::SORT_PURGE: add(out,vent(d,1800.f,r,d*.6f,.05f));add(out,servo(d,90.f,210.f,r),.5f);break;
         case AttackKind::BALL_GRADE: add(out,grind(d,32.f,260.f,r));add(out,siren(d,270.f,580.f),.55f);break;
         case AttackKind::BALL_GUST: add(out,vent(d,600.f,r,.05f,.1f));add(out,servo(d,90.f,800.f,r,.02f,.1f),.7f);break;
         case AttackKind::BALL_ANCHOR: add(out,servo(d,240.f,1100.f,r,.01f,.08f));add(out,click(1900.f,r),.8f);break;

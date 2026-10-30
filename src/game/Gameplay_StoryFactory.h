@@ -5,6 +5,8 @@
 // their delta in the normal physics path. No camera teleport is used in play.
 inline void GameplayState::resetStoryFactory() {
     auto& S=level.story;
+    for(const auto& cover:S.bossCover)level.walls[cover.wall].box=cover.home;
+    spatialGrid.build(level.walls);
     if(wasteland()) {
         for(float& angle:storyTurbineAngle)angle=0;
         storyPodsBroken=false;storyBossDown=director.arena>level.story.bossSection;storyCollapseT=-1;storyTerminal=storyLog=-1;
@@ -85,14 +87,14 @@ inline void GameplayState::updateStoryFactory(float dt) {
     }
     if(storyCollapseT>=0 && !storyBossDown) {
         float before=storyCollapseT;storyCollapseT+=dt;
-        if(before<2.2f && storyCollapseT>=2.2f) {
-            for(int id:S.sortingTiles) {
-                auto& w=level.walls[id];vec3 c=(w.box.min+w.box.max)*.5f;
-                fx.spawnBurst(c,{1.f,.45f,.08f},30,8.f,1.2f,16.f);
-                w.box.min.y-=8;w.box.max.y-=8;w.hidden=true;
+        for(int k=0;k<(int)S.sortingTiles.size();++k) {
+            float impact=2.2f+k*1.1f;
+            if(before<impact&&storyCollapseT>=impact) {
+                auto& w=level.walls[S.sortingTiles[k]];vec3 c=(w.box.min+w.box.max)*.5f;
+                fx.spawnBurst(c,{1.f,.45f,.08f},ambientDetail()>0?24:8,8.f,1.2f,16.f);
+                w.box.min.y-=8;w.box.max.y-=8;w.hidden=true;spatialGrid.build(level.walls);
+                audio.playAt("explosion",c,120,SoundGroup::WORLD,true);shake(.7f,.08f);
             }
-            spatialGrid.build(level.walls);
-            audio.play("explosion",128,SoundGroup::WORLD,true);shake(1.f,.12f);
         }
     }
     if(at==8 && p.y<level.arenas[8].playerStart.y-5.f && !storyBossDown) {
@@ -113,6 +115,9 @@ inline void GameplayState::storySorterEvents(Enemy& e,const EnemyEvents& ev) {
         audio.playAt("telegraph",e.sortAim,120,SoundGroup::ENEMY,true);
         if(e.attack==AttackKind::SORT_STAMP)ui.feed(e.tellFollow?"PRESS FOLLOW-UP / KEEP MOVING":"OVERHEAD PRESS / WATCH THE LOCK",{1.f,.65f,.25f});
         else if(e.attack==AttackKind::SORT_GRAB)ui.feed("CLAW / WHITE: PARRY",{.95f,.95f,1.f});
+        else if(e.attack==AttackKind::SORT_RUSH)ui.feed("GANTRY RUSH / DASH ACROSS ITS PATH",{1.f,.75f,.2f});
+        else if(e.attack==AttackKind::SORT_ROW)ui.feed("PRESS SEQUENCE / CHANGE YOUR ROUTE",{1.f,.5f,.2f});
+        else if(e.attack==AttackKind::SORT_PURGE)ui.feed("FURNACE PURGE / LEAVE THE GLOWING VENTS",{1.f,.5f,.2f});
     }
     if(ev.sortLocked)audio.playAt("count_tick",e.sortAim,120,SoundGroup::ENEMY,true);
     if(ev.sortDrop)audio.playAt("hook_yank",e.sortAim+vec3{0,5,0},120,SoundGroup::ENEMY,true);
@@ -130,8 +135,11 @@ inline void GameplayState::storySorterEvents(Enemy& e,const EnemyEvents& ev) {
                 cv.speed=ev.sortPhaseStarted==1?1.8f:ev.sortPhaseStarted==2?-3.f:4.2f;
         }
     }
+    if(ev.sortRushStarted)audio.playAt("hook_yank",e.position,120,SoundGroup::ENEMY,true);
+    if(ev.sortPurge)for(int i=0;i<e.sortVentCount;++i)audio.playAt("explosion",(e.sortVents[i].min+e.sortVents[i].max)*.5f,100,SoundGroup::WORLD,true);
     if(ev.sortMarked) {audio.play("dry",110,SoundGroup::UI,true);ui.feed("MARKED - PARRY OR BREAK SIGHT",{1.f,.3f,.1f});}
     if(ev.sortStamp) {
+        breakStoryCover(ev.sortAt,ev.sortAt,Enemy::SORT_STAMP_R);
         fx.spawnShockwave(ev.sortAt,Enemy::SORT_STAMP_R,{1.f,.2f,.05f});
         fx.spawnBurst(ev.sortAt,{.8f,.5f,.2f},30,8,.7f,16);
         audio.playAt("slam",ev.sortAt,128,SoundGroup::ENEMY,true);shake(.7f,.08f);
@@ -144,9 +152,60 @@ inline void GameplayState::storySorterEvents(Enemy& e,const EnemyEvents& ev) {
     if(ev.shots)audio.playAt("land_heavy",e.position,110,SoundGroup::ENEMY,true);
 }
 
+inline void GameplayState::breakStoryCover(glm::vec3 from,glm::vec3 to,float radius) {
+    if(!story()||storyBossDown)return;
+    bool shelter=false;for(const auto& f:ballastHazards.fronts)shelter|=!f.rubble;
+    const auto broken=shatterStoryCover(level,from,to,radius,shelter);
+    if(broken.empty())return;
+    spatialGrid.build(level.walls);
+    for(int id:broken) {
+        const auto& cover=level.story.bossCover[id];const auto& wall=level.walls[cover.wall];
+        glm::vec3 c=(cover.home.min+cover.home.max)*.5f,span=cover.home.max-cover.home.min;
+        fx.spawnBurst(c,wall.color+glm::vec3{.15f},ambientDetail()>0?22:7,8,1,14);
+        for(int k=0;k<(ambientDetail()==0?3:8);++k) {
+            Effects::Debris piece;piece.shape=glm::mat3(.5f);piece.pos=c+glm::vec3{(k%4-1.5f)*span.x/4.f,(k/4-.5f)*span.y*.6f,0};
+            piece.vel=glm::vec3{(k%3-1)*3.f,3.f+(k%2)*2.f,4.f};piece.axis={.4f,.7f,.2f};
+            piece.color=wall.color;piece.emissive=glm::vec3{0};piece.life=piece.maxLife=3;piece.floorY=cover.home.min.y;piece.spin=2;piece.fade=1;
+            fx.debris.push_back(piece);
+        }
+        audio.playAt("ab_boom_stone",c,115,SoundGroup::WORLD,true);shake(.3f,.05f);
+    }
+}
+
+inline void GameplayState::gatherStoryCover(std::vector<BoxInstance>& out) {
+    using namespace rig;Rig r{out};
+    for(const auto& c:level.story.bossCover) {
+        const auto& wall=level.walls[c.wall];if(wall.box.max.y<=c.home.min.y)continue;
+        auto center=(wall.box.min+wall.box.max)*.5f;auto span=wall.box.max-wall.box.min;
+        r.box(T(center),{0,0,0},span,wall.color);
+        for(int k=0;k<4;++k) {
+            float x=glm::mix(wall.box.min.x+.3f,wall.box.max.x-.3f,(k+.5f)/4.f);
+            r.box(T({x,wall.box.max.y-.3f,wall.box.max.z+.04f})*RZ(.35f),{0,0,0},{.55f,.35f,.07f},{.8f,.57f,.12f});
+        }
+    }
+}
+
+inline bool GameplayState::shootStoryCable(glm::vec3 from,glm::vec3 dir,float& distance) {
+    for(auto& e:enemies)if(e.alive&&e.type==EnemyType::BALLAST&&e.ballTether>0) {
+        glm::vec3 a=e.position+glm::vec3{-1.5f,4,1},end=e.ballCableAt;
+        if(glm::length(end-from)<.6f&&glm::length(a-end)>.8f)end+=glm::normalize(a-end)*.8f;
+        glm::vec3 v=end-a,w=from-a;
+        float c=glm::dot(v,v),b=glm::dot(dir,v),d=glm::dot(dir,w),f=glm::dot(v,w),den=c-b*b;
+        float t=c>.001f?glm::clamp(den>.001f?(f-b*d)/den:f/c,0.f,1.f):0.f;
+        float ray=glm::clamp(glm::dot(a+v*t-from,dir),0.f,distance);
+        if(c>.001f)t=glm::clamp(glm::dot(from+dir*ray-a,v)/c,0.f,1.f);
+        if(ray<.15f||ray>=distance||glm::length(from+dir*ray-a-v*t)>.24f)continue;
+        e.ballTether=0;e.ballCableShow=.2f;e.ballOpen=1.f;distance=ray;
+        fx.spawnHitSparks(from+dir*ray,{1,.8f,.4f});audio.playAt("clank",from+dir*ray,100,SoundGroup::WORLD);
+        ui.feed("CABLE CUT",{.5f,1,.8f});return true;
+    }
+    return false;
+}
+
 inline void GameplayState::gatherStoryFactory(std::vector<BoxInstance>& out) {
     using namespace rig;using namespace enemyfile;using glm::vec3;
     if(wasteland()) {gatherWasteland(out);return;}
+    gatherStoryCover(out);
     const auto& S=level.story;const auto* unit=story::bodyModel();
     if(unit) {
         auto drawUnit=[&](vec3 p,float yaw,bool awake) {
@@ -241,6 +300,35 @@ inline void GameplayState::gatherStoryFactory(std::vector<BoxInstance>& out) {
                 sorterrig::press(r,e.sortImpactAt,top,Enemy::sortPressHeight(0,e.sortImpactT,raised),{.5f,.2f,.05f});
             } else sorterrig::claw(r,e,e.sortImpactAt,1.f-e.sortImpactT/Enemy::SORT_IMPACT);
         }
+        for(const auto& press:e.sortPresses) {
+            vec3 col=press.remaining>Enemy::SORT_LOCK?vec3{1.5f,.75f,.1f}:vec3{2,.12f,.04f};
+            if(press.remaining>0)sorterrig::warning(r,press.at,Enemy::SORT_STAMP_R,col,true);
+            float raised=glm::clamp(top-press.at.y-2.f,1.f,Enemy::SORT_PRESS_UP);
+            sorterrig::press(r,press.at,top,Enemy::sortPressHeight(press.remaining,press.impact,raised),col);
+        }
+        if(e.sortRush>0||e.attack==AttackKind::SORT_RUSH) {
+            vec3 from=e.sortRush>0?e.sortRushFrom:e.position,to=e.sortRushTo;
+            from.y=to.y=level.arenas[8].playerStart.y+.08f;
+            vec3 dir=to-from;dir.y=0;if(glm::length(dir)>.01f) {
+                dir=glm::normalize(dir);vec3 side{-dir.z,0,dir.x};
+                for(float sign:{-1.f,1.f})sorterrig::beam(r,from+side*3.4f*sign,to+side*3.4f*sign,.1f,{.8f,.5f,.1f},abGoldTell({1.7f,1.1f,.2f}));
+                sorterrig::claw(r,e,e.position+dir*3.f-glm::vec3{0,2,0},.25f);
+            }
+        }
+        if(e.attack==AttackKind::SORT_PURGE||e.sortFire>0)for(int i=0;i<e.sortVentCount;++i) {
+            const auto& box=e.sortVents[i];vec3 center=(box.min+box.max)*.5f;center.y=box.min.y+.06f;
+            bool active=e.sortFire>0;
+            r.box(T(center),{0,0,0},{box.max.x-box.min.x,.09f,box.max.z-box.min.z},{.4f,.18f,.03f},{active?2.f:1.f,.35f,.03f});
+            for(int j=0;j<12;++j) {
+                float x=glm::mix(box.min.x+.6f,box.max.x-.6f,(j+.5f)/12.f);
+                r.box(T({x,box.min.y+.12f,center.z}),{0,0,0},{.18f,.12f,3.2f},{.25f,.23f,.2f});
+                if(active) {
+                    float h=1.7f+.6f*std::sin(gameClock*13+j);
+                    r.part(T({x,box.min.y+h*.5f,center.z})*RZ(.12f*std::sin(gameClock*7+j))*rig::S({.75f,h,2.8f}),{1.f,.35f,.04f},{2.f,.6f,.05f},sorterrig::flameMesh());
+                    r.part(T({x,box.min.y+.7f,center.z})*rig::S({.55f,1.4f,2.1f}),{1.f,.7f,.1f},{2.f,1.f,.15f},sorterrig::flameMesh());
+                }
+            }
+        }
         if(e.sortScan>0) {
             vec3 from=e.position+vec3{0,3,0};float a=e.sortScanYaw+(1.6f-e.sortScan)*(e.sortPhase==3?1.1f:.9f);
             vec3 to=from+glm::normalize(vec3{std::sin(a),e.sortScanSlope,std::cos(a)})*55.f;
@@ -253,9 +341,12 @@ inline void GameplayState::gatherStoryFactory(std::vector<BoxInstance>& out) {
             (void)side;
         }
     }
-    if(storyCollapseT>=0 && storyCollapseT<2.2f)for(int w:S.sortingTiles) {
-        auto b=level.walls[w].box;vec3 c=(b.min+b.max)*.5f;c.y=b.max.y+.04f;
-        r.box(T(c),{0,0,0},{b.max.x-b.min.x,.04f,b.max.z-b.min.z},{.8f,.1f,.03f},vec3{2.f,.15f,.05f}*float((int)(gameClock*8)%2));
+    if(storyCollapseT>=0)for(int k=0;k<(int)S.sortingTiles.size();++k) {
+        float remaining=2.2f+k*1.1f-storyCollapseT;
+        if(remaining<-.5f)continue;
+        auto b=storyTileBoxes[k];vec3 c=(b.min+b.max)*.5f;c.y=b.max.y;
+        if(remaining>0)r.box(T(c+vec3{0,.04f,0}),{0,0,0},{b.max.x-b.min.x,.04f,b.max.z-b.min.z},{.65f,.18f,.04f},vec3{1.5f,.25f,.05f}*(.5f+.5f*std::sin(gameClock*8)));
+        sorterrig::press(r,c,level.arenas[8].playerStart.y+15.f,Enemy::sortPressHeight(std::max(0.f,remaining),remaining<=0?-remaining:-1.f),{1.4f,.35f,.05f});
     }
 }
 

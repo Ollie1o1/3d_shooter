@@ -38,6 +38,10 @@ inline void GameplayState::loadStoryChapter(int chapter) {
 
 inline void GameplayState::updateWasteland(float dt) {
     const auto& s=level.story;const glm::vec3 p=player.position;
+    for(const auto& front:ballastHazards.fronts)if(front.rubble) {
+        auto from=front.from+front.dir*front.distance;
+        breakStoryCover(from,from+front.dir*(BallastHazards::frontSpeed(front)*dt),2.f);
+    }
     for(const auto& hit:ballastHazards.update(dt,p,level.walls))
         if(!playerDead&&!storyBossDown) {
             damagePlayer(hit.damage*level.arenas[s.bossSection].damageScale*tune().damage,hit.at,.15f,.03f);
@@ -78,7 +82,7 @@ inline void GameplayState::updateWasteland(float dt) {
 inline void GameplayState::gatherWasteland(std::vector<BoxInstance>& out) {
     using namespace rig;using glm::vec3;
     Rig r{out};const auto& s=level.story;
-    gatherBallast(out);
+    gatherBallast(out);gatherStoryCover(out);
     if(level.arenaAt(player.position)==2) {
         float progress=director.arena>2?1.f:director.arena==2?director.goalProgress():0.f;
         vec3 panel{-74,-2.65f,-48.4f};

@@ -3101,7 +3101,7 @@ int main() {
         CHECK(levels, "every voice sits within 2 dB of its mix class's level");
         CHECK(varied, "a voice's variants differ");
         CHECK(same, "the same voice builds the same every time");
-        CHECK(total <= 280.f, "the whole voice bank, including Ballast, is at most 280 s of audio");   // 270 s before the new Story boss
+        CHECK(total <= 300.f, "the whole voice bank, including the expanded Story tools, is at most 300 s of audio");
     }
 
     // ---------------------------------------------------------------- enemy voices: who gets to speak

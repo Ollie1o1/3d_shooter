@@ -701,7 +701,7 @@ inline void GameplayState::renderStoryOverlay(const glm::mat4& viewProj) {
     }
     for(const auto& e:enemies)if(e.alive&&e.type==EnemyType::SORTER&&storyEndT<0) {
         const char* phase=e.sortPhase==3?"INCINERATION":e.sortPhase==2?"RECALIBRATION":"INSPECTION";
-        U.textShadow(e.sortMark>0?"MARKED - PARRY / BREAK SIGHT":e.staggered()||e.sortOpen>0?"CORE OPEN - DOUBLE DAMAGE":phase,SCREEN_W/2.f,88,2,{1.f,.65f,.3f,1},true);
+        U.textShadow(e.sortMark>0?"MARKED - PARRY / BREAK SIGHT":e.staggered()?"PARRIED - DOUBLE DAMAGE":e.sortOpen>0?"CORE OPEN - AIM FOR THE BLUE STRIP":phase,SCREEN_W/2.f,88,2,{1.f,.65f,.3f,1},true);
         if(e.attack==AttackKind::SORT_STAMP&&e.telegraphTimer>0) {
             char warning[80];std::snprintf(warning,sizeof(warning),e.sortLocked?"PRESS LOCKED  %.1fS / DASH OUT":"OVERHEAD PRESS  %.1fS / TARGETING",e.telegraphTimer);
             U.textShadow(warning,SCREEN_W/2.f,112,2,e.sortLocked?glm::vec4{1,.3f,.12f,1}:glm::vec4{1,.8f,.3f,1},true);

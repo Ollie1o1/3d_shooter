@@ -307,15 +307,19 @@ inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileR
     };
     if(e.type==EnemyType::BALLAST) {
         fileRoot=root;
-        vec3 tell=e.attack==AttackKind::BALL_ANCHOR?vec3{2.f}:e.attack==AttackKind::BALL_GRADE?abGoldTell({2,1.2f,.1f}):vec3{2,.2f,.06f};
+        if(e.attack==AttackKind::BALL_SWEEP) {
+            float angle=e.telegraphTimer>.3f?-1.05f*glm::clamp(tp*2.f,0.f,1.f):-1.05f+2.1f*(1.f-e.telegraphTimer/.3f);
+            fileRoot*=RY(angle);
+        } else if(e.ballSwing>0)fileRoot*=RY(1.05f*e.ballSwing/.35f);
+        vec3 tell=(e.attack==AttackKind::BALL_ANCHOR||e.attack==AttackKind::BALL_WINCH)?vec3{2.f}:e.attack==AttackKind::BALL_GRADE?abGoldTell({2,1.2f,.1f}):vec3{2,.2f,.06f};
         P.chan[C_EYE]=glow;P.chan[C_EDGE]=e.telegraphTimer>0?tell:glow*.25f;
         P.chan[C_CORE]=e.ballOpen>0||e.staggered()?vec3{.3f,1.7f,2.f}:vec3{.5f,.2f,.06f};
         P.motion[E_HALO]=RZ(e.ballReverse?-e.ballRotor:e.ballRotor);
         P.motion[E_HEAD]=RY(std::sin(e.age*.4f)*.08f);
         P.motion[E_BODY]=RX(e.ballDrive>0?-.08f:std::sin(e.age*1.8f)*.012f);
-        P.motion[E_SHIELD]=RX(e.ballDrive>0?.1f:e.attack==AttackKind::BALL_GRADE?-tp*.35f:0.f);
+        P.motion[E_SHIELD]=RX(e.ballDrive>0?.1f:e.attack==AttackKind::BALL_GRADE||e.attack==AttackKind::BALL_RIP?-tp*.35f:e.attack==AttackKind::BALL_THROW?tp*.18f:0.f);
         for(int k=0;k<4;++k)P.motion[E_LEG_FL+k]=RX(std::sin(e.animPhase+k*3.14159f)*stride*.18f);
-        P.motion[E_ARMR]=RZ(e.attack==AttackKind::BALL_ANCHOR?-tp*.6f:0.f);
+        P.motion[E_ARMR]=RZ((e.attack==AttackKind::BALL_ANCHOR||e.attack==AttackKind::BALL_WINCH)?-tp*.6f:0.f);
         return true;
     }
     if(e.type==EnemyType::SORTER) {
@@ -1553,6 +1557,14 @@ inline bool coreBox(const Enemy& e, AABB& out) {
 // THE PENITENT's wound: its back, open while it scourges itself (x3); the
 // WARDEN's core: its chest (coreBox)
 inline bool woundBox(const Enemy& e, AABB& out) {
+    if(e.type==EnemyType::SORTER||e.type==EnemyType::BALLAST) {
+        if(!e.staggered()&&(e.type==EnemyType::SORTER?e.sortOpen:e.ballOpen)<=0)return false;
+        mat4 root=T(e.position)*RY(e.yaw);
+        vec3 local=e.type==EnemyType::SORTER?vec3{0,3.35f,1.4f}:vec3{0,5.9f,-.26f};
+        vec3 half=e.type==EnemyType::SORTER?vec3{1.95f,.4f,.25f}:vec3{.6f,.6f,.4f};
+        vec3 center=vec3(root*glm::vec4(local,1));glm::mat3 m(root);
+        vec3 ext=glm::abs(m[0])*half.x+glm::abs(m[1])*half.y+glm::abs(m[2])*half.z;out={center-ext,center+ext};return true;
+    }
     if (e.type == EnemyType::WARDEN) return coreBox(e, out);
     if (e.type != EnemyType::PENITENT || !e.scourging) return false;
     HumanoidLook L = humanoidDims(e.type);
@@ -1569,12 +1581,17 @@ inline bool woundBox(const Enemy& e, AABB& out) {
 // Only from behind: the shot travels the way it faces, and meets the wound
 // no deeper than its back (a chest shot from the front doesn't count)
 inline bool woundShot(const Enemy& e, glm::vec3 o, glm::vec3 d, float& t) {
+    glm::vec3 toward=o-e.position;toward.y=0;
+    float facing=glm::dot(toward,glm::vec3{std::sin(e.yaw),0,std::cos(e.yaw)});
+    if(e.type==EnemyType::BALLAST&&facing>0)return false;
+    if(e.type==EnemyType::SORTER&&facing<0)return false;
     AABB w;
     if (!woundBox(e, w)) return false;
     float face = glm::dot(glm::vec2{d.x, d.z}, glm::vec2{std::sin(e.yaw), std::cos(e.yaw)});
-    if (e.type == EnemyType::WARDEN ? face >= 0.f : face <= 0.f) return false;   // the Penitent's from behind, the Warden's from the front
+    if ((e.type == EnemyType::WARDEN||e.type==EnemyType::SORTER) ? face >= 0.f : face <= 0.f) return false;   // the Penitent's from behind, the Warden's from the front
     t = rayBoxHit(o, d, w);
     if (t <= 0.f) return false;
+    if(e.type==EnemyType::SORTER||e.type==EnemyType::BALLAST)return true; // model-space exposed machinery, already gated by facing
     float tb = rayBoxHit(o, d, e.getAABB());
     return tb <= 0.f || t <= tb + 1.2f;   // its back: the body box stands ~0.9 m proud of the wound
 }

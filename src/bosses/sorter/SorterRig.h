@@ -27,6 +27,18 @@ inline void warning(Rig& r,vec3 at,float radius,vec3 color,bool stamp) {
         r.box(T(p+vec3{0,1.7f,0}),{0,0,0},{.24f,.10f,.24f},color,color);
     }
 }
+inline int flameMesh() {
+    static int id=[](){
+        meshlib::MeshData mesh;mesh.size={1,1,1};
+        for(int k=0;k<6;++k) {
+            float a=k*6.2831853f/6.f,b=(k+1)*6.2831853f/6.f;
+            vec3 v[3]={{std::cos(a)*.5f,-.5f,std::sin(a)*.5f},{0,.5f,0},{std::cos(b)*.5f,-.5f,std::sin(b)*.5f}};
+            vec3 normal=glm::normalize(glm::cross(v[1]-v[0],v[2]-v[0]));
+            for(auto p:v){mesh.idx.push_back((uint32_t)mesh.pos.size());mesh.pos.push_back(p);mesh.nrm.push_back(normal);}
+        }
+        return meshlib::addShared(std::move(mesh));
+    }();return id;
+}
 inline void press(Rig& r,vec3 at,float top,float height,vec3 lamps) {
     vec3 head=at+vec3{0,height,0};
     const vec3 iron{.22f,.25f,.27f},steel{.5f,.53f,.54f},paint{.68f,.43f,.1f};

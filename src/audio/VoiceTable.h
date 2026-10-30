@@ -24,6 +24,8 @@ inline const char* voiceKey(EnemyType t) {
 
 inline const char* attackKey(AttackKind k) {
     switch (k) {
+        case AttackKind::SORT_RUSH:return "gantry";case AttackKind::SORT_ROW:return "press_row";case AttackKind::SORT_PURGE:return "purge";
+        case AttackKind::BALL_WINCH:return "winch";case AttackKind::BALL_RIP:return "road_tear";case AttackKind::BALL_SWEEP:return "blade_sweep";
         case AttackKind::BALL_GRADE: return "grade"; case AttackKind::BALL_GUST: return "crosswind";
         case AttackKind::BALL_ANCHOR: return "weight"; case AttackKind::BALL_THROW: return "ballast";
         case AttackKind::SORT_GRAB: return "grab"; case AttackKind::SORT_STAMP: return "stamp";
@@ -79,8 +81,8 @@ inline const char* attackKey(AttackKind k) {
 inline std::vector<AttackKind> attacksOf(EnemyType t) {
     using A = AttackKind;
     switch (t) {
-        case EnemyType::BALLAST: return {A::BALL_GRADE,A::BALL_GUST,A::BALL_ANCHOR,A::BALL_THROW};
-        case EnemyType::SORTER: return {A::SORT_GRAB,A::SORT_STAMP,A::SORT_SCAN,A::SORT_THROW};
+        case EnemyType::BALLAST: return {A::BALL_GRADE,A::BALL_GUST,A::BALL_ANCHOR,A::BALL_THROW,A::BALL_WINCH,A::BALL_RIP,A::BALL_SWEEP};
+        case EnemyType::SORTER: return {A::SORT_GRAB,A::SORT_STAMP,A::SORT_SCAN,A::SORT_THROW,A::SORT_RUSH,A::SORT_ROW,A::SORT_PURGE};
         case EnemyType::HUSK:         return {A::SHOT};
         case EnemyType::RIPPER:       return {A::LUNGE};
         case EnemyType::SENTINEL:     return {A::BURST};

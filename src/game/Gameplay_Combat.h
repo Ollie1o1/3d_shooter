@@ -242,7 +242,17 @@ inline void GameplayState::updateEnemies(float dt) {
         if (g_devOverlay.rfind("pose", 0) == 0 && e.type == EnemyType::SOVEREIGN) { devPose(e); continue; }
         if (g_devOverlay.rfind("penitent", 0) == 0 && e.type == EnemyType::PENITENT) { devPenitentPose(e); continue; }
         if (g_devOverlay == "thunder" && e.type == EnemyType::ABSOLUTE && e.abCur < 0) e.abForce = AB_THUNDER;   // dev: THUNDERCLAP, over and over
-        if(e.type==EnemyType::SORTER && g_devOverlay=="sorterpress" && e.sortStep==0)e.sortStep=1;
+        if(e.type==EnemyType::SORTER&&e.sortStep==0) {
+            if(g_devOverlay=="sorterpress")e.sortNext=AttackKind::SORT_STAMP;
+            if(g_devOverlay=="sorterrush")e.sortNext=AttackKind::SORT_RUSH;
+            if(g_devOverlay=="sorterrow")e.sortNext=AttackKind::SORT_ROW;
+            if(g_devOverlay=="sorterpurge")e.sortNext=AttackKind::SORT_PURGE;
+        }
+        if(e.type==EnemyType::BALLAST&&e.ballStep==0) {
+            if(g_devOverlay=="ballastwinch")e.ballFollow=AttackKind::BALL_WINCH;
+            if(g_devOverlay=="ballastrip")e.ballFollow=AttackKind::BALL_RIP;
+            if(g_devOverlay=="ballastsweep")e.ballFollow=AttackKind::BALL_SWEEP;
+        }
         if(e.type==EnemyType::SORTER && (g_devOverlay=="sorter2"||g_devOverlay=="sorter3") && e.health>e.maxHealth*.67f)
             e.health=e.maxHealth*(g_devOverlay=="sorter2"?.5f:.2f);
         if(e.type==EnemyType::BALLAST && (g_devOverlay=="ballast2"||g_devOverlay=="ballast3") && e.health>e.maxHealth*.56f)
@@ -269,6 +279,10 @@ inline void GameplayState::updateEnemies(float dt) {
         e.floorY = level.enemyFloor(director.arena, e.position, e.stats().flying,
                                     descent ? groundHeightAt(e.position.x, e.position.z, e.position.y + 0.5f, true) : 0.f);
         e.wadeMul = e.stats().flying ? 1.f : 1.f - 0.5f * (1.f - Player::wadeFactor(level.waterDepthAt(e.position)));
+        if(story()&&e.type==EnemyType::SORTER&&e.sortRush>0)
+            breakStoryCover(e.position,e.position+e.sortRushDir*(36.f*dt),3.6f);
+        if(story()&&e.type==EnemyType::BALLAST&&e.ballDrive>0&&!e.ballHaul)
+            breakStoryCover(e.position+glm::vec3{0,1,0},e.position+glm::vec3{0,1,0}+e.ballDir*(36.f*dt),4.f);
         e.update(dt, w);
         if (e.type == EnemyType::ABSOLUTE) rig::tickAbsoluteBody(e, dt);   // his body chasing his pose
         if (e.hollow == Hollow::ENRAGED && std::fmod(e.age, 0.15f) < dt)   // embers off an Enraged one
@@ -931,6 +945,7 @@ inline void GameplayState::fireWeapon(int w) {
                 AABB b{shot.position-glm::vec3{.7f},shot.position+glm::vec3{.7f}};
                 float t=rayBoxHit(origin,dir,b);if(t>0&&t<nearest){nearest=t;body=&shot;}
             }
+            if(shootStoryCable(origin,dir,nearest)){body=nullptr;n=0;wallT=nearest;anyHit=true;}
             if(body){body->alive=false;n=0;wallT=nearest;fx.spawnBurst(body->position,{.7f,.7f,.65f},18,6,.6f,12);audio.playAt("clank",body->position,90,SoundGroup::WORLD);styleSystem.addStyle(10,StyleSource::PARRY);}
         }
         if (!level.anchors.empty()) {   // the Penitent's chains (before anything further along), then its anchors
@@ -1151,7 +1166,8 @@ inline bool GameplayState::potionSpot(glm::vec3& out) {
 inline void GameplayState::shedBossPotions(Enemy& e) {
     if (e.type == EnemyType::ABSOLUTE && e.abForm != e.potionForm) { e.potionForm = e.abForm; e.potionsShed = 0; }   // MORNINGSTAR: a fresh bar, fresh potions
     const float lost = 1.f - e.health / std::max(1.f, e.maxHealth);
-    const int due = std::min(BOSS_POTIONS, (int)(lost / BOSS_POTION_EVERY + 1e-4f));
+    const bool machinery=e.type==EnemyType::SORTER||e.type==EnemyType::BALLAST;
+    const int due = std::min(machinery?2:BOSS_POTIONS, (int)(lost / (machinery?1.f/3.f:BOSS_POTION_EVERY) + 1e-4f));
     while (e.potionsShed < due) {
         ++e.potionsShed;
         glm::vec3 at;

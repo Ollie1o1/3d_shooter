@@ -1,7 +1,18 @@
 #pragma once
+#include "bosses/StoryBossTools.h"
+#include <vector>
 // Pure state shared by AI, rendering, gameplay and the headless boss simulation.
 struct SorterState {
+    glm::vec3 sortObservedVel{0};
     int sortPhase = 0, sortStep = 0, sortFollowups = 0;
+    AttackKind sortNext=AttackKind::NONE,sortLast=AttackKind::NONE;
+    float sortRush=0,sortRushCd=0,sortRowCd=0,sortPurgeCd=0,sortThrowCd=0;
+    float sortFire=0,sortFireTick=0,sortVolleyT=0;
+    int sortVolley=0,sortVentCount=0;
+    bool sortContact=false;
+    glm::vec3 sortRushFrom{0},sortRushTo{0},sortRushDir{0,0,1},sortRowDir{1,0,0},sortVolleyAim{0};
+    AABB sortVents[2]{};
+    std::vector<MachineryPress> sortPresses;
     float sortMark = 0.f, sortScan = 0.f, sortOpen = 0.f, sortPause = 0.f;
     glm::vec3 sortAim{0.f}, sortHome{0.f}, sortImpactAt{0.f};
     float sortImpactT = -1.f;
@@ -12,6 +23,10 @@ struct SorterState {
     static constexpr float SORT_STAMP_R = 3.3f, SORT_GRAB_R = 3.1f;
     static constexpr float SORT_LOCK = .55f, SORT_DROP = .20f, SORT_IMPACT = .50f;
     static constexpr float SORT_PRESS_UP = 8.f, SORT_PRESS_DOWN = .4f;
+    static AABB sortVentBox(const AABB& room,float floor,int index) {
+        float z=room.min.z+14.f+index*16.f;
+        return {{room.min.x+8.f,floor,z},{room.max.x-8.f,floor+2.6f,z+3.8f}};
+    }
     static float sortPressHeight(float remaining,float impactTime=-1.f,float raised=SORT_PRESS_UP) {
         if(impactTime>=0) {
             float u=glm::clamp((impactTime-.12f)/.38f,0.f,1.f);u=u*u*(3.f-2.f*u);
@@ -24,5 +39,6 @@ struct SorterState {
 struct SorterEvents {
     int sortPhaseStarted = 0;
     bool sortStamp = false, sortGrab = false, sortMarked = false, sortLocked = false, sortDrop = false;
+    bool sortRushStarted=false,sortPurge=false;
     glm::vec3 sortAt{0.f};
 };
