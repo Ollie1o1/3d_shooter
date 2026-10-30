@@ -123,6 +123,10 @@ int main() {
             // those load the chapter's nearby rigs, scenery and HUD paths.
             for (int frame=0;frame<3;++frame) { game.update(1.f/60.f);game.render(); }
             CHECK(!game.playerDead, "Story checkpoint survives its first gameplay and render frames");
+            press(game,SDLK_TAB);
+            CHECK(game.armoryOpen&&game.armoryW==game.activeWeapon,"Tab opens the armory on the current weapon at every Story checkpoint");
+            press(game,SDLK_TAB);
+            CHECK(!game.armoryOpen&&!game.paused,"Tab closes the Story armory back to gameplay");
             if (o.arena == game.level.story.bossSection) {
                 for (bool queued : {false, true}) {
                     game.enterArena(o.arena);
@@ -227,6 +231,33 @@ int main() {
             detailSettings.ambientDetail=0;game.paused=true;game.update(0.f);
             CHECK(hadAmbient&&game.fx.ambientCount()==0&&combat->alive,"lowering detail while paused immediately removes weather and preserves combat effects");
         }
+        // Exercise the shared armory through actual Story input, purchases and retry.
+        for(int chapter:{1,2}) {
+            g_storyChapter=chapter;g_startArena=chapter==1?2:0;g_startWave=0;g_practice=g_godMode=false;
+            GameplayState game(audio,nullptr,GameMode::STORY);
+            game.gainXp(240); // Two earned levels, rather than directly granting points.
+            CHECK(game.prog.points==2,"Story XP supplies spendable upgrade points");
+            const int owned=game.storyOwned,ammo=game.weapons[0].ammo;
+            const float damage=weaponDamage(WeaponId::REVOLVER,game.prog.up[0]);
+            press(game,SDLK_TAB);
+            const float clock=game.gameClock;auto position=game.player.position;game.update(.25f);
+            CHECK(game.armoryOpen&&game.gameClock==clock&&glm::length(game.player.position-position)<.001f,"the Story armory freezes combat and player movement");
+            SDL_Event repeat{};repeat.type=SDL_KEYDOWN;repeat.key.keysym.sym=SDLK_TAB;repeat.key.repeat=1;game.handleEvent(repeat);
+            CHECK(game.armoryOpen,"holding Tab does not immediately close the armory");
+            game.armoryS=0;press(game,SDLK_RETURN);
+            CHECK(game.prog.points==1&&game.prog.up[0].tier[0]==1&&weaponDamage(WeaponId::REVOLVER,game.prog.up[0])>damage,"Enter buys a real Story damage upgrade and spends one earned point");
+            press(game,SDLK_DOWN);press(game,SDLK_DOWN);press(game,SDLK_SPACE);
+            CHECK(game.prog.points==0&&game.prog.up[0].tier[2]==1&&game.weapons[0].ammo>ammo,"arrows and Space buy a magazine upgrade and top up its added capacity");
+            if(chapter==2){game.render();screenshot("build/story-armory.bmp");}
+            press(game,SDLK_TAB);game.retryArena();
+            CHECK(!game.armoryOpen&&game.prog.up[0].tier[0]==1&&game.prog.up[0].tier[2]==1&&game.prog.points==0&&game.storyOwned==owned,"checkpoint retry keeps purchased upgrades without changing the found weapons");
+            SDL_Event back{};back.type=SDL_CONTROLLERBUTTONDOWN;back.cbutton.button=SDL_CONTROLLER_BUTTON_BACK;game.handleEvent(back);
+            CHECK(game.armoryOpen,"the controller Back button opens the same Story armory");
+            press(game,SDLK_ESCAPE);CHECK(!game.armoryOpen&&!game.paused,"Escape closes the armory without opening pause");
+            game.storyEndT=1;press(game,SDLK_TAB);CHECK(!game.armoryOpen,"Tab leaves the chapter ending in control");game.storyEndT=-1;
+            game.playerDead=true;press(game,SDLK_TAB);CHECK(!game.armoryOpen,"Tab cannot open the armory over Story death");game.playerDead=false;
+            if(chapter==1){game.loadStoryChapter(2);press(game,SDLK_TAB);CHECK(game.armoryOpen&&game.prog.up[0].tier[0]==1&&game.prog.up[0].tier[2]==1&&game.prog.points==0,"continuing to Chapter 2 retains upgrades in its working armory");press(game,SDLK_TAB);}
+        }
         GameSettings visualSettings;visualSettings.ambientDetail=3;
         menu.settings=&visualSettings;menu.settingsMenu.s=&visualSettings;menu.page=MenuState::SETTINGS;
         const auto settingsRows=menu.settingsMenu.rows();
@@ -239,6 +270,8 @@ int main() {
         g_startArena = g_startWave = 0; g_storyChapter = 1; g_practice = g_godMode = false;
         GameplayState normal(audio, nullptr, GameMode::STORY);
         CHECK(normal.storyLocked() && normal.storyOwned == 0 && !normal.storyArmed, "normal Story still begins with the unarmed wake-up");
+        press(normal,SDLK_TAB);
+        CHECK(!normal.armoryOpen&&normal.storyLocked(),"Tab leaves the initial wake-up sequence in control");
     }
     SDL_GL_DeleteContext(context); SDL_DestroyWindow(window); SDL_Quit();
     return failures ? 1 : 0;

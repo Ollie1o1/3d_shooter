@@ -72,6 +72,14 @@ Both bosses keep their existing health totals; precision hits on exposed
 machinery earn the damage bonus, and Story bosses shed two potions instead of
 four. Parries cancel pending attacks and follow-ups.
 
+## Armory
+
+Tab opens the shared armory during playable Story sections in both chapters,
+including dev checkpoints. Spend points earned from XP with Enter, Space or a
+click; Tab or Escape returns to play. Combat pauses while shopping. Purchases
+remain through checkpoint retries and the transition into Chapter 2. The opening
+wake-up and chapter ending retain control of their input.
+
 ## Atmosphere and performance
 
 Separate optional detail from combat information. Ambient quality is saved as
