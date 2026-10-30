@@ -169,11 +169,11 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     whiteTex = makeGreyTexture();
     std::copy(sharedWorldTex(), sharedWorldTex() + TEX_COUNT, worldTex);   // (made once: see sharedWorldTex)
 
-    level = fast() ? buildGauntlet() : act2() ? buildAct2Level() : story() ? buildCradle() : buildLevel();
+    level = fast() ? buildGauntlet() : act2() ? buildAct2Level() : story() ? (g_storyChapter==2?buildWasteland():buildCradle()) : buildLevel();
     if (story()) armfile::load("assets/guns/unit24_arm.glb");   // UNIT 24's own hands (the menu's next run puts the gloves back)
     spatialGrid.build(level.walls);
     world = buildWorldMeshes(level);
-    bake = &sharedBake(fast() ? "fast" : act2() ? "act2" : story() ? "story1" : "act1", level);
+    bake = &sharedBake(fast() ? "fast" : act2() ? "act2" : story() ? (level.story.chapter==2?"story2":"story1") : "act1", level);
     applyBake();
     neonLights = buildNeonLights(level);
     shifts.capture(level);
@@ -201,6 +201,17 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     if (roomAttack()) { start = glm::clamp(g_roomAttack, 0, (int)level.arenas.size() - 1); ranked = false; }
     if (arenaSolo()) { start = glm::clamp(g_arenaSolo, 0, (int)level.arenas.size() - 1); ranked = act2FromStart = false; }
     if (g_bossRun >= 0) msCheckpoint = bossEntry(g_bossRun).morning;   // (MORNINGSTAR: from inside the eclipse)
+    if (story() && (g_practice || start > 0)) {
+        // A direct checkpoint start gets what the earlier rooms would have supplied.
+        // Leave this room's pickups in place so they can still be inspected and tested.
+        wakeSeen = true;
+        storySeenSection = start;
+        storyOwned = level.story.startWeapons;
+        for (const auto& wreck : level.story.wrecks)
+            if (wreck.section < start && wreck.weapon >= 0) storyOwned |= 1 << wreck.weapon;
+        int grappleRoom = level.arenaAt(level.story.grappleAt);
+        storyGrapple = level.story.startGrapple || (grappleRoom >= 0 && start > grappleRoom);
+    }
     enterArena(start);
     if (g_bossRun < 0 && director.waveCount()>0) director.wave = glm::clamp(g_startWave, 0, director.waveCount() - 1);
     if (fast()) ghost.load();
@@ -273,6 +284,7 @@ inline void GameplayState::enterArena(int a) {
     for (int d = 0; d < (int)level.doors.size(); ++d) { level.doors[d].locked = false; level.setDoorInstant(d, false); }
     shifts.reset(level);   // the sun back up, the lava back down, the platforms back to speed, the cage to the top
     boardHinted = liftRiding = false;
+    ballastHazards.clear();
     ward.clear(); conduitClock.reset(); wardenUid = -1; shifts.bossPulseOff();
     relic.clear(); lastChunk = 0; snareTimer = 0.f; driftWasGliding = false;
     lev.clear(); beachHinted = false; levSinkT = 1e9f;   // (shifts.reset drained the Maw's flood)
@@ -497,7 +509,8 @@ inline void GameplayState::handleDirectorEvents() {
         case DirectorEvent::ARENA_START:
             lockDoor(ar.entryGate, true);   // no way back out mid-fight
             if (story()) {   // STORY: the fight's line, short (the room's name came as you walked in)
-                pushBanner(ar.subtitle, "", {1.f, 0.45f, 0.2f}, 2.f);
+                if (director.arena != level.story.bossSection)
+                    pushBanner(director.hasGoal() ? director.goal().label : ar.subtitle, "", {1.f, 0.45f, 0.2f}, 2.f);
                 audio.play("wave", 110, SoundGroup::UI, true);
                 break;
             }
@@ -884,6 +897,8 @@ inline void GameplayState::updateScreenFx(float dt) {
 }
 
 inline void GameplayState::update(float dt) {
+    fx.setAmbientDetail(ambientDetail());   // settings take effect even while the world is paused
+    if(storyChapterRequest>0) {int chapter=storyChapterRequest;storyChapterRequest=0;loadStoryChapter(chapter);return;}
     if (settings) audio.masterVolume = settings->audioVolume;
     updateMusic();
     // The place's own air (RoomTone.h): full between fights, under a fight,
@@ -1117,7 +1132,7 @@ inline void GameplayState::update(float dt) {
 
     frametimer::Lap ftFx;
     fx.updateParticles(floatDt * timeScale());
-    fx.spawnAmbientParticles(level, player.position, fast(), floatDt);
+    fx.spawnAmbientParticles(level, player.position, fast(), floatDt, ambientDetail(), gameClock);
     for (auto& p : projSystem.pool) {           // projectile trails
         if (!p.alive) continue;
         Effects::Particle* q = fx.freeParticle();
@@ -1195,7 +1210,7 @@ inline void GameplayState::updateMusic() {
     int a = director.arena;
     bool zenith = act2() && a == ZENITH_ARENA;
     const bool morning = zenith && msSwallowT >= 0.f;   // inside the eclipse: MORNINGSTAR's track (from the next bar line)
-    if (story() && (director.arena < 3 || !director.fighting())) { audio.setMusicVolume(0.f); m.setMuffle(true); return; }   // STORY: the furnace line's own air, no music yet
+    if (story() && ((!wasteland() && director.arena < 3) || !director.fighting())) { audio.setMusicVolume(0.f); m.setMuffle(true); return; }   // STORY: the furnace line's own air, no music yet
     m.setTrack(fast() ? FAST_TRACK[a % 7] : morning ? 11 : zenith ? 10 : act2() ? 5 + std::min(a, 4) : ARENA_TRACK[a % 5]);   // the Nave .. the Maw; !!!!! has its own
     float lv = 0.6f;
     switch (director.phase) {

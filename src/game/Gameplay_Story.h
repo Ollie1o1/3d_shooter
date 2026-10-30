@@ -1,4 +1,5 @@
 #pragma once
+#include "ui/TextWrap.h"
 // =============================================================================
 // Gameplay_Story.h — GameplayState: STORY mode (docs/superpowers/specs/2026-10-28-story-mode-design.md).
 // Included at the end of GameplayState.h.
@@ -85,8 +86,33 @@ inline void GameplayState::beginStory() {
         it.onInteract = [this, i]() { storyTakeGun(i); };
         interactables.push_back(std::move(it));
     }
+    // Logs use the same explicit interaction path as weapon pickups.
+    for (int i = 0; i < (int)S.wrecks.size(); ++i) {
+        Interactable it; it.type = InteractableType::READABLE;
+        it.position = S.wrecks[i].pos + glm::vec3{0, 1.65f, 0};
+        it.box = {it.position - glm::vec3{.6f,.35f,.6f}, it.position + glm::vec3{.6f,.7f,.6f}};
+        char label[48]; std::snprintf(label, sizeof(label), "READ UNIT %02d / LAST LOG", S.wrecks[i].number);
+        it.label = label;
+        it.onInteract = [this, i]() {
+            storyLog = storyLog == i ? -1 : i; storyTerminal = -1; storyLogT = 0;
+            if (storyLog >= 0) { storyLogsSeen |= 1u << i; audio.play("count_tick",90,SoundGroup::UI,true); }
+        };
+        interactables.push_back(std::move(it));
+    }
+    for (int i = 0; i < (int)S.terminals.size(); ++i) {
+        Interactable it; it.type = InteractableType::READABLE;
+        it.position = S.terminals[i].pos + glm::vec3{0, 1.8f, .25f};
+        it.box = {it.position - glm::vec3{.85f,.55f,.65f}, it.position + glm::vec3{.85f,1.1f,.65f}};
+        it.label = std::string("READ ") + S.terminals[i].title;
+        it.onInteract = [this, i]() {
+            storyTerminal = storyTerminal == i ? -1 : i; storyLog = -1;
+            audio.play("count_tick",90,SoundGroup::UI,true);
+        };
+        interactables.push_back(std::move(it));
+    }
     if (activeWeapon >= 0 && !storyOwns(activeWeapon))
         for (int g = 0; g < WEAPON_COUNT; ++g) if (storyOwns(g)) { activeWeapon = g; break; }
+    if(wasteland()) {beginWasteland();return;}
     // Bodies on the belts, spaced out down their length; the one ahead of you on yours timed to go over the lip
     // just after you sit up (W_TIP), and none close behind you
     for (int lane = 0; lane < (int)S.lanes.size(); ++lane) {
@@ -192,6 +218,7 @@ inline void GameplayState::updateStory(float dt) {
     using namespace story;
     const auto& S = level.story;
     if (!S.built) return;
+    if(wasteland()) {updateWasteland(dt);return;}
 
     // ---- the wake-up ----
     if (wakeT >= 0.f) {
@@ -348,18 +375,13 @@ inline void GameplayState::updateStory(float dt) {
                 if (pitWakeT <= 0.f) { director.startArena(S.pitSection); pitWakeT = -1.f; shake(0.5f, 0.04f); }
             }
         }
-        // a wreck's last log, the first few times you come near it
-        int near = -1;
-        for (int i = 0; i < (int)S.wrecks.size(); ++i) {
-            glm::vec3 d = S.wrecks[i].pos - p;
-            if (std::fabs(d.y) < 3.f && glm::length(glm::vec2{d.x, d.z}) < 4.2f) near = i;
+        // Walking past a log never opens it or counts a secret. Leaving the
+        // reading spot closes it; E on its beacon toggles it while nearby.
+        if (storyLog >= 0) {
+            storyLogT += dt;
+            if (glm::length(S.wrecks[storyLog].pos - p) > 6.f) storyLog = -1;
         }
-        if (near >= 0 && near != storyLog) {
-            storyLog = near; storyLogT = 0.f;
-            if (!((storyLogsSeen >> near) & 1u)) audio.play("count_tick", 90, SoundGroup::UI, true);
-            storyLogsSeen |= 1u << near;
-        }
-        if (storyLog >= 0) { storyLogT += dt; if (near < 0 && storyLogT > 1.f) storyLog = -1; }
+        if (storyTerminal >= 0 && glm::length(S.terminals[storyTerminal].pos - p) > 6.f) storyTerminal = -1;
     }
     updateStoryFactory(dt);
     const AABB& E = S.end;
@@ -384,7 +406,7 @@ inline void GameplayState::storyTakeGun(int i) {
     if (w.weapon < 0 || storyOwns(w.weapon)) return;
     storyOwned |= 1 << w.weapon;
     storyArmed = true;
-    for (auto& it : interactables) if (glm::length(it.position - glm::vec3(wreckGunXf(i)[3])) < 0.1f) it.active = false;
+    for (auto& it : interactables) if (it.type != InteractableType::READABLE && glm::length(it.position - glm::vec3(wreckGunXf(i)[3])) < 0.1f) it.active = false;
     activeWeapon = w.weapon; pendingWeapon = -1;
     weapons[w.weapon] = WeaponState{};
     weapons[w.weapon].ammo = weaponMag((WeaponId)w.weapon, prog.up[w.weapon]);
@@ -529,8 +551,8 @@ inline void GameplayState::gatherStoryBoxes(std::vector<BoxInstance>& out) {
                  vec3{0.6f, 0.9f, 1.f}, vec3{1.5f, 2.6f, 3.f} * (0.3f + 2.5f * star));
         }
     }
-    // the claw: a trolley on the rail, its cable, a three-fingered grab
-    {
+    // the claw belongs to the factory, never to the outdoor chapter.
+    if(!wasteland()) {
         float z = SL.beltStart - 70.f, drop = 0.f, open = 0.f;   // parked at the north end of the rail
         bool holding = false;
         if (clawT >= 0.f) {
@@ -630,26 +652,24 @@ inline void GameplayState::renderStoryOverlay(const glm::mat4& viewProj) {
             const glm::vec3 at = glm::vec3(wreckGunXf(i)[3]) + glm::vec3{0.f, 0.5f, 0.f};
             const float dist = glm::length(at - player.camera.position);
             if (dist < 3.f) continue;
-            glm::vec4 c = viewProj * glm::vec4(at, 1.f);
-            bool on = c.w > 0.f;
-            glm::vec2 ndc = on ? glm::vec2(c) / c.w : -glm::vec2(c) / std::max(-c.w, 1e-3f);
-            on = on && std::fabs(ndc.x) < 0.95f && std::fabs(ndc.y) < 0.9f;
-            char lbl[48]; std::snprintf(lbl, sizeof(lbl), "%s  %.0fM", gunTitle(w.weapon) + 4, dist);
-            ui.renderMarker((ndc.x * 0.5f + 0.5f) * SCREEN_W, (0.5f - ndc.y * 0.5f) * SCREEN_H, on, {0.35f, 0.85f, 1.f}, lbl);
+            const auto marker=projectWorldMarker(at,viewProj,SCREEN_W,SCREEN_H);
+            bool covered=!marker.behind && markerBehindCover(player.camera.position,at,level.walls);
+            char lbl[96];std::snprintf(lbl,sizeof(lbl),"%s %.0fM%s",gunTitle(w.weapon)+4,dist,covered?" / BEHIND COVER":"");
+            ui.renderMarker(marker.x,marker.y,marker.onScreen,{.35f,.85f,1.f},lbl,marker.behind);
         }
     }
     ui.begin2D();
     if (wakeT < 0.f && storyEndT < 0.f && !playerDead && SL.built) {
         int it = findInteractTarget();
         if (it >= 0 && interactables[it].active) {   // the prompt, under the crosshair
-            char pr[64]; std::snprintf(pr, sizeof(pr), "[%s]  %s", binds().label(Act::INTERACT).c_str(), interactables[it].label.c_str());
+            char pr[128]; std::snprintf(pr, sizeof(pr), "[%s]  %s", (gamepad::state().pad ? "R3" : binds().label(Act::INTERACT).c_str()), interactables[it].label.c_str());
             const float pulse = 0.8f + 0.2f * std::sin(gameClock * 6.f);
             U.textShadow(pr, SCREEN_W / 2.f, SCREEN_H / 2.f + 44.f, 2, {0.45f, 0.9f, 1.f, pulse}, true);
         }
         if (storyLog >= 0 && storyLog < (int)SL.wrecks.size()) {   // the last log, typed out in a terminal at the foot of the screen
             const auto& w = SL.wrecks[storyLog];
             const float a = sm(storyLogT / 0.3f);
-            const float W = 760.f, H = 92.f, X = SCREEN_W / 2.f - W / 2.f, Y = SCREEN_H - 190.f;
+            const float W = 760.f, H = 142.f, X = SCREEN_W / 2.f - W / 2.f, Y = SCREEN_H - 190.f;
             U.rect(X, Y, W, H, {0.01f, 0.03f, 0.04f, 0.78f * a});
             U.rect(X, Y, 4.f, H, {0.35f, 0.85f, 1.f, 0.9f * a});
             char head[48]; std::snprintf(head, sizeof(head), "UNIT %02d  -  LAST LOG", w.number);
@@ -672,13 +692,20 @@ inline void GameplayState::renderStoryOverlay(const glm::mat4& viewProj) {
     }
     if(wakeT<0 && storyEndT<0 && storyTerminal>=0 && storyLog<0) {
         const auto& t=SL.terminals[storyTerminal];
-        U.rect(80,SCREEN_H-205,SCREEN_W-160,98,{.01f,.03f,.04f,.9f});
-        U.text(t.title,100,SCREEN_H-190,1,{.35f,.85f,1.f,1});
-        U.text(t.line,100,SCREEN_H-160,2,{.85f,.9f,.92f,1});
+        const auto lines=ui_text::wrap(t.line,(SCREEN_W-200)/12);
+        const float height=48.f+lines.size()*26.f,y=SCREEN_H-110.f-height;
+        U.rect(80,y,SCREEN_W-160,height,{.01f,.03f,.04f,.9f});
+        U.text(t.title,100,y+15,1,{.35f,.85f,1.f,1});
+        for(size_t i=0;i<lines.size();++i)
+            U.text(lines[i].c_str(),100,y+44+i*26,2,{.85f,.9f,.92f,1});
     }
     for(const auto& e:enemies)if(e.alive&&e.type==EnemyType::SORTER&&storyEndT<0) {
         const char* phase=e.sortPhase==3?"INCINERATION":e.sortPhase==2?"RECALIBRATION":"INSPECTION";
         U.textShadow(e.sortMark>0?"MARKED - PARRY / BREAK SIGHT":e.staggered()||e.sortOpen>0?"CORE OPEN - DOUBLE DAMAGE":phase,SCREEN_W/2.f,88,2,{1.f,.65f,.3f,1},true);
+        if(e.attack==AttackKind::SORT_STAMP&&e.telegraphTimer>0) {
+            char warning[80];std::snprintf(warning,sizeof(warning),e.sortLocked?"PRESS LOCKED  %.1fS / DASH OUT":"OVERHEAD PRESS  %.1fS / TARGETING",e.telegraphTimer);
+            U.textShadow(warning,SCREEN_W/2.f,112,2,e.sortLocked?glm::vec4{1,.3f,.12f,1}:glm::vec4{1,.8f,.3f,1},true);
+        }
     }
     if (wakeT >= 0.f) {
         const float t = wakeT;
@@ -731,7 +758,8 @@ inline void GameplayState::renderStoryOverlay(const glm::mat4& viewProj) {
         const float a = sm((storyEndT - 1.6f) / 0.8f);
         U.rect(0.f, 0.f, SCREEN_W, SCREEN_H, {0.f, 0.f, 0.f, sm(storyEndT / 1.4f)});
         U.text(SL.nextName, SCREEN_W / 2.f, SCREEN_H / 2.f - 40.f, 5, {0.85f, 0.9f, 0.92f, a}, true);
-        U.text("CHAPTER 1 COMPLETE", SCREEN_W / 2.f, SCREEN_H / 2.f + 30.f, 2, {0.35f, 0.85f, 1.f, a * 0.85f}, true);
+        char complete[48];std::snprintf(complete,sizeof(complete),"CHAPTER %d COMPLETE",SL.chapter);
+        U.text(complete, SCREEN_W / 2.f, SCREEN_H / 2.f + 30.f, 2, {0.35f, 0.85f, 1.f, a * 0.85f}, true);
         char line[128];int secrets=0;for(size_t i=0;i<SL.wrecks.size();++i)if(SL.wrecks[i].secret && ((storyLogsSeen>>i)&1u))++secrets;
         std::snprintf(line,sizeof(line),"TIME %d:%02d   KILLS %d   SECRETS %d/2",(int)elapsedTime/60,(int)elapsedTime%60,totalKills,secrets);
         U.text(line,SCREEN_W/2.f,SCREEN_H/2.f+90,2,{.85f,.9f,.92f,a},true);
@@ -739,10 +767,10 @@ inline void GameplayState::renderStoryOverlay(const glm::mat4& viewProj) {
         const char* rank=deaths==0&&elapsedTime<900&&score>5000?"S":deaths<3&&elapsedTime<1200?"A":deaths<6?"B":"C";
         std::snprintf(line,sizeof(line),"RANK %s   STYLE %.0f   DEATHS %d",rank,score,deaths);
         U.text(line,SCREEN_W/2.f,SCREEN_H/2.f+130,2,{1.f,.7f,.3f,a},true);
-        U.text("A TOWER. A QUESTION.",SCREEN_W/2.f,SCREEN_H/2.f+185,2,{.65f,.7f,.75f,a},true);
-        U.text("ENTER - RETURN TO MENU",SCREEN_W/2.f,SCREEN_H-65,1,{.35f,.85f,1.f,a},true);
+        U.text(SL.nextChapter>0?"ENTER - CONTINUE TO CHAPTER 2    ESC - MENU":"ENTER - RETURN TO MENU",SCREEN_W/2.f,SCREEN_H-65,1,{.35f,.85f,1.f,a},true);
     }
     ui.end2D();
 }
 
 #include "game/Gameplay_StoryFactory.h"
+#include "game/Gameplay_StoryAtmosphere.h"

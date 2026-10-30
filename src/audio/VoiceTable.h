@@ -17,13 +17,15 @@ inline const char* voiceKey(EnemyType t) {
     static const char* K[] = {"husk", "ripper", "sentinel", "raptor", "brute", "mite", "juggernaut", "warden",
                               "sovereign", "shieldbearer", "conduit", "conductor", "seraph", "anchor", "penitent",
                               "revenant", "weaver", "leviathan", "absolute",
-                              "courier", "bulwark", "cantor", "harrier", "plumb", "foreman", "pacemaker", "sorter"};
+                              "courier", "bulwark", "cantor", "harrier", "plumb", "foreman", "pacemaker", "sorter", "ballast"};
     static_assert(sizeof(K) / sizeof(K[0]) == (size_t)EnemyType::COUNT, "a voice key per enemy type");
     return (int)t < (int)EnemyType::COUNT ? K[(int)t] : "any";
 }
 
 inline const char* attackKey(AttackKind k) {
     switch (k) {
+        case AttackKind::BALL_GRADE: return "grade"; case AttackKind::BALL_GUST: return "crosswind";
+        case AttackKind::BALL_ANCHOR: return "weight"; case AttackKind::BALL_THROW: return "ballast";
         case AttackKind::SORT_GRAB: return "grab"; case AttackKind::SORT_STAMP: return "stamp";
         case AttackKind::SORT_SCAN: return "scan"; case AttackKind::SORT_THROW: return "reject";
         case AttackKind::SHOT: return "shot";         case AttackKind::BURST: return "burst";
@@ -77,6 +79,7 @@ inline const char* attackKey(AttackKind k) {
 inline std::vector<AttackKind> attacksOf(EnemyType t) {
     using A = AttackKind;
     switch (t) {
+        case EnemyType::BALLAST: return {A::BALL_GRADE,A::BALL_GUST,A::BALL_ANCHOR,A::BALL_THROW};
         case EnemyType::SORTER: return {A::SORT_GRAB,A::SORT_STAMP,A::SORT_SCAN,A::SORT_THROW};
         case EnemyType::HUSK:         return {A::SHOT};
         case EnemyType::RIPPER:       return {A::LUNGE};
@@ -115,6 +118,7 @@ inline std::vector<AttackKind> attacksOf(EnemyType t) {
 // BEAM's is held while the beam is on.
 inline bool hasRelease(AttackKind k) {
     switch (k) {
+        case AttackKind::BALL_GRADE: case AttackKind::BALL_GUST: case AttackKind::BALL_ANCHOR: case AttackKind::BALL_THROW:
         case AttackKind::SHOT: case AttackKind::BURST: case AttackKind::LUNGE: case AttackKind::DIVE:
         case AttackKind::LOB: case AttackKind::SHELL: case AttackKind::VOLLEY: case AttackKind::BASH:
         case AttackKind::BEAM: case AttackKind::RAKE: case AttackKind::SOULBOLT: return true;
@@ -125,7 +129,7 @@ inline bool hasRelease(AttackKind k) {
 // Steps (or wingbeats) a second at full speed; 0: it doesn't move
 inline float moveCadence(EnemyType t) {
     static const float C[] = {2.2f, 7.f, 1.5f, 3.f, 1.4f, 9.f, 1.2f, 1.f, 2.4f, 1.8f, 0.f, 2.f, 1.6f, 1.f, 0.7f, 2.6f, 5.f, 0.f, 3.f,
-                              6.f, 1.1f, 1.2f, 2.2f, 0.f, 1.5f, 3.f, 0.f};   // (the Gauntlet's)
+                              6.f, 1.1f, 1.2f, 2.2f, 0.f, 1.5f, 3.f, 0.f, 1.4f};   // (the Gauntlet's)
     static_assert(sizeof(C) / sizeof(C[0]) == (size_t)EnemyType::COUNT, "a cadence per enemy type");
     return C[(int)t];
 }
@@ -192,7 +196,7 @@ inline const std::vector<VoiceSpec>& voiceBank() {
         for (int i = 0; i < (int)EnemyType::COUNT; ++i) {
             const EnemyType t = (EnemyType)i;
             // The Gauntlet's bosses are one at a time: a voice each, not a set of variants (EnemyVoice picks among what's there)
-            const bool one = isMiniBoss(t) || t == EnemyType::PACEMAKER || t == EnemyType::SORTER;
+            const bool one = isMiniBoss(t) || t == EnemyType::PACEMAKER || t == EnemyType::SORTER || t == EnemyType::BALLAST;
             auto n = [&](int many) { return one ? (many >= 3 ? 2 : 1) : many; };
             v.push_back({voiceName(t, VoiceKind::SPAWN), t, VoiceKind::SPAWN, AttackKind::NONE, 1, MixClass::WORLD});
             v.push_back({voiceName(t, VoiceKind::IDLE),  t, VoiceKind::IDLE,  AttackKind::NONE, n(2), MixClass::CHATTER});

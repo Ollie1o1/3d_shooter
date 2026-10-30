@@ -39,7 +39,7 @@ inline int xpForKill(EnemyType t) {
         case EnemyType::WEAVER:   return 50;
         case EnemyType::LEVIATHAN: return 1500;
         case EnemyType::ABSOLUTE: return 2000;
-        case EnemyType::PACEMAKER: return 1200;
+        case EnemyType::PACEMAKER: case EnemyType::SORTER: case EnemyType::BALLAST: return 1200;
         case EnemyType::COURIER: case EnemyType::BULWARK: case EnemyType::CANTOR:
         case EnemyType::HARRIER: case EnemyType::PLUMB: case EnemyType::FOREMAN: return 300;   // the Gauntlet's mini-bosses
         default:                  return 10;

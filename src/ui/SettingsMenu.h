@@ -50,6 +50,7 @@ public:
         toggle("VSYNC", &g->vsync);
 #endif
         cycle ("GRAPHICS QUALITY", &g->quality, GameSettings::QUALITY_LEVELS, [](int i) { return GameSettings::qualityLabel(i); });
+        cycle ("AMBIENT DETAIL", &g->ambientDetail, GameSettings::AMBIENT_LEVELS, [](int i) { return GameSettings::ambientLabel(i); });
         cycle ("ANTI-ALIASING", &g->antiAlias, GameSettings::AA_LEVELS, [](int i) { return GameSettings::aaLabel(i); });
         toggle("SHOW FPS", &g->showFPS);
         toggle("CRT FILTER", &g->crtFilter);
@@ -78,7 +79,7 @@ public:
     }
 
     // ---- layout ----
-    static constexpr int PANEL_W = 680, ROW_H = 21, HEAD_H = 18, TOP = 80;   // (fits every row in 720 px)
+    static constexpr int PANEL_W = 680, ROW_H = 20, HEAD_H = 18, TOP = 80;   // (fits every row in 720 px)
     int rowY(const std::vector<Row>& r, int idx) const {
         int y = TOP;
         for (int k = 0; k < idx; ++k) y += r[k].kind == Kind::HEADER ? HEAD_H : ROW_H;

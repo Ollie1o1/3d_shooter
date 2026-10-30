@@ -1,15 +1,26 @@
 #pragma once
+#include "game/StoryLift.h"
+#include "bosses/sorter/SorterRig.h"
 // Upper-factory sequences. Real platform walls are driven here; Player carries
 // their delta in the normal physics path. No camera teleport is used in play.
 inline void GameplayState::resetStoryFactory() {
     auto& S=level.story;
+    if(wasteland()) {
+        for(float& angle:storyTurbineAngle)angle=0;
+        storyPodsBroken=false;storyBossDown=director.arena>level.story.bossSection;storyCollapseT=-1;storyTerminal=storyLog=-1;
+        if(director.arena>4)for(int id:S.turbineBrakes)level.damageAnchor(id,1e9f);
+        storyCheckpoint=director.arena;director.hold=false;return;
+    }
     if(storyGlassBoxes.empty())for(int w:S.podGlass)storyGlassBoxes.push_back(level.walls[w].box);
     if(storyTileBoxes.empty())for(int w:S.sortingTiles)storyTileBoxes.push_back(level.walls[w].box);
     for(size_t i=0;i<S.podGlass.size();++i) {auto& w=level.walls[S.podGlass[i]];w.box=storyGlassBoxes[i];w.hidden=true;}
     for(size_t i=0;i<S.sortingTiles.size();++i) {auto& w=level.walls[S.sortingTiles[i]];w.box=storyTileBoxes[i];w.hidden=true;}
     storyPodsBroken=director.arena>5; storyBossDown=false;storyCollapseT=-1;
+    level.arenas[8].ambient=Ambient::EMBERS;
     storyScanCooldown=0; storyTerminal=-1;storyLiftStop=0;director.hold=false;
     if(S.elevator>=0)level.movers[S.elevator].drive=director.arena>6?1.f:0.f;
+    if(S.serviceLift>=0)level.movers[S.serviceLift].drive=director.arena>2?1.f:0.f;
+    storyLog=-1; storyLogT=0;
     level.updateMovers(moverClock);spatialGrid.build(level.walls);
     storyCheckpoint=director.arena;
 }
@@ -25,10 +36,15 @@ inline void GameplayState::updateStoryFactory(float dt) {
     // A quiet room has no encounter to advance the director. Walking into the
     // next room explicitly approaches it; active fights still own their gates.
     if(at>director.arena && !director.fighting() && director.phase!=WaveDirector::Phase::INTRO) director.approach(at);
-    storyTerminal=-1;
-    for(int i=0;i<(int)S.terminals.size();++i) {
-        vec3 d=S.terminals[i].pos-p;
-        if(std::fabs(d.y)<3.f && glm::length(glm::vec2{d.x,d.z})<4.f) storyTerminal=i;
+    // Small, spatially grounded activity: the reclamation machinery still
+    // sheds dust and the damaged panels arc occasionally, even between fights.
+    if(at==1 && std::floor(gameClock/6.f)!=std::floor((gameClock-dt)/6.f)) {
+        fx.spawnBurst({18.4f,-22,-31.5f},{.4f,.32f,.22f},10,2.f,2.2f,7.f);
+        audio.playAt("land_metal",{19,-31,-31.5f},40,SoundGroup::WORLD);
+    }
+    if((at==1 || at==3) && std::floor(gameClock/8.f)!=std::floor((gameClock-dt)/8.f)) {
+        vec3 spark=at==1?vec3{57.4f,-38.4f,-25}:vec3{107.5f,level.arenas[3].playerStart.y-5,36};
+        fx.spawnBurst(spark,{1.f,.55f,.16f},6,2.5f,.5f,7.f);
     }
     if(!storyGrapple && at==7 && glm::length(p-S.grappleAt)<3.f) {
         storyGrapple=true;audio.play("pickup",128,SoundGroup::UI,true);
@@ -45,26 +61,11 @@ inline void GameplayState::updateStoryFactory(float dt) {
         spatialGrid.build(level.walls);
         audio.play("explosion",105,SoundGroup::WORLD,true);shake(.65f,.08f);
     }
-    // Board, rise 13 m, hold at each stop until its defenders are dead.
-    if(S.elevator>=0) {
-        auto& lift=level.movers[S.elevator];
-        if(director.arena==6) {
-            auto b=level.walls[lift.wall].box;
-            auto& arena=level.arenas[6];arena.hasRespawn=true;
-            arena.respawn={(b.min.x+b.max.x)*.5f,b.max.y+.05f,(b.min.z+b.max.z)*.5f};
-            arena.voidY=b.max.y-7.f;
-            bool aboard=player.groundWall==lift.wall;
-            if(director.phase==WaveDirector::Phase::APPROACH && aboard) director.startArena(6);
-            if(director.phase==WaveDirector::Phase::INTRO || director.fighting()) {
-                float target=(director.wave+1)/3.f;
-                // A player who stepped off can get back aboard before departure.
-                if(aboard || lift.drive>director.wave/3.f+.001f)
-                    lift.drive=std::min(target,lift.drive+dt/18.f);
-                director.hold=lift.drive<target-.0001f;
-                int stop=(int)std::floor(lift.drive*3.f+.001f);
-                if(stop>storyLiftStop) {storyLiftStop=stop;audio.play("anvil",100,SoundGroup::WORLD,true);}
-            } else director.hold=false;
-        } else director.hold=false;
+    updateStoryAtmosphere(dt);
+    storylift::update(level,director,player,dt);
+    if(S.elevator>=0 && director.arena==6) {
+        int stop=(int)std::floor(level.movers[S.elevator].drive*3.f+.001f);
+        if(stop>storyLiftStop) {storyLiftStop=stop;audio.play("anvil",100,SoundGroup::WORLD,true);}
     }
     // Sliding goes under the oscillating inspection strip; otherwise dash through
     // its narrow plane while it is high. The red beam has no hidden hit volume.
@@ -108,10 +109,18 @@ inline void GameplayState::updateStoryFactory(float dt) {
 
 inline void GameplayState::storySorterEvents(Enemy& e,const EnemyEvents& ev) {
     using glm::vec3;
-    if(ev.telegraphStarted)audio.playAt("telegraph",e.sortAim,120,SoundGroup::ENEMY,true);
+    if(ev.telegraphStarted) {
+        audio.playAt("telegraph",e.sortAim,120,SoundGroup::ENEMY,true);
+        if(e.attack==AttackKind::SORT_STAMP)ui.feed(e.tellFollow?"PRESS FOLLOW-UP / KEEP MOVING":"OVERHEAD PRESS / WATCH THE LOCK",{1.f,.65f,.25f});
+        else if(e.attack==AttackKind::SORT_GRAB)ui.feed("CLAW / WHITE: PARRY",{.95f,.95f,1.f});
+    }
+    if(ev.sortLocked)audio.playAt("count_tick",e.sortAim,120,SoundGroup::ENEMY,true);
+    if(ev.sortDrop)audio.playAt("hook_yank",e.sortAim+vec3{0,5,0},120,SoundGroup::ENEMY,true);
     if(ev.sortPhaseStarted) {
         const char* names[]={"","INSPECTION","RECALIBRATION","INCINERATION"};
-        pushBanner(names[ev.sortPhaseStarted],ev.sortPhaseStarted==1?"UNIT ?  SORTER  PURPOSE: JUDGE":ev.sortPhaseStarted==2?"REJECT. RETURN TO LINE.":"FLOOR RELEASE - GET TO THE RAILS",{1.f,.5f,.2f},3.5f);
+        if(ev.sortPhaseStarted==1)pushBanner(names[1],storytext::sorterIntro,{1.f,.5f,.2f},2.6f);
+        else if(ev.sortPhaseStarted==2)ui.feed(storytext::sorterDamaged,{1.f,.5f,.2f});
+        else ui.toast("FLOOR RELEASE","GET TO THE RAILS",{1.f,.35f,.15f},2.2f);
         audio.play("anvil_final",128,SoundGroup::WORLD,true);
         if(ev.sortPhaseStarted==3) storyCollapseT=0;
         const auto& a=level.arenas[8];
@@ -137,6 +146,7 @@ inline void GameplayState::storySorterEvents(Enemy& e,const EnemyEvents& ev) {
 
 inline void GameplayState::gatherStoryFactory(std::vector<BoxInstance>& out) {
     using namespace rig;using namespace enemyfile;using glm::vec3;
+    if(wasteland()) {gatherWasteland(out);return;}
     const auto& S=level.story;const auto* unit=story::bodyModel();
     if(unit) {
         auto drawUnit=[&](vec3 p,float yaw,bool awake) {
@@ -149,7 +159,38 @@ inline void GameplayState::gatherStoryFactory(std::vector<BoxInstance>& out) {
         for(auto p:S.assemblyUnits)drawUnit(p,3.14159f,true);
         if(!storyPodsBroken)for(auto p:S.pods)drawUnit(p,0,false);
     }
+    gatherStoryAtmosphere(out);
     Rig r{out};
+    // Cyan floating lamps are a consistent visual vocabulary for optional
+    // records. Bloom comes from the emissive mesh, without a light per prop.
+    auto beacon=[&](vec3 p, float phase, bool read) {
+        if(glm::length(p-player.camera.position)>55.f)return;
+        p.y += .1f*std::sin(gameClock*2.f+phase);
+        float pulse=.8f+.2f*std::sin(gameClock*2.4f+phase);
+        vec3 glow=(read?vec3{.15f,.45f,.55f}:vec3{.25f,1.7f,2.f})*pulse;
+        auto xf=T(p)*RY(gameClock*.65f+phase);
+        r.box(xf,{0,0,0},{.13f,.22f,.13f},{.7f,.95f,1},glow);
+        for(float side:{-1.f,1.f}) {
+            r.box(xf,{side*.22f,0,0},{.035f,.3f,.035f},{.3f,.7f,.8f},glow*.55f);
+            r.box(xf,{side*.17f,-.15f,0},{.13f,.035f,.035f},{.3f,.7f,.8f},glow*.55f);
+        }
+    };
+    for(int i=0;i<(int)S.wrecks.size();++i)
+        beacon(S.wrecks[i].pos+vec3{0,1.95f,0},i*.8f,(storyLogsSeen>>i)&1u);
+    for(int i=0;i<(int)S.terminals.size();++i)
+        beacon(S.terminals[i].pos+vec3{0,2.65f,.25f},i*.6f,storyTerminal==i);
+    // The service deck's stripes and suspension travel with its real wall.
+    for(int id:{S.serviceLift,S.elevator})if(id>=0) {
+        auto b=level.walls[level.movers[id].wall].box;
+        float y=b.max.y+.025f;
+        for(float x:{b.min.x+.12f,b.max.x-.12f})
+            r.box(T({x,y,(b.min.z+b.max.z)*.5f}),{0,0,0},{.1f,.035f,b.max.z-b.min.z-.2f},{.2f,.7f,.8f},{.1f,.7f,.9f});
+        for(int k=0;k<6;++k) {
+            float x=glm::mix(b.min.x+.25f,b.max.x-.25f,k/5.f);
+            for(float z:{b.min.z+.14f,b.max.z-.14f})
+                r.box(T({x,y,z}),{0,0,0},{.25f,.04f,.2f},{.85f,.65f,.1f});
+        }
+    }
     for(int w:S.podGlass) {
         auto b=level.walls[w].box;if(b.max.y< -100)continue;
         vec3 c=(b.min+b.max)*.5f;
@@ -184,18 +225,24 @@ inline void GameplayState::gatherStoryFactory(std::vector<BoxInstance>& out) {
     }
     for(const auto& e:enemies)if(e.alive&&e.type==EnemyType::SORTER) {
         crane(e.position);
-        vec3 col=e.attack==AttackKind::SORT_GRAB?vec3{2}:e.attack==AttackKind::SORT_STAMP?vec3{2,.12f,.05f}:abGoldTell({2,1.2f,.15f});
+        const float top=level.arenas[8].playerStart.y+15.f;
         if(e.telegraphTimer>0 && (e.attack==AttackKind::SORT_GRAB||e.attack==AttackKind::SORT_STAMP)) {
-            float R=e.attack==AttackKind::SORT_GRAB?Enemy::SORT_GRAB_R:Enemy::SORT_STAMP_R;
-            for(int k=0;k<48;++k) {float a=k*6.283185f/48;
-                r.box(T(e.sortAim+vec3{std::cos(a)*R,.07f,std::sin(a)*R})*RY(-a),{0,0,0},{.3f,.08f,.13f},col,col);
-            }
-            // The claw/press reaches the marked point, so its white parry tell is at the player's height.
-            float h=e.attack==AttackKind::SORT_STAMP?5.f*(1-e.telegraphProgress())+.5f:1.4f;
-            r.box(T(e.sortAim+vec3{0,h,0}),{0,0,0},e.attack==AttackKind::SORT_STAMP?vec3{2.6f,.45f,2}:vec3{1.2f,.3f,1},{.24f,.27f,.29f},col*.3f);
+            bool stamp=e.attack==AttackKind::SORT_STAMP;
+            vec3 col=stamp?(e.sortLocked?vec3{2.f,.13f,.04f}:vec3{1.5f,.75f,.1f}):vec3{1.7f};
+            sorterrig::warning(r,e.sortAim,stamp?Enemy::SORT_STAMP_R:Enemy::SORT_GRAB_R,col,stamp);
+            if(stamp) {
+                float raised=glm::clamp(top-e.sortAim.y-2.f,1.f,Enemy::SORT_PRESS_UP);
+                sorterrig::press(r,e.sortAim,top,Enemy::sortPressHeight(e.telegraphTimer,-1.f,raised),col);
+            } else sorterrig::claw(r,e,e.sortAim,glm::clamp(1.f-e.telegraphTimer/.25f,0.f,1.f));
+        }
+        if(e.sortImpactT>=0) {
+            if(e.sortImpactKind==AttackKind::SORT_STAMP) {
+                float raised=glm::clamp(top-e.sortImpactAt.y-2.f,1.f,Enemy::SORT_PRESS_UP);
+                sorterrig::press(r,e.sortImpactAt,top,Enemy::sortPressHeight(0,e.sortImpactT,raised),{.5f,.2f,.05f});
+            } else sorterrig::claw(r,e,e.sortImpactAt,1.f-e.sortImpactT/Enemy::SORT_IMPACT);
         }
         if(e.sortScan>0) {
-            vec3 from=e.position+vec3{0,3,0};float a=e.sortScanYaw+(1.6f-e.sortScan)*.72f;
+            vec3 from=e.position+vec3{0,3,0};float a=e.sortScanYaw+(1.6f-e.sortScan)*(e.sortPhase==3?1.1f:.9f);
             vec3 to=from+glm::normalize(vec3{std::sin(a),e.sortScanSlope,std::cos(a)})*55.f;
             vec3 d=to-from;float len=glm::length(d);vec3 dir=d/len;
             for(const auto& w:level.walls){float hit=rayBoxHit(from,dir,w.box);if(hit>.05f)len=std::min(len,hit);}
@@ -214,6 +261,11 @@ inline void GameplayState::gatherStoryFactory(std::vector<BoxInstance>& out) {
 
 inline void GameplayState::gatherStoryProjectile(std::vector<BoxInstance>& out,const Projectile& shot,glm::vec3 at,float spin) {
     using namespace rig;using namespace enemyfile;
+    if(shot.ownerType==(int)EnemyType::BALLAST) {
+        Rig r{out};auto root=T(at)*RY(spin*.3f)*RX(spin);
+        r.box(root,{0,0,0},{1.05f,.65f,.9f},{.3f,.27f,.21f},shot.parried?glm::vec3{.9f,.65f,.25f}:glm::vec3{.13f,.08f,.03f});
+        r.box(root,{0,.34f,0},{.95f,.06f,.75f},{.67f,.56f,.3f});return;
+    }
     glm::mat4 root=T(at)*RY(spin*.3f)*RX(spin)*S(glm::vec3{shot.parried?1.25f:1.f})*T({0,-.9f,0});
     if(const auto* m=story::bodyModel()) {
         FilePose pose=story::sittingPose(.6f);pose.chan[C_EYE]=glm::vec3{0};pose.chan[C_CORE]=shot.parried?glm::vec3{1,.7f,.1f}:glm::vec3{0};

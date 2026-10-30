@@ -39,6 +39,7 @@ struct Profile {
 
 inline Profile profileOf(EnemyType t) {
     switch (t) {
+        case EnemyType::BALLAST: return {0.f,Vowel::NONE,0,1.f,Body::GRIND,72.f,.9f};
         case EnemyType::SORTER: return {49.f,Vowel::OO,6,.75f,Body::HYDRAULIC,85.f,1.f};
         case EnemyType::HUSK:         return {130.f, Vowel::OH,   3, 1.00f, Body::SERVO,      420.f, 0.30f};
         case EnemyType::RIPPER:       return {260.f, Vowel::AH,   2, 1.20f, Body::SKITTER,   1800.f, 0.15f};
@@ -311,6 +312,10 @@ inline Buf tellV(EnemyType t, AttackKind a, const Profile& p, Rng& r) {
     const float d = tellDur(t, a), f = p.f0 > 0.f ? p.f0 : 200.f;
     Buf out(N(d), 0.f);
     switch (a) {
+        case AttackKind::BALL_GRADE: add(out,grind(d,32.f,260.f,r));add(out,siren(d,270.f,580.f),.55f);break;
+        case AttackKind::BALL_GUST: add(out,vent(d,600.f,r,.05f,.1f));add(out,servo(d,90.f,800.f,r,.02f,.1f),.7f);break;
+        case AttackKind::BALL_ANCHOR: add(out,servo(d,240.f,1100.f,r,.01f,.08f));add(out,click(1900.f,r),.8f);break;
+        case AttackKind::BALL_THROW: add(out,metal(d,130.f,r,10.f));add(out,grind(d,25.f,130.f,r),.6f);break;
         case AttackKind::SORT_GRAB: add(out,servo(d,180.f,950.f,r,.01f,.08f));add(out,click(1400.f,r),.7f);break;
         case AttackKind::SORT_STAMP: add(out,grind(d,22.f,220.f,r));add(out,thud(95.f,40.f,d),.8f);break;
         case AttackKind::SORT_SCAN: add(out,siren(d,500.f,1800.f));break;

@@ -5,18 +5,8 @@
 // =============================================================================
 
 inline bool GameplayState::projectToScreen(glm::vec3 p, const glm::mat4& view, const glm::mat4& proj, float& sx, float& sy) const {
-    glm::vec4 c = proj * view * glm::vec4(p, 1.f);
-    bool behind = c.w <= 0.01f;
-    glm::vec2 ndc = behind ? -glm::vec2(c) : glm::vec2(c) / c.w;
-    bool on = !behind && std::fabs(ndc.x) < 0.95f && std::fabs(ndc.y) < 0.9f;
-    if (!on) {
-        float m = std::max(std::fabs(ndc.x) / 0.92f, std::fabs(ndc.y) / 0.85f);
-        if (m < 1e-4f) { ndc = {0.f, -0.85f}; m = 1.f; }
-        ndc /= m;
-    }
-    sx = (ndc.x * 0.5f + 0.5f) * SCREEN_W;
-    sy = (1.f - (ndc.y * 0.5f + 0.5f)) * SCREEN_H;
-    return on;
+    const auto marker=projectWorldMarker(p,proj*view,SCREEN_W,SCREEN_H);
+    sx=marker.x;sy=marker.y;return marker.onScreen;
 }
 
 inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& proj) {
@@ -92,13 +82,23 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             accent = {0.35f, 0.85f, 1.f};
             if (here == 0 && level.conveyorOfWall(player.groundWall) >= 0 && player.onGround) { what = "GET OFF THE BELT"; accent = {1.f, 0.45f, 0.2f}; }
             else if (director.fighting()) {
-                snprintf(buf, sizeof(buf), "%s   HOSTILES %d", here == level.story.pitSection ? "THE SCRAP IS AWAKE" : level.arenas[director.arena].name, left);
+                if (director.hasGoal() && director.goal().kind == WaveGoal::HOLD)
+                    snprintf(buf,sizeof(buf),"%s   %.0f%%  %s",director.goal().label,director.goalProgress()*100.f,
+                             director.zoneContested?"CLEAR THE PAD":director.holding?"CONTACT SEATING":"STAND ON THE SERVICE PAD");
+                else if (director.hasGoal() && director.goal().kind == WaveGoal::EXTERNAL)
+                    snprintf(buf,sizeof(buf),"RELEASE TURBINE BRAKES   %d/3   HOSTILES %d",3-level.anchorsAlive(LevelData::ChainAnchor::BRAKE),left);
+                else snprintf(buf, sizeof(buf), "%s   HOSTILES %d", here == level.story.pitSection ? "THE SCRAP IS AWAKE" : level.arenas[director.arena].name, left);
                 what = nullptr; accent = {1.f, 0.45f, 0.2f};
+            }
+            else if(wasteland()) {
+                static const char* goals[]={"FOLLOW THE ROAD / THE TOWER AHEAD","THROUGH THE DEAD CONVOY","RESTORE THE WAY THROUGH THE RELAY","CROSS THE SPAN / SERVICE ROUTE BELOW","FIND THE LONGSHOT / CONTINUE NORTH","THROUGH THE SERVICE CHECKPOINT","BALLAST / KEEP CLEAR OF THE CUT","THE ROAD IS OPEN / THE TOWER AHEAD"};
+                what=goals[std::clamp(here,0,7)];
+                if(here==6&&storyBossDown)what="THE BARRIER IS OPEN";
             }
             else if (here == level.story.pitSection && !storyOwns(0)) what = "FIND SOMETHING TO FIGHT WITH";
             else if (here == level.story.pitSection) what = "CLIMB OUT";
             else if (here > level.story.pitSection && !storyOwns(2) && director.arena == here && director.phase == WaveDirector::Phase::APPROACH && player.position.z > 40.f) what = "TAKE THE LANCER";
-            else if(here==2)what="FOLLOW THE DUCTS";
+            else if(here==2)what=storyOwns(2)?"BOARD THE SERVICE LIFT / ASSEMBLY ABOVE":"FOLLOW THE DUCTS";
             else if(here==3)what="DESCEND TO THE PRODUCTION FLOOR";
             else if(here==4)what="READ THE RECORDS / CONTINUE WEST";
             else if(here==5)what="THROUGH THE PODS";
@@ -175,7 +175,8 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
                                    msBar ? boss->abPhase >= 5 : boss->type == EnemyType::ABSOLUTE ? boss->abPhase >= 2 :
                                    boss->type == EnemyType::LEVIATHAN ? boss->levPhase >= 2 :
                                    boss->type == EnemyType::PENITENT ? boss->scourging :
-                                   boss->type == EnemyType::WARDEN ? boss->wardenPhase >= 2 : boss->enraged);
+                                   boss->type == EnemyType::WARDEN ? boss->wardenPhase >= 2 : boss->enraged,
+                                   boss->type == EnemyType::BALLAST ? (boss->ballPhase>=2?glm::vec3{1.f,.42f,.14f}:glm::vec3{.95f,.69f,.3f}) : glm::vec3{-1.f});
         if (boss && boss->type == EnemyType::WARDEN) {   // its conduits, or the meltdown clock
             char wb[64];
             if (boss->wardenPhase == 1 && boss->conduitsLeft > 0)
@@ -261,6 +262,13 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             ui.renderMarker(sx, sy, on, {1.f, 0.6f, 0.2f}, buf);
         }
         // Objective markers: every standing conduit, and the zone while you're out of it
+        if (story() && director.fighting() && director.goal().kind == WaveGoal::EXTERNAL)
+            for(int id:level.story.turbineBrakes) {
+                const auto& brake=level.anchors[id];if(!brake.alive)continue;
+                float sx,sy;bool on=projectToScreen(brake.pos+glm::vec3{0,1.5f,0},view,proj,sx,sy);
+                snprintf(buf,sizeof(buf),"BRAKE %dM",(int)glm::length(brake.pos-player.position));
+                ui.renderMarker(sx,sy,on,{1.f,.7f,.2f},buf);
+            }
         if (director.fighting() && director.goal().kind == WaveGoal::CONDUITS)
             for (auto& e : enemies) {
                 if (!e.alive || e.type != EnemyType::CONDUIT) continue;
@@ -279,10 +287,14 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         // The last few enemies get markers so you never hunt for a straggler
         if (director.fighting() && !director.hasGoal() && director.queued() == 0 && alive > 0 && alive <= 3) {
             for (auto& e : enemies) {
-                if (!e.alive) continue;
-                float sx, sy;
-                bool on = projectToScreen(e.position + glm::vec3{0, e.height() + 0.8f, 0}, view, proj, sx, sy);
-                ui.renderMarker(sx, sy, on, {1.f, 0.3f, 0.25f}, "");
+                if (!e.targetable()) continue;
+                glm::vec3 feet=e.hasShown?e.shownPos:e.position;
+                glm::vec3 target=feet+glm::vec3{0,e.height()*.55f,0};
+                const auto marker=projectWorldMarker(target,proj*view,SCREEN_W,SCREEN_H);
+                bool covered=!marker.behind && markerBehindCover(player.camera.position,target,level.walls);
+                const char* height=feet.y>player.position.y+4.f?" / ABOVE":feet.y<player.position.y-4.f?" / BELOW":"";
+                snprintf(buf,sizeof(buf),"%s %dM%s%s",e.stats().name,(int)glm::length(target-player.camera.position),height,covered?" / BEHIND COVER":"");
+                ui.renderMarker(marker.x,marker.y,marker.onScreen,{1.f,.3f,.25f},buf,marker.behind);
             }
         }
     }
@@ -314,7 +326,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
     }
 
     if (playerDead && !victory) {   // (ENDLESS has no retry: a moment, then the run's score)
-        if (story()) snprintf(buf, sizeof(buf), "CHAPTER 1  THE CRADLE  -  %s", ar.name);
+        if (story()) snprintf(buf, sizeof(buf), "CHAPTER %d  %s  -  %s", level.story.chapter,level.story.title,ar.name);
         else if (fast()) snprintf(buf, sizeof(buf), "ROOM %d/%d  %s", director.arena + 1, nArenas, ar.name);
         else if (endless()) snprintf(buf, sizeof(buf), "%s - WAVE %d", ar.name, wavesCleared + 1);
         else if (zen) snprintf(buf, sizeof(buf), "ENCORE  %s", ar.name);

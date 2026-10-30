@@ -63,3 +63,11 @@ tests/export_guns
 tests/test_gun_migration
 
 tests/test_story
+
+tests/test_render
+
+tests/test_wasteland
+
+tests/test_dev
+
+tests/test_story_overhaul

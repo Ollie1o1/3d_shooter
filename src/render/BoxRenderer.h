@@ -23,7 +23,7 @@ public:
     ShaderProgram shader;
     GLuint  vao = 0, vbo = 0, ebo = 0, instanceVBO = 0;
     GLsizei indexCount = 0;
-    static constexpr int MAX_INSTANCES = 16384;   // (STORY: a belt of bodies, ~250 parts each up close)
+    static constexpr size_t INITIAL_INSTANCES = 16384;
 
     BoxRenderer() {
         shader.loadFiles("src/shaders/box_inst.vert", "src/shaders/box_inst.frag");
@@ -62,7 +62,7 @@ public:
 
         // Per-instance attributes: mat4 at 4-7, colour at 8, emissive at 9
         glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
-        glBufferData(GL_ARRAY_BUFFER, MAX_INSTANCES * sizeof(BoxInstance), nullptr, GL_DYNAMIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, instanceCapacity * sizeof(BoxInstance), nullptr, GL_DYNAMIC_DRAW);
         instanceAttribs(0);
         glBindVertexArray(0);
     }
@@ -97,8 +97,15 @@ public:
     }
 
     void draw(const std::vector<BoxInstance>& boxes) {
-        int count = std::min((int)boxes.size(), MAX_INSTANCES);
+        int count = (int)boxes.size();
         if (count == 0) return;
+        // Story dressing can exceed the initial allocation. Never discard the
+        // tail: enemies, held weapons and pickups are gathered after the bodies.
+        if(boxes.size()>instanceCapacity) {
+            while(instanceCapacity<boxes.size())instanceCapacity*=2;
+            glBindBuffer(GL_ARRAY_BUFFER,instanceVBO);
+            glBufferData(GL_ARRAY_BUFFER,instanceCapacity*sizeof(BoxInstance),nullptr,GL_DYNAMIC_DRAW);
+        }
         bool meshes = false;
         for (int i = 0; i < count && !meshes; ++i) meshes = boxes[i].mesh > 0.5f;
         shader.use();
@@ -136,6 +143,7 @@ public:
     }
 
 private:
+    size_t instanceCapacity = INITIAL_INSTANCES;
     struct Gpu { GLuint vao = 0, vbo = 0, ebo = 0; GLsizei count = 0; };
     std::vector<Gpu> gpu;                 // [id - 1], uploaded the first time each mesh is drawn
     std::vector<BoxInstance> sorted;

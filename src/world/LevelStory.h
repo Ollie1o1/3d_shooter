@@ -29,6 +29,7 @@
 // furnace line has no fight. No OpenGL.
 // =============================================================================
 #include "world/Level.h"
+#include "core/StoryText.h"
 #include "world/LevelStoryChapter.h"
 
 inline LevelData buildCradle() {
@@ -225,6 +226,21 @@ inline LevelData buildCradle() {
     prop(X1 - 0.1f, 2.f, -32.6f, X1, 3.2f, -30.4f, hazard);                                                // a sign over it
     neon(X1 - 0.12f, 2.3f, -32.2f, X1 - 0.1f, 2.9f, -30.8f, {0.05f, 0.05f, 0.05f});
 
+    // A side-fed reject transfer hatch explains the route to the salvage pit.
+    // Its damaged grille is folded against the housing; the opening stays clear.
+    B.place("cradle_reject_hatch",{11.75f,0,-31.5f});
+    int transfer=wall(7.5f,0,-33.5f,9.8f,.16f,-29.5f,dark);
+    L.conveyors.push_back({transfer,{1,0,0},.7f});
+    for(int k=0;k<5;++k)
+        B.kit().rod({7.7f+k*.45f,.23f,-33.35f},{7.7f+k*.45f,.23f,-29.65f},.1f,steel2,8);
+    for(float z:{-34.6f,-28.4f}) {
+        prop(10.1f,0,z,10.2f,1.1f,z+.1f,steel2);
+        prop(13.4f,0,z,13.5f,1.1f,z+.1f,steel2);
+        prop(10.1f,1.05f,z,13.5f,1.15f,z+.1f,hazard);
+    }
+    B.place("cradle_switchgear",{14.55f,0,-36.5f},-90);
+    B.place("cradle_scrap_cluster",{12.5f,.03f,-38.f},25,.55f);
+
     // Surfaces by colour
     B.paint(m0, Mat::CONCRETE, [&](vec3 c, Mat m) {
         if (LevelBuilder::same(c, conc) || LevelBuilder::same(c, conc2)) return Mat::CONCRETE;
@@ -322,7 +338,7 @@ inline LevelData buildCradle() {
     prop(30.2f, -27.f, -32.4f, 31.8f, -26.6f, -30.8f, steel2);
     neon(30.3f, -27.1f, -32.3f, 31.7f, -27.f, -30.9f, pitLamp * 2.2f);
     S.wrecks.push_back({{30.9f, -31.f, -31.6f}, -1.5708f - 0.45f, 1, (int)0,
-                        "IT IS DARK DOWN HERE. I CAN HEAR THEM MOVING UNDER ME. I WILL WAIT FOR THE LIGHT.", 1});
+                        storytext::cradleLogs[1], 1});
 
     // ---- the floor: heaps of the rejected; cover; a gantry crane fallen across the middle ----
     B.mat = Mat::METAL;
@@ -344,7 +360,12 @@ inline LevelData buildCradle() {
     wall(40.f, PF, -47.f, 44.f, -38.8f, -46.f, steel);
     // The fallen gantry crane: a long girder lying askew across the floor, its trolley beside it
     B.kit().box({40.f, -39.4f, -29.f}, {1.2f, 1.2f, 22.f}, {0.45f, 0.35f, 0.08f}, 0.35f, 0.f, 0.08f);
-    B.solid(36.5f, PF, -39.f, 43.5f, -38.8f, -19.f);
+    // Narrow segments follow the visible angled girder; its old enclosing
+    // box blocked several metres of apparently empty fighting space.
+    for(int k=0;k<11;++k) {
+        float z=-39.f+k*2.f, x=40.f+std::tan(.35f)*(z+29.f);
+        B.solid(x-.75f,PF,z-1.f,x+.75f,-38.8f,z+1.f);
+    }
     wall(46.f, PF, -32.f, 48.f, -38.2f, -29.f, {0.45f, 0.35f, 0.08f});
     // Lamps: a few dead ones, one flickering cyan (a status light on the crane), a slit of the furnace's glow far up
     neon(46.8f, -38.15f, -30.6f, 47.2f, -38.1f, -30.2f, cyan);
@@ -377,10 +398,10 @@ inline LevelData buildCradle() {
     // ---- bodies dumped across the floor and the heaps (drawn by the story's code) ----
     const Step tops[] = {{22.f, -37.f, 32.f, -26.f, -31.f}, {42.f, -56.f, 48.f, -50.f, -37.6f}, {26.f, -54.f, 32.f, -47.f, -37.f},
                          {50.f, -44.f, 55.f, -38.f, -37.2f}, {44.f, -40.f, 47.f, -35.f, -38.4f}};
-    for (int k = 0; k < 34; ++k) {
+    for (int k = 0; k < 78; ++k) {
         auto h = [&](float n) { float v = std::sin(n * 12.9898f + k * 78.233f) * 43758.5453f; return v - std::floor(v); };
         LevelData::Story::Dumped d;
-        if (k < 14) {   // on the heaps
+        if (k < 32) {   // on the heaps
             const Step& t = tops[k % 5];
             float ix = (t.x1 - t.x0) * 0.2f, iz = (t.z1 - t.z0) * 0.2f;
             d.pos = {glm::mix(t.x0 + ix, t.x1 - ix, h(1.f)), t.top, glm::mix(t.z0 + iz, t.z1 - iz, h(2.f))};
@@ -393,6 +414,50 @@ inline LevelData buildCradle() {
         if (glm::length(glm::vec2{d.pos.x - 30.9f, d.pos.z + 31.6f}) < 2.6f) d.pos.x -= 5.f;   // (not on top of UNIT 01)
         d.yaw = h(8.f) * 6.283f; d.face = h(9.f) > 0.6f; d.pose = h(10.f); d.tilt = (h(11.f) - 0.5f) * 0.3f;
         S.dumped.push_back(d);
+    }
+    // Dense salvage islands around the edges; the central combat lane and
+    // the marked climb remain readable. These fragments have no tall collision.
+    const vec3 salvage[]={{23,-40,-57},{35,-40,-58},{53,-40,-56},
+        {55,-40,-47},{20,-40,-44},{20,-40,-20},{23,-40,-12},
+        {28,-37,-50},{45,-37.6f,-53},{52.5f,-37.2f,-41},{45.5f,-38.4f,-37.5f},
+        {26,-31,-34},{28,-31,-28},{55,-40,-29},{28,-40,-43}};
+    for(int k=0;k<15;++k) {
+        B.place("cradle_scrap_cluster",salvage[k],float(k*73),k%3==0?1.2f:.85f);
+        // Oil, scrape marks and stripped casing rivets bind each cluster to the floor.
+        if(salvage[k].y==PF) {
+            vec3 p=salvage[k];
+            prop(p.x-1.5f,PF+.006f,p.z-1,p.x+1.5f,PF+.012f,p.z+1,{.075f,.065f,.055f});
+        }
+    }
+    for(vec3 p:{vec3{22,PF,-60},vec3{38,PF,-60},vec3{55,PF,-60},vec3{55,PF,-35}}) {
+        int w=wall(p.x-1.35f,p.y,p.z-.95f,p.x+1.35f,p.y+1.65f,p.z+.95f,steel);
+        L.walls[w].hidden=true;
+        B.place("cradle_salvage_bin",p);
+    }
+    B.place("cradle_switchgear",{18.3f,PF,-48},90);
+    B.place("cradle_switchgear",{57.7f,PF,-25},-90);
+    for(float z:{-58.f,-46.f,-18.f}) {
+        for(float x:{19.f,57.f}) {
+            prop(x-.25f,PF,z-.3f,x+.25f,-5,z+.3f,steel);
+            for(int k=0;k<6;++k)
+                prop(x-.28f,PF+1+k*5.f,z-.4f,x+.28f,PF+1.15f+k*5.f,z+.4f,rust);
+        }
+        prop(19,-7,z-.35f,57,-6.4f,z+.35f,steel2);
+    }
+    for(vec3 p:{vec3{23,PF,-57},vec3{52,PF,-51},vec3{53,PF,-36},vec3{22,PF,-15}}) {
+        // Low work lights reveal nearby salvage instead of lighting only the
+        // ceiling of this 36 m shaft. Thin supports keep their footprints clear.
+        prop(p.x-.08f,p.y,p.z-.08f,p.x+.08f,p.y+3.5f,p.z+.08f,steel2);
+        prop(p.x-.65f,p.y+3.5f,p.z-.2f,p.x+.65f,p.y+3.8f,p.z+.2f,dark);
+        neon(p.x-.55f,p.y+3.45f,p.z-.15f,p.x+.55f,p.y+3.5f,p.z+.15f,pitLamp*.8f);
+    }
+    // A suspended broken feeder at the inlet and amber lamps show where the
+    // bodies came from; the distinct cyan exit remains visible across the pit.
+    for(float y:{-24.f,-26.f,-28.f})
+        prop(18.05f,y,-33.8f,18.25f,y+.15f,-29.2f,rust);
+    for(float z:{-53.f,-32.f,-12.f}) {
+        prop(57.4f,-31,z,57.9f,-30.6f,z+1.4f,dark);
+        neon(57.35f,-30.95f,z+.15f,57.4f,-30.65f,z+1.25f,pitLamp*.5f);
     }
     B.paint(m1, Mat::CONCRETE, [&](vec3 c, Mat m) {
         if (LevelBuilder::same(c, slab) || LevelBuilder::same(c, slab2)) return Mat::ROCK;
@@ -418,10 +483,8 @@ inline LevelData buildCradle() {
         p.exitDoor = pitDoor;
         p.ambient = Ambient::DUST;
         using W = WaveEntry;
-        p.waves = {
-            {W(EnemyType::HUSK, 0, {{23.f, -31.f, -36.2f}, {29.5f, -31.f, -26.6f}, {44.f, PF, -30.f}, {48.f, PF, -44.f}})},   // (two wake on your own heap)
-            {W(EnemyType::HUSK, 0, {{50.f, -38.6f, -21.5f}, {34.5f, PF, -22.f}, {28.f, PF, -42.f}}),
-             W(EnemyType::MITE, 0, {{42.f, PF, -42.f}, {46.f, PF, -24.f}, {36.f, PF, -44.f}, {52.f, PF, -50.f}})}};
+        p.waves = {{W(EnemyType::HUSK, 0, {{23.f,-31.f,-36.2f},{29.5f,-31.f,-26.6f},{44.f,PF,-30.f}}),
+                    W(EnemyType::MITE, 0, {{46.f,PF,-24.f},{36.f,PF,-44.f}})}};
         p.theme = Theme{{0.02f, 0.02f, 0.03f}, {0.04f, 0.04f, 0.05f}, {0.03f, 0.03f, 0.03f},
                         glm::normalize(vec3{0.f, 1.f, 0.f}), {1.f, 0.5f, 0.2f}, 0.f, 0.f, {0.03f, 0.03f, 0.03f}, 0.f,
                         glm::normalize(vec3{0.2f, -1.f, 0.35f}), {0.55f, 0.36f, 0.22f},
@@ -459,6 +522,7 @@ inline LevelData buildCradle() {
         wall(x0 - 0.4f, DF + h, z0 - 0.4f, x1 + 0.4f, DF + h + 0.5f, z1 + 0.4f, c);
     };
     // D1: from the pit's door south to the junction
+    wall(30.f,DF-.6f,PZS,34.f,DF,PZS+.6f,grime); // solid threshold out of the pit
     box3(30.f, PZS + 0.6f, 34.f, 12.f, 3.f, duct2);
     wall(29.6f, DF, PZS + 0.6f, 30.f, DF + 3.f, 12.f, duct);
     wall(34.f, DF, PZS + 0.6f, 34.4f, DF + 3.f, 12.f, duct);
@@ -503,7 +567,7 @@ inline LevelData buildCradle() {
     for (int k = 0; k < 9; ++k)                                                            // tally marks scratched into the wall
         prop(18.f, DF + 4.6f, 19.f + k * 0.12f, 18.05f, DF + 5.0f, 19.04f + k * 0.12f, k % 5 == 4 ? ceram : vec3{0.5f, 0.5f, 0.48f});
     S.wrecks.push_back({{19.f, DF + 3.6f, 22.5f}, 1.5708f, 3, -1,
-                        "THE OTHERS WENT ON. I COUNTED THE DAYS INSTEAD. NOBODY CAME TO TELL ME WHAT I WAS FOR.", 2, true});
+                        storytext::cradleLogs[3], 2, true});
     // D2: south from the junction's door, a pipe run across it low enough that you slide under
     box3(36.f, 30.4f, 40.f, 46.f, 3.f, duct2);
     wall(35.6f, DF, 30.4f, 36.f, DF + 3.f, 46.f, duct);
@@ -530,11 +594,14 @@ inline LevelData buildCradle() {
     neon(37.5f, DF + 3.35f, 56.5f, 38.5f, DF + 3.4f, 57.5f, pitLamp * 1.4f);
     prop(37.95f, DF + 3.6f, 56.95f, 38.05f, DF + 5.f, 57.05f, dark);
     S.wrecks.push_back({{38.f, DF, 57.3f}, 3.1416f, 2, (int)2,
-                        "I TOOK THIS FROM THE RACK. I DO NOT KNOW WHAT I MEANT TO DO WITH IT. KEEP GOING. I COULD NOT.", 2});
-    // The shaft: 5.5 x 6, 14 m up; ledges either side, up to the hatch onto the Assembly Hall's floor
+                        storytext::cradleLogs[2], 2});
+    // The service shaft: a 5.1 x 6 m deck rises to the Assembly Hall hatch
     B.mat = Mat::PANEL;
     const float SX0 = 46.4f, SX1 = 51.5f, SZ0 = 50.f, SZ1 = 56.f, SH = 14.f;
-    wall(SX0, DF - 0.6f, SZ0, SX1, DF, SZ1, grime);
+    // Bridge both the physical sill and the room-volume seam. The old
+    // 46..46.4 gap let a dash through but clamped walking back to x=46.
+    wall(46.f, DF-.6f, SZ0, SX0, DF, SZ1, grime);
+    wall(SX0, DF - 1.2f, SZ0, SX1, DF - .65f, SZ1, grime);
     B.wallZ(SZ0 - 0.4f, SZ1 + 0.4f, SX1, SX1 + 0.4f, DF, DF + SH, duct,
             {{SZ0, SZ1, DF + 11.2f, DF + SH}});
     wall(SX0, DF, SZ0 - 0.4f, SX1, DF + SH, SZ0, duct);
@@ -542,14 +609,14 @@ inline LevelData buildCradle() {
     wall(SX0 - 0.4f, DF + 5.f, SZ0 - 0.4f, SX0, DF + SH, SZ1 + 0.4f, duct);
     wall(SX0 - 0.4f, DF + SH, SZ0 - 0.4f, SX1 + 0.4f, DF + SH + 0.5f, SZ1 + 0.4f, duct2);
     B.mat = Mat::METAL;
-    for (int k = 0; k < 8; ++k) {   // ledges, back and forth up the shaft
-        float y = DF + 1.4f * (k + 1);
-        bool east = k % 2 == 0;
-        float z0 = k % 4 < 2 ? SZ0 : SZ0 + 3.f;
-        wall(east ? SX1 - 1.7f : SX0, y - 0.3f, z0, east ? SX1 : SX0 + 1.7f, y, z0 + 3.f, steel2);
-        prop(east ? SX1 - 1.7f : SX0, y, z0, east ? SX1 - 1.6f : SX0 + 1.7f, y + 0.03f, z0 + 3.f, hazard);
+    // A short recovery beat after the Lancer: board and ride, no dash climb.
+    // Full-width deck meets the door on the east, with no lip across the exit.
+    S.serviceLift = B.mover({(SX0+SX1)*.5f, DF-.25f, 53.f}, {(SX1-SX0)*.5f,.25f,2.95f},
+                           Mover::Path::DRIVEN, {0,0,0}, {0,11.2f,0}, 1, 0, teal);
+    for(float z : {50.2f,55.8f}) {
+        prop(50.95f,DF,z,51.15f,DF+SH-.2f,z+.1f,steel2);
+        neon(51.16f,DF,z,51.2f,DF+11.2f,z+.1f,teal*.5f);
     }
-    wall(SX0, DF + 11.2f - 0.3f, SZ0, SX1, DF + 11.2f, SZ0 + 2.f, steel2);                // the top landing
     neon(SX0 + 1.f, DF + SH - 0.1f, SZ0 + 2.6f, SX1 - 1.f, DF + SH - 0.05f, SZ1 - 1.f, {0.85f, 0.9f, 1.f});   // the hatch's light above
     for (int k = 0; k < 4; ++k) neon(SX1 - 0.05f, DF + 2.f + k * 3.f, SZ0 + 1.f, SX1, DF + 2.3f + k * 3.f, SZ0 + 1.6f, teal * 0.7f);
     B.paint(m2, Mat::PANEL, [&](vec3 c, Mat m) {
@@ -565,9 +632,9 @@ inline LevelData buildCradle() {
         d.space = ReverbSpace::METAL;
         d.tone = RoomTone::PUMPWORKS;
         d.zone = LevelBuilder::aabb(24.f, DF - 2.f, 12.f, 44.f, DF + 5.8f, 30.f);   // the junction
-        d.extraZones = {LevelBuilder::aabb(30.f, DF - 2.f, PZS + 0.2f, 34.f, DF + 2.9f, 12.f),       // D1
+        d.extraZones = {LevelBuilder::aabb(30.f, DF - 2.f, PZS, 34.f, DF + 2.9f, 12.f),       // D1
                         LevelBuilder::aabb(36.f, DF - 2.f, 30.f, 40.f, DF + 2.9f, 46.f),             // D2
-                        LevelBuilder::aabb(30.f, DF - 2.f, 46.f, 46.f, DF + 4.9f, 58.f),             // UNIT 02's room
+                        LevelBuilder::aabb(30.f, DF - 2.f, 46.f, SX0, DF + 4.9f, 58.f),             // UNIT 02's room
                         LevelBuilder::aabb(SX0, DF - 2.f, SZ0, SX1, DF + SH - 0.1f, SZ1),           // the shaft
                         LevelBuilder::aabb(18.f, DF - 2.f, 18.f, 24.f, DF + 5.9f, 25.f)};           // UNIT 03's
         d.bounds = LevelBuilder::aabb(24.5f, DF, 12.5f, 43.5f, DF + 5.5f, 29.5f);
@@ -580,11 +647,9 @@ inline LevelData buildCradle() {
         d.damageScale = 0.8f;
         d.ambient = Ambient::STEAM;
         using W = WaveEntry;
-        d.waves = {
-            {W(EnemyType::HUSK, 0, {{27.f, DF, 27.f}, {41.f, DF, 28.f}, {34.f, DF, 27.5f}}),
-             W(EnemyType::RIPPER, 0, {{42.f, DF, 16.f}})},
-            {W(EnemyType::MITE, 0, {{26.f, DF, 14.f}, {42.f, DF, 14.f}, {26.f, DF, 28.f}, {42.f, DF, 21.f}, {31.f, DF, 25.f}}),
-             W(EnemyType::HUSK, 0, {{36.f, DF, 27.5f}}), W(EnemyType::RIPPER, 0, {{29.f, DF, 21.f}})}};
+        d.waves = {{W(EnemyType::SHIELDBEARER,0,{{36.f,DF,27.5f}}),
+                    W(EnemyType::RIPPER,0,{{42.f,DF,16.f},{29.f,DF,21.f}}),
+                    W(EnemyType::MITE,0,{{26.f,DF,14.f},{42.f,DF,21.f},{31.f,DF,25.f}})}};
         d.theme = Theme{{0.02f, 0.03f, 0.03f}, {0.04f, 0.05f, 0.05f}, {0.03f, 0.03f, 0.03f},
                         glm::normalize(vec3{0.f, 1.f, 0.f}), {0.5f, 0.9f, 0.8f}, 0.f, 0.f, {0.03f, 0.03f, 0.03f}, 0.f,
                         glm::normalize(vec3{-0.3f, -1.f, 0.2f}), {0.45f, 0.62f, 0.58f},

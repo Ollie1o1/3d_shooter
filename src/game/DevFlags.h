@@ -14,6 +14,7 @@
 // Set from the command line (--arena N) or the web URL (?arena=N) to start a
 // run at a later arena — handy for testing and for showing off the boss.
 inline int g_startArena = 0;
+inline int g_storyChapter = 1;
 inline int g_startWave  = 0;   // --wave N / ?wave=N (with --arena): skip to that wave
 // --god / ?god: the player takes no damage (for recording footage)
 inline bool g_godMode = false;

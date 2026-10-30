@@ -14,6 +14,17 @@ struct AABB {
     glm::vec3 min, max; // min = bottom-left-front, max = top-right-back
 };
 
+// Ray vs AABB: distance along the ray to the first hit, or -1 on a miss.
+inline float rayBoxHit(glm::vec3 o, glm::vec3 d, const AABB& b) {
+    glm::vec3 invD{1.f/(d.x+1e-9f), 1.f/(d.y+1e-9f), 1.f/(d.z+1e-9f)};
+    glm::vec3 t0 = (b.min-o)*invD, t1 = (b.max-o)*invD;
+    glm::vec3 tMin = glm::min(t0,t1), tMax = glm::max(t0,t1);
+    float tEnter = std::max({tMin.x,tMin.y,tMin.z});
+    float tExit  = std::min({tMax.x,tMax.y,tMax.z});
+    if (tEnter > tExit || tExit < 0.f) return -1.f;
+    return tEnter > 0.f ? tEnter : tExit;
+}
+
 // Surface material: picks the texture a wall is drawn with (GameplayState).
 // The second row are Act I's own: one look per arena (WorldGeometry.h maps
 // each to the texture of its sides and of its top).

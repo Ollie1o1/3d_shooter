@@ -100,6 +100,8 @@ inline void GameplayState::punch(int boostable) {
                                                      e.sweepReach(), player.position, player.height, e.floorY);
             else inReach = flat < (e.attack == AttackKind::PSLAM ? PenitentHazards::SLAM_RADIUS : PenitentHazards::STOMP_RADIUS);
         }
+        if (e.type == EnemyType::BALLAST)
+            inReach = glm::length(player.position-e.ballAim)<Enemy::BALL_ANCHOR_R+1.f;
         if (e.type == EnemyType::SORTER)
             inReach = glm::length(player.position-e.sortAim)<Enemy::SORT_GRAB_R+1.f;
         if (e.type == EnemyType::LEVIATHAN)   // its head coming down on you: punch it as it lands
@@ -240,8 +242,11 @@ inline void GameplayState::updateEnemies(float dt) {
         if (g_devOverlay.rfind("pose", 0) == 0 && e.type == EnemyType::SOVEREIGN) { devPose(e); continue; }
         if (g_devOverlay.rfind("penitent", 0) == 0 && e.type == EnemyType::PENITENT) { devPenitentPose(e); continue; }
         if (g_devOverlay == "thunder" && e.type == EnemyType::ABSOLUTE && e.abCur < 0) e.abForce = AB_THUNDER;   // dev: THUNDERCLAP, over and over
+        if(e.type==EnemyType::SORTER && g_devOverlay=="sorterpress" && e.sortStep==0)e.sortStep=1;
         if(e.type==EnemyType::SORTER && (g_devOverlay=="sorter2"||g_devOverlay=="sorter3") && e.health>e.maxHealth*.67f)
             e.health=e.maxHealth*(g_devOverlay=="sorter2"?.5f:.2f);
+        if(e.type==EnemyType::BALLAST && (g_devOverlay=="ballast2"||g_devOverlay=="ballast3") && e.health>e.maxHealth*.56f)
+            e.health=e.maxHealth*(g_devOverlay=="ballast2"?.4f:.16f);
         if (e.type == EnemyType::WARDEN && (g_devOverlay == "warden2" || g_devOverlay == "warden3") && e.health > e.maxHealth * 0.62f)
             e.health = e.maxHealth * (g_devOverlay == "warden2" ? 0.5f : 0.2f);   // dev: straight into its later phases
         if (e.type == EnemyType::LEVIATHAN && (g_devOverlay == "leviathan2" || g_devOverlay == "leviathan3") && e.health > e.maxHealth * 0.66f && e.levStage == Enemy::LevStage::FIGHT)
@@ -284,6 +289,7 @@ inline void GameplayState::updateEnemies(float dt) {
                 pr->ownerType = (int)enemies[i].type;
                 pr->parryDamage = ev.shotParry;
             }
+        if (e.type == EnemyType::BALLAST) ballastEvents(e,ev);
         if (story() && e.type == EnemyType::SORTER) storySorterEvents(e,ev);
         if (ev.beamOn && e.type != EnemyType::SORTER) {   // a SERAPH's beam: 30/s while it touches you, sparks (or steam) where it lands
             AABB pb{player.position + glm::vec3{-player.radius, 0.f, -player.radius},
@@ -562,7 +568,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
         ui.feed("FRIENDLY FIRE  +10 XP", {1.f, 0.5f, 0.35f});
     }
 
-    // Drops. Health orbs are common and small; potions (18%) and XP shards
+    // Drops. Health orbs are common and small; potions (6%) and XP shards
     // (10%) are the rare ones, and get a loot beam so you notice them.
     glm::vec3 c = e.position + glm::vec3{0, std::min(e.height() * 0.5f, 1.5f), 0};
     float floorY = groundHeightAt(e.position.x, e.position.z, e.position.y + 0.5f);
@@ -572,10 +578,10 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     };
     switch (e.type) {
         case EnemyType::BRUTE:  for (int i = 0; i < 3; ++i) { drop(PickupKind::ORB); }
-                                if (rand() % 100 < 50) drop(PickupKind::POTION);
+                                if (rand() % 100 < 20) drop(PickupKind::POTION);
                                 break;
         case EnemyType::MITE:   if (rand() % 10 == 0) drop(PickupKind::ORB); break;
-        case EnemyType::WARDEN: case EnemyType::SOVEREIGN: case EnemyType::LEVIATHAN: case EnemyType::ABSOLUTE: case EnemyType::PACEMAKER: break;
+        case EnemyType::WARDEN: case EnemyType::SOVEREIGN: case EnemyType::LEVIATHAN: case EnemyType::ABSOLUTE: case EnemyType::PACEMAKER: case EnemyType::BALLAST: case EnemyType::SORTER: break;
         case EnemyType::COURIER: case EnemyType::BULWARK: case EnemyType::CANTOR:
         case EnemyType::HARRIER: case EnemyType::PLUMB: case EnemyType::FOREMAN:   // the room's prize: health to carry on
             drop(PickupKind::POTION); drop(PickupKind::ORB); drop(PickupKind::ORB); drop(PickupKind::XP); break;
@@ -584,7 +590,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
         case EnemyType::ANCHOR: drop(PickupKind::ORB); drop(PickupKind::ORB); break;
         default:
             if (rand() % 100 < (int)(20 * tune().drops)) drop(PickupKind::ORB);
-            if (rand() % 100 < (int)(18 * tune().drops)) drop(PickupKind::POTION);
+            if (rand() % 100 < (int)(6 * tune().drops)) drop(PickupKind::POTION);
             if (rand() % 100 < 10) drop(PickupKind::XP);
             break;
     }
@@ -620,6 +626,10 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
                 records.save();
                 ui.feed("ACT II UNLOCKED - BENEATH THE ECLIPSE", {0.35f, 0.95f, 0.9f});
             }
+        } else if (e.type == EnemyType::BALLAST) {
+            storyBossDown=true;ballastHazards.clear();
+            for(auto& shot:projSystem.pool)if(!shot.isPlayer)shot.alive=false;
+            pushBanner(storytext::ballastDeath,"",{.85f,.8f,.7f},6.f);
         } else if (e.type == EnemyType::PENITENT) {
             pen.clear();   // nothing it threw outlives it
             pushBanner("THE PENITENT FALLS SILENT", "", {1.f, 0.7f, 0.3f}, 3.f);
@@ -637,7 +647,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
         } else if (e.type == EnemyType::SORTER) {
             storyBossDown=true;
             for(auto& b:level.conveyors) b.speed=std::fabs(b.speed);
-            pushBanner("I JUDGED THEM ALL.","I NEVER KNEW WHAT FOR.",{.8f,.85f,.9f},6.f);
+            pushBanner(storytext::sorterDeath,storytext::sorterDeath2,{.8f,.85f,.9f},6.f);
         } else if (e.type == EnemyType::PACEMAKER) {
             onPacemakerKilled(e);
         } else {
@@ -917,7 +927,7 @@ inline void GameplayState::fireWeapon(int w) {
         int n = std::min((int)hits.size(), pierce + 1);
         if(story()) {
             float nearest=hits.empty()?wallT:hits[0].t;Projectile* body=nullptr;
-            for(auto& shot:projSystem.pool) if(shot.alive&&!shot.isPlayer&&shot.ownerType==(int)EnemyType::SORTER) {
+            for(auto& shot:projSystem.pool) if(shot.alive&&!shot.isPlayer&&(shot.ownerType==(int)EnemyType::SORTER||shot.ownerType==(int)EnemyType::BALLAST)) {
                 AABB b{shot.position-glm::vec3{.7f},shot.position+glm::vec3{.7f}};
                 float t=rayBoxHit(origin,dir,b);if(t>0&&t<nearest){nearest=t;body=&shot;}
             }

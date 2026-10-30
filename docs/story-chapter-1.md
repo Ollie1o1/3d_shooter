@@ -5,16 +5,20 @@ chapter follows a continuous route through nine rooms, then opens onto the ash
 wasteland. Lore remains optional, terse text; the later story's final purpose is
 still open.
 
+The current writing rules and encounter revision are documented in
+[Story revision](story-overhaul.md). Wreck records now describe specific events;
+the repeated mixed-wave fights have been replaced with distinct encounter beats.
+
 ## Route and intent
 
 | Room | See, do, learn, find |
 | --- | --- |
-| Furnace Line | A first-person optics and motor boot, moving rejects, the gantry claw and furnace. Step off the belt, find the marked drain. No gun. Extra service plates, overhead trays, work lights and drain lettering frame the route. |
-| Scrap Pit | Fall through the chute's boost tunnel onto discarded siblings. UNIT 01's lamp and revolver wake two waves. Climb the eight heaps and crates to the duct exit; lit depth markings and DUCTS lettering make the destination visible. |
-| Maintenance Ducts | A locked junction fight, pipe tanks and side ledges. Slide/crawl under the low pipe run, take UNIT 02's Lancer, climb the alternating shaft ledges. UNIT 03 is hidden behind the junction vent. |
-| Assembly Hall | Three working assembly lanes and nine unfinished siblings below the catwalks. Drop to the production floor for three waves mixing ground, elevated and flying threats. Climb the broad staircase to the west exit. UNIT 04: “THEY ARE STILL MAKING US.” |
+| Furnace Line | A first-person optics and motor boot, moving rejects, the gantry claw and furnace. Step off the belt, find the damaged REJECT TRANSFER / SALVAGE hatch beside its feeder rollers. No gun. Extra service plates, overhead trays, work lights and drain lettering frame the route. |
+| Scrap Pit | Fall through the damaged reclamation hatch and its transfer tunnel onto discarded siblings. 78 discarded bodies, broken casing, overflowing collection bins and low work lights tell the room's history. UNIT 01's lamp and revolver wake one short fight. Climb the eight heaps and crates to the duct exit; lit depth markings and DUCTS lettering make the destination visible. |
+| Maintenance Ducts | A locked junction fight, pipe tanks and side ledges. Slide/crawl under the low pipe run, take UNIT 02's Lancer, then board the automatic service lift to Assembly. UNIT 03 is hidden behind the junction vent. |
+| Assembly Hall | Three working assembly lanes and nine unfinished siblings below the catwalks. Drop to the production floor for a catwalk crossfire followed by one heavy clean-up. Climb the broad staircase to the west exit. UNIT 04 records a failed attempt to stop a production line. |
 | Archive | A quiet change of pace. Server racks, terminal screens and the wall register: UNITS 1–23 DECOMMISSIONED, UNIT 24 REJECTED. Three optional single-line records, UNIT 05, then west to the vault. |
-| Pod Vault | An entry balcony, twelve glass-fronted pods and a staircase down. Cross into the far half: the fronts shatter, three waves wake. UNIT 06 holds the shotgun. Side trial stations foreshadow MEASURE and KEEP. A high service vent leads to UNIT 07's observation cell, the second secret. |
+| Pod Vault | An entry balcony, twelve glass-fronted pods and a staircase down. Cross into the far half: the fronts shatter into one coordinated containment breach. UNIT 06 holds the shotgun. Side trial stations foreshadow MEASURE and KEEP. A high service vent leads to UNIT 07's observation cell, the second secret. |
 | Elevator Shaft | A freight deck rises 39 metres, pausing at three landings until their defenders are gone. Walkers hold the ledges while fliers drop in. Falling off returns the player to the platform. The top gate stays shut until the final wave clears. |
 | Inspection Line | Six scanner gates oscillate vertically. Slide or time a crossing; a mark calls collectors, while a clean crossing stays quiet. Cover bays vary the corridor's width. Find the grapple beside UNIT 08 and see the Sorter waiting beyond the JUDGE gate. |
 | Sorting Floor | A rail-mounted inspection machine above nine belt panels, cover supports and overhead grapple rails. Three phases reverse and accelerate the belts; the final phase warns, then releases four corner panels to the furnace. The central cross and perimeter remain. |
@@ -36,7 +40,7 @@ still open.
   longer, but always commit before release.
 - **Rejected bodies**: shoot them apart, dodge, or parry them back for a heavy hit.
 - Range and elevated positions receive tracking stamps; a dash remains the answer.
-- Death: `I JUDGED THEM ALL. I NEVER KNEW WHAT FOR.`
+- Death: `THE REGISTER SAYS YOU WERE EMPTY. / THERE IS NO COLUMN FOR THIS.`
 
 The gate opens when the fight clears. Walk out to the red sky and the creator's
 tower, then reach the chapter card. It shows time, kills, secrets, style, deaths
@@ -101,7 +105,7 @@ commit and push the website's main branch. Do not add story scores to arena boar
 - Every checkpoint, the full original pit climb, duct slide, both secret vents,
   the duct-to-assembly hatch, upper stairs and doors, freight-platform ride and
   exit to the wasteland are exercised with the real Player controller.
-- BossSim's skilled gun policy beats the Sorter in 137.3 seconds; idle, corner,
+- BossSim's scripted gun policy beats the revised Sorter in about 125 seconds; idle, corner,
   elevated and ranged camping are punished in every phase. This simulation
   measures AI and damage behavior; it is not a substitute for human balance feedback.
 - Native screenshots were inspected for all nine rooms, the waking hand, both
@@ -116,9 +120,9 @@ commit and push the website's main branch. Do not add story scores to arena boar
 
 [Archive register](story-chapter-1/archive.png) · [Sorter, floor released](story-chapter-1/sorter.png) · [Ash exit](story-chapter-1/ash.png) · [Results](story-chapter-1/results.png)
 
-Next story work starts beyond the ash exit: define Chapter 2's route and sibling
-before expanding the map. The creator's final answer and UNIT 24's ultimate
-purpose remain open. Human feedback should guide further difficulty and art tuning.
+Chapter 2 continues beyond the ash exit through [the Dead Span](story-chapter-2.md),
+with Ballast as its road-clearance sibling. The creator's final answer and UNIT 24's
+ultimate purpose remain open. Human feedback should guide further difficulty and art tuning.
 
 The release also fixes the older maps' cross-compiler bake fingerprints. Format
 5 hashes procedural shape recipes and file-space prop geometry before floating-
@@ -126,3 +130,35 @@ point triangle culling, and handles rounding ties consistently. Dome apices clos
 at an exact point. All four map fingerprints agree between Clang/ARM macOS and
 GCC/x86 Ubuntu; the full four-suite test target passes on both. All map bakes are
 regenerated together when the format changes.
+
+## Chapter polish: October 29, 2026
+
+All wreck logs and terminals now require the interaction key (E by default,
+R3 on a controller). Floating cyan lamps mark them. Looking at one in reach
+shows a prompt; approaching alone opens nothing and awards no secret. E again
+on the same record closes it; walking away also closes it. Read wreck lamps dim.
+Weapons remain separate pickups. Solid walls occlude prompts and interaction.
+
+The Lancer shaft now has an automatic service lift: a 4.5-second ascent, a flush
+exit to Assembly, and an automatic return when a player waits below. The freight
+lift's floor is recessed beneath its deck, and boarding detection also checks
+foot contact so a flush seam cannot prevent the encounter starting. The ascent
+lasts 15 seconds of movement, plus time fighting at its three stops. Both lifts
+use the same controller in gameplay and the Player regression tests.
+
+Four new Blender models supply the damaged reject hatch, scrap clusters,
+salvage bins and switchgear. Rebuild with:
+
+```sh
+blender -b --factory-startup --python tools/blender/headless.py -- tools/blender/cradle_props_build.py
+```
+
+Editable prop scenes are saved to `build/cradle-props/`. Their GLBs are versioned
+under `assets/props/`. Dressing extends to Assembly, Archive, the Pod Vault and
+the freight landings. The pit also has oil marks, girder supports, periodic dust
+from the reclamation inlet and occasional machinery sparks. The fallen crane's
+collision follows its narrow angled beam rather than enclosing empty space.
+
+Design decisions and research: [Chapter 1 polish notes](chapter-1-polish.md).
+
+Room-by-room atmosphere and detail pass: [review and native previews](chapter-1-room-pass.md).

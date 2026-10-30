@@ -137,6 +137,7 @@ inline const char* fileName(EnemyType t) {
         case EnemyType::FOREMAN:      return "foreman";
         case EnemyType::PACEMAKER:    return "pacemaker";
         case EnemyType::SORTER: return "sorter";
+        case EnemyType::BALLAST: return "ballast";
         default: return nullptr;
     }
 }
@@ -150,6 +151,7 @@ inline int fileOf(const Enemy& e) { return e.type == EnemyType::ABSOLUTE && e.mo
 // The joints a type's rig turns (a file must have them all)
 inline std::vector<int> neededJoints(EnemyType t) {
     switch (rigBase(t)) {
+        case EnemyType::BALLAST:return {E_BODY,E_HEAD,E_LEG_FL,E_LEG_FR,E_LEG_BL,E_LEG_BR,E_HALO,E_SHIELD,E_ARMR,E_HAND_R};
         case EnemyType::SORTER:return {E_TORSO,E_HEAD,E_ARML,E_ARMR,E_ELBOW_L,E_ELBOW_R,E_HAND_L,E_HAND_R};   // (a mini-boss: its rig's enemy's)
         case EnemyType::RIPPER: return {E_BODY, E_HEAD, E_LEG_FL, E_LEG_FR, E_LEG_BL, E_LEG_BR, E_BLADE_L, E_BLADE_R};
         case EnemyType::RAPTOR: return {E_HEAD, E_TAIL, E_WING_L, E_WING_R, E_TIP_L, E_TIP_R};

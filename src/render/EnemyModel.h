@@ -305,6 +305,19 @@ inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileR
         P = humanoidPose(mo, glow);
         fileRoot = base * T({0.f, mo.lift, 0.f});
     };
+    if(e.type==EnemyType::BALLAST) {
+        fileRoot=root;
+        vec3 tell=e.attack==AttackKind::BALL_ANCHOR?vec3{2.f}:e.attack==AttackKind::BALL_GRADE?abGoldTell({2,1.2f,.1f}):vec3{2,.2f,.06f};
+        P.chan[C_EYE]=glow;P.chan[C_EDGE]=e.telegraphTimer>0?tell:glow*.25f;
+        P.chan[C_CORE]=e.ballOpen>0||e.staggered()?vec3{.3f,1.7f,2.f}:vec3{.5f,.2f,.06f};
+        P.motion[E_HALO]=RZ(e.ballReverse?-e.ballRotor:e.ballRotor);
+        P.motion[E_HEAD]=RY(std::sin(e.age*.4f)*.08f);
+        P.motion[E_BODY]=RX(e.ballDrive>0?-.08f:std::sin(e.age*1.8f)*.012f);
+        P.motion[E_SHIELD]=RX(e.ballDrive>0?.1f:e.attack==AttackKind::BALL_GRADE?-tp*.35f:0.f);
+        for(int k=0;k<4;++k)P.motion[E_LEG_FL+k]=RX(std::sin(e.animPhase+k*3.14159f)*stride*.18f);
+        P.motion[E_ARMR]=RZ(e.attack==AttackKind::BALL_ANCHOR?-tp*.6f:0.f);
+        return true;
+    }
     if(e.type==EnemyType::SORTER) {
         fileRoot=root;
         vec3 tell=e.attack==AttackKind::SORT_GRAB?vec3{2}:e.attack==AttackKind::SORT_STAMP?vec3{2,.1f,.04f}:abGoldTell({2,1.3f,.2f});
@@ -624,6 +637,14 @@ inline std::vector<gunkit::ModelJoint> restJointsOf(EnemyType t) {
     auto add = [&](int id, int parent, vec3 at) { J.push_back({id, parent, T(at)}); };
     t = rigBase(t);   // (a mini-boss: its rig's enemy's)
     switch (t) {
+    case EnemyType::BALLAST:
+        add(E_BODY,E_ROOT,{0,2.5f,0});add(E_HEAD,E_BODY,{0,4.1f,2.3f});
+        add(E_HALO,E_BODY,{0,5.9f,-1.2f});add(E_SHIELD,E_BODY,{0,1.05f,3.7f});
+        add(E_ARMR,E_BODY,{-2.7f,3.7f,0});add(E_HAND_R,E_ARMR,{-3.8f,1.5f,.8f});
+        add(E_LEG_FL,E_BODY,{2.2f,2.5f,1.5f});add(E_LEG_FR,E_BODY,{-2.2f,2.5f,1.5f});
+        add(E_LEG_BL,E_BODY,{2.2f,2.5f,-1.8f});add(E_LEG_BR,E_BODY,{-2.2f,2.5f,-1.8f});
+        break;
+
     case EnemyType::RIPPER: {
         add(E_BODY, E_ROOT, {0.f, 0.62f, 0.f});
         add(E_HEAD, E_BODY, {0.f, 0.72f, 0.6f});
@@ -915,6 +936,15 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
         }
     }
     switch (e.type) {
+    case EnemyType::BALLAST: {
+        r.box(root,{0,2.9f,0},{5.6f,1.8f,5.2f},st.color);
+        r.box(root,{0,4.45f,2.3f},{2.5f,1.f,1.45f},{.65f,.62f,.52f});
+        r.box(root,{0,4.45f,3.1f},{2.1f,.25f,.1f},glow,glow);
+        r.box(root,{0,1.1f,3.7f},{7.1f,1.55f,.55f},st.color);
+        for(float x:{-2.4f,2.4f})for(float z:{-1.8f,1.5f})r.box(root,{x,1.2f,z},{.8f,2.4f,1.1f},st.color*.7f);
+        for(int k=0;k<6;++k)r.box(root*T({0,5.9f,-1.2f})*RZ(e.ballRotor+k*1.0472f),{0,.95f,0},{.38f,1.7f,.25f},st.color*1.4f);
+        break;
+    }
     case EnemyType::SORTER: {
         r.box(root,{0,3.4f,0},{5.4f,1.25f,2.6f},st.color);
         r.box(root,{0,4.9f,.5f},{2.4f,1.15f,1.7f},{.7f,.7f,.65f});
@@ -1409,6 +1439,14 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
 // slump, a RIPPER's crouch, a RAPTOR's dive. False for a type without a head
 // (MITE). Uses the physics position, like the rest of the hitscan.
 inline bool headBox(const Enemy& e, AABB& out) {
+    if(e.type==EnemyType::BALLAST) {
+        float tilt=e.ballDrive>0?-.08f:std::sin(e.age*1.8f)*.012f;
+        mat4 frame=T(e.position)*RY(e.yaw)*S(vec3{e.scale})*T({0,2.5f,0})*RX(tilt)*T({0,1.6f,2.3f})*RY(std::sin(e.age*.4f)*.08f);
+        vec3 c=vec3(frame*glm::vec4(0,.45f,0,1)),half{1.55f,.7f,1.f};
+        glm::mat3 m(frame);vec3 ext=glm::abs(m[0])*half.x+glm::abs(m[1])*half.y+glm::abs(m[2])*half.z;
+        out={c-ext,c+ext};return true;
+    }
+
     if(e.type==EnemyType::SORTER) {
         mat4 frame=T(e.position)*RY(e.yaw)*T({0,4.4f,0})*RY(std::sin(e.age*.5f)*.12f);
         vec3 c=vec3(frame*glm::vec4(0,.5f,.55f,1)),half{1.25f,.65f,1.05f};
