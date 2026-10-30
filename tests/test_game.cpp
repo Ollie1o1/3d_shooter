@@ -2163,7 +2163,14 @@ int main() {
               "every wave starts; the Core and the Sanctum end on their bosses");
         CHECK(counts[DirectorEvent::ARENA_CLEARED] == n && counts[DirectorEvent::VICTORY] == 1 &&
               counts[DirectorEvent::FINISH_OPEN] == 0, "each arena clears, then victory");
-        CHECK(counts[DirectorEvent::NEW_TYPE] == (int)EnemyType::COUNT - 15,   // the Seraph, the Anchor, the Penitent, the Revenant, the Weaver, the Leviathan and the Absolute are Act II's; the 7 Gauntlet bosses FAST's
+        std::set<EnemyType> actTypes;
+        for(const auto& arena:L.arenas) {
+            for(const auto& wave:arena.waves)for(const auto& entry:wave) {
+                actTypes.insert(entry.type);actTypes.insert(entry.escort.begin(),entry.escort.end());
+            }
+            for(const auto& goal:arena.goals)if(goal.kind==WaveGoal::CONDUITS)actTypes.insert(EnemyType::CONDUIT);
+        }
+        CHECK(counts[DirectorEvent::NEW_TYPE] == (int)actTypes.size(),
               "each Act I enemy type is introduced exactly once");
         CHECK(goalWaves >= 3 && (int)goalsDone.size() == goalWaves && counts[DirectorEvent::GOAL_DONE] == goalWaves,
               "every goal wave (hold, conduits, survive) is met once, and that ends it");
@@ -3094,7 +3101,7 @@ int main() {
         CHECK(levels, "every voice sits within 2 dB of its mix class's level");
         CHECK(varied, "a voice's variants differ");
         CHECK(same, "the same voice builds the same every time");
-        CHECK(total <= 270.f, "the whole voice bank is at most 270 s of audio");   // (180 before the Leviathan, 200 before the Absolute, 220 before THUNDERCLAP, 225 before the Gauntlet's seven bosses)
+        CHECK(total <= 280.f, "the whole voice bank, including Ballast, is at most 280 s of audio");   // 270 s before the new Story boss
     }
 
     // ---------------------------------------------------------------- enemy voices: who gets to speak
@@ -4764,7 +4771,7 @@ int main() {
                             (int)EnemyType::MITE, (int)EnemyType::JUGGERNAUT, (int)EnemyType::SHIELDBEARER,
                             (int)EnemyType::WARDEN, (int)EnemyType::PENITENT, (int)EnemyType::LEVIATHAN, (int)EnemyType::SOVEREIGN,
                             (int)EnemyType::REVENANT, (int)EnemyType::WEAVER, (int)EnemyType::SERAPH, (int)EnemyType::ANCHOR,
-                            (int)EnemyType::CONDUIT, (int)EnemyType::CONDUCTOR, (int)EnemyType::ABSOLUTE, enemyfile::FILE_MORNINGSTAR};
+                            (int)EnemyType::CONDUIT, (int)EnemyType::CONDUCTOR, (int)EnemyType::ABSOLUTE, (int)EnemyType::BALLAST, enemyfile::FILE_MORNINGSTAR};
         auto formOf = [](int f, Enemy& e) { if (f == enemyfile::FILE_MORNINGSTAR) { e.abForm = 1; e.scale = Enemy::MS_SCALE; e.abPhase = 4; }
                                             if (f == (int)EnemyType::PENITENT) e.risen = true;   // (standing: kneeling, it's sunk into the floor)
                                             if (f == (int)EnemyType::LEVIATHAN) { e.levInit = true; e.levStage = Enemy::LevStage::FIGHT; } };   // (risen)

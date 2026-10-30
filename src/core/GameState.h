@@ -19,7 +19,8 @@ enum class GameMode { ARENA, FAST, ENDLESS, ACT2, STORY };
 // Where a run starts. The dev level select fills it in; a normal start from
 // the menu is the default (first arena, ranked).
 struct StartOptions {
-    int  arena = 0;          // arena / FAST room index
+    int storyChapter = 1;
+    int  arena = 0;          // arena / FAST room / STORY checkpoint index
     int  wave  = 0;          // wave within it (ARENA)
     bool god   = false;
     bool practice = false;   // no records, no leaderboard

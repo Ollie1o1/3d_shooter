@@ -9,6 +9,7 @@
 #include "core/ShaderProgram.h"
 #include "player/StyleSystem.h"
 #include "ui/UIRenderer.h"
+#include "ui/WorldMarker.h"
 #include "enemies/Enemy.h"
 #include "audio/EnemyVoice.h"
 #include "bosses/warden/WardenHazards.h"
@@ -23,6 +24,7 @@
 #include "world/LevelGauntlet.h"
 #include "world/LevelAct2.h"
 #include "world/LevelStory.h"
+#include "world/LevelWasteland.h"
 #include "game/WaveDirector.h"
 #include "render/PostProcess.h"
 #include "audio/AudioSystem.h"
@@ -30,6 +32,7 @@
 #include "render/CameraFeel.h"
 #include "world/Interactable.h"
 #include "world/Stuck.h"
+#include "world/ZoneConstraint.h"
 #include "core/Settings.h"
 #include "ui/SettingsMenu.h"
 #include "render/TextureGen.h"
@@ -43,6 +46,7 @@
 #include "render/WorldMesh.h"
 #include "render/NeonLights.h"
 #include "render/Effects.h"
+#include "bosses/ballast/BallastHazards.h"
 #include "render/PropDraw.h"
 #include "render/LightBake.h"
 #include "world/ArenaShifts.h"
@@ -116,6 +120,17 @@ public:
     bool arenaSolo() const { return (mode == GameMode::ARENA || act2()) && g_arenaSolo >= 0; }   // the ARENA page: one arena on its own
     bool endless() const { return mode == GameMode::ENDLESS; }
     bool story() const { return mode == GameMode::STORY; }
+    bool wasteland() const { return story() && level.story.chapter==2; }
+    int storyChapterRequest=0;
+    void loadStoryChapter(int chapter);
+    int ambientDetail() const { return settings ? settings->ambientDetail : 2; }
+    BallastHazards ballastHazards;
+    float storyTurbineAngle[3] = {};
+    void ballastEvents(Enemy& e, const EnemyEvents& ev);
+    void gatherBallast(std::vector<BoxInstance>& out);
+    void beginWasteland();
+    void updateWasteland(float dt);
+    void gatherWasteland(std::vector<BoxInstance>& out);
 
     // ---- STORY (Gameplay_Story.h): UNIT 24 waking on the furnace line ----
     float wakeT = -1.f;            // the wake-up's clock (< 0: not playing)
@@ -139,6 +154,8 @@ public:
     void gatherStoryFactory(std::vector<BoxInstance>& out);
     void gatherStoryProjectile(std::vector<BoxInstance>& out,const Projectile& p,glm::vec3 at,float spin);
     void storySorterEvents(Enemy& e, const EnemyEvents& ev);
+    void updateStoryAtmosphere(float dt);
+    void gatherStoryAtmosphere(std::vector<BoxInstance>& out);
     void resetStoryFactory();
     void  storyTakeGun(int wreck);
     glm::mat4 wreckRoot(int wreck) const;
@@ -1010,4 +1027,6 @@ public:
 #include "game/Gameplay_Sword.h"
 #include "game/Gameplay_Destruct.h"
 #include "game/Gameplay_Story.h"
+#include "game/Gameplay_Wasteland.h"
+#include "bosses/ballast/Gameplay_Ballast.h"
 #include "bosses/absolute/Gameplay_Absolute.h"

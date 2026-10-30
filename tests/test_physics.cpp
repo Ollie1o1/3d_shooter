@@ -3,6 +3,7 @@
 #include "player/Player.h"
 #include "core/Balance.h"
 #include "core/Pacer.h"
+#include "ui/WorldMarker.h"
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
@@ -19,6 +20,29 @@ int main() {
     balanceInit();   // the numbers as assets/balance.txt ships them (core/Balance.h)
     Uint8 keys[SDL_NUM_SCANCODES];
     std::memset(keys, 0, sizeof(keys));
+
+    // World-space markers: front, behind and a complete camera turn must
+    // agree for both weapon pickups and the final-hostile indicators.
+    {
+        Camera camera({0,0,0});const float width=1920,height=1080;
+        auto marker=[&](glm::vec3 p){return projectWorldMarker(p,camera.projectionMatrix()*camera.viewMatrix(),width,height);};
+        auto front=marker({0,0,-10}),back=marker({0,0,10});
+        CHECK(front.onScreen && !front.behind && std::fabs(front.x-width*.5f)<.1f,"a target ahead is pinned to its world position");
+        CHECK(!back.onScreen && back.behind && std::fabs(back.x-width*.5f)>width*.4f,"a target directly behind stays on the edge and is labelled behind");
+        CHECK(marker({5,0,10}).x>width*.5f && marker({-5,0,10}).x<width*.5f,"behind-right and behind-left markers point to the correct turn");
+        bool stable=true;
+        for(int yaw=-270;yaw<=90;++yaw)for(float pitch:{-65.f,0.f,65.f}) {
+            camera.yaw=(float)yaw;camera.pitch=pitch;
+            glm::vec3 target{0,0,-10};auto m=marker(target);
+            float right=glm::dot(camera.right(),target);
+            stable &= std::isfinite(m.x) && std::isfinite(m.y) && m.x>=0 && m.x<=width && m.y>=0 && m.y<=height;
+            if(std::fabs(right)>.1f)stable &= (m.x-width*.5f)*right>0;
+            if(glm::dot(camera.forward(),target)<0)stable &= m.behind && !m.onScreen;
+        }
+        CHECK(stable,"markers stay finite, within the screen, and on the correct side throughout a camera turn");
+        std::vector<Wall> walls{{{{-1,-1,-6},{1,1,-5}}}};
+        CHECK(markerBehindCover({0,0,0},{0,0,-10},walls) && !markerBehindCover({0,0,0},{0,0,-3},walls),"only geometry between the camera and target marks a waypoint as behind cover");
+    }
 
     // 1. Standing on the floor stays grounded every tick.
     {

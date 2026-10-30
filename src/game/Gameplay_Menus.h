@@ -72,7 +72,9 @@ inline void GameplayState::padButton(Uint8 b) {
         case SDL_CONTROLLER_BUTTON_START:         key(SDLK_ESCAPE); break;
         case SDL_CONTROLLER_BUTTON_BACK:          key(SDLK_TAB); break;
         case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:  pendingGrapple = true; break;
-        case SDL_CONTROLLER_BUTTON_RIGHTSTICK:    finishKey(); break;   // R3: finish
+        case SDL_CONTROLLER_BUTTON_RIGHTSTICK:
+            if (!finishKey()) { int i=findInteractTarget(); if(i>=0 && interactables[i].onInteract)interactables[i].onInteract(); }
+            break;   // R3: finish
         case SDL_CONTROLLER_BUTTON_DPAD_UP:       pendingGrenade = true; break;
         case SDL_CONTROLLER_BUTTON_DPAD_DOWN:     inspect(); break;
         case SDL_CONTROLLER_BUTTON_DPAD_LEFT:     padCycle(-1); break;
@@ -165,7 +167,11 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
     if (paused && pauseSettings) { settingsMenu.handleEvent(e); return; }
     if (victory && nameEntry) { handleNameEntry(e); return; }
 
-    if(story() && storyEndT>3.f && (key==SDLK_RETURN || key==SDLK_ESCAPE)) {if(onReturnToMenu)onReturnToMenu();return;}
+    if(story() && storyEndT>3.f && (key==SDLK_RETURN || key==SDLK_ESCAPE)) {
+        if(key==SDLK_RETURN && level.story.nextChapter>0)storyChapterRequest=level.story.nextChapter;
+        else if(onReturnToMenu)onReturnToMenu();
+        return;
+    }
     if (key == SDLK_ESCAPE || key == SDLK_p) {
         if (playerDead || victory) {
             if (key != SDLK_ESCAPE) return;  // P only pauses

@@ -88,8 +88,9 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     frametimer::Scope ftSim(frametimer::SIM);
     frametimer::tick();
     frametimer::Lap ftLap;
-    if (director.arena != spaceArena && director.arena >= 0 && director.arena < (int)level.arenas.size()) {
-        spaceArena = director.arena;   // a new place: its reverb
+    int acousticRoom=story()?level.arenaAt(player.position):director.arena;
+    if (acousticRoom != spaceArena && acousticRoom >= 0 && acousticRoom < (int)level.arenas.size()) {
+        spaceArena = acousticRoom;   // acoustics follow the room occupied, including backtracking
         audio.setSpace(level.arenas[spaceArena].space);
         audio.setRoom(level.arenas[spaceArena].tone);   // and its air
     }
@@ -619,20 +620,7 @@ inline void GameplayState::keepPlayerInZone(float dt) {
         }
     }
     glm::vec3& p = player.position;
-    float bestD = 1e9f; glm::vec2 best{p.x, p.z};
-    const AABB* in = zones[0];
-    for (auto* z : zones) {
-        glm::vec2 c{glm::clamp(p.x, z->min.x, z->max.x), glm::clamp(p.z, z->min.z, z->max.z)};
-        float d = glm::length(c - glm::vec2{p.x, p.z});
-        if (story()) d += std::max({z->min.y-p.y, p.y+player.height-z->max.y, 0.f})*2.f;
-        // Inside several (a doorway where a tube meets a room): the higher ceiling wins
-        if (d < bestD - 1e-4f || (d < 1e-4f && bestD < 1e-4f && z->max.y > in->max.y)) { bestD = d; best = c; in = z; }
-    }
-    if (bestD > 0.f) {
-        if (best.x != p.x) player.velocity.x = 0.f;
-        if (best.y != p.z) player.velocity.z = 0.f;
-        p.x = best.x; p.z = best.y;
-    }
+    const AABB* in = constrainToZones(p,player.velocity,player.height,zones,story());
     // Ceiling: a force field you can see when you bump it
     float ceiling = in->max.y;
     if (p.y + player.height > ceiling) {
@@ -734,16 +722,7 @@ inline float GameplayState::groundHeightAt(float x, float z, float fromY, bool m
 }
 
 inline int GameplayState::findInteractTarget() const {
-    glm::vec3 origin = player.camera.position;
-    glm::vec3 dir    = player.camera.forward();
-    int   best    = -1;
-    float bestT   = Interactable::INTERACT_RANGE;
-    for (int i = 0; i < (int)interactables.size(); ++i) {
-        if (!interactables[i].active) continue;
-        float t = rayBoxHit(origin, dir, interactables[i].box);
-        if (t > 0.f && t < bestT) { bestT = t; best = i; }
-    }
-    return best;
+    return interactTarget(interactables, player.camera.position, player.camera.forward(), level.walls);
 }
 
 // The face of what the grapple's hanging on: the side of its box nearest the hook (no box: back toward you)

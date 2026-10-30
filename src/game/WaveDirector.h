@@ -64,6 +64,7 @@ public:
     int   arena = 0, wave = 0;
     Phase phase = Phase::INTRO;
     float timer = 0.f;
+    float goalRefillTimer = 0.f;
     struct Queued { EnemyType type; bool fixed; glm::vec3 pos; std::vector<EnemyType> escort; Hollow variant; };
     std::vector<Queued>            queue;
     std::vector<DirectorEventRec>  events;      // drained by the caller every frame
@@ -163,8 +164,12 @@ public:
             aliveCount += (int)fixedOut.size();
             fixedOut.clear();
             if (fast) {
-                for (auto& q : queue) aliveCount += emitSquad(q, playerPos, out);
-                queue.clear();
+                size_t emitted = 0;
+                for (auto& q : queue) {
+                    if (hasGoal() && aliveCount + 1 + (int)q.escort.size() > maxAlive()) break;
+                    aliveCount += emitSquad(q, playerPos, out); ++emitted;
+                }
+                queue.erase(queue.begin(), queue.begin() + emitted);
             } else if (!queue.empty() && spawnTimer <= 0.f &&
                        (aliveCount + 1 + (int)queue.front().escort.size() <= maxAlive() || aliveCount == 0)) {
                 Queued q = queue.front();
@@ -174,7 +179,11 @@ public:
             }
             if (hasGoal() && !goalDone) {
                 updateGoal(dt, playerPos);
-                if (queue.empty() && !goalDone) buildQueue(false);   // they keep coming until it's done
+                goalRefillTimer -= dt;
+                if (goal().refill && queue.empty() && !goalDone && aliveCount < maxAlive() && (!fast || goalRefillTimer <= 0.f)) {
+                    buildQueue(false);
+                    goalRefillTimer = 3.f;   // breathing room between security details, including in Story
+                }
             }
             if (queue.empty() && aliveCount == 0 && (!hasGoal() || goalDone) && !hold) {
                 if (wave + 1 < waveCount()) {
@@ -219,6 +228,13 @@ public:
         }
     }
 
+    // Scripted objectives and practice skips use the same completion event as timed goals.
+    void completeGoal() {
+        if (!hasGoal() || goalDone) return;
+        goalDone = true; holding = false; queue.clear();
+        events.push_back({DirectorEvent::GOAL_DONE, wave});
+    }
+
     // Tests: where the next spawn of type t would go
     glm::vec3 pickSpawnForTest(EnemyType t, glm::vec3 player) { return pickSpawn(t, player); }
 
@@ -234,7 +250,7 @@ private:
     void beginWave() {
         phase = Phase::ACTIVE;
         spawnTimer = 0.f;
-        goalDone = false; holding = false;
+        goalDone = false; holding = false; goalRefillTimer = 3.f;
         const WaveGoal& g = goal();
         goalTimer = g.kind == WaveGoal::SURVIVE ? g.seconds : 0.f;
         conduitAlive.assign(g.kind == WaveGoal::CONDUITS ? g.points.size() : 0, true);
@@ -290,9 +306,7 @@ private:
             default: break;
         }
         if (met) {
-            goalDone = true; holding = false;
-            queue.clear();
-            events.push_back({DirectorEvent::GOAL_DONE, wave});
+            completeGoal();
         }
     }
 

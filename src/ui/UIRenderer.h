@@ -342,10 +342,11 @@ public:
         end2D();
     }
 
-    void renderBossBar(const char* name, float fill, bool enraged) {
+    void renderBossBar(const char* name, float fill, bool enraged, glm::vec3 tint = {-1.f,-1.f,-1.f}) {
         begin2D();
         int w = 560, x = screenW / 2 - w / 2, y = 62;
         glm::vec4 col = enraged ? glm::vec4{1.f, 0.15f, 0.25f, 0.95f} : glm::vec4{1.f, 0.2f, 0.65f, 0.95f};
+        if(tint.x>=0)col=glm::vec4(tint,.95f);
         ui.text(name, screenW / 2, y - 16, 2, col, true);
         ui.rect(x - 3, y - 3, w + 6, 18, {0.05f, 0.03f, 0.06f, 0.85f});
         ui.rect(x, y, w * glm::clamp(fill, 0.f, 1.f), 12, col);
@@ -355,15 +356,34 @@ public:
 
     // A diamond marker at a screen position; when the target is off-screen the
     // caller passes onScreen=false and the marker sits on the screen edge.
-    void renderMarker(float sx, float sy, bool onScreen, glm::vec3 color, const char* label) {
+    void renderMarker(float sx, float sy, bool onScreen, glm::vec3 color, const char* label, bool behind=false) {
         begin2D();
-        glm::vec4 c{color.r, color.g, color.b, 0.9f};
-        int s = onScreen ? 7 : 9;
-        for (int i = -s; i <= s; i += 2) {
-            int half = s - std::abs(i);
-            ui.rect(sx - half, sy + i, half * 2 + 1, 2, c);
+        glm::vec4 c{color.r,color.g,color.b,.9f};
+        int s=onScreen?7:9;
+        if(onScreen) {
+            for(int i=-s;i<=s;i+=2) {
+                int half=s-std::abs(i);
+                ui.rect(sx-half,sy+i,half*2+1,2,c);
+            }
+        } else {
+            // A chevron points out of the viewport; only a target in view
+            // receives a diamond pinned to its actual world position.
+            glm::vec2 d{sx-screenW*.5f,sy-screenH*.5f};
+            float len=glm::length(d);d=len>.01f?d/len:glm::vec2{1,0};
+            glm::vec2 side{-d.y,d.x};
+            for(int i=0;i<=8;++i)for(float sign:{-1.f,1.f}) {
+                glm::vec2 p=glm::vec2{sx,sy}-d*(float)i+side*((float)i*.65f*sign);
+                ui.rect(p.x-1,p.y-1,3,3,c);
+            }
         }
-        if (label && label[0]) ui.textShadow(label, sx, sy + s + 6, 1, c, true);
+        std::string text=label?label:"";
+        if(behind)text+=(text.empty()?"BEHIND":" / BEHIND");
+        if(!text.empty()) {
+            float half=(float)text.size()*3.f;
+            float x=std::clamp(sx,half+12.f,std::max(half+12.f,screenW-half-12.f));
+            float y=std::min(sy+s+6.f,(float)screenH-20.f);
+            ui.textShadow(text.c_str(),x,y,1,c,true);
+        }
         end2D();
     }
 

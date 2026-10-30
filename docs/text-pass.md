@@ -1,5 +1,8 @@
 # On-screen text, rewritten
 
+Historical text pass. Current Story writing rules and records are in
+[Story revision](story-overhaul.md) and `src/core/StoryText.h`.
+
 A terse narrator with some edge: the title is the moment, the subtitle is the answer.
 Lines not listed here (HEADSHOT, WAVE CLEAR, the lava, water and sun warnings, YOU DIED, ...) were already fine and stay.
 

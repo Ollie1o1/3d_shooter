@@ -3,6 +3,9 @@
 #include "core/Balance.h"
 #include "world/LevelStory.h"
 #include "game/WaveDirector.h"
+#include "game/StoryLift.h"
+#include "world/Interactable.h"
+#include "world/ZoneConstraint.h"
 #include "player/Projectile.h"
 #include "world/ArenaShifts.h"
 #include "bosses/sovereign/SovereignHazards.h"
@@ -18,7 +21,7 @@ static int failures=0;
 #define CHECK(c,m) do{if(!(c)){++failures;std::printf("FAIL: %s\n",m);}else std::printf("ok: %s\n",m);}while(0)
 constexpr float DT=1.f/60;
 struct Walk {
-    LevelData& l; SpatialGrid grid; Player p; int tick=0;
+    LevelData& l; SpatialGrid grid; Player p; int tick=0; WaveDirector* boundaries=nullptr;
     Walk(LevelData& level,glm::vec3 start):l(level),p(start) {grid.build(l.walls);p.dynWalls=l.moverWalls.data();p.dynCount=(int)l.moverWalls.size();}
     void step(glm::vec3 goal,bool jump=false,bool slide=false) {
         Uint8 keys[SDL_NUM_SCANCODES]={};
@@ -31,6 +34,19 @@ struct Walk {
         keys[SDL_SCANCODE_LCTRL]=slide && (p.sliding || toward>4.3f);
         p.floorY=l.baseFloor(p.position.x,p.position.z);
         p.update(DT,keys,l.walls.data(),(int)l.walls.size(),false,&grid);++tick;
+        if(boundaries) {
+            std::vector<const AABB*> zones;
+            int last=std::min(boundaries->arena+(boundaries->fighting()?0:1),(int)l.arenas.size()-1);
+            for(int i=0;i<=last;++i) {
+                zones.push_back(&l.arenas[i].zone);
+                for(const auto& z:l.arenas[i].extraZones)zones.push_back(&z);
+            }
+            const auto* zone=constrainToZones(p.position,p.velocity,p.height,zones,true);
+            if(zone && p.position.y+p.height>zone->max.y) {
+                p.position.y=zone->max.y-p.height;
+                if(p.velocity.y>0)p.velocity.y=-1;
+            }
+        }
     }
     bool to(glm::vec3 goal,bool jump=false,bool slide=false) {
         tick=0;
@@ -68,6 +84,11 @@ int main(){
         CHECK(d.to({44,-27.4f,53})&&d.to({48.5f,-27.4f,53}),"Lancer room reaches the climb shaft");
     }
     {
+        WaveDirector d;d.level=&L;d.fast=true;d.approach(2);
+        Walk w(L,{32,-27.4f,-6});w.boundaries=&d;
+        CHECK(w.to({32,-27.4f,2}) && w.to({32,-27.4f,-6}),"pit-to-duct threshold has continuous floor and room bounds in both directions");
+    }
+    {
         Walk secret(L,{26.5f,-27.4f,26.5f});
         bool vent=secret.to({24.8f,-26.2f,26.5f},true)&&secret.to({24.8f,-24.9f,24.1f},true)&&secret.to({26.2f,-23.8f,21.5f},true)&&secret.to({21,-23.8f,21.5f},false,true);
         CHECK(vent,"UNIT 03's vent has a standing ledge and a real slide into the secret room");
@@ -76,9 +97,49 @@ int main(){
         CHECK(cell,"UNIT 07's observation cell is reachable through its vent with real movement");
     }
     {
-        Walk w(L,{49,-16.2f,51});
-        CHECK(w.to({59,A,53}),"duct shaft's upper hatch reaches the assembly catwalk");
-
+        auto& lift=L.movers[L.story.serviceLift];
+        WaveDirector d;d.level=&L;d.fast=true;d.approach(2);
+        Walk w(L,{44,-27.4f,53});
+        CHECK(w.to({48.5f,-27.4f,53}),"walk straight from Lancer room onto service deck without jumping");
+        // Jumping just after departure must not call the deck back down.
+        lift.drive=.03f;L.updateMovers(0);
+        Player jumping({48.5f,lift.base.max.y+lift.b.y*lift.drive+.5f,53});
+        jumping.onGround=false;jumping.groundWall=-1;
+        storylift::update(L,d,jumping,DT);
+        CHECK(lift.drive>.03f,"jumping during the first metre of the service ascent keeps it rising");
+        lift.drive=0;L.updateMovers(0);
+        int air=0;
+        for(int i=0;i<60*6;++i) {
+            int ride=L.moverOfWall(w.p.groundWall);L.updateMovers(i*DT);
+            if(ride>=0)w.p.position+=L.movers[ride].delta;
+            w.step(w.p.position);storylift::update(L,d,w.p,DT);air+=!w.p.onGround;
+        }
+        CHECK(lift.drive==1.f && std::fabs(w.p.position.y-A)<.05f && air<5,"automatic service lift carries Player the full ascent in under six seconds");
+        CHECK(w.to({59,A,53}),"service lift exits through the upper hatch into Assembly without jumping");
+        Walk below(L,{44,-27.4f,53});
+        for(int i=0;i<60*6;++i){storylift::update(L,d,below.p,DT);L.updateMovers(i*DT);}
+        CHECK(lift.drive==0 && below.to({48.5f,-27.4f,53}),"service deck returns for a player waiting at the lower landing");
+    }
+    {
+        // Run the real lift controller during the approach, not just after
+        // placing the player at the centre of the deck.
+        for(int id:{L.story.serviceLift,L.story.elevator}) {
+            auto& lift=L.movers[id];lift.drive=0;L.updateMovers(0);
+            const bool service=id==L.story.serviceLift;
+            WaveDirector d;d.level=&L;d.fast=true;d.approach(service?2:6);
+            Walk w(L,service?glm::vec3{44,-27.4f,53}:glm::vec3{-25,V,21});
+            w.boundaries=&d;
+            glm::vec3 goal=service?glm::vec3{48.8f,-27.4f,53}:glm::vec3{-25,V,6};
+            for(int i=0;i<60*8;++i) {
+                int ride=L.moverOfWall(w.p.groundWall);L.updateMovers(i*DT);
+                if(ride>=0)w.p.position+=L.movers[ride].delta;
+                w.step(goal);storylift::update(L,d,w.p,DT);
+            }
+            float expected=service?A:V+13;
+            std::printf("  continuous boarding %s: %.2f %.2f %.2f drive %.3f\n",service?"service":"freight",w.p.position.x,w.p.position.y,w.p.position.z,lift.drive);
+            CHECK(std::fabs(w.p.position.y-expected)<.1f,"walking onto an active lift boards and rises without a jump or dash");
+            lift.drive=0;L.updateMovers(0);
+        }
     }
     {
         Walk w(L,{102,A,72});
@@ -91,12 +152,41 @@ int main(){
     }
     {
         auto& lift=L.movers[L.story.elevator];lift.drive=0;L.updateMovers(0);
-        Walk w(L,{-25,V+.01f,6});int air=0;
-        for(int i=0;i<60*20;++i){int ride=L.moverOfWall(w.p.groundWall);lift.drive=std::min(1.f,i/(18.f*60));L.updateMovers(i*DT);if(ride>=0)w.p.position+=L.movers[ride].delta;w.step(w.p.position);air+=!w.p.onGround;}
-        CHECK(std::fabs(w.p.position.y-T)<.05f&&air<5,"freight lift carries the actual Player up all 39 metres");
+        WaveDirector d;d.level=&L;d.fast=true;d.approach(6);
+        Walk w(L,{-25,V,21});
+        CHECK(w.to({-25,V,6}),"walk from loading bay onto the actual freight deck");
+        int air=0;bool held=true;int stop=0,wait=0,spawns=0;
+        for(int i=0;i<60*24 && d.arena==6;++i) {
+            int ride=L.moverOfWall(w.p.groundWall);L.updateMovers(i*DT);
+            if(ride>=0)w.p.position+=L.movers[ride].delta;
+            w.step(w.p.position);storylift::update(L,d,w.p,DT);air+=!w.p.onGround;
+            float target=(stop+1)/3.f;
+            if(lift.drive>=target-.0001f)++wait;
+            if(wait>0 && wait<60)held &= std::fabs(lift.drive-target)<.0002f;
+            int alive=wait>60?0:1;
+            int prev=d.wave;std::vector<SpawnRequest> out;d.update(DT,alive,w.p.position,out);spawns+=(int)out.size();
+            if(d.wave>prev){++stop;wait=0;}
+        }
+        CHECK(d.arena==7 && spawns==9 && held,"boarding starts freight encounter; all three combat stops hold until defenders clear");
+        CHECK(std::fabs(w.p.position.y-T)<.05f&&air<5,"freight lift carries the actual Player up all 39 metres through its gameplay controller");
         CHECK(w.to({-16,T,8})&&w.to({-10,T,8}),"lift's top landing reaches inspection");
         CHECK(w.to({50,T,8})&&w.to({59,T,8}),"scanner corridor reaches the Sorting Floor");
         CHECK(w.to({60,T,-46})&&w.to({82,T,-46})&&w.to({82,T,-77}),"sorting side path and opened gate reach the ash wasteland");
+    }
+    {
+        std::vector<Interactable> items(2);int reads=0;
+        items[0].type=InteractableType::READABLE;
+        items[0].box={{-.6f,1.2f,-3},{.6f,2.4f,-2}};
+        items[0].onInteract=[&](){++reads;};
+        items[1].active=false;
+        std::vector<Wall> walls;
+        int target=interactTarget(items,{0,1.7f,0},{0,0,-1},walls);
+        CHECK(target==0 && reads==0,"approaching and aiming at a readable selects a prompt without opening its log");
+        if(target>=0)items[target].onInteract();
+        CHECK(reads==1,"explicit interaction opens the selected readable");
+        CHECK(interactTarget(items,{0,1.7f,3},{0,0,-1},walls)<0,"readable is unavailable outside interaction range");
+        walls.push_back({{{-2,0,-1.5f},{2,3,-1.4f}}});
+        CHECK(interactTarget(items,{0,1.7f,0},{0,0,-1},walls)<0,"a wall blocks reading and its prompt");
     }
     // Every hand-placed spawn has clearance (doors open, same capsule as Enemy uses).
     bool clear=true;
@@ -121,6 +211,41 @@ int main(){
             for(int f=0;f<60*14&&s.damageTaken<1;++f)s.step(DT);
             if(s.damageTaken<1){cheese=false;std::printf("  unpunished policy %d hp %.1f\n",policy,hp);}}
         CHECK(cheese,"BossSim: idle, corner, high-perch and ranged camping are punished in every phase");
+    }
+    // A targeted press commits before its visible downstroke; moving after the lock
+    // must evade it, while standing on the committed point is hit at full extension.
+    {
+        Enemy e(EnemyType::SORTER,{82,T+2,-20});e.state=EnemyState::ACTIVE;e.spawnTimer=0;
+        e.sortPhase=1;e.sortHome=e.position;e.sortHomeSet=true;e.sortStep=1;e.attackTimer=100;
+        EnemyWorld w;w.bounds=L.arenas[8].bounds;w.playerFeet={80,T,-2};w.playerEye=w.playerFeet+glm::vec3{0,1.7f,0};
+        bool locked=false,dropped=false,hit=false,stable=true,matched=false;glm::vec3 committed{0};
+        for(int i=0;i<180&&!hit;++i) {
+            e.update(DT,w);
+            if(e.ev.sortLocked){locked=true;committed=e.sortAim;}
+            if(locked)stable&=glm::length(e.sortAim-committed)<.001f;
+            dropped|=e.ev.sortDrop;
+            if(e.ev.sortStamp){hit=true;matched=e.ev.meleeHit&&e.sortImpactT==0&&
+                std::fabs(Enemy::sortPressHeight(0,e.sortImpactT)-Enemy::SORT_PRESS_DOWN)<.001f;}
+        }
+        CHECK(locked&&dropped&&stable&&hit&&matched,"press locks, cues release and reaches the floor on the damage tick");
+        e.stagger(.3f);for(int i=0;i<12;++i)e.update(DT,w);
+        CHECK(e.sortImpactT>0&&Enemy::sortPressHeight(0,e.sortImpactT)>Enemy::SORT_PRESS_DOWN,
+              "the physical press retracts after impact even if the boss is staggered");
+        e.staggerTimer=0;e.recoverTimer=0;e.attackTimer=100;e.sortStep=1;e.sortLocked=e.sortDropCued=false;
+        bool dodged=false;locked=false;
+        for(int i=0;i<180&&!dodged;++i) {
+            e.update(DT,w);
+            if(e.ev.sortLocked){locked=true;committed=e.sortAim;w.playerFeet.x+=10;w.playerEye.x+=10;}
+            if(e.ev.sortStamp)dodged=locked&&!e.ev.meleeHit&&glm::length(e.sortAim-committed)<.001f;
+        }
+        CHECK(dodged,"leaving the locked press target avoids its hit without the target following");
+        Enemy combo(EnemyType::SORTER,{82,T+2,-20});combo.state=EnemyState::ACTIVE;combo.spawnTimer=0;
+        combo.health=combo.maxHealth*.2f;combo.sortPhase=3;combo.sortStep=1;combo.attackTimer=100;
+        int presses=0,tells=0;bool readable=true;
+        for(int i=0;i<60*8&&presses<3;++i){combo.update(DT,w);if(combo.ev.telegraphStarted){++tells;readable&=combo.telegraphDuration>=.95f;}presses+=combo.ev.sortStamp;}
+        CHECK(presses==3&&tells==3&&readable,"final-phase press string gives each of three strikes its own readable warning");
+        combo.sortFollowups=2;combo.stagger(1);
+        CHECK(combo.sortFollowups==0,"stagger cancels queued Sorter follow-ups");
     }
     // White claw parries cancel their hit, clear marking and open double damage.
     {

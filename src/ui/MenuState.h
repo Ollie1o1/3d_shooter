@@ -7,6 +7,8 @@
 #include "world/Level.h"
 #include "world/LevelGauntlet.h"
 #include "world/LevelAct2.h"
+#include "world/LevelStory.h"
+#include "world/LevelWasteland.h"
 #include "ui/UIBatch.h"
 #include "ui/MenuArt.h"
 #include "core/Gamepad.h"
@@ -27,8 +29,8 @@
 // SETTINGS / EXIT), the ARENA page (the whole of Act I, the whole of Act II once
 // Act I is beaten, or any arena of either on its own), the BOSS page (every boss in order, fought on its own), the
 // settings page, the leaderboard page, and the DEV level select (press ` or
-// F2 on the main menu): jump straight to any arena, wave, FAST room or the
-// boss, optionally in god mode. Dev runs are practice: no records.
+// F2 on the main menu): jump straight to any arena, wave, FAST room or story
+// checkpoint in either chapter, optionally in god mode. Dev runs are practice: no records.
 // =============================================================================
 class MenuState : public GameState {
 public:
@@ -37,7 +39,7 @@ public:
 
     GameSettings* settings = nullptr;   // injected by main
 
-    enum Page { MAIN, SETTINGS, BOARD, DEV, BOSS, FASTPAGE, ARENAPAGE };
+    enum Page { MAIN, SETTINGS, BOARD, DEV, BOSS, FASTPAGE, ARENAPAGE, STORYPAGE };
     // The ARENA page: two columns, each the whole act then its arenas one by one
     struct ArenaRow { std::string name, subtitle; };
     std::vector<ArenaRow> act1Arenas, act2Arenas;
@@ -48,6 +50,7 @@ public:
     int   fastSel = 0;   // the FAST page: 0 the whole Gauntlet, 1.. a room on its own (ROOM ATTACK)
     struct FastRoom { std::string name; float medals[4]; };
     std::vector<FastRoom> fastRooms;
+    int storySel=0;
     int   bossSel = 0;
     int   page      = MAIN;
     int   selected  = 0;
@@ -78,13 +81,13 @@ public:
     static constexpr int NUM_ITEMS = 8;
     std::vector<std::string> arenaNames;
 
-    // DEV level select: rows are options, then every arena, then every FAST room
-    struct DevRow { const char* label; std::string name; GameMode mode; int arena; int waves; };
+    // DEV level select: ARENA, FAST and STORY columns, each independently scrollable.
+    struct DevRow { const char* label; std::string name; GameMode mode; int arena; int waves; int chapter = 1; };
     std::vector<DevRow> devRows;
     int  devSel = 0, devWave = 0;
     bool devGod = true;
     static constexpr int DEV_OPTIONS = 2;   // GOD MODE, START WAVE
-    int act1Rows = 0;                       // ARENA rows; ACT II's go under them
+    int devScroll[3] = {};
 
     MenuState(int w, int h) : screenW(w), screenH(h), ui(w, h), settingsMenu(w, h) {
         settingsMenu.onBack = [this]() { page = MAIN; selected = 6; };
@@ -100,14 +103,23 @@ public:
             for (int k = 0; k < 4; ++k) r.medals[k] = F.arenas[i].medals[k];
             fastRooms.push_back(r);
         }
-        act1Rows = (int)A.arenas.size();
         LevelData A2 = buildAct2Level();
         for (auto& a : A2.arenas) act2Arenas.push_back({a.name ? a.name : "", a.subtitle ? a.subtitle : ""});
         for (int i = 0; i < (int)A2.arenas.size(); ++i)
             devRows.push_back({"ACT II", A2.arenas[i].name, GameMode::ACT2, i, (int)A2.arenas[i].waves.size()});
     }
 
-    void openDev() { page = DEV; devSel = DEV_OPTIONS; }
+    void openDev() {
+        // Build the chapter lists on demand so the regular menu stays quick to open.
+        if (countMode(GameMode::STORY) == 0)
+            for (int chapter = 1; chapter <= 2; ++chapter) {
+                LevelData S = chapter == 1 ? buildCradle() : buildWasteland();
+                for (int i = 0; i < (int)S.arenas.size(); ++i)
+                    devRows.push_back({"STORY", S.arenas[i].name, GameMode::STORY, i, (int)S.arenas[i].waves.size(), chapter});
+            }
+        page = DEV; devSel = DEV_OPTIONS;
+        for (int& offset : devScroll) offset = 0;
+    }
 
     void handleEvent(const SDL_Event& e) override {
         settingsMenu.s = settings;
@@ -129,6 +141,7 @@ public:
         if (page == BOSS) { handleBossEvent(e); return; }
         if (page == FASTPAGE) { handleFastEvent(e); return; }
         if (page == ARENAPAGE) { handleArenaEvent(e); return; }
+        if (page == STORYPAGE) { handleStoryEvent(e); return; }
         if (e.type == SDL_KEYDOWN && !e.key.repeat &&
             (e.key.keysym.sym == SDLK_BACKQUOTE || e.key.keysym.sym == SDLK_F2)) { openDev(); return; }
         if (e.type == SDL_KEYDOWN) {
@@ -192,6 +205,7 @@ public:
         else if (page == BOSS) renderBoss();
         else if (page == FASTPAGE) renderFast();
         else if (page == ARENAPAGE) renderArena();
+        else if (page == STORYPAGE) renderStory();
         else renderDev();
         ui.end();
     }
@@ -209,7 +223,7 @@ private:
 
     void activate(int idx) {
         if (idx == 0) { page = ARENAPAGE; arenaSel = 0; }
-        if (idx == 1 && onStart) onStart(GameMode::STORY, StartOptions{});   // STORY: CHAPTER 1, THE CRADLE
+        if (idx == 1) {page=STORYPAGE;storySel=0;}   // STORY: CHAPTER 1, THE CRADLE
         if (idx == 2) { page = FASTPAGE; fastSel = 0; }
         if (idx == 3 && onStart) onStart(GameMode::ENDLESS, StartOptions{});
         if (idx == 4) { page = BOSS; bossSel = 0; bossPoll = 0.f; refreshWorld(); }
@@ -221,6 +235,39 @@ private:
         }
         if (idx == 6) { page = SETTINGS; settingsMenu.selected = 1; settingsMenu.bindsPage = false; }
         if (idx == 7 && onQuit) onQuit();
+    }
+
+    int storyAt(int x,int y) const {
+        for(int i=0;i<2;++i)if(x>screenW/2-320&&x<screenW/2+320&&y>210+i*110&&y<300+i*110)return i;
+        return -1;
+    }
+    void startStory() {
+        if(!onStart)return;StartOptions o;o.storyChapter=storySel+1;onStart(GameMode::STORY,o);
+    }
+    void handleStoryEvent(const SDL_Event& e) {
+        if(e.type==SDL_KEYDOWN) {
+            auto k=e.key.keysym.sym;
+            if(k==SDLK_ESCAPE||k==SDLK_BACKSPACE){page=MAIN;selected=1;return;}
+            if(k==SDLK_UP||k==SDLK_DOWN)storySel=1-storySel;
+            if(k==SDLK_RETURN||k==SDLK_SPACE)startStory();
+        }
+        if(e.type==SDL_MOUSEMOTION){int i=storyAt(e.motion.x,e.motion.y);if(i>=0)storySel=i;}
+        if(e.type==SDL_MOUSEBUTTONDOWN&&e.button.button==SDL_BUTTON_LEFT){int i=storyAt(e.button.x,e.button.y);if(i>=0){storySel=i;startStory();}}
+    }
+    void renderStory() {
+        ui.text("STORY",screenW/2,65,5,{.35f,.85f,1.f,1},true);
+        ui.text("UNIT 24 / PURPOSE: UNKNOWN",screenW/2,125,2,{.75f,.8f,.82f,1},true);
+        const char* names[]={"1  THE CRADLE","2  THE DEAD SPAN"};
+        const char* descriptions[]={"WAKE ON THE REJECT LINE. CLIMB OUT OF THE FACTORY.","CROSS THE ASH WASTELAND. FIND THE ROAD TO THE CREATOR."};
+        for(int i=0;i<2;++i) {
+            float x=screenW/2-320.f,y=210.f+i*110;
+            ui.rect(x,y,640,90,i==storySel?glm::vec4{.1f,.17f,.2f,.95f}:glm::vec4{.06f,.07f,.09f,.9f});
+            if(i==storySel)ui.rect(x,y,4,90,{.35f,.85f,1,1});
+            ui.text(names[i],x+24,y+18,3,{.85f,.9f,.92f,1});
+            ui.text(descriptions[i],x+24,y+61,1,{.65f,.72f,.75f,1});
+        }
+        ui.text("CHAPTER 2 STARTS WITH THE CRADLE'S GUNS AND GRAPPLE",screenW/2,475,1,{.7f,.65f,.52f,1},true);
+        ui.text("ENTER OR CLICK TO START / ESC BACK",screenW/2,screenH-60,1,{.6f,.65f,.7f,1},true);
     }
 
     // ---- the pictures behind the pages ---------------------------------------
@@ -519,21 +566,44 @@ private:
 
     // ---- DEV level select ----------------------------------------------------
     int devCount() const { return DEV_OPTIONS + (int)devRows.size(); }
+    int devColumn(const DevRow& r) const {
+        return r.mode == GameMode::STORY ? 2 : r.mode == GameMode::FAST ? 1 : 0;
+    }
+    int devColumnRow(int i) const {
+        int row = 0, col = devColumn(devRows[i - DEV_OPTIONS]);
+        for (int j = DEV_OPTIONS; j < i; ++j)
+            if (devColumn(devRows[j - DEV_OPTIONS]) == col) ++row;
+        return row;
+    }
+    int devColumnCount(int col) const {
+        int n = 0;
+        for (const auto& r : devRows) if (devColumn(r) == col) ++n;
+        return n;
+    }
+    int devVisibleRows() const { return std::max(1, (screenH - 330) / 34); }
+    float devWidth() const { return (screenW - 120.f) / 3.f; }
+    float devColumnX(int col) const { return 40.f + col * (devWidth() + 20.f); }
     float devY(int i) const {
-        // options, a gap, then the levels in two columns (ARENA left, FAST right)
         if (i < DEV_OPTIONS) return 128.f + i * 34.f;
-        const DevRow& r = devRows[i - DEV_OPTIONS];
-        if (r.mode == GameMode::ACT2) return 232.f + (act1Rows + 1 + r.arena) * 34.f;
-        return 232.f + r.arena * 34.f;
+        return 232.f + (devColumnRow(i) - devScroll[devColumn(devRows[i - DEV_OPTIONS])]) * 34.f;
     }
     float devX(int i) const {
-        if (i < DEV_OPTIONS) return screenW / 2.f - 260.f;
-        return devRows[i - DEV_OPTIONS].mode != GameMode::FAST ? screenW / 2.f - 560.f : screenW / 2.f + 40.f;
+        if (i < DEV_OPTIONS) return screenW / 2.f - devWidth() / 2;
+        return devColumnX(devColumn(devRows[i - DEV_OPTIONS]));
     }
-    static constexpr float DEV_W = 520.f;
+    bool devVisible(int i) const {
+        if (i < DEV_OPTIONS) return true;
+        int row = devColumnRow(i) - devScroll[devColumn(devRows[i - DEV_OPTIONS])];
+        return row >= 0 && row < devVisibleRows();
+    }
+    void devRevealSelection() {
+        if (devSel < DEV_OPTIONS) return;
+        int col = devColumn(devRows[devSel - DEV_OPTIONS]), row = devColumnRow(devSel);
+        devScroll[col] = std::clamp(devScroll[col], row - devVisibleRows() + 1, row);
+    }
     int devAt(int mx, int my) const {
         for (int i = 0; i < devCount(); ++i)
-            if (mx > devX(i) && mx < devX(i) + DEV_W && my > devY(i) - 6 && my < devY(i) + 26) return i;
+            if (devVisible(i) && mx > devX(i) && mx < devX(i) + devWidth() && my > devY(i) - 6 && my < devY(i) + 26) return i;
         return -1;
     }
     void devActivate(int i, int dir = 1) {
@@ -543,7 +613,8 @@ private:
         const DevRow& r = devRows[i - DEV_OPTIONS];
         StartOptions o;
         o.arena = r.arena;
-        o.wave  = r.mode != GameMode::FAST ? std::min(devWave, r.waves - 1) : 0;
+        o.storyChapter = r.chapter;
+        o.wave  = (r.mode == GameMode::ARENA || r.mode == GameMode::ACT2) ? std::min(devWave, r.waves - 1) : 0;
         o.god   = devGod;
         o.practice = true;
         onStart(r.mode, o);
@@ -556,16 +627,26 @@ private:
             if (k == SDLK_UP)   devSel = (devSel + n - 1) % n;
             if (k == SDLK_DOWN) devSel = (devSel + 1) % n;
             if ((k == SDLK_LEFT || k == SDLK_RIGHT) && devSel >= DEV_OPTIONS) {
-                // jump between the ARENA and FAST columns, keeping the row
-                const DevRow& r = devRows[devSel - DEV_OPTIONS];
-                GameMode want = r.mode == GameMode::FAST ? GameMode::ARENA : GameMode::FAST;
-                int best = -1;
-                for (int i = 0; i < (int)devRows.size(); ++i)
-                    if (devRows[i].mode == want && (best < 0 || std::abs(devRows[i].arena - r.arena) < std::abs(devRows[best].arena - r.arena)))
-                        best = i;
-                if (best >= 0) devSel = best + DEV_OPTIONS;
+                // Move to the adjacent column, keeping the visible row where possible.
+                int col = devColumn(devRows[devSel - DEV_OPTIONS]);
+                int want = (col + (k == SDLK_LEFT ? 2 : 1)) % 3;
+                int row = devColumnRow(devSel) - devScroll[col], best = -1;
+                for (int i = DEV_OPTIONS; i < devCount(); ++i)
+                    if (devColumn(devRows[i - DEV_OPTIONS]) == want &&
+                        (best < 0 || std::abs(devColumnRow(i) - devScroll[want] - row) <
+                                     std::abs(devColumnRow(best) - devScroll[want] - row))) best = i;
+                if (best >= 0) devSel = best;
             } else if (k == SDLK_LEFT || k == SDLK_RIGHT) devActivate(devSel, k == SDLK_LEFT ? -1 : 1);
+            devRevealSelection();
             if (k == SDLK_RETURN || k == SDLK_SPACE) devActivate(devSel);
+        }
+        if (e.type == SDL_MOUSEWHEEL) {
+            int mx, my; SDL_GetMouseState(&mx, &my);
+            for (int col = 0; col < 3; ++col)
+                if (mx >= devColumnX(col) && mx < devColumnX(col) + devWidth()) {
+                    int delta = e.wheel.direction == SDL_MOUSEWHEEL_FLIPPED ? -e.wheel.y : e.wheel.y;
+                    devScroll[col] = std::clamp(devScroll[col] - delta, 0, std::max(0, devColumnCount(col) - devVisibleRows()));
+                }
         }
         if (e.type == SDL_MOUSEMOTION) { int i = devAt(e.motion.x, e.motion.y); if (i >= 0) devSel = i; }
         if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
@@ -580,9 +661,10 @@ private:
         ui.text("PRACTICE RUNS: NO RECORDS, NO LEADERBOARD", cx, 90, 1, {0.6f, 0.75f, 0.7f, 0.9f}, true);
         char buf[96];
         for (int i = 0; i < devCount(); ++i) {
+            if (!devVisible(i)) continue;
             bool sel = i == devSel;
             float x = devX(i), y = devY(i);
-            ui.rect(x, y - 6, DEV_W, 30, sel ? glm::vec4{0.05f, 0.2f, 0.17f, 0.95f} : glm::vec4{0.06f, 0.06f, 0.09f, 0.85f});
+            ui.rect(x, y - 6, devWidth(), 30, sel ? glm::vec4{0.05f, 0.2f, 0.17f, 0.95f} : glm::vec4{0.06f, 0.06f, 0.09f, 0.85f});
             if (sel) ui.rect(x, y - 6, 4, 30, {0.3f, 1.f, 0.8f, 1.f});
             glm::vec4 c = sel ? glm::vec4{0.5f, 1.f, 0.85f, 1.f} : glm::vec4{0.75f, 0.75f, 0.8f, 0.95f};
             if (i == 0) std::snprintf(buf, sizeof(buf), "GOD MODE            %s", devGod ? "ON" : "OFF");
@@ -590,14 +672,28 @@ private:
             else {
                 const DevRow& r = devRows[i - DEV_OPTIONS];
                 bool boss = r.mode == GameMode::ARENA && r.arena == (int)countMode(GameMode::ARENA) - 1;
-                std::snprintf(buf, sizeof(buf), "%s %d  %s%s",
-                              r.mode == GameMode::ARENA ? "ARENA" : r.mode == GameMode::ACT2 ? "ACT II" : "ROOM",
+                if (r.mode == GameMode::STORY)
+                    std::snprintf(buf, sizeof(buf), "%d.%d  %s", r.chapter, r.arena + 1, r.name.c_str());
+                else std::snprintf(buf, sizeof(buf), "%s %d  %s%s",
+                              r.mode == GameMode::FAST ? "ROOM" : r.label,
                               r.arena + 1, r.name.c_str(), boss ? "  (BOSS)" : "");
             }
-            ui.text(buf, x + 14, y + 1, 2, c);
+            int scale = std::strlen(buf) * 12.f <= devWidth() - 24.f ? 2 : 1;
+            ui.text(buf, x + 14, y + (scale == 2 ? 1 : 5), scale, c);
         }
-        ui.text("ARENAS", devX(DEV_OPTIONS) + DEV_W / 2, 206, 1, {0.4f, 1.f, 0.65f, 0.9f}, true);
-        ui.text("FAST ROOMS", screenW / 2.f + 40.f + DEV_W / 2, 206, 1, {1.f, 0.65f, 0.25f, 0.9f}, true);
+        const char* headings[] = {"ARENAS / ACT I + II", "FAST ROOMS", "STORY / CHAPTER.ROOM"};
+        for (int col = 0; col < 3; ++col) {
+            float x = devColumnX(col) + devWidth() / 2;
+            ui.text(headings[col], x, 206, 1, {0.4f, 1.f, 0.65f, 0.9f}, true);
+            int count = devColumnCount(col);
+            if (count > devVisibleRows()) {
+                std::snprintf(buf, sizeof(buf), "%d-%d OF %d  /  SCROLL FOR MORE", devScroll[col] + 1,
+                              std::min(count, devScroll[col] + devVisibleRows()), count);
+                ui.text(buf, x, screenH - 88, 1, {0.6f, 0.75f, 0.7f, 0.9f}, true);
+            }
+        }
+        ui.text("STORY: 1 THE CRADLE / 2 THE DEAD SPAN - CHECKPOINT GEAR INCLUDED, WAKE-UP SKIPPED",
+                cx, 184, 1, {0.6f, 0.75f, 0.7f, 0.9f}, true);
         ui.text("ARROWS / MOUSE TO PICK   ENTER OR CLICK TO GO   LEFT/RIGHT CHANGES OPTIONS   ESC BACK",
                 cx, screenH - 54, 1, {0.6f, 0.6f, 0.65f, 0.85f}, true);
         ui.text("IN A PRACTICE RUN: F5 CLEARS THE WAVE   F6 REFILLS HEALTH", cx, screenH - 36, 1,
@@ -688,7 +784,7 @@ private:
         if (records.bestEndless > 0) endSub += "   BEST " + std::to_string(records.bestEndless);
         Item items[NUM_ITEMS] = {
             {"ARENA", arenaSub.c_str()},
-            {"STORY", "CHAPTER 1 - THE CRADLE"},
+            {"STORY", "THE CRADLE / THE DEAD SPAN"},
             {"FAST",  fastSub.c_str()},
             {"ENDLESS", endSub.c_str()},
             {"BOSS", bossSub.c_str()},

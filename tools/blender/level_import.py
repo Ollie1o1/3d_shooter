@@ -1,7 +1,7 @@
 # A level, as the game draws it, into Blender: the place to lay new things out (OD_LAYOUT) and to render it.
 #
 #   make level-dump                      (writes build/levels/<level>/: the world, its textures, its arenas)
-#   blender --python tools/blender/level_import.py -- act1             (act1, act2, fast or story1; opens it to work on)
+#   blender --python tools/blender/level_import.py -- act1             (act1, act2, fast, story1 or story2; opens it to work on)
 #   blender -b --python tools/blender/level_import.py -- act1 --save build/levels/act1.blend
 #
 # What you get (Blender is Z up; the game is Y up: game (x, y, z) is Blender (x, -z, y)):
@@ -355,7 +355,7 @@ def import_level(level, dump_root=None, with_layout=True):
 if __name__ == "__main__":
     args = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
     if not args:
-        print("usage: blender [-b] --python tools/blender/level_import.py -- act1|act2|fast|story1 [--save FILE.blend]")
+        print("usage: blender [-b] --python tools/blender/level_import.py -- act1|act2|fast|story1|story2 [--save FILE.blend]")
         sys.exit(2)
     import_level(args[0])
     if "--save" in args:

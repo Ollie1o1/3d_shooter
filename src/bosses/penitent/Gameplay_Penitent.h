@@ -92,6 +92,12 @@ inline void GameplayState::onPenitentEvents(Enemy& e, const EnemyEvents& ev) {
 
 inline void GameplayState::breakAnchor(int i, bool ripped) {
     if (level.anchors[i].kind == LevelData::ChainAnchor::CONDUIT) { cutConduit(i); return; }
+    if (level.anchors[i].kind == LevelData::ChainAnchor::BRAKE) {
+        fx.spawnBurst(level.anchors[i].pos,{.8f,.6f,.25f},12,4.f,.5f,8.f);
+        audio.playAt("clank",level.anchors[i].pos,115,SoundGroup::WORLD,true);
+        ui.feed("TURBINE BRAKE RELEASED",{.5f,1.f,.7f});
+        return;
+    }
     const glm::vec3 p = level.anchors[i].pos;
     fx.spawnBurst(p, {1.2f, 0.6f, 0.25f}, 40, 9.f, 0.7f, 6.f);
     audio.playAt("clank", p, 128, SoundGroup::ENEMY, true, 0.5f);

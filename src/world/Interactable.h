@@ -24,6 +24,7 @@ enum class InteractableType {
     BUTTON,          // triggers a one-shot event (door, lift, etc.)
     PICKUP_HEALTH,   // restores health on touch (or press)
     PICKUP_AMMO,     // restores a consumable (grenades, etc.)
+    READABLE,        // optional story log / terminal; activated explicitly
 };
 
 struct Interactable {
@@ -39,3 +40,21 @@ struct Interactable {
 
     static constexpr float INTERACT_RANGE = 3.5f;
 };
+
+// Share targeting between the HUD and the key handler. Solid geometry must
+// occlude a prompt, including logs on the other side of a thin duct wall.
+inline int interactTarget(const std::vector<Interactable>& items, glm::vec3 origin,
+                          glm::vec3 dir, const std::vector<Wall>& walls) {
+    float limit = Interactable::INTERACT_RANGE;
+    for (const auto& w : walls) {
+        float t = rayBoxHit(origin, dir, w.box);
+        if (t > 0.f) limit = std::min(limit, t + .03f);
+    }
+    int best = -1;
+    for (int i = 0; i < (int)items.size(); ++i) {
+        if (!items[i].active) continue;
+        float t = rayBoxHit(origin, dir, items[i].box);
+        if (t > 0.f && t < limit) { limit = t; best = i; }
+    }
+    return best;
+}

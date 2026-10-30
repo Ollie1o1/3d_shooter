@@ -273,7 +273,7 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
                      p.emissiveColor * 0.15f, p.emissiveColor * 1.4f * f);
             }
         }
-        if(story() && p.ownerType==(int)EnemyType::SORTER){gatherStoryProjectile(out,p,at,spin);continue;}
+        if(story() && (p.ownerType==(int)EnemyType::SORTER||p.ownerType==(int)EnemyType::BALLAST)){gatherStoryProjectile(out,p,at,spin);continue;}
         bool drawn = p.heavy ? propdraw::push(out, "shot_shell", propdraw::along(at, p.velocity) * glm::rotate(glm::mat4(1.f), spin * 0.5f, glm::vec3{0, 0, 1}) * S(glm::vec3{p.size}), p.emissiveColor)
                    : p.isGrenade ? propdraw::push(out, "shot_grenade", base * S(glm::vec3{p.size * 0.85f}), p.emissiveColor)
                    : propdraw::push(out, "shot_orb", base * S(glm::vec3{p.size * 0.7f}), p.emissiveColor);

@@ -102,15 +102,17 @@ struct WaveEntry {
 //   CONDUITS  destroy the CONDUIT pylons at `points`; the wave spawns out of them
 //   SURVIVE   last `seconds`
 struct WaveGoal {
-    enum Kind { KILL_ALL, HOLD, CONDUITS, SURVIVE } kind = KILL_ALL;
+    enum Kind { KILL_ALL, HOLD, CONDUITS, SURVIVE, EXTERNAL } kind = KILL_ALL;
     const char* label = "";        // the objective line, e.g. "HOLD THE DAIS"
     glm::vec3 pos{0.f};
     float radius = 0.f, seconds = 0.f;
     std::vector<glm::vec3> points;
+    bool refill = true;   // objective pressure; false for a finite guard detail
     int mover = -1;   // HOLD: the circle rides this mover (on its top) instead of staying at pos
     WaveGoal onMover(int m) const { WaveGoal g = *this; g.mover = m; return g; }
     static WaveGoal hold(const char* l, glm::vec3 p, float r, float s) { WaveGoal g; g.kind = HOLD; g.label = l; g.pos = p; g.radius = r; g.seconds = s; return g; }
     static WaveGoal conduits(const char* l, std::vector<glm::vec3> pts) { WaveGoal g; g.kind = CONDUITS; g.label = l; g.points = std::move(pts); return g; }
+    static WaveGoal external(const char* l) { WaveGoal g; g.kind = EXTERNAL; g.label = l; g.refill = false; return g; }
     static WaveGoal survive(const char* l, float s) { WaveGoal g; g.kind = SURVIVE; g.label = l; g.seconds = s; return g; }
 };
 
@@ -150,6 +152,15 @@ struct FloorPatch { float x0, z0, x1, z1, y; glm::vec3 color; Mat mat = Mat::BRI
 // Ground that isn't at Y 0: inside `xz` (its X and Z only) the hard floor is
 // at `y`. Act II sits in one, 60 m under Act I.
 struct Basin { AABB xz; float y; };
+// Walkable ground slope, authored with a matching visible ramp. No underpass:
+// like a Basin, its footprint supplies the ground height to Player and enemies.
+struct GroundRamp {
+    AABB xz; int axis=0; float from=0,to=0;
+    float at(float x,float z) const {
+        float p=axis==0?x:z;
+        return glm::mix(from,to,glm::clamp((p-xz.min[axis])/(xz.max[axis]-xz.min[axis]),0.f,1.f));
+    }
+};
 
 // Standing water: over `box` (X and Z; box.min.y is the floor it fills from)
 // the surface is at `level`. ArenaShifts raises it (FLOOD).
@@ -284,6 +295,7 @@ struct LevelData {
     std::vector<Hazard>     hazards;
     std::vector<Conveyor>   conveyors;
     std::vector<Basin>      basins;
+    std::vector<GroundRamp> ramps;
     std::vector<WaterVolume> water;
     std::vector<Arena>      arenas;
     std::vector<AABB>       corridors; // corridor i joins arena i and i+1 (zone, XZ)
@@ -397,7 +409,7 @@ struct LevelData {
     // rip them), the WARDEN's conduit nodes (shoot them; they re-attach)
     struct ChainAnchor {
         int wall = -1; glm::vec3 pos{0.f}; float hp = 400.f; bool alive = true;
-        enum Kind { CHAIN, CONDUIT } kind = CHAIN;
+        enum Kind { CHAIN, CONDUIT, BRAKE } kind = CHAIN;
         AABB home{};          // its wall as built (restoreAnchor)
         float maxHp = 400.f;
     };
@@ -532,6 +544,9 @@ struct LevelData {
     // STORY (LevelStory.h): what the story's own code needs to know about a chapter's level
     struct Story {
         bool  built = false;
+        int chapter=1, nextChapter=2, startWeapons=0;
+        bool startGrapple=false;
+        const char* title="THE CRADLE";
         glm::vec3 wake{0.f};              // where UNIT 24 wakes, lying on the belt
         std::vector<float> lanes;         // the belts' centre lines (X); they run toward -Z
         float beltTop = 0.f, beltStart = 0.f, beltEnd = 0.f, beltSpeed = 1.f;
@@ -548,11 +563,14 @@ struct LevelData {
         std::vector<Dumped> dumped;
         struct Terminal { glm::vec3 pos; const char* title; const char* line; };
         std::vector<Terminal> terminals;
+        struct Vent { glm::vec3 pos; int section; float period,phase; };
+        std::vector<Vent> vents;
+        std::vector<int> turbineBrakes;   // shootable maintenance locks, independent of boss anchors
         struct Scanner { glm::vec3 a, b; float phase; };
         std::vector<Scanner> scanners;
         std::vector<glm::vec3> assemblyUnits, pods;
         std::vector<int> podGlass, sortingTiles;
-        int elevator = -1, bossSection = 8;
+        int elevator = -1, serviceLift = -1, bossSection = 8;
         glm::vec3 grappleAt{0.f};
         int   pitSection = -1;            // the section whose fight its revolver starts
         AABB  end{};                      // reach this: the chapter so far is over
@@ -571,7 +589,11 @@ struct LevelData {
     float     moverClock = 0.f;
 
     // The hard floor at (x, z): a basin's, else Y 0
-    float baseFloor(float x, float z) const {
+    float baseFloor(float x, float z, float radius=0.f) const {
+        for(const auto& r:ramps)if(x>=r.xz.min.x&&x<=r.xz.max.x&&z>=r.xz.min.z&&z<=r.xz.max.z) {
+            float pad=(r.to>=r.from?radius:-radius);
+            return r.at(x+(r.axis==0?pad:0),z+(r.axis==2?pad:0));
+        }
         for (auto& b : basins)
             if (x >= b.xz.min.x && x <= b.xz.max.x && z >= b.xz.min.z && z <= b.xz.max.z) return b.y;
         return 0.f;
@@ -730,7 +752,7 @@ inline void applyWater(Player& p, const LevelData& L) {
     float surf = L.waterSurfaceAt(p.position.x, p.position.z);
     p.wadeDepth = std::max(0.f, surf - p.position.y);
     p.waterSurface = surf;
-    p.floorY = L.baseFloor(p.position.x, p.position.z);   // the Player adds the water's lift itself
+    p.floorY = L.baseFloor(p.position.x, p.position.z,p.radius);   // the Player adds the water's lift itself
 }
 
 // Inside a boost tube the player is driven along it at (at least) its speed
