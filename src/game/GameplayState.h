@@ -10,6 +10,7 @@
 #include "player/StyleSystem.h"
 #include "ui/UIRenderer.h"
 #include "ui/WorldMarker.h"
+#include "world/StoryBossArena.h"
 #include "enemies/Enemy.h"
 #include "audio/EnemyVoice.h"
 #include "bosses/warden/WardenHazards.h"
@@ -128,6 +129,9 @@ public:
     float storyTurbineAngle[3] = {};
     void ballastEvents(Enemy& e, const EnemyEvents& ev);
     void gatherBallast(std::vector<BoxInstance>& out);
+    void breakStoryCover(glm::vec3 from,glm::vec3 to,float radius);
+    void gatherStoryCover(std::vector<BoxInstance>& out);
+    bool shootStoryCable(glm::vec3 from,glm::vec3 dir,float& distance);
     void beginWasteland();
     void updateWasteland(float dt);
     void gatherWasteland(std::vector<BoxInstance>& out);

@@ -281,8 +281,9 @@ inline LevelData buildWasteland() {
         B.neon(p.x-.3f,6.8f,p.z-2.5f,p.x+.3f,7,p.z+2.5f,cyan*.6f);
     }
     for(vec3 p:{vec3{5,0,-202},vec3{51,0,-233}}) {
-        solid(p.x-5,0,p.z-.6f,p.x+5,3.1f,p.z+.6f,rock);
-        for(int k=0;k<4;++k)detail(p.x-4+k*2,2.7f,p.z-.65f,p.x-3+k*2,2.95f,p.z+.65f,paint);
+        int shield=solid(p.x-5,0,p.z-.6f,p.x+5,3.1f,p.z+.6f,rock);
+        L.walls[shield].hidden=true;S.bossCover.push_back({shield,L.walls[shield].box});
+
     }
     for(int k=0;k<13;++k) {
         float x=18+k*1.5f;

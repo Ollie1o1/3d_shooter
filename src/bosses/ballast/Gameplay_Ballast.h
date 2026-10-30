@@ -6,11 +6,22 @@ inline void GameplayState::ballastEvents(Enemy& e,const EnemyEvents& ev) {
         else ui.feed(line,{.95f,.7f,.35f});
     }
     if(ev.telegraphStarted) {
-        audio.playAt("telegraph",e.attack==AttackKind::BALL_ANCHOR?e.ballAim:e.position,120,SoundGroup::ENEMY,true);
+        audio.playAt("telegraph",(e.attack==AttackKind::BALL_ANCHOR||e.attack==AttackKind::BALL_WINCH)?e.ballAim:e.position,120,SoundGroup::ENEMY,true);
         const char* hint=e.attack==AttackKind::BALL_GRADE?"GRADING PASS / JUMP OR DASH SIDEWAYS":
                          e.attack==AttackKind::BALL_GUST?(e.ballReverse?"REVERSE DRAW / LEAVE THE LANE OR TAKE COVER":"CROSSWIND / LEAVE THE LANE OR TAKE COVER"):
-                         e.attack==AttackKind::BALL_ANCHOR?"CABLE WEIGHT / WHITE: PARRY":"LOOSE BALLAST / PARRY THE SHOT";
+                         e.attack==AttackKind::BALL_ANCHOR?"CABLE WEIGHT / WHITE: PARRY":
+                         e.attack==AttackKind::BALL_WINCH?"WINCH / PARRY THE HEAD OR CUT THE CABLE":
+                         e.attack==AttackKind::BALL_RIP?"ROAD TEAR / JUMP OR CROSS THE GAPS":
+                         e.attack==AttackKind::BALL_SWEEP?"BLADE SWEEP / JUMP":"SCOOP VOLLEY / PARRY THE HEAVY SCRAP";
         ui.feed(hint,{1.f,.8f,.45f});
+    }
+    if(ev.ballLocked)audio.playAt("count_tick",e.ballAim,115,SoundGroup::ENEMY,true);
+    if(ev.ballRip){ballastHazards.addRip(ev.ballFrom,ev.ballTo);audio.playAt("ab_boom_stone",e.position,120,SoundGroup::ENEMY,true);shake(.5f,.06f);}
+    if(ev.ballWinch)audio.playAt("hook_yank",e.position,120,SoundGroup::ENEMY,true);
+    if(ev.ballSweep)audio.playAt("slam",e.position,120,SoundGroup::ENEMY,true);
+    if(ev.ballYank&&!playerDead&&!g_godMode&&dashMomentumTimer<=0) {
+        glm::vec3 pull=e.position-player.position;pull.y=0;
+        if(glm::length(pull)>1)player.velocity+=glm::normalize(pull)*(18.f/60.f);
     }
     if(ev.ballGust)ballastHazards.add(ev.ballFrom,ev.ballTo);
     if(ev.ballGrade)audio.playAt("land_heavy",e.position,120,SoundGroup::ENEMY,true);
@@ -41,8 +52,28 @@ inline void GameplayState::gatherBallast(std::vector<BoxInstance>& out) {
             line(c-dir*1.1f-side*.75f,c,.08f,color);
         }
     };
-    for(const auto& e:enemies)if(e.alive&&e.type==EnemyType::BALLAST&&(e.telegraphTimer>0||e.ballDrive>0)) {
+    for(const auto& e:enemies)if(e.alive&&e.type==EnemyType::BALLAST&&(e.telegraphTimer>0||e.ballDrive>0||e.ballCableShow>0||e.ballSwing>0)) {
         if(e.attack==AttackKind::BALL_GRADE||e.ballDrive>0)lane(e.ballFrom,e.ballAim,3.7f,abGoldTell({1.7f,1.1f,.15f}));
+        if(e.attack==AttackKind::BALL_WINCH||e.ballCableShow>0) {
+            vec3 muzzle=e.position+vec3{-1.5f,4,1};
+            float reach=e.attack==AttackKind::BALL_WINCH?glm::clamp(1.f-e.telegraphTimer/.22f,0.f,1.f):1.f;
+            vec3 head=glm::mix(muzzle,e.attack==AttackKind::BALL_WINCH?e.ballAim:e.ballCableAt,reach);
+            line(muzzle,head,.075f,vec3{1.5f});
+            r.box(T(head)*RY(e.yaw),{0,0,0},{.45f,.45f,1.1f},{.6f,.59f,.5f},vec3{1.7f});
+            if(e.telegraphTimer>0)sorterrig::warning(r,e.ballAim-vec3{0,.6f,0},1.1f,vec3{1.5f},false);
+        }
+        if(e.attack==AttackKind::BALL_RIP) {
+            vec3 d=e.ballAim-e.position;d.y=0;
+            if(glm::length(d)>.01f){d=glm::normalize(d);for(float a:{-.25f,0.f,.25f}) {
+                vec3 dir{d.x*std::cos(a)+d.z*std::sin(a),0,d.z*std::cos(a)-d.x*std::sin(a)};
+                lane(e.position,e.position+dir*55.f,1.8f,{1.7f,.45f,.1f});
+            }}
+        }
+        if(e.attack==AttackKind::BALL_SWEEP) {
+            float facing=std::atan2(e.ballSwingDir.x,e.ballSwingDir.z);
+            for(int k=0;k<24;++k){float a=facing-1.05f+k*2.1f/24.f,b=facing-1.05f+(k+1)*2.1f/24.f;
+                line(e.position+vec3{std::sin(a)*6.2f,.08f,std::cos(a)*6.2f},e.position+vec3{std::sin(b)*6.2f,.08f,std::cos(b)*6.2f},.08f,abGoldTell({1.8f,1.1f,.2f}));}
+        }
         if(e.attack==AttackKind::BALL_GUST) {
             vec3 d=e.ballAim-e.ballFrom;d.y=0;
             if(glm::length(d)>.01f)lane(e.ballFrom,e.ballFrom+glm::normalize(d)*BallastHazards::RANGE,BallastHazards::HALF_WIDTH,{1.7f,.35f,.13f});
@@ -61,6 +92,11 @@ inline void GameplayState::gatherBallast(std::vector<BoxInstance>& out) {
     }
     for(const auto& f:ballastHazards.fronts) {
         vec3 center=f.from+f.dir*f.distance,side{-f.dir.z,0,f.dir.x};
+        if(f.rubble) {
+            for(int k=0;k<4;++k){vec3 p=center+side*((k-1.5f)*.8f)+vec3{0,.65f+(k%2)*.3f,0};
+                r.box(T(p)*RY(std::atan2(f.dir.x,f.dir.z))*RX(-.35f+std::sin(gameClock*12+k)*.12f),{0,0,0},{.85f,1.3f,1.7f},{.32f,.29f,.24f},{.5f,.2f,.04f});}
+            line(center-side*1.8f,center+side*1.8f,.1f,{1.4f,.45f,.1f});continue;
+        }
         // The clear front and shoulder lamps remain at every detail level.
         line(center-side*BallastHazards::HALF_WIDTH+vec3{0,.3f,0},center+side*BallastHazards::HALF_WIDTH+vec3{0,.3f,0},.14f,{1.5f,.4f,.14f});
         for(float sign:{-1.f,1.f})line(center+side*BallastHazards::HALF_WIDTH*sign,center+side*BallastHazards::HALF_WIDTH*sign+vec3{0,2.7f,0},.1f,{1.5f,.4f,.14f});

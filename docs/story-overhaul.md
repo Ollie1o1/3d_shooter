@@ -63,14 +63,14 @@ Random enemy potion drops use a base 6% chance (previously 18%); Brutes use
 20% (previously 50%). The ordinary drop rate scales with difficulty. Placed health
 and guaranteed FAST miniboss rewards retain their existing rules.
 
-The Sorter moves faster along its rails, throws faster scrap and chains two
-presses in phase two / three in phase three. Its overhead attack is an actual
-hydraulic press on a gantry: amber targeting, red lock with an audible tick,
-then a release sound and a visible downstroke. The target stops tracking 0.55
-seconds before impact. The head reaches the floor on the damage tick, holds
-briefly and retracts. The warning columns, press and claw remain visible with
-ambient detail off. A white claw can still be parried; staggers cancel queued
-attacks for both bosses. Health totals remain unchanged.
+The [boss combat overhaul](story-boss-combat-design.md) adds concurrent pursuit,
+committed interception, staggered press rows, furnace purges, pivoting grading
+runs, a cuttable winch, blade sweeps and flying road slabs. Machinery and damage
+volumes agree, including attacks aimed at an elevated player. Light cover breaks
+through actual impacts and restores on retry. Floor panels fail progressively.
+Both bosses keep their existing health totals; precision hits on exposed
+machinery earn the damage bonus, and Story bosses shed two potions instead of
+four. Parries cancel pending attacks and follow-ups.
 
 ## Atmosphere and performance
 

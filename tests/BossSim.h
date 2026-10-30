@@ -129,6 +129,8 @@ struct BossSim {
             return;
         }
         float m = boss.armorMult();
+        // SOLID aims at exposed machinery rather than gaining the old whole-body bonus.
+        if(!boss.staggered()&&((boss.type==EnemyType::SORTER&&boss.sortOpen>0)||(boss.type==EnemyType::BALLAST&&boss.ballOpen>0)))m*=1.6f;
         if (boss.coreOpen()) m = std::max(m, 1.f) * (0.4f + 0.6f * boss.woundMult());   // most shots into the open core
         boss.takeDamage(dmg * m);
     }
@@ -249,7 +251,7 @@ struct BossSim {
                 float sign=glm::dot(feet-boss.ballFrom,side)>=0?1.f:-1.f;
                 feet+=side*sign*8.f*dt;
             }
-            if(boss.attack==AttackKind::BALL_ANCHOR && !parryNext) {
+            if((boss.attack==AttackKind::BALL_ANCHOR||boss.attack==AttackKind::BALL_WINCH) && !parryNext) {
                 glm::vec3 out=feet-boss.ballAim;out.y=0;
                 if(glm::length(out)<.1f)out={1,0,0};
                 feet+=glm::normalize(out)*8.f*dt;
@@ -283,6 +285,8 @@ struct BossSim {
         if(ev.telegraphStarted){dodgeFrom=t+REACT;dodgeUntil=t+boss.telegraphDuration+AFTER;}
         if(ev.meleeHit)hurt(ev.meleeDamage);
         if(ev.ballGust)ball.add(ev.ballFrom,ev.ballTo);
+        if(ev.ballRip)ball.addRip(ev.ballFrom,ev.ballTo);
+        if(ev.ballYank){auto pull=boss.position-feet;pull.y=0;if(glm::length(pull)>1)feet+=glm::normalize(pull)*6.f*dt;}
         for(const auto& hit:ball.update(dt,feet,L.walls))hurt(hit.damage);
         for(int k=0;k<ev.shots;++k)proj.fire(ev.shotOrigin,ev.shotDir[k]*ev.shotSpeed,ev.shotDamage,false,{1,1,1},false,0,ev.shotSize,true);
         auto hit=proj.update(dt,L.walls.data(),(int)L.walls.size(),others,feet+glm::vec3{0,1.7f,0},&grid);

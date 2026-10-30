@@ -216,7 +216,7 @@ int main(){
     // must evade it, while standing on the committed point is hit at full extension.
     {
         Enemy e(EnemyType::SORTER,{82,T+2,-20});e.state=EnemyState::ACTIVE;e.spawnTimer=0;
-        e.sortPhase=1;e.sortHome=e.position;e.sortHomeSet=true;e.sortStep=1;e.attackTimer=100;
+        e.sortPhase=1;e.sortHome=e.position;e.sortHomeSet=true;e.sortStep=1;e.sortNext=AttackKind::SORT_STAMP;e.attackTimer=100;
         EnemyWorld w;w.bounds=L.arenas[8].bounds;w.playerFeet={80,T,-2};w.playerEye=w.playerFeet+glm::vec3{0,1.7f,0};
         bool locked=false,dropped=false,hit=false,stable=true,matched=false;glm::vec3 committed{0};
         for(int i=0;i<180&&!hit;++i) {
@@ -231,7 +231,7 @@ int main(){
         e.stagger(.3f);for(int i=0;i<12;++i)e.update(DT,w);
         CHECK(e.sortImpactT>0&&Enemy::sortPressHeight(0,e.sortImpactT)>Enemy::SORT_PRESS_DOWN,
               "the physical press retracts after impact even if the boss is staggered");
-        e.staggerTimer=0;e.recoverTimer=0;e.attackTimer=100;e.sortStep=1;e.sortLocked=e.sortDropCued=false;
+        e.staggerTimer=0;e.recoverTimer=0;e.attackTimer=100;e.sortStep=1;e.sortNext=AttackKind::SORT_STAMP;e.sortLocked=e.sortDropCued=false;
         bool dodged=false;locked=false;
         for(int i=0;i<180&&!dodged;++i) {
             e.update(DT,w);
@@ -240,10 +240,10 @@ int main(){
         }
         CHECK(dodged,"leaving the locked press target avoids its hit without the target following");
         Enemy combo(EnemyType::SORTER,{82,T+2,-20});combo.state=EnemyState::ACTIVE;combo.spawnTimer=0;
-        combo.health=combo.maxHealth*.2f;combo.sortPhase=3;combo.sortStep=1;combo.attackTimer=100;
-        int presses=0,tells=0;bool readable=true;
-        for(int i=0;i<60*8&&presses<3;++i){combo.update(DT,w);if(combo.ev.telegraphStarted){++tells;readable&=combo.telegraphDuration>=.95f;}presses+=combo.ev.sortStamp;}
-        CHECK(presses==3&&tells==3&&readable,"final-phase press string gives each of three strikes its own readable warning");
+        combo.health=combo.maxHealth*.2f;combo.sortPhase=3;combo.sortStep=1;combo.sortNext=AttackKind::SORT_ROW;combo.attackTimer=100;
+        int presses=0;bool readable=false;
+        for(int i=0;i<60*8&&presses<3;++i){combo.update(DT,w);if(combo.ev.telegraphStarted&&combo.attack==AttackKind::SORT_ROW){readable=combo.sortPresses.size()==3&&combo.sortPresses.front().remaining>=.95f;}presses+=combo.ev.sortStamp;}
+        CHECK(presses==3&&readable,"press sequence warns all three physical heads before their staggered impacts");
         combo.sortFollowups=2;combo.stagger(1);
         CHECK(combo.sortFollowups==0,"stagger cancels queued Sorter follow-ups");
     }

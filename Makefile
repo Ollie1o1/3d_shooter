@@ -69,7 +69,7 @@ SRC     := src/main.cpp
 HEADERS := $(shell find src -name '*.h')
 TESTS   := tests/test_wasteland.cpp tests/test_story.cpp tests/test_physics.cpp tests/test_game.cpp tests/test_zenith.cpp tests/BossSim.h
 
-.PHONY: all clean run test test-story test-wasteland test-render test-dev test-story-overhaul test-web-story web scan level-dump light
+.PHONY: all clean run test test-story test-wasteland test-render test-dev test-story-overhaul test-story-bosses test-web-story web scan level-dump light
 
 all: $(TARGET)
 
@@ -92,6 +92,7 @@ test: $(TESTS) $(HEADERS)
 	$(MAKE) test-story
 	$(MAKE) test-wasteland
 	$(MAKE) test-story-overhaul
+	$(MAKE) test-story-bosses
 
 test-story: tests/test_story.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) tests/test_story.cpp -o tests/test_story $(STDLIB)
@@ -104,6 +105,10 @@ test-wasteland: tests/test_wasteland.cpp $(HEADERS)
 test-story-overhaul: tests/test_story_overhaul.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) tests/test_story_overhaul.cpp -o tests/test_story_overhaul $(STDLIB)
 	./tests/test_story_overhaul
+
+test-story-bosses: tests/test_story_bosses.cpp $(HEADERS)
+	$(CXX) $(CXXFLAGS) tests/test_story_bosses.cpp -o tests/test_story_bosses $(STDLIB)
+	./tests/test_story_bosses
 
 # Native OpenGL regression checks (needs a display; Linux CI can use xvfb-run).
 test-render: tests/test_render.cpp $(HEADERS)
@@ -165,5 +170,5 @@ test-web-story: tests/test_web_story.cpp $(HEADERS)
 	cd build/web-story && node story.js 27
 
 clean:
-	rm -f shooter shooter.exe tests/test_physics tests/test_game tests/test_zenith tests/test_story tests/test_wasteland tests/test_render tests/test_dev tests/test_story_overhaul
+	rm -f shooter shooter.exe tests/test_physics tests/test_game tests/test_zenith tests/test_story tests/test_wasteland tests/test_render tests/test_dev tests/test_story_overhaul tests/test_story_bosses
 	rm -rf build web/dist

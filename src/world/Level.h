@@ -565,6 +565,8 @@ struct LevelData {
         std::vector<Terminal> terminals;
         struct Vent { glm::vec3 pos; int section; float period,phase; };
         std::vector<Vent> vents;
+        struct BossCover { int wall; AABB home; };
+        std::vector<BossCover> bossCover;
         std::vector<int> turbineBrakes;   // shootable maintenance locks, independent of boss anchors
         struct Scanner { glm::vec3 a, b; float phase; };
         std::vector<Scanner> scanners;

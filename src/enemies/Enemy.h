@@ -331,7 +331,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     glm::vec3 levMouth() const { return position + glm::vec3{std::sin(yaw), 0.f, std::cos(yaw)} * 3.6f - glm::vec3{0.f, 0.9f, 0.f}; }
     bool  coreOpen() const { return type == EnemyType::WARDEN && (ventTimer > 0.f || wardenPhase == 3); }
     // A shot into an open weak point: the PENITENT's wound x3, the WARDEN's core x3 venting, x2 in meltdown
-    float woundMult() const { return type == EnemyType::WARDEN ? (ventTimer > 0.f ? 3.f : 2.f) : 3.f; }
+    float woundMult() const { if(type==EnemyType::SORTER||type==EnemyType::BALLAST)return staggered()?1.f:2.f;return type == EnemyType::WARDEN ? (ventTimer > 0.f ? 3.f : 2.f) : 3.f; }
 
     bool  chained() const { return type == EnemyType::PENITENT && !risen; }
     float sweepReach() const { return risen ? 18.f : 16.f; }
@@ -367,7 +367,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         // THE WARDEN's lunge: its last quarter second, or in flight until it connects (it comes into reach)
         if ((type == EnemyType::WARDEN || type == EnemyType::PACEMAKER) && dashTimer > 0.f && !dashHit) return true;   // (and THE PACEMAKER's dash)
         if (telegraphTimer <= 0.f) return false;
-        if (type == EnemyType::BALLAST) return attack == AttackKind::BALL_ANCHOR && telegraphTimer < .28f;
+        if (type == EnemyType::BALLAST) return (attack==AttackKind::BALL_ANCHOR||attack==AttackKind::BALL_WINCH)&&telegraphTimer<.28f;
         if (type == EnemyType::SORTER) return attack == AttackKind::SORT_GRAB && telegraphTimer < .25f;
         if (type == EnemyType::WARDEN) return attack == AttackKind::WLUNGE && telegraphTimer < 0.25f;
 
@@ -413,8 +413,8 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     // Damage multiplier from armor: the JUGGERNAUT shrugs off half unless
     // broken; a broken SOVEREIGN takes half again
     float armorMult() const {
-        if (type == EnemyType::BALLAST) return staggered() || ballOpen > 0.f ? 1.8f : .85f;
-        if (type == EnemyType::SORTER) return staggered() || sortOpen > 0.f ? 2.f : 1.f;
+        if (type == EnemyType::BALLAST) return staggered()?1.8f:ballOpen>0.f?1.f:.85f;
+        if (type == EnemyType::SORTER) return staggered()?2.f:sortOpen>0.f?1.f:.9f;
         if (type == EnemyType::WARDEN) return (conduitsLeft > 0 && ventTimer <= 0.f ? 0.5f : 1.f) * (staggered() ? 2.f : 1.f);
         if (type == EnemyType::PENITENT) return (anchorsLeft > 0 ? 0.25f : 1.f) * (staggered() ? 2.f : 1.f);
         if (type == EnemyType::ABSOLUTE) return staggered() ? (abReeling ? 1.5f : 2.f) : 1.f;
@@ -424,7 +424,9 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         return staggered() ? 2.f : 0.5f;
     }
     void stagger(float t) {
-        ballDrive = 0.f;ballFollow=AttackKind::NONE;sortFollowups=0;sortLocked=sortDropCued=false;
+        ballDrive=ballTether=ballVolleyT=0;ballVolley=0;ballFollow=AttackKind::NONE;
+        sortRush=sortFire=0;sortVolley=0;sortNext=AttackKind::NONE;sortFollowups=0;sortLocked=sortDropCued=false;
+        sortPresses.erase(std::remove_if(sortPresses.begin(),sortPresses.end(),[](const auto& p){return p.remaining>0;}),sortPresses.end());
         comboLeft = 0;
         staggerTimer = t; attack = AttackKind::NONE; telegraphTimer = 0.f; attackTimer = 0.f;
         comboStep = 0; chainLeft = 0; crescentLeft = 0; dashTimer = 0.f;
@@ -562,6 +564,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
             return;
         }
 
+        if(type==EnemyType::SORTER) tickSorterTools(dt,w);
         if(type==EnemyType::SORTER && sortImpactT>=0) {
             sortImpactT+=dt;if(sortImpactT>SORT_IMPACT)sortImpactT=-1.f;
         }
@@ -677,7 +680,7 @@ private:
         if (type == EnemyType::SOVEREIGN || type == EnemyType::WARDEN || type == EnemyType::LEVIATHAN || type == EnemyType::ABSOLUTE)   // never too quick to read, whatever sped it up
             windup = std::max(windup, followUp ? (type == EnemyType::ABSOLUTE ? AB_FOLLOW_FLOOR : TELL_FLOOR_FOLLOW) : TELL_FLOOR);
         if(type==EnemyType::SORTER||type==EnemyType::BALLAST)
-            windup=std::max(windup,k==AttackKind::SORT_STAMP||k==AttackKind::BALL_GUST?.95f:.8f);
+            windup=std::max(windup,k==AttackKind::SORT_STAMP||k==AttackKind::SORT_ROW||k==AttackKind::SORT_PURGE||k==AttackKind::BALL_GUST?.95f:.8f);
         attack            = k;
         tellFollow        = followUp;
         telegraphDuration = windup;
@@ -805,6 +808,8 @@ private:
 
     glm::vec3 eyePos() const {
         if (type == EnemyType::LEVIATHAN) return levMouth();
+        if(type==EnemyType::SORTER)return position+glm::vec3{std::sin(yaw)*1.6f,4.3f,std::cos(yaw)*1.6f};
+        if(type==EnemyType::BALLAST)return position+glm::vec3{std::sin(yaw)*2.5f,4.5f,std::cos(yaw)*2.5f};
         return position + glm::vec3{0.f, height() * 0.85f, 0.f};
     }
 
@@ -1334,6 +1339,7 @@ private:
     bool miniBeam(float dt, const EnemyWorld& w, float speed);
     void thinkBallast(float dt, const EnemyWorld& w, bool resolve);
     void thinkSorter(float dt, const EnemyWorld& w, bool resolve);
+    void tickSorterTools(float dt,const EnemyWorld& w);
     void thinkPacemaker(float dt, const EnemyWorld& w, bool resolve);   // bosses/pacemaker/EnemyPacemaker.h
     void pmLeapTo(glm::vec3 p);
 public:

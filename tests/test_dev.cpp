@@ -165,6 +165,37 @@ int main() {
             game.enemies.back().state=EnemyState::ACTIVE;game.enemies.back().spawnTimer=0;
             game.render();screenshot("build/boss-no-tracking-marker.bmp");
         }
+        // Real gameplay restoration and the weapon path for the new machinery.
+        for(int chapter:{1,2}) {
+            g_storyChapter=chapter;g_startArena=chapter==1?8:6;g_practice=g_godMode=true;
+            GameSettings detail;detail.ambientDetail=0;
+            GameplayState game(audio,&detail,GameMode::STORY);
+            game.director.phase=WaveDirector::Phase::ACTIVE;game.director.queue.clear();game.enemies.clear();game.banners.clear();
+            const auto cover=game.level.story.bossCover.front();auto center=(cover.home.min+cover.home.max)*.5f;
+            game.breakStoryCover(center,center,1);
+            CHECK(game.level.walls[cover.wall].box.max.y<cover.home.min.y,"boss impact removes authored cover through real gameplay");
+            if(chapter==1) {
+                game.storyCollapseT=0;game.updateStoryFactory(2.3f);int dropped=0;
+                for(size_t k=0;k<game.level.story.sortingTiles.size();++k)dropped+=game.level.walls[game.level.story.sortingTiles[k]].box.max.y<game.storyTileBoxes[k].max.y-1;
+                CHECK(dropped==1,"the final phase drops only the first warned panel at 2.3 seconds");
+                game.updateStoryFactory(3.4f);dropped=0;
+                for(size_t k=0;k<game.level.story.sortingTiles.size();++k)dropped+=game.level.walls[game.level.story.sortingTiles[k]].box.max.y<game.storyTileBoxes[k].max.y-1;
+                CHECK(dropped==4,"the remaining corner panels fail progressively");
+                game.retryArena();bool restored=true;
+                for(size_t k=0;k<game.level.story.sortingTiles.size();++k)restored&=glm::length(game.level.walls[game.level.story.sortingTiles[k]].box.max-game.storyTileBoxes[k].max)<.001f;
+                CHECK(restored&&game.storyCollapseT<0,"retry restores all failed floor panels and clears their timer");
+            } else {
+                auto at=game.level.arenas[game.level.story.bossSection].bossSpawn;
+                game.enemies.emplace_back(EnemyType::BALLAST,at);auto& boss=game.enemies.back();boss.spawnTimer=0;boss.state=EnemyState::ACTIVE;
+                auto cableMid=at+glm::vec3{-1.5f,4,11};boss.ballCableAt=at+glm::vec3{-1.5f,4,21};boss.ballTether=.65f;boss.ballCableShow=.75f;
+                game.player.camera.position=cableMid+glm::vec3{-8,0,0};game.player.camera.yaw=0;game.player.camera.pitch=0;
+                game.fireWeapon(0);
+                CHECK(boss.ballTether==0&&boss.ballOpen>0,"a real revolver shot cuts Ballast's cable and opens its drive");
+                game.ballastHazards.addRip(at,at+glm::vec3{0,0,40});game.retryArena();
+                CHECK(game.ballastHazards.fronts.empty(),"retry clears all active torn-road fronts");
+            }
+            CHECK(glm::length(game.level.walls[cover.wall].box.min-cover.home.min)<.001f,"retry restores shattered cover in both chapters");
+        }
         // Real weapon raycasts must release all three locks and open the gate.
         g_startArena=4;g_startWave=0;g_storyChapter=2;g_practice=g_godMode=true;
         {

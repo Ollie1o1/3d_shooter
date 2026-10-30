@@ -302,6 +302,11 @@ inline void buildCradleChapter(LevelBuilder& B, float A) {
         }
     }
     for(float z:{-44.f,-24.f,-4.f,14.f}) {detail(56,T+21,z,108,T+22,z+.6f,plate);light(75,T+20.8f,z,89,T+21,z+.4f,warm);}
+    // Light inspection shields: physical cover that the Sorter's tools can shear.
+    for(glm::vec3 p:{glm::vec3{80,T,-35},glm::vec3{89,T,1}}) {
+        int id=solid(p.x-3,T,p.z-.3f,p.x+3,T+3,p.z+.3f,plate);
+        L.walls[id].hidden=true;S.bossCover.push_back({id,L.walls[id].box});
+    }
     const int sortingExit=B.doorway(true,76.2f,87.8f,-50.6f,-49.9f,T,8,red,true);
     Arena sorting=room("THE SORTING FLOOR","TRANSFER FAULT",box(56,T-12,-50,108,T+23.9f,18),{59,T,8},-45);
     sorting.bounds=box(57,T,-49,107,T+20,17); sorting.entryGate=inspectExit; sorting.exitDoor=sortingExit;

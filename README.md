@@ -38,8 +38,8 @@ route, Blender assets and verification. Launch it directly with `./shooter --sto
 
 | Boss | Where | The trick |
 |------|-------|-----------|
-| **The Sorter** | the Sorting Floor (Story, Chapter 1) | Parry its white claw, dash out after the overhead press locks red, break sight to clear a scanner mark; hit its exposed core and survive the collapsing belts |
-| **Ballast** | the Cut (Story, Chapter 2) | A clearance grader: jump or evade its blade, leave the grit lane or take cover, and parry the white cable weight to expose its drive |
+| **The Sorter** | the Sorting Floor (Story, Chapter 1) | Evade its gantry rush, staggered presses and furnace purges; parry the white claw, aim for the open blue strip and survive progressive belt failures |
+| **Ballast** | the Cut (Story, Chapter 2) | A pursuing clearance grader: jump its sweep and torn-road slabs, evade pivoting charges, parry its harpoon or shoot the cable, then hit the exposed rear turbine |
 | **The Warden** | the Core (Act I) | Cut the four conduits feeding it; hit its core when it vents; survive its meltdown |
 | **The Sovereign** | the Sanctum (Act I) | A sword duellist: parry (F) his sweeps and cleave as they land to break his guard |
 | **The Penitent** | the Descent (Act II) | Chained to the pit wall: break the chains, jump its low sweeps, slide under the high ones |
@@ -302,6 +302,8 @@ Three headless test programs, no window or GPU needed (CI runs them on Linux and
 - **`tests/test_physics.cpp`**: the player controller. Landing, ledges, ceilings, slides, and fast landings on thin floors at up to 70 m/s (the case that used to push you through slabs).
 - **`tests/test_game.cpp`**: every level's data (no spawn inside a wall, every jump pad lands, every moving platform stays clear of walls), the enemy AI, rigs, weapons, XP, the mix table, and simulated full ARENA, FAST and ACT II runs.
 - **`tests/test_zenith.cpp`**: the encore. The sword, the Zenith, and **BossSim** (`tests/BossSim.h`), which pits the real AI of the Warden, the Sovereign, the Leviathan and the Absolute (both forms) against scripted players: cheese strategies that must fail, a solid player whose kill time must land in a target range, and a dodger. BossSim is deterministic, so a change that shifts its numbers changed the fight.
+
+Story boss combat, counters and simulation limits are documented in [the combat overhaul](docs/story-boss-combat-design.md). `make test-story-bosses` compares sustained weapon fire with real movement, reloads, healing and reactions to committed attacks.
 
 Story also has `make test-story-overhaul` for objective pacing, Ballast, weather budgets and record layout, and native `make test-dev` for checkpoint inputs, actual brake shots, gate/retry behavior and settings screenshots.
 

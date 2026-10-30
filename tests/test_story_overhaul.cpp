@@ -117,16 +117,16 @@ int main() {
         }
         {
             Enemy combo(EnemyType::BALLAST,road.arenas[6].bossSpawn);combo.state=EnemyState::ACTIVE;combo.spawnTimer=0;
-            combo.health=combo.maxHealth*.15f;combo.ballPhase=3;combo.ballStep=2;combo.attackTimer=100;
+            combo.health=combo.maxHealth*.15f;combo.ballPhase=3;combo.ballStep=2;combo.ballFollow=AttackKind::BALL_GUST;combo.attackTimer=100;
             EnemyWorld w;w.bounds=road.arenas[6].bounds;w.playerFeet={28,0,-190};w.playerEye=w.playerFeet+glm::vec3{0,1.7f,0};
             w.walls=road.walls.data();w.wallCount=(int)road.walls.size();w.grid=&g;
             std::vector<AttackKind> tells;bool readable=true,charged=false;
-            for(int i=0;i<60*10&&tells.size()<3;++i) {
+            for(int i=0;i<60*10&&tells.size()<4;++i) {
                 combo.update(DT,w);charged|=combo.ballDrive>0;
                 if(combo.ev.telegraphStarted){tells.push_back(combo.attack);readable&=combo.telegraphDuration>=.8f;}
             }
-            CHECK(tells==std::vector<AttackKind>({AttackKind::BALL_GUST,AttackKind::BALL_GRADE,AttackKind::BALL_ANCHOR})&&charged&&readable,
-                  "final-phase crosswind chains into a visible charge and cable weight, each with a fresh warning");
+            CHECK(tells==std::vector<AttackKind>({AttackKind::BALL_GUST,AttackKind::BALL_GRADE,AttackKind::BALL_GRADE,AttackKind::BALL_ANCHOR})&&charged&&readable,
+                  "final-phase crosswind chains into two committed grading passes and a cable weight, each freshly warned");
             combo.ballFollow=AttackKind::BALL_GRADE;combo.stagger(1);
             CHECK(combo.ballDrive==0&&combo.ballFollow==AttackKind::NONE,"parry stagger cancels Ballast's drive and queued follow-up");
         }

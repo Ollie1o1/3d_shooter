@@ -71,3 +71,5 @@ tests/test_wasteland
 tests/test_dev
 
 tests/test_story_overhaul
+
+tests/test_story_bosses

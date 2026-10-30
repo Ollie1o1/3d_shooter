@@ -530,6 +530,8 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     }
     for (int pi : result.wallHits) {   // a shot breaks on the wall: its cubes thrown back off it
         const Projectile& pr = projSystem.pool[pi];
+        if(story()&&(pr.ownerType==(int)EnemyType::SORTER||pr.ownerType==(int)EnemyType::BALLAST))
+            breakStoryCover(pr.prevPosition,pr.position,.7f);
         float spd = glm::length(pr.velocity);
         glm::vec3 back = spd > 1e-3f ? -pr.velocity / spd : glm::vec3{0.f, 1.f, 0.f};
         fx.spawnShards(pr.prevPosition, back, pr.emissiveColor, pr.size, groundHeightAt(pr.prevPosition.x, pr.prevPosition.z, pr.prevPosition.y + 0.2f));

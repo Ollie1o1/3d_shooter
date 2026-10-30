@@ -25,19 +25,21 @@ the repeated mixed-wave fights have been replaced with distinct encounter beats.
 
 ## The Sorter
 
+The current [combat overhaul](story-boss-combat-design.md) adds gantry pursuit,
+three-head press sequences, furnace purges and actual inspection-shield breaks.
+
 `UNIT ? · SORTER · PURPOSE: JUDGE`
 
 - **INSPECTION**, 100–66%: measured tells introduce its scanner, stamp, claw and body throws.
 - **RECALIBRATION**, 66–30%: faster attacks, reversing belts.
 - **INCINERATION**, below 30%: faster again, a 2.2-second floor-release warning,
-  four panels drop, belts speed up. Rails offer grapple escape routes.
+  four panels drop progressively at 1.1-second intervals, belts speed up. The central crosswalk and rails offer escape routes.
 - **White claw**: punch during its last quarter-second at the marked claw point.
   It stops, clears your scanner mark, and takes double damage while staggered.
 - **Red stamp**: leave its marked circle. The target stops tracking before
-  impact. Its recovery exposes the core for double damage.
+  impact. Its recovery exposes the blue strip for double damage on aimed hits.
 - **Scanner**: a visible sweeping ray, occluded by walls. It marks rather than
-  directly damaging. Break sight or parry to clear the mark. Marked stamps track
-  longer, but always commit before release.
+  directly damaging. Break sight or parry to clear the mark. The mark increases predictive lead; stamps always commit before release.
 - **Rejected bodies**: shoot them apart, dodge, or parry them back for a heavy hit.
 - Range and elevated positions receive tracking stamps; a dash remains the answer.
 - Death: `THE REGISTER SAYS YOU WERE EMPTY. / THERE IS NO COLUMN FOR THIS.`
