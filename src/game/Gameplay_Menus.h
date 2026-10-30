@@ -189,7 +189,9 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
         if (key == SDLK_F5) { devClearWave(); return; }    // practice: skip the fight in progress
         if (key == SDLK_F6) { styleSystem.heal(1000.f); ui.feed("HEALTH REFILLED", {0.4f, 1.f, 0.6f}); return; }
     }
-    if (key == SDLK_TAB && !playerDead && !victory && !story()) { openArmory(); return; }   // (STORY: no armory yet)
+    // Story earns the same upgrade points; only its scripted opening/ending owns input.
+    if (key == SDLK_TAB && !playerDead && !victory &&
+        (!story() || (!storyLocked() && storyEndT < 0.f))) { openArmory(); return; }
     // Backspace: straight back to the checkpoint and the start of this fight
     if (key == SDLK_BACKSPACE && !victory) {
         if (!playerDead) restartHere(); else if (!endless()) retryArena();   // ENDLESS: one life
