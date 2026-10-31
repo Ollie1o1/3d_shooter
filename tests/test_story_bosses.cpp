@@ -173,7 +173,10 @@ int main() {
         for(bool readsCues:{false,true}) {
             const auto& r=readsCues?reactive:passive;
             std::printf("%s %s %s: %.1fs, hp %.0f, damage %.0f, closest %.1fm, hits %d, parries %d, %s\n",road?"Ballast":"Sorter",weaponDef(weapon).name,readsCues?"reactive":"kite",r.seconds,r.hp,r.taken,r.closest,r.hits,r.parries,r.won?"WIN":"LOSS");
-            CHECK(r.taken>=1,"sustained gunfire and movement remain exposed to real attacks");
+            // The passive policy must be punishable. A policy that reads the
+            // warnings and lands actual parries is allowed a clean fight.
+            if(readsCues)CHECK(r.parries>0,"reactive gun play resolves actual parry counters");
+            else CHECK(r.taken>=1,"passive gunfire and circling remain exposed to real attacks");
             CHECK(r.closest<15,"boss pursuit closes long-range firing distance");
         }
         CHECK(reactive.won&&reactive.seconds<90,"reading commitments and attacking openings wins within a reasonable weapon budget");
