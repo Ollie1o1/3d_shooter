@@ -1219,6 +1219,15 @@ int main() {
             while (s.t < limit && s.bossAlive()) s.step(DT);
             return s;
         };
+        {
+            BossSim guard(N,g,ZA,EnemyType::ABSOLUTE,BossSim::STILL);
+            guard.hurt(10);float first=guard.damageTaken;guard.hurt(10);
+            CHECK(first>0 && guard.damageTaken==first,"the boss rehearsal rejects stacked contact damage during the live game's hit protection");
+            guard.zenImmunity=0;guard.spendZenDash();guard.hurt(10);
+            CHECK(guard.damageTaken==first && guard.dashes==1 && guard.zenImmunity==.15f,"a simulated dash supplies the live game's brief hit protection and consumes a charge");
+            guard.zenImmunity=0;guard.hurt(10,0);guard.hurt(10,0);
+            CHECK(std::fabs(guard.damageTaken-first*3)<.001f,"continuous beam damage supplies no new hit protection in the rehearsal");
+        }
         BossSim solid = run(BossSim::SOLID, 700.f);
         const float form1 = solid.formAt, form2 = solid.formAt >= 0.f ? solid.t - solid.formAt : -1.f;
         std::printf("      absolute: solid fells him in %.0f s, then MORNINGSTAR in %.0f s more (alive %d), taking %.0f (%.0f of it to MORNINGSTAR); parries %d\n",

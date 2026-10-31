@@ -37,7 +37,8 @@ inline void Enemy::thinkLab(float dt,const EnemyWorld& w,bool resolve){
         labAim=w.playerFeet+leadVel_*.2f;
         if(type==EnemyType::PHASED && distance>7){
             labExit=w.playerFeet+glm::vec3{-dir.z,0,dir.x}*8.f;labExit.x=glm::clamp(labExit.x,w.bounds.min.x+2,w.bounds.max.x-2);labExit.z=glm::clamp(labExit.z,w.bounds.min.z+2,w.bounds.max.z-2);
-            if(blockedAt(labExit,w))labExit=position;startAttack(AttackKind::LAB_CROSS,.8f);
+            if(blockedAt(labExit,w))labExit=position;
+            startAttack(AttackKind::LAB_CROSS,.8f);
         }else if(type==EnemyType::GRAFTED){if(distance<8)startAttack(AttackKind::LAB_PRESS,.95f);else if(lineOfSight(eyePos(),w))startAttack(AttackKind::VOLLEY,.85f);}
         else if(distance<15)startAttack(AttackKind::LAB_LUNGE,.7f);
     }

@@ -81,7 +81,14 @@ struct BossSim {
         }
         return w;
     }
-    void hurt(float d) { damageTaken += d * A.damageScale * difficulty(DIFFICULTY_DEFAULT).damage; }
+    // Gameplay_Sword.h protects a contact hit for .15 s; parryFeedback protects
+    // for .5 s. Omitting these stacked simultaneous hazards in this rehearsal
+    // even though the live player could only receive the first hit.
+    float zenImmunity=0.f;
+    void hurt(float d,float iframes=.15f) {
+        if(zenith()){if(zenImmunity>0)return;zenImmunity=iframes;}
+        damageTaken += d * A.damageScale * difficulty(DIFFICULTY_DEFAULT).damage;
+    }
     void movePlayer(float dt) {
         glm::vec3 c = (A.bounds.min + A.bounds.max) * 0.5f;
         if (policy == KITE) {   // round the arena's edge, 2 m in, at a run
@@ -325,6 +332,7 @@ struct BossSim {
     // ---- THE ABSOLUTE --------------------------------------------------------
     float zGround(glm::vec3 p) const { return lv.groundAt(p.x, p.z, p.y + 0.5f); }
     // SOLID and DODGER: hold their range, read each tell and answer it
+    void spendZenDash(){zenImmunity=std::max(zenImmunity,.15f);if(dashes--==2)dashCd=1.2f;}
     void absoluteMove(float dt) {
         const glm::vec3 c = lv.zenith.centre;
         if (policy == STILL || policy == CORNER || policy == PERCH) { feet.y = zGround(feet + glm::vec3{0.f, 0.3f, 0.f}); return; }
@@ -375,7 +383,7 @@ struct BossSim {
             if (boss.attack == AttackKind::ASKYFALL && boss.telegraphTimer < 0.25f && reacting && dashes > 0 &&
                 glm::length(glm::vec2{feet.x - boss.abAim.x, feet.z - boss.abAim.z}) < Enemy::AB_SKY_R + 0.5f) {   // out of the circle
                 glm::vec3 out = feet - boss.abAim; out.y = 0.f;
-                feet += (glm::length(out) > 0.1f ? glm::normalize(out) : side) * 5.f; if (dashes-- == 2) dashCd = 1.2f;
+                feet += (glm::length(out) > 0.1f ? glm::normalize(out) : side) * 5.f; spendZenDash();
             }
             if (boss.morning()) {   // MORNINGSTAR: read the floor
                 auto flat = [](glm::vec3 a, glm::vec3 b) { return glm::length(glm::vec2{a.x - b.x, a.z - b.z}); };
@@ -411,7 +419,7 @@ struct BossSim {
                     glm::vec3 out = feet - boss.abAim; out.y = 0.f;
                     out = glm::length(out) > 0.1f ? glm::normalize(out) : side;
                     if (dd < R + 1.5f) mv = out * 2.f;
-                    if (dd < R + 0.5f && boss.telegraphTimer < 0.3f && dashes > 0) { feet += out * 5.f; if (dashes-- == 2) dashCd = 1.2f; }
+                    if (dd < R + 0.5f && boss.telegraphTimer < 0.3f && dashes > 0) { feet += out * 5.f; spendZenDash(); }
                 }
             }
             // gold (and the white strikes it won't parry): a dash out of reach as it lands, else block it
@@ -419,7 +427,7 @@ struct BossSim {
             float sd = boss.attack == AttackKind::AMETEOR ? glm::length(boss.position - feet) : d;
             const bool floorRead = boss.attack == AttackKind::ASKYFALL || boss.attack == AttackKind::MGRASP || boss.attack == AttackKind::MDROP;
             if (strike && !floorRead && boss.telegraphTimer < 0.22f && sd < (boss.morning() ? 7.5f : 6.f)) {
-                if (dashes > 0) { feet += side * 5.f; if (dashes-- == 2) dashCd = 1.2f; }
+                if (dashes > 0) { feet += side * 5.f; spendZenDash(); }
                 else if (policy == SOLID) blocking = true;   // the sword up: a white strike or a gold one, from the front
             }
         }
@@ -438,6 +446,7 @@ struct BossSim {
     }
     void heal(float h) { health = std::min(100.f, health + h); }
     void absoluteStep(float dt) {
+        zenImmunity=std::max(0.f,zenImmunity-dt);
         t += dt;
         float before = damageTaken;
         glm::vec3 was = feet;
@@ -450,7 +459,7 @@ struct BossSim {
         if (policy == SOLID && window && !prevWindow) {   // (only within the game's reach: a METEOR met from too far off isn't parried)
             glm::vec3 to = boss.position - feet; to.y = 0.f;
             bool inReach = glm::length(to) <= abSwordParryReach(boss);
-            if (parryNext && inReach && boss.abParried(true)) { ++parries; heal(Sword::HEAL_PARRY); }
+            if (parryNext && inReach && boss.abParried(true)) { ++parries; heal(Sword::HEAL_PARRY);zenImmunity=std::max(zenImmunity,.5f); }
             parryNext = !parryNext;
         }
         prevWindow = window;
@@ -479,7 +488,7 @@ struct BossSim {
         if (r.hitPlayer) { float b = damageTaken; hurt(r.playerDamage); dmgShot += damageTaken - b; }
         glm::vec3 hf = feet + glm::vec3{0.f, airborne ? 1.4f : 0.f, 0.f};
         for (auto& h : abs.update(dt, hf, sliding ? 0.9f : 1.8f, !airborne, &lv, boss.position)) {
-            float b = damageTaken; hurt(h.damage);
+            float b = damageTaken; hurt(h.damage,h.kind==Sword::Strike::BEAM?0.f:.15f);
             msBy[h.src] += h.src ? damageTaken - b : 0.f;
             (h.kind == Sword::Strike::BEAM ? dmgBeam : h.kind == Sword::Strike::GOLD ? dmgGround : dmgWhite) += damageTaken - b;
         }
