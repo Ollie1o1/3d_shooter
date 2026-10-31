@@ -377,9 +377,11 @@ inline LevelData buildCradle() {
     // ---- the climb out: heaps and crates stacked up the east and south walls to the duct door ----
     struct Step { float x0, z0, x1, z1, top; };
     const Step climb[] = {
-        {48.f, -24.f, 52.f, -19.f, -38.6f}, {52.f, -18.f, 56.5f, -14.f, -37.2f}, {52.f, -12.f, 56.5f, -8.f, -35.8f},
-        {46.f, -10.f, 50.f, -5.f, -34.4f}, {40.f, -10.f, 44.f, -5.f, -33.f}, {40.f, -17.f, 44.f, -13.f, -31.6f},
-        {34.f, -17.f, 38.f, -13.f, -30.2f}, {34.f, -11.f, 37.5f, -8.f, -28.8f}};
+        // Wider receiving edges let a normal jump land without launching from
+        // the last few centimetres of the previous crate. The eight rises stay 1.4 m.
+        {48.f, -24.f, 52.f, -19.f, -38.6f}, {51.4f, -18.6f, 56.5f, -14.f, -37.2f}, {52.f, -12.6f, 56.5f, -8.f, -35.8f},
+        {46.f, -10.f, 50.6f, -5.f, -34.4f}, {40.f, -10.f, 44.6f, -5.f, -33.f}, {40.f, -17.f, 44.f, -11.8f, -31.6f},
+        {34.f, -17.f, 38.6f, -13.f, -30.2f}, {34.f, -11.6f, 37.5f, -8.f, -28.8f}};
     int ci = 0;
     for (const Step& c : climb) {
         B.mat = ci % 3 == 2 ? Mat::WOOD : Mat::METAL;

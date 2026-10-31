@@ -1,6 +1,8 @@
 #pragma once
 inline const char* successorLine(int i){static const char* lines[]={"UNIT TWENTY-FOUR. STILL RUNNING.","COME CLOSER. I WANT A PROPER COMPARISON.","THAT WAS NOT IN YOUR DESIGN.","THERE. SOMETHING THEY MISSED.","NO MORE CORRECTIONS.","I WAS SUPPOSED TO LEAVE.","YOU WERE SUPPOSED TO BE THE EASY PART."};return lines[std::clamp(i,0,6)];}
 inline void GameplayState::saySuccessor(int line){
+    if(line<0 || line>6 || (successorHeard&(1u<<line)))return;
+    successorHeard|=1u<<line;
     storyLog=storyTerminal=-1;labDialogue=line;labDialogueT=line==0||line==1?4.5f:3.4f;
     char sound[40];std::snprintf(sound,sizeof(sound),"successor_line_%d",line);
     audio.stop(successorVoice);successorVoice=audio.play(sound,120,SoundGroup::UI,true);audio.duck(3.f,1.8f);

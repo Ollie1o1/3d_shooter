@@ -28,7 +28,7 @@ inline void GameplayState::loadStoryChapter(int chapter) {
     for(const auto& a:level.anchors)anchorBoxes.push_back(level.walls[a.wall].box);
     storyGlassBoxes.clear();storyTileBoxes.clear();
     director=WaveDirector{};director.level=&level;director.fast=true;
-    labIntro=LabIntro{};labRoutes=0;
+    labIntro=LabIntro{};labRoutes=0;successorHeard=0;
     storyRelayIsolated=false;
     storyLogsSeen=storyTerminalsSeen=0;storySeenSection=storyCheckpoint=0;storyBossDown=false;
     storyEndT=-1;wakeSeen=false;wakeT=-1;storyLog=storyTerminal=-1;

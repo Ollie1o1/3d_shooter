@@ -421,7 +421,7 @@ inline void GameplayState::retryArena() {
 
 inline void GameplayState::newRun() {
     if(training()){startTrainingLesson(trainingLesson);return;}
-    if(story()){labIntro=LabIntro{};labRoutes=0;storyRelayIsolated=false;storyTerminalsSeen=0;storyOwned=0;storyGrapple=false;storyLogsSeen=0;storySeenSection=storyCheckpoint=0;storyBossDown=false;wakeSeen=false;}
+    if(story()){labIntro=LabIntro{};labRoutes=0;successorHeard=0;storyRelayIsolated=false;storyTerminalsSeen=0;storyOwned=0;storyGrapple=false;storyLogsSeen=0;storySeenSection=storyCheckpoint=0;storyBossDown=false;wakeSeen=false;}
     msCheckpoint = false;
     director = WaveDirector{};
     director.level = &level;

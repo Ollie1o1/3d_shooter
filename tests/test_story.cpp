@@ -74,7 +74,10 @@ int main(){
         // Original rooms are part of the chapter's regression coverage too.
         Walk w(L,{47,-40,-22});
         bool climb=w.to({50,-38.6f,-21.5f},true);
-        const glm::vec3 launch[]={{51.4f,-38.6f,-19.6f},{54,-37.2f,-14.6f},{52.6f,-35.8f,-9.4f},{46.6f,-34.4f,-7},{42,-33,-9.4f},{40.6f,-31.6f,-15},{36,-30.2f,-13.6f},{36,-28.8f,-8.6f}};
+        // Leave enough platform under the capsule for the waypoint's .55 m
+        // arrival tolerance. The old .6 m edge inset let rounding/remaining
+        // momentum walk the bot off before it issued its next jump.
+        const glm::vec3 launch[]={{50.8f,-38.6f,-20.2f},{54,-37.2f,-15.2f},{53.2f,-35.8f,-9.4f},{47.2f,-34.4f,-7},{42,-33,-8.8f},{41.2f,-31.6f,-15},{36,-30.2f,-14.2f},{36,-28.8f,-9.2f}};
         const glm::vec3 land[]={{54,-37.2f,-16},{54,-35.8f,-10},{48,-34.4f,-7.5f},{42,-33,-7},{42,-31.6f,-15},{36,-30.2f,-15},{36,-28.8f,-9.5f},{36,-27.4f,-6}};
         for(int i=0;i<8 && climb;++i)climb=w.to(launch[i])&&w.to(land[i],true);
         CHECK(climb,"Scrap Pit's eight jumps climb from the floor to the duct exit");

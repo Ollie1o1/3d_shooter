@@ -34,7 +34,10 @@ subject and returns to the normal gameplay view without a lateral jump.
 The late wards have transparent observation glass, procedural nebula/trench skies,
 large exterior fragments/cliffs with parallax, floating dormant bodies, a numbered
 bed repeated in incompatible rooms, an exterior maintenance chair and tools, and a
-patient beyond the celestial roof. Floors remain bright and gravity stays stable.
+patient beyond the celestial roof. Surgical Observation has a glass bay overlooking
+dark water and a sealed, unsupported observation booth whose chair faces the player.
+Trolley C-17 recurs in the Conservatory and Hadal Research with different damage.
+Floors remain bright and gravity stays stable.
 There are optional medical records throughout, plus two numbered secret wrecks.
 
 The Motor and Suspension controls are on walkable galleries. Celestial and Hadal
@@ -51,6 +54,10 @@ Four new articulated enemy families have original GLBs, profiles, animation and 
 - Phase Subject: its exit is marked before crossing, with a separate lunge tell
   after arrival.
 
+Gun poise breaks and staggers cancel their pending lunge, beam and crossing; attacks
+do not resume after a stun. Headless commitment/counter checks and native combat
+tests cover all four families.
+
 The Successor is a 2.65 m flesh chassis with a mechanical face. It has one health
 bar (8500 base HP) and three phases at 65%/30%, original subtitles and intelligible
 synthetic speech. Incision, Vector Run, Suture, Transposition, Recall, Perfusion
@@ -60,6 +67,8 @@ transit. A white fist parry cancels pending follow-ups/hazards, heals a bounded 
 before difficulty scaling, and exposes the drive. Shooting either Suture anchor
 also interrupts it. No ordinary add wave or Story sword is required. Two health
 pickups are placed in the arena. The final sequence stays damageable.
+Spoken lines play once per run, including checkpoint retries; a full restart resets
+delivery. A retry after victory keeps the boss defeated and the threshold open.
 
 Boss defeat clears its live hazards/projectiles and opens a broad corridor over
 empty space to a little impossible garden. The player walks through this fractured
@@ -112,10 +121,13 @@ Native rendering regressions and `make web` pass. `make test-web-story` also run
 all three Story boss file rigs in real WebAssembly with a 32 KiB stack.
 
 A reproducible rehearsal with actual acceleration, collision, occluded revolver
-shots, ammo/reloads and 40% scripted hit accuracy takes about **155 seconds** on
-Standard, sees all seven attacks and lands eight parries. The reactive policy
-accumulates about 124 damage versus 468 for steady circling over a full rehearsal;
-the reactive policy remains alive. These are scripted tuning instruments, not a
+shots, ammo/reloads and 40% scripted hit accuracy takes about **157 seconds** on
+Standard, sees all seven attacks and lands seven parries. The reactive policy
+accumulates about 106 damage versus 325 for steady circling over a full rehearsal.
+It explicitly evades the gold Incision strikes as well as marked lanes. All three
+tested opening-clock values (0%, 30%, 60% of the attack interval) survive; their
+macOS clears take 156–163 seconds. The rehearsal sets its own opening clock so
+unrelated tests consuming random numbers cannot change it. These are tuning instruments, not a
 human playtest or a promise about every player's kill time/upgrades.
 
 Representative native captures are under `build/lab-*.png`. The Hadal scenery
@@ -134,3 +146,11 @@ Save storage keeps the existing key and reads both versions 1 and 2. Chapter 3
 adds the intro-seen and route-choice fields. Capture/practice/boss runs cannot
 replace the Story Continue slot. The existing six remote boss leaderboard IDs
 remain unchanged; appended bosses use their local records.
+
+The release audit also widened Chapter 1's Scrap Pit receiving ledges and moved
+its traversal rehearsal's launch positions farther inside each crate. The eight
+1.4 m rises remain; normal jumps now have forgiving landing room on both macOS
+and Linux. `story1.light` and `story3.light` were rebaked after the geometry edits.
+
+See [the verification record](chapter-3-verification.md) for the requirement/evidence
+map and the remaining human review limits.

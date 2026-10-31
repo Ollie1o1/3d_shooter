@@ -134,7 +134,7 @@ inline void GameplayState::renderLabIntro(){
 }
 
 inline void GameplayState::renderLabGlass(const glm::mat4& view,const glm::mat4& proj,glm::vec3 camPos){
-    using glm::vec3;const int room=level.arenaAt(player.position);if(room<0 || (room<7 && room!=0))return;
+    using glm::vec3;const int room=level.arenaAt(player.position);if(room<0 || (room<7 && room!=0 && room!=3))return;
     labGlassShader.use();labGlassShader.setMat4("projection",proj);labGlassShader.setMat4("view",view);
     labGlassShader.setVec3("uViewPos",camPos);labGlassShader.setFloat("uTime",gameClock);
     auto c=lab::centre(room);labGlassShader.setVec3("uOrigin",c);
@@ -149,6 +149,9 @@ inline void GameplayState::renderLabGlass(const glm::mat4& view,const glm::mat4&
         float anomaly=labIntro.active()?labIntro.windowChange():1.f;
         quad({-9.8f,.6f,7.28f},{9.8f,.6f,7.28f},{9.8f,7.9f,7.28f},{-9.8f,7.9f,7.28f},{0,0,1},1,anomaly);
         quad({-10,.6f,18},{10,.6f,18},{10,8,18},{-10,8,18},{0,0,1},0,anomaly);
+    }else if(room==3){
+        quad(c+vec3{41.9f,3,-13.8f},c+vec3{41.9f,3,13.8f},c+vec3{41.9f,14,13.8f},c+vec3{41.9f,14,-13.8f},{-1,0,0},2,0);
+        quad(c+vec3{55.9f,6,-6.5f},c+vec3{55.9f,6,6.5f},c+vec3{55.9f,12,6.5f},c+vec3{55.9f,12,-6.5f},{-1,0,0},2,0);
     }else{
         for(float side:{-1.f,1.f})quad(c+vec3{side*41.9f,1.6f,-39.5f},c+vec3{side*41.9f,1.6f,39.5f},c+vec3{side*41.9f,18,39.5f},c+vec3{side*41.9f,18,-39.5f},{-side,0,0},2,0);
         quad(c+vec3{-41.5f,23,-39.5f},c+vec3{41.5f,23,-39.5f},c+vec3{41.5f,23,39.5f},c+vec3{-41.5f,23,39.5f},{0,-1,0},2,0);

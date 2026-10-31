@@ -141,6 +141,7 @@ public:
     LabIntro labIntro;
     unsigned labRoutes=0;
     float labDialogueT=0;int labDialogue=-1;
+    unsigned successorHeard=0; // once per run; checkpoint retries preserve delivery
     void beginLab();
     void updateLab(float dt);
     void gatherLab(std::vector<BoxInstance>& out);

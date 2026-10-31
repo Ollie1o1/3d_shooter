@@ -171,6 +171,8 @@ static void checkLabRuntime(AudioSystem& audio){
     game.storySkipKey=true;game.updateLab(.7f);game.storySkipKey=false;
     CHECK(game.labIntro.seen && !game.storyLocked() && !game.director.hold && glm::length(game.player.position-glm::vec3{2.2f,0,20})<.01f,"the real skip path restores camera, combat and player control");
     game.retryArena();CHECK(!game.labIntro.active() && game.storyOwned==15 && game.storyGrapple,"a normal retry preserves the seen intro and full lab equipment");
+    game.saySuccessor(0);game.labDialogueT=0;game.retryArena();game.saySuccessor(0);
+    CHECK(game.labDialogueT==0 && (game.successorHeard&1u),"normal checkpoint retries do not replay a Successor speech already heard in this run");
     game.enterArena(4);game.updateLab(.01f);
     CHECK(!game.level.doors[game.level.arenas[4].exitDoor].locked && game.enemies.empty(),"the quiet Conservatory opens its descent without inventing a combat wave");
     for(int room:{2,6,7,8}){
@@ -180,6 +182,22 @@ static void checkLabRuntime(AudioSystem& audio){
         game.updateLab(3);game.level.updateMovers(game.moverClock);
         if(room>=7){for(const auto& contact:game.level.story.labBridges)if(contact.room==room){auto& m=game.level.movers[contact.mover];CHECK(m.drive==(contact.side<0?1.f:0.f),"the selected contact moves only its corresponding physical bridge");}}
         game.retryArena();CHECK(game.labRoutes&(1u<<room),"checkpoint retry retains the selected assessment contact");
+    }
+    // Resolve each new enemy's real event path against the player, then use
+    // actual gun hit/poise processing to interrupt its special motion.
+    game.enterArena(1);
+    for(auto type:{EnemyType::PATIENT,EnemyType::GRAFTED,EnemyType::SUSPENDED,EnemyType::PHASED}){
+        game.enemies.clear();game.player.position=lab::centre(1)+glm::vec3{0,0,15};game.player.velocity={0,0,0};
+        game.player.camera.position=game.player.position+glm::vec3{0,1.7f,0};game.styleSystem.health=100;game.invincFrames=0;game.dashMomentumTimer=0;
+        game.spawnEnemy(type,game.player.position+glm::vec3{0,0,-3});auto& enemy=game.enemies.back();enemy.state=EnemyState::ACTIVE;enemy.spawnTimer=0;
+        if(type==EnemyType::GRAFTED){enemy.attack=AttackKind::LAB_PRESS;enemy.telegraphTimer=.005f;}
+        else if(type==EnemyType::SUSPENDED){enemy.labBeam=.5f;enemy.labAim=game.player.camera.position;game.beamTickCd=0;}
+        else{enemy.dashTimer=.3f;enemy.labDir={0,0,1};enemy.position=game.player.position+glm::vec3{0,0,-.6f};}
+        game.updateEnemies(1.f/60);
+        CHECK(game.styleSystem.health<100,"each new lab enemy resolves actual beam, lunge or press damage through the live combat system");
+        enemy.labBeam=enemy.labCross=enemy.dashTimer=.4f;GameplayState::HitPush push;push.dir={1,0,0};push.push=0;push.poise=10;
+        game.hurtEnemy(enemy,20,enemy.position+glm::vec3{0,1,0},0,0,StyleSource::REVOLVER,false,false,&push);
+        CHECK(enemy.stunned() && enemy.labBeam==0 && enemy.labCross==0 && enemy.dashTimer==0,"live gun poise interrupts lab special attacks and removes their pending motion");
     }
     game.enterArena(9);game.enemies.clear();game.spawnEnemy(EnemyType::SUCCESSOR,game.level.arenas[9].bossSpawn);
     auto& boss=game.enemies.back();boss.state=EnemyState::ACTIVE;boss.spawnTimer=0;boss.suPhase=2;boss.suNodes=2;
@@ -192,6 +210,8 @@ static void checkLabRuntime(AudioSystem& audio){
     game.punch(-1);CHECK(boss.staggered()&&game.styleSystem.health>60&&boss.suStep==0,"a real fist parry interrupts the Successor and returns bounded health");
     boss.alive=false;boss.health=0;game.onEnemyKilled(boss,StyleSource::REVOLVER);
     CHECK(game.storyBossDown && game.successorHazards.marks.empty(),"Successor death cancels hazards and records the release of the chapter exit");
+    game.retryArena();bool successorAlive=false;for(const auto& e:game.enemies)successorAlive|=e.alive&&e.type==EnemyType::SUCCESSOR;
+    CHECK(game.storyBossDown && !successorAlive && !game.level.doors[game.level.arenas[9].exitDoor].locked,"retry after victory preserves the defeated boss and open threshold");
     game.director.phase=WaveDirector::Phase::VICTORY;game.player.position=(game.level.story.end.min+game.level.story.end.max)*.5f;game.updateLab(.1f);
     CHECK(game.storyEndT>=0,"walking into the fractured garden starts the actual Chapter 3 ending");
     g_storyChapter=1;g_startArena=g_startWave=0;g_practice=g_godMode=false;

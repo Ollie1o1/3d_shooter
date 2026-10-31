@@ -261,6 +261,8 @@ inline void GameplayState::updateEnemies(float dt) {
             e.health=e.maxHealth*(g_devOverlay=="sorter2"?.5f:.2f);
         if(e.type==EnemyType::BALLAST && (g_devOverlay=="ballast2"||g_devOverlay=="ballast3") && e.health>e.maxHealth*.56f)
             e.health=e.maxHealth*(g_devOverlay=="ballast2"?.4f:.16f);
+        if(e.type==EnemyType::SUCCESSOR && (g_devOverlay=="successor2"||g_devOverlay=="successor3") && e.health>e.maxHealth*.66f)
+            e.health=e.maxHealth*(g_devOverlay=="successor2"?.6f:.25f);
         if (e.type == EnemyType::WARDEN && (g_devOverlay == "warden2" || g_devOverlay == "warden3") && e.health > e.maxHealth * 0.62f)
             e.health = e.maxHealth * (g_devOverlay == "warden2" ? 0.5f : 0.2f);   // dev: straight into its later phases
         if (e.type == EnemyType::LEVIATHAN && (g_devOverlay == "leviathan2" || g_devOverlay == "leviathan3") && e.health > e.maxHealth * 0.66f && e.levStage == Enemy::LevStage::FIGHT)

@@ -48,6 +48,19 @@ inline LevelData buildLab(){
         b.neon(p.x-.6f,p.y+1.2f,p.z+.48f,p.x+.6f,p.y+1.65f,p.z+.5f,cyan*.4f);
         s.terminals.push_back({p,title,line});
     };
+    auto trolley=[&](vec3 p,bool damaged){
+        b.mat=Mat::METAL;
+        for(float dx:{-.7f,.7f})for(float dz:{-1.1f,1.1f}){
+            prop(p+vec3{dx-.08f,.1f,dz-.08f},p+vec3{dx+.08f,1.25f,dz+.08f},steel);
+            b.kit().box(p+vec3{dx,.12f,dz},{.12f,.24f,.28f},steel,0,0,damaged&&dx>0?.45f:0.f);
+        }
+        prop(p+vec3{-.9f,.45f,-1.3f},p+vec3{.9f,.52f,1.3f},cream);
+        prop(p+vec3{-.9f,1.15f,-1.3f},p+vec3{.9f,1.3f,1.3f},cream);
+        prop(p+vec3{-.55f,1.3f,-.6f},p+vec3{.5f,1.39f,.4f},steel);
+        prop(p+vec3{-.3f,1.39f,-.2f},p+vec3{.1f,1.7f,.15f},{.62f,.76f,.72f});
+        lab::stencil(b,"C-17",p+vec3{-.6f,.96f,1.31f},.07f);
+        if(damaged)for(int k=0;k<3;++k)prop(p+vec3{-.65f+k*.35f,.75f,1.315f},p+vec3{-.4f+k*.35f,.81f,1.33f},{.12f,.23f,.25f});
+    };
     auto ramp=[&](float x,float za,float zb,float ya,float yb){
         AABB a=LevelBuilder::aabb(x-6,std::min(ya,yb)-1,za,x+6,std::max(ya,yb)+3,zb);
         // GroundRamp runs along increasing Z: the north end is the lower end.
@@ -82,7 +95,13 @@ inline LevelData buildLab(){
         // Tall perimeter; the late wards look through real wide window bays.
         for(float side:{-1.f,1.f}){
             float x=side*half;
-            if(i<7)solid({x-.5f,y,z-40},{x+.5f,y+roof,z+40},wall);
+            if(i==3 && side>0){
+                solid({x-.5f,y,z-40},{x+.5f,y+roof,z-14},wall);
+                solid({x-.5f,y,z+14},{x+.5f,y+roof,z+40},wall);
+                solid({x-.5f,y,z-14},{x+.5f,y+3,z+14},wall);
+                solid({x-.5f,y+14,z-14},{x+.5f,y+roof,z+14},wall);
+                for(float dz:{-14.f,0.f,14.f})solid({x-.6f,y+3,z+dz-.15f},{x+.6f,y+14,z+dz+.15f},steel);
+            }else if(i<7)solid({x-.5f,y,z-40},{x+.5f,y+roof,z+40},wall);
             else{
                 solid({x-.5f,y,z-40},{x+.5f,y+1.6f,z+40},wall);
                 solid({x-.5f,y+18,z-40},{x+.5f,y+roof,z+40},wall);
@@ -224,6 +243,17 @@ inline LevelData buildLab(){
             lab::stencil(b,"WALK TOWARD THE LINE",{-10,y+.4f,z+39.3f},.1f);
         }
         if(i==3){
+            // A sealed, unsupported observation booth beyond the glass. Its
+            // chair faces the theatre, but none of its three walls has a door.
+            b.mat=Mat::CLINIC;
+            solid(c+vec3{56,5.4f,-7},c+vec3{65,6,7},cream);
+            solid(c+vec3{56,12,-7},c+vec3{65,12.6f,7},cream);
+            solid(c+vec3{64.5f,6,-7},c+vec3{65,12,7},wall);
+            for(float dz:{-7.f,6.5f})solid(c+vec3{56,6,dz},c+vec3{65,12,dz+.5f},wall);
+            prop(c+vec3{60,6,-.8f},c+vec3{60.15f,7.2f,.8f},steel);
+            prop(c+vec3{59.3f,7.2f,-.8f},c+vec3{60.7f,7.4f,.8f},steel);
+            prop(c+vec3{60.55f,7.4f,-.8f},c+vec3{60.7f,9,.8f},cream);
+            b.neon(57,y+11.8f,z-5,64,y+11.9f,z-4.8f,cyan*.35f);
             b.mat=Mat::METAL;
             solid(c+vec3{-2,9,-10},c+vec3{2,9.5f,10},cream);
             for(float dz:{-7.f,7.f}){
@@ -254,6 +284,7 @@ inline LevelData buildLab(){
             b.mat=Mat::METAL;solid(c+vec3{24,0,-25},c+vec3{24.08f,3.5f,-24.92f},steel);
             prop(c+vec3{23.5f,2.6f,-25.1f},c+vec3{23.8f,3.3f,-24.8f},{.55f,.7f,.65f});
             console(c+vec3{29,0,-28},"IRRIGATION","SUPPLY LINE DISCONNECTED. SOIL MOISTURE REMAINS CONSTANT. DO NOT ADJUST THE VALVE.");
+            trolley(c+vec3{-21,0,27},false);
         }
         if(i==7||i==8){
             for(float x:{-24.f,24.f})for(float dz:{-20.f,12.f})bed(c+vec3{x,0,dz},17);
@@ -267,6 +298,7 @@ inline LevelData buildLab(){
             for(float dx:{-62.4f,-61.6f})for(float dz:{-12.4f,-11.6f})prop(c+vec3{dx,7.2f,dz},c+vec3{dx+.08f,7.7f,dz+.08f},steel);
             prop(c+vec3{-60.7f,7.28f,-11},c+vec3{-60.1f,7.4f,-10.8f},{.7f,.55f,.25f});
         }
+        if(i==8)trolley(c+vec3{29,0,27},true);
         if(i>=7){
             // Exterior objects live beyond the windows, with real parallax and scale.
             for(int k=0;k<12;++k){float side=k%2?-1.f:1.f;vec3 p=c+vec3{side*(65+k*9.f),8.f+k*3,z*0.f-45.f+k*9};

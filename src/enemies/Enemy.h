@@ -430,6 +430,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     }
     void stagger(float t) {
         if(type==EnemyType::SUCCESSOR){suBurst=suCross=suNodes=0;suStep=0;suFinalStep=-1;suOpen=t;suLocked=false;++suEpoch;}
+        if(type>=EnemyType::PATIENT && type<=EnemyType::PHASED){labBeam=labCross=dashTimer=0.f;labOpen=std::max(labOpen,.8f);}
         ballDrive=ballTether=ballVolleyT=0;ballVolley=0;ballFollow=AttackKind::NONE;
         sortRush=sortFire=0;sortVolley=0;sortNext=AttackKind::NONE;sortFollowups=0;sortLocked=sortDropCued=false;
         sortPresses.erase(std::remove_if(sortPresses.begin(),sortPresses.end(),[](const auto& p){return p.remaining>0;}),sortPresses.end());
@@ -492,6 +493,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     void stun(float t) {
         stunTimer = t; stunGuard = t + hitreact::STUN_GUARD; poise = 0.f; stunBegan = true;
         attack = AttackKind::NONE; telegraphTimer = 0.f; burstLeft = 0; comboLeft = 0;
+        if(type>=EnemyType::PATIENT && type<=EnemyType::PHASED){labBeam=labCross=dashTimer=0.f;labOpen=std::max(labOpen,.8f);}
         if (diveTimer > 0.f) { diveTimer = 0.f; recoverTimer = std::max(recoverTimer, 0.6f); }
         if (beamTimer > 0.f) { beamTimer = 0.f; attackTimer = 0.f; }
         attackTimer = std::min(attackTimer, stats().attackEvery * 0.5f);   // it has to work back up to it

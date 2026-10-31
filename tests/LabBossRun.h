@@ -5,25 +5,29 @@ struct LabBossResult {float seconds=0,damage=0,health=100,lowest=100;int hits=0,
 // A fixed, reproducible input policy. It uses real controller acceleration,
 // collision, ammo/reload and occluded hitscan. Its deliberately imperfect aim
 // is a tuning instrument, not a claim about a human player's skill.
-inline LabBossResult labBossRun(LevelData level,bool reactive,WeaponId weapon){
+inline LabBossResult labBossRun(LevelData level,bool reactive,WeaponId weapon,float opening=.3f){
     const auto& a=level.arenas[9];SpatialGrid grid;grid.build(level.walls);Player p(a.playerStart);
     Enemy e(EnemyType::SUCCESSOR,a.bossSpawn,a.playerStart.y);e.spawnTimer=0;e.state=EnemyState::ACTIVE;
+    // Do not let unrelated earlier tests consume rand() and change this input
+    // rehearsal. Exercise the live constructor's clock range explicitly.
+    e.attackTimer=e.stats().attackEvery*opening;e.strafeDir=1;e.animPhase=0;
     const auto& tune=difficulty(DIFFICULTY_DEFAULT);e.maxHealth*=tune.health;e.health=e.maxHealth;
     WeaponUpgrades upgrades;WeaponState gun;gun.ammo=weaponMag(weapon,upgrades);
     ProjectileSystem projectiles;projectiles.floorY=level.lowestFloor();std::vector<Enemy> none;
     SuccessorHazards hazards;LabBossResult result;float immunity=0,dashClock=0;int attempts=0;
-    auto hurt=[&](float d){if(immunity>0)return;d*=tune.damage*a.damageScale;result.damage+=d;result.health-=d;result.lowest=std::min(result.lowest,result.health);immunity=.32f;};
+    auto hurt=[&](float d){if(immunity>0)return;d*=tune.damage*a.damageScale;result.damage+=d;result.health-=d;result.lowest=std::min(result.lowest,result.health);immunity=.35f;};
     for(int frame=0;frame<60*280 && e.alive;++frame){
         float t=frame*DT;result.seconds=t;immunity=std::max(0.f,immunity-DT);dashClock=std::max(0.f,dashClock-DT);
         auto to=e.position-p.position;to.y=0;float distance=glm::length(to);auto forward=distance>.01f?to/distance:glm::vec3{0,0,-1};glm::vec3 side{-forward.z,0,forward.x};
         auto move=side+(distance<9?-forward*.8f:distance>16?forward*.8f:glm::vec3{0});bool dodge=false;
         if(reactive){
+            if(e.attack==AttackKind::SU_INCISION && e.telegraphTimer>0 && distance<7){move=-forward+side*.5f;dodge=true;}
             if((e.attack==AttackKind::SU_VECTOR&&e.telegraphTimer<.4f)||e.suBurst>0){auto d=e.suAim-e.suFrom;d.y=0;if(glm::length(d)>.1f&&machineryDistance(p.position,e.suFrom,e.suAim)<4){d=glm::normalize(d);glm::vec3 normal{-d.z,0,d.x};float sign=glm::dot(p.position-e.suFrom,normal)>=0?1.f:-1.f;move=normal*sign;dodge=true;}}
             for(const auto& mark:hazards.marks)if(mark.wait>0 && mark.wait<.65f && machineryDistance(p.position,mark.a,mark.b)<mark.radius+2){move=p.position-mark.a;move.y=0;dodge=true;}
-            if(e.parryWindow()&&distance<5.1f){e.stagger(1.35f);++result.parries;result.health=std::min(100.f,result.health+8*tune.heal);hazards.clear();}
+            if(e.parryWindow()&&distance<5.1f){e.stagger(1.35f);++result.parries;result.health=std::min(100.f,result.health+8*tune.heal);hazards.clear();immunity=.5f;}
         }
         if(glm::length(move)>.01f)move=glm::normalize(move);
-        if(reactive&&dodge&&dashClock<=0){p.velocity=move*26.f;dashClock=1.2f;immunity=.25f;}
+        if(reactive&&dodge&&dashClock<=0){p.velocity=move*26.f;dashClock=1.2f;immunity=.15f;}
         Uint8 keys[SDL_NUM_SCANCODES]={};keys[SDL_SCANCODE_W]=1;p.camera.yaw=glm::degrees(std::atan2(move.z,move.x));applyWater(p,level);
         auto before=p.position;p.update(DT,keys,level.walls.data(),(int)level.walls.size(),false,&grid);
         p.position.x=glm::clamp(p.position.x,a.bounds.min.x+1,a.bounds.max.x-1);p.position.z=glm::clamp(p.position.z,a.bounds.min.z+1,a.bounds.max.z-1);
