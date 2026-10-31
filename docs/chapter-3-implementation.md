@@ -38,6 +38,8 @@ patient beyond the celestial roof. Surgical Observation has a glass bay overlook
 dark water and a sealed, unsupported observation booth whose chair faces the player.
 Trolley C-17 recurs in the Conservatory and Hadal Research with different damage.
 Floors remain bright and gravity stays stable.
+Exteriors, room tone and the boss score follow the room physically occupied;
+clearing a fight cannot turn the nebula into the trench ahead of its doorway.
 There are optional medical records throughout, plus two numbered secret wrecks.
 
 The Motor and Suspension controls are on walkable galleries. Celestial and Hadal
@@ -132,7 +134,10 @@ human playtest or a promise about every player's kill time/upgrades.
 
 Representative native captures are under `build/lab-*.png`. The Hadal scenery
 benchmark at 720p with 4x MSAA averaged about 3.12 ms/frame on this machine; that
-is a short local scenery benchmark, not browser/mobile or worst-case combat data.
+is a short local scenery benchmark. A separate 9,000-frame phase-three Successor
+run at the same resolution/AA averaged 3.12 ms/frame (320 FPS), with a 7.49 ms 1% low
+and an 85.87 ms worst frame dominated by window swap. Neither run predicts browser,
+mobile or every combat situation. The log is `build/lab-release-boss-performance.log`.
 
 No in-app browser is connected in this environment, so interactive browser
 playtesting remains a manual follow-up. Audio input is unsupported here: the

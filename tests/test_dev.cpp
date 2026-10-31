@@ -183,6 +183,12 @@ static void checkLabRuntime(AudioSystem& audio){
         if(room>=7){for(const auto& contact:game.level.story.labBridges)if(contact.room==room){auto& m=game.level.movers[contact.mover];CHECK(m.drive==(contact.side<0?1.f:0.f),"the selected contact moves only its corresponding physical bridge");}}
         game.retryArena();CHECK(game.labRoutes&(1u<<room),"checkpoint retry retains the selected assessment contact");
     }
+    game.enterArena(7);game.director.approach(8);game.render();float realm=0;
+    auto realmUniform=glGetUniformLocation(game.skyboxShader.id,"uLabRealm");glGetUniformfv(game.skyboxShader.id,realmUniform,&realm);
+    CHECK(realm==1.f,"clearing Celestial Observation keeps its nebula while the next encounter waits");
+    game.player.position=game.level.arenas[8].playerStart;game.prevCamPos=game.player.camera.position=game.player.position+glm::vec3{0,1.7f,0};game.render();
+    glGetUniformfv(game.skyboxShader.id,realmUniform,&realm);
+    CHECK(realm==2.f,"physically crossing the hospital doorway changes the rendered exterior to the trench");
     // Resolve each new enemy's real event path against the player, then use
     // actual gun hit/poise processing to interrupt its special motion.
     game.enterArena(1);

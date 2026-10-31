@@ -1252,7 +1252,7 @@ inline void GameplayState::updateMusic() {
     auto& m = audio.music;
     audio.setMusicVolume(settings ? settings->musicVolume : 0.6f);
     if(laboratory()){
-        const bool boss=director.arena==9 && !storyBossDown;
+        const bool boss=level.arenaAt(player.position)==9 && !storyBossDown;
         m.setTrack(boss?13:12);m.setDrive(overdriveOn()&&!playerDead);m.setSolo(false);
         float intensity=director.fighting()?(boss?1.2f:1.f):.13f;
         for(const auto& e:enemies)if(e.alive&&e.type==EnemyType::SUCCESSOR)intensity=1.16f+.12f*(e.suPhase-1);

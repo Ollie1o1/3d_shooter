@@ -691,7 +691,10 @@ inline void GameplayState::render() {
         skyboxShader.setFloat("uEclipse", th.eclipse);
         skyboxShader.setFloat("uHeat",    bossDusk);
         skyboxShader.setFloat("uTime",    gameClock);
-        float realm=laboratory()?(director.arena==7?1.f:director.arena==3||director.arena==8?2.f:director.arena==9?3.f:0.f):0.f;
+        // The director prepares the next encounter as soon as a room clears.
+        // Keep its exterior until the player physically crosses the doorway.
+        const int room=level.arenaAt(player.position);
+        float realm=laboratory()?(room==7?1.f:room==3||room==8?2.f:room==9?3.f:0.f):0.f;
         skyboxShader.setFloat("uLabRealm",realm);
         skyboxShader.setFloat("uFlare",   th.eclipse > 0.5f ? eclipseFlare * flashScale() : 0.f);
         skyboxShader.setFloat("uDawn",    th.eclipse > 0.5f ? dawn01() : 0.f);
