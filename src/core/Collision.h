@@ -30,7 +30,7 @@ inline float rayBoxHit(glm::vec3 o, glm::vec3 d, const AABB& b) {
 // each to the texture of its sides and of its top).
 enum class Mat : unsigned char { BRICK, PANEL, ROCK, METAL, CONCRETE,
                                  ADOBE, PLATE, MARBLE, CIRCUIT, BASALT, WOOD,
-                                 LIMESTONE, BRASS };   // ACT II and FAST
+                                 LIMESTONE, BRASS, CLINIC };   // ACT II and FAST
 
 struct Wall {
     AABB      box;

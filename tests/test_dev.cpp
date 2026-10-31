@@ -90,7 +90,7 @@ static void checkImprovements(AudioSystem& audio) {
         if(game.armoryOpen)press(game,SDLK_TAB);
         std::vector<SpawnRequest> spawns;
         for(int n=0;n<200 && spawns.empty();++n)game.director.update(1.f/60,0,game.player.position,spawns);
-        bool correct=false;EnemyType expected=i==6?EnemyType::PACEMAKER:i==7?EnemyType::SORTER:EnemyType::BALLAST;
+        bool correct=false;EnemyType expected=i==6?EnemyType::PACEMAKER:i==7?EnemyType::SORTER:i==8?EnemyType::BALLAST:EnemyType::SUCCESSOR;
         for(const auto& spawn:spawns){correct|=spawn.type==expected;game.spawnEnemy(spawn.type,spawn.pos,spawn.hollow);}
         CHECK(correct,"the real director spawns the selected new boss without its preceding waves");
         game.handleDirectorEvents();game.render();
@@ -163,6 +163,40 @@ static void checkImprovements(AudioSystem& audio) {
     g_bossRun=-1;g_startArena=g_startWave=0;g_storyChapter=1;g_practice=g_godMode=false;g_continueStory=false;
 }
 
+static void checkLabRuntime(AudioSystem& audio){
+    g_storyChapter=3;g_startArena=g_startWave=0;g_practice=g_godMode=false;g_devOverlay.clear();g_bossRun=-1;
+    auto live=std::make_unique<GameplayState>(audio,nullptr,GameMode::STORY);auto& game=*live;
+    CHECK(game.labIntro.active() && game.storyLocked() && game.director.hold,"normal Chapter 3 begins in the first-person observation cutscene with combat held");
+    game.labIntro.time=13;game.updateLab(.01f);game.render();screenshot("build/lab-intro-runtime.bmp");
+    game.storySkipKey=true;game.updateLab(.7f);game.storySkipKey=false;
+    CHECK(game.labIntro.seen && !game.storyLocked() && !game.director.hold && glm::length(game.player.position-glm::vec3{2.2f,0,20})<.01f,"the real skip path restores camera, combat and player control");
+    game.retryArena();CHECK(!game.labIntro.active() && game.storyOwned==15 && game.storyGrapple,"a normal retry preserves the seen intro and full lab equipment");
+    game.enterArena(4);game.updateLab(.01f);
+    CHECK(!game.level.doors[game.level.arenas[4].exitDoor].locked && game.enemies.empty(),"the quiet Conservatory opens its descent without inventing a combat wave");
+    for(int room:{2,6,7,8}){
+        game.enterArena(room);game.director.phase=WaveDirector::Phase::ACTIVE;game.director.queue.clear();game.enemies.clear();
+        bool found=false;for(auto& it:game.interactables)if(glm::length(it.position-lab::contactPosition(room,-1))<.01f && it.type!=InteractableType::READABLE){it.onInteract();found=true;break;}
+        CHECK(found && (game.labRoutes&(1u<<room)) && game.director.goalDone,"the actual lab control completes its external objective after the threats are cleared");
+        game.updateLab(3);game.level.updateMovers(game.moverClock);
+        if(room>=7){for(const auto& contact:game.level.story.labBridges)if(contact.room==room){auto& m=game.level.movers[contact.mover];CHECK(m.drive==(contact.side<0?1.f:0.f),"the selected contact moves only its corresponding physical bridge");}}
+        game.retryArena();CHECK(game.labRoutes&(1u<<room),"checkpoint retry retains the selected assessment contact");
+    }
+    game.enterArena(9);game.enemies.clear();game.spawnEnemy(EnemyType::SUCCESSOR,game.level.arenas[9].bossSpawn);
+    auto& boss=game.enemies.back();boss.state=EnemyState::ACTIVE;boss.spawnTimer=0;boss.suPhase=2;boss.suNodes=2;
+    boss.suAnchor[0]=game.player.position+glm::vec3{0,1.7f,-8};boss.suAnchor[1]=boss.suAnchor[0]+glm::vec3{8,0,0};
+    game.player.camera.yaw=-90;game.player.camera.pitch=0;game.prevCamPos=game.player.camera.position=game.player.position+glm::vec3{0,1.7f,0};
+    game.activeWeapon=0;game.fireWeapon(0);
+    CHECK(boss.staggered() && boss.suNodes==0,"a real revolver input cuts the visible Suture node and interrupts its pending attack");
+    boss.staggerTimer=0;boss.attack=AttackKind::SU_THRUST;boss.telegraphTimer=.2f;
+    boss.position=game.player.position+glm::vec3{0,0,-3};boss.yaw=0;game.styleSystem.health=60;game.punchCooldown=0;
+    game.punch(-1);CHECK(boss.staggered()&&game.styleSystem.health>60&&boss.suStep==0,"a real fist parry interrupts the Successor and returns bounded health");
+    boss.alive=false;boss.health=0;game.onEnemyKilled(boss,StyleSource::REVOLVER);
+    CHECK(game.storyBossDown && game.successorHazards.marks.empty(),"Successor death cancels hazards and records the release of the chapter exit");
+    game.director.phase=WaveDirector::Phase::VICTORY;game.player.position=(game.level.story.end.min+game.level.story.end.max)*.5f;game.updateLab(.1f);
+    CHECK(game.storyEndT>=0,"walking into the fractured garden starts the actual Chapter 3 ending");
+    g_storyChapter=1;g_startArena=g_startWave=0;g_practice=g_godMode=false;
+}
+
 int main() {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 0);
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) return 1;
@@ -209,14 +243,14 @@ int main() {
                         selected.storyChapter == row.chapter && selected.wave == 0 && selected.practice && selected.god;
             checkpoints.push_back(selected);
         }
-        CHECK(keyboard && checkpoints.size() == 17, "all 17 checkpoints launch the correct chapter and room with practice/god flags");
+        CHECK(keyboard && checkpoints.size() == 27, "all 27 checkpoints launch the correct chapter and room with practice/god flags");
         CHECK(menu.devScroll[2] > 0, "keyboard navigation reveals the later Chapter 2 checkpoints");
         menu.render(); screenshot("build/dev-story-menu-scrolled.bmp");
         // The last checkpoint is at the bottom of the visible Story column.
         SDL_Event click{}; click.type = SDL_MOUSEBUTTONDOWN; click.button.button = SDL_BUTTON_LEFT;
         click.button.x = 1000; click.button.y = 232 + 10 * 34;
         int before = starts; menu.handleEvent(click);
-        CHECK(starts == before + 1 && selected.storyChapter == 2 && selected.arena == 7,
+        CHECK(starts == before + 1 && selected.storyChapter == 3 && selected.arena == 9,
               "mouse activation uses the scrolled checkpoint rather than a hidden row");
         menu.devSel = 0; press(menu, SDLK_RETURN);
         menu.devSel = MenuState::DEV_OPTIONS + (int)menu.devRows.size() - 1; press(menu, SDLK_RETURN);
@@ -246,8 +280,8 @@ int main() {
             auto* gameplay=new GameplayState(audio,nullptr,GameMode::STORY);
             live.reset(gameplay);
             auto& game=*gameplay;
-            int expectedGuns = o.storyChapter == 1 ? expectedGuns1[o.arena] : o.arena > 4 ? 15 : 7;
-            bool expectedGrapple = o.storyChapter == 2 || o.arena > 7;
+            int expectedGuns = o.storyChapter == 1 ? expectedGuns1[o.arena] : o.storyChapter==3?15:o.arena > 4 ? 15 : 7;
+            bool expectedGrapple = o.storyChapter >= 2 || o.arena > 7;
             char label[128];
             std::snprintf(label, sizeof(label), "Story %d.%d starts on its checkpoint, awake, with earlier gear", o.storyChapter, o.arena + 1);
             CHECK(game.level.story.chapter == o.storyChapter && game.director.arena == o.arena && game.storyCheckpoint == o.arena &&
@@ -395,6 +429,7 @@ int main() {
             if(chapter==1){game.loadStoryChapter(2);press(game,SDLK_TAB);CHECK(game.armoryOpen&&game.prog.up[0].tier[0]==1&&game.prog.up[0].tier[2]==1&&game.prog.points==0,"continuing to Chapter 2 retains upgrades in its working armory");press(game,SDLK_TAB);}
         }
         checkImprovements(audio);
+        checkLabRuntime(audio);
         GameSettings visualSettings;visualSettings.ambientDetail=3;
         menu.settings=&visualSettings;menu.settingsMenu.s=&visualSettings;menu.page=MenuState::SETTINGS;
         const auto settingsRows=menu.settingsMenu.rows();

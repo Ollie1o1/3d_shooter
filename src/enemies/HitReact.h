@@ -21,6 +21,8 @@ namespace hitreact {
 struct Body { float mass, poise, stun; bool heavy; };
 
 inline const Body& bodyOf(EnemyType t) {
+    static const Body patient{1.1f,55,.5f,false},grafted{5.f,180,.7f,true},suspended{1.4f,65,.5f,false},phased{1.5f,80,.55f,false};
+    if(t==EnemyType::PATIENT)return patient;if(t==EnemyType::GRAFTED)return grafted;if(t==EnemyType::SUSPENDED)return suspended;if(t==EnemyType::PHASED)return phased;
     static const Body INF{1e9f, 1e9f, 0.f, true};
     static const Body B[] = {
         {1.0f,   38.f, 0.40f, false},   // HUSK: a magnum round stuns it

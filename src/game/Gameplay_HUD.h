@@ -85,6 +85,8 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
                 if (director.hasGoal() && director.goal().kind == WaveGoal::HOLD)
                     snprintf(buf,sizeof(buf),"%s   %.0f%%  %s",director.goal().label,director.goalProgress()*100.f,
                              director.zoneContested?"CLEAR THE PAD":director.holding?"CONTACT SEATING":"STAND ON THE SERVICE PAD");
+                else if (director.hasGoal() && director.goal().kind == WaveGoal::EXTERNAL && laboratory())
+                    snprintf(buf,sizeof(buf),"%s / HOSTILES %d",lab::objective(here),left);
                 else if (director.hasGoal() && director.goal().kind == WaveGoal::EXTERNAL)
                     snprintf(buf,sizeof(buf),"RELEASE TURBINE BRAKES   %d/3   HOSTILES %d",3-level.anchorsAlive(LevelData::ChainAnchor::BRAKE),left);
                 else snprintf(buf, sizeof(buf), "%s   HOSTILES %d", here == level.story.pitSection ? "THE SCRAP IS AWAKE" : level.arenas[director.arena].name, left);
@@ -105,6 +107,10 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             else if(here==6)what="BOARD THE FREIGHT LIFT";
             else if(here==7)what=storyGrapple?"MEET YOUR JUDGE":"STAY BELOW THE SCANNERS / FIND THE GRAPPLE";
             else if(here==8)what=storyBossDown?"THE GATE IS OPEN / WALK OUT":"THE SORTER IS WAITING";
+            if(laboratory() && !director.fighting()){
+                what=storyBossDown?"CROSS THE FRACTURED THRESHOLD":lab::objective(here);
+                if((here==7||here==8)&&(labRoutes&(1u<<here)))what="FOLLOW THE SEATED CONTACT / DESCEND";
+            }
             if (what) snprintf(buf, sizeof(buf), "%s   %s", level.arenas[here].name, what);
         } else if (fast()) {
             if (finishOpen) { snprintf(buf, sizeof(buf), "FINISH OPEN - CLIMB TO THE BEACON"); accent = {1.f, 0.6f, 0.2f}; }
@@ -396,6 +402,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         if (!act2() && !arenaSolo()) renderLeaderboardPanel();   // (one arena on its own: no board)
     }
     if (training() && !paused && !armoryOpen) renderTraining();
+    if(laboratory() && !paused && !armoryOpen && !labIntro.active())renderSuccessorDialogue();
     if (armoryOpen) ui.renderArmory(prog, armoryW, armoryS, story()?storyOwned:(1<<WEAPON_COUNT)-1);
     if (paused) {
         if (guideOpen) { renderGuide(); }

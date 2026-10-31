@@ -207,6 +207,7 @@ public:
             if (timer <= 0.f) { ++wave; beginWave(); }
             break;
         case Phase::CLEARED: {
+            if(arena+1>=(int)level->arenas.size())break; // a resumed final Story boss stays cleared
             // Start the next arena once the player is a few metres inside it,
             // well clear of the gate that is about to close behind them.
             const Arena& next = level->arenas[arena + 1];

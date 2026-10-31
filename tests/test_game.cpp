@@ -3101,7 +3101,7 @@ int main() {
         CHECK(levels, "every voice sits within 2 dB of its mix class's level");
         CHECK(varied, "a voice's variants differ");
         CHECK(same, "the same voice builds the same every time");
-        CHECK(total <= 300.f, "the whole voice bank, including the expanded Story tools, is at most 300 s of audio");
+        CHECK(total <= 320.f, "the whole voice bank, including the expanded Story tools, including five lab bodies stays within 320 s of audio");
     }
 
     // ---------------------------------------------------------------- enemy voices: who gets to speak
@@ -3316,6 +3316,8 @@ int main() {
                                 "anvil", "anvil_final", "record", "split_behind", "count_tick", "count_go", "drive_warn", "drive_ready", "dash_ready", "potion_drop",
                                 "mini_sting", "bell", "medal"};
         std::vector<std::string> names(std::begin(loaded), std::end(loaded));
+        for(int i=0;i<7;++i)names.push_back("successor_line_"+std::to_string(i));
+        for(int i=0;i<5;++i)names.push_back("lab_pa_"+std::to_string(i));
         for (const std::string& n : abAllSounds()) names.push_back(n);   // THE ABSOLUTE's fight (AbsoluteFeel.h)
         bool all = true; for (const std::string& n : names) all &= mixEntry(n) != nullptr;
         CHECK(all && mixTable().size() == names.size(), "every sound file the game loads has exactly one place in the mix");

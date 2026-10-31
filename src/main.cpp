@@ -109,7 +109,13 @@ struct App {
                 if(!g->storyBossDown||!g->storyOwns(3)){fail("post-boss retry lost progress");return;}
                 g->player.position={28,0,-282};++storyCheckStage;
             }break;
-        case 5:if(g->storyEndT>3.f){press(SDLK_RETURN);storyCheckStage=7;}break;
+        case 5:if(g->storyEndT>3.f){press(SDLK_RETURN);storyCheckStage=6;}break;
+        case 6:
+            if(!g->laboratory() || g->storyOwned!=15 || !g->labIntro.active()){fail("Living Ward handoff/intro");return;}
+            g->labIntro.seen=true;g->labIntro.time=-1;g->director.hold=false;
+            g->enterArena(9);g->storyBossDown=true;g->player.position=(g->level.story.end.min+g->level.story.end.max)*.5f;
+            storyCheckStage=9;break;
+        case 9:if(g->storyEndT>3.f){press(SDLK_RETURN);storyCheckStage=7;}break;
         case 7:
             if(auto* menu=dynamic_cast<MenuState*>(currentState.get())) {
                 menu->selected=1;press(SDLK_RETURN);press(SDLK_DOWN);press(SDLK_RETURN);++storyCheckStage;
@@ -675,7 +681,8 @@ int main(int argc, char* argv[]) {
         if (arg == "--story") { app->mode = GameMode::STORY; app->pending = App::NextState::Game; }   // STORY: CHAPTER 1 (the wake-up first)
         if(arg=="--verify-story") {app->verifyStory=true;g_storyChapter=1;app->mode=GameMode::STORY;app->pending=App::NextState::Game;g_fixedDt=1.0/30;g_devNoMouse=true;g_godMode=true;}
         if(arg=="--story2") {g_storyChapter=2;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}
-        if(arg=="--chapter" && i+1<argc)g_storyChapter=std::clamp(std::atoi(argv[++i]),1,2);
+        if(arg=="--story3") {g_storyChapter=3;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}
+        if(arg=="--chapter" && i+1<argc)g_storyChapter=std::clamp(std::atoi(argv[++i]),1,3);
         if (arg == "--boss" && i + 1 < argc) {   // --boss N: BOSS N (1 the Warden .. 6 MORNINGSTAR), on its own
             g_bossRun = std::clamp(std::atoi(argv[++i]) - 1, 0, BOSS_COUNT - 1);
             g_storyChapter = bossEntry(g_bossRun).chapter;

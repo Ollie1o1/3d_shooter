@@ -113,6 +113,7 @@ inline void GameplayState::beginStory() {
     }
     if (activeWeapon >= 0 && !storyOwns(activeWeapon))
         for (int g = 0; g < WEAPON_COUNT; ++g) if (storyOwns(g)) { activeWeapon = g; break; }
+    if(laboratory()) {beginLab();return;}
     if(wasteland()) {beginWasteland();return;}
     // Bodies on the belts, spaced out down their length; the one ahead of you on yours timed to go over the lip
     // just after you sit up (W_TIP), and none close behind you
@@ -204,6 +205,7 @@ inline void GameplayState::beginStory() {
 // The optics booting, for the composite (bloom_composite.frag uWake): 1 black .. 0 clear
 inline float GameplayState::storyWakeFx() const {
     using namespace story;
+    if(laboratory() && labIntro.active())return 0.f;
     if (!storyLocked() && storyEndT < 0.f) return 0.f;
     if (storyEndT >= 0.f) return std::clamp(storyEndT / 1.4f, 0.f, 1.f);   // the chute: going dark
     if (wakeT < W_BOOT) return 1.f;
@@ -219,6 +221,7 @@ inline void GameplayState::updateStory(float dt) {
     using namespace story;
     const auto& S = level.story;
     if (!S.built) return;
+    if(laboratory()) {updateLab(dt);return;}
     if(wasteland()) {updateWasteland(dt);return;}
 
     // ---- the wake-up ----
@@ -444,6 +447,7 @@ inline glm::mat4 GameplayState::wreckGunXf(int i) const {
 
 // The bodies, and the claw on its rail (into the frame's boxes)
 inline void GameplayState::gatherStoryBoxes(std::vector<BoxInstance>& out) {
+    if(laboratory()){gatherLab(out);return;}
     using namespace rig;
     const auto& SL = level.story;
     using glm::vec3; using glm::mat4;
@@ -643,6 +647,7 @@ inline void GameplayState::drawStoryArms(const Camera& cam) {
 
 // Over everything: the boot text, the motor check, the skip prompt, the chute's ending
 inline void GameplayState::renderStoryOverlay(const glm::mat4& viewProj) {
+    if(laboratory() && labIntro.active()){renderLabIntro();return;}
     using namespace story;
     auto& U = ui.ui;
     const auto& SL = level.story;
@@ -661,6 +666,19 @@ inline void GameplayState::renderStoryOverlay(const glm::mat4& viewProj) {
             bool covered=!marker.behind && markerBehindCover(player.camera.position,at,level.walls);
             char lbl[96];std::snprintf(lbl,sizeof(lbl),"%s %.0fM%s",gunTitle(w.weapon)+4,dist,covered?" / BEHIND COVER":"");
             ui.renderMarker(marker.x,marker.y,marker.onScreen,{.35f,.85f,1.f},lbl,marker.behind);
+        }
+    }
+    bool labQuiet=!director.fighting();
+    if(laboratory() && director.goal().kind==WaveGoal::EXTERNAL && director.queue.empty()){
+        labQuiet=true;for(const auto& e:enemies)if(e.alive)labQuiet=false;
+    }
+    if(laboratory() && !labIntro.active() && labQuiet && !playerDead && storyEndT<0){
+        int room=level.arenaAt(player.position);
+        if((room==2||room==6||room==7||room==8) && !(labRoutes&(1u<<room))){
+            for(int side:{-1,1}){if(room<7 && side>0)continue;
+                auto pos=lab::contactPosition(room,side);auto marker=projectWorldMarker(pos,viewProj,SCREEN_W,SCREEN_H);
+                ui.renderMarker(marker.x,marker.y,marker.onScreen,{.35f,.85f,1},room>=7?(side<0?"WEST CONTACT":"EAST CONTACT"):"ASSESSMENT LOCK / GALLERY",marker.behind);
+            }
         }
     }
     ui.begin2D();
@@ -772,7 +790,8 @@ inline void GameplayState::renderStoryOverlay(const glm::mat4& viewProj) {
         const char* rank=deaths==0&&elapsedTime<900&&score>5000?"S":deaths<3&&elapsedTime<1200?"A":deaths<6?"B":"C";
         std::snprintf(line,sizeof(line),"RANK %s   STYLE %.0f   DEATHS %d",rank,score,deaths);
         U.text(line,SCREEN_W/2.f,SCREEN_H/2.f+130,2,{1.f,.7f,.3f,a},true);
-        U.text(SL.nextChapter>0?"ENTER - CONTINUE TO CHAPTER 2    ESC - MENU":"ENTER - RETURN TO MENU",SCREEN_W/2.f,SCREEN_H-65,1,{.35f,.85f,1.f,a},true);
+        char next[96];std::snprintf(next,sizeof(next),SL.nextChapter>0?"ENTER - CONTINUE TO CHAPTER %d    ESC - MENU":"ENTER - RETURN TO MENU",SL.nextChapter);
+        U.text(next,SCREEN_W/2.f,SCREEN_H-65,1,{.35f,.85f,1.f,a},true);
     }
     ui.end2D();
 }

@@ -60,10 +60,12 @@
 #include "bosses/absolute/AbsoluteState.h"
 #include "bosses/sorter/SorterState.h"
 #include "bosses/ballast/BallastState.h"
+#include "bosses/successor/SuccessorState.h"
+#include "enemies/LabEnemyState.h"
 
 // Everything an enemy did this tick. Cleared at the top of every update().
 // The common channels are here; each boss adds its own (its *Events).
-struct EnemyEvents : SovereignEvents, PenitentEvents, WardenEvents, LeviathanEvents, AbsoluteEvents, SorterEvents, BallastEvents {
+struct EnemyEvents : SovereignEvents, PenitentEvents, WardenEvents, LeviathanEvents, AbsoluteEvents, SorterEvents, BallastEvents, SuccessorEvents {
     static constexpr int MAX_SHOTS = 16;
     bool      telegraphStarted = false;
     int       shots = 0;
@@ -143,7 +145,7 @@ inline bool segmentHitsBox(glm::vec3 a, glm::vec3 b, const AABB& box) {
 
 inline float frand(float lo, float hi) { return lo + (hi - lo) * (float)(rand() % 10001) / 10000.f; }
 
-struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, AbsoluteState, SorterState, BallastState {
+struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, AbsoluteState, SorterState, BallastState, SuccessorState, LabEnemyState {
     EnemyType  type;
     EnemyState state = EnemyState::SPAWNING;
     glm::vec3  position;
@@ -367,6 +369,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         // THE WARDEN's lunge: its last quarter second, or in flight until it connects (it comes into reach)
         if ((type == EnemyType::WARDEN || type == EnemyType::PACEMAKER) && dashTimer > 0.f && !dashHit) return true;   // (and THE PACEMAKER's dash)
         if (telegraphTimer <= 0.f) return false;
+        if(type==EnemyType::SUCCESSOR)return SuccessorState::white(attack)&&telegraphTimer<.26f;
         if (type == EnemyType::BALLAST) return (attack==AttackKind::BALL_ANCHOR||attack==AttackKind::BALL_WINCH)&&telegraphTimer<.28f;
         if (type == EnemyType::SORTER) return attack == AttackKind::SORT_GRAB && telegraphTimer < .25f;
         if (type == EnemyType::WARDEN) return attack == AttackKind::WLUNGE && telegraphTimer < 0.25f;
@@ -404,6 +407,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     // SHIELDBEARER: does its shield stop a shot travelling along dir? (From
     // the front, while it's standing; a broken one has its shield knocked aside)
     bool blocks(glm::vec3 dir) const {
+        if(type==EnemyType::GRAFTED && alive && !staggered() && labOpen<=0 && telegraphTimer<=0){glm::vec3 d=-dir;d.y=0;float n=glm::length(d);return n>.001f&&glm::dot(d/n,glm::vec3{std::sin(yaw),0,std::cos(yaw)})>.5f;}
         if ((type != EnemyType::SHIELDBEARER && type != EnemyType::BULWARK) || staggered() || !alive) return false;
         glm::vec2 d{-dir.x, -dir.z};
         float l = glm::length(d);
@@ -413,6 +417,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     // Damage multiplier from armor: the JUGGERNAUT shrugs off half unless
     // broken; a broken SOVEREIGN takes half again
     float armorMult() const {
+        if(type==EnemyType::SUCCESSOR)return staggered()?1.75f:suOpen>0?1.3f:1.f;
         if (type == EnemyType::BALLAST) return staggered()?1.8f:ballOpen>0.f?1.f:.85f;
         if (type == EnemyType::SORTER) return staggered()?2.f:sortOpen>0.f?1.f:.9f;
         if (type == EnemyType::WARDEN) return (conduitsLeft > 0 && ventTimer <= 0.f ? 0.5f : 1.f) * (staggered() ? 2.f : 1.f);
@@ -424,6 +429,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         return staggered() ? 2.f : 0.5f;
     }
     void stagger(float t) {
+        if(type==EnemyType::SUCCESSOR){suBurst=suCross=suNodes=0;suStep=0;suFinalStep=-1;suOpen=t;suLocked=false;++suEpoch;}
         ballDrive=ballTether=ballVolleyT=0;ballVolley=0;ballFollow=AttackKind::NONE;
         sortRush=sortFire=0;sortVolley=0;sortNext=AttackKind::NONE;sortFollowups=0;sortLocked=sortDropCued=false;
         sortPresses.erase(std::remove_if(sortPresses.begin(),sortPresses.end(),[](const auto& p){return p.remaining>0;}),sortPresses.end());
@@ -528,7 +534,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
             return true;
         }
         if (type == EnemyType::PACEMAKER && pmChannel > 0.f) pmChannelDmg += dmg;   // into its beacon channel: enough breaks it
-        if (isBoss(type) && type != EnemyType::WARDEN && type != EnemyType::LEVIATHAN && type != EnemyType::ABSOLUTE && type != EnemyType::PACEMAKER && type != EnemyType::BALLAST && !enraged && health < maxHealth * 0.5f) {
+        if (isBoss(type) && type != EnemyType::WARDEN && type != EnemyType::LEVIATHAN && type != EnemyType::ABSOLUTE && type != EnemyType::PACEMAKER && type != EnemyType::BALLAST && type != EnemyType::SUCCESSOR && !enraged && health < maxHealth * 0.5f) {
             enraged    = true;
             ev.enraged = true;
         }
@@ -618,6 +624,8 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         if (dodges() && dodgeTick(dt, w)) { integrate(dt, w); return; }
 
         switch (type) {
+            case EnemyType::PATIENT:case EnemyType::GRAFTED:case EnemyType::SUSPENDED:case EnemyType::PHASED:thinkLab(dt,w,resolve);break;
+            case EnemyType::SUCCESSOR:thinkSuccessor(dt,w,resolve);return;
             case EnemyType::HUSK:     thinkHusk(dt, w, resolve);     break;
             case EnemyType::RIPPER:   thinkRipper(dt, w, resolve);   break;
             case EnemyType::SENTINEL: thinkSentinel(dt, w, resolve); break;
@@ -681,6 +689,7 @@ private:
             windup = std::max(windup, followUp ? (type == EnemyType::ABSOLUTE ? AB_FOLLOW_FLOOR : TELL_FLOOR_FOLLOW) : TELL_FLOOR);
         if(type==EnemyType::SORTER||type==EnemyType::BALLAST)
             windup=std::max(windup,k==AttackKind::SORT_STAMP||k==AttackKind::SORT_ROW||k==AttackKind::SORT_PURGE||k==AttackKind::BALL_GUST?.95f:.8f);
+        if(type==EnemyType::SUCCESSOR)windup=std::max(windup,followUp?.28f:.42f);
         attack            = k;
         tellFollow        = followUp;
         telegraphDuration = windup;
@@ -1337,6 +1346,8 @@ private:
     void thinkPlumb(float dt, const EnemyWorld& w, bool resolve);
     void thinkForeman(float dt, const EnemyWorld& w, bool resolve);
     bool miniBeam(float dt, const EnemyWorld& w, float speed);
+    void thinkLab(float dt,const EnemyWorld& w,bool resolve);
+    void thinkSuccessor(float dt,const EnemyWorld& w,bool resolve);
     void thinkBallast(float dt, const EnemyWorld& w, bool resolve);
     void thinkSorter(float dt, const EnemyWorld& w, bool resolve);
     void tickSorterTools(float dt,const EnemyWorld& w);
@@ -1483,3 +1494,6 @@ inline void linkConductors(std::vector<Enemy>& es, glm::vec3 player) {
 
 #include "bosses/sorter/EnemySorter.h"
 #include "bosses/ballast/EnemyBallast.h"
+
+#include "enemies/EnemyLab.h"
+#include "bosses/successor/EnemySuccessor.h"

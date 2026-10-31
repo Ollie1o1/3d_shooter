@@ -10,6 +10,7 @@
 #include "world/LevelStory.h"
 #include "world/LevelWasteland.h"
 #include "audio/MusicSynth.h"
+#include "world/LevelLab.h"
 #include "game/Progression.h"
 #include "game/WaveDirector.h"
 #include "bosses/absolute/AbsoluteHazards.h"
@@ -337,23 +338,23 @@ int main() {
         CHECK(!N.onZenithShard(zenithShard(2)), "a fallen shard is gone");
         N.restoreZenith();
         CHECK(N.zenithPillarAt(zenithPillar(0), 0.5f) == 0 && N.onZenithShard(zenithShard(2)), "a retry puts them back");
-        CHECK(MUSIC_TRACKS == 12 && std::string(musicTrack(10).name) == "ZENITH" && musicTrack(10).bpm >= 165.f, "the Zenith's own fast track");
+        CHECK(MUSIC_TRACKS >= 12 && std::string(musicTrack(10).name) == "ZENITH" && musicTrack(10).bpm >= 165.f, "the Zenith's own fast track");
         CHECK(std::string(musicTrack(11).name) == "MORNINGSTAR" && musicTrack(11).bpm > musicTrack(10).bpm && musicTrack(11).techno == 2,
               "MORNINGSTAR's: faster than the Zenith's, the harder voicing");
     }
 
     // ---------------------------------------------------------------- BOSS: every boss on its own
     {
-        const char* want[] = {"THE WARDEN", "THE SOVEREIGN", "THE PENITENT", "THE LEVIATHAN", "THE ABSOLUTE", "MORNINGSTAR", "THE PACEMAKER", "THE SORTER", "BALLAST"};
-        bool order = BOSS_COUNT == 9;
+        const char* want[] = {"THE WARDEN", "THE SOVEREIGN", "THE PENITENT", "THE LEVIATHAN", "THE ABSOLUTE", "MORNINGSTAR", "THE PACEMAKER", "THE SORTER", "BALLAST", "THE SUCCESSOR"};
+        bool order = BOSS_COUNT == 10;
         for (int i = 0; i < BOSS_COUNT; ++i) order &= std::string(bossEntry(i).name) == want[i];
         CHECK(order, "BOSS retains the original record indices and appends FAST and Story bosses");
-        LevelData A = buildLevel(), A2 = buildAct2Level(), F=buildGauntlet(), S=buildCradle(), W=buildWasteland();
+        LevelData A = buildLevel(), A2 = buildAct2Level(), F=buildGauntlet(), S=buildCradle(), W=buildWasteland(), Lab=buildLab();
         bool where = true;
-        const EnemyType types[] = {EnemyType::WARDEN, EnemyType::SOVEREIGN, EnemyType::PENITENT, EnemyType::LEVIATHAN, EnemyType::ABSOLUTE, EnemyType::ABSOLUTE, EnemyType::PACEMAKER, EnemyType::SORTER, EnemyType::BALLAST};
+        const EnemyType types[] = {EnemyType::WARDEN, EnemyType::SOVEREIGN, EnemyType::PENITENT, EnemyType::LEVIATHAN, EnemyType::ABSOLUTE, EnemyType::ABSOLUTE, EnemyType::PACEMAKER, EnemyType::SORTER, EnemyType::BALLAST, EnemyType::SUCCESSOR};
         for (int i = 0; i < BOSS_COUNT; ++i) {
             const BossEntry& b = bossEntry(i);
-            const LevelData& map=b.mode()==GameMode::FAST?F:b.mode()==GameMode::STORY?(b.chapter==1?S:W):b.act2?A2:A;
+            const LevelData& map=b.mode()==GameMode::FAST?F:b.mode()==GameMode::STORY?(b.chapter==1?S:b.chapter==2?W:Lab):b.act2?A2:A;
             const Arena& ar = map.arenas[b.arena];
             bool found = false;
             for (auto& w : ar.waves) for (auto& g : w) found |= g.type == types[i];

@@ -109,7 +109,8 @@ inline void GameplayState::punch(int boostable) {
             inReach = glm::length(glm::vec2{player.position.x - e.levTarget.x, player.position.z - e.levTarget.z}) < Enemy::LV_PARRY_REACH;
         if (inReach) {
             if (e.halo) breakHalo(e);
-            e.stagger(e.staggerTime());
+            e.stagger(e.type==EnemyType::SUCCESSOR?1.35f:e.staggerTime());
+            if(e.type==EnemyType::SUCCESSOR){styleSystem.heal(8.f*tune().heal);successorHazards.clear();if(!e.suCounterLine){e.suCounterLine=true;saySuccessor(2);}}
             parryFeedback(eye + fwd * 1.2f, true);
             styleSystem.addStyle(70.f, StyleSource::PARRY);
             gainXp(30);
@@ -117,6 +118,7 @@ inline void GameplayState::punch(int boostable) {
             else if (e.type == EnemyType::PENITENT) ui.toast("PARRIED", "IT STAGGERS - HIT IT HARD", {1.f, 0.75f, 0.2f}, 1.6f);
             else if (e.type == EnemyType::LEVIATHAN) { ui.toast("STAGGERED", "DOUBLE DAMAGE - MAKE IT COUNT", {1.f, 0.75f, 0.2f}, 1.8f); lev.dropMarks(); shake(0.7f, 0.08f); }
             else if (e.type == EnemyType::SHIELDBEARER) ui.toast("SHIELD DOWN", "", {0.4f, 1.f, 0.75f}, 1.2f);
+            else if(e.type==EnemyType::SUCCESSOR)ui.toast("DRIVE EXPOSED","STRIKE NOW",{.4f,.9f,1.f},1.35f);
             else ui.toast("STAGGERED", "DOUBLE DAMAGE - MAKE IT COUNT", {1.f, 0.75f, 0.2f}, 1.8f);
             return;
         }
@@ -226,7 +228,7 @@ inline void GameplayState::updateEnemies(float dt) {
     w.dynCount   = (int)level.moverWalls.size();
     w.reactor    = level.reactorPos;              // the Warden feeds here
     w.hasReactor = level.hasReactor;
-    w.voidUnder  = ar.shift == ArenaShift::DRIFT;   // the Reliquary: step off a relic and you fall
+    w.voidUnder  = ar.shift == ArenaShift::DRIFT || (laboratory()&&(director.arena==5||director.arena==7||director.arena==8));   // the Reliquary: step off a relic and you fall
     w.hasLair    = level.hasLair;                   // the Maw: where the Leviathan lives and breaches
     w.lair       = level.lair; w.lairFloor = level.lairFloor;
     w.wells      = level.wells.data(); w.wellCount = (int)level.wells.size();
@@ -279,7 +281,7 @@ inline void GameplayState::updateEnemies(float dt) {
         if (e.type == EnemyType::ABSOLUTE) swordParryAbsolute(e);   // the sword's window meets a white strike as it lands
         // In the Descent the void runs to -300: stand on what's really under you (the cage included)
         e.floorY = level.enemyFloor(director.arena, e.position, e.stats().flying,
-                                    descent ? groundHeightAt(e.position.x, e.position.z, e.position.y + 0.5f, true) : 0.f);
+                                    (descent || laboratory()) ? groundHeightAt(e.position.x, e.position.z, e.position.y + 0.5f, true) : 0.f);
         e.wadeMul = e.stats().flying ? 1.f : 1.f - 0.5f * (1.f - Player::wadeFactor(level.waterDepthAt(e.position)));
         if(story()&&e.type==EnemyType::SORTER&&e.sortRush>0)
             breakStoryCover(e.position,e.position+e.sortRushDir*(36.f*dt),3.6f);
@@ -305,6 +307,7 @@ inline void GameplayState::updateEnemies(float dt) {
                 pr->ownerType = (int)enemies[i].type;
                 pr->parryDamage = ev.shotParry;
             }
+        if (e.type == EnemyType::SUCCESSOR) successorEvents(e,ev);
         if (e.type == EnemyType::BALLAST) ballastEvents(e,ev);
         if (story() && e.type == EnemyType::SORTER) storySorterEvents(e,ev);
         if (ev.beamOn && e.type != EnemyType::SORTER) {   // a SERAPH's beam: 30/s while it touches you, sparks (or steam) where it lands
@@ -598,7 +601,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
                                 if (rand() % 100 < 20) drop(PickupKind::POTION);
                                 break;
         case EnemyType::MITE:   if (rand() % 10 == 0) drop(PickupKind::ORB); break;
-        case EnemyType::WARDEN: case EnemyType::SOVEREIGN: case EnemyType::LEVIATHAN: case EnemyType::ABSOLUTE: case EnemyType::PACEMAKER: case EnemyType::BALLAST: case EnemyType::SORTER: break;
+        case EnemyType::WARDEN: case EnemyType::SOVEREIGN: case EnemyType::LEVIATHAN: case EnemyType::ABSOLUTE: case EnemyType::PACEMAKER: case EnemyType::BALLAST: case EnemyType::SORTER: case EnemyType::SUCCESSOR: break;
         case EnemyType::COURIER: case EnemyType::BULWARK: case EnemyType::CANTOR:
         case EnemyType::HARRIER: case EnemyType::PLUMB: case EnemyType::FOREMAN:   // the room's prize: health to carry on
             drop(PickupKind::POTION); drop(PickupKind::ORB); drop(PickupKind::ORB); drop(PickupKind::XP); break;
@@ -643,6 +646,9 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
                 records.save();
                 ui.feed("ACT II UNLOCKED - BENEATH THE ECLIPSE", {0.35f, 0.95f, 0.9f});
             }
+        } else if(e.type==EnemyType::SUCCESSOR){
+            storyBossDown=true;successorHazards.clear();saveStoryProgress();saySuccessor(5);
+            for(auto& p:projSystem.pool)if(!p.isPlayer)p.alive=false;
         } else if (e.type == EnemyType::BALLAST) {
             storyBossDown=true;saveStoryProgress();ballastHazards.clear();
             for(auto& shot:projSystem.pool)if(!shot.isPlayer)shot.alive=false;
@@ -942,6 +948,10 @@ inline void GameplayState::fireWeapon(int w) {
         glm::vec3 dir = glm::normalize(fwd + right * (std::cos(ang) * rad) + up * (std::sin(ang) * rad));
         float wallT = hitscanAll(origin, dir, d.range, hits);
         int n = std::min((int)hits.size(), pierce + 1);
+        if(laboratory()){
+            float nearest=hits.empty()?wallT:hits[0].t;
+            if(shootSuccessorNode(origin,dir,nearest,dmg)){n=0;wallT=nearest;anyHit=true;}
+        }
         if(story()) {
             float nearest=hits.empty()?wallT:hits[0].t;Projectile* body=nullptr;
             for(auto& shot:projSystem.pool) if(shot.alive&&!shot.isPlayer&&(shot.ownerType==(int)EnemyType::SORTER||shot.ownerType==(int)EnemyType::BALLAST)) {
@@ -1171,6 +1181,7 @@ inline bool GameplayState::potionSpot(glm::vec3& out) {
 inline void GameplayState::shedBossPotions(Enemy& e) {
     if (e.type == EnemyType::ABSOLUTE && e.abForm != e.potionForm) { e.potionForm = e.abForm; e.potionsShed = 0; }   // MORNINGSTAR: a fresh bar, fresh potions
     const float lost = 1.f - e.health / std::max(1.f, e.maxHealth);
+    if(e.type==EnemyType::SUCCESSOR)return;
     const bool machinery=e.type==EnemyType::SORTER||e.type==EnemyType::BALLAST;
     const int due = std::min(machinery?2:BOSS_POTIONS, (int)(lost / (machinery?1.f/3.f:BOSS_POTION_EVERY) + 1e-4f));
     while (e.potionsShed < due) {

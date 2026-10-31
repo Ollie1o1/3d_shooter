@@ -63,6 +63,8 @@
     arguments: (() => {
       const q = new URLSearchParams(location.search);
       const args = q.has('arena') ? ['--arena', q.get('arena')] : q.has('play') ? ['--play'] : [];
+      if (q.has('story3')) args.push('--story3');
+      if (q.has('story2')) args.push('--story2');
       if (q.has('training')) args.push('--training');
       if (q.has('continue')) args.push('--continue');
       if (q.has('fast')) args.push('--fast');

@@ -23,6 +23,7 @@ uniform float uTime;
 uniform float uFlare;       // 0..1: a flash of the eclipse (his entrance, his phases), decaying
 uniform float uDawn;        // 0..1: the eclipse sliding off the sun (his death)
 uniform float uSwallow;     // 0..1: MORNINGSTAR: the eclipse grows over the whole sky, then its ring of fire settles on the horizon
+uniform float uLabRealm; // 0 ordinary, 1 nebula, 2 hadal, 3 fractured
 uniform float uDark;        // 0..1: TOTALITY: the ring dims to embers
 
 float hash3(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
@@ -143,6 +144,24 @@ void main() {
     vec4 v = uInvProj * vec4(vNDC, 1.0, 1.0);
     vec3 dir = normalize((uInvView * vec4(v.xyz / v.w, 0.0)).xyz);
     float y = dir.y;
+
+    if (uLabRealm > 0.5) {
+        float az=atan(dir.z,dir.x), elevation=asin(clamp(dir.y,-1.0,1.0));
+        vec2 p=vec2(az,elevation)*3.0;
+        float n=fbm(p+vec2(0.0,uTime*.002));
+        float band=exp(-pow((dir.y+dir.x*.5-dir.z*.25)*2.2,2.0));
+        vec3 nebula=vec3(.018,.025,.075)+mix(vec3(.12,.15,.46),vec3(.65,.16,.36),n)*band*pow(n*1.8,2.2);
+        nebula+=vec3(.2,.45,.65)*pow(fbm(p*2.5+4.0),4.0)*band;
+        vec3 cell=floor(dir*440.0);float star=hash3(cell);
+        nebula+=mix(vec3(.6,.8,1.1),vec3(1.1,.8,.6),hash3(cell+7.0))*step(.9984,star)*(0.6+hash3(cell+13.0));
+        nebula+=vec3(.8,.7,1.0)*pow(max(0.0,dot(dir,normalize(vec3(-.45,.7,-.55)))),900.0);
+        float beams=pow(.5+.5*sin(az*19.0+sin(az*7.0)*2.0+uTime*.018),10.0);
+        vec3 hadal=mix(vec3(.004,.022,.045),vec3(.012,.055,.08),smoothstep(-.6,1.0,dir.y));
+        hadal+=vec3(.012,.05,.06)*beams*pow(max(0.0,dir.y),.6);
+        hadal+=vec3(.12,.42,.38)*step(.9992,hash3(floor(dir*180.0)))*.5;
+        vec3 realm=uLabRealm<1.5?nebula:uLabRealm<2.5?hadal:mix(nebula,hadal,step(0.0,sin(az*3.0+dir.y*4.0)));
+        FragColor=vec4(realm,1.0);return;
+    }
 
     if (uEclipse > 0.5) {
         vec3 col = mix(uHorizon, uZenith, pow(clamp(y, 0.0, 1.0), 0.45));

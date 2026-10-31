@@ -9,7 +9,7 @@
 inline LevelData buildWasteland() {
     using glm::vec3;using W=WaveEntry;
     LevelData L;LevelBuilder B{L};auto& S=L.story;
-    S.built=true;S.chapter=2;S.nextChapter=0;S.title=S.nextName="THE DEAD SPAN";
+    S.built=true;S.chapter=2;S.nextChapter=3;S.title="THE DEAD SPAN";S.nextName="THE LIVING WARD";
     S.startWeapons=7;S.startGrapple=true;S.pitSection=-1;S.bossSection=6;
     const vec3 ash{.45f,.4f,.35f},rock{.32f,.28f,.25f},road{.27f,.28f,.27f},
         steel{.29f,.32f,.31f},rust{.44f,.27f,.16f},dark{.1f,.13f,.14f},

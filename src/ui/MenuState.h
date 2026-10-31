@@ -10,6 +10,7 @@
 #include "world/LevelAct2.h"
 #include "world/LevelStory.h"
 #include "world/LevelWasteland.h"
+#include "world/LevelLab.h"
 #include "ui/UIBatch.h"
 #include "ui/MenuArt.h"
 #include "core/Gamepad.h"
@@ -116,8 +117,8 @@ public:
     void openDev() {
         // Build the chapter lists on demand so the regular menu stays quick to open.
         if (countMode(GameMode::STORY) == 0)
-            for (int chapter = 1; chapter <= 2; ++chapter) {
-                LevelData S = chapter == 1 ? buildCradle() : buildWasteland();
+            for (int chapter = 1; chapter <= 3; ++chapter) {
+                LevelData S = chapter == 1 ? buildCradle() : chapter==2?buildWasteland():buildLab();
                 for (int i = 0; i < (int)S.arenas.size(); ++i)
                     devRows.push_back({"STORY", S.arenas[i].name, GameMode::STORY, i, (int)S.arenas[i].waves.size(), chapter});
             }
@@ -246,9 +247,9 @@ private:
         if (idx == 7 && onQuit) onQuit();
     }
 
-    int storyRows() const { return hasStorySave ? 4 : 3; }
+    int storyRows() const { return hasStorySave ? 5 : 4; }
     int storyAt(int x,int y) const {
-        for(int i=0;i<storyRows();++i)if(x>screenW/2-360&&x<screenW/2+360&&y>185+i*90&&y<263+i*90)return i;
+        for(int i=0;i<storyRows();++i)if(x>screenW/2-360&&x<screenW/2+360&&y>165+i*76&&y<233+i*76)return i;
         return -1;
     }
     void startStory() {
@@ -259,7 +260,7 @@ private:
             onStart(GameMode::STORY,o);return;
         }
         int chapter=storySel-(hasStorySave?1:0)+1;
-        if(chapter==3) {o.practice=true;onStart(GameMode::TRAINING,o);return;}
+        if(chapter==4) {o.practice=true;onStart(GameMode::TRAINING,o);return;}
         o.storyChapter=chapter;onStart(GameMode::STORY,o);
     }
     void handleStoryEvent(const SDL_Event& e) {
@@ -276,18 +277,20 @@ private:
     void renderStory() {
         ui.text("STORY",screenW/2,55,5,{.35f,.85f,1.f,1},true);
         ui.text("UNIT 24 / PURPOSE: UNKNOWN",screenW/2,115,2,{.75f,.8f,.82f,1},true);
-        const char* names[]={"1  THE CRADLE","2  THE DEAD SPAN","COMBAT PRACTICE"};
-        const char* descriptions[]={"NEW RUN / WAKE ON THE REJECT LINE.","NEW RUN / CROSS THE ASH WASTELAND.","REPEATABLE LESSONS / SELECT ENEMIES / TRY YOUR UPGRADES"};
+        const char* names[]={"1  THE CRADLE","2  THE DEAD SPAN","3  THE LIVING WARD","COMBAT PRACTICE"};
+        const char* descriptions[]={"NEW RUN / WAKE ON THE REJECT LINE.","NEW RUN / CROSS THE ASH WASTELAND.","NEW RUN / DESCEND INTO THE LABORATORY.","REPEATABLE LESSONS / SELECT ENEMIES / TRY YOUR UPGRADES"};
         for(int i=0;i<storyRows();++i) {
-            float x=screenW/2-360.f,y=185.f+i*90;
-            ui.rect(x,y,720,78,i==storySel?glm::vec4{.1f,.17f,.2f,.95f}:glm::vec4{.06f,.07f,.09f,.9f});
-            if(i==storySel)ui.rect(x,y,4,78,{.35f,.85f,1,1});
+            float x=screenW/2-360.f,y=165.f+i*76;
+            ui.rect(x,y,720,68,i==storySel?glm::vec4{.1f,.17f,.2f,.95f}:glm::vec4{.06f,.07f,.09f,.9f});
+            if(i==storySel)ui.rect(x,y,4,68,{.35f,.85f,1,1});
             bool resume=hasStorySave&&i==0;
             int index=i-(hasStorySave?1:0);
-            std::string name=resume?(storySave.completed&&storySave.chapter==2?"REVISIT / THE DEAD SPAN":std::string("CONTINUE / ")+(storySave.chapter==1&&!storySave.completed?"THE CRADLE":"THE DEAD SPAN")):names[index];
-            std::string desc=resume?(storySave.completed&&storySave.chapter==1?"CHAPTER 2 / EQUIPMENT AND UPGRADES CARRY FORWARD":"CHECKPOINT "+std::to_string(storySave.checkpoint+1)+" / EQUIPMENT, UPGRADES AND RECORDS SAVED"):descriptions[index];
+            int chapter=storySave.completed&&storySave.chapter<3?storySave.chapter+1:storySave.chapter;
+            const char* chapterNames[]={"THE CRADLE","THE DEAD SPAN","THE LIVING WARD"};
+            std::string name=resume?std::string(storySave.completed&&storySave.chapter==3?"REVISIT / ":"CONTINUE / ")+chapterNames[chapter-1]:names[index];
+            std::string desc=resume?(storySave.completed&&storySave.chapter<3?"NEXT CHAPTER / EQUIPMENT AND UPGRADES CARRY FORWARD":"CHECKPOINT "+std::to_string(storySave.checkpoint+1)+" / EQUIPMENT, UPGRADES AND RECORDS SAVED"):descriptions[index];
             ui.text(name.c_str(),x+24,y+14,3,{.85f,.9f,.92f,1});
-            ui.text(desc.c_str(),x+24,y+53,1,{.65f,.72f,.75f,1});
+            ui.text(desc.c_str(),x+24,y+48,1,{.65f,.72f,.75f,1});
         }
         ui.text("STORY AUTOSAVES AT CHECKPOINTS. NEW RUN REPLACES THE CONTINUE SLOT.",screenW/2,580,1,{.7f,.65f,.52f,1},true);
         ui.text("ENTER OR CLICK TO START / ESC BACK",screenW/2,screenH-60,1,{.6f,.65f,.7f,1},true);
@@ -513,11 +516,11 @@ private:
     }
 
     // ---- BOSS: every boss in the order you meet them ---------------------------
-    float bossY(int i) const { return 150.f + i * 48.f; }
+    float bossY(int i) const { return 142.f + i * 44.f; }
     static constexpr float BOSS_W = 640.f;
     int bossAt(int mx, int my) const {
         for (int i = 0; i < BOSS_COUNT; ++i)
-            if (mx > screenW / 2 - BOSS_W / 2 && mx < screenW / 2 + BOSS_W / 2 && my > bossY(i) && my < bossY(i) + 44) return i;
+            if (mx > screenW / 2 - BOSS_W / 2 && mx < screenW / 2 + BOSS_W / 2 && my > bossY(i) && my < bossY(i) + 40) return i;
         return -1;
     }
     void startBoss(int i) {
@@ -562,8 +565,8 @@ private:
             bool sel = i == bossSel, open = bossOpen(records, i);
             float x = cx - BOSS_W / 2, y = bossY(i);
             float pulse = sel ? 0.5f + 0.5f * std::sin(flashTime * 5.f) : 0.f;
-            ui.rect(x, y, BOSS_W, 44, sel ? glm::vec4{0.13f + pulse * 0.06f, 0.08f, 0.04f, 0.92f} : glm::vec4{0.07f, 0.07f, 0.10f, 0.85f});
-            if (sel) ui.rect(x, y, 5, 44, {1.f, 0.6f + pulse * 0.2f, 0.1f, 1.f});
+            ui.rect(x, y, BOSS_W, 40, sel ? glm::vec4{0.13f + pulse * 0.06f, 0.08f, 0.04f, 0.92f} : glm::vec4{0.07f, 0.07f, 0.10f, 0.85f});
+            if (sel) ui.rect(x, y, 5, 40, {1.f, 0.6f + pulse * 0.2f, 0.1f, 1.f});
             glm::vec4 c = !open ? glm::vec4{0.42f, 0.42f, 0.47f, 0.75f} : sel ? glm::vec4{1.f, 0.65f, 0.12f, 1.f} : glm::vec4{0.8f, 0.8f, 0.85f, 0.95f};
             std::snprintf(buf, sizeof(buf), "%d", i + 1);
             ui.text(buf, x + 22, y + 12, 2, {0.5f, 0.5f, 0.55f, 0.8f});
@@ -716,7 +719,7 @@ private:
                 ui.text(buf, x, screenH - 88, 1, {0.6f, 0.75f, 0.7f, 0.9f}, true);
             }
         }
-        ui.text("STORY: 1 THE CRADLE / 2 THE DEAD SPAN - CHECKPOINT GEAR INCLUDED, WAKE-UP SKIPPED",
+        ui.text("STORY: CRADLE / DEAD SPAN / LIVING WARD - CHECKPOINT GEAR INCLUDED",
                 cx, 184, 1, {0.6f, 0.75f, 0.7f, 0.9f}, true);
         ui.text("ARROWS / MOUSE TO PICK   ENTER OR CLICK TO GO   LEFT/RIGHT CHANGES OPTIONS   ESC BACK",
                 cx, screenH - 54, 1, {0.6f, 0.6f, 0.65f, 0.85f}, true);
@@ -810,7 +813,7 @@ private:
         if (records.bestEndless > 0) endSub += "   BEST " + std::to_string(records.bestEndless);
         Item items[NUM_ITEMS] = {
             {"ARENA", arenaSub.c_str()},
-            {"STORY", "THE CRADLE / THE DEAD SPAN"},
+            {"STORY", "THREE CHAPTERS / ONE DESCENT"},
             {"FAST",  fastSub.c_str()},
             {"ENDLESS", endSub.c_str()},
             {"BOSS", bossSub.c_str()},

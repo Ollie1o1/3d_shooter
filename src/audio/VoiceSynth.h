@@ -68,6 +68,11 @@ inline Profile profileOf(EnemyType t) {
         case EnemyType::PLUMB:        return { 55.f, Vowel::OO,   5, 0.80f, Body::CRACKLE,   1400.f, 0.85f};   // iron humming on a chain
         case EnemyType::FOREMAN:      return {165.f, Vowel::OH,   4, 0.95f, Body::HUM,        300.f, 0.60f};   // a tannoy's bark
         case EnemyType::PACEMAKER:    return {220.f, Vowel::AH,   3, 1.00f, Body::SERVO,      600.f, 0.50f};   // clockwork and breath
+        case EnemyType::PATIENT:return {145.f,Vowel::UH,2,.95f,Body::SERVO,380.f,.35f};
+        case EnemyType::GRAFTED:return {68.f,Vowel::OH,3,.85f,Body::SCRAPE,220.f,.7f};
+        case EnemyType::SUSPENDED:return {330.f,Vowel::EE,3,1.2f,Body::HUM,520.f,.25f};
+        case EnemyType::PHASED:return {195.f,Vowel::OO,3,1.05f,Body::SERVO,700.f,.4f};
+        case EnemyType::SUCCESSOR:return {130.f,Vowel::AH,2,1.f,Body::SERVO,450.f,.5f};
         default:                      return {};
     }
 }
@@ -312,6 +317,16 @@ inline Buf tellV(EnemyType t, AttackKind a, const Profile& p, Rng& r) {
     const float d = tellDur(t, a), f = p.f0 > 0.f ? p.f0 : 200.f;
     Buf out(N(d), 0.f);
     switch (a) {
+        case AttackKind::LAB_LUNGE:add(out,vent(d,2400,r,d*.7f,.04f));add(out,servo(d,160,500,r),.5f);break;
+        case AttackKind::LAB_PRESS:add(out,metal(d,110,r,4),.7f);add(out,servo(d,160,70,r),.5f);break;
+        case AttackKind::LAB_BEAM:add(out,choir(d,330,495,Vowel::EE,3,1.1f,r,.3f,.08f,.05f));break;
+        case AttackKind::LAB_CROSS:add(out,servo(d,1300,220,r,.03f,.03f));add(out,click(1800,r),.7f);break;
+        case AttackKind::SU_INCISION:add(out,vent(d,3400,r,d*.7f,.04f));add(out,servo(d,210,390,r),.4f);break;
+        case AttackKind::SU_THRUST:case AttackKind::SU_TRANSPOSE:add(out,metal(d,1200,r,3.f));add(out,beep(1800,.07f),.5f,d*.6f);break;
+        case AttackKind::SU_VECTOR:add(out,vent(d,900,r,d*.7f,.03f));add(out,servo(d,110,900,r,d*.7f,.03f),.6f);break;
+        case AttackKind::SU_SUTURE:for(int k=0;k<2;++k)add(out,metal(.35f,980+k*240,r,9),.8f,k*.3f);break;
+        case AttackKind::SU_RECALL:for(int k=0;k<3;++k)add(out,beep(660,.07f),.65f,k*.25f);break;
+        case AttackKind::SU_PERFUSION:add(out,choir(d,130,260,Vowel::AH,4,1.f,r,d*.65f,.05f,.1f));break;
         case AttackKind::BALL_WINCH: add(out,servo(d,170.f,1350.f,r,.02f,.08f));add(out,metal(d,320.f,r,14.f),.45f);break;
         case AttackKind::BALL_RIP: add(out,grind(d,18.f,180.f,r));add(out,metal(d,95.f,r,8.f),.7f);break;
         case AttackKind::BALL_SWEEP: add(out,servo(d,95.f,430.f,r,.04f,.08f));add(out,vent(d,1100.f,r,.15f,.08f),.6f);break;

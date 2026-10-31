@@ -76,6 +76,25 @@ inline std::vector<unsigned char> build(F f, float mean) {
     return out;
 }
 
+// The Living Ward: sealed porcelain panels and lightly speckled resilient flooring.
+// Their high base reflectance supplies a clean hospital without emissive white walls.
+inline std::vector<unsigned char> clinic() {
+    return build([](int x,int y) {
+        float b=.78f+(hashI(x,y,901)-.5f)*.018f;
+        if(x%128<1 || y%128<1)b=.53f;
+        if(x%128==2 || y%128==2)b=.82f;
+        return Px{glm::vec3{b*.99f,b,b*1.01f}};
+    },.72f);
+}
+inline std::vector<unsigned char> lino() {
+    return build([](int x,int y) {
+        float b=.75f+(hashI(x,y,902)-.5f)*.035f;
+        if(hashI(x,y,903)>.985f)b-=.12f;
+        if(x==0 || y==0)b-=.035f;
+        return Px{glm::vec3{b,b*.995f,b*.96f}};
+    },.68f);
+}
+
 constexpr float BRICK_MEAN = 0.36f;   // what the old brick averages: the arena colours were tuned on it
 
 // --- SUNSET YARD -------------------------------------------------------------

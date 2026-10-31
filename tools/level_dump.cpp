@@ -16,6 +16,7 @@
 #include "world/LevelStory.h"
 #include "world/LevelWasteland.h"
 #include "world/LevelTraining.h"
+#include "world/LevelLab.h"
 #include "render/WorldGeometry.h"
 #include "render/MaterialTex.h"
 #include <cstdio>
@@ -26,13 +27,14 @@
 
 static const char* TEX_NAME[TEX_COUNT] = {"grid", "brick", "metal", "panel", "rock", "concrete", "adobe", "terracotta",
                                          "wood", "plate", "tread", "marble", "flagstone", "circuit", "circuit_floor",
-                                         "basalt", "limestone", "brass"};
+                                         "basalt", "limestone", "brass", "clinic", "lino"};
 static const char* MAT_NAME[] = {"brick", "panel", "rock", "metal", "concrete", "adobe", "plate", "marble",
-                                 "circuit", "basalt", "wood", "limestone", "brass"};
+                                 "circuit", "basalt", "wood", "limestone", "brass", "clinic"};
 
 static std::vector<unsigned char> texPixels(int t) {
     using namespace MaterialTex;
     switch (t) {
+        case TEX_CLINIC:return clinic(); case TEX_LINO:return lino();
         case TEX_GRID: return gridFloor();       case TEX_BRICK: return brick();
         case TEX_METAL: return metal();          case TEX_PANEL: return panel();
         case TEX_ROCK: return rock();            case TEX_CONCRETE: return concrete();
@@ -103,8 +105,8 @@ int main(int argc, char** argv) {
     if (argc < 3) { std::fprintf(stderr, "usage: level_dump act1|act2|fast|story1|story2|training OUTDIR\n"); return 2; }
     const std::string which = argv[1], out = argv[2];
     g_skipLayout = true;   // the level as the code builds it (LevelLayout.h)
-    LevelData L = which == "act1" ? buildLevel() : which == "act2" ? buildAct2Level() : which == "fast" ? buildGauntlet() : which == "story1" ? buildCradle() : which == "story2" ? buildWasteland() : which == "training" ? buildTraining() : LevelData{};
-    if (L.arenas.empty()) { std::fprintf(stderr, "no level '%s' (act1, act2, fast, story1, story2, training)\n", which.c_str()); return 2; }
+    LevelData L = which == "act1" ? buildLevel() : which == "act2" ? buildAct2Level() : which == "fast" ? buildGauntlet() : which == "story1" ? buildCradle() : which == "story2" ? buildWasteland() : which == "story3" ? buildLab() : which == "training" ? buildTraining() : LevelData{};
+    if (L.arenas.empty()) { std::fprintf(stderr, "no level '%s' (act1, act2, fast, story1, story2, story3, training)\n", which.c_str()); return 2; }
     mkdir(out.c_str(), 0755);
 
     // The world as the game draws it, and the moving walls where they're built (a lift, the Reliquary's

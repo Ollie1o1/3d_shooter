@@ -17,7 +17,7 @@ inline const char* voiceKey(EnemyType t) {
     static const char* K[] = {"husk", "ripper", "sentinel", "raptor", "brute", "mite", "juggernaut", "warden",
                               "sovereign", "shieldbearer", "conduit", "conductor", "seraph", "anchor", "penitent",
                               "revenant", "weaver", "leviathan", "absolute",
-                              "courier", "bulwark", "cantor", "harrier", "plumb", "foreman", "pacemaker", "sorter", "ballast"};
+                              "courier", "bulwark", "cantor", "harrier", "plumb", "foreman", "pacemaker", "sorter", "ballast", "patient", "grafted", "suspended", "phased", "successor"};
     static_assert(sizeof(K) / sizeof(K[0]) == (size_t)EnemyType::COUNT, "a voice key per enemy type");
     return (int)t < (int)EnemyType::COUNT ? K[(int)t] : "any";
 }
@@ -27,6 +27,8 @@ inline const char* attackKey(AttackKind k) {
         case AttackKind::SORT_RUSH:return "gantry";case AttackKind::SORT_ROW:return "press_row";case AttackKind::SORT_PURGE:return "purge";
         case AttackKind::BALL_WINCH:return "winch";case AttackKind::BALL_RIP:return "road_tear";case AttackKind::BALL_SWEEP:return "blade_sweep";
         case AttackKind::BALL_GRADE: return "grade"; case AttackKind::BALL_GUST: return "crosswind";
+        case AttackKind::LAB_LUNGE:return "release";case AttackKind::LAB_PRESS:return "press";case AttackKind::LAB_BEAM:return "observe";case AttackKind::LAB_CROSS:return "crossing";
+        case AttackKind::SU_INCISION:return "incision";case AttackKind::SU_THRUST:return "incision_thrust";case AttackKind::SU_VECTOR:return "vector";case AttackKind::SU_SUTURE:return "suture";case AttackKind::SU_TRANSPOSE:return "transpose";case AttackKind::SU_RECALL:return "recall";case AttackKind::SU_PERFUSION:return "perfusion";
         case AttackKind::BALL_ANCHOR: return "weight"; case AttackKind::BALL_THROW: return "ballast";
         case AttackKind::SORT_GRAB: return "grab"; case AttackKind::SORT_STAMP: return "stamp";
         case AttackKind::SORT_SCAN: return "scan"; case AttackKind::SORT_THROW: return "reject";
@@ -81,6 +83,8 @@ inline const char* attackKey(AttackKind k) {
 inline std::vector<AttackKind> attacksOf(EnemyType t) {
     using A = AttackKind;
     switch (t) {
+        case EnemyType::PATIENT:return {A::LAB_LUNGE};case EnemyType::GRAFTED:return {A::LAB_PRESS,A::VOLLEY};case EnemyType::SUSPENDED:return {A::LAB_BEAM};case EnemyType::PHASED:return {A::LAB_CROSS,A::LAB_LUNGE};
+        case EnemyType::SUCCESSOR:return {A::SU_INCISION,A::SU_THRUST,A::SU_VECTOR,A::SU_SUTURE,A::SU_TRANSPOSE,A::SU_RECALL,A::SU_PERFUSION};
         case EnemyType::BALLAST: return {A::BALL_GRADE,A::BALL_GUST,A::BALL_ANCHOR,A::BALL_THROW,A::BALL_WINCH,A::BALL_RIP,A::BALL_SWEEP};
         case EnemyType::SORTER: return {A::SORT_GRAB,A::SORT_STAMP,A::SORT_SCAN,A::SORT_THROW,A::SORT_RUSH,A::SORT_ROW,A::SORT_PURGE};
         case EnemyType::HUSK:         return {A::SHOT};
@@ -131,7 +135,7 @@ inline bool hasRelease(AttackKind k) {
 // Steps (or wingbeats) a second at full speed; 0: it doesn't move
 inline float moveCadence(EnemyType t) {
     static const float C[] = {2.2f, 7.f, 1.5f, 3.f, 1.4f, 9.f, 1.2f, 1.f, 2.4f, 1.8f, 0.f, 2.f, 1.6f, 1.f, 0.7f, 2.6f, 5.f, 0.f, 3.f,
-                              6.f, 1.1f, 1.2f, 2.2f, 0.f, 1.5f, 3.f, 0.f, 1.4f};   // (the Gauntlet's)
+                              6.f, 1.1f, 1.2f, 2.2f, 0.f, 1.5f, 3.f, 0.f, 1.4f, 3.2f, 1.5f, 0.f, 2.6f, 3.8f};
     static_assert(sizeof(C) / sizeof(C[0]) == (size_t)EnemyType::COUNT, "a cadence per enemy type");
     return C[(int)t];
 }
@@ -139,6 +143,9 @@ inline float moveCadence(EnemyType t) {
 // How long a tell sounds: about the wind-up it announces
 inline float tellDur(EnemyType t, AttackKind a) {
     switch (a) {
+        case AttackKind::LAB_LUNGE:return .7f;case AttackKind::LAB_PRESS:return .95f;case AttackKind::LAB_BEAM:return 1.05f;case AttackKind::LAB_CROSS:return .8f;
+        case AttackKind::SU_INCISION:return .64f;case AttackKind::SU_THRUST:return .46f;case AttackKind::SU_VECTOR:return .8f;
+        case AttackKind::SU_SUTURE:return .95f;case AttackKind::SU_TRANSPOSE:return .48f;case AttackKind::SU_RECALL:return .85f;case AttackKind::SU_PERFUSION:return .9f;
         case AttackKind::SORT_GRAB: case AttackKind::SORT_STAMP: case AttackKind::SORT_SCAN: case AttackKind::SORT_THROW: return .35f;
         case AttackKind::LUNGE: return 0.32f;   case AttackKind::BURST: return 0.75f;
         case AttackKind::DIVE: return 0.55f;    case AttackKind::LOB: return 0.7f;
@@ -199,7 +206,7 @@ inline const std::vector<VoiceSpec>& voiceBank() {
             const EnemyType t = (EnemyType)i;
             // The Gauntlet's bosses are one at a time: a voice each, not a set of variants (EnemyVoice picks among what's there)
             const bool one = isMiniBoss(t) || t == EnemyType::PACEMAKER || t == EnemyType::SORTER || t == EnemyType::BALLAST;
-            auto n = [&](int many) { return one ? (many >= 3 ? 2 : 1) : many; };
+            auto n = [&](int many) { return t>=EnemyType::PATIENT?1:one ? (many >= 3 ? 2 : 1) : many; };
             v.push_back({voiceName(t, VoiceKind::SPAWN), t, VoiceKind::SPAWN, AttackKind::NONE, 1, MixClass::WORLD});
             v.push_back({voiceName(t, VoiceKind::IDLE),  t, VoiceKind::IDLE,  AttackKind::NONE, n(2), MixClass::CHATTER});
             if (moveCadence(t) > 0.f)

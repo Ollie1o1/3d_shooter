@@ -18,9 +18,9 @@
 // (rigBase) at a bigger size, with a body of its own made in Blender.
 enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, JUGGERNAUT, WARDEN, SOVEREIGN, SHIELDBEARER, CONDUIT,
                        CONDUCTOR, SERAPH, ANCHOR, PENITENT, REVENANT, WEAVER, LEVIATHAN, ABSOLUTE,
-                       COURIER, BULWARK, CANTOR, HARRIER, PLUMB, FOREMAN, PACEMAKER, SORTER, BALLAST, COUNT };
+                       COURIER, BULWARK, CANTOR, HARRIER, PLUMB, FOREMAN, PACEMAKER, SORTER, BALLAST, PATIENT, GRAFTED, SUSPENDED, PHASED, SUCCESSOR, COUNT };
 inline bool isBoss(EnemyType t) { return t == EnemyType::WARDEN || t == EnemyType::SOVEREIGN || t == EnemyType::PENITENT || t == EnemyType::LEVIATHAN ||
-                                         t == EnemyType::ABSOLUTE || t == EnemyType::PACEMAKER || t == EnemyType::SORTER || t == EnemyType::BALLAST; }
+                                         t == EnemyType::ABSOLUTE || t == EnemyType::PACEMAKER || t == EnemyType::SORTER || t == EnemyType::BALLAST || t==EnemyType::SUCCESSOR; }
 // A Gauntlet room's mini-boss: a boss bar and a death of its own, no finisher; kill it and the room is won
 inline bool isMiniBoss(EnemyType t) { return t >= EnemyType::COURIER && t <= EnemyType::FOREMAN; }
 // Whose skeleton (and pose, head box, joints) a type moves on
@@ -81,7 +81,7 @@ enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY,
                         ATELEPORT, ADASH, AJAB, AHOOK, AUPPER, ADROP, AHOP, ARAY, ASTOMP, ASERPENT,   // THE ABSOLUTE's
                         AHALO, ASEAMS, AZENITH, ASWEEP, ALUNGE, ACRESCENT, AJUDGE, ATAKEOFF, ASKYFALL, AMETEOR,
                         ACROSS, ABACKFIST, AELBOW, AROUNDHOUSE, AHAYMAKER, ACHARGE, AAXE, ACLAP, ATHUNDER,   // (his fighter's arsenal; THUNDERCLAP)
-                        MJAB, MBACKHAND, MGRASP, MDROP, MSUNDER, MFISSURE, MFLARES, MCOLLAPSE, SORT_GRAB, SORT_STAMP, SORT_SCAN, SORT_THROW, BALL_GRADE, BALL_GUST, BALL_ANCHOR, BALL_THROW, SORT_RUSH, SORT_ROW, SORT_PURGE, BALL_WINCH, BALL_RIP, BALL_SWEEP };   // MORNINGSTAR's (EnemyAbsolute.h)
+                        MJAB, MBACKHAND, MGRASP, MDROP, MSUNDER, MFISSURE, MFLARES, MCOLLAPSE, SORT_GRAB, SORT_STAMP, SORT_SCAN, SORT_THROW, BALL_GRADE, BALL_GUST, BALL_ANCHOR, BALL_THROW, SORT_RUSH, SORT_ROW, SORT_PURGE, BALL_WINCH, BALL_RIP, BALL_SWEEP, LAB_LUNGE, LAB_PRESS, LAB_BEAM, LAB_CROSS, SU_INCISION, SU_THRUST, SU_VECTOR, SU_SUTURE, SU_TRANSPOSE, SU_RECALL, SU_PERFUSION };   // MORNINGSTAR's (EnemyAbsolute.h)
 
 struct EnemyStats {
     const char* name;
@@ -185,6 +185,11 @@ inline EnemyStats& statsEdit(EnemyType t) {
         {"THE BALLAST", 6800.f, 2.4f, 8.1f, 6.2f, 1.3f, .45f, false,
          {.46f,.34f,.22f}, {1.5f,.73f,.22f}, {.85f,.67f,.4f},
          "BLADE: JUMP OR DASH ASIDE - WHITE WEIGHT: PARRY - WIND: CROSS THE LANE OR TAKE COVER"},
+        {"PATIENT",110,.46f,2.2f,7.5f,.65f,1.4f,false,{.73f,.48f,.43f},{.3f,.95f,1},{.7f,.6f,.85f},"ITS BRACE OPENS BEFORE THE LUNGE - DODGE OR STAGGER IT"},
+        {"GRAFTED",340,.9f,3.2f,3.8f,.85f,2.6f,false,{.56f,.35f,.3f},{.9f,.48f,.23f},{.9f,.5f,.3f},"FLANK ITS SUPPORT PLATE - HIT THE EXPOSED RESERVOIR"},
+        {"SUSPENDED",160,.7f,2.3f,3.5f,1.0f,3.1f,true,{.65f,.55f,.52f},{.7f,.4f,1.f},{.65f,.4f,1.f},"THE OPEN CAGE MARKS AN ACTIVE SUBJECT - LEAVE ITS FIRING LANE"},
+        {"PHASE SUBJECT",190,.5f,2.4f,5.2f,.75f,3.5f,false,{.62f,.47f,.53f},{.5f,.8f,1.2f},{.5f,.8f,1.2f},"ITS EXIT APPEARS FIRST - MEET IT AFTER THE CROSSING"},
+        {"THE SUCCESSOR",8500,.65f,2.65f,13.f,.6f,.7f,false,{.75f,.53f,.47f},{.5f,.95f,1.1f},{.8f,.55f,.95f},"WHITE: PARRY / GOLD: EVADE / CUT THE SUTURE ANCHORS"},
     };
     return S[(int)t];
 }

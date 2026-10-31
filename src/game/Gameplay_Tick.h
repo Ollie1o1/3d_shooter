@@ -481,6 +481,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     updateReliquary(dt);
     updateLeviathan(dt);
     updateAbsolute(dt);
+    updateSuccessor(dt);
     steerParriedOrbs(dt);   // parried orbs into the Warden's core, the Leviathan's eye
     if (fast() && countdown <= 0.f && !victory) ghostRec.record(elapsedTime, player.position, player.camera.yaw);
     // FAST: your best run's ghost going by close (it passing you, or you it): a whoosh from where it is

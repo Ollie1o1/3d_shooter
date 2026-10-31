@@ -138,6 +138,7 @@ inline const char* fileName(EnemyType t) {
         case EnemyType::PACEMAKER:    return "pacemaker";
         case EnemyType::SORTER: return "sorter";
         case EnemyType::BALLAST: return "ballast";
+        case EnemyType::PATIENT:return "patient";case EnemyType::GRAFTED:return "grafted";case EnemyType::SUSPENDED:return "suspended";case EnemyType::PHASED:return "phased";case EnemyType::SUCCESSOR:return "successor";
         default: return nullptr;
     }
 }

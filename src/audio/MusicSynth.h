@@ -51,7 +51,7 @@ struct MusicTrack {
                            // (a distorted kick with a long tail, a snare under the clap, a dirtier bass and sub, a deeper pump)
 };
 
-constexpr int MUSIC_TRACKS = 12;
+constexpr int MUSIC_TRACKS = 14;
 
 inline const MusicTrack& musicTrack(int i) {
     static const MusicTrack T[] = {
@@ -103,6 +103,14 @@ inline const MusicTrack& musicTrack(int i) {
         {"MORNINGSTAR", 178.f, 47, {0, 5, 3, 6},
          "x...x...x...x..x", "....x.......x..g", "xXoxxXoxxXoxxXoX",
          ".xxx.xxx.xxx.xfx", "0303102303031023", "3...3...2.1.0...3...3...1.2.3...", 2},
+        // The lab has a separate harmonic language. These tracks use a four-part vowel
+        // ensemble and pipe organ below, rather than the Zenith/Morningstar acid voices.
+        {"OBSERVATION", 108.f, 50, {0, 5, 3, 4},
+         "x.......x.......", "........x.......", "x...x...x...x...",
+         "x-------.---f---", "0.......2.......", "0-------2-------1-------0-------", 0},
+        {"RELEASE DENIED", 176.f, 50, {0, 5, 3, 4},
+         "x..x..x.x.x...xx", "....x.......x..g", "x.XxxxX.x.XxxxXo",
+         "x.fx.xfox.fx.xfo", "0.2.1.2.0.2.3.2.", "0---2-1-0---3---2---1-2-0-------", 0},
     };
     return T[((i % MUSIC_TRACKS) + MUSIC_TRACKS) % MUSIC_TRACKS];
 }
@@ -137,14 +145,13 @@ public:
 
     // Render `frames` stereo frames, interleaved L R, into out (overwrites).
     void render(float* out, int frames) {
-        const MusicTrack& tr = musicTrack(track);
         float vol = volume.load();
         for (int f = 0; f < frames; ++f) {
             if ((blockPos++ & 31) == 0) updateBlock();
             if (sampleInStep <= 0) { nextStep(); sampleInStep += stepLen; }
             --sampleInStep;
             float L = 0.f, R = 0.f;
-            synthSample(tr, L, R);
+            synthSample(musicTrack(track), L, R);
             // Master: muffle filter, gentle saturation, volume
             float m = muffleAmt;
             if (m > 0.001f) {
@@ -271,6 +278,11 @@ private:
     Comb  combL[4], combR[4];
     Allpass apL[2], apR[2];
     Osc   leadHi, leadHi2;
+    // Four glottal voices, two singers each, through moving AH / OH / EH formants.
+    // This is an actual vocal layer, separate from the existing saw pad.
+    Osc choirOsc[8], choirVib[4], organ[4];SVF choirForm[4][3];
+    float choirHz[4]={146.83f,174.61f,220.f,293.66f}, choirNote[4]={50,53,57,62};
+    float choirG[3]={0,0,0}, choirAmp=0, choirClock=0, organHz=293.66f;
     SVF mufL, mufR;
 
     // The fight's layers: OVERDRIVE's stabs, the last enemy's solo, a wave's stinger
@@ -328,6 +340,13 @@ private:
         gLeadF = gOf(3200.f); gPadF = gOf(700.f + 500.f * sstep(0.6f, 1.2f, lvl)); gCrashF = gOf(5000.f);
         float cyc = (std::max(step, 0) + 1.f - sampleInStep / std::max(1.f, stepLen)) / 64.f;   // 0..1 across the four bars
         acidBase = 320.f + 1900.f * cyc * cyc;
+        if(track>=12){
+            const int vowel=(std::max(step,0)/8)%3;
+            static const float f[3][3]={{700,1100,2600},{450,850,2400},{550,1800,2700}};
+            for(int k=0;k<3;++k)choirG[k]=gOf(f[vowel][k]);
+            for(int k=0;k<4;++k)choirHz[k]=midiHz(choirNote[k]);
+            organHz=midiHz(leadNote-12.f);
+        }
     }
 
     void nextStep() {
@@ -346,6 +365,16 @@ private:
             for (int k = 0; k < 3; ++k) padNotes[k] = (float)chordTone(tr, deg, k, 0);
             padNotes[3] = (float)scaleNote(tr, deg, -2);          // sub, two octaves down
             if (gLead > 0.05f) crash = Hit{0.f, 1.f};
+        }
+        if(track>=12 && s%4==0){
+            // An eight-bar soprano answer over the repeating four-bar lower voices.
+            static const int theme[32]={7,7,9,8,7,4,5,7,5,5,4,2,4,5,7,4,
+                                        7,9,11,9,8,7,5,4,5,7,4,2,4,2,1,0};
+            for(int k=0;k<3;++k)choirNote[k]=(float)chordTone(tr,deg,k,0);
+            choirNote[3]=(float)scaleNote(tr,theme[((cycle%2)*16+step/4)%32],0);
+            // The dominant's raised third leads back into D minor.
+            if(deg==4)choirNote[1]+=1;
+            choirClock=0;
         }
         auto at = [&](const char* p, int i) { return p[i % (int)std::strlen(p)]; };
         char k = at(tr.kick, s);
@@ -502,6 +531,28 @@ private:
             leadT += dt;
         }
 
+        float choirL=0,choirR=0;
+        if(track>=12){
+            float beat=SR*60.f/tr.bpm/SR; // seconds, independent of audio rate
+            float target=std::min(1.f,choirClock/.035f)*(.78f+.22f*std::exp(-choirClock*12.f));
+            target*=1.f-.3f*sstep(beat*.75f,beat,choirClock);
+            choirAmp+=(target-choirAmp)*.002f;choirClock+=dt;
+            for(int k=0;k<4;++k){
+                float vibrato=1.f+choirVib[k].sine(4.7f+k*.19f,SR)*.003f;
+                float hz=choirHz[k]*vibrato;
+                float glottal=(choirOsc[k*2].saw(hz*1.002f,SR)+choirOsc[k*2+1].saw(hz*.998f,SR))*.5f;
+                glottal=glottal*.8f+noise()*.014f;
+                float vowel=0;const float weight[]={.9f,.5f,.14f};
+                for(int j=0;j<3;++j){choirForm[k][j].lp(glottal,choirG[j],.16f);vowel+=choirForm[k][j].band*weight[j];}
+                float gain=choirAmp*(track==13?.12f:.075f)*(k==3?1.3f:1.f);
+                choirL+=vowel*gain*(k%2?.6f:1.f);choirR+=vowel*gain*(k%2?1.f:.6f);
+            }
+            // Organ doubles the theme in octaves; strings articulate the sixteenth pulse.
+            float pipe=organ[0].sine(organHz*.5f,SR)*.45f+organ[1].sine(organHz,SR)*.6f+organ[2].sine(organHz*2,SR)*.22f+organ[3].sine(organHz*3,SR)*.1f;
+            leadOut=pipe*leadAmp*.2f*gLead;
+            padL*=.2f;padR*=.2f;arpOut*=.65f;
+        }
+
         // ---- delay (dotted eighth, ping-pong) ----
         size_t dlen = delayL.size();
         size_t dtime = std::min(dlen - 1, (size_t)(stepLen * 3.f));
@@ -538,7 +589,7 @@ private:
         {
             const float keepS = 1.f - 0.9f * solo;
             float in = (snareOut * (techno ? 0.25f : 0.5f) + leadOut * 0.6f + arpOut * 0.3f + (padL + padR) * pg * 0.12f * keepS
-                        + stingOut * 0.5f + stabOut * 0.1f) * 0.05f;
+                        + stingOut * 0.5f + stabOut * 0.1f + (choirL+choirR)*1.8f) * 0.05f;
             for (int c = 0; c < 4; ++c) { plateL += combL[c].run(in, 0.84f, 0.38f); plateR += combR[c].run(in, 0.84f, 0.38f); }
             for (int a2 = 0; a2 < 2; ++a2) { plateL = apL[a2].run(plateL); plateR = apR[a2].run(plateR); }
             plateL *= 0.9f; plateR *= 0.9f;
@@ -546,7 +597,7 @@ private:
         // The last enemy: everything but the drums and the sub falls away
         const float keep = 1.f - 0.9f * solo;
         float mono = drums * (1.f + 0.15f * solo) + bassOut * (1.f - 0.75f * solo) + subOut * pg + crashOut + riser * keep + stabOut;
-        L = mono + padL * pg * keep + hatOut * 0.8f + (sendL + dl * 0.3f + leadOut * 0.3f) * keep + stingOut + plateL;
-        R = mono + padR * pg * keep + hatOut * 1.0f + (sendR + dr * 0.3f + leadOut * 0.3f) * keep + stingOut + plateR;
+        L = mono + padL * pg * keep + hatOut * 0.8f + (sendL + dl * 0.3f + leadOut * 0.3f) * keep + stingOut + plateL + choirL*keep;
+        R = mono + padR * pg * keep + hatOut * 1.0f + (sendR + dr * 0.3f + leadOut * 0.3f) * keep + stingOut + plateR + choirR*keep;
     }
 };

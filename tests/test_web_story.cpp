@@ -8,7 +8,7 @@
 int main(int argc,char** argv) {
     if(argc!=2)return 1;
     const auto type=static_cast<EnemyType>(std::atoi(argv[1]));
-    if(type!=EnemyType::SORTER&&type!=EnemyType::BALLAST)return 1;
+    if(type!=EnemyType::SORTER&&type!=EnemyType::BALLAST&&type!=EnemyType::SUCCESSOR)return 1;
     const auto* model=enemyfile::modelOf(static_cast<int>(type));
     if(!model||model->parts.empty())return 1;
     Enemy boss(type,{0,0,0});boss.spawnTimer=0;boss.state=EnemyState::ACTIVE;

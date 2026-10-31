@@ -305,6 +305,32 @@ inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileR
         P = humanoidPose(mo, glow);
         fileRoot = base * T({0.f, mo.lift, 0.f});
     };
+    if(e.type>=EnemyType::PATIENT && e.type<=EnemyType::SUCCESSOR){
+        fileRoot=root;P=FilePose{};float step=e.animPhase;
+        bool boss=e.type==EnemyType::SUCCESSOR;bool floating=e.type==EnemyType::SUSPENDED;
+        float run=glm::clamp(e.moveSpeed/std::max(.1f,st.speed),0.f,1.3f);
+        float swing=std::sin(step)*.62f*run;
+        P.motion[E_HIPL]=RX(swing);P.motion[E_HIPR]=RX(-swing);
+        P.motion[E_KNEE_L]=RX(-std::max(0.f,-std::sin(step))*.8f*run);
+        P.motion[E_KNEE_R]=RX(-std::max(0.f,std::sin(step))*.8f*run);
+        P.motion[E_ARML]=RX(-swing*.7f)*RZ(.07f);P.motion[E_ARMR]=RX(swing*.7f)*RZ(-.07f);
+        P.motion[E_ELBOW_L]=RX(-.18f-run*.3f);P.motion[E_ELBOW_R]=RX(-.18f-run*.3f);
+        P.motion[E_TORSO]=RX(-run*.11f)*RY(std::sin(step)*.055f*run);
+        if(floating){P.motion[E_ARML]=RZ(.6f+tp*.5f);P.motion[E_ARMR]=RZ(-.6f-tp*.5f);P.motion[E_HIPL]=RX(.12f);P.motion[E_HIPR]=RX(-.1f);}
+        if(e.telegraphTimer>0 || e.dashTimer>0 || (boss&&e.suBurst>0)){
+            float lift=smooth01c(tp);
+            P.motion[E_ARMR]=RX(-1.6f*lift)*RZ(-.28f);
+            P.motion[E_ARML]=RX(-.7f*lift)*RZ(.3f);
+            P.motion[E_ELBOW_R]=RX(-.7f*(1-lift));
+            if(e.attack==AttackKind::SU_SUTURE||e.attack==AttackKind::SU_PERFUSION){P.motion[E_ARML]=RZ(1.2f*lift);P.motion[E_ARMR]=RZ(-1.2f*lift);}
+            if(e.attack==AttackKind::SU_VECTOR||e.attack==AttackKind::LAB_LUNGE){P.motion[E_TORSO]=RX(-.45f*lift);P.motion[E_ARML]=RX(.8f*lift);}
+        }
+        if(e.staggered()){P.motion[E_TORSO]=RX(.3f);P.motion[E_HEAD]=RX(.2f);}
+        P.motion[E_HEAD]=RY(std::sin(time*.6f)*.045f);
+        P.chan[C_EYE]=st.glow;P.chan[C_CORE]=glow;P.chan[C_GLOW]=glow;
+        if(boss && e.telegraphTimer>0){vec3 tell=SuccessorState::white(e.attack)?vec3{2}:e.attack==AttackKind::SU_VECTOR||e.attack==AttackKind::SU_INCISION?abGoldTell(vec3{1.8f,1.1f,.15f}):vec3{1.6f,.25f,.3f};P.chan[C_CORE]=tell*(.8f+tp);}
+        glowOut=glow;return true;
+    }
     if(e.type==EnemyType::BALLAST) {
         fileRoot=root;
         if(e.attack==AttackKind::BALL_SWEEP) {
@@ -1454,6 +1480,22 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
 // slump, a RIPPER's crouch, a RAPTOR's dive. False for a type without a head
 // (MITE). Uses the physics position, like the rest of the hitscan.
 inline bool headBox(const Enemy& e, AABB& out) {
+    if(e.type>=EnemyType::PATIENT&&e.type<=EnemyType::SUCCESSOR){
+        if(const auto* model=enemyfile::model(e.type)){
+            float grow=.05f+.95f*smooth01(1.f-e.spawnTimer/Enemy::SPAWN_TIME);
+            mat4 root=T(e.position)*RY(e.yaw)*S(vec3{e.scale})*S({1,grow,1});
+            mat4 fileRoot;FilePose pose;vec3 glow;filePoseOf(e,e.age,root,fileRoot,pose,glow);
+            mat4 local[enemyfile::E_COUNT],W[enemyfile::E_COUNT];int parent[enemyfile::E_COUNT];
+            enemyfile::restLocals(*model,local,parent);for(auto& m:W)m=fileRoot;
+            for(const auto& j:model->joints)W[j.id]=W[j.parent]*local[j.id]*pose.motion[j.id];
+            auto frame=W[enemyfile::E_HEAD];float sy=e.stats().height/2.65f;
+            float wide=e.type==EnemyType::GRAFTED?1.5f:e.type==EnemyType::SUSPENDED?.88f:e.type==EnemyType::PHASED?.94f:1.f;
+            vec3 c=vec3(frame*glm::vec4{0,.01f*sy,.04f*wide,1}),half{.21f*wide,.225f*sy,.21f*wide};
+            glm::mat3 m(frame);vec3 ext=glm::abs(m[0])*half.x+glm::abs(m[1])*half.y+glm::abs(m[2])*half.z;
+            out={c-ext,c+ext};return true;
+        }
+        return false;
+    }
     if(e.type==EnemyType::BALLAST) {
         float tilt=e.ballDrive>0?-.08f:std::sin(e.age*1.8f)*.012f;
         mat4 frame=T(e.position)*RY(e.yaw)*S(vec3{e.scale})*T({0,2.5f,0})*RX(tilt)*T({0,1.6f,2.3f})*RY(std::sin(e.age*.4f)*.08f);

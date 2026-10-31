@@ -22,6 +22,7 @@
 
 inline int xpForKill(EnemyType t) {
     switch (t) {
+        case EnemyType::PATIENT:return 40;case EnemyType::GRAFTED:return 100;case EnemyType::SUSPENDED:return 65;case EnemyType::PHASED:return 70;case EnemyType::SUCCESSOR:return 1500;
         case EnemyType::HUSK:     return 20;
         case EnemyType::RIPPER:   return 15;
         case EnemyType::SENTINEL: return 30;
@@ -106,7 +107,7 @@ struct BossEntry {
     int chapter = 1;
     GameMode mode() const { return special != GameMode::ARENA ? special : act2 ? GameMode::ACT2 : GameMode::ARENA; }
 };
-constexpr int BOSS_COUNT = 9;
+constexpr int BOSS_COUNT = 10;
 inline const BossEntry& bossEntry(int i) {
     static const BossEntry B[BOSS_COUNT] = {
         {"THE WARDEN",    "THE CORE",                  false, 3, false, 4, 3},
@@ -118,6 +119,7 @@ inline const BossEntry& bossEntry(int i) {
         {"THE PACEMAKER", "FAST - THE TOWER", false, 6, false, 7, 6, GameMode::FAST},
         {"THE SORTER", "STORY - THE SORTING FLOOR", false, 8, false, 5, 4, GameMode::STORY, 1},
         {"BALLAST", "STORY - THE CUT", false, 6, false, 6, 6, GameMode::STORY, 2},
+        {"THE SUCCESSOR", "STORY - FINAL ASSESSMENT",false,9,false,8,8,GameMode::STORY,3},
     };
     return B[std::clamp(i, 0, BOSS_COUNT - 1)];
 }

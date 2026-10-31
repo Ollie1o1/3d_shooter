@@ -4,6 +4,7 @@ inline void GameplayState::saveStoryProgress() {
     if (!story() || g_practice || g_godMode || g_devCam || g_devNoMouse || g_bossRun >= 0
         || !g_devOverlay.empty() || !level.story.built) return;
     StorySave s;
+    s.labIntroSeen=labIntro.seen;s.labRoutes=labRoutes;
     s.chapter = level.story.chapter; s.checkpoint = storyCheckpoint;
     s.owned = storyOwned; s.logs = storyLogsSeen; s.terminals = storyTerminalsSeen;
     s.relayIsolated = storyRelayIsolated; s.grapple = storyGrapple; s.bossDown = storyBossDown;

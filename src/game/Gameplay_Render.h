@@ -85,6 +85,7 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
     gatherReliquaryBoxes(out);
     gatherLeviathanBoxes(out);
     gatherAbsoluteBoxes(out);
+    gatherSuccessor(out);
 
     // HOLD: a ring of light on the ground; the lit arc is how far it's held.
     // Cyan while you hold it, red when an enemy stands in it.
@@ -585,6 +586,10 @@ inline void GameplayState::render() {
     float a = aim * aim * (3.f - 2.f * aim);
     float zoom = wd.canAim ? glm::mix(1.f, wd.aimFov, a) : 1.f;
     renderCam.fov = baseFov * zoom + fovKick * (1.f - a);
+    if(laboratory() && labIntro.active()){
+        float focus=LabIntro::smooth(3,8,labIntro.time)*(1-LabIntro::smooth(19,23,labIntro.time));
+        renderCam.fov=glm::mix(baseFov,std::min(baseFov,60.f),focus);
+    }
 
     glm::mat4 view = glm::rotate(glm::mat4(1.f), glm::radians(swordRoll + feelAng.z), glm::vec3{0.f, 0.f, 1.f}) * renderCam.viewMatrix();   // (leaning into a stroke, a strafe, a hit)
     glm::mat4 proj = renderCam.projectionMatrix();
@@ -686,6 +691,8 @@ inline void GameplayState::render() {
         skyboxShader.setFloat("uEclipse", th.eclipse);
         skyboxShader.setFloat("uHeat",    bossDusk);
         skyboxShader.setFloat("uTime",    gameClock);
+        float realm=laboratory()?(director.arena==7?1.f:director.arena==8?2.f:director.arena==9?3.f:0.f):0.f;
+        skyboxShader.setFloat("uLabRealm",realm);
         skyboxShader.setFloat("uFlare",   th.eclipse > 0.5f ? eclipseFlare * flashScale() : 0.f);
         skyboxShader.setFloat("uDawn",    th.eclipse > 0.5f ? dawn01() : 0.f);
         skyboxShader.setFloat("uSwallow", th.eclipse > 0.5f ? std::min(msSwallowT < 0.f ? 0.f : msSwallowT / (Enemy::MS_SWALLOW - 0.5f), 1.f) * (1.f - dawn01()) : 0.f);
@@ -700,6 +707,7 @@ inline void GameplayState::render() {
     ftLap.to(frametimer::R_WORLD);
 
     if (!devSkip("water")) renderWater(view, proj, th, renderCamPos);
+    if(laboratory())renderLabGlass(view,proj,renderCamPos);
     const bool skipFx = devSkip("fx");
 
     worldShader.use();
@@ -865,8 +873,8 @@ inline void GameplayState::renderWater(const glm::mat4& view, const glm::mat4& p
     waterShader.setMat4("view", view);
     waterShader.setFloat("uTime", gameClock);
     waterShader.setVec3("uViewPos", camPos);
-    waterShader.setVec3("uDeep", {0.03f, 0.1f, 0.11f});
-    waterShader.setVec3("uGlow", {0.55f, 0.07f, 0.04f});
+    waterShader.setVec3("uDeep", laboratory()?glm::vec3{.035f,.17f,.15f}:glm::vec3{.03f,.1f,.11f});
+    waterShader.setVec3("uGlow", laboratory()?glm::vec3{.08f,.3f,.2f}:glm::vec3{.55f,.07f,.04f});
     waterShader.setVec3("uFogColor", th.fogColor);
     waterShader.setFloat("uFogDensity", th.fogDensity);
     waterShader.setVec2("uShaftXZ", {0.f, -607.f});   // the Nave's crossing

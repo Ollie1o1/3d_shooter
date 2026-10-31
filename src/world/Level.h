@@ -396,6 +396,7 @@ struct LevelData {
     float enemyFloor(int arena, glm::vec3 pos, bool flying, float groundUnder) const {
         float base = floorWithWater(pos.x, pos.z, false);
         if (arena < 0 || arena >= (int)arenas.size()) return base;
+        if(story.built && story.chapter==3)return flying?arenas[arena].bounds.min.y:std::max(base,groundUnder);
         if (arenas[arena].shift == ArenaShift::DRIFT)   // the Reliquary: the chunks under it (fliers keep to the chunks' height)
             return flying ? std::max(base, formation.meanTop()) : std::max(base, groundUnder);
         if (arenas[arena].shift != ArenaShift::DESCENT) return base;
@@ -563,6 +564,8 @@ struct LevelData {
         std::vector<Dumped> dumped;
         struct Terminal { glm::vec3 pos; const char* title; const char* line; };
         std::vector<Terminal> terminals;
+        struct LabBridge {int room,side,mover;};
+        std::vector<LabBridge> labBridges;
         struct Vent { glm::vec3 pos; int section; float period,phase; };
         std::vector<Vent> vents;
         struct BossCover { int wall; AABB home; };

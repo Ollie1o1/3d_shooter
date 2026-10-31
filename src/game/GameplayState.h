@@ -26,6 +26,9 @@
 #include "world/LevelAct2.h"
 #include "world/LevelStory.h"
 #include "world/LevelWasteland.h"
+#include "world/LevelLab.h"
+#include "game/LabIntro.h"
+#include "bosses/successor/SuccessorHazards.h"
 #include "world/LevelTraining.h"
 #include "game/CombatLessons.h"
 #include "game/WaveDirector.h"
@@ -125,6 +128,23 @@ public:
     bool endless() const { return mode == GameMode::ENDLESS; }
     bool training() const { return mode == GameMode::TRAINING; }
     bool story() const { return mode == GameMode::STORY; }
+    bool laboratory() const { return story() && level.story.chapter==3; }
+    SuccessorHazards successorHazards;
+    float successorIntroLine=0;
+    void saySuccessor(int line);
+    void successorEvents(Enemy& e,const EnemyEvents& ev);
+    void updateSuccessor(float dt);
+    void gatherSuccessor(std::vector<BoxInstance>& out);
+    void renderSuccessorDialogue();
+    bool shootSuccessorNode(glm::vec3 origin,glm::vec3 dir,float& range,float damage);
+    int labCue=-1;SoundHandle labVoice=0,successorVoice=0;
+    LabIntro labIntro;
+    unsigned labRoutes=0;
+    float labDialogueT=0;int labDialogue=-1;
+    void beginLab();
+    void updateLab(float dt);
+    void gatherLab(std::vector<BoxInstance>& out);
+    void renderLabIntro();
     bool wasteland() const { return story() && level.story.chapter==2; }
     int trainingLesson = 0, trainingEnemy = 0;
     bool trainingPassed[lessons::COUNT] = {};
@@ -204,8 +224,8 @@ public:
     armfile::HandSpring wakeHand;
     void  beginStory();
     void  updateStory(float dt);
-    bool  storyLocked() const { return story() && wakeT >= 0.f; }
-    bool  storyLookFree() const { return wakeT >= 18.4f; }   // (story::W_SAT)
+    bool  storyLocked() const { return story() && (wakeT >= 0.f || labIntro.active()); }
+    bool  storyLookFree() const { return !labIntro.active() && wakeT >= 18.4f; }   // (story::W_SAT)
     float storyWakeFx() const;
     void  gatherStoryBoxes(std::vector<BoxInstance>& out);
     void  drawStoryArms(const Camera& cam);
@@ -376,7 +396,7 @@ public:
     Effects       fx;          // particles, debris, decals, tracers, rings (Effects.h)
     ShaderProgram tracerShader;
     GLuint        tracerVAO = 0, tracerVBO = 0;
-    ShaderProgram waterShader;
+    ShaderProgram waterShader, labGlassShader;
     GLuint        waterVAO = 0, waterVBO = 0;
     static constexpr int MAX_WATER = 64;   // volumes drawn per frame
     float         skimTimer = 0.f;         // spray and hiss while a slide skims water
@@ -1009,6 +1029,7 @@ public:
 
     struct PVert { float x, y, z, r, g, b, a; };
     void renderParticles(const glm::mat4& view, const glm::mat4& proj);
+    void renderLabGlass(const glm::mat4& view,const glm::mat4& proj,glm::vec3 camPos);
     void renderWater(const glm::mat4& view, const glm::mat4& proj, const Theme& th, glm::vec3 camPos);
     void drawPoints(const PVert* buf, int count, const glm::mat4& view, const glm::mat4& proj);
 
@@ -1067,3 +1088,7 @@ public:
 #include "game/Gameplay_Training.h"
 
 #include "game/Gameplay_StoryChoices.h"
+
+#include "game/Gameplay_Lab.h"
+
+#include "bosses/successor/Gameplay_Successor.h"

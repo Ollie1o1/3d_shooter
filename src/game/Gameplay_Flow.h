@@ -37,6 +37,8 @@ inline GLuint* GameplayState::sharedWorldTex() {
         tex[TEX_FLAG]          = TextureGen::uploadMaterial(MaterialTex::flagstone());
         tex[TEX_CIRCUIT]       = TextureGen::uploadMaterial(MaterialTex::circuit());
         tex[TEX_CIRCUIT_FLOOR] = TextureGen::uploadMaterial(MaterialTex::circuitFloor());
+        tex[TEX_CLINIC]        = TextureGen::uploadMaterial(MaterialTex::clinic());
+        tex[TEX_LINO]          = TextureGen::uploadMaterial(MaterialTex::lino());
         tex[TEX_BASALT]        = TextureGen::uploadMaterial(MaterialTex::basalt());
     }
     return tex;
@@ -117,6 +119,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     tracerShader.loadFiles("src/shaders/tracer.vert","src/shaders/tracer.frag");
     particleShader.loadFiles("src/shaders/particle.vert","src/shaders/particle.frag");
     waterShader.loadFiles("src/shaders/water.vert","src/shaders/water.frag");
+    labGlassShader.loadFiles("src/shaders/water.vert","src/shaders/labglass.frag");
 
     // Effects::Tracer VBO: 4 floats per vertex (xyz + alpha), dynamic
     glGenVertexArrays(1, &tracerVAO);
@@ -171,9 +174,9 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
 
     if (story() && g_continueStory && resumedStory.load()) {
         resumingStory = true;
-        if (resumedStory.chapter == 1 && resumedStory.completed) {
-            resumedStory.chapter = 2; resumedStory.checkpoint = 0;
-            resumedStory.owned |= 7; resumedStory.grapple = true;
+        if (resumedStory.chapter < 3 && resumedStory.completed) {
+            ++resumedStory.chapter; resumedStory.checkpoint = 0;
+            resumedStory.owned |= resumedStory.chapter==3?15:7; resumedStory.grapple = true;
             resumedStory.logs = resumedStory.terminals = 0;
             resumedStory.bossDown = resumedStory.completed = false;
             resumedStory.elapsed = resumedStory.style = resumedStory.damage = resumedStory.peak = 0;
@@ -182,15 +185,16 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
         g_storyChapter = resumedStory.chapter; g_startArena = resumedStory.checkpoint;
         storyOwned = resumedStory.owned; storyLogsSeen = resumedStory.logs;
         storyTerminalsSeen = resumedStory.terminals; storyGrapple = resumedStory.grapple;
+        labIntro.seen=resumedStory.labIntroSeen;labRoutes=resumedStory.labRoutes;
         storyBossDown = resumedStory.bossDown; storyRelayIsolated = resumedStory.relayIsolated; wakeSeen = resumedStory.wakeSeen;
         prog = resumedStory.prog;
     }
     g_continueStory = false;
-    level = training() ? buildTraining() : fast() ? buildGauntlet() : act2() ? buildAct2Level() : story() ? (g_storyChapter==2?buildWasteland():buildCradle()) : buildLevel();
+    level = training() ? buildTraining() : fast() ? buildGauntlet() : act2() ? buildAct2Level() : story() ? (g_storyChapter==3?buildLab():g_storyChapter==2?buildWasteland():buildCradle()) : buildLevel();
     if (story()) armfile::load("assets/guns/unit24_arm.glb");   // UNIT 24's own hands (the menu's next run puts the gloves back)
     spatialGrid.build(level.walls);
     world = buildWorldMeshes(level);
-    bake = &sharedBake(training() ? "training" : fast() ? "fast" : act2() ? "act2" : story() ? (level.story.chapter==2?"story2":"story1") : "act1", level);
+    bake = &sharedBake(training() ? "training" : fast() ? "fast" : act2() ? "act2" : story() ? (level.story.chapter==3?"story3":level.story.chapter==2?"story2":"story1") : "act1", level);
     applyBake();
     neonLights = buildNeonLights(level);
     shifts.capture(level);
@@ -304,6 +308,7 @@ inline void GameplayState::enterArena(int a) {
     for (int d = 0; d < (int)level.doors.size(); ++d) { level.doors[d].locked = false; level.setDoorInstant(d, false); }
     shifts.reset(level);   // the sun back up, the lava back down, the platforms back to speed, the cage to the top
     boardHinted = liftRiding = false;
+    successorHazards.clear();successorIntroLine=0;labDialogueT=0;
     ballastHazards.clear();
     ward.clear(); conduitClock.reset(); wardenUid = -1; shifts.bossPulseOff();
     relic.clear(); lastChunk = 0; snareTimer = 0.f; driftWasGliding = false;
@@ -416,7 +421,7 @@ inline void GameplayState::retryArena() {
 
 inline void GameplayState::newRun() {
     if(training()){startTrainingLesson(trainingLesson);return;}
-    if(story()){storyRelayIsolated=false;storyTerminalsSeen=0;storyOwned=0;storyGrapple=false;storyLogsSeen=0;storySeenSection=storyCheckpoint=0;storyBossDown=false;wakeSeen=false;}
+    if(story()){labIntro=LabIntro{};labRoutes=0;storyRelayIsolated=false;storyTerminalsSeen=0;storyOwned=0;storyGrapple=false;storyLogsSeen=0;storySeenSection=storyCheckpoint=0;storyBossDown=false;wakeSeen=false;}
     msCheckpoint = false;
     director = WaveDirector{};
     director.level = &level;
@@ -592,7 +597,9 @@ inline void GameplayState::handleDirectorEvents() {
         case DirectorEvent::BOSS_START:
             if(ev.value<0 || ev.value>=(int)ar.waves.size() || ar.waves[ev.value].empty())break;
             if (bossStartAt < 0.f) bossStartAt = elapsedTime;   // BOSS: its clock
-            if (ar.waves[ev.value][0].type == EnemyType::SOVEREIGN)
+            if(ar.waves[ev.value][0].type==EnemyType::SUCCESSOR)
+                pushBanner("THE SUCCESSOR","FINAL ASSESSMENT / WHITE: PARRY / GOLD: EVADE",{.65f,.9f,1},3.5f);
+            else if (ar.waves[ev.value][0].type == EnemyType::SOVEREIGN)
                 pushBanner("THE SOVEREIGN", "PARRY (F) THE BLADE AS IT LANDS", {1.f, 0.3f, 0.2f}, 4.f);
             else if (ar.waves[ev.value][0].type == EnemyType::PENITENT)
                 pushBanner("THE PENITENT", "BREAK ITS CHAINS - JUMP LOW SWEEPS, SLIDE UNDER HIGH ONES", {1.f, 0.5f, 0.2f}, 4.5f);
@@ -605,6 +612,8 @@ inline void GameplayState::handleDirectorEvents() {
                 pushBanner("THE LEVIATHAN", "DASH THE CRASH - SHOOT THE EYE WHILE IT'S DOWN", {1.f, 0.35f, 0.2f}, 4.5f);
             else if(ar.waves[ev.value][0].type==EnemyType::SORTER)
                 pushBanner("THE SORTER","UNIT ?  PURPOSE: JUDGE   /   REJECT. RETURN TO LINE.",{1.f,.55f,.15f},4.f);
+            else if (ar.waves[ev.value][0].type == EnemyType::SUCCESSOR)
+                pushBanner("THE SUCCESSOR","PERFECT BODY / RELEASE DENIED",{.8f,.9f,1},4.f);
             else if (ar.waves[ev.value][0].type == EnemyType::BALLAST)
                 pushBanner("BALLAST","CLEARANCE IN PROGRESS / WATCH THE BLADE AND CABLE",{.9f,.7f,.35f},4.f);
             else if (ar.waves[ev.value][0].type == EnemyType::PACEMAKER)
@@ -1242,6 +1251,17 @@ inline void GameplayState::snapshotForInterpolation() {
 inline void GameplayState::updateMusic() {
     auto& m = audio.music;
     audio.setMusicVolume(settings ? settings->musicVolume : 0.6f);
+    if(laboratory()){
+        const bool boss=director.arena==9 && !storyBossDown;
+        m.setTrack(boss?13:12);m.setDrive(overdriveOn()&&!playerDead);m.setSolo(false);
+        float intensity=director.fighting()?(boss?1.2f:1.f):.13f;
+        for(const auto& e:enemies)if(e.alive&&e.type==EnemyType::SUCCESSOR)intensity=1.16f+.12f*(e.suPhase-1);
+        if(labIntro.active())intensity=.05f;
+        if(storyBossDown)intensity=.05f;
+        m.setIntensity(playerDead?.05f:intensity);m.setMuffle(paused||armoryOpen||playerDead);
+        audio.setMusicVolume((settings?settings->musicVolume:.6f)*(director.fighting()?1.f:.4f));
+        audio.setOverdrive(overdriveOn()&&!playerDead&&!paused&&!armoryOpen,0);return;
+    }
     static const int ARENA_TRACK[] = {0, 1, 2, 3, 4};       // Yard, Foundry, Spire, Core, Sanctum
     static const int FAST_TRACK[]  = {0, 1, 2, 2, 1, 1, 3}; // Canal .. Tower
     int a = director.arena;

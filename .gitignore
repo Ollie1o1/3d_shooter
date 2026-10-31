@@ -75,3 +75,5 @@ tests/test_story_overhaul
 tests/test_story_bosses
 
 tests/test_improvements
+
+tools/music_preview
