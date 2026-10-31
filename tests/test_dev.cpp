@@ -27,6 +27,142 @@ static void screenshot(const char* path) {
     SDL_SaveBMP(pixels, path); SDL_FreeSurface(pixels);
 }
 
+static void checkImprovements(AudioSystem& audio) {
+    struct TestSlot {
+        const char* old=StorySave::key;
+        TestSlot(){StorySave::key="build/story-integration.cfg";}
+        ~TestSlot(){std::remove(StorySave::key);StorySave::key=old;}
+    } slot;
+    g_devOverlay.clear();g_bossRun=g_roomAttack=g_arenaSolo=-1;
+    g_practice=g_godMode=false;g_continueStory=false;
+    for(int chapter:{1,2}) {
+        StorySave s;s.chapter=chapter;s.checkpoint=chapter==1?5:4;s.owned=chapter==1?7:15;
+        s.grapple=s.wakeSeen=true;s.logs=5;s.terminals=3;s.relayIsolated=chapter==2;
+        s.prog.level=5;s.prog.points=3;s.prog.up[1].mod=s.prog.up[1].alternate=true;
+        s.kills=23;s.deaths=2;s.elapsed=150;s.style=450;s.damage=80;s.save();
+        g_continueStory=true;g_storyChapter=chapter==1?2:1;g_startArena=0;
+        {
+            auto live=std::make_unique<GameplayState>(audio,nullptr,GameMode::STORY);auto& game=*live;
+            CHECK(game.level.story.chapter==chapter && game.storyCheckpoint==s.checkpoint && game.director.arena==s.checkpoint,
+                "Continue restores the saved chapter and checkpoint instead of the launch defaults");
+            CHECK(game.storyOwned==s.owned && game.storyLogsSeen==5 && game.storyTerminalsSeen==3 && game.storyGrapple && game.prog.up[1].alternate,
+                "Continue restores found equipment, records and the chosen weapon mod");
+            CHECK(game.totalKills==23 && game.deaths==2 && game.elapsedTime==150 && game.bankedStyle==450 && game.styleSystem.health==100,
+                "Continue keeps statistics and returns to a safe checkpoint with full health");
+            game.render();screenshot(chapter==1?"build/continue-cradle.bmp":"build/continue-span.bmp");
+            const auto before=persist::load(StorySave::key);
+            g_practice=true;g_devNoMouse=false;game.saveStoryProgress();g_devNoMouse=true;g_practice=false;
+            CHECK(persist::load(StorySave::key)==before,"practice cannot overwrite the Story continue slot");
+        }
+    }
+    {
+        StorySave s;s.chapter=1;s.checkpoint=8;s.owned=7;s.grapple=s.wakeSeen=s.bossDown=true;
+        s.prog.level=4;s.prog.points=2;s.save();g_continueStory=true;
+        auto live=std::make_unique<GameplayState>(audio,nullptr,GameMode::STORY);auto& game=*live;
+        CHECK(game.storyBossDown && game.director.phase==WaveDirector::Phase::CLEARED && !game.level.doors[game.level.arenas[8].exitDoor].locked,
+            "resuming after the Sorter keeps it defeated and its exit open");
+        game.retryArena();CHECK(game.storyBossDown && game.director.phase==WaveDirector::Phase::CLEARED,
+            "retry cannot resurrect a defeated Story boss");
+    }
+    {
+        StorySave s;s.chapter=1;s.checkpoint=8;s.owned=7;s.grapple=s.wakeSeen=s.bossDown=s.completed=true;
+        s.prog.level=4;s.prog.points=2;s.save();g_continueStory=true;
+        auto live=std::make_unique<GameplayState>(audio,nullptr,GameMode::STORY);auto& game=*live;
+        CHECK(game.wasteland() && game.storyCheckpoint==0 && game.prog.level==4 && game.prog.points==2 && !game.storyBossDown,
+            "Continue on a completed Cradle starts Chapter 2 with the carried upgrades");
+    }
+    {
+        MenuState menu(SCREEN_W,SCREEN_H);GameMode chosen=GameMode::ARENA;StartOptions options;
+        menu.onStart=[&](GameMode m,StartOptions o){chosen=m;options=o;};
+        press(menu,SDLK_F3);CHECK(chosen==GameMode::TRAINING && options.practice,"F3 starts unranked combat practice through the real menu");
+        menu.page=MenuState::STORYPAGE;menu.render();screenshot("build/improved-story-menu.bmp");
+        press(menu,SDLK_RETURN);CHECK(options.continueStory && chosen==GameMode::STORY,"Continue menu input requests the stored Story run");
+        menu.page=MenuState::BOSS;menu.bossSel=8;menu.render();screenshot("build/improved-boss-menu.bmp");
+        for(int i=6;i<BOSS_COUNT;++i){menu.bossSel=i;press(menu,SDLK_RETURN);CHECK(options.boss==i && chosen==bossEntry(i).mode() && options.storyChapter==bossEntry(i).chapter,
+            "the appended boss entry selects its actual mode, map and chapter");}
+    }
+    g_practice=true;
+    for(int i=6;i<BOSS_COUNT;++i) {
+        g_bossRun=i;g_storyChapter=bossEntry(i).chapter;g_startArena=bossEntry(i).arena;g_startWave=0;
+        auto live=std::make_unique<GameplayState>(audio,nullptr,bossEntry(i).mode());auto& game=*live;
+        CHECK(game.director.wave==game.bossWaveOf(game.director.arena) && !game.ranked,
+            "new Boss entries start on the boss wave with an unranked run");
+        if(game.armoryOpen)press(game,SDLK_TAB);
+        std::vector<SpawnRequest> spawns;
+        for(int n=0;n<200 && spawns.empty();++n)game.director.update(1.f/60,0,game.player.position,spawns);
+        bool correct=false;EnemyType expected=i==6?EnemyType::PACEMAKER:i==7?EnemyType::SORTER:EnemyType::BALLAST;
+        for(const auto& spawn:spawns){correct|=spawn.type==expected;game.spawnEnemy(spawn.type,spawn.pos,spawn.hollow);}
+        CHECK(correct,"the real director spawns the selected new boss without its preceding waves");
+        game.handleDirectorEvents();game.render();
+        for(auto& e:game.enemies)if(e.type==expected){e.health=0;e.alive=false;game.onEnemyKilled(e,StyleSource::REVOLVER);}
+        game.director.update(1.f/60,0,game.player.position,spawns);game.handleDirectorEvents();
+        CHECK(game.bossDone && !game.bossPost,"the new boss finishes locally without submitting an unsupported world board");
+    }
+    g_bossRun=-1;g_practice=true;g_startArena=g_startWave=0;
+    {
+        GameSettings settings;auto live=std::make_unique<GameplayState>(audio,&settings,GameMode::TRAINING);auto& game=*live;
+        settings.binds.bind(Act::PARRY,0,SDL_SCANCODE_H);
+        CHECK(lessons::action(0,game.binds()).find("H AS A SHOT")!=std::string::npos,"the field guide teaches the player's actual binding");
+        CHECK(game.guideOpen && game.paused && !game.ranked,"combat practice starts in its selectable field guide");
+        game.render();screenshot("build/combat-field-guide.bmp");
+        press(game,SDLK_DOWN);press(game,SDLK_RETURN);game.updateTraining(.2f);
+        CHECK(!game.guideOpen && !game.paused && game.trainingLesson==1 && game.enemies.size()==1,
+            "selecting a lesson closes the guide and creates its repeatable target");
+        for(auto& e:game.enemies){e.state=EnemyState::ACTIVE;e.spawnTimer=0;}
+        bool finished=game.tryFinisher();
+        CHECK(finished && game.trainingPassed[1] && game.styleSystem.health>55 && game.weapons[0].ammo==weaponMag(WeaponId::REVOLVER,game.prog.up[0]),
+            "a real training finisher completes its lesson, restores health and reloads the gun");
+        game.startTrainingLesson(0);game.projSystem.fire(game.player.camera.position+glm::vec3{0,0,-1.5f},{0,0,10},10,false,{1,1,1});
+        game.punch(-1);CHECK(game.trainingPassed[0],"parrying an actual incoming projectile completes the parry lesson");
+        game.startTrainingLesson(2);game.updateTraining(.2f);
+        for(auto& e:game.enemies){e.state=EnemyState::ACTIVE;e.spawnTimer=0;}
+        game.hookEnemy(0);CHECK(game.trainingPassed[2],"hooking the elevated light target completes enemy grapple practice");
+        game.startTrainingLesson(3);game.player.camera.pitch=-80;game.doubleShot=true;game.fireWeapon(1);game.doubleShot=false;
+        const float normalKick=game.player.velocity.y;
+        CHECK(game.trainingPassed[3] && normalKick>10,"a real double-barrel jump completes the recoil lesson");
+        game.prog.up[1].mod=game.prog.up[1].alternate=true;game.startTrainingLesson(3);game.player.camera.pitch=-80;
+        game.doubleShot=true;game.fireWeapon(1);game.doubleShot=false;
+        CHECK(game.player.velocity.y>normalKick*1.7f,"Breach Kick changes actual movement rather than only the armory description");
+        game.startTrainingLesson(4);game.throwGrenade();int grenade=-1;
+        for(int n=0;n<ProjectileSystem::POOL_SIZE;++n)if(game.projSystem.pool[n].alive && game.projSystem.pool[n].isGrenade)grenade=n;
+        game.punch(grenade);CHECK(game.trainingPassed[4] && !game.pendingBlasts.empty(),"punching the thrown grenade completes the real explosive interaction");
+        game.invincFrames=0;game.damagePlayer(1000,{0,0,0},0,0);
+        CHECK(!game.playerDead && game.styleSystem.health>=1,"practice damage leaves the player alive for another attempt");
+        game.startTrainingLesson(7);game.openArmory();game.armoryW=0;game.armoryS=3;
+        const int points=game.prog.points;press(game,SDLK_m);press(game,SDLK_RETURN);
+        CHECK(game.prog.up[0].mod && game.prog.up[0].alternate && game.prog.points==points-2,"the selected alternative can be purchased through armory input");
+        press(game,SDLK_RETURN);CHECK(!game.prog.up[0].alternate && game.prog.points==points-2,"an owned mod swaps without charging again");
+        game.render();screenshot("build/weapon-mod-choices.bmp");
+        press(game,SDLK_TAB);press(game,SDLK_F4);press(game,SDLK_ESCAPE);
+        CHECK(!game.paused && !game.guideOpen,"F4 reference returns directly to the previous live game");
+        game.render();screenshot("build/combat-practice.bmp");
+    }
+    {
+        g_storyChapter=2;g_startArena=2;auto live=std::make_unique<GameplayState>(audio,nullptr,GameMode::STORY);auto& game=*live;
+        auto find=[&](const char* label)->Interactable*{for(auto& it:game.interactables)if(it.label.rfind(label,0)==0)return &it;return nullptr;};
+        auto* isolation=find("ISOLATE SECURITY");CHECK(isolation!=nullptr,"the relay has an explicit optional power control");
+        if(isolation)isolation->onInteract();
+        CHECK(game.storyRelayIsolated && !game.level.arenas[2].goals[0].refill,"the relay control turns off reinforcements without completing the repair");
+        game.retryArena();CHECK(!game.level.arenas[2].goals[0].refill,"the chosen relay isolation survives a checkpoint retry");
+        game.enterArena(4);auto* winch=find("RELEASE COUNTERWEIGHT");
+        auto drop=game.level.story.winchDrop;
+        game.spawnEnemy(EnemyType::HUSK,drop+glm::vec3{3,0,0});
+        for(auto& e:game.enemies){e.state=EnemyState::ACTIVE;e.spawnTimer=0;}
+        if(winch)winch->onInteract();
+        game.updateStoryChoices(1.25f);
+        CHECK(game.enemies[0].alive && !game.storyWinchLanded,"the winch warns before damaging anything");
+        game.render();screenshot("build/winch-warning.bmp");
+        game.player.position=drop+glm::vec3{4,0,0};game.styleSystem.health=100;
+        game.updateStoryChoices(.55f);
+        CHECK(game.styleSystem.health==100,"standing outside the marked winch zone avoids player impact damage");
+        CHECK(game.storyWinchLanded && !game.enemies[0].alive && game.level.walls[game.level.story.winchWall].box.min.y==0,
+            "the falling load hits enemies and becomes solid ground-level cover");
+        game.retryArena();CHECK(!game.storyWinchLanded && game.level.walls[game.level.story.winchWall].box.min.y==9,
+            "retry restores the winch, its collision and its one-use control");
+    }
+    g_bossRun=-1;g_startArena=g_startWave=0;g_storyChapter=1;g_practice=g_godMode=false;g_continueStory=false;
+}
+
 int main() {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 0);
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) return 1;
@@ -258,6 +394,7 @@ int main() {
             game.playerDead=true;press(game,SDLK_TAB);CHECK(!game.armoryOpen,"Tab cannot open the armory over Story death");game.playerDead=false;
             if(chapter==1){game.loadStoryChapter(2);press(game,SDLK_TAB);CHECK(game.armoryOpen&&game.prog.up[0].tier[0]==1&&game.prog.up[0].tier[2]==1&&game.prog.points==0,"continuing to Chapter 2 retains upgrades in its working armory");press(game,SDLK_TAB);}
         }
+        checkImprovements(audio);
         GameSettings visualSettings;visualSettings.ambientDetail=3;
         menu.settings=&visualSettings;menu.settingsMenu.s=&visualSettings;menu.page=MenuState::SETTINGS;
         const auto settingsRows=menu.settingsMenu.rows();

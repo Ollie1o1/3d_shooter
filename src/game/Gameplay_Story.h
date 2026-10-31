@@ -95,7 +95,7 @@ inline void GameplayState::beginStory() {
         it.label = label;
         it.onInteract = [this, i]() {
             storyLog = storyLog == i ? -1 : i; storyTerminal = -1; storyLogT = 0;
-            if (storyLog >= 0) { storyLogsSeen |= 1u << i; audio.play("count_tick",90,SoundGroup::UI,true); }
+            if (storyLog >= 0) { storyLogsSeen |= 1u << i; saveStoryProgress(); audio.play("count_tick",90,SoundGroup::UI,true); }
         };
         interactables.push_back(std::move(it));
     }
@@ -106,6 +106,7 @@ inline void GameplayState::beginStory() {
         it.label = std::string("READ ") + S.terminals[i].title;
         it.onInteract = [this, i]() {
             storyTerminal = storyTerminal == i ? -1 : i; storyLog = -1;
+            if (storyTerminal >= 0) { storyTerminalsSeen |= 1u << i; saveStoryProgress(); }
             audio.play("count_tick",90,SoundGroup::UI,true);
         };
         interactables.push_back(std::move(it));
@@ -388,6 +389,7 @@ inline void GameplayState::updateStory(float dt) {
     if (storyBossDown && storyEndT < 0.f && E.max.x > E.min.x && p.x > E.min.x && p.x < E.max.x && p.z > E.min.z && p.z < E.max.z &&
         p.y > E.min.y - 0.2f && p.y < E.max.y) {
         storyEndT = 0.f;
+        saveStoryProgress();
         logRun("end");
         audio.play("wave", 90, SoundGroup::UI, true);
     }
@@ -406,6 +408,7 @@ inline void GameplayState::storyTakeGun(int i) {
     if (w.weapon < 0 || storyOwns(w.weapon)) return;
     storyOwned |= 1 << w.weapon;
     storyArmed = true;
+    saveStoryProgress();
     for (auto& it : interactables) if (it.type != InteractableType::READABLE && glm::length(it.position - glm::vec3(wreckGunXf(i)[3])) < 0.1f) it.active = false;
     activeWeapon = w.weapon; pendingWeapon = -1;
     weapons[w.weapon] = WeaponState{};
@@ -416,6 +419,8 @@ inline void GameplayState::storyTakeGun(int i) {
     audio.play(w.weapon == 0 ? "cyl_close" : "bolt", 110, SoundGroup::PLAYER);
     char sub[64]; std::snprintf(sub, sizeof(sub), "FROM UNIT %02d", w.number);
     pushBanner(story::gunTitle(w.weapon), sub, {0.35f, 0.85f, 1.f}, 2.6f);
+    if(w.weapon==0)teach(TEACH_PARRY);
+    if(w.weapon==1)teach(TEACH_JUMP);
     ui.feed(w.weapon == 0 ? "LMB - FIRE    R - RELOAD" : "1 / 2 - SWITCH    RMB - AIM", {0.35f, 0.85f, 1.f});
     if (w.section == S.pitSection && director.arena == S.pitSection && director.phase == WaveDirector::Phase::APPROACH) {
         director.startArena(S.pitSection);   // the scrap wakes

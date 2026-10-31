@@ -26,6 +26,8 @@
 #include "world/LevelAct2.h"
 #include "world/LevelStory.h"
 #include "world/LevelWasteland.h"
+#include "world/LevelTraining.h"
+#include "game/CombatLessons.h"
 #include "game/WaveDirector.h"
 #include "render/PostProcess.h"
 #include "audio/AudioSystem.h"
@@ -39,6 +41,7 @@
 #include "render/TextureGen.h"
 #include "player/Weapons.h"
 #include "game/Progression.h"
+#include "game/StorySave.h"
 #include "game/DevFlags.h"          // the command line's and the dev tools' globals (g_*)
 #include "ui/LeaderboardView.h"
 #include "game/Ghost.h"
@@ -120,9 +123,34 @@ public:
     bool act2() const { return mode == GameMode::ACT2; }
     bool arenaSolo() const { return (mode == GameMode::ARENA || act2()) && g_arenaSolo >= 0; }   // the ARENA page: one arena on its own
     bool endless() const { return mode == GameMode::ENDLESS; }
+    bool training() const { return mode == GameMode::TRAINING; }
     bool story() const { return mode == GameMode::STORY; }
     bool wasteland() const { return story() && level.story.chapter==2; }
+    int trainingLesson = 0, trainingEnemy = 0;
+    bool trainingPassed[lessons::COUNT] = {};
+    float trainingRespawn = 0;
+    bool guideOpen = false, guideWasPaused = false;
+    int guideSelected = 0;
+    void startTrainingLesson(int lesson);
+    void updateTraining(float dt);
+    void trainingSuccess(int lesson);
+    void openGuide();
+    void handleGuideEvent(const SDL_Event& e);
+    void renderGuide();
+    void renderTraining();
     int storyChapterRequest=0;
+    StorySave resumedStory;
+    bool resumingStory = false;
+    unsigned storyTerminalsSeen = 0;
+    float storySaveClock = 0;
+    bool storyRelayIsolated = false;
+    float storyWinchT = -1.f;
+    bool storyWinchLanded = false;
+    void setupStoryChoices();
+    void updateStoryChoices(float dt);
+    void gatherStoryChoices(std::vector<BoxInstance>& out);
+    void saveStoryProgress();
+    void restoreStoryProgress();
     void loadStoryChapter(int chapter);
     int ambientDetail() const { return settings ? settings->ambientDetail : 2; }
     BallastHazards ballastHazards;
@@ -881,7 +909,7 @@ public:
     void  altFire();
     // TEACHING: each fighting move gets one small card (the enemy cards' kind), the first time
     // it comes up, ever; then never again (GameSettings::taught)
-    enum Teach { TEACH_FINISH = 1, TEACH_STUN = 2, TEACH_OVERDRIVE = 4, TEACH_HOOK = 8, TEACH_ALT = 16 };
+    enum Teach { TEACH_FINISH = 1, TEACH_STUN = 2, TEACH_OVERDRIVE = 4, TEACH_HOOK = 8, TEACH_ALT = 16, TEACH_PARRY = 32, TEACH_GRENADE = 64, TEACH_JUMP = 128 };
     void  teach(int bit);
     int   killsThisSession = 0;
     // UNSEEN WIND-UPS: a regular enemy out of view (or behind cover you can't see round) starting an
@@ -1034,3 +1062,8 @@ public:
 #include "game/Gameplay_Wasteland.h"
 #include "bosses/ballast/Gameplay_Ballast.h"
 #include "bosses/absolute/Gameplay_Absolute.h"
+
+#include "game/Gameplay_StorySave.h"
+#include "game/Gameplay_Training.h"
+
+#include "game/Gameplay_StoryChoices.h"

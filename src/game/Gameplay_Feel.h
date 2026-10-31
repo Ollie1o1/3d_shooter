@@ -121,6 +121,7 @@ inline bool GameplayState::tryFinisher() {
         int mag = weaponMag((WeaponId)activeWeapon, prog.up[activeWeapon]);
         if (ws.reloading || ws.ammo < mag) { ws.reloading = false; ws.reloadTimer = 0.f; ws.ammo = mag; viewModel.cancelReload(); }
     }
+    trainingSuccess(1);
     ++runLog.finishers; runLog.finisherHeal += healed;
     invincFrames  = std::max(invincFrames, 0.4f);   // nothing lands on you mid-finisher
     hitStopFrames = std::max(hitStopFrames, heavy ? 8 : 6);
@@ -218,10 +219,11 @@ inline void GameplayState::updateFeel(float dt) {
 
 // ---- the run log -------------------------------------------------------------------
 inline void GameplayState::logRun(const char* how) {
+    if(training())return;
     const bool force = std::getenv("OVERDRIVE_RUNLOG") != nullptr;   // dev: log screenshot / dump runs too
     if (runLog.any() && ((!g_devNoMouse && !g_godMode) || force)) {
-        static const char* MODE[] = {"ARENA", "FAST", "ENDLESS", "ACT2", "STORY"};
-        static_assert(sizeof(MODE)/sizeof(MODE[0])==(size_t)GameMode::STORY+1,"a log name for every game mode");
+        static const char* MODE[] = {"ARENA", "FAST", "ENDLESS", "ACT2", "STORY", "TRAINING"};
+        static_assert(sizeof(MODE)/sizeof(MODE[0])==(size_t)GameMode::TRAINING+1,"a log name for every game mode");
         int a = std::clamp(director.arena, 0, std::max(0, (int)level.arenas.size() - 1));
         const char* arena = level.arenas.empty() ? "" : level.arenas[a].name;
         RunLog::append(runLog.json(how, g_bossRun >= 0 ? "BOSS" : MODE[(int)mode], settings ? settings->difficulty : DIFFICULTY_DEFAULT,
@@ -253,6 +255,7 @@ inline int GameplayState::findEnemyHook() const {
 }
 
 inline void GameplayState::hookEnemy(int i) {
+    trainingSuccess(2);
     Enemy& e = enemies[i];
     glm::vec3 eye = player.camera.position;
     glm::vec3 c = e.position + glm::vec3{0.f, std::min(e.height() * 0.5f, 1.2f), 0.f};
@@ -382,11 +385,14 @@ inline void GameplayState::altFire() {
 // The first time a move comes up: one small card at the left edge, then never again
 inline void GameplayState::teach(int bit) {
     const bool dev = g_devOverlay.rfind("teach", 0) == 0;   // dev: --overlay teach / teach2: the cards, every time (screenshots)
-    if (!dev && (!settings || (settings->taught & bit) || g_devNoMouse || fast())) return;
+    if (!dev && (!settings || (settings->taught & bit) || g_devNoMouse || fast() || training())) return;
     if (!dev) { settings->taught |= bit; settings->save(); }
     const Bindings& kb = binds();
     const glm::vec3 c{1.f, 0.65f, 0.25f};
     switch (bit) {
+        case TEACH_PARRY: ui.introduce("PARRY", kb.label(Act::PARRY)+" AS A SHOT REACHES YOU - AIM THE RETURN. F4 REOPENS THE FIELD GUIDE", c, "NEW MOVE"); break;
+        case TEACH_GRENADE: ui.introduce("GRENADE PUNCH", kb.label(Act::GRENADE)+" THEN "+kb.label(Act::PARRY)+" TO DETONATE YOUR GRENADE IN REACH", c, "NEW MOVE"); break;
+        case TEACH_JUMP: ui.introduce("SHOTGUN JUMP", "TWO SHELLS LOADED: LOOK DOWN AND FIRE RMB TO LAUNCH YOURSELF", c, "NEW MOVE"); break;
         case TEACH_FINISH:    ui.introduce("FINISHER", kb.label(Act::INTERACT) + " ON A GLOWING ENEMY - HEALTH BACK, GUN RELOADED", c, "NEW MOVE"); break;
         case TEACH_STUN:      ui.introduce("STAGGER", "HITS CLOSE TOGETHER BREAK ITS ATTACK", c, "NEW MOVE"); break;
         case TEACH_OVERDRIVE: ui.introduce("OVERDRIVE", "HARDER, FASTER, NO RELOADS - KILLS KEEP IT BURNING", c, "NEW MOVE"); break;

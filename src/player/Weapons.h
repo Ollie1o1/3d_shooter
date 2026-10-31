@@ -69,6 +69,7 @@ inline const WeaponDef& weaponDef(WeaponId w) { return weaponDefEdit(w); }
 struct WeaponUpgrades {
     int  tier[3] = {0, 0, 0};   // DAMAGE, RATE, MAG
     bool mod = false;
+    bool alternate = false; // one of two mutually exclusive mods; switching is free
 };
 
 // Effective stats after upgrades
@@ -85,16 +86,47 @@ inline float weaponReload(WeaponId w, const WeaponUpgrades& u) {
     return weaponDef(w).reloadTime * (1.f - 0.12f * u.tier[(int)UpgradeStat::MAG]);
 }
 inline int weaponPellets(WeaponId w, const WeaponUpgrades& u) {
-    return weaponDef(w).pellets + ((w == WeaponId::SHOTGUN && u.mod) ? 5 : 0);
+    return weaponDef(w).pellets + ((w == WeaponId::SHOTGUN && u.mod && !u.alternate) ? 5 : 0);
 }
 inline float weaponSpread(WeaponId w, const WeaponUpgrades& u, float aim) {
     const WeaponDef& d = weaponDef(w);
     float s = d.spreadHip + (d.spreadAds - d.spreadHip) * aim;
-    if (w == WeaponId::SHOTGUN && u.mod) s *= 0.75f;
+    if (w == WeaponId::KAR && u.mod && u.alternate) s *= 0.12f;
+    if (w == WeaponId::SHOTGUN && u.mod && !u.alternate) s *= 0.75f;
     return s;
 }
 inline int weaponPierce(WeaponId w, const WeaponUpgrades& u) {
-    return weaponDef(w).pierce + ((w == WeaponId::REVOLVER && u.mod) ? 2 : 0);
+    return weaponDef(w).pierce + ((w == WeaponId::REVOLVER && u.mod && !u.alternate) ? 2 : 0)
+        + ((w == WeaponId::LONGSHOT && u.mod && u.alternate) ? 3 : 0);
+}
+
+inline const char* weaponModName(WeaponId w, bool alternate) {
+    static const char* names[] = {"DEADEYE", "BREACH KICK", "SKIRMISHER", "RAIL DRIVER"};
+    return alternate ? names[(int)w] : weaponDef(w).modName;
+}
+inline const char* weaponModDesc(WeaponId w, bool alternate) {
+    static const char* descriptions[] = {
+        "HEADSHOTS HIT 50% HARDER; BODY SHOTS HIT 20% SOFTER",
+        "DOUBLE-BARREL JUMPS KICK 75% HARDER; ENEMY SHOVE +50%",
+        "ACCURATE HIP FIRE IN THE AIR; NO HEADSHOT AMMO REFUND",
+        "PIERCE 3 MORE ENEMIES; NO EXPLOSIVE BURST"
+    };
+    return alternate ? descriptions[(int)w] : weaponDef(w).modDesc;
+}
+inline float weaponHeadMult(WeaponId w, const WeaponUpgrades& u) {
+    return weaponDef(w).headMult * ((w == WeaponId::REVOLVER && u.mod && u.alternate) ? 1.5f : 1.f);
+}
+inline float weaponBodyMult(WeaponId w, const WeaponUpgrades& u) {
+    return w == WeaponId::REVOLVER && u.mod && u.alternate ? .8f : 1.f;
+}
+inline float weaponKickMult(WeaponId w, const WeaponUpgrades& u) {
+    return w == WeaponId::SHOTGUN && u.mod && u.alternate ? 1.75f : 1.f;
+}
+inline float weaponShoveMult(WeaponId w, const WeaponUpgrades& u) {
+    return w == WeaponId::SHOTGUN && u.mod && u.alternate ? 1.5f : 1.f;
+}
+inline float weaponAirSpread(WeaponId w, const WeaponUpgrades& u, float aim) {
+    return w == WeaponId::KAR && u.mod && u.alternate ? 0.f : .03f * (1.f - aim);
 }
 
 // Ammo, cooldown and reload for one gun.

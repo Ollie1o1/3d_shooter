@@ -8,8 +8,11 @@ inline void GameplayState::resetStoryFactory() {
     for(const auto& cover:S.bossCover)level.walls[cover.wall].box=cover.home;
     spatialGrid.build(level.walls);
     if(wasteland()) {
+        storyWinchT=-1.f;storyWinchLanded=false;
+        if(S.winchWall>=0)level.walls[S.winchWall].box={S.winchDrop+glm::vec3{-2,9,-2},S.winchDrop+glm::vec3{2,11,2}};
+        level.arenas[2].goals[0].refill=!storyRelayIsolated;
         for(float& angle:storyTurbineAngle)angle=0;
-        storyPodsBroken=false;storyBossDown=director.arena>level.story.bossSection;storyCollapseT=-1;storyTerminal=storyLog=-1;
+        storyPodsBroken=false;storyBossDown=storyBossDown || director.arena>level.story.bossSection;storyCollapseT=-1;storyTerminal=storyLog=-1;
         if(director.arena>4)for(int id:S.turbineBrakes)level.damageAnchor(id,1e9f);
         storyCheckpoint=director.arena;director.hold=false;return;
     }
@@ -17,7 +20,7 @@ inline void GameplayState::resetStoryFactory() {
     if(storyTileBoxes.empty())for(int w:S.sortingTiles)storyTileBoxes.push_back(level.walls[w].box);
     for(size_t i=0;i<S.podGlass.size();++i) {auto& w=level.walls[S.podGlass[i]];w.box=storyGlassBoxes[i];w.hidden=true;}
     for(size_t i=0;i<S.sortingTiles.size();++i) {auto& w=level.walls[S.sortingTiles[i]];w.box=storyTileBoxes[i];w.hidden=true;}
-    storyPodsBroken=director.arena>5; storyBossDown=false;storyCollapseT=-1;
+    storyPodsBroken=director.arena>5;storyCollapseT=-1;
     level.arenas[8].ambient=Ambient::EMBERS;
     storyScanCooldown=0; storyTerminal=-1;storyLiftStop=0;director.hold=false;
     if(S.elevator>=0)level.movers[S.elevator].drive=director.arena>6?1.f:0.f;
@@ -33,6 +36,7 @@ inline void GameplayState::updateStoryFactory(float dt) {
     const int at=level.arenaAt(p);
     if(at>=0 && at>storyCheckpoint && !director.fighting()) {
         storyCheckpoint=at;
+        saveStoryProgress();
         ui.feed("CHECKPOINT",{.35f,.85f,1.f});
     }
     // A quiet room has no encounter to advance the director. Walking into the
@@ -49,8 +53,8 @@ inline void GameplayState::updateStoryFactory(float dt) {
         fx.spawnBurst(spark,{1.f,.55f,.16f},6,2.5f,.5f,7.f);
     }
     if(!storyGrapple && at==7 && glm::length(p-S.grappleAt)<3.f) {
-        storyGrapple=true;audio.play("pickup",128,SoundGroup::UI,true);
-        pushBanner("THE GRAPPLE","Q - ATTACH / RELEASE   SPACE - JUMP OFF",{.35f,.85f,1.f},4.f);
+        storyGrapple=true;teach(TEACH_HOOK);saveStoryProgress();audio.play("pickup",128,SoundGroup::UI,true);
+        pushBanner("THE GRAPPLE",(binds().label(Act::GRAPPLE)+" - ATTACH / RELEASE   "+binds().label(Act::JUMP)+" - JUMP OFF").c_str(),{.35f,.85f,1.f},4.f);
     }
     // The pod fronts become debris at the ambush trigger, leaving no invisible collision.
     if(director.arena==5 && director.fighting() && !storyPodsBroken) {
@@ -237,7 +241,7 @@ inline void GameplayState::gatherStoryFactory(std::vector<BoxInstance>& out) {
     for(int i=0;i<(int)S.wrecks.size();++i)
         beacon(S.wrecks[i].pos+vec3{0,1.95f,0},i*.8f,(storyLogsSeen>>i)&1u);
     for(int i=0;i<(int)S.terminals.size();++i)
-        beacon(S.terminals[i].pos+vec3{0,2.65f,.25f},i*.6f,storyTerminal==i);
+        beacon(S.terminals[i].pos+vec3{0,2.65f,.25f},i*.6f,(storyTerminalsSeen>>i)&1u);
     // The service deck's stripes and suspension travel with its real wall.
     for(int id:{S.serviceLift,S.elevator})if(id>=0) {
         auto b=level.walls[level.movers[id].wall].box;

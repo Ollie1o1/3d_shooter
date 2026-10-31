@@ -6,6 +6,9 @@
 #include "render/GunKit.h"
 #include "render/ArmFile.h"
 #include "world/LevelAct2.h"
+#include "world/LevelGauntlet.h"
+#include "world/LevelStory.h"
+#include "world/LevelWasteland.h"
 #include "audio/MusicSynth.h"
 #include "game/Progression.h"
 #include "game/WaveDirector.h"
@@ -341,16 +344,17 @@ int main() {
 
     // ---------------------------------------------------------------- BOSS: every boss on its own
     {
-        const char* want[] = {"THE WARDEN", "THE SOVEREIGN", "THE PENITENT", "THE LEVIATHAN", "THE ABSOLUTE", "MORNINGSTAR"};
-        bool order = BOSS_COUNT == 6;
+        const char* want[] = {"THE WARDEN", "THE SOVEREIGN", "THE PENITENT", "THE LEVIATHAN", "THE ABSOLUTE", "MORNINGSTAR", "THE PACEMAKER", "THE SORTER", "BALLAST"};
+        bool order = BOSS_COUNT == 9;
         for (int i = 0; i < BOSS_COUNT; ++i) order &= std::string(bossEntry(i).name) == want[i];
-        CHECK(order, "BOSS lists every boss in the order you meet them, the Absolute's two forms last");
-        LevelData A = buildLevel(), A2 = buildAct2Level();
+        CHECK(order, "BOSS retains the original record indices and appends FAST and Story bosses");
+        LevelData A = buildLevel(), A2 = buildAct2Level(), F=buildGauntlet(), S=buildCradle(), W=buildWasteland();
         bool where = true;
-        const EnemyType types[] = {EnemyType::WARDEN, EnemyType::SOVEREIGN, EnemyType::PENITENT, EnemyType::LEVIATHAN, EnemyType::ABSOLUTE, EnemyType::ABSOLUTE};
+        const EnemyType types[] = {EnemyType::WARDEN, EnemyType::SOVEREIGN, EnemyType::PENITENT, EnemyType::LEVIATHAN, EnemyType::ABSOLUTE, EnemyType::ABSOLUTE, EnemyType::PACEMAKER, EnemyType::SORTER, EnemyType::BALLAST};
         for (int i = 0; i < BOSS_COUNT; ++i) {
             const BossEntry& b = bossEntry(i);
-            const Arena& ar = (b.act2 ? A2 : A).arenas[b.arena];
+            const LevelData& map=b.mode()==GameMode::FAST?F:b.mode()==GameMode::STORY?(b.chapter==1?S:W):b.act2?A2:A;
+            const Arena& ar = map.arenas[b.arena];
             bool found = false;
             for (auto& w : ar.waves) for (auto& g : w) found |= g.type == types[i];
             if (!found) { where = false; std::printf("      boss %d: not in %s\n", i, ar.name); }

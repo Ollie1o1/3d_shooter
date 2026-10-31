@@ -123,6 +123,7 @@ inline LevelData buildWasteland() {
     for(float z=-39;z<-27;z+=3)detail(-37,3.35f,z,-28,3.5f,z+.15f,rust);
     S.wrecks.push_back({{25,0,-11},3.14f,9,-1,storytext::spanLogs[0],1});
     L.placedPickups.push_back({{33,0,-7},1});
+    B.neon(-41.55f,4.8f,-56,-41.45f,5,-46,cyan*.55f);
     sign("RELAY <",{-41.4f,4.7f,-45.5f},{0,0,-1},.18f);
 
     // 3. BURIED RELAY: descend into warmth, fight, and return to daylight.
@@ -165,9 +166,13 @@ inline LevelData buildWasteland() {
         B.neon(x-1,-1,-27,x+1,-.9f,-26.8f,warm*.55f);
         B.kit().rod({x,-1,-27},{x,5,-27},.15f,rust,10);
     }
-    terminal({-84,-5,-60},"RELAY / PURPOSE","EXIT CONTACT FAILED. MAINTENANCE RESET: HOLD THE LIT SERVICE PAD UNTIL THE CONTACT SEATS.");
+    terminal({-84,-5,-60},"RELAY / PURPOSE","HOLD THE LIT PAD TO SEAT THE CONTACT. OPTIONAL: ISOLATE THE NORTH SECURITY FEED TO STOP REINFORCEMENTS.");
     L.placedPickups.push_back({{-59,-5,-31},1});
     for(float x:{-80.f,-64.f,-48.f})B.neon(x-1,5.35f,-54,x+1,5.48f,-38,warm*.85f);
+    // Optional detour: cut the security feed before repairing the contact.
+    B.place("console",S.relayIsolation,180,.65f);
+    sign("SECURITY FEED",{-87,-1.6f,-29.4f},{1,0,0},.05f);
+    B.neon(-86,-2.5f,-29.8f,-84,-2.35f,-29.7f,warm*.55f);
     // Secret 1 is an actual connected service room, not a wall that can be read through.
     floor(-100,-42,-88,-34,-5);
     solid(-100.4f,-5,-42,-100,3,-34,rock);solid(-100,-5,-42.4f,-88,3,-42,rock);
@@ -237,9 +242,23 @@ inline LevelData buildWasteland() {
     }
     solid(7,8.6f,-78,18,9,-77.5f,steel); // a grappleable service beam above the ramp
     B.neon(8,8.4f,-77.8f,17,8.55f,-77.6f,cyan*.4f);
+    // A visible maintenance winch drops its load into the contested lane.
+    B.place("console",S.winchControl,180,.6f);
+    sign("SERVICE WINCH",{8.5f,5.3f,-71.5f},{1,0,0},.045f);
+    S.winchWall=solid(11,9,-114,15,11,-110,steel);
+    L.walls[S.winchWall].hidden=true;L.walls[S.winchWall].dynamic=true;
+    solid(12.7f,3.2f,-78.4f,13.3f,13,-77.8f,steel); // winch mast at the deck
+    solid(12.7f,11,-114,13.3f,13,-77.8f,steel);
+    B.neon(12.8f,10.8f,-113.8f,13.2f,11,-78,cyan*.25f);
     S.wrecks.push_back({{35,0,-69},3.14f,11,3,storytext::spanLogs[2],4});
     L.placedPickups.push_back({{-23,0,-120},1});
 
+    for(int k=0;k<3;++k) {
+        float x=25.f+k*3.7f;
+        solid(x,6,-126,x+.45f,9.f+k*1.4f,-125.5f,steel);
+        B.neon(x,6.2f,-125.4f,x+.45f,9.f+k*1.4f,-125.25f,warm*.7f);
+    }
+    B.neon(8,3.22f,-77.8f,17,3.28f,-77.65f,cyan*.3f);
     // 6. LAST TOLL: sheltered quiet, a gatehouse and one last look back.
     floor(14,-170,48,-126,0);boundaryZ(-170,-126,14,0);boundaryZ(-170,-126,48,0,{{-154,-142,3,7}});
     boundaryX(14,48,-170,0,{{24,36,0,7}});

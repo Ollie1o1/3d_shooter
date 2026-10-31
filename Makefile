@@ -93,6 +93,7 @@ test: $(TESTS) $(HEADERS)
 	$(MAKE) test-wasteland
 	$(MAKE) test-story-overhaul
 	$(MAKE) test-story-bosses
+	$(MAKE) test-improvements
 
 test-story: tests/test_story.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) tests/test_story.cpp -o tests/test_story $(STDLIB)
@@ -137,7 +138,7 @@ light: tools/light_bake
 # Every level out for Blender (build/levels/<level>/: tools/blender/level_import.py builds a scene from it)
 level-dump: tools/level_dump.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) tools/level_dump.cpp -o tools/level_dump $(STDLIB)
-	mkdir -p build/levels && for l in act1 act2 fast story1 story2; do ./tools/level_dump $$l build/levels/$$l || exit 1; done
+	mkdir -p build/levels && for l in act1 act2 fast story1 story2 training; do ./tools/level_dump $$l build/levels/$$l || exit 1; done
 
 # Browser build (WebGL2 + WebAssembly) → web/dist. Needs Emscripten on PATH:
 #   source ~/emsdk/emsdk_env.sh && make web && python3 -m http.server -d web/dist
@@ -170,5 +171,11 @@ test-web-story: tests/test_web_story.cpp $(HEADERS)
 	cd build/web-story && node story.js 27
 
 clean:
-	rm -f shooter shooter.exe tests/test_physics tests/test_game tests/test_zenith tests/test_story tests/test_wasteland tests/test_render tests/test_dev tests/test_story_overhaul tests/test_story_bosses
+	rm -f shooter shooter.exe tests/test_physics tests/test_game tests/test_zenith tests/test_story tests/test_wasteland tests/test_render tests/test_dev tests/test_story_overhaul tests/test_story_bosses tests/test_improvements
 	rm -rf build web/dist
+
+# Checkpoint save validation, mod tradeoffs and the practice arena (headless).
+.PHONY: test-improvements
+test-improvements: tests/test_improvements.cpp $(HEADERS)
+	$(CXX) $(CXXFLAGS) tests/test_improvements.cpp -o tests/test_improvements $(STDLIB)
+	./tests/test_improvements

@@ -340,7 +340,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         if (w > 0.f) ui.ui.rect(0, 0, SCREEN_W, SCREEN_H, {1.f, 0.98f, 0.95f, w});
         ui.end2D();
     }
-    if (g_practice && !victory && !paused) {
+    if (g_practice && !training() && !victory && !paused) {
         ui.begin2D();
         ui.ui.textShadow("PRACTICE  F5 CLEAR WAVE  F6 HEAL", 12, SCREEN_H - 22, 1, {0.4f, 1.f, 0.85f, 0.8f});
         ui.end2D();
@@ -395,9 +395,11 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         }
         if (!act2() && !arenaSolo()) renderLeaderboardPanel();   // (one arena on its own: no board)
     }
-    if (armoryOpen) ui.renderArmory(prog, armoryW, armoryS);
+    if (training() && !paused && !armoryOpen) renderTraining();
+    if (armoryOpen) ui.renderArmory(prog, armoryW, armoryS, story()?storyOwned:(1<<WEAPON_COUNT)-1);
     if (paused) {
-        if (pauseSettings) {
+        if (guideOpen) { renderGuide(); }
+        else if (pauseSettings) {
             ui.begin2D();
             ui.ui.rect(0, 0, SCREEN_W, SCREEN_H, {0.f, 0.f, 0.02f, 0.65f});
             settingsMenu.render(ui.ui, gameClock + (float)SDL_GetTicks() * 0.001f);
@@ -406,7 +408,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             const char* labels[UIRenderer::PAUSE_ITEMS];
             for (int i = 0; i < UIRenderer::PAUSE_ITEMS; ++i) labels[i] = pauseLabel(i);
             std::string line = fast() ? "FAST - THE GAUNTLET  " + formatTime(elapsedTime)
-                                      : std::string(act2() ? "ACT II - " : "ARENA - ") + ar.name;
+                                      : std::string(training() ? "PRACTICE - " : story() ? "STORY - " : act2() ? "ACT II - " : "ARENA - ") + ar.name;
             line += std::string("   ") + tune().name;
             const Bindings& kb = binds();
             auto k = [&](Act a) { return kb.label(a); };

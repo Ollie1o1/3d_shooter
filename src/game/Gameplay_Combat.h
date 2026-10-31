@@ -58,6 +58,7 @@ inline void GameplayState::pinnedCue() {
 // A projectile parried (the punch, or the sword's parry): sent back where you
 // look, or homing into the Warden's core / the Leviathan's eye
 inline void GameplayState::reflectProjectile(int pi, glm::vec3 fwd) {
+    trainingSuccess(0);
     Projectile& p = projSystem.pool[pi];
     float speed = std::max(40.f, glm::length(p.velocity) * 2.f);
     p.isPlayer = true;
@@ -122,6 +123,7 @@ inline void GameplayState::punch(int boostable) {
     }
     if (tryFinisher()) return;   // one low enough to finish (it glows): Gameplay_Feel.h
     if (boostable >= 0) {
+        trainingSuccess(4);
         // Projectile boost: detonate your own projectile for a massive explosion.
         auto& p = projSystem.pool[boostable];
         float r = glm::max(p.blastRadius, 4.f) * 2.f;
@@ -444,6 +446,7 @@ inline void GameplayState::friendlySlam(const Enemy& slammer, float radius) {
 inline bool GameplayState::damagePlayer(float dmg, glm::vec3 from, float shakeT, float shakeAmt, float iframes) {
     if (invincFrames > 0.f || playerDead || g_godMode || victory || ascendT >= 0.f ||
         (!fast() && director.phase == WaveDirector::Phase::VICTORY)) return false;
+    if (training()) dmg = std::min(dmg, std::max(0.f, styleSystem.health - 1.f));
     styleSystem.takeDamage(dmg);
     runLog.took(hurtBy, dmg);
     ui.onDamage();
@@ -641,7 +644,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
                 ui.feed("ACT II UNLOCKED - BENEATH THE ECLIPSE", {0.35f, 0.95f, 0.9f});
             }
         } else if (e.type == EnemyType::BALLAST) {
-            storyBossDown=true;ballastHazards.clear();
+            storyBossDown=true;saveStoryProgress();ballastHazards.clear();
             for(auto& shot:projSystem.pool)if(!shot.isPlayer)shot.alive=false;
             pushBanner(storytext::ballastDeath,"",{.85f,.8f,.7f},6.f);
         } else if (e.type == EnemyType::PENITENT) {
@@ -659,7 +662,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
         } else if (e.type == EnemyType::ABSOLUTE) {
             onAbsoluteKilled(e);
         } else if (e.type == EnemyType::SORTER) {
-            storyBossDown=true;
+            storyBossDown=true;saveStoryProgress();
             for(auto& b:level.conveyors) b.speed=std::fabs(b.speed);
             pushBanner(storytext::sorterDeath,storytext::sorterDeath2,{.8f,.85f,.9f},6.f);
         } else if (e.type == EnemyType::PACEMAKER) {
@@ -922,7 +925,7 @@ inline void GameplayState::fireWeapon(int w) {
     bool  noscope = d.canAim && aimNow < 0.15f;
     float spread = weaponSpread(id, u, aimNow);
     // Rifles are wild in the air unless aimed
-    if (d.canAim && !player.onGround) spread += 0.03f * (1.f - aimNow);
+    if (d.canAim && !player.onGround) spread += weaponAirSpread(id, u, aimNow);
     if (fanning) spread = std::max(spread, 0.05f);   // fanned from the hip: loose
     if (doubleShot) spread *= 1.2f;
     int   pellets = weaponPellets(id, u) * (doubleShot ? 2 : 1);
@@ -1016,20 +1019,21 @@ inline void GameplayState::fireWeapon(int w) {
                 break;
             }
             if (hits[k].head && e.halo) breakHalo(e);   // a headshot shatters a halo
-            float m = hits[k].wound ? e.woundMult() : head ? d.headMult : 1.f;
+            float m = hits[k].wound ? e.woundMult() : head ? weaponHeadMult(id, u) : weaponBodyMult(id, u);
             if (hits[k].zone != LevZone::NONE) {   // THE LEVIATHAN: its plates turn most of it; the eye and an open throat don't
                 m = leviathanZoneMult(e, hits[k].zone) * (hits[k].zone == LevZone::EYE ? std::max(1.f, d.headMult * 0.5f) : 1.f);
                 if (hits[k].zone == LevZone::BODY) fx.spawnHitSparks(at, {0.8f, 0.75f, 0.7f});
                 if (hits[k].zone == LevZone::THROAT) throatHit(e, dmg * m * (1.f - 0.15f * k) * e.armorMult());
             }
             if (hits[k].wound) fx.spawnHitSparks(at, {1.f, 0.3f, 0.15f});
-            float falloff = 1.f - 0.15f * k;    // each body it punches through costs a little
+            float falloff = std::max(.25f, 1.f - 0.15f * k);    // each body it punches through costs a little
             if (head) fx.spawnHitSparks(at, {1.f, 0.9f, 0.3f});
             fx.spawnHitSparks(at, gunkit::glowOf(w) * 1.2f);   // the gun's colour where it lands
             if (k == 0 && p < 3) fx.spawnSpray(at, -dir, e.stats().color * 1.6f + glm::vec3{0.4f, 0.3f, 0.2f}, sniper ? 10 : 4, sniper ? 9.f : 6.f, 0.22f);   // chips off it, back at you
             anyHit = true;
             // The shove: each gun's own, the shotgun's hardest up close (HitReact.h)
             float shove = hitreact::gunPush(w) * falloff * (pellets > 1 ? glm::clamp(1.5f - hits[k].t / 10.f, 0.3f, 1.3f) : 1.f);
+            shove *= weaponShoveMult(id, u);
             if (doubleShot) shove *= 1.7f;
             HitPush hp{dir, shove, hitreact::gunPoise(w) * (fanning ? 1.6f : doubleShot ? 1.3f : 1.f)};
             if (hurtEnemy(e, dmg * m * falloff, at, sniper ? 12.f : (pellets > 1 ? 3.f : 13.f), pellets > 1 ? 0.5f : 2.f,
@@ -1039,7 +1043,7 @@ inline void GameplayState::fireWeapon(int w) {
             }
         }
         // Explosive tips: burst where the round stops
-        if (id == WeaponId::LONGSHOT && u.mod)
+        if (id == WeaponId::LONGSHOT && u.mod && !u.alternate)
             pendingBlasts.push_back({origin + dir * (n > 0 ? hits[0].t : wallT) - dir * 0.3f, 3.5f, 70.f, 0.f, 0.f, StyleSource::LONGSHOT});
     }
     kills = killCount > 0;
@@ -1063,7 +1067,7 @@ inline void GameplayState::fireWeapon(int w) {
         ui.feed("HEADSHOT", {1.f, 0.85f, 0.25f});
         styleSystem.addStyle(10.f, weaponSource(id));
         // HEADHUNTER: the round comes back and the bolt is skipped
-        if (id == WeaponId::KAR && u.mod) { ws.ammo = std::min(ws.ammo + 1, weaponMag(id, u)); ws.cooldown = 0.1f; }
+        if (id == WeaponId::KAR && u.mod && !u.alternate) { ws.ammo = std::min(ws.ammo + 1, weaponMag(id, u)); ws.cooldown = 0.1f; }
     }
     if (killCount > 0 && sniper) hitStopFrames = glm::max(hitStopFrames, 3);
     if (headKill && id == WeaponId::REVOLVER) hitStopFrames = glm::max(hitStopFrames, 2);   // a magnum headshot: the world catches for a beat
@@ -1101,8 +1105,8 @@ inline void GameplayState::fireWeapon(int w) {
         audio.play("slam", 70, SoundGroup::PLAYER);
         glm::vec3 kick = -fwd * 11.f;
         if (fwd.y < -0.4f) kick.y = std::max(kick.y, -fwd.y * 15.f);   // aimed down: a shotgun jump
-        player.velocity += kick;
-        if (kick.y > 2.f) { player.onGround = false; player.launched(); }
+        player.velocity += kick * weaponKickMult(id, u);
+        if (kick.y > 2.f) { trainingSuccess(3); player.onGround = false; player.launched(); }
         shake(0.2f, 0.04f);
         fovKick = std::max(fovKick, 6.f);
     }
@@ -1130,6 +1134,7 @@ inline void GameplayState::fireWeapon(int w) {
 }
 
 inline void GameplayState::throwGrenade() {
+    teach(TEACH_GRENADE);
     --grenadeCount;
     grenadeTimer = 0.6f;
     glm::vec3 origin = player.camera.position;

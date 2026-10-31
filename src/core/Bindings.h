@@ -52,6 +52,7 @@ struct Bindings {
         if (code == MOUSE + SDL_BUTTON_LEFT || code == MOUSE + SDL_BUTTON_RIGHT) return true;
         switch (code) {
             case SDL_SCANCODE_ESCAPE: case SDL_SCANCODE_TAB: case SDL_SCANCODE_P: case SDL_SCANCODE_BACKSPACE:
+            case SDL_SCANCODE_F4:
             case SDL_SCANCODE_RETURN: case SDL_SCANCODE_KP_ENTER: case SDL_SCANCODE_F5: case SDL_SCANCODE_F6: case SDL_SCANCODE_F11:
             case SDL_SCANCODE_1: case SDL_SCANCODE_2: case SDL_SCANCODE_3: case SDL_SCANCODE_4: case SDL_SCANCODE_5:
             case SDL_SCANCODE_UP: case SDL_SCANCODE_DOWN: case SDL_SCANCODE_LEFT: case SDL_SCANCODE_RIGHT:
