@@ -100,7 +100,9 @@ song recording is embedded in the game.
 checkpoint clearance, both gallery directions, authored spawn capsules, finite
 encounters, actual bridge collision, playable ending, cinematic clock/skip,
 version-one save migration, new model/head bounds, committed attacks, cancellation,
-phase changes and hazard timing. The lab bake is checked against current geometry.
+phase changes and hazard timing. The lab bake is checked against current geometry. All four maps also pass the
+closed-face/underside validator; shared vertices are welded by a 1 mm distance
+tolerance so a coordinate-bin boundary cannot produce a platform-specific false gap.
 
 `make test-dev` exercises real menu/checkpoint inputs, all 27 Story checkpoints,
 the live lab skip/retry path, actual contact callbacks/mover collision, a real

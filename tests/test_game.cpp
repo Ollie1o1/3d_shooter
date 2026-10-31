@@ -11,6 +11,7 @@
 #include "game/WaveDirector.h"
 #include "world/LevelGauntlet.h"
 #include "world/LevelAct2.h"
+#include "world/LevelLab.h"
 #include "render/WorldGeometry.h"
 #include "render/MaterialTex.h"
 #include "render/NeonLights.h"
@@ -1313,7 +1314,22 @@ int main() {
     // ---------------------------------------------------------------- nothing see-through, from any side
     {
         struct Lvl { const char* name; LevelData L; };
-        std::vector<Lvl> lvls{{"Act I", buildLevel()}, {"the Gauntlet", buildGauntlet()}, {"Act II", buildAct2Level()}};
+        std::vector<Lvl> lvls{{"Act I", buildLevel()}, {"the Gauntlet", buildGauntlet()}, {"Act II", buildAct2Level()}, {"the Living Ward", buildLab()}};
+        using Face=std::array<glm::vec3,3>;
+        auto closedMesh=[](const std::vector<Face>& faces){
+            // Quantized coordinate bins split a shared vertex if compiler roundoff
+            // puts its two copies on opposite sides of a bin boundary. Weld by
+            // actual distance (1 mm), then check every directed edge's reverse.
+            std::vector<glm::vec3> points;std::map<std::pair<int,int>,int> edges;
+            auto vertex=[&](glm::vec3 p){for(int i=0;i<(int)points.size();++i){auto d=p-points[i];if(glm::dot(d,d)<1e-6f)return i;}points.push_back(p);return (int)points.size()-1;};
+            for(const auto& f:faces){int v[]={vertex(f[0]),vertex(f[1]),vertex(f[2])};for(int k=0;k<3;++k)if(v[k]!=v[(k+1)%3])++edges[{v[k],v[(k+1)%3]}];}
+            for(const auto& edge:edges){auto reverse=edges.find({edge.first.second,edge.first.first});if(reverse==edges.end()||reverse->second!=edge.second)return false;}
+            return true;
+        };
+        glm::vec3 origin{.00249f,0,0},px{1,0,0},py{0,1,0},pz{0,0,1};
+        std::vector<Face> tetra{{origin,py,px},{origin,px,pz},{origin,pz,py},{px,py,pz}};
+        tetra[0][0].x+=.00002f;bool seam=closedMesh(tetra);tetra.erase(tetra.begin());
+        CHECK(seam&&!closedMesh(tetra),"the face validator welds numerical seams but still rejects a missing face");
         bool undersides = true, shapesClosed = true;
         for (auto& lv : lvls) {
             const LevelData& L = lv.L;
@@ -1358,21 +1374,9 @@ int main() {
             int open = 0;
             for (auto& sh : L.shapes) {
                 if (sh.twoSided) continue;
-                std::map<std::tuple<long, long, long, long, long, long>, int> edges;
-                auto key = [](glm::vec3 p) { return std::make_tuple(std::lround(p.x * 200), std::lround(p.y * 200), std::lround(p.z * 200)); };
-                sh.forEachTri([&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3) {
-                    glm::vec3 v[3] = {a, b, c};
-                    for (int k = 0; k < 3; ++k) {
-                        auto p = key(v[k]), q = key(v[(k + 1) % 3]);
-                        edges[std::tuple_cat(p, q)]++;
-                    }
-                });
-                bool closed = true;
-                for (auto& e : edges) {
-                    auto& k = e.first;
-                    auto rev = std::make_tuple(std::get<3>(k), std::get<4>(k), std::get<5>(k), std::get<0>(k), std::get<1>(k), std::get<2>(k));
-                    if (!edges.count(rev)) { closed = false; break; }
-                }
+                std::vector<Face> faces;
+                sh.forEachTri([&](glm::vec3 a,glm::vec3 b,glm::vec3 c,glm::vec3){faces.push_back({a,b,c});});
+                bool closed=closedMesh(faces);
                 if (!closed) { if (open++ < 3) std::printf("      %s: an open shape that's one-sided\n", lv.name); shapesClosed = false; }
             }
         }
