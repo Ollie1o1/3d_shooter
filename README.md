@@ -6,7 +6,7 @@
 
 ![OVERDRIVE gameplay: Rippers breaking apart under shotgun fire in the Sunset Yard, a Shieldbearer and a Juggernaut in the Core at night, the walk into the Sanctum under an eclipse, and a duel with the Sovereign](docs/overdrive.gif)
 
-A fast 3D arena shooter in the spirit of ULTRAKILL, written from scratch in C++17 with **SDL2**, **OpenGL 3.3** and **GLM**: no engine. Grapple, dash, slide and slam through waves of enemies built from animated boxes, parry their shots back at them, and take on seven bosses, each with its own trick to learn.
+A fast 3D arena shooter in the spirit of ULTRAKILL, written from scratch in C++17 with **SDL2**, **OpenGL 3.3** and **GLM**: no engine. Grapple, dash, slide and slam through waves of enemies built from animated boxes, parry their shots back at them, and take on distinct bosses, each with its own trick to learn.
 
 - **No engine, no asset pipeline**: textures, the sky, the soundtrack and every enemy voice are generated in code at load time
 - **Desktop and browser**: runs on macOS, Windows (MSYS2) and in the browser (the same C++ compiled to WebAssembly + WebGL2); it also builds and passes its tests on Linux, though it hasn't been play-tested on a Linux desktop
@@ -33,6 +33,16 @@ with your equipment. STORY also offers a direct Chapter 2 start with the Cradle'
 See [the Chapter 1 implementation and playtest notes](docs/story-chapter-1.md) for the route, controls,
 source files and developer starts. [Chapter 2 notes](docs/story-chapter-2.md) cover the wasteland
 route, Blender assets and verification. Launch it directly with `./shooter --story2`. The current [Story revision](docs/story-overhaul.md) documents the writing, research and encounter direction. Settings → VIDEO → **AMBIENT DETAIL** reduces optional ash, grit, vents and moving decoration independently of resolution; required attack tells and objectives remain visible. Settings → GAMEPLAY → **ENEMY MARKERS** selects LOW (small cleanup icons, one short direction label) or DETAILED (full names, distance and cover labels). Bosses do not receive tracking icons in either mode.
+
+Combat Practice is available from **F3** on the main menu or the Story page.
+Choose repeatable lessons for parries, finishers, grapples, shotgun jumps and
+more; **F4** reopens the Field Guide during any run. Story now autosaves local
+checkpoint progress and offers **Continue**. The Armory offers two alternative
+mods per gun, with free swaps after buying the mod; **M** (controller X) previews
+its alternative. The Boss page also includes the Pacemaker, Sorter and Ballast.
+See [the improvement notes](docs/combat-and-story-improvements.md) for controls,
+save behaviour, relay isolation and the turbine winch, and
+[Chapter 3 directions](docs/chapter-3-directions.md) for the surreal-world brainstorm.
 
 ## The bosses
 

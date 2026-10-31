@@ -66,6 +66,8 @@ inline void GameplayState::padButton(Uint8 b) {
         return;
     }
     if (victory) { key(b == SDL_CONTROLLER_BUTTON_A ? SDLK_RETURN : b == SDL_CONTROLLER_BUTTON_B ? SDLK_ESCAPE : SDLK_UNKNOWN); return; }
+    if (guideOpen) { key(b==SDL_CONTROLLER_BUTTON_X ? SDLK_RIGHTBRACKET : gamepad::menuKey(b)); return; }
+    if (armoryOpen && b == SDL_CONTROLLER_BUTTON_X) { key(SDLK_m); return; }
     if (armoryOpen) { key(b == SDL_CONTROLLER_BUTTON_BACK ? SDLK_TAB : gamepad::menuKey(b)); return; }
     if (paused) { key(gamepad::menuKey(b)); return; }
     switch (b) {
@@ -158,6 +160,17 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
     // Alt-tabbing away mid-fight pauses (the web build pauses on losing the pointer lock)
     if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_FOCUS_LOST && !g_devNoMouse) { pause(); return; }
 
+    if (guideOpen) { handleGuideEvent(e); return; }
+    if (key == SDLK_F4 && !playerDead && !victory && !armoryOpen) { openGuide(); return; }
+    if (training() && !paused && !armoryOpen) {
+        if(key==SDLK_PAGEUP || key==SDLK_PAGEDOWN) {
+            startTrainingLesson((trainingLesson+(key==SDLK_PAGEUP?lessons::COUNT-1:1))%lessons::COUNT);return;
+        }
+        if(trainingLesson==7 && (key==SDLK_LEFTBRACKET || key==SDLK_RIGHTBRACKET)) {
+            trainingEnemy=(trainingEnemy+(key==SDLK_LEFTBRACKET?5:1))%6;
+            startTrainingLesson(7);return;
+        }
+    }
     // Armory (TAB) — a paused overlay for spending upgrade points
     if (armoryOpen) {
         if (key == SDLK_TAB || key == SDLK_ESCAPE || key == SDLK_p) { closeArmory(); return; }
@@ -180,6 +193,7 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
             return;
         }
         paused = !paused;
+        if(paused)saveStoryProgress();
         pauseSelected = 0;
         captureMouse(!paused);
         return;
@@ -280,15 +294,16 @@ inline float GameplayState::aimSensScale() const {
 
 inline void GameplayState::pause() {
     if (paused || playerDead || victory || armoryOpen) return;
+    saveStoryProgress();
     paused = true;
     pauseSelected = 0;
     captureMouse(false);
 }
 
 inline const char* GameplayState::pauseLabel(int i) const {
-    static const char* L[] = {"RESUME", "SETTINGS", "", "", "", "QUIT TO MENU"};
+    static const char* L[] = {"RESUME", "SETTINGS", "", "", "", "QUIT TO MENU", "FIELD GUIDE"};
     if (i == 2) return fullscreenOn() ? "EXIT FULLSCREEN" : "FULLSCREEN";
-    if (i == 3) return fast() ? "RESTART ROOM" : "RESTART ARENA";
+    if (i == 3) return training()?"REPEAT LESSON":story()?"RESTART CHECKPOINT":fast()?"RESTART ROOM":"RESTART ARENA";
     if (i == 4) return fast() ? "RESTART RUN" : "NEW RUN";
     return L[i];
 }
@@ -316,6 +331,7 @@ inline void GameplayState::activatePauseItem(int idx) {
     case 2: toggleFullscreen(); break;
     case 3: restartHere(); break;
     case 4: newRun(); break;
+    case 6: openGuide(); break;
     default:
         captureMouse(false);
         if (onReturnToMenu) onReturnToMenu();
@@ -365,6 +381,13 @@ inline void GameplayState::closeArmory() {
 }
 
 inline void GameplayState::buyUpgrade(int w, int s) {
+    if (w < 0 || w >= WEAPON_COUNT || s < 0 || s >= UPGRADE_STATS || (story() && !storyOwns(w))) {
+        audio.play("telegraph",50,SoundGroup::UI);return;
+    }
+    if (s == (int)UpgradeStat::MOD && prog.up[w].mod) {
+        prog.up[w].alternate = !prog.up[w].alternate;
+        audio.play("upgrade",90,SoundGroup::UI);saveStoryProgress();return;
+    }
     WeaponId wid = (WeaponId)w;
     int oldMag = weaponMag(wid, prog.up[w]);
     if (!prog.buy(wid, (UpgradeStat)s)) { audio.play("telegraph", 50, SoundGroup::UI); return; }
@@ -372,11 +395,18 @@ inline void GameplayState::buyUpgrade(int w, int s) {
     int newMag = weaponMag(wid, prog.up[w]);
     if (newMag > oldMag && !weapons[w].reloading) weapons[w].ammo += newMag - oldMag;
     audio.play("upgrade", 128, SoundGroup::UI);
+    saveStoryProgress();
 }
 
 inline void GameplayState::handleArmoryEvent(const SDL_Event& e) {
     if (e.type == SDL_KEYDOWN) {
         switch (e.key.keysym.sym) {
+            case SDLK_m:
+                if(armoryS==(int)UpgradeStat::MOD && (!story() || storyOwns(armoryW))) {
+                    prog.up[armoryW].alternate=!prog.up[armoryW].alternate;
+                    audio.play("count_tick",80,SoundGroup::UI);saveStoryProgress();
+                }
+                break;
             case SDLK_LEFT:  armoryW = (armoryW + WEAPON_COUNT - 1) % WEAPON_COUNT; break;
             case SDLK_RIGHT: armoryW = (armoryW + 1) % WEAPON_COUNT; break;
             case SDLK_UP:    armoryS = (armoryS + UPGRADE_STATS - 1) % UPGRADE_STATS; break;

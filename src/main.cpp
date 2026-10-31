@@ -272,6 +272,7 @@ struct App {
                 mode = m; pending = NextState::Game;
                 g_startArena = o.arena; g_startWave = o.wave;
                 g_storyChapter=o.storyChapter;
+                g_continueStory=o.continueStory;
                 g_godMode    = o.god || godFromCommandLine;
                 g_practice   = o.practice;
                 g_bossRun    = o.boss;
@@ -289,7 +290,7 @@ struct App {
             setMouseCaptured(!g_devNoMouse);
             audio.masterVolume = settings.audioVolume;
             auto* game = new GameplayState(audio, &settings, mode);
-            game->onReturnToMenu = [this]() { pending = NextState::Menu; };
+            game->onReturnToMenu = [this,game]() { game->saveStoryProgress(); pending = NextState::Menu; };
             game->onQuit         = [this]() { quit(); };
             currentState.reset(game);
         } else if (next == NextState::Viewer) {   // --viewer: one gun on a stand, its file watched (GunViewer.h)
@@ -669,13 +670,16 @@ int main(int argc, char* argv[]) {
             g_arenaSolo = std::max(0, std::atoi(argv[++i]) - 1); g_startArena = g_arenaSolo;
         }
         if (arg == "--endless") { app->mode = GameMode::ENDLESS; app->pending = App::NextState::Game; }
+        if (arg == "--training") {app->mode=GameMode::TRAINING;app->pending=App::NextState::Game;g_practice=true;}
+        if (arg == "--continue") {app->mode=GameMode::STORY;app->pending=App::NextState::Game;g_continueStory=true;}
         if (arg == "--story") { app->mode = GameMode::STORY; app->pending = App::NextState::Game; }   // STORY: CHAPTER 1 (the wake-up first)
         if(arg=="--verify-story") {app->verifyStory=true;g_storyChapter=1;app->mode=GameMode::STORY;app->pending=App::NextState::Game;g_fixedDt=1.0/30;g_devNoMouse=true;g_godMode=true;}
         if(arg=="--story2") {g_storyChapter=2;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}
         if(arg=="--chapter" && i+1<argc)g_storyChapter=std::clamp(std::atoi(argv[++i]),1,2);
         if (arg == "--boss" && i + 1 < argc) {   // --boss N: BOSS N (1 the Warden .. 6 MORNINGSTAR), on its own
             g_bossRun = std::clamp(std::atoi(argv[++i]) - 1, 0, BOSS_COUNT - 1);
-            app->mode = bossEntry(g_bossRun).act2 ? GameMode::ACT2 : GameMode::ARENA; app->pending = App::NextState::Game;
+            g_storyChapter = bossEntry(g_bossRun).chapter;
+            app->mode = bossEntry(g_bossRun).mode(); app->pending = App::NextState::Game;
         }
         if (arg == "--god")  { g_godMode = true; app->godFromCommandLine = true; }
         if (arg == "--dev")  app->openDevMenu = true;

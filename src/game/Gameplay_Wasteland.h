@@ -2,6 +2,7 @@
 // Chapter 2 shares inventory, explicit readable interactions, retries and HUD
 // with the Cradle. Its outdoor scripts never run the factory's indexed machinery.
 inline void GameplayState::beginWasteland() {
+    setupStoryChoices();
     storyOwned|=level.story.startWeapons;storyArmed=true;storyGrapple=true;
     wakeT=-1;player.eyeHeight=1.7f;clawT=-1;beltBodies.clear();
     if(!wakeSeen && director.arena==0)pushBanner(level.story.title,"CHAPTER 2  /  THE WORLD OUTSIDE",{.85f,.7f,.45f},4.f);
@@ -27,16 +28,18 @@ inline void GameplayState::loadStoryChapter(int chapter) {
     for(const auto& a:level.anchors)anchorBoxes.push_back(level.walls[a.wall].box);
     storyGlassBoxes.clear();storyTileBoxes.clear();
     director=WaveDirector{};director.level=&level;director.fast=true;
-    storyLogsSeen=0;storySeenSection=storyCheckpoint=0;storyBossDown=false;
+    storyRelayIsolated=false;
+    storyLogsSeen=storyTerminalsSeen=0;storySeenSection=storyCheckpoint=0;storyBossDown=false;
     storyEndT=-1;wakeSeen=false;wakeT=-1;storyLog=storyTerminal=-1;
     storyOwned|=7;storyGrapple=true;storyArmed=true;
     totalKills=totalShots=totalHits=deaths=0;elapsedTime=0;peakStyle=0;
     bankedStyle=bankedDamage=0;styleSystem=StyleSystem{};
     spaceArena=-1;warmupFrames=2;
-    enterArena(0);captureMouse(true);
+    enterArena(0);captureMouse(true);saveStoryProgress();
 }
 
 inline void GameplayState::updateWasteland(float dt) {
+    updateStoryChoices(dt);
     const auto& s=level.story;const glm::vec3 p=player.position;
     for(const auto& front:ballastHazards.fronts)if(front.rubble) {
         auto from=front.from+front.dir*front.distance;
@@ -59,7 +62,7 @@ inline void GameplayState::updateWasteland(float dt) {
         audio.play("wave",64,SoundGroup::UI,true);
     }
     if(at>=0&&at>storyCheckpoint&&!director.fighting()) {
-        storyCheckpoint=at;ui.feed("CHECKPOINT",{.35f,.85f,1.f});
+        storyCheckpoint=at;saveStoryProgress();ui.feed("CHECKPOINT",{.35f,.85f,1.f});
     }
     if(storyLog>=0) {storyLogT+=dt;if(glm::length(s.wrecks[storyLog].pos-p)>6)storyLog=-1;}
     if(storyTerminal>=0&&glm::length(s.terminals[storyTerminal].pos-p)>6)storyTerminal=-1;
@@ -71,7 +74,7 @@ inline void GameplayState::updateWasteland(float dt) {
     }
     const auto& end=s.end;
     if(storyBossDown&&storyEndT<0&&!playerDead&&p.x>end.min.x&&p.x<end.max.x&&p.y>end.min.y&&p.y<end.max.y&&p.z>end.min.z&&p.z<end.max.z) {
-        storyEndT=0;logRun("end");audio.play("wave",90,SoundGroup::UI,true);
+        storyEndT=0;saveStoryProgress();logRun("end");audio.play("wave",90,SoundGroup::UI,true);
     }
     if(storyEndT>=0) {
         storyEndT+=dt;player.velocity=glm::vec3{0,std::max(0.f,player.velocity.y),0};
@@ -82,7 +85,7 @@ inline void GameplayState::updateWasteland(float dt) {
 inline void GameplayState::gatherWasteland(std::vector<BoxInstance>& out) {
     using namespace rig;using glm::vec3;
     Rig r{out};const auto& s=level.story;
-    gatherBallast(out);gatherStoryCover(out);
+    gatherBallast(out);gatherStoryCover(out);gatherStoryChoices(out);
     if(level.arenaAt(player.position)==2) {
         float progress=director.arena>2?1.f:director.arena==2?director.goalProgress():0.f;
         vec3 panel{-74,-2.65f,-48.4f};
@@ -104,7 +107,7 @@ inline void GameplayState::gatherWasteland(std::vector<BoxInstance>& out) {
         }
     };
     for(int i=0;i<(int)s.wrecks.size();++i)beacon(s.wrecks[i].pos+vec3{0,1.95f,0},i*.8f,(storyLogsSeen>>i)&1u);
-    for(int i=0;i<(int)s.terminals.size();++i)beacon(s.terminals[i].pos+vec3{0,2.65f,.25f},i*.6f,storyTerminal==i);
+    for(int i=0;i<(int)s.terminals.size();++i)beacon(s.terminals[i].pos+vec3{0,2.65f,.25f},i*.6f,(storyTerminalsSeen>>i)&1u);
     // The brake housings are real shot targets. Their visibility is gameplay,
     // so neither they nor their status lamps depend on decorative detail.
     for(int id:s.turbineBrakes) {

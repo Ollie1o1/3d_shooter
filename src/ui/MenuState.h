@@ -3,6 +3,7 @@
 #include "core/Settings.h"
 #include "ui/SettingsMenu.h"
 #include "game/Progression.h"
+#include "game/StorySave.h"
 #include "ui/LeaderboardView.h"
 #include "world/Level.h"
 #include "world/LevelGauntlet.h"
@@ -51,6 +52,8 @@ public:
     struct FastRoom { std::string name; float medals[4]; };
     std::vector<FastRoom> fastRooms;
     int storySel=0;
+    StorySave storySave;
+    bool hasStorySave = false;
     int   bossSel = 0;
     int   page      = MAIN;
     int   selected  = 0;
@@ -92,6 +95,7 @@ public:
     MenuState(int w, int h) : screenW(w), screenH(h), ui(w, h), settingsMenu(w, h) {
         settingsMenu.onBack = [this]() { page = MAIN; selected = 6; };
         records.load();
+        hasStorySave = storySave.load();
         board.load();
         LevelData A = buildLevel(), F = buildGauntlet();
         for (auto& a : A.arenas) { arenaNames.push_back(a.name); act1Arenas.push_back({a.name ? a.name : "", a.subtitle ? a.subtitle : ""}); }
@@ -142,6 +146,11 @@ public:
         if (page == FASTPAGE) { handleFastEvent(e); return; }
         if (page == ARENAPAGE) { handleArenaEvent(e); return; }
         if (page == STORYPAGE) { handleStoryEvent(e); return; }
+        if ((e.type == SDL_KEYDOWN && !e.key.repeat && e.key.keysym.sym == SDLK_F3) ||
+            (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT &&
+             e.button.x >= 24 && e.button.x < 280 && e.button.y >= screenH-76 && e.button.y < screenH-32)) {
+            if(onStart) {StartOptions o;o.practice=true;onStart(GameMode::TRAINING,o);}return;
+        }
         if (e.type == SDL_KEYDOWN && !e.key.repeat &&
             (e.key.keysym.sym == SDLK_BACKQUOTE || e.key.keysym.sym == SDLK_F2)) { openDev(); return; }
         if (e.type == SDL_KEYDOWN) {
@@ -237,36 +246,50 @@ private:
         if (idx == 7 && onQuit) onQuit();
     }
 
+    int storyRows() const { return hasStorySave ? 4 : 3; }
     int storyAt(int x,int y) const {
-        for(int i=0;i<2;++i)if(x>screenW/2-320&&x<screenW/2+320&&y>210+i*110&&y<300+i*110)return i;
+        for(int i=0;i<storyRows();++i)if(x>screenW/2-360&&x<screenW/2+360&&y>185+i*90&&y<263+i*90)return i;
         return -1;
     }
     void startStory() {
-        if(!onStart)return;StartOptions o;o.storyChapter=storySel+1;onStart(GameMode::STORY,o);
+        if(!onStart)return;
+        StartOptions o;
+        if(hasStorySave && storySel==0) {
+            o.continueStory=true;o.storyChapter=storySave.chapter;o.arena=storySave.checkpoint;
+            onStart(GameMode::STORY,o);return;
+        }
+        int chapter=storySel-(hasStorySave?1:0)+1;
+        if(chapter==3) {o.practice=true;onStart(GameMode::TRAINING,o);return;}
+        o.storyChapter=chapter;onStart(GameMode::STORY,o);
     }
     void handleStoryEvent(const SDL_Event& e) {
         if(e.type==SDL_KEYDOWN) {
             auto k=e.key.keysym.sym;
             if(k==SDLK_ESCAPE||k==SDLK_BACKSPACE){page=MAIN;selected=1;return;}
-            if(k==SDLK_UP||k==SDLK_DOWN)storySel=1-storySel;
+            if(k==SDLK_UP)storySel=(storySel+storyRows()-1)%storyRows();
+            if(k==SDLK_DOWN)storySel=(storySel+1)%storyRows();
             if(k==SDLK_RETURN||k==SDLK_SPACE)startStory();
         }
         if(e.type==SDL_MOUSEMOTION){int i=storyAt(e.motion.x,e.motion.y);if(i>=0)storySel=i;}
         if(e.type==SDL_MOUSEBUTTONDOWN&&e.button.button==SDL_BUTTON_LEFT){int i=storyAt(e.button.x,e.button.y);if(i>=0){storySel=i;startStory();}}
     }
     void renderStory() {
-        ui.text("STORY",screenW/2,65,5,{.35f,.85f,1.f,1},true);
-        ui.text("UNIT 24 / PURPOSE: UNKNOWN",screenW/2,125,2,{.75f,.8f,.82f,1},true);
-        const char* names[]={"1  THE CRADLE","2  THE DEAD SPAN"};
-        const char* descriptions[]={"WAKE ON THE REJECT LINE. CLIMB OUT OF THE FACTORY.","CROSS THE ASH WASTELAND. FIND THE ROAD TO THE CREATOR."};
-        for(int i=0;i<2;++i) {
-            float x=screenW/2-320.f,y=210.f+i*110;
-            ui.rect(x,y,640,90,i==storySel?glm::vec4{.1f,.17f,.2f,.95f}:glm::vec4{.06f,.07f,.09f,.9f});
-            if(i==storySel)ui.rect(x,y,4,90,{.35f,.85f,1,1});
-            ui.text(names[i],x+24,y+18,3,{.85f,.9f,.92f,1});
-            ui.text(descriptions[i],x+24,y+61,1,{.65f,.72f,.75f,1});
+        ui.text("STORY",screenW/2,55,5,{.35f,.85f,1.f,1},true);
+        ui.text("UNIT 24 / PURPOSE: UNKNOWN",screenW/2,115,2,{.75f,.8f,.82f,1},true);
+        const char* names[]={"1  THE CRADLE","2  THE DEAD SPAN","COMBAT PRACTICE"};
+        const char* descriptions[]={"NEW RUN / WAKE ON THE REJECT LINE.","NEW RUN / CROSS THE ASH WASTELAND.","REPEATABLE LESSONS / SELECT ENEMIES / TRY YOUR UPGRADES"};
+        for(int i=0;i<storyRows();++i) {
+            float x=screenW/2-360.f,y=185.f+i*90;
+            ui.rect(x,y,720,78,i==storySel?glm::vec4{.1f,.17f,.2f,.95f}:glm::vec4{.06f,.07f,.09f,.9f});
+            if(i==storySel)ui.rect(x,y,4,78,{.35f,.85f,1,1});
+            bool resume=hasStorySave&&i==0;
+            int index=i-(hasStorySave?1:0);
+            std::string name=resume?(storySave.completed&&storySave.chapter==2?"REVISIT / THE DEAD SPAN":std::string("CONTINUE / ")+(storySave.chapter==1&&!storySave.completed?"THE CRADLE":"THE DEAD SPAN")):names[index];
+            std::string desc=resume?(storySave.completed&&storySave.chapter==1?"CHAPTER 2 / EQUIPMENT AND UPGRADES CARRY FORWARD":"CHECKPOINT "+std::to_string(storySave.checkpoint+1)+" / EQUIPMENT, UPGRADES AND RECORDS SAVED"):descriptions[index];
+            ui.text(name.c_str(),x+24,y+14,3,{.85f,.9f,.92f,1});
+            ui.text(desc.c_str(),x+24,y+53,1,{.65f,.72f,.75f,1});
         }
-        ui.text("CHAPTER 2 STARTS WITH THE CRADLE'S GUNS AND GRAPPLE",screenW/2,475,1,{.7f,.65f,.52f,1},true);
+        ui.text("STORY AUTOSAVES AT CHECKPOINTS. NEW RUN REPLACES THE CONTINUE SLOT.",screenW/2,580,1,{.7f,.65f,.52f,1},true);
         ui.text("ENTER OR CLICK TO START / ESC BACK",screenW/2,screenH-60,1,{.6f,.65f,.7f,1},true);
     }
 
@@ -287,7 +310,7 @@ private:
             alpha = 0.34f;
         } else if (page == BOSS) {
             const BossEntry& b = bossEntry(bossSel);
-            want = &menuart::arena(b.act2, b.arena);
+            if (b.mode() == GameMode::ARENA || b.mode() == GameMode::ACT2) want = &menuart::arena(b.act2, b.arena);
             alpha = 0.3f;
         }
         backdrop.show(want && want->tex ? want : nullptr);
@@ -490,18 +513,19 @@ private:
     }
 
     // ---- BOSS: every boss in the order you meet them ---------------------------
-    float bossY(int i) const { return 150.f + i * 66.f; }
+    float bossY(int i) const { return 150.f + i * 48.f; }
     static constexpr float BOSS_W = 640.f;
     int bossAt(int mx, int my) const {
         for (int i = 0; i < BOSS_COUNT; ++i)
-            if (mx > screenW / 2 - BOSS_W / 2 && mx < screenW / 2 + BOSS_W / 2 && my > bossY(i) && my < bossY(i) + 56) return i;
+            if (mx > screenW / 2 - BOSS_W / 2 && mx < screenW / 2 + BOSS_W / 2 && my > bossY(i) && my < bossY(i) + 44) return i;
         return -1;
     }
     void startBoss(int i) {
         if (!onStart || !bossOpen(records, i)) return;
         StartOptions o;
         o.boss = i; o.arena = bossEntry(i).arena;
-        onStart(bossEntry(i).act2 ? GameMode::ACT2 : GameMode::ARENA, o);
+        o.storyChapter = bossEntry(i).chapter;
+        onStart(bossEntry(i).mode(), o);
     }
     void handleBossEvent(const SDL_Event& e) {
         if (e.type == SDL_KEYDOWN) {
@@ -538,21 +562,21 @@ private:
             bool sel = i == bossSel, open = bossOpen(records, i);
             float x = cx - BOSS_W / 2, y = bossY(i);
             float pulse = sel ? 0.5f + 0.5f * std::sin(flashTime * 5.f) : 0.f;
-            ui.rect(x, y, BOSS_W, 56, sel ? glm::vec4{0.13f + pulse * 0.06f, 0.08f, 0.04f, 0.92f} : glm::vec4{0.07f, 0.07f, 0.10f, 0.85f});
-            if (sel) ui.rect(x, y, 5, 56, {1.f, 0.6f + pulse * 0.2f, 0.1f, 1.f});
+            ui.rect(x, y, BOSS_W, 44, sel ? glm::vec4{0.13f + pulse * 0.06f, 0.08f, 0.04f, 0.92f} : glm::vec4{0.07f, 0.07f, 0.10f, 0.85f});
+            if (sel) ui.rect(x, y, 5, 44, {1.f, 0.6f + pulse * 0.2f, 0.1f, 1.f});
             glm::vec4 c = !open ? glm::vec4{0.42f, 0.42f, 0.47f, 0.75f} : sel ? glm::vec4{1.f, 0.65f, 0.12f, 1.f} : glm::vec4{0.8f, 0.8f, 0.85f, 0.95f};
             std::snprintf(buf, sizeof(buf), "%d", i + 1);
-            ui.text(buf, x + 22, y + 16, 3, {0.5f, 0.5f, 0.55f, 0.8f});
-            ui.text(b.name, x + 62, y + 8, 3, c);
-            ui.text(b.where, x + 62, y + 36, 1, {0.7f, 0.68f, 0.66f, 0.85f});
+            ui.text(buf, x + 22, y + 12, 2, {0.5f, 0.5f, 0.55f, 0.8f});
+            ui.text(b.name, x + 62, y + 6, 2, c);
+            ui.text(b.where, x + 62, y + 28, 1, {0.7f, 0.68f, 0.66f, 0.85f});
             // your best kill, and the world's (who holds it) when the site's board has one
             const WorldBest& w = bossWorld[i];
             std::snprintf(buf, sizeof(buf), "YOU %s", records.bestBoss[i] > 0.f ? formatTime(records.bestBoss[i]).c_str() : "-");
-            ui.textRight(buf, (int)(x + BOSS_W - 18), (int)y + (w.time > 0.f ? 9 : 20), 2, {1.f, 0.85f, 0.45f, 0.9f});
+            ui.textRight(buf, (int)(x + BOSS_W - 18), (int)y + (w.time > 0.f ? 5 : 13), 2, {1.f, 0.85f, 0.45f, 0.9f});
             if (w.time > 0.f) {
                 const bool mine = records.bestBoss[i] > 0.f && std::fabs(records.bestBoss[i] - w.time) < 0.02f;
                 std::snprintf(buf, sizeof(buf), "WORLD %s  %s", formatTime(w.time).c_str(), w.name.c_str());
-                ui.textRight(buf, (int)(x + BOSS_W - 18), (int)y + 34, 1,
+                ui.textRight(buf, (int)(x + BOSS_W - 18), (int)y + 27, 1,
                              mine ? glm::vec4{0.45f, 1.f, 0.6f, 0.95f} : glm::vec4{0.55f, 0.85f, 1.f, 0.9f});
             }
         }
@@ -719,7 +743,7 @@ private:
         {   // BOSS: each boss's world record (who holds it) and your own best kill
             pollBossWorld();
             float x = cx + 30.f, y = 338.f;
-            ui.rect(x, y, 570.f, 32.f + rows * 22.f, {0.06f, 0.06f, 0.09f, 0.85f});
+            ui.rect(x, y, 570.f, 50.f + BOSS_COUNT * 22.f, {0.06f, 0.06f, 0.09f, 0.85f});
             ui.rect(x, y, 570.f, 3.f, {1.f, 0.6f, 0.25f, 0.9f});
             ui.text("BOSS  -  FASTEST KILLS", x + 285.f, y + 8, 2, {1.f, 0.6f, 0.25f, 1.f}, true);
             ui.textRight("WORLD", (int)(x + 300), (int)y + 30, 1, {0.55f, 0.85f, 1.f, 0.8f});
@@ -766,6 +790,8 @@ private:
     }
 
     void renderMain() {
+        ui.rect(24,screenH-76,256,44,{.06f,.14f,.17f,.95f});
+        ui.text("F3  COMBAT PRACTICE",40,screenH-61,2,{.35f,.85f,1,1});
         int cx = screenW / 2;
         ui.text("OVERDRIVE", cx + 4, screenH / 2 - 236, 7, {0.4f, 0.05f, 0.2f, 0.8f}, true);
         ui.text("OVERDRIVE", cx, screenH / 2 - 240, 7, {1.f, 0.55f, 0.08f, 1.f}, true);

@@ -459,7 +459,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
             if (e.targetable() && !e.stats().flying && e.type != EnemyType::CONDUIT && director.inHoldZone(e.position + glm::vec3{0, 0.3f, 0}))
                 director.zoneContested = true;
     WaveDirector::Phase phaseBefore = director.phase;
-    if (!act2Falling) director.update(dt, alive, player.position, spawns);   // ACT II: the fight waits for you to land
+    if (!act2Falling && !training()) director.update(dt, alive, player.position, spawns);   // ACT II: the fight waits for you to land
     // The last of a wave falls: time drops to a quarter and eases back (not in FAST: the clock is the point)
     if (phaseBefore == WaveDirector::Phase::ACTIVE && !fast() &&
         (director.phase == WaveDirector::Phase::BREAK || director.phase == WaveDirector::Phase::CLEARED)) waveEnded();
@@ -549,6 +549,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     }
 
     updatePickups(dt);
+    if (training()) updateTraining(dt);
 
     // --- FAST: the finish beacon ---
     if (finishOpen && !victory) {

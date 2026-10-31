@@ -63,6 +63,8 @@
     arguments: (() => {
       const q = new URLSearchParams(location.search);
       const args = q.has('arena') ? ['--arena', q.get('arena')] : q.has('play') ? ['--play'] : [];
+      if (q.has('training')) args.push('--training');
+      if (q.has('continue')) args.push('--continue');
       if (q.has('fast')) args.push('--fast');
       if (q.has('endless')) args.push('--endless');
       if (q.has('act2')) args.push('--act2');   // ?act2&arena=6: straight into the Zenith

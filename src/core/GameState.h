@@ -14,12 +14,13 @@ public:
 // ENDLESS: generated waves in the Core until you die (EndlessWaves.h).
 // ACT2:    Act II, beneath the eclipse (LevelAct2.h). Unlocked by killing the Sovereign.
 // STORY:   UNIT 24's story, chapter by chapter (LevelStory.h, Gameplay_Story.h)
-enum class GameMode { ARENA, FAST, ENDLESS, ACT2, STORY };
+enum class GameMode { ARENA, FAST, ENDLESS, ACT2, STORY, TRAINING };
 
 // Where a run starts. The dev level select fills it in; a normal start from
 // the menu is the default (first arena, ranked).
 struct StartOptions {
     int storyChapter = 1;
+    bool continueStory = false;
     int  arena = 0;          // arena / FAST room / STORY checkpoint index
     int  wave  = 0;          // wave within it (ARENA)
     bool god   = false;

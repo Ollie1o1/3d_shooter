@@ -400,8 +400,8 @@ public:
     }
 
     // Pause overlay — drawn on top of the (frozen) gameplay frame.
-    static constexpr int PAUSE_ITEMS = 6;
-    int pauseButtonY(int i) const { return screenH / 2 - 92 + i * 52; }
+    static constexpr int PAUSE_ITEMS = 7;
+    int pauseButtonY(int i) const { return screenH / 2 - 104 + i * 46; }
     void renderPause(int selected, const char* const labels[PAUSE_ITEMS], const char* modeLine, const char* controls1, const char* controls2) {
         begin2D();
         ui.rect(0, 0, screenW, screenH, {0.0f, 0.0f, 0.02f, 0.6f});
@@ -416,7 +416,7 @@ public:
             ui.rect(screenW / 2 - 150, by + 44, 300, 2, b);
             ui.text(labels[i], screenW / 2, by + 16, 2, sel ? glm::vec4{1.f, 0.7f, 0.15f, 1.f} : glm::vec4{0.75f, 0.75f, 0.8f, 0.9f}, true);
         }
-        ui.text("ESC TO RESUME   UP/DOWN + ENTER OR CLICK   BACKSPACE IN GAME RESTARTS THE ROOM", screenW / 2, screenH / 2 + 232, 1, {0.55f, 0.55f, 0.6f, 0.85f}, true);
+        ui.text("ESC TO RESUME   UP/DOWN + ENTER OR CLICK   BACKSPACE IN GAME RESTARTS THE ROOM", screenW / 2, screenH / 2 + 230, 1, {0.55f, 0.55f, 0.6f, 0.85f}, true);
         // Every control, for reference (as you've bound them)
         ui.rect(screenW / 2 - 420, screenH - 104, 840, 50, {0.05f, 0.05f, 0.08f, 0.6f});
         ui.text(controls1, screenW / 2, screenH - 96, 1, {0.85f, 0.85f, 0.9f, 0.9f}, true);
@@ -436,7 +436,7 @@ public:
         return false;
     }
 
-    void renderArmory(const Progression& p, int selW, int selS) {
+    void renderArmory(const Progression& p, int selW, int selS, int owned = (1 << WEAPON_COUNT)-1) {
         begin2D();
         ui.rect(0, 0, screenW, screenH, {0.01f, 0.02f, 0.04f, 0.82f});
         ui.text("ARMORY", screenW / 2, 40, 5, {0.4f, 0.9f, 1.f, 1.f}, true);
@@ -451,6 +451,7 @@ public:
             WeaponId wid = (WeaponId)w;
             const WeaponDef& d = weaponDef(wid);
             const WeaponUpgrades& u = p.up[w];
+            const bool available = (owned >> w) & 1;
             int x = armoryX(w);
             ui.rect(x + 4, ARM_TOP, ARM_COL_W - 8, 36, {0.08f, 0.1f, 0.14f, 0.95f});
             std::snprintf(buf, sizeof(buf), "%d %s", w + 1, d.name);
@@ -460,30 +461,29 @@ public:
                 int y = armoryY(s);
                 bool sel = selW == w && selS == s;
                 int tier = p.tierOf(wid, st), maxT = Progression::maxTier(st);
-                bool maxed = tier >= maxT, afford = p.canBuy(wid, st);
+                bool maxed = tier >= maxT, afford = available && p.canBuy(wid, st);
                 glm::vec4 bg = sel ? glm::vec4{0.16f, 0.12f, 0.05f, 0.95f} : glm::vec4{0.06f, 0.07f, 0.1f, 0.9f};
                 ui.rect(x + 8, y, ARM_COL_W - 16, ARM_ROW_H - 8, bg);
                 if (sel) ui.frame(x + 8, y, ARM_COL_W - 16, ARM_ROW_H - 8, 2, {1.f, 0.65f, 0.15f, 1.f});
                 glm::vec4 lc = maxed ? glm::vec4{0.4f, 1.f, 0.6f, 1.f} : afford ? glm::vec4{1.f, 0.85f, 0.35f, 1.f} : glm::vec4{0.6f, 0.6f, 0.65f, 0.9f};
-                ui.text(s == 3 ? d.modName : STAT[s], x + 18, y + 8, s == 3 ? 1 : 2, lc);
+                ui.text(s == 3 ? weaponModName(wid, u.alternate) : STAT[s], x + 18, y + 8, s == 3 ? 1 : 2, lc);
                 // Tier pips
                 for (int k = 0; k < maxT; ++k)
                     ui.rect(x + 18 + k * 20, y + 30, 16, 8, k < tier ? glm::vec4{1.f, 0.7f, 0.2f, 1.f} : glm::vec4{0.25f, 0.25f, 0.3f, 1.f});
                 // Value preview
                 statPreview(wid, u, st, buf, sizeof(buf));
                 ui.text(buf, x + 18, y + 48, 1, {0.75f, 0.78f, 0.82f, 0.95f});
-                const char* costTxt = maxed ? "MAX" : (Progression::cost(st) == 2 ? "2 PTS" : "1 PT");
+                const char* costTxt = !available ? "NOT FOUND" : s == 3 && u.mod ? "SWAP FREE" : maxed ? "MAX" : (Progression::cost(st) == 2 ? "2 PTS" : "1 PT");
                 ui.textRight(costTxt, x + ARM_COL_W - 20, y + 30, 1, maxed ? glm::vec4{0.4f, 1.f, 0.6f, 1.f} : lc);
             }
         }
         // Description of the selected cell
-        const WeaponDef& d = weaponDef((WeaponId)selW);
-        const char* desc = selS == 3 ? d.modDesc
+        const char* desc = selS == 3 ? weaponModDesc((WeaponId)selW, p.up[selW].alternate)
                          : selS == 0 ? "+20% DAMAGE PER TIER"
                          : selS == 1 ? "15% LESS TIME BETWEEN SHOTS PER TIER"
                                      : "BIGGER MAGAZINE AND 12% FASTER RELOAD PER TIER";
-        ui.text(desc, screenW / 2, armoryY(UPGRADE_STATS) + 8, 2, {0.9f, 0.9f, 0.9f, 0.95f}, true);
-        ui.text("CLICK OR ENTER TO BUY   ARROWS TO MOVE   TAB / ESC TO CLOSE   LEVEL UP BY KILLING IN STYLE",
+        ui.text(desc, screenW / 2, armoryY(UPGRADE_STATS) + 8, selS==3?1:2, {0.9f, 0.9f, 0.9f, 0.95f}, true);
+        ui.text("ENTER / CLICK BUY OR SWAP   M / PAD X PREVIEW OTHER MOD   ARROWS MOVE   TAB / ESC CLOSE",
                 screenW / 2, screenH - 30, 1, {0.55f, 0.55f, 0.6f, 0.85f}, true);
         end2D();
     }
@@ -948,7 +948,7 @@ private:
     void statPreview(WeaponId w, const WeaponUpgrades& u, UpgradeStat s, char* buf, size_t n) const {
         WeaponUpgrades next = u;
         bool maxed = false;
-        if (s == UpgradeStat::MOD) { std::snprintf(buf, n, "%s", u.mod ? "INSTALLED" : "SPECIAL PERK"); return; }
+        if (s == UpgradeStat::MOD) { std::snprintf(buf, n, "%s", u.mod ? "ACTIVE / ENTER TO SWAP" : "M TO PREVIEW OTHER MOD"); return; }
         if (next.tier[(int)s] < MAX_TIER) ++next.tier[(int)s]; else maxed = true;
         switch (s) {
             case UpgradeStat::DAMAGE:

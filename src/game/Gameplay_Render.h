@@ -120,6 +120,11 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
         pose.finishGlow = e.finishable(overdriveOn()) ? 0.45f + 0.35f * std::sin(t * 13.f + e.uid) : 0.f;
         size_t from = out.size();
         buildEnemy(pose, t, out);
+        // A small light floor on ordinary armor keeps dark rigs legible. The
+        // depth buffer still hides enemies behind cover; glowing tells retain their colours.
+        if(!isBoss(e.type))for(size_t j=from;j<out.size();++j)
+            if(std::max({out[j].emissive.x,out[j].emissive.y,out[j].emissive.z})<.05f)
+                out[j].emissive+=glm::max(out[j].color,glm::vec3{.18f})*.12f;
         if (e.hollow == Hollow::ENRAGED)   // everything that glows burns red
             for (size_t j = from; j < out.size(); ++j) {
                 float g = std::max({out[j].emissive.x, out[j].emissive.y, out[j].emissive.z});
