@@ -5,7 +5,7 @@ inline void GameplayState::beginLab(){
     labDialogueT=0;labDialogue=-1;
     storyOwned|=15;storyArmed=storyGrapple=true;wakeSeen=true;wakeT=-1;clawT=-1;
     beltBodies.clear();player.eyeHeight=1.7f;
-    bool skip=labIntro.seen||g_practice||g_devCam||director.arena>0||g_bossRun>=0;
+    bool skip=labIntro.seen||g_devCam||director.arena>0||g_bossRun>=0;
     labIntro.start(skip);
     if(g_devOverlay.rfind("labintro",0)==0){labIntro.seen=false;labIntro.time=std::clamp(std::atof(g_devOverlay.c_str()+8),0.,22.9);}
     if(labIntro.active()){player.position={0,0,27};player.camera.yaw=-90;player.camera.pitch=0;director.hold=true;}
@@ -100,7 +100,7 @@ inline void GameplayState::gatherLab(std::vector<BoxInstance>& out){
     }
     if(room==1)subject(lab::centre(1)+vec3{-27,1.35f,9},1,true);
     if(room>=6)for(int k=0;k<(ambientDetail()>0?9:3);++k){
-        auto c=lab::centre(room);vec3 p=c+vec3{(k%2?1.f:-1.f)*(15+k*2.f),5.f+(k%4)*2.f+.25f*std::sin(gameClock*.4f+k),-25.f+k*6};
+        auto c=lab::centre(room);vec3 p=c+(room==9?vec3{(k%2?1.f:-1.f)*(88+k*3.f),15.f+(k%4)*5.f,-40.f+k*9.f}:vec3{(k%2?1.f:-1.f)*(15+k*2.f),5.f+(k%4)*2.f+.25f*std::sin(gameClock*.4f+k),-25.f+k*6});
         subject(p,k*.7f,true);
         if(room==6)r.box(T(p+vec3{0,5,0}),{0,0,0},{.025f,8,.025f},{.3f,.4f,.43f});
     }
@@ -134,7 +134,7 @@ inline void GameplayState::renderLabIntro(){
 }
 
 inline void GameplayState::renderLabGlass(const glm::mat4& view,const glm::mat4& proj,glm::vec3 camPos){
-    using glm::vec3;const int room=level.arenaAt(player.position);if(room<0 || (room<7 && room!=0 && room!=3))return;
+    using glm::vec3;const int room=level.arenaAt(player.position);if(room<0 || room==9 || (room<7 && room!=0 && room!=3))return;
     labGlassShader.use();labGlassShader.setMat4("projection",proj);labGlassShader.setMat4("view",view);
     labGlassShader.setVec3("uViewPos",camPos);labGlassShader.setFloat("uTime",gameClock);
     auto c=lab::centre(room);labGlassShader.setVec3("uOrigin",c);
@@ -153,8 +153,11 @@ inline void GameplayState::renderLabGlass(const glm::mat4& view,const glm::mat4&
         quad(c+vec3{41.9f,3,-13.8f},c+vec3{41.9f,3,13.8f},c+vec3{41.9f,14,13.8f},c+vec3{41.9f,14,-13.8f},{-1,0,0},2,0);
         quad(c+vec3{55.9f,6,-6.5f},c+vec3{55.9f,6,6.5f},c+vec3{55.9f,12,6.5f},c+vec3{55.9f,12,-6.5f},{-1,0,0},2,0);
     }else{
-        for(float side:{-1.f,1.f})quad(c+vec3{side*41.9f,1.6f,-39.5f},c+vec3{side*41.9f,1.6f,39.5f},c+vec3{side*41.9f,18,39.5f},c+vec3{side*41.9f,18,-39.5f},{-side,0,0},2,0);
-        quad(c+vec3{-41.5f,23,-39.5f},c+vec3{41.5f,23,-39.5f},c+vec3{41.5f,23,39.5f},c+vec3{-41.5f,23,39.5f},{0,-1,0},2,0);
+        for(const auto& bay:lab::footprint(room))for(float x:{bay.left,bay.right}){
+            float side=x<0?-1.f:1.f,inside=x-side*.12f;
+            quad(c+vec3{inside,1.4f,bay.farZ},c+vec3{inside,1.4f,bay.nearZ},
+                 c+vec3{inside,14,bay.nearZ},c+vec3{inside,14,bay.farZ},{-side,0,0},2,0);
+        }
     }
     glBindVertexArray(0);glDepthMask(GL_TRUE);glDisable(GL_BLEND);glEnable(GL_CULL_FACE);
 }

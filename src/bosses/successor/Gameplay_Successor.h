@@ -9,7 +9,7 @@ inline void GameplayState::saySuccessor(int line){
 }
 inline void GameplayState::successorEvents(Enemy& e,const EnemyEvents& ev){
     if(successorHazards.epoch!=e.suEpoch){successorHazards.clear();successorHazards.epoch=e.suEpoch;}
-    if(ev.suPhaseStarted){saySuccessor(ev.suLine);if(ev.suPhaseStarted==1)successorIntroLine=2.7f;audio.play("anvil",90,SoundGroup::UI,true);}
+    if(ev.suPhaseStarted){saySuccessor(ev.suLine);if(ev.suPhaseStarted==1)successorIntroLine=4.6f;audio.play("anvil",90,SoundGroup::UI,true);}
     if(ev.suLine==6)saySuccessor(6);
     if(ev.suMark){fx.spawnShockwave(ev.suAt+glm::vec3{0,.08f,0},2.f,{.45f,.75f,1});audio.playAt("grapple_fire",ev.suAt,110,SoundGroup::ENEMY,true);}
     if(ev.suLock)audio.playAt("count_tick",e.position,100,SoundGroup::ENEMY,true);
@@ -21,8 +21,14 @@ inline void GameplayState::successorEvents(Enemy& e,const EnemyEvents& ev){
     }
     if(ev.suRecall)successorHazards.circle(ev.suAt,1.05f,24);
     if(ev.suEcho)successorHazards.circle(ev.suAt,1.05f,18,2);
+    if(ev.suBreaker){
+        successorHazards.circle(ev.suAt,.01f,32,3,4.8f,6.f);
+        fx.spawnShockwave(ev.suAt+glm::vec3{0,.08f,0},8.f,{1.7f,.1f,.25f});
+        fx.spawnBurst(ev.suAt+glm::vec3{0,.5f,0},{1.5f,.15f,.2f},26,9,.5f,12);
+        audio.playAt("anvil",ev.suAt,110,SoundGroup::ENEMY,true);shake(.35f,.05f);
+    }
     if(ev.suCore){
-        auto origin=e.position+glm::vec3{0,1.9f,0};auto dir=glm::normalize(player.camera.position-origin);
+        auto origin=e.position+glm::vec3{0,2.65f,0};auto dir=glm::normalize(player.camera.position-origin);
         auto* p=projSystem.fire(origin,dir*15.f,18,false,{1.4f,1.3f,1.f},false,0,1.1f,true);
         if(p){p->owner=e.uid;p->ownerType=(int)e.type;p->parryDamage=240;}
     }
@@ -51,6 +57,18 @@ inline void GameplayState::gatherSuccessor(std::vector<BoxInstance>& out){
         r.box(root,{0,0,0},{width,width,n},color,glow);
     };
     auto ring=[&](vec3 p,float radius,vec3 glow){for(int k=0;k<32;++k){float a=k*.19634954f;line(p+vec3{std::cos(a)*radius,.05f,std::sin(a)*radius},p+vec3{std::cos(a+.19635f)*radius,.05f,std::sin(a+.19635f)*radius},.11f,glow*.4f,glow);}};
+    if(laboratory() && level.arenaAt(player.position)==9){
+        float heat=0;for(const auto& boss:enemies)if(boss.alive && boss.type==EnemyType::SUCCESSOR)heat=1-boss.health/boss.maxHealth;
+        auto centre=lab::centre(9)+vec3{0,32,-12};
+        for(int orbit=0;orbit<2;++orbit){
+            float radius=94+orbit*15,tilt=orbit?.55f:-.32f,spin=gameClock*(orbit?-.025f:.035f);
+            for(int k=0;k<64;++k){if((k+orbit*3)%9==0)continue;
+                auto point=[&](float a){a+=spin;return centre+vec3{std::cos(a)*radius,std::sin(a)*radius*std::sin(tilt)+orbit*19,std::sin(a)*radius*std::cos(tilt)};};
+                float a=k*6.2831853f/64;
+                line(point(a),point(a+.075f),.42f,{.12f,.16f,.22f},glm::mix(vec3{.18f,.32f,.6f},vec3{.95f,.06f,.22f},heat)*.45f);
+            }
+        }
+    }
     for(const auto& m:successorHazards.marks){vec3 col=m.kind==2?vec3{.75f,.35f,1.3f}:vec3{1.5f,.25f,.2f};
         if(m.kind==1)line(m.a+vec3{0,.08f,0},m.b+vec3{0,.08f,0},m.radius*2,col*.4f,col);
         else ring(m.a,m.radius,col);
@@ -58,16 +76,32 @@ inline void GameplayState::gatherSuccessor(std::vector<BoxInstance>& out){
     for(const auto& e:enemies){if(!e.alive)continue;
         if(e.type==EnemyType::SUCCESSOR){
             if(e.telegraphTimer>0){
-                auto color=SuccessorState::white(e.attack)?vec3{2}:e.attack==AttackKind::SU_VECTOR||e.attack==AttackKind::SU_INCISION?abGoldTell(vec3{1.5f,1,.15f}):vec3{1.5f,.2f,.25f};
-                if(e.attack==AttackKind::SU_VECTOR)line(e.suFrom+vec3{0,.06f,0},e.suAim+vec3{0,.06f,0},2.7f,color*.25f,color*.7f);
+                auto color=SuccessorState::white(e.attack)?vec3{2}:e.attack==AttackKind::SU_VECTOR||e.attack==AttackKind::SU_INCISION||e.attack==AttackKind::SU_REAP?abGoldTell(vec3{1.5f,1,.15f}):vec3{1.5f,.2f,.25f};
+                if(e.attack==AttackKind::SU_VECTOR){
+                    auto d=e.suAim-e.suFrom;d.y=0;float n=glm::length(d);if(n>.01f){vec3 side{-d.z/n,0,d.x/n};
+                        for(float sign:{-1.f,1.f})line(e.suFrom+side*1.55f*sign+vec3{0,.06f,0},e.suAim+side*1.55f*sign+vec3{0,.06f,0},.09f,color*.3f,color);}
+                }
+                else if(e.attack==AttackKind::SU_REAP)ring(e.position,9.f,color);
+                else if(e.attack==AttackKind::SU_BREAKER){ring(e.suAim,4.8f,color);line(e.suAim+vec3{0,.1f,0},e.suAim+vec3{0,4,0},.09f,color*.3f,color);}
                 else if(e.attack==AttackKind::SU_RECALL)ring(e.suAim,2.8f,color);
-                else{ring(e.position,.95f,color*.6f);line(e.position+vec3{.4f,1.4f,.2f},e.position+vec3{.4f,2.2f,.2f},.09f,color,color);}
+                else{ring(e.position,1.2f,color*.6f);line(e.position+vec3{.6f,2,.2f},e.position+vec3{.6f,3.1f,.2f},.09f,color,color);}
             }
+            if(e.suAir>0)ring(e.suAim,4.8f,{1.8f,.1f,.22f});
             if(e.suCross>0){ring(e.suExit,2.f,{.4f,.85f,1.4f});line(e.suFrom+vec3{0,1,0},e.suExit+vec3{0,1,0},.055f,{.3f,.5f,.7f},{.5f,1,1.5f});}
-            if(e.suNodes>0)for(int k=0;k<2;++k){line(e.position+vec3{0,1.8f,0},e.suAnchor[k],.065f,{.6f,.3f,.35f},{.8f,.4f,.6f});r.box(T(e.suAnchor[k])*RY(gameClock),{0,0,0},{.7f,.7f,.7f},{.5f,.35f,.4f},{1.1f,.65f,.9f});}
-        }else if(e.type==EnemyType::SUSPENDED && (e.telegraphTimer>0||e.labBeam>0)){
-            line(e.position+vec3{0,1.7f,0},e.labAim,e.labBeam>0?.2f:.045f,{.45f,.3f,.7f},{.8f,.45f,1.2f});ring(e.labAim,1.2f,{.65f,.4f,1});
-        }else if(e.type==EnemyType::PHASED && (e.labCross>0||e.attack==AttackKind::LAB_CROSS)){ring(e.labExit,1.3f,{.4f,.8f,1.1f});}
+            if(e.suNodes>0)for(int k=0;k<2;++k){line(e.position+vec3{0,2.7f,0},e.suAnchor[k],.065f,{.6f,.3f,.35f},{.8f,.4f,.6f});r.box(T(e.suAnchor[k])*RY(gameClock),{0,0,0},{.7f,.7f,.7f},{.5f,.35f,.4f},{1.1f,.65f,.9f});}
+            if(e.suBurst>0 || e.suCross>0){
+                for(int k=1;k<=2;++k){Enemy ghost=e;
+                    ghost.position=e.suBurst>0?e.position-e.suDir*(k*2.5f):glm::mix(e.suFrom,e.position,1.f-k*.18f);
+                    ghost.spawnTimer=0;ghost.finishGlow=ghost.hitFlashTimer=0;size_t first=out.size();buildEnemy(ghost,gameClock,out);
+                    for(size_t n=first;n<out.size();++n){out[n].color={.035f,.008f,.018f};out[n].emissive=vec3{.85f,.015f,.07f}*(.5f/k);}
+                }
+            }
+            if(e.suSince<.18f && (e.suLanded==AttackKind::SU_INCISION || e.suLanded==AttackKind::SU_THRUST)){
+                float fade=1-e.suSince/.18f;
+                if(e.suLanded==AttackKind::SU_THRUST)line(e.position+vec3{0,2.2f,0},e.position+vec3{std::sin(e.yaw)*5,2.2f,std::cos(e.yaw)*5},.09f,{.3f,.05f,.08f},vec3{1.3f,.12f,.2f}*fade);
+                else for(int k=0;k<14;++k){float a=e.yaw-1.1f+k*.14f,b=a+.14f;line(e.position+vec3{std::sin(a)*4,2.3f,std::cos(a)*4},e.position+vec3{std::sin(b)*4,2.3f,std::cos(b)*4},.07f,{.3f,.05f,.08f},vec3{1.3f,.12f,.2f}*fade);}
+            }
+        }
     }
 }
 inline void GameplayState::renderSuccessorDialogue(){

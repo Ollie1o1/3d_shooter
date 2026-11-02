@@ -31,15 +31,16 @@ inline void GameplayState::updateTraining(float dt) {
     trainingRespawn-=dt;if(trainingRespawn>0)return;
     // Remove dead targets between repetitions, keeping the sandbox bounded.
     enemies.clear();trainingRespawn=1.5f;
-    static const EnemyType choices[]={EnemyType::HUSK,EnemyType::RIPPER,EnemyType::SENTINEL,
-        EnemyType::SHIELDBEARER,EnemyType::BRUTE,EnemyType::RAPTOR};
-    EnemyType type=trainingLesson==7?choices[trainingEnemy]:EnemyType::HUSK;
-    int count=trainingLesson==4 || trainingLesson==5?3:1;
+    bool squad=trainingLesson==7 && lessons::squad(trainingEnemy);
+    EnemyType type=trainingLesson==7?lessons::target(trainingEnemy):EnemyType::HUSK;
+    int count=squad?4:trainingLesson==4 || trainingLesson==5?3:1;
     for(int i=0;i<count;++i) {
+        if(squad)type=lessons::TARGETS[6+i];
         glm::vec3 at={float(i-(count/2))*3.f,0,-7};
+        if(squad){static const glm::vec3 starts[]={{-9,0,-6},{0,0,-8},{8,7,-7},{9,0,-2}};at=starts[i];}
         if(trainingLesson==1)at={0,0,7};
         if(trainingLesson==2)at={0,4,-14};
-        if(type==EnemyType::RAPTOR)at.y=6;
+        if(type==EnemyType::RAPTOR || type==EnemyType::SUSPENDED)at.y=7;
         spawnEnemy(type,at);
         auto& e=enemies.back();
         if(trainingLesson==1){e.health=e.maxHealth*.3f;e.staggerTimer=999.f;}
@@ -60,7 +61,7 @@ inline void GameplayState::handleGuideEvent(const SDL_Event& e) {
         if(k==SDLK_ESCAPE || k==SDLK_F4 || k==SDLK_p){close();return;}
         if(k==SDLK_UP || k==SDLK_LEFT)guideSelected=(guideSelected+lessons::COUNT-1)%lessons::COUNT;
         if(k==SDLK_DOWN || k==SDLK_RIGHT)guideSelected=(guideSelected+1)%lessons::COUNT;
-        if(training() && guideSelected==7 && k==SDLK_RIGHTBRACKET)trainingEnemy=(trainingEnemy+1)%6;
+        if(training() && guideSelected==7 && k==SDLK_RIGHTBRACKET)trainingEnemy=(trainingEnemy+1)%lessons::TARGET_COUNT;
         if(training() && (k==SDLK_RETURN || k==SDLK_SPACE)) {
             guideOpen=false;startTrainingLesson(guideSelected);return;
         }
@@ -88,8 +89,7 @@ inline void GameplayState::renderGuide() {
     auto lines=ui_text::wrap(lessons::action(guideSelected,binds()),58);
     float y=242;for(const auto& line:lines){b.text(line.c_str(),445,y,2,{.9f,.94f,.96f,1});y+=25;}
     if(training() && guideSelected==7) {
-        static const EnemyType types[]={EnemyType::HUSK,EnemyType::RIPPER,EnemyType::SENTINEL,EnemyType::SHIELDBEARER,EnemyType::BRUTE,EnemyType::RAPTOR};
-        std::string target=std::string("PAD X / ] TARGET: ")+statsOf(types[trainingEnemy]).name;
+        std::string target=std::string("PAD X / ] TARGET: ")+lessons::targetName(trainingEnemy);
         b.text(target.c_str(),445,y+10,1,{1,.8f,.4f,1});y+=25;
     }
     y+=30;for(const auto& line:ui_text::wrap(lessons::why(guideSelected),58)) {
@@ -110,8 +110,7 @@ inline void GameplayState::renderTraining() {
     }
     b.text("F4 FIELD GUIDE / PGUP-PGDN LESSON / BACKSPACE REPEAT / TAB ARMORY",SCREEN_W/2,84,1,{.6f,.78f,.85f,1},true);
     if(trainingLesson==7) {
-        static const EnemyType types[]={EnemyType::HUSK,EnemyType::RIPPER,EnemyType::SENTINEL,EnemyType::SHIELDBEARER,EnemyType::BRUTE,EnemyType::RAPTOR};
-        std::string target=std::string("[ / ] TARGET: ")+statsOf(types[trainingEnemy]).name;
+        std::string target=std::string("[ / ] TARGET: ")+lessons::targetName(trainingEnemy);
         b.text(target.c_str(),SCREEN_W/2,115,2,{1,.8f,.4f,1},true);
     }
     ui.end2D();

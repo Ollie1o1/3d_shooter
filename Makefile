@@ -159,7 +159,7 @@ web: $(SRC) $(HEADERS) web/index.html
 	    -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 \
 	    -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576 -sSTACK_OVERFLOW_CHECK=1 -sENVIRONMENT=web \
 	    --preload-file $(WEB_DATA)@/
-	cp web/index.html $(WEB_OUT)/
+	python3 tools/stamp_web.py $(WEB_OUT)
 
 # Exercise Story boss previews as real WebAssembly with a deliberately small
 # stack. Run after `make web` (which prepares the portable GLM include path).

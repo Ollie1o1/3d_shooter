@@ -667,7 +667,7 @@ inline void GameplayState::keepPlayerInZone(float dt) {
 
     // Void: back to the start of the section you fell out of
     int a = level.arenaAt(p);
-    if (a >= 0 && p.y < level.arenas[a].voidY) {
+    if (a >= 0 && p.y < level.voidHeightAt(a,p)) {
         resetToCheckpoint(a);
         if (!g_godMode) styleSystem.takeDamage(15.f);
         ui.onDamage();

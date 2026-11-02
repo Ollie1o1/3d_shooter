@@ -135,6 +135,7 @@ public:
     void successorEvents(Enemy& e,const EnemyEvents& ev);
     void updateSuccessor(float dt);
     void gatherSuccessor(std::vector<BoxInstance>& out);
+    void gatherLabDressing(std::vector<BoxInstance>& out);
     void renderSuccessorDialogue();
     bool shootSuccessorNode(glm::vec3 origin,glm::vec3 dir,float& range,float damage);
     int labCue=-1;SoundHandle labVoice=0,successorVoice=0;
@@ -1031,6 +1032,7 @@ public:
     struct PVert { float x, y, z, r, g, b, a; };
     void renderParticles(const glm::mat4& view, const glm::mat4& proj);
     void renderLabGlass(const glm::mat4& view,const glm::mat4& proj,glm::vec3 camPos);
+    void renderLabAtmosphere(const glm::mat4& view,const glm::mat4& proj,glm::vec3 camPos);
     void renderWater(const glm::mat4& view, const glm::mat4& proj, const Theme& th, glm::vec3 camPos);
     void drawPoints(const PVert* buf, int count, const glm::mat4& view, const glm::mat4& proj);
 
@@ -1093,3 +1095,4 @@ public:
 #include "game/Gameplay_Lab.h"
 
 #include "bosses/successor/Gameplay_Successor.h"
+#include "game/Gameplay_LabDressing.h"

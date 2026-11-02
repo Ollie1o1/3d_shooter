@@ -1,7 +1,7 @@
 #pragma once
 #include "player/Weapons.h"
 #include "player/Projectile.h"
-struct LabBossResult {float seconds=0,damage=0,health=100,lowest=100;int hits=0,parries=0;bool won=false;std::set<AttackKind> moves;};
+struct LabBossResult {float seconds=0,damage=0,health=100,lowest=100;int hits=0,parries=0;bool won=false;int melee=0,sweep=0,marks=0,bullets=0;std::set<AttackKind> moves;};
 // A fixed, reproducible input policy. It uses real controller acceleration,
 // collision, ammo/reload and occluded hitscan. Its deliberately imperfect aim
 // is a tuning instrument, not a claim about a human player's skill.
@@ -21,28 +21,39 @@ inline LabBossResult labBossRun(LevelData level,bool reactive,WeaponId weapon,fl
         auto to=e.position-p.position;to.y=0;float distance=glm::length(to);auto forward=distance>.01f?to/distance:glm::vec3{0,0,-1};glm::vec3 side{-forward.z,0,forward.x};
         auto move=side+(distance<9?-forward*.8f:distance>16?forward*.8f:glm::vec3{0});bool dodge=false;
         if(reactive){
-            if(e.attack==AttackKind::SU_INCISION && e.telegraphTimer>0 && distance<7){move=-forward+side*.5f;dodge=true;}
-            if((e.attack==AttackKind::SU_VECTOR&&e.telegraphTimer<.4f)||e.suBurst>0){auto d=e.suAim-e.suFrom;d.y=0;if(glm::length(d)>.1f&&machineryDistance(p.position,e.suFrom,e.suAim)<4){d=glm::normalize(d);glm::vec3 normal{-d.z,0,d.x};float sign=glm::dot(p.position-e.suFrom,normal)>=0?1.f:-1.f;move=normal*sign;dodge=true;}}
+            if(e.attack==AttackKind::SU_INCISION && e.telegraphTimer>0 && distance<10){move=-forward+side*.5f;dodge=true;}
+            if((e.attack==AttackKind::SU_VECTOR&&e.telegraphTimer<=SuccessorState::TRACK_LOCK)||e.suBurst>0){auto d=e.suAim-e.suFrom;d.y=0;if(glm::length(d)>.1f&&machineryDistance(p.position,e.suFrom,e.suAim)<4){d=glm::normalize(d);glm::vec3 normal{-d.z,0,d.x};float sign=glm::dot(p.position-e.suFrom,normal)>=0?1.f:-1.f;move=normal*sign;dodge=true;}}
             for(const auto& mark:hazards.marks)if(mark.wait>0 && mark.wait<.65f && machineryDistance(p.position,mark.a,mark.b)<mark.radius+2){move=p.position-mark.a;move.y=0;dodge=true;}
-            if(e.parryWindow()&&distance<5.1f){e.stagger(1.35f);++result.parries;result.health=std::min(100.f,result.health+8*tune.heal);hazards.clear();immunity=.5f;}
+            if(((e.attack==AttackKind::SU_BREAKER && e.telegraphTimer>0 && e.telegraphTimer<=SuccessorState::TRACK_LOCK) || e.suAir>0) && glm::length(p.position-e.suAim)<7){move=p.position-e.suAim;move.y=0;dodge=true;}
+            if(SuccessorState::white(e.attack) && e.telegraphTimer>0 && distance>4.5f){move=forward;dodge=false;}
+            if(e.parryWindow()&&distance<SuccessorState::PARRY_REACH){e.stagger(1.1f);++result.parries;result.health=std::min(100.f,result.health+8*tune.heal);hazards.clear();immunity=.5f;}
         }
+        // Stay on the assessment floor; the controller can deliberately jump its
+        // low perimeter rails, so a circling policy must also read the edge.
+        auto centre=(a.bounds.min+a.bounds.max)*.5f;
+        if(p.position.x<centre.x-52 && move.x<0)move.x=1;
+        if(p.position.x>centre.x+52 && move.x>0)move.x=-1;
+        if(p.position.z>centre.z+32 && move.z>0)move.z=-1;
+        if(p.position.z<centre.z-32 && move.z<0)move.z=1;
         if(glm::length(move)>.01f)move=glm::normalize(move);
         if(reactive&&dodge&&dashClock<=0){p.velocity=move*26.f;dashClock=1.2f;immunity=.15f;}
-        Uint8 keys[SDL_NUM_SCANCODES]={};keys[SDL_SCANCODE_W]=1;p.camera.yaw=glm::degrees(std::atan2(move.z,move.x));applyWater(p,level);
+        Uint8 keys[SDL_NUM_SCANCODES]={};keys[SDL_SCANCODE_W]=1;if(reactive && e.attack==AttackKind::SU_REAP && e.telegraphTimer<.3f && distance<11)keys[SDL_SCANCODE_SPACE]=1;p.camera.yaw=glm::degrees(std::atan2(move.z,move.x));applyWater(p,level);
         auto before=p.position;p.update(DT,keys,level.walls.data(),(int)level.walls.size(),false,&grid);
         p.position.x=glm::clamp(p.position.x,a.bounds.min.x+1,a.bounds.max.x-1);p.position.z=glm::clamp(p.position.z,a.bounds.min.z+1,a.bounds.max.z-1);
-        EnemyWorld w;w.bounds=a.bounds;w.walls=level.walls.data();w.wallCount=(int)level.walls.size();w.grid=&grid;w.tune=&tune;
+        EnemyWorld w;w.bounds=a.bounds;w.walls=level.walls.data();w.wallCount=(int)level.walls.size();w.grid=&grid;w.tune=&tune;w.voidUnder=true;
         w.playerFeet=p.position;w.playerEye=p.position+glm::vec3{0,1.7f,0};w.playerVel=(p.position-before)/DT;
         e.floorY=level.groundAt(e.position.x,e.position.z,e.position.y+.5f);e.update(DT,w);
         if(e.attack!=AttackKind::NONE)result.moves.insert(e.attack);
         const auto& ev=e.ev;if(hazards.epoch!=e.suEpoch){hazards.clear();hazards.epoch=e.suEpoch;}
-        if(ev.meleeHit)hurt(ev.meleeDamage);
+        if(ev.meleeHit){if(immunity<=0)++result.melee;hurt(ev.meleeDamage);}
+        if(ev.slam && glm::length(glm::vec2{p.position.x-e.position.x,p.position.z-e.position.z})<ev.slamRadius && p.position.y<e.floorY+.9f && p.position.y>e.floorY-1.5f){if(immunity<=0)++result.sweep;hurt(ev.slamDamage);}
+        if(ev.suBreaker)hazards.circle(ev.suAt,.01f,32,0,4.8f,6.f);
         if(ev.suSuture){auto a=ev.suAt,b=ev.suTo;a.y=b.y=e.floorY;auto d=glm::normalize(b-a);hazards.line(a,a+d*23.f,.8f);hazards.line(b,b-d*23.f,.8f);}
         if(ev.suRecall||ev.suEcho)hazards.circle(ev.suAt,1.05f,ev.suEcho?18:24);
-        float damage=0;hazards.update(DT,p.position,damage);if(damage>0)hurt(damage);
+        float damage=0;hazards.update(DT,p.position,damage);if(damage>0){if(immunity<=0)++result.marks;hurt(damage);}
         for(int k=0;k<ev.shots;++k)projectiles.fire(ev.shotOrigin,ev.shotDir[k]*ev.shotSpeed,ev.shotDamage,false,{1,1,1},false,0,ev.shotSize,false);
-        if(ev.suCore){auto from=e.position+glm::vec3{0,1.9f,0};projectiles.fire(from,glm::normalize(w.playerEye-from)*15.f,18,false,{1,1,1},false,0,1.1f,true);}
-        auto shots=projectiles.update(DT,level.walls.data(),(int)level.walls.size(),none,w.playerEye,&grid);if(shots.hitPlayer)hurt(shots.playerDamage);
+        if(ev.suCore){auto from=e.position+glm::vec3{0,2.65f,0};projectiles.fire(from,glm::normalize(w.playerEye-from)*15.f,18,false,{1,1,1},false,0,1.1f,true);}
+        auto shots=projectiles.update(DT,level.walls.data(),(int)level.walls.size(),none,w.playerEye,&grid);if(shots.hitPlayer){if(immunity<=0)++result.bullets;hurt(shots.playerDamage);}
         gun.tick(DT,weaponMag(weapon,upgrades));if(gun.ammo==0&&!gun.reloading)gun.startReload(weaponReload(weapon,upgrades));
         if(gun.ready()&&!dodge && e.suPause<=0){
             --gun.ammo;gun.cooldown=weaponCooldown(weapon,upgrades);++attempts;
@@ -54,5 +65,7 @@ inline LabBossResult labBossRun(LevelData level,bool reactive,WeaponId weapon,fl
             }
         }
     }
-    result.won=!e.alive;return result;
+    result.won=!e.alive;std::printf("  damage sources: melee %d / sweep %d / marks %d / projectiles %d\n",result.melee,result.sweep,result.marks,result.bullets);
+    if(!result.won)std::printf("  boss rehearsal stopped: player %.1f %.1f %.1f, boss %.1f %.1f %.1f HP %.0f\n",p.position.x,p.position.y,p.position.z,e.position.x,e.position.y,e.position.z,e.health);
+    return result;
 }

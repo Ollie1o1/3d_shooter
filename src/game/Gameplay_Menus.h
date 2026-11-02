@@ -67,6 +67,7 @@ inline void GameplayState::padButton(Uint8 b) {
     }
     if (victory) { key(b == SDL_CONTROLLER_BUTTON_A ? SDLK_RETURN : b == SDL_CONTROLLER_BUTTON_B ? SDLK_ESCAPE : SDLK_UNKNOWN); return; }
     if (guideOpen) { key(b==SDL_CONTROLLER_BUTTON_X ? SDLK_RIGHTBRACKET : gamepad::menuKey(b)); return; }
+    if(training() && trainingLesson==7 && !paused && !armoryOpen && b==SDL_CONTROLLER_BUTTON_X){key(SDLK_RIGHTBRACKET);return;}
     if (armoryOpen && b == SDL_CONTROLLER_BUTTON_X) { key(SDLK_m); return; }
     if (armoryOpen) { key(b == SDL_CONTROLLER_BUTTON_BACK ? SDLK_TAB : gamepad::menuKey(b)); return; }
     if (paused) { key(gamepad::menuKey(b)); return; }
@@ -167,7 +168,7 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
             startTrainingLesson((trainingLesson+(key==SDLK_PAGEUP?lessons::COUNT-1:1))%lessons::COUNT);return;
         }
         if(trainingLesson==7 && (key==SDLK_LEFTBRACKET || key==SDLK_RIGHTBRACKET)) {
-            trainingEnemy=(trainingEnemy+(key==SDLK_LEFTBRACKET?5:1))%6;
+            trainingEnemy=(trainingEnemy+(key==SDLK_LEFTBRACKET?lessons::TARGET_COUNT-1:1))%lessons::TARGET_COUNT;
             startTrainingLesson(7);return;
         }
     }

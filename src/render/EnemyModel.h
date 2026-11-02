@@ -233,6 +233,7 @@ inline FilePose humanoidPose(const HumanoidMotion& mo, vec3 glow) {
 inline PoseOverride sovereignPose(const Enemy& e);   // (below)
 inline PoseOverride penitentPose(const Enemy& e);    // (below)
 inline bool absoluteFilePose(const Enemy& e, float time, const mat4& root, mat4& fileRoot, FilePose& P, vec3& glowOut);   // (AbsoluteRig.h)
+inline bool successorFilePose(const Enemy& e,float time,const mat4& root,mat4& fileRoot,FilePose& P,vec3& glowOut);
 inline bool pacemakerFilePose(const Enemy& e, float time, const mat4& root, mat4& fileRoot, FilePose& P, vec3& glowOut);  // (below)
 // The SOVEREIGN's cape (and its hem, which lags it), from how fast he's going
 inline void sovereignCape(const Enemy& e, float time, float& cape, float& hem) {
@@ -293,7 +294,10 @@ inline bool playClip(const char* fileName, const char* clipName, float progress,
 // Every enemy with a file: where its file is drawn from (fileRoot) and how its joints
 // turn and its glow channels shine this frame, from its state: the same numbers its
 // code rig uses. false for a type with no file rig. (Also what tools/enemy_export.cpp reads.)
+#include "render/LabSubjectPose.h"
 inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileRoot, FilePose& P, vec3& glowOut) {
+    if(e.type==EnemyType::SUCCESSOR)return successorFilePose(e,time,root,fileRoot,P,glowOut);
+    if(e.type>=EnemyType::PATIENT&&e.type<=EnemyType::PHASED){labSubjectPose(e,time,root,fileRoot,P,glowOut);return true;}
     using namespace enemyfile;
     const EnemyStats& st = e.stats();
     float tp = e.telegraphProgress();
@@ -316,19 +320,38 @@ inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileR
         P.motion[E_ARML]=RX(-swing*.7f)*RZ(.07f);P.motion[E_ARMR]=RX(swing*.7f)*RZ(-.07f);
         P.motion[E_ELBOW_L]=RX(-.18f-run*.3f);P.motion[E_ELBOW_R]=RX(-.18f-run*.3f);
         P.motion[E_TORSO]=RX(-run*.11f)*RY(std::sin(step)*.055f*run);
+        if(e.type==EnemyType::GRAFTED){
+            P.motion[E_TORSO]=RX(.12f)*RZ(std::sin(step)*.045f*run);
+            P.motion[E_ARML]=RX(-.55f)*RZ(.25f);P.motion[E_ELBOW_L]=RX(-1.1f);
+        }
+        if(e.type==EnemyType::PHASED)P.motion[E_TORSO]*=RY(std::sin(time*8.f)*.09f);
         if(floating){P.motion[E_ARML]=RZ(.6f+tp*.5f);P.motion[E_ARMR]=RZ(-.6f-tp*.5f);P.motion[E_HIPL]=RX(.12f);P.motion[E_HIPR]=RX(-.1f);}
         if(e.telegraphTimer>0 || e.dashTimer>0 || (boss&&e.suBurst>0)){
-            float lift=smooth01c(tp);
+            float lift=(!boss && e.dashTimer>0)?1.f:smooth01c(tp);
             P.motion[E_ARMR]=RX(-1.6f*lift)*RZ(-.28f);
             P.motion[E_ARML]=RX(-.7f*lift)*RZ(.3f);
             P.motion[E_ELBOW_R]=RX(-.7f*(1-lift));
             if(e.attack==AttackKind::SU_SUTURE||e.attack==AttackKind::SU_PERFUSION){P.motion[E_ARML]=RZ(1.2f*lift);P.motion[E_ARMR]=RZ(-1.2f*lift);}
             if(e.attack==AttackKind::SU_VECTOR||e.attack==AttackKind::LAB_LUNGE){P.motion[E_TORSO]=RX(-.45f*lift);P.motion[E_ARML]=RX(.8f*lift);}
+            if(e.attack==AttackKind::LAB_PRESS){P.motion[E_TORSO]=RX(-.25f*lift);P.motion[E_ARML]=RX(-2.2f*lift)*RZ(.4f);P.motion[E_ARMR]=RX(-2.2f*lift)*RZ(-.4f);}
+            if(e.attack==AttackKind::LAB_BEAM){P.motion[E_ARML]=RZ(.9f+lift*.6f);P.motion[E_ARMR]=RZ(-.9f-lift*.6f);}
+            if(!boss && e.dashTimer>0)P.motion[E_TORSO]=RX(-.5f);
         }
-        if(e.staggered()){P.motion[E_TORSO]=RX(.3f);P.motion[E_HEAD]=RX(.2f);}
         P.motion[E_HEAD]=RY(std::sin(time*.6f)*.045f);
         P.chan[C_EYE]=st.glow;P.chan[C_CORE]=glow;P.chan[C_GLOW]=glow;
+        if(!boss){
+            vec3 tell=e.parryWindow()?vec3{2.2f}:e.attack==AttackKind::LAB_PRESS?abGoldTell(vec3{1.8f,1.1f,.15f}):e.attack==AttackKind::LAB_BEAM?vec3{1.3f,.45f,2.f}:st.glow;
+            if(e.telegraphTimer>0 || e.dashTimer>0){P.chan[C_EYE]=tell;P.chan[C_CORE]=tell*(1+tp);}
+            if(e.labOpen>0 || e.staggered()){
+                P.chan[C_CORE]=vec3{.25f,1.6f,1.8f}*(.85f+.15f*std::sin(time*12));
+                if(e.recoverTimer>0)P.motion[E_TORSO]=RX(.22f);
+            }
+        }
         if(boss && e.telegraphTimer>0){vec3 tell=SuccessorState::white(e.attack)?vec3{2}:e.attack==AttackKind::SU_VECTOR||e.attack==AttackKind::SU_INCISION?abGoldTell(vec3{1.8f,1.1f,.15f}):vec3{1.6f,.25f,.3f};P.chan[C_CORE]=tell*(.8f+tp);}
+        if(e.staggered() || e.stunned()){
+            P.motion[E_TORSO]=RX(.32f);P.motion[E_HEAD]=RX(.25f);
+            P.motion[E_ARML]=RX(.2f)*RZ(.2f);P.motion[E_ARMR]=RX(.25f)*RZ(-.15f);
+        }
         glowOut=glow;return true;
     }
     if(e.type==EnemyType::BALLAST) {
@@ -902,6 +925,7 @@ inline PoseOverride penitentPose(const Enemy& e) {
 inline vec3 brassOf() { return {0.6f, 0.45f, 0.22f}; }
 
 #include "bosses/absolute/AbsoluteRig.h"   // THE ABSOLUTE's body
+#include "bosses/successor/SuccessorRig.h"
 
 // THE LEVIATHAN's body from its file: the one segment there (on "body") laid along each stretch of its
 // curve (leviathanBody), scaled to the stretch's radius and length; each seam pulses a beat after the last
@@ -1436,9 +1460,39 @@ inline void leviathanSegments(const Enemy& e, float time, Rig& r, const gunkit::
     }
 }
 
+// These marks describe the actual attack geometry, at every detail setting.
+inline void labEnemyTell(const Enemy& e,float time,Rig& r){
+    if(!e.targetable() || e.type<EnemyType::PATIENT || e.type>EnemyType::PHASED)return;
+    auto ring=[&](vec3 at,float radius,vec3 glow){
+        for(int k=0;k<32;++k){float a=k*6.2831853f/32;
+            r.box(T(at+vec3{std::cos(a)*radius,.07f,std::sin(a)*radius})*RY(-a),{0,0,0},{.13f,.06f,radius*.13f},glow*.25f,glow);
+        }
+    };
+    if(e.attack==AttackKind::LAB_PRESS && e.telegraphTimer>0){
+        auto gold=abGoldTell(vec3{1.7f,1.05f,.15f});ring(e.position,6,gold);
+        for(int k=0;k<4;++k){float a=k*1.5707963f;
+            r.box(T(e.position+vec3{std::cos(a)*6,.6f,std::sin(a)*6}),{0,0,0},{.1f,1.1f,.1f},gold*.3f,gold);
+        }
+    }
+    if((e.type==EnemyType::PATIENT || e.type==EnemyType::PHASED) && e.attack==AttackKind::LAB_LUNGE && e.telegraphTimer>0){
+        vec3 d=e.labAim-e.position;d.y=0;float n=glm::length(d);if(n>.01f){
+            d/=n;float yaw=std::atan2(d.x,d.z);vec3 glow=e.parryWindow()?vec3{1.8f}:vec3{.5f,.8f,1.4f};
+            for(float at=1;at<8.36f;at+=1.2f)r.box(T(e.position+d*at+vec3{0,.06f,0})*RY(yaw),{0,0,0},{.09f,.06f,.6f},glow*.3f,glow);
+        }
+    }
+    if(e.type==EnemyType::PHASED && (e.attack==AttackKind::LAB_CROSS || e.labCross>0)){
+        vec3 glow{.25f,1.3f,1.7f};ring(e.labExit,.9f,glow);
+        float pulse=.7f+.3f*std::sin(time*14);
+        for(float side:{-1.f,1.f})r.box(T(e.labExit),{side*.5f,1.2f,0},{.07f,2.4f,.07f},glow*.3f,glow*pulse);
+        r.box(T(e.labExit),{0,2.4f,0},{1.05f,.07f,.07f},glow*.3f,glow);
+        r.box(T(e.labExit),{0,1.35f,0},{.65f,.08f,.07f},glow*.3f,glow);
+    }
+}
+
 inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out) {
     const EnemyStats& st = e.stats();
     Rig r{out};
+    labEnemyTell(e,time,r);
     r.flash = glm::clamp(e.hitFlashTimer / 0.12f, 0.f, 1.f);
     r.spawn = 1.f - e.spawnTimer / Enemy::SPAWN_TIME;
     float grow = 0.05f + 0.95f * smooth01(r.spawn);
@@ -1489,7 +1543,7 @@ inline bool headBox(const Enemy& e, AABB& out) {
             enemyfile::restLocals(*model,local,parent);for(auto& m:W)m=fileRoot;
             for(const auto& j:model->joints)W[j.id]=W[j.parent]*local[j.id]*pose.motion[j.id];
             auto frame=W[enemyfile::E_HEAD];float sy=e.stats().height/2.65f;
-            float wide=e.type==EnemyType::GRAFTED?1.5f:e.type==EnemyType::SUSPENDED?.88f:e.type==EnemyType::PHASED?.94f:1.f;
+            float wide=e.type==EnemyType::GRAFTED?1.5f:e.type==EnemyType::SUSPENDED?.88f:e.type==EnemyType::PHASED?.94f:e.type==EnemyType::SUCCESSOR?1.25f:1.f;
             vec3 c=vec3(frame*glm::vec4{0,.01f*sy,.04f*wide,1}),half{.21f*wide,.225f*sy,.21f*wide};
             glm::mat3 m(frame);vec3 ext=glm::abs(m[0])*half.x+glm::abs(m[1])*half.y+glm::abs(m[2])*half.z;
             out={c-ext,c+ext};return true;

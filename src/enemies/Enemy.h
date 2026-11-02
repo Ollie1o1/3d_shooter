@@ -189,6 +189,10 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     bool  splitsOnDeath() const { return hollow == Hollow::TWINNED; }
     // SERAPH: a hit during the charge - a big one, or the head - cancels it
     bool onBeamHit(float dmg, bool head) {
+        if(type==EnemyType::SUSPENDED && (labBeam>0 || (attack==AttackKind::LAB_BEAM && telegraphTimer>0))){
+            if(dmg<40 && !head)return false;
+            stun(.65f);labOpen=1.5f;recoverTimer=1.2f;return true;
+        }
         if (type != EnemyType::SERAPH || attack != AttackKind::BEAM || telegraphTimer <= 0.f) return false;
         if (dmg < 40.f && !head) return false;
         attack = AttackKind::NONE; telegraphTimer = 0.f; attackTimer = 0.f;
@@ -258,6 +262,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     // and the ones you can't see take longer to get round to it. True / 1 outside the game
     bool  mayAttack  = true;
     float attackPace = 1.f;
+    float attackWait = 0.f;     // waiting threats eventually get a turn
     float finishGlow = 0.f;      // render only: 0..1, a punch would finish it (set per frame on the drawn copy)
     // Feeling your aim on it (the light gunners): held there a moment, it sidesteps
     float aimedT = 0.f, dodgeT = 0.f, dodgeCd = 0.f;
@@ -363,13 +368,19 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     }
     bool  targetable() const { return alive && state == EnemyState::ACTIVE && !levHidden() && !(type == EnemyType::ABSOLUTE && (abArrive > 0.f || abSwallow > 0.f)); }
     bool  staggered() const  { return staggerTimer > 0.f; }
+    bool attackBusy() const {
+        return telegraphTimer>0 || burstLeft>0 || diveTimer>0 || beamTimer>0 ||
+               dashTimer>0 || labBeam>0 || labCross>0;
+    }
     // The moment a melee blow can be punched back: a JUGGERNAUT's smash (its
     // last 0.4 s), a SOVEREIGN's sweep or cleave (its last quarter second)
     bool  parryWindow() const {
         // THE WARDEN's lunge: its last quarter second, or in flight until it connects (it comes into reach)
         if ((type == EnemyType::WARDEN || type == EnemyType::PACEMAKER) && dashTimer > 0.f && !dashHit) return true;   // (and THE PACEMAKER's dash)
+        if((type==EnemyType::PATIENT || type==EnemyType::PHASED) && dashTimer>0 && !dashHit)return true;
         if (telegraphTimer <= 0.f) return false;
         if(type==EnemyType::SUCCESSOR)return SuccessorState::white(attack)&&telegraphTimer<.26f;
+        if(type==EnemyType::PATIENT || type==EnemyType::PHASED)return (attack==AttackKind::LAB_LUNGE&&telegraphTimer<.24f)||(attack==AttackKind::LAB_SWIPE&&telegraphTimer<.2f);
         if (type == EnemyType::BALLAST) return (attack==AttackKind::BALL_ANCHOR||attack==AttackKind::BALL_WINCH)&&telegraphTimer<.28f;
         if (type == EnemyType::SORTER) return attack == AttackKind::SORT_GRAB && telegraphTimer < .25f;
         if (type == EnemyType::WARDEN) return attack == AttackKind::WLUNGE && telegraphTimer < 0.25f;
@@ -403,7 +414,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     }
     void onDeflect() { if (riposteCd <= 0.f) { riposte = true; riposteCd = 1.4f; } }
     // How long a parry leaves it broken
-    float staggerTime() const { return type == EnemyType::ABSOLUTE ? AB_BREAK : type == EnemyType::LEVIATHAN ? LV_STAGGER : type == EnemyType::SOVEREIGN ? 3.f : type == EnemyType::WARDEN ? 2.f : type == EnemyType::SHIELDBEARER ? 2.2f : type == EnemyType::BULWARK ? 2.8f : type == EnemyType::PACEMAKER ? 2.6f : 2.5f; }
+    float staggerTime() const { return type==EnemyType::PATIENT||type==EnemyType::PHASED?1.2f:type == EnemyType::ABSOLUTE ? AB_BREAK : type == EnemyType::LEVIATHAN ? LV_STAGGER : type == EnemyType::SOVEREIGN ? 3.f : type == EnemyType::WARDEN ? 2.f : type == EnemyType::SHIELDBEARER ? 2.2f : type == EnemyType::BULWARK ? 2.8f : type == EnemyType::PACEMAKER ? 2.6f : 2.5f; }
     // SHIELDBEARER: does its shield stop a shot travelling along dir? (From
     // the front, while it's standing; a broken one has its shield knocked aside)
     bool blocks(glm::vec3 dir) const {
@@ -417,6 +428,8 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     // Damage multiplier from armor: the JUGGERNAUT shrugs off half unless
     // broken; a broken SOVEREIGN takes half again
     float armorMult() const {
+        if(type>=EnemyType::PATIENT && type<=EnemyType::PHASED)
+            return staggered()?1.75f:labOpen>0?(type==EnemyType::GRAFTED?1.5f:1.35f):1.f;
         if(type==EnemyType::SUCCESSOR)return staggered()?1.75f:suOpen>0?1.3f:1.f;
         if (type == EnemyType::BALLAST) return staggered()?1.8f:ballOpen>0.f?1.f:.85f;
         if (type == EnemyType::SORTER) return staggered()?2.f:sortOpen>0.f?1.f:.9f;
@@ -429,7 +442,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         return staggered() ? 2.f : 0.5f;
     }
     void stagger(float t) {
-        if(type==EnemyType::SUCCESSOR){suBurst=suCross=suNodes=0;suStep=0;suFinalStep=-1;suOpen=t;suLocked=false;++suEpoch;}
+        if(type==EnemyType::SUCCESSOR){suBurst=suCross=suNodes=suAir=0;suStep=suDashes=suVolley=0;suFinalStep=-1;suSince=9;suOpen=t;suLocked=false;++suEpoch;}
         if(type>=EnemyType::PATIENT && type<=EnemyType::PHASED){labBeam=labCross=dashTimer=0.f;labOpen=std::max(labOpen,.8f);}
         ballDrive=ballTether=ballVolleyT=0;ballVolley=0;ballFollow=AttackKind::NONE;
         sortRush=sortFire=0;sortVolley=0;sortNext=AttackKind::NONE;sortFollowups=0;sortLocked=sortDropCued=false;
@@ -500,6 +513,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     }
 
     AABB getAABB() const {
+        if(type==EnemyType::SUCCESSOR)return {position+glm::vec3{-1.05f,0,-1.15f},position+glm::vec3{1.05f,height(),.85f}};
         if(type==EnemyType::BALLAST) {
             // Shots reach the grader blade, outriggers and turbine. Its smaller
             // navigation radius is independent of this visible shooting hull.
@@ -556,6 +570,8 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         }
         leadVel_ = w.playerVel * tune_->lead;
         age += dt;
+        if(!mayAttack && !attackBusy() && recoverTimer<=0 && !stunned() && !staggered())
+            attackWait=std::min(4.f,attackWait+dt);
         if (hitFlashTimer > 0.f) hitFlashTimer -= dt;
         pressure *= std::exp(-dt);
         if (evadeCd > 0.f) evadeCd -= dt;
@@ -692,6 +708,8 @@ private:
         if(type==EnemyType::SORTER||type==EnemyType::BALLAST)
             windup=std::max(windup,k==AttackKind::SORT_STAMP||k==AttackKind::SORT_ROW||k==AttackKind::SORT_PURGE||k==AttackKind::BALL_GUST?.95f:.8f);
         if(type==EnemyType::SUCCESSOR)windup=std::max(windup,followUp?.28f:.42f);
+        if(type>=EnemyType::PATIENT&&type<=EnemyType::PHASED)windup=std::max(windup,.5f);
+        attackWait=0;
         attack            = k;
         tellFollow        = followUp;
         telegraphDuration = windup;

@@ -236,6 +236,10 @@ struct Arena {
     int         entryGate = -1;  // door behind you once you're in (index into doors)
     int         exitDoor  = -1;
     float       voidY = -1e9f;   // fall below this inside the zone: back to the checkpoint
+    // Descending passages can be lower than their owning room's kill plane.
+    // Local limits keep those walkways safe while retaining recovery below them.
+    struct FallRegion { AABB box; float voidY; };
+    std::vector<FallRegion> fallRegions;
     // FAST: the fight starts when the player walks into this box. The stretch
     // before it (from playerStart) is a breather with health to pick up.
     AABB        trigger{{0, 0, 0}, {0, 0, 0}};
@@ -566,6 +570,17 @@ struct LevelData {
         std::vector<Terminal> terminals;
         struct LabBridge {int room,side,mover;};
         std::vector<LabBridge> labBridges;
+        // Chapter 3 dressing that moves (LabDressing.h builds it, Gameplay_LabDressing.h draws it):
+        // light shafts, drifting debris, specimen-tank currents, arcing power and the portal.
+        struct LabBeam {glm::vec3 top,bottom;float r0,r1;glm::vec3 color;int room;};
+        struct LabDrift {glm::vec3 pos,size,color;int kind,room;float phase,spin;};
+        struct LabTank {glm::vec3 base;float r,h;glm::vec3 color;int room;};
+        struct LabArc {glm::vec3 a,b,color;int room;};
+        std::vector<LabBeam> labBeams;
+        std::vector<LabDrift> labDrift;
+        std::vector<LabTank> labTanks;
+        std::vector<LabArc> labArcs;
+        glm::vec3 labPortal{0.f};float labPortalRadius=0;
         struct Vent { glm::vec3 pos; int section; float period,phase; };
         std::vector<Vent> vents;
         struct BossCover { int wall; AABB home; };
@@ -647,6 +662,14 @@ struct LevelData {
             for (const auto& b : arenas[i].extraZones) if (inside(b)) return i;
         }
         return -1;
+    }
+
+    float voidHeightAt(int arena, glm::vec3 p) const {
+        float y=arenas[arena].voidY;
+        for(const auto& r:arenas[arena].fallRegions)
+            if(p.x>=r.box.min.x && p.x<=r.box.max.x && p.z>=r.box.min.z && p.z<=r.box.max.z)
+                y=std::min(y,r.voidY);
+        return y;
     }
 
     // Lighting for a position: an arena's own theme, or a blend while walking

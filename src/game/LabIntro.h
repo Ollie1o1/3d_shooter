@@ -8,11 +8,12 @@ struct LabIntro {
     static constexpr float DURATION=23.f, SKIP_HOLD=.65f;
     float time=-1.f, skip=0;
     bool seen=false;
+    bool skipReady=false; // a menu's held Jump/Space must be released first
     bool active() const {return time>=0;}
-    void start(bool alreadySeen){seen=alreadySeen;time=seen?-1.f:0.f;skip=0;}
+    void start(bool alreadySeen){seen=alreadySeen;time=seen?-1.f:0.f;skip=0;skipReady=false;}
     bool update(float dt,bool held){
         if(!active())return false;
-        time+=dt;skip=held?skip+dt:0;
+        time+=dt;if(!held)skipReady=true;skip=held&&skipReady?skip+dt:0;
         if(time>=DURATION || (time>1 && skip>=SKIP_HOLD)){seen=true;time=-1;skip=0;return true;}
         return false;
     }

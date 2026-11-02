@@ -136,6 +136,32 @@ static void checkImprovements(AudioSystem& audio) {
         press(game,SDLK_TAB);press(game,SDLK_F4);press(game,SDLK_ESCAPE);
         CHECK(!game.paused && !game.guideOpen,"F4 reference returns directly to the previous live game");
         game.render();screenshot("build/combat-practice.bmp");
+        bool targets=true;
+        for(int choice=0;choice<lessons::TARGET_COUNT;++choice){
+            game.trainingEnemy=choice;game.startTrainingLesson(7);game.updateTraining(.2f);
+            targets&=game.enemies.size()==(lessons::squad(choice)?4u:1u);
+            for(const auto& e:game.enemies)targets&=!bodyEmbedded(game.level.walls,game.level.moverWalls,game.spatialGrid,e.position,e.radius(),e.height());
+        }
+        CHECK(targets,"every free-practice target and the mixed Ward squad spawn with real capsule clearance");
+        game.trainingEnemy=lessons::SOLO_TARGETS-1;game.startTrainingLesson(7);
+        game.padButton(SDL_CONTROLLER_BUTTON_X);game.updateTraining(.2f);
+        CHECK(lessons::squad(game.trainingEnemy)&&game.enemies.size()==4,"controller X can select and play the mixed Ward squad during free practice");
+        const glm::vec3 display[]={{-6,0,0},{0,0,-4},{5,6,-4},{8,0,-1}};
+        for(int n=0;n<4;++n){auto& e=game.enemies[n];e.position=display[n];e.prevPosition=e.position;e.state=EnemyState::ACTIVE;e.spawnTimer=0;e.telegraphDuration=1;e.telegraphTimer=.65f;
+            e.attack=n==0?AttackKind::LAB_LUNGE:n==1?AttackKind::LAB_PRESS:n==2?AttackKind::LAB_BEAM:AttackKind::LAB_CROSS;
+            e.labAim=game.player.camera.position;e.labExit={-2,0,3};if(n==0)e.telegraphTimer=.2f;
+        }
+        game.player.camera.yaw=-90;game.player.camera.pitch=-5;game.render();screenshot("build/enemy-ward-counters.bmp");
+        std::vector<BoxInstance> tellGeometry;game.gatherBoxes(tellGeometry,game.player.camera.viewMatrix());bool cameraClear=true;
+        for(const auto& box:tellGeometry){auto centre=glm::vec3(box.model[3]);auto eye=game.player.camera.position;
+            if(std::fabs(centre.y-eye.y)<.2f && glm::length(glm::vec2{centre.x-eye.x,centre.z-eye.z})<1.6f)cameraClear=false;}
+        CHECK(cameraClear,"a Suspended aim tell never wraps a ring around the camera at eye height");
+        auto& beam=game.enemies[2];beam.attack=AttackKind::NONE;beam.telegraphTimer=0;beam.labBeam=.4f;
+        // Capture a sweep the player has sidestepped, rather than looking
+        // straight down its axis (which projects the whole ray to one point).
+        beam.labDir=glm::normalize(glm::vec3{-6,1,5}-(beam.position+glm::vec3{0,beam.height()*.85f,0}));
+        EnemyWorld beamWorld;beamWorld.walls=game.level.walls.data();beamWorld.wallCount=(int)game.level.walls.size();beamWorld.bounds=game.level.arenas[0].bounds;
+        beam.update(1.f/60.f,beamWorld);game.render();screenshot("build/enemy-ward-beam.bmp");
     }
     {
         g_storyChapter=2;g_startArena=2;auto live=std::make_unique<GameplayState>(audio,nullptr,GameMode::STORY);auto& game=*live;
@@ -171,6 +197,16 @@ static void checkLabRuntime(AudioSystem& audio){
     game.storySkipKey=true;game.updateLab(.7f);game.storySkipKey=false;
     CHECK(game.labIntro.seen && !game.storyLocked() && !game.director.hold && glm::length(game.player.position-glm::vec3{2.2f,0,20})<.01f,"the real skip path restores camera, combat and player control");
     game.retryArena();CHECK(!game.labIntro.active() && game.storyOwned==15 && game.storyGrapple,"a normal retry preserves the seen intro and full lab equipment");
+    bool ledges=true;
+    for(int room=0;room<9;++room){
+        game.enterArena(room);auto c=lab::centre(room);
+        auto feet=c+glm::vec3{lab::entryX(room+1),-13.6f,-79};
+        game.player.position=feet;game.keepPlayerInZone(1.f/60.f);
+        ledges&=glm::length(game.player.position-feet)<.01f;
+        game.player.position=feet-glm::vec3{0,14,0};game.keepPlayerInZone(1.f/60.f);
+        ledges&=glm::length(game.player.position-game.level.arenas[room].respawn)<.01f;
+    }
+    CHECK(ledges,"live recovery leaves every lower descent landing alone and recovers actual falls underneath it");
     game.saySuccessor(0);game.labDialogueT=0;game.retryArena();game.saySuccessor(0);
     CHECK(game.labDialogueT==0 && (game.successorHeard&1u),"normal checkpoint retries do not replay a Successor speech already heard in this run");
     game.enterArena(4);game.updateLab(.01f);
@@ -197,7 +233,7 @@ static void checkLabRuntime(AudioSystem& audio){
         game.player.camera.position=game.player.position+glm::vec3{0,1.7f,0};game.styleSystem.health=100;game.invincFrames=0;game.dashMomentumTimer=0;
         game.spawnEnemy(type,game.player.position+glm::vec3{0,0,-3});auto& enemy=game.enemies.back();enemy.state=EnemyState::ACTIVE;enemy.spawnTimer=0;
         if(type==EnemyType::GRAFTED){enemy.attack=AttackKind::LAB_PRESS;enemy.telegraphTimer=.005f;}
-        else if(type==EnemyType::SUSPENDED){enemy.labBeam=.5f;enemy.labAim=game.player.camera.position;game.beamTickCd=0;}
+        else if(type==EnemyType::SUSPENDED){enemy.labBeam=.5f;enemy.labDir=glm::normalize(game.player.camera.position-(enemy.position+glm::vec3{0,enemy.height()*.85f,0}));game.beamTickCd=0;}
         else{enemy.dashTimer=.3f;enemy.labDir={0,0,1};enemy.position=game.player.position+glm::vec3{0,0,-.6f};}
         game.updateEnemies(1.f/60);
         CHECK(game.styleSystem.health<100,"each new lab enemy resolves actual beam, lunge or press damage through the live combat system");
@@ -205,6 +241,30 @@ static void checkLabRuntime(AudioSystem& audio){
         game.hurtEnemy(enemy,20,enemy.position+glm::vec3{0,1,0},0,0,StyleSource::REVOLVER,false,false,&push);
         CHECK(enemy.stunned() && enemy.labBeam==0 && enemy.labCross==0 && enemy.dashTimer==0,"live gun poise interrupts lab special attacks and removes their pending motion");
     }
+    game.enterArena(1);game.enemies.clear();game.spawnEnemy(EnemyType::PATIENT,game.player.position+glm::vec3{0,0,-3});
+    auto& rusher=game.enemies.back();rusher.state=EnemyState::ACTIVE;rusher.spawnTimer=0;rusher.attack=AttackKind::LAB_LUNGE;rusher.telegraphTimer=.2f;
+    game.punchCooldown=0;game.player.camera.yaw=-90;game.player.camera.pitch=0;game.punch(-1);
+    CHECK(rusher.staggered() && rusher.dashTimer==0 && rusher.armorMult()>1,"the real fist input parries a Patient's white brace and creates a damage opening");
+    game.enterArena(1);game.enemies.clear();game.spawnEnemy(EnemyType::GRAFTED,game.player.position+glm::vec3{0,0,-4});
+    game.enemies.back().state=EnemyState::ACTIVE;game.enemies.back().spawnTimer=0;
+    auto* orb=game.projSystem.fire(game.player.camera.position+glm::vec3{0,0,-1.2f},{0,0,4},20,false,{1,1,1});
+    orb->heavy=true;orb->parryDamage=230;orb->owner=game.enemies.back().uid;
+    game.player.camera.yaw=-90;game.player.camera.pitch=0;game.punchCooldown=0;game.punch(-1);
+    Uint8 still[SDL_NUM_SCANCODES]={};for(int f=0;f<12;++f)game.physicsTick(1.f/60.f,still,false);
+    CHECK(game.enemies.back().health<game.enemies.back().maxHealth && game.enemies.back().stunned() && game.enemies.back().finishable(false),"returning a heavy orb through the real projectile path breaks Grafted poise and sets up a finisher");
+    game.enterArena(5);game.enemies.clear();game.spawnEnemy(EnemyType::SUSPENDED,lab::centre(5)+glm::vec3{-21,8,-12});
+    CHECK(game.enemies.back().hoverY>5 && game.enemies.back().hoverY<12,"lab flyers initialize their hover height from the ward floor rather than the abyss basin");
+    auto& flyer=game.enemies.back();flyer.state=EnemyState::ACTIVE;flyer.spawnTimer=0;flyer.mayAttack=false;
+    for(int f=0;f<600;++f){flyer.floorY=game.level.enemyFloor(5,flyer.position,true,-300);EnemyWorld air;air.bounds=game.level.arenas[5].bounds;air.playerFeet=lab::centre(5);air.playerEye=air.playerFeet+glm::vec3{0,1.7f,0};flyer.update(1.f/60.f,air);}
+    CHECK(flyer.position.y<lab::centre(5).y+12 && flyer.position.y>lab::centre(5).y+5,"a Suspended subject remains within combat height over Load Testing's pit");
+    game.enterArena(1);game.enemies.clear();
+    for(auto type:{EnemyType::SUSPENDED,EnemyType::PHASED,EnemyType::PATIENT,EnemyType::HUSK}){
+        game.spawnEnemy(type,game.player.position+glm::vec3{0,0,-4});auto& e=game.enemies.back();e.state=EnemyState::ACTIVE;e.spawnTimer=0;e.attackTimer=100;
+    }
+    game.enemies[0].labBeam=.4f;game.enemies[1].labCross=.2f;game.enemies[2].dashTimer=.3f;
+    game.assignAttackers();CHECK(!game.enemies[3].mayAttack,"ongoing lab beams, crossings and rushes reserve their attack slots until they finish");
+    game.enemies[0].labBeam=0;game.enemies[0].recoverTimer=1;game.assignAttackers();
+    CHECK(!game.enemies[0].mayAttack && game.enemies[3].mayAttack,"recovering enemies yield their slots so another threat can keep the fight moving");
     game.enterArena(9);game.enemies.clear();game.spawnEnemy(EnemyType::SUCCESSOR,game.level.arenas[9].bossSpawn);
     auto& boss=game.enemies.back();boss.state=EnemyState::ACTIVE;boss.spawnTimer=0;boss.suPhase=2;boss.suNodes=2;
     boss.suAnchor[0]=game.player.position+glm::vec3{0,1.7f,-8};boss.suAnchor[1]=boss.suAnchor[0]+glm::vec3{8,0,0};
@@ -212,8 +272,44 @@ static void checkLabRuntime(AudioSystem& audio){
     game.activeWeapon=0;game.fireWeapon(0);
     CHECK(boss.staggered() && boss.suNodes==0,"a real revolver input cuts the visible Suture node and interrupts its pending attack");
     boss.staggerTimer=0;boss.attack=AttackKind::SU_THRUST;boss.telegraphTimer=.2f;
-    boss.position=game.player.position+glm::vec3{0,0,-3};boss.yaw=0;game.styleSystem.health=60;game.punchCooldown=0;
+    boss.position=game.player.position+glm::vec3{0,0,-6.5f};boss.yaw=0;game.styleSystem.health=60;game.punchCooldown=0;
     game.punch(-1);CHECK(boss.staggered()&&game.styleSystem.health>60&&boss.suStep==0,"a real fist parry interrupts the Successor and returns bounded health");
+    boss.health=boss.maxHealth*.6f;boss.suPhase=2;boss.suPause=boss.staggerTimer=boss.suBurst=boss.suCross=boss.suAir=boss.suOpen=0;
+    for(float height:{0.f,1.3f}){
+        game.player.position=boss.position+glm::vec3{0,height,6};game.styleSystem.health=100;game.invincFrames=0;
+        boss.attack=AttackKind::SU_REAP;boss.telegraphTimer=.005f;boss.suSince=10;
+        game.updateEnemies(1.f/60.f);
+        CHECK(height==0?game.styleSystem.health<100:game.styleSystem.health==100,"the live low sweep hurts grounded players and spares a correctly timed jump");
+    }
+    game.player.position=boss.position+glm::vec3{0,2,6};game.styleSystem.health=100;game.invincFrames=0;
+    boss.suAim=game.player.position-glm::vec3{0,2,0};boss.suFrom=boss.position;boss.suAir=.005f;boss.attack=AttackKind::NONE;boss.telegraphTimer=0;
+    game.updateEnemies(1.f/60.f);game.updateSuccessor(1.f/60.f);
+    CHECK(game.styleSystem.health<100 && !game.successorHazards.marks.empty(),"the live aerial breaker creates its damaging landing hazard above jump height");
+    game.successorHazards.clear();
+    // Inspect the dedicated boss rig from both sides and through its new moves.
+    auto centre=lab::centre(9);game.fx.clear();game.ui.damageVignette=0;game.muzzleFlashTimer=0;game.labDialogueT=0;game.styleSystem.health=100;game.ui.update(5.f,game.styleSystem);
+    boss.staggerTimer=0;boss.suPause=boss.suOpen=boss.suBurst=boss.suCross=boss.suAir=0;boss.suNodes=0;boss.suSince=10;
+    boss.position=boss.prevPosition=centre+glm::vec3{0,0,-18};boss.yaw=boss.prevYaw=0;boss.suGait=0;boss.suBodyLive=false;
+    auto capture=[&](const char* path,glm::vec3 camera,float yaw,float pitch){
+        game.player.position=camera-glm::vec3{0,1.7f,0};game.prevCamPos=game.player.camera.position=camera;
+        game.player.camera.yaw=yaw;game.player.camera.pitch=pitch;
+        game.render();screenshot(path);CHECK(glGetError()==GL_NO_ERROR,"Successor rig and exposed arena render without OpenGL errors");
+    };
+    boss.attack=AttackKind::NONE;boss.telegraphTimer=0;
+    for(int f=0;f<60;++f)rig::tickSuccessorBody(boss,1.f/60);
+    capture("build/successor-front.bmp",centre+glm::vec3{3.6f,1.8f,-12},-121,4);
+    capture("build/successor-spine.bmp",centre+glm::vec3{-3.6f,2,-24},59,4);
+    struct PoseShot{AttackKind kind;const char* path;};
+    for(auto pose:{PoseShot{AttackKind::SU_INCISION,"build/successor-cut.bmp"},PoseShot{AttackKind::SU_THRUST,"build/successor-thrust.bmp"},
+                  PoseShot{AttackKind::SU_REAP,"build/successor-reap.bmp"},PoseShot{AttackKind::SU_BREAKER,"build/successor-breaker.bmp"}}){
+        boss.attack=pose.kind;boss.telegraphDuration=.8f;boss.telegraphTimer=.28f;boss.suAim=centre+glm::vec3{4,0,-6};
+        for(int f=0;f<40;++f)rig::tickSuccessorBody(boss,1.f/60);
+        capture(pose.path,centre+glm::vec3{3.6f,1.8f,-12},-121,4);
+    }
+    boss.attack=AttackKind::NONE;boss.telegraphTimer=0;boss.health=boss.maxHealth*.25f;boss.suPhase=3;
+    capture("build/successor-arena.bmp",centre+glm::vec3{31,5,28},-112,17);
+    float assessment=0;glGetUniformfv(game.skyboxShader.id,glGetUniformLocation(game.skyboxShader.id,"uAssessment"),&assessment);
+    CHECK(assessment>.7f,"the final arena's lensed exterior intensifies with the live boss phase");
     boss.alive=false;boss.health=0;game.onEnemyKilled(boss,StyleSource::REVOLVER);
     CHECK(game.storyBossDown && game.successorHazards.marks.empty(),"Successor death cancels hazards and records the release of the chapter exit");
     game.retryArena();bool successorAlive=false;for(const auto& e:game.enemies)successorAlive|=e.alive&&e.type==EnemyType::SUCCESSOR;
@@ -308,17 +404,30 @@ int main() {
             auto& game=*gameplay;
             int expectedGuns = o.storyChapter == 1 ? expectedGuns1[o.arena] : o.storyChapter==3?15:o.arena > 4 ? 15 : 7;
             bool expectedGrapple = o.storyChapter >= 2 || o.arena > 7;
+            bool introStart=o.storyChapter==3 && o.arena==0;
+            auto expectedStart=introStart?glm::vec3{0,0,27}:game.level.arenas[o.arena].playerStart;
             char label[128];
-            std::snprintf(label, sizeof(label), "Story %d.%d starts on its checkpoint, awake, with earlier gear", o.storyChapter, o.arena + 1);
+            std::snprintf(label, sizeof(label), "Story %d.%d starts with its checkpoint, equipment and intended intro state", o.storyChapter, o.arena + 1);
             CHECK(game.level.story.chapter == o.storyChapter && game.director.arena == o.arena && game.storyCheckpoint == o.arena &&
-                  glm::length(game.player.position - game.level.arenas[o.arena].playerStart) < .01f && !game.storyLocked() &&
+                  glm::length(game.player.position - expectedStart) < .01f && game.storyLocked()==introStart &&
                   game.storyOwned == expectedGuns && game.storyGrapple == expectedGrapple && game.storyArmed == (expectedGuns != 0) && !game.ranked, label);
+            if(introStart){
+                CHECK(game.labIntro.active() && game.director.hold,"Admissions selected from the dev menu still plays the Chapter 3 cutscene");
+                game.storySkipKey=false;game.updateLab(.5f);game.storySkipKey=true;game.updateLab(.7f);game.storySkipKey=false;
+            }
             game.retryArena();
             CHECK(game.director.arena == o.arena && game.storyOwned == expectedGuns && !game.storyLocked(), "retry preserves the selected checkpoint and gear");
             // Launching a checkpoint must survive its first drawn frames too:
             // those load the chapter's nearby rigs, scenery and HUD paths.
             for (int frame=0;frame<3;++frame) { game.update(1.f/60.f);game.render(); }
+            Uint8 idle[SDL_NUM_SCANCODES]={};
+            for(int frame=0;frame<90;++frame){
+                applyWater(game.player,game.level);
+                game.player.update(1.f/60.f,idle,game.level.walls.data(),(int)game.level.walls.size(),false,&game.spatialGrid);
+                game.keepPlayerInZone(1.f/60.f);
+            }
             CHECK(!game.playerDead, "Story checkpoint survives its first gameplay and render frames");
+            CHECK(game.bankedDamage+game.styleSystem.damageTaken==0,"checkpoint opening frames do not charge false fall damage");
             press(game,SDLK_TAB);
             CHECK(game.armoryOpen&&game.armoryW==game.activeWeapon,"Tab opens the armory on the current weapon at every Story checkpoint");
             press(game,SDLK_TAB);

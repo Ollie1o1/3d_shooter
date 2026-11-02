@@ -1,10 +1,18 @@
 #pragma once
 #include "core/Bindings.h"
+#include "enemies/EnemyTypes.h"
 #include <string>
 #include <algorithm>
 
 namespace lessons {
 constexpr int COUNT = 8;
+inline constexpr EnemyType TARGETS[]={EnemyType::HUSK,EnemyType::RIPPER,EnemyType::SENTINEL,
+    EnemyType::SHIELDBEARER,EnemyType::BRUTE,EnemyType::RAPTOR,
+    EnemyType::PATIENT,EnemyType::GRAFTED,EnemyType::SUSPENDED,EnemyType::PHASED};
+constexpr int SOLO_TARGETS=sizeof(TARGETS)/sizeof(TARGETS[0]),TARGET_COUNT=SOLO_TARGETS+1;
+inline bool squad(int i){return i==SOLO_TARGETS;}
+inline EnemyType target(int i){return TARGETS[std::clamp(i,0,SOLO_TARGETS-1)];}
+inline const char* targetName(int i){return squad(i)?"WARD SQUAD":statsOf(target(i)).name;}
 inline const char* title(int i) {
     static const char* names[] = {"PARRY", "FINISHER", "ENEMY GRAPPLE", "SHOTGUN JUMP",
         "GRENADE PUNCH", "OVERDRIVE", "MOVEMENT", "FREE PRACTICE"};

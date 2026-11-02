@@ -86,6 +86,7 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
     gatherLeviathanBoxes(out);
     gatherAbsoluteBoxes(out);
     gatherSuccessor(out);
+    if(laboratory())gatherLabDressing(out);
 
     // HOLD: a ring of light on the ground; the lit arc is how far it's held.
     // Cyan while you hold it, red when an enemy stands in it.
@@ -117,6 +118,8 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
             pose.animPhase = e.prevAnimPhase + (e.animPhase - e.prevAnimPhase) * renderAlpha;
         if (e.abBodyLive)   // (his sprung body, between ticks too)
             for (int k = 0; k < Enemy::AB_BODY; ++k) pose.abBody[k] = e.abBodyPrev[k] + (e.abBody[k] - e.abBodyPrev[k]) * renderAlpha;
+        if(e.suBodyLive)for(int k=0;k<SuccessorState::BODY_CHANNELS;++k)
+            pose.suBody[k]=glm::mix(e.suBodyPrev[k],e.suBody[k],renderAlpha);
         // Low enough to finish: it throbs hot (a punch takes it, Gameplay_Feel.h)
         pose.finishGlow = e.finishable(overdriveOn()) ? 0.45f + 0.35f * std::sin(t * 13.f + e.uid) : 0.f;
         size_t from = out.size();
@@ -696,6 +699,10 @@ inline void GameplayState::render() {
         const int room=level.arenaAt(player.position);
         float realm=laboratory()?(room==7?1.f:room==3||room==8?2.f:room==9?3.f:0.f):0.f;
         skyboxShader.setFloat("uLabRealm",realm);
+        float assessment=0;
+        if(laboratory() && room==9)for(const auto& enemy:enemies)if(enemy.alive && enemy.type==EnemyType::SUCCESSOR)
+            assessment=.2f+.8f*(1.f-enemy.health/enemy.maxHealth);
+        skyboxShader.setFloat("uAssessment",assessment);
         skyboxShader.setFloat("uFlare",   th.eclipse > 0.5f ? eclipseFlare * flashScale() : 0.f);
         skyboxShader.setFloat("uDawn",    th.eclipse > 0.5f ? dawn01() : 0.f);
         skyboxShader.setFloat("uSwallow", th.eclipse > 0.5f ? std::min(msSwallowT < 0.f ? 0.f : msSwallowT / (Enemy::MS_SWALLOW - 0.5f), 1.f) * (1.f - dawn01()) : 0.f);
@@ -711,6 +718,7 @@ inline void GameplayState::render() {
 
     if (!devSkip("water")) renderWater(view, proj, th, renderCamPos);
     if(laboratory())renderLabGlass(view,proj,renderCamPos);
+    if(laboratory() && !devSkip("fx"))renderLabAtmosphere(view,proj,renderCamPos);
     const bool skipFx = devSkip("fx");
 
     worldShader.use();
@@ -1003,6 +1011,30 @@ inline void GameplayState::renderLasers(const glm::mat4& view, const glm::mat4& 
     }
     drawBeams(aims, {1.f, 0.85f, 0.5f}, view, proj);
     drawBeams(sweeps, {1.4f, 1.15f, 0.7f}, view, proj);
+    // Suspended subjects previously dealt beam damage without drawing a ray.
+    // Use the exact clipped endpoint produced by the combat simulation.
+    aims.clear();sweeps.clear();
+    for(const auto& e:enemies){
+        if(!e.targetable() || e.type!=EnemyType::SUSPENDED || e.stunned() || e.staggered())continue;
+        auto eye=e.position+glm::vec3{0,e.height()*.85f,0};
+        if(e.attack==AttackKind::LAB_BEAM && e.telegraphTimer>0){
+            float a=e.labLocked?.95f:.4f;
+            auto ray=e.labAim-eye;float length=glm::length(ray);
+            // A charge ending at the camera creates a screen-wide near-plane
+            // ribbon. Leave the same readable gap as the Sentinel's aim line.
+            if(length>2.5f)aims.push_back({glm::vec4(eye,a),glm::vec4(eye+ray*((length-2.5f)/length),a),e.labLocked?.065f:.025f});
+        }else if(e.labBeam>0){
+            auto from=eye,to=e.beamEnd;
+            float nearDepth=1.5f,za=-(view*glm::vec4(from,1)).z,zb=-(view*glm::vec4(to,1)).z;
+            if(za<nearDepth && zb<nearDepth)continue;
+            if(za<nearDepth)from=glm::mix(eye,e.beamEnd,(nearDepth-za)/(zb-za));
+            if(zb<nearDepth)to=glm::mix(eye,e.beamEnd,(nearDepth-za)/(zb-za));
+            sweeps.push_back({glm::vec4(from,1),glm::vec4(to,1),.16f});
+            sweeps.push_back({glm::vec4(from,.4f),glm::vec4(to,.4f),.38f});
+        }
+    }
+    drawBeams(aims,{.85f,.45f,1.5f},view,proj);
+    drawBeams(sweeps,{1.5f,.6f,2.f},view,proj);
 }
 
 // SOLAR: each arm of the sun's flare as a fan of beams across its wedge, from

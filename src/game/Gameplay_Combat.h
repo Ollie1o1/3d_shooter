@@ -101,6 +101,10 @@ inline void GameplayState::punch(int boostable) {
                                                      e.sweepReach(), player.position, player.height, e.floorY);
             else inReach = flat < (e.attack == AttackKind::PSLAM ? PenitentHazards::SLAM_RADIUS : PenitentHazards::STOMP_RADIUS);
         }
+        // Meet the advancing white arm, rather than requiring the torso to
+        // enter fist range before its committed step has happened.
+        if(e.type==EnemyType::SUCCESSOR)
+            inReach=dist<SuccessorState::PARRY_REACH && glm::dot(fwd,d/dist)>.2f;
         if (e.type == EnemyType::BALLAST)
             inReach = glm::length(player.position-e.ballAim)<Enemy::BALL_ANCHOR_R+1.f;
         if (e.type == EnemyType::SORTER)
@@ -109,7 +113,7 @@ inline void GameplayState::punch(int boostable) {
             inReach = glm::length(glm::vec2{player.position.x - e.levTarget.x, player.position.z - e.levTarget.z}) < Enemy::LV_PARRY_REACH;
         if (inReach) {
             if (e.halo) breakHalo(e);
-            e.stagger(e.type==EnemyType::SUCCESSOR?1.35f:e.staggerTime());
+            e.stagger(e.type==EnemyType::SUCCESSOR?1.1f:e.staggerTime());
             if(e.type==EnemyType::SUCCESSOR){styleSystem.heal(8.f*tune().heal);successorHazards.clear();if(!e.suCounterLine){e.suCounterLine=true;saySuccessor(2);}}
             parryFeedback(eye + fwd * 1.2f, true);
             styleSystem.addStyle(70.f, StyleSource::PARRY);
@@ -119,6 +123,7 @@ inline void GameplayState::punch(int boostable) {
             else if (e.type == EnemyType::LEVIATHAN) { ui.toast("STAGGERED", "DOUBLE DAMAGE - MAKE IT COUNT", {1.f, 0.75f, 0.2f}, 1.8f); lev.dropMarks(); shake(0.7f, 0.08f); }
             else if (e.type == EnemyType::SHIELDBEARER) ui.toast("SHIELD DOWN", "", {0.4f, 1.f, 0.75f}, 1.2f);
             else if(e.type==EnemyType::SUCCESSOR)ui.toast("DRIVE EXPOSED","STRIKE NOW",{.4f,.9f,1.f},1.35f);
+            else if(e.type==EnemyType::PATIENT || e.type==EnemyType::PHASED)ui.toast("RUSH BROKEN","EXPOSED - STRIKE NOW",{.4f,.9f,1.f},1.2f);
             else ui.toast("STAGGERED", "DOUBLE DAMAGE - MAKE IT COUNT", {1.f, 0.75f, 0.2f}, 1.8f);
             return;
         }
@@ -162,7 +167,14 @@ inline void GameplayState::punch(int boostable) {
 }
 
 inline void GameplayState::spawnEnemy(EnemyType t, glm::vec3 pos, Hollow h) {
-    enemies.push_back(Enemy(t, pos, level.baseFloor(pos.x, pos.z)));
+    float floor=level.baseFloor(pos.x,pos.z);
+    if(laboratory()){
+        int room=level.arenaAt(pos);if(room<0)room=director.arena;
+        // Lab basins are far below the real platforms. Using that abyss as a
+        // flying subject's initial floor gives it a 250 m hover offset.
+        floor=level.enemyFloor(room,pos,statsOf(t).flying,groundHeightAt(pos.x,pos.z,pos.y+.5f,true));
+    }
+    enemies.push_back(Enemy(t, pos, floor));
     enemies.back().uid = nextEnemyUid++;
     enemies.back().setHollow(h);
     enemies.back().maxHealth *= tune().health * endlessToughness();
@@ -183,7 +195,7 @@ inline VoiceIn GameplayState::voiceIn(const Enemy& e, const EnemyEvents* ev) con
     v.pos = e.position + glm::vec3{0.f, e.height() * 0.7f, 0.f};
     v.moveSpeed = e.moveSpeed; v.health = e.health;
     v.attack = e.attack; v.telegraphTimer = e.telegraphTimer; v.staggered = e.staggered();
-    v.halo = e.halo; v.linkCount = e.linkCount; v.beamOn = e.beamTimer > 0.f;
+    v.halo = e.halo; v.linkCount = e.linkCount; v.beamOn = e.beamTimer > 0.f || e.labBeam > 0.f;
     if (ev) { v.telegraphStarted = ev->telegraphStarted; v.enraged = ev->enraged; v.rose = ev->penRose || ev->lvRise; }
     return v;
 }
@@ -228,7 +240,7 @@ inline void GameplayState::updateEnemies(float dt) {
     w.dynCount   = (int)level.moverWalls.size();
     w.reactor    = level.reactorPos;              // the Warden feeds here
     w.hasReactor = level.hasReactor;
-    w.voidUnder  = ar.shift == ArenaShift::DRIFT || (laboratory()&&(director.arena==5||director.arena==7||director.arena==8));   // the Reliquary: step off a relic and you fall
+    w.voidUnder  = ar.shift == ArenaShift::DRIFT || (laboratory()&&(director.arena==5||director.arena==7||director.arena==8||director.arena==9));   // only real floor supports the open wards
     w.hasLair    = level.hasLair;                   // the Maw: where the Leviathan lives and breaches
     w.lair       = level.lair; w.lairFloor = level.lairFloor;
     w.wells      = level.wells.data(); w.wellCount = (int)level.wells.size();
@@ -289,12 +301,21 @@ inline void GameplayState::updateEnemies(float dt) {
             breakStoryCover(e.position,e.position+e.sortRushDir*(36.f*dt),3.6f);
         if(story()&&e.type==EnemyType::BALLAST&&e.ballDrive>0&&!e.ballHaul)
             breakStoryCover(e.position+glm::vec3{0,1,0},e.position+glm::vec3{0,1,0}+e.ballDir*(36.f*dt),4.f);
+        bool beamLocked=e.labLocked;
         e.update(dt, w);
+        if(e.type==EnemyType::SUSPENDED && !beamLocked && e.labLocked)
+            audio.playAt("count_tick",e.position,90,SoundGroup::ENEMY,true);
         if (e.type == EnemyType::ABSOLUTE) rig::tickAbsoluteBody(e, dt);   // his body chasing his pose
+        if(e.type==EnemyType::SUCCESSOR)rig::tickSuccessorBody(e,dt);
         if (e.hollow == Hollow::ENRAGED && std::fmod(e.age, 0.15f) < dt)   // embers off an Enraged one
             fx.spawnBurst(e.position + glm::vec3{0, e.height() * 0.6f, 0}, {1.f, 0.3f, 0.1f}, 2, 1.5f, 0.6f, -2.f);
         const float eScale = dmgScale * e.damageMult();   // ENRAGED hits harder
         const EnemyEvents ev = e.ev;   // copy: spawning below may reallocate
+        if(ev.telegraphStarted && e.type>=EnemyType::PATIENT && e.type<=EnemyType::PHASED){
+            float pitch=e.type==EnemyType::GRAFTED?.7f:e.type==EnemyType::SUSPENDED?1.3f:1.f;
+            audio.playAt("telegraph",e.position,85,SoundGroup::ENEMY,true,pitch);
+            if(e.attack==AttackKind::LAB_CROSS)audio.playAt("grapple_fire",e.labExit,75,SoundGroup::ENEMY,true);
+        }
         if (ev.telegraphStarted && !isBoss(e.type) && threatTickCd <= 0.f && unseenWindup(e, player.camera.flatForward())) {   // behind you: a tick from where it is
             threatTickCd = 0.25f;
             audio.playAt("telegraph", e.position + glm::vec3{0.f, e.height() * 0.7f, 0.f}, 110, SoundGroup::ENEMY, true, 0.6f);

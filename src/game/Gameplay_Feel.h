@@ -59,15 +59,22 @@ inline void GameplayState::assignAttackers() {
         Enemy& e = enemies[i];
         e.mayAttack = true; e.attackPace = 1.f;
         if (!e.alive || !e.reacts() || e.type == EnemyType::MITE || e.type == EnemyType::CONDUCTOR) continue;   // (mites just run in; conductors never attack)
-        if (e.telegraphTimer > 0.f || e.burstLeft > 0 || e.diveTimer > 0.f || e.beamTimer > 0.f) { ++busy; continue; }
+        if(!e.targetable()){e.mayAttack=false;continue;}
+        if(e.attackBusy()){++busy;continue;}
+        if(e.stunned() || e.staggered() || e.recoverTimer>0){e.mayAttack=false;continue;}
         glm::vec3 to = e.position - eye; to.y = 0.f;
         float d = glm::length(to);
         bool unseen = d > 3.f && glm::dot(fwd, to / std::max(d, 1e-3f)) < 0.5f;   // outside ~60 degrees of where you look
         if (unseen) e.attackPace = 0.6f;
-        cands.push_back({i, d + (unseen ? 25.f : 0.f)});
+        if((e.type==EnemyType::RIPPER && d>8) ||
+           (e.type==EnemyType::PATIENT && d>17)){
+            e.mayAttack=false;continue;
+        }
+        float ready=std::clamp(e.attackTimer/std::max(.1f,e.stats().attackEvery),0.f,1.f);
+        cands.push_back({i,d*.25f+(unseen?18.f:0.f)+(e.noLosTimer>0?24.f:0.f)-ready*8.f-e.attackWait*8.f});
     }
     int free = std::max(0, attackersAllowed() - busy);
-    std::sort(cands.begin(), cands.end(), [](const Cand& a, const Cand& b) { return a.score < b.score; });
+    std::stable_sort(cands.begin(), cands.end(), [](const Cand& a, const Cand& b) { return a.score < b.score; });
     for (int k = free; k < (int)cands.size(); ++k) enemies[cands[k].i].mayAttack = false;
 }
 

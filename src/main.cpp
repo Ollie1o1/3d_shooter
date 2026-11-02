@@ -118,7 +118,10 @@ struct App {
         case 9:if(g->storyEndT>3.f){press(SDLK_RETURN);storyCheckStage=7;}break;
         case 7:
             if(auto* menu=dynamic_cast<MenuState*>(currentState.get())) {
-                menu->selected=1;press(SDLK_RETURN);press(SDLK_DOWN);press(SDLK_RETURN);++storyCheckStage;
+                menu->selected=1;press(SDLK_RETURN);
+                // Continue adds a row ahead of the three fresh chapter starts.
+                menu->storySel=(menu->hasStorySave?1:0)+1;
+                press(SDLK_RETURN);++storyCheckStage;
             }break;
         case 8:
             if(g) {

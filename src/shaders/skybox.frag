@@ -24,6 +24,7 @@ uniform float uFlare;       // 0..1: a flash of the eclipse (his entrance, his p
 uniform float uDawn;        // 0..1: the eclipse sliding off the sun (his death)
 uniform float uSwallow;     // 0..1: MORNINGSTAR: the eclipse grows over the whole sky, then its ring of fire settles on the horizon
 uniform float uLabRealm; // 0 ordinary, 1 nebula, 2 hadal, 3 fractured
+uniform float uAssessment;
 uniform float uDark;        // 0..1: TOTALITY: the ring dims to embers
 
 float hash3(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
@@ -152,6 +153,9 @@ void main() {
         float band=exp(-pow((dir.y+dir.x*.5-dir.z*.25)*2.2,2.0));
         vec3 nebula=vec3(.018,.025,.075)+mix(vec3(.12,.15,.46),vec3(.65,.16,.36),n)*band*pow(n*1.8,2.2);
         nebula+=vec3(.2,.45,.65)*pow(fbm(p*2.5+4.0),4.0)*band;
+        // Teal cloud banks off the violet band, as on the ward's concept boards
+        float tealBand=exp(-pow((dir.y-dir.x*.6+dir.z*.3+.15)*1.8,2.0));
+        nebula+=vec3(.03,.32,.36)*pow(fbm(p*1.4+vec2(7.0,2.0)),2.6)*tealBand*2.2;
         vec3 cell=floor(dir*440.0);float star=hash3(cell);
         nebula+=mix(vec3(.6,.8,1.1),vec3(1.1,.8,.6),hash3(cell+7.0))*step(.9984,star)*(0.6+hash3(cell+13.0));
         nebula+=vec3(.8,.7,1.0)*pow(max(0.0,dot(dir,normalize(vec3(-.45,.7,-.55)))),900.0);
@@ -160,6 +164,18 @@ void main() {
         hadal+=vec3(.012,.05,.06)*beams*pow(max(0.0,dir.y),.6);
         hadal+=vec3(.12,.42,.38)*step(.9992,hash3(floor(dir*180.0)))*.5;
         vec3 realm=uLabRealm<1.5?nebula:uLabRealm<2.5?hadal:mix(nebula,hadal,step(0.0,sin(az*3.0+dir.y*4.0)));
+        if(uLabRealm>2.5){
+            // A lensed void beyond the open assessment floor. Its broken
+            // crimson accretion bands slowly separate as the chassis heats up.
+            vec3 axis=normalize(vec3(-.62,.6,-.5));   // up and to the left, clear of the portal ahead
+            float angle=acos(clamp(dot(dir,axis),-1.0,1.0));
+            float rim=exp(-pow((angle-.285)*95.0,2.0));
+            float band=exp(-pow((angle-.37-.025*sin(az*4.0+uTime*.05))*(25.0-uAssessment*5.0),2.0));
+            float fracture=.4+.6*smoothstep(-.3,.45,sin(az*7.0+dir.y*11.0-uTime*.09));
+            realm=mix(vec3(.002,.001,.006),realm,smoothstep(.272,.29,angle));
+            realm+=vec3(1.1,.08,.25)*rim*(.8+uAssessment*.7);
+            realm+=mix(vec3(.35,.13,.65),vec3(1.0,.055,.18),uAssessment)*band*fracture;
+        }
         FragColor=vec4(realm,1.0);return;
     }
 

@@ -6,6 +6,33 @@ namespace lab {
 constexpr int ROOMS=10;
 inline glm::vec3 centre(int i){return {0,-14.f*i,-120.f*i};}
 inline float routeX(int i){static constexpr float x[]={-18,18,-22,22,-18,18,-22,20,-18,0};return x[std::clamp(i,0,9)];}
+inline float entryX(int i){return i?-routeX(i-1)*.5f:0.f;}
+inline float roofHeight(int i){static constexpr float h[]={12,16,20,26,32,38,48,64,72,110};return h[std::clamp(i,0,9)];}
+struct Bay {float nearZ,farZ,left,right;};
+// Each footprint is a connected sequence of bays. The changes in width and
+// offset are real floor/wall boundaries, rather than scenery inside a box.
+inline std::vector<Bay> footprint(int i){
+    switch(i){
+    case 0:return {{40,-40,-32,32}};
+    case 1:return {{40,10,-36,12},{10,-8,-36,36},{-8,-40,-10,36}};
+    case 2:return {{40,22,-30,30},{22,-28,-42,42},{-28,-40,-30,30}};
+    case 3:return {{40,22,-30,42},{22,-28,-42,42},{-28,-40,-42,30}};
+    case 4:return {{40,16,-32,42},{16,-16,-48,48},{-16,-40,-42,42}};
+    case 5:return {{40,24,-28,42},{24,-24,-42,42},{-24,-40,-42,30}};
+    case 6:return {{40,22,-30,30},{22,-28,-42,42},{-28,-40,-30,30}};
+    case 7:return {{40,22,-36,48},{22,-12,-54,54},{-12,-32,-48,48},{-32,-40,-42,42}};
+    case 8:return {{40,18,-48,36},{18,-10,-56,44},{-10,-32,-44,56},{-32,-40,-42,42}};
+    default:return {{40,32,-44,44},{32,-48,-76,76},{-48,-72,-54,54}};
+    }
+}
+// A descent has two flights separated by a lateral landing. Late flights
+// become exposed bridges; early ones have a continuous sloping ceiling.
+inline std::vector<glm::vec3> passageRoute(int i){
+    auto c=centre(i);float x=routeX(i),next=entryX(i+1);
+    return {c+glm::vec3{x,0,-38},c+glm::vec3{x,-7,-59},
+            c+glm::vec3{next,-7,-61},centre(i+1)+glm::vec3{next,0,37},
+            centre(i+1)+glm::vec3{next,0,31}};
+}
 inline glm::vec3 contactPosition(int room,int side=-1){
     return centre(room)+(room==2?glm::vec3{31,7.5f,-17}:room==6?glm::vec3{-31,7.5f,-17}:glm::vec3{side*20.f,1.5f,-18});
 }
@@ -27,6 +54,9 @@ inline void stencil(LevelBuilder& b,const char* text,glm::vec3 p,float px,glm::v
     }
 }
 }
+
+#include "world/LevelSuccessor.h"
+#include "world/LabDressing.h"
 
 inline LevelData buildLab(){
     using glm::vec3;using W=WaveEntry;
@@ -61,72 +91,106 @@ inline LevelData buildLab(){
         lab::stencil(b,"C-17",p+vec3{-.6f,.96f,1.31f},.07f);
         if(damaged)for(int k=0;k<3;++k)prop(p+vec3{-.65f+k*.35f,.75f,1.315f},p+vec3{-.4f+k*.35f,.81f,1.33f},{.12f,.23f,.25f});
     };
-    auto ramp=[&](float x,float za,float zb,float ya,float yb){
-        AABB a=LevelBuilder::aabb(x-6,std::min(ya,yb)-1,za,x+6,std::max(ya,yb)+3,zb);
-        // GroundRamp runs along increasing Z: the north end is the lower end.
+    auto ramp=[&](float x,float za,float zb,float ya,float yb,bool covered){
+        AABB a=LevelBuilder::aabb(x-6,std::min(ya,yb)-1,za,x+6,std::max(ya,yb)+8,zb);
         l.ramps.push_back({a,2,yb,ya});
         float angle=std::atan2(ya-yb,za-zb);vec3 c{x,(ya+yb)*.5f-.3f,(za+zb)*.5f};
-        b.mat=Mat::METAL;b.kit().box(c,{std::sqrt((za-zb)*(za-zb)+(ya-yb)*(ya-yb)),.6f,12},steel,-1.5707963f,0,angle);
-        for(float side:{-1.f,1.f})solid({x+side*6-.2f,std::min(ya,yb),zb},{x+side*6+.2f,std::max(ya,yb)+3,za},wall);
+        b.mat=Mat::METAL;b.kit().box(c,{std::hypot(za-zb,ya-yb),.6f,12},steel,-1.5707963f,0,angle);
+        // Follow the flight instead of a solid wall rising from its lowest end.
+        for(int k=0;k<8;++k){
+            float t=k/8.f,t1=(k+1)/8.f,hi=glm::mix(ya,yb,t),lo=glm::mix(ya,yb,t1);
+            float near=glm::mix(za,zb,t),far=glm::mix(za,zb,t1);
+            for(float side:{-1.f,1.f})solid({x+side*6-.18f,lo-.3f,far},{x+side*6+.18f,hi+(covered?7.6f:1.15f),near},covered?wall:steel);
+            if(covered)solid({x-6,lo+7.6f,far},{x+6,hi+8,near},cream);
+            for(float side:{-1.f,1.f})prop({x+side*5.5f-.06f,hi+.04f,far},{x+side*5.5f+.06f,hi+.08f,near},cyan*.55f);
+        }
     };
     for(int i=0;i<10;++i){
-        const vec3 c=lab::centre(i);const float y=c.y,z=c.z,half=i==0?32.f:i==1?36.f:42.f;float entry=i?lab::routeX(i-1):0,exit=lab::routeX(i);
+        const vec3 c=lab::centre(i);const float y=c.y,z=c.z;
+        if(i==9){buildFinalAssessment(b,c,lab::entryX(i));labdress::dressRoom(b,i,c,lab::footprint(i),lab::roofHeight(i),lab::entryX(i),0);continue;}
+        const auto bays=lab::footprint(i);float half=0;
+        for(const auto& bay:bays)half=std::max({half,-bay.left,bay.right});
+        const float entry=lab::entryX(i),exit=lab::routeX(i),roof=lab::roofHeight(i);
         b.mat=Mat::CLINIC;
-        const float roof=i==0?12.f:i==1||i==2?16.f:i==3||i==6?20.f:23.f;
-        l.basins.push_back({LevelBuilder::aabb(-half-1,y-300,z-42,half+1,y+40,z+42),(i==5||i==7||i==8)?y-250:y});
+        l.basins.push_back({LevelBuilder::aabb(-half-1,y-300,z-42,half+1,y+roof+1,z+42),y-250});
+        // Clip all floor slabs to the authored footprint, including bridge banks.
+        auto floor=[&](float left,float far,float right,float near,vec3 color){
+            for(const auto& bay:bays){
+                float x0=std::max(left,bay.left),x1=std::min(right,bay.right);
+                float z0=std::max(far,bay.farZ),z1=std::min(near,bay.nearZ);
+                if(x1>x0 && z1>z0)solid(c+vec3{x0,-.8f,z0},c+vec3{x1,0,z1},color);
+            }
+        };
         if(i==7||i==8){
-            solid(c+vec3{-42,-.8f,-22},c+vec3{42,0,40},cream);
-            solid(c+vec3{-42,-.8f,-40},c+vec3{42,0,-32},cream);
+            // A central open well splits the observation floor into two routes.
+            float well=i==7?10.f:6.f;
+            floor(-half,-22,half,-8,cream);floor(-half,14,half,40,cream);
+            floor(-half,-8,-well,14,cream);floor(well,-8,half,14,cream);
+            floor(-half,-40,half,-32,cream);
             for(float side:{-1.f,1.f}){
-                solid(c+vec3{side<0?-42.f:34.f,-.8f,-33},c+vec3{side<0?-34.f:42.f,0,-21},steel);
+                float x=side*well;
+                solid(c+vec3{x-.16f,0,-8},c+vec3{x+.16f,1.05f,14},steel);
+                b.neon(x-.04f,y+1.06f,z-8,x+.04f,y+1.1f,z+14,cyan*.4f);
+            }
+            for(float side:{-1.f,1.f}){
+                floor(side<0?-half:34.f,-33,side<0?-34.f:half,-21,steel);
                 int mover=b.mover(c+vec3{side*20,-9.4f,-27},{6,.4f,5.3f},Mover::Path::DRIVEN,{0,0,0},{0,9,0},1,0,cyan*.35f);
                 l.movers[mover].color=cream;s.labBridges.push_back({i,side<0?-1:1,mover});
             }
             lab::stencil(b,"CONTACT ROUTE / SELECT A SIDE",{-23,y+3.5f,z-21.8f},.08f);
-        }else if(i!=5)solid(c+vec3{-half,-.8f,-40},c+vec3{half,0,40},i==4?vec3{.25f,.35f,.23f}:cream);
+        }else if(i!=5)floor(-half,-40,half,40,i==4?vec3{.25f,.35f,.23f}:cream);
         else{
-            solid(c+vec3{-42,-1,22},c+vec3{42,0,40},steel);solid(c+vec3{-42,-1,-40},c+vec3{42,0,-22},steel);
+            floor(-half,22,half,40,steel);floor(-half,-40,half,-22,steel);
             solid(c+vec3{-7,-1,-23},c+vec3{7,0,23},cream);
             for(float side:{-1.f,1.f}){
                 solid(c+vec3{side<0?-34.f:24.f,-1,-24},c+vec3{side<0?-24.f:34.f,0,24},steel);
                 for(float dz:{-22.f,18.f})solid(c+vec3{side<0?-25.f:6.f,-1,dz},c+vec3{side<0?-6.f:25.f,0,dz+5},steel);
             }
         }
-        // Tall perimeter; the late wards look through real wide window bays.
-        for(float side:{-1.f,1.f}){
-            float x=side*half;
-            if(i==3 && side>0){
-                solid({x-.5f,y,z-40},{x+.5f,y+roof,z-14},wall);
-                solid({x-.5f,y,z+14},{x+.5f,y+roof,z+40},wall);
-                solid({x-.5f,y,z-14},{x+.5f,y+3,z+14},wall);
-                solid({x-.5f,y+14,z-14},{x+.5f,y+roof,z+14},wall);
-                for(float dz:{-14.f,0.f,14.f})solid({x-.6f,y+3,z+dz-.15f},{x+.6f,y+14,z+dz+.15f},steel);
-            }else if(i<7)solid({x-.5f,y,z-40},{x+.5f,y+roof,z+40},wall);
-            else{
-                solid({x-.5f,y,z-40},{x+.5f,y+1.6f,z+40},wall);
-                solid({x-.5f,y+18,z-40},{x+.5f,y+roof,z+40},wall);
-                for(float dz=-40;dz<=40;dz+=10)solid({x-.6f,y,z+dz-.25f},{x+.6f,y+roof,z+dz+.25f},steel);
+        // The perimeter follows each bay. Late spaces retain a low boundary
+        // and tall isolated piers, opening their full height to the exterior.
+        for(int n=0;n<(int)bays.size();++n){
+            const auto& bay=bays[n];
+            for(float x:{bay.left,bay.right}){
+                bool surgical=i==3 && x==42 && bay.farZ<14 && bay.nearZ>-14;
+                if(surgical){
+                    solid({x-.4f,y,z+bay.farZ},{x+.4f,y+3,z+bay.nearZ},wall);
+                    solid({x-.4f,y+14,z+bay.farZ},{x+.4f,y+roof,z+bay.nearZ},wall);
+                    for(float dz:{-14.f,0.f,14.f})solid({x-.5f,y+3,z+dz-.12f},{x+.5f,y+14,z+dz+.12f},steel);
+                }else if(i<7)solid({x-.4f,y,z+bay.farZ},{x+.4f,y+roof,z+bay.nearZ},wall);
+                else{
+                    solid({x-.4f,y,z+bay.farZ},{x+.4f,y+1.4f,z+bay.nearZ},wall);
+                    for(float dz=bay.farZ;dz<=bay.nearZ;dz+=12){
+                        solid({x-.5f,y,z+dz-.25f},{x+.5f,y+roof,z+dz+.25f},steel);
+                        prop({x-.55f,y+6,z+dz-.12f},{x+.55f,y+roof-2,z+dz+.12f},cyan*.35f);
+                    }
+                }
+                prop({x-.2f,y+.15f,z+bay.farZ},{x+.2f,y+.3f,z+bay.nearZ},steel);
+            }
+            if(n){const auto& prev=bays[n-1];float dz=z+bay.nearZ;
+                for(auto edge:{glm::vec2{prev.left,bay.left},glm::vec2{prev.right,bay.right}})
+                    if(edge.x!=edge.y)solid({std::min(edge.x,edge.y),y,dz-.4f},{std::max(edge.x,edge.y),y+(i<7?roof:1.4f),dz+.4f},wall);
+            }
+            // Early rooms have full ceilings. Long-term care has a roof slit;
+            // the garden and late observations are open to the sky.
+            if(i<4 || i==5)solid(c+vec3{bay.left,roof,bay.farZ},c+vec3{bay.right,roof+.8f,bay.nearZ},cream);
+            if(i==6)for(float side:{-1.f,1.f})
+                solid(c+vec3{side<0?bay.left:12.f,roof,bay.farZ},c+vec3{side<0?-12.f:bay.right,roof+.8f,bay.nearZ},cream);
+            float mid=(bay.nearZ+bay.farZ)*.5f;
+            solid(c+vec3{bay.left,roof-1.2f,mid},c+vec3{bay.right,roof-.6f,mid+.5f},steel);
+            b.neon(bay.left+3,y+roof-1.4f,z+mid,bay.right-3,y+roof-1.25f,z+mid+.22f,(i>=6?cyan:warm)*.32f);
+            for(float xx:{bay.left+3,bay.right-3}){
+                prop(c+vec3{xx-.08f,.02f,bay.farZ+1},c+vec3{xx+.08f,.04f,bay.nearZ-1},cyan*.4f);
             }
         }
-        b.wallX(-half,half,z+39.6f,z+40.4f,y,y+roof,wall,{{entry-6,entry+6,y,y+7}});
-        b.wallX(-half,half,z-40.4f,z-39.6f,y,y+roof,wall,{{exit-6,exit+6,y,y+7}});
-        if(i<7&&i!=4)solid(c+vec3{-half,roof,-40},c+vec3{half,roof+.8f,40},cream);
-        for(float dz=-32;dz<40;dz+=16){
-            solid(c+vec3{-half,roof-1.2f,dz},c+vec3{half,roof-.85f,dz+.45f},steel);
-            b.neon(-half+8,y+roof-1.4f,z+dz,half-8,y+roof-1.25f,z+dz+.22f,(i>=7?cyan:warm)*.32f);
+        float endHeight=i>=6?10.f:roof;
+        b.wallX(bays.front().left,bays.front().right,z+39.6f,z+40.4f,y,y+endHeight,wall,{{entry-6,entry+6,y,y+7}});
+        b.wallX(bays.back().left,bays.back().right,z-40.4f,z-39.6f,y,y+endHeight,wall,{{exit-6,exit+6,y,y+7}});
+        if(i>=6)for(float dz:{-40.f,40.f}){
+            const auto& bay=dz<0?bays.back():bays.front();
+            for(float x:{bay.left,bay.right})solid({x-.5f,y+10,z+dz-.3f},{x+.5f,y+roof,z+dz+.3f},steel);
+            b.kit().arch(c+vec3{(bay.left+bay.right)*.5f,roof-12,dz},bay.right-bay.left,12,.7f,1.f,steel,0,20);
         }
-        for(float side:{-1.f,1.f}) {
-            float x=side*(half-.8f);
-            prop({x-.18f,y+1,z-38},{x+.18f,y+1.17f,z+38},steel);
-            prop({x-.15f,y+.15f,z-38},{x+.15f,y+.3f,z+38},cream*.7f);
-            if(i<7)for(float dz:{-28.f,4.f,28.f}){
-                prop({x-.4f,y+2.8f,z+dz-2.2f},{x+.4f,y+5.8f,z+dz+2.2f},cream);
-                for(int k=0;k<3;++k)prop({x-.42f,y+3.1f+k*.7f,z+dz-1.6f},{x+.42f,y+3.2f+k*.7f,z+dz+1.6f},steel);
-            }
-        }
-        // Repeated service stripe remains aligned even when the exterior stops making sense.
-        for(float xx:{-half+5,half-9})for(float dz=-33;dz<=33;dz+=6)
-            prop(c+vec3{xx,.012f,dz},c+vec3{xx+4,.025f,dz+.15f},{.26f,.54f,.57f});
         // Floor wayfinding sits outside the traversal capsule and casts no point lights.
         prop(c+vec3{exit-.09f,.02f,-37},c+vec3{exit+.09f,.035f,-29},cyan*.45f);
         if(i==0){
@@ -144,47 +208,60 @@ inline LevelData buildLab(){
         a.playerStart={entry,y,z+31};a.startYaw=-90;a.exitDoor=door;a.maxAlive=7;a.damageScale=.9f;a.theme=lab::theme(i);
         a.ambient=i>=7?Ambient::MOTES:i==4?Ambient::WIND:Ambient::DUST;a.space=ReverbSpace::HALL;a.tone=i==4?RoomTone::YARD:i==8?RoomTone::HADAL:i>=7?RoomTone::CELESTIAL:RoomTone::WARD;
         a.hasTrigger=i!=4;a.trigger=LevelBuilder::aabb(-40,y-1,z-37,40,y+14,z+17);a.scripted=i==4;
-        if(i==5||i==7||i==8||i==9){a.voidY=y-12;a.hasRespawn=true;a.respawn={0,y,z+28};}
+        a.voidY=y-12;a.hasRespawn=true;a.respawn={entry,y,z+28};
         a.groundSpawns={{-24,y,z-18},{24,y,z-22},{-18,y,z+2},{18,y,z-6}};a.airSpawns={{-22,y+8,z-14},{22,y+9,z-24}};
+        if(i==1)a.groundSpawns={{-4,y,z-18},{18,y,z-22},{-18,y,z+2},{18,y,z-6}};
+        if(i==5)a.groundSpawns={{-28,y,z-18},{28,y,z-18},{0,y,z+2},{28,y,z-6}};
+        if(i==7||i==8)a.groundSpawns={{-18,y,z-14},{18,y,z-18},{-18,y,z+2},{18,y,z-6}};
         // Each new body is first introduced in a readable, finite encounter.
         auto at=[&](EnemyType t,std::initializer_list<vec3> points){std::vector<vec3> p;for(auto q:points)p.push_back(c+q);return W(t,0,p);};
         using E=EnemyType;
-        if(i==0)a.waves={{at(E::PATIENT,{{-22,0,-14},{24,0,-22}})}};
-        if(i==1)a.waves={{at(E::PATIENT,{{-12,0,-16},{16,0,-24},{0,0,0}})},
-                         {at(E::PATIENT,{{-20,0,-19},{20,0,-8}}),at(E::GRAFTED,{{0,0,-25}})}};
-        if(i==2)a.waves={{at(E::GRAFTED,{{0,0,-18}}),at(E::PATIENT,{{-15,0,-9},{15,0,-3}})}};
-        if(i==3)a.waves={{at(E::SUSPENDED,{{0,8,-20}}),at(E::PATIENT,{{-19,0,-4},{20,0,-16}})},
-                         {at(E::SUSPENDED,{{-23,8,-20},{24,9,-19}}),at(E::GRAFTED,{{-16,0,-12}})}};
-        if(i==5)a.waves={{at(E::SUSPENDED,{{-21,8,-12},{23,9,-18}}),at(E::PATIENT,{{0,0,-12},{28,0,-10},{-28,0,-7}})}};
+        if(i==0)a.waves={{at(E::PATIENT,{{-22,0,-14},{24,0,-22},{-20,0,0},{14,0,-8},{-8,0,-24}})}};
+        if(i==1)a.waves={{at(E::PATIENT,{{-4,0,-16},{16,0,-24},{0,0,0},{-24,0,-3},{8,0,-30},{12,0,-34}})},
+                         {at(E::PATIENT,{{4,0,-19},{20,0,-12},{-20,0,1},{-6,0,-31},{24,0,-4}}),at(E::GRAFTED,{{0,0,-25}})}};
+        if(i==2)a.waves={{at(E::GRAFTED,{{0,0,-18}}),at(E::PATIENT,{{-15,0,-9},{15,0,-3},{-31,6,-12},{31,6,-12},{-8,0,-24},{8,0,-12}})}};
+        if(i==3)a.waves={{at(E::SUSPENDED,{{0,8,-20}}),at(E::PATIENT,{{-19,0,-4},{20,0,-16},{-14,0,12},{10,0,-24},{-6,0,8}})},
+                         {at(E::SUSPENDED,{{24,9,-19}}),at(E::GRAFTED,{{-16,0,-12}}),at(E::PATIENT,{{31,6,-12},{-31,6,-12}})}};
+        if(i==5)a.waves={{at(E::SUSPENDED,{{-21,8,-12}}),at(E::PATIENT,{{0,0,-12},{28,0,-10},{-28,0,-7},{28,0,10},{-28,0,12},{0,0,8}})}};
         if(i==6)a.waves={{at(E::PHASED,{{0,0,-20}})},
-                         {at(E::PHASED,{{-18,0,-20}}),at(E::PATIENT,{{14,0,-10},{-17,0,-5}}),at(E::SUSPENDED,{{24,8,-23}})}};
-        if(i==7)a.waves={{at(E::PHASED,{{-16,0,-8},{20,0,-18}}),at(E::SUSPENDED,{{-26,8,-26}}),at(E::PATIENT,{{0,0,-16}})}};
-        if(i==8)a.waves={{at(E::GRAFTED,{{0,0,-18}}),at(E::SUSPENDED,{{-24,8,-20}}),at(E::PHASED,{{21,0,-16}})},
-                         {at(E::PHASED,{{-19,0,-13},{20,0,-18}}),at(E::PATIENT,{{-10,0,-17},{14,0,-8}})}};
-        if(i==9){a.bossSpawn=c+vec3{0,0,-8};a.waves={{W(EnemyType::SUCCESSOR,1)}};}
+                         {at(E::PHASED,{{-18,0,-20}}),at(E::PATIENT,{{14,0,-10},{-17,0,-5},{0,0,2},{-6,0,-12}}),at(E::GRAFTED,{{-18,6,-15.5f}}),at(E::SUSPENDED,{{24,8,-23}})}};
+        if(i==7)a.waves={{at(E::PHASED,{{-16,0,-8},{20,0,-18}}),at(E::SUSPENDED,{{-26,8,-26}}),at(E::PATIENT,{{0,0,-16},{-18,0,10},{18,0,8},{6,0,-16}})}};
+        if(i==8)a.waves={{at(E::GRAFTED,{{0,0,-18}}),at(E::SUSPENDED,{{-24,8,-20}}),at(E::PHASED,{{21,0,-16}}),at(E::PATIENT,{{-18,0,-4},{18,0,-4}})},
+                         {at(E::PHASED,{{-19,0,-13},{20,0,-18}}),at(E::PATIENT,{{-10,0,-17},{14,0,-8},{18,0,8},{-4,0,-20}})}};
         if(i==2||i==6||i==7||i==8)a.goals={WaveGoal::external(lab::objective(i))};
         l.arenas.push_back(a);
         if(i<9){
-            const float end=z-80; ramp(exit,z-40,end,y,y-14);
-            // A level threshold links the ramp to the following room with no ledge.
-            solid({exit-6,y-14-.6f,end-1},{exit+6,y-14,end+.6f},steel);
-            l.arenas.back().extraZones.push_back(LevelBuilder::aabb(exit-6,y-16,end-1,exit+6,y+7,z-39));
+            float next=lab::entryX(i+1),left=std::min(exit,next)-6,right=std::max(exit,next)+6;
+            bool covered=i<3 || i==5;
+            ramp(exit,z-40,z-56,y,y-7,covered);
+            ramp(next,z-64,z-80,y-7,y-14,covered);
+            solid({left,y-7.6f,z-64},{right,y-7,z-56},steel);
+            b.wallX(left,right,z-56.2f,z-55.8f,y-7,y+(covered?.6f:-5.8f),wall,{{exit-6,exit+6,y-7,y+1}});
+            b.wallX(left,right,z-64.2f,z-63.8f,y-7,y+(covered?.6f:-5.8f),wall,{{next-6,next+6,y-7,y+1}});
+            for(float x:{left,right})solid({x-.18f,y-7,z-64},{x+.18f,y+(covered?.6f:-5.8f),z-56},wall);
+            if(covered)solid({left,y+.6f,z-64},{right,y+1,z-56},cream);
+            else{
+                // A freestanding canopy frames the turn, rather than a gutter
+                // between high walls. Beyond it the next room's skyline opens.
+                for(float x:{left,right})solid({x-.25f,y-7,z-61},{x+.25f,y+8,z-60.5f},steel);
+                solid({left,y+8,z-61},{right,y+8.5f,z-60.5f},cream);
+            }
+            for(float x:{exit,next})solid({x-6,y-14.6f,z-81},{x+6,y-14,z-79.9f},steel);
+            auto passage=LevelBuilder::aabb(left,y-300,z-81,right,y+10,z-39);
+            l.basins.push_back({passage,y-250});
+            auto& owner=l.arenas.back();
+            owner.extraZones.push_back(LevelBuilder::aabb(exit-6,y-300,z-56,exit+6,y+9,z-39));
+            owner.extraZones.push_back(LevelBuilder::aabb(left,y-300,z-64,right,y+9,z-56));
+            owner.extraZones.push_back(LevelBuilder::aabb(next-6,y-300,z-81,next+6,y+2,z-64));
+            owner.fallRegions.push_back({passage,y-26});
+            l.blends.push_back({passage,i,i+1,2,true});
+            // A turn's horizontal strip is readable from either flight.
+            prop({left+.5f,y-6.98f,z-60.1f},{right-.5f,y-6.94f,z-59.9f},cyan*.55f);
         }
         if(i==0){
             b.mat=Mat::CLINIC;
             // The glass theatre lies directly in the entrance camera's line of sight.
             solid({-10,y,z+8},{10,y+.6f,z+17},steel);
-            // Low planted islands and a shallow running-water strip: a maintained garden
-            // whose service terminal nevertheless says its supply is disconnected.
-            for(float side:{-1.f,1.f})for(int n=0;n<4;++n){
-                vec3 p=c+vec3{side*29,0,-28.f+n*17};b.mat=Mat::CLINIC;
-                solid(p+vec3{-6,0,-4},p+vec3{6,.4f,4},{.58f,.64f,.55f});
-                b.mat=Mat::ROCK;prop(p+vec3{-5.7f,.4f,-3.7f},p+vec3{5.7f,.45f,3.7f},{.2f,.25f,.14f});
-                for(int k=0;k<7;++k){vec3 leaf=p+vec3{-4.5f+k*1.5f,.5f,-2.f+(k%3)*1.8f};
-                    for(int v=0;v<3;++v)b.kit().box(leaf+vec3{0,.4f,0},{.1f,.85f,.2f},{.23f,.42f,.2f},k*.8f+v*2.f,0,.3f*(v-1));
-                }
-            }
-            b.mat=Mat::CLINIC;
             for(float x:{-10.f,10.f})solid({x-.2f,y,z+7},{x+.2f,y+8,z+18},cream);
             solid({-10,y+8,z+7},{10,y+8.3f,z+18},cream);
             solid({-10,y,z+7},{10,y+8,z+7.2f},cream);
@@ -204,7 +281,8 @@ inline LevelData buildLab(){
             lab::stencil(b,"NURSE STATION / NO STAFF ON DUTY",{-5,y+1.1f,z+5.05f},.05f);
             console(c+vec3{0,0,13},"RECOVERY / 17","ALL BEDS OCCUPIED. ALL PATIENTS DISCHARGED. PLEASE LEAVE THE LINEN IN PLACE.");
             for(float x:{-27.f,27.f})for(int n=0;n<4;++n){
-                vec3 p{x,y,z+24-n*15.f};bed(p,10+n+(x>0?4:0));
+                if(x<0 && n>=2)continue;
+                vec3 p{x,y,z+24-n*15.f};if(x>0)p.z=z+4-n*12.f;bed(p,10+n+(x>0?4:0));
                 // Open-ended curtain bays keep patients readable without dividing the combat floor.
                 b.mat=Mat::METAL;for(float dz:{-3.f,3.f}){
                     solid(p+vec3{-3.5f,0,dz-.08f},p+vec3{-3.35f,3.8f,dz+.08f},steel);
@@ -215,25 +293,54 @@ inline LevelData buildLab(){
                 prop(p+vec3{1.7f,2.2f,-1.1f},p+vec3{2.05f,3,-.8f},{.58f,.73f,.67f});
             }
             lab::stencil(b,"LOAD: 73.4KG",{-28,y+2.3f,z+11.1f},.055f);}
-        if(i==2||i==3||i==6||i==9){
+        if(i==2||i==3||i==6){
             for(float side:{-1.f,1.f}){
                 solid(c+vec3{side<0?-39.f:23.f,5.4f,-27},c+vec3{side<0?-23.f:39.f,6,-5},steel);
                 // Wide walkable ramps to both galleries, not vertical walls disguised as stairs.
                 AABB area=LevelBuilder::aabb(side<0?-36:26,y,z-5,side<0?-26:36,y+6,z+19);
                 l.ramps.push_back({area,2,6+y,y});
                 b.kit().box(c+vec3{side*31,2.7f,7},{24.74f,.6f,10},steel,-1.5707963f,0,-.24497866f);
-                if(i==9){
-                    AABB rear=LevelBuilder::aabb(side<0?-36:26,y,z-39,side<0?-26:36,y+6,z-27);
-                    l.ramps.push_back({rear,2,y,y+6});
-                    b.kit().box(c+vec3{side*31,2.7f,-33},{13.4164f,.6f,10},steel,-1.5707963f,0,.4636476f);
-                }
                 b.neon(side*31-4,y+6.05f,z-26,side*31+4,y+6.12f,z-25.8f,cyan*.3f);
             }
+        }
+        if(i==2 || i==6){
+            // Motor assessment's U gallery becomes a suspended cross-route in
+            // Long-Term Care. Both ramps lead somewhere, with a view back down.
+            float dz=i==2?-25.f:-18.f;
+            solid(c+vec3{-31,5.4f,dz},c+vec3{31,6,dz+5},steel);
+            for(float edge:{dz,dz+5}){
+                solid(c+vec3{-23,6,edge-.12f},c+vec3{23,7.1f,edge+.12f},steel);
+                b.neon(-22,y+7.12f,z+edge,22,y+7.17f,z+edge+.08f,cyan*.3f);
+            }
+        }
+        if(i==6){
+            // Empty wards hang inside a much taller nave; the central roof is
+            // physically absent, revealing the next impossible exterior.
+            for(int k=0;k<3;++k){float dz=-23+k*21.f,h=20+k*7.f;
+                b.kit().arch(c+vec3{0,h,dz},48,12,.9f,1.4f,cream,0,18);
+                for(float side:{-1.f,1.f}){
+                    solid(c+vec3{side*24-.3f,h,dz-.3f},c+vec3{side*24+.3f,roof,dz+.3f},steel);
+                    b.kit().box(c+vec3{side*19,h+2,dz},{9,.6f,6},cream,side*.16f);
+                }
+            }
+        }
+        if(i==8){
+            // A high trench shelf offers a second route around the well and
+            // the contact bridge. Each end has a real ramp back to the floor.
+            solid(c+vec3{-42,7.4f,-22},c+vec3{-30,8,-5},steel);
+            for(auto flight:{glm::vec4{-5,19,8,0},glm::vec4{-34,-22,0,8}}){
+                auto area=LevelBuilder::aabb(-40,y,z+flight.x,-32,y+8,z+flight.y);
+                l.ramps.push_back({area,2,y+flight.z,y+flight.w});
+                float span=flight.y-flight.x,dy=flight.w-flight.z;
+                b.kit().box(c+vec3{-36,(flight.z+flight.w)*.5f-.3f,(flight.x+flight.y)*.5f},
+                    {std::hypot(span,dy),.6f,8},steel,-1.5707963f,0,std::atan2(dy,span));
+            }
+            solid(c+vec3{-30.2f,8,-22},c+vec3{-29.8f,9.1f,-5},steel);
+            console(c+vec3{-40,8,-14},"EXTERIOR ACCESS","SERVICE WALKWAY: SURFACE LEVEL. THE SOUND BELOW IS NOT THE SEA.");
         }
         if(i==2)console(c+vec3{-34,6,-23},"DISCHARGED / UNIT 18","THEY ASKED ME TO WALK IN A STRAIGHT LINE. I DID. THE ROOM IS STILL TURNING.");
         if(i==3)console(c+vec3{34,6,-23},"SURGICAL REGISTER","PROCEDURE COMPLETE. ANAESTHESIA DISCONTINUED. PATIENT HAS REPORTED DREAMING OF A ROOM WE HAVE NOT BUILT.");
         if(i==6)console(c+vec3{34,6,-22},"SUSPENSION","WE LOWERED THE BEDS. THE PATIENTS DID NOT FOLLOW. CONTACT SENSORS REMAIN WITHIN TOLERANCE.");
-        if(i==9)console(c+vec3{31,6,-24},"FINAL BODY / RELEASE","SUCCESSOR: CROSSING STABLE. BEHAVIOURAL REVIEW OUTSTANDING. RELEASE AUTHORISATION REVOKED. DO NOT TELL THE SUBJECT.");
         if(i==2){
             b.mat=Mat::METAL;
             for(float xx:{-11.f,11.f}){
@@ -278,7 +385,7 @@ inline LevelData buildLab(){
                 }
             }
             b.mat=Mat::CLINIC;
-            for(float x:{-10.f,10.f})solid(c+vec3{x-2,-.1f,-25},c+vec3{x+2,.08f,23},{.22f,.38f,.42f});
+            for(float x:{-10.f,10.f})solid(c+vec3{x-2,-.1f,-25},c+vec3{x+2,0,23},{.22f,.38f,.42f});
             for(float x:{-10.f,10.f})l.water.push_back({LevelBuilder::aabb(x-1.9f,y-.3f,z-24.8f,x+1.9f,y,z+22.8f),y+.10f});
             // An ordinary drip stand, with its hose ending above dry soil.
             b.mat=Mat::METAL;solid(c+vec3{24,0,-25},c+vec3{24.08f,3.5f,-24.92f},steel);
@@ -308,24 +415,16 @@ inline LevelData buildLab(){
         }
         b.mat=Mat::METAL;
         if(i!=4&&i!=5&&i!=9)for(vec3 p:{c+vec3{-12,0,-9},c+vec3{12,0,9}})solid(p+vec3{-2,0,-1},p+vec3{2,1.6f,1},steel);
-        if(i==9){
-            b.mat=Mat::CLINIC;
-            for(float x:{-13.f,13.f})solid(c+vec3{x-1.2f,0,-26},c+vec3{x+1.2f,10,-23},cream);
-            b.mat=Mat::METAL;b.kit().arch(c+vec3{0,10,-24.5f},26,7,1.25f,3,steel,0,20);
-            b.kit().arch(c+vec3{0,10,-24.5f},23.5f,6, .18f,3.1f,cyan*.6f,0,20);
-            b.kit().curve(c,15,0,6.2831853f,.025f,.045f,.12f,steel,64);
-            for(int k=0;k<24;++k){float angle=k*.2617994f;vec3 p=c+vec3{std::cos(angle)*16,.04f,std::sin(angle)*16};
-                b.kit().box(p,{1.2f,.025f,.14f},steel,-angle);
-            }
-            for(float x:{-25.f,25.f}){solid(c+vec3{x-2,0,-16},c+vec3{x+2,3,-12},steel);l.placedPickups.push_back({c+vec3{x,0,14},1});}}
-        else l.placedPickups.push_back({c+vec3{entry+8,0,30},1});
+        l.placedPickups.push_back({c+vec3{entry+8,0,30},1});
+        // Set dressing after the concept boards (LabDressing.h), once everything it must keep clear of exists
+        labdress::dressRoom(b,i,c,bays,roof,entry,exit);
     }
     const vec3 end=lab::centre(9);s.end=LevelBuilder::aabb(-6,end.y-1,end.z-116,6,end.y+6,end.z-101);
     b.mat=Mat::CLINIC;
     // A playable coda beyond the final assessment, inside the tenth room's region.
-    solid(end+vec3{-6,-.7f,-118},end+vec3{6,0,-40},cream);
-    l.arenas.back().extraZones.push_back(LevelBuilder::aabb(-7,end.y-300,end.z-120,7,end.y+28,end.z-39));
-    l.basins.push_back({LevelBuilder::aabb(-8,end.y-300,end.z-120,8,end.y+30,end.z-40),end.y-250});
+    solid(end+vec3{-7,-.7f,-118},end+vec3{7,0,-72},cream);
+    l.arenas.back().extraZones.push_back(LevelBuilder::aabb(-7,end.y-300,end.z-120,7,end.y+28,end.z-71));
+    l.basins.push_back({LevelBuilder::aabb(-8,end.y-300,end.z-120,8,end.y+30,end.z-72),end.y-250});
     // Two optional records reward looking above the test floor and behind the impossible garden.
     s.wrecks.push_back({lab::centre(2)+vec3{-25,6,-24},0,18,-1,"THE LOCK OPENS FROM THE GALLERY. THEY DID NOT EXPECT US TO LOOK UP.",2,true});
     s.wrecks.push_back({lab::centre(4)+vec3{37,0,-34},0,21,-1,"NO ROOTS IN THE SOIL. NO WATER IN THE PIPE. SOMETHING HERE STILL KNOWS WHAT A GARDEN SHOULD BE.",4,true});

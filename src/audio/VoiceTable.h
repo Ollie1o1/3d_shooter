@@ -27,8 +27,8 @@ inline const char* attackKey(AttackKind k) {
         case AttackKind::SORT_RUSH:return "gantry";case AttackKind::SORT_ROW:return "press_row";case AttackKind::SORT_PURGE:return "purge";
         case AttackKind::BALL_WINCH:return "winch";case AttackKind::BALL_RIP:return "road_tear";case AttackKind::BALL_SWEEP:return "blade_sweep";
         case AttackKind::BALL_GRADE: return "grade"; case AttackKind::BALL_GUST: return "crosswind";
-        case AttackKind::LAB_LUNGE:return "release";case AttackKind::LAB_PRESS:return "press";case AttackKind::LAB_BEAM:return "observe";case AttackKind::LAB_CROSS:return "crossing";
-        case AttackKind::SU_INCISION:return "incision";case AttackKind::SU_THRUST:return "incision_thrust";case AttackKind::SU_VECTOR:return "vector";case AttackKind::SU_SUTURE:return "suture";case AttackKind::SU_TRANSPOSE:return "transpose";case AttackKind::SU_RECALL:return "recall";case AttackKind::SU_PERFUSION:return "perfusion";
+        case AttackKind::LAB_LUNGE:return "release";case AttackKind::LAB_PRESS:return "press";case AttackKind::LAB_BEAM:return "observe";case AttackKind::LAB_CROSS:return "crossing";case AttackKind::LAB_SWIPE:return "claw";
+        case AttackKind::SU_INCISION:return "incision";case AttackKind::SU_THRUST:return "incision_thrust";case AttackKind::SU_VECTOR:return "vector";case AttackKind::SU_SUTURE:return "suture";case AttackKind::SU_TRANSPOSE:return "transpose";case AttackKind::SU_RECALL:return "recall";case AttackKind::SU_PERFUSION:return "perfusion";case AttackKind::SU_REAP:return "reap";case AttackKind::SU_BREAKER:return "breaker";
         case AttackKind::BALL_ANCHOR: return "weight"; case AttackKind::BALL_THROW: return "ballast";
         case AttackKind::SORT_GRAB: return "grab"; case AttackKind::SORT_STAMP: return "stamp";
         case AttackKind::SORT_SCAN: return "scan"; case AttackKind::SORT_THROW: return "reject";
@@ -83,8 +83,8 @@ inline const char* attackKey(AttackKind k) {
 inline std::vector<AttackKind> attacksOf(EnemyType t) {
     using A = AttackKind;
     switch (t) {
-        case EnemyType::PATIENT:return {A::LAB_LUNGE};case EnemyType::GRAFTED:return {A::LAB_PRESS,A::VOLLEY};case EnemyType::SUSPENDED:return {A::LAB_BEAM};case EnemyType::PHASED:return {A::LAB_CROSS,A::LAB_LUNGE};
-        case EnemyType::SUCCESSOR:return {A::SU_INCISION,A::SU_THRUST,A::SU_VECTOR,A::SU_SUTURE,A::SU_TRANSPOSE,A::SU_RECALL,A::SU_PERFUSION};
+        case EnemyType::PATIENT:return {A::LAB_LUNGE,A::LAB_SWIPE};case EnemyType::GRAFTED:return {A::LAB_PRESS,A::VOLLEY};case EnemyType::SUSPENDED:return {A::LAB_BEAM};case EnemyType::PHASED:return {A::LAB_CROSS,A::LAB_LUNGE,A::LAB_SWIPE};
+        case EnemyType::SUCCESSOR:return {A::SU_INCISION,A::SU_THRUST,A::SU_VECTOR,A::SU_SUTURE,A::SU_TRANSPOSE,A::SU_RECALL,A::SU_PERFUSION,A::SU_REAP,A::SU_BREAKER};
         case EnemyType::BALLAST: return {A::BALL_GRADE,A::BALL_GUST,A::BALL_ANCHOR,A::BALL_THROW,A::BALL_WINCH,A::BALL_RIP,A::BALL_SWEEP};
         case EnemyType::SORTER: return {A::SORT_GRAB,A::SORT_STAMP,A::SORT_SCAN,A::SORT_THROW,A::SORT_RUSH,A::SORT_ROW,A::SORT_PURGE};
         case EnemyType::HUSK:         return {A::SHOT};
@@ -143,9 +143,9 @@ inline float moveCadence(EnemyType t) {
 // How long a tell sounds: about the wind-up it announces
 inline float tellDur(EnemyType t, AttackKind a) {
     switch (a) {
-        case AttackKind::LAB_LUNGE:return .7f;case AttackKind::LAB_PRESS:return .95f;case AttackKind::LAB_BEAM:return 1.05f;case AttackKind::LAB_CROSS:return .8f;
+        case AttackKind::LAB_LUNGE:return .7f;case AttackKind::LAB_PRESS:return .95f;case AttackKind::LAB_BEAM:return 1.05f;case AttackKind::LAB_CROSS:return .8f;case AttackKind::LAB_SWIPE:return .5f;
         case AttackKind::SU_INCISION:return .64f;case AttackKind::SU_THRUST:return .46f;case AttackKind::SU_VECTOR:return .8f;
-        case AttackKind::SU_SUTURE:return .95f;case AttackKind::SU_TRANSPOSE:return .48f;case AttackKind::SU_RECALL:return .85f;case AttackKind::SU_PERFUSION:return .9f;
+        case AttackKind::SU_SUTURE:return .95f;case AttackKind::SU_TRANSPOSE:return .48f;case AttackKind::SU_RECALL:return .85f;case AttackKind::SU_PERFUSION:return .9f;case AttackKind::SU_REAP:return .8f;case AttackKind::SU_BREAKER:return .85f;
         case AttackKind::SORT_GRAB: case AttackKind::SORT_STAMP: case AttackKind::SORT_SCAN: case AttackKind::SORT_THROW: return .35f;
         case AttackKind::LUNGE: return 0.32f;   case AttackKind::BURST: return 0.75f;
         case AttackKind::DIVE: return 0.55f;    case AttackKind::LOB: return 0.7f;

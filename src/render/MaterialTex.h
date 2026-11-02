@@ -76,22 +76,36 @@ inline std::vector<unsigned char> build(F f, float mean) {
     return out;
 }
 
-// The Living Ward: sealed porcelain panels and lightly speckled resilient flooring.
-// Their high base reflectance supplies a clean hospital without emissive white walls.
+// The Living Ward, after its concept boards: glazed white tiles in a dark grout
+// grid. Walls: 1 m porcelain tiles with a deeper seam every 2 m. Floors: 1 m
+// bevelled tiles, each a slightly different white, a few of them cracked.
 inline std::vector<unsigned char> clinic() {
     return build([](int x,int y) {
-        float b=.78f+(hashI(x,y,901)-.5f)*.018f;
-        if(x%128<1 || y%128<1)b=.53f;
-        if(x%128==2 || y%128==2)b=.82f;
-        return Px{glm::vec3{b*.99f,b,b*1.01f}};
+        int tx=x/64,ty=y/64,u=x%64,v=y%64;
+        float b=.8f+(hashI(tx,ty,904)-.5f)*.035f+(hashI(x,y,901)-.5f)*.016f;
+        if(u<1 || v<1)b=.6f;                         // grout
+        else if(u<2 || v<2)b+=.035f;                 // the glaze catching light on the tile's edge
+        else if(u>61 || v>61)b-=.025f;
+        if(x%128<1 || y%128<1)b=.46f;                // panel seams
+        return Px{glm::vec3{b*.985f,b,b*1.015f}};
     },.72f);
 }
 inline std::vector<unsigned char> lino() {
     return build([](int x,int y) {
-        float b=.75f+(hashI(x,y,902)-.5f)*.035f;
-        if(hashI(x,y,903)>.985f)b-=.12f;
-        if(x==0 || y==0)b-=.035f;
-        return Px{glm::vec3{b,b*.995f,b*.96f}};
+        int tx=x/64,ty=y/64,u=x%64,v=y%64;
+        float tint=(hashI(tx,ty,905)-.5f)*.05f;
+        float b=.8f+tint+(hashI(x,y,902)-.5f)*.02f;
+        if(u<2 || v<2)b=.42f;                        // a dark grout line every metre
+        else if(u<3 || v<3)b+=.06f;                  // bevel: lit edge
+        else if(u>60 || v>60)b-=.05f;                // and its shadowed side
+        // One tile in a dozen is cracked: a jagged dark line from a corner
+        if(hashI(tx,ty,906)>.9f){
+            float k=hashI(tx,ty,907)*2-1;
+            float along=(float)u,line=(float)v-(32+k*18)-std::sin(u*.35f+k*4)*3-(u-32)*k*.6f;
+            if(along>3 && along<61 && std::fabs(line)<.9f)b-=.28f;
+        }
+        if(hashI(x,y,903)>.993f)b-=.08f;             // grit
+        return Px{glm::vec3{b*.99f,b,b*1.012f}};
     },.68f);
 }
 

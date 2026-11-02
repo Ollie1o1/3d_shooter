@@ -318,12 +318,16 @@ inline Buf tellV(EnemyType t, AttackKind a, const Profile& p, Rng& r) {
     Buf out(N(d), 0.f);
     switch (a) {
         case AttackKind::LAB_LUNGE:add(out,vent(d,2400,r,d*.7f,.04f));add(out,servo(d,160,500,r),.5f);break;
+        // A swarm subject's claw: a ragged hiss rising into a snap
+        case AttackKind::LAB_SWIPE:add(out,vent(d,3800,r,d*.75f,.03f),.8f);add(out,servo(d,240,820,r,d*.7f,.03f),.45f);break;
         case AttackKind::LAB_PRESS:add(out,metal(d,110,r,4),.7f);add(out,servo(d,160,70,r),.5f);break;
         case AttackKind::LAB_BEAM:add(out,choir(d,330,495,Vowel::EE,3,1.1f,r,.3f,.08f,.05f));break;
         case AttackKind::LAB_CROSS:add(out,servo(d,1300,220,r,.03f,.03f));add(out,click(1800,r),.7f);break;
         case AttackKind::SU_INCISION:add(out,vent(d,3400,r,d*.7f,.04f));add(out,servo(d,210,390,r),.4f);break;
         case AttackKind::SU_THRUST:case AttackKind::SU_TRANSPOSE:add(out,metal(d,1200,r,3.f));add(out,beep(1800,.07f),.5f,d*.6f);break;
         case AttackKind::SU_VECTOR:add(out,vent(d,900,r,d*.7f,.03f));add(out,servo(d,110,900,r,d*.7f,.03f),.6f);break;
+        case AttackKind::SU_REAP:add(out,servo(d,160,620,r,d*.65f,.04f),.7f);add(out,vent(d,1600,r,d*.65f,.04f),.6f);break;
+        case AttackKind::SU_BREAKER:add(out,metal(d,85,r,5),.7f);add(out,choir(d,110,330,Vowel::AH,3,1.f,r,d*.7f,.04f,.08f),.8f);break;
         case AttackKind::SU_SUTURE:for(int k=0;k<2;++k)add(out,metal(.35f,980+k*240,r,9),.8f,k*.3f);break;
         case AttackKind::SU_RECALL:for(int k=0;k<3;++k)add(out,beep(660,.07f),.65f,k*.25f);break;
         case AttackKind::SU_PERFUSION:add(out,choir(d,130,260,Vowel::AH,4,1.f,r,d*.65f,.05f,.1f));break;
