@@ -9,6 +9,8 @@
 #include "render/MaterialTex.h"
 #include "bosses/gleaner/GleanerState.h"
 #include "bosses/gleaner/Tender.h"
+#include "bosses/gleaner/Sieve.h"
+#include "bosses/gleaner/Caller.h"
 #include "game/PlainReveal.h"
 #include <algorithm>
 #include <cstdio>
@@ -255,6 +257,111 @@ int main() {
         Tender e2 = k; e2.hp = Tender::MAX_HP * 0.4f;
         CHECK(e2.enraged() && e2.windTime() < k.windTime(), "below half health it is enraged: a quicker wind-up");
     }
+    // ---- THE SIEVE ----
+    {
+        const float Y = 100.f;
+        Sieve v; v.wake({0, Y, 0}, 0.f, {-60, -60}, {60, 60}, Y);
+        glm::vec3 you{0, Y, 30};
+        bool rose = false; float lowest = 1e9f;
+        for (int f = 0; f < 60 * 4; ++f) { v.tick(DT, you); rose |= v.fighting(); v.events.clear(); for (int i = 0; i < 4; ++i) lowest = std::min(lowest, v.knee(i).y - v.hub().y); }
+        CHECK(rose && v.hub().y > Y + 15.f && lowest > 0.f, "the Sieve unfolds out of its crater: its hub high, its knees higher");
+        // The mesh: a level shot from the side is turned aside; one from right under it reaches the heart; a splinter threads it
+        float t = 0.f;
+        glm::vec3 h = v.heart(), side = h + glm::vec3{0, 0, 20};
+        int z1 = v.ray(side, glm::normalize(h - side), 100.f, t);
+        glm::vec3 under = glm::vec3{h.x + 2.f, Y + 1.7f, h.z + 1.f};
+        int z2 = v.ray(under, glm::normalize(h - under), 100.f, t);
+        int z3 = v.ray(side, glm::normalize(h - side), 100.f, t, true);
+        CHECK(z1 == 0 && z2 == 2 && z3 == 2, "its mesh turns a level shot aside; from under it, or off a splinter, the round reaches its heart");
+        CHECK(Sieve::zoneMult(2) >= 3.f && Sieve::zoneMult(0) < 0.5f, "its heart is a x3 weak point; the mesh takes little");
+        // Walking: it keeps a stride off you and its feet step (never all at once)
+        Sieve w = v; w.state = Sieve::STALK; w.cooldown = 99.f; w.pos = {0, Y, -10};
+        int steps = 0; bool allUp = false;
+        for (int f = 0; f < 60 * 6; ++f) {
+            w.tick(DT, you);
+            for (auto& e : w.events) steps += e.kind == SieveEvent::STEP;
+            w.events.clear();
+            allUp |= w.footU[0] >= 0.f && w.footU[1] >= 0.f && w.footU[2] >= 0.f && w.footU[3] >= 0.f;
+        }
+        float gap = glm::length(glm::vec2{w.pos.x - you.x, w.pos.z - you.z});
+        CHECK(steps >= 4 && !allUp && gap > 9.f && gap < 18.f, "it stalks you a stride off on its stilts, its feet stepping in pairs");
+        // The rain: a circle on you, then slag through the mesh into it; out of it is safe
+        Sieve r = v; r.pos = {0, Y, 20}; r.state = Sieve::SHAKE_AIM; r.t = 0.f;
+        bool rained = false;
+        for (int f = 0; f < 60 * 2 && !rained; ++f) { r.tick(DT, you); for (auto& e : r.events) rained |= e.kind == SieveEvent::RAIN_START; r.events.clear(); }
+        CHECK(rained && r.inRain(you) && !r.inRain(you + glm::vec3{Sieve::RAIN_R + 1.f, 0, 0}), "it shakes its basket over you: slag rains into a marked circle, not outside it");
+        // The stake: a leg rears, comes down near you, the plate cracks in lines (one runs at you) that burst after a tell
+        Sieve k = v; k.pos = {0, Y, 10}; k.state = Sieve::STALK; k.cooldown = 0.f; k.seed = 3u;
+        for (int tries = 0; tries < 40 && k.state != Sieve::STAKE_RAISE; ++tries) { Sieve c = v; c.pos = {0, Y, 10}; c.state = Sieve::STALK; c.cooldown = 0.f; c.seed = 3u + tries; c.tick(DT, {0, Y, 50}); if (c.state == Sieve::STAKE_RAISE) k = c; }
+        bool staked = false, cracked = false, tellFirst = true;
+        glm::vec3 you2{0, Y, 50};
+        for (int f = 0; f < 60 * 3; ++f) {
+            k.tick(DT, you2);
+            for (auto& e : k.events) { staked |= e.kind == SieveEvent::STAKE; if (e.kind == SieveEvent::CRACKS) { cracked = true; tellFirst &= k.crackT >= Sieve::CRACK_TELL; } }
+            k.events.clear();
+            if (cracked) break;
+        }
+        glm::vec3 onLine = k.crackFrom + k.crackDir[0] * 6.f, offLine = k.crackFrom + (k.crackDir[0] + k.crackDir[1]) * 0.5f * 6.f;
+        onLine.y = offLine.y = Y;
+        CHECK(staked && cracked && tellFirst && k.onCrack(onLine) && !k.onCrack(offLine) && !k.onCrack(onLine + glm::vec3{0, 2.2f, 0}),
+              "its stake cracks the plate in lines: on one you are hit, between them or over them you are not");
+        CHECK(k.state == Sieve::STAKED && k.heartOpen(), "staked, its basket swings its mouth at you: the heart is open");
+        float before = k.hp;
+        for (int i = 0; i < 4; ++i) k.hurt(40.f * Sieve::zoneMult(2), 2);
+        CHECK(k.state == Sieve::STAGGER && before - k.hp > 40.f * 3.f * 3.9f, "enough on its heart spills the basket: it staggers, and takes double");
+        Sieve d = v; int dies = 0;
+        for (int i = 0; i < 400 && d.fighting(); ++i) d.hurt(42.f, 1);
+        for (auto& e : d.events) dies += e.kind == SieveEvent::DIE;
+        CHECK(!d.fighting() && dies == 1, "shot enough, the Sieve dies, once");
+    }
+
+    // ---- THE CALLER ----
+    {
+        const float Y = 100.f;
+        Caller c; c.wake({0, Y, 0}, Y, 0.6f);
+        glm::vec3 you{0, Y, 0}, eye = you + glm::vec3{0, 1.7f, 0};
+        bool arrived = false, tolled = false;
+        for (int f = 0; f < 60 * 6; ++f) { c.tick(DT, you, eye); for (auto& e : c.events) tolled |= e.kind == CallerEvent::TOLL; c.events.clear(); arrived |= c.fighting(); }
+        CHECK(arrived && tolled && c.pos.y > Y + Caller::ALT - 6.f, "the Caller comes down out of the sky tolling and circles high over its ground");
+        // Its lamp: up into its mouth you see it; from level with it, or from above, its shell turns the round
+        Caller u = c; u.state = Caller::CIRCLE; u.axis = {0, 1, 0}; u.pos = {0, Y + 24.f, 0};
+        float t = 0.f;
+        glm::vec3 below{3, Y + 1.7f, 2}, level = u.pos + glm::vec3{25, 0, 0}, above = u.pos + glm::vec3{5, 20, 0};
+        int zb = u.ray(below, glm::normalize(u.lamp() - below), 200.f, t), zl = u.ray(level, glm::normalize(u.lamp() - level), 200.f, t), za = u.ray(above, glm::normalize(u.lamp() - above), 200.f, t);
+        int zs = u.ray(level, glm::normalize(u.lamp() - level), 200.f, t, true);
+        CHECK(zb == 2 && zl == 0 && za == 0 && zs == 2, "its lamp shows only from below (or to a splinter); its shell takes the rest");
+        // The toll calls the sky down on you
+        Caller tl = u; tl.state = Caller::TOLL; tl.t = 0.f;
+        int calls = 0; glm::vec3 callAt{0.f};
+        for (int f = 0; f < 60 * 2; ++f) { tl.tick(DT, you, eye); for (auto& e : tl.events) if (e.kind == CallerEvent::CALL) { ++calls; callAt = e.at; } tl.events.clear(); }
+        CHECK(calls == 1 && glm::length(callAt - you) < 0.5f, "a toll calls one meteor down on you");
+        // The dive: a tell (its mouth tipped at you, the lamp open from the front), then a straight line through where you stood
+        Caller dv = u; dv.state = Caller::DIVE_AIM; dv.t = 0.f;
+        bool openAtTell = false, dived = false; float closest = 1e9f;
+        for (int f = 0; f < 60 * 3; ++f) {
+            dv.tick(DT, you, eye);
+            if (dv.state == Caller::DIVE_AIM && dv.t > dv.aimTime() * 0.8f) openAtTell |= dv.lampSeen(glm::normalize(dv.pos - eye), false);
+            if (dv.state == Caller::DIVE) { dived = true; closest = std::min(closest, glm::length(dv.pos - eye)); }
+            dv.events.clear();
+        }
+        CHECK(openAtTell && dived && closest < Caller::HIT_R, "it tips its mouth at you (the lamp open), then dives straight through where you stood");
+        // Parried as it arrives: it goes down on its side, the lamp open from anywhere, double damage, then it gets up
+        Caller pr = u; pr.state = Caller::DIVE_AIM; pr.t = 0.f;
+        while (!(pr.state == Caller::DIVE && glm::length(pr.pos - eye) < Caller::PARRY_REACH)) { pr.tick(DT, you, eye); pr.events.clear(); }
+        CHECK(pr.parryable(), "its dive can be met with a punch as it arrives");
+        pr.parried(pr.pos - eye);
+        for (int f = 0; f < 60 * 2; ++f) { pr.tick(DT, you, eye); pr.events.clear(); }
+        int zSide = pr.ray(eye, glm::normalize(pr.lamp() - eye), 200.f, t);
+        float hp0 = pr.hp; pr.hurt(100.f, 2);
+        CHECK(pr.stunned() && pr.onGroundNow() && zSide == 2 && hp0 - pr.hp > 199.f, "punched, it is thrown down on its side: its lamp open from anywhere, double damage");
+        for (int f = 0; f < 60 * 4; ++f) { pr.tick(DT, you, eye); pr.events.clear(); }
+        CHECK(!pr.stunned() && pr.fighting(), "and it gets back up into the air");
+        Caller d = u; int dies = 0;
+        for (int i = 0; i < 400 && d.fighting(); ++i) d.hurt(42.f, 2);
+        for (auto& e : d.events) dies += e.kind == CallerEvent::DIE;
+        for (int f = 0; f < 60 * 4; ++f) { d.tick(DT, you, eye); d.events.clear(); }
+        CHECK(!d.fighting() && dies == 1 && d.onGroundNow(), "shot enough, the Caller dies, once, and falls onto its ground");
+    }
     // ---- called meteors ----
     {
         MeteorRain rain; rain.reset(); rain.next = 1e9f;
@@ -268,6 +375,12 @@ int main() {
         }
         CHECK(landed && called && std::abs(t - MeteorRain::CALLED_FALL) < 0.1f && closeIn > 0.9f,
               "a called meteor lands where it was aimed (at you), on time, its marker closing in");
+        MeteorRain up; up.reset(); up.next = 1e9f;
+        glm::vec3 back{50, 326, 50};
+        up.launchCalled(back, 6.f, back.y);
+        landed = false; t = 0.f; glm::vec3 at{0.f};
+        while (!landed && t < 5.f) { up.tick(DT, back, h); t += DT; for (auto& m : h) { landed = true; at = m.pos; } }
+        CHECK(landed && glm::length(at - back) < 0.5f && std::abs(t - MeteorRain::CALLED_FALL) < 0.1f, "one called onto the Gleaner's back lands on its back, on time");
     }
 
     // ---- the reveal ----
@@ -296,7 +409,8 @@ int main() {
     {
         StorySave s; s.chapter = 4; s.checkpoint = 2; s.owned = 15; s.grapple = true;
         StorySave back; CHECK(back.parse(s.text()) && back.chapter == 4 && back.checkpoint == 2, "a Chapter 4 checkpoint saves and loads");
-        s.checkpoint = 4; CHECK(!back.parse(s.text()), "a Chapter 4 checkpoint past its last phase is rejected");
+        s.checkpoint = 4; CHECK(back.parse(s.text()) && back.checkpoint == 4, "the last brood checkpoint (the Caller dead) saves");
+        s.checkpoint = 5; CHECK(!back.parse(s.text()), "a Chapter 4 checkpoint past its last phase is rejected");
         s.chapter = 5; s.checkpoint = 0; CHECK(!back.parse(s.text()), "a chapter that does not exist is rejected");
     }
 

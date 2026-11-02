@@ -398,9 +398,103 @@ static void checkGleanerFightRuntime(AudioSystem& audio) {
         tick(.05f);
     }
     std::printf("      tender down after %d revolver shots\n",shots);
-    CHECK(!game.tender.fighting() && game.gleanerPhase==GameplayState::GleanerPhase::BROOD,"real shots kill the Tender and the fight moves on");
+    CHECK(!game.tender.fighting() && game.gleanerPhase==GameplayState::GleanerPhase::SIEVE && game.deckFrontOpen,"real shots kill the Tender: the roof's front opens");
     game.retryArena();
-    CHECK(game.gleanerPhase==GameplayState::GleanerPhase::BROOD && game.onGleanerDeck(),"a retry after it keeps you on the Gleaner's back");
+    CHECK(game.gleanerPhase==GameplayState::GleanerPhase::SIEVE && game.onSaddle() && game.deckFrontOpen,"a retry after it puts you on its shoulders, the Sieve to come");
+    // (from the roof, as you would: back up there for the walk off its front)
+    {
+        Uint8 keys[SDL_NUM_SCANCODES]={};
+        auto walkTo=[&](glm::vec3 goal,int frames,auto until){
+            for(int f=0;f<frames;++f){
+                if(until())return true;
+                glm::vec3 d=goal-game.player.position;d.y=0;
+                std::fill(std::begin(keys),std::end(keys),0);
+                if(glm::length(d)>.3f){game.player.camera.yaw=glm::degrees(std::atan2(d.z,d.x));keys[SDL_SCANCODE_W]=1;}
+                game.physicsTick(1.f/60,keys,false);
+            }
+            return until();
+        };
+        game.player.position=game.deckCheckpoint();game.player.velocity={0,0,0};game.sieveForged=false;game.sieve=Sieve{};
+        for(int f=0;f<30;++f)game.physicsTick(1.f/60,noKeys,false);
+        float cx=(game.deckLo.x+game.deckHi.x)*.5f;
+        bool down=walkTo({cx,game.deckY,game.deckHi.y+8.f},60*30,[&]{return game.onSaddle()&&game.player.onGround;});
+        std::printf("      off the roof's front: saddle at %.0f m (%.0f below the roof), now at %.1f %.1f %.1f\n",game.saddleY,game.deckY-game.saddleY,game.player.position.x,game.player.position.y,game.player.position.z);
+        CHECK(down,"walk off the roof's front and you drop onto the saddle over its shoulders");
+        tick(.1f);
+        CHECK(game.sieveForged,"landing there calls a meteor down onto the saddle");
+        tick(MeteorRain::CALLED_FALL+3.5f);
+        CHECK(game.sieve.fighting() && glm::length(glm::vec2{game.sieve.pos.x-game.saddleCheckpoint().x,game.sieve.pos.z-game.saddleCheckpoint().z})<90.f,"the Sieve unfolds out of its crater on the saddle and fights");
+        {
+            glm::vec3 d=glm::normalize(game.sieve.heart()-game.player.camera.position);
+            game.player.camera.yaw=glm::degrees(std::atan2(d.z,d.x));game.player.camera.pitch=glm::degrees(std::asin(d.y));
+            game.prevCamPos=game.player.camera.position;game.render();screenshot("build/gleaner-sieve.bmp");
+        }
+        // Kill it with real shots at its heart, walking in under it to get them through the grate
+        int frames=0,sieveShots=0,heartHits=0;float hp0=game.sieve.hp;
+        while(game.sieve.fighting()&&frames<60*120){
+            glm::vec3 goal=game.sieve.pos;glm::vec3 d=goal-game.player.position;d.y=0;
+            std::fill(std::begin(keys),std::end(keys),0);
+            if(glm::length(d)>4.f){game.player.camera.yaw=glm::degrees(std::atan2(d.z,d.x));keys[SDL_SCANCODE_W]=1;}
+            game.physicsTick(1.f/60,keys,false);++frames;
+            if(frames%3==0){
+                glm::vec3 a=glm::normalize(game.sieve.heart()-game.player.camera.position);
+                game.player.camera.yaw=glm::degrees(std::atan2(a.z,a.x));game.player.camera.pitch=glm::degrees(std::asin(a.y));
+                float hpBefore=game.sieve.hp;
+                game.activeWeapon=0;game.weapons[0].ammo=8;game.weapons[0].cooldown=0;game.fireWeapon(0);++sieveShots;
+                if(hpBefore-game.sieve.hp>100.f)++heartHits;
+            }
+        }
+        tick(.1f);   // (its death, raised by the shot, is read on the next tick)
+        std::printf("      sieve: down after %d shots (%d on its heart) in %.1f s, from %.0f hp (phase %d, checkpoint %d, state %d)\n",sieveShots,heartHits,frames/60.f,hp0,(int)game.gleanerPhase,game.storyCheckpoint,(int)game.sieve.state);
+        CHECK(!game.sieve.fighting() && heartHits>0 && game.gleanerPhase==GameplayState::GleanerPhase::CALLER && game.storyCheckpoint>=3,"real shots through its grate kill the Sieve; the Gleaner rears its head");
+        tick(12.f);
+        CHECK(game.deckCrown && game.gleaner.headHold>=1.f,"its head comes up and holds: a bridge along its neck to its crown");
+        game.retryArena();
+        CHECK(game.gleanerPhase==GameplayState::GleanerPhase::CALLER && game.deckCrown && game.onSaddle(),"a retry after the Sieve starts at the saddle's front, its head up");
+        glm::vec3 crown{(game.crownLo.x+game.crownHi.x)*.5f,game.saddleY,(game.crownLo.y+game.crownHi.y)*.5f};
+        bool across=walkTo(crown,60*30,[&]{return game.onCrown()&&glm::length(glm::vec2{game.player.position.x-crown.x,game.player.position.z-crown.z})<2.f;});
+        std::printf("      across its neck: now at %.1f %.1f %.1f (crown at %.0f m)\n",game.player.position.x,game.player.position.y,game.player.position.z,game.saddleY);
+        CHECK(across && game.player.onGround,"walk along its neck onto the crown of its skull");
+        CHECK(game.caller.alive(),"the Caller comes down out of the sky");
+        tick(Caller::ARRIVE_TIME+.5f);
+        CHECK(game.caller.fighting(),"and circles over its crown");
+        {
+            glm::vec3 d=glm::normalize(game.caller.pos-game.player.camera.position);
+            game.player.camera.yaw=glm::degrees(std::atan2(d.z,d.x));game.player.camera.pitch=glm::degrees(std::asin(d.y));
+            game.prevCamPos=game.player.camera.position;game.render();screenshot("build/gleaner-caller.bmp");
+        }
+        // Punch its dives as they arrive (the real punch), and shoot its lamp: from under it, or while it lies on its side
+        int parries=0,lampHits=0;frames=0;
+        while(game.caller.fighting()&&frames<60*150){
+            bool punch=false;
+            if(game.caller.parryable()){
+                glm::vec3 to=game.caller.pos-game.player.camera.position;
+                if(glm::length(to)<Caller::PARRY_REACH-1.f){
+                    to=glm::normalize(to);game.player.camera.yaw=glm::degrees(std::atan2(to.z,to.x));game.player.camera.pitch=glm::degrees(std::asin(to.y));
+                    punch=true;
+                }
+            }
+            bool was=game.caller.stunned();
+            game.punchCooldown=0.f;
+            game.physicsTick(1.f/60,noKeys,punch);++frames;
+            if(!was&&game.caller.stunned())++parries;
+            if(frames%6==0&&(parries>0||frames>60*40)){   // (only once a dive has been met: the parry is what this checks first)
+                glm::vec3 a=glm::normalize(game.caller.lamp()-game.player.camera.position);
+                if(game.caller.lampSeen(a,false)){
+                    game.player.camera.yaw=glm::degrees(std::atan2(a.z,a.x));game.player.camera.pitch=glm::degrees(std::asin(a.y));
+                    float hpBefore=game.caller.hp;
+                    game.activeWeapon=0;game.weapons[0].ammo=8;game.weapons[0].cooldown=0;game.fireWeapon(0);
+                    if(hpBefore-game.caller.hp>50.f)++lampHits;
+                }
+            }
+        }
+        tick(.1f);
+        std::printf("      caller: down after %.1f s, %d parries, %d lamp hits (phase %d, checkpoint %d)\n",frames/60.f,parries,lampHits,(int)game.gleanerPhase,game.storyCheckpoint);
+        CHECK(parries>0,"its dive is parried by a real punch: it goes down on its side");
+        CHECK(!game.caller.fighting() && lampHits>0 && game.gleanerPhase==GameplayState::GleanerPhase::BROOD && game.storyCheckpoint>=4,"real shots at its lamp kill the Caller: the brood is dead");
+        game.retryArena();
+        CHECK(game.gleanerPhase==GameplayState::GleanerPhase::BROOD && game.onGleanerBack(),"a retry after the brood keeps you on the Gleaner's back");
+    }
     g_godMode=false;g_practice=false;g_storyChapter=1;
 }
 

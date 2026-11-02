@@ -24,7 +24,7 @@ inline void GameplayState::beginGleaner() {
     gleanerScreamCd = 35.f;
     // It plays on a fresh arrival (and in practice from the first checkpoint, as Chapter 3's does);
     // never again once seen in a run or saved as seen
-    const bool devFight = g_devOverlay == "plainclose" || g_devOverlay == "plaindeck";   // (dev: straight to the fight)
+    const bool devFight = g_devOverlay == "plainclose" || g_devOverlay == "plaindeck" || g_devOverlay == "plainsaddle" || g_devOverlay == "plaincrown";   // (dev: straight to the fight)
     if (devFight) { wakeSeen = plainRevealDone = true; }
     const bool reveal = (!wakeSeen || g_practice) && !plainRevealDone && director.arena == 0 && !g_devCam && g_bossRun < 0;
     if (reveal || g_devOverlay.rfind("plainreveal", 0) == 0) {
@@ -283,7 +283,7 @@ inline void GameplayState::updateGleaner(float dt) {
     glm::vec3 rel = player.position - g.pos;
     float lx = glm::dot(rel, g.right()), lz = glm::dot(rel, g.fwd());
     const float K = Gleaner::SCALE;
-    const bool above = g.kneel > 0.5f && deckWallsFrom >= 0 && player.position.y > deckY - 10.f;   // (on its back, or carried up to it)
+    const bool above = g.kneel > 0.5f && deckWallsFrom >= 0 && player.position.y > std::min(deckY, saddleY) - 10.f;   // (on its back, or carried up to it)
     if (!above && player.position.y < 160.f * K && std::abs(lx) < 58.f * K && lz > -205.f * K && lz < 112.f * K) {
         float push = (lx < 0.f ? -58.f : 58.f) * K - lx;
         player.position += g.right() * push;
@@ -310,6 +310,7 @@ inline void GameplayState::gatherGleaner(std::vector<BoxInstance>& out) {
     look.flash = gleaner.screaming() ? 0.35f * std::max(0.f, std::sin(gleaner.screamT * 9.f)) * gleaner.jaw : 0.f;
     look.watch = player.camera.position;
     look.watching = gleaner.eyeOpen > 0.5f;
+    look.frontGap = deckFrontOpen && deckWallsFrom >= 0;
     look.vent = gleanerPhase >= GleanerPhase::CLIMB ? 0.7f + 0.3f * std::sin(gameClock * 2.5f) : 0.f;
     look.shedding = gleaner.rise > 0.001f && gleaner.rise < 0.999f ? std::sin(gleaner.rise * 3.14159f) : 0.f;
     gleaner::draw(out, gleaner, look);

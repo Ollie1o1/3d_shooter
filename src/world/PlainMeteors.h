@@ -81,7 +81,7 @@ struct MeteorRain {
     // One the Gleaner calls down on the player: steep and quick (about CALLED_FALL seconds), aimed at
     // `target`, which is marked on the ground while it comes
     static constexpr float CALLED_FALL = 2.4f;
-    int launchCalled(glm::vec3 target, float size) {
+    int launchCalled(glm::vec3 target, float size, float groundY = 0.f) {   // (groundY: where it lands, if not the plain: the Gleaner's back)
         int slot = -1;
         for (int i = 0; i < POOL; ++i) if (!pool[i].alive) { slot = i; break; }
         if (slot < 0) return -1;
@@ -89,14 +89,14 @@ struct MeteorRain {
         float speed = 210.f;
         Meteor& m = pool[slot];
         m = {};
-        m.alive = true; m.called = true; m.size = size; m.target = target; m.target.y = 0.f;
+        m.alive = true; m.called = true; m.size = size; m.target = target; m.target.y = groundY;
         m.vel = slant * speed;
         m.pos = m.prev = m.target - m.vel * CALLED_FALL;
         m.spin = rnd(0.f, 6.283f);
         return slot;
     }
     // 0..1: how close a called one is to landing (its marker tightens)
-    static float calledIn(const Meteor& m) { return m.called && m.vel.y < 0.f ? std::clamp(1.f - (m.pos.y / -m.vel.y) / CALLED_FALL, 0.f, 1.f) : 0.f; }
+    static float calledIn(const Meteor& m) { return m.called && m.vel.y < 0.f ? std::clamp(1.f - ((m.pos.y - m.target.y) / -m.vel.y) / CALLED_FALL, 0.f, 1.f) : 0.f; }
 
     // Somewhere on the ground the player can see but is not standing on
     glm::vec3 pickTarget(glm::vec3 player) {
@@ -139,11 +139,12 @@ struct MeteorRain {
             m.age += dt;
             m.spin += dt * 1.7f;
             m.pos += m.vel * dt;
-            if (m.pos.y <= 0.f) {
+            const float ground = m.called ? m.target.y : 0.f;
+            if (m.pos.y <= ground) {
                 // Back along its line to the ground exactly
-                float back = m.vel.y < 0.f ? m.pos.y / m.vel.y : 0.f;
+                float back = m.vel.y < 0.f ? (m.pos.y - ground) / m.vel.y : 0.f;
                 glm::vec3 at = m.pos - m.vel * back;
-                at.y = 0.f;
+                at.y = ground;
                 hits.push_back({at, m.size, m.called});
                 m.alive = false;
                 addRemains(at, m.size);

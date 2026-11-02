@@ -54,6 +54,7 @@ struct Gleaner {
     float kneel = 0.f;               // 0 up .. 1 sunk on its knuckles, holding still (its back a battlefield)
     float eyeOpen = 0.f, ribs = 0.f; // 0..1
     float jaw = 0.f, headLift = 0.f; // 0..1 (the scream)
+    float headHold = 0.f;            // 0..1 its head reared up and held still, its crown level with its shoulders (the Caller's ground)
     float screamT = -1.f;            // seconds into a scream (-1: none)
     float clock = 0.f;
     Arm   arm[2];

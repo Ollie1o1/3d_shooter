@@ -405,16 +405,20 @@ inline void GameplayState::resetPlayer(glm::vec3 start) {
     ui.clearIndicators();
 }
 
+// A Story checkpoint is the arena to go back to, except where one arena holds several (Chapter 4's
+// fight phases): never past the level's last arena
+inline int GameplayState::storyRetryArena() const { return glm::clamp(storyCheckpoint, 0, (int)level.arenas.size() - 1); }
+
 inline void GameplayState::restartHere() {
     if(training()){startTrainingLesson(trainingLesson);return;}
-    if(story()){enterArena(storyCheckpoint);captureMouse(true);return;}
+    if(story()){enterArena(storyRetryArena());captureMouse(true);return;}
     enterArena(director.arena + (!fast() && director.phase == WaveDirector::Phase::CLEARED ? 1 : 0));
     captureMouse(true);
 }
 
 inline void GameplayState::retryArena() {
     ++deaths;
-    if (story()) { enterArena(storyCheckpoint); captureMouse(true); return; }
+    if (story()) { enterArena(storyRetryArena()); captureMouse(true); return; }
     if (fast() || arenaSolo()) { enterArena(director.arena); captureMouse(true); return; }   // (one arena on its own: that arena again)
     // Died on the way out of a cleared arena? Pick up at the next one.
     enterArena(retryTarget(director.phase, director.arena));   // (the Zenith, if you died rising into it)
@@ -1258,7 +1262,7 @@ inline void GameplayState::updateMusic() {
         const bool before=plainReveal.active() && plainReveal.time<PlainReveal::SCREAM;
         // the approach: the eerie layers (the horn far off); close, the drums start; on its back, everything
         const float flatDist=glm::length(glm::vec2{player.position.x-gleaner.pos.x,player.position.z-gleaner.pos.z});
-        float intensity=gleanerPhase==GleanerPhase::TENDER?1.25f:gleanerPhase>=GleanerPhase::KNEELING?1.05f:flatDist<700.f?.92f:.72f;
+        float intensity=gleanerPhase>=GleanerPhase::TENDER&&gleanerPhase<=GleanerPhase::CALLER?1.25f:gleanerPhase>=GleanerPhase::KNEELING?1.05f:flatDist<700.f?.92f:.72f;
         if(gleaner.screaming())intensity=std::max(intensity,1.f);
         if(gleanerPhase==GleanerPhase::BROOD)intensity=.8f;
         if(playerDead)intensity=.05f;

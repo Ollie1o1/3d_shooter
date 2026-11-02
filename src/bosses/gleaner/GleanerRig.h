@@ -49,6 +49,18 @@ inline float deckTop() { return furnaceBase().y + 20.f; }
 constexpr float GAP_HALF = 7.f;                                  // the way in through the west parapet (-X)
 inline vec3 chimney(int c) { static const vec3 S[3] = {{-15, 18, -14}, {14, 18, -4}, {-2, 22, 16}}; return furnaceBase() + S[c]; }
 inline float chimneyTall(int c) { static const float H[3] = {62, 54, 70}; return H[c]; }
+constexpr float FRONT_GAP = 9.f;                                 // the way off the roof's front (+Z) once the Tender is dead
+
+// The saddle: armour bolted across its shoulders, forward of the furnace, a drop below its roof (the Sieve's ground)
+constexpr float SADDLE_Y = 162.f, SADDLE_HX = 26.f, SADDLE_Z0 = -7.8f, SADDLE_Z1 = 32.f;
+inline vec3 saddlePillar(int i) { static const vec3 P[3] = {{-13, SADDLE_Y, 5}, {12, SADDLE_Y, 11}, {-3, SADDLE_Y, 24}}; return P[i]; }
+constexpr float PILLAR_R = 2.f;
+inline float saddlePillarTall(int i) { static const float H[3] = {30, 22, 26}; return H[i]; }
+// With its head reared up and held: a bridge of plates along its neck out to the crown of its skull (the Caller's ground)
+constexpr float NECK_HX = 6.f, CROWN_HX = 18.f, CROWN_Z0 = 62.f, CROWN_Z1 = 100.f;
+inline vec3 heldHead() { return {0.f, SADDLE_Y - 12.f, 84.f}; }   // (its brow's top level with the saddle)
+inline vec3 crownHorn(int s) { return {s ? 12.f : -12.f, SADDLE_Y, 68.f}; }
+constexpr float HORN_R = 1.6f, HORN_TALL = 24.f;
 
 struct Look {
     float ball = 0.f;         // lumpBall mesh id
@@ -57,6 +69,7 @@ struct Look {
     bool  watching = false;
     float shedding = 0.f;     // 0..1 rubble pouring off its back (rising out of the plain)
     float vent = 0.f;         // 0..1 the updraft vent in its side, glowing
+    bool  frontGap = false;   // the roof's front parapet open (the way down to the saddle)
 };
 
 inline void draw(std::vector<BoxInstance>& out, const Gleaner& g, const Look& look) {
@@ -87,7 +100,9 @@ inline void draw(std::vector<BoxInstance>& out, const Gleaner& g, const Look& lo
         box(B * alongZ(spine(b), spineTangent(b)) * S(vec3{w * 0.92f, h * 0.9f, 1.6f}), soot, fire * 0.35f);
         // the armour plate over it, tipped back like a scale
         box(B * alongZ(p + vec3{0, h * 0.42f, 0}, tan) * RX(-0.12f) * S(vec3{w * 0.85f, 6.f, len * 0.95f}), rust * (0.85f + 0.3f * (k % 2)));
-        // the ridge: spines of every height (the mountain line while it lies)
+        // the ridge: spines of every height (the mountain line while it lies); forward of the furnace the
+        // saddle's three spines stand in for them
+        if (k < 3) continue;
         float spike = 14.f + 22.f * std::abs(std::sin(k * 2.3f)) + (k == 3 || k == 4 ? 18.f : 0.f);
         box(B * alongZ(p + vec3{0, h * 0.5f + spike * 0.5f, 0}, vec3{0, 1, 0.25f}) * S(vec3{5.f, 5.f, spike}), bone * 0.8f);
         if (k % 2 == 0) for (float s : {-1.f, 1.f})   // and smaller ones to the sides
@@ -102,7 +117,13 @@ inline void draw(std::vector<BoxInstance>& out, const Gleaner& g, const Look& lo
         const float top = deckTop();
         box(B * T(vec3{base.x, top - 1.f, base.z}) * S(vec3{DECK_HX * 2.f, 2.f, DECK_HZ * 2.f}), iron * 1.15f);
         for (int i = 0; i < 6; ++i) box(B * T(vec3{base.x - DECK_HX + 4.f + i * 8.8f, top + 0.02f, base.z}) * S(vec3{0.3f, 0.06f, DECK_HZ * 2.f - 2.f}), soot, fire * 0.25f);   // seams, warm
-        for (float s : {-1.f, 1.f}) box(B * T(vec3{base.x, top + 0.35f, base.z + s * DECK_HZ}) * S(vec3{DECK_HX * 2.f, 0.7f, 0.8f}), rust);
+        box(B * T(vec3{base.x, top + 0.35f, base.z - DECK_HZ}) * S(vec3{DECK_HX * 2.f, 0.7f, 0.8f}), rust);
+        if (!look.frontGap) box(B * T(vec3{base.x, top + 0.35f, base.z + DECK_HZ}) * S(vec3{DECK_HX * 2.f, 0.7f, 0.8f}), rust);
+        else for (float s : {-1.f, 1.f}) {   // opened at its middle: the way down
+            float len = DECK_HX - FRONT_GAP;
+            box(B * T(vec3{base.x + s * (FRONT_GAP + len * 0.5f), top + 0.35f, base.z + DECK_HZ}) * S(vec3{len, 0.7f, 0.8f}), rust);
+            box(B * T(vec3{base.x + s * FRONT_GAP, top + 1.2f, base.z + DECK_HZ}) * S(vec3{1.2f, 2.4f, 1.2f}), soot, fire * 0.8f);   // posts, burning
+        }
         box(B * T(vec3{base.x + DECK_HX, top + 0.35f, base.z}) * S(vec3{0.8f, 0.7f, DECK_HZ * 2.f}), rust);
         for (float s : {-1.f, 1.f}) {   // the west parapet, in two halves round the gap
             float len = DECK_HZ - GAP_HALF;
@@ -128,6 +149,46 @@ inline void draw(std::vector<BoxInstance>& out, const Gleaner& g, const Look& lo
                 vec3 q = local(p + vec3{0, tall[c] + 6.f, 0}) + vec3{-0.35f, 1.f, 0.55f} * (u * 110.f * K) + vec3{std::sin(k * 2.1f + c), 0, std::cos(k * 1.3f)} * (u * 14.f * K);
                 float sz = (10.f + 34.f * u) * K;
                 lump(T(q) * RY(k + u) * S(vec3{sz}), soot * (1.4f - u), fire * 0.18f * (1.f - u) * (1.f - u));
+            }
+        }
+    }
+
+    // ---- the saddle: iron plates bolted over its shoulders, its three spines standing through them ----
+    {
+        const float zc = (SADDLE_Z0 + SADDLE_Z1) * 0.5f, zl = SADDLE_Z1 - SADDLE_Z0;
+        box(B * T(vec3{0, SADDLE_Y - 3.f, zc}) * S(vec3{SADDLE_HX * 2.f, 6.f, zl}), iron * 1.05f);
+        for (int r = 0; r < 5; ++r)   // the plates overlap like scales; light in the seams between
+            box(B * T(vec3{0, SADDLE_Y + 0.02f, SADDLE_Z0 + 4.f + r * 8.f}) * S(vec3{SADDLE_HX * 2.f - 2.f, 0.06f, 0.35f}), soot, fire * 0.3f);
+        for (int k = 0; k < 8; ++k)   // rivets
+            box(B * T(vec3{-SADDLE_HX + 3.f + k * 6.6f, SADDLE_Y + 0.15f, SADDLE_Z1 - 2.f}) * S(vec3{0.9f, 0.3f, 0.9f}), rust);
+        for (float s : {-1.f, 1.f}) {   // its rim (the bridge's way out at the front, once its head is up)
+            box(B * T(vec3{s * SADDLE_HX, SADDLE_Y + 0.35f, zc}) * S(vec3{0.8f, 0.7f, zl}), rust);
+            float len = SADDLE_HX - NECK_HX;
+            box(B * T(vec3{s * (NECK_HX + len * 0.5f), SADDLE_Y + 0.35f, SADDLE_Z1}) * S(vec3{len, 0.7f, 0.8f}), rust);
+            for (int k = 0; k < 3; ++k)   // and its edge, hanging down over the shoulders
+                box(B * T(vec3{s * (SADDLE_HX - 1.f), SADDLE_Y - 8.f - k * 2.f, SADDLE_Z0 + 6.f + k * 12.f}) * RZ(s * 0.2f) * S(vec3{2.f, 10.f, 10.f}), rust * 0.8f);
+        }
+        if (g.headHold < 0.99f) box(B * T(vec3{0, SADDLE_Y + 0.35f, SADDLE_Z1}) * S(vec3{NECK_HX * 2.f, 0.7f, 0.8f}), rust);
+        box(B * T(vec3{0, SADDLE_Y + 0.35f, SADDLE_Z0}) * S(vec3{SADDLE_HX * 2.f, 0.7f, 0.8f}), rust);
+        for (int i = 0; i < 3; ++i) {   // the spines: bone pillars, cracked, the tallest leaning
+            vec3 p = saddlePillar(i); float tall = saddlePillarTall(i);
+            box(B * T(p + vec3{0, tall * 0.5f, 0}) * S(vec3{PILLAR_R * 2.f, tall, PILLAR_R * 2.f}), bone * 0.8f);
+            box(B * T(p + vec3{0, tall + 3.f, 0.6f}) * RX(0.35f) * S(vec3{PILLAR_R * 1.4f, 7.f, PILLAR_R * 1.4f}), bone * 0.7f);
+            box(B * T(p + vec3{0, 1.f, 0}) * S(vec3{PILLAR_R * 2.6f, 2.f, PILLAR_R * 2.6f}), rust);   // its collar of plate
+            box(B * T(p + vec3{PILLAR_R + 0.02f, tall * 0.45f, 0}) * S(vec3{0.05f, tall * 0.5f, 0.3f}), soot, fire * 0.4f);   // a crack, glowing
+        }
+        // The bridge along its neck: plates on chains, there once its head is up and held
+        if (g.headHold > 0.01f) {
+            float hold = Gleaner::ease(g.headHold);
+            const float z0 = SADDLE_Z1, z1 = CROWN_Z0, n = 6.f;
+            for (int k = 0; k < (int)n; ++k) {
+                float zz = z0 + (k + 0.5f) * (z1 - z0) / n;
+                float sag = (1.f - hold) * (8.f + 4.f * std::sin(k * 1.3f));   // swinging up into place as its head comes up
+                box(B * T(vec3{0, SADDLE_Y - 1.2f - sag, zz}) * RX(0.08f * std::sin(k * 2.1f) * (1.f - hold)) * S(vec3{NECK_HX * 2.f, 2.4f, (z1 - z0) / n - 0.3f}), iron * (0.9f + 0.15f * (k % 2)));
+                for (float s : {-1.f, 1.f}) {
+                    box(B * T(vec3{s * NECK_HX, SADDLE_Y + 0.35f - sag, zz}) * S(vec3{0.6f, 0.7f, (z1 - z0) / n}), rust);
+                    localBar(vec3{s * NECK_HX, SADDLE_Y - 2.f - sag, zz}, vec3{s * 3.f, 124.f, zz}, 0.5f, 0.5f, soot);   // chains down to its neck
+                }
             }
         }
     }
@@ -170,8 +231,8 @@ inline void draw(std::vector<BoxInstance>& out, const Gleaner& g, const Look& lo
 
     // ---- the head: thrust out ahead of its shoulders on a short neck, bowed; for the scream it comes up and back ----
     {
-        float lift = g.headLift;
-        vec3 h = glm::mix(Gleaner::headLocal(), vec3{0, 140, 86}, lift);
+        float lift = g.headLift, hold = Gleaner::ease(g.headHold);
+        vec3 h = glm::mix(glm::mix(Gleaner::headLocal(), vec3{0, 140, 86}, lift), heldHead(), hold);
         vec3 n0 = spine(0.f) + vec3{0, -14, 8};
         vec3 n1 = glm::mix(n0, h, 0.5f) + vec3{0, 6, 0};
         vec3 n2 = h + vec3{0, 4, -14};
@@ -183,7 +244,7 @@ inline void draw(std::vector<BoxInstance>& out, const Gleaner& g, const Look& lo
             vec3 d{std::sin(a), std::cos(a) * 0.9f, 0.35f};
             box(B * alongZ(n0 + d * 16.f + vec3{0, 0, 6}, d) * S(vec3{4.f, 4.f, 22.f + 10.f * ((k * 7) % 3)}), bone * 0.75f);
         }
-        float pitch = glm::mix(0.38f, -0.6f, lift);    // bowed .. thrown back to scream
+        float pitch = glm::mix(glm::mix(0.38f, -0.6f, lift), 0.f, hold);    // bowed .. thrown back to scream .. held level
         // It watches you: the head turns (and tips) toward what it is looking at, slowly, within its neck's reach
         float turnTo = 0.f, tip = 0.f;
         if (look.watching) {
@@ -192,7 +253,21 @@ inline void draw(std::vector<BoxInstance>& out, const Gleaner& g, const Look& lo
             tip = std::clamp(-std::atan2(inv.y, std::max(1.f, std::hypot(inv.x, inv.z))) * 0.5f, -0.2f, 0.25f);
         }
         turnTo += 0.06f * std::sin(t * 0.21f);   // and never quite still
+        turnTo *= 1.f - hold; tip *= 1.f - hold;  // (held, it is ground: it must not move under you)
         mat4 H = B * T(h) * RY(turnTo) * RX(pitch + tip * (1.f - lift));
+        // Its crown: a plate of slag-crusted bone over the skull, two horns at its back, a rim round it
+        box(H * T(vec3{0, 11.f, CROWN_Z0 + (CROWN_Z1 - CROWN_Z0) * 0.5f - heldHead().z}) * S(vec3{CROWN_HX * 2.f, 2.f, CROWN_Z1 - CROWN_Z0}), bone * 0.62f);
+        for (int k = 0; k < 5; ++k)   // cracks across it, its furnace light under them
+            box(H * T(vec3{-12.f + k * 6.f, 12.03f, -2.f + std::sin(k * 1.7f) * 6.f}) * RY(0.6f * std::sin(k * 2.3f)) * S(vec3{0.35f, 0.06f, 14.f}), soot, fire * 0.5f);
+        for (float s : {-1.f, 1.f}) {
+            box(H * T(vec3{s * CROWN_HX, 12.35f, -3.f}) * S(vec3{0.8f, 0.7f, CROWN_Z1 - CROWN_Z0}), bone * 0.5f);
+            vec3 hp = crownHorn(s > 0.f) - heldHead();
+            box(H * T(hp + vec3{0, HORN_TALL * 0.5f, 0}) * RZ(-s * 0.08f) * S(vec3{HORN_R * 2.f, HORN_TALL, HORN_R * 2.f}), bone * 0.8f);
+            box(H * T(hp + vec3{0, HORN_TALL + 2.f, -1.f}) * RX(-0.5f) * S(vec3{HORN_R * 1.3f, 5.f, HORN_R * 1.3f}), bone * 0.7f);
+            float len = CROWN_HX - NECK_HX;
+            box(H * T(vec3{s * (NECK_HX + len * 0.5f), 12.35f, CROWN_Z0 - heldHead().z}) * S(vec3{len, 0.7f, 0.8f}), bone * 0.5f);
+        }
+        box(H * T(vec3{0, 12.35f, CROWN_Z1 - heldHead().z}) * S(vec3{CROWN_HX * 2.f, 0.7f, 0.8f}), bone * 0.5f);
         box(H * S(vec3{26, 20, 36}), bone * 0.75f);
         box(H * T(vec3{0, 9, 4}) * S(vec3{30, 6, 26}), rust * 0.7f);                    // brow
         for (float s : {-1.f, 1.f}) box(H * T(vec3{s * 7.f, 3, 18.2f}) * S(vec3{5, 3, 1}), soot, vec3{1.6f, 0.25f, 0.06f} * (0.5f + 0.5f * g.eyeOpen));   // sockets

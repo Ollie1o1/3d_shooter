@@ -173,6 +173,10 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
 
         if (plain() && gleanerPhase == GleanerPhase::TENDER && tender.fighting())
             ui.renderBossBar("THE TENDER", tender.health01(), tender.enraged(), glm::vec3{1.f, 0.45f, 0.15f});
+        if (plain() && gleanerPhase == GleanerPhase::SIEVE && sieve.fighting())
+            ui.renderBossBar("THE SIEVE", sieve.health01(), sieve.enraged(), glm::vec3{1.f, 0.6f, 0.2f});
+        if (plain() && gleanerPhase == GleanerPhase::CALLER && caller.fighting())
+            ui.renderBossBar("THE CALLER", caller.health01(), caller.enraged(), glm::vec3{1.f, 0.2f, 0.15f});
         const bool msBar = boss && boss->type == EnemyType::ABSOLUTE && (boss->morning() || boss->abSwallow > 0.f);   // (the swallow: his new bar filling)
         if (boss) ui.renderBossBar(msBar ? "MORNINGSTAR" : boss->type == EnemyType::ABSOLUTE ? "THE ABSOLUTE" :
                                    boss->type == EnemyType::SORTER ? "THE SORTER" :

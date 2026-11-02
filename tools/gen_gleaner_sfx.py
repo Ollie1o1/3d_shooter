@@ -14,6 +14,14 @@ recordings, all oscillators, noise and filters. Writes assets/sfx/:
                   wail that wanders, grit falling
   gleaner_blink   the moon shutting: a held breath, a low swell, a glassy
                   chord that cuts to nothing
+  caller_toll     THE CALLER ringing for the sky: a house-sized cracked bell
+                  (hum, prime, minor tierce, quint, nominal), every partial
+                  split and beating, a buzz from the crack, the plain's echoes
+  caller_clang    a round off its shell: the same bell struck small and hard
+  sieve_rattle    THE SIEVE shaking its basket: slag grains rattling in a mesh,
+                  chains jangling, a sizzle under it
+  sieve_stake     a stilt leg driven into iron: the blow, the plate ringing,
+                  cracks running out, then bursting
 
     python3 tools/gen_gleaner_sfx.py
 
@@ -199,9 +207,112 @@ def gen_blink():
     write_wav("gleaner_blink", x)
 
 
+# --------------------------------------------------------------------------- THE CALLER
+BELL = [(0.5, 1.0, 0.18), (1.0, 0.8, 0.32), (1.19, 0.75, 0.42), (1.5, 0.5, 0.55), (2.0, 0.9, 0.7), (2.52, 0.35, 1.1), (3.0, 0.3, 1.4), (4.17, 0.18, 2.0)]
+
+
+def bell(dur, nominal, decay, crack, strike, seed):
+    """A bell's partials (ratio to its nominal, level, decay rate), each split in two and beating:
+    the crack. `crack` also buzzes it (the two halves of the crack slapping together)."""
+    rnd = random.Random(seed)
+    n = int(SR * dur)
+    parts = []
+    for r, a, d in BELL:
+        for k in (-1, 1):
+            parts.append((nominal * r * (1.0 + k * crack * (0.004 + 0.006 * rnd.random())), a * (0.6 if k > 0 else 0.5), d * decay, rnd.random()))
+    hit = Biquad("bp", nominal * 6.0, 1.2)
+    buzz = Biquad("bp", nominal * 9.0, 2.0)
+    x = []
+    for i in range(n):
+        t = i / SR
+        s = 0.0
+        for f, a, d, ph in parts:
+            s += math.sin(2 * math.pi * (f * t + ph)) * a * math.exp(-t * d)
+        b = math.tanh(s * 3.0) - math.tanh(s * 2.6)                                 # the crack buzzing
+        s += buzz.run(b) * crack * 3.0 * math.exp(-t * 1.2)
+        s += hit.run(rnd.uniform(-1, 1)) * strike * math.exp(-t * 40.0)            # the strike
+        x.append(s * smooth(t / 0.002))
+    return x
+
+
+def gen_toll():
+    x = bell(6.5, 98.0, 0.55, 1.0, 1.2, 7)
+    lo = Biquad("lp", 60)
+    for i in range(len(x)):   # a little air moved under it
+        t = i / SR
+        x[i] += lo.run(random.uniform(-1, 1)) * 2.5 * math.exp(-t * 1.5) * smooth(t / 0.05)
+    x = echoes(x, [(0.55, 0.3), (1.3, 0.18), (2.2, 0.1)], 1500.0)
+    write_wav("caller_toll", x)
+
+
+def gen_clang():
+    x = bell(1.4, 330.0, 3.2, 0.6, 2.0, 11)
+    write_wav("caller_clang", x)
+
+
+# --------------------------------------------------------------------------- THE SIEVE
+def gen_rattle():
+    dur = 2.4
+    n = int(SR * dur)
+    x = [0.0] * n
+    rnd = random.Random(5)
+    # the grains: a few hundred tiny metallic ticks, thickest where the shake swings hardest
+    t = 0.0
+    while t < dur - 0.05:
+        env = smooth(t / 0.25) * (1.0 - smooth((t - 1.9) / 0.5))
+        shake = 0.5 + 0.5 * math.sin(2 * math.pi * 6.5 * t) ** 2
+        rate = 40 + 520 * env * shake
+        t += rnd.expovariate(rate)
+        f = rnd.uniform(1400, 5200); a = rnd.uniform(0.2, 1.0) * env; dk = rnd.uniform(90, 220)
+        i0 = int(t * SR)
+        for j in range(int(SR * 0.03)):
+            if i0 + j >= n: break
+            tt = j / SR
+            x[i0 + j] += math.sin(2 * math.pi * f * tt) * a * math.exp(-tt * dk) * 0.25
+    chain = [(910.0, 6.0), (1370.0, 7.5), (2210.0, 9.0), (2890.0, 11.0)]
+    sizz = Biquad("hp", 3500)
+    low = Biquad("lp", 200)
+    for i in range(n):
+        tt = i / SR
+        env = smooth(tt / 0.25) * (1.0 - smooth((tt - 1.9) / 0.5))
+        sw = math.sin(2 * math.pi * 6.5 * tt)
+        jang = sum(math.sin(2 * math.pi * f * tt + k) * math.exp(-((tt * 6.5) % 1.0) * d) for k, (f, d) in enumerate(chain)) * 0.05 * env
+        x[i] += jang + sizz.run(rnd.uniform(-1, 1)) * 0.06 * env + low.run(rnd.uniform(-1, 1)) * 0.9 * env * abs(sw)
+    write_wav("sieve_rattle", x)
+
+
+def gen_stake():
+    dur = 2.4
+    n = int(SR * dur)
+    rnd = random.Random(9)
+    ring = [(176.0, 3.0), (409.0, 4.2), (688.0, 5.5), (1131.0, 7.0), (1702.0, 9.0)]
+    crush = Biquad("lp", 1400)
+    hiss = Biquad("hp", 2200)
+    boom = Biquad("lp", 90)
+    ph = 0.0
+    x = []
+    for i in range(n):
+        t = i / SR
+        f = 36.0 + 40.0 * math.exp(-t * 9.0)
+        ph += f / SR
+        thump = math.sin(2 * math.pi * ph) * math.exp(-t * 4.0) * smooth(t / 0.003)
+        iron = sum(math.sin(2 * math.pi * fr * t) * math.exp(-t * d) for fr, d in ring) * 0.16
+        c = crush.run(rnd.uniform(-1, 1)) * math.exp(-t * 12.0) * 1.2
+        # the cracks running out: crackle thickening toward the burst at 0.75 s, then the burst
+        crackle = (rnd.random() < 0.002 + 0.03 * smooth((t - 0.1) / 0.6)) * rnd.uniform(-1, 1) * (t < 0.75) * 0.9
+        u = t - 0.75
+        burst = (hiss.run(rnd.uniform(-1, 1)) * 0.5 + boom.run(rnd.uniform(-1, 1)) * 6.0) * (u > 0) * math.exp(-max(u, 0) * 3.0) * smooth(u / 0.01)
+        x.append(math.tanh((thump * 1.4 + iron + c + crackle + burst) * 1.3))
+    write_wav("sieve_stake", x)
+
+
 if __name__ == "__main__":
     os.makedirs(OUT_DIR, exist_ok=True)
     gen_scream()
     gen_slam()
     gen_groan()
     gen_blink()
+    gen_toll()
+    gen_clang()
+    gen_rattle()
+    gen_stake()

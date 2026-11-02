@@ -92,7 +92,7 @@ inline void GameplayState::meteorImpact(const MeteorImpact& hit) {
         glm::vec3 feet = player.position;
         float d = glm::length(glm::vec2{feet.x - hit.pos.x, feet.z - hit.pos.z});
         const float R = 9.f;
-        if (d < R && feet.y < 12.f) {
+        if (d < R && feet.y - hit.pos.y < 12.f && feet.y > hit.pos.y - 3.f) {
             damagePlayer((10.f + 26.f * (1.f - d / R)) * tune().damage, hit.pos, 0.4f, 0.06f);
             if (!g_godMode) player.velocity += glm::normalize(glm::vec3{feet.x - hit.pos.x, 0.f, feet.z - hit.pos.z} + glm::vec3{0.f, 0.01f, 0.f}) * 12.f + glm::vec3{0.f, 9.f, 0.f};
         }

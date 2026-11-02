@@ -79,8 +79,8 @@ inline int GameplayState::splinterTarget(glm::vec3 from, glm::vec3& aimAt) const
         float score = d - (weak ? 8.f : 0.f);
         if (score < bestScore) { bestScore = score; best = ei; aimAt = point; }
     }
-    glm::vec3 brood;   // the Tender's weak point counts as a head
-    if (tenderSplinterPoint(brood)) {
+    glm::vec3 brood;   // the brood's weak point (the Tender's lip, the Sieve's heart, the Caller's lamp) counts as a head
+    if (broodSplinterPoint(brood)) {
         glm::vec3 to = brood - from;
         float d = glm::length(to), wall = d > 0.3f ? wallAlong(from, to / d, d) : -1.f;
         if (d > 0.3f && d < SplinterSystem::REACH && !(wall > 0.f && wall < d - 0.3f) && d - 8.f < bestScore) { best = SPLINTER_BROOD; aimAt = brood; }
@@ -136,10 +136,10 @@ inline void GameplayState::splinterRicochet(int first, float dmg, int w) {
             break;
         }
         glm::vec3 dir = glm::normalize(aimAt - from);
-        if (target == SPLINTER_BROOD) {   // into the Tender's weak point
+        if (target == SPLINTER_BROOD) {   // into the brood's weak point (the glass finds the gaps)
             float near = SplinterSystem::REACH + 5.f;
             fx.spawnTracer(from, aimAt, 0.08f, 0.35f, SPLINTER_GLOW * 1.6f);
-            landed = shootTender(from, dir, near, dmg * mult, w);
+            landed = shootBrood(from, dir, near, dmg * mult, w, true);
             break;
         }
         float wallT = hitscanAll(from, dir, SplinterSystem::REACH + 5.f, hits);

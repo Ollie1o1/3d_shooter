@@ -128,6 +128,7 @@ inline void GameplayState::punch(int boostable) {
             return;
         }
     }
+    if (parryCaller()) return;   // THE CALLER diving at you (Gameplay_GleanerFight.h)
     if (tryFinisher()) return;   // one low enough to finish (it glows): Gameplay_Feel.h
     if (boostable >= 0) {
         trainingSuccess(4);
@@ -984,7 +985,7 @@ inline void GameplayState::fireWeapon(int w) {
         }
         if (plain()) {   // the Gleaner's brood (Gameplay_GleanerFight.h)
             float nearest = hits.empty() ? wallT : hits[0].t;
-            if (shootTender(origin, dir, nearest, dmg, w)) { n = 0; wallT = nearest; anyHit = true; }
+            if (shootBrood(origin, dir, nearest, dmg, w)) { n = 0; wallT = nearest; anyHit = true; }
         }
         if(laboratory()){
             float nearest=hits.empty()?wallT:hits[0].t;

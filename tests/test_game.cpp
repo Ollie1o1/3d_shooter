@@ -3319,7 +3319,8 @@ int main() {
                                 "jump_air", "land_heavy", "slide", "hit_head", "ammo_low", "heartbeat", "hit_armor", "impact", "casing", "whiz", "step_metal", "land_metal", "lastkill",
                                 "hit_body", "stun", "finisher", "overdrive_on", "overdrive_off", "finish_ready", "hook_yank",
                                 "anvil", "anvil_final", "record", "split_behind", "count_tick", "count_go", "drive_warn", "drive_ready", "dash_ready", "potion_drop",
-                                "mini_sting", "bell", "medal", "gleaner_scream", "gleaner_slam", "gleaner_groan", "gleaner_blink"};
+                                "mini_sting", "bell", "medal", "gleaner_scream", "gleaner_slam", "gleaner_groan", "gleaner_blink",
+                                "caller_toll", "caller_clang", "sieve_rattle", "sieve_stake"};
         std::vector<std::string> names(std::begin(loaded), std::end(loaded));
         for(int i=0;i<7;++i)names.push_back("successor_line_"+std::to_string(i));
         for(int i=0;i<5;++i)names.push_back("lab_pa_"+std::to_string(i));

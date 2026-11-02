@@ -31,6 +31,8 @@
 #include "world/PlainMeteors.h"
 #include "bosses/gleaner/GleanerRig.h"
 #include "bosses/gleaner/TenderRig.h"
+#include "bosses/gleaner/SieveRig.h"
+#include "bosses/gleaner/CallerRig.h"
 #include "game/PlainReveal.h"
 #include "game/LabIntro.h"
 #include "bosses/successor/SuccessorHazards.h"
@@ -329,14 +331,22 @@ public:
     PlainReveal plainReveal;
     bool  plainRevealDone = false;   // played (or skipped) in this run: a retry never replays it
     // The fight (Gameplay_GleanerFight.h)
-    enum class GleanerPhase { APPROACH, KNEELING, CLIMB, TENDER, BROOD };
+    // (TENDER, SIEVE, CALLER: its brood, one at a time; BROOD: all three dead)
+    enum class GleanerPhase { APPROACH, KNEELING, CLIMB, TENDER, SIEVE, CALLER, BROOD };
     GleanerPhase gleanerPhase = GleanerPhase::APPROACH;
     bool  gleanerFightStarted = false;
     float calledMeteorCd = 6.f, riverBurnCd = 0.f;
     Tender tender;
+    Sieve  sieve;
+    Caller caller;
+    float sieveBurnCd = 0.f, broodCallCd = 0.f, callerClangCd = 0.f, broodWakeIn = -1.f;
+    bool  sieveForged = false;       // the meteor it comes out of has been called down
     int   deckWallsFrom = -1, deckBoostersFrom = -1;
+    bool  deckFrontOpen = false, deckCrown = false;   // what the back's walls were built with
     glm::vec2 deckLo{0.f}, deckHi{0.f};
     float deckY = 0.f;
+    glm::vec2 saddleLo{0.f}, saddleHi{0.f}, crownLo{0.f}, crownHi{0.f}, neckLo{0.f}, neckHi{0.f};
+    float saddleY = 0.f;
     glm::vec3 updraftBase{0.f};
     const char* gleanerPhaseName() const;
     void gleanerDeckRect(glm::vec2& lo, glm::vec2& hi, float& top) const;
@@ -344,13 +354,25 @@ public:
     void buildGleanerDeck();
     glm::vec3 deckCheckpoint() const;
     bool onGleanerDeck() const;
+    void gleanerBackRect(float x0, float z0, float x1, float z1, float y, glm::vec2& lo, glm::vec2& hi, float& top) const;
+    glm::vec3 saddleCheckpoint() const;
+    glm::vec3 crownCheckpoint() const;
+    bool onSaddle() const;
+    bool onCrown() const;
+    bool onGleanerBack() const;
     void wakeTender();
+    void wakeSieve();
+    void wakeCaller();
+    void updateSieve(float dt);
+    void updateCaller(float dt);
+    bool parryCaller();
+    bool shootBrood(glm::vec3 o, glm::vec3 d, float& nearest, float dmg, int w, bool splinter = false);
+    bool broodSplinterPoint(glm::vec3& at) const;
     void resetGleanerFight(bool fresh);
     void updateGleanerFight(float dt);
     void updraftThrow();
     void updateTender(float dt);
     bool shootTender(glm::vec3 o, glm::vec3 d, float& nearest, float dmg, int w);
-    bool tenderSplinterPoint(glm::vec3& at) const;
     void gatherGleanerFight(std::vector<BoxInstance>& out);
     int   gleanerWaypoint = 0;
     float gleanerScreamCd = 40.f;
@@ -561,6 +583,7 @@ public:
     // Put the player at the start of arena `a` with the doors set as if they
     // had just walked in. Used for a fresh run, a retry after death, and --arena.
     void enterArena(int a);
+    int  storyRetryArena() const;
 
     void resetPlayer(glm::vec3 start);
 

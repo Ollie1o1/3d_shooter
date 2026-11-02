@@ -284,3 +284,45 @@ time, never three at once. The Gleaner keeps a slow background pressure
     stagger). Staggered it takes double. Splinters find its lip or head.
   - Dev: `--overlay plainclose` (start 370 m from it at its mark),
     `--overlay plaindeck` (start on its back, the Tender waking).
+- **The rest of the brood (third pass, 2026-11-02):** fought on its back, one
+  arena each, all plain walls while it kneels (`buildGleanerDeck`):
+  - **The saddle** (Sieve): armour plates bolted over its shoulders,
+    forward of the furnace and 38 m below the roof. When the Tender dies the
+    roof's front parapet opens (`deckFrontOpen`) and you drop onto it. Three
+    bone spines stand through it as pillars. Landing calls a meteor down onto
+    it, and the Sieve unfolds out of the crater.
+  - **THE SIEVE** (`src/bosses/gleaner/Sieve.h`, `SieveRig.h`): 3000 HP, a
+    harvestman of scrap on four stilts, a mesh basket of slag hung under its
+    hub, its white-hot heart inside. SIFT (it strides over you, a marked circle,
+    slag rains through the mesh) and STAKE (a leg rears glowing, drives into
+    the plate; five crack lines glow, then burst; staked, its basket swings its
+    mouth at you and the heart is open). The mesh takes x0.2 unless the round
+    comes steeply (from under it through the grate) or off a splinter; the
+    heart is x3; 420 on it in one opening spills the basket (stagger, x2).
+    Enraged: it stakes twice and the rain follows you. The Gleaner also calls a
+    meteor onto its own back every 11-16 s.
+  - **The crown** (Caller): when the Sieve dies the Gleaner rears its head
+    and holds it level with the saddle (`Gleaner::headHold`). A bridge of
+    plates runs along its neck to the flat crown of its skull, which has two
+    horns for cover.
+  - **THE CALLER** (`Caller.h`, `CallerRig.h`): 2200 HP, a cracked iron bell
+    on wings of hanging chain and rags, with a red lamp where its clapper should
+    be. It circles 24 m up. TOLL calls a meteor onto you (three when enraged;
+    called meteors can now land at a height: `launchCalled(..., groundY)`).
+    DIVE: it tips its mouth at you (the lamp flares and is open from the front),
+    then dives straight through where you stood. Punch it as it arrives
+    (`parryCaller` in `punch()`) and it is thrown down on its side, its lamp
+    open from any side and taking double damage, for 3.4 s. Otherwise its
+    shell takes x0.25 and the lamp shows only from below or to a splinter.
+  - Phases `TENDER → SIEVE → CALLER → BROOD` (all three dead). Checkpoints
+    2 Tender dead (on the saddle), 3 Sieve dead (the saddle's front, head
+    up), 4 Caller dead. Falling off its back: the updraft throws you back to
+    the current arena. Dev: `--overlay plainsaddle`, `--overlay plaincrown`.
+  - Sounds (`tools/gen_gleaner_sfx.py`): `caller_toll` (a cracked bell, split
+    beating partials, a buzz from the crack, echoes), `caller_clang`,
+    `sieve_rattle`, `sieve_stake` (blow, ring, crackle, burst on the crack
+    tell).
+  - Tests: Sieve and Caller in `make test-plain`; `checkGleanerFightRuntime`
+    drops off the roof, kills the Sieve through its grate, crosses the neck,
+    parries the Caller and kills it at its lamp, all with real physics.
+  - Next: inside the Gleaner (the furnace door), the summit, its death.
