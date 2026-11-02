@@ -319,6 +319,140 @@ static void checkLabRuntime(AudioSystem& audio){
     g_storyChapter=1;g_startArena=g_startWave=0;g_practice=g_godMode=false;
 }
 
+// Chapter 4 through the live game: it loads, the meteors fall and land, a near
+// one shakes the ground late, the long view survives a retry, and it renders.
+static void checkPlainRuntime(AudioSystem& audio) {
+    g_storyChapter=4;g_startArena=g_startWave=0;g_practice=true;g_godMode=false;g_devOverlay.clear();g_bossRun=-1;
+    auto live=std::make_unique<GameplayState>(audio,nullptr,GameMode::STORY);auto& game=*live;
+    CHECK(game.plain() && game.level.arenas.size()==1 && game.storyOwns(0) && game.storyOwns(3) && game.storyGrapple,
+          "--story4 starts THE BLOOD MOON PLAIN with every gun and the grapple");
+    CHECK(game.meteors.live()>=4,"the sky is already full of meteors on arrival");
+    // The reveal: it plays, it has the controls, the Gleaner rises, turns, opens its eye and screams
+    CHECK(game.plainReveal.active() && game.storyLocked() && game.gleaner.rise<.01f,"the arrival plays the reveal with the Gleaner lying curled on the horizon");
+    game.plainReveal.time=PlainReveal::RISE0+2.f;game.updateStory(1.f/60);game.render();screenshot("build/plain-reveal-rising.bmp");
+    game.plainReveal.time=PlainReveal::SCREAM-.1f;bool screamed=false;
+    for(int f=0;f<60*7 && game.plainReveal.active();++f){game.updateStory(1.f/60);screamed|=game.gleaner.screaming();}
+    game.render();screenshot("build/plain-reveal-end.bmp");
+    CHECK(screamed && !game.plainReveal.active() && !game.storyLocked() && game.gleaner.rise>.99f && game.gleaner.eyeOpen>.99f,
+          "the Gleaner screams, and the reveal hands control back with it standing, eye open");
+    CHECK(game.wakeSeen && game.plainRevealDone && std::abs(game.player.camera.yaw+90.f)<1.f,"the reveal is remembered and leaves you facing it");
+    game.retryArena();game.updateStory(1.f/60);
+    CHECK(!game.plainReveal.active() && game.gleaner.rise>.99f,"a retry does not replay the reveal");
+    int landed=0,slams=0;
+    for(int f=0;f<60*12;++f){game.updateStory(1.f/60);landed+=(int)game.meteorHits.size();for(const auto& e:game.gleaner.events)slams+=e.kind==GleanerEvent::SLAM;}
+    CHECK(slams>=1,"the Gleaner crawls on the plain after the reveal, its fists landing");
+    CHECK(landed>=3 && game.player.camera.farPlane==plain::FAR_PLANE,"meteors land in the live game and the camera sees across the plain");
+    game.meteorImpact({game.player.position+glm::vec3{0,0,-150},9.f});
+    CHECK(!game.plainQuakes.empty() && game.plainQuakes.back().t>.4f,"a near impact queues its shake to arrive with the sound");
+    for(int f=0;f<60;++f)game.updateStory(1.f/60);
+    bool due=true;for(const auto& q:game.plainQuakes)due&=q.t>0.f;   // (the Gleaner's fists keep queuing new ones)
+    CHECK(due,"the queued shake lands and clears");
+    while(glGetError()!=GL_NO_ERROR){}
+    game.render();screenshot("build/plain-runtime.bmp");
+    CHECK(glGetError()==GL_NO_ERROR,"the plain, its sky and its meteors render without OpenGL errors");
+    game.retryArena();game.updateStory(1.f/60);
+    CHECK(game.plain() && game.player.camera.farPlane==plain::FAR_PLANE && glm::length(game.player.position-plain::start())<.5f,
+          "a retry returns to the arrival with the long view intact");
+    g_practice=false;g_storyChapter=1;
+}
+
+// The Gleaner fight through the live game: it goes down when you come close, its updraft carries you
+// onto its back with real physics, the Tender wakes and fights, and dies to real shots.
+static void checkGleanerFightRuntime(AudioSystem& audio) {
+    g_storyChapter=4;g_startArena=g_startWave=0;g_practice=true;g_godMode=true;g_bossRun=-1;
+    g_devOverlay="plainclose";
+    auto live=std::make_unique<GameplayState>(audio,nullptr,GameMode::STORY);auto& game=*live;
+    g_devOverlay.clear();
+    static const Uint8 noKeys[SDL_NUM_SCANCODES]={};
+    auto tick=[&](float s){for(int f=0;f<(int)(s*60);++f){game.physicsTick(1.f/60,noKeys,false);}};
+    CHECK(game.plain() && !game.plainReveal.active() && game.gleanerPhase==GameplayState::GleanerPhase::APPROACH,"the fight begins on the approach");
+    tick(1.f);
+    CHECK(game.gleanerPhase==GameplayState::GleanerPhase::KNEELING,"close to it, the Gleaner goes down");
+    tick(9.f);
+    CHECK(game.gleanerPhase==GameplayState::GleanerPhase::CLIMB && game.deckWallsFrom>=0 && game.gleaner.kneel>=1.f,"it kneels and its back becomes a battlefield");
+    std::printf("      deck at %.0f m, updraft at %.0f %.0f\n",game.deckY,game.updraftBase.x,game.updraftBase.z);
+    // Into the updraft, and let it carry us (real physics, real boosters)
+    game.player.position=game.updraftBase+glm::vec3{0,0.1f,0};game.player.velocity={0,0,0};
+    float top=0;for(int f=0;f<60*20 && !game.onGleanerDeck();++f){game.physicsTick(1.f/60,noKeys,false);top=std::max(top,game.player.position.y);}
+    std::printf("      updraft: rose to %.0f m, now at %.1f %.1f %.1f\n",top,game.player.position.x,game.player.position.y,game.player.position.z);
+    CHECK(game.onGleanerDeck(),"the updraft carries you up and over the parapet onto its back");
+    for(int f=0;f<60*5 && game.gleanerPhase!=GameplayState::GleanerPhase::TENDER;++f)game.physicsTick(1.f/60,noKeys,false);
+    CHECK(game.gleanerPhase==GameplayState::GleanerPhase::TENDER && game.tender.alive() && game.player.onGround,"you land on its back and the Tender climbs out of the hatch");
+    tick(3.f);
+    glm::vec3 was=game.tender.pos;tick(6.f);
+    float moved=glm::length(game.tender.pos-was);
+    std::printf("      tender: state %d, moved %.1f m in 3 s, %.0f m from you\n",(int)game.tender.state,moved,glm::length(game.tender.pos-game.player.position));
+    CHECK(moved>3.f || glm::length(game.tender.pos-game.player.position)<14.f,"the Tender comes for you across the roof");
+    {   // face it and look: the render camera follows the physics camera
+        glm::vec3 d=glm::normalize(game.tender.base()+glm::vec3{0,5,0}-game.player.camera.position);
+        game.player.camera.yaw=glm::degrees(std::atan2(d.z,d.x));game.player.camera.pitch=glm::degrees(std::asin(d.y));
+        game.prevCamPos=game.player.camera.position;game.render();screenshot("build/gleaner-tender.bmp");
+    }
+    // Shoot it to death with the revolver, aimed at its body
+    int shots=0;
+    while(game.tender.fighting() && shots<400){
+        Tender::Box b=game.tender.bodyBox();glm::vec3 c=(b.lo+b.hi)*.5f;
+        glm::vec3 d=glm::normalize(c-game.player.camera.position);
+        game.player.camera.yaw=glm::degrees(std::atan2(d.z,d.x));game.player.camera.pitch=glm::degrees(std::asin(d.y));
+        game.activeWeapon=0;game.weapons[0].ammo=8;game.weapons[0].cooldown=0;game.fireWeapon(0);++shots;
+        tick(.05f);
+    }
+    std::printf("      tender down after %d revolver shots\n",shots);
+    CHECK(!game.tender.fighting() && game.gleanerPhase==GameplayState::GleanerPhase::BROOD,"real shots kill the Tender and the fight moves on");
+    game.retryArena();
+    CHECK(game.gleanerPhase==GameplayState::GleanerPhase::BROOD && game.onGleanerDeck(),"a retry after it keeps you on the Gleaner's back");
+    g_godMode=false;g_practice=false;g_storyChapter=1;
+}
+
+// The SPLINTER through the live game: a revolver round that hits a hanging
+// splinter goes on into an enemy's head; two splinters chain and hit harder.
+static void checkSplinterRuntime(AudioSystem& audio) {
+    g_storyChapter=3;g_startArena=g_startWave=0;g_practice=true;g_godMode=false;g_devOverlay.clear();g_bossRun=-1;
+    g_devSplinter=true;
+    auto live=std::make_unique<GameplayState>(audio,nullptr,GameMode::STORY);auto& game=*live;
+    game.labIntro.seen=true;game.storySkipKey=true;game.updateLab(.7f);game.storySkipKey=false;
+    game.enterArena(1);game.director.hold=true;
+    auto shootAt=[&](glm::vec3 p){
+        glm::vec3 d=glm::normalize(p-game.player.camera.position);
+        game.player.camera.yaw=glm::degrees(std::atan2(d.z,d.x));game.player.camera.pitch=glm::degrees(std::asin(d.y));
+        game.activeWeapon=0;game.weapons[0].ammo=8;game.weapons[0].cooldown=0;game.fireWeapon(0);
+    };
+    auto setup=[&](){
+        game.enemies.clear();game.splinters.reset();
+        game.player.position=lab::centre(1)+glm::vec3{0,0,15};game.player.velocity={0,0,0};
+        game.player.camera.position=game.player.position+glm::vec3{0,1.7f,0};
+        // An enemy off to the side, where the player is not looking
+        game.spawnEnemy(EnemyType::GRAFTED,game.player.position+glm::vec3{9,0,-6});
+        auto& e=game.enemies.back();e.state=EnemyState::ACTIVE;e.spawnTimer=0;e.hasShown=false;
+        return game.enemies.size()-1;
+    };
+    {
+        size_t ei=setup();float before=game.enemies[ei].health;
+        game.player.camera.yaw=-90;game.player.camera.pitch=0;
+        CHECK(game.splinterOwned(),"--splinter owns the SPLINTER in Story");
+        game.pendingGrenade=true;game.shootInput();
+        CHECK(game.splinters.live()==1 && game.splinters.charges==SplinterSystem::CHARGES-1,"the grenade button throws a splinter in Story");
+        for(int k=0;k<40 && !SplinterSystem::glinting(game.splinters.pool[0]);++k)game.tickSplinters(1.f/60);
+        CHECK(SplinterSystem::glinting(game.splinters.pool[0]),"the thrown splinter reaches its glint in the live arena");
+        game.render();screenshot("build/splinter-glint.bmp");
+        shootAt(game.splinters.pool[0].pos);
+        float dealt=before-game.enemies[ei].health;
+        std::printf("      splinter redirect: %.1f damage (revolver 42)\n",dealt);
+        CHECK(game.splinters.live()==0 && dealt>42.f*1.5f,"shooting the splinter sends the round into the enemy's weak point, harder than the gun hits");
+    }
+    {
+        size_t ei=setup();float before=game.enemies[ei].health;
+        auto& a=game.splinters.pool[0];auto& b=game.splinters.pool[1];
+        a.alive=b.alive=true;a.age=b.age=.3f;a.vel=b.vel={0,0,0};
+        a.pos=a.prev=game.player.camera.position+glm::vec3{-3,1,-6};b.pos=b.prev=game.player.camera.position+glm::vec3{2,2,-8};
+        shootAt(a.pos);
+        float dealt=before-game.enemies[ei].health;
+        std::printf("      splinter chain: %.1f damage\n",dealt);
+        CHECK(game.splinters.live()==0 && dealt>42.f*2.f,"a round chains through both splinters before it lands");
+    }
+    g_devSplinter=false;g_practice=false;
+}
+
 int main() {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 0);
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0) return 1;
@@ -565,6 +699,9 @@ int main() {
         }
         checkImprovements(audio);
         checkLabRuntime(audio);
+        checkSplinterRuntime(audio);
+        checkPlainRuntime(audio);
+        checkGleanerFightRuntime(audio);
         GameSettings visualSettings;visualSettings.ambientDetail=3;
         menu.settings=&visualSettings;menu.settingsMenu.s=&visualSettings;menu.page=MenuState::SETTINGS;
         const auto settingsRows=menu.settingsMenu.rows();

@@ -38,6 +38,8 @@ struct HudState {
     StyleSource heldSource = StyleSource::NONE;   // the gun in hand, for its freshness
     HudWeapon weapons[WEAPON_COUNT];
     int   grenades = 0, grenadeMax = 2;
+    bool  splinter = false;      // the grenade slots show the SPLINTER's charges
+    float splinterRegrow = 1.f;  // the next charge, 0..1
     // OATHBREAKER (the Zenith): a fifth slot; out, the guard meter under the crosshair
     bool  swordSlot = false, swordOut = false, swordBroken = false, swordBar = false;
     float swordGuard = 1.f;
@@ -868,8 +870,13 @@ private:
         }
         // Grenades
         int gx = x0 + WEAPON_COUNT * (slotW + pad) - pad;
-        for (int i = 0; i < h.grenadeMax; ++i)
-            ui.rect(gx - (i + 1) * 16, y0 - 18, 12, 10, i < h.grenades ? glm::vec4{0.45f, 1.f, 0.25f, 0.95f} : glm::vec4{0.2f, 0.25f, 0.2f, 0.6f});
+        for (int i = 0; i < h.grenadeMax; ++i) {
+            glm::vec4 full = h.splinter ? glm::vec4{0.4f, 1.f, 1.1f, 0.95f} : glm::vec4{0.45f, 1.f, 0.25f, 0.95f};
+            glm::vec4 empty = h.splinter ? glm::vec4{0.15f, 0.25f, 0.28f, 0.6f} : glm::vec4{0.2f, 0.25f, 0.2f, 0.6f};
+            ui.rect(gx - (i + 1) * 16, y0 - 18, 12, 10, i < h.grenades ? full : empty);
+            if (h.splinter && i == h.grenades && h.splinterRegrow < 1.f)   // the one growing back fills from the bottom
+                ui.rect(gx - (i + 1) * 16, y0 - 18 + (int)(10 * (1.f - h.splinterRegrow)), 12, (int)(10 * h.splinterRegrow), {0.3f, 0.75f, 0.85f, 0.7f});
+        }
         if (h.grenadeMax > 0) ui.textRight("G", gx - h.grenadeMax * 16 - 8, y0 - 17, 1, {0.7f, 0.9f, 0.6f, 0.9f});
     }
 

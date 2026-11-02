@@ -39,6 +39,7 @@ inline GLuint* GameplayState::sharedWorldTex() {
         tex[TEX_CIRCUIT_FLOOR] = TextureGen::uploadMaterial(MaterialTex::circuitFloor());
         tex[TEX_CLINIC]        = TextureGen::uploadMaterial(MaterialTex::clinic());
         tex[TEX_LINO]          = TextureGen::uploadMaterial(MaterialTex::lino());
+        tex[TEX_CINDER]        = TextureGen::uploadMaterial(MaterialTex::cinder());
         tex[TEX_BASALT]        = TextureGen::uploadMaterial(MaterialTex::basalt());
     }
     return tex;
@@ -190,11 +191,11 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
         prog = resumedStory.prog;
     }
     g_continueStory = false;
-    level = training() ? buildTraining() : fast() ? buildGauntlet() : act2() ? buildAct2Level() : story() ? (g_storyChapter==3?buildLab():g_storyChapter==2?buildWasteland():buildCradle()) : buildLevel();
+    level = training() ? buildTraining() : fast() ? buildGauntlet() : act2() ? buildAct2Level() : story() ? (g_storyChapter==4?buildPlain():g_storyChapter==3?buildLab():g_storyChapter==2?buildWasteland():buildCradle()) : buildLevel();
     if (story()) armfile::load("assets/guns/unit24_arm.glb");   // UNIT 24's own hands (the menu's next run puts the gloves back)
     spatialGrid.build(level.walls);
     world = buildWorldMeshes(level);
-    bake = &sharedBake(training() ? "training" : fast() ? "fast" : act2() ? "act2" : story() ? (level.story.chapter==3?"story3":level.story.chapter==2?"story2":"story1") : "act1", level);
+    bake = &sharedBake(training() ? "training" : fast() ? "fast" : act2() ? "act2" : story() ? (level.story.chapter==4?"story4":level.story.chapter==3?"story3":level.story.chapter==2?"story2":"story1") : "act1", level);
     applyBake();
     neonLights = buildNeonLights(level);
     shifts.capture(level);
@@ -387,6 +388,7 @@ inline void GameplayState::resetPlayer(glm::vec3 start) {
     bankedStyle += styleSystem.earned; bankedDamage += styleSystem.damageTaken;   // the score survives a retry
     styleSystem = StyleSystem{};
     grenadeCount = grenadeMax; killsThisCycle = 0;
+    splinters.reset();
     for (int w = 0; w < WEAPON_COUNT; ++w) {
         weapons[w] = WeaponState{};
         weapons[w].ammo = weaponMag((WeaponId)w, prog.up[w]);
@@ -1030,7 +1032,7 @@ inline void GameplayState::update(float dt) {
             keys = bare;
         }
         if (storyLocked() || !storyArmed || storyEndT>=0.f) { pendingFire = false; pendingAlt = false; }
-        pendingGrenade = false;   // (no grenades found yet)
+        if (!splinterOwned() || storyLocked() || storyEndT >= 0.f) pendingGrenade = false;   // (no grenades in Story: the button is the SPLINTER's)
         if (!storyGrapple || storyLocked() || storyEndT >= 0.f) pendingGrapple = false;
     }
     bool parryKey = keys[SDL_SCANCODE_F] != 0;
@@ -1251,6 +1253,19 @@ inline void GameplayState::snapshotForInterpolation() {
 inline void GameplayState::updateMusic() {
     auto& m = audio.music;
     audio.setMusicVolume(settings ? settings->musicVolume : 0.6f);
+    if(plain()){   // Chapter 4: RECLAMATION. Silence until it screams, then the brass and the anvils
+        m.setTrack(14);m.setDrive(overdriveOn()&&!playerDead);m.setSolo(false);
+        const bool before=plainReveal.active() && plainReveal.time<PlainReveal::SCREAM;
+        // the approach: the eerie layers (the horn far off); close, the drums start; on its back, everything
+        const float flatDist=glm::length(glm::vec2{player.position.x-gleaner.pos.x,player.position.z-gleaner.pos.z});
+        float intensity=gleanerPhase==GleanerPhase::TENDER?1.25f:gleanerPhase>=GleanerPhase::KNEELING?1.05f:flatDist<700.f?.92f:.72f;
+        if(gleaner.screaming())intensity=std::max(intensity,1.f);
+        if(gleanerPhase==GleanerPhase::BROOD)intensity=.8f;
+        if(playerDead)intensity=.05f;
+        m.setIntensity(intensity);m.setMuffle(paused||armoryOpen||playerDead);
+        audio.setMusicVolume(before?0.f:(settings?settings->musicVolume:.6f));
+        audio.setOverdrive(overdriveOn()&&!playerDead&&!paused&&!armoryOpen,0);return;
+    }
     if(laboratory()){
         const bool boss=level.arenaAt(player.position)==9 && !storyBossDown;
         m.setTrack(boss?13:12);m.setDrive(overdriveOn()&&!playerDead);m.setSolo(false);
@@ -1268,7 +1283,10 @@ inline void GameplayState::updateMusic() {
     bool zenith = act2() && a == ZENITH_ARENA;
     const bool morning = zenith && msSwallowT >= 0.f;   // inside the eclipse: MORNINGSTAR's track (from the next bar line)
     if (story() && ((!wasteland() && director.arena < 3) || !director.fighting())) { audio.setMusicVolume(0.f); m.setMuffle(true); return; }   // STORY: the furnace line's own air, no music yet
-    m.setTrack(fast() ? FAST_TRACK[a % 7] : morning ? 11 : zenith ? 10 : act2() ? 5 + std::min(a, 4) : ARENA_TRACK[a % 5]);   // the Nave .. the Maw; !!!!! has its own
+    // STORY's first two chapters: never the menu's groove (track 0). The Cradle's fights take the Foundry's track and
+    // the Sorter the Core's; the world outside takes the Spire's and Ballast the Descent's
+    const int storyTrack = wasteland() ? (director.bossWave() ? 7 : 2) : (director.bossWave() ? 3 : 1);
+    m.setTrack(story() ? storyTrack : fast() ? FAST_TRACK[a % 7] : morning ? 11 : zenith ? 10 : act2() ? 5 + std::min(a, 4) : ARENA_TRACK[a % 5]);   // the Nave .. the Maw; !!!!! has its own
     float lv = 0.6f;
     switch (director.phase) {
         case WaveDirector::Phase::ACTIVE:   lv = director.bossWave() ? 1.35f : 1.f; break;

@@ -82,6 +82,8 @@ inline const std::vector<MixEntry>& mixTable() {
         {"anvil", C::ACTION, -3.5f}, {"anvil_final", C::ACTION, -2.8f}, {"record", C::UI, -5.0f}, {"split_behind", C::WORLD, 1.7f},
         {"count_tick", C::UI, -2.9f}, {"count_go", C::UI, -0.8f}, {"drive_warn", C::UI, 0.7f}, {"drive_ready", C::UI, -1.7f}, {"dash_ready", C::UI, 4.9f}, {"potion_drop", C::WORLD, -0.4f},
         {"mini_sting", C::UI, -4.2f}, {"bell", C::ACTION, -0.8f}, {"medal", C::UI, -0.9f},   // the Gauntlet's: a mini-boss arrives, the Cantor's bell, a room's medal
+        // THE GLEANER (tools/gen_gleaner_sfx.py): its scream (a colossal train horn), a fist landing, rising out of the plain, the moon shutting
+        {"gleaner_scream", C::ACTION, -0.1f}, {"gleaner_slam", C::ACTION, -7.3f}, {"gleaner_groan", C::ACTION, -1.7f}, {"gleaner_blink", C::UI, -5.0f},
     };
     return T;
 }

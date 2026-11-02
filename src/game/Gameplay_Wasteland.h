@@ -16,13 +16,13 @@ inline void GameplayState::beginWasteland() {
 }
 
 inline void GameplayState::loadStoryChapter(int chapter) {
-    if(chapter!=2 && chapter!=3)return;
+    if(chapter<2 || chapter>4)return;
     logRun("chapter_complete");
     g_storyChapter=chapter;g_startArena=g_startWave=0;g_devOverlay.clear();
     // Release the non-RAII contact buffers before moving in the new world.
     world.contact.release();movingShadows.release();
-    level=chapter==3?buildLab():buildWasteland();world=buildWorldMeshes(level);spatialGrid.build(level.walls);
-    bake=&sharedBake(chapter==3?"story3":"story2",level);applyBake();neonLights=buildNeonLights(level);
+    level=chapter==4?buildPlain():chapter==3?buildLab():buildWasteland();world=buildWorldMeshes(level);spatialGrid.build(level.walls);
+    bake=&sharedBake(chapter==4?"story4":chapter==3?"story3":"story2",level);applyBake();neonLights=buildNeonLights(level);
     shifts=ArenaShifts{};shifts.capture(level);
     anchorsBuilt=level.anchors;anchorBoxes.clear();
     for(const auto& a:level.anchors)anchorBoxes.push_back(level.walls[a.wall].box);
@@ -32,7 +32,7 @@ inline void GameplayState::loadStoryChapter(int chapter) {
     storyRelayIsolated=false;
     storyLogsSeen=storyTerminalsSeen=0;storySeenSection=storyCheckpoint=0;storyBossDown=false;
     storyEndT=-1;wakeSeen=false;wakeT=-1;storyLog=storyTerminal=-1;
-    storyOwned|=chapter==3?15:7;storyGrapple=true;storyArmed=true;
+    storyOwned|=chapter>=3?15:7;storyGrapple=true;storyArmed=true;
     totalKills=totalShots=totalHits=deaths=0;elapsedTime=0;peakStyle=0;
     bankedStyle=bankedDamage=0;styleSystem=StyleSystem{};
     spaceArena=-1;warmupFrames=2;

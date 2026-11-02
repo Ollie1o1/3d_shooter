@@ -19,6 +19,7 @@
 #include "audio/RoomTone.h"
 #include "render/EnemyModel.h"
 #include "player/Weapons.h"
+#include "player/Splinter.h"
 #include "game/Progression.h"
 #include "core/MouseFilter.h"
 #include "core/Settings.h"
@@ -3318,7 +3319,7 @@ int main() {
                                 "jump_air", "land_heavy", "slide", "hit_head", "ammo_low", "heartbeat", "hit_armor", "impact", "casing", "whiz", "step_metal", "land_metal", "lastkill",
                                 "hit_body", "stun", "finisher", "overdrive_on", "overdrive_off", "finish_ready", "hook_yank",
                                 "anvil", "anvil_final", "record", "split_behind", "count_tick", "count_go", "drive_warn", "drive_ready", "dash_ready", "potion_drop",
-                                "mini_sting", "bell", "medal"};
+                                "mini_sting", "bell", "medal", "gleaner_scream", "gleaner_slam", "gleaner_groan", "gleaner_blink"};
         std::vector<std::string> names(std::begin(loaded), std::end(loaded));
         for(int i=0;i<7;++i)names.push_back("successor_line_"+std::to_string(i));
         for(int i=0;i<5;++i)names.push_back("lab_pa_"+std::to_string(i));
@@ -5773,6 +5774,39 @@ int main() {
         CHECK(js.find("\"killedBy\":\"RIPPER\"") != std::string::npos && js.find("\"HUSK\":[15,1]") != std::string::npos &&
               js.find("\"SHOTGUN\":[4,3,1]") != std::string::npos && js.find("\"HUSK\":[1.25,1]") != std::string::npos && js.find('\n') == std::string::npos,
               "the run log writes what hurt you, what killed you, each gun's shots, hits and kills, and time to kill, on one line");
+    }
+
+    // ------------------------------------------------------------ the SPLINTER
+    {
+        SplinterSystem sp;
+        auto open = [](glm::vec3, glm::vec3) { return false; };
+        int i = sp.toss({0.f, 1.7f, 0.f}, {0.f, 0.f, -1.f}, {1.f, 0.f, 0.f}, glm::vec3{0.f});
+        CHECK(i >= 0 && sp.charges == SplinterSystem::CHARGES - 1, "a splinter costs one charge");
+        float hang = 0.f, peak = 0.f, t = 0.f;
+        while (sp.pool[i].alive && t < 5.f) {
+            sp.tick(1.f / 60.f, open); t += 1.f / 60.f;
+            if (SplinterSystem::glinting(sp.pool[i])) hang += 1.f / 60.f;
+            peak = std::max(peak, sp.pool[i].pos.y);
+        }
+        std::printf("      splinter: peak %.2f m, glints %.2f s\n", peak, hang);
+        CHECK(hang > 0.4f && hang < 0.75f, "a splinter hangs and glints for about half a second at the top of its arc");
+        CHECK(peak > 2.8f && peak < 5.f, "a splinter rises to a readable height in front of you");
+        CHECK(sp.charges == SplinterSystem::CHARGES, "a spent charge regrows");
+        sp.reset();
+        for (int k = 0; k < SplinterSystem::CHARGES; ++k) sp.toss({0.f, 1.7f, 0.f}, {0.f, 0.f, -1.f}, {1.f, 0.f, 0.f}, glm::vec3{0.f});
+        CHECK(!sp.canThrow() && sp.toss(glm::vec3{0.f}, {0.f, 0.f, -1.f}, {1.f, 0.f, 0.f}, glm::vec3{0.f}) < 0, "no charges, no splinter");
+        sp.reset();
+        i = sp.toss({0.f, 1.7f, 0.f}, {0.f, 0.f, -1.f}, {1.f, 0.f, 0.f}, glm::vec3{0.f});
+        float rt = 0.f;
+        CHECK(sp.rayHit({0.f, 1.7f, 0.f}, {0.f, 0.f, -1.f}, 50.f, rt) < 0, "a splinter cannot be shot the instant it leaves the hand");
+        sp.tick(0.2f, open);
+        glm::vec3 eye{0.f, 1.7f, 0.f}, to = glm::normalize(sp.pool[i].pos + glm::vec3{0.3f, 0.f, 0.f} - eye);
+        CHECK(sp.rayHit(eye, to, 50.f, rt) == i, "a round passing within half a metre of a splinter hits it");
+        CHECK(sp.rayHit(eye, to, rt - 0.5f, rt) < 0, "something nearer along the round (a wall, an enemy) comes first");
+        int broke = sp.tick(1.f / 60.f, [](glm::vec3, glm::vec3) { return true; });
+        CHECK(broke == (1 << i) && sp.live() == 0, "a splinter breaks on the world it flies into");
+        CHECK(SplinterSystem::damageMult(0, false) == 1.5f && SplinterSystem::damageMult(2, true) > SplinterSystem::damageMult(2, false)
+              && SplinterSystem::damageMult(1, false) > SplinterSystem::damageMult(0, false), "a chain and a glint both hit harder");
     }
 
     // A Sentinel on the Spire's summit keeps firing at you below, every time and

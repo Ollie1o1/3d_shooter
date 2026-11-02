@@ -51,7 +51,7 @@ struct MusicTrack {
                            // (a distorted kick with a long tail, a snare under the clap, a dirtier bass and sub, a deeper pump)
 };
 
-constexpr int MUSIC_TRACKS = 14;
+constexpr int MUSIC_TRACKS = 15;
 
 inline const MusicTrack& musicTrack(int i) {
     static const MusicTrack T[] = {
@@ -111,6 +111,12 @@ inline const MusicTrack& musicTrack(int i) {
         {"RELEASE DENIED", 176.f, 50, {0, 5, 3, 4},
          "x..x..x.x.x...xx", "....x.......x..g", "x.XxxxX.x.XxxxXo",
          "x.fx.xfox.fx.xfo", "0.2.1.2.0.2.3.2.", "0---2-1-0---3---2---1-2-0-------", 0},
+        // THE BLOOD MOON PLAIN (Chapter 4): not this synth's band at all. An orchestral engine of its
+        // own (plainStep/plainSample below): war drums, a choir, a horn theme, tremolo strings, a
+        // tolling bell, low brass and anvils, in E minor over eight bars. The patterns here go unused.
+        {"RECLAMATION", 76.f, 40, {0, 5, 3, 4},
+         "x.......x..x....", "........x.......", "x...x...x...x.x.",
+         "x-------x---f---", "0.......3.......", "0-------1---2---3-------2---1---", 0},
     };
     return T[((i % MUSIC_TRACKS) + MUSIC_TRACKS) % MUSIC_TRACKS];
 }
@@ -172,6 +178,11 @@ public:
     float  samplesPerStep() const { return stepLen; }
     int    rootNote() const { return musicTrack(track).root; }
     int    pass() const { return cycle; }   // times round the four bars (odd: the B side)
+    static bool labTrack(int t) { return t == 12 || t == 13; }   // the lab's choir and organ
+    // The plain's score, one instrument at a time (tests, tuning): a bit per layer, set = silent.
+    // 1 drone, 2 choir, 4 strings, 8 bell, 16 war drums, 32 low brass, 64 anvils, 128 horn
+    unsigned plainMute = 0;
+    static bool plainTrack(int t) { return t == 14; }            // the plain's brass and anvils
 
 private:
     std::atomic<int>   wantTrack{0};
@@ -284,6 +295,187 @@ private:
     float choirHz[4]={146.83f,174.61f,220.f,293.66f}, choirNote[4]={50,53,57,62};
     float choirG[3]={0,0,0}, choirAmp=0, choirClock=0, organHz=293.66f;
     SVF mufL, mufR;
+    // ======== THE PLAIN's score (track 14) ========
+    // Its own orchestra, layered by intensity: below ~0.9 the approach (a low drone, an "oo" choir,
+    // strings trembling on a minor-second cluster, a bell tolling every two bars, one war drum, the
+    // horn theme an octave down and far off); from 0.9 the fight (the full taiko pattern, low brass
+    // stabbing 3-3-2, the choir opening to "ah", the strings on the chord, the horn theme up close,
+    // anvils on two and four).
+    struct Strike { float t = 1e9f, hz = 55.f, vel = 1.f; };
+    Strike taikoBig, taikoMid, brassHit, bellToll, anvilHit;
+    Osc  taikoOsc[3], bellOsc[5], brassStab[6], hornOsc[3], hornVib, strOsc[8], droneOsc[4];
+    SVF  taikoF, brassStabF, hornF1, hornF2, hornLP, strFL, strFR, droneF;
+    float hornCur = 52.f, hornTarget = 52.f, hornAmp = 0.f, hornT = 0.f; bool hornOn = false; int hornEnd = -1;
+    float plainRoot = 40.f, strNotes[4] = {76, 77, 75, 76}, plainFormant[3] = {300, 870, 2240};
+    float strCur[4] = {76, 77, 75, 76}, tremPh = 0.f;
+
+    int plainPos() const { return (cycle & 1) * 64 + std::max(step, 0); }   // 0..127 through the eight bars
+
+    void plainStep(int s) {
+        // The bass, then the choir's four voices, for each of the eight bars
+        static const int CH[8][5] = {{40, 52, 55, 59, 64}, {36, 52, 55, 60, 64}, {33, 52, 57, 60, 64}, {35, 51, 54, 59, 63},
+                                     {40, 52, 55, 59, 64}, {41, 53, 57, 60, 65}, {36, 52, 55, 60, 64}, {35, 51, 54, 59, 66}};
+        // The Gleaner's theme: (step in the eight bars, note, length)
+        struct Note { int at, note, len; };
+        static const Note THEME[] = {{0, 64, 8}, {8, 67, 4}, {12, 66, 4}, {16, 64, 6}, {22, 62, 2}, {24, 64, 8},
+                                     {32, 60, 8}, {40, 59, 4}, {44, 57, 4}, {48, 59, 14},
+                                     {64, 64, 8}, {72, 67, 4}, {76, 69, 4}, {80, 69, 6}, {86, 67, 2}, {88, 65, 8},
+                                     {96, 64, 8}, {104, 60, 4}, {108, 62, 4}, {112, 59, 8}, {120, 63, 4}, {124, 66, 4}};
+        const int pos = plainPos(), b8 = pos / 16;
+        const bool fight = lvl >= 0.9f;
+        if (s == 0) {
+            plainRoot = (float)CH[b8][0];
+            for (int k = 0; k < 4; ++k) { choirNote[k] = (float)CH[b8][k + 1]; choirHz[k] = midiHz(choirNote[k]); }
+            if (fight) for (int k = 0; k < 4; ++k) strNotes[k] = (float)CH[b8][k + 1] + 24.f;
+            else { strNotes[0] = 76; strNotes[1] = 77; strNotes[2] = 75; strNotes[3] = 76; }   // E F E-flat E: it will not resolve
+            if (b8 % 2 == 0) bellToll = Strike{0.f, midiHz(plainRoot + 24.f), 1.f};
+            const float oo[3] = {300, 870, 2240}, ah[3] = {700, 1100, 2600};
+            float a = sstep(0.8f, 1.1f, lvl);
+            for (int k = 0; k < 3; ++k) { plainFormant[k] = oo[k] + (ah[k] - oo[k]) * a; choirG[k] = gOf(plainFormant[k]); }
+        }
+        // War drums: one great drum every other bar on the approach; the full pattern in the fight, a fill into the top
+        const char* pat = !fight ? (b8 % 2 == 0 ? "B..............." : "................")
+                        : b8 == 7 ? "B.B.m.m.BmBmBBBB" : "B..m..B...m.B.m.";
+        char c = pat[s];
+        if (c == 'B') taikoBig = Strike{0.f, 52.f, fight ? 1.f : 0.7f};
+        else if (c == 'm') taikoMid = Strike{0.f, 96.f, 0.8f};
+        if (lvl >= 0.95f && (s == 0 || s == 3 || s == 6 || s == 8 || s == 11 || s == 14)) brassHit = Strike{0.f, midiHz(plainRoot), s == 0 ? 1.f : 0.72f};
+        if (lvl >= 1.f && (s == 4 || s == 12)) anvilHit = Strike{0.f, 0.f, 1.f};
+        if (drive > 0.02f && s % 2 == 0) stabT = 0.f;   // OVERDRIVE: a distorted power chord on every eighth, here too
+        // The horn: the theme, an octave down and distant on the approach
+        if (pos == hornEnd) hornOn = false;
+        for (const auto& n : THEME) if (n.at == pos) {
+            hornTarget = (float)n.note - (fight ? 0.f : 12.f);
+            if (!hornOn || hornT > 0.3f) hornCur = hornTarget - 0.6f;   // (each attack scoops up into its note)
+            hornOn = true; hornT = 0.f; hornEnd = (n.at + n.len) % 128;
+        }
+    }
+
+    void plainSample(float& L, float& R) {
+        const float dt = 1.f / SR;
+        const float fight = sstep(0.85f, 1.05f, lvl), all = sstep(1.1f, 1.3f, lvl);
+        float dryL = 0.f, dryR = 0.f, wet = 0.f;
+        // The drone: the bar's root two octaves down and its fifth, felt more than heard
+        {
+            float hz = midiHz(plainRoot - 12.f);
+            float d = droneOsc[0].saw(hz * 1.002f, SR) + droneOsc[1].saw(hz * 0.998f, SR) + 0.6f * droneOsc[2].saw(hz * 1.5f, SR);
+            float o = droneF.lp(d, gOf(110.f + 60.f * fight), 0.7f) * 0.085f * (plainMute & 1u ? 0.f : 1.f);
+            dryL += o; dryR += o;
+        }
+        // The choir
+        {
+            choirAmp += (1.f - choirAmp) * 0.00005f;
+            float gl = 0.f, gr = 0.f;
+            for (int k = 0; k < 4; ++k) {
+                float hz = choirHz[k] * (1.f + choirVib[k].sine(4.3f + k * 0.21f, SR) * 0.004f);
+                float glottal = (choirOsc[k * 2].saw(hz * 1.003f, SR) + choirOsc[k * 2 + 1].saw(hz * 0.997f, SR)) * 0.5f + noise() * 0.02f;
+                float v = 0.f; const float w[3] = {0.9f, 0.5f, 0.15f};
+                for (int j = 0; j < 3; ++j) { choirForm[k][j].lp(glottal, choirG[j], 0.16f); v += choirForm[k][j].band * w[j]; }
+                gl += v * (k % 2 ? 0.6f : 1.f); gr += v * (k % 2 ? 1.f : 0.6f);
+            }
+            float g = choirAmp * (0.055f + 0.05f * fight + 0.03f * all) * (plainMute & 2u ? 0.f : 1.f);
+            dryL += gl * g; dryR += gr * g; wet += (gl + gr) * g * 1.4f;
+        }
+        // Strings, trembling
+        {
+            tremPh += (2.f + 10.5f * fight) * dt; if (tremPh >= 1.f) tremPh -= 1.f;   // slow and uneasy far off, a shiver in the fight
+            float trem = 0.65f + 0.35f * std::sin(6.2831853f * tremPh);
+            float sl = 0.f, sr = 0.f;
+            for (int k = 0; k < 4; ++k) {
+                strCur[k] += (strNotes[k] - strCur[k]) * 0.0004f;
+                float hz = midiHz(strCur[k]);
+                float v = strOsc[2 * k].saw(hz * 1.004f, SR) + strOsc[2 * k + 1].saw(hz * 0.996f, SR);
+                sl += v * (k % 2 ? 0.5f : 1.f); sr += v * (k % 2 ? 1.f : 0.5f);
+            }
+            float g = (0.045f + 0.035f * fight) * trem * (plainMute & 4u ? 0.f : 1.f);
+            sl = strFL.lp(sl, gOf(3400.f), 0.6f) * g; sr = strFR.lp(sr, gOf(3400.f), 0.6f) * g;
+            dryL += sl; dryR += sr; wet += (sl + sr) * 1.2f;
+        }
+        // The bell
+        if (bellToll.t < 9.f) {
+            static const float RATIO[5] = {1.f, 2.f, 2.4f, 3.f, 4.07f}, DECAY[5] = {0.45f, 0.7f, 0.9f, 1.3f, 1.9f};
+            float b = 0.f;
+            for (int k = 0; k < 5; ++k) b += bellOsc[k].sine(bellToll.hz * RATIO[k], SR) * std::exp(-bellToll.t * DECAY[k]) / (1.f + k * 0.6f);
+            b *= 0.09f * std::min(1.f, bellToll.t * 300.f) * (plainMute & 8u ? 0.f : 1.f);
+            dryL += b * 0.8f; dryR += b; wet += b * 2.f;
+            bellToll.t += dt;
+        }
+        // War drums
+        float drums = 0.f;
+        if (taikoBig.t < 2.5f) {
+            float t = taikoBig.t, hz = 46.f + 70.f * std::exp(-t * 16.f);
+            float body = taikoOsc[0].sine(hz, SR) * std::exp(-t * 2.4f);
+            float skin = taikoF.lp(noise(), gOf(1400.f), 0.7f) * std::exp(-t * 28.f) * 0.8f;
+            float sub = taikoOsc[1].sine(34.f, SR) * std::exp(-t * 1.6f) * 0.6f * std::min(1.f, t * 60.f);
+            drums += std::tanh((body + skin + sub) * 1.6f) * 0.42f * taikoBig.vel;
+            taikoBig.t += dt;
+        }
+        if (taikoMid.t < 0.9f) {
+            float t = taikoMid.t, hz = 88.f + 90.f * std::exp(-t * 26.f);
+            drums += (taikoOsc[2].sine(hz, SR) * std::exp(-t * 6.f) + noise() * std::exp(-t * 40.f) * 0.4f) * 0.22f * taikoMid.vel;
+            taikoMid.t += dt;
+        }
+        if (plainMute & 16u) drums = 0.f;
+        dryL += drums; dryR += drums; wet += drums * 0.25f;
+        // Low brass, stabbing
+        if (brassHit.t < 0.6f) {
+            float t = brassHit.t, raw = 0.f;
+            const float mul[3] = {1.f, 1.5f, 2.f};
+            for (int k = 0; k < 3; ++k) raw += brassStab[2 * k].saw(brassHit.hz * mul[k] * 1.004f, SR) + brassStab[2 * k + 1].saw(brassHit.hz * mul[k] * 0.996f, SR);
+            float e = std::min(1.f, t * 180.f) * std::exp(-t * 5.5f);
+            float o = std::tanh(brassStabF.lp(raw * 0.2f, gOf(260.f + 2600.f * std::exp(-t * 9.f)), 0.7f) * 2.4f) * e * 0.7f * brassHit.vel * fight * (plainMute & 32u ? 0.f : 1.f);
+            dryL += o; dryR += o; wet += o * 0.5f;
+            brassHit.t += dt;
+        }
+        // Anvils
+        if (anvilHit.t < 1.6f) {
+            float t = anvilHit.t;
+            float a = (std::sin(6.2831853f * 523.f * t) * std::exp(-t * 3.f) + std::sin(6.2831853f * 1187.f * t) * 0.6f * std::exp(-t * 4.5f)
+                     + std::sin(6.2831853f * 1856.f * t) * 0.35f * std::exp(-t * 6.f) + noise() * std::exp(-t * 90.f)) * 0.18f * (plainMute & 64u ? 0.f : 1.f);
+            dryL += a * 0.7f; dryR += a; wet += a * 1.5f;
+            anvilHit.t += dt;
+        }
+        // The horn: the theme
+        {
+            hornCur += (hornTarget - hornCur) * 0.0025f;
+            float vib = hornVib.sine(5.2f, SR) * 0.1f * sstep(0.25f, 0.6f, hornT);
+            float hz = midiHz(hornCur + vib);
+            float target = hornOn ? 1.f : 0.f;
+            hornAmp += (target - hornAmp) * (hornOn ? 0.0016f : 0.0004f);
+            float raw = hornOsc[0].saw(hz, SR) * 0.6f + hornOsc[1].square(hz * 1.003f, SR) * 0.3f + hornOsc[2].saw(hz * 0.5f, SR) * 0.35f * fight;
+            float f1 = hornF1.lp(raw, gOf(480.f), 0.35f), f2 = hornF2.lp(raw, gOf(1250.f), 0.4f);
+            float h = hornLP.lp(hornF1.band * 1.2f + hornF2.band * 0.7f + f1 * 0.2f + f2 * 0.0f, gOf(2600.f), 0.6f);
+            h = std::tanh(h * (1.4f + 1.2f * fight)) * hornAmp * (0.07f + 0.08f * fight) * (plainMute & 128u ? 0.f : 1.f);
+            dryL += h * 0.9f; dryR += h; wet += h * (2.2f - 1.2f * fight);   // far off: mostly the hall
+            hornT += dt;
+        }
+        // The last enemy (setSolo): everything but the war drums falls away
+        const float keep = 1.f - 0.9f * solo;
+        dryL = (dryL - drums) * keep + drums * (1.f + 0.15f * solo); dryR = (dryR - drums) * keep + drums * (1.f + 0.15f * solo); wet *= keep;
+        // OVERDRIVE: the power chord on the bar's root, stabbing every eighth
+        if (drive > 0.002f && stabT < 0.25f) {
+            float notes[3] = {plainRoot + 12.f, plainRoot + 19.f, plainRoot + 24.f}, raw = 0.f;
+            for (int k = 0; k < 3; ++k) raw += stab[2 * k].saw(midiHz(notes[k]) * 1.004f, SR) + stab[2 * k + 1].saw(midiHz(notes[k]) * 0.996f, SR);
+            float e = std::exp(-stabT * 13.f) * std::min(1.f, stabT * 400.f);
+            float st = std::tanh(stabF.lp(raw * 0.25f, gOf(1800.f + 2600.f * std::exp(-stabT * 20.f)), 0.6f) * 2.2f) * e * 0.48f * drive;
+            dryL += st; dryR += st;
+            stabT += dt;
+        }
+        // The hall: the plate, long
+        float in = wet * 0.05f, pl = 0.f, pr = 0.f;
+        for (int c2 = 0; c2 < 4; ++c2) { pl += combL[c2].run(in, 0.88f, 0.3f); pr += combR[c2].run(in, 0.88f, 0.3f); }
+        for (int a2 = 0; a2 < 2; ++a2) { pl = apL[a2].run(pl); pr = apR[a2].run(pr); }
+        // A wave's stinger still rings over it (Gameplay calls stinger() on the scream)
+        float stingOut = 0.f;
+        if (stingT < 3.f) {
+            float raw = 0.f;
+            for (int k = 0; k < 4; ++k) raw += sting[2 * k].saw(midiHz(choirNote[k] + 12.f) * 1.003f, SR);
+            stingOut = stingF.lp(raw * 0.1f, gOf(1800.f * std::exp(-stingT * 0.8f) + 300.f), 0.5f) * std::min(1.f, stingT * 150.f) * std::exp(-stingT * 1.2f) * 0.6f;
+            stingT += dt;
+        }
+        L = (dryL + pl * 1.1f + stingOut) * 1.25f;
+        R = (dryR + pr * 1.1f + stingOut) * 1.25f;
+    }
 
     // The fight's layers: OVERDRIVE's stabs, the last enemy's solo, a wave's stinger
     float drive = 0.f, solo = 0.f;   // smoothed 0..1
@@ -340,7 +532,7 @@ private:
         gLeadF = gOf(3200.f); gPadF = gOf(700.f + 500.f * sstep(0.6f, 1.2f, lvl)); gCrashF = gOf(5000.f);
         float cyc = (std::max(step, 0) + 1.f - sampleInStep / std::max(1.f, stepLen)) / 64.f;   // 0..1 across the four bars
         acidBase = 320.f + 1900.f * cyc * cyc;
-        if(track>=12){
+        if(labTrack(track)){
             const int vowel=(std::max(step,0)/8)%3;
             static const float f[3][3]={{700,1100,2600},{450,850,2400},{550,1800,2700}};
             for(int k=0;k<3;++k)choirG[k]=gOf(f[vowel][k]);
@@ -366,7 +558,8 @@ private:
             padNotes[3] = (float)scaleNote(tr, deg, -2);          // sub, two octaves down
             if (gLead > 0.05f) crash = Hit{0.f, 1.f};
         }
-        if(track>=12 && s%4==0){
+        if (plainTrack(track)) { plainStep(s); return; }   // the plain's own score
+        if(labTrack(track) && s%4==0){
             // An eight-bar soprano answer over the repeating four-bar lower voices.
             static const int theme[32]={7,7,9,8,7,4,5,7,5,5,4,2,4,5,7,4,
                                         7,9,11,9,8,7,5,4,5,7,4,2,4,2,1,0};
@@ -407,6 +600,7 @@ private:
     }
 
     void synthSample(const MusicTrack& tr, float& L, float& R) {
+        if (plainTrack(track)) { plainSample(L, R); return; }
         const float dt = 1.f / SR;
         const bool techno = tr.techno != 0, hard = tr.techno >= 2;
         // ---- drums ----
@@ -532,7 +726,7 @@ private:
         }
 
         float choirL=0,choirR=0;
-        if(track>=12){
+        if(labTrack(track)){
             float beat=SR*60.f/tr.bpm/SR; // seconds, independent of audio rate
             float target=std::min(1.f,choirClock/.035f)*(.78f+.22f*std::exp(-choirClock*12.f));
             target*=1.f-.3f*sstep(beat*.75f,beat,choirClock);

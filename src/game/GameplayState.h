@@ -27,6 +27,11 @@
 #include "world/LevelStory.h"
 #include "world/LevelWasteland.h"
 #include "world/LevelLab.h"
+#include "world/LevelPlain.h"
+#include "world/PlainMeteors.h"
+#include "bosses/gleaner/GleanerRig.h"
+#include "bosses/gleaner/TenderRig.h"
+#include "game/PlainReveal.h"
 #include "game/LabIntro.h"
 #include "bosses/successor/SuccessorHazards.h"
 #include "world/LevelTraining.h"
@@ -43,6 +48,7 @@
 #include "ui/SettingsMenu.h"
 #include "render/TextureGen.h"
 #include "player/Weapons.h"
+#include "player/Splinter.h"
 #include "game/Progression.h"
 #include "game/StorySave.h"
 #include "game/DevFlags.h"          // the command line's and the dev tools' globals (g_*)
@@ -148,6 +154,7 @@ public:
     void gatherLab(std::vector<BoxInstance>& out);
     void renderLabIntro();
     bool wasteland() const { return story() && level.story.chapter==2; }
+    bool plain() const { return story() && level.story.chapter==4; }   // Chapter 4: THE BLOOD MOON PLAIN (Gameplay_Plain.h)
     int trainingLesson = 0, trainingEnemy = 0;
     bool trainingPassed[lessons::COUNT] = {};
     float trainingRespawn = 0;
@@ -226,7 +233,7 @@ public:
     armfile::HandSpring wakeHand;
     void  beginStory();
     void  updateStory(float dt);
-    bool  storyLocked() const { return story() && (wakeT >= 0.f || labIntro.active()); }
+    bool  storyLocked() const { return story() && (wakeT >= 0.f || labIntro.active() || plainReveal.active()); }
     bool  storyLookFree() const { return !labIntro.active() && wakeT >= 18.4f; }   // (story::W_SAT)
     float storyWakeFx() const;
     void  gatherStoryBoxes(std::vector<BoxInstance>& out);
@@ -308,6 +315,66 @@ public:
     int   grenadeCount   = 2;
     int   grenadeMax     = 2;
     float grenadeTimer   = 0.f;
+    // The SPLINTER (Gameplay_Splinter.h): takes the grenade button once owned
+    SplinterSystem splinters;
+    // Chapter 4 (Gameplay_Plain.h): the meteors, and the shakes still on their way
+    MeteorRain meteors;
+    std::vector<MeteorImpact> meteorHits;
+    struct PlainQuake { float t, amp; };
+    std::vector<PlainQuake> plainQuakes;
+    float plainSmokeT = 0.f;
+    bool  plainEdgeWarned = false;
+    // THE GLEANER (Gameplay_Gleaner.h) and the arrival that reveals it (PlainReveal.h)
+    Gleaner gleaner;
+    PlainReveal plainReveal;
+    bool  plainRevealDone = false;   // played (or skipped) in this run: a retry never replays it
+    // The fight (Gameplay_GleanerFight.h)
+    enum class GleanerPhase { APPROACH, KNEELING, CLIMB, TENDER, BROOD };
+    GleanerPhase gleanerPhase = GleanerPhase::APPROACH;
+    bool  gleanerFightStarted = false;
+    float calledMeteorCd = 6.f, riverBurnCd = 0.f;
+    Tender tender;
+    int   deckWallsFrom = -1, deckBoostersFrom = -1;
+    glm::vec2 deckLo{0.f}, deckHi{0.f};
+    float deckY = 0.f;
+    glm::vec3 updraftBase{0.f};
+    const char* gleanerPhaseName() const;
+    void gleanerDeckRect(glm::vec2& lo, glm::vec2& hi, float& top) const;
+    void clearGleanerDeck();
+    void buildGleanerDeck();
+    glm::vec3 deckCheckpoint() const;
+    bool onGleanerDeck() const;
+    void wakeTender();
+    void resetGleanerFight(bool fresh);
+    void updateGleanerFight(float dt);
+    void updraftThrow();
+    void updateTender(float dt);
+    bool shootTender(glm::vec3 o, glm::vec3 d, float& nearest, float dmg, int w);
+    bool tenderSplinterPoint(glm::vec3& at) const;
+    void gatherGleanerFight(std::vector<BoxInstance>& out);
+    int   gleanerWaypoint = 0;
+    float gleanerScreamCd = 40.f;
+    struct GleanerDust { glm::vec3 at; float age, size; };
+    std::vector<GleanerDust> gleanerDust;
+    void beginGleaner();
+    void updatePlainReveal(float dt);
+    void updateGleaner(float dt);
+    void gleanerSound(const char* name, glm::vec3 from, float loud, float late);
+    float plainMoonLid() const;
+    void gatherGleaner(std::vector<BoxInstance>& out);
+    void renderPlainReveal();
+    glm::vec3 prologueUnit() const;
+    void prologueShot(glm::vec3& eye, glm::vec3& at) const;
+    void updatePlainPrologue(float t0, float t);
+    glm::vec3 prologuePartStart(int k) const;
+    glm::vec3 prologuePartEnd(int k) const;
+    void gatherPlainPrologue(std::vector<BoxInstance>& out);
+    void beginPlain();
+    void updatePlain(float dt);
+    void meteorImpact(const MeteorImpact& hit);
+    void gatherPlain(std::vector<BoxInstance>& out);
+    bool  splinterGlinted[SplinterSystem::POOL] = {};
+    int   splinterHints = 0;
     int   killsThisCycle = 0;
 
     float recoilPitch = 0.f;
@@ -1000,6 +1067,13 @@ public:
     void fireWeapon(int w);
 
     void throwGrenade();
+    bool splinterOwned() const;
+    void throwSplinter();
+    void teachSplinterOnce();
+    void tickSplinters(float dt);
+    int  splinterTarget(glm::vec3 from, glm::vec3& aimAt) const;
+    void splinterRicochet(int first, float dmg, int w);
+    void gatherSplinters(std::vector<BoxInstance>& out);
 
     // =========================================================================
     // Effects (Effects.h)
@@ -1082,6 +1156,7 @@ public:
 #include "bosses/leviathan/Gameplay_Leviathan.h"
 #include "game/Gameplay_Sword.h"
 #include "game/Gameplay_Destruct.h"
+#include "game/Gameplay_Splinter.h"
 #include "game/Gameplay_Story.h"
 #include "game/Gameplay_Wasteland.h"
 #include "bosses/ballast/Gameplay_Ballast.h"
@@ -1096,3 +1171,6 @@ public:
 
 #include "bosses/successor/Gameplay_Successor.h"
 #include "game/Gameplay_LabDressing.h"
+#include "game/Gameplay_Plain.h"
+#include "game/Gameplay_Gleaner.h"
+#include "game/Gameplay_GleanerFight.h"

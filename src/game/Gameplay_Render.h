@@ -86,6 +86,7 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
     gatherLeviathanBoxes(out);
     gatherAbsoluteBoxes(out);
     gatherSuccessor(out);
+    if (splinterOwned()) gatherSplinters(out);
     if(laboratory())gatherLabDressing(out);
 
     // HOLD: a ring of light on the ground; the lit arc is how far it's held.
@@ -575,6 +576,14 @@ inline void GameplayState::render() {
     glm::vec3 renderCamPos = glm::mix(prevCamPos, player.camera.position, alpha);
     Camera renderCam = player.camera;
     renderCam.position = renderCamPos;
+    if (plain() && plainReveal.prologue()) {   // the prologue's own camera, in the void where the Successor fell (the player stays on the plain)
+        glm::vec3 eye, at;
+        prologueShot(eye, at);
+        glm::vec3 d = glm::normalize(at - eye);
+        renderCamPos = renderCam.position = eye;
+        renderCam.yaw = glm::degrees(std::atan2(d.z, d.x));
+        renderCam.pitch = glm::degrees(std::asin(glm::clamp(d.y, -1.f, 1.f)));
+    }
 
     // Shake, punches, the landing dip, the strafe lean and the stride (CameraFeel.h): seen, not aimed with
     bool bob = !settings || settings->viewBob;
@@ -589,6 +598,7 @@ inline void GameplayState::render() {
     float a = aim * aim * (3.f - 2.f * aim);
     float zoom = wd.canAim ? glm::mix(1.f, wd.aimFov, a) : 1.f;
     renderCam.fov = baseFov * zoom + fovKick * (1.f - a);
+    if(plain() && plainReveal.active()) renderCam.fov = plainReveal.fov(baseFov);
     if(laboratory() && labIntro.active()){
         float focus=LabIntro::smooth(3,8,labIntro.time)*(1-LabIntro::smooth(19,23,labIntro.time));
         renderCam.fov=glm::mix(baseFov,std::min(baseFov,60.f),focus);
@@ -597,6 +607,7 @@ inline void GameplayState::render() {
     glm::mat4 view = glm::rotate(glm::mat4(1.f), glm::radians(swordRoll + feelAng.z), glm::vec3{0.f, 0.f, 1.f}) * renderCam.viewMatrix();   // (leaning into a stroke, a strafe, a hit)
     glm::mat4 proj = renderCam.projectionMatrix();
     Theme th = level.themeAt(player.position);
+    if (plain() && plainReveal.prologue()) th = plain::voidTheme();   // (the prologue: the void where the Successor fell)
     if (rageBlend > 0.f) th = lerpTheme(th, bloodEclipse(th), rageBlend);
     if (bossDusk > 0.005f && th.eclipse < 0.5f) th = lerpTheme(th, nightfall(th), bossDusk * BOSS_DUSK_MAX);   // (under the eclipse: it burns hotter instead)
     if (th.eclipse > 0.5f && swallow01() > 0.f) th = lerpTheme(th, swallowedOf(th), swallow01());   // MORNINGSTAR: inside the eclipse
@@ -639,7 +650,8 @@ inline void GameplayState::render() {
         // What glows in the texture (MaterialTex.h: alpha < 1), in its own colour
         glm::vec3 glow = t == TEX_CIRCUIT ? glm::vec3{0.15f, 0.85f, 1.0f} * 0.9f
                        : t == TEX_CIRCUIT_FLOOR ? glm::vec3{0.15f, 0.85f, 1.0f} * 0.45f
-                       : t == TEX_BASALT ? glm::vec3{1.0f, 0.24f, 0.10f} * 0.75f : glm::vec3{0.f};
+                       : t == TEX_BASALT ? glm::vec3{1.0f, 0.24f, 0.10f} * 0.75f
+                       : t == TEX_CINDER ? glm::vec3{1.2f, 0.3f, 0.07f} * 0.9f : glm::vec3{0.f};
         worldShader.setVec3("uTexGlow", glow);
         glBindTexture(GL_TEXTURE_2D, worldTex[t]);
         world.byTex[t].draw();
@@ -698,7 +710,10 @@ inline void GameplayState::render() {
         // Keep its exterior until the player physically crosses the doorway.
         const int room=level.arenaAt(player.position);
         float realm=laboratory()?(room==7?1.f:room==3||room==8?2.f:room==9?3.f:0.f):0.f;
+        if (plain() && plainReveal.prologue()) realm = 1.f;
         skyboxShader.setFloat("uLabRealm",realm);
+        skyboxShader.setFloat("uPlain", plain() && !plainReveal.prologue() ? 1.f : 0.f);
+        skyboxShader.setFloat("uMoonLid", plain() ? plainMoonLid() : 0.f);
         float assessment=0;
         if(laboratory() && room==9)for(const auto& enemy:enemies)if(enemy.alive && enemy.type==EnemyType::SUCCESSOR)
             assessment=.2f+.8f*(1.f-enemy.health/enemy.maxHealth);

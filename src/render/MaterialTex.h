@@ -365,6 +365,43 @@ inline std::vector<unsigned char> basalt() {
     }, BRICK_MEAN * 1.0f);
 }
 
+// --- THE BLOOD MOON PLAIN (Chapter 4) ----------------------------------------
+// Cinder crust: a dry, scorched skin broken into plates (a wrapping Voronoi of
+// irregular cells, about 0.7 m), dark cracks between them, and in some cracks
+// the heat underneath still showing (glow). Ash settles in the low plates.
+inline std::vector<unsigned char> cinder() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        const int N = 6;   // cells across the 4 m tile
+        float fx = u * N, fy = v * N;
+        int ix = (int)std::floor(fx), iy = (int)std::floor(fy);
+        float d1 = 9.f, d2 = 9.f; int best = 0;
+        for (int dy = -1; dy <= 1; ++dy)
+            for (int dx = -1; dx <= 1; ++dx) {
+                int cx = ix + dx, cy = iy + dy, wx = wrap(cx, N), wy = wrap(cy, N);
+                float px = cx + 0.15f + 0.7f * hashI(wx, wy, 501), py = cy + 0.15f + 0.7f * hashI(wx, wy, 502);
+                float d = std::hypot(fx - px, fy - py);
+                if (d < d1) { d2 = d1; d1 = d; best = wx * 31 + wy; } else if (d < d2) d2 = d;
+            }
+        float edge = d2 - d1;                                    // 0 on a crack
+        float plate = hashI(best, 7, 503);
+        float b = 0.34f + (plate - 0.5f) * 0.14f + (fbm(u, v, 8, 4, 504) - 0.5f) * 0.18f;
+        b *= 0.85f + 0.3f * noise(u, v, 128, 128, 505);           // grit
+        glm::vec3 c = b * glm::vec3{1.f, 0.86f, 0.8f};
+        float ash = sstep(0.55f, 0.75f, fbm(u, v, 4, 3, 506));
+        c = glm::mix(c, glm::vec3{0.5f, 0.47f, 0.45f}, ash * 0.45f);
+        float glow = 0.f;
+        float crack = 0.035f + 0.03f * noise(u, v, 24, 24, 507);
+        if (edge < crack) {
+            c = glm::vec3{0.05f, 0.03f, 0.03f};
+            // Heat shows in a few cracks only, and only where the crack runs deep
+            float deep = noise(u, v, 12, 12, 509);
+            if (hashI(best, 11, 508) < 0.14f && deep > 0.45f && edge < crack * 0.5f) { c = glm::vec3{0.25f, 0.06f, 0.02f}; glow = 0.45f + 0.4f * sstep(0.45f, 0.8f, deep); }
+        } else if (edge < crack * 2.2f) c *= 0.7f;               // the plate's edge curls down into it
+        return Px{c, glow};
+    }, BRICK_MEAN * 0.8f);
+}
+
 // --- The shared surfaces (every mode: the tubes, FAST, ACT II) ---------------
 // The original six, redone to wrap and with more to look at, each scaled to
 // the old one's brightness so the places lit for them stay as they were.

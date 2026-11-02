@@ -95,6 +95,7 @@ test: $(TESTS) $(HEADERS)
 	$(MAKE) test-story-bosses
 	$(MAKE) test-improvements
 	$(MAKE) test-lab
+	$(MAKE) test-plain
 
 test-story: tests/test_story.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) tests/test_story.cpp -o tests/test_story $(STDLIB)
@@ -187,6 +188,13 @@ test-lab: tests/test_lab.cpp tests/LabBossRun.h $(HEADERS)
 	mkdir -p build
 	$(CXX) $(CXXFLAGS) tests/test_lab.cpp -o build/test_lab $(STDLIB)
 	./build/test_lab
+
+# Chapter 4: THE BLOOD MOON PLAIN (tests/test_plain.cpp)
+.PHONY: test-plain
+test-plain: tests/test_plain.cpp $(HEADERS)
+	mkdir -p build
+	$(CXX) $(CXXFLAGS) tests/test_plain.cpp -o build/test_plain $(STDLIB)
+	./build/test_plain
 
 tools/music_preview: tools/music_preview.cpp src/audio/MusicSynth.h
 	$(CXX) $(CXXFLAGS) tools/music_preview.cpp -o tools/music_preview $(STDLIB)

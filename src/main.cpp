@@ -663,7 +663,7 @@ int main(int argc, char* argv[]) {
     // (implies --play), --wave N skips to a wave within it, --god disables
     // damage (for footage), --dev opens the level select. Dev: --cam X Y Z
     // YAW PITCH, --shot FRAMES FILE.BMP, --audiodump FILE.WAV SECONDS (record the mix, then quit),
-    // --sword (the sword on key 5 in any arena)
+    // --sword (the sword on key 5 in any arena), --splinter (the SPLINTER on the grenade button)
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--play") app->pending = App::NextState::Game;
@@ -685,6 +685,7 @@ int main(int argc, char* argv[]) {
         if(arg=="--verify-story") {app->verifyStory=true;g_storyChapter=1;app->mode=GameMode::STORY;app->pending=App::NextState::Game;g_fixedDt=1.0/30;g_devNoMouse=true;g_godMode=true;}
         if(arg=="--story2") {g_storyChapter=2;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}
         if(arg=="--story3") {g_storyChapter=3;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}
+        if(arg=="--story4") {g_storyChapter=4;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}   // Chapter 4: THE BLOOD MOON PLAIN (in progress)
         if(arg=="--chapter" && i+1<argc)g_storyChapter=std::clamp(std::atoi(argv[++i]),1,3);
         if (arg == "--boss" && i + 1 < argc) {   // --boss N: BOSS N (1 the Warden .. 6 MORNINGSTAR), on its own
             g_bossRun = std::clamp(std::atoi(argv[++i]) - 1, 0, BOSS_COUNT - 1);
@@ -706,6 +707,7 @@ int main(int argc, char* argv[]) {
         }
         if (arg == "--weapon" && i + 1 < argc) g_devWeapon = std::atoi(argv[++i]) - 1;
         if (arg == "--aim") g_devAim = true;
+        if (arg == "--splinter") g_devSplinter = true;   // the SPLINTER (Chapter 4) on the grenade button
         if (arg == "--sword") g_devSword = true;   // the sword (key 5) anywhere, for testing it
         if (arg == "--swordorbit" && i + 1 < argc) g_devSwordOrbit = (float)std::atof(argv[++i]);
         if (arg == "--spawn" && i + 1 < argc) g_devSpawns.push_back(std::atoi(argv[++i]));

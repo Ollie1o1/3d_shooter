@@ -971,6 +971,21 @@ inline void GameplayState::fireWeapon(int w) {
         glm::vec3 dir = glm::normalize(fwd + right * (std::cos(ang) * rad) + up * (std::sin(ang) * rad));
         float wallT = hitscanAll(origin, dir, d.range, hits);
         int n = std::min((int)hits.size(), pierce + 1);
+        if (splinterOwned() && splinters.live() > 0) {   // a SPLINTER before anything else: the round goes on from it
+            float st = 0.f;
+            int si = splinters.rayHit(origin, dir, hits.empty() ? wallT : hits[0].t, st);
+            if (si >= 0) {
+                fx.spawnTracer(origin + dir * 0.25f - up * 0.08f, origin + dir * st, 0.055f, 0.22f, glm::mix(glm::vec3{1.f}, gunkit::glowOf(w), 0.6f));
+                // (a shotgun's pellet carries some of the rest of the blast with it)
+                splinterRicochet(si, dmg * (pellets > 1 ? 0.5f * (float)pellets : 1.f), w);
+                anyHit = true;
+                continue;
+            }
+        }
+        if (plain()) {   // the Gleaner's brood (Gameplay_GleanerFight.h)
+            float nearest = hits.empty() ? wallT : hits[0].t;
+            if (shootTender(origin, dir, nearest, dmg, w)) { n = 0; wallT = nearest; anyHit = true; }
+        }
         if(laboratory()){
             float nearest=hits.empty()?wallT:hits[0].t;
             if(shootSuccessorNode(origin,dir,nearest,dmg)){n=0;wallT=nearest;anyHit=true;}

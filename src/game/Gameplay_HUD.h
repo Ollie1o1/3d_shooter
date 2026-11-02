@@ -25,6 +25,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         h.weapons[w].glow      = gunkit::glowOf(w);
     }
     h.grenades = grenadeCount; h.grenadeMax = grenadeMax;
+    if (splinterOwned()) { h.splinter = true; h.grenades = splinters.charges; h.grenadeMax = SplinterSystem::CHARGES; h.splinterRegrow = splinters.regrow01(); }
     h.swordSlot = swordAllowed(); h.swordOut = swordOut; h.swordBroken = sword.broken(); h.swordGuard = sword.guard01();
     h.swordBar = swordOut && (sword.blocking() || sword.broken() || sword.riposteT > 0.f || sword.guard < Sword::GUARD_MAX);
     h.level = prog.level; h.xp = prog.xp; h.xpNext = Progression::xpToNext(prog.level); h.points = prog.points;
@@ -58,7 +59,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
     }
     h.finishKey  = gamepad::state().pad ? "R3" : binds().label(Act::INTERACT);
     if (story() && !storyArmed) { h.noWeapons = true; h.hideCrosshair = true; }
-    if (story()) { for (int w = 0; w < WEAPON_COUNT; ++w) h.weapons[w].owned = storyOwns(w); h.grenades = h.grenadeMax = 0; }
+    if (story()) { for (int w = 0; w < WEAPON_COUNT; ++w) h.weapons[w].owned = storyOwns(w); if (!h.splinter) h.grenades = h.grenadeMax = 0; }
     if (!playerDead && !victory) ui.render(styleSystem, h);
     if (story()) renderStoryOverlay(proj * view);   // a gun's waypoint and prompt, a wreck's log
 
@@ -97,6 +98,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
                 what=goals[std::clamp(here,0,7)];
                 if(here==6&&storyBossDown)what="THE BARRIER IS OPEN";
             }
+            else if(plain()) what=wakeSeen?gleanerPhaseName():"SOMETHING IS WATCHING";
             else if (here == level.story.pitSection && !storyOwns(0)) what = "FIND SOMETHING TO FIGHT WITH";
             else if (here == level.story.pitSection) what = "CLIMB OUT";
             else if (here > level.story.pitSection && !storyOwns(2) && director.arena == here && director.phase == WaveDirector::Phase::APPROACH && player.position.z > 40.f) what = "TAKE THE LANCER";
@@ -169,6 +171,8 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             ui.end2D();
         }
 
+        if (plain() && gleanerPhase == GleanerPhase::TENDER && tender.fighting())
+            ui.renderBossBar("THE TENDER", tender.health01(), tender.enraged(), glm::vec3{1.f, 0.45f, 0.15f});
         const bool msBar = boss && boss->type == EnemyType::ABSOLUTE && (boss->morning() || boss->abSwallow > 0.f);   // (the swallow: his new bar filling)
         if (boss) ui.renderBossBar(msBar ? "MORNINGSTAR" : boss->type == EnemyType::ABSOLUTE ? "THE ABSOLUTE" :
                                    boss->type == EnemyType::SORTER ? "THE SORTER" :

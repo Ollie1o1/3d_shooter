@@ -114,6 +114,7 @@ inline void GameplayState::beginStory() {
     if (activeWeapon >= 0 && !storyOwns(activeWeapon))
         for (int g = 0; g < WEAPON_COUNT; ++g) if (storyOwns(g)) { activeWeapon = g; break; }
     if(laboratory()) {beginLab();return;}
+    if(plain()) {beginPlain();return;}
     if(wasteland()) {beginWasteland();return;}
     // Bodies on the belts, spaced out down their length; the one ahead of you on yours timed to go over the lip
     // just after you sit up (W_TIP), and none close behind you
@@ -206,6 +207,7 @@ inline void GameplayState::beginStory() {
 inline float GameplayState::storyWakeFx() const {
     using namespace story;
     if(laboratory() && labIntro.active())return 0.f;
+    if(plain() && plainReveal.active())return 0.f;   // (the plain's arrival is white, not black: PlainReveal::white)
     if (!storyLocked() && storyEndT < 0.f) return 0.f;
     if (storyEndT >= 0.f) return std::clamp(storyEndT / 1.4f, 0.f, 1.f);   // the chute: going dark
     if (wakeT < W_BOOT) return 1.f;
@@ -222,6 +224,7 @@ inline void GameplayState::updateStory(float dt) {
     const auto& S = level.story;
     if (!S.built) return;
     if(laboratory()) {updateLab(dt);return;}
+    if(plain()) {updatePlain(dt);return;}
     if(wasteland()) {updateWasteland(dt);return;}
 
     // ---- the wake-up ----
@@ -452,7 +455,8 @@ inline void GameplayState::gatherStoryBoxes(std::vector<BoxInstance>& out) {
     const auto& SL = level.story;
     using glm::vec3; using glm::mat4;
     if (!SL.built) return;
-    gatherStoryFactory(out);
+    if (plain()) gatherPlain(out);   // (the plain has no factory: its meteors, then the bodies on its heaps below)
+    else gatherStoryFactory(out);
     const gunkit::GunModel* M = story::bodyModel();
     const float PI = 3.14159265f;
     const glm::mat4 lying = RY(PI) * RX(-PI * 0.5f);   // on his back, feet first (to -Z), face up
@@ -561,7 +565,7 @@ inline void GameplayState::gatherStoryBoxes(std::vector<BoxInstance>& out) {
         }
     }
     // the claw belongs to the factory, never to the outdoor chapter.
-    if(!wasteland()) {
+    if(!wasteland() && !plain()) {
         float z = SL.beltStart - 70.f, drop = 0.f, open = 0.f;   // parked at the north end of the rail
         bool holding = false;
         if (clawT >= 0.f) {
@@ -648,6 +652,7 @@ inline void GameplayState::drawStoryArms(const Camera& cam) {
 // Over everything: the boot text, the motor check, the skip prompt, the chute's ending
 inline void GameplayState::renderStoryOverlay(const glm::mat4& viewProj) {
     if(laboratory() && labIntro.active()){renderLabIntro();return;}
+    if(plain() && plainReveal.active()){renderPlainReveal();return;}
     using namespace story;
     auto& U = ui.ui;
     const auto& SL = level.story;

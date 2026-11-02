@@ -18,7 +18,8 @@ inline void GameplayState::shootInput() {
     }
     pendingFire = false;
     if (pendingAlt) { altFire(); pendingAlt = false; }
-    if (pendingGrenade && grenadeCount > 0 && grenadeTimer <= 0.f) throwGrenade();
+    if (pendingGrenade && splinterOwned()) throwSplinter();   // owned: the button flicks a splinter instead
+    else if (pendingGrenade && grenadeCount > 0 && grenadeTimer <= 0.f) throwGrenade();
     pendingGrenade = false;
     flushHitSounds();
 }
@@ -504,6 +505,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
                                     enemies, player.camera.position, &spatialGrid);
 
     whizPast();
+    if (splinterOwned()) tickSplinters(dt);
     bool parryPressed = parryKey && !parryPrev;
     parryPrev = parryKey;
     punchCooldown = std::max(0.f, punchCooldown - dt);

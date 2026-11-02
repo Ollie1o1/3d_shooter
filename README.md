@@ -342,6 +342,8 @@ Everything below runs without touching the mouse, so it works from scripts.
 #   --act2 --arena 5: straight into the Maw and the Leviathan
 #   --act2 --arena 6: straight into !!!!! (the Zenith) and the Absolute (add --cam ... so the armory doesn't open)
 #   --sword: the sword on key 5 in any arena; --weapon 5: start with it drawn
+#   --story4: Chapter 4, THE BLOOD MOON PLAIN (in progress); --overlay plainimpact: a big meteor lands 160 m ahead; --overlay plainrevealNN: the opening from NN s (0-13 the prologue); --overlay plainclose / plaindeck: straight to the Gleaner fight / onto its back
+#   --splinter: UNIT 24's SPLINTER (Chapter 4) on the grenade button in any mode: G throws, shoot it to bounce the round
 #   --overlay swingSU: hold sword stroke S (0 forehand, 1 backhand, 2 overhead) U/10 through it; guard: its guard
 #   --swordorbit DEG: see the sword and the arms holding it from the side (DEG round them), to check the wrists
 #   --spawn TYPE (repeatable): enemies in an arc in front of the camera

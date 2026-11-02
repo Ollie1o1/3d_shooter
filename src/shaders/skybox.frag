@@ -25,6 +25,8 @@ uniform float uDawn;        // 0..1: the eclipse sliding off the sun (his death)
 uniform float uSwallow;     // 0..1: MORNINGSTAR: the eclipse grows over the whole sky, then its ring of fire settles on the horizon
 uniform float uLabRealm; // 0 ordinary, 1 nebula, 2 hadal, 3 fractured
 uniform float uAssessment;
+uniform float uMoonLid;     // 0..1: the plain's moon blinking shut (it was an eye; it is the Gleaner's now)
+uniform float uPlain;       // 1 = THE BLOOD MOON PLAIN (Chapter 4): the blood moon, burning cloud
 uniform float uDark;        // 0..1: TOTALITY: the ring dims to embers
 
 float hash3(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
@@ -141,10 +143,68 @@ vec3 eclipseSky(vec3 dir, vec3 col) {
     return col;
 }
 
+
+// THE BLOOD MOON PLAIN: a red sky, burning cloud lit from the plain's fires,
+// and the moon low in the north, huge and mottled (the Gleaner's eye-core)
+vec3 plainSky(vec3 dir) {
+    float y = dir.y;
+    float az = atan(dir.z, dir.x);
+    vec3 col = mix(uHorizon, uZenith, pow(clamp(y, 0.0, 1.0), 0.38));
+    col += vec3(0.9, 0.22, 0.05) * exp(-abs(y) * 26.0) * 0.55;             // the burning line all round
+    if (y < 0.0) col = mix(uHorizon * 0.45, uGround, clamp(-y * 6.0, 0.0, 1.0));
+
+    // The moon: a dark red disc, mottled, a hot limb, a wide bloody halo
+    float c0 = dot(dir, uSunDir);
+    float ang = acos(clamp(c0, -1.0, 1.0));
+    float r = ang / uSunSize;
+    float shown = 1.0 - 0.9 * smoothstep(0.6, 1.0, uMoonLid);                 // its glow goes as it shuts
+    col += uSunColor * exp(-max(r - 1.0, 0.0) * 1.6) * 0.32 * shown;    // halo (inside too: shut, it leaves no hole)
+    col += uSunColor * exp(-max(r - 1.0, 0.0) * 5.0) * 0.5 * shown;
+    if (r < 1.0 && uMoonLid < 0.999) {
+        vec3 t1 = normalize(cross(uSunDir, vec3(0.0, 1.0, 0.0)));
+        vec3 t2 = cross(uSunDir, t1);
+        vec2 q = vec2(dot(dir, t1), dot(dir, t2)) / sin(uSunSize);    // -1..1 across the disc
+        float sph = sqrt(max(0.0, 1.0 - dot(q, q)));                   // its roundness
+        float m = fbm(q * 3.2 + 1.7) * 0.7 + fbm(q * 9.0 + 4.1) * 0.3;
+        vec3 face = mix(vec3(0.5, 0.05, 0.03), vec3(1.5, 0.22, 0.07), smoothstep(0.3, 0.75, m));
+        face *= 0.55 + 0.6 * sph;
+        face += vec3(2.2, 0.5, 0.12) * pow(1.0 - sph, 3.0);            // the hot limb
+        // The lids: dark crusted skin closing from above and below, meeting in a seam
+        float lidEdge = 1.0 - uMoonLid;
+        float inLid = smoothstep(lidEdge - 0.02, lidEdge + 0.02, abs(q.y) + 0.12 * q.x * q.x);
+        vec3 skin = mix(vec3(0.05, 0.01, 0.01), uHorizon * 0.35, 0.5 + 0.5 * fbm(q * 6.0));
+        face = mix(face, skin, inLid);
+        col = mix(col, face, smoothstep(1.0, 0.985, r));
+    }
+
+    // Burning cloud: long dark banks drifting overhead, lit orange from below,
+    // with fire running along their undersides
+    if (y > 0.0) {
+        vec2 p = dir.xz / (y + 0.12);
+        float drift = uTime * 0.006;
+        float c = fbm(p * vec2(0.55, 1.6) + vec2(drift, drift * 0.3));
+        float c2 = fbm(p * 1.7 + vec2(-drift * 2.0, 3.0));
+        float bank = smoothstep(0.42, 0.72, c) * smoothstep(0.85, 0.05, y);
+        float under = smoothstep(0.55, 0.0, y);
+        vec3 smoke = mix(vec3(0.05, 0.01, 0.012), vec3(0.6, 0.12, 0.04), under * (0.4 + 0.6 * c2));
+        float fire = pow(c2, 3.0) * smoothstep(0.6, 0.8, c) * under;
+        smoke += vec3(2.0, 0.6, 0.12) * fire * (0.7 + 0.3 * sin(uTime * 1.3 + c2 * 20.0));
+        // the moon shows through thin cloud, not thick
+        float moon = step(ang, uSunSize * 1.05);
+        col = mix(col, smoke, bank * (0.9 - 0.5 * moon));
+    }
+    // Faint stars where the smoke is thin, high up
+    vec3 cell = floor(dir * 260.0);
+    col += vec3(1.0, 0.7, 0.6) * step(0.9985, hash3(cell)) * uStars * smoothstep(0.35, 0.8, y);
+    return col;
+}
+
 void main() {
     vec4 v = uInvProj * vec4(vNDC, 1.0, 1.0);
     vec3 dir = normalize((uInvView * vec4(v.xyz / v.w, 0.0)).xyz);
     float y = dir.y;
+
+    if (uPlain > 0.5) { FragColor = vec4(plainSky(dir), 1.0); return; }
 
     if (uLabRealm > 0.5) {
         float az=atan(dir.z,dir.x), elevation=asin(clamp(dir.y,-1.0,1.0));
