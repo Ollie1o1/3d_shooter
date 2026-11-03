@@ -179,10 +179,15 @@ public:
             }
             if (hasGoal() && !goalDone) {
                 updateGoal(dt, playerPos);
-                goalRefillTimer -= dt;
-                if (goal().refill && queue.empty() && !goalDone && aliveCount < maxAlive() && (!fast || goalRefillTimer <= 0.f)) {
+                const WaveGoal& g = goal();
+                bool fieldOk = g.refillAt < 0 ? aliveCount < maxAlive() : aliveCount <= g.refillAt;
+                // Paced: the quiet only starts once the field is (nearly) clear
+                if (g.refillGap > 0.f && !fieldOk) goalRefillTimer = std::max(goalRefillTimer, g.refillGap);
+                else goalRefillTimer -= dt;
+                if (g.refill && queue.empty() && !goalDone && fieldOk && (!fast || goalRefillTimer <= 0.f)) {
                     buildQueue(false);
-                    goalRefillTimer = 3.f;   // breathing room between security details, including in Story
+                    if (g.refillSize > 0 && (int)queue.size() > g.refillSize) queue.resize(g.refillSize);
+                    goalRefillTimer = std::max(3.f, g.refillGap);   // breathing room between security details, including in Story
                 }
             }
             if (queue.empty() && aliveCount == 0 && (!hasGoal() || goalDone) && !hold) {

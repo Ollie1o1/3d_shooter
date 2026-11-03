@@ -109,7 +109,13 @@ struct WaveGoal {
     std::vector<glm::vec3> points;
     bool refill = true;   // objective pressure; false for a finite guard detail
     int mover = -1;   // HOLD: the circle rides this mover (on its top) instead of staying at pos
+    // Refill pacing. By default a refill tops the field back up to the cap every 3 s.
+    // Paced: wait until at most `refillAt` are left, then `refillGap` s of quiet,
+    // then a detail of at most `refillSize` enemies.
+    float refillGap = 0.f;
+    int refillAt = -1, refillSize = 0;
     WaveGoal onMover(int m) const { WaveGoal g = *this; g.mover = m; return g; }
+    WaveGoal paced(float gap, int at, int size) const { WaveGoal g = *this; g.refillGap = gap; g.refillAt = at; g.refillSize = size; return g; }
     static WaveGoal hold(const char* l, glm::vec3 p, float r, float s) { WaveGoal g; g.kind = HOLD; g.label = l; g.pos = p; g.radius = r; g.seconds = s; return g; }
     static WaveGoal conduits(const char* l, std::vector<glm::vec3> pts) { WaveGoal g; g.kind = CONDUITS; g.label = l; g.points = std::move(pts); return g; }
     static WaveGoal external(const char* l) { WaveGoal g; g.kind = EXTERNAL; g.label = l; g.refill = false; return g; }

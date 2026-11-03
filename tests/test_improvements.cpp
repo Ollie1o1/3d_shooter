@@ -50,6 +50,27 @@ int main() {
     auto pad=road.arenas[2].goals[0].pos;
     for(int i=0;i<560;++i)director.update(1.f/60,0,pad,spawned);
     CHECK(director.arena==3,"the isolated relay can still complete and open the route");
+    {   // The relay's guards: far from the pad, and a quiet window after each detail
+        auto r=buildWasteland();WaveDirector d;d.level=&r;d.fast=true;d.startArena(2);
+        auto pad2=r.arenas[2].goals[0].pos;
+        std::vector<SpawnRequest> out;d.update(3,0,pad2,out);
+        for(int i=0;i<5;++i)d.update(1.f/60,(int)out.size(),pad2,out);
+        bool far=true;for(auto& s:out)far&=glm::length(glm::vec2{s.pos.x-pad2.x,s.pos.z-pad2.z})>=20.f;
+        CHECK(far&&!out.empty()&&out.size()<=4,"the relay's first guards arrive at the far end, away from the contact pad");
+        bool open=true;
+        for(auto p:r.arenas[2].groundSpawns)
+            for(auto& w:r.walls)
+                for(float h:{.3f,1.f,1.8f})
+                    open&=!(p.x>w.box.min.x-.5f&&p.x<w.box.max.x+.5f&&p.z>w.box.min.z-.5f&&p.z<w.box.max.z+.5f&&p.y+h>w.box.min.y&&p.y+h<w.box.max.y);
+        CHECK(open,"every relay spawn point stands on open floor");
+        // Three still standing: no refill, however long it takes
+        out.clear();for(int i=0;i<600;++i)d.update(1.f/60,3,{-56,-5,-51},out);
+        CHECK(out.empty(),"no reinforcements while most of the guards are still up");
+        // Down to none: nothing for the next 7 s, then at most two
+        out.clear();int first=-1;
+        for(int i=0;i<600&&first<0;++i){d.update(1.f/60,0,{-56,-5,-51},out);if(!out.empty())first=i;}
+        CHECK(first>=60*6.9f&&out.size()<=2,"after clearing the room the next detail waits ~7 s and is only two guards");
+    }
     CHECK(road.story.winchWall>=0 && road.walls[road.story.winchWall].dynamic && road.walls[road.story.winchWall].hidden,"the counterweight has real movable collision and a separate visible rig");
     std::string error;auto bake=lightbake::load("training",training,error);
     CHECK(!bake.empty(),"the practice arena ships with current baked lighting");

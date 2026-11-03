@@ -101,6 +101,11 @@ int main(){
     for(auto& a:L.arenas)for(auto& wave:a.waves)for(auto& e:wave)for(auto p:e.at){++count;float r=statsOf(e.type).radius,h=statsOf(e.type).height;
         AABB b{p+glm::vec3{-r,.08f,-r},p+glm::vec3{r,h,r}};
         for(const auto& wall:L.walls)if(b.min.x<wall.box.max.x&&b.max.x>wall.box.min.x&&b.min.y<wall.box.max.y&&b.max.y>wall.box.min.y&&b.min.z<wall.box.max.z&&b.max.z>wall.box.min.z){clear=false;std::printf("  blocked %s at %.1f %.1f %.1f\n",statsOf(e.type).name,p.x,p.y,p.z);break;}}
+    // A section's own spawn list (the relay's far-end guard points), checked for the widest walker
+    for(auto& a:L.arenas)for(auto p:a.groundSpawns){++count;float r=0,h=0;
+        for(EnemyType t:{EnemyType::RIPPER,EnemyType::MITE}){r=std::max(r,statsOf(t).radius);h=std::max(h,statsOf(t).height);}
+        AABB b{p+glm::vec3{-r,.08f,-r},p+glm::vec3{r,h,r}};
+        for(const auto& wall:L.walls)if(b.min.x<wall.box.max.x&&b.max.x>wall.box.min.x&&b.min.y<wall.box.max.y&&b.max.y>wall.box.min.y&&b.min.z<wall.box.max.z&&b.max.z>wall.box.min.z){clear=false;std::printf("  blocked spawn at %.1f %.1f %.1f\n",p.x,p.y,p.z);break;}}
     CHECK(clear&&count>=14,"all authored wave spawns have enemy capsule clearance");
     bool flow=true;int bosses=0;
     for(int room:{1,2,4,6}){WaveDirector director;director.level=&L;director.fast=true;director.startArena(room);int spawns=0;

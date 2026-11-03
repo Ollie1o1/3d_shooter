@@ -145,10 +145,13 @@ inline LevelData buildWasteland() {
     relay.hasTrigger=true;relay.trigger=box(-87,-6,-63,-57,4,-27);relay.exitDoor=relayExit;relay.entryGate=convoyExit;
     relay.space=ReverbSpace::HALL;relay.ambient=Ambient::DUST;
     relay.theme.skyAmb={.5f,.43f,.34f};relay.theme.groundAmb={.24f,.21f,.17f};relay.theme.fogDensity=.009f;
-    relay.maxAlive=5;
-    relay.waves={{W(EnemyType::RIPPER,0,{{-81,-5,-54},{-65,-5,-31}}),
-                  W(EnemyType::MITE,0,{{-66,-5,-57},{-84,-5,-44}})}};
-    relay.goals={WaveGoal::hold("SEAT THE RELAY CONTACT",{-74,-5,-52},4.5f,9.f)};
+    // Guards come in from the far (north and east) end, 20-30 m from the pad, and a
+    // new pair only arrives after the room is nearly clear plus 7 s: a clean window
+    // to seat the contact if you fight well.
+    relay.maxAlive=4;
+    relay.groundSpawns={{-80,-5,-31},{-68,-5,-29},{-50,-5,-30},{-46,-5,-40}};
+    relay.waves={{W(EnemyType::RIPPER,2),W(EnemyType::MITE,2)}};
+    relay.goals={WaveGoal::hold("SEAT THE RELAY CONTACT",{-74,-5,-52},4.5f,9.f).paced(7.f,1,2)};
     L.arenas.push_back(relay);
     reel({-65,-5,-42});reel({-78,-5,-39});
     // A contact cabinet explains the reset pad: repairing an actual stuck
