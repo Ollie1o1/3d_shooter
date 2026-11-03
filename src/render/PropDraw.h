@@ -11,7 +11,10 @@
 
 namespace propdraw {
 // A prop's parts at m into out; false if there's no file (draw the old boxes then)
-inline bool push(std::vector<BoxInstance>& out, const char* name, const glm::mat4& m, glm::vec3 tint, float glow = 1.f) {
+// A part's level surface (its "tex") as a boss surface (box_inst.frag): plate rusting plate, metal cast iron,
+// marble bone, basalt char, rock heat-cracked iron
+inline float bossSurfaceOf(int tex) { return tex == 6 ? 1.f : tex == 3 ? 2.f : tex == 7 ? 3.f : tex == 9 ? 4.f : tex == 2 ? 5.f : 0.f; }
+inline bool push(std::vector<BoxInstance>& out, const char* name, const glm::mat4& m, glm::vec3 tint, float glow = 1.f, bool surfaces = false) {
     const propfile::Prop* p = propfile::get(name);
     if (!p) return false;
     for (const auto& part : p->model.parts) {
@@ -20,6 +23,7 @@ inline bool push(std::vector<BoxInstance>& out, const char* name, const glm::mat
         b.color = part.glowScale >= 0.f ? tint * part.glowScale : part.color;
         b.emissive = part.chan == 1 ? tint * part.k * glow : part.chan == 0 ? part.k * glow : glm::vec3{0.f};
         b.mesh = (float)part.mesh;
+        if (surfaces && part.chan < 0) b.surface = bossSurfaceOf(part.tex);
         out.push_back(b);
     }
     return true;

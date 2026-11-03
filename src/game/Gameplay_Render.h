@@ -689,6 +689,7 @@ inline void GameplayState::render() {
         boxRenderer.shader.setMat4("projection", proj);
         boxRenderer.shader.setMat4("view",       view);
         boxRenderer.shader.setInt ("uTexture",   0);
+        boxRenderer.shader.setInt ("uSurfaces",  (settings ? settings->quality : GameSettings::QUALITY_DEFAULT) > 0 ? 1 : 0);   // (the bosses' surfaces: off on the lowest quality)
         applyLighting(boxRenderer.shader, th, renderCamPos);
         applyNeon(boxRenderer.shader, true);
         glBindTexture(GL_TEXTURE_2D, whiteTex);

@@ -8,6 +8,7 @@
 #include "game/StorySave.h"
 #include "render/MaterialTex.h"
 #include "bosses/gleaner/GleanerState.h"
+#include "bosses/gleaner/GleanerRig.h"   // (drawn: its Blender pieces and its surfaces; no OpenGL)
 #include "bosses/gleaner/Tender.h"
 #include "bosses/gleaner/Sieve.h"
 #include "bosses/gleaner/Caller.h"
@@ -189,6 +190,22 @@ int main() {
         CHECK(shoulderY > 250.f && lying.shoulder(0).y < shoulderY * 0.3f, "it stands hundreds of metres tall and lies sunk in the plain");
         CHECK(std::abs(glm::length(g.elbow(0) - g.shoulder(0)) - Gleaner::UPPER * K) < 1.f &&
               std::abs(glm::length(g.hand(0) - g.elbow(0)) - Gleaner::FORE * K) < 1.f, "its arms keep their length (two-bone IK)");
+        {   // Its pieces made in Blender (tools/blender/gleaner_build.py): every one loads, and draws with surfaces
+            const char* P[] = {"gleaner_fist", "gleaner_forearm", "gleaner_upperarm", "gleaner_pauldron", "gleaner_skull", "gleaner_jaw", "gleaner_scale", "gleaner_charm"};
+            bool all = true; int surfaced = 0, parts = 0;
+            for (const char* n : P) {
+                std::vector<BoxInstance> out;
+                all &= propdraw::push(out, n, glm::mat4(1.f), glm::vec3{2.f, 0.6f, 0.15f}, 1.f, true);
+                for (const auto& b : out) { ++parts; surfaced += b.surface > 0.f; }
+            }
+            std::printf("      gleaner pieces: %d parts, %d with a surface\n", parts, surfaced);
+            CHECK(all && parts > 600 && surfaced > parts / 2, "the Gleaner's Blender pieces all load, most parts with a surface");
+            Gleaner g; g.place({0, 0, -400}, 0.f, 1.f);
+            std::vector<BoxInstance> out; gleaner::Look look; gleaner::draw(out, g, look);
+            int plain = 0; for (const auto& b : out) plain += b.surface == 0.f && glm::length(b.emissive) < 0.01f;
+            std::printf("      gleaner drawn: %zu instances, %d without a surface\n", out.size(), plain);
+            CHECK(plain < (int)out.size() / 10, "drawn whole, nearly every part of it has a surface (the code boxes from their colours)");
+        }
         {   // A scream called between ticks (by the fight, by the reveal) reaches the tick's events: the roar's sound
             // is played from them. (tick() used to clear them first: the Gleaner never made a sound when it screamed.)
             Gleaner s; s.place({0, 0, -400}, 0.f, 1.f);

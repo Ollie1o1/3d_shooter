@@ -412,3 +412,16 @@ time, never three at once. The Gleaner keeps a slow background pressure
   a far shot of it sinking into the plain, its last roar, the meteors stop,
   the real moon opens, then the chapter card ("TO BE CONTINUED").
   Dev: `--story4 --overlay plainsummit`. Test: `checkSummitRuntime`.
+- **Detail pass, in Blender**: the Gleaner's fist, forearm, upper arm, pauldron,
+  skull, jaw, spine armour and charms are Blender models
+  (`tools/blender/gleaner_build.py`, helpers in `tools/blender/boss_kit.py`:
+  plates with rivets, cables, spikes, cracks of light, chains, teeth, wrecked
+  units) saved as `assets/props/gleaner_*.glb` and placed by `GleanerRig.h` on
+  its skeleton (the old boxes are the fallback). Rebuild with
+  `make gleaner-art` (or `ONLY=fist`). **Surfaces**: `BoxInstance::surface`
+  picks a pattern drawn by `box_inst.frag` in the part's own metres (riveted
+  rusting plate, pitted iron, cracked bone, char with embers, heat-cracked iron
+  lit in its cracks); a Blender part's comes from its material (`SURF` in
+  boss_kit.py), a code box's from its colour (`gleaner::autoSurface`, also the
+  brood, organs and eye). Off on the lowest QUALITY (~1.2 ms with the Gleaner
+  filling the screen).

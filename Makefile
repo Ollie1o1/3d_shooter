@@ -69,7 +69,7 @@ SRC     := src/main.cpp
 HEADERS := $(shell find src -name '*.h')
 TESTS   := tests/test_wasteland.cpp tests/test_story.cpp tests/test_physics.cpp tests/test_game.cpp tests/test_zenith.cpp tests/BossSim.h
 
-.PHONY: all clean run test test-story test-wasteland test-render test-dev test-story-overhaul test-story-bosses test-web-story web scan level-dump light
+.PHONY: all clean run test test-story test-wasteland test-render test-dev test-story-overhaul test-story-bosses test-web-story web scan level-dump light gleaner-art
 
 all: $(TARGET)
 
@@ -128,6 +128,11 @@ test-dev: tests/test_dev.cpp $(HEADERS)
 scan: tests/scan_bounds.cpp tests/BoundsScan.h $(HEADERS)
 	$(CXX) $(CXXFLAGS) tests/scan_bounds.cpp -o tests/scan_bounds $(STDLIB)
 	./tests/scan_bounds
+
+# THE GLEANER's pieces, made in Blender (tools/blender/gleaner_build.py, on tools/blender/boss_kit.py) into
+# assets/props/gleaner_*.glb: `make gleaner-art`, or one with `make gleaner-art ONLY=fist`
+gleaner-art:
+	blender -b --factory-startup --python tools/blender/headless.py -- tools/blender/gleaner_build.py $(if $(ONLY),ONLY=$(ONLY),)
 
 # Every level's light baked (ambient occlusion and sun shadows: render/LightBake.h) into assets/levels/<level>.light.
 # Rerun after changing a level: the game leaves out a stale bake, and `make test` says which

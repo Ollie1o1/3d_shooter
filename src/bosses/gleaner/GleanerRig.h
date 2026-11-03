@@ -16,6 +16,7 @@
 // =============================================================================
 #include "bosses/gleaner/GleanerState.h"
 #include "render/EnemyModel.h"
+#include "render/PropDraw.h"   // (its pieces made in Blender: assets/props/gleaner_*.glb, tools/blender/gleaner_build.py)
 
 namespace gleaner {
 using glm::vec3; using glm::mat4;
@@ -74,6 +75,21 @@ struct Look {
     float door = 0.f;         // 0..1 the furnace door in its face, open
 };
 
+// The parts drawn here as boxes get a surface from their colour (box_inst.frag): pale and grey bone,
+// orange rust plate, the darkest char, dark and lit heat-cracked iron, the rest cast iron. Pure light
+// (bright glow), and the Blender pieces (theirs from their materials), keep their own.
+inline void autoSurface(std::vector<BoxInstance>& out, size_t from) {
+    for (size_t i = from; i < out.size(); ++i) {
+        BoxInstance& b = out[i];
+        if (b.surface > 0.f) continue;
+        const vec3 c = b.color, e = b.emissive;
+        const float lum = glm::dot(c, vec3{0.3f, 0.59f, 0.11f}), hi = std::max({c.r, c.g, c.b}), lo = std::min({c.r, c.g, c.b});
+        const float glow = std::max({e.r, e.g, e.b}), chroma = (hi - lo) / (hi + 1e-4f);
+        if (glow > 1.2f || lum < 0.004f) continue;
+        b.surface = glow > 0.12f ? 5.f : lum > 0.17f && chroma < 0.4f ? 3.f : chroma > 0.45f && c.r > c.g * 1.7f ? 1.f : lum < 0.05f ? 4.f : 2.f;
+    }
+}
+
 inline void draw(std::vector<BoxInstance>& out, const Gleaner& g, const Look& look) {
     using namespace rig;
     const float K = Gleaner::SCALE;   // world-space parts (the arms, the legs, the chains, the smoke) scale by hand
@@ -90,6 +106,9 @@ inline void draw(std::vector<BoxInstance>& out, const Gleaner& g, const Look& lo
     };
     auto local = [&](vec3 p) { return vec3(B * glm::vec4(p, 1.f)); };
     auto localBar = [&](vec3 a, vec3 b, float w, float h, vec3 col, vec3 emi = vec3{0.f}) { bar(local(a), local(b), w * K, h * K, col, emi); };
+    // A piece made in Blender (its own units: the Gleaner's), its glow its furnace's light; false: no file, draw the boxes
+    auto piece = [&](const char* name, const mat4& m) { return propdraw::push(out, name, m, fire, 1.f, true); };
+    const size_t first = out.size();
 
     // ---- the spine, its armour and the ridge of spines along it ----
     const int VERT = 10;
@@ -101,7 +120,8 @@ inline void draw(std::vector<BoxInstance>& out, const Gleaner& g, const Look& lo
         // the seam to the next one: the furnace's light showing between the plates
         box(B * alongZ(spine(b), spineTangent(b)) * S(vec3{w * 0.92f, h * 0.9f, 1.6f}), soot, fire * 0.35f);
         // the armour plate over it, tipped back like a scale
-        box(B * alongZ(p + vec3{0, h * 0.42f, 0}, tan) * RX(-0.12f) * S(vec3{w * 0.85f, 6.f, len * 0.95f}), rust * (0.85f + 0.3f * (k % 2)));
+        if (!piece("gleaner_scale", B * alongZ(p + vec3{0, h * 0.42f, 0}, tan) * RX(-0.12f) * S(vec3{w * 0.85f / 50.f, 1.f, len * 0.95f / 25.f})))
+            box(B * alongZ(p + vec3{0, h * 0.42f, 0}, tan) * RX(-0.12f) * S(vec3{w * 0.85f, 6.f, len * 0.95f}), rust * (0.85f + 0.3f * (k % 2)));
         // the ridge: spines of every height (the mountain line while it lies); forward of the furnace the
         // saddle's three spines stand in for them
         if (k < 3) continue;
@@ -402,13 +422,17 @@ inline void draw(std::vector<BoxInstance>& out, const Gleaner& g, const Look& lo
             box(H * T(vec3{s * (NECK_HX + len * 0.5f), 12.35f, CROWN_Z0 - heldHead().z}) * S(vec3{len, 0.7f, 0.8f}), bone * 0.5f);
         }
         box(H * T(vec3{0, 12.35f, CROWN_Z1 - heldHead().z}) * S(vec3{CROWN_HX * 2.f, 0.7f, 0.8f}), bone * 0.5f);
-        box(H * S(vec3{26, 20, 36}), bone * 0.75f);
-        box(H * T(vec3{0, 9, 4}) * S(vec3{30, 6, 26}), rust * 0.7f);                    // brow
+        const bool skull = piece("gleaner_skull", H);
+        if (!skull) {
+            box(H * S(vec3{26, 20, 36}), bone * 0.75f);
+            box(H * T(vec3{0, 9, 4}) * S(vec3{30, 6, 26}), rust * 0.7f);                // brow
+        }
         for (float s : {-1.f, 1.f}) box(H * T(vec3{s * 7.f, 3, 18.2f}) * S(vec3{5, 3, 1}), soot, vec3{1.6f, 0.25f, 0.06f} * (0.5f + 0.5f * g.eyeOpen));   // sockets
         box(H * T(vec3{0, -6, 6}) * S(vec3{20, 6, 26}), soot, fire * (0.3f + 2.4f * g.jaw));   // the mouth's light
         mat4 J = H * T(vec3{0, -9, -14}) * RX(0.95f * g.jaw) * T(vec3{0, 0, 16});            // hinged at the back
-        box(J * S(vec3{23, 6, 32}), bone * 0.65f);
-        for (int k = 0; k < 6; ++k) for (float s : {-1.f, 1.f}) {   // teeth, top and bottom
+        const bool jaw = piece("gleaner_jaw", J);
+        if (!jaw) box(J * S(vec3{23, 6, 32}), bone * 0.65f);
+        if (!skull || !jaw) for (int k = 0; k < 6; ++k) for (float s : {-1.f, 1.f}) {   // teeth, top and bottom
             box(J * T(vec3{s * (3.f + k * 1.6f), 4.5f, 14.f - k * 4.5f}) * S(vec3{1.6f, 4.f, 1.6f}), bone);
             box(H * T(vec3{s * (3.f + k * 1.6f), -11.f, 16.f - k * 4.5f}) * S(vec3{1.6f, 4.f, 1.6f}), bone);
         }
@@ -419,24 +443,32 @@ inline void draw(std::vector<BoxInstance>& out, const Gleaner& g, const Look& lo
         const float s = Gleaner::side(a);
         vec3 sh = g.shoulder(a), el = g.elbow(a), hd = g.hand(a);
         vec3 fist = hd + vec3{0, 14 * K, 0};
-        lump(T(sh + vec3{0, 8 * K, 0}) * RY(g.yaw) * S(vec3{40, 28, 40} * K), rust * 0.85f);   // the pauldron
-        bar(sh, el, 25 * K, 23 * K, iron);
-        box(alongZ((sh + el) * 0.5f + vec3{0, 9 * K, 0}, el - sh) * S(vec3{17 * K, 6 * K, glm::length(el - sh) * 0.75f}), rust);   // plate down the upper arm
+        if (!piece("gleaner_pauldron", T(sh + vec3{0, 8 * K, 0}) * RY(g.yaw) * S(vec3{K})))
+            lump(T(sh + vec3{0, 8 * K, 0}) * RY(g.yaw) * S(vec3{40, 28, 40} * K), rust * 0.85f);   // the pauldron
+        const float upper = glm::length(el - sh), fore = glm::length(fist - el);
+        if (!piece("gleaner_upperarm", alongZ(sh, el - sh) * S(vec3{K, K, upper / Gleaner::UPPER}))) {
+            bar(sh, el, 25 * K, 23 * K, iron);
+            box(alongZ((sh + el) * 0.5f + vec3{0, 9 * K, 0}, el - sh) * S(vec3{17 * K, 6 * K, upper * 0.75f}), rust);   // plate down the upper arm
+        }
         lump(T(el) * S(vec3{31 * K}), iron * 1.1f);
-        bar(el, fist, 22 * K, 21 * K, iron);
-        for (int k = 0; k < 3; ++k) {   // spines down the back of the forearm
-            vec3 p = glm::mix(el, fist, 0.25f + 0.25f * k);
-            box(alongZ(p + vec3{0, 11 * K, 0}, vec3{s * 0.2f, 1, -0.4f}) * S(vec3{3.5f * K, 3.5f * K, (16.f - 3.f * k) * K}), bone * 0.8f);
+        if (!piece("gleaner_forearm", alongZ(el, fist - el) * S(vec3{K, K, fore / Gleaner::FORE}))) {
+            bar(el, fist, 22 * K, 21 * K, iron);
+            for (int k = 0; k < 3; ++k) {   // spines down the back of the forearm
+                vec3 p = glm::mix(el, fist, 0.25f + 0.25f * k);
+                box(alongZ(p + vec3{0, 11 * K, 0}, vec3{s * 0.2f, 1, -0.4f}) * S(vec3{3.5f * K, 3.5f * K, (16.f - 3.f * k) * K}), bone * 0.8f);
+            }
         }
         // The fist: a great lump, four knuckles on the ground ahead of it
         vec3 f = g.fwd();
-        lump(T(fist) * RY(g.yaw + s * 0.2f) * S(vec3{38, 30, 36} * K), iron);
-        for (int k = 0; k < 4; ++k) {
-            vec3 kp = fist + (f * 16.f + g.right() * ((k - 1.5f) * 8.f) + vec3{0, -6.f + (k % 2) * 2.f, 0}) * K;
-            box(T(kp) * RY(g.yaw) * S(vec3{7, 12, 10} * K), bone * 0.7f);
+        if (!piece("gleaner_fist", T(fist) * RY(g.yaw + s * 0.2f) * S(vec3{K}))) {
+            lump(T(fist) * RY(g.yaw + s * 0.2f) * S(vec3{38, 30, 36} * K), iron);
+            for (int k = 0; k < 4; ++k) {
+                vec3 kp = fist + (f * 16.f + g.right() * ((k - 1.5f) * 8.f) + vec3{0, -6.f + (k % 2) * 2.f, 0}) * K;
+                box(T(kp) * RY(g.yaw) * S(vec3{7, 12, 10} * K), bone * 0.7f);
+            }
+            // Light in the seam of the wrist
+            box(alongZ(glm::mix(el, fist, 0.92f), fist - el) * S(vec3{23 * K, 2.5f * K, 3 * K}), soot, fire * 0.9f);
         }
-        // Light in the seam of the wrist
-        box(alongZ(glm::mix(el, fist, 0.92f), fist - el) * S(vec3{23 * K, 2.5f * K, 3 * K}), soot, fire * 0.9f);
     }
 
     // ---- the legs: withered, dragging behind ----
@@ -473,10 +505,12 @@ inline void draw(std::vector<BoxInstance>& out, const Gleaner& g, const Look& lo
         bar(hook, end, 0.9f * K, 0.9f * K, soot);
         // the body on the hook: chest, head, arms, legs (twice a unit's size: they are the big ones)
         mat4 root = T(end) * RY(t * 0.2f + k) * S(vec3{2.f * K});
+        if (piece("gleaner_charm", root)) continue;
         box(root * T({0, -1.3f, 0}) * S({0.6f, 0.65f, 0.4f}), bone);
         box(root * T({0, -0.75f, 0}) * S({0.4f, 0.4f, 0.4f}), bone);
         box(root * T({0, -2.4f, 0}) * S({0.55f, 1.6f, 0.3f}), bone * 0.8f);
         for (float s : {-1.f, 1.f}) box(root * T({s * 0.45f, -1.4f, 0}) * S({0.16f, 1.2f, 0.18f}), bone * 0.8f);
     }
+    autoSurface(out, first);
 }
 }  // namespace gleaner

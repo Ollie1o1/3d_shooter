@@ -731,6 +731,7 @@ inline bool GameplayState::broodSplinterPoint(glm::vec3& at) const {
 inline void GameplayState::gatherGleanerFight(std::vector<BoxInstance>& out) {
     using namespace rig;
     const float ball = (float)meshlib::lumpBall();
+    const size_t first = out.size();
     if (gleanerPhase >= GleanerPhase::TENDER) {
         tenderrig::draw(out, tender, ball);
         tenderrig::drawRiver(out, tender, ball);
@@ -739,6 +740,7 @@ inline void GameplayState::gatherGleanerFight(std::vector<BoxInstance>& out) {
     if (gleanerPhase >= GleanerPhase::CALLER && gleanerPhase <= GleanerPhase::BROOD) callerrig::draw(out, caller, ball);
     if (gleanerPhase >= GleanerPhase::HEART && gleanerPhase <= GleanerPhase::CORE) gatherGut(out);
     if (gleanerPhase == GleanerPhase::SUMMIT) { if (insideGleaner()) gatherGut(out); gatherEye(out); }
+    gleaner::autoSurface(out, first);   // (the brood, the organs, the eye: their surfaces from their colours)
     // Called meteors: a ring of fire on the ground where each will land, tightening as it comes
     for (const auto& m : meteors.pool) {
         if (!m.alive || !m.called) continue;

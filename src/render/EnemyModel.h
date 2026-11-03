@@ -24,7 +24,8 @@ struct BoxInstance {
     glm::vec3 color{1.f};
     float     mesh = 0.f;    // what's drawn: 0 the unit cube, else a mesh from MeshLib.h (centred, at its own size)
     glm::vec3 emissive{0.f};
-    float     _pad1 = 0.f;
+    float     surface = 0.f; // a boss's surface, drawn by the shader (box_inst.frag): 0 plain, 1 riveted rusting plate,
+                             // 2 pitted cast iron, 3 cracked bone, 4 char, 5 heat-cracked iron lit in its cracks
 };
 
 namespace rig {

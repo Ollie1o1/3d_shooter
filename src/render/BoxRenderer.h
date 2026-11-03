@@ -83,6 +83,9 @@ public:
         glEnableVertexAttribArray(9);
         glVertexAttribPointer(9, 3, GL_FLOAT, GL_FALSE, sizeof(BoxInstance), (void*)(base + offsetof(BoxInstance, emissive)));
         glVertexAttribDivisor(9, 1);
+        glEnableVertexAttribArray(10);
+        glVertexAttribPointer(10, 1, GL_FLOAT, GL_FALSE, sizeof(BoxInstance), (void*)(base + offsetof(BoxInstance, surface)));
+        glVertexAttribDivisor(10, 1);
     }
 
     BoxRenderer(const BoxRenderer&) = delete;

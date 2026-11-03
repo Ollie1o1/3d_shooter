@@ -5,6 +5,10 @@ in vec3 Normal;
 in vec3 FragPos;
 in vec3 vColor;
 in vec3 vEmissive;
+flat in float vSurf;
+in vec3 vLocal;
+in vec3 vLocalN;
+flat in vec3 vSize;
 
 out vec4 FragColor;
 
@@ -15,6 +19,7 @@ uniform vec3 viewPos;
 uniform vec3 uSkyAmb;      // hemisphere ambient, per arena
 uniform vec3 uGroundAmb;
 uniform vec3 uFogColor;
+uniform int uSurfaces;     // the bosses' surfaces drawn (QUALITY above its lowest)
 uniform float uFogDensity;
 uniform vec3 pointLightPos[4];
 uniform vec3 pointLightColor[4];
@@ -45,9 +50,74 @@ vec3 neonLight(vec3 P, vec3 N) {
     return sum / (1.0 + 0.35 * max(max(sum.r, sum.g), sum.b));
 }
 
+// ---- a boss's surfaces (BoxInstance::surface): patterns made here, in the part's own metres ----
+float hash2(vec2 p) { vec3 q = fract(vec3(p.xyx) * 0.1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float vnoise2(vec2 x) {
+    vec2 i = floor(x), f = fract(x); f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash2(i), hash2(i + vec2(1, 0)), f.x), mix(hash2(i + vec2(0, 1)), hash2(i + vec2(1, 1)), f.x), f.y);
+}
+float fbm2(vec2 p) { return 0.57 * vnoise2(p) + 0.29 * vnoise2(p * 2.03 + vec2(1.7, 9.2)) + 0.14 * vnoise2(p * 4.1 + vec2(5.3, 2.8)); }
+vec2 faceUV(vec3 p, vec3 n) { vec3 a = abs(n); return a.x > a.y && a.x > a.z ? p.zy : a.y > a.z ? p.xz : p.xy; }
+// How near a crack: the noise's midline, wandering (0 on a crack)
+float crackDist(vec2 p) { return abs(vnoise2(p) - 0.5) + 0.25 * abs(vnoise2(p * 2.7 + vec2(4.1, 1.3)) - 0.5); }
+// One noise per pixel (n), shared by everything a surface does; the fine work only near enough to see it
+vec3 bossSurface(int s, vec3 base, out vec3 emi, float dist) {
+    emi = vec3(0.0);
+    vec3 p = vLocal;
+    float big = max(vSize.x, max(vSize.y, vSize.z));
+    vec2 uv = faceUV(p, vLocalN) + vec2(dot(sign(vLocalN), vec3(31.0, 57.0, 13.0)));   // (each face its own pattern)
+    if (dist > 900.0) return base * (0.8 + 0.4 * vnoise2(uv * 0.04));     // (far off: tone only)
+    float detail = 1.0 - smoothstep(90.0, 700.0, dist);
+    float n = fbm2(uv * 0.25);
+    if (s == 1) {   // riveted plate, rusting: panels, their seams, rivets along them, rust blooms, runoff streaks
+        float panel = clamp(big / 5.0, 1.4, 18.0);
+        vec2 g = abs(fract(uv / panel) - 0.5) * panel;
+        float edge = panel * 0.5 - max(g.x, g.y);
+        float seam = 1.0 - smoothstep(0.015 * panel, 0.045 * panel, edge);
+        vec2 rv = fract(uv / (panel * 0.125)) - 0.5;
+        float riv = (1.0 - smoothstep(0.16, 0.26, length(rv))) * (1.0 - smoothstep(0.05 * panel, 0.1 * panel, edge)) * (1.0 - seam);
+        float streak = detail > 0.0 ? vnoise2(vec2((p.x + p.z) * 1.4, p.y * 0.07)) : 0.5;
+        float rust = smoothstep(0.45, 0.72, n);
+        vec3 c = base * (0.75 + 0.5 * n);
+        c = mix(c, vec3(0.42, 0.16, 0.06) * (0.7 + 0.5 * fract(n * 7.0)), rust * 0.7);
+        c *= 1.0 - 0.35 * smoothstep(0.55, 0.85, streak);
+        c *= 1.0 - 0.6 * seam * detail;
+        c += base * 1.1 * riv * detail;
+        return c;
+    }
+    if (s == 2) {   // pitted cast iron, its casting seams, a cooler cast to break the red
+        float pits = detail > 0.0 ? smoothstep(0.64, 0.78, vnoise2(uv * 2.6)) * detail : 0.0;
+        vec3 c = base * (0.7 + 0.6 * n) * (1.0 - 0.45 * pits);
+        float band = 1.0 - smoothstep(0.0, 0.05, abs(fract(p.y / clamp(big / 4.0, 2.0, 16.0)) - 0.5) - 0.44);
+        c *= 1.0 - 0.3 * band * detail;
+        return mix(c, c * vec3(0.85, 0.97, 1.2), 0.4 * smoothstep(0.3, 0.7, n));
+    }
+    if (s == 3) {   // bone: grain, yellowing, a web of fine cracks
+        float grain = 0.5 + 0.5 * sin(dot(p, vec3(0.3, 2.2, 0.4)) * 3.0 + n * 6.0);
+        float cr = detail > 0.0 ? 1.0 - smoothstep(0.0, 0.035, crackDist(uv * 0.3)) : 0.0;
+        vec3 c = base * (0.82 + 0.3 * grain * detail);
+        c = mix(c, c * vec3(1.12, 0.95, 0.7), smoothstep(0.5, 0.8, n));
+        return c * (1.0 - 0.6 * cr * detail);
+    }
+    if (s == 4) {   // char: soot, ash, a few embers still alight
+        vec3 c = base * (0.55 + 0.9 * n);
+        c = mix(c, vec3(0.16, 0.15, 0.14), 0.35 * smoothstep(0.6, 0.8, fract(n * 5.0)));
+        if (detail > 0.0) emi = vec3(1.6, 0.4, 0.1) * step(0.93, vnoise2(uv * 2.2)) * detail * 0.6;
+        return c;
+    }
+    if (s == 5) {   // heat-cracked iron: the furnace's light in its cracks
+        float crack = 1.0 - smoothstep(0.0, 0.04, crackDist(uv * clamp(0.6 / max(big * 0.04, 0.3), 0.06, 1.2)));
+        emi = vec3(2.2, 0.55, 0.12) * crack * (0.5 + 0.5 * n) * 0.9;
+        return base * (0.7 + 0.6 * n) * (1.0 - 0.5 * crack);
+    }
+    return base;
+}
+
 void main()
 {
-    vec4 texColor = texture(uTexture, TexCoord) * vec4(vColor, 1.0);
+    vec3 baseColor = vColor, surfEmi = vec3(0.0);
+    if (vSurf > 0.5 && uSurfaces != 0) baseColor = bossSurface(int(vSurf + 0.5), vColor, surfEmi, length(viewPos - FragPos));
+    vec4 texColor = texture(uTexture, TexCoord) * vec4(baseColor, 1.0);
 
     vec3 norm    = normalize(Normal);
     vec3 viewDir = normalize(viewPos - FragPos);
@@ -84,7 +154,7 @@ void main()
 
     vec3 lighting = ambient + diff * lightColor + pointContrib + neonLight(FragPos, norm);
     vec3 result   = (lighting * texColor.rgb + specular + rimColor) * mix(0.35, 1.0, edgeFactor)
-                  + vEmissive;
+                  + vEmissive + surfEmi;
 
     float d   = length(viewPos - FragPos) * uFogDensity;
     float fog = 1.0 - exp(-d * d);
