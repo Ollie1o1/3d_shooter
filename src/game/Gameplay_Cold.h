@@ -174,7 +174,7 @@ inline void GameplayState::updateCold(float dt) {
     }
     updateColdVents(dt);
     updateColdSea(dt);
-    if (director.arena >= 8) updateRestorerFight(dt);
+    if (director.arena >= 8) { updateRestorerFight(dt); updateRecallFinisher(dt); }
     // Wind: always, gusting; stronger out at the lip
     const float lip = glm::clamp(1.f - (player.position.z - cold::edgeZ(player.position.x)) / 120.f, 0.f, 1.f);
     audio.setWind(playerDead ? 0.f : 0.36f + 0.1f * std::sin(gameClock * 0.17f) + 0.08f * std::sin(gameClock * 0.61f) + 0.2f * lip);

@@ -211,7 +211,7 @@ inline float GameplayState::storyWakeFx() const {
     if(laboratory() && labEnding.active())return 0.f;   // (its end: white, LabEnding::white)
     if(plain() && plainReveal.active())return 0.f;
     if(plain() && tearT>=0.f)return 0.f;   // (tearing out the eye's core: its own bars and white)
-    if(cold() && coldRideT>=0.f && storyEndT<0.f)return 0.f;   // (Chapter 5's ride out: in the clear)
+    if(cold() && (coldRideT>=0.f || rsFinT>=0.f) && storyEndT<0.f)return 0.f;   // (Chapter 5's ride out and its finisher: in the clear)
     if(plain() && summitEndT>=0.f && storyEndT<0.f)return 0.f;   // (the collapse draws its own white and dark)   // (the plain's arrival is white, not black: PlainReveal::white)
     if (!storyLocked() && storyEndT < 0.f) return 0.f;
     if (storyEndT >= 0.f) return std::clamp(storyEndT / 1.4f, 0.f, 1.f);   // the chute: going dark

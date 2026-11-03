@@ -24,6 +24,11 @@
 inline void Enemy::thinkRestorer(float dt, const EnemyWorld& w, bool resolve) {
     const glm::vec3 to = flatTo(w.playerFeet);
     const float distance = glm::length(to);
+    if (rsFalter) {   // beaten: it sinks to its knees and waits, its lamp low
+        rsKneel = std::min(1.f, rsKneel + dt * 1.4f);
+        velocity = {0.f, 0.f, 0.f}; attack = AttackKind::NONE; telegraphTimer = 0.f; attackTimer = 0.f;
+        return;
+    }
     attackPace = rsPhase >= 3 ? 1.3f : rsPhase == 2 ? 1.1f : 1.f;
     animPhase += dt * std::min(moveSpeed, 4.f) * 0.9f;
     if (telegraphTimer > 0.f) {

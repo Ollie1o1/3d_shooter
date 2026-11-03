@@ -284,6 +284,14 @@ int main() {
               && !has(p1, AttackKind::RS_FREEZE) && !has(p1, AttackKind::RS_SHELVE), "the Restorer's first phase: ROLLBACK, SNAPSHOT and the tongs, nothing more");
         CHECK(has(p2, AttackKind::RS_FREEZE) && has(p2, AttackKind::RS_SHELVE), "...its second adds FLASH FREEZE and SHELVING");
         CHECK(white, "...and its tongs can be parried");
+        Enemy f(EnemyType::RESTORER, {0.f, 0.f, 0.f});
+        f.spawnTimer = 0.f; f.state = EnemyState::ACTIVE;
+        bool died = f.takeDamage(f.maxHealth * 2.f);
+        for (int k = 0; k < 120; ++k) f.update(DT, w);
+        CHECK(!died && f.alive && f.rsFalter && f.health > 0.f && f.rsKneel >= 1.f && f.attack == AttackKind::NONE,
+              "beaten, the Restorer does not die: it falters onto its knees and waits for the RECALL finisher");
+        f.rsFinished = true;
+        CHECK(f.takeDamage(f.health + 10.f) && !f.alive, "...and once the module is in its dome, it goes");
         Enemy pt(EnemyType::RS_POINT, {0.f, 0.f, 0.f}), dr(EnemyType::RS_DRUM, {0.f, 0.f, 0.f});
         pt.spawnTimer = dr.spawnTimer = 0.f; pt.state = dr.state = EnemyState::ACTIVE;
         bool still = true;

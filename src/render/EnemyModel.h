@@ -28,6 +28,8 @@ struct BoxInstance {
                              // 2 pitted cast iron, 3 cracked bone, 4 char, 5 heat-cracked iron lit in its cracks
 };
 
+#include "render/PropDraw.h"   // (Blender pieces: THE RESTORER; needs BoxInstance, above)
+
 namespace rig {
 using glm::mat4; using glm::vec3;
 
@@ -980,18 +982,25 @@ inline void leviathanSegments(const Enemy& e, float time, Rig& r, const gunkit::
         for(int k=0;k<6;++k)r.box(root*T({0,5.9f,-1.2f})*RZ(e.ballRotor+k*1.0472f),{0,.95f,0},{.38f,1.7f,.25f},st.color*1.4f);
         break;
     }
-    case EnemyType::RESTORER: {   // THE RESTORER: stilts, a stooped body in frosted hoses, a glass dome, four tong arms, a cryo cylinder
-        // A limb from a to b (root space), `t` thick
-        auto seg = [&](vec3 a, vec3 b, float t, vec3 col, vec3 emi = vec3{0.f}) {
+    case EnemyType::RESTORER: {   // THE RESTORER: stilts, a stooped body in a coat of frosted hoses, a glass dome, four tong arms, a cryo
+                                  // cylinder. Its pieces are made in Blender (tools/blender/restorer_build.py); boxes when a file is missing.
+        // Beaten, it kneels: the body sinks, the stilts fold under it (the legs from root, everything above from `body`)
+        const float kneel = e.rsKneel * e.rsKneel * (3.f - 2.f * e.rsKneel);
+        const mat4 body = root * T({0.f, -2.3f * kneel, .4f * kneel}) * RX(.25f * kneel);
+        mat4 base = root;
+        // A limb from a to b (root space), `t` thick: a Blender piece stretched between them, else a box
+        auto seg = [&](vec3 a, vec3 b, float t, vec3 col, const char* piece = nullptr, vec3 emi = vec3{0.f}) {
             vec3 d = b - a; float len = glm::length(d); if (len < 1e-4f) return;
             vec3 y = d / len, x = std::fabs(y.y) > 0.95f ? vec3{1, 0, 0} : glm::normalize(glm::cross(vec3{0, 1, 0}, y)), z = glm::cross(x, y);
             mat4 M(1.f); M[0] = glm::vec4(x, 0); M[1] = glm::vec4(y, 0); M[2] = glm::vec4(z, 0); M[3] = glm::vec4((a + b) * 0.5f, 1);
-            r.box(root * M, {0, 0, 0}, {t, len, t}, col, emi);
+            if (piece && propdraw::push(out, piece, base * M * S(vec3{t, len, t}), emi, 1.f, true)) return;
+            r.box(base * M, {0, 0, 0}, {t, len, t}, col, emi);
         };
+        auto at = [&](const char* piece, const mat4& m, vec3 tint = vec3{1.f}) { return propdraw::push(out, piece, base * m, tint, 1.f, true); };
         const float ph = e.animPhase, walk = glm::clamp(e.moveSpeed / std::max(.1f, st.speed), 0.f, 1.f);
         const vec3 hose{.74f, .8f, .86f}, steelC = st.color * .55f;
         // The tell, on its dome lamp: white (parry the tongs), gold (rollback, shelving), red (snapshot, freeze)
-        vec3 lamp = vec3{1.1f, 1.2f, 1.4f};
+        vec3 lamp = vec3{1.1f, 1.2f, 1.4f} * (e.rsFalter ? .35f + .25f * std::sin(time * 9.f) : 1.f);
         if (e.telegraphTimer > 0.f) {
             if (e.attack == AttackKind::RS_TONG) lamp = e.parryWindow() ? vec3{2.6f} : vec3{1.8f};
             else if (e.attack == AttackKind::RS_ROLLBACK || e.attack == AttackKind::RS_SHELVE) lamp = abGoldTell(vec3{2.f, 1.4f, .3f});
@@ -1001,39 +1010,51 @@ inline void leviathanSegments(const Enemy& e, float time, Rig& r, const gunkit::
         // Stilts: long legs from the hips, knees bending back like a crane's
         for (int s = -1; s <= 1; s += 2) {
             float sw = std::sin(ph + (s > 0 ? 0.f : 3.1416f)) * .45f * walk;
-            vec3 hip{s * .7f, 4.7f, 0.f}, knee{s * .85f, 2.5f, -.35f + sw * .9f}, foot{s * 1.f, 0.f, sw * 1.6f};
+            vec3 hip{s * .72f, 4.75f - 2.3f * kneel, .4f * kneel}, knee{s * .9f, 2.5f, -.4f + sw * .9f}, foot{s * 1.f, 0.f, sw * 1.6f};
             foot.y = std::max(0.f, std::sin(ph + (s > 0 ? 0.f : 3.1416f))) * .35f * walk;
-            seg(hip, knee, .26f, steelC); seg(knee, foot + vec3{0, .1f, 0}, .2f, steelC);
-            r.box(root, foot + vec3{0, .06f, .15f}, {.5f, .12f, .8f}, steelC);
-            r.box(root, knee, {.34f, .34f, .34f}, hose);
+            knee = glm::mix(knee, vec3{s * 1.f, .4f, 1.3f}, kneel); foot = glm::mix(foot, vec3{s * 1.05f, 0.f, -1.4f}, kneel);
+            seg(hip, knee, .52f, steelC, "restorer_strut"); seg(knee, foot + vec3{0, .18f, 0}, .42f, steelC, "restorer_strut");
+            if (!at("restorer_foot", T(foot + vec3{0, .02f, 0}) * S(vec3{1.3f}))) r.box(root, foot + vec3{0, .06f, .15f}, {.5f, .12f, .8f}, steelC);
+            if (!at("restorer_joint", T(knee) * S(vec3{.62f}))) r.box(root, knee, {.34f, .34f, .34f}, hose);
         }
-        // The body: a pelvis, a stooped torso wrapped in frosted hoses
-        r.box(root, {0, 4.85f, 0}, {1.7f, .45f, .9f}, steelC);
-        r.box(root * T({0, 5.8f, .3f}) * RX(.45f), {0, 0, 0}, {1.4f, 1.5f, .95f}, st.color);
-        for (int k = 0; k < 4; ++k) seg(vec3{-.6f + k * .4f, 6.5f, .7f}, vec3{-.7f + k * .45f, 4.6f, .55f + .1f * (k % 2)}, .17f, hose);
-        // The cryo cylinder on its back, and what it saved first, asleep in it
-        r.box(root, {0, 5.9f, -.75f}, {.95f, 1.7f, .95f}, vec3{.55f, .7f, .8f}, vec3{.12f, .16f, .22f});
-        r.box(root, {0, 5.75f, -.75f}, {.35f, .9f, .3f}, vec3{.25f, .27f, .3f});
-        r.box(root, {0, 6.3f, -.75f}, {.25f, .25f, .25f}, vec3{.3f, .32f, .35f});
-        // The glass dome, and one cold lamp in it
-        r.box(root, {0, 7.f, 1.f}, {1.f, .85f, 1.f}, vec3{.6f, .75f, .85f}, vec3{.08f, .1f, .14f});
-        r.box(root, {0, 7.f, 1.05f}, {.3f, .3f, .3f}, lamp, lamp);
+        // The body: a pelvis, a stooped torso in its coat of hoses, the cylinder on its back, the dome
+        base = body;
+        const mat4 torsoM = T({0, 5.8f, .3f}) * RX(.45f);
+        if (!at("restorer_pelvis", T({0, 4.85f, 0}) * S(vec3{1.15f}))) r.box(root, {0, 4.85f, 0}, {1.7f, .45f, .9f}, steelC);
+        if (!at("restorer_torso", torsoM * S(vec3{1.3f}))) {
+            r.box(root * torsoM, {0, 0, 0}, {1.4f, 1.5f, .95f}, st.color);
+            for (int k = 0; k < 4; ++k) seg(vec3{-.6f + k * .4f, 6.5f, .7f}, vec3{-.7f + k * .45f, 4.6f, .55f + .1f * (k % 2)}, .17f, hose);
+        }
+        if (!at("restorer_cylinder", T({0, 6.f, -1.f}) * RX(.2f) * S(vec3{1.15f}))) {   // and what it saved first, asleep in it
+            r.box(root, {0, 5.9f, -.75f}, {.95f, 1.7f, .95f}, vec3{.55f, .7f, .8f}, vec3{.12f, .16f, .22f});
+            r.box(root, {0, 5.75f, -.75f}, {.35f, .9f, .3f}, vec3{.25f, .27f, .3f});
+        }
+        if (!at("restorer_dome", T({0, 7.25f, 1.1f}) * S(vec3{1.25f}), lamp)) {
+            r.box(root, {0, 7.f, 1.f}, {1.f, .85f, 1.f}, vec3{.6f, .75f, .85f}, vec3{.08f, .1f, .14f});
+            r.box(root, {0, 7.f, 1.05f}, {.3f, .3f, .3f}, lamp, lamp);
+        }
         // Four arms: the upper pair long, ending in tongs; one folds back for the snatch
         const bool tong = e.attack == AttackKind::RS_TONG && e.telegraphTimer > 0.f;
         const float wind = tong ? glm::clamp(1.f - e.telegraphTimer / std::max(.01f, e.telegraphDuration), 0.f, 1.f) : 0.f;
         const bool lunge = !tong && e.recoverTimer > 1.f && e.rsLast == (int)AttackKind::RS_TONG;
         for (int a = 0; a < 4; ++a) {
             const int s = a % 2 ? 1 : -1; const bool upper = a < 2;
-            vec3 sh{s * .8f, upper ? 6.4f : 5.5f, .55f};
+            vec3 sh{s * 1.f, upper ? 6.5f : 5.6f, .55f};
             float reach = upper ? 3.6f : 2.4f;
             vec3 el = sh + vec3{s * .5f, -1.2f, .9f}, hand = sh + vec3{s * .3f, -2.8f, reach * .55f};
             if (upper && s > 0 && tong) { el = sh + vec3{s * .6f, .4f, -1.2f * wind}; hand = sh + vec3{s * .4f, -.6f, -1.6f * wind}; }   // folded back
             if (upper && s > 0 && lunge) { el = sh + vec3{s * .2f, -.6f, 2.2f}; hand = sh + vec3{0, -1.6f, 5.2f}; }                      // thrown out
             if (!upper) hand.y += std::sin(ph * .5f + a) * .15f;
-            seg(sh, el, upper ? .2f : .16f, st.color); seg(el, hand, upper ? .17f : .14f, st.color);
-            vec3 tcol = (upper && s > 0 && tong) ? (e.parryWindow() ? vec3{1.8f} : vec3{1.2f}) : hose;
-            vec3 temi = (upper && s > 0 && tong) ? tcol : vec3{0.f};
-            for (int j = -1; j <= 1; j += 2) seg(hand, hand + vec3{j * .22f, -.55f, .25f}, .07f, tcol, temi);   // the tongs
+            seg(sh, el, upper ? .4f : .3f, st.color, "restorer_strut"); seg(el, hand, upper ? .34f : .26f, st.color, "restorer_strut");
+            if (!at("restorer_joint", T(el) * S(vec3{upper ? .46f : .36f}))) r.box(root, el, vec3{.2f}, hose);
+            const bool hot = upper && s > 0 && tong;
+            vec3 tcol = hot ? (e.parryWindow() ? vec3{1.8f} : vec3{1.2f}) : hose;
+            vec3 temi = hot ? tcol : vec3{0.f};
+            for (int j = -1; j <= 1; j += 2) {   // the tongs (each jaw a hooked finger, its hook at the tip)
+                vec3 tip = hand + vec3{j * .26f, -.65f, .3f};
+                if (hot) r.box(root, tip, {.12f, .12f, .12f}, tcol, temi);   // (lit for the parry, whatever the jaw is made of)
+                seg(tip, hand, upper ? .22f : .17f, tcol, hot ? nullptr : "restorer_jaw", temi);
+            }
         }
         break;
     }

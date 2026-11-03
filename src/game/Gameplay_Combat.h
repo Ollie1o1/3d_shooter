@@ -258,6 +258,7 @@ inline void GameplayState::updateEnemies(float dt) {
         if (!e.alive) continue;
         hurtBy = e.type;   // whatever hurts you from here on, until the next one: this one did
         if (g_devOverlay.rfind("pose", 0) == 0 && e.type == EnemyType::SOVEREIGN) { devPose(e); continue; }
+        if (g_devOverlay == "rspose" && e.type == EnemyType::RESTORER) { e.yaw = 0.f; e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE; continue; }   // dev: it stands still, facing +Z (screenshots)
         if (g_devOverlay.rfind("penitent", 0) == 0 && e.type == EnemyType::PENITENT) { devPenitentPose(e); continue; }
         if (g_devOverlay == "thunder" && e.type == EnemyType::ABSOLUTE && e.abCur < 0) e.abForce = AB_THUNDER;   // dev: THUNDERCLAP, over and over
         if(e.type==EnemyType::SORTER&&e.sortStep==0) {

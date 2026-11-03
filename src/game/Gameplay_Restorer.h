@@ -48,6 +48,9 @@ inline void GameplayState::resetRestorerFight() {
     rsPhase = 0; rsTakeT = 0.f; rsTrailN = 0; rsTrailT = 0.f;
     storyOwned |= rsTaken; rsTaken = 0;   // (your guns come back)
     for (int k = 0; k < 4; ++k) rsDrumGun[k] = -1;
+    rsFinT = -1.f; rsFalterSeen = false;
+    if (rsFinItem >= 0 && rsFinItem < (int)interactables.size()) interactables[rsFinItem].active = false;
+    rsFinItem = -1;
 }
 
 inline void GameplayState::rsPlaceWall(int k, const AABB& b) {
@@ -245,7 +248,7 @@ inline void GameplayState::updateRestorerFight(float dt) {
         }
         rsLastHealth = R->health;
         // FACTORY RESET: your guns, one at a time, into the drums
-        if (rsPhase >= 3) {
+        if (rsPhase >= 3 && !R->rsFalter) {
             rsTakeT -= dt;
             if (rsTakeT <= 0.f) {
                 rsTakeT = rsfight::TAKE_EVERY;
@@ -296,6 +299,83 @@ inline void GameplayState::updateRestorerFight(float dt) {
         if (rsTongHurtT <= 0.f) { rsTongHurtT = 0.5f; damagePlayer(3.f * tune().damage, rsTongAt, 0.05f, 0.01f, 0.f); }
         if (rsTongT <= 0.f || playerDead) rsTongT = -1.f;
     }
+}
+
+// Where its dome is, in the world (it kneels for the finisher: the rig's own transforms, EnemyModel.h)
+inline glm::vec3 GameplayState::rsDomeWorld(const Enemy& e) const {
+    const float k = e.rsKneel * e.rsKneel * (3.f - 2.f * e.rsKneel);
+    glm::mat4 m = glm::translate(glm::mat4(1.f), e.position) * glm::rotate(glm::mat4(1.f), e.yaw, glm::vec3{0.f, 1.f, 0.f})
+                * glm::translate(glm::mat4(1.f), glm::vec3{0.f, -2.3f * k, 0.4f * k}) * glm::rotate(glm::mat4(1.f), 0.25f * k, glm::vec3{1.f, 0.f, 0.f});
+    return glm::vec3(m * glm::vec4(0.f, 7.25f, 1.1f, 1.f));
+}
+
+// It is down: you climb it and drive the RECALL module into its dome
+inline void GameplayState::startRecallFinisher() {
+    Enemy* R = restorer();
+    if (!R || !R->rsFalter || rsFinT >= 0.f) return;
+    rsFinT = 0.f; rsFinFrom = player.camera.position;
+    if (rsFinItem >= 0 && rsFinItem < (int)interactables.size()) interactables[rsFinItem].active = false;
+    grapple.release();
+    audio.play("dash", 110, SoundGroup::PLAYER);
+}
+
+namespace rsfin {
+constexpr float CLIMB = 0.8f, HIT = 1.1f, CYAN = 1.7f, BREAK = 2.4f, END = 3.2f;
+}
+
+inline void GameplayState::updateRecallFinisher(float dt) {
+    Enemy* R = restorer();
+    // It falters: say so, and put the finisher in reach
+    if (R && R->rsFalter && !rsFalterSeen) {
+        rsFalterSeen = true;
+        pushBanner("IT FALTERS", "GET CLOSE  -  " + binds().label(Act::INTERACT) + ": DRIVE THE RECALL MODULE INTO ITS DOME", RECALL_FROST, 4.f);
+        audio.playAt("ab_creak", R->position, 128, SoundGroup::ENEMY, true, 0.6f);
+        Interactable it;
+        it.position = R->position + glm::vec3{0.f, 1.5f, 0.f};
+        it.box = {R->position + glm::vec3{-3.f, 0.f, -3.f}, R->position + glm::vec3{3.f, 5.f, 3.f}};
+        it.label = "DRIVE THE RECALL MODULE INTO ITS DOME";
+        it.onInteract = [this]() { startRecallFinisher(); };
+        rsFinItem = (int)interactables.size();
+        interactables.push_back(std::move(it));
+    }
+    if (g_devOverlay.find("rsfinish") != std::string::npos && R && R->rsFalter && R->rsKneel >= 1.f && rsFinT < 0.f) startRecallFinisher();   // dev: straight into it (screenshots)
+    if (rsFinT < 0.f || !R) return;
+    const float before = rsFinT;
+    rsFinT += dt;
+    player.velocity = glm::vec3{0.f};
+    const glm::vec3 dome = rsDomeWorld(*R);
+    auto crossed = [&](float t) { return before < t && rsFinT >= t; };
+    if (crossed(rsfin::HIT)) { audio.playAt("cyl_close", dome, 128, SoundGroup::PLAYER, true, 0.7f); audio.playAt("clank", dome, 128, SoundGroup::ENEMY, true, 1.3f); shake(0.25f, 0.05f); hitStopFrames = std::max(hitStopFrames, 6); }
+    if (crossed(rsfin::CYAN)) { audio.playAt("ab_zap", dome, 128, SoundGroup::ENEMY, true, 0.8f); fx.spawnBurst(dome, {0.3f, 0.9f, 1.f}, 30, 4.f, 0.5f, 0.f); }
+    if (crossed(rsfin::BREAK)) {
+        audio.playAt("ab_shatter", dome, 128, SoundGroup::ENEMY, true, 0.7f);
+        fx.spawnBurst(dome, {0.85f, 0.95f, 1.f}, 60, 9.f, 0.9f, 8.f);
+        explosionFlashTimer = 0.3f; explosionFlashPos = dome;
+        shake(0.6f, 0.08f);
+    }
+    if (rsFinT >= rsfin::END) {   // and it is over: the rewind (Gameplay_Cold.h) takes it from here
+        rsFinT = -1.f;
+        R->rsFinished = true;
+        if (R->takeDamage(R->health + 10.f)) onEnemyKilled(*R, StyleSource::PUNCH);
+        styleSystem.addStyle(200.f, StyleSource::PUNCH);
+        resetToCheckpoint(director.arena);   // (back on your feet beside it, where the vault's respawn is)
+        player.position = R->position + glm::normalize(glm::vec3{std::sin(R->yaw), 0.f, std::cos(R->yaw)}) * 4.f;
+        player.camera.position = player.position + glm::vec3{0.f, player.eyeHeight, 0.f}; prevCamPos = player.camera.position;
+    }
+}
+
+// The finisher's camera: up onto it, in front of its dome
+inline bool GameplayState::recallFinisherCam(glm::vec3& eye, glm::vec3& look) {
+    Enemy* R = restorer();
+    if (rsFinT < 0.f || !R) return false;
+    const glm::vec3 dome = rsDomeWorld(*R);
+    const glm::vec3 fwd{std::sin(R->yaw), 0.f, std::cos(R->yaw)};
+    glm::vec3 close = dome + fwd * 1.9f + glm::vec3{0.f, 0.15f, 0.f};
+    float u = glm::clamp(rsFinT / rsfin::CLIMB, 0.f, 1.f); u = u * u * (3.f - 2.f * u);
+    eye = glm::mix(rsFinFrom, close, u);
+    if (rsFinT > rsfin::BREAK) eye += fwd * (rsFinT - rsfin::BREAK) * 2.5f;   // thrown back by it
+    look = dome;
+    return true;
 }
 
 // The fight's pieces: the ghost, the snapshot's mark, the statues, the frost, the racks
@@ -353,4 +433,23 @@ inline void GameplayState::gatherRestorerFight(std::vector<BoxInstance>& out) {
     }
     // Hung up: the chain from the rail
     if (rsTongT > 0.f) push(out, T(rsTongAt + vec3{0.f, 1.f, 0.f}) * S(vec3{0.1f, 2.f, 0.1f}), vec3{0.2f, 0.2f, 0.22f});
+    // The finisher: the RECALL module driven into its dome, the glass cracking, its lamp turning to your light
+    if (rsFinT >= 0.f && R) {
+        const vec3 dome = rsDomeWorld(*R), fwd{std::sin(R->yaw), 0.f, std::cos(R->yaw)};
+        const vec3 from = dome + fwd * 1.6f + vec3{0.25f, -0.35f, 0.f};
+        float u = glm::clamp((rsFinT - 0.5f) / (rsfin::HIT - 0.5f), 0.f, 1.f); u = u * u;
+        const vec3 at = glm::mix(from, dome + fwd * 0.45f, u);
+        const vec3 glow = rsFinT > rsfin::CYAN ? vec3{0.3f, 1.2f, 1.6f} * (1.f + std::sin(gameClock * 40.f) * 0.4f) : RECALL_FROST * 0.6f;
+        push(out, T(at) * gleaner::alongZ(vec3{0.f}, -fwd) * S(vec3{0.22f, 0.22f, 0.5f}), RECALL_FROST, glow);   // the module
+        push(out, T(at + fwd * 0.3f) * gleaner::alongZ(vec3{0.f}, -fwd) * S(vec3{0.28f, 0.28f, 0.06f}), RECALL_FROST, glow * 1.4f);   // its end, lit: what you drive it in by
+        if (rsFinT > rsfin::HIT && rsFinT < rsfin::BREAK) {   // cracks running out over the glass from where it went in
+            float spread = glm::clamp((rsFinT - rsfin::HIT) / (rsfin::BREAK - rsfin::HIT), 0.f, 1.f);
+            for (int k = 0; k < 9; ++k) {
+                float a = k * 0.698f + 0.3f, len = (0.25f + 0.45f * ((k * 7) % 5) / 4.f) * spread;
+                vec3 dir = glm::normalize(vec3{std::cos(a), std::sin(a), 0.f});
+                vec3 d = glm::normalize(dir.x * glm::cross(fwd, vec3{0.f, 1.f, 0.f}) + vec3{0.f, dir.y, 0.f});
+                push(out, T(dome + fwd * 0.52f + d * (len * 0.5f)) * gleaner::alongZ(vec3{0.f}, d) * S(vec3{0.02f, 0.02f, len}), vec3{1.f}, glow * 1.2f);
+            }
+        }
+    }
 }

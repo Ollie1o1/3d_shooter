@@ -130,6 +130,10 @@ scan: tests/scan_bounds.cpp tests/BoundsScan.h $(HEADERS)
 	$(CXX) $(CXXFLAGS) tests/scan_bounds.cpp -o tests/scan_bounds $(STDLIB)
 	./tests/scan_bounds
 
+# THE RESTORER's pieces (Chapter 5), made in Blender (tools/blender/restorer_build.py) into assets/props/restorer_*.glb
+restorer-art:
+	blender -b --factory-startup --python tools/blender/headless.py -- tools/blender/restorer_build.py $(if $(ONLY),ONLY=$(ONLY),)
+
 # THE GLEANER's pieces, made in Blender (tools/blender/gleaner_build.py, on tools/blender/boss_kit.py) into
 # assets/props/gleaner_*.glb: `make gleaner-art`, or one with `make gleaner-art ONLY=fist`
 gleaner-art:

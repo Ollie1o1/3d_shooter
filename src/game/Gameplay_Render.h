@@ -600,6 +600,12 @@ inline void GameplayState::render() {
         renderCam.yaw = glm::degrees(std::atan2(d.z, d.x));
         renderCam.pitch = glm::degrees(std::asin(glm::clamp(d.y, -1.f, 1.f)));
     }
+    if (glm::vec3 fe, fl; cold() && recallFinisherCam(fe, fl)) {   // Chapter 5's finisher: on the Restorer, at its dome
+        glm::vec3 d = glm::normalize(fl - fe);
+        renderCamPos = renderCam.position = fe;
+        renderCam.yaw = glm::degrees(std::atan2(d.z, d.x));
+        renderCam.pitch = glm::degrees(std::asin(glm::clamp(d.y, -1.f, 1.f)));
+    }
     if (cold() && coldRideT >= 0.f) {   // Chapter 5's end: up the dispatch rail in the capsule, looking out toward the gas giant
         glm::vec3 eye2 = coldRidePos(coldRideT), d = glm::normalize(cold::giantDir() + glm::vec3{0.f, 0.1f * std::min(coldRideT, 5.f), 0.f});
         renderCamPos = renderCam.position = eye2;

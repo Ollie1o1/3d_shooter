@@ -257,7 +257,7 @@ public:
     armfile::HandSpring wakeHand;
     void  beginStory();
     void  updateStory(float dt);
-    bool  storyLocked() const { return story() && (wakeT >= 0.f || labIntro.active() || labEnding.active() || plainReveal.active() || summitEndT >= 0.f || tearT >= 0.f || (level.story.chapter == 5 && coldRideT >= 0.f)); }
+    bool  storyLocked() const { return story() && (wakeT >= 0.f || labIntro.active() || labEnding.active() || plainReveal.active() || summitEndT >= 0.f || tearT >= 0.f || (level.story.chapter == 5 && (coldRideT >= 0.f || rsFinT >= 0.f))); }
     bool  storyLookFree() const { return !labIntro.active() && wakeT >= 18.4f; }   // (story::W_SAT)
     float storyWakeFx() const;
     void  gatherStoryBoxes(std::vector<BoxInstance>& out);
@@ -527,6 +527,12 @@ public:
     glm::vec3 rsTrail[180];
     int   rsTrailHead = 0, rsTrailN = 0; float rsTrailT = 0.f;
     float recallPressedAt = -99.f;
+    // The RECALL finisher: it falters, you drive the module into its dome (Gameplay_Restorer.h)
+    float rsFinT = -1.f; glm::vec3 rsFinFrom{0.f}; int rsFinItem = -1; bool rsFalterSeen = false;
+    void startRecallFinisher();
+    void updateRecallFinisher(float dt);
+    bool recallFinisherCam(glm::vec3& eye, glm::vec3& look);
+    glm::vec3 rsDomeWorld(const Enemy& e) const;
     Enemy* restorer();
     void resetRestorerFight();
     void rsPlaceWall(int k, const AABB& b);

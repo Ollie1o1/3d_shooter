@@ -303,6 +303,8 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     glm::vec3 rsAim{0.f};
     bool  rsAimSet = false;      // (the game set rsAim: a ROLLBACK's spot)
     float rsPending = 0.f;
+    bool  rsFalter = false, rsFinished = false;   // down on its knees for the finisher; the finisher done
+    float rsKneel = 0.f;                          // 0 standing .. 1 knelt
     float age           = 0.f;
 
     bool  enraged       = false; // a boss's phase two
@@ -556,6 +558,11 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         health -= dmg;
         hitFlashTimer = 0.12f;
         if (isBoss(type)) pressure += dmg / std::max(1.f, maxHealth);   // (evadeTick)
+        if (health <= 0.f && type == EnemyType::RESTORER && !rsFinished) {   // not yet: it falters, and waits for RECALL (Gameplay_Restorer.h)
+            health = 1.f;
+            if (!rsFalter) { rsFalter = true; ev.enraged = false; }
+            return false;
+        }
         if (health <= 0.f && type == EnemyType::ABSOLUTE && abForm == 0) {   // not yet: the eclipse takes him (MORNINGSTAR)
             health = 0.f;
             abBeginSwallow();
