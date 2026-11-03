@@ -51,7 +51,7 @@ int main() {
 
     // ---- the level ----
     CHECK(L.story.built && L.story.chapter == 5 && std::string(L.story.title) == "THE COLD STORE", "Chapter 5 builds as THE COLD STORE");
-    CHECK(L.arenas.size() == 7 && A.hasRespawn && A.voidY > cold::VOID_FLOOR + 100.f, "seven sections; falling into the Void respawns you long before its floor");
+    CHECK(L.arenas.size() == 8 && A.hasRespawn && A.voidY > cold::VOID_FLOOR + 100.f, "eight sections; falling into the Void respawns you long before its floor");
     const glm::vec3 s = cold::start();
     CHECK(L.baseFloor(s.x, s.z) == 0.f, "the arrival stands on the shelf");
     bool clearStart = true;
@@ -227,6 +227,32 @@ int main() {
         float d = glm::length(glm::vec2{e.position.x - 4.f, e.position.z});
         CHECK(!attacked, "a CLERK never attacks");
         CHECK(d > 9.f, "...and backs off to keep its distance from you");
+    }
+
+    {   // UNIT 24-K: its three attacks, each with a tell; the Lancer's round is heavy; the rush can be parried
+        EnemyWorld w;
+        Enemy e(EnemyType::UNIT24K, {0.f, 0.f, 0.f});
+        e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE;
+        bool burst = false, shot = false, dash = false, heavy = false, white = false, enraged = false;
+        int shots = 0;
+        for (int f = 0; f < 60 * 60; ++f) {
+            float dist = (f / 600) % 2 ? 4.f : 12.f;   // close, then far, in turns
+            w.playerFeet = e.position + glm::vec3{dist, 0.f, 0.f}; w.playerEye = w.playerFeet + glm::vec3{0, 1.7f, 0};
+            if (f == 60 * 40) e.takeDamage(e.maxHealth * 0.55f);
+            e.update(DT, w);
+            if (e.ev.telegraphStarted) { burst |= e.attack == AttackKind::BURST; shot |= e.attack == AttackKind::SHOT; dash |= e.attack == AttackKind::DASH; }
+            heavy |= e.ev.shots > 0 && e.ev.shotHeavy;
+            shots += e.ev.shots;
+            white |= e.attack == AttackKind::DASH && e.parryWindow();
+            enraged |= e.ev.enraged || e.enraged;
+        }
+        std::printf("      24-K: burst %d, Lancer %d, rush %d, %d rounds fired\n", burst, shot, dash, shots);
+        CHECK(isBoss(EnemyType::UNIT24K) && burst && shot && dash, "24-K duels with the revolver, the Lancer and a rush, each told first");
+        CHECK(heavy && white, "...its Lancer round is heavy, and its rush has a white parry window");
+        CHECK(enraged, "...and half down, it stops holding back");
+        auto R = buildCold();
+        CHECK(R.story.bossSection == 7 && R.arenas[7].waves.size() == 1 && R.arenas[7].waves[0][0].type == EnemyType::UNIT24K,
+              "24-K waits at DISPATCH 2, the eighth section");
     }
 
     std::printf(failures ? "\n%d FAILED\n" : "\nALL PASSED (0 failures)\n", failures);

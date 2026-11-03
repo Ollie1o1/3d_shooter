@@ -507,6 +507,9 @@ public:
     int   coldLaunches = 0;
     bool  coldRecall = false;   // taken from 24-A in Rack 24
     float coldVentHurtT = 0.f;
+    bool  coldKDown = false, coldKIntro = false;   // 24-K (section 8)
+    float coldKLineT = 0.f;
+    float coldKDownAt = -1.f;
     struct ColdCrack { glm::vec3 a, b; float born; };
     std::vector<ColdCrack> coldCracks;   // the Frozen Sea's ice, cracking under you
     glm::vec3 coldCrackFrom{0.f};

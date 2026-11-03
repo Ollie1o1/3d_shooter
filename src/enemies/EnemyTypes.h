@@ -19,10 +19,10 @@
 enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, JUGGERNAUT, WARDEN, SOVEREIGN, SHIELDBEARER, CONDUIT,
                        CONDUCTOR, SERAPH, ANCHOR, PENITENT, REVENANT, WEAVER, LEVIATHAN, ABSOLUTE,
                        COURIER, BULWARK, CANTOR, HARRIER, PLUMB, FOREMAN, PACEMAKER, SORTER, BALLAST, PATIENT, GRAFTED, SUSPENDED, PHASED, SUCCESSOR,
-                       THAWLING, PICKER, CLERK,   // Chapter 5 (EnemyCold.h)
+                       THAWLING, PICKER, CLERK, UNIT24K,   // Chapter 5 (EnemyCold.h)
                        COUNT };
 inline bool isBoss(EnemyType t) { return t == EnemyType::WARDEN || t == EnemyType::SOVEREIGN || t == EnemyType::PENITENT || t == EnemyType::LEVIATHAN ||
-                                         t == EnemyType::ABSOLUTE || t == EnemyType::PACEMAKER || t == EnemyType::SORTER || t == EnemyType::BALLAST || t==EnemyType::SUCCESSOR; }
+                                         t == EnemyType::ABSOLUTE || t == EnemyType::PACEMAKER || t == EnemyType::SORTER || t == EnemyType::BALLAST || t==EnemyType::SUCCESSOR || t==EnemyType::UNIT24K; }
 // A Gauntlet room's mini-boss: a boss bar and a death of its own, no finisher; kill it and the room is won
 inline bool isMiniBoss(EnemyType t) { return t >= EnemyType::COURIER && t <= EnemyType::FOREMAN; }
 // Whose skeleton (and pose, head box, joints) a type moves on
@@ -196,6 +196,7 @@ inline EnemyStats& statsEdit(EnemyType t) {
         {"THAWLING",58,.45f,1.85f,7.2f,.6f,1.5f,false,{.6f,.66f,.73f},{.95f,.98f,1.05f},{.8f,.9f,1.f},"IT WARMS AS IT MOVES - KILL IT BEFORE IT IS FAST"},
         {"PICKER",70,.7f,1.1f,6.5f,.8f,3.2f,true,{.16f,.17f,.19f},{2.f,1.f,.25f},{1.f,.7f,.3f},"WHITE: PARRY THE SNATCH - CAUGHT: SHOOT IT OR PUNCH FREE"},
         {"CLERK",40,.45f,.8f,4.5f,0.f,0.f,true,{.7f,.68f,.6f},{2.f,1.4f,.5f},{1.f,.8f,.4f},"WHILE IT IS UP, WHAT YOU KILL GETS RESTORED - KILL IT FIRST"},
+        {"UNIT 24-K",2400,.45f,1.85f,7.6f,.6f,1.05f,false,{.78f,.79f,.8f},{1.5f,1.6f,1.8f},{1.f,.95f,.85f},"WHITE: PARRY ITS RUSH - GOLD LINE: STEP OUT OF THE LANCER - IT CANNOT FOLLOW YOU UP"},
     };
     return S[(int)t];
 }

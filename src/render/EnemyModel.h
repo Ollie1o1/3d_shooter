@@ -318,7 +318,7 @@ inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileR
         P = humanoidPose(mo, glow);
         fileRoot = base * T({0.f, mo.lift, 0.f});
     };
-    if((e.type>=EnemyType::PATIENT && e.type<=EnemyType::SUCCESSOR)||e.type==EnemyType::THAWLING){
+    if((e.type>=EnemyType::PATIENT && e.type<=EnemyType::SUCCESSOR)||e.type==EnemyType::THAWLING||e.type==EnemyType::UNIT24K){
         fileRoot=root;P=FilePose{};float step=e.animPhase;
         bool boss=e.type==EnemyType::SUCCESSOR;bool floating=e.type==EnemyType::SUSPENDED;
         float run=glm::clamp(e.moveSpeed/std::max(.1f,st.speed),0.f,1.3f);
@@ -1573,7 +1573,7 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
 // slump, a RIPPER's crouch, a RAPTOR's dive. False for a type without a head
 // (MITE). Uses the physics position, like the rest of the hitscan.
 inline bool headBox(const Enemy& e, AABB& out) {
-    if((e.type>=EnemyType::PATIENT&&e.type<=EnemyType::SUCCESSOR)||e.type==EnemyType::THAWLING){
+    if((e.type>=EnemyType::PATIENT&&e.type<=EnemyType::SUCCESSOR)||e.type==EnemyType::THAWLING||e.type==EnemyType::UNIT24K){
         if(const auto* model=enemyfile::model(e.type)){
             float grow=.05f+.95f*smooth01(1.f-e.spawnTimer/Enemy::SPAWN_TIME);
             mat4 root=T(e.position)*RY(e.yaw)*S(vec3{e.scale})*S({1,grow,1});

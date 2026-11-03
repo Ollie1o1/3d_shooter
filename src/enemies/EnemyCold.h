@@ -96,3 +96,76 @@ inline void Enemy::thinkClerk(float dt, const EnemyWorld& w) {
     velocity.y = glm::clamp(floorY + coldfoe::CLERK_HOVER + 0.3f * std::sin(age * 2.1f + uid) - position.y, -2.f, 2.f);
     attackTimer = 0.f;
 }
+
+// UNIT 24-K: you, restored to factory: revolver, Lancer, dash and punch, crisp and
+// without the hesitation. Nothing the journey gave you (no grapple, no splinter, no
+// recall): get above it and it can only shoot. Half down, it stops holding back.
+//   BURST  the revolver: three quick rounds
+//   SHOT   the Lancer: a long gold sight line, one heavy round (it does not track you
+//          in its last moment: step out of the line)
+//   DASH   a rush and a punch up close; white: parry it
+inline void Enemy::thinkUnit24K(float dt, const EnemyWorld& w, bool resolve) {
+    const glm::vec3 to = flatTo(w.playerFeet);
+    const float distance = glm::length(to);
+    const float hot = enraged ? 1.35f : 1.f;
+    attackPace = hot;
+    kSideCd -= dt;
+    if (kSideT > 0.f) {   // a sidestep dash: quick, then straight back to it
+        kSideT -= dt;
+        velocity.x = kSideDir.x * 17.f; velocity.z = kSideDir.z * 17.f;
+        turnToward(to, dt, 12.f);
+        return;
+    }
+    if (dashTimer > 0.f) {   // the rush
+        auto from = position, next = from + labDir * (20.f * dt);
+        if (!canStepTo(next, w)) { dashTimer = 0.f; velocity = {0.f, 0.f, 0.f}; recover(0.8f); return; }
+        dashTimer = std::max(0.f, dashTimer - dt); velocity = labDir * 20.f;
+        AABB pl{w.playerFeet - glm::vec3{.5f, 0, .5f}, w.playerFeet + glm::vec3{.5f, 1.8f, .5f}};
+        if (!dashHit && segmentHitsBox(from + glm::vec3{0, 1, 0}, next + glm::vec3{0, 1, 0}, pl)) { ev.meleeHit = true; ev.meleeDamage = 22.f; dashHit = true; }
+        if (dashTimer <= 0.f) { velocity = {0.f, 0.f, 0.f}; recover(enraged ? 0.55f : 0.8f); }
+        return;
+    }
+    if (burstLeft > 0) {   // the revolver's rounds
+        burstTimer -= dt;
+        turnToward(to, dt, 12.f);
+        if (burstTimer <= 0.f) { fireAt(w.playerEye, 1, 0.012f, 46.f, 8.f, 0.7f); --burstLeft; burstTimer = 0.15f; }
+        setMove(glm::vec3{-to.z, 0.f, to.x}, stats().speed * 0.35f, w);
+        return;
+    }
+    if (telegraphTimer > 0.f) {
+        velocity.x = velocity.z = 0.f;
+        if (attack == AttackKind::SHOT && telegraphTimer > 0.3f) labAim = w.playerEye + leadVel_ * 0.1f;   // the sight line settles, then holds
+        if (attack == AttackKind::DASH) labAim = w.playerFeet;
+        turnToward(attack == AttackKind::SHOT ? flatTo(labAim) : to, dt, 9.f);
+        return;
+    }
+    if (resolve) {
+        auto k = attack; attack = AttackKind::NONE;
+        if (k == AttackKind::BURST) { if (lineOfSight(eyePos(), w)) { burstLeft = enraged ? 4 : 3; burstTimer = 0.f; } else blockedShot(); return; }
+        if (k == AttackKind::SHOT) {   // the Lancer: down the line it drew, not where you are now
+            fireAt(labAim, 1, 0.f, 80.f, 26.f, 1.3f);
+            ev.shotHeavy = true; ev.shotParry = 260.f;
+            recover(enraged ? 0.35f : 0.6f);
+            if (enraged) { burstLeft = 2; burstTimer = 0.25f; }   // and straight on with the revolver
+            return;
+        }
+        if (k == AttackKind::DASH) { dashTimer = 0.32f; labDir = norm2(labAim - position); dashHit = false; ev.dashStarted = true; return; }
+    }
+    turnToward(to, dt, 8.f);
+    // Keep a duelling distance, circling; now and then a quick sidestep (twice in a row, angry)
+    if (kSideCd <= 0.f && recoverTimer <= 0.f && distance < 20.f) {
+        kSideCd = enraged ? 1.2f : 2.1f;
+        glm::vec3 side{-to.z, 0.f, to.x};
+        float l = glm::length(side);
+        kSideDir = l > 1e-3f ? side / l * ((rand() & 1) ? 1.f : -1.f) : glm::vec3{1.f, 0.f, 0.f};
+        if (canStepTo(position + kSideDir * 4.f, w)) { kSideT = 0.22f; ev.dodged = true; return; }
+    }
+    rangedMove(dt, w, 6.f, 14.f, stats().speed * (recoverTimer > 0.f ? 0.6f : 1.f));
+    if (recoverTimer <= 0.f && attackReady(dt)) {
+        const bool level = std::fabs(w.playerFeet.y - position.y) < 2.f;
+        if (distance < 6.5f && level) startAttack(AttackKind::DASH, enraged ? 0.45f : 0.55f);
+        else if (!lineOfSight(eyePos(), w)) blockedShot();
+        else if (kLast == 0 && distance > 8.f) { kLast = 1; labAim = w.playerEye; startAttack(AttackKind::SHOT, enraged ? 0.75f : 0.95f); }
+        else { kLast = 0; startAttack(AttackKind::BURST, enraged ? 0.35f : 0.45f); }
+    }
+}

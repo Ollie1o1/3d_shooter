@@ -683,6 +683,10 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
             storyBossDown=true;successorHazards.clear();saveStoryProgress();saySuccessor(5);
             successorFell=e.position;successorFell.y=groundHeightAt(e.position.x,e.position.z,e.position.y+1.f);successorFellYaw=e.yaw;successorFellSet=true;   // (its body stays: Gameplay_LabEnding.h)
             for(auto& p:projSystem.pool)if(!p.isPlayer)p.alive=false;
+        } else if (e.type == EnemyType::UNIT24K) {   // Chapter 5's mid-boss: it asks, and goes still
+            coldKDown = true; coldKDownAt = elapsedTime;
+            for (auto& shot : projSystem.pool) if (!shot.isPlayer) shot.alive = false;
+            pushBanner("\"WHAT WAS IT LIKE?\"", "24-K", {0.85f, 0.9f, 0.95f}, 5.f);
         } else if (e.type == EnemyType::BALLAST) {
             storyBossDown=true;saveStoryProgress();ballastHazards.clear();
             for(auto& shot:projSystem.pool)if(!shot.isPlayer)shot.alive=false;

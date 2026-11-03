@@ -823,9 +823,20 @@ inline LevelData buildCold() {
     }
     l.arenas.push_back(chill);
     // 7. the Frozen Sea: a long walk over clear ice (no fight: what is under it is the point)
-    Arena sea = section("THE FROZEN SEA", "DO NOT LOOK DOWN FOR LONG", LevelBuilder::aabb(cold::SEA_X0, -10.f, -1080.f, 820.f, 60.f, -760.f), cold::seaStart(), -20.f);
+    Arena sea = section("THE FROZEN SEA", "DO NOT LOOK DOWN FOR LONG", LevelBuilder::aabb(cold::SEA_X0, -10.f, -1080.f, cold::station().x - 60.f, 60.f, -760.f), cold::seaStart(), -20.f);
     sea.extraZones.push_back(LevelBuilder::aabb(gateX - 0.4f, -1000.f, cold::BRIDGE_Z0, cold::SEA_X0, 60.f, cold::BRIDGE_Z1));   // the exit catwalk
     sea.hasRespawn = true; sea.respawn = cold::seaStart(); sea.ambient = Ambient::WIND;
     l.arenas.push_back(sea);
+    // 8. 24-K: the duel at the broken station
+    {
+        const vec3 st = cold::station();
+        Arena k = section("24-K", "PURPOSE: COMPLY", LevelBuilder::aabb(st.x - 60.f, -10.f, -1080.f, st.x + 100.f, 60.f, -930.f), st + vec3{-40.f, 0.f, 10.f}, 0.f);
+        k.hasRespawn = true; k.respawn = st + vec3{-40.f, 0.f, 10.f};
+        k.hasTrigger = true; k.trigger = LevelBuilder::aabb(st.x - 30.f, -2.f, st.z - 30.f, st.x + 30.f, 8.f, st.z + 30.f);
+        k.waves = {{W(EnemyType::UNIT24K, 0, {st + vec3{14.f, 0.6f, 0.f}})}};
+        k.maxAlive = 1; k.ambient = Ambient::WIND;
+        l.arenas.push_back(k);
+        l.story.bossSection = 7;
+    }
     return l;
 }

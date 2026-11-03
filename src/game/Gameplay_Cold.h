@@ -140,9 +140,16 @@ inline void GameplayState::updateCold(float dt) {
     }
     if (at >= 0 && at > storyCheckpoint && !director.fighting()) { storyCheckpoint = at; ui.feed("RESTORE POINT", {0.75f, 0.86f, 0.95f}); }
     if (storyTerminal >= 0 && glm::length(level.story.terminals[storyTerminal].pos - p) > 6.f) storyTerminal = -1;
-    // The end of the chapter so far: the shut door at the back of Rack 24, with RECALL in hand
+    // 24-K: when its duel starts, it names itself
+    if (director.arena == 7 && director.fighting() && !coldKIntro) {
+        coldKIntro = true;
+        pushBanner("UNIT 24-K", "PURPOSE: COMPLY  /  STATUS: ACCEPTED", {0.85f, 0.9f, 0.95f}, 3.f);
+        coldKLineT = 3.2f;
+    }
+    if (coldKLineT > 0.f && (coldKLineT -= dt) <= 0.f) pushBanner("\"YOU ARE DAMAGED. I AM CORRECT.\"", "", {0.85f, 0.9f, 0.95f}, 3.5f);
+    // The end of the chapter so far: at DISPATCH 2, a few moments after 24-K goes still
     const AABB& E = level.story.end;
-    if (coldRecall && storyEndT < 0.f && !playerDead && p.x > E.min.x && p.x < E.max.x && p.z > E.min.z && p.z < E.max.z) {
+    if (coldKDown && elapsedTime - coldKDownAt > 4.f && storyEndT < 0.f && !playerDead && p.x > E.min.x && p.x < E.max.x && p.z > E.min.z && p.z < E.max.z) {
         storyEndT = 0.f; audio.play("wave", 90, SoundGroup::UI, true);
     }
     if (storyEndT >= 0.f) {
@@ -285,6 +292,15 @@ inline void GameplayState::gatherCold(std::vector<BoxInstance>& out) {
                     push(out, T(p + glm::vec3{0.f, h, 0.f}) * RY(gameClock * 2.f + k) * S(glm::vec3{w, 2.6f, w}), {0.85f, 0.92f, 1.f}, glm::vec3{1.1f, 1.2f, 1.35f} * (1.f - 0.15f * k));
                 }
             }
+        }
+    // 24-K's Lancer: a gold sight line from its eye to where the round will go
+    for (const auto& e : enemies)
+        if (e.alive && e.type == EnemyType::UNIT24K && e.attack == AttackKind::SHOT && e.telegraphTimer > 0.f) {
+            glm::vec3 a = e.position + glm::vec3{0.f, e.height() * 0.85f, 0.f}, d = e.labAim - a; float len = std::min(glm::length(d) + 30.f, 120.f);
+            if (glm::length(d) < 0.1f) continue;
+            d = glm::normalize(d);
+            float pulse = e.telegraphTimer < 0.3f ? 2.2f : 1.f;
+            push(out, T(a + d * (len * 0.5f)) * gleaner::alongZ(glm::vec3{0.f}, d) * S(glm::vec3{0.04f, 0.04f, len}), {1.f, 0.8f, 0.2f}, abGoldTell(glm::vec3{1.8f, 1.2f, 0.25f}) * pulse);
         }
     // Cracks in the sea ice, white, fading back to faint over half a minute
     for (const auto& c : coldCracks) {

@@ -294,6 +294,8 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     float pace          = 1.f;   // its own pace on top (a THAWLING warming up)
     glm::vec3 pickAim{0.f};      // PICKER: where its snatch is going
     float pickT = 0.f;           // PICKER: seconds left holding you
+    float kSideT = 0.f, kSideCd = 0.f; glm::vec3 kSideDir{0.f};   // UNIT 24-K: its sidestep dashes
+    int   kLast = 0;             // UNIT 24-K: which gun it used last (0 revolver, 1 Lancer)
     float age           = 0.f;
 
     bool  enraged       = false; // a boss's phase two
@@ -382,10 +384,11 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     bool  parryWindow() const {
         // THE WARDEN's lunge: its last quarter second, or in flight until it connects (it comes into reach)
         if ((type == EnemyType::WARDEN || type == EnemyType::PACEMAKER) && dashTimer > 0.f && !dashHit) return true;   // (and THE PACEMAKER's dash)
-        if((type==EnemyType::PATIENT || type==EnemyType::PHASED || type==EnemyType::THAWLING) && dashTimer>0 && !dashHit)return true;
+        if((type==EnemyType::PATIENT || type==EnemyType::PHASED || type==EnemyType::THAWLING || type==EnemyType::UNIT24K) && dashTimer>0 && !dashHit)return true;
         if (telegraphTimer <= 0.f) return false;
         if(type==EnemyType::SUCCESSOR)return SuccessorState::white(attack)&&telegraphTimer<.26f;
         if(type==EnemyType::PICKER)return attack==AttackKind::SORT_GRAB&&telegraphTimer<.3f;
+        if(type==EnemyType::UNIT24K)return attack==AttackKind::DASH&&telegraphTimer<.28f;
         if(type==EnemyType::PATIENT || type==EnemyType::PHASED || type==EnemyType::THAWLING)return (attack==AttackKind::LAB_LUNGE&&telegraphTimer<.24f)||(attack==AttackKind::LAB_SWIPE&&telegraphTimer<.2f);
         if (type == EnemyType::BALLAST) return (attack==AttackKind::BALL_ANCHOR||attack==AttackKind::BALL_WINCH)&&telegraphTimer<.28f;
         if (type == EnemyType::SORTER) return attack == AttackKind::SORT_GRAB && telegraphTimer < .25f;
@@ -654,6 +657,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
             case EnemyType::THAWLING:thinkThawling(dt,w,resolve);break;
             case EnemyType::PICKER:thinkPicker(dt,w,resolve);break;
             case EnemyType::CLERK:thinkClerk(dt,w);break;
+            case EnemyType::UNIT24K:thinkUnit24K(dt,w,resolve);break;
             case EnemyType::HUSK:     thinkHusk(dt, w, resolve);     break;
             case EnemyType::RIPPER:   thinkRipper(dt, w, resolve);   break;
             case EnemyType::SENTINEL: thinkSentinel(dt, w, resolve); break;
@@ -1380,6 +1384,7 @@ private:
     void thinkThawling(float dt,const EnemyWorld& w,bool resolve);
     void thinkPicker(float dt,const EnemyWorld& w,bool resolve);
     void thinkClerk(float dt,const EnemyWorld& w);
+    void thinkUnit24K(float dt,const EnemyWorld& w,bool resolve);
     void thinkSuccessor(float dt,const EnemyWorld& w,bool resolve);
     void thinkBallast(float dt, const EnemyWorld& w, bool resolve);
     void thinkSorter(float dt, const EnemyWorld& w, bool resolve);

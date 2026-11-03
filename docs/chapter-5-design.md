@@ -4,7 +4,7 @@ Brainstormed with the user on 2026-11-03. Built so far: RECALL (step 1 of the
 build order; `--recall` to try it anywhere) and the planet (step 2;
 `./shooter --story5`): the ice shelf, its lip and the Void, the Store's towers
 and glacier cliff, the frozen giants, the sky. Rooms 1-5 and their enemies are
-built too (step 3), and rooms 6-7 (step 4); see "as built" below.
+built too (step 3), rooms 6-7 (step 4) and 24-K (step 5); see "as built" below.
 
 The creator never threw anything away for good. Everything is **saved** here:
 every unit, every sibling, and copies of UNIT 24. The keeper of the store, THE
@@ -280,8 +280,24 @@ candidate).
   spine with ribs, flung arms and a dead eye) face up under the crossing,
   racks lying in rows, and stored units just under the surface. The ice
   cracks along your path as you walk, and groans now and then. Lamp posts mark
-  the way to DISPATCH 2, a broken rail station on a glacier tongue, where the
-  chapter so far ends.
+  the way to DISPATCH 2, a broken rail station on a glacier tongue.
+
+### 24-K as built (step 5)
+
+- Section 8 at DISPATCH 2. `EnemyType::UNIT24K` (a boss: boss bar, boss
+  death) on the `unit24` model, tinted ivory with cold white light. AI is
+  `thinkUnit24K` in `EnemyCold.h`.
+- It keeps a duelling distance (6-14 m), circling, with quick sidestep
+  dashes. It uses three attacks, each told first:
+  - **BURST:** the revolver, three rounds.
+  - **SHOT:** the Lancer. A gold sight line settles on you, then holds; one
+    heavy, parryable round goes down that line.
+  - **DASH:** a rush and punch up close, with a white parry window.
+- Half down, it enrages: quicker tells, sidesteps and recovery, four-round
+  bursts, and a revolver follow-up after each Lancer round.
+- Lines: "UNIT 24-K / PURPOSE: COMPLY / STATUS: ACCEPTED", then "YOU ARE
+  DAMAGED. I AM CORRECT." On death: "WHAT WAS IT LIKE?" Four seconds later,
+  the chapter so far ends on the platform.
 
 ## 11. Build order
 

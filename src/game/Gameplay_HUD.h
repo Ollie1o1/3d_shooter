@@ -102,8 +102,9 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             else if(plain()) what=wakeSeen?gleanerPhaseName():"SOMETHING IS WATCHING";
             else if(cold()) {
                 static const char* goals[]={"FOLLOW THE BELT TO THE EDGE","RIDE THE CARRIERS TO THE TOWER","THROUGH THE THAW ROOM","READ THE INVENTORY","RACK 24",
-                                            "ACROSS TO THE COOLING TOWERS","CROSS THE ICE TO THE STATION"};
-                what=goals[std::clamp(here,0,6)];
+                                            "ACROSS TO THE COOLING TOWERS","CROSS THE ICE TO THE STATION","DISPATCH 2"};
+                what=goals[std::clamp(here,0,7)];
+                if(here==7&&coldKDown)what="IT IS STILL / THE WAY ON IS NORTH";
                 if(here==5&&director.arena==5&&director.phase==WaveDirector::Phase::CLEARED)what="THE GATE IS OPEN / EAST TO THE SEA";
                 if(here==1&&director.arena==1&&director.phase==WaveDirector::Phase::CLEARED)what="THE DOCK IS OPEN";
                 if(here==4)what=coldRecall?"THE BACK DOOR IS OPEN":"TAKE WHAT 24-A IS HOLDING";
