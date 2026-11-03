@@ -6,6 +6,7 @@
 #include "world/ZoneConstraint.h"
 #include "render/MaterialTex.h"
 #include "enemies/Enemy.h"
+#include "world/Interactable.h"
 #include <algorithm>
 #include <cstdio>
 static int failures = 0;
@@ -15,15 +16,19 @@ constexpr float DT = 1.f / 60;
 // The player as the game moves it: keys, collision, the zone, and the hard floor
 // under it (the Void's is far down)
 struct Walk {
-    LevelData& l; SpatialGrid grid; Player p; float stall = 0.f;
+    LevelData& l; SpatialGrid grid; Player p; float stall = 0.f, clock = 0.f;
     Walk(LevelData& level, glm::vec3 start) : l(level), p(start) { grid.build(l.walls); }
-    void step(glm::vec3 goal, bool mayJump) {
+    void step(glm::vec3 goal, bool mayJump, bool still = false) {
         Uint8 keys[SDL_NUM_SCANCODES] = {};
         auto d = goal - p.position; d.y = 0; float n = glm::length(d);
-        p.camera.yaw = glm::degrees(std::atan2(d.z, d.x)); keys[SDL_SCANCODE_W] = n > .2f;
+        p.camera.yaw = glm::degrees(std::atan2(d.z, d.x)); keys[SDL_SCANCODE_W] = n > .2f && !still;
         float speed = glm::length(glm::vec2{p.velocity.x, p.velocity.z});
         stall = (n > 1.f && speed < 1.f) ? stall + DT : 0.f;
         if (mayJump && stall > 0.15f && p.onGround) { keys[SDL_SCANCODE_SPACE] = 1; stall = 0.f; }
+        int ride = l.moverOfWall(p.groundWall);
+        clock += DT; l.updateMovers(clock);
+        if (ride >= 0) p.position += l.movers[ride].delta;
+        p.dynWalls = l.moverWalls.data(); p.dynCount = (int)l.moverWalls.size();
         p.floorY = l.baseFloor(p.position.x, p.position.z);
         p.update(DT, keys, l.walls.data(), (int)l.walls.size(), false, &grid);
         std::vector<const AABB*> zones; for (auto& a : l.arenas) zones.push_back(&a.zone);
@@ -46,7 +51,7 @@ int main() {
 
     // ---- the level ----
     CHECK(L.story.built && L.story.chapter == 5 && std::string(L.story.title) == "THE COLD STORE", "Chapter 5 builds as THE COLD STORE");
-    CHECK(L.arenas.size() == 1 && A.hasRespawn && A.voidY > cold::VOID_FLOOR + 100.f, "one open arena; falling into the Void respawns you long before its floor");
+    CHECK(L.arenas.size() == 5 && A.hasRespawn && A.voidY > cold::VOID_FLOOR + 100.f, "five sections; falling into the Void respawns you long before its floor");
     const glm::vec3 s = cold::start();
     CHECK(L.baseFloor(s.x, s.z) == 0.f, "the arrival stands on the shelf");
     bool clearStart = true;
@@ -91,6 +96,50 @@ int main() {
         for (float x = cold::HALF_X - 60.f; x > -cold::HALF_X + 20.f && ok; x -= 40.f)
             ok = w.to({x, 0.f, std::max(cold::edgeZ(x), cold::edgeZ(x + 40.f)) + 30.f}, true);
         CHECK(ok && w.p.position.y > -1.f, "you can walk the whole length of the shelf along the lip without falling in");
+    }
+
+    // ---- the route: out along the Hook Line on the carriers, into the tower, down to 24-A ----
+    {
+        auto R = buildCold();
+        for (int d = 0; d < (int)R.doors.size(); ++d) { R.doors[d].locked = false; R.setDoorInstant(d, true); }   // (their fights won)
+        Walk w(R, cold::start());
+        bool ok = w.to({cold::HOOK_X + 3.f, 0.f, cold::lipZ() + 30.f}, true) && w.to(cold::hookStart(), true, 9000, 0.8f);
+        CHECK(ok && w.p.position.y > -0.5f, "from the arrival you can walk out onto the Hook Line's gantry");
+        bool rode = ok;
+        for (int k = 0; k < cold::CARRIERS && rode; ++k) {
+            const Mover& m = R.movers[k];
+            auto box = [&]() -> const AABB& { return R.walls[m.wall].box; };
+            auto cz = [&]() { return (box().min.z + box().max.z) * 0.5f; };
+            const float nearZ = m.base.min.z * 0.5f + m.base.max.z * 0.5f, farZ = nearZ + m.b.z;
+            // wait at the station's edge for the carrier to come in, then step on and ride it
+            int waited = 0;
+            while (std::fabs(cz() - nearZ) > 0.05f && waited < 60 * 30) { w.step(w.p.position, false, true); ++waited; }
+            w.to({cold::HOOK_X, 0.f, cz()}, false, 120, 0.5f);
+            int rideF = 0;
+            while (std::fabs(cz() - farZ) > 0.05f && rideF < 60 * 30) { w.step({cold::HOOK_X, 0.f, cz()}, false, true); ++rideF; }
+            bool on = w.p.position.y > -0.5f && std::fabs(w.p.position.z - farZ) < 2.f;
+            if (!on) std::printf("  carrier %d: player at %.1f %.1f %.1f, carrier at z %.1f\n", k, w.p.position.x, w.p.position.y, w.p.position.z, cz());
+            rode = on && w.to({cold::HOOK_X, 0.f, cold::stationZ(k + 1)}, false, 240, 0.6f) && w.p.position.y > -0.5f;
+        }
+        CHECK(rode, "the four carriers carry you from station to station across the Void to the tower's dock");
+        bool inside = rode && w.to({cold::HOOK_X, 0.f, cold::TOWER_FRONT - 5.f}, true) && w.to({cold::HOOK_X, 0.f, cold::THAW_BACK + 3.f}, true)
+                   && w.to({cold::HOOK_X, 0.f, cold::INV_BACK + 3.f}, true) && w.to({cold::HOOK_X, 0.f, cold::INV_BACK - 6.f}, true);
+        CHECK(inside && w.p.position.y > -0.5f, "through the Thaw Room and Inventory into Rack 24, on the tower's floor");
+        bool reach = inside && w.to({cold::rackSlot(0).x + 2.2f, 0.f, cold::rackSlot(0).z}, true);
+        CHECK(reach && glm::length(w.p.camera.position - cold::recallAt()) < Interactable::INTERACT_RANGE, "24-A's RECALL module is within reach from the aisle");
+        bool end = reach && w.to({cold::HOOK_X, 0.f, R.story.end.max.z - 1.f}, true);
+        CHECK(end, "and on to the shut door at the back, where the chapter so far ends");
+        // The rooms' spawns are on open floor, and enemies find the tower's floor, not the Void's
+        bool open = true;
+        for (auto& a : R.arenas) for (auto& wave : a.waves) for (auto& e : wave) for (auto q : e.at) {
+            float r = statsOf(e.type).radius, h = statsOf(e.type).height;
+            AABB bb{q + glm::vec3{-r, .08f, -r}, q + glm::vec3{r, h, r}};
+            for (const auto& wl : R.walls) if (!wl.dynamic && bb.min.x < wl.box.max.x && bb.max.x > wl.box.min.x && bb.min.y < wl.box.max.y && bb.max.y > wl.box.min.y && bb.min.z < wl.box.max.z && bb.max.z > wl.box.min.z)
+                { open = false; std::printf("  blocked %s at %.1f %.1f %.1f\n", statsOf(e.type).name, q.x, q.y, q.z); break; }
+        }
+        CHECK(open, "every placed spawn in the route stands clear of walls");
+        CHECK(R.baseFloor(-40.f, -620.f) == 0.f && R.enemyFloor(2, {-40.f, 0.f, -620.f}, false, 0.f) == 0.f && R.enemyFloor(1, {-40.f, 8.f, -450.f}, true, 0.f) == 0.f,
+              "inside the tower the floor is its own (not the Void's), and Pickers over the Hook Line keep to the deck's height");
     }
 
     // ---- what you see ----

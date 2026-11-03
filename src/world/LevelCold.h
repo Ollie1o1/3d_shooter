@@ -16,6 +16,7 @@
 // between compilers; see the lab dressing notes).
 // =============================================================================
 #include "world/Level.h"
+#include "ui/PixelFont.h"
 
 namespace cold {
 constexpr float HALF_X = 260.f;               // the playable shelf: -HALF_X..HALF_X in X
@@ -83,6 +84,41 @@ inline std::vector<Tower> towers() {
     }
     return t;
 }
+}
+
+// ---- the route (rooms 1-5): the Intake belt on the shelf, the Hook Line out over the
+// Void, and the Receiving Tower standing in it (the Thaw Room, Inventory, Rack 24) ----
+namespace cold {
+constexpr float HOOK_X = -40.f;               // the Hook Line runs north along this X
+constexpr float RAIL_Y = 10.f;                // its rail, overhead
+constexpr float TOWER_X0 = -80.f, TOWER_X1 = 0.f, TOWER_FRONT = -600.f, TOWER_BACK = -760.f;
+constexpr float CEIL = 14.f;
+constexpr float THAW_BACK = -650.f, INV_BACK = -680.f;   // the Thaw Room is TOWER_FRONT..THAW_BACK; Inventory to INV_BACK; Rack 24 behind
+constexpr float DOOR_X0 = HOOK_X - 4.f, DOOR_X1 = HOOK_X + 4.f;
+constexpr float STATION_HALF = 2.5f, CARRIER_HALF = 1.75f;
+constexpr int   CARRIERS = 4;
+inline float lipZ() { return edgeZ(HOOK_X); }
+inline float stationZ(int k) {   // 0: the gantry's end; 1..3: hanging stations; 4: the tower's dock
+    const float z0 = lipZ() - 22.f, z4 = TOWER_FRONT + 10.f - STATION_HALF;
+    return z0 + (z4 - z0) * (float)k / CARRIERS;
+}
+inline glm::vec3 hookStart() { return {HOOK_X, 0.f, stationZ(0)}; }
+// The Thaw Room's ceiling hooks: frozen units hang from them; the first ones are where Thawlings drop
+inline std::vector<glm::vec3> thawHooks() {
+    std::vector<glm::vec3> h;
+    for (int row = 0; row < 3; ++row)
+        for (int k = 0; k < 6; ++k)
+            h.push_back({-70.f + k * 12.f + (row == 1 ? 6.f : 0.f), 0.f, -612.f - row * 13.f});
+    return h;
+}
+constexpr int THAW_SPAWNS = 13;               // hooks 0..12 drop; the rest stay hung
+// Rack 24: ten copies of UNIT 24 in alcoves along the aisle (24-A first, on the west), and 24-K's empty slot
+inline glm::vec3 rackSlot(int k) {   // k 0..9: A..J; 10: K
+    if (k >= 10) return {HOOK_X, 0.f, TOWER_BACK + 6.f};
+    float z = INV_BACK - 14.f - (k / 2) * 12.f;
+    return {k % 2 == 0 ? -64.f : -16.f, 0.f, z};
+}
+inline glm::vec3 recallAt() { return rackSlot(0) + glm::vec3{0.f, 1.3f, 0.f}; }
 }
 
 inline LevelData buildCold() {
@@ -210,7 +246,7 @@ inline LevelData buildCold() {
     }
 
     // ---- off the lip: gantries over the Void, chains and racks hanging down into it ----
-    const float gantryX[] = {-150.f, -40.f, 95.f, 210.f, -520.f, 640.f, -980.f, 1150.f};
+    const float gantryX[] = {-150.f, -95.f, 95.f, 210.f, -520.f, 640.f, -980.f, 1150.f};   // (the Hook Line's own is at HOOK_X)
     for (int k = 0; k < 8; ++k) {
         float x = gantryX[k], ez = cold::edgeZ(x);
         float reach = 26.f + 20.f * cold::hash(k, 81.f);
@@ -383,17 +419,222 @@ inline LevelData buildCold() {
         lump(g.pos + fwd * (H * 0.35f) + vec3{0.f, -H * 0.05f, 0.f}, H * 0.5f, H * 0.3f, snowBlue, (uint32_t)(1300 + (int)n), 0.15f, g.yaw, 3);
     }
 
-    // ---- the arena: the shelf (it runs a little past the lip, so you can walk off it) ----
-    Arena a;
-    a.name = "THE ICE SHELF"; a.subtitle = "NOTHING HERE IS THROWN AWAY";
-    a.zone = LevelBuilder::aabb(-cold::HALF_X, -1000.f, cold::EDGE_Z - 70.f, cold::HALF_X, 800.f, cold::SOUTH);
-    a.bounds = a.zone; a.bounds.min.y = 0.f;
-    a.playerStart = cold::start(); a.startYaw = -90.f;
-    a.voidY = -60.f; a.hasRespawn = true; a.respawn = cold::start();
-    a.hasTrigger = false; a.scripted = true;
-    a.maxAlive = 8; a.damageScale = 1.f;
-    a.theme = cold::theme();
-    a.ambient = Ambient::WIND; a.space = ReverbSpace::OPEN; a.tone = RoomTone::YARD;
-    l.arenas.push_back(a);
+    // =========================================================================
+    // THE ROUTE (rooms 1-5)
+    // =========================================================================
+    auto stencil = [&](const char* text, vec3 p, vec3 right, float px, vec3 col) {
+        for (int i = 0; text[i]; ++i) {
+            unsigned char ch = text[i]; if (ch < 32 || ch > 127) continue;
+            for (int y = 0; y < 7; ++y) for (int x = 0; x < 5; ++x) if (PIXEL_FONT[ch - 32][y] & (1 << (4 - x))) {
+                vec3 q = p + right * ((i * 6 + x) * px) - vec3{0.f, y * px, 0.f};
+                b.prop(q.x, q.y, q.z, q.x + std::max(px * 0.85f, 0.02f), q.y + px * 0.85f, q.z + px * 0.85f, col);
+            }
+        }
+    };
+    const vec3 paint{0.86f, 0.62f, 0.2f}, panel{0.2f, 0.22f, 0.25f}, floorSteel{0.24f, 0.26f, 0.29f};
+    const float HX = cold::HOOK_X;
+
+    // ---- 1. THE INTAKE: a belt of frozen bodies running to the lip, to be hung (drawn live) ----
+    b.mat = Mat::METAL;
+    {
+        const float z0 = 250.f, z1 = cold::lipZ() + 1.f;
+        b.wall(HX - 1.6f, 0.f, z1, HX + 1.6f, 0.75f, z0, steel);                      // the belt bed (stand on it, jump it)
+        b.kit().box({HX, 0.78f, (z0 + z1) * 0.5f}, {2.8f, 0.06f, z0 - z1}, vec3{0.1f, 0.1f, 0.11f});   // the belt
+        for (float z = z1 + 2.f; z < z0; z += 6.f) {
+            b.kit().box({HX - 1.7f, 0.5f, z}, {0.15f, 0.9f, 0.4f}, steelFrost * 0.5f);
+            b.kit().box({HX + 1.7f, 0.5f, z}, {0.15f, 0.9f, 0.4f}, steelFrost * 0.5f);
+        }
+        for (float z = z1 + 10.f; z < z0; z += 30.f) b.kit(true).box({HX + 1.8f, 1.f, z}, {0.12f, 0.12f, 0.3f}, amber);
+        // Where it starts: a low receiving shed, half drifted over
+        b.wall(HX - 8.f, 0.f, z0, HX + 8.f, 6.f, z0 + 14.f, steelFrost * 0.6f);
+        b.kit().box({HX, 6.4f, z0 + 7.f}, {17.f, 0.8f, 15.f}, rime);
+        b.kit(true).box({HX, 3.2f, z0 - 0.1f}, {4.f, 2.6f, 0.2f}, amber * 0.6f);
+        stencil("INTAKE 5", {HX - 4.f, 5.4f, z0 + 14.15f}, {1.f, 0.f, 0.f}, 0.18f, paint);   // (on the face you walk up to)
+        b.kit(true).box({HX, 2.f, z0 + 14.1f}, {6.f, 0.3f, 0.2f}, amber * 0.6f);
+    }
+
+    // ---- 2. THE HOOK LINE: a gantry off the lip, hanging stations, carriers shuttling between them ----
+    {
+        const float z0 = cold::lipZ() + 2.f, tip = cold::stationZ(0);
+        b.wall(HX - 2.5f, -0.6f, tip - cold::STATION_HALF, HX + 2.5f, 0.f, z0, floorSteel);   // the gantry deck
+        b.kit().box({HX, 0.04f, (tip + z0) * 0.5f}, {5.1f, 0.06f, z0 - tip + cold::STATION_HALF}, rime * 0.9f);
+        for (int s = -1; s <= 1; s += 2) {   // its rails (waist high: you can still jump off)
+            b.wall(HX + s * 2.45f, 0.f, tip - cold::STATION_HALF, HX + s * 2.55f, 1.1f, z0, steel);
+            b.kit().box({HX + s * 2.5f, -1.2f, (tip + z0) * 0.5f}, {0.4f, 2.4f, z0 - tip}, steel);   // girders under it
+        }
+        stencil("HOOK LINE", {HX - 3.2f, 3.5f, z0 + 0.4f}, {1.f, 0.f, 0.f}, 0.12f, paint);
+        b.kit().box({HX, 3.f, z0 + 0.5f}, {7.f, 1.2f, 0.2f}, steel);
+        // The rail overhead, all the way to the tower
+        b.kit().box({HX, cold::RAIL_Y, (tip + cold::TOWER_FRONT) * 0.5f}, {0.9f, 0.9f, tip - cold::TOWER_FRONT + 10.f}, steel);
+        for (float z = tip + 4.f; z > cold::TOWER_FRONT; z -= 40.f) b.kit(true).box({HX, cold::RAIL_Y - 0.5f, z}, {0.25f, 0.12f, 0.25f}, amber);
+        b.kit().rod({HX, 0.f, z0 - 1.f}, {HX, cold::RAIL_Y, z0 - 1.f}, 0.3f, steel, 6);   // its post at the lip
+        // Stations: racks hung off the rail with a deck to stand on
+        for (int k = 1; k < cold::CARRIERS; ++k) {
+            float z = cold::stationZ(k), h = cold::STATION_HALF;
+            b.wall(HX - h, -0.6f, z - h, HX + h, 0.f, z + h, floorSteel);
+            b.kit().box({HX, 0.04f, z}, {2.f * h, 0.06f, 2.f * h}, rime * 0.85f);
+            for (int s = -1; s <= 1; s += 2) b.kit().rod({HX + s * (h - 0.2f), 0.f, z}, {HX, cold::RAIL_Y, z}, 0.08f, steel, 4);
+            for (int c = 0; c < 3; ++c) b.kit().rod({HX - 1.5f + c * 1.5f, -0.6f, z + h - 0.3f}, {HX - 1.5f + c * 1.5f, -14.f - 8.f * cold::hash((float)k, 200.f + c), z + h - 0.3f}, 0.05f, steel, 4);
+            b.kit(true).box({HX + h - 0.3f, 0.6f, z + h - 0.3f}, {0.2f, 1.2f, 0.2f}, amber * 0.8f);
+            b.kit().box({HX, -0.8f, z}, {2.f * h - 0.4f, 0.4f, 2.f * h - 0.4f}, steel);
+        }
+        // The carriers: each shuttles between two stations, lingering at each end to board
+        for (int k = 0; k < cold::CARRIERS; ++k) {
+            float from = cold::stationZ(k) - cold::STATION_HALF - cold::CARRIER_HALF - 0.15f;
+            float to = cold::stationZ(k + 1) + cold::STATION_HALF + cold::CARRIER_HALF + 0.15f;
+            b.mover({HX, -0.25f, from}, {cold::CARRIER_HALF, 0.25f, cold::CARRIER_HALF}, Mover::Path::PINGPONG,
+                    {0.f, 0.f, 0.f}, {0.f, 0.f, to - from}, 15.f, 0.13f * k, vec3{1.6f, 0.8f, 0.2f});
+        }
+        // The dock: a ledge on the tower's face
+        float dz = cold::stationZ(cold::CARRIERS);
+        b.wall(HX - 6.f, -0.6f, cold::TOWER_FRONT, HX + 6.f, 0.f, dz + cold::STATION_HALF, floorSteel);
+        b.wall(HX - 6.f, 0.f, cold::TOWER_FRONT, HX - 5.8f, 1.1f, dz + cold::STATION_HALF, steel);
+        b.wall(HX + 5.8f, 0.f, cold::TOWER_FRONT, HX + 6.f, 1.1f, dz + cold::STATION_HALF, steel);
+    }
+
+    // ---- the Receiving Tower: standing in the Void, rooms 3-5 inside it at the shelf's level ----
+    const float X0 = cold::TOWER_X0, X1 = cold::TOWER_X1, ZF = cold::TOWER_FRONT, ZB = cold::TOWER_BACK, C = cold::CEIL;
+    l.basins.insert(l.basins.begin(), {LevelBuilder::aabb(X0, 0.f, ZB, X1, 0.f, ZF + 12.f), 0.f});   // (its floor, ahead of the Void's)
+    {
+        b.mat = Mat::METAL;
+        const vec3 wallC{0.13f, 0.14f, 0.16f};
+        b.wall(X0, -0.6f, ZB, X1, 0.f, ZF, floorSteel);                       // the floor
+        b.wall(X0, C, ZB, X1, C + 0.6f, ZF, wallC);                           // the ceiling
+        using Gap = LevelBuilder::Gap;
+        const float T = 0.6f;
+        // Front (the dock door), the walls between the rooms, the back (shut: the way on is not open yet)
+        b.wallX(X0, X1, ZF - T, ZF, 0.f, C, wallC, {Gap{cold::DOOR_X0, cold::DOOR_X1, 0.f, 6.f}});
+        b.wallX(X0, X1, cold::THAW_BACK - T, cold::THAW_BACK, 0.f, C, wallC, {Gap{cold::DOOR_X0, cold::DOOR_X1, 0.f, 6.f}});
+        b.wallX(X0, X1, cold::INV_BACK - T, cold::INV_BACK, 0.f, C, wallC, {Gap{cold::DOOR_X0, cold::DOOR_X1, 0.f, 6.f}});
+        b.wallX(X0, X1, ZB, ZB + T, 0.f, C, wallC, {Gap{cold::DOOR_X0, cold::DOOR_X1, 0.f, 6.f}});
+        // Inventory is a narrow room: solid on either side of it
+        b.wall(X0, 0.f, cold::INV_BACK, -60.f, C, cold::THAW_BACK - T, wallC);
+        b.wall(-20.f, 0.f, cold::INV_BACK, X1, C, cold::THAW_BACK - T, wallC);
+        // The long side walls, with tall windows onto the glacier in the Thaw Room and Rack 24
+        std::vector<Gap> win;
+        for (float z = ZB + 8.f; z < ZF - 6.f; z += 14.f) {
+            if (z > cold::INV_BACK - 2.f && z < cold::THAW_BACK + 6.f) continue;   // (Inventory has none)
+            win.push_back({z, z + 7.f, 2.f, 11.f});
+        }
+        b.wallZ(ZB, ZF, X0, X0 + T, 0.f, C, wallC, win);
+        b.wallZ(ZB, ZF, X1 - T, X1, 0.f, C, wallC, win);
+        // Window bars
+        for (const auto& g : win) for (float x : {X0 + 0.3f, X1 - 0.3f})
+            for (int k = 1; k < 4; ++k) b.kit().box({x, 6.5f, g.a0 + k * 1.75f}, {0.12f, 9.f, 0.12f}, steel);
+        // The tower outside: up into the dark, down into the Void, lamps on its face
+        b.kit().box({(X0 + X1) * 0.5f, C + 120.f, (ZF + ZB) * 0.5f}, {X1 - X0 + 1.f, 240.f, ZF - ZB + 1.f}, steel);
+        b.kit().box({(X0 + X1) * 0.5f, C + 242.f, (ZF + ZB) * 0.5f}, {X1 - X0 + 3.f, 6.f, ZF - ZB + 3.f}, rime);
+        b.kit().box({(X0 + X1) * 0.5f, -300.f, (ZF + ZB) * 0.5f}, {X1 - X0 + 1.f, 599.f, ZF - ZB + 1.f}, steel * 0.3f);
+        for (float y = 22.f; y < C + 230.f; y += 24.f) b.kit(true).box({(X0 + X1) * 0.5f, y, ZF + 0.6f}, {(X1 - X0) * 0.7f, 1.6f, 0.3f}, amber * 0.8f);
+        stencil("RECEIVING", {HX - 6.5f, 10.f, ZF + 0.7f}, {1.f, 0.f, 0.f}, 0.22f, paint);
+        // Light inside: amber strips along the ceiling
+        for (float z = ZB + 6.f; z < ZF - 3.f; z += 10.f) b.neon(X0 + 6.f, C - 0.3f, z, X1 - 6.f, C - 0.15f, z + 0.3f, amber * 0.35f);
+    }
+
+    // ---- 3. THE THAW ROOM: ceiling rails, hooks, drains in the floor ----
+    for (int row = 0; row < 3; ++row) {
+        float z = -612.f - row * 13.f;
+        b.kit().box({(X0 + X1) * 0.5f, C - 1.2f, z}, {X1 - X0 - 2.f, 0.35f, 0.35f}, steel);   // a rail
+    }
+    for (const auto& h : cold::thawHooks()) b.kit().rod(h + vec3{0.f, C - 1.2f, 0.f}, h + vec3{0.f, 4.6f, 0.f}, 0.05f, steel, 4);
+    for (int k = 0; k < 4; ++k) b.kit().box({-62.f + k * 16.f, 0.02f, -630.f}, {3.f, 0.04f, 1.f}, vec3{0.05f, 0.06f, 0.07f});   // drains
+    // Cover: thawing tanks
+    for (const auto& p : {vec3{-58.f, 0.f, -624.f}, vec3{-22.f, 0.f, -624.f}, vec3{-51.f, 0.f, -641.f}, vec3{-70.f, 0.f, -642.f}, vec3{-10.f, 0.f, -642.f}}) {
+        b.wall(p.x - 1.6f, 0.f, p.z - 1.6f, p.x + 1.6f, 2.4f, p.z + 1.6f, steelFrost * 0.5f);
+        b.kit().column(p + vec3{0.f, 2.4f, 0.f}, 1.3f, 0.5f, rime, 10);
+        b.kit(true).box(p + vec3{0.f, 1.6f, 1.62f}, {0.8f, 0.3f, 0.05f}, amber * 0.7f);
+    }
+    stencil("THAW", {-45.f, 11.f, cold::THAW_BACK + 0.1f}, {1.f, 0.f, 0.f}, 0.3f, paint);
+
+    // ---- 4. INVENTORY: terminals, one line each ----
+    auto terminal = [&](vec3 p, float yaw, const char* title, const char* line) {
+        b.place("console", p, yaw, 0.6f);
+        b.wall(p.x - 0.65f, p.y, p.z - 0.4f, p.x + 0.65f, p.y + 1.1f, p.z + 0.4f, panel);
+        s.terminals.push_back({p, title, line});
+    };
+    terminal({-56.f, 0.f, -657.f}, 90.f, "INVENTORY: UNIT 07", "UNIT 07: RESTORED 41 TIMES.");
+    terminal({-24.f, 0.f, -662.f}, -90.f, "INVENTORY: UNIT 12", "UNIT 12: RESTORED. DID NOT RESUME.");
+    terminal({-56.f, 0.f, -668.f}, 90.f, "INVENTORY: UNIT 19", "UNIT 19: STORED WHOLE. ATTEMPTS TO WAKE: 0. NONE REQUIRED.");
+    terminal({-24.f, 0.f, -674.f}, -90.f, "INVENTORY: UNIT 24", "UNIT 24: RECALLED FOR CORRECTION. COPIES ON FILE: 24-A TO 24-K.");
+    for (float z = -676.f; z < -652.f; z += 6.f) {   // filing drawers up both walls
+        b.kit().box({-59.5f, 5.f, z}, {0.6f, 9.f, 5.6f}, steelFrost * 0.45f);
+        b.kit().box({-20.5f, 5.f, z}, {0.6f, 9.f, 5.6f}, steelFrost * 0.45f);
+    }
+
+    // ---- 5. RACK 24: an aisle of alcoves (the copies are drawn live), 24-K's slot empty at the end ----
+    for (int k = 0; k <= 10; ++k) {
+        vec3 p = cold::rackSlot(k);
+        bool west = k < 10 && k % 2 == 0, endSlot = k == 10;
+        float back = endSlot ? p.z - 1.6f : 0.f;
+        if (endSlot) {
+            b.kit().box({p.x, 4.f, back}, {3.4f, 8.f, 0.3f}, steelFrost * 0.5f);
+            stencil("24-K", {p.x - 1.1f, 6.6f, back + 0.2f}, {1.f, 0.f, 0.f}, 0.1f, paint);
+            b.kit(true).box({p.x, 0.05f, p.z}, {2.f, 0.04f, 2.f}, amber * 0.4f);   // its empty plinth, lit
+        } else {
+            float bx = west ? p.x - 1.6f : p.x + 1.6f;
+            b.kit().box({bx, 4.f, p.z}, {0.3f, 8.f, 3.4f}, steelFrost * 0.5f);              // the alcove's back
+            b.wall(p.x - 1.f, 0.f, p.z - 1.f, p.x + 1.f, 0.25f, p.z + 1.f, steel);          // its plinth
+            char label[8]; std::snprintf(label, sizeof(label), "24-%c", 'A' + k);
+            stencil(label, {west ? p.x + 0.9f : p.x - 0.9f, 3.f, west ? p.z + 0.85f : p.z - 0.85f}, {0.f, 0.f, west ? -1.f : 1.f}, 0.08f, paint);   // (read from the aisle)
+            b.kit().box({west ? p.x - 1.3f : p.x + 1.3f, 7.8f, p.z}, {0.6f, 0.2f, 3.f}, steel);   // its bracket
+            b.kit(true).box({west ? p.x - 1.2f : p.x + 1.2f, 7.6f, p.z}, {0.15f, 0.08f, 2.4f}, vec3{0.6f, 0.75f, 0.9f} * 0.6f);
+        }
+    }
+    stencil("RACK 24", {-48.f, 11.f, cold::INV_BACK - 0.7f}, {1.f, 0.f, 0.f}, 0.3f, paint);
+    stencil("TO COLD STORAGE", {-46.f, 8.f, ZB + 0.7f}, {1.f, 0.f, 0.f}, 0.15f, paint);
+    s.end = LevelBuilder::aabb(cold::DOOR_X0, 0.f, ZB + 0.6f, cold::DOOR_X1, 6.f, ZB + 6.f);   // at the shut door: the chapter so far ends
+
+    // =========================================================================
+    // THE SECTIONS
+    // =========================================================================
+    auto section = [&](const char* name, const char* sub, AABB zone, vec3 start, float yaw) {
+        Arena a;
+        a.name = name; a.subtitle = sub; a.zone = zone; a.bounds = zone; a.bounds.min.y = std::max(zone.min.y, 0.f);
+        a.playerStart = start; a.startYaw = yaw; a.maxAlive = 8; a.damageScale = 1.f;
+        a.theme = cold::theme(); a.ambient = Ambient::WIND; a.space = ReverbSpace::OPEN; a.tone = RoomTone::YARD;
+        a.voidY = -60.f;
+        return a;
+    };
+    using W = WaveEntry;
+    const float lip = cold::lipZ();
+    // 1. the shelf
+    Arena intake = section("THE INTAKE", "NOTHING HERE IS THROWN AWAY",
+                           LevelBuilder::aabb(-cold::HALF_X, -1000.f, cold::EDGE_Z - 70.f, cold::HALF_X, 800.f, cold::SOUTH), cold::start(), -90.f);
+    intake.hasRespawn = true; intake.respawn = cold::start(); intake.scripted = true;
+    l.arenas.push_back(intake);
+    // 2. the Hook Line: Pickers come off the rails once you are out past the shelf's reach
+    const int dockDoor = b.doorway(true, cold::DOOR_X0, cold::DOOR_X1, ZF - 0.6f, ZF, 0.f, 6.f, amber * 0.6f);
+    Arena hook = section("THE HOOK LINE", "RIDE THE CARRIERS ACROSS",
+                         LevelBuilder::aabb(HX - 7.f, -1000.f, ZF, HX + 7.f, 60.f, cold::EDGE_Z - 70.f), cold::hookStart(), -90.f);
+    hook.zone.max.z = cold::EDGE_Z - 70.f;
+    hook.hasRespawn = true; hook.respawn = cold::hookStart();
+    hook.hasTrigger = true; hook.trigger = LevelBuilder::aabb(HX - 7.f, -5.f, ZF, HX + 7.f, 20.f, cold::EDGE_Z - 70.f);
+    hook.exitDoor = dockDoor; hook.maxAlive = 3;
+    hook.airSpawns = {{HX - 30.f, 8.f, cold::stationZ(2)}, {HX + 30.f, 8.f, cold::stationZ(2) - 20.f}, {HX + 25.f, 8.f, cold::stationZ(3)}, {HX - 25.f, 8.f, cold::stationZ(1)}};
+    hook.waves = {{W(EnemyType::PICKER, 2)}, {W(EnemyType::PICKER, 3)}};
+    l.arenas.push_back(hook);
+    (void)lip;
+    // 3. the Thaw Room: the hung units drop and wake
+    const int thawDoor = b.doorway(true, cold::DOOR_X0, cold::DOOR_X1, cold::THAW_BACK - 0.6f, cold::THAW_BACK, 0.f, 6.f, amber * 0.6f);
+    Arena thaw = section("THE THAW ROOM", "THEY ARE WARMING UP", LevelBuilder::aabb(X0 + 1.f, -5.f, cold::THAW_BACK, X1 - 1.f, C, ZF), {HX, 0.f, ZF - 3.f}, -90.f);
+    thaw.hasTrigger = true; thaw.trigger = LevelBuilder::aabb(X0 + 1.f, -2.f, cold::THAW_BACK + 2.f, X1 - 1.f, 6.f, ZF - 6.f);
+    thaw.entryGate = dockDoor; thaw.exitDoor = thawDoor; thaw.space = ReverbSpace::METAL; thaw.tone = RoomTone::FOUNDRY;
+    thaw.ambient = Ambient::MOTES; thaw.maxAlive = 7;
+    {
+        auto H = cold::thawHooks();
+        auto at = [&](std::initializer_list<int> ks) { std::vector<vec3> v; for (int k : ks) v.push_back(H[k]); return v; };
+        thaw.waves = {{W(EnemyType::THAWLING, 0, at({0, 2, 4, 7, 9}))},
+                      {W(EnemyType::THAWLING, 0, at({1, 3, 5, 12})), W(EnemyType::CLERK, 0, {{-40.f, 3.4f, -646.f}})},
+                      {W(EnemyType::THAWLING, 0, at({6, 8, 10, 11})), W(EnemyType::PICKER, 0, {{-60.f, 4.6f, -640.f}}), W(EnemyType::CLERK, 0, {{-14.f, 3.4f, -645.f}})}};
+    }
+    l.arenas.push_back(thaw);
+    // 4. Inventory (quiet)
+    Arena inv = section("INVENTORY", "EVERYTHING ON FILE", LevelBuilder::aabb(-60.f, -5.f, cold::INV_BACK, -20.f, C, cold::THAW_BACK), {HX, 0.f, cold::THAW_BACK - 3.f}, -90.f);
+    inv.space = ReverbSpace::METAL; inv.tone = RoomTone::NONE; inv.ambient = Ambient::DUST;
+    l.arenas.push_back(inv);
+    // 5. Rack 24 (quiet: the RECALL module, Gameplay_Cold.h)
+    Arena rack = section("RACK 24", "COPIES ON FILE", LevelBuilder::aabb(X0 + 1.f, -5.f, ZB + 0.6f, X1 - 1.f, C, cold::INV_BACK), {HX, 0.f, cold::INV_BACK - 3.f}, -90.f);
+    rack.space = ReverbSpace::METAL; rack.tone = RoomTone::NONE; rack.ambient = Ambient::MOTES;
+    l.arenas.push_back(rack);
     return l;
 }

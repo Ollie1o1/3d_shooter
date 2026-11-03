@@ -100,6 +100,12 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
                 if(here==6&&storyBossDown)what="THE BARRIER IS OPEN";
             }
             else if(plain()) what=wakeSeen?gleanerPhaseName():"SOMETHING IS WATCHING";
+            else if(cold()) {
+                static const char* goals[]={"FOLLOW THE BELT TO THE EDGE","RIDE THE CARRIERS TO THE TOWER","THROUGH THE THAW ROOM","READ THE INVENTORY","RACK 24"};
+                what=goals[std::clamp(here,0,4)];
+                if(here==1&&director.arena==1&&director.phase==WaveDirector::Phase::CLEARED)what="THE DOCK IS OPEN";
+                if(here==4)what=coldRecall?"THE WAY ON IS SHUT / FOR NOW":"TAKE WHAT 24-A IS HOLDING";
+            }
             else if (here == level.story.pitSection && !storyOwns(0)) what = "FIND SOMETHING TO FIGHT WITH";
             else if (here == level.story.pitSection) what = "CLIMB OUT";
             else if (here > level.story.pitSection && !storyOwns(2) && director.arena == here && director.phase == WaveDirector::Phase::APPROACH && player.position.z > 40.f) what = "TAKE THE LANCER";

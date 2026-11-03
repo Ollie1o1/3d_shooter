@@ -8,7 +8,7 @@
 // =============================================================================
 #include "player/Recall.h"
 
-inline bool GameplayState::recallOwned() const { return g_devRecall; }
+inline bool GameplayState::recallOwned() const { return g_devRecall || (cold() && coldRecall); }
 
 // Could UNIT 24 stand at `feet` right now? (a gate shut since, a mover in the way,
 // or a fight he would leave)

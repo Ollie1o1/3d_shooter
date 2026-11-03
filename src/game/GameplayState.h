@@ -505,10 +505,15 @@ public:
     std::vector<ColdCapsule> coldCapsules;
     float coldLaunchT = 0.f, coldShardT = 0.f;
     int   coldLaunches = 0;
+    bool  coldRecall = false;   // taken from 24-A in Rack 24
+    int   coldRecallItem = -1;  // its interactable
     void beginCold();
+    void takeColdRecall();
     void updateCold(float dt);
     void launchColdCapsule(int k);
     void gatherCold(std::vector<BoxInstance>& out);
+    void gatherColdRoute(std::vector<BoxInstance>& out);
+    void coldBody(std::vector<BoxInstance>& out, const char* model, const glm::mat4& at, const rig::FilePose& P, float frost, glm::vec3 core);
     void updatePlain(float dt);
     void meteorImpact(const MeteorImpact& hit);
     void gatherPlain(std::vector<BoxInstance>& out);

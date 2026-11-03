@@ -216,8 +216,10 @@ public:
             // Start the next arena once the player is a few metres inside it,
             // well clear of the gate that is about to close behind them.
             const Arena& next = level->arenas[arena + 1];
-            if (level->arenaAt(playerPos) == arena + 1 && playerPos.z < next.zone.max.z - 3.5f)
-                startArena(arena + 1);
+            if (level->arenaAt(playerPos) == arena + 1 && playerPos.z < next.zone.max.z - 3.5f) {
+                if (next.waves.empty()) approach(arena + 1);   // (a quiet room: nothing to start, just walk through)
+                else startArena(arena + 1);
+            }
             break;
         }
         case Phase::APPROACH: {

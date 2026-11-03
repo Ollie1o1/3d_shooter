@@ -170,7 +170,7 @@ inline void GameplayState::punch(int boostable) {
 
 inline void GameplayState::spawnEnemy(EnemyType t, glm::vec3 pos, Hollow h) {
     float floor=level.baseFloor(pos.x,pos.z);
-    if(laboratory()){
+    if(laboratory() || cold()){
         int room=level.arenaAt(pos);if(room<0)room=director.arena;
         // Lab basins are far below the real platforms. Using that abyss as a
         // flying subject's initial floor gives it a 250 m hover offset.
@@ -297,7 +297,7 @@ inline void GameplayState::updateEnemies(float dt) {
         if (e.type == EnemyType::ABSOLUTE) swordParryAbsolute(e);   // the sword's window meets a white strike as it lands
         // In the Descent the void runs to -300: stand on what's really under you (the cage included)
         e.floorY = level.enemyFloor(director.arena, e.position, e.stats().flying,
-                                    (descent || laboratory()) ? groundHeightAt(e.position.x, e.position.z, e.position.y + 0.5f, true) : 0.f);
+                                    (descent || laboratory() || cold()) ? groundHeightAt(e.position.x, e.position.z, e.position.y + 0.5f, true) : 0.f);
         e.wadeMul = e.stats().flying ? 1.f : 1.f - 0.5f * (1.f - Player::wadeFactor(level.waterDepthAt(e.position)));
         if(story()&&e.type==EnemyType::SORTER&&e.sortRush>0)
             breakStoryCover(e.position,e.position+e.sortRushDir*(36.f*dt),3.6f);

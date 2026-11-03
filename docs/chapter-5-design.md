@@ -3,7 +3,8 @@
 Brainstormed with the user on 2026-11-03. Built so far: RECALL (step 1 of the
 build order; `--recall` to try it anywhere) and the planet (step 2;
 `./shooter --story5`): the ice shelf, its lip and the Void, the Store's towers
-and glacier cliff, the frozen giants, the sky. No rooms, enemies or story yet.
+and glacier cliff, the frozen giants, the sky. Rooms 1-5 and their enemies are
+built too (step 3); see "Rooms 1-5 as built" below.
 
 The creator never threw anything away for good. Everything is **saved** here:
 every unit, every sibling, and copies of UNIT 24. The keeper of the store, THE
@@ -234,6 +235,32 @@ candidate).
 - Live: dispatch capsules launch every 16-30 s and arc off toward the gas
   giant with a contrail; ice shards rise out of the Void near you at the lip.
 - The camera sees 5.2 km here. Chapter 5 is not saved and not in the menu yet.
+
+### Rooms 1-5 as built (step 3)
+
+- **Sections** (`--story5 --arena N`, counting from 1): 1 THE INTAKE (the
+  shelf), 2 THE HOOK LINE, 3 THE THAW ROOM, 4 INVENTORY, 5 RACK 24.
+- **The Intake:** a belt of frozen bodies runs north from a shed at z 250 to
+  the lip at `HOOK_X` (-40) and tips them over the edge (drawn live).
+- **The Hook Line:** a gantry off the lip, three hanging stations and the
+  tower's dock, with four carriers (movers, 15 s round trips) shuttling
+  between them under one rail. The Pickers (2, then 3) come once you're past
+  the shelf; the dock door opens when they're down. A fall puts you back on the
+  gantry.
+- **The Receiving Tower** stands in the Void at x -80..0, z -600..-760, floor
+  at the shelf's height. It has its own basin, so enemies stand on its floor;
+  in Chapter 5, fliers keep to their section's floor height (as in
+  Chapter 3).
+- **The Thaw Room:** 18 units hang from ceiling hooks. The first 13 drop as
+  Thawlings over three waves, with a Clerk in waves 2 and 3 and a Picker in
+  wave 3. There are thawing tanks for cover and tall barred windows.
+- **Inventory:** four terminals (Units 07, 12, 19, 24).
+- **Rack 24:** 24-A to 24-J frosted in alcoves; four of them turn their heads
+  to follow you. 24-A's chest glows: take RECALL there. 24-K's plinth is
+  empty. The door at the back is shut ("TO COLD STORAGE"); reaching it with
+  RECALL ends the chapter so far ("TO BE CONTINUED").
+- New enemies: `src/enemies/EnemyCold.h` (AI), `src/game/Gameplay_ColdEnemies.h`
+  (Picker holds, Clerk restores).
 
 ## 11. Build order
 
