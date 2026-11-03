@@ -132,4 +132,13 @@ struct SplinterSystem {
     static float damageMult(int link, bool glint) {
         return (1.5f + 0.5f * (float)link) * (glint ? 1.25f : 1.f);
     }
+
+    // Heavy rounds get less of that bonus: a redirected round always lands on a
+    // weak point, which on the bolt rifles was far too much. Guns at revolver
+    // damage or below keep all of it; the LANCER (120) keeps ~70%, the LONGSHOT
+    // (360) ~40%. `gunDamage` is the gun's base damage per round.
+    static constexpr float FULL_BONUS_DAMAGE = 60.f;
+    static float heavyRoundScale(float gunDamage) {
+        return gunDamage <= FULL_BONUS_DAMAGE ? 1.f : std::sqrt(FULL_BONUS_DAMAGE / gunDamage);
+    }
 };

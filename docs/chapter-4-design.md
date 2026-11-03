@@ -58,6 +58,8 @@ thing: UNIT 24 flicks a shard of cyan glass out of its new forearm.
     a marked organ.
   - Base x1.5 damage, +0.5 per link, and x1.25 more if the splinter was
     glinting. Redirected rounds always count as weak-point hits.
+  - Heavy rounds keep less of the bonus (`heavyRoundScale`: full up to 60
+    damage, then sqrt(60 / damage)), so the bolt rifles don't one-shot through it.
 - **Why it matters here.** The Gleaner is far away and enormous; its weak
   points face away from you or sit behind its own arms. Splinters let you
   hit them around corners and from below. Mini-bosses are built to be

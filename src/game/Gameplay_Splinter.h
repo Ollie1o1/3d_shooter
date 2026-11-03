@@ -101,7 +101,7 @@ inline void GameplayState::splinterRicochet(int first, float dmg, int w) {
     for (;;) {
         Splinter& s = splinters.pool[cur];
         bool glint = SplinterSystem::glinting(s);
-        float mult = SplinterSystem::damageMult(link, glint);
+        float mult = SplinterSystem::damageMult(link, glint) * SplinterSystem::heavyRoundScale(weaponDef(id).damage);
         glm::vec3 from = s.pos;
         used |= 1u << cur;
         s.alive = false;

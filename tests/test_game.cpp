@@ -5808,6 +5808,11 @@ int main() {
         CHECK(broke == (1 << i) && sp.live() == 0, "a splinter breaks on the world it flies into");
         CHECK(SplinterSystem::damageMult(0, false) == 1.5f && SplinterSystem::damageMult(2, true) > SplinterSystem::damageMult(2, false)
               && SplinterSystem::damageMult(1, false) > SplinterSystem::damageMult(0, false), "a chain and a glint both hit harder");
+        CHECK(SplinterSystem::heavyRoundScale(weaponDef(WeaponId::REVOLVER).damage) == 1.f
+              && SplinterSystem::heavyRoundScale(weaponDef(WeaponId::KAR).damage) < 0.8f
+              && SplinterSystem::heavyRoundScale(weaponDef(WeaponId::LONGSHOT).damage) < 0.5f
+              && weaponDef(WeaponId::LONGSHOT).damage * SplinterSystem::heavyRoundScale(weaponDef(WeaponId::LONGSHOT).damage)
+                 > weaponDef(WeaponId::REVOLVER).damage, "the rifles get less from a splinter than the revolver, but still more damage per round");
     }
 
     // A Sentinel on the Spire's summit keeps firing at you below, every time and
