@@ -40,6 +40,8 @@ inline GLuint* GameplayState::sharedWorldTex() {
         tex[TEX_CLINIC]        = TextureGen::uploadMaterial(MaterialTex::clinic());
         tex[TEX_LINO]          = TextureGen::uploadMaterial(MaterialTex::lino());
         tex[TEX_CINDER]        = TextureGen::uploadMaterial(MaterialTex::cinder());
+        tex[TEX_SNOW]          = TextureGen::uploadMaterial(MaterialTex::snow());
+        tex[TEX_ICE]           = TextureGen::uploadMaterial(MaterialTex::ice());
         tex[TEX_BASALT]        = TextureGen::uploadMaterial(MaterialTex::basalt());
     }
     return tex;
@@ -191,11 +193,11 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
         prog = resumedStory.prog;
     }
     g_continueStory = false;
-    level = training() ? buildTraining() : fast() ? buildGauntlet() : act2() ? buildAct2Level() : story() ? (g_storyChapter==4?buildPlain():g_storyChapter==3?buildLab():g_storyChapter==2?buildWasteland():buildCradle()) : buildLevel();
+    level = training() ? buildTraining() : fast() ? buildGauntlet() : act2() ? buildAct2Level() : story() ? (g_storyChapter==5?buildCold():g_storyChapter==4?buildPlain():g_storyChapter==3?buildLab():g_storyChapter==2?buildWasteland():buildCradle()) : buildLevel();
     if (story()) armfile::load("assets/guns/unit24_arm.glb");   // UNIT 24's own hands (the menu's next run puts the gloves back)
     spatialGrid.build(level.walls);
     world = buildWorldMeshes(level);
-    bake = &sharedBake(training() ? "training" : fast() ? "fast" : act2() ? "act2" : story() ? (level.story.chapter==4?"story4":level.story.chapter==3?"story3":level.story.chapter==2?"story2":"story1") : "act1", level);
+    bake = &sharedBake(training() ? "training" : fast() ? "fast" : act2() ? "act2" : story() ? (level.story.chapter==5?"story5":level.story.chapter==4?"story4":level.story.chapter==3?"story3":level.story.chapter==2?"story2":"story1") : "act1", level);
     applyBake();
     neonLights = buildNeonLights(level);
     shifts.capture(level);

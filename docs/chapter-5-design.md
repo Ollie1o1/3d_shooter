@@ -1,7 +1,9 @@
 # Chapter 5: THE COLD STORE — design
 
 Brainstormed with the user on 2026-11-03. Built so far: RECALL (step 1 of the
-build order; `--recall` to try it anywhere).
+build order; `--recall` to try it anywhere) and the planet (step 2;
+`./shooter --story5`): the ice shelf, its lip and the Void, the Store's towers
+and glacier cliff, the frozen giants, the sky. No rooms, enemies or story yet.
 
 The creator never threw anything away for good. Everything is **saved** here:
 every unit, every sibling, and copies of UNIT 24. The keeper of the store, THE
@@ -215,6 +217,23 @@ candidate).
   (`tools/blender/restorer_build.py`, 24-K reuses `unit24_build.py`).
 - **Save:** allow chapter 5 in `StorySave`; RECALL owned once Rack 24 is
   passed.
+
+### The planet as built (step 2)
+
+- `src/world/LevelCold.h` (`buildCold`), `src/game/Gameplay_Cold.h`, the
+  `uCold` branch of `src/shaders/skybox.frag`, tests in `tests/test_cold.cpp`
+  (`make test-cold`).
+- The shelf is about 520 m wide; its north lip is ragged, built in 40 m strips.
+  Past it, each strip is a basin 900 m deep (the Void); falling past -60 m
+  respawns you at the arrival.
+- The Store: 15 towers rising out of the Void (darker going down), lamps as
+  lit strips (one box per lamp cost ~70 fps), a glacier cliff behind them,
+  hook rails between the towers and back to four gantries on the shelf's lip.
+- Frozen giants 950-1500 m tall, 1.9-2.3 km out; one has an arm raised.
+- New surfaces `Mat::SNOW` and `Mat::ICE` (`MaterialTex::snow/ice`).
+- Live: dispatch capsules launch every 16-30 s and arc off toward the gas
+  giant with a contrail; ice shards rise out of the Void near you at the lip.
+- The camera sees 5.2 km here. Chapter 5 is not saved and not in the menu yet.
 
 ## 11. Build order
 

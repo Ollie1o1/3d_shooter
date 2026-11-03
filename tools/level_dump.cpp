@@ -27,14 +27,14 @@
 
 static const char* TEX_NAME[TEX_COUNT] = {"grid", "brick", "metal", "panel", "rock", "concrete", "adobe", "terracotta",
                                          "wood", "plate", "tread", "marble", "flagstone", "circuit", "circuit_floor",
-                                         "basalt", "limestone", "brass", "clinic", "lino", "cinder"};
+                                         "basalt", "limestone", "brass", "clinic", "lino", "cinder", "snow", "ice"};
 static const char* MAT_NAME[] = {"brick", "panel", "rock", "metal", "concrete", "adobe", "plate", "marble",
-                                 "circuit", "basalt", "wood", "limestone", "brass", "clinic", "cinder"};
+                                 "circuit", "basalt", "wood", "limestone", "brass", "clinic", "cinder", "snow", "ice"};
 
 static std::vector<unsigned char> texPixels(int t) {
     using namespace MaterialTex;
     switch (t) {
-        case TEX_CLINIC:return clinic(); case TEX_LINO:return lino(); case TEX_CINDER:return cinder();
+        case TEX_CLINIC:return clinic(); case TEX_LINO:return lino(); case TEX_CINDER:return cinder(); case TEX_SNOW:return snow(); case TEX_ICE:return ice();
         case TEX_GRID: return gridFloor();       case TEX_BRICK: return brick();
         case TEX_METAL: return metal();          case TEX_PANEL: return panel();
         case TEX_ROCK: return rock();            case TEX_CONCRETE: return concrete();

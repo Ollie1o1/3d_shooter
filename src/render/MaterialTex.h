@@ -402,6 +402,51 @@ inline std::vector<unsigned char> cinder() {
     }, BRICK_MEAN * 0.8f);
 }
 
+// --- THE COLD STORE (Chapter 5) ------------------------------------------------
+// Packed snow: wind-scoured and bright, rippled into long low sastrugi that run
+// one way across the tile, with a faint sparkle of grains.
+inline std::vector<unsigned char> snow() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        float ripple = std::sin((v * 7.f + fbm(u, v, 4, 4, 601) * 1.6f) * 6.2832f);   // wind ridges (wrap: whole cycles)
+        float b = 0.8f + 0.06f * ripple + (fbm(u, v, 8, 4, 602) - 0.5f) * 0.12f;
+        b *= 0.94f + 0.08f * noise(u, v, 128, 128, 603);                               // grain
+        if (hashI(x, y, 604) > 0.996f) b = 1.f;                                        // a glint
+        glm::vec3 c = b * glm::vec3{0.93f, 0.96f, 1.f};
+        float drift = sstep(0.6f, 0.8f, fbm(u, v, 3, 3, 605));                         // blue in the hollows
+        c = glm::mix(c, glm::vec3{0.62f, 0.72f, 0.84f}, drift * 0.3f + (ripple < -0.6f ? 0.12f : 0.f));
+        return Px{c, 0.f};
+    }, BRICK_MEAN * 2.1f);
+}
+
+// Clear sea ice: dark (you see into it), cut with white fracture lines and
+// trapped bubbles, frost dusted in streaks over the top.
+inline std::vector<unsigned char> ice() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        const int N = 3;   // big fracture cells across the 4 m tile
+        float fx = u * N, fy = v * N;
+        int ix = (int)std::floor(fx), iy = (int)std::floor(fy);
+        float d1 = 9.f, d2 = 9.f;
+        for (int dy = -1; dy <= 1; ++dy)
+            for (int dx = -1; dx <= 1; ++dx) {
+                int cx = ix + dx, cy = iy + dy, wx = wrap(cx, N), wy = wrap(cy, N);
+                float px = cx + 0.1f + 0.8f * hashI(wx, wy, 611), py = cy + 0.1f + 0.8f * hashI(wx, wy, 612);
+                float d = std::hypot(fx - px, fy - py);
+                if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d;
+            }
+        float depth = fbm(u, v, 4, 4, 613);
+        glm::vec3 c = glm::mix(glm::vec3{0.08f, 0.16f, 0.24f}, glm::vec3{0.22f, 0.36f, 0.48f}, depth);
+        float edge = d2 - d1;
+        if (edge < 0.025f) c = glm::mix(c, glm::vec3{0.85f, 0.92f, 1.f}, 0.8f);         // a fracture, white
+        else if (edge < 0.06f) c = glm::mix(c, glm::vec3{0.5f, 0.65f, 0.78f}, 0.35f);
+        if (hashI(x / 3, y / 3, 614) > 0.992f) c = glm::vec3{0.75f, 0.85f, 0.95f};        // a bubble
+        float frost = sstep(0.5f, 0.8f, fbm(u, v, 6, 2, 615));          // streaks of frost
+        c = glm::mix(c, glm::vec3{0.82f, 0.88f, 0.94f}, frost * 0.45f);
+        return Px{c, 0.f};
+    }, BRICK_MEAN * 1.1f);
+}
+
 // --- The shared surfaces (every mode: the tubes, FAST, ACT II) ---------------
 // The original six, redone to wrap and with more to look at, each scaled to
 // the old one's brightness so the places lit for them stay as they were.

@@ -21,12 +21,14 @@ enum WorldTex { TEX_GRID, TEX_BRICK, TEX_METAL, TEX_PANEL, TEX_ROCK, TEX_CONCRET
                 // ACT II and FAST's own
                 TEX_LIMESTONE, TEX_BRASS, TEX_CLINIC, TEX_LINO,
                 TEX_CINDER,   // Chapter 4
+                TEX_SNOW, TEX_ICE,   // Chapter 5
                 TEX_COUNT };
 
 inline WorldTex sideTex(Mat m) {
     switch (m) {
         case Mat::CLINIC: return TEX_CLINIC;
         case Mat::CINDER: return TEX_CINDER;
+        case Mat::SNOW: return TEX_SNOW; case Mat::ICE: return TEX_ICE;
         case Mat::PANEL: return TEX_PANEL;  case Mat::ROCK: return TEX_ROCK;
         case Mat::METAL: return TEX_METAL;  case Mat::CONCRETE: return TEX_CONCRETE;
         case Mat::ADOBE: return TEX_ADOBE;  case Mat::PLATE: return TEX_PLATE;
@@ -40,6 +42,7 @@ inline WorldTex topTex(Mat m) {
     switch (m) {
         case Mat::CLINIC: return TEX_LINO;
         case Mat::CINDER: return TEX_CINDER;
+        case Mat::SNOW: return TEX_SNOW; case Mat::ICE: return TEX_ICE;
         case Mat::PANEL: case Mat::METAL: return TEX_METAL;
         case Mat::ROCK: return TEX_ROCK;
         case Mat::ADOBE: return TEX_TERRACOTTA;

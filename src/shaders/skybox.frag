@@ -27,6 +27,7 @@ uniform float uLabRealm; // 0 ordinary, 1 nebula, 2 hadal, 3 fractured
 uniform float uAssessment;
 uniform float uMoonLid;     // 0..1: the plain's moon blinking shut (it was an eye; it is the Gleaner's now)
 uniform float uPlain;       // 1 = THE BLOOD MOON PLAIN (Chapter 4): the blood moon, burning cloud
+uniform float uCold;        // 1 = THE COLD STORE (Chapter 5): the ringed gas giant, a small cold sun, aurora, the Void below
 uniform float uDark;        // 0..1: TOTALITY: the ring dims to embers
 
 float hash3(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
@@ -199,12 +200,98 @@ vec3 plainSky(vec3 dir) {
     return col;
 }
 
+// THE COLD STORE (Chapter 5): a black, clear sky over a frozen planet. A ringed
+// gas giant hangs low over the Store (a real sphere and ring plane, so the ring
+// passes behind it and in front of it), lit from the side by a small white sun.
+// Pale green and violet aurora (never cyan: that is UNIT 24's), a drifting
+// blizzard haze along the horizon, and below the horizon the Void: black.
+const vec3 GIANT_DIR = vec3(0.4257, 0.3065, -0.8514);   // normalize(0.5, 0.36, -1): LevelCold.h giantDir()
+vec3 coldSky(vec3 dir) {
+    float y = dir.y;
+    float az = atan(dir.z, dir.x);
+    vec3 col = mix(uHorizon, uZenith, pow(clamp(y, 0.0, 1.0), 0.32));
+    // Stars: many, sharp, a few tinted; they thin out into the haze near the horizon
+    vec3 cell = floor(dir * 520.0);
+    float st = hash3(cell);
+    vec3 starCol = mix(vec3(0.75, 0.85, 1.1), vec3(1.1, 0.95, 0.8), hash3(cell + 3.0));
+    col += starCol * step(0.9975, st) * (0.5 + 1.2 * hash3(cell + 9.0)) * uStars * smoothstep(0.04, 0.3, y);
+    // A faint band of the galaxy across the sky
+    float band = exp(-pow((dir.y * 0.8 - dir.x * 0.5 + dir.z * 0.3 - 0.35) * 3.0, 2.0));
+    col += vec3(0.05, 0.06, 0.09) * band * fbm(vec2(az * 6.0, y * 8.0)) * smoothstep(0.05, 0.4, y);
+
+    // Aurora: curtains hanging from high up, rippling slowly sideways
+    if (y > 0.05) {
+        float a1 = vnoise(vec2(az * 5.0 + uTime * 0.02, 1.0)), a2 = vnoise(vec2(az * 13.0 - uTime * 0.035, 7.0));
+        float curtain = pow(a1, 2.2) * (0.6 + 0.8 * a2);
+        float folds = 0.6 + 0.4 * sin(az * 60.0 + a1 * 12.0 + uTime * 0.25);
+        float base = 0.22 + 0.12 * a2, top = base + 0.35 + 0.2 * a1;
+        float shape = smoothstep(base, base + 0.04, y) * (1.0 - smoothstep(base + 0.05, top, y));
+        vec3 green = vec3(0.25, 0.95, 0.4), violet = vec3(0.6, 0.3, 0.95);
+        vec3 ac = mix(green, violet, smoothstep(base + 0.05, top, y));
+        float south = smoothstep(-0.6, 0.4, dir.z);   // strongest in the southern sky, away from the giant
+        col += ac * curtain * folds * shape * 0.28 * (0.35 + 0.65 * south);
+        col += green * curtain * shape * 0.06;
+    }
+
+    // The sun: small and white, a tight bright glow, a wider cold one
+    float cs = dot(dir, uSunDir);
+    float sa = acos(clamp(cs, -1.0, 1.0));
+    col += uSunColor * smoothstep(uSunSize, uSunSize * 0.8, sa) * 3.0;
+    col += vec3(0.9, 0.95, 1.0) * exp(-sa * 18.0) * 0.45 + vec3(0.5, 0.6, 0.8) * exp(-sa * 4.0) * 0.12;
+
+    // The gas giant: a sphere 10 units off along GIANT_DIR, with a ring plane through it
+    vec3 C = GIANT_DIR * 10.0;
+    float R = 10.0 * sin(0.27);
+    vec3 ringN = normalize(vec3(0.15, 1.0, 0.32));
+    float tb = dot(dir, C), disc = tb * tb - (dot(C, C) - R * R);
+    float tPlanet = disc > 0.0 ? tb - sqrt(disc) : 1e9;
+    float tRing = dot(C, ringN) / dot(dir, ringN);
+    vec3 P = dir * tRing;
+    float rr = length(P - C) / R;
+    vec4 ring = vec4(0.0);
+    if (tRing > 0.0 && rr > 1.35 && rr < 2.35) {
+        float bands = 0.55 + 0.45 * sin(rr * 55.0) * sin(rr * 13.0 + 1.0);
+        float gap = smoothstep(0.0, 0.03, abs(rr - 1.86));   // the dark gap
+        float a = bands * gap * smoothstep(1.35, 1.42, rr) * (1.0 - smoothstep(2.25, 2.35, rr));
+        // the planet's shadow falls across the ring on its night side
+        vec3 toSun = uSunDir;
+        vec3 q = P - C;
+        float sh = dot(q, toSun) < 0.0 && length(q - toSun * dot(q, toSun)) < R ? 0.25 : 1.0;
+        ring = vec4(vec3(0.85, 0.82, 0.76) * (0.35 + 0.65 * bands) * sh, a * 0.85);
+    }
+    if (ring.a > 0.0 && tRing > tPlanet) {   // behind the planet: it is hidden
+        ring.a = 0.0;
+    }
+    if (tPlanet < 1e8) {
+        vec3 hit = dir * tPlanet, nrm = normalize(hit - C);
+        float lat = dot(nrm, normalize(vec3(-0.15, 1.0, -0.32)));
+        float turb = fbm(vec2(lat * 12.0, atan(nrm.z, nrm.x) * 3.0 + uTime * 0.002));
+        float bandsP = 0.5 + 0.5 * sin(lat * 26.0 + turb * 3.5);
+        vec3 surf = mix(vec3(0.62, 0.6, 0.56), vec3(0.78, 0.8, 0.84), bandsP);
+        surf = mix(surf, vec3(0.45, 0.52, 0.62), smoothstep(0.55, 0.85, turb) * 0.5);
+        float lit = clamp(dot(nrm, uSunDir) * 1.2 + 0.08, 0.0, 1.0);
+        vec3 body = surf * lit * 0.9 + vec3(0.02, 0.025, 0.04);   // the night side is not quite black
+        float limb = pow(1.0 - clamp(dot(-dir, nrm), 0.0, 1.0), 3.0);
+        body += vec3(0.4, 0.5, 0.7) * limb * 0.35 * (0.3 + lit);   // its haze at the edge
+        col = mix(col, body, smoothstep(0.0, 0.0006, disc / (tb * tb)));   // (a soft edge)
+    }
+    col = mix(col, ring.rgb, ring.a);
+
+    // The blizzard wall: a pale haze drifting along the horizon
+    float storm = fbm(vec2(az * 9.0 + uTime * 0.03, y * 30.0)) * exp(-abs(y - 0.01) * 22.0);
+    col = mix(col, uHorizon * 1.15, clamp(storm * 0.9 + exp(-abs(y) * 40.0) * 0.4, 0.0, 0.85));
+    // Below the horizon: the Void, black, a little of the haze on its lip
+    if (y < 0.0) col = mix(uHorizon * 0.5, uGround, clamp(-y * 9.0, 0.0, 1.0));
+    return col;
+}
+
 void main() {
     vec4 v = uInvProj * vec4(vNDC, 1.0, 1.0);
     vec3 dir = normalize((uInvView * vec4(v.xyz / v.w, 0.0)).xyz);
     float y = dir.y;
 
     if (uPlain > 0.5) { FragColor = vec4(plainSky(dir), 1.0); return; }
+    if (uCold > 0.5) { FragColor = vec4(coldSky(dir), 1.0); return; }
 
     if (uLabRealm > 0.5) {
         float az=atan(dir.z,dir.x), elevation=asin(clamp(dir.y,-1.0,1.0));

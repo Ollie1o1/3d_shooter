@@ -96,6 +96,7 @@ test: $(TESTS) $(HEADERS)
 	$(MAKE) test-improvements
 	$(MAKE) test-lab
 	$(MAKE) test-plain
+	$(MAKE) test-cold
 
 test-story: tests/test_story.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) tests/test_story.cpp -o tests/test_story $(STDLIB)
@@ -193,6 +194,13 @@ test-lab: tests/test_lab.cpp tests/LabBossRun.h $(HEADERS)
 	mkdir -p build
 	$(CXX) $(CXXFLAGS) tests/test_lab.cpp -o build/test_lab $(STDLIB)
 	./build/test_lab
+
+# Chapter 5: THE COLD STORE (tests/test_cold.cpp)
+.PHONY: test-cold
+test-cold: tests/test_cold.cpp $(HEADERS)
+	mkdir -p build
+	$(CXX) $(CXXFLAGS) tests/test_cold.cpp -o build/test_cold $(STDLIB)
+	./build/test_cold
 
 # Chapter 4: THE BLOOD MOON PLAIN (tests/test_plain.cpp)
 .PHONY: test-plain

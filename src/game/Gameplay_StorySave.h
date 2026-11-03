@@ -2,7 +2,8 @@
 
 inline void GameplayState::saveStoryProgress() {
     if (!story() || g_practice || g_godMode || g_devCam || g_devNoMouse || g_bossRun >= 0
-        || !g_devOverlay.empty() || !level.story.built) return;
+        || !g_devOverlay.empty() || !level.story.built
+        || level.story.chapter >= 5) return;   // (Chapter 5 is not playable from the menu yet: nothing to save)
     StorySave s;
     s.labIntroSeen=labIntro.seen;s.labRoutes=labRoutes;
     s.chapter = level.story.chapter; s.checkpoint = storyCheckpoint;

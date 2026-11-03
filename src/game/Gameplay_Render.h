@@ -732,6 +732,7 @@ inline void GameplayState::render() {
         float realm=laboratory()?(room==7?1.f:room==3||room==8?2.f:room==9?3.f:0.f):0.f;
         skyboxShader.setFloat("uLabRealm",realm);
         skyboxShader.setFloat("uPlain", plain() ? 1.f : 0.f);
+        skyboxShader.setFloat("uCold", cold() ? 1.f : 0.f);
         skyboxShader.setFloat("uMoonLid", plain() ? plainMoonLid() : 0.f);
         float assessment=0;
         if(laboratory() && room==9)for(const auto& enemy:enemies)if(enemy.alive && enemy.type==EnemyType::SUCCESSOR)

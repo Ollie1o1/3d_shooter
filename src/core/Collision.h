@@ -31,7 +31,8 @@ inline float rayBoxHit(glm::vec3 o, glm::vec3 d, const AABB& b) {
 enum class Mat : unsigned char { BRICK, PANEL, ROCK, METAL, CONCRETE,
                                  ADOBE, PLATE, MARBLE, CIRCUIT, BASALT, WOOD,
                                  LIMESTONE, BRASS, CLINIC,
-                                 CINDER };   // CINDER: Chapter 4's cracked plain   // ACT II and FAST
+                                 CINDER,     // CINDER: Chapter 4's cracked plain
+                                 SNOW, ICE };   // Chapter 5: packed snow, clear ice   // ACT II and FAST
 
 struct Wall {
     AABB      box;

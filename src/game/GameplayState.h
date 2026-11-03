@@ -28,6 +28,7 @@
 #include "world/LevelWasteland.h"
 #include "world/LevelLab.h"
 #include "world/LevelPlain.h"
+#include "world/LevelCold.h"
 #include "world/PlainMeteors.h"
 #include "bosses/gleaner/GleanerRig.h"
 #include "bosses/gleaner/TenderRig.h"
@@ -176,6 +177,7 @@ public:
     void gatherLab(std::vector<BoxInstance>& out);
     void renderLabIntro();
     bool wasteland() const { return story() && level.story.chapter==2; }
+    bool cold() const { return story() && level.story.chapter==5; }    // Chapter 5: THE COLD STORE (Gameplay_Cold.h)
     bool plain() const { return story() && level.story.chapter==4; }   // Chapter 4: THE BLOOD MOON PLAIN (Gameplay_Plain.h)
     int trainingLesson = 0, trainingEnemy = 0;
     bool trainingPassed[lessons::COUNT] = {};
@@ -492,6 +494,16 @@ public:
     void gatherGleaner(std::vector<BoxInstance>& out);
     void renderPlainReveal();
     void beginPlain();
+    // Chapter 5 (Gameplay_Cold.h): the dispatch capsules and their contrails
+    struct ColdCapsule { struct Puff { glm::vec3 pos; float born; };
+                         glm::vec3 pos{0.f}, vel{0.f}; float age = 0.f, trailT = 0.f; std::vector<Puff> trail; };
+    std::vector<ColdCapsule> coldCapsules;
+    float coldLaunchT = 0.f, coldShardT = 0.f;
+    int   coldLaunches = 0;
+    void beginCold();
+    void updateCold(float dt);
+    void launchColdCapsule(int k);
+    void gatherCold(std::vector<BoxInstance>& out);
     void updatePlain(float dt);
     void meteorImpact(const MeteorImpact& hit);
     void gatherPlain(std::vector<BoxInstance>& out);
@@ -1311,6 +1323,7 @@ public:
 #include "bosses/successor/Gameplay_Successor.h"
 #include "game/Gameplay_LabDressing.h"
 #include "game/Gameplay_Plain.h"
+#include "game/Gameplay_Cold.h"
 #include "game/Gameplay_Gleaner.h"
 #include "game/Gameplay_GleanerFight.h"
 #include "game/Gameplay_GleanerHands.h"
