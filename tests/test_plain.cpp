@@ -11,6 +11,7 @@
 #include "bosses/gleaner/Tender.h"
 #include "bosses/gleaner/Sieve.h"
 #include "bosses/gleaner/Caller.h"
+#include "bosses/gleaner/Organs.h"
 #include "game/PlainReveal.h"
 #include <algorithm>
 #include <cstdio>
@@ -362,6 +363,46 @@ int main() {
         for (int f = 0; f < 60 * 4; ++f) { d.tick(DT, you, eye); d.events.clear(); }
         CHECK(!d.fighting() && dies == 1 && d.onGroundNow(), "shot enough, the Caller dies, once, and falls onto its ground");
     }
+    // ---- inside it: the organs ----
+    {
+        CrucibleHeart h; h.wake({0, 13, 0}, 0.f);
+        bool swelled = false, flooded = false, valvesShutBefore = true, spat = false;
+        float t = 0.f;
+        for (int f = 0; f < 60 * 12 && !flooded; ++f) {
+            if (h.state != CrucibleHeart::FLOOD) valvesShutBefore &= !h.valvesOpen();
+            h.tick(DT); t += DT;
+            for (auto& e : h.events) { swelled |= e.kind == organ::Event::SWELL; flooded |= e.kind == organ::Event::FLOOD; spat |= e.kind == organ::Event::SPIT; }
+            h.events.clear();
+        }
+        for (int f = 0; f < 60; ++f) { h.tick(DT); h.events.clear(); }
+        CHECK(swelled && flooded && spat && valvesShutBefore && h.valvesOpen(), "the heart beats, spits, swells (the tell), then floods with its valves open");
+        CHECK(h.inSlag({0, 0, 5}) && !h.inSlag({0, 1.8f, 5}), "its flood burns on the floor and not on the islands");
+        float tt = 0.f; glm::vec3 eye{0, 1.7f, 20};
+        int nv = 0; for (int k = 1; k < 3; ++k) if (glm::length(h.valve(k) - eye) < glm::length(h.valve(nv) - eye)) nv = k;
+        int zv = h.ray(eye, glm::normalize(h.valve(nv) - eye), 100.f, tt);
+        int zb = h.ray(h.pos + glm::vec3{0, 20, 0}, {0, -1, 0}, 100.f, tt);   // (down onto its top, clear of the valves round its waist)
+        CHECK(zv == 2 && zb == 0 && CrucibleHeart::zoneMult(2) > 2.9f, "its open valves are its weak point; its body is armoured");
+        CrucibleHeart d = h; int dies = 0; for (int i = 0; i < 300 && d.alive(); ++i) d.hurt(40.f); for (auto& e : d.events) dies += e.kind == organ::Event::DIE;
+        CHECK(!d.alive() && dies == 1, "the heart dies, once");
+
+        BellowsLungs L; L.wake({-16, 6, 22}, {16, 6, 22}, {0, 0, -1}, 0.f);
+        bool gust = false, opened = false;
+        for (int f = 0; f < 60 * 8; ++f) { L.tick(DT); opened |= L.throatOpen(0); for (int k = 0; k < 2; ++k) gust |= glm::length(L.gustAt(k, {L.b[k].pos.x, 0, 5})) > 5.f; L.events.clear(); }
+        CHECK(opened && gust, "the lungs breathe in turn: their throats open, then a gust down the room");
+        BellowsLungs g = L; g.b[0].ph = BellowsLungs::OUT; g.b[0].t = 0.1f;
+        CHECK(glm::length(g.gustAt(0, {-16, 0, 0})) > 10.f && glm::length(g.gustAt(0, {-16, 0, 30})) < 0.01f, "a gust pushes you in front of the bellows, not behind it");
+        BellowsLungs k2 = L; for (int i = 0; i < 100 && k2.alive(); ++i) { k2.hurt(0, 60.f); k2.hurt(1, 60.f); }
+        CHECK(!k2.alive(), "both lungs torn, they stop");
+
+        SortingCore c; c.wake({0, 15, 0});
+        int thrown = 0; bool open = false;
+        for (int f = 0; f < 60 * 8 && !open; ++f) { c.tick(DT); for (auto& e : c.events) { thrown += e.kind == organ::Event::THROW; open |= e.kind == organ::Event::OPEN; } c.events.clear(); }
+        glm::vec3 below{4, 0, 4};
+        int zl = c.ray(below + glm::vec3{0, 1.7f, 0}, glm::normalize(c.lens() - below - glm::vec3{0, 1.7f, 0}), 100.f, tt);
+        CHECK(thrown == 3 && open && c.lensOpen() && zl == 2, "the core throws three bodies, then opens its lens (its weak point)");
+        SortingCore cd = c; for (int i = 0; i < 400 && cd.alive(); ++i) cd.hurt(40.f);
+        CHECK(!cd.alive(), "the core dies");
+    }
     // ---- called meteors ----
     {
         MeteorRain rain; rain.reset(); rain.next = 1e9f;
@@ -409,8 +450,8 @@ int main() {
     {
         StorySave s; s.chapter = 4; s.checkpoint = 2; s.owned = 15; s.grapple = true;
         StorySave back; CHECK(back.parse(s.text()) && back.chapter == 4 && back.checkpoint == 2, "a Chapter 4 checkpoint saves and loads");
-        s.checkpoint = 4; CHECK(back.parse(s.text()) && back.checkpoint == 4, "the last brood checkpoint (the Caller dead) saves");
-        s.checkpoint = 5; CHECK(!back.parse(s.text()), "a Chapter 4 checkpoint past its last phase is rejected");
+        s.checkpoint = 8; CHECK(back.parse(s.text()) && back.checkpoint == 8, "the last checkpoint inside it (the core dead) saves");
+        s.checkpoint = 9; CHECK(!back.parse(s.text()), "a Chapter 4 checkpoint past its last phase is rejected");
         s.chapter = 5; s.checkpoint = 0; CHECK(!back.parse(s.text()), "a chapter that does not exist is rejected");
     }
 

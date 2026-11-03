@@ -88,6 +88,113 @@ inline std::vector<Feature> features() {
 }
 }
 
+// Inside THE GLEANER (Gameplay_GleanerInside.h): three rooms of its foundry climbing up through it, one
+// organ each. They are built far off the plain (the furnace door is a passage, not a place in its body).
+namespace gut {
+inline glm::vec3 O() { return {5200.f, 0.f, 0.f}; }
+// room 0 the Crucible Heart, 1 the Bellows Lungs, 2 the Sorting Core: floor height, half extents, ceiling
+inline float floorY(int r) { static const float F[3] = {0.f, 32.f, 62.f}; return F[r]; }
+inline glm::vec2 half(int r) { static const glm::vec2 H[3] = {{30.f, 30.f}, {34.f, 26.f}, {32.f, 32.f}}; return H[r]; }
+inline float ceilY(int r) { static const float C[3] = {26.f, 58.f, 98.f}; return C[r]; }
+constexpr float ISLAND_H = 1.8f, STEP_H = 0.9f;
+inline glm::vec3 arrive(int r) {   // where you come in: the furnace door's passage, then each shaft's top
+    static const glm::vec3 A[3] = {{0.f, ISLAND_H, 25.f}, {17.f, 32.f, 6.f}, {-24.f, 62.f, 3.f}};   // (clear of the hole the shaft comes up through)
+    return O() + A[r];
+}
+inline float arriveYaw(int r) { static const float Y[3] = {-90.f, 100.f, -8.f}; return Y[r]; }   // (facing its organ)
+// The shaft up out of each room (a column of the furnace's breath, once its organ is dead)
+inline glm::vec3 shaft(int r) { static const glm::vec3 S[3] = {{25.f, 0.f, 12.f}, {-24.f, 32.f, 14.f}, {0.f, 62.f, 0.f}}; return O() + S[r]; }
+constexpr float SHAFT_R = 3.5f;
+inline glm::vec3 heart() { return O() + glm::vec3{0.f, 13.f, -2.f}; }
+inline glm::vec3 bellows(int k) { return O() + glm::vec3{k ? 16.f : -16.f, 32.f + 6.f, 22.f}; }
+inline glm::vec3 blow() { return {0.f, 0.f, -1.f}; }
+inline float grateZ() { return O().z - 19.f; }   // the burning grate at the lungs' far end (z below this)
+inline glm::vec3 core() { return O() + glm::vec3{0.f, 77.f, 0.f}; }
+// The islands in the heart's room (centre, half size), and the pillars that shelter you from the lungs
+inline glm::vec3 island(int k) { float a = 0.5236f + k * 1.0472f; return O() + glm::vec3{std::cos(a) * 17.f, 0.f, std::sin(a) * 17.f - 2.f}; }
+constexpr int ISLANDS = 6;
+constexpr float ISLAND_HALF = 3.4f;
+inline glm::vec3 pillar(int k) { static const glm::vec3 P[4] = {{-10.f, 32.f, 4.f}, {10.f, 32.f, 4.f}, {-22.f, 32.f, -6.f}, {22.f, 32.f, -6.f}}; return O() + P[k]; }
+constexpr float PILLAR_HALF = 2.2f;
+inline glm::vec3 cover(int k) { static const glm::vec3 C[4] = {{-14.f, 62.f, 14.f}, {14.f, 62.f, -14.f}, {16.f, 62.f, 16.f}, {-16.f, 62.f, -16.f}}; return O() + C[k]; }
+inline AABB bounds() { return LevelBuilder::aabb(O().x - 40.f, -10.f, O().z - 40.f, O().x + 40.f, 110.f, O().z + 40.f); }
+inline bool inside(glm::vec3 p) { AABB b = bounds(); return p.x > b.min.x && p.x < b.max.x && p.y > b.min.y && p.y < b.max.y && p.z > b.min.z && p.z < b.max.z; }
+inline int roomAt(glm::vec3 p) { return p.y < floorY(1) - 1.f ? 0 : p.y < floorY(2) - 1.f ? 1 : 2; }
+inline Theme theme() {
+    Theme t = plain::theme();
+    t.zenith = t.horizon = t.ground = {0.05f, 0.012f, 0.008f};
+    t.lightDir = glm::normalize(glm::vec3{0.2f, -1.f, 0.15f}); t.lightColor = {0.7f, 0.25f, 0.1f};
+    t.skyAmb = {0.3f, 0.1f, 0.06f}; t.groundAmb = {0.45f, 0.16f, 0.05f};   // lit from below: the slag
+    t.fogColor = {0.16f, 0.04f, 0.02f}; t.fogDensity = 0.012f;
+    t.stars = 0.f; t.sunSize = 0.f;
+    return t;
+}
+}
+
+// The rooms' walls (iron), the heart's islands, the lungs' pillars and grate, the core's cover
+inline void buildGut(LevelBuilder& b) {
+    using glm::vec3;
+    const vec3 O = gut::O(), iron{0.13f, 0.1f, 0.09f}, rust{0.3f, 0.14f, 0.07f}, slagLit{1.6f, 0.45f, 0.1f};
+    b.mat = Mat::METAL;
+    for (int r = 0; r < 3; ++r) {
+        const float y0 = gut::floorY(r), y1 = gut::ceilY(r);
+        const glm::vec2 h = gut::half(r);
+        const float x0 = O.x - h.x, x1 = O.x + h.x, z0 = O.z - h.y, z1 = O.z + h.y;
+        // the floor, with the shaft from below cut out of it (a ring of plates round it)
+        const vec3 under = r > 0 ? gut::shaft(r - 1) : vec3{0.f, -1000.f, 0.f};
+        const float hole = gut::SHAFT_R + 0.5f;
+        if (r == 0) b.wall(x0, y0 - 2.f, z0, x1, y0, z1, iron);
+        else {
+            b.wall(x0, y0 - 2.f, z0, under.x - hole, y0, z1, iron);
+            b.wall(under.x + hole, y0 - 2.f, z0, x1, y0, z1, iron);
+            b.wall(under.x - hole, y0 - 2.f, z0, under.x + hole, y0, under.z - hole, iron);
+            b.wall(under.x - hole, y0 - 2.f, under.z + hole, under.x + hole, y0, z1, iron);
+        }
+        // walls and the roof (its shaft's mouth cut out of the roof)
+        b.wall(x0 - 2.f, y0, z0 - 2.f, x1 + 2.f, y1, z0, iron);
+        b.wall(x0 - 2.f, y0, z1, x1 + 2.f, y1, z1 + 2.f, iron);
+        b.wall(x0 - 2.f, y0, z0, x0, y1, z1, iron);
+        b.wall(x1, y0, z0, x1 + 2.f, y1, z1, iron);
+        if (r < 2) {
+            const vec3 sh = gut::shaft(r);
+            b.wall(x0, y1, z0, sh.x - hole, y1 + 2.f, z1, rust);
+            b.wall(sh.x + hole, y1, z0, x1, y1 + 2.f, z1, rust);
+            b.wall(sh.x - hole, y1, z0, sh.x + hole, y1 + 2.f, sh.z - hole, rust);
+            b.wall(sh.x - hole, y1, sh.z + hole, sh.x + hole, y1 + 2.f, z1, rust);
+        } else b.wall(x0, y1, z0, x1, y1 + 2.f, z1, rust);   // (the chimney: Gameplay_GleanerInside.h throws you up out of it)
+        // glowing seams in the walls: the furnace's light
+        for (int k = 0; k < 6; ++k) {
+            float u = x0 + (k + 0.5f) * (x1 - x0) / 6.f;
+            b.neon(u - 0.15f, y0 + 2.f, z0 + 0.02f, u + 0.15f, y1 - 2.f, z0 + 0.08f, slagLit * 0.35f);
+            b.neon(u - 0.15f, y0 + 2.f, z1 - 0.08f, u + 0.15f, y1 - 2.f, z1 - 0.02f, slagLit * 0.35f);
+        }
+    }
+    // The heart's room: the entry ledge, six islands round the floor it floods, each with a step up
+    b.wall(O.x - 7.f, 0.f, O.z + 21.f, O.x + 7.f, gut::ISLAND_H, O.z + 30.f, rust);
+    b.wall(O.x - 3.f, 0.f, O.z + 19.f, O.x + 3.f, gut::STEP_H, O.z + 21.f, rust);
+    for (int k = 0; k < gut::ISLANDS; ++k) {
+        vec3 c = gut::island(k);
+        const float hh = gut::ISLAND_HALF;
+        b.wall(c.x - hh, 0.f, c.z - hh, c.x + hh, gut::ISLAND_H, c.z + hh, rust);
+        vec3 toward = glm::normalize(vec3{O.x - c.x, 0.f, O.z - 2.f - c.z});
+        vec3 st = c + toward * (hh + 1.f);
+        b.wall(st.x - 1.2f, 0.f, st.z - 1.2f, st.x + 1.2f, gut::STEP_H, st.z + 1.2f, iron);
+    }
+    // The shaft's foot in the heart's room: a ring of grating round it
+    // The lungs' room: pillars to stand behind, the grate burning at its far end
+    for (int k = 0; k < 4; ++k) {
+        vec3 p = gut::pillar(k);
+        const float ph = gut::PILLAR_HALF;
+        b.wall(p.x - ph, p.y, p.z - ph, p.x + ph, gut::ceilY(1), p.z + ph, iron);
+    }
+    b.neon(O.x - 33.f, 32.02f, O.z - 26.f, O.x + 33.f, 32.1f, gut::grateZ(), slagLit * 0.9f);
+    // The core's room: low walls of sorted bodies' crates to duck behind
+    for (int k = 0; k < 4; ++k) {
+        vec3 c = gut::cover(k);
+        b.wall(c.x - 3.f, c.y, c.z - 1.f, c.x + 3.f, c.y + 1.6f, c.z + 1.f, rust);
+    }
+}
+
 inline LevelData buildPlain() {
     using glm::vec3;
     LevelData l; LevelBuilder b{l}; auto& s = l.story;
@@ -290,6 +397,8 @@ inline LevelData buildPlain() {
         b.kit().arch(base, 220.f - k * 18.f, 260.f - k * 25.f, 14.f, 18.f, scrap * 0.4f, 0.55f);
     }
 
+    buildGut(b);   // (inside the Gleaner: far off the plain)
+
     // ---- the arena ----
     Arena a;
     a.name = "THE BLOOD MOON PLAIN"; a.subtitle = "SOMETHING IS WATCHING";
@@ -299,6 +408,7 @@ inline LevelData buildPlain() {
     a.voidY = -50.f; a.hasRespawn = true; a.respawn = plain::start();
     a.hasTrigger = false; a.scripted = true;
     a.maxAlive = 8; a.damageScale = 1.f;
+    a.extraZones.push_back(gut::bounds());
     a.theme = plain::theme();
     a.ambient = Ambient::EMBERS; a.space = ReverbSpace::OPEN; a.tone = RoomTone::YARD;
     l.arenas.push_back(a);

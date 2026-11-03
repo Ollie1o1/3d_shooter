@@ -235,7 +235,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
         storyGrapple = level.story.startGrapple || (grappleRoom >= 0 && start > grappleRoom);
     }
     // Chapter 4 is one arena with its fight's checkpoints inside it: a start "at" one is that checkpoint
-    if (story() && g_storyChapter == 4 && !resumingStory) storyCheckpoint = std::clamp(g_startArena, 0, 4);
+    if (story() && g_storyChapter == 4 && !resumingStory) storyCheckpoint = std::clamp(g_startArena, 0, 8);
     enterArena(start);
     if (resumingStory) {
         restoreStoryProgress();
@@ -1267,7 +1267,7 @@ inline void GameplayState::updateMusic() {
         const bool before=false;   // (the score is there from the landing: low and far off, rising with it)
         // the approach: the eerie layers (the horn far off); close, the drums start; on its back, everything
         const float flatDist=glm::length(glm::vec2{player.position.x-gleaner.pos.x,player.position.z-gleaner.pos.z});
-        float intensity=gleanerPhase>=GleanerPhase::TENDER&&gleanerPhase<=GleanerPhase::CALLER?1.25f:gleanerPhase>=GleanerPhase::KNEELING?1.05f:flatDist<700.f?.92f:.72f;
+        float intensity=gleanerPhase>=GleanerPhase::TENDER&&gleanerPhase<=GleanerPhase::CALLER?1.25f:gleanerPhase>=GleanerPhase::HEART&&gleanerPhase<=GleanerPhase::CORE?1.2f:gleanerPhase>=GleanerPhase::KNEELING?1.05f:flatDist<700.f?.92f:.72f;
         if(gleaner.screaming())intensity=std::max(intensity,1.f);
         if(plainReveal.active())intensity=plainReveal.time<PlainReveal::RISE0?.4f:plainReveal.time<PlainReveal::SCREAM?.4f+.45f*PlainReveal::sm(PlainReveal::RISE0,PlainReveal::SCREAM,plainReveal.time):1.f;
         if(gleanerPhase==GleanerPhase::BROOD)intensity=.8f;

@@ -655,6 +655,7 @@ inline void GameplayState::renderStoryOverlay(const glm::mat4& viewProj) {
     if(laboratory() && labIntro.active()){renderLabIntro();return;}
     if(plain() && plainReveal.active()){renderPlainReveal();return;}
     if(laboratory() && labEnding.active()){renderLabEndingOverlay();return;}
+    if(plain() && gutWhite>0.001f){ui.begin2D();ui.ui.rect(0,0,SCREEN_W,SCREEN_H,{1.f,.7f,.4f,gutWhite});ui.end2D();}   // (into the Gleaner, out of its chimney: fire)
     using namespace story;
     auto& U = ui.ui;
     const auto& SL = level.story;

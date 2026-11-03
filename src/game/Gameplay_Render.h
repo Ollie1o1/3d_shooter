@@ -608,6 +608,7 @@ inline void GameplayState::render() {
     glm::mat4 view = glm::rotate(glm::mat4(1.f), glm::radians(swordRoll + feelAng.z), glm::vec3{0.f, 0.f, 1.f}) * renderCam.viewMatrix();   // (leaning into a stroke, a strafe, a hit)
     glm::mat4 proj = renderCam.projectionMatrix();
     Theme th = level.themeAt(player.position);
+    if (plain() && insideGleaner()) th = gut::theme();   // (inside it: the foundry's dark and its slag light)
     if (rageBlend > 0.f) th = lerpTheme(th, bloodEclipse(th), rageBlend);
     if (bossDusk > 0.005f && th.eclipse < 0.5f) th = lerpTheme(th, nightfall(th), bossDusk * BOSS_DUSK_MAX);   // (under the eclipse: it burns hotter instead)
     if (th.eclipse > 0.5f && swallow01() > 0.f) th = lerpTheme(th, swallowedOf(th), swallow01());   // MORNINGSTAR: inside the eclipse

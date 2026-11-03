@@ -49,7 +49,8 @@ inline float deckTop() { return furnaceBase().y + 20.f; }
 constexpr float GAP_HALF = 7.f;                                  // the way in through the west parapet (-X)
 inline vec3 chimney(int c) { static const vec3 S[3] = {{-15, 18, -14}, {14, 18, -4}, {-2, 22, 16}}; return furnaceBase() + S[c]; }
 inline float chimneyTall(int c) { static const float H[3] = {62, 54, 70}; return H[c]; }
-constexpr float FRONT_GAP = 9.f;                                 // the way off the roof's front (+Z) once the Tender is dead
+constexpr float FRONT_GAP = 9.f;
+constexpr float DOOR_HX = 2.6f, DOOR_H = 4.f;                    // the furnace door in its face, behind the saddle (half width, height)                                 // the way off the roof's front (+Z) once the Tender is dead
 
 // The saddle: armour bolted across its shoulders, forward of the furnace, a drop below its roof (the Sieve's ground)
 constexpr float SADDLE_Y = 162.f, SADDLE_HX = 26.f, SADDLE_Z0 = -7.8f, SADDLE_Z1 = 32.f;
@@ -70,6 +71,7 @@ struct Look {
     float shedding = 0.f;     // 0..1 rubble pouring off its back (rising out of the plain)
     float vent = 0.f;         // 0..1 the updraft vent in its side, glowing
     bool  frontGap = false;   // the roof's front parapet open (the way down to the saddle)
+    float door = 0.f;         // 0..1 the furnace door in its face, open
 };
 
 inline void draw(std::vector<BoxInstance>& out, const Gleaner& g, const Look& look) {
@@ -155,6 +157,21 @@ inline void draw(std::vector<BoxInstance>& out, const Gleaner& g, const Look& lo
 
     // ---- the saddle: iron plates bolted over its shoulders, its three spines standing through them ----
     {
+        {   // the furnace door in its face: two iron leaves, sliding apart on a mouth of fire
+            const float o = look.door, z = SADDLE_Z0;
+            box(B * T(vec3{0, SADDLE_Y + DOOR_H * 0.5f, z + 0.12f}) * S(vec3{DOOR_HX * 2.f, DOOR_H, 0.1f}), soot, fire * (0.3f + 4.5f * o));   // (just proud of the furnace's face)
+            if (o > 0.f) {   // open: its fire spills out across the saddle, embers on the hot air
+                box(B * T(vec3{0, SADDLE_Y + 0.03f, z + 2.5f}) * S(vec3{DOOR_HX * 2.2f, 0.04f, 5.f}), soot, fire * 1.6f * o);
+                for (int k = 0; k < 24; ++k) {
+                    float u = std::fmod(t * 0.4f + k * 0.0417f * 7.f, 1.f);
+                    vec3 q{std::sin(k * 2.1f) * DOOR_HX * 0.8f, SADDLE_Y + 0.5f + u * DOOR_H * 2.5f, z + 0.5f + u * 6.f + std::sin(k * 1.3f + t) * 0.5f};
+                    box(B * T(q) * S(vec3{0.12f, 0.35f, 0.12f}), vec3{0.f}, fire * 2.2f * (1.f - u) * o);
+                }
+            }
+            for (float s : {-1.f, 1.f})
+                box(B * T(vec3{s * DOOR_HX * (0.5f + 1.f * o), SADDLE_Y + DOOR_H * 0.5f, z + 0.45f}) * S(vec3{DOOR_HX, DOOR_H, 0.5f}), iron * 1.2f, fire * 0.15f);
+            box(B * T(vec3{0, SADDLE_Y + DOOR_H + 0.4f, z + 0.3f}) * S(vec3{DOOR_HX * 2.6f, 0.8f, 0.8f}), rust);   // its lintel
+        }
         const float zc = (SADDLE_Z0 + SADDLE_Z1) * 0.5f, zl = SADDLE_Z1 - SADDLE_Z0;
         box(B * T(vec3{0, SADDLE_Y - 3.f, zc}) * S(vec3{SADDLE_HX * 2.f, 6.f, zl}), iron * 1.05f);
         for (int r = 0; r < 5; ++r)   // the plates overlap like scales; light in the seams between

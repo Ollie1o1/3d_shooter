@@ -119,8 +119,9 @@ public:
         if (countMode(GameMode::STORY) == 0)
             for (int chapter = 1; chapter <= 4; ++chapter) {
                 if (chapter == 4) {   // one arena, its fight's checkpoints inside it
-                    static const char* C4[5] = {"THE ARRIVAL", "ON ITS BACK / THE TENDER", "ITS SHOULDERS / THE SIEVE", "ITS CROWN / THE CALLER", "THE BROOD IS DEAD"};
-                    for (int i = 0; i < 5; ++i) devRows.push_back({"STORY", C4[i], GameMode::STORY, i, 0, 4});
+                    static const char* C4[9] = {"THE ARRIVAL", "ON ITS BACK / THE TENDER", "ITS SHOULDERS / THE SIEVE", "ITS CROWN / THE CALLER", "THE BROOD IS DEAD",
+                                                "INSIDE / THE CRUCIBLE HEART", "INSIDE / THE BELLOWS LUNGS", "INSIDE / THE SORTING CORE", "THE SUMMIT"};
+                    for (int i = 0; i < 9; ++i) devRows.push_back({"STORY", C4[i], GameMode::STORY, i, 0, 4});
                     continue;
                 }
                 LevelData S = chapter == 1 ? buildCradle() : chapter==2?buildWasteland():buildLab();

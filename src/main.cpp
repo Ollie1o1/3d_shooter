@@ -686,7 +686,7 @@ int main(int argc, char* argv[]) {
         if(arg=="--story2") {g_storyChapter=2;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}
         if(arg=="--story3") {g_storyChapter=3;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}
         if(arg=="--story4") {g_storyChapter=4;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}   // Chapter 4: THE BLOOD MOON PLAIN (in progress)
-        if(arg=="--chapter" && i+1<argc)g_storyChapter=std::clamp(std::atoi(argv[++i]),1,3);
+        if(arg=="--chapter" && i+1<argc)g_storyChapter=std::clamp(std::atoi(argv[++i]),1,4);
         if (arg == "--boss" && i + 1 < argc) {   // --boss N: BOSS N (1 the Warden .. 6 MORNINGSTAR), on its own
             g_bossRun = std::clamp(std::atoi(argv[++i]) - 1, 0, BOSS_COUNT - 1);
             g_storyChapter = bossEntry(g_bossRun).chapter;

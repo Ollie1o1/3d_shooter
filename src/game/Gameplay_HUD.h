@@ -175,6 +175,12 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             ui.renderBossBar("THE TENDER", tender.health01(), tender.enraged(), glm::vec3{1.f, 0.45f, 0.15f});
         if (plain() && gleanerPhase == GleanerPhase::SIEVE && sieve.fighting())
             ui.renderBossBar("THE SIEVE", sieve.health01(), sieve.enraged(), glm::vec3{1.f, 0.6f, 0.2f});
+        if (plain() && gleanerPhase == GleanerPhase::HEART && heart.alive())
+            ui.renderBossBar("THE CRUCIBLE HEART", heart.health01(), heart.enraged(), glm::vec3{1.f, 0.35f, 0.15f});
+        if (plain() && gleanerPhase == GleanerPhase::LUNGS && lungs.woke && lungs.alive())
+            ui.renderBossBar("THE BELLOWS LUNGS", lungs.health01(), lungs.b[0].dead || lungs.b[1].dead, glm::vec3{1.f, 0.55f, 0.3f});
+        if (plain() && gleanerPhase == GleanerPhase::CORE && core.alive())
+            ui.renderBossBar("THE SORTING CORE", core.health01(), core.enraged(), glm::vec3{1.f, 0.7f, 0.3f});
         if (plain() && gleanerPhase == GleanerPhase::CALLER && caller.fighting())
             ui.renderBossBar("THE CALLER", caller.health01(), caller.enraged(), glm::vec3{1.f, 0.2f, 0.15f});
         const bool msBar = boss && boss->type == EnemyType::ABSOLUTE && (boss->morning() || boss->abSwallow > 0.f);   // (the swallow: his new bar filling)

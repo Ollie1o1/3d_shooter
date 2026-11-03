@@ -26,7 +26,7 @@ inline void GameplayState::beginGleaner() {
     // never again once seen in a run or saved as seen
     const bool devFight = g_devOverlay == "plainclose" || g_devOverlay == "plaindeck" || g_devOverlay == "plainsaddle" || g_devOverlay == "plaincrown";   // (dev: straight to the fight)
     if (devFight) { wakeSeen = plainRevealDone = true; }
-    const bool reveal = (!wakeSeen || g_practice) && !plainRevealDone && director.arena == 0 && !g_devCam && g_bossRun < 0;
+    const bool reveal = (!wakeSeen || g_practice) && !plainRevealDone && director.arena == 0 && storyCheckpoint == 0 && !g_devCam && g_bossRun < 0;   // (a later checkpoint is past it)
     if (reveal || g_devOverlay.rfind("plainreveal", 0) == 0) {
         gleaner.place(gleanerplace::lair(), 3.14159265f, 0.f);   // lying curled, facing away: the ridge
         gleaner.eyeOpen = gleaner.ribs = 0.f;
@@ -39,6 +39,7 @@ inline void GameplayState::beginGleaner() {
         director.hold = true;
     } else {
         gleaner.place(gleanerplace::lair(), 0.f, 1.f);   // already awake, facing you
+        if (storyCheckpoint > 0) wakeSeen = true;   // (past the arrival: it has been seen)
         gleaner.eyeOpen = 1.f; gleaner.ribs = 0.25f;
         plainReveal = PlainReveal{};
     }
@@ -173,6 +174,7 @@ inline void GameplayState::gatherGleaner(std::vector<BoxInstance>& out) {
     look.watch = player.camera.position;
     look.watching = gleaner.eyeOpen > 0.5f;
     look.frontGap = deckFrontOpen && deckWallsFrom >= 0;
+    look.door = furnaceDoor ? 1.f : 0.f;
     look.vent = gleanerPhase >= GleanerPhase::CLIMB ? 0.7f + 0.3f * std::sin(gameClock * 2.5f) : 0.f;
     look.shedding = gleaner.rise > 0.001f && gleaner.rise < 0.999f ? std::sin(gleaner.rise * 3.14159f) : 0.f;
     gleaner::draw(out, gleaner, look);

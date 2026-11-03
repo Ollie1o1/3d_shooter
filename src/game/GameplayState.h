@@ -33,6 +33,7 @@
 #include "bosses/gleaner/TenderRig.h"
 #include "bosses/gleaner/SieveRig.h"
 #include "bosses/gleaner/CallerRig.h"
+#include "bosses/gleaner/OrgansRig.h"
 #include "game/PlainReveal.h"
 #include "game/LabIntro.h"
 #include "game/LabEnding.h"
@@ -348,14 +349,34 @@ public:
     PlainReveal plainReveal;
     bool  plainRevealDone = false;   // played (or skipped) in this run: a retry never replays it
     // The fight (Gameplay_GleanerFight.h)
-    // (TENDER, SIEVE, CALLER: its brood, one at a time; BROOD: all three dead)
-    enum class GleanerPhase { APPROACH, KNEELING, CLIMB, TENDER, SIEVE, CALLER, BROOD };
+    // (TENDER, SIEVE, CALLER: its brood, one at a time; BROOD: all three dead, its furnace door open;
+    //  HEART, LUNGS, CORE: inside it, its organs; SUMMIT: out of its chimney, onto its back)
+    enum class GleanerPhase { APPROACH, KNEELING, CLIMB, TENDER, SIEVE, CALLER, BROOD, HEART, LUNGS, CORE, SUMMIT };
     GleanerPhase gleanerPhase = GleanerPhase::APPROACH;
     bool  gleanerFightStarted = false;
     float calledMeteorCd = 6.f, riverBurnCd = 0.f;
     Tender tender;
     Sieve  sieve;
     Caller caller;
+    // Inside it (Gameplay_GleanerInside.h)
+    CrucibleHeart heart;
+    BellowsLungs lungs;
+    SortingCore core;
+    int   gutBoostersFrom = -1, gutShaftOpen = -1;
+    float gutBurnCd = 0.f, gutWhite = 0.f;
+    bool  furnaceDoor = false;   // the furnace door in the face behind the saddle, open (the back's walls were built with it)
+    bool insideGleaner() const;
+    void placeInGut(int room);
+    void openGutShaft(int room);
+    void clearGutShafts();
+    void enterGut();
+    void gutShaftThrow();
+    void gutThrow(glm::vec3 from, float speed, float dmg, glm::vec3 col, float size, float parry);
+    bool gutReturned(const organ::Box& b, float& dmg);
+    void updateGut(float dt);
+    bool shootOrgan(glm::vec3 o, glm::vec3 d, float& nearest, float dmg, int w, bool splinter);
+    bool organSplinterPoint(glm::vec3& at) const;
+    void gatherGut(std::vector<BoxInstance>& out);
     float sieveBurnCd = 0.f, broodCallCd = 0.f, callerClangCd = 0.f, broodWakeIn = -1.f;
     bool  sieveForged = false;       // the meteor it comes out of has been called down
     int   deckWallsFrom = -1, deckBoostersFrom = -1;
@@ -1208,4 +1229,5 @@ public:
 #include "game/Gameplay_Plain.h"
 #include "game/Gameplay_Gleaner.h"
 #include "game/Gameplay_GleanerFight.h"
+#include "game/Gameplay_GleanerInside.h"
 #include "game/Gameplay_LabEnding.h"

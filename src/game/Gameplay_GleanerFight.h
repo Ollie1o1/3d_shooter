@@ -38,7 +38,11 @@ inline const char* GameplayState::gleanerPhaseName() const {
         case GleanerPhase::TENDER:   return "THE TENDER / IT KEEPS THE FURNACE";
         case GleanerPhase::SIEVE:    return sieve.state == Sieve::DORMANT ? "DROP OFF THE ROOF'S FRONT / ONTO ITS SHOULDERS" : "THE SIEVE / ITS HEART SHOWS FROM BELOW";
         case GleanerPhase::CALLER:   return !deckCrown ? "IT REARS ITS HEAD" : caller.state == Caller::DORMANT ? "CROSS ITS NECK / ONTO ITS CROWN" : "THE CALLER / ITS LAMP SHOWS FROM BELOW";
-        default:                     return "THE BROOD IS DEAD / ITS FURNACE DOOR OPENS";
+        case GleanerPhase::BROOD:    return "THE BROOD IS DEAD / ITS FURNACE DOOR IS OPEN, BEHIND THE SADDLE";
+        case GleanerPhase::HEART:    return "ITS CRUCIBLE HEART / SHOOT ITS VALVES WHILE IT FLOODS";
+        case GleanerPhase::LUNGS:    return lungs.woke ? "ITS BELLOWS LUNGS / SHOOT THEIR THROATS AS THEY BREATHE IN" : "UP THE SHAFT / ITS LUNGS";
+        case GleanerPhase::CORE:     return core.state != SortingCore::DORMANT ? "ITS SORTING CORE / PUNCH BACK WHAT IT THROWS" : "UP THE SHAFT / ITS CORE";
+        default:                     return "THE SUMMIT / ITS EYE (NOT BUILT YET)";
     }
 }
 
@@ -106,7 +110,16 @@ inline void GameplayState::buildGleanerDeck() {
         wall(a.x, y - 6.f, a.y, b.x, y, b.y);
         wall(a.x - t, y, a.y, a.x, y + ph, b.y);
         wall(b.x, y, a.y, b.x + t, y + ph, b.y);
-        wall(a.x, y, a.y - t, b.x, top - 6.f, a.y);   // the furnace's face, up to the roof
+        furnaceDoor = gleanerPhase == GleanerPhase::BROOD;
+        if (!furnaceDoor) wall(a.x, y, a.y - t, b.x, top - 6.f, a.y);   // the furnace's face, up to the roof
+        else {   // its door open: a mouth of fire in the face
+            const float dw = gleaner::DOOR_HX * K, dh = gleaner::DOOR_H * K;
+            wall(a.x, y, a.y - t, sx - dw, top - 6.f, a.y);
+            wall(sx + dw, y, a.y - t, b.x, top - 6.f, a.y);
+            wall(sx - dw, y + dh, a.y - t, sx + dw, top - 6.f, a.y);
+            wall(sx - dw, y - 1.f, a.y - 12.f, sx + dw, y, a.y);   // (the threshold: floor into it)
+            wall(sx - dw - 1.f, y, a.y - 12.f, sx - dw, y + dh, a.y); wall(sx + dw, y, a.y - 12.f, sx + dw + 1.f, y + dh, a.y);
+        }
         if (!deckCrown) wall(a.x, y, b.y, b.x, y + ph, b.y + t);
         else { wall(a.x, y, b.y, sx - nh, y + ph, b.y + t); wall(sx + nh, y, b.y, b.x, y + ph, b.y + t); }
         for (int i = 0; i < 3; ++i) {   // its spines, standing through the plates: pillars to fight round
@@ -186,7 +199,8 @@ inline void GameplayState::resetGleanerFight(bool fresh) {
     if (fresh && g_devOverlay == "plaindeck") storyCheckpoint = std::max(storyCheckpoint, 1);     // --overlay plaindeck: on its back, the Tender waking
     if (fresh && g_devOverlay == "plainsaddle") storyCheckpoint = std::max(storyCheckpoint, 2);   // --overlay plainsaddle: on its shoulders, the Sieve coming
     if (fresh && g_devOverlay == "plaincrown") storyCheckpoint = std::max(storyCheckpoint, 3);    // --overlay plaincrown: its head up, the Caller coming
-    if (fresh) gleanerPhase = storyCheckpoint >= 4 ? GleanerPhase::BROOD : storyCheckpoint >= 3 ? GleanerPhase::CALLER : storyCheckpoint >= 2 ? GleanerPhase::SIEVE
+    if (fresh) gleanerPhase = storyCheckpoint >= 8 ? GleanerPhase::SUMMIT : storyCheckpoint >= 7 ? GleanerPhase::CORE : storyCheckpoint >= 6 ? GleanerPhase::LUNGS
+                            : storyCheckpoint >= 5 ? GleanerPhase::HEART : storyCheckpoint >= 4 ? GleanerPhase::BROOD : storyCheckpoint >= 3 ? GleanerPhase::CALLER : storyCheckpoint >= 2 ? GleanerPhase::SIEVE
                             : storyCheckpoint >= 1 ? GleanerPhase::TENDER : GleanerPhase::APPROACH;
     if (fresh && g_devOverlay == "plainclose") {   // --overlay plainclose: it waits at its mark, you a few hundred metres off
         gleaner.place(gleanerplace::battleMark(), 0.f, 1.f); gleaner.eyeOpen = 1.f;
@@ -195,6 +209,7 @@ inline void GameplayState::resetGleanerFight(bool fresh) {
     }
     calledMeteorCd = 6.f; riverBurnCd = 0.f; sieveBurnCd = 0.f; broodCallCd = 12.f; callerClangCd = 0.f;
     sieve = Sieve{}; caller = Caller{}; sieveForged = false; broodWakeIn = -1.f;
+    heart = CrucibleHeart{}; lungs = BellowsLungs{}; core = SortingCore{}; gutBurnCd = 0.f; gutWhite = 0.f;
     gleaner.headHold = 0.f;
     if (gleanerPhase <= GleanerPhase::KNEELING) {
         gleanerPhase = GleanerPhase::APPROACH;
@@ -209,10 +224,18 @@ inline void GameplayState::resetGleanerFight(bool fresh) {
     if (gleanerPhase > GleanerPhase::TENDER) tender = Tender{};
     buildGleanerDeck();
     if (gleanerPhase == GleanerPhase::CLIMB) return;
+    clearGutShafts();
+    if (gleanerPhase >= GleanerPhase::HEART && gleanerPhase <= GleanerPhase::CORE) {   // inside it: at the foot of its room
+        int room = (int)gleanerPhase - (int)GleanerPhase::HEART;
+        for (int r = 0; r < room; ++r) openGutShaft(r);
+        placeInGut(room);
+        if (room == 0) heart.wake(gut::heart(), gut::floorY(0));
+        return;
+    }
     const bool caller0 = gleanerPhase >= GleanerPhase::CALLER;
-    player.position = gleanerPhase == GleanerPhase::TENDER ? deckCheckpoint() : caller0 ? crownCheckpoint() : saddleCheckpoint();
+    player.position = gleanerPhase == GleanerPhase::TENDER || gleanerPhase == GleanerPhase::SUMMIT ? deckCheckpoint() : caller0 ? crownCheckpoint() : saddleCheckpoint();
     player.velocity = {0.f, 0.f, 0.f};
-    player.camera.yaw = gleanerPhase == GleanerPhase::TENDER ? 0.f : 90.f; player.camera.pitch = 0.f;   // (into the roof; on ahead toward its head)
+    player.camera.yaw = gleanerPhase == GleanerPhase::TENDER || gleanerPhase == GleanerPhase::SUMMIT ? 0.f : gleanerPhase == GleanerPhase::BROOD ? -90.f : 90.f; player.camera.pitch = 0.f;   // (into the roof; on toward its head; back to its furnace door)
     player.camera.position = player.position + glm::vec3{0.f, 1.7f, 0.f}; prevCamPos = player.camera.position;
     if (gleanerPhase == GleanerPhase::TENDER) wakeTender();
 }
@@ -226,7 +249,7 @@ inline void GameplayState::updraftThrow() {
     const float G = -24.f;   // (Player's gravity: a launched player falls at it)
     // (fallen off its back mid-fight: the vent throws you back to wherever the fight is)
     glm::vec3 target = gleanerPhase == GleanerPhase::SIEVE ? saddleCheckpoint()
-                     : gleanerPhase >= GleanerPhase::CALLER ? crownCheckpoint() : deckCheckpoint() + glm::vec3{4.f, 0.f, 0.f};
+                     : gleanerPhase >= GleanerPhase::CALLER && gleanerPhase <= GleanerPhase::BROOD ? crownCheckpoint() : deckCheckpoint() + glm::vec3{4.f, 0.f, 0.f};
     const float T = std::clamp(glm::length(glm::vec2{target.x - p.x, target.z - p.z}) / 45.f, 2.2f, 4.f);
     glm::vec3 d = target - p;
     player.velocity = {d.x / T, (d.y - 0.5f * G * T * T) / T, d.z / T};
@@ -338,8 +361,22 @@ inline void GameplayState::updateGleanerFight(float dt) {
         }
         if (caller.state != Caller::DORMANT) updateCaller(dt);
         break;
-    case GleanerPhase::BROOD:
+    case GleanerPhase::BROOD: {
         if (caller.state == Caller::DEAD) updateCaller(dt);   // (it falls the rest of the way)
+        if (!furnaceDoor && !gleaner.screaming()) {   // it slumps; its furnace door grinds open
+            buildGleanerDeck();
+            gleanerSound("gleaner_groan", gleaner.toWorld(gleaner::furnaceBase()), 1.f, 0.f);
+            shake(1.5f, 0.03f);
+            pushBanner("IT SLUMPS", "ITS FURNACE DOOR GRINDS OPEN, BEHIND THE SADDLE: INTO IT", {1.f, 0.45f, 0.2f}, 4.5f);
+        }
+        // Into the door's mouth: inside
+        const glm::vec3 p = player.position;
+        const float sx = (saddleLo.x + saddleHi.x) * 0.5f;
+        if (furnaceDoor && std::abs(p.x - sx) < gleaner::DOOR_HX * Gleaner::SCALE && p.z < saddleLo.y - 4.f && p.z > saddleLo.y - 12.f && std::abs(p.y - saddleY) < 3.f) enterGut();
+        break;
+    }
+    case GleanerPhase::HEART: case GleanerPhase::LUNGS: case GleanerPhase::CORE: case GleanerPhase::SUMMIT:
+        updateGut(dt);
         break;
     default: break;
     }
@@ -582,6 +619,7 @@ inline bool GameplayState::parryCaller() {
 inline bool GameplayState::shootBrood(glm::vec3 o, glm::vec3 d, float& nearest, float dmg, int w, bool splinter) {
     if (!plain()) return false;
     if (gleanerPhase == GleanerPhase::TENDER) return shootTender(o, d, nearest, dmg, w);
+    if (gleanerPhase >= GleanerPhase::HEART) return shootOrgan(o, d, nearest, dmg, w, splinter);
     float t = 0.f;
     if (gleanerPhase == GleanerPhase::SIEVE && sieve.fighting()) {
         int zone = sieve.ray(o, d, nearest, t, splinter);
@@ -619,6 +657,7 @@ inline bool GameplayState::shootBrood(glm::vec3 o, glm::vec3 d, float& nearest, 
 // The brood's weak point, for a SPLINTER: the Tender's lip while it pours (else its head), the Sieve's heart, the Caller's lamp
 inline bool GameplayState::broodSplinterPoint(glm::vec3& at) const {
     if (!plain()) return false;
+    if (gleanerPhase >= GleanerPhase::HEART) return organSplinterPoint(at);
     if (gleanerPhase == GleanerPhase::TENDER && tender.fighting()) {
         if (tender.lipOpen()) { at = tender.lipPoint(); return true; }
         Tender::Box h = tender.headBox();
@@ -638,7 +677,8 @@ inline void GameplayState::gatherGleanerFight(std::vector<BoxInstance>& out) {
         tenderrig::drawRiver(out, tender, ball);
     }
     if (gleanerPhase >= GleanerPhase::SIEVE) sieverig::draw(out, sieve, ball);
-    if (gleanerPhase >= GleanerPhase::CALLER) callerrig::draw(out, caller, ball);
+    if (gleanerPhase >= GleanerPhase::CALLER && gleanerPhase <= GleanerPhase::BROOD) callerrig::draw(out, caller, ball);
+    if (gleanerPhase >= GleanerPhase::HEART) gatherGut(out);
     // Called meteors: a ring of fire on the ground where each will land, tightening as it comes
     for (const auto& m : meteors.pool) {
         if (!m.alive || !m.called) continue;

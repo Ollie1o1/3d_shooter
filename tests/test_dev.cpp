@@ -510,6 +510,70 @@ static void checkGleanerFightRuntime(AudioSystem& audio) {
         CHECK(!game.caller.fighting() && lampHits>0 && game.gleanerPhase==GameplayState::GleanerPhase::BROOD && game.storyCheckpoint>=4,"real shots at its lamp kill the Caller: the brood is dead");
         game.retryArena();
         CHECK(game.gleanerPhase==GameplayState::GleanerPhase::BROOD && game.onGleanerBack(),"a retry after the brood keeps you on the Gleaner's back");
+        // Its furnace door, and inside it: the heart, the lungs, the core, and out of its chimney
+        using GP=GameplayState::GleanerPhase;
+        for(int f=0;f<60*10&&!game.furnaceDoor;++f)game.physicsTick(1.f/60,noKeys,false);
+        CHECK(game.furnaceDoor,"its brood dead, it slumps and its furnace door opens behind the saddle");
+        const float sx=(game.saddleLo.x+game.saddleHi.x)*.5f;
+        bool in=walkTo({sx,game.saddleY,game.saddleLo.y-10.f},60*40,[&]{return game.gleanerPhase==GP::HEART;});
+        CHECK(in && game.insideGleaner() && game.storyCheckpoint>=5,"walk in through its furnace door: inside it");
+        auto aimFire=[&](glm::vec3 at){
+            glm::vec3 d=glm::normalize(at-game.player.camera.position);
+            game.player.camera.yaw=glm::degrees(std::atan2(d.z,d.x));game.player.camera.pitch=glm::degrees(std::asin(d.y));
+            game.activeWeapon=0;game.weapons[0].ammo=8;game.weapons[0].cooldown=0;game.fireWeapon(0);
+        };
+        auto rideShaft=[&](int r,auto until){   // walk into the shaft's column, then let it carry you (real physics)
+            glm::vec3 sh=gut::shaft(r);
+            for(int f=0;f<60*30;++f){
+                if(until())return true;
+                glm::vec3 d=sh-game.player.position;d.y=0;
+                std::fill(std::begin(keys),std::end(keys),0);
+                if(glm::length(d)>1.2f && game.player.onGround && game.player.position.y<gut::floorY(r)+3.f){game.player.camera.yaw=glm::degrees(std::atan2(d.z,d.x));keys[SDL_SCANCODE_W]=1;}
+                game.physicsTick(1.f/60,keys,false);
+            }
+            return until();
+        };
+        {
+            for(int f=0;f<60*2;++f)game.physicsTick(1.f/60,noKeys,false);
+            glm::vec3 d=glm::normalize(game.heart.pos-game.player.camera.position);
+            game.player.camera.yaw=glm::degrees(std::atan2(d.z,d.x));game.player.camera.pitch=glm::degrees(std::asin(d.y));
+            game.prevCamPos=game.player.camera.position;game.render();screenshot("build/gleaner-heart.bmp");
+        }
+        int frames2=0,valveHits=0;
+        while(game.heart.alive()&&frames2<60*120){
+            game.physicsTick(1.f/60,noKeys,false);++frames2;
+            if(frames2%6==0&&game.heart.valvesOpen()){
+                int nv=0;for(int k=1;k<3;++k)if(glm::length(game.heart.valve(k)-game.player.camera.position)<glm::length(game.heart.valve(nv)-game.player.camera.position))nv=k;
+                float hp=game.heart.hp;aimFire(game.heart.valve(nv));if(hp-game.heart.hp>100.f)++valveHits;
+            }
+        }
+        tick(.1f);
+        std::printf("      heart: down in %.1f s, %d valve hits, %d floods\n",frames2/60.f,valveHits,game.heart.floods);
+        CHECK(!game.heart.alive() && valveHits>0 && game.gleanerPhase==GP::LUNGS && game.storyCheckpoint>=6,"shots at its valves while it floods kill its heart");
+        bool up=rideShaft(0,[&]{return gut::roomAt(game.player.position)==1&&game.player.onGround;});
+        CHECK(up && game.lungs.woke,"the shaft of its breath carries you up into its lungs");
+        frames2=0;int throatHits=0;
+        while(game.lungs.alive()&&frames2<60*120){
+            game.physicsTick(1.f/60,noKeys,false);++frames2;
+            for(int k=0;k<2&&frames2%6==0;++k)if(game.lungs.throatOpen(k)){float hp=game.lungs.b[k].hp;aimFire(game.lungs.throat(k));if(hp-game.lungs.b[k].hp>100.f)++throatHits;break;}
+        }
+        tick(.1f);
+        std::printf("      lungs: down in %.1f s, %d throat hits\n",frames2/60.f,throatHits);
+        CHECK(!game.lungs.alive() && game.gleanerPhase==GP::CORE && game.storyCheckpoint>=7,"shots into their throats as they breathe in tear its lungs");
+        up=rideShaft(1,[&]{return gut::roomAt(game.player.position)==2&&game.player.onGround;});
+        CHECK(up && game.core.alive(),"up the next shaft to its sorting core");
+        frames2=0;int lensHits=0;
+        while(game.core.alive()&&frames2<60*120){
+            game.physicsTick(1.f/60,noKeys,false);++frames2;
+            if(frames2%6==0&&game.core.lensOpen()){float hp=game.core.hp;aimFire(game.core.lens());if(hp-game.core.hp>100.f)++lensHits;}
+        }
+        tick(.1f);
+        std::printf("      core: down in %.1f s, %d lens hits\n",frames2/60.f,lensHits);
+        CHECK(!game.core.alive() && game.gleanerPhase==GP::SUMMIT && game.storyCheckpoint>=8,"shots into its open lens stop its core");
+        bool out=rideShaft(2,[&]{return game.onGleanerDeck()&&game.player.onGround;});
+        CHECK(out && !game.insideGleaner(),"its chimney throws you up and out onto its back");
+        game.retryArena();
+        CHECK(game.gleanerPhase==GP::SUMMIT && game.onGleanerDeck(),"a retry after its core keeps you on its back");
     }
     g_godMode=false;g_practice=false;g_storyChapter=1;
 }
@@ -609,28 +673,28 @@ int main() {
                         selected.storyChapter == row.chapter && selected.wave == 0 && selected.practice && selected.god;
             (row.chapter == 4 ? plainPhases : checkpoints).push_back(selected);
         }
-        CHECK(keyboard && checkpoints.size() == 27 && plainPhases.size() == 5, "all 27 checkpoints and Chapter 4's five launch the correct chapter and room with practice/god flags");
+        CHECK(keyboard && checkpoints.size() == 27 && plainPhases.size() == 9, "all 27 checkpoints and Chapter 4's nine launch the correct chapter and room with practice/god flags");
         CHECK(menu.devScroll[2] > 0, "keyboard navigation reveals the later Chapter 2 checkpoints");
         menu.render(); screenshot("build/dev-story-menu-scrolled.bmp");
         // The last checkpoint is at the bottom of the visible Story column.
         SDL_Event click{}; click.type = SDL_MOUSEBUTTONDOWN; click.button.button = SDL_BUTTON_LEFT;
         click.button.x = 1000; click.button.y = 232 + 10 * 34;
         int before = starts; menu.handleEvent(click);
-        CHECK(starts == before + 1 && selected.storyChapter == 4 && selected.arena == 4,
+        CHECK(starts == before + 1 && selected.storyChapter == 4 && selected.arena == 8,
               "mouse activation uses the scrolled checkpoint rather than a hidden row");
         {   // Chapter 4's rows: each starts its fight at that checkpoint
             using P = GameplayState::GleanerPhase;
-            const P want[5] = {P::APPROACH, P::TENDER, P::SIEVE, P::CALLER, P::BROOD};
+            const P want[9] = {P::APPROACH, P::TENDER, P::SIEVE, P::CALLER, P::BROOD, P::HEART, P::LUNGS, P::CORE, P::SUMMIT};
             bool phases = true;
             for (const auto& o : plainPhases) {
                 g_storyChapter = 4; g_startArena = o.arena; g_startWave = 0; g_practice = o.practice; g_godMode = o.god;
                 auto game = std::make_unique<GameplayState>(audio, nullptr, GameMode::STORY);
                 bool ok = game->plain() && game->storyCheckpoint == o.arena && game->gleanerPhase == want[o.arena] &&
-                          (o.arena == 0 ? game->plainReveal.active() : game->onGleanerBack());
+                          (o.arena == 0 ? game->plainReveal.active() : o.arena >= 5 && o.arena <= 7 ? game->insideGleaner() : game->onGleanerBack());
                 if (!ok) std::printf("      4.%d: phase %d checkpoint %d\n", o.arena + 1, (int)game->gleanerPhase, game->storyCheckpoint);
                 phases &= ok;
             }
-            CHECK(phases, "Chapter 4's dev rows start the arrival, the Tender, the Sieve, the Caller and the brood's end");
+            CHECK(phases, "Chapter 4's dev rows start each of its fight's checkpoints, outside it and in");
             g_storyChapter = 1; g_startArena = 0;
         }
         menu.devSel = 0; press(menu, SDLK_RETURN);

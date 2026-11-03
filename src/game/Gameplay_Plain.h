@@ -36,7 +36,9 @@ inline void GameplayState::updatePlain(float dt) {
     player.camera.farPlane = plain::FAR_PLANE;   // (a retry makes a fresh camera)
     if (plainReveal.active()) updatePlainReveal(dt);
     // The plain's air: a hot wind that never drops, rising on its back (hundreds of metres up)
-    audio.setWind(playerDead ? 0.f : onGleanerBack() ? 0.6f : 0.32f + 0.08f * std::sin(gameClock * 0.21f));
+    const bool inGut = insideGleaner();
+    audio.setWind(playerDead ? 0.f : inGut ? 0.08f : onGleanerBack() ? 0.6f : 0.32f + 0.08f * std::sin(gameClock * 0.21f));
+    if (inGut) meteors.next = std::max(meteors.next, 1.f);   // (no sky in here: none fall while you are inside it)
     updateGleaner(dt);
     meteors.tick(dt, player.position, meteorHits);
     for (const auto& hit : meteorHits) meteorImpact(hit);
@@ -60,7 +62,7 @@ inline void GameplayState::updatePlain(float dt) {
 
     // Walking out of the playable square: the zone keeps you in; say why once
     const glm::vec3 p = player.position;
-    if (!plainEdgeWarned && (std::abs(p.x) > plain::HALF - 25.f || std::abs(p.z) > plain::HALF - 25.f)) {
+    if (!plainEdgeWarned && !insideGleaner() && (std::abs(p.x) > plain::HALF - 25.f || std::abs(p.z) > plain::HALF - 25.f)) {
         plainEdgeWarned = true;
         ui.feed("NOTHING OUT THERE BUT MORE OF THIS", {1.f, 0.45f, 0.3f});
     }

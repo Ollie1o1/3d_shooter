@@ -357,3 +357,31 @@ time, never three at once. The Gleaner keeps a slow background pressure
     (`plainPos`). The lab tracks use `HumanChoir` (16 singers: detune, drift,
     late vibrato, scoops, breath, five formants, stereo spread), and
     OBSERVATION is now a 160 BPM breakbeat.
+- **Inside it (fifth pass, 2026-11-02):** `src/bosses/gleaner/Organs.h`
+  (logic), `OrgansRig.h` (drawing), `src/game/Gameplay_GleanerInside.h`, and
+  the rooms in `LevelPlain.h` (`gut::`, `buildGut`: far off the plain at x
+  5200, their own dark foundry theme, no meteors in there).
+  - BROOD: the Caller dead, it slumps and the **furnace door** in the face
+    behind the saddle opens (walls rebuilt with a doorway, fire and embers
+    spilling out). Walk in: inside (checkpoint 5, "EVERY ONE OF THEM FELT
+    LIKE YOU.").
+  - **THE CRUCIBLE HEART** (2400 HP): hangs on its arteries and beats. It spits
+    slag (punch it back), swells (the floor glows: the tell), then floods the
+    floor 1.2 m deep for 4.6 s; stand on the six islands (1.8 m, a 0.9 m
+    step each). While it floods its three valves are open (x3), the body
+    x0.3. Dead: a shaft of breath opens in the corner (checkpoint 6).
+  - **THE BELLOWS LUNGS** (1500 HP each): on the south wall, breathing in
+    turn. In: the throat opens (x3). Hold: a hiss. Out: a gust down the room
+    toward the burning grate at the north end; the four pillars shelter you.
+    Both dead: the next shaft (checkpoint 7).
+  - **THE SORTING CORE** (3000 HP): a drum of hooks and bodies. It throws
+    three bodies (four when enraged; punch them back for 350 and its lens
+    opens), then opens its lens underneath (x3) while it sorts. Dead: the
+    chimney (checkpoint 8, SUMMIT). It throws you up and out onto the
+    furnace roof. The summit duel itself is next.
+  - Shafts: boosters, then a scripted arc onto the next room's floor (clear
+    of the hole you came up through).
+  - Dev: rows 4.6–4.9, or `--story --chapter 4 --arena 6..9`.
+  - Tests: organ logic in `make test-plain`. `checkGleanerFightRuntime`
+    walks in the door, kills each organ at its weak point, rides each shaft
+    and the chimney, all with real physics.
