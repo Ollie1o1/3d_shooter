@@ -31,7 +31,7 @@ struct Walk {
         p.dynWalls = l.moverWalls.data(); p.dynCount = (int)l.moverWalls.size();
         p.floorY = l.baseFloor(p.position.x, p.position.z);
         p.update(DT, keys, l.walls.data(), (int)l.walls.size(), false, &grid);
-        std::vector<const AABB*> zones; for (auto& a : l.arenas) zones.push_back(&a.zone);
+        std::vector<const AABB*> zones; for (auto& a : l.arenas) { zones.push_back(&a.zone); for (auto& z : a.extraZones) zones.push_back(&z); }   // (as the game does)
         constrainToZones(p.position, p.velocity, p.height, zones, true);
     }
     bool to(glm::vec3 goal, bool mayJump = false, int frames = 9000, float tol = 1.f) {
@@ -51,7 +51,7 @@ int main() {
 
     // ---- the level ----
     CHECK(L.story.built && L.story.chapter == 5 && std::string(L.story.title) == "THE COLD STORE", "Chapter 5 builds as THE COLD STORE");
-    CHECK(L.arenas.size() == 5 && A.hasRespawn && A.voidY > cold::VOID_FLOOR + 100.f, "five sections; falling into the Void respawns you long before its floor");
+    CHECK(L.arenas.size() == 7 && A.hasRespawn && A.voidY > cold::VOID_FLOOR + 100.f, "seven sections; falling into the Void respawns you long before its floor");
     const glm::vec3 s = cold::start();
     CHECK(L.baseFloor(s.x, s.z) == 0.f, "the arrival stands on the shelf");
     bool clearStart = true;
@@ -63,7 +63,7 @@ int main() {
     // ---- the lip ----
     bool lip = true, zoneOver = true, ragged = false;
     float lo = 1e9f, hi = -1e9f;
-    for (float x = -cold::HALF_X + 1.5f; x < cold::HALF_X; x += 7.f) {   // (off the strips' boundary lines, where either side may answer)
+    for (float x = -cold::HALF_X + 1.5f; x < std::min(cold::HALF_X, cold::SEA_X0 - 1.f); x += 7.f) {   // (off the strips' boundary lines, where either side may answer)
         float ez = cold::edgeZ(x);
         lo = std::min(lo, ez); hi = std::max(hi, ez);
         lip &= L.baseFloor(x, ez + 0.5f) == 0.f && L.baseFloor(x, ez - 0.5f) == cold::VOID_FLOOR;
@@ -127,8 +127,17 @@ int main() {
         CHECK(inside && w.p.position.y > -0.5f, "through the Thaw Room and Inventory into Rack 24, on the tower's floor");
         bool reach = inside && w.to({cold::rackSlot(0).x + 2.2f, 0.f, cold::rackSlot(0).z}, true);
         CHECK(reach && glm::length(w.p.camera.position - cold::recallAt()) < Interactable::INTERACT_RANGE, "24-A's RECALL module is within reach from the aisle");
-        bool end = reach && w.to({cold::HOOK_X, 0.f, R.story.end.max.z - 1.f}, true);
-        CHECK(end, "and on to the shut door at the back, where the chapter so far ends");
+        // Out of the back door, over the transfer bridge to the Blast Chillers, across its decks
+        bool chill = reach && w.to({cold::HOOK_X, 0.f, cold::TOWER_BACK - 4.f}, true) && w.to({cold::HOOK_X, 0.f, -830.f}, true)
+                  && w.to(cold::chiller(0).c, true) && w.to(cold::chiller(1).c, true, 9000, 0.8f) && w.to(cold::chiller(2).c, true, 9000, 0.8f);
+        CHECK(chill && w.p.position.y > -0.5f, "out of Rack 24's back door, over the transfer bridge and across the three cooling-tower decks");
+        bool sea = chill && w.to({cold::chiller(2).c.x + 20.f, 0.f, -830.f}, true) && w.to(cold::seaStart(), true);
+        CHECK(sea && R.arenaAt(w.p.position) == 6, "through the Chillers' gate and onto the frozen sea");
+        bool end = sea && w.to(cold::station() + glm::vec3{0.f, 0.f, 2.f}, true);
+        float y = w.p.position.y;
+        CHECK(end && y > 0.3f, "across the ice and up onto the far shore's station, where the chapter so far ends");
+        bool inEnd = end && w.p.position.x > R.story.end.min.x && w.p.position.x < R.story.end.max.x && w.p.position.z > R.story.end.min.z && w.p.position.z < R.story.end.max.z;
+        CHECK(inEnd, "...inside its end box");
         // The rooms' spawns are on open floor, and enemies find the tower's floor, not the Void's
         bool open = true;
         for (auto& a : R.arenas) for (auto& wave : a.waves) for (auto& e : wave) for (auto q : e.at) {
@@ -138,6 +147,19 @@ int main() {
                 { open = false; std::printf("  blocked %s at %.1f %.1f %.1f\n", statsOf(e.type).name, q.x, q.y, q.z); break; }
         }
         CHECK(open, "every placed spawn in the route stands clear of walls");
+        bool cycle = true;
+        for (int v = 0; v < cold::VENTS; ++v) {
+            int prev = cold::ventState(v, 0.f), tells = 0, blasts = 0; bool told = prev == 1, ok = true;
+            for (float t = 0.01f; t < cold::VENT_PERIOD * 3.f; t += 0.01f) {
+                int st = cold::ventState(v, t);
+                if (st == 1 && prev != 1) { ++tells; told = true; }
+                if (st == 2 && prev != 2) { ++blasts; ok &= told && prev == 1; told = false; }
+                prev = st;
+            }
+            cycle &= ok && tells >= 2 && blasts >= 2;
+        }
+        CHECK(cycle, "every Blast Chiller vent tells (red) before each freezing blast, every cycle");
+        CHECK(R.baseFloor(500.f, -900.f) == 0.f && R.baseFloor(cold::SEA_X0 - 20.f, -900.f) == cold::VOID_FLOOR, "the frozen sea holds you up; just west of it is still the Void");
         CHECK(R.baseFloor(-40.f, -620.f) == 0.f && R.enemyFloor(2, {-40.f, 0.f, -620.f}, false, 0.f) == 0.f && R.enemyFloor(1, {-40.f, 8.f, -450.f}, true, 0.f) == 0.f,
               "inside the tower the floor is its own (not the Void's), and Pickers over the Hook Line keep to the deck's height");
     }

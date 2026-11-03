@@ -4,7 +4,7 @@ Brainstormed with the user on 2026-11-03. Built so far: RECALL (step 1 of the
 build order; `--recall` to try it anywhere) and the planet (step 2;
 `./shooter --story5`): the ice shelf, its lip and the Void, the Store's towers
 and glacier cliff, the frozen giants, the sky. Rooms 1-5 and their enemies are
-built too (step 3); see "Rooms 1-5 as built" below.
+built too (step 3), and rooms 6-7 (step 4); see "as built" below.
 
 The creator never threw anything away for good. Everything is **saved** here:
 every unit, every sibling, and copies of UNIT 24. The keeper of the store, THE
@@ -257,10 +257,31 @@ candidate).
 - **Inventory:** four terminals (Units 07, 12, 19, 24).
 - **Rack 24:** 24-A to 24-J frosted in alcoves; four of them turn their heads
   to follow you. 24-A's chest glows: take RECALL there. 24-K's plinth is
-  empty. The door at the back is shut ("TO COLD STORAGE"); reaching it with
-  RECALL ends the chapter so far ("TO BE CONTINUED").
+  empty. The door at the back ("TO COLD STORAGE") opens when RECALL is
+  taken.
 - New enemies: `src/enemies/EnemyCold.h` (AI), `src/game/Gameplay_ColdEnemies.h`
   (Picker holds, Clerk restores).
+
+### Rooms 6-7 as built (step 4)
+
+- **The transfer bridge:** out of Rack 24's back door, north and then east
+  over the Void (about 160 m, trusses and amber lamps).
+- **THE BLAST CHILLERS** (section 6): three round cooling-tower tops standing
+  in the Void (x 68..232, z about -830 to -870), joined by catwalks, with two
+  compressor housings each for cover. Six vents cycle every 7 s: a red ring and
+  boiling frost for 1.3 s, then a 1.6 s freezing column (7 damage per 0.25 s,
+  it lifts you). Enemies caught in it take damage; a THAWLING caught in it is
+  frozen stiff and starts crawling again. Three waves (Thawlings, Pickers,
+  Clerks); the gate on the east catwalk opens when they're down.
+- **THE FROZEN SEA** (section 7): east of x 240 the Void gives way to sea
+  ice (a basin at 0, drawn by `renderColdIce` with labglass mode 5): clear
+  close by, whiter with distance and at grazing angles, with fractures and
+  frost drifts. Under it: a pale seabed at -82, RECLAIM v1 (a 400 m dark
+  spine with ribs, flung arms and a dead eye) face up under the crossing,
+  racks lying in rows, and stored units just under the surface. The ice
+  cracks along your path as you walk, and groans now and then. Lamp posts mark
+  the way to DISPATCH 2, a broken rail station on a glacier tongue, where the
+  chapter so far ends.
 
 ## 11. Build order
 

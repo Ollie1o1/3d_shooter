@@ -757,6 +757,7 @@ inline void GameplayState::render() {
 
     if (!devSkip("water")) renderWater(view, proj, th, renderCamPos);
     if(laboratory())renderLabGlass(view,proj,renderCamPos);
+    if (cold()) renderColdIce(view, proj, renderCamPos);
     if(laboratory() && !devSkip("fx"))renderLabAtmosphere(view,proj,renderCamPos);
     const bool skipFx = devSkip("fx");
 

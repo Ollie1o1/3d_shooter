@@ -506,6 +506,13 @@ public:
     float coldLaunchT = 0.f, coldShardT = 0.f;
     int   coldLaunches = 0;
     bool  coldRecall = false;   // taken from 24-A in Rack 24
+    float coldVentHurtT = 0.f;
+    struct ColdCrack { glm::vec3 a, b; float born; };
+    std::vector<ColdCrack> coldCracks;   // the Frozen Sea's ice, cracking under you
+    glm::vec3 coldCrackFrom{0.f};
+    void updateColdVents(float dt);
+    void updateColdSea(float dt);
+    void renderColdIce(const glm::mat4& view, const glm::mat4& proj, glm::vec3 camPos);
     int   coldRecallItem = -1;  // its interactable
     void beginCold();
     void takeColdRecall();

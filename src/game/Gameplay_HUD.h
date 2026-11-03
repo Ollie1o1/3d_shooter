@@ -101,10 +101,12 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             }
             else if(plain()) what=wakeSeen?gleanerPhaseName():"SOMETHING IS WATCHING";
             else if(cold()) {
-                static const char* goals[]={"FOLLOW THE BELT TO THE EDGE","RIDE THE CARRIERS TO THE TOWER","THROUGH THE THAW ROOM","READ THE INVENTORY","RACK 24"};
-                what=goals[std::clamp(here,0,4)];
+                static const char* goals[]={"FOLLOW THE BELT TO THE EDGE","RIDE THE CARRIERS TO THE TOWER","THROUGH THE THAW ROOM","READ THE INVENTORY","RACK 24",
+                                            "ACROSS TO THE COOLING TOWERS","CROSS THE ICE TO THE STATION"};
+                what=goals[std::clamp(here,0,6)];
+                if(here==5&&director.arena==5&&director.phase==WaveDirector::Phase::CLEARED)what="THE GATE IS OPEN / EAST TO THE SEA";
                 if(here==1&&director.arena==1&&director.phase==WaveDirector::Phase::CLEARED)what="THE DOCK IS OPEN";
-                if(here==4)what=coldRecall?"THE WAY ON IS SHUT / FOR NOW":"TAKE WHAT 24-A IS HOLDING";
+                if(here==4)what=coldRecall?"THE BACK DOOR IS OPEN":"TAKE WHAT 24-A IS HOLDING";
             }
             else if (here == level.story.pitSection && !storyOwns(0)) what = "FIND SOMETHING TO FIGHT WITH";
             else if (here == level.story.pitSection) what = "CLIMB OUT";

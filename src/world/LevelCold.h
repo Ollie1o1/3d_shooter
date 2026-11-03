@@ -27,6 +27,8 @@ constexpr float FAR_GROUND = 3400.f;          // the shelf and the land round it
 constexpr float FAR_PLANE = 5200.f;           // the camera sees this far here (Gameplay_Cold.h)
 constexpr float VOID_FLOOR = -900.f;          // the Void's "floor": far below the respawn line
 constexpr float STORE_Z = -1250.f;            // the glacier cliff the Store is cut into
+constexpr float SEA_X0 = 240.f;               // east of here the Void gives way to the frozen sea (rooms 6-7)
+constexpr float SEA_Z1 = STORE_Z - 10.f;      // ...which runs north to the cliff
 inline glm::vec3 start() { return {0.f, 0.f, 360.f}; }
 // The sun: small, cold, low in the west-north-west (long blue shadows to the east)
 inline glm::vec3 sunDir() { return glm::normalize(glm::vec3{-0.85f, 0.2f, -0.45f}); }
@@ -76,7 +78,7 @@ inline std::vector<Tower> towers() {
     std::vector<Tower> t;
     for (int k = 0; k < 15; ++k) {
         float x = -1700.f + k * 240.f + (hash(k, 2.f) - 0.5f) * 120.f;
-        float z = STORE_Z + 120.f + hash(k, 3.f) * 260.f;
+        float z = STORE_Z + 50.f + hash(k, 3.f) * 200.f;   // (north of the Blast Chillers)
         float half = 35.f + 40.f * hash(k, 4.f);
         float h = 1250.f + 900.f * hash(k, 5.f);
         if (std::abs(x) < 260.f) h += 500.f;   // the tallest straight ahead of the shelf
@@ -119,6 +121,28 @@ inline glm::vec3 rackSlot(int k) {   // k 0..9: A..J; 10: K
     return {k % 2 == 0 ? -64.f : -16.f, 0.f, z};
 }
 inline glm::vec3 recallAt() { return rackSlot(0) + glm::vec3{0.f, 1.3f, 0.f}; }
+// 6. THE BLAST CHILLERS: three cooling-tower tops standing in the Void, catwalks between them; the
+// transfer bridge to them out of Rack 24's back door
+struct Deck { glm::vec3 c; float r; };
+inline Deck chiller(int k) { static const Deck D[3] = {{{90.f, 0.f, -830.f}, 22.f}, {{150.f, 0.f, -868.f}, 20.f}, {{210.f, 0.f, -830.f}, 22.f}}; return D[k]; }
+constexpr float BRIDGE_Z0 = -834.f, BRIDGE_Z1 = -826.f;   // the bridge's east run, and the exit catwalk, along this band
+inline glm::vec3 vent(int k) {   // two per deck: freezing columns on a cycle
+    Deck d = chiller(k / 2);
+    return d.c + glm::vec3{(k % 2 ? 1.f : -1.f) * 8.f, 0.f, (k % 2 ? -1.f : 1.f) * 7.f};
+}
+constexpr int VENTS = 6;
+constexpr float VENT_R = 3.2f, VENT_PERIOD = 7.f, VENT_TELL = 1.3f, VENT_BLAST = 1.6f;
+// 0 idle, 1 telling, 2 blasting: where vent k is in its cycle at time t
+inline int ventState(int k, float t) {
+    float u = std::fmod(t + k * 2.35f, VENT_PERIOD);
+    return u < VENT_PERIOD - VENT_TELL - VENT_BLAST ? 0 : u < VENT_PERIOD - VENT_BLAST ? 1 : 2;
+}
+// 7. THE FROZEN SEA: from the Chillers' east catwalk across the ice to a broken rail station
+inline glm::vec3 seaStart() { return {SEA_X0 + 6.f, 0.f, (BRIDGE_Z0 + BRIDGE_Z1) * 0.5f}; }
+inline glm::vec3 station() { return {720.f, 0.f, -1000.f}; }
+// RECLAIM v1, the first Gleaner, lying under the ice along your crossing (its head toward the station)
+inline glm::vec3 reclaimTail() { return {250.f, -24.f, -820.f}; }
+inline glm::vec3 reclaimHead() { return {640.f, -24.f, -975.f}; }
 }
 
 inline LevelData buildCold() {
@@ -164,6 +188,12 @@ inline LevelData buildCold() {
             patch(x, z, x1, z1, n + z * 0.11f);
             z = z1;
         }
+        // East of SEA_X0 the shelf runs out onto the frozen sea (drawn as clear ice: Gameplay_Cold.h)
+        if (x >= cold::SEA_X0 - 0.5f) {
+            l.basins.push_back({LevelBuilder::aabb(x, 0.f, cold::SEA_Z1, x1, 0.f, ez), 0.f});
+            l.basins.push_back({LevelBuilder::aabb(x, 0.f, -cold::FAR_GROUND, x1, 0.f, cold::SEA_Z1), cold::VOID_FLOOR});
+            continue;
+        }
         // The Void beyond its lip: no floor, a long way down
         l.basins.push_back({LevelBuilder::aabb(x, 0.f, -cold::FAR_GROUND, x1, 0.f, ez), cold::VOID_FLOOR});
         // The lip's face: ice going down into the dark, banded deeper blue as it goes
@@ -173,7 +203,7 @@ inline LevelData buildCold() {
         b.kit().box({x + cold::STRIP * 0.5f, -360.f, ez - 10.f}, {cold::STRIP + 0.4f, 280.f, 4.f}, iceDeep * 0.5f);
         // ...and the side where the next strip's lip is further out
         float nz = cold::edgeZ(x1);
-        if (x1 < cold::FAR_GROUND && std::abs(nz - ez) > 0.5f) {
+        if (x1 < cold::SEA_X0 - 0.5f && std::abs(nz - ez) > 0.5f) {
             float zA = std::min(ez, nz), zB = std::max(ez, nz);
             b.kit().box({x1, -60.f, (zA + zB) * 0.5f}, {4.f, 120.f, zB - zA}, ice);
         }
@@ -246,7 +276,7 @@ inline LevelData buildCold() {
     }
 
     // ---- off the lip: gantries over the Void, chains and racks hanging down into it ----
-    const float gantryX[] = {-150.f, -95.f, 95.f, 210.f, -520.f, 640.f, -980.f, 1150.f};   // (the Hook Line's own is at HOOK_X)
+    const float gantryX[] = {-150.f, -95.f, 95.f, 210.f, -520.f, -1350.f, -980.f, -1750.f};   // (the Hook Line's own is at HOOK_X)
     for (int k = 0; k < 8; ++k) {
         float x = gantryX[k], ez = cold::edgeZ(x);
         float reach = 26.f + 20.f * cold::hash(k, 81.f);
@@ -295,6 +325,17 @@ inline LevelData buildCold() {
     b.mat = Mat::METAL;
     b.kit().box({0.f, cold::VOID_FLOOR + 60.f, -cold::FAR_GROUND * 0.5f + cold::EDGE_Z * 0.5f},
                 {cold::FAR_GROUND * 2.f, 2.f, cold::FAR_GROUND + cold::EDGE_Z}, vec3{0.004f, 0.005f, 0.008f});
+
+    // ---- the Void's east end: an ice cliff where the frozen sea begins ----
+    b.mat = Mat::ICE;
+    {
+        float zS = cold::edgeZ(cold::SEA_X0 - 1.f), zN = cold::SEA_Z1;
+        b.kit().box({cold::SEA_X0 - 2.f, -450.f, (zS + zN) * 0.5f}, {4.f, 900.f, zS - zN}, iceDeep);
+        b.kit().box({cold::SEA_X0 - 2.f, -30.f, (zS + zN) * 0.5f}, {4.2f, 60.f, zS - zN}, ice);
+        // Under the sea ice: the seabed, dark, far down
+        b.mat = Mat::ROCK;
+        b.kit().box({(cold::SEA_X0 + cold::FAR_GROUND) * 0.5f, -82.f, (zN + cold::EDGE_Z) * 0.5f}, {cold::FAR_GROUND - cold::SEA_X0, 4.f, cold::EDGE_Z - zN + 60.f}, vec3{0.1f, 0.17f, 0.24f});   // (lighter than what lies on it, so their shapes read)
+    }
 
     // ---- across the chasm: the Store, cut into a glacier cliff ----
     b.mat = Mat::ICE;
@@ -582,7 +623,131 @@ inline LevelData buildCold() {
     }
     stencil("RACK 24", {-48.f, 11.f, cold::INV_BACK - 0.7f}, {1.f, 0.f, 0.f}, 0.3f, paint);
     stencil("TO COLD STORAGE", {-46.f, 8.f, ZB + 0.7f}, {1.f, 0.f, 0.f}, 0.15f, paint);
-    s.end = LevelBuilder::aabb(cold::DOOR_X0, 0.f, ZB + 0.6f, cold::DOOR_X1, 6.f, ZB + 6.f);   // at the shut door: the chapter so far ends
+
+    // ---- 6. THE BLAST CHILLERS ----
+    b.mat = Mat::METAL;
+    {
+        // The transfer bridge: north out of Rack 24's back door, then east to the first deck
+        const float bz0 = cold::BRIDGE_Z0, bz1 = cold::BRIDGE_Z1, dx0 = cold::DOOR_X0, dx1 = cold::DOOR_X1;
+        const float deckW = cold::chiller(0).c.x - cold::chiller(0).r;
+        b.wall(dx0, -0.6f, bz0, dx1, 0.f, ZB, floorSteel);
+        b.wall(dx0, -0.6f, bz0, deckW + 2.f, 0.f, bz1, floorSteel);
+        b.wall(dx0 - 0.2f, 0.f, bz1, dx0, 1.1f, ZB, steel);   // rails
+        b.wall(dx1, 0.f, bz1, dx1 + 0.2f, 1.1f, ZB, steel);
+        b.wall(dx1, 0.f, bz1, deckW + 1.f, 1.1f, bz1 + 0.2f, steel);
+        b.wall(dx0 - 0.2f, 0.f, bz0 - 0.2f, deckW + 1.f, 1.1f, bz0, steel);
+        for (float x = dx0; x < deckW; x += 24.f) {   // under it: trusses down into the dark
+            b.kit().box({x, -6.f, (bz0 + bz1) * 0.5f}, {0.8f, 12.f, 0.8f}, steel);
+            b.kit(true).box({x, 1.4f, bz1 + 0.15f}, {0.2f, 0.2f, 0.2f}, amber * 0.8f);
+        }
+        b.kit().box({cold::HOOK_X, -6.f, (ZB + bz0) * 0.5f}, {0.8f, 12.f, ZB - bz0}, steel);
+        // The decks: cooling towers' tops, round, a hyperboloid falling away under each into the Void.
+        // (Collision: a cross of boxes inside the round top.)
+        for (int k = 0; k < 3; ++k) {
+            const auto d = cold::chiller(k);
+            const float r = d.r, s = r * 0.7071f, w = r * 0.42f;
+            b.wall(d.c.x - s, -0.6f, d.c.z - s, d.c.x + s, 0.f, d.c.z + s, floorSteel);
+            b.wall(d.c.x - r + 0.5f, -0.6f, d.c.z - w, d.c.x + r - 0.5f, 0.f, d.c.z + w, floorSteel);
+            b.wall(d.c.x - w, -0.6f, d.c.z - r + 0.5f, d.c.x + w, 0.f, d.c.z + r - 0.5f, floorSteel);
+            b.kit().column(d.c + vec3{0.f, -0.7f, 0.f}, r, 0.7f, floorSteel, 24);
+            b.kit().column(d.c + vec3{0.f, -0.2f, 0.f}, r + 0.6f, 0.9f, steelFrost * 0.5f, 24, 1.f).caps = false;   // its lip
+            b.kit().column(d.c + vec3{0.f, -160.f, 0.f}, r * 1.5f, 159.f, steel * 0.6f, 24, 0.66f).caps = false;   // the tower falling away
+            b.kit().column(d.c + vec3{0.f, -420.f, 0.f}, r * 1.9f, 260.f, steel * 0.25f, 24, 0.79f).caps = false;
+            b.kit().column(d.c + vec3{0.f, 0.02f, 0.f}, r * 0.35f, 0.03f, vec3{0.05f, 0.06f, 0.07f}, 16);   // its fan well
+            for (int g = 0; g < 8; ++g) {   // frost drifted against the lip
+                float a = g * 0.785f + k;
+                b.kit().box(d.c + vec3{std::cos(a) * (r - 1.2f), 0.15f, std::sin(a) * (r - 1.2f)}, {3.f, 0.3f, 1.2f}, rime, -a);
+            }
+            for (int g = 0; g < 2; ++g) {   // cover: compressor housings
+                vec3 p = d.c + vec3{g ? -10.f : 9.f, 0.f, g ? -9.f : 10.f};
+                b.wall(p.x - 1.8f, 0.f, p.z - 1.2f, p.x + 1.8f, 2.2f, p.z + 1.2f, steelFrost * 0.45f);
+                b.kit(true).box(p + vec3{0.f, 1.6f, 1.22f}, {0.6f, 0.2f, 0.04f}, amber);
+            }
+        }
+        // Catwalks between the decks (A-B, B-C) and the exit east toward the sea
+        auto catwalk = [&](vec3 a, vec3 c, float half) {
+            vec3 d = c - a; d.y = 0.f; float len = glm::length(d); vec3 u = d / len;
+            int n = (int)std::ceil(len / 2.f);
+            for (int i = 0; i <= n; ++i) {   // (axis boxes along a diagonal: overlapping steps)
+                vec3 p = a + u * (len * i / n);
+                b.wall(p.x - half, -0.6f, p.z - half, p.x + half, 0.f, p.z + half, floorSteel);
+            }
+            b.kit().box((a + c) * 0.5f + vec3{0.f, 0.05f, 0.f}, {2.f * half, 0.06f, len}, rime * 0.9f, -std::atan2(u.z, u.x) + 1.5708f);
+        };
+        catwalk(cold::chiller(0).c, cold::chiller(1).c, 1.6f);
+        catwalk(cold::chiller(1).c, cold::chiller(2).c, 1.6f);
+        b.wall(cold::chiller(2).c.x + cold::chiller(2).r - 2.f, -0.6f, cold::BRIDGE_Z0, cold::SEA_X0 + 2.f, 0.f, cold::BRIDGE_Z1, floorSteel);
+        // The vents: grates (the freezing columns are live: Gameplay_Cold.h)
+        for (int v = 0; v < cold::VENTS; ++v) {
+            vec3 p = cold::vent(v);
+            b.kit().column(p + vec3{0.f, 0.01f, 0.f}, cold::VENT_R, 0.06f, vec3{0.04f, 0.05f, 0.06f}, 16);
+            for (int g = 0; g < 6; ++g) b.kit().box(p + vec3{0.f, 0.08f, -2.5f + g}, {cold::VENT_R * 1.6f, 0.05f, 0.12f}, steel);
+        }
+        stencil("BLAST CHILLERS", {cold::chiller(0).c.x - 18.f, 6.f, cold::chiller(0).c.z + cold::chiller(0).r + 0.2f}, {1.f, 0.f, 0.f}, 0.2f, paint);
+    }
+    // Their floor for the enemies (ahead of the Void's): the decks and the catwalks between them
+    l.basins.insert(l.basins.begin(), {LevelBuilder::aabb(cold::chiller(0).c.x - 22.f, 0.f, -890.f, cold::chiller(2).c.x + 22.f, 0.f, -806.f), 0.f});
+
+    // ---- 7. THE FROZEN SEA: clear ice, and what is stored under it ----
+    {
+        // RECLAIM v1: the first Gleaner, 300 m of it, face up under your crossing
+        const vec3 tail = cold::reclaimTail(), head = cold::reclaimHead();
+        const vec3 along = glm::normalize(head - tail), side = glm::normalize(glm::cross(along, vec3{0.f, 1.f, 0.f}));
+        const float len = glm::length(head - tail), yaw = -std::atan2(along.z, along.x);
+        const vec3 iron{0.035f, 0.03f, 0.03f}, rust{0.07f, 0.04f, 0.03f};
+        b.mat = Mat::METAL;
+        for (int k = 0; k < 26; ++k) {   // the spine: plates, swelling toward the chest
+            float u = (k + 0.5f) / 26.f;
+            float girth = 7.f + 16.f * std::sin(std::min(1.f, u * 1.3f) * 3.1416f * 0.9f);
+            vec3 p = tail + (head - tail) * u + vec3{0.f, -girth * 0.3f, 0.f};
+            b.kit().box(p, {len / 26.f * 0.9f, girth * 0.7f, girth}, k % 3 ? iron : rust, yaw, 0.f, 0.05f * std::sin(k * 1.3f));
+            if (k % 2 == 0 && u > 0.3f) for (int s = -1; s <= 1; s += 2)   // ribs, splayed
+                b.kit().rod(p + vec3{0.f, girth * 0.2f, 0.f}, p + side * (s * girth * 1.6f) + vec3{0.f, -girth * 0.4f, 0.f}, 1.2f, iron, 6);
+        }
+        for (int s = -1; s <= 1; s += 2) {   // its arms, flung out; hands open on the seabed
+            vec3 sh = tail + (head - tail) * 0.78f + side * (s * 14.f);
+            vec3 el = sh + side * (s * 55.f) - along * 30.f + vec3{0.f, -10.f, 0.f};
+            vec3 wr = el + side * (s * 20.f) - along * 60.f + vec3{0.f, -12.f, 0.f};
+            b.kit().rod(sh, el, 5.f, rust, 8); b.kit().rod(el, wr, 4.f, iron, 8);
+            for (int f = 0; f < 4; ++f) b.kit().rod(wr, wr - along * (12.f + 3.f * f) + side * (s * (f - 1.5f) * 4.f), 1.1f, iron, 5);
+        }
+        // Its head: a long furnace mouth, its eye a dark slot
+        b.kit().box(head + along * 12.f + vec3{0.f, -4.f, 0.f}, {30.f, 14.f, 22.f}, iron, yaw);
+        b.kit(true).box(head + along * 26.f, {2.f, 1.6f, 12.f}, vec3{0.18f, 0.05f, 0.03f}, yaw);
+        // Other things they stored in the sea: racks lying in rows deep down
+        for (int k = 0; k < 40; ++k) {
+            vec3 p{cold::SEA_X0 + 40.f + cold::hash(k, 301.f) * 1500.f, -40.f - 30.f * cold::hash(k, 302.f), -360.f - cold::hash(k, 303.f) * 880.f};
+            if (glm::length(glm::vec2{p.x - head.x, p.z - head.z}) < 60.f) continue;
+            b.kit().box(p, {14.f + 20.f * cold::hash(k, 304.f), 4.f, 4.f}, iron * 1.5f, cold::hash(k, 305.f) * 3.f);
+        }
+        for (int k = 0; k < 60; ++k) {   // close under the surface along the crossing: stored units, face up, arms out
+            float u = cold::hash(k, 311.f);
+            vec3 p = cold::seaStart() + (cold::station() - cold::seaStart()) * u + vec3{(cold::hash(k, 312.f) - 0.5f) * 80.f, -2.5f - 5.f * cold::hash(k, 313.f), (cold::hash(k, 314.f) - 0.5f) * 80.f};
+            float a = cold::hash(k, 315.f) * 6.283f;
+            b.kit().box(p, {0.5f, 0.3f, 1.8f}, steelFrost * 0.6f, a);
+            b.kit().box(p + vec3{std::sin(a), 0.f, std::cos(a)} * 1.1f, {0.3f, 0.3f, 0.3f}, steelFrost * 0.7f, a);
+            b.kit().box(p, {1.8f, 0.15f, 0.2f}, steelFrost * 0.5f, a);
+        }
+        // The far shore: a glacier tongue with a broken rail station on it
+        const vec3 st = cold::station();
+        b.mat = Mat::SNOW;
+        lump(st + vec3{60.f, -6.f, -40.f}, 70.f, 30.f, glm::mix(snow, ice, 0.3f), 1501u, 0.f, 0.4f, 3);
+        b.mat = Mat::METAL;
+        b.wall(st.x - 18.f, -0.6f, st.z - 10.f, st.x + 18.f, 0.6f, st.z + 10.f, floorSteel);   // the platform (a step up)
+        b.kit().box(st + vec3{0.f, 0.62f, 0.f}, {36.f, 0.06f, 20.f}, rime * 0.8f);
+        for (int k = -2; k <= 2; ++k) b.wall(st.x + k * 8.f - 0.3f, 0.6f, st.z - 9.f, st.x + k * 8.f + 0.3f, 7.f, st.z - 8.4f, steel);   // canopy posts
+        b.kit().box(st + vec3{-4.f, 7.4f, -6.f}, {30.f, 0.6f, 8.f}, steel, 0.f, 0.f, 0.06f);   // the canopy, sagging
+        b.kit().box(st + vec3{0.f, 1.6f, -12.f}, {60.f, 0.5f, 1.2f}, steel);                    // the rail, running off
+        b.kit().box(st + vec3{40.f, -1.f, -12.f}, {20.f, 0.5f, 1.2f}, steel, 0.f, 0.f, -0.2f);  // ...snapped, into the ice
+        b.kit(true).box(st + vec3{0.f, 6.6f, -6.f}, {8.f, 0.2f, 0.3f}, amber * 0.7f);
+        stencil("DISPATCH 2", {st.x - 6.f, 9.4f, st.z - 8.3f}, {1.f, 0.f, 0.f}, 0.2f, paint);
+    }
+    for (int k = 1; k < 14; ++k) {   // a line of lamp posts across the ice, so the way is never lost
+        vec3 p = cold::seaStart() + (cold::station() - cold::seaStart()) * (k / 14.f) + vec3{(k % 2 ? 6.f : -6.f), 0.f, 0.f};
+        b.kit().rod(p, p + vec3{0.f, 3.2f, 0.f}, 0.08f, steel, 6);
+        b.kit(true).box(p + vec3{0.f, 3.2f, 0.f}, {0.22f, 0.12f, 0.22f}, amber);
+    }
+    s.end = LevelBuilder::aabb(cold::station().x - 18.f, 0.f, cold::station().z - 10.f, cold::station().x + 18.f, 8.f, cold::station().z + 10.f);   // the far shore's station: the chapter so far ends
 
     // =========================================================================
     // THE SECTIONS
@@ -633,8 +798,34 @@ inline LevelData buildCold() {
     inv.space = ReverbSpace::METAL; inv.tone = RoomTone::NONE; inv.ambient = Ambient::DUST;
     l.arenas.push_back(inv);
     // 5. Rack 24 (quiet: the RECALL module, Gameplay_Cold.h)
+    const int backDoor = b.doorway(true, cold::DOOR_X0, cold::DOOR_X1, ZB, ZB + 0.6f, 0.f, 6.f, amber * 0.6f, true);   // (opens when RECALL is taken)
+    l.story.coldBackDoor = backDoor;
     Arena rack = section("RACK 24", "COPIES ON FILE", LevelBuilder::aabb(X0 + 1.f, -5.f, ZB + 0.6f, X1 - 1.f, C, cold::INV_BACK), {HX, 0.f, cold::INV_BACK - 3.f}, -90.f);
     rack.space = ReverbSpace::METAL; rack.tone = RoomTone::NONE; rack.ambient = Ambient::MOTES;
     l.arenas.push_back(rack);
+    // 6. the Blast Chillers: a fight on the cooling towers, the vents firing all through it
+    const float gateX = cold::chiller(2).c.x + cold::chiller(2).r;
+    const int chillGate = b.doorway(false, cold::BRIDGE_Z0, cold::BRIDGE_Z1, gateX - 1.f, gateX - 0.4f, 0.f, 4.f, amber * 0.6f);
+    Arena chill = section("THE BLAST CHILLERS", "MIND THE VENTS", LevelBuilder::aabb(cold::chiller(0).c.x - 22.f, -1000.f, -890.f, gateX - 0.4f, 60.f, -806.f),
+                          {cold::chiller(0).c.x - 18.f, 0.f, (cold::BRIDGE_Z0 + cold::BRIDGE_Z1) * 0.5f}, 0.f);
+    chill.extraZones.push_back(LevelBuilder::aabb(cold::DOOR_X0, -1000.f, cold::BRIDGE_Z0, cold::chiller(0).c.x - 20.f, 60.f, ZB + 1.f));   // the transfer bridge (overlapping Rack 24's zone through the door)
+    chill.hasRespawn = true; chill.respawn = chill.playerStart;
+    chill.hasTrigger = true; chill.trigger = LevelBuilder::aabb(cold::chiller(0).c.x - 12.f, -2.f, -890.f, gateX, 8.f, -806.f);
+    chill.exitDoor = chillGate; chill.maxAlive = 7; chill.space = ReverbSpace::OPEN; chill.tone = RoomTone::YARD;
+    {
+        auto on = [&](int k, float a, float r) { auto d = cold::chiller(k); return d.c + glm::vec3{std::cos(a) * r, 0.f, std::sin(a) * r}; };
+        const vec3 up{0.f, 4.6f, 0.f}, upC{0.f, 3.4f, 0.f};
+        chill.waves = {{W(EnemyType::THAWLING, 0, {on(1, 0.3f, 12.f), on(1, 2.4f, 12.f), on(2, 1.f, 14.f), on(2, 4.6f, 13.f)}), W(EnemyType::PICKER, 0, {on(1, 1.5f, 6.f) + up})},
+                       {W(EnemyType::THAWLING, 0, {on(0, 1.2f, 14.f), on(2, 2.2f, 14.f), on(1, 4.5f, 12.f), on(2, 5.3f, 12.f)}), W(EnemyType::CLERK, 0, {on(2, 0.f, 18.f) + upC}),
+                        W(EnemyType::PICKER, 0, {on(0, 3.f, 8.f) + up})},
+                       {W(EnemyType::THAWLING, 0, {on(0, 0.5f, 13.f), on(1, 1.6f, 13.f), on(1, 3.6f, 12.f), on(2, 0.6f, 12.f), on(2, 3.3f, 14.f)}),
+                        W(EnemyType::PICKER, 0, {on(1, 0.f, 6.f) + up, on(2, 2.f, 6.f) + up}), W(EnemyType::CLERK, 0, {on(1, 4.7f, 17.f) + upC})}};
+    }
+    l.arenas.push_back(chill);
+    // 7. the Frozen Sea: a long walk over clear ice (no fight: what is under it is the point)
+    Arena sea = section("THE FROZEN SEA", "DO NOT LOOK DOWN FOR LONG", LevelBuilder::aabb(cold::SEA_X0, -10.f, -1080.f, 820.f, 60.f, -760.f), cold::seaStart(), -20.f);
+    sea.extraZones.push_back(LevelBuilder::aabb(gateX - 0.4f, -1000.f, cold::BRIDGE_Z0, cold::SEA_X0, 60.f, cold::BRIDGE_Z1));   // the exit catwalk
+    sea.hasRespawn = true; sea.respawn = cold::seaStart(); sea.ambient = Ambient::WIND;
+    l.arenas.push_back(sea);
     return l;
 }

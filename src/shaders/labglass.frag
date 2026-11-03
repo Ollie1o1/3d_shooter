@@ -27,7 +27,7 @@ void main(){
         float mote=step(.992,labHash(cell))*core*.35;
         FragColor=vec4(uBeamColor*(a+mote),1.0);return;
     }
-    if(uMode>3.5){
+    if(uMode>3.5 && uMode<4.5){
         // The portal: two sets of logarithmic spiral arms turning inward, cyan
         // into violet, round a white-hot core. It reddens as the Successor weakens.
         vec2 q=(vWorld-uBeamA).xy/uBeamR.x;float rad=length(q);
@@ -42,6 +42,23 @@ void main(){
         col+=mix(cyan,violet,.5)*exp(-pow((rad-.94)*14.0,2.0))*.8;
         col*=.85+.3*grain*smoothstep(.2,.9,rad);
         FragColor=vec4(col*smoothstep(1.0,.97,rad),1.0);return;
+    }
+    if(uMode>4.5){
+        // THE FROZEN SEA's ice (Chapter 5): clear enough to see what is under it close by,
+        // whiter with distance and at glancing angles; wandering white fractures, frost in drifts
+        vec2 q=vWorld.xz;
+        vec3 ray=normalize(uViewPos-vWorld);
+        float graze=pow(1.0-abs(ray.y),2.5);
+        float n1=sin(q.x*.11+sin(q.y*.07)*3.0)+sin(q.y*.13+sin(q.x*.05)*2.5);
+        float n2=sin(q.x*.31+q.y*.17+sin(q.y*.2)*2.0)*.6+sin(q.y*.37-q.x*.11)*.4;
+        float crack=smoothstep(.025,0.0,abs(n1+.3*n2))*.45+smoothstep(.015,0.0,abs(n2))*.3;
+        float frost=smoothstep(.2,.9,.5+.5*sin(q.x*.023+sin(q.y*.019)*2.0)*sin(q.y*.027+1.3));
+        float dist=length(uViewPos.xz-vWorld.xz);
+        float far=smoothstep(25.0,220.0,dist);
+        vec3 col=mix(vec3(.42,.6,.76),vec3(.86,.92,.97),max(frost*.6,far));
+        col=mix(col,vec3(1.0),crack*(1.0-far*.6));
+        float a=.06+graze*.45+frost*.22+crack*.5+far*.6;
+        FragColor=vec4(col,clamp(a,0.0,.97));return;
     }
     vec3 p=vWorld-uOrigin;
     vec3 ray=normalize(uViewPos-vWorld);

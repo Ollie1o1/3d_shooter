@@ -604,6 +604,7 @@ struct LevelData {
         glm::vec3 grappleAt{0.f};
         int   pitSection = -1;            // the section whose fight its revolver starts
         AABB  end{};                      // reach this: the chapter so far is over
+        int   coldBackDoor = -1;          // Chapter 5: Rack 24's back door (opens when RECALL is taken)
         const char* nextName = "";        // ... and the card says what's next
     } story;
     int conveyorOfWall(int w) const {

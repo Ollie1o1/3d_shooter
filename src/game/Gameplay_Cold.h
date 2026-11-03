@@ -24,7 +24,80 @@ inline void GameplayState::beginCold() {
     it.onInteract = [this]() { takeColdRecall(); };
     coldRecallItem = (int)interactables.size();
     interactables.push_back(std::move(it));
+    if (level.story.coldBackDoor >= 0) level.doors[level.story.coldBackDoor].locked = !coldRecall;   // (the way on opens with it)
+    coldCracks.clear(); coldCrackFrom = player.position;
     player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0}; prevCamPos = player.camera.position;
+}
+
+// THE BLAST CHILLERS' vents: a red tell (frost boiling up out of the grate), then a freezing column.
+// It hurts you; it hurts what stands in it, and a THAWLING caught in it is frozen stiff again.
+inline void GameplayState::updateColdVents(float dt) {
+    if (glm::length(player.position - cold::chiller(1).c) > 160.f) return;
+    const bool live = director.arena >= 5;   // (off until you are there)
+    if (!live) return;
+    for (int v = 0; v < cold::VENTS; ++v) {
+        const glm::vec3 p = cold::vent(v);
+        const int st = cold::ventState(v, gameClock), was = cold::ventState(v, gameClock - dt);
+        if (st == 1 && was != 1) audio.playAt("telegraph", p, 100, SoundGroup::WORLD, true, 0.7f);
+        if (st == 2 && was != 2) { audio.playAt("skim", p, 128, SoundGroup::WORLD, true, 0.5f); audio.playAt("slam", p, 90, SoundGroup::WORLD, true, 0.6f); }
+        if (st == 1 && std::fmod(gameClock, 0.06f) < dt) fx.spawnBurst(p + glm::vec3{frand(-2.f, 2.f), 0.2f, frand(-2.f, 2.f)}, {1.f, 0.55f, 0.5f}, 1, 1.f, 0.6f, -4.f);
+        if (st != 2) continue;
+        if (std::fmod(gameClock, 0.04f) < dt) fx.spawnBurst(p + glm::vec3{frand(-2.5f, 2.5f), 0.5f, frand(-2.5f, 2.5f)}, glm::vec3{0.85f, 0.92f, 1.f}, 2, 4.f, 0.9f, -14.f);
+        glm::vec2 d{player.position.x - p.x, player.position.z - p.z};
+        if (glm::length(d) < cold::VENT_R + player.radius && player.position.y < 12.f && !playerDead) {
+            coldVentHurtT -= dt;
+            if (coldVentHurtT <= 0.f) { coldVentHurtT = 0.25f; damagePlayer(7.f * tune().damage, p, 0.08f, 0.02f, 0.f); }
+            player.velocity.y = std::max(player.velocity.y, 3.f);   // it lifts you a little: get out
+        }
+        for (auto& e : enemies) {
+            if (!e.targetable()) continue;
+            if (glm::length(glm::vec2{e.position.x - p.x, e.position.z - p.z}) > cold::VENT_R + e.radius() || e.position.y > p.y + 10.f) continue;
+            if (e.type == EnemyType::THAWLING) e.age = std::min(e.age, 0.5f);   // frozen stiff again: back to crawling
+            if (e.takeDamage((e.type == EnemyType::THAWLING ? 8.f : 18.f) * dt)) onEnemyKilled(e, StyleSource::ENVIRONMENT);
+        }
+    }
+}
+
+// THE FROZEN SEA: the ice cracks along your path (and now and then, far off, groans)
+inline void GameplayState::updateColdSea(float dt) {
+    if (level.arenaAt(player.position) != 6 || !player.onGround || playerDead) return;
+    glm::vec3 d = player.position - coldCrackFrom; d.y = 0.f;
+    if (glm::length(d) < 2.2f) return;
+    glm::vec3 dir = glm::normalize(d);
+    // A crack runs out ahead of you and a little to the side, in two or three kinks
+    glm::vec3 at = player.position + dir * 1.5f;
+    float heading = std::atan2(dir.z, dir.x) + frand(-0.6f, 0.6f);
+    int segs = 2 + rand() % 3;
+    for (int k = 0; k < segs; ++k) {
+        float len = frand(1.2f, 3.5f);
+        glm::vec3 to = at + glm::vec3{std::cos(heading), 0.f, std::sin(heading)} * len;
+        coldCracks.push_back({at, to, gameClock});
+        at = to; heading += frand(-0.7f, 0.7f);
+    }
+    if (coldCracks.size() > 600) coldCracks.erase(coldCracks.begin(), coldCracks.begin() + (coldCracks.size() - 600));
+    if (rand() % 3 == 0) audio.playAt("ab_creak", player.position + dir * 3.f, 60, SoundGroup::WORLD, true, frand(0.5f, 0.8f));
+    if (rand() % 9 == 0) { audio.playAt("ab_shatter", player.position + dir * 25.f, 40, SoundGroup::WORLD, false, 0.4f); shake(0.15f, 0.01f); }
+    coldCrackFrom = player.position;
+    (void)dt;
+}
+
+// The sea ice: clear, drawn over everything under it (the stored things, RECLAIM v1)
+inline void GameplayState::renderColdIce(const glm::mat4& view, const glm::mat4& proj, glm::vec3 camPos) {
+    using glm::vec3;
+    labGlassShader.use(); labGlassShader.setMat4("projection", proj); labGlassShader.setMat4("view", view);
+    labGlassShader.setVec3("uViewPos", camPos); labGlassShader.setFloat("uTime", gameClock);
+    labGlassShader.setVec3("uOrigin", vec3{0.f}); labGlassShader.setVec3("uNormal", vec3{0.f, 1.f, 0.f});
+    labGlassShader.setFloat("uMode", 5.f); labGlassShader.setFloat("uAnomaly", 0.f);
+    glDisable(GL_CULL_FACE); glDepthMask(GL_FALSE); glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBindVertexArray(waterVAO); glBindBuffer(GL_ARRAY_BUFFER, waterVBO);
+    for (float x = cold::SEA_X0; x < cold::FAR_GROUND - 0.5f; x += cold::STRIP) {
+        const float x1 = x + cold::STRIP, z0 = cold::SEA_Z1, z1 = cold::edgeZ(x), y = 0.f;
+        const vec3 v[] = {{x, y, z0}, {x1, y, z1}, {x1, y, z0}, {x, y, z0}, {x, y, z1}, {x1, y, z1}};
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(v), v);
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+    }
+    glBindVertexArray(0);
+    glDepthMask(GL_TRUE); glDisable(GL_BLEND); glEnable(GL_CULL_FACE);
 }
 
 // A capsule off tower `k`'s dispatch rail: straight up it, then curving away toward the gas giant
@@ -52,6 +125,7 @@ inline void GameplayState::takeColdRecall() {
     audio.play("upgrade", 110, SoundGroup::UI, true);
     pushBanner("RECALL", "PRESS " + binds().label(Act::RECALL) + ": LEAVE A STATUE  -  AGAIN: RETURN TO IT", RECALL_FROST, 4.f);
     ui.feed("24-A DOES NOT RESIST", RECALL_FROST);
+    if (level.story.coldBackDoor >= 0) level.doors[level.story.coldBackDoor].locked = false;
 }
 
 inline void GameplayState::updateCold(float dt) {
@@ -75,6 +149,8 @@ inline void GameplayState::updateCold(float dt) {
         storyEndT += dt; player.velocity = glm::vec3{0.f, std::max(0.f, player.velocity.y), 0.f};
         if (storyEndT > 3.f) captureMouse(false);
     }
+    updateColdVents(dt);
+    updateColdSea(dt);
     // Wind: always, gusting; stronger out at the lip
     const float lip = glm::clamp(1.f - (player.position.z - cold::edgeZ(player.position.x)) / 120.f, 0.f, 1.f);
     audio.setWind(playerDead ? 0.f : 0.36f + 0.1f * std::sin(gameClock * 0.17f) + 0.08f * std::sin(gameClock * 0.61f) + 0.2f * lip);
@@ -191,6 +267,33 @@ inline void GameplayState::gatherColdRoute(std::vector<BoxInstance>& out) {
 inline void GameplayState::gatherCold(std::vector<BoxInstance>& out) {
     using namespace rig;
     gatherColdRoute(out);
+    // The vents: a red ring telling, then a white column of freezing air
+    if (director.arena >= 5 && glm::length(player.position - cold::chiller(1).c) < 200.f)
+        for (int v = 0; v < cold::VENTS; ++v) {
+            const glm::vec3 p = cold::vent(v);
+            const int st = cold::ventState(v, gameClock);
+            if (st == 1) {
+                float pulse = 0.6f + 0.4f * std::sin(gameClock * 18.f);
+                for (int k = 0; k < 20; ++k) {
+                    float a = k * 0.3142f;
+                    push(out, T(p + glm::vec3{std::cos(a) * cold::VENT_R, 0.1f, std::sin(a) * cold::VENT_R}) * RY(-a) * S(glm::vec3{0.15f, 0.08f, 1.f}),
+                         {0.4f, 0.05f, 0.04f}, glm::vec3{2.f, 0.25f, 0.15f} * pulse);
+                }
+            } else if (st == 2) {
+                for (int k = 0; k < 5; ++k) {
+                    float h = 2.5f + k * 2.4f, w = cold::VENT_R * (1.6f + 0.15f * k) * (0.9f + 0.1f * std::sin(gameClock * 23.f + k));
+                    push(out, T(p + glm::vec3{0.f, h, 0.f}) * RY(gameClock * 2.f + k) * S(glm::vec3{w, 2.6f, w}), {0.85f, 0.92f, 1.f}, glm::vec3{1.1f, 1.2f, 1.35f} * (1.f - 0.15f * k));
+                }
+            }
+        }
+    // Cracks in the sea ice, white, fading back to faint over half a minute
+    for (const auto& c : coldCracks) {
+        glm::vec3 d = c.b - c.a; float len = glm::length(d);
+        if (len < 0.01f) continue;
+        float age = gameClock - c.born, bright = 0.35f + 0.65f * std::exp(-age * 0.12f);
+        push(out, T((c.a + c.b) * 0.5f + glm::vec3{0.f, 0.015f, 0.f}) * RY(-std::atan2(d.z, d.x)) * S(glm::vec3{len, 0.01f, 0.05f}),
+             glm::vec3{0.9f, 0.95f, 1.f}, glm::vec3{0.6f, 0.7f, 0.8f} * bright);
+    }
     for (const auto& c : coldCapsules) {
         glm::vec3 d = glm::normalize(c.vel);
         glm::mat4 R = gleaner::alongZ(glm::vec3{0.f}, d);
