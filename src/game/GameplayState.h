@@ -257,7 +257,7 @@ public:
     armfile::HandSpring wakeHand;
     void  beginStory();
     void  updateStory(float dt);
-    bool  storyLocked() const { return story() && (wakeT >= 0.f || labIntro.active() || labEnding.active() || plainReveal.active() || summitEndT >= 0.f || tearT >= 0.f); }
+    bool  storyLocked() const { return story() && (wakeT >= 0.f || labIntro.active() || labEnding.active() || plainReveal.active() || summitEndT >= 0.f || tearT >= 0.f || (level.story.chapter == 5 && coldRideT >= 0.f)); }
     bool  storyLookFree() const { return !labIntro.active() && wakeT >= 18.4f; }   // (story::W_SAT)
     float storyWakeFx() const;
     void  gatherStoryBoxes(std::vector<BoxInstance>& out);
@@ -510,6 +510,11 @@ public:
     bool  coldKDown = false, coldKIntro = false;   // 24-K (section 8)
     // THE RESTORER's fight (Gameplay_Restorer.h)
     bool  coldRDown = false; float coldRDownAt = -1.f;
+    Enemy rsCorpse{EnemyType::RESTORER, glm::vec3{0.f}};   // its body after it falls: rewinding itself to parts
+    float rsDeathT = -1.f, coldRideT = -1.f;                 // that rewind's clock; the dispatch capsule's ride out
+    glm::vec3 coldRidePos(float t) const;
+    void updateColdEnding(float dt);
+    void gatherColdEnding(std::vector<BoxInstance>& out);
     struct RsStatue { glm::vec3 at; float yaw; };
     std::vector<RsStatue> rsStatues;
     std::vector<AABB> rsRacks, rsPlannedRacks;

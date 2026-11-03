@@ -15,6 +15,7 @@ inline void GameplayState::beginCold() {
     coldCapsules.clear(); coldLaunchT = 3.f; coldShardT = 0.f; coldLaunches = 0;
     if (!wakeSeen && director.arena == 0) pushBanner(level.story.title, "CHAPTER 5  /  NOTHING HERE IS THROWN AWAY", {0.75f, 0.86f, 0.95f}, 4.f);
     wakeSeen = true;
+    if (director.arena >= 5 || storyCheckpoint >= 5) coldRecall = true;   // (a start or a save past Rack 24: it is already yours)
     // RECALL, in 24-A's chest
     Interactable it;
     it.position = cold::recallAt();
@@ -159,11 +160,14 @@ inline void GameplayState::updateCold(float dt) {
         coldKLineT = 3.2f;
     }
     if (coldKLineT > 0.f && (coldKLineT -= dt) <= 0.f) pushBanner("\"YOU ARE DAMAGED. I AM CORRECT.\"", "", {0.85f, 0.9f, 0.95f}, 3.5f);
-    // The end of the chapter so far: at the Vault's north rail, a few moments after the Restorer is gone
+    // The way out: once the Restorer has rewound to nothing, the Vault's dispatch rail powers up; step into its capsule
     const AABB& E = level.story.end;
-    if (coldRDown && elapsedTime - coldRDownAt > 4.f && storyEndT < 0.f && !playerDead && p.x > E.min.x && p.x < E.max.x && p.z > E.min.z && p.z < E.max.z) {
-        storyEndT = 0.f; audio.play("wave", 90, SoundGroup::UI, true);
+    if (coldRDown && rsDeathT > 9.f && coldRideT < 0.f && storyEndT < 0.f && !playerDead && p.x > E.min.x && p.x < E.max.x && p.z > E.min.z && p.z < E.max.z) {
+        coldRideT = 0.f;
+        audio.play("ab_takeoff", 128, SoundGroup::WORLD, true); shake(0.6f, 0.05f);
     }
+    if (g_devOverlay == "coldride" && coldRideT < 0.f && elapsedTime > 0.5f) { coldRDown = true; rsDeathT = 20.f; coldRideT = 0.f; }   // dev: straight into the ride out (screenshots)
+    updateColdEnding(dt);
     if (storyEndT >= 0.f) {
         storyEndT += dt; player.velocity = glm::vec3{0.f, std::max(0.f, player.velocity.y), 0.f};
         if (storyEndT > 3.f) captureMouse(false);
@@ -288,6 +292,7 @@ inline void GameplayState::gatherCold(std::vector<BoxInstance>& out) {
     using namespace rig;
     gatherColdRoute(out);
     gatherRestorerFight(out);
+    gatherColdEnding(out);
     // The vents: a red ring telling, then a white column of freezing air
     if (director.arena >= 5 && glm::length(player.position - cold::chiller(1).c) < 200.f)
         for (int v = 0; v < cold::VENTS; ++v) {
@@ -338,6 +343,110 @@ inline void GameplayState::gatherCold(std::vector<BoxInstance>& out) {
             if (len < 0.01f) continue;
             push(out, T((a.pos + b.pos) * 0.5f) * gleaner::alongZ(glm::vec3{0.f}, seg / len) * S(glm::vec3{w, w, len}),
                  glm::vec3{0.75f, 0.8f, 0.88f} * fade, glm::vec3{0.25f, 0.28f, 0.32f} * fade * fade);
+        }
+    }
+}
+
+// ---- The end of Chapter 5 -------------------------------------------------------
+// The Restorer, fallen, rewinds itself and cannot stop: smaller and smaller, past
+// a newborn unit, until it comes apart into the parts it was built from and they
+// frost over. Its cryo cylinder cracks; what it saved first never wakes. Then the
+// Vault's dispatch rail powers up, and a capsule carries UNIT 24 up past the
+// towers, the frozen giants and the gas giant's rings.
+namespace coldend {
+constexpr float FALTER = 1.2f, REWIND = 7.f, NEWBORN = 8.4f, PARTS = 9.f;   // rsDeathT marks
+constexpr float RIDE = 7.5f;                                                   // the capsule ride, then the card
+inline glm::vec3 capsuleAt() { return {cold::vaultC().x, 0.f, cold::vaultC().z - cold::VAULT_R + 3.f}; }
+}
+
+// Where the ride has the camera t seconds in: up the rail, then leaning away toward the giant, faster and faster
+inline glm::vec3 GameplayState::coldRidePos(float t) const {
+    const glm::vec3 base = coldend::capsuleAt() + glm::vec3{0.f, 1.6f, 0.f};
+    const glm::vec3 away = glm::normalize(glm::vec3{cold::giantDir().x, 0.f, cold::giantDir().z});
+    // (straight up the rail first, clear of the cliff's top, then away)
+    float up = 40.f * t * t + 10.f * t, out = std::max(0.f, t - 4.5f);
+    return base + glm::vec3{0.f, up, 0.f} + away * (60.f * out * out);
+}
+
+inline void GameplayState::updateColdEnding(float dt) {
+    if (rsDeathT >= 0.f) {
+        const float before = rsDeathT;
+        rsDeathT += dt;
+        const glm::vec3 c = rsCorpse.position;
+        auto crossed = [&](float t) { return before < t && rsDeathT >= t; };
+        if (crossed(coldend::FALTER)) {   // the cylinder on its back cracks
+            fx.spawnBurst(c + glm::vec3{0.f, 5.9f, -0.75f}, RECALL_FROST, 40, 5.f, 0.8f, 9.f);
+            audio.playAt("ab_shatter", c, 128, SoundGroup::ENEMY, true, 1.2f);
+        }
+        if (rsDeathT > coldend::FALTER && rsDeathT < coldend::REWIND && std::fmod(rsDeathT, 0.08f) < dt)   // frost falling off it as it shrinks
+            fx.spawnBurst(c + glm::vec3{frand(-1.f, 1.f), frand(1.f, 6.f) * rsCorpse.scale, frand(-1.f, 1.f)}, {0.85f, 0.92f, 1.f}, 3, 2.f, 0.8f, 6.f);
+        if (rsDeathT > coldend::FALTER && std::fmod(rsDeathT, 0.55f) < dt && rsDeathT < coldend::PARTS)
+            audio.playAt("count_tick", c, 90, SoundGroup::ENEMY, true, 0.6f + 0.1f * rsDeathT);   // a rewinding tick, quickening
+        if (crossed(coldend::PARTS)) {
+            fx.spawnBurst(c + glm::vec3{0.f, 0.5f, 0.f}, {0.7f, 0.75f, 0.8f}, 30, 4.f, 0.6f, 9.f);
+            audio.playAt("clank", c, 110, SoundGroup::ENEMY, true, 1.4f);
+        }
+        if (crossed(coldend::PARTS + 0.5f)) {   // the rail at the north edge wakes
+            audio.playAt("drive_ready", coldend::capsuleAt(), 128, SoundGroup::WORLD, true);
+            ui.feed("THE DISPATCH RAIL IS LIVE", {1.f, 0.8f, 0.4f});
+        }
+    }
+    if (coldRideT >= 0.f) {
+        coldRideT += dt;
+        player.velocity = glm::vec3{0.f};
+        if (std::fmod(coldRideT, 0.05f) < dt) fx.spawnBurst(coldRidePos(coldRideT) - glm::vec3{0.f, 4.f, 0.f}, {1.6f, 0.9f, 0.3f}, 3, 3.f, 0.5f, -2.f);
+        if (coldRideT > coldend::RIDE && storyEndT < 0.f) { storyEndT = 0.f; audio.play("wave", 90, SoundGroup::UI, true); }
+    }
+}
+
+inline void GameplayState::gatherColdEnding(std::vector<BoxInstance>& out) {
+    using namespace rig; using namespace enemyfile; using glm::vec3;
+    if (rsDeathT >= 0.f && glm::length(player.position - rsCorpse.position) < 260.f) {
+        const float t = rsDeathT;
+        const vec3 c = rsCorpse.position;
+        if (t < coldend::REWIND) {   // standing, faltering, then shrinking into itself
+            Enemy pose = rsCorpse;
+            float shrink = glm::clamp((t - coldend::FALTER) / (coldend::REWIND - coldend::FALTER), 0.f, 1.f);
+            shrink = shrink * shrink * (3.f - 2.f * shrink);
+            pose.scale = 1.f - 0.78f * shrink;
+            pose.yaw += 0.05f * std::sin(t * 9.f) * (1.f - shrink);
+            pose.moveSpeed = 0.f;
+            pose.animPhase = t * 3.f;
+            size_t from = out.size();
+            buildEnemy(pose, gameClock, out);
+            for (size_t i = from; i < out.size(); ++i) {   // the frost going, the lamp dimming
+                out[i].color = glm::mix(out[i].color, vec3{0.55f, 0.57f, 0.6f}, shrink);
+                out[i].emissive *= (1.f - shrink) * (t < coldend::FALTER ? 0.5f + 0.5f * std::sin(t * 30.f) : 1.f);
+            }
+        } else if (t < coldend::PARTS) {   // a newborn unit on the grid, the size you were
+            FilePose P; P.motion[E_HEAD] = RX(0.4f); P.motion[E_ARML] = RZ(0.3f); P.motion[E_ARMR] = RZ(-0.3f);
+            coldBody(out, "unit_blank", T(c + vec3{0.f, 0.2f, 0.f}) * RY(rsCorpse.yaw) * RX(-1.5708f), P, 0.2f, vec3{0.f});
+        } else {   // ...and past that: the loose parts it was made from, frosting over, still
+            float frost = glm::clamp((t - coldend::PARTS) / 3.f, 0.f, 1.f);
+            for (int k = 0; k < 14; ++k) {
+                float a = k * 2.399f, r = 0.4f + 0.18f * k;
+                vec3 p = c + vec3{std::cos(a) * r, 0.08f, std::sin(a) * r};
+                vec3 size = k % 3 == 0 ? vec3{0.5f, 0.15f, 0.3f} : k % 3 == 1 ? vec3{0.12f, 0.12f, 0.6f} : vec3{0.25f, 0.25f, 0.25f};
+                push(out, T(p) * RY(a) * S(size), glm::mix(vec3{0.4f, 0.42f, 0.45f}, RECALL_FROST, frost));
+            }
+        }
+        // Its cryo cylinder, cracked on the grid beside it, and the small unit in it that never woke
+        if (t >= coldend::FALTER) {
+            vec3 cy = c + vec3{std::sin(rsCorpse.yaw + 2.6f), 0.f, std::cos(rsCorpse.yaw + 2.6f)} * 2.2f;
+            push(out, T(cy + vec3{0.f, 0.5f, 0.f}) * RY(rsCorpse.yaw) * RZ(1.5708f) * S(vec3{0.95f, 1.7f, 0.95f}), vec3{0.55f, 0.7f, 0.8f}, vec3{0.05f, 0.07f, 0.1f});
+            push(out, T(cy + vec3{0.f, 0.45f, 0.f}) * RY(rsCorpse.yaw) * S(vec3{0.9f, 0.3f, 0.35f}), vec3{0.25f, 0.27f, 0.3f});
+            for (int k = 0; k < 5; ++k) push(out, T(cy + vec3{-0.8f + k * 0.4f, 0.05f, 0.9f + 0.2f * (k % 2)}) * RY(k * 1.1f) * S(vec3{0.3f, 0.04f, 0.18f}), RECALL_FROST);
+        }
+    }
+    // The dispatch capsule at the north rail: dark until the Restorer is gone, then lit, then away with you
+    {
+        const vec3 at = coldRideT >= 0.f ? coldRidePos(coldRideT) - vec3{0.f, 1.6f, 0.f} : coldend::capsuleAt();
+        const bool live = rsDeathT > coldend::PARTS + 0.5f;
+        if (glm::length(player.position - coldend::capsuleAt()) < 300.f || coldRideT >= 0.f) {
+            push(out, T(coldend::capsuleAt() + vec3{0.f, 30.f, -2.5f}) * S(vec3{1.2f, 60.f, 1.2f}), vec3{0.1f, 0.1f, 0.11f}, live ? vec3{0.6f, 0.35f, 0.1f} : vec3{0.f});   // the rail, up
+            push(out, T(at + vec3{0.f, 2.f, 0.f}) * S(vec3{3.f, 4.f, 3.f}), vec3{0.55f, 0.6f, 0.68f});
+            push(out, T(at + vec3{0.f, 2.2f, 1.52f}) * S(vec3{1.6f, 1.4f, 0.05f}), vec3{0.1f, 0.12f, 0.15f}, live ? vec3{1.2f, 0.7f, 0.2f} : vec3{0.f});   // its open hatch
+            if (coldRideT >= 0.f) push(out, T(at - vec3{0.f, 0.6f, 0.f}) * S(vec3{2.4f, 1.2f, 2.4f}), vec3{1.f, 0.7f, 0.3f}, vec3{6.f, 3.f, 0.8f});
         }
     }
 }

@@ -686,6 +686,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
             for(auto& p:projSystem.pool)if(!p.isPlayer)p.alive=false;
         } else if (e.type == EnemyType::RESTORER) {   // Chapter 5's boss (its rewind and the ride out: Gameplay_Cold.h)
             coldRDown = true; coldRDownAt = elapsedTime; storyBossDown = true;
+            rsCorpse = e; rsCorpse.alive = true; rsCorpse.attack = AttackKind::NONE; rsCorpse.telegraphTimer = 0.f; rsDeathT = 0.f;
             for (auto& shot : projSystem.pool) if (!shot.isPlayer) shot.alive = false;
             resetRestorerFight();
             pushBanner("\"NOTHING I SAVED EVER WOKE UP.\"", "THE RESTORER", {0.8f, 0.9f, 1.f}, 6.f);

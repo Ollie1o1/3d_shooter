@@ -11,6 +11,7 @@
 #include "world/LevelStory.h"
 #include "world/LevelWasteland.h"
 #include "world/LevelLab.h"
+#include "world/LevelCold.h"
 #include "ui/UIBatch.h"
 #include "ui/MenuArt.h"
 #include "core/Gamepad.h"
@@ -117,14 +118,14 @@ public:
     void openDev() {
         // Build the chapter lists on demand so the regular menu stays quick to open.
         if (countMode(GameMode::STORY) == 0)
-            for (int chapter = 1; chapter <= 4; ++chapter) {
+            for (int chapter = 1; chapter <= 5; ++chapter) {
                 if (chapter == 4) {   // one arena, its fight's checkpoints inside it
                     static const char* C4[9] = {"THE ARRIVAL", "ON ITS BACK / THE TENDER", "ITS SHOULDERS / THE SIEVE", "ITS CROWN / THE CALLER", "THE BROOD IS DEAD",
                                                 "INSIDE / THE CRUCIBLE HEART", "INSIDE / THE BELLOWS LUNGS", "INSIDE / THE SORTING CORE", "THE SUMMIT"};
                     for (int i = 0; i < 9; ++i) devRows.push_back({"STORY", C4[i], GameMode::STORY, i, 0, 4});
                     continue;
                 }
-                LevelData S = chapter == 1 ? buildCradle() : chapter==2?buildWasteland():buildLab();
+                LevelData S = chapter == 1 ? buildCradle() : chapter==2?buildWasteland():chapter==3?buildLab():buildCold();
                 for (int i = 0; i < (int)S.arenas.size(); ++i)
                     devRows.push_back({"STORY", S.arenas[i].name, GameMode::STORY, i, (int)S.arenas[i].waves.size(), chapter});
             }
@@ -253,7 +254,7 @@ private:
         if (idx == 7 && onQuit) onQuit();
     }
 
-    int storyRows() const { return hasStorySave ? 6 : 5; }
+    int storyRows() const { return hasStorySave ? 7 : 6; }
     int storyAt(int x,int y) const {
         for(int i=0;i<storyRows();++i)if(x>screenW/2-360&&x<screenW/2+360&&y>165+i*76&&y<233+i*76)return i;
         return -1;
@@ -266,7 +267,7 @@ private:
             onStart(GameMode::STORY,o);return;
         }
         int chapter=storySel-(hasStorySave?1:0)+1;
-        if(chapter==5) {o.practice=true;onStart(GameMode::TRAINING,o);return;}
+        if(chapter==6) {o.practice=true;onStart(GameMode::TRAINING,o);return;}
         o.storyChapter=chapter;onStart(GameMode::STORY,o);
     }
     void handleStoryEvent(const SDL_Event& e) {
@@ -283,18 +284,18 @@ private:
     void renderStory() {
         ui.text("STORY",screenW/2,55,5,{.35f,.85f,1.f,1},true);
         ui.text("UNIT 24 / PURPOSE: UNKNOWN",screenW/2,115,2,{.75f,.8f,.82f,1},true);
-        const char* names[]={"1  THE CRADLE","2  THE DEAD SPAN","3  THE LIVING WARD","4  THE BLOOD MOON PLAIN","COMBAT PRACTICE"};
-        const char* descriptions[]={"NEW RUN / WAKE ON THE REJECT LINE.","NEW RUN / CROSS THE ASH WASTELAND.","NEW RUN / DESCEND INTO THE LABORATORY.","NEW RUN / IN PROGRESS / THE GLEANER AND ITS BROOD.","REPEATABLE LESSONS / SELECT ENEMIES / TRY YOUR UPGRADES"};
+        const char* names[]={"1  THE CRADLE","2  THE DEAD SPAN","3  THE LIVING WARD","4  THE BLOOD MOON PLAIN","5  THE COLD STORE","COMBAT PRACTICE"};
+        const char* descriptions[]={"NEW RUN / WAKE ON THE REJECT LINE.","NEW RUN / CROSS THE ASH WASTELAND.","NEW RUN / DESCEND INTO THE LABORATORY.","NEW RUN / THE GLEANER AND ITS BROOD.","NEW RUN / THE ICE SHELF, THE STORE AND WHAT KEEPS IT.","REPEATABLE LESSONS / SELECT ENEMIES / TRY YOUR UPGRADES"};
         for(int i=0;i<storyRows();++i) {
             float x=screenW/2-360.f,y=165.f+i*76;
             ui.rect(x,y,720,68,i==storySel?glm::vec4{.1f,.17f,.2f,.95f}:glm::vec4{.06f,.07f,.09f,.9f});
             if(i==storySel)ui.rect(x,y,4,68,{.35f,.85f,1,1});
             bool resume=hasStorySave&&i==0;
             int index=i-(hasStorySave?1:0);
-            int chapter=storySave.completed&&storySave.chapter<4?storySave.chapter+1:storySave.chapter;
-            const char* chapterNames[]={"THE CRADLE","THE DEAD SPAN","THE LIVING WARD","THE BLOOD MOON PLAIN"};
-            std::string name=resume?std::string(storySave.completed&&storySave.chapter==4?"REVISIT / ":"CONTINUE / ")+chapterNames[std::clamp(chapter,1,4)-1]:names[index];
-            std::string desc=resume?(storySave.completed&&storySave.chapter<4?"NEXT CHAPTER / EQUIPMENT AND UPGRADES CARRY FORWARD":"CHECKPOINT "+std::to_string(storySave.checkpoint+1)+" / EQUIPMENT, UPGRADES AND RECORDS SAVED"):descriptions[index];
+            int chapter=storySave.completed&&storySave.chapter<5?storySave.chapter+1:storySave.chapter;
+            const char* chapterNames[]={"THE CRADLE","THE DEAD SPAN","THE LIVING WARD","THE BLOOD MOON PLAIN","THE COLD STORE"};
+            std::string name=resume?std::string(storySave.completed&&storySave.chapter==5?"REVISIT / ":"CONTINUE / ")+chapterNames[std::clamp(chapter,1,5)-1]:names[index];
+            std::string desc=resume?(storySave.completed&&storySave.chapter<5?"NEXT CHAPTER / EQUIPMENT AND UPGRADES CARRY FORWARD":"CHECKPOINT "+std::to_string(storySave.checkpoint+1)+" / EQUIPMENT, UPGRADES AND RECORDS SAVED"):descriptions[index];
             ui.text(name.c_str(),x+24,y+14,3,{.85f,.9f,.92f,1});
             ui.text(desc.c_str(),x+24,y+48,1,{.65f,.72f,.75f,1});
         }

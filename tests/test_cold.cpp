@@ -3,6 +3,8 @@
 // snow and ice textures. No OpenGL context required. `make test-cold`.
 #include "core/Balance.h"
 #include "world/LevelCold.h"
+#include "world/LevelPlain.h"
+#include "game/StorySave.h"
 #include "world/ZoneConstraint.h"
 #include "render/MaterialTex.h"
 #include "enemies/Enemy.h"
@@ -290,6 +292,14 @@ int main() {
         auto R = buildCold();
         CHECK(R.story.bossSection == 9 && R.arenas[9].waves[0][0].type == EnemyType::RESTORER && R.story.coldPoolCount == 11,
               "it waits in the Vault (the tenth section), with walls set aside for its statues and racks");
+    }
+
+    {   // Chapter 5 is reached from Chapter 4's end, and saves like the others
+        auto P = buildPlain();
+        CHECK(P.story.nextChapter == 5 && std::string(P.story.nextName) == "THE COLD STORE", "Chapter 4's ending leads on to THE COLD STORE");
+        StorySave s; s.chapter = 5; s.checkpoint = 9; StorySave back;
+        CHECK(back.parse(s.text()) && back.chapter == 5 && back.checkpoint == 9, "a Chapter 5 save at the Vault round-trips");
+        s.checkpoint = 10; CHECK(!back.parse(s.text()), "...and a checkpoint past its last section is rejected");
     }
 
     std::printf(failures ? "\n%d FAILED\n" : "\nALL PASSED (0 failures)\n", failures);

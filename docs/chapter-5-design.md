@@ -337,8 +337,29 @@ candidate).
     in. 3 is FACTORY RESET ("YOU WERE BETTER BEFORE YOU REMEMBERED."): every
     5 s it takes a gun (never the revolver) into a STORAGE DRUM on the rim;
     break the drum to take it back. A retry or its death returns them all.
-  - On death: "NOTHING I SAVED EVER WOKE UP."; the chapter ends at the
-    Vault's north rail 4 s later.
+  - On death: "NOTHING I SAVED EVER WOKE UP."
+
+### The ending as built (step 7) and the hand-off (step 8)
+
+- **The rewind** (`updateColdEnding` and `gatherColdEnding` in
+  `Gameplay_Cold.h`):
+  - 0 to 1.2 s: it falters, its lamp flickering. Its cryo cylinder cracks
+    and falls beside it; the small unit inside never wakes.
+  - 1.2 to 7 s: it shrinks to a fifth of its size, shedding frost, to a
+    quickening tick.
+  - 7 to 9 s: a newborn unit lies on the grid.
+  - From 9 s: it is a scatter of loose parts that frost over.
+- **The ride out:** at 9.5 s the dispatch rail at the north edge lights.
+  Step into it and the capsule climbs straight up past the cliff's top, then
+  leans away toward the gas giant (7.5 s, the camera looking out toward it),
+  then fades to the chapter's end screen. `--overlay coldride` starts the
+  ride directly for screenshots.
+- **Not built yet:** the hands-on finisher (driving the RECALL module into
+  its dome). The rewind plays as soon as it falls.
+- **The hand-off:** Chapter 4's end now leads to Chapter 5 (ENTER - CONTINUE
+  TO CHAPTER 5). Chapter 5 is on the Story menu ("5 THE COLD STORE") and in
+  the dev menu's section list. It saves at checkpoints like the others
+  (sections 0-9); a save past Rack 24 keeps RECALL.
 
 ## 11. Build order
 

@@ -44,7 +44,7 @@ struct StorySave {
         if (!(in >> s.elapsed >> s.style >> s.damage >> s.peak >> s.kills >> s.shots >> s.hits >> s.deaths)) return false;
         if(version==2 && !(in >> s.labIntroSeen >> s.labRoutes))return false;
         if(in >> extra)return false;
-        if (s.chapter < 1 || s.chapter > 4 || s.checkpoint < 0 || s.checkpoint > (s.chapter == 1 ? 8 : s.chapter==2?7:s.chapter==3?9:8)
+        if (s.chapter < 1 || s.chapter > 5 || s.checkpoint < 0 || s.checkpoint > (s.chapter == 1 ? 8 : s.chapter==2?7:s.chapter==3?9:s.chapter==4?8:9)
             || s.labRoutes>4095
             || s.owned < 0 || s.owned >= (1 << WEAPON_COUNT)
             || s.prog.level < 1 || s.prog.level > 10000 || s.prog.points < 0 || s.prog.points > 100000

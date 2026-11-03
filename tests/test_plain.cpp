@@ -478,7 +478,7 @@ int main() {
         StorySave back; CHECK(back.parse(s.text()) && back.chapter == 4 && back.checkpoint == 2, "a Chapter 4 checkpoint saves and loads");
         s.checkpoint = 8; CHECK(back.parse(s.text()) && back.checkpoint == 8, "the last checkpoint inside it (the core dead) saves");
         s.checkpoint = 9; CHECK(!back.parse(s.text()), "a Chapter 4 checkpoint past its last phase is rejected");
-        s.chapter = 5; s.checkpoint = 0; CHECK(!back.parse(s.text()), "a chapter that does not exist is rejected");
+        s.chapter = 6; s.checkpoint = 0; CHECK(!back.parse(s.text()), "a chapter that does not exist is rejected");
     }
 
     // ---- the ground ----
