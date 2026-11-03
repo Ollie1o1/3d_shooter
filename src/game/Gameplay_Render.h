@@ -740,6 +740,7 @@ inline void GameplayState::render() {
     worldShader.setMat4("model", glm::mat4(1.f));
     if (!skipFx) {
         grapple.drawLine(renderCamPos, view, proj);
+        if (gleanerHaulRope > 0.f && plain()) grapple.drawRope(renderCamPos, gleanerHaulAt, view, proj);   // hauled up the Gleaner
         if (yankT > 0.f)   // a light one on the end of the rope, coming in
             for (const auto& e : enemies)
                 if (e.uid == yankUid && e.alive) {

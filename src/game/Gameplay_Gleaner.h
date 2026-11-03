@@ -143,21 +143,159 @@ inline void GameplayState::updateGleaner(float dt) {
     for (auto& d : gleanerDust) d.age += dt;
     gleanerDust.erase(std::remove_if(gleanerDust.begin(), gleanerDust.end(), [](const GleanerDust& d) { return d.age > 4.f; }), gleanerDust.end());
 
-    // You cannot walk through it: out of its body (its own frame) and away from its fists
-    glm::vec3 rel = player.position - g.pos;
-    float lx = glm::dot(rel, g.right()), lz = glm::dot(rel, g.fwd());
+    gleanerFistHitCd = std::max(0.f, gleanerFistHitCd - dt);
+    if (gleanerHaulT > 0.f) gleanerHaulT -= dt;
+    if (gleanerHaulRise > 0.f) {   // up beside the roof's edge: now the throw over the parapet onto it
+        gleanerHaulRise -= dt;
+        if (gleanerHaulRise <= 0.f && !playerDead) {
+            const float G = -24.f, T = 1.3f;
+            glm::vec3 d = gleanerHaulLand - player.position;
+            player.velocity = {d.x / T, (d.y - 0.5f * G * T * T) / T, d.z / T};
+            player.launched(); player.onGround = false;
+            SfxMixer::Opts o; o.group = SoundGroup::PLAYER; o.pitch = 0.6f; o.priority = true;
+            audio.playOpts("boost", o);
+        }
+    }
+    if (gleanerHaulRope > 0.f) gleanerHaulRope -= dt;
+    if (insideGleaner()) return;
+    // You cannot walk through it: out of its body (its own frame) and away from its fists.
+    // Each pushes you out the nearest way. (It used to shove you out of its body sideways,
+    // up to 140 m in a frame, into the reach of its fist, and the two held you there.)
     const float K = Gleaner::SCALE;
     const bool above = g.kneel > 0.5f && deckWallsFrom >= 0 && player.position.y > std::min(deckY, saddleY) - 10.f;   // (on its back, or carried up to it)
-    if (!above && player.position.y < 160.f * K && std::abs(lx) < 58.f * K && lz > -205.f * K && lz < 112.f * K) {
-        float push = (lx < 0.f ? -58.f : 58.f) * K - lx;
-        player.position += g.right() * push;
+    if (above || gleanerHaulT > 0.f) return;   // (a haul's flight passes it)
+    const float BX = 58.f * K, BF = 112.f * K, BB = -205.f * K, FIST_R = 24.f * K, FIST_TOP = 34.f * K;
+    for (int pass = 0; pass < 3; ++pass) {   // (where a fist meets its body there is a corner: a few passes settle it)
+        if (player.position.y < 160.f * K) {
+            glm::vec3 rel = player.position - g.pos;
+            float lx = glm::dot(rel, g.right()), lz = glm::dot(rel, g.fwd());
+            if (std::abs(lx) < BX && lz > BB && lz < BF) {
+                const float left = lx + BX, right = BX - lx, front = BF - lz, back = lz - BB;
+                const float m = std::min({left, right, front, back});
+                if (m == left) player.position -= g.right() * left;
+                else if (m == right) player.position += g.right() * right;
+                else if (m == front) player.position += g.fwd() * front;
+                else player.position -= g.fwd() * back;
+            }
+        }
+        for (int a = 0; a < 2; ++a) {
+            const glm::vec3 hand = g.hand(a);
+            if (hand.y > FIST_TOP || player.position.y > hand.y + FIST_TOP) continue;
+            glm::vec3 off = player.position - hand; off.y = 0.f;
+            float len = glm::length(off);
+            if (len >= FIST_R) continue;
+            glm::vec3 out = len > 0.1f ? off / len : glm::normalize(glm::vec3{player.position.x - g.pos.x, 0.f, player.position.z - g.pos.z} + glm::vec3{0.001f, 0.f, 0.f});
+            const float deep = FIST_R - len;
+            // A fist that comes down on you knocks you away (it doesn't pick you up and put you somewhere)
+            if (pass == 0 && deep > 1.5f && g.arm[a].swinging && gleanerFistHitCd <= 0.f && !playerDead) {
+                gleanerFistHitCd = 1.5f;
+                damagePlayer(30.f * tune().damage, hand, 0.4f, 0.06f);
+                if (!g_godMode) player.velocity = out * 26.f + glm::vec3{0.f, 11.f, 0.f};
+                player.onGround = false;
+            }
+            player.position += out * deep;
+        }
     }
+}
+
+// Where a throw onto its back lands: just inside the parapet's gap; the saddle (the Sieve); its crown (the Caller, the brood dead)
+inline glm::vec3 GameplayState::gleanerBackTarget() const {
+    return gleanerPhase == GleanerPhase::SIEVE ? saddleCheckpoint()
+         : gleanerPhase >= GleanerPhase::CALLER && gleanerPhase <= GleanerPhase::BROOD ? crownCheckpoint() : deckCheckpoint() + glm::vec3{4.f, 0.f, 0.f};
+}
+
+// The grapple's ray against the Gleaner: its arms (bone by bone), its fists, its hunched body.
+// Out to 220 m: it is a mountain, and the hook is the way up it.
+inline bool GameplayState::gleanerHookPoint(glm::vec3& at, float& dist) const {
+    if (!plain() || plainReveal.active() || insideGleaner() || onGleanerBack() || gleaner.rise < 0.99f) return false;
+    if (gleanerPhase > GleanerPhase::BROOD) return false;   // (inside it: its gut has its own walls)
+    const Gleaner& g = gleaner;
+    const glm::vec3 o = player.camera.position, d = player.camera.forward();
+    const float K = Gleaner::SCALE;
+    float best = 220.f;
+    // Ray against a capsule (a bone): the nearest approach of the ray to the segment, then back along the ray to the skin
+    auto capsule = [&](glm::vec3 a, glm::vec3 b, float r) {
+        glm::vec3 u = b - a, w = o - a;
+        float uu = glm::dot(u, u), ud = glm::dot(u, d), uw = glm::dot(u, w), dw = glm::dot(d, w);
+        float den = uu - ud * ud;   // (d is unit length)
+        float t = den > 1e-6f ? (ud * uw - uu * dw) / den : -dw;
+        t = std::max(t, 0.f);
+        float s = uu > 1e-6f ? std::clamp((glm::dot(o + d * t - a, u)) / uu, 0.f, 1.f) : 0.f;
+        glm::vec3 q = a + u * s;
+        t = std::max(0.f, glm::dot(q - o, d));   // (again from the clamped point)
+        float miss = glm::length(o + d * t - q);
+        if (miss > r) return;
+        float hit = t - std::sqrt(std::max(0.f, r * r - miss * miss));
+        if (hit > 0.5f && hit < best) best = hit;
+    };
     for (int a = 0; a < 2; ++a) {
-        glm::vec3 h = g.hand(a); h.y = player.position.y;
-        glm::vec3 off = player.position - h;
-        float len = glm::length(off);
-        if (len < 26.f * K && g.hand(a).y < 40.f * K) player.position = h + (len > 0.1f ? off / len : glm::vec3{1.f, 0.f, 0.f}) * (26.f * K);
+        const glm::vec3 sh = g.shoulder(a), el = g.elbow(a), hd = g.hand(a) + glm::vec3{0.f, 14.f * K, 0.f};
+        capsule(sh, el, 24.f * K);
+        capsule(el, hd, 21.f * K);
+        capsule(hd, hd, 19.f * K);
     }
+    {   // its body: a box in its own frame, as it sits now (kneeling, it is lower)
+        glm::vec3 rel = o - g.pos;
+        glm::vec3 lo{glm::dot(rel, g.right()), rel.y, glm::dot(rel, g.fwd())}, ld{glm::dot(d, g.right()), d.y, glm::dot(d, g.fwd())};
+        const float base = g.bob();
+        AABB box{{-46.f * K, base + 30.f * K, -130.f * K}, {46.f * K, base + 185.f * K, 40.f * K}};
+        float t = rayBoxHit(lo, ld, box);
+        if (t > 0.5f && t < best) best = t;
+    }
+    if (best >= 220.f) return false;
+    dist = best; at = o + d * best;
+    return true;
+}
+
+// Hooked into it: the rope snaps taut and hauls you up the side of it to just outside its roof's
+// edge on your side, then over the parapet onto the roof (at a spot clear of the chimneys); from
+// there the saddle and its crown are a walk. Before it kneels there is nothing to stand on up
+// there: a long leap at it instead.
+inline void GameplayState::haulOntoGleaner(glm::vec3 at) {
+    const float G = -24.f;
+    glm::vec3 p = player.position, target;
+    float T;
+    gleanerHaulRise = 0.f;
+    if (deckWallsFrom >= 0 && gleanerPhase >= GleanerPhase::CLIMB) {
+        const glm::vec2 c = (deckLo + deckHi) * 0.5f, h = (deckHi - deckLo) * 0.5f;
+        const glm::vec2 rel{p.x - c.x, p.z - c.y};
+        glm::vec2 land, out;   // where you land on the roof, and the way out from it to your side
+        if (std::abs(rel.x) / h.x > std::abs(rel.y) / h.y) {
+            if (rel.x < 0.f) { land = {deckLo.x + 14.f, c.y}; out = {-1.f, 0.f}; }   // the west, by the parapet's gap
+            else             { land = {deckHi.x - 12.f, c.y + 20.f}; out = {1.f, 0.f}; }
+        } else {
+            if (rel.y < 0.f) { land = {c.x + 10.f, deckLo.y + 14.f}; out = {0.f, -1.f}; }
+            else             { land = {c.x + 20.f, deckHi.y - 14.f}; out = {0.f, 1.f}; }
+        }
+        gleanerHaulLand = {land.x, deckY + 0.05f, land.y};
+        const glm::vec2 edge = out.x != 0.f ? glm::vec2{out.x < 0.f ? deckLo.x : deckHi.x, land.y} : glm::vec2{land.x, out.y < 0.f ? deckLo.y : deckHi.y};
+        target = {edge.x + out.x * 18.f, deckY + 22.f, edge.y + out.y * 18.f};
+        // (arrive there still just rising: dy/T + G T / 2 = 4)
+        const float dy = std::max(1.f, target.y - p.y);
+        T = (-4.f + std::sqrt(16.f + 48.f * dy)) / 24.f;
+        T = std::max(T, glm::length(glm::vec2{target.x - p.x, target.z - p.z}) / 70.f);
+        gleanerHaulRise = T;
+        gleanerHaulT = T + 1.6f;   // (its body lets you through on the way)
+    } else {
+        glm::vec3 flat{at.x - p.x, 0.f, at.z - p.z};
+        float len = glm::length(flat);
+        float go = std::clamp(len - 75.f, 0.f, 140.f);   // (lands short of its fists)
+        target = p + (len > 0.1f ? flat / len : glm::vec3{0.f, 0.f, -1.f}) * go;
+        target.y = 0.f;
+        T = std::clamp(go / 40.f, 0.9f, 3.2f);
+        gleanerHaulT = 0.f;
+    }
+    glm::vec3 dlt = target - p;
+    player.velocity = {dlt.x / T, (dlt.y - 0.5f * G * T * T) / T, dlt.z / T};
+    player.launched(); player.onGround = false;
+    gleanerHaulAt = at; gleanerHaulRope = std::min(0.9f, T * 0.6f);
+    grappleCooldown = GRAPPLE_COOLDOWN;
+    viewModel.triggerGrapple();
+    audio.play("grapple_fire");
+    SfxMixer::Opts o; o.group = SoundGroup::PLAYER; o.pitch = 0.55f; o.priority = true;
+    audio.playOpts("hook_yank", o);
+    shake(0.3f, 0.02f);
+    fovKick = std::max(fovKick, 6.f);
 }
 
 // The sky's moon, shut: 0 open (before it wakes), 1 gone (it is the eye now)

@@ -28,6 +28,14 @@ inline void GameplayState::beginLab(){
         };
         interactables.push_back(std::move(control));
     }
+    if(g_devOverlay=="swordopen")swordStatueOpen=true;   // --overlay swordopen: the statue's seal already broken (screenshots)
+    {   // OATHBREAKER, plunged into its statue in the Successor's arena: sealed until the Successor's second phase
+        Interactable it;it.position=lab::swordStatueGrip();
+        it.box={it.position-glm::vec3{.45f,1.f,.45f},it.position+glm::vec3{.45f,.5f,.45f}};
+        it.label=swordStatueOpen?"PULL OATHBREAKER":"OATHBREAKER / SEALED";it.active=!storySword;
+        it.onInteract=[this](){pullStatueSword();};
+        swordStatueIt=(int)interactables.size();interactables.push_back(std::move(it));
+    }
     for(const auto& contact:level.story.labBridges){auto& m=level.movers[contact.mover];
         bool west=(labRoutes&(1u<<(contact.room+3)))!=0;
         m.drive=((labRoutes&(1u<<contact.room)) && contact.side==(west?-1:1))?1.f:0.f;
@@ -37,7 +45,9 @@ inline void GameplayState::beginLab(){
 }
 
 inline void GameplayState::updateLab(float dt){
-    if(labEnding.active()){updateLabEnding(dt);return;}
+    swordStatueFlash=std::max(0.f,swordStatueFlash-dt*1.5f);
+    if(labEnding.active()){holsterSword();updateLabEnding(dt);return;}
+    if(storyBossDown)openSwordStatue();   // (it falls before you reach the statue: the seal goes with it)
     if(labIntro.active()){
         int cue=labIntro.time<4?0:labIntro.time<10?1:labIntro.time<16?2:labIntro.time<20?3:4;
         if(cue!=labCue){labCue=cue;char name[24];std::snprintf(name,sizeof(name),"lab_pa_%d",cue);audio.stop(labVoice);labVoice=audio.play(name,110,SoundGroup::UI,true);}

@@ -3,10 +3,10 @@
 THE GLEANER's sounds (Chapter 4), synthesized like tools/gen_sfx.py: no
 recordings, all oscillators, noise and filters. Writes assets/sfx/:
 
-  gleaner_scream  the roar: a machine the size of a mountain. A distorted low
-                  bellow (a saw and its fifth through an open "aw"), grinding
-                  metal shrieking over it, and its insides clanking: a ratchet
-                  running up as it draws breath, great slams, chains, echoes
+  gleaner_scream  the roar: a colossal train horn. The five-chime horn chord
+                  two octaves down, steam whistles at a train's pitch over it,
+                  and a vast beating hum under both; each pipe catches flat,
+                  slides up, holds, sags and gasps out; the plain's echoes
   gleaner_slam    a fist coming down: a sub thump that drops, crushed rock,
                   iron ringing, and a long rolling rumble
   gleaner_groan   rising out of the ground: iron dragging on iron, a creaking
@@ -101,69 +101,98 @@ def echoes(x, taps, cutoff):
     return out
 
 
-# --------------------------------------------------------------------------- the scream
+# --------------------------------------------------------------------------- the roar
 def gen_scream():
-    """A machine the size of a mountain roaring: a distorted bellow (a low saw and its
-    fifth through an open "aw"), grinding metal shrieking over it, and the clank of its
-    insides: a ratchet running up as it draws breath, great gears and chains slamming."""
-    dur = 5.6
+    """The roar: a colossal train horn. The five-chime horn chord (D#, F#, G#, B, D#)
+    two octaves down, brassy and swelling open; the same chord as steam whistles at
+    a train's own pitch, breathy, over it; and under both a hum so low and wide it is
+    felt more than heard. Each pipe catches flat and slides up to pitch as the steam
+    comes, holds, then sags and gasps out. The plain throws it back four times."""
+    dur = 6.6
     n = int(SR * dur)
     rnd = random.Random(31)
+    HOLD = 4.7                                             # the jaw closes at about 4.6 s
+    chord = [77.78, 92.50, 103.83, 123.47, 155.56]         # D#2 F#2 G#2 B2 D#3
+    hum_f = 38.89                                          # D#1
     x = [0.0] * n
-    # The clanks: a ratchet as it opens up, then great irregular slams, a slowing ratchet as it closes
-    hits = []
-    t = 0.0
-    while t < 1.1:
-        hits.append((t, rnd.uniform(0.5, 0.85), False)); t += 0.16 - 0.08 * (t / 1.1) + rnd.uniform(-0.01, 0.01)
-    t = 1.15
-    while t < 4.2:
-        hits.append((t, rnd.uniform(0.7, 1.0), rnd.random() < 0.45)); t += rnd.uniform(0.22, 0.48)
-    t = 4.2
-    gap = 0.09
-    while t < dur - 0.3:
-        hits.append((t, rnd.uniform(0.35, 0.6), False)); t += gap; gap *= 1.22
-    for t0, a, big in hits:
-        parts = [(f * rnd.uniform(0.88, 1.12), d) for f, d in ([(140, 6), (262, 8), (471, 11), (733, 14)] if big else [(380, 18), (612, 22), (1041, 26), (1733, 30), (2890, 38)])]
-        i0 = int(t0 * SR); ln = int(SR * (0.9 if big else 0.35))
-        nz = Biquad("bp", 2400 if not big else 900, 1.1)
-        for k in range(ln):
-            if i0 + k >= n: break
-            tt = k / SR
-            v = sum(math.sin(2 * math.pi * f * tt) * math.exp(-tt * d) for f, d in parts) * 0.22
-            v += nz.run(rnd.uniform(-1, 1)) * math.exp(-tt * 70.0) * 1.6
-            x[i0 + k] += v * a * (1.6 if big else 1.0)
-    # The bellow and the shriek
-    ph = [0.0, 0.0, 0.0]
-    form = [Biquad("bp", 520, 2.0), Biquad("bp", 1100, 3.0), Biquad("bp", 2600, 4.5)]
-    body = Biquad("lp", 1800)
-    sub = Biquad("lp", 70)
-    shr = [Biquad("bp", 1500, 5.0), Biquad("bp", 2300, 6.0)]
-    chain = Biquad("hp", 3200)
-    mph = [0.0, 0.0]; cph = [0.0, 0.0]
+
+    def pitch(t, k):
+        catch = 1.0 - 0.07 * (1.0 - smooth((t - 0.06 * k) / 0.45))   # flat as it catches, sliding up
+        sag = 1.0 - 0.085 * smooth((t - (HOLD - 0.5)) / 1.4)          # the steam running out
+        wob = 1.0 + 0.0025 * math.sin(2 * math.pi * (4.3 + 0.37 * k) * t + k)
+        return catch * sag * wob
+
+    def env(t, k):
+        a = smooth((t - 0.04 * k) / 0.35)
+        return a * (1.0 - smooth((t - (HOLD - 0.2)) / 1.5))
+
+    # ---- the horn: a saw per chime (and a detuned twin), through a brass filter that opens as it swells
+    ph = [[rnd.random(), rnd.random()] for _ in chord]
+    brass = Biquad("lp", 300, 1.4)
+    bite = Biquad("bp", 640, 1.6)
+    horn = [0.0] * n
     for i in range(n):
         t = i / SR
-        env = smooth(t / 0.35) * (1.0 - smooth((t - (dur - 1.1)) / 1.1))
-        f0 = 50.0 + 26.0 * smooth(t / 0.6) - 16.0 * smooth((t - 3.4) / 2.0) + 2.5 * math.sin(2 * math.pi * 5.1 * t) + 1.2 * rnd.uniform(-1, 1)
-        for k, m in enumerate((1.0, 1.5, 0.5)):
-            ph[k] += f0 * m / SR
-        s0 = saw(ph[0]) + 0.6 * saw(ph[1]) + 0.8 * math.sin(2 * math.pi * ph[2])
-        rough = 0.65 + 0.35 * (0.5 + 0.5 * math.sin(2 * math.pi * (23.0 + 6.0 * math.sin(2 * math.pi * 0.6 * t)) * t))
-        b = form[0].run(s0) * 1.4 + form[1].run(s0) * 1.0 + form[2].run(s0) * 0.4 + body.run(s0) * 0.8
-        b = math.tanh(b * 3.2 * rough)
-        # metal grinding on metal: two FM voices, wandering, swelling in after the first breath
-        sw = smooth((t - 0.25) / 0.8) * (1.0 - smooth((t - (dur - 1.4)) / 1.2)) * (0.6 + 0.4 * math.sin(2 * math.pi * 1.3 * t))
-        g = 0.0
-        for k, (fc, ratio) in enumerate(((1480.0, 1.41), (2260.0, 1.73))):
-            drift = 1.0 + 0.06 * math.sin(2 * math.pi * (0.4 + 0.3 * k) * t) - 0.08 * smooth((t - 3.5) / 2.0)
-            mph[k] += fc * ratio * drift / SR
-            idx = 2.5 + 1.8 * math.sin(2 * math.pi * 0.7 * t + k)
-            cph[k] += fc * drift / SR
-            g += shr[k].run(math.sin(2 * math.pi * cph[k] + idx * math.sin(2 * math.pi * mph[k])) + rnd.uniform(-0.3, 0.3))
-        c = chain.run(rnd.uniform(-1, 1)) * (0.5 + 0.5 * math.sin(2 * math.pi * 15.0 * t + rnd.uniform(0, 0.6))) * 0.09 * smooth((t - 0.4) / 0.5)
-        thump = math.sin(2 * math.pi * (32.0 + 30.0 * math.exp(-t * 6.0)) * t) * math.exp(-t * 2.0) * smooth(t / 0.01)
-        x[i] += b * 0.9 * env + g * 0.55 * sw + c * env + sub.run(rnd.uniform(-1, 1)) * 3.0 * env + thump * 0.9
-    x = [math.tanh(v * 1.15) for v in x]
-    x = echoes(x, [(0.38, 0.3), (0.95, 0.2), (1.7, 0.12), (2.6, 0.06)], 1700.0)
+        if i % 64 == 0:
+            brass.set(260 + 2100 * smooth(t / 0.5) * (1.0 - 0.55 * smooth((t - HOLD + 0.6) / 1.6)))
+        v = 0.0
+        for k, f in enumerate(chord):
+            e = env(t, k)
+            if e <= 0.0:
+                continue
+            fk = f * pitch(t, k)
+            ph[k][0] += fk / SR; ph[k][1] += fk * 1.004 / SR
+            v += (saw(ph[k][0]) + 0.8 * saw(ph[k][1])) * e * (1.0 if k else 1.25)
+        horn[i] = math.tanh((brass.run(v) * 0.55 + bite.run(v) * 0.35) * 1.6)
+
+    # ---- the whistles: the same chord at the train's pitch, near-pure pipes with steam in them
+    wph = [0.0] * len(chord)
+    breath = [Biquad("bp", f * 4.0, 14.0) for f in chord]
+    whist = [0.0] * n
+    for i in range(n):
+        t = i / SR
+        v = 0.0
+        for k, f in enumerate(chord):
+            e = env(t - 0.12, k)
+            if e <= 0.0:
+                continue
+            fk = f * 4.0 * pitch(t - 0.05, k) * (1.0 + 0.004 * math.sin(2 * math.pi * 6.1 * t + 2 * k))
+            wph[k] += fk / SR
+            if i % 32 == 0:
+                breath[k].set(fk)
+            tone = math.sin(2 * math.pi * wph[k]) + 0.18 * math.sin(4 * math.pi * wph[k])
+            air = breath[k].run(rnd.uniform(-1, 1)) * 2.2
+            v += (tone * 0.8 + air) * e
+        whist[i] = v
+
+    # ---- the hum: one note under it all, three slightly apart so it beats and rolls; overdriven so it carries
+    hph = [0.0, 0.0, 0.0]
+    hum = [0.0] * n
+    sub = Biquad("lp", 160)
+    for i in range(n):
+        t = i / SR
+        e = smooth(t / 0.7) * (1.0 - smooth((t - (HOLD + 0.1)) / 1.7))
+        f = hum_f * (1.0 - 0.05 * smooth((t - (HOLD - 0.4)) / 1.6))
+        s0 = 0.0
+        for k, d in enumerate((1.0, 1.006, 0.995)):
+            hph[k] += f * d / SR
+            p = hph[k]
+            s0 += math.sin(2 * math.pi * p) + 0.5 * math.sin(4 * math.pi * p) + 0.33 * math.sin(6 * math.pi * p) + 0.12 * math.sin(10 * math.pi * p)
+        hum[i] = sub.run(math.tanh(s0 * 0.9)) * e
+
+    # ---- steam: a hiss as it opens, a breathy bed, a gasp as it closes; a thump of air at the start
+    hiss = Biquad("hp", 2600)
+    gasp = Biquad("bp", 1200, 0.8)
+    for i in range(n):
+        t = i / SR
+        st = (math.exp(-t * 5.0) * smooth(t / 0.02) * 0.9 + 0.08 * env(t, 0)) * hiss.run(rnd.uniform(-1, 1))
+        u = t - (HOLD + 0.2)
+        st += gasp.run(rnd.uniform(-1, 1)) * (u > 0) * math.exp(-max(u, 0.0) * 2.5) * smooth(u / 0.15) * 0.8
+        thump = math.sin(2 * math.pi * (30.0 + 25.0 * math.exp(-t * 7.0)) * t) * math.exp(-t * 2.8) * smooth(t / 0.01)
+        x[i] = horn[i] * 0.85 + whist[i] * 0.16 + hum[i] * 1.05 + st + thump * 0.6
+
+    x = [math.tanh(v * 1.25) for v in x]
+    x = echoes(x, [(0.45, 0.34), (1.1, 0.24), (1.9, 0.15), (2.9, 0.08)], 1500.0)
     write_wav("gleaner_scream", x)
 
 

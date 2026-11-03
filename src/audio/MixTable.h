@@ -83,7 +83,7 @@ inline const std::vector<MixEntry>& mixTable() {
         {"count_tick", C::UI, -2.9f}, {"count_go", C::UI, -0.8f}, {"drive_warn", C::UI, 0.7f}, {"drive_ready", C::UI, -1.7f}, {"dash_ready", C::UI, 4.9f}, {"potion_drop", C::WORLD, -0.4f},
         {"mini_sting", C::UI, -4.2f}, {"bell", C::ACTION, -0.8f}, {"medal", C::UI, -0.9f},   // the Gauntlet's: a mini-boss arrives, the Cantor's bell, a room's medal
         // THE GLEANER (tools/gen_gleaner_sfx.py): its scream (a colossal train horn), a fist landing, rising out of the plain, the moon shutting
-        {"gleaner_scream", C::ACTION, -4.7f}, {"gleaner_slam", C::ACTION, -7.3f}, {"gleaner_groan", C::ACTION, -1.7f}, {"gleaner_blink", C::UI, -5.0f},
+        {"gleaner_scream", C::ACTION, -2.9f}, {"gleaner_slam", C::ACTION, -7.3f}, {"gleaner_groan", C::ACTION, -1.7f}, {"gleaner_blink", C::UI, -5.0f},
         // Its brood (same tool): the Caller's cracked bell (a toll; a round off its shell), the Sieve's basket shaken, its leg staked
         {"caller_toll", C::ACTION, -1.7f}, {"caller_clang", C::WORLD, -4.1f}, {"sieve_rattle", C::WORLD, -0.5f}, {"sieve_stake", C::ACTION, -7.2f},
     };

@@ -9,6 +9,7 @@ inline void GameplayState::saySuccessor(int line){
 }
 inline void GameplayState::successorEvents(Enemy& e,const EnemyEvents& ev){
     if(successorHazards.epoch!=e.suEpoch){successorHazards.clear();successorHazards.epoch=e.suEpoch;}
+    if(ev.suPhaseStarted>=2)openSwordStatue();   // "THERE. SOMETHING THEY MISSED.": the statue's seal breaks
     if(ev.suPhaseStarted){saySuccessor(ev.suLine);if(ev.suPhaseStarted==1)successorIntroLine=4.6f;audio.play("anvil",90,SoundGroup::UI,true);}
     if(ev.suLine==6)saySuccessor(6);
     if(ev.suMark){fx.spawnShockwave(ev.suAt+glm::vec3{0,.08f,0},2.f,{.45f,.75f,1});audio.playAt("grapple_fire",ev.suAt,110,SoundGroup::ENEMY,true);}
@@ -57,6 +58,7 @@ inline void GameplayState::gatherSuccessor(std::vector<BoxInstance>& out){
         r.box(root,{0,0,0},{width,width,n},color,glow);
     };
     auto ring=[&](vec3 p,float radius,vec3 glow){for(int k=0;k<32;++k){float a=k*.19634954f;line(p+vec3{std::cos(a)*radius,.05f,std::sin(a)*radius},p+vec3{std::cos(a+.19635f)*radius,.05f,std::sin(a+.19635f)*radius},.11f,glow*.4f,glow);}};
+    if(laboratory())gatherSwordStatue(out);
     if(laboratory() && level.arenaAt(player.position)==9){
         float heat=0;for(const auto& boss:enemies)if(boss.alive && boss.type==EnemyType::SUCCESSOR)heat=1-boss.health/boss.maxHealth;
         auto centre=lab::centre(9)+vec3{0,32,-12};

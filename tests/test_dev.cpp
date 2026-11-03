@@ -372,6 +372,115 @@ static void checkPlainRuntime(AudioSystem& audio) {
     g_practice=false;g_storyChapter=1;
 }
 
+// Walking up to the Gleaner for real (the bug: its body shoved you 140 m sideways into its fist,
+// and the two held you there). No step may move you more than a few metres; you can always walk
+// back out; and the grapple bites into it and hauls you onto its back.
+static const Uint8* noKeysDev(){static const Uint8 k[SDL_NUM_SCANCODES]={};return k;}
+// OATHBREAKER's statue in the Successor's arena: sealed, opened by its second phase, pulled into your hands
+static void checkSwordStatueRuntime(AudioSystem& audio) {
+    g_storyChapter=3;g_startArena=9;g_startWave=0;g_practice=true;g_godMode=true;g_bossRun=-1;g_devOverlay.clear();
+    auto live=std::make_unique<GameplayState>(audio,nullptr,GameMode::STORY);auto& game=*live;
+    CHECK(game.laboratory() && game.director.arena==9 && !game.storySword && !game.swordAllowed(),"the Successor's arena: no sword in Story yet");
+    int it=game.swordStatueIt;
+    CHECK(it>=0 && it<(int)game.interactables.size() && game.interactables[it].active,"the statue's sword can be looked at and pressed");
+    game.player.position=lab::swordStatue()+glm::vec3{0,0,4.6f};game.player.velocity={0,0,0};
+    for(int f=0;f<10;++f)game.physicsTick(1.f/60,noKeysDev(),false);
+    {   glm::vec3 d=glm::normalize(lab::swordStatueGrip()-game.player.camera.position);
+        game.player.camera.yaw=glm::degrees(std::atan2(d.z,d.x));game.player.camera.pitch=glm::degrees(std::asin(d.y));}
+    CHECK(game.findInteractTarget()==it,"standing in front of the dais, the crosshair finds the sword's grip");
+    game.pullStatueSword();
+    CHECK(!game.storySword,"sealed, it will not come out");
+    game.openSwordStatue();
+    CHECK(game.swordStatueOpen && game.interactables[it].label=="PULL OATHBREAKER","its seal breaks and the prompt says so");
+    game.pullStatueSword();
+    CHECK(game.storySword && game.swordAllowed() && game.swordOut && !game.interactables[it].active,"pulled: OATHBREAKER is in your hands and key 5 draws it from now on");
+    game.retryArena();
+    CHECK(game.storySword && game.swordAllowed(),"a retry of the fight keeps it");
+    while(glGetError()!=GL_NO_ERROR){}
+    game.render();
+    CHECK(glGetError()==GL_NO_ERROR,"the statue renders without OpenGL errors");
+    g_practice=false;g_godMode=false;g_storyChapter=1;g_startArena=0;
+}
+
+static void checkGleanerWalkInRuntime(AudioSystem& audio) {
+    g_storyChapter=4;g_startArena=g_startWave=0;g_practice=true;g_godMode=true;g_bossRun=-1;g_devOverlay="plainclose";
+    auto live=std::make_unique<GameplayState>(audio,nullptr,GameMode::STORY);auto& game=*live;
+    g_devOverlay.clear();
+    // (as after the reveal: it awake at its lair, you at the arrival)
+    game.gleaner.place(gleanerplace::lair(),0.f,1.f);game.player.position=plain::start();game.player.velocity={0,0,0};
+    CHECK(!game.plainReveal.active() && game.gleanerPhase==GameplayState::GleanerPhase::APPROACH,"walk-in: the reveal over, the approach begins");
+    Uint8 keys[SDL_NUM_SCANCODES]={};
+    float worst=0.f;
+    auto step=[&](glm::vec3 goal,bool away){   // one physics tick walking at (or away from) a point
+        glm::vec3 d=goal-game.player.position;d.y=0;if(away)d=-d;
+        std::fill(std::begin(keys),std::end(keys),0);
+        if(glm::length(d)>.3f){game.player.camera.yaw=glm::degrees(std::atan2(d.z,d.x));game.player.camera.pitch=0;keys[SDL_SCANCODE_W]=1;}
+        static float stuckFor=0.f;   // (a rock in the way: step round it, as you would)
+        if(stuckFor>.3f)keys[SDL_SCANCODE_D]=1;
+        glm::vec3 was=game.player.position;
+        game.physicsTick(1.f/60,keys,false);
+        glm::vec3 mv=game.player.position-was;mv.y=0;
+        worst=std::max(worst,glm::length(mv));
+        stuckFor=glm::length(mv)<.03f && keys[SDL_SCANCODE_W] ? stuckFor+1.f/60 : std::max(0.f,stuckFor-1.f/60*.5f);
+        if(stuckFor>1.2f)stuckFor=0.f;
+    };
+    // Straight at it, up the middle, while it crawls toward you
+    for(int f=0;f<60*90;++f){step(game.gleaner.pos,false);
+        if(f%600==0)std::printf("        t %3.0f  you %.0f %.0f  it %.0f  phase %d\n",f/60.f,game.player.position.x,game.player.position.z,game.gleaner.pos.z,(int)game.gleanerPhase);}
+    glm::vec3 rel=game.player.position-game.gleaner.pos;
+    std::printf("      walk-in: worst step %.2f m, stopped %.0f m ahead of it, %.0f m to its side, phase %d\n",worst,glm::dot(rel,game.gleaner.fwd()),glm::dot(rel,game.gleaner.right()),(int)game.gleanerPhase);
+    CHECK(worst<1.5f,"walking straight into the Gleaner never throws you across the plain");
+    CHECK(std::abs(glm::dot(rel,game.gleaner.right()))<40.f,"you stop against its front, not shoved out to its side");
+    CHECK(game.gleanerPhase>=GameplayState::GleanerPhase::KNEELING,"reaching it while it crawls, it stops and goes down");
+    for(int f=0;f<60*12 && game.gleanerPhase!=GameplayState::GleanerPhase::CLIMB;++f)step(game.gleaner.pos,false);
+    CHECK(game.gleanerPhase==GameplayState::GleanerPhase::CLIMB,"it kneels where it stopped and the updraft opens");
+    worst=0.f;
+    for(int f=0;f<60*60;++f)step(game.gleaner.pos,false);   // and on into its front
+    rel=game.player.position-game.gleaner.pos;
+    std::printf("      into its front: worst step %.2f m, stopped %.0f m ahead of it, %.0f m to its side\n",worst,glm::dot(rel,game.gleaner.fwd()),glm::dot(rel,game.gleaner.right()));
+    CHECK(worst<1.5f && std::abs(glm::dot(rel,game.gleaner.fwd())-112.f*Gleaner::SCALE)<3.f,"walking on into it, you stop against its front: no shove to its fist");
+    // Into its flank, its fists and its back, from every side: never a jump, and always a way back out
+    const float K=Gleaner::SCALE;
+    struct Probe{const char* name;glm::vec3 from;glm::vec3 at;};
+    const Gleaner& g=game.gleaner;
+    Probe probes[]={
+        {"its left fist",g.hand(0)+g.right()*(-90.f)+g.fwd()*(40.f),g.hand(0)},
+        {"between its fist and its body",g.pos+g.right()*(-140.f*1.f)+g.fwd()*(330.f),g.pos+g.right()*(-120.f)+g.fwd()*(200.f)},
+        {"its left flank",g.pos+g.right()*(-200.f)+g.fwd()*(-100.f),g.pos+g.fwd()*(-100.f)},
+        {"its rear flank, by its legs",g.pos+g.right()*(-210.f)+g.fwd()*(-400.f),g.pos+g.fwd()*(-400.f)}};
+    for(const auto& pr:probes){
+        game.player.position=pr.from;game.player.position.y=0.f;game.player.velocity={0,0,0};
+        worst=0.f;
+        for(int f=0;f<60*25;++f)step(pr.at,false);
+        glm::vec3 in=game.player.position;float inWorst=worst;
+        for(int f=0;f<60*4;++f)step(pr.at,true);
+        float out=glm::length(glm::vec2{game.player.position.x-in.x,game.player.position.z-in.z});
+        std::printf("      %s: worst step %.2f m in, walked %.1f m back out in 4 s\n",pr.name,std::max(inWorst,worst),out);
+        CHECK(std::max(inWorst,worst)<1.5f && out>18.f,(std::string("walk into ")+pr.name+": no jump, and you can walk back out").c_str());
+    }
+    (void)K;
+    // The grapple bites into it: from the plain beside it, hook its body and get hauled onto its back
+    game.player.position=g.pos+g.right()*(-230.f)+g.fwd()*(20.f);game.player.position.y=0;game.player.velocity={0,0,0};
+    for(int f=0;f<30;++f)game.physicsTick(1.f/60,noKeysDev(),false);
+    {
+        glm::vec3 aim=g.toWorld({-30.f,100.f,-40.f});
+        glm::vec3 d=glm::normalize(aim-game.player.camera.position);
+        game.player.camera.yaw=glm::degrees(std::atan2(d.z,d.x));game.player.camera.pitch=glm::degrees(std::asin(d.y));
+        glm::vec3 at;float dist=0;
+        bool sees=game.gleanerHookPoint(at,dist);
+        std::printf("      grapple: hook point %s at %.0f m\n",sees?"found":"MISSING",dist);
+        CHECK(sees,"the grapple can hook the Gleaner's body from the plain");
+        game.grappleCooldown=0;game.pendingGrapple=true;
+        for(int f=0;f<60*10 && !(game.onGleanerDeck()&&game.player.onGround);++f){game.physicsTick(1.f/60,noKeysDev(),false);
+            if(f%20==0)std::printf("        t %.2f  %.1f %.1f %.1f  v %.1f %.1f %.1f  haul %.2f\n",f/60.f,game.player.position.x,game.player.position.y,game.player.position.z,game.player.velocity.x,game.player.velocity.y,game.player.velocity.z,game.gleanerHaulT);}
+        std::printf("      grapple: now at %.1f %.1f %.1f (deck %.0f m), phase %d\n",game.player.position.x,game.player.position.y,game.player.position.z,game.deckY,(int)game.gleanerPhase);
+        CHECK(game.onGleanerDeck() && game.player.onGround,"hooked into it, the rope hauls you up onto its back");
+        for(int f=0;f<10;++f)game.physicsTick(1.f/60,noKeysDev(),false);
+        CHECK(game.gleanerPhase==GameplayState::GleanerPhase::TENDER,"landing there by the grapple starts the Tender as the updraft does");
+    }
+    g_practice=false;g_godMode=false;g_storyChapter=1;
+}
+
 // The Gleaner fight through the live game: it goes down when you come close, its updraft carries you
 // onto its back with real physics, the Tender wakes and fights, and dies to real shots.
 static void checkGleanerFightRuntime(AudioSystem& audio) {
@@ -891,6 +1000,8 @@ int main() {
         checkSplinterRuntime(audio);
         checkPlainRuntime(audio);
         checkGleanerFightRuntime(audio);
+        checkGleanerWalkInRuntime(audio);
+        checkSwordStatueRuntime(audio);
         GameSettings visualSettings;visualSettings.ambientDetail=3;
         menu.settings=&visualSettings;menu.settingsMenu.s=&visualSettings;menu.page=MenuState::SETTINGS;
         const auto settingsRows=menu.settingsMenu.rows();

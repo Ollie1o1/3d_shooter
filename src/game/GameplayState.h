@@ -409,6 +409,14 @@ public:
     void resetGleanerFight(bool fresh);
     void updateGleanerFight(float dt);
     void updraftThrow();
+    glm::vec3 gleanerBackTarget() const;   // where a throw onto its back lands: wherever the fight on it is
+    // The grapple on the Gleaner itself: a hook into its body hauls you up onto its back (a long leap at it before it kneels)
+    bool gleanerHookPoint(glm::vec3& at, float& dist) const;
+    void haulOntoGleaner(glm::vec3 at);
+    float gleanerHaulT = 0.f, gleanerHaulRope = 0.f;   // seconds of the haul's flight left (its body lets you pass); of its rope still drawn
+    float gleanerHaulRise = 0.f;                       // seconds left of its first stage: up beside the roof's edge (then thrown onto it)
+    glm::vec3 gleanerHaulAt{0.f}, gleanerHaulLand{0.f};
+    float gleanerFistHitCd = 0.f;
     void updateTender(float dt);
     bool shootTender(glm::vec3 o, glm::vec3 d, float& nearest, float dmg, int w);
     void gatherGleanerFight(std::vector<BoxInstance>& out);
@@ -810,6 +818,14 @@ public:
     // ---- OATHBREAKER, the sword (Gameplay_Sword.h): key 5, only in the Zenith -----
     Sword sword;
     bool  swordOut = false, lmbPrev = false, rmbPrev = false;
+    // OATHBREAKER in Story: plunged into the statue in the Successor's arena (Chapter 3), sealed until its second phase
+    bool  storySword = false, swordStatueOpen = false;
+    float swordStatueFlash = 0.f;   // the seal breaking / the pull: a white flare on the statue
+    int   swordStatueIt = -1;       // its interactable (the prompt changes when the seal breaks)
+    void  openSwordStatue();
+    glm::vec3 swordStatueAt() const;
+    void  pullStatueSword();
+    void  gatherSwordStatue(std::vector<BoxInstance>& out);
     glm::vec3 thrustFrom{0.f}; bool thrustHit = false;
     Sword::Guarded lastGuarded = Sword::Guarded::NONE;   // what the sword did with the last strike (damagePlayerStrike)
     float swordRoll = 0.f;                          // the camera leaning into a sword stroke (degrees)

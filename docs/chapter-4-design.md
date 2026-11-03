@@ -385,3 +385,13 @@ time, never three at once. The Gleaner keeps a slow background pressure
   - Tests: organ logic in `make test-plain`. `checkGleanerFightRuntime`
     walks in the door, kills each organ at its weak point, rides each shaft
     and the chimney, all with real physics.
+- **Getting close / the grapple / the roar** (fix pass): its body pushes you out
+  the nearest way (it used to shove you up to 140 m sideways into its fist's
+  reach, where the two held you); a fist coming down on you knocks you away
+  and hurts. Reach it while it crawls and it stops and kneels where it is.
+  The grapple hooks the Gleaner itself (out to 220 m: `gleanerHookPoint`):
+  once it kneels, a hook hauls you up beside its roof's edge on your side and
+  throws you onto the roof (`haulOntoGleaner`); before that, a long leap at it.
+  The roar (`gleaner_scream`) is now a colossal train horn: the five-chime
+  horn chord two octaves down, steam whistles at train pitch, a beating hum
+  under both. Tested by `checkGleanerWalkInRuntime` in tests/test_dev.cpp.

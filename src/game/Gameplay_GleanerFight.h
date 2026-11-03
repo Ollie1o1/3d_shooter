@@ -248,8 +248,7 @@ inline void GameplayState::updraftThrow() {
     if (glm::length(off) > 10.f || p.y < deckY + 6.5f || p.y > deckY + 40.f || player.velocity.y < 5.f) return;
     const float G = -24.f;   // (Player's gravity: a launched player falls at it)
     // (fallen off its back mid-fight: the vent throws you back to wherever the fight is)
-    glm::vec3 target = gleanerPhase == GleanerPhase::SIEVE ? saddleCheckpoint()
-                     : gleanerPhase >= GleanerPhase::CALLER && gleanerPhase <= GleanerPhase::BROOD ? crownCheckpoint() : deckCheckpoint() + glm::vec3{4.f, 0.f, 0.f};
+    glm::vec3 target = gleanerBackTarget();
     const float T = std::clamp(glm::length(glm::vec2{target.x - p.x, target.z - p.z}) / 45.f, 2.2f, 4.f);
     glm::vec3 d = target - p;
     player.velocity = {d.x / T, (d.y - 0.5f * G * T * T) / T, d.z / T};
@@ -269,7 +268,7 @@ inline void GameplayState::updateGleanerFight(float dt) {
     case GleanerPhase::APPROACH: {
         glm::vec3 d = gleanerplace::battleMark() - g.pos; d.y = 0.f;
         g.targetYaw = 0.f;
-        g.wantSpeed = glm::length(d) > 6.f && !g.screaming() ? 3.4f : 0.f;
+        g.wantSpeed = glm::length(d) > 6.f && !g.screaming() && flat > 430.f ? 3.4f : 0.f;   // (you reached it first: it stops where it is)
         gleanerScreamCd -= dt;
         if (gleanerScreamCd <= 0.f && !g.screaming()) { g.scream(); gleanerScreamCd = 40.f + 25.f * meteors.rnd(); }
         // It calls the sky down on you while you come

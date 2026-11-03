@@ -224,7 +224,11 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     glm::vec3 gPoint{0.f}; int gWall = -1; bool gMover = false;
     bool canHook = findGrappleTarget(gPoint, gWall, gMover);
     int hookE = grapple.active || pinned ? -1 : findEnemyHook();   // an enemy under the crosshair: the hook takes it first
-    grappleTargetInSight = (canHook && gMover) || hookE >= 0;
+    // THE GLEANER under the crosshair (nearer than any wall): the hook bites into it and hauls you up
+    glm::vec3 glPoint{0.f}; float glDist = 0.f;
+    const bool glHook = plain() && !grapple.active && !pinned && hookE < 0 && gleanerHookPoint(glPoint, glDist)
+                        && (!canHook || glDist < glm::length(gPoint - player.camera.position));
+    grappleTargetInSight = (canHook && gMover) || hookE >= 0 || glHook;
     if (hookE >= 0 && grappleCooldown <= 0.f) teach(TEACH_HOOK);
     if (pendingGrapple && pinned && !grapple.active) { pendingGrapple = false; pinnedCue(); }
     if (pinned && grapple.active) grapple.release();
@@ -235,6 +239,8 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
                 audio.play("dry", 100, SoundGroup::PLAYER);   // still coiling: no spamming the hook
             } else if (hookE >= 0) {
                 hookEnemy(hookE);
+            } else if (glHook) {
+                haulOntoGleaner(glPoint);
             } else if (canHook) {
                 glm::vec3 impulse{0.f};
                 grapple.attach(player.camera.position, gPoint, impulse, gWall,
