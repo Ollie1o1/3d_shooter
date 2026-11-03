@@ -360,6 +360,15 @@ candidate).
   TO CHAPTER 5). Chapter 5 is on the Story menu ("5 THE COLD STORE") and in
   the dev menu's section list. It saves at checkpoints like the others
   (sections 0-9); a save past Rack 24 keeps RECALL.
+- **Music** (step 9): two tracks on the lab's choir-and-organ voicing,
+  `COLD STORAGE` (96 BPM, a music-box arp over a held bass; quiet
+  outdoors under the wind, louder indoors, full in fights) and `THE RESTORER`
+  (118 BPM, rising with its phases). Sounds come from the existing bank: the
+  Clerk's ticks, the sea's creaks and groans, the vents' hiss, the capsules'
+  launches.
+- **Still to do:** the hands-on RECALL finisher; a Blender model for the
+  Restorer (it is a code rig); the score stuttering back on ROLLBACK; frame
+  rate near the Store (about 50 fps in 4K screenshots there, 90+ elsewhere).
 
 ## 11. Build order
 

@@ -1285,6 +1285,18 @@ inline void GameplayState::updateMusic() {
         audio.setMusicVolume(before?0.f:(settings?settings->musicVolume:.6f));
         audio.setOverdrive(overdriveOn()&&!playerDead&&!paused&&!armoryOpen,0);return;
     }
+    if(cold()){   // Chapter 5: COLD STORAGE, quiet under the wind until a fight; THE RESTORER in the Vault
+        const int here=level.arenaAt(player.position);
+        const bool boss=here==9 && !coldRDown && director.fighting();
+        m.setTrack(boss?16:15);m.setDrive(overdriveOn()&&!playerDead);m.setSolo(false);
+        float intensity=director.fighting()?(boss?1.15f+.08f*(float)std::max(0,rsPhase-1):1.f):.3f;
+        if(coldRideT>=0.f)intensity=1.1f;
+        if(rsDeathT>=0.f&&coldRideT<0.f)intensity=.15f;
+        m.setIntensity(playerDead?.05f:intensity);m.setMuffle(paused||armoryOpen||playerDead);
+        const bool indoors=here>=2&&here<=4;
+        audio.setMusicVolume((settings?settings->musicVolume:.6f)*(director.fighting()||coldRideT>=0.f?1.f:indoors?.5f:.3f));
+        audio.setOverdrive(overdriveOn()&&!playerDead&&!paused&&!armoryOpen,0);return;
+    }
     if(laboratory()){
         const bool boss=level.arenaAt(player.position)==9 && !storyBossDown;
         m.setTrack(boss?13:12);m.setDrive(overdriveOn()&&!playerDead);m.setSolo(false);

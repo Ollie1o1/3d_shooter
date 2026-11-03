@@ -51,7 +51,7 @@ struct MusicTrack {
                            // (a distorted kick with a long tail, a snare under the clap, a dirtier bass and sub, a deeper pump)
 };
 
-constexpr int MUSIC_TRACKS = 15;
+constexpr int MUSIC_TRACKS = 17;
 
 inline const MusicTrack& musicTrack(int i) {
     static const MusicTrack T[] = {
@@ -118,6 +118,15 @@ inline const MusicTrack& musicTrack(int i) {
         {"RECLAMATION", 140.f, 40, {0, 5, 3, 4},
          "x.......x..x....", "........x.......", "x...x...x...x.x.",
          "x-------x---f---", "0.......3.......", "0-------1---2---3-------2---1---", 0},
+        // THE COLD STORE (Chapter 5), on the lab's choir and organ: slow and glassy, a music-box arp
+        // turning over a held bass, the lead falling a step a bar. Outdoors the wind carries most of it.
+        {"COLD STORAGE", 96.f, 45, {0, 5, 3, 6},
+         "x...............", "................", "....x.......x..o",
+         "x-------o-------", "0..2..1..3..2..1", "3-------2-------1-------0-------", 0},
+        // THE RESTORER: colder strings and choir at a careful march, the lead climbing and turning back
+        {"THE RESTORER", 118.f, 41, {0, 6, 5, 4},
+         "x.....x.x.......", "....x.......x..g", "x.x.X.x.x.x.X.xo",
+         "x--fx--.o--fx-f.", "0.1.2.3.2.1.0.2.", "3---2---1-------0---1---2---3---", 0},
     };
     return T[((i % MUSIC_TRACKS) + MUSIC_TRACKS) % MUSIC_TRACKS];
 }
@@ -179,7 +188,7 @@ public:
     float  samplesPerStep() const { return stepLen; }
     int    rootNote() const { return musicTrack(track).root; }
     int    pass() const { return cycle; }   // times round the four bars (odd: the B side)
-    static bool labTrack(int t) { return t == 12 || t == 13; }   // the lab's choir and organ
+    static bool labTrack(int t) { return t == 12 || t == 13 || t == 15 || t == 16; }   // the lab's choir and organ (and Chapter 5's)
     // The plain's score, one instrument at a time (tests, tuning): a bit per layer, set = silent.
     // 1 drone, 2 choir, 4 strings, 8 bell, 16 war drums, 32 low brass, 64 anvils, 128 horn
     unsigned plainMute = 0;
