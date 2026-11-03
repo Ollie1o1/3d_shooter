@@ -26,6 +26,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
     }
     h.grenades = grenadeCount; h.grenadeMax = grenadeMax;
     if (splinterOwned()) { h.splinter = true; h.grenades = splinters.charges; h.grenadeMax = SplinterSystem::CHARGES; h.splinterRegrow = splinters.regrow01(); }
+    if (recallOwned()) { h.recall = true; h.recallPlaced = recall.placed; h.recall01 = recall.placed ? recall.left01() : recall.cooldown01(); }
     h.swordSlot = swordAllowed(); h.swordOut = swordOut; h.swordBroken = sword.broken(); h.swordGuard = sword.guard01();
     h.swordBar = swordOut && (sword.blocking() || sword.broken() || sword.riposteT > 0.f || sword.guard < Sword::GUARD_MAX);
     h.level = prog.level; h.xp = prog.xp; h.xpNext = Progression::xpToNext(prog.level); h.points = prog.points;

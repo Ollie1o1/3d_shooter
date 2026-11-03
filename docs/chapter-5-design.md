@@ -1,6 +1,7 @@
 # Chapter 5: THE COLD STORE — design
 
-Brainstormed with the user on 2026-11-03. Nothing is built yet.
+Brainstormed with the user on 2026-11-03. Built so far: RECALL (step 1 of the
+build order; `--recall` to try it anywhere).
 
 The creator never threw anything away for good. Everything is **saved** here:
 every unit, every sibling, and copies of UNIT 24. The keeper of the store, THE
@@ -85,6 +86,13 @@ Taken from a sleeping copy of yourself in Rack 24.
 - Moves position only, never the view (the Chapter 3 camera rule).
 - It answers the Restorer's ROLLBACK (section 8): the boss resets you, you
   get a reset of your own.
+- **As built** (`src/player/Recall.h`, `src/game/Gameplay_Recall.h`): its own
+  rebindable key, **X** (gamepad: left-stick click). The statue waits 8 s, then
+  crumbles harmlessly; 3 s cooldown after either. The shatter is a 5 m, 65
+  damage blast. For 1.75 s, non-boss enemies within 22 m aim at the statue
+  instead of you, and their melee swings land on it. If a gate has shut, or the
+  statue is outside the arena you're fighting in, it breaks without moving you
+  (`RECALL BLOCKED`). Not yet given out in the story (Rack 24 isn't built).
 
 ## 5. New enemies
 

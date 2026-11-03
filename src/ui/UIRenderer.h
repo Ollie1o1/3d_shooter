@@ -40,6 +40,9 @@ struct HudState {
     int   grenades = 0, grenadeMax = 2;
     bool  splinter = false;      // the grenade slots show the SPLINTER's charges
     float splinterRegrow = 1.f;  // the next charge, 0..1
+    bool  recall = false;        // RECALL owned: its bar above the first weapon slot
+    bool  recallPlaced = false;  // a statue is standing (the bar is its time left)
+    float recall01 = 1.f;        // placed: time left, 0..1; otherwise: the cooldown, full = ready
     // OATHBREAKER (the Zenith): a fifth slot; out, the guard meter under the crosshair
     bool  swordSlot = false, swordOut = false, swordBroken = false, swordBar = false;
     float swordGuard = 1.f;
@@ -911,6 +914,13 @@ private:
                 ui.rect(gx - (i + 1) * 16, y0 - 18 + (int)(10 * (1.f - h.splinterRegrow)), 12, (int)(10 * h.splinterRegrow), {0.3f, 0.75f, 0.85f, 0.7f});
         }
         if (h.grenadeMax > 0) ui.textRight("G", gx - h.grenadeMax * 16 - 8, y0 - 17, 1, {0.7f, 0.9f, 0.6f, 0.9f});
+        if (h.recall) {   // RECALL: frost while ready, the statue's time draining while it stands
+            const glm::vec4 frost{0.72f, 0.86f, 0.95f, 0.95f};
+            float a = h.recallPlaced ? 0.75f + 0.25f * std::sin(hudTime * 8.f) : h.recall01 >= 1.f ? 1.f : 0.5f;
+            ui.rect(x0, y0 - 16, 70, 6, {0.12f, 0.16f, 0.2f, 0.6f});
+            ui.rect(x0, y0 - 16, (int)(70 * h.recall01), 6, glm::vec4{glm::vec3(frost), frost.a * a});
+            ui.text(h.recallPlaced ? "RECALL: RETURN" : "RECALL", x0 + 76, y0 - 17, 1, glm::vec4{glm::vec3(frost), a});
+        }
     }
 
     void drawWeaponIcon(int s, int x, int y, bool active) {

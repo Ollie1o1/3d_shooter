@@ -54,6 +54,7 @@
 #include "render/TextureGen.h"
 #include "player/Weapons.h"
 #include "player/Splinter.h"
+#include "player/Recall.h"
 #include "game/Progression.h"
 #include "game/StorySave.h"
 #include "game/DevFlags.h"          // the command line's and the dev tools' globals (g_*)
@@ -338,6 +339,9 @@ public:
     float grenadeTimer   = 0.f;
     // The SPLINTER (Gameplay_Splinter.h): takes the grenade button once owned
     SplinterSystem splinters;
+    // RECALL (Gameplay_Recall.h): a statue to snap back to, on its own key
+    RecallSystem recall;
+    int   recallHints = 0;
     // Chapter 4 (Gameplay_Plain.h): the meteors, and the shakes still on their way
     MeteorRain meteors;
     std::vector<MeteorImpact> meteorHits;
@@ -664,6 +668,7 @@ public:
     // Event-driven click flags — set in handleEvent, consumed once in physicsTick.
     bool pendingFire      = false;
     bool pendingGrenade   = false;
+    bool pendingRecall    = false;
     bool pendingGrapple   = false;
 
     GameplayState(AudioSystem& aud, GameSettings* s = nullptr, GameMode m = GameMode::ARENA);
@@ -1201,6 +1206,12 @@ public:
     int  splinterTarget(glm::vec3 from, glm::vec3& aimAt) const;
     void splinterRicochet(int first, float dmg, int w);
     void gatherSplinters(std::vector<BoxInstance>& out);
+    bool recallOwned() const;
+    bool recallClear(glm::vec3 feet) const;
+    void pressRecall();
+    void tickRecall(float dt);
+    bool recallLures(const Enemy& e) const;
+    void gatherRecall(std::vector<BoxInstance>& out);
 
     // =========================================================================
     // Effects (Effects.h)
@@ -1285,6 +1296,7 @@ public:
 #include "game/Gameplay_Destruct.h"
 #include "game/Gameplay_Splinter.h"
 #include "game/Gameplay_Story.h"
+#include "game/Gameplay_Recall.h"
 #include "game/Gameplay_Wasteland.h"
 #include "bosses/ballast/Gameplay_Ballast.h"
 #include "bosses/absolute/Gameplay_Absolute.h"

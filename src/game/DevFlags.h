@@ -29,6 +29,7 @@ inline glm::vec3 g_devCamPos{0.f};
 inline float     g_devCamYaw = -90.f, g_devCamPitch = 0.f;
 // --weapon N --aim --overlay armory|pause|settings: pose a screenshot
 inline int       g_devWeapon = -1;
+inline bool      g_devRecall = false;     // --recall: UNIT 24's RECALL (Chapter 5) on X, anywhere
 inline bool      g_devSplinter = false;   // --splinter: UNIT 24's SPLINTER on the grenade button, anywhere
 inline bool      g_devSword = false;   // --sword / ?sword: the sword (key 5) anywhere, not just the Zenith
 inline float     g_devSwordOrbit = 0.f;   // --swordorbit DEG: see the sword and its arms from the side (DEG round them; 0 off)

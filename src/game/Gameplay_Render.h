@@ -87,6 +87,7 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
     gatherAbsoluteBoxes(out);
     gatherSuccessor(out);
     if (splinterOwned()) gatherSplinters(out);
+    if (recallOwned()) gatherRecall(out);
     if(laboratory())gatherLabDressing(out);
 
     // HOLD: a ring of light on the ground; the lit arc is how far it's held.

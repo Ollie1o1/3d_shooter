@@ -20,6 +20,7 @@
 #include "render/EnemyModel.h"
 #include "player/Weapons.h"
 #include "player/Splinter.h"
+#include "player/Recall.h"
 #include "game/Progression.h"
 #include "core/MouseFilter.h"
 #include "core/Settings.h"
@@ -5813,6 +5814,30 @@ int main() {
               && SplinterSystem::heavyRoundScale(weaponDef(WeaponId::LONGSHOT).damage) < 0.5f
               && weaponDef(WeaponId::LONGSHOT).damage * SplinterSystem::heavyRoundScale(weaponDef(WeaponId::LONGSHOT).damage)
                  > weaponDef(WeaponId::REVOLVER).damage, "the rifles get less from a splinter than the revolver, but still more damage per round");
+    }
+
+    // RECALL (Chapter 5): leave a statue, snap back to it within the window
+    {
+        RecallSystem r;
+        CHECK(r.ready() && !r.placed, "RECALL starts ready, with no statue");
+        CHECK(r.press({1.f, 0.f, 2.f}, 0.5f) == RecallSystem::Press::PLACED && r.placed && r.feet == glm::vec3(1.f, 0.f, 2.f),
+              "the first press leaves a statue where you stand");
+        CHECK(r.luring(), "a fresh statue draws enemies");
+        CHECK(r.press({9.f, 0.f, 9.f}, 0.f) == RecallSystem::Press::NONE && r.placed, "a double tap does not snap you straight back");
+        r.tick(RecallSystem::LURE + 0.1f);
+        CHECK(!r.luring() && r.placed, "the lure wears off before the statue does");
+        CHECK(r.press({9.f, 0.f, 9.f}, 0.f) == RecallSystem::Press::RECALLED && r.feet == glm::vec3(1.f, 0.f, 2.f) && !r.placed,
+              "the second press sends you back to the statue's spot");
+        CHECK(!r.ready() && r.press(glm::vec3{0.f}, 0.f) == RecallSystem::Press::NONE, "then it cools down");
+        r.tick(RecallSystem::COOLDOWN + 0.01f);
+        CHECK(r.ready(), "...and comes back");
+        r.press(glm::vec3{0.f}, 0.f);
+        bool crumbled = false;
+        for (int i = 0; i < 60 * 9 && !crumbled; ++i) crumbled = r.tick(1.f / 60.f);
+        CHECK(crumbled && !r.placed && r.age >= RecallSystem::WINDOW - 0.02f, "left alone, the statue crumbles after its window");
+        Bindings b;
+        CHECK(b.slot[(int)Act::RECALL][0] == SDL_SCANCODE_X && std::string(Bindings::actKey(Act::RECALL)) == "recall",
+              "RECALL has its own rebindable key, X by default");
     }
 
     // A Sentinel on the Spire's summit keeps firing at you below, every time and

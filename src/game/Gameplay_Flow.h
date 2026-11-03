@@ -394,6 +394,7 @@ inline void GameplayState::resetPlayer(glm::vec3 start) {
     styleSystem = StyleSystem{};
     grenadeCount = grenadeMax; killsThisCycle = 0;
     splinters.reset();
+    recall.reset();
     for (int w = 0; w < WEAPON_COUNT; ++w) {
         weapons[w] = WeaponState{};
         weapons[w].ammo = weaponMag((WeaponId)w, prog.up[w]);
@@ -1043,6 +1044,7 @@ inline void GameplayState::update(float dt) {
         if (storyLocked() || !storyArmed || storyEndT>=0.f) { pendingFire = false; pendingAlt = false; }
         if (!splinterOwned() || storyLocked() || storyEndT >= 0.f) pendingGrenade = false;   // (no grenades in Story: the button is the SPLINTER's)
         if (!storyGrapple || storyLocked() || storyEndT >= 0.f) pendingGrapple = false;
+        if (storyLocked() || storyEndT >= 0.f) pendingRecall = false;
     }
     bool parryKey = keys[SDL_SCANCODE_F] != 0;
 

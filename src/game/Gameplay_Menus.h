@@ -79,6 +79,7 @@ inline void GameplayState::padButton(Uint8 b) {
             if (!tryTearEye() && !finishKey()) { int i=findInteractTarget(); if(i>=0 && interactables[i].onInteract)interactables[i].onInteract(); }
             break;   // R3: finish
         case SDL_CONTROLLER_BUTTON_DPAD_UP:       pendingGrenade = true; break;
+        case SDL_CONTROLLER_BUTTON_LEFTSTICK:     pendingRecall = true; break;   // L3: RECALL
         case SDL_CONTROLLER_BUTTON_DPAD_DOWN:     inspect(); break;
         case SDL_CONTROLLER_BUTTON_DPAD_LEFT:     padCycle(-1); break;
         case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:    padCycle(+1); break;
@@ -253,6 +254,7 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
     if (key >= SDLK_1 && key <= SDLK_4) { holsterSword(); trySwitch(key - SDLK_1); }
     if (key == SDLK_5) drawSword();
     if (kb.pressed(Act::GRENADE, e)) pendingGrenade = true;
+    if (kb.pressed(Act::RECALL, e)) pendingRecall = true;
     if (kb.pressed(Act::INSPECT, e)) inspect();
     if (e.type == SDL_MOUSEMOTION && !g_devNoMouse) {
         float dx = (float)e.motion.xrel, dy = (float)e.motion.yrel;

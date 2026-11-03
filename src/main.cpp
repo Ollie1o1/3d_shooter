@@ -663,7 +663,7 @@ int main(int argc, char* argv[]) {
     // (implies --play), --wave N skips to a wave within it, --god disables
     // damage (for footage), --dev opens the level select. Dev: --cam X Y Z
     // YAW PITCH, --shot FRAMES FILE.BMP, --audiodump FILE.WAV SECONDS (record the mix, then quit),
-    // --sword (the sword on key 5 in any arena), --splinter (the SPLINTER on the grenade button)
+    // --sword (the sword on key 5 in any arena), --splinter (the SPLINTER on the grenade button), --recall (RECALL on X)
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--play") app->pending = App::NextState::Game;
@@ -707,6 +707,7 @@ int main(int argc, char* argv[]) {
         }
         if (arg == "--weapon" && i + 1 < argc) g_devWeapon = std::atoi(argv[++i]) - 1;
         if (arg == "--aim") g_devAim = true;
+        if (arg == "--recall") g_devRecall = true;       // RECALL (Chapter 5) on its key (X), anywhere
         if (arg == "--splinter") g_devSplinter = true;   // the SPLINTER (Chapter 4) on the grenade button
         if (arg == "--sword") g_devSword = true;   // the sword (key 5) anywhere, for testing it
         if (arg == "--swordorbit" && i + 1 < argc) g_devSwordOrbit = (float)std::atof(argv[++i]);

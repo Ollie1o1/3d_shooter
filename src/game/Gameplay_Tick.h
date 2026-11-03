@@ -21,6 +21,8 @@ inline void GameplayState::shootInput() {
     if (pendingGrenade && splinterOwned()) throwSplinter();   // owned: the button flicks a splinter instead
     else if (pendingGrenade && grenadeCount > 0 && grenadeTimer <= 0.f) throwGrenade();
     pendingGrenade = false;
+    if (pendingRecall && recallOwned() && !playerDead) pressRecall();
+    pendingRecall = false;
     flushHitSounds();
 }
 
@@ -257,6 +259,10 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         pendingGrapple = false;
     }
     updateEnemyZip();
+    if (g_devOverlay == "recall" && recallOwned() && !recall.placed && recall.ready() && elapsedTime > 0.3f) {   // dev: a statue 4 m ahead, facing you (screenshots)
+        glm::vec3 f = player.camera.flatForward();
+        recall.press(player.position + f * 4.f, std::atan2(-f.x, -f.z));
+    }
     if (g_devOverlay == "hang") {   // dev: the grapple fired at whatever's ahead, pressed again 4 s later (the hang, then the let-go)
         static int presses = 0;
         if (presses == 0 && elapsedTime > 1.f) { ++presses; pendingGrapple = true; }
@@ -512,6 +518,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
 
     whizPast();
     if (splinterOwned()) tickSplinters(dt);
+    if (recallOwned()) tickRecall(dt);
     bool parryPressed = parryKey && !parryPrev;
     parryPrev = parryKey;
     punchCooldown = std::max(0.f, punchCooldown - dt);

@@ -304,7 +304,10 @@ inline void GameplayState::updateEnemies(float dt) {
         if(story()&&e.type==EnemyType::BALLAST&&e.ballDrive>0&&!e.ballHaul)
             breakStoryCover(e.position+glm::vec3{0,1,0},e.position+glm::vec3{0,1,0}+e.ballDir*(36.f*dt),4.f);
         bool beamLocked=e.labLocked;
+        const bool lured = recallLures(e);   // RECALL's statue, fresh: it goes for that instead of you
+        if (lured) { w.playerFeet = recall.feet; w.playerEye = recall.feet + glm::vec3{0.f, 1.7f, 0.f}; w.playerVel = glm::vec3{0.f}; }
         e.update(dt, w);
+        if (lured) { w.playerFeet = player.position; w.playerEye = player.camera.position; w.playerVel = player.velocity; }
         if(e.type==EnemyType::SUSPENDED && !beamLocked && e.labLocked)
             audio.playAt("count_tick",e.position,90,SoundGroup::ENEMY,true);
         if (e.type == EnemyType::ABSOLUTE) rig::tickAbsoluteBody(e, dt);   // his body chasing his pose
@@ -349,7 +352,10 @@ inline void GameplayState::updateEnemies(float dt) {
             }
             if (beamHissCd <= 0.f) { audio.playAt("skim", ev.beamTo, 55, SoundGroup::ENEMY); beamHissCd = 0.45f; }
         }
-        if (ev.meleeHit && enemies[i].type != EnemyType::ABSOLUTE) {   // (his: onAbsoluteEvents, where the sword can meet them)
+        if (ev.meleeHit && lured) {   // it swung at the statue
+            fx.spawnHitSparks(recall.feet + glm::vec3{0.f, 1.f, 0.f}, RECALL_FROST);
+            audio.playAt("clank", recall.feet, 90, SoundGroup::ENEMY, true, 1.3f);
+        } else if (ev.meleeHit && enemies[i].type != EnemyType::ABSOLUTE) {   // (his: onAbsoluteEvents, where the sword can meet them)
             if (damagePlayer(ev.meleeDamage * eScale, epos, 0.25f, 0.06f)) {
                 glm::vec3 away = player.position - epos; away.y = 0.f;
                 if (glm::length(away) > 0.001f)
