@@ -347,6 +347,14 @@ public:
         end2D();
     }
 
+    // A pale stretch after the bar's fill: damage that will grow back (THE RESTORER's restore points)
+    void renderBossPending(float fill, float pending) {
+        begin2D();
+        int w = 560, x = screenW / 2 - w / 2, y = 62;
+        float a = glm::clamp(fill, 0.f, 1.f), b = glm::clamp(fill + pending, 0.f, 1.f);
+        ui.rect(x + (int)(w * a), y, (int)(w * (b - a)), 12, {0.85f, 0.92f, 1.f, 0.55f});
+        end2D();
+    }
     void renderBossBar(const char* name, float fill, bool enraged, glm::vec3 tint = {-1.f,-1.f,-1.f}) {
         begin2D();
         int w = 560, x = screenW / 2 - w / 2, y = 62;
@@ -702,10 +710,11 @@ public:
         end2D();
     }
 
-    void renderDeath(const char* where, int kills, float gameTime, bool fast, bool retry = true, const char* retryLine = nullptr) {
+    void renderDeath(const char* where, int kills, float gameTime, bool fast, bool retry = true, const char* retryLine = nullptr, const char* title = "YOU DIED") {
         begin2D();
-        ui.rect(0, 0, screenW, screenH, {0.3f, 0.0f, 0.0f, 0.5f});
-        ui.text("YOU DIED", screenW / 2, screenH / 2 - 90, 5, {0.95f, 0.15f, 0.1f, 0.95f}, true);
+        const bool calm = std::string(title) != "YOU DIED";   // (Chapter 5's RESTORED: cold, not red)
+        ui.rect(0, 0, screenW, screenH, calm ? glm::vec4{0.05f, 0.08f, 0.12f, 0.6f} : glm::vec4{0.3f, 0.0f, 0.0f, 0.5f});
+        ui.text(title, screenW / 2, screenH / 2 - 90, 5, calm ? glm::vec4{0.8f, 0.9f, 1.f, 0.95f} : glm::vec4{0.95f, 0.15f, 0.1f, 0.95f}, true);
         ui.text(where, screenW / 2, screenH / 2 - 34, 2, {0.95f, 0.8f, 0.75f, 0.9f}, true);
         char buf[64];
         std::snprintf(buf, sizeof(buf), "TIME %s   KILLS %d", formatTime(gameTime, fast).c_str(), kills);

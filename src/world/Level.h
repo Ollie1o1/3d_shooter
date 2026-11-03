@@ -605,6 +605,7 @@ struct LevelData {
         int   pitSection = -1;            // the section whose fight its revolver starts
         AABB  end{};                      // reach this: the chapter so far is over
         int   coldBackDoor = -1;          // Chapter 5: Rack 24's back door (opens when RECALL is taken)
+        int   coldPool = -1, coldPoolCount = 0;   // Chapter 5: the Restorer's statues and racks (walls placed in its fight)
         const char* nextName = "";        // ... and the card says what's next
     } story;
     int conveyorOfWall(int w) const {

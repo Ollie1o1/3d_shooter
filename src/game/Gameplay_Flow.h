@@ -633,6 +633,7 @@ inline void GameplayState::handleDirectorEvents() {
                 pushBanner("BALLAST","CLEARANCE IN PROGRESS / WATCH THE BLADE AND CABLE",{.9f,.7f,.35f},4.f);
             else if (ar.waves[ev.value][0].type == EnemyType::PACEMAKER)
                 pushBanner("THE PACEMAKER", "PARRY THE WHITE - IT RACES YOU TO THE BEACON", {1.f, 0.6f, 0.15f}, 4.f);
+            else if (ar.waves[ev.value][0].type == EnemyType::UNIT24K || ar.waves[ev.value][0].type == EnemyType::RESTORER) {}   // (Chapter 5's announce themselves: Gameplay_Cold.h, Gameplay_Restorer.h)
             else
                 pushBanner("THE WARDEN", "CUT ITS CONDUITS - HIT THE CORE WHEN IT VENTS", {1.f, 0.2f, 0.65f}, 3.5f);
             audio.play("wave", 128, SoundGroup::UI); audio.play("explosion", 70, SoundGroup::UI); audio.duck(4.f, 0.4f);

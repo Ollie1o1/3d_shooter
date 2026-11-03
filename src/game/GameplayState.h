@@ -508,6 +508,26 @@ public:
     bool  coldRecall = false;   // taken from 24-A in Rack 24
     float coldVentHurtT = 0.f;
     bool  coldKDown = false, coldKIntro = false;   // 24-K (section 8)
+    // THE RESTORER's fight (Gameplay_Restorer.h)
+    bool  coldRDown = false; float coldRDownAt = -1.f;
+    struct RsStatue { glm::vec3 at; float yaw; };
+    std::vector<RsStatue> rsStatues;
+    std::vector<AABB> rsRacks, rsPlannedRacks;
+    std::vector<glm::vec3> rsCells;
+    glm::vec3 rsRollbackAt{0.f}, rsSnapAt{0.f}, rsTongAt{0.f};
+    float rsRollbackT = -1.f, rsSnapT = -1.f, rsFreezeT = -1.f, rsSpikeT = -1.f, rsShatterT = -1.f, rsTongT = -1.f, rsTongHurtT = 0.f;
+    int   rsPhase = 0, rsTaken = 0, rsLine = 0;
+    float rsTakeT = 0.f, rsLastHealth = 0.f, rsLineT = 0.f;
+    int   rsDrumGun[4] = {-1, -1, -1, -1}, rsDrumUid[4] = {-1, -1, -1, -1};
+    glm::vec3 rsTrail[180];
+    int   rsTrailHead = 0, rsTrailN = 0; float rsTrailT = 0.f;
+    float recallPressedAt = -99.f;
+    Enemy* restorer();
+    void resetRestorerFight();
+    void rsPlaceWall(int k, const AABB& b);
+    void restorerEvents(Enemy& e, const EnemyEvents& ev);
+    void updateRestorerFight(float dt);
+    void gatherRestorerFight(std::vector<BoxInstance>& out);
     float coldKLineT = 0.f;
     float coldKDownAt = -1.f;
     struct ColdCrack { glm::vec3 a, b; float born; };
@@ -1351,6 +1371,7 @@ public:
 #include "game/Gameplay_LabDressing.h"
 #include "game/Gameplay_Plain.h"
 #include "game/Gameplay_Cold.h"
+#include "game/Gameplay_Restorer.h"
 #include "game/Gameplay_Gleaner.h"
 #include "game/Gameplay_GleanerFight.h"
 #include "game/Gameplay_GleanerHands.h"

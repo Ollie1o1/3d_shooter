@@ -524,7 +524,8 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     bool parryPressed = parryKey && !parryPrev;
     parryPrev = parryKey;
     punchCooldown = std::max(0.f, punchCooldown - dt);
-    if (parryPressed && pickedBy >= 0) pickerLetGo(true);   // held: the punch breaks its grip
+    if (parryPressed && rsTongT > 0.f) { rsTongT = -1.f; ui.feed("BROKE FREE", {0.9f, 0.95f, 1.f}); audio.play("punch", 110, SoundGroup::PLAYER); }   // hung on the Restorer's hook
+    else if (parryPressed && pickedBy >= 0) pickerLetGo(true);   // held: the punch breaks its grip
     else if (parryPressed && punchCooldown <= 0.f) punch(result.boostableIndex);
 
     for (auto& [pi, ei] : result.enemyHits) {

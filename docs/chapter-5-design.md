@@ -4,7 +4,8 @@ Brainstormed with the user on 2026-11-03. Built so far: RECALL (step 1 of the
 build order; `--recall` to try it anywhere) and the planet (step 2;
 `./shooter --story5`): the ice shelf, its lip and the Void, the Store's towers
 and glacier cliff, the frozen giants, the sky. Rooms 1-5 and their enemies are
-built too (step 3), rooms 6-7 (step 4) and 24-K (step 5); see "as built" below.
+built too (step 3), rooms 6-7 (step 4), 24-K (step 5) and the Restorer's
+fight (step 6); see "as built" below.
 
 The creator never threw anything away for good. Everything is **saved** here:
 every unit, every sibling, and copies of UNIT 24. The keeper of the store, THE
@@ -296,8 +297,48 @@ candidate).
 - Half down, it enrages: quicker tells, sidesteps and recovery, four-round
   bursts, and a revolver follow-up after each Lancer round.
 - Lines: "UNIT 24-K / PURPOSE: COMPLY / STATUS: ACCEPTED", then "YOU ARE
-  DAMAGED. I AM CORRECT." On death: "WHAT WAS IT LIKE?" Four seconds later,
-  the chapter so far ends on the platform.
+  DAMAGED. I AM CORRECT." On death: "WHAT WAS IT LIKE?"
+
+### The Manifest, the Vault and THE RESTORER as built (step 6)
+
+- **The Manifest** (section 9): a causeway on piers from DISPATCH 2, out
+  over a 150 m square sinkhole in the sea ice (the Void below; the ice is
+  drawn round it), to **the Vault** (section 10): a round platform 60 m
+  across with the portal's grid on it, four drum shelves round the rim, three
+  hook rails overhead, hung on chains from the Store's cliff.
+- **The interface is the Restorer's** from section 9 on: checkpoints read
+  `RESTORE POINT SAVED` (earlier ones `CHECKPOINT`); dying shows `RESTORED`
+  in cold blue ("R - RESUME FROM RESTORE POINT").
+- **THE RESTORER** (`EnemyType::RESTORER`, `EnemyRestorer.h` for its brain,
+  `Gameplay_Restorer.h` for the fight): 9000 HP, about 7 m on stilts, drawn as
+  a code rig (stilts, stooped hosed torso, glass dome with a lamp showing its
+  tell colour, cryo cylinder with a small unit inside, four tong arms). It
+  keeps 9-16 m off and never repeats an attack twice running.
+  - **ROLLBACK** (gold, 2 s, four ticks): your ghost where you were 4 s
+    earlier; on the last tick you're put back there unless you pressed RECALL
+    in the last 0.8 s ("ROLLBACK OVERRIDDEN"). Its next attack goes for that
+    spot.
+  - **SNAPSHOT** (red ring): a flash; standing in it costs 16 and stops you.
+    It leaves a statue of you there as real cover (up to 8). At five, or at
+    phase 3, they all shatter after a red flicker (3.5 m, 20 damage each).
+  - **TONG SNATCH** (white): a 7.5 m grab in front of it, parryable. Caught,
+    you hang from the nearest hook rail for 2.2 s (punch to break free).
+  - **FLASH FREEZE** (red cells, 1.4 s): a checkerboard, rings round you, or
+    a cross through you, on the 5 m grid; then spikes (24 damage, they throw
+    you up).
+  - **SHELVING** (gold outlines, 1.1 s): three racks slam down across the
+    line between you, standing as walls until the next time (20 damage under
+    one, and you're pushed out).
+  - **Phases** (from its health; they never go back): 1 is ROLLBACK, SNAPSHOT
+    and the tongs, with "YOU HAVE CHANGED. THAT CAN BE UNDONE." (or "I HAVE
+    SAVED YOU N TIMES." after deaths). 2 adds the freeze and the racks, and
+    plants three RESTORE POINTs: while any stands, your damage regrows at
+    140/s, shown as a pale part of its bar; break them all and it's locked
+    in. 3 is FACTORY RESET ("YOU WERE BETTER BEFORE YOU REMEMBERED."): every
+    5 s it takes a gun (never the revolver) into a STORAGE DRUM on the rim;
+    break the drum to take it back. A retry or its death returns them all.
+  - On death: "NOTHING I SAVED EVER WOKE UP."; the chapter ends at the
+    Vault's north rail 4 s later.
 
 ## 11. Build order
 

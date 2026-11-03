@@ -77,6 +77,9 @@ inline Profile profileOf(EnemyType t) {
         case EnemyType::PICKER:return {0.f,Vowel::NONE,0,1.f,Body::HYDRAULIC,700.f,.35f};   // a claw on a trolley
         case EnemyType::CLERK:return {660.f,Vowel::EE,2,1.2f,Body::CRACKLE,2400.f,.15f};   // a typewriter's bell and clatter
         case EnemyType::UNIT24K:return {150.f,Vowel::AH,2,1.f,Body::SERVO,420.f,.4f};   // your own servos, tuned clean
+        case EnemyType::RESTORER:return {98.f,Vowel::OO,5,.85f,Body::HYDRAULIC,160.f,.9f};   // a careful, low, many-voiced hum and the hiss of its hoses
+        case EnemyType::RS_POINT:return {523.f,Vowel::EE,2,1.1f,Body::HUM,1800.f,.3f};
+        case EnemyType::RS_DRUM:return {0.f,Vowel::NONE,0,1.f,Body::GRIND,300.f,.4f};
         default:                      return {};
     }
 }

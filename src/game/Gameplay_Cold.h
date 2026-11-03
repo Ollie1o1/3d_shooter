@@ -26,6 +26,7 @@ inline void GameplayState::beginCold() {
     interactables.push_back(std::move(it));
     if (level.story.coldBackDoor >= 0) level.doors[level.story.coldBackDoor].locked = !coldRecall;   // (the way on opens with it)
     coldCracks.clear(); coldCrackFrom = player.position;
+    resetRestorerFight();   // (a retry: everything it did undone, your guns back)
     player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0}; prevCamPos = player.camera.position;
 }
 
@@ -91,10 +92,21 @@ inline void GameplayState::renderColdIce(const glm::mat4& view, const glm::mat4&
     glDisable(GL_CULL_FACE); glDepthMask(GL_FALSE); glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glBindVertexArray(waterVAO); glBindBuffer(GL_ARRAY_BUFFER, waterVBO);
     for (float x = cold::SEA_X0; x < cold::FAR_GROUND - 0.5f; x += cold::STRIP) {
-        const float x1 = x + cold::STRIP, z0 = cold::SEA_Z1, z1 = cold::edgeZ(x), y = 0.f;
-        const vec3 v[] = {{x, y, z0}, {x1, y, z1}, {x1, y, z0}, {x, y, z0}, {x, y, z1}, {x1, y, z1}};
-        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(v), v);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
+        const float x1 = x + cold::STRIP, y = 0.f;
+        const AABB H = cold::sinkhole();
+        auto quad = [&](float qx0, float qx1, float z0, float z1) {
+            if (qx1 - qx0 < 0.01f || z1 - z0 < 0.01f) return;
+            const vec3 v[] = {{qx0, y, z0}, {qx1, y, z1}, {qx1, y, z0}, {qx0, y, z0}, {qx0, y, z1}, {qx1, y, z1}};
+            glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(v), v);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+        };
+        const float zN = cold::SEA_Z1, zS = cold::edgeZ(x);
+        if (x1 <= H.min.x || x >= H.max.x) { quad(x, x1, zN, zS); continue; }
+        // (round the sinkhole: north of it, south of it, and the slivers beside it)
+        quad(std::max(x, H.min.x), std::min(x1, H.max.x), zN, H.min.z);
+        quad(std::max(x, H.min.x), std::min(x1, H.max.x), H.max.z, zS);
+        quad(x, std::max(x, H.min.x), zN, zS);
+        quad(std::min(x1, H.max.x), x1, zN, zS);
     }
     glBindVertexArray(0);
     glDepthMask(GL_TRUE); glDisable(GL_BLEND); glEnable(GL_CULL_FACE);
@@ -138,7 +150,7 @@ inline void GameplayState::updateCold(float dt) {
         storySeenSection = at; pushBanner(level.arenas[at].name, level.arenas[at].subtitle, {0.75f, 0.86f, 0.95f}, 2.5f);
         audio.play("wave", 64, SoundGroup::UI, true);
     }
-    if (at >= 0 && at > storyCheckpoint && !director.fighting()) { storyCheckpoint = at; ui.feed("RESTORE POINT", {0.75f, 0.86f, 0.95f}); }
+    if (at >= 0 && at > storyCheckpoint && !director.fighting()) { storyCheckpoint = at; ui.feed(at >= 8 ? "RESTORE POINT SAVED" : "CHECKPOINT", {0.75f, 0.86f, 0.95f}); }   // (from the Manifest on, the interface is the Restorer's)
     if (storyTerminal >= 0 && glm::length(level.story.terminals[storyTerminal].pos - p) > 6.f) storyTerminal = -1;
     // 24-K: when its duel starts, it names itself
     if (director.arena == 7 && director.fighting() && !coldKIntro) {
@@ -147,9 +159,9 @@ inline void GameplayState::updateCold(float dt) {
         coldKLineT = 3.2f;
     }
     if (coldKLineT > 0.f && (coldKLineT -= dt) <= 0.f) pushBanner("\"YOU ARE DAMAGED. I AM CORRECT.\"", "", {0.85f, 0.9f, 0.95f}, 3.5f);
-    // The end of the chapter so far: at DISPATCH 2, a few moments after 24-K goes still
+    // The end of the chapter so far: at the Vault's north rail, a few moments after the Restorer is gone
     const AABB& E = level.story.end;
-    if (coldKDown && elapsedTime - coldKDownAt > 4.f && storyEndT < 0.f && !playerDead && p.x > E.min.x && p.x < E.max.x && p.z > E.min.z && p.z < E.max.z) {
+    if (coldRDown && elapsedTime - coldRDownAt > 4.f && storyEndT < 0.f && !playerDead && p.x > E.min.x && p.x < E.max.x && p.z > E.min.z && p.z < E.max.z) {
         storyEndT = 0.f; audio.play("wave", 90, SoundGroup::UI, true);
     }
     if (storyEndT >= 0.f) {
@@ -158,6 +170,7 @@ inline void GameplayState::updateCold(float dt) {
     }
     updateColdVents(dt);
     updateColdSea(dt);
+    if (director.arena >= 8) updateRestorerFight(dt);
     // Wind: always, gusting; stronger out at the lip
     const float lip = glm::clamp(1.f - (player.position.z - cold::edgeZ(player.position.x)) / 120.f, 0.f, 1.f);
     audio.setWind(playerDead ? 0.f : 0.36f + 0.1f * std::sin(gameClock * 0.17f) + 0.08f * std::sin(gameClock * 0.61f) + 0.2f * lip);
@@ -274,6 +287,7 @@ inline void GameplayState::gatherColdRoute(std::vector<BoxInstance>& out) {
 inline void GameplayState::gatherCold(std::vector<BoxInstance>& out) {
     using namespace rig;
     gatherColdRoute(out);
+    gatherRestorerFight(out);
     // The vents: a red ring telling, then a white column of freezing air
     if (director.arena >= 5 && glm::length(player.position - cold::chiller(1).c) < 200.f)
         for (int v = 0; v < cold::VENTS; ++v) {

@@ -143,6 +143,12 @@ inline glm::vec3 station() { return {720.f, 0.f, -1000.f}; }
 // RECLAIM v1, the first Gleaner, lying under the ice along your crossing (its head toward the station)
 inline glm::vec3 reclaimTail() { return {250.f, -24.f, -820.f}; }
 inline glm::vec3 reclaimHead() { return {640.f, -24.f, -975.f}; }
+// 9-10. THE MANIFEST and THE VAULT: a sinkhole in the sea ice, a round platform hanging in it
+inline glm::vec3 vaultC() { return {960.f, 0.f, -1130.f}; }
+constexpr float VAULT_R = 30.f;
+inline AABB sinkhole() { return {{vaultC().x - 75.f, -1000.f, vaultC().z - 75.f}, {vaultC().x + 75.f, 0.f, vaultC().z + 75.f}}; }
+constexpr int DRUMS = 4;   // one weapon in each (phase 3, FACTORY RESET)
+inline glm::vec3 drum(int k) { float a = 0.785f + k * 1.5708f; return vaultC() + glm::vec3{std::cos(a) * (VAULT_R - 3.f), 0.f, std::sin(a) * (VAULT_R - 3.f)}; }
 }
 
 inline LevelData buildCold() {
@@ -747,7 +753,93 @@ inline LevelData buildCold() {
         b.kit().rod(p, p + vec3{0.f, 3.2f, 0.f}, 0.08f, steel, 6);
         b.kit(true).box(p + vec3{0.f, 3.2f, 0.f}, {0.22f, 0.12f, 0.22f}, amber);
     }
-    s.end = LevelBuilder::aabb(cold::station().x - 18.f, 0.f, cold::station().z - 10.f, cold::station().x + 18.f, 8.f, cold::station().z + 10.f);   // the far shore's station: the chapter so far ends
+
+    // ---- 9. THE MANIFEST: a causeway from the station, out over the sinkhole, to the Vault ----
+    // ---- 10. THE VAULT: a round platform hanging in the sinkhole, the Store's cliff behind it ----
+    {
+        const vec3 st = cold::station(), vc = cold::vaultC();
+        const float VR = cold::VAULT_R;
+        // The sinkhole: the sea ice gives way to the Void in a square, its walls ice going down
+        const AABB H = cold::sinkhole();
+        l.basins.insert(l.basins.begin(), {H, cold::VOID_FLOOR});
+        b.mat = Mat::ICE;
+        for (int s = 0; s < 4; ++s) {
+            bool alongX = s < 2; float at = s == 0 ? H.min.z : s == 1 ? H.max.z : s == 2 ? H.min.x : H.max.x;
+            vec3 c = alongX ? vec3{(H.min.x + H.max.x) * 0.5f, -200.f, at} : vec3{at, -200.f, (H.min.z + H.max.z) * 0.5f};
+            vec3 sz = alongX ? vec3{H.max.x - H.min.x, 400.f, 3.f} : vec3{3.f, 400.f, H.max.z - H.min.z};
+            b.kit().box(c, sz, iceDeep);
+            b.kit().box(c + vec3{0.f, 196.f, 0.f}, sz + vec3{0.3f, -392.f, 0.3f}, rime);   // its white lip
+        }
+        // The causeway: a narrow walk on piers, the station to the Vault's edge
+        b.mat = Mat::METAL;
+        const vec3 a = st + vec3{18.f, 0.f, -2.f}, e = vc + glm::normalize(st - vc) * (VR - 1.f);
+        {
+            vec3 d = e - a; d.y = 0.f; float len = glm::length(d); vec3 u = d / len;
+            int n = (int)std::ceil(len / 1.6f);
+            for (int i = 0; i <= n; ++i) {
+                vec3 p = a + u * (len * i / n);
+                b.wall(p.x - 1.4f, -0.6f, p.z - 1.4f, p.x + 1.4f, 0.f, p.z + 1.4f, floorSteel);
+            }
+            b.kit().box((a + e) * 0.5f + vec3{0.f, 0.04f, 0.f}, {2.8f, 0.06f, len}, rime * 0.85f, -std::atan2(u.z, u.x) + 1.5708f);
+            for (int i = 0; i < (int)(len / 24.f); ++i) {   // piers down into the dark, a lamp on each
+                vec3 p = a + u * (12.f + i * 24.f);
+                b.kit().box(p + vec3{0.f, -40.f, 0.f}, {1.2f, 80.f, 1.2f}, steel);
+                b.kit(true).box(p + vec3{1.5f, 1.2f, 0.f}, {0.15f, 0.15f, 0.15f}, amber * 0.7f);
+            }
+        }
+        // The Vault: a round platform of the portal's grid, storage drums on shelves round its rim
+        b.wall(vc.x - VR * 0.7071f, -0.8f, vc.z - VR * 0.7071f, vc.x + VR * 0.7071f, 0.f, vc.z + VR * 0.7071f, floorSteel);
+        b.wall(vc.x - VR + 0.6f, -0.8f, vc.z - VR * 0.42f, vc.x + VR - 0.6f, 0.f, vc.z + VR * 0.42f, floorSteel);
+        b.wall(vc.x - VR * 0.42f, -0.8f, vc.z - VR + 0.6f, vc.x + VR * 0.42f, 0.f, vc.z + VR - 0.6f, floorSteel);
+        b.wall(vc.x - VR * 0.86f, -0.8f, vc.z - VR * 0.5f, vc.x + VR * 0.86f, 0.f, vc.z + VR * 0.5f, floorSteel);
+        b.wall(vc.x - VR * 0.5f, -0.8f, vc.z - VR * 0.86f, vc.x + VR * 0.5f, 0.f, vc.z + VR * 0.86f, floorSteel);
+        b.kit().column(vc + vec3{0.f, -0.8f, 0.f}, VR, 0.8f, floorSteel, 40);
+        b.kit().column(vc + vec3{0.f, -0.3f, 0.f}, VR + 0.8f, 0.6f, steelFrost * 0.5f, 40).caps = false;
+        for (int g = -6; g <= 6; ++g) {   // the grid (the portal's floor)
+            float h = std::sqrt(std::max(0.f, VR * VR - (g * 5.f) * (g * 5.f)));
+            b.kit(true).box(vc + vec3{g * 5.f, 0.02f, 0.f}, {0.06f, 0.02f, 2.f * h}, vec3{0.25f, 0.35f, 0.45f} * 0.5f);
+            b.kit(true).box(vc + vec3{0.f, 0.02f, g * 5.f}, {2.f * h, 0.02f, 0.06f}, vec3{0.25f, 0.35f, 0.45f} * 0.5f);
+        }
+        // Underneath: it hangs on chains from the Store's cliff, and a stalk falls away into the Void
+        b.kit().column(vc + vec3{0.f, -120.f, 0.f}, VR * 0.5f, 119.f, steel * 0.5f, 20, 0.4f);
+        for (int k = 0; k < 6; ++k) {
+            float ang = 3.1416f + (k - 2.5f) * 0.32f;   // (fanned out toward the cliff, north)
+            vec3 rim = vc + vec3{std::cos(ang + 1.5708f) * VR, 0.f, -std::sin(ang + 1.5708f) * VR * 0.2f - VR * 0.8f};
+            b.kit().rod(rim + vec3{0.f, 0.5f, 0.f}, vec3{rim.x + (k - 2.5f) * 20.f, 260.f, cold::STORE_Z - 100.f}, 0.35f, steel, 5);
+        }
+        // Shelves of storage drums round the rim (phase 3 breaks them open: Gameplay_Restorer.h)
+        for (int k = 0; k < cold::DRUMS; ++k) {
+            vec3 p = cold::drum(k);
+            float ang = std::atan2(p.z - vc.z, p.x - vc.x);
+            b.wall(p.x - 1.3f, 0.f, p.z - 1.3f, p.x + 1.3f, 1.4f, p.z + 1.3f, steel);   // the shelf (cover, waist high)
+            b.kit().box(p + vec3{0.f, 3.f, 0.f}, {2.6f, 0.2f, 2.6f}, steel, -ang);
+            b.kit().box(p + vec3{0.f, 5.6f, 0.f}, {2.6f, 0.2f, 2.6f}, steel, -ang);
+            for (int sx = -1; sx <= 1; sx += 2) b.kit().box(p + vec3{sx * 1.2f, 3.f, 0.f}, {0.15f, 6.f, 0.15f}, steel, -ang);
+        }
+        // Hook rails overhead, for the grapple (and for the tongs to hang you from)
+        for (int k = 0; k < 3; ++k) {
+            float z = vc.z - 14.f + k * 14.f;
+            b.wall(vc.x - VR, 16.f, z - 0.4f, vc.x + VR, 16.8f, z + 0.4f, steel);
+            for (int s = -1; s <= 1; s += 2) b.kit().box({vc.x + s * VR, 8.f, z}, {0.8f, 16.f, 0.8f}, steel);
+        }
+        stencil("VAULT", {vc.x - 4.5f, 22.f, vc.z - VR - 0.2f}, {1.f, 0.f, 0.f}, 0.3f, paint);
+        // Its floor for the enemies (ahead of the sinkhole's): the same five boxes its collision is
+        for (const AABB& r : {LevelBuilder::aabb(vc.x - VR * 0.7071f, 0.f, vc.z - VR * 0.7071f, vc.x + VR * 0.7071f, 0.f, vc.z + VR * 0.7071f),
+                              LevelBuilder::aabb(vc.x - VR + 0.6f, 0.f, vc.z - VR * 0.42f, vc.x + VR - 0.6f, 0.f, vc.z + VR * 0.42f),
+                              LevelBuilder::aabb(vc.x - VR * 0.42f, 0.f, vc.z - VR + 0.6f, vc.x + VR * 0.42f, 0.f, vc.z + VR - 0.6f),
+                              LevelBuilder::aabb(vc.x - VR * 0.86f, 0.f, vc.z - VR * 0.5f, vc.x + VR * 0.86f, 0.f, vc.z + VR * 0.5f),
+                              LevelBuilder::aabb(vc.x - VR * 0.5f, 0.f, vc.z - VR * 0.86f, vc.x + VR * 0.5f, 0.f, vc.z + VR * 0.86f)})
+            l.basins.insert(l.basins.begin(), {r, 0.f});
+        // The fight's own walls, parked out of the way until it places them: 8 statues, 3 racks
+        l.story.coldPool = (int)l.walls.size(); l.story.coldPoolCount = 11;
+        for (int k = 0; k < 11; ++k) {
+            Wall w{AABB{vc + vec3{-0.1f, -600.f, -0.1f}, vc + vec3{0.1f, -599.f, 0.1f}}, steel, true};
+            w.dynamic = true;
+            l.walls.push_back(w);
+            l.moverWalls.push_back((int)l.walls.size() - 1);
+        }
+    }
+    s.end = LevelBuilder::aabb(cold::vaultC().x - 6.f, 0.f, cold::vaultC().z - cold::VAULT_R, cold::vaultC().x + 6.f, 8.f, cold::vaultC().z - cold::VAULT_R + 8.f);   // the Vault's dispatch rail (north edge)
 
     // =========================================================================
     // THE SECTIONS
@@ -836,7 +928,24 @@ inline LevelData buildCold() {
         k.waves = {{W(EnemyType::UNIT24K, 0, {st + vec3{14.f, 0.6f, 0.f}})}};
         k.maxAlive = 1; k.ambient = Ambient::WIND;
         l.arenas.push_back(k);
-        l.story.bossSection = 7;
+    }
+    // 9. the Manifest: the causeway (the interface is the Restorer's from here on)
+    {
+        const vec3 st = cold::station(), vc = cold::vaultC();
+        const vec3 causewayEnd = vc + glm::normalize(st - vc) * (cold::VAULT_R - 1.f);
+        Arena m = section("THE MANIFEST", "RESTORE POINT SAVED", LevelBuilder::aabb(st.x + 16.f, -1000.f, causewayEnd.z - 4.f, vc.x - cold::VAULT_R * 0.5f, 60.f, st.z + 12.f), st + vec3{20.f, 0.f, -2.f}, 0.f);
+        m.zone.max.z = -930.f;   // (it starts where 24-K's yard ends)
+        m.hasRespawn = true; m.respawn = m.playerStart; m.ambient = Ambient::WIND;
+        l.arenas.push_back(m);
+        // 10. the Vault: THE RESTORER
+        Arena v = section("THE VAULT", "THE RESTORER", LevelBuilder::aabb(vc.x - cold::VAULT_R, -1000.f, vc.z - cold::VAULT_R, vc.x + cold::VAULT_R, 40.f, vc.z + cold::VAULT_R - 2.f),
+                          vc + glm::normalize(st - vc) * (cold::VAULT_R - 3.f), 0.f);
+        v.hasRespawn = true; v.respawn = v.playerStart;
+        v.hasTrigger = true; v.trigger = LevelBuilder::aabb(vc.x - 20.f, -2.f, vc.z - 20.f, vc.x + 20.f, 10.f, vc.z + 20.f);
+        v.waves = {{W(EnemyType::RESTORER, 0, {vc + vec3{0.f, 0.f, -12.f}})}};
+        v.maxAlive = 12; v.space = ReverbSpace::OPEN; v.tone = RoomTone::NONE;
+        l.arenas.push_back(v);
+        l.story.bossSection = 9;
     }
     return l;
 }

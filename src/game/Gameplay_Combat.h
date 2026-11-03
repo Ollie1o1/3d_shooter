@@ -339,6 +339,7 @@ inline void GameplayState::updateEnemies(float dt) {
         if (e.type == EnemyType::BALLAST) ballastEvents(e,ev);
         if (story() && e.type == EnemyType::SORTER) storySorterEvents(e,ev);
         if (e.type == EnemyType::PICKER && ev.sortGrab) pickerGrab(e, lured);
+        if (e.type == EnemyType::RESTORER) restorerEvents(e, ev);
         if (ev.beamOn && e.type != EnemyType::SORTER) {   // a SERAPH's beam: 30/s while it touches you, sparks (or steam) where it lands
             AABB pb{player.position + glm::vec3{-player.radius, 0.f, -player.radius},
                     player.position + glm::vec3{player.radius, player.height, player.radius}};
@@ -683,6 +684,11 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
             storyBossDown=true;successorHazards.clear();saveStoryProgress();saySuccessor(5);
             successorFell=e.position;successorFell.y=groundHeightAt(e.position.x,e.position.z,e.position.y+1.f);successorFellYaw=e.yaw;successorFellSet=true;   // (its body stays: Gameplay_LabEnding.h)
             for(auto& p:projSystem.pool)if(!p.isPlayer)p.alive=false;
+        } else if (e.type == EnemyType::RESTORER) {   // Chapter 5's boss (its rewind and the ride out: Gameplay_Cold.h)
+            coldRDown = true; coldRDownAt = elapsedTime; storyBossDown = true;
+            for (auto& shot : projSystem.pool) if (!shot.isPlayer) shot.alive = false;
+            resetRestorerFight();
+            pushBanner("\"NOTHING I SAVED EVER WOKE UP.\"", "THE RESTORER", {0.8f, 0.9f, 1.f}, 6.f);
         } else if (e.type == EnemyType::UNIT24K) {   // Chapter 5's mid-boss: it asks, and goes still
             coldKDown = true; coldKDownAt = elapsedTime;
             for (auto& shot : projSystem.pool) if (!shot.isPlayer) shot.alive = false;

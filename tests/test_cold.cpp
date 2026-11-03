@@ -8,6 +8,7 @@
 #include "enemies/Enemy.h"
 #include "world/Interactable.h"
 #include <algorithm>
+#include <set>
 #include <cstdio>
 static int failures = 0;
 #define CHECK(c, m) do { if (!(c)) { ++failures; std::printf("FAIL: %s\n", m); } else std::printf("ok: %s\n", m); } while (0)
@@ -51,7 +52,7 @@ int main() {
 
     // ---- the level ----
     CHECK(L.story.built && L.story.chapter == 5 && std::string(L.story.title) == "THE COLD STORE", "Chapter 5 builds as THE COLD STORE");
-    CHECK(L.arenas.size() == 8 && A.hasRespawn && A.voidY > cold::VOID_FLOOR + 100.f, "eight sections; falling into the Void respawns you long before its floor");
+    CHECK(L.arenas.size() == 10 && A.hasRespawn && A.voidY > cold::VOID_FLOOR + 100.f, "ten sections; falling into the Void respawns you long before its floor");
     const glm::vec3 s = cold::start();
     CHECK(L.baseFloor(s.x, s.z) == 0.f, "the arrival stands on the shelf");
     bool clearStart = true;
@@ -133,11 +134,19 @@ int main() {
         CHECK(chill && w.p.position.y > -0.5f, "out of Rack 24's back door, over the transfer bridge and across the three cooling-tower decks");
         bool sea = chill && w.to({cold::chiller(2).c.x + 20.f, 0.f, -830.f}, true) && w.to(cold::seaStart(), true);
         CHECK(sea && R.arenaAt(w.p.position) == 6, "through the Chillers' gate and onto the frozen sea");
-        bool end = sea && w.to(cold::station() + glm::vec3{0.f, 0.f, 2.f}, true);
-        float y = w.p.position.y;
-        CHECK(end && y > 0.3f, "across the ice and up onto the far shore's station, where the chapter so far ends");
-        bool inEnd = end && w.p.position.x > R.story.end.min.x && w.p.position.x < R.story.end.max.x && w.p.position.z > R.story.end.min.z && w.p.position.z < R.story.end.max.z;
-        CHECK(inEnd, "...inside its end box");
+        bool station = sea && w.to(cold::station() + glm::vec3{0.f, 0.f, 2.f}, true);
+        CHECK(station && w.p.position.y > 0.3f, "across the ice and up onto the far shore's station (24-K's)");
+        // The Manifest: the causeway out over the sinkhole, to the Vault
+        const glm::vec3 vc = cold::vaultC(), st = cold::station();
+        const glm::vec3 a = st + glm::vec3{18.f, 0.f, -2.f}, e = vc + glm::normalize(st - vc) * (cold::VAULT_R - 1.f);
+        bool walk = station && w.to(a, true) && w.to(glm::mix(a, e, 0.5f), false, 9000, 0.6f) && w.to(e, false, 9000, 0.6f) && w.to(vc, true);
+        if (!walk || w.p.position.y < -0.5f) std::printf("  causeway: at %.1f %.1f %.1f\n", w.p.position.x, w.p.position.y, w.p.position.z);
+        CHECK(walk && w.p.position.y > -0.5f, "along the Manifest's causeway over the sinkhole and onto the Vault");
+        bool inEnd = walk && w.to({vc.x, 0.f, R.story.end.min.z + 3.f}, true) && w.p.position.x > R.story.end.min.x && w.p.position.x < R.story.end.max.x
+                     && w.p.position.z > R.story.end.min.z && w.p.position.z < R.story.end.max.z;
+        CHECK(inEnd, "...and to its dispatch rail on the north edge, where the chapter ends");
+        CHECK(R.baseFloor(vc.x, vc.z) == 0.f && R.baseFloor(vc.x + 50.f, vc.z) == cold::VOID_FLOOR && R.baseFloor(vc.x + 90.f, vc.z) == 0.f,
+              "the Vault stands, the sinkhole round it drops into the Void, the sea ice beyond holds");
         // The rooms' spawns are on open floor, and enemies find the tower's floor, not the Void's
         bool open = true;
         for (auto& a : R.arenas) for (auto& wave : a.waves) for (auto& e : wave) for (auto q : e.at) {
@@ -251,8 +260,36 @@ int main() {
         CHECK(heavy && white, "...its Lancer round is heavy, and its rush has a white parry window");
         CHECK(enraged, "...and half down, it stops holding back");
         auto R = buildCold();
-        CHECK(R.story.bossSection == 7 && R.arenas[7].waves.size() == 1 && R.arenas[7].waves[0][0].type == EnemyType::UNIT24K,
+        CHECK(R.arenas[7].waves.size() == 1 && R.arenas[7].waves[0][0].type == EnemyType::UNIT24K,
               "24-K waits at DISPATCH 2, the eighth section");
+    }
+
+    {   // THE RESTORER: phase 1 rolls back, snaps and grabs; phase 2 adds frost and racks; every one told first
+        EnemyWorld w;
+        Enemy e(EnemyType::RESTORER, {0.f, 0.f, 0.f});
+        e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE;
+        std::set<int> p1, p2; bool white = false;
+        for (int f = 0; f < 60 * 120; ++f) {
+            float dist = (f / 300) % 2 ? 6.f : 12.f;
+            w.playerFeet = e.position + glm::vec3{dist, 0.f, 0.f}; w.playerEye = w.playerFeet + glm::vec3{0, 1.7f, 0};
+            if (f == 60 * 60) e.rsPhase = 2;
+            e.update(DT, w);
+            if (e.ev.telegraphStarted) (e.rsPhase == 1 ? p1 : p2).insert((int)e.attack);
+            white |= e.attack == AttackKind::RS_TONG && e.parryWindow();
+        }
+        auto has = [](const std::set<int>& s, AttackKind k) { return s.count((int)k) > 0; };
+        CHECK(isBoss(EnemyType::RESTORER) && has(p1, AttackKind::RS_ROLLBACK) && has(p1, AttackKind::RS_SNAPSHOT) && has(p1, AttackKind::RS_TONG)
+              && !has(p1, AttackKind::RS_FREEZE) && !has(p1, AttackKind::RS_SHELVE), "the Restorer's first phase: ROLLBACK, SNAPSHOT and the tongs, nothing more");
+        CHECK(has(p2, AttackKind::RS_FREEZE) && has(p2, AttackKind::RS_SHELVE), "...its second adds FLASH FREEZE and SHELVING");
+        CHECK(white, "...and its tongs can be parried");
+        Enemy pt(EnemyType::RS_POINT, {0.f, 0.f, 0.f}), dr(EnemyType::RS_DRUM, {0.f, 0.f, 0.f});
+        pt.spawnTimer = dr.spawnTimer = 0.f; pt.state = dr.state = EnemyState::ACTIVE;
+        bool still = true;
+        for (int f = 0; f < 600; ++f) { pt.update(DT, w); dr.update(DT, w); still &= !pt.ev.telegraphStarted && !dr.ev.telegraphStarted && glm::length(pt.position) < 0.01f && glm::length(dr.position) < 0.01f; }
+        CHECK(still, "its restore points and storage drums stand still and never attack");
+        auto R = buildCold();
+        CHECK(R.story.bossSection == 9 && R.arenas[9].waves[0][0].type == EnemyType::RESTORER && R.story.coldPoolCount == 11,
+              "it waits in the Vault (the tenth section), with walls set aside for its statues and racks");
     }
 
     std::printf(failures ? "\n%d FAILED\n" : "\nALL PASSED (0 failures)\n", failures);

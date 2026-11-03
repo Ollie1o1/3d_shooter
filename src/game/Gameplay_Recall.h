@@ -24,6 +24,7 @@ inline bool GameplayState::recallClear(glm::vec3 feet) const {
 }
 
 inline void GameplayState::pressRecall() {
+    recallPressedAt = gameClock;   // (THE RESTORER's ROLLBACK: a press in its last moment overrides it)
     const glm::vec3 f = player.camera.forward();
     const glm::vec3 eye = player.camera.position;
     switch (recall.press(player.position, std::atan2(f.x, f.z))) {

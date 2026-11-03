@@ -81,6 +81,7 @@ struct EnemyEvents : SovereignEvents, PenitentEvents, WardenEvents, LeviathanEve
     bool      detonated = false;  // MITE blew itself up next to the player
     int       summonMites = 0, summonRippers = 0;
     bool      enraged = false;    // a boss crossed 50% this tick
+    AttackKind rsCast = AttackKind::NONE;   // THE RESTORER: the attack that just landed (the game does the rest: Gameplay_Restorer.h)
     // A blade stroke landed (for its slash arc; the SOVEREIGN's, the ABSOLUTE's):
     // 0 sweep to the left, 1 sweep to the right, 2 overhead cleave, 3 a dash's cut
     int       slash = -1;
@@ -296,6 +297,12 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     float pickT = 0.f;           // PICKER: seconds left holding you
     float kSideT = 0.f, kSideCd = 0.f; glm::vec3 kSideDir{0.f};   // UNIT 24-K: its sidestep dashes
     int   kLast = 0;             // UNIT 24-K: which gun it used last (0 revolver, 1 Lancer)
+    // THE RESTORER (EnemyRestorer.h): its phase (set by the game from its health), the last few
+    // attacks it made, where its next one is aimed; and the damage restore points will grow back
+    int   rsPhase = 1, rsLast = -1, rsCount = 0;
+    glm::vec3 rsAim{0.f};
+    bool  rsAimSet = false;      // (the game set rsAim: a ROLLBACK's spot)
+    float rsPending = 0.f;
     float age           = 0.f;
 
     bool  enraged       = false; // a boss's phase two
@@ -389,6 +396,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         if(type==EnemyType::SUCCESSOR)return SuccessorState::white(attack)&&telegraphTimer<.26f;
         if(type==EnemyType::PICKER)return attack==AttackKind::SORT_GRAB&&telegraphTimer<.3f;
         if(type==EnemyType::UNIT24K)return attack==AttackKind::DASH&&telegraphTimer<.28f;
+        if(type==EnemyType::RESTORER)return attack==AttackKind::RS_TONG&&telegraphTimer<.3f;
         if(type==EnemyType::PATIENT || type==EnemyType::PHASED || type==EnemyType::THAWLING)return (attack==AttackKind::LAB_LUNGE&&telegraphTimer<.24f)||(attack==AttackKind::LAB_SWIPE&&telegraphTimer<.2f);
         if (type == EnemyType::BALLAST) return (attack==AttackKind::BALL_ANCHOR||attack==AttackKind::BALL_WINCH)&&telegraphTimer<.28f;
         if (type == EnemyType::SORTER) return attack == AttackKind::SORT_GRAB && telegraphTimer < .25f;
@@ -658,6 +666,8 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
             case EnemyType::PICKER:thinkPicker(dt,w,resolve);break;
             case EnemyType::CLERK:thinkClerk(dt,w);break;
             case EnemyType::UNIT24K:thinkUnit24K(dt,w,resolve);break;
+            case EnemyType::RESTORER:thinkRestorer(dt,w,resolve);break;
+            case EnemyType::RS_POINT:case EnemyType::RS_DRUM:velocity={0,0,0};attackTimer=0;break;   // (they stand there until broken)
             case EnemyType::HUSK:     thinkHusk(dt, w, resolve);     break;
             case EnemyType::RIPPER:   thinkRipper(dt, w, resolve);   break;
             case EnemyType::SENTINEL: thinkSentinel(dt, w, resolve); break;
@@ -1385,6 +1395,7 @@ private:
     void thinkPicker(float dt,const EnemyWorld& w,bool resolve);
     void thinkClerk(float dt,const EnemyWorld& w);
     void thinkUnit24K(float dt,const EnemyWorld& w,bool resolve);
+    void thinkRestorer(float dt,const EnemyWorld& w,bool resolve);
     void thinkSuccessor(float dt,const EnemyWorld& w,bool resolve);
     void thinkBallast(float dt, const EnemyWorld& w, bool resolve);
     void thinkSorter(float dt, const EnemyWorld& w, bool resolve);
@@ -1535,4 +1546,5 @@ inline void linkConductors(std::vector<Enemy>& es, glm::vec3 player) {
 
 #include "enemies/EnemyLab.h"
 #include "enemies/EnemyCold.h"
+#include "enemies/EnemyRestorer.h"
 #include "bosses/successor/EnemySuccessor.h"

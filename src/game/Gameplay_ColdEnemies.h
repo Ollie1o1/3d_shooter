@@ -57,7 +57,7 @@ inline void GameplayState::holdInPicker(float dt) {
 
 // An enemy just died: is a Clerk up to restore it?
 inline void GameplayState::clerkNoteDeath(const Enemy& e) {
-    if (e.type == EnemyType::CLERK || isBoss(e.type) || isMiniBoss(e.type) || e.type == EnemyType::CONDUIT) return;
+    if (e.type == EnemyType::CLERK || isBoss(e.type) || isMiniBoss(e.type) || e.type == EnemyType::CONDUIT || e.type == EnemyType::RS_POINT || e.type == EnemyType::RS_DRUM) return;
     const Enemy* best = nullptr; float bestD = 45.f;
     for (const auto& c : enemies)
         if (c.alive && c.type == EnemyType::CLERK && c.targetable()) {

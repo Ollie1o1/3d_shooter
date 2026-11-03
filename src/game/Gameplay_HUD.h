@@ -102,8 +102,9 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             else if(plain()) what=wakeSeen?gleanerPhaseName():"SOMETHING IS WATCHING";
             else if(cold()) {
                 static const char* goals[]={"FOLLOW THE BELT TO THE EDGE","RIDE THE CARRIERS TO THE TOWER","THROUGH THE THAW ROOM","READ THE INVENTORY","RACK 24",
-                                            "ACROSS TO THE COOLING TOWERS","CROSS THE ICE TO THE STATION","DISPATCH 2"};
-                what=goals[std::clamp(here,0,7)];
+                                            "ACROSS TO THE COOLING TOWERS","CROSS THE ICE TO THE STATION","DISPATCH 2","TO THE VAULT","THE RESTORER"};
+                what=goals[std::clamp(here,0,9)];
+                if(here==9&&coldRDown)what="THE DISPATCH RAIL / NORTH EDGE";
                 if(here==7&&coldKDown)what="IT IS STILL / THE WAY ON IS NORTH";
                 if(here==5&&director.arena==5&&director.phase==WaveDirector::Phase::CLEARED)what="THE GATE IS OPEN / EAST TO THE SEA";
                 if(here==1&&director.arena==1&&director.phase==WaveDirector::Phase::CLEARED)what="THE DOCK IS OPEN";
@@ -209,6 +210,8 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
                                    boss->type == EnemyType::PENITENT ? boss->scourging :
                                    boss->type == EnemyType::WARDEN ? boss->wardenPhase >= 2 : boss->enraged,
                                    boss->type == EnemyType::BALLAST ? (boss->ballPhase>=2?glm::vec3{1.f,.42f,.14f}:glm::vec3{.95f,.69f,.3f}) : glm::vec3{-1.f});
+        if (boss && boss->type == EnemyType::RESTORER && boss->rsPending > 0.f)   // what will grow back while a restore point stands
+            ui.renderBossPending(boss->health / boss->maxHealth, boss->rsPending / boss->maxHealth);
         if (boss && boss->type == EnemyType::WARDEN) {   // its conduits, or the meltdown clock
             char wb[64];
             if (boss->wardenPhase == 1 && boss->conduitsLeft > 0)
@@ -399,7 +402,8 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         else if (zen) snprintf(buf, sizeof(buf), "ENCORE  %s", ar.name);
         else snprintf(buf, sizeof(buf), "%s %d/%d %s - WAVE %d/%d", tag, director.arena + 1, nArenas, ar.name,
                       director.wave + 1, director.waveCount());
-        ui.renderDeath(buf, totalKills, elapsedTime, fast(), !endless(), story() ? "R - TRY AGAIN" : nullptr);
+        const bool restored = cold() && level.arenaAt(player.position) >= 8;   // (the Manifest on: dying is the Restorer's word for it)
+        ui.renderDeath(buf, totalKills, elapsedTime, fast(), !endless(), restored ? "R - RESUME FROM RESTORE POINT" : story() ? "R - TRY AGAIN" : nullptr, restored ? "RESTORED" : "YOU DIED");
     }
     if (victory && g_bossRun >= 0) {
         const BossEntry& b = bossEntry(g_bossRun);
