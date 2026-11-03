@@ -35,6 +35,8 @@ inline void GameplayState::beginPlain() {
 inline void GameplayState::updatePlain(float dt) {
     player.camera.farPlane = plain::FAR_PLANE;   // (a retry makes a fresh camera)
     if (plainReveal.active()) updatePlainReveal(dt);
+    // The plain's air: a hot wind that never drops, rising on its back (hundreds of metres up)
+    audio.setWind(playerDead ? 0.f : onGleanerBack() ? 0.6f : 0.32f + 0.08f * std::sin(gameClock * 0.21f));
     updateGleaner(dt);
     meteors.tick(dt, player.position, meteorHits);
     for (const auto& hit : meteorHits) meteorImpact(hit);
@@ -110,7 +112,7 @@ inline void GameplayState::gatherPlain(std::vector<BoxInstance>& out) {
     const vec3 hot{2.6f, 0.9f, 0.25f}, fire{1.8f, 0.4f, 0.08f}, rockCol{0.12f, 0.08f, 0.07f};
     const float sub = renderAlpha * (1.f / 60.f);
     gatherGleaner(out);
-    if (!plainReveal.prologue()) gatherGleanerFight(out);
+    gatherGleanerFight(out);
     for (const auto& m : meteors.pool) {
         if (!m.alive) continue;
         vec3 at = lerpPos(m.prev, m.pos);

@@ -61,7 +61,7 @@ inline void stencil(LevelBuilder& b,const char* text,glm::vec3 p,float px,glm::v
 inline LevelData buildLab(){
     using glm::vec3;using W=WaveEntry;
     LevelData l;LevelBuilder b{l};auto& s=l.story;
-    s.built=true;s.chapter=3;s.nextChapter=0;s.title="THE LIVING WARD";s.nextName="BEYOND THE ASSESSMENT";
+    s.built=true;s.chapter=3;s.nextChapter=4;s.title="THE LIVING WARD";s.nextName="THE BLOOD MOON PLAIN";
     s.startWeapons=15;s.startGrapple=true;s.bossSection=9;s.pitSection=-1;
     const vec3 cream{.71f,.75f,.72f},wall{.53f,.64f,.65f},steel{.19f,.29f,.33f},cyan{.25f,.9f,1.f},warm{1.1f,.85f,.5f};
     auto solid=[&](vec3 a,vec3 z,vec3 c){return b.wall(a.x,a.y,a.z,z.x,z.y,z.z,c);};
@@ -437,4 +437,18 @@ inline LevelData buildLab(){
     }
     l.arenas.back().extraZones.push_back(LevelBuilder::aabb(-19,end.y-300,end.z-130,19,end.y+28,end.z-99));
     return l;
+}
+
+// The end of Chapter 3 (Gameplay_LabEnding.h): where it plays
+namespace labend {
+inline glm::vec3 arena() { return lab::centre(9); }
+inline float floorY() { return arena().y; }
+inline float doorZ() { return arena().z - 72.f; }
+inline glm::vec3 walkFrom() { return arena() + glm::vec3{0.f, 0.f, -110.f}; }
+inline glm::vec3 edge() { return arena() + glm::vec3{0.f, 0.f, -126.4f}; }
+inline glm::vec3 flat(glm::vec3 v) { v.y = 0.f; float l = glm::length(v); return l > 1e-4f ? v / l : glm::vec3{0.f, 0.f, 1.f}; }
+// A little life in a held camera: slow, small, never still
+inline glm::vec3 handheld(float t, float k) {
+    return glm::vec3{std::sin(t * 1.31f) + 0.5f * std::sin(t * 2.9f + 1.f), std::sin(t * 1.73f + 2.f) * 0.8f, std::sin(t * 1.07f + 4.f)} * (0.035f * k);
+}
 }

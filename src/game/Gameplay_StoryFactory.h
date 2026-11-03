@@ -5,7 +5,8 @@
 // their delta in the normal physics path. No camera teleport is used in play.
 inline void GameplayState::resetStoryFactory() {
     auto& S=level.story;
-    if(laboratory()||plain()){storyCheckpoint=director.arena;director.hold=false;return;}
+    if(plain()){director.hold=false;return;}   // (Chapter 4: its checkpoints are its fight's, not arenas: Gameplay_GleanerFight.h)
+    if(laboratory()){storyCheckpoint=director.arena;director.hold=false;return;}
     for(const auto& cover:S.bossCover)level.walls[cover.wall].box=cover.home;
     spatialGrid.build(level.walls);
     if(wasteland()) {

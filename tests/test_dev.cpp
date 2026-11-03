@@ -314,8 +314,24 @@ static void checkLabRuntime(AudioSystem& audio){
     CHECK(game.storyBossDown && game.successorHazards.marks.empty(),"Successor death cancels hazards and records the release of the chapter exit");
     game.retryArena();bool successorAlive=false;for(const auto& e:game.enemies)successorAlive|=e.alive&&e.type==EnemyType::SUCCESSOR;
     CHECK(game.storyBossDown && !successorAlive && !game.level.doors[game.level.arenas[9].exitDoor].locked,"retry after victory preserves the defeated boss and open threshold");
-    game.director.phase=WaveDirector::Phase::VICTORY;game.player.position=(game.level.story.end.min+game.level.story.end.max)*.5f;game.updateLab(.1f);
-    CHECK(game.storyEndT>=0,"walking into the fractured garden starts the actual Chapter 3 ending");
+    CHECK(game.successorFellSet && std::abs(game.successorBody().y-labend::floorY())<1.5f,"the Successor's body stays on the floor where it fell");
+    {   // Walk out through its doors for real: the ending plays, in this arena, then the chapter's card leads on to Chapter 4
+        game.director.phase=WaveDirector::Phase::VICTORY;
+        game.player.position=labend::arena()+glm::vec3{0,0,-64};game.player.velocity={0,0,0};
+        Uint8 keys[SDL_NUM_SCANCODES]={};keys[SDL_SCANCODE_W]=1;game.player.camera.yaw=-90;game.player.camera.pitch=0;
+        for(int f=0;f<60*8&&!game.labEnding.active();++f){game.player.camera.yaw=-90;game.level.updateDoors(1.f/60,game.player.position,[](int,bool){});game.physicsTick(1.f/60,keys,false);}   // (the doors run in update(); here, by hand)
+        CHECK(game.labEnding.active() && game.storyLocked(),"walking out through the doors after the Successor starts the ending");
+        static const Uint8 none[SDL_NUM_SCANCODES]={};
+        bool seated=false;glm::vec3 near{0.f};
+        for(int f=0;f<60*14;++f){game.physicsTick(1.f/60,none,false);}
+        game.render();screenshot("build/lab-ending.bmp");
+        seated=game.labEnding.seated(0)&&game.labEnding.seated(1);near=game.labPartSeat(0);
+        CHECK(seated && glm::length(near-game.successorBody())<4.f && glGetError()==GL_NO_ERROR,"UNIT 24 takes its pieces off the body, by hand, beside it");
+        for(int f=0;f<60*25&&game.labEnding.active();++f)game.physicsTick(1.f/60,none,false);
+        CHECK(!game.labEnding.active() && game.labEndingDone && game.storyEndT>=0 && game.level.story.nextChapter==4,"the portal takes it: Chapter 3 is complete and Chapter 4 is next");
+        game.storyEndT=4.f;press(game,SDLK_RETURN);game.update(1.f/60);
+        CHECK(game.plain() && game.level.story.chapter==4 && game.plainReveal.active(),"continuing from Chapter 3 arrives on the blood moon plain");
+    }
     g_storyChapter=1;g_startArena=g_startWave=0;g_practice=g_godMode=false;
 }
 
@@ -579,7 +595,7 @@ int main() {
         CHECK(menu.devRows[menu.devSel - MenuState::DEV_OPTIONS].mode == GameMode::STORY, "right moves from FAST to STORY");
         menu.render(); screenshot("build/dev-story-menu.bmp");
 
-        std::vector<StartOptions> checkpoints;
+        std::vector<StartOptions> checkpoints, plainPhases;   // (Chapter 4's rows: its fight's checkpoints, in one arena)
         bool keyboard = true;
         menu.devWave = 5; // An ARENA wave selection must never leak into Story.
         for (int i = 0; i < (int)menu.devRows.size(); ++i) {
@@ -591,17 +607,32 @@ int main() {
             press(menu, SDLK_RETURN);
             keyboard &= starts == before + 1 && mode == GameMode::STORY && selected.arena == row.arena &&
                         selected.storyChapter == row.chapter && selected.wave == 0 && selected.practice && selected.god;
-            checkpoints.push_back(selected);
+            (row.chapter == 4 ? plainPhases : checkpoints).push_back(selected);
         }
-        CHECK(keyboard && checkpoints.size() == 27, "all 27 checkpoints launch the correct chapter and room with practice/god flags");
+        CHECK(keyboard && checkpoints.size() == 27 && plainPhases.size() == 5, "all 27 checkpoints and Chapter 4's five launch the correct chapter and room with practice/god flags");
         CHECK(menu.devScroll[2] > 0, "keyboard navigation reveals the later Chapter 2 checkpoints");
         menu.render(); screenshot("build/dev-story-menu-scrolled.bmp");
         // The last checkpoint is at the bottom of the visible Story column.
         SDL_Event click{}; click.type = SDL_MOUSEBUTTONDOWN; click.button.button = SDL_BUTTON_LEFT;
         click.button.x = 1000; click.button.y = 232 + 10 * 34;
         int before = starts; menu.handleEvent(click);
-        CHECK(starts == before + 1 && selected.storyChapter == 3 && selected.arena == 9,
+        CHECK(starts == before + 1 && selected.storyChapter == 4 && selected.arena == 4,
               "mouse activation uses the scrolled checkpoint rather than a hidden row");
+        {   // Chapter 4's rows: each starts its fight at that checkpoint
+            using P = GameplayState::GleanerPhase;
+            const P want[5] = {P::APPROACH, P::TENDER, P::SIEVE, P::CALLER, P::BROOD};
+            bool phases = true;
+            for (const auto& o : plainPhases) {
+                g_storyChapter = 4; g_startArena = o.arena; g_startWave = 0; g_practice = o.practice; g_godMode = o.god;
+                auto game = std::make_unique<GameplayState>(audio, nullptr, GameMode::STORY);
+                bool ok = game->plain() && game->storyCheckpoint == o.arena && game->gleanerPhase == want[o.arena] &&
+                          (o.arena == 0 ? game->plainReveal.active() : game->onGleanerBack());
+                if (!ok) std::printf("      4.%d: phase %d checkpoint %d\n", o.arena + 1, (int)game->gleanerPhase, game->storyCheckpoint);
+                phases &= ok;
+            }
+            CHECK(phases, "Chapter 4's dev rows start the arrival, the Tender, the Sieve, the Caller and the brood's end");
+            g_storyChapter = 1; g_startArena = 0;
+        }
         menu.devSel = 0; press(menu, SDLK_RETURN);
         menu.devSel = MenuState::DEV_OPTIONS + (int)menu.devRows.size() - 1; press(menu, SDLK_RETURN);
         CHECK(!selected.god && selected.practice, "god mode can be disabled independently of practice");

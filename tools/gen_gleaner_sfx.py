@@ -3,11 +3,10 @@
 THE GLEANER's sounds (Chapter 4), synthesized like tools/gen_sfx.py: no
 recordings, all oscillators, noise and filters. Writes assets/sfx/:
 
-  gleaner_scream  the scream: a colossal train horn. A detuned brass chord
-                  (F, A, C, E-flat, an octave below a locomotive's) through horn
-                  formants, bending up as it starts, growling, a metal shriek
-                  riding over it, sagging as it gives out, and the plain
-                  throwing it back late
+  gleaner_scream  the roar: a machine the size of a mountain. A distorted low
+                  bellow (a saw and its fifth through an open "aw"), grinding
+                  metal shrieking over it, and its insides clanking: a ratchet
+                  running up as it draws breath, great slams, chains, echoes
   gleaner_slam    a fist coming down: a sub thump that drops, crushed rock,
                   iron ringing, and a long rolling rumble
   gleaner_groan   rising out of the ground: iron dragging on iron, a creaking
@@ -104,39 +103,67 @@ def echoes(x, taps, cutoff):
 
 # --------------------------------------------------------------------------- the scream
 def gen_scream():
-    dur = 5.4
+    """A machine the size of a mountain roaring: a distorted bellow (a low saw and its
+    fifth through an open "aw"), grinding metal shrieking over it, and the clank of its
+    insides: a ratchet running up as it draws breath, great gears and chains slamming."""
+    dur = 5.6
     n = int(SR * dur)
-    notes = [87.31, 110.0, 130.81, 155.56]          # F2 A2 C3 Eb3: a horn's dominant chord, dropped an octave
-    det = [(-0.31, 0.27), (0.22, -0.18), (-0.15, 0.33), (0.4, -0.24)]   # each note two reeds, beating
-    ph = [[random.random(), random.random()] for _ in notes]
-    form = [Biquad("bp", 420, 2.2), Biquad("bp", 1050, 3.0), Biquad("bp", 2300, 4.0)]
-    body = Biquad("lp", 3200)
-    shriekPh = 0.0
-    shriekF = Biquad("bp", 1400, 6.0)
-    breath = Biquad("bp", 900, 0.9)
-    x = []
+    rnd = random.Random(31)
+    x = [0.0] * n
+    # The clanks: a ratchet as it opens up, then great irregular slams, a slowing ratchet as it closes
+    hits = []
+    t = 0.0
+    while t < 1.1:
+        hits.append((t, rnd.uniform(0.5, 0.85), False)); t += 0.16 - 0.08 * (t / 1.1) + rnd.uniform(-0.01, 0.01)
+    t = 1.15
+    while t < 4.2:
+        hits.append((t, rnd.uniform(0.7, 1.0), rnd.random() < 0.45)); t += rnd.uniform(0.22, 0.48)
+    t = 4.2
+    gap = 0.09
+    while t < dur - 0.3:
+        hits.append((t, rnd.uniform(0.35, 0.6), False)); t += gap; gap *= 1.22
+    for t0, a, big in hits:
+        parts = [(f * rnd.uniform(0.88, 1.12), d) for f, d in ([(140, 6), (262, 8), (471, 11), (733, 14)] if big else [(380, 18), (612, 22), (1041, 26), (1733, 30), (2890, 38)])]
+        i0 = int(t0 * SR); ln = int(SR * (0.9 if big else 0.35))
+        nz = Biquad("bp", 2400 if not big else 900, 1.1)
+        for k in range(ln):
+            if i0 + k >= n: break
+            tt = k / SR
+            v = sum(math.sin(2 * math.pi * f * tt) * math.exp(-tt * d) for f, d in parts) * 0.22
+            v += nz.run(rnd.uniform(-1, 1)) * math.exp(-tt * 70.0) * 1.6
+            x[i0 + k] += v * a * (1.6 if big else 1.0)
+    # The bellow and the shriek
+    ph = [0.0, 0.0, 0.0]
+    form = [Biquad("bp", 520, 2.0), Biquad("bp", 1100, 3.0), Biquad("bp", 2600, 4.5)]
+    body = Biquad("lp", 1800)
+    sub = Biquad("lp", 70)
+    shr = [Biquad("bp", 1500, 5.0), Biquad("bp", 2300, 6.0)]
+    chain = Biquad("hp", 3200)
+    mph = [0.0, 0.0]; cph = [0.0, 0.0]
     for i in range(n):
         t = i / SR
-        # pitch: a lurch up into it, a slow vibrato, a sag as it gives out
-        bend = 0.72 + 0.28 * smooth(t / 0.4) - 0.2 * smooth((t - (dur - 1.0)) / 1.0)
-        vib = 1.0 + 0.006 * math.sin(2 * math.pi * 4.6 * t) + 0.003 * math.sin(2 * math.pi * 0.7 * t)
-        growl = 1.0 - 0.28 * (0.5 + 0.5 * math.sin(2 * math.pi * 31.0 * t))     # the throat rattling
-        env = smooth(t / 0.22) * (1.0 - smooth((t - (dur - 0.7)) / 0.7))
-        s = 0.0
-        for k, f in enumerate(notes):
-            for r in range(2):
-                ph[k][r] += f * bend * vib * (1.0 + det[k][r] / 100.0) / SR
-                s += saw(ph[k][r]) * (1.0 - 0.12 * k)
-        s *= 0.18
-        h = form[0].run(s) * 1.3 + form[1].run(s) * 0.9 + form[2].run(s) * 0.35 + body.run(s) * 0.5
-        h = math.tanh(h * 2.6 * growl)                                           # overblown: the bell cracking
-        # the shriek: metal on metal riding on top, wandering up then down
-        sf = 1150 + 420 * smooth(t / 1.2) - 380 * smooth((t - 3.2) / 2.0) + 60 * math.sin(2 * math.pi * 6.3 * t)
-        shriekPh += sf / SR
-        sh = shriekF.run(saw(shriekPh) + random.uniform(-0.6, 0.6)) * (0.18 + 0.12 * math.sin(2 * math.pi * 0.9 * t))
-        b = breath.run(random.uniform(-1, 1)) * 0.25
-        x.append((h * 0.85 + sh * 0.8 + b) * env)
-    x = echoes(x, [(0.42, 0.32), (1.1, 0.22), (1.9, 0.13), (2.8, 0.07)], 1800.0)
+        env = smooth(t / 0.35) * (1.0 - smooth((t - (dur - 1.1)) / 1.1))
+        f0 = 50.0 + 26.0 * smooth(t / 0.6) - 16.0 * smooth((t - 3.4) / 2.0) + 2.5 * math.sin(2 * math.pi * 5.1 * t) + 1.2 * rnd.uniform(-1, 1)
+        for k, m in enumerate((1.0, 1.5, 0.5)):
+            ph[k] += f0 * m / SR
+        s0 = saw(ph[0]) + 0.6 * saw(ph[1]) + 0.8 * math.sin(2 * math.pi * ph[2])
+        rough = 0.65 + 0.35 * (0.5 + 0.5 * math.sin(2 * math.pi * (23.0 + 6.0 * math.sin(2 * math.pi * 0.6 * t)) * t))
+        b = form[0].run(s0) * 1.4 + form[1].run(s0) * 1.0 + form[2].run(s0) * 0.4 + body.run(s0) * 0.8
+        b = math.tanh(b * 3.2 * rough)
+        # metal grinding on metal: two FM voices, wandering, swelling in after the first breath
+        sw = smooth((t - 0.25) / 0.8) * (1.0 - smooth((t - (dur - 1.4)) / 1.2)) * (0.6 + 0.4 * math.sin(2 * math.pi * 1.3 * t))
+        g = 0.0
+        for k, (fc, ratio) in enumerate(((1480.0, 1.41), (2260.0, 1.73))):
+            drift = 1.0 + 0.06 * math.sin(2 * math.pi * (0.4 + 0.3 * k) * t) - 0.08 * smooth((t - 3.5) / 2.0)
+            mph[k] += fc * ratio * drift / SR
+            idx = 2.5 + 1.8 * math.sin(2 * math.pi * 0.7 * t + k)
+            cph[k] += fc * drift / SR
+            g += shr[k].run(math.sin(2 * math.pi * cph[k] + idx * math.sin(2 * math.pi * mph[k])) + rnd.uniform(-0.3, 0.3))
+        c = chain.run(rnd.uniform(-1, 1)) * (0.5 + 0.5 * math.sin(2 * math.pi * 15.0 * t + rnd.uniform(0, 0.6))) * 0.09 * smooth((t - 0.4) / 0.5)
+        thump = math.sin(2 * math.pi * (32.0 + 30.0 * math.exp(-t * 6.0)) * t) * math.exp(-t * 2.0) * smooth(t / 0.01)
+        x[i] += b * 0.9 * env + g * 0.55 * sw + c * env + sub.run(rnd.uniform(-1, 1)) * 3.0 * env + thump * 0.9
+    x = [math.tanh(v * 1.15) for v in x]
+    x = echoes(x, [(0.38, 0.3), (0.95, 0.2), (1.7, 0.12), (2.6, 0.06)], 1700.0)
     write_wav("gleaner_scream", x)
 
 

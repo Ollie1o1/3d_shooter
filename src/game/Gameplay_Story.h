@@ -207,6 +207,7 @@ inline void GameplayState::beginStory() {
 inline float GameplayState::storyWakeFx() const {
     using namespace story;
     if(laboratory() && labIntro.active())return 0.f;
+    if(laboratory() && labEnding.active())return 0.f;   // (its end: white, LabEnding::white)
     if(plain() && plainReveal.active())return 0.f;   // (the plain's arrival is white, not black: PlainReveal::white)
     if (!storyLocked() && storyEndT < 0.f) return 0.f;
     if (storyEndT >= 0.f) return std::clamp(storyEndT / 1.4f, 0.f, 1.f);   // the chute: going dark
@@ -653,6 +654,7 @@ inline void GameplayState::drawStoryArms(const Camera& cam) {
 inline void GameplayState::renderStoryOverlay(const glm::mat4& viewProj) {
     if(laboratory() && labIntro.active()){renderLabIntro();return;}
     if(plain() && plainReveal.active()){renderPlainReveal();return;}
+    if(laboratory() && labEnding.active()){renderLabEndingOverlay();return;}
     using namespace story;
     auto& U = ui.ui;
     const auto& SL = level.story;

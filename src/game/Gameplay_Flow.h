@@ -175,9 +175,9 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
 
     if (story() && g_continueStory && resumedStory.load()) {
         resumingStory = true;
-        if (resumedStory.chapter < 3 && resumedStory.completed) {
+        if (resumedStory.chapter < 4 && resumedStory.completed) {
             ++resumedStory.chapter; resumedStory.checkpoint = 0;
-            resumedStory.owned |= resumedStory.chapter==3?15:7; resumedStory.grapple = true;
+            resumedStory.owned |= resumedStory.chapter>=3?15:7; resumedStory.grapple = true;
             resumedStory.logs = resumedStory.terminals = 0;
             resumedStory.bossDown = resumedStory.completed = false;
             resumedStory.elapsed = resumedStory.style = resumedStory.damage = resumedStory.peak = 0;
@@ -234,8 +234,13 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
         int grappleRoom = level.arenaAt(level.story.grappleAt);
         storyGrapple = level.story.startGrapple || (grappleRoom >= 0 && start > grappleRoom);
     }
+    // Chapter 4 is one arena with its fight's checkpoints inside it: a start "at" one is that checkpoint
+    if (story() && g_storyChapter == 4 && !resumingStory) storyCheckpoint = std::clamp(g_startArena, 0, 4);
     enterArena(start);
-    if (resumingStory) restoreStoryProgress();
+    if (resumingStory) {
+        restoreStoryProgress();
+        if (plain()) { gleanerFightStarted = false; beginGleaner(); }   // (the saved checkpoint is where its fight stands)
+    }
     if (g_bossRun < 0 && director.waveCount()>0) director.wave = glm::clamp(g_startWave, 0, director.waveCount() - 1);
     if (fast()) ghost.load();
     if (fast() && g_bossRun < 0 && start == 0 && !roomAttack()) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
@@ -1259,11 +1264,12 @@ inline void GameplayState::updateMusic() {
     audio.setMusicVolume(settings ? settings->musicVolume : 0.6f);
     if(plain()){   // Chapter 4: RECLAMATION. Silence until it screams, then the brass and the anvils
         m.setTrack(14);m.setDrive(overdriveOn()&&!playerDead);m.setSolo(false);
-        const bool before=plainReveal.active() && plainReveal.time<PlainReveal::SCREAM;
+        const bool before=false;   // (the score is there from the landing: low and far off, rising with it)
         // the approach: the eerie layers (the horn far off); close, the drums start; on its back, everything
         const float flatDist=glm::length(glm::vec2{player.position.x-gleaner.pos.x,player.position.z-gleaner.pos.z});
         float intensity=gleanerPhase>=GleanerPhase::TENDER&&gleanerPhase<=GleanerPhase::CALLER?1.25f:gleanerPhase>=GleanerPhase::KNEELING?1.05f:flatDist<700.f?.92f:.72f;
         if(gleaner.screaming())intensity=std::max(intensity,1.f);
+        if(plainReveal.active())intensity=plainReveal.time<PlainReveal::RISE0?.4f:plainReveal.time<PlainReveal::SCREAM?.4f+.45f*PlainReveal::sm(PlainReveal::RISE0,PlainReveal::SCREAM,plainReveal.time):1.f;
         if(gleanerPhase==GleanerPhase::BROOD)intensity=.8f;
         if(playerDead)intensity=.05f;
         m.setIntensity(intensity);m.setMuffle(paused||armoryOpen||playerDead);

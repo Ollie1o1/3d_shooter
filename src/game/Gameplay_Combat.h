@@ -672,6 +672,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
             }
         } else if(e.type==EnemyType::SUCCESSOR){
             storyBossDown=true;successorHazards.clear();saveStoryProgress();saySuccessor(5);
+            successorFell=e.position;successorFell.y=groundHeightAt(e.position.x,e.position.z,e.position.y+1.f);successorFellYaw=e.yaw;successorFellSet=true;   // (its body stays: Gameplay_LabEnding.h)
             for(auto& p:projSystem.pool)if(!p.isPlayer)p.alive=false;
         } else if (e.type == EnemyType::BALLAST) {
             storyBossDown=true;saveStoryProgress();ballastHazards.clear();

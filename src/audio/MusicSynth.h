@@ -105,16 +105,17 @@ inline const MusicTrack& musicTrack(int i) {
          ".xxx.xxx.xxx.xfx", "0303102303031023", "3...3...2.1.0...3...3...1.2.3...", 2},
         // The lab has a separate harmonic language. These tracks use a four-part vowel
         // ensemble and pipe organ below, rather than the Zenith/Morningstar acid voices.
-        {"OBSERVATION", 108.f, 50, {0, 5, 3, 4},
-         "x.......x.......", "........x.......", "x...x...x...x...",
-         "x-------.---f---", "0.......2.......", "0-------2-------1-------0-------", 0},
+        {"OBSERVATION", 160.f, 50, {0, 5, 3, 4},   // a breakbeat under the choir: two-step kick, the snare on the backbeat, ghosts
+         "x.........x..x..", "....x..g.g..x..g", "x.XxxxXxx.XxxxXo",
+         "x--.x-f.x--.o-f.", "0.......2.......", "0-------2-------1-------0-------", 0},
         {"RELEASE DENIED", 176.f, 50, {0, 5, 3, 4},
          "x..x..x.x.x...xx", "....x.......x..g", "x.XxxxX.x.XxxxXo",
          "x.fx.xfox.fx.xfo", "0.2.1.2.0.2.3.2.", "0---2-1-0---3---2---1-2-0-------", 0},
-        // THE BLOOD MOON PLAIN (Chapter 4): not this synth's band at all. An orchestral engine of its
-        // own (plainStep/plainSample below): war drums, a choir, a horn theme, tremolo strings, a
-        // tolling bell, low brass and anvils, in E minor over eight bars. The patterns here go unused.
-        {"RECLAMATION", 76.f, 40, {0, 5, 3, 4},
+        // THE BLOOD MOON PLAIN (Chapter 4): not this synth's band at all. An engine of its own
+        // (plainStep/plainSample below): dark club techno at 140 (a distorted kick pumping everything,
+        // a rolling bass, an acid line) under an orchestra moving at half its speed (war drums, a choir,
+        // the horn theme, tremolo strings, a tolling bell, low brass, anvils), in E. The patterns here go unused.
+        {"RECLAMATION", 140.f, 40, {0, 5, 3, 4},
          "x.......x..x....", "........x.......", "x...x...x...x.x.",
          "x-------x---f---", "0.......3.......", "0-------1---2---3-------2---1---", 0},
     };
@@ -239,6 +240,75 @@ private:
     };
     float gOf(float hz) const { return std::tan(3.1415927f * std::min(hz, SR * 0.45f) / SR); }
 
+    // A choir that sounds sung, not synthesized: four parts of four singers each, every singer a
+    // little sharp or flat of the others, drifting, with their own vibrato that only comes in once
+    // the note has settled, scooping up into each new note, breath in the tone, the section's
+    // vowel through four formants (and a singer's formant for the ring of it), spread across the
+    // stereo field. setVowel() moves the vowel; setNote() a part's pitch.
+    struct HumanChoir {
+        static constexpr int P = 4, S = 4;
+        Osc src[P][S];
+        float vibPh[P][S] = {}, vibRate[P][S] = {}, detune[P][S] = {}, drift[P][S] = {}, driftTo[P][S] = {}, pan[P][S] = {}, shimPh[P][S] = {};
+        float tilt[P][S] = {};          // one-pole lowpass state: the glottis's soft top
+        SVF formL[P][5], formR[P][5];
+        float hz[P] = {146.8f, 174.6f, 220.f, 293.7f}, age[P] = {9, 9, 9, 9}, scoop[P] = {0, 0, 0, 0};
+        float F[5] = {700, 1100, 2600, 3300, 2900}, Fto[5] = {700, 1100, 2600, 3300, 2900};
+        float driftClock = 0.f;
+        uint32_t r = 0x9e3779b9u;
+        bool ready = false;
+        float rnd() { r ^= r << 13; r ^= r >> 17; r ^= r << 5; return (float)(r & 0xffffff) / 16777216.f; }
+        void init() {
+            for (int p = 0; p < P; ++p) for (int k = 0; k < S; ++k) {
+                detune[p][k] = (rnd() - 0.5f) * 0.016f;         // +-14 cents
+                vibRate[p][k] = 4.6f + 1.5f * rnd();
+                vibPh[p][k] = rnd(); shimPh[p][k] = rnd();
+                pan[p][k] = (k + 0.5f) / S * 0.8f + 0.1f + (p % 2 ? 0.05f : -0.05f);
+                src[p][k].ph = rnd();
+            }
+            ready = true;
+        }
+        void setNote(int p, float h) {
+            if (std::fabs(h - hz[p]) > 0.5f) { scoop[p] = std::min(0.03f, std::fabs(std::log2(h / std::max(1.f, hz[p]))) * 0.25f + 0.012f); age[p] = 0.f; }
+            hz[p] = h;
+        }
+        void setVowel(const float* f4) { for (int j = 0; j < 4; ++j) Fto[j] = f4[j]; }
+        // One sample of the whole choir (L, R), at `amp`
+        void sample(MusicSynth& m, float amp, float& L, float& R) {
+            if (!ready) init();
+            const float dt = 1.f / m.SR;
+            for (int j = 0; j < 4; ++j) F[j] += (Fto[j] - F[j]) * 0.0009f;   // vowels move like a mouth, not a switch
+            driftClock += dt;
+            const bool newDrift = driftClock > 0.45f;
+            if (newDrift) driftClock = 0.f;
+            static const float W[5] = {1.f, 0.62f, 0.3f, 0.12f, 0.16f}, K[5] = {0.11f, 0.12f, 0.13f, 0.15f, 0.18f};
+            float g[5]; for (int j = 0; j < 4; ++j) g[j] = m.gOf(F[j]); g[4] = m.gOf(2900.f);
+            for (int p = 0; p < P; ++p) {
+                age[p] += dt;
+                float sc = 1.f - scoop[p] * std::exp(-age[p] * 14.f);    // into the note from just under it
+                float vibIn = std::min(1.f, std::max(0.f, (age[p] - 0.22f) * 2.5f));
+                float sl = 0.f, sr = 0.f;
+                for (int k = 0; k < S; ++k) {
+                    if (newDrift) driftTo[p][k] = (rnd() - 0.5f) * 0.006f;
+                    drift[p][k] += (driftTo[p][k] - drift[p][k]) * 0.00012f;
+                    vibPh[p][k] += vibRate[p][k] * dt; if (vibPh[p][k] >= 1.f) vibPh[p][k] -= 1.f;
+                    shimPh[p][k] += (0.3f + 0.2f * k) * dt; if (shimPh[p][k] >= 1.f) shimPh[p][k] -= 1.f;
+                    float vib = std::sin(6.2831853f * vibPh[p][k]) * 0.0045f * vibIn;
+                    float f = hz[p] * (1.f + detune[p][k] + drift[p][k] + vib) * sc;
+                    float raw = src[p][k].saw(f, m.SR);
+                    tilt[p][k] += (raw - tilt[p][k]) * 0.35f;              // the glottis rounds the top off
+                    float v = tilt[p][k] + m.noise() * 0.22f;              // and breath goes through it
+                    v *= 0.85f + 0.15f * std::sin(6.2831853f * shimPh[p][k]);
+                    sl += v * (1.f - pan[p][k]); sr += v * pan[p][k];
+                }
+                float ol = 0.f, orr = 0.f;
+                for (int j = 0; j < 5; ++j) { formL[p][j].lp(sl, g[j], K[j]); formR[p][j].lp(sr, g[j], K[j]); ol += formL[p][j].band * W[j]; orr += formR[p][j].band * W[j]; }
+                float pg = p == 3 ? 1.15f : 1.f;
+                L += ol * amp * pg * 0.5f; R += orr * amp * pg * 0.5f;
+            }
+        }
+    };
+    HumanChoir humanChoir;
+
     // ---- voices ----
     struct Hit { float t = 1e9f, vel = 1.f; };                // time since trigger (s)
     Hit kick, snare, hatC, hatO, crash;
@@ -294,6 +364,7 @@ private:
     Osc choirOsc[8], choirVib[4], organ[4];SVF choirForm[4][3];
     float choirHz[4]={146.83f,174.61f,220.f,293.66f}, choirNote[4]={50,53,57,62};
     float choirG[3]={0,0,0}, choirAmp=0, choirClock=0, organHz=293.66f;
+    float F1lab=800, F2lab=1150, F3lab=2900;
     SVF mufL, mufR;
     // ======== THE PLAIN's score (track 14) ========
     // Its own orchestra, layered by intensity: below ~0.9 the approach (a low drone, an "oo" choir,
@@ -309,7 +380,15 @@ private:
     float plainRoot = 40.f, strNotes[4] = {76, 77, 75, 76}, plainFormant[3] = {300, 870, 2240};
     float strCur[4] = {76, 77, 75, 76}, tremPh = 0.f;
 
-    int plainPos() const { return (cycle & 1) * 64 + std::max(step, 0); }   // 0..127 through the eight bars
+    // The club under it: kick, clap, hats, the rolling bass, the acid line, and the pump they all breathe with
+    Strike pKick, pClap, pHat, pHatO, pBass;
+    Osc  pKickOsc, pBassOsc[2], acidOsc[2];
+    SVF  pClapF, pHatF, pBassF, acidF;
+    float acidCur = 52.f, acidTo = 52.f, acidEnv = 0.f, acidAcc = 0.f, acidT = 9.f; bool acidSlide = false, acidOn = false;
+    float pumpT = 9.f;
+    // The orchestra's clock runs at half the drums' (its chords, its theme, its war drums): 0..127 through its eight bars
+    int plainPos16() const { return (cycle & 3) * 64 + std::max(step, 0); }
+    int plainPos() const { return plainPos16() / 2; }
 
     void plainStep(int s) {
         // The bass, then the choir's four voices, for each of the eight bars
@@ -323,6 +402,26 @@ private:
                                      {96, 64, 8}, {104, 60, 4}, {108, 62, 4}, {112, 59, 8}, {120, 63, 4}, {124, 66, 4}};
         const int pos = plainPos(), b8 = pos / 16;
         const bool fight = lvl >= 0.9f;
+        // ---- the club: every sixteenth ----
+        {
+            if (lvl >= 0.55f ? s % 4 == 0 : (lvl >= 0.3f && s == 0)) { pKick = Strike{0.f, 0.f, lvl >= 0.55f ? 1.f : 0.6f}; pumpT = 0.f; }
+            if (lvl >= 0.3f && s % 4 != 0) pBass = Strike{0.f, midiHz((float)CH[b8][0] + 12.f), s % 4 == 2 ? 1.f : 0.7f};
+            if (lvl >= 0.55f && s % 4 == 2) pHatO = Strike{0.f, 0.f, 1.f};
+            if (lvl >= 0.9f && s % 4 != 2) pHat = Strike{0.f, 0.f, s % 2 ? 0.75f : 0.45f};
+            if (lvl >= 0.9f && (s == 4 || s == 12)) pClap = Strike{0.f, 0.f, 1.f};
+            if (lvl >= 0.9f && (pos / 16) % 4 == 3 && (pos % 16) >= 12 && s % 2 == 1) pClap = Strike{0.f, 0.f, 0.55f};   // a roll into the phrase
+            // The acid line: E phrygian round the bar's root, accents, slides
+            static const int AC[16] = {0, 0, 12, 0, 1, 99, 0, 3, 0, 12, 0, 7, 99, 1, 0, 10};
+            static const bool ACC[16] = {1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0}, SLIDE[16] = {0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0};
+            if (lvl >= 0.85f && AC[s] != 99) {
+                acidTo = (float)CH[b8][0] + 24.f + (float)AC[s];
+                acidSlide = SLIDE[(s + 15) % 16];
+                if (!acidSlide) { acidCur = acidTo; acidEnv = 1.f; }
+                acidAcc = ACC[s] ? 1.f : 0.f; acidOn = true; acidT = 0.f;
+            } else if (AC[s] == 99) acidOn = false;
+        }
+        if (plainPos16() % 2) return;   // (the orchestra moves on the eighths)
+        s = pos % 16;
         if (s == 0) {
             plainRoot = (float)CH[b8][0];
             for (int k = 0; k < 4; ++k) { choirNote[k] = (float)CH[b8][k + 1]; choirHz[k] = midiHz(choirNote[k]); }
@@ -449,6 +548,46 @@ private:
             dryL += h * 0.9f; dryR += h; wet += h * (2.2f - 1.2f * fight);   // far off: mostly the hall
             hornT += dt;
         }
+        // ---- the club ----
+        float club = 0.f;
+        const float pump = 1.f - 0.55f * std::exp(-pumpT * 9.f) * sstep(0.5f, 0.6f, lvl);   // everything breathes with the kick
+        pumpT += dt;
+        if (pKick.t < 0.5f) {
+            float t = pKick.t, hz = 46.f + 190.f * std::exp(-t * 38.f);
+            float body = std::tanh(pKickOsc.sine(hz, SR) * std::exp(-t * 6.5f) * 3.6f);
+            club += (body + noise() * std::exp(-t * 900.f) * 0.45f) * 0.5f * pKick.vel;
+            pKick.t += dt;
+        }
+        if (pBass.t < 0.3f) {
+            float t = pBass.t, e = std::min(1.f, t * 600.f) * std::exp(-t * 15.f);
+            float raw = pBassOsc[0].saw(pBass.hz, SR) + pBassOsc[1].saw(pBass.hz * 1.007f, SR) * 0.6f;
+            float o = std::tanh(pBassF.lp(raw, gOf(150.f + (500.f + 900.f * fight) * e), 0.5f) * 2.f) * e * 0.26f * pBass.vel;
+            club += o * pump;
+            pBass.t += dt;
+        }
+        float hats = 0.f;
+        if (pHat.t < 0.12f) { hats += pHatF.hp(noise(), gOf(7800.f), 0.6f) * std::exp(-pHat.t * 55.f) * 0.09f * pHat.vel; pHat.t += dt; }
+        if (pHatO.t < 0.4f) { hats += pHatF.hp(noise(), gOf(6500.f), 0.5f) * std::exp(-pHatO.t * 11.f) * 0.07f; pHatO.t += dt; }
+        if (pClap.t < 0.35f) {
+            float t = pClap.t, e = (t < 0.026f ? (std::fmod(t, 0.009f) < 0.004f ? 1.f : 0.25f) : std::exp(-(t - 0.026f) * 16.f));
+            float c = pClapF.lp(noise(), gOf(1250.f), 0.9f);
+            hats += pClapF.band * e * 0.38f * pClap.vel; (void)c;
+            pClap.t += dt;
+        }
+        float acid = 0.f;
+        if (lvl >= 0.8f) {
+            acidCur += (acidTo - acidCur) * (acidSlide ? 0.0012f : 1.f);
+            acidEnv *= std::exp(-dt * (8.f - 3.f * acidAcc));
+            float gate = acidOn ? 1.f : std::exp(-acidT * 30.f);
+            acidT += dt;
+            float raw = acidOsc[0].saw(midiHz(acidCur), SR) + acidOsc[1].square(midiHz(acidCur) * 0.5f, SR) * 0.25f;
+            float open = sstep(0.85f, 1.25f, lvl) + drive * 0.5f;
+            float cyc = (float)(plainPos16() % 64) / 64.f;
+            float cut = 160.f + (380.f + 1700.f * open * (0.4f + 0.6f * cyc * cyc)) * (0.25f + acidEnv * (1.f + acidAcc));
+            acid = std::tanh(acidF.lp(raw * 0.6f, gOf(cut), 0.13f) * (2.2f + 1.5f * acidAcc)) * gate * 0.12f * sstep(0.82f, 0.95f, lvl) * pump;
+        }
+        dryL += club + hats * 0.85f + acid * 0.9f; dryR += club + hats + acid; wet += acid * 0.4f + hats * 0.2f;
+        drums += club + hats;
         // The last enemy (setSolo): everything but the war drums falls away
         const float keep = 1.f - 0.9f * solo;
         dryL = (dryL - drums) * keep + drums * (1.f + 0.15f * solo); dryR = (dryR - drums) * keep + drums * (1.f + 0.15f * solo); wet *= keep;
@@ -534,7 +673,8 @@ private:
         acidBase = 320.f + 1900.f * cyc * cyc;
         if(labTrack(track)){
             const int vowel=(std::max(step,0)/8)%3;
-            static const float f[3][3]={{700,1100,2600},{450,850,2400},{550,1800,2700}};
+            static const float f[3][3]={{800,1150,2900},{450,800,2830},{400,1600,2700}};   // ah, oh, eh
+            F1lab=f[vowel][0];F2lab=f[vowel][1];F3lab=f[vowel][2];
             for(int k=0;k<3;++k)choirG[k]=gOf(f[vowel][k]);
             for(int k=0;k<4;++k)choirHz[k]=midiHz(choirNote[k]);
             organHz=midiHz(leadNote-12.f);
@@ -731,15 +871,11 @@ private:
             float target=std::min(1.f,choirClock/.035f)*(.78f+.22f*std::exp(-choirClock*12.f));
             target*=1.f-.3f*sstep(beat*.75f,beat,choirClock);
             choirAmp+=(target-choirAmp)*.002f;choirClock+=dt;
-            for(int k=0;k<4;++k){
-                float vibrato=1.f+choirVib[k].sine(4.7f+k*.19f,SR)*.003f;
-                float hz=choirHz[k]*vibrato;
-                float glottal=(choirOsc[k*2].saw(hz*1.002f,SR)+choirOsc[k*2+1].saw(hz*.998f,SR))*.5f;
-                glottal=glottal*.8f+noise()*.014f;
-                float vowel=0;const float weight[]={.9f,.5f,.14f};
-                for(int j=0;j<3;++j){choirForm[k][j].lp(glottal,choirG[j],.16f);vowel+=choirForm[k][j].band*weight[j];}
-                float gain=choirAmp*(track==13?.12f:.075f)*(k==3?1.3f:1.f);
-                choirL+=vowel*gain*(k%2?.6f:1.f);choirR+=vowel*gain*(k%2?1.f:.6f);
+            {   // the ward's choir: sung (HumanChoir)
+                for(int k=0;k<4;++k)humanChoir.setNote(k,choirHz[k]);
+                float vf[4]={F1lab,F2lab,F3lab,3300.f};humanChoir.setVowel(vf);
+                float gain=choirAmp*(track==13?.12f:.09f);
+                humanChoir.sample(*this,gain,choirL,choirR);
             }
             // Organ doubles the theme in octaves; strings articulate the sixteenth pulse.
             float pipe=organ[0].sine(organHz*.5f,SR)*.45f+organ[1].sine(organHz,SR)*.6f+organ[2].sine(organHz*2,SR)*.22f+organ[3].sine(organHz*3,SR)*.1f;

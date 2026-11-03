@@ -9,6 +9,10 @@ inline void GameplayState::beginLab(){
     labIntro.start(skip);
     if(g_devOverlay.rfind("labintro",0)==0){labIntro.seen=false;labIntro.time=std::clamp(std::atof(g_devOverlay.c_str()+8),0.,22.9);}
     if(labIntro.active()){player.position={0,0,27};player.camera.yaw=-90;player.camera.pitch=0;director.hold=true;}
+    if(g_devOverlay=="labending"){   // --overlay labending (with --story3 --arena 10): the Successor dead, you stepping through its doors
+        labIntro.time=-1;storyBossDown=true;successorFell=lab::centre(9)+glm::vec3{6,0,-26};successorFellYaw=.7f;successorFellSet=true;
+        director.hold=true;player.position=glm::vec3{0,labend::floorY(),labend::doorZ()-1.6f};player.camera.yaw=-90;
+    }
     for(int room:{2,6,7,8})for(int side:{-1,1}){
         if(room<7 && side>0)continue;
         Interactable control;control.position=lab::contactPosition(room,side);
@@ -33,6 +37,7 @@ inline void GameplayState::beginLab(){
 }
 
 inline void GameplayState::updateLab(float dt){
+    if(labEnding.active()){updateLabEnding(dt);return;}
     if(labIntro.active()){
         int cue=labIntro.time<4?0:labIntro.time<10?1:labIntro.time<16?2:labIntro.time<20?3:4;
         if(cue!=labCue){labCue=cue;char name[24];std::snprintf(name,sizeof(name),"lab_pa_%d",cue);audio.stop(labVoice);labVoice=audio.play(name,110,SoundGroup::UI,true);}
@@ -67,13 +72,15 @@ inline void GameplayState::updateLab(float dt){
     }
     if(labDialogueT>0)labDialogueT-=dt;
     const auto& e=level.story.end;
-    if(storyBossDown && storyEndT<0 && p.x>e.min.x&&p.x<e.max.x&&p.y>e.min.y&&p.y<e.max.y&&p.z>e.min.z&&p.z<e.max.z){
-        storyEndT=0;saveStoryProgress();logRun("end");audio.play("wave",100,SoundGroup::UI,true);
-    }
+    (void)e;
+    // Through the doors the Successor held shut: the ending (Gameplay_LabEnding.h)
+    if(storyBossDown && storyEndT<0 && !labEndingDone && !playerDead && p.z<labend::doorZ()-1.f && std::abs(p.x)<7.f && p.y>labend::floorY()-2.f && p.y<labend::floorY()+6.f)
+        startLabEnding();
     if(storyEndT>=0){storyEndT+=dt;player.velocity={0,0,0};if(storyEndT>3)captureMouse(false);}
 }
 
 inline void GameplayState::gatherLab(std::vector<BoxInstance>& out){
+    if((storyBossDown && level.arenaAt(player.position)>=8) || labEnding.active())gatherLabEnding(out);
     using namespace rig;using glm::vec3;Rig r{out};
     int room=std::max(0,level.arenaAt(player.position));
     auto subject=[&](vec3 p,float phase,bool suspended){

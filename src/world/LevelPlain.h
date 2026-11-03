@@ -23,19 +23,6 @@ inline glm::vec3 start() { return {0.f, 0.f, 560.f}; }
 // The blood moon, low in the north: where the Gleaner's back will rise
 inline glm::vec3 moonDir() { return glm::normalize(glm::vec3{0.1f, 0.42f, -1.f}); }
 
-// The prologue's set: where the Successor fell, a broken white floor in the void, far under the plain
-// (nothing up there can see it, and its fog hides the plain from it)
-inline glm::vec3 prologueCentre() { return {0.f, -2000.f, 0.f}; }
-inline Theme voidTheme() {
-    Theme t{};
-    t.zenith = {0.05f, 0.025f, 0.16f}; t.horizon = {0.22f, 0.06f, 0.25f}; t.ground = {0.03f, 0.02f, 0.06f};
-    t.sunDir = glm::normalize(glm::vec3{-0.45f, 0.7f, -0.55f}); t.sunColor = {0.8f, 0.7f, 1.f}; t.sunSize = 0.02f;
-    t.mountain = {0.02f, 0.01f, 0.04f}; t.stars = 0.9f;
-    t.lightDir = glm::normalize(glm::vec3{0.35f, -0.8f, 0.3f}); t.lightColor = {0.9f, 0.85f, 1.05f};
-    t.skyAmb = {0.34f, 0.3f, 0.45f}; t.groundAmb = {0.16f, 0.13f, 0.2f};
-    t.fogColor = {0.09f, 0.07f, 0.19f}; t.fogDensity = 0.004f;
-    return t;
-}
 inline float hash(float n, float k) { float v = std::sin(n * 12.9898f + k * 78.233f) * 43758.5453f; return v - std::floor(v); }
 
 inline Theme theme() {
@@ -301,35 +288,6 @@ inline LevelData buildPlain() {
     for (int k = 0; k < 5; ++k) {   // a dead colossus's rib cage, lying in the west
         vec3 base{-1650.f + k * 70.f, -20.f, 650.f + k * 40.f};
         b.kit().arch(base, 220.f - k * 18.f, 260.f - k * 25.f, 14.f, 18.f, scrap * 0.4f, 0.55f);
-    }
-
-    // ---- the prologue's set: the broken assessment floor where the Successor fell, the portal at its end ----
-    {
-        const vec3 C = plain::prologueCentre(), tile{0.71f, 0.75f, 0.72f}, grout{0.3f, 0.34f, 0.35f}, steel{0.19f, 0.29f, 0.33f};
-        b.mat = Mat::CLINIC;
-        for (int i = -4; i <= 4; ++i)
-            for (int j = -3; j <= 11; ++j) {   // 2 m tiles, a few missing and a few tilted at the broken edges
-                float h = plain::hash(i * 31.f + j, 301.f);
-                bool edge = std::abs(i) == 4 || j == -3 || j == 11;
-                if (edge && h < 0.45f) continue;
-                vec3 p = C + vec3{i * 2.f, 0.f, j * 2.f};
-                float drop = edge ? -0.4f * h : 0.f;
-                b.prop(p.x - 0.97f, p.y - 0.5f + drop, p.z - 0.97f, p.x + 0.97f, p.y + drop, p.z + 0.97f, glm::mix(tile, tile * 0.85f, h));
-            }
-        b.prop(C.x - 9.f, C.y - 1.4f, C.z - 7.f, C.x + 9.f, C.y - 0.5f, C.z + 23.f, grout);   // the slab under the tiles
-        // drifting fragments of the ward around it
-        for (int k = 0; k < 16; ++k) {
-            float a = k * 0.39f, d = 16.f + 14.f * plain::hash(k, 302.f);
-            vec3 p = C + vec3{std::cos(a) * d, -3.f + 9.f * plain::hash(k, 303.f), 8.f + std::sin(a) * d};
-            b.kit().box(p, {1.f + 3.f * plain::hash(k, 304.f), 0.4f, 1.f + 2.f * plain::hash(k, 305.f)}, tile * 0.9f, a, 0.3f * plain::hash(k, 306.f), 0.2f);
-        }
-        // the portal's frame: two cabled pylons and a ring
-        b.mat = Mat::METAL;
-        for (float s : {-1.f, 1.f}) b.prop(C.x + s * 5.6f - 0.4f, C.y, C.z + 17.1f, C.x + s * 5.6f + 0.4f, C.y + 10.f, C.z + 17.9f, steel);
-        for (int k = 0; k < 28; ++k) {   // the ring, standing upright facing the floor
-            float a = k * 0.2244f;
-            b.kit().box(C + vec3{std::cos(a) * 4.9f, 4.6f + std::sin(a) * 4.9f, 17.5f}, {0.55f, 1.18f, 0.7f}, steel, 0.f, 0.f, a);
-        }
     }
 
     // ---- the arena ----

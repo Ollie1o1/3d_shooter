@@ -35,6 +35,7 @@
 #include "bosses/gleaner/CallerRig.h"
 #include "game/PlainReveal.h"
 #include "game/LabIntro.h"
+#include "game/LabEnding.h"
 #include "bosses/successor/SuccessorHazards.h"
 #include "world/LevelTraining.h"
 #include "game/CombatLessons.h"
@@ -148,6 +149,22 @@ public:
     bool shootSuccessorNode(glm::vec3 origin,glm::vec3 dir,float& range,float damage);
     int labCue=-1;SoundHandle labVoice=0,successorVoice=0;
     LabIntro labIntro;
+    // The end of Chapter 3 (Gameplay_LabEnding.h): the Successor's body where it fell, the cutscene through the doors
+    LabEnding labEnding;
+    bool  labEndingDone = false;
+    glm::vec3 successorFell{0.f}; float successorFellYaw = 0.f; bool successorFellSet = false;
+    glm::vec3 labEndDoor{0.f}, labEndHand{0.f};
+    mutable glm::vec3 labEndFrom[3]{}, labEndSeat[3]{};
+    mutable bool labEndHaveJoints = false;
+    glm::vec3 successorBody() const;
+    void startLabEnding();
+    glm::vec3 labEndUnit(float& yaw) const;
+    void labEndShot(glm::vec3& eye, glm::vec3& at) const;
+    glm::vec3 labPartFrom(int k) const;
+    glm::vec3 labPartSeat(int k) const;
+    void updateLabEnding(float dt);
+    void gatherLabEnding(std::vector<BoxInstance>& out);
+    void renderLabEndingOverlay();
     unsigned labRoutes=0;
     float labDialogueT=0;int labDialogue=-1;
     unsigned successorHeard=0; // once per run; checkpoint retries preserve delivery
@@ -235,7 +252,7 @@ public:
     armfile::HandSpring wakeHand;
     void  beginStory();
     void  updateStory(float dt);
-    bool  storyLocked() const { return story() && (wakeT >= 0.f || labIntro.active() || plainReveal.active()); }
+    bool  storyLocked() const { return story() && (wakeT >= 0.f || labIntro.active() || labEnding.active() || plainReveal.active()); }
     bool  storyLookFree() const { return !labIntro.active() && wakeT >= 18.4f; }   // (story::W_SAT)
     float storyWakeFx() const;
     void  gatherStoryBoxes(std::vector<BoxInstance>& out);
@@ -385,12 +402,6 @@ public:
     float plainMoonLid() const;
     void gatherGleaner(std::vector<BoxInstance>& out);
     void renderPlainReveal();
-    glm::vec3 prologueUnit() const;
-    void prologueShot(glm::vec3& eye, glm::vec3& at) const;
-    void updatePlainPrologue(float t0, float t);
-    glm::vec3 prologuePartStart(int k) const;
-    glm::vec3 prologuePartEnd(int k) const;
-    void gatherPlainPrologue(std::vector<BoxInstance>& out);
     void beginPlain();
     void updatePlain(float dt);
     void meteorImpact(const MeteorImpact& hit);
@@ -1197,3 +1208,4 @@ public:
 #include "game/Gameplay_Plain.h"
 #include "game/Gameplay_Gleaner.h"
 #include "game/Gameplay_GleanerFight.h"
+#include "game/Gameplay_LabEnding.h"

@@ -8,7 +8,8 @@
 // Included at the end of GameplayState.h.
 // =============================================================================
 
-inline bool GameplayState::splinterOwned() const { return g_devSplinter; }
+// (Story: UNIT 24 takes the forearm that holds it off the Successor at the end of Chapter 3, so Chapter 4 has it)
+inline bool GameplayState::splinterOwned() const { return g_devSplinter || plain(); }
 
 static const glm::vec3 SPLINTER_GLOW{0.35f, 1.f, 1.15f};
 static constexpr int SPLINTER_BROOD = -2;   // splinterTarget: the Gleaner's brood, not an enemy in the list

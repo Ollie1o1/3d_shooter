@@ -326,3 +326,34 @@ time, never three at once. The Gleaner keeps a slow background pressure
     drops off the roof, kills the Sieve through its grate, crosses the neck,
     parries the Caller and kills it at its lamp, all with real physics.
   - Next: inside the Gleaner (the furnace door), the summit, its death.
+- **Fourth pass (user feedback, 2026-11-02):**
+  - **The Chapter 3 ending is the bridge now** (`src/game/LabEnding.h` clock,
+    `Gameplay_LabEnding.h`). It plays in the final assessment once you walk
+    through the doors the Successor held shut. The Successor's body lies where
+    it fell from its death on. In third person, UNIT 24 looks back from the
+    doorway, then (after a cut) crosses back to the body and kneels. It takes
+    the shoulder plate, the forearm housing and the spine coupling off the body
+    by hand: reach, tear free, carry, seat (they follow its hand joint). Then
+    STATUS: COMPLETE, the forearm shows the splinter once, it walks out along
+    the platform, looks back at the edge, and the real portal over the
+    platform's end pulls it in. Moving cameras with eased dollies and a light
+    handheld drift, a 58° lens. Then the chapter card; Enter goes on to
+    Chapter 4 (LevelLab `nextChapter = 4`). Dev: `--story3 --arena 10
+    --overlay labending`.
+  - Chapter 4 opens straight on the arrival: the old void prologue and its set
+    are gone (`PlainReveal::PRO = 0`).
+  - The Story page lists Chapter 4. The dev menu has 4.1–4.5 (arrival,
+    Tender, Sieve, Caller, brood dead). Continue after finishing Chapter 3
+    goes to Chapter 4. Story retries no longer reset Chapter 4's fight
+    checkpoint. The Splinter is owned in Chapter 4.
+  - Sound: the score plays from the landing (low, rising as it stands), a hot
+    wind bed on the plain (louder on its back), a boom out of the portal. The
+    Gleaner's roar is a new mechanical bellow: a distorted low saw and its
+    fifth through an "aw", grinding FM metal over it, a ratchet clanking up,
+    great slams, chains.
+  - Music: RECLAMATION is now 140 BPM club techno under the orchestra (a
+    distorted four-on-the-floor pumping everything, a rolling bass, an acid
+    line in E phrygian, claps, hats). The orchestra runs on a half-speed clock
+    (`plainPos`). The lab tracks use `HumanChoir` (16 singers: detune, drift,
+    late vibrato, scoops, breath, five formants, stereo spread), and
+    OBSERVATION is now a 160 BPM breakbeat.
