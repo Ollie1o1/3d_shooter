@@ -50,6 +50,7 @@ struct MeteorRain {
     std::array<Meteor, POOL> pool{};
     std::array<MeteorRemains, REMAINS> remains{};
     float next = 0.5f;
+    bool  stopped = false;   // the sky gone quiet (the Gleaner dead): no more fall
     uint32_t seed = 2024u;
     // The way they come in: from the north-east, out of the moon's side of the sky
     glm::vec3 drift{-0.35f, 0.f, 0.55f};
@@ -57,7 +58,7 @@ struct MeteorRain {
     float rnd() { seed = seed * 1664525u + 1013904223u; return (float)(seed >> 8) / 16777216.f; }
     float rnd(float a, float b) { return a + (b - a) * rnd(); }
 
-    void reset(uint32_t s = 2024u) { pool = {}; remains = {}; seed = s; next = 0.5f; }
+    void reset(uint32_t s = 2024u) { pool = {}; remains = {}; seed = s; next = 0.5f; stopped = false; }
     int live() const { int n = 0; for (auto& m : pool) n += m.alive; return n; }
 
     // A new one, aimed to land at `target` (the caller has checked it is allowed)
@@ -111,7 +112,7 @@ struct MeteorRain {
     void tick(float dt, glm::vec3 player, std::vector<MeteorImpact>& hits) {
         hits.clear();
         next -= dt;
-        if (next <= 0.f) {
+        if (next <= 0.f && !stopped) {
             next = rnd(GAP_MIN, GAP_MAX);
             glm::vec3 t = pickTarget(player);
             float big = rnd();

@@ -24,7 +24,7 @@ inline void GameplayState::beginGleaner() {
     gleanerScreamCd = 35.f;
     // It plays on a fresh arrival (and in practice from the first checkpoint, as Chapter 3's does);
     // never again once seen in a run or saved as seen
-    const bool devFight = g_devOverlay == "plainclose" || g_devOverlay == "plaindeck" || g_devOverlay == "plainsaddle" || g_devOverlay == "plaincrown";   // (dev: straight to the fight)
+    const bool devFight = g_devOverlay == "plainclose" || g_devOverlay == "plaindeck" || g_devOverlay == "plainsaddle" || g_devOverlay == "plaincrown" || g_devOverlay == "plainsummit";   // (dev: straight to the fight)
     if (devFight) { wakeSeen = plainRevealDone = true; }
     const bool reveal = (!wakeSeen || g_practice) && !plainRevealDone && director.arena == 0 && storyCheckpoint == 0 && !g_devCam && g_bossRun < 0;   // (a later checkpoint is past it)
     if (reveal || g_devOverlay.rfind("plainreveal", 0) == 0) {
@@ -139,11 +139,10 @@ inline void GameplayState::updateGleaner(float dt) {
             gleanerDust.push_back({e.at, 0.f, 26.f * Gleaner::SCALE * e.size});
         } else {   // the scream: the loudest thing in the game, now (no delay: it has to land with its jaw)
             gleanerSound("gleaner_scream", e.at, 1.f, 0.f, true);
-            audio.duck(10.f, Gleaner::SCREAM_LEN);
+            audio.duck(14.f, Gleaner::SCREAM_LEN + 1.f);   // (the music and the fight step back under it)
             float near = glm::clamp(1.f - dist / 1800.f, 0.25f, 1.f);
             shake(Gleaner::SCREAM_LEN, 0.05f * near);
             fovKick = std::max(fovKick, 7.f * near);   // the air itself hits you
-            audio.music.stinger();
         }
     }
     for (auto& d : gleanerDust) d.age += dt;
@@ -307,6 +306,7 @@ inline void GameplayState::haulOntoGleaner(glm::vec3 at) {
 // The sky's moon, shut: 0 open (before it wakes), 1 gone (it is the eye now)
 inline float GameplayState::plainMoonLid() const {
     if (plainReveal.active()) return plainReveal.lid();
+    if (summitEndT >= 0.f) return 1.f - summitMoonOpen();   // (it dead: the real moon opens again)
     return wakeSeen ? 1.f : 0.f;
 }
 

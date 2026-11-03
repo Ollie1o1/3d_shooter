@@ -189,6 +189,15 @@ int main() {
         CHECK(shoulderY > 250.f && lying.shoulder(0).y < shoulderY * 0.3f, "it stands hundreds of metres tall and lies sunk in the plain");
         CHECK(std::abs(glm::length(g.elbow(0) - g.shoulder(0)) - Gleaner::UPPER * K) < 1.f &&
               std::abs(glm::length(g.hand(0) - g.elbow(0)) - Gleaner::FORE * K) < 1.f, "its arms keep their length (two-bone IK)");
+        {   // A scream called between ticks (by the fight, by the reveal) reaches the tick's events: the roar's sound
+            // is played from them. (tick() used to clear them first: the Gleaner never made a sound when it screamed.)
+            Gleaner s; s.place({0, 0, -400}, 0.f, 1.f);
+            s.tick(DT); s.scream(); s.tick(DT);
+            int screams = 0; for (const auto& e : s.events) screams += e.kind == GleanerEvent::SCREAM;
+            s.tick(DT);
+            int after = 0; for (const auto& e : s.events) after += e.kind == GleanerEvent::SCREAM;
+            CHECK(screams == 1 && after == 0, "a scream called between ticks is in the next tick's events once (its roar plays), then gone");
+        }
         // Crawl two minutes
         g.wantSpeed = 3.4f; g.speed = 3.4f;
         int slams[2] = {0, 0}, lastSide = -1; bool alternate = true, reach = true;

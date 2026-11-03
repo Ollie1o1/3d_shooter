@@ -34,6 +34,7 @@
 #include "bosses/gleaner/SieveRig.h"
 #include "bosses/gleaner/CallerRig.h"
 #include "bosses/gleaner/OrgansRig.h"
+#include "bosses/gleaner/EyeCore.h"
 #include "game/PlainReveal.h"
 #include "game/LabIntro.h"
 #include "game/LabEnding.h"
@@ -253,7 +254,7 @@ public:
     armfile::HandSpring wakeHand;
     void  beginStory();
     void  updateStory(float dt);
-    bool  storyLocked() const { return story() && (wakeT >= 0.f || labIntro.active() || labEnding.active() || plainReveal.active()); }
+    bool  storyLocked() const { return story() && (wakeT >= 0.f || labIntro.active() || labEnding.active() || plainReveal.active() || summitEndT >= 0.f); }
     bool  storyLookFree() const { return !labIntro.active() && wakeT >= 18.4f; }   // (story::W_SAT)
     float storyWakeFx() const;
     void  gatherStoryBoxes(std::vector<BoxInstance>& out);
@@ -358,6 +359,21 @@ public:
     Tender tender;
     Sieve  sieve;
     Caller caller;
+    // The summit (Gameplay_GleanerSummit.h): THE EYE, then the collapse
+    EyeCore eye;
+    float summitEndT = -1.f;   // seconds into the collapse (-1: not yet)
+    float eyeHitCd = 0.f;
+    glm::vec3 eyeHang() const;
+    int   summitCover(AABB* out) const;
+    float eyeBeamReach(glm::vec3 o, glm::vec3 d, float maxT) const;
+    void  wakeEye();
+    void  updateSummit(float dt);
+    bool  tryTearEye();
+    void  updateSummitEnd(float dt);
+    void  summitShot(glm::vec3& eyeAt, glm::vec3& at) const;
+    float summitMoonOpen() const;
+    void  gatherEye(std::vector<BoxInstance>& out);
+    void  renderSummitEnd();
     // Inside it (Gameplay_GleanerInside.h)
     CrucibleHeart heart;
     BellowsLungs lungs;
@@ -1248,4 +1264,5 @@ public:
 #include "game/Gameplay_Gleaner.h"
 #include "game/Gameplay_GleanerFight.h"
 #include "game/Gameplay_GleanerInside.h"
+#include "game/Gameplay_GleanerSummit.h"
 #include "game/Gameplay_LabEnding.h"

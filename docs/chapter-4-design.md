@@ -395,3 +395,20 @@ time, never three at once. The Gleaner keeps a slow background pressure
   The roar (`gleaner_scream`) is now a colossal train horn: the five-chime
   horn chord two octaves down, steam whistles at train pitch, a beating hum
   under both. Tested by `checkGleanerWalkInRuntime` in tests/test_dev.cpp.
+- **The roar, for real** (fix pass 2): `Gleaner::tick()` cleared its events
+  before anything read them, so a scream called by the fight or the reveal
+  never made a sound (only the jaw moved). Each tick now clears only what the
+  previous tick made (`ticked`). Checked by recording the game's own mix
+  (`--audiodump`): the hum and chord rise ~25-30 dB on every scream. The music
+  stinger that went with it is gone.
+- **THE SUMMIT** (`bosses/gleaner/EyeCore.h`, `game/Gameplay_GleanerSummit.h`):
+  out of the chimney onto the roof, THE EYE tears out of its chest and hangs
+  over the roof's front on cables. Lids open only when it fires (the pupil
+  takes full damage then; the shell x0.15). SWEEP (a red line, then the beam
+  along it: jump it or stand behind a chimney), LANCE (gold, no parry; chimneys
+  stop it), WEEP (slag tears: punch one back and it reels, x2), CALL (meteors
+  onto the roof). FALTERS at 2/3 and 1/3 (sinks to the roof's edge, x2.5).
+  At 0 it falls onto the roof: interact beside it to tear it out. The collapse:
+  a far shot of it sinking into the plain, its last roar, the meteors stop,
+  the real moon opens, then the chapter card ("TO BE CONTINUED").
+  Dev: `--story4 --overlay plainsummit`. Test: `checkSummitRuntime`.

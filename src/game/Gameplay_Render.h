@@ -585,6 +585,14 @@ inline void GameplayState::render() {
         renderCam.pitch = glm::degrees(std::asin(glm::clamp(d.y, -1.f, 1.f)));
     }
 
+    if (plain() && summitEndT >= 1.f) {   // (summit::CUT) the collapse: seen from far off across the plain
+        glm::vec3 eye2, at;
+        summitShot(eye2, at);
+        glm::vec3 d = glm::normalize(at - eye2);
+        renderCamPos = renderCam.position = eye2;
+        renderCam.yaw = glm::degrees(std::atan2(d.z, d.x));
+        renderCam.pitch = glm::degrees(std::asin(glm::clamp(d.y, -1.f, 1.f)));
+    }
     // Shake, punches, the landing dip, the strafe lean and the stride (CameraFeel.h): seen, not aimed with
     bool bob = !settings || settings->viewBob;
     glm::vec3 feelAng = camFeel.angles(aim, bob, renderAlpha);
@@ -600,6 +608,7 @@ inline void GameplayState::render() {
     renderCam.fov = baseFov * zoom + fovKick * (1.f - a);
     if(plain() && plainReveal.active()) renderCam.fov = plainReveal.fov(baseFov);
     if(laboratory() && labEnding.active()) renderCam.fov = std::min(baseFov, 58.f);   // (a longer lens for the cutscene)
+    if(plain() && summitEndT >= 1.f) renderCam.fov = std::min(baseFov, 55.f);
     if(laboratory() && labIntro.active()){
         float focus=LabIntro::smooth(3,8,labIntro.time)*(1-LabIntro::smooth(19,23,labIntro.time));
         renderCam.fov=glm::mix(baseFov,std::min(baseFov,60.f),focus);

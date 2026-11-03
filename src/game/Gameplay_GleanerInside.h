@@ -70,7 +70,7 @@ inline void GameplayState::gutShaftThrow() {
             player.camera.position = player.position + glm::vec3{0.f, 1.7f, 0.f}; prevCamPos = player.camera.position;
             gutWhite = 0.8f;
             SfxMixer::Opts o; o.group = SoundGroup::UI; o.priority = true; o.pitch = 0.5f; audio.playOpts("explosion", o);
-            pushBanner("THE SUMMIT", "OUT OF ITS CHIMNEY, ONTO ITS BACK (THE EYE IS NEXT: NOT BUILT YET)", {1.f, 0.5f, 0.2f}, 5.f);
+            pushBanner("THE SUMMIT", "IT TRIES TO STAND ONE LAST TIME", {1.f, 0.5f, 0.2f}, 4.f);
         }
     }
 }

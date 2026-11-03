@@ -376,6 +376,78 @@ static void checkPlainRuntime(AudioSystem& audio) {
 // and the two held you there). No step may move you more than a few metres; you can always walk
 // back out; and the grapple bites into it and hauls you onto its back.
 static const Uint8* noKeysDev(){static const Uint8 k[SDL_NUM_SCANCODES]={};return k;}
+// THE SUMMIT through the live game: the eye rises, falters twice, is shot down with real rounds,
+// reels from its own tear punched back, burns you with its sweep, and is torn out; the Gleaner falls
+static void checkSummitRuntime(AudioSystem& audio) {
+    g_storyChapter=4;g_startArena=g_startWave=0;g_practice=true;g_godMode=true;g_bossRun=-1;g_devOverlay="plainsummit";
+    auto live=std::make_unique<GameplayState>(audio,nullptr,GameMode::STORY);auto& game=*live;
+    g_devOverlay.clear();
+    auto tick=[&](float sec){for(int f=0;f<(int)(sec*60);++f)game.physicsTick(1.f/60,noKeysDev(),false);};
+    CHECK(game.gleanerPhase==GameplayState::GleanerPhase::SUMMIT && game.onGleanerDeck(),"summit: you start on its roof");
+    tick(1.f);
+    std::printf("      summit: phase %d onGround %d onDeck %d inside %d pos %.1f %.1f %.1f deckY %.1f walls %d\n",(int)game.gleanerPhase,(int)game.player.onGround,(int)game.onGleanerDeck(),(int)game.insideGleaner(),game.player.position.x,game.player.position.y,game.player.position.z,game.deckY,game.deckWallsFrom);
+    CHECK(game.eye.state==EyeCore::RISING,"on its roof, the eye tears out of its chest and rises");
+    tick(EyeCore::RISE_TIME+0.5f);
+    glm::vec3 hang=game.eyeHang();
+    std::printf("      eye: at %.0f %.0f %.0f (hang %.0f %.0f %.0f), state %d\n",game.eye.pos.x,game.eye.pos.y,game.eye.pos.z,hang.x,hang.y,hang.z,(int)game.eye.state);
+    CHECK(game.eye.fighting() && glm::length(game.eye.pos-hang)<40.f,"it hangs over the roof's front and fights");
+    {   // face it and look (from the open middle of the roof, back from its front)
+        game.player.position={(game.deckLo.x+game.deckHi.x)*.5f+18.f,game.deckY+0.05f,game.deckHi.y-34.f};game.player.velocity={0,0,0};
+        game.eye.go(EyeCore::LANCE_AIM);game.eye.aim=game.player.position+glm::vec3{0,1.1f,0};
+        for(int f=0;f<30;++f)game.physicsTick(1.f/60,noKeysDev(),false);
+        glm::vec3 d=glm::normalize(game.eye.pos-game.player.camera.position);
+        game.player.camera.yaw=glm::degrees(std::atan2(d.z,d.x));game.player.camera.pitch=glm::degrees(std::asin(d.y));
+        game.prevCamPos=game.player.camera.position;game.render();screenshot("build/summit-eye.bmp");
+    }
+    // Its tear punched back: it reels
+    {   float hp=game.eye.hp;
+        if(Projectile* pr=game.projSystem.fire(game.eye.pos+glm::vec3{0,0,-EyeCore::R-0.5f},{0,0,1},10.f,false)){pr->parried=true;pr->parryDamage=420.f;}
+        tick(0.1f);
+        CHECK(game.eye.hp<hp && game.eye.state==EyeCore::STUNNED,"a tear of its slag punched back into it hurts it and it reels");
+    }
+    // Its sweep burns you where you stand, out in the open
+    {   g_godMode=false;float before=game.styleSystem.health;
+        game.player.position={(game.deckLo.x+game.deckHi.x)*.5f+20.f,game.deckY+0.05f,game.deckHi.y-10.f};game.player.velocity={0,0,0};   // (out in the open, under it)
+        game.physicsTick(1.f/60,noKeysDev(),false);
+        game.eye.go(EyeCore::SWEEP);glm::vec3 p=game.player.position;
+        game.eye.sweepA={p.x-30.f,game.deckY+0.1f,p.z};game.eye.sweepB={p.x+30.f,game.deckY+0.1f,p.z};
+        float closest=1e9f;
+        for(int f=0;f<90;++f){game.physicsTick(1.f/60,noKeysDev(),false);if(game.eye.state==EyeCore::SWEEP){glm::vec3 sp=game.eye.sweepPoint();closest=std::min(closest,glm::length(glm::vec2{game.player.position.x-sp.x,game.player.position.z-sp.z}));}}
+        std::printf("      sweep dbg: closest %.2f, iframes %.2f, dir phase %d, state %d, y %.2f/%.2f\n",closest,game.invincFrames,(int)game.director.phase,(int)game.eye.state,game.player.position.y,game.deckY);
+        std::printf("      sweep: health %.0f -> %.0f\n",before,game.styleSystem.health);
+        CHECK(game.styleSystem.health<before,"its sweep burns you if you are on its line in the open");
+        game.styleSystem.health=game.styleSystem.maxHealth;g_godMode=true;
+    }
+    // Shoot it down: rounds at its pupil (they only count while its lids are open)
+    int shots=0;float clock=0.f;int falterSeen=0;EyeCore::State was=game.eye.state;
+    while(game.eye.alive() && clock<240.f){
+        glm::vec3 c=game.eye.pos+game.eye.facing*(EyeCore::R*0.8f);
+        glm::vec3 d=glm::normalize(c-game.player.camera.position);
+        game.player.camera.yaw=glm::degrees(std::atan2(d.z,d.x));game.player.camera.pitch=glm::degrees(std::asin(d.y));
+        game.activeWeapon=0;game.weapons[0].ammo=8;game.weapons[0].cooldown=0;game.fireWeapon(0);++shots;
+        tick(.25f);clock+=.25f;
+        if(game.eye.state==EyeCore::FALTER && was!=EyeCore::FALTER)++falterSeen;
+        was=game.eye.state;
+        if(!game.onGleanerDeck()){game.player.position=game.deckCheckpoint();game.player.velocity={0,0,0};}
+    }
+    std::printf("      eye: down after %d revolver shots in %.0f s (falters %d)\n",shots,clock,falterSeen);
+    CHECK(game.eye.fallen() && falterSeen==2,"real rounds bring it down; it faltered at two thirds and one third");
+    tick(2.f);
+    CHECK(game.eye.pos.y<game.deckY+EyeCore::R+0.5f,"it falls onto the roof");
+    // Walk up and tear it out
+    game.player.position={game.eye.pos.x,game.deckY+0.05f,game.eye.pos.z-EyeCore::R-2.f};game.player.velocity={0,0,0};
+    tick(0.2f);
+    CHECK(game.tryTearEye() && game.summitEndT>=0.f,"beside it, the interact key tears it out");
+    CHECK(game.storyLocked(),"the collapse has the controls");
+    for(int f=0;f<60*6;++f){game.updateStory(1.f/60);}
+    game.render();screenshot("build/summit-collapse.bmp");
+    for(int f=0;f<60*9 && game.storyEndT<0.f;++f){game.updateStory(1.f/60);}
+    std::printf("      collapse: rise %.2f, meteors stopped %d, moon lid %.2f, card %.1f\n",game.gleaner.rise,(int)game.meteors.stopped,game.plainMoonLid(),game.storyEndT);
+    CHECK(game.gleaner.rise<0.05f && game.meteors.stopped && game.plainMoonLid()<0.05f,"it goes down into the plain, the meteors stop and the real moon opens");
+    CHECK(game.storyEndT>=0.f && game.storyBossDown,"then the chapter's card");
+    g_practice=false;g_godMode=false;g_storyChapter=1;
+}
+
 // OATHBREAKER's statue in the Successor's arena: sealed, opened by its second phase, pulled into your hands
 static void checkSwordStatueRuntime(AudioSystem& audio) {
     g_storyChapter=3;g_startArena=9;g_startWave=0;g_practice=true;g_godMode=true;g_bossRun=-1;g_devOverlay.clear();
@@ -1002,6 +1074,7 @@ int main() {
         checkGleanerFightRuntime(audio);
         checkGleanerWalkInRuntime(audio);
         checkSwordStatueRuntime(audio);
+        checkSummitRuntime(audio);
         GameSettings visualSettings;visualSettings.ambientDetail=3;
         menu.settings=&visualSettings;menu.settingsMenu.s=&visualSettings;menu.page=MenuState::SETTINGS;
         const auto settingsRows=menu.settingsMenu.rows();

@@ -58,7 +58,8 @@ struct Gleaner {
     float screamT = -1.f;            // seconds into a scream (-1: none)
     float clock = 0.f;
     Arm   arm[2];
-    std::vector<GleanerEvent> events;   // what happened in the last tick
+    std::vector<GleanerEvent> events;   // what happened in the last tick (and a scream() called since)
+    size_t ticked = 0;                  // how many of `events` the last tick made (the next tick clears only those)
 
     glm::vec3 fwd() const { return {std::sin(yaw), 0.f, std::cos(yaw)}; }
     glm::vec3 right() const { return {std::cos(yaw), 0.f, -std::sin(yaw)}; }
@@ -150,7 +151,9 @@ struct Gleaner {
     }
 
     void tick(float dt) {
-        events.clear();
+        // (only what the last tick made: a scream() called between ticks, by the fight or the reveal,
+        // stays for whoever reads this tick's events. Clearing them all here silenced every roar.)
+        events.erase(events.begin(), events.begin() + (long)std::min(ticked, events.size()));
         clock += dt;
         // Turn and crawl
         float dy = angleTo(yaw, targetYaw);
@@ -189,5 +192,6 @@ struct Gleaner {
             headLift = ease(screamT / 0.8f) * (1.f - ease((screamT - SCREAM_LEN + 0.4f) / 1.2f));
             if (screamT > SCREAM_LEN + 0.8f) { screamT = -1.f; jaw = headLift = 0.f; }
         }
+        ticked = events.size();
     }
 };

@@ -287,7 +287,7 @@ inline void dressGut(LevelBuilder& b) {
 inline LevelData buildPlain() {
     using glm::vec3;
     LevelData l; LevelBuilder b{l}; auto& s = l.story;
-    s.built = true; s.chapter = 4; s.nextChapter = 0; s.title = "THE BLOOD MOON PLAIN"; s.nextName = "";
+    s.built = true; s.chapter = 4; s.nextChapter = 0; s.title = "THE BLOOD MOON PLAIN"; s.nextName = "TO BE CONTINUED";
     s.startWeapons = 15; s.startGrapple = true; s.bossSection = 99; s.pitSection = -1;
     const vec3 basalt{0.16f, 0.11f, 0.1f}, scorched{0.09f, 0.06f, 0.055f}, ash{0.3f, 0.26f, 0.24f},
                rock{0.13f, 0.09f, 0.08f}, scrap{0.24f, 0.22f, 0.21f}, rust{0.32f, 0.16f, 0.09f},
