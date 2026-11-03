@@ -32,7 +32,16 @@ inline void draw(std::vector<BoxInstance>& out, const Sieve& v, float ball) {
         vec3 hot = stake ? melt * (v.state == Sieve::STAKE_RAISE ? 0.6f + 1.4f * Sieve::ease(v.t / v.raiseTime()) : 1.6f) : vec3{0.f};
         bar(hp, kn, 0.75f, iron);
         bar(glm::mix(hp, kn, 0.3f), glm::mix(hp, kn, 0.7f), 0.95f, rust);   // a sleeve of plate
-        lump(T(kn) * S(vec3{1.5f}), bone * 0.8f);
+        // the knee: a joint of slag-welded bone, glowing as it weakens (a target), broken: split and sparking
+        const float wear = v.kneeWear(i), kp = 0.6f + 0.4f * std::sin(t * 9.f + i);
+        if (!v.broken[i]) {
+            lump(T(kn) * S(vec3{1.5f + 0.5f * wear}), bone * 0.8f, melt * (0.35f + 1.6f * wear * kp));
+            for (int k = 0; k < 3; ++k)   // a ring of glowing welds round it: you can see them from below
+                box(T(kn) * RY(k * 1.047f + t * 0.4f) * S(vec3{3.3f, 0.18f, 0.18f}), soot, melt * (0.9f + 0.8f * wear) * kp);
+        } else {
+            for (int k = 0; k < 2; ++k) lump(T(kn + vec3{k ? 0.5f : -0.5f, -0.3f * k, 0.f}) * RY(k * 1.4f) * S(vec3{1.f, 0.7f, 0.9f}), bone * 0.4f, melt * 0.5f);
+            if (std::sin(t * 23.f + i * 3.f) > 0.6f) box(T(kn + vec3{0.f, -0.8f, 0.f}) * RY(t * 7.f) * S(vec3{0.12f, 1.6f, 0.12f}), vec3{0.f}, vec3{3.f, 1.6f, 0.6f});
+        }
         box(gleaner::alongZ(kn + vec3{0.f, 1.4f, 0.f}, vec3{0.f, 1.f, 0.1f}) * S(vec3{0.35f, 0.35f, 2.6f}), bone * 0.7f);   // a spur off the knee
         bar(kn, glm::mix(kn, ft, 0.88f), 0.55f, iron * 1.2f);
         bar(glm::mix(kn, ft, 0.88f), ft, 0.4f, bone * 0.7f, hot);             // the spike: white-hot when it stakes

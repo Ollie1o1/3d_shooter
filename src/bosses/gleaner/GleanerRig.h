@@ -51,6 +51,7 @@ constexpr float GAP_HALF = 7.f;                                  // the way in t
 inline vec3 chimney(int c) { static const vec3 S[3] = {{-15, 18, -14}, {14, 18, -4}, {-2, 22, 16}}; return furnaceBase() + S[c]; }
 inline float chimneyTall(int c) { static const float H[3] = {62, 54, 70}; return H[c]; }
 constexpr float FRONT_GAP = 9.f;
+constexpr float UPDRAFT_Z = 150.f;                               // the updraft: straight ahead of it, past its jaw and its fists
 constexpr float DOOR_HX = 2.6f, DOOR_H = 4.f;                    // the furnace door in its face, behind the saddle (half width, height)                                 // the way off the roof's front (+Z) once the Tender is dead
 
 // The saddle: armour bolted across its shoulders, forward of the furnace, a drop below its roof (the Sieve's ground)
@@ -73,6 +74,8 @@ struct Look {
     float vent = 0.f;         // 0..1 the updraft vent in its side, glowing
     bool  frontGap = false;   // the roof's front parapet open (the way down to the saddle)
     float door = 0.f;         // 0..1 the furnace door in its face, open
+    float armLife[2] = {1.f, 1.f};   // 1 alive .. 0 dead (its brood member killed: the arm's light gone out)
+    float headLife = 1.f;            // the same for its head (the Caller's)
 };
 
 // The parts drawn here as boxes get a surface from their colour (box_inst.frag): pale and grey bone,
@@ -108,6 +111,7 @@ inline void draw(std::vector<BoxInstance>& out, const Gleaner& g, const Look& lo
     auto localBar = [&](vec3 a, vec3 b, float w, float h, vec3 col, vec3 emi = vec3{0.f}) { bar(local(a), local(b), w * K, h * K, col, emi); };
     // A piece made in Blender (its own units: the Gleaner's), its glow its furnace's light; false: no file, draw the boxes
     auto piece = [&](const char* name, const mat4& m) { return propdraw::push(out, name, m, fire, 1.f, true); };
+    auto pieceLit = [&](const char* name, const mat4& m, vec3 glow) { return propdraw::push(out, name, m, glow, 1.f, true); };
     const size_t first = out.size();
 
     // ---- the spine, its armour and the ridge of spines along it ----
@@ -443,15 +447,23 @@ inline void draw(std::vector<BoxInstance>& out, const Gleaner& g, const Look& lo
         const float s = Gleaner::side(a);
         vec3 sh = g.shoulder(a), el = g.elbow(a), hd = g.hand(a);
         vec3 fist = hd + vec3{0, 14 * K, 0};
-        if (!piece("gleaner_pauldron", T(sh + vec3{0, 8 * K, 0}) * RY(g.yaw) * S(vec3{K})))
+        // Its light: out, once its brood member is dead; white-hot in the fist as a swat comes down
+        const float tell = g.swatTell(a), life = look.armLife[a];
+        const vec3 armFire = fire * (0.05f + 0.95f * life) + vec3{2.6f, 1.2f, 0.5f} * (tell * tell * 1.6f);
+        if (!pieceLit("gleaner_pauldron", T(sh + vec3{0, 8 * K, 0}) * RY(g.yaw) * S(vec3{K}), armFire))
             lump(T(sh + vec3{0, 8 * K, 0}) * RY(g.yaw) * S(vec3{40, 28, 40} * K), rust * 0.85f);   // the pauldron
         const float upper = glm::length(el - sh), fore = glm::length(fist - el);
-        if (!piece("gleaner_upperarm", alongZ(sh, el - sh) * S(vec3{K, K, upper / Gleaner::UPPER}))) {
+        if (life < 0.5f) for (int k = 0; k < 6; ++k) {   // dead: smoke off its shoulder and elbow, its seams out
+            float u = std::fmod(t * 0.25f + k / 6.f, 1.f);
+            vec3 at = (k % 2 ? el : sh) + vec3{std::sin(k * 2.1f + t * 0.3f) * 8.f * K * u, (12.f + 70.f * u) * K, std::cos(k * 1.3f) * 8.f * K * u};
+            lump(T(at) * S(vec3{(8.f + 22.f * u) * K}), vec3{0.05f, 0.04f, 0.04f} * (1.f - u));
+        }
+        if (!pieceLit("gleaner_upperarm", alongZ(sh, el - sh) * S(vec3{K, K, upper / Gleaner::UPPER}), armFire)) {
             bar(sh, el, 25 * K, 23 * K, iron);
             box(alongZ((sh + el) * 0.5f + vec3{0, 9 * K, 0}, el - sh) * S(vec3{17 * K, 6 * K, upper * 0.75f}), rust);   // plate down the upper arm
         }
         lump(T(el) * S(vec3{31 * K}), iron * 1.1f);
-        if (!piece("gleaner_forearm", alongZ(el, fist - el) * S(vec3{K, K, fore / Gleaner::FORE}))) {
+        if (!pieceLit("gleaner_forearm", alongZ(el, fist - el) * S(vec3{K, K, fore / Gleaner::FORE}), armFire)) {
             bar(el, fist, 22 * K, 21 * K, iron);
             for (int k = 0; k < 3; ++k) {   // spines down the back of the forearm
                 vec3 p = glm::mix(el, fist, 0.25f + 0.25f * k);
@@ -460,14 +472,26 @@ inline void draw(std::vector<BoxInstance>& out, const Gleaner& g, const Look& lo
         }
         // The fist: a great lump, four knuckles on the ground ahead of it
         vec3 f = g.fwd();
-        if (!piece("gleaner_fist", T(fist) * RY(g.yaw + s * 0.2f) * S(vec3{K}))) {
+        if (!pieceLit("gleaner_fist", T(fist) * RY(g.yaw + s * 0.2f) * S(vec3{K}), armFire)) {
             lump(T(fist) * RY(g.yaw + s * 0.2f) * S(vec3{38, 30, 36} * K), iron);
             for (int k = 0; k < 4; ++k) {
                 vec3 kp = fist + (f * 16.f + g.right() * ((k - 1.5f) * 8.f) + vec3{0, -6.f + (k % 2) * 2.f, 0}) * K;
                 box(T(kp) * RY(g.yaw) * S(vec3{7, 12, 10} * K), bone * 0.7f);
             }
             // Light in the seam of the wrist
-            box(alongZ(glm::mix(el, fist, 0.92f), fist - el) * S(vec3{23 * K, 2.5f * K, 3 * K}), soot, fire * 0.9f);
+            box(alongZ(glm::mix(el, fist, 0.92f), fist - el) * S(vec3{23 * K, 2.5f * K, 3 * K}), soot, armFire * 0.9f);
+        }
+        if (tell > 0.01f) {   // raised for a swat: its knuckles glowing, slag dripping off the fist onto where it will land
+            for (int k = 0; k < 4; ++k) {
+                vec3 kp = fist + (g.right() * ((k - 1.5f) * 8.f) + vec3{0, -26.f, 0}) * K;
+                lump(T(kp) * S(vec3{5.f * K}), soot, vec3{2.8f, 1.1f, 0.3f} * (0.5f + 1.5f * tell));
+            }
+            for (int k = 0; k < 8; ++k) {
+                float u = std::fmod(t * 0.9f + k * 0.125f, 1.f);
+                vec3 d = fist + vec3{std::sin(k * 2.4f) * 14.f * K, -30.f * K - u * (fist.y - hd.y + 10.f), std::cos(k * 1.7f) * 14.f * K};
+                if (d.y < hd.y) continue;
+                box(T(d) * S(vec3{0.9f, 3.f, 0.9f} * K), vec3{0.f}, vec3{2.6f, 0.8f, 0.2f} * tell);
+            }
         }
     }
 

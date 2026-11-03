@@ -1271,6 +1271,9 @@ inline void GameplayState::updateMusic() {
         if(gleaner.screaming())intensity=std::max(intensity,1.f);
         if(plainReveal.active())intensity=plainReveal.time<PlainReveal::RISE0?.4f:plainReveal.time<PlainReveal::SCREAM?.4f+.45f*PlainReveal::sm(PlainReveal::RISE0,PlainReveal::SCREAM,plainReveal.time):1.f;
         if(gleanerPhase==GleanerPhase::BROOD)intensity=.8f;
+        if(tearT>=0.f)intensity=tearT<4.f?1.3f:.08f;   // (tearing it out: everything, then nothing)
+        if(summitEndT>=0.f)intensity=.5f;
+        if(quietT>=0.f)intensity=.2f;   // (the quiet: only the far voices)
         if(playerDead)intensity=.05f;
         m.setIntensity(intensity);m.setMuffle(paused||armoryOpen||playerDead);
         audio.setMusicVolume(before?0.f:(settings?settings->musicVolume:.6f));

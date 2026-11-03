@@ -8,8 +8,10 @@
 //             that lands on you hurts)
 //   KNEELING  close enough and it sinks onto its knuckles, screaming, and holds
 //             still: its back is a battlefield now
-//   CLIMB     its furnace breathes out an updraft beside it: step into the heat
-//             and it carries you up and over the parapet onto the furnace roof
+//   CLIMB     its fists split the plain in front of its face: the furnace heat
+//             under the crust pours up out of the split, straight ahead of you as
+//             you come. Step into it: it carries you up past its face and throws
+//             you over its head onto the front of the furnace roof
 //   TENDER    the first of its brood climbs out of the hatch (Tender.h)
 //   SIEVE     the roof's front parapet opens: drop onto the saddle over its
 //             shoulders; a meteor is called down onto it and the Sieve unfolds
@@ -34,15 +36,16 @@ inline const char* GameplayState::gleanerPhaseName() const {
     switch (gleanerPhase) {
         case GleanerPhase::APPROACH: return "REACH THE GLEANER";
         case GleanerPhase::KNEELING: return "IT IS GOING DOWN";
-        case GleanerPhase::CLIMB:    return "STEP INTO THE UPDRAFT / ONTO ITS BACK";
-        case GleanerPhase::TENDER:   return "THE TENDER / IT KEEPS THE FURNACE";
-        case GleanerPhase::SIEVE:    return sieve.state == Sieve::DORMANT ? "DROP OFF THE ROOF'S FRONT / ONTO ITS SHOULDERS" : "THE SIEVE / ITS HEART SHOWS FROM BELOW";
-        case GleanerPhase::CALLER:   return !deckCrown ? "IT REARS ITS HEAD" : caller.state == Caller::DORMANT ? "CROSS ITS NECK / ONTO ITS CROWN" : "THE CALLER / ITS LAMP SHOWS FROM BELOW";
+        case GleanerPhase::CLIMB:    return "RIDE THE HEAT UP / IN FRONT OF ITS FACE";
+        case GleanerPhase::TENDER:   return tender.holding ? "IT HAS YOU / SHOOT ITS CRUCIBLE'S LIP" : "THE TENDER / PUNCH ITS WHITE TONGS, SHOOT ITS LIP WHEN IT POURS";
+        case GleanerPhase::SIEVE:    return sieve.state == Sieve::DORMANT ? "DROP OFF THE ROOF'S FRONT / ONTO ITS SHOULDERS" : sieve.toppled() ? "IT IS DOWN / ITS HEART IS OPEN" : "THE SIEVE / BREAK TWO KNEES, OR SHOOT ITS HEART FROM BELOW";
+        case GleanerPhase::CALLER:   return !deckCrown ? "IT REARS ITS HEAD" : caller.state == Caller::DORMANT ? "CROSS ITS NECK / ONTO ITS CROWN" : caller.state == Caller::OVERRUNG ? "IT RINGS ITSELF / GET OUT FROM UNDER IT" : "THE CALLER / RING ITS BELL WITH SHOTS, OR HIT ITS LAMP FROM BELOW";
         case GleanerPhase::BROOD:    return "THE BROOD IS DEAD / ITS FURNACE DOOR IS OPEN, BEHIND THE SADDLE";
         case GleanerPhase::HEART:    return "ITS CRUCIBLE HEART / SHOOT ITS VALVES WHILE IT FLOODS";
         case GleanerPhase::LUNGS:    return lungs.woke ? "ITS BELLOWS LUNGS / SHOOT THEIR THROATS AS THEY BREATHE IN" : "UP THE SHAFT / ITS LUNGS";
         case GleanerPhase::CORE:     return core.state != SortingCore::DORMANT ? "ITS SORTING CORE / PUNCH BACK WHAT IT THROWS" : "UP THE SHAFT / ITS CORE";
-        default:                     return eye.fallen() ? "IT IS DOWN / TEAR IT OUT" : eye.state == EyeCore::DORMANT ? "THE SUMMIT / ONTO ITS ROOF" : "THE EYE / ITS LIDS OPEN WHEN IT FIRES";
+        default:                     if (quietT >= 0.f) return quietT < finale::OPEN1 ? "IT IS DEAD" : "THE PORTAL / WALK INTO IT";
+                                     return eye.fallen() ? "IT IS DOWN / TEAR IT OUT" : eye.state == EyeCore::DORMANT ? "THE SUMMIT / ONTO ITS ROOF" : "THE EYE / ITS LIDS OPEN WHEN IT FIRES";
     }
 }
 
@@ -70,7 +73,7 @@ inline void GameplayState::clearGleanerDeck() {
     spatialGrid.build(level.walls);
 }
 
-// The roof, its parapet (a gap on the west, where the updraft brings you), the chimneys, and the updraft
+// The roof, its parapet, the chimneys, the saddle, its neck and crown, and the updraft in front of its face
 inline void GameplayState::buildGleanerDeck() {
     clearGleanerDeck();
     deckWallsFrom = (int)level.walls.size();
@@ -93,8 +96,8 @@ inline void GameplayState::buildGleanerDeck() {
     if (!deckFrontOpen) wall(lo.x, top, hi.y, hi.x, top + ph, hi.y + t);
     else { wall(lo.x, top, hi.y, cx - fg, top + ph, hi.y + t); wall(cx + fg, top, hi.y, hi.x, top + ph, hi.y + t); }
     wall(hi.x, top, lo.y, hi.x + t, top + ph, hi.y);
-    wall(lo.x - t, top, lo.y, lo.x, top + ph, cz - gap);
-    wall(lo.x - t, top, cz + gap, lo.x, top + ph, hi.y);
+    wall(lo.x - t, top, lo.y, lo.x, top + ph, hi.y);   // (the west gap is gone: the updraft throws you in over the front now)
+    (void)gap; (void)cz;
     for (int c = 0; c < 3; ++c) {                   // the chimneys: pillars to fight round
         glm::vec3 p = gleaner.toWorld(gleaner::chimney(c));
         float h = 4.5f * K;
@@ -149,11 +152,12 @@ inline void GameplayState::buildGleanerDeck() {
             }
         }
     }
-    // The updraft: a column of heat outside its left side, then the vent's breath across the parapet's gap
-    const float colX = lo.x - 92.f;   // (clear of its body: you cannot stand inside it)
-    updraftBase = {colX, 0.f, cz};
-    // (out of its top, the vent's breath throws you across onto the roof: updateGleanerFight)
-    level.boosters.push_back({LevelBuilder::aabb(colX - 8.f, -2.f, cz - 8.f, colX + 8.f, top + 6.f, cz + 8.f), glm::vec3{0.f, 1.f, 0.f}, 70.f});
+    // The updraft: the split in the plain straight ahead of its face (past its jaw, between and beyond its
+    // fists), where you are already walking. It is the first thing you see when it goes down.
+    updraftBase = gleaner.pos + gleaner.fwd() * (gleaner::UPDRAFT_Z * K); updraftBase.y = 0.f;
+    const glm::vec3 u = updraftBase;
+    // (out of its top, the heat throws you over its head onto the roof: updateGleanerFight)
+    level.boosters.push_back({LevelBuilder::aabb(u.x - 8.f, -2.f, u.z - 8.f, u.x + 8.f, top + 6.f, u.z + 8.f), glm::vec3{0.f, 1.f, 0.f}, 70.f});
     spatialGrid.build(level.walls);
 }
 
@@ -172,14 +176,15 @@ inline bool GameplayState::gleanerObjective(glm::vec3& at, const char*& label, b
         return false;
     }
     if (ph == GleanerPhase::SUMMIT) {
-        if (summitEndT >= 0.f) return false;
-        if (!onGleanerDeck() && deckWallsFrom >= 0) { at = updraftBase + glm::vec3{0.f, 4.f, 0.f}; label = "BACK UP / UPDRAFT OR HOOK IT"; return true; }
+        if (quietT >= finale::OPEN1 && quietThrough < 0.f) { at = quietPortal(); label = "THE PORTAL"; return true; }
+        if (summitEndT >= 0.f || tearT >= 0.f || quietT >= 0.f) return false;
+        if (!onGleanerDeck() && deckWallsFrom >= 0) { at = updraftBase + glm::vec3{0.f, 4.f, 0.f}; label = "BACK UP / THE HEAT, OR HOOK IT"; return true; }
         if (eye.fallen()) { at = eye.pos + glm::vec3{0.f, EyeCore::R + 1.f, 0.f}; label = "TEAR IT OUT"; return true; }
         return false;
     }
     if (deckWallsFrom < 0 || ph > GleanerPhase::BROOD) return false;
     if (ph == GleanerPhase::CLIMB || !onGleanerBack()) {   // (fallen off it: the same way back up)
-        at = updraftBase + glm::vec3{0.f, 4.f, 0.f}; label = ph == GleanerPhase::CLIMB ? "UPDRAFT / OR HOOK IT" : "BACK UP / UPDRAFT OR HOOK IT"; return true;
+        at = updraftBase + glm::vec3{0.f, 4.f, 0.f}; label = ph == GleanerPhase::CLIMB ? "RIDE THE HEAT UP / OR HOOK IT" : "BACK UP / THE HEAT, OR HOOK IT"; return true;
     }
     if (ph == GleanerPhase::SIEVE && sieve.state == Sieve::DORMANT && !sieveForged && !onSaddle()) {
         at = {(deckLo.x + deckHi.x) * 0.5f, deckY + 0.1f, deckHi.y - 1.f}; label = "DROP TO ITS SHOULDERS"; beacon = true; return true;
@@ -193,9 +198,10 @@ inline bool GameplayState::gleanerObjective(glm::vec3& at, const char*& label, b
     return false;
 }
 
-// Where you stand on the roof after a retry: just inside the gap, the fight ahead of you
+// Where the updraft throws you, and where you stand on the roof after a retry: just inside its front
+// parapet, right of the front chimney, the roof ahead of you
 inline glm::vec3 GameplayState::deckCheckpoint() const {
-    return {deckLo.x + 10.f, deckY + 0.05f, (deckLo.y + deckHi.y) * 0.5f};
+    return {(deckLo.x + deckHi.x) * 0.5f + 22.f, deckY + 0.05f, deckHi.y - 10.f};
 }
 inline bool GameplayState::onGleanerDeck() const {
     const glm::vec3 p = player.position;
@@ -220,7 +226,7 @@ inline glm::vec3 GameplayState::crownCheckpoint() const { return {(saddleLo.x + 
 inline void GameplayState::wakeTender() {
     glm::vec3 hatch = gleaner.toWorld(gleaner::furnaceBase() + glm::vec3{8.f, 0.f, 6.f});
     hatch.y = deckY;
-    tender.wake(hatch, -1.5708f, deckLo, deckHi, deckY);   // facing west, toward the gap you came in by
+    tender.wake(hatch, 0.f, deckLo, deckHi, deckY);   // facing the roof's front, where you land
 }
 inline void GameplayState::wakeSieve() {
     glm::vec3 at = gleaner.toWorld({0.f, gleaner::SADDLE_Y, 21.f});
@@ -245,10 +251,13 @@ inline void GameplayState::resetGleanerFight(bool fresh) {
         player.camera.position = player.position + glm::vec3{0.f, 1.7f, 0.f}; prevCamPos = player.camera.position;
     }
     gleanerScreamCd = gleanerPhase >= GleanerPhase::TENDER ? 14.f : gleanerScreamCd;   // (picked up on its back: a roar soon after)
+    updraftFlight = false; updraftOpenT = gleanerPhase >= GleanerPhase::CLIMB ? 99.f : -1.f;
     calledMeteorCd = 6.f; riverBurnCd = 0.f; sieveBurnCd = 0.f; broodCallCd = 12.f; callerClangCd = 0.f;
     sieve = Sieve{}; caller = Caller{}; sieveForged = false; broodWakeIn = -1.f;
+    swatCd = 9.f; swatRings.clear(); for (float& b : tetherBurn) b = -1.f; fightPotions = 0u;
     heart = CrucibleHeart{}; lungs = BellowsLungs{}; core = SortingCore{}; gutBurnCd = 0.f; gutWhite = 0.f;
     eye = EyeCore{}; summitEndT = -1.f; eyeHitCd = 0.f; meteors.stopped = false;
+    tearT = -1.f; quietT = -1.f; quietThrough = -1.f;
     gleaner.headHold = 0.f;
     if (gleanerPhase <= GleanerPhase::KNEELING) {
         gleanerPhase = GleanerPhase::APPROACH;
@@ -261,6 +270,7 @@ inline void GameplayState::resetGleanerFight(bool fresh) {
     gleaner.eyeOpen = 1.f; gleaner.ribs = 0.3f; gleaner.kneel = 1.f;
     gleaner.headHold = gleanerPhase >= GleanerPhase::CALLER ? 1.f : 0.f;
     if (gleanerPhase > GleanerPhase::TENDER) tender = Tender{};
+    syncGleanerLimbs();
     buildGleanerDeck();
     if (gleanerPhase == GleanerPhase::CLIMB) return;
     clearGutShafts();
@@ -274,7 +284,7 @@ inline void GameplayState::resetGleanerFight(bool fresh) {
     const bool caller0 = gleanerPhase >= GleanerPhase::CALLER;
     player.position = gleanerPhase == GleanerPhase::TENDER || gleanerPhase == GleanerPhase::SUMMIT ? deckCheckpoint() : caller0 ? crownCheckpoint() : saddleCheckpoint();
     player.velocity = {0.f, 0.f, 0.f};
-    player.camera.yaw = gleanerPhase == GleanerPhase::TENDER || gleanerPhase == GleanerPhase::SUMMIT ? 0.f : gleanerPhase == GleanerPhase::BROOD ? -90.f : 90.f; player.camera.pitch = 0.f;   // (into the roof; on toward its head; back to its furnace door)
+    player.camera.yaw = gleanerPhase == GleanerPhase::TENDER || gleanerPhase == GleanerPhase::SUMMIT || gleanerPhase == GleanerPhase::BROOD ? -90.f : 90.f; player.camera.pitch = 0.f;   // (back into the roof; on toward its head; back to its furnace door)
     player.camera.position = player.position + glm::vec3{0.f, 1.7f, 0.f}; prevCamPos = player.camera.position;
     if (gleanerPhase == GleanerPhase::TENDER) wakeTender();
 }
@@ -288,19 +298,28 @@ inline void GameplayState::updraftThrow() {
     const float G = -24.f;   // (Player's gravity: a launched player falls at it)
     // (fallen off its back mid-fight: the vent throws you back to wherever the fight is)
     glm::vec3 target = gleanerBackTarget();
-    const float T = std::clamp(glm::length(glm::vec2{target.x - p.x, target.z - p.z}) / 45.f, 2.2f, 4.f);
+    const float T = std::clamp(glm::length(glm::vec2{target.x - p.x, target.z - p.z}) / 80.f, 2.2f, 5.f);   // (high and long: over its head)
     glm::vec3 d = target - p;
     player.velocity = {d.x / T, (d.y - 0.5f * G * T * T) / T, d.z / T};
     player.launched(); player.onGround = false;
+    updraftFlight = true;
     SfxMixer::Opts o; o.group = SoundGroup::PLAYER; o.pitch = 0.6f; o.priority = true;
     audio.playOpts("boost", o);
-    shake(0.4f, 0.02f);
+    o.pitch = 0.45f; o.volume = 0.8f; audio.playOpts("ab_pulse", o);
+    shake(0.6f, 0.025f);
+    fovKick = std::max(fovKick, 9.f);
 }
 
 // The Gleaner's own will in the fight (it replaces the roaming of before)
 inline void GameplayState::updateGleanerFight(float dt) {
     Gleaner& g = gleaner;
     if (gleanerPhase >= GleanerPhase::CLIMB) updraftThrow();
+    if (updraftOpenT >= 0.f && updraftOpenT < 99.f) updraftOpenT += dt;
+    if (updraftFlight && player.onGround) {   // landed off the throw: you stop where you land (not 80 m/s across the roof)
+        updraftFlight = false;
+        player.velocity.x *= 0.1f; player.velocity.z *= 0.1f;
+        shake(0.35f, 0.03f);
+    }
     const glm::vec3 p = player.position;
     const float flat = glm::length(glm::vec2{p.x - g.pos.x, p.z - g.pos.z});
     // Through the whole fight, on its back and inside it, it roars now and then (the approach has its own)
@@ -308,6 +327,7 @@ inline void GameplayState::updateGleanerFight(float dt) {
         gleanerScreamCd -= dt;
         if (gleanerScreamCd <= 0.f) { g.scream(); gleanerScreamCd = 28.f + 16.f * meteors.rnd(); }
     }
+    updateGleanerHands(dt);
     switch (gleanerPhase) {
     case GleanerPhase::APPROACH: {
         glm::vec3 d = gleanerplace::battleMark() - g.pos; d.y = 0.f;
@@ -343,8 +363,15 @@ inline void GameplayState::updateGleanerFight(float dt) {
                 gleanerSound("gleaner_slam", g.pos, 1.f, 1.f);
                 plainQuakes.push_back({flat / 343.f, 1.f});
                 buildGleanerDeck();
+                {   // the plain splits in front of its face: a roar of heat out of it
+                    SfxMixer::Opts o; o.group = SoundGroup::WORLD; o.positional = true; o.pos = updraftBase; o.floor = 0.6f; o.priority = true; o.pitch = 0.5f;
+                    audio.playOpts("explosion", o);
+                    o.pitch = 0.4f; audio.playOpts("ab_pulse", o);
+                    gleanerDust.push_back({updraftBase, 0.f, 10.f * Gleaner::SCALE});
+                }
                 gleanerPhase = GleanerPhase::CLIMB;
-                pushBanner("THE UPDRAFT", "ITS FURNACE BREATHES OUT AT ITS SIDE: RIDE IT UP", {1.f, 0.55f, 0.25f}, 4.f);
+                pushBanner("THE PLAIN SPLITS", "ITS FURNACE HEAT POURS UP IN FRONT OF ITS FACE: RIDE IT UP", {1.f, 0.55f, 0.25f}, 4.f);
+                updraftOpenT = 0.f;
             }
         }
         break;
@@ -460,21 +487,56 @@ inline void GameplayState::updateTender(float dt) {
             ui.feed("STAGGERED", {1.f, 0.8f, 0.3f});
             fx.spawnBurst(k.lipPoint(), {2.2f, 0.6f, 0.12f}, 40, 9.f, 0.8f, 14.f);
             break;
+        case TenderEvent::GRAB_TELL: o.pitch = 1.3f; audio.playOpts("telegraph", o); break;
+        case TenderEvent::GRAB: o.pitch = 0.75f; audio.playOpts("sword_swing", o); break;
+        case TenderEvent::CATCH:
+            o.pitch = 0.6f; audio.playOpts("hook_yank", o); audio.playOpts("land_heavy", o);
+            shake(0.5f, 0.05f);
+            ui.toast("IT HAS YOU", "SHOOT ITS CRUCIBLE'S LIP - NOW", {1.f, 0.55f, 0.2f}, 2.f);
+            break;
+        case TenderEvent::FREED:
+            o.pitch = 1.f; audio.playOpts("stun", o);
+            ui.toast("BROKE FREE", "IT DROPPED YOU - IT IS STAGGERED", {1.f, 0.8f, 0.3f}, 1.8f);
+            styleSystem.addStyle(120.f, StyleSource::PARRY);
+            player.velocity = -k.fwd() * 6.f + glm::vec3{0.f, 2.f, 0.f}; player.onGround = false;
+            break;
+        case TenderEvent::DUNK:
+            o.pitch = 0.5f; audio.playOpts("explosion", o);
+            fx.spawnBurst(e.at, {2.6f, 0.8f, 0.2f}, 50, 12.f, 0.9f, 10.f);
+            if (!playerDead) {
+                damagePlayer(30.f * tune().damage, k.lipPoint(), 0.5f, 0.07f);
+                player.velocity = e.dir * 22.f + glm::vec3{0.f, 10.f, 0.f}; player.onGround = false;
+            }
+            break;
+        case TenderEvent::SPILL:
+            o.pitch = 0.7f; audio.playOpts("explosion", o);
+            fx.spawnBurst(e.at, {2.8f, 0.9f, 0.2f}, 60, 10.f, 1.f, 14.f);
+            ui.toast("IT SPILLS ON ITSELF", "ITS OWN METAL BURNS IT - x2 WHILE IT REELS", {1.f, 0.7f, 0.25f}, 2.f);
+            styleSystem.addStyle(100.f, StyleSource::PARRY);
+            break;
         case TenderEvent::DIE:
             o.pitch = 0.6f; audio.playOpts("explosion", o);
             fx.spawnBurst(k.base() + glm::vec3{0.f, 5.f, 0.f}, {2.4f, 0.7f, 0.15f}, 80, 14.f, 1.2f, 10.f);
             shake(0.8f, 0.05f); hitStopFrames = std::max(hitStopFrames, 6);
             styleSystem.addStyle(300.f, StyleSource::PARRY); gainXp(150);
+            killGleanerLimb(0);
             gleanerPhase = GleanerPhase::SIEVE;
             buildGleanerDeck();   // (the roof's front opens: the way down to its shoulders)
             gleaner.scream();
-            pushBanner("THE TENDER FALLS", "THE ROOF OPENS AT ITS FRONT: DROP TO ITS SHOULDERS", {1.f, 0.4f, 0.2f}, 4.5f);
+            pushBanner("THE TENDER FALLS", "ITS LEFT ARM DIES WITH IT. DROP OFF THE ROOF'S FRONT TO ITS SHOULDERS", {1.f, 0.4f, 0.2f}, 4.5f);
             storyCheckpoint = std::max(storyCheckpoint, 2); saveStoryProgress();
             break;
         default: break;
         }
     }
     k.events.clear();
+    // Held in its tongs: up in front of its crucible (you can look and shoot)
+    if (k.holding && k.state == Tender::HOLD && !playerDead) {
+        player.position = k.holdPoint();
+        player.velocity = glm::vec3{0.f};
+        player.onGround = false;
+    }
+    shedFightPotion(0, k.health01(), k.base() + glm::vec3{0.f, 6.f, 0.f}, k.alive());
     // Standing in its river burns
     riverBurnCd -= dt;
     if (k.inRiver(p) && riverBurnCd <= 0.f && !playerDead) {
@@ -551,14 +613,30 @@ inline void GameplayState::updateSieve(float dt) {
             ui.toast("ITS BASKET SPILLS", "DOUBLE DAMAGE - ITS HEART IS OPEN", {1.f, 0.75f, 0.2f}, 1.8f);
             fx.spawnBurst(v.heart(), {2.4f, 0.8f, 0.2f}, 50, 10.f, 0.9f, 14.f);
             break;
+        case SieveEvent::KNEE_BREAK: {
+            SfxMixer::Opts f = o; f.pos = e.at; f.pitch = 0.7f; audio.playOpts("sieve_stake", f); f.pitch = 1.2f; audio.playOpts("hit_armor", f);
+            fx.spawnBurst(e.at, {2.6f, 0.9f, 0.25f}, 40, 10.f, 0.8f, 14.f);
+            hitStopFrames = std::max(hitStopFrames, 3);
+            ui.feed(v.brokenLegs() >= 2 ? "SECOND KNEE BROKEN" : "KNEE BROKEN - ONE MORE BRINGS IT DOWN", {1.f, 0.75f, 0.3f});
+            styleSystem.addStyle(60.f, StyleSource::PARRY);
+            break;
+        }
+        case SieveEvent::TOPPLE:
+            o.pitch = 0.5f; audio.playOpts("land_heavy", o); audio.playOpts("sieve_stake", o); audio.playOpts("explosion", o);
+            shake(1.f, 0.06f); hitStopFrames = std::max(hitStopFrames, 5);
+            fx.spawnBurst(v.pos + glm::vec3{0.f, 1.f, 0.f}, {2.4f, 0.8f, 0.2f}, 60, 12.f, 1.f, 8.f);
+            ui.toast("IT COLLAPSES", "ITS HEART IS ON THE PLATE - DOUBLE DAMAGE", {1.f, 0.75f, 0.2f}, 2.2f);
+            break;
+        case SieveEvent::REFORGE: o.pitch = 0.6f; audio.playOpts("ab_pulse", o); fx.spawnBurst(v.hub(), {2.6f, 0.9f, 0.25f}, 30, 8.f, 0.6f, -4.f); break;
         case SieveEvent::DIE:
             o.pitch = 0.55f; audio.playOpts("explosion", o); audio.playOpts("sieve_stake", o);
             fx.spawnBurst(v.heart(), {2.6f, 0.9f, 0.25f}, 90, 16.f, 1.3f, 10.f);
             shake(0.9f, 0.05f); hitStopFrames = std::max(hitStopFrames, 6);
             styleSystem.addStyle(300.f, StyleSource::PARRY); gainXp(150);
+            killGleanerLimb(1);
             gleanerPhase = GleanerPhase::CALLER;
             gleaner.scream();
-            pushBanner("THE SIEVE FALLS", "THE GLEANER REARS ITS HEAD", {1.f, 0.4f, 0.2f}, 4.f);
+            pushBanner("THE SIEVE FALLS", "ITS RIGHT ARM DIES. IT REARS ITS HEAD", {1.f, 0.4f, 0.2f}, 4.f);
             storyCheckpoint = std::max(storyCheckpoint, 3); saveStoryProgress();
             ui.feed("CHECKPOINT / ITS SHOULDERS", {0.35f, 0.85f, 1.f});
             break;
@@ -566,7 +644,13 @@ inline void GameplayState::updateSieve(float dt) {
         }
     }
     v.events.clear();
+    shedFightPotion(1, v.health01(), v.heart(), v.alive());
     if (!v.alive()) return;
+    if (v.toppled() && v.slump() > 0.3f) {   // collapsed: its basket on the plate is in the way
+        glm::vec3 c = v.heart(), d = player.position - c; d.y = 0.f;
+        float len = glm::length(d), r = Sieve::BASKET_R + 0.8f;
+        if (len < r && player.position.y < c.y + 4.f) player.position += (len > 0.05f ? d / len : glm::vec3{1.f, 0.f, 0.f}) * (r - len);
+    }
     // Its rain burns; its cracks burst under you (once a stake); the stake's leg and its feet are solid
     sieveBurnCd -= dt;
     if (v.inRain(p) && sieveBurnCd <= 0.f && !playerDead) {
@@ -603,6 +687,19 @@ inline void GameplayState::updateCaller(float dt) {
             break;
         }
         case CallerEvent::CALL: meteors.launchCalled(e.at, 6.f, c.floorY); break;
+        case CallerEvent::OVERRING:
+            ui.toast("IT RINGS ITSELF", "THE SKY ANSWERS ITS OWN BELL - GET OUT FROM UNDER IT", {1.f, 0.6f, 0.3f}, 2.4f);
+            styleSystem.addStyle(100.f, StyleSource::PARRY);
+            break;
+        case CallerEvent::SELF_CALL: meteors.launchCalled(e.at, 9.f, c.floorY); break;
+        case CallerEvent::STRUCK: {
+            SfxMixer::Opts f = o; f.pitch = 0.45f; f.floor = 0.7f; audio.playOpts("caller_toll", f); audio.playOpts("explosion", f);
+            fx.spawnBurst(c.pos, {3.f, 0.9f, 0.3f}, 90, 16.f, 1.2f, 6.f);
+            shake(1.f, 0.06f); hitStopFrames = std::max(hitStopFrames, 6);
+            if (c.state != Caller::DEAD) ui.toast("STRUCK BY ITS OWN SKY", "IT IS DOWN - ITS LAMP IS OPEN", {1.f, 0.75f, 0.2f}, 2.f);
+            styleSystem.addStyle(200.f, StyleSource::PARRY);
+            break;
+        }
         case CallerEvent::DIVE_TELL: o.pitch = 0.75f; audio.playOpts("telegraph", o); break;
         case CallerEvent::DIVE: o.pitch = 0.5f; audio.playOpts("boost", o); break;
         case CallerEvent::LAND:
@@ -617,6 +714,7 @@ inline void GameplayState::updateCaller(float dt) {
             fx.spawnBurst(c.lamp(), {3.f, 0.3f, 0.15f}, 90, 14.f, 1.2f, 8.f);
             shake(0.9f, 0.05f); hitStopFrames = std::max(hitStopFrames, 6);
             styleSystem.addStyle(300.f, StyleSource::PARRY); gainXp(150);
+            killGleanerLimb(2);
             gleanerPhase = GleanerPhase::BROOD;
             gleaner.scream();
             pushBanner("THE CALLER FALLS", "THE BROOD IS DEAD", {1.f, 0.35f, 0.2f}, 4.5f);
@@ -628,6 +726,7 @@ inline void GameplayState::updateCaller(float dt) {
         }
     }
     c.events.clear();
+    shedFightPotion(2, c.health01(), c.pos, c.alive());
     // Its dive: committed, straight through where you stood
     if (c.state == Caller::DIVE && !c.hitDone && !playerDead && glm::length(c.pos - (p + glm::vec3{0.f, 1.f, 0.f})) < Caller::HIT_R) {
         c.hitDone = true;
@@ -662,6 +761,41 @@ inline bool GameplayState::parryCaller() {
     return true;
 }
 
+// Punch THE TENDER's white tongs as they reach for you: they jam, it staggers
+inline bool GameplayState::parryTender() {
+    if (!plain() || gleanerPhase != GleanerPhase::TENDER || !tender.parryable()) return false;
+    const glm::vec3 eye = player.camera.position, fwd = player.camera.forward();
+    glm::vec3 d = tender.base() + glm::vec3{0.f, 4.f, 0.f} - eye; d.y *= 0.3f;
+    float dist = glm::length(d);
+    if (dist > Tender::GRAB_REACH + Tender::RADIUS + 2.f || dist < 0.01f || glm::dot(fwd, d / dist) < 0.2f) return false;
+    tender.parried();
+    parryFeedback(eye + fwd * 1.2f, true);
+    styleSystem.addStyle(110.f, StyleSource::PARRY);
+    gainXp(40);
+    hitStopFrames = std::max(hitStopFrames, 6);
+    SfxMixer::Opts o; o.group = SoundGroup::ENEMY; o.positional = true; o.pos = tender.base(); o.priority = true; o.pitch = 0.8f;
+    audio.playOpts("caller_clang", o);
+    ui.toast("PARRIED", "ITS TONGS JAM - IT STAGGERS (x2)", {1.f, 0.75f, 0.2f}, 1.8f);
+    return true;
+}
+
+// Each of the brood, the organs and the eye drops a health potion as it goes down (`slot` once a fight;
+// half health; the eye twice): where you stand, a red streak from it
+inline void GameplayState::shedFightPotion(int slot, float health01, glm::vec3 from, bool alive) {
+    const float at = slot >= 7 ? 0.34f : slot == 6 ? 0.67f : 0.5f;
+    if (!alive || health01 > at || (fightPotions >> slot) & 1u || playerDead) return;
+    fightPotions |= 1u << slot;
+    glm::vec3 spot;
+    if (!potionSpot(spot)) return;
+    const glm::vec3 drop = spot + glm::vec3{0.f, 1.2f, 0.f};
+    pickups.push_back({drop, glm::vec3{0.f, 2.f, 0.f}, 30.f, PickupKind::POTION, spot.y, drop});
+    glm::vec3 d = drop - from; const float len = glm::length(d);
+    if (len > 0.5f) fx.spawnSpray(from, d / len, {1.f, 0.25f, 0.35f}, 14, std::min(30.f, len * 2.f), 0.5f, 0.3f);
+    fx.spawnBurst(drop, {1.f, 0.25f, 0.35f}, 16, 2.5f, 0.5f, 0.f);
+    audio.playAt("potion_drop", drop, 128, SoundGroup::WORLD, false, 0.35f);
+    ui.feed("IT SHED A HEALTH POTION", {1.f, 0.35f, 0.4f});
+}
+
 // A round meeting the brood member fighting now (fireWeapon and the SPLINTER ask before anything further along)
 inline bool GameplayState::shootBrood(glm::vec3 o, glm::vec3 d, float& nearest, float dmg, int w, bool splinter) {
     if (!plain()) return false;
@@ -685,6 +819,7 @@ inline bool GameplayState::shootBrood(glm::vec3 o, glm::vec3 d, float& nearest, 
         glm::vec3 at = o + d * t;
         sieve.hurt(dmg * Sieve::zoneMult(zone), zone);
         if (zone == 2) { fx.spawnBurst(at, {2.6f, 1.f, 0.3f}, 12, 7.f, 0.4f, 12.f); ui.onHit(true); audio.play("hit_head", 90, SoundGroup::UI); }
+        else if (zone >= 3) { fx.spawnBurst(at, {2.6f, 0.9f, 0.3f}, 8, 6.f, 0.35f, 10.f); ui.onHit(true); audio.play("hit_head", 90, SoundGroup::UI); }
         else if (zone == 0) { fx.spawnHitSparks(at, {1.f, 0.55f, 0.2f}); ui.onHit(false); audio.play("hit_armor", 80, SoundGroup::UI); }
         else { fx.spawnHitSparks(at, gunkit::glowOf(w)); ui.onHit(false); audio.play("hit_body", 90, SoundGroup::UI); }
         styleSystem.addStyle(zone == 2 ? 12.f : 3.f, weaponSource((WeaponId)w));
@@ -701,7 +836,7 @@ inline bool GameplayState::shootBrood(glm::vec3 o, glm::vec3 d, float& nearest, 
             fx.spawnHitSparks(at, {1.f, 0.8f, 0.5f}); ui.onHit(false);
             if (callerClangCd <= 0.f) {   // its shell rings when you hit it (not every pellet)
                 callerClangCd = 0.18f;
-                SfxMixer::Opts so; so.group = SoundGroup::ENEMY; so.positional = true; so.pos = caller.pos; so.volume = 0.7f; so.pitch = 0.9f + 0.2f * caller.rnd();
+                SfxMixer::Opts so; so.group = SoundGroup::ENEMY; so.positional = true; so.pos = caller.pos; so.volume = 0.7f + 0.3f * caller.resonance; so.pitch = 0.85f + 0.7f * caller.resonance + 0.1f * caller.rnd();   // (its note climbs as it rings)
                 audio.playOpts("caller_clang", so);
             }
         }
@@ -723,7 +858,13 @@ inline bool GameplayState::broodSplinterPoint(glm::vec3& at) const {
         at = (h.lo + h.hi) * 0.5f;
         return true;
     }
-    if (gleanerPhase == GleanerPhase::SIEVE && sieve.fighting()) { at = sieve.heart(); return true; }
+    if (gleanerPhase == GleanerPhase::SIEVE && sieve.fighting()) {   // its heart when it shows; else the knee nearest breaking
+        if (sieve.heartOpen()) { at = sieve.heart(); return true; }
+        int best = -1;
+        for (int i = 0; i < 4; ++i) if (!sieve.broken[i] && (best < 0 || sieve.kneeHp[i] < sieve.kneeHp[best])) best = i;
+        at = best >= 0 && sieve.state != Sieve::TOPPLED ? sieve.knee(best) : sieve.heart();
+        return true;
+    }
     if (gleanerPhase == GleanerPhase::CALLER && caller.fighting()) { at = caller.lamp(); return true; }
     return false;
 }
@@ -739,7 +880,8 @@ inline void GameplayState::gatherGleanerFight(std::vector<BoxInstance>& out) {
     if (gleanerPhase >= GleanerPhase::SIEVE) sieverig::draw(out, sieve, ball);
     if (gleanerPhase >= GleanerPhase::CALLER && gleanerPhase <= GleanerPhase::BROOD) callerrig::draw(out, caller, ball);
     if (gleanerPhase >= GleanerPhase::HEART && gleanerPhase <= GleanerPhase::CORE) gatherGut(out);
-    if (gleanerPhase == GleanerPhase::SUMMIT) { if (insideGleaner()) gatherGut(out); gatherEye(out); }
+    if (gleanerPhase == GleanerPhase::SUMMIT) { if (insideGleaner()) gatherGut(out); gatherEye(out); gatherQuiet(out); }
+    gatherGleanerHands(out);
     gleaner::autoSurface(out, first);   // (the brood, the organs, the eye: their surfaces from their colours)
     // Called meteors: a ring of fire on the ground where each will land, tightening as it comes
     for (const auto& m : meteors.pool) {
@@ -771,20 +913,57 @@ inline void GameplayState::gatherGleanerFight(std::vector<BoxInstance>& out) {
             }
         }
     }
-    // The updraft: a pillar of heat you can see from across the plain, embers pouring up it
+    // The updraft: the split in the plain in front of its face, and the pillar of heat pouring up out of it,
+    // embers and bands of shimmer, seen from across the plain. It bursts open as the plain splits.
     if (gleanerPhase >= GleanerPhase::CLIMB && deckWallsFrom >= 0 && summitEndT < 0.f) {
-        const glm::vec3 c = updraftBase;
-        for (int k = 0; k < 70; ++k) {
+        const glm::vec3 c = updraftBase, f = gleaner.fwd(), rt = gleaner.right();
+        const float open = updraftOpenT < 0.f ? 1.f : std::min(1.f, updraftOpenT / 1.2f);
+        const float burst = updraftOpenT < 0.f ? 0.f : std::max(0.f, 1.f - updraftOpenT / 2.5f);
+        const float H = (deckY + 12.f) * (0.25f + 0.75f * open);
+        const glm::vec3 hot{2.4f, 0.75f, 0.2f}, white{3.f, 2.2f, 1.2f};
+        // the rift: a long jagged split across its front (from fist to fist), and cracks off it
+        for (int k = -9; k <= 9; ++k) {
+            float x = k * 9.f * open, wob = std::sin(k * 1.7f) * 3.f + std::sin(k * 0.6f) * 5.f;
+            glm::vec3 q = c + rt * x + f * wob;
+            float w = (2.2f - std::abs(k) * 0.2f) * open;
+            if (w <= 0.05f) continue;
+            push(out, T(q + glm::vec3{0.f, 0.06f, 0.f}) * RY(std::atan2(rt.x, rt.z) + 0.2f * std::sin(k * 2.3f)) * S(glm::vec3{w, 0.12f, 10.f}), glm::vec3{0.f}, hot * (1.4f + 0.4f * std::sin(gameClock * 3.f + k)));
+        }
+        for (int k = 0; k < 10; ++k) {
+            float a = k * 0.628f + 0.3f, len = (12.f + 10.f * std::fmod(k * 0.618f, 1.f)) * open;
+            glm::vec3 q = c + glm::vec3{std::sin(a), 0.f, std::cos(a)} * (len * 0.5f + 4.f);
+            push(out, T(q + glm::vec3{0.f, 0.05f, 0.f}) * RY(a) * S(glm::vec3{0.5f, 0.1f, len}), glm::vec3{0.f}, hot * 0.9f);
+        }
+        // the crust thrown up round the split: tilted slabs
+        for (int k = 0; k < 14; ++k) {
+            float a = k * 0.4488f, r = 12.f + 4.f * std::sin(k * 2.1f);
+            glm::vec3 q = c + glm::vec3{std::cos(a) * r, 0.6f, std::sin(a) * r};
+            push(out, T(q) * RY(a) * RZ(0.5f + 0.2f * std::sin(k)) * S(glm::vec3{4.f, 1.f, 3.f} * open), glm::vec3{0.06f, 0.035f, 0.03f}, hot * 0.15f);
+        }
+        for (int k = 0; k < 90; ++k) {   // embers pouring up
             float u = std::fmod(gameClock * 0.18f + k * 0.0143f * 7.f, 1.f);
             float a = k * 2.399f + gameClock * 0.7f, rr = 3.f + 5.f * std::fmod(k * 0.618f, 1.f);
-            glm::vec3 q = c + glm::vec3{std::cos(a) * rr, u * (deckY + 12.f), std::sin(a) * rr};
-            push(out, T(q) * RY(a) * S(glm::vec3{0.5f, 2.2f + 3.f * u, 0.5f}), glm::vec3{0.f}, glm::vec3{2.4f, 0.75f, 0.2f} * (1.f - 0.5f * u));
+            glm::vec3 q = c + glm::vec3{std::cos(a) * rr, u * H, std::sin(a) * rr};
+            push(out, T(q) * RY(a) * S(glm::vec3{0.5f, 2.2f + 3.f * u, 0.5f}), glm::vec3{0.f}, hot * (1.f - 0.5f * u));
         }
-        for (int k = 0; k < 12; ++k) {   // shimmering bands of heat
-            float u = std::fmod(gameClock * 0.08f + k / 12.f, 1.f);
-            glm::vec3 q = c + glm::vec3{0.f, u * (deckY + 12.f), 0.f};
+        for (int k = 0; k < 14; ++k) {   // shimmering bands of heat
+            float u = std::fmod(gameClock * 0.08f + k / 14.f, 1.f);
+            glm::vec3 q = c + glm::vec3{0.f, u * H, 0.f};
             push(out, T(q) * RY(gameClock * 0.3f + k) * S(glm::vec3{15.f, 0.25f, 15.f}), glm::vec3{0.f}, glm::vec3{1.2f, 0.35f, 0.08f} * 0.35f * (1.f - u));
         }
-        push(out, T(c + glm::vec3{0.f, 0.15f, 0.f}) * S(glm::vec3{16.f, 0.2f, 16.f}), glm::vec3{0.f}, glm::vec3{2.4f, 0.6f, 0.15f});
+        push(out, T(c + glm::vec3{0.f, 0.15f, 0.f}) * S(glm::vec3{16.f, 0.2f, 16.f}), glm::vec3{0.f}, hot);
+        // a core of white heat up the middle, so it reads as the way from far off
+        push(out, T(c + glm::vec3{0.f, H * 0.5f, 0.f}) * S(glm::vec3{1.6f, H, 1.6f}), glm::vec3{0.f}, glm::mix(hot, white, 0.4f) * (0.6f + 0.2f * std::sin(gameClock * 5.f)));
+        if (burst > 0.f) {   // the split bursting open: a fountain of slag and a flash
+            for (int k = 0; k < 40; ++k) {
+                float a = k * 2.399f, up = std::fmod(k * 0.37f, 1.f), age = updraftOpenT;
+                glm::vec3 v{std::cos(a) * (8.f + 10.f * up), 30.f + 40.f * up, std::sin(a) * (8.f + 10.f * up)};
+                glm::vec3 q = c + v * age + glm::vec3{0.f, -12.f * age * age, 0.f};
+                if (q.y < 0.f) continue;
+                push(out, T(q) * S(glm::vec3{1.2f}), glm::vec3{0.f}, white * burst);
+            }
+            push(out, T(c + glm::vec3{0.f, 4.f, 0.f}) * S(glm::vec3{30.f * (1.f - burst) + 6.f, 8.f * burst, 30.f * (1.f - burst) + 6.f}), glm::vec3{0.f}, white * burst * 0.8f);
+            out.back().mesh = ball;
+        }
     }
 }

@@ -15,8 +15,16 @@
 //         is thrown down onto the crown, on its side, the lamp open from
 //         everywhere (x2) until it gets up.
 //
-// Its shell turns rounds aside (x0.25, a clang) unless they come up into its
+// Its shell turns rounds aside (x0.4, a clang) unless they come up into its
 // mouth, or off a SPLINTER. It circles high: splinters are the main answer.
+//
+//   RING IT  every round that clangs off its shell sets it ringing (it glows
+//          brighter, its note climbs). Ring it all the way and it cannot stop:
+//          OVERRUNG, it sags low over its ground, reeling, tolling wildly, its
+//          lamp showing from every side, and the sky answers its own bell: a
+//          meteor comes down on it. Struck, it crashes onto the crown on its
+//          side like a parried dive (x2). The shots that do nothing are the
+//          way to bring it down.
 // =============================================================================
 #include <glm/glm.hpp>
 #include <algorithm>
@@ -26,18 +34,22 @@
 #include <vector>
 
 struct CallerEvent {
-    enum Kind { TOLL, CALL, DIVE_TELL, DIVE, PARRIED, LAND, ROAR, DIE, WINGBEAT } kind;
+    enum Kind { TOLL, CALL, DIVE_TELL, DIVE, PARRIED, LAND, ROAR, DIE, WINGBEAT, OVERRING, SELF_CALL, STRUCK } kind;
     glm::vec3 at{0.f};
 };
 
 struct Caller {
-    enum State { DORMANT, ARRIVING, CIRCLE, TOLL, DIVE_AIM, DIVE, CLIMB, STUNNED, DEAD };
+    enum State { DORMANT, ARRIVING, CIRCLE, TOLL, DIVE_AIM, DIVE, CLIMB, STUNNED, OVERRUNG, DEAD };
     static constexpr float MAX_HP = 2200.f;
     static constexpr float BELL_R = 3.4f, BELL_H = 7.f;       // its mouth's radius, its height
     static constexpr float ALT = 24.f, ORBIT_R = 30.f;        // where it circles, over its ground
     static constexpr float DIVE_SPEED = 40.f, PARRY_REACH = 8.5f, HIT_R = 4.2f;
     static constexpr float MOUTH = 0.5f;                       // how square up into its mouth a round must come
     static constexpr float ARRIVE_TIME = 4.5f;
+    static constexpr float RING_DMG = 150.f;       // shell damage (after its x0.4) that rings it all the way
+    static constexpr float OVERRUN_TIME = 2.4f;    // reeling under its own meteor (MeteorRain::CALLED_FALL)
+    static constexpr float STRIKE_DMG = 520.f;     // its own meteor on it
+    static constexpr float SAG = 9.f;              // how low over its ground it reels
 
     State state = DORMANT;
     glm::vec3 pos{0.f}, vel{0.f};
@@ -54,6 +66,9 @@ struct Caller {
     glm::vec3 centre{0.f};            // its ground's middle
     float floorY = 0.f;
     glm::vec3 arriveFrom{0.f};
+    float resonance = 0.f;            // 0..1 how hard it is ringing from your shots
+    glm::vec3 selfAt{0.f};            // where its own meteor will land (under it)
+    glm::vec3 overFrom{0.f};
     uint32_t seed = 313u;
     std::vector<CallerEvent> events;
 
@@ -97,7 +112,7 @@ struct Caller {
         return t0;
     }
     // Can a round on this line see the lamp? Up into its mouth, or it is down on its side, or a splinter
-    bool lampSeen(glm::vec3 d, bool splinter) const { return splinter || stunned() || glm::dot(d, axis) > MOUTH; }
+    bool lampSeen(glm::vec3 d, bool splinter) const { return splinter || stunned() || state == OVERRUNG || glm::dot(d, axis) > MOUTH; }
     // Where a round meets it: zone 0 the shell, 2 the lamp; -1 a miss
     int ray(glm::vec3 o, glm::vec3 d, float maxT, float& tOut, bool splinter = false) const {
         if (!fighting()) return -1;
@@ -110,14 +125,17 @@ struct Caller {
         tOut = ts;
         return 0;
     }
-    static float zoneMult(int zone) { return zone == 2 ? 3.f : 0.25f; }
+    static float zoneMult(int zone) { return zone == 2 ? 3.f : 0.4f; }
 
     bool hurt(float dmg, int zone) {
         if (!fighting()) return false;
         if (stunned()) dmg *= 2.f;
         hp -= dmg;
         flash = 1.f;
-        (void)zone;
+        if (zone == 0 && state != OVERRUNG && !grounded() && hp > 0.f) {   // it rings
+            resonance = std::min(1.f, resonance + dmg / RING_DMG);
+            if (resonance >= 1.f) overring();
+        }
         if (hp <= 0.f) {
             hp = 0.f; state = DEAD; t = 0.f; landed = false;
             vel = glm::vec3{vel.x * 0.3f, std::max(vel.y, 4.f), vel.z * 0.3f};
@@ -139,10 +157,24 @@ struct Caller {
         events.push_back({CallerEvent::PARRIED, pos});
     }
     bool onGroundNow() const { return pos.y <= floorY + BELL_R + 0.05f; }
+    // Rung all the way: it sags over its ground, reeling, and its own sky comes down on it
+    void overring() {
+        if (!fighting() || grounded() || state == OVERRUNG) return;
+        state = OVERRUNG; t = 0.f; resonance = 1.f; hitDone = true;
+        overFrom = pos;
+        glm::vec2 off{pos.x - centre.x, pos.z - centre.z};
+        const float lim = ORBIT_R * 0.45f;
+        if (glm::length(off) > lim) off *= lim / glm::length(off);
+        selfAt = {centre.x + off.x, floorY, centre.z + off.y};
+        events.push_back({CallerEvent::OVERRING, pos});
+        events.push_back({CallerEvent::SELF_CALL, selfAt});
+    }
+    float wobble() const { return state == OVERRUNG ? 1.f : 0.f; }
 
     void tick(float dt, glm::vec3 player, glm::vec3 eye) {
         clock += dt; t += dt;
         flash = std::max(0.f, flash - dt * 5.f);
+        if (state != OVERRUNG) resonance = std::max(0.f, resonance - dt * 0.05f);   // (it dies away, slowly)
         float before = flap;
         float flapRate = state == DIVE ? 0.2f : state == CLIMB ? 1.6f : state == TOLL ? 0.5f : grounded() ? 0.f : 1.f;
         flap += dt * flapRate;
@@ -214,6 +246,21 @@ struct Caller {
             toward(orbitPoint(), 1.3f);
             if (t >= 1.8f) { state = CIRCLE; t = 0.f; cooldown = (enraged() ? 1.4f : 2.4f) + rnd() * 1.2f; }
             break;
+        case OVERRUNG: {   // down over its mark, reeling and tolling, until its meteor arrives
+            float u = ease(t / 0.9f);
+            pos = glm::mix(overFrom, selfAt + glm::vec3{0.f, SAG, 0.f}, u) + glm::vec3{std::sin(clock * 11.f), 0.4f * std::sin(clock * 17.f), std::cos(clock * 9.f)} * 0.6f;
+            wantAxis = glm::normalize(glm::vec3{std::sin(clock * 7.f) * 0.5f, 1.f, std::cos(clock * 6.f) * 0.5f});
+            swing = 0.8f;
+            if (std::fmod(t, 0.6f) < dt) events.push_back({CallerEvent::TOLL, pos});
+            if (t >= OVERRUN_TIME) {   // struck by it: down onto the crown, on its side
+                hp -= STRIKE_DMG; flash = 1.f; resonance = 0.f; swing = 0.f;
+                events.push_back({CallerEvent::STRUCK, pos});
+                if (hp <= 0.f) { hp = 0.f; state = DEAD; t = 0.f; landed = false; vel = {0.f, -6.f, 0.f}; events.push_back({CallerEvent::DIE, pos}); break; }
+                state = STUNNED; t = 0.f; landed = false;
+                vel = glm::vec3{std::sin(clock) * 6.f, -14.f, std::cos(clock) * 6.f};
+            }
+            break;
+        }
         case STUNNED:
         case DEAD: {
             // Falling (thrown or dead) onto its ground, onto its side

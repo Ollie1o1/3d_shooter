@@ -132,6 +132,7 @@ inline void GameplayState::updateGut(float dt) {
             }
         }
         h.events.clear();
+        shedFightPotion(3, h.health01(), h.pos, h.alive());
         gutBurnCd -= dt;
         if (h.inSlag(p) && gutBurnCd <= 0.f && !playerDead) {
             gutBurnCd = 0.25f;
@@ -171,6 +172,7 @@ inline void GameplayState::updateGut(float dt) {
             }
         }
         L.events.clear();
+        shedFightPotion(4, L.health01(), (L.b[0].pos + L.b[1].pos) * 0.5f, L.alive());
         // Its gusts: down the room, unless a pillar stands between you and the bellows
         for (int k = 0; k < 2 && gut::roomAt(p) == 1; ++k) {
             glm::vec3 push = L.gustAt(k, p);
@@ -221,6 +223,7 @@ inline void GameplayState::updateGut(float dt) {
             }
         }
         c.events.clear();
+        shedFightPotion(5, c.health01(), c.pos, c.alive());
         float back = 0.f;
         if (c.alive() && gutReturned(organ::around(c.pos, glm::vec3{SortingCore::R + 1.f, 4.f, SortingCore::R + 1.f}), back)) { c.hurt(back); c.open(); }
         break;

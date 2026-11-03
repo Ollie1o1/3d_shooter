@@ -585,6 +585,14 @@ inline void GameplayState::render() {
         renderCam.pitch = glm::degrees(std::asin(glm::clamp(d.y, -1.f, 1.f)));
     }
 
+    if (plain() && tearT >= 0.f) {   // tearing out its core: up close on it (Gameplay_GleanerFinale.h)
+        glm::vec3 eye2, at;
+        tearShot(eye2, at);
+        glm::vec3 d = glm::normalize(at - eye2);
+        renderCamPos = renderCam.position = eye2;
+        renderCam.yaw = glm::degrees(std::atan2(d.z, d.x));
+        renderCam.pitch = glm::degrees(std::asin(glm::clamp(d.y, -1.f, 1.f)));
+    }
     if (plain() && summitEndT >= 1.f) {   // (summit::CUT) the collapse: seen from far off across the plain
         glm::vec3 eye2, at;
         summitShot(eye2, at);

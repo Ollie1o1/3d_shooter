@@ -254,7 +254,7 @@ public:
     armfile::HandSpring wakeHand;
     void  beginStory();
     void  updateStory(float dt);
-    bool  storyLocked() const { return story() && (wakeT >= 0.f || labIntro.active() || labEnding.active() || plainReveal.active() || summitEndT >= 0.f); }
+    bool  storyLocked() const { return story() && (wakeT >= 0.f || labIntro.active() || labEnding.active() || plainReveal.active() || summitEndT >= 0.f || tearT >= 0.f); }
     bool  storyLookFree() const { return !labIntro.active() && wakeT >= 18.4f; }   // (story::W_SAT)
     float storyWakeFx() const;
     void  gatherStoryBoxes(std::vector<BoxInstance>& out);
@@ -402,6 +402,8 @@ public:
     glm::vec2 saddleLo{0.f}, saddleHi{0.f}, crownLo{0.f}, crownHi{0.f}, neckLo{0.f}, neckHi{0.f};
     float saddleY = 0.f;
     glm::vec3 updraftBase{0.f};
+    bool  updraftFlight = false;   // thrown by the updraft, not yet landed
+    float updraftOpenT = -1.f;     // seconds since the plain split for it (-1: not yet): its opening burst
     const char* gleanerPhaseName() const;
     void gleanerDeckRect(glm::vec2& lo, glm::vec2& hi, float& top) const;
     void clearGleanerDeck();
@@ -435,6 +437,42 @@ public:
     float gleanerHaulRise = 0.f;                       // seconds left of its first stage: up beside the roof's edge (then thrown onto it)
     glm::vec3 gleanerHaulAt{0.f}, gleanerHaulLand{0.f};
     float gleanerFistHitCd = 0.f;
+    // Its hands and its brood's tethers (Gameplay_GleanerHands.h)
+    float swatCd = 9.f;
+    struct SwatRing { glm::vec3 at; float t; bool hit; };
+    std::vector<SwatRing> swatRings;
+    float tetherBurn[3] = {-1.f, -1.f, -1.f};   // seconds since that brood member died (its tether burning out)
+    uint32_t fightPotions = 0u;                 // which fights have shed their potion
+    bool swatFloor(glm::vec2& lo, glm::vec2& hi, float& y) const;
+    void syncGleanerLimbs();
+    bool pickSwat(int& arm, glm::vec3& at) const;
+    void updateGleanerHands(float dt);
+    void onGleanerSwat(const GleanerEvent& e);
+    void killGleanerLimb(int which);
+    void drawTether(std::vector<BoxInstance>& out, glm::vec3 from, glm::vec3 to, float life, float burn, float hurt);
+    void gatherGleanerHands(std::vector<BoxInstance>& out);
+    bool parryTender();
+    void shedFightPotion(int slot, float health01, glm::vec3 from, bool alive);
+    float quietT = -1.f;   // seconds into the quiet after it falls (the portal), -1: not yet
+    float quietThrough = -1.f;  // seconds since the portal took you
+    glm::vec3 quietPortalAt{0.f};   // where it opens (a clear spot in front of the fallen thing, chosen as the quiet begins)
+    bool  quietCaption = false;
+    // The tearing (Gameplay_GleanerFinale.h): seconds into it (-1: not), its pupil, the way out of it, where you were
+    float tearT = -1.f;
+    glm::vec3 tearPupil{0.f}, tearOut{0.f, 0.f, 1.f}, tearFrom{0.f};
+    int   tearSnapped = 0, tearBeats = 0;
+    void  tearShot(glm::vec3& eyeAt, glm::vec3& at) const;
+    glm::vec3 tearCore() const;
+    void  updateTear(float dt);
+    int   tearArms(ViewModel::FreeArm* A) const;
+    void  gatherTear(std::vector<BoxInstance>& out);
+    void  renderTear();
+    glm::vec3 quietPortal() const;
+    glm::vec3 pickQuietPortal() const;
+    void  beginQuiet();
+    void  updateQuiet(float dt);
+    void  gatherQuiet(std::vector<BoxInstance>& out);
+    void  renderQuiet();
     void updateTender(float dt);
     bool shootTender(glm::vec3 o, glm::vec3 d, float& nearest, float dmg, int w);
     void gatherGleanerFight(std::vector<BoxInstance>& out);
@@ -1263,6 +1301,8 @@ public:
 #include "game/Gameplay_Plain.h"
 #include "game/Gameplay_Gleaner.h"
 #include "game/Gameplay_GleanerFight.h"
+#include "game/Gameplay_GleanerHands.h"
 #include "game/Gameplay_GleanerInside.h"
 #include "game/Gameplay_GleanerSummit.h"
+#include "game/Gameplay_GleanerFinale.h"
 #include "game/Gameplay_LabEnding.h"

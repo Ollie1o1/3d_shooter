@@ -60,15 +60,32 @@ inline void draw(std::vector<BoxInstance>& out, const Tender& k, float ball) {
     }
     // The tongs: long arms, raised and glowing for the sweep, swinging through it
     const float up = k.tongsUp(), sweep = k.sweepU();
+    const float reach = k.grabReach(), gopen = k.grabOpen();
+    const float lift = k.state == Tender::HOLD ? Tender::ease(k.t / 1.2f) : 0.f;
+    const vec3 grabWhite = vec3{3.f, 2.8f, 2.4f} * (0.6f + 0.4f * std::sin(t * 30.f));   // the grab's tell: white (punch it)
     for (float s : {-1.f, 1.f}) {
         float swing = sweep >= 0.f ? s * (1.4f - 2.8f * Tender::ease(sweep)) * (k.sweeps % 2 ? -1.f : 1.f) : 0.f;
-        float raise = up * 1.3f, hang = 0.25f * walk * s;
+        swing += -s * 0.35f * reach;   // (the grab: both tongs forward, together)
+        float raise = up * 1.3f + reach * 1.45f + lift * 0.5f, hang = 0.25f * walk * s;
         mat4 sh = B * T(vec3{s * 2.5f, 2.8f, 0.4f}) * RY(swing) * RX(-raise + hang - (sweep >= 0.f ? 1.25f : 0.f)) * RZ(s * 0.18f);
         box(sh * T(vec3{0.f, -2.f, 0.f}) * S(vec3{0.9f, 4.f, 0.9f}), iron);
-        mat4 el = sh * T(vec3{0.f, -4.f, 0.f}) * RX(0.5f - 0.4f * up);
-        box(el * T(vec3{0.f, -3.6f, 0.f}) * S(vec3{0.55f, 7.2f, 0.55f}), iron * 1.2f, melt * 0.6f * up);
+        mat4 el = sh * T(vec3{0.f, -4.f, 0.f}) * RX(0.5f - 0.4f * up - 0.4f * reach);
+        box(el * T(vec3{0.f, -3.6f, 0.f}) * S(vec3{0.55f, 7.2f, 0.55f}), iron * 1.2f, melt * 0.6f * up + grabWhite * 0.25f * gopen);
         for (float j : {-1.f, 1.f})   // the jaws of the tongs
-            box(el * T(vec3{j * 0.35f, -7.6f, 0.f}) * RZ(j * (0.3f + 0.3f * up)) * S(vec3{0.25f, 1.6f, 0.4f}), bone, melt * 1.2f * up);
+            box(el * T(vec3{j * 0.35f, -7.6f, 0.f}) * RZ(j * (0.3f + 0.3f * up + 0.9f * gopen)) * S(vec3{0.25f, 1.6f, 0.4f}), bone, melt * 1.2f * up + grabWhite * gopen);
+    }
+    // Its own metal spilled down over it: a burning pool round its feet, smoke off its back
+    if (k.spilled > 0.f && !dead) {
+        float f = std::min(1.f, k.spilled / 0.8f);
+        for (int i = 0; i < 9; ++i) {
+            float a = i * 0.698f + 0.3f, r = 2.2f + 1.6f * std::fmod(i * 0.618f, 1.f);
+            push(out, T(k.base() + vec3{std::cos(a) * r, 0.1f, std::sin(a) * r}) * RY(a) * S(vec3{2.6f, 0.2f, 1.8f}), vec3{0.5f, 0.2f, 0.05f}, vec3{2.8f, 0.8f, 0.2f} * f);
+        }
+        for (int i = 0; i < 6; ++i) {   // streams of it down its back
+            float u = std::fmod(t * 2.f + i * 0.17f, 1.f);
+            vec3 p = k.base() + vec3{std::sin(i * 1.7f) * 1.8f, 11.f - 10.f * u, std::cos(i * 2.3f) * 1.4f} - k.fwd() * 1.2f;
+            push(out, T(p) * S(vec3{0.5f, 1.4f, 0.5f}), vec3{0.f}, vec3{3.f, 1.f, 0.25f} * f);
+        }
     }
 }
 

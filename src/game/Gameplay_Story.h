@@ -209,6 +209,7 @@ inline float GameplayState::storyWakeFx() const {
     if(laboratory() && labIntro.active())return 0.f;
     if(laboratory() && labEnding.active())return 0.f;   // (its end: white, LabEnding::white)
     if(plain() && plainReveal.active())return 0.f;
+    if(plain() && tearT>=0.f)return 0.f;   // (tearing out the eye's core: its own bars and white)
     if(plain() && summitEndT>=0.f && storyEndT<0.f)return 0.f;   // (the collapse draws its own white and dark)   // (the plain's arrival is white, not black: PlainReveal::white)
     if (!storyLocked() && storyEndT < 0.f) return 0.f;
     if (storyEndT >= 0.f) return std::clamp(storyEndT / 1.4f, 0.f, 1.f);   // the chute: going dark
@@ -618,7 +619,8 @@ inline void GameplayState::drawStoryArms(const Camera& cam) {
     using glm::vec3;
     ViewModel::FreeArm A[2];
     int n = 0;
-    if (wakeT >= W_HAND && wakeT < W_DOWN + 0.9f) {
+    if (plain() && tearT >= 0.f) n = tearArms(A);   // tearing out its core
+    else if (wakeT >= W_HAND && wakeT < W_DOWN + 0.9f) {
         float in = sm((wakeT - W_HAND) / 0.9f), out = sm((wakeT - W_DOWN) / 0.8f);
         float k = in * (1.f - out);
         vec3 at = glm::mix(vec3{0.22f, -0.7f, 0.22f}, vec3{0.035f, -0.05f, 0.235f}, k);
@@ -655,7 +657,9 @@ inline void GameplayState::drawStoryArms(const Camera& cam) {
 inline void GameplayState::renderStoryOverlay(const glm::mat4& viewProj) {
     if(laboratory() && labIntro.active()){renderLabIntro();return;}
     if(plain() && plainReveal.active()){renderPlainReveal();return;}
+    if(plain() && tearT>=0.f){renderTear();return;}
     if(plain() && summitEndT>=0.f && storyEndT<0.f){renderSummitEnd();return;}
+    if(plain() && quietT>=0.f && storyEndT<0.f)renderQuiet();
     if(laboratory() && labEnding.active()){renderLabEndingOverlay();return;}
     if(plain() && gutWhite>0.001f){ui.begin2D();ui.ui.rect(0,0,SCREEN_W,SCREEN_H,{1.f,.7f,.4f,gutWhite});ui.end2D();}   // (into the Gleaner, out of its chimney: fire)
     using namespace story;

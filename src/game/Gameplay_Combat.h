@@ -129,6 +129,7 @@ inline void GameplayState::punch(int boostable) {
         }
     }
     if (parryCaller()) return;   // THE CALLER diving at you (Gameplay_GleanerFight.h)
+    if (parryTender()) return;   // THE TENDER's white tongs reaching for you
     if (tryFinisher()) return;   // one low enough to finish (it glows): Gameplay_Feel.h
     if (boostable >= 0) {
         trainingSuccess(4);

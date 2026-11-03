@@ -10,6 +10,28 @@
 // Included at the end of GameplayState.h.
 // =============================================================================
 
+// The end of Chapter 4's timings (Gameplay_GleanerFinale.h)
+namespace finale {
+// THE TEARING
+constexpr float LOCK = 0.35f;             // the camera onto its pupil
+constexpr float PUNCH1 = 0.4f, PUNCH2 = 1.15f;
+constexpr float REACH = 1.9f, GRIP = 2.45f;
+constexpr float PULL0 = 2.45f, PULL1 = 4.f;
+constexpr int   THREADS = 7;              // what holds its core in, snapping as you pull
+inline float snapAt(int k) { return 2.85f + k * 0.17f + 0.04f * (float)(k % 3); }
+constexpr float BEAT0 = 4.15f;            // in your hand: it beats (three times)
+constexpr float CRUSH = 5.3f;             // you crush it
+constexpr float LEN = 5.55f;              // then the white of the fall
+// THE QUIET
+constexpr float FADE = 2.2f;              // up out of the dark
+constexpr float SEAM = 3.6f, OPEN1 = 7.f; // the portal: a seam of white in the air, opening
+constexpr float CAPTION0 = 7.5f, CAPTION1 = 13.5f;
+constexpr float PULL_R = 30.f;            // close: it draws you in
+constexpr float THROUGH = 1.4f;           // white, then the card
+constexpr float RADIUS = 21.f;
+inline float sm(float a, float b, float x) { float u = std::clamp((x - a) / (b - a), 0.f, 1.f); return u * u * (3.f - 2.f * u); }
+}  // namespace finale
+
 namespace gleanerplace {
 inline glm::vec3 lair() { return {0.f, 0.f, -420.f}; }   // where it lies at the arrival, its back to you
 inline glm::vec3 mark(int i) {
@@ -137,6 +159,8 @@ inline void GameplayState::updateGleaner(float dt) {
             float near = glm::clamp(1.f - dist / 1600.f, 0.f, 1.f);
             if (near > 0.f) plainQuakes.push_back({dist / 343.f, glm::clamp(near * near * e.size * 0.9f, 0.05f, 1.f)});
             gleanerDust.push_back({e.at, 0.f, 26.f * Gleaner::SCALE * e.size});
+        } else if (e.kind == GleanerEvent::SWAT_RAISE || e.kind == GleanerEvent::SWAT) {
+            onGleanerSwat(e);
         } else {   // the scream: the loudest thing in the game, now (no delay: it has to land with its jaw)
             gleanerSound("gleaner_scream", e.at, 1.f, 0.f, true);
             audio.duck(14.f, Gleaner::SCREAM_LEN + 1.f);   // (the music and the fight step back under it)
@@ -206,7 +230,7 @@ inline void GameplayState::updateGleaner(float dt) {
 // Where a throw onto its back lands: just inside the parapet's gap; the saddle (the Sieve); its crown (the Caller, the brood dead)
 inline glm::vec3 GameplayState::gleanerBackTarget() const {
     return gleanerPhase == GleanerPhase::SIEVE ? saddleCheckpoint()
-         : gleanerPhase >= GleanerPhase::CALLER && gleanerPhase <= GleanerPhase::BROOD ? crownCheckpoint() : deckCheckpoint() + glm::vec3{4.f, 0.f, 0.f};
+         : gleanerPhase >= GleanerPhase::CALLER && gleanerPhase <= GleanerPhase::BROOD ? crownCheckpoint() : deckCheckpoint();
 }
 
 // The grapple's ray against the Gleaner: its arms (bone by bone), its fists, its hunched body.
@@ -306,6 +330,7 @@ inline void GameplayState::haulOntoGleaner(glm::vec3 at) {
 // The sky's moon, shut: 0 open (before it wakes), 1 gone (it is the eye now)
 inline float GameplayState::plainMoonLid() const {
     if (plainReveal.active()) return plainReveal.lid();
+    if (quietT >= 0.f) return 0.f;   // (after it: the real moon)
     if (summitEndT >= 0.f) return 1.f - summitMoonOpen();   // (it dead: the real moon opens again)
     return wakeSeen ? 1.f : 0.f;
 }
@@ -319,7 +344,13 @@ inline void GameplayState::gatherGleaner(std::vector<BoxInstance>& out) {
     look.watching = gleaner.eyeOpen > 0.5f;
     look.frontGap = deckFrontOpen && deckWallsFrom >= 0;
     look.door = furnaceDoor ? 1.f : 0.f;
-    look.vent = gleanerPhase >= GleanerPhase::CLIMB ? 0.7f + 0.3f * std::sin(gameClock * 2.5f) : 0.f;
+    look.vent = 0.f;   // (the updraft is in front of its face now, out of the plain: no vent in its side)
+    for (int a = 0; a < 2; ++a) {   // its arms die with their brood: the light runs out of them as the tether burns in
+        const bool dead = a == 0 ? gleanerPhase > GleanerPhase::TENDER : gleanerPhase > GleanerPhase::SIEVE;
+        look.armLife[a] = !dead || gleanerPhase > GleanerPhase::SUMMIT ? 1.f : tetherBurn[a] < 0.f ? 0.f : 1.f - std::clamp((tetherBurn[a] - 1.f) / 1.2f, 0.f, 1.f);
+        if (summitEndT >= 0.f || quietT >= 0.f) look.armLife[a] = 0.f;
+    }
+    look.headLife = gleanerPhase > GleanerPhase::CALLER ? 0.f : 1.f;
     look.shedding = gleaner.rise > 0.001f && gleaner.rise < 0.999f ? std::sin(gleaner.rise * 3.14159f) : 0.f;
     gleaner::draw(out, gleaner, look);
     // The dust a fist throws up: a ring of lumps rolling outward, settling

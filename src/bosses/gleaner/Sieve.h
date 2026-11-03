@@ -21,6 +21,13 @@
 // off a SPLINTER (the glass finds the gaps). Enough on the heart in one opening
 // spills the basket: it staggers and everything hits harder (x2). Below half
 // health it is enraged: quicker, it stakes twice, the rain follows you.
+//
+// Its KNEES: the joints high over it, glowing as they weaken. Each takes a few
+// good hits and breaks: the leg buckles and it limps. Break two and it
+// COLLAPSES: down onto the plate, the basket on the floor, the heart open from
+// every side and everything x2, for a few seconds; then it reforges its knees
+// out of its own slag and stands back up. (The Gleaner's fist coming down on it
+// does the same.)
 // =============================================================================
 #include <glm/glm.hpp>
 #include <algorithm>
@@ -30,12 +37,12 @@
 #include <vector>
 
 struct SieveEvent {
-    enum Kind { STEP, SHAKE, RAIN_START, RAIN_END, STAKE_TELL, STAKE, CRACKS, ROAR, STAGGER, DIE } kind;
+    enum Kind { STEP, SHAKE, RAIN_START, RAIN_END, STAKE_TELL, STAKE, CRACKS, ROAR, STAGGER, DIE, KNEE_BREAK, TOPPLE, REFORGE } kind;
     glm::vec3 at{0.f};
 };
 
 struct Sieve {
-    enum State { DORMANT, RISING, STALK, SHAKE_AIM, RAIN, STAKE_RAISE, STAKED, RECOVER, STAGGER, DEAD };
+    enum State { DORMANT, RISING, STALK, SHAKE_AIM, RAIN, STAKE_RAISE, STAKED, RECOVER, STAGGER, TOPPLED, DEAD };
     static constexpr float MAX_HP = 3000.f;
     static constexpr float HUB_H = 17.f;                     // its hub above the ground
     static constexpr float BASKET_TOP = 13.f, BASKET_BOT = 6.f, BASKET_R = 3.6f;
@@ -46,6 +53,8 @@ struct Sieve {
     static constexpr float STEEP = 0.55f;                    // how steep a round must come to thread the grate
     static constexpr float HEART_BREAK = 420.f;              // damage to the heart in one opening that spills it
     static constexpr float RADIUS = 2.4f;                    // its hub and basket: you cannot walk through them... under them you can
+    static constexpr float KNEE_HP = 240.f, KNEE_R = 1.5f;   // a knee breaks after this much (after its zone's multiplier)
+    static constexpr float TOPPLE_TIME = 5.5f, REFORGE_TIME = 1.8f;   // down on the plate, then standing back up
 
     State state = DORMANT;
     glm::vec3 pos{0.f};               // the ground under its hub
@@ -70,6 +79,9 @@ struct Sieve {
     float footU[4] = {-1.f, -1.f, -1.f, -1.f};   // -1 planted; 0..1 through a step
     glm::vec2 lo{-50.f}, hi{50.f};
     float deckY = 0.f;
+    float kneeHp[4] = {KNEE_HP, KNEE_HP, KNEE_HP, KNEE_HP};
+    bool  broken[4] = {false, false, false, false};
+    int   topples = 0;
     uint32_t seed = 91u;
     std::vector<SieveEvent> events;
 
@@ -79,7 +91,16 @@ struct Sieve {
     bool enraged() const { return hp < MAX_HP * 0.5f; }
     float health01() const { return std::max(0.f, hp / MAX_HP); }
     static float ease(float x) { x = std::clamp(x, 0.f, 1.f); return x * x * (3.f - 2.f * x); }
-    float pace() const { return enraged() ? 1.3f : 1.f; }
+    int brokenLegs() const { return (int)broken[0] + broken[1] + broken[2] + broken[3]; }
+    float pace() const { return (enraged() ? 1.3f : 1.f) * (brokenLegs() > 0 ? 0.7f : 1.f); }
+    bool toppled() const { return state == TOPPLED; }
+    // 0 standing .. 1 down on the plate (collapsed, then getting back up)
+    float slump() const {
+        if (state != TOPPLED) return 0.f;
+        if (t < TOPPLE_TIME) return ease(t / 0.45f);
+        return 1.f - ease((t - TOPPLE_TIME) / REFORGE_TIME);
+    }
+    float kneeWear(int i) const { return broken[i] ? 1.f : 1.f - kneeHp[i] / KNEE_HP; }
 
     // Out of a meteor's crater on the saddle: it unfolds
     void wake(glm::vec3 at, float facing, glm::vec2 deckLo, glm::vec2 deckHi, float y) {
@@ -93,7 +114,7 @@ struct Sieve {
     // Its frame
     glm::vec3 hipDir(int i) const { float a = yaw + 0.785398f + i * 1.570796f; return {std::sin(a), 0.f, std::cos(a)}; }
     glm::vec3 rest(int i) const { glm::vec3 p = pos + hipDir(i) * LEG_REACH; p.y = deckY; return p; }
-    glm::vec3 hub() const { return pos + glm::vec3{0.f, glm::mix(3.f, HUB_H, unfold()) + 0.4f * std::sin(clock * 1.3f), 0.f}; }
+    glm::vec3 hub() const { return pos + glm::vec3{0.f, glm::mix(glm::mix(3.f, HUB_H, unfold()) + 0.4f * std::sin(clock * 1.3f), 6.2f, slump()), 0.f}; }
     glm::vec3 hip(int i) const { return hub() + hipDir(i) * HIP_R; }
     // How far the basket is swung out on its chains (toward the staked leg, mouth toward you) and shaken
     float swingOut() const {
@@ -108,12 +129,12 @@ struct Sieve {
         glm::vec3 h = hub() - glm::vec3{0.f, HUB_H - (BASKET_TOP + BASKET_BOT) * 0.5f, 0.f} * (state == RISING ? unfold() : 1.f);
         h += swingDir() * (5.f * swingOut()) + glm::vec3{0.f, 1.5f * swingOut(), 0.f};
         h += glm::vec3{std::sin(clock * 23.f), 0.f, std::cos(clock * 19.f)} * (0.35f * shake());
-        h.y = glm::mix(h.y, deckY + 2.2f, drop());
+        h.y = glm::mix(h.y, deckY + 2.2f, std::max(drop(), slump()));
         return h;
     }
     // The basket's tilt (radians, about the axis across swingDir): its mouth turned toward you
     float basketTilt() const { return 1.15f * swingOut(); }
-    bool heartOpen() const { return (state == STAKED && swingOut() > 0.35f) || state == STAGGER; }
+    bool heartOpen() const { return (state == STAKED && swingOut() > 0.35f) || state == STAGGER || (state == TOPPLED && slump() > 0.5f); }
     float stakedTime() const { return enraged() ? 2.2f : 2.8f; }
 
     // Its body for the guns
@@ -134,12 +155,18 @@ struct Sieve {
     }
     // Does a round on this line get through the mesh to the heart?
     bool threads(glm::vec3 d, bool splinter) const { return splinter || heartOpen() || std::abs(d.y) > STEEP; }
-    // Where a round meets it first: zone 0 the mesh, 1 its hub, 2 the heart; -1 a miss
+    Box kneeBox(int i) const { glm::vec3 k = knee(i); return {k - glm::vec3{KNEE_R}, k + glm::vec3{KNEE_R}}; }
+    // Where a round meets it first: zone 0 the mesh, 1 its hub, 2 the heart, 3+i knee i; -1 a miss
     int ray(glm::vec3 o, glm::vec3 d, float maxT, float& tOut, bool splinter = false) const {
         if (!alive()) return -1;
         int zone = -1; float best = maxT;
         float th = rayBox(o, d, hubBox()), tb = rayBox(o, d, basketBox());
         if (th >= 0.f && th < best) { best = th; zone = 1; }
+        if (state != TOPPLED) for (int i = 0; i < 4; ++i) {
+            if (broken[i]) continue;
+            float tk = rayBox(o, d, kneeBox(i));
+            if (tk >= 0.f && tk < best) { best = tk; zone = 3 + i; }
+        }
         if (tb >= 0.f && tb < best) {
             float tc = threads(d, splinter) ? rayBox(o, d, heartBox()) : -1.f;
             if (tc >= 0.f) { best = tc; zone = 2; } else { best = tb; zone = 0; }
@@ -147,26 +174,44 @@ struct Sieve {
         tOut = best;
         return zone;
     }
-    static float zoneMult(int zone) { return zone == 2 ? 3.f : zone == 1 ? 1.f : 0.2f; }
+    static float zoneMult(int zone) { return zone == 2 ? 3.f : zone >= 3 ? 1.2f : zone == 1 ? 1.f : 0.4f; }
 
     // Damage (already multiplied for its zone). True if this killed it
     bool hurt(float dmg, int zone) {
         if (!fighting()) return false;
-        if (state == STAGGER) dmg *= 2.f;
+        if (state == STAGGER || state == TOPPLED) dmg *= 2.f;
         hp -= dmg;
         flash = 1.f;
-        if (zone == 2 && state != STAGGER) {
+        if (zone == 2 && state != STAGGER && state != TOPPLED) {
             heartTaken += dmg;
             if (heartTaken >= HEART_BREAK) stagger();
+        }
+        if (zone >= 3 && zone < 7 && !broken[zone - 3] && state != TOPPLED) {   // a knee
+            const int i = zone - 3;
+            kneeHp[i] -= dmg;
+            if (kneeHp[i] <= 0.f) {
+                kneeHp[i] = 0.f; broken[i] = true;
+                events.push_back({SieveEvent::KNEE_BREAK, knee(i)});
+                if (hp > 0.f && brokenLegs() >= 2) topple();
+            }
         }
         if (hp <= 0.f) { hp = 0.f; state = DEAD; t = 0.f; rainLeft = 0.f; events.push_back({SieveEvent::DIE, heart()}); return true; }
         return false;
     }
     void stagger() {
-        if (!fighting()) return;
+        if (!fighting() || state == TOPPLED) return;
         if (state == RAIN) events.push_back({SieveEvent::RAIN_END, rainAt});
         state = STAGGER; t = 0.f; rainLeft = 0.f; heartTaken = 0.f;
         events.push_back({SieveEvent::STAGGER, heart()});
+    }
+    // Down on the plate: its knees broken (or the Gleaner's fist on it)
+    void topple() {
+        if (!fighting() || state == TOPPLED) return;
+        if (state == RAIN) events.push_back({SieveEvent::RAIN_END, rainAt});
+        if (state == STAKED || state == STAKE_RAISE) foot[stakeLeg] = footNow(stakeLeg);
+        for (int i = 0; i < 4; ++i) { footU[i] = -1.f; }
+        state = TOPPLED; t = 0.f; rainLeft = 0.f; heartTaken = 0.f; crackT = -1.f; ++topples;
+        events.push_back({SieveEvent::TOPPLE, pos});
     }
 
     // Hazards, for whoever stands at p (feet)
@@ -207,6 +252,10 @@ struct Sieve {
         }
     }
     glm::vec3 footNow(int i) const {
+        if (state == TOPPLED) {   // splayed out round it on the plate
+            glm::vec3 p = pos + hipDir(i) * (LEG_REACH + 4.f * slump()); p.y = deckY;
+            return glm::mix(foot[i], p, slump());
+        }
         if (state == STAKED && i == stakeLeg) return stakeAt;
         if (state == STAKE_RAISE && i == stakeLeg) {   // reared high, pointing down at where it will go
             float u = ease(t / 0.55f);
@@ -228,7 +277,7 @@ struct Sieve {
         glm::vec3 dir = glm::normalize(d);
         float along = (THIGH * THIGH - SHIN * SHIN + len * len) / (2.f * len);
         float h = std::sqrt(std::max(0.f, THIGH * THIGH - along * along));
-        glm::vec3 pole = glm::vec3{0.f, 1.f, 0.f} + hipDir(i);
+        glm::vec3 pole = broken[i] ? glm::vec3{0.f, -1.2f, 0.f} + hipDir(i) : glm::vec3{0.f, 1.f, 0.f} + hipDir(i);   // (broken: it buckles under)
         pole -= dir * glm::dot(pole, dir);
         float pl = glm::length(pole);
         pole = pl > 1e-4f ? pole / pl : glm::vec3{0.f, 1.f, 0.f};
@@ -320,9 +369,19 @@ struct Sieve {
         case STAGGER:
             if (t >= 2.6f) { state = STALK; t = 0.f; cooldown = 1.2f; }
             break;
+        case TOPPLED:
+            if (t - dt < TOPPLE_TIME && t >= TOPPLE_TIME) {   // it reforges its knees out of its slag and gets up
+                for (int i = 0; i < 4; ++i) { broken[i] = false; kneeHp[i] = KNEE_HP * (topples >= 2 ? 1.2f : 1.f); }
+                events.push_back({SieveEvent::REFORGE, pos});
+            }
+            if (t >= TOPPLE_TIME + REFORGE_TIME) {
+                for (int i = 0; i < 4; ++i) foot[i] = footNow(i);
+                state = STALK; t = 0.f; cooldown = 0.8f; events.push_back({SieveEvent::ROAR, heart()});
+            }
+            break;
         default: break;
         }
-        if (state != STAKED && state != STAKE_RAISE) stepLegs(dt);
+        if (state != STAKED && state != STAKE_RAISE && state != TOPPLED) stepLegs(dt);
     }
     // The leg nearest you goes up; it will come down where you are (within its reach)
     void aimStake(glm::vec3 player, bool choose) {
@@ -330,7 +389,7 @@ struct Sieve {
             float best = -2.f; int was = stakeLeg;
             glm::vec3 d = player - pos; d.y = 0.f;
             d = glm::length(d) > 0.01f ? glm::normalize(d) : glm::vec3{0.f, 0.f, 1.f};
-            for (int i = 0; i < 4; ++i) { float c = glm::dot(d, hipDir(i)) - (state == STAKED && i == was ? 0.5f : 0.f); if (c > best) { best = c; stakeLeg = i; } }
+            for (int i = 0; i < 4; ++i) { if (broken[i]) continue; float c = glm::dot(d, hipDir(i)) - (state == STAKED && i == was ? 0.5f : 0.f); if (c > best) { best = c; stakeLeg = i; } }
             footU[stakeLeg] = -1.f;
             events.push_back({SieveEvent::STAKE_TELL, foot[stakeLeg]});
         }

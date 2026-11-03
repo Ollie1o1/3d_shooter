@@ -425,3 +425,53 @@ time, never three at once. The Gleaner keeps a slow background pressure
   boss_kit.py), a code box's from its colour (`gleaner::autoSurface`, also the
   brood, organs and eye). Off on the lowest QUALITY (~1.2 ms with the Gleaner
   filling the screen).
+
+## Polish pass (2026-11-03)
+
+Goal: every fight on the Gleaner asks for something different, the Gleaner
+itself takes part, and the chapter ends on a payoff instead of a cut.
+
+- **The climb.** The updraft is no longer at its side. When it kneels its
+  fists split the plain straight ahead of its face (`gleaner::UPDRAFT_Z`), on
+  the line you are already walking; the split bursts open (slag fountain, white
+  core of heat up the middle so it reads from far off). It throws you high over
+  its head onto the front of the roof (`deckCheckpoint`), and you stop where you
+  land (`updraftFlight`). The west parapet gap is closed.
+- **The Gleaner's hands** (`Gameplay_GleanerHands.h`, `Gleaner::swat`). During
+  the Tender and Sieve fights it lifts a fist over its own back (2.9 s tell: the
+  fist overhead, its shadow and a ring of fire on the floor, arrows pointing in)
+  and slams the edge nearest you: heavy hit under it, then a shockwave across
+  the whole floor to jump. Brood caught under it are crushed (480, Tender
+  staggers, Sieve collapses): lure them there.
+- **Tethers and dying limbs.** Each brood member is tied by a glowing slag cable
+  to a limb (Tender: left arm, Sieve: right arm, Caller: head). Killing one burns
+  the cable out into the limb; the limb's light dies, it smokes, and that arm
+  never swats again (`Gleaner::Arm::dead`, `Look::armLife`).
+- **THE TENDER: the grab.** White-hot open tongs are the tell; punch them as
+  they lunge (`parryTender`) and it staggers. Caught, it lifts you in front of
+  its tipped crucible: shoot the lip (300) to break free, or be dunked (30) and
+  thrown. Breaking its lip mid-pour spills its own metal on it (220 + stagger).
+- **THE SIEVE: the knees.** Glowing knee joints (zone 3+i, x1.2); each breaks
+  after 240, the leg buckles, it limps. Two broken: it COLLAPSES onto the plate
+  for 5.5 s, heart open from every side, x2; then reforges and stands. Mesh
+  shots now x0.4 (was 0.2).
+- **THE CALLER: ring it.** Shell hits (now x0.4) fill `resonance`; full, it is
+  OVERRUNG: it sags low tolling wildly, lamp open from all sides, and calls a
+  meteor on itself; struck (520) it crashes onto the crown, stunned x2.
+- **Potions.** Each brood member and organ sheds one potion at half health; the
+  Eye one at each falter (`shedFightPotion`).
+- **THE TEARING** (`Gameplay_GleanerFinale.h`). Interact at the fallen Eye: a
+  5.5 s first-person execution. Two punches crack the pupil (light pours out),
+  you reach in and grip its core, haul it out while seven threads snap and the
+  Gleaner screams, the eye goes dark, the core beats three times in your hand,
+  you crush it. White, then the far shot of the fall.
+- **THE QUIET and the portal.** After the fall you stand on the plain by the
+  sunken body, the real moon up, no meteors. A seam of white opens into a ring
+  (a cold measured grid inside it: neutral toward either Chapter 5 idea), with
+  the caption `UNIT 24 / STATUS: COMPLETE / PURPOSE: NOT YET ASSIGNED`. Walk in:
+  it draws you in, white, the chapter card.
+- Tests: `checkGleanerBroodRuntime` (swat, crush, shockwave, grab/free/parry/
+  dunk, limb death, knees and collapse, ringing and the self-strike) and the
+  summit test now plays the tearing, fall, quiet and portal through to the card.
+  Screens: `build/gleaner-swat|grab|sieve-down|caller-rung.bmp`,
+  `build/summit-tear0..3.bmp`, `build/summit-portal.bmp`.

@@ -16,6 +16,12 @@
 //               you: its weak point (x3), and enough damage there spills it
 //               (it staggers, the pour stops).
 //   SLAG LOB    three globs flung at you (they can be punched back into it).
+//   GRAB        close in, it opens its tongs wide, white-hot (the tell), and
+//               lunges. PUNCH the tongs as they reach you: they jam, it
+//               staggers. Caught: it lifts you up in front of its crucible,
+//               tipped to take you, its lip right there: shoot it hard enough
+//               (or the head) and it drops you, staggered. Too slow: it dunks
+//               you and throws you out across the roof.
 //
 // A punched-back glob or a broken pour staggers it: everything hits harder (x2)
 // for a moment. Below half health it is enraged: faster, the second sweep.
@@ -28,17 +34,21 @@
 #include <vector>
 
 struct TenderEvent {
-    enum Kind { SWEEP, LOB, POUR_START, POUR_END, STEP, ROAR, STAGGER, DIE } kind;
+    enum Kind { SWEEP, LOB, POUR_START, POUR_END, STEP, ROAR, STAGGER, DIE, GRAB_TELL, GRAB, CATCH, DUNK, FREED, SPILL } kind;
     glm::vec3 at{0.f}, dir{0.f};
 };
 
 struct Tender {
-    enum State { DORMANT, RISING, CHASE, SWEEP_WIND, SWEEP, POUR_TIP, POUR, LOB, RECOVER, STAGGER, DEAD };
+    enum State { DORMANT, RISING, CHASE, SWEEP_WIND, SWEEP, POUR_TIP, POUR, LOB, RECOVER, STAGGER, GRAB_WIND, GRAB, HOLD, DEAD };
     static constexpr float MAX_HP = 2600.f;
     static constexpr float HEIGHT = 9.f, RADIUS = 3.4f;
     static constexpr float SWEEP_REACH = 14.f, SWEEP_ARC = 1.25f;   // half-angle (rad)
     static constexpr float RIVER_LEN = 44.f, RIVER_HALF = 2.8f, RIVER_STAYS = 6.f;
     static constexpr float LIP_BREAK = 380.f;   // damage to the lip in one pour that spills it
+    static constexpr float GRAB_WIND_TIME = 0.85f, GRAB_TIME = 0.4f, HOLD_TIME = 2.2f;
+    static constexpr float GRAB_REACH = 8.5f;    // the tongs' reach from its front
+    static constexpr float FREE_DMG = 300.f;     // damage while it holds you that makes it drop you
+    static constexpr float SPILL_BURN = 220.f;   // its own metal over it when its lip breaks
 
     State state = DORMANT;
     glm::vec3 pos{0.f};
@@ -49,6 +59,10 @@ struct Tender {
     float cooldown = 2.f;
     int   sweeps = 0, lobs = 0;
     float lipTaken = 0.f;
+    float freeTaken = 0.f;           // damage taken while it holds you
+    bool  holding = false;           // it has you (HOLD)
+    bool  lastWasHold = false;
+    float spilled = 0.f;             // seconds left of its own metal burning round its feet
     float walkPhase = 0.f;
     float flash = 0.f;               // 0..1 hit flash
     // The river it poured: from its front along where it faced
@@ -80,13 +94,23 @@ struct Tender {
     float tip() const {
         if (state == POUR_TIP) return ease(t / 0.9f);
         if (state == POUR) return 1.f;
+        if (state == HOLD) return 0.6f * ease(t / 0.8f);   // tipped to take you
         if (state == RECOVER && lastWasPour) return 1.f - ease(t / 0.6f);
+        if (state == RECOVER && lastWasHold) return 0.6f * (1.f - ease(t / 0.6f));
         return 0.f;
     }
+    // The grab: how far its tongs are open and out (the tell), and where it holds you (your feet)
+    float grabOpen() const { return state == GRAB_WIND ? ease(t / GRAB_WIND_TIME) : state == GRAB ? 1.f - ease(t / GRAB_TIME) : 0.f; }
+    float grabReach() const { return state == GRAB_WIND ? ease(t / GRAB_WIND_TIME) : state == GRAB ? 1.f : state == HOLD ? 1.f : 0.f; }
+    glm::vec3 holdPoint() const {
+        float u = ease(t / 1.2f);
+        return base() + fwd() * (6.5f - 1.6f * u) + glm::vec3{0.f, 4.6f + 3.4f * u, 0.f};
+    }
+    bool parryable() const { return (state == GRAB && t < GRAB_TIME) || (state == GRAB_WIND && t > GRAB_WIND_TIME - 0.18f); }
     float tongsUp() const { return state == SWEEP_WIND ? ease(t / windTime()) : 0.f; }
     float sweepU() const { return state == SWEEP ? std::clamp(t / 0.35f, 0.f, 1.f) : -1.f; }
     float windTime() const { return enraged() ? 0.65f : 0.9f; }
-    bool  lipOpen() const { return state == POUR_TIP || state == POUR; }
+    bool  lipOpen() const { return state == POUR_TIP || state == POUR || state == HOLD; }
     bool  staggered() const { return state == STAGGER; }
 
     // Its body for the guns: a box for the body, one for the head, one for the crucible's lip
@@ -130,18 +154,33 @@ struct Tender {
         if (staggered()) dmg *= 2.f;
         hp -= dmg;
         flash = 1.f;
-        if (zone == 2 && lipOpen()) {
+        if (state == HOLD && (zone == 2 || zone == 1)) {   // shot while it holds you: it drops you
+            freeTaken += dmg;
+            if (freeTaken >= FREE_DMG && hp > 0.f) { events.push_back({TenderEvent::FREED, holdPoint()}); holding = false; stagger(); }
+        } else if (zone == 2 && lipOpen()) {
             lipTaken += dmg;
-            if (lipTaken >= LIP_BREAK) { riverLeft = std::min(riverLeft, 2.f); stagger(); }
+            if (lipTaken >= LIP_BREAK && hp > 0.f) {   // the lip breaks: its own metal spills down over it
+                riverLeft = std::min(riverLeft, 2.f);
+                hp -= SPILL_BURN; spilled = 2.4f;
+                events.push_back({TenderEvent::SPILL, lipPoint()});
+                if (hp > 0.f) stagger();
+            }
         }
-        if (hp <= 0.f) { hp = 0.f; state = DEAD; t = 0.f; events.push_back({TenderEvent::DIE, base()}); return true; }
+        if (hp <= 0.f) { hp = 0.f; holding = false; state = DEAD; t = 0.f; events.push_back({TenderEvent::DIE, base()}); return true; }
         return false;
     }
     void stagger() {
         if (!fighting()) return;
         if (state == POUR || state == POUR_TIP) events.push_back({TenderEvent::POUR_END, base()});
+        if (state == HOLD && holding) { holding = false; events.push_back({TenderEvent::FREED, holdPoint()}); }
         state = STAGGER; t = 0.f;
         events.push_back({TenderEvent::STAGGER, base()});
+    }
+    // Punched as its tongs reach you: they jam, it staggers
+    bool parried() {
+        if (!parryable()) return false;
+        stagger();
+        return true;
     }
 
     bool inRiver(glm::vec3 p) const {
@@ -165,6 +204,7 @@ struct Tender {
         clock += dt; t += dt;
         flash = std::max(0.f, flash - dt * 5.f);
         if (riverLeft > 0.f) riverLeft -= dt;
+        if (spilled > 0.f) spilled -= dt;
         if (state == DEAD || state == DORMANT) return;
         glm::vec3 to = player - pos; to.y = 0.f;
         float dist = glm::length(to);
@@ -191,7 +231,8 @@ struct Tender {
             cooldown -= dt;
             if (cooldown <= 0.f) {
                 float r = rnd();
-                if (dist < 12.f) { state = SWEEP_WIND; sweeps = 0; }
+                if (dist < 12.f && r < 0.42f) { state = GRAB_WIND; events.push_back({TenderEvent::GRAB_TELL, base()}); }
+                else if (dist < 12.f) { state = SWEEP_WIND; sweeps = 0; }
                 else if (dist < 40.f && r < 0.6f) state = POUR_TIP;
                 else if (dist < 40.f || r < 0.45f) { state = LOB; lobs = 0; }
                 else { cooldown = 1.2f; break; }   // far off: it keeps coming
@@ -231,8 +272,33 @@ struct Tender {
             }
             if (t >= 1.9f) { state = RECOVER; t = 0.f; lastWasPour = false; }
             break;
+        case GRAB_WIND:
+            turnTo(2.6f * pace);
+            if (t >= GRAB_WIND_TIME) { state = GRAB; t = 0.f; events.push_back({TenderEvent::GRAB, base(), fwd()}); }
+            break;
+        case GRAB: {   // the lunge: it comes forward, the tongs snap shut on whatever is in front of it
+            glm::vec3 step = fwd() * (9.f * dt);
+            pos.x = std::clamp(pos.x + step.x, lo.x + RADIUS, hi.x - RADIUS);
+            pos.z = std::clamp(pos.z + step.z, lo.y + RADIUS, hi.y - RADIUS);
+            glm::vec3 d = player - pos; float h = player.y - deckY; d.y = 0.f;
+            float l = glm::length(d);
+            if (t > GRAB_TIME * 0.6f && l < GRAB_REACH + RADIUS && l > 0.5f && glm::dot(d / l, fwd()) > 0.55f && h < 2.5f) {
+                state = HOLD; t = 0.f; holding = true; freeTaken = 0.f; lipTaken = 0.f;
+                events.push_back({TenderEvent::CATCH, player});
+                break;
+            }
+            if (t >= GRAB_TIME) { state = RECOVER; t = 0.f; lastWasPour = false; lastWasHold = false; }
+            break;
+        }
+        case HOLD:
+            if (t >= HOLD_TIME) {   // into the crucible with you, and out across the roof
+                holding = false;
+                events.push_back({TenderEvent::DUNK, holdPoint(), fwd()});
+                state = RECOVER; t = 0.f; lastWasPour = false; lastWasHold = true;
+            }
+            break;
         case RECOVER:
-            if (t >= 0.9f / pace) { state = CHASE; t = 0.f; cooldown = (enraged() ? 0.8f : 1.5f) + rnd() * 0.8f; }
+            if (t >= 0.9f / pace) { state = CHASE; t = 0.f; cooldown = (enraged() ? 0.8f : 1.5f) + rnd() * 0.8f; lastWasHold = false; }
             break;
         case STAGGER:
             if (t >= 2.2f) { state = CHASE; t = 0.f; cooldown = 1.f; }

@@ -437,14 +437,38 @@ static void checkSummitRuntime(AudioSystem& audio) {
     // Walk up and tear it out
     game.player.position={game.eye.pos.x,game.deckY+0.05f,game.eye.pos.z-EyeCore::R-2.f};game.player.velocity={0,0,0};
     tick(0.2f);
-    CHECK(game.tryTearEye() && game.summitEndT>=0.f,"beside it, the interact key tears it out");
-    CHECK(game.storyLocked(),"the collapse has the controls");
+    CHECK(game.tryTearEye() && game.tearT>=0.f,"beside it, the interact key: you take hold of it");
+    CHECK(game.storyLocked(),"tearing it out has the controls");
+    // the tearing, frame by frame (and a look at its beats)
+    const float shotsAt[]={0.45f,1.3f,3.2f,4.5f};int shotN=0;
+    while(game.tearT>=0.f){
+        game.updateStory(1.f/60);
+        if(shotN<4 && game.tearT>=shotsAt[shotN]){game.render();char nm[64];std::snprintf(nm,sizeof nm,"build/summit-tear%d.bmp",shotN);screenshot(nm);++shotN;}
+    }
+    std::printf("      tear: %d threads snapped, %d beats, then the fall %.2f\n",game.tearSnapped,game.tearBeats,game.summitEndT);
+    CHECK(game.tearSnapped==finale::THREADS && game.tearBeats==3,"its core comes out: every thread snaps, it beats three times in your hand");
+    CHECK(game.summitEndT>=0.f && game.storyLocked(),"crushed: the white, and the fall");
     for(int f=0;f<60*6;++f){game.updateStory(1.f/60);}
     game.render();screenshot("build/summit-collapse.bmp");
-    for(int f=0;f<60*9 && game.storyEndT<0.f;++f){game.updateStory(1.f/60);}
-    std::printf("      collapse: rise %.2f, meteors stopped %d, moon lid %.2f, card %.1f\n",game.gleaner.rise,(int)game.meteors.stopped,game.plainMoonLid(),game.storyEndT);
+    for(int f=0;f<60*9 && game.quietT<0.f;++f){game.updateStory(1.f/60);}
+    std::printf("      collapse: rise %.2f, meteors stopped %d, moon lid %.2f, quiet %.1f\n",game.gleaner.rise,(int)game.meteors.stopped,game.plainMoonLid(),game.quietT);
     CHECK(game.gleaner.rise<0.05f && game.meteors.stopped && game.plainMoonLid()<0.05f,"it goes down into the plain, the meteors stop and the real moon opens");
-    CHECK(game.storyEndT>=0.f && game.storyBossDown,"then the chapter's card");
+    CHECK(game.quietT>=0.f && !game.storyLocked() && game.storyEndT<0.f && game.player.position.y<1.f,"then the quiet: on your feet on the plain, yours to walk");
+    // the portal opens; walk to it
+    static const Uint8 none[SDL_NUM_SCANCODES]={};
+    for(int f=0;f<(int)(finale::OPEN1*60)+30;++f)game.physicsTick(1.f/60,none,false);
+    { glm::vec3 at;const char* lbl=nullptr;bool bc=false;CHECK(game.gleanerObjective(at,lbl,bc) && std::string(lbl)=="THE PORTAL","a portal opens in front of it, and it is the way on");
+      glm::vec3 d=glm::normalize(game.quietPortal()-game.player.camera.position);game.player.camera.yaw=glm::degrees(std::atan2(d.z,d.x));game.player.camera.pitch=glm::degrees(std::asin(d.y));
+      game.prevCamPos=game.player.camera.position;game.render();screenshot("build/summit-portal.bmp"); }
+    Uint8 keys[SDL_NUM_SCANCODES]={};
+    for(int f=0;f<60*40 && game.storyEndT<0.f;++f){
+        glm::vec3 d=game.quietPortal()-game.player.position;d.y=0;
+        std::fill(std::begin(keys),std::end(keys),0);
+        if(game.quietThrough<0.f){game.player.camera.yaw=glm::degrees(std::atan2(d.z,d.x));keys[SDL_SCANCODE_W]=1;}
+        game.physicsTick(1.f/60,keys,false);
+    }
+    std::printf("      portal: through %.2f, card %.1f\n",game.quietThrough,game.storyEndT);
+    CHECK(game.storyEndT>=0.f && game.storyBossDown,"walk into it: it takes you, and the chapter's card");
     g_practice=false;g_godMode=false;g_storyChapter=1;
 }
 
@@ -507,10 +531,13 @@ static void checkGleanerWalkInRuntime(AudioSystem& audio) {
     for(int f=0;f<60*12 && game.gleanerPhase!=GameplayState::GleanerPhase::CLIMB;++f)step(game.gleaner.pos,false);
     CHECK(game.gleanerPhase==GameplayState::GleanerPhase::CLIMB,"it kneels where it stopped and the updraft opens");
     worst=0.f;
-    for(int f=0;f<60*60;++f)step(game.gleaner.pos,false);   // and on into its front
+    // and on, straight at it: the updraft is right there in front of its face, in your way
+    int onBack=-1;
+    for(int f=0;f<60*60 && onBack<0;++f){step(game.gleaner.pos,false);if(game.onGleanerDeck()&&game.player.onGround)onBack=f;}
     rel=game.player.position-game.gleaner.pos;
-    std::printf("      into its front: worst step %.2f m, stopped %.0f m ahead of it, %.0f m to its side\n",worst,glm::dot(rel,game.gleaner.fwd()),glm::dot(rel,game.gleaner.right()));
-    CHECK(worst<1.5f && std::abs(glm::dot(rel,game.gleaner.fwd())-112.f*Gleaner::SCALE)<3.f,"walking on into it, you stop against its front: no shove to its fist");
+    std::printf("      into its front: worst step %.2f m, on its back after %.1f s at %.0f m ahead of it, %.0f m to its side\n",worst,onBack/60.f,glm::dot(rel,game.gleaner.fwd()),glm::dot(rel,game.gleaner.right()));
+    CHECK(worst<1.5f && onBack>=0 && onBack<60*25,"walking straight on at it, you walk into the heat in front of its face and it throws you onto its back");
+    CHECK(std::abs(game.player.velocity.x)+std::abs(game.player.velocity.z)<12.f,"the throw lands you on the roof: you do not skid across it");
     // Into its flank, its fists and its back, from every side: never a jump, and always a way back out
     const float K=Gleaner::SCALE;
     struct Probe{const char* name;glm::vec3 from;glm::vec3 at;};
@@ -549,6 +576,153 @@ static void checkGleanerWalkInRuntime(AudioSystem& audio) {
         CHECK(game.onGleanerDeck() && game.player.onGround,"hooked into it, the rope hauls you up onto its back");
         for(int f=0;f<10;++f)game.physicsTick(1.f/60,noKeysDev(),false);
         CHECK(game.gleanerPhase==GameplayState::GleanerPhase::TENDER,"landing there by the grapple starts the Tender as the updraft does");
+    }
+    g_practice=false;g_godMode=false;g_storyChapter=1;
+}
+
+
+// The brood's new ways through the live game: the Gleaner's own fist on its back (and on its brood), the
+// Tender's grab (caught, shot free; punched; dunked), the Sieve's knees (two broken: it collapses), the
+// Caller rung by shots off its shell until its own meteor brings it down, and the limbs dying with them
+static void checkGleanerBroodRuntime(AudioSystem& audio) {
+    static const Uint8 noKeys[SDL_NUM_SCANCODES]={};
+    auto aimAt=[](GameplayState& game,glm::vec3 at){glm::vec3 d=glm::normalize(at-game.player.camera.position);
+        game.player.camera.yaw=glm::degrees(std::atan2(d.z,d.x));game.player.camera.pitch=glm::degrees(std::asin(glm::clamp(d.y,-1.f,1.f)));};
+    auto shoot=[](GameplayState& game){game.activeWeapon=0;game.weapons[0].ammo=8;game.weapons[0].cooldown=0;game.fireWeapon(0);};
+    g_storyChapter=4;g_startArena=g_startWave=0;g_practice=true;g_godMode=true;g_bossRun=-1;
+    {   // ---- on its roof: the Tender, and the fist ----
+        g_devOverlay="plaindeck";
+        auto live=std::make_unique<GameplayState>(audio,nullptr,GameMode::STORY);auto& game=*live;
+        g_devOverlay.clear();
+        auto tick=[&](float s){for(int f=0;f<(int)(s*60);++f)game.physicsTick(1.f/60,noKeys,false);};
+        CHECK(game.gleanerPhase==GameplayState::GleanerPhase::TENDER && game.onGleanerDeck(),"brood: on its roof, the Tender waking");
+        tick(3.f);
+        // The fist: it comes up over its back at the edge nearest you
+        game.player.position={game.deckLo.x+6.f,game.deckY+.05f,(game.deckLo.y+game.deckHi.y)*.5f};game.player.velocity={0,0,0};
+        game.swatCd=0.1f;game.tender.pos={game.deckHi.x-10.f,game.deckY,game.deckHi.y-10.f};
+        int a=-1;for(int f=0;f<60*3 && a<0;++f){game.physicsTick(1.f/60,noKeys,false);for(int k=0;k<2;++k)if(game.gleaner.swatting(k))a=k;}
+        CHECK(a==0,"its left fist comes up for you at the roof's west edge");
+        if(a>=0){
+            glm::vec3 at=game.gleaner.arm[a].swatAt;
+            CHECK(at.x<game.deckLo.x && std::abs(at.y-game.deckY)<.1f,"it will come down just outside the edge, on the roof's level");
+            float high=0;for(int f=0;f<(int)(Gleaner::SWAT_RAISE*60)-5;++f){game.physicsTick(1.f/60,noKeys,false);high=std::max(high,game.gleaner.hand(a).y-game.deckY);}
+            std::printf("      swat: its fist %.0f m over the roof at the top of its tell\n",high);
+            CHECK(high>60.f,"raised over its back: you can see it coming");
+            { aimAt(game,game.gleaner.hand(a)+glm::vec3{0,30,0});game.prevCamPos=game.player.camera.position;game.render();screenshot("build/gleaner-swat.bmp"); }
+            // stay under it (no god mode) and put the Tender under it too
+            g_godMode=false;float hp0=game.styleSystem.health;
+            game.tender.pos={at.x+hands::CRUSH_R-8.f,game.deckY,at.z};game.tender.state=Tender::CHASE;float th0=game.tender.hp;
+            game.player.position={game.deckLo.x+4.f,game.deckY+.05f,at.z+6.f};game.player.velocity={0,0,0};game.invincFrames=0;
+            for(int f=0;f<30;++f)game.physicsTick(1.f/60,noKeys,false);
+            g_godMode=true;
+            std::printf("      swat: you took %.0f, the Tender %.0f (state %d), rings %d\n",hp0-game.styleSystem.health,th0-game.tender.hp,(int)game.tender.state,(int)game.swatRings.size());
+            CHECK(hp0-game.styleSystem.health>20.f,"caught under its fist: it hurts");
+            CHECK(th0-game.tender.hp>=400.f && game.tender.state==Tender::STAGGER,"the Tender caught under it is crushed and staggers");
+            CHECK(!game.swatRings.empty(),"a shockwave runs out across the roof from it");
+            // the ring: on the ground it hits; jumped, it passes under
+            game.swatRings.clear();game.swatRings.push_back({at,0.f,false});   // (a fresh one: the first already crushed you)
+            game.player.position={game.deckHi.x-12.f,game.deckY+.05f,at.z};game.player.velocity={0,0,0};
+            g_godMode=false;game.invincFrames=0;hp0=game.styleSystem.health;
+            for(int f=0;f<60*3;++f)game.physicsTick(1.f/60,noKeys,false);
+            g_godMode=true;
+            CHECK(hp0-game.styleSystem.health>5.f,"standing still, its shockwave reaches you across the roof");
+            tick(Gleaner::SWAT_HOLD+Gleaner::SWAT_BACK);
+            CHECK(!game.gleaner.swatting(a),"and its fist goes back down to the plain");
+        }
+        game.styleSystem.health=100.f;game.swatCd=99.f;
+        // The grab: caught, then shot free through its lip
+        auto grabFrom=[&](){game.tender.state=Tender::CHASE;game.tender.t=0;game.tender.flash=0;
+            game.tender.pos={(game.deckLo.x+game.deckHi.x)*.5f,game.deckY,(game.deckLo.y+game.deckHi.y)*.5f};game.tender.yaw=0;
+            game.player.position=game.tender.pos+glm::vec3{0,.05f,7.5f};game.player.velocity={0,0,0};
+            game.tender.state=Tender::GRAB_WIND;game.tender.t=0;};
+        grabFrom();
+        bool caught=false;for(int f=0;f<60*2 && !caught;++f){game.physicsTick(1.f/60,noKeys,false);caught=game.tender.holding;}
+        CHECK(caught,"standing in front of its tongs when they lunge: the Tender has you");
+        tick(.6f);
+        float lift=game.player.position.y-game.deckY;
+        CHECK(lift>4.f && game.tender.lipOpen(),"it lifts you up in front of its crucible, the lip open to you");
+        { aimAt(game,game.tender.lipPoint());game.prevCamPos=game.player.camera.position;game.render();screenshot("build/gleaner-grab.bmp"); }
+        int shots=0;while(game.tender.holding && shots<40){aimAt(game,game.tender.lipPoint());shoot(game);++shots;tick(.05f);}
+        std::printf("      grab: lifted %.1f m, shot free after %d shots (state %d)\n",lift,shots,(int)game.tender.state);
+        CHECK(!game.tender.holding && game.tender.state==Tender::STAGGER && shots<12,"shooting its lip while it holds you breaks you free and staggers it");
+        tick(3.f);
+        CHECK(game.player.onGround && game.onGleanerDeck(),"dropped, you land back on the roof");
+        // punched as the tongs come
+        grabFrom();
+        bool parried=false;
+        for(int f=0;f<60*2 && !parried;++f){
+            bool punch=game.tender.parryable();
+            if(punch)aimAt(game,game.tender.base()+glm::vec3{0,4,0});
+            game.punchCooldown=0.f;game.physicsTick(1.f/60,noKeys,punch);
+            parried=game.tender.state==Tender::STAGGER;
+        }
+        CHECK(parried && !game.tender.holding,"punch its white tongs as they lunge: they jam and it staggers");
+        // and too slow: dunked, thrown out across the roof
+        grabFrom();g_godMode=false;game.invincFrames=0;float hp1=game.styleSystem.health;
+        for(int f=0;f<60*4;++f)game.physicsTick(1.f/60,noKeys,false);
+        g_godMode=true;
+        std::printf("      dunked: took %.0f, now %.0f m from it\n",hp1-game.styleSystem.health,glm::length(game.player.position-game.tender.pos));
+        CHECK(hp1-game.styleSystem.health>20.f && !game.tender.holding,"held too long, it dunks you and throws you out");
+        game.styleSystem.health=100.f;
+        // The Tender killed: its tether burns into its left arm, and that arm dies
+        game.tender.state=Tender::CHASE;game.tender.hurt(game.tender.hp+10.f,0);tick(.2f);
+        CHECK(game.gleanerPhase==GameplayState::GleanerPhase::SIEVE && game.gleaner.arm[0].dead && game.tetherBurn[0]>=0.f,"the Tender dead, its tether burns out and the Gleaner's left arm dies");
+        game.swatCd=0.f;int left=-1;for(int f=0;f<60*4;++f){game.physicsTick(1.f/60,noKeys,false);if(game.gleaner.swatting(0))left=0;}
+        CHECK(left<0,"its dead arm never swats again");
+    }
+    {   // ---- on its shoulders: the Sieve's knees ----
+        g_devOverlay="plainsaddle";
+        auto live=std::make_unique<GameplayState>(audio,nullptr,GameMode::STORY);auto& game=*live;
+        g_devOverlay.clear();
+        auto tick=[&](float s){for(int f=0;f<(int)(s*60);++f)game.physicsTick(1.f/60,noKeys,false);};
+        tick(.2f);
+        tick(MeteorRain::CALLED_FALL+3.6f);
+        CHECK(game.sieve.fighting() && game.gleaner.arm[0].dead && !game.gleaner.arm[1].dead,"brood: the Sieve fights; the Gleaner's left arm is dead, its right alive");
+        game.swatCd=99.f;
+        int shots=0;
+        for(int leg=0;leg<2;++leg){
+            int i=leg*2;   // (two opposite knees)
+            while(!game.sieve.broken[i] && game.sieve.fighting() && shots<80){aimAt(game,game.sieve.knee(i));shoot(game);++shots;tick(.05f);}
+        }
+        tick(.1f);
+        std::printf("      knees: %d broken after %d shots, state %d, hp %.0f\n",game.sieve.brokenLegs(),shots,(int)game.sieve.state,game.sieve.hp);
+        CHECK(game.sieve.state==Sieve::TOPPLED,"two knees shot through: the Sieve collapses");
+        tick(.6f);
+        CHECK(game.sieve.heartOpen() && game.sieve.heart().y<game.saddleY+3.f,"down on the plate, its heart open from every side");
+        { aimAt(game,game.sieve.heart());game.prevCamPos=game.player.camera.position;game.render();screenshot("build/gleaner-sieve-down.bmp"); }
+        float hp0=game.sieve.hp;aimAt(game,game.sieve.heart());shoot(game);tick(.05f);
+        std::printf("      a shot on its heart while it is down: %.0f\n",hp0-game.sieve.hp);
+        CHECK(hp0-game.sieve.hp>150.f,"a shot through its fallen basket hits hard (x2 on the heart)");
+        tick(Sieve::TOPPLE_TIME+Sieve::REFORGE_TIME+.5f);
+        CHECK(game.sieve.state!=Sieve::TOPPLED && game.sieve.brokenLegs()==0,"it reforges its knees and stands back up");
+        game.swatCd=0.f;int arm=-1;for(int f=0;f<60*4 && arm<0;++f){game.physicsTick(1.f/60,noKeys,false);for(int k=0;k<2;++k)if(game.gleaner.swatting(k))arm=k;}
+        CHECK(arm==1,"on its shoulders, only its living right arm swats");
+    }
+    {   // ---- on its crown: the Caller rung ----
+        g_devOverlay="plaincrown";
+        auto live=std::make_unique<GameplayState>(audio,nullptr,GameMode::STORY);auto& game=*live;
+        g_devOverlay.clear();
+        auto tick=[&](float s){for(int f=0;f<(int)(s*60);++f)game.physicsTick(1.f/60,noKeys,false);};
+        tick(14.f);   // (its head up)
+        game.player.position={(game.crownLo.x+game.crownHi.x)*.5f,game.saddleY+.05f,(game.crownLo.y+game.crownHi.y)*.5f};game.player.velocity={0,0,0};
+        tick(.5f);
+        CHECK(game.caller.alive(),"brood: the Caller comes down over its crown");
+        tick(Caller::ARRIVE_TIME+.5f);
+        int shots=0;bool rung=false;float hp0=game.caller.hp;
+        while(!rung && game.caller.fighting() && shots<120){
+            glm::vec3 side=glm::normalize(glm::cross(game.caller.pos-game.player.camera.position,glm::vec3{0,1,0}));
+            aimAt(game,game.caller.pos+side*(Caller::BELL_R*0.85f));shoot(game);++shots;tick(.08f);
+            rung=game.caller.state==Caller::OVERRUNG;
+        }
+        std::printf("      caller: rung after %d shots off its shell (%.0f hp off it)\n",shots,hp0-game.caller.hp);
+        CHECK(rung,"shots off its shell ring it until it cannot stop: overrun");
+        { aimAt(game,game.caller.pos);game.prevCamPos=game.player.camera.position;game.render();screenshot("build/gleaner-caller-rung.bmp"); }
+        float hp1=game.caller.hp;
+        tick(Caller::OVERRUN_TIME+.3f);
+        std::printf("      struck by its own meteor: %.0f, state %d\n",hp1-game.caller.hp,(int)game.caller.state);
+        CHECK(hp1-game.caller.hp>=500.f && game.caller.grounded(),"its own meteor strikes it down onto the crown");
+        game.swatCd=0.f;int arm=-1;for(int f=0;f<60*3;++f){game.physicsTick(1.f/60,noKeys,false);for(int k=0;k<2;++k)if(game.gleaner.swatting(k))arm=k;}
+        CHECK(arm<0,"both its arms dead: no swats over its crown");
     }
     g_practice=false;g_godMode=false;g_storyChapter=1;
 }
@@ -1073,6 +1247,7 @@ int main() {
         checkPlainRuntime(audio);
         checkGleanerFightRuntime(audio);
         checkGleanerWalkInRuntime(audio);
+        checkGleanerBroodRuntime(audio);
         checkSwordStatueRuntime(audio);
         checkSummitRuntime(audio);
         GameSettings visualSettings;visualSettings.ambientDetail=3;

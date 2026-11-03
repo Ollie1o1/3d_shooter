@@ -21,7 +21,7 @@
 #include <vector>
 
 struct GleanerEvent {
-    enum Kind { SLAM, SCREAM } kind;
+    enum Kind { SLAM, SCREAM, SWAT_RAISE, SWAT } kind;   // SWAT: a fist come down on its own back (the fight on it)
     glm::vec3 at;
     float size;
 };
@@ -42,7 +42,15 @@ struct Gleaner {
         glm::vec3 plant{0.f}, from{0.f};
         bool  swinging = false;
         float sinceLanded = 9.f;   // seconds since this fist came down (the body dips onto it)
+        // A SWAT: kneeling, it lifts this fist up over its own back and brings it down on you there.
+        // swatT seconds into it (-1: none); swatAt where the fist comes down (its knuckles' ground)
+        float swatT = -1.f;
+        glm::vec3 swatAt{0.f};
+        bool  dead = false;        // its brood member is dead: the arm hangs, dark, and will not swat
     };
+    // The swat's beats: up and over (the tell: its shadow on the roof), down, held there, back to the plain
+    static constexpr float SWAT_RAISE = 2.9f, SWAT_FALL = 0.32f, SWAT_HOLD = 2.4f, SWAT_BACK = 2.6f;
+    static constexpr float SWAT_LIFT = 95.f;   // how far over its knuckles' mark it holds the fist (metres)
 
     glm::vec3 pos{0.f};
     float yaw = 0.f, targetYaw = 0.f;
@@ -106,8 +114,9 @@ struct Gleaner {
         float start = a == 0 ? 0.f : 0.5f, len = 0.42f;
         return std::clamp((gaitT - start) / len, 0.f, 1.f);
     }
-    // The fist, where it is now: planted, or partway along its arc
+    // The fist, where it is now: planted, or partway along its arc (or a swat's)
     glm::vec3 hand(int a) const {
+        if (arm[a].swatT >= 0.f) return swatHand(a);
         if (!arm[a].swinging) return arm[a].plant;
         float u = swingU(a);
         glm::vec3 to = home(a, lead());
@@ -116,6 +125,38 @@ struct Gleaner {
         return p;
     }
     float lead() const { return speed * gaitPeriod * 0.5f; }
+
+    // ---- the swat ----
+    bool swatting(int a) const { return arm[a].swatT >= 0.f; }
+    bool swattingAny() const { return swatting(0) || swatting(1); }
+    // 0..1 how far through the tell (raised over its mark): its shadow darkening, the ring tightening
+    float swatTell(int a) const { return swatting(a) ? std::clamp(arm[a].swatT / (SWAT_RAISE + SWAT_FALL), 0.f, 1.f) : 0.f; }
+    bool swatDown(int a) const { float t = arm[a].swatT; return t >= SWAT_RAISE + SWAT_FALL && t < SWAT_RAISE + SWAT_FALL + SWAT_HOLD; }
+    glm::vec3 swatHand(int a) const {
+        const Arm& r = arm[a];
+        const float t = r.swatT;
+        const glm::vec3 over = r.swatAt + glm::vec3{0.f, SWAT_LIFT, 0.f} - right() * (side(a) * 18.f);   // (held out over its side a little)
+        if (t < SWAT_RAISE) {   // up off the plain and over, in an arc out to its side
+            float u = ease(t / SWAT_RAISE);
+            glm::vec3 p = glm::mix(r.plant, over, u);
+            p += right() * (side(a) * 40.f * std::sin(3.14159f * u));
+            p.y += 0.f;
+            return p + glm::vec3{0.f, 1.5f * std::sin(clock * 9.f), 0.f} * u;   // (straining)
+        }
+        if (t < SWAT_RAISE + SWAT_FALL) { float u = (t - SWAT_RAISE) / SWAT_FALL; return glm::mix(over, r.swatAt, u * u); }
+        if (t < SWAT_RAISE + SWAT_FALL + SWAT_HOLD) return r.swatAt;
+        float u = ease((t - SWAT_RAISE - SWAT_FALL - SWAT_HOLD) / SWAT_BACK);
+        glm::vec3 p = glm::mix(r.swatAt, r.plant, u);
+        p.y += 40.f * std::sin(3.14159f * u);
+        return p;
+    }
+    // Bring fist `a` down on `at` (its knuckles' mark, on its back). False if it can't now
+    bool swat(int a, glm::vec3 at) {
+        if (arm[a].dead || swattingAny() || arm[a].swinging) return false;
+        arm[a].swatT = 0.f; arm[a].swatAt = at;
+        events.push_back({GleanerEvent::SWAT_RAISE, at, 1.f});
+        return true;
+    }
 
     // Elbow by two-bone IK: bent out to the side and up
     glm::vec3 elbow(int a) const {
@@ -166,6 +207,15 @@ struct Gleaner {
         for (int a = 0; a < 2 && !needs; ++a)
             needs = glm::length(arm[a].plant - home(a, 0.f)) > 18.f * SCALE && rise > 0.5f;
         for (auto& a : arm) a.sinceLanded += dt;
+        for (int a = 0; a < 2; ++a) {   // a swat under way
+            Arm& r = arm[a];
+            if (r.swatT < 0.f) continue;
+            const float was = r.swatT;
+            r.swatT += dt;
+            const float hit = SWAT_RAISE + SWAT_FALL;
+            if (was < hit && r.swatT >= hit) events.push_back({GleanerEvent::SWAT, r.swatAt, 1.f});
+            if (r.swatT >= hit + SWAT_HOLD + SWAT_BACK) { r.swatT = -1.f; r.sinceLanded = 0.f; }
+        }
         if (needs || arm[0].swinging || arm[1].swinging) {
             float was = gaitT;
             gaitT += dt / gaitPeriod;

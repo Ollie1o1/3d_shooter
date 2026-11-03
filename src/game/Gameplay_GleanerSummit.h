@@ -55,6 +55,8 @@ inline void GameplayState::wakeEye() {
 
 // The summit: the eye's fight, then the collapse (its own cutscene)
 inline void GameplayState::updateSummit(float dt) {
+    if (quietT >= 0.f) { updateQuiet(dt); return; }   // (after it: Gameplay_GleanerFinale.h)
+    if (tearT >= 0.f) { updateTear(dt); return; }
     if (summitEndT >= 0.f) { updateSummitEnd(dt); return; }
     EyeCore& e = eye;
     if (e.state == EyeCore::DORMANT) {
@@ -113,6 +115,8 @@ inline void GameplayState::updateSummit(float dt) {
         }
     }
     e.events.clear();
+    shedFightPotion(6, e.health01(), e.pos, e.alive());   // (one at each of its falters)
+    shedFightPotion(7, e.health01(), e.pos, e.alive());
     if (!playerDead && e.alive()) {
         // Its sweep: burns along its line (jump it; a chimney between it and you shelters you)
         if (e.state == EyeCore::SWEEP && eyeHitCd <= 0.f) {
@@ -160,23 +164,6 @@ inline void GameplayState::updateSummit(float dt) {
     }
 }
 
-// The interact key beside it where it lies: tear it out
-inline bool GameplayState::tryTearEye() {
-    if (!plain() || gleanerPhase != GleanerPhase::SUMMIT || summitEndT >= 0.f || playerDead || !eye.canTear(player.position)) return false;
-    eye.tear();
-    eye.events.clear();
-    summitEndT = 0.f;
-    viewModel.triggerParry(true);
-    hitStopFrames = std::max(hitStopFrames, 12);
-    fx.spawnBurst(eye.pos, {3.f, 0.6f, 0.25f}, 160, 22.f, 1.6f, 4.f);
-    shake(1.2f, 0.08f);
-    SfxMixer::Opts o; o.group = SoundGroup::UI; o.priority = true; o.unducked = true;
-    o.pitch = 0.6f; audio.playOpts("finisher", o);
-    o.pitch = 0.5f; audio.playOpts("explosion", o);
-    storyBossDown = true;
-    return true;
-}
-
 // The collapse: the white, then the far shot of it going down into the plain; the meteors stop; the moon
 inline void GameplayState::updateSummitEnd(float dt) {
     const float t0 = summitEndT;
@@ -207,10 +194,7 @@ inline void GameplayState::updateSummitEnd(float dt) {
         shake(2.5f, 0.05f);
     }
     if (crossed(summit::MOON0)) { SfxMixer::Opts o; o.group = SoundGroup::UI; o.priority = true; o.pitch = 0.5f; audio.playOpts("gleaner_blink", o); }
-    if (t >= summit::END_LEN) {   // the chapter's card
-        summitEndT = summit::END_LEN;
-        if (storyEndT < 0.f) { storyEndT = 0.f; saveStoryProgress(); logRun("end"); audio.play("wave", 100, SoundGroup::UI, true); }
-    }
+    if (t >= summit::END_LEN) beginQuiet();   // then the quiet, and the portal (Gameplay_GleanerFinale.h)
 }
 
 // The far shot: from out on the plain, it filling the frame and going down
@@ -230,7 +214,8 @@ inline float GameplayState::summitMoonOpen() const {
 inline void GameplayState::gatherEye(std::vector<BoxInstance>& out) {
     using namespace rig; using glm::vec3;
     const EyeCore& e = eye;
-    if (e.state == EyeCore::DORMANT || (e.state == EyeCore::TORN && summitEndT > summit::CUT)) return;
+    if (quietT >= 0.f || e.state == EyeCore::DORMANT || (e.state == EyeCore::TORN && summitEndT > summit::CUT)) return;
+    gatherTear(out);
     const float ball = (float)meshlib::lumpBall();
     const float R = EyeCore::R, pulse = 0.8f + 0.2f * std::sin(gameClock * 3.f);
     const vec3 red{3.2f, 0.35f, 0.12f}, gold{2.6f, 1.9f, 0.5f}, iron{0.1f, 0.08f, 0.075f}, rust{0.24f, 0.11f, 0.06f};
@@ -242,14 +227,16 @@ inline void GameplayState::gatherEye(std::vector<BoxInstance>& out) {
         m[0] = glm::vec4(x * size.x, 0.f); m[1] = glm::vec4(y * size.y, 0.f); m[2] = glm::vec4(z * size.z, 0.f); m[3] = glm::vec4(at, 1.f);
         return m;
     };
-    const float dim = e.state == EyeCore::FALLEN ? 0.35f + 0.25f * std::sin(gameClock * 2.f) : e.state == EyeCore::TORN ? 2.f : 1.f;
+    const float dim = e.state == EyeCore::FALLEN ? 0.35f + 0.25f * std::sin(gameClock * 2.f)
+                    : e.state == EyeCore::TORN ? (tearT >= 0.f ? glm::mix(1.4f, 0.04f, finale::sm(finale::PULL1 - 0.2f, finale::PULL1 + 0.5f, tearT)) : 0.04f) : 1.f;   // (its core out: dark)
     const vec3 glow = red * pulse * dim + vec3{2.f} * e.flash;
     // the core, and its iron back
     push(out, T(e.pos) * S(vec3{R * 2.f}), {0.5f, 0.06f, 0.03f}, glow * 0.55f); out.back().mesh = ball;
     push(out, T(e.pos - f * (R * 0.35f)) * S(vec3{R * 2.1f}), iron, glow * 0.04f); out.back().mesh = ball;
     // the iris and its slit pupil, on the face toward you
     push(out, basis(e.pos + f * (R * 0.82f), r, u, f, vec3{R * 1.3f, R * 1.3f, R * 0.5f}), {0.7f, 0.1f, 0.04f}, glow * (0.5f + 1.2f * e.open)); out.back().mesh = ball;
-    const vec3 pupilGlow = e.state == EyeCore::LANCE_AIM || e.state == EyeCore::LANCE ? gold * 1.2f : vec3{0.f};
+    vec3 pupilGlow = e.state == EyeCore::LANCE_AIM || e.state == EyeCore::LANCE ? gold * 1.2f : vec3{0.f};
+    if (tearT >= 0.f) pupilGlow = vec3{3.2f, 1.3f, 0.5f} * 1.6f * (1.f - finale::sm(finale::PULL1 - 0.2f, finale::PULL1 + 0.4f, tearT));   // (torn open: white-hot inside)
     push(out, basis(e.pos + f * (R * 1.06f), r, u, f, vec3{0.5f + 0.3f * e.open, R * 1.3f * (0.3f + 0.7f * e.open), 0.25f}), {0.02f, 0.f, 0.f}, pupilGlow);
     // six lids round it: shut over the face, swinging back as it opens
     for (int k = 0; k < 6; ++k) {

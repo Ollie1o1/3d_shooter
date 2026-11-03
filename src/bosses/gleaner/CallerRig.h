@@ -19,11 +19,12 @@ inline void draw(std::vector<BoxInstance>& out, const Caller& c, float ball) {
     const vec3 iron{0.13f, 0.11f, 0.1f}, verd{0.12f, 0.16f, 0.13f}, rust{0.28f, 0.13f, 0.07f}, cloth{0.09f, 0.05f, 0.05f}, soot{0.04f, 0.035f, 0.03f};
     const float flare = c.lampFlare();
     const vec3 red = vec3{3.2f, 0.25f, 0.12f} * (1.f - die) + vec3{2.2f, 1.8f, 1.6f} * flare * (0.7f + 0.3f * std::sin(t * 40.f));
-    const vec3 white = vec3{1.5f} * c.flash;
+    const vec3 white = vec3{1.5f} * c.flash + vec3{1.6f, 1.2f, 0.7f} * (c.resonance * c.resonance * (0.5f + 0.5f * std::sin(t * (20.f + 40.f * c.resonance))));   // ringing: it glows
     auto box = [&](const mat4& m, vec3 col, vec3 e = vec3{0.f}) { push(out, m, col, e + white * 0.2f); };
     auto lump = [&](const mat4& m, vec3 col, vec3 e = vec3{0.f}) { push(out, m, col, e + white * 0.2f); out.back().mesh = ball; };
     // Its frame: +Y up through the bell (the mouth below), swinging as it tolls
-    mat4 M = gleaner::alongZ(c.pos, c.axis) * RX(1.5708f) * RZ(0.35f * c.swing * std::sin(t * 4.2f)) * RX(0.06f * std::sin(t * 1.3f));
+    const float ring = c.resonance * 0.05f * std::sin(t * 50.f);   // (ringing: it shivers)
+    mat4 M = gleaner::alongZ(c.pos, c.axis) * RX(1.5708f) * RZ(0.35f * c.swing * std::sin(t * 4.2f) + ring) * RX(0.06f * std::sin(t * 1.3f) + ring);
     const float H = Caller::BELL_H, R = Caller::BELL_R;
     // ---- the bell: rings of plate, flaring to the mouth; a crack down one side glowing from inside ----
     const int LV = 6, PAN = 14;
@@ -46,6 +47,13 @@ inline void draw(std::vector<BoxInstance>& out, const Caller& c, float ball) {
         box(M * RY(-a) * T(vec3{R + 0.35f, -H * 0.5f + 0.15f, 0.f}) * S(vec3{0.7f, 0.6f, 2.f * 3.1416f * R / PAN * 1.1f}), rust);
     }
     box(M * T(vec3{0.f, H * 0.5f + 0.1f, 0.f}) * S(vec3{R * 1.15f, 0.5f, R * 1.15f}), iron);   // its crown
+    if (c.resonance > 0.02f) for (int k = 0; k < 3; ++k) {   // rings of sound standing off it as it rings
+        float u = std::fmod(t * 1.8f + k / 3.f, 1.f), rr = R * (1.1f + 1.4f * u);
+        for (int q = 0; q < 16; ++q) {
+            float a = q * 0.3927f;
+            push(out, M * T(vec3{std::cos(a) * rr, -H * 0.1f, std::sin(a) * rr}) * RY(-a) * S(vec3{0.08f, 0.08f, rr * 0.4f}), vec3{0.f}, vec3{2.4f, 1.8f, 1.f} * c.resonance * (1.f - u));
+        }
+    }
     for (float s : {-1.f, 1.f}) box(M * T(vec3{s * 0.7f, H * 0.5f + 1.1f, 0.f}) * S(vec3{0.5f, 1.8f, 0.6f}), rust);   // the hanger it was cast with
     box(M * T(vec3{0.f, H * 0.5f + 2.f, 0.f}) * S(vec3{1.9f, 0.5f, 0.6f}), rust);
     // ---- the lamp where its clapper should hang, on a chain ----
