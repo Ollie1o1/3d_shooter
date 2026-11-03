@@ -157,6 +157,36 @@ inline void GameplayState::buildGleanerDeck() {
     spatialGrid.build(level.walls);
 }
 
+// The next place to reach. `beacon`: draw a ring and a light on it in the world too (the updraft
+// and the Gleaner itself are their own beacons)
+inline bool GameplayState::gleanerObjective(glm::vec3& at, const char*& label, bool& beacon) const {
+    if (!plain() || plainReveal.active() || playerDead) return false;
+    beacon = false;
+    const GleanerPhase ph = gleanerPhase;
+    if (ph == GleanerPhase::APPROACH || ph == GleanerPhase::KNEELING) { at = gleaner.eye(); label = "THE GLEANER"; return true; }
+    if (insideGleaner()) {
+        const int room = gut::roomAt(player.position);
+        if (gutShaftOpen >= room && (int)ph - (int)GleanerPhase::HEART > room) {   // its organ dead: the shaft up
+            at = gut::shaft(room) + glm::vec3{0.f, 2.f, 0.f}; label = room < 2 ? "SHAFT UP" : "CHIMNEY"; beacon = true; return true;
+        }
+        return false;
+    }
+    if (deckWallsFrom < 0 || ph > GleanerPhase::BROOD) return false;
+    if (ph == GleanerPhase::CLIMB || !onGleanerBack()) {   // (fallen off it: the same way back up)
+        at = updraftBase + glm::vec3{0.f, 4.f, 0.f}; label = ph == GleanerPhase::CLIMB ? "UPDRAFT / OR HOOK IT" : "BACK UP / UPDRAFT OR HOOK IT"; return true;
+    }
+    if (ph == GleanerPhase::SIEVE && sieve.state == Sieve::DORMANT && !sieveForged && !onSaddle()) {
+        at = {(deckLo.x + deckHi.x) * 0.5f, deckY + 0.1f, deckHi.y - 1.f}; label = "DROP TO ITS SHOULDERS"; beacon = true; return true;
+    }
+    if (ph == GleanerPhase::CALLER && deckCrown && caller.state == Caller::DORMANT) {
+        at = {(crownLo.x + crownHi.x) * 0.5f, saddleY + 0.1f, (crownLo.y + crownHi.y) * 0.5f}; label = "ITS CROWN"; beacon = true; return true;
+    }
+    if (ph == GleanerPhase::BROOD && furnaceDoor) {
+        at = {(saddleLo.x + saddleHi.x) * 0.5f, saddleY + 0.1f, saddleLo.y - 2.f}; label = "FURNACE DOOR"; beacon = true; return true;
+    }
+    return false;
+}
+
 // Where you stand on the roof after a retry: just inside the gap, the fight ahead of you
 inline glm::vec3 GameplayState::deckCheckpoint() const {
     return {deckLo.x + 10.f, deckY + 0.05f, (deckLo.y + deckHi.y) * 0.5f};
@@ -207,6 +237,7 @@ inline void GameplayState::resetGleanerFight(bool fresh) {
         player.position = {0.f, 0.f, 110.f};
         player.camera.position = player.position + glm::vec3{0.f, 1.7f, 0.f}; prevCamPos = player.camera.position;
     }
+    gleanerScreamCd = gleanerPhase >= GleanerPhase::TENDER ? 14.f : gleanerScreamCd;   // (picked up on its back: a roar soon after)
     calledMeteorCd = 6.f; riverBurnCd = 0.f; sieveBurnCd = 0.f; broodCallCd = 12.f; callerClangCd = 0.f;
     sieve = Sieve{}; caller = Caller{}; sieveForged = false; broodWakeIn = -1.f;
     heart = CrucibleHeart{}; lungs = BellowsLungs{}; core = SortingCore{}; gutBurnCd = 0.f; gutWhite = 0.f;
@@ -264,13 +295,18 @@ inline void GameplayState::updateGleanerFight(float dt) {
     if (gleanerPhase >= GleanerPhase::CLIMB) updraftThrow();
     const glm::vec3 p = player.position;
     const float flat = glm::length(glm::vec2{p.x - g.pos.x, p.z - g.pos.z});
+    // Through the whole fight, on its back and inside it, it roars now and then (the approach has its own)
+    if (gleanerPhase >= GleanerPhase::TENDER && !g.screaming() && !playerDead) {
+        gleanerScreamCd -= dt;
+        if (gleanerScreamCd <= 0.f) { g.scream(); gleanerScreamCd = 28.f + 16.f * meteors.rnd(); }
+    }
     switch (gleanerPhase) {
     case GleanerPhase::APPROACH: {
         glm::vec3 d = gleanerplace::battleMark() - g.pos; d.y = 0.f;
         g.targetYaw = 0.f;
         g.wantSpeed = glm::length(d) > 6.f && !g.screaming() && flat > 430.f ? 3.4f : 0.f;   // (you reached it first: it stops where it is)
         gleanerScreamCd -= dt;
-        if (gleanerScreamCd <= 0.f && !g.screaming()) { g.scream(); gleanerScreamCd = 40.f + 25.f * meteors.rnd(); }
+        if (gleanerScreamCd <= 0.f && !g.screaming()) { g.scream(); gleanerScreamCd = 24.f + 14.f * meteors.rnd(); }
         // It calls the sky down on you while you come
         calledMeteorCd -= dt;
         if (calledMeteorCd <= 0.f && flat > 300.f && !playerDead) {
@@ -549,7 +585,7 @@ inline void GameplayState::updateCaller(float dt) {
     for (const auto& e : c.events) {
         switch (e.kind) {
         case CallerEvent::TOLL: {   // the loudest thing on its back: it carries
-            SfxMixer::Opts f = o; f.floor = 0.6f; audio.playOpts("caller_toll", f);
+            SfxMixer::Opts f = o; f.floor = 0.6f; f.unducked = true; audio.playOpts("caller_toll", f);
             audio.duck(4.f, 1.2f);
             shake(0.6f, 0.012f);
             break;
@@ -689,6 +725,24 @@ inline void GameplayState::gatherGleanerFight(std::vector<BoxInstance>& out) {
                  glm::vec3{0.6f, 0.15f, 0.05f}, glm::vec3{2.6f, 0.5f, 0.1f} * pulse * (0.4f + 0.6f * u));
         }
         push(out, T(m.target + glm::vec3{0.f, 0.1f, 0.f}) * S(glm::vec3{1.2f, 0.1f, 1.2f}), glm::vec3{0.f}, glm::vec3{2.6f, 0.5f, 0.1f} * pulse);
+    }
+    {   // The next place to reach: a ring of chevrons turning on it and a column of light over it
+        glm::vec3 at; const char* label = nullptr; bool beacon = false;
+        if (gleanerObjective(at, label, beacon) && beacon) {
+            const float pulse = 0.65f + 0.35f * std::sin(gameClock * 4.f);
+            const glm::vec3 gold{1.f, 0.85f, 0.35f}, foot{at.x, at.y + 0.08f, at.z};
+            for (int k = 0; k < 12; ++k) {
+                float a = gameClock * 0.8f + k * 0.5236f, r = 3.2f + 0.4f * std::sin(gameClock * 3.f);
+                push(out, T(foot + glm::vec3{std::cos(a) * r, 0.f, std::sin(a) * r}) * RY(-a) * S(glm::vec3{0.18f, 0.06f, 0.9f}), glm::vec3{0.f}, gold * 2.2f * pulse);
+            }
+            push(out, T(foot + glm::vec3{0.f, 14.f, 0.f}) * S(glm::vec3{0.12f, 28.f, 0.12f}), glm::vec3{0.f}, gold * 1.6f * pulse);
+            for (int k = 0; k < 3; ++k) {   // chevrons sliding down the light onto the spot
+                float u = std::fmod(gameClock * 0.6f + k / 3.f, 1.f);
+                glm::vec3 c = foot + glm::vec3{0.f, 1.2f + 9.f * (1.f - u), 0.f};
+                for (float sd : {-1.f, 1.f})
+                    push(out, T(c + glm::vec3{sd * 0.45f, 0.35f, 0.f}) * RY(gameClock) * RZ(sd * 0.75f) * S(glm::vec3{0.12f, 1.1f, 0.12f}), glm::vec3{0.f}, gold * 2.f * (1.f - u * 0.6f));
+            }
+        }
     }
     // The updraft: a pillar of heat you can see from across the plain, embers pouring up it
     if (gleanerPhase >= GleanerPhase::CLIMB && deckWallsFrom >= 0) {

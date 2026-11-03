@@ -131,6 +131,7 @@ inline Theme theme() {
 }
 }
 
+inline void dressGut(LevelBuilder& b);
 // The rooms' walls (iron), the heart's islands, the lungs' pillars and grate, the core's cover
 inline void buildGut(LevelBuilder& b) {
     using glm::vec3;
@@ -193,6 +194,94 @@ inline void buildGut(LevelBuilder& b) {
         vec3 c = gut::cover(k);
         b.wall(c.x - 3.f, c.y, c.z - 1.f, c.x + 3.f, c.y + 1.6f, c.z + 1.f, rust);
     }
+    dressGut(b);
+}
+
+// What makes the rooms feel like the inside of a living foundry (all of it against the walls and
+// overhead, never in the way): iron ribs arching over each room like a ribcage, buttresses between
+// them, pipes and sinew-cables, chains, slag running in channels along the walls; then each room's own
+inline void dressGut(LevelBuilder& b) {
+    using glm::vec3;
+    const vec3 O = gut::O(), iron{0.13f, 0.1f, 0.09f}, dark{0.06f, 0.045f, 0.04f}, rust{0.3f, 0.14f, 0.07f}, bone{0.36f, 0.3f, 0.25f},
+               slag{1.8f, 0.5f, 0.12f}, sinew{0.28f, 0.07f, 0.05f};
+    b.mat = Mat::METAL;
+    auto k = b.kit();
+    for (int r = 0; r < 3; ++r) {
+        const float y0 = gut::floorY(r), y1 = gut::ceilY(r), hgt = y1 - y0;
+        const glm::vec2 h = gut::half(r);
+        const float x0 = O.x - h.x, x1 = O.x + h.x, z0 = O.z - h.y, z1 = O.z + h.y;
+        // the ribs: arches across the room, from wall to wall, every few metres
+        const int ribs = 5;
+        for (int i = 0; i < ribs; ++i) {
+            float z = z0 + (i + 0.5f) * (z1 - z0) / ribs;
+            k.arch(vec3{O.x, y0 + hgt * 0.35f, z}, h.x * 2.f - 0.4f, hgt * 0.6f, 1.4f, 1.6f, i % 2 ? iron * 1.2f : bone * 0.7f, 1.5708f, 16);
+            for (float s : {-1.f, 1.f}) {   // its foot: a buttress up the wall to the arch's spring
+                float x = s < 0.f ? x0 + 0.7f : x1 - 0.7f;
+                b.prop(x - 0.7f, y0, z - 0.9f, x + 0.7f, y0 + hgt * 0.35f, z + 0.9f, iron * 1.1f);
+                b.prop(x - 0.9f, y0, z - 1.1f, x + 0.9f, y0 + 1.2f, z + 1.1f, rust);
+                b.neon(x - 0.75f, y0 + 1.6f, z - 0.05f, x + 0.75f, y0 + hgt * 0.33f, z + 0.05f, slag * 0.25f);
+            }
+        }
+        // pipes along the walls, two heights, with glowing joints; a slag channel along the foot of each long wall
+        for (float s : {-1.f, 1.f}) {
+            float x = s < 0.f ? x0 + 0.5f : x1 - 0.5f;
+            for (int p = 0; p < 2; ++p) {
+                float y = y0 + 3.f + p * 4.5f;
+                k.rod(vec3{x, y, z0 + 0.6f}, vec3{x, y, z1 - 0.6f}, 0.35f + 0.15f * p, p ? rust : iron * 1.2f, 8);
+                for (int j = 0; j < 6; ++j) {
+                    float z = z0 + (j + 0.5f) * (z1 - z0) / 6.f;
+                    b.neon(x - 0.55f, y - 0.55f, z - 0.2f, x + 0.55f, y + 0.55f, z + 0.2f, slag * 0.4f);
+                }
+            }
+            b.neon(x - 0.45f, y0 + 0.01f, z0 + 1.f, x + 0.45f, y0 + 0.06f, z1 - 1.f, slag * 0.8f);
+        }
+        // chains and sinew hanging from the ribs, in the corners and over the edges (never across the middle)
+        for (int c = 0; c < 8; ++c) {
+            float a = c * 0.785f + 0.39f;
+            float x = O.x + std::cos(a) * h.x * 0.82f, z = O.z + std::sin(a) * h.y * 0.82f;
+            float len = hgt * (0.3f + 0.25f * std::abs(std::sin(c * 1.7f + r)));
+            if (c % 2) k.rod(vec3{x, y1, z}, vec3{x, y1 - len, z}, 0.12f, dark, 4);
+            else { k.rod(vec3{x, y1, z}, vec3{x + 0.6f, y1 - len, z + 0.4f}, 0.25f, sinew, 6); k.column(vec3{x + 0.6f, y1 - len - 0.6f, z + 0.4f}, 0.45f, 0.8f, sinew * 1.2f, 6, 0.4f); }
+        }
+        // cables strung between the ribs overhead, drooping
+        for (int c = 0; c < 6; ++c) {
+            float x = x0 + 4.f + c * (h.x * 2.f - 8.f) / 5.f;
+            vec3 a{x, y1 - 0.5f, z0 + 1.f}, bb{x, y1 - 0.5f, z1 - 1.f}, m{x, y1 - 4.f - 2.f * (c % 3), O.z};
+            k.rod(a, m, 0.15f, sinew, 4); k.rod(m, bb, 0.15f, sinew, 4);
+        }
+    }
+    // The heart's room: a rim of melted slag round the flooding floor, bone teeth up its walls
+    for (int i = 0; i < 16; ++i) {
+        float a = i * 0.3927f;
+        vec3 p = O + vec3{std::cos(a) * 27.f, 0.f, std::sin(a) * 27.f};
+        k.rock(p, 1.2f + 0.5f * std::sin(i * 2.3f), 2.5f + 2.f * std::abs(std::sin(i * 1.3f)), bone * 0.6f, 40 + i, 0.3f, 5);
+    }
+    // The lungs' room: the bellows' leather pleats down its far wall, the grate's glow licking up it
+    for (int i = 0; i < 12; ++i) {
+        float y = 34.f + i * 1.9f;
+        k.box(vec3{O.x, y, O.z - 25.4f}, {60.f, 0.7f, 0.9f}, i % 2 ? sinew : dark, 0.f, i % 2 ? 0.3f : -0.3f);
+    }
+    b.neon(O.x - 30.f, 32.2f, O.z - 25.9f, O.x + 30.f, 40.f, O.z - 25.8f, slag * 0.35f);
+    // The core's room: racks of sorted bodies up its walls (what it has kept), conveyor rails overhead
+    for (int side = 0; side < 4; ++side) {
+        for (int i = 0; i < 7; ++i) {
+            float u = -24.f + i * 8.f;
+            vec3 p = side == 0 ? vec3{O.x + u, 66.f, O.z - 31.2f} : side == 1 ? vec3{O.x + u, 66.f, O.z + 31.2f} : side == 2 ? vec3{O.x - 31.2f, 66.f, O.z + u} : vec3{O.x + 31.2f, 66.f, O.z + u};
+            const bool alongX = side < 2;
+            for (int t = 0; t < 3; ++t) {   // three shelves of them
+                vec3 q = p + vec3{0.f, t * 3.2f, 0.f};
+                k.box(q + vec3{0.f, -0.2f, 0.f}, alongX ? vec3{6.f, 0.25f, 1.2f} : vec3{1.2f, 0.25f, 6.f}, rust);
+                for (int u2 = -1; u2 <= 1; ++u2) {   // a body hung on each: torso, head, a lit eye
+                    vec3 o = q + (alongX ? vec3{u2 * 1.8f, 0.9f, 0.f} : vec3{0.f, 0.9f, u2 * 1.8f});
+                    k.box(o, {0.6f, 1.1f, 0.4f}, vec3{0.15f, 0.16f, 0.18f});
+                    k.box(o + vec3{0.f, 0.8f, 0.f}, {0.35f, 0.35f, 0.35f}, vec3{0.13f, 0.14f, 0.16f});
+                    if ((i + t + u2 + side) % 5 == 0) k.box(o + vec3{0.f, 0.82f, 0.f}, {0.37f, 0.06f, 0.37f}, vec3{0.3f, 1.2f, 1.6f}).neon = true;
+                }
+            }
+        }
+    }
+    for (float s : {-1.f, 1.f}) k.box(vec3{O.x + s * 9.f, 94.f, O.z}, {1.f, 1.2f, 62.f}, iron * 1.3f);
+    for (int i = 0; i < 4; ++i) k.box(vec3{O.x, 94.f, O.z - 24.f + i * 16.f}, {20.f, 0.8f, 1.f}, rust);
 }
 
 inline LevelData buildPlain() {

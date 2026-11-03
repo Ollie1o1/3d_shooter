@@ -389,6 +389,39 @@ public:
         end2D();
     }
 
+    // The way on (a Story objective): a larger pulsing diamond in a ring, its name big under it,
+    // the distance under that; off screen, a big chevron at the edge pointing the way
+    void renderObjectiveMarker(float sx, float sy, bool onScreen, glm::vec3 color, const char* label, int metres, float clock) {
+        begin2D();
+        const float pulse = 0.75f + 0.25f * std::sin(clock * 5.f);
+        glm::vec4 c{color.r, color.g, color.b, 0.95f}, dim{color.r, color.g, color.b, 0.45f * pulse};
+        const float edge = 70.f;
+        if (!onScreen) { sx = std::clamp(sx, edge, screenW - edge); sy = std::clamp(sy, edge, screenH - edge); }
+        if (onScreen) {
+            int s = (int)(11.f + 3.f * pulse);
+            for (int i = -s; i <= s; i += 2) { int half = s - std::abs(i); ui.rect(sx - half, sy + i, half * 2 + 1, 2, c); }
+            int r = s + 8;   // the ring: a hollow diamond round it
+            for (int i = -r; i <= r; ++i) { int half = r - std::abs(i); ui.rect(sx - half, sy + i, 2, 1, dim); ui.rect(sx + half - 1, sy + i, 2, 1, dim); }
+        } else {
+            glm::vec2 d{sx - screenW * .5f, sy - screenH * .5f};
+            float len = glm::length(d); d = len > .01f ? d / len : glm::vec2{1, 0};
+            glm::vec2 side{-d.y, d.x};
+            for (int i = 0; i <= 16; ++i) for (float sign : {-1.f, 1.f}) {
+                glm::vec2 p = glm::vec2{sx, sy} - d * (float)i + side * ((float)i * .7f * sign);
+                ui.rect(p.x - 2, p.y - 2, 4, 4, c);
+            }
+        }
+        char dist[24]; std::snprintf(dist, sizeof(dist), "%dM", metres);
+        std::string text = label ? label : "";
+        float half = (float)text.size() * 6.f;
+        float x = std::clamp(sx, half + 12.f, std::max(half + 12.f, screenW - half - 12.f));
+        float y = std::min(sy + 28.f, (float)screenH - 44.f);
+        if (!onScreen && sy > screenH * 0.5f) y = sy - 60.f;
+        ui.textShadow(text.c_str(), x, y, 2, c, true);
+        ui.textShadow(dist, x, y + 20.f, 1, glm::vec4{1.f, 1.f, 1.f, 0.85f}, true);
+        end2D();
+    }
+
     // Fading control legend shown for the first few seconds of a run.
     // FAST mode countdown: 3, 2, 1, GO
     void renderCountdown(float t) {

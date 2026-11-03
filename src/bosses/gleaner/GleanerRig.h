@@ -210,6 +210,123 @@ inline void draw(std::vector<BoxInstance>& out, const Gleaner& g, const Look& lo
         }
     }
 
+    // ---- its back, up close: the battlefields' detail (the roof, the saddle, its crown) ----
+    if (g.rise > 0.99f) {
+        auto hsh = [](float a, float b) { float v = std::sin(a * 12.9898f + b * 78.233f) * 43758.5453f; return v - std::floor(v); };
+        const vec3 base = furnaceBase();
+        const float top = deckTop();
+        // A floor of plates: each its own shade, some rust, some scorched; rivets at their corners
+        auto plates = [&](float x0, float z0, float x1, float z1, float y, int nx, int nz, float seed, vec3 tone) {
+            const float w = (x1 - x0) / nx, d = (z1 - z0) / nz;
+            for (int i = 0; i < nx; ++i) for (int j = 0; j < nz; ++j) {
+                float h = hsh(i + seed, j * 1.7f + seed);
+                vec3 col = h < 0.18f ? rust * 1.5f : h > 0.88f ? soot * 1.2f : tone * (0.6f + 1.f * hsh(j + seed, i * 2.3f));
+                box(B * T(vec3{x0 + (i + 0.5f) * w, y + 0.015f, z0 + (j + 0.5f) * d}) * S(vec3{w - 0.28f, 0.03f, d - 0.28f}), col);
+                if (h > 0.97f) box(B * T(vec3{x0 + (i + 0.5f) * w, y + 0.035f, z0 + (j + 0.5f) * d}) * RY(h * 9.f) * S(vec3{w * 0.6f, 0.01f, 0.12f}), soot, fire * 0.7f);   // a crack, burning
+            }
+            for (int i = 0; i <= nx; ++i) for (int j = 0; j <= nz; ++j)
+                box(B * T(vec3{x0 + i * w, y + 0.06f, z0 + j * d}) * S(vec3{0.32f, 0.1f, 0.32f}), rust * 0.9f);
+        };
+        // A grate over the slag: a glow under dark bars, embers coming up through it
+        auto grate = [&](float x, float z, float y, float r, float seed) {
+            box(B * T(vec3{x, y + 0.01f, z}) * S(vec3{r * 2.f, 0.02f, r * 2.f}), soot, fire * (0.9f + 0.3f * std::sin(t * 2.3f + seed)));
+            for (int k = 0; k < 7; ++k) box(B * T(vec3{x - r + (k + 0.5f) * r * 2.f / 7.f, y + 0.05f, z}) * S(vec3{0.22f, 0.08f, r * 2.f}), iron * 0.7f);
+            for (float s : {-1.f, 1.f}) {
+                box(B * T(vec3{x + s * r, y + 0.07f, z}) * S(vec3{0.45f, 0.14f, r * 2.f + 0.45f}), rust);
+                box(B * T(vec3{x, y + 0.07f, z + s * r}) * S(vec3{r * 2.f + 0.45f, 0.14f, 0.45f}), rust);
+            }
+            for (int k = 0; k < 6; ++k) {
+                float u = std::fmod(t * 0.35f + k / 6.f + seed * 0.13f, 1.f);
+                vec3 q{x + (hsh(k, seed) - 0.5f) * r * 1.6f, y + 0.3f + u * 7.f, z + (hsh(seed, k) - 0.5f) * r * 1.6f + std::sin(t + k) * 0.3f};
+                box(B * T(q) * S(vec3{0.08f, 0.2f, 0.08f}), vec3{0.f}, fire * 2.2f * (1.f - u));
+            }
+        };
+        // Wrecks of the units it took before you, heaped where the parapet meets: a torso, a head, an arm or two
+        auto wreck = [&](float x, float z, float y, float seed) {
+            for (int k = 0; k < 3; ++k) {
+                float a = seed * 3.f + k * 2.1f, rr = 0.6f + k * 0.5f;
+                vec3 p{x + std::cos(a) * rr, y, z + std::sin(a) * rr};
+                box(B * T(p + vec3{0, 0.18f, 0}) * RY(a) * RZ(0.4f * (k - 1)) * S(vec3{0.55f, 0.36f, 0.32f}), vec3{0.16f, 0.17f, 0.19f});                    // torso
+                box(B * T(p + vec3{0.45f, 0.12f, 0.2f}) * RY(a * 1.7f) * S(vec3{0.22f, 0.22f, 0.22f}), vec3{0.13f, 0.14f, 0.16f});                       // head
+                box(B * T(p + vec3{0.08f, 0.04f, 0.55f}) * RY(a + 1.1f) * S(vec3{0.62f, 0.08f, 0.1f}), vec3{0.12f, 0.12f, 0.14f});                     // an arm
+                box(B * T(p + vec3{0.45f, 0.13f, 0.32f}) * S(vec3{0.07f, 0.03f, 0.02f}), vec3{0.f}, vec3{0.2f, 0.9f, 1.2f} * (k == 0 ? 0.8f : 0.f)); // an eye, still lit
+            }
+        };
+        // Posts round a parapet, chains sagging between, braziers on the corners
+        auto posts = [&](vec3 a, vec3 b, int n, bool fireEnds) {
+            vec3 prev{0.f};
+            for (int k = 0; k <= n; ++k) {
+                vec3 p = glm::mix(a, b, (float)k / n);
+                box(B * T(p + vec3{0, 0.9f, 0}) * S(vec3{0.45f, 1.8f, 0.45f}), iron * 1.1f);
+                box(B * T(p + vec3{0, 1.95f, 0}) * RY(0.785f) * S(vec3{0.3f, 0.5f, 0.3f}), bone * 0.7f);   // a spike on it
+                if ((k == 0 || k == n) && fireEnds) {
+                    lump(B * T(p + vec3{0, 2.4f, 0}) * S(vec3{0.9f, 0.6f, 0.9f}), soot, fire * (1.4f + 0.5f * std::sin(t * 7.f + p.x)));
+                    for (int e = 0; e < 3; ++e) {
+                        float u = std::fmod(t * 0.8f + e / 3.f + p.z * 0.1f, 1.f);
+                        box(B * T(p + vec3{0.2f * std::sin(e * 2.f + t), 2.6f + u * 2.f, 0.2f * std::cos(e * 2.f)}) * S(vec3{0.06f, 0.15f, 0.06f}), vec3{0.f}, fire * 2.f * (1.f - u));
+                    }
+                }
+                if (k > 0)
+                    for (int l = 0; l < 4; ++l) {   // the chain: links sagging between the posts
+                        float u = (l + 0.5f) / 4.f;
+                        vec3 q = glm::mix(prev, p, u) + vec3{0, 1.5f - 0.5f * std::sin(u * 3.14159f), 0};
+                        box(B * T(q) * RY(std::atan2(p.x - prev.x, p.z - prev.z)) * RZ(l % 2 ? 1.5708f : 0.f) * S(vec3{0.08f, 0.22f, glm::length(p - prev) / 4.5f}), soot * 1.5f);
+                    }
+                prev = p;
+            }
+        };
+        // -- the roof --
+        plates(base.x - DECK_HX, base.z - DECK_HZ, base.x + DECK_HX, base.z + DECK_HZ, top, 8, 9, 3.f, iron * 1.25f);
+        grate(base.x + 14.f, base.z - 20.f, top, 2.5f, 1.f);
+        grate(base.x - 14.f, base.z + 14.f, top, 2.5f, 2.f);
+        grate(base.x + 18.f, base.z + 22.f, top, 2.5f, 3.f);
+        grate(base.x - 4.f, base.z - 24.f, top, 2.5f, 4.f);
+        wreck(base.x - 22.f, base.z - 27.f, top, 1.f); wreck(base.x + 22.f, base.z - 26.f, top, 2.f);
+        wreck(base.x + 22.f, base.z + 27.f, top, 3.f); wreck(base.x - 22.f, base.z + 26.f, top, 4.f);
+        const float px0 = base.x - DECK_HX, px1 = base.x + DECK_HX, pz0 = base.z - DECK_HZ, pz1 = base.z + DECK_HZ;
+        posts({px0, top, pz0}, {px1, top, pz0}, 8, true);
+        posts({px1, top, pz0}, {px1, top, pz1}, 9, true);
+        posts({px0, top, pz0}, {px0, top, base.z - GAP_HALF}, 4, false);
+        posts({px0, top, base.z + GAP_HALF}, {px0, top, pz1}, 4, false);
+        if (!look.frontGap) posts({px0, top, pz1}, {px1, top, pz1}, 8, false);
+        else { posts({px0, top, pz1}, {base.x - FRONT_GAP, top, pz1}, 3, false); posts({base.x + FRONT_GAP, top, pz1}, {px1, top, pz1}, 3, false); }
+        // the chimneys up close: a flared foot, bands of rivets up them, a ladder, a crack of light
+        for (int c = 0; c < 3; ++c) {
+            vec3 p = chimney(c); const float tall = chimneyTall(c);
+            box(B * T(vec3{p.x, top + 1.2f, p.z}) * S(vec3{12.5f, 2.4f, 12.5f}), rust * 0.9f);
+            box(B * T(vec3{p.x, top + 2.8f, p.z}) * S(vec3{10.6f, 1.f, 10.6f}), iron * 1.2f);
+            for (int k = 0; k < 4; ++k) box(B * T(vec3{p.x, top + 10.f + k * (tall - 12.f) / 4.f, p.z}) * S(vec3{9.7f, 0.6f, 9.7f}), rust * (0.8f + 0.2f * k));
+            for (float s : {-0.8f, 0.8f}) box(B * T(vec3{p.x + s, top + 12.f, p.z + 4.75f}) * S(vec3{0.15f, 22.f, 0.15f}), iron * 1.3f);
+            for (int k = 0; k < 12; ++k) box(B * T(vec3{p.x, top + 2.f + k * 1.8f, p.z + 4.8f}) * S(vec3{1.6f, 0.12f, 0.12f}), iron * 1.3f);
+            box(B * T(vec3{p.x - 4.55f, top + tall * 0.4f, p.z + 1.f}) * RZ(0.05f) * S(vec3{0.05f, tall * 0.5f, 0.25f}), soot, fire * (0.6f + 0.3f * std::sin(t * 1.3f + c)));
+        }
+        // steam pipes along the furnace's flanks, joints glowing (seen from the plain and on the way up)
+        for (float s : {-1.f, 1.f}) {
+            for (int k = 0; k < 2; ++k) {
+                float y = top - 8.f - k * 6.f;
+                box(B * T(vec3{base.x + s * 25.2f, y, base.z}) * S(vec3{1.6f, 1.6f, DECK_HZ * 2.f - 4.f}), iron * 1.1f);
+                for (int j = 0; j < 5; ++j) box(B * T(vec3{base.x + s * 25.2f, y, base.z - 24.f + j * 12.f}) * S(vec3{2.1f, 2.1f, 0.8f}), rust, fire * 0.25f);
+            }
+        }
+        // -- the saddle --
+        plates(-SADDLE_HX, SADDLE_Z0, SADDLE_HX, SADDLE_Z1, SADDLE_Y, 8, 6, 9.f, iron * 1.15f);
+        grate(-17.f, 22.f, SADDLE_Y, 2.2f, 5.f); grate(18.f, 2.f, SADDLE_Y, 2.2f, 6.f);
+        wreck(-22.f, -4.f, SADDLE_Y, 5.f); wreck(22.f, 28.f, SADDLE_Y, 6.f);
+        posts({-SADDLE_HX, SADDLE_Y, SADDLE_Z0}, {-SADDLE_HX, SADDLE_Y, SADDLE_Z1}, 6, true);
+        posts({SADDLE_HX, SADDLE_Y, SADDLE_Z0}, {SADDLE_HX, SADDLE_Y, SADDLE_Z1}, 6, true);
+        for (float s : {-1.f, 1.f}) for (int k = 0; k < 4; ++k)   // bone spines out along its shoulders' edge
+            box(B * T(vec3{s * (SADDLE_HX + 2.f), SADDLE_Y + 1.5f, SADDLE_Z0 + 5.f + k * 9.f}) * RZ(-s * 0.6f) * S(vec3{1.f, 7.f - k, 1.f}), bone * 0.75f);
+        // -- its crown (its head held up): plates of skull, cracks of light, a rim of teeth --
+        if (g.headHold > 0.99f) {
+            plates(-CROWN_HX, CROWN_Z0, CROWN_HX, CROWN_Z1, SADDLE_Y, 5, 5, 13.f, bone * 0.55f);
+            for (int k = 0; k < 4; ++k) box(B * T(vec3{-10.f + k * 6.5f, SADDLE_Y + 0.03f, 70.f + 7.f * std::sin(k * 2.f)}) * RY(k * 0.9f) * S(vec3{5.f, 0.02f, 0.18f}), soot, fire * 0.9f);
+            for (int k = 0; k < 9; ++k) {
+                float z = CROWN_Z0 + 2.f + k * (CROWN_Z1 - CROWN_Z0 - 4.f) / 8.f;
+                for (float s : {-1.f, 1.f}) box(B * T(vec3{s * (CROWN_HX + 0.6f), SADDLE_Y + 0.8f, z}) * RZ(-s * 0.35f) * S(vec3{0.9f, 2.2f, 1.2f}), bone * 0.8f);
+            }
+        }
+    }
+
     // ---- the chest: belly plates, the cavity's glow, the eye-core, the ribs ----
     {
         box(B * T(vec3{0, 46, -12}) * RX(0.18f) * S(vec3{58, 26, 92}), iron * 0.8f);    // belly

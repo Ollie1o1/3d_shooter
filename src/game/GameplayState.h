@@ -409,7 +409,9 @@ public:
     void resetGleanerFight(bool fresh);
     void updateGleanerFight(float dt);
     void updraftThrow();
-    glm::vec3 gleanerBackTarget() const;   // where a throw onto its back lands: wherever the fight on it is
+    glm::vec3 gleanerBackTarget() const;
+    // The next place to reach in the fight (a marker on the HUD, a beacon in the world): false when the fight is the goal
+    bool gleanerObjective(glm::vec3& at, const char*& label, bool& beacon) const;   // where a throw onto its back lands: wherever the fight on it is
     // The grapple on the Gleaner itself: a hook into its body hauls you up onto its back (a long leap at it before it kneels)
     bool gleanerHookPoint(glm::vec3& at, float& dist) const;
     void haulOntoGleaner(glm::vec3 at);
@@ -427,7 +429,7 @@ public:
     void beginGleaner();
     void updatePlainReveal(float dt);
     void updateGleaner(float dt);
-    void gleanerSound(const char* name, glm::vec3 from, float loud, float late);
+    void gleanerSound(const char* name, glm::vec3 from, float loud, float late, bool roar = false);
     float plainMoonLid() const;
     void gatherGleaner(std::vector<BoxInstance>& out);
     void renderPlainReveal();

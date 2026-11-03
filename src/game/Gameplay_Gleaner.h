@@ -97,13 +97,15 @@ inline void GameplayState::updatePlainReveal(float dt) {
         director.hold = false;
         wakeSeen = true; plainRevealDone = true; saveStoryProgress();
         pushBanner("THE GLEANER", "\"YOU WERE SENT TO ME. YOU ARE LATE.\"", {1.f, 0.3f, 0.18f}, 4.5f);
-        gleanerScreamCd = 40.f;
+        gleanerScreamCd = 16.f;
     }
 }
 
 // A sound from the Gleaner, out across the plain: placed toward it (inside the mixer's reach), as loud
 // as `loud` at the far edge of the plain and louder close, `late` the share of the real sound delay
-inline void GameplayState::gleanerSound(const char* name, glm::vec3 from, float loud, float late) {
+// `roar`: its scream, the loudest thing in the game wherever you are (inside it too): full level, and
+// it is never dipped by the duck it calls to clear the mix for itself
+inline void GameplayState::gleanerSound(const char* name, glm::vec3 from, float loud, float late, bool roar) {
     const glm::vec3 ear = player.camera.position;
     glm::vec3 to = from - ear;
     float dist = glm::length(to);
@@ -114,6 +116,10 @@ inline void GameplayState::gleanerSound(const char* name, glm::vec3 from, float 
     o.floor = glm::clamp(loud * (0.45f + 0.55f * near), 0.05f, 1.f);
     o.volume = 1.f;
     o.delay = late * dist / 343.f;
+    if (roar) {
+        o.unducked = true; o.floor = 1.f;
+        o.pos = ear + (dist > 1.f ? to / dist : glm::vec3{0.f, 0.f, -1.f}) * SfxMixer::REF_DIST;   // (full level, and bright: no distance low-pass)
+    }
     audio.playOpts(name, o);
 }
 
@@ -132,7 +138,7 @@ inline void GameplayState::updateGleaner(float dt) {
             if (near > 0.f) plainQuakes.push_back({dist / 343.f, glm::clamp(near * near * e.size * 0.9f, 0.05f, 1.f)});
             gleanerDust.push_back({e.at, 0.f, 26.f * Gleaner::SCALE * e.size});
         } else {   // the scream: the loudest thing in the game, now (no delay: it has to land with its jaw)
-            gleanerSound("gleaner_scream", e.at, 1.f, 0.f);
+            gleanerSound("gleaner_scream", e.at, 1.f, 0.f, true);
             audio.duck(10.f, Gleaner::SCREAM_LEN);
             float near = glm::clamp(1.f - dist / 1800.f, 0.25f, 1.f);
             shake(Gleaner::SCREAM_LEN, 0.05f * near);

@@ -304,6 +304,20 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             snprintf(buf, sizeof(buf), "HOLD %dM", (int)glm::length(target - player.position));
             ui.renderMarker(sx, sy, on, {0.4f, 1.f, 0.85f}, buf);
         }
+        // Chapter 4: the next place to reach in the Gleaner fight
+        {   glm::vec3 at; const char* label = nullptr; bool beacon = false;
+            if (gleanerObjective(at, label, beacon)) {
+                float sx, sy;
+                bool on = projectToScreen(at + glm::vec3{0.f, beacon ? 3.f : 0.f, 0.f}, view, proj, sx, sy);
+                ui.renderObjectiveMarker(sx, sy, on, {1.f, 0.85f, 0.35f}, label, (int)glm::length(at - player.position), gameClock);
+            }
+        }
+        // Chapter 3: OATHBREAKER, once its statue's seal breaks
+        if (laboratory() && swordStatueOpen && !storySword && level.arenaAt(player.position) == 9) {
+            float sx, sy;
+            bool on = projectToScreen(lab::swordStatueGrip() + glm::vec3{0.f, 0.8f, 0.f}, view, proj, sx, sy);
+            ui.renderObjectiveMarker(sx, sy, on, {1.f, 0.4f, 0.6f}, "OATHBREAKER", (int)glm::length(lab::swordStatueGrip() - player.position), gameClock);
+        }
         // Cleanup help, never a boss tracker. Detailed retains the full labels;
         // Low leaves visible enemies unobstructed and labels one lost target.
         const bool detailed=settings&&settings->enemyMarkers==1;
