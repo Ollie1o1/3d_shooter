@@ -397,6 +397,7 @@ inline void GameplayState::resetPlayer(glm::vec3 start) {
     grenadeCount = grenadeMax; killsThisCycle = 0;
     splinters.reset();
     recall.reset();
+    pickedBy = -1; pendingRestores.clear();
     for (int w = 0; w < WEAPON_COUNT; ++w) {
         weapons[w] = WeaponState{};
         weapons[w].ammo = weaponMag((WeaponId)w, prog.up[w]);

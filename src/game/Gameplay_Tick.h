@@ -334,6 +334,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         if (boost >= 0) { applyBooster(level.boosters[boost], player, dt); player.launched(); }
         if (grapple.active && grapple.latched) { player.position = hangPos; player.velocity = glm::vec3{0.f}; }   // held where it caught
         keepPlayerInZone(dt);
+        if (pickedBy >= 0) holdInPicker(dt);   // hung under a PICKER's claw
         if (story()) { updateStory(dt); player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0}; }
         if (player.jumpedThisTick) {   // the push-off: a soft scuff and the head lifting off the legs
             audio.play("jump", 90);
@@ -519,10 +520,12 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     whizPast();
     if (splinterOwned()) tickSplinters(dt);
     if (recallOwned()) tickRecall(dt);
+    if (!pendingRestores.empty()) tickRestores(dt);
     bool parryPressed = parryKey && !parryPrev;
     parryPrev = parryKey;
     punchCooldown = std::max(0.f, punchCooldown - dt);
-    if (parryPressed && punchCooldown <= 0.f) punch(result.boostableIndex);
+    if (parryPressed && pickedBy >= 0) pickerLetGo(true);   // held: the punch breaks its grip
+    else if (parryPressed && punchCooldown <= 0.f) punch(result.boostableIndex);
 
     for (auto& [pi, ei] : result.enemyHits) {
         auto& e = enemies[ei];

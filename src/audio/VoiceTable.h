@@ -17,7 +17,8 @@ inline const char* voiceKey(EnemyType t) {
     static const char* K[] = {"husk", "ripper", "sentinel", "raptor", "brute", "mite", "juggernaut", "warden",
                               "sovereign", "shieldbearer", "conduit", "conductor", "seraph", "anchor", "penitent",
                               "revenant", "weaver", "leviathan", "absolute",
-                              "courier", "bulwark", "cantor", "harrier", "plumb", "foreman", "pacemaker", "sorter", "ballast", "patient", "grafted", "suspended", "phased", "successor"};
+                              "courier", "bulwark", "cantor", "harrier", "plumb", "foreman", "pacemaker", "sorter", "ballast", "patient", "grafted", "suspended", "phased", "successor",
+                              "thawling", "picker", "clerk"};
     static_assert(sizeof(K) / sizeof(K[0]) == (size_t)EnemyType::COUNT, "a voice key per enemy type");
     return (int)t < (int)EnemyType::COUNT ? K[(int)t] : "any";
 }
@@ -83,6 +84,7 @@ inline const char* attackKey(AttackKind k) {
 inline std::vector<AttackKind> attacksOf(EnemyType t) {
     using A = AttackKind;
     switch (t) {
+        case EnemyType::THAWLING:return {A::LAB_SWIPE,A::LAB_LUNGE};case EnemyType::PICKER:return {A::SORT_GRAB};case EnemyType::CLERK:return {};
         case EnemyType::PATIENT:return {A::LAB_LUNGE,A::LAB_SWIPE};case EnemyType::GRAFTED:return {A::LAB_PRESS,A::VOLLEY};case EnemyType::SUSPENDED:return {A::LAB_BEAM};case EnemyType::PHASED:return {A::LAB_CROSS,A::LAB_LUNGE,A::LAB_SWIPE};
         case EnemyType::SUCCESSOR:return {A::SU_INCISION,A::SU_THRUST,A::SU_VECTOR,A::SU_SUTURE,A::SU_TRANSPOSE,A::SU_RECALL,A::SU_PERFUSION,A::SU_REAP,A::SU_BREAKER};
         case EnemyType::BALLAST: return {A::BALL_GRADE,A::BALL_GUST,A::BALL_ANCHOR,A::BALL_THROW,A::BALL_WINCH,A::BALL_RIP,A::BALL_SWEEP};
@@ -135,7 +137,8 @@ inline bool hasRelease(AttackKind k) {
 // Steps (or wingbeats) a second at full speed; 0: it doesn't move
 inline float moveCadence(EnemyType t) {
     static const float C[] = {2.2f, 7.f, 1.5f, 3.f, 1.4f, 9.f, 1.2f, 1.f, 2.4f, 1.8f, 0.f, 2.f, 1.6f, 1.f, 0.7f, 2.6f, 5.f, 0.f, 3.f,
-                              6.f, 1.1f, 1.2f, 2.2f, 0.f, 1.5f, 3.f, 0.f, 1.4f, 3.2f, 1.5f, 0.f, 2.6f, 3.8f};
+                              6.f, 1.1f, 1.2f, 2.2f, 0.f, 1.5f, 3.f, 0.f, 1.4f, 3.2f, 1.5f, 0.f, 2.6f, 3.8f,
+                              2.4f, 0.f, 0.f};   // THAWLING (its crawl and its steps), PICKER, CLERK
     static_assert(sizeof(C) / sizeof(C[0]) == (size_t)EnemyType::COUNT, "a cadence per enemy type");
     return C[(int)t];
 }

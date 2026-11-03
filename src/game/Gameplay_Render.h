@@ -128,6 +128,10 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
         buildEnemy(pose, t, out);
         // A small light floor on ordinary armor keeps dark rigs legible. The
         // depth buffer still hides enemies behind cover; glowing tells retain their colours.
+        if (e.type == EnemyType::THAWLING) {   // frost on it until it warms
+            float frost = 1.f - coldfoe::thawWarm(e.age);
+            for (size_t j = from; j < out.size(); ++j) out[j].color = glm::mix(out[j].color, glm::vec3{0.8f, 0.86f, 0.93f}, 0.15f + 0.6f * frost);
+        }
         if(!isBoss(e.type))for(size_t j=from;j<out.size();++j)
             if(std::max({out[j].emissive.x,out[j].emissive.y,out[j].emissive.z})<.05f)
                 out[j].emissive+=glm::max(out[j].color,glm::vec3{.18f})*.12f;

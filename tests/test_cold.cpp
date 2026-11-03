@@ -5,6 +5,7 @@
 #include "world/LevelCold.h"
 #include "world/ZoneConstraint.h"
 #include "render/MaterialTex.h"
+#include "enemies/Enemy.h"
 #include <algorithm>
 #include <cstdio>
 static int failures = 0;
@@ -113,6 +114,48 @@ int main() {
         mean /= S * S;
         std::printf("      %s: edge difference %.1f / %.1f, mean red %.0f\n", which ? "ice" : "snow", seamX / (S * 3), seamY / (S * 3), mean);
         CHECK(seamX / (S * 3) < 40.0 && seamY / (S * 3) < 40.0, which ? "the ice texture wraps without a hard seam" : "the snow texture wraps without a hard seam");
+    }
+
+    // ---- the enemies ----
+    {   // THAWLING: crawls, then stands and gets quicker as it warms
+        EnemyWorld w; w.playerFeet = {30.f, 0.f, 0.f}; w.playerEye = w.playerFeet + glm::vec3{0, 1.7f, 0};
+        Enemy e(EnemyType::THAWLING, {0.f, 0.f, 0.f});
+        e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE;
+        float crawlX = 0.f, earlyAttacks = 0;
+        for (int f = 0; f < (int)(60 * coldfoe::THAW_RISE) - 2; ++f) { e.update(DT, w); earlyAttacks += e.ev.telegraphStarted; }
+        crawlX = e.position.x;
+        float x0 = e.position.x; for (int f = 0; f < 60; ++f) e.update(DT, w); float coldStep = e.position.x - x0;
+        for (int f = 0; f < 60 * 12; ++f) { e.update(DT, w); if (e.position.x > 20.f) e.position.x = 5.f; }
+        float x1 = e.position.x; for (int f = 0; f < 60; ++f) e.update(DT, w); float warmStep = e.position.x - x1;
+        std::printf("      thawling: crawled %.1f m, cold %.1f m/s, warm %.1f m/s\n", crawlX, coldStep, warmStep);
+        CHECK(earlyAttacks == 0 && crawlX > 0.5f && crawlX < 6.f, "a THAWLING crawls at first, slowly and without attacking");
+        CHECK(warmStep > coldStep * 1.4f, "...and is much quicker once it has warmed up");
+    }
+    {   // PICKER: a white tell over you, then the drop takes a player who stays put
+        EnemyWorld w; w.playerFeet = {6.f, 0.f, 0.f}; w.playerEye = w.playerFeet + glm::vec3{0, 1.7f, 0};
+        Enemy e(EnemyType::PICKER, {0.f, 4.6f, 0.f}, 0.f);
+        e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE;
+        bool tell = false, white = false, grabbed = false;
+        for (int f = 0; f < 60 * 15 && !grabbed; ++f) {
+            e.update(DT, w);
+            tell |= e.attack == AttackKind::SORT_GRAB && e.telegraphTimer > 0.f;
+            white |= e.parryWindow();
+            grabbed |= e.ev.sortGrab;
+        }
+        CHECK(tell && white, "a PICKER winds its snatch up with a parry window");
+        CHECK(grabbed && e.pickT > 0.f, "...and its drop takes you if you stay under it");
+        e.stun(1.f);
+        CHECK(e.pickT <= 0.f, "stunned (punched), it lets go");
+    }
+    {   // CLERK: never attacks, keeps its distance
+        EnemyWorld w; w.playerFeet = {4.f, 0.f, 0.f}; w.playerEye = w.playerFeet + glm::vec3{0, 1.7f, 0};
+        Enemy e(EnemyType::CLERK, {0.f, 3.4f, 0.f}, 0.f);
+        e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE;
+        bool attacked = false;
+        for (int f = 0; f < 60 * 10; ++f) { e.update(DT, w); attacked |= e.ev.telegraphStarted || e.ev.shots > 0 || e.ev.meleeHit; }
+        float d = glm::length(glm::vec2{e.position.x - 4.f, e.position.z});
+        CHECK(!attacked, "a CLERK never attacks");
+        CHECK(d > 9.f, "...and backs off to keep its distance from you");
     }
 
     std::printf(failures ? "\n%d FAILED\n" : "\nALL PASSED (0 failures)\n", failures);

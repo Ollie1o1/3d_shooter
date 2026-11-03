@@ -338,6 +338,7 @@ inline void GameplayState::updateEnemies(float dt) {
         if (e.type == EnemyType::SUCCESSOR) successorEvents(e,ev);
         if (e.type == EnemyType::BALLAST) ballastEvents(e,ev);
         if (story() && e.type == EnemyType::SORTER) storySorterEvents(e,ev);
+        if (e.type == EnemyType::PICKER && ev.sortGrab) pickerGrab(e, lured);
         if (ev.beamOn && e.type != EnemyType::SORTER) {   // a SERAPH's beam: 30/s while it touches you, sparks (or steam) where it lands
             AABB pb{player.position + glm::vec3{-player.radius, 0.f, -player.radius},
                     player.position + glm::vec3{player.radius, player.height, player.radius}};
@@ -578,6 +579,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     runLog.killed(e.type, src, e.firstHitAge >= 0.f ? e.age - e.firstHitAge : -1.f);
     if (src != StyleSource::FRIENDLY && src != StyleSource::ENVIRONMENT) styleSystem.extendOverdrive(0.5f);   // kills keep OVERDRIVE burning
     if (e.type == EnemyType::CONDUIT) director.onConduitDestroyed(e.position);
+    clerkNoteDeath(e);   // a CLERK up nearby: it comes back (Gameplay_ColdEnemies.h)
     if (e.splitsOnDeath()) {   // not into `enemies` yet: callers may be iterating it
         for (auto& t : twinsOf(e)) pendingTwins.push_back(t);
         fx.spawnBurst(e.position + glm::vec3{0, e.height() * 0.5f, 0}, e.stats().glow, 30, 7.f, 0.5f, 4.f);

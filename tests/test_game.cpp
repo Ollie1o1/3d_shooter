@@ -3107,7 +3107,7 @@ int main() {
         CHECK(levels, "every voice sits within 2 dB of its mix class's level");
         CHECK(varied, "a voice's variants differ");
         CHECK(same, "the same voice builds the same every time");
-        CHECK(total <= 320.f, "the whole voice bank, including the expanded Story tools, including five lab bodies stays within 320 s of audio");
+        CHECK(total <= 330.f, "the whole voice bank, including the expanded Story tools, five lab bodies and Chapter 5's three, stays within 330 s of audio");
     }
 
     // ---------------------------------------------------------------- enemy voices: who gets to speak

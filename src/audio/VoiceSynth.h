@@ -73,6 +73,9 @@ inline Profile profileOf(EnemyType t) {
         case EnemyType::SUSPENDED:return {330.f,Vowel::EE,3,1.2f,Body::HUM,520.f,.25f};
         case EnemyType::PHASED:return {195.f,Vowel::OO,3,1.05f,Body::SERVO,700.f,.4f};
         case EnemyType::SUCCESSOR:return {130.f,Vowel::AH,2,1.f,Body::SERVO,450.f,.5f};
+        case EnemyType::THAWLING:return {110.f,Vowel::UH,3,.9f,Body::SCRAPE,520.f,.45f};   // a frozen throat, ice cracking off it
+        case EnemyType::PICKER:return {0.f,Vowel::NONE,0,1.f,Body::HYDRAULIC,700.f,.35f};   // a claw on a trolley
+        case EnemyType::CLERK:return {660.f,Vowel::EE,2,1.2f,Body::CRACKLE,2400.f,.15f};   // a typewriter's bell and clatter
         default:                      return {};
     }
 }

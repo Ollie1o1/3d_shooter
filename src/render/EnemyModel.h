@@ -298,7 +298,15 @@ inline bool playClip(const char* fileName, const char* clipName, float progress,
 #include "render/LabSubjectPose.h"
 inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileRoot, FilePose& P, vec3& glowOut) {
     if(e.type==EnemyType::SUCCESSOR)return successorFilePose(e,time,root,fileRoot,P,glowOut);
-    if(e.type>=EnemyType::PATIENT&&e.type<=EnemyType::PHASED){labSubjectPose(e,time,root,fileRoot,P,glowOut);return true;}
+    if(e.labBody()){
+        labSubjectPose(e,time,root,fileRoot,P,glowOut);
+        if(e.type==EnemyType::THAWLING){   // still crawling up off the floor: pitched forward, low, getting up
+            float crawl=1.f-glm::clamp((e.age-coldfoe::THAW_RISE+.6f)/.6f,0.f,1.f);
+            fileRoot=fileRoot*T({0.f,-.55f*crawl,.2f*crawl})*RX(1.1f*crawl);
+            glowOut*=.4f+.6f*coldfoe::thawWarm(e.age);
+        }
+        return true;
+    }
     using namespace enemyfile;
     const EnemyStats& st = e.stats();
     float tp = e.telegraphProgress();
@@ -310,7 +318,7 @@ inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileR
         P = humanoidPose(mo, glow);
         fileRoot = base * T({0.f, mo.lift, 0.f});
     };
-    if(e.type>=EnemyType::PATIENT && e.type<=EnemyType::SUCCESSOR){
+    if((e.type>=EnemyType::PATIENT && e.type<=EnemyType::SUCCESSOR)||e.type==EnemyType::THAWLING){
         fileRoot=root;P=FilePose{};float step=e.animPhase;
         bool boss=e.type==EnemyType::SUCCESSOR;bool floating=e.type==EnemyType::SUSPENDED;
         float run=glm::clamp(e.moveSpeed/std::max(.1f,st.speed),0.f,1.3f);
@@ -972,6 +980,36 @@ inline void leviathanSegments(const Enemy& e, float time, Rig& r, const gunkit::
         for(int k=0;k<6;++k)r.box(root*T({0,5.9f,-1.2f})*RZ(e.ballRotor+k*1.0472f),{0,.95f,0},{.38f,1.7f,.25f},st.color*1.4f);
         break;
     }
+    case EnemyType::PICKER: {   // a claw trolley: a slung body under a wheel bogie, two long claws, one amber lamp
+        const float open=e.telegraphTimer>0?glm::clamp(1.f-e.telegraphTimer/std::max(.01f,e.telegraphDuration),0.f,1.f):e.pickT>0?0.f:.25f;
+        const bool white=e.parryWindow();
+        vec3 claw=white?vec3{1.6f}:st.color*1.6f,clawGlow=white?vec3{2.2f}:e.telegraphTimer>0?vec3{1.2f,1.2f,1.3f}*open:vec3{0.f};
+        r.box(root,{0,1.25f,0},{1.3f,.55f,.9f},st.color);
+        r.box(root,{0,1.62f,0},{.9f,.2f,.6f},st.color*1.3f);
+        for(float x:{-.38f,.38f})r.box(root,{x,1.82f,0},{.14f,.32f,.32f},{.3f,.3f,.32f});            // the bogie's wheels
+        r.box(root,{0,1.25f,.47f},{.32f,.22f,.06f},glow,glow);                                        // its lamp
+        for(float s:{-1.f,1.f}){
+            mat4 arm=root*T({s*.45f,1.f,0})*RZ(s*(.15f+.75f*open));
+            r.box(arm,{0,-.55f,0},{.16f,1.1f,.16f},st.color*1.2f);
+            mat4 tip=arm*T({0,-1.1f,0})*RZ(-s*(.6f+.5f*open));
+            r.box(tip,{0,-.4f,0},{.12f,.8f,.12f},claw,clawGlow);
+            r.box(tip,{-s*.08f,-.8f,0},{.22f,.1f,.3f},claw,clawGlow);
+        }
+        r.box(root,{0,.9f,0},{.5f,.18f,.5f},{.25f,.26f,.28f});                                       // the winch drum
+        break;
+    }
+    case EnemyType::CLERK: {   // a floating clipboard: a small boxy drone, a sheet held out in front, a lamp over it
+        const float bob=std::sin(time*2.6f+e.uid)*.05f;
+        r.box(root,{0,.5f+bob,0},{.55f,.35f,.45f},st.color*.5f);
+        r.box(root,{0,.5f+bob,.32f},{.5f,.62f,.04f},{.82f,.8f,.72f});                                 // the board
+        for(int k=0;k<5;++k)r.box(root,{-.05f,.68f-k*.1f+bob,.345f},{.34f-.04f*(k%2),.025f,.01f},{.2f,.2f,.22f});   // lines on the sheet
+        r.box(root,{0,.84f+bob,.33f},{.18f,.08f,.08f},{.4f,.4f,.42f});                                // its clip
+        r.box(root,{0,.95f+bob,.28f},{.12f,.08f,.12f},glow,glow);                                     // the lamp it reads by
+        for(float s:{-1.f,1.f})for(float z:{-1.f,1.f})
+            r.box(root*T({s*.38f,.62f+bob,z*.26f})*RY(time*30.f),{0,0,0},{.34f,.02f,.05f},{.3f,.3f,.32f}); // rotors
+        r.box(root,{.2f,.3f+bob,.25f},{.04f,.3f,.04f},{.4f,.4f,.42f});                                 // the pen arm
+        break;
+    }
     case EnemyType::SORTER: {
         r.box(root,{0,3.4f,0},{5.4f,1.25f,2.6f},st.color);
         r.box(root,{0,4.9f,.5f},{2.4f,1.15f,1.7f},{.7f,.7f,.65f});
@@ -1463,7 +1501,7 @@ inline void leviathanSegments(const Enemy& e, float time, Rig& r, const gunkit::
 
 // These marks describe the actual attack geometry, at every detail setting.
 inline void labEnemyTell(const Enemy& e,float time,Rig& r){
-    if(!e.targetable() || e.type<EnemyType::PATIENT || e.type>EnemyType::PHASED)return;
+    if(!e.targetable() || !e.labBody())return;
     auto ring=[&](vec3 at,float radius,vec3 glow){
         for(int k=0;k<32;++k){float a=k*6.2831853f/32;
             r.box(T(at+vec3{std::cos(a)*radius,.07f,std::sin(a)*radius})*RY(-a),{0,0,0},{.13f,.06f,radius*.13f},glow*.25f,glow);
@@ -1475,7 +1513,7 @@ inline void labEnemyTell(const Enemy& e,float time,Rig& r){
             r.box(T(e.position+vec3{std::cos(a)*6,.6f,std::sin(a)*6}),{0,0,0},{.1f,1.1f,.1f},gold*.3f,gold);
         }
     }
-    if((e.type==EnemyType::PATIENT || e.type==EnemyType::PHASED) && e.attack==AttackKind::LAB_LUNGE && e.telegraphTimer>0){
+    if((e.type==EnemyType::PATIENT || e.type==EnemyType::PHASED || e.type==EnemyType::THAWLING) && e.attack==AttackKind::LAB_LUNGE && e.telegraphTimer>0){
         vec3 d=e.labAim-e.position;d.y=0;float n=glm::length(d);if(n>.01f){
             d/=n;float yaw=std::atan2(d.x,d.z);vec3 glow=e.parryWindow()?vec3{1.8f}:vec3{.5f,.8f,1.4f};
             for(float at=1;at<8.36f;at+=1.2f)r.box(T(e.position+d*at+vec3{0,.06f,0})*RY(yaw),{0,0,0},{.09f,.06f,.6f},glow*.3f,glow);
@@ -1535,7 +1573,7 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
 // slump, a RIPPER's crouch, a RAPTOR's dive. False for a type without a head
 // (MITE). Uses the physics position, like the rest of the hitscan.
 inline bool headBox(const Enemy& e, AABB& out) {
-    if(e.type>=EnemyType::PATIENT&&e.type<=EnemyType::SUCCESSOR){
+    if((e.type>=EnemyType::PATIENT&&e.type<=EnemyType::SUCCESSOR)||e.type==EnemyType::THAWLING){
         if(const auto* model=enemyfile::model(e.type)){
             float grow=.05f+.95f*smooth01(1.f-e.spawnTimer/Enemy::SPAWN_TIME);
             mat4 root=T(e.position)*RY(e.yaw)*S(vec3{e.scale})*S({1,grow,1});

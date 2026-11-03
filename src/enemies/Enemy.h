@@ -291,6 +291,9 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     }
     float floorY        = 0.f;   // hard floor under it (GameplayState sets it each tick)
     float wadeMul       = 1.f;   // wading slows its steps (set each tick)
+    float pace          = 1.f;   // its own pace on top (a THAWLING warming up)
+    glm::vec3 pickAim{0.f};      // PICKER: where its snatch is going
+    float pickT = 0.f;           // PICKER: seconds left holding you
     float age           = 0.f;
 
     bool  enraged       = false; // a boss's phase two
@@ -361,6 +364,8 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     }
 
     const EnemyStats& stats() const { return statsOf(type); }
+    // The Living Ward's subjects, and Chapter 5's thawed units that move like them
+    bool labBody() const { return (type>=EnemyType::PATIENT&&type<=EnemyType::PHASED)||type==EnemyType::THAWLING; }
     float radius() const { return stats().radius * scale; }
     float height() const {
         if (type == EnemyType::PENITENT) return (risen ? 11.5f : 8.2f) * scale;   // kneeling, then standing
@@ -377,10 +382,11 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     bool  parryWindow() const {
         // THE WARDEN's lunge: its last quarter second, or in flight until it connects (it comes into reach)
         if ((type == EnemyType::WARDEN || type == EnemyType::PACEMAKER) && dashTimer > 0.f && !dashHit) return true;   // (and THE PACEMAKER's dash)
-        if((type==EnemyType::PATIENT || type==EnemyType::PHASED) && dashTimer>0 && !dashHit)return true;
+        if((type==EnemyType::PATIENT || type==EnemyType::PHASED || type==EnemyType::THAWLING) && dashTimer>0 && !dashHit)return true;
         if (telegraphTimer <= 0.f) return false;
         if(type==EnemyType::SUCCESSOR)return SuccessorState::white(attack)&&telegraphTimer<.26f;
-        if(type==EnemyType::PATIENT || type==EnemyType::PHASED)return (attack==AttackKind::LAB_LUNGE&&telegraphTimer<.24f)||(attack==AttackKind::LAB_SWIPE&&telegraphTimer<.2f);
+        if(type==EnemyType::PICKER)return attack==AttackKind::SORT_GRAB&&telegraphTimer<.3f;
+        if(type==EnemyType::PATIENT || type==EnemyType::PHASED || type==EnemyType::THAWLING)return (attack==AttackKind::LAB_LUNGE&&telegraphTimer<.24f)||(attack==AttackKind::LAB_SWIPE&&telegraphTimer<.2f);
         if (type == EnemyType::BALLAST) return (attack==AttackKind::BALL_ANCHOR||attack==AttackKind::BALL_WINCH)&&telegraphTimer<.28f;
         if (type == EnemyType::SORTER) return attack == AttackKind::SORT_GRAB && telegraphTimer < .25f;
         if (type == EnemyType::WARDEN) return attack == AttackKind::WLUNGE && telegraphTimer < 0.25f;
@@ -428,7 +434,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     // Damage multiplier from armor: the JUGGERNAUT shrugs off half unless
     // broken; a broken SOVEREIGN takes half again
     float armorMult() const {
-        if(type>=EnemyType::PATIENT && type<=EnemyType::PHASED)
+        if(labBody())
             return staggered()?1.75f:labOpen>0?(type==EnemyType::GRAFTED?1.5f:1.35f):1.f;
         if(type==EnemyType::SUCCESSOR)return staggered()?1.75f:suOpen>0?1.3f:1.f;
         if (type == EnemyType::BALLAST) return staggered()?1.8f:ballOpen>0.f?1.f:.85f;
@@ -443,7 +449,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     }
     void stagger(float t) {
         if(type==EnemyType::SUCCESSOR){suBurst=suCross=suNodes=suAir=0;suStep=suDashes=suVolley=0;suFinalStep=-1;suSince=9;suOpen=t;suLocked=false;++suEpoch;}
-        if(type>=EnemyType::PATIENT && type<=EnemyType::PHASED){labBeam=labCross=dashTimer=0.f;labOpen=std::max(labOpen,.8f);}
+        if(labBody()){labBeam=labCross=dashTimer=0.f;labOpen=std::max(labOpen,.8f);}
         ballDrive=ballTether=ballVolleyT=0;ballVolley=0;ballFollow=AttackKind::NONE;
         sortRush=sortFire=0;sortVolley=0;sortNext=AttackKind::NONE;sortFollowups=0;sortLocked=sortDropCued=false;
         sortPresses.erase(std::remove_if(sortPresses.begin(),sortPresses.end(),[](const auto& p){return p.remaining>0;}),sortPresses.end());
@@ -505,8 +511,9 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     }
     void stun(float t) {
         stunTimer = t; stunGuard = t + hitreact::STUN_GUARD; poise = 0.f; stunBegan = true;
+        pickT = 0.f;   // (a PICKER lets go)
         attack = AttackKind::NONE; telegraphTimer = 0.f; burstLeft = 0; comboLeft = 0;
-        if(type>=EnemyType::PATIENT && type<=EnemyType::PHASED){labBeam=labCross=dashTimer=0.f;labOpen=std::max(labOpen,.8f);}
+        if(labBody()){labBeam=labCross=dashTimer=0.f;labOpen=std::max(labOpen,.8f);}
         if (diveTimer > 0.f) { diveTimer = 0.f; recoverTimer = std::max(recoverTimer, 0.6f); }
         if (beamTimer > 0.f) { beamTimer = 0.f; attackTimer = 0.f; }
         attackTimer = std::min(attackTimer, stats().attackEvery * 0.5f);   // it has to work back up to it
@@ -644,6 +651,9 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         switch (type) {
             case EnemyType::PATIENT:case EnemyType::GRAFTED:case EnemyType::SUSPENDED:case EnemyType::PHASED:thinkLab(dt,w,resolve);break;
             case EnemyType::SUCCESSOR:thinkSuccessor(dt,w,resolve);return;
+            case EnemyType::THAWLING:thinkThawling(dt,w,resolve);break;
+            case EnemyType::PICKER:thinkPicker(dt,w,resolve);break;
+            case EnemyType::CLERK:thinkClerk(dt,w);break;
             case EnemyType::HUSK:     thinkHusk(dt, w, resolve);     break;
             case EnemyType::RIPPER:   thinkRipper(dt, w, resolve);   break;
             case EnemyType::SENTINEL: thinkSentinel(dt, w, resolve); break;
@@ -708,7 +718,7 @@ private:
         if(type==EnemyType::SORTER||type==EnemyType::BALLAST)
             windup=std::max(windup,k==AttackKind::SORT_STAMP||k==AttackKind::SORT_ROW||k==AttackKind::SORT_PURGE||k==AttackKind::BALL_GUST?.95f:.8f);
         if(type==EnemyType::SUCCESSOR)windup=std::max(windup,followUp?.28f:.42f);
-        if(type>=EnemyType::PATIENT&&type<=EnemyType::PHASED)windup=std::max(windup,.5f);
+        if(labBody())windup=std::max(windup,.5f);
         attackWait=0;
         attack            = k;
         tellFollow        = followUp;
@@ -1367,6 +1377,9 @@ private:
     void thinkForeman(float dt, const EnemyWorld& w, bool resolve);
     bool miniBeam(float dt, const EnemyWorld& w, float speed);
     void thinkLab(float dt,const EnemyWorld& w,bool resolve);
+    void thinkThawling(float dt,const EnemyWorld& w,bool resolve);
+    void thinkPicker(float dt,const EnemyWorld& w,bool resolve);
+    void thinkClerk(float dt,const EnemyWorld& w);
     void thinkSuccessor(float dt,const EnemyWorld& w,bool resolve);
     void thinkBallast(float dt, const EnemyWorld& w, bool resolve);
     void thinkSorter(float dt, const EnemyWorld& w, bool resolve);
@@ -1390,7 +1403,7 @@ private:
         } else {
             moveSpeed = glm::length(velocity);
         }
-        float slow = flying ? 1.f : wadeMul;
+        float slow = (flying ? 1.f : wadeMul) * pace;
         position += glm::vec3{velocity.x * slow, velocity.y, velocity.z * slow} * dt;
         if (knockVel.x != 0.f || knockVel.y != 0.f || knockVel.z != 0.f) {   // the shove from hits: fast, and gone in a quarter second
             position += knockVel * dt;
@@ -1516,4 +1529,5 @@ inline void linkConductors(std::vector<Enemy>& es, glm::vec3 player) {
 #include "bosses/ballast/EnemyBallast.h"
 
 #include "enemies/EnemyLab.h"
+#include "enemies/EnemyCold.h"
 #include "bosses/successor/EnemySuccessor.h"

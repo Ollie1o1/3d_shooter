@@ -343,6 +343,11 @@ public:
     SplinterSystem splinters;
     // RECALL (Gameplay_Recall.h): a statue to snap back to, on its own key
     RecallSystem recall;
+    // Chapter 5's enemies (Gameplay_ColdEnemies.h): a PICKER holding you, kills a CLERK is restoring
+    int   pickedBy = -1;
+    float pickedHealth = 0.f, pickHurtT = 0.f;
+    struct PendingRestore { EnemyType type; glm::vec3 at; float t; int clerk; };
+    std::vector<PendingRestore> pendingRestores;
     int   recallHints = 0;
     // Chapter 4 (Gameplay_Plain.h): the meteors, and the shakes still on their way
     MeteorRain meteors;
@@ -1218,6 +1223,12 @@ public:
     int  splinterTarget(glm::vec3 from, glm::vec3& aimAt) const;
     void splinterRicochet(int first, float dmg, int w);
     void gatherSplinters(std::vector<BoxInstance>& out);
+    Enemy* enemyByUid(int uid);
+    void pickerGrab(Enemy& e, bool lured);
+    void pickerLetGo(bool broke);
+    void holdInPicker(float dt);
+    void clerkNoteDeath(const Enemy& e);
+    void tickRestores(float dt);
     bool recallOwned() const;
     bool recallClear(glm::vec3 feet) const;
     void pressRecall();
@@ -1309,6 +1320,7 @@ public:
 #include "game/Gameplay_Splinter.h"
 #include "game/Gameplay_Story.h"
 #include "game/Gameplay_Recall.h"
+#include "game/Gameplay_ColdEnemies.h"
 #include "game/Gameplay_Wasteland.h"
 #include "bosses/ballast/Gameplay_Ballast.h"
 #include "bosses/absolute/Gameplay_Absolute.h"
