@@ -564,9 +564,9 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         }
         if (type == EnemyType::RESTORER) {   // stilts to dome, its arms and the cylinder on its back; kneeling, lower
             const float k = rsKneel * rsKneel * (3.f - 2.f * rsKneel);
-            const float c = std::cos(yaw), s = std::sin(yaw), top = 8.1f - 2.3f * k;
-            const glm::vec3 half{1.7f, top * 0.5f, 1.95f};
-            const glm::vec3 centre = position + glm::vec3{s * 0.2f, top * 0.5f, c * 0.2f};
+            const float c = std::cos(yaw), s = std::sin(yaw), top = (7.95f - 2.4f * k) * scale;
+            const glm::vec3 half{2.f * scale, top * 0.5f, 1.9f * scale};   // (stilts to dome; the dome reaches 2.6 m ahead of its feet)
+            const glm::vec3 centre = position + glm::vec3{s, 0.f, c} * (0.7f * scale) + glm::vec3{0.f, top * 0.5f, 0.f};
             const glm::vec3 ext{std::fabs(c) * half.x + std::fabs(s) * half.z, half.y, std::fabs(s) * half.x + std::fabs(c) * half.z};
             return {centre - ext, centre + ext};
         }

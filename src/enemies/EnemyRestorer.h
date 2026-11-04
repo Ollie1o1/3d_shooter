@@ -21,6 +21,8 @@
 // quicker (and it takes your guns back).
 // =============================================================================
 
+#include <glm/gtc/matrix_transform.hpp>
+
 inline void Enemy::thinkRestorer(float dt, const EnemyWorld& w, bool resolve) {
     const glm::vec3 to = flatTo(w.playerFeet);
     const float distance = glm::length(to);
@@ -74,4 +76,19 @@ inline void Enemy::thinkRestorer(float dt, const EnemyWorld& w, bool resolve) {
         case AttackKind::RS_FREEZE:   startAttack(pick, 1.4f * hurry); break;
         default:                      startAttack(pick, 1.1f * hurry); break;
     }
+}
+
+// ---- Its body, shared by the model (EnemyModel.h), its weak point (headBox) and the finisher
+// (Gameplay_Restorer.h): where the body above the stilts is, and the dome on it. Beaten, it kneels:
+// the body sinks and bows, bringing the dome down to you.
+namespace rsbody {
+inline const glm::vec3 DOME{0.f, 7.05f, 1.75f};   // the dome's centre in the body's frame
+constexpr float DOME_R = 0.78f;                    // its radius as drawn
+inline glm::mat4 bodyFrame(const Enemy& e) {
+    const float k = e.rsKneel * e.rsKneel * (3.f - 2.f * e.rsKneel);
+    return glm::translate(glm::mat4(1.f), e.position) * glm::rotate(glm::mat4(1.f), e.yaw, glm::vec3{0.f, 1.f, 0.f})
+         * glm::scale(glm::mat4(1.f), glm::vec3{e.scale})
+         * glm::translate(glm::mat4(1.f), glm::vec3{0.f, -2.55f * k, 0.5f * k}) * glm::rotate(glm::mat4(1.f), 0.3f * k, glm::vec3{1.f, 0.f, 0.f});
+}
+inline glm::vec3 domeWorld(const Enemy& e) { return glm::vec3(bodyFrame(e) * glm::vec4(DOME, 1.f)); }
 }

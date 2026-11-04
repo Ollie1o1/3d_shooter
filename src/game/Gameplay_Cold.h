@@ -31,7 +31,7 @@ inline void GameplayState::beginCold() {
     coldStoryT = 0.f; coldStoryStep = 0;
     if (level.arenas.size() > 1) { level.arenas[0].respawn = cold::start(); level.arenas[1].respawn = cold::hookStart(); }
     resetRestorerFight();   // (a retry: everything it did undone, your guns back)
-    if ((g_devOverlay == "rs1" || g_devOverlay == "rs2" || g_devOverlay == "rs3") && director.arena == 9)   // dev: in the Vault, the fight about to start
+    if (g_devOverlay.rfind("rs", 0) == 0 && director.arena == 9 && !g_devCam)   // dev: in the Vault, the fight about to start
         player.position = cold::vaultC() + glm::vec3{0.f, 0.f, 12.f};
     player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0}; prevCamPos = player.camera.position;
 }

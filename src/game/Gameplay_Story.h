@@ -624,6 +624,7 @@ inline void GameplayState::drawStoryArms(const Camera& cam) {
     ViewModel::FreeArm A[2];
     int n = 0;
     if (plain() && tearT >= 0.f) n = tearArms(A);   // tearing out its core
+    else if (cold() && rsFinT >= 0.f) n = recallFinArms(A);   // driving the RECALL module into the Restorer's dome
     else if (wakeT >= W_HAND && wakeT < W_DOWN + 0.9f) {
         float in = sm((wakeT - W_HAND) / 0.9f), out = sm((wakeT - W_DOWN) / 0.8f);
         float k = in * (1.f - out);
@@ -665,6 +666,7 @@ inline void GameplayState::renderStoryOverlay(const glm::mat4& viewProj) {
     if(plain() && summitEndT>=0.f && storyEndT<0.f){renderSummitEnd();return;}
     if(plain() && quietT>=0.f && storyEndT<0.f)renderQuiet();
     if(laboratory() && labEnding.active()){renderLabEndingOverlay();return;}
+    if(cold() && rsFinT>=0.f){renderRecallFin();return;}   // (Chapter 5's finisher: bars, its plea, the flashes)
     if(plain() && gutWhite>0.001f){ui.begin2D();ui.ui.rect(0,0,SCREEN_W,SCREEN_H,{1.f,.7f,.4f,gutWhite});ui.end2D();}   // (into the Gleaner, out of its chimney: fire)
     using namespace story;
     auto& U = ui.ui;

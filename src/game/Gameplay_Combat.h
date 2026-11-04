@@ -601,8 +601,10 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     if (e.type == EnemyType::WARDEN) { shifts.bossPulseOff(); ward.clear(); conduitClock.reset(); }   // its rings and hazards die with it
     if (e.type == EnemyType::REVENANT) releaseRevenantSoul(e, e.position.y < level.arenas[director.arena].voidY);   // its soul runs
     if (e.type == EnemyType::WEAVER) relic.dropOwner(e.uid);                                                       // its wires fall
-    fx.spawnDeathParticles(e.position + glm::vec3{0, e.height() * 0.5f, 0}, e.stats().color);
-    spawnDebrisFor(e);
+    if (e.type != EnemyType::RESTORER) {   // (its body stays, and rewinds: Gameplay_Cold.h)
+        fx.spawnDeathParticles(e.position + glm::vec3{0, e.height() * 0.5f, 0}, e.stats().color);
+        spawnDebrisFor(e);
+    }
     if (styleSystem.overdrive) dashCharges = 2;
     if (++killsThisCycle >= 2) {
         killsThisCycle = 0;
