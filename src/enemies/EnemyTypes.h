@@ -47,6 +47,7 @@ inline float miniScale(EnemyType t) {
         case EnemyType::HARRIER: return 2.3f;
         case EnemyType::PLUMB:   return 1.45f;
         case EnemyType::FOREMAN: return 1.7f;
+        case EnemyType::UNIT24K: return 1.55f;   // you, as the factory specified you: the full frame (Chapter 5)
         default: return 1.f;
     }
 }

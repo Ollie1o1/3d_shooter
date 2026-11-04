@@ -260,6 +260,17 @@ int main() {
         r.rsKneel = 1.f; const glm::vec3 low = rsbody::domeWorld(r);
         CHECK(headBox(r, head) && ray(head, low) && ray(r.getAABB(), low) && low.y < dome.y - 1.5f, "...and still does when it kneels, its dome brought down to you");
     }
+    {   // 24-K is drawn at its full frame (bigger than you), and its hitbox covers what is drawn
+        Enemy k(EnemyType::UNIT24K, {0.f, 0.f, 0.f}, 0.f); k.spawnTimer = 0.f; k.state = EnemyState::ACTIVE;
+        auto headY = [](const Enemy& e) {   // where its head's centre is drawn (its parts' centres: the highest)
+            std::vector<BoxInstance> out; buildEnemy(e, 1.f, out);
+            float top = 0.f; for (const auto& b : out) top = std::max(top, b.model[3].y);
+            return top;
+        };
+        const float big = headY(k); Enemy one = k; one.scale = 1.f; const float small = headY(one);
+        std::printf("      24-K's head drawn at %.2f m (%.2f m at your size); hitbox %.2f m\n", big, small, k.height());
+        CHECK(big > small * 1.4f && big > 2.4f && big < k.height(), "24-K is drawn at its full frame, well over your height, inside its hitbox");
+    }
     {   // CLERK: never attacks, keeps its distance
         EnemyWorld w; w.playerFeet = {4.f, 0.f, 0.f}; w.playerEye = w.playerFeet + glm::vec3{0, 1.7f, 0};
         Enemy e(EnemyType::CLERK, {0.f, 3.4f, 0.f}, 0.f);

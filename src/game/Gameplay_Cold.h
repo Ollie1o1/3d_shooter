@@ -33,6 +33,8 @@ inline void GameplayState::beginCold() {
     resetRestorerFight();   // (a retry: everything it did undone, your guns back)
     if (g_devOverlay.rfind("rs", 0) == 0 && director.arena == 9 && !g_devCam)   // dev: in the Vault, the fight about to start
         player.position = cold::vaultC() + glm::vec3{0.f, 0.f, 12.f};
+    if (g_devOverlay == "k24" && director.arena == 7 && !g_devCam)   // dev: in DISPATCH 2's yard, the duel about to start
+        player.position = cold::station() + glm::vec3{-3.f, 0.6f, 6.f};
     player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0}; prevCamPos = player.camera.position;
 }
 
@@ -161,10 +163,30 @@ inline void GameplayState::updateCold(float dt) {
     // 24-K: when its duel starts, it names itself
     if (director.arena == 7 && director.fighting() && !coldKIntro) {
         coldKIntro = true;
-        pushBanner("UNIT 24-K", "PURPOSE: COMPLY  /  STATUS: ACCEPTED", {0.85f, 0.9f, 0.95f}, 3.f);
-        coldKLineT = 3.2f;
+        pushBanner("UNIT 24-K", "RESTORED TO SPECIFICATION  /  PURPOSE: COMPLY", {0.85f, 0.9f, 0.95f}, 3.f);
+        coldKLineT = 3.2f; coldKHintT = 7.f;
+        audio.play("barrier", 110, SoundGroup::WORLD, true);   // (the ring going up round the yard)
     }
     if (coldKLineT > 0.f && (coldKLineT -= dt) <= 0.f) pushBanner("\"YOU ARE DAMAGED. I AM CORRECT.\"", "", {0.85f, 0.9f, 0.95f}, 3.5f);
+    if (coldKHintT > 0.f && (coldKHintT -= dt) <= 0.f && !coldKDown)
+        pushBanner("IT CANNOT FOLLOW YOU UP", "GRAPPLE ONTO THE CANOPY OR THE GANTRY  -  GOLD LINE: STEP OUT  -  WHITE RUSH: PARRY", {0.85f, 0.9f, 0.95f}, 5.f);
+    if (g_devOverlay == "k24")   // dev: look at it (footage)
+        for (const auto& e : enemies) if (e.alive && e.type == EnemyType::UNIT24K) {
+            const glm::vec3 d = e.position + glm::vec3{0.f, e.height() * 0.6f, 0.f} - player.camera.position;
+            player.camera.yaw = glm::degrees(std::atan2(d.z, d.x)); player.camera.pitch = glm::degrees(std::asin(d.y / glm::length(d)));
+        }
+    // The duel's ring: while it's on, neither of you leaves the yard
+    if (director.arena == 7 && director.fighting()) {
+        const AABB Y = cold::duelYard();
+        auto keepIn = [&](glm::vec3& q, glm::vec3& v, float r) {
+            if (q.x < Y.min.x + r) { q.x = Y.min.x + r; v.x = std::max(v.x, 0.f); }
+            if (q.x > Y.max.x - r) { q.x = Y.max.x - r; v.x = std::min(v.x, 0.f); }
+            if (q.z < Y.min.z + r) { q.z = Y.min.z + r; v.z = std::max(v.z, 0.f); }
+            if (q.z > Y.max.z - r) { q.z = Y.max.z - r; v.z = std::min(v.z, 0.f); }
+        };
+        keepIn(player.position, player.velocity, player.radius + 0.1f);
+        for (auto& e : enemies) if (e.alive && e.type == EnemyType::UNIT24K) keepIn(e.position, e.velocity, e.radius() + 0.1f);
+    }
     // The way out: once the Restorer has rewound to nothing, the Vault's dispatch rail powers up; step into its capsule
     const AABB& E = level.story.end;
     if (coldRDown && rsDeathT > 9.f && coldRideT < 0.f && storyEndT < 0.f && !playerDead && p.x > E.min.x && p.x < E.max.x && p.z > E.min.z && p.z < E.max.z) {
@@ -330,6 +352,24 @@ inline void GameplayState::gatherCold(std::vector<BoxInstance>& out) {
     gatherColdRoute(out);
     gatherRestorerFight(out);
     gatherColdEnding(out);
+    // 24-K's ring: cold light round the yard while the duel is on
+    if (director.arena == 7 && director.fighting() && glm::length(player.position - cold::station()) < 120.f) {
+        const AABB Y = cold::duelYard();
+        const float pulse = 0.75f + 0.25f * std::sin(gameClock * 3.f);
+        for (int sd = 0; sd < 4; ++sd) {
+            const bool alongX = sd < 2; const float at = sd == 0 ? Y.min.z : sd == 1 ? Y.max.z : sd == 2 ? Y.min.x : Y.max.x;
+            const float len = alongX ? Y.max.x - Y.min.x : Y.max.z - Y.min.z;
+            for (int h = 0; h < 4; ++h) {
+                const float y = 0.5f + h * 0.85f, w = 1.f - h * 0.2f;
+                const glm::vec3 c = alongX ? glm::vec3{(Y.min.x + Y.max.x) * 0.5f, y, at} : glm::vec3{at, y, (Y.min.z + Y.max.z) * 0.5f};
+                push(out, T(c) * S(alongX ? glm::vec3{len, 0.04f, 0.04f} : glm::vec3{0.04f, 0.04f, len}), {0.8f, 0.9f, 1.f}, glm::vec3{0.5f, 0.75f, 1.1f} * (pulse * w));
+            }
+            for (float u = 0.f; u <= len + 0.1f; u += 6.5f) {   // a bar of it up from each bollard
+                const glm::vec3 p = alongX ? glm::vec3{Y.min.x + u, 1.8f, at} : glm::vec3{at, 1.8f, Y.min.z + u};
+                push(out, T(p) * S(glm::vec3{0.05f, 2.6f, 0.05f}), {0.8f, 0.9f, 1.f}, glm::vec3{0.5f, 0.75f, 1.1f} * pulse * 0.8f);
+            }
+        }
+    }
     // The beacons: the Hook Line's mast and DISPATCH 2's, blinking (so the way reads from far off)
     for (const auto& [m, top] : {std::pair<glm::vec3, float>{cold::hookBeacon(), 24.f}, {cold::stationBeacon(), 30.f}}) {
         const float on = std::fmod(gameClock, 1.6f) < 0.5f ? 1.f : 0.12f;
@@ -577,7 +617,7 @@ inline bool GameplayState::coldFightLine(char* buf, size_t n, int left) {
         return true;
     }
     if (pickedBy >= 0) { std::snprintf(buf, n, "PICKED  /  SHOOT IT OR PUNCH FREE"); return true; }
-    if (director.arena == 7) { std::snprintf(buf, n, "UNIT 24-K  /  STEP OUT OF THE GOLD LINE - PARRY THE WHITE RUSH"); return true; }
+    if (director.arena == 7) { std::snprintf(buf, n, "UNIT 24-K  /  GET ABOVE IT - GOLD LINE: STEP OUT - WHITE RUSH: PARRY"); return true; }
     for (const auto& e : enemies)
         if (e.alive && e.type == EnemyType::CLERK) { std::snprintf(buf, n, "KILL THE CLERK FIRST - IT RESTORES THE DEAD  /  HOSTILES %d", left); return true; }
     if (director.arena == 1) { std::snprintf(buf, n, "PICKERS  /  SHOOT THEM DOWN - THE DOCK OPENS  %d", left); return true; }

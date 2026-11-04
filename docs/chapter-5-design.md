@@ -465,6 +465,27 @@ unclear. What changed:
   debris, and the stale banners are cleared. `--overlay rsfinish` beats it
   and runs the finisher by itself.
 
+### 24-K's duel, polished (2026-11-04)
+
+- **Its size:** 24-K is drawn and hit at 1.55x (`miniScale`), about 2.8 m
+  tall against your 1.8 m: you as the factory specified you, the full frame.
+  Its lights are brighter so it reads at range. A test checks the drawn size
+  against its hitbox.
+- **The yard** (`cold::duelYard`, 52 x 34 m round DISPATCH 2): a dark steel
+  deck with a faint grid so the pale unit stands out, hazard edging,
+  floodlights on the corners. Cover: three cargo stacks (one two high, to
+  climb) and three low barriers. Things to get above it, since it has no
+  grapple: the canopy is now a solid roof you can stand on, and a signal
+  gantry (a 44 m walkway at 6.2 m on two towers) crosses the yard's south
+  side.
+- **The ring:** once you're well inside the yard the duel starts and a ring
+  of cold light goes up round it; neither of you can leave until it's over
+  (it used to run off across the open sea ice). 24-K now starts on the deck
+  in front of you, and a retry puts you at the yard's west edge, facing in.
+- **Its lines and hints:** "RESTORED TO SPECIFICATION / PURPOSE: COMPLY",
+  then "IT CANNOT FOLLOW YOU UP" with how to use that, and the objective line
+  says "GET ABOVE IT". `--overlay k24` starts you in the yard, looking at it.
+
 ## 11. Build order
 
 1. **RECALL** (testable anywhere with a dev flag).

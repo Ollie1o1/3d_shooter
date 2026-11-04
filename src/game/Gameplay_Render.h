@@ -129,7 +129,7 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
         // A small light floor on ordinary armor keeps dark rigs legible. The
         // depth buffer still hides enemies behind cover; glowing tells retain their colours.
         if (e.type == EnemyType::UNIT24K)   // you, restored: clean ivory, cold white light
-            for (size_t j = from; j < out.size(); ++j) { out[j].color = glm::mix(out[j].color, glm::vec3{0.82f, 0.82f, 0.8f}, 0.35f); out[j].emissive = glm::vec3{std::max({out[j].emissive.x, out[j].emissive.y, out[j].emissive.z})} * glm::vec3{0.9f, 0.95f, 1.1f}; }
+            for (size_t j = from; j < out.size(); ++j) { out[j].color = glm::mix(out[j].color, glm::vec3{0.82f, 0.82f, 0.8f}, 0.35f); out[j].emissive = glm::vec3{std::max({out[j].emissive.x, out[j].emissive.y, out[j].emissive.z})} * glm::vec3{1.5f, 1.6f, 1.9f}; }   // (its lights bright: it reads at range)
         if (e.type == EnemyType::THAWLING) {   // frost on it until it warms
             float frost = 1.f - coldfoe::thawWarm(e.age);
             for (size_t j = from; j < out.size(); ++j) out[j].color = glm::mix(out[j].color, glm::vec3{0.8f, 0.86f, 0.93f}, 0.15f + 0.6f * frost);
