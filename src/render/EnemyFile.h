@@ -140,7 +140,7 @@ inline const char* fileName(EnemyType t) {
         case EnemyType::BALLAST: return "ballast";
         case EnemyType::PATIENT:return "patient";case EnemyType::GRAFTED:return "grafted";case EnemyType::SUSPENDED:return "suspended";case EnemyType::PHASED:return "phased";case EnemyType::SUCCESSOR:return "successor";
         case EnemyType::THAWLING:return "unit_blank";
-        case EnemyType::UNIT24K:return "unit24";        // you, restored   // one of the stored units, thawing (posed like a PATIENT)
+        case EnemyType::UNIT24K:return "unit24_factory";   // you, restored: the factory's unit, none of what happened to you   // one of the stored units, thawing (posed like a PATIENT)
         default: return nullptr;
     }
 }

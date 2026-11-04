@@ -283,7 +283,7 @@ inline void GameplayState::gatherColdRoute(std::vector<BoxInstance>& out) {
         }
         vec3 core{0.f};
         if (k == 0) core = coldRecall ? vec3{0.f} : RECALL_FROST * (0.8f + 0.4f * std::sin(t * 3.f));   // 24-A: the module in its chest
-        coldBody(out, "unit24", T(p) * RY(yaw), P, k == 0 && !coldRecall ? 0.45f : 0.7f, core);
+        coldBody(out, "unit24_factory", T(p) * RY(yaw), P, k == 0 && !coldRecall ? 0.45f : 0.7f, core);   // (copies: the factory's, not him)
     }
 }
 

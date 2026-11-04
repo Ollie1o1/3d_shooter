@@ -19,6 +19,12 @@ exec(open("/Users/ollie/Projects/overdrive/3d_shooter/tools/blender/enemy_kit.py
 
 NAME = globals().get("OUTNAME", "unit24")
 NUMBER = str(globals().get("NUMBER", "24"))
+# HIM: UNIT 24 himself (unit24.glb) wears what the story did to him (the JOURNEY section below). Everything
+# else from this script (unit24_factory: 24-K, the copies in Rack 24, the Chapter 3 cutscene before he takes
+# the Successor's parts; the numbered wrecks) is the factory's unit. CREST: the newer factory head and
+# shoulders (unit24 and unit24_factory); the older wrecks were built before it (OLD=1 keeps it off).
+HIM = NAME == "unit24"
+CREST = not globals().get("OLD")
 NEEDED[NAME] = ("waist torso head armL armR elbowL elbowR handL handR fingersL fingersR thumbL thumbR "
                 "hipL hipR kneeL kneeR ankleL ankleR")
 _og.PALETTE.update({
@@ -31,6 +37,14 @@ _og.PALETTE.update({
     "board": (0.08, 0.20, 0.12),       # a circuit board behind the temple
     "stencil": (0.10, 0.10, 0.11),
     "lens": (0.02, 0.03, 0.035),
+    "successor": (0.30, 0.27, 0.28),   # the Successor's plate (Chapter 3), darker than his own: he wears its shoulder
+    "succ_dark": (0.12, 0.10, 0.10),
+    "spray_red": (0.62, 0.06, 0.05),   # the factory's REJECT mark
+    "cloth": (0.55, 0.21, 0.12),       # his scarf: a rust-red rag from the wasteland, faded
+    "cloth_dark": (0.38, 0.14, 0.09),
+    "ash": (0.30, 0.28, 0.26),         # ash and soot ground into his plates
+    "paper": (0.80, 0.76, 0.62),
+    "frost": (0.80, 0.88, 0.94),
 })
 
 # ---- the scene: its own, with the skeleton made here (the first build has no file to open) ----
@@ -284,6 +298,85 @@ for s in (1, -1):
     E((ex, 1.69, 0.114), (0.046, 0.031, 0.01), CYAN, H, glow="eye", k=1.8, seg=18, rings=6)
     E((ex - 0.008, 1.696, 0.119), (0.009, 0.007, 0.003), "glow*2.0", H, glow="eye", k=2.6, seg=10, rings=4)   # a glint
     R((ex, 1.69, 0.113), 0.027, 0.0035, SV, H, sides=18, tsides=4)
+
+# ============================================================================================
+# THE NEWER FACTORY SILHOUETTE (unit24, unit24_factory): a ceramic crest over the head, angled cheek guards,
+# swept-back fins rising off the shoulder caps
+# ============================================================================================
+if CREST:
+    P((0, 1.79, -0.02), (0.03, 0.035, 0.22), CER, H, top=(0.6, 0.85), bev=0.008, seg=2)          # the crest, front to back
+    B((0, 1.775, -0.01), (0.04, 0.006, 0.22), CER3, H)                                             # its seam
+    for s in (1, -1):
+        P((s * 0.088, 1.645, 0.085), (0.025, 0.075, 0.05), CER, H, rot=(0, s * 20, s * -8), top=(0.6, 0.9), bev=0.006)   # cheek guards
+        P((s * 0.25, 1.53, -0.04), (0.025, 0.12, 0.09), CER, "arm" + ("L" if s > 0 else "R"), rot=(-25, 0, s * -12), top=(0.4, 0.8), bev=0.008)   # shoulder fins
+
+# ============================================================================================
+# HIS JOURNEY (unit24 only): what the story did to him, worn
+#   the Successor's shoulder plate on his left (Chapter 3), seated and edged in his light
+#   the SPLINTER's sleeve along his left forearm, a shard of glass in its slot (Chapter 3/4)
+#   the coupling across his back (Chapter 3)
+#   an ash-grey scarf from the wasteland, its tails down his back
+#   the factory's red REJECT X over his number, half scrubbed off
+#   a crack across his face band leaking light; his crest snapped short, a wire hanging from it
+#   a reject tag on a wire at his collar; the RECALL canister at his right hip (Chapter 5)
+# ============================================================================================
+if HIM:
+    # the Successor's shoulder: a bigger, angular plate over his own cap, cyan along its seams
+    P((0.245, 1.49, 0.0), (0.16, 0.06, 0.2), "successor", "armL", rot=(0, 0, -22), top=(0.75, 0.85), bev=0.015, seg=2)
+    P((0.285, 1.435, 0.0), (0.06, 0.12, 0.19), "successor", "armL", rot=(0, 0, -8), top=(0.8, 0.9), bev=0.012)
+    B((0.25, 1.519, 0.0), (0.12, 0.004, 0.006), "glow", "armL", rot=(0, 0, -22), glow="core", k=0.8)   # its seams, lit
+    B((0.25, 1.505, 0.096), (0.13, 0.03, 0.004), "glow", "armL", rot=(0, 0, -22), glow="core", k=0.6)
+    B((0.316, 1.44, 0.0), (0.004, 0.1, 0.006), "glow", "armL", glow="core", k=0.7)
+    for z in (-0.06, 0.0, 0.06):
+        bolt((0.29, 1.47, z), "armL", r=0.007, mat="succ_dark")
+    # the SPLINTER's sleeve: a dark housing along his left forearm, a slot with the glass shard in it
+    C((0.255, 1.04, 0.0), 0.04, 0.19, "succ_dark", "elbowL", sides=10)
+    B((0.29, 1.04, 0.0), (0.012, 0.15, 0.03), "lens", "elbowL")
+    W((0.297, 1.05, 0.0), (0.012, 0.11, 0.018), "glow", "elbowL", rot=(0, 0, 0), glow="core", k=1.6, taper=0.2)   # the shard
+    for y in (0.96, 1.12):
+        R((0.255, y, 0.0), 0.042, 0.006, "successor", "elbowL", rot=(0, 0, 0), sides=12, tsides=4)
+    # the coupling on his back: the Successor's ring across the spine channel
+    R((0, 1.33, -0.115), 0.05, 0.012, "succ_dark", T, rot=(90, 0, 0), sides=16, tsides=6)
+    C((0, 1.33, -0.118), 0.032, 0.02, "glow", T, rot=(90, 0, 0), glow="core", k=1.4, sides=12)
+    for s in (1, -1):
+        B((s * 0.07, 1.33, -0.112), (0.06, 0.02, 0.012), "successor", T)
+    # the scarf: wound twice round his neck, two tails down his back, frayed
+    R((0, 1.515, 0.0), 0.075, 0.022, "cloth", T, rot=(90, 0, 8), sides=18, tsides=6)
+    R((0, 1.54, 0.005), 0.068, 0.018, "cloth_dark", T, rot=(90, 0, -6), sides=18, tsides=6)
+    R((0, 1.49, 0.0), 0.085, 0.02, "cloth", T, rot=(90, 0, 3), sides=18, tsides=6)   # (a third turn, lower, loose)
+    for s, ln, sw in ((1, 0.58, 7), (-1, 0.46, -5)):   # the tails, long, down his back past his waist
+        P((s * 0.035, 1.5 - ln / 2, -0.13 - 0.02 * (s > 0)), (0.055, ln, 0.012), "cloth" if s > 0 else "cloth_dark", T, rot=(8, 0, sw), top=(0.75, 1.0), bev=0.003)
+        for f in range(3):   # its frayed end
+            B((s * 0.035 + (f - 1) * 0.016 + s * ln * 0.06, 1.5 - ln - 0.015, -0.15), (0.009, 0.035, 0.006), "cloth_dark", T, rot=(8, 0, sw + (f - 1) * 15))
+    P((-0.045, 1.44, 0.1), (0.045, 0.1, 0.012), "cloth", T, rot=(-12, 0, 12), top=(0.8, 1.0), bev=0.003)   # a short flap over his chest (clear of his number)
+    # a sash of the same cloth at his waist, its end hanging at his left hip
+    R((0, 1.0, 0.0), 0.15, 0.02, "cloth_dark", W_, rot=(90, 0, -5), sides=20, tsides=6)
+    P((0.13, 0.9, 0.06), (0.05, 0.2, 0.01), "cloth_dark", W_, rot=(5, 0, 10), top=(0.7, 1.0), bev=0.003)
+    # ash ground into his shins and feet, the dust of the road
+    for s, side in ((1, "L"), (-1, "R")):
+        B((s * 0.10, 0.2, 0.073), (0.06, 0.07, 0.002), "ash", "knee" + side, rot=(0, 0, s * 8), bev=0.001)
+        B((s * 0.10, 0.07, 0.15), (0.09, 0.03, 0.06), "ash", "ankle" + side, rot=(8, 0, 0))
+    # the REJECT X: two red sprays across his number, scrubbed in places
+    for s in (1, -1):
+        for i in range(5):
+            if i == 2 and s > 0:
+                continue   # (rubbed off here)
+            u = (i - 2) * 0.03
+            B((0.07 + u, 1.37 + s * u * 1.1, 0.109), (0.03, 0.012, 0.003), "spray_red", T, rot=(0, 0, s * 47))
+    # a crack across the face band, light leaking through it
+    B((0.02, 1.672, 0.114), (0.07, 0.004, 0.003), "glow", H, rot=(0, 0, -28), glow="eye", k=1.4)
+    B((-0.012, 1.656, 0.114), (0.03, 0.004, 0.003), "glow", H, rot=(0, 0, -50), glow="eye", k=1.2)
+    # the crest snapped short at the back, a wire hanging out of it
+    B((0, 1.805, -0.12), (0.03, 0.03, 0.03), "frame", H, rot=(20, 0, 15))
+    cable([(0.005, 1.8, -0.125), (0.02, 1.76, -0.14), (0.015, 1.72, -0.13)], 0.003, "wire_red", H)
+    # the reject tag on a wire at his collar
+    cable([(-0.06, 1.49, 0.07), (-0.065, 1.45, 0.085)], 0.002, "chrome", T)
+    B((-0.066, 1.42, 0.09), (0.035, 0.045, 0.003), "paper", T, rot=(0, 0, 8))
+    B((-0.066, 1.428, 0.0918), (0.024, 0.004, 0.001), "spray_red", T, rot=(0, 0, 8))
+    # the RECALL canister at his right hip: frosted, a cyan band
+    C((-0.155, 0.93, 0.03), 0.032, 0.11, "frost", None, sides=12)
+    R((-0.155, 0.93, 0.03), 0.033, 0.006, "glow", None, sides=12, tsides=4, glow="core", k=1.2)
+    B((-0.15, 0.99, 0.03), (0.05, 0.02, 0.05), "servo", None)
 
 report(NAME)
 save_enemy(NAME)

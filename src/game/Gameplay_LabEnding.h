@@ -237,7 +237,7 @@ inline void GameplayState::gatherLabEnding(std::vector<BoxInstance>& out) {
     float yaw = 0.f;
     bool unit = false;
     if (cut && L.time < LabEnding::THROUGH + 0.3f)
-        if (const auto* U = story::bodyModel("unit24")) {
+        if (const auto* U = story::bodyModel("unit24_factory")) {   // (before he takes the Successor's pieces: the factory's unit)
             FilePose P;
             const vec3 at = labEndUnit(yaw);
             float k = L.kneel(), w = L.walking() * (1.f - k), ph = t * 7.2f, sw = std::sin(ph);

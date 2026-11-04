@@ -354,8 +354,21 @@ candidate).
   leans away toward the gas giant (7.5 s, the camera looking out toward it),
   then fades to the chapter's end screen. `--overlay coldride` starts the
   ride directly for screenshots.
-- **Not built yet:** the hands-on finisher (driving the RECALL module into
-  its dome). The rewind plays as soon as it falls.
+- **The RECALL finisher:** beaten, the Restorer kneels at 1 HP and waits
+  ("IT FALTERS"). Interact near it and the camera climbs to its dome: the
+  module goes in, cracks run over the glass, its lamp turns cyan, and the
+  glass breaks (3.2 s). Then the rewind plays.
+- **Its body** is nine Blender pieces (`tools/blender/restorer_build.py`,
+  `make restorer-art`) placed by its rig: dome, torso, pelvis, cylinder,
+  strut, hose, joint, foot and jaw.
+- **UNIT 24's look:** `unit24.glb` is him, wearing what the story did to
+  him: a rust-red scarf with long tails and a sash, the Successor's dark
+  shoulder plate and SPLINTER sleeve, its coupling on his back, the
+  factory's REJECT X half scrubbed off his number, a cracked face band, a
+  snapped crest, a reject tag, the RECALL canister at his hip, and ash on
+  his shins. `unit24_factory.glb` (`OUTNAME=unit24_factory`) is the factory
+  unit, with the newer crest, cheek guards and shoulder fins: 24-K, Rack
+  24's copies and the Chapter 3 cutscene use it.
 - **The hand-off:** Chapter 4's end now leads to Chapter 5 (ENTER - CONTINUE
   TO CHAPTER 5). Chapter 5 is on the Story menu ("5 THE COLD STORE") and in
   the dev menu's section list. It saves at checkpoints like the others
@@ -366,9 +379,8 @@ candidate).
   (118 BPM, rising with its phases). Sounds come from the existing bank: the
   Clerk's ticks, the sea's creaks and groans, the vents' hiss, the capsules'
   launches.
-- **Still to do:** the hands-on RECALL finisher; a Blender model for the
-  Restorer (it is a code rig); the score stuttering back on ROLLBACK; frame
-  rate near the Store (about 50 fps in 4K screenshots there, 90+ elsewhere).
+- **Still to do:** the score stuttering back on ROLLBACK; frame rate near
+  the Store (about 50 fps in 4K screenshots there, 90+ elsewhere).
 
 ## 11. Build order
 

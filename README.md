@@ -32,7 +32,7 @@ a new run resets discoveries. Enter on Chapter 1's completion card continues int
 with your equipment. STORY also offers direct Chapter 2 and Chapter 3 starts with the appropriate equipment.
 See [the Chapter 1 implementation and playtest notes](docs/story-chapter-1.md) for the route, controls,
 source files and developer starts. [Chapter 2 notes](docs/story-chapter-2.md) cover the wasteland
-route, Blender assets and verification. Launch Chapter 2 directly with `./shooter --story2`, or the Living Ward with `./shooter --story3` (`?story3` in the web build). [Chapter 3 build notes](docs/chapter-3-implementation.md) cover its controls, assets, tests and tuning limits. The current [Story revision](docs/story-overhaul.md) documents the writing, research and encounter direction. Settings → VIDEO → **AMBIENT DETAIL** reduces optional ash, grit, vents and moving decoration independently of resolution; required attack tells and objectives remain visible. Settings → GAMEPLAY → **ENEMY MARKERS** selects LOW (small cleanup icons, one short direction label) or DETAILED (full names, distance and cover labels). Bosses do not receive tracking icons in either mode.
+route, Blender assets and verification. Launch Chapter 2 directly with `./shooter --story2`, or the Living Ward with `./shooter --story3` (`?story3` in the web build). Chapter 5, THE COLD STORE (an icy planet, RECALL, 24-K and THE RESTORER), starts with `./shooter --story5` (sections with `--arena N`, from 1); its [design and build notes](docs/chapter-5-design.md) cover what is built. [Chapter 3 build notes](docs/chapter-3-implementation.md) cover its controls, assets, tests and tuning limits. The current [Story revision](docs/story-overhaul.md) documents the writing, research and encounter direction. Settings → VIDEO → **AMBIENT DETAIL** reduces optional ash, grit, vents and moving decoration independently of resolution; required attack tells and objectives remain visible. Settings → GAMEPLAY → **ENEMY MARKERS** selects LOW (small cleanup icons, one short direction label) or DETAILED (full names, distance and cover labels). Bosses do not receive tracking icons in either mode.
 
 Combat Practice is available from **F3** on the main menu or the Story page.
 Choose repeatable lessons for parries, finishers, grapples, shotgun jumps and
@@ -344,6 +344,8 @@ Everything below runs without touching the mouse, so it works from scripts.
 #   --sword: the sword on key 5 in any arena; --weapon 5: start with it drawn
 #   --story4: Chapter 4, THE BLOOD MOON PLAIN (in progress); --overlay plainimpact: a big meteor lands 160 m ahead; --overlay plainrevealNN: the opening from NN s (0-13 the prologue); --overlay plainclose / plaindeck: straight to the Gleaner fight / onto its back
 #   --splinter: UNIT 24's SPLINTER (Chapter 4) on the grenade button in any mode: G throws, shoot it to bounce the round
+#   --story5: Chapter 5, THE COLD STORE; --recall: RECALL (X) in any mode; --overlay coldride: the capsule ride out;
+#   --overlay rspose: the Restorer stands still (screenshots); --overlay bossdown-rsfinish: the Restorer falls and the RECALL finisher plays
 #   --overlay swingSU: hold sword stroke S (0 forehand, 1 backhand, 2 overhead) U/10 through it; guard: its guard
 #   --swordorbit DEG: see the sword and the arms holding it from the side (DEG round them), to check the wrists
 #   --spawn TYPE (repeatable): enemies in an arc in front of the camera
