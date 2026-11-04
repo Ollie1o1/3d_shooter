@@ -547,6 +547,29 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
             glm::vec3 h{3.0f, 2.6f, 3.0f};
             return {position - h, position + h};
         }
+        // Chapter 5: boxes round what is drawn (EnemyModel.h), not a cylinder at its feet
+        if (type == EnemyType::PICKER) {   // its body hangs above its feet point and its claws below: 0.3 m under it to its wheels
+            return {position + glm::vec3{-0.85f, -0.3f, -0.85f}, position + glm::vec3{0.85f, 2.05f, 0.85f}};
+        }
+        if (type == EnemyType::CLERK) {    // small: a little generous, rotors and lamp included
+            return {position + glm::vec3{-0.6f, 0.2f, -0.6f}, position + glm::vec3{0.6f, 1.1f, 0.6f}};
+        }
+        if (type == EnemyType::THAWLING && age < 2.8f) {   // still crawling: it lies forward along the floor
+            const float crawl = 1.f - glm::clamp((age - 1.6f) / 0.6f, 0.f, 1.f);
+            const glm::vec3 fwd{std::sin(yaw), 0.f, std::cos(yaw)};
+            const glm::vec3 c = position + fwd * (0.75f * crawl) + glm::vec3{0.f, 0.925f - 0.4f * crawl, 0.f};
+            const float along = 0.45f + 0.75f * crawl, up = 0.925f - 0.4f * crawl;
+            const glm::vec3 ext{std::fabs(fwd.x) * along + std::fabs(fwd.z) * 0.5f, up, std::fabs(fwd.z) * along + std::fabs(fwd.x) * 0.5f};
+            return {c - ext, c + ext};
+        }
+        if (type == EnemyType::RESTORER) {   // stilts to dome, its arms and the cylinder on its back; kneeling, lower
+            const float k = rsKneel * rsKneel * (3.f - 2.f * rsKneel);
+            const float c = std::cos(yaw), s = std::sin(yaw), top = 8.1f - 2.3f * k;
+            const glm::vec3 half{1.7f, top * 0.5f, 1.95f};
+            const glm::vec3 centre = position + glm::vec3{s * 0.2f, top * 0.5f, c * 0.2f};
+            const glm::vec3 ext{std::fabs(c) * half.x + std::fabs(s) * half.z, half.y, std::fabs(s) * half.x + std::fabs(c) * half.z};
+            return {centre - ext, centre + ext};
+        }
         float r = radius();
         return { position + glm::vec3{-r, 0.f, -r}, position + glm::vec3{r, height(), r} };
     }

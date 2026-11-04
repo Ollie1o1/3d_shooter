@@ -382,6 +382,61 @@ candidate).
 - **Still to do:** the score stuttering back on ROLLBACK; frame rate near
   the Store (about 50 fps in 4K screenshots there, 90+ elsewhere).
 
+### The map and boss pass (2026-11-04)
+
+From the user's playtest: you couldn't tell where to go, the surroundings were
+bare, the Hook Line was tedious, you walked through huge black walls, the paths
+didn't make sense, shots missed enemies, and the boss and its goal were
+unclear. What changed:
+
+- **No more walking through walls.** The Store's towers are scenery with no
+  collision, and three of them stood on the route (the Chillers, DISPATCH 2,
+  the Vault), as did the station's snow mound and a post in the middle of the
+  gantry. The Store now stands about 2.5 km back (`STORE_Z` -2600), the mound
+  sits behind the station, and `make test-cold` checks that no tower is within
+  20 m of any section.
+- **Shorter walks.** You arrive about 250 m from the Hook Line (on a square of
+  the portal's grid plates) instead of 700 m. DISPATCH 2 and the Vault moved
+  closer (the sea crossing is about 390 m, the causeway about 140 m).
+- **The Hook Line is a grapple run.** The four slow carriers are gone. Eleven
+  empty hooks hang off the rail about 22 m apart, from just past the gantry to
+  over the dock. Aim near a hook and the grapple takes it (a generous box,
+  never the hook you hang from), zips you in and you hang under it. Grapple
+  the next one straight from hanging. Let go of the last to land on the dock.
+  About 14 s across (`--overlay hookrun` flies it with the real grapple). A
+  fall puts you back on the last deck you stood on, not at the start. The
+  belt's bodies are lifted by a crane at its end and ride a second rail out
+  to the tower.
+- **Wayfinding.** On-screen waypoints for every section (the Hook Line beacon,
+  the next hook, each door, 24-A, the gate, DISPATCH 2, the causeway, the
+  Vault, the capsule). Blinking beacon masts at the Hook Line and DISPATCH 2.
+  An amber lamp line leads from the arrival to the gantry. The old dispatch
+  rail runs on trestles across the sea to the station ("follow the old
+  rail"). Amber chevrons on the tower's floors point at the next door.
+  Objective lines say what to do.
+- **Detail.** The Intake's yard of frozen cases, light masts and the crane;
+  the Thaw Room's heater banks, pipes and meltwater; Inventory's two tall
+  file stacks (three aisles); Rack 24's cryo lines, crane and a lit trail to
+  24-A; on the sea, a half-sunk capsule, racks standing out of the ice and
+  pressure ridges; DISPATCH 2's cases, benches, a derailed capsule (cover for
+  the duel) and a terminal; posts and lamps round the Vault's rim.
+- **Hit registration.** Pickers were drawn above their hitbox (shots at the
+  body passed over it). A crawling Thawling lay outside its upright box. The
+  Restorer's dome sat above its 7 m box. Each now has a box round what is
+  drawn (`Enemy::getAABB`). The dome is the Restorer's weak point (head
+  damage) and the Clerk's box is a little more generous.
+- **The boss makes sense.** On the causeway the Manifest announces you
+  (`MANIFEST: UNIT 24 / TO BE RESTORED`), that the only dispatch capsule is in
+  the Vault on the Restorer's word, and that it has sent nothing on in 3,112
+  days. The chapter opens by naming the capsules as the way off. In the
+  fight, the objective line follows the phase (shoot the dome; break the
+  restore points, N left; break the drums), markers sit on restore points,
+  drums (named with the gun inside), the rollback ghost and the faltering
+  Restorer, and pale tethers run from each restore point to it, bright while
+  it heals. Regrowth is 90/s (was 140) and FACTORY RESET takes a gun every
+  7 s (was 5). Other fights name their priority (Clerks: kill first).
+  `--overlay rs1/rs2/rs3` starts the fight in a phase.
+
 ## 11. Build order
 
 1. **RECALL** (testable anywhere with a dev flag).

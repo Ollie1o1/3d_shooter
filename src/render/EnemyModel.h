@@ -1693,6 +1693,13 @@ inline bool headBox(const Enemy& e, AABB& out) {
         out={c-ext,c+ext};return true;
     }
 
+    if(e.type==EnemyType::RESTORER) {   // its glass dome, the lamp in it: the weak point (the same place Gameplay_Restorer.h's rsDomeWorld finds)
+        const float k=e.rsKneel*e.rsKneel*(3.f-2.f*e.rsKneel);
+        mat4 frame=T(e.position)*RY(e.yaw)*T({0.f,-2.3f*k,.4f*k})*RX(.25f*k);
+        vec3 c=vec3(frame*glm::vec4(0.f,7.25f,1.1f,1.f)),half{.95f,.85f,.95f};
+        glm::mat3 m(frame);vec3 ext=glm::abs(m[0])*half.x+glm::abs(m[1])*half.y+glm::abs(m[2])*half.z;
+        out={c-ext,c+ext};return true;
+    }
     if(e.type==EnemyType::SORTER) {
         mat4 frame=T(e.position)*RY(e.yaw)*T({0,4.4f,0})*RY(std::sin(e.age*.5f)*.12f);
         vec3 c=vec3(frame*glm::vec4(0,.5f,.55f,1)),half{1.25f,.65f,1.05f};

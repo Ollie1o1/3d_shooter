@@ -8,6 +8,7 @@
 #include "world/ZoneConstraint.h"
 #include "render/MaterialTex.h"
 #include "enemies/Enemy.h"
+#include "render/EnemyModel.h"
 #include "world/Interactable.h"
 #include <algorithm>
 #include <set>
@@ -108,23 +109,25 @@ int main() {
         Walk w(R, cold::start());
         bool ok = w.to({cold::HOOK_X + 3.f, 0.f, cold::lipZ() + 30.f}, true) && w.to(cold::hookStart(), true, 9000, 0.8f);
         CHECK(ok && w.p.position.y > -0.5f, "from the arrival you can walk out onto the Hook Line's gantry");
-        bool rode = ok;
-        for (int k = 0; k < cold::CARRIERS && rode; ++k) {
-            const Mover& m = R.movers[k];
-            auto box = [&]() -> const AABB& { return R.walls[m.wall].box; };
-            auto cz = [&]() { return (box().min.z + box().max.z) * 0.5f; };
-            const float nearZ = m.base.min.z * 0.5f + m.base.max.z * 0.5f, farZ = nearZ + m.b.z;
-            // wait at the station's edge for the carrier to come in, then step on and ride it
-            int waited = 0;
-            while (std::fabs(cz() - nearZ) > 0.05f && waited < 60 * 30) { w.step(w.p.position, false, true); ++waited; }
-            w.to({cold::HOOK_X, 0.f, cz()}, false, 120, 0.5f);
-            int rideF = 0;
-            while (std::fabs(cz() - farZ) > 0.05f && rideF < 60 * 30) { w.step({cold::HOOK_X, 0.f, cz()}, false, true); ++rideF; }
-            bool on = w.p.position.y > -0.5f && std::fabs(w.p.position.z - farZ) < 2.f;
-            if (!on) std::printf("  carrier %d: player at %.1f %.1f %.1f, carrier at z %.1f\n", k, w.p.position.x, w.p.position.y, w.p.position.z, cz());
-            rode = on && w.to({cold::HOOK_X, 0.f, cold::stationZ(k + 1)}, false, 240, 0.6f) && w.p.position.y > -0.5f;
+        // The Hook Line: a chain of hooks, each within an easy grapple of the last, hung where you can hang
+        // under them, the first in reach from the gantry and the last over the dock
+        bool hooks = R.story.coldHookCount == cold::HOOKS;
+        for (int k = 0; k < cold::HOOKS && hooks; ++k) {
+            const glm::vec3 h = cold::hookAt(k), hang = cold::hangAt(k);
+            hooks &= R.walls[R.story.coldHooks + k].box.min.y > hang.y + 1.9f;   // (your head clears it, hanging)
+            if (k > 0) hooks &= glm::length(h - cold::hookAt(k - 1)) < 26.f;
+            AABB body{hang + glm::vec3{-0.4f, 0.f, -0.4f}, hang + glm::vec3{0.4f, 1.8f, 0.4f}};
+            for (const auto& wl : R.walls) if (body.min.x < wl.box.max.x && body.max.x > wl.box.min.x && body.min.y < wl.box.max.y && body.max.y > wl.box.min.y && body.min.z < wl.box.max.z && body.max.z > wl.box.min.z) hooks = false;
         }
-        CHECK(rode, "the four carriers carry you from station to station across the Void to the tower's dock");
+        CHECK(hooks, "the Hook Line's hooks are under 26 m apart, and you hang under each clear of anything");
+        CHECK(glm::length(cold::hookAt(0) - (cold::hookStart() + glm::vec3{0.f, 1.7f, 0.f})) < 25.f, "...the first is in reach from the gantry's end");
+        const glm::vec3 last = cold::hangAt(cold::HOOKS - 1);
+        CHECK(std::fabs(last.x - cold::HOOK_X) < 5.f && last.z < cold::stationZ(cold::STATIONS) + cold::STATION_HALF && last.z > cold::TOWER_FRONT, "...and the last hangs over the dock: let go and you land on it");
+        // (the grapple is the game's; the test drops you onto the dock as letting go of the last hook would)
+        w.p.position = last; w.p.velocity = glm::vec3{0.f};
+        for (int f = 0; f < 120; ++f) w.step(last, false, true);
+        bool rode = ok && w.p.onGround && w.p.position.y > -0.5f;
+        CHECK(rode, "let go of the last hook and you land on the tower's dock");
         bool inside = rode && w.to({cold::HOOK_X, 0.f, cold::TOWER_FRONT - 5.f}, true) && w.to({cold::HOOK_X, 0.f, cold::THAW_BACK + 3.f}, true)
                    && w.to({cold::HOOK_X, 0.f, cold::INV_BACK + 3.f}, true) && w.to({cold::HOOK_X, 0.f, cold::INV_BACK - 6.f}, true);
         CHECK(inside && w.p.position.y > -0.5f, "through the Thaw Room and Inventory into Rack 24, on the tower's floor");
@@ -183,6 +186,18 @@ int main() {
     bool towersOver = true;
     for (const auto& t : cold::towers()) towersOver &= t.base.z + t.half < cold::EDGE_Z - 300.f && t.base.y + t.height > 300.f;
     CHECK(towersOver, "the Store's towers rise out of the Void across the chasm, well above the shelf");
+    {   // ...and none stands where you walk (they are scenery: no collision, so one in the way is a black wall you pass through)
+        auto R = buildCold();
+        bool clear = true;
+        for (const auto& t : cold::towers())
+            for (int a = 0; a < (int)R.arenas.size(); ++a) {
+                AABB z = R.arenas[a].zone;
+                if (a == 0) z.max.z = std::min(z.max.z, cold::SOUTH);
+                bool hit = t.base.x + t.half + 20.f > z.min.x && t.base.x - t.half - 20.f < z.max.x && t.base.z + t.half + 20.f > z.min.z && t.base.z - t.half - 20.f < z.max.z;
+                if (hit && a != 0) { clear = false; std::printf("  tower at %.0f %.0f inside section %d\n", t.base.x, t.base.z, a); }
+            }
+        CHECK(clear, "no Store tower stands within 20 m of any section you walk through");
+    }
     CHECK(glm::dot(cold::giantDir(), glm::vec3{0.f, 0.f, -1.f}) > 0.7f && cold::giantDir().y > 0.2f, "the gas giant hangs over the Store, clear of the horizon");
 
     // ---- the ground ----
@@ -228,6 +243,19 @@ int main() {
         CHECK(grabbed && e.pickT > 0.f, "...and its drop takes you if you stay under it");
         e.stun(1.f);
         CHECK(e.pickT <= 0.f, "stunned (punched), it lets go");
+    }
+    {   // Hit registration: a shot at what is drawn lands (the boxes round the models, not a cylinder at the feet)
+        auto ray = [](const AABB& b, glm::vec3 at) {   // a level shot from 10 m south at this point
+            glm::vec3 o = at + glm::vec3{0.f, 0.f, 10.f}; return rayBoxHit(o, {0.f, 0.f, -1.f}, b) > 0.f;
+        };
+        Enemy p(EnemyType::PICKER, {0.f, 4.6f, 0.f}, 0.f);
+        CHECK(ray(p.getAABB(), p.position + glm::vec3{0.f, 1.25f, 0.f}) && ray(p.getAABB(), p.position + glm::vec3{0.f, 1.85f, 0.f}),
+              "a PICKER's body and wheels (drawn above its feet point) take a shot");
+        Enemy t(EnemyType::THAWLING, {0.f, 0.f, 0.f}, 0.f); t.yaw = 0.f; t.age = 0.5f;
+        CHECK(ray(t.getAABB(), {0.f, 0.3f, 1.4f}) || rayBoxHit({10.f, 0.3f, 1.4f}, {-1.f, 0.f, 0.f}, t.getAABB()) > 0.f, "a crawling THAWLING's body, lying forward on the floor, takes a shot");
+        Enemy r(EnemyType::RESTORER, {0.f, 0.f, 0.f}, 0.f); r.yaw = 0.f;
+        AABB head; bool hasHead = headBox(r, head);
+        CHECK(hasHead && ray(head, {0.f, 7.25f, 1.1f}) && ray(r.getAABB(), {0.f, 7.6f, 1.1f}), "THE RESTORER's glass dome (its weak point) takes a shot");
     }
     {   // CLERK: never attacks, keeps its distance
         EnemyWorld w; w.playerFeet = {4.f, 0.f, 0.f}; w.playerEye = w.playerFeet + glm::vec3{0, 1.7f, 0};

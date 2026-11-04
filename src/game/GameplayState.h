@@ -505,6 +505,11 @@ public:
     std::vector<ColdCapsule> coldCapsules;
     float coldLaunchT = 0.f, coldShardT = 0.f;
     int   coldLaunches = 0;
+    bool  coldFightLine(char* buf, size_t n, int left);       // Chapter 5: the objective line in its fights (Gameplay_Cold.h)
+    void  renderColdWaypoints(const glm::mat4& viewProj);   // Chapter 5: where to go (Gameplay_Cold.h)
+    int   coldHookAimed(glm::vec3 o, glm::vec3 d, float wallT) const;   // Chapter 5: the Hook Line hook a ray picks (Gameplay_Tick.h)
+    bool  isColdHook(int wall) const;
+    glm::vec3 coldLedge{0.f};   // the last deck you stood on along the Hook Line (where a fall puts you back)
     bool  coldRecall = false;   // taken from 24-A in Rack 24
     float coldVentHurtT = 0.f;
     bool  coldKDown = false, coldKIntro = false;   // 24-K (section 8)
@@ -522,7 +527,8 @@ public:
     glm::vec3 rsRollbackAt{0.f}, rsSnapAt{0.f}, rsTongAt{0.f};
     float rsRollbackT = -1.f, rsSnapT = -1.f, rsFreezeT = -1.f, rsSpikeT = -1.f, rsShatterT = -1.f, rsTongT = -1.f, rsTongHurtT = 0.f;
     int   rsPhase = 0, rsTaken = 0, rsLine = 0;
-    float rsTakeT = 0.f, rsLastHealth = 0.f, rsLineT = 0.f;
+    float rsTakeT = 0.f, rsLastHealth = 0.f, rsLineT = 0.f, rsHintT = -1.f;
+    float coldStoryT = -1.f; int coldStoryStep = 0;   // Chapter 5's spoken lines along the way (Gameplay_Cold.h)
     int   rsDrumGun[4] = {-1, -1, -1, -1}, rsDrumUid[4] = {-1, -1, -1, -1};
     glm::vec3 rsTrail[180];
     int   rsTrailHead = 0, rsTrailN = 0; float rsTrailT = 0.f;
