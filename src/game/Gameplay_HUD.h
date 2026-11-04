@@ -91,6 +91,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
                     snprintf(buf,sizeof(buf),"%s / HOSTILES %d",lab::objective(here),left);
                 else if (director.hasGoal() && director.goal().kind == WaveGoal::EXTERNAL)
                     snprintf(buf,sizeof(buf),"RELEASE TURBINE BRAKES   %d/3   HOSTILES %d",3-level.anchorsAlive(LevelData::ChainAnchor::BRAKE),left);
+                else if (cold() && coldFightLine(buf, sizeof(buf), left)) {}   // Chapter 5: what this fight wants of you
                 else snprintf(buf, sizeof(buf), "%s   HOSTILES %d", here == level.story.pitSection ? "THE SCRAP IS AWAKE" : level.arenas[director.arena].name, left);
                 what = nullptr; accent = {1.f, 0.45f, 0.2f};
             }
@@ -101,11 +102,12 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             }
             else if(plain()) what=wakeSeen?gleanerPhaseName():"SOMETHING IS WATCHING";
             else if(cold()) {
-                static const char* goals[]={"FOLLOW THE BELT TO THE EDGE","RIDE THE CARRIERS TO THE TOWER","THROUGH THE THAW ROOM","READ THE INVENTORY","RACK 24",
-                                            "ACROSS TO THE COOLING TOWERS","CROSS THE ICE TO THE STATION","DISPATCH 2","TO THE VAULT","THE RESTORER"};
+                static const char* goals[]={"FOLLOW THE LAMPS TO THE HOOK LINE","GRAPPLE HOOK TO HOOK TO THE TOWER","THROUGH THE THAW ROOM","READ THE FILES / ON TO RACK 24","RACK 24",
+                                            "OVER THE BRIDGE TO THE COOLING TOWERS","FOLLOW THE OLD RAIL TO DISPATCH 2","DISPATCH 2","THE VAULT HOLDS THE ONLY WAY OFF","THE RESTORER"};
                 what=goals[std::clamp(here,0,9)];
-                if(here==9&&coldRDown)what="THE DISPATCH RAIL / NORTH EDGE";
-                if(here==7&&coldKDown)what="IT IS STILL / THE WAY ON IS NORTH";
+                if(here==0&&player.position.z<cold::lipZ()+12.f)what="GRAPPLE THE FIRST HOOK";
+                if(here==9&&coldRDown)what=rsDeathT>9.5f?"STEP INTO THE DISPATCH CAPSULE":"IT IS REWINDING";
+                if(here==7&&coldKDown)what="IT IS STILL / THE CAUSEWAY TO THE VAULT";
                 if(here==5&&director.arena==5&&director.phase==WaveDirector::Phase::CLEARED)what="THE GATE IS OPEN / EAST TO THE SEA";
                 if(here==1&&director.arena==1&&director.phase==WaveDirector::Phase::CLEARED)what="THE DOCK IS OPEN";
                 if(here==4)what=coldRecall?"THE BACK DOOR IS OPEN":"TAKE WHAT 24-A IS HOLDING";

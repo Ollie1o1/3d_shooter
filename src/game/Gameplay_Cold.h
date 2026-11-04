@@ -27,7 +27,12 @@ inline void GameplayState::beginCold() {
     interactables.push_back(std::move(it));
     if (level.story.coldBackDoor >= 0) level.doors[level.story.coldBackDoor].locked = !coldRecall;   // (the way on opens with it)
     coldCracks.clear(); coldCrackFrom = player.position;
+    coldLedge = cold::hookStart();
+    coldStoryT = 0.f; coldStoryStep = 0;
+    if (level.arenas.size() > 1) { level.arenas[0].respawn = cold::start(); level.arenas[1].respawn = cold::hookStart(); }
     resetRestorerFight();   // (a retry: everything it did undone, your guns back)
+    if ((g_devOverlay == "rs1" || g_devOverlay == "rs2" || g_devOverlay == "rs3") && director.arena == 9)   // dev: in the Vault, the fight about to start
+        player.position = cold::vaultC() + glm::vec3{0.f, 0.f, 12.f};
     player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0}; prevCamPos = player.camera.position;
 }
 
@@ -172,6 +177,33 @@ inline void GameplayState::updateCold(float dt) {
         storyEndT += dt; player.velocity = glm::vec3{0.f, std::max(0.f, player.velocity.y), 0.f};
         if (storyEndT > 3.f) captureMouse(false);
     }
+    // What the chapter wants of you, said once each: the capsules are the way off; the Manifest's
+    // announcements as you walk its causeway (why the Restorer stands between you and the rail)
+    {
+        auto say = [&](int bit, const char* a, const char* b, float secs) {
+            if (coldStoryStep & (1 << bit)) return;
+            coldStoryStep |= 1 << bit; pushBanner(a, b, {0.75f, 0.86f, 0.95f}, secs);
+            audio.play("count_tick", 80, SoundGroup::UI, true);
+        };
+        if (coldStoryT >= 0.f) coldStoryT += dt;
+        if (coldStoryT > 6.5f && director.arena == 0 && storyCheckpoint <= 0)
+            say(0, "THE CAPSULES LEAVE FROM THE STORE", "THEY ARE THE WAY OFF THIS ICE  -  THE HOOK LINE IS THE WAY IN", 5.f);
+        if (at == 8 && !playerDead) {
+            const glm::vec3 a0 = cold::station() + glm::vec3{18.f, 0.f, -2.f}, e0 = cold::vaultC();
+            glm::vec3 d = e0 - a0; d.y = 0.f;
+            const float u = glm::dot(glm::vec3{p.x - a0.x, 0.f, p.z - a0.z}, d) / glm::dot(d, d);
+            if (u > 0.05f) say(1, "MANIFEST: UNIT 24", "STATUS: DAMAGED  /  TO BE RESTORED", 3.5f);
+            if (u > 0.35f) say(2, "DISPATCH: ONE CAPSULE, IN THE VAULT", "AUTHORISED BY: THE RESTORER", 3.5f);
+            if (u > 0.62f) say(3, "DISPATCHES AUTHORISED IN 3,112 DAYS: 0", "NOTHING IT SAVES IS EVER SENT ON", 3.5f);
+        }
+    }
+    // The Hook Line: fall, and you're put back on the last deck you stood on (the gantry, a hanging
+    // station, the dock), not back at the start of the shelf
+    if (player.onGround && !playerDead && p.y > -0.3f && p.y < 0.6f && std::fabs(p.x - cold::HOOK_X) < 6.5f
+        && p.z < cold::lipZ() + 1.f && p.z > cold::TOWER_FRONT) {
+        coldLedge = {cold::HOOK_X, 0.f, p.z};
+        level.arenas[0].respawn = level.arenas[1].respawn = coldLedge;
+    }
     updateColdVents(dt);
     updateColdSea(dt);
     if (director.arena >= 8) { updateRestorerFight(dt); updateRecallFinisher(dt); }
@@ -240,26 +272,31 @@ inline void GameplayState::gatherColdRoute(std::vector<BoxInstance>& out) {
         P.motion[E_KNEE_L] = RX(0.15f); P.motion[E_KNEE_R] = RX(0.1f); P.motion[E_ANKLE_L] = RX(-0.4f); P.motion[E_ANKLE_R] = RX(-0.4f);
         return P;
     };
-    // 1. the Intake belt: bodies on their backs riding north, tipping over the lip at its end
-    if (glm::length(me - glm::vec3{cold::HOOK_X, 0.f, 0.f}) < 600.f) {
-        const float z0 = 248.f, z1 = cold::lipZ() + 1.f, len = z0 - z1, speed = 0.9f, gap = 8.f;
-        for (int k = 0; k < (int)(len / gap); ++k) {
-            float u = std::fmod(t * speed + k * gap, len);
-            float z = z0 - u, tip = glm::clamp((z1 + 2.5f - z) / 2.5f, 0.f, 1.f);
-            if (glm::length(glm::vec2{me.x - cold::HOOK_X, me.z - z}) > 140.f) continue;
-            FilePose P; P.motion[E_HEAD] = RY(0.3f * std::sin(k * 1.7f)); P.motion[E_ARML] = RZ(0.25f); P.motion[E_ARMR] = RZ(-0.2f);
-            glm::mat4 M = T({cold::HOOK_X, 0.85f - 6.f * tip * tip, z}) * RX(-1.5708f * (1.f - 0.6f * tip)) * RY(3.1416f);
-            coldBody(out, "unit_blank", M, P, 0.7f, vec3{0.f});
+    // 1-2. the Intake belt and the line: bodies on their backs ride the belt north; at its end the
+    // crane lifts each one, carries it east and hangs it on the line's second rail, which takes it
+    // out over the Void into the tower. One path, every body somewhere along it.
+    {
+        const float HX = cold::HOOK_X, z0 = cold::INTAKE_Z - 2.f, zL = cold::liftZ(), xR = HX + cold::BODY_RAIL_DX;
+        const float hungY = cold::RAIL_Y - 4.6f;   // a hung body's feet
+        const float LA = z0 - zL, LB = hungY - 0.85f + 1.5f, LC = cold::BODY_RAIL_DX, LD = zL - cold::TOWER_FRONT;
+        const float total = LA + LB + LC + LD, speed = 1.1f, gap = 9.f;
+        for (int k = 0; k < (int)(total / gap); ++k) {
+            const float u = std::fmod(t * speed + k * gap, total);
+            vec3 at; float lie = 0.f, hanger = 0.f;   // lie: 1 on its back, 0 hung; hanger: the cable's top
+            if (u < LA) { at = {HX, 0.85f, z0 - u}; lie = 1.f; }
+            else if (u < LA + LB) { float v = (u - LA) / LB; at = {HX, 0.85f + (hungY - 0.85f) * v, zL}; lie = 1.f - glm::clamp(v * 2.f, 0.f, 1.f); hanger = 11.f; }
+            else if (u < LA + LB + LC) { float v = (u - LA - LB) / LC; at = {HX + LC * v, hungY, zL}; hanger = 11.f; }
+            else { at = {xR, hungY, zL - (u - LA - LB - LC)}; hanger = cold::RAIL_Y; }
+            if (glm::length(glm::vec2{me.x - at.x, me.z - at.z}) > 150.f) continue;
+            FilePose P = lie > 0.5f ? FilePose{} : hung(0.08f * std::sin(t * 0.8f + k));
+            if (lie > 0.5f) { P.motion[E_HEAD] = RY(0.3f * std::sin(k * 1.7f)); P.motion[E_ARML] = RZ(0.25f); P.motion[E_ARMR] = RZ(-0.2f); }
+            glm::mat4 M = T(at) * RX(-1.5708f * lie) * RY(3.1416f + 0.5f * k * (1.f - lie));   // (on its back on the belt; turned every which way once hung)
+            coldBody(out, "unit_blank", M, P, 0.72f, vec3{0.f});
+            if (hanger > 0.f) {   // the cable up to the crane or the rail, and its trolley
+                push(out, T({at.x, (at.y + 2.1f + hanger) * 0.5f, at.z}) * S(vec3{0.07f, hanger - at.y - 2.1f, 0.07f}), {0.08f, 0.08f, 0.09f});
+                push(out, T({at.x, hanger - 0.35f, at.z}) * S(vec3{0.5f, 0.35f, 0.8f}), {0.1f, 0.1f, 0.11f}, vec3{0.5f, 0.25f, 0.06f});
+            }
         }
-    }
-    // 2. the Hook Line: a body slung under each carrier, and the hanger up to the rail
-    for (const auto& m : level.movers) {
-        const AABB& b = level.walls[m.wall].box;
-        vec3 c = (b.min + b.max) * 0.5f;
-        if (glm::length(c - me) > 300.f) continue;
-        push(out, T({c.x, (b.max.y + cold::RAIL_Y) * 0.5f, c.z}) * S(vec3{0.14f, cold::RAIL_Y - b.max.y, 0.14f}), {0.08f, 0.08f, 0.09f});
-        push(out, T({c.x, cold::RAIL_Y - 0.2f, c.z}) * S(vec3{0.7f, 0.5f, 1.2f}), {0.1f, 0.1f, 0.11f}, vec3{0.6f, 0.3f, 0.08f});
-        coldBody(out, "unit_blank", T({c.x, b.min.y - 2.3f, c.z}) * RY(1.2f), hung(0.1f * std::sin(t * 0.8f)), 0.75f, vec3{0.f});
     }
     if (me.z > cold::TOWER_FRONT + 80.f) return;   // (the tower's insides: only near it)
     // 3. the Thaw Room's hooks: all hung until its fight starts; then only the ones that stayed
@@ -293,6 +330,11 @@ inline void GameplayState::gatherCold(std::vector<BoxInstance>& out) {
     gatherColdRoute(out);
     gatherRestorerFight(out);
     gatherColdEnding(out);
+    // The beacons: the Hook Line's mast and DISPATCH 2's, blinking (so the way reads from far off)
+    for (const auto& [m, top] : {std::pair<glm::vec3, float>{cold::hookBeacon(), 24.f}, {cold::stationBeacon(), 30.f}}) {
+        const float on = std::fmod(gameClock, 1.6f) < 0.5f ? 1.f : 0.12f;
+        push(out, T(m + glm::vec3{0.f, top + 0.6f, 0.f}) * S(glm::vec3{1.1f, 0.9f, 1.1f}), {1.f, 0.7f, 0.3f}, glm::vec3{5.f, 2.6f, 0.6f} * on);
+    }
     // The vents: a red ring telling, then a white column of freezing air
     if (director.arena >= 5 && glm::length(player.position - cold::chiller(1).c) < 200.f)
         for (int v = 0; v < cold::VENTS; ++v) {
@@ -449,4 +491,96 @@ inline void GameplayState::gatherColdEnding(std::vector<BoxInstance>& out) {
             if (coldRideT >= 0.f) push(out, T(at - vec3{0.f, 0.6f, 0.f}) * S(vec3{2.4f, 1.2f, 2.4f}), vec3{1.f, 0.7f, 0.3f}, vec3{6.f, 3.f, 0.8f});
         }
     }
+}
+
+// ---- Where to go: a waypoint on the next place the chapter wants you, and in its fights, on what
+// matters (a Clerk restoring the dead; the Restorer's restore points and drums; it, when it falters).
+// The Hook Line's next hook is marked while you cross. ----
+inline void GameplayState::renderColdWaypoints(const glm::mat4& viewProj) {
+    if (!cold() || playerDead || storyEndT >= 0.f || coldRideT >= 0.f || rsFinT >= 0.f) return;
+    const glm::vec3 eye = player.camera.position, p = player.position;
+    const glm::vec3 route{0.35f, 0.85f, 1.f}, hookC{1.f, 0.75f, 0.3f};
+    auto mark = [&](glm::vec3 at, const char* label, glm::vec3 col, bool dist = true, bool compact = false) {
+        const float d = glm::length(at - eye);
+        if (d < 2.5f) return;
+        const auto m = projectWorldMarker(at, viewProj, SCREEN_W, SCREEN_H);
+        char buf[96];
+        if (dist) std::snprintf(buf, sizeof(buf), "%s  %.0fM", label, d); else std::snprintf(buf, sizeof(buf), "%s", label);
+        ui.renderMarker(m.x, m.y, m.onScreen, col, buf, m.behind, compact);
+    };
+    // In a fight: what to kill first
+    if (director.fighting()) {
+        for (const auto& e : enemies) {
+            if (!e.alive || e.state != EnemyState::ACTIVE) continue;
+            const glm::vec3 top = e.position + glm::vec3{0.f, e.height() + 0.6f, 0.f};
+            if (e.type == EnemyType::CLERK) mark(top, "CLERK: KILL FIRST", {1.f, 0.8f, 0.35f}, false, true);
+            else if (e.type == EnemyType::RS_POINT) mark(top, "RESTORE POINT", {0.8f, 0.92f, 1.f}, false, true);
+            else if (e.type == EnemyType::RS_DRUM) {
+                const char* gun = "YOUR GUN";
+                for (int k = 0; k < cold::DRUMS; ++k) if (rsDrumUid[k] == e.uid && rsDrumGun[k] >= 0) gun = weaponDef((WeaponId)rsDrumGun[k]).name;
+                char b[48]; std::snprintf(b, sizeof(b), "DRUM: %s", gun);
+                mark(top, b, hookC, false, true);
+            } else if (e.type == EnemyType::RESTORER && e.rsFalter) mark(rsDomeWorld(e), "FINISH IT", {0.6f, 0.95f, 1.f}, true);
+        }
+        if (rsRollbackT > 0.f) mark(rsRollbackAt + glm::vec3{0.f, 2.4f, 0.f}, "ROLLBACK: YOU GO BACK HERE", abGoldTell(glm::vec3{1.f, 0.8f, 0.3f}), false, true);
+    }
+    // The Hook Line: the next hook ahead of you (while you're on the gantry or out on the line)
+    const int here = std::max(0, level.arenaAt(p));
+    const bool onLine = std::fabs(p.x - cold::HOOK_X) < 12.f && p.z < cold::lipZ() + 4.f && p.z > cold::TOWER_FRONT;
+    if (onLine && level.story.coldHookCount > 0) {
+        int next = -1;
+        for (int k = 0; k < cold::HOOKS; ++k) {
+            if (grapple.active && grapple.hookedWall == level.story.coldHooks + k) continue;
+            if (cold::hookAt(k).z < p.z - 3.f) { next = k; break; }
+        }
+        if (next >= 0) mark(cold::hookAt(next) - glm::vec3{0.f, 1.2f, 0.f}, grapple.latched ? "NEXT HOOK - GRAPPLE IT" : "HOOK - GRAPPLE IT", hookC);
+        else mark({cold::HOOK_X, 3.f, cold::TOWER_FRONT}, "TOWER DOCK", route);
+        return;
+    }
+    if (director.fighting()) return;
+    // Otherwise: the way on
+    switch (here) {
+    case 0: mark(cold::hookBeacon() + glm::vec3{0.f, 4.f, 0.f}, "HOOK LINE", route); break;
+    case 1: mark({cold::HOOK_X, 3.f, cold::TOWER_FRONT}, "TOWER DOCK", route); break;
+    case 2: mark({cold::HOOK_X, 3.f, cold::THAW_BACK}, "ON", route); break;
+    case 3: mark({cold::HOOK_X, 3.f, cold::INV_BACK}, "RACK 24", route); break;
+    case 4: if (!coldRecall) mark(cold::recallAt(), "24-A", RECALL_FROST); else mark({cold::HOOK_X, 3.f, cold::TOWER_BACK}, "BACK DOOR", route); break;
+    case 5: {
+        const bool cleared = director.arena == 5 && director.phase == WaveDirector::Phase::CLEARED;
+        if (cleared || director.arena > 5) mark(cold::seaStart() + glm::vec3{0.f, 2.f, 0.f}, "GATE - TO THE SEA", route);
+        else mark(cold::chiller(0).c + glm::vec3{0.f, 2.f, 0.f}, "BLAST CHILLERS", route);
+        break;
+    }
+    case 6: mark(cold::station() + glm::vec3{0.f, 3.f, 0.f}, "DISPATCH 2", route); break;
+    case 7: if (coldKDown || director.arena > 7) mark(cold::station() + glm::vec3{18.f, 2.f, -2.f}, "THE MANIFEST - TO THE VAULT", route);
+            else mark(cold::station() + glm::vec3{0.f, 3.f, 0.f}, "DISPATCH 2", route);
+            break;
+    case 8: mark(cold::vaultC() + glm::vec3{0.f, 3.f, 0.f}, "THE VAULT", route); break;
+    case 9: if (coldRDown && rsDeathT > coldend::PARTS + 0.5f) mark(coldend::capsuleAt() + glm::vec3{0.f, 3.f, 0.f}, "DISPATCH CAPSULE", hookC);
+            else if (!coldRDown) mark(cold::vaultC() + glm::vec3{0.f, 3.f, 0.f}, "THE VAULT", route);
+            break;
+    default: break;
+    }
+}
+
+// The objective line in Chapter 5's fights: not just "HOSTILES", but what the fight wants of you
+inline bool GameplayState::coldFightLine(char* buf, size_t n, int left) {
+    if (const Enemy* R = restorer()) {
+        int points = 0, drums = 0;
+        for (const auto& e : enemies) { points += e.alive && e.type == EnemyType::RS_POINT; drums += e.alive && e.type == EnemyType::RS_DRUM; }
+        if (R->rsFalter) std::snprintf(buf, n, "IT FALTERS  /  GET CLOSE - %s: DRIVE THE MODULE IN", binds().label(Act::INTERACT).c_str());
+        else if (rsTongT > 0.f) std::snprintf(buf, n, "HUNG UP  /  PUNCH FREE");
+        else if (points > 0) std::snprintf(buf, n, "BREAK THE RESTORE POINTS  %d LEFT  /  WHILE THEY STAND ITS WOUNDS GROW BACK", points);
+        else if (drums > 0) std::snprintf(buf, n, "BREAK THE DRUMS  /  TAKE BACK YOUR GUNS  %d", drums);
+        else if (rsPhase >= 3) std::snprintf(buf, n, "FACTORY RESET  /  IT TAKES YOUR GUNS - KEEP SHOOTING THE DOME");
+        else std::snprintf(buf, n, "THE RESTORER  /  SHOOT THE GLASS DOME - GOLD: MOVE ON OR RECALL");
+        return true;
+    }
+    if (pickedBy >= 0) { std::snprintf(buf, n, "PICKED  /  SHOOT IT OR PUNCH FREE"); return true; }
+    if (director.arena == 7) { std::snprintf(buf, n, "UNIT 24-K  /  STEP OUT OF THE GOLD LINE - PARRY THE WHITE RUSH"); return true; }
+    for (const auto& e : enemies)
+        if (e.alive && e.type == EnemyType::CLERK) { std::snprintf(buf, n, "KILL THE CLERK FIRST - IT RESTORES THE DEAD  /  HOSTILES %d", left); return true; }
+    if (director.arena == 1) { std::snprintf(buf, n, "PICKERS  /  SHOOT THEM DOWN - THE DOCK OPENS  %d", left); return true; }
+    if (director.arena == 5) { std::snprintf(buf, n, "THE BLAST CHILLERS  /  KEEP OFF THE RED VENTS  HOSTILES %d", left); return true; }
+    return false;
 }

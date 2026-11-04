@@ -27,8 +27,8 @@ constexpr int TRAIL = 180;                    // 6 s of where you were
 constexpr float SNAP_R = 2.6f;                // the snapshot's flash: stand here and it takes you
 constexpr int STATUE_SHATTER_AT = 5;
 constexpr float CELL = 5.f;                   // the Vault's grid
-constexpr float REGROW = 140.f;               // health a second it gets back while a restore point stands
-constexpr float TAKE_EVERY = 5.f;             // FACTORY RESET: a gun every this many seconds
+constexpr float REGROW = 90.f;                // health a second it gets back while a restore point stands
+constexpr float TAKE_EVERY = 7.f;             // FACTORY RESET: a gun every this many seconds
 }
 
 inline Enemy* GameplayState::restorer() {
@@ -48,7 +48,7 @@ inline void GameplayState::resetRestorerFight() {
     rsPhase = 0; rsTakeT = 0.f; rsTrailN = 0; rsTrailT = 0.f;
     storyOwned |= rsTaken; rsTaken = 0;   // (your guns come back)
     for (int k = 0; k < 4; ++k) rsDrumGun[k] = -1;
-    rsFinT = -1.f; rsFalterSeen = false;
+    rsFinT = -1.f; rsFalterSeen = false; rsHintT = -1.f;
     if (rsFinItem >= 0 && rsFinItem < (int)interactables.size()) interactables[rsFinItem].active = false;
     rsFinItem = -1;
 }
@@ -209,6 +209,9 @@ inline void GameplayState::updateRestorerFight(float dt) {
         }
         if (rsSnapT > 0.f) rsSnapT -= dt;
         if (rsFreezeT > 0.f) rsFreezeT -= dt;
+        // dev (--overlay rs2 / rs3): straight into its second or third phase (screenshots)
+        if ((g_devOverlay == "rs2" || g_devOverlay == "rs3") && rsPhase == 1 && R->health > R->maxHealth * 0.5f)
+            R->health = R->maxHealth * (g_devOverlay == "rs2" ? 0.6f : 0.3f);
         // Its phases (health, never back down)
         const float f = R->health / R->maxHealth;
         const int want = f > 0.66f ? 1 : f > 0.33f ? 2 : 3;
@@ -217,8 +220,9 @@ inline void GameplayState::updateRestorerFight(float dt) {
             if (want == 1) {
                 pushBanner("THE RESTORER", "UNIT ?  /  PURPOSE: RESTORE", {0.8f, 0.9f, 1.f}, 3.f);
                 rsLineT = 3.3f; rsLine = deaths > 0 ? 1 : 0;
+                rsHintT = 7.2f;   // then what to do about it
             } else if (want == 2) {   // RESTORE POINTS
-                pushBanner("RESTORE POINTS", "WHILE ONE STANDS, IT GROWS BACK - BREAK THEM", {0.8f, 0.9f, 1.f}, 3.f);
+                pushBanner("RESTORE POINTS", "WHILE ONE STANDS, ITS WOUNDS GROW BACK - BREAK ALL THREE", {0.8f, 0.9f, 1.f}, 3.5f);
                 for (int k = 0; k < 3; ++k) {
                     float a = 0.5f + k * 2.094f;
                     spawnEnemy(EnemyType::RS_POINT, cold::vaultC() + glm::vec3{std::cos(a) * 18.f, 0.f, std::sin(a) * 18.f});
@@ -226,9 +230,14 @@ inline void GameplayState::updateRestorerFight(float dt) {
                 R->rsPending = 0.f;
             } else {   // FACTORY RESET
                 pushBanner("\"YOU WERE BETTER BEFORE YOU REMEMBERED.\"", "FACTORY RESET", {0.8f, 0.9f, 1.f}, 4.f);
-                rsTakeT = 2.f;
+                rsTakeT = 3.5f;
+                rsHintT = 4.2f;   // then: where your guns go
                 if (!rsStatues.empty() && rsShatterT < 0.f) rsShatterT = 1.4f;
             }
+        }
+        if (rsHintT > 0.f && (rsHintT -= dt) <= 0.f) {
+            if (rsPhase >= 3) pushBanner("IT IS TAKING YOUR GUNS", "EACH GOES INTO A DRUM ON THE RIM - BREAK THE DRUM, TAKE IT BACK", {1.f, 0.8f, 0.4f}, 4.f);
+            else pushBanner("SHOOT ITS GLASS DOME", "GOLD: IT PULLS YOU BACK - KEEP THAT SPOT SAFE OR RECALL  /  RED: GET OUT  /  WHITE: PARRY", {0.8f, 0.9f, 1.f}, 5.f);
         }
         if (rsLineT > 0.f && (rsLineT -= dt) <= 0.f) {
             char buf[64];
@@ -398,6 +407,22 @@ inline void GameplayState::gatherRestorerFight(std::vector<BoxInstance>& out) {
         ring(rsRollbackAt, 1.4f, abGoldTell(vec3{2.f, 1.4f, 0.3f}) * (0.6f + 0.8f * (1.f - tick)));
     }
     if (rsSnapT > 0.f) ring(rsSnapAt, rsfight::SNAP_R, vec3{2.2f, 0.25f, 0.2f} * (0.6f + 0.6f * std::sin(gameClock * 20.f)));
+    // RESTORE POINTS: a pale tether from each to its chest, bright while it is growing back what you did
+    if (R && !R->rsFalter)
+        for (const auto& e : enemies) {
+            if (!e.alive || e.type != EnemyType::RS_POINT) continue;
+            const vec3 a = e.position + vec3{0.f, 5.6f, 0.f}, b = R->position + vec3{0.f, 5.6f - 2.3f * R->rsKneel, 0.f};
+            vec3 d = b - a; const float len = glm::length(d);
+            if (len < 0.5f) continue;
+            d /= len;
+            const float live = R->rsPending > 0.f ? 1.f : 0.35f;
+            for (int k = 0; k < 3; ++k) {   // three strands, a pulse running along them toward it
+                const vec3 off = vec3{std::sin(gameClock * 1.3f + k * 2.1f), std::cos(gameClock * 1.1f + k * 2.1f), 0.f} * 0.12f;
+                push(out, T(a + d * (len * 0.5f) + off) * gleaner::alongZ(vec3{0.f}, d) * S(vec3{0.035f, 0.035f, len}), {0.8f, 0.9f, 1.f}, vec3{0.5f, 0.75f, 1.f} * live);
+            }
+            const float u = std::fmod(gameClock * (R->rsPending > 0.f ? 1.4f : 0.5f) + e.uid * 0.37f, 1.f);
+            push(out, T(a + d * (len * u)) * S(vec3{0.3f}), {0.9f, 0.95f, 1.f}, vec3{1.2f, 1.6f, 2.2f} * live);
+        }
     for (const auto& s : rsStatues) {
         float crack = rsShatterT > 0.f ? 0.6f + 0.6f * std::sin(gameClock * 30.f) : 0.f;
         coldBody(out, "unit24", T(s.at) * RY(s.yaw), rig::FilePose{}, 0.75f, vec3{2.f, 0.3f, 0.2f} * crack);

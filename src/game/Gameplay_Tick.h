@@ -222,6 +222,23 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         slamFromY = player.position.y;
     }
 
+    // dev (--overlay hookrun, with --story5 --arena 2): aim at the next Hook Line hook and grapple it whenever
+    // standing or hanging still, to check the chain with the real grapple (footage, tests)
+    if (g_devOverlay == "hookrun" && cold() && elapsedTime > 1.f && (player.onGround || grapple.latched) && grappleCooldown <= 0.f) {
+        int next = -1;
+        for (int k = 0; k < cold::HOOKS; ++k)
+            if (!(grapple.active && grapple.hookedWall == level.story.coldHooks + k) && cold::hookAt(k).z < player.position.z - 3.f) { next = k; break; }
+        if (next >= 0) {
+            glm::vec3 d = cold::hookAt(next) - player.camera.position;
+            player.camera.yaw = glm::degrees(std::atan2(d.z, d.x));
+            player.camera.pitch = glm::degrees(std::asin(d.y / glm::length(d)));
+            static float hold = 0.f; hold += dt;
+            if (hold > 0.4f) { pendingGrapple = true; hold = 0.f; }
+        } else if (grapple.latched) pendingGrapple = true;   // over the dock: let go
+    }
+    if (g_devOverlay == "hookrun" && std::fmod(elapsedTime, 0.5f) < dt)
+        std::fprintf(stderr, "hookrun t %.2f vy %.1f tgt %.1f %.1f at %.1f %.1f %.1f %s%s arena %d\n", elapsedTime, player.velocity.y, grapple.target.y, grapple.target.z, player.position.x, player.position.y, player.position.z,
+                     grapple.latched ? "HANGING" : grapple.active ? "FLYING" : "", player.onGround ? "GROUND" : "", level.arenaAt(player.position));
     // --- Grapple fire / release ---
     glm::vec3 gPoint{0.f}; int gWall = -1; bool gMover = false;
     bool canHook = findGrappleTarget(gPoint, gWall, gMover);
@@ -230,7 +247,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     glm::vec3 glPoint{0.f}; float glDist = 0.f;
     const bool glHook = plain() && !grapple.active && !pinned && hookE < 0 && gleanerHookPoint(glPoint, glDist)
                         && (!canHook || glDist < glm::length(gPoint - player.camera.position));
-    grappleTargetInSight = (canHook && gMover) || hookE >= 0 || glHook;
+    grappleTargetInSight = (canHook && (gMover || isColdHook(gWall))) || hookE >= 0 || glHook;
     if (hookE >= 0 && grappleCooldown <= 0.f) teach(TEACH_HOOK);
     if (pendingGrapple && pinned && !grapple.active) { pendingGrapple = false; pinnedCue(); }
     if (pinned && grapple.active) grapple.release();
@@ -253,6 +270,14 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
                 audio.play("grapple_fire");
                 if (gMover) styleSystem.addStyle(4.f);
             }
+        } else if (canHook && isColdHook(gWall) && gWall != grapple.hookedWall) {   // hanging from a hook: straight on to the next
+            glm::vec3 impulse{0.f};
+            grapple.attach(player.camera.position, gPoint, impulse, gWall, nullptr);
+            player.velocity = impulse;
+            player.launched();
+            viewModel.triggerGrapple();
+            audio.play("grapple_fire");
+            styleSystem.addStyle(6.f);
         } else {
             grapple.release();
         }
@@ -269,6 +294,14 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         else if (presses == 1 && elapsedTime > 5.f) { ++presses; pendingGrapple = true; }
     }
     grapple.update(dt, player.camera.position, player.velocity);
+    // A Hook Line hook is a point in the air, not a wall to slam into: zip straight to it, easing in,
+    // and hang (the rope's swing would carry you past it)
+    if (grapple.active && !grapple.latched && isColdHook(grapple.hookedWall)) {
+        const glm::vec3 to = grapple.target - player.camera.position;
+        const float d = glm::length(to);
+        if (d < 0.9f) { grapple.latched = true; player.velocity = glm::vec3{0.f}; }
+        else player.velocity = to / d * std::min(30.f, 3.f + d * 4.f);
+    }
     if (grapple.active && grapple.latched) {   // hanging: until you press the grapple again or jump off
         if (!hangPrev) {
             hangT = 0.f; hangPos = player.position; audio.play("land_metal", 70); camFeel.dip(0.25f);
@@ -276,7 +309,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         }
         hangT += dt;
         bool gone = false;   // what it caught on has moved away (a door opening): nothing to hold
-        if (grapple.hookedWall >= 0 && grapple.hookedWall < (int)level.walls.size()) {
+        if (grapple.hookedWall >= 0 && grapple.hookedWall < (int)level.walls.size() && !isColdHook(grapple.hookedWall)) {   // (a hook: you hang under it, and it never moves)
             const AABB& b = level.walls[grapple.hookedWall].box;
             glm::vec3 q = glm::clamp(grapple.target, b.min, b.max);
             gone = glm::length(q - grapple.target) > 0.5f;
@@ -620,8 +653,34 @@ inline bool GameplayState::findGrappleTarget(glm::vec3& point, int& wall, bool& 
         wall = moverWall; isMover = true;
         return true;
     }
+    // Chapter 5's Hook Line: aim near a hook and the grapple takes it (not the one you hang from), and
+    // pulls you to hang under it
+    if (const int k = coldHookAimed(o, d, best); k >= 0) {
+        point = cold::hangAt(k) + glm::vec3{0.f, player.eyeHeight, 0.f}; wall = level.story.coldHooks + k;   // (the grapple pulls your eye there)
+        return true;
+    }
     if (wall >= 0) { point = o + d * best; return true; }
     return false;
+}
+
+// The Hook Line hook a ray from `o` along `d` picks (forgiving: a generous box round each), nearer than
+// `wallT`; -1 for none. The hook you are hanging from is skipped, so you can always aim at the next.
+inline int GameplayState::coldHookAimed(glm::vec3 o, glm::vec3 d, float wallT) const {
+    const auto& S = level.story;
+    if (!cold() || S.coldHookCount <= 0) return -1;
+    int pick = -1; float bestT = std::min(wallT + 1.5f, grapple.maxLength);
+    for (int k = 0; k < S.coldHookCount; ++k) {
+        if (grapple.active && grapple.hookedWall == S.coldHooks + k) continue;
+        AABB b = level.walls[S.coldHooks + k].box;
+        b.min -= glm::vec3{1.8f, 2.6f, 1.8f}; b.max += glm::vec3{1.8f, 1.2f, 1.8f};
+        float t = rayBoxHit(o, d, b);
+        if (t > 0.f && t < bestT) { bestT = t; pick = k; }
+    }
+    return pick;
+}
+inline bool GameplayState::isColdHook(int wall) const {
+    const auto& S = level.story;
+    return cold() && S.coldHookCount > 0 && wall >= S.coldHooks && wall < S.coldHooks + S.coldHookCount;
 }
 
 inline void GameplayState::keepPlayerInZone(float dt) {

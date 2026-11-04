@@ -685,6 +685,7 @@ inline void GameplayState::renderStoryOverlay(const glm::mat4& viewProj) {
             char lbl[96];std::snprintf(lbl,sizeof(lbl),"%s %.0fM%s",gunTitle(w.weapon)+4,dist,covered?" / BEHIND COVER":"");
             ui.renderMarker(marker.x,marker.y,marker.onScreen,{.35f,.85f,1.f},lbl,marker.behind);
         }
+        if (cold()) renderColdWaypoints(viewProj);   // Chapter 5: the way on, the next hook, what to kill first
     }
     bool labQuiet=!director.fighting();
     if(laboratory() && director.goal().kind==WaveGoal::EXTERNAL && director.queue.empty()){
