@@ -538,6 +538,11 @@ public:
     void startRecallFinisher();
     void updateRecallFinisher(float dt);
     bool recallFinisherCam(glm::vec3& eye, glm::vec3& look);
+    glm::vec3 rsFinStand(const Enemy& R) const;
+    glm::vec3 rsFinToWorld(glm::vec3 c) const;
+    glm::vec3 rsFinRightHand() const;
+    int   recallFinArms(ViewModel::FreeArm* A) const;
+    void  renderRecallFin();
     glm::vec3 rsDomeWorld(const Enemy& e) const;
     Enemy* restorer();
     void resetRestorerFight();

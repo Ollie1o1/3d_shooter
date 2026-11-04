@@ -255,7 +255,10 @@ int main() {
         CHECK(ray(t.getAABB(), {0.f, 0.3f, 1.4f}) || rayBoxHit({10.f, 0.3f, 1.4f}, {-1.f, 0.f, 0.f}, t.getAABB()) > 0.f, "a crawling THAWLING's body, lying forward on the floor, takes a shot");
         Enemy r(EnemyType::RESTORER, {0.f, 0.f, 0.f}, 0.f); r.yaw = 0.f;
         AABB head; bool hasHead = headBox(r, head);
-        CHECK(hasHead && ray(head, {0.f, 7.25f, 1.1f}) && ray(r.getAABB(), {0.f, 7.6f, 1.1f}), "THE RESTORER's glass dome (its weak point) takes a shot");
+        const glm::vec3 dome = rsbody::domeWorld(r);
+        CHECK(hasHead && ray(head, dome) && ray(r.getAABB(), dome + glm::vec3{0.f, 0.5f, 0.f}), "THE RESTORER's glass dome (its weak point) takes a shot");
+        r.rsKneel = 1.f; const glm::vec3 low = rsbody::domeWorld(r);
+        CHECK(headBox(r, head) && ray(head, low) && ray(r.getAABB(), low) && low.y < dome.y - 1.5f, "...and still does when it kneels, its dome brought down to you");
     }
     {   // CLERK: never attacks, keeps its distance
         EnemyWorld w; w.playerFeet = {4.f, 0.f, 0.f}; w.playerEye = w.playerFeet + glm::vec3{0, 1.7f, 0};

@@ -982,13 +982,15 @@ inline void leviathanSegments(const Enemy& e, float time, Rig& r, const gunkit::
         for(int k=0;k<6;++k)r.box(root*T({0,5.9f,-1.2f})*RZ(e.ballRotor+k*1.0472f),{0,.95f,0},{.38f,1.7f,.25f},st.color*1.4f);
         break;
     }
-    case EnemyType::RESTORER: {   // THE RESTORER: stilts, a stooped body in a coat of frosted hoses, a glass dome, four tong arms, a cryo
-                                  // cylinder. Its pieces are made in Blender (tools/blender/restorer_build.py); boxes when a file is missing.
-        // Beaten, it kneels: the body sinks, the stilts fold under it (the legs from root, everything above from `body`)
+    case EnemyType::RESTORER: {   // THE RESTORER: a stooped curator on crane legs, in a long coat of frosted hoses. A glass dome
+                                  // peers down from the front of it; on its back, the cryo cylinder with the first thing it saved.
+                                  // Two long arms end in tongs, held up and ready; the two short ones hold its manifest, lit.
+                                  // Its pieces are made in Blender (tools/blender/restorer_build.py); boxes when a file is missing.
+        // Beaten, it kneels: the body sinks and bows (rsbody::bodyFrame), the legs fold under it
         const float kneel = e.rsKneel * e.rsKneel * (3.f - 2.f * e.rsKneel);
-        const mat4 body = root * T({0.f, -2.3f * kneel, .4f * kneel}) * RX(.25f * kneel);
+        const mat4 body = rsbody::bodyFrame(e) * glm::inverse(T(e.position) * RY(e.yaw) * S(vec3{e.scale})) * root;
         mat4 base = root;
-        // A limb from a to b (root space), `t` thick: a Blender piece stretched between them, else a box
+        // A limb from a to b (in base's space), `t` thick: a Blender piece stretched between them, else a box
         auto seg = [&](vec3 a, vec3 b, float t, vec3 col, const char* piece = nullptr, vec3 emi = vec3{0.f}) {
             vec3 d = b - a; float len = glm::length(d); if (len < 1e-4f) return;
             vec3 y = d / len, x = std::fabs(y.y) > 0.95f ? vec3{1, 0, 0} : glm::normalize(glm::cross(vec3{0, 1, 0}, y)), z = glm::cross(x, y);
@@ -998,6 +1000,7 @@ inline void leviathanSegments(const Enemy& e, float time, Rig& r, const gunkit::
         };
         auto at = [&](const char* piece, const mat4& m, vec3 tint = vec3{1.f}) { return propdraw::push(out, piece, base * m, tint, 1.f, true); };
         const float ph = e.animPhase, walk = glm::clamp(e.moveSpeed / std::max(.1f, st.speed), 0.f, 1.f);
+        const float breathe = std::sin(time * 1.3f + e.uid) * (1.f - kneel);
         const vec3 hose{.74f, .8f, .86f}, steelC = st.color * .55f;
         // The tell, on its dome lamp: white (parry the tongs), gold (rollback, shelving), red (snapshot, freeze)
         vec3 lamp = vec3{1.1f, 1.2f, 1.4f} * (e.rsFalter ? .35f + .25f * std::sin(time * 9.f) : 1.f);
@@ -1007,53 +1010,97 @@ inline void leviathanSegments(const Enemy& e, float time, Rig& r, const gunkit::
             else lamp = vec3{2.2f, .3f, .2f};
             lamp *= .7f + .6f * tp;
         }
-        // Stilts: long legs from the hips, knees bending back like a crane's
+        // Crane legs: a thigh forward to the knee, a long shin back to a raised ankle, a short foot forward
         for (int s = -1; s <= 1; s += 2) {
-            float sw = std::sin(ph + (s > 0 ? 0.f : 3.1416f)) * .45f * walk;
-            vec3 hip{s * .72f, 4.75f - 2.3f * kneel, .4f * kneel}, knee{s * .9f, 2.5f, -.4f + sw * .9f}, foot{s * 1.f, 0.f, sw * 1.6f};
-            foot.y = std::max(0.f, std::sin(ph + (s > 0 ? 0.f : 3.1416f))) * .35f * walk;
-            knee = glm::mix(knee, vec3{s * 1.f, .4f, 1.3f}, kneel); foot = glm::mix(foot, vec3{s * 1.05f, 0.f, -1.4f}, kneel);
-            seg(hip, knee, .52f, steelC, "restorer_strut"); seg(knee, foot + vec3{0, .18f, 0}, .42f, steelC, "restorer_strut");
-            if (!at("restorer_foot", T(foot + vec3{0, .02f, 0}) * S(vec3{1.3f}))) r.box(root, foot + vec3{0, .06f, .15f}, {.5f, .12f, .8f}, steelC);
-            if (!at("restorer_joint", T(knee) * S(vec3{.62f}))) r.box(root, knee, {.34f, .34f, .34f}, hose);
+            const float step = ph + (s > 0 ? 0.f : 3.1416f), sw = std::sin(step) * walk, lift = std::max(0.f, std::cos(step)) * walk;
+            vec3 hip{s * .78f, 4.55f, -.15f}, knee{s * 1.05f, 3.05f, .75f + sw * .5f}, ankle{s * 1.18f, 1.25f + lift * .4f, -.65f + sw * 1.1f}, foot{s * 1.25f, .12f + lift * .3f, -.05f + sw * 1.4f};
+            hip = glm::mix(hip, vec3{s * .8f, 2.f, .35f}, kneel);   // (folded under it)
+            knee = glm::mix(knee, vec3{s * 1.15f, .35f, 1.55f}, kneel); ankle = glm::mix(ankle, vec3{s * 1.2f, .3f, -.6f}, kneel); foot = glm::mix(foot, vec3{s * 1.25f, .12f, -1.35f}, kneel);
+            seg(hip, knee, .62f, steelC, "restorer_strut"); seg(knee, ankle, .48f, steelC, "restorer_strut"); seg(ankle, foot, .36f, steelC, "restorer_strut");
+            if (!at("restorer_foot", T(foot + vec3{0, -.08f, .25f}) * S(vec3{1.4f}))) r.box(root, foot + vec3{0, -.04f, .2f}, {.55f, .14f, .9f}, steelC);
+            if (!at("restorer_joint", T(knee) * S(vec3{.72f}))) r.box(root, knee, {.38f, .38f, .38f}, hose);
+            if (!at("restorer_joint", T(ankle) * S(vec3{.56f}))) r.box(root, ankle, {.3f, .3f, .3f}, hose);
         }
-        // The body: a pelvis, a stooped torso in its coat of hoses, the cylinder on its back, the dome
+        // The body: a pelvis, the stooped torso, the coat of hoses hanging off it, the cylinder on its back, the dome
         base = body;
-        const mat4 torsoM = T({0, 5.8f, .3f}) * RX(.45f);
-        if (!at("restorer_pelvis", T({0, 4.85f, 0}) * S(vec3{1.15f}))) r.box(root, {0, 4.85f, 0}, {1.7f, .45f, .9f}, steelC);
-        if (!at("restorer_torso", torsoM * S(vec3{1.3f}))) {
-            r.box(root * torsoM, {0, 0, 0}, {1.4f, 1.5f, .95f}, st.color);
-            for (int k = 0; k < 4; ++k) seg(vec3{-.6f + k * .4f, 6.5f, .7f}, vec3{-.7f + k * .45f, 4.6f, .55f + .1f * (k % 2)}, .17f, hose);
+        const mat4 torsoM = T({0, 5.85f + .04f * breathe, .5f}) * RX(.72f);
+        if (!at("restorer_pelvis", T({0, 4.7f, 0}) * S(vec3{1.25f}))) r.box(root, {0, 4.7f, 0}, {1.8f, .5f, 1.f}, steelC);
+        if (!at("restorer_torso", torsoM * S(vec3{2.05f, 1.9f, 2.f}))) r.box(root * torsoM, {0, 0, 0}, {2.2f, 2.2f, 1.5f}, st.color);
+        {   // the coat: hoses hanging from a collar round its waist, down past its knees, swinging as it moves
+            const float swing = .12f * std::sin(ph * 2.f) * walk + .03f * std::sin(time * .9f);
+            for (int k = 0; k < 22; ++k) {
+                const float a = -2.7f + k * (5.4f / 21.f);   // (round the front and the sides; the back is the cylinder's)
+                const float ph2 = (float)((k * 7) % 5) / 4.f;
+                const vec3 top{std::sin(a) * 1.05f, 5.15f, .35f + std::cos(a) * .85f};
+                const float len = 2.3f + .7f * ph2;
+                const float sw = swing * (0.7f + 0.6f * ph2) + .03f * std::sin(time * 1.7f + k);
+                const vec3 mid = top + vec3{std::sin(a) * .3f + sw * .4f * std::cos(a), -len * .5f, std::cos(a) * .28f + sw * .4f};
+                const vec3 bot = top + vec3{std::sin(a) * .6f + sw * std::cos(a), -len, std::cos(a) * .5f + sw};   // (flaring out like a hem)
+                const bool rubber = k % 3 == 1;
+                const float th = rubber ? .2f : .26f;
+                seg(top, mid, th, rubber ? vec3{.08f} : hose, "restorer_hose"); seg(mid, bot, th * .9f, rubber ? vec3{.08f} : hose, "restorer_hose");
+                if (k % 2 == 0) r.box(base, bot + vec3{0, .05f, 0}, {.22f, .14f, .22f}, vec3{.58f, .44f, .2f});   // brass end fittings
+                if (k % 4 == 2) r.box(base, mid, {.3f, .1f, .3f}, vec3{.84f, .89f, .94f});                         // frost caked on
+            }
+            if (!at("restorer_coat_collar", T({0, 5.2f, .35f}) * S(vec3{1.f}))) r.box(base, {0, 5.2f, .35f}, {2.2f, .22f, 1.8f}, vec3{.58f, .44f, .2f} * .8f);
         }
-        if (!at("restorer_cylinder", T({0, 6.f, -1.f}) * RX(.2f) * S(vec3{1.15f}))) {   // and what it saved first, asleep in it
-            r.box(root, {0, 5.9f, -.75f}, {.95f, 1.7f, .95f}, vec3{.55f, .7f, .8f}, vec3{.12f, .16f, .22f});
-            r.box(root, {0, 5.75f, -.75f}, {.35f, .9f, .3f}, vec3{.25f, .27f, .3f});
+        {   // what it saved first, asleep in the cylinder on its back; a cold light in it
+            const mat4 cyl = T({0, 6.25f, -.95f}) * RX(.38f) * RY(3.1416f);   // (the unit inside faces out, behind it)
+            const vec3 cold = vec3{.35f, .55f, .75f} * (.55f + .1f * std::sin(time * .7f)) * (e.rsFalter ? .5f : 1.f);
+            if (!at("restorer_cylinder", cyl * S(vec3{1.5f}), cold)) r.box(base * cyl, {0, 0, 0}, {1.35f, 2.2f, 1.35f}, vec3{.55f, .7f, .8f}, cold * .4f);
         }
-        if (!at("restorer_dome", T({0, 7.25f, 1.1f}) * S(vec3{1.25f}), lamp)) {
-            r.box(root, {0, 7.f, 1.f}, {1.f, .85f, 1.f}, vec3{.6f, .75f, .85f}, vec3{.08f, .1f, .14f});
-            r.box(root, {0, 7.f, 1.05f}, {.3f, .3f, .3f}, lamp, lamp);
+        {   // the neck and the dome, peering down at you
+            seg({0, 6.55f, 1.05f}, rsbody::DOME - vec3{0, .45f, .35f}, .32f, hose, "restorer_hose");
+            const mat4 domeM = T(rsbody::DOME) * RY(.15f * std::sin(time * .4f) * (1.f - kneel)) * RX(.35f - .62f * kneel);   // (beaten, it looks up at you)
+            if (!at("restorer_dome", domeM * S(vec3{1.6f}), lamp)) {
+                r.box(base * domeM, {0, 0, 0}, {1.4f, 1.3f, 1.4f}, vec3{.6f, .75f, .85f}, vec3{.08f, .1f, .14f});
+                r.box(base * domeM, {0, 0, .2f}, {.4f, .4f, .4f}, lamp, lamp);
+            }
         }
-        // Four arms: the upper pair long, ending in tongs; one folds back for the snatch
+        // Four arms: the upper pair long, ending in tongs, held up and ready (one folds back for the snatch,
+        // then is thrown out); the lower pair hold its manifest in front of it, lit
         const bool tong = e.attack == AttackKind::RS_TONG && e.telegraphTimer > 0.f;
         const float wind = tong ? glm::clamp(1.f - e.telegraphTimer / std::max(.01f, e.telegraphDuration), 0.f, 1.f) : 0.f;
         const bool lunge = !tong && e.recoverTimer > 1.f && e.rsLast == (int)AttackKind::RS_TONG;
-        for (int a = 0; a < 4; ++a) {
-            const int s = a % 2 ? 1 : -1; const bool upper = a < 2;
-            vec3 sh{s * 1.f, upper ? 6.5f : 5.6f, .55f};
-            float reach = upper ? 3.6f : 2.4f;
-            vec3 el = sh + vec3{s * .5f, -1.2f, .9f}, hand = sh + vec3{s * .3f, -2.8f, reach * .55f};
-            if (upper && s > 0 && tong) { el = sh + vec3{s * .6f, .4f, -1.2f * wind}; hand = sh + vec3{s * .4f, -.6f, -1.6f * wind}; }   // folded back
-            if (upper && s > 0 && lunge) { el = sh + vec3{s * .2f, -.6f, 2.2f}; hand = sh + vec3{0, -1.6f, 5.2f}; }                      // thrown out
-            if (!upper) hand.y += std::sin(ph * .5f + a) * .15f;
-            seg(sh, el, upper ? .4f : .3f, st.color, "restorer_strut"); seg(el, hand, upper ? .34f : .26f, st.color, "restorer_strut");
-            if (!at("restorer_joint", T(el) * S(vec3{upper ? .46f : .36f}))) r.box(root, el, vec3{.2f}, hose);
-            const bool hot = upper && s > 0 && tong;
-            vec3 tcol = hot ? (e.parryWindow() ? vec3{1.8f} : vec3{1.2f}) : hose;
-            vec3 temi = hot ? tcol : vec3{0.f};
-            for (int j = -1; j <= 1; j += 2) {   // the tongs (each jaw a hooked finger, its hook at the tip)
-                vec3 tip = hand + vec3{j * .26f, -.65f, .3f};
-                if (hot) r.box(root, tip, {.12f, .12f, .12f}, tcol, temi);   // (lit for the parry, whatever the jaw is made of)
-                seg(tip, hand, upper ? .22f : .17f, tcol, hot ? nullptr : "restorer_jaw", temi);
+        const float click = .5f + .5f * std::sin(time * 2.2f + e.uid);   // (its tongs opening and closing, idly)
+        for (int s = -1; s <= 1; s += 2) {   // the upper arms
+            vec3 sh{s * 1.12f, 6.55f, .85f}, el{s * 2.f, 5.75f + .1f * breathe, 1.05f}, hand{s * 1.35f, 4.55f + .08f * breathe, 2.35f};
+            if (s > 0 && tong) { el = sh + vec3{s * .7f, .6f, -1.1f * wind}; hand = sh + vec3{s * .5f, -.3f, -1.7f * wind}; }   // folded back
+            if (s > 0 && lunge) { el = sh + vec3{s * .25f, -.5f, 2.3f}; hand = sh + vec3{0, -1.5f, 5.4f}; }                      // thrown out
+            hand = glm::mix(hand, vec3{s * 1.6f, 3.2f, 2.2f}, kneel); el = glm::mix(el, vec3{s * 2.1f, 4.8f, 1.2f}, kneel);   // (limp, beaten)
+            seg(sh, el, .62f, st.color, "restorer_strut"); seg(el, hand, .5f, st.color, "restorer_strut");
+            if (!at("restorer_joint", T(el) * S(vec3{.66f}))) r.box(root, el, vec3{.26f}, hose);
+            if (!at("restorer_joint", T(sh) * S(vec3{.8f}))) r.box(root, sh, vec3{.32f}, hose);
+            const bool hot = s > 0 && tong;
+            const vec3 tcol = hot ? (e.parryWindow() ? vec3{1.8f} : vec3{1.2f}) : hose, temi = hot ? tcol : vec3{0.f};
+            const float open = hot ? .45f : .12f + .14f * click * (1.f - kneel);
+            const vec3 dn = glm::normalize(hand - el);
+            for (int j = -1; j <= 1; j += 2) {   // the tongs: two long hooked fingers
+                const vec3 side = glm::normalize(glm::cross(dn, vec3{0, 1, 0}) + vec3{0, .001f, 0}) * (float)j;
+                const vec3 tip = hand + dn * .95f + side * open;
+                if (hot) r.box(base, tip, {.14f, .14f, .14f}, tcol, temi);   // (lit for the parry, whatever the jaw is made of)
+                seg(hand, tip, .32f, tcol, hot ? nullptr : "restorer_jaw", temi);
+            }
+        }
+        {   // the lower arms and the manifest they hold
+            const vec3 slate{0, 4.95f + .05f * breathe, 2.05f};
+            const mat4 slateM = T(slate) * RX(.65f);   // (held up to you: your entry on it)
+            for (int s = -1; s <= 1; s += 2) {
+                vec3 sh{s * .82f, 5.55f, 1.f}, el{s * 1.15f, 4.75f, 1.35f}, hand = slate + vec3{s * .62f, -.05f, -.05f};
+                hand = glm::mix(hand, vec3{s * .9f, 3.6f, 1.6f}, kneel); el = glm::mix(el, vec3{s * 1.2f, 4.1f, 1.3f}, kneel);
+                seg(sh, el, .38f, st.color, "restorer_strut"); seg(el, hand, .32f, st.color, "restorer_strut");
+                if (!at("restorer_joint", T(el) * S(vec3{.38f}))) r.box(root, el, vec3{.18f}, hose);
+            }
+            if (kneel < .5f) {   // (it drops it when it falls)
+                const vec3 lines = vec3{1.f, .7f, .25f} * (.8f + .2f * std::sin(time * 3.f));
+                if (!at("restorer_slate", slateM * S(vec3{1.f}), lines)) {
+                    r.box(base * slateM, {0, 0, 0}, {1.1f, .06f, .8f}, vec3{.2f, .21f, .23f});
+                    for (int k = 0; k < 5; ++k) r.box(base * slateM, {-.05f, .04f, -.28f + k * .13f}, {.8f - .1f * (k % 2), .01f, .03f}, lines, lines);
+                }
+            } else {
+                const mat4 dropped = T({.6f, .06f, 2.4f}) * RY(.6f) * RX(-1.5708f);
+                base = root;   // (lying on the grid where it fell)
+                if (!at("restorer_slate", dropped, vec3{.2f, .14f, .05f})) r.box(root * dropped, {0, 0, 0}, {1.1f, .06f, .8f}, vec3{.2f, .21f, .23f});
             }
         }
         break;
@@ -1693,12 +1740,9 @@ inline bool headBox(const Enemy& e, AABB& out) {
         out={c-ext,c+ext};return true;
     }
 
-    if(e.type==EnemyType::RESTORER) {   // its glass dome, the lamp in it: the weak point (the same place Gameplay_Restorer.h's rsDomeWorld finds)
-        const float k=e.rsKneel*e.rsKneel*(3.f-2.f*e.rsKneel);
-        mat4 frame=T(e.position)*RY(e.yaw)*T({0.f,-2.3f*k,.4f*k})*RX(.25f*k);
-        vec3 c=vec3(frame*glm::vec4(0.f,7.25f,1.1f,1.f)),half{.95f,.85f,.95f};
-        glm::mat3 m(frame);vec3 ext=glm::abs(m[0])*half.x+glm::abs(m[1])*half.y+glm::abs(m[2])*half.z;
-        out={c-ext,c+ext};return true;
+    if(e.type==EnemyType::RESTORER) {   // its glass dome, the lamp in it: the weak point (rsbody: where the model draws it)
+        const vec3 c=rsbody::domeWorld(e),half=vec3{rsbody::DOME_R*1.15f*e.scale};
+        out={c-half,c+half};return true;
     }
     if(e.type==EnemyType::SORTER) {
         mat4 frame=T(e.position)*RY(e.yaw)*T({0,4.4f,0})*RY(std::sin(e.age*.5f)*.12f);

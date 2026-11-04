@@ -43,17 +43,18 @@ def frost_crust(c, s, n, seed=1):
 # ---- the dome: its head. A glass bell on a brass collar, one cold lamp hanging in it, a visor ring ----------
 if want("dome"):
     begin()
-    E((0, 0.05, 0), (0.95, 0.85, 0.95), "rs_glass", None, seg=24, rings=12)                    # the glass
-    E((0, 0.05, 0), (0.86, 0.77, 0.86), "rs_dark", None, seg=20, rings=10)                     # dark inside it
+    E((0, 0.05, 0), (0.95, 0.85, 0.95), "rs_glass", None, seg=24, rings=12, glow="glow", k=0.22)   # the glass, tinted by its lamp (the tell)
+    # its lamp, at the front of the glass where you can see it: a lens in a brass bezel, an iris round it
+    E((0, 0.02, 0.43), (0.34, 0.34, 0.12), "glow", None, glow="glow", k=1.6, seg=18, rings=8)
+    E((0, 0.02, 0.47), (0.16, 0.16, 0.06), "glow*2", None, glow="glow", k=2.6, seg=12, rings=6)
+    R((0, 0.02, 0.42), 0.36, 0.035, "rs_brass", None, rot=(90, 0, 0), sides=24, tsides=6)
+    R((0, 0.02, 0.44), 0.26, 0.04, "rs_dark", None, rot=(90, 0, 0), sides=24, tsides=6)          # the iris round it
     R((0, -0.3, 0), 0.47, 0.05, "rs_brass", None, sides=28, tsides=8)                          # the collar
     C((0, -0.37, 0), 0.45, 0.1, "rs_steel", None, sides=24)
     R((0, 0.05, 0), 0.475, 0.018, "rs_steel", None, sides=28, tsides=4)                        # the visor ring
     for i in range(6):                                                                          # ribs over the glass
         a = math.radians(i * 60)
         rod((math.sin(a) * 0.44, -0.25, math.cos(a) * 0.44), (math.sin(a) * 0.2, 0.42, math.cos(a) * 0.2), 0.012, "rs_steel", sides=6)
-    rod((0, 0.42, 0), (0, 0.1, 0.05), 0.012, "rs_dark", sides=6)                                # the lamp's stalk
-    E((0, 0.05, 0.08), (0.24, 0.24, 0.24), "glow", None, glow="glow", k=1.4, seg=16, rings=8)  # THE LAMP (its tell)
-    E((0, 0.05, 0.08), (0.12, 0.12, 0.12), "glow*2", None, glow="glow", k=2.4, seg=12, rings=6)
     for s in (-1, 1):                                                                           # lens housings either side
         C((s * 0.47, -0.05, 0.1), 0.08, 0.08, "rs_brass", None, rot=(0, 0, 90), sides=12)
         C((s * 0.52, -0.05, 0.1), 0.05, 0.04, "rs_dark", None, rot=(0, 0, 90), sides=10)
@@ -100,28 +101,55 @@ if want("pelvis"):
     frost_crust((0, 0.2, 0), (1.4, 0.05, 0.7), 10, 7)
     save_piece("restorer_pelvis")
 
-# ---- the cryo cylinder on its back: frosted glass between brass caps; asleep inside, the small unit it saved first
+# ---- the cryo cylinder on its back: frosted glass lit cold from inside ("glow": the rig's cold light), brass caps,
+# a cage; the small unit it saved first curled inside, its face and hands pressed to the glass where you can see them
 if want("cylinder"):
     begin()
-    C((0, 0, 0), 0.47, 1.45, "rs_glass", None, sides=24)                                       # the glass
-    C((0, 0, 0), 0.43, 1.4, "rs_dark*1.5", None, sides=20)                                     # the cold inside
+    C((0, 0, 0), 0.47, 1.45, "rs_glass", None, sides=24, glow="glow", k=0.55)                # the glass, lit from within
     for y in (-0.78, 0.78):
         C((0, y, 0), 0.5, 0.14, "rs_brass", None, sides=24)
         R((0, y, 0), 0.5, 0.025, "rs_steel", None, sides=24, tsides=6)
-    for i in range(4):                                                                          # its cage bars
-        a = math.radians(45 + i * 90)
-        rod((math.sin(a) * 0.49, -0.72, math.cos(a) * 0.49), (math.sin(a) * 0.49, 0.72, math.cos(a) * 0.49), 0.02, "rs_steel", sides=6)
-    # the small unit: knees up, head down, a dim light still in it
-    E((0, 0.2, 0.02), (0.2, 0.2, 0.2), "rs_unit", None, seg=12, rings=6)                       # head
-    B((0, -0.08, 0.0), (0.22, 0.32, 0.16), "rs_unit", None, bev=0.04)                           # body
+    C((0, 0.9, 0), 0.22, 0.12, "rs_dark", None, sides=12)                                     # its valve
+    for i in range(6):                                                                          # its cage bars
+        a = math.radians(30 + i * 60)
+        rod((math.sin(a) * 0.5, -0.72, math.cos(a) * 0.5), (math.sin(a) * 0.5, 0.72, math.cos(a) * 0.5), 0.022, "rs_steel", sides=6)
+    for y in (-0.35, 0.35):
+        R((0, y, 0), 0.5, 0.018, "rs_steel", None, sides=24, tsides=4)
+    # the small unit, curled up, its face to the glass (forward, +Z), a dim light still in its eye
+    E((0, 0.22, 0.33), (0.21, 0.21, 0.19), "rs_unit", None, seg=14, rings=8)                  # head, against the glass
+    B((0, 0.24, 0.5), (0.2, 0.05, 0.02), "rs_dark", None)                                       # its visor slot
+    E((0.05, 0.24, 0.52), (0.04, 0.025, 0.01), "glow", None, glow="const", k=(0.2, 0.35, 0.5), seg=8, rings=4)
     for s in (-1, 1):
-        B((s * 0.07, -0.32, 0.1), (0.07, 0.24, 0.07), "rs_unit*0.9", None, rot=(40, 0, 0))     # legs drawn up
-        B((s * 0.13, -0.05, 0.06), (0.05, 0.22, 0.05), "rs_unit*0.9", None, rot=(30, 0, s * 10))
-    E((0.04, 0.2, 0.11), (0.03, 0.02, 0.01), "glow", None, glow="const", k=(0.15, 0.25, 0.35), seg=8, rings=4)
-    C((0, 0, 0.47), 0.06, 0.06, "rs_label", None, rot=(90, 0, 0), sides=10)                    # a tag on the glass
-    frost_crust((0, 0.5, 0), (0.95, 0.4, 0.95), 16, 9)
-    frost_crust((0, -0.6, 0), (0.95, 0.2, 0.95), 10, 10)
+        E((s * 0.2, 0.0, 0.47), (0.07, 0.1, 0.04), "rs_unit*0.9", None, seg=10, rings=5)      # hands flat on the glass
+    B((0, -0.25, 0.1), (0.24, 0.34, 0.2), "rs_unit", None, bev=0.04)                            # body, knees drawn up
+    C((0, 0, 0.5), 0.07, 0.04, "rs_label", None, rot=(90, 0, 0), sides=10)                     # a tag on the glass
+    B((0.0, -0.5, 0.48), (0.3, 0.12, 0.02), "rs_label", None, bev=0.01)                         # its label plate: SAVED FIRST
+    frost_crust((0, 0.55, 0.1), (0.95, 0.35, 0.8), 18, 9)
+    frost_crust((0, -0.62, 0.1), (0.95, 0.2, 0.8), 12, 10)
     save_piece("restorer_cylinder")
+
+# ---- the coat's collar: a brass ring round its waist, the hoses' couplings hanging off it --------------------------
+if want("coat_collar"):
+    begin()
+    R((0, 0, 0), 1.0, 0.09, "rs_brass", None, sides=36, tsides=8)
+    R((0, -0.1, 0), 0.97, 0.05, "rs_steel", None, sides=36, tsides=6)
+    for i in range(16):
+        a = -2.5 + i * (5.0 / 15)
+        C((math.sin(a) * 1.0, -0.12, math.cos(a) * 1.0), 0.09, 0.16, "rs_brass*0.8", None, sides=8)
+    frost_crust((0, 0.08, 0), (1.9, 0.05, 1.9), 14, 15)
+    save_piece("restorer_coat_collar")
+
+# ---- its manifest: a slate held in its short arms, a brass clip, the lines of names lit ("glow": the rig's amber)
+if want("slate"):
+    begin()
+    B((0, 0, 0), (1.1, 0.06, 0.8), "rs_dark", None, bev=0.02)
+    B((0, 0.0, 0), (1.16, 0.05, 0.86), "rs_brass*0.8", None, bev=0.02)
+    B((0, 0.035, 0), (1.0, 0.01, 0.7), "rs_frost*0.25", None)
+    for k in range(6):
+        B((-0.06 + 0.03 * (k % 2), 0.045, -0.27 + k * 0.1), (0.72 - 0.12 * (k % 3), 0.008, 0.025), "glow", None, glow="glow", k=1.0)
+    B((0, 0.06, -0.4), (0.3, 0.06, 0.08), "rs_brass", None, bev=0.01)                           # the clip
+    frost_crust((0, 0.03, 0.3), (1.0, 0.02, 0.2), 6, 16)
+    save_piece("restorer_slate")
 
 # ---- a limb: the stilts' and arms' segments. A dark core in a steel sleeve, brass bands, a piston down it ---
 if want("strut"):

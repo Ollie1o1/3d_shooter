@@ -437,6 +437,34 @@ unclear. What changed:
   7 s (was 5). Other fights name their priority (Clerks: kill first).
   `--overlay rs1/rs2/rs3` starts the fight in a phase.
 
+### The Restorer and its finisher, polished (2026-11-04)
+
+- **Its body** (`EnemyModel.h`, `tools/blender/restorer_build.py`): a stooped
+  curator on crane legs (thigh forward, long shin back to a raised ankle),
+  in a long coat of 22 frosted hoses hanging from a brass collar and swinging
+  as it walks. A bigger torso and arms. The upper tong-arms are held up,
+  ready, and click idly. The short arms hold up its **manifest**, a slate
+  with your entry lit on it (dropped when it kneels). The cryo cylinder is
+  bigger and glows cold, with the small unit's face and hands pressed to the
+  glass at the back. The dome's lamp is now a lens at the front of the glass
+  with an iris, and the glass takes the tell colour (before, the lamp sat
+  hidden inside opaque glass, so the tells never showed on it). Beaten, it
+  kneels, bows and lifts its dome to you. New pieces: `restorer_coat_collar`
+  and `restorer_slate`.
+- **One place for the dome** (`rsbody` in `EnemyRestorer.h`): the model,
+  its weak point (`headBox`) and the finisher all use it, standing or
+  kneeling.
+- **The finisher** (about 3.8 s, first person, UNIT 24's own arms):
+  letterbox bars; the camera climbs to just above its lens; it says "WAIT. I
+  CAN STILL SAVE YOU."; your left hand takes the dome's collar; your right
+  draws the RECALL module off your hip and drives it into the lens (hit stop,
+  flash); cracks run over the glass as you twist it, its lamp turns your cyan
+  and ticks backwards faster and faster, cyan creeping in at the edges; the
+  glass bursts and throws you back onto your feet in front of it, looking at
+  it, as it starts to rewind. Its body no longer bursts into generic death
+  debris, and the stale banners are cleared. `--overlay rsfinish` beats it
+  and runs the finisher by itself.
+
 ## 11. Build order
 
 1. **RECALL** (testable anywhere with a dev flag).
