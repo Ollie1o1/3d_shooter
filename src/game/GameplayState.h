@@ -550,7 +550,7 @@ public:
     void restorerEvents(Enemy& e, const EnemyEvents& ev);
     void updateRestorerFight(float dt);
     void gatherRestorerFight(std::vector<BoxInstance>& out);
-    float coldKLineT = 0.f;
+    float coldKLineT = 0.f, coldKHintT = -1.f;
     float coldKDownAt = -1.f;
     struct ColdCrack { glm::vec3 a, b; float born; };
     std::vector<ColdCrack> coldCracks;   // the Frozen Sea's ice, cracking under you

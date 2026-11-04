@@ -17,6 +17,7 @@
 // =============================================================================
 #include "world/Level.h"
 #include "ui/PixelFont.h"
+#include <tuple>
 
 namespace cold {
 constexpr float HALF_X = 260.f;               // the playable shelf: -HALF_X..HALF_X in X
@@ -155,6 +156,9 @@ inline int ventState(int k, float t) {
 inline glm::vec3 seaStart() { return {SEA_X0 + 6.f, 0.f, (BRIDGE_Z0 + BRIDGE_Z1) * 0.5f}; }
 inline glm::vec3 station() { return {600.f, 0.f, -985.f}; }
 inline glm::vec3 stationBeacon() { return station() + glm::vec3{-20.f, 0.f, -12.f}; }   // DISPATCH 2's signal mast
+// 24-K's duel: the station's yard, a dark deck round the platform, ringed off while you fight
+inline AABB duelYard() { const glm::vec3 s = station(); return {{s.x - 26.f, 0.f, s.z - 18.f}, {s.x + 26.f, 40.f, s.z + 16.f}}; }
+constexpr float GANTRY_Z = 12.f, GANTRY_Y = 6.2f;   // its signal gantry, across the yard (relative to the station)
 // RECLAIM v1, the first Gleaner, lying under the ice along your crossing (its head toward the station)
 inline glm::vec3 reclaimTail() { return {250.f, -24.f, -815.f}; }
 inline glm::vec3 reclaimHead() { return {535.f, -24.f, -940.f}; }
@@ -919,7 +923,8 @@ inline LevelData buildCold() {
         b.wall(st.x - 18.f, -0.6f, st.z - 10.f, st.x + 18.f, 0.6f, st.z + 10.f, floorSteel);   // the platform (a step up)
         b.kit().box(st + vec3{0.f, 0.62f, 0.f}, {36.f, 0.06f, 20.f}, rime * 0.8f);
         for (int k = -2; k <= 2; ++k) b.wall(st.x + k * 8.f - 0.3f, 0.6f, st.z - 9.f, st.x + k * 8.f + 0.3f, 7.f, st.z - 8.4f, steel);   // canopy posts
-        b.kit().box(st + vec3{-4.f, 7.4f, -6.f}, {30.f, 0.6f, 8.f}, steel, 0.f, 0.f, 0.06f);   // the canopy, sagging
+        b.wall(st.x - 19.f, 7.f, st.z - 10.f, st.x + 11.f, 7.6f, st.z - 2.f, steel);   // the canopy: a roof you can grapple onto and stand on (24-K can't follow you up)
+        b.kit().box(st + vec3{-4.f, 7.65f, -6.f}, {30.2f, 0.08f, 8.2f}, rime);
         b.kit().box(st + vec3{0.f, 1.6f, -12.f}, {60.f, 0.5f, 1.2f}, steel);                    // the rail, running off
         b.kit().box(st + vec3{40.f, -1.f, -12.f}, {20.f, 0.5f, 1.2f}, steel, 0.f, 0.f, -0.2f);  // ...snapped, into the ice
         b.kit(true).box(st + vec3{0.f, 6.6f, -6.f}, {8.f, 0.2f, 0.3f}, amber * 0.7f);
@@ -1021,6 +1026,70 @@ inline LevelData buildCold() {
         b.wall(m.x - 0.6f, 0.f, m.z - 0.6f, m.x + 0.6f, 2.f, m.z + 0.6f, steel);
         b.kit().box(m + vec3{0.f, 15.f, 0.f}, {0.8f, 30.f, 0.8f}, steel);
         for (float y = 3.f; y < 30.f; y += 3.f) b.kit().box(m + vec3{0.f, y, 0.f}, {1.5f, 0.12f, 1.5f}, steel * 1.3f);
+    }
+
+    // ---- 8. 24-K's ground: DISPATCH 2's yard. A dark steel deck round the platform (so a pale unit reads on
+    // it), cargo and barriers to duel round, and things to get up onto: the canopy roof and a signal gantry
+    // across the yard (24-K has no grapple: it cannot follow you up). Ringed off while the duel is on. ----
+    {
+        const vec3 st = cold::station();
+        const AABB Y = cold::duelYard();
+        const vec3 deck{0.09f, 0.1f, 0.12f};
+        b.mat = Mat::METAL;
+        b.kit().box({(Y.min.x + Y.max.x) * 0.5f, 0.02f, (Y.min.z + Y.max.z) * 0.5f}, {Y.max.x - Y.min.x, 0.04f, Y.max.z - Y.min.z}, deck);   // the deck (visual: the ice under it holds you)
+        for (float x = Y.min.x + 4.f; x < Y.max.x - 1.f; x += 4.f) b.kit(true).box({x, 0.045f, (Y.min.z + Y.max.z) * 0.5f}, {0.05f, 0.01f, Y.max.z - Y.min.z - 0.4f}, vec3{0.25f, 0.33f, 0.42f} * 0.35f);
+        for (float z = Y.min.z + 4.f; z < Y.max.z - 1.f; z += 4.f) b.kit(true).box({(Y.min.x + Y.max.x) * 0.5f, 0.045f, z}, {Y.max.x - Y.min.x - 0.4f, 0.01f, 0.05f}, vec3{0.25f, 0.33f, 0.42f} * 0.35f);
+        for (int sd = 0; sd < 4; ++sd) {   // its edge: hazard paint, and bollards where the ring stands when the duel is on
+            const bool alongX = sd < 2; const float at = sd == 0 ? Y.min.z : sd == 1 ? Y.max.z : sd == 2 ? Y.min.x : Y.max.x;
+            const float len = alongX ? Y.max.x - Y.min.x : Y.max.z - Y.min.z;
+            b.kit().box(alongX ? vec3{(Y.min.x + Y.max.x) * 0.5f, 0.05f, at} : vec3{at, 0.05f, (Y.min.z + Y.max.z) * 0.5f}, alongX ? vec3{len, 0.02f, 0.5f} : vec3{0.5f, 0.02f, len}, vec3{0.75f, 0.55f, 0.15f});
+            for (float u = 0.f; u <= len + 0.1f; u += 6.5f) {
+                const vec3 p = alongX ? vec3{Y.min.x + u, 0.f, at} : vec3{at, 0.f, Y.min.z + u};
+                b.kit().box(p + vec3{0.f, 0.5f, 0.f}, {0.3f, 1.f, 0.3f}, steel);
+                b.kit(true).box(p + vec3{0.f, 1.05f, 0.f}, {0.24f, 0.1f, 0.24f}, vec3{0.4f, 0.6f, 0.8f});
+            }
+        }
+        // Cover: cargo stacks (one tall enough to stand on, with a jump), long barriers
+        auto cargo = [&](float x, float z, int high, float yaw) {
+            for (int h = 0; h < high; ++h) {
+                const vec3 c = st + vec3{x, h * 2.6f, z};
+                const vec3 col = h % 2 ? vec3{0.32f, 0.36f, 0.42f} : vec3{0.45f, 0.3f, 0.18f};
+                b.wall(c.x - 3.f, c.y, c.z - 1.2f, c.x + 3.f, c.y + 2.6f, c.z + 1.2f, col);
+                for (int r = -2; r <= 2; ++r) b.kit().box(c + vec3{r * 1.4f, 1.3f, 0.f}, {0.12f, 2.5f, 2.5f}, col * 0.7f);
+                b.kit().box(c + vec3{0.f, 2.66f, 0.f}, {6.1f, 0.14f, 2.5f}, rime);
+            }
+            (void)yaw;
+        };
+        cargo(-19.f, 5.f, 2, 0.f);
+        cargo(19.f, -8.f, 1, 0.f);
+        cargo(-14.f, -13.f, 1, 0.f);
+        for (const auto& [x, z, alongX] : {std::tuple<float, float, bool>{14.f, 11.f, true}, {-6.f, 11.f, true}, {22.f, 3.f, false}}) {
+            const vec3 c = st + vec3{x, 0.f, z};
+            const vec3 h = alongX ? vec3{2.f, 0.5f, 0.4f} : vec3{0.4f, 0.5f, 2.f};
+            b.wall(c.x - h.x, 0.f, c.z - h.z, c.x + h.x, 1.f, c.z + h.z, vec3{0.55f, 0.57f, 0.6f});
+            b.kit().box(c + vec3{0.f, 0.55f, 0.f}, h * 2.f + vec3{0.04f, 0.f, 0.04f}, vec3{0.75f, 0.55f, 0.15f} * 0.5f);   // hazard band
+        }
+        // The signal gantry: two towers and a walkway across the yard's south side (grapple up; stand on it)
+        const float gz = st.z + cold::GANTRY_Z, gy = cold::GANTRY_Y;
+        for (int sg = -1; sg <= 1; sg += 2) {
+            const float x = st.x + sg * 22.f;
+            b.wall(x - 0.7f, 0.f, gz - 0.7f, x + 0.7f, gy + 1.4f, gz + 0.7f, steel);
+            for (float y = 1.f; y < gy; y += 1.2f) b.kit().box({x, y, gz}, {1.6f, 0.1f, 1.6f}, steel * 1.4f);
+            b.kit(true).box({x, gy + 1.5f, gz}, {0.4f, 0.2f, 0.4f}, amber);
+        }
+        b.wall(st.x - 22.f, gy - 0.4f, gz - 1.2f, st.x + 22.f, gy, gz + 1.2f, steel);   // the walkway
+        b.kit().box({st.x, gy + 0.02f, gz}, {44.f, 0.04f, 2.3f}, rime * 0.8f);
+        for (int sg = -1; sg <= 1; sg += 2) b.kit().box({st.x, gy + 0.55f, gz + sg * 1.15f}, {44.f, 0.06f, 0.06f}, steel);   // its handrails (low: you can still drop off)
+        for (float x = st.x - 20.f; x <= st.x + 20.f; x += 8.f) b.kit(true).box({x, gy - 0.5f, gz}, {0.6f, 0.12f, 0.3f}, vec3{0.85f, 0.9f, 1.f} * 0.7f);   // signal lamps under it
+        stencil("DISPATCH 2  YARD", {st.x - 8.f, gy - 0.25f, gz + 1.25f}, {1.f, 0.f, 0.f}, 0.12f, paint);
+        // Floodlights on the corners
+        for (int k = 0; k < 4; ++k) {
+            const vec3 m{k % 2 ? Y.max.x - 1.f : Y.min.x + 1.f, 0.f, k < 2 ? Y.min.z + 1.f : Y.max.z - 1.f};
+            b.wall(m.x - 0.3f, 0.f, m.z - 0.3f, m.x + 0.3f, 1.f, m.z + 0.3f, steel);
+            b.kit().rod(m, m + vec3{0.f, 12.f, 0.f}, 0.15f, steel, 6);
+            b.kit(true).box(m + vec3{0.f, 12.f, 0.f}, {1.2f, 0.25f, 1.2f}, amber * 1.2f);
+            b.kit(true).box(glm::mix(m, st, 0.25f) + vec3{0.f, 0.05f, 0.f}, {9.f, 0.01f, 9.f}, amber * 0.035f);
+        }
     }
 
     // ---- 9. THE MANIFEST: a causeway from the station, out over the sinkhole, to the Vault ----
@@ -1200,10 +1269,11 @@ inline LevelData buildCold() {
     // 8. 24-K: the duel at the broken station
     {
         const vec3 st = cold::station();
-        Arena k = section("24-K", "PURPOSE: COMPLY", LevelBuilder::aabb(st.x - 60.f, -10.f, -1080.f, st.x + 70.f, 60.f, -930.f), st + vec3{-40.f, 0.f, 10.f}, 0.f);
-        k.hasRespawn = true; k.respawn = st + vec3{-40.f, 0.f, 10.f};
-        k.hasTrigger = true; k.trigger = LevelBuilder::aabb(st.x - 30.f, -2.f, st.z - 30.f, st.x + 30.f, 8.f, st.z + 30.f);
-        k.waves = {{W(EnemyType::UNIT24K, 0, {st + vec3{14.f, 0.6f, 0.f}})}};
+        Arena k = section("24-K", "PURPOSE: COMPLY", LevelBuilder::aabb(st.x - 60.f, -10.f, -1080.f, st.x + 70.f, 60.f, -930.f), st + vec3{-31.f, 0.f, 0.f}, 0.f);
+        k.hasRespawn = true; k.respawn = st + vec3{-31.f, 0.f, 0.f};   // (a retry: just outside the yard's west edge, facing in)
+        const AABB Y = cold::duelYard();   // (it starts once you're well inside the yard: the ring goes up round you both)
+        k.hasTrigger = true; k.trigger = LevelBuilder::aabb(Y.min.x + 3.f, -2.f, Y.min.z + 3.f, Y.max.x - 3.f, 10.f, Y.max.z - 3.f);
+        k.waves = {{W(EnemyType::UNIT24K, 0, {st + vec3{8.f, 0.f, 13.5f}})}};   // (on the deck in front of the platform, where you'll see it)
         k.maxAlive = 1; k.ambient = Ambient::WIND;
         l.arenas.push_back(k);
     }
