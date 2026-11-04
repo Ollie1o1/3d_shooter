@@ -24,8 +24,11 @@ struct BoxInstance {
     glm::vec3 color{1.f};
     float     mesh = 0.f;    // what's drawn: 0 the unit cube, else a mesh from MeshLib.h (centred, at its own size)
     glm::vec3 emissive{0.f};
-    float     _pad1 = 0.f;
+    float     surface = 0.f; // a boss's surface, drawn by the shader (box_inst.frag): 0 plain, 1 riveted rusting plate,
+                             // 2 pitted cast iron, 3 cracked bone, 4 char, 5 heat-cracked iron lit in its cracks
 };
+
+#include "render/PropDraw.h"   // (Blender pieces: THE RESTORER; needs BoxInstance, above)
 
 namespace rig {
 using glm::mat4; using glm::vec3;
@@ -233,6 +236,7 @@ inline FilePose humanoidPose(const HumanoidMotion& mo, vec3 glow) {
 inline PoseOverride sovereignPose(const Enemy& e);   // (below)
 inline PoseOverride penitentPose(const Enemy& e);    // (below)
 inline bool absoluteFilePose(const Enemy& e, float time, const mat4& root, mat4& fileRoot, FilePose& P, vec3& glowOut);   // (AbsoluteRig.h)
+inline bool successorFilePose(const Enemy& e,float time,const mat4& root,mat4& fileRoot,FilePose& P,vec3& glowOut);
 inline bool pacemakerFilePose(const Enemy& e, float time, const mat4& root, mat4& fileRoot, FilePose& P, vec3& glowOut);  // (below)
 // The SOVEREIGN's cape (and its hem, which lags it), from how fast he's going
 inline void sovereignCape(const Enemy& e, float time, float& cape, float& hem) {
@@ -293,7 +297,18 @@ inline bool playClip(const char* fileName, const char* clipName, float progress,
 // Every enemy with a file: where its file is drawn from (fileRoot) and how its joints
 // turn and its glow channels shine this frame, from its state: the same numbers its
 // code rig uses. false for a type with no file rig. (Also what tools/enemy_export.cpp reads.)
+#include "render/LabSubjectPose.h"
 inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileRoot, FilePose& P, vec3& glowOut) {
+    if(e.type==EnemyType::SUCCESSOR)return successorFilePose(e,time,root,fileRoot,P,glowOut);
+    if(e.labBody()){
+        labSubjectPose(e,time,root,fileRoot,P,glowOut);
+        if(e.type==EnemyType::THAWLING){   // still crawling up off the floor: pitched forward, low, getting up
+            float crawl=1.f-glm::clamp((e.age-coldfoe::THAW_RISE+.6f)/.6f,0.f,1.f);
+            fileRoot=fileRoot*T({0.f,-.55f*crawl,.2f*crawl})*RX(1.1f*crawl);
+            glowOut*=.4f+.6f*coldfoe::thawWarm(e.age);
+        }
+        return true;
+    }
     using namespace enemyfile;
     const EnemyStats& st = e.stats();
     float tp = e.telegraphProgress();
@@ -305,6 +320,80 @@ inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileR
         P = humanoidPose(mo, glow);
         fileRoot = base * T({0.f, mo.lift, 0.f});
     };
+    if((e.type>=EnemyType::PATIENT && e.type<=EnemyType::SUCCESSOR)||e.type==EnemyType::THAWLING||e.type==EnemyType::UNIT24K){
+        fileRoot=root;P=FilePose{};float step=e.animPhase;
+        bool boss=e.type==EnemyType::SUCCESSOR;bool floating=e.type==EnemyType::SUSPENDED;
+        float run=glm::clamp(e.moveSpeed/std::max(.1f,st.speed),0.f,1.3f);
+        float swing=std::sin(step)*.62f*run;
+        P.motion[E_HIPL]=RX(swing);P.motion[E_HIPR]=RX(-swing);
+        P.motion[E_KNEE_L]=RX(-std::max(0.f,-std::sin(step))*.8f*run);
+        P.motion[E_KNEE_R]=RX(-std::max(0.f,std::sin(step))*.8f*run);
+        P.motion[E_ARML]=RX(-swing*.7f)*RZ(.07f);P.motion[E_ARMR]=RX(swing*.7f)*RZ(-.07f);
+        P.motion[E_ELBOW_L]=RX(-.18f-run*.3f);P.motion[E_ELBOW_R]=RX(-.18f-run*.3f);
+        P.motion[E_TORSO]=RX(-run*.11f)*RY(std::sin(step)*.055f*run);
+        if(e.type==EnemyType::GRAFTED){
+            P.motion[E_TORSO]=RX(.12f)*RZ(std::sin(step)*.045f*run);
+            P.motion[E_ARML]=RX(-.55f)*RZ(.25f);P.motion[E_ELBOW_L]=RX(-1.1f);
+        }
+        if(e.type==EnemyType::PHASED)P.motion[E_TORSO]*=RY(std::sin(time*8.f)*.09f);
+        if(floating){P.motion[E_ARML]=RZ(.6f+tp*.5f);P.motion[E_ARMR]=RZ(-.6f-tp*.5f);P.motion[E_HIPL]=RX(.12f);P.motion[E_HIPR]=RX(-.1f);}
+        if(e.telegraphTimer>0 || e.dashTimer>0 || (boss&&e.suBurst>0)){
+            float lift=(!boss && e.dashTimer>0)?1.f:smooth01c(tp);
+            P.motion[E_ARMR]=RX(-1.6f*lift)*RZ(-.28f);
+            P.motion[E_ARML]=RX(-.7f*lift)*RZ(.3f);
+            P.motion[E_ELBOW_R]=RX(-.7f*(1-lift));
+            if(e.attack==AttackKind::SU_SUTURE||e.attack==AttackKind::SU_PERFUSION){P.motion[E_ARML]=RZ(1.2f*lift);P.motion[E_ARMR]=RZ(-1.2f*lift);}
+            if(e.attack==AttackKind::SU_VECTOR||e.attack==AttackKind::LAB_LUNGE){P.motion[E_TORSO]=RX(-.45f*lift);P.motion[E_ARML]=RX(.8f*lift);}
+            if(e.attack==AttackKind::LAB_PRESS){P.motion[E_TORSO]=RX(-.25f*lift);P.motion[E_ARML]=RX(-2.2f*lift)*RZ(.4f);P.motion[E_ARMR]=RX(-2.2f*lift)*RZ(-.4f);}
+            if(e.attack==AttackKind::LAB_BEAM){P.motion[E_ARML]=RZ(.9f+lift*.6f);P.motion[E_ARMR]=RZ(-.9f-lift*.6f);}
+            if(!boss && e.dashTimer>0)P.motion[E_TORSO]=RX(-.5f);
+        }
+        P.motion[E_HEAD]=RY(std::sin(time*.6f)*.045f);
+        P.chan[C_EYE]=st.glow;P.chan[C_CORE]=glow;P.chan[C_GLOW]=glow;
+        if(!boss){
+            vec3 tell=e.parryWindow()?vec3{2.2f}:e.attack==AttackKind::LAB_PRESS?abGoldTell(vec3{1.8f,1.1f,.15f}):e.attack==AttackKind::LAB_BEAM?vec3{1.3f,.45f,2.f}:st.glow;
+            if(e.telegraphTimer>0 || e.dashTimer>0){P.chan[C_EYE]=tell;P.chan[C_CORE]=tell*(1+tp);}
+            if(e.labOpen>0 || e.staggered()){
+                P.chan[C_CORE]=vec3{.25f,1.6f,1.8f}*(.85f+.15f*std::sin(time*12));
+                if(e.recoverTimer>0)P.motion[E_TORSO]=RX(.22f);
+            }
+        }
+        if(boss && e.telegraphTimer>0){vec3 tell=SuccessorState::white(e.attack)?vec3{2}:e.attack==AttackKind::SU_VECTOR||e.attack==AttackKind::SU_INCISION?abGoldTell(vec3{1.8f,1.1f,.15f}):vec3{1.6f,.25f,.3f};P.chan[C_CORE]=tell*(.8f+tp);}
+        if(e.staggered() || e.stunned()){
+            P.motion[E_TORSO]=RX(.32f);P.motion[E_HEAD]=RX(.25f);
+            P.motion[E_ARML]=RX(.2f)*RZ(.2f);P.motion[E_ARMR]=RX(.25f)*RZ(-.15f);
+        }
+        glowOut=glow;return true;
+    }
+    if(e.type==EnemyType::BALLAST) {
+        fileRoot=root;
+        if(e.attack==AttackKind::BALL_SWEEP) {
+            float angle=e.telegraphTimer>.3f?-1.05f*glm::clamp(tp*2.f,0.f,1.f):-1.05f+2.1f*(1.f-e.telegraphTimer/.3f);
+            fileRoot*=RY(angle);
+        } else if(e.ballSwing>0)fileRoot*=RY(1.05f*e.ballSwing/.35f);
+        vec3 tell=(e.attack==AttackKind::BALL_ANCHOR||e.attack==AttackKind::BALL_WINCH)?vec3{2.f}:e.attack==AttackKind::BALL_GRADE?abGoldTell({2,1.2f,.1f}):vec3{2,.2f,.06f};
+        P.chan[C_EYE]=glow;P.chan[C_EDGE]=e.telegraphTimer>0?tell:glow*.25f;
+        P.chan[C_CORE]=e.ballOpen>0||e.staggered()?vec3{.3f,1.7f,2.f}:vec3{.5f,.2f,.06f};
+        P.motion[E_HALO]=RZ(e.ballReverse?-e.ballRotor:e.ballRotor);
+        P.motion[E_HEAD]=RY(std::sin(e.age*.4f)*.08f);
+        P.motion[E_BODY]=RX(e.ballDrive>0?-.08f:std::sin(e.age*1.8f)*.012f);
+        P.motion[E_SHIELD]=RX(e.ballDrive>0?.1f:e.attack==AttackKind::BALL_GRADE||e.attack==AttackKind::BALL_RIP?-tp*.35f:e.attack==AttackKind::BALL_THROW?tp*.18f:0.f);
+        for(int k=0;k<4;++k)P.motion[E_LEG_FL+k]=RX(std::sin(e.animPhase+k*3.14159f)*stride*.18f);
+        P.motion[E_ARMR]=RZ((e.attack==AttackKind::BALL_ANCHOR||e.attack==AttackKind::BALL_WINCH)?-tp*.6f:0.f);
+        return true;
+    }
+    if(e.type==EnemyType::SORTER) {
+        fileRoot=root;
+        vec3 tell=e.attack==AttackKind::SORT_GRAB?vec3{2}:e.attack==AttackKind::SORT_STAMP?vec3{2,.1f,.04f}:abGoldTell({2,1.3f,.2f});
+        P.chan[C_EYE]=e.sortOpen>0||e.staggered()?vec3{.2f,1.5f,2}:glow;
+        P.chan[C_CORE]=e.sortOpen>0||e.staggered()?vec3{.2f,1.5f,2}:vec3{.35f,.1f,.02f};
+        P.chan[C_EDGE]=e.telegraphTimer>0?tell:glow*.4f;
+        P.motion[E_HEAD]=RY(std::sin(time*.5f)*.12f);
+        float flex=e.telegraphTimer>0?tp*.5f:.08f*std::sin(time*2);
+        P.motion[E_ARML]=RZ(flex);P.motion[E_ARMR]=RZ(-flex);
+        P.motion[E_ELBOW_L]=RX(-flex);P.motion[E_ELBOW_R]=RX(-flex);
+        return true;
+    }
     if (e.type == EnemyType::PACEMAKER) return pacemakerFilePose(e, time, root, fileRoot, P, glowOut);
     switch (rigBase(e.type)) {   // (a mini-boss moves as its rig's enemy)
     case EnemyType::HUSK:
@@ -612,6 +701,14 @@ inline std::vector<gunkit::ModelJoint> restJointsOf(EnemyType t) {
     auto add = [&](int id, int parent, vec3 at) { J.push_back({id, parent, T(at)}); };
     t = rigBase(t);   // (a mini-boss: its rig's enemy's)
     switch (t) {
+    case EnemyType::BALLAST:
+        add(E_BODY,E_ROOT,{0,2.5f,0});add(E_HEAD,E_BODY,{0,4.1f,2.3f});
+        add(E_HALO,E_BODY,{0,5.9f,-1.2f});add(E_SHIELD,E_BODY,{0,1.05f,3.7f});
+        add(E_ARMR,E_BODY,{-2.7f,3.7f,0});add(E_HAND_R,E_ARMR,{-3.8f,1.5f,.8f});
+        add(E_LEG_FL,E_BODY,{2.2f,2.5f,1.5f});add(E_LEG_FR,E_BODY,{-2.2f,2.5f,1.5f});
+        add(E_LEG_BL,E_BODY,{2.2f,2.5f,-1.8f});add(E_LEG_BR,E_BODY,{-2.2f,2.5f,-1.8f});
+        break;
+
     case EnemyType::RIPPER: {
         add(E_BODY, E_ROOT, {0.f, 0.62f, 0.f});
         add(E_HEAD, E_BODY, {0.f, 0.72f, 0.6f});
@@ -839,6 +936,7 @@ inline PoseOverride penitentPose(const Enemy& e) {
 inline vec3 brassOf() { return {0.6f, 0.45f, 0.22f}; }
 
 #include "bosses/absolute/AbsoluteRig.h"   // THE ABSOLUTE's body
+#include "bosses/successor/SuccessorRig.h"
 
 // THE LEVIATHAN's body from its file: the one segment there (on "body") laid along each stretch of its
 // curve (leviathanBody), scaled to the stretch's radius and length; each seam pulses a beat after the last
@@ -866,43 +964,161 @@ inline void leviathanSegments(const Enemy& e, float time, Rig& r, const gunkit::
     }
 }
 
-inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out) {
-    const EnemyStats& st = e.stats();
-    Rig r{out};
-    r.flash = glm::clamp(e.hitFlashTimer / 0.12f, 0.f, 1.f);
-    r.spawn = 1.f - e.spawnTimer / Enemy::SPAWN_TIME;
-    float grow = 0.05f + 0.95f * smooth01(r.spawn);
-    r.finish = e.finishGlow;
-    if (e.stunTimer > 0.f) r.dim = 0.25f + 0.75f * (std::sin(time * 55.f) > 0.3f ? 1.f : 0.f);   // its eyes gutter while it's stunned
-
-    float tp   = e.telegraphProgress();
-    vec3  glow = st.glow * (1.f + 2.5f * tp);           // eyes flare during a wind-up
-    float stride = glm::clamp(e.moveSpeed / std::max(0.1f, st.speed), 0.f, 1.2f);
-
-    mat4 root = T(e.position) * RY(e.yaw) * S(vec3{e.scale}) * S({1.f, grow, 1.f});
-    {   // A hit tips it over at the feet, away from the shot, squashed a touch, turned a little; it snaps back (HitReact.h)
-        float ang = hitreact::flinchAt(e.flinchAmp, time - e.flinchAt);
-        if (ang > 1e-3f) {
-            float k = ang / hitreact::FLINCH_MAX;
-            vec3 axis = glm::cross(vec3{0.f, 1.f, 0.f}, vec3{e.flinchDir.x, 0.f, e.flinchDir.y});
-            if (glm::length(axis) > 1e-4f)
-                root = T(e.position) * glm::rotate(mat4(1.f), ang, glm::normalize(axis)) * RY(e.yaw + e.flinchTwist * k)
-                     * S(vec3{e.scale}) * S({1.f + 0.07f * k, grow * (1.f - 0.1f * k), 1.f + 0.07f * k});
-        }
-    }
-
-    if (const auto* m = enemyfile::modelOf(enemyfile::fileOf(e))) {   // made in Blender (assets/enemies/<name>.glb)
-        mat4 fileRoot; FilePose P; vec3 g;
-        const size_t first = out.size();
-        if (filePoseOf(e, time, root, fileRoot, P, g)) {
-            drawFile(r, fileRoot, *m, P, g, nullptr, e.type == EnemyType::LEVIATHAN ? (int)enemyfile::E_BODY : -1);
-            if (e.type == EnemyType::LEVIATHAN) leviathanSegments(e, time, r, *m, P, g);
-            if (e.type == EnemyType::ABSOLUTE) absoluteWhiteHot(e, r, first);
-            if (e.type == EnemyType::WARDEN) wardenShards(e, time, grow, g, out);
-            return;
-        }
-    }
+// Keep legacy procedural rigs off the file-model drawing stack. In WebAssembly
+// this switch otherwise reserves every rig's temporary pose arrays even when a
+// Story preview only draws its model file.
+[[gnu::noinline]] inline void buildEnemyFallback(const Enemy& e, float time, Rig& r,
+                                                const mat4& root, float grow, float tp,
+                                                vec3 glow, float stride) {
+    const EnemyStats& st=e.stats();
+    auto& out=r.out;
     switch (e.type) {
+    case EnemyType::BALLAST: {
+        r.box(root,{0,2.9f,0},{5.6f,1.8f,5.2f},st.color);
+        r.box(root,{0,4.45f,2.3f},{2.5f,1.f,1.45f},{.65f,.62f,.52f});
+        r.box(root,{0,4.45f,3.1f},{2.1f,.25f,.1f},glow,glow);
+        r.box(root,{0,1.1f,3.7f},{7.1f,1.55f,.55f},st.color);
+        for(float x:{-2.4f,2.4f})for(float z:{-1.8f,1.5f})r.box(root,{x,1.2f,z},{.8f,2.4f,1.1f},st.color*.7f);
+        for(int k=0;k<6;++k)r.box(root*T({0,5.9f,-1.2f})*RZ(e.ballRotor+k*1.0472f),{0,.95f,0},{.38f,1.7f,.25f},st.color*1.4f);
+        break;
+    }
+    case EnemyType::RESTORER: {   // THE RESTORER: stilts, a stooped body in a coat of frosted hoses, a glass dome, four tong arms, a cryo
+                                  // cylinder. Its pieces are made in Blender (tools/blender/restorer_build.py); boxes when a file is missing.
+        // Beaten, it kneels: the body sinks, the stilts fold under it (the legs from root, everything above from `body`)
+        const float kneel = e.rsKneel * e.rsKneel * (3.f - 2.f * e.rsKneel);
+        const mat4 body = root * T({0.f, -2.3f * kneel, .4f * kneel}) * RX(.25f * kneel);
+        mat4 base = root;
+        // A limb from a to b (root space), `t` thick: a Blender piece stretched between them, else a box
+        auto seg = [&](vec3 a, vec3 b, float t, vec3 col, const char* piece = nullptr, vec3 emi = vec3{0.f}) {
+            vec3 d = b - a; float len = glm::length(d); if (len < 1e-4f) return;
+            vec3 y = d / len, x = std::fabs(y.y) > 0.95f ? vec3{1, 0, 0} : glm::normalize(glm::cross(vec3{0, 1, 0}, y)), z = glm::cross(x, y);
+            mat4 M(1.f); M[0] = glm::vec4(x, 0); M[1] = glm::vec4(y, 0); M[2] = glm::vec4(z, 0); M[3] = glm::vec4((a + b) * 0.5f, 1);
+            if (piece && propdraw::push(out, piece, base * M * S(vec3{t, len, t}), emi, 1.f, true)) return;
+            r.box(base * M, {0, 0, 0}, {t, len, t}, col, emi);
+        };
+        auto at = [&](const char* piece, const mat4& m, vec3 tint = vec3{1.f}) { return propdraw::push(out, piece, base * m, tint, 1.f, true); };
+        const float ph = e.animPhase, walk = glm::clamp(e.moveSpeed / std::max(.1f, st.speed), 0.f, 1.f);
+        const vec3 hose{.74f, .8f, .86f}, steelC = st.color * .55f;
+        // The tell, on its dome lamp: white (parry the tongs), gold (rollback, shelving), red (snapshot, freeze)
+        vec3 lamp = vec3{1.1f, 1.2f, 1.4f} * (e.rsFalter ? .35f + .25f * std::sin(time * 9.f) : 1.f);
+        if (e.telegraphTimer > 0.f) {
+            if (e.attack == AttackKind::RS_TONG) lamp = e.parryWindow() ? vec3{2.6f} : vec3{1.8f};
+            else if (e.attack == AttackKind::RS_ROLLBACK || e.attack == AttackKind::RS_SHELVE) lamp = abGoldTell(vec3{2.f, 1.4f, .3f});
+            else lamp = vec3{2.2f, .3f, .2f};
+            lamp *= .7f + .6f * tp;
+        }
+        // Stilts: long legs from the hips, knees bending back like a crane's
+        for (int s = -1; s <= 1; s += 2) {
+            float sw = std::sin(ph + (s > 0 ? 0.f : 3.1416f)) * .45f * walk;
+            vec3 hip{s * .72f, 4.75f - 2.3f * kneel, .4f * kneel}, knee{s * .9f, 2.5f, -.4f + sw * .9f}, foot{s * 1.f, 0.f, sw * 1.6f};
+            foot.y = std::max(0.f, std::sin(ph + (s > 0 ? 0.f : 3.1416f))) * .35f * walk;
+            knee = glm::mix(knee, vec3{s * 1.f, .4f, 1.3f}, kneel); foot = glm::mix(foot, vec3{s * 1.05f, 0.f, -1.4f}, kneel);
+            seg(hip, knee, .52f, steelC, "restorer_strut"); seg(knee, foot + vec3{0, .18f, 0}, .42f, steelC, "restorer_strut");
+            if (!at("restorer_foot", T(foot + vec3{0, .02f, 0}) * S(vec3{1.3f}))) r.box(root, foot + vec3{0, .06f, .15f}, {.5f, .12f, .8f}, steelC);
+            if (!at("restorer_joint", T(knee) * S(vec3{.62f}))) r.box(root, knee, {.34f, .34f, .34f}, hose);
+        }
+        // The body: a pelvis, a stooped torso in its coat of hoses, the cylinder on its back, the dome
+        base = body;
+        const mat4 torsoM = T({0, 5.8f, .3f}) * RX(.45f);
+        if (!at("restorer_pelvis", T({0, 4.85f, 0}) * S(vec3{1.15f}))) r.box(root, {0, 4.85f, 0}, {1.7f, .45f, .9f}, steelC);
+        if (!at("restorer_torso", torsoM * S(vec3{1.3f}))) {
+            r.box(root * torsoM, {0, 0, 0}, {1.4f, 1.5f, .95f}, st.color);
+            for (int k = 0; k < 4; ++k) seg(vec3{-.6f + k * .4f, 6.5f, .7f}, vec3{-.7f + k * .45f, 4.6f, .55f + .1f * (k % 2)}, .17f, hose);
+        }
+        if (!at("restorer_cylinder", T({0, 6.f, -1.f}) * RX(.2f) * S(vec3{1.15f}))) {   // and what it saved first, asleep in it
+            r.box(root, {0, 5.9f, -.75f}, {.95f, 1.7f, .95f}, vec3{.55f, .7f, .8f}, vec3{.12f, .16f, .22f});
+            r.box(root, {0, 5.75f, -.75f}, {.35f, .9f, .3f}, vec3{.25f, .27f, .3f});
+        }
+        if (!at("restorer_dome", T({0, 7.25f, 1.1f}) * S(vec3{1.25f}), lamp)) {
+            r.box(root, {0, 7.f, 1.f}, {1.f, .85f, 1.f}, vec3{.6f, .75f, .85f}, vec3{.08f, .1f, .14f});
+            r.box(root, {0, 7.f, 1.05f}, {.3f, .3f, .3f}, lamp, lamp);
+        }
+        // Four arms: the upper pair long, ending in tongs; one folds back for the snatch
+        const bool tong = e.attack == AttackKind::RS_TONG && e.telegraphTimer > 0.f;
+        const float wind = tong ? glm::clamp(1.f - e.telegraphTimer / std::max(.01f, e.telegraphDuration), 0.f, 1.f) : 0.f;
+        const bool lunge = !tong && e.recoverTimer > 1.f && e.rsLast == (int)AttackKind::RS_TONG;
+        for (int a = 0; a < 4; ++a) {
+            const int s = a % 2 ? 1 : -1; const bool upper = a < 2;
+            vec3 sh{s * 1.f, upper ? 6.5f : 5.6f, .55f};
+            float reach = upper ? 3.6f : 2.4f;
+            vec3 el = sh + vec3{s * .5f, -1.2f, .9f}, hand = sh + vec3{s * .3f, -2.8f, reach * .55f};
+            if (upper && s > 0 && tong) { el = sh + vec3{s * .6f, .4f, -1.2f * wind}; hand = sh + vec3{s * .4f, -.6f, -1.6f * wind}; }   // folded back
+            if (upper && s > 0 && lunge) { el = sh + vec3{s * .2f, -.6f, 2.2f}; hand = sh + vec3{0, -1.6f, 5.2f}; }                      // thrown out
+            if (!upper) hand.y += std::sin(ph * .5f + a) * .15f;
+            seg(sh, el, upper ? .4f : .3f, st.color, "restorer_strut"); seg(el, hand, upper ? .34f : .26f, st.color, "restorer_strut");
+            if (!at("restorer_joint", T(el) * S(vec3{upper ? .46f : .36f}))) r.box(root, el, vec3{.2f}, hose);
+            const bool hot = upper && s > 0 && tong;
+            vec3 tcol = hot ? (e.parryWindow() ? vec3{1.8f} : vec3{1.2f}) : hose;
+            vec3 temi = hot ? tcol : vec3{0.f};
+            for (int j = -1; j <= 1; j += 2) {   // the tongs (each jaw a hooked finger, its hook at the tip)
+                vec3 tip = hand + vec3{j * .26f, -.65f, .3f};
+                if (hot) r.box(root, tip, {.12f, .12f, .12f}, tcol, temi);   // (lit for the parry, whatever the jaw is made of)
+                seg(tip, hand, upper ? .22f : .17f, tcol, hot ? nullptr : "restorer_jaw", temi);
+            }
+        }
+        break;
+    }
+    case EnemyType::RS_POINT: {   // a restore point: a pillar of frozen layers, its core lit
+        for (int k = 0; k < 8; ++k) {
+            float w = 1.3f - .06f * k + .08f * std::sin(k * 2.1f);
+            r.box(root * RY(k * .4f), {0, .35f + k * .68f, 0}, {w, .62f, w}, st.color * (.9f + .1f * (k % 2)));
+        }
+        float pulse = .7f + .3f * std::sin(time * 2.4f + e.uid);
+        r.box(root, {0, 2.8f, 0}, {.35f, 5.f, .35f}, glow * pulse, glow * pulse);
+        r.box(root, {0, 5.7f, 0}, {.9f, .15f, .9f}, vec3{.85f, .92f, 1.f});
+        break;
+    }
+    case EnemyType::RS_DRUM: {   // a storage drum: a ring of staves, a lid, an amber lamp (one of your guns inside)
+        for (int k = 0; k < 8; ++k) r.box(root * RY(k * .785f), {0, .8f, .78f}, {.62f, 1.6f, .12f}, st.color * (.85f + .15f * (k % 2)));
+        r.box(root, {0, 1.65f, 0}, {1.6f, .12f, 1.6f}, st.color * .7f);
+        r.box(root, {0, .05f, 0}, {1.6f, .1f, 1.6f}, st.color * .6f);
+        float pulse = .6f + .4f * std::sin(time * 4.f + e.uid);
+        r.box(root, {0, 1.2f, .84f}, {.3f, .12f, .05f}, glow * pulse, glow * pulse);
+        break;
+    }
+    case EnemyType::PICKER: {   // a claw trolley: a slung body under a wheel bogie, two long claws, one amber lamp
+        const float open=e.telegraphTimer>0?glm::clamp(1.f-e.telegraphTimer/std::max(.01f,e.telegraphDuration),0.f,1.f):e.pickT>0?0.f:.25f;
+        const bool white=e.parryWindow();
+        vec3 claw=white?vec3{1.6f}:st.color*1.6f,clawGlow=white?vec3{2.2f}:e.telegraphTimer>0?vec3{1.2f,1.2f,1.3f}*open:vec3{0.f};
+        r.box(root,{0,1.25f,0},{1.3f,.55f,.9f},st.color);
+        r.box(root,{0,1.62f,0},{.9f,.2f,.6f},st.color*1.3f);
+        for(float x:{-.38f,.38f})r.box(root,{x,1.82f,0},{.14f,.32f,.32f},{.3f,.3f,.32f});            // the bogie's wheels
+        r.box(root,{0,1.25f,.47f},{.32f,.22f,.06f},glow,glow);                                        // its lamp
+        for(float s:{-1.f,1.f}){
+            mat4 arm=root*T({s*.45f,1.f,0})*RZ(s*(.15f+.75f*open));
+            r.box(arm,{0,-.55f,0},{.16f,1.1f,.16f},st.color*1.2f);
+            mat4 tip=arm*T({0,-1.1f,0})*RZ(-s*(.6f+.5f*open));
+            r.box(tip,{0,-.4f,0},{.12f,.8f,.12f},claw,clawGlow);
+            r.box(tip,{-s*.08f,-.8f,0},{.22f,.1f,.3f},claw,clawGlow);
+        }
+        r.box(root,{0,.9f,0},{.5f,.18f,.5f},{.25f,.26f,.28f});                                       // the winch drum
+        break;
+    }
+    case EnemyType::CLERK: {   // a floating clipboard: a small boxy drone, a sheet held out in front, a lamp over it
+        const float bob=std::sin(time*2.6f+e.uid)*.05f;
+        r.box(root,{0,.5f+bob,0},{.55f,.35f,.45f},st.color*.5f);
+        r.box(root,{0,.5f+bob,.32f},{.5f,.62f,.04f},{.82f,.8f,.72f});                                 // the board
+        for(int k=0;k<5;++k)r.box(root,{-.05f,.68f-k*.1f+bob,.345f},{.34f-.04f*(k%2),.025f,.01f},{.2f,.2f,.22f});   // lines on the sheet
+        r.box(root,{0,.84f+bob,.33f},{.18f,.08f,.08f},{.4f,.4f,.42f});                                // its clip
+        r.box(root,{0,.95f+bob,.28f},{.12f,.08f,.12f},glow,glow);                                     // the lamp it reads by
+        for(float s:{-1.f,1.f})for(float z:{-1.f,1.f})
+            r.box(root*T({s*.38f,.62f+bob,z*.26f})*RY(time*30.f),{0,0,0},{.34f,.02f,.05f},{.3f,.3f,.32f}); // rotors
+        r.box(root,{.2f,.3f+bob,.25f},{.04f,.3f,.04f},{.4f,.4f,.42f});                                 // the pen arm
+        break;
+    }
+    case EnemyType::SORTER: {
+        r.box(root,{0,3.4f,0},{5.4f,1.25f,2.6f},st.color);
+        r.box(root,{0,4.9f,.5f},{2.4f,1.15f,1.7f},{.7f,.7f,.65f});
+        r.box(root,{0,4.92f,1.4f},{2.1f,.6f,.15f},glow,glow);
+        for(float s:{-1.f,1.f}) {
+            r.box(root,{s*2.5f,5.4f,0},{.5f,2.8f,.5f},st.color);
+            r.box(root,{s*3.1f,2.8f,0},{.8f,2.4f,.8f},st.color);
+            r.box(root,{s*3.7f,1.f,.5f},{.4f,1.7f,.4f},{.6f,.6f,.6f});
+            for(float dx:{-.5f,.5f})r.box(root,{s*3.6f+dx,.1f,1},{.2f,.9f,.7f},{.75f,.74f,.7f});
+        }
+        r.box(root,{0,1.5f,0},{.4f,2.4f,.4f},{.6f,.6f,.6f});
+        r.box(root,{0,.5f,0},{2.5f,.5f,2},st.color);break;
+    }
     case EnemyType::HUSK: {
         float aim = e.attack == AttackKind::SHOT ? smooth01(tp * 3.f) : 0.35f;
         HumanoidLook L = humanoidLook(e.type, st.color, st.color * 0.45f, glow);   // (no file: the old rig, in code)
@@ -1378,12 +1594,111 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
     default: break;
     }
 }
+
+// These marks describe the actual attack geometry, at every detail setting.
+inline void labEnemyTell(const Enemy& e,float time,Rig& r){
+    if(!e.targetable() || !e.labBody())return;
+    auto ring=[&](vec3 at,float radius,vec3 glow){
+        for(int k=0;k<32;++k){float a=k*6.2831853f/32;
+            r.box(T(at+vec3{std::cos(a)*radius,.07f,std::sin(a)*radius})*RY(-a),{0,0,0},{.13f,.06f,radius*.13f},glow*.25f,glow);
+        }
+    };
+    if(e.attack==AttackKind::LAB_PRESS && e.telegraphTimer>0){
+        auto gold=abGoldTell(vec3{1.7f,1.05f,.15f});ring(e.position,6,gold);
+        for(int k=0;k<4;++k){float a=k*1.5707963f;
+            r.box(T(e.position+vec3{std::cos(a)*6,.6f,std::sin(a)*6}),{0,0,0},{.1f,1.1f,.1f},gold*.3f,gold);
+        }
+    }
+    if((e.type==EnemyType::PATIENT || e.type==EnemyType::PHASED || e.type==EnemyType::THAWLING) && e.attack==AttackKind::LAB_LUNGE && e.telegraphTimer>0){
+        vec3 d=e.labAim-e.position;d.y=0;float n=glm::length(d);if(n>.01f){
+            d/=n;float yaw=std::atan2(d.x,d.z);vec3 glow=e.parryWindow()?vec3{1.8f}:vec3{.5f,.8f,1.4f};
+            for(float at=1;at<8.36f;at+=1.2f)r.box(T(e.position+d*at+vec3{0,.06f,0})*RY(yaw),{0,0,0},{.09f,.06f,.6f},glow*.3f,glow);
+        }
+    }
+    if(e.type==EnemyType::PHASED && (e.attack==AttackKind::LAB_CROSS || e.labCross>0)){
+        vec3 glow{.25f,1.3f,1.7f};ring(e.labExit,.9f,glow);
+        float pulse=.7f+.3f*std::sin(time*14);
+        for(float side:{-1.f,1.f})r.box(T(e.labExit),{side*.5f,1.2f,0},{.07f,2.4f,.07f},glow*.3f,glow*pulse);
+        r.box(T(e.labExit),{0,2.4f,0},{1.05f,.07f,.07f},glow*.3f,glow);
+        r.box(T(e.labExit),{0,1.35f,0},{.65f,.08f,.07f},glow*.3f,glow);
+    }
+}
+
+inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out) {
+    const EnemyStats& st = e.stats();
+    Rig r{out};
+    labEnemyTell(e,time,r);
+    r.flash = glm::clamp(e.hitFlashTimer / 0.12f, 0.f, 1.f);
+    r.spawn = 1.f - e.spawnTimer / Enemy::SPAWN_TIME;
+    float grow = 0.05f + 0.95f * smooth01(r.spawn);
+    r.finish = e.finishGlow;
+    if (e.stunTimer > 0.f) r.dim = 0.25f + 0.75f * (std::sin(time * 55.f) > 0.3f ? 1.f : 0.f);   // its eyes gutter while it's stunned
+
+    float tp   = e.telegraphProgress();
+    vec3  glow = st.glow * (1.f + 2.5f * tp);           // eyes flare during a wind-up
+    float stride = glm::clamp(e.moveSpeed / std::max(0.1f, st.speed), 0.f, 1.2f);
+
+    mat4 root = T(e.position) * RY(e.yaw) * S(vec3{e.scale}) * S({1.f, grow, 1.f});
+    {   // A hit tips it over at the feet, away from the shot, squashed a touch, turned a little; it snaps back (HitReact.h)
+        float ang = hitreact::flinchAt(e.flinchAmp, time - e.flinchAt);
+        if (ang > 1e-3f) {
+            float k = ang / hitreact::FLINCH_MAX;
+            vec3 axis = glm::cross(vec3{0.f, 1.f, 0.f}, vec3{e.flinchDir.x, 0.f, e.flinchDir.y});
+            if (glm::length(axis) > 1e-4f)
+                root = T(e.position) * glm::rotate(mat4(1.f), ang, glm::normalize(axis)) * RY(e.yaw + e.flinchTwist * k)
+                     * S(vec3{e.scale}) * S({1.f + 0.07f * k, grow * (1.f - 0.1f * k), 1.f + 0.07f * k});
+        }
+    }
+
+    if (const auto* m = enemyfile::modelOf(enemyfile::fileOf(e))) {   // made in Blender (assets/enemies/<name>.glb)
+        mat4 fileRoot; FilePose P; vec3 g;
+        const size_t first = out.size();
+        if (filePoseOf(e, time, root, fileRoot, P, g)) {
+            drawFile(r, fileRoot, *m, P, g, nullptr, e.type == EnemyType::LEVIATHAN ? (int)enemyfile::E_BODY : -1);
+            if (e.type == EnemyType::LEVIATHAN) leviathanSegments(e, time, r, *m, P, g);
+            if (e.type == EnemyType::ABSOLUTE) absoluteWhiteHot(e, r, first);
+            if (e.type == EnemyType::WARDEN) wardenShards(e, time, grow, g, out);
+            return;
+        }
+    }
+    buildEnemyFallback(e,time,r,root,grow,tp,glow,stride);
+}
 // The head hitbox, world space: the box around the drawn head (helmet, crown,
 // beak) a little oversized so a shot that grazes it still counts. It follows
 // the same frames the model is built from: walk bob, a broken JUGGERNAUT's
 // slump, a RIPPER's crouch, a RAPTOR's dive. False for a type without a head
 // (MITE). Uses the physics position, like the rest of the hitscan.
 inline bool headBox(const Enemy& e, AABB& out) {
+    if((e.type>=EnemyType::PATIENT&&e.type<=EnemyType::SUCCESSOR)||e.type==EnemyType::THAWLING||e.type==EnemyType::UNIT24K){
+        if(const auto* model=enemyfile::model(e.type)){
+            float grow=.05f+.95f*smooth01(1.f-e.spawnTimer/Enemy::SPAWN_TIME);
+            mat4 root=T(e.position)*RY(e.yaw)*S(vec3{e.scale})*S({1,grow,1});
+            mat4 fileRoot;FilePose pose;vec3 glow;filePoseOf(e,e.age,root,fileRoot,pose,glow);
+            mat4 local[enemyfile::E_COUNT],W[enemyfile::E_COUNT];int parent[enemyfile::E_COUNT];
+            enemyfile::restLocals(*model,local,parent);for(auto& m:W)m=fileRoot;
+            for(const auto& j:model->joints)W[j.id]=W[j.parent]*local[j.id]*pose.motion[j.id];
+            auto frame=W[enemyfile::E_HEAD];float sy=e.stats().height/2.65f;
+            float wide=e.type==EnemyType::GRAFTED?1.5f:e.type==EnemyType::SUSPENDED?.88f:e.type==EnemyType::PHASED?.94f:e.type==EnemyType::SUCCESSOR?1.25f:1.f;
+            vec3 c=vec3(frame*glm::vec4{0,.01f*sy,.04f*wide,1}),half{.21f*wide,.225f*sy,.21f*wide};
+            glm::mat3 m(frame);vec3 ext=glm::abs(m[0])*half.x+glm::abs(m[1])*half.y+glm::abs(m[2])*half.z;
+            out={c-ext,c+ext};return true;
+        }
+        return false;
+    }
+    if(e.type==EnemyType::BALLAST) {
+        float tilt=e.ballDrive>0?-.08f:std::sin(e.age*1.8f)*.012f;
+        mat4 frame=T(e.position)*RY(e.yaw)*S(vec3{e.scale})*T({0,2.5f,0})*RX(tilt)*T({0,1.6f,2.3f})*RY(std::sin(e.age*.4f)*.08f);
+        vec3 c=vec3(frame*glm::vec4(0,.45f,0,1)),half{1.55f,.7f,1.f};
+        glm::mat3 m(frame);vec3 ext=glm::abs(m[0])*half.x+glm::abs(m[1])*half.y+glm::abs(m[2])*half.z;
+        out={c-ext,c+ext};return true;
+    }
+
+    if(e.type==EnemyType::SORTER) {
+        mat4 frame=T(e.position)*RY(e.yaw)*T({0,4.4f,0})*RY(std::sin(e.age*.5f)*.12f);
+        vec3 c=vec3(frame*glm::vec4(0,.5f,.55f,1)),half{1.25f,.65f,1.05f};
+        glm::mat3 m(frame);vec3 ext=glm::abs(m[0])*half.x+glm::abs(m[1])*half.y+glm::abs(m[2])*half.z;
+        out={c-ext,c+ext};return true;
+    }
     const EnemyStats& st = e.stats();
     float grow   = 0.05f + 0.95f * smooth01(1.f - e.spawnTimer / Enemy::SPAWN_TIME);
     float tp     = e.telegraphProgress();
@@ -1473,6 +1788,14 @@ inline bool coreBox(const Enemy& e, AABB& out) {
 // THE PENITENT's wound: its back, open while it scourges itself (x3); the
 // WARDEN's core: its chest (coreBox)
 inline bool woundBox(const Enemy& e, AABB& out) {
+    if(e.type==EnemyType::SORTER||e.type==EnemyType::BALLAST) {
+        if(!e.staggered()&&(e.type==EnemyType::SORTER?e.sortOpen:e.ballOpen)<=0)return false;
+        mat4 root=T(e.position)*RY(e.yaw);
+        vec3 local=e.type==EnemyType::SORTER?vec3{0,3.35f,1.4f}:vec3{0,5.9f,-.26f};
+        vec3 half=e.type==EnemyType::SORTER?vec3{1.95f,.4f,.25f}:vec3{.6f,.6f,.4f};
+        vec3 center=vec3(root*glm::vec4(local,1));glm::mat3 m(root);
+        vec3 ext=glm::abs(m[0])*half.x+glm::abs(m[1])*half.y+glm::abs(m[2])*half.z;out={center-ext,center+ext};return true;
+    }
     if (e.type == EnemyType::WARDEN) return coreBox(e, out);
     if (e.type != EnemyType::PENITENT || !e.scourging) return false;
     HumanoidLook L = humanoidDims(e.type);
@@ -1489,12 +1812,17 @@ inline bool woundBox(const Enemy& e, AABB& out) {
 // Only from behind: the shot travels the way it faces, and meets the wound
 // no deeper than its back (a chest shot from the front doesn't count)
 inline bool woundShot(const Enemy& e, glm::vec3 o, glm::vec3 d, float& t) {
+    glm::vec3 toward=o-e.position;toward.y=0;
+    float facing=glm::dot(toward,glm::vec3{std::sin(e.yaw),0,std::cos(e.yaw)});
+    if(e.type==EnemyType::BALLAST&&facing>0)return false;
+    if(e.type==EnemyType::SORTER&&facing<0)return false;
     AABB w;
     if (!woundBox(e, w)) return false;
     float face = glm::dot(glm::vec2{d.x, d.z}, glm::vec2{std::sin(e.yaw), std::cos(e.yaw)});
-    if (e.type == EnemyType::WARDEN ? face >= 0.f : face <= 0.f) return false;   // the Penitent's from behind, the Warden's from the front
+    if ((e.type == EnemyType::WARDEN||e.type==EnemyType::SORTER) ? face >= 0.f : face <= 0.f) return false;   // the Penitent's from behind, the Warden's from the front
     t = rayBoxHit(o, d, w);
     if (t <= 0.f) return false;
+    if(e.type==EnemyType::SORTER||e.type==EnemyType::BALLAST)return true; // model-space exposed machinery, already gated by facing
     float tb = rayBoxHit(o, d, e.getAABB());
     return tb <= 0.f || t <= tb + 1.2f;   // its back: the body box stands ~0.9 m proud of the wound
 }

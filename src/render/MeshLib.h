@@ -11,6 +11,7 @@
 // (debris spins about it) and the mesh's own size is its size.
 // =============================================================================
 #include <glm/glm.hpp>
+#include <cmath>
 #include <cstdint>
 #include <deque>
 #include <unordered_map>
@@ -74,6 +75,42 @@ inline void flatNormals(MeshData& m) {
         for (glm::vec3 p : {a, b, c}) { f.idx.push_back((uint32_t)f.pos.size()); f.pos.push_back(p); f.nrm.push_back(n); }
     }
     m = std::move(f);
+}
+
+
+// A lumpy faceted ball 1 across (an icosahedron split once, its corners pushed
+// in and out a little, flat faces): fireballs, smoke, burning rock. Made once.
+inline int lumpBall() {
+    static int id = 0;
+    if (id) return id;
+    const float t = 1.618034f;
+    std::vector<glm::vec3> v = {{-1, t, 0}, {1, t, 0}, {-1, -t, 0}, {1, -t, 0}, {0, -1, t}, {0, 1, t},
+                                {0, -1, -t}, {0, 1, -t}, {t, 0, -1}, {t, 0, 1}, {-t, 0, -1}, {-t, 0, 1}};
+    std::vector<uint32_t> f = {0,11,5, 0,5,1, 0,1,7, 0,7,10, 0,10,11, 1,5,9, 5,11,4, 11,10,2, 10,7,6, 7,1,8,
+                               3,9,4, 3,4,2, 3,2,6, 3,6,8, 3,8,9, 4,9,5, 2,4,11, 6,2,10, 8,6,7, 9,8,1};
+    for (auto& p : v) p = glm::normalize(p);
+    std::vector<uint32_t> g;
+    std::unordered_map<uint64_t, uint32_t> mid;
+    auto half = [&](uint32_t a, uint32_t b) {
+        uint64_t k = a < b ? ((uint64_t)a << 32) | b : ((uint64_t)b << 32) | a;
+        auto it = mid.find(k);
+        if (it != mid.end()) return it->second;
+        v.push_back(glm::normalize(v[a] + v[b]));
+        return mid[k] = (uint32_t)(v.size() - 1);
+    };
+    for (size_t i = 0; i < f.size(); i += 3) {
+        uint32_t a = f[i], b = f[i + 1], c = f[i + 2], ab = half(a, b), bc = half(b, c), ca = half(c, a);
+        g.insert(g.end(), {a, ab, ca, b, bc, ab, c, ca, bc, ab, bc, ca});
+    }
+    for (size_t i = 0; i < v.size(); ++i) {   // lumpy, the same every run
+        float h = std::sin((float)i * 12.9898f) * 43758.5453f; h -= std::floor(h);
+        v[i] *= 0.5f * (0.86f + 0.24f * h);
+    }
+    MeshData m; m.pos = v; m.idx = g;
+    flatNormals(m);
+    centre(m);
+    id = addShared(std::move(m));
+    return id;
 }
 
 } // namespace meshlib

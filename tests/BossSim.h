@@ -1,4 +1,5 @@
 #pragma once
+#include "bosses/ballast/BallastHazards.h"
 #include "bosses/absolute/AbsoluteHazards.h"   // THE ABSOLUTE's hazards (and the sword's block)
 // A scripted player against a boss's real AI, in its real arena: the boss's
 // events resolved the way the game resolves them (melee, slams you can jump,
@@ -11,6 +12,7 @@ struct BossSim {
     static constexpr float SOLID_DPS = 55.f;   // a solid player's effective damage a second (misses and reloads included)
     const LevelData& L; const SpatialGrid& grid; const Arena& A; Policy policy;
     Enemy boss; ProjectileSystem proj; SovereignHazards sov; WardenHazards ward; ConduitClock clock; LeviathanHazards lev;
+    BallastHazards ball;
     std::vector<Enemy> others;
     LevelData lv; ArenaShifts rings;            // the reactor's rings, driven by the Warden as in the game
     glm::vec3 feet{0.f}; float damageTaken = 0.f, t = 0.f, kite = 0.f; int conduits = 4; float conduitHp = 250.f; bool parryNext = true;
@@ -79,7 +81,14 @@ struct BossSim {
         }
         return w;
     }
-    void hurt(float d) { damageTaken += d * A.damageScale * difficulty(DIFFICULTY_DEFAULT).damage; }
+    // Gameplay_Sword.h protects a contact hit for .15 s; parryFeedback protects
+    // for .5 s. Omitting these stacked simultaneous hazards in this rehearsal
+    // even though the live player could only receive the first hit.
+    float zenImmunity=0.f;
+    void hurt(float d,float iframes=.15f) {
+        if(zenith()){if(zenImmunity>0)return;zenImmunity=iframes;}
+        damageTaken += d * A.damageScale * difficulty(DIFFICULTY_DEFAULT).damage;
+    }
     void movePlayer(float dt) {
         glm::vec3 c = (A.bounds.min + A.bounds.max) * 0.5f;
         if (policy == KITE) {   // round the arena's edge, 2 m in, at a run
@@ -127,6 +136,8 @@ struct BossSim {
             return;
         }
         float m = boss.armorMult();
+        // SOLID aims at exposed machinery rather than gaining the old whole-body bonus.
+        if(!boss.staggered()&&((boss.type==EnemyType::SORTER&&boss.sortOpen>0)||(boss.type==EnemyType::BALLAST&&boss.ballOpen>0)))m*=1.6f;
         if (boss.coreOpen()) m = std::max(m, 1.f) * (0.4f + 0.6f * boss.woundMult());   // most shots into the open core
         boss.takeDamage(dmg * m);
     }
@@ -186,6 +197,8 @@ struct BossSim {
         feet.y = groundY();
     }
     void step(float dt) {
+        if(boss.type==EnemyType::BALLAST){ballastStep(dt);return;}
+        if(boss.type==EnemyType::SORTER){sorterStep(dt);return;}
         if (zenith()) { absoluteStep(dt); return; }
         t += dt;
         glm::vec3 was = feet;
@@ -234,9 +247,92 @@ struct BossSim {
         shoot(dt);
     }
 
+    // Ballast: shared AI and crosswind geometry, real projectile collisions.
+    // SOLID reads committed lanes and answers alternating white cable weights.
+    void ballastStep(float dt) {
+        t+=dt;glm::vec3 was=feet;movePlayer(dt);
+        if(policy==SOLID && boss.telegraphTimer>0 && t>=dodgeFrom) {
+            glm::vec3 d=boss.ballAim-boss.ballFrom;d.y=0;float n=glm::length(d);
+            if(n>.01f && (boss.attack==AttackKind::BALL_GUST||boss.attack==AttackKind::BALL_GRADE)) {
+                d/=n;glm::vec3 side{-d.z,0,d.x};
+                float sign=glm::dot(feet-boss.ballFrom,side)>=0?1.f:-1.f;
+                feet+=side*sign*8.f*dt;
+            }
+            if((boss.attack==AttackKind::BALL_ANCHOR||boss.attack==AttackKind::BALL_WINCH) && !parryNext) {
+                glm::vec3 out=feet-boss.ballAim;out.y=0;
+                if(glm::length(out)<.1f)out={1,0,0};
+                feet+=glm::normalize(out)*8.f*dt;
+            }
+        }
+        if(policy==SOLID&&boss.ballDrive>0) {
+            glm::vec3 d=boss.ballAim-boss.ballFrom;d.y=0;
+            if(glm::length(d)>.01f) {
+                d=glm::normalize(d);glm::vec3 side{-d.z,0,d.x};
+                if(BallastHazards::across(boss.ballFrom,d,feet)<4.2f) {
+                    float sign=glm::dot(feet-boss.ballFrom,side)>=0?1.f:-1.f;
+                    feet+=side*sign*8.f*dt; // keep clear until the visible blade pass ends
+                }
+            }
+        }
+        if(policy==SOLID)for(const auto& f:ball.fronts) {
+            float a=BallastHazards::along(f.from,f.dir,feet)-f.distance;
+            if(a>0&&a<10.f&&BallastHazards::across(f.from,f.dir,feet)<BallastHazards::HALF_WIDTH+1.f) {
+                glm::vec3 side{-f.dir.z,0,f.dir.x};float sign=glm::dot(feet-f.from,side)>=0?1.f:-1.f;
+                feet+=side*sign*8.f*dt;
+            }
+        }
+        feet.x=glm::clamp(feet.x,A.bounds.min.x+.6f,A.bounds.max.x-.6f);
+        feet.z=glm::clamp(feet.z,A.bounds.min.z+.6f,A.bounds.max.z-.6f);
+        bool window=boss.parryWindow();
+        if(policy==SOLID&&window&&!prevWindow&&glm::length(feet-boss.ballAim)<Enemy::BALL_ANCHOR_R+1.f) {
+            if(parryNext){boss.stagger(boss.staggerTime());++parries;}
+            parryNext=!parryNext;
+        }
+        prevWindow=window;vel=(feet-was)/dt;boss.update(dt,world());const auto& ev=boss.ev;
+        if(ev.telegraphStarted){dodgeFrom=t+REACT;dodgeUntil=t+boss.telegraphDuration+AFTER;}
+        if(ev.meleeHit)hurt(ev.meleeDamage);
+        if(ev.ballGust)ball.add(ev.ballFrom,ev.ballTo);
+        if(ev.ballRip)ball.addRip(ev.ballFrom,ev.ballTo);
+        if(ev.ballYank){auto pull=boss.position-feet;pull.y=0;if(glm::length(pull)>1)feet+=glm::normalize(pull)*6.f*dt;}
+        for(const auto& hit:ball.update(dt,feet,L.walls))hurt(hit.damage);
+        for(int k=0;k<ev.shots;++k)proj.fire(ev.shotOrigin,ev.shotDir[k]*ev.shotSpeed,ev.shotDamage,false,{1,1,1},false,0,ev.shotSize,true);
+        auto hit=proj.update(dt,L.walls.data(),(int)L.walls.size(),others,feet+glm::vec3{0,1.7f,0},&grid);
+        if(hit.hitPlayer)hurt(hit.playerDamage);
+        if(policy==SOLID)shoot(dt);
+    }
+
+    // THE SORTER: the actual AI and projectile collisions; SOLID reads its locked
+    // floor target after REACT and answers alternating claw windows with a parry.
+    void sorterStep(float dt) {
+        t+=dt;glm::vec3 was=feet;
+        movePlayer(dt);
+        if(policy==SOLID && boss.telegraphTimer>0 && t>dodgeFrom &&
+           (boss.attack==AttackKind::SORT_STAMP || boss.attack==AttackKind::SORT_GRAB)) {
+            glm::vec3 out=feet-boss.sortAim;out.y=0;
+            if(glm::length(out)<.1f)out={1,0,0};
+            feet+=glm::normalize(out)*8.f*dt;
+        }
+        feet.x=glm::clamp(feet.x,A.bounds.min.x+.6f,A.bounds.max.x-.6f);
+        feet.z=glm::clamp(feet.z,A.bounds.min.z+.6f,A.bounds.max.z-.6f);
+        vel=(feet-was)/dt;
+        bool window=boss.parryWindow();
+        if(policy==SOLID && window && !prevWindow && glm::length(feet-boss.sortAim)<Enemy::SORT_GRAB_R+1.f) {
+            if(parryNext){boss.stagger(boss.staggerTime());boss.sortMark=0;++parries;}
+            parryNext=!parryNext;
+        }
+        prevWindow=window;boss.update(dt,world());const auto& ev=boss.ev;
+        if(ev.telegraphStarted){dodgeFrom=t+REACT;dodgeUntil=t+.8f;}
+        if(ev.meleeHit)hurt(ev.meleeDamage);
+        for(int k=0;k<ev.shots;++k)proj.fire(ev.shotOrigin,ev.shotDir[k]*ev.shotSpeed,ev.shotDamage,false,{1,1,1},false,0,ev.shotSize,true);
+        auto hit=proj.update(dt,L.walls.data(),(int)L.walls.size(),others,feet+glm::vec3{0,1.7f,0},&grid);
+        if(hit.hitPlayer)hurt(hit.playerDamage);
+        if(policy==SOLID)shoot(dt);
+    }
+
     // ---- THE ABSOLUTE --------------------------------------------------------
     float zGround(glm::vec3 p) const { return lv.groundAt(p.x, p.z, p.y + 0.5f); }
     // SOLID and DODGER: hold their range, read each tell and answer it
+    void spendZenDash(){zenImmunity=std::max(zenImmunity,.15f);if(dashes--==2)dashCd=1.2f;}
     void absoluteMove(float dt) {
         const glm::vec3 c = lv.zenith.centre;
         if (policy == STILL || policy == CORNER || policy == PERCH) { feet.y = zGround(feet + glm::vec3{0.f, 0.3f, 0.f}); return; }
@@ -287,7 +383,7 @@ struct BossSim {
             if (boss.attack == AttackKind::ASKYFALL && boss.telegraphTimer < 0.25f && reacting && dashes > 0 &&
                 glm::length(glm::vec2{feet.x - boss.abAim.x, feet.z - boss.abAim.z}) < Enemy::AB_SKY_R + 0.5f) {   // out of the circle
                 glm::vec3 out = feet - boss.abAim; out.y = 0.f;
-                feet += (glm::length(out) > 0.1f ? glm::normalize(out) : side) * 5.f; if (dashes-- == 2) dashCd = 1.2f;
+                feet += (glm::length(out) > 0.1f ? glm::normalize(out) : side) * 5.f; spendZenDash();
             }
             if (boss.morning()) {   // MORNINGSTAR: read the floor
                 auto flat = [](glm::vec3 a, glm::vec3 b) { return glm::length(glm::vec2{a.x - b.x, a.z - b.z}); };
@@ -323,7 +419,7 @@ struct BossSim {
                     glm::vec3 out = feet - boss.abAim; out.y = 0.f;
                     out = glm::length(out) > 0.1f ? glm::normalize(out) : side;
                     if (dd < R + 1.5f) mv = out * 2.f;
-                    if (dd < R + 0.5f && boss.telegraphTimer < 0.3f && dashes > 0) { feet += out * 5.f; if (dashes-- == 2) dashCd = 1.2f; }
+                    if (dd < R + 0.5f && boss.telegraphTimer < 0.3f && dashes > 0) { feet += out * 5.f; spendZenDash(); }
                 }
             }
             // gold (and the white strikes it won't parry): a dash out of reach as it lands, else block it
@@ -331,7 +427,7 @@ struct BossSim {
             float sd = boss.attack == AttackKind::AMETEOR ? glm::length(boss.position - feet) : d;
             const bool floorRead = boss.attack == AttackKind::ASKYFALL || boss.attack == AttackKind::MGRASP || boss.attack == AttackKind::MDROP;
             if (strike && !floorRead && boss.telegraphTimer < 0.22f && sd < (boss.morning() ? 7.5f : 6.f)) {
-                if (dashes > 0) { feet += side * 5.f; if (dashes-- == 2) dashCd = 1.2f; }
+                if (dashes > 0) { feet += side * 5.f; spendZenDash(); }
                 else if (policy == SOLID) blocking = true;   // the sword up: a white strike or a gold one, from the front
             }
         }
@@ -350,6 +446,7 @@ struct BossSim {
     }
     void heal(float h) { health = std::min(100.f, health + h); }
     void absoluteStep(float dt) {
+        zenImmunity=std::max(0.f,zenImmunity-dt);
         t += dt;
         float before = damageTaken;
         glm::vec3 was = feet;
@@ -362,7 +459,7 @@ struct BossSim {
         if (policy == SOLID && window && !prevWindow) {   // (only within the game's reach: a METEOR met from too far off isn't parried)
             glm::vec3 to = boss.position - feet; to.y = 0.f;
             bool inReach = glm::length(to) <= abSwordParryReach(boss);
-            if (parryNext && inReach && boss.abParried(true)) { ++parries; heal(Sword::HEAL_PARRY); }
+            if (parryNext && inReach && boss.abParried(true)) { ++parries; heal(Sword::HEAL_PARRY);zenImmunity=std::max(zenImmunity,.5f); }
             parryNext = !parryNext;
         }
         prevWindow = window;
@@ -391,7 +488,7 @@ struct BossSim {
         if (r.hitPlayer) { float b = damageTaken; hurt(r.playerDamage); dmgShot += damageTaken - b; }
         glm::vec3 hf = feet + glm::vec3{0.f, airborne ? 1.4f : 0.f, 0.f};
         for (auto& h : abs.update(dt, hf, sliding ? 0.9f : 1.8f, !airborne, &lv, boss.position)) {
-            float b = damageTaken; hurt(h.damage);
+            float b = damageTaken; hurt(h.damage,h.kind==Sword::Strike::BEAM?0.f:.15f);
             msBy[h.src] += h.src ? damageTaken - b : 0.f;
             (h.kind == Sword::Strike::BEAM ? dmgBeam : h.kind == Sword::Strike::GOLD ? dmgGround : dmgWhite) += damageTaken - b;
         }

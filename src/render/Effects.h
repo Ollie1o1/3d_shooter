@@ -41,6 +41,7 @@ public:
         float life = 0.f, maxLife = 0.f;
         float gravity = 18.f;     // negative = floats upward (embers)
         bool  alive = false;
+        bool ambient = false;
     };
     static constexpr int MAX_PARTICLES = 1200;
     Particle particles[MAX_PARTICLES];
@@ -88,9 +89,32 @@ public:
     Particle* freeParticle() {
         for (int k = 0; k < MAX_PARTICLES; ++k) {
             int i = (particleCursor + k) % MAX_PARTICLES;
-            if (!particles[i].alive) { particleCursor = (i + 1) % MAX_PARTICLES; return &particles[i]; }
+            if (!particles[i].alive) { particleCursor = (i + 1) % MAX_PARTICLES; particles[i] = Particle{}; return &particles[i]; }
         }
         return nullptr;
+    }
+
+    int ambientLevel = 2;
+    static int ambientBudget(int detail) { static const int N[]={0,32,112,240}; return N[std::clamp(detail,0,3)]; }
+    int ambientCount() const { int n=0;for(const auto& p:particles)if(p.alive&&p.ambient)++n;return n; }
+    void setAmbientDetail(int detail) {
+        ambientLevel=std::clamp(detail,0,3);int remaining=ambientBudget(ambientLevel);
+        for(auto& p:particles)if(p.alive&&p.ambient) { if(remaining>0)--remaining;else p.alive=false; }
+        if(ambientLevel==0)ambientTimer=0;
+    }
+    Particle* freeAmbientParticle() {
+        if(ambientCount()>=ambientBudget(ambientLevel))return nullptr;
+        Particle* p=freeParticle();if(p)p->ambient=true;return p;
+    }
+    // Decoration has its own budget and cannot occupy the combat reserve.
+    void spawnAmbientBurst(glm::vec3 c,glm::vec3 color,int n,float speed,float life,float gravity) {
+        n=n*ambientLevel/3;
+        for(int i=0;i<n;++i) {
+            Particle* p=freeAmbientParticle();if(!p)return;
+            glm::vec3 d{frand(-1.f,1.f),frand(.1f,1.f),frand(-1.f,1.f)};
+            p->pos=c;p->vel=glm::normalize(d)*speed*frand(.4f,1.f);
+            p->color=color;p->gravity=gravity;p->maxLife=p->life=life*frand(.6f,1.f);p->alive=true;
+        }
     }
 
     // Generic radial burst. gravity < 0 floats upward.
@@ -181,16 +205,20 @@ public:
 
     // Dust in the yard, embers over lava, motes around the reactor, wind up high.
     // fast: the Gauntlet, whose lava strip is too far off for its embers
-    void spawnAmbientParticles(const LevelData& level, glm::vec3 me, bool fast, float dt) {
+    void spawnAmbientParticles(const LevelData& level, glm::vec3 me, bool fast, float dt, int detail=2, float clock=0.f) {
+        setAmbientDetail(detail);
+        if(ambientLevel==0)return;
         int a = level.arenaAt(me);
         if (a < 0) return;
         Ambient kind = level.arenas[a].ambient;
         ambientTimer += dt;
-        const float every = 1.f / 45.f;
+        const float rates[]={0,7,25,55};
+        const float every = 1.f / rates[ambientLevel];
+        ambientTimer=std::min(ambientTimer,every*3.f);
         while (ambientTimer > every) {
             ambientTimer -= every;
-            Particle* p = freeParticle();
-            if (!p) return;
+            Particle* p = freeAmbientParticle();
+            if (!p) {ambientTimer=0;return;}
             p->alive = true;
             float ang = frand(0.f, 6.28f), r = frand(4.f, 22.f);
             switch (kind) {
@@ -223,7 +251,7 @@ public:
             case Ambient::WIND:
                 // Fast pale streaks blowing across the heights
                 p->pos = me + glm::vec3{std::cos(ang) * r - 10.f, frand(-1.f, 9.f), std::sin(ang) * r};
-                p->vel = {frand(9.f, 14.f), frand(-0.3f, 0.3f), frand(1.f, 3.f)};
+                p->vel = {frand(7.f, 11.f)*(1.f+.3f*std::sin(clock*.7f)), frand(-0.3f, 0.3f), frand(1.f, 3.f)};
                 p->color = glm::vec3{0.85f, 0.9f, 1.f} * 0.22f;
                 p->gravity = 0.f; p->maxLife = p->life = frand(1.f, 2.f);
                 break;
@@ -236,11 +264,13 @@ public:
                 break;
             case Ambient::ASH:
                 p->pos = me + glm::vec3{std::cos(ang) * r, frand(4.f, 12.f), std::sin(ang) * r};
-                p->vel = {frand(0.3f, 1.2f), frand(-1.2f, -0.4f), frand(-0.3f, 0.3f)};
-                p->color = glm::vec3{0.6f, 0.55f, 0.55f} * 0.25f;
+                p->vel = {frand(2.f, 4.5f)*(1.f+.45f*std::sin(clock*.7f)), frand(-1.2f, -0.4f), frand(.4f, 1.4f)};
+                p->color = glm::vec3{0.63f, 0.57f, 0.46f} * .55f;
                 p->gravity = 0.f; p->maxLife = p->life = frand(3.f, 5.f);
                 break;
             }
+            // Do not seed indoor weather through ceilings or across room walls.
+            if(level.arenaAt(p->pos)!=a)p->alive=false;
         }
     }
 

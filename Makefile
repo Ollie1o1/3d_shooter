@@ -67,9 +67,9 @@ endif
 # change rebuilds it, so new headers never need listing here.
 SRC     := src/main.cpp
 HEADERS := $(shell find src -name '*.h')
-TESTS   := tests/test_physics.cpp tests/test_game.cpp tests/test_zenith.cpp tests/BossSim.h
+TESTS   := tests/test_wasteland.cpp tests/test_story.cpp tests/test_physics.cpp tests/test_game.cpp tests/test_zenith.cpp tests/BossSim.h
 
-.PHONY: all clean run test web scan level-dump light
+.PHONY: all clean run test test-story test-wasteland test-render test-dev test-story-overhaul test-story-bosses test-web-story web scan level-dump light gleaner-art
 
 all: $(TARGET)
 
@@ -89,22 +89,68 @@ test: $(TESTS) $(HEADERS)
 	./tests/test_game
 	$(CXX) $(CXXFLAGS) tests/test_zenith.cpp -o tests/test_zenith $(STDLIB)
 	./tests/test_zenith
+	$(MAKE) test-story
+	$(MAKE) test-wasteland
+	$(MAKE) test-story-overhaul
+	$(MAKE) test-story-bosses
+	$(MAKE) test-improvements
+	$(MAKE) test-lab
+	$(MAKE) test-plain
+	$(MAKE) test-cold
+
+test-story: tests/test_story.cpp $(HEADERS)
+	$(CXX) $(CXXFLAGS) tests/test_story.cpp -o tests/test_story $(STDLIB)
+	./tests/test_story
+
+test-wasteland: tests/test_wasteland.cpp $(HEADERS)
+	$(CXX) $(CXXFLAGS) tests/test_wasteland.cpp -o tests/test_wasteland $(STDLIB)
+	./tests/test_wasteland
+
+test-story-overhaul: tests/test_story_overhaul.cpp $(HEADERS)
+	$(CXX) $(CXXFLAGS) tests/test_story_overhaul.cpp -o tests/test_story_overhaul $(STDLIB)
+	./tests/test_story_overhaul
+
+test-story-bosses: tests/test_story_bosses.cpp $(HEADERS)
+	$(CXX) $(CXXFLAGS) tests/test_story_bosses.cpp -o tests/test_story_bosses $(STDLIB)
+	./tests/test_story_bosses
+
+# Native OpenGL regression checks (needs a display; Linux CI can use xvfb-run).
+test-render: tests/test_render.cpp $(HEADERS)
+	$(CXX) $(CXXFLAGS) tests/test_render.cpp -o tests/test_render $(LDFLAGS)
+	./tests/test_render
+
+# Native dev-menu input and Story checkpoint integration (needs a display).
+test-dev: tests/test_dev.cpp $(HEADERS)
+	$(CXX) $(CXXFLAGS) tests/test_dev.cpp -o tests/test_dev $(LDFLAGS)
+	mkdir -p build
+	./tests/test_dev
 
 # Every arena's traps: places you could stand and not get back from by yourself (tests/BoundsScan.h)
 scan: tests/scan_bounds.cpp tests/BoundsScan.h $(HEADERS)
 	$(CXX) $(CXXFLAGS) tests/scan_bounds.cpp -o tests/scan_bounds $(STDLIB)
 	./tests/scan_bounds
 
+# THE RESTORER's pieces (Chapter 5), made in Blender (tools/blender/restorer_build.py) into assets/props/restorer_*.glb
+restorer-art:
+	blender -b --factory-startup --python tools/blender/headless.py -- tools/blender/restorer_build.py $(if $(ONLY),ONLY=$(ONLY),)
+
+# THE GLEANER's pieces, made in Blender (tools/blender/gleaner_build.py, on tools/blender/boss_kit.py) into
+# assets/props/gleaner_*.glb: `make gleaner-art`, or one with `make gleaner-art ONLY=fist`
+gleaner-art:
+	blender -b --factory-startup --python tools/blender/headless.py -- tools/blender/gleaner_build.py $(if $(ONLY),ONLY=$(ONLY),)
+
 # Every level's light baked (ambient occlusion and sun shadows: render/LightBake.h) into assets/levels/<level>.light.
 # Rerun after changing a level: the game leaves out a stale bake, and `make test` says which
-light: tools/light_bake.cpp $(HEADERS)
+tools/light_bake: tools/light_bake.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) tools/light_bake.cpp -o tools/light_bake $(STDLIB)
+
+light: tools/light_bake
 	./tools/light_bake
 
 # Every level out for Blender (build/levels/<level>/: tools/blender/level_import.py builds a scene from it)
 level-dump: tools/level_dump.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) tools/level_dump.cpp -o tools/level_dump $(STDLIB)
-	mkdir -p build/levels && for l in act1 act2 fast; do ./tools/level_dump $$l build/levels/$$l || exit 1; done
+	mkdir -p build/levels && for l in act1 act2 fast story1 story2 story3 training; do ./tools/level_dump $$l build/levels/$$l || exit 1; done
 
 # Browser build (WebGL2 + WebAssembly) → web/dist. Needs Emscripten on PATH:
 #   source ~/emsdk/emsdk_env.sh && make web && python3 -m http.server -d web/dist
@@ -122,10 +168,50 @@ web: $(SRC) $(HEADERS) web/index.html
 	em++ -std=c++17 -O3 -Isrc -Isrc/third_party/imgui -Ibuild/web-include $(WEB_FLAGS) $(SRC) -o $(WEB_OUT)/overdrive.js \
 	    -sUSE_SDL=2 -sUSE_SDL_MIXER=2 \
 	    -sMIN_WEBGL_VERSION=2 -sMAX_WEBGL_VERSION=2 \
-	    -sALLOW_MEMORY_GROWTH=1 -sENVIRONMENT=web \
+	    -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=1048576 -sSTACK_OVERFLOW_CHECK=1 -sENVIRONMENT=web \
 	    --preload-file $(WEB_DATA)@/
-	cp web/index.html $(WEB_OUT)/
+	python3 tools/stamp_web.py $(WEB_OUT)
+
+# Exercise Story boss previews as real WebAssembly with a deliberately small
+# stack. Run after `make web` (which prepares the portable GLM include path).
+test-web-story: tests/test_web_story.cpp $(HEADERS)
+	mkdir -p build/web-story
+	em++ -std=c++17 -O3 -Isrc -Ibuild/web-include tests/test_web_story.cpp -o build/web-story/story.js \
+	    -sENVIRONMENT=node -sASSERTIONS=2 -sSTACK_OVERFLOW_CHECK=2 -sSTACK_SIZE=32768 -sALLOW_MEMORY_GROWTH=1 \
+	    --preload-file assets/enemies@/assets/enemies
+	cd build/web-story && node story.js 26
+	cd build/web-story && node story.js 27
+	cd build/web-story && node story.js 32
 
 clean:
-	rm -f shooter shooter.exe tests/test_physics tests/test_game tests/test_zenith
+	rm -f shooter shooter.exe tests/test_physics tests/test_game tests/test_zenith tests/test_story tests/test_wasteland tests/test_render tests/test_dev tests/test_story_overhaul tests/test_story_bosses tests/test_improvements
 	rm -rf build web/dist
+
+# Checkpoint save validation, mod tradeoffs and the practice arena (headless).
+.PHONY: test-improvements
+test-improvements: tests/test_improvements.cpp $(HEADERS)
+	$(CXX) $(CXXFLAGS) tests/test_improvements.cpp -o tests/test_improvements $(STDLIB)
+	./tests/test_improvements
+
+.PHONY: test-lab
+test-lab: tests/test_lab.cpp tests/LabBossRun.h $(HEADERS)
+	mkdir -p build
+	$(CXX) $(CXXFLAGS) tests/test_lab.cpp -o build/test_lab $(STDLIB)
+	./build/test_lab
+
+# Chapter 5: THE COLD STORE (tests/test_cold.cpp)
+.PHONY: test-cold
+test-cold: tests/test_cold.cpp $(HEADERS)
+	mkdir -p build
+	$(CXX) $(CXXFLAGS) tests/test_cold.cpp -o build/test_cold $(STDLIB)
+	./build/test_cold
+
+# Chapter 4: THE BLOOD MOON PLAIN (tests/test_plain.cpp)
+.PHONY: test-plain
+test-plain: tests/test_plain.cpp $(HEADERS)
+	mkdir -p build
+	$(CXX) $(CXXFLAGS) tests/test_plain.cpp -o build/test_plain $(STDLIB)
+	./build/test_plain
+
+tools/music_preview: tools/music_preview.cpp src/audio/MusicSynth.h
+	$(CXX) $(CXXFLAGS) tools/music_preview.cpp -o tools/music_preview $(STDLIB)

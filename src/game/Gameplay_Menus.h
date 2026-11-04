@@ -66,14 +66,20 @@ inline void GameplayState::padButton(Uint8 b) {
         return;
     }
     if (victory) { key(b == SDL_CONTROLLER_BUTTON_A ? SDLK_RETURN : b == SDL_CONTROLLER_BUTTON_B ? SDLK_ESCAPE : SDLK_UNKNOWN); return; }
+    if (guideOpen) { key(b==SDL_CONTROLLER_BUTTON_X ? SDLK_RIGHTBRACKET : gamepad::menuKey(b)); return; }
+    if(training() && trainingLesson==7 && !paused && !armoryOpen && b==SDL_CONTROLLER_BUTTON_X){key(SDLK_RIGHTBRACKET);return;}
+    if (armoryOpen && b == SDL_CONTROLLER_BUTTON_X) { key(SDLK_m); return; }
     if (armoryOpen) { key(b == SDL_CONTROLLER_BUTTON_BACK ? SDLK_TAB : gamepad::menuKey(b)); return; }
     if (paused) { key(gamepad::menuKey(b)); return; }
     switch (b) {
         case SDL_CONTROLLER_BUTTON_START:         key(SDLK_ESCAPE); break;
         case SDL_CONTROLLER_BUTTON_BACK:          key(SDLK_TAB); break;
         case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:  pendingGrapple = true; break;
-        case SDL_CONTROLLER_BUTTON_RIGHTSTICK:    finishKey(); break;   // R3: finish
+        case SDL_CONTROLLER_BUTTON_RIGHTSTICK:
+            if (!tryTearEye() && !finishKey()) { int i=findInteractTarget(); if(i>=0 && interactables[i].onInteract)interactables[i].onInteract(); }
+            break;   // R3: finish
         case SDL_CONTROLLER_BUTTON_DPAD_UP:       pendingGrenade = true; break;
+        case SDL_CONTROLLER_BUTTON_LEFTSTICK:     pendingRecall = true; break;   // L3: RECALL
         case SDL_CONTROLLER_BUTTON_DPAD_DOWN:     inspect(); break;
         case SDL_CONTROLLER_BUTTON_DPAD_LEFT:     padCycle(-1); break;
         case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:    padCycle(+1); break;
@@ -156,6 +162,17 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
     // Alt-tabbing away mid-fight pauses (the web build pauses on losing the pointer lock)
     if (e.type == SDL_WINDOWEVENT && e.window.event == SDL_WINDOWEVENT_FOCUS_LOST && !g_devNoMouse) { pause(); return; }
 
+    if (guideOpen) { handleGuideEvent(e); return; }
+    if (key == SDLK_F4 && !playerDead && !victory && !armoryOpen) { openGuide(); return; }
+    if (training() && !paused && !armoryOpen) {
+        if(key==SDLK_PAGEUP || key==SDLK_PAGEDOWN) {
+            startTrainingLesson((trainingLesson+(key==SDLK_PAGEUP?lessons::COUNT-1:1))%lessons::COUNT);return;
+        }
+        if(trainingLesson==7 && (key==SDLK_LEFTBRACKET || key==SDLK_RIGHTBRACKET)) {
+            trainingEnemy=(trainingEnemy+(key==SDLK_LEFTBRACKET?lessons::TARGET_COUNT-1:1))%lessons::TARGET_COUNT;
+            startTrainingLesson(7);return;
+        }
+    }
     // Armory (TAB) — a paused overlay for spending upgrade points
     if (armoryOpen) {
         if (key == SDLK_TAB || key == SDLK_ESCAPE || key == SDLK_p) { closeArmory(); return; }
@@ -165,6 +182,11 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
     if (paused && pauseSettings) { settingsMenu.handleEvent(e); return; }
     if (victory && nameEntry) { handleNameEntry(e); return; }
 
+    if(story() && storyEndT>3.f && (key==SDLK_RETURN || key==SDLK_ESCAPE)) {
+        if(key==SDLK_RETURN && level.story.nextChapter>0)storyChapterRequest=level.story.nextChapter;
+        else if(onReturnToMenu)onReturnToMenu();
+        return;
+    }
     if (key == SDLK_ESCAPE || key == SDLK_p) {
         if (playerDead || victory) {
             if (key != SDLK_ESCAPE) return;  // P only pauses
@@ -173,6 +195,7 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
             return;
         }
         paused = !paused;
+        if(paused)saveStoryProgress();
         pauseSelected = 0;
         captureMouse(!paused);
         return;
@@ -182,7 +205,9 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
         if (key == SDLK_F5) { devClearWave(); return; }    // practice: skip the fight in progress
         if (key == SDLK_F6) { styleSystem.heal(1000.f); ui.feed("HEALTH REFILLED", {0.4f, 1.f, 0.6f}); return; }
     }
-    if (key == SDLK_TAB && !playerDead && !victory) { openArmory(); return; }
+    // Story earns the same upgrade points; only its scripted opening/ending owns input.
+    if (key == SDLK_TAB && !playerDead && !victory &&
+        (!story() || (!storyLocked() && storyEndT < 0.f))) { openArmory(); return; }
     // Backspace: straight back to the checkpoint and the start of this fight
     if (key == SDLK_BACKSPACE && !victory) {
         if (!playerDead) restartHere(); else if (!endless()) retryArena();   // ENDLESS: one life
@@ -193,9 +218,28 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
         if (key == SDLK_RETURN)          { newRun();     return; }
         return;
     }
+    if (story() && (storyLocked() || storyEndT >= 0.f)) {   // STORY: the wake-up has the controls; the mouse looks only once he sits up
+        if (e.type == SDL_MOUSEMOTION && storyLookFree() && storyEndT < 0.f && !g_devNoMouse) {
+            float sens = settings ? settings->sensitivity : 0.1f;
+            float dy = settings && settings->invertY ? -(float)e.motion.yrel : (float)e.motion.yrel;
+            player.applyMouseLook((float)e.motion.xrel, dy, sens * 0.7f);
+        }
+        return;
+    }
+    if (story() && e.type == SDL_MOUSEWHEEL && storyArmed) {   // STORY: the wheel cycles only the guns he's found
+        int n = activeWeapon;
+        for (int k = 0; k < WEAPON_COUNT; ++k) { n = (n + (e.wheel.y > 0 ? WEAPON_COUNT - 1 : 1)) % WEAPON_COUNT; if (storyOwns(n)) break; }
+        trySwitch(n);
+        return;
+    }
+    if (story() && key == SDLK_5) return;   // (no sword in the story yet)
+    if (story() && !storyArmed) {   // STORY, no gun yet: nothing to switch to, reload or draw
+        if (e.type == SDL_MOUSEWHEEL || (key >= SDLK_1 && key <= SDLK_5)) return;
+        if (e.type == SDL_KEYDOWN && (binds().pressed(Act::INSPECT, e) || binds().pressed(Act::RELOAD, e))) return;
+    }
     const Bindings& kb = binds();
     if (kb.pressed(Act::INTERACT, e)) {   // FINISH / INTERACT: one in reach to finish comes first (it never parries)
-        if (!finishKey()) {
+        if (!tryTearEye() && !finishKey()) {
             int idx = findInteractTarget();
             if (idx >= 0 && interactables[idx].onInteract) interactables[idx].onInteract();
         }
@@ -210,6 +254,7 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
     if (key >= SDLK_1 && key <= SDLK_4) { holsterSword(); trySwitch(key - SDLK_1); }
     if (key == SDLK_5) drawSword();
     if (kb.pressed(Act::GRENADE, e)) pendingGrenade = true;
+    if (kb.pressed(Act::RECALL, e)) pendingRecall = true;
     if (kb.pressed(Act::INSPECT, e)) inspect();
     if (e.type == SDL_MOUSEMOTION && !g_devNoMouse) {
         float dx = (float)e.motion.xrel, dy = (float)e.motion.yrel;
@@ -232,6 +277,7 @@ inline void GameplayState::padCycle(int dir) {
 }
 
 inline void GameplayState::trySwitch(int w) {
+    if (story() && !storyOwns(w)) return;   // STORY: only the guns he's found
     if (w != activeWeapon && pendingWeapon < 0) {
         pendingWeapon = w;
         weaponSwitchTimer = 0.15f;
@@ -251,15 +297,16 @@ inline float GameplayState::aimSensScale() const {
 
 inline void GameplayState::pause() {
     if (paused || playerDead || victory || armoryOpen) return;
+    saveStoryProgress();
     paused = true;
     pauseSelected = 0;
     captureMouse(false);
 }
 
 inline const char* GameplayState::pauseLabel(int i) const {
-    static const char* L[] = {"RESUME", "SETTINGS", "", "", "", "QUIT TO MENU"};
+    static const char* L[] = {"RESUME", "SETTINGS", "", "", "", "QUIT TO MENU", "FIELD GUIDE"};
     if (i == 2) return fullscreenOn() ? "EXIT FULLSCREEN" : "FULLSCREEN";
-    if (i == 3) return fast() ? "RESTART ROOM" : "RESTART ARENA";
+    if (i == 3) return training()?"REPEAT LESSON":story()?"RESTART CHECKPOINT":fast()?"RESTART ROOM":"RESTART ARENA";
     if (i == 4) return fast() ? "RESTART RUN" : "NEW RUN";
     return L[i];
 }
@@ -287,6 +334,7 @@ inline void GameplayState::activatePauseItem(int idx) {
     case 2: toggleFullscreen(); break;
     case 3: restartHere(); break;
     case 4: newRun(); break;
+    case 6: openGuide(); break;
     default:
         captureMouse(false);
         if (onReturnToMenu) onReturnToMenu();
@@ -336,6 +384,13 @@ inline void GameplayState::closeArmory() {
 }
 
 inline void GameplayState::buyUpgrade(int w, int s) {
+    if (w < 0 || w >= WEAPON_COUNT || s < 0 || s >= UPGRADE_STATS || (story() && !storyOwns(w))) {
+        audio.play("telegraph",50,SoundGroup::UI);return;
+    }
+    if (s == (int)UpgradeStat::MOD && prog.up[w].mod) {
+        prog.up[w].alternate = !prog.up[w].alternate;
+        audio.play("upgrade",90,SoundGroup::UI);saveStoryProgress();return;
+    }
     WeaponId wid = (WeaponId)w;
     int oldMag = weaponMag(wid, prog.up[w]);
     if (!prog.buy(wid, (UpgradeStat)s)) { audio.play("telegraph", 50, SoundGroup::UI); return; }
@@ -343,11 +398,18 @@ inline void GameplayState::buyUpgrade(int w, int s) {
     int newMag = weaponMag(wid, prog.up[w]);
     if (newMag > oldMag && !weapons[w].reloading) weapons[w].ammo += newMag - oldMag;
     audio.play("upgrade", 128, SoundGroup::UI);
+    saveStoryProgress();
 }
 
 inline void GameplayState::handleArmoryEvent(const SDL_Event& e) {
     if (e.type == SDL_KEYDOWN) {
         switch (e.key.keysym.sym) {
+            case SDLK_m:
+                if(armoryS==(int)UpgradeStat::MOD && (!story() || storyOwns(armoryW))) {
+                    prog.up[armoryW].alternate=!prog.up[armoryW].alternate;
+                    audio.play("count_tick",80,SoundGroup::UI);saveStoryProgress();
+                }
+                break;
             case SDLK_LEFT:  armoryW = (armoryW + WEAPON_COUNT - 1) % WEAPON_COUNT; break;
             case SDLK_RIGHT: armoryW = (armoryW + 1) % WEAPON_COUNT; break;
             case SDLK_UP:    armoryS = (armoryS + UPGRADE_STATS - 1) % UPGRADE_STATS; break;

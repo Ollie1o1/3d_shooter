@@ -39,6 +39,8 @@ struct Profile {
 
 inline Profile profileOf(EnemyType t) {
     switch (t) {
+        case EnemyType::BALLAST: return {0.f,Vowel::NONE,0,1.f,Body::GRIND,72.f,.9f};
+        case EnemyType::SORTER: return {49.f,Vowel::OO,6,.75f,Body::HYDRAULIC,85.f,1.f};
         case EnemyType::HUSK:         return {130.f, Vowel::OH,   3, 1.00f, Body::SERVO,      420.f, 0.30f};
         case EnemyType::RIPPER:       return {260.f, Vowel::AH,   2, 1.20f, Body::SKITTER,   1800.f, 0.15f};
         case EnemyType::SENTINEL:     return {  0.f, Vowel::NONE, 0, 1.00f, Body::HYDRAULIC,  300.f, 0.40f};
@@ -66,6 +68,18 @@ inline Profile profileOf(EnemyType t) {
         case EnemyType::PLUMB:        return { 55.f, Vowel::OO,   5, 0.80f, Body::CRACKLE,   1400.f, 0.85f};   // iron humming on a chain
         case EnemyType::FOREMAN:      return {165.f, Vowel::OH,   4, 0.95f, Body::HUM,        300.f, 0.60f};   // a tannoy's bark
         case EnemyType::PACEMAKER:    return {220.f, Vowel::AH,   3, 1.00f, Body::SERVO,      600.f, 0.50f};   // clockwork and breath
+        case EnemyType::PATIENT:return {145.f,Vowel::UH,2,.95f,Body::SERVO,380.f,.35f};
+        case EnemyType::GRAFTED:return {68.f,Vowel::OH,3,.85f,Body::SCRAPE,220.f,.7f};
+        case EnemyType::SUSPENDED:return {330.f,Vowel::EE,3,1.2f,Body::HUM,520.f,.25f};
+        case EnemyType::PHASED:return {195.f,Vowel::OO,3,1.05f,Body::SERVO,700.f,.4f};
+        case EnemyType::SUCCESSOR:return {130.f,Vowel::AH,2,1.f,Body::SERVO,450.f,.5f};
+        case EnemyType::THAWLING:return {110.f,Vowel::UH,3,.9f,Body::SCRAPE,520.f,.45f};   // a frozen throat, ice cracking off it
+        case EnemyType::PICKER:return {0.f,Vowel::NONE,0,1.f,Body::HYDRAULIC,700.f,.35f};   // a claw on a trolley
+        case EnemyType::CLERK:return {660.f,Vowel::EE,2,1.2f,Body::CRACKLE,2400.f,.15f};   // a typewriter's bell and clatter
+        case EnemyType::UNIT24K:return {150.f,Vowel::AH,2,1.f,Body::SERVO,420.f,.4f};   // your own servos, tuned clean
+        case EnemyType::RESTORER:return {98.f,Vowel::OO,5,.85f,Body::HYDRAULIC,160.f,.9f};   // a careful, low, many-voiced hum and the hiss of its hoses
+        case EnemyType::RS_POINT:return {523.f,Vowel::EE,2,1.1f,Body::HUM,1800.f,.3f};
+        case EnemyType::RS_DRUM:return {0.f,Vowel::NONE,0,1.f,Body::GRIND,300.f,.4f};
         default:                      return {};
     }
 }
@@ -310,6 +324,34 @@ inline Buf tellV(EnemyType t, AttackKind a, const Profile& p, Rng& r) {
     const float d = tellDur(t, a), f = p.f0 > 0.f ? p.f0 : 200.f;
     Buf out(N(d), 0.f);
     switch (a) {
+        case AttackKind::LAB_LUNGE:add(out,vent(d,2400,r,d*.7f,.04f));add(out,servo(d,160,500,r),.5f);break;
+        // A swarm subject's claw: a ragged hiss rising into a snap
+        case AttackKind::LAB_SWIPE:add(out,vent(d,3800,r,d*.75f,.03f),.8f);add(out,servo(d,240,820,r,d*.7f,.03f),.45f);break;
+        case AttackKind::LAB_PRESS:add(out,metal(d,110,r,4),.7f);add(out,servo(d,160,70,r),.5f);break;
+        case AttackKind::LAB_BEAM:add(out,choir(d,330,495,Vowel::EE,3,1.1f,r,.3f,.08f,.05f));break;
+        case AttackKind::LAB_CROSS:add(out,servo(d,1300,220,r,.03f,.03f));add(out,click(1800,r),.7f);break;
+        case AttackKind::SU_INCISION:add(out,vent(d,3400,r,d*.7f,.04f));add(out,servo(d,210,390,r),.4f);break;
+        case AttackKind::SU_THRUST:case AttackKind::SU_TRANSPOSE:add(out,metal(d,1200,r,3.f));add(out,beep(1800,.07f),.5f,d*.6f);break;
+        case AttackKind::SU_VECTOR:add(out,vent(d,900,r,d*.7f,.03f));add(out,servo(d,110,900,r,d*.7f,.03f),.6f);break;
+        case AttackKind::SU_REAP:add(out,servo(d,160,620,r,d*.65f,.04f),.7f);add(out,vent(d,1600,r,d*.65f,.04f),.6f);break;
+        case AttackKind::SU_BREAKER:add(out,metal(d,85,r,5),.7f);add(out,choir(d,110,330,Vowel::AH,3,1.f,r,d*.7f,.04f,.08f),.8f);break;
+        case AttackKind::SU_SUTURE:for(int k=0;k<2;++k)add(out,metal(.35f,980+k*240,r,9),.8f,k*.3f);break;
+        case AttackKind::SU_RECALL:for(int k=0;k<3;++k)add(out,beep(660,.07f),.65f,k*.25f);break;
+        case AttackKind::SU_PERFUSION:add(out,choir(d,130,260,Vowel::AH,4,1.f,r,d*.65f,.05f,.1f));break;
+        case AttackKind::BALL_WINCH: add(out,servo(d,170.f,1350.f,r,.02f,.08f));add(out,metal(d,320.f,r,14.f),.45f);break;
+        case AttackKind::BALL_RIP: add(out,grind(d,18.f,180.f,r));add(out,metal(d,95.f,r,8.f),.7f);break;
+        case AttackKind::BALL_SWEEP: add(out,servo(d,95.f,430.f,r,.04f,.08f));add(out,vent(d,1100.f,r,.15f,.08f),.6f);break;
+        case AttackKind::SORT_RUSH: add(out,servo(d,120.f,900.f,r,.02f,.08f));add(out,siren(d,350.f,700.f),.4f);break;
+        case AttackKind::SORT_ROW: add(out,grind(d,24.f,200.f,r));for(int i=0;i<3;++i)add(out,click(1500.f,r),.7f,i*d*.3f);break;
+        case AttackKind::SORT_PURGE: add(out,vent(d,1800.f,r,d*.6f,.05f));add(out,servo(d,90.f,210.f,r),.5f);break;
+        case AttackKind::BALL_GRADE: add(out,grind(d,32.f,260.f,r));add(out,siren(d,270.f,580.f),.55f);break;
+        case AttackKind::BALL_GUST: add(out,vent(d,600.f,r,.05f,.1f));add(out,servo(d,90.f,800.f,r,.02f,.1f),.7f);break;
+        case AttackKind::BALL_ANCHOR: add(out,servo(d,240.f,1100.f,r,.01f,.08f));add(out,click(1900.f,r),.8f);break;
+        case AttackKind::BALL_THROW: add(out,metal(d,130.f,r,10.f));add(out,grind(d,25.f,130.f,r),.6f);break;
+        case AttackKind::SORT_GRAB: add(out,servo(d,180.f,950.f,r,.01f,.08f));add(out,click(1400.f,r),.7f);break;
+        case AttackKind::SORT_STAMP: add(out,grind(d,22.f,220.f,r));add(out,thud(95.f,40.f,d),.8f);break;
+        case AttackKind::SORT_SCAN: add(out,siren(d,500.f,1800.f));break;
+        case AttackKind::SORT_THROW: add(out,metal(d,160.f,r,12.f));add(out,vent(d,700.f,r,.03f,.08f),.7f);break;
         case AttackKind::SHOT:     // a rising hum
             add(out, choir(d, f * 0.8f, f * 1.25f, p.vowel, p.voices, p.formant, r, d * 0.7f, 0.04f, 0.1f));
             add(out, servo(d, p.bodyHz * 0.8f, p.bodyHz * 1.6f, r, d * 0.7f, 0.04f), 0.35f); break;

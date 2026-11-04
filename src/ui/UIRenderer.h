@@ -27,6 +27,7 @@ struct HudWeapon {
     int   ammo = 0, mag = 0;
     bool  reloading = false;
     float reload01 = 1.f;
+    bool  owned = true;            // STORY: not found yet (an empty slot)
     glm::vec3 glow{1.f, 0.7f, 0.2f};   // the gun's colour (GunKit)
 };
 
@@ -37,6 +38,11 @@ struct HudState {
     StyleSource heldSource = StyleSource::NONE;   // the gun in hand, for its freshness
     HudWeapon weapons[WEAPON_COUNT];
     int   grenades = 0, grenadeMax = 2;
+    bool  splinter = false;      // the grenade slots show the SPLINTER's charges
+    float splinterRegrow = 1.f;  // the next charge, 0..1
+    bool  recall = false;        // RECALL owned: its bar above the first weapon slot
+    bool  recallPlaced = false;  // a statue is standing (the bar is its time left)
+    float recall01 = 1.f;        // placed: time left, 0..1; otherwise: the cooldown, full = ready
     // OATHBREAKER (the Zenith): a fifth slot; out, the guard meter under the crosshair
     bool  swordSlot = false, swordOut = false, swordBroken = false, swordBar = false;
     float swordGuard = 1.f;
@@ -46,6 +52,7 @@ struct HudState {
     glm::vec2 scopeSway{0.f};      // pixels
     float spread = 0.f;            // crosshair gap in pixels from weapon spread
     bool  hideCrosshair = false;
+    bool  noWeapons = false;       // STORY: nothing in hand yet (no slots, no style meter)
     bool  grappleTarget = false;   // aiming at something the grapple can hook
     float grappleCool = 0.f;       // 1 just released .. 0 ready: a cyan bar refills under the crosshair
     bool  showTimer = false;
@@ -200,8 +207,10 @@ public:
         if (h.scoped) drawReticle(h);
 
         drawHealthPanel(style, h);
-        drawStyleMeter(style, h.heldSource);
-        drawWeaponSlots(h);
+        if (!h.noWeapons) {
+            drawStyleMeter(style, h.heldSource);
+            drawWeaponSlots(h);
+        }
         drawCrosshair(h, cx, cy);
 
         // Unseen wind-ups: an amber chevron out past the damage ring, closing in and burning hotter as the blow comes
@@ -338,10 +347,19 @@ public:
         end2D();
     }
 
-    void renderBossBar(const char* name, float fill, bool enraged) {
+    // A pale stretch after the bar's fill: damage that will grow back (THE RESTORER's restore points)
+    void renderBossPending(float fill, float pending) {
+        begin2D();
+        int w = 560, x = screenW / 2 - w / 2, y = 62;
+        float a = glm::clamp(fill, 0.f, 1.f), b = glm::clamp(fill + pending, 0.f, 1.f);
+        ui.rect(x + (int)(w * a), y, (int)(w * (b - a)), 12, {0.85f, 0.92f, 1.f, 0.55f});
+        end2D();
+    }
+    void renderBossBar(const char* name, float fill, bool enraged, glm::vec3 tint = {-1.f,-1.f,-1.f}) {
         begin2D();
         int w = 560, x = screenW / 2 - w / 2, y = 62;
         glm::vec4 col = enraged ? glm::vec4{1.f, 0.15f, 0.25f, 0.95f} : glm::vec4{1.f, 0.2f, 0.65f, 0.95f};
+        if(tint.x>=0)col=glm::vec4(tint,.95f);
         ui.text(name, screenW / 2, y - 16, 2, col, true);
         ui.rect(x - 3, y - 3, w + 6, 18, {0.05f, 0.03f, 0.06f, 0.85f});
         ui.rect(x, y, w * glm::clamp(fill, 0.f, 1.f), 12, col);
@@ -351,15 +369,67 @@ public:
 
     // A diamond marker at a screen position; when the target is off-screen the
     // caller passes onScreen=false and the marker sits on the screen edge.
-    void renderMarker(float sx, float sy, bool onScreen, glm::vec3 color, const char* label) {
+    void renderMarker(float sx, float sy, bool onScreen, glm::vec3 color, const char* label, bool behind=false, bool compact=false) {
         begin2D();
-        glm::vec4 c{color.r, color.g, color.b, 0.9f};
-        int s = onScreen ? 7 : 9;
-        for (int i = -s; i <= s; i += 2) {
-            int half = s - std::abs(i);
-            ui.rect(sx - half, sy + i, half * 2 + 1, 2, c);
+        glm::vec4 c{color.r,color.g,color.b,compact?.65f:.9f};
+        int s=onScreen?(compact?4:7):(compact?6:9);
+        if(onScreen) {
+            for(int i=-s;i<=s;i+=2) {
+                int half=s-std::abs(i);
+                ui.rect(sx-half,sy+i,half*2+1,2,c);
+            }
+        } else {
+            // A chevron points out of the viewport; only a target in view
+            // receives a diamond pinned to its actual world position.
+            glm::vec2 d{sx-screenW*.5f,sy-screenH*.5f};
+            float len=glm::length(d);d=len>.01f?d/len:glm::vec2{1,0};
+            glm::vec2 side{-d.y,d.x};
+            for(int i=0;i<=(compact?6:8);++i)for(float sign:{-1.f,1.f}) {
+                glm::vec2 p=glm::vec2{sx,sy}-d*(float)i+side*((float)i*.65f*sign);
+                ui.rect(p.x-1,p.y-1,3,3,c);
+            }
         }
-        if (label && label[0]) ui.textShadow(label, sx, sy + s + 6, 1, c, true);
+        std::string text=label?label:"";
+        if(behind)text+=(text.empty()?"BEHIND":" / BEHIND");
+        if(!text.empty()) {
+            float half=(float)text.size()*3.f;
+            float x=std::clamp(sx,half+12.f,std::max(half+12.f,screenW-half-12.f));
+            float y=std::min(sy+s+6.f,(float)screenH-20.f);
+            ui.textShadow(text.c_str(),x,y,1,c,true);
+        }
+        end2D();
+    }
+
+    // The way on (a Story objective): a larger pulsing diamond in a ring, its name big under it,
+    // the distance under that; off screen, a big chevron at the edge pointing the way
+    void renderObjectiveMarker(float sx, float sy, bool onScreen, glm::vec3 color, const char* label, int metres, float clock) {
+        begin2D();
+        const float pulse = 0.75f + 0.25f * std::sin(clock * 5.f);
+        glm::vec4 c{color.r, color.g, color.b, 0.95f}, dim{color.r, color.g, color.b, 0.45f * pulse};
+        const float edge = 70.f;
+        if (!onScreen) { sx = std::clamp(sx, edge, screenW - edge); sy = std::clamp(sy, edge, screenH - edge); }
+        if (onScreen) {
+            int s = (int)(11.f + 3.f * pulse);
+            for (int i = -s; i <= s; i += 2) { int half = s - std::abs(i); ui.rect(sx - half, sy + i, half * 2 + 1, 2, c); }
+            int r = s + 8;   // the ring: a hollow diamond round it
+            for (int i = -r; i <= r; ++i) { int half = r - std::abs(i); ui.rect(sx - half, sy + i, 2, 1, dim); ui.rect(sx + half - 1, sy + i, 2, 1, dim); }
+        } else {
+            glm::vec2 d{sx - screenW * .5f, sy - screenH * .5f};
+            float len = glm::length(d); d = len > .01f ? d / len : glm::vec2{1, 0};
+            glm::vec2 side{-d.y, d.x};
+            for (int i = 0; i <= 16; ++i) for (float sign : {-1.f, 1.f}) {
+                glm::vec2 p = glm::vec2{sx, sy} - d * (float)i + side * ((float)i * .7f * sign);
+                ui.rect(p.x - 2, p.y - 2, 4, 4, c);
+            }
+        }
+        char dist[24]; std::snprintf(dist, sizeof(dist), "%dM", metres);
+        std::string text = label ? label : "";
+        float half = (float)text.size() * 6.f;
+        float x = std::clamp(sx, half + 12.f, std::max(half + 12.f, screenW - half - 12.f));
+        float y = std::min(sy + 28.f, (float)screenH - 44.f);
+        if (!onScreen && sy > screenH * 0.5f) y = sy - 60.f;
+        ui.textShadow(text.c_str(), x, y, 2, c, true);
+        ui.textShadow(dist, x, y + 20.f, 1, glm::vec4{1.f, 1.f, 1.f, 0.85f}, true);
         end2D();
     }
 
@@ -376,8 +446,8 @@ public:
     }
 
     // Pause overlay — drawn on top of the (frozen) gameplay frame.
-    static constexpr int PAUSE_ITEMS = 6;
-    int pauseButtonY(int i) const { return screenH / 2 - 92 + i * 52; }
+    static constexpr int PAUSE_ITEMS = 7;
+    int pauseButtonY(int i) const { return screenH / 2 - 104 + i * 46; }
     void renderPause(int selected, const char* const labels[PAUSE_ITEMS], const char* modeLine, const char* controls1, const char* controls2) {
         begin2D();
         ui.rect(0, 0, screenW, screenH, {0.0f, 0.0f, 0.02f, 0.6f});
@@ -392,7 +462,7 @@ public:
             ui.rect(screenW / 2 - 150, by + 44, 300, 2, b);
             ui.text(labels[i], screenW / 2, by + 16, 2, sel ? glm::vec4{1.f, 0.7f, 0.15f, 1.f} : glm::vec4{0.75f, 0.75f, 0.8f, 0.9f}, true);
         }
-        ui.text("ESC TO RESUME   UP/DOWN + ENTER OR CLICK   BACKSPACE IN GAME RESTARTS THE ROOM", screenW / 2, screenH / 2 + 232, 1, {0.55f, 0.55f, 0.6f, 0.85f}, true);
+        ui.text("ESC TO RESUME   UP/DOWN + ENTER OR CLICK   BACKSPACE IN GAME RESTARTS THE ROOM", screenW / 2, screenH / 2 + 230, 1, {0.55f, 0.55f, 0.6f, 0.85f}, true);
         // Every control, for reference (as you've bound them)
         ui.rect(screenW / 2 - 420, screenH - 104, 840, 50, {0.05f, 0.05f, 0.08f, 0.6f});
         ui.text(controls1, screenW / 2, screenH - 96, 1, {0.85f, 0.85f, 0.9f, 0.9f}, true);
@@ -412,7 +482,7 @@ public:
         return false;
     }
 
-    void renderArmory(const Progression& p, int selW, int selS) {
+    void renderArmory(const Progression& p, int selW, int selS, int owned = (1 << WEAPON_COUNT)-1) {
         begin2D();
         ui.rect(0, 0, screenW, screenH, {0.01f, 0.02f, 0.04f, 0.82f});
         ui.text("ARMORY", screenW / 2, 40, 5, {0.4f, 0.9f, 1.f, 1.f}, true);
@@ -427,6 +497,7 @@ public:
             WeaponId wid = (WeaponId)w;
             const WeaponDef& d = weaponDef(wid);
             const WeaponUpgrades& u = p.up[w];
+            const bool available = (owned >> w) & 1;
             int x = armoryX(w);
             ui.rect(x + 4, ARM_TOP, ARM_COL_W - 8, 36, {0.08f, 0.1f, 0.14f, 0.95f});
             std::snprintf(buf, sizeof(buf), "%d %s", w + 1, d.name);
@@ -436,30 +507,29 @@ public:
                 int y = armoryY(s);
                 bool sel = selW == w && selS == s;
                 int tier = p.tierOf(wid, st), maxT = Progression::maxTier(st);
-                bool maxed = tier >= maxT, afford = p.canBuy(wid, st);
+                bool maxed = tier >= maxT, afford = available && p.canBuy(wid, st);
                 glm::vec4 bg = sel ? glm::vec4{0.16f, 0.12f, 0.05f, 0.95f} : glm::vec4{0.06f, 0.07f, 0.1f, 0.9f};
                 ui.rect(x + 8, y, ARM_COL_W - 16, ARM_ROW_H - 8, bg);
                 if (sel) ui.frame(x + 8, y, ARM_COL_W - 16, ARM_ROW_H - 8, 2, {1.f, 0.65f, 0.15f, 1.f});
                 glm::vec4 lc = maxed ? glm::vec4{0.4f, 1.f, 0.6f, 1.f} : afford ? glm::vec4{1.f, 0.85f, 0.35f, 1.f} : glm::vec4{0.6f, 0.6f, 0.65f, 0.9f};
-                ui.text(s == 3 ? d.modName : STAT[s], x + 18, y + 8, s == 3 ? 1 : 2, lc);
+                ui.text(s == 3 ? weaponModName(wid, u.alternate) : STAT[s], x + 18, y + 8, s == 3 ? 1 : 2, lc);
                 // Tier pips
                 for (int k = 0; k < maxT; ++k)
                     ui.rect(x + 18 + k * 20, y + 30, 16, 8, k < tier ? glm::vec4{1.f, 0.7f, 0.2f, 1.f} : glm::vec4{0.25f, 0.25f, 0.3f, 1.f});
                 // Value preview
                 statPreview(wid, u, st, buf, sizeof(buf));
                 ui.text(buf, x + 18, y + 48, 1, {0.75f, 0.78f, 0.82f, 0.95f});
-                const char* costTxt = maxed ? "MAX" : (Progression::cost(st) == 2 ? "2 PTS" : "1 PT");
+                const char* costTxt = !available ? "NOT FOUND" : s == 3 && u.mod ? "SWAP FREE" : maxed ? "MAX" : (Progression::cost(st) == 2 ? "2 PTS" : "1 PT");
                 ui.textRight(costTxt, x + ARM_COL_W - 20, y + 30, 1, maxed ? glm::vec4{0.4f, 1.f, 0.6f, 1.f} : lc);
             }
         }
         // Description of the selected cell
-        const WeaponDef& d = weaponDef((WeaponId)selW);
-        const char* desc = selS == 3 ? d.modDesc
+        const char* desc = selS == 3 ? weaponModDesc((WeaponId)selW, p.up[selW].alternate)
                          : selS == 0 ? "+20% DAMAGE PER TIER"
                          : selS == 1 ? "15% LESS TIME BETWEEN SHOTS PER TIER"
                                      : "BIGGER MAGAZINE AND 12% FASTER RELOAD PER TIER";
-        ui.text(desc, screenW / 2, armoryY(UPGRADE_STATS) + 8, 2, {0.9f, 0.9f, 0.9f, 0.95f}, true);
-        ui.text("CLICK OR ENTER TO BUY   ARROWS TO MOVE   TAB / ESC TO CLOSE   LEVEL UP BY KILLING IN STYLE",
+        ui.text(desc, screenW / 2, armoryY(UPGRADE_STATS) + 8, selS==3?1:2, {0.9f, 0.9f, 0.9f, 0.95f}, true);
+        ui.text("ENTER / CLICK BUY OR SWAP   M / PAD X PREVIEW OTHER MOD   ARROWS MOVE   TAB / ESC CLOSE",
                 screenW / 2, screenH - 30, 1, {0.55f, 0.55f, 0.6f, 0.85f}, true);
         end2D();
     }
@@ -640,16 +710,17 @@ public:
         end2D();
     }
 
-    void renderDeath(const char* where, int kills, float gameTime, bool fast, bool retry = true) {
+    void renderDeath(const char* where, int kills, float gameTime, bool fast, bool retry = true, const char* retryLine = nullptr, const char* title = "YOU DIED") {
         begin2D();
-        ui.rect(0, 0, screenW, screenH, {0.3f, 0.0f, 0.0f, 0.5f});
-        ui.text("YOU DIED", screenW / 2, screenH / 2 - 90, 5, {0.95f, 0.15f, 0.1f, 0.95f}, true);
+        const bool calm = std::string(title) != "YOU DIED";   // (Chapter 5's RESTORED: cold, not red)
+        ui.rect(0, 0, screenW, screenH, calm ? glm::vec4{0.05f, 0.08f, 0.12f, 0.6f} : glm::vec4{0.3f, 0.0f, 0.0f, 0.5f});
+        ui.text(title, screenW / 2, screenH / 2 - 90, 5, calm ? glm::vec4{0.8f, 0.9f, 1.f, 0.95f} : glm::vec4{0.95f, 0.15f, 0.1f, 0.95f}, true);
         ui.text(where, screenW / 2, screenH / 2 - 34, 2, {0.95f, 0.8f, 0.75f, 0.9f}, true);
         char buf[64];
         std::snprintf(buf, sizeof(buf), "TIME %s   KILLS %d", formatTime(gameTime, fast).c_str(), kills);
         ui.text(buf, screenW / 2, screenH / 2 - 6, 2, {0.8f, 0.7f, 0.7f, 0.85f}, true);
         if (retry) {
-            ui.text(fast ? "R - RESTART ROOM (CLOCK KEEPS RUNNING)" : "R - RETRY THIS ARENA (UPGRADES KEPT)",
+            ui.text(retryLine ? retryLine : fast ? "R - RESTART ROOM (CLOCK KEEPS RUNNING)" : "R - RETRY THIS ARENA (UPGRADES KEPT)",
                     screenW / 2, screenH / 2 + 40, 2, {1.f, 0.85f, 0.5f, 0.95f}, true);
             ui.text("ENTER - NEW RUN    ESC - MENU", screenW / 2, screenH / 2 + 68, 2, {0.6f, 0.5f, 0.5f, 0.8f}, true);
         } else {
@@ -819,6 +890,13 @@ private:
         for (int s = 0; s < WEAPON_COUNT; ++s) {
             const HudWeapon& w = h.weapons[s];
             int x = x0 + s * (slotW + pad);
+            if (!w.owned) {   // (STORY: not found yet: an empty slot)
+                ui.rect(x, y0, slotW, slotH, {0.04f, 0.04f, 0.05f, 0.5f});
+                std::snprintf(buf, sizeof(buf), "%d", s + 1);
+                ui.text(buf, x + 4, y0 + 4, 1, {0.35f, 0.35f, 0.4f, 0.6f});
+                ui.text("--", x + slotW / 2, y0 + slotH / 2 - 6, 2, {0.3f, 0.3f, 0.35f, 0.6f}, true);
+                continue;
+            }
             bool active = s == h.activeWeapon && !h.swordOut;
             ui.rect(x - 2, y0 - 2, slotW + 4, slotH + 4, active ? glm::vec4(w.glow, 0.95f) : glm::vec4(w.glow * 0.35f, 0.5f));
             ui.rect(x, y0, slotW, slotH, active ? glm::vec4{0.16f, 0.15f, 0.2f, 0.95f} : glm::vec4{0.06f, 0.06f, 0.08f, 0.85f});
@@ -837,9 +915,21 @@ private:
         }
         // Grenades
         int gx = x0 + WEAPON_COUNT * (slotW + pad) - pad;
-        for (int i = 0; i < h.grenadeMax; ++i)
-            ui.rect(gx - (i + 1) * 16, y0 - 18, 12, 10, i < h.grenades ? glm::vec4{0.45f, 1.f, 0.25f, 0.95f} : glm::vec4{0.2f, 0.25f, 0.2f, 0.6f});
-        ui.textRight("G", gx - h.grenadeMax * 16 - 8, y0 - 17, 1, {0.7f, 0.9f, 0.6f, 0.9f});
+        for (int i = 0; i < h.grenadeMax; ++i) {
+            glm::vec4 full = h.splinter ? glm::vec4{0.4f, 1.f, 1.1f, 0.95f} : glm::vec4{0.45f, 1.f, 0.25f, 0.95f};
+            glm::vec4 empty = h.splinter ? glm::vec4{0.15f, 0.25f, 0.28f, 0.6f} : glm::vec4{0.2f, 0.25f, 0.2f, 0.6f};
+            ui.rect(gx - (i + 1) * 16, y0 - 18, 12, 10, i < h.grenades ? full : empty);
+            if (h.splinter && i == h.grenades && h.splinterRegrow < 1.f)   // the one growing back fills from the bottom
+                ui.rect(gx - (i + 1) * 16, y0 - 18 + (int)(10 * (1.f - h.splinterRegrow)), 12, (int)(10 * h.splinterRegrow), {0.3f, 0.75f, 0.85f, 0.7f});
+        }
+        if (h.grenadeMax > 0) ui.textRight("G", gx - h.grenadeMax * 16 - 8, y0 - 17, 1, {0.7f, 0.9f, 0.6f, 0.9f});
+        if (h.recall) {   // RECALL: frost while ready, the statue's time draining while it stands
+            const glm::vec4 frost{0.72f, 0.86f, 0.95f, 0.95f};
+            float a = h.recallPlaced ? 0.75f + 0.25f * std::sin(hudTime * 8.f) : h.recall01 >= 1.f ? 1.f : 0.5f;
+            ui.rect(x0, y0 - 16, 70, 6, {0.12f, 0.16f, 0.2f, 0.6f});
+            ui.rect(x0, y0 - 16, (int)(70 * h.recall01), 6, glm::vec4{glm::vec3(frost), frost.a * a});
+            ui.text(h.recallPlaced ? "RECALL: RETURN" : "RECALL", x0 + 76, y0 - 17, 1, glm::vec4{glm::vec3(frost), a});
+        }
     }
 
     void drawWeaponIcon(int s, int x, int y, bool active) {
@@ -917,7 +1007,7 @@ private:
     void statPreview(WeaponId w, const WeaponUpgrades& u, UpgradeStat s, char* buf, size_t n) const {
         WeaponUpgrades next = u;
         bool maxed = false;
-        if (s == UpgradeStat::MOD) { std::snprintf(buf, n, "%s", u.mod ? "INSTALLED" : "SPECIAL PERK"); return; }
+        if (s == UpgradeStat::MOD) { std::snprintf(buf, n, "%s", u.mod ? "ACTIVE / ENTER TO SWAP" : "M TO PREVIEW OTHER MOD"); return; }
         if (next.tier[(int)s] < MAX_TIER) ++next.tier[(int)s]; else maxed = true;
         switch (s) {
             case UpgradeStat::DAMAGE:

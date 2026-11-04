@@ -8,6 +8,7 @@
 // spent in the ARMORY (TAB). Dying and retrying an arena keeps your upgrades;
 // a new run starts from level 1.
 // =============================================================================
+#include "core/GameState.h"
 #include "player/Weapons.h"
 #include "enemies/Enemy.h"
 #include "player/StyleSystem.h"
@@ -21,6 +22,7 @@
 
 inline int xpForKill(EnemyType t) {
     switch (t) {
+        case EnemyType::PATIENT:return 40;case EnemyType::GRAFTED:return 100;case EnemyType::SUSPENDED:return 65;case EnemyType::PHASED:return 70;case EnemyType::SUCCESSOR:return 1500;
         case EnemyType::HUSK:     return 20;
         case EnemyType::RIPPER:   return 15;
         case EnemyType::SENTINEL: return 30;
@@ -39,7 +41,7 @@ inline int xpForKill(EnemyType t) {
         case EnemyType::WEAVER:   return 50;
         case EnemyType::LEVIATHAN: return 1500;
         case EnemyType::ABSOLUTE: return 2000;
-        case EnemyType::PACEMAKER: return 1200;
+        case EnemyType::PACEMAKER: case EnemyType::SORTER: case EnemyType::BALLAST: return 1200;
         case EnemyType::COURIER: case EnemyType::BULWARK: case EnemyType::CANTOR:
         case EnemyType::HARRIER: case EnemyType::PLUMB: case EnemyType::FOREMAN: return 300;   // the Gauntlet's mini-bosses
         default:                  return 10;
@@ -99,8 +101,13 @@ struct Progression {
 // BOSS (the main menu): every boss in the order you meet them, each fought on its own, straight
 // into its fight with the upgrades a run would have by then (spent in the armory first). THE
 // ABSOLUTE's first form ends as the eclipse takes him; MORNINGSTAR starts inside it
-struct BossEntry { const char* name; const char* where; bool act2; int arena; bool morning; int level, points; };
-constexpr int BOSS_COUNT = 6;
+struct BossEntry {
+    const char* name; const char* where; bool act2; int arena; bool morning; int level, points;
+    GameMode special = GameMode::ARENA;
+    int chapter = 1;
+    GameMode mode() const { return special != GameMode::ARENA ? special : act2 ? GameMode::ACT2 : GameMode::ARENA; }
+};
+constexpr int BOSS_COUNT = 10;
 inline const BossEntry& bossEntry(int i) {
     static const BossEntry B[BOSS_COUNT] = {
         {"THE WARDEN",    "THE CORE",                  false, 3, false, 4, 3},
@@ -109,6 +116,10 @@ inline const BossEntry& bossEntry(int i) {
         {"THE LEVIATHAN", "ACT II - THE MAW",          true,  4, false, 6, 8},
         {"THE ABSOLUTE",  "!!!!! - HIS FIRST FORM",    true,  5, false, 6, 9},
         {"MORNINGSTAR",   "!!!!! - INSIDE THE ECLIPSE", true, 5, true,  6, 9},
+        {"THE PACEMAKER", "FAST - THE TOWER", false, 6, false, 7, 6, GameMode::FAST},
+        {"THE SORTER", "STORY - THE SORTING FLOOR", false, 8, false, 5, 4, GameMode::STORY, 1},
+        {"BALLAST", "STORY - THE CUT", false, 6, false, 6, 6, GameMode::STORY, 2},
+        {"THE SUCCESSOR", "STORY - FINAL ASSESSMENT",false,9,false,8,8,GameMode::STORY,3},
     };
     return B[std::clamp(i, 0, BOSS_COUNT - 1)];
 }

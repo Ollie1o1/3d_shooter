@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OVERDRIVE</title>
+<meta name="overdrive-build" content="__OVERDRIVE_BUILD__">
 <link rel="icon" href="data:,">
 <style>
   :root { color-scheme: dark; }
@@ -19,6 +20,7 @@
   .overlay h1 { margin: 0; font: 700 clamp(28px, 6vw, 56px)/1 system-ui, sans-serif; letter-spacing: 0.08em; color: #f5b83d; }
   .overlay .go { font-size: 14px; letter-spacing: 0.12em; text-transform: uppercase; }
   .overlay .keys { color: #8d8b99; font-size: 12px; max-width: 46em; line-height: 1.8; }
+  .overlay .build { color: #8d8b99; font-size: 10px; }
   .bar { width: 240px; height: 3px; background: #24222e; margin: 0 auto; overflow: hidden; }
   .bar i { display: block; height: 100%; width: 0; background: #f5b83d; transition: width 150ms; }
   .overlay[data-state="loading"] .go { color: #8d8b99; }
@@ -42,10 +44,11 @@
     <span class="keys">
       <kbd>WASD</kbd> move · <kbd>Mouse</kbd> look · <kbd>LMB</kbd> fire · <kbd>RMB</kbd> aim (rifles) ·
       <kbd>Q</kbd> grapple · <kbd>Space</kbd> jump · <kbd>Shift</kbd> dash · <kbd>Ctrl</kbd>/<kbd>C</kbd> slide / slam ·
-      <kbd>G</kbd> grenade · <kbd>F</kbd> parry · <kbd>E</kbd> finisher · <kbd>1</kbd>–<kbd>4</kbd> weapons · <kbd>Tab</kbd> armory ·
+      <kbd>G</kbd> grenade · <kbd>F</kbd> parry · <kbd>E</kbd> read / interact / finisher · <kbd>1</kbd>–<kbd>4</kbd> weapons · <kbd>Tab</kbd> armory ·
       <kbd>Esc</kbd> or <kbd>P</kbd> pause (click to recapture the mouse) ·
       fullscreen from the pause menu
     </span>
+    <span class="build">Build __OVERDRIVE_BUILD__</span>
   </button>
 </div>
 <script>
@@ -57,12 +60,19 @@
 
   var Module = {
     canvas,
+    locateFile: (path, prefix) => `${prefix}${path}?v=__OVERDRIVE_BUILD__`,
     // ?play skips the main menu (same as ./shooter --play), ?fast starts the FAST
     // time trial, ?endless an ENDLESS run; ?arena=N starts at arena (or FAST section) N; ?dev opens the
     // dev level select
     arguments: (() => {
       const q = new URLSearchParams(location.search);
       const args = q.has('arena') ? ['--arena', q.get('arena')] : q.has('play') ? ['--play'] : [];
+      if (q.has('story4')) args.push('--story4');   // Chapter 4 (in progress): no menu entry yet
+      if (q.has('splinter')) args.push('--splinter');
+      if (q.has('story3')) args.push('--story3');
+      if (q.has('story2')) args.push('--story2');
+      if (q.has('training')) args.push('--training');
+      if (q.has('continue')) args.push('--continue');
       if (q.has('fast')) args.push('--fast');
       if (q.has('endless')) args.push('--endless');
       if (q.has('act2')) args.push('--act2');   // ?act2&arena=6: straight into the Zenith
@@ -240,6 +250,6 @@
   document.addEventListener('keydown', start, true);
   document.addEventListener('pointerlockchange', () => { if (document.pointerLockElement) start(); });
 </script>
-<script async src="overdrive.js"></script>
+<script async src="overdrive.js?v=__OVERDRIVE_BUILD__"></script>
 </body>
 </html>

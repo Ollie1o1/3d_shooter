@@ -15,6 +15,7 @@ enum class RoomTone : uint8_t { NONE,
     YARD, FOUNDRY, SPIRE, CORE, SANCTUM,                         // ARENA (Act I): each its own synth
     CANAL, SLUICE, ASCENT, SPAN, WELL, PUMPWORKS, TOWER,          // FAST: mixed from RoomToneSynth's kit
     NAVE, ORRERY, DESCENT, RELIQUARY, MAW, ZENITH,                // ACT II: the same
+    WARD, CELESTIAL, HADAL,
     COUNT };
 
 // What a sound is for, so the mix can rank it (SfxMixer): a wind-up TELL cuts

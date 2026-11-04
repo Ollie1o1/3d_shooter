@@ -64,6 +64,7 @@ public:
     int   arena = 0, wave = 0;
     Phase phase = Phase::INTRO;
     float timer = 0.f;
+    float goalRefillTimer = 0.f;
     struct Queued { EnemyType type; bool fixed; glm::vec3 pos; std::vector<EnemyType> escort; Hollow variant; };
     std::vector<Queued>            queue;
     std::vector<DirectorEventRec>  events;      // drained by the caller every frame
@@ -163,8 +164,12 @@ public:
             aliveCount += (int)fixedOut.size();
             fixedOut.clear();
             if (fast) {
-                for (auto& q : queue) aliveCount += emitSquad(q, playerPos, out);
-                queue.clear();
+                size_t emitted = 0;
+                for (auto& q : queue) {
+                    if (hasGoal() && aliveCount + 1 + (int)q.escort.size() > maxAlive()) break;
+                    aliveCount += emitSquad(q, playerPos, out); ++emitted;
+                }
+                queue.erase(queue.begin(), queue.begin() + emitted);
             } else if (!queue.empty() && spawnTimer <= 0.f &&
                        (aliveCount + 1 + (int)queue.front().escort.size() <= maxAlive() || aliveCount == 0)) {
                 Queued q = queue.front();
@@ -174,9 +179,18 @@ public:
             }
             if (hasGoal() && !goalDone) {
                 updateGoal(dt, playerPos);
-                if (queue.empty() && !goalDone) buildQueue(false);   // they keep coming until it's done
+                const WaveGoal& g = goal();
+                bool fieldOk = g.refillAt < 0 ? aliveCount < maxAlive() : aliveCount <= g.refillAt;
+                // Paced: the quiet only starts once the field is (nearly) clear
+                if (g.refillGap > 0.f && !fieldOk) goalRefillTimer = std::max(goalRefillTimer, g.refillGap);
+                else goalRefillTimer -= dt;
+                if (g.refill && queue.empty() && !goalDone && fieldOk && (!fast || goalRefillTimer <= 0.f)) {
+                    buildQueue(false);
+                    if (g.refillSize > 0 && (int)queue.size() > g.refillSize) queue.resize(g.refillSize);
+                    goalRefillTimer = std::max(3.f, g.refillGap);   // breathing room between security details, including in Story
+                }
             }
-            if (queue.empty() && aliveCount == 0 && (!hasGoal() || goalDone)) {
+            if (queue.empty() && aliveCount == 0 && (!hasGoal() || goalDone) && !hold) {
                 if (wave + 1 < waveCount()) {
                     events.push_back({DirectorEvent::WAVE_CLEARED, wave});
                     if (fast) { ++wave; beginWave(); }
@@ -198,16 +212,20 @@ public:
             if (timer <= 0.f) { ++wave; beginWave(); }
             break;
         case Phase::CLEARED: {
+            if(arena+1>=(int)level->arenas.size())break; // a resumed final Story boss stays cleared
             // Start the next arena once the player is a few metres inside it,
             // well clear of the gate that is about to close behind them.
             const Arena& next = level->arenas[arena + 1];
-            if (level->arenaAt(playerPos) == arena + 1 && playerPos.z < next.zone.max.z - 3.5f)
-                startArena(arena + 1);
+            if (level->arenaAt(playerPos) == arena + 1 && playerPos.z < next.zone.max.z - 3.5f) {
+                if (next.waves.empty()) approach(arena + 1);   // (a quiet room: nothing to start, just walk through)
+                else startArena(arena + 1);
+            }
             break;
         }
         case Phase::APPROACH: {
             const Arena& a = current();
-            if (!a.hasTrigger) { startArena(arena); break; }
+            if (a.scripted) break;   // (STORY: the game calls startArena itself)
+            if (!a.hasTrigger) { if (!a.waves.empty()) startArena(arena); break; }   // (no waves: a walk-through, STORY's furnace line)
             const AABB& t = a.trigger;
             if (playerPos.x >= t.min.x && playerPos.x <= t.max.x && playerPos.y >= t.min.y && playerPos.y <= t.max.y &&
                 playerPos.z >= t.min.z && playerPos.z <= t.max.z)
@@ -216,6 +234,13 @@ public:
         }
         case Phase::VICTORY: break;
         }
+    }
+
+    // Scripted objectives and practice skips use the same completion event as timed goals.
+    void completeGoal() {
+        if (!hasGoal() || goalDone) return;
+        goalDone = true; holding = false; queue.clear();
+        events.push_back({DirectorEvent::GOAL_DONE, wave});
     }
 
     // Tests: where the next spawn of type t would go
@@ -233,7 +258,7 @@ private:
     void beginWave() {
         phase = Phase::ACTIVE;
         spawnTimer = 0.f;
-        goalDone = false; holding = false;
+        goalDone = false; holding = false; goalRefillTimer = 3.f;
         const WaveGoal& g = goal();
         goalTimer = g.kind == WaveGoal::SURVIVE ? g.seconds : 0.f;
         conduitAlive.assign(g.kind == WaveGoal::CONDUITS ? g.points.size() : 0, true);
@@ -289,9 +314,7 @@ private:
             default: break;
         }
         if (met) {
-            goalDone = true; holding = false;
-            queue.clear();
-            events.push_back({DirectorEvent::GOAL_DONE, wave});
+            completeGoal();
         }
     }
 

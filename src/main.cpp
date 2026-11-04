@@ -60,6 +60,77 @@ struct App {
 
     // --shot N FILE: render N frames of gameplay, save the last one as a BMP and
     // exit (used to eyeball levels and the HUD without playing)
+    // --verify-story: native integration through real Enter/E/retry/menu paths.
+    bool verifyStory=false;int storyCheckStage=0,storyCheckFrames=0,verifyExit=0;
+    void checkStoryRuntime() {
+        if(!verifyStory)return;
+        auto fail=[&](const char* reason){std::fprintf(stderr,"STORY RUNTIME FAIL: %s\n",reason);verifyExit=1;running=false;};
+        auto press=[&](SDL_Keycode key){SDL_Event e{};e.type=SDL_KEYDOWN;e.key.keysym.sym=key;e.key.keysym.scancode=SDL_GetScancodeFromKey(key);currentState->handleEvent(e);};
+        if(++storyCheckFrames>900){fail("timed out");return;}
+        auto* g=dynamic_cast<GameplayState*>(currentState.get());
+        if(storyCheckStage<7&&!g){fail("expected gameplay");return;}
+        switch(storyCheckStage) {
+        case 0:
+            g->storyOwned=7;g->storyGrapple=true;g->enterArena(8);g->storyBossDown=true;
+            g->player.position=(g->level.story.end.min+g->level.story.end.max)*.5f;
+            g->player.velocity={0,0,0};++storyCheckStage;break;
+        case 1:
+            if(g->storyEndT>3.f){press(SDLK_RETURN);++storyCheckStage;}break;
+        case 2: {
+            if(!g->wasteland()||g->storyOwned!=7||!g->storyGrapple||g->storyEndT>=0||g->level.arenas.size()!=8||g->director.arena!=0) {fail("chapter handoff/inventory/world reset");return;}
+            g->enterArena(3);g->player.position={-56,-6,-104};
+            g->keepPlayerInZone(1.f/60.f);
+            if(glm::length(g->player.position-g->level.arenas[3].respawn)>.1f){fail("span fall recovery");return;}
+            g->enterArena(4);
+            for(const auto& item:g->interactables)if(item.label=="TAKE THE LONGSHOT") {
+                g->player.camera.position=item.position+glm::vec3{0,0,-2.5f};
+                g->player.position=g->player.camera.position-glm::vec3{0,1.7f,0};
+                g->player.camera.yaw=90;g->player.camera.pitch=0;press(SDLK_e);break;
+            }
+            if(!g->storyOwns(3)){fail("registered Longshot pickup");return;}
+            // Inspect a real readable through the same explicit E key path.
+            g->player.position={35,0,-72.2f};g->player.camera.position={35,1.7f,-72.2f};
+            g->player.camera.yaw=90;g->player.camera.pitch=0;
+            press(SDLK_e);
+            if(g->storyLog!=2){fail("explicit wreck reading");return;}
+            g->enterArena(6);g->player.position={30,0,-190};++storyCheckStage;break;
+        }
+        case 3:
+            for(auto& enemy:g->enemies)if(enemy.alive&&enemy.type==EnemyType::BALLAST&&enemy.targetable()) {
+                g->hurtEnemy(enemy,100000.f,enemy.position,0,0,StyleSource::ENVIRONMENT,false,true);
+                if(!g->storyBossDown){fail("Ballast death script");return;}
+                ++storyCheckStage;break;
+            }
+            break;
+        case 4:
+            if(g->director.arena==7) {
+                if(g->level.doors[g->level.arenas[6].exitDoor].locked){fail("boss gate stayed locked");return;}
+                g->enterArena(7);g->storyCheckpoint=7;g->restartHere();
+                if(!g->storyBossDown||!g->storyOwns(3)){fail("post-boss retry lost progress");return;}
+                g->player.position={28,0,-282};++storyCheckStage;
+            }break;
+        case 5:if(g->storyEndT>3.f){press(SDLK_RETURN);storyCheckStage=6;}break;
+        case 6:
+            if(!g->laboratory() || g->storyOwned!=15 || !g->labIntro.active()){fail("Living Ward handoff/intro");return;}
+            g->labIntro.seen=true;g->labIntro.time=-1;g->director.hold=false;
+            g->enterArena(9);g->storyBossDown=true;g->player.position=(g->level.story.end.min+g->level.story.end.max)*.5f;
+            storyCheckStage=9;break;
+        case 9:if(g->storyEndT>3.f){press(SDLK_RETURN);storyCheckStage=7;}break;
+        case 7:
+            if(auto* menu=dynamic_cast<MenuState*>(currentState.get())) {
+                menu->selected=1;press(SDLK_RETURN);
+                // Continue adds a row ahead of the three fresh chapter starts.
+                menu->storySel=(menu->hasStorySave?1:0)+1;
+                press(SDLK_RETURN);++storyCheckStage;
+            }break;
+        case 8:
+            if(g) {
+                if(!g->wasteland()||g->storyOwned!=7){fail("chapter selection did not start clean Chapter 2");return;}
+                std::fprintf(stderr,"STORY RUNTIME PASS: chapter handoff, inventory, Longshot, E-read, Ballast, gate, retry, ending and menu selection\n");
+                running=false;
+            }break;
+        }
+    }
     int         shotFrames = 0;
     std::string shotPath;
     // --record FRAMES SKIP PREFIX: footage. Every frame advances 1/30 s; after
@@ -209,6 +280,8 @@ struct App {
             menu->onStart  = [this](GameMode m, StartOptions o) {
                 mode = m; pending = NextState::Game;
                 g_startArena = o.arena; g_startWave = o.wave;
+                g_storyChapter=o.storyChapter;
+                g_continueStory=o.continueStory;
                 g_godMode    = o.god || godFromCommandLine;
                 g_practice   = o.practice;
                 g_bossRun    = o.boss;
@@ -216,6 +289,7 @@ struct App {
                 g_arenaSolo  = o.solo;
             };
             menu->onQuit   = [this]() { quit(); };
+            if(g_devOverlay=="chapters")menu->page=MenuState::STORYPAGE;
             if (openDevMenu) { menu->openDev(); openDevMenu = false; }
             if (g_devOverlay == "board") menu->page = MenuState::BOARD;
             if (g_devOverlay == "bosses") menu->page = MenuState::BOSS;
@@ -225,7 +299,7 @@ struct App {
             setMouseCaptured(!g_devNoMouse);
             audio.masterVolume = settings.audioVolume;
             auto* game = new GameplayState(audio, &settings, mode);
-            game->onReturnToMenu = [this]() { pending = NextState::Menu; };
+            game->onReturnToMenu = [this,game]() { game->saveStoryProgress(); pending = NextState::Menu; };
             game->onQuit         = [this]() { quit(); };
             currentState.reset(game);
         } else if (next == NextState::Viewer) {   // --viewer: one gun on a stand, its file watched (GunViewer.h)
@@ -321,6 +395,7 @@ struct App {
 #endif
         if (currentState) {
             currentState->update(frameDt);
+            checkStoryRuntime();
             ftLap.to(frametimer::UPDATE);
             display::bind();
             currentState->render();
@@ -588,7 +663,7 @@ int main(int argc, char* argv[]) {
     // (implies --play), --wave N skips to a wave within it, --god disables
     // damage (for footage), --dev opens the level select. Dev: --cam X Y Z
     // YAW PITCH, --shot FRAMES FILE.BMP, --audiodump FILE.WAV SECONDS (record the mix, then quit),
-    // --sword (the sword on key 5 in any arena)
+    // --sword (the sword on key 5 in any arena), --splinter (the SPLINTER on the grenade button), --recall (RECALL on X)
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
         if (arg == "--play") app->pending = App::NextState::Game;
@@ -604,9 +679,19 @@ int main(int argc, char* argv[]) {
             g_arenaSolo = std::max(0, std::atoi(argv[++i]) - 1); g_startArena = g_arenaSolo;
         }
         if (arg == "--endless") { app->mode = GameMode::ENDLESS; app->pending = App::NextState::Game; }
+        if (arg == "--training") {app->mode=GameMode::TRAINING;app->pending=App::NextState::Game;g_practice=true;}
+        if (arg == "--continue") {app->mode=GameMode::STORY;app->pending=App::NextState::Game;g_continueStory=true;}
+        if (arg == "--story") { app->mode = GameMode::STORY; app->pending = App::NextState::Game; }   // STORY: CHAPTER 1 (the wake-up first)
+        if(arg=="--verify-story") {app->verifyStory=true;g_storyChapter=1;app->mode=GameMode::STORY;app->pending=App::NextState::Game;g_fixedDt=1.0/30;g_devNoMouse=true;g_godMode=true;}
+        if(arg=="--story2") {g_storyChapter=2;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}
+        if(arg=="--story3") {g_storyChapter=3;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}
+        if(arg=="--story5") {g_storyChapter=5;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}   // Chapter 5: THE COLD STORE
+        if(arg=="--story4") {g_storyChapter=4;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}   // Chapter 4: THE BLOOD MOON PLAIN (in progress)
+        if(arg=="--chapter" && i+1<argc)g_storyChapter=std::clamp(std::atoi(argv[++i]),1,5);
         if (arg == "--boss" && i + 1 < argc) {   // --boss N: BOSS N (1 the Warden .. 6 MORNINGSTAR), on its own
             g_bossRun = std::clamp(std::atoi(argv[++i]) - 1, 0, BOSS_COUNT - 1);
-            app->mode = bossEntry(g_bossRun).act2 ? GameMode::ACT2 : GameMode::ARENA; app->pending = App::NextState::Game;
+            g_storyChapter = bossEntry(g_bossRun).chapter;
+            app->mode = bossEntry(g_bossRun).mode(); app->pending = App::NextState::Game;
         }
         if (arg == "--god")  { g_godMode = true; app->godFromCommandLine = true; }
         if (arg == "--dev")  app->openDevMenu = true;
@@ -623,6 +708,8 @@ int main(int argc, char* argv[]) {
         }
         if (arg == "--weapon" && i + 1 < argc) g_devWeapon = std::atoi(argv[++i]) - 1;
         if (arg == "--aim") g_devAim = true;
+        if (arg == "--recall") g_devRecall = true;       // RECALL (Chapter 5) on its key (X), anywhere
+        if (arg == "--splinter") g_devSplinter = true;   // the SPLINTER (Chapter 4) on the grenade button
         if (arg == "--sword") g_devSword = true;   // the sword (key 5) anywhere, for testing it
         if (arg == "--swordorbit" && i + 1 < argc) g_devSwordOrbit = (float)std::atof(argv[++i]);
         if (arg == "--spawn" && i + 1 < argc) g_devSpawns.push_back(std::atoi(argv[++i]));
@@ -643,6 +730,7 @@ int main(int argc, char* argv[]) {
             for (int k = 0; k < GameSettings::FRAME_CAPS; ++k) if (GameSettings::frameCapHz(k) == want) app->settings.frameCap = k;
             g_devFpsLog = true;
         }
+        if (arg == "--ambient" && i + 1 < argc) app->settings.ambientDetail = std::clamp(std::atoi(argv[++i]), 0, 3);
         if (arg == "--res" && i + 1 < argc) app->renderOverride = std::atoi(argv[++i]);
         if (arg == "--balance") g_balanceAllowed = true;
         if (g_devOverlay.rfind("balance", 0) == 0) {   // --overlay balance[:search]: start with it open (screenshots)
@@ -701,8 +789,9 @@ int main(int argc, char* argv[]) {
     app->currentState.reset();
     SDL_GL_DeleteContext(app->ctx);
     SDL_DestroyWindow(app->window);
+    int exitCode=app->verifyExit;
     delete app;
     SDL_Quit();
-    return 0;
+    return exitCode;
 #endif
 }

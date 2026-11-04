@@ -6,7 +6,7 @@
 
 ![OVERDRIVE gameplay: Rippers breaking apart under shotgun fire in the Sunset Yard, a Shieldbearer and a Juggernaut in the Core at night, the walk into the Sanctum under an eclipse, and a duel with the Sovereign](docs/overdrive.gif)
 
-A fast 3D arena shooter in the spirit of ULTRAKILL, written from scratch in C++17 with **SDL2**, **OpenGL 3.3** and **GLM**: no engine. Grapple, dash, slide and slam through waves of enemies built from animated boxes, parry their shots back at them, and take on six bosses, each with its own trick to learn.
+A fast 3D arena shooter in the spirit of ULTRAKILL, written from scratch in C++17 with **SDL2**, **OpenGL 3.3** and **GLM**: no engine. Grapple, dash, slide and slam through waves of enemies built from animated boxes, parry their shots back at them, and take on distinct bosses, each with its own trick to learn.
 
 - **No engine, no asset pipeline**: textures, the sky, the soundtrack and every enemy voice are generated in code at load time
 - **Desktop and browser**: runs on macOS, Windows (MSYS2) and in the browser (the same C++ compiled to WebAssembly + WebGL2); it also builds and passes its tests on Linux, though it hasn't been play-tested on a Linux desktop
@@ -19,17 +19,38 @@ A fast 3D arena shooter in the spirit of ULTRAKILL, written from scratch in C++1
 |------|------------|
 | **ARENA** | A page (like FAST's) of the whole of **Act I**, the whole of **Act II** once Act I is beaten, or **any arena of either act on its own** (always open: the upgrades a run would have by then, your best clear time kept). Act I: four themed arenas of three waves each (the **Sunset Yard**, **the Foundry**, **the Spire**, **the Core** and its boss **the Warden**), then **the Sanctum**, a duel under an eclipse with **the Sovereign**. Scored and ranked on the leaderboard. |
 | **ACT II** | (On the ARENA page.) The whole act unlocks when the Sovereign falls in an Act I run. Down beneath the eclipse: **the Drowned Nave** (rising water), **the Orrery** (a sun whose flare sweeps the arena), **the Descent** (a cage riding down a shaft to **the Penitent**), **the Reliquary** (pieces of Act I drifting over a void) and **the Maw** (**the Leviathan**). Then the encore, **!!!!!**: **the Absolute**, who comes back as **MORNINGSTAR**. Keeps local best times; not ranked yet. |
-| **STORY** | Coming soon: a new mode, still being written. |
+| **STORY** | Three chapters: **THE CRADLE**, **THE DEAD SPAN** and **THE LIVING WARD**. Escape the factory and ash wasteland, then descend through ten spacious medical test chambers into incompatible dimensions. Chapter 3 adds the first skippable cutscene, four flesh chassis families, observation bridge choices, two secrets and **THE SUCCESSOR**, a fast humanoid boss with a robot face and original choir/organ score. Equipment and upgrades carry forward. |
 | **FAST** | **The Gauntlet**: a time trial through seven rooms joined by boost tubes, a **mini-boss** in each room and **the Pacemaker** at the end, with splits against your best run, par ranks, a ghost of your best route and **medals for every room**. **ROOM ATTACK** runs any one room on its own for its medal. |
 | **ENDLESS** | Generated waves in the Core until you die, tougher every wave, with an objective every 4th wave and the Warden every 10th. |
 | **BOSS** | Any boss on its own, with a level and upgrades to match. Your best kill time for each is kept. |
 
 Kills earn **XP** (more for stylish play) that buys **weapon upgrades** in the Armory. Every ranked run is **scored** (style, minus damage taken, plus a time or wave bonus, times the difficulty) and good runs go on a **leaderboard** shared by every player on the website.
 
+Story starts unarmed. UNIT 01 holds the revolver, UNIT 02 the Lancer, and UNIT 06 the shotgun.
+The grapple is recovered at the Inspection Line. Guns and found logs survive a checkpoint retry;
+a new run resets discoveries. Enter on Chapter 1's completion card continues into Chapter 2
+with your equipment. STORY also offers direct Chapter 2 and Chapter 3 starts with the appropriate equipment.
+See [the Chapter 1 implementation and playtest notes](docs/story-chapter-1.md) for the route, controls,
+source files and developer starts. [Chapter 2 notes](docs/story-chapter-2.md) cover the wasteland
+route, Blender assets and verification. Launch Chapter 2 directly with `./shooter --story2`, or the Living Ward with `./shooter --story3` (`?story3` in the web build). Chapter 5, THE COLD STORE (an icy planet, RECALL, 24-K and THE RESTORER), starts with `./shooter --story5` (sections with `--arena N`, from 1); its [design and build notes](docs/chapter-5-design.md) cover what is built. [Chapter 3 build notes](docs/chapter-3-implementation.md) cover its controls, assets, tests and tuning limits. The current [Story revision](docs/story-overhaul.md) documents the writing, research and encounter direction. Settings → VIDEO → **AMBIENT DETAIL** reduces optional ash, grit, vents and moving decoration independently of resolution; required attack tells and objectives remain visible. Settings → GAMEPLAY → **ENEMY MARKERS** selects LOW (small cleanup icons, one short direction label) or DETAILED (full names, distance and cover labels). Bosses do not receive tracking icons in either mode.
+
+Combat Practice is available from **F3** on the main menu or the Story page.
+Choose repeatable lessons for parries, finishers, grapples, shotgun jumps and
+more; **F4** reopens the Field Guide during any run. Story now autosaves local
+checkpoint progress and offers **Continue**. The Armory offers two alternative
+mods per gun, with free swaps after buying the mod; **M** (controller X) previews
+its alternative. The Boss page also includes the Pacemaker, Sorter and Ballast.
+See [the improvement notes](docs/combat-and-story-improvements.md) for controls,
+save behaviour, relay isolation and the turbine winch, and
+[Chapter 3 directions](docs/chapter-3-directions.md) for the surreal-world brainstorm.
+
 ## The bosses
 
 | Boss | Where | The trick |
 |------|-------|-----------|
+| **The Sorter** | the Sorting Floor (Story, Chapter 1) | Evade its gantry rush, staggered presses and furnace purges; parry the white claw, aim for the open blue strip and survive progressive belt failures |
+| **Ballast** | the Cut (Story, Chapter 2) | A pursuing clearance grader: jump its sweep and torn-road slabs, evade pivoting charges, parry its harpoon or shoot the cable, then hit the exposed rear turbine |
+| **The Successor** | Final Assessment (Story, Chapter 3) | Evade committed incision/vector paths, cut Suture anchors, watch announced crossings and parry white thrusts. One health bar, three phases, original choir and organ score. |
 | **The Warden** | the Core (Act I) | Cut the four conduits feeding it; hit its core when it vents; survive its meltdown |
 | **The Sovereign** | the Sanctum (Act I) | A sword duellist: parry (F) his sweeps and cleave as they land to break his guard |
 | **The Penitent** | the Descent (Act II) | Chained to the pit wall: break the chains, jump its low sweeps, slide under the high ones |
@@ -293,11 +314,18 @@ Three headless test programs, no window or GPU needed (CI runs them on Linux and
 - **`tests/test_game.cpp`**: every level's data (no spawn inside a wall, every jump pad lands, every moving platform stays clear of walls), the enemy AI, rigs, weapons, XP, the mix table, and simulated full ARENA, FAST and ACT II runs.
 - **`tests/test_zenith.cpp`**: the encore. The sword, the Zenith, and **BossSim** (`tests/BossSim.h`), which pits the real AI of the Warden, the Sovereign, the Leviathan and the Absolute (both forms) against scripted players: cheese strategies that must fail, a solid player whose kill time must land in a target range, and a dodger. BossSim is deterministic, so a change that shifts its numbers changed the fight.
 
+Story boss combat, counters and simulation limits are documented in [the combat overhaul](docs/story-boss-combat-design.md). `make test-story-bosses` compares sustained weapon fire with real movement, reloads, healing and reactions to committed attacks.
+
+Story also has `make test-story-overhaul` for objective pacing, Ballast, weather budgets and record layout, and native `make test-dev` for checkpoint inputs, actual brake shots, gate/retry behavior and settings screenshots.
+
 ## Dev tools
 
 Everything below runs without touching the mouse, so it works from scripts.
 
 ```sh
+# Story weather/detail override for testing: 0 OFF, 1 LOW, 2 MEDIUM, 3 HIGH
+./shooter --story2 --ambient 0
+
 # Render N frames, save the last as a BMP and quit
 ./shooter --arena 3 --cam 0 3 -129 -90 18 --weapon 4 --aim --shot 90 shot.bmp
 #   --cam X Y Z YAW PITCH   --weapon 1-4   --aim   --res LINES
@@ -314,6 +342,10 @@ Everything below runs without touching the mouse, so it works from scripts.
 #   --act2 --arena 5: straight into the Maw and the Leviathan
 #   --act2 --arena 6: straight into !!!!! (the Zenith) and the Absolute (add --cam ... so the armory doesn't open)
 #   --sword: the sword on key 5 in any arena; --weapon 5: start with it drawn
+#   --story4: Chapter 4, THE BLOOD MOON PLAIN (in progress); --overlay plainimpact: a big meteor lands 160 m ahead; --overlay plainrevealNN: the opening from NN s (0-13 the prologue); --overlay plainclose / plaindeck: straight to the Gleaner fight / onto its back
+#   --splinter: UNIT 24's SPLINTER (Chapter 4) on the grenade button in any mode: G throws, shoot it to bounce the round
+#   --story5: Chapter 5, THE COLD STORE; --recall: RECALL (X) in any mode; --overlay coldride: the capsule ride out;
+#   --overlay rspose: the Restorer stands still (screenshots); --overlay bossdown-rsfinish: the Restorer falls and the RECALL finisher plays
 #   --overlay swingSU: hold sword stroke S (0 forehand, 1 backhand, 2 overhead) U/10 through it; guard: its guard
 #   --swordorbit DEG: see the sword and the arms holding it from the side (DEG round them), to check the wrists
 #   --spawn TYPE (repeatable): enemies in an arc in front of the camera
@@ -354,7 +386,7 @@ OVERDRIVE_SFXLIST=1 ./shooter ...   # print every loaded sound and its length
 ./shooter --mixreport              # every sound's level against its mix target, then quit
 ```
 
-**In the game:** `` ` `` or **F2** on the main menu opens the **DEV level select** (also `--dev`, or `?dev` on the web build): any arena and wave (Act I or Act II), any FAST room, with god mode on or off. These are practice runs (no records, no leaderboard); in one, **F5** clears the current wave and **F6** refills health.
+**In the game:** `` ` `` or **F2** on the main menu opens the **DEV level select** (also `--dev`, or `?dev` on the web build): any arena and wave (Act I or Act II), any FAST room, or any STORY checkpoint in all three chapters, with god mode on or off. These are practice runs (no records, no leaderboard); in one, **F5** clears the current wave and **F6** refills health. STORY starts skip the wake-up and include equipment from earlier rooms. Scroll over the STORY column for Chapters 2 and 3; rows use `chapter.room` numbering.
 
 ## How to extend
 
@@ -637,7 +669,7 @@ The regular enemies (not the bosses, which have their own answers) take a hit wi
 
 - **Victory screen** — after the Sovereign: time, kills, accuracy, deaths and the run's **score**, part by part: style earned, time bonus (10 a second under a 15-minute par), damage taken (2 a point), times the difficulty (x0.75 LENIENT to x1.5 BRUTAL). An ENDLESS run ends when you die, on a RUN OVER screen with its score (style + 500 a wave cleared)
 - **Leaderboard** — make the top 10 and you're asked for a name (or ESC to skip). ARENA and ENDLESS rank by score, FAST by time. LEADERBOARD on the main menu shows those three, plus your best kill time for each boss (BOSS mode, kept on this machine). ACT II runs keep local best times but aren't ranked yet. On the website it's the **world** board, shared by every player (the site's `/api/overdrive-board`, checked server-side for plausible scores and times); elsewhere it's this machine's. Only full runs count: not one started at a later arena, in god mode or from the dev level select
-- **DEV level select** (` or F2 on the main menu, `--dev`, `?dev` on the web) — jump to any arena (and wave), any FAST room, with god mode on or off. These are practice runs (no records, no leaderboard); in one, F5 clears the current wave and F6 refills health
+- **DEV level select** (` or F2 on the main menu, `--dev`, `?dev` on the web) — jump to any arena (and wave), any FAST room, or any STORY checkpoint in all three chapters, with god mode on or off. These are practice runs (no records, no leaderboard); in one, F5 clears the current wave and F6 refills health. STORY checkpoints skip the wake-up and include earlier equipment; scroll the STORY column to reach all three chapters
 - **Death screen** — where you died, with retry-arena and new-run options
 - **Pause menu** — Escape mid-run pauses: Resume / Settings / Restart / Quit to Menu
 - R retries the current arena; Enter starts a new run

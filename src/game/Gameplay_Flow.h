@@ -37,6 +37,11 @@ inline GLuint* GameplayState::sharedWorldTex() {
         tex[TEX_FLAG]          = TextureGen::uploadMaterial(MaterialTex::flagstone());
         tex[TEX_CIRCUIT]       = TextureGen::uploadMaterial(MaterialTex::circuit());
         tex[TEX_CIRCUIT_FLOOR] = TextureGen::uploadMaterial(MaterialTex::circuitFloor());
+        tex[TEX_CLINIC]        = TextureGen::uploadMaterial(MaterialTex::clinic());
+        tex[TEX_LINO]          = TextureGen::uploadMaterial(MaterialTex::lino());
+        tex[TEX_CINDER]        = TextureGen::uploadMaterial(MaterialTex::cinder());
+        tex[TEX_SNOW]          = TextureGen::uploadMaterial(MaterialTex::snow());
+        tex[TEX_ICE]           = TextureGen::uploadMaterial(MaterialTex::ice());
         tex[TEX_BASALT]        = TextureGen::uploadMaterial(MaterialTex::basalt());
     }
     return tex;
@@ -117,6 +122,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     tracerShader.loadFiles("src/shaders/tracer.vert","src/shaders/tracer.frag");
     particleShader.loadFiles("src/shaders/particle.vert","src/shaders/particle.frag");
     waterShader.loadFiles("src/shaders/water.vert","src/shaders/water.frag");
+    labGlassShader.loadFiles("src/shaders/water.vert","src/shaders/labglass.frag");
 
     // Effects::Tracer VBO: 4 floats per vertex (xyz + alpha), dynamic
     glGenVertexArrays(1, &tracerVAO);
@@ -169,10 +175,29 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     whiteTex = makeGreyTexture();
     std::copy(sharedWorldTex(), sharedWorldTex() + TEX_COUNT, worldTex);   // (made once: see sharedWorldTex)
 
-    level = fast() ? buildGauntlet() : act2() ? buildAct2Level() : buildLevel();
+    if (story() && g_continueStory && resumedStory.load()) {
+        resumingStory = true;
+        if (resumedStory.chapter < 4 && resumedStory.completed) {
+            ++resumedStory.chapter; resumedStory.checkpoint = 0;
+            resumedStory.owned |= resumedStory.chapter>=3?15:7; resumedStory.grapple = true;
+            resumedStory.logs = resumedStory.terminals = 0;
+            resumedStory.bossDown = resumedStory.completed = false;
+            resumedStory.elapsed = resumedStory.style = resumedStory.damage = resumedStory.peak = 0;
+            resumedStory.kills = resumedStory.shots = resumedStory.hits = resumedStory.deaths = 0;
+        }
+        g_storyChapter = resumedStory.chapter; g_startArena = resumedStory.checkpoint;
+        storyOwned = resumedStory.owned; storyLogsSeen = resumedStory.logs;
+        storyTerminalsSeen = resumedStory.terminals; storyGrapple = resumedStory.grapple;
+        labIntro.seen=resumedStory.labIntroSeen;labRoutes=resumedStory.labRoutes;
+        storyBossDown = resumedStory.bossDown; storyRelayIsolated = resumedStory.relayIsolated; wakeSeen = resumedStory.wakeSeen;
+        prog = resumedStory.prog;
+    }
+    g_continueStory = false;
+    level = training() ? buildTraining() : fast() ? buildGauntlet() : act2() ? buildAct2Level() : story() ? (g_storyChapter==5?buildCold():g_storyChapter==4?buildPlain():g_storyChapter==3?buildLab():g_storyChapter==2?buildWasteland():buildCradle()) : buildLevel();
+    if (story()) armfile::load("assets/guns/unit24_arm.glb");   // UNIT 24's own hands (the menu's next run puts the gloves back)
     spatialGrid.build(level.walls);
     world = buildWorldMeshes(level);
-    bake = &sharedBake(fast() ? "fast" : act2() ? "act2" : "act1", level);
+    bake = &sharedBake(training() ? "training" : fast() ? "fast" : act2() ? "act2" : story() ? (level.story.chapter==5?"story5":level.story.chapter==4?"story4":level.story.chapter==3?"story3":level.story.chapter==2?"story2":"story1") : "act1", level);
     applyBake();
     neonLights = buildNeonLights(level);
     shifts.capture(level);
@@ -180,7 +205,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     anchorBoxes.clear();
     for (auto& a : level.anchors) anchorBoxes.push_back(level.walls[a.wall].box);
     director.level = &level;
-    director.fast  = fast();
+    director.fast  = fast() || story();   // (STORY: a section's fight starts at its trigger, as FAST's rooms do)
     records.load();
 
     settingsMenu.s = settings;
@@ -194,16 +219,33 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     if (endless()) setupEndless();
     int start = endless() ? endlessArena : glm::clamp(g_startArena, 0, (int)level.arenas.size() - 1);
     // ACT II is a preview: unranked until the whole act exists
-    ranked = (start == 0 || endless()) && g_startWave <= 0 && !g_godMode && !g_practice && !g_devCam && !act2();
+    ranked = (start == 0 || endless()) && g_startWave <= 0 && !g_godMode && !g_practice && !g_devCam && !act2() && !story() && !training();
     act2FromStart = act2() && start == 0 && g_startWave <= 0 && !g_devCam;
     if (g_bossRun >= 0) { start = bossEntry(g_bossRun).arena; ranked = act2FromStart = false; }
     if (roomAttack()) { start = glm::clamp(g_roomAttack, 0, (int)level.arenas.size() - 1); ranked = false; }
     if (arenaSolo()) { start = glm::clamp(g_arenaSolo, 0, (int)level.arenas.size() - 1); ranked = act2FromStart = false; }
     if (g_bossRun >= 0) msCheckpoint = bossEntry(g_bossRun).morning;   // (MORNINGSTAR: from inside the eclipse)
+    if (story() && !resumingStory && (g_practice || start > 0)) {
+        // A direct checkpoint start gets what the earlier rooms would have supplied.
+        // Leave this room's pickups in place so they can still be inspected and tested.
+        wakeSeen = true;
+        storySeenSection = start;
+        storyOwned = level.story.startWeapons;
+        for (const auto& wreck : level.story.wrecks)
+            if (wreck.section < start && wreck.weapon >= 0) storyOwned |= 1 << wreck.weapon;
+        int grappleRoom = level.arenaAt(level.story.grappleAt);
+        storyGrapple = level.story.startGrapple || (grappleRoom >= 0 && start > grappleRoom);
+    }
+    // Chapter 4 is one arena with its fight's checkpoints inside it: a start "at" one is that checkpoint
+    if (story() && g_storyChapter == 4 && !resumingStory) storyCheckpoint = std::clamp(g_startArena, 0, 8);
     enterArena(start);
-    if (g_bossRun < 0) director.wave = glm::clamp(g_startWave, 0, director.waveCount() - 1);
+    if (resumingStory) {
+        restoreStoryProgress();
+        if (plain()) { gleanerFightStarted = false; beginGleaner(); }   // (the saved checkpoint is where its fight stands)
+    }
+    if (g_bossRun < 0 && director.waveCount()>0) director.wave = glm::clamp(g_startWave, 0, director.waveCount() - 1);
     if (fast()) ghost.load();
-    if (fast() && start == 0 && !roomAttack()) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
+    if (fast() && g_bossRun < 0 && start == 0 && !roomAttack()) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
     if (g_devCam) countdown = 0.f;
     if (g_devWeapon >= 0 && g_devWeapon < WEAPON_COUNT) activeWeapon = g_devWeapon;
     if (g_devWeapon == WEAPON_COUNT) drawSword();   // --weapon 5: the sword in hand (where it's allowed)
@@ -237,9 +279,11 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     if (act2()) beginAct2();   // after the capture: the armory frees the mouse to shop with
     if (arenaSolo()) startArenaSolo();
     if (g_bossRun >= 0) startBossRun();
+    if (training()) { startTrainingLesson(trainingLesson); openGuide(); }
 }
 
 inline GameplayState::~GameplayState() {
+    saveStoryProgress();
     logRun("quit");   // whatever was played since the last death or finish (RunLog.h)
     audio.setMuffle(0.f);   // back to the menu: the world isn't dull any more
     audio.setWind(0.f); audio.setRope(0.f); audio.setOverdrive(false, 0.f);
@@ -257,6 +301,7 @@ inline GameplayState::~GameplayState() {
     if (decalVAO)    glDeleteVertexArrays(1, &decalVAO);
     if (decalVBO)    glDeleteBuffers(1, &decalVBO);
     setMouseCaptured(false);
+    if (story()) armfile::load();   // the gloves back for the other modes
 }
 
 inline void GameplayState::captureMouse(bool on) {
@@ -271,6 +316,8 @@ inline void GameplayState::enterArena(int a) {
     for (int d = 0; d < (int)level.doors.size(); ++d) { level.doors[d].locked = false; level.setDoorInstant(d, false); }
     shifts.reset(level);   // the sun back up, the lava back down, the platforms back to speed, the cage to the top
     boardHinted = liftRiding = false;
+    successorHazards.clear();successorIntroLine=0;labDialogueT=0;
+    ballastHazards.clear();
     ward.clear(); conduitClock.reset(); wardenUid = -1; shifts.bossPulseOff();
     relic.clear(); lastChunk = 0; snareTimer = 0.f; driftWasGliding = false;
     lev.clear(); beachHinted = false; levSinkT = 1e9f;   // (shifts.reset drained the Maw's flood)
@@ -325,9 +372,17 @@ inline void GameplayState::enterArena(int a) {
     }
     // Splits after this section belong to a run we're redoing
     if (fast() && (int)splits.size() > a) splits.resize(a);
-    if (fast()) director.approach(a);   // the fight starts at the section's trigger
+    if (fast() || story()) director.approach(a);   // the fight starts at the section's trigger
     else director.startArena(a);
-    if (g_bossRun >= 0 && !fast()) { director.wave = bossWaveOf(a); bossStartAt = -1.f; }   // BOSS: straight to its wave (a retry too), its clock afresh
+    if (g_bossRun >= 0) {
+        director.startArena(a); director.wave = bossWaveOf(a); bossStartAt = -1.f;
+    }   // BOSS: straight to its wave (a retry too), its clock afresh
+    if (story()) { if(g_bossRun>=0)storyBossDown=false;resetStoryFactory(); beginStory();
+        if (storyBossDown && g_bossRun < 0 && a == level.story.bossSection) {
+            director.queue.clear(); director.events.clear(); director.phase = WaveDirector::Phase::CLEARED;
+            if (level.arenas[a].exitDoor >= 0) level.doors[level.arenas[a].exitDoor].locked = false;
+        }
+    }   // (after resetPlayer: the wake-up puts you on the belt)
 }
 
 inline void GameplayState::resetPlayer(glm::vec3 start) {
@@ -340,6 +395,9 @@ inline void GameplayState::resetPlayer(glm::vec3 start) {
     bankedStyle += styleSystem.earned; bankedDamage += styleSystem.damageTaken;   // the score survives a retry
     styleSystem = StyleSystem{};
     grenadeCount = grenadeMax; killsThisCycle = 0;
+    splinters.reset();
+    recall.reset();
+    pickedBy = -1; pendingRestores.clear();
     for (int w = 0; w < WEAPON_COUNT; ++w) {
         weapons[w] = WeaponState{};
         weapons[w].ammo = weaponMag((WeaponId)w, prog.up[w]);
@@ -356,13 +414,20 @@ inline void GameplayState::resetPlayer(glm::vec3 start) {
     ui.clearIndicators();
 }
 
+// A Story checkpoint is the arena to go back to, except where one arena holds several (Chapter 4's
+// fight phases): never past the level's last arena
+inline int GameplayState::storyRetryArena() const { return glm::clamp(storyCheckpoint, 0, (int)level.arenas.size() - 1); }
+
 inline void GameplayState::restartHere() {
+    if(training()){startTrainingLesson(trainingLesson);return;}
+    if(story()){enterArena(storyRetryArena());captureMouse(true);return;}
     enterArena(director.arena + (!fast() && director.phase == WaveDirector::Phase::CLEARED ? 1 : 0));
     captureMouse(true);
 }
 
 inline void GameplayState::retryArena() {
     ++deaths;
+    if (story()) { enterArena(storyRetryArena()); captureMouse(true); return; }
     if (fast() || arenaSolo()) { enterArena(director.arena); captureMouse(true); return; }   // (one arena on its own: that arena again)
     // Died on the way out of a cleared arena? Pick up at the next one.
     enterArena(retryTarget(director.phase, director.arena));   // (the Zenith, if you died rising into it)
@@ -370,10 +435,12 @@ inline void GameplayState::retryArena() {
 }
 
 inline void GameplayState::newRun() {
+    if(training()){startTrainingLesson(trainingLesson);return;}
+    if(story()){labIntro=LabIntro{};labRoutes=0;successorHeard=0;storyRelayIsolated=false;storyTerminalsSeen=0;storyOwned=0;storyGrapple=false;storySword=swordStatueOpen=false;storyLogsSeen=0;storySeenSection=storyCheckpoint=0;storyBossDown=false;wakeSeen=false;}
     msCheckpoint = false;
     director = WaveDirector{};
     director.level = &level;
-    director.fast  = fast();
+    director.fast  = fast() || story();
     prog = Progression{};
     totalKills = totalShots = totalHits = deaths = 0;
     elapsedTime = 0.f; peakStyle = 0.f;
@@ -381,7 +448,7 @@ inline void GameplayState::newRun() {
     fastLeftStanding = 0;
     roomTimes.clear(); roomMedals.clear(); roomNewBest = false;
     newRecord = false;
-    ranked = !g_godMode && !g_practice && !act2();
+    ranked = !g_godMode && !g_practice && !act2() && !story() && !training();
     act2FromStart = act2();
     nameEntry = false; boardPlace = -1;
     flareIntroduced = false;
@@ -442,7 +509,7 @@ inline void GameplayState::bossRunDone() {
     bossKillT = bossStartAt >= 0.f ? elapsedTime - bossStartAt : elapsedTime;
     newRecord = !g_godMode && !g_practice && recordBoss(records, g_bossRun, bossKillT);
     if (newRecord) records.save();
-    bossPost = (WORLD_BOARD || g_devOverlay.find("worldboard") != std::string::npos) && !g_godMode && !g_practice;   // (the web: the victory screen asks for a name to post it under)
+    bossPost = g_bossRun < 6 && (WORLD_BOARD || g_devOverlay.find("worldboard") != std::string::npos) && !g_godMode && !g_practice;   // (the web: the victory screen asks for a name to post it under)
     victoryDelay = 3.f;
 }
 
@@ -490,6 +557,12 @@ inline void GameplayState::handleDirectorEvents() {
         switch (ev.kind) {
         case DirectorEvent::ARENA_START:
             lockDoor(ar.entryGate, true);   // no way back out mid-fight
+            if (story()) {   // STORY: the fight's line, short (the room's name came as you walked in)
+                if (director.arena != level.story.bossSection)
+                    pushBanner(director.hasGoal() ? director.goal().label : ar.subtitle, "", {1.f, 0.45f, 0.2f}, 2.f);
+                audio.play("wave", 110, SoundGroup::UI, true);
+                break;
+            }
             if (fast()) roomStartT = elapsedTime;   // (the room's own clock: its medal)
             if (fast()) {
                 snprintf(buf, sizeof(buf), "ROOM %d/%d  %s", ev.value + 1, (int)level.arenas.size(), ar.name);
@@ -513,12 +586,13 @@ inline void GameplayState::handleDirectorEvents() {
             }
             break;
         case DirectorEvent::WAVE_START:
+            if(ev.value<0 || ev.value>=(int)ar.waves.size())break;
             if (endless()) shifts.onWave(level, director.arena, ev.value % 3, director.goal(), moverClock, 3);
             else shifts.onWave(level, director.arena, ev.value, director.goal(), moverClock);
             if (ar.shift == ArenaShift::SPEED_UP && ev.value > 0) ui.feed("THE PLATFORMS SPEED UP", {0.4f, 0.9f, 1.f});
             if (ar.shift == ArenaShift::SOLAR && ev.value > 0)
                 ui.feed(ev.value >= 2 ? "THE RINGS QUICKEN - A SECOND FLARE" : "THE RINGS QUICKEN", {1.f, 0.75f, 0.3f});
-            if (fast()) {
+            if (fast() || story()) {
                 const EnemyType* mini = nullptr;   // the room's mini-boss arriving: its name and how to beat it
                 for (auto& we : ar.waves[ev.value]) if (isMiniBoss(we.type)) mini = &we.type;
                 if (mini) {
@@ -536,8 +610,11 @@ inline void GameplayState::handleDirectorEvents() {
             audio.play("wave", 90, SoundGroup::UI); audio.duck(4.f, 0.4f);
             break;
         case DirectorEvent::BOSS_START:
+            if(ev.value<0 || ev.value>=(int)ar.waves.size() || ar.waves[ev.value].empty())break;
             if (bossStartAt < 0.f) bossStartAt = elapsedTime;   // BOSS: its clock
-            if (ar.waves[ev.value][0].type == EnemyType::SOVEREIGN)
+            if(ar.waves[ev.value][0].type==EnemyType::SUCCESSOR)
+                pushBanner("THE SUCCESSOR","FINAL ASSESSMENT / WHITE: PARRY / GOLD: EVADE",{.65f,.9f,1},3.5f);
+            else if (ar.waves[ev.value][0].type == EnemyType::SOVEREIGN)
                 pushBanner("THE SOVEREIGN", "PARRY (F) THE BLADE AS IT LANDS", {1.f, 0.3f, 0.2f}, 4.f);
             else if (ar.waves[ev.value][0].type == EnemyType::PENITENT)
                 pushBanner("THE PENITENT", "BREAK ITS CHAINS - JUMP LOW SWEEPS, SLIDE UNDER HIGH ONES", {1.f, 0.5f, 0.2f}, 4.5f);
@@ -548,8 +625,15 @@ inline void GameplayState::handleDirectorEvents() {
             }
             else if (ar.waves[ev.value][0].type == EnemyType::LEVIATHAN)
                 pushBanner("THE LEVIATHAN", "DASH THE CRASH - SHOOT THE EYE WHILE IT'S DOWN", {1.f, 0.35f, 0.2f}, 4.5f);
+            else if(ar.waves[ev.value][0].type==EnemyType::SORTER)
+                pushBanner("THE SORTER","UNIT ?  PURPOSE: JUDGE   /   REJECT. RETURN TO LINE.",{1.f,.55f,.15f},4.f);
+            else if (ar.waves[ev.value][0].type == EnemyType::SUCCESSOR)
+                pushBanner("THE SUCCESSOR","PERFECT BODY / RELEASE DENIED",{.8f,.9f,1},4.f);
+            else if (ar.waves[ev.value][0].type == EnemyType::BALLAST)
+                pushBanner("BALLAST","CLEARANCE IN PROGRESS / WATCH THE BLADE AND CABLE",{.9f,.7f,.35f},4.f);
             else if (ar.waves[ev.value][0].type == EnemyType::PACEMAKER)
                 pushBanner("THE PACEMAKER", "PARRY THE WHITE - IT RACES YOU TO THE BEACON", {1.f, 0.6f, 0.15f}, 4.f);
+            else if (ar.waves[ev.value][0].type == EnemyType::UNIT24K || ar.waves[ev.value][0].type == EnemyType::RESTORER) {}   // (Chapter 5's announce themselves: Gameplay_Cold.h, Gameplay_Restorer.h)
             else
                 pushBanner("THE WARDEN", "CUT ITS CONDUITS - HIT THE CORE WHEN IT VENTS", {1.f, 0.2f, 0.65f}, 3.5f);
             audio.play("wave", 128, SoundGroup::UI); audio.play("explosion", 70, SoundGroup::UI); audio.duck(4.f, 0.4f);
@@ -577,6 +661,12 @@ inline void GameplayState::handleDirectorEvents() {
             const Arena& done = level.arenas[ev.value];
             lockDoor(done.exitDoor, false);
             lockDoor(done.entryGate, false);
+            if (story()) {   // STORY: the way on opens
+                pushBanner("CLEAR", done.exitDoor >= 0 ? "THE DOOR IS OPEN" : "", {0.35f, 0.85f, 1.f}, 2.2f);
+                styleSystem.heal(40.f);
+                audio.play("anvil", 110, SoundGroup::UI, true);
+                break;
+            }
             if (arenaSolo()) {   // the ARENA page's one arena: that was it
                 audio.play("anvil", 128, SoundGroup::UI, true);
                 pushBanner("ARENA CLEARED", done.name, {0.4f, 1.f, 0.6f}, 2.5f);
@@ -644,6 +734,7 @@ inline void GameplayState::handleDirectorEvents() {
             victoryDelay = act2() ? 3.f : 2.5f;   // ACT II: the Absolute kneels and dissolves first
             break;
         case DirectorEvent::FINISH_OPEN:
+            if (story()) break;   // (STORY: the last section's end is walked to)
             finishOpen = true;
             pushBanner("FINISH OPEN", "REACH THE BEACON", {1.f, 0.6f, 0.2f}, 2.f);
             audio.play("wave", 128, SoundGroup::UI);
@@ -864,6 +955,12 @@ inline void GameplayState::updateScreenFx(float dt) {
 }
 
 inline void GameplayState::update(float dt) {
+    fx.setAmbientDetail(ambientDetail());   // settings take effect even while the world is paused
+    if(storyChapterRequest>0) {int chapter=storyChapterRequest;storyChapterRequest=0;loadStoryChapter(chapter);return;}
+    if (story() && !paused && !armoryOpen && !playerDead && !victory) {
+        storySaveClock += dt;
+        if (storySaveClock >= 5.f) { storySaveClock = 0; saveStoryProgress(); }
+    }
     if (settings) audio.masterVolume = settings->audioVolume;
     updateMusic();
     // The place's own air (RoomTone.h): full between fights, under a fight,
@@ -939,6 +1036,20 @@ inline void GameplayState::update(float dt) {
     }
     static Uint8 noKeys[SDL_NUM_SCANCODES] = {};
     if (g_devNoMouse) keys = noKeys;   // screenshot runs: the real keyboard doesn't reach the game
+    if (story()) {   // STORY: the wake-up has the controls (jump held skips it); no gun, no grapple yet
+        storySkipKey = keys[SDL_SCANCODE_SPACE] != 0;
+        if (storyLocked() || storyEndT >= 0.f) keys = noKeys;
+        else if (!storyArmed) {   // nothing to reload
+            static Uint8 bare[SDL_NUM_SCANCODES];
+            std::memcpy(bare, keys, sizeof(bare));
+            bare[SDL_SCANCODE_R] = 0;
+            keys = bare;
+        }
+        if (storyLocked() || !storyArmed || storyEndT>=0.f) { pendingFire = false; pendingAlt = false; }
+        if (!splinterOwned() || storyLocked() || storyEndT >= 0.f) pendingGrenade = false;   // (no grenades in Story: the button is the SPLINTER's)
+        if (!storyGrapple || storyLocked() || storyEndT >= 0.f) pendingGrapple = false;
+        if (storyLocked() || storyEndT >= 0.f) pendingRecall = false;
+    }
     bool parryKey = keys[SDL_SCANCODE_F] != 0;
 
     if (hitStopFrames <= 0) shootInput();   // the click's shot in this frame, not the next tick's
@@ -1079,12 +1190,12 @@ inline void GameplayState::update(float dt) {
         }
     }
 
-    if (!act2Falling) elapsedTime += floatDt;   // ACT II's clock starts when you land
+    if (!act2Falling && !(story() && storyEndT>=0.f)) elapsedTime += floatDt;   // ACT II's clock starts when you land
     if (styleSystem.style > peakStyle) peakStyle = styleSystem.style;
 
     frametimer::Lap ftFx;
     fx.updateParticles(floatDt * timeScale());
-    fx.spawnAmbientParticles(level, player.position, fast(), floatDt);
+    fx.spawnAmbientParticles(level, player.position, fast(), floatDt, ambientDetail(), gameClock);
     for (auto& p : projSystem.pool) {           // projectile trails
         if (!p.alive) continue;
         Effects::Particle* q = fx.freeParticle();
@@ -1157,12 +1268,56 @@ inline void GameplayState::snapshotForInterpolation() {
 inline void GameplayState::updateMusic() {
     auto& m = audio.music;
     audio.setMusicVolume(settings ? settings->musicVolume : 0.6f);
+    if(plain()){   // Chapter 4: RECLAMATION. Silence until it screams, then the brass and the anvils
+        m.setTrack(14);m.setDrive(overdriveOn()&&!playerDead);m.setSolo(false);
+        const bool before=false;   // (the score is there from the landing: low and far off, rising with it)
+        // the approach: the eerie layers (the horn far off); close, the drums start; on its back, everything
+        const float flatDist=glm::length(glm::vec2{player.position.x-gleaner.pos.x,player.position.z-gleaner.pos.z});
+        float intensity=gleanerPhase>=GleanerPhase::TENDER&&gleanerPhase<=GleanerPhase::CALLER?1.25f:gleanerPhase>=GleanerPhase::HEART&&gleanerPhase<=GleanerPhase::CORE?1.2f:gleanerPhase>=GleanerPhase::KNEELING?1.05f:flatDist<700.f?.92f:.72f;
+        if(gleaner.screaming())intensity=std::max(intensity,1.f);
+        if(plainReveal.active())intensity=plainReveal.time<PlainReveal::RISE0?.4f:plainReveal.time<PlainReveal::SCREAM?.4f+.45f*PlainReveal::sm(PlainReveal::RISE0,PlainReveal::SCREAM,plainReveal.time):1.f;
+        if(gleanerPhase==GleanerPhase::BROOD)intensity=.8f;
+        if(tearT>=0.f)intensity=tearT<4.f?1.3f:.08f;   // (tearing it out: everything, then nothing)
+        if(summitEndT>=0.f)intensity=.5f;
+        if(quietT>=0.f)intensity=.2f;   // (the quiet: only the far voices)
+        if(playerDead)intensity=.05f;
+        m.setIntensity(intensity);m.setMuffle(paused||armoryOpen||playerDead);
+        audio.setMusicVolume(before?0.f:(settings?settings->musicVolume:.6f));
+        audio.setOverdrive(overdriveOn()&&!playerDead&&!paused&&!armoryOpen,0);return;
+    }
+    if(cold()){   // Chapter 5: COLD STORAGE, quiet under the wind until a fight; THE RESTORER in the Vault
+        const int here=level.arenaAt(player.position);
+        const bool boss=here==9 && !coldRDown && director.fighting();
+        m.setTrack(boss?16:15);m.setDrive(overdriveOn()&&!playerDead);m.setSolo(false);
+        float intensity=director.fighting()?(boss?1.15f+.08f*(float)std::max(0,rsPhase-1):1.f):.3f;
+        if(coldRideT>=0.f)intensity=1.1f;
+        if(rsDeathT>=0.f&&coldRideT<0.f)intensity=.15f;
+        m.setIntensity(playerDead?.05f:intensity);m.setMuffle(paused||armoryOpen||playerDead);
+        const bool indoors=here>=2&&here<=4;
+        audio.setMusicVolume((settings?settings->musicVolume:.6f)*(director.fighting()||coldRideT>=0.f?1.f:indoors?.5f:.3f));
+        audio.setOverdrive(overdriveOn()&&!playerDead&&!paused&&!armoryOpen,0);return;
+    }
+    if(laboratory()){
+        const bool boss=level.arenaAt(player.position)==9 && !storyBossDown;
+        m.setTrack(boss?13:12);m.setDrive(overdriveOn()&&!playerDead);m.setSolo(false);
+        float intensity=director.fighting()?(boss?1.2f:1.f):.13f;
+        for(const auto& e:enemies)if(e.alive&&e.type==EnemyType::SUCCESSOR)intensity=1.16f+.12f*(e.suPhase-1);
+        if(labIntro.active())intensity=.05f;
+        if(storyBossDown)intensity=.05f;
+        m.setIntensity(playerDead?.05f:intensity);m.setMuffle(paused||armoryOpen||playerDead);
+        audio.setMusicVolume((settings?settings->musicVolume:.6f)*(director.fighting()?1.f:.4f));
+        audio.setOverdrive(overdriveOn()&&!playerDead&&!paused&&!armoryOpen,0);return;
+    }
     static const int ARENA_TRACK[] = {0, 1, 2, 3, 4};       // Yard, Foundry, Spire, Core, Sanctum
     static const int FAST_TRACK[]  = {0, 1, 2, 2, 1, 1, 3}; // Canal .. Tower
     int a = director.arena;
     bool zenith = act2() && a == ZENITH_ARENA;
     const bool morning = zenith && msSwallowT >= 0.f;   // inside the eclipse: MORNINGSTAR's track (from the next bar line)
-    m.setTrack(fast() ? FAST_TRACK[a % 7] : morning ? 11 : zenith ? 10 : act2() ? 5 + std::min(a, 4) : ARENA_TRACK[a % 5]);   // the Nave .. the Maw; !!!!! has its own
+    if (story() && ((!wasteland() && director.arena < 3) || !director.fighting())) { audio.setMusicVolume(0.f); m.setMuffle(true); return; }   // STORY: the furnace line's own air, no music yet
+    // STORY's first two chapters: never the menu's groove (track 0). The Cradle's fights take the Foundry's track and
+    // the Sorter the Core's; the world outside takes the Spire's and Ballast the Descent's
+    const int storyTrack = wasteland() ? (director.bossWave() ? 7 : 2) : (director.bossWave() ? 3 : 1);
+    m.setTrack(story() ? storyTrack : fast() ? FAST_TRACK[a % 7] : morning ? 11 : zenith ? 10 : act2() ? 5 + std::min(a, 4) : ARENA_TRACK[a % 5]);   // the Nave .. the Maw; !!!!! has its own
     float lv = 0.6f;
     switch (director.phase) {
         case WaveDirector::Phase::ACTIVE:   lv = director.bossWave() ? 1.35f : 1.f; break;

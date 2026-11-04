@@ -5,21 +5,12 @@
 // =============================================================================
 
 inline bool GameplayState::projectToScreen(glm::vec3 p, const glm::mat4& view, const glm::mat4& proj, float& sx, float& sy) const {
-    glm::vec4 c = proj * view * glm::vec4(p, 1.f);
-    bool behind = c.w <= 0.01f;
-    glm::vec2 ndc = behind ? -glm::vec2(c) : glm::vec2(c) / c.w;
-    bool on = !behind && std::fabs(ndc.x) < 0.95f && std::fabs(ndc.y) < 0.9f;
-    if (!on) {
-        float m = std::max(std::fabs(ndc.x) / 0.92f, std::fabs(ndc.y) / 0.85f);
-        if (m < 1e-4f) { ndc = {0.f, -0.85f}; m = 1.f; }
-        ndc /= m;
-    }
-    sx = (ndc.x * 0.5f + 0.5f) * SCREEN_W;
-    sy = (1.f - (ndc.y * 0.5f + 0.5f)) * SCREEN_H;
-    return on;
+    const auto marker=projectWorldMarker(p,proj*view,SCREEN_W,SCREEN_H);
+    sx=marker.x;sy=marker.y;return marker.onScreen;
 }
 
 inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& proj) {
+    if (story() && (storyLocked() || storyEndT >= 0.f)) { renderStoryOverlay(proj * view); return; }   // the wake-up, the end: no HUD
     // ---- the HUD proper ----
     HudState h;
     h.health = styleSystem.health; h.maxHealth = styleSystem.maxHealth;
@@ -34,6 +25,8 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         h.weapons[w].glow      = gunkit::glowOf(w);
     }
     h.grenades = grenadeCount; h.grenadeMax = grenadeMax;
+    if (splinterOwned()) { h.splinter = true; h.grenades = splinters.charges; h.grenadeMax = SplinterSystem::CHARGES; h.splinterRegrow = splinters.regrow01(); }
+    if (recallOwned()) { h.recall = true; h.recallPlaced = recall.placed; h.recall01 = recall.placed ? recall.left01() : recall.cooldown01(); }
     h.swordSlot = swordAllowed(); h.swordOut = swordOut; h.swordBroken = sword.broken(); h.swordGuard = sword.guard01();
     h.swordBar = swordOut && (sword.blocking() || sword.broken() || sword.riposteT > 0.f || sword.guard < Sword::GUARD_MAX);
     h.level = prog.level; h.xp = prog.xp; h.xpNext = Progression::xpToNext(prog.level); h.points = prog.points;
@@ -66,7 +59,10 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         }
     }
     h.finishKey  = gamepad::state().pad ? "R3" : binds().label(Act::INTERACT);
+    if (story() && !storyArmed) { h.noWeapons = true; h.hideCrosshair = true; }
+    if (story()) { for (int w = 0; w < WEAPON_COUNT; ++w) h.weapons[w].owned = storyOwns(w); if (!h.splinter) h.grenades = h.grenadeMax = 0; }
     if (!playerDead && !victory) ui.render(styleSystem, h);
+    if (story()) renderStoryOverlay(proj * view);   // a gun's waypoint and prompt, a wreck's log
 
     const Arena& ar = level.arenas[director.arena];
     const bool zen = act2() && director.arena == ZENITH_ARENA;
@@ -82,7 +78,54 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         const Enemy* boss = nullptr;
         for (auto& e : enemies) if (e.alive && (isBoss(e.type) || isMiniBoss(e.type))) boss = &e;
 
-        if (fast()) {
+        if (story()) {   // the room, and what to do in it
+            const int here = std::max(0, level.arenaAt(player.position));
+            const char* what = "FIND A WAY OUT";
+            accent = {0.35f, 0.85f, 1.f};
+            if (here == 0 && level.conveyorOfWall(player.groundWall) >= 0 && player.onGround) { what = "GET OFF THE BELT"; accent = {1.f, 0.45f, 0.2f}; }
+            else if (director.fighting()) {
+                if (director.hasGoal() && director.goal().kind == WaveGoal::HOLD)
+                    snprintf(buf,sizeof(buf),"%s   %.0f%%  %s",director.goal().label,director.goalProgress()*100.f,
+                             director.zoneContested?"CLEAR THE PAD":director.holding?"CONTACT SEATING":"STAND ON THE SERVICE PAD");
+                else if (director.hasGoal() && director.goal().kind == WaveGoal::EXTERNAL && laboratory())
+                    snprintf(buf,sizeof(buf),"%s / HOSTILES %d",lab::objective(here),left);
+                else if (director.hasGoal() && director.goal().kind == WaveGoal::EXTERNAL)
+                    snprintf(buf,sizeof(buf),"RELEASE TURBINE BRAKES   %d/3   HOSTILES %d",3-level.anchorsAlive(LevelData::ChainAnchor::BRAKE),left);
+                else snprintf(buf, sizeof(buf), "%s   HOSTILES %d", here == level.story.pitSection ? "THE SCRAP IS AWAKE" : level.arenas[director.arena].name, left);
+                what = nullptr; accent = {1.f, 0.45f, 0.2f};
+            }
+            else if(wasteland()) {
+                static const char* goals[]={"FOLLOW THE ROAD / THE TOWER AHEAD","THROUGH THE DEAD CONVOY","RESTORE THE WAY THROUGH THE RELAY","CROSS THE SPAN / SERVICE ROUTE BELOW","FIND THE LONGSHOT / CONTINUE NORTH","THROUGH THE SERVICE CHECKPOINT","BALLAST / KEEP CLEAR OF THE CUT","THE ROAD IS OPEN / THE TOWER AHEAD"};
+                what=goals[std::clamp(here,0,7)];
+                if(here==6&&storyBossDown)what="THE BARRIER IS OPEN";
+            }
+            else if(plain()) what=wakeSeen?gleanerPhaseName():"SOMETHING IS WATCHING";
+            else if(cold()) {
+                static const char* goals[]={"FOLLOW THE BELT TO THE EDGE","RIDE THE CARRIERS TO THE TOWER","THROUGH THE THAW ROOM","READ THE INVENTORY","RACK 24",
+                                            "ACROSS TO THE COOLING TOWERS","CROSS THE ICE TO THE STATION","DISPATCH 2","TO THE VAULT","THE RESTORER"};
+                what=goals[std::clamp(here,0,9)];
+                if(here==9&&coldRDown)what="THE DISPATCH RAIL / NORTH EDGE";
+                if(here==7&&coldKDown)what="IT IS STILL / THE WAY ON IS NORTH";
+                if(here==5&&director.arena==5&&director.phase==WaveDirector::Phase::CLEARED)what="THE GATE IS OPEN / EAST TO THE SEA";
+                if(here==1&&director.arena==1&&director.phase==WaveDirector::Phase::CLEARED)what="THE DOCK IS OPEN";
+                if(here==4)what=coldRecall?"THE BACK DOOR IS OPEN":"TAKE WHAT 24-A IS HOLDING";
+            }
+            else if (here == level.story.pitSection && !storyOwns(0)) what = "FIND SOMETHING TO FIGHT WITH";
+            else if (here == level.story.pitSection) what = "CLIMB OUT";
+            else if (here > level.story.pitSection && !storyOwns(2) && director.arena == here && director.phase == WaveDirector::Phase::APPROACH && player.position.z > 40.f) what = "TAKE THE LANCER";
+            else if(here==2)what=storyOwns(2)?"BOARD THE SERVICE LIFT / ASSEMBLY ABOVE":"FOLLOW THE DUCTS";
+            else if(here==3)what="DESCEND TO THE PRODUCTION FLOOR";
+            else if(here==4)what="READ THE RECORDS / CONTINUE WEST";
+            else if(here==5)what="THROUGH THE PODS";
+            else if(here==6)what="BOARD THE FREIGHT LIFT";
+            else if(here==7)what=storyGrapple?"MEET YOUR JUDGE":"STAY BELOW THE SCANNERS / FIND THE GRAPPLE";
+            else if(here==8)what=storyBossDown?"THE GATE IS OPEN / WALK OUT":"THE SORTER IS WAITING";
+            if(laboratory() && !director.fighting()){
+                what=storyBossDown?"CROSS THE FRACTURED THRESHOLD":lab::objective(here);
+                if((here==7||here==8)&&(labRoutes&(1u<<here)))what="FOLLOW THE SEATED CONTACT / DESCEND";
+            }
+            if (what) snprintf(buf, sizeof(buf), "%s   %s", level.arenas[here].name, what);
+        } else if (fast()) {
             if (finishOpen) { snprintf(buf, sizeof(buf), "FINISH OPEN - CLIMB TO THE BEACON"); accent = {1.f, 0.6f, 0.2f}; }
             else if (director.phase == WaveDirector::Phase::APPROACH) {
                 snprintf(buf, sizeof(buf), "ROOM %d/%d  %s   ADVANCE", director.arena + 1, nArenas, ar.name);
@@ -139,8 +182,23 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             ui.end2D();
         }
 
+        if (plain() && gleanerPhase == GleanerPhase::TENDER && tender.fighting())
+            ui.renderBossBar("THE TENDER", tender.health01(), tender.enraged(), glm::vec3{1.f, 0.45f, 0.15f});
+        if (plain() && gleanerPhase == GleanerPhase::SIEVE && sieve.fighting())
+            ui.renderBossBar("THE SIEVE", sieve.health01(), sieve.enraged(), glm::vec3{1.f, 0.6f, 0.2f});
+        if (plain() && gleanerPhase == GleanerPhase::HEART && heart.alive())
+            ui.renderBossBar("THE CRUCIBLE HEART", heart.health01(), heart.enraged(), glm::vec3{1.f, 0.35f, 0.15f});
+        if (plain() && gleanerPhase == GleanerPhase::LUNGS && lungs.woke && lungs.alive())
+            ui.renderBossBar("THE BELLOWS LUNGS", lungs.health01(), lungs.b[0].dead || lungs.b[1].dead, glm::vec3{1.f, 0.55f, 0.3f});
+        if (plain() && gleanerPhase == GleanerPhase::CORE && core.alive())
+            ui.renderBossBar("THE SORTING CORE", core.health01(), core.enraged(), glm::vec3{1.f, 0.7f, 0.3f});
+        if (plain() && gleanerPhase == GleanerPhase::SUMMIT && eye.fighting())
+            ui.renderBossBar("THE EYE", eye.health01(), eye.enraged(), glm::vec3{1.f, 0.15f, 0.1f});
+        if (plain() && gleanerPhase == GleanerPhase::CALLER && caller.fighting())
+            ui.renderBossBar("THE CALLER", caller.health01(), caller.enraged(), glm::vec3{1.f, 0.2f, 0.15f});
         const bool msBar = boss && boss->type == EnemyType::ABSOLUTE && (boss->morning() || boss->abSwallow > 0.f);   // (the swallow: his new bar filling)
         if (boss) ui.renderBossBar(msBar ? "MORNINGSTAR" : boss->type == EnemyType::ABSOLUTE ? "THE ABSOLUTE" :
+                                   boss->type == EnemyType::SORTER ? "THE SORTER" :
                                    boss->type == EnemyType::SOVEREIGN ? "THE SOVEREIGN" :
                                    boss->type == EnemyType::PENITENT ? "THE PENITENT" :
                                    boss->type == EnemyType::LEVIATHAN ? "THE LEVIATHAN" :
@@ -150,7 +208,10 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
                                    msBar ? boss->abPhase >= 5 : boss->type == EnemyType::ABSOLUTE ? boss->abPhase >= 2 :
                                    boss->type == EnemyType::LEVIATHAN ? boss->levPhase >= 2 :
                                    boss->type == EnemyType::PENITENT ? boss->scourging :
-                                   boss->type == EnemyType::WARDEN ? boss->wardenPhase >= 2 : boss->enraged);
+                                   boss->type == EnemyType::WARDEN ? boss->wardenPhase >= 2 : boss->enraged,
+                                   boss->type == EnemyType::BALLAST ? (boss->ballPhase>=2?glm::vec3{1.f,.42f,.14f}:glm::vec3{.95f,.69f,.3f}) : glm::vec3{-1.f});
+        if (boss && boss->type == EnemyType::RESTORER && boss->rsPending > 0.f)   // what will grow back while a restore point stands
+            ui.renderBossPending(boss->health / boss->maxHealth, boss->rsPending / boss->maxHealth);
         if (boss && boss->type == EnemyType::WARDEN) {   // its conduits, or the meltdown clock
             char wb[64];
             if (boss->wardenPhase == 1 && boss->conduitsLeft > 0)
@@ -236,6 +297,13 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             ui.renderMarker(sx, sy, on, {1.f, 0.6f, 0.2f}, buf);
         }
         // Objective markers: every standing conduit, and the zone while you're out of it
+        if (story() && director.fighting() && director.goal().kind == WaveGoal::EXTERNAL)
+            for(int id:level.story.turbineBrakes) {
+                const auto& brake=level.anchors[id];if(!brake.alive)continue;
+                float sx,sy;bool on=projectToScreen(brake.pos+glm::vec3{0,1.5f,0},view,proj,sx,sy);
+                snprintf(buf,sizeof(buf),"BRAKE %dM",(int)glm::length(brake.pos-player.position));
+                ui.renderMarker(sx,sy,on,{1.f,.7f,.2f},buf);
+            }
         if (director.fighting() && director.goal().kind == WaveGoal::CONDUITS)
             for (auto& e : enemies) {
                 if (!e.alive || e.type != EnemyType::CONDUIT) continue;
@@ -251,13 +319,52 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             snprintf(buf, sizeof(buf), "HOLD %dM", (int)glm::length(target - player.position));
             ui.renderMarker(sx, sy, on, {0.4f, 1.f, 0.85f}, buf);
         }
-        // The last few enemies get markers so you never hunt for a straggler
-        if (director.fighting() && !director.hasGoal() && director.queued() == 0 && alive > 0 && alive <= 3) {
-            for (auto& e : enemies) {
-                if (!e.alive) continue;
+        // Chapter 4: the next place to reach in the Gleaner fight
+        {   glm::vec3 at; const char* label = nullptr; bool beacon = false;
+            if (gleanerObjective(at, label, beacon)) {
                 float sx, sy;
-                bool on = projectToScreen(e.position + glm::vec3{0, e.height() + 0.8f, 0}, view, proj, sx, sy);
-                ui.renderMarker(sx, sy, on, {1.f, 0.3f, 0.25f}, "");
+                bool on = projectToScreen(at + glm::vec3{0.f, beacon ? 3.f : 0.f, 0.f}, view, proj, sx, sy);
+                ui.renderObjectiveMarker(sx, sy, on, {1.f, 0.85f, 0.35f}, label, (int)glm::length(at - player.position), gameClock);
+            }
+        }
+        // Chapter 3: OATHBREAKER, once its statue's seal breaks
+        if (laboratory() && swordStatueOpen && !storySword && level.arenaAt(player.position) == 9) {
+            float sx, sy;
+            bool on = projectToScreen(lab::swordStatueGrip() + glm::vec3{0.f, 0.8f, 0.f}, view, proj, sx, sy);
+            ui.renderObjectiveMarker(sx, sy, on, {1.f, 0.4f, 0.6f}, "OATHBREAKER", (int)glm::length(lab::swordStatueGrip() - player.position), gameClock);
+        }
+        // Cleanup help, never a boss tracker. Detailed retains the full labels;
+        // Low leaves visible enemies unobstructed and labels one lost target.
+        const bool detailed=settings&&settings->enemyMarkers==1;
+        if (director.fighting() && !director.hasGoal() && director.queued() == 0 && alive > 0 && alive <= 3 && (!boss||detailed)) {
+            std::vector<const Enemy*> remaining;
+            for(const auto& e:enemies)
+                if(e.targetable()&&!isBoss(e.type)&&!isMiniBoss(e.type))remaining.push_back(&e);
+            if(!detailed)std::sort(remaining.begin(),remaining.end(),[&](const Enemy* a,const Enemy* b) {
+                return glm::length(a->position-player.position)<glm::length(b->position-player.position);
+            });
+            std::vector<glm::vec2> drawn;bool labelled=false;
+            for (const Enemy* enemy:remaining) {
+                const auto& e=*enemy;
+                glm::vec3 feet=e.hasShown?e.shownPos:e.position;
+                glm::vec3 target=feet+glm::vec3{0,detailed?e.height()*.55f:e.height()+.6f,0};
+                const auto marker=projectWorldMarker(target,proj*view,SCREEN_W,SCREEN_H);
+                if(!detailed) {
+                    bool clustered=false;
+                    for(auto at:drawn)clustered|=glm::length(at-glm::vec2{marker.x,marker.y})<24.f;
+                    if(clustered)continue;
+                    drawn.push_back({marker.x,marker.y});
+                }
+                bool covered=!marker.behind && markerBehindCover(player.camera.position,target,level.walls);
+                const char* height=feet.y>player.position.y+4.f?" / ABOVE":feet.y<player.position.y-4.f?" / BELOW":"";
+                const int distance=(int)glm::length(target-player.camera.position);
+                buf[0]='\0';
+                if(detailed)snprintf(buf,sizeof(buf),"%s %dM%s%s",e.stats().name,distance,height,covered?" / BEHIND COVER":"");
+                else if(!labelled&&(!marker.onScreen||covered||distance>20)) {
+                    snprintf(buf,sizeof(buf),"%dM%s%s",distance,height,marker.behind?" / BEHIND":"");
+                    labelled=true;
+                }
+                ui.renderMarker(marker.x,marker.y,marker.onScreen,{1.f,.3f,.25f},buf,detailed&&marker.behind,!detailed);
             }
         }
     }
@@ -282,19 +389,21 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         if (w > 0.f) ui.ui.rect(0, 0, SCREEN_W, SCREEN_H, {1.f, 0.98f, 0.95f, w});
         ui.end2D();
     }
-    if (g_practice && !victory && !paused) {
+    if (g_practice && !training() && !victory && !paused) {
         ui.begin2D();
         ui.ui.textShadow("PRACTICE  F5 CLEAR WAVE  F6 HEAL", 12, SCREEN_H - 22, 1, {0.4f, 1.f, 0.85f, 0.8f});
         ui.end2D();
     }
 
     if (playerDead && !victory) {   // (ENDLESS has no retry: a moment, then the run's score)
-        if (fast()) snprintf(buf, sizeof(buf), "ROOM %d/%d  %s", director.arena + 1, nArenas, ar.name);
+        if (story()) snprintf(buf, sizeof(buf), "CHAPTER %d  %s  -  %s", level.story.chapter,level.story.title,ar.name);
+        else if (fast()) snprintf(buf, sizeof(buf), "ROOM %d/%d  %s", director.arena + 1, nArenas, ar.name);
         else if (endless()) snprintf(buf, sizeof(buf), "%s - WAVE %d", ar.name, wavesCleared + 1);
         else if (zen) snprintf(buf, sizeof(buf), "ENCORE  %s", ar.name);
         else snprintf(buf, sizeof(buf), "%s %d/%d %s - WAVE %d/%d", tag, director.arena + 1, nArenas, ar.name,
                       director.wave + 1, director.waveCount());
-        ui.renderDeath(buf, totalKills, elapsedTime, fast(), !endless());
+        const bool restored = cold() && level.arenaAt(player.position) >= 8;   // (the Manifest on: dying is the Restorer's word for it)
+        ui.renderDeath(buf, totalKills, elapsedTime, fast(), !endless(), restored ? "R - RESUME FROM RESTORE POINT" : story() ? "R - TRY AGAIN" : nullptr, restored ? "RESTORED" : "YOU DIED");
     }
     if (victory && g_bossRun >= 0) {
         const BossEntry& b = bossEntry(g_bossRun);
@@ -336,9 +445,12 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         }
         if (!act2() && !arenaSolo()) renderLeaderboardPanel();   // (one arena on its own: no board)
     }
-    if (armoryOpen) ui.renderArmory(prog, armoryW, armoryS);
+    if (training() && !paused && !armoryOpen) renderTraining();
+    if(laboratory() && !paused && !armoryOpen && !labIntro.active())renderSuccessorDialogue();
+    if (armoryOpen) ui.renderArmory(prog, armoryW, armoryS, story()?storyOwned:(1<<WEAPON_COUNT)-1);
     if (paused) {
-        if (pauseSettings) {
+        if (guideOpen) { renderGuide(); }
+        else if (pauseSettings) {
             ui.begin2D();
             ui.ui.rect(0, 0, SCREEN_W, SCREEN_H, {0.f, 0.f, 0.02f, 0.65f});
             settingsMenu.render(ui.ui, gameClock + (float)SDL_GetTicks() * 0.001f);
@@ -347,7 +459,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             const char* labels[UIRenderer::PAUSE_ITEMS];
             for (int i = 0; i < UIRenderer::PAUSE_ITEMS; ++i) labels[i] = pauseLabel(i);
             std::string line = fast() ? "FAST - THE GAUNTLET  " + formatTime(elapsedTime)
-                                      : std::string(act2() ? "ACT II - " : "ARENA - ") + ar.name;
+                                      : std::string(training() ? "PRACTICE - " : story() ? "STORY - " : act2() ? "ACT II - " : "ARENA - ") + ar.name;
             line += std::string("   ") + tune().name;
             const Bindings& kb = binds();
             auto k = [&](Act a) { return kb.label(a); };

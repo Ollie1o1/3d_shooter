@@ -66,6 +66,7 @@ public:
         float      pitch      = 1.f;                 // playback rate, on top of the jitter
         float      drive      = 0.f;                 // 0..1 saturation (an ENRAGED voice)
         float      delay      = 0.f;                 // seconds before it sounds (a TWINNED echo)
+        bool       unducked   = false;               // the sound that called the duck: it stays at full level through it
     };
 
     explicit SfxMixer(float sampleRate = 44100.f, uint32_t seed = 0x9E3779B9u) : rng(seed ? seed : 1u) {
@@ -147,7 +148,7 @@ public:
         c.pitch = o.pitch * (1.f + (ui ? 0.01f : 0.04f) * uni());
         c.gain  = o.volume * (ui ? 1.f : dbToLin(1.5f * uni()));
         c.group = o.group; c.priority = o.priority; c.positional = o.positional; c.a = o.pos; c.x = o.floor;
-        c.y = o.delay; c.role = o.role; c.drive = o.drive;
+        c.y = o.delay; c.role = o.role; c.drive = o.drive; c.unducked = o.unducked;
         lastPitch = c.pitch; lastPick = pick;
         return push(c) ? c.serial : 0;
     }
@@ -216,11 +217,11 @@ private:
         float      gain, pitch, x, y, drive;
         SoundGroup group;
         SoundRole  role;
-        bool       priority, positional;
+        bool       priority, positional, unducked;
         glm::vec3  a, b, c;
     };
     struct Voice {
-        bool       active = false, priority = false, positional = false, fresh = true;
+        bool       active = false, priority = false, positional = false, fresh = true, unducked = false;
         uint32_t   serial = 0;
         int        sample = 0;
         SoundGroup group = SoundGroup::PLAYER;
@@ -365,7 +366,7 @@ private:
         if (slot < 0) return;   // everything in the group outranks it
         Voice& v = voices[slot];
         v = Voice{};
-        v.active = true; v.priority = c.priority; v.positional = c.positional;
+        v.active = true; v.priority = c.priority; v.positional = c.positional; v.unducked = c.unducked;
         v.serial = c.serial; v.sample = c.sample; v.group = c.group;
         v.pitch = c.pitch * (bankRate[c.sample] > 0.f ? bankRate[c.sample] / rate : 1.f);
         v.gain = c.gain; v.at = c.a; v.loud = c.gain; v.floor = c.x;
@@ -378,7 +379,7 @@ private:
     void target(const Voice& v, float& L, float& R, float& lp, float* heard = nullptr) const {
         const int solo = soloMask.load(std::memory_order_relaxed);
         if (solo && !(solo & (1 << (int)v.role))) { L = R = 0.f; lp = 1.f; if (heard) *heard = 0.f; return; }
-        float g = v.gain * (v.group == SoundGroup::ENEMY || v.group == SoundGroup::WORLD ? duckGain : 1.f);
+        float g = v.gain * ((v.group == SoundGroup::ENEMY || v.group == SoundGroup::WORLD) && !v.unducked ? duckGain : 1.f);
         if (v.role == SoundRole::CHATTER) g *= 1.f - sideEnv * (1.f - SIDE_CHATTER);   // steps back under a tell
         const bool inCrowd = crowd(v);
         const float base = g;

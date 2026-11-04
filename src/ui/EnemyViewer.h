@@ -244,6 +244,12 @@ private:
         if (file == enemyfile::FILE_MORNINGSTAR) return ms[attackIx % 4];
         if (type == EnemyType::SOVEREIGN) return sov[attackIx % 5];
         if (type == EnemyType::ABSOLUTE) return abs[attackIx % 14];
+        // The Living Ward's subjects
+        static const A pat[] = {A::LAB_LUNGE, A::LAB_SWIPE}, gra[] = {A::LAB_PRESS, A::VOLLEY}, pha[] = {A::LAB_CROSS, A::LAB_LUNGE, A::LAB_SWIPE};
+        if (type == EnemyType::PATIENT) return pat[attackIx % 2];
+        if (type == EnemyType::GRAFTED) return gra[attackIx % 2];
+        if (type == EnemyType::SUSPENDED) return A::LAB_BEAM;
+        if (type == EnemyType::PHASED) return pha[attackIx % 3];
         return A::SHOT;
     }
     std::vector<BoxInstance> boxes;

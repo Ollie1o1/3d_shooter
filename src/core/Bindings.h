@@ -15,7 +15,7 @@
 #include <cstring>
 #include <string>
 
-enum class Act { FORWARD, BACK, LEFT, RIGHT, JUMP, DASH, SLIDE, PARRY, GRAPPLE, RELOAD, GRENADE, INSPECT, INTERACT, COUNT };
+enum class Act { FORWARD, BACK, LEFT, RIGHT, JUMP, DASH, SLIDE, PARRY, GRAPPLE, RELOAD, GRENADE, INSPECT, INTERACT, RECALL, COUNT };
 inline constexpr int ACTS = (int)Act::COUNT;
 
 struct Bindings {
@@ -28,7 +28,7 @@ struct Bindings {
     static int canonical(Act a) {
         static const int C[ACTS] = {SDL_SCANCODE_W, SDL_SCANCODE_S, SDL_SCANCODE_A, SDL_SCANCODE_D, SDL_SCANCODE_SPACE,
                                     SDL_SCANCODE_LSHIFT, SDL_SCANCODE_LCTRL, SDL_SCANCODE_F, SDL_SCANCODE_Q, SDL_SCANCODE_R,
-                                    SDL_SCANCODE_G, SDL_SCANCODE_V, SDL_SCANCODE_E};
+                                    SDL_SCANCODE_G, SDL_SCANCODE_V, SDL_SCANCODE_E, SDL_SCANCODE_X};
         return C[(int)a];
     }
     void reset() {
@@ -37,13 +37,13 @@ struct Bindings {
     }
     static const char* actName(Act a) {
         static const char* N[ACTS] = {"FORWARD", "BACK", "LEFT", "RIGHT", "JUMP", "DASH", "SLIDE / SLAM", "PARRY",
-                                      "GRAPPLE", "RELOAD", "GRENADE", "INSPECT", "FINISH / INTERACT"};
+                                      "GRAPPLE", "RELOAD", "GRENADE", "INSPECT", "FINISH / INTERACT", "RECALL"};
         return N[(int)a];
     }
     // The save file's word for it (no spaces)
     static const char* actKey(Act a) {
         static const char* N[ACTS] = {"forward", "back", "left", "right", "jump", "dash", "slide", "parry",
-                                      "grapple", "reload", "grenade", "inspect", "interact"};
+                                      "grapple", "reload", "grenade", "inspect", "interact", "recall"};
         return N[(int)a];
     }
 
@@ -52,6 +52,7 @@ struct Bindings {
         if (code == MOUSE + SDL_BUTTON_LEFT || code == MOUSE + SDL_BUTTON_RIGHT) return true;
         switch (code) {
             case SDL_SCANCODE_ESCAPE: case SDL_SCANCODE_TAB: case SDL_SCANCODE_P: case SDL_SCANCODE_BACKSPACE:
+            case SDL_SCANCODE_F4:
             case SDL_SCANCODE_RETURN: case SDL_SCANCODE_KP_ENTER: case SDL_SCANCODE_F5: case SDL_SCANCODE_F6: case SDL_SCANCODE_F11:
             case SDL_SCANCODE_1: case SDL_SCANCODE_2: case SDL_SCANCODE_3: case SDL_SCANCODE_4: case SDL_SCANCODE_5:
             case SDL_SCANCODE_UP: case SDL_SCANCODE_DOWN: case SDL_SCANCODE_LEFT: case SDL_SCANCODE_RIGHT:

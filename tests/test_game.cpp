@@ -11,6 +11,7 @@
 #include "game/WaveDirector.h"
 #include "world/LevelGauntlet.h"
 #include "world/LevelAct2.h"
+#include "world/LevelLab.h"
 #include "render/WorldGeometry.h"
 #include "render/MaterialTex.h"
 #include "render/NeonLights.h"
@@ -18,6 +19,8 @@
 #include "audio/RoomTone.h"
 #include "render/EnemyModel.h"
 #include "player/Weapons.h"
+#include "player/Splinter.h"
+#include "player/Recall.h"
 #include "game/Progression.h"
 #include "core/MouseFilter.h"
 #include "core/Settings.h"
@@ -1313,7 +1316,22 @@ int main() {
     // ---------------------------------------------------------------- nothing see-through, from any side
     {
         struct Lvl { const char* name; LevelData L; };
-        std::vector<Lvl> lvls{{"Act I", buildLevel()}, {"the Gauntlet", buildGauntlet()}, {"Act II", buildAct2Level()}};
+        std::vector<Lvl> lvls{{"Act I", buildLevel()}, {"the Gauntlet", buildGauntlet()}, {"Act II", buildAct2Level()}, {"the Living Ward", buildLab()}};
+        using Face=std::array<glm::vec3,3>;
+        auto closedMesh=[](const std::vector<Face>& faces){
+            // Quantized coordinate bins split a shared vertex if compiler roundoff
+            // puts its two copies on opposite sides of a bin boundary. Weld by
+            // actual distance (1 mm), then check every directed edge's reverse.
+            std::vector<glm::vec3> points;std::map<std::pair<int,int>,int> edges;
+            auto vertex=[&](glm::vec3 p){for(int i=0;i<(int)points.size();++i){auto d=p-points[i];if(glm::dot(d,d)<1e-6f)return i;}points.push_back(p);return (int)points.size()-1;};
+            for(const auto& f:faces){int v[]={vertex(f[0]),vertex(f[1]),vertex(f[2])};for(int k=0;k<3;++k)if(v[k]!=v[(k+1)%3])++edges[{v[k],v[(k+1)%3]}];}
+            for(const auto& edge:edges){auto reverse=edges.find({edge.first.second,edge.first.first});if(reverse==edges.end()||reverse->second!=edge.second)return false;}
+            return true;
+        };
+        glm::vec3 origin{.00249f,0,0},px{1,0,0},py{0,1,0},pz{0,0,1};
+        std::vector<Face> tetra{{origin,py,px},{origin,px,pz},{origin,pz,py},{px,py,pz}};
+        tetra[0][0].x+=.00002f;bool seam=closedMesh(tetra);tetra.erase(tetra.begin());
+        CHECK(seam&&!closedMesh(tetra),"the face validator welds numerical seams but still rejects a missing face");
         bool undersides = true, shapesClosed = true;
         for (auto& lv : lvls) {
             const LevelData& L = lv.L;
@@ -1358,21 +1376,9 @@ int main() {
             int open = 0;
             for (auto& sh : L.shapes) {
                 if (sh.twoSided) continue;
-                std::map<std::tuple<long, long, long, long, long, long>, int> edges;
-                auto key = [](glm::vec3 p) { return std::make_tuple(std::lround(p.x * 200), std::lround(p.y * 200), std::lround(p.z * 200)); };
-                sh.forEachTri([&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3) {
-                    glm::vec3 v[3] = {a, b, c};
-                    for (int k = 0; k < 3; ++k) {
-                        auto p = key(v[k]), q = key(v[(k + 1) % 3]);
-                        edges[std::tuple_cat(p, q)]++;
-                    }
-                });
-                bool closed = true;
-                for (auto& e : edges) {
-                    auto& k = e.first;
-                    auto rev = std::make_tuple(std::get<3>(k), std::get<4>(k), std::get<5>(k), std::get<0>(k), std::get<1>(k), std::get<2>(k));
-                    if (!edges.count(rev)) { closed = false; break; }
-                }
+                std::vector<Face> faces;
+                sh.forEachTri([&](glm::vec3 a,glm::vec3 b,glm::vec3 c,glm::vec3){faces.push_back({a,b,c});});
+                bool closed=closedMesh(faces);
                 if (!closed) { if (open++ < 3) std::printf("      %s: an open shape that's one-sided\n", lv.name); shapesClosed = false; }
             }
         }
@@ -1642,6 +1648,26 @@ int main() {
         for (auto& sh : D.shapes) sh.forEachTri([&](glm::vec3, glm::vec3, glm::vec3, glm::vec3) { ++tris; });
         std::printf("      gauntlet: %zu shapes, %zu triangles\n", D.shapes.size(), tris);
         CHECK(tris < 120000, "the gauntlet's shapes stay within the triangle budget");
+    }
+
+    // Dome apices and half-bin coordinates exposed stale bake fingerprints on
+    // GCC/x86 despite matching source geometry on Clang/ARM.
+    {
+        std::vector<Shape> shapes;ShapeKit kit{shapes};
+        kit.dome({24.9447f,-113.137f,-829.667f},1.3f,glm::vec3{.5f},5,12);
+        int capTriangles=0;shapes.back().forEachTri([&](glm::vec3,glm::vec3,glm::vec3,glm::vec3){++capTriangles;});
+        CHECK(shapes.back().topScale==0.f && capTriangles==24,"a dome closes at an exact apex without inverted cap slivers");
+        bool stable=true;
+        for(float tie:{.3828125f,.2734375f,-.3828125f,-.2734375f}) {
+            LevelData a;a.walls.push_back({{{tie-2e-7f,0,0},{2,2,2}},glm::vec3{.5f}});
+            auto b=a;b.walls[0].box.min.x=tie+2e-7f;
+            stable &= lightbake::levelHash(a)==lightbake::levelHash(b);
+            b.walls[0].box.min.x+=.03125f;
+            stable &= lightbake::levelHash(a)!=lightbake::levelHash(b);
+        }
+        CHECK(stable,"bake fingerprints ignore compiler noise at half bins but detect real geometry changes");
+        LevelData a;a.shapes=shapes;auto b=a;b.shapes.back().topScale=.5f;
+        CHECK(lightbake::levelHash(a)!=lightbake::levelHash(b),"changing a procedural shape's recipe invalidates its bake");
     }
 
     // ---------------------------------------------------------------- AI
@@ -2143,7 +2169,14 @@ int main() {
               "every wave starts; the Core and the Sanctum end on their bosses");
         CHECK(counts[DirectorEvent::ARENA_CLEARED] == n && counts[DirectorEvent::VICTORY] == 1 &&
               counts[DirectorEvent::FINISH_OPEN] == 0, "each arena clears, then victory");
-        CHECK(counts[DirectorEvent::NEW_TYPE] == (int)EnemyType::COUNT - 14,   // the Seraph, the Anchor, the Penitent, the Revenant, the Weaver, the Leviathan and the Absolute are Act II's; the 7 Gauntlet bosses FAST's
+        std::set<EnemyType> actTypes;
+        for(const auto& arena:L.arenas) {
+            for(const auto& wave:arena.waves)for(const auto& entry:wave) {
+                actTypes.insert(entry.type);actTypes.insert(entry.escort.begin(),entry.escort.end());
+            }
+            for(const auto& goal:arena.goals)if(goal.kind==WaveGoal::CONDUITS)actTypes.insert(EnemyType::CONDUIT);
+        }
+        CHECK(counts[DirectorEvent::NEW_TYPE] == (int)actTypes.size(),
               "each Act I enemy type is introduced exactly once");
         CHECK(goalWaves >= 3 && (int)goalsDone.size() == goalWaves && counts[DirectorEvent::GOAL_DONE] == goalWaves,
               "every goal wave (hold, conduits, survive) is met once, and that ends it");
@@ -3074,7 +3107,7 @@ int main() {
         CHECK(levels, "every voice sits within 2 dB of its mix class's level");
         CHECK(varied, "a voice's variants differ");
         CHECK(same, "the same voice builds the same every time");
-        CHECK(total <= 270.f, "the whole voice bank is at most 270 s of audio");   // (180 before the Leviathan, 200 before the Absolute, 220 before THUNDERCLAP, 225 before the Gauntlet's seven bosses)
+        CHECK(total <= 350.f, "the whole voice bank, including the expanded Story tools, five lab bodies and Chapter 5's enemies and bosses, stays within 350 s of audio");
     }
 
     // ---------------------------------------------------------------- enemy voices: who gets to speak
@@ -3287,8 +3320,11 @@ int main() {
                                 "jump_air", "land_heavy", "slide", "hit_head", "ammo_low", "heartbeat", "hit_armor", "impact", "casing", "whiz", "step_metal", "land_metal", "lastkill",
                                 "hit_body", "stun", "finisher", "overdrive_on", "overdrive_off", "finish_ready", "hook_yank",
                                 "anvil", "anvil_final", "record", "split_behind", "count_tick", "count_go", "drive_warn", "drive_ready", "dash_ready", "potion_drop",
-                                "mini_sting", "bell", "medal"};
+                                "mini_sting", "bell", "medal", "gleaner_scream", "gleaner_slam", "gleaner_groan", "gleaner_blink",
+                                "caller_toll", "caller_clang", "sieve_rattle", "sieve_stake"};
         std::vector<std::string> names(std::begin(loaded), std::end(loaded));
+        for(int i=0;i<7;++i)names.push_back("successor_line_"+std::to_string(i));
+        for(int i=0;i<5;++i)names.push_back("lab_pa_"+std::to_string(i));
         for (const std::string& n : abAllSounds()) names.push_back(n);   // THE ABSOLUTE's fight (AbsoluteFeel.h)
         bool all = true; for (const std::string& n : names) all &= mixEntry(n) != nullptr;
         CHECK(all && mixTable().size() == names.size(), "every sound file the game loads has exactly one place in the mix");
@@ -4744,7 +4780,7 @@ int main() {
                             (int)EnemyType::MITE, (int)EnemyType::JUGGERNAUT, (int)EnemyType::SHIELDBEARER,
                             (int)EnemyType::WARDEN, (int)EnemyType::PENITENT, (int)EnemyType::LEVIATHAN, (int)EnemyType::SOVEREIGN,
                             (int)EnemyType::REVENANT, (int)EnemyType::WEAVER, (int)EnemyType::SERAPH, (int)EnemyType::ANCHOR,
-                            (int)EnemyType::CONDUIT, (int)EnemyType::CONDUCTOR, (int)EnemyType::ABSOLUTE, enemyfile::FILE_MORNINGSTAR};
+                            (int)EnemyType::CONDUIT, (int)EnemyType::CONDUCTOR, (int)EnemyType::ABSOLUTE, (int)EnemyType::BALLAST, enemyfile::FILE_MORNINGSTAR};
         auto formOf = [](int f, Enemy& e) { if (f == enemyfile::FILE_MORNINGSTAR) { e.abForm = 1; e.scale = Enemy::MS_SCALE; e.abPhase = 4; }
                                             if (f == (int)EnemyType::PENITENT) e.risen = true;   // (standing: kneeling, it's sunk into the floor)
                                             if (f == (int)EnemyType::LEVIATHAN) { e.levInit = true; e.levStage = Enemy::LevStage::FIGHT; } };   // (risen)
@@ -5740,6 +5776,68 @@ int main() {
         CHECK(js.find("\"killedBy\":\"RIPPER\"") != std::string::npos && js.find("\"HUSK\":[15,1]") != std::string::npos &&
               js.find("\"SHOTGUN\":[4,3,1]") != std::string::npos && js.find("\"HUSK\":[1.25,1]") != std::string::npos && js.find('\n') == std::string::npos,
               "the run log writes what hurt you, what killed you, each gun's shots, hits and kills, and time to kill, on one line");
+    }
+
+    // ------------------------------------------------------------ the SPLINTER
+    {
+        SplinterSystem sp;
+        auto open = [](glm::vec3, glm::vec3) { return false; };
+        int i = sp.toss({0.f, 1.7f, 0.f}, {0.f, 0.f, -1.f}, {1.f, 0.f, 0.f}, glm::vec3{0.f});
+        CHECK(i >= 0 && sp.charges == SplinterSystem::CHARGES - 1, "a splinter costs one charge");
+        float hang = 0.f, peak = 0.f, t = 0.f;
+        while (sp.pool[i].alive && t < 5.f) {
+            sp.tick(1.f / 60.f, open); t += 1.f / 60.f;
+            if (SplinterSystem::glinting(sp.pool[i])) hang += 1.f / 60.f;
+            peak = std::max(peak, sp.pool[i].pos.y);
+        }
+        std::printf("      splinter: peak %.2f m, glints %.2f s\n", peak, hang);
+        CHECK(hang > 0.4f && hang < 0.75f, "a splinter hangs and glints for about half a second at the top of its arc");
+        CHECK(peak > 2.8f && peak < 5.f, "a splinter rises to a readable height in front of you");
+        CHECK(sp.charges == SplinterSystem::CHARGES, "a spent charge regrows");
+        sp.reset();
+        for (int k = 0; k < SplinterSystem::CHARGES; ++k) sp.toss({0.f, 1.7f, 0.f}, {0.f, 0.f, -1.f}, {1.f, 0.f, 0.f}, glm::vec3{0.f});
+        CHECK(!sp.canThrow() && sp.toss(glm::vec3{0.f}, {0.f, 0.f, -1.f}, {1.f, 0.f, 0.f}, glm::vec3{0.f}) < 0, "no charges, no splinter");
+        sp.reset();
+        i = sp.toss({0.f, 1.7f, 0.f}, {0.f, 0.f, -1.f}, {1.f, 0.f, 0.f}, glm::vec3{0.f});
+        float rt = 0.f;
+        CHECK(sp.rayHit({0.f, 1.7f, 0.f}, {0.f, 0.f, -1.f}, 50.f, rt) < 0, "a splinter cannot be shot the instant it leaves the hand");
+        sp.tick(0.2f, open);
+        glm::vec3 eye{0.f, 1.7f, 0.f}, to = glm::normalize(sp.pool[i].pos + glm::vec3{0.3f, 0.f, 0.f} - eye);
+        CHECK(sp.rayHit(eye, to, 50.f, rt) == i, "a round passing within half a metre of a splinter hits it");
+        CHECK(sp.rayHit(eye, to, rt - 0.5f, rt) < 0, "something nearer along the round (a wall, an enemy) comes first");
+        int broke = sp.tick(1.f / 60.f, [](glm::vec3, glm::vec3) { return true; });
+        CHECK(broke == (1 << i) && sp.live() == 0, "a splinter breaks on the world it flies into");
+        CHECK(SplinterSystem::damageMult(0, false) == 1.5f && SplinterSystem::damageMult(2, true) > SplinterSystem::damageMult(2, false)
+              && SplinterSystem::damageMult(1, false) > SplinterSystem::damageMult(0, false), "a chain and a glint both hit harder");
+        CHECK(SplinterSystem::heavyRoundScale(weaponDef(WeaponId::REVOLVER).damage) == 1.f
+              && SplinterSystem::heavyRoundScale(weaponDef(WeaponId::KAR).damage) < 0.8f
+              && SplinterSystem::heavyRoundScale(weaponDef(WeaponId::LONGSHOT).damage) < 0.5f
+              && weaponDef(WeaponId::LONGSHOT).damage * SplinterSystem::heavyRoundScale(weaponDef(WeaponId::LONGSHOT).damage)
+                 > weaponDef(WeaponId::REVOLVER).damage, "the rifles get less from a splinter than the revolver, but still more damage per round");
+    }
+
+    // RECALL (Chapter 5): leave a statue, snap back to it within the window
+    {
+        RecallSystem r;
+        CHECK(r.ready() && !r.placed, "RECALL starts ready, with no statue");
+        CHECK(r.press({1.f, 0.f, 2.f}, 0.5f) == RecallSystem::Press::PLACED && r.placed && r.feet == glm::vec3(1.f, 0.f, 2.f),
+              "the first press leaves a statue where you stand");
+        CHECK(r.luring(), "a fresh statue draws enemies");
+        CHECK(r.press({9.f, 0.f, 9.f}, 0.f) == RecallSystem::Press::NONE && r.placed, "a double tap does not snap you straight back");
+        r.tick(RecallSystem::LURE + 0.1f);
+        CHECK(!r.luring() && r.placed, "the lure wears off before the statue does");
+        CHECK(r.press({9.f, 0.f, 9.f}, 0.f) == RecallSystem::Press::RECALLED && r.feet == glm::vec3(1.f, 0.f, 2.f) && !r.placed,
+              "the second press sends you back to the statue's spot");
+        CHECK(!r.ready() && r.press(glm::vec3{0.f}, 0.f) == RecallSystem::Press::NONE, "then it cools down");
+        r.tick(RecallSystem::COOLDOWN + 0.01f);
+        CHECK(r.ready(), "...and comes back");
+        r.press(glm::vec3{0.f}, 0.f);
+        bool crumbled = false;
+        for (int i = 0; i < 60 * 9 && !crumbled; ++i) crumbled = r.tick(1.f / 60.f);
+        CHECK(crumbled && !r.placed && r.age >= RecallSystem::WINDOW - 0.02f, "left alone, the statue crumbles after its window");
+        Bindings b;
+        CHECK(b.slot[(int)Act::RECALL][0] == SDL_SCANCODE_X && std::string(Bindings::actKey(Act::RECALL)) == "recall",
+              "RECALL has its own rebindable key, X by default");
     }
 
     // A Sentinel on the Spire's summit keeps firing at you below, every time and

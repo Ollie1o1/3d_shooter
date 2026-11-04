@@ -58,6 +58,7 @@ inline void GameplayState::pinnedCue() {
 // A projectile parried (the punch, or the sword's parry): sent back where you
 // look, or homing into the Warden's core / the Leviathan's eye
 inline void GameplayState::reflectProjectile(int pi, glm::vec3 fwd) {
+    trainingSuccess(0);
     Projectile& p = projSystem.pool[pi];
     float speed = std::max(40.f, glm::length(p.velocity) * 2.f);
     p.isPlayer = true;
@@ -75,6 +76,7 @@ inline void GameplayState::reflectProjectile(int pi, glm::vec3 fwd) {
         styleSystem.addStyle(25.f, StyleSource::PARRY);
         ui.feed("PARRY", {1.f, 0.9f, 0.3f});
     }
+    for(auto& e:enemies) if(e.type==EnemyType::SORTER) e.sortMark=0;
     parryFeedback(p.position, p.heavy);
 }
 
@@ -99,11 +101,20 @@ inline void GameplayState::punch(int boostable) {
                                                      e.sweepReach(), player.position, player.height, e.floorY);
             else inReach = flat < (e.attack == AttackKind::PSLAM ? PenitentHazards::SLAM_RADIUS : PenitentHazards::STOMP_RADIUS);
         }
+        // Meet the advancing white arm, rather than requiring the torso to
+        // enter fist range before its committed step has happened.
+        if(e.type==EnemyType::SUCCESSOR)
+            inReach=dist<SuccessorState::PARRY_REACH && glm::dot(fwd,d/dist)>.2f;
+        if (e.type == EnemyType::BALLAST)
+            inReach = glm::length(player.position-e.ballAim)<Enemy::BALL_ANCHOR_R+1.f;
+        if (e.type == EnemyType::SORTER)
+            inReach = glm::length(player.position-e.sortAim)<Enemy::SORT_GRAB_R+1.f;
         if (e.type == EnemyType::LEVIATHAN)   // its head coming down on you: punch it as it lands
             inReach = glm::length(glm::vec2{player.position.x - e.levTarget.x, player.position.z - e.levTarget.z}) < Enemy::LV_PARRY_REACH;
         if (inReach) {
             if (e.halo) breakHalo(e);
-            e.stagger(e.staggerTime());
+            e.stagger(e.type==EnemyType::SUCCESSOR?1.1f:e.staggerTime());
+            if(e.type==EnemyType::SUCCESSOR){styleSystem.heal(8.f*tune().heal);successorHazards.clear();if(!e.suCounterLine){e.suCounterLine=true;saySuccessor(2);}}
             parryFeedback(eye + fwd * 1.2f, true);
             styleSystem.addStyle(70.f, StyleSource::PARRY);
             gainXp(30);
@@ -111,12 +122,17 @@ inline void GameplayState::punch(int boostable) {
             else if (e.type == EnemyType::PENITENT) ui.toast("PARRIED", "IT STAGGERS - HIT IT HARD", {1.f, 0.75f, 0.2f}, 1.6f);
             else if (e.type == EnemyType::LEVIATHAN) { ui.toast("STAGGERED", "DOUBLE DAMAGE - MAKE IT COUNT", {1.f, 0.75f, 0.2f}, 1.8f); lev.dropMarks(); shake(0.7f, 0.08f); }
             else if (e.type == EnemyType::SHIELDBEARER) ui.toast("SHIELD DOWN", "", {0.4f, 1.f, 0.75f}, 1.2f);
+            else if(e.type==EnemyType::SUCCESSOR)ui.toast("DRIVE EXPOSED","STRIKE NOW",{.4f,.9f,1.f},1.35f);
+            else if(e.type==EnemyType::PATIENT || e.type==EnemyType::PHASED)ui.toast("RUSH BROKEN","EXPOSED - STRIKE NOW",{.4f,.9f,1.f},1.2f);
             else ui.toast("STAGGERED", "DOUBLE DAMAGE - MAKE IT COUNT", {1.f, 0.75f, 0.2f}, 1.8f);
             return;
         }
     }
+    if (parryCaller()) return;   // THE CALLER diving at you (Gameplay_GleanerFight.h)
+    if (parryTender()) return;   // THE TENDER's white tongs reaching for you
     if (tryFinisher()) return;   // one low enough to finish (it glows): Gameplay_Feel.h
     if (boostable >= 0) {
+        trainingSuccess(4);
         // Projectile boost: detonate your own projectile for a massive explosion.
         auto& p = projSystem.pool[boostable];
         float r = glm::max(p.blastRadius, 4.f) * 2.f;
@@ -153,7 +169,14 @@ inline void GameplayState::punch(int boostable) {
 }
 
 inline void GameplayState::spawnEnemy(EnemyType t, glm::vec3 pos, Hollow h) {
-    enemies.push_back(Enemy(t, pos, level.baseFloor(pos.x, pos.z)));
+    float floor=level.baseFloor(pos.x,pos.z);
+    if(laboratory() || cold()){
+        int room=level.arenaAt(pos);if(room<0)room=director.arena;
+        // Lab basins are far below the real platforms. Using that abyss as a
+        // flying subject's initial floor gives it a 250 m hover offset.
+        floor=level.enemyFloor(room,pos,statsOf(t).flying,groundHeightAt(pos.x,pos.z,pos.y+.5f,true));
+    }
+    enemies.push_back(Enemy(t, pos, floor));
     enemies.back().uid = nextEnemyUid++;
     enemies.back().setHollow(h);
     enemies.back().maxHealth *= tune().health * endlessToughness();
@@ -174,7 +197,7 @@ inline VoiceIn GameplayState::voiceIn(const Enemy& e, const EnemyEvents* ev) con
     v.pos = e.position + glm::vec3{0.f, e.height() * 0.7f, 0.f};
     v.moveSpeed = e.moveSpeed; v.health = e.health;
     v.attack = e.attack; v.telegraphTimer = e.telegraphTimer; v.staggered = e.staggered();
-    v.halo = e.halo; v.linkCount = e.linkCount; v.beamOn = e.beamTimer > 0.f;
+    v.halo = e.halo; v.linkCount = e.linkCount; v.beamOn = e.beamTimer > 0.f || e.labBeam > 0.f;
     if (ev) { v.telegraphStarted = ev->telegraphStarted; v.enraged = ev->enraged; v.rose = ev->penRose || ev->lvRise; }
     return v;
 }
@@ -219,7 +242,7 @@ inline void GameplayState::updateEnemies(float dt) {
     w.dynCount   = (int)level.moverWalls.size();
     w.reactor    = level.reactorPos;              // the Warden feeds here
     w.hasReactor = level.hasReactor;
-    w.voidUnder  = ar.shift == ArenaShift::DRIFT;   // the Reliquary: step off a relic and you fall
+    w.voidUnder  = ar.shift == ArenaShift::DRIFT || (laboratory()&&(director.arena==5||director.arena==7||director.arena==8||director.arena==9));   // only real floor supports the open wards
     w.hasLair    = level.hasLair;                   // the Maw: where the Leviathan lives and breaches
     w.lair       = level.lair; w.lairFloor = level.lairFloor;
     w.wells      = level.wells.data(); w.wellCount = (int)level.wells.size();
@@ -235,8 +258,26 @@ inline void GameplayState::updateEnemies(float dt) {
         if (!e.alive) continue;
         hurtBy = e.type;   // whatever hurts you from here on, until the next one: this one did
         if (g_devOverlay.rfind("pose", 0) == 0 && e.type == EnemyType::SOVEREIGN) { devPose(e); continue; }
+        if (g_devOverlay == "rspose" && e.type == EnemyType::RESTORER) { e.yaw = 0.f; e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE; continue; }   // dev: it stands still, facing +Z (screenshots)
         if (g_devOverlay.rfind("penitent", 0) == 0 && e.type == EnemyType::PENITENT) { devPenitentPose(e); continue; }
         if (g_devOverlay == "thunder" && e.type == EnemyType::ABSOLUTE && e.abCur < 0) e.abForce = AB_THUNDER;   // dev: THUNDERCLAP, over and over
+        if(e.type==EnemyType::SORTER&&e.sortStep==0) {
+            if(g_devOverlay=="sorterpress")e.sortNext=AttackKind::SORT_STAMP;
+            if(g_devOverlay=="sorterrush")e.sortNext=AttackKind::SORT_RUSH;
+            if(g_devOverlay=="sorterrow")e.sortNext=AttackKind::SORT_ROW;
+            if(g_devOverlay=="sorterpurge")e.sortNext=AttackKind::SORT_PURGE;
+        }
+        if(e.type==EnemyType::BALLAST&&e.ballStep==0) {
+            if(g_devOverlay=="ballastwinch")e.ballFollow=AttackKind::BALL_WINCH;
+            if(g_devOverlay=="ballastrip")e.ballFollow=AttackKind::BALL_RIP;
+            if(g_devOverlay=="ballastsweep")e.ballFollow=AttackKind::BALL_SWEEP;
+        }
+        if(e.type==EnemyType::SORTER && (g_devOverlay=="sorter2"||g_devOverlay=="sorter3") && e.health>e.maxHealth*.67f)
+            e.health=e.maxHealth*(g_devOverlay=="sorter2"?.5f:.2f);
+        if(e.type==EnemyType::BALLAST && (g_devOverlay=="ballast2"||g_devOverlay=="ballast3") && e.health>e.maxHealth*.56f)
+            e.health=e.maxHealth*(g_devOverlay=="ballast2"?.4f:.16f);
+        if(e.type==EnemyType::SUCCESSOR && (g_devOverlay=="successor2"||g_devOverlay=="successor3") && e.health>e.maxHealth*.66f)
+            e.health=e.maxHealth*(g_devOverlay=="successor2"?.6f:.25f);
         if (e.type == EnemyType::WARDEN && (g_devOverlay == "warden2" || g_devOverlay == "warden3") && e.health > e.maxHealth * 0.62f)
             e.health = e.maxHealth * (g_devOverlay == "warden2" ? 0.5f : 0.2f);   // dev: straight into its later phases
         if (e.type == EnemyType::LEVIATHAN && (g_devOverlay == "leviathan2" || g_devOverlay == "leviathan3") && e.health > e.maxHealth * 0.66f && e.levStage == Enemy::LevStage::FIGHT)
@@ -257,14 +298,30 @@ inline void GameplayState::updateEnemies(float dt) {
         if (e.type == EnemyType::ABSOLUTE) swordParryAbsolute(e);   // the sword's window meets a white strike as it lands
         // In the Descent the void runs to -300: stand on what's really under you (the cage included)
         e.floorY = level.enemyFloor(director.arena, e.position, e.stats().flying,
-                                    descent ? groundHeightAt(e.position.x, e.position.z, e.position.y + 0.5f, true) : 0.f);
+                                    (descent || laboratory() || cold()) ? groundHeightAt(e.position.x, e.position.z, e.position.y + 0.5f, true) : 0.f);
         e.wadeMul = e.stats().flying ? 1.f : 1.f - 0.5f * (1.f - Player::wadeFactor(level.waterDepthAt(e.position)));
+        if(story()&&e.type==EnemyType::SORTER&&e.sortRush>0)
+            breakStoryCover(e.position,e.position+e.sortRushDir*(36.f*dt),3.6f);
+        if(story()&&e.type==EnemyType::BALLAST&&e.ballDrive>0&&!e.ballHaul)
+            breakStoryCover(e.position+glm::vec3{0,1,0},e.position+glm::vec3{0,1,0}+e.ballDir*(36.f*dt),4.f);
+        bool beamLocked=e.labLocked;
+        const bool lured = recallLures(e);   // RECALL's statue, fresh: it goes for that instead of you
+        if (lured) { w.playerFeet = recall.feet; w.playerEye = recall.feet + glm::vec3{0.f, 1.7f, 0.f}; w.playerVel = glm::vec3{0.f}; }
         e.update(dt, w);
+        if (lured) { w.playerFeet = player.position; w.playerEye = player.camera.position; w.playerVel = player.velocity; }
+        if(e.type==EnemyType::SUSPENDED && !beamLocked && e.labLocked)
+            audio.playAt("count_tick",e.position,90,SoundGroup::ENEMY,true);
         if (e.type == EnemyType::ABSOLUTE) rig::tickAbsoluteBody(e, dt);   // his body chasing his pose
+        if(e.type==EnemyType::SUCCESSOR)rig::tickSuccessorBody(e,dt);
         if (e.hollow == Hollow::ENRAGED && std::fmod(e.age, 0.15f) < dt)   // embers off an Enraged one
             fx.spawnBurst(e.position + glm::vec3{0, e.height() * 0.6f, 0}, {1.f, 0.3f, 0.1f}, 2, 1.5f, 0.6f, -2.f);
         const float eScale = dmgScale * e.damageMult();   // ENRAGED hits harder
         const EnemyEvents ev = e.ev;   // copy: spawning below may reallocate
+        if(ev.telegraphStarted && e.type>=EnemyType::PATIENT && e.type<=EnemyType::PHASED){
+            float pitch=e.type==EnemyType::GRAFTED?.7f:e.type==EnemyType::SUSPENDED?1.3f:1.f;
+            audio.playAt("telegraph",e.position,85,SoundGroup::ENEMY,true,pitch);
+            if(e.attack==AttackKind::LAB_CROSS)audio.playAt("grapple_fire",e.labExit,75,SoundGroup::ENEMY,true);
+        }
         if (ev.telegraphStarted && !isBoss(e.type) && threatTickCd <= 0.f && unseenWindup(e, player.camera.flatForward())) {   // behind you: a tick from where it is
             threatTickCd = 0.25f;
             audio.playAt("telegraph", e.position + glm::vec3{0.f, e.height() * 0.7f, 0.f}, 110, SoundGroup::ENEMY, true, 0.6f);
@@ -279,7 +336,12 @@ inline void GameplayState::updateEnemies(float dt) {
                 pr->ownerType = (int)enemies[i].type;
                 pr->parryDamage = ev.shotParry;
             }
-        if (ev.beamOn) {   // a SERAPH's beam: 30/s while it touches you, sparks (or steam) where it lands
+        if (e.type == EnemyType::SUCCESSOR) successorEvents(e,ev);
+        if (e.type == EnemyType::BALLAST) ballastEvents(e,ev);
+        if (story() && e.type == EnemyType::SORTER) storySorterEvents(e,ev);
+        if (e.type == EnemyType::PICKER && ev.sortGrab) pickerGrab(e, lured);
+        if (e.type == EnemyType::RESTORER) restorerEvents(e, ev);
+        if (ev.beamOn && e.type != EnemyType::SORTER) {   // a SERAPH's beam: 30/s while it touches you, sparks (or steam) where it lands
             AABB pb{player.position + glm::vec3{-player.radius, 0.f, -player.radius},
                     player.position + glm::vec3{player.radius, player.height, player.radius}};
             if (segmentHitsBox(ev.beamFrom, ev.beamTo, pb)) {
@@ -293,7 +355,10 @@ inline void GameplayState::updateEnemies(float dt) {
             }
             if (beamHissCd <= 0.f) { audio.playAt("skim", ev.beamTo, 55, SoundGroup::ENEMY); beamHissCd = 0.45f; }
         }
-        if (ev.meleeHit && enemies[i].type != EnemyType::ABSOLUTE) {   // (his: onAbsoluteEvents, where the sword can meet them)
+        if (ev.meleeHit && lured) {   // it swung at the statue
+            fx.spawnHitSparks(recall.feet + glm::vec3{0.f, 1.f, 0.f}, RECALL_FROST);
+            audio.playAt("clank", recall.feet, 90, SoundGroup::ENEMY, true, 1.3f);
+        } else if (ev.meleeHit && enemies[i].type != EnemyType::ABSOLUTE) {   // (his: onAbsoluteEvents, where the sword can meet them)
             if (damagePlayer(ev.meleeDamage * eScale, epos, 0.25f, 0.06f)) {
                 glm::vec3 away = player.position - epos; away.y = 0.f;
                 if (glm::length(away) > 0.001f)
@@ -418,6 +483,7 @@ inline void GameplayState::friendlySlam(const Enemy& slammer, float radius) {
 inline bool GameplayState::damagePlayer(float dmg, glm::vec3 from, float shakeT, float shakeAmt, float iframes) {
     if (invincFrames > 0.f || playerDead || g_godMode || victory || ascendT >= 0.f ||
         (!fast() && director.phase == WaveDirector::Phase::VICTORY)) return false;
+    if (training()) dmg = std::min(dmg, std::max(0.f, styleSystem.health - 1.f));
     styleSystem.takeDamage(dmg);
     runLog.took(hurtBy, dmg);
     ui.onDamage();
@@ -515,6 +581,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     runLog.killed(e.type, src, e.firstHitAge >= 0.f ? e.age - e.firstHitAge : -1.f);
     if (src != StyleSource::FRIENDLY && src != StyleSource::ENVIRONMENT) styleSystem.extendOverdrive(0.5f);   // kills keep OVERDRIVE burning
     if (e.type == EnemyType::CONDUIT) director.onConduitDestroyed(e.position);
+    clerkNoteDeath(e);   // a CLERK up nearby: it comes back (Gameplay_ColdEnemies.h)
     if (e.splitsOnDeath()) {   // not into `enemies` yet: callers may be iterating it
         for (auto& t : twinsOf(e)) pendingTwins.push_back(t);
         fx.spawnBurst(e.position + glm::vec3{0, e.height() * 0.5f, 0}, e.stats().glow, 30, 7.f, 0.5f, 4.f);
@@ -556,7 +623,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
         ui.feed("FRIENDLY FIRE  +10 XP", {1.f, 0.5f, 0.35f});
     }
 
-    // Drops. Health orbs are common and small; potions (18%) and XP shards
+    // Drops. Health orbs are common and small; potions (6%) and XP shards
     // (10%) are the rare ones, and get a loot beam so you notice them.
     glm::vec3 c = e.position + glm::vec3{0, std::min(e.height() * 0.5f, 1.5f), 0};
     float floorY = groundHeightAt(e.position.x, e.position.z, e.position.y + 0.5f);
@@ -566,10 +633,10 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     };
     switch (e.type) {
         case EnemyType::BRUTE:  for (int i = 0; i < 3; ++i) { drop(PickupKind::ORB); }
-                                if (rand() % 100 < 50) drop(PickupKind::POTION);
+                                if (rand() % 100 < 20) drop(PickupKind::POTION);
                                 break;
         case EnemyType::MITE:   if (rand() % 10 == 0) drop(PickupKind::ORB); break;
-        case EnemyType::WARDEN: case EnemyType::SOVEREIGN: case EnemyType::LEVIATHAN: case EnemyType::ABSOLUTE: case EnemyType::PACEMAKER: break;
+        case EnemyType::WARDEN: case EnemyType::SOVEREIGN: case EnemyType::LEVIATHAN: case EnemyType::ABSOLUTE: case EnemyType::PACEMAKER: case EnemyType::BALLAST: case EnemyType::SORTER: case EnemyType::SUCCESSOR: break;
         case EnemyType::COURIER: case EnemyType::BULWARK: case EnemyType::CANTOR:
         case EnemyType::HARRIER: case EnemyType::PLUMB: case EnemyType::FOREMAN:   // the room's prize: health to carry on
             drop(PickupKind::POTION); drop(PickupKind::ORB); drop(PickupKind::ORB); drop(PickupKind::XP); break;
@@ -578,7 +645,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
         case EnemyType::ANCHOR: drop(PickupKind::ORB); drop(PickupKind::ORB); break;
         default:
             if (rand() % 100 < (int)(20 * tune().drops)) drop(PickupKind::ORB);
-            if (rand() % 100 < (int)(18 * tune().drops)) drop(PickupKind::POTION);
+            if (rand() % 100 < (int)(6 * tune().drops)) drop(PickupKind::POTION);
             if (rand() % 100 < 10) drop(PickupKind::XP);
             break;
     }
@@ -614,6 +681,24 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
                 records.save();
                 ui.feed("ACT II UNLOCKED - BENEATH THE ECLIPSE", {0.35f, 0.95f, 0.9f});
             }
+        } else if(e.type==EnemyType::SUCCESSOR){
+            storyBossDown=true;successorHazards.clear();saveStoryProgress();saySuccessor(5);
+            successorFell=e.position;successorFell.y=groundHeightAt(e.position.x,e.position.z,e.position.y+1.f);successorFellYaw=e.yaw;successorFellSet=true;   // (its body stays: Gameplay_LabEnding.h)
+            for(auto& p:projSystem.pool)if(!p.isPlayer)p.alive=false;
+        } else if (e.type == EnemyType::RESTORER) {   // Chapter 5's boss (its rewind and the ride out: Gameplay_Cold.h)
+            coldRDown = true; coldRDownAt = elapsedTime; storyBossDown = true;
+            rsCorpse = e; rsCorpse.alive = true; rsCorpse.attack = AttackKind::NONE; rsCorpse.telegraphTimer = 0.f; rsDeathT = 0.f;
+            for (auto& shot : projSystem.pool) if (!shot.isPlayer) shot.alive = false;
+            resetRestorerFight();
+            pushBanner("\"NOTHING I SAVED EVER WOKE UP.\"", "THE RESTORER", {0.8f, 0.9f, 1.f}, 6.f);
+        } else if (e.type == EnemyType::UNIT24K) {   // Chapter 5's mid-boss: it asks, and goes still
+            coldKDown = true; coldKDownAt = elapsedTime;
+            for (auto& shot : projSystem.pool) if (!shot.isPlayer) shot.alive = false;
+            pushBanner("\"WHAT WAS IT LIKE?\"", "24-K", {0.85f, 0.9f, 0.95f}, 5.f);
+        } else if (e.type == EnemyType::BALLAST) {
+            storyBossDown=true;saveStoryProgress();ballastHazards.clear();
+            for(auto& shot:projSystem.pool)if(!shot.isPlayer)shot.alive=false;
+            pushBanner(storytext::ballastDeath,"",{.85f,.8f,.7f},6.f);
         } else if (e.type == EnemyType::PENITENT) {
             pen.clear();   // nothing it threw outlives it
             pushBanner("THE PENITENT FALLS SILENT", "", {1.f, 0.7f, 0.3f}, 3.f);
@@ -628,6 +713,10 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
             pushBanner("THE LEVIATHAN SINKS", "", {1.f, 0.9f, 0.7f}, 3.f);
         } else if (e.type == EnemyType::ABSOLUTE) {
             onAbsoluteKilled(e);
+        } else if (e.type == EnemyType::SORTER) {
+            storyBossDown=true;saveStoryProgress();
+            for(auto& b:level.conveyors) b.speed=std::fabs(b.speed);
+            pushBanner(storytext::sorterDeath,storytext::sorterDeath2,{.8f,.85f,.9f},6.f);
         } else if (e.type == EnemyType::PACEMAKER) {
             onPacemakerKilled(e);
         } else {
@@ -888,7 +977,7 @@ inline void GameplayState::fireWeapon(int w) {
     bool  noscope = d.canAim && aimNow < 0.15f;
     float spread = weaponSpread(id, u, aimNow);
     // Rifles are wild in the air unless aimed
-    if (d.canAim && !player.onGround) spread += 0.03f * (1.f - aimNow);
+    if (d.canAim && !player.onGround) spread += weaponAirSpread(id, u, aimNow);
     if (fanning) spread = std::max(spread, 0.05f);   // fanned from the hip: loose
     if (doubleShot) spread *= 1.2f;
     int   pellets = weaponPellets(id, u) * (doubleShot ? 2 : 1);
@@ -905,6 +994,34 @@ inline void GameplayState::fireWeapon(int w) {
         glm::vec3 dir = glm::normalize(fwd + right * (std::cos(ang) * rad) + up * (std::sin(ang) * rad));
         float wallT = hitscanAll(origin, dir, d.range, hits);
         int n = std::min((int)hits.size(), pierce + 1);
+        if (splinterOwned() && splinters.live() > 0) {   // a SPLINTER before anything else: the round goes on from it
+            float st = 0.f;
+            int si = splinters.rayHit(origin, dir, hits.empty() ? wallT : hits[0].t, st);
+            if (si >= 0) {
+                fx.spawnTracer(origin + dir * 0.25f - up * 0.08f, origin + dir * st, 0.055f, 0.22f, glm::mix(glm::vec3{1.f}, gunkit::glowOf(w), 0.6f));
+                // (a shotgun's pellet carries some of the rest of the blast with it)
+                splinterRicochet(si, dmg * (pellets > 1 ? 0.5f * (float)pellets : 1.f), w);
+                anyHit = true;
+                continue;
+            }
+        }
+        if (plain()) {   // the Gleaner's brood (Gameplay_GleanerFight.h)
+            float nearest = hits.empty() ? wallT : hits[0].t;
+            if (shootBrood(origin, dir, nearest, dmg, w)) { n = 0; wallT = nearest; anyHit = true; }
+        }
+        if(laboratory()){
+            float nearest=hits.empty()?wallT:hits[0].t;
+            if(shootSuccessorNode(origin,dir,nearest,dmg)){n=0;wallT=nearest;anyHit=true;}
+        }
+        if(story()) {
+            float nearest=hits.empty()?wallT:hits[0].t;Projectile* body=nullptr;
+            for(auto& shot:projSystem.pool) if(shot.alive&&!shot.isPlayer&&(shot.ownerType==(int)EnemyType::SORTER||shot.ownerType==(int)EnemyType::BALLAST)) {
+                AABB b{shot.position-glm::vec3{.7f},shot.position+glm::vec3{.7f}};
+                float t=rayBoxHit(origin,dir,b);if(t>0&&t<nearest){nearest=t;body=&shot;}
+            }
+            if(shootStoryCable(origin,dir,nearest)){body=nullptr;n=0;wallT=nearest;anyHit=true;}
+            if(body){body->alive=false;n=0;wallT=nearest;fx.spawnBurst(body->position,{.7f,.7f,.65f},18,6,.6f,12);audio.playAt("clank",body->position,90,SoundGroup::WORLD);styleSystem.addStyle(10,StyleSource::PARRY);}
+        }
         if (!level.anchors.empty()) {   // the Penitent's chains (before anything further along), then its anchors
             float ct = hitChain(origin, dir, hits.empty() ? wallT : hits[0].t, dmg);
             if (ct > 0.f) { n = 0; anyHit = true; wallT = ct; }   // (the chain takes the round)
@@ -973,20 +1090,21 @@ inline void GameplayState::fireWeapon(int w) {
                 break;
             }
             if (hits[k].head && e.halo) breakHalo(e);   // a headshot shatters a halo
-            float m = hits[k].wound ? e.woundMult() : head ? d.headMult : 1.f;
+            float m = hits[k].wound ? e.woundMult() : head ? weaponHeadMult(id, u) : weaponBodyMult(id, u);
             if (hits[k].zone != LevZone::NONE) {   // THE LEVIATHAN: its plates turn most of it; the eye and an open throat don't
                 m = leviathanZoneMult(e, hits[k].zone) * (hits[k].zone == LevZone::EYE ? std::max(1.f, d.headMult * 0.5f) : 1.f);
                 if (hits[k].zone == LevZone::BODY) fx.spawnHitSparks(at, {0.8f, 0.75f, 0.7f});
                 if (hits[k].zone == LevZone::THROAT) throatHit(e, dmg * m * (1.f - 0.15f * k) * e.armorMult());
             }
             if (hits[k].wound) fx.spawnHitSparks(at, {1.f, 0.3f, 0.15f});
-            float falloff = 1.f - 0.15f * k;    // each body it punches through costs a little
+            float falloff = std::max(.25f, 1.f - 0.15f * k);    // each body it punches through costs a little
             if (head) fx.spawnHitSparks(at, {1.f, 0.9f, 0.3f});
             fx.spawnHitSparks(at, gunkit::glowOf(w) * 1.2f);   // the gun's colour where it lands
             if (k == 0 && p < 3) fx.spawnSpray(at, -dir, e.stats().color * 1.6f + glm::vec3{0.4f, 0.3f, 0.2f}, sniper ? 10 : 4, sniper ? 9.f : 6.f, 0.22f);   // chips off it, back at you
             anyHit = true;
             // The shove: each gun's own, the shotgun's hardest up close (HitReact.h)
             float shove = hitreact::gunPush(w) * falloff * (pellets > 1 ? glm::clamp(1.5f - hits[k].t / 10.f, 0.3f, 1.3f) : 1.f);
+            shove *= weaponShoveMult(id, u);
             if (doubleShot) shove *= 1.7f;
             HitPush hp{dir, shove, hitreact::gunPoise(w) * (fanning ? 1.6f : doubleShot ? 1.3f : 1.f)};
             if (hurtEnemy(e, dmg * m * falloff, at, sniper ? 12.f : (pellets > 1 ? 3.f : 13.f), pellets > 1 ? 0.5f : 2.f,
@@ -996,7 +1114,7 @@ inline void GameplayState::fireWeapon(int w) {
             }
         }
         // Explosive tips: burst where the round stops
-        if (id == WeaponId::LONGSHOT && u.mod)
+        if (id == WeaponId::LONGSHOT && u.mod && !u.alternate)
             pendingBlasts.push_back({origin + dir * (n > 0 ? hits[0].t : wallT) - dir * 0.3f, 3.5f, 70.f, 0.f, 0.f, StyleSource::LONGSHOT});
     }
     kills = killCount > 0;
@@ -1020,7 +1138,7 @@ inline void GameplayState::fireWeapon(int w) {
         ui.feed("HEADSHOT", {1.f, 0.85f, 0.25f});
         styleSystem.addStyle(10.f, weaponSource(id));
         // HEADHUNTER: the round comes back and the bolt is skipped
-        if (id == WeaponId::KAR && u.mod) { ws.ammo = std::min(ws.ammo + 1, weaponMag(id, u)); ws.cooldown = 0.1f; }
+        if (id == WeaponId::KAR && u.mod && !u.alternate) { ws.ammo = std::min(ws.ammo + 1, weaponMag(id, u)); ws.cooldown = 0.1f; }
     }
     if (killCount > 0 && sniper) hitStopFrames = glm::max(hitStopFrames, 3);
     if (headKill && id == WeaponId::REVOLVER) hitStopFrames = glm::max(hitStopFrames, 2);   // a magnum headshot: the world catches for a beat
@@ -1058,8 +1176,8 @@ inline void GameplayState::fireWeapon(int w) {
         audio.play("slam", 70, SoundGroup::PLAYER);
         glm::vec3 kick = -fwd * 11.f;
         if (fwd.y < -0.4f) kick.y = std::max(kick.y, -fwd.y * 15.f);   // aimed down: a shotgun jump
-        player.velocity += kick;
-        if (kick.y > 2.f) { player.onGround = false; player.launched(); }
+        player.velocity += kick * weaponKickMult(id, u);
+        if (kick.y > 2.f) { trainingSuccess(3); player.onGround = false; player.launched(); }
         shake(0.2f, 0.04f);
         fovKick = std::max(fovKick, 6.f);
     }
@@ -1087,6 +1205,7 @@ inline void GameplayState::fireWeapon(int w) {
 }
 
 inline void GameplayState::throwGrenade() {
+    teach(TEACH_GRENADE);
     --grenadeCount;
     grenadeTimer = 0.6f;
     glm::vec3 origin = player.camera.position;
@@ -1123,7 +1242,9 @@ inline bool GameplayState::potionSpot(glm::vec3& out) {
 inline void GameplayState::shedBossPotions(Enemy& e) {
     if (e.type == EnemyType::ABSOLUTE && e.abForm != e.potionForm) { e.potionForm = e.abForm; e.potionsShed = 0; }   // MORNINGSTAR: a fresh bar, fresh potions
     const float lost = 1.f - e.health / std::max(1.f, e.maxHealth);
-    const int due = std::min(BOSS_POTIONS, (int)(lost / BOSS_POTION_EVERY + 1e-4f));
+    if(e.type==EnemyType::SUCCESSOR)return;
+    const bool machinery=e.type==EnemyType::SORTER||e.type==EnemyType::BALLAST;
+    const int due = std::min(machinery?2:BOSS_POTIONS, (int)(lost / (machinery?1.f/3.f:BOSS_POTION_EVERY) + 1e-4f));
     while (e.potionsShed < due) {
         ++e.potionsShed;
         glm::vec3 at;

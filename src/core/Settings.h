@@ -4,6 +4,7 @@
 #include "core/Bindings.h"
 #include "core/Accessibility.h"
 #include <sstream>
+#include <algorithm>
 #include <cstdio>
 #include <string>
 
@@ -39,6 +40,13 @@ struct GameSettings {
         static const char* N[QUALITY_LEVELS] = {"LOW (720P)", "MEDIUM (1080P)", "HIGH (1440P)", "EXTREME (4K)"};
         return N[wrapQuality(i)];
     }
+    // Optional environmental particles and moving decoration; combat tells are never reduced.
+    static constexpr int AMBIENT_LEVELS = 4;
+    int ambientDetail = QUALITY_DEFAULT;
+    static const char* ambientLabel(int i) {
+        static const char* N[] = {"OFF", "LOW", "MEDIUM", "HIGH"};
+        return N[std::clamp(i, 0, AMBIENT_LEVELS - 1)];
+    }
     // Anti-aliasing: MSAA samples per pixel. Smooths the edges of boxes and keeps thin
     // neon lines whole in the distance. (No 8X: Apple GPUs stop at 4, and 4X is the sweet spot.)
     static constexpr int AA_LEVELS = 3, AA_DEFAULT = 2;   // 4X
@@ -63,6 +71,9 @@ struct GameSettings {
     bool  showTimer    = true;  // run clock in Arena mode (FAST mode always shows it)
     bool  ghost        = true;  // FAST: race the ghost of your best run
     bool  damageNumbers = true;
+    int   enemyMarkers = 0;     // 0 LOW, 1 DETAILED; boss tracking icons are never shown
+    static constexpr int ENEMY_MARKER_LEVELS = 2;
+    static const char* enemyMarkerLabel(int i) { return i==1 ? "DETAILED" : "LOW"; }
     int   crosshair    = 0;     // colour index, see crosshairColor()
     // Accessibility (Accessibility.h)
     bool  tellsColourblind = false;   // the Absolute's gold tells shown blue
@@ -129,6 +140,7 @@ struct GameSettings {
         f << "vsync "         << (vsync ? 1 : 0) << "\n";
         f << "fullscreen "    << (fullscreen ? 1 : 0) << "\n";
         f << "quality "       << quality       << "\n";
+        f << "ambientDetail " << ambientDetail << "\n";
         f << "antiAlias "     << antiAlias     << "\n";
         f << "showFPS "       << (showFPS   ? 1 : 0) << "\n";
         f << "crtFilter "     << (crtFilter ? 1 : 0) << "\n";
@@ -137,6 +149,7 @@ struct GameSettings {
         f << "showTimer "     << (showTimer ? 1 : 0) << "\n";
         f << "ghost "         << (ghost ? 1 : 0) << "\n";
         f << "damageNumbers " << (damageNumbers ? 1 : 0) << "\n";
+        f << "enemyMarkers " << enemyMarkers << "\n";
         f << "crosshair "     << crosshair     << "\n";
         f << "tellsColourblind " << (tellsColourblind ? 1 : 0) << "\n";
         f << "reduceFlashing " << (reduceFlashing ? 1 : 0) << "\n";
@@ -172,6 +185,7 @@ struct GameSettings {
             else if (key == "vsync")         flag(vsync);
             else if (key == "fullscreen")    flag(fullscreen);
             else if (key == "quality")       f >> quality;
+            else if (key == "ambientDetail") f >> ambientDetail;
             else if (key == "antiAlias")     f >> antiAlias;
             else if (key == "fpsCap") {      // older saves: 0 uncapped, 1 60, 2 144, 3 180, 4 240
                 int old = 0; f >> old;
@@ -185,6 +199,7 @@ struct GameSettings {
             else if (key == "showTimer")     flag(showTimer);
             else if (key == "ghost")         flag(ghost);
             else if (key == "damageNumbers") flag(damageNumbers);
+            else if (key == "enemyMarkers")  f >> enemyMarkers;
             else if (key == "crosshair")     f >> crosshair;
             else if (key == "tellsColourblind") flag(tellsColourblind);
             else if (key == "reduceFlashing") flag(reduceFlashing);
@@ -205,6 +220,8 @@ struct GameSettings {
         screenShake = clampf(screenShake, 0.f, 1.f);
         frameCap = (frameCap % FRAME_CAPS + FRAME_CAPS) % FRAME_CAPS;
         quality = wrapQuality(quality);
+        enemyMarkers = std::clamp(enemyMarkers, 0, ENEMY_MARKER_LEVELS - 1);
+        ambientDetail = std::clamp(ambientDetail, 0, AMBIENT_LEVELS - 1);
         antiAlias = (antiAlias % AA_LEVELS + AA_LEVELS) % AA_LEVELS;
         crosshair = (crosshair % CROSSHAIR_COLORS + CROSSHAIR_COLORS) % CROSSHAIR_COLORS;
         if (difficulty < 0 || difficulty >= DIFFICULTY_LEVELS) difficulty = DIFFICULTY_DEFAULT;

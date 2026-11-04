@@ -13,6 +13,7 @@ uniform float uTime;     // seconds (the speed lines' flicker)
 uniform float uDrive;    // 0..1 OVERDRIVE: richer colour, a gold heat breathing in from the edges
 uniform float uKick;     // 0..1 a kill: a quick pop of light and fringe
 uniform float uAspect;   // width / height
+uniform float uWake;     // 0..1 STORY: UNIT 24's optics booting (1 black; then grey, soft and tearing; 0 clear)
 
 // ACES filmic curve (Narkowicz 2015 fit). Keeps darks dark and colours
 // saturated, rolling highlights off smoothly; scene colours are authored as
@@ -33,8 +34,21 @@ void main() {
     vec2 ca = vec2(c.x * uAspect, c.y);          // round on screen, not stretched
     float r = length(ca) / (0.5 * uAspect);      // 0 centre .. ~1 at the side edges
 
+    if (uWake > 0.001) {   // the optics booting: rows of the image torn sideways, a beat at a time
+        float row = floor(uv.y * 90.0), beat = floor(uTime * 18.0);
+        float tear = step(1.0 - 0.35 * uWake, hash1(row * 1.7 + beat * 3.1));
+        uv.x += (hash1(row + beat * 7.0) - 0.5) * 0.08 * uWake * tear;
+    }
     vec3 hdr;
-    if (uSpeed > 0.01) {
+    if (uWake > 0.05) {    // and out of focus
+        float rr = 0.012 * smoothstep(0.1, 0.8, uWake);
+        hdr = hdrAt(uv);
+        for (int i = 0; i < 8; ++i) {
+            float a = float(i) * 0.7853982;
+            hdr += hdrAt(uv + vec2(cos(a), sin(a) * uAspect) * rr);
+        }
+        hdr /= 9.0;
+    } else if (uSpeed > 0.01) {
         // Zoom blur: taps toward the centre, longer further out (the centre stays sharp)
         float len = 0.07 * uSpeed * smoothstep(0.1, 0.9, r);
         hdr = hdrAt(uv);
@@ -80,5 +94,13 @@ void main() {
         col = mix(col, blood, edge * clamp(uLow * 0.85 + uPulse * 0.3 * uLow, 0.0, 0.95));
     }
 
+    if (uWake > 0.001) {
+        float g = dot(col, vec3(0.299, 0.587, 0.114));
+        col = mix(col, vec3(g) * vec3(0.85, 1.0, 1.1), smoothstep(0.15, 0.6, uWake));     // grey, a sensor's cool cast
+        col *= 0.82 + 0.18 * sin(uv.y * 900.0);                                             // scan lines
+        float vig = smoothstep(1.25 - 0.9 * uWake, 0.2, r);                                 // the view opening from the centre
+        col *= mix(1.0, vig, smoothstep(0.0, 0.5, uWake));
+        col *= 1.0 - smoothstep(0.65, 1.0, uWake);                                          // black
+    }
     FragColor = vec4(col, 1.0);
 }

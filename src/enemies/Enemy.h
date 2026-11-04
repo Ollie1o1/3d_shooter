@@ -58,10 +58,14 @@
 #include "bosses/warden/WardenState.h"
 #include "bosses/leviathan/LeviathanState.h"
 #include "bosses/absolute/AbsoluteState.h"
+#include "bosses/sorter/SorterState.h"
+#include "bosses/ballast/BallastState.h"
+#include "bosses/successor/SuccessorState.h"
+#include "enemies/LabEnemyState.h"
 
 // Everything an enemy did this tick. Cleared at the top of every update().
 // The common channels are here; each boss adds its own (its *Events).
-struct EnemyEvents : SovereignEvents, PenitentEvents, WardenEvents, LeviathanEvents, AbsoluteEvents {
+struct EnemyEvents : SovereignEvents, PenitentEvents, WardenEvents, LeviathanEvents, AbsoluteEvents, SorterEvents, BallastEvents, SuccessorEvents {
     static constexpr int MAX_SHOTS = 16;
     bool      telegraphStarted = false;
     int       shots = 0;
@@ -77,6 +81,7 @@ struct EnemyEvents : SovereignEvents, PenitentEvents, WardenEvents, LeviathanEve
     bool      detonated = false;  // MITE blew itself up next to the player
     int       summonMites = 0, summonRippers = 0;
     bool      enraged = false;    // a boss crossed 50% this tick
+    AttackKind rsCast = AttackKind::NONE;   // THE RESTORER: the attack that just landed (the game does the rest: Gameplay_Restorer.h)
     // A blade stroke landed (for its slash arc; the SOVEREIGN's, the ABSOLUTE's):
     // 0 sweep to the left, 1 sweep to the right, 2 overhead cleave, 3 a dash's cut
     int       slash = -1;
@@ -129,17 +134,6 @@ struct EnemyWorld {
     bool onShard = false;
 };
 
-// Ray vs AABB: distance along the ray to the first hit, or -1 on a miss.
-inline float rayBoxHit(glm::vec3 o, glm::vec3 d, const AABB& b) {
-    glm::vec3 invD{1.f/(d.x+1e-9f), 1.f/(d.y+1e-9f), 1.f/(d.z+1e-9f)};
-    glm::vec3 t0 = (b.min-o)*invD, t1 = (b.max-o)*invD;
-    glm::vec3 tMin = glm::min(t0,t1), tMax = glm::max(t0,t1);
-    float tEnter = std::max({tMin.x,tMin.y,tMin.z});
-    float tExit  = std::min({tMax.x,tMax.y,tMax.z});
-    if (tEnter > tExit || tExit < 0.f) return -1.f;
-    return tEnter > 0.f ? tEnter : tExit;
-}
-
 // Does the segment a→b pass through the box?
 inline bool segmentHitsBox(glm::vec3 a, glm::vec3 b, const AABB& box) {
     glm::vec3 d = b - a;
@@ -152,7 +146,7 @@ inline bool segmentHitsBox(glm::vec3 a, glm::vec3 b, const AABB& box) {
 
 inline float frand(float lo, float hi) { return lo + (hi - lo) * (float)(rand() % 10001) / 10000.f; }
 
-struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, AbsoluteState {
+struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, AbsoluteState, SorterState, BallastState, SuccessorState, LabEnemyState {
     EnemyType  type;
     EnemyState state = EnemyState::SPAWNING;
     glm::vec3  position;
@@ -196,6 +190,10 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     bool  splitsOnDeath() const { return hollow == Hollow::TWINNED; }
     // SERAPH: a hit during the charge - a big one, or the head - cancels it
     bool onBeamHit(float dmg, bool head) {
+        if(type==EnemyType::SUSPENDED && (labBeam>0 || (attack==AttackKind::LAB_BEAM && telegraphTimer>0))){
+            if(dmg<40 && !head)return false;
+            stun(.65f);labOpen=1.5f;recoverTimer=1.2f;return true;
+        }
         if (type != EnemyType::SERAPH || attack != AttackKind::BEAM || telegraphTimer <= 0.f) return false;
         if (dmg < 40.f && !head) return false;
         attack = AttackKind::NONE; telegraphTimer = 0.f; attackTimer = 0.f;
@@ -265,6 +263,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     // and the ones you can't see take longer to get round to it. True / 1 outside the game
     bool  mayAttack  = true;
     float attackPace = 1.f;
+    float attackWait = 0.f;     // waiting threats eventually get a turn
     float finishGlow = 0.f;      // render only: 0..1, a punch would finish it (set per frame on the drawn copy)
     // Feeling your aim on it (the light gunners): held there a moment, it sidesteps
     float aimedT = 0.f, dodgeT = 0.f, dodgeCd = 0.f;
@@ -293,6 +292,19 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     }
     float floorY        = 0.f;   // hard floor under it (GameplayState sets it each tick)
     float wadeMul       = 1.f;   // wading slows its steps (set each tick)
+    float pace          = 1.f;   // its own pace on top (a THAWLING warming up)
+    glm::vec3 pickAim{0.f};      // PICKER: where its snatch is going
+    float pickT = 0.f;           // PICKER: seconds left holding you
+    float kSideT = 0.f, kSideCd = 0.f; glm::vec3 kSideDir{0.f};   // UNIT 24-K: its sidestep dashes
+    int   kLast = 0;             // UNIT 24-K: which gun it used last (0 revolver, 1 Lancer)
+    // THE RESTORER (EnemyRestorer.h): its phase (set by the game from its health), the last few
+    // attacks it made, where its next one is aimed; and the damage restore points will grow back
+    int   rsPhase = 1, rsLast = -1, rsCount = 0;
+    glm::vec3 rsAim{0.f};
+    bool  rsAimSet = false;      // (the game set rsAim: a ROLLBACK's spot)
+    float rsPending = 0.f;
+    bool  rsFalter = false, rsFinished = false;   // down on its knees for the finisher; the finisher done
+    float rsKneel = 0.f;                          // 0 standing .. 1 knelt
     float age           = 0.f;
 
     bool  enraged       = false; // a boss's phase two
@@ -340,7 +352,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     glm::vec3 levMouth() const { return position + glm::vec3{std::sin(yaw), 0.f, std::cos(yaw)} * 3.6f - glm::vec3{0.f, 0.9f, 0.f}; }
     bool  coreOpen() const { return type == EnemyType::WARDEN && (ventTimer > 0.f || wardenPhase == 3); }
     // A shot into an open weak point: the PENITENT's wound x3, the WARDEN's core x3 venting, x2 in meltdown
-    float woundMult() const { return type == EnemyType::WARDEN ? (ventTimer > 0.f ? 3.f : 2.f) : 3.f; }
+    float woundMult() const { if(type==EnemyType::SORTER||type==EnemyType::BALLAST)return staggered()?1.f:2.f;return type == EnemyType::WARDEN ? (ventTimer > 0.f ? 3.f : 2.f) : 3.f; }
 
     bool  chained() const { return type == EnemyType::PENITENT && !risen; }
     float sweepReach() const { return risen ? 18.f : 16.f; }
@@ -363,6 +375,8 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     }
 
     const EnemyStats& stats() const { return statsOf(type); }
+    // The Living Ward's subjects, and Chapter 5's thawed units that move like them
+    bool labBody() const { return (type>=EnemyType::PATIENT&&type<=EnemyType::PHASED)||type==EnemyType::THAWLING; }
     float radius() const { return stats().radius * scale; }
     float height() const {
         if (type == EnemyType::PENITENT) return (risen ? 11.5f : 8.2f) * scale;   // kneeling, then standing
@@ -370,12 +384,24 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     }
     bool  targetable() const { return alive && state == EnemyState::ACTIVE && !levHidden() && !(type == EnemyType::ABSOLUTE && (abArrive > 0.f || abSwallow > 0.f)); }
     bool  staggered() const  { return staggerTimer > 0.f; }
+    bool attackBusy() const {
+        return telegraphTimer>0 || burstLeft>0 || diveTimer>0 || beamTimer>0 ||
+               dashTimer>0 || labBeam>0 || labCross>0;
+    }
     // The moment a melee blow can be punched back: a JUGGERNAUT's smash (its
     // last 0.4 s), a SOVEREIGN's sweep or cleave (its last quarter second)
     bool  parryWindow() const {
         // THE WARDEN's lunge: its last quarter second, or in flight until it connects (it comes into reach)
         if ((type == EnemyType::WARDEN || type == EnemyType::PACEMAKER) && dashTimer > 0.f && !dashHit) return true;   // (and THE PACEMAKER's dash)
+        if((type==EnemyType::PATIENT || type==EnemyType::PHASED || type==EnemyType::THAWLING || type==EnemyType::UNIT24K) && dashTimer>0 && !dashHit)return true;
         if (telegraphTimer <= 0.f) return false;
+        if(type==EnemyType::SUCCESSOR)return SuccessorState::white(attack)&&telegraphTimer<.26f;
+        if(type==EnemyType::PICKER)return attack==AttackKind::SORT_GRAB&&telegraphTimer<.3f;
+        if(type==EnemyType::UNIT24K)return attack==AttackKind::DASH&&telegraphTimer<.28f;
+        if(type==EnemyType::RESTORER)return attack==AttackKind::RS_TONG&&telegraphTimer<.3f;
+        if(type==EnemyType::PATIENT || type==EnemyType::PHASED || type==EnemyType::THAWLING)return (attack==AttackKind::LAB_LUNGE&&telegraphTimer<.24f)||(attack==AttackKind::LAB_SWIPE&&telegraphTimer<.2f);
+        if (type == EnemyType::BALLAST) return (attack==AttackKind::BALL_ANCHOR||attack==AttackKind::BALL_WINCH)&&telegraphTimer<.28f;
+        if (type == EnemyType::SORTER) return attack == AttackKind::SORT_GRAB && telegraphTimer < .25f;
         if (type == EnemyType::WARDEN) return attack == AttackKind::WLUNGE && telegraphTimer < 0.25f;
 
         if (type == EnemyType::JUGGERNAUT) return attack == AttackKind::SMASH && telegraphTimer < 0.4f;
@@ -407,10 +433,11 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     }
     void onDeflect() { if (riposteCd <= 0.f) { riposte = true; riposteCd = 1.4f; } }
     // How long a parry leaves it broken
-    float staggerTime() const { return type == EnemyType::ABSOLUTE ? AB_BREAK : type == EnemyType::LEVIATHAN ? LV_STAGGER : type == EnemyType::SOVEREIGN ? 3.f : type == EnemyType::WARDEN ? 2.f : type == EnemyType::SHIELDBEARER ? 2.2f : type == EnemyType::BULWARK ? 2.8f : type == EnemyType::PACEMAKER ? 2.6f : 2.5f; }
+    float staggerTime() const { return type==EnemyType::PATIENT||type==EnemyType::PHASED?1.2f:type == EnemyType::ABSOLUTE ? AB_BREAK : type == EnemyType::LEVIATHAN ? LV_STAGGER : type == EnemyType::SOVEREIGN ? 3.f : type == EnemyType::WARDEN ? 2.f : type == EnemyType::SHIELDBEARER ? 2.2f : type == EnemyType::BULWARK ? 2.8f : type == EnemyType::PACEMAKER ? 2.6f : 2.5f; }
     // SHIELDBEARER: does its shield stop a shot travelling along dir? (From
     // the front, while it's standing; a broken one has its shield knocked aside)
     bool blocks(glm::vec3 dir) const {
+        if(type==EnemyType::GRAFTED && alive && !staggered() && labOpen<=0 && telegraphTimer<=0){glm::vec3 d=-dir;d.y=0;float n=glm::length(d);return n>.001f&&glm::dot(d/n,glm::vec3{std::sin(yaw),0,std::cos(yaw)})>.5f;}
         if ((type != EnemyType::SHIELDBEARER && type != EnemyType::BULWARK) || staggered() || !alive) return false;
         glm::vec2 d{-dir.x, -dir.z};
         float l = glm::length(d);
@@ -420,6 +447,11 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     // Damage multiplier from armor: the JUGGERNAUT shrugs off half unless
     // broken; a broken SOVEREIGN takes half again
     float armorMult() const {
+        if(labBody())
+            return staggered()?1.75f:labOpen>0?(type==EnemyType::GRAFTED?1.5f:1.35f):1.f;
+        if(type==EnemyType::SUCCESSOR)return staggered()?1.75f:suOpen>0?1.3f:1.f;
+        if (type == EnemyType::BALLAST) return staggered()?1.8f:ballOpen>0.f?1.f:.85f;
+        if (type == EnemyType::SORTER) return staggered()?2.f:sortOpen>0.f?1.f:.9f;
         if (type == EnemyType::WARDEN) return (conduitsLeft > 0 && ventTimer <= 0.f ? 0.5f : 1.f) * (staggered() ? 2.f : 1.f);
         if (type == EnemyType::PENITENT) return (anchorsLeft > 0 ? 0.25f : 1.f) * (staggered() ? 2.f : 1.f);
         if (type == EnemyType::ABSOLUTE) return staggered() ? (abReeling ? 1.5f : 2.f) : 1.f;
@@ -429,6 +461,11 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         return staggered() ? 2.f : 0.5f;
     }
     void stagger(float t) {
+        if(type==EnemyType::SUCCESSOR){suBurst=suCross=suNodes=suAir=0;suStep=suDashes=suVolley=0;suFinalStep=-1;suSince=9;suOpen=t;suLocked=false;++suEpoch;}
+        if(labBody()){labBeam=labCross=dashTimer=0.f;labOpen=std::max(labOpen,.8f);}
+        ballDrive=ballTether=ballVolleyT=0;ballVolley=0;ballFollow=AttackKind::NONE;
+        sortRush=sortFire=0;sortVolley=0;sortNext=AttackKind::NONE;sortFollowups=0;sortLocked=sortDropCued=false;
+        sortPresses.erase(std::remove_if(sortPresses.begin(),sortPresses.end(),[](const auto& p){return p.remaining>0;}),sortPresses.end());
         comboLeft = 0;
         staggerTimer = t; attack = AttackKind::NONE; telegraphTimer = 0.f; attackTimer = 0.f;
         comboStep = 0; chainLeft = 0; crescentLeft = 0; dashTimer = 0.f;
@@ -487,13 +524,25 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     }
     void stun(float t) {
         stunTimer = t; stunGuard = t + hitreact::STUN_GUARD; poise = 0.f; stunBegan = true;
+        pickT = 0.f;   // (a PICKER lets go)
         attack = AttackKind::NONE; telegraphTimer = 0.f; burstLeft = 0; comboLeft = 0;
+        if(labBody()){labBeam=labCross=dashTimer=0.f;labOpen=std::max(labOpen,.8f);}
         if (diveTimer > 0.f) { diveTimer = 0.f; recoverTimer = std::max(recoverTimer, 0.6f); }
         if (beamTimer > 0.f) { beamTimer = 0.f; attackTimer = 0.f; }
         attackTimer = std::min(attackTimer, stats().attackEvery * 0.5f);   // it has to work back up to it
     }
 
     AABB getAABB() const {
+        if(type==EnemyType::SUCCESSOR)return {position+glm::vec3{-1.05f,0,-1.15f},position+glm::vec3{1.05f,height(),.85f}};
+        if(type==EnemyType::BALLAST) {
+            // Shots reach the grader blade, outriggers and turbine. Its smaller
+            // navigation radius is independent of this visible shooting hull.
+            float c=std::cos(yaw),s=std::sin(yaw);
+            glm::vec3 half=glm::vec3{4.5f,4.2f,3.8f}*scale;
+            glm::vec3 center=position+glm::vec3{s*.6f,4.05f,c*.6f}*scale;
+            glm::vec3 ext{std::fabs(c)*half.x+std::fabs(s)*half.z,half.y,std::fabs(s)*half.x+std::fabs(c)*half.z};
+            return {center-ext,center+ext};
+        }
         if (type == EnemyType::LEVIATHAN) {   // its head, round its centre
             glm::vec3 h{3.0f, 2.6f, 3.0f};
             return {position - h, position + h};
@@ -509,6 +558,11 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         health -= dmg;
         hitFlashTimer = 0.12f;
         if (isBoss(type)) pressure += dmg / std::max(1.f, maxHealth);   // (evadeTick)
+        if (health <= 0.f && type == EnemyType::RESTORER && !rsFinished) {   // not yet: it falters, and waits for RECALL (Gameplay_Restorer.h)
+            health = 1.f;
+            if (!rsFalter) { rsFalter = true; ev.enraged = false; }
+            return false;
+        }
         if (health <= 0.f && type == EnemyType::ABSOLUTE && abForm == 0) {   // not yet: the eclipse takes him (MORNINGSTAR)
             health = 0.f;
             abBeginSwallow();
@@ -521,7 +575,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
             return true;
         }
         if (type == EnemyType::PACEMAKER && pmChannel > 0.f) pmChannelDmg += dmg;   // into its beacon channel: enough breaks it
-        if (isBoss(type) && type != EnemyType::WARDEN && type != EnemyType::LEVIATHAN && type != EnemyType::ABSOLUTE && type != EnemyType::PACEMAKER && !enraged && health < maxHealth * 0.5f) {
+        if (isBoss(type) && type != EnemyType::WARDEN && type != EnemyType::LEVIATHAN && type != EnemyType::ABSOLUTE && type != EnemyType::PACEMAKER && type != EnemyType::BALLAST && type != EnemyType::SUCCESSOR && !enraged && health < maxHealth * 0.5f) {
             enraged    = true;
             ev.enraged = true;
         }
@@ -541,6 +595,8 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         }
         leadVel_ = w.playerVel * tune_->lead;
         age += dt;
+        if(!mayAttack && !attackBusy() && recoverTimer<=0 && !stunned() && !staggered())
+            attackWait=std::min(4.f,attackWait+dt);
         if (hitFlashTimer > 0.f) hitFlashTimer -= dt;
         pressure *= std::exp(-dt);
         if (evadeCd > 0.f) evadeCd -= dt;
@@ -557,6 +613,11 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
             return;
         }
 
+        if(type==EnemyType::SORTER) tickSorterTools(dt,w);
+        if(type==EnemyType::SORTER && sortImpactT>=0) {
+            sortImpactT+=dt;if(sortImpactT>SORT_IMPACT)sortImpactT=-1.f;
+        }
+        if(type == EnemyType::SORTER && staggerTimer > 0.f) { staggerTimer=std::max(0.f,staggerTimer-dt); sortMark=0; sortScan=0; velocity=glm::vec3{0}; return; }
         bool resolve = false;   // telegraph ran out this tick
         if (telegraphTimer > 0.f) {
             const float before = telegraphTimer;
@@ -606,6 +667,14 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         if (dodges() && dodgeTick(dt, w)) { integrate(dt, w); return; }
 
         switch (type) {
+            case EnemyType::PATIENT:case EnemyType::GRAFTED:case EnemyType::SUSPENDED:case EnemyType::PHASED:thinkLab(dt,w,resolve);break;
+            case EnemyType::SUCCESSOR:thinkSuccessor(dt,w,resolve);return;
+            case EnemyType::THAWLING:thinkThawling(dt,w,resolve);break;
+            case EnemyType::PICKER:thinkPicker(dt,w,resolve);break;
+            case EnemyType::CLERK:thinkClerk(dt,w);break;
+            case EnemyType::UNIT24K:thinkUnit24K(dt,w,resolve);break;
+            case EnemyType::RESTORER:thinkRestorer(dt,w,resolve);break;
+            case EnemyType::RS_POINT:case EnemyType::RS_DRUM:velocity={0,0,0};attackTimer=0;break;   // (they stand there until broken)
             case EnemyType::HUSK:     thinkHusk(dt, w, resolve);     break;
             case EnemyType::RIPPER:   thinkRipper(dt, w, resolve);   break;
             case EnemyType::SENTINEL: thinkSentinel(dt, w, resolve); break;
@@ -627,6 +696,8 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
             case EnemyType::COURIER: case EnemyType::BULWARK: case EnemyType::CANTOR:
             case EnemyType::HARRIER: case EnemyType::PLUMB: case EnemyType::FOREMAN:
                 thinkMini(dt, w, resolve); break;                                 // the Gauntlet's (EnemyMini.h)
+            case EnemyType::BALLAST: thinkBallast(dt,w,resolve); return;
+            case EnemyType::SORTER: thinkSorter(dt,w,resolve); return;
             case EnemyType::PACEMAKER:                                            // (EnemyPacemaker.h; mid-leap it flies its arc)
                 thinkPacemaker(dt, w, resolve);
                 if (pmLeapT <= 0.f) integrate(dt, w);
@@ -665,6 +736,11 @@ private:
         windup *= tune_->windup;
         if (type == EnemyType::SOVEREIGN || type == EnemyType::WARDEN || type == EnemyType::LEVIATHAN || type == EnemyType::ABSOLUTE)   // never too quick to read, whatever sped it up
             windup = std::max(windup, followUp ? (type == EnemyType::ABSOLUTE ? AB_FOLLOW_FLOOR : TELL_FLOOR_FOLLOW) : TELL_FLOOR);
+        if(type==EnemyType::SORTER||type==EnemyType::BALLAST)
+            windup=std::max(windup,k==AttackKind::SORT_STAMP||k==AttackKind::SORT_ROW||k==AttackKind::SORT_PURGE||k==AttackKind::BALL_GUST?.95f:.8f);
+        if(type==EnemyType::SUCCESSOR)windup=std::max(windup,followUp?.28f:.42f);
+        if(labBody())windup=std::max(windup,.5f);
+        attackWait=0;
         attack            = k;
         tellFollow        = followUp;
         telegraphDuration = windup;
@@ -792,6 +868,8 @@ private:
 
     glm::vec3 eyePos() const {
         if (type == EnemyType::LEVIATHAN) return levMouth();
+        if(type==EnemyType::SORTER)return position+glm::vec3{std::sin(yaw)*1.6f,4.3f,std::cos(yaw)*1.6f};
+        if(type==EnemyType::BALLAST)return position+glm::vec3{std::sin(yaw)*2.5f,4.5f,std::cos(yaw)*2.5f};
         return position + glm::vec3{0.f, height() * 0.85f, 0.f};
     }
 
@@ -1319,6 +1397,16 @@ private:
     void thinkPlumb(float dt, const EnemyWorld& w, bool resolve);
     void thinkForeman(float dt, const EnemyWorld& w, bool resolve);
     bool miniBeam(float dt, const EnemyWorld& w, float speed);
+    void thinkLab(float dt,const EnemyWorld& w,bool resolve);
+    void thinkThawling(float dt,const EnemyWorld& w,bool resolve);
+    void thinkPicker(float dt,const EnemyWorld& w,bool resolve);
+    void thinkClerk(float dt,const EnemyWorld& w);
+    void thinkUnit24K(float dt,const EnemyWorld& w,bool resolve);
+    void thinkRestorer(float dt,const EnemyWorld& w,bool resolve);
+    void thinkSuccessor(float dt,const EnemyWorld& w,bool resolve);
+    void thinkBallast(float dt, const EnemyWorld& w, bool resolve);
+    void thinkSorter(float dt, const EnemyWorld& w, bool resolve);
+    void tickSorterTools(float dt,const EnemyWorld& w);
     void thinkPacemaker(float dt, const EnemyWorld& w, bool resolve);   // bosses/pacemaker/EnemyPacemaker.h
     void pmLeapTo(glm::vec3 p);
 public:
@@ -1338,7 +1426,7 @@ private:
         } else {
             moveSpeed = glm::length(velocity);
         }
-        float slow = flying ? 1.f : wadeMul;
+        float slow = (flying ? 1.f : wadeMul) * pace;
         position += glm::vec3{velocity.x * slow, velocity.y, velocity.z * slow} * dt;
         if (knockVel.x != 0.f || knockVel.y != 0.f || knockVel.z != 0.f) {   // the shove from hits: fast, and gone in a quarter second
             position += knockVel * dt;
@@ -1459,3 +1547,11 @@ inline void linkConductors(std::vector<Enemy>& es, glm::vec3 player) {
 #include "enemies/EnemyMini.h"       // the Gauntlet's mini-bosses
 #include "bosses/pacemaker/EnemyPacemaker.h"   // THE PACEMAKER's mind (Enemy::thinkPacemaker)
 #include "bosses/absolute/EnemyAbsolute.h"   // THE ABSOLUTE's mind (Enemy::thinkAbsolute)
+
+#include "bosses/sorter/EnemySorter.h"
+#include "bosses/ballast/EnemyBallast.h"
+
+#include "enemies/EnemyLab.h"
+#include "enemies/EnemyCold.h"
+#include "enemies/EnemyRestorer.h"
+#include "bosses/successor/EnemySuccessor.h"

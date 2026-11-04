@@ -78,12 +78,17 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
 
     gatherShiftBoxes(out);
     gatherSovereignBoxes(out);
+    if (story()) gatherStoryBoxes(out);
     gatherPenitentBoxes(out);
     gatherDestructibleBoxes(out);
     gatherWardenBoxes(out);
     gatherReliquaryBoxes(out);
     gatherLeviathanBoxes(out);
     gatherAbsoluteBoxes(out);
+    gatherSuccessor(out);
+    if (splinterOwned()) gatherSplinters(out);
+    if (recallOwned()) gatherRecall(out);
+    if(laboratory())gatherLabDressing(out);
 
     // HOLD: a ring of light on the ground; the lit arc is how far it's held.
     // Cyan while you hold it, red when an enemy stands in it.
@@ -115,10 +120,23 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
             pose.animPhase = e.prevAnimPhase + (e.animPhase - e.prevAnimPhase) * renderAlpha;
         if (e.abBodyLive)   // (his sprung body, between ticks too)
             for (int k = 0; k < Enemy::AB_BODY; ++k) pose.abBody[k] = e.abBodyPrev[k] + (e.abBody[k] - e.abBodyPrev[k]) * renderAlpha;
+        if(e.suBodyLive)for(int k=0;k<SuccessorState::BODY_CHANNELS;++k)
+            pose.suBody[k]=glm::mix(e.suBodyPrev[k],e.suBody[k],renderAlpha);
         // Low enough to finish: it throbs hot (a punch takes it, Gameplay_Feel.h)
         pose.finishGlow = e.finishable(overdriveOn()) ? 0.45f + 0.35f * std::sin(t * 13.f + e.uid) : 0.f;
         size_t from = out.size();
         buildEnemy(pose, t, out);
+        // A small light floor on ordinary armor keeps dark rigs legible. The
+        // depth buffer still hides enemies behind cover; glowing tells retain their colours.
+        if (e.type == EnemyType::UNIT24K)   // you, restored: clean ivory, cold white light
+            for (size_t j = from; j < out.size(); ++j) { out[j].color = glm::mix(out[j].color, glm::vec3{0.82f, 0.82f, 0.8f}, 0.35f); out[j].emissive = glm::vec3{std::max({out[j].emissive.x, out[j].emissive.y, out[j].emissive.z})} * glm::vec3{0.9f, 0.95f, 1.1f}; }
+        if (e.type == EnemyType::THAWLING) {   // frost on it until it warms
+            float frost = 1.f - coldfoe::thawWarm(e.age);
+            for (size_t j = from; j < out.size(); ++j) out[j].color = glm::mix(out[j].color, glm::vec3{0.8f, 0.86f, 0.93f}, 0.15f + 0.6f * frost);
+        }
+        if(!isBoss(e.type))for(size_t j=from;j<out.size();++j)
+            if(std::max({out[j].emissive.x,out[j].emissive.y,out[j].emissive.z})<.05f)
+                out[j].emissive+=glm::max(out[j].color,glm::vec3{.18f})*.12f;
         if (e.hollow == Hollow::ENRAGED)   // everything that glows burns red
             for (size_t j = from; j < out.size(); ++j) {
                 float g = std::max({out[j].emissive.x, out[j].emissive.y, out[j].emissive.z});
@@ -272,6 +290,7 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
                      p.emissiveColor * 0.15f, p.emissiveColor * 1.4f * f);
             }
         }
+        if(story() && (p.ownerType==(int)EnemyType::SORTER||p.ownerType==(int)EnemyType::BALLAST)){gatherStoryProjectile(out,p,at,spin);continue;}
         bool drawn = p.heavy ? propdraw::push(out, "shot_shell", propdraw::along(at, p.velocity) * glm::rotate(glm::mat4(1.f), spin * 0.5f, glm::vec3{0, 0, 1}) * S(glm::vec3{p.size}), p.emissiveColor)
                    : p.isGrenade ? propdraw::push(out, "shot_grenade", base * S(glm::vec3{p.size * 0.85f}), p.emissiveColor)
                    : propdraw::push(out, "shot_orb", base * S(glm::vec3{p.size * 0.7f}), p.emissiveColor);
@@ -564,7 +583,43 @@ inline void GameplayState::render() {
     glm::vec3 renderCamPos = glm::mix(prevCamPos, player.camera.position, alpha);
     Camera renderCam = player.camera;
     renderCam.position = renderCamPos;
+    if (laboratory() && labEnding.active()) {   // the end of Chapter 3 has its own camera (the player stays in the doorway)
+        glm::vec3 eye, at;
+        labEndShot(eye, at);
+        glm::vec3 d = glm::normalize(at - eye);
+        renderCamPos = renderCam.position = eye;
+        renderCam.yaw = glm::degrees(std::atan2(d.z, d.x));
+        renderCam.pitch = glm::degrees(std::asin(glm::clamp(d.y, -1.f, 1.f)));
+    }
 
+    if (plain() && tearT >= 0.f) {   // tearing out its core: up close on it (Gameplay_GleanerFinale.h)
+        glm::vec3 eye2, at;
+        tearShot(eye2, at);
+        glm::vec3 d = glm::normalize(at - eye2);
+        renderCamPos = renderCam.position = eye2;
+        renderCam.yaw = glm::degrees(std::atan2(d.z, d.x));
+        renderCam.pitch = glm::degrees(std::asin(glm::clamp(d.y, -1.f, 1.f)));
+    }
+    if (glm::vec3 fe, fl; cold() && recallFinisherCam(fe, fl)) {   // Chapter 5's finisher: on the Restorer, at its dome
+        glm::vec3 d = glm::normalize(fl - fe);
+        renderCamPos = renderCam.position = fe;
+        renderCam.yaw = glm::degrees(std::atan2(d.z, d.x));
+        renderCam.pitch = glm::degrees(std::asin(glm::clamp(d.y, -1.f, 1.f)));
+    }
+    if (cold() && coldRideT >= 0.f) {   // Chapter 5's end: up the dispatch rail in the capsule, looking out toward the gas giant
+        glm::vec3 eye2 = coldRidePos(coldRideT), d = glm::normalize(cold::giantDir() + glm::vec3{0.f, 0.1f * std::min(coldRideT, 5.f), 0.f});
+        renderCamPos = renderCam.position = eye2;
+        renderCam.yaw = glm::degrees(std::atan2(d.z, d.x));
+        renderCam.pitch = glm::degrees(std::asin(glm::clamp(d.y, -1.f, 1.f)));
+    }
+    if (plain() && summitEndT >= 1.f) {   // (summit::CUT) the collapse: seen from far off across the plain
+        glm::vec3 eye2, at;
+        summitShot(eye2, at);
+        glm::vec3 d = glm::normalize(at - eye2);
+        renderCamPos = renderCam.position = eye2;
+        renderCam.yaw = glm::degrees(std::atan2(d.z, d.x));
+        renderCam.pitch = glm::degrees(std::asin(glm::clamp(d.y, -1.f, 1.f)));
+    }
     // Shake, punches, the landing dip, the strafe lean and the stride (CameraFeel.h): seen, not aimed with
     bool bob = !settings || settings->viewBob;
     glm::vec3 feelAng = camFeel.angles(aim, bob, renderAlpha);
@@ -578,10 +633,18 @@ inline void GameplayState::render() {
     float a = aim * aim * (3.f - 2.f * aim);
     float zoom = wd.canAim ? glm::mix(1.f, wd.aimFov, a) : 1.f;
     renderCam.fov = baseFov * zoom + fovKick * (1.f - a);
+    if(plain() && plainReveal.active()) renderCam.fov = plainReveal.fov(baseFov);
+    if(laboratory() && labEnding.active()) renderCam.fov = std::min(baseFov, 58.f);   // (a longer lens for the cutscene)
+    if(plain() && summitEndT >= 1.f) renderCam.fov = std::min(baseFov, 55.f);
+    if(laboratory() && labIntro.active()){
+        float focus=LabIntro::smooth(3,8,labIntro.time)*(1-LabIntro::smooth(19,23,labIntro.time));
+        renderCam.fov=glm::mix(baseFov,std::min(baseFov,60.f),focus);
+    }
 
     glm::mat4 view = glm::rotate(glm::mat4(1.f), glm::radians(swordRoll + feelAng.z), glm::vec3{0.f, 0.f, 1.f}) * renderCam.viewMatrix();   // (leaning into a stroke, a strafe, a hit)
     glm::mat4 proj = renderCam.projectionMatrix();
     Theme th = level.themeAt(player.position);
+    if (plain() && insideGleaner()) th = gut::theme();   // (inside it: the foundry's dark and its slag light)
     if (rageBlend > 0.f) th = lerpTheme(th, bloodEclipse(th), rageBlend);
     if (bossDusk > 0.005f && th.eclipse < 0.5f) th = lerpTheme(th, nightfall(th), bossDusk * BOSS_DUSK_MAX);   // (under the eclipse: it burns hotter instead)
     if (th.eclipse > 0.5f && swallow01() > 0.f) th = lerpTheme(th, swallowedOf(th), swallow01());   // MORNINGSTAR: inside the eclipse
@@ -624,7 +687,8 @@ inline void GameplayState::render() {
         // What glows in the texture (MaterialTex.h: alpha < 1), in its own colour
         glm::vec3 glow = t == TEX_CIRCUIT ? glm::vec3{0.15f, 0.85f, 1.0f} * 0.9f
                        : t == TEX_CIRCUIT_FLOOR ? glm::vec3{0.15f, 0.85f, 1.0f} * 0.45f
-                       : t == TEX_BASALT ? glm::vec3{1.0f, 0.24f, 0.10f} * 0.75f : glm::vec3{0.f};
+                       : t == TEX_BASALT ? glm::vec3{1.0f, 0.24f, 0.10f} * 0.75f
+                       : t == TEX_CINDER ? glm::vec3{1.2f, 0.3f, 0.07f} * 0.9f : glm::vec3{0.f};
         worldShader.setVec3("uTexGlow", glow);
         glBindTexture(GL_TEXTURE_2D, worldTex[t]);
         world.byTex[t].draw();
@@ -652,6 +716,7 @@ inline void GameplayState::render() {
         boxRenderer.shader.setMat4("projection", proj);
         boxRenderer.shader.setMat4("view",       view);
         boxRenderer.shader.setInt ("uTexture",   0);
+        boxRenderer.shader.setInt ("uSurfaces",  (settings ? settings->quality : GameSettings::QUALITY_DEFAULT) > 0 ? 1 : 0);   // (the bosses' surfaces: off on the lowest quality)
         applyLighting(boxRenderer.shader, th, renderCamPos);
         applyNeon(boxRenderer.shader, true);
         glBindTexture(GL_TEXTURE_2D, whiteTex);
@@ -679,6 +744,18 @@ inline void GameplayState::render() {
         skyboxShader.setFloat("uEclipse", th.eclipse);
         skyboxShader.setFloat("uHeat",    bossDusk);
         skyboxShader.setFloat("uTime",    gameClock);
+        // The director prepares the next encounter as soon as a room clears.
+        // Keep its exterior until the player physically crosses the doorway.
+        const int room=level.arenaAt(player.position);
+        float realm=laboratory()?(room==7?1.f:room==3||room==8?2.f:room==9?3.f:0.f):0.f;
+        skyboxShader.setFloat("uLabRealm",realm);
+        skyboxShader.setFloat("uPlain", plain() ? 1.f : 0.f);
+        skyboxShader.setFloat("uCold", cold() ? 1.f : 0.f);
+        skyboxShader.setFloat("uMoonLid", plain() ? plainMoonLid() : 0.f);
+        float assessment=0;
+        if(laboratory() && room==9)for(const auto& enemy:enemies)if(enemy.alive && enemy.type==EnemyType::SUCCESSOR)
+            assessment=.2f+.8f*(1.f-enemy.health/enemy.maxHealth);
+        skyboxShader.setFloat("uAssessment",assessment);
         skyboxShader.setFloat("uFlare",   th.eclipse > 0.5f ? eclipseFlare * flashScale() : 0.f);
         skyboxShader.setFloat("uDawn",    th.eclipse > 0.5f ? dawn01() : 0.f);
         skyboxShader.setFloat("uSwallow", th.eclipse > 0.5f ? std::min(msSwallowT < 0.f ? 0.f : msSwallowT / (Enemy::MS_SWALLOW - 0.5f), 1.f) * (1.f - dawn01()) : 0.f);
@@ -693,12 +770,16 @@ inline void GameplayState::render() {
     ftLap.to(frametimer::R_WORLD);
 
     if (!devSkip("water")) renderWater(view, proj, th, renderCamPos);
+    if(laboratory())renderLabGlass(view,proj,renderCamPos);
+    if (cold()) renderColdIce(view, proj, renderCamPos);
+    if(laboratory() && !devSkip("fx"))renderLabAtmosphere(view,proj,renderCamPos);
     const bool skipFx = devSkip("fx");
 
     worldShader.use();
     worldShader.setMat4("model", glm::mat4(1.f));
     if (!skipFx) {
         grapple.drawLine(renderCamPos, view, proj);
+        if (gleanerHaulRope > 0.f && plain()) grapple.drawRope(renderCamPos, gleanerHaulAt, view, proj);   // hauled up the Gleaner
         if (yankT > 0.f)   // a light one on the end of the rope, coming in
             for (const auto& e : enemies)
                 if (e.uid == yankUid && e.alive) {
@@ -731,7 +812,11 @@ inline void GameplayState::render() {
         glBindTexture(GL_TEXTURE_2D, whiteTex);
         worldShader.setInt("uTexture", 0);
         float flash = glm::clamp(muzzleFlashTimer / 0.06f, 0.f, 1.f);
-        if (swordOut) viewModel.drawSword(worldShader, renderCam, swordShownFor(sword));
+        if (story() && (!storyArmed || storyLocked())) {   // UNIT 24's empty hands (and the one he wakes looking at)
+            if (viewModel.parryTimer > 0.f && !storyLocked()) viewModel.drawPunch(worldShader, renderCam, glm::vec3{0.2f, 0.85f, 1.f});
+            else drawStoryArms(renderCam);
+        }
+        else if (swordOut) viewModel.drawSword(worldShader, renderCam, swordShownFor(sword));
         else viewModel.draw(worldShader, renderCam, activeWeapon, flash, wd.canAim ? aim : 0.f,
                             weapons[activeWeapon].ammo, weaponMag((WeaponId)activeWeapon, prog.up[activeWeapon]));
         worldShader.setMat4("projection", proj);
@@ -748,6 +833,7 @@ inline void GameplayState::render() {
     postProcess.fx.time  = gameClock;
     postProcess.fx.drive = overdriveFx;
     postProcess.fx.kick  = killFx * killFx * flashScale() * (settings ? std::min(1.f, settings->screenShake + 0.3f) : 1.f);
+    postProcess.fx.wake  = story() ? storyWakeFx() : 0.f;
     // --overlay rushNN / lowNN / hurt: hold a screen effect for screenshots (lowNN on a heartbeat's peak)
     if (g_devOverlay.rfind("rush", 0) == 0) postProcess.fx.speed = std::atoi(g_devOverlay.c_str() + 4) / 100.f;
     if (g_devOverlay.rfind("low", 0) == 0) { postProcess.fx.low = std::atoi(g_devOverlay.c_str() + 3) / 100.f; postProcess.fx.pulse = 1.f; }
@@ -853,8 +939,8 @@ inline void GameplayState::renderWater(const glm::mat4& view, const glm::mat4& p
     waterShader.setMat4("view", view);
     waterShader.setFloat("uTime", gameClock);
     waterShader.setVec3("uViewPos", camPos);
-    waterShader.setVec3("uDeep", {0.03f, 0.1f, 0.11f});
-    waterShader.setVec3("uGlow", {0.55f, 0.07f, 0.04f});
+    waterShader.setVec3("uDeep", laboratory()?glm::vec3{.035f,.17f,.15f}:glm::vec3{.03f,.1f,.11f});
+    waterShader.setVec3("uGlow", laboratory()?glm::vec3{.08f,.3f,.2f}:glm::vec3{.55f,.07f,.04f});
     waterShader.setVec3("uFogColor", th.fogColor);
     waterShader.setFloat("uFogDensity", th.fogDensity);
     waterShader.setVec2("uShaftXZ", {0.f, -607.f});   // the Nave's crossing
@@ -980,6 +1066,30 @@ inline void GameplayState::renderLasers(const glm::mat4& view, const glm::mat4& 
     }
     drawBeams(aims, {1.f, 0.85f, 0.5f}, view, proj);
     drawBeams(sweeps, {1.4f, 1.15f, 0.7f}, view, proj);
+    // Suspended subjects previously dealt beam damage without drawing a ray.
+    // Use the exact clipped endpoint produced by the combat simulation.
+    aims.clear();sweeps.clear();
+    for(const auto& e:enemies){
+        if(!e.targetable() || e.type!=EnemyType::SUSPENDED || e.stunned() || e.staggered())continue;
+        auto eye=e.position+glm::vec3{0,e.height()*.85f,0};
+        if(e.attack==AttackKind::LAB_BEAM && e.telegraphTimer>0){
+            float a=e.labLocked?.95f:.4f;
+            auto ray=e.labAim-eye;float length=glm::length(ray);
+            // A charge ending at the camera creates a screen-wide near-plane
+            // ribbon. Leave the same readable gap as the Sentinel's aim line.
+            if(length>2.5f)aims.push_back({glm::vec4(eye,a),glm::vec4(eye+ray*((length-2.5f)/length),a),e.labLocked?.065f:.025f});
+        }else if(e.labBeam>0){
+            auto from=eye,to=e.beamEnd;
+            float nearDepth=1.5f,za=-(view*glm::vec4(from,1)).z,zb=-(view*glm::vec4(to,1)).z;
+            if(za<nearDepth && zb<nearDepth)continue;
+            if(za<nearDepth)from=glm::mix(eye,e.beamEnd,(nearDepth-za)/(zb-za));
+            if(zb<nearDepth)to=glm::mix(eye,e.beamEnd,(nearDepth-za)/(zb-za));
+            sweeps.push_back({glm::vec4(from,1),glm::vec4(to,1),.16f});
+            sweeps.push_back({glm::vec4(from,.4f),glm::vec4(to,.4f),.38f});
+        }
+    }
+    drawBeams(aims,{.85f,.45f,1.5f},view,proj);
+    drawBeams(sweeps,{1.5f,.6f,2.f},view,proj);
 }
 
 // SOLAR: each arm of the sun's flare as a fan of beams across its wedge, from

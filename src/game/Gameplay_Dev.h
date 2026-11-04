@@ -157,11 +157,21 @@ inline void GameplayState::devCamera(float dt) {
 }
 
 inline void GameplayState::devClearWave() {
+    // A boss may still be waiting to spawn when F5 arrives. Its defeat script
+    // must run even if the wave is cleared during that first frame.
+    if (story())
+        for (const auto& q : director.queue)
+            if (isBoss(q.type)) spawnEnemy(q.type, q.fixed ? q.pos : director.current().bossSpawn, q.variant);
+    if(wasteland() && director.arena==4)
+        for(int id:level.story.turbineBrakes)level.damageAnchor(id,1e9f);
+    director.completeGoal();
     director.queue.clear();
     for (auto& e : enemies)
         if (e.alive) {
             e.alive = false; e.state = EnemyState::DEAD; e.health = 0.f;
-            spawnDebrisFor(e);
+            // Story bosses own the chapter's exit and ending scripts.
+            if (story() && isBoss(e.type)) onEnemyKilled(e, StyleSource::ENVIRONMENT);
+            else spawnDebrisFor(e);
         }
     ui.feed("DEV: WAVE CLEARED", {0.3f, 1.f, 0.8f});
 }

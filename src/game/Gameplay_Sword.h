@@ -8,7 +8,88 @@
 // =============================================================================
 
 inline bool GameplayState::swordAllowed() const {
+    if (laboratory() && storySword && !labEnding.active()) return true;   // (Story: pulled from its statue in the Successor's arena)
     return swordKeyAllowed(g_devSword, act2(), director.arena, ZENITH_ARENA);
+}
+
+// ---- OATHBREAKER's statue (Chapter 3, the Successor's arena: LevelSuccessor.h) ----
+inline glm::vec3 GameplayState::swordStatueAt() const { return lab::swordStatue(); }
+
+// The seal breaks (the Successor's second phase: "THERE. SOMETHING THEY MISSED.")
+inline void GameplayState::openSwordStatue() {
+    if (swordStatueOpen || storySword) return;
+    swordStatueOpen = true; swordStatueFlash = 1.f;
+    if (swordStatueIt >= 0 && swordStatueIt < (int)interactables.size()) interactables[swordStatueIt].label = "PULL OATHBREAKER";
+    audio.playAt("sword_break", lab::swordStatueGrip(), 128, SoundGroup::WORLD, true);
+    audio.playAt("anvil", lab::swordStatueGrip(), 120, SoundGroup::WORLD, true);
+    ui.toast("THE STATUE'S SEAL BREAKS", "OATHBREAKER CAN BE PULLED", {1.f, 0.35f, 0.5f}, 3.f);
+    ui.feed("OATHBREAKER / BACK LEFT OF THE FLOOR", {1.f, 0.4f, 0.55f});
+}
+
+inline void GameplayState::pullStatueSword() {
+    if (storySword) return;
+    if (!swordStatueOpen) {
+        ui.feed("SEALED / IT WILL NOT MOVE YET", {1.f, 0.35f, 0.4f});
+        audio.play("dry", 110, SoundGroup::UI, true);
+        return;
+    }
+    storySword = true; swordStatueFlash = 1.f;
+    if (swordStatueIt >= 0 && swordStatueIt < (int)interactables.size()) interactables[swordStatueIt].active = false;
+    audio.playAt("sword_break", lab::swordStatueGrip(), 110, SoundGroup::WORLD, true);
+    fx.spawnBurst(lab::swordStatueGrip(), gunkit::SWORD_GLOW * 1.6f, 50, 8.f, 0.7f, 6.f);
+    fx.spawnShockwave(lab::swordStatue() + glm::vec3{0.f, 0.45f, 0.f}, 6.f, gunkit::SWORD_GLOW);
+    shake(0.35f, 0.03f); hitStopFrames = std::max(hitStopFrames, 4);
+    drawSword();
+    pushBanner("OATHBREAKER", "IT WAS ALWAYS YOURS / 5 DRAWS IT", {1.f, 0.35f, 0.5f}, 4.f);
+}
+
+// The sword in the block (until you pull it), its seal of red bands, and the light that calls you once it breaks
+inline void GameplayState::gatherSwordStatue(std::vector<BoxInstance>& out) {
+    using namespace rig; using glm::vec3;
+    const vec3 B = lab::swordStatue(), G = lab::swordStatueGrip();
+    auto S3 = [](float x, float y = -1.f, float z = -1.f) { if (y < 0.f) y = z = x; return rig::S(glm::vec3{x, y, z}); };
+    if (glm::length(player.position - B) > 160.f) return;
+    const float f = swordStatueFlash;
+    if (!storySword) {
+        const vec3 glow = gunkit::SWORD_GLOW * (swordStatueOpen ? 1.6f + 0.6f * std::sin(gameClock * 4.f) : 0.7f) + vec3{f * 3.f};
+        const float top = B.y + 1.3f;   // (the block's top)
+        push(out, T(vec3{G.x, (top + G.y - 0.2f) * 0.5f, G.z}) * S3(0.1f, G.y - 0.2f - top, 0.035f), vec3{0.32f, 0.33f, 0.36f}, glow * 0.25f);   // the blade, out of the block
+        push(out, T(vec3{G.x, (top + G.y - 0.2f) * 0.5f, G.z + 0.02f}) * S3(0.018f, G.y - 0.2f - top, 0.01f), vec3{0.f}, glow);         // its fuller, lit
+        push(out, T(G + vec3{0.f, -0.18f, 0.f}) * S3(0.55f, 0.07f, 0.1f), vec3{0.08f, 0.08f, 0.1f}, glow * 0.4f);                        // the guard
+        push(out, T(G + vec3{0.f, 0.f, 0.f}) * S3(0.065f, 0.32f, 0.065f), vec3{0.12f, 0.05f, 0.06f}, vec3{0.f});                           // the grip
+        push(out, T(G + vec3{0.f, 0.2f, 0.f}) * RY(0.785f) * S3(0.12f, 0.11f, 0.12f), vec3{0.1f}, glow * 0.8f);                           // the pommel
+        if (!swordStatueOpen) {   // the seal: bands of red turning round the blade, and chains to the obelisks
+            for (int r = 0; r < 3; ++r) {
+                const float y = top + 0.2f + r * 0.28f, rad = 0.32f - r * 0.04f, spin = gameClock * (r % 2 ? -0.9f : 0.7f);
+                for (int k = 0; k < 10; ++k) {
+                    if ((k + r) % 4 == 0) continue;
+                    float a = spin + k * 0.628f;
+                    push(out, T(vec3{G.x + std::cos(a) * rad, y, G.z + std::sin(a) * rad}) * RY(-a) * S3(0.03f, 0.05f, 0.17f), vec3{0.1f, 0.f, 0.f}, vec3{1.8f, 0.08f, 0.2f});
+                }
+            }
+            for (float sx : {-1.f, 1.f}) {
+                const vec3 a = G + vec3{0.f, -0.3f, 0.f}, b = B + vec3{sx * 1.36f, 2.5f, 1.6f};   // (to its hands: the giant holds it down)
+                const int links = 9;
+                for (int k = 0; k < links; ++k) {
+                    float u = (k + 0.5f) / links;
+                    vec3 p = glm::mix(a, b, u) - vec3{0.f, 0.35f * std::sin(u * 3.14159f), 0.f};
+                    vec3 d = b - a;
+                    push(out, T(p) * RY(std::atan2(d.x, d.z) + (k % 2) * 1.5708f) * S3(0.05f, 0.12f, 0.22f), vec3{0.12f, 0.03f, 0.04f}, vec3{0.9f, 0.04f, 0.1f});
+                }
+            }
+        } else {   // unsealed: a shaft of light up out of it, seen across the floor
+            const float pulse = 0.7f + 0.3f * std::sin(gameClock * 3.f);
+            push(out, T(vec3{G.x, G.y + 15.f, G.z}) * S3(0.08f, 30.f, 0.08f), vec3{0.f}, gunkit::SWORD_GLOW * 2.2f * pulse);
+            push(out, T(vec3{G.x, G.y + 15.f, G.z}) * RY(gameClock * 0.5f) * S3(0.35f, 30.f, 0.02f), vec3{0.f}, gunkit::SWORD_GLOW * 0.5f * pulse);
+            for (int k = 0; k < 8; ++k) {   // motes rising up it
+                float u = std::fmod(gameClock * 0.35f + k * 0.125f, 1.f);
+                push(out, T(G + vec3{std::cos(k * 2.4f) * 0.3f, u * 6.f, std::sin(k * 2.4f) * 0.3f}) * S3(0.05f), vec3{0.f}, gunkit::SWORD_GLOW * 2.f * (1.f - u));
+            }
+        }
+    } else {   // its slot in the block, still glowing faintly
+        push(out, T(vec3{G.x, B.y + 1.31f, G.z}) * S3(0.14f, 0.02f, 0.06f), vec3{0.f}, gunkit::SWORD_GLOW * 0.8f);
+    }
+    if (f > 0.01f) push(out, T(G) * S3(0.6f + 2.f * (1.f - f)), vec3{0.f}, vec3{2.5f, 1.4f, 1.8f} * f * f);
 }
 inline void GameplayState::drawSword() {
     if (!swordAllowed() || swordOut) return;

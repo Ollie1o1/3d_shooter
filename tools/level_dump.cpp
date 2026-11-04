@@ -3,7 +3,7 @@
 //
 //   $(CXX) $(CXXFLAGS) tools/level_dump.cpp -o tools/level_dump && tools/level_dump act1 build/levels/act1
 //
-// Levels: act1 (ARENA), act2 (ACT II), fast (the Gauntlet). Into the folder go:
+// Levels: act1 (ARENA), act2 (ACT II), fast (the Gauntlet), story1 (STORY: THE CRADLE). Into the folder go:
 //   level.json        the world as the game draws it (WorldGeometry.h: every face, its UVs and its
 //                     shading, batched by texture; the neon apart), the collision boxes, and every
 //                     arena (bounds, start, spawns, its light). Game space: +Y up, metres.
@@ -13,6 +13,10 @@
 #include "world/Level.h"
 #include "world/LevelAct2.h"
 #include "world/LevelGauntlet.h"
+#include "world/LevelStory.h"
+#include "world/LevelWasteland.h"
+#include "world/LevelTraining.h"
+#include "world/LevelLab.h"
 #include "render/WorldGeometry.h"
 #include "render/MaterialTex.h"
 #include <cstdio>
@@ -23,13 +27,14 @@
 
 static const char* TEX_NAME[TEX_COUNT] = {"grid", "brick", "metal", "panel", "rock", "concrete", "adobe", "terracotta",
                                          "wood", "plate", "tread", "marble", "flagstone", "circuit", "circuit_floor",
-                                         "basalt", "limestone", "brass"};
+                                         "basalt", "limestone", "brass", "clinic", "lino", "cinder", "snow", "ice"};
 static const char* MAT_NAME[] = {"brick", "panel", "rock", "metal", "concrete", "adobe", "plate", "marble",
-                                 "circuit", "basalt", "wood", "limestone", "brass"};
+                                 "circuit", "basalt", "wood", "limestone", "brass", "clinic", "cinder", "snow", "ice"};
 
 static std::vector<unsigned char> texPixels(int t) {
     using namespace MaterialTex;
     switch (t) {
+        case TEX_CLINIC:return clinic(); case TEX_LINO:return lino(); case TEX_CINDER:return cinder(); case TEX_SNOW:return snow(); case TEX_ICE:return ice();
         case TEX_GRID: return gridFloor();       case TEX_BRICK: return brick();
         case TEX_METAL: return metal();          case TEX_PANEL: return panel();
         case TEX_ROCK: return rock();            case TEX_CONCRETE: return concrete();
@@ -97,11 +102,11 @@ static std::string batch(const char* tex, bool emit, const std::vector<Vertex>& 
 }
 
 int main(int argc, char** argv) {
-    if (argc < 3) { std::fprintf(stderr, "usage: level_dump act1|act2|fast OUTDIR\n"); return 2; }
+    if (argc < 3) { std::fprintf(stderr, "usage: level_dump act1|act2|fast|story1|story2|training OUTDIR\n"); return 2; }
     const std::string which = argv[1], out = argv[2];
     g_skipLayout = true;   // the level as the code builds it (LevelLayout.h)
-    LevelData L = which == "act1" ? buildLevel() : which == "act2" ? buildAct2Level() : which == "fast" ? buildGauntlet() : LevelData{};
-    if (L.arenas.empty()) { std::fprintf(stderr, "no level '%s' (act1, act2, fast)\n", which.c_str()); return 2; }
+    LevelData L = which == "act1" ? buildLevel() : which == "act2" ? buildAct2Level() : which == "fast" ? buildGauntlet() : which == "story1" ? buildCradle() : which == "story2" ? buildWasteland() : which == "story3" ? buildLab() : which == "training" ? buildTraining() : LevelData{};
+    if (L.arenas.empty()) { std::fprintf(stderr, "no level '%s' (act1, act2, fast, story1, story2, story3, training)\n", which.c_str()); return 2; }
     mkdir(out.c_str(), 0755);
 
     // The world as the game draws it, and the moving walls where they're built (a lift, the Reliquary's

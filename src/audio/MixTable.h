@@ -74,10 +74,18 @@ inline const std::vector<MixEntry>& mixTable() {
         {"potion", C::WORLD, 0.5f}, {"impact", C::WORLD, 3.2f}, {"casing", C::FOLEY, -4.6f}, {"whiz", C::ACTION, 2.8f},
         {"hit_head", C::UI, -1.0f}, {"kill_light", C::UI, 8.5f}, {"kill_heavy", C::UI, -3.7f}, {"kill_rifle", C::UI, 0.f}, {"kill_blade", C::UI, 0.f},   // kill confirms
         {"wave", C::UI, -4.2f}, {"levelup", C::UI, -0.1f}, {"upgrade", C::UI, 0.1f},
+        // Original intelligible synthetic speech, authored for the lab. Separate from wordless enemy voices.
+        {"successor_line_0",C::UI,0.1f},{"successor_line_1",C::UI,-0.3f},{"successor_line_2",C::UI,1.0f},
+        {"successor_line_3",C::UI,1.4f},{"successor_line_4",C::UI,1.1f},{"successor_line_5",C::UI,1.8f},{"successor_line_6",C::UI,1.3f},
+        {"lab_pa_0",C::UI,1.3f},{"lab_pa_1",C::UI,-0.1f},{"lab_pa_2",C::UI,-1.3f},{"lab_pa_3",C::UI,0.8f},{"lab_pa_4",C::UI,1.2f},
         // the forge: a room cleared (three variants), the beacon, a new best; splits, the countdown, OVERDRIVE's cues
         {"anvil", C::ACTION, -3.5f}, {"anvil_final", C::ACTION, -2.8f}, {"record", C::UI, -5.0f}, {"split_behind", C::WORLD, 1.7f},
         {"count_tick", C::UI, -2.9f}, {"count_go", C::UI, -0.8f}, {"drive_warn", C::UI, 0.7f}, {"drive_ready", C::UI, -1.7f}, {"dash_ready", C::UI, 4.9f}, {"potion_drop", C::WORLD, -0.4f},
         {"mini_sting", C::UI, -4.2f}, {"bell", C::ACTION, -0.8f}, {"medal", C::UI, -0.9f},   // the Gauntlet's: a mini-boss arrives, the Cantor's bell, a room's medal
+        // THE GLEANER (tools/gen_gleaner_sfx.py): its scream (a colossal train horn), a fist landing, rising out of the plain, the moon shutting
+        {"gleaner_scream", C::ACTION, -2.9f}, {"gleaner_slam", C::ACTION, -7.3f}, {"gleaner_groan", C::ACTION, -1.7f}, {"gleaner_blink", C::UI, -5.0f},
+        // Its brood (same tool): the Caller's cracked bell (a toll; a round off its shell), the Sieve's basket shaken, its leg staked
+        {"caller_toll", C::ACTION, -1.7f}, {"caller_clang", C::WORLD, -4.1f}, {"sieve_rattle", C::WORLD, -0.5f}, {"sieve_stake", C::ACTION, -7.2f},
     };
     return T;
 }

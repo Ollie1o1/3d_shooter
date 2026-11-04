@@ -76,6 +76,39 @@ inline std::vector<unsigned char> build(F f, float mean) {
     return out;
 }
 
+// The Living Ward, after its concept boards: glazed white tiles in a dark grout
+// grid. Walls: 1 m porcelain tiles with a deeper seam every 2 m. Floors: 1 m
+// bevelled tiles, each a slightly different white, a few of them cracked.
+inline std::vector<unsigned char> clinic() {
+    return build([](int x,int y) {
+        int tx=x/64,ty=y/64,u=x%64,v=y%64;
+        float b=.8f+(hashI(tx,ty,904)-.5f)*.035f+(hashI(x,y,901)-.5f)*.016f;
+        if(u<1 || v<1)b=.6f;                         // grout
+        else if(u<2 || v<2)b+=.035f;                 // the glaze catching light on the tile's edge
+        else if(u>61 || v>61)b-=.025f;
+        if(x%128<1 || y%128<1)b=.46f;                // panel seams
+        return Px{glm::vec3{b*.985f,b,b*1.015f}};
+    },.72f);
+}
+inline std::vector<unsigned char> lino() {
+    return build([](int x,int y) {
+        int tx=x/64,ty=y/64,u=x%64,v=y%64;
+        float tint=(hashI(tx,ty,905)-.5f)*.05f;
+        float b=.8f+tint+(hashI(x,y,902)-.5f)*.02f;
+        if(u<2 || v<2)b=.42f;                        // a dark grout line every metre
+        else if(u<3 || v<3)b+=.06f;                  // bevel: lit edge
+        else if(u>60 || v>60)b-=.05f;                // and its shadowed side
+        // One tile in a dozen is cracked: a jagged dark line from a corner
+        if(hashI(tx,ty,906)>.9f){
+            float k=hashI(tx,ty,907)*2-1;
+            float along=(float)u,line=(float)v-(32+k*18)-std::sin(u*.35f+k*4)*3-(u-32)*k*.6f;
+            if(along>3 && along<61 && std::fabs(line)<.9f)b-=.28f;
+        }
+        if(hashI(x,y,903)>.993f)b-=.08f;             // grit
+        return Px{glm::vec3{b*.99f,b,b*1.012f}};
+    },.68f);
+}
+
 constexpr float BRICK_MEAN = 0.36f;   // what the old brick averages: the arena colours were tuned on it
 
 // --- SUNSET YARD -------------------------------------------------------------
@@ -330,6 +363,88 @@ inline std::vector<unsigned char> basalt() {
         }
         return Px{c, glow};
     }, BRICK_MEAN * 1.0f);
+}
+
+// --- THE BLOOD MOON PLAIN (Chapter 4) ----------------------------------------
+// Cinder crust: a dry, scorched skin broken into plates (a wrapping Voronoi of
+// irregular cells, about 0.7 m), dark cracks between them, and in some cracks
+// the heat underneath still showing (glow). Ash settles in the low plates.
+inline std::vector<unsigned char> cinder() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        const int N = 6;   // cells across the 4 m tile
+        float fx = u * N, fy = v * N;
+        int ix = (int)std::floor(fx), iy = (int)std::floor(fy);
+        float d1 = 9.f, d2 = 9.f; int best = 0;
+        for (int dy = -1; dy <= 1; ++dy)
+            for (int dx = -1; dx <= 1; ++dx) {
+                int cx = ix + dx, cy = iy + dy, wx = wrap(cx, N), wy = wrap(cy, N);
+                float px = cx + 0.15f + 0.7f * hashI(wx, wy, 501), py = cy + 0.15f + 0.7f * hashI(wx, wy, 502);
+                float d = std::hypot(fx - px, fy - py);
+                if (d < d1) { d2 = d1; d1 = d; best = wx * 31 + wy; } else if (d < d2) d2 = d;
+            }
+        float edge = d2 - d1;                                    // 0 on a crack
+        float plate = hashI(best, 7, 503);
+        float b = 0.34f + (plate - 0.5f) * 0.14f + (fbm(u, v, 8, 4, 504) - 0.5f) * 0.18f;
+        b *= 0.85f + 0.3f * noise(u, v, 128, 128, 505);           // grit
+        glm::vec3 c = b * glm::vec3{1.f, 0.86f, 0.8f};
+        float ash = sstep(0.55f, 0.75f, fbm(u, v, 4, 3, 506));
+        c = glm::mix(c, glm::vec3{0.5f, 0.47f, 0.45f}, ash * 0.45f);
+        float glow = 0.f;
+        float crack = 0.035f + 0.03f * noise(u, v, 24, 24, 507);
+        if (edge < crack) {
+            c = glm::vec3{0.05f, 0.03f, 0.03f};
+            // Heat shows in a few cracks only, and only where the crack runs deep
+            float deep = noise(u, v, 12, 12, 509);
+            if (hashI(best, 11, 508) < 0.14f && deep > 0.45f && edge < crack * 0.5f) { c = glm::vec3{0.25f, 0.06f, 0.02f}; glow = 0.45f + 0.4f * sstep(0.45f, 0.8f, deep); }
+        } else if (edge < crack * 2.2f) c *= 0.7f;               // the plate's edge curls down into it
+        return Px{c, glow};
+    }, BRICK_MEAN * 0.8f);
+}
+
+// --- THE COLD STORE (Chapter 5) ------------------------------------------------
+// Packed snow: wind-scoured and bright, rippled into long low sastrugi that run
+// one way across the tile, with a faint sparkle of grains.
+inline std::vector<unsigned char> snow() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        float ripple = std::sin((v * 7.f + fbm(u, v, 4, 4, 601) * 1.6f) * 6.2832f);   // wind ridges (wrap: whole cycles)
+        float b = 0.8f + 0.06f * ripple + (fbm(u, v, 8, 4, 602) - 0.5f) * 0.12f;
+        b *= 0.94f + 0.08f * noise(u, v, 128, 128, 603);                               // grain
+        if (hashI(x, y, 604) > 0.996f) b = 1.f;                                        // a glint
+        glm::vec3 c = b * glm::vec3{0.93f, 0.96f, 1.f};
+        float drift = sstep(0.6f, 0.8f, fbm(u, v, 3, 3, 605));                         // blue in the hollows
+        c = glm::mix(c, glm::vec3{0.62f, 0.72f, 0.84f}, drift * 0.3f + (ripple < -0.6f ? 0.12f : 0.f));
+        return Px{c, 0.f};
+    }, BRICK_MEAN * 2.1f);
+}
+
+// Clear sea ice: dark (you see into it), cut with white fracture lines and
+// trapped bubbles, frost dusted in streaks over the top.
+inline std::vector<unsigned char> ice() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        const int N = 3;   // big fracture cells across the 4 m tile
+        float fx = u * N, fy = v * N;
+        int ix = (int)std::floor(fx), iy = (int)std::floor(fy);
+        float d1 = 9.f, d2 = 9.f;
+        for (int dy = -1; dy <= 1; ++dy)
+            for (int dx = -1; dx <= 1; ++dx) {
+                int cx = ix + dx, cy = iy + dy, wx = wrap(cx, N), wy = wrap(cy, N);
+                float px = cx + 0.1f + 0.8f * hashI(wx, wy, 611), py = cy + 0.1f + 0.8f * hashI(wx, wy, 612);
+                float d = std::hypot(fx - px, fy - py);
+                if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) d2 = d;
+            }
+        float depth = fbm(u, v, 4, 4, 613);
+        glm::vec3 c = glm::mix(glm::vec3{0.08f, 0.16f, 0.24f}, glm::vec3{0.22f, 0.36f, 0.48f}, depth);
+        float edge = d2 - d1;
+        if (edge < 0.025f) c = glm::mix(c, glm::vec3{0.85f, 0.92f, 1.f}, 0.8f);         // a fracture, white
+        else if (edge < 0.06f) c = glm::mix(c, glm::vec3{0.5f, 0.65f, 0.78f}, 0.35f);
+        if (hashI(x / 3, y / 3, 614) > 0.992f) c = glm::vec3{0.75f, 0.85f, 0.95f};        // a bubble
+        float frost = sstep(0.5f, 0.8f, fbm(u, v, 6, 2, 615));          // streaks of frost
+        c = glm::mix(c, glm::vec3{0.82f, 0.88f, 0.94f}, frost * 0.45f);
+        return Px{c, 0.f};
+    }, BRICK_MEAN * 1.1f);
 }
 
 // --- The shared surfaces (every mode: the tubes, FAST, ACT II) ---------------

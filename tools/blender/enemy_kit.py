@@ -82,6 +82,7 @@ BASE_FILE = {"courier": "ripper", "bulwark": "shieldbearer", "cantor": "seraph",
 for _n, _b in BASE_FILE.items():
     NEEDED[_n] = NEEDED[_b]
 NEEDED["pacemaker"] = "hipL hipR torso head armL armR"
+NEEDED["ballast"] = "body head legFL legFR legBL legBR halo shield armR handR"
 
 
 def open_enemy(name, joints=None):

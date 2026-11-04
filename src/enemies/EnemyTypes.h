@@ -18,9 +18,12 @@
 // (rigBase) at a bigger size, with a body of its own made in Blender.
 enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, JUGGERNAUT, WARDEN, SOVEREIGN, SHIELDBEARER, CONDUIT,
                        CONDUCTOR, SERAPH, ANCHOR, PENITENT, REVENANT, WEAVER, LEVIATHAN, ABSOLUTE,
-                       COURIER, BULWARK, CANTOR, HARRIER, PLUMB, FOREMAN, PACEMAKER, COUNT };
+                       COURIER, BULWARK, CANTOR, HARRIER, PLUMB, FOREMAN, PACEMAKER, SORTER, BALLAST, PATIENT, GRAFTED, SUSPENDED, PHASED, SUCCESSOR,
+                       THAWLING, PICKER, CLERK, UNIT24K,   // Chapter 5 (EnemyCold.h)
+                       RESTORER, RS_POINT, RS_DRUM,        // Chapter 5's boss, its restore points and storage drums (EnemyRestorer.h)
+                       COUNT };
 inline bool isBoss(EnemyType t) { return t == EnemyType::WARDEN || t == EnemyType::SOVEREIGN || t == EnemyType::PENITENT || t == EnemyType::LEVIATHAN ||
-                                         t == EnemyType::ABSOLUTE || t == EnemyType::PACEMAKER; }
+                                         t == EnemyType::ABSOLUTE || t == EnemyType::PACEMAKER || t == EnemyType::SORTER || t == EnemyType::BALLAST || t==EnemyType::SUCCESSOR || t==EnemyType::UNIT24K || t==EnemyType::RESTORER; }
 // A Gauntlet room's mini-boss: a boss bar and a death of its own, no finisher; kill it and the room is won
 inline bool isMiniBoss(EnemyType t) { return t >= EnemyType::COURIER && t <= EnemyType::FOREMAN; }
 // Whose skeleton (and pose, head box, joints) a type moves on
@@ -81,7 +84,8 @@ enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY,
                         ATELEPORT, ADASH, AJAB, AHOOK, AUPPER, ADROP, AHOP, ARAY, ASTOMP, ASERPENT,   // THE ABSOLUTE's
                         AHALO, ASEAMS, AZENITH, ASWEEP, ALUNGE, ACRESCENT, AJUDGE, ATAKEOFF, ASKYFALL, AMETEOR,
                         ACROSS, ABACKFIST, AELBOW, AROUNDHOUSE, AHAYMAKER, ACHARGE, AAXE, ACLAP, ATHUNDER,   // (his fighter's arsenal; THUNDERCLAP)
-                        MJAB, MBACKHAND, MGRASP, MDROP, MSUNDER, MFISSURE, MFLARES, MCOLLAPSE };   // MORNINGSTAR's (EnemyAbsolute.h)
+                        MJAB, MBACKHAND, MGRASP, MDROP, MSUNDER, MFISSURE, MFLARES, MCOLLAPSE, SORT_GRAB, SORT_STAMP, SORT_SCAN, SORT_THROW, BALL_GRADE, BALL_GUST, BALL_ANCHOR, BALL_THROW, SORT_RUSH, SORT_ROW, SORT_PURGE, BALL_WINCH, BALL_RIP, BALL_SWEEP, LAB_LUNGE, LAB_PRESS, LAB_BEAM, LAB_CROSS, SU_INCISION, SU_THRUST, SU_VECTOR, SU_SUTURE, SU_TRANSPOSE, SU_RECALL, SU_PERFUSION, SU_REAP, SU_BREAKER, LAB_SWIPE,
+                        RS_ROLLBACK, RS_SNAPSHOT, RS_TONG, RS_FREEZE, RS_SHELVE };   // THE RESTORER's (EnemyRestorer.h)   // MORNINGSTAR's (EnemyAbsolute.h)
 
 struct EnemyStats {
     const char* name;
@@ -179,7 +183,27 @@ inline EnemyStats& statsEdit(EnemyType t) {
         {"THE PACEMAKER", 5200.f, 0.55f, 2.6f, 7.0f, 0.5f, 1.0f, false,
          {0.16f,0.17f,0.20f}, {1.0f,0.55f,0.12f}, {1.0f,0.7f,0.3f},
          "WHITE: PARRY - IT RACES YOU TO THE BEACON"},
+        {"THE SORTER", 7200.f, 2.8f, 6.5f, 8.5f, 1.1f, .6f, true,
+         {.32f,.33f,.34f}, {1.8f,.6f,.12f}, {1.f,.65f,.25f},
+         "WHITE: PARRY THE CLAW - RED: LEAVE THE STAMP - COVER CLEARS THE MARK"},
+        {"THE BALLAST", 6800.f, 2.4f, 8.1f, 6.2f, 1.3f, .45f, false,
+         {.46f,.34f,.22f}, {1.5f,.73f,.22f}, {.85f,.67f,.4f},
+         "BLADE: JUMP OR DASH ASIDE - WHITE WEIGHT: PARRY - WIND: CROSS THE LANE OR TAKE COVER"},
+        {"PATIENT",64,.46f,2.2f,7.5f,.65f,1.4f,false,{.73f,.48f,.43f},{.3f,.95f,1},{.7f,.6f,.85f},"WHITE BRACE: PARRY THE LUNGE - A MISSED RUSH LEAVES IT EXPOSED"},
+        {"GRAFTED",300,.9f,3.2f,3.8f,.85f,2.6f,false,{.56f,.35f,.3f},{.9f,.48f,.23f},{.9f,.5f,.3f},"FLANK THE PLATE - JUMP ITS PRESS OR RETURN THE HEAVY ORB"},
+        {"SUSPENDED",126,.7f,2.3f,3.5f,1.0f,3.1f,true,{.65f,.55f,.52f},{.7f,.4f,1.f},{.65f,.4f,1.f},"SHOOT THE CHARGING CORE TO BREAK ITS SWEEP - COVER STOPS THE BEAM"},
+        {"PHASE SUBJECT",145,.5f,2.4f,5.2f,.75f,3.5f,false,{.62f,.47f,.53f},{.5f,.8f,1.2f},{.5f,.8f,1.2f},"THE CYAN EXIT IS REAL - SHOOT TO CANCEL, PARRY THE WHITE ARRIVAL"},
+        {"THE SUCCESSOR",9800,.85f,3.8f,15.f,.55f,.48f,false,{.48f,.46f,.47f},{1.5f,.12f,.2f},{1.2f,.25f,.4f},"WHITE: PARRY / GOLD SWEEP: JUMP / RED BREAKER: MOVE / CUT THE SUTURE ANCHORS"},
+        // Chapter 5 (EnemyCold.h)
+        {"THAWLING",58,.45f,1.85f,7.2f,.6f,1.5f,false,{.6f,.66f,.73f},{.95f,.98f,1.05f},{.8f,.9f,1.f},"IT WARMS AS IT MOVES - KILL IT BEFORE IT IS FAST"},
+        {"PICKER",70,.7f,1.1f,6.5f,.8f,3.2f,true,{.16f,.17f,.19f},{2.f,1.f,.25f},{1.f,.7f,.3f},"WHITE: PARRY THE SNATCH - CAUGHT: SHOOT IT OR PUNCH FREE"},
+        {"CLERK",40,.45f,.8f,4.5f,0.f,0.f,true,{.7f,.68f,.6f},{2.f,1.4f,.5f},{1.f,.8f,.4f},"WHILE IT IS UP, WHAT YOU KILL GETS RESTORED - KILL IT FIRST"},
+        {"UNIT 24-K",2400,.45f,1.85f,7.6f,.6f,1.05f,false,{.78f,.79f,.8f},{1.5f,1.6f,1.8f},{1.f,.95f,.85f},"WHITE: PARRY ITS RUSH - GOLD LINE: STEP OUT OF THE LANCER - IT CANNOT FOLLOW YOU UP"},
+        {"THE RESTORER",9000,1.7f,7.f,4.4f,.9f,1.5f,false,{.62f,.68f,.74f},{1.4f,1.6f,1.9f},{.9f,.95f,1.f},"GOLD: KEEP WHERE YOU WERE SAFE (OR RECALL) - RED: GET OUT - WHITE: PARRY THE TONGS"},
+        {"RESTORE POINT",260,.8f,5.5f,0.f,0.f,0.f,false,{.7f,.82f,.92f},{1.2f,1.5f,1.9f},{1.f,1.f,1.f},"WHILE IT STANDS, WHAT YOU DO TO THE RESTORER GROWS BACK - BREAK IT"},
+        {"STORAGE DRUM",120,1.f,1.6f,0.f,0.f,0.f,false,{.4f,.44f,.5f},{2.f,1.2f,.4f},{1.f,1.f,1.f},"IT HAS ONE OF YOUR GUNS - BREAK IT OPEN"},
     };
+    static_assert(sizeof(S) / sizeof(S[0]) == (size_t)EnemyType::COUNT, "a stats row per enemy type, in the enum's order");
     return S[(int)t];
 }
 inline const EnemyStats& statsOf(EnemyType t) { return statsEdit(t); }

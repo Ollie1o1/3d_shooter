@@ -18,8 +18,11 @@ inline void GameplayState::shootInput() {
     }
     pendingFire = false;
     if (pendingAlt) { altFire(); pendingAlt = false; }
-    if (pendingGrenade && grenadeCount > 0 && grenadeTimer <= 0.f) throwGrenade();
+    if (pendingGrenade && splinterOwned()) throwSplinter();   // owned: the button flicks a splinter instead
+    else if (pendingGrenade && grenadeCount > 0 && grenadeTimer <= 0.f) throwGrenade();
     pendingGrenade = false;
+    if (pendingRecall && recallOwned() && !playerDead) pressRecall();
+    pendingRecall = false;
     flushHitSounds();
 }
 
@@ -88,8 +91,9 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     frametimer::Scope ftSim(frametimer::SIM);
     frametimer::tick();
     frametimer::Lap ftLap;
-    if (director.arena != spaceArena && director.arena >= 0 && director.arena < (int)level.arenas.size()) {
-        spaceArena = director.arena;   // a new place: its reverb
+    int acousticRoom=story()?level.arenaAt(player.position):director.arena;
+    if (acousticRoom != spaceArena && acousticRoom >= 0 && acousticRoom < (int)level.arenas.size()) {
+        spaceArena = acousticRoom;   // acoustics follow the room occupied, including backtracking
         audio.setSpace(level.arenas[spaceArena].space);
         audio.setRoom(level.arenas[spaceArena].tone);   // and its air
     }
@@ -102,6 +106,10 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     level.updateMovers(moverClock);
     if (rideMover >= 0) {
         player.position += level.movers[rideMover].delta;
+        player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0};
+    }
+    if (int cv = player.onGround ? level.conveyorOfWall(player.groundWall) : -1; cv >= 0) {   // a conveyor carries you along it
+        player.position += level.conveyors[cv].dir * (level.conveyors[cv].speed * dt);
         player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0};
     }
     if (grapple.active && grapple.moverWall >= 0) grapple.follow(level.walls[grapple.moverWall].box);
@@ -218,7 +226,11 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     glm::vec3 gPoint{0.f}; int gWall = -1; bool gMover = false;
     bool canHook = findGrappleTarget(gPoint, gWall, gMover);
     int hookE = grapple.active || pinned ? -1 : findEnemyHook();   // an enemy under the crosshair: the hook takes it first
-    grappleTargetInSight = (canHook && gMover) || hookE >= 0;
+    // THE GLEANER under the crosshair (nearer than any wall): the hook bites into it and hauls you up
+    glm::vec3 glPoint{0.f}; float glDist = 0.f;
+    const bool glHook = plain() && !grapple.active && !pinned && hookE < 0 && gleanerHookPoint(glPoint, glDist)
+                        && (!canHook || glDist < glm::length(gPoint - player.camera.position));
+    grappleTargetInSight = (canHook && gMover) || hookE >= 0 || glHook;
     if (hookE >= 0 && grappleCooldown <= 0.f) teach(TEACH_HOOK);
     if (pendingGrapple && pinned && !grapple.active) { pendingGrapple = false; pinnedCue(); }
     if (pinned && grapple.active) grapple.release();
@@ -229,6 +241,8 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
                 audio.play("dry", 100, SoundGroup::PLAYER);   // still coiling: no spamming the hook
             } else if (hookE >= 0) {
                 hookEnemy(hookE);
+            } else if (glHook) {
+                haulOntoGleaner(glPoint);
             } else if (canHook) {
                 glm::vec3 impulse{0.f};
                 grapple.attach(player.camera.position, gPoint, impulse, gWall,
@@ -245,6 +259,10 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         pendingGrapple = false;
     }
     updateEnemyZip();
+    if (g_devOverlay == "recall" && recallOwned() && !recall.placed && recall.ready() && elapsedTime > 0.3f) {   // dev: a statue 4 m ahead, facing you (screenshots)
+        glm::vec3 f = player.camera.flatForward();
+        recall.press(player.position + f * 4.f, std::atan2(-f.x, -f.z));
+    }
     if (g_devOverlay == "hang") {   // dev: the grapple fired at whatever's ahead, pressed again 4 s later (the hang, then the let-go)
         static int presses = 0;
         if (presses == 0 && elapsedTime > 1.f) { ++presses; pendingGrapple = true; }
@@ -316,6 +334,8 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         if (boost >= 0) { applyBooster(level.boosters[boost], player, dt); player.launched(); }
         if (grapple.active && grapple.latched) { player.position = hangPos; player.velocity = glm::vec3{0.f}; }   // held where it caught
         keepPlayerInZone(dt);
+        if (pickedBy >= 0) holdInPicker(dt);   // hung under a PICKER's claw
+        if (story()) { updateStory(dt); player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0}; }
         if (player.jumpedThisTick) {   // the push-off: a soft scuff and the head lifting off the legs
             audio.play("jump", 90);
             camFeel.dip(0.35f);
@@ -330,6 +350,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         slideKicks();
         airT = player.onGround ? 0.f : airT + dt;
     }
+    if(story() && g_devCam && g_devNoMouse) updateStory(dt);
     if (act2Falling && player.onGround) act2Falling = false;
     if (boost >= 0 && boostPrev < 0) {
         audio.play("boost", 100);
@@ -452,7 +473,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
             if (e.targetable() && !e.stats().flying && e.type != EnemyType::CONDUIT && director.inHoldZone(e.position + glm::vec3{0, 0.3f, 0}))
                 director.zoneContested = true;
     WaveDirector::Phase phaseBefore = director.phase;
-    if (!act2Falling) director.update(dt, alive, player.position, spawns);   // ACT II: the fight waits for you to land
+    if (!act2Falling && !training()) director.update(dt, alive, player.position, spawns);   // ACT II: the fight waits for you to land
     // The last of a wave falls: time drops to a quarter and eases back (not in FAST: the clock is the point)
     if (phaseBefore == WaveDirector::Phase::ACTIVE && !fast() &&
         (director.phase == WaveDirector::Phase::BREAK || director.phase == WaveDirector::Phase::CLEARED)) waveEnded();
@@ -474,6 +495,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     updateReliquary(dt);
     updateLeviathan(dt);
     updateAbsolute(dt);
+    updateSuccessor(dt);
     steerParriedOrbs(dt);   // parried orbs into the Warden's core, the Leviathan's eye
     if (fast() && countdown <= 0.f && !victory) ghostRec.record(elapsedTime, player.position, player.camera.yaw);
     // FAST: your best run's ghost going by close (it passing you, or you it): a whoosh from where it is
@@ -496,10 +518,15 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
                                     enemies, player.camera.position, &spatialGrid);
 
     whizPast();
+    if (splinterOwned()) tickSplinters(dt);
+    if (recallOwned()) tickRecall(dt);
+    if (!pendingRestores.empty()) tickRestores(dt);
     bool parryPressed = parryKey && !parryPrev;
     parryPrev = parryKey;
     punchCooldown = std::max(0.f, punchCooldown - dt);
-    if (parryPressed && punchCooldown <= 0.f) punch(result.boostableIndex);
+    if (parryPressed && rsTongT > 0.f) { rsTongT = -1.f; ui.feed("BROKE FREE", {0.9f, 0.95f, 1.f}); audio.play("punch", 110, SoundGroup::PLAYER); }   // hung on the Restorer's hook
+    else if (parryPressed && pickedBy >= 0) pickerLetGo(true);   // held: the punch breaks its grip
+    else if (parryPressed && punchCooldown <= 0.f) punch(result.boostableIndex);
 
     for (auto& [pi, ei] : result.enemyHits) {
         auto& e = enemies[ei];
@@ -523,6 +550,8 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     }
     for (int pi : result.wallHits) {   // a shot breaks on the wall: its cubes thrown back off it
         const Projectile& pr = projSystem.pool[pi];
+        if(story()&&(pr.ownerType==(int)EnemyType::SORTER||pr.ownerType==(int)EnemyType::BALLAST))
+            breakStoryCover(pr.prevPosition,pr.position,.7f);
         float spd = glm::length(pr.velocity);
         glm::vec3 back = spd > 1e-3f ? -pr.velocity / spd : glm::vec3{0.f, 1.f, 0.f};
         fx.spawnShards(pr.prevPosition, back, pr.emissiveColor, pr.size, groundHeightAt(pr.prevPosition.x, pr.prevPosition.z, pr.prevPosition.y + 0.2f));
@@ -540,6 +569,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     }
 
     updatePickups(dt);
+    if (training()) updateTraining(dt);
 
     // --- FAST: the finish beacon ---
     if (finishOpen && !victory) {
@@ -601,7 +631,9 @@ inline void GameplayState::keepPlayerInZone(float dt) {
         zones.push_back(&level.arenas[i].zone);
         for (auto& z : level.arenas[i].extraZones) zones.push_back(&z);
     };
-    if (fast()) {
+    if (story()) {   // STORY: every section you've reached, and the next one (walked into)
+        for (int i = 0; i <= std::min(director.arena + (director.fighting() ? 0 : 1), (int)level.arenas.size() - 1); ++i) addArena(i);
+    } else if (fast()) {
         for (int i = 0; i <= director.arena; ++i) addArena(i);
     } else {
         addArena(director.arena);
@@ -611,19 +643,7 @@ inline void GameplayState::keepPlayerInZone(float dt) {
         }
     }
     glm::vec3& p = player.position;
-    float bestD = 1e9f; glm::vec2 best{p.x, p.z};
-    const AABB* in = zones[0];
-    for (auto* z : zones) {
-        glm::vec2 c{glm::clamp(p.x, z->min.x, z->max.x), glm::clamp(p.z, z->min.z, z->max.z)};
-        float d = glm::length(c - glm::vec2{p.x, p.z});
-        // Inside several (a doorway where a tube meets a room): the higher ceiling wins
-        if (d < bestD - 1e-4f || (d < 1e-4f && bestD < 1e-4f && z->max.y > in->max.y)) { bestD = d; best = c; in = z; }
-    }
-    if (bestD > 0.f) {
-        if (best.x != p.x) player.velocity.x = 0.f;
-        if (best.y != p.z) player.velocity.z = 0.f;
-        p.x = best.x; p.z = best.y;
-    }
+    const AABB* in = constrainToZones(p,player.velocity,player.height,zones,story());
     // Ceiling: a force field you can see when you bump it
     float ceiling = in->max.y;
     if (p.y + player.height > ceiling) {
@@ -666,7 +686,7 @@ inline void GameplayState::keepPlayerInZone(float dt) {
 
     // Void: back to the start of the section you fell out of
     int a = level.arenaAt(p);
-    if (a >= 0 && p.y < level.arenas[a].voidY) {
+    if (a >= 0 && p.y < level.voidHeightAt(a,p)) {
         resetToCheckpoint(a);
         if (!g_godMode) styleSystem.takeDamage(15.f);
         ui.onDamage();
@@ -725,16 +745,7 @@ inline float GameplayState::groundHeightAt(float x, float z, float fromY, bool m
 }
 
 inline int GameplayState::findInteractTarget() const {
-    glm::vec3 origin = player.camera.position;
-    glm::vec3 dir    = player.camera.forward();
-    int   best    = -1;
-    float bestT   = Interactable::INTERACT_RANGE;
-    for (int i = 0; i < (int)interactables.size(); ++i) {
-        if (!interactables[i].active) continue;
-        float t = rayBoxHit(origin, dir, interactables[i].box);
-        if (t > 0.f && t < bestT) { bestT = t; best = i; }
-    }
-    return best;
+    return interactTarget(interactables, player.camera.position, player.camera.forward(), level.walls);
 }
 
 // The face of what the grapple's hanging on: the side of its box nearest the hook (no box: back toward you)

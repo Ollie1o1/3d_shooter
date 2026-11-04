@@ -9,6 +9,8 @@
 #include "core/ShaderProgram.h"
 #include "player/StyleSystem.h"
 #include "ui/UIRenderer.h"
+#include "ui/WorldMarker.h"
+#include "world/StoryBossArena.h"
 #include "enemies/Enemy.h"
 #include "audio/EnemyVoice.h"
 #include "bosses/warden/WardenHazards.h"
@@ -22,6 +24,24 @@
 #include "world/Level.h"
 #include "world/LevelGauntlet.h"
 #include "world/LevelAct2.h"
+#include "world/LevelStory.h"
+#include "world/LevelWasteland.h"
+#include "world/LevelLab.h"
+#include "world/LevelPlain.h"
+#include "world/LevelCold.h"
+#include "world/PlainMeteors.h"
+#include "bosses/gleaner/GleanerRig.h"
+#include "bosses/gleaner/TenderRig.h"
+#include "bosses/gleaner/SieveRig.h"
+#include "bosses/gleaner/CallerRig.h"
+#include "bosses/gleaner/OrgansRig.h"
+#include "bosses/gleaner/EyeCore.h"
+#include "game/PlainReveal.h"
+#include "game/LabIntro.h"
+#include "game/LabEnding.h"
+#include "bosses/successor/SuccessorHazards.h"
+#include "world/LevelTraining.h"
+#include "game/CombatLessons.h"
 #include "game/WaveDirector.h"
 #include "render/PostProcess.h"
 #include "audio/AudioSystem.h"
@@ -29,11 +49,15 @@
 #include "render/CameraFeel.h"
 #include "world/Interactable.h"
 #include "world/Stuck.h"
+#include "world/ZoneConstraint.h"
 #include "core/Settings.h"
 #include "ui/SettingsMenu.h"
 #include "render/TextureGen.h"
 #include "player/Weapons.h"
+#include "player/Splinter.h"
+#include "player/Recall.h"
 #include "game/Progression.h"
+#include "game/StorySave.h"
 #include "game/DevFlags.h"          // the command line's and the dev tools' globals (g_*)
 #include "ui/LeaderboardView.h"
 #include "game/Ghost.h"
@@ -42,6 +66,7 @@
 #include "render/WorldMesh.h"
 #include "render/NeonLights.h"
 #include "render/Effects.h"
+#include "bosses/ballast/BallastHazards.h"
 #include "render/PropDraw.h"
 #include "render/LightBake.h"
 #include "world/ArenaShifts.h"
@@ -65,6 +90,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <string>
+#include <map>
 #include <cstdio>
 
 // =============================================================================
@@ -113,6 +139,130 @@ public:
     bool act2() const { return mode == GameMode::ACT2; }
     bool arenaSolo() const { return (mode == GameMode::ARENA || act2()) && g_arenaSolo >= 0; }   // the ARENA page: one arena on its own
     bool endless() const { return mode == GameMode::ENDLESS; }
+    bool training() const { return mode == GameMode::TRAINING; }
+    bool story() const { return mode == GameMode::STORY; }
+    bool laboratory() const { return story() && level.story.chapter==3; }
+    SuccessorHazards successorHazards;
+    float successorIntroLine=0;
+    void saySuccessor(int line);
+    void successorEvents(Enemy& e,const EnemyEvents& ev);
+    void updateSuccessor(float dt);
+    void gatherSuccessor(std::vector<BoxInstance>& out);
+    void gatherLabDressing(std::vector<BoxInstance>& out);
+    void renderSuccessorDialogue();
+    bool shootSuccessorNode(glm::vec3 origin,glm::vec3 dir,float& range,float damage);
+    int labCue=-1;SoundHandle labVoice=0,successorVoice=0;
+    LabIntro labIntro;
+    // The end of Chapter 3 (Gameplay_LabEnding.h): the Successor's body where it fell, the cutscene through the doors
+    LabEnding labEnding;
+    bool  labEndingDone = false;
+    glm::vec3 successorFell{0.f}; float successorFellYaw = 0.f; bool successorFellSet = false;
+    glm::vec3 labEndDoor{0.f}, labEndHand{0.f};
+    mutable glm::vec3 labEndFrom[3]{}, labEndSeat[3]{};
+    mutable bool labEndHaveJoints = false;
+    glm::vec3 successorBody() const;
+    void startLabEnding();
+    glm::vec3 labEndUnit(float& yaw) const;
+    void labEndShot(glm::vec3& eye, glm::vec3& at) const;
+    glm::vec3 labPartFrom(int k) const;
+    glm::vec3 labPartSeat(int k) const;
+    void updateLabEnding(float dt);
+    void gatherLabEnding(std::vector<BoxInstance>& out);
+    void renderLabEndingOverlay();
+    unsigned labRoutes=0;
+    float labDialogueT=0;int labDialogue=-1;
+    unsigned successorHeard=0; // once per run; checkpoint retries preserve delivery
+    void beginLab();
+    void updateLab(float dt);
+    void gatherLab(std::vector<BoxInstance>& out);
+    void renderLabIntro();
+    bool wasteland() const { return story() && level.story.chapter==2; }
+    bool cold() const { return story() && level.story.chapter==5; }    // Chapter 5: THE COLD STORE (Gameplay_Cold.h)
+    bool plain() const { return story() && level.story.chapter==4; }   // Chapter 4: THE BLOOD MOON PLAIN (Gameplay_Plain.h)
+    int trainingLesson = 0, trainingEnemy = 0;
+    bool trainingPassed[lessons::COUNT] = {};
+    float trainingRespawn = 0;
+    bool guideOpen = false, guideWasPaused = false;
+    int guideSelected = 0;
+    void startTrainingLesson(int lesson);
+    void updateTraining(float dt);
+    void trainingSuccess(int lesson);
+    void openGuide();
+    void handleGuideEvent(const SDL_Event& e);
+    void renderGuide();
+    void renderTraining();
+    int storyChapterRequest=0;
+    StorySave resumedStory;
+    bool resumingStory = false;
+    unsigned storyTerminalsSeen = 0;
+    float storySaveClock = 0;
+    bool storyRelayIsolated = false;
+    float storyWinchT = -1.f;
+    bool storyWinchLanded = false;
+    void setupStoryChoices();
+    void updateStoryChoices(float dt);
+    void gatherStoryChoices(std::vector<BoxInstance>& out);
+    void saveStoryProgress();
+    void restoreStoryProgress();
+    void loadStoryChapter(int chapter);
+    int ambientDetail() const { return settings ? settings->ambientDetail : 2; }
+    BallastHazards ballastHazards;
+    float storyTurbineAngle[3] = {};
+    void ballastEvents(Enemy& e, const EnemyEvents& ev);
+    void gatherBallast(std::vector<BoxInstance>& out);
+    void breakStoryCover(glm::vec3 from,glm::vec3 to,float radius);
+    void gatherStoryCover(std::vector<BoxInstance>& out);
+    bool shootStoryCable(glm::vec3 from,glm::vec3 dir,float& distance);
+    void beginWasteland();
+    void updateWasteland(float dt);
+    void gatherWasteland(std::vector<BoxInstance>& out);
+
+    // ---- STORY (Gameplay_Story.h): UNIT 24 waking on the furnace line ----
+    float wakeT = -1.f;            // the wake-up's clock (< 0: not playing)
+    bool  wakeSeen = false;        // seen once: a retry starts on your feet
+    float skipHold = 0.f;          // jump held through the wake-up skips it
+    bool  storySkipKey = false;
+    bool  storyArmed = false;      // UNIT 24 has no gun until he finds one
+    int   storyOwned = 0;          // the guns he's taken (bit per WeaponId): kept through retries
+    bool  storyOwns(int w) const { return (storyOwned >> w) & 1; }
+    int   storySeenSection = 0;    // the furthest section he's walked into (its name on the screen once)
+    float storyFindT = 0.f;        // seconds in the pit without the revolver: the way to it is pointed out
+    float pitWakeT = -1.f;         // a retry in the pit with the gun: the scrap wakes after a moment
+    int   storyLog = -1;           // the wreck whose last log is on screen
+    float storyLogT = 0.f;
+    unsigned storyLogsSeen = 0;
+    bool storyGrapple = false, storyBossDown = false, storyPodsBroken = false;
+    int storyCheckpoint = 0, storyTerminal = -1, storyLiftStop = 0;
+    float storyScanCooldown = 0.f, storyCollapseT = -1.f;
+    std::vector<AABB> storyGlassBoxes, storyTileBoxes;
+    void updateStoryFactory(float dt);
+    void gatherStoryFactory(std::vector<BoxInstance>& out);
+    void gatherStoryProjectile(std::vector<BoxInstance>& out,const Projectile& p,glm::vec3 at,float spin);
+    void storySorterEvents(Enemy& e, const EnemyEvents& ev);
+    void updateStoryAtmosphere(float dt);
+    void gatherStoryAtmosphere(std::vector<BoxInstance>& out);
+    void resetStoryFactory();
+    void  storyTakeGun(int wreck);
+    glm::mat4 wreckRoot(int wreck) const;
+    glm::mat4 wreckGunXf(int wreck) const;
+    struct BeltBody { glm::vec3 pos{0.f}, vel{0.f}; int lane = 0; float yaw = 0.f, tip = 0.f, spinV = 0.f, pose = 0.f;
+                      bool falling = false, dropped = false; };
+    std::vector<BeltBody> beltBodies;
+    float beltSpawn[3] = {0.f, 0.f, 0.f};
+    float clawT = -1.f;            // the claw over the west belt, lowering a body (< 0: parked)
+    glm::vec3 clawAt{0.f};
+    int   prevFinger = -1;
+    float storyEndT = -1.f;        // down the chute: fading out to what's next
+    bool  offBeltShown = false;
+    armfile::HandSpring wakeHand;
+    void  beginStory();
+    void  updateStory(float dt);
+    bool  storyLocked() const { return story() && (wakeT >= 0.f || labIntro.active() || labEnding.active() || plainReveal.active() || summitEndT >= 0.f || tearT >= 0.f || (level.story.chapter == 5 && (coldRideT >= 0.f || rsFinT >= 0.f))); }
+    bool  storyLookFree() const { return !labIntro.active() && wakeT >= 18.4f; }   // (story::W_SAT)
+    float storyWakeFx() const;
+    void  gatherStoryBoxes(std::vector<BoxInstance>& out);
+    void  drawStoryArms(const Camera& cam);
+    void  renderStoryOverlay(const glm::mat4& viewProj = glm::mat4(1.f));
     Board boardFor() const { return fast() ? Board::FAST : endless() ? Board::ENDLESS : Board::ARENA; }
 
     // ---- ENDLESS (Gameplay_Flow.h) ----
@@ -189,6 +339,227 @@ public:
     int   grenadeCount   = 2;
     int   grenadeMax     = 2;
     float grenadeTimer   = 0.f;
+    // The SPLINTER (Gameplay_Splinter.h): takes the grenade button once owned
+    SplinterSystem splinters;
+    // RECALL (Gameplay_Recall.h): a statue to snap back to, on its own key
+    RecallSystem recall;
+    // Chapter 5's enemies (Gameplay_ColdEnemies.h): a PICKER holding you, kills a CLERK is restoring
+    int   pickedBy = -1;
+    float pickedHealth = 0.f, pickHurtT = 0.f;
+    struct PendingRestore { EnemyType type; glm::vec3 at; float t; int clerk; };
+    std::vector<PendingRestore> pendingRestores;
+    int   recallHints = 0;
+    // Chapter 4 (Gameplay_Plain.h): the meteors, and the shakes still on their way
+    MeteorRain meteors;
+    std::vector<MeteorImpact> meteorHits;
+    struct PlainQuake { float t, amp; };
+    std::vector<PlainQuake> plainQuakes;
+    float plainSmokeT = 0.f;
+    bool  plainEdgeWarned = false;
+    // THE GLEANER (Gameplay_Gleaner.h) and the arrival that reveals it (PlainReveal.h)
+    Gleaner gleaner;
+    PlainReveal plainReveal;
+    bool  plainRevealDone = false;   // played (or skipped) in this run: a retry never replays it
+    // The fight (Gameplay_GleanerFight.h)
+    // (TENDER, SIEVE, CALLER: its brood, one at a time; BROOD: all three dead, its furnace door open;
+    //  HEART, LUNGS, CORE: inside it, its organs; SUMMIT: out of its chimney, onto its back)
+    enum class GleanerPhase { APPROACH, KNEELING, CLIMB, TENDER, SIEVE, CALLER, BROOD, HEART, LUNGS, CORE, SUMMIT };
+    GleanerPhase gleanerPhase = GleanerPhase::APPROACH;
+    bool  gleanerFightStarted = false;
+    float calledMeteorCd = 6.f, riverBurnCd = 0.f;
+    Tender tender;
+    Sieve  sieve;
+    Caller caller;
+    // The summit (Gameplay_GleanerSummit.h): THE EYE, then the collapse
+    EyeCore eye;
+    float summitEndT = -1.f;   // seconds into the collapse (-1: not yet)
+    float eyeHitCd = 0.f;
+    glm::vec3 eyeHang() const;
+    int   summitCover(AABB* out) const;
+    float eyeBeamReach(glm::vec3 o, glm::vec3 d, float maxT) const;
+    void  wakeEye();
+    void  updateSummit(float dt);
+    bool  tryTearEye();
+    void  updateSummitEnd(float dt);
+    void  summitShot(glm::vec3& eyeAt, glm::vec3& at) const;
+    float summitMoonOpen() const;
+    void  gatherEye(std::vector<BoxInstance>& out);
+    void  renderSummitEnd();
+    // Inside it (Gameplay_GleanerInside.h)
+    CrucibleHeart heart;
+    BellowsLungs lungs;
+    SortingCore core;
+    int   gutBoostersFrom = -1, gutShaftOpen = -1;
+    float gutBurnCd = 0.f, gutWhite = 0.f;
+    bool  furnaceDoor = false;   // the furnace door in the face behind the saddle, open (the back's walls were built with it)
+    bool insideGleaner() const;
+    void placeInGut(int room);
+    void openGutShaft(int room);
+    void clearGutShafts();
+    void enterGut();
+    void gutShaftThrow();
+    void gutThrow(glm::vec3 from, float speed, float dmg, glm::vec3 col, float size, float parry);
+    bool gutReturned(const organ::Box& b, float& dmg);
+    void updateGut(float dt);
+    bool shootOrgan(glm::vec3 o, glm::vec3 d, float& nearest, float dmg, int w, bool splinter);
+    bool organSplinterPoint(glm::vec3& at) const;
+    void gatherGut(std::vector<BoxInstance>& out);
+    float sieveBurnCd = 0.f, broodCallCd = 0.f, callerClangCd = 0.f, broodWakeIn = -1.f;
+    bool  sieveForged = false;       // the meteor it comes out of has been called down
+    int   deckWallsFrom = -1, deckBoostersFrom = -1;
+    bool  deckFrontOpen = false, deckCrown = false;   // what the back's walls were built with
+    glm::vec2 deckLo{0.f}, deckHi{0.f};
+    float deckY = 0.f;
+    glm::vec2 saddleLo{0.f}, saddleHi{0.f}, crownLo{0.f}, crownHi{0.f}, neckLo{0.f}, neckHi{0.f};
+    float saddleY = 0.f;
+    glm::vec3 updraftBase{0.f};
+    bool  updraftFlight = false;   // thrown by the updraft, not yet landed
+    float updraftOpenT = -1.f;     // seconds since the plain split for it (-1: not yet): its opening burst
+    const char* gleanerPhaseName() const;
+    void gleanerDeckRect(glm::vec2& lo, glm::vec2& hi, float& top) const;
+    void clearGleanerDeck();
+    void buildGleanerDeck();
+    glm::vec3 deckCheckpoint() const;
+    bool onGleanerDeck() const;
+    void gleanerBackRect(float x0, float z0, float x1, float z1, float y, glm::vec2& lo, glm::vec2& hi, float& top) const;
+    glm::vec3 saddleCheckpoint() const;
+    glm::vec3 crownCheckpoint() const;
+    bool onSaddle() const;
+    bool onCrown() const;
+    bool onGleanerBack() const;
+    void wakeTender();
+    void wakeSieve();
+    void wakeCaller();
+    void updateSieve(float dt);
+    void updateCaller(float dt);
+    bool parryCaller();
+    bool shootBrood(glm::vec3 o, glm::vec3 d, float& nearest, float dmg, int w, bool splinter = false);
+    bool broodSplinterPoint(glm::vec3& at) const;
+    void resetGleanerFight(bool fresh);
+    void updateGleanerFight(float dt);
+    void updraftThrow();
+    glm::vec3 gleanerBackTarget() const;
+    // The next place to reach in the fight (a marker on the HUD, a beacon in the world): false when the fight is the goal
+    bool gleanerObjective(glm::vec3& at, const char*& label, bool& beacon) const;   // where a throw onto its back lands: wherever the fight on it is
+    // The grapple on the Gleaner itself: a hook into its body hauls you up onto its back (a long leap at it before it kneels)
+    bool gleanerHookPoint(glm::vec3& at, float& dist) const;
+    void haulOntoGleaner(glm::vec3 at);
+    float gleanerHaulT = 0.f, gleanerHaulRope = 0.f;   // seconds of the haul's flight left (its body lets you pass); of its rope still drawn
+    float gleanerHaulRise = 0.f;                       // seconds left of its first stage: up beside the roof's edge (then thrown onto it)
+    glm::vec3 gleanerHaulAt{0.f}, gleanerHaulLand{0.f};
+    float gleanerFistHitCd = 0.f;
+    // Its hands and its brood's tethers (Gameplay_GleanerHands.h)
+    float swatCd = 9.f;
+    struct SwatRing { glm::vec3 at; float t; bool hit; };
+    std::vector<SwatRing> swatRings;
+    float tetherBurn[3] = {-1.f, -1.f, -1.f};   // seconds since that brood member died (its tether burning out)
+    uint32_t fightPotions = 0u;                 // which fights have shed their potion
+    bool swatFloor(glm::vec2& lo, glm::vec2& hi, float& y) const;
+    void syncGleanerLimbs();
+    bool pickSwat(int& arm, glm::vec3& at) const;
+    void updateGleanerHands(float dt);
+    void onGleanerSwat(const GleanerEvent& e);
+    void killGleanerLimb(int which);
+    void drawTether(std::vector<BoxInstance>& out, glm::vec3 from, glm::vec3 to, float life, float burn, float hurt);
+    void gatherGleanerHands(std::vector<BoxInstance>& out);
+    bool parryTender();
+    void shedFightPotion(int slot, float health01, glm::vec3 from, bool alive);
+    float quietT = -1.f;   // seconds into the quiet after it falls (the portal), -1: not yet
+    float quietThrough = -1.f;  // seconds since the portal took you
+    glm::vec3 quietPortalAt{0.f};   // where it opens (a clear spot in front of the fallen thing, chosen as the quiet begins)
+    bool  quietCaption = false;
+    // The tearing (Gameplay_GleanerFinale.h): seconds into it (-1: not), its pupil, the way out of it, where you were
+    float tearT = -1.f;
+    glm::vec3 tearPupil{0.f}, tearOut{0.f, 0.f, 1.f}, tearFrom{0.f};
+    int   tearSnapped = 0, tearBeats = 0;
+    void  tearShot(glm::vec3& eyeAt, glm::vec3& at) const;
+    glm::vec3 tearCore() const;
+    void  updateTear(float dt);
+    int   tearArms(ViewModel::FreeArm* A) const;
+    void  gatherTear(std::vector<BoxInstance>& out);
+    void  renderTear();
+    glm::vec3 quietPortal() const;
+    glm::vec3 pickQuietPortal() const;
+    void  beginQuiet();
+    void  updateQuiet(float dt);
+    void  gatherQuiet(std::vector<BoxInstance>& out);
+    void  renderQuiet();
+    void updateTender(float dt);
+    bool shootTender(glm::vec3 o, glm::vec3 d, float& nearest, float dmg, int w);
+    void gatherGleanerFight(std::vector<BoxInstance>& out);
+    int   gleanerWaypoint = 0;
+    float gleanerScreamCd = 40.f;
+    struct GleanerDust { glm::vec3 at; float age, size; };
+    std::vector<GleanerDust> gleanerDust;
+    void beginGleaner();
+    void updatePlainReveal(float dt);
+    void updateGleaner(float dt);
+    void gleanerSound(const char* name, glm::vec3 from, float loud, float late, bool roar = false);
+    float plainMoonLid() const;
+    void gatherGleaner(std::vector<BoxInstance>& out);
+    void renderPlainReveal();
+    void beginPlain();
+    // Chapter 5 (Gameplay_Cold.h): the dispatch capsules and their contrails
+    struct ColdCapsule { struct Puff { glm::vec3 pos; float born; };
+                         glm::vec3 pos{0.f}, vel{0.f}; float age = 0.f, trailT = 0.f; std::vector<Puff> trail; };
+    std::vector<ColdCapsule> coldCapsules;
+    float coldLaunchT = 0.f, coldShardT = 0.f;
+    int   coldLaunches = 0;
+    bool  coldRecall = false;   // taken from 24-A in Rack 24
+    float coldVentHurtT = 0.f;
+    bool  coldKDown = false, coldKIntro = false;   // 24-K (section 8)
+    // THE RESTORER's fight (Gameplay_Restorer.h)
+    bool  coldRDown = false; float coldRDownAt = -1.f;
+    Enemy rsCorpse{EnemyType::RESTORER, glm::vec3{0.f}};   // its body after it falls: rewinding itself to parts
+    float rsDeathT = -1.f, coldRideT = -1.f;                 // that rewind's clock; the dispatch capsule's ride out
+    glm::vec3 coldRidePos(float t) const;
+    void updateColdEnding(float dt);
+    void gatherColdEnding(std::vector<BoxInstance>& out);
+    struct RsStatue { glm::vec3 at; float yaw; };
+    std::vector<RsStatue> rsStatues;
+    std::vector<AABB> rsRacks, rsPlannedRacks;
+    std::vector<glm::vec3> rsCells;
+    glm::vec3 rsRollbackAt{0.f}, rsSnapAt{0.f}, rsTongAt{0.f};
+    float rsRollbackT = -1.f, rsSnapT = -1.f, rsFreezeT = -1.f, rsSpikeT = -1.f, rsShatterT = -1.f, rsTongT = -1.f, rsTongHurtT = 0.f;
+    int   rsPhase = 0, rsTaken = 0, rsLine = 0;
+    float rsTakeT = 0.f, rsLastHealth = 0.f, rsLineT = 0.f;
+    int   rsDrumGun[4] = {-1, -1, -1, -1}, rsDrumUid[4] = {-1, -1, -1, -1};
+    glm::vec3 rsTrail[180];
+    int   rsTrailHead = 0, rsTrailN = 0; float rsTrailT = 0.f;
+    float recallPressedAt = -99.f;
+    // The RECALL finisher: it falters, you drive the module into its dome (Gameplay_Restorer.h)
+    float rsFinT = -1.f; glm::vec3 rsFinFrom{0.f}; int rsFinItem = -1; bool rsFalterSeen = false;
+    void startRecallFinisher();
+    void updateRecallFinisher(float dt);
+    bool recallFinisherCam(glm::vec3& eye, glm::vec3& look);
+    glm::vec3 rsDomeWorld(const Enemy& e) const;
+    Enemy* restorer();
+    void resetRestorerFight();
+    void rsPlaceWall(int k, const AABB& b);
+    void restorerEvents(Enemy& e, const EnemyEvents& ev);
+    void updateRestorerFight(float dt);
+    void gatherRestorerFight(std::vector<BoxInstance>& out);
+    float coldKLineT = 0.f;
+    float coldKDownAt = -1.f;
+    struct ColdCrack { glm::vec3 a, b; float born; };
+    std::vector<ColdCrack> coldCracks;   // the Frozen Sea's ice, cracking under you
+    glm::vec3 coldCrackFrom{0.f};
+    void updateColdVents(float dt);
+    void updateColdSea(float dt);
+    void renderColdIce(const glm::mat4& view, const glm::mat4& proj, glm::vec3 camPos);
+    int   coldRecallItem = -1;  // its interactable
+    void beginCold();
+    void takeColdRecall();
+    void updateCold(float dt);
+    void launchColdCapsule(int k);
+    void gatherCold(std::vector<BoxInstance>& out);
+    void gatherColdRoute(std::vector<BoxInstance>& out);
+    void coldBody(std::vector<BoxInstance>& out, const char* model, const glm::mat4& at, const rig::FilePose& P, float frost, glm::vec3 core);
+    void updatePlain(float dt);
+    void meteorImpact(const MeteorImpact& hit);
+    void gatherPlain(std::vector<BoxInstance>& out);
+    bool  splinterGlinted[SplinterSystem::POOL] = {};
+    int   splinterHints = 0;
     int   killsThisCycle = 0;
 
     float recoilPitch = 0.f;
@@ -279,7 +650,7 @@ public:
     Effects       fx;          // particles, debris, decals, tracers, rings (Effects.h)
     ShaderProgram tracerShader;
     GLuint        tracerVAO = 0, tracerVBO = 0;
-    ShaderProgram waterShader;
+    ShaderProgram waterShader, labGlassShader;
     GLuint        waterVAO = 0, waterVBO = 0;
     static constexpr int MAX_WATER = 64;   // volumes drawn per frame
     float         skimTimer = 0.f;         // spray and hiss while a slide skims water
@@ -360,6 +731,7 @@ public:
     // Event-driven click flags — set in handleEvent, consumed once in physicsTick.
     bool pendingFire      = false;
     bool pendingGrenade   = false;
+    bool pendingRecall    = false;
     bool pendingGrapple   = false;
 
     GameplayState(AudioSystem& aud, GameSettings* s = nullptr, GameMode m = GameMode::ARENA);
@@ -375,6 +747,7 @@ public:
     // Put the player at the start of arena `a` with the doors set as if they
     // had just walked in. Used for a fresh run, a retry after death, and --arena.
     void enterArena(int a);
+    int  storyRetryArena() const;
 
     void resetPlayer(glm::vec3 start);
 
@@ -569,6 +942,14 @@ public:
     // ---- OATHBREAKER, the sword (Gameplay_Sword.h): key 5, only in the Zenith -----
     Sword sword;
     bool  swordOut = false, lmbPrev = false, rmbPrev = false;
+    // OATHBREAKER in Story: plunged into the statue in the Successor's arena (Chapter 3), sealed until its second phase
+    bool  storySword = false, swordStatueOpen = false;
+    float swordStatueFlash = 0.f;   // the seal breaking / the pull: a white flare on the statue
+    int   swordStatueIt = -1;       // its interactable (the prompt changes when the seal breaks)
+    void  openSwordStatue();
+    glm::vec3 swordStatueAt() const;
+    void  pullStatueSword();
+    void  gatherSwordStatue(std::vector<BoxInstance>& out);
     glm::vec3 thrustFrom{0.f}; bool thrustHit = false;
     Sword::Guarded lastGuarded = Sword::Guarded::NONE;   // what the sword did with the last strike (damagePlayerStrike)
     float swordRoll = 0.f;                          // the camera leaning into a sword stroke (degrees)
@@ -812,7 +1193,7 @@ public:
     void  altFire();
     // TEACHING: each fighting move gets one small card (the enemy cards' kind), the first time
     // it comes up, ever; then never again (GameSettings::taught)
-    enum Teach { TEACH_FINISH = 1, TEACH_STUN = 2, TEACH_OVERDRIVE = 4, TEACH_HOOK = 8, TEACH_ALT = 16 };
+    enum Teach { TEACH_FINISH = 1, TEACH_STUN = 2, TEACH_OVERDRIVE = 4, TEACH_HOOK = 8, TEACH_ALT = 16, TEACH_PARRY = 32, TEACH_GRENADE = 64, TEACH_JUMP = 128 };
     void  teach(int bit);
     int   killsThisSession = 0;
     // UNSEEN WIND-UPS: a regular enemy out of view (or behind cover you can't see round) starting an
@@ -881,6 +1262,25 @@ public:
     void fireWeapon(int w);
 
     void throwGrenade();
+    bool splinterOwned() const;
+    void throwSplinter();
+    void teachSplinterOnce();
+    void tickSplinters(float dt);
+    int  splinterTarget(glm::vec3 from, glm::vec3& aimAt) const;
+    void splinterRicochet(int first, float dmg, int w);
+    void gatherSplinters(std::vector<BoxInstance>& out);
+    Enemy* enemyByUid(int uid);
+    void pickerGrab(Enemy& e, bool lured);
+    void pickerLetGo(bool broke);
+    void holdInPicker(float dt);
+    void clerkNoteDeath(const Enemy& e);
+    void tickRestores(float dt);
+    bool recallOwned() const;
+    bool recallClear(glm::vec3 feet) const;
+    void pressRecall();
+    void tickRecall(float dt);
+    bool recallLures(const Enemy& e) const;
+    void gatherRecall(std::vector<BoxInstance>& out);
 
     // =========================================================================
     // Effects (Effects.h)
@@ -912,6 +1312,8 @@ public:
 
     struct PVert { float x, y, z, r, g, b, a; };
     void renderParticles(const glm::mat4& view, const glm::mat4& proj);
+    void renderLabGlass(const glm::mat4& view,const glm::mat4& proj,glm::vec3 camPos);
+    void renderLabAtmosphere(const glm::mat4& view,const glm::mat4& proj,glm::vec3 camPos);
     void renderWater(const glm::mat4& view, const glm::mat4& proj, const Theme& th, glm::vec3 camPos);
     void drawPoints(const PVert* buf, int count, const glm::mat4& view, const glm::mat4& proj);
 
@@ -961,4 +1363,30 @@ public:
 #include "bosses/leviathan/Gameplay_Leviathan.h"
 #include "game/Gameplay_Sword.h"
 #include "game/Gameplay_Destruct.h"
+#include "game/Gameplay_Splinter.h"
+#include "game/Gameplay_Story.h"
+#include "game/Gameplay_Recall.h"
+#include "game/Gameplay_ColdEnemies.h"
+#include "game/Gameplay_Wasteland.h"
+#include "bosses/ballast/Gameplay_Ballast.h"
 #include "bosses/absolute/Gameplay_Absolute.h"
+
+#include "game/Gameplay_StorySave.h"
+#include "game/Gameplay_Training.h"
+
+#include "game/Gameplay_StoryChoices.h"
+
+#include "game/Gameplay_Lab.h"
+
+#include "bosses/successor/Gameplay_Successor.h"
+#include "game/Gameplay_LabDressing.h"
+#include "game/Gameplay_Plain.h"
+#include "game/Gameplay_Cold.h"
+#include "game/Gameplay_Restorer.h"
+#include "game/Gameplay_Gleaner.h"
+#include "game/Gameplay_GleanerFight.h"
+#include "game/Gameplay_GleanerHands.h"
+#include "game/Gameplay_GleanerInside.h"
+#include "game/Gameplay_GleanerSummit.h"
+#include "game/Gameplay_GleanerFinale.h"
+#include "game/Gameplay_LabEnding.h"
