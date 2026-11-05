@@ -29,7 +29,7 @@ inline void GameplayState::loadStoryChapter(int chapter) {
     for(const auto& a:level.anchors)anchorBoxes.push_back(level.walls[a.wall].box);
     storyGlassBoxes.clear();storyTileBoxes.clear();
     director=WaveDirector{};director.level=&level;director.fast=true;
-    labIntro=LabIntro{};labRoutes=0;successorHeard=0;
+    labIntro=LabIntro{};labRoutes=0;
     storyRelayIsolated=false;
     coldRecall=coldKDown=coldKIntro=coldRDown=false;rsDeathT=coldRideT=-1.f;   // (Chapter 5's own progress starts fresh)
     storyLogsSeen=storyTerminalsSeen=0;storySeenSection=storyCheckpoint=0;storyBossDown=false;

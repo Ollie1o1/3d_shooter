@@ -23,7 +23,7 @@ inline void GameplayState::onPacemakerEvents(const Enemy& e, const EnemyEvents& 
         parryFeedback(e.position + glm::vec3{0.f, e.height() * 0.6f, 0.f}, true);
         styleSystem.addStyle(60.f, StyleSource::PARRY);
     } else if (ev.pmChannel == 2) {
-        pushBanner("THE BEACON BURNS", "IT DRANK IT IN", {1.f, 0.5f, 0.2f}, 2.2f);
+        pushBanner("BEACON ABSORBED", "", {1.f, 0.5f, 0.2f}, 2.2f);
         audio.play("overdrive_on", 100, SoundGroup::UI);
         fx.spawnShockwave(e.position, 10.f, {1.4f, 1.f, 0.5f});
     }
@@ -37,5 +37,4 @@ inline void GameplayState::onPacemakerKilled(Enemy& e) {
     for (int k = 0; k < 8; ++k)
         fx.spawnBurst(e.position + glm::vec3{frand(-1.f, 1.f), frand(0.5f, 3.f), frand(-1.f, 1.f)}, {1.4f, 0.9f, 0.4f}, 30, 11.f, 0.9f, 2.f);
     fx.spawnShockwave(e.position, 14.f, {1.4f, 1.f, 0.5f});
-    pushBanner("THE PACEMAKER STOPS", "", {1.f, 0.75f, 0.3f}, 3.f);
 }

@@ -36,8 +36,6 @@ inline void GameplayState::onMorningEvents(Enemy& e, const EnemyEvents& ev) {
         audio.stop(abWindH); audio.stop(abFlightH); audio.stop(abBeamH); abWindH = abFlightH = abBeamH = 0;
         abSkyMarkT = -1.f;
         msSwallowT = 0.f; eclipseFlare = 1.f;
-        abLineShown = AB_LINE_NOT_YET; abLineT = 2.6f;
-        audio.playAt("v_absolute_line", e.position, 128, SoundGroup::ENEMY, true, 0.7f);
         audio.play("ab_rumble", 128, SoundGroup::WORLD, true);
         audio.duck(8.f, 3.f);
         fx.spawnShockwave(e.position, 16.f, white);
@@ -47,10 +45,10 @@ inline void GameplayState::onMorningEvents(Enemy& e, const EnemyEvents& ev) {
         msCheckpoint = true;
         msSwallowT = std::max(msSwallowT, Enemy::MS_SWALLOW);
         eclipseFlare = 1.f;
-        pushBanner("MORNINGSTAR", "WHITE: PARRY HIM   THE FLOOR SHOWS THE REST", {1.f, 0.55f, 0.25f}, 4.5f);
+        pushBanner("MORNINGSTAR", "", {1.f, 0.55f, 0.25f}, 2.6f);
         audio.play("wave", 128, SoundGroup::UI); audio.play("explosion", 80, SoundGroup::UI);
     }
-    if (ev.abPhase == 5) { pushBanner("RISING", "EVERY SLAM COMES BACK", {1.f, 0.6f, 0.3f}, 3.f); shake(0.5f, 0.06f); audio.duck(6.f, 0.6f); }
+    if (ev.abPhase == 5) { pushBanner("AFTERSHOCKS", "JUMP EACH RING", {1.f, 0.6f, 0.3f}, 3.f); shake(0.5f, 0.06f); audio.duck(6.f, 0.6f); }
     if (ev.abPhase == 6) { pushBanner("TOTALITY", "JUMP THE RING", {1.f, 0.95f, 0.9f}, 3.f); shake(0.6f, 0.06f); audio.duck(8.f, 0.8f); }
     auto quake = [&](glm::vec3 at, float r, float k) {
         fx.spawnShockwave(at + glm::vec3{0.f, 0.1f, 0.f}, r, fire);

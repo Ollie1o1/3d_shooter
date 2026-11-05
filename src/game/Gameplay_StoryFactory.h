@@ -119,19 +119,12 @@ inline void GameplayState::storySorterEvents(Enemy& e,const EnemyEvents& ev) {
     using glm::vec3;
     if(ev.telegraphStarted) {
         audio.playAt("telegraph",e.sortAim,120,SoundGroup::ENEMY,true);
-        if(e.attack==AttackKind::SORT_STAMP)ui.feed(e.tellFollow?"PRESS FOLLOW-UP / KEEP MOVING":"OVERHEAD PRESS / WATCH THE LOCK",{1.f,.65f,.25f});
-        else if(e.attack==AttackKind::SORT_GRAB)ui.feed("CLAW / WHITE: PARRY",{.95f,.95f,1.f});
-        else if(e.attack==AttackKind::SORT_RUSH)ui.feed("GANTRY RUSH / DASH ACROSS ITS PATH",{1.f,.75f,.2f});
-        else if(e.attack==AttackKind::SORT_ROW)ui.feed("PRESS SEQUENCE / CHANGE YOUR ROUTE",{1.f,.5f,.2f});
-        else if(e.attack==AttackKind::SORT_PURGE)ui.feed("FURNACE PURGE / LEAVE THE GLOWING VENTS",{1.f,.5f,.2f});
+
     }
     if(ev.sortLocked)audio.playAt("count_tick",e.sortAim,120,SoundGroup::ENEMY,true);
     if(ev.sortDrop)audio.playAt("hook_yank",e.sortAim+vec3{0,5,0},120,SoundGroup::ENEMY,true);
     if(ev.sortPhaseStarted) {
-        const char* names[]={"","INSPECTION","RECALIBRATION","INCINERATION"};
-        if(ev.sortPhaseStarted==1)pushBanner(names[1],storytext::sorterIntro,{1.f,.5f,.2f},2.6f);
-        else if(ev.sortPhaseStarted==2)ui.feed(storytext::sorterDamaged,{1.f,.5f,.2f});
-        else ui.toast("FLOOR RELEASE","GET TO THE RAILS",{1.f,.35f,.15f},2.2f);
+        if(ev.sortPhaseStarted==3)ui.toast("FLOOR RELEASE","GET TO THE RAILS",{1.f,.35f,.15f},2.2f);
         audio.play("anvil_final",128,SoundGroup::WORLD,true);
         if(ev.sortPhaseStarted==3) storyCollapseT=0;
         const auto& a=level.arenas[8];

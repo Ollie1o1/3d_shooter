@@ -143,16 +143,13 @@ public:
     bool story() const { return mode == GameMode::STORY; }
     bool laboratory() const { return story() && level.story.chapter==3; }
     SuccessorHazards successorHazards;
-    float successorIntroLine=0;
-    void saySuccessor(int line);
     void successorEvents(Enemy& e,const EnemyEvents& ev);
     void updateSuccessor(float dt);
     void gatherSuccessor(std::vector<BoxInstance>& out);
     void gatherLabDressing(std::vector<BoxInstance>& out);
     void gatherLabVista(std::vector<BoxInstance>& out);
-    void renderSuccessorDialogue();
     bool shootSuccessorNode(glm::vec3 origin,glm::vec3 dir,float& range,float damage);
-    int labCue=-1;SoundHandle labVoice=0,successorVoice=0;
+    int labCue=-1;SoundHandle labVoice=0;
     LabIntro labIntro;
     LabTheatre labTheatre;int labTheatreCue=0;float labTheatreWalk=0;   // Admissions' observation theatre (LabIntro.h)
     // The end of Chapter 3 (Gameplay_LabEnding.h): the Successor's body where it fell, the cutscene through the doors
@@ -172,8 +169,6 @@ public:
     void gatherLabEnding(std::vector<BoxInstance>& out);
     void renderLabEndingOverlay();
     unsigned labRoutes=0;
-    float labDialogueT=0;int labDialogue=-1;
-    unsigned successorHeard=0; // once per run; checkpoint retries preserve delivery
     void beginLab();
     void updateLab(float dt);
     void gatherLab(std::vector<BoxInstance>& out);
@@ -537,8 +532,8 @@ public:
     std::vector<glm::vec3> rsCells;
     glm::vec3 rsRollbackAt{0.f}, rsSnapAt{0.f}, rsTongAt{0.f};
     float rsRollbackT = -1.f, rsSnapT = -1.f, rsFreezeT = -1.f, rsSpikeT = -1.f, rsShatterT = -1.f, rsTongT = -1.f, rsTongHurtT = 0.f;
-    int   rsPhase = 0, rsTaken = 0, rsLine = 0;
-    float rsTakeT = 0.f, rsLastHealth = 0.f, rsLineT = 0.f, rsHintT = -1.f;
+    int   rsPhase = 0, rsTaken = 0;
+    float rsTakeT = 0.f, rsLastHealth = 0.f, rsHintT = -1.f;
     float coldStoryT = -1.f; int coldStoryStep = 0;   // Chapter 5's spoken lines along the way (Gameplay_Cold.h)
     int   rsDrumGun[4] = {-1, -1, -1, -1}, rsDrumUid[4] = {-1, -1, -1, -1};
     glm::vec3 rsTrail[180];
@@ -561,7 +556,7 @@ public:
     void restorerEvents(Enemy& e, const EnemyEvents& ev);
     void updateRestorerFight(float dt);
     void gatherRestorerFight(std::vector<BoxInstance>& out);
-    float coldKLineT = 0.f, coldKHintT = -1.f;
+    float coldKHintT = -1.f;
     float coldKDownAt = -1.f;
     struct ColdCrack { glm::vec3 a, b; float born; };
     std::vector<ColdCrack> coldCracks;   // the Frozen Sea's ice, cracking under you
@@ -927,7 +922,6 @@ public:
     SoundHandle abWindH = 0, abFlightH = 0, abBeamH = 0;   // his wind-up, his flight's wind, a beam's crackle (stopped early when cut short)
     float abLastPressT = -1e9f, abWhiteHitT = -1e9f;        // the sword's last parry press, the last white blow that hit you (EARLY / LATE)
     std::array<float, 6> shardFallT{};              // a shard dropping away (< 0: none)
-    float abLineT = 0.f; int abLineShown = -1;      // his line on screen
     float abHintT = 0.f;                            // the sword's hint as he arrives
     float abDeathT = 1e9f;
     // The sky over the fight (skybox.frag): the eclipse flares at his entrance and his phases; a shaft

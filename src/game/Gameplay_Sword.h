@@ -15,7 +15,7 @@ inline bool GameplayState::swordAllowed() const {
 // ---- OATHBREAKER's statue (Chapter 3, the Successor's arena: LevelSuccessor.h) ----
 inline glm::vec3 GameplayState::swordStatueAt() const { return lab::swordStatue(); }
 
-// The seal breaks (the Successor's second phase: "THERE. SOMETHING THEY MISSED.")
+// The seal breaks during the Successor's second phase.
 inline void GameplayState::openSwordStatue() {
     if (swordStatueOpen || storySword) return;
     swordStatueOpen = true; swordStatueFlash = 1.f;
@@ -40,7 +40,7 @@ inline void GameplayState::pullStatueSword() {
     fx.spawnShockwave(lab::swordStatue() + glm::vec3{0.f, 0.45f, 0.f}, 6.f, gunkit::SWORD_GLOW);
     shake(0.35f, 0.03f); hitStopFrames = std::max(hitStopFrames, 4);
     drawSword(); saveStoryProgress();   // (kept through a death and a continue)
-    pushBanner("OATHBREAKER", "IT WAS ALWAYS YOURS / 5 DRAWS IT", {1.f, 0.35f, 0.5f}, 4.f);
+    pushBanner("OATHBREAKER", "5 - EQUIP", {1.f, 0.35f, 0.5f}, 4.f);
 }
 
 // The sword in the block (until you pull it), its seal of red bands, and the light that calls you once it breaks

@@ -125,13 +125,8 @@ inline bool abDamaging(int id) {
     for (int k = 0; k < s.n; ++k) if (Enemy::abMeleeWhite(s.steps[k].k) || abTellOf(s.steps[k].k) == AbTell::GOLD) return true;
     return false;
 }
-// His lines (shown as subtitles, a choir phrase under each)
+// Legacy cue indices referenced by the attack recipes; no spoken HUD lines.
 enum { AB_LINE_WORTHY = 3, AB_LINE_NOT_YET = 4 };
-inline const char* abLine(int i) {
-    static const char* L[] = {"KNEEL.", "TOO SLOW.", "AGAIN.", "...WORTHY.", "...NOT YET."};
-    return i >= 0 && i < 5 ? L[i] : "";
-}
-
 // A standing pillar within `pad` of p (XZ), or -1
 inline int absPillarAt(const EnemyWorld& w, glm::vec3 p, float pad) {
     for (int i = 0; i < w.zenPillarCount; ++i) {

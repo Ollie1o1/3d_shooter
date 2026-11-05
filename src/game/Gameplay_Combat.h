@@ -114,7 +114,7 @@ inline void GameplayState::punch(int boostable) {
         if (inReach) {
             if (e.halo) breakHalo(e);
             e.stagger(e.type==EnemyType::SUCCESSOR?1.1f:e.staggerTime());
-            if(e.type==EnemyType::SUCCESSOR){styleSystem.heal(8.f*tune().heal);successorHazards.clear();if(!e.suCounterLine){e.suCounterLine=true;saySuccessor(2);}}
+            if(e.type==EnemyType::SUCCESSOR){styleSystem.heal(8.f*tune().heal);successorHazards.clear();}
             parryFeedback(eye + fwd * 1.2f, true);
             styleSystem.addStyle(70.f, StyleSource::PARRY);
             gainXp(30);
@@ -416,7 +416,6 @@ inline void GameplayState::updateEnemies(float dt) {
         if (enemies[i].type == EnemyType::PACEMAKER) onPacemakerEvents(enemies[i], ev);
         if (ev.enraged && isBoss(enemies[i].type)) hitStopFrames = glm::max(hitStopFrames, 6);   // a phase turning: the world catches its breath
         if (ev.enraged && enemies[i].type == EnemyType::SOVEREIGN) {   // the Penitent and the Warden announce their own phases
-            pushBanner("HE STOPS HOLDING BACK", "LONGER CHAINS - WATCH THE BLADE", {1.f, 0.15f, 0.25f}, 2.4f);
             shake(0.5f, 0.06f);
             audio.play("wave", 128, SoundGroup::UI);
             audio.duck(6.f, 0.5f);
@@ -677,14 +676,13 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
             for (int k = 0; k < 6; ++k)
                 fx.spawnBurst(e.position + glm::vec3{frand(-1.f, 1.f), frand(0.5f, 3.5f), frand(-1.f, 1.f)},
                            {1.f, 0.8f, 0.4f}, 30, 10.f, 0.8f, 2.f);
-            pushBanner("THE SOVEREIGN FALLS", "", {1.f, 0.85f, 0.3f}, 3.f);
             if (!g_godMode && g_bossRun < 0 && g_arenaSolo < 0 && !records.act2Unlocked) {   // (a whole Act I run: not the BOSS page's fight, not the arena on its own)
                 records.act2Unlocked = true;
                 records.save();
                 ui.feed("ACT II UNLOCKED - BENEATH THE ECLIPSE", {0.35f, 0.95f, 0.9f});
             }
         } else if(e.type==EnemyType::SUCCESSOR){
-            storyBossDown=true;successorHazards.clear();saveStoryProgress();saySuccessor(5);
+            storyBossDown=true;successorHazards.clear();saveStoryProgress();
             successorFell=e.position;successorFell.y=groundHeightAt(e.position.x,e.position.z,e.position.y+1.f);successorFellYaw=e.yaw;successorFellSet=true;   // (its body stays: Gameplay_LabEnding.h)
             for(auto& p:projSystem.pool)if(!p.isPlayer)p.alive=false;
         } else if (e.type == EnemyType::RESTORER) {   // Chapter 5's boss (its rewind and the ride out: Gameplay_Cold.h)
@@ -692,18 +690,14 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
             rsCorpse = e; rsCorpse.alive = true; rsCorpse.attack = AttackKind::NONE; rsCorpse.telegraphTimer = 0.f; rsDeathT = 0.f;
             for (auto& shot : projSystem.pool) if (!shot.isPlayer) shot.alive = false;
             resetRestorerFight();
-            pushBanner("\"NOTHING I SAVED EVER WOKE UP.\"", "THE RESTORER", {0.8f, 0.9f, 1.f}, 6.f);
-        } else if (e.type == EnemyType::UNIT24K) {   // Chapter 5's mid-boss: it asks, and goes still
+        } else if (e.type == EnemyType::UNIT24K) {   // Chapter 5's mid-boss
             coldKDown = true; coldKDownAt = elapsedTime;
             for (auto& shot : projSystem.pool) if (!shot.isPlayer) shot.alive = false;
-            pushBanner("\"WHAT WAS IT LIKE?\"", "24-K", {0.85f, 0.9f, 0.95f}, 5.f);
         } else if (e.type == EnemyType::BALLAST) {
             storyBossDown=true;saveStoryProgress();ballastHazards.clear();
             for(auto& shot:projSystem.pool)if(!shot.isPlayer)shot.alive=false;
-            pushBanner(storytext::ballastDeath,"",{.85f,.8f,.7f},6.f);
         } else if (e.type == EnemyType::PENITENT) {
             pen.clear();   // nothing it threw outlives it
-            pushBanner("THE PENITENT FALLS SILENT", "", {1.f, 0.7f, 0.3f}, 3.f);
         } else if (e.type == EnemyType::LEVIATHAN) {
             lev.clear();   // nothing it did outlives it
             levCorpse = e; levCorpse.alive = true; levCorpse.staggerTimer = 0.f; levCorpse.levBeached = 0.f; levSinkT = 0.f;   // it sinks
@@ -712,17 +706,13 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
                 fx.spawnBurst(c + glm::vec3{frand(-6.f, 6.f), frand(1.f, 8.f), frand(-6.f, 6.f)}, {1.4f, 1.1f, 0.8f}, 40, 14.f, 1.2f, 3.f);
             fx.spawnShockwave(c, 30.f, {1.4f, 1.2f, 1.f});
             explosionFlashTimer = 0.8f; explosionFlashPos = e.position;
-            pushBanner("THE LEVIATHAN SINKS", "", {1.f, 0.9f, 0.7f}, 3.f);
         } else if (e.type == EnemyType::ABSOLUTE) {
             onAbsoluteKilled(e);
         } else if (e.type == EnemyType::SORTER) {
             storyBossDown=true;saveStoryProgress();
             for(auto& b:level.conveyors) b.speed=std::fabs(b.speed);
-            pushBanner(storytext::sorterDeath,storytext::sorterDeath2,{.8f,.85f,.9f},6.f);
         } else if (e.type == EnemyType::PACEMAKER) {
             onPacemakerKilled(e);
-        } else {
-            pushBanner("THE WARDEN GOES DARK", "", {1.f, 0.85f, 0.3f}, 2.5f);
         }
     }
 }

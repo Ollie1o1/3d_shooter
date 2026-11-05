@@ -1326,7 +1326,7 @@ inline LevelData buildCold() {
     using W = WaveEntry;
     const float lip = cold::lipZ();
     // 1. the shelf
-    Arena intake = section("THE INTAKE", "NOTHING HERE IS THROWN AWAY",
+    Arena intake = section("THE INTAKE", "",
                            LevelBuilder::aabb(-cold::HALF_X, -1000.f, cold::EDGE_Z - 70.f, cold::HALF_X, 800.f, cold::SOUTH), cold::start(), -90.f);
     intake.hasRespawn = true; intake.respawn = cold::start(); intake.scripted = true;
     l.arenas.push_back(intake);
@@ -1344,7 +1344,7 @@ inline LevelData buildCold() {
     (void)lip;
     // 3. the Thaw Room: the hung units drop and wake
     const int thawDoor = b.doorway(true, cold::DOOR_X0, cold::DOOR_X1, cold::THAW_BACK - 0.6f, cold::THAW_BACK, 0.f, 6.f, amber * 0.6f);
-    Arena thaw = section("THE THAW ROOM", "THEY ARE WARMING UP", LevelBuilder::aabb(X0 + 1.f, -5.f, cold::THAW_BACK, X1 - 1.f, C, ZF), {HX, 0.f, ZF - 3.f}, -90.f);
+    Arena thaw = section("THE THAW ROOM", "", LevelBuilder::aabb(X0 + 1.f, -5.f, cold::THAW_BACK, X1 - 1.f, C, ZF), {HX, 0.f, ZF - 3.f}, -90.f);
     thaw.hasTrigger = true; thaw.trigger = LevelBuilder::aabb(X0 + 1.f, -2.f, cold::THAW_BACK + 2.f, X1 - 1.f, 6.f, ZF - 6.f);
     thaw.entryGate = dockDoor; thaw.exitDoor = thawDoor; thaw.space = ReverbSpace::METAL; thaw.tone = RoomTone::FOUNDRY;
     thaw.ambient = Ambient::MOTES; thaw.maxAlive = 7;
@@ -1357,13 +1357,13 @@ inline LevelData buildCold() {
     }
     l.arenas.push_back(thaw);
     // 4. Inventory (quiet)
-    Arena inv = section("INVENTORY", "EVERYTHING ON FILE", LevelBuilder::aabb(-60.f, -5.f, cold::INV_BACK, -20.f, C, cold::THAW_BACK), {HX, 0.f, cold::THAW_BACK - 3.f}, -90.f);
+    Arena inv = section("INVENTORY", "", LevelBuilder::aabb(-60.f, -5.f, cold::INV_BACK, -20.f, C, cold::THAW_BACK), {HX, 0.f, cold::THAW_BACK - 3.f}, -90.f);
     inv.space = ReverbSpace::METAL; inv.tone = RoomTone::NONE; inv.ambient = Ambient::DUST;
     l.arenas.push_back(inv);
     // 5. Rack 24 (quiet: the RECALL module, Gameplay_Cold.h)
     const int backDoor = b.doorway(true, cold::DOOR_X0, cold::DOOR_X1, ZB, ZB + 0.6f, 0.f, 6.f, amber * 0.6f, true);   // (opens when RECALL is taken)
     l.story.coldBackDoor = backDoor;
-    Arena rack = section("RACK 24", "COPIES ON FILE", LevelBuilder::aabb(X0 + 1.f, -5.f, ZB + 0.6f, X1 - 1.f, C, cold::INV_BACK), {HX, 0.f, cold::INV_BACK - 3.f}, -90.f);
+    Arena rack = section("RACK 24", "", LevelBuilder::aabb(X0 + 1.f, -5.f, ZB + 0.6f, X1 - 1.f, C, cold::INV_BACK), {HX, 0.f, cold::INV_BACK - 3.f}, -90.f);
     rack.space = ReverbSpace::METAL; rack.tone = RoomTone::NONE; rack.ambient = Ambient::MOTES;
     l.arenas.push_back(rack);
     // 6. the Blast Chillers: a fight on the cooling towers, the vents firing all through it
@@ -1386,14 +1386,14 @@ inline LevelData buildCold() {
     }
     l.arenas.push_back(chill);
     // 7. the Frozen Sea: a long walk over clear ice (no fight: what is under it is the point)
-    Arena sea = section("THE FROZEN SEA", "DO NOT LOOK DOWN FOR LONG", LevelBuilder::aabb(cold::SEA_X0, -10.f, -1080.f, cold::station().x - 60.f, 60.f, -760.f), cold::seaStart(), -20.f);
+    Arena sea = section("THE FROZEN SEA", "", LevelBuilder::aabb(cold::SEA_X0, -10.f, -1080.f, cold::station().x - 60.f, 60.f, -760.f), cold::seaStart(), -20.f);
     sea.extraZones.push_back(LevelBuilder::aabb(gateX - 0.4f, -1000.f, cold::BRIDGE_Z0, cold::SEA_X0, 60.f, cold::BRIDGE_Z1));   // the exit catwalk
     sea.hasRespawn = true; sea.respawn = cold::seaStart(); sea.ambient = Ambient::WIND;
     l.arenas.push_back(sea);
     // 8. 24-K: the duel at the broken station
     {
         const vec3 st = cold::station();
-        Arena k = section("24-K", "PURPOSE: COMPLY", LevelBuilder::aabb(st.x - 60.f, -10.f, -1080.f, st.x + 70.f, 60.f, -930.f), st + vec3{-31.f, 0.f, 0.f}, 0.f);
+        Arena k = section("DISPATCH 2", "", LevelBuilder::aabb(st.x - 60.f, -10.f, -1080.f, st.x + 70.f, 60.f, -930.f), st + vec3{-31.f, 0.f, 0.f}, 0.f);
         k.hasRespawn = true; k.respawn = st + vec3{-31.f, 0.f, 0.f};   // (a retry: just outside the yard's west edge, facing in)
         const AABB Y = cold::duelYard();   // (it starts once you're well inside the yard: the ring goes up round you both)
         k.hasTrigger = true; k.trigger = LevelBuilder::aabb(Y.min.x + 3.f, -2.f, Y.min.z + 3.f, Y.max.x - 3.f, 10.f, Y.max.z - 3.f);

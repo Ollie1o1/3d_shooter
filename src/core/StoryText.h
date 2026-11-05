@@ -1,6 +1,6 @@
 #pragma once
-// Narrative voices: records describe work; wrecks remember an incident;
-// siblings speak about the job in front of them. HUD instructions stay literal.
+// Optional records describe work and remember incidents.
+// Automatic HUD instructions stay literal; bosses have no catchphrase text.
 namespace storytext {
 inline constexpr const char* cradleLogs[] = {
     "", // Units are indexed by their stencilled number.
@@ -19,12 +19,4 @@ inline constexpr const char* spanLogs[] = {
     "KEEP THE RIFLE. THE SIGHT IS ZEROED ON THE FAR PYLON.",
     "HE WAVED US THROUGH. THEN THE SIREN STARTED. I GOT UP HERE. 11 DIDN'T."
 };
-inline constexpr const char* sorterIntro = "REJECT 24. THE TRANSFER HATCH IS BELOW YOU.";
-inline constexpr const char* sorterDamaged = "HOLD STILL. THE READING KEEPS CHANGING.";
-inline constexpr const char* sorterDeath = "THE REGISTER SAYS YOU WERE EMPTY.";
-inline constexpr const char* sorterDeath2 = "THERE IS NO COLUMN FOR THIS.";
-inline constexpr const char* ballastIntro = "ROAD CREW. GET BEHIND THE MARKERS.";
-inline constexpr const char* ballastDamaged = "BRAKES WON'T HOLD. MOVE.";
-inline constexpr const char* ballastFinal = "DON'T STAND IN THE CUT.";
-inline constexpr const char* ballastDeath = "I HAD IT CLEAR THIS MORNING.";
 }

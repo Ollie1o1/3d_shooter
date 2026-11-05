@@ -398,18 +398,13 @@ inline void GameplayState::gatherQuiet(std::vector<BoxInstance>& out) {
     }
 }
 
-// Over the quiet: up out of the dark, UNIT 24's status, the white as it takes you
+// Over the quiet: up out of the dark, the white as it takes you
 inline void GameplayState::renderQuiet() {
     using namespace finale;
     ui.begin2D(); auto& U = ui.ui;
     const float t = quietT;
     float dark = 1.f - sm(0.f, FADE, t);
     if (dark > 0.001f) U.rect(0, 0, SCREEN_W, SCREEN_H, {0.f, 0.f, 0.f, dark});
-    float cap = sm(CAPTION0, CAPTION0 + 1.f, t) * (1.f - sm(CAPTION1 - 1.f, CAPTION1, t));
-    if (cap > 0.f) {
-        U.text("UNIT 24", SCREEN_W / 2, SCREEN_H - 120, 2, {0.85f, 0.92f, 1.f, cap}, true);
-        U.text("STATUS: COMPLETE  /  PURPOSE: NOT YET ASSIGNED", SCREEN_W / 2, SCREEN_H - 92, 1, {0.6f, 0.8f, 1.f, cap * 0.9f}, true);
-    }
     if (quietThrough >= 0.f) {
         float w = sm(0.f, THROUGH, quietThrough);
         U.rect(0, 0, SCREEN_W, SCREEN_H, {0.95f, 0.97f, 1.f, w});

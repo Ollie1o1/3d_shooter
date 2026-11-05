@@ -93,7 +93,11 @@ static void checkImprovements(AudioSystem& audio) {
         bool correct=false;EnemyType expected=i==6?EnemyType::PACEMAKER:i==7?EnemyType::SORTER:i==8?EnemyType::BALLAST:EnemyType::SUCCESSOR;
         for(const auto& spawn:spawns){correct|=spawn.type==expected;game.spawnEnemy(spawn.type,spawn.pos,spawn.hollow);}
         CHECK(correct,"the real director spawns the selected new boss without its preceding waves");
-        game.handleDirectorEvents();game.render();
+        game.banners.clear();game.handleDirectorEvents();
+        bool named=false,clean=true;
+        for(const auto& banner:game.banners)if(banner.title==statsOf(expected).name){named=true;clean&=banner.subtitle.empty();}
+        CHECK(named&&clean,"boss starts identify the actual boss without a subtitle or taunt");
+        game.render();
         for(auto& e:game.enemies)if(e.type==expected){e.health=0;e.alive=false;game.onEnemyKilled(e,StyleSource::REVOLVER);}
         game.director.update(1.f/60,0,game.player.position,spawns);game.handleDirectorEvents();
         CHECK(game.bossDone && !game.bossPost,"the new boss finishes locally without submitting an unsupported world board");
@@ -207,8 +211,16 @@ static void checkLabRuntime(AudioSystem& audio){
         ledges&=glm::length(game.player.position-game.level.arenas[room].respawn)<.01f;
     }
     CHECK(ledges,"live recovery leaves every lower descent landing alone and recovers actual falls underneath it");
-    game.saySuccessor(0);game.labDialogueT=0;game.retryArena();game.saySuccessor(0);
-    CHECK(game.labDialogueT==0 && (game.successorHeard&1u),"normal checkpoint retries do not replay a Successor speech already heard in this run");
+    {
+        game.banners.clear();game.storyLog=0;
+        Enemy boss(EnemyType::SUCCESSOR,lab::centre(9),lab::centre(9).y);
+        EnemyEvents phase;phase.suPhaseStarted=1;phase.suLine=0;
+        game.successorEvents(boss,phase);
+        phase.suPhaseStarted=2;phase.suLine=3;game.successorEvents(boss,phase);
+        CHECK(game.banners.empty() && game.storyLog==0 && game.swordStatueOpen,
+            "Successor phases preserve records and unlock the sword without interrupting with dialogue");
+        game.storyLog=-1;
+    }
     game.enterArena(4);game.updateLab(.01f);
     CHECK(!game.level.doors[game.level.arenas[4].exitDoor].locked && game.enemies.empty(),"the quiet Conservatory opens its descent without inventing a combat wave");
     for(int room:{2,6,7,8}){
@@ -287,7 +299,7 @@ static void checkLabRuntime(AudioSystem& audio){
     CHECK(game.styleSystem.health<100 && !game.successorHazards.marks.empty(),"the live aerial breaker creates its damaging landing hazard above jump height");
     game.successorHazards.clear();
     // Inspect the dedicated boss rig from both sides and through its new moves.
-    auto centre=lab::centre(9);game.fx.clear();game.ui.damageVignette=0;game.muzzleFlashTimer=0;game.labDialogueT=0;game.styleSystem.health=100;game.ui.update(5.f,game.styleSystem);
+    auto centre=lab::centre(9);game.fx.clear();game.ui.damageVignette=0;game.muzzleFlashTimer=0;game.styleSystem.health=100;game.ui.update(5.f,game.styleSystem);
     boss.staggerTimer=0;boss.suPause=boss.suOpen=boss.suBurst=boss.suCross=boss.suAir=0;boss.suNodes=0;boss.suSince=10;
     boss.position=boss.prevPosition=centre+glm::vec3{0,0,-18};boss.yaw=boss.prevYaw=0;boss.suGait=0;boss.suBodyLive=false;
     auto capture=[&](const char* path,glm::vec3 camera,float yaw,float pitch){
@@ -346,8 +358,11 @@ static void checkPlainRuntime(AudioSystem& audio) {
     // The reveal: it plays, it has the controls, the Gleaner rises, turns, opens its eye and screams
     CHECK(game.plainReveal.active() && game.storyLocked() && game.gleaner.rise<.01f,"the arrival plays the reveal with the Gleaner lying curled on the horizon");
     game.plainReveal.time=PlainReveal::RISE0+2.f;game.updateStory(1.f/60);game.render();screenshot("build/plain-reveal-rising.bmp");
-    game.plainReveal.time=PlainReveal::SCREAM-.1f;bool screamed=false;
+    game.banners.clear();game.plainReveal.time=PlainReveal::SCREAM-.1f;bool screamed=false;
     for(int f=0;f<60*7 && game.plainReveal.active();++f){game.updateStory(1.f/60);screamed|=game.gleaner.screaming();}
+    CHECK(game.banners.size()==1 && game.banners.front().title=="THE GLEANER" && game.banners.front().subtitle.empty(),
+          "the Gleaner reveal announces only its name, with no queued catchphrase");
+    if(!game.banners.empty())game.banners.front().time=.8f;
     game.render();screenshot("build/plain-reveal-end.bmp");
     CHECK(screamed && !game.plainReveal.active() && !game.storyLocked() && game.gleaner.rise>.99f && game.gleaner.eyeOpen>.99f,
           "the Gleaner screams, and the reveal hands control back with it standing, eye open");

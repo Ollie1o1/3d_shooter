@@ -35,17 +35,17 @@ inline glm::vec3 battleMark() { return {0.f, 0.f, -260.f}; }   // where it stops
 inline const char* GameplayState::gleanerPhaseName() const {
     switch (gleanerPhase) {
         case GleanerPhase::APPROACH: return "REACH THE GLEANER";
-        case GleanerPhase::KNEELING: return "IT IS GOING DOWN";
-        case GleanerPhase::CLIMB:    return "RIDE THE HEAT UP / IN FRONT OF ITS FACE";
-        case GleanerPhase::TENDER:   return tender.holding ? "IT HAS YOU / SHOOT ITS CRUCIBLE'S LIP" : "THE TENDER / PUNCH ITS WHITE TONGS, SHOOT ITS LIP WHEN IT POURS";
-        case GleanerPhase::SIEVE:    return sieve.state == Sieve::DORMANT ? "DROP OFF THE ROOF'S FRONT / ONTO ITS SHOULDERS" : sieve.toppled() ? "IT IS DOWN / ITS HEART IS OPEN" : "THE SIEVE / BREAK TWO KNEES, OR SHOOT ITS HEART FROM BELOW";
-        case GleanerPhase::CALLER:   return !deckCrown ? "IT REARS ITS HEAD" : caller.state == Caller::DORMANT ? "CROSS ITS NECK / ONTO ITS CROWN" : caller.state == Caller::OVERRUNG ? "IT RINGS ITSELF / GET OUT FROM UNDER IT" : "THE CALLER / RING ITS BELL WITH SHOTS, OR HIT ITS LAMP FROM BELOW";
-        case GleanerPhase::BROOD:    return "THE BROOD IS DEAD / ITS FURNACE DOOR IS OPEN, BEHIND THE SADDLE";
-        case GleanerPhase::HEART:    return "ITS CRUCIBLE HEART / SHOOT ITS VALVES WHILE IT FLOODS";
-        case GleanerPhase::LUNGS:    return lungs.woke ? "ITS BELLOWS LUNGS / SHOOT THEIR THROATS AS THEY BREATHE IN" : "UP THE SHAFT / ITS LUNGS";
-        case GleanerPhase::CORE:     return core.state != SortingCore::DORMANT ? "ITS SORTING CORE / PUNCH BACK WHAT IT THROWS" : "UP THE SHAFT / ITS CORE";
-        default:                     if (quietT >= 0.f) return quietT < finale::OPEN1 ? "IT IS DEAD" : "THE PORTAL / WALK INTO IT";
-                                     return eye.fallen() ? "IT IS DOWN / TEAR IT OUT" : eye.state == EyeCore::DORMANT ? "THE SUMMIT / ONTO ITS ROOF" : "THE EYE / ITS LIDS OPEN WHEN IT FIRES";
+        case GleanerPhase::KNEELING: return "WAIT FOR THE UPDRAFT";
+        case GleanerPhase::CLIMB:    return "RIDE THE UPDRAFT OR GRAPPLE UP";
+        case GleanerPhase::TENDER:   return tender.holding ? "SHOOT THE CRUCIBLE LIP TO ESCAPE" : "PARRY THE TONGS / SHOOT THE POURING LIP";
+        case GleanerPhase::SIEVE:    return sieve.state == Sieve::DORMANT ? "DROP FROM THE ROOF TO THE SHOULDERS" : sieve.toppled() ? "SHOOT THE EXPOSED HEART" : "BREAK TWO KNEES OR SHOOT THE HEART";
+        case GleanerPhase::CALLER:   return !deckCrown ? "REACH THE CROWN" : caller.state == Caller::DORMANT ? "CROSS THE NECK" : caller.state == Caller::OVERRUNG ? "LEAVE THE IMPACT ZONE" : "SHOOT THE BELL OR EXPOSED LAMP";
+        case GleanerPhase::BROOD:    return "ENTER THE FURNACE BEHIND THE SADDLE";
+        case GleanerPhase::HEART:    return "SHOOT THE VALVES DURING THE FLOOD";
+        case GleanerPhase::LUNGS:    return lungs.woke ? "SHOOT THE OPEN THROATS" : "CLIMB TO THE LUNGS";
+        case GleanerPhase::CORE:     return core.state != SortingCore::DORMANT ? "SHOOT THE LENS OR RETURN ITS PROJECTILES" : "CLIMB TO THE CORE";
+        default:                     if (quietT >= 0.f) return quietT < finale::OPEN1 ? "" : "ENTER THE PORTAL";
+                                     return eye.fallen() ? "APPROACH THE EYE" : eye.state == EyeCore::DORMANT ? "REACH THE ROOF" : "SHOOT THE EYE WHEN ITS LIDS OPEN";
     }
 }
 
@@ -350,7 +350,7 @@ inline void GameplayState::updateGleanerFight(float dt) {
         if (flat < 430.f && g.speed < 0.5f && !g.screaming()) {   // close: it goes down
             gleanerPhase = GleanerPhase::KNEELING;
             g.wantSpeed = 0.f; g.scream();
-            pushBanner("IT GOES DOWN", "ITS BACK IS A BATTLEFIELD NOW", {1.f, 0.4f, 0.2f}, 3.5f);
+
         }
         break;
     }
@@ -372,7 +372,7 @@ inline void GameplayState::updateGleanerFight(float dt) {
                     gleanerDust.push_back({updraftBase, 0.f, 10.f * Gleaner::SCALE});
                 }
                 gleanerPhase = GleanerPhase::CLIMB;
-                pushBanner("THE PLAIN SPLITS", "ITS FURNACE HEAT POURS UP IN FRONT OF ITS FACE: RIDE IT UP", {1.f, 0.55f, 0.25f}, 4.f);
+                pushBanner("REACH THE BACK", "RIDE THE UPDRAFT", {1.f, 0.55f, 0.25f}, 4.f);
                 updraftOpenT = 0.f;
             }
         }
@@ -383,7 +383,7 @@ inline void GameplayState::updateGleanerFight(float dt) {
             wakeTender();
             storyCheckpoint = std::max(storyCheckpoint, 1); saveStoryProgress();
             ui.feed("CHECKPOINT / ON ITS BACK", {0.35f, 0.85f, 1.f});
-            pushBanner("THE TENDER", "IT KEEPS THE FURNACE", {1.f, 0.5f, 0.2f}, 3.5f);
+            pushBanner("THE TENDER", "", {1.f, 0.5f, 0.2f}, 2.6f);
             audio.play("mini_sting", 128, SoundGroup::UI, true);
         }
         break;
@@ -404,7 +404,7 @@ inline void GameplayState::updateGleanerFight(float dt) {
             broodWakeIn -= dt;
             if (broodWakeIn <= 0.f) {
                 wakeSieve();
-                pushBanner("THE SIEVE", "IT SIFTS WHAT FALLS", {1.f, 0.6f, 0.2f}, 3.5f);
+                pushBanner("THE SIEVE", "", {1.f, 0.6f, 0.2f}, 2.6f);
                 audio.play("mini_sting", 128, SoundGroup::UI, true);
                 shake(0.8f, 0.04f);
             }
@@ -423,12 +423,12 @@ inline void GameplayState::updateGleanerFight(float dt) {
                 buildGleanerDeck();
                 gleanerSound("gleaner_slam", gleaner.toWorld(gleaner::heldHead()), 0.8f, 0.f);
                 shake(1.2f, 0.04f);
-                pushBanner("ITS HEAD IS UP", "CROSS ITS NECK TO ITS CROWN", {1.f, 0.4f, 0.2f}, 4.f);
+                pushBanner("REACH THE CROWN", "CROSS THE NECK", {1.f, 0.4f, 0.2f}, 4.f);
             }
         }
         if (caller.state == Caller::DORMANT && deckCrown && (onCrown() || player.position.z > neckLo.y + (neckHi.y - neckLo.y) * 0.5f) && onGleanerBack()) {
             wakeCaller();
-            pushBanner("THE CALLER", "IT RINGS FOR THE SKY", {1.f, 0.25f, 0.15f}, 3.5f);
+            pushBanner("THE CALLER", "", {1.f, 0.25f, 0.15f}, 2.6f);
             audio.play("mini_sting", 128, SoundGroup::UI, true);
         }
         if (caller.state != Caller::DORMANT) updateCaller(dt);
@@ -439,7 +439,7 @@ inline void GameplayState::updateGleanerFight(float dt) {
             buildGleanerDeck();
             gleanerSound("gleaner_groan", gleaner.toWorld(gleaner::furnaceBase()), 1.f, 0.f);
             shake(1.5f, 0.03f);
-            pushBanner("IT SLUMPS", "ITS FURNACE DOOR GRINDS OPEN, BEHIND THE SADDLE: INTO IT", {1.f, 0.45f, 0.2f}, 4.5f);
+            pushBanner("ENTER THE FURNACE", "THE DOOR IS BEHIND THE SADDLE", {1.f, 0.45f, 0.2f}, 4.5f);
         }
         // Into the door's mouth: inside
         const glm::vec3 p = player.position;
@@ -525,7 +525,7 @@ inline void GameplayState::updateTender(float dt) {
             gleanerPhase = GleanerPhase::SIEVE;
             buildGleanerDeck();   // (the roof's front opens: the way down to its shoulders)
             gleaner.scream();
-            pushBanner("THE TENDER FALLS", "ITS LEFT ARM DIES WITH IT. DROP OFF THE ROOF'S FRONT TO ITS SHOULDERS", {1.f, 0.4f, 0.2f}, 4.5f);
+            pushBanner("REACH THE SHOULDERS", "DROP FROM THE FRONT OF THE ROOF", {1.f, 0.4f, 0.2f}, 4.5f);
             storyCheckpoint = std::max(storyCheckpoint, 2); saveStoryProgress();
             break;
         default: break;
@@ -638,7 +638,7 @@ inline void GameplayState::updateSieve(float dt) {
             killGleanerLimb(1);
             gleanerPhase = GleanerPhase::CALLER;
             gleaner.scream();
-            pushBanner("THE SIEVE FALLS", "ITS RIGHT ARM DIES. IT REARS ITS HEAD", {1.f, 0.4f, 0.2f}, 4.f);
+
             storyCheckpoint = std::max(storyCheckpoint, 3); saveStoryProgress();
             ui.feed("CHECKPOINT / ITS SHOULDERS", {0.35f, 0.85f, 1.f});
             break;
@@ -719,7 +719,7 @@ inline void GameplayState::updateCaller(float dt) {
             killGleanerLimb(2);
             gleanerPhase = GleanerPhase::BROOD;
             gleaner.scream();
-            pushBanner("THE CALLER FALLS", "THE BROOD IS DEAD", {1.f, 0.35f, 0.2f}, 4.5f);
+
             storyCheckpoint = std::max(storyCheckpoint, 4); saveStoryProgress();
             ui.feed("CHECKPOINT / ITS CROWN", {0.35f, 0.85f, 1.f});
             break;
