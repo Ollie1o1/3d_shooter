@@ -7,8 +7,15 @@ inline void GameplayState::beginLab(){
     beltBodies.clear();player.eyeHeight=1.7f;
     bool skip=labIntro.seen||g_devCam||director.arena>0||g_bossRun>=0;
     labIntro.start(skip);
-    if(g_devOverlay.rfind("labintro",0)==0){labIntro.seen=false;labIntro.time=std::clamp(std::atof(g_devOverlay.c_str()+8),0.,22.9);}
-    if(labIntro.active()){player.position={0,0,27};player.camera.yaw=-90;player.camera.pitch=0;director.hold=true;}
+    if(g_devOverlay.rfind("labintro",0)==0){labIntro.seen=false;labIntro.time=std::clamp(std::atof(g_devOverlay.c_str()+8),0.,(double)LabIntro::DURATION-.1);}
+    labTheatre=LabTheatre{};labTheatreCue=0;
+    if(director.arena>0)labTheatre.time=60;   // (starting further down: it has long since happened)
+    if(g_devOverlay.rfind("labtheatre",0)==0)labTheatre.time=std::atof(g_devOverlay.c_str()+10);
+    labCue=0;
+    if(labIntro.active()){
+        int n;const auto* cue=LabIntro::cues(n);while(labCue<n && cue[labCue].at<labIntro.time)++labCue;
+        player.position=labIntro.eye()-glm::vec3{0,1.7f,0};player.camera.yaw=labIntro.yaw();player.camera.pitch=labIntro.pitch();director.hold=true;
+    }
     if(g_devOverlay=="labending"){   // --overlay labending (with --story3 --arena 10): the Successor dead, you stepping through its doors
         labIntro.time=-1;storyBossDown=true;successorFell=lab::centre(9)+glm::vec3{6,0,-26};successorFellYaw=.7f;successorFellSet=true;
         director.hold=true;player.position=glm::vec3{0,labend::floorY(),labend::doorZ()-1.6f};player.camera.yaw=-90;
@@ -49,19 +56,36 @@ inline void GameplayState::updateLab(float dt){
     if(labEnding.active()){holsterSword();updateLabEnding(dt);return;}
     if(storyBossDown)openSwordStatue();   // (it falls before you reach the statue: the seal goes with it)
     if(labIntro.active()){
-        int cue=labIntro.time<4?0:labIntro.time<10?1:labIntro.time<16?2:labIntro.time<20?3:4;
-        if(cue!=labCue){labCue=cue;char name[24];std::snprintf(name,sizeof(name),"lab_pa_%d",cue);audio.stop(labVoice);labVoice=audio.play(name,110,SoundGroup::UI,true);}
+        int n;const auto* cue=LabIntro::cues(n);
         if(labIntro.update(dt,storySkipKey)){
             audio.stop(labVoice);labVoice=0;
-            director.hold=false;player.position={2.2f,0,20};player.velocity={0,0,0};
+            director.hold=false;player.position=LabIntro::handoff();player.velocity={0,0,0};
             player.camera.yaw=-90;player.camera.pitch=0;saveStoryProgress();
             pushBanner("THE LIVING WARD","CHAPTER 3 / MANUAL ASSESSMENT",{.5f,.9f,1},3.f);
             audio.play("count_go",80,SoundGroup::UI,true);
         }else{
-            player.position=labIntro.cameraOffset()-glm::vec3{0,1.7f,0};player.velocity={0,0,0};
+            // The public address cuts off the last announcement; the lift's own sounds overlap
+            for(;labCue<n && cue[labCue].at<=labIntro.time;++labCue){
+                if(std::strncmp(cue[labCue].sound,"lab_pa",6)==0){audio.stop(labVoice);labVoice=audio.play(cue[labCue].sound,cue[labCue].volume,SoundGroup::UI,true);}
+                else audio.play(cue[labCue].sound,cue[labCue].volume,SoundGroup::UI,true);
+            }
+            player.position=labIntro.eye()-glm::vec3{0,1.7f,0};player.velocity={0,0,0};
             player.camera.yaw=labIntro.yaw();player.camera.pitch=labIntro.pitch();
         }
         player.camera.position=player.position+glm::vec3{0,1.7f,0};prevCamPos=player.camera.position;return;
+    }
+    // Admissions' theatre runs once you walk up to its glass
+    {const auto q=player.position;
+        if(!labTheatre.started() && level.arenaAt(q)==0 && q.z<31 && std::abs(q.x)<22)labTheatre.time=0;
+        if(labTheatre.started() && labTheatre.time<60){
+            labTheatre.time+=dt;
+            static const struct{float at;int pa;const char* line;}say[]={{.05f,1,"MOTOR RESPONSE: WITHIN NORMAL RANGE"},
+                {6.5f,3,"OBSERVATION RECORD ACCEPTED"},{11.f,4,"PROCEED TO OBSERVATION."}};
+            for(;labTheatreCue<3 && say[labTheatreCue].at<=labTheatre.time;++labTheatreCue){
+                char name[24];std::snprintf(name,sizeof(name),"lab_pa_%d",say[labTheatreCue].pa);
+                audio.stop(labVoice);labVoice=audio.play(name,105,SoundGroup::UI,true);ui.feed(say[labTheatreCue].line,{.55f,.9f,1});
+            }
+        }
     }
     for(const auto& contact:level.story.labBridges){auto& m=level.movers[contact.mover];
         bool west=(labRoutes&(1u<<(contact.room+3)))!=0;
@@ -92,12 +116,13 @@ inline void GameplayState::updateLab(float dt){
 inline void GameplayState::gatherLab(std::vector<BoxInstance>& out){
     if((storyBossDown && level.arenaAt(player.position)>=8) || labEnding.active())gatherLabEnding(out);
     using namespace rig;using glm::vec3;Rig r{out};
+    if(labAshSky()){gatherLabLift(r);return;}   // (the arrival's opening, under Chapter 2's sky)
     int room=std::max(0,level.arenaAt(player.position));
-    auto subject=[&](vec3 p,float phase,bool suspended){
+    auto subject=[&](vec3 p,float phase,bool suspended,float yaw=0){
         static const Enemy specimen(EnemyType::PATIENT,{0,0,0});Enemy body=specimen;body.position=p;body.spawnTimer=0;body.state=EnemyState::ACTIVE;
         body.animPhase=phase;body.moveSpeed=suspended?0:3.f;
         if(const auto* model=enemyfile::model(EnemyType::PATIENT)){
-            mat4 root;FilePose pose;vec3 glow;filePoseOf(body,gameClock,T(p),root,pose,glow);
+            mat4 root;FilePose pose;vec3 glow;filePoseOf(body,gameClock,T(p)*RY(yaw),root,pose,glow);
             if(suspended){pose.motion[enemyfile::E_ARML]=RZ(.45f);pose.motion[enemyfile::E_ARMR]=RZ(-.45f);pose.motion[enemyfile::E_HIPL]=RX(.08f);}
             // Dormant subjects have extinguished cores, no threat reticle, and no weapons.
             pose.chan[enemyfile::C_EYE]={.04f,.07f,.08f};pose.chan[enemyfile::C_CORE]={0,0,0};
@@ -105,10 +130,13 @@ inline void GameplayState::gatherLab(std::vector<BoxInstance>& out){
         }
     };
     if(room==0){
-        float t=labIntro.active()?labIntro.time:23.f;float walk=std::min(t,10.f);
-        subject({std::sin(walk*.75f)*2.f,.6f+(labIntro.active()?labIntro.patientRise():1.35f),13.f},walk*3.f,t>=10);
+        gatherLabLift(r);
+        // The theatre: the subject walks a line until you come close, then lifts off the floor
+        float walk=labTheatre.floating()?labTheatreWalk:gameClock;
+        if(!labTheatre.floating())labTheatreWalk=gameClock;
+        subject({std::sin(walk*.75f)*2.f,.6f+labTheatre.rise(),13.f},walk*3.f,labTheatre.floating());
         // Its projected silhouette keeps walking while the actual subject floats.
-        float x=std::sin(t*.75f)*3.f;
+        float t=gameClock,x=std::sin(t*.75f)*3.f;
         r.box(T({x,0,7.24f}),{0,2,0},{.65f,1.5f,.035f},{.045f,.07f,.08f});
         r.box(T({x,0,7.25f}),{0,3.05f,0},{.38f,.45f,.04f},{.045f,.07f,.08f});
         for(float side:{-1.f,1.f})r.box(T({x+side*.2f,.6f,7.26f})*RZ(side*.15f*std::sin(t*2)),{0,0,0},{.18f,1.35f,.035f},{.045f,.07f,.08f});
@@ -116,6 +144,12 @@ inline void GameplayState::gatherLab(std::vector<BoxInstance>& out){
         for(float x:{-10.f,-5.f,5.f,10.f})r.box(T({x,4,18}),{0,0,0},{.065f,8,.065f},{.37f,.6f,.65f},{.03f,.07f,.08f});
     }
     if(room==1)subject(lab::centre(1)+vec3{-27,1.35f,9},1,true);
+    // Someone pacing a lit ward out in the void, which has no door
+    for(const auto& w:level.story.labWards){
+        if(std::abs(w.room-room)>1)continue;
+        float ph=gameClock*.22f+w.floor.x*.1f,dz=std::sin(ph)*w.span,dir=std::cos(ph)>0?0.f:3.1416f;
+        subject(w.floor+vec3{0,0,dz},gameClock*2.6f,false,dir);
+    }
     if(room>=6)for(int k=0;k<(ambientDetail()>0?9:3);++k){
         auto c=lab::centre(room);vec3 p=c+(room==9?vec3{(k%2?1.f:-1.f)*(88+k*3.f),15.f+(k%4)*5.f,-40.f+k*9.f}:vec3{(k%2?1.f:-1.f)*(15+k*2.f),5.f+(k%4)*2.f+.25f*std::sin(gameClock*.4f+k),-25.f+k*6});
         subject(p,k*.7f,true);
@@ -143,15 +177,15 @@ inline void GameplayState::gatherLab(std::vector<BoxInstance>& out){
 inline void GameplayState::renderLabIntro(){
     ui.begin2D();auto& u=ui.ui;
     u.rect(0,0,SCREEN_W,58,{.015f,.035f,.045f,1});u.rect(0,SCREEN_H-82,SCREEN_W,82,{.015f,.035f,.045f,1});
-    u.text("THE LIVING WARD / ADMISSIONS",48,22,2,{.65f,.9f,1,1});
-    u.text(labIntro.caption(),SCREEN_W/2,SCREEN_H-62,2,{.8f,.94f,.95f,1},true);
+    u.text(labIntro.header(),48,22,2,labIntro.time<14.5f?glm::vec4{1,.62f,.45f,1}:glm::vec4{.65f,.9f,1,1});
+    if(*labIntro.caption())u.text(labIntro.caption(),SCREEN_W/2,SCREEN_H-62,2,{.8f,.94f,.95f,1},true);
     std::string skip="HOLD "+binds().label(Act::JUMP)+" TO SKIP";u.text(skip.c_str(),SCREEN_W/2,SCREEN_H-28,1,{.55f,.7f,.74f,1},true);
     if(labIntro.skip>0)u.rect(SCREEN_W/2-90,SCREEN_H-12,180*labIntro.skip/LabIntro::SKIP_HOLD,3,{.3f,.9f,1,1});
     ui.end2D();
 }
 
 inline void GameplayState::renderLabGlass(const glm::mat4& view,const glm::mat4& proj,glm::vec3 camPos){
-    using glm::vec3;const int room=level.arenaAt(player.position);if(room<0 || room==9 || (room<7 && room!=0 && room!=3))return;
+    using glm::vec3;const int room=labIntro.active()?0:level.arenaAt(player.position);if(room<0 || room==9 || room==4)return;
     labGlassShader.use();labGlassShader.setMat4("projection",proj);labGlassShader.setMat4("view",view);
     labGlassShader.setVec3("uViewPos",camPos);labGlassShader.setFloat("uTime",gameClock);
     auto c=lab::centre(room);labGlassShader.setVec3("uOrigin",c);
@@ -164,14 +198,32 @@ inline void GameplayState::renderLabGlass(const glm::mat4& view,const glm::mat4&
         labGlassShader.setVec3("uNormal",normal);labGlassShader.setFloat("uMode",mode);labGlassShader.setFloat("uAnomaly",anomaly);
         glDrawArrays(GL_TRIANGLES,slot*6,6);++slot;
     };
+    // The enclosed wards' windows onto the void, and Motor Assessment's glass floor
+    if(room<7){
+        for(const auto& w:lab::windows(room)){vec3 n{w.x<0?1.f:-1.f,0,0};
+            quad(c+vec3{w.x,w.y0,w.z0},c+vec3{w.x,w.y0,w.z1},c+vec3{w.x,w.y1,w.z1},c+vec3{w.x,w.y1,w.z0},n,2,0);}
+        if(room==2){const AABB g=lab::glassFloor();float y=c.y+.006f;
+            quad(c+vec3{g.min.x,0,g.min.z}+vec3{0,.006f,0},c+vec3{g.max.x,0,g.min.z}+vec3{0,.006f,0},
+                 vec3{c.x+g.max.x,y,c.z+g.max.z},vec3{c.x+g.min.x,y,c.z+g.max.z},{0,1,0},2,0);}
+    }
+    if(room==0 && labIntro.active()){
+        // The lift car's glass: sides, roof, floor plate and the four door leaves
+        const float cy=labIntro.carY();
+        for(float s:{-1.f,1.f})quad({s*2.8f,cy+1,40.9f},{s*2.8f,cy+1,46.1f},{s*2.8f,cy+3.3f,46.1f},{s*2.8f,cy+3.3f,40.9f},{-s,0,0},2,0);
+        quad({-1.8f,cy+3.72f,41.4f},{1.8f,cy+3.72f,41.4f},{1.8f,cy+3.72f,45.6f},{-1.8f,cy+3.72f,45.6f},{0,-1,0},2,0);
+        quad({-1.6f,cy-.02f,42.2f},{1.6f,cy-.02f,42.2f},{1.6f,cy-.02f,45.6f},{-1.6f,cy-.02f,45.6f},{0,1,0},2,0);
+        auto leaf=[&](float o,float z,float y0){for(float s:{-1.f,1.f}){float a=s*(o+.05f),b=s*(o+1.95f);
+            quad({a,cy+y0,z},{b,cy+y0,z},{b,cy+3.f,z},{a,cy+3.f,z},{0,0,z<43?-1.f:1.f},2,0);}};
+        leaf(labIntro.frontDoors()*1.95f,40.67f,1.f);leaf(labIntro.rearDoors()*1.95f,46.33f,.1f);
+    }
     if(room==0){
-        float anomaly=labIntro.active()?labIntro.windowChange():1.f;
+        float anomaly=labTheatre.windowChange();
         quad({-9.8f,.6f,7.28f},{9.8f,.6f,7.28f},{9.8f,7.9f,7.28f},{-9.8f,7.9f,7.28f},{0,0,1},1,anomaly);
         quad({-10,.6f,18},{10,.6f,18},{10,8,18},{-10,8,18},{0,0,1},0,anomaly);
     }else if(room==3){
         quad(c+vec3{41.9f,3,-13.8f},c+vec3{41.9f,3,13.8f},c+vec3{41.9f,14,13.8f},c+vec3{41.9f,14,-13.8f},{-1,0,0},2,0);
         quad(c+vec3{55.9f,6,-6.5f},c+vec3{55.9f,6,6.5f},c+vec3{55.9f,12,6.5f},c+vec3{55.9f,12,-6.5f},{-1,0,0},2,0);
-    }else{
+    }else if(room>=7){
         for(const auto& bay:lab::footprint(room))for(float x:{bay.left,bay.right}){
             float side=x<0?-1.f:1.f,inside=x-side*.12f;
             quad(c+vec3{inside,1.4f,bay.farZ},c+vec3{inside,1.4f,bay.nearZ},

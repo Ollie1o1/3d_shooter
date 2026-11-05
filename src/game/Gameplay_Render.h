@@ -637,13 +637,15 @@ inline void GameplayState::render() {
     if(laboratory() && labEnding.active()) renderCam.fov = std::min(baseFov, 58.f);   // (a longer lens for the cutscene)
     if(plain() && summitEndT >= 1.f) renderCam.fov = std::min(baseFov, 55.f);
     if(laboratory() && labIntro.active()){
-        float focus=LabIntro::smooth(3,8,labIntro.time)*(1-LabIntro::smooth(19,23,labIntro.time));
-        renderCam.fov=glm::mix(baseFov,std::min(baseFov,60.f),focus);
+        // a long lens on the tower from the road, wider in the car
+        float wide=LabIntro::smooth(3.6f,4.2f,labIntro.time);
+        renderCam.fov=glm::mix(std::min(baseFov,50.f),std::min(baseFov,68.f),wide);
     }
 
     glm::mat4 view = glm::rotate(glm::mat4(1.f), glm::radians(swordRoll + feelAng.z), glm::vec3{0.f, 0.f, 1.f}) * renderCam.viewMatrix();   // (leaning into a stroke, a strafe, a hit)
     glm::mat4 proj = renderCam.projectionMatrix();
     Theme th = level.themeAt(player.position);
+    if (laboratory() && labIntro.active()) th = lerpTheme(lab::ashTheme(), level.arenas[0].theme, labIntro.skyMix());   // the Far Road's sky giving way to the void
     if (plain() && insideGleaner()) th = gut::theme();   // (inside it: the foundry's dark and its slag light)
     if (rageBlend > 0.f) th = lerpTheme(th, bloodEclipse(th), rageBlend);
     if (bossDusk > 0.005f && th.eclipse < 0.5f) th = lerpTheme(th, nightfall(th), bossDusk * BOSS_DUSK_MAX);   // (under the eclipse: it burns hotter instead)
@@ -692,7 +694,8 @@ inline void GameplayState::render() {
     // (--skip cull: every chunk, to compare)
     static std::vector<int> inView;
     worldchunk::inViewOrder(world.chunkBox, proj * view, renderCamPos, devSkip("cull"), inView);
-    for (int t = 0; t < TEX_COUNT && !devSkip("world"); ++t) {
+    const bool worldHidden = devSkip("world") || labAshSky();
+    for (int t = 0; t < TEX_COUNT && !worldHidden; ++t) {
         if (world.byTex[t].empty()) continue;
         // What glows in the texture (MaterialTex.h: alpha < 1), in its own colour
         glm::vec3 glow = t == TEX_CIRCUIT ? glm::vec3{0.15f, 0.85f, 1.0f} * 0.9f
@@ -721,7 +724,7 @@ inline void GameplayState::render() {
     glBindTexture(GL_TEXTURE_2D, whiteTex);
     worldShader.setVec3("objectColor", {0.25f,0.25f,0.25f});
     worldShader.setFloat("uVertexGlow", 1.5f);
-    if (!devSkip("world")) worldchunk::draw(world.neon, inView);
+    if (!worldHidden) worldchunk::draw(world.neon, inView);
     worldShader.setFloat("uVertexGlow", 0.0f);
     worldShader.setVec3("objectColor", {1.f,1.f,1.f});
     if (!devSkip("contact")) drawContactShadows(view, proj, th, renderCamPos);
@@ -767,8 +770,12 @@ inline void GameplayState::render() {
         // The director prepares the next encounter as soon as a room clears.
         // Keep its exterior until the player physically crosses the doorway.
         const int room=level.arenaAt(player.position);
-        float realm=laboratory()?(room==7?1.f:room==3||room==8?2.f:room==9?3.f:0.f):0.f;
+        // The void: nebula outside every ward but the garden (its own daylight), Hadal
+        // (the trench) and the final assessment (fractured)
+        float realm=laboratory()?(room==8?2.f:room==9?3.f:room==4?0.f:1.f):0.f,realmFade=1.f;
+        if(laboratory() && labIntro.active()){realm=1.f;realmFade=labIntro.realm();}
         skyboxShader.setFloat("uLabRealm",realm);
+        skyboxShader.setFloat("uRealmFade",realmFade);
         skyboxShader.setFloat("uPlain", plain() ? 1.f : 0.f);
         skyboxShader.setFloat("uCold", cold() ? 1.f : 0.f);
         skyboxShader.setFloat("uMoonLid", plain() ? plainMoonLid() : 0.f);
@@ -794,7 +801,7 @@ inline void GameplayState::render() {
     if (!devSkip("water")) renderWater(view, proj, th, renderCamPos);
     if(laboratory())renderLabGlass(view,proj,renderCamPos);
     if (cold()) renderColdIce(view, proj, renderCamPos);
-    if(laboratory() && !devSkip("fx"))renderLabAtmosphere(view,proj,renderCamPos);
+    if(laboratory() && !devSkip("fx") && !labAshSky())renderLabAtmosphere(view,proj,renderCamPos);
     const bool skipFx = devSkip("fx");
 
     worldShader.use();

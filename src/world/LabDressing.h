@@ -260,6 +260,57 @@ struct Dresser{
     }
     void arc(vec3 a,vec3 z,vec3 col){l.story.labArcs.push_back({a,z,col,room});}
 
+    // ---- windows onto the void ----------------------------------------------------
+    // A deep frame round an opening in a side wall (LevelLab.h cuts it): jambs, sill and
+    // head standing proud of the tile, a lit strip under the head, mullions and transoms
+    // across the glass, a dark frame outside
+    void windowFrame(const lab::Window& w){
+        const float s=w.x<0?-1.f:1.f,in=-s,face=w.x+in*.4f;
+        const float len=w.z1-w.z0,h=w.y1-w.y0,mz=z0(w)+len*.5f,my=y+w.y0+h*.5f;
+        auto white=kit(Mat::CLINIC),m=kit(Mat::METAL),g=kit(Mat::METAL,true);
+        for(float zz:{z0(w)-.16f,z0(w)+len+.16f})white.box({face+in*.25f,my,zz},{.5f,h+.6f,.32f},WHITE);
+        white.box({face+in*.3f,y+w.y0-.13f,mz},{.6f,.26f,len+.64f},PANEL);
+        white.box({face+in*.25f,y+w.y1+.15f,mz},{.5f,.3f,len+.64f},WHITE);
+        g.box({face+in*.42f,y+w.y1-.03f,mz},{.07f,.05f,len-.3f},CYAN*.5f);
+        g.box({face+in*.58f,y+w.y0-.01f,mz},{.04f,.03f,len-.3f},CYAN*.3f);
+        int cols=std::max(1,(int)std::lround(len/3.4f)),rows=std::max(1,(int)std::lround(h/4.6f));
+        for(int k=1;k<cols;++k)m.box({w.x,my,z0(w)+len*k/cols},{.1f,h,.08f},GRAPHITE);
+        for(int k=1;k<rows;++k)m.box({w.x,y+w.y0+h*k/rows,mz},{.12f,.1f,len},GRAPHITE);
+        for(float zz:{z0(w)-.2f,z0(w)+len+.2f})m.box({w.x+s*.5f,my,zz},{.22f,h+.8f,.4f},DARK);
+        for(float yy:{y+w.y0-.2f,y+w.y1+.2f})m.box({w.x+s*.5f,yy,mz},{.22f,.4f,len+.8f},DARK);
+    }
+    float z0(const lab::Window& w)const{return c.z+w.z0;}
+    // Whether something `height` tall standing against wall x at z would cover a window
+    bool blocksWindow(float x,float z,float halfLen,float height)const{
+        for(const auto& w:lab::windows(room))if(w.x==x && z+halfLen>c.z+w.z0-.5f && z-halfLen<c.z+w.z1+.5f && w.y0<height)return true;
+        return false;
+    }
+    // A lit ward adrift: a slab of floor with three walls and a ceiling, open toward the
+    // windows, a bed and a monitor, its lamps on. Someone paces it (drawn in Gameplay_Lab.h).
+    void ward(vec3 p,float side){
+        const float hx=4.5f,hz=8.f,top=4.2f;const float back=p.x+side*hx;
+        auto w=kit(Mat::CLINIC),m=kit(Mat::METAL),g=kit(Mat::METAL,true);
+        b.mat=Mat::CLINIC;b.prop(p.x-hx,p.y-.8f,p.z-hz,p.x+hx,p.y,p.z+hz,WHITE);
+        underside(p.x-hx,p.x+hx,p.z-hz,p.z+hz,p.y-.8f,rr(1.4f,2.2f));
+        w.box({back,p.y+top*.5f,p.z},{.3f,top,hz*2},{.53f,.64f,.65f});
+        for(float e:{-1.f,1.f})w.box({p.x,p.y+top*.5f,p.z+e*hz},{hx*2,top,.3f},{.53f,.64f,.65f});
+        w.box({p.x,p.y+top+.15f,p.z},{hx*2+.3f,.3f,hz*2+.3f},WHITE);
+        // (out here no baked light reaches it: its own lit strips show it is lit)
+        g.box({back-side*.17f,p.y+top-.35f,p.z},{.04f,.12f,hz*2-.6f},vec3{1.2f,1.1f,.9f});
+        g.box({back-side*.17f,p.y+.12f,p.z},{.04f,.06f,hz*2-.6f},CYAN*.6f);
+        for(float e:{-1.f,1.f})g.box({p.x,p.y+top-.35f,p.z+e*(hz-.17f)},{hx*2-.6f,.12f,.04f},vec3{1.2f,1.1f,.9f});
+        w.box({back-side*.2f,p.y+top*.5f,p.z},{.04f,top-.9f,hz*2-.8f},vec3{.95f,.93f,.86f});
+        for(float dz:{-4.f,4.f}){g.box({p.x,p.y+top-.03f,p.z+dz},{2.4f,.05f,1.1f},vec3{1.4f,1.3f,1.1f});
+            b.neon(p.x-.8f,p.y+top-.3f,p.z+dz-.4f,p.x+.8f,p.y+top-.1f,p.z+dz+.4f,vec3{1.1f,1.f,.85f}*.35f);}
+        // a bed against the back wall, its sheet still made, and a monitor beside it
+        vec3 bed{back-side*1.4f,p.y,p.z-3.5f};
+        m.box(bed+vec3{0,.33f,0},{2.f,.65f,3.8f},GRAPHITE);w.box(bed+vec3{0,.8f,0},{1.9f,.3f,3.7f},{.82f,.84f,.76f});
+        m.box(bed+vec3{-side*.2f,1.5f,2.3f},{.1f,3.f,.1f},GRAPHITE);
+        g.box(bed+vec3{-side*.2f,2.4f,2.3f},{.06f,.5f,.7f},CYAN*.8f);
+        fracture({p.x-side*hx,p.y,p.z+hz},{p.x-side*hx,p.y,p.z-hz},{-side,0,0},.8f);
+        l.story.labWards.push_back({p+vec3{0,0,1.5f},4.5f,room});
+    }
+
     // ---- placement ----------------------------------------------------------------
     // Whether furniture with footprint `box` stands clear of everything that matters
     bool clearAt(const AABB& box,const Arena& arena){
@@ -317,8 +368,10 @@ inline void dressRoom(LevelBuilder& b,int room,vec3 c,const std::vector<lab::Bay
                 float pick=hash(room*131+(int)(bz*3)+(side<0?0:57),77);
                 if(pick<.18f)continue;
                 vec3 face{-side,0,0};
+                const bool glass=d.blocksWindow(wx,z+bz,2.2f,4.6f);
+                if(glass && pick>=.6f)continue;   // (a rack needs a wall at its back; a tank can stand before the glass)
                 if(pick<.6f){
-                    float r=pick<.4f?1.05f:.85f,h=pick<.4f?4.6f:3.9f;vec3 p{wx-side*(.55f+r*1.34f+.2f),y,z+bz};
+                    float r=pick<.4f?1.05f:.85f,h=pick<.4f?4.6f:3.9f;vec3 p{wx-side*(.55f+r*1.34f+.2f+(glass?1.2f:0.f)),y,z+bz};
                     AABB box=LevelBuilder::aabb(p.x-r*1.34f,y,p.z-r*1.34f,p.x+r*1.34f,y+h,p.z+r*1.34f);
                     if(!d.clearAt(box,arena))continue;
                     vec3 fluid=room==8?vec3{.15f,.75f,.8f}:hash(room,(int)bz)<.55f?CYAN:MAGENTA*.85f;
@@ -388,6 +441,47 @@ inline void dressRoom(LevelBuilder& b,int room,vec3 c,const std::vector<lab::Bay
         static const float lo[]={-36,-19,2,23},hi[]={-27,-6,15,36};
         d.drift(c+vec3{d.rr(-20,20),d.rr(36,46),d.rr(lo[k%4],hi[k%4])},k%6);}
 
+    if(!late && room!=4){
+        // ---- the enclosed wards' windows, and the void outside them ----
+        for(const auto& w:lab::windows(room))d.windowFrame(w);
+        if(room==2){
+            // The glass plate in Motor Assessment's floor: a steel rim, lit corners, a grid under the glass
+            const AABB g=lab::glassFloor();auto m=d.kit(Mat::METAL),gl=d.kit(Mat::METAL,true);
+            vec3 mid=c+(g.min+g.max)*.5f;mid.y=y;float wx=g.max.x-g.min.x,wz=g.max.z-g.min.z;
+            for(float s:{-1.f,1.f}){m.box(mid+vec3{s*(wx*.5f+.15f),.015f,0},{.3f,.05f,wz+.6f},GRAPHITE);
+                m.box(mid+vec3{0,.015f,s*(wz*.5f+.15f)},{wx,.05f,.3f},GRAPHITE);}
+            for(float sx:{-1.f,1.f})for(float sz:{-1.f,1.f})gl.box(mid+vec3{sx*(wx*.5f+.15f),.05f,sz*(wz*.5f+.15f)},{.22f,.03f,.22f},CYAN);
+            for(int k=1;k<3;++k){m.box(mid+vec3{-wx*.5f+wx*k/3,-.08f,0},{.1f,.12f,wz},DARK);m.box(mid+vec3{0,-.08f,-wz*.5f+wz*k/3},{wx,.12f,.1f},DARK);}
+            // Straight down through it: debris turning, and a broken piece of the lab far below
+            for(int k=0;k<7;++k){vec3 p=mid+vec3{d.rr(-14,14),d.rr(-70,-14),d.rr(-14,14)};d.drift(p,k%6);}
+            d.island(mid+vec3{6,-95,-8},16,13,1);
+        }
+        // the dark service deck under every floor slab, seen from outside and down through the glass
+        for(const auto& w:l.walls){
+            const auto& q=w.box;
+            if(w.hidden || std::fabs(q.max.y-y)>.01f||q.min.y<y-1.3f||q.min.y>y-.7f)continue;
+            if(q.min.z<z-41||q.max.z>z+41||q.min.x<-60||q.max.x>60)continue;
+            d.underside(q.min.x,q.max.x,q.min.z,q.max.z,q.min.y,d.rr(1.4f,2.2f));
+        }
+        // Debris adrift beyond the windows on both sides
+        for(int k=0;k<18;++k){float side=k&1?-1.f:1.f;
+            float x=side*d.rr(half+9,half+60),yy=d.rr(-22,room>=5?34.f:20.f),zz=d.rr(-44,44);
+            d.drift(c+vec3{x,yy,zz},k%6);}
+        // Broken pieces of the lab further out, and in some wards, a lit ward someone still walks
+        for(int k=0;k<2;++k){float side=k?-1.f:1.f;
+            float x=side*d.rr(half+30,half+46),yy=d.rr(-12,room>=5?14.f:4.f),zz=d.rr(-26,26);
+            float w=d.rr(11,15),dd=d.rr(9,12);int style=(room+k)%4;
+            d.island(c+vec3{x,yy,zz},w,dd,style);}
+        if(room==0)d.ward(c+vec3{-half-24,-2.5f,-12},-1);
+        if(room==1)d.ward(c+vec3{-half-40,7.f,18},-1);
+        if(room==5)d.ward(c+vec3{half+26,5,2},1);
+        if(room==6)d.ward(c+vec3{-half-25,17,-3},-1);
+        if(room==0){
+            // Along the lift's climb from the tower (LabIntro.h): debris the car rises past
+            for(int k=0;k<10;++k){float side=k&1?-1.f:1.f;
+                vec3 p{side*d.rr(14,60),d.rr(-140,-14),d.rr(20,90)};d.drift(p,k%6);}
+        }
+    }
     if(!late)return;
 
     // ---- the late wards: open edges over the void ----

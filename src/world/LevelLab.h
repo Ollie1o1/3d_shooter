@@ -25,6 +25,30 @@ inline std::vector<Bay> footprint(int i){
     default:return {{40,32,-44,44},{32,-48,-76,76},{-48,-72,-54,54}};
     }
 }
+// Windows onto the void in the enclosed wards, in room coordinates. `x` is the
+// wall's centre line (its sign is the side); z0..z1 and y0..y1 are the opening.
+// Every outer side wall is glass from just off the floor to just under the roof,
+// in panes of up to ~9 m between slim piers: the ward stands in the void and you
+// see it from everywhere in the room. Each pane keeps a hidden collision panel, a
+// glass quad and a deep frame. The garden (4) keeps its own walls and sky; the
+// surgical theatre's east bay keeps its original observation glass.
+struct Window {float x,z0,z1,y0,y1;};
+inline std::vector<Window> windows(int i){
+    std::vector<Window> w;
+    if(i==4 || i>=7)return w;
+    const float roof=roofHeight(i),y0=.7f,y1=roof-1.1f;
+    for(const auto& bay:footprint(i))for(float x:{bay.left,bay.right}){
+        if(i==3 && x==42 && bay.farZ<14 && bay.nearZ>-14)continue;
+        float z0=bay.farZ+1.f,z1=bay.nearZ-1.f,len=z1-z0,pier=.9f;
+        int n=std::max(1,(int)std::ceil(len/9.5f));float pane=(len-(n-1)*pier)/n;
+        for(int k=0;k<n;++k){float a=z0+k*(pane+pier);w.push_back({x,a,a+pane,y0,y1});}
+    }
+    return w;
+}
+// Motor Assessment's floor has a glass plate looking straight down into the void
+inline AABB glassFloor(){return AABB{{5,-1,24},{17,0,36}};}
+// Admissions is reached by a service lift: its car sits outside the entry wall
+constexpr float LIFT_HALF=2.2f,LIFT_DOOR_H=3.4f;
 // A descent has two flights separated by a lateral landing. Late flights
 // become exposed bridges; early ones have a continuous sloping ceiling.
 inline std::vector<glm::vec3> passageRoute(int i){
@@ -43,7 +67,16 @@ inline Theme theme(int i){
     if(i==4){t.zenith={.22f,.48f,.66f};t.horizon={.7f,.8f,.72f};t.sunColor={1.2f,1.05f,.7f};t.skyAmb={.6f,.67f,.52f};t.groundAmb={.24f,.32f,.2f};}
     if(i==7||i==9){t.zenith={.05f,.025f,.16f};t.horizon={.22f,.06f,.25f};t.stars=.95f;t.fogColor={.09f,.07f,.19f};}
     if(i==8){t.zenith={.008f,.04f,.09f};t.horizon={.01f,.12f,.2f};t.fogColor={.015f,.09f,.14f};t.stars=0;}
+    // The enclosed wards look out on the void too: their distance takes its violet
+    if(i<7 && i!=4){t.fogColor={.07f,.065f,.15f};t.stars=.9f;}
     return t;
+}
+// Chapter 2's sky over the Far Road (LevelWasteland.h's rooms): where the arrival begins
+inline Theme ashTheme(){
+    return Theme{{.14f,.055f,.065f},{.55f,.23f,.14f},{.24f,.18f,.15f},
+        glm::normalize(glm::vec3{.3f,.28f,-.8f}),{1.3f,.72f,.3f},.035f,.015f,
+        {.19f,.09f,.075f},.05f,glm::normalize(glm::vec3{-.3f,-.7f,.35f}),{.9f,.72f,.58f},
+        {.37f,.31f,.28f},{.2f,.17f,.14f},{.3f,.2f,.17f},.0038f};
 }
 // Stencils are actual small surfaces and do not consume a light per letter.
 inline void stencil(LevelBuilder& b,const char* text,glm::vec3 p,float px,glm::vec3 color={.1f,.24f,.28f}){
@@ -138,6 +171,12 @@ inline LevelData buildLab(){
                 l.movers[mover].color=cream;s.labBridges.push_back({i,side<0?-1:1,mover});
             }
             lab::stencil(b,"CONTACT ROUTE / SELECT A SIDE",{-23,y+3.5f,z-21.8f},.08f);
+        }else if(i==2){
+            // The floor round a glass plate over the void (walkable: a hidden pane holds it)
+            const AABB g=lab::glassFloor();
+            floor(-half,-40,half,g.min.z,cream);floor(-half,g.max.z,half,40,cream);
+            floor(-half,g.min.z,g.min.x,g.max.z,cream);floor(g.max.x,g.min.z,half,g.max.z,cream);
+            b.solid(g.min.x,y-.3f,z+g.min.z,g.max.x,y,z+g.max.z);
         }else if(i!=5)floor(-half,-40,half,40,i==4?vec3{.25f,.35f,.23f}:cream);
         else{
             floor(-half,22,half,40,steel);floor(-half,-40,half,-22,steel);
@@ -157,7 +196,15 @@ inline LevelData buildLab(){
                     solid({x-.4f,y,z+bay.farZ},{x+.4f,y+3,z+bay.nearZ},wall);
                     solid({x-.4f,y+14,z+bay.farZ},{x+.4f,y+roof,z+bay.nearZ},wall);
                     for(float dz:{-14.f,0.f,14.f})solid({x-.5f,y+3,z+dz-.12f},{x+.5f,y+14,z+dz+.12f},steel);
-                }else if(i<7)solid({x-.4f,y,z+bay.farZ},{x+.4f,y+roof,z+bay.nearZ},wall);
+                }else if(i<7){
+                    // Openings onto the void, each held by an invisible pane
+                    std::vector<LevelBuilder::Gap> gaps;
+                    for(const auto& w:lab::windows(i))if(w.x==x && w.z0>=bay.farZ && w.z1<=bay.nearZ){
+                        gaps.push_back({z+w.z0,z+w.z1,y+w.y0,y+w.y1});
+                        b.solid(x-.06f,y+w.y0,z+w.z0,x+.06f,y+w.y1,z+w.z1);
+                    }
+                    b.wallZ(z+bay.farZ,z+bay.nearZ,x-.4f,x+.4f,y,y+roof,wall,gaps);
+                }
                 else{
                     solid({x-.4f,y,z+bay.farZ},{x+.4f,y+1.4f,z+bay.nearZ},wall);
                     for(float dz=bay.farZ;dz<=bay.nearZ;dz+=12){
@@ -184,6 +231,15 @@ inline LevelData buildLab(){
             }
         }
         float endHeight=i>=6?10.f:roof;
+        if(i==0){
+            // The lift's landing: a narrow lit doorway; its doors are drawn (Gameplay_Lab.h)
+            // over a hidden collision panel that never opens once you've stepped out
+            const float h=lab::LIFT_HALF;
+            b.wallX(bays.front().left,bays.front().right,z+39.6f,z+40.4f,y,y+endHeight,wall,{{-h,h,y,y+lab::LIFT_DOOR_H}});
+            b.solid(-h,y,z+39.7f,h,y+lab::LIFT_DOOR_H,z+40.3f);
+            for(float s:{-1.f,1.f})b.neon(s*h-.08f,y,z+39.5f,s*h+.08f,y+lab::LIFT_DOOR_H,z+39.56f,cyan*.5f);
+            b.neon(-h,y+lab::LIFT_DOOR_H,z+39.5f,h,y+lab::LIFT_DOOR_H+.12f,z+39.56f,cyan*.5f);
+        }else
         b.wallX(bays.front().left,bays.front().right,z+39.6f,z+40.4f,y,y+endHeight,wall,{{entry-6,entry+6,y,y+7}});
         b.wallX(bays.back().left,bays.back().right,z-40.4f,z-39.6f,y,y+endHeight,wall,{{exit-6,exit+6,y,y+7}});
         if(i>=6)for(float dz:{-40.f,40.f}){

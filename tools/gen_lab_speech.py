@@ -14,7 +14,8 @@ SUCCESSOR=[
 'I was supposed to leave.',
 'You were supposed to be the easy part.']
 WARD=['Legacy chassis. Manual assessment.','Motor response. Within normal range.',
-      'Floor contact. Confirmed.','Observation record accepted.','Proceed to observation.']
+      'Floor contact. Confirmed.','Observation record accepted.','Proceed to observation.',
+      'Service lift. Ascending.','Arrival. Admissions.']
 with tempfile.TemporaryDirectory() as td:
     raw=Path(td)/'speech.wav'
     for family,lines in [('successor_line',SUCCESSOR),('lab_pa',WARD)]:

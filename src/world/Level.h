@@ -597,6 +597,9 @@ struct LevelData {
         std::vector<LabDrift> labDrift;
         std::vector<LabTank> labTanks;
         std::vector<LabArc> labArcs;
+        // A lit ward adrift beyond the windows, no way in: someone paces its floor (along x, `span` each way)
+        struct LabWard {glm::vec3 floor;float span;int room;};
+        std::vector<LabWard> labWards;
         glm::vec3 labPortal{0.f};float labPortalRadius=0;
         struct Vent { glm::vec3 pos; int section; float period,phase; };
         std::vector<Vent> vents;

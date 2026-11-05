@@ -3326,7 +3326,7 @@ int main() {
                                 "caller_toll", "caller_clang", "sieve_rattle", "sieve_stake"};
         std::vector<std::string> names(std::begin(loaded), std::end(loaded));
         for(int i=0;i<7;++i)names.push_back("successor_line_"+std::to_string(i));
-        for(int i=0;i<5;++i)names.push_back("lab_pa_"+std::to_string(i));
+        for(int i=0;i<7;++i)names.push_back("lab_pa_"+std::to_string(i));
         for (const std::string& n : abAllSounds()) names.push_back(n);   // THE ABSOLUTE's fight (AbsoluteFeel.h)
         bool all = true; for (const std::string& n : names) all &= mixEntry(n) != nullptr;
         CHECK(all && mixTable().size() == names.size(), "every sound file the game loads has exactly one place in the mix");

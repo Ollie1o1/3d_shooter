@@ -195,7 +195,7 @@ static void checkLabRuntime(AudioSystem& audio){
     CHECK(game.labIntro.active() && game.storyLocked() && game.director.hold,"normal Chapter 3 begins in the first-person observation cutscene with combat held");
     game.labIntro.time=13;game.updateLab(.01f);game.render();screenshot("build/lab-intro-runtime.bmp");
     game.storySkipKey=true;game.updateLab(.7f);game.storySkipKey=false;
-    CHECK(game.labIntro.seen && !game.storyLocked() && !game.director.hold && glm::length(game.player.position-glm::vec3{2.2f,0,20})<.01f,"the real skip path restores camera, combat and player control");
+    CHECK(game.labIntro.seen && !game.storyLocked() && !game.director.hold && glm::length(game.player.position-LabIntro::handoff())<.01f,"the real skip path restores camera, combat and player control");
     game.retryArena();CHECK(!game.labIntro.active() && game.storyOwned==15 && game.storyGrapple,"a normal retry preserves the seen intro and full lab equipment");
     bool ledges=true;
     for(int room=0;room<9;++room){
@@ -1083,7 +1083,7 @@ int main() {
             int expectedGuns = o.storyChapter == 1 ? expectedGuns1[o.arena] : o.storyChapter==3?15:o.arena > 4 ? 15 : 7;
             bool expectedGrapple = o.storyChapter >= 2 || o.arena > 7;
             bool introStart=o.storyChapter==3 && o.arena==0;
-            auto expectedStart=introStart?glm::vec3{0,0,27}:game.level.arenas[o.arena].playerStart;
+            auto expectedStart=introStart?game.labIntro.eye()-glm::vec3{0,1.7f,0}:game.level.arenas[o.arena].playerStart;
             char label[128];
             std::snprintf(label, sizeof(label), "Story %d.%d starts with its checkpoint, equipment and intended intro state", o.storyChapter, o.arena + 1);
             CHECK(game.level.story.chapter == o.storyChapter && game.director.arena == o.arena && game.storyCheckpoint == o.arena &&

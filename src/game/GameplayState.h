@@ -154,6 +154,7 @@ public:
     bool shootSuccessorNode(glm::vec3 origin,glm::vec3 dir,float& range,float damage);
     int labCue=-1;SoundHandle labVoice=0,successorVoice=0;
     LabIntro labIntro;
+    LabTheatre labTheatre;int labTheatreCue=0;float labTheatreWalk=0;   // Admissions' observation theatre (LabIntro.h)
     // The end of Chapter 3 (Gameplay_LabEnding.h): the Successor's body where it fell, the cutscene through the doors
     LabEnding labEnding;
     bool  labEndingDone = false;
@@ -177,6 +178,7 @@ public:
     void updateLab(float dt);
     void gatherLab(std::vector<BoxInstance>& out);
     void renderLabIntro();
+    void gatherLabLift(rig::Rig& r);   // the service lift, and on arrival its tower and plain (Gameplay_LabLift.h)
     bool wasteland() const { return story() && level.story.chapter==2; }
     bool cold() const { return story() && level.story.chapter==5; }    // Chapter 5: THE COLD STORE (Gameplay_Cold.h)
     bool plain() const { return story() && level.story.chapter==4; }   // Chapter 4: THE BLOOD MOON PLAIN (Gameplay_Plain.h)
@@ -259,6 +261,7 @@ public:
     void  beginStory();
     void  updateStory(float dt);
     bool  storyLocked() const { return story() && (wakeT >= 0.f || labIntro.active() || labEnding.active() || plainReveal.active() || summitEndT >= 0.f || tearT >= 0.f || (level.story.chapter == 5 && (coldRideT >= 0.f || rsFinT >= 0.f))); }
+    bool  labAshSky() const { return laboratory() && labIntro.active() && labIntro.time < 13.5f; }   // Chapter 3's arrival, still under Chapter 2's sky: none of the lab is drawn
     bool  storyLookFree() const { return !labIntro.active() && wakeT >= 18.4f; }   // (story::W_SAT)
     float storyWakeFx() const;
     void  gatherStoryBoxes(std::vector<BoxInstance>& out);
@@ -1398,6 +1401,7 @@ public:
 
 #include "bosses/successor/Gameplay_Successor.h"
 #include "game/Gameplay_LabDressing.h"
+#include "game/Gameplay_LabLift.h"
 #include "game/Gameplay_Plain.h"
 #include "game/Gameplay_Cold.h"
 #include "game/Gameplay_Restorer.h"
