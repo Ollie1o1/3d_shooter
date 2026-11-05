@@ -95,7 +95,11 @@ inline void GameplayState::beginStory() {
         it.label = label;
         it.onInteract = [this, i]() {
             storyLog = storyLog == i ? -1 : i; storyTerminal = -1; storyLogT = 0;
-            if (storyLog >= 0) { storyLogsSeen |= 1u << i; saveStoryProgress(); audio.play("count_tick",90,SoundGroup::UI,true); }
+            if (storyLog >= 0) {
+                storyLogsSeen |= 1u << i; saveStoryProgress(); audio.play("count_tick",90,SoundGroup::UI,true);
+                const int n = level.story.wrecks[i].number;   // the ARCHIVE keeps it for good (the Story page)
+                if (n > 0 && n < 32 && !((records.unitsRead >> n) & 1u)) { records.unitsRead |= 1u << n; if (!g_devNoMouse) records.save(); }
+            }
         };
         interactables.push_back(std::move(it));
     }
@@ -808,9 +812,16 @@ inline void GameplayState::renderStoryOverlay(const glm::mat4& viewProj) {
         std::snprintf(line,sizeof(line),"TIME %d:%02d   KILLS %d   SECRETS %d/2",(int)elapsedTime/60,(int)elapsedTime%60,totalKills,secrets);
         U.text(line,SCREEN_W/2.f,SCREEN_H/2.f+90,2,{.85f,.9f,.92f,a},true);
         float score=bankedStyle+styleSystem.earned;
-        const char* rank=deaths==0&&elapsedTime<900&&score>5000?"S":deaths<3&&elapsedTime<1200?"A":deaths<6?"B":"C";
-        std::snprintf(line,sizeof(line),"RANK %s   STYLE %.0f   DEATHS %d",rank,score,deaths);
+        const int rank=storyRankNow>0?storyRankNow:storyrank::rank(SL.chapter,elapsedTime,deaths,score);
+        std::snprintf(line,sizeof(line),"RANK %s   STYLE %.0f   DEATHS %d",storyrank::letter(rank),score,deaths);
         U.text(line,SCREEN_W/2.f,SCREEN_H/2.f+130,2,{1.f,.7f,.3f,a},true);
+        {   // the best kept for the chapter (and if this was it)
+            const int ci=std::clamp(SL.chapter,1,storyrank::CHAPTERS)-1;const float bt=records.storyTime[ci];
+            if(storyRankBest)std::snprintf(line,sizeof(line),"NEW BEST");
+            else if(records.storyRank[ci]>0)std::snprintf(line,sizeof(line),"BEST  RANK %s   %d:%02d",storyrank::letter(records.storyRank[ci]),(int)bt/60,(int)bt%60);
+            else line[0]=0;
+            if(line[0])U.text(line,SCREEN_W/2.f,SCREEN_H/2.f+165,1,storyRankBest?glm::vec4{1.f,.85f,.35f,a}:glm::vec4{.65f,.72f,.75f,a*.8f},true);
+        }
         char next[96];std::snprintf(next,sizeof(next),SL.nextChapter>0?"ENTER - CONTINUE TO CHAPTER %d    ESC - MENU":"ENTER - RETURN TO MENU",SL.nextChapter);
         U.text(next,SCREEN_W/2.f,SCREEN_H-65,1,{.35f,.85f,1.f,a},true);
     }

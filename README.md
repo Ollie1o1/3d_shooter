@@ -19,7 +19,7 @@ A fast 3D arena shooter in the spirit of ULTRAKILL, written from scratch in C++1
 |------|------------|
 | **ARENA** | A page (like FAST's) of the whole of **Act I**, the whole of **Act II** once Act I is beaten, or **any arena of either act on its own** (always open: the upgrades a run would have by then, your best clear time kept). Act I: four themed arenas of three waves each (the **Sunset Yard**, **the Foundry**, **the Spire**, **the Core** and its boss **the Warden**), then **the Sanctum**, a duel under an eclipse with **the Sovereign**. Scored and ranked on the leaderboard. |
 | **ACT II** | (On the ARENA page.) The whole act unlocks when the Sovereign falls in an Act I run. Down beneath the eclipse: **the Drowned Nave** (rising water), **the Orrery** (a sun whose flare sweeps the arena), **the Descent** (a cage riding down a shaft to **the Penitent**), **the Reliquary** (pieces of Act I drifting over a void) and **the Maw** (**the Leviathan**). Then the encore, **!!!!!**: **the Absolute**, who comes back as **MORNINGSTAR**. Keeps local best times; not ranked yet. |
-| **STORY** | Three chapters: **THE CRADLE**, **THE DEAD SPAN** and **THE LIVING WARD**. Escape the factory and ash wasteland, then descend through ten spacious medical test chambers into incompatible dimensions. Chapter 3 adds the first skippable cutscene, four flesh chassis families, observation bridge choices, two secrets and **THE SUCCESSOR**, a fast humanoid boss with a robot face and original choir/organ score. Equipment and upgrades carry forward. |
+| **STORY** | Five chapters as UNIT 24, a rejected robot looking for the one who made it: **THE CRADLE** (the factory), **THE DEAD SPAN** (an ash wasteland), **THE LIVING WARD** (ten medical test chambers falling into other dimensions, and **THE SUCCESSOR**), **THE BLOOD MOON PLAIN** (the horizon stands up and is **THE GLEANER**, a scrap titan you climb, enter and tear the eye out of) and **THE COLD STORE** (an icy planet where everything is kept: your restored copy **24-K**, and **THE RESTORER**). Each chapter adds a tool: the grapple, the sword Oathbreaker, SPLINTER, RECALL. Equipment and upgrades carry forward. |
 | **FAST** | **The Gauntlet**: a time trial through seven rooms joined by boost tubes, a **mini-boss** in each room and **the Pacemaker** at the end, with splits against your best run, par ranks, a ghost of your best route and **medals for every room**. **ROOM ATTACK** runs any one room on its own for its medal. |
 | **ENDLESS** | Generated waves in the Core until you die, tougher every wave, with an objective every 4th wave and the Warden every 10th. |
 | **BOSS** | Any boss on its own, with a level and upgrades to match. Your best kill time for each is kept. |
@@ -29,10 +29,12 @@ Kills earn **XP** (more for stylish play) that buys **weapon upgrades** in the A
 Story starts unarmed. UNIT 01 holds the revolver, UNIT 02 the Lancer, and UNIT 06 the shotgun.
 The grapple is recovered at the Inspection Line. Guns and found logs survive a checkpoint retry;
 a new run resets discoveries. Enter on Chapter 1's completion card continues into Chapter 2
-with your equipment. STORY also offers direct Chapter 2 and Chapter 3 starts with the appropriate equipment.
+with your equipment. The Story page also starts any chapter directly, with the right equipment.
 See [the Chapter 1 implementation and playtest notes](docs/story-chapter-1.md) for the route, controls,
 source files and developer starts. [Chapter 2 notes](docs/story-chapter-2.md) cover the wasteland
 route, Blender assets and verification. Launch Chapter 2 directly with `./shooter --story2`, or the Living Ward with `./shooter --story3` (`?story3` in the web build). Chapter 5, THE COLD STORE (an icy planet, RECALL, 24-K and THE RESTORER), starts with `./shooter --story5` (sections with `--arena N`, from 1); its [design and build notes](docs/chapter-5-design.md) cover what is built. [Chapter 3 build notes](docs/chapter-3-implementation.md) cover its controls, assets, tests and tuning limits. The current [Story revision](docs/story-overhaul.md) documents the writing, research and encounter direction. Settings → VIDEO → **AMBIENT DETAIL** reduces optional ash, grit, vents and moving decoration independently of resolution; required attack tells and objectives remain visible. Settings → VIDEO → **LIGHTING**: LOW is the plain shading (sun, sky, baked shadows), MEDIUM adds the baked glow light (neon, lava and lamps lighting what is round them, blocked by walls) and the sun's bounce off the ground, HIGH also gives every surface its relief (normal maps made from its texture). Settings → GAMEPLAY → **ENEMY MARKERS** selects LOW (small cleanup icons, one short direction label) or DETAILED (full names, distance and cover labels). Bosses do not receive tracking icons in either mode.
+
+Every chapter ends with a **rank** (S to C, from time, deaths and style against that chapter's own par times) and keeps your best rank and best time, shown beside it on the Story page. **TAB** on the Story page opens the **UNIT ARCHIVE**: Units 01 to 23, which wrecks you've found, and every last log you've read, kept across runs.
 
 Combat Practice is available from **F3** on the main menu or the Story page.
 Choose repeatable lessons for parries, finishers, grapples, shotgun jumps and
@@ -51,6 +53,9 @@ save behaviour, relay isolation and the turbine winch, and
 | **The Sorter** | the Sorting Floor (Story, Chapter 1) | Evade its gantry rush, staggered presses and furnace purges; parry the white claw, aim for the open blue strip and survive progressive belt failures |
 | **Ballast** | the Cut (Story, Chapter 2) | A pursuing clearance grader: jump its sweep and torn-road slabs, evade pivoting charges, parry its harpoon or shoot the cable, then hit the exposed rear turbine |
 | **The Successor** | Final Assessment (Story, Chapter 3) | Evade committed incision/vector paths, cut Suture anchors, watch announced crossings and parry white thrusts. One health bar, three phases, original choir and organ score. |
+| **The Gleaner** | the Blood Moon Plain (Story, Chapter 4) | A crawling scrap titan, its eye-core the "moon". Dodge its swats and called meteors, ride the updraft onto its back, beat THE TENDER, THE SIEVE and THE CALLER tethered to its limbs, go in through its furnace door, then climb to the eye and tear it out |
+| **24-K** | DISPATCH 2 (Story, Chapter 5) | A restored copy of you, reset to your Chapter 1 kit. Duel it in the yard: break its revolver bursts with cover, parry the Lancer round down its gold sight line and its white rush-punch, and get above it (it has no grapple) |
+| **The Restorer** | the Vault (Story, Chapter 5) | The keeper of the Cold Store. ROLLBACK pulls you to where you stood 4 s ago (keep that spot safe, or RECALL to override it); parry its white tong, stand on clean cells when it freezes the floor, break its restore points to make your damage stick, and smash the drums to win back the weapons it takes |
 | **The Warden** | the Core (Act I) | Cut the four conduits feeding it; hit its core when it vents; survive its meltdown |
 | **The Sovereign** | the Sanctum (Act I) | A sword duellist: parry (F) his sweeps and cleave as they land to break his guard |
 | **The Penitent** | the Descent (Act II) | Chained to the pit wall: break the chains, jump its low sweeps, slide under the high ones |
@@ -102,6 +107,9 @@ pacman -S mingw-w64-ucrt-x86_64-gcc \
 make        # compile → ./shooter
 make run    # compile + run
 make test   # headless tests: physics, level data, AI, a simulated full run
+make test-route  # Story routes: every chapter walkable section to section (but for its lifts and grapples), every checkpoint spawn sound
+make routes      # ...the same, printed leg by leg
+python3 tools/runlog.py  # sum up runs.jsonl: deaths, damage, guns, and for STORY time and time lost per section
 make clean  # delete binaries
 
 ./shooter --play                 # skip the main menu and start an ARENA run
@@ -346,6 +354,7 @@ Everything below runs without touching the mouse, so it works from scripts.
 #   --story4: Chapter 4, THE BLOOD MOON PLAIN (in progress); --overlay plainimpact: a big meteor lands 160 m ahead; --overlay plainrevealNN: the opening from NN s (0-13 the prologue); --overlay plainclose / plaindeck: straight to the Gleaner fight / onto its back
 #   --splinter: UNIT 24's SPLINTER (Chapter 4) on the grenade button in any mode: G throws, shoot it to bounce the round
 #   --story5: Chapter 5, THE COLD STORE; --recall: RECALL (X) in any mode; --overlay coldride: the capsule ride out;
+#   --overlay endcard (any --storyN): its completion card at once, with the rank; --overlay chapters / archive: the Story page / the UNIT ARCHIVE
 #   --overlay rspose: the Restorer stands still (screenshots); --overlay bossdown-rsfinish: the Restorer falls and the RECALL finisher plays
 #   --overlay swingSU: hold sword stroke S (0 forehand, 1 backhand, 2 overhead) U/10 through it; guard: its guard
 #   --swordorbit DEG: see the sword and the arms holding it from the side (DEG round them), to check the wrists

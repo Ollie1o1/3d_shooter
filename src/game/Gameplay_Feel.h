@@ -242,6 +242,23 @@ inline void GameplayState::logRun(const char* how) {
     runLog.reset(elapsedTime);
 }
 
+inline void GameplayState::trackStoryRun(float dt) {
+    if (!level.story.built || level.arenas.empty()) return;
+    if (g_devOverlay == "endcard" && storyEndT < 0.f) storyEndT = 2.5f;   // dev: the chapter's completion card, now
+    if (storyEndT >= 0.f && storyRankNow == 0) {   // the chapter's card is up: its rank, and the best kept (StoryRank.h)
+        storyRankNow = storyrank::rank(level.story.chapter, elapsedTime, deaths, bankedStyle + styleSystem.earned);
+        storyRankBest = storyFromStart && !g_godMode && !g_practice && !g_devNoMouse && recordStory(records, level.story.chapter, storyRankNow, elapsedTime);
+        if (storyRankBest) records.save();
+    }
+    if (storyEndT < 0.f) storyRankNow = 0;
+    const int a = std::clamp(director.arena, 0, (int)level.arenas.size() - 1);
+    // The way on: the next section's start (the last section: its own, the fight is there)
+    const glm::vec3 next = level.arenas[std::min(a + 1, (int)level.arenas.size() - 1)].playerStart;
+    bool fighting = false;
+    for (const Enemy& e : enemies) if (e.alive) { fighting = true; break; }
+    runLog.storyTick(dt, level.story.chapter, a, player.position, glm::length(next - player.position), fighting);
+}
+
 // ---- movement into combat --------------------------------------------------------
 // The enemy the grapple would hook: under the crosshair (a little give at range),
 // in reach, with nothing solid in the way. Bosses have their own fights

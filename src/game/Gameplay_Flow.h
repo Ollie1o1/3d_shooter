@@ -270,6 +270,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     // ACT II is a preview: unranked until the whole act exists
     ranked = (start == 0 || endless()) && g_startWave <= 0 && !g_godMode && !g_practice && !g_devCam && !act2() && !story() && !training();
     act2FromStart = act2() && start == 0 && g_startWave <= 0 && !g_devCam;
+    storyFromStart = story() && (start == 0 || resumingStory) && !g_devCam;   // a best kept only for a chapter played through (StoryRank.h)
     if (g_bossRun >= 0) { start = bossEntry(g_bossRun).arena; ranked = act2FromStart = false; }
     if (roomAttack()) { start = glm::clamp(g_roomAttack, 0, (int)level.arenas.size() - 1); ranked = false; }
     if (arenaSolo()) { start = glm::clamp(g_arenaSolo, 0, (int)level.arenas.size() - 1); ranked = act2FromStart = false; }

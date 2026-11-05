@@ -77,3 +77,6 @@ tests/test_story_bosses
 tests/test_improvements
 
 tools/music_preview
+
+tests/test_route
+tests/scan_routes

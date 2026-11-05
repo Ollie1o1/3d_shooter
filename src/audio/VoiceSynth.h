@@ -335,6 +335,12 @@ inline Buf tellV(EnemyType t, AttackKind a, const Profile& p, Rng& r) {
         case AttackKind::SU_VECTOR:add(out,vent(d,900,r,d*.7f,.03f));add(out,servo(d,110,900,r,d*.7f,.03f),.6f);break;
         case AttackKind::SU_REAP:add(out,servo(d,160,620,r,d*.65f,.04f),.7f);add(out,vent(d,1600,r,d*.65f,.04f),.6f);break;
         case AttackKind::SU_BREAKER:add(out,metal(d,85,r,5),.7f);add(out,choir(d,110,330,Vowel::AH,3,1.f,r,d*.7f,.04f,.08f),.8f);break;
+        // Lines raked across the floor: two hands of rising scrapes, one per side
+        case AttackKind::SU_LATTICE:for(int k=0;k<2;++k)add(out,servo(d*.6f,300+k*140,1500+k*300,r,.03f,.03f),.55f,k*d*.3f);add(out,vent(d,2600,r,d*.7f,.04f),.5f);break;
+        // A rupture run along the floor: a low growl that climbs as the fist comes down
+        case AttackKind::SU_CASCADE:add(out,metal(d,70,r,4),.65f);add(out,servo(d,60,240,r,d*.75f,.04f),.6f);add(out,click(900,r),.6f,d*.85f);break;
+        // The wide backhand flinging blades: a bright drawn edge
+        case AttackKind::SU_SEVER:add(out,metal(d,1500,r,2.5f),.7f);add(out,vent(d,4200,r,d*.7f,.03f),.6f);break;
         case AttackKind::SU_SUTURE:for(int k=0;k<2;++k)add(out,metal(.35f,980+k*240,r,9),.8f,k*.3f);break;
         case AttackKind::SU_RECALL:for(int k=0;k<3;++k)add(out,beep(660,.07f),.65f,k*.25f);break;
         case AttackKind::SU_PERFUSION:add(out,choir(d,130,260,Vowel::AH,4,1.f,r,d*.65f,.05f,.1f));break;

@@ -60,6 +60,32 @@ def main():
     print(f"\n{kills} kills, {stuns} stuns, {fin} finishers ({heal:.0f} HP back), "
           f"OVERDRIVE {od}x for {ods:.0f} s ({100 * ods / max(secs, 1e-6):.0f}% of the time)")
 
+    story(rows)
+
+
+def story(rows):
+    """STORY: deaths, time and time lost, chapter by chapter and section by section."""
+    rows = [r for r in rows if r.get("chapter")]
+    if not rows:
+        return
+    print("\nSTORY (chapter.section: deaths, minutes played, minutes lost):")
+    deaths, secs, lost, where = Counter(), Counter(), Counter(), defaultdict(list)
+    for r in rows:
+        c = r["chapter"]
+        if r["how"] == "death":
+            deaths[(c, r["section"])] += 1
+            where[(c, r["section"])].append(("died", r["at"], r.get("killedBy", "")))
+        for s, t in r.get("sectionSeconds", {}).items(): secs[(c, int(s))] += t
+        for s, t in r.get("lostSeconds", {}).items(): lost[(c, int(s))] += t
+        for p in r.get("lostAt", []):
+            where[(c, r["section"])].append(("lost", p, ""))
+    for key in sorted(set(secs) | set(deaths)):
+        c, s = key
+        flag = "  <- often lost" if lost[key] > 0.25 * max(secs[key], 1e-6) else ""
+        print(f"  {c}.{s:<3} {deaths[key]:3d} deaths  {secs[key] / 60:6.1f} min  {lost[key] / 60:5.1f} lost{flag}")
+        for what, p, by in where[key][:4]:
+            print(f"        {what} at ({p[0]:.0f} {p[1]:.0f} {p[2]:.0f}){' to ' + by if by else ''}")
+
 
 if __name__ == "__main__":
     main()

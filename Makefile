@@ -97,6 +97,7 @@ test: $(TESTS) $(HEADERS)
 	$(MAKE) test-lab
 	$(MAKE) test-plain
 	$(MAKE) test-cold
+	$(MAKE) test-route
 
 test-story: tests/test_story.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) tests/test_story.cpp -o tests/test_story $(STDLIB)
@@ -124,6 +125,16 @@ test-dev: tests/test_dev.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) tests/test_dev.cpp -o tests/test_dev $(LDFLAGS)
 	mkdir -p build
 	./tests/test_dev
+
+# Story routes: each chapter walkable section to section but for its known lifts and grapples; every spawn sound (tests/RouteScan.h)
+test-route: tests/test_route.cpp tests/RouteScan.h tests/BoundsScan.h $(HEADERS)
+	$(CXX) $(CXXFLAGS) tests/test_route.cpp -o tests/test_route $(STDLIB)
+	./tests/test_route
+
+# The same, printed leg by leg and spawn by spawn
+routes: tests/scan_routes.cpp tests/RouteScan.h tests/BoundsScan.h $(HEADERS)
+	$(CXX) $(CXXFLAGS) tests/scan_routes.cpp -o tests/scan_routes $(STDLIB)
+	./tests/scan_routes
 
 # Every arena's traps: places you could stand and not get back from by yourself (tests/BoundsScan.h)
 scan: tests/scan_bounds.cpp tests/BoundsScan.h $(HEADERS)

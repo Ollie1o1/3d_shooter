@@ -256,6 +256,9 @@ public:
     glm::vec3 clawAt{0.f};
     int   prevFinger = -1;
     float storyEndT = -1.f;        // down the chute: fading out to what's next
+    int   storyRankNow = 0;          // the chapter just finished: its rank (StoryRank.h; 0 until the card is up)
+    bool  storyRankBest = false;     // ...and whether it beat the best kept
+    bool  storyFromStart = false;    // this chapter was started at its beginning (or continued from a save): it can set a best
     bool  offBeltShown = false;
     armfile::HandSpring wakeHand;
     void  beginStory();
@@ -1240,6 +1243,7 @@ public:
     EnemyType hurtBy = EnemyType::COUNT;   // set around enemy events and shots: who's hitting you now
     bool  loggedDeath = false;
     void  logRun(const char* how);
+    void  trackStoryRun(float dt);   // STORY's part of the log: sections, where you are, lost time
 
     void onEnemyKilled(Enemy& e, StyleSource src);
 

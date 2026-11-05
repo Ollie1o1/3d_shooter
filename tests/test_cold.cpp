@@ -10,6 +10,7 @@
 #include "enemies/Enemy.h"
 #include "render/EnemyModel.h"
 #include "world/Interactable.h"
+#include "audio/MusicSynth.h"
 #include <algorithm>
 #include <set>
 #include <cstdio>
@@ -350,6 +351,20 @@ int main() {
         StorySave s; s.chapter = 5; s.checkpoint = 9; StorySave back;
         CHECK(back.parse(s.text()) && back.chapter == 5 && back.checkpoint == 9, "a Chapter 5 save at the Vault round-trips");
         s.checkpoint = 10; CHECK(!back.parse(s.text()), "...and a checkpoint past its last section is rejected");
+    }
+
+    {   // ROLLBACK winds the score back: a short backwards run of what just played, then half a bar earlier
+        MusicSynth m; m.setTrack(16); m.setIntensity(1.f);
+        std::vector<float> buf(2 * 4410);
+        for (int i = 0; i < 30; ++i) m.render(buf.data(), 4410);   // 3 s in
+        double before = m.stepPos();
+        m.rewind();
+        float peak = 0.f; bool finite = true; int blocks = 0;
+        while (blocks < 20) { m.render(buf.data(), 4410); ++blocks; for (float v : buf) { finite &= std::isfinite(v); peak = std::max(peak, std::fabs(v)); } if (!m.rewinding()) break; }
+        double after = m.stepPos(), moved = before - after; if (moved < 0) moved += 64;
+        CHECK(blocks >= 5 && blocks <= 7, "the rewind lasts about 0.6 s");
+        CHECK(finite && peak > 0.01f && peak <= 1.f, "...is heard, and stays clean");
+        CHECK(moved > 7.f && moved < 9.f, "...and the song plays on from half a bar back");
     }
 
     std::printf(failures ? "\n%d FAILED\n" : "\nALL PASSED (0 failures)\n", failures);

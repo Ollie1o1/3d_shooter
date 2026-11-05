@@ -351,6 +351,7 @@ struct App {
             };
             menu->onQuit   = [this]() { quit(); };
             if(g_devOverlay=="chapters")menu->page=MenuState::STORYPAGE;
+            if(g_devOverlay=="archive")menu->page=MenuState::ARCHIVEPAGE;
             if (openDevMenu) { menu->openDev(); openDevMenu = false; }
             if (g_devOverlay == "board") menu->page = MenuState::BOARD;
             if (g_devOverlay == "bosses") menu->page = MenuState::BOSS;

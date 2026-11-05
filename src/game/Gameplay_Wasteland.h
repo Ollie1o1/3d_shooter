@@ -19,6 +19,7 @@ inline void GameplayState::loadStoryChapter(int chapter) {
     if(chapter<2 || chapter>5)return;
     logRun("chapter_complete");
     g_storyChapter=chapter;g_startArena=g_startWave=0;g_devOverlay.clear();
+    storyFromStart=true;storyRankNow=0;storyRankBest=false;
     // Release the non-RAII contact buffers before moving in the new world.
     world.contact.release();movingShadows.release();
     level=chapter==5?buildCold():chapter==4?buildPlain():chapter==3?buildLab():buildWasteland();world=buildWorldMeshes(level);spatialGrid.build(level.walls);

@@ -379,8 +379,14 @@ candidate).
   (118 BPM, rising with its phases). Sounds come from the existing bank: the
   Clerk's ticks, the sea's creaks and groans, the vents' hiss, the capsules'
   launches.
-- **Still to do:** the score stuttering back on ROLLBACK; frame rate near
-  the Store (about 50 fps in 4K screenshots there, 90+ elsewhere).
+- **Still to do:** frame rate near the Store (about 50 fps in 4K
+  screenshots there, 90+ elsewhere). Measured again on 2026-11-05 at 1080p:
+  11-15 ms a frame through the chapter, level with Chapter 3, GPU-bound with
+  no one pass to blame; the numbers swung 5x between runs on the same build,
+  so measure with the window in front and repeat.
+- **Done 2026-11-05:** the score winds back on ROLLBACK
+  (`MusicSynth::rewind`: 0.6 s of the last moment played backwards, faster
+  and faster, then the song goes on half a bar earlier; `make test-cold`).
 
 ### The map and boss pass (2026-11-04)
 
