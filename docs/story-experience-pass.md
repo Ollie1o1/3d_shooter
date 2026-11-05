@@ -74,6 +74,8 @@ frame the ice and submerged machinery without adding another combat gate.
 - `make test-cold`: service-deck climbs, full chapter route, spawns, vent
   warnings and existing cold mechanics.
 - `make test-route`: all five chapters and every checkpoint.
+- `make test-lighting` and `make test-web-lighting`: all seven shipped light
+  bakes match the geometry constructed by native and WebAssembly builds.
 - `make test-dev`: native game input, including the complete wake-up,
   leaving the belts, taking the salvage drop and interacting with UNIT 01.
 
@@ -92,9 +94,17 @@ these changes improve specific spaces, sightlines and routes within that wider
 backlog. The Recovery Ward doorway regression and every new ramp are checked
 independently of those aggregate measurements.
 
-Release verification also found an existing Linux lighting failure. ARM's
-fused multiply/add operations produced four different quantized shape values
-in the ward fingerprint. Builds now disable floating-point contraction on all
-targets, preserving consistent geometry construction across Clang/ARM,
-GCC/x86 and WebAssembly. The fingerprint comparison remains strict; lighting
-files are regenerated with the matching build settings.
+Release verification also found existing lighting differences between targets.
+Builds now use precise floating-point arithmetic without contraction across
+native and WebAssembly targets. Fracture counts snap division results near
+whole numbers, so an exact 17 m edge produces ten pieces on every target rather
+than shifting every later random draw. The fingerprint comparison remains
+strict; lighting files are regenerated with the matching build settings.
+
+The Successor rehearsal now dodges Suture lines across their nearest edge.
+Its old policy ran away from a line's endpoint, sometimes staying inside the
+hazard for its full length. Dashes now use the live 28 m/s speed and 0.30 s
+momentum window, and preserve longer existing hit immunity. Its once-per-second
+punch also reflects projectiles within the live reach and facing cone, without
+crediting returned-shot damage to the boss. The boss and survival assertions
+are unchanged.

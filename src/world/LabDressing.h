@@ -168,7 +168,10 @@ struct Dresser{
     // A slab edge broken off: tipped tiles, chunks of deck beneath, rebar and
     // cables hanging into the void. a..z run along the floor's top edge; `out` points off it.
     void fracture(vec3 a,vec3 z,vec3 out,float deck=.8f,bool cables=true){
-        vec3 d=z-a;float len=glm::length(d),yaw=yawOf(d);int count=std::max(1,(int)(len/1.7f));
+        vec3 d=z-a;float len=glm::length(d),yaw=yawOf(d);
+        // An exact 17 m edge must make ten fragments on SIMD and scalar builds.
+        // One rounded-down division otherwise changes every later random draw.
+        int count=std::max(1,(int)std::floor(len/1.7f+1e-4f));
         auto w=kit(Mat::CLINIC),con=kit(Mat::CONCRETE),m=kit(Mat::METAL);
         // (every draw in its own statement: argument order differs between compilers)
         for(int i=0;i<count;++i){float t=(i+rnd())/count;vec3 p=glm::mix(a,z,t);

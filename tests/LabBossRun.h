@@ -14,19 +14,40 @@ inline LabBossResult labBossRun(LevelData level,bool reactive,WeaponId weapon,fl
     const auto& tune=difficulty(DIFFICULTY_DEFAULT);e.maxHealth*=tune.health;e.health=e.maxHealth;
     WeaponUpgrades upgrades;WeaponState gun;gun.ammo=weaponMag(weapon,upgrades);
     ProjectileSystem projectiles;projectiles.floorY=level.lowestFloor();std::vector<Enemy> none;
-    SuccessorHazards hazards;LabBossResult result;float immunity=0,dashClock=0;int attempts=0;
+    SuccessorHazards hazards;LabBossResult result;float immunity=0,dashClock=0,dashMomentum=0,parryClock=0;int attempts=0;
     auto hurt=[&](float d){if(immunity>0)return;d*=tune.damage*a.damageScale;result.damage+=d;result.health-=d;result.lowest=std::min(result.lowest,result.health);immunity=.35f;};
     for(int frame=0;frame<60*280 && e.alive;++frame){
-        float t=frame*DT;result.seconds=t;immunity=std::max(0.f,immunity-DT);dashClock=std::max(0.f,dashClock-DT);
+        float t=frame*DT;result.seconds=t;immunity=std::max(0.f,immunity-DT);dashClock=std::max(0.f,dashClock-DT);dashMomentum=std::max(0.f,dashMomentum-DT);parryClock=std::max(0.f,parryClock-DT);
         auto to=e.position-p.position;to.y=0;float distance=glm::length(to);auto forward=distance>.01f?to/distance:glm::vec3{0,0,-1};glm::vec3 side{-forward.z,0,forward.x};
         auto move=side+(distance<9?-forward*.8f:distance>16?forward*.8f:glm::vec3{0});bool dodge=false;
         if(reactive){
             if(e.attack==AttackKind::SU_INCISION && e.telegraphTimer>0 && distance<10){move=-forward+side*.5f;dodge=true;}
             if((e.attack==AttackKind::SU_VECTOR&&e.telegraphTimer<=SuccessorState::TRACK_LOCK)||e.suBurst>0){auto d=e.suAim-e.suFrom;d.y=0;if(glm::length(d)>.1f&&machineryDistance(p.position,e.suFrom,e.suAim)<4){d=glm::normalize(d);glm::vec3 normal{-d.z,0,d.x};float sign=glm::dot(p.position-e.suFrom,normal)>=0?1.f:-1.f;move=normal*sign;dodge=true;}}
-            for(const auto& mark:hazards.marks)if(mark.wait>0 && mark.wait<.65f && machineryDistance(p.position,mark.a,mark.b)<mark.radius+2){move=p.position-mark.a;move.y=0;dodge=true;}
+            for(const auto& mark:hazards.marks)if(mark.wait>0 && mark.wait<.65f && machineryDistance(p.position,mark.a,mark.b)<mark.radius+2){
+                // Leave a Suture lane sideways. Running away from its endpoint
+                // can keep the rehearsal inside the damaging line for its full length.
+                auto lane=mark.b-mark.a;lane.y=0;
+                float length2=glm::dot(lane,lane);
+                auto nearest=mark.a+lane*(length2>.001f?glm::clamp(glm::dot(p.position-mark.a,lane)/length2,0.f,1.f):0.f);
+                move=p.position-nearest;move.y=0;
+                if(glm::length(move)<.01f)move=length2>.001f?glm::vec3{-lane.z,0,lane.x}:side;
+                dodge=true;
+            }
             if(((e.attack==AttackKind::SU_BREAKER && e.telegraphTimer>0 && e.telegraphTimer<=SuccessorState::TRACK_LOCK) || e.suAir>0) && glm::length(p.position-e.suAim)<7){move=p.position-e.suAim;move.y=0;dodge=true;}
             if(SuccessorState::white(e.attack) && e.telegraphTimer>0 && distance>4.5f){move=forward;dodge=false;}
-            if(e.parryWindow()&&distance<SuccessorState::PARRY_REACH){e.stagger(1.1f);++result.parries;result.health=std::min(100.f,result.health+8*tune.heal);hazards.clear();immunity=.5f;}
+            // The same once-per-second punch can reflect a visible volley.
+            // Keep this conservative: returned shots do not damage the boss
+            // in this rehearsal, so its gun-only time remains measurable.
+            if(parryClock<=0)for(auto& shot:projectiles.pool)if(shot.alive&&!shot.isPlayer){
+                auto offset=shot.position-(p.position+glm::vec3{0,1.7f,0});
+                float range=glm::length(offset),speed=glm::length(shot.velocity);
+                float reach=std::max(2.5f,1.f+speed*.22f)+shot.size*.3f;
+                if(range>.001f&&range<reach&&glm::dot(forward,offset/range)>.25f){
+                    shot.isPlayer=true;shot.parried=true;shot.velocity=forward*std::max(40.f,speed*2.f);
+                    parryClock=1.f;immunity=std::max(immunity,.5f);++result.parries;break;
+                }
+            }
+            if(parryClock<=0&&e.parryWindow()&&distance<SuccessorState::PARRY_REACH){e.stagger(1.1f);parryClock=1.f;++result.parries;result.health=std::min(100.f,result.health+8*tune.heal);hazards.clear();immunity=std::max(immunity,.5f);}
         }
         // Stay on the assessment floor; the controller can deliberately jump its
         // low perimeter rails, so a circling policy must also read the edge.
@@ -36,9 +57,9 @@ inline LabBossResult labBossRun(LevelData level,bool reactive,WeaponId weapon,fl
         if(p.position.z>centre.z+32 && move.z>0)move.z=-1;
         if(p.position.z<centre.z-32 && move.z<0)move.z=1;
         if(glm::length(move)>.01f)move=glm::normalize(move);
-        if(reactive&&dodge&&dashClock<=0){p.velocity=move*26.f;dashClock=1.2f;immunity=.15f;}
+        if(reactive&&dodge&&dashClock<=0){p.velocity=move*28.f;p.launched();dashMomentum=.30f;dashClock=1.2f;immunity=std::max(immunity,.15f);}
         Uint8 keys[SDL_NUM_SCANCODES]={};keys[SDL_SCANCODE_W]=1;if(reactive && e.attack==AttackKind::SU_REAP && e.telegraphTimer<.3f && distance<11)keys[SDL_SCANCODE_SPACE]=1;p.camera.yaw=glm::degrees(std::atan2(move.z,move.x));applyWater(p,level);
-        auto before=p.position;p.update(DT,keys,level.walls.data(),(int)level.walls.size(),false,&grid);
+        auto before=p.position;p.update(DT,keys,level.walls.data(),(int)level.walls.size(),dashMomentum>0,&grid);
         p.position.x=glm::clamp(p.position.x,a.bounds.min.x+1,a.bounds.max.x-1);p.position.z=glm::clamp(p.position.z,a.bounds.min.z+1,a.bounds.max.z-1);
         EnemyWorld w;w.bounds=a.bounds;w.walls=level.walls.data();w.wallCount=(int)level.walls.size();w.grid=&grid;w.tune=&tune;w.voidUnder=true;
         w.playerFeet=p.position;w.playerEye=p.position+glm::vec3{0,1.7f,0};w.playerVel=(p.position-before)/DT;
