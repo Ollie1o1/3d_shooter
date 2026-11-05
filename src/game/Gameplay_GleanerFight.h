@@ -323,7 +323,9 @@ inline void GameplayState::updateGleanerFight(float dt) {
     const glm::vec3 p = player.position;
     const float flat = glm::length(glm::vec2{p.x - g.pos.x, p.z - g.pos.z});
     // Through the whole fight, on its back and inside it, it roars now and then (the approach has its own)
-    if (gleanerPhase >= GleanerPhase::TENDER && !g.screaming() && !playerDead) {
+    // (not once its eye is torn out: from then on it is dying, then dead)
+    const bool dying = storyBossDown || tearT >= 0.f || summitEndT >= 0.f || quietT >= 0.f;
+    if (gleanerPhase >= GleanerPhase::TENDER && !g.screaming() && !playerDead && !dying) {
         gleanerScreamCd -= dt;
         if (gleanerScreamCd <= 0.f) { g.scream(); gleanerScreamCd = 28.f + 16.f * meteors.rnd(); }
     }
