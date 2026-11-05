@@ -46,7 +46,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
     if (settings) settings->crosshairColor(h.crosshairColor.r, h.crosshairColor.g, h.crosshairColor.b);
     h.viewProj = proj * view;
     h.damageNumbers = !settings || settings->damageNumbers;
-    h.finishHint = finishHint;
+    h.finishHint = finishHint; h.finishWhat = finishWhat;
     {   // attacks winding up out of sight (Gameplay_Feel.h): which way, how soon
         h.threatCount = 0;
         glm::vec3 fwd = player.camera.flatForward();

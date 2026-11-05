@@ -4,7 +4,7 @@ inline void Enemy::thinkSuccessor(float dt,const EnemyWorld& w,bool resolve){
     suOpen=std::max(0.f,suOpen-dt);suNodes=std::max(0.f,suNodes-dt);suEchoCool=std::max(0.f,suEchoCool-dt);suSince+=dt;
     int phase=health>maxHealth*.7f?1:health>maxHealth*.35f?2:3;
     if(phase!=suPhase){
-        suPhase=phase;suPause=phase==1?1.2f:.65f;suOpen=0;suBurst=suCross=suNodes=suAir=0;suStep=suDashes=suVolley=0;
+        suPhase=phase;suPause=phase==1?1.2f:.65f;suOpen=0;suBurst=suCross=suNodes=suAir=0;suStep=suDashes=suVolley=suSeverRows=0;
         attack=AttackKind::NONE;telegraphTimer=recoverTimer=0;velocity={0,0,0};++suEpoch;resolve=false;
         suCentre={(w.bounds.min.x+w.bounds.max.x)*.5f,w.bounds.min.y,(w.bounds.min.z+w.bounds.max.z)*.5f};
         ev.suPhaseStarted=phase;ev.suLine=phase==1?0:phase==2?3:4;
@@ -33,6 +33,9 @@ inline void Enemy::thinkSuccessor(float dt,const EnemyWorld& w,bool resolve){
     if(suPause>0){suPause=std::max(0.f,suPause-dt);velocity={0,0,0};suGait*=std::exp(-dt*12);integrate(dt,w);return;}
     if(suVolley>0){
         suVolleyT-=dt;if(suVolleyT<=0){--suVolley;suVolleyT=.22f;fireAt(w.playerEye,3,.5f,26,12,.65f);}
+    }
+    if(suSeverRows>0){
+        suSeverT-=dt;if(suSeverT<=0){--suSeverRows;suSeverT=.42f;fireAt(w.playerEye,suPhase==3?9:7,1.25f,22,11,.9f);ev.suImpact=true;}
     }
     if(suCross>0){
         suCross=std::max(0.f,suCross-dt);float t=1-suCross/CROSS_TIME;
@@ -66,7 +69,7 @@ inline void Enemy::thinkSuccessor(float dt,const EnemyWorld& w,bool resolve){
         bool melee=attack==AttackKind::SU_INCISION || attack==AttackKind::SU_THRUST || attack==AttackKind::SU_TRANSPOSE;
         if(!suLocked && telegraphTimer>TRACK_LOCK){
             if(attack==AttackKind::SU_VECTOR)vectorAim();
-            else if(attack!=AttackKind::SU_RECALL && attack!=AttackKind::SU_SUTURE){suAim=target(attack==AttackKind::SU_BREAKER?.25f:.13f);if(attack==AttackKind::SU_BREAKER)suAim=landAt(suAim);}
+            else if(attack!=AttackKind::SU_RECALL && attack!=AttackKind::SU_SUTURE && attack!=AttackKind::SU_SEVER){suAim=target(attack==AttackKind::SU_BREAKER?.25f:.13f);if(attack==AttackKind::SU_BREAKER)suAim=landAt(suAim);}
         }else if(!suLocked){suLocked=true;ev.suLock=true;}
         // A pursuing guard plants at the lock, then drives the committed strike. No last-frame
         // aim snapping: the marked target and facing then remain committed.
@@ -100,6 +103,15 @@ inline void Enemy::thinkSuccessor(float dt,const EnemyWorld& w,bool resolve){
             suAnchor[0]=suCentre+glm::vec3{-half,2,-16};suAnchor[1]=suCentre+glm::vec3{half,2,16};suNodeHp[0]=suNodeHp[1]=35;suNodes=2.3f;
             ev.suSuture=true;ev.suAt=suAnchor[0];ev.suTo=suAnchor[1];suOpen=.8f;recover(.75f);
         }else if(kind==AttackKind::SU_RECALL){ev.suRecall=true;ev.suAt=suAim;open(.8f);
+        }else if(kind==AttackKind::SU_LATTICE){
+            // Lines raked across the floor through where you stand: step between them, not away
+            ev.suLattice=true;ev.suAt=suAim;ev.suTo=position;ev.suRows=suPhase;open(.9f);
+        }else if(kind==AttackKind::SU_CASCADE){
+            // A rupture run along the floor at you (in phase 3 three of them, fanned): side-step it
+            ev.suCascade=true;ev.suAt=suAim;ev.suTo=position;ev.suRows=suPhase==3?3:suPhase==2?2:1;open(.85f);
+        }else if(kind==AttackKind::SU_SEVER){
+            fireAt(w.playerEye,suPhase==3?9:7,1.25f,22,11,.9f);ev.suImpact=true;
+            suSeverRows=suPhase>=2?1:0;suSeverT=.42f;open(1.f);
         }else if(kind==AttackKind::SU_PERFUSION){fireAt(w.playerEye,5,.72f,26,12,.7f);ev.suCore=true;
             suVolley=suPhase>=2?2:0;suVolleyT=.22f;open(1.f);}
         suLocked=false;integrate(dt,w);return;
@@ -107,14 +119,33 @@ inline void Enemy::thinkSuccessor(float dt,const EnemyWorld& w,bool resolve){
     if(recoverTimer>0){move(dir*(distance>8?1.f:-.15f)+glm::vec3{-dir.z,0,dir.x}*.65f,suPhase==3?13.f:11.f);return;}
     move(distance>5?dir+glm::vec3{-dir.z,0,dir.x}*.23f:glm::vec3{-dir.z,0,dir.x}*.65f,suPhase==3?26.f:22.f);
     if(!attackReady(dt))return;
-    static const int first[]={0,1,5,7,1,0,4},second[]={0,1,8,2,3,7,5,4},last[]={1,8,0,2,7,3,5,8,4};
-    int moveId=suPhase==1?first[suRotation++%7]:suPhase==2?second[suRotation++%8]:last[suRotation++%9];
+    // Rotations per phase. Ids: 0 INCISION 1 VECTOR 2 SUTURE 3 TRANSPOSE 4 RECALL 5 PERFUSION
+    // 6 LATTICE 7 REAP 8 BREAKER 9 CASCADE 10 SEVER
+    static const int first[]={0,1,5,7,6,10,0,4,9,1,5,6},second[]={0,1,8,9,6,2,10,3,7,5,6,4,9},last[]={1,8,0,9,6,2,10,7,3,5,9,8,4,6};
+    const int* rot=suPhase==1?first:suPhase==2?second:last;const int rotN=suPhase==1?12:suPhase==2?13:14;
+    int moveId=rot[suRotation++%rotN];
     if(health<maxHealth*.12f && !suFinal){suFinal=true;suFinalStep=0;ev.suLine=6;}
-    if(suFinalStep>=0){static const int finish[]={1,8,3,7};moveId=finish[suFinalStep++];if(suFinalStep>=4)suFinalStep=-1;}
-    if(std::fabs(w.playerFeet.y-position.y)>3)moveId=3;
-    else if(distance>42)moveId=suPhase>=2?3:1;
-    else if(distance>18 && moveId!=5 && moveId!=2)moveId=1;
-    else if(moveId==0 && distance>12)moveId=1;
+    if(suFinalStep>=0){static const int finish[]={9,1,8,6,3,7};moveId=finish[suFinalStep++];if(suFinalStep>=6)suFinalStep=-1;}
+    else{
+        // Range picks among what can reach, rather than one answer: close the melee
+        // strokes, far the floor patterns, shots and the crossing. Never the lunge twice.
+        static const int farPool[]={6,9,5,10,1,4,3,6,9,1,10,8};
+        static const int midPool[]={10,6,1,9,5,8,4};
+        const bool melee=moveId==0 || moveId==7;
+        // Off its level (a gallery above or below): cross to you, then something ranged while you're there.
+        // Very far: close the gap (the rush or the crossing), then a floor pattern, never two closers in a row.
+        const bool closedLast=suLastMove==1 || suLastMove==3;
+        if(std::fabs(w.playerFeet.y-position.y)>3){static const int up[]={4,10,5};moveId=closedLast?up[suRotation%3]:3;}
+        else if(distance>42){static const int vfar[]={9,6,10};moveId=closedLast?vfar[suRotation%3]:suPhase>=2&&suRotation%2?3:1;}
+        else if(distance>18 && (melee || (moveId==8 && distance>34)))moveId=farPool[suRotation%12];
+        else if(moveId==0 && distance>12)moveId=midPool[suRotation%7];
+        else if(moveId==7 && distance>14)moveId=midPool[(suRotation+3)%7];
+        if(moveId==suLastMove || (moveId==1 && suLastMove==3)){
+            static const int swap[]={6,10,9,5,4};moveId=swap[suRotation%5];
+            if(moveId==suLastMove)moveId=moveId==6?9:6;
+        }
+    }
+    suLastMove=moveId;
     suAim=target(.15f);
     // A low gallery cannot accommodate the full airborne silhouette. Cross
     // into that space instead of drawing the body through its solid slab.
@@ -136,5 +167,8 @@ inline void Enemy::thinkSuccessor(float dt,const EnemyWorld& w,bool resolve){
         suAim=landAt(target(.25f));
         if(blockedAt(suAim,w) || !supportedAt(suAim,w))suAim.y=w.bounds.min.y;
         startAttack(AttackKind::SU_BREAKER,.72f);
-    }else startAttack(AttackKind::SU_PERFUSION,.8f);
+    }else if(moveId==6){suAim=target(.1f);suLocked=false;startAttack(AttackKind::SU_LATTICE,suPhase==1?.8f:.68f);}
+    else if(moveId==9){suAim=target(.2f);suLocked=false;startAttack(AttackKind::SU_CASCADE,.7f);}
+    else if(moveId==10)startAttack(AttackKind::SU_SEVER,.62f);
+    else startAttack(AttackKind::SU_PERFUSION,.8f);
 }

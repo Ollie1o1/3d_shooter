@@ -97,7 +97,8 @@ int main(){
     CHECK(shelf.to(hadal+glm::vec3{-36,8,-8})&&shelf.to(hadal+glm::vec3{-36,8,-20})&&shelf.to(hadal+glm::vec3{-36,0,-36}),"Hadal's elevated shelf makes a complete alternate route with an exit ramp");
     StorySave save;save.chapter=3;save.checkpoint=8;save.labIntroSeen=true;save.labRoutes=(1u<<7)|(1u<<10);StorySave back;
     CHECK(back.parse(save.text()) && back.labIntroSeen && back.labRoutes==save.labRoutes,"lab intro and chosen observation contact survive save round-trip");
-    StorySave old;auto v1=old.text();v1.replace(v1.find(" 2\n"),3," 1\n");v1=v1.substr(0,v1.rfind('\n',v1.size()-2)+1);
+    StorySave old;auto v1=old.text();v1.replace(v1.find(" 3\n"),3," 1\n");for(int cut=0;cut<2;++cut)v1=v1.substr(0,v1.rfind('\n',v1.size()-2)+1);   // (v1: without v2's lab line and v3's sword line)
+    save.sword=true;CHECK(back.parse(save.text()) && back.sword,"OATHBREAKER, once pulled, survives a save round-trip");
     CHECK(back.parse(v1)&&back.chapter==1&&!back.labIntroSeen&&back.labRoutes==0,"version-one Story saves migrate without inventing lab progress");
     bool bodies=true;for(auto type:{EnemyType::PATIENT,EnemyType::GRAFTED,EnemyType::SUSPENDED,EnemyType::PHASED,EnemyType::SUCCESSOR}){auto e=ready(type);AABB head;std::vector<BoxInstance> boxes;rig::buildEnemy(e,0,boxes);bodies&=enemyfile::model(type)&&boxes.size()>40&&rig::headBox(e,head)&&head.max.y>e.height()*.85f;}
     CHECK(bodies,"five original articulated models load, animate and expose a head hitbox in the visible body");

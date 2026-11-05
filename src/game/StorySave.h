@@ -9,6 +9,7 @@ struct StorySave {
     int chapter = 1, checkpoint = 0, owned = 0;
     unsigned logs = 0, terminals = 0;
     bool labIntroSeen=false;unsigned labRoutes=0;
+    bool sword = false;   // OATHBREAKER pulled from its statue (v3)
     bool relayIsolated = false;
     bool grapple = false, bossDown = false, completed = false, wakeSeen = false;
     Progression prog;
@@ -17,7 +18,7 @@ struct StorySave {
 
     std::string text() const {
         std::ostringstream out;
-        out << std::setprecision(9) << "OVERDRIVE_STORY 2\n"
+        out << std::setprecision(9) << "OVERDRIVE_STORY 3\n"
             << chapter << ' ' << checkpoint << ' ' << owned << ' ' << logs << ' ' << terminals << ' '
             << relayIsolated << ' ' << grapple << ' ' << bossDown << ' ' << completed << ' ' << wakeSeen << '\n'
             << prog.level << ' ' << prog.xp << ' ' << prog.points << ' ' << prog.totalXp << '\n';
@@ -26,13 +27,14 @@ struct StorySave {
         out << elapsed << ' ' << style << ' ' << damage << ' ' << peak << ' '
             << kills << ' ' << shots << ' ' << hits << ' ' << deaths << '\n';
         out << labIntroSeen << ' ' << labRoutes << '\n';
+        out << sword << '\n';
         return out.str();
     }
     bool parse(const std::string& text) {
         StorySave candidate;
         std::istringstream in(text);
         std::string magic, extra; int version = 0;
-        if (!(in >> magic >> version) || magic != "OVERDRIVE_STORY" || (version != 1 && version != 2)) return false;
+        if (!(in >> magic >> version) || magic != "OVERDRIVE_STORY" || (version < 1 || version > 3)) return false;
         auto& s = candidate;
         if (!(in >> s.chapter >> s.checkpoint >> s.owned >> s.logs >> s.terminals
                  >> s.relayIsolated >> s.grapple >> s.bossDown >> s.completed >> s.wakeSeen
@@ -42,7 +44,8 @@ struct StorySave {
             for (int tier : u.tier) if (tier < 0 || tier > MAX_TIER) return false;
         }
         if (!(in >> s.elapsed >> s.style >> s.damage >> s.peak >> s.kills >> s.shots >> s.hits >> s.deaths)) return false;
-        if(version==2 && !(in >> s.labIntroSeen >> s.labRoutes))return false;
+        if(version>=2 && !(in >> s.labIntroSeen >> s.labRoutes))return false;
+        if(version>=3 && !(in >> s.sword))return false;
         if(in >> extra)return false;
         if (s.chapter < 1 || s.chapter > 5 || s.checkpoint < 0 || s.checkpoint > (s.chapter == 1 ? 8 : s.chapter==2?7:s.chapter==3?9:s.chapter==4?8:9)
             || s.labRoutes>4095

@@ -342,7 +342,7 @@ inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileR
             P.motion[E_ARMR]=RX(-1.6f*lift)*RZ(-.28f);
             P.motion[E_ARML]=RX(-.7f*lift)*RZ(.3f);
             P.motion[E_ELBOW_R]=RX(-.7f*(1-lift));
-            if(e.attack==AttackKind::SU_SUTURE||e.attack==AttackKind::SU_PERFUSION){P.motion[E_ARML]=RZ(1.2f*lift);P.motion[E_ARMR]=RZ(-1.2f*lift);}
+            if(e.attack==AttackKind::SU_SUTURE||e.attack==AttackKind::SU_PERFUSION||e.attack==AttackKind::SU_LATTICE){P.motion[E_ARML]=RZ(1.2f*lift);P.motion[E_ARMR]=RZ(-1.2f*lift);}
             if(e.attack==AttackKind::SU_VECTOR||e.attack==AttackKind::LAB_LUNGE){P.motion[E_TORSO]=RX(-.45f*lift);P.motion[E_ARML]=RX(.8f*lift);}
             if(e.attack==AttackKind::LAB_PRESS){P.motion[E_TORSO]=RX(-.25f*lift);P.motion[E_ARML]=RX(-2.2f*lift)*RZ(.4f);P.motion[E_ARMR]=RX(-2.2f*lift)*RZ(-.4f);}
             if(e.attack==AttackKind::LAB_BEAM){P.motion[E_ARML]=RZ(.9f+lift*.6f);P.motion[E_ARMR]=RZ(-.9f-lift*.6f);}

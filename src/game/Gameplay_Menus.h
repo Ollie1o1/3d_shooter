@@ -228,11 +228,12 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
     }
     if (story() && e.type == SDL_MOUSEWHEEL && storyArmed) {   // STORY: the wheel cycles only the guns he's found
         int n = activeWeapon;
+        if (swordOut) { holsterSword(); return; }   // (the wheel puts the sword away first, as outside the story)
         for (int k = 0; k < WEAPON_COUNT; ++k) { n = (n + (e.wheel.y > 0 ? WEAPON_COUNT - 1 : 1)) % WEAPON_COUNT; if (storyOwns(n)) break; }
         trySwitch(n);
         return;
     }
-    if (story() && key == SDLK_5) return;   // (no sword in the story yet)
+    if (story() && key == SDLK_5 && !swordAllowed()) return;   // (the sword only once pulled from its statue)
     if (story() && !storyArmed) {   // STORY, no gun yet: nothing to switch to, reload or draw
         if (e.type == SDL_MOUSEWHEEL || (key >= SDLK_1 && key <= SDLK_5)) return;
         if (e.type == SDL_KEYDOWN && (binds().pressed(Act::INSPECT, e) || binds().pressed(Act::RELOAD, e))) return;
@@ -247,7 +248,7 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
     // Grapple on its own button (Q by default, see Bindings.h). Right mouse is
     // only ever aim (rifles), so scoping and grappling never fight over it.
     if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT && !swordOut) pendingFire = true;   // (the sword reads the button itself)
-    if (kb.pressed(Act::GRAPPLE, e)) pendingGrapple = true;
+    if (kb.pressed(Act::GRAPPLE, e) && !tryTearEye()) pendingGrapple = true;   // (the hook pulls the fallen eye out too)
     if (e.type == SDL_MOUSEWHEEL && e.wheel.y != 0 && swordOut) holsterSword();
     else if (e.type == SDL_MOUSEWHEEL && e.wheel.y != 0)
         trySwitch((activeWeapon + (e.wheel.y > 0 ? WEAPON_COUNT - 1 : 1)) % WEAPON_COUNT);

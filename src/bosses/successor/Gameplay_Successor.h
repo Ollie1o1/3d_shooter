@@ -21,6 +21,32 @@ inline void GameplayState::successorEvents(Enemy& e,const EnemyEvents& ev){
         successorHazards.line(a,a+d*23.f,.8f);successorHazards.line(b,b-d*23.f,.8f);
     }
     if(ev.suRecall)successorHazards.circle(ev.suAt,1.05f,24);
+    if(ev.suLattice || ev.suCascade){
+        const int room=director.arena;const AABB* box=room>=0&&room<(int)level.arenas.size()?&level.arenas[room].bounds:nullptr;
+        auto keep=[&](glm::vec3 p){if(box)p=machineryClamp(p,*box,1.5f);p.y=e.floorY;return p;};
+        auto at=ev.suAt;at.y=e.floorY;glm::vec3 d{at.x-ev.suTo.x,0,at.z-ev.suTo.z};
+        d=glm::length(d)>.1f?glm::normalize(d):glm::vec3{0,0,1};const glm::vec3 side{-d.z,0,d.x};
+        if(ev.suLattice){
+            // First the rake along his line to you (step sideways between them), then, from phase 2,
+            // the crossing rake (step forward or back): a grid closing on where you stood
+            const float quick=ev.suRows==3?.85f:1.f;
+            for(float o:{-7.f,0.f,7.f})successorHazards.line(keep(at+side*o-d*26.f),keep(at+side*o+d*24.f),.6f*quick,.85f,20);
+            if(ev.suRows>=2)for(float o:{-7.f,0.f,7.f})successorHazards.line(keep(at+d*o-side*25.f),keep(at+d*o+side*25.f),1.25f*quick,.85f,20);
+            audio.playAt("anvil",e.position,95,SoundGroup::ENEMY,true);
+        }
+        if(ev.suCascade){
+            // The floor bursts in a line out from him, each a beat after the last: run across it
+            static const float fan1[]={0.f},fan2[]={-.2f,.2f},fan3[]={-.34f,0.f,.34f};
+            const float* fan=ev.suRows==3?fan3:ev.suRows==2?fan2:fan1;
+            glm::vec3 from=ev.suTo;from.y=e.floorY;
+            for(int r=0;r<ev.suRows;++r){
+                float c=std::cos(fan[r]),s=std::sin(fan[r]);glm::vec3 dir{d.x*c-d.z*s,0,d.x*s+d.z*c};
+                for(int k=0;k<11;++k)successorHazards.circle(keep(from+dir*(3.5f+k*3.8f)),.32f+k*.08f,20,0,2.1f,3.f);
+            }
+            fx.spawnShockwave(from+glm::vec3{0,.08f,0},4.f,{1.6f,.2f,.25f});
+            audio.playAt("anvil",e.position,105,SoundGroup::ENEMY,true);shake(.2f,.03f);
+        }
+    }
     if(ev.suEcho)successorHazards.circle(ev.suAt,1.05f,18,2);
     if(ev.suBreaker){
         successorHazards.circle(ev.suAt,.01f,32,3,4.8f,6.f);
@@ -86,6 +112,19 @@ inline void GameplayState::gatherSuccessor(std::vector<BoxInstance>& out){
                 else if(e.attack==AttackKind::SU_REAP)ring(e.position,9.f,color);
                 else if(e.attack==AttackKind::SU_BREAKER){ring(e.suAim,4.8f,color);line(e.suAim+vec3{0,.1f,0},e.suAim+vec3{0,4,0},.09f,color*.3f,color);}
                 else if(e.attack==AttackKind::SU_RECALL)ring(e.suAim,2.8f,color);
+                else if(e.attack==AttackKind::SU_LATTICE){
+                    auto d=e.suAim-e.position;d.y=0;float n=glm::length(d);if(n>.01f){d/=n;vec3 side{-d.z,0,d.x};auto at=e.suAim;at.y=e.floorY;
+                        float u=e.telegraphProgress();for(float o:{-7.f,0.f,7.f})line(at+side*o-d*8.f*u+vec3{0,.06f,0},at+side*o+d*8.f*u+vec3{0,.06f,0},.07f,color*.3f,color);}
+                }
+                else if(e.attack==AttackKind::SU_CASCADE){
+                    auto d=e.suAim-e.position;d.y=0;float n=glm::length(d);if(n>.01f){d/=n;auto a=e.position;a.y=e.floorY+.06f;
+                        line(a+d*3.f,a+d*(3.f+38.f*e.telegraphProgress()),.16f,color*.3f,color);}
+                    ring(e.position,2.4f,color*.8f);
+                }
+                else if(e.attack==AttackKind::SU_SEVER){
+                    float r=3.2f+e.telegraphProgress()*1.5f;
+                    for(int k=0;k<16;++k){float a=e.yaw-.65f+k*.081f,b=a+.081f;line(e.position+vec3{std::sin(a)*r,2.4f,std::cos(a)*r},e.position+vec3{std::sin(b)*r,2.4f,std::cos(b)*r},.08f,color*.3f,color);}
+                }
                 else{ring(e.position,1.2f,color*.6f);line(e.position+vec3{.6f,2,.2f},e.position+vec3{.6f,3.1f,.2f},.09f,color,color);}
             }
             if(e.suAir>0)ring(e.suAim,4.8f,{1.8f,.1f,.22f});

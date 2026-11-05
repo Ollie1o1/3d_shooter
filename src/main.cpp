@@ -131,6 +131,67 @@ struct App {
             }break;
         }
     }
+    // --verify-tear: Chapter 4's end through the real game. Up on the roof, the eye brought down,
+    // walked up to on foot (W held, real physics), torn out with E, then the fall, the quiet and the portal.
+    bool verifyTear=false;int tearStage=0,tearFrames=0,tearStageFrames=0,tearCorner=0,tearCornerAt=0;float tearEyeX=0.f;
+    void checkTearRuntime() {
+        if(!verifyTear)return;
+        auto* g=dynamic_cast<GameplayState*>(currentState.get());
+        auto fail=[&](const char* reason){std::fprintf(stderr,"TEAR RUNTIME FAIL (stage %d): %s\n",tearStage,reason);verifyExit=1;running=false;};
+        auto next=[&](){++tearStage;tearStageFrames=0;};
+        auto press=[&](SDL_Keycode key){SDL_Event e{};e.type=SDL_KEYDOWN;e.key.keysym.sym=key;e.key.keysym.scancode=SDL_GetScancodeFromKey(key);currentState->handleEvent(e);};
+        auto walkTo=[&](glm::vec3 at){glm::vec2 d{at.x-g->player.position.x,at.z-g->player.position.z};
+            g->player.camera.yaw=glm::degrees(std::atan2(d.y,d.x));g->player.camera.pitch=-10.f;g_devKeys[SDL_SCANCODE_W]=glm::length(d)>.5f;};
+        ++tearFrames;++tearStageFrames;
+        if(tearFrames>30*420){fail("timed out");return;}
+        if(tearStage<6&&!g){fail("expected gameplay");return;}
+        using GP=GameplayState::GleanerPhase;
+        switch(tearStage){
+        case 0:   // on the roof: the eye wakes
+            if(g->plain()&&g->gleanerPhase==GP::SUMMIT&&g->eye.state!=EyeCore::DORMANT){
+                std::fprintf(stderr,"  roof x %.1f..%.1f z %.1f..%.1f y %.1f; player %.1f %.1f %.1f\n",g->deckLo.x,g->deckHi.x,g->deckLo.y,g->deckHi.y,g->deckY,g->player.position.x,g->player.position.y,g->player.position.z);next();}
+            else if(tearStageFrames>30*40)fail("the eye never woke on the roof");
+            break;
+        case 1:   // bring it down (each third ends in a falter of its own: keep at it)
+            if(g->eye.fighting()){g->eye.hurt(400.f,2);if(tearEyeX!=0.f)g->eye.pos.x=tearEyeX;}
+            if(g->playerDead){fail("died on the roof (god mode)");return;}
+            if(g->eye.fallen()){std::fprintf(stderr,"  eye fell to %.1f %.1f %.1f\n",g->eye.to.x,g->eye.to.y,g->eye.to.z);g_godMode=false;next();}   // (mortal from here: nothing left should kill you)
+            else if(tearStageFrames>30*90)fail("the eye could not be brought down");
+            break;
+        case 2:   // walk up to it on foot until E takes it (it says so under the crosshair)
+            if(g->playerDead){fail("killed walking up to the fallen eye");return;}
+            if(tearStageFrames==1||(tearCorner<4&&g->eye.canTear(g->player.position))){   // first from each corner of the roof (no tearing yet)
+                if(tearStageFrames>1)std::fprintf(stderr,"  corner %d: in reach after %.1fs\n",tearCorner,(tearStageFrames-tearCornerAt)/30.f);
+                if(tearCorner<4){const float m=4.f;g->player.position={tearCorner%2?g->deckHi.x-m:g->deckLo.x+m,g->deckY+.2f,tearCorner/2?g->deckHi.y-m:g->deckLo.y+m};
+                    g->player.velocity={0,0,0};g->player.camera.position=g->player.position+glm::vec3{0,1.7f,0};++tearCorner;tearCornerAt=tearStageFrames;break;}
+            }
+            if(tearStageFrames-tearCornerAt>30*45){
+                std::fprintf(stderr,"  stuck from corner %d at %.1f %.1f %.1f, eye %.1f %.1f %.1f\n",tearCorner-1,g->player.position.x,g->player.position.y,g->player.position.z,g->eye.pos.x,g->eye.pos.y,g->eye.pos.z);
+                {AABB cv[3];int n=g->summitCover(cv);for(int c=0;c<n;++c)std::fprintf(stderr,"    chimney %d: x %.1f..%.1f z %.1f..%.1f y %.1f..%.1f\n",c,cv[c].min.x,cv[c].max.x,cv[c].min.z,cv[c].max.z,cv[c].min.y,cv[c].max.y);
+                 const auto p=g->player.position;for(size_t k=0;k<g->level.walls.size();++k){const auto& b=g->level.walls[k].box;
+                    if(p.x>b.min.x-1.5f&&p.x<b.max.x+1.5f&&p.z>b.min.z-1.5f&&p.z<b.max.z+1.5f&&p.y+1.8f>b.min.y&&p.y<b.max.y)std::fprintf(stderr,"    wall %zu: %.1f %.1f %.1f .. %.1f %.1f %.1f%s\n",k,b.min.x,b.min.y,b.min.z,b.max.x,b.max.y,b.max.z,(int)k>=g->deckWallsFrom?" (deck)":"");}}
+                fail("could not walk into reach of the fallen eye");return;}
+            walkTo(g->eye.pos);
+            if(getenv("TEAR_TRACE")&&tearStageFrames%15==0)std::fprintf(stderr,"    t %.1f pos %.1f %.1f %.1f vel %.1f %.1f %.1f ground %d W %d\n",tearStageFrames/30.f,g->player.position.x,g->player.position.y,g->player.position.z,g->player.velocity.x,g->player.velocity.y,g->player.velocity.z,(int)g->player.onGround,(int)g_devKeys[SDL_SCANCODE_W]);
+            if(tearCorner>=4&&g->eye.canTear(g->player.position)){g_devKeys[SDL_SCANCODE_W]=0;press(SDLK_e);
+                if(g->tearT<0.f){fail("E in reach did not start the tearing");return;}
+                if(std::string(g->finishWhat)!="TEAR IT OUT"){fail("no TEAR IT OUT prompt in reach");return;}
+                std::fprintf(stderr,"  tore it out from %.1f %.1f %.1f after %.1fs walking\n",g->player.position.x,g->player.position.y,g->player.position.z,tearStageFrames/30.f);next();}
+            break;
+        case 3:   // the tearing and the fall: then the quiet, back on the plain
+            if(g->quietT>=0.f){std::fprintf(stderr,"  the quiet: on the plain at %.1f %.1f %.1f\n",g->player.position.x,g->player.position.y,g->player.position.z);next();}
+            else if(tearStageFrames>30*40)fail("the tearing/fall never reached the quiet");
+            break;
+        case 4:   // the portal opens: walk into it
+            if(g->quietT>=finale::OPEN1){walkTo(g->quietPortal());if(g->quietThrough>=0.f){g_devKeys[SDL_SCANCODE_W]=0;next();}}
+            if(tearStageFrames>30*60){fail("never reached the portal");return;}
+            break;
+        case 5:   // through: the chapter's end
+            if(g->storyEndT>=0.f){std::fprintf(stderr,"TEAR RUNTIME PASS: eye down, walked up, torn out, fell, quiet, portal, chapter end\n");running=false;}
+            else if(tearStageFrames>30*30)fail("the portal never ended the chapter");
+            break;
+        }
+    }
     int         shotFrames = 0;
     std::string shotPath;
     // --record FRAMES SKIP PREFIX: footage. Every frame advances 1/30 s; after
@@ -395,7 +456,7 @@ struct App {
 #endif
         if (currentState) {
             currentState->update(frameDt);
-            checkStoryRuntime();
+            checkStoryRuntime();checkTearRuntime();
             ftLap.to(frametimer::UPDATE);
             display::bind();
             currentState->render();
@@ -682,6 +743,7 @@ int main(int argc, char* argv[]) {
         if (arg == "--training") {app->mode=GameMode::TRAINING;app->pending=App::NextState::Game;g_practice=true;}
         if (arg == "--continue") {app->mode=GameMode::STORY;app->pending=App::NextState::Game;g_continueStory=true;}
         if (arg == "--story") { app->mode = GameMode::STORY; app->pending = App::NextState::Game; }   // STORY: CHAPTER 1 (the wake-up first)
+        if(arg=="--verify-tear") {if(i+1<argc&&argv[i+1][0]!='-')app->tearEyeX=(float)std::atof(argv[++i]);app->verifyTear=true;g_storyChapter=4;g_devOverlay="plainsummit";app->mode=GameMode::STORY;app->pending=App::NextState::Game;g_fixedDt=1.0/30;g_devNoMouse=true;g_godMode=true;}
         if(arg=="--verify-story") {app->verifyStory=true;g_storyChapter=1;app->mode=GameMode::STORY;app->pending=App::NextState::Game;g_fixedDt=1.0/30;g_devNoMouse=true;g_godMode=true;}
         if(arg=="--story2") {g_storyChapter=2;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}
         if(arg=="--story3") {g_storyChapter=3;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}

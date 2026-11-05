@@ -461,7 +461,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         return staggered() ? 2.f : 0.5f;
     }
     void stagger(float t) {
-        if(type==EnemyType::SUCCESSOR){suBurst=suCross=suNodes=suAir=0;suStep=suDashes=suVolley=0;suFinalStep=-1;suSince=9;suOpen=t;suLocked=false;++suEpoch;}
+        if(type==EnemyType::SUCCESSOR){suBurst=suCross=suNodes=suAir=0;suStep=suDashes=suVolley=suSeverRows=0;suFinalStep=-1;suSince=9;suOpen=t;suLocked=false;++suEpoch;}
         if(labBody()){labBeam=labCross=dashTimer=0.f;labOpen=std::max(labOpen,.8f);}
         ballDrive=ballTether=ballVolleyT=0;ballVolley=0;ballFollow=AttackKind::NONE;
         sortRush=sortFire=0;sortVolley=0;sortNext=AttackKind::NONE;sortFollowups=0;sortLocked=sortDropCued=false;

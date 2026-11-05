@@ -208,7 +208,10 @@ inline void GameplayState::updateFeel(float dt) {
     driveCoolPrev = styleSystem.driveCool;
     killFx = std::max(0.f, killFx - dt / 0.2f);
     int fi = !playerDead && punchCooldown <= 0.f ? findFinisher() : -1;
-    float hint = fi >= 0 ? 1.f : 0.f;
+    // (Chapter 4's end: the fallen eye in reach says so too, and what to press for it)
+    const bool tearReach = plain() && gleanerPhase == GleanerPhase::SUMMIT && tearT < 0.f && summitEndT < 0.f && !playerDead && eye.canTear(player.position);
+    finishWhat = tearReach ? "TEAR IT OUT" : "FINISH";
+    float hint = fi >= 0 || tearReach ? 1.f : 0.f;
     finishHint += (hint - finishHint) * (1.f - std::exp(-dt * 18.f));
     finishCueCd = std::max(0.f, finishCueCd - dt);
     if (fi >= 0) teach(TEACH_FINISH);

@@ -8,7 +8,7 @@ inline void GameplayState::saveStoryProgress() {
     s.chapter = level.story.chapter; s.checkpoint = storyCheckpoint;
     s.owned = storyOwned; s.logs = storyLogsSeen; s.terminals = storyTerminalsSeen;
     s.relayIsolated = storyRelayIsolated; s.grapple = storyGrapple; s.bossDown = storyBossDown;
-    s.completed = storyEndT >= 0; s.wakeSeen = wakeSeen;
+    s.completed = storyEndT >= 0; s.wakeSeen = wakeSeen; s.sword = storySword;
     s.prog = prog; s.elapsed = elapsedTime;
     s.style = bankedStyle + styleSystem.earned; s.damage = bankedDamage + styleSystem.damageTaken;
     s.peak = peakStyle; s.kills = totalKills; s.shots = totalShots; s.hits = totalHits; s.deaths = deaths;
