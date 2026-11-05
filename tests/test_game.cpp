@@ -232,13 +232,15 @@ int main() {
         CHECK(L.arenas.size() == 5, "five arenas");
         // Act I as built before the Act II split: nothing added, nothing lost
         // (since: 60 boxes dressed with props made in Blender, and the CORE's and SANCTUM's pillar rings, 24 neon
-        // boxes, now lit bands on those props)
+        // boxes, now lit bands on those props; then the far distance and dressing from Blender (arena_dressing_build.py):
+        // 245 boxes of palms, chains, peaks, towers, colossi and spires and their 43 lit bands are 87 placed models,
+        // and eight solids keep you out of the Sanctum's braziers)
         // (the code's level: assets/levels/act1.json, made in Blender, goes on top - LevelLayout.h)
         g_skipLayout = true;
         LevelData raw = buildLevel();
         g_skipLayout = false;
-        CHECK(raw.walls.size() == 256 && raw.props.size() == 274 && raw.neon.size() == 272 && raw.shapes.size() == 0 &&
-              raw.floors.size() == 13 && raw.doors.size() == 8 && raw.pads.size() == 29 && raw.movers.size() == 13 && raw.models.size() == 60,
+        CHECK(raw.walls.size() == 264 && raw.props.size() == 29 && raw.neon.size() == 229 && raw.shapes.size() == 0 &&
+              raw.floors.size() == 13 && raw.doors.size() == 8 && raw.pads.size() == 29 && raw.movers.size() == 13 && raw.models.size() == 147,
               "buildAct1 builds exactly what buildLevel did");
         CHECK(L.destructibles.size() == 4 && L.walls.size() == raw.walls.size() + L.destructibles.size(),
               "the yard's layout from Blender adds its four pieces that break (two pillars, two stacks of crates), after the code's walls");
@@ -5558,7 +5560,7 @@ int main() {
             onSurface = onSurface && surf; underSomething = underSomething && owner;
         }
         std::printf("      %zu contact shadows\n", G.contact.size() / 6);
-        CHECK(G.contact.size() > 150 * 6 && onSurface && underSomething, "every contact shadow lies on a surface, under what stands on it");
+        CHECK(G.contact.size() > 120 * 6 && onSurface && underSomething, "every contact shadow lies on a surface, under what stands on it");
         // A bridge in the air isn't darkened at its base like a wall standing on the ground
         Support sup;
         CHECK(!findSupport(L, AABB{{-19.f, 4.6f, -26.f}, {19.f, 5.f, -23.f}}, nullptr, sup) &&

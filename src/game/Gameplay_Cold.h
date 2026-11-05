@@ -98,24 +98,38 @@ inline void GameplayState::renderColdIce(const glm::mat4& view, const glm::mat4&
     labGlassShader.setVec3("uOrigin", vec3{0.f}); labGlassShader.setVec3("uNormal", vec3{0.f, 1.f, 0.f});
     labGlassShader.setFloat("uMode", 5.f); labGlassShader.setFloat("uAnomaly", 0.f);
     glDisable(GL_CULL_FACE); glDepthMask(GL_FALSE); glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glBindVertexArray(waterVAO); glBindBuffer(GL_ARRAY_BUFFER, waterVBO);
-    for (float x = cold::SEA_X0; x < cold::FAR_GROUND - 0.5f; x += cold::STRIP) {
-        const float x1 = x + cold::STRIP, y = 0.f;
+    // The sea never changes: its quads are built once into a buffer of their own and drawn in one call
+    // (one small upload and one draw per quad stalled the GPU on every one of them: ~25 ms a frame)
+    static GLuint iceVAO = 0, iceVBO = 0;
+    static GLsizei iceVerts = 0;
+    if (!iceVAO) {
+        std::vector<vec3> v;
         const AABB H = cold::sinkhole();
         auto quad = [&](float qx0, float qx1, float z0, float z1) {
             if (qx1 - qx0 < 0.01f || z1 - z0 < 0.01f) return;
-            const vec3 v[] = {{qx0, y, z0}, {qx1, y, z1}, {qx1, y, z0}, {qx0, y, z0}, {qx0, y, z1}, {qx1, y, z1}};
-            glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(v), v);
-            glDrawArrays(GL_TRIANGLES, 0, 6);
+            v.insert(v.end(), {{qx0, 0.f, z0}, {qx1, 0.f, z1}, {qx1, 0.f, z0}, {qx0, 0.f, z0}, {qx0, 0.f, z1}, {qx1, 0.f, z1}});
         };
-        const float zN = cold::SEA_Z1, zS = cold::edgeZ(x);
-        if (x1 <= H.min.x || x >= H.max.x) { quad(x, x1, zN, zS); continue; }
-        // (round the sinkhole: north of it, south of it, and the slivers beside it)
-        quad(std::max(x, H.min.x), std::min(x1, H.max.x), zN, H.min.z);
-        quad(std::max(x, H.min.x), std::min(x1, H.max.x), H.max.z, zS);
-        quad(x, std::max(x, H.min.x), zN, zS);
-        quad(std::min(x1, H.max.x), x1, zN, zS);
+        for (float x = cold::SEA_X0; x < cold::FAR_GROUND - 0.5f; x += cold::STRIP) {
+            const float x1 = x + cold::STRIP;
+            const float zN = cold::SEA_Z1, zS = cold::edgeZ(x);
+            if (x1 <= H.min.x || x >= H.max.x) { quad(x, x1, zN, zS); continue; }
+            // (round the sinkhole: north of it, south of it, and the slivers beside it)
+            quad(std::max(x, H.min.x), std::min(x1, H.max.x), zN, H.min.z);
+            quad(std::max(x, H.min.x), std::min(x1, H.max.x), H.max.z, zS);
+            quad(x, std::max(x, H.min.x), zN, zS);
+            quad(std::min(x1, H.max.x), x1, zN, zS);
+        }
+        glGenVertexArrays(1, &iceVAO);
+        glGenBuffers(1, &iceVBO);
+        glBindVertexArray(iceVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, iceVBO);
+        glBufferData(GL_ARRAY_BUFFER, v.size() * sizeof(vec3), v.data(), GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(vec3), (void*)0);
+        iceVerts = (GLsizei)v.size();
     }
+    glBindVertexArray(iceVAO);
+    glDrawArrays(GL_TRIANGLES, 0, iceVerts);
     glBindVertexArray(0);
     glDepthMask(GL_TRUE); glDisable(GL_BLEND); glEnable(GL_CULL_FACE);
 }

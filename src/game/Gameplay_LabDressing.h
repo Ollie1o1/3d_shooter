@@ -178,7 +178,8 @@ inline void GameplayState::renderLabAtmosphere(const glm::mat4& view,const glm::
     labGlassShader.setVec3("uOrigin",vec3{0});labGlassShader.setVec3("uNormal",vec3{0,0,1});labGlassShader.setFloat("uAnomaly",0);
     glDisable(GL_CULL_FACE);glDepthMask(GL_FALSE);glEnable(GL_BLEND);glBlendFunc(GL_ONE,GL_ONE);
     glBindVertexArray(waterVAO);glBindBuffer(GL_ARRAY_BUFFER,waterVBO);
-    auto quad=[&](vec3 a,vec3 b,vec3 d,vec3 e){const vec3 v[]={a,b,d,a,d,e};glBufferSubData(GL_ARRAY_BUFFER,0,sizeof(v),v);glDrawArrays(GL_TRIANGLES,0,6);};
+    int slot=0;   // (each quad its own slot of the buffer: rewriting one the GPU is still drawing would stall it)
+    auto quad=[&](vec3 a,vec3 b,vec3 d,vec3 e){if(slot>=MAX_WATER)return;const vec3 v[]={a,b,d,a,d,e};glBufferSubData(GL_ARRAY_BUFFER,slot*sizeof(v),sizeof(v),v);glDrawArrays(GL_TRIANGLES,slot*6,6);++slot;};
     labGlassShader.setFloat("uMode",3);
     for(const auto& beam:st.labBeams){
         if(!labfx::near(room,beam.room))continue;
