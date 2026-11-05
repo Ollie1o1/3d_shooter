@@ -74,6 +74,8 @@ inline LevelData buildGauntlet() {
 
     // Far ground below everything
     L.floors.push_back({-240.f, -320.f, 110.f, 30.f, -0.3f, {0.10f,0.09f,0.11f}});
+    L.floors.push_back({110.f, -420.f, 300.f, 30.f, -0.3f, {0.10f,0.09f,0.11f}});    // (under the Tower's skyline)
+    L.floors.push_back({-240.f, -420.f, 110.f, -320.f, -0.3f, {0.10f,0.09f,0.11f}});
 
     auto theme = [](vec3 zen, vec3 hor, vec3 gnd, vec3 sunDir, vec3 sunCol, float sunSize, float stripes,
                     vec3 mtn, float stars, vec3 lightDir, vec3 lightCol, vec3 skyA, vec3 gndA, vec3 fog, float fogD) {
@@ -915,6 +917,10 @@ inline LevelData buildGauntlet() {
         B.doorway(true, -52, -47, -284, -283, 5.f, 4.f, screen);
         B.doorway(true, -52, -47, -244, -243, 5.f, 4.f, screen);
         wall(-80,14,-284, -18,15,-243, dark);
+        for (float x : {-69.f, -49.f, -29.f}) {   // pipe runs along both long walls, over the galleries (Blender: 20 m a piece)
+            model("wall_pipes", {x, 10.f, -282.95f}, 0.f, 1.25f);
+            model("wall_pipes", {x, 10.f, -244.05f}, 180.f, 1.25f);
+        }
         L.floors.push_back({-79.f, -283.f, -19.f, -244.f, 0.f, {0.24f,0.22f,0.21f}});
         // Galleries along both long walls, pads up to them
         wall(-79,4.6f,-283, -19,5,-278, dark); wall(-79,4.6f,-249, -19,5,-244, dark);
@@ -1027,6 +1033,13 @@ inline LevelData buildGauntlet() {
         model("banner", {TX, 25.4f, TZ - 6.15f}, 180.f); model("banner", {TX, 25.4f, TZ + 6.15f}, 0.f);   // the keep's banners, over the top balcony
         model("banner", {TX + 6.15f, 25.4f, TZ}, 90.f);  model("banner", {TX - 6.15f, 25.4f, TZ}, -90.f);
         for (float cx : {24.5f, 87.5f}) for (float cz : {-295.5f, -231.5f}) model("brazier", {cx, 14.f, cz}, 0.f);   // fires on the turrets
+        // A city to the east and north of the courtyard, a few windows still lit (Blender: arena_dressing_build.py)
+        {
+            const float city[][4] = {{140,-230,0,1.3f},{150,-270,1,1.1f},{165,-310,0,1.6f},{132,-345,1,1.0f},{185,-250,1,1.4f},
+                                     {205,-290,0,1.9f},{195,-205,0,1.2f},{230,-330,1,1.6f},{110,-380,0,1.5f},{60,-370,1,1.2f},
+                                     {20,-395,0,1.7f},{85,-410,1,1.3f},{170,-380,0,2.0f},{240,-240,1,1.5f}};
+            for (auto& c : city) model(c[2] > 0.5f ? "core_tower_b" : "core_tower_a", {c[0], 0.f, c[1]}, c[0] * 3.f + c[1], c[3]);
+        }
         a.extraZones = {t6};
 
         L.floors.push_back({21.f, -299.f, 91.f, -228.f, 0.f, {0.24f,0.22f,0.28f}});

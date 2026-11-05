@@ -144,6 +144,11 @@ public:
             glDrawArrays(GL_TRIANGLES, 0, indexCount);
         glBindVertexArray(0);
     }
+    // Part of the index buffer: `count` indices from `first` (the VAO already bound: bind() once, then these)
+    void bind() const { glBindVertexArray(vao); }
+    void drawRange(GLsizei first, GLsizei count) const {
+        glDrawElements(GL_TRIANGLES, count, GL_UNSIGNED_INT, (void*)(sizeof(unsigned int) * (size_t)first));
+    }
 
 private:
     void destroy() {

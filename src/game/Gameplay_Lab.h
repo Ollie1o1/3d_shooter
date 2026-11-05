@@ -157,10 +157,12 @@ inline void GameplayState::renderLabGlass(const glm::mat4& view,const glm::mat4&
     auto c=lab::centre(room);labGlassShader.setVec3("uOrigin",c);
     glDisable(GL_CULL_FACE);glDepthMask(GL_FALSE);glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
     glBindVertexArray(waterVAO);glBindBuffer(GL_ARRAY_BUFFER,waterVBO);
+    int slot=0;
     auto quad=[&](vec3 a,vec3 b,vec3 d,vec3 e,vec3 normal,float mode,float anomaly){
-        const vec3 v[]={a,b,d,a,d,e};glBufferSubData(GL_ARRAY_BUFFER,0,sizeof(v),v);
+        if(slot>=MAX_WATER)return;   // (each quad its own slot: rewriting one the GPU is still drawing would stall it)
+        const vec3 v[]={a,b,d,a,d,e};glBufferSubData(GL_ARRAY_BUFFER,slot*sizeof(v),sizeof(v),v);
         labGlassShader.setVec3("uNormal",normal);labGlassShader.setFloat("uMode",mode);labGlassShader.setFloat("uAnomaly",anomaly);
-        glDrawArrays(GL_TRIANGLES,0,6);
+        glDrawArrays(GL_TRIANGLES,slot*6,6);++slot;
     };
     if(room==0){
         float anomaly=labIntro.active()?labIntro.windowChange():1.f;

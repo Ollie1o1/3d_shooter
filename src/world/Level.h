@@ -1065,27 +1065,14 @@ inline void buildAct1(LevelBuilder& B) {
     auto same = &LevelBuilder::same;
     using Mark = LevelBuilder::Mark;
     auto paint = [&](Mark m, Mat floorMat, auto pick) { B.paint(m, floorMat, [&](vec3 c, Mat) { return pick(c); }); };
-    // A blocky synthwave palm: a leaning trunk and drooping fronds
+    // A date palm (made in Blender: tools/blender/arena_dressing_build.py), `h` metres tall, its trunk
+    // curving off toward `lean` (its sign: which way; its size: how far round it turns)
     auto palm = [&](float x, float z, float h, float lean) {
-        vec3 trunk{0.20f, 0.09f, 0.13f}, leaf{0.09f, 0.04f, 0.10f};
-        int segs = (int)(h / 1.5f);
-        float tx = x;
-        for (int i = 0; i < segs; ++i) {
-            prop(tx - 0.3f, i * 1.5f, z - 0.3f, tx + 0.3f, (i + 1) * 1.5f, z + 0.3f, trunk);
-            tx += lean * (0.1f + 0.05f * i);
-        }
-        float top = segs * 1.5f;
-        prop(tx - 0.6f, top - 0.2f, z - 0.6f, tx + 0.6f, top + 0.4f, z + 0.6f, leaf);
-        for (int s = -1; s <= 1; s += 2) {
-            prop(tx, top, z - 0.35f, tx + s * 2.6f, top + 0.2f, z + 0.35f, leaf);
-            prop(tx + s * 2.4f, top - 1.0f, z - 0.3f, tx + s * 3.6f, top, z + 0.3f, leaf);
-            prop(tx - 0.35f, top, z, tx + 0.35f, top + 0.2f, z + s * 2.6f, leaf);
-            prop(tx - 0.3f, top - 1.0f, z + s * 2.4f, tx + 0.3f, top, z + s * 3.6f, leaf);
-        }
+        place("yard_palm", {x, 0.f, z}, (lean > 0.f ? 0.f : 180.f) + lean * 70.f + x * 3.f, h / 10.f);
     };
 
     // Ground outside the arenas (seen from wall tops), just under the arena floors
-    L.floors.push_back({-100.f, -320.f, 100.f, 100.f, -0.3f, {0.12f, 0.07f, 0.08f}});
+    L.floors.push_back({-260.f, -320.f, 260.f, 260.f, -0.3f, {0.12f, 0.07f, 0.08f}});   // (out to the far mesas)
 
     // =========================================================================
     // ARENA 1 — SUNSET YARD
@@ -1201,6 +1188,14 @@ inline void buildAct1(LevelBuilder& B) {
         place("skyline_town", {90.f, 0.f, 14.f}, -90.f, 1.6f);
         place("skyline_town", {-30.f, 0.f, 88.f}, 180.f, 1.4f);
         place("skyline_town", {44.f, 0.f, 96.f}, 165.f, 1.7f);
+        // Buttes on the horizon past the town, against the sunset (Blender: arena_dressing_build.py)
+        place("yard_mesa", {-185.f, 0.f, -12.f}, 30.f, 1.3f);
+        place("yard_mesa", {200.f, 0.f, 40.f}, -60.f, 1.5f);
+        place("yard_mesa", {-130.f, 0.f, 175.f}, 160.f, 1.2f);
+        place("yard_mesa", {75.f, 0.f, 215.f}, 200.f, 1.7f);
+        place("yard_mesa", {215.f, 0.f, -95.f}, 15.f, 1.1f);
+        // Strings of lamps from the obelisk out to the rooftops and across the arms (lit as the sun goes)
+        place("yard_festoon", {0.f, 0.f, 0.f});
 
         a.groundSpawns = {{-12,0,-20},{12,0,-20},{0,0,-19},{-24,0,-10},{24,0,-10},{-24,0,10},{24,0,10},
                           {-24.5f,5.05f,-27},{24.5f,5.05f,-27},{-27,5.05f,24.5f},{27,5.05f,24.5f},
@@ -1225,7 +1220,7 @@ inline void buildAct1(LevelBuilder& B) {
             {0.34f,0.22f,0.36f}, {0.16f,0.09f,0.08f},
             {0.58f,0.30f,0.30f}, 0.006f };
         paint(m0, Mat::ADOBE, [&](vec3 c) {
-            if (same(c, crate) || same(c, {0.20f, 0.09f, 0.13f}) || same(c, {0.09f, 0.04f, 0.10f})) return Mat::WOOD;   // crates, stalls, palms
+            if (same(c, crate)) return Mat::WOOD;   // crates, stalls
             return same(c, stone) ? Mat::MARBLE : Mat::ADOBE;
         });
         L.arenas.push_back(std::move(a));
@@ -1322,10 +1317,16 @@ inline void buildAct1(LevelBuilder& B) {
         wall(-22,0,-84, -18,1.4f,-80,  iron);
         wall( 18,0,-84,  22,1.4f,-80,  iron);
 
-        // Hanging chains from the roof (visual)
-        for (float x : {-18.f, 18.f, -8.f, 8.f})
+        // The roof's trusses, lamps hanging from them, and chains and hooks hanging off two of them; pipe
+        // runs along both side walls over the catwalks (Blender: arena_dressing_build.py).
+        // None at the crane's rail (-85) or over the chimney (-80..-76)
+        for (float z : {-52.f, -60.f, -68.f, -92.f, -100.f, -108.f}) place("foundry_truss", {0.f, 12.3f, z});
+        for (float x : {-16.f, -4.f, 4.f, 16.f})
             for (float z : {-60.f, -100.f})
-                prop(x - 0.08f, 9.f + std::fabs(x) * 0.05f, z - 0.08f, x + 0.08f, 14.f, z + 0.08f, dark);
+                place("foundry_chain", {x, 7.3f + std::fabs(x) * 0.06f, z}, x * 20.f, 1.f);
+        for (int s : {-1, 1})
+            for (float z : {-102.f, -86.f, -70.f, -54.f})   // (16 m a piece)
+                place("wall_pipes", {s * 31.95f, 8.4f, z}, s < 0 ? 90.f : -90.f, 1.f);
 
         a.groundSpawns = {{-26,0,-104},{26,0,-104},{0,0,-104},{-20,0,-88},{20,0,-88},
                           {-28,5.05f,-90},{28,5.05f,-90},{-28,5.05f,-66},{28,5.05f,-66},
@@ -1475,12 +1476,8 @@ inline void buildAct1(LevelBuilder& B) {
         // Distant peaks, off to either side (north of here is the Core, so keep clear of it)
         const float peaks[][4] = {{-62,-145,26,24},{-76,-182,38,32},{64,-140,24,20},{76,-180,36,34},
                                   {-92,-118,30,22},{94,-120,28,26},{-58,-112,16,14},{60,-198,22,18}};
-        for (auto& p : peaks) {
-            float x = p[0], z = p[1], w = p[2] * 0.5f, h = p[3];
-            prop(x - w, 0, z - w, x + w, h * 0.6f, z + w, {0.30f,0.33f,0.42f});
-            prop(x - w * 0.55f, h * 0.6f, z - w * 0.55f, x + w * 0.55f, h, z + w * 0.55f, {0.34f,0.37f,0.47f});
-            prop(x - w * 0.25f, h, z - w * 0.25f, x + w * 0.25f, h + 3.f, z + w * 0.25f, {0.85f,0.88f,0.95f});
-        }
+        for (auto& p : peaks)   // (Blender: arena_dressing_build.py; ~40 m tall at scale 1)
+            place("spire_peak", {p[0], 0.f, p[1]}, p[0] * 7.f + p[1] * 3.f, (p[3] + 3.f) / 40.f * 1.25f);
 
         // Per-wave spawn tiers
         std::vector<vec3> ground = {{-14,0,-138},{14,0,-138},{-14,0,-176},{14,0,-176},{0,0,-178},{0,0,-134},
@@ -1514,10 +1511,7 @@ inline void buildAct1(LevelBuilder& B) {
             glm::normalize(vec3{0.45f,-0.5f,0.8f}), {1.15f,0.98f,0.82f},
             {0.40f,0.45f,0.60f}, {0.17f,0.16f,0.20f},
             {0.60f,0.58f,0.66f}, 0.0075f };
-        paint(m0, Mat::MARBLE, [&](vec3 c) {   // the far peaks are rock
-            bool peak = same(c, {0.30f,0.33f,0.42f}) || same(c, {0.34f,0.37f,0.47f}) || same(c, {0.85f,0.88f,0.95f});
-            return peak ? Mat::ROCK : Mat::MARBLE;
-        });
+        paint(m0, Mat::MARBLE, [&](vec3) { return Mat::MARBLE; });
         L.arenas.push_back(std::move(a));
     }
 
@@ -1636,13 +1630,15 @@ inline void buildAct1(LevelBuilder& B) {
         // A dead city skyline beyond the walls
         const float towers[][4] = {{-52,12,8,34},{-58,-16,10,26},{-48,-42,7,40},{52,22,9,30},
                                    {60,-8,12,22},{50,-48,8,44}};
-        for (auto& t : towers) {
-            float x = t[0], z = CZ + t[1], w = t[2] * 0.5f, h = t[3];
-            prop(x - w,0,z - w, x + w,h,z + w, {0.05f,0.06f,0.08f});
-            for (float y = 4.f; y < h - 2.f; y += 5.f)
-                neon(x - w - 0.05f,y,z - w - 0.05f, x + w + 0.05f,y + 0.25f,z + w + 0.05f,
-                     (int)(y + x) % 2 ? cyan * 0.5f : magenta * 0.4f);
+        // (Blender: arena_dressing_build.py: core_tower_a 42 m and _b 30 m, a few windows still lit), and a
+        // second ring of them further out
+        for (int i = 0; i < 6; ++i) {
+            const float* t = towers[i];
+            place(i % 2 ? "core_tower_b" : "core_tower_a", {t[0], 0.f, CZ + t[1]}, 90.f * i + 15.f, t[3] / (i % 2 ? 30.f : 42.f) * 1.1f);
         }
+        const float far[][4] = {{-92,30,0,1.4f},{-104,-6,1,1.1f},{-88,-58,0,1.25f},{96,40,1,1.3f},{110,-20,0,1.5f},
+                                {90,-66,1,1.0f},{-70,62,1,0.9f},{74,66,0,1.0f},{-128,-34,0,1.7f},{132,12,1,1.2f}};
+        for (auto& t : far) place(t[2] > 0.5f ? "core_tower_b" : "core_tower_a", {t[0], 0.f, CZ + t[1]}, t[0] * 2.f, t[3]);
 
         a.groundSpawns = {{30,4.05f,CZ - 30},{-30,4.05f,CZ - 30},{30,4.05f,CZ + 30},{-30,4.05f,CZ + 30},
                           {0,0,CZ - 30},{-18,0,CZ - 30},{18,0,CZ - 30},{-31,0,CZ},{31,0,CZ},
@@ -1763,23 +1759,25 @@ inline void buildAct1(LevelBuilder& B) {
             ring(st[0] - 1.2f,CZ + st[1] - 1.2f, st[0] + 1.2f,CZ + st[1] + 1.2f, 1.1f, 1.25f, gold * 0.6f);
         }
 
-        // Beyond the walls: kneeling colossi and black spires against the eclipse
-        for (int k = 0; k < 3; ++k) {
-            float x = -40.f + 40.f * k, z = -430.f;
-            vec3 st{0.06f,0.05f,0.06f};
-            prop(x - 5,0,z - 4, x + 5,10,z + 4, st);                 // folded legs
-            prop(x - 4,10,z - 3, x + 4,26,z + 3, st);                // torso
-            prop(x - 2,26,z - 2, x + 2,31,z + 2, st);                // head
-            prop(x - 7,14,z - 1, x - 4,24,z + 1, st);                // arms on the sword
-            prop(x + 4,14,z - 1, x + 7,24,z + 1, st);
-            prop(x - 0.6f,0,z + 4, x + 0.6f,22,z + 5.5f, st);        // the sword, point down
-            neon(x - 1.2f,28.5f,z + 2.02f, x + 1.2f,28.8f,z + 2.1f, crimson);   // eyes
-        }
-        const float spires[][4] = {{-75,-330,6,46},{78,-360,7,52},{-80,-385,8,38},{72,-310,5,34},{-70,-300,5,30},{82,-395,6,44}};
-        for (auto& t : spires) {
-            prop(t[0] - t[2] * 0.5f,0,t[1] - t[2] * 0.5f, t[0] + t[2] * 0.5f,t[3],t[1] + t[2] * 0.5f, {0.05f,0.04f,0.05f});
-            neon(t[0] - t[2] * 0.5f - 0.05f,t[3] - 3.f,t[1] - t[2] * 0.5f - 0.05f,
-                 t[0] + t[2] * 0.5f + 0.05f,t[3] - 2.6f,t[1] + t[2] * 0.5f + 0.05f, crimson * 0.6f);
+        // Beyond the walls: kneeling colossi and black spires against the eclipse (Blender:
+        // arena_dressing_build.py). The colossi face the arena, eyes lit
+        for (int k = 0; k < 3; ++k) place("sanctum_colossus", {-40.f + 40.f * k, 0.f, -432.f}, (k - 1) * -12.f, 1.45f);
+        place("sanctum_colossus", {-88.f, 0.f, -350.f}, 90.f, 1.2f);
+        place("sanctum_colossus", {88.f, 0.f, -350.f}, -90.f, 1.2f);
+        const float spires[][4] = {{-75,-330,6,46},{78,-360,7,52},{-80,-385,8,38},{72,-310,5,34},{-70,-300,5,30},{82,-395,6,44},
+                                   {-110,-420,7,60},{112,-430,8,64},{-34,-470,6,50},{40,-480,7,56}};
+        for (auto& t : spires) place("sanctum_spire", {t[0], 0.f, t[1]}, t[0] + t[1], t[3] / 46.f);
+        // Fires in iron bowls at the foot of the pillar ring (a solid each, so you don't stand in them)
+        {
+            const Mat keep = B.mat;
+            B.mat = Mat::METAL;
+            for (int k = 0; k < 8; ++k) {
+                float ang = glm::radians(22.5f + 45.f * k);
+                float bx = std::cos(ang) * 30.8f, bz = CZ + std::sin(ang) * 30.8f;
+                place("brazier", {bx, 0.f, bz}, 0.f, 1.2f);
+                B.solid(bx - 0.8f, 0.f, bz - 0.8f, bx + 0.8f, 1.6f, bz + 0.8f);
+            }
+            B.mat = keep;
         }
 
         a.groundSpawns = {{0,0,CZ - 30},{-30,0,CZ},{30,0,CZ},{0,0,CZ + 25}};

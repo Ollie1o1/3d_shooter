@@ -682,8 +682,12 @@ inline void GameplayState::render() {
     }
     worldShader.setFloat("uBakeOn", baked ? 1.f : 0.f);
     worldShader.setFloat("uBakeDebug", baked && g_devOverlay == "bake" ? 1.f : 0.f);   // (--overlay bake: what's baked, as colour)
+    // Which chunks of the world are in view, nearest first (WorldMesh.h): only those are drawn
+    // (--skip cull: every chunk, to compare)
+    static std::vector<int> inView;
+    worldchunk::inViewOrder(world.chunkBox, proj * view, renderCamPos, devSkip("cull"), inView);
     for (int t = 0; t < TEX_COUNT && !devSkip("world"); ++t) {
-        if (world.byTex[t].indexCount == 0) continue;
+        if (world.byTex[t].empty()) continue;
         // What glows in the texture (MaterialTex.h: alpha < 1), in its own colour
         glm::vec3 glow = t == TEX_CIRCUIT ? glm::vec3{0.15f, 0.85f, 1.0f} * 0.9f
                        : t == TEX_CIRCUIT_FLOOR ? glm::vec3{0.15f, 0.85f, 1.0f} * 0.45f
@@ -694,7 +698,7 @@ inline void GameplayState::render() {
         worldShader.setVec3("uTexGlow", glow);
         worldShader.setFloat("uMacro", worldTexMacro(t));
         glBindTexture(GL_TEXTURE_2D, worldTex[t]);
-        world.byTex[t].draw();
+        worldchunk::draw(world.byTex[t], inView);
     }
     worldShader.setVec3("uTexGlow", {0.f, 0.f, 0.f});
     worldShader.setFloat("uMacro", 0.f);
@@ -705,7 +709,7 @@ inline void GameplayState::render() {
     glBindTexture(GL_TEXTURE_2D, whiteTex);
     worldShader.setVec3("objectColor", {0.25f,0.25f,0.25f});
     worldShader.setFloat("uVertexGlow", 1.5f);
-    if (!devSkip("world")) world.neon.draw();
+    if (!devSkip("world")) worldchunk::draw(world.neon, inView);
     worldShader.setFloat("uVertexGlow", 0.0f);
     worldShader.setVec3("objectColor", {1.f,1.f,1.f});
     if (!devSkip("contact")) drawContactShadows(view, proj, th, renderCamPos);

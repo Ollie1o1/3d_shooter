@@ -141,6 +141,8 @@ inline void buildAct2(LevelBuilder& B) {
             wall(std::min(s * 17.f, s * 20.f), F + 6, z - 1.5f, std::max(s * 17.f, s * 20.f), F + 7.5f, z + 1.5f, boneDark);
         neon(-17, F + 8.95f, z - 0.15f, 17, F + 9.02f, z + 0.15f, teal * 0.5f);
     }
+    // chandeliers down the nave, between the bridges, hung from the vault (Blender: arena_dressing_build.py)
+    for (float z : {-487.f, -522.f, -568.f}) B.place("nave_chandelier", {0.f, F + 15.f, z}, 0.f, 1.f);
     // pews: low cover on the nave floor, two blocks of rows
     for (int s : {-1, 1}) for (float z = -486.f; z > -580.f; z -= 9.f) {
         if (((int)(-z) / 9) % 4 == 2) continue;   // gaps where pews were swept away
@@ -577,6 +579,17 @@ inline void buildDescent(LevelBuilder& B) {
     }
     B.kit(true).curve({C.x, 0.f, C.z}, RGAL + 0.4f, 0.f, 6.2831853f, STOP[3] + 1.0f, STOP[3] + 1.15f, 0.12f, ember, 48);   // rail light
 
+    // ---- down the shaft wall: gibbet cages on their chains, and chains with hooks, hung under each stop's
+    // gallery, well clear of the cage's ride (Blender: arena_dressing_build.py) ----
+    for (int st = 0; st < 4; ++st)
+        for (int k = 0; k < 8; ++k) {
+            const float yaw = (k + 0.5f) * 0.7853982f + st * 0.21f;
+            const float r = k % 2 ? 29.5f : 26.5f;
+            const vec3 p = C + vec3{std::cos(yaw) * r, 0.f, std::sin(yaw) * r};
+            const float under = STOP[st] - 1.5f;
+            if ((k + st) % 3 == 0) B.place("descent_cage", {p.x, under - 8.6f - (k % 2) * 3.f, p.z}, glm::degrees(yaw), 1.f);
+            else B.place("foundry_chain", {p.x, under - 5.f * (1.f + 0.4f * (k % 2)), p.z}, glm::degrees(yaw), 1.f + 0.4f * (k % 2));
+        }
     // ---- the pit: a round floor fitted round the cage's outline (strips along
     // X, each split where the cage is), so it docks flush; six anchors, rubble ----
     {
@@ -931,6 +944,16 @@ inline void buildMaw(LevelBuilder& B) {
         B.kit(true).box(p + vec3{0.f, 21.f, 0.f} - out * 1.65f, {0.12f, 2.f, 0.6f}, blood * 0.8f, -a);   // a light on its face
     }
 
+    // ---- fangs of something long dead round the edge of the ring, between the ribs (not on the south arc,
+    // where you drop in), curving in over the ring (Blender: arena_dressing_build.py); a solid at each root ----
+    for (int k = 0; k < 6; ++k) {
+        const float a = mawRibAngle(k) + 0.5235988f;
+        if (std::fabs(a - 1.5707963f) < 0.3f) continue;
+        const vec3 out{std::cos(a), 0.f, std::sin(a)};
+        const vec3 p = C + out * (MAW_RING - 2.2f);
+        B.place("maw_tooth", {p.x, F, p.z}, glm::degrees(std::atan2(-out.x, -out.z)), 1.25f + 0.15f * (k % 2));
+        B.solid(p.x - 1.6f, F, p.z - 1.6f, p.x + 1.6f, F + 7.f, p.z + 1.6f);
+    }
     // ---- cover: broken conduit pipes between the wells ----
     for (int k = 0; k < 4; ++k) {
         float a = k * 1.5707963f;
@@ -1057,6 +1080,13 @@ inline void buildZenith(LevelBuilder& B) {
     a.bounds = LevelBuilder::aabb(C.x - 64, F - 4, C.z - 64, C.x + 64, F + 30, C.z + 64);
     a.zone   = LevelBuilder::aabb(C.x - 66, F - 60, C.z - 66, C.x + 66, F + 60, C.z + 66);
     a.playerStart = C + vec3{0.f, 0.f, 38.f};
+    // Ruins adrift far out in the red sky, at every height round the floor (Blender: arena_dressing_build.py)
+    {
+        const float ruins[][5] = {{-170, 30, -60, 1.6f, 20}, {150, -10, -120, 1.3f, 70}, {210, 55, 40, 2.0f, 140},
+                                  {-60, -45, 210, 1.4f, 200}, {60, 70, -230, 1.8f, 260}, {-230, -20, 90, 1.5f, 310},
+                                  {-140, 85, -200, 2.2f, 35}, {120, -60, 190, 1.2f, 95}};
+        for (auto& r : ruins) B.place("zenith_ruin", C + vec3{r[0], r[1], r[2]}, r[4], r[3]);
+    }
     a.startYaw = -90.f;
     a.respawn = C + vec3{0.f, 0.f, 38.f}; a.hasRespawn = true;
     a.voidY = F - 40.f;

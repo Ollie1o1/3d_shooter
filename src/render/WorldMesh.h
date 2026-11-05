@@ -7,6 +7,7 @@
 #include "core/Mesh.h"
 #include "core/gl.h"
 #include <vector>
+#include <map>
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -55,13 +56,121 @@ struct ContactMesh {
     void release() { if (vbo) glDeleteBuffers(1, &vbo); if (vao) glDeleteVertexArrays(1, &vao); vao = vbo = 0; count = capacity = 0; }
 };
 
-struct WorldMeshes { Mesh byTex[TEX_COUNT]; Mesh neon; ContactMesh contact; };
+// The static world, cut into chunks (CHUNK metres a side) so a frame only draws what's in view: each
+// texture's triangles are sorted chunk by chunk, so a chunk is one run of its index buffer. The chunks in
+// view are drawn nearest first (what's near hides what's behind it before that is shaded), and runs that
+// follow on in the buffer are drawn as one.
+struct WorldChunked {
+    Mesh mesh;
+    struct Run { int chunk; GLsizei first, count; };
+    std::vector<Run> runs;
+    std::vector<int> runOf;   // each chunk's run (-1: none of this texture there)
+    bool empty() const { return mesh.indexCount == 0; }
+};
+struct WorldMeshes {
+    WorldChunked byTex[TEX_COUNT];
+    WorldChunked neon;
+    std::vector<AABB> chunkBox;   // every chunk's bounds (its triangles'), for the view test
+    ContactMesh contact;
+};
+
+namespace worldchunk {
+constexpr float CHUNK = 48.f;
+
+// Group a batch's triangles by chunk (by their middle), in chunk order; grow each chunk's box over them
+inline void sortBatch(const std::vector<Vertex>& V, std::vector<unsigned int>& I, std::vector<WorldChunked::Run>& runs,
+                      std::map<long long, int>& ids, std::vector<AABB>& boxes) {
+    const size_t tris = I.size() / 3;
+    std::vector<std::pair<int, unsigned int>> order(tris);   // (chunk, triangle)
+    for (size_t t = 0; t < tris; ++t) {
+        const glm::vec3 a = V[I[t * 3]].position, b = V[I[t * 3 + 1]].position, c = V[I[t * 3 + 2]].position;
+        const glm::vec3 mid = (a + b + c) / 3.f;
+        const long long cx = (long long)std::floor(mid.x / CHUNK), cy = (long long)std::floor(mid.y / CHUNK), cz = (long long)std::floor(mid.z / CHUNK);
+        const long long key = ((cz + 100000) * 200000LL + (cx + 100000)) * 4096LL + (cy + 2048);   // (row by row in Z, then X: neighbours sit together)
+        auto it = ids.find(key);
+        if (it == ids.end()) { it = ids.emplace(key, (int)boxes.size()).first; boxes.push_back({glm::vec3{1e9f}, glm::vec3{-1e9f}}); }
+        AABB& box = boxes[it->second];
+        box.min = glm::min(box.min, glm::min(a, glm::min(b, c)));
+        box.max = glm::max(box.max, glm::max(a, glm::max(b, c)));
+        order[t] = {it->second, (unsigned int)t};
+    }
+    std::stable_sort(order.begin(), order.end(), [](const auto& x, const auto& y) { return x.first < y.first; });
+    std::vector<unsigned int> sorted;
+    sorted.reserve(I.size());
+    for (const auto& [chunk, t] : order) {
+        if (runs.empty() || runs.back().chunk != chunk) runs.push_back({chunk, (GLsizei)sorted.size(), 0});
+        sorted.insert(sorted.end(), {I[t * 3], I[t * 3 + 1], I[t * 3 + 2]});
+        runs.back().count += 3;
+    }
+    I.swap(sorted);
+}
+
+// The six planes of the view (each: normal xyz, offset w; inside is >= 0)
+struct Frustum {
+    glm::vec4 p[6];
+    explicit Frustum(const glm::mat4& m) {
+        const glm::vec4 r0{m[0][0], m[1][0], m[2][0], m[3][0]}, r1{m[0][1], m[1][1], m[2][1], m[3][1]},
+                        r2{m[0][2], m[1][2], m[2][2], m[3][2]}, r3{m[0][3], m[1][3], m[2][3], m[3][3]};
+        p[0] = r3 + r0; p[1] = r3 - r0; p[2] = r3 + r1; p[3] = r3 - r1; p[4] = r3 + r2; p[5] = r3 - r2;
+    }
+    bool sees(const AABB& b) const {
+        for (const glm::vec4& q : p) {
+            const glm::vec3 far{q.x >= 0.f ? b.max.x : b.min.x, q.y >= 0.f ? b.max.y : b.min.y, q.z >= 0.f ? b.max.z : b.min.z};
+            if (q.x * far.x + q.y * far.y + q.z * far.z + q.w < 0.f) return false;
+        }
+        return true;
+    }
+};
+
+// The chunks in view, nearest first
+inline void inViewOrder(const std::vector<AABB>& boxes, const glm::mat4& viewProj, glm::vec3 eye, bool all, std::vector<int>& out) {
+    static std::vector<std::pair<float, int>> near;
+    near.clear();
+    const Frustum fr(viewProj);
+    for (int c = 0; c < (int)boxes.size(); ++c) {
+        if (!all && !fr.sees(boxes[c])) continue;
+        const glm::vec3 d = glm::max(glm::max(boxes[c].min - eye, eye - boxes[c].max), glm::vec3{0.f});   // (to its nearest point)
+        near.push_back({glm::dot(d, d), c});
+    }
+    std::sort(near.begin(), near.end());
+    out.clear();
+    for (const auto& n : near) out.push_back(n.second);
+}
+
+// Draw these chunks' runs, in this order (one that follows on from the last in the buffer: the same draw)
+inline void draw(const WorldChunked& w, const std::vector<int>& order) {
+    if (w.empty()) return;
+    w.mesh.bind();
+    GLsizei first = 0, count = 0;
+    for (int c : order) {
+        const int ri = w.runOf[c];
+        if (ri < 0) continue;
+        const WorldChunked::Run& r = w.runs[ri];
+        if (count > 0 && first + count == r.first) { count += r.count; continue; }
+        if (count > 0) w.mesh.drawRange(first, count);
+        first = r.first; count = r.count;
+    }
+    if (count > 0) w.mesh.drawRange(first, count);
+    glBindVertexArray(0);
+}
+}  // namespace worldchunk
 
 static WorldMeshes buildWorldMeshes(const LevelData& L) {
     WorldGeometry G = buildWorldGeometry(L);
     WorldMeshes m;
-    for (int t = 0; t < TEX_COUNT; ++t) m.byTex[t].upload(G.V[t], G.I[t]);
-    m.neon.upload(G.nV, G.nI);
+    std::map<long long, int> ids;
+    for (int t = 0; t < TEX_COUNT; ++t) {
+        worldchunk::sortBatch(G.V[t], G.I[t], m.byTex[t].runs, ids, m.chunkBox);
+        m.byTex[t].mesh.upload(G.V[t], G.I[t]);
+    }
+    worldchunk::sortBatch(G.nV, G.nI, m.neon.runs, ids, m.chunkBox);
+    m.neon.mesh.upload(G.nV, G.nI);
+    auto index = [&](WorldChunked& w) {
+        w.runOf.assign(m.chunkBox.size(), -1);
+        for (int i = 0; i < (int)w.runs.size(); ++i) w.runOf[w.runs[i].chunk] = i;
+    };
+    for (auto& w : m.byTex) index(w);
+    index(m.neon);
     m.contact.upload(G.contact, false);
     return m;
 }
