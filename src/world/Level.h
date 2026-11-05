@@ -299,6 +299,15 @@ struct LevelData {
     std::vector<PlacedModel> models;   // visual only: props made in Blender (PropFile.h)
     std::vector<Destructible> destructibles;   // pieces that break (LevelLayout.h places them)
     std::vector<FloorPatch> floors;
+    // How this level draws each material (WorldGeometry.h): identity unless a chapter restyles the
+    // shared surfaces as its own (restyle()). Looks only: collision and sounds still go by `mat`.
+    Mat look[MAT_COUNT] = {};
+    bool lookSet = false;
+    Mat drawn(Mat m) const { return lookSet ? look[(int)m] : m; }
+    void restyle(std::initializer_list<std::pair<Mat, Mat>> to) {
+        if (!lookSet) { for (int i = 0; i < MAT_COUNT; ++i) look[i] = (Mat)i; lookSet = true; }
+        for (auto& p : to) look[(int)p.first] = p.second;
+    }
     std::vector<Door>       doors;
     std::vector<JumpPad>    pads;
     std::vector<Booster>    boosters;
@@ -859,6 +868,35 @@ struct LevelBuilder {
         m.xf = glm::translate(glm::mat4(1.f), base) * glm::rotate(glm::mat4(1.f), glm::radians(yawDeg), glm::vec3{0.f, 1.f, 0.f})
              * glm::scale(glm::mat4(1.f), glm::vec3{scale});
         L.models.push_back(m);
+    }
+    // Visible ground over `area` wherever the hard floor is at `y` (it stays out of basins and off
+    // ramps), as a few big floor patches: cells of `cell` metres, merged into runs, then rows.
+    // Drawn `sink` under y, so a floor box or road laid at y still shows on top of it
+    void groundCover(float x0, float z0, float x1, float z1, float y, glm::vec3 c, Mat m, float cell = 2.f, float sink = 0.006f) {
+        const int nx = std::max(1, (int)std::ceil((x1 - x0) / cell)), nz = std::max(1, (int)std::ceil((z1 - z0) / cell));
+        auto at = [&](float x, float z) { return std::fabs(L.baseFloor(x, z) - y) < 0.01f; };
+        auto open = [&](int i, int k) {
+            float ax = x0 + i * cell, az = z0 + k * cell, bx = std::min(ax + cell, x1), bz = std::min(az + cell, z1);
+            return at(ax, az) && at(bx, az) && at(ax, bz) && at(bx, bz) && at((ax + bx) * 0.5f, (az + bz) * 0.5f);
+        };
+        struct Run { int i0, i1, k0, k1; };
+        std::vector<Run> done, prev;
+        for (int k = 0; k <= nz; ++k) {
+            std::vector<Run> cur;
+            if (k < nz)
+                for (int i = 0; i < nx;) {
+                    if (!open(i, k)) { ++i; continue; }
+                    int j = i; while (j < nx && open(j, k)) ++j;
+                    cur.push_back({i, j, k, k + 1}); i = j;
+                }
+            // A run the row above had with the same span grows down; the rest are finished
+            for (Run& r : cur)
+                for (Run& p : prev) if (p.i0 == r.i0 && p.i1 == r.i1 && p.k1 == k) { r.k0 = p.k0; p.k1 = -1; }
+            for (Run& p : prev) if (p.k1 >= 0) done.push_back(p);
+            prev = cur;
+        }
+        for (const Run& r : done)
+            L.floors.push_back({x0 + r.i0 * cell, z0 + r.k0 * cell, std::min(x0 + r.i1 * cell, x1), std::min(z0 + r.k1 * cell, z1), y - sink, c, m});
     }
     void neon(float x0, float y0, float z0, float x1, float y1, float z1, glm::vec3 c) {
         L.neon.push_back(Wall{aabb(x0,y0,z0,x1,y1,z1), c});

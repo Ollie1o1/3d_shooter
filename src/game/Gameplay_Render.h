@@ -690,10 +690,12 @@ inline void GameplayState::render() {
                        : t == TEX_BASALT ? glm::vec3{1.0f, 0.24f, 0.10f} * 0.75f
                        : t == TEX_CINDER ? glm::vec3{1.2f, 0.3f, 0.07f} * 0.9f : glm::vec3{0.f};
         worldShader.setVec3("uTexGlow", glow);
+        worldShader.setFloat("uMacro", worldTexMacro(t));
         glBindTexture(GL_TEXTURE_2D, worldTex[t]);
         world.byTex[t].draw();
     }
     worldShader.setVec3("uTexGlow", {0.f, 0.f, 0.f});
+    worldShader.setFloat("uMacro", 0.f);
     worldShader.setFloat("uNoSeams", 0.f);
     worldShader.setFloat("uBakeOn", 0.f);
     worldShader.setFloat("uBakeDebug", 0.f);

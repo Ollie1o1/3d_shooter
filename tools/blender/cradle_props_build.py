@@ -21,7 +21,8 @@ def begin():
 def save(name):
     for ob in bpy.context.scene.objects:
         if ob.type == 'MESH' and 'glow' not in ob:
-            ob['tex'] = 'metal'
+            material = ob.data.materials[0].name.split('*')[0] if ob.data.materials else ''
+            ob['tex'] = 'painted' if material in ('hazard', 'porcelain') else 'metal'   # paint chips; the rest hull steel
     out = repo / 'assets/props' / (name + '.glb')
     bpy.ops.export_scene.gltf(filepath=str(out), export_format='GLB', export_extras=True,
                               export_yup=True, export_apply=True, export_texcoords=False)

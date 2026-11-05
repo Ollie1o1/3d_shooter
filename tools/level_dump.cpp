@@ -17,6 +17,8 @@
 #include "world/LevelWasteland.h"
 #include "world/LevelTraining.h"
 #include "world/LevelLab.h"
+#include "world/LevelPlain.h"
+#include "world/LevelCold.h"
 #include "render/WorldGeometry.h"
 #include "render/MaterialTex.h"
 #include <cstdio>
@@ -27,9 +29,12 @@
 
 static const char* TEX_NAME[TEX_COUNT] = {"grid", "brick", "metal", "panel", "rock", "concrete", "adobe", "terracotta",
                                          "wood", "plate", "tread", "marble", "flagstone", "circuit", "circuit_floor",
-                                         "basalt", "limestone", "brass", "clinic", "lino", "cinder", "snow", "ice"};
+                                         "basalt", "limestone", "brass", "clinic", "lino", "cinder", "snow", "ice",
+                                         "hull", "deck", "painted", "castwall", "slab", "strata", "ashground", "asphalt",
+                                         "corrugated", "rustplate", "froststeel", "frostdeck"};
 static const char* MAT_NAME[] = {"brick", "panel", "rock", "metal", "concrete", "adobe", "plate", "marble",
-                                 "circuit", "basalt", "wood", "limestone", "brass", "clinic", "cinder", "snow", "ice"};
+                                 "circuit", "basalt", "wood", "limestone", "brass", "clinic", "cinder", "snow", "ice",
+                                 "hull", "painted", "slab", "strata", "asphalt", "corrugated", "froststeel"};
 
 static std::vector<unsigned char> texPixels(int t) {
     using namespace MaterialTex;
@@ -44,6 +49,12 @@ static std::vector<unsigned char> texPixels(int t) {
         case TEX_FLAG: return flagstone();       case TEX_CIRCUIT: return circuit();
         case TEX_CIRCUIT_FLOOR: return circuitFloor(); case TEX_BASALT: return basalt();
         case TEX_LIMESTONE: return limestone();  case TEX_BRASS: return brass();
+        case TEX_HULL: return hull();            case TEX_DECK: return deck();
+        case TEX_PAINTED: return painted();      case TEX_CASTWALL: return castwall();
+        case TEX_SLAB: return slab();            case TEX_STRATA: return strata();
+        case TEX_ASHGROUND: return ashground();  case TEX_ASPHALT: return asphalt();
+        case TEX_CORRUGATED: return corrugated(); case TEX_RUSTPLATE: return rustplate();
+        case TEX_FROSTSTEEL: return froststeel(); case TEX_FROSTDECK: return frostdeck();
         default: return {};
     }
 }
@@ -102,11 +113,11 @@ static std::string batch(const char* tex, bool emit, const std::vector<Vertex>& 
 }
 
 int main(int argc, char** argv) {
-    if (argc < 3) { std::fprintf(stderr, "usage: level_dump act1|act2|fast|story1|story2|training OUTDIR\n"); return 2; }
+    if (argc < 3) { std::fprintf(stderr, "usage: level_dump act1|act2|fast|story1|story2|story3|story4|story5|training OUTDIR\n"); return 2; }
     const std::string which = argv[1], out = argv[2];
     g_skipLayout = true;   // the level as the code builds it (LevelLayout.h)
-    LevelData L = which == "act1" ? buildLevel() : which == "act2" ? buildAct2Level() : which == "fast" ? buildGauntlet() : which == "story1" ? buildCradle() : which == "story2" ? buildWasteland() : which == "story3" ? buildLab() : which == "training" ? buildTraining() : LevelData{};
-    if (L.arenas.empty()) { std::fprintf(stderr, "no level '%s' (act1, act2, fast, story1, story2, story3, training)\n", which.c_str()); return 2; }
+    LevelData L = which == "act1" ? buildLevel() : which == "act2" ? buildAct2Level() : which == "fast" ? buildGauntlet() : which == "story1" ? buildCradle() : which == "story2" ? buildWasteland() : which == "story3" ? buildLab() : which == "story4" ? buildPlain() : which == "story5" ? buildCold() : which == "training" ? buildTraining() : LevelData{};
+    if (L.arenas.empty()) { std::fprintf(stderr, "no level '%s' (act1, act2, fast, story1, story2, story3, story4, story5, training)\n", which.c_str()); return 2; }
     mkdir(out.c_str(), 0755);
 
     // The world as the game draws it, and the moving walls where they're built (a lift, the Reliquary's
