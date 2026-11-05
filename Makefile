@@ -13,10 +13,10 @@ ifeq ($(UNAME), Darwin)
 # can't find the C++ stdlib headers); fall back to Apple clang if it's absent.
 LLVM     := $(shell brew --prefix llvm 2>/dev/null)
 SDK      := $(shell xcrun --show-sdk-path 2>/dev/null)
-# Keep multiply/add rounding consistent with GCC/x86 and WebAssembly when
-# constructing procedural geometry. ARM FMA changed the baked-light fingerprint
-# of identical wards, causing Linux to reject the lighting shipped from macOS.
-BASEFLAGS := -std=c++17 -O3 -ffast-math -ffp-contract=off -Wall -Wextra -Isrc -Isrc/third_party/imgui \
+# Use the same precise arithmetic on native and WebAssembly builds. Fast-math
+# reassociation and ARM fused multiply/add operations changed procedural scenery
+# and its baked-light fingerprint, causing valid shipped lighting to be rejected.
+BASEFLAGS := -std=c++17 -O3 -ffp-contract=off -Wall -Wextra -Isrc -Isrc/third_party/imgui \
              -DGL_SILENCE_DEPRECATION \
              -I/opt/homebrew/include \
              $(shell sdl2-config --cflags)
@@ -39,7 +39,7 @@ TARGET   := shooter
 # -----------------------------------------------------------------------------
 else ifeq ($(UNAME), Linux)
 CXX      := g++
-CXXFLAGS := -std=c++17 -O3 -ffast-math -ffp-contract=off -Wall -Wextra -Isrc -Isrc/third_party/imgui \
+CXXFLAGS := -std=c++17 -O3 -ffp-contract=off -Wall -Wextra -Isrc -Isrc/third_party/imgui \
             $(shell sdl2-config --cflags)
 LDFLAGS  := $(shell sdl2-config --libs) -lSDL2_mixer -lGLEW -lGL
 STDLIB   :=
@@ -101,6 +101,7 @@ test: $(TESTS) $(HEADERS)
 	$(MAKE) test-plain
 	$(MAKE) test-cold
 	$(MAKE) test-route
+	$(MAKE) test-lighting
 
 test-story: tests/test_story.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) tests/test_story.cpp -o tests/test_story $(STDLIB)
@@ -201,6 +202,19 @@ test-web-story: tests/test_web_story.cpp $(HEADERS)
 	cd build/web-story && node story.js 26
 	cd build/web-story && node story.js 27
 	cd build/web-story && node story.js 32
+
+.PHONY: test-lighting test-web-lighting
+test-lighting: tests/test_lighting.cpp $(HEADERS)
+	mkdir -p build
+	$(CXX) $(CXXFLAGS) tests/test_lighting.cpp -o build/test_lighting $(STDLIB)
+	./build/test_lighting
+
+test-web-lighting: tests/test_lighting.cpp $(HEADERS)
+	mkdir -p build/web-lighting
+	em++ -std=c++17 -O3 -ffp-contract=off -Isrc -Ibuild/web-include tests/test_lighting.cpp -o build/web-lighting/lighting.js \
+	    -sUSE_SDL=2 -sENVIRONMENT=node -sSTACK_SIZE=1048576 -sALLOW_MEMORY_GROWTH=1 \
+	    --preload-file assets/levels@/assets/levels --preload-file assets/props@/assets/props
+	cd build/web-lighting && node lighting.js
 
 clean:
 	rm -f shooter shooter.exe tests/test_physics tests/test_game tests/test_zenith tests/test_story tests/test_wasteland tests/test_render tests/test_dev tests/test_story_overhaul tests/test_story_bosses tests/test_improvements

@@ -32,3 +32,4 @@ jobs:
       - run: sudo apt-get install -y libglm-dev vorbis-tools
       - run: make web
       - run: make test-web-story
+      - run: make test-web-lighting
