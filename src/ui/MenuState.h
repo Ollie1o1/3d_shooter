@@ -12,6 +12,7 @@
 #include "world/LevelWasteland.h"
 #include "world/LevelLab.h"
 #include "world/LevelCold.h"
+#include "world/LevelPlain.h"
 #include "ui/UIBatch.h"
 #include "ui/MenuArt.h"
 #include "ui/TextWrap.h"
@@ -298,9 +299,9 @@ private:
         static std::vector<UnitEntry> U;
         if (U.empty()) {
             U.resize(24);
-            LevelData C[] = {buildCradle(), buildWasteland(), buildLab(), buildCold()};
-            const int chapterOf[] = {1, 2, 3, 5};
-            for (int c = 0; c < 4; ++c)
+            LevelData C[] = {buildCradle(), buildWasteland(), buildLab(), buildPlain(), buildCold()};
+            const int chapterOf[] = {1, 2, 3, 4, 5};
+            for (int c = 0; c < 5; ++c)
                 for (const auto& w : C[c].story.wrecks)
                     if (w.number > 0 && w.number < 24) U[w.number] = {chapterOf[c], w.secret, w.log ? w.log : ""};
         }
@@ -900,7 +901,7 @@ private:
         if (records.bestEndless > 0) endSub += "   BEST " + std::to_string(records.bestEndless);
         Item items[NUM_ITEMS] = {
             {"ARENA", arenaSub.c_str()},
-            {"STORY", "THREE CHAPTERS / ONE DESCENT"},
+            {"STORY", "FIVE CHAPTERS / ONE UNIT"},
             {"FAST",  fastSub.c_str()},
             {"ENDLESS", endSub.c_str()},
             {"BOSS", bossSub.c_str()},

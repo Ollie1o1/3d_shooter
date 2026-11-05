@@ -14,7 +14,9 @@ struct Bay {float nearZ,farZ,left,right;};
 inline std::vector<Bay> footprint(int i){
     switch(i){
     case 0:return {{40,-40,-32,32}};
-    case 1:return {{40,10,-36,12},{10,-8,-36,36},{-8,-40,-10,36}};
+    // Admissions' lower flight spans X=3..15. The receiving bay includes
+    // the full corridor and a solid right jamb, not just its centre line.
+    case 1:return {{40,10,-36,16},{10,-8,-36,36},{-8,-40,-10,36}};
     case 2:return {{40,22,-30,30},{22,-28,-42,42},{-28,-40,-30,30}};
     case 3:return {{40,22,-30,42},{22,-28,-42,42},{-28,-40,-42,30}};
     case 4:return {{40,16,-32,42},{16,-16,-48,48},{-16,-40,-42,42}};
@@ -85,6 +87,64 @@ inline void stencil(LevelBuilder& b,const char* text,glm::vec3 p,float px,glm::v
             auto q=p+glm::vec3{(i*6+x)*px,-y*px,0};b.prop(q.x,q.y,q.z,q.x+px*.8f,q.y+px*.8f,q.z+.035f,color);
         }
     }
+}
+
+// Test apparatus occupies the combat floor, rather than decorating only the
+// walls. Casings stop shots and can be climbed; the low circuit decks link
+// floor, apparatus and observation galleries without sealing off the room.
+inline void combatStations(LevelBuilder& b,int room,glm::vec3 c) {
+    using glm::vec3;
+    if(room<2 || room==4 || room>8)return;
+    const vec3 shell{.65f,.72f,.71f},frame{.18f,.28f,.31f},inset{.055f,.11f,.14f},
+        edge{.27f,.95f,1.05f},paint{.75f,.68f,.42f};
+    auto box=[&](vec3 a,vec3 z,vec3 color){b.wall(a.x,a.y,a.z,z.x,z.y,z.z,color);};
+    auto detail=[&](vec3 a,vec3 z,vec3 color){b.prop(a.x,a.y,a.z,z.x,z.y,z.z,color);};
+    auto glow=[&](vec3 a,vec3 z,vec3 color){b.neon(a.x,a.y,a.z,z.x,z.y,z.z,color);};
+    auto station=[&](vec3 local,const char* label) {
+        vec3 p=c+local;b.mat=Mat::CLINIC;
+        box(p+vec3{-3.5f,0,-2.5f},p+vec3{3.5f,2.4f,2.5f},shell);
+        b.mat=Mat::METAL;
+        box(p+vec3{-4.8f,0,.3f},p+vec3{-3.5f,1.1f,2.5f},frame);
+        detail(p+vec3{-3.4f,2.4f,-2.4f},p+vec3{3.4f,2.46f,2.4f},frame);
+        detail(p+vec3{-3.2f,.35f,2.51f},p+vec3{3.2f,1.9f,2.55f},inset);
+        for(int k=0;k<5;++k)detail(p+vec3{-2.9f,.5f+k*.22f,2.56f},p+vec3{-.9f,.58f+k*.22f,2.6f},frame);
+        glow(p+vec3{.4f,.65f,2.56f},p+vec3{2.7f,1.35f,2.61f},edge*.35f);
+        glow(p+vec3{-3.45f,2.47f,-2.3f},p+vec3{-3.35f,2.51f,2.3f},edge*.6f);
+        // Curved diagnostic hoops give the machines a clinical silhouette,
+        // contrasting with the ward's long rectangular galleries.
+        b.kit().arch(p+vec3{0,2.4f,-1.8f},6.4f,4.1f,.48f,.7f,shell,0,20);
+        b.kit(true).arch(p+vec3{0,2.6f,-1.79f},5.65f,3.65f,.06f,.5f,edge*.45f,0,20);
+        b.kit().column(p+vec3{0,2.47f,-.4f},1.25f,.06f,inset,20);
+        b.kit(true).curve(p+vec3{0,2.54f,-.4f},1.3f,0,6.2831853f,0,.03f,.05f,edge*.5f,24);
+        stencil(b,label,p+vec3{-3.1f,1.85f,2.62f},.055f,{.6f,.76f,.76f});
+        for(float z:{-3.2f,3.2f})detail(p+vec3{-4.8f,.01f,z},p+vec3{4.8f,.025f,z+.18f},frame);
+        for(float x:{-4.8f,4.6f})detail(p+vec3{x,.01f,-3.2f},p+vec3{x+.18f,.025f,3.4f},frame);
+        for(float x=-4.f;x<4;x+=1.f)detail(p+vec3{x,.028f,3.45f},p+vec3{x+.5f,.035f,3.62f},paint);
+    };
+    if(room==2 || room==6) {
+        float z=room==2?6.f:15.f;
+        for(float x:{-17.f,17.f}) {
+            station({x,0,z},room==2?"MOTOR / RESPONSE":"SUSPENSION / MONITOR");
+            AABB ramp=LevelBuilder::aabb(x-3,c.y,c.z+z+2.5f,x+3,c.y+2.4f,c.z+z+14.5f);
+            b.L.ramps.push_back({ramp,2,c.y+2.4f,c.y});
+            b.kit().box(c+vec3{x,1.05f,z+8.5f},{std::hypot(12.f,2.4f),.3f,6},frame,-1.5707963f,0,-.19739556f);
+            glow(c+vec3{x-3,2.42f,z+2.5f},c+vec3{x+3,2.48f,z+2.62f},edge*.4f);
+        }
+        box(c+vec3{-13.5f,2.1f,z-2},c+vec3{13.5f,2.4f,z+2},frame);
+        for(float dz:{z-1.9f,z+1.8f})glow(c+vec3{-13.4f,2.42f,dz},c+vec3{13.4f,2.46f,dz+.08f},edge*.4f);
+        // A dark assessment runway breaks up the blank tile at the entrance.
+        // Flush paint leaves the original walking line and floor unchanged.
+        detail(c+vec3{-5,.008f,-27},c+vec3{5,.016f,22},inset*.85f);
+        for(float dz=-25;dz<22;dz+=3.f)for(float x:{-4.9f,4.7f})
+            detail(c+vec3{x,.018f,dz},c+vec3{x+.18f,.026f,dz+1.2f},paint);
+        for(float dz:{-23.f,-3.f,19.f})for(int k=0;k<9;++k)
+            detail(c+vec3{-4.5f+k,.019f,dz},c+vec3{-4.05f+k,.027f,dz+.12f},shell);
+    } else if(room==3) {
+        station({-19,0,6},"SURGICAL / PREPARATION");station({8,0,-16},"STERILE / INSTRUMENTS");
+    } else if(room==5) {
+        station({-29,0,0},"LOAD / WEST");station({29,0,0},"LOAD / EAST");
+    } else if(room==7)station({30,0,3},"EXTERIOR / UNREGISTERED");
+    else if(room==8)station({-28,0,5},"PRESSURE / HOLDING");
 }
 }
 
@@ -472,6 +532,7 @@ inline LevelData buildLab(){
         b.mat=Mat::METAL;
         if(i!=4&&i!=5&&i!=9)for(vec3 p:{c+vec3{-12,0,-9},c+vec3{12,0,9}})solid(p+vec3{-2,0,-1},p+vec3{2,1.6f,1},steel);
         l.placedPickups.push_back({c+vec3{entry+8,0,30},1});
+        lab::combatStations(b,i,c);
         // Set dressing after the concept boards (LabDressing.h), once everything it must keep clear of exists
         labdress::dressRoom(b,i,c,bays,roof,entry,exit);
     }

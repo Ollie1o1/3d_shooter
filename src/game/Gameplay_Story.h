@@ -366,7 +366,8 @@ inline void GameplayState::updateStory(float dt) {
     // ---- you: off the belt, into the fire, down the chute ----
     if (wakeT < 0.f && !offBeltShown && player.onGround && level.conveyorOfWall(player.groundWall) < 0 && wakeSeen && level.arenaAt(player.position) == 0) {
         offBeltShown = true;
-        ui.feed("OFF THE BELT", {0.35f, 0.85f, 1.f});
+        ui.feed("SALVAGE BELOW / FOLLOW THE AMBER LIGHTS", {1.f,.76f,.38f});
+        audio.playAt("clank",{12.f,-3.f,-31.5f},80,SoundGroup::WORLD);
     }
     const glm::vec3 p = player.position;
     const AABB& F = S.furnace;
@@ -680,14 +681,17 @@ inline void GameplayState::renderStoryOverlay(const glm::mat4& viewProj) {
         // a waypoint on a gun that's yours to take in the section you're in (in the pit, once you've looked about)
         for (int i = 0; i < (int)SL.wrecks.size(); ++i) {
             const auto& w = SL.wrecks[i];
-            if (w.weapon < 0 || storyOwns(w.weapon) || w.section != level.arenaAt(player.position)) continue;
-            if (w.section == SL.pitSection && storyFindT < 3.f) continue;
+            const int room=level.arenaAt(player.position);
+            const bool overlook=SL.chapter==1 && room==0 && w.weapon==0 && player.position.x>8.4f && player.position.z< -24.f && player.position.z> -39.f;
+            if (w.weapon < 0 || storyOwns(w.weapon) || (w.section != room && !overlook)) continue;
+            if (w.section == SL.pitSection && storyFindT < 1.5f && !overlook) continue;
             if (director.fighting()) continue;   // (not while something's trying to kill you)
             const glm::vec3 at = glm::vec3(wreckGunXf(i)[3]) + glm::vec3{0.f, 0.5f, 0.f};
             const float dist = glm::length(at - player.camera.position);
             if (dist < 3.f) continue;
             const auto marker=projectWorldMarker(at,viewProj,SCREEN_W,SCREEN_H);
             bool covered=!marker.behind && markerBehindCover(player.camera.position,at,level.walls);
+            if(overlook && covered)continue;
             char lbl[96];std::snprintf(lbl,sizeof(lbl),"%s %.0fM%s",gunTitle(w.weapon)+4,dist,covered?" / BEHIND COVER":"");
             ui.renderMarker(marker.x,marker.y,marker.onScreen,{.35f,.85f,1.f},lbl,marker.behind);
         }
@@ -808,8 +812,9 @@ inline void GameplayState::renderStoryOverlay(const glm::mat4& viewProj) {
         U.text(SL.nextName, SCREEN_W / 2.f, SCREEN_H / 2.f - 40.f, 5, {0.85f, 0.9f, 0.92f, a}, true);
         char complete[48];std::snprintf(complete,sizeof(complete),"CHAPTER %d COMPLETE",SL.chapter);
         U.text(complete, SCREEN_W / 2.f, SCREEN_H / 2.f + 30.f, 2, {0.35f, 0.85f, 1.f, a * 0.85f}, true);
-        char line[128];int secrets=0;for(size_t i=0;i<SL.wrecks.size();++i)if(SL.wrecks[i].secret && ((storyLogsSeen>>i)&1u))++secrets;
-        std::snprintf(line,sizeof(line),"TIME %d:%02d   KILLS %d   SECRETS %d/2",(int)elapsedTime/60,(int)elapsedTime%60,totalKills,secrets);
+        char line[128];int secrets=0,secretsAll=0;for(size_t i=0;i<SL.wrecks.size();++i)if(SL.wrecks[i].secret){++secretsAll;if((storyLogsSeen>>i)&1u)++secrets;}
+        if(secretsAll>0)std::snprintf(line,sizeof(line),"TIME %d:%02d   KILLS %d   SECRETS %d/%d",(int)elapsedTime/60,(int)elapsedTime%60,totalKills,secrets,secretsAll);
+        else std::snprintf(line,sizeof(line),"TIME %d:%02d   KILLS %d",(int)elapsedTime/60,(int)elapsedTime%60,totalKills);
         U.text(line,SCREEN_W/2.f,SCREEN_H/2.f+90,2,{.85f,.9f,.92f,a},true);
         float score=bankedStyle+styleSystem.earned;
         const int rank=storyRankNow>0?storyRankNow:storyrank::rank(SL.chapter,elapsedTime,deaths,score);
@@ -826,6 +831,38 @@ inline void GameplayState::renderStoryOverlay(const glm::mat4& viewProj) {
         U.text(next,SCREEN_W/2.f,SCREEN_H-65,1,{.35f,.85f,1.f,a},true);
     }
     ui.end2D();
+}
+
+// Chapters that keep their own update and drawing (the Plain, the Cold Store) share these for the wrecks
+inline void GameplayState::tickWreckLogs(float dt) {
+    if (storyLog < 0) return;
+    storyLogT += dt;
+    if (storyLog >= (int)level.story.wrecks.size() || glm::length(level.story.wrecks[storyLog].pos - player.position) > 6.f) storyLog = -1;
+}
+inline void GameplayState::gatherWreckBodies(std::vector<BoxInstance>& out, float frost) {
+    using namespace rig;
+    using glm::vec3;
+    const auto& W = level.story.wrecks;
+    for (int i = 0; i < (int)W.size(); ++i) {
+        const auto& w = W[i];
+        if (glm::length(w.pos - player.camera.position) > 70.f) continue;
+        const gunkit::GunModel* M = story::bodyModel(story::wreckFile(w.number));
+        if (!M) continue;
+        const size_t from = out.size();
+        Rig r{out};
+        drawFile(r, wreckRoot(i), *M, story::sittingPose(0.3f + 0.2f * (float)(w.number % 3)), {0.03f, 0.05f, 0.06f});
+        if (frost > 0.f) for (size_t k = from; k < out.size(); ++k) out[k].color = glm::mix(out[k].color, RECALL_FROST, frost);
+        // A marker over the ones you haven't read: cyan, turning; dim once read
+        const bool seen = (storyLogsSeen >> i) & 1u;
+        vec3 p = w.pos + vec3{0.f, 1.95f + 0.1f * std::sin(gameClock * 2.f + i * 0.8f), 0.f};
+        const vec3 glow = seen ? vec3{0.15f, 0.45f, 0.55f} : vec3{0.25f, 1.7f, 2.f};
+        const mat4 root = T(p) * RY(gameClock * 0.65f + i * 0.8f);
+        r.box(root, {0, 0, 0}, {0.13f, 0.22f, 0.13f}, {0.7f, 0.95f, 1.f}, glow);
+        for (float side : {-1.f, 1.f}) {
+            r.box(root, {side * 0.22f, 0, 0}, {0.035f, 0.3f, 0.035f}, {0.3f, 0.7f, 0.8f}, glow * 0.55f);
+            r.box(root, {side * 0.17f, -0.15f, 0}, {0.13f, 0.035f, 0.035f}, {0.3f, 0.7f, 0.8f}, glow * 0.55f);
+        }
+    }
 }
 
 #include "game/Gameplay_StoryFactory.h"

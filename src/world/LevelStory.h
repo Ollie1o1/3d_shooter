@@ -8,8 +8,8 @@
 // rejected bodies into a furnace. Three belts run north (-Z) down a long dark
 // hall under gantry beams, out of a hatch in the south wall and off a lip into
 // the furnace pit; the furnace's mouth fills the north wall. Off the belts, the
-// hall's floor; in its east corner a chute drops away (the way on: the Scrap
-// Pit).
+// hall's floor; an open reclamation bay in the east floor overlooks UNIT 01
+// in the Scrap Pit. Its amber-lit receiver is the way down to the revolver.
 //
 //         z -76 ┌───────────────────────┐
 //               │   FURNACE (molten)    │
@@ -17,7 +17,7 @@
 //               ░░░│░░ the pit ░░░░░│░░░   (falls in: burned)
 //         z -56 ═══╪═════╪═════╪════╪═══   the belts end; a rail between them
 //               │  ║     ║     ║    │  │
-//               │  ║     ║     ║  [chute] x 10..13.5, z -34..-29
+//               │  ║     ║     ║  [bay]   x 9..15, z -37..-26
 //               │  ║     ║     ║    │  │
 //               │  ║     ║(you)║    │  │   gantry beams every 4 m overhead
 //          z +9 └──╨─────╨─────╨────┘──┘   the hatch the belts come out of
@@ -51,7 +51,9 @@ inline LevelData buildCradle() {
     const float X0 = -15.f, X1 = 15.f, ZS = 9.f, ZN = -56.f, ZF = -63.5f, ZB = -76.f, ROOF = 13.f, PIT = -8.4f;
     const float LANES[3] = {-7.f, 0.f, 7.f}, BW = 1.3f;   // the belts' centres, half their width
     const float BELT_TOP = 1.1f, BELT_S = 12.f, BELT_N = -56.2f, BELT_SPEED = 1.4f;
-    const AABB CHUTE = LevelBuilder::aabb(10.f, -36.f, -34.f, 13.5f, 0.f, -29.f);
+    // An open reclamation bay, visible from the belt. Its floor, wall opening
+    // and rendered floor patches share this footprint: no false floor over a drop.
+    const AABB CHUTE = LevelBuilder::aabb(9.f, -36.f, -37.f, 15.f, 0.f, -26.f);
 
     // The hard floor, far below everything: every floor here is a slab, so the pit and the chute are holes
     L.basins.push_back({LevelBuilder::aabb(-80.f, 0.f, -140.f, 120.f, 0.f, 105.f), -40.f});
@@ -59,14 +61,15 @@ inline LevelData buildCradle() {
     const LevelBuilder::Mark m0 = B.mark();
     B.mat = Mat::CONCRETE;
     // The floor: slabs round the chute's hole
-    wall(X0, -0.6f, ZN, 10.f, 0.f, ZS + 4.f, conc);
-    wall(10.f, -0.6f, CHUTE.max.z, X1, 0.f, ZS + 4.f, conc);
-    wall(10.f, -0.6f, ZN, X1, 0.f, CHUTE.min.z, conc);
+    wall(X0, -0.6f, ZN, CHUTE.min.x, 0.f, ZS + 4.f, conc);
+    wall(CHUTE.min.x, -0.6f, CHUTE.max.z, X1, 0.f, ZS + 4.f, conc);
+    wall(CHUTE.min.x, -0.6f, ZN, X1, 0.f, CHUTE.min.z, conc);
     wall(CHUTE.max.x, -0.6f, CHUTE.min.z, X1, 0.f, CHUTE.max.z, conc);
     // Walls, west and east, from the pit's floor to the roof; the roof
     B.mat = Mat::PANEL;
     wall(X0 - 1.f, PIT, ZB, X0, ROOF, ZS + 5.f, steel);
-    wall(X1, PIT, ZB, X1 + 1.f, ROOF, ZS + 5.f, steel);
+    B.wallZ(ZB, ZS + 5.f, X1, X1 + 1.f, PIT, ROOF, steel,
+            {{CHUTE.min.z, CHUTE.max.z, PIT, 4.8f}});
     B.mat = Mat::METAL;
     wall(X0 - 1.f, ROOF, ZB, X1 + 1.f, ROOF + 0.8f, ZS + 5.f, dark);
     // Pilasters down both walls, every 8 m, and a skirting of rusted plate
@@ -204,14 +207,15 @@ inline LevelData buildCradle() {
 
     // ---- the chute: a hole in the east floor, framed in hazard paint, a shaft down into the dark ----
     B.mat = Mat::METAL;
-    // The shaft drops 22 m to a short tunnel east: a boost at its foot fires you out through the pit's wall
+    // The open receiver drops 23 m: its transfer belt sends you east onto
+    // the salvage landing, under UNIT 01's work light.
     const float TUN0 = -23.f, TUN1 = -19.f, PITX = 18.f;
     wall(CHUTE.min.x - 0.4f, TUN0 - 0.6f, CHUTE.min.z - 0.4f, CHUTE.min.x, -0.6f, CHUTE.max.z + 0.4f, steel);   // its west side
-    wall(CHUTE.min.x, TUN1, CHUTE.min.z - 0.4f, X1, -0.6f, CHUTE.min.z, steel);                                 // north
-    wall(CHUTE.min.x, TUN1, CHUTE.max.z, X1, -0.6f, CHUTE.max.z + 0.4f, steel);                                 // south
-    wall(CHUTE.max.x, TUN1, CHUTE.min.z, CHUTE.max.x + 0.4f, -0.6f, CHUTE.max.z, steel);                        // east, above the tunnel
+    wall(CHUTE.min.x, TUN1, CHUTE.min.z - 0.4f, PITX, -0.6f, CHUTE.min.z, steel);                              // north
+    wall(CHUTE.min.x, TUN1, CHUTE.max.z, PITX, -0.6f, CHUTE.max.z + 0.4f, steel);                              // south
     wall(CHUTE.min.x - 0.4f, TUN0 - 0.6f, CHUTE.min.z - 0.4f, PITX, TUN0, CHUTE.max.z + 0.4f, dark);            // the tunnel's floor
-    wall(CHUTE.max.x, TUN1, CHUTE.min.z - 0.4f, PITX, TUN1 + 0.6f, CHUTE.max.z + 0.4f, dark);                   // its roof
+    // No lid or eastern shaft wall: UNIT 01's work light is visible below,
+    // across the same opening the player will fall through.
     wall(CHUTE.min.x, TUN0, CHUTE.min.z - 0.4f, PITX, TUN1, CHUTE.min.z, steel);                                // its sides
     wall(CHUTE.min.x, TUN0, CHUTE.max.z, PITX, TUN1, CHUTE.max.z + 0.4f, steel);
     L.boosters.push_back({LevelBuilder::aabb(CHUTE.min.x, TUN0, CHUTE.min.z, PITX + 0.5f, TUN1, CHUTE.max.z), {1.f, 0.f, 0.f}, 15.f});
@@ -219,27 +223,32 @@ inline LevelData buildCradle() {
         neon(CHUTE.max.x + 0.4f + k * 1.1f, TUN1 - 0.06f, CHUTE.min.z + 0.6f, CHUTE.max.x + 0.7f + k * 1.1f, TUN1, CHUTE.max.z - 0.6f, {1.f, 0.6f, 0.1f});
     for (int k = 0; k < 8; ++k) {   // the frame: hazard stripes round the hole
         float t = k / 8.f;
-        prop(CHUTE.min.x + t * 3.5f, 0.f, CHUTE.min.z - 0.4f, CHUTE.min.x + t * 3.5f + 0.25f, 0.02f, CHUTE.min.z, hazard);
-        prop(CHUTE.min.x + t * 3.5f, 0.f, CHUTE.max.z, CHUTE.min.x + t * 3.5f + 0.25f, 0.02f, CHUTE.max.z + 0.4f, hazard);
+        prop(CHUTE.min.x + t * 6.f, 0.f, CHUTE.min.z - 0.4f, CHUTE.min.x + t * 6.f + 0.35f, 0.02f, CHUTE.min.z, hazard);
+        prop(CHUTE.min.x + t * 6.f, 0.f, CHUTE.max.z, CHUTE.min.x + t * 6.f + 0.35f, 0.02f, CHUTE.max.z + 0.4f, hazard);
     }
     neon(CHUTE.min.x - 0.05f, -3.f, CHUTE.min.z, CHUTE.min.x, -2.8f, CHUTE.max.z, {1.f, 0.6f, 0.1f});     // a lamp down the shaft
-    prop(X1 - 0.1f, 2.f, -32.6f, X1, 3.2f, -30.4f, hazard);                                                // a sign over it
-    neon(X1 - 0.12f, 2.3f, -32.2f, X1 - 0.1f, 2.9f, -30.8f, {0.05f, 0.05f, 0.05f});
 
-    // A side-fed reject transfer hatch explains the route to the salvage pit.
-    // Its damaged grille is folded against the housing; the opening stays clear.
-    B.place("cradle_reject_hatch",{11.75f,0,-31.5f});
-    int transfer=wall(7.5f,0,-33.5f,9.8f,.16f,-29.5f,dark);
+    // Heavy open collar and receiver ribs make this a deliberate drop into
+    // salvage, rather than an unmarked hole beside three lethal furnace belts.
+    for(float z:{CHUTE.min.z-.35f,CHUTE.max.z+.35f}) {
+        prop(8.7f,-.3f,z-.15f,18.f,.12f,z+.15f,steel2);
+        B.kit().rod({9.2f,-.15f,z},{9.2f,-22.6f,z},.16f,rust,10);
+        for(float x:{10.f,15.8f}) {
+            wall(x-.1f,0,z-.12f,x+.1f,1.1f,z+.12f,steel2);
+        }
+        prop(9.9f,1.05f,z-.08f,15.9f,1.15f,z+.08f,hazard);
+    }
+    for(float y:{-.3f,-7.f,-14.f,-21.f}) {
+        neon(9.05f,y,-36.7f,9.15f,y+.12f,-26.3f,lamp*.65f);
+        prop(9.f,y-.25f,-36.8f,9.3f,y,-26.2f,dark);
+    }
+    neon(8.85f,-.18f,-36.8f,9.05f,-.08f,-26.2f,{1.7f,.95f,.3f});
+    int transfer=wall(7.5f,0,-33.5f,8.85f,.16f,-29.5f,dark);
     L.conveyors.push_back({transfer,{1,0,0},.7f});
     for(int k=0;k<5;++k)
         B.kit().rod({7.7f+k*.45f,.23f,-33.35f},{7.7f+k*.45f,.23f,-29.65f},.1f,steel2,8);
-    for(float z:{-34.6f,-28.4f}) {
-        prop(10.1f,0,z,10.2f,1.1f,z+.1f,steel2);
-        prop(13.4f,0,z,13.5f,1.1f,z+.1f,steel2);
-        prop(10.1f,1.05f,z,13.5f,1.15f,z+.1f,hazard);
-    }
-    B.place("cradle_switchgear",{14.55f,0,-36.5f},-90);
-    B.place("cradle_scrap_cluster",{12.5f,.03f,-38.f},25,.55f);
+    B.place("cradle_switchgear",{14.55f,0,-39.5f},-90);
+    B.place("cradle_scrap_cluster",{12.5f,.03f,-40.f},25,.55f);
 
     // Surfaces by colour
     B.paint(m0, Mat::CONCRETE, [&](vec3 c, Mat m) {
@@ -249,7 +258,11 @@ inline LevelData buildCradle() {
         if (LevelBuilder::same(c, hazard)) return Mat::PLATE;
         return m;
     });
-    L.floors.push_back({X0, ZN, X1, ZS + 4.f, 0.001f, conc2, Mat::CONCRETE});
+    // FloorPatch is visual and also occludes baked light. The old single quad
+    // hid the physical chute with an apparently solid concrete floor.
+    L.floors.push_back({X0, ZN, CHUTE.min.x, ZS + 4.f, .001f, conc2, Mat::CONCRETE});
+    L.floors.push_back({CHUTE.min.x, CHUTE.max.z, X1, ZS + 4.f, .001f, conc2, Mat::CONCRETE});
+    L.floors.push_back({CHUTE.min.x, ZN, X1, CHUTE.min.z, .001f, conc2, Mat::CONCRETE});
 
     // ---- the section ----
     Arena a;
@@ -261,6 +274,7 @@ inline LevelData buildCradle() {
     a.bounds = LevelBuilder::aabb(X0, 0.f, ZN, X1, ROOF - 0.2f, ZS);
     a.extraZones.push_back(LevelBuilder::aabb(CHUTE.min.x, -40.f, CHUTE.min.z, CHUTE.max.x, ROOF - 0.2f, CHUTE.max.z));
     a.extraZones.push_back(LevelBuilder::aabb(CHUTE.min.x, -40.f, CHUTE.min.z, PITX, TUN1 - 0.1f, CHUTE.max.z));   // the tunnel
+    a.extraZones.push_back(LevelBuilder::aabb(CHUTE.min.x, -40.f, CHUTE.min.z, PITX+4.f, 4.7f, CHUTE.max.z));
     a.playerStart = {3.5f, 0.f, 4.f};   // (a retry: on your feet beside the belt; the first time you wake on it)
     a.startYaw = -90.f;
     a.hasTrigger = false;               // no fight here
@@ -299,7 +313,7 @@ inline LevelData buildCradle() {
     B.mat = Mat::CONCRETE;
     wall(PX0, PF - 0.6f, PZN, PX1, PF, PZS, conc2);                                                   // the floor
     B.mat = Mat::ROCK;
-    B.wallZ(PZN, PZS, PX0 - 0.6f, PX0, PF, PTOP, slab, {{CHUTE.min.z, CHUTE.max.z, TUN0, TUN1}});     // west, the hatch in it
+    B.wallZ(PZN, PZS, PX0 - 0.6f, PX0, PF, PTOP, slab, {{CHUTE.min.z, CHUTE.max.z, TUN0, PTOP}});     // open receiver overlooking UNIT 01
     wall(PX1, PF, PZN, PX1 + 0.6f, PTOP, PZS, slab);                                                  // east
     wall(PX0 - 0.6f, PF, PZN - 0.6f, PX1 + 0.6f, PTOP, PZN, slab);                                    // north
     B.wallX(PX0 - 0.6f, PX1 + 0.6f, PZS, PZS + 0.6f, PF, PTOP, slab, {{30.2f, 33.8f, LEDGE, LEDGE + 3.f}});   // south, the duct door

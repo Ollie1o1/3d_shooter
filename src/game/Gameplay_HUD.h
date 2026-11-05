@@ -112,7 +112,8 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
                 if(here==1&&director.arena==1&&director.phase==WaveDirector::Phase::CLEARED)what="THE DOCK IS OPEN";
                 if(here==4)what=coldRecall?"THE BACK DOOR IS OPEN":"TAKE WHAT 24-A IS HOLDING";
             }
-            else if (here == level.story.pitSection && !storyOwns(0)) what = "FIND SOMETHING TO FIGHT WITH";
+            else if(here==0)what="SALVAGE BAY / FOLLOW THE AMBER LIGHTS DOWN";
+            else if (here == level.story.pitSection && !storyOwns(0)) what = "TAKE THE REVOLVER / UNIT 01 UNDER THE WORK LIGHT";
             else if (here == level.story.pitSection) what = "CLIMB OUT";
             else if (here > level.story.pitSection && !storyOwns(2) && director.arena == here && director.phase == WaveDirector::Phase::APPROACH && player.position.z > 40.f) what = "TAKE THE LANCER";
             else if(here==2)what=storyOwns(2)?"BOARD THE SERVICE LIFT / ASSEMBLY ABOVE":"FOLLOW THE DUCTS";

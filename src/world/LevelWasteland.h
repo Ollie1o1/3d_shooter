@@ -121,6 +121,31 @@ inline LevelData buildWasteland() {
     solid(-38,3.6f,-40,-27,3.9f,-27,dark);
     for(float z:{-39.f,-28.f})solid(-27.4f,0,z-.2f,-27,3.6f,z+.2f,steel);
     for(float z=-39;z<-27;z+=3)detail(-37,3.35f,z,-28,3.5f,z+.15f,rust);
+    // A stranded freight loading gantry offers a continuous raised flank.
+    // Both ramps return to the yard; its open underside is another approach.
+    solid(-24,2.9f,-39,-7,3.2f,-35,steel);
+    ramp(box(-24,0,-35,-18,3.2f,-22),2,3.2f,0);
+    ramp(box(-24,0,-52,-18,3.2f,-39),2,0,3.2f);
+    for(float x:{-23.5f,-8.f})for(float z:{-38.5f,-35.5f})
+        solid(x-.15f,0,z-.15f,x+.15f,2.9f,z+.15f,steel);
+    for(float z:{-38.9f,-35.1f}) {
+        detail(-17.8f,4.2f,z-.06f,-7.3f,4.3f,z+.06f,paint);
+        for(float x=-17.5f;x< -7;x+=3.f)detail(x,3.2f,z-.06f,x+.08f,4.3f,z+.06f,rust);
+        B.neon(-17.5f,3.22f,z,-7.5f,3.26f,z+.06f,warm*.25f);
+    }
+    sign("FREIGHT / NO DEPARTURES",{-23.7f,5.7f,-35.05f},{1,0,0},.075f);
+    // Half-buried cargo chassis break long firing lanes. Their low roofs
+    // are real standing surfaces, with small steps to jump from either side.
+    for(vec3 p:{vec3{9,0,-23},vec3{-22,0,-57},vec3{20,0,-55},vec3{-7,0,-43}}) {
+        B.mat=Mat::CORRUGATED;
+        solid(p.x-3,0,p.z-1.8f,p.x+3,2.4f,p.z+1.8f,rust);
+        solid(p.x-4.2f,0,p.z-.8f,p.x-3,1.1f,p.z+.8f,steel);
+        detail(p.x-3,2.4f,p.z-1.8f,p.x+3,2.48f,p.z+1.8f,ash);
+        for(float z:{-1.82f,1.82f})for(float x=-2.8f;x<3;x+=.75f)
+            detail(p.x+x,.2f,p.z+z-.035f,p.x+x+.09f,2.25f,p.z+z+.035f,steel);
+        for(float x:{-2.5f,2.5f})B.kit().rod(p+vec3{x,.4f,-1.9f},p+vec3{x,.4f,1.9f},.45f,dark,10);
+        B.mat=Mat::METAL;
+    }
     S.wrecks.push_back({{25,0,-11},3.14f,9,-1,storytext::spanLogs[0],1});
     L.placedPickups.push_back({{33,0,-7},1});
     B.neon(-41.55f,4.8f,-56,-41.45f,5,-46,cyan*.55f);
@@ -235,6 +260,14 @@ inline LevelData buildWasteland() {
     }
     sign("BRAKE LOCKS",{-25,3.5f,-99},{0,0,-1},.07f);
     hauler(7,-96,90);reel({-17,0,-88});reel({24,0,-73});
+    // Dismantled generator banks make two sheltered pockets between the
+    // exposed turbine locks. Their fins give the yard a working silhouette.
+    for(vec3 p:{vec3{-3,0,-81},vec3{22,0,-109}}) {
+        solid(p.x-3,0,p.z-2,p.x+3,2.8f,p.z+2,steel);
+        for(int k=0;k<7;++k)detail(p.x-2.8f+k*.8f,2.8f,p.z-1.7f,p.x-2.55f+k*.8f,3.5f,p.z+1.7f,rust);
+        B.neon(p.x-2.5f,2.2f,p.z+2.01f,p.x+2.5f,2.3f,p.z+2.06f,warm*.4f);
+        for(float side:{-1.f,1.f})B.kit().rod(p+vec3{side*3,1,-1},p+vec3{side*4.5f,.1f,-1},.14f,rust,10);
+    }
     // A maintenance deck and broad ramp offer a second firing angle on the
     // northern brake. The ground route and weapon wreck remain unobstructed.
     solid(7,2.9f,-78,18,3.2f,-68,steel);

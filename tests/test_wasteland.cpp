@@ -81,6 +81,9 @@ int main(){
           "optional turbine maintenance deck is accessible uphill and downhill without jumping");
     Walk shelter(L,{-32,0,-26});shelter.boundaries=&d;
     CHECK(shelter.to({-32,0,-41}),"convoy windbreak is an open flank that can be crossed in normal movement");
+    Walk loading(L,{-21,0,-21});loading.boundaries=&d;
+    CHECK(loading.to({-21,3.2f,-37}) && loading.to({-9,3.2f,-37}) && loading.to({-21,3.2f,-37}) && loading.to({-21,0,-53}),
+          "convoy's loading gantry is a real raised flank with walkable approaches at both ends");
     Walk relay(L,{-85,-5,-46});relay.boundaries=&d;
     CHECK(relay.to({-85,-5,-38})&&relay.to({-96,-5,-38})&&relay.to({-85,-5,-38}),"buried relay secret is connected in both directions");
     Walk toll(L,{44,0,-133});toll.boundaries=&d;

@@ -567,6 +567,8 @@ public:
     std::vector<ColdCrack> coldCracks;   // the Frozen Sea's ice, cracking under you
     glm::vec3 coldCrackFrom{0.f};
     void updateColdVents(float dt);
+    void updateThawHeat(float dt);   // the Thaw Room's heaters warm THAWLINGS faster
+    bool thawHeatTold = false;
     void updateColdSea(float dt);
     void renderColdIce(const glm::mat4& view, const glm::mat4& proj, glm::vec3 camPos);
     int   coldRecallItem = -1;  // its interactable
@@ -1243,7 +1245,9 @@ public:
     EnemyType hurtBy = EnemyType::COUNT;   // set around enemy events and shots: who's hitting you now
     bool  loggedDeath = false;
     void  logRun(const char* how);
-    void  trackStoryRun(float dt);   // STORY's part of the log: sections, where you are, lost time
+    void  trackStoryRun(float dt);
+    void  gatherWreckBodies(std::vector<BoxInstance>& out, float frost);   // Chapters 4 and 5: the units before you, a marker over the unread
+    void  tickWreckLogs(float dt);                                          // ...their logs: typed out, closed walking away   // STORY's part of the log: sections, where you are, lost time
 
     void onEnemyKilled(Enemy& e, StyleSource src);
 

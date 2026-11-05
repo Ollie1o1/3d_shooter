@@ -6,6 +6,7 @@
 #include "world/LevelStory.h"
 #include "world/LevelLab.h"
 #include "world/LevelCold.h"
+#include "world/LevelPlain.h"
 #include "game/WaveDirector.h"
 #include "render/LightBake.h"
 #include <cstdio>
@@ -93,10 +94,12 @@ int main() {
         r.unitsRead=(1u<<1)|(1u<<18);back=Records{};back.parse(r.serialise());
         CHECK(back.unitsRead==r.unitsRead,"the unit archive's read logs survive a save and load");
         {   // every wreck across the chapters is a different unit, 01..23 (the archive has one entry each)
-            LevelData C[]={buildCradle(),buildWasteland(),buildLab(),buildCold()};
+            LevelData C[]={buildCradle(),buildWasteland(),buildLab(),buildPlain(),buildCold()};
             unsigned seen=0;bool unique=true,inRange=true,logged=true;
             for(auto& L:C)for(auto& w:L.story.wrecks){inRange&=w.number>=1&&w.number<=23;unique&=!((seen>>w.number)&1u);seen|=1u<<w.number;logged&=w.log&&w.log[0];}
             CHECK(unique&&inRange&&logged,"every wreck in the story is its own unit, 01 to 23, with a last log for the archive");
+            int found=0;for(int u=1;u<=23;++u)found+=(seen>>u)&1u;
+            CHECK(found==20 && !((seen>>13)&1u) && !((seen>>15)&1u) && !((seen>>23)&1u),"20 units have wrecks; 13 and 15 were never found, and 23 waits at the door (the finale)");
         }
         Records old; old.parse("bestArena 100\nbestFast 0\n");
         CHECK(old.bestArena==100.f && old.storyRank[4]==0,"an older records file (with no story bests) still loads");

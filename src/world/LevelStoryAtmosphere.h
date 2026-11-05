@@ -143,6 +143,29 @@ inline void buildCradleAtmosphere(LevelBuilder& B,float A) {
         stencil(label,{x-3,F+9.8f,24.4f},{1,0,0},.12f,cream);
     }
     pump({61,F,31});pump({104,F,32});
+    // Substantial machining stations occupy the production floor itself.
+    // Their casings stop fire, their roofs and service steps are standable,
+    // and the gaps between them preserve the three conveyor lanes.
+    int machine=0;
+    for(vec3 p:{vec3{74,F,39},vec3{87,F,51},vec3{98,F,58}}) {
+        B.wall(p.x-3.2f,F,p.z-2.3f,p.x+3.2f,F+2.4f,p.z+2.3f,iron);
+        B.wall(p.x-4.8f,F,p.z+.5f,p.x-3.2f,F+1.1f,p.z+2.3f,dark);
+        detail(p+vec3{-3.3f,2.4f,-2.4f},p+vec3{3.3f,2.48f,2.4f},silver);
+        for(float side:{-1.f,1.f}) {
+            detail(p+vec3{side*3.22f-.04f,.4f,-1.8f},p+vec3{side*3.22f+.04f,1.8f,1.8f},dark);
+            for(int slot=0;slot<6;++slot)
+                detail(p+vec3{side*3.23f-.03f,.55f+slot*.18f,-1.55f},p+vec3{side*3.23f+.03f,.62f+slot*.18f,1.55f},silver);
+        }
+        for(float x:{-2.5f,2.5f}) {
+            pipe(p+vec3{x,2.45f,-1.7f},p+vec3{x,4.4f,-1.7f},.16f,rust);
+            B.kit().column(p+vec3{x,4.3f,-1.7f},.27f,.22f,iron,12);
+        }
+        lamp(p+vec3{-2.6f,1.9f,2.32f},p+vec3{2.6f,2.02f,2.38f},amber*.65f);
+        char label[24];std::snprintf(label,sizeof(label),"PRESS / %02d",++machine);
+        stencil(label,p+vec3{-2.6f,1.35f,2.36f},{1,0,0},.065f,cream);
+        floorBand(p.x-4,p.x+4,p.z-3.1f,F,yellow);
+        S.vents.push_back({p+vec3{2.5f,4.5f,-1.7f},3,5.5f+machine,float(machine)});
+    }
     B.place("cradle_service_cart",{59.4f,A,64},90);
     for(float x:{65.f,76.f,87.f,98.f}) {
         extractor({x,F+9,77.55f},180,1.4f);

@@ -11,6 +11,9 @@
 #include "render/EnemyModel.h"
 #include "world/Interactable.h"
 #include "audio/MusicSynth.h"
+#include "world/Stuck.h"
+#include "player/Player.h"
+#include <cstring>
 #include <algorithm>
 #include <set>
 #include <cstdio>
@@ -34,7 +37,7 @@ struct Walk {
         clock += DT; l.updateMovers(clock);
         if (ride >= 0) p.position += l.movers[ride].delta;
         p.dynWalls = l.moverWalls.data(); p.dynCount = (int)l.moverWalls.size();
-        p.floorY = l.baseFloor(p.position.x, p.position.z);
+        p.floorY = l.baseFloor(p.position.x, p.position.z, p.radius);
         p.update(DT, keys, l.walls.data(), (int)l.walls.size(), false, &grid);
         std::vector<const AABB*> zones; for (auto& a : l.arenas) { zones.push_back(&a.zone); for (auto& z : a.extraZones) zones.push_back(&z); }   // (as the game does)
         constrainToZones(p.position, p.velocity, p.height, zones, true);
@@ -65,6 +68,21 @@ int main() {
             && std::abs(w.box.min.z + w.box.max.z - 2.f * s.z) < (w.box.max.z - w.box.min.z) + 30.f && w.box.max.y > 0.1f) clearStart = false;
     CHECK(clearStart, "nothing solid within 15 m of the arrival");
 
+    {   // Service roofs have physical routes as well as visible ramp meshes.
+        bool service=true;
+        for(int k=0;k<3;++k) {
+            auto d=cold::chiller(k);Walk w(L,d.c+glm::vec3{-2,0,-4.7f});
+            bool up=w.to(d.c+glm::vec3{-16.4f,3.2f,-4.7f},false,9000,.3f)
+                && w.to(d.c+glm::vec3{-16.4f,3.2f,-1},false,9000,.3f)
+                && w.to(d.c+glm::vec3{-14,3.2f,-1},false,9000,.3f);
+            for(int f=0;f<30;++f)w.step(d.c+glm::vec3{-14,3.2f,-1},false,true);
+            up&=w.p.onGround && std::fabs(w.p.position.y-3.2f)<.1f;
+            service&=up && w.to(d.c+glm::vec3{-16.4f,3.2f,-1},false,9000,.3f)
+                && w.to(d.c+glm::vec3{-16.4f,3.2f,-4.7f},false,9000,.3f)
+                && w.to(d.c+glm::vec3{-2,0,-4.7f},false,9000,.3f);
+        }
+        CHECK(service,"every Blast Chiller service deck can be climbed, crossed and left without jumping");
+    }
     // ---- the lip ----
     bool lip = true, zoneOver = true, ragged = false;
     float lo = 1e9f, hi = -1e9f;
@@ -136,6 +154,7 @@ int main() {
         CHECK(reach && glm::length(w.p.camera.position - cold::recallAt()) < Interactable::INTERACT_RANGE, "24-A's RECALL module is within reach from the aisle");
         // Out of the back door, over the transfer bridge to the Blast Chillers, across its decks
         bool chill = reach && w.to({cold::HOOK_X, 0.f, cold::TOWER_BACK - 4.f}, true) && w.to({cold::HOOK_X, 0.f, -830.f}, true)
+                  && w.to(cold::chiller(0).c+glm::vec3{-18,0,6},true) && w.to(cold::chiller(0).c+glm::vec3{-4,0,6},true)
                   && w.to(cold::chiller(0).c, true) && w.to(cold::chiller(1).c, true, 9000, 0.8f) && w.to(cold::chiller(2).c, true, 9000, 0.8f);
         CHECK(chill && w.p.position.y > -0.5f, "out of Rack 24's back door, over the transfer bridge and across the three cooling-tower decks");
         bool sea = chill && w.to({cold::chiller(2).c.x + 20.f, 0.f, -830.f}, true) && w.to(cold::seaStart(), true);
@@ -351,6 +370,33 @@ int main() {
         StorySave s; s.chapter = 5; s.checkpoint = 9; StorySave back;
         CHECK(back.parse(s.text()) && back.chapter == 5 && back.checkpoint == 9, "a Chapter 5 save at the Vault round-trips");
         s.checkpoint = 10; CHECK(!back.parse(s.text()), "...and a checkpoint past its last section is rejected");
+    }
+
+    {   // THE THAW ROOM (docs/gameplay-standard.md's worked example): a catwalk down each long wall, walked up
+        // without a jump from every corner and along its whole length by a real player; the heat by the heaters
+        LevelData L = buildCold(); SpatialGrid g; g.build(L.walls);
+        struct Climb { glm::vec3 from; float yaw; } climbs[] = {{{-66.f, 0.f, -602.6f}, 180.f}, {{-66.f, 0.f, -648.f}, 180.f}, {{-14.f, 0.f, -602.6f}, 0.f}, {{-14.f, 0.f, -648.f}, 0.f}};
+        bool up = true, along = true, clear = true;
+        for (const auto& c : climbs) {
+            Player p(c.from); p.camera.yaw = c.yaw;
+            auto walk = [&](int ticks) {
+                for (int i = 0; i < ticks; ++i) {
+                    Uint8 k[SDL_NUM_SCANCODES]; std::memset(k, 0, sizeof(k)); k[SDL_SCANCODE_W] = 1;
+                    p.floorY = L.baseFloor(p.position.x, p.position.z, p.radius);
+                    p.update(DT, k, L.walls.data(), (int)L.walls.size(), false, &g);
+                    clear &= !bodyEmbedded(L.walls, L.moverWalls, g, p.position, p.radius, p.height);
+                }
+            };
+            walk(240);
+            up &= std::fabs(p.position.y - cold::THAW_DECK_Y) < 0.05f;
+            p.camera.yaw = c.from.z > -620.f ? -90.f : 90.f;
+            walk(480);
+            along &= std::fabs(p.position.y - cold::THAW_DECK_Y) < 0.05f && std::fabs(p.position.z - c.from.z) > 45.f;
+        }
+        CHECK(up, "the Thaw Room's catwalks: walked up from all four corners, no jump needed");
+        CHECK(along && clear, "...and walked end to end, 4.2 m up, catching on nothing");
+        CHECK(cold::inThawHeat({-77.f, 0.f, -613.f}) && cold::inThawHeat({-2.f, 0.f, -641.f}) && !cold::inThawHeat({-40.f, 0.f, -625.f}) &&
+              !cold::inThawHeat({-77.f, 4.2f, -613.f}), "the heat is by the heaters on the floor, not in the room's middle or up on the catwalk");
     }
 
     {   // ROLLBACK winds the score back: a short backwards run of what just played, then half a bar earlier

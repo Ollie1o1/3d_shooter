@@ -109,6 +109,7 @@ make run    # compile + run
 make test   # headless tests: physics, level data, AI, a simulated full run
 make test-route  # Story routes: every chapter walkable section to section (but for its lifts and grapples), every checkpoint spawn sound
 make routes      # ...the same, printed leg by leg
+make audit       # every section of every mode measured against the gameplay standard (docs/gameplay-standard.md)
 python3 tools/runlog.py  # sum up runs.jsonl: deaths, damage, guns, and for STORY time and time lost per section
 make clean  # delete binaries
 
