@@ -1116,4 +1116,35 @@ inline std::vector<unsigned char> brass() {
     }, 0.40f);
 }
 
+// A material's relief, for the world shader's lighting (shader.frag uNormalMap): its brightness taken as
+// height (grout, seams, rivet shadows and cracks are dark: low), softened a texel, its slope as a
+// tangent-space normal (R across, G along, B out of the surface). Wraps like the material itself
+inline std::vector<unsigned char> normalMap(const std::vector<unsigned char>& px, float strength = 2.5f) {
+    const int N = SIZE;
+    std::vector<float> h(N * N), soft(N * N);
+    for (int i = 0; i < N * N; ++i)
+        h[i] = (0.299f * px[i * 4] + 0.587f * px[i * 4 + 1] + 0.114f * px[i * 4 + 2]) / 255.f;
+    for (int y = 0; y < N; ++y)
+        for (int x = 0; x < N; ++x) {
+            float sum = 0.f;
+            for (int dy = -1; dy <= 1; ++dy) for (int dx = -1; dx <= 1; ++dx)
+                sum += h[wrap(y + dy, N) * N + wrap(x + dx, N)] * ((dx == 0 ? 2.f : 1.f) * (dy == 0 ? 2.f : 1.f));
+            soft[y * N + x] = sum / 16.f;
+        }
+    std::vector<unsigned char> out(N * N * 4);
+    auto H = [&](int x, int y) { return soft[wrap(y, N) * N + wrap(x, N)]; };
+    for (int y = 0; y < N; ++y)
+        for (int x = 0; x < N; ++x) {
+            float gx = (H(x + 1, y - 1) + 2.f * H(x + 1, y) + H(x + 1, y + 1)) - (H(x - 1, y - 1) + 2.f * H(x - 1, y) + H(x - 1, y + 1));
+            float gy = (H(x - 1, y + 1) + 2.f * H(x, y + 1) + H(x + 1, y + 1)) - (H(x - 1, y - 1) + 2.f * H(x, y - 1) + H(x + 1, y - 1));
+            glm::vec3 n = glm::normalize(glm::vec3{-gx * strength, -gy * strength, 1.f});
+            unsigned char* o = &out[(y * N + x) * 4];
+            o[0] = (unsigned char)std::lround((n.x * 0.5f + 0.5f) * 255.f);
+            o[1] = (unsigned char)std::lround((n.y * 0.5f + 0.5f) * 255.f);
+            o[2] = (unsigned char)std::lround((n.z * 0.5f + 0.5f) * 255.f);
+            o[3] = 255;
+        }
+    return out;
+}
+
 } // namespace MaterialTex

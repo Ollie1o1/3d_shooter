@@ -11,6 +11,7 @@ inline void GameplayState::applyTextureQuality() {
     if (q == textureQuality) return;
     textureQuality = q;
     for (GLuint t : worldTex) if (t) TextureGen::setAnisotropy(t, GameSettings::qualityAnisotropy(q));
+    for (GLuint t : worldNrm) if (t) TextureGen::setAnisotropy(t, GameSettings::qualityAnisotropy(q));
 }
 
 // The world's textures, made once and kept for every run after. They never change, and making them was most
@@ -20,48 +21,57 @@ inline GLuint* GameplayState::sharedWorldTex() {
     static bool made = false;
     if (!made) {
         made = true;
-        tex[TEX_GRID]          = TextureGen::uploadMaterial(MaterialTex::gridFloor());
-        tex[TEX_BRICK]         = TextureGen::uploadMaterial(MaterialTex::brick());
-        tex[TEX_METAL]         = TextureGen::uploadMaterial(MaterialTex::metal());
-        tex[TEX_PANEL]         = TextureGen::uploadMaterial(MaterialTex::panel());
-        tex[TEX_ROCK]          = TextureGen::uploadMaterial(MaterialTex::rock());
-        tex[TEX_CONCRETE]      = TextureGen::uploadMaterial(MaterialTex::concrete());
-        tex[TEX_LIMESTONE]     = TextureGen::uploadMaterial(MaterialTex::limestone());
-        tex[TEX_BRASS]         = TextureGen::uploadMaterial(MaterialTex::brass());
-        tex[TEX_ADOBE]         = TextureGen::uploadMaterial(MaterialTex::adobe());
-        tex[TEX_TERRACOTTA]    = TextureGen::uploadMaterial(MaterialTex::terracotta());
-        tex[TEX_WOOD]          = TextureGen::uploadMaterial(MaterialTex::wood());
-        tex[TEX_PLATE]         = TextureGen::uploadMaterial(MaterialTex::plate());
-        tex[TEX_TREAD]         = TextureGen::uploadMaterial(MaterialTex::tread());
-        tex[TEX_MARBLE]        = TextureGen::uploadMaterial(MaterialTex::marble());
-        tex[TEX_FLAG]          = TextureGen::uploadMaterial(MaterialTex::flagstone());
-        tex[TEX_CIRCUIT]       = TextureGen::uploadMaterial(MaterialTex::circuit());
-        tex[TEX_CIRCUIT_FLOOR] = TextureGen::uploadMaterial(MaterialTex::circuitFloor());
-        tex[TEX_CLINIC]        = TextureGen::uploadMaterial(MaterialTex::clinic());
-        tex[TEX_LINO]          = TextureGen::uploadMaterial(MaterialTex::lino());
-        tex[TEX_CINDER]        = TextureGen::uploadMaterial(MaterialTex::cinder());
-        tex[TEX_SNOW]          = TextureGen::uploadMaterial(MaterialTex::snow());
-        tex[TEX_ICE]           = TextureGen::uploadMaterial(MaterialTex::ice());
-        tex[TEX_BASALT]        = TextureGen::uploadMaterial(MaterialTex::basalt());
+        GLuint* nrm = sharedWorldNrm();
+        auto up = [&](int t, const std::vector<unsigned char>& px) {   // the material, and its relief (MaterialTex::normalMap)
+            tex[t] = TextureGen::uploadMaterial(px);
+            nrm[t] = TextureGen::uploadMaterial(MaterialTex::normalMap(px));
+        };
+        up(TEX_GRID, MaterialTex::gridFloor());
+        up(TEX_BRICK, MaterialTex::brick());
+        up(TEX_METAL, MaterialTex::metal());
+        up(TEX_PANEL, MaterialTex::panel());
+        up(TEX_ROCK, MaterialTex::rock());
+        up(TEX_CONCRETE, MaterialTex::concrete());
+        up(TEX_LIMESTONE, MaterialTex::limestone());
+        up(TEX_BRASS, MaterialTex::brass());
+        up(TEX_ADOBE, MaterialTex::adobe());
+        up(TEX_TERRACOTTA, MaterialTex::terracotta());
+        up(TEX_WOOD, MaterialTex::wood());
+        up(TEX_PLATE, MaterialTex::plate());
+        up(TEX_TREAD, MaterialTex::tread());
+        up(TEX_MARBLE, MaterialTex::marble());
+        up(TEX_FLAG, MaterialTex::flagstone());
+        up(TEX_CIRCUIT, MaterialTex::circuit());
+        up(TEX_CIRCUIT_FLOOR, MaterialTex::circuitFloor());
+        up(TEX_CLINIC, MaterialTex::clinic());
+        up(TEX_LINO, MaterialTex::lino());
+        up(TEX_CINDER, MaterialTex::cinder());
+        up(TEX_SNOW, MaterialTex::snow());
+        up(TEX_ICE, MaterialTex::ice());
+        up(TEX_BASALT, MaterialTex::basalt());
         // The story chapters' own
-        tex[TEX_HULL]          = TextureGen::uploadMaterial(MaterialTex::hull());
-        tex[TEX_DECK]          = TextureGen::uploadMaterial(MaterialTex::deck());
-        tex[TEX_PAINTED]       = TextureGen::uploadMaterial(MaterialTex::painted());
-        tex[TEX_CASTWALL]      = TextureGen::uploadMaterial(MaterialTex::castwall());
-        tex[TEX_SLAB]          = TextureGen::uploadMaterial(MaterialTex::slab());
-        tex[TEX_STRATA]        = TextureGen::uploadMaterial(MaterialTex::strata());
-        tex[TEX_ASHGROUND]     = TextureGen::uploadMaterial(MaterialTex::ashground());
-        tex[TEX_ASPHALT]       = TextureGen::uploadMaterial(MaterialTex::asphalt());
-        tex[TEX_CORRUGATED]    = TextureGen::uploadMaterial(MaterialTex::corrugated());
-        tex[TEX_RUSTPLATE]     = TextureGen::uploadMaterial(MaterialTex::rustplate());
-        tex[TEX_FROSTSTEEL]    = TextureGen::uploadMaterial(MaterialTex::froststeel());
-        tex[TEX_FROSTDECK]     = TextureGen::uploadMaterial(MaterialTex::frostdeck());
-        tex[TEX_STEELPANEL]    = TextureGen::uploadMaterial(MaterialTex::steelpanel());
-        tex[TEX_PERFORATED]    = TextureGen::uploadMaterial(MaterialTex::perforated());
-        tex[TEX_SALVAGE]       = TextureGen::uploadMaterial(MaterialTex::salvage());
-        tex[TEX_SCRAPDECK]     = TextureGen::uploadMaterial(MaterialTex::scrapdeck());
+        up(TEX_HULL, MaterialTex::hull());
+        up(TEX_DECK, MaterialTex::deck());
+        up(TEX_PAINTED, MaterialTex::painted());
+        up(TEX_CASTWALL, MaterialTex::castwall());
+        up(TEX_SLAB, MaterialTex::slab());
+        up(TEX_STRATA, MaterialTex::strata());
+        up(TEX_ASHGROUND, MaterialTex::ashground());
+        up(TEX_ASPHALT, MaterialTex::asphalt());
+        up(TEX_CORRUGATED, MaterialTex::corrugated());
+        up(TEX_RUSTPLATE, MaterialTex::rustplate());
+        up(TEX_FROSTSTEEL, MaterialTex::froststeel());
+        up(TEX_FROSTDECK, MaterialTex::frostdeck());
+        up(TEX_STEELPANEL, MaterialTex::steelpanel());
+        up(TEX_PERFORATED, MaterialTex::perforated());
+        up(TEX_SALVAGE, MaterialTex::salvage());
+        up(TEX_SCRAPDECK, MaterialTex::scrapdeck());
     }
     return tex;
+}
+inline GLuint* GameplayState::sharedWorldNrm() {
+    static GLuint nrm[TEX_COUNT] = {};
+    return nrm;
 }
 
 // The level's baked light: read and uploaded the first time the level's played, then kept. A bake
@@ -79,6 +89,12 @@ inline GameplayState::SharedBake& GameplayState::sharedBake(const std::string& l
         glGenTextures(1, &sb.tex);
         glBindTexture(GL_TEXTURE_3D, sb.tex);
         glTexImage3D(GL_TEXTURE_3D, 0, GL_RG8, 1, 1, 1, 0, GL_RG, GL_UNSIGNED_BYTE, one);
+        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        const uint8_t none[4] = {0, 0, 0, 0};
+        glGenTextures(1, &sb.glowTex);
+        glBindTexture(GL_TEXTURE_3D, sb.glowTex);
+        glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8, 1, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, none);
         glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glBindTexture(GL_TEXTURE_3D, 0);
@@ -108,8 +124,18 @@ inline GameplayState::SharedBake& GameplayState::sharedBake(const std::string& l
     glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    const glm::ivec3 g = sb.bake.glowAtlas;   // the glow light, half as fine
+    glGenTextures(1, &sb.glowTex);
+    glBindTexture(GL_TEXTURE_3D, sb.glowTex);
+    glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA8, g.x, g.y, g.z, 0, GL_RGBA, GL_UNSIGNED_BYTE, sb.bake.glow.data());
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
     glBindTexture(GL_TEXTURE_3D, 0);
     std::vector<uint8_t>().swap(sb.bake.cells);   // (on the GPU now: the regions are all that's kept)
+    std::vector<uint8_t>().swap(sb.bake.glow);
     return sb;
 }
 inline void GameplayState::applyBake() {
@@ -117,18 +143,22 @@ inline void GameplayState::applyBake() {
     const int n = bake && bake->tex ? (int)bake->bake.regions.size() : 0;
     worldShader.setInt("uBakeCount", n);
     worldShader.setInt("uBake", 3);
+    worldShader.setInt("uGlowBake", 4);
     if (!n) return;
-    glm::vec3 mn[lightbake::MAX_REGIONS], dims[lightbake::MAX_REGIONS], off[lightbake::MAX_REGIONS], sun[lightbake::MAX_REGIONS];
+    glm::vec3 mn[lightbake::MAX_REGIONS], dims[lightbake::MAX_REGIONS], off[lightbake::MAX_REGIONS], sun[lightbake::MAX_REGIONS], alb[lightbake::MAX_REGIONS];
     for (int i = 0; i < lightbake::MAX_REGIONS; ++i) {
         const lightbake::Region* r = i < n ? &bake->bake.regions[i] : nullptr;
         mn[i] = r ? r->min : glm::vec3(0.f); dims[i] = r ? glm::vec3(r->dims) : glm::vec3(0.f);
         off[i] = r ? glm::vec3(r->off) : glm::vec3(0.f); sun[i] = r ? r->sunDir : glm::vec3(0.f, -1.f, 0.f);
+        alb[i] = r ? r->albedo : glm::vec3(0.f);
     }
     worldShader.setVec3Array("uBakeMin", mn, lightbake::MAX_REGIONS);
     worldShader.setVec3Array("uBakeDims", dims, lightbake::MAX_REGIONS);
     worldShader.setVec3Array("uBakeOff", off, lightbake::MAX_REGIONS);
     worldShader.setVec3Array("uBakeSun", sun, lightbake::MAX_REGIONS);
     worldShader.setVec3("uBakeAtlas", glm::vec3(bake->bake.atlas));
+    worldShader.setVec3Array("uBakeAlbedo", alb, lightbake::MAX_REGIONS);
+    worldShader.setVec3("uGlowAtlas", glm::vec3(bake->bake.glowAtlas));
 }
 
 inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode m)
@@ -191,6 +221,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
 
     whiteTex = makeGreyTexture();
     std::copy(sharedWorldTex(), sharedWorldTex() + TEX_COUNT, worldTex);   // (made once: see sharedWorldTex)
+    std::copy(sharedWorldNrm(), sharedWorldNrm() + TEX_COUNT, worldNrm);
 
     if (story() && g_continueStory && resumedStory.load()) {
         resumingStory = true;

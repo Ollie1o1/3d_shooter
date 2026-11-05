@@ -32,7 +32,7 @@ a new run resets discoveries. Enter on Chapter 1's completion card continues int
 with your equipment. STORY also offers direct Chapter 2 and Chapter 3 starts with the appropriate equipment.
 See [the Chapter 1 implementation and playtest notes](docs/story-chapter-1.md) for the route, controls,
 source files and developer starts. [Chapter 2 notes](docs/story-chapter-2.md) cover the wasteland
-route, Blender assets and verification. Launch Chapter 2 directly with `./shooter --story2`, or the Living Ward with `./shooter --story3` (`?story3` in the web build). Chapter 5, THE COLD STORE (an icy planet, RECALL, 24-K and THE RESTORER), starts with `./shooter --story5` (sections with `--arena N`, from 1); its [design and build notes](docs/chapter-5-design.md) cover what is built. [Chapter 3 build notes](docs/chapter-3-implementation.md) cover its controls, assets, tests and tuning limits. The current [Story revision](docs/story-overhaul.md) documents the writing, research and encounter direction. Settings → VIDEO → **AMBIENT DETAIL** reduces optional ash, grit, vents and moving decoration independently of resolution; required attack tells and objectives remain visible. Settings → GAMEPLAY → **ENEMY MARKERS** selects LOW (small cleanup icons, one short direction label) or DETAILED (full names, distance and cover labels). Bosses do not receive tracking icons in either mode.
+route, Blender assets and verification. Launch Chapter 2 directly with `./shooter --story2`, or the Living Ward with `./shooter --story3` (`?story3` in the web build). Chapter 5, THE COLD STORE (an icy planet, RECALL, 24-K and THE RESTORER), starts with `./shooter --story5` (sections with `--arena N`, from 1); its [design and build notes](docs/chapter-5-design.md) cover what is built. [Chapter 3 build notes](docs/chapter-3-implementation.md) cover its controls, assets, tests and tuning limits. The current [Story revision](docs/story-overhaul.md) documents the writing, research and encounter direction. Settings → VIDEO → **AMBIENT DETAIL** reduces optional ash, grit, vents and moving decoration independently of resolution; required attack tells and objectives remain visible. Settings → VIDEO → **LIGHTING**: LOW is the plain shading (sun, sky, baked shadows), MEDIUM adds the baked glow light (neon, lava and lamps lighting what is round them, blocked by walls) and the sun's bounce off the ground, HIGH also gives every surface its relief (normal maps made from its texture). Settings → GAMEPLAY → **ENEMY MARKERS** selects LOW (small cleanup icons, one short direction label) or DETAILED (full names, distance and cover labels). Bosses do not receive tracking icons in either mode.
 
 Combat Practice is available from **F3** on the main menu or the Story page.
 Choose repeatable lessons for parries, finishers, grapples, shotgun jumps and
@@ -115,6 +115,7 @@ make clean  # delete binaries
 ./shooter --fast --arena 3       # jump to a FAST room (here: the Ascent)
 ./shooter --room 7               # ROOM ATTACK: one FAST room on its own, for its medal (here: the Tower and the Pacemaker)
 ./shooter --god                  # take no damage (for recording footage)
+./shooter --lighting 1           # LIGHTING: 0 LOW, 1 MEDIUM, 2 HIGH (--skip glow / --skip bump / --skip cull to compare)
 ```
 
 ### Build (Windows)

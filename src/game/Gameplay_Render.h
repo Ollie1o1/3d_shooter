@@ -678,10 +678,16 @@ inline void GameplayState::render() {
     if (bake && bake->tex) {   // the baked light (LightBake.h), on unit 3
         glActiveTexture(GL_TEXTURE3);
         glBindTexture(GL_TEXTURE_3D, bake->tex);
+        glActiveTexture(GL_TEXTURE4);   // (and its glow light, on unit 4)
+        glBindTexture(GL_TEXTURE_3D, bake->glowTex);
         glActiveTexture(GL_TEXTURE0);
     }
     worldShader.setFloat("uBakeOn", baked ? 1.f : 0.f);
     worldShader.setFloat("uBakeDebug", baked && g_devOverlay == "bake" ? 1.f : 0.f);   // (--overlay bake: what's baked, as colour)
+    worldShader.setFloat("uGlowOn", baked && !devSkip("glow") && (settings ? settings->lighting : GameSettings::LIGHTING_DEFAULT) >= 1 ? 1.f : 0.f);   // (--skip glow: without the glow light and bounce)
+    worldShader.setInt("uNormalMap", 1);
+    const int lightingLevel = settings ? settings->lighting : GameSettings::LIGHTING_DEFAULT;   // (Settings: LIGHTING)
+    const bool bumpOn = lightingLevel >= 2 && !devSkip("bump");   // (--skip bump: the flat faces, to compare)
     // Which chunks of the world are in view, nearest first (WorldMesh.h): only those are drawn
     // (--skip cull: every chunk, to compare)
     static std::vector<int> inView;
@@ -697,14 +703,20 @@ inline void GameplayState::render() {
                        : t == TEX_STEELPANEL ? glm::vec3{0.2f, 0.9f, 1.1f} * 0.7f : glm::vec3{0.f};
         worldShader.setVec3("uTexGlow", glow);
         worldShader.setFloat("uMacro", worldTexMacro(t));
+        worldShader.setFloat("uBump", bumpOn ? worldTexBump(t) : 0.f);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_2D, worldNrm[t]);
+        glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, worldTex[t]);
         worldchunk::draw(world.byTex[t], inView);
     }
     worldShader.setVec3("uTexGlow", {0.f, 0.f, 0.f});
     worldShader.setFloat("uMacro", 0.f);
+    worldShader.setFloat("uBump", 0.f);
     worldShader.setFloat("uNoSeams", 0.f);
     worldShader.setFloat("uBakeOn", 0.f);
     worldShader.setFloat("uBakeDebug", 0.f);
+    worldShader.setFloat("uGlowOn", 0.f);
     applyNeon(worldShader, false);   // (the neon doesn't light itself; nor the view model, later)
     glBindTexture(GL_TEXTURE_2D, whiteTex);
     worldShader.setVec3("objectColor", {0.25f,0.25f,0.25f});

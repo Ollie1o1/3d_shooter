@@ -13,6 +13,11 @@
 // One region per arena and per corridor between them, packed into one 3D texture: in
 // shelves along Z, regions stacked up each shelf as high as the tallest region.
 // Each cell is two bytes: R the ambient (1 = as open as flat ground), G the sun.
+//
+// And at half that resolution (GLOW cells: 2 m) the light that colours places: RGB what reaches it
+// from everything that glows (neon, lava, lamps made in Blender), blocked by what's in the way, and A
+// how much sunlit surface it sees round it (the sun's bounce: the shader colours it by the sun and the
+// region's ground). A second 3D texture, laid out like the first (every region at even cells).
 // No OpenGL.
 // =============================================================================
 #include "world/Level.h"
@@ -24,6 +29,8 @@
 #include <cstring>
 #include <fstream>
 #include <functional>
+#include <map>
+#include <tuple>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -37,13 +44,18 @@ constexpr float AO_REACH = 4.f;        // how far an occluder still darkens
 constexpr float SUN_REACH = 80.f;      // how far a shadow can be cast from
 constexpr int   MAX_REGIONS = 16;
 constexpr uint32_t MAGIC = 0x4B414C4F;  // "OLAK"
-constexpr uint32_t VERSION = 5;
+constexpr uint32_t VERSION = 6;
+constexpr int   GLOW = 2;              // a glow cell is GLOW x GLOW x GLOW cells
+constexpr float GLOW_REACH = 13.f;     // how far a glowing thing still lights
+constexpr float GLOW_MAX = 4.f;        // the brightest a glow cell stores (as sqrt(light / GLOW_MAX))
+constexpr float BOUNCE_REACH = 7.f;    // how far round a glow cell it looks for sunlit surfaces
 
 struct Region {
     glm::vec3 min{0.f};       // world corner of cell (0,0,0)
     glm::ivec3 dims{0};       // cells
     glm::ivec3 off{0};        // where its cells start in the atlas
     glm::vec3 sunDir{0.f, -1.f, 0.f};   // the way its sun's light travels, as baked
+    glm::vec3 albedo{0.f};               // its ground's colour (the sun's bounce takes it on)
     bool contains(glm::vec3 p) const {
         glm::vec3 hi = min + glm::vec3(dims) * CELL;
         return p.x >= min.x && p.y >= min.y && p.z >= min.z && p.x < hi.x && p.y < hi.y && p.z < hi.z;
@@ -55,8 +67,23 @@ struct Bake {
     std::vector<Region> regions;
     glm::ivec3 atlas{0};          // every region's cells (packAtlas), a cell apart
     std::vector<uint8_t> cells;   // atlas.x * atlas.y * atlas.z * 2 (R ambient, G sun), X fastest
+    glm::ivec3 glowAtlas{0};      // (atlas + 1) / GLOW
+    std::vector<uint8_t> glow;    // glowAtlas cells * 4 (RGB glow light, A sun bounce), X fastest
     bool empty() const { return regions.empty(); }
     size_t at(int x, int y, int z) const { return (((size_t)z * atlas.y + y) * atlas.x + x) * 2; }
+    size_t glowAt(int x, int y, int z) const { return (((size_t)z * glowAtlas.y + y) * glowAtlas.x + x) * 4; }
+    // A world point's glow light (RGB) and bounce (A), decoded (nearest glow cell): 0 outside every region
+    glm::vec4 sampleGlow(glm::vec3 p) const {
+        for (const Region& r : regions)
+            if (r.contains(p)) {
+                glm::ivec3 c = glm::clamp(glm::ivec3(glm::floor((p - r.min) / CELL)), glm::ivec3(0), r.dims - 1);
+                glm::ivec3 g = (c + r.off) / GLOW;
+                size_t i = glowAt(g.x, g.y, g.z);
+                auto d = [&](uint8_t v) { float f = v / 255.f; return f * f * GLOW_MAX; };
+                return {d(glow[i]), d(glow[i + 1]), d(glow[i + 2]), glow[i + 3] / 255.f};
+            }
+        return glm::vec4(0.f);
+    }
     // A world point's two values (nearest cell; the shader filters): {1, 1} outside every region
     glm::vec2 sample(glm::vec3 p) const {
         for (const Region& r : regions)
@@ -95,6 +122,50 @@ inline void forEachOccluder(const LevelData& L, const std::function<void(const A
     }
 }
 
+// ---- what gives off light ----------------------------------------------------
+// Points of light: the neon (strips, panels, lava: the level's L.neon) cut into pieces a metre or so long,
+// and the self-lit parts of the props made in Blender (lamps, windows, flames), each by its area. Pieces
+// within half a metre of each other are summed into one (a string of bulbs: a few points, not hundreds)
+struct Emitter { glm::vec3 p; glm::vec3 power; };
+constexpr float NEON_GAIN = 0.55f, LAMP_GAIN = 2.2f;
+inline std::vector<Emitter> emitters(const LevelData& L) {
+    std::map<std::tuple<int, int, int>, std::pair<glm::vec3, glm::vec4>> sum;   // bucket: (power, position * weight, weight)
+    auto add = [&](glm::vec3 p, glm::vec3 power) {
+        float w = std::max({power.r, power.g, power.b});
+        if (w < 1e-4f) return;
+        auto key = std::make_tuple((int)std::floor(p.x / 0.5f), (int)std::floor(p.y / 0.5f), (int)std::floor(p.z / 0.5f));
+        auto& b = sum[key];
+        b.first += power;
+        b.second += glm::vec4(p * w, w);
+    };
+    for (const Wall& n : L.neon) {
+        if (std::max({n.color.r, n.color.g, n.color.b}) < 0.05f) continue;
+        glm::vec3 size = n.box.max - n.box.min;
+        float e[3] = {size.x, size.y, size.z};
+        std::sort(e, e + 3);
+        const float width = std::clamp(std::sqrt(e[1] / 0.2f), 0.7f, 2.5f);   // (NeonLights.h: a wide panel gives more)
+        glm::ivec3 k = glm::max(glm::ivec3(glm::ceil(size / 1.2f)), glm::ivec3(1));
+        const float share = 1.f / (k.x * k.y * k.z);
+        const float len = std::max(e[2], 0.3f);
+        for (int x = 0; x < k.x; ++x) for (int y = 0; y < k.y; ++y) for (int z = 0; z < k.z; ++z)
+            add(n.box.min + size * (glm::vec3(x, y, z) + 0.5f) / glm::vec3(k), n.color * (NEON_GAIN * width * len * share));
+    }
+    for (const PlacedModel& pm : L.models) {
+        const propfile::Prop* pr = propfile::get(pm.name);
+        if (!pr) continue;
+        const glm::mat4 world = propfile::placement(*pr, pm.free, pm.xf, pm.fit, pm.yaw);
+        propfile::forEachTri(*pr, world, [&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3, glm::vec3, glm::vec3, glm::vec3 col, bool glows, int) {
+            if (!glows) return;
+            float area = 0.5f * glm::length(glm::cross(b - a, c - a));
+            add((a + b + c) / 3.f, col * (LAMP_GAIN * area));
+        });
+    }
+    std::vector<Emitter> out;
+    out.reserve(sum.size());
+    for (auto& [k, b] : sum) out.push_back({glm::vec3(b.second) / b.second.w, b.first});
+    return out;
+}
+
 // What a bake depends on: the occluders, the arenas' boxes and suns. A level changed since: a new hash
 inline uint64_t levelHash(const LevelData& L) {
     uint64_t h = 1469598103934665603ull;
@@ -131,6 +202,13 @@ inline uint64_t levelHash(const LevelData& L) {
         }
     }
     for (const Arena& a : L.arenas) { qv(a.bounds.min); qv(a.bounds.max); qv(a.zone.min); qv(a.zone.max); qv(a.theme.lightDir * 100.f); }
+    // what glows (the glow light), and the ground's colour (the bounce)
+    for (const Wall& n : L.neon) { qv(n.box.min); qv(n.box.max); qv(n.color * 100.f); }
+    for (const PlacedModel& pm : L.models) {
+        const auto* prop = propfile::get(pm.name); if (!prop) continue;
+        for (const auto& part : prop->model.parts) if (part.chan >= 0) { qm(part.rel, 100.f); qv(part.k * 100.f); }
+    }
+    for (const FloorPatch& f : L.floors) { q(f.x0); q(f.z0); q(f.x1); q(f.z1); q(f.y); qv(f.color * 100.f); }
     uint32_t v = VERSION; mix(&v, 4);
     return h;
 }
@@ -182,12 +260,12 @@ inline glm::ivec3 packAtlas(std::vector<Region>& regions) {
     int z = 0, y = 0, depth = 0;
     for (int i : order) {
         Region& r = regions[i];
-        if (y > 0 && y + r.dims.y > H) { z += depth + 1; y = 0; depth = 0; }   // a new shelf
+        if (y > 0 && y + r.dims.y > H) { z += depth + 2; z += z & 1; y = 0; depth = 0; }   // a new shelf
         r.off = {0, y, z};
-        y += r.dims.y + 1;
+        y += r.dims.y + 2; y += y & 1;   // (two cells apart, at even cells: no glow cell is shared by two regions)
         depth = std::max(depth, r.dims.z);
     }
-    return regions.empty() ? glm::ivec3(0) : glm::ivec3(W, H, z + depth);
+    return regions.empty() ? glm::ivec3(0) : glm::ivec3(W + 1, H + 1, z + depth + 1);
 }
 
 // ---- the solid grid -----------------------------------------------------------------
@@ -278,6 +356,14 @@ inline Bake bake(const LevelData& L, int threads = 0, const std::function<void(c
     B.regions = regionsFor(L);
     B.atlas = packAtlas(B.regions);
     B.cells.assign((size_t)B.atlas.x * B.atlas.y * B.atlas.z * 2, 255);
+    B.glowAtlas = (B.atlas + 1) / GLOW;
+    B.glow.assign((size_t)B.glowAtlas.x * B.glowAtlas.y * B.glowAtlas.z * 4, 0);
+    const std::vector<Emitter> lights = emitters(L);
+    // the emitters in a grid of GLOW_REACH cells, to find the ones near a point
+    std::map<std::tuple<int, int, int>, std::vector<int>> lightGrid;
+    auto gkey = [](glm::vec3 p) { return std::make_tuple((int)std::floor(p.x / GLOW_REACH), (int)std::floor(p.y / GLOW_REACH), (int)std::floor(p.z / GLOW_REACH)); };
+    for (int i = 0; i < (int)lights.size(); ++i) lightGrid[gkey(lights[i].p)].push_back(i);
+    const std::vector<glm::vec3> bounceDirs = sphereDirs(24);
     const std::vector<glm::vec3> dirs = sphereDirs(48);
     const float flat = flatOpenness(dirs);
     // a cell is judged at points spread over it, the ones not inside anything (so a wall face
@@ -318,6 +404,78 @@ inline Bake bake(const LevelData& L, int threads = 0, const std::function<void(c
             if (z0 < z1) pool.emplace_back(work, z0, z1);
         }
         for (auto& th : pool) th.join();
+        pool.clear();
+        // Its ground's colour: the floor patches in it, by area (a texture's mean brightness is about 0.45)
+        {
+            glm::vec3 sumC{0.f}; float sumA = 0.f;
+            const glm::vec3 hi = r.min + glm::vec3(r.dims) * CELL;
+            for (const FloorPatch& f : L.floors) {
+                float x0 = std::max(std::min(f.x0, f.x1), r.min.x), x1 = std::min(std::max(f.x0, f.x1), hi.x);
+                float z0 = std::max(std::min(f.z0, f.z1), r.min.z), z1 = std::min(std::max(f.z0, f.z1), hi.z);
+                if (x1 <= x0 || z1 <= z0 || f.y < r.min.y || f.y > hi.y) continue;
+                sumC += f.color * (x1 - x0) * (z1 - z0); sumA += (x1 - x0) * (z1 - z0);
+            }
+            B.regions[ri].albedo = sumA > 0.f ? sumC / sumA * 0.45f : glm::vec3(0.2f);
+        }
+        // The glow light and the sun's bounce, a glow cell at a time (at its middle, or the first point
+        // of it in the open)
+        {
+            const glm::ivec3 g0 = r.off / GLOW, g1 = (r.off + r.dims - 1) / GLOW;
+            auto sunAt = [&](glm::vec3 p) {   // the baked sun of the cell at p (this region's), 0..1
+                glm::ivec3 c = glm::ivec3(glm::floor((p - r.min) / CELL));
+                if (glm::any(glm::lessThan(c, glm::ivec3(0))) || glm::any(glm::greaterThanEqual(c, r.dims))) return 0.f;
+                return B.cells[B.at(c.x + r.off.x, c.y + r.off.y, c.z + r.off.z) + 1] / 255.f;
+            };
+            auto glowWork = [&](int z0, int z1) {
+                for (int gz = z0; gz < z1; ++gz)
+                    for (int gy = g0.y; gy <= g1.y; ++gy)
+                        for (int gx = g0.x; gx <= g1.x; ++gx) {
+                            // its middle, in the world (cell GLOW * g + 1 of the atlas, less the region's offset)
+                            glm::vec3 mid = r.min + (glm::vec3(glm::ivec3(gx, gy, gz) * GLOW - r.off) + glm::vec3(GLOW * 0.5f)) * CELL;
+                            glm::vec3 q = mid;
+                            bool open = !S.solidAt(q);
+                            for (int k = 0; k < 8 && !open; ++k) {
+                                q = mid + glm::vec3((k & 1) ? 0.5f : -0.5f, (k & 2) ? 0.5f : -0.5f, (k & 4) ? 0.5f : -0.5f) * CELL;
+                                open = !S.solidAt(q);
+                            }
+                            if (!open) continue;
+                            glm::vec3 light{0.f};
+                            auto [kx, ky, kz] = gkey(q);
+                            for (int dx = -1; dx <= 1; ++dx) for (int dy = -1; dy <= 1; ++dy) for (int dz = -1; dz <= 1; ++dz) {
+                                auto it = lightGrid.find(std::make_tuple(kx + dx, ky + dy, kz + dz));
+                                if (it == lightGrid.end()) continue;
+                                for (int li : it->second) {
+                                    const Emitter& e = lights[li];
+                                    glm::vec3 d = e.p - q;
+                                    float dist = glm::length(d);
+                                    if (dist >= GLOW_REACH) continue;
+                                    float fall = (1.f - glm::smoothstep(GLOW_REACH * 0.55f, GLOW_REACH, dist)) / (1.f + 0.35f * dist * dist);
+                                    if (fall * std::max({e.power.r, e.power.g, e.power.b}) < 0.004f) continue;
+                                    // blocked? (the last stretch is the emitter's own mounting)
+                                    if (dist > 0.8f && march(S, q, d / dist, dist - 0.6f) < dist - 0.6f) continue;
+                                    light += e.power * fall;
+                                }
+                            }
+                            float bounce = 0.f;
+                            for (glm::vec3 dir : bounceDirs) {
+                                float t = march(S, q, dir, BOUNCE_REACH);
+                                if (t >= BOUNCE_REACH) continue;
+                                bounce += sunAt(q + dir * std::max(0.f, t - VOX)) * (1.f - t / BOUNCE_REACH);
+                            }
+                            bounce /= bounceDirs.size() * 0.5f;
+                            size_t i = B.glowAt(gx, gy, gz);
+                            for (int c = 0; c < 3; ++c)
+                                B.glow[i + c] = (uint8_t)std::lround(255.f * std::sqrt(glm::clamp(light[c] / GLOW_MAX, 0.f, 1.f)));
+                            B.glow[i + 3] = (uint8_t)std::lround(255.f * glm::clamp(bounce, 0.f, 1.f));
+                        }
+            };
+            int gz0 = g0.z, gz1 = g1.z + 1, gper = (gz1 - gz0 + threads - 1) / threads;
+            for (int t = 0; t < threads; ++t) {
+                int z0 = gz0 + t * gper, z1 = std::min(gz1, z0 + gper);
+                if (z0 < z1) pool.emplace_back(glowWork, z0, z1);
+            }
+            for (auto& th : pool) th.join();
+        }
         // A roofed arena (its floor mostly out of the sun) was lit by hand for that: no baked sun in it
         size_t lit = 0, free = 0;
         for (int cz = 0; cz < r.dims.z; ++cz)
@@ -328,9 +486,13 @@ inline Bake bake(const LevelData& L, int threads = 0, const std::function<void(c
                     ++free; lit += B.cells[i + 1] > 127;
                 }
         const bool roofed = free > 0 && lit < free / 4;
-        if (roofed)
+        if (roofed) {
             for (int cz = 0; cz < r.dims.z; ++cz) for (int cy = 0; cy < r.dims.y; ++cy) for (int cx = 0; cx < r.dims.x; ++cx)
                 B.cells[B.at(cx + r.off.x, cy + r.off.y, cz + r.off.z) + 1] = 255;
+            const glm::ivec3 g0 = r.off / GLOW, g1 = (r.off + r.dims - 1) / GLOW;   // (and no bounce of a sun it doesn't have)
+            for (int gz = g0.z; gz <= g1.z; ++gz) for (int gy = g0.y; gy <= g1.y; ++gy) for (int gx = g0.x; gx <= g1.x; ++gx)
+                B.glow[B.glowAt(gx, gy, gz) + 3] = 0;
+        }
         if (log) {
             char buf[128];
             std::snprintf(buf, sizeof buf, "  region %zu: %d x %d x %d cells%s", ri + 1, r.dims.x, r.dims.y, r.dims.z, roofed ? " (roofed: no sun)" : "");
@@ -354,6 +516,7 @@ inline std::string serialise(const Bake& B) {
         f32(r.min.x); f32(r.min.y); f32(r.min.z);
         u32(r.dims.x); u32(r.dims.y); u32(r.dims.z); u32(r.off.x); u32(r.off.y); u32(r.off.z);
         f32(r.sunDir.x); f32(r.sunDir.y); f32(r.sunDir.z);
+        f32(r.albedo.x); f32(r.albedo.y); f32(r.albedo.z);
     }
     u32(B.atlas.x); u32(B.atlas.y); u32(B.atlas.z);
     for (size_t i = 0; i < B.cells.size();) {
@@ -361,6 +524,13 @@ inline std::string serialise(const Bake& B) {
         while (j < B.cells.size() && j - i < 2 * 65535 && B.cells[j] == B.cells[i] && B.cells[j + 1] == B.cells[i + 1]) j += 2;
         uint16_t run = (uint16_t)((j - i) / 2);
         put(&B.cells[i], 2); put(&run, 2);
+        i = j;
+    }
+    for (size_t i = 0; i < B.glow.size();) {   // the glow cells, run-length coded the same way (four bytes a cell)
+        size_t j = i + 4;
+        while (j < B.glow.size() && j - i < 4 * 65535 && std::memcmp(&B.glow[j], &B.glow[i], 4) == 0) j += 4;
+        uint16_t run = (uint16_t)((j - i) / 4);
+        put(&B.glow[i], 4); put(&run, 2);
         i = j;
     }
     return o;
@@ -375,7 +545,7 @@ inline bool parse(const std::string& s, Bake& B, std::string& err) {
     if (!get(&b.hash, 8) || !get(&n, 4) || n > MAX_REGIONS) { err = "a broken header"; return false; }
     for (uint32_t i = 0; i < n; ++i) {
         Region r; uint32_t d[6];
-        if (!get(&r.min, 12) || !get(d, 24) || !get(&r.sunDir, 12)) { err = "a broken region"; return false; }
+        if (!get(&r.min, 12) || !get(d, 24) || !get(&r.sunDir, 12) || !get(&r.albedo, 12)) { err = "a broken region"; return false; }
         r.dims = {(int)d[0], (int)d[1], (int)d[2]}; r.off = {(int)d[3], (int)d[4], (int)d[5]};
         b.regions.push_back(r);
     }
@@ -388,6 +558,14 @@ inline bool parse(const std::string& s, Bake& B, std::string& err) {
         uint8_t v[2]; uint16_t run;
         if (!get(v, 2) || !get(&run, 2) || run == 0 || b.cells.size() + run * 2u > total) { err = "broken cells"; return false; }
         for (uint16_t k = 0; k < run; ++k) { b.cells.push_back(v[0]); b.cells.push_back(v[1]); }
+    }
+    b.glowAtlas = (b.atlas + 1) / GLOW;
+    const size_t glowTotal = (size_t)b.glowAtlas.x * b.glowAtlas.y * b.glowAtlas.z * 4;
+    b.glow.reserve(glowTotal);
+    while (b.glow.size() < glowTotal) {
+        uint8_t v[4]; uint16_t run;
+        if (!get(v, 4) || !get(&run, 2) || run == 0 || b.glow.size() + run * 4u > glowTotal) { err = "broken glow cells"; return false; }
+        for (uint16_t k = 0; k < run; ++k) b.glow.insert(b.glow.end(), v, v + 4);
     }
     for (const Region& r : b.regions)
         if (glm::any(glm::lessThan(r.off, glm::ivec3(0))) || glm::any(glm::greaterThan(r.off + r.dims, b.atlas))) { err = "a region outside the atlas"; return false; }

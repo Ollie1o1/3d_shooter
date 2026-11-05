@@ -308,9 +308,11 @@ public:
 
     GLuint      whiteTex = 0;
     GLuint      worldTex[TEX_COUNT] = {};
+    GLuint      worldNrm[TEX_COUNT] = {};   // each one's relief (MaterialTex::normalMap), on unit 1
     static GLuint* sharedWorldTex();   // made once, kept for every run (Gameplay_Flow.h)
+    static GLuint* sharedWorldNrm();   // (their normal maps: made with them)
     // The level's baked light (LightBake.h): loaded and uploaded once a level, kept (Gameplay_Flow.h)
-    struct SharedBake { bool tried = false; GLuint tex = 0; lightbake::Bake bake; };
+    struct SharedBake { bool tried = false; GLuint tex = 0, glowTex = 0; lightbake::Bake bake; };   // (glowTex: the glow light and the sun's bounce)
     static SharedBake& sharedBake(const std::string& level, const LevelData& L);
     const SharedBake* bake = nullptr;
     void applyBake();   // its regions to the world shader (once: they stay set)
