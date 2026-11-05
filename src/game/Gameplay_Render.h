@@ -688,7 +688,9 @@ inline void GameplayState::render() {
         glm::vec3 glow = t == TEX_CIRCUIT ? glm::vec3{0.15f, 0.85f, 1.0f} * 0.9f
                        : t == TEX_CIRCUIT_FLOOR ? glm::vec3{0.15f, 0.85f, 1.0f} * 0.45f
                        : t == TEX_BASALT ? glm::vec3{1.0f, 0.24f, 0.10f} * 0.75f
-                       : t == TEX_CINDER ? glm::vec3{1.2f, 0.3f, 0.07f} * 0.9f : glm::vec3{0.f};
+                       : t == TEX_CINDER ? glm::vec3{1.2f, 0.3f, 0.07f} * 0.9f
+                       : t == TEX_SALVAGE ? glm::vec3{1.3f, 0.35f, 0.08f} * 0.8f
+                       : t == TEX_STEELPANEL ? glm::vec3{0.2f, 0.9f, 1.1f} * 0.7f : glm::vec3{0.f};
         worldShader.setVec3("uTexGlow", glow);
         worldShader.setFloat("uMacro", worldTexMacro(t));
         glBindTexture(GL_TEXTURE_2D, worldTex[t]);
@@ -754,6 +756,8 @@ inline void GameplayState::render() {
         skyboxShader.setFloat("uPlain", plain() ? 1.f : 0.f);
         skyboxShader.setFloat("uCold", cold() ? 1.f : 0.f);
         skyboxShader.setFloat("uMoonLid", plain() ? plainMoonLid() : 0.f);
+        skyboxShader.setFloat("uFlash", plain() ? plainFlash() : 0.f);
+        skyboxShader.setVec3("uFlashDir", g_devOverlay == "plainflash" ? glm::normalize(renderCam.forward() + glm::vec3{0.f, 0.3f, 0.f}) : plainFlashDir);
         float assessment=0;
         if(laboratory() && room==9)for(const auto& enemy:enemies)if(enemy.alive && enemy.type==EnemyType::SUCCESSOR)
             assessment=.2f+.8f*(1.f-enemy.health/enemy.maxHealth);

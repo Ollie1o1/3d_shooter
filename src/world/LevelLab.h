@@ -206,7 +206,7 @@ inline LevelData buildLab(){
         Arena a;a.name=lab::name(i);a.subtitle=lab::objective(i);a.zone=LevelBuilder::aabb(-half,y-300,z-41,half,y+roof-.05f,z+41);a.bounds=a.zone;a.bounds.min.y=y;
         a.entryGate=i>0?b.doorway(true,entry-5.8f,entry+5.8f,z+39.7f,z+40.3f,y,7,cyan,false):-1;
         a.playerStart={entry,y,z+31};a.startYaw=-90;a.exitDoor=door;a.maxAlive=7;a.damageScale=.9f;a.theme=lab::theme(i);
-        a.ambient=i>=7?Ambient::MOTES:i==4?Ambient::WIND:Ambient::DUST;a.space=ReverbSpace::HALL;a.tone=i==4?RoomTone::YARD:i==8?RoomTone::HADAL:i>=7?RoomTone::CELESTIAL:RoomTone::WARD;
+        a.ambient=i==8?Ambient::MARINE:i>=7?Ambient::NEBULA:i==4?Ambient::WIND:Ambient::SPECKS;a.space=ReverbSpace::HALL;a.tone=i==4?RoomTone::YARD:i==8?RoomTone::HADAL:i>=7?RoomTone::CELESTIAL:RoomTone::WARD;
         a.hasTrigger=i!=4;a.trigger=LevelBuilder::aabb(-40,y-1,z-37,40,y+14,z+17);a.scripted=i==4;
         a.voidY=y-12;a.hasRespawn=true;a.respawn={entry,y,z+28};
         a.groundSpawns={{-24,y,z-18},{24,y,z-22},{-18,y,z+2},{18,y,z-6}};a.airSpawns={{-22,y+8,z-14},{22,y+9,z-24}};
@@ -436,6 +436,8 @@ inline LevelData buildLab(){
         b.mat=Mat::ROCK;b.kit().dome(p+vec3{0,5,0},3.f,{.3f,.5f,.3f},5,10);
     }
     l.arenas.back().extraZones.push_back(LevelBuilder::aabb(-19,end.y-300,end.z-130,19,end.y+28,end.z-99));
+    // THE LIVING WARD's steel: brushed stainless, perforated where it's walked (MaterialTex.h)
+    l.restyle({{Mat::METAL, Mat::SURGICAL}});
     return l;
 }
 

@@ -56,6 +56,10 @@ inline GLuint* GameplayState::sharedWorldTex() {
         tex[TEX_RUSTPLATE]     = TextureGen::uploadMaterial(MaterialTex::rustplate());
         tex[TEX_FROSTSTEEL]    = TextureGen::uploadMaterial(MaterialTex::froststeel());
         tex[TEX_FROSTDECK]     = TextureGen::uploadMaterial(MaterialTex::frostdeck());
+        tex[TEX_STEELPANEL]    = TextureGen::uploadMaterial(MaterialTex::steelpanel());
+        tex[TEX_PERFORATED]    = TextureGen::uploadMaterial(MaterialTex::perforated());
+        tex[TEX_SALVAGE]       = TextureGen::uploadMaterial(MaterialTex::salvage());
+        tex[TEX_SCRAPDECK]     = TextureGen::uploadMaterial(MaterialTex::scrapdeck());
     }
     return tex;
 }

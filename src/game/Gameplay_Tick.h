@@ -97,6 +97,11 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         audio.setSpace(level.arenas[spaceArena].space);
         audio.setRoom(level.arenas[spaceArena].tone);   // and its air
     }
+    // Chapter 4 is one arena: inside the Gleaner its air is the furnace's
+    if (level.story.chapter == 4 && spaceArena >= 0 && spaceArena < (int)level.arenas.size()) {
+        RoomTone want = gut::inside(player.position) ? RoomTone::GUT : level.arenas[spaceArena].tone;
+        if (want != plainTone) { plainTone = want; audio.setRoom(want); }
+    }
 
     // --- Moving platforms: move them, then carry whoever stands on one ---
     int rideMover = level.moverOfWall(player.groundWall);

@@ -16,6 +16,7 @@ enum class RoomTone : uint8_t { NONE,
     CANAL, SLUICE, ASCENT, SPAN, WELL, PUMPWORKS, TOWER,          // FAST: mixed from RoomToneSynth's kit
     NAVE, ORRERY, DESCENT, RELIQUARY, MAW, ZENITH,                // ACT II: the same
     WARD, CELESTIAL, HADAL,
+    PLAIN, GUT,                                                   // Chapter 4: the Blood Moon Plain; inside the Gleaner
     COUNT };
 
 // What a sound is for, so the mix can rank it (SfxMixer): a wind-up TELL cuts

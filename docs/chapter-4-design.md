@@ -477,3 +477,17 @@ itself takes part, and the chapter ends on a payoff instead of a cut.
   summit test now plays the tearing, fall, quiet and portal through to the card.
   Screens: `build/gleaner-swat|grab|sieve-down|caller-rung.bmp`,
   `build/summit-tear0..3.bmp`, `build/summit-portal.bmp`.
+
+## Detail and immersion pass (2026-11-04)
+
+- **Surfaces.** The Gleaner's insides and the scrap heaps draw as salvage plate: scrap welded edge to
+  edge, old hazard and factory paint, stencils, heat bluing, soot, and the furnace glowing through a few
+  cracks (`LevelPlain.h` restyles `METAL` to `SALVAGE`; `MaterialTex::salvage`, `scrapdeck`).
+- **The horizon.** Seven fires that never went out, each a burning heap under a ~450 m smoke column
+  leaning with the wind (`gatherPlain`). Lightning flickers inside the cloud banks every 7-20 s
+  (`skybox.frag` `uFlash`; `--overlay plainflash` holds one for screenshots) and the thunder rolls in
+  1.5-5 s later (`RoomToneSynth::thunder`).
+- **Air.** `Ambient::ASHFALL`: ash flakes on the wind, embers lifting off the ground and cinders
+  streaking down; inside the Gleaner, rising embers and sparks off its vaults. The plain has its own
+  room tone (`RoomTone::PLAIN`: hot wind, fires burning out, the iron settling), and inside it the
+  furnace roars, crackles and clanks (`GUT`, chosen by position: the chapter is one arena).

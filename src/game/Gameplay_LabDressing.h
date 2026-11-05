@@ -105,6 +105,69 @@ inline void GameplayState::gatherLabDressing(std::vector<BoxInstance>& out){
             prev=p;
         }
     }
+    gatherLabVista(out);
+}
+
+// The far distance of the open wards, 230-450 m out where the fog turns things to silhouettes
+// (the camera sees 500 m): what the lab is part of. Celestial Observation: other wings of the lab
+// adrift, lit, trailing cable, under a slow colossal ring. Hadal Research: something vast in the
+// trench, curled up asleep, and something long swimming round it. Final Assessment: the wings again,
+// and over the arena a surgical lamp the size of a building, looking down at the fight (its lenses
+// redden as the Successor fails)
+inline void GameplayState::gatherLabVista(std::vector<BoxInstance>& out){
+    // Each piece is a Blender model joined by look (tools/blender/story_vista_build.py): a handful of
+    // instanced parts per copy, and copies share their meshes, so the whole vista is a few draw calls
+    using namespace rig;using glm::vec3;
+    const float t=gameClock;const int room=labfx::nearRoom(player.position);
+    if(room<7)return;
+    const vec3 c=lab::centre(room);
+    const vec3 CYAN{.3f,1.1f,1.3f},WARM{1.5f,1.3f,1.f},GLOW{.2f,.9f,1.f};
+
+    if(room==7||room==9){
+        // Wings of the lab adrift (the model is 60 x 16 x 34 m), bobbing and turning very slowly; the
+        // flickering windows of each blink on their own beat
+        static const float WING[6][6]={{-300,40,-120,60,16,34},{330,-20,-60,70,18,30},{-260,-60,180,44,12,26},
+                                       {280,70,210,52,14,28},{-60,110,-420,80,18,40},{120,-90,330,46,12,24}};
+        for(int k=0;k<6;++k){
+            float seed=.13f+k*.17f;
+            mat4 m=T(c+vec3{WING[k][0],WING[k][1]+std::sin(t*.05f+seed)*4.f,WING[k][2]})*RY(seed*2.f+t*.006f*(k&1?1.f:-1.f))
+                  *RZ(.08f*std::sin(seed*9.f))*RX(.06f*std::cos(seed*5.f))*S(vec3{WING[k][3]/60.f,WING[k][4]/16.f,WING[k][5]/34.f});
+            float flick=labfx::hash(seed*31,std::floor(t*(.7f+.3f*k)))>.3f?1.f:.1f;
+            propdraw::push(out,"lab_wing",m,CYAN*flick);
+        }
+    }
+    if(room==7){
+        // A colossal ring turning slowly far over the hall: 40 segments, the band alternating cyan and violet
+        const vec3 at=c+vec3{40,170,-300};const float R=110;
+        mat4 ring=T(at)*RX(1.1f)*RZ(t*.02f);
+        for(int k=0;k<40;++k)
+            propdraw::push(out,"lab_ring",ring*RZ(k*6.2832f/40)*T(vec3{R,0,0}),(k&1?CYAN:vec3{.6f,.3f,1.2f})*.9f);
+    }
+    if(room==8){
+        // Far under the floor, seen down the wells and over the edges: something vast asleep on its
+        // side, the lights down its spine pulsing as slowly as breathing
+        float breathe=.55f+.45f*std::sin(t*.35f);
+        mat4 body=T(c+vec3{10,-190+std::sin(t*.04f)*3.f,-10})*RY(.6f+t*.004f)*RX(1.35f)*RZ(.25f);
+        propdraw::push(out,"hadal_sleeper",body,GLOW*breathe);
+        // and something long swimming a slow circle round it: one segment model, strung and waved
+        for(int k=0;k<18;++k){float ph=t*.05f-k*.035f,rad=150.f;
+            vec3 p=c+vec3{std::cos(ph)*rad,-120+std::sin(ph*3+k*.4f)*6.f,std::sin(ph)*rad};
+            vec3 q=c+vec3{std::cos(ph+.01f)*rad,-120,std::sin(ph+.01f)*rad};
+            float yaw=std::atan2(q.x-p.x,q.z-p.z);float sz=k<3?7.f+k*2:k>12?(18-k)*2.f+2:13.f;
+            propdraw::push(out,"hadal_segment",T(p)*RY(yaw+std::sin(t*.8f-k*.5f)*.15f)*S(vec3{sz/13.f}),GLOW*(.5f+.5f*std::sin(t*2-k)));}
+    }
+    if(room==9){
+        // The lamp over the arena: it turns to follow the player; its lenses go from white to red as the
+        // Successor loses. Its arm reaches up out of sight in two lengths of the ring's segment
+        float heat=0;for(const auto& e:enemies)if(e.alive&&e.type==EnemyType::SUCCESSOR)heat=1-e.health/e.maxHealth;
+        vec3 head=c+vec3{std::sin(t*.05f)*20.f,150,-60};
+        vec3 to=player.position-head;float yaw=std::atan2(to.x,to.z),pitch=std::atan2(-to.y,glm::length(glm::vec2{to.x,to.z}));
+        propdraw::push(out,"lab_lamp",T(head)*RY(yaw)*RX(pitch-1.5708f),glm::mix(WARM,vec3{2.f,.25f,.15f},heat));
+        vec3 j0=head+vec3{0,30,0},j1=head+vec3{60,110,-120},j2=head+vec3{20,260,-260};
+        for(auto [a,b]:{std::pair<vec3,vec3>{j0,j1},{j1,j2}}){vec3 d=b-a;
+            mat4 m=propdraw::along((a+b)*.5f,d)*RX(1.5708f)*S(vec3{1.2f,glm::length(d)/18.f,1.2f});
+            propdraw::push(out,"lab_ring",m,CYAN*.5f);}
+    }
 }
 
 // Light shafts and the portal: additive, depth-tested, not written to depth

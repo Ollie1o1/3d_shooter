@@ -48,6 +48,22 @@ inline void GameplayState::updatePlain(float dt) {
     for (const auto& q : plainQuakes) if (q.t <= 0.f) shake(0.35f + q.amp, q.amp * 0.06f);
     plainQuakes.erase(std::remove_if(plainQuakes.begin(), plainQuakes.end(), [](const PlainQuake& q) { return q.t <= 0.f; }), plainQuakes.end());
 
+    // Lightning inside the cloud banks: two or three flickers somewhere overhead, the thunder rolling in
+    // a few seconds later (none inside the Gleaner: no sky in there)
+    plainFlashNext -= dt;
+    if (plainFlashT >= 0.f) plainFlashT += dt;
+    if (plainFlashT > 1.2f) plainFlashT = -1.f;
+    // (its own hash of the clock: drawing from rand() would shift every seeded run after it)
+    auto rnd = [&](float k) { float v = std::sin((gameClock * 13.17f + k) * 12.9898f) * 43758.5453f; return v - std::floor(v); };
+    if (plainFlashNext <= 0.f && !inGut && !playerDead) {
+        plainFlashNext = 7.f + 13.f * (0.f + (1.f - 0.f) * rnd(1.f));
+        float az = (0.f + (6.2832f - 0.f) * rnd(2.f)), el = (0.18f + (0.5f - 0.18f) * rnd(3.f));
+        plainFlashDir = glm::normalize(glm::vec3{std::cos(az) * std::cos(el), std::sin(el), std::sin(az) * std::cos(el)});
+        plainFlashT = 0.f; plainFlashPulses = 2 + ((0.f + (1.f - 0.f) * rnd(4.f)) > 0.5f ? 1 : 0);
+        float far = (0.f + (1.f - 0.f) * rnd(5.f));
+        audio.room.thunder(1.5f + 3.5f * far, 1.f - 0.55f * far);
+    }
+
     // Smoke off the craters still burning near you
     plainSmokeT -= dt;
     if (plainSmokeT <= 0.f) {
@@ -106,6 +122,18 @@ inline void GameplayState::meteorImpact(const MeteorImpact& hit) {
 // The meteors in the sky, the craters they leave, and the bodies on the heaps
 // (the bodies are drawn with the story's dumped ones, Gameplay_Story.h). Fire,
 // smoke and rock are lumpy faceted balls (MeshLib's lumpBall), not cubes.
+// The flash's brightness now: quick flickers, each dimmer, then gone
+inline float GameplayState::plainFlash() const {
+    if (g_devOverlay == "plainflash") return 1.f;   // (dev: held on, for screenshots)
+    if (plainFlashT < 0.f) return 0.f;
+    float v = 0.f;
+    for (int k = 0; k < plainFlashPulses; ++k) {
+        float at = k * 0.17f + (k == 2 ? 0.2f : 0.f), d = plainFlashT - at;
+        if (d >= 0.f) v = std::max(v, std::exp(-d * 14.f) * (1.f - 0.25f * k));
+    }
+    return v;
+}
+
 inline void GameplayState::gatherPlain(std::vector<BoxInstance>& out) {
     using namespace rig;
     using glm::vec3;
@@ -115,6 +143,34 @@ inline void GameplayState::gatherPlain(std::vector<BoxInstance>& out) {
     const float sub = renderAlpha * (1.f / 60.f);
     gatherGleaner(out);
     gatherGleanerFight(out);
+    // Fires on the horizon: the big falls that never went out, each a burning heap under a column of
+    // smoke climbing ~450 m and leaning off with the wind. They give the plain a far distance on
+    // every side (the Gleaner holds the north)
+    if (!insideGleaner()) {
+        static const float PLUME[7][3] = {{-1900, -700, 1.1f}, {-2300, 600, 0.8f}, {1700, -900, 1.f}, {2200, 400, 1.3f},
+                                          {-900, 2300, 0.9f}, {1200, 2000, 1.2f}, {-2500, -1700, 0.7f}};
+        const vec3 lean = glm::normalize(meteors.drift + vec3{0.001f, 0.f, 0.f});
+        for (int pi = 0; pi < 7; ++pi) {
+            const vec3 base{PLUME[pi][0], 0.f, PLUME[pi][1]};
+            const float s = PLUME[pi][2], seed = pi * 3.7f;
+            auto h = [&](float k) { float v = std::sin(seed * 12.9898f + k * 78.233f) * 43758.5453f; return v - std::floor(v); };
+            for (int k = 0; k < 5; ++k) {   // the burning heap
+                float a = k * 1.257f + seed, flick = 0.75f + 0.25f * std::sin(gameClock * (2.f + k) + seed);
+                lump(T(base + vec3{std::cos(a) * 18.f * s, 6.f * s, std::sin(a) * 18.f * s}) * RY(a) * S(vec3{24.f * s, 14.f * s, 22.f * s}),
+                     rockCol, fire * 1.2f * flick);
+            }
+            const int PUFFS = 26;
+            for (int k = 0; k < PUFFS; ++k) {
+                float u = std::fmod(gameClock * 0.012f + (float)k / PUFFS + h(k), 1.f);
+                float ht = 20.f + 460.f * u * s;
+                float sz = (30.f + 120.f * u) * s * (0.75f + 0.5f * h(k + 30.f));
+                vec3 p = base + vec3{(h(k + 60.f) - 0.5f) * 30.f, ht, (h(k + 90.f) - 0.5f) * 30.f} + lean * (u * u * 380.f * s);
+                vec3 glow = fire * 0.35f * std::max(0.f, 1.f - u * 3.f);   // lit from below near the fire
+                float dark = 0.05f + 0.03f * h(k + 120.f);
+                lump(T(p) * RY(k + u * 2.f) * RX(u + k) * S(vec3{sz, sz * 0.8f, sz}), vec3{dark, dark * 0.62f, dark * 0.55f}, glow);
+            }
+        }
+    }
     for (const auto& m : meteors.pool) {
         if (!m.alive) continue;
         vec3 at = lerpPos(m.prev, m.pos);

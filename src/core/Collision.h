@@ -36,8 +36,9 @@ enum class Mat : unsigned char { BRICK, PANEL, ROCK, METAL, CONCRETE,
                                  // The story chapters' own (a chapter's restyle maps the shared ones onto these):
                                  HULL, PAINTED, SLAB,             // Chapter 1: riveted hull steel, chipped paint, factory concrete
                                  STRATA, ASPHALT, CORRUGATED,     // Chapter 2: canyon rock, the broken road, rusted sheet
-                                 FROSTSTEEL };                    // Chapter 5: steel under hoar frost
-constexpr int MAT_COUNT = (int)Mat::FROSTSTEEL + 1;
+                                 FROSTSTEEL,                      // Chapter 5: steel under hoar frost
+                                 SURGICAL, SALVAGE };             // Chapter 3: stainless steel; Chapter 4: the Gleaner's scrap
+constexpr int MAT_COUNT = (int)Mat::SALVAGE + 1;
 
 struct Wall {
     AABB      box;

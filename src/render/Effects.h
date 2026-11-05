@@ -268,6 +268,66 @@ public:
                 p->color = glm::vec3{0.63f, 0.57f, 0.46f} * .55f;
                 p->gravity = 0.f; p->maxLife = p->life = frand(3.f, 5.f);
                 break;
+            case Ambient::SPECKS:
+                // Cold dust hanging in the ward's air, barely moving, catching the lamps
+                p->pos = me + glm::vec3{std::cos(ang) * r * 0.6f, frand(0.2f, 5.f), std::sin(ang) * r * 0.6f};
+                p->vel = {frand(-0.12f, 0.12f), frand(-0.06f, 0.08f), frand(-0.12f, 0.12f)};
+                p->color = glm::vec3{0.75f, 0.9f, 1.f} * frand(0.1f, 0.2f);
+                p->gravity = 0.f; p->maxLife = p->life = frand(4.f, 7.f);
+                break;
+            case Ambient::NEBULA: {
+                // Motes of the void drifting through the open halls: violet, cyan, now and then a hot magenta
+                float k = frand(0.f, 1.f);
+                p->pos = me + glm::vec3{std::cos(ang) * r, frand(-3.f, 10.f), std::sin(ang) * r};
+                p->vel = glm::vec3{std::sin(clock * 0.1f + ang), 0.25f * std::sin(clock * 0.23f + r), std::cos(clock * 0.13f + ang)} * frand(0.2f, 0.7f);
+                p->color = (k < 0.5f ? glm::vec3{0.55f, 0.3f, 1.f} : k < 0.88f ? glm::vec3{0.25f, 0.9f, 1.f} : glm::vec3{1.f, 0.25f, 0.8f}) * frand(0.3f, 0.75f);
+                p->gravity = -0.03f; p->maxLife = p->life = frand(4.f, 8.f);
+                break;
+            }
+            case Ambient::MARINE:
+                // Marine snow: pale flakes sinking through the trench's light, drifting with a slow current
+                p->pos = me + glm::vec3{std::cos(ang) * r, frand(2.f, 12.f), std::sin(ang) * r};
+                p->vel = {0.25f * std::sin(clock * 0.2f) + frand(-0.1f, 0.1f), frand(-0.5f, -0.2f), frand(-0.1f, 0.1f)};
+                p->color = glm::vec3{0.6f, 0.85f, 0.9f} * frand(0.12f, 0.3f);
+                p->gravity = 0.f; p->maxLife = p->life = frand(6.f, 10.f);
+                break;
+            case Ambient::ASHFALL: {
+                float k = frand(0.f, 1.f);
+                float gust = 1.f + 0.5f * std::sin(clock * 0.6f) * std::sin(clock * 0.27f + 1.f);
+                // Inside the Gleaner (built far off the plain, LevelPlain.h gut::O): its furnace's embers
+                // rising, and sparks shaken down from its vaults
+                if (level.story.chapter == 4 && me.x > 2000.f) {
+                    if (k < 0.75f) {
+                        p->pos = me + glm::vec3{std::cos(ang) * r, frand(-1.f, 2.f), std::sin(ang) * r};
+                        p->vel = {frand(-0.5f, 0.5f), frand(1.8f, 4.f), frand(-0.5f, 0.5f)};
+                        p->color = glm::vec3{1.f, 0.42f, 0.08f} * frand(0.6f, 1.2f);
+                        p->gravity = -0.6f; p->maxLife = p->life = frand(1.4f, 3.f);
+                    } else {
+                        p->pos = me + glm::vec3{std::cos(ang) * r * 0.7f, frand(8.f, 16.f), std::sin(ang) * r * 0.7f};
+                        p->vel = {frand(-0.6f, 0.6f), frand(-2.f, -0.5f), frand(-0.6f, 0.6f)};
+                        p->color = glm::vec3{1.2f, 0.75f, 0.25f} * frand(0.8f, 1.3f);
+                        p->gravity = 9.f; p->maxLife = p->life = frand(0.8f, 1.4f);
+                    }
+                    break;
+                }
+                if (k < 0.55f) {          // ash flakes on the wind, dark against the red sky
+                    p->pos = me + glm::vec3{std::cos(ang) * r - 6.f, frand(3.f, 14.f), std::sin(ang) * r};
+                    p->vel = {frand(2.f, 4.f) * gust, frand(-1.1f, -0.4f), frand(0.3f, 1.2f)};
+                    p->color = glm::vec3{0.32f, 0.2f, 0.17f} * frand(0.35f, 0.7f);
+                    p->gravity = 0.f; p->maxLife = p->life = frand(3.5f, 6.f);
+                } else if (k < 0.92f) {   // embers lifting off the hot ground
+                    p->pos = me + glm::vec3{std::cos(ang) * r, frand(-0.5f, 1.5f), std::sin(ang) * r};
+                    p->vel = {frand(0.6f, 1.8f) * gust, frand(1.2f, 3.f), frand(-0.4f, 0.4f)};
+                    p->color = glm::vec3{1.f, 0.4f, 0.08f} * frand(0.6f, 1.1f);
+                    p->gravity = -0.4f; p->maxLife = p->life = frand(1.5f, 3.2f);
+                } else {                  // a cinder off a meteor, streaking down
+                    p->pos = me + glm::vec3{std::cos(ang) * r - 8.f, frand(16.f, 26.f), std::sin(ang) * r};
+                    p->vel = {frand(5.f, 8.f), frand(-11.f, -7.f), frand(-1.f, 1.f)};
+                    p->color = glm::vec3{1.4f, 0.8f, 0.3f} * frand(0.9f, 1.4f);
+                    p->gravity = 4.f; p->maxLife = p->life = frand(1.2f, 2.f);
+                }
+                break;
+            }
             }
             // Do not seed indoor weather through ceilings or across room walls.
             if(level.arenaAt(p->pos)!=a)p->alive=false;
