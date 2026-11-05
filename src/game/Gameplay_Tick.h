@@ -373,7 +373,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         if (grapple.active && grapple.latched) { player.position = hangPos; player.velocity = glm::vec3{0.f}; }   // held where it caught
         keepPlayerInZone(dt);
         if (pickedBy >= 0) holdInPicker(dt);   // hung under a PICKER's claw
-        if (story()) { updateStory(dt); player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0}; }
+        if (story()) { updateStory(dt); player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0}; trackStoryRun(dt); }
         if (player.jumpedThisTick) {   // the push-off: a soft scuff and the head lifting off the legs
             audio.play("jump", 90);
             camFeel.dip(0.35f);

@@ -118,6 +118,7 @@ inline void GameplayState::restorerEvents(Enemy& e, const EnemyEvents& ev) {
         player.position = rsRollbackAt; player.velocity = glm::vec3{0.f};
         player.camera.position = player.position + glm::vec3{0.f, player.eyeHeight, 0.f}; prevCamPos = player.camera.position;
         audio.play("dash", 110, SoundGroup::PLAYER);
+        audio.music.rewind();   // the score winds back with you
         ui.feed("ROLLED BACK", {0.3f, 0.9f, 1.f});
         e.rsAim = rsRollbackAt; e.rsAimSet = true;   // and it is ready for you there
         break;

@@ -141,8 +141,13 @@ public:
     void setDrive(bool d)      { wantDrive.store(d); }
     void setSolo(bool s)       { wantSolo.store(s); }
     void stinger()             { stingWanted.store(true); }
+    // A tape rewind (the Restorer's ROLLBACK): the last moment of the score plays backwards, faster and
+    // faster, then the song picks up half a bar earlier than where it was
+    void rewind()              { rewindWanted.store(true); }
+    bool rewinding() const     { return rewindT > 0; }
     void setSampleRate(float sr) {
         SR = sr; delayL.assign((size_t)(sr * 1.5f), 0.f); delayR = delayL; dpos = 0;
+        hist.assign((size_t)(sr * HIST_SECONDS) * 2, 0.f); histPos = 0; rewindT = 0;
         static const int COMB[4] = {1309, 1427, 1559, 1663}, AP[2] = {556, 441};
         const float k = sr / 44100.f;
         for (int i = 0; i < 4; ++i) {
@@ -162,7 +167,23 @@ public:
     // Render `frames` stereo frames, interleaved L R, into out (overwrites).
     void render(float* out, int frames) {
         float vol = volume.load();
+        const int histFrames = (int)hist.size() / 2;
+        if (rewindWanted.exchange(false) && histFrames > 0 && rewindT <= 0) {
+            rewindT = (int)(REWIND_SECONDS * SR); rewindLen = rewindT; readHead = (double)histPos;
+        }
         for (int f = 0; f < frames; ++f) {
+            if (rewindT > 0) {   // the tape runs back: read the history backwards, the clock held
+                float u = 1.f - (float)rewindT / (float)rewindLen;            // 0..1 through the rewind
+                readHead -= 1.0 + 2.5 * u * u;                                // faster as it goes
+                double h = std::fmod(readHead, (double)histFrames); if (h < 0) h += histFrames;
+                int i0 = (int)h, i1 = (i0 + 1) % histFrames; float fr = (float)(h - i0);
+                float env = std::min(1.f, (float)rewindT / (0.06f * SR)) * std::min(1.f, u * 40.f + 0.3f);   // no clicks in or out
+                float wobble = 0.85f + 0.15f * std::sin(u * 40.f);
+                out[2 * f]     = (hist[2 * i0] * (1 - fr) + hist[2 * i1] * fr) * env * wobble;
+                out[2 * f + 1] = (hist[2 * i0 + 1] * (1 - fr) + hist[2 * i1 + 1] * fr) * env * wobble;
+                if (--rewindT == 0) step = ((step - 8) % 64 + 64) % 64;       // and play on from half a bar back
+                continue;
+            }
             if ((blockPos++ & 31) == 0) updateBlock();
             if (sampleInStep <= 0) { nextStep(); sampleInStep += stepLen; }
             --sampleInStep;
@@ -178,6 +199,7 @@ public:
             R = softClip(R * 0.75f) * vol;
             out[2 * f]     = L;
             out[2 * f + 1] = R;
+            if (histFrames > 0) { hist[2 * histPos] = L; hist[2 * histPos + 1] = R; histPos = (histPos + 1) % histFrames; }
         }
     }
 
@@ -199,7 +221,11 @@ private:
     std::atomic<float> wantLevel{0.5f};
     std::atomic<float> volume{0.6f};
     std::atomic<bool>  muffled{false};
-    std::atomic<bool>  wantDrive{false}, wantSolo{false}, stingWanted{false};
+    std::atomic<bool>  wantDrive{false}, wantSolo{false}, stingWanted{false}, rewindWanted{false};
+    static constexpr float HIST_SECONDS = 1.5f, REWIND_SECONDS = 0.6f;
+    std::vector<float> hist;         // the last moment of output (stereo), for rewind()
+    int    histPos = 0, rewindT = 0, rewindLen = 1;
+    double readHead = 0;
 
     float SR = 44100.f;
     int   track = 0;

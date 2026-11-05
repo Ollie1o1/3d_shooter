@@ -13,6 +13,7 @@
 #include "enemies/Enemy.h"
 #include "player/StyleSystem.h"
 #include "core/Persist.h"
+#include "game/StoryRank.h"
 #include <array>
 #include <cstdio>
 #include <sstream>
@@ -157,6 +158,9 @@ struct Records {
     float bestBoss[BOSS_COUNT] = {};          // BOSS: each boss's fastest kill, from its fight starting (0 = none yet)
     std::vector<float> arenaSolo, act2Solo;   // the ARENA page: each arena's best clear on its own (Act I, Act II; 0 = none yet)
     int   fastCourse = FAST_COURSE;           // the Gauntlet layout the FAST records were set on
+    int   storyRank[storyrank::CHAPTERS] = {};     // STORY: each chapter's best rank (StoryRank.h: 1 C .. 4 S; 0 none yet)
+    float storyTime[storyrank::CHAPTERS] = {};     // ...and its fastest finish (0 none yet)
+    unsigned unitsRead = 0;                        // STORY: the units whose last log you've read, ever (bit n: UNIT n; the Story page's ARCHIVE)
 
     static constexpr const char* kKey = "records.v2.cfg";
 
@@ -176,6 +180,15 @@ struct Records {
             else if (key == "act2Cleared") { int v = 0; f >> v; act2Cleared = v != 0; }
             else if (key == "bestAct2") f >> bestAct2;
             else if (key == "bestZenith") f >> bestZenith;
+            else if (key == "storyRank" || key == "storyTime") {
+                int n = 0; f >> n;
+                for (int i = 0; i < n; ++i) {
+                    float v = 0.f; f >> v;
+                    if (i >= storyrank::CHAPTERS) continue;
+                    if (key == "storyRank") storyRank[i] = std::clamp((int)v, 0, 4); else storyTime[i] = std::max(0.f, v);
+                }
+            }
+            else if (key == "unitsRead") f >> unitsRead;
             else if (key == "bestBoss") { int n = 0; f >> n; for (int i = 0; i < n; ++i) { float v = 0.f; f >> v; if (i < BOSS_COUNT) bestBoss[i] = v; } }
             else if (key == "fastSplits") {
                 int n = 0; f >> n;
@@ -214,6 +227,13 @@ struct Records {
         f << "act2Cleared " << (act2Cleared ? 1 : 0) << "\n";
         f << "bestAct2 " << bestAct2 << "\n";
         f << "bestZenith " << bestZenith << "\n";
+        f << "storyRank " << storyrank::CHAPTERS;
+        for (int r : storyRank) f << " " << r;
+        f << "\n";
+        f << "storyTime " << storyrank::CHAPTERS;
+        for (float t : storyTime) f << " " << t;
+        f << "\n";
+        f << "unitsRead " << unitsRead << "\n";
         f << "bestBoss " << BOSS_COUNT;
         for (float b : bestBoss) f << " " << b;
         f << "\n";
@@ -319,6 +339,16 @@ inline bool recordBoss(Records& r, int i, float t) {
     if (i < 0 || i >= BOSS_COUNT || t <= 0.f) return false;
     if (r.bestBoss[i] > 0.f && t >= r.bestBoss[i]) return false;
     r.bestBoss[i] = t; return true;
+}
+
+// STORY: a finished chapter. Keeps the better rank and the faster time (each on its own); true if either improved
+inline bool recordStory(Records& r, int chapter, int rank, float t) {
+    if (chapter < 1 || chapter > storyrank::CHAPTERS || rank < 1 || t <= 0.f) return false;
+    const int i = chapter - 1;
+    bool better = false;
+    if (rank > r.storyRank[i]) { r.storyRank[i] = rank; better = true; }
+    if (r.storyTime[i] <= 0.f || t < r.storyTime[i]) { r.storyTime[i] = t; better = true; }
+    return better;
 }
 
 // Finished runs a player chose to put their name to, fastest first, kept

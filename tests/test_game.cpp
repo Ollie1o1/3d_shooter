@@ -5778,6 +5778,18 @@ int main() {
         CHECK(js.find("\"killedBy\":\"RIPPER\"") != std::string::npos && js.find("\"HUSK\":[15,1]") != std::string::npos &&
               js.find("\"SHOTGUN\":[4,3,1]") != std::string::npos && js.find("\"HUSK\":[1.25,1]") != std::string::npos && js.find('\n') == std::string::npos,
               "the run log writes what hurt you, what killed you, each gun's shots, hits and kills, and time to kill, on one line");
+        CHECK(js.find("\"chapter\"") == std::string::npos, "...and outside STORY, nothing of the story's");
+
+        // STORY: the chapter, where you were, seconds per section, and time lost (out of a fight, getting no nearer the way on)
+        RunLog srl;
+        for (int i = 0; i < 60 * 10; ++i) srl.storyTick(1.f / 60.f, 3, 1, {0.f, 0.f, -i * 0.05f}, 100.f - i * 0.05f, false);   // walking on: never lost
+        for (int i = 0; i < 60 * 30; ++i) srl.storyTick(1.f / 60.f, 3, 2, {5.f, 0.f, 5.f}, 40.f, i < 60 * 5);                  // a fight, then 25 s stood still
+        std::string sj = srl.json("death", "STORY", 1, "MOTOR ASSESSMENT", 1, 40.f);
+        std::printf("      %s\n", sj.substr(sj.find("\"chapter\"")).c_str());
+        CHECK(sj.find("\"chapter\":3,\"section\":2") != std::string::npos && sj.find("\"1\":10.0") != std::string::npos && sj.find("\"2\":30.0") != std::string::npos,
+              "STORY's log line has the chapter, the section and the seconds spent in each");
+        CHECK(srl.lostTime[1] == 0.f && std::fabs(srl.lostTime[2] - 25.f) < 0.1f && srl.lostN == 1 && sj.find("\"lostAt\":[[5.0,0.0,5.0]]") != std::string::npos,
+              "...and how long, and where, you were lost: never walking on or fighting; the whole stall once it passes 20 s");
     }
 
     // ------------------------------------------------------------ the SPLINTER

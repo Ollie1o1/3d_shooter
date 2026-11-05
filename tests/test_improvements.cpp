@@ -1,7 +1,11 @@
 #include "game/StorySave.h"
+#include "game/Progression.h"
 #include "game/CombatLessons.h"
 #include "world/LevelTraining.h"
 #include "world/LevelWasteland.h"
+#include "world/LevelStory.h"
+#include "world/LevelLab.h"
+#include "world/LevelCold.h"
 #include "game/WaveDirector.h"
 #include "render/LightBake.h"
 #include <cstdio>
@@ -74,5 +78,28 @@ int main() {
     CHECK(road.story.winchWall>=0 && road.walls[road.story.winchWall].dynamic && road.walls[road.story.winchWall].hidden,"the counterweight has real movable collision and a separate visible rig");
     std::string error;auto bake=lightbake::load("training",training,error);
     CHECK(!bake.empty(),"the practice arena ships with current baked lighting");
+    {   // Chapter ranks (StoryRank.h) and the bests kept for them (Records)
+        using namespace storyrank;
+        CHECK(rank(1,14*60.f,0,6000)==4 && rank(1,14*60.f,0,100)==3 && rank(1,16*60.f,0,9000)==3 && rank(1,25*60.f,2,0)==2 && rank(1,10*60.f,6,9000)==1,
+              "a chapter's rank: S clean, fast and stylish; A under three deaths in time; B under six; C");
+        CHECK(rank(3,21*60.f,0,8000)==4 && rank(1,21*60.f,0,8000)==2,"...against each chapter's own times (the Living Ward is longer than the Cradle)");
+        Records r;
+        CHECK(recordStory(r,2,3,1100.f) && r.storyRank[1]==3 && r.storyTime[1]==1100.f,"a first finish is the chapter's best");
+        CHECK(!recordStory(r,2,2,1200.f) && r.storyRank[1]==3,"a worse rank and a slower time keep the best");
+        CHECK(recordStory(r,2,2,1000.f) && r.storyRank[1]==3 && r.storyTime[1]==1000.f,"...the best rank and the best time are kept apart");
+        CHECK(!recordStory(r,0,4,10.f) && !recordStory(r,6,4,10.f) && !recordStory(r,1,0,10.f),"no chapter, or no rank: nothing kept");
+        Records back; back.parse(r.serialise());
+        CHECK(back.storyRank[1]==3 && back.storyTime[1]==1000.f && back.storyRank[0]==0,"chapter bests survive a save and load");
+        r.unitsRead=(1u<<1)|(1u<<18);back=Records{};back.parse(r.serialise());
+        CHECK(back.unitsRead==r.unitsRead,"the unit archive's read logs survive a save and load");
+        {   // every wreck across the chapters is a different unit, 01..23 (the archive has one entry each)
+            LevelData C[]={buildCradle(),buildWasteland(),buildLab(),buildCold()};
+            unsigned seen=0;bool unique=true,inRange=true,logged=true;
+            for(auto& L:C)for(auto& w:L.story.wrecks){inRange&=w.number>=1&&w.number<=23;unique&=!((seen>>w.number)&1u);seen|=1u<<w.number;logged&=w.log&&w.log[0];}
+            CHECK(unique&&inRange&&logged,"every wreck in the story is its own unit, 01 to 23, with a last log for the archive");
+        }
+        Records old; old.parse("bestArena 100\nbestFast 0\n");
+        CHECK(old.bestArena==100.f && old.storyRank[4]==0,"an older records file (with no story bests) still loads");
+    }
     return failures?1:0;
 }

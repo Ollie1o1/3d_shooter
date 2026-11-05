@@ -14,6 +14,7 @@
 #include "world/LevelCold.h"
 #include "ui/UIBatch.h"
 #include "ui/MenuArt.h"
+#include "ui/TextWrap.h"
 #include "core/Gamepad.h"
 #include <SDL2/SDL.h>
 #ifdef __EMSCRIPTEN__
@@ -42,7 +43,7 @@ public:
 
     GameSettings* settings = nullptr;   // injected by main
 
-    enum Page { MAIN, SETTINGS, BOARD, DEV, BOSS, FASTPAGE, ARENAPAGE, STORYPAGE };
+    enum Page { MAIN, SETTINGS, BOARD, DEV, BOSS, FASTPAGE, ARENAPAGE, STORYPAGE, ARCHIVEPAGE };
     // The ARENA page: two columns, each the whole act then its arenas one by one
     struct ArenaRow { std::string name, subtitle; };
     std::vector<ArenaRow> act1Arenas, act2Arenas;
@@ -154,6 +155,7 @@ public:
         if (page == FASTPAGE) { handleFastEvent(e); return; }
         if (page == ARENAPAGE) { handleArenaEvent(e); return; }
         if (page == STORYPAGE) { handleStoryEvent(e); return; }
+        if (page == ARCHIVEPAGE) { handleArchiveEvent(e); return; }
         if ((e.type == SDL_KEYDOWN && !e.key.repeat && e.key.keysym.sym == SDLK_F3) ||
             (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT &&
              e.button.x >= 24 && e.button.x < 280 && e.button.y >= screenH-76 && e.button.y < screenH-32)) {
@@ -223,6 +225,7 @@ public:
         else if (page == FASTPAGE) renderFast();
         else if (page == ARENAPAGE) renderArena();
         else if (page == STORYPAGE) renderStory();
+        else if (page == ARCHIVEPAGE) renderArchive();
         else renderDev();
         ui.end();
     }
@@ -255,8 +258,11 @@ private:
     }
 
     int storyRows() const { return hasStorySave ? 7 : 6; }
+    // The rows' layout: seven (a save to continue) sit closer, so the notes under them stay clear
+    float storyRowY(int i) const { return storyRows()>6 ? 150.f+i*68.f : 165.f+i*76.f; }
+    float storyRowH() const { return storyRows()>6 ? 62.f : 68.f; }
     int storyAt(int x,int y) const {
-        for(int i=0;i<storyRows();++i)if(x>screenW/2-360&&x<screenW/2+360&&y>165+i*76&&y<233+i*76)return i;
+        for(int i=0;i<storyRows();++i)if(x>screenW/2-360&&x<screenW/2+360&&y>storyRowY(i)&&y<storyRowY(i)+storyRowH())return i;
         return -1;
     }
     void startStory() {
@@ -277,9 +283,74 @@ private:
             if(k==SDLK_UP)storySel=(storySel+storyRows()-1)%storyRows();
             if(k==SDLK_DOWN)storySel=(storySel+1)%storyRows();
             if(k==SDLK_RETURN||k==SDLK_SPACE)startStory();
+            if(k==SDLK_TAB){page=ARCHIVEPAGE;archiveSel=0;return;}
         }
         if(e.type==SDL_MOUSEMOTION){int i=storyAt(e.motion.x,e.motion.y);if(i>=0)storySel=i;}
-        if(e.type==SDL_MOUSEBUTTONDOWN&&e.button.button==SDL_BUTTON_LEFT){int i=storyAt(e.button.x,e.button.y);if(i>=0){storySel=i;startStory();}}
+        if(e.type==SDL_MOUSEBUTTONDOWN&&e.button.button==SDL_BUTTON_LEFT){
+            int i=storyAt(e.button.x,e.button.y);if(i>=0){storySel=i;startStory();return;}
+            if(e.button.y>screenH-48&&std::abs(e.button.x-screenW/2)<260){page=ARCHIVEPAGE;archiveSel=0;}   // the archive's line at the foot
+        }
+    }
+
+    // ---- the ARCHIVE: the units before you, 01 to 23, and the last logs you've read (Records::unitsRead) ----
+    struct UnitEntry { int chapter = 0; bool secret = false; std::string log; };
+    static const std::vector<UnitEntry>& unitArchive() {   // what each chapter's wrecks say (built once: the levels are big)
+        static std::vector<UnitEntry> U;
+        if (U.empty()) {
+            U.resize(24);
+            LevelData C[] = {buildCradle(), buildWasteland(), buildLab(), buildCold()};
+            const int chapterOf[] = {1, 2, 3, 5};
+            for (int c = 0; c < 4; ++c)
+                for (const auto& w : C[c].story.wrecks)
+                    if (w.number > 0 && w.number < 24) U[w.number] = {chapterOf[c], w.secret, w.log ? w.log : ""};
+        }
+        return U;
+    }
+    int archiveSel = 0;   // 0..22: UNIT 01..23
+    int unitsReadCount() const { int n = 0; for (int u = 1; u <= 23; ++u) n += (records.unitsRead >> u) & 1u; return n; }
+    void handleArchiveEvent(const SDL_Event& e) {
+        if(e.type==SDL_KEYDOWN) {
+            auto k=e.key.keysym.sym;
+            if(k==SDLK_ESCAPE||k==SDLK_BACKSPACE||k==SDLK_TAB){page=STORYPAGE;return;}
+            if(k==SDLK_UP)archiveSel=(archiveSel+22)%23;
+            if(k==SDLK_DOWN)archiveSel=(archiveSel+1)%23;
+        }
+        if(e.type==SDL_MOUSEMOTION||e.type==SDL_MOUSEBUTTONDOWN) {
+            int x=e.type==SDL_MOUSEMOTION?e.motion.x:e.button.x,y=e.type==SDL_MOUSEMOTION?e.motion.y:e.button.y;
+            int i=(int)std::floor((y-150.f)/22.f);
+            if(x>screenW/2-540&&x<screenW/2-120&&i>=0&&i<23)archiveSel=i;
+        }
+    }
+    void renderArchive() {
+        static const char* CH[]={"","THE CRADLE","THE DEAD SPAN","THE LIVING WARD","THE BLOOD MOON PLAIN","THE COLD STORE"};
+        const auto& U=unitArchive();
+        ui.text("UNIT ARCHIVE",screenW/2,55,5,{.35f,.85f,1.f,1},true);
+        char sub[64];std::snprintf(sub,sizeof(sub),"THE ONES BEFORE YOU / %d OF 23 LAST LOGS READ",unitsReadCount());
+        ui.text(sub,screenW/2,115,2,{.75f,.8f,.82f,1},true);
+        const float lx=screenW/2-540.f;
+        for(int i=0;i<23;++i) {
+            const int n=i+1;const float y=150.f+i*22.f;
+            const bool read=(records.unitsRead>>n)&1u, known=U[n].chapter>0;
+            if(i==archiveSel){ui.rect(lx,y,420,20,{.1f,.17f,.2f,.95f});ui.rect(lx,y,3,20,{.35f,.85f,1,1});}
+            char row[64];std::snprintf(row,sizeof(row),"UNIT %02d",n);
+            ui.text(row,lx+14,y+3,2,read?glm::vec4{.85f,.9f,.92f,1}:glm::vec4{.45f,.5f,.53f,1});
+            const char* state=read?"READ":known?"NOT FOUND":"NO RECORD";
+            ui.text(state,lx+406-(float)UIBatch::textWidth(state,1),y+6,1,read?glm::vec4{.35f,.85f,1,1}:known?glm::vec4{1.f,.7f,.3f,.9f}:glm::vec4{.4f,.42f,.45f,1});
+        }
+        // The one picked: where it was, and what it said
+        const int n=archiveSel+1;const UnitEntry& u=U[n];const bool read=(records.unitsRead>>n)&1u;
+        const float px=screenW/2-80.f,py=150.f,pw=620.f;
+        ui.rect(px,py,pw,23*22.f-2,{.03f,.05f,.06f,.85f});
+        ui.rect(px,py,4,23*22.f-2,{.35f,.85f,1,.9f});
+        char head[32];std::snprintf(head,sizeof(head),"UNIT %02d",n);
+        ui.text(head,px+24,py+20,4,{.85f,.9f,.92f,1});
+        std::string where=u.chapter>0?std::string("CHAPTER ")+std::to_string(u.chapter)+"  "+CH[u.chapter]+(u.secret?"  /  OFF THE ROUTE":""):"";
+        if(!where.empty())ui.text(where.c_str(),px+24,py+64,1,{.65f,.72f,.75f,1});
+        std::string body=read?u.log:u.chapter>0?std::string("NOT FOUND YET. ITS WRECK IS SOMEWHERE IN ")+CH[u.chapter]+(u.secret?", OFF THE MAIN ROUTE.":"."):"NO WRECK OF THIS UNIT HAS BEEN FOUND ON THE ROAD SO FAR.";
+        if(read)ui.text("LAST LOG",px+24,py+96,1,{.35f,.85f,1,.9f});
+        float ly=py+(read?116.f:96.f);
+        for(const auto& line:ui_text::wrap(body,48)){ui.text(line.c_str(),px+24,ly,2,read?glm::vec4{.85f,.9f,.92f,1}:glm::vec4{.6f,.65f,.68f,1});ly+=24.f;}
+        ui.text("UP / DOWN TO LOOK / TAB OR ESC BACK",screenW/2,screenH-40,1,{.6f,.65f,.7f,1},true);
     }
     void renderStory() {
         ui.text("STORY",screenW/2,55,5,{.35f,.85f,1.f,1},true);
@@ -287,20 +358,29 @@ private:
         const char* names[]={"1  THE CRADLE","2  THE DEAD SPAN","3  THE LIVING WARD","4  THE BLOOD MOON PLAIN","5  THE COLD STORE","COMBAT PRACTICE"};
         const char* descriptions[]={"NEW RUN / WAKE ON THE REJECT LINE.","NEW RUN / CROSS THE ASH WASTELAND.","NEW RUN / DESCEND INTO THE LABORATORY.","NEW RUN / THE GLEANER AND ITS BROOD.","NEW RUN / THE ICE SHELF, THE STORE AND WHAT KEEPS IT.","REPEATABLE LESSONS / SELECT ENEMIES / TRY YOUR UPGRADES"};
         for(int i=0;i<storyRows();++i) {
-            float x=screenW/2-360.f,y=165.f+i*76;
-            ui.rect(x,y,720,68,i==storySel?glm::vec4{.1f,.17f,.2f,.95f}:glm::vec4{.06f,.07f,.09f,.9f});
-            if(i==storySel)ui.rect(x,y,4,68,{.35f,.85f,1,1});
+            float x=screenW/2-360.f,y=storyRowY(i),h=storyRowH();
+            ui.rect(x,y,720,h,i==storySel?glm::vec4{.1f,.17f,.2f,.95f}:glm::vec4{.06f,.07f,.09f,.9f});
+            if(i==storySel)ui.rect(x,y,4,h,{.35f,.85f,1,1});
             bool resume=hasStorySave&&i==0;
             int index=i-(hasStorySave?1:0);
             int chapter=storySave.completed&&storySave.chapter<5?storySave.chapter+1:storySave.chapter;
             const char* chapterNames[]={"THE CRADLE","THE DEAD SPAN","THE LIVING WARD","THE BLOOD MOON PLAIN","THE COLD STORE"};
             std::string name=resume?std::string(storySave.completed&&storySave.chapter==5?"REVISIT / ":"CONTINUE / ")+chapterNames[std::clamp(chapter,1,5)-1]:names[index];
             std::string desc=resume?(storySave.completed&&storySave.chapter<5?"NEXT CHAPTER / EQUIPMENT AND UPGRADES CARRY FORWARD":"CHECKPOINT "+std::to_string(storySave.checkpoint+1)+" / EQUIPMENT, UPGRADES AND RECORDS SAVED"):descriptions[index];
-            ui.text(name.c_str(),x+24,y+14,3,{.85f,.9f,.92f,1});
-            ui.text(desc.c_str(),x+24,y+48,1,{.65f,.72f,.75f,1});
+            ui.text(name.c_str(),x+24,y+h*.2f,3,{.85f,.9f,.92f,1});
+            ui.text(desc.c_str(),x+24,y+h-20,1,{.65f,.72f,.75f,1});
+            if(!resume&&index<storyrank::CHAPTERS&&records.storyRank[index]>0) {   // its best: rank and time
+                const float t=records.storyTime[index];
+                char best[48];std::snprintf(best,sizeof(best),"%d:%02d",(int)t/60,(int)t%60);
+                ui.text(storyrank::letter(records.storyRank[index]),x+720-24-(float)UIBatch::textWidth(storyrank::letter(records.storyRank[index]),4),y+h*.13f,4,
+                        records.storyRank[index]>=4?glm::vec4{1.f,.85f,.35f,1}:glm::vec4{1.f,.7f,.3f,1});
+                ui.text(best,x+720-24-(float)UIBatch::textWidth(best,1),y+h-20,1,{.65f,.72f,.75f,1});
+            }
         }
-        ui.text("STORY AUTOSAVES AT CHECKPOINTS. NEW RUN REPLACES THE CONTINUE SLOT.",screenW/2,165+storyRows()*76+14,1,{.7f,.65f,.52f,1},true);
+        ui.text("STORY AUTOSAVES AT CHECKPOINTS. NEW RUN REPLACES THE CONTINUE SLOT.",screenW/2,storyRowY(storyRows()-1)+storyRowH()+12,1,{.7f,.65f,.52f,1},true);
         ui.text("ENTER OR CLICK TO START / ESC BACK",screenW/2,screenH-60,1,{.6f,.65f,.7f,1},true);
+        char archive[64];std::snprintf(archive,sizeof(archive),"TAB - UNIT ARCHIVE  (%d OF 23 LAST LOGS READ)",unitsReadCount());
+        ui.text(archive,screenW/2,screenH-36,1,{.35f,.85f,1.f,.85f},true);
     }
 
     // ---- the pictures behind the pages ---------------------------------------
