@@ -495,5 +495,21 @@ inline LevelData buildWasteland() {
     }
     B.neon(23,78,-386,33,89,-374,{2.f,.5f,.15f});
     B.mat=Mat::METAL;
+    // Roadside wrecks and signs (tools/blender/story_dressing_build.py) on the quiet sections'
+    // shoulders, each wreck solid (a hidden box round its turned footprint): something to read on
+    // the walk, cover nobody fights from
+    auto wreck=[&](float x,float z,float yaw){
+        B.place("waste_car_wreck",{x,0,z},yaw);
+        float c=std::fabs(std::cos(glm::radians(yaw))),s=std::fabs(std::sin(glm::radians(yaw)));
+        float hx=.9f*c+2.15f*s,hz=2.15f*c+.9f*s;
+        L.walls[solid(x-hx,0,z-hz,x+hx,1.55f,z+hz,rust)].hidden=true;
+    };
+    wreck(-13.5f,31,14);wreck(14.5f,21,-163);wreck(11,-262,78);
+    B.place("waste_road_sign",{-8.5f,0,27});B.place("waste_road_sign",{8.2f,0,-283},-6);
+    // The open ground: ash hardpan out to the haze (it was the sky's floor colour before), kept out
+    // of the bridge's void and the relay's pit
+    B.groundCover(-180, -380, 140, 130, 0.f, ash * 0.92f, Mat::ROCK, 4.f);
+    // THE DEAD SPAN's own: canyon strata over ash hardpan, the broken road, rusted sheet
+    L.restyle({{Mat::ROCK, Mat::STRATA}, {Mat::CONCRETE, Mat::ASPHALT}, {Mat::METAL, Mat::CORRUGATED}});
     return L;
 }

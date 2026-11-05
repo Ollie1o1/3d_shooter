@@ -24,6 +24,29 @@ uniform float uFogDensity;   // 0 = no fog (view model, HUD-ish geometry)
 uniform float uVertexGlow;   // > 0: per-vertex colour is also emitted (neon strips)
 uniform vec3  uTexGlow;      // what the texture marks as glowing (alpha < 1) gives off this
 uniform float uNoSeams;      // 1: no dark seam every 4 m (the newer textures carry their own joints)
+uniform float uMacro;        // > 0: soft variation over metres of world (the 4 m tile stops reading as a repeat)
+
+// Value noise from the world position (no texture, no sin: steady far from the origin)
+float hash12(vec2 p) {
+    vec3 q = fract(vec3(p.xyx) * 0.1031);
+    q += dot(q, q.yzx + 33.33);
+    return fract((q.x + q.y) * q.z);
+}
+float vnoise(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash12(i), hash12(i + vec2(1.0, 0.0)), f.x),
+               mix(hash12(i + vec2(0.0, 1.0)), hash12(i + vec2(1.0, 1.0)), f.x), f.y);
+}
+// Brightness and a faint warm/cool shift over the world: floors vary across X and Z, walls along
+// themselves and up them. 1 on average
+vec3 macroTint(vec3 P) {
+    vec2 p = P.xz + P.y * vec2(0.37, 0.61);
+    float a = vnoise(p / 9.0) * 0.65 + vnoise(p / 3.1 + 17.0) * 0.35;
+    float h = vnoise(p / 14.0 + 41.0);
+    float k = 1.0 + (a - 0.5) * 0.34 * uMacro;
+    return k * vec3(1.0 + (h - 0.5) * 0.08 * uMacro, 1.0, 1.0 - (h - 0.5) * 0.08 * uMacro);
+}
 
 // Light from the neon and lava near this point (NeonLights.h picks them):
 // each is a box of light; distance to its nearest point, a soft wrap so the
@@ -89,6 +112,7 @@ void main()
 {
     // Surface colour = texture * per-vertex tint * per-object tint
     vec4 texColor = texture(uTexture, TexCoord) * vec4(VertColor * objectColor, 1.0);
+    if (uMacro > 0.0) texColor.rgb *= macroTint(FragPos);
 
     vec3 norm    = normalize(Normal);
     vec3 viewDir = normalize(viewPos - FragPos);

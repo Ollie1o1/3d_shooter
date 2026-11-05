@@ -1295,5 +1295,7 @@ inline LevelData buildCold() {
         l.arenas.push_back(v);
         l.story.bossSection = 9;
     }
+    // THE COLD STORE's steel, frosted over (MaterialTex.h)
+    l.restyle({{Mat::METAL, Mat::FROSTSTEEL}});
     return l;
 }

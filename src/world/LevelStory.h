@@ -670,5 +670,72 @@ inline LevelData buildCradle() {
     S.pitFloor = PIT + 0.15f;
     S.chute = CHUTE;
     S.clawRail = {LANES[0], RAIL_Y, 0.f};
+    // Pipe runs (tools/blender/story_dressing_build.py) along the halls' tall walls, 5 m up: on the
+    // face toward the room, 4 m at a time, and only where nothing else is (signs, windows, lamps)
+    // and no ledge or catwalk could bring the player up against them (they're drawn, not solid)
+    {
+        const size_t nWalls = L.walls.size();
+        const float PIPE = 1.4f;   // drawn this much over its modelled size: plant, not trim
+        auto clear = [&](const AABB& q, int self) {
+            auto hits = [&](const AABB& b) { return b.min.x < q.max.x && b.max.x > q.min.x && b.min.y < q.max.y && b.max.y > q.min.y &&
+                                                     b.min.z < q.max.z && b.max.z > q.min.z; };
+            AABB reach{q.min - glm::vec3{1.5f, 3.2f, 1.5f}, q.max + glm::vec3{1.5f, 0.5f, 1.5f}};   // where a ledge would put you beside it
+            for (size_t i = 0; i < L.walls.size(); ++i) {
+                if ((int)i == self) continue;
+                const AABB& b = L.walls[i].box;
+                if (hits(b)) return false;
+                bool top = b.max.y > reach.min.y && b.max.y < reach.max.y && b.min.x < reach.max.x && b.max.x > reach.min.x &&
+                           b.min.z < reach.max.z && b.max.z > reach.min.z;
+                if (top) return false;
+            }
+            for (auto* list : {&L.props, &L.neon}) for (const Wall& w : *list) if (hits(w.box)) return false;
+            for (const PlacedModel& m : L.models) {
+                glm::vec3 p = m.free ? glm::vec3(m.xf[3]) : (m.fit.min + m.fit.max) * 0.5f;
+                AABB near{p - glm::vec3{1.5f}, p + glm::vec3{1.5f}};
+                if (!m.free) near = AABB{m.fit.min - glm::vec3{.2f}, m.fit.max + glm::vec3{.2f}};
+                if (hits(near)) return false;
+            }
+            return true;
+        };
+        auto roomFloor = [&](float x, float z, float lo, float hi, float& floorY) {   // the room the face looks into
+            for (const Arena& a : L.arenas)
+                if (x > a.zone.min.x && x < a.zone.max.x && z > a.zone.min.z && z < a.zone.max.z && a.bounds.min.y > lo && a.bounds.min.y + 6.2f < hi) {
+                    floorY = a.bounds.min.y; return true;
+                }
+            return false;
+        };
+        int runs = 0;
+        std::vector<std::pair<glm::vec3, float>> at;
+        for (size_t i = 0; i < nWalls; ++i) {
+            const Wall& w = L.walls[i];
+            if (w.hidden || w.dynamic || L.isDoorWall((int)i)) continue;
+            glm::vec3 d = w.box.max - w.box.min;
+            const bool alongX = d.x >= d.z;
+            const float len = alongX ? d.x : d.z, thick = alongX ? d.z : d.x;
+            if (d.y < 8.f || len < 9.f || thick > 3.f) continue;
+            for (int side = 0; side < 2; ++side) {
+                const float face = side ? (alongX ? w.box.max.z : w.box.max.x) : (alongX ? w.box.min.z : w.box.min.x);
+                const float out = side ? 1.f : -1.f;
+                const float a0 = (alongX ? w.box.min.x : w.box.min.z) + 1.5f, a1 = (alongX ? w.box.max.x : w.box.max.z) - 1.5f;
+                const float SEG = 4.f * PIPE;
+                for (float a = a0; a + SEG <= a1; a += SEG) {
+                    float mid = a + SEG * .5f;
+                    float fl;
+                    if (!roomFloor(alongX ? mid : face + out * 2.f, alongX ? face + out * 2.f : mid, w.box.min.y - .5f, w.box.max.y, fl)) continue;
+                    const float y = fl + 5.f;
+                    const float o = face + out * .8f * PIPE, top = y + 1.05f * PIPE;
+                    AABB q = alongX ? AABB{{a, y - .1f, std::min(face, o)}, {a + SEG, top, std::max(face, o)}}
+                                    : AABB{{std::min(face, o), y - .1f, a}, {std::max(face, o), top, a + SEG}};
+                    if (!clear(q, (int)i)) continue;
+                    float yaw = alongX ? (side ? 0.f : 180.f) : (side ? 90.f : -90.f);
+                    at.push_back({alongX ? glm::vec3{mid, y, face} : glm::vec3{face, y, mid}, yaw});
+                }
+            }
+        }
+        for (auto& p : at) { B.place("cradle_pipe_run", p.first, p.second, PIPE); ++runs; }
+        (void)runs;
+    }
+    // THE CRADLE's own surfaces: hull steel, chipped paint, the factory's slab (MaterialTex.h)
+    L.restyle({{Mat::METAL, Mat::HULL}, {Mat::PANEL, Mat::PAINTED}, {Mat::CONCRETE, Mat::SLAB}});
     return L;
 }

@@ -150,7 +150,7 @@ light: tools/light_bake
 # Every level out for Blender (build/levels/<level>/: tools/blender/level_import.py builds a scene from it)
 level-dump: tools/level_dump.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) tools/level_dump.cpp -o tools/level_dump $(STDLIB)
-	mkdir -p build/levels && for l in act1 act2 fast story1 story2 story3 training; do ./tools/level_dump $$l build/levels/$$l || exit 1; done
+	mkdir -p build/levels && for l in act1 act2 fast story1 story2 story3 story4 story5 training; do ./tools/level_dump $$l build/levels/$$l || exit 1; done
 
 # Browser build (WebGL2 + WebAssembly) → web/dist. Needs Emscripten on PATH:
 #   source ~/emsdk/emsdk_env.sh && make web && python3 -m http.server -d web/dist

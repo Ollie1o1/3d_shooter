@@ -22,7 +22,23 @@ enum WorldTex { TEX_GRID, TEX_BRICK, TEX_METAL, TEX_PANEL, TEX_ROCK, TEX_CONCRET
                 TEX_LIMESTONE, TEX_BRASS, TEX_CLINIC, TEX_LINO,
                 TEX_CINDER,   // Chapter 4
                 TEX_SNOW, TEX_ICE,   // Chapter 5
+                // The story chapters' own (MaterialTex.h)
+                TEX_HULL, TEX_DECK, TEX_PAINTED, TEX_CASTWALL, TEX_SLAB,     // Chapter 1
+                TEX_STRATA, TEX_ASHGROUND, TEX_ASPHALT, TEX_CORRUGATED, TEX_RUSTPLATE,   // Chapter 2
+                TEX_FROSTSTEEL, TEX_FROSTDECK,   // Chapter 5
                 TEX_COUNT };
+
+// How strongly the world shader breaks up a texture's 4 m repeat (shader.frag uMacro): most on
+// ground, rock and concrete, where the eye catches a repeat; least on clean tile and machined plate
+inline float worldTexMacro(int t) {
+    switch (t) {
+        case TEX_ROCK: case TEX_STRATA: case TEX_ASHGROUND: case TEX_ASPHALT: case TEX_SLAB: case TEX_CINDER:
+        case TEX_SNOW: case TEX_ICE: case TEX_GRID: case TEX_CONCRETE: case TEX_CASTWALL: case TEX_ADOBE:
+        case TEX_TERRACOTTA: case TEX_LIMESTONE: case TEX_RUSTPLATE: case TEX_FLAG: return 1.f;
+        case TEX_CLINIC: case TEX_LINO: case TEX_CIRCUIT: case TEX_CIRCUIT_FLOOR: case TEX_BRASS: return 0.2f;
+        default: return 0.6f;
+    }
+}
 
 inline WorldTex sideTex(Mat m) {
     switch (m) {
@@ -35,6 +51,10 @@ inline WorldTex sideTex(Mat m) {
         case Mat::MARBLE: return TEX_MARBLE; case Mat::CIRCUIT: return TEX_CIRCUIT;
         case Mat::BASALT: return TEX_BASALT; case Mat::WOOD: return TEX_WOOD;
         case Mat::LIMESTONE: return TEX_LIMESTONE; case Mat::BRASS: return TEX_BRASS;
+        case Mat::HULL: return TEX_HULL; case Mat::PAINTED: return TEX_PAINTED;
+        case Mat::SLAB: case Mat::ASPHALT: return TEX_CASTWALL;
+        case Mat::STRATA: return TEX_STRATA; case Mat::CORRUGATED: return TEX_CORRUGATED;
+        case Mat::FROSTSTEEL: return TEX_FROSTSTEEL;
         default: return TEX_BRICK;
     }
 }
@@ -52,6 +72,12 @@ inline WorldTex topTex(Mat m) {
         case Mat::WOOD: return TEX_WOOD;
         case Mat::LIMESTONE: return TEX_LIMESTONE;
         case Mat::BRASS: return TEX_BRASS;
+        case Mat::HULL: case Mat::PAINTED: return TEX_DECK;
+        case Mat::SLAB: return TEX_SLAB;
+        case Mat::STRATA: return TEX_ASHGROUND;
+        case Mat::ASPHALT: return TEX_ASPHALT;
+        case Mat::CORRUGATED: return TEX_RUSTPLATE;
+        case Mat::FROSTSTEEL: return TEX_FROSTDECK;
         default: return TEX_GRID;
     }
 }
@@ -169,7 +195,7 @@ inline WorldGeometry buildWorldGeometry(const LevelData& L) {
         s.forEachTri([&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3) {
             yLo = std::min({yLo, a.y, b.y, c.y}); yHi = std::max({yHi, a.y, b.y, c.y});
         });
-        Mat m = (Mat)s.mat;
+        Mat m = L.drawn((Mat)s.mat);
         s.forEachTri([&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3 n) {
             if (s.neon) {
                 pushTri(nV, nI, a, b, c, n, s.color, false, yLo, yHi - yLo);
@@ -208,6 +234,7 @@ inline WorldGeometry buildWorldGeometry(const LevelData& L) {
     };
 
     auto pushBox = [&](const AABB& b, glm::vec3 col, bool neon, Mat m, const Wall* self) {
+        m = L.drawn(m);
         glm::vec3 mn = b.min, mx = b.max;
         int st = sideTex(m), tt = topTex(m);
         auto& sv = neon ? nV : V[st];      auto& si = neon ? nI : I[st];
@@ -264,7 +291,7 @@ inline WorldGeometry buildWorldGeometry(const LevelData& L) {
                                               glm::vec3 col, bool glows, int tex) {
             glm::vec3 fn = glm::normalize(glm::cross(b - a, c - a));
             int t = 0;
-            if (!glows) { Mat m = tex >= 0 ? (Mat)tex : own; t = fn.y > 0.7f ? topTex(m) : fn.y < -0.7f ? TEX_METAL : sideTex(m); }
+            if (!glows) { Mat m = L.drawn(tex >= 0 ? (Mat)tex : own); t = fn.y > 0.7f ? topTex(m) : fn.y < -0.7f ? TEX_METAL : sideTex(m); }
             std::vector<Vertex>& vv = glows ? nV : V[t];
             std::vector<unsigned int>& ii = glows ? nI : I[t];
             float ax = std::fabs(fn.x), ay = std::fabs(fn.y), az = std::fabs(fn.z);
@@ -283,7 +310,7 @@ inline WorldGeometry buildWorldGeometry(const LevelData& L) {
     }
 
     for (auto& f : L.floors)
-        pushFace(V[topTex(f.mat)], I[topTex(f.mat)], {f.x0,f.y,f.z1},{f.x1,f.y,f.z1},{f.x1,f.y,f.z0},{f.x0,f.y,f.z0},{0,1,0}, f.color, false);
+        pushFace(V[topTex(L.drawn(f.mat))], I[topTex(L.drawn(f.mat))], {f.x0,f.y,f.z1},{f.x1,f.y,f.z1},{f.x1,f.y,f.z0},{f.x0,f.y,f.z0},{0,1,0}, f.color, false);
     for (int i = 0; i < (int)L.walls.size(); ++i)
         if (!L.walls[i].hidden && !L.isDoorWall(i) && !dressedWall[i]) pushBox(L.walls[i].box, L.walls[i].color, false, L.walls[i].mat, &L.walls[i]);
     for (size_t i = 0; i < L.props.size(); ++i)

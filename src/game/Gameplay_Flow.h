@@ -43,6 +43,19 @@ inline GLuint* GameplayState::sharedWorldTex() {
         tex[TEX_SNOW]          = TextureGen::uploadMaterial(MaterialTex::snow());
         tex[TEX_ICE]           = TextureGen::uploadMaterial(MaterialTex::ice());
         tex[TEX_BASALT]        = TextureGen::uploadMaterial(MaterialTex::basalt());
+        // The story chapters' own
+        tex[TEX_HULL]          = TextureGen::uploadMaterial(MaterialTex::hull());
+        tex[TEX_DECK]          = TextureGen::uploadMaterial(MaterialTex::deck());
+        tex[TEX_PAINTED]       = TextureGen::uploadMaterial(MaterialTex::painted());
+        tex[TEX_CASTWALL]      = TextureGen::uploadMaterial(MaterialTex::castwall());
+        tex[TEX_SLAB]          = TextureGen::uploadMaterial(MaterialTex::slab());
+        tex[TEX_STRATA]        = TextureGen::uploadMaterial(MaterialTex::strata());
+        tex[TEX_ASHGROUND]     = TextureGen::uploadMaterial(MaterialTex::ashground());
+        tex[TEX_ASPHALT]       = TextureGen::uploadMaterial(MaterialTex::asphalt());
+        tex[TEX_CORRUGATED]    = TextureGen::uploadMaterial(MaterialTex::corrugated());
+        tex[TEX_RUSTPLATE]     = TextureGen::uploadMaterial(MaterialTex::rustplate());
+        tex[TEX_FROSTSTEEL]    = TextureGen::uploadMaterial(MaterialTex::froststeel());
+        tex[TEX_FROSTDECK]     = TextureGen::uploadMaterial(MaterialTex::frostdeck());
     }
     return tex;
 }

@@ -447,6 +447,370 @@ inline std::vector<unsigned char> ice() {
     }, BRICK_MEAN * 1.1f);
 }
 
+// --- The story chapters' own -------------------------------------------------
+// Each chapter restyles the shared surfaces (LevelData::restyle) so its rooms
+// are their own place: THE CRADLE's worn factory, THE DEAD SPAN's canyon and
+// broken road, THE COLD STORE's frosted steel. Walls: pixel rows run up the
+// wall (row 0 is the bottom of the 4 m tile), so drips and rust run toward 0.
+
+// A wrapping Voronoi: the nearest and second-nearest of N x N jittered points
+struct Cell { float d1, d2; int id; };
+inline Cell voronoi(float u, float v, int N, int seed, float jitter = 0.8f) {
+    float fx = u * N, fy = v * N;
+    int ix = (int)std::floor(fx), iy = (int)std::floor(fy);
+    Cell c{9.f, 9.f, 0};
+    for (int dy = -1; dy <= 1; ++dy)
+        for (int dx = -1; dx <= 1; ++dx) {
+            int cx = ix + dx, cy = iy + dy, wx = wrap(cx, N), wy = wrap(cy, N);
+            float px = cx + 0.5f + (hashI(wx, wy, seed) - 0.5f) * jitter, py = cy + 0.5f + (hashI(wx, wy, seed + 1) - 0.5f) * jitter;
+            float d = std::hypot(fx - px, fy - py);
+            if (d < c.d1) { c.d2 = c.d1; c.d1 = d; c.id = wx * 131 + wy; } else if (d < c.d2) c.d2 = d;
+        }
+    return c;
+}
+
+// THE CRADLE (Chapter 1) ------------------------------------------------------
+
+// Hull steel: 2 m plates in dark blue-grey paint, a weld bead across each, the
+// paint worn to bare steel at the edges, grime run down the face and rust
+// weeping from some rivet lines
+inline std::vector<unsigned char> hull() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        const int W = 2 * M, H = 2 * M;
+        int col = x / W, row = y / H, lx = x % W, ly = y % H;
+        float b = 0.36f + (hashI(col, row, 701) - 0.5f) * 0.08f + (fbm(u, v, 8, 4, 702) - 0.5f) * 0.12f;
+        b *= 1.f - 0.30f * sstep(0.55f, 0.82f, noise(u, v, 64, 3, 703));          // grime run down the face
+        b *= 0.94f + 0.12f * noise(u, v, 128, 128, 708);                          // tooth of the paint
+        glm::vec3 c = b * glm::vec3{0.86f, 0.93f, 1.0f};
+        float edge = std::min(std::min(lx, W - 1 - lx), std::min(ly, H - 1 - ly)) / 12.f;
+        float wear = fbm(u, v, 16, 3, 704);
+        if (wear > 0.56f + 0.30f * std::min(edge, 1.f))                         // chipped to bare steel
+            c = glm::vec3{0.50f, 0.49f, 0.47f} * (0.8f + 0.4f * hashI(x, y, 705));
+        int wy = ly - H / 2;                                                      // the weld bead
+        if (std::abs(wy) <= 2) c = glm::vec3{0.30f, 0.29f, 0.28f} * (wy > 0 ? 1.3f : 0.8f) * (0.8f + 0.25f * (0.5f + 0.5f * std::sin(lx * 1.4f)));
+        else if (std::abs(wy) <= 5) c *= glm::vec3{0.86f, 0.82f, 0.80f};          // its heat tint
+        for (int side = 0; side < 2; ++side) {                                    // rivets down each edge
+            int rx = side ? W - 7 : 6, dx = lx - rx;
+            int ry = (ly / 16) * 16 + 8, dy = ly - ry;
+            bool weeps = hashI(col * 2 + side, row, 706) < 0.45f;
+            int dyA = ly - (ry > ly ? ry : ry + 16);                              // below the rivet above
+            if (weeps && dyA < -2 && ry + 16 < H) {                               // rust weeping down from it
+                float t = -dyA / 16.f;
+                if (std::abs(dx) <= 1 + (int)(t * 2.f) && noise(u, v, 64, 32, 707) > 0.3f)
+                    c = glm::mix(c, (b / 0.36f) * glm::vec3{0.52f, 0.27f, 0.13f}, 0.65f * (1.f - t));
+            }
+            int d2 = dx * dx + dy * dy;
+            if (d2 < 5) c = glm::vec3{0.58f, 0.57f, 0.55f} * (dy > 0 ? 1.f : 0.65f);
+            else if (d2 < 9 && dy < 0) c *= 0.55f;
+        }
+        if (lx < 2 || ly < 2) c = glm::vec3{0.06f};                               // seam
+        else if (lx < 4 || ly > H - 4) c *= 1.18f;
+        else if (lx > W - 4 || ly < 4) c *= 0.72f;
+        return Px{c};
+    }, BRICK_MEAN * 1.0f);
+}
+
+// Deck plate: the factory's metal floors, 2 m plates of three-bar tread, worn
+// bright down the walked lines, oil soaked in, a countersunk bolt in each corner
+inline std::vector<unsigned char> deck() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        float b = 0.32f + (fbm(u, v, 8, 4, 711) - 0.5f) * 0.14f;
+        float wear = sstep(0.45f, 0.7f, fbm(u, v, 3, 4, 712));
+        const int C = 16;
+        int cx = x / C, cy = y / C;
+        float lx = (float)(x % C) - C * 0.5f + 0.5f, ly = (float)(y % C) - C * 0.5f + 0.5f;
+        float s = ((cx + cy) & 1) ? 1.f : -1.f;
+        float a = (lx + s * ly) * 0.7071f, d = (lx - s * ly) * 0.7071f;
+        for (int k = -1; k <= 1; ++k)
+            if (std::fabs(a) < 4.5f && std::fabs(d - k * 3.6f) < 0.9f) b *= (d - k * 3.6f < 0.f ? 1.35f : 0.8f) + wear * 0.45f;
+        float oil = fbm(u, v, 5, 4, 713);
+        b *= 1.f - 0.32f * sstep(0.64f, 0.74f, oil);                              // oil soaked in
+        glm::vec3 c = b * glm::vec3{0.96f, 0.97f, 1.0f};
+        c = glm::mix(c, c * glm::vec3{1.25f, 0.85f, 0.65f}, 0.5f * sstep(0.62f, 0.8f, fbm(u, v, 6, 3, 714)));   // rust bloom
+        int px = x % (2 * M), py = y % (2 * M);
+        for (int bx : {7, 2 * M - 8}) for (int by : {7, 2 * M - 8}) {
+            int d2 = (px - bx) * (px - bx) + (py - by) * (py - by);
+            if (d2 < 7) c = glm::vec3{0.16f} + glm::vec3{0.2f} * (float)((px + py) % 3 == 0);
+            else if (d2 < 12) c *= 1.2f;
+        }
+        if (px < 2 || py < 2) c = glm::vec3{0.06f};
+        return Px{c};
+    }, BRICK_MEAN * 0.95f);
+}
+
+// Painted panels, a metre by two: recessed joints, paint chipped along the
+// edges and the bottom, louvred vents and label plates on some, scuffs
+inline std::vector<unsigned char> painted() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        const int W = M, H = 2 * M;
+        int col = x / W, row = y / H, lx = x % W, ly = y % H, pl = col + 4 * row;
+        float b = 0.42f + (hashI(pl, 0, 721) - 0.5f) * 0.06f + (fbm(u, v, 8, 3, 722) - 0.5f) * 0.08f;
+        b += (noise(u, v, 3, 128, 723) - 0.5f) * 0.05f;                           // scuffs, along it
+        b *= 1.f - 0.22f * sstep(0.55f, 0.85f, noise(u, v, 48, 4, 724));          // streaks
+        glm::vec3 c = b * glm::vec3{0.97f, 1.0f, 0.98f};
+        if (hashI(pl, 1, 725) < 0.28f && lx > 10 && lx < W - 10 && ly > 16 && ly < 48) {   // a vent
+            int s = (ly - 16) % 5;
+            c = s == 0 ? c * 1.3f : s < 3 ? glm::vec3{0.05f} : c * 0.75f;
+            if (lx < 12 || lx > W - 12 || ly < 18 || ly > 46) c = glm::vec3{0.3f};
+        } else if (ly < 16 && hashI(pl, 1, 725) < 0.28f && lx > 10 && lx < W - 10)
+            c *= 1.f - 0.35f * (1.f - ly / 16.f) * noise(u, v, 64, 4, 726);       // grime dribbled down from it
+        if (hashI(pl, 2, 727) < 0.3f && lx > 18 && lx < 46 && ly > 92 && ly < 106) {   // a label plate
+            c = glm::vec3{0.62f, 0.60f, 0.54f};
+            if ((ly == 96 || ly == 101) && lx > 21 && lx < 21 + 4 + (int)(hashI(pl, ly, 728) * 20.f) && lx % 3) c = glm::vec3{0.12f};
+            if (lx == 19 || ly == 93) c *= 1.2f;
+        }
+        float chip = fbm(u, v, 12, 4, 729);
+        float edge = std::min(std::min(lx, W - 1 - lx), std::min(ly, H - 1 - ly)) / 10.f;
+        float need = 0.6f + 0.25f * std::min(edge, 1.f) - 0.10f * (1.f - std::min(ly / 40.f, 1.f));
+        if (chip > need) c = glm::mix(c, glm::vec3{0.36f, 0.27f, 0.20f} * (0.75f + 0.5f * hashI(x, y, 730)), 0.8f);   // to the rust under it
+        else if (chip > need - 0.015f) c *= 1.25f;                                // the paint's lifted edge
+        if (lx < 2 || ly < 2) c = glm::vec3{0.07f};
+        else if (lx < 3 || ly > H - 3) c *= 1.2f;
+        else if (lx > W - 3 || ly < 3) c *= 0.7f;
+        return Px{c};
+    }, 0.362f);
+}
+
+// Board-formed concrete: the grain of the shuttering boards, staggered joints,
+// tie holes, a darker pour line, damp run down from it. The factory's walls
+// and the Dead Span's roadside both
+inline std::vector<unsigned char> castwall() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        const int BH = 8;
+        int row = y / BH, ly = y % BH;
+        int off = (int)(hashI(row, 0, 741) * 128.f);
+        int lx = (x + off) % 128, board = ((x + off) / 128) % 2;
+        float b = 0.42f + (hashI(row, board, 742) - 0.5f) * 0.06f + (fbm(u, v, 8, 4, 743) - 0.5f) * 0.12f;
+        b += (noise(u, v, 6, 96, 744) - 0.5f) * 0.06f;                            // the wood's grain, printed in it
+        if (ly == 0) b *= 0.78f; else if (ly == 1) b *= 1.06f;                    // board joints
+        if (lx == 0) b *= 0.8f;
+        int tx = x % 64, ty = y % 64;                                             // tie holes, every metre
+        int d2 = (tx - 32) * (tx - 32) + (ty - 32) * (ty - 32);
+        if (d2 < 6) b *= 0.35f; else if (d2 < 14) b *= 0.8f;
+        else if (std::abs(tx - 32) < 2 && ty < 32 && ty > 18) b *= 0.9f;          // a stain below it
+        if (y % 128 < 3) b *= 0.82f;                                              // the pour line
+        if (hashI(x, y, 745) < 0.03f) b *= 0.75f;                                 // air holes
+        b *= 1.f - 0.25f * sstep(0.58f, 0.85f, noise(u, v, 40, 3, 746));          // damp, down the face
+        glm::vec3 c = b * glm::vec3{1.0f, 0.99f, 0.95f};
+        float salt = sstep(0.62f, 0.85f, noise(u, v, 48, 6, 747)) * std::max(0.f, 1.f - (y % 128) / 24.f);   // efflorescence weeping from the pour line
+        c = glm::mix(c, glm::vec3{0.70f, 0.69f, 0.66f}, salt * 0.4f);
+        return Px{c};
+    }, 0.405f);
+}
+
+// Factory floor slab: power-trowelled concrete, saw-cut joints every 2 m with
+// their arrises chipped, oil stains with dried rims, hairline cracks
+inline std::vector<unsigned char> slab() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        float b = 0.34f + (fbm(u, v, 6, 5, 751) - 0.5f) * 0.12f;
+        b += (noise(u, v, 32, 32, 752) - 0.5f) * 0.035f;                          // trowel swirl
+        b += (hashI(x, y, 753) - 0.5f) * 0.03f;
+        float oil = fbm(u, v, 5, 4, 754);
+        b *= 1.f - 0.3f * sstep(0.63f, 0.75f, oil);
+        Cell cr = voronoi(u, v, 3, 755);                                          // a few shrinkage cracks
+        float wob = (noise(u, v, 32, 32, 758) - 0.5f) * 0.03f;
+        if (cr.d2 - cr.d1 + wob < 0.012f && noise(u, v, 4, 4, 756) > 0.62f) b *= 0.55f;
+        int jx = x % 128, jy = y % 128;
+        int dj = std::min(std::min(jx, 128 - jx), std::min(jy, 128 - jy));
+        float spall = noise(u, v, 64, 64, 757);
+        if (dj == 0) b *= 0.35f;                                                  // the saw cut
+        else if (dj < 3 && spall > 0.72f) b *= 0.6f;                              // its chipped edge
+        glm::vec3 c = b * glm::vec3{1.0f, 0.97f, 0.92f};
+        return Px{c};
+    }, 0.330f);
+}
+
+// THE DEAD SPAN (Chapter 2) ---------------------------------------------------
+
+// Canyon strata: layers of different tones and hardness, the hard ones
+// standing proud with ash settled on their ledges, the soft ones eaten back,
+// cracks running up through them
+inline std::vector<unsigned char> strata() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        float w = v + (fbm(u, v, 3, 4, 801) - 0.5f) * 0.07f;
+        const int N = 11;
+        float lf = w * N;
+        int layer = wrap((int)std::floor(lf), N);
+        float f = lf - std::floor(lf);
+        float hard = hashI(layer, 0, 802), hue = hashI(layer, 1, 803);
+        glm::vec3 tint = hue < 0.35f ? glm::vec3{1.16f, 0.90f, 0.72f} : hue < 0.7f ? glm::vec3{1.05f, 0.96f, 0.88f} : glm::vec3{1.22f, 0.82f, 0.64f};
+        float b = 0.40f + (hard - 0.5f) * 0.12f + (fbm(u, v, 8, 5, 804) - 0.5f) * 0.22f;
+        float sub = std::sin((w * 37.f) * 6.2832f);                              // fine bedding inside a layer
+        b += sub * 0.025f;
+        if (hard > 0.55f) {                                                       // proud: a lit ledge on top, shadow under
+            if (f > 0.9f) { b *= 1.15f; tint = glm::mix(tint, glm::vec3{1.f}, 0.3f); }
+            else if (f < 0.12f) b *= 0.6f + 0.4f * f / 0.12f;
+        } else {
+            b *= 0.85f;                                                           // soft: weathered back, pitted
+            if (hashI(x / 2, y / 2, 805) < 0.025f) b *= 0.7f;
+        }
+        int jc = x / 32;                                                          // joints: cracks up through a layer
+        if (hashI(jc, layer, 806) < 0.5f) {
+            float jx = jc * 32 + 4 + hashI(jc, layer, 809) * 24.f + (noise(u, v, 8, 64, 810) - 0.5f) * 6.f;
+            float dj = std::fabs(x - jx);
+            if (dj < 0.9f) b *= 0.45f; else if (dj < 2.f) b *= 0.85f;
+        }
+        b += (hashI(x, y, 807) - 0.5f) * 0.04f;
+        return Px{b * tint};
+    }, 0.387f);
+}
+
+// Ash hardpan: the open ground. Dried mud cracked into plates, ash drifted
+// over it in wind-rippled sheets, grit and stones scattered
+inline std::vector<unsigned char> ashground() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        Cell cl = voronoi(u, v, 5, 811);
+        float edge = cl.d2 - cl.d1;
+        float b = 0.40f + (hashI(cl.id, 0, 813) - 0.5f) * 0.06f + (fbm(u, v, 8, 4, 814) - 0.5f) * 0.14f;
+        b *= 1.06f - 0.12f * cl.d1;                                               // each plate a little domed
+        glm::vec3 c = b * glm::vec3{1.10f, 0.94f, 0.80f};
+        float crackW = 0.012f + 0.02f * noise(u, v, 16, 16, 815);
+        float deep = 0.45f + 0.4f * noise(u, v, 8, 8, 822);                       // some cracks barely there
+        if (edge < crackW) c *= deep;
+        else if (edge < crackW * 2.5f) c *= 0.88f;
+        Cell fine = voronoi(u, v, 14, 823);                                       // and finer crazing in the plates
+        if (fine.d2 - fine.d1 < 0.02f && noise(u, v, 6, 6, 824) > 0.5f) c *= 0.8f;
+        float ash = sstep(0.42f, 0.68f, fbm(u, v, 3, 4, 816));
+        float ripple = 0.5f + 0.5f * std::sin((u * 9.f + v * 3.f + fbm(u, v, 4, 3, 817) * 1.5f) * 6.2832f);
+        glm::vec3 ashC = glm::vec3{0.62f, 0.58f, 0.54f} * (0.92f + 0.12f * ripple) * (0.95f + 0.1f * hashI(x, y, 818));
+        c = glm::mix(c, ashC, ash * 0.85f);
+        int gx = x / 3, gy = y / 3;                                               // stones
+        if (hashI(gx, gy, 819) > 0.985f && ash < 0.6f) c = glm::vec3{0.22f + 0.3f * hashI(gx, gy, 820)} * glm::vec3{1.05f, 0.98f, 0.9f};
+        else if (hashI(gx, gy + 1, 819) > 0.985f && ash < 0.6f) c *= 0.6f;        // the stone's shadow
+        c *= 0.95f + 0.1f * hashI(x, y, 821);
+        return Px{c};
+    }, 0.387f);
+}
+
+// The broken road: dark asphalt, its stones showing where it's worn, alligator
+// cracking in places, tar-sealed cracks, a patch, ash blown across it
+inline std::vector<unsigned char> asphalt() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        float b = 0.26f + (fbm(u, v, 6, 4, 831) - 0.5f) * 0.08f;
+        float worn = sstep(0.5f, 0.7f, fbm(u, v, 4, 4, 832));
+        float h = hashI(x, y, 833), hs = hashI(x / 2, y / 2, 834);
+        if (hs > 0.8f - 0.15f * worn) b += 0.12f * (0.5f + hs);                   // aggregate
+        else if (h < 0.1f) b *= 0.7f;
+        b += worn * 0.04f;
+        float tar = sstep(0.62f, 0.7f, fbm(u, v, 2, 3, 840));                     // newer, smoother patches
+        b = glm::mix(b, 0.2f + (h - 0.5f) * 0.03f, tar * 0.8f);
+        Cell cl = voronoi(u, v, 9, 835);
+        if (tar < 0.5f && cl.d2 - cl.d1 < 0.045f && noise(u, v, 3, 3, 836) > 0.58f) b *= 0.45f;   // alligator cracks
+        float line = std::fabs(v - 0.37f - 0.06f * std::sin(u * 6.2832f * 2.f) - (fbm(u, v, 4, 3, 837) - 0.5f) * 0.12f);
+        if (line < 0.006f && noise(u, v, 3, 1, 838) > 0.55f) b = 0.09f;           // a sealed crack
+        glm::vec3 c = b * glm::vec3{0.98f, 0.97f, 0.96f};
+        float ash = sstep(0.6f, 0.75f, fbm(u, v, 3, 4, 839));
+        c = glm::mix(c, glm::vec3{0.52f, 0.48f, 0.44f} * (0.9f + 0.2f * h), ash * 0.6f);
+        return Px{c};
+    }, 0.300f);
+}
+
+// Corrugated sheet: ribs every 25 cm, 1 m sheets lapped every 2 m with a row
+// of fasteners, galvanising gone to rust from the laps and the fasteners down
+inline std::vector<unsigned char> corrugated() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        const int SW = M, SH = 2 * M;
+        int col = x / SW, row = y / SH, lx = x % SW, ly = y % SH;
+        float ph = (x % 16) / 16.f * 6.2832f;
+        float b = 0.36f * (0.72f + 0.38f * (0.5f + 0.5f * std::cos(ph)) + 0.12f * std::sin(ph));
+        b *= 0.9f + (hashI(col, row, 851) - 0.5f) * 0.16f + (fbm(u, v, 8, 3, 852) - 0.5f) * 0.25f;
+        bool painted = hashI(col, row, 853) < 0.35f;
+        glm::vec3 c = b * (painted ? glm::vec3{1.12f, 0.92f, 0.82f} : glm::vec3{0.92f, 0.96f, 1.0f});
+        float rustBase = fbm(u, v, 6, 4, 854) + 0.35f * (1.f - std::min(ly / 50.f, 1.f));   // most at a sheet's foot
+        float rust = sstep(0.6f, 0.8f, rustBase);
+        int fy = SH - 6;                                                          // the fastener row at the lap
+        bool fastener = (x % 16 == 8 || x % 16 == 9) && (ly == fy || ly == fy + 1);
+        if ((x % 16 == 8 || x % 16 == 9) && ly < fy && ly > fy - 40 && hashI(x / 16, row, 855) < 0.5f)
+            rust = std::max(rust, (1.f - (fy - ly) / 40.f) * 0.8f * noise(u, v, 64, 16, 856));   // streak below a fastener
+        c = glm::mix(c, (b / 0.36f) * glm::vec3{0.48f, 0.25f, 0.12f} * (0.8f + 0.4f * hashI(x, y, 857)), rust * 0.85f);
+        if (rustBase > 1.0f && hashI(x / 2, y / 2, 858) < 0.4f) c = glm::vec3{0.03f};   // rusted through
+        if (fastener) c = glm::vec3{0.55f};
+        if (ly < 2) c = glm::vec3{0.06f};                                         // the lap's shadow
+        else if (ly < 4) c *= 0.7f;
+        if (lx < 1) c *= 0.6f;
+        return Px{c};
+    }, 0.260f);
+}
+
+// Rusted plate: the tops of the Dead Span's steel, flaking and pitted under ash
+inline std::vector<unsigned char> rustplate() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        float n = fbm(u, v, 6, 5, 861);
+        float b = 0.30f + (n - 0.5f) * 0.16f;
+        glm::vec3 steel = b * glm::vec3{0.9f, 0.93f, 0.96f}, rust = b * glm::vec3{1.55f, 0.85f, 0.5f};
+        float r = sstep(0.38f, 0.6f, fbm(u, v, 4, 4, 862));
+        glm::vec3 c = glm::mix(steel, rust, r);
+        Cell fl = voronoi(u, v, 22, 863);                                         // flakes lifting
+        if (r > 0.5f && fl.d2 - fl.d1 < 0.06f) c *= 1.25f;
+        if (hashI(x, y, 864) < 0.05f) c *= 0.6f;                                  // pits
+        c = glm::mix(c, glm::vec3{0.5f, 0.47f, 0.44f}, 0.55f * sstep(0.6f, 0.78f, fbm(u, v, 3, 3, 865)));   // ash
+        int px = x % 128, py = y % 128;
+        if (px < 2 || py < 2) c = glm::vec3{0.06f};
+        for (int bx : {8, 120}) for (int by : {8, 120})
+            if ((px - bx) * (px - bx) + (py - by) * (py - by) < 7) c = glm::vec3{0.4f, 0.3f, 0.22f};
+        return Px{c};
+    }, 0.260f);
+}
+
+// THE COLD STORE (Chapter 5) --------------------------------------------------
+
+// Insulated cold-store panels, a metre wide, fine ribs pressed in, hoar frost
+// grown over them in feathery patches, ice hanging from the joints
+inline std::vector<unsigned char> froststeel() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        const int W = M, H = 2 * M;
+        int col = x / W, row = y / H, lx = x % W, ly = y % H;
+        float b = 0.30f + (hashI(col, row, 901) - 0.5f) * 0.05f + (fbm(u, v, 8, 3, 902) - 0.5f) * 0.08f;
+        int rib = lx % 8;
+        if (rib == 0) b *= 1.2f; else if (rib == 1) b *= 0.8f;                   // the ribs
+        glm::vec3 c = b * glm::vec3{0.88f, 0.95f, 1.05f};
+        float frost = fbm(u, v, 10, 4, 903) + 0.14f * (noise(u, v, 96, 96, 904) - 0.5f)   // feathery edge
+                    + 0.22f * (1.f - std::min(ly / 40.f, 1.f));                   // thickest on the ledge of the joint
+        float fr = sstep(0.56f, 0.72f, frost) * 0.72f;
+        glm::vec3 rime = glm::vec3{0.80f, 0.88f, 0.96f} * (0.9f + 0.15f * hashI(x, y, 905));
+        if (hashI(x, y, 906) > 0.993f && fr > 0.5f) rime = glm::vec3{1.f};       // a glint
+        c = glm::mix(c, rime, fr * 0.8f);
+        int below = H - ly;                                                       // icicles under the joint above
+        int ic = (int)(hashI(x / 3, row, 907) * 30.f);
+        if (below < ic && (x % 3 != 0) && hashI(x / 3, row, 908) < 0.4f)
+            c = glm::mix(c, glm::vec3{0.75f, 0.86f, 0.95f}, 0.7f * (1.f - below / (float)std::max(ic, 1)));
+        if (lx < 2 || ly < 2) c = glm::vec3{0.08f, 0.1f, 0.12f};
+        else if (ly < 5) c = glm::mix(c, glm::vec3{0.85f, 0.9f, 0.95f}, 0.6f);      // frost packed along the joint
+        return Px{c};
+    }, 0.260f);
+}
+
+// Frosted deck: steel grating with snow packed white into the gaps, frost
+// filming the bars, kicked clear in places
+inline std::vector<unsigned char> frostdeck() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        float b = 0.30f + (fbm(u, v, 8, 4, 911) - 0.5f) * 0.1f;
+        glm::vec3 c = b * glm::vec3{0.88f, 0.94f, 1.02f};
+        int gx = x % 8, gy = y % 32;
+        bool gap = gx >= 5 && gy > 2;
+        float packed = fbm(u, v, 5, 4, 912);
+        if (gap) c = packed > 0.3f ? glm::vec3{0.78f, 0.85f, 0.93f} * (0.9f + 0.15f * hashI(x, y, 913)) : glm::vec3{0.04f, 0.05f, 0.07f};
+        else if (gx == 4 || gy <= 2) c *= 0.75f;                                  // cross bars, a step down
+        else if (gx == 0) c *= 1.25f;
+        float film = sstep(0.55f, 0.75f, fbm(u, v, 4, 3, 914));
+        c = glm::mix(c, glm::vec3{0.82f, 0.88f, 0.95f}, film * 0.5f);
+        if (x % 128 < 2 || y % 128 < 2) c = glm::vec3{0.06f};
+        return Px{c};
+    }, 0.300f);
+}
+
 // --- The shared surfaces (every mode: the tubes, FAST, ACT II) ---------------
 // The original six, redone to wrap and with more to look at, each scaled to
 // the old one's brightness so the places lit for them stay as they were.
