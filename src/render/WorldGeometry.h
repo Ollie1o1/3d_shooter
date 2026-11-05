@@ -43,6 +43,18 @@ inline float worldTexMacro(int t) {
     }
 }
 
+// How strongly a texture's relief (MaterialTex::normalMap, shader.frag uBump) tilts its lighting: brick, stone
+// and plate deep; smooth snow, ice, glossy tile and the glowing circuitry barely
+inline float worldTexBump(int t) {
+    switch (t) {
+        case TEX_SNOW: case TEX_ICE: case TEX_CLINIC: case TEX_LINO: return 0.25f;
+        case TEX_CIRCUIT: case TEX_CIRCUIT_FLOOR: case TEX_GRID: return 0.5f;
+        case TEX_BRICK: case TEX_ROCK: case TEX_STRATA: case TEX_BASALT: case TEX_FLAG: case TEX_ADOBE: case TEX_CASTWALL:
+        case TEX_LIMESTONE: case TEX_CINDER: case TEX_SALVAGE: case TEX_SCRAPDECK: return 0.95f;
+        default: return 0.8f;
+    }
+}
+
 inline WorldTex sideTex(Mat m) {
     switch (m) {
         case Mat::CLINIC: return TEX_CLINIC;

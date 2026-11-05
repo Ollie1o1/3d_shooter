@@ -51,6 +51,7 @@ public:
 #endif
         cycle ("GRAPHICS QUALITY", &g->quality, GameSettings::QUALITY_LEVELS, [](int i) { return GameSettings::qualityLabel(i); });
         cycle ("AMBIENT DETAIL", &g->ambientDetail, GameSettings::AMBIENT_LEVELS, [](int i) { return GameSettings::ambientLabel(i); });
+        cycle ("LIGHTING", &g->lighting, GameSettings::LIGHTING_LEVELS, [](int i) { return GameSettings::lightingLabel(i); });
         cycle ("ANTI-ALIASING", &g->antiAlias, GameSettings::AA_LEVELS, [](int i) { return GameSettings::aaLabel(i); });
         toggle("SHOW FPS", &g->showFPS);
         toggle("CRT FILTER", &g->crtFilter);

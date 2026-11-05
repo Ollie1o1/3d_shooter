@@ -47,6 +47,14 @@ struct GameSettings {
         static const char* N[] = {"OFF", "LOW", "MEDIUM", "HIGH"};
         return N[std::clamp(i, 0, AMBIENT_LEVELS - 1)];
     }
+    // Lighting: LOW the plain shading (sun, sky, baked shadows), MEDIUM adds the baked glow light (neon,
+    // lava and lamps lighting what's round them) and the sun's bounce, HIGH also each surface's relief
+    static constexpr int LIGHTING_LEVELS = 3, LIGHTING_DEFAULT = 2;
+    int lighting = LIGHTING_DEFAULT;
+    static const char* lightingLabel(int i) {
+        static const char* N[LIGHTING_LEVELS] = {"LOW", "MEDIUM", "HIGH"};
+        return N[std::clamp(i, 0, LIGHTING_LEVELS - 1)];
+    }
     // Anti-aliasing: MSAA samples per pixel. Smooths the edges of boxes and keeps thin
     // neon lines whole in the distance. (No 8X: Apple GPUs stop at 4, and 4X is the sweet spot.)
     static constexpr int AA_LEVELS = 3, AA_DEFAULT = 2;   // 4X
@@ -141,6 +149,7 @@ struct GameSettings {
         f << "fullscreen "    << (fullscreen ? 1 : 0) << "\n";
         f << "quality "       << quality       << "\n";
         f << "ambientDetail " << ambientDetail << "\n";
+        f << "lighting " << lighting << "\n";
         f << "antiAlias "     << antiAlias     << "\n";
         f << "showFPS "       << (showFPS   ? 1 : 0) << "\n";
         f << "crtFilter "     << (crtFilter ? 1 : 0) << "\n";
@@ -186,6 +195,7 @@ struct GameSettings {
             else if (key == "fullscreen")    flag(fullscreen);
             else if (key == "quality")       f >> quality;
             else if (key == "ambientDetail") f >> ambientDetail;
+            else if (key == "lighting") f >> lighting;
             else if (key == "antiAlias")     f >> antiAlias;
             else if (key == "fpsCap") {      // older saves: 0 uncapped, 1 60, 2 144, 3 180, 4 240
                 int old = 0; f >> old;
@@ -222,6 +232,7 @@ struct GameSettings {
         quality = wrapQuality(quality);
         enemyMarkers = std::clamp(enemyMarkers, 0, ENEMY_MARKER_LEVELS - 1);
         ambientDetail = std::clamp(ambientDetail, 0, AMBIENT_LEVELS - 1);
+        lighting = std::clamp(lighting, 0, LIGHTING_LEVELS - 1);
         antiAlias = (antiAlias % AA_LEVELS + AA_LEVELS) % AA_LEVELS;
         crosshair = (crosshair % CROSSHAIR_COLORS + CROSSHAIR_COLORS) % CROSSHAIR_COLORS;
         if (difficulty < 0 || difficulty >= DIFFICULTY_LEVELS) difficulty = DIFFICULTY_DEFAULT;

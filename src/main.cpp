@@ -793,6 +793,7 @@ int main(int argc, char* argv[]) {
             g_devFpsLog = true;
         }
         if (arg == "--ambient" && i + 1 < argc) app->settings.ambientDetail = std::clamp(std::atoi(argv[++i]), 0, 3);
+        if (arg == "--lighting" && i + 1 < argc) app->settings.lighting = std::clamp(std::atoi(argv[++i]), 0, 2);   // 0 LOW, 1 MEDIUM, 2 HIGH
         if (arg == "--res" && i + 1 < argc) app->renderOverride = std::atoi(argv[++i]);
         if (arg == "--balance") g_balanceAllowed = true;
         if (g_devOverlay.rfind("balance", 0) == 0) {   // --overlay balance[:search]: start with it open (screenshots)
