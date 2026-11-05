@@ -366,6 +366,12 @@ inline LevelData buildPlain() {
 
     // ---- craters, heaps and landmark meteors ----
     const auto feats = plain::features();
+    {   // UNIT 22: at the foot of the first heap you walk to, facing the way you came (the furthest any got, but one)
+        const plain::Feature& h = feats[feats.size() - 2];
+        const vec3 toStart = glm::normalize(vec3{plain::start().x - h.pos.x, 0.f, plain::start().z - h.pos.z});
+        s.wrecks.push_back({h.pos + toStart * (h.radius + 1.4f), std::atan2(toStart.x, toStart.z), 22, -1,
+                            "THE MOON OPENED ITS EYE. I TOLD 23 TO KEEP WALKING AND NOT LOOK UP.", 0});
+    }
     int fi = 0;
     for (const auto& f : feats) {
         ++fi;

@@ -2,6 +2,7 @@
 #include "player/Player.h"
 #include "core/Balance.h"
 #include "world/LevelStory.h"
+#include "world/Stuck.h"
 #include "game/WaveDirector.h"
 #include "game/StoryLift.h"
 #include "world/Interactable.h"
@@ -70,6 +71,30 @@ int main(){
         std::printf("  checkpoint %d: %.1f %.1f %.1f section %d\n",i,w.p.position.x,w.p.position.y,w.p.position.z,L.arenaAt(w.p.position));checkpoints&=ok;}
     CHECK(checkpoints,"every checkpoint stands on real ground in its own room");
     CHECK(L.arenaAt({0,0,8})==0 && L.arenaAt({0,T,8})==7,"stacked furnace and inspection line select the correct floor");
+    {
+        const auto& chute=L.story.chute;
+        bool visibleFloor=true;
+        for(const auto& floor:L.floors)if(std::fabs(floor.y)<.1f &&
+            floor.x0<chute.max.x && floor.x1>chute.min.x && floor.z0<chute.max.z && floor.z1>chute.min.z)visibleFloor=false;
+        CHECK(visibleFloor,"the visible furnace floor leaves the entire salvage opening uncovered");
+        const glm::vec3 eye{12,1.7f,-26.5f},target=L.story.wrecks[0].pos+glm::vec3{0,1,0};
+        const auto direction=glm::normalize(target-eye);bool sight=true;
+        for(const auto& w:L.walls){float t=rayBoxHit(eye,direction,w.box);if(t>0 && t<glm::length(target-eye)-.3f)sight=false;}
+        CHECK(sight,"UNIT 01 under its work light is visible through the open bay before committing to the descent");
+        SpatialGrid grid;grid.build(L.walls);Player p({12,0,-24});p.camera.yaw=-90;
+        bool boosted=false,landed=false,embedded=false;
+        for(int frame=0;frame<360 && !landed;++frame){
+            Uint8 keys[SDL_NUM_SCANCODES]={};keys[SDL_SCANCODE_W]=p.position.y>-.1f;
+            p.floorY=L.baseFloor(p.position.x,p.position.z,p.radius);
+            int boost=L.boosterAt(p.position);
+            p.update(DT,keys,L.walls.data(),(int)L.walls.size(),boost>=0,&grid);
+            if(boost>=0){applyBooster(L.boosters[boost],p,DT);p.launched();boosted=true;}
+            embedded|=bodyEmbedded(L.walls,L.moverWalls,grid,p.position,p.radius,p.height);
+            landed=L.arenaAt(p.position)==1 && p.onGround && std::fabs(p.position.y+31.f)<.1f;
+        }
+        std::printf("  salvage descent: %.2f %.2f %.2f\n",p.position.x,p.position.y,p.position.z);
+        CHECK(boosted && landed && !embedded,"walking into the open bay carries the real player safely onto the revolver landing without a jump or teleport");
+    }
     {
         // Original rooms are part of the chapter's regression coverage too.
         Walk w(L,{47,-40,-22});

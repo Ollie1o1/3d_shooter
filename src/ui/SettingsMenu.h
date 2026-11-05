@@ -81,7 +81,7 @@ public:
     }
 
     // ---- layout ----
-    static constexpr int PANEL_W = 680, ROW_H = 19, HEAD_H = 18, TOP = 80;   // (fits every row in 720 px)
+    static constexpr int PANEL_W = 680, ROW_H = 19, HEAD_H = 16, TOP = 80;   // (fits every row, Back included, above the legend in 720 px)
     int rowY(const std::vector<Row>& r, int idx) const {
         int y = TOP;
         for (int k = 0; k < idx; ++k) y += r[k].kind == Kind::HEADER ? HEAD_H : ROW_H;

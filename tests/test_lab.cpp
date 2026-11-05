@@ -59,6 +59,28 @@ int main(){
         for(auto point=points.rbegin();point!=points.rend() && reverse;++point)reverse&=w.to(*point);
         reverse&=!w.falseFall;}
     CHECK(reverse,"every bent passage can also be walked uphill without a false fall reset");
+    {
+        // Recovery's front bay is narrower than its room-wide bounds. Test
+        // the full doorway width, since the centre route missed the escape.
+        const auto c=lab::centre(1);const float entry=lab::entryX(1),front=c.z+40;
+        bool sealed=true;
+        for(float side:{-5.f,0.f,5.f}) {
+            glm::vec3 from{entry+side,L.baseFloor(entry+side,front+2),front+2};
+            Walk approach(L,from);
+            sealed&=approach.to({entry+side,c.y,front-6}) && !approach.falseFall;
+        }
+        CHECK(sealed,"the whole Recovery Ward doorway leads onto its actual floor, including both corridor edges");
+        const auto bay=lab::footprint(1).front();
+        bool jambs=true;
+        for(float side:{-1.f,1.f}) {
+            float x=side<0?bay.left+.9f:bay.right-.9f;
+            Walk edge(L,{x,c.y,front-2});
+            for(int f=0;f<180;++f)edge.step({x+side*6,c.y,front-2});
+            jambs&=!edge.falseFall && edge.p.position.x>bay.left && edge.p.position.x<bay.right
+                && std::fabs(edge.p.position.y-c.y)<.1f;
+        }
+        CHECK(jambs,"both Recovery Ward entrance walls physically stop attempts to walk outside beside the door");
+    }
     bool galleries=true;for(int i:{2,3,6,9})for(float side:{-1.f,1.f}){auto c=lab::centre(i);float x=side*(i==9?62:31),height=i==9?8:6,start=i==9?28:20;Walk w(L,c+glm::vec3{x,0,start});galleries&=w.to(c+glm::vec3{x,height,-18})&&w.to(c+glm::vec3{x,0,start});
         if(i==9)galleries&=w.to(c+glm::vec3{x,height,-18})&&w.to(c+glm::vec3{x,0,-47})&&w.to(c+glm::vec3{x,height,-18})&&!w.falseFall;}
     CHECK(galleries,"all combat galleries can be walked up and down, including the boss arena");
@@ -66,6 +88,14 @@ int main(){
         Walk upper(L,c+glm::vec3{-31,0,20});
         loops&=upper.to(c+glm::vec3{-31,6,bridge})&&upper.to(c+glm::vec3{31,6,bridge})&&upper.to(c+glm::vec3{31,0,20})&&!upper.falseFall;}
     CHECK(loops,"Motor Assessment and Long-Term Care have complete upper loops joining both floor approaches");
+    bool circuits=true;
+    for(int room:{2,6}) {
+        auto c=lab::centre(room);float z=room==2?6.f:15.f;
+        Walk circuit(L,c+glm::vec3{-17,0,z+16});
+        circuits&=circuit.to(c+glm::vec3{-17,2.4f,z}) && circuit.to(c+glm::vec3{17,2.4f,z})
+            && circuit.to(c+glm::vec3{17,0,z+16}) && !circuit.falseFall;
+    }
+    CHECK(circuits,"assessment apparatus forms a second complete fighting circuit with real ramps and roof collision");
     auto motor=lab::centre(2),garden=lab::centre(4);
     Walk maintenance(L,motor+glm::vec3{-31,0,20}),observation(L,garden+glm::vec3{0,0,28});
     CHECK(maintenance.to(motor+glm::vec3{-31,6,-12}) && maintenance.to(L.story.wrecks[0].pos)

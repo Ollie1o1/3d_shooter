@@ -63,7 +63,7 @@ int main() {
             Uint8 k[SDL_NUM_SCANCODES]; std::memset(k, 0, sizeof(k));
             bool stuck = false;
             for (int i = 0; i < 120; ++i) {
-                p.floorY = L.baseFloor(p.position.x, p.position.z);
+                p.floorY = L.baseFloor(p.position.x, p.position.z, p.radius);   // (as the game reads it)
                 p.update(DT, k, L.walls.data(), (int)L.walls.size(), false, &g);
                 stuck |= bodyEmbedded(L.walls, L.moverWalls, g, p.position, p.radius, p.height);
             }

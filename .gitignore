@@ -80,3 +80,4 @@ tools/music_preview
 
 tests/test_route
 tests/scan_routes
+tests/audit_maps

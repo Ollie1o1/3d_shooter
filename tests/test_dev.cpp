@@ -1034,14 +1034,14 @@ int main() {
                         selected.storyChapter == row.chapter && selected.wave == 0 && selected.practice && selected.god;
             (row.chapter == 4 ? plainPhases : checkpoints).push_back(selected);
         }
-        CHECK(keyboard && checkpoints.size() == 27 && plainPhases.size() == 9, "all 27 checkpoints and Chapter 4's nine launch the correct chapter and room with practice/god flags");
+        CHECK(keyboard && checkpoints.size() == 37 && plainPhases.size() == 9, "all 37 checkpoints (Chapters 1-3 and 5) and Chapter 4's nine launch the correct chapter and room with practice/god flags");
         CHECK(menu.devScroll[2] > 0, "keyboard navigation reveals the later Chapter 2 checkpoints");
         menu.render(); screenshot("build/dev-story-menu-scrolled.bmp");
         // The last checkpoint is at the bottom of the visible Story column.
         SDL_Event click{}; click.type = SDL_MOUSEBUTTONDOWN; click.button.button = SDL_BUTTON_LEFT;
         click.button.x = 1000; click.button.y = 232 + 10 * 34;
         int before = starts; menu.handleEvent(click);
-        CHECK(starts == before + 1 && selected.storyChapter == 4 && selected.arena == 8,
+        CHECK(starts == before + 1 && selected.storyChapter == 5 && selected.arena == 9,   // (the last row: Chapter 5's Vault)
               "mouse activation uses the scrolled checkpoint rather than a hidden row");
         {   // Chapter 4's rows: each starts its fight at that checkpoint
             using P = GameplayState::GleanerPhase;
@@ -1086,7 +1086,7 @@ int main() {
             auto* gameplay=new GameplayState(audio,nullptr,GameMode::STORY);
             live.reset(gameplay);
             auto& game=*gameplay;
-            int expectedGuns = o.storyChapter == 1 ? expectedGuns1[o.arena] : o.storyChapter==3?15:o.arena > 4 ? 15 : 7;
+            int expectedGuns = o.storyChapter == 1 ? expectedGuns1[o.arena] : o.storyChapter>=3?15:o.arena > 4 ? 15 : 7;   // (Chapters 3 and 5 start with all four)
             bool expectedGrapple = o.storyChapter >= 2 || o.arena > 7;
             bool introStart=o.storyChapter==3 && o.arena==0;
             auto expectedStart=introStart?game.labIntro.eye()-glm::vec3{0,1.7f,0}:game.level.arenas[o.arena].playerStart;
@@ -1270,6 +1270,50 @@ int main() {
         CHECK(normal.storyLocked() && normal.storyOwned == 0 && !normal.storyArmed, "normal Story still begins with the unarmed wake-up");
         press(normal,SDLK_TAB);
         CHECK(!normal.armoryOpen&&normal.storyLocked(),"Tab leaves the initial wake-up sequence in control");
+        // Follow the opening through the live controller: wake, leave the
+        // belt, cross to salvage, fall onto the landing, and take the real gun.
+        const double openingFixedDt=g_fixedDt;g_fixedDt=1.0/60.0;
+        std::memset(g_devKeys,0,sizeof(g_devKeys));
+        for(int f=0;f<60*25;++f)normal.update(1.f/60.f);
+        CHECK(!normal.storyLocked() && normal.wakeSeen && !normal.playerDead,"the complete wake-up hands control to a living, unarmed player");
+        auto moveOpening=[&](glm::vec3 goal,bool jump) {
+            for(int f=0;f<900;++f) {
+                auto delta=goal-normal.player.position;delta.y=0;float distance=glm::length(delta);
+                if(distance<.4f && std::fabs(normal.player.position.y-goal.y)<.25f && normal.player.onGround) {
+                    std::memset(g_devKeys,0,sizeof(g_devKeys));return true;
+                }
+                normal.player.camera.yaw=glm::degrees(std::atan2(delta.z,delta.x));
+                std::memset(g_devKeys,0,sizeof(g_devKeys));
+                g_devKeys[SDL_SCANCODE_W]=distance>.2f;
+                g_devKeys[SDL_SCANCODE_SPACE]=jump && f%48<29;
+                normal.update(1.f/60.f);
+            }
+            std::memset(g_devKeys,0,sizeof(g_devKeys));
+            std::printf("      opening stopped at %.2f %.2f %.2f\n",normal.player.position.x,normal.player.position.y,normal.player.position.z);
+            return false;
+        };
+        bool reached=moveOpening({3.5f,0,-23.6f},true) && moveOpening({12,0,-24.4f},true);
+        normal.player.camera.yaw=-90;
+        for(int f=0;f<420 && reached;++f) {
+            std::memset(g_devKeys,0,sizeof(g_devKeys));
+            g_devKeys[SDL_SCANCODE_W]=normal.player.position.y>-.1f;
+            normal.update(1.f/60.f);
+            if(normal.level.arenaAt(normal.player.position)==1 && normal.player.onGround)break;
+        }
+        std::memset(g_devKeys,0,sizeof(g_devKeys));
+        reached&=normal.level.arenaAt(normal.player.position)==1 && normal.player.onGround && !normal.playerDead;
+        CHECK(reached,"native opening reaches UNIT 01's landing through normal input, conveyors, fall physics and zone constraints");
+        if(reached) {
+            reached=moveOpening({29,-31,-31.6f},false);
+            auto delta=glm::vec3(normal.wreckGunXf(0)[3])-normal.player.camera.position;
+            normal.player.camera.yaw=glm::degrees(std::atan2(delta.z,delta.x));
+            normal.player.camera.pitch=glm::degrees(std::atan2(delta.y,glm::length(glm::vec2{delta.x,delta.z})));
+            CHECK(normal.findInteractTarget()==0,"the first revolver's interaction target matches its visible gun from the landing");
+            SDL_Event take{};take.type=SDL_KEYDOWN;take.key.keysym.sym=SDLK_e;take.key.keysym.scancode=SDL_SCANCODE_E;
+            normal.handleEvent(take);
+        }
+        CHECK(reached && normal.storyOwns(0) && normal.storyArmed,"aiming at UNIT 01 and pressing interact equips the revolver through the real pickup path");
+        g_fixedDt=openingFixedDt;
     }
     SDL_GL_DeleteContext(context); SDL_DestroyWindow(window); SDL_Quit();
     return failures ? 1 : 0;

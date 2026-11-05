@@ -56,8 +56,8 @@ inline void buildCradleChapter(LevelBuilder& B, float A) {
         detail(-11,8.7f,z,11,9,z+.3f,iron);
         for(float x:{-10.f,10.f})light(x-.5f,8.6f,z,x+.5f,8.7f,z+.3f,warm*.45f);
     }
-    for(float z=-24;z>-29;z-=1.2f)light(11,.015f,z,11.3f,.04f,z+.5f,blue*.55f);
-    light(10,.015f,-29,13.5f,.04f,-28.8f,blue*.7f);
+    // Route marks stop at the rim; none floats over the open salvage bay.
+    for(float z:{-23.8f,-25.f})light(11,.015f,z,11.3f,.04f,z+.5f,warm*.55f);
     for(float z:{-56.f,-44.f,-20.f,-10.f}) {
         detail(57.7f,-39,z,57.95f,-29,z+.7f,rust);
         light(57.65f,-33,z+.15f,57.7f,-32,z+.55f,warm*.6f);
@@ -77,8 +77,14 @@ inline void buildCradleChapter(LevelBuilder& B, float A) {
             }
         }
     };
-    sign("REJECT TRANSFER",{14.15f,3.8f,-36.f},{0,0,1},.065f,warm*.65f);
-    sign("SALVAGE",{14.15f,2.7f,-34.f},{0,0,1},.09f,blue*.7f);
+    sign("SALVAGE BELOW",{14.1f,4.1f,-36.2f},{0,0,1},.105f,warm*.6f);
+    sign("RECLAMATION / 02",{14.1f,3.f,-35.8f},{0,0,1},.065f,{.42f,.55f,.57f});
+    // Amber guide lamps lead from the waking belt to the open receiver.
+    for(float z=-24.f;z>=-30.f;z-=1.8f)light(3.15f,.015f,z,3.35f,.045f,z+.75f,warm*.45f);
+    for(float x=3.5f;x<8.7f;x+=1.1f) {
+        detail(x,.012f,-25.5f,x+.55f,.022f,-25.34f,gold);
+        detail(x+.38f,.012f,-25.8f,x+.55f,.022f,-25.04f,gold);
+    }
     sign("ASSEMBLY ^",{46.3f,A-8.f,50.2f},{0,0,1},.065f,blue*.7f);
     sign("FREIGHT / 07",{-35.8f,V+4.f,14.8f},{1,0,0},.16f,warm*.65f);
     sign("DUCTS >",{57.65f,-29.f,-23.f},{0,0,1},.14f,warm*.6f);

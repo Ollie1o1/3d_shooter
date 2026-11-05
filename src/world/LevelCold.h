@@ -1,4 +1,5 @@
 #pragma once
+#include <cstring>
 // =============================================================================
 // LevelCold.h — Chapter 5: THE COLD STORE (docs/chapter-5-design.md).
 //
@@ -129,6 +130,18 @@ inline std::vector<glm::vec3> thawHooks() {
     return h;
 }
 constexpr int THAW_SPAWNS = 13;               // hooks 0..12 drop; the rest stay hung
+// The Thaw Room's heater banks (both long walls, at these Z) and the heat in front of them: a Thawling in it
+// warms three times as fast (Gameplay_ColdEnemies.h). The catwalks run over them, 4.2 m up.
+inline std::vector<float> thawHeaterZ() { return {-613.f, -627.f, -641.f}; }
+constexpr float THAW_HEAT_REACH = 3.5f;        // metres out from the wall the heat reaches
+constexpr float THAW_DECK_Y = 4.2f, THAW_DECK_W = 3.f;   // the catwalks: their floor, and how far out from the wall
+inline bool inThawHeat(glm::vec3 p) {
+    if (p.z > TOWER_FRONT || p.z < THAW_BACK || p.y > 2.5f) return false;
+    const bool nearWall = p.x < TOWER_X0 + 0.6f + THAW_HEAT_REACH || p.x > TOWER_X1 - 0.6f - THAW_HEAT_REACH;
+    if (!nearWall) return false;
+    for (float z : thawHeaterZ()) if (std::abs(p.z - z) < 4.f) return true;
+    return false;
+}
 // Rack 24: ten copies of UNIT 24 in alcoves along the aisle (24-A first, on the west), and 24-K's empty slot
 inline glm::vec3 rackSlot(int k) {   // k 0..9: A..J; 10: K
     if (k >= 10) return {HOOK_X, 0.f, TOWER_BACK + 6.f};
@@ -518,6 +531,13 @@ inline LevelData buildCold() {
         }
     };
     const vec3 paint{0.86f, 0.62f, 0.2f}, panel{0.2f, 0.22f, 0.25f}, floorSteel{0.24f, 0.26f, 0.29f};
+    // A recovered unit's tag: RECOVERED FROM over the place, centred on `mid`, read facing along `right`
+    auto recovered = [&](const char* place, vec3 mid, vec3 right) {
+        const float px = 0.025f;
+        auto line = [&](const char* t, float y) { float w = (float)std::strlen(t) * 6.f * px; stencil(t, mid - right * (w * 0.5f) + vec3{0.f, y, 0.f}, right, px, paint * 0.8f); };
+        line("RECOVERED FROM", 0.f);
+        line(place, -0.24f);
+    };
     const float HX = cold::HOOK_X;
 
     // ---- 1. THE INTAKE: a belt of frozen bodies running to the lip, to be hung (drawn live) ----
@@ -540,6 +560,7 @@ inline LevelData buildCold() {
         b.kit(true).box({HX, 2.f, z0 + 14.1f}, {6.f, 0.3f, 0.2f}, amber * 0.6f);
         // Its yard, west of the belt: frozen shipping cases, stacked and drifted over (cover, and something to see)
         b.mat = Mat::METAL;
+        bool topped = false;   // (UNIT 17 is up on the first double stack)
         for (int k = 0; k < 9; ++k) {
             float x = HX - 14.f - (k % 3) * 8.f - 3.f * cold::hash(k, 211.f), z = z0 - 20.f - (k / 3) * 26.f - 6.f * cold::hash(k, 212.f);
             int high = 1 + (cold::hash(k, 213.f) > 0.5f ? 1 : 0);
@@ -552,7 +573,16 @@ inline LevelData buildCold() {
                 if (h == 0) b.kit().box({x + 2.6f, 0.35f, z + 1.6f}, {2.4f, 0.7f, 1.2f}, snow, 0.4f);                               // drifted against it
             }
             if (k % 4 == 1) stencil("24", {x - 0.6f, 1.8f, z + 1.25f}, {1.f, 0.f, 0.f}, 0.09f, paint * 0.7f);   // (someone's number)
+            // UNIT 17 (a secret): up on the first double stack, where the Restorer's crane set it down
+            if (high == 2 && !topped) {
+                topped = true;
+                s.wrecks.push_back({{x, 5.2f, z}, 0.f, 17, -1, "THE LIFT DOOR CAME OPEN IN MY HANDS. NO CABLE. SOMEONE WAS SINGING AT THE BOTTOM OF THE SHAFT.", 0, true});
+                recovered("THE TOWER SHAFT", {x, 4.9f, z + 1.25f}, {1.f, 0.f, 0.f});
+            }
         }
+        // UNIT 14: fallen off the belt, sat against its bed, tagged with where the Restorer found it
+        s.wrecks.push_back({{HX - 2.2f, 0.f, z0 - 40.f}, -1.5708f, 14, -1, "THE TOLL GATE IS SHUT FOR GOOD. I WILL SIT AND COUNT THE PYLONS UNTIL THE NUMBER STOPS CHANGING.", 0});
+        recovered("THE LAST TOLL", {HX - 1.65f, 0.62f, z0 - 40.f}, {0.f, 0.f, 1.f});   // (on the bed's west face, read from the west)
         // Light masts down the belt: floodlights, the snow lit amber under them
         for (float z = z0 - 30.f; z > z1 + 20.f; z -= 60.f) {
             vec3 m{HX - 5.f, 0.f, z};
@@ -699,6 +729,63 @@ inline LevelData buildCold() {
         b.kit(true).box(p + vec3{0.f, 1.6f, 1.62f}, {0.8f, 0.3f, 0.05f}, amber * 0.7f);
     }
     stencil("THAW", {-45.f, 11.f, cold::THAW_BACK + 0.1f}, {1.f, 0.f, 0.f}, 0.3f, paint);
+    // The room's layers (docs/gameplay-standard.md, the worked example): the floor; the tank tops, a jump up
+    // off a step crate; and a catwalk down each long wall over the heaters, stairs in every corner, so any way
+    // round is a loop and the front stairs let you look the room over before the fight starts
+    {
+        const float D = cold::THAW_DECK_Y, W = cold::THAW_DECK_W, in0 = 0.6f;   // (the side walls' inner faces are X0 + 0.6, X1 - 0.6)
+        const float zF = ZF - 0.6f, zB = cold::THAW_BACK;                        // front wall's inner face; the back wall's
+        const float RISE = 0.25f, RUN = 0.5f; const int STEPS = (int)std::ceil(D / RISE) - 1;   // walkable stairs (the Cradle's rise): 16 steps, 8 m
+        for (int side = -1; side <= 1; side += 2) {
+            const float wallX = side < 0 ? X0 + in0 : X1 - in0;
+            const float x0 = side < 0 ? wallX : wallX - W, x1 = side < 0 ? wallX + W : wallX;
+            b.wall(x0, D - 0.35f, zB + 0.05f, x1, D, zF - 0.05f, steel);                 // the deck
+            const float edge = side < 0 ? x1 : x0;                                      // its open edge, onto the room
+            for (float z = zF - 6.f; z > zB + 5.f; z -= 2.5f)                          // its rail (visual: drop off anywhere)
+                b.kit().box({edge - side * 0.05f, D + 0.55f, z}, {0.08f, 1.1f, 0.08f}, steel);
+            b.kit().box({edge - side * 0.05f, D + 1.08f, (zF + zB) * 0.5f}, {0.08f, 0.08f, zF - zB - 10.f}, steel);
+            b.neon(edge - 0.06f, D - 0.06f, zB + 4.f, edge + 0.06f, D + 0.0f, zF - 4.f, amber * 0.3f);   // its edge, lit
+            for (float z = zB + 6.f; z < zF - 4.f; z += 8.f) b.kit().box({(x0 + x1) * 0.5f, D - 0.5f, z}, {W - 0.2f, 0.3f, 0.3f}, steel * 0.8f);   // joists
+            // Stairs in both corners, running along the front and back walls into the room
+            for (int end = 0; end < 2; ++end) {
+                const float z0 = end == 0 ? zF - 3.9f : zB + 0.1f, z1 = end == 0 ? zF - 0.05f : zB + 3.9f;
+                // You walk a ramp under them (the floor's height, as the Living Ward's stairs do: there is no
+                // step-up); the steps are what you see
+                // (a landing a body wide at the top, so the ramp meets the deck at its height, not under its lip)
+                const float run = (STEPS + 1) * RUN, LAND = 0.45f;
+                const float r0 = side < 0 ? edge + LAND : edge - LAND - run, r1 = r0 + run;
+                l.ramps.push_back({LevelBuilder::aabb(r0, 0.f, z0, r1, D, z1), 0, side < 0 ? D : 0.f, side < 0 ? 0.f : D});
+                b.wall(side < 0 ? edge : edge - LAND, 0.f, z0, side < 0 ? edge + LAND : edge, D, z1, steel);   // the landing: solid, so the ramp's top and the deck meet on something
+                for (int k = 0; k < STEPS; ++k) {
+                    const float top = std::max(RISE, D - RISE * (k + 1));
+                    const float sx0 = side < 0 ? r0 + k * RUN : r1 - (k + 1) * RUN, sx1 = sx0 + RUN;
+                    b.kit().box({(sx0 + sx1) * 0.5f, top * 0.5f, (z0 + z1) * 0.5f}, {RUN, top, z1 - z0}, steel * 0.9f);
+                    const float nose = side < 0 ? sx1 - 0.1f : sx0;   // (the edge you climb toward it from)
+                    b.neon(nose, top, z0 + 0.1f, nose + 0.1f, top + 0.02f, z1 - 0.1f, amber * 0.25f);   // a lit nose on every step
+                }
+            }
+            // The heat: a glowing strip on the floor in front of each heater bank, as far as it reaches
+            for (float z : cold::thawHeaterZ()) {
+                const float hx0 = side < 0 ? wallX + 0.8f : wallX - cold::THAW_HEAT_REACH, hx1 = side < 0 ? wallX + cold::THAW_HEAT_REACH : wallX - 0.8f;
+                b.neon(hx0, 0.012f, z - 3.8f, hx1, 0.03f, z - 3.65f, vec3{2.2f, 0.55f, 0.15f} * 0.45f);
+                b.neon(hx0, 0.012f, z + 3.65f, hx1, 0.03f, z + 3.8f, vec3{2.2f, 0.55f, 0.15f} * 0.45f);
+                b.neon(side < 0 ? hx1 - 0.15f : hx0, 0.012f, z - 3.8f, side < 0 ? hx1 : hx0 + 0.15f, 0.03f, z + 3.8f, vec3{2.2f, 0.55f, 0.15f} * 0.45f);
+            }
+        }
+        // Step crates against three tanks (toward the middle), so a tank's top is one jump from the floor
+        for (const auto& p : {vec3{-58.f, 0.f, -624.f}, vec3{-22.f, 0.f, -624.f}, vec3{-51.f, 0.f, -641.f}}) {
+            const float dir = p.x < HX ? 1.f : -1.f;
+            const float cx = p.x + dir * 2.6f;
+            b.wall(cx - 1.f, 0.f, p.z - 1.f, cx + 1.f, 1.2f, p.z + 1.f, steelFrost * 0.45f);
+            b.kit().box({cx, 1.23f, p.z}, {2.05f, 0.06f, 2.05f}, rime);
+        }
+        stencil("HEAT WAKES THEM", {X0 + 0.65f, 3.2f, -608.6f}, {0.f, 0.f, -1.f}, 0.06f, vec3{2.2f, 0.55f, 0.15f} * 0.5f);   // (on the heater bay, read from the room)
+    }
+    // The units the Restorer brought in from where they fell, thawing against the tanks (each tagged)
+    s.wrecks.push_back({{-58.f, 0.f, -621.8f}, 0.f, 16, -1, "THE ROAD ENDS AT A TOWER WITH A LIFT. THE LIFT WANTS A KEY I WAS NEVER GIVEN.", 2});
+    recovered("THE FAR ROAD", {-58.f, 2.25f, -622.35f}, {1.f, 0.f, 0.f});
+    s.wrecks.push_back({{-10.f, 0.f, -639.8f}, 0.f, 20, -1, "THE GALLERY WAS FULL. I THOUGHT THEY HAD COME TO WATCH ME PASS.", 2});
+    recovered("SURGICAL OBSERVATION", {-10.f, 2.25f, -640.35f}, {1.f, 0.f, 0.f});
 
     // ---- 4. INVENTORY: terminals, one line each ----
     auto terminal = [&](vec3 p, float yaw, const char* title, const char* line) {
@@ -709,6 +796,7 @@ inline LevelData buildCold() {
     terminal({-56.f, 0.f, -657.f}, 90.f, "INVENTORY: UNIT 07", "UNIT 07: RESTORED 41 TIMES.");
     terminal({-24.f, 0.f, -662.f}, -90.f, "INVENTORY: UNIT 12", "UNIT 12: RESTORED. DID NOT RESUME.");
     terminal({-56.f, 0.f, -668.f}, 90.f, "INVENTORY: UNIT 19", "UNIT 19: STORED WHOLE. ATTEMPTS TO WAKE: 0. NONE REQUIRED.");
+    s.wrecks.push_back({{-58.4f, 0.f, -664.f}, 1.5708f, 19, -1, "THEY ASKED ME TO WALK THE LINE AGAIN. I WALKED IT FOUR HUNDRED TIMES. NOBODY WROTE IT DOWN.", 3});   // (stored whole, by its file)
     terminal({-24.f, 0.f, -674.f}, -90.f, "INVENTORY: UNIT 24", "UNIT 24: RECALLED FOR CORRECTION. COPIES ON FILE: 24-A TO 24-K.");
     for (float z = -676.f; z < -652.f; z += 6.f) {   // filing drawers up both walls
         b.kit().box({-59.5f, 5.f, z}, {0.6f, 9.f, 5.6f}, steelFrost * 0.45f);
@@ -751,7 +839,7 @@ inline LevelData buildCold() {
         chevrons(cold::THAW_BACK - 3.f, cold::INV_BACK + 3.f);
         chevrons(cold::INV_BACK - 3.f, ZB + 3.f);
         // 3. THE THAW ROOM: heater banks glowing low on both walls, pipes overhead, meltwater on the floor
-        for (float z = ZF - 6.f; z > cold::THAW_BACK + 3.f; z -= 14.f)
+        for (float z : cold::thawHeaterZ())
             for (float x : {X0 + 0.9f, X1 - 0.9f}) {
                 b.wall(x - 0.35f, 0.f, z - 2.2f, x + 0.35f, 1.6f, z + 2.2f, steel);
                 for (int c = 0; c < 4; ++c) b.kit(true).box({x + (x < HX ? 0.37f : -0.37f), 0.35f + c * 0.35f, z}, {0.04f, 0.1f, 4.f}, heat * (0.5f + 0.15f * c));
@@ -845,6 +933,27 @@ inline LevelData buildCold() {
                 b.wall(p.x - 1.8f, 0.f, p.z - 1.2f, p.x + 1.8f, 2.2f, p.z + 1.2f, steelFrost * 0.45f);
                 b.kit(true).box(p + vec3{0.f, 1.6f, 1.22f}, {0.6f, 0.2f, 0.04f}, amber);
             }
+            // A frozen service module breaks the exposed circle into a loop.
+            // Its roof is reached by a broad ramp; the centre and both vents
+            // stay open. Everything substantial has matching collision.
+            const vec3 p=d.c+vec3{-12,0,-1};
+            b.wall(p.x-4.7f,0,p.z-2.5f,p.x+4,3.2f,p.z+2.5f,steelFrost*.65f);
+            b.kit().box(p+vec3{-.35f,3.24f,0},{8.9f,.08f,5.2f},rime*.85f);
+            for(int fin=0;fin<8;++fin)b.kit().box(p+vec3{-3.5f+fin,1.6f,-2.56f},{.12f,2.5f,.12f},steel);
+            b.neon(p.x-3.5f,2.45f,p.z+2.51f,p.x+3.5f,2.58f,p.z+2.58f,amber*.65f);
+            for(float z:{-1.8f,1.8f}) {
+                b.kit().rod(p+vec3{-4.1f,1,z},p+vec3{-4.1f,5.2f,z},.24f,steelFrost,12);
+                b.kit().column(p+vec3{-4.1f,4.8f,z},.38f,.18f,rime,12);
+            }
+            const float x0=d.c.x-16,x1=d.c.x-4,z0=d.c.z-5.8f,z1=d.c.z-3.6f;
+            l.ramps.push_back({LevelBuilder::aabb(x0,0,z0,x1,3.2f,z1),0,3.2f,0});
+            b.kit().box({(x0+x1)*.5f,1.43f,(z0+z1)*.5f},{std::hypot(12.f,3.2f),.3f,z1-z0},floorSteel,0,0,-std::atan2(3.2f,12.f));
+            b.wall(x0-1,2.9f,z0,x0-.08f,3.2f,d.c.z-3.4f,floorSteel);
+            b.neon(x0-1,3.23f,z0,x0-.08f,3.28f,z0+.1f,amber*.55f);
+            // The module's long feed pipes and frost collars give each tower
+            // a silhouette against the sky, visible before its fight begins.
+            for(float dz:{-1.8f,1.8f})b.kit().rod(p+vec3{-4.1f,4.8f,dz},p+vec3{-4.1f,4.8f,dz+2.3f},.23f,steelFrost,12);
+            stencil("SERVICE DECK",p+vec3{-3.4f,2.1f,2.62f},{1,0,0},.07f,rime);
         }
         // Catwalks between the decks (A-B, B-C) and the exit east toward the sea
         auto catwalk = [&](vec3 a, vec3 c, float half) {
@@ -967,6 +1076,21 @@ inline LevelData buildCold() {
         }
         // Frozen in along the way: a capsule that never left, racks standing up out of the ice, ridges
         auto across = [&](float along, float off) { return a + u * (len * along) + side * off; };
+        {   // A small refuge gives the quiet crossing a human scale and a
+            // foreground frame for the giant under the ice. Two sides open.
+            const vec3 p=across(.67f,-19.f);
+            b.wall(p.x-4,-.25f,p.z-3,p.x+4,0,p.z+3,steelFrost);
+            b.wall(p.x-4,0,p.z-3,p.x-3.7f,3.6f,p.z+3,steelFrost*.8f);
+            b.wall(p.x-4,0,p.z+2.7f,p.x+4,3.6f,p.z+3,steelFrost*.8f);
+            b.wall(p.x-4,3.6f,p.z-3,p.x+4,3.9f,p.z+3,steelFrost);
+            b.kit().box(p+vec3{0,3.97f,0},{8.3f,.14f,6.3f},rime);
+            b.neon(p.x-3.4f,3.45f,p.z-2.5f,p.x+3.4f,3.52f,p.z-2.3f,sodium*.7f);
+            b.kit().rod(p+vec3{-3,3.9f,2},p+vec3{-3,10,2},.1f,steel,8);
+            b.kit().dome(p+vec3{-3,9.5f,2},1.1f,steelFrost,4,12);
+            b.kit(true).box(p+vec3{-3,10.3f,2},{.25f,.35f,.25f},amber);
+            stencil("DISPATCH / 02",p+vec3{-3.5f,2.9f,2.65f},{1,0,0},.08f,rime);
+            terminal(p+vec3{-2.7f,0,1.5f},-90,"SEA RELAY / LAST TRANSMISSION","DISPATCH 2: NO ARRIVALS. THE SIGNAL BELOW THE ICE IS OLDER THAN THIS STATION.");
+        }
         {
             const vec3 c = across(0.42f, -14.f);
             b.wall(c.x - 2.2f, 0.f, c.z - 2.2f, c.x + 2.2f, 2.6f, c.z + 2.2f, vec3{0.55f, 0.6f, 0.68f});
@@ -1257,7 +1381,7 @@ inline LevelData buildCold() {
         chill.waves = {{W(EnemyType::THAWLING, 0, {on(1, 0.3f, 12.f), on(1, 2.4f, 12.f), on(2, 1.f, 14.f), on(2, 4.6f, 13.f)}), W(EnemyType::PICKER, 0, {on(1, 1.5f, 6.f) + up})},
                        {W(EnemyType::THAWLING, 0, {on(0, 1.2f, 14.f), on(2, 2.2f, 14.f), on(1, 4.5f, 12.f), on(2, 5.3f, 12.f)}), W(EnemyType::CLERK, 0, {on(2, 0.f, 18.f) + upC}),
                         W(EnemyType::PICKER, 0, {on(0, 3.f, 8.f) + up})},
-                       {W(EnemyType::THAWLING, 0, {on(0, 0.5f, 13.f), on(1, 1.6f, 13.f), on(1, 3.6f, 12.f), on(2, 0.6f, 12.f), on(2, 3.3f, 14.f)}),
+                       {W(EnemyType::THAWLING, 0, {on(0, 0.5f, 13.f), on(1, 1.6f, 13.f), on(1, 4.f, 16.f), on(2, 0.6f, 12.f), on(2, 2.8f, 16.f)}),
                         W(EnemyType::PICKER, 0, {on(1, 0.f, 6.f) + up, on(2, 2.f, 6.f) + up}), W(EnemyType::CLERK, 0, {on(1, 4.7f, 17.f) + upC})}};
     }
     l.arenas.push_back(chill);

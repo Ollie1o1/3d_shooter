@@ -67,6 +67,19 @@ inline void GameplayState::updateColdVents(float dt) {
     }
 }
 
+// THE THAW ROOM's heater banks: a THAWLING in their heat warms three times as fast, steaming as it does
+// (the floor in front of each is lit orange: fight it away from the walls, or kill the steaming ones first)
+inline void GameplayState::updateThawHeat(float dt) {
+    if (director.arena != 2) return;
+    for (auto& e : enemies) {
+        if (!e.targetable() || e.type != EnemyType::THAWLING || !cold::inThawHeat(e.position)) continue;
+        e.age += 2.f * dt;
+        if (std::fmod(gameClock + e.uid * 0.13f, 0.08f) < dt)
+            fx.spawnBurst(e.position + glm::vec3{frand(-0.4f, 0.4f), 0.6f + frand(0.f, 1.f), frand(-0.4f, 0.4f)}, {0.95f, 0.85f, 0.8f}, 1, 1.2f, 0.9f, -3.f);
+        if (!thawHeatTold) { thawHeatTold = true; ui.feed("THE HEAT WAKES THEM FASTER", {2.2f, 0.55f, 0.15f}); }
+    }
+}
+
 // THE FROZEN SEA: the ice cracks along your path (and now and then, far off, groans)
 inline void GameplayState::updateColdSea(float dt) {
     if (level.arenaAt(player.position) != 6 || !player.onGround || playerDead) return;
@@ -174,6 +187,7 @@ inline void GameplayState::updateCold(float dt) {
     }
     if (at >= 0 && at > storyCheckpoint && !director.fighting()) { storyCheckpoint = at; ui.feed(at >= 8 ? "RESTORE POINT SAVED" : "CHECKPOINT", {0.75f, 0.86f, 0.95f}); }   // (from the Manifest on, the interface is the Restorer's)
     if (storyTerminal >= 0 && glm::length(level.story.terminals[storyTerminal].pos - p) > 6.f) storyTerminal = -1;
+    tickWreckLogs(dt);
     // 24-K: when its duel starts, it names itself
     if (director.arena == 7 && director.fighting() && !coldKIntro) {
         coldKIntro = true;
@@ -241,6 +255,7 @@ inline void GameplayState::updateCold(float dt) {
         level.arenas[0].respawn = level.arenas[1].respawn = coldLedge;
     }
     updateColdVents(dt);
+    updateThawHeat(dt);
     updateColdSea(dt);
     if (director.arena >= 8) { updateRestorerFight(dt); updateRecallFinisher(dt); }
     // Wind: always, gusting; stronger out at the lip
@@ -364,6 +379,7 @@ inline void GameplayState::gatherColdRoute(std::vector<BoxInstance>& out) {
 inline void GameplayState::gatherCold(std::vector<BoxInstance>& out) {
     using namespace rig;
     gatherColdRoute(out);
+    gatherWreckBodies(out, 0.35f);   // (the recovered units, frosted)
     gatherRestorerFight(out);
     gatherColdEnding(out);
     // 24-K's ring: cold light round the yard while the duel is on
