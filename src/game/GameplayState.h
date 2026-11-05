@@ -149,6 +149,7 @@ public:
     void updateSuccessor(float dt);
     void gatherSuccessor(std::vector<BoxInstance>& out);
     void gatherLabDressing(std::vector<BoxInstance>& out);
+    void gatherLabVista(std::vector<BoxInstance>& out);
     void renderSuccessorDialogue();
     bool shootSuccessorNode(glm::vec3 origin,glm::vec3 dir,float& range,float damage);
     int labCue=-1;SoundHandle labVoice=0,successorVoice=0;
@@ -355,6 +356,8 @@ public:
     struct PlainQuake { float t, amp; };
     std::vector<PlainQuake> plainQuakes;
     float plainSmokeT = 0.f;
+    float plainFlashNext = 6.f, plainFlashT = -1.f; glm::vec3 plainFlashDir{0.f, 1.f, 0.f}; int plainFlashPulses = 0;   // lightning in the burning cloud
+    float plainFlash() const;
     bool  plainEdgeWarned = false;
     // THE GLEANER (Gameplay_Gleaner.h) and the arrival that reveals it (PlainReveal.h)
     Gleaner gleaner;
@@ -737,6 +740,7 @@ public:
     bool prevDashKey      = false;
     int  boostPrev        = -1;     // booster the player was in last tick
     int   spaceArena = -1;          // the arena whose reverb is playing
+    RoomTone plainTone = RoomTone::NONE;   // Chapter 4: the air chosen by where you are (the plain or inside the Gleaner)
     float shieldClankCd = 0.f;      // throttles the clank of bullets on a shield
     bool prevJumpKey      = false;
     // Event-driven click flags — set in handleEvent, consumed once in physicsTick.

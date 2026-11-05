@@ -329,7 +329,8 @@ inline GunModel readGunText(const std::string& bytes, const std::string& path, c
                 if (std::string tx = x->str("tex"); !tx.empty()) {   // (Mat's order: Collision.h)
                     static const char* TEX[] = {"brick", "panel", "rock", "metal", "concrete", "adobe", "plate", "marble",
                                                 "circuit", "basalt", "wood", "limestone", "brass", "clinic", "cinder", "snow",
-                                                "ice", "hull", "painted", "slab", "strata", "asphalt", "corrugated", "froststeel"};
+                                                "ice", "hull", "painted", "slab", "strata", "asphalt", "corrugated", "froststeel",
+                                                "surgical", "salvage"};
                     static_assert(sizeof(TEX) / sizeof(TEX[0]) == MAT_COUNT, "a name for every Mat");
                     for (int t = 0; t < MAT_COUNT; ++t) if (tx == TEX[t]) p.tex = t;
                     if (p.tex < 0) { problem = "'" + name + "' has an unknown tex '" + tx + "'"; return; }

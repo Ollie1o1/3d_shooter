@@ -499,7 +499,9 @@ inline LevelData buildPlain() {
     a.maxAlive = 8; a.damageScale = 1.f;
     a.extraZones.push_back(gut::bounds());
     a.theme = plain::theme();
-    a.ambient = Ambient::EMBERS; a.space = ReverbSpace::OPEN; a.tone = RoomTone::YARD;
+    a.ambient = Ambient::ASHFALL; a.space = ReverbSpace::OPEN; a.tone = RoomTone::PLAIN;
     l.arenas.push_back(a);
+    // The Gleaner's scrap, inside it and in the heaps it hasn't reclaimed yet (MaterialTex.h)
+    l.restyle({{Mat::METAL, Mat::SALVAGE}});
     return l;
 }

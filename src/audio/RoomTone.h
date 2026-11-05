@@ -29,6 +29,8 @@ class RoomToneSynth {
 public:
     void setSampleRate(float r) { sr = r; }
     void setRoom(RoomTone t)    { target.store((int)t, std::memory_order_relaxed); }
+    // Thunder: a roll arriving `delay` seconds from now, `loud` 0..1 (near: a crack first). Any thread
+    void thunder(float delay, float loud) { thunderDelay.store(delay, std::memory_order_relaxed); thunderLoud.store(loud, std::memory_order_release); }
     void setNight(float n)      { night.store(std::clamp(n, 0.f, 1.f), std::memory_order_relaxed); }
     void setLevel(float l)      { level.store(std::max(0.f, l), std::memory_order_relaxed); }
     void setVolume(float v)     { volume.store(std::max(0.f, v), std::memory_order_relaxed); }
@@ -66,6 +68,14 @@ public:
         for (int k = 0; k < RECIPE_PARAMS; ++k) if (best[k] > 0.f) kitPm[k] = mix.pm[k];
         float kit0[RECIPE_LEVELS]; bool kitOn = false;
         for (int k = 0; k < RECIPE_LEVELS; ++k) { kit0[k] = kitLv[k]; kitLv[k] = mix.lv[k]; kitOn = kitOn || kit0[k] > 1e-4f || kitLv[k] > 1e-4f; }
+        float tl = thunderLoud.exchange(-1.f, std::memory_order_acquire);
+        if (tl >= 0.f) {   // a new roll: its crack (near ones) and its low partials, then the rumble
+            thLoud = tl; thT = -thunderDelay.load(std::memory_order_relaxed); thLen = 3.f + 3.f * tl;
+            float d = -thT;
+            if (tl > 0.6f) for (int k = 0; k < 4; ++k) strike(uni(180.f, 420.f), 0.03f * tl, 0.25f, uni(-0.5f, 0.5f), d);
+            strike(48.f, 0.09f * tl, thLen, 0.f, d + 0.1f, 0.6f);
+            strike(31.f, 0.08f * tl, thLen, 0.f, d + 0.2f, 0.7f);
+        }
         if (!any) return;
         for (int f = 0; f < frames; ++f) {
             float t = (float)(f + 1) / (float)frames;
@@ -90,6 +100,18 @@ public:
                 for (int k = 0; k < RECIPE_LEVELS; ++k) lvNow[k] = kit0[k] + (kitLv[k] - kit0[k]) * t;
                 kit(lvNow, L, R);
             }
+            if (thT > -1e8f && thLoud > 0.f) {   // the thunder's roll: brown noise swelling then dying, rumbling unevenly
+                thT += 1.f / sr;
+                if (thT >= 0.f) {
+                    float env = thT < 0.25f ? thT / 0.25f : std::exp(-(thT - 0.25f) * 1.1f);
+                    env *= 0.7f + 0.3f * std::sin(thT * 9.f) * std::sin(thT * 3.7f + 1.f);
+                    thBrown = std::clamp(thBrown * 0.997f + white() * 0.05f, -1.f, 1.f);
+                    thLP += onePole(140.f) * (thBrown - thLP);
+                    float v = thLP * env * 0.5f * thLoud;
+                    L += v; R += v * 0.92f;
+                    if (thT > thLen) thLoud = 0.f;
+                }
+            }
             partials(L, R);
             buf[2 * f]     += L * lv;
             buf[2 * f + 1] += R * lv;
@@ -102,6 +124,8 @@ private:
     float sr = 44100.f;
     std::atomic<int>   target{0};
     std::atomic<float> night{0.f}, level{1.f}, volume{1.f};
+    std::atomic<float> thunderDelay{0.f}, thunderLoud{-1.f};
+    float thT = -1.f, thLoud = 0.f, thBrown = 0.f, thLP = 0.f, thLen = 4.f;
     float gain[ROOMS] = {};
     float levelNow = 1.f, nightNow = 0.f;
     uint32_t rng = 0x9E3779B9u;
@@ -153,13 +177,14 @@ private:
 
     // ---- THE KIT: FAST's rooms and ACT II's arenas ------------------------------
     // A recipe: how loud each layer is (0..1ish), and its pitch or rate
-    enum Lv { WIND, WHISTLE, HUM, RUMBLE, DRIPS, WATER, CLANKS, STEAM, TICKS, CHOIR, BREATH, BELLS, PUMP, DATA, SHIMMER, RECIPE_LEVELS };
-    enum Pm { BRIGHT, HUM_HZ, CHOIR_ROOT, BELL_ROOT, TICK_HZ, PUMP_PERIOD, RECIPE_PARAMS };
+    enum Lv { WIND, WHISTLE, HUM, RUMBLE, DRIPS, WATER, CLANKS, STEAM, TICKS, CHOIR, BREATH, BELLS, PUMP, DATA, SHIMMER,
+              MONITOR, SONAR, GROAN, CRACKLE, RECIPE_LEVELS };
+    enum Pm { BRIGHT, HUM_HZ, CHOIR_ROOT, BELL_ROOT, TICK_HZ, PUMP_PERIOD, GROAN_HZ, RECIPE_PARAMS };
     static int paramOwner(int p) {
         switch (p) { case BRIGHT: return WIND; case HUM_HZ: return HUM; case CHOIR_ROOT: return CHOIR;
-                     case BELL_ROOT: return BELLS; case TICK_HZ: return TICKS; default: return PUMP; }
+                     case BELL_ROOT: return BELLS; case TICK_HZ: return TICKS; case GROAN_HZ: return GROAN; default: return PUMP; }
     }
-    struct Recipe { float lv[RECIPE_LEVELS] = {}; float pm[RECIPE_PARAMS] = {0.4f, 55.f, 110.f, 220.f, 1.f, 1.2f}; };
+    struct Recipe { float lv[RECIPE_LEVELS] = {}; float pm[RECIPE_PARAMS] = {0.4f, 55.f, 110.f, 220.f, 1.f, 1.2f, 40.f}; };
     static Recipe make(std::initializer_list<std::pair<int, float>> lv, std::initializer_list<std::pair<int, float>> pm = {}) {
         Recipe r; for (auto& [k, v] : lv) r.lv[k] = v; for (auto& [k, v] : pm) r.pm[k] = v; return r;
     }
@@ -181,15 +206,17 @@ private:
             make({{CHOIR, 0.6f}, {WIND, 0.4f}, {BREATH, 0.2f}, {BELLS, 0.2f}}, {{CHOIR_ROOT, 87.3f}, {BRIGHT, 0.7f}, {BELL_ROOT, 174.6f}}),   // RELIQUARY: the void
             make({{BREATH, 1.0f}, {RUMBLE, 0.8f}, {DRIPS, 0.4f}, {CHOIR, 0.15f}}, {{CHOIR_ROOT, 55.f}}),                     // MAW: something breathing
             make({{SHIMMER, 1.0f}, {CHOIR, 0.4f}, {WIND, 0.4f}}, {{CHOIR_ROOT, 220.f}, {BRIGHT, 0.8f}}),                     // ZENITH: above the clouds
-            make({{HUM,.76f},{DATA,.44f},{WIND,.26f}},{{HUM_HZ,60.f},{BRIGHT,.18f}}), // WARD: ventilation, a monitor with nobody watching
+            make({{HUM,.76f},{DATA,.44f},{WIND,.26f},{MONITOR,.7f}},{{HUM_HZ,60.f},{BRIGHT,.18f}}), // WARD: ventilation, a monitor with nobody watching
             make({{HUM,.28f},{CHOIR,.25f},{SHIMMER,.2f},{DATA,.12f}},{{HUM_HZ,60.f},{CHOIR_ROOT,146.83f}}), // the same wiring under an impossible sky
-            make({{HUM,.28f},{RUMBLE,.5f},{WATER,.18f},{DRIPS,.08f}},{{HUM_HZ,60.f},{BRIGHT,.12f}}), // no flooded interior, pressure beyond its windows
+            make({{HUM,.28f},{RUMBLE,.5f},{WATER,.18f},{DRIPS,.08f},{SONAR,.8f},{GROAN,.55f}},{{HUM_HZ,60.f},{BRIGHT,.12f},{GROAN_HZ,42.f}}), // no flooded interior, pressure beyond its windows: a ping, something vast answering
+            make({{WIND,.9f},{WHISTLE,.3f},{RUMBLE,.7f},{CRACKLE,.35f},{GROAN,.5f}},{{BRIGHT,.32f},{GROAN_HZ,34.f}}), // PLAIN: hot wind, fires burning out, the Gleaner's iron settling
+            make({{BREATH,.45f},{RUMBLE,.9f},{CRACKLE,.9f},{CLANKS,.6f},{STEAM,.4f},{GROAN,.45f},{HUM,.3f}},{{GROAN_HZ,52.f},{HUM_HZ,40.f}}), // GUT: the furnace roaring inside it, its plates working
         };
         int i = (int)t - (int)RoomTone::CANAL;
         return i >= 0 && i < (int)(sizeof(table) / sizeof(table[0])) ? table[i] : none;
     }
     float kitLv[RECIPE_LEVELS] = {};
-    float kitPm[RECIPE_PARAMS] = {0.4f, 55.f, 110.f, 220.f, 1.f, 1.2f};
+    float kitPm[RECIPE_PARAMS] = {0.4f, 55.f, 110.f, 220.f, 1.f, 1.2f, 40.f};
 
     // Layer state (audio thread)
     float kWL = 0.f, kWR = 0.f, kGust = 0.f, kDrift[2] = {0.3f, 0.7f}, kDriftV[2] = {}; SVF kWh[2];
@@ -203,6 +230,8 @@ private:
     float kPumpT = 0.f;
     int kBlips = 0; float kBlipT = 0.f, kBlipLen = 0.f, kBlipHz = 0.f, kBlipPh = 0.f, kBlipPan = 0.f, kBlipGap = 0.f;
     float kShimL = 0.f, kShimR = 0.f; Timer kSparkle{44100.f};
+    Timer kBeat{44100.f}, kPing{44100.f * 4.f}, kGroan{44100.f * 5.f};
+    float kBpm = 68.f, kCrackEnv = 0.f, kCrackHP = 0.f, kRoarLP = 0.f, kRoarSwell = 0.f; float kCrackPan = 0.f;
 
     void kit(const float* lv, float& L, float& R) {
         const float bright = kitPm[BRIGHT];
@@ -369,6 +398,49 @@ private:
                 float hz = notes[(int)uni(0.f, 4.99f)];
                 strike(hz, 0.016f * lv[SHIMMER], 1.6f, uni(-0.9f, 0.9f));
                 strike(hz * 2.01f, 0.004f * lv[SHIMMER], 1.0f, uni(-0.9f, 0.9f));
+            }
+        }
+        // Monitor: a patient monitor down the ward, beeping for nobody (its rate wanders a little)
+        if (lv[MONITOR] > 1e-4f && kBeat.due(sr)) {
+            kBpm = std::clamp(kBpm + uni(-1.5f, 1.5f), 58.f, 82.f);
+            kBeat.left = 60.f / kBpm * sr;
+            float a = 0.007f * std::min(lv[MONITOR], 1.f);
+            strike(988.f, a, 0.1f, 0.55f);
+            strike(1976.f, a * 0.25f, 0.06f, 0.55f);
+            strike(988.f, a * 0.3f, 0.12f, -0.4f, 0.19f);          // its echo off the far tiles
+        }
+        // Sonar: a ping out into the dark and what comes back
+        if (lv[SONAR] > 1e-4f && kPing.due(sr)) {
+            kPing.left = uni(9.f, 17.f) * sr;
+            float a = 0.016f * std::min(lv[SONAR], 1.f), p = uni(-0.5f, 0.5f);
+            strike(1240.f, a, 2.6f, p, 0.f, 0.97f);
+            strike(2480.f, a * 0.2f, 1.1f, p);
+            strike(1236.f, a * 0.35f, 2.2f, -p, uni(0.7f, 1.1f), 0.97f);
+            strike(1232.f, a * 0.15f, 2.0f, p * 0.3f, uni(1.6f, 2.2f), 0.97f);
+        }
+        // Groan: something enormous and far off (iron settling, or a voice in the trench): a long low
+        // tone that sags or rises, its overtones beating
+        if (lv[GROAN] > 1e-4f && kGroan.due(sr)) {
+            kGroan.left = uni(7.f, 16.f) * sr / std::max(lv[GROAN], 0.3f);
+            float hz = kitPm[GROAN_HZ] * uni(0.85f, 1.2f), a = 0.03f * std::min(lv[GROAN], 1.f), p = uni(-0.8f, 0.8f);
+            float glide = uni(0.f, 1.f) < 0.65f ? uni(0.68f, 0.85f) : uni(1.12f, 1.3f), len = uni(3.5f, 6.f);
+            const float ratio[4] = {1.f, 2.012f, 2.99f, 4.03f}, amp[4] = {1.f, 0.55f, 0.3f, 0.18f};
+            for (int k = 0; k < 4; ++k) strike(hz * ratio[k], a * amp[k], len / (1.f + 0.3f * k), p, 0.f, glide);
+            strike(hz * 1.006f, a * 0.6f, len, -p * 0.5f, 0.f, glide);
+        }
+        // Crackle: fire. A low roar that swells, and the snap of things burning in it
+        if (lv[CRACKLE] > 1e-4f) {
+            kRoarSwell += 0.09f / sr;
+            float sw = 0.6f + 0.4f * std::sin(TAU * kRoarSwell) * std::sin(TAU * kRoarSwell * 0.37f + 0.6f);
+            float w = white();
+            kRoarLP += onePole(260.f) * (w - kRoarLP);
+            float roar = kRoarLP * 0.09f * lv[CRACKLE] * sw;
+            L += roar; R += roar;
+            if (white() > 1.f - 2.f * 26.f * lv[CRACKLE] / sr) { kCrackEnv = uni(0.3f, 1.f); kCrackPan = uni(-0.9f, 0.9f); }
+            if (kCrackEnv > 1e-3f) {
+                float n = white(); kCrackHP += onePole(1500.f) * (n - kCrackHP);
+                pan((n - kCrackHP) * kCrackEnv * 0.05f * std::min(lv[CRACKLE], 1.f), kCrackPan, L, R);
+                kCrackEnv *= 1.f - 900.f / sr;
             }
         }
     }

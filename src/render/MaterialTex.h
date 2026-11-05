@@ -87,6 +87,11 @@ inline std::vector<unsigned char> clinic() {
         else if(u<2 || v<2)b+=.035f;                 // the glaze catching light on the tile's edge
         else if(u>61 || v>61)b-=.025f;
         if(x%128<1 || y%128<1)b=.46f;                // panel seams
+        if((u<1 || v<1) && fbm((float)x/SIZE,(float)y/SIZE,4,3,908)>.6f)b=.5f;   // grout gone grey in places
+        if(hashI(tx,ty,909)>.965f && u>2 && v>2){    // a tile cracked corner to corner
+            float k=hashI(tx,ty,910)-.5f,line=(float)(u-v)+k*20.f+std::sin(u*.4f)*2.f;
+            if(std::fabs(line)<.7f)b-=.2f;
+        }
         return Px{glm::vec3{b*.985f,b,b*1.015f}};
     },.72f);
 }
@@ -760,6 +765,123 @@ inline std::vector<unsigned char> rustplate() {
             if ((px - bx) * (px - bx) + (py - by) * (py - by) < 7) c = glm::vec3{0.4f, 0.3f, 0.22f};
         return Px{c};
     }, 0.260f);
+}
+
+// THE LIVING WARD (Chapter 3) -------------------------------------------------
+
+// Surgical steel: brushed stainless panels a metre by two, recessed seams with
+// rounded corners, countersunk screws, an access hatch on some, and on a few
+// a status light still lit (glow, cyan: the world pass gives it its colour)
+inline std::vector<unsigned char> steelpanel() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        const int W = M, H = 2 * M;
+        int col = x / W, row = y / H, lx = x % W, ly = y % H, pl = col + 4 * row;
+        float b = 0.25f + (noise(u, v, 4, 128, 1001) - 0.5f) * 0.07f + (noise(u, v, 2, 256, 1002) - 0.5f) * 0.04f;   // brushed, vertical
+        b += (hashI(pl, 0, 1003) - 0.5f) * 0.03f;
+        b *= 1.f - 0.12f * sstep(0.6f, 0.8f, fbm(u, v, 6, 3, 1004));                 // smudges
+        float glow = 0.f;
+        // The seam: a 2 px groove, rounded at the panel's corners
+        float cx = std::min((float)lx, (float)(W - 1 - lx)), cy = std::min((float)ly, (float)(H - 1 - ly));
+        float edge = (cx < 6.f && cy < 6.f) ? 6.f - std::hypot(6.f - cx, 6.f - cy) : std::min(cx, cy);
+        if (edge < 1.5f) b = 0.05f;
+        else if (edge < 3.f) b *= (lx < W / 2 || ly > H / 2) ? 1.3f : 0.7f;
+        // An access hatch: a smaller inset panel with a recessed grip
+        if (hashI(pl, 1, 1005) < 0.3f) {
+            int hx0 = 12, hx1 = W - 12, hy0 = 34, hy1 = 84;
+            bool in = lx >= hx0 && lx <= hx1 && ly >= hy0 && ly <= hy1;
+            if (in && (lx == hx0 || ly == hy0)) b *= 1.25f;
+            else if (in && (lx == hx1 || ly == hy1)) b = 0.06f;
+            else if (lx > 26 && lx < 38 && ly > 74 && ly < 79) b = ly == 75 ? 0.06f : b * 0.75f;
+        }
+        for (int sx : {8, W - 9}) for (int sy : {8, H - 9}) {                     // screws
+            int d2 = (lx - sx) * (lx - sx) + (ly - sy) * (ly - sy);
+            if (d2 < 6) b = (lx - sx == 0 || ly - sy == 0) ? 0.08f : 0.38f;
+            else if (d2 < 9) b *= 0.7f;
+        }
+        if (hashI(pl, 2, 1006) < 0.18f && lx > 44 && lx < 52 && ly > 112 && ly < 116) { b = 0.3f; glow = 0.9f; }   // status light
+        else if (hashI(pl, 2, 1006) < 0.18f && lx > 42 && lx < 54 && ly > 110 && ly < 118) b = 0.08f;
+        return Px{b * glm::vec3{0.94f, 0.97f, 1.0f}, glow};
+    }, 0.227f);
+}
+
+// Perforated steel: the galleries' and ramps' floor plate, staggered holes
+// showing the dark under it, 1 m plates, worn bright where it's walked
+inline std::vector<unsigned char> perforated() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        float b = 0.27f + (fbm(u, v, 8, 4, 1011) - 0.5f) * 0.08f + 0.06f * sstep(0.5f, 0.75f, fbm(u, v, 3, 3, 1012));
+        const int P = 8;
+        int row = y / P, ly = y % P, lx = (x + (row & 1) * (P / 2)) % P;
+        float d = std::hypot(lx - P * 0.5f + 0.5f, ly - P * 0.5f + 0.5f);
+        if (d < 2.2f) b = 0.03f;
+        else if (d < 3.f) b *= ly > P / 2 ? 0.7f : 1.2f;                          // the hole's rim
+        int px = x % M, py = y % M;
+        if (px < 2 || py < 2) b = 0.05f;
+        else if (px < 6 || py < 6 || px > M - 6 || py > M - 6) { if (d < 3.f) b = 0.27f; }   // a solid margin round each plate
+        return Px{b * glm::vec3{0.93f, 0.96f, 1.0f}};
+    }, 0.227f);
+}
+
+// THE BLOOD MOON PLAIN (Chapter 4) --------------------------------------------
+
+// Salvage plate: the Gleaner is built of what it reclaims. A patchwork of
+// scrap welded edge to edge (rows of plates of every size), each its own
+// steel and old paint (hazard yellow, factory cyan, black), stencil marks,
+// heat bluing, soot, beads of weld along the joints and, in a few cracks, the
+// furnace showing through (glow)
+inline std::vector<unsigned char> salvage() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        // Rows of plates: heights 32-96 px from a fixed list that fills the tile, widths per row
+        static const int ROWS[] = {0, 48, 80, 144, 176, 224, 256};
+        int r = 0; while (y >= ROWS[r + 1]) ++r;
+        int ly = y - ROWS[r], rh = ROWS[r + 1] - ROWS[r];
+        int unit = 32 + 16 * (int)(hashI(r, 0, 1021) * 4.f);                     // 32..80 px plates in this row
+        while (SIZE % unit) unit += 16;
+        int off = (int)(hashI(r, 1, 1022) * 4.f) * 16;
+        int sx = (x + off) % SIZE, col = sx / unit, lx = sx % unit;
+        float h = hashI(col, r, 1023);
+        glm::vec3 paint = h < 0.15f ? glm::vec3{0.75f, 0.58f, 0.12f} : h < 0.28f ? glm::vec3{0.32f, 0.46f, 0.5f}
+                        : h < 0.42f ? glm::vec3{0.12f, 0.12f, 0.13f} : glm::vec3{0.4f, 0.39f, 0.38f};
+        float b = 0.95f + (fbm(u, v, 8, 4, 1024) - 0.5f) * 0.3f;
+        glm::vec3 c = paint * b;
+        float wear = fbm(u, v, 12, 4, 1025);                                     // paint gone to rust and bare iron
+        if (h < 0.42f && wear > 0.55f) c = glm::mix(c, glm::vec3{0.36f, 0.2f, 0.1f} * b, 0.85f);
+        c = glm::mix(c, glm::vec3{0.18f, 0.2f, 0.3f}, 0.35f * sstep(0.6f, 0.8f, fbm(u, v, 5, 3, 1026)));   // heat bluing
+        c *= 1.f - 0.45f * sstep(0.5f, 0.8f, noise(u, v, 48, 4, 1027));          // soot, streaked up from the heat
+        if (hashI(col, r, 1028) < 0.25f && lx > 8 && lx < 8 + 24 && ly > rh / 2 - 4 && ly < rh / 2 + 4 && (lx / 4) % 2 == 0)
+            c *= 0.35f;                                                           // a stencilled code, half of it gone
+        float glow = 0.f;
+        Cell fr = voronoi(u, v, 7, 1029);
+        float crack = fr.d2 - fr.d1 + (noise(u, v, 48, 48, 1032) - 0.5f) * 0.04f;
+        bool hot = hashI(col, r, 1030) < 0.13f;
+        if (hot && crack < 0.018f) { c = glm::vec3{0.35f, 0.08f, 0.02f}; glow = 0.55f + 0.35f * noise(u, v, 16, 16, 1033); }
+        else if (hot && crack < 0.045f) c = glm::mix(c * 0.6f, glm::vec3{0.4f, 0.14f, 0.05f}, 0.3f);   // scorched round it
+        int ex = std::min(lx, unit - 1 - lx), ey = std::min(ly, rh - 1 - ly);
+        if (ex < 1 || ey < 1) c = glm::vec3{0.05f};                               // the joint
+        else if (ex < 3 || ey < 3) c = glm::vec3{0.32f, 0.3f, 0.28f} * (0.7f + 0.6f * hashI(x / 2, y / 2, 1031));   // weld bead
+        else if (ex < 5 || ey < 5) c *= 0.75f;
+        if ((lx == 6 || lx == unit - 7) && ly % 12 == 6) c = glm::vec3{0.5f, 0.46f, 0.42f};   // rivets
+        return Px{c, glow};
+    }, 0.24f);
+}
+
+// Scrap deck: the walking tops, dented plate gone to rust under a skin of ash
+inline std::vector<unsigned char> scrapdeck() {
+    return build([](int x, int y) {
+        float u = (float)x / SIZE, v = (float)y / SIZE;
+        float b = 0.3f + (fbm(u, v, 6, 5, 1041) - 0.5f) * 0.14f;
+        Cell dent = voronoi(u, v, 5, 1042);
+        b *= 0.92f + 0.16f * sstep(0.f, 0.5f, dent.d1);                            // dents: dark in their hollow
+        glm::vec3 c = glm::mix(b * glm::vec3{0.85f, 0.85f, 0.88f}, b * glm::vec3{1.4f, 0.8f, 0.48f}, sstep(0.4f, 0.62f, fbm(u, v, 4, 4, 1043)));
+        c = glm::mix(c, glm::vec3{0.42f, 0.38f, 0.35f}, 0.6f * sstep(0.55f, 0.75f, fbm(u, v, 3, 4, 1044)));   // ash
+        if (hashI(x, y, 1045) < 0.04f) c *= 0.7f;
+        int px = x % 128, py = (y + (x / 128) * 64) % 128;
+        if (px < 2 || py < 2) c = glm::vec3{0.06f};
+        else if (px < 4 || py < 4) c = glm::vec3{0.3f, 0.28f, 0.26f};               // weld
+        return Px{c};
+    }, 0.26f);
 }
 
 // THE COLD STORE (Chapter 5) --------------------------------------------------

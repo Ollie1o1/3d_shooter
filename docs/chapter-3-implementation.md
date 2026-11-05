@@ -278,3 +278,20 @@ map and the remaining human review limits.
 Web releases now carry `build-info.json`, a matching loader identifier and versioned
 JS/WASM/data URLs. Sync the adjacent website with `scripts/sync-overdrive.sh`,
 verify it, and deploy it; `make web` alone does not update the public website.
+
+## Detail and immersion pass (2026-11-04)
+
+- **Surfaces.** The ward's steel draws as brushed stainless panels with screws, access hatches and a
+  few still-lit cyan status lights, and its walked tops as perforated plate (`LevelLab.h` restyles
+  `METAL` to `SURGICAL`; `MaterialTex::steelpanel`, `perforated`). The white tile gains greyed grout in
+  places and the odd cracked tile.
+- **The far distance** (`gatherLabVista`, `Gameplay_LabDressing.h`), 230-450 m out where the fog makes
+  silhouettes: other wings of the lab adrift with lit and flickering windows (Celestial, Final
+  Assessment), a colossal ring turning over Celestial, something vast asleep far under Hadal Research's
+  floor (seen down the wells) with a long shape swimming round it, and a surgical lamp the size of a
+  building over the boss arena that turns to follow you, its lenses reddening as the Successor fails.
+  All are Blender models (`tools/blender/story_vista_build.py`) joined by material before export, so
+  each copy is a handful of instanced parts.
+- **Air.** Ward dust (`Ambient::SPECKS`), the void's coloured motes in the open halls (`NEBULA`) and
+  marine snow sinking through Hadal (`MARINE`). The wards' room tone has a patient monitor beeping for
+  nobody; Hadal's a sonar ping and long low groans from the trench (`RoomTone.h` MONITOR, SONAR, GROAN).

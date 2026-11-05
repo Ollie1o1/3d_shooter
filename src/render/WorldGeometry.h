@@ -26,6 +26,8 @@ enum WorldTex { TEX_GRID, TEX_BRICK, TEX_METAL, TEX_PANEL, TEX_ROCK, TEX_CONCRET
                 TEX_HULL, TEX_DECK, TEX_PAINTED, TEX_CASTWALL, TEX_SLAB,     // Chapter 1
                 TEX_STRATA, TEX_ASHGROUND, TEX_ASPHALT, TEX_CORRUGATED, TEX_RUSTPLATE,   // Chapter 2
                 TEX_FROSTSTEEL, TEX_FROSTDECK,   // Chapter 5
+                TEX_STEELPANEL, TEX_PERFORATED,  // Chapter 3
+                TEX_SALVAGE, TEX_SCRAPDECK,      // Chapter 4
                 TEX_COUNT };
 
 // How strongly the world shader breaks up a texture's 4 m repeat (shader.frag uMacro): most on
@@ -34,8 +36,9 @@ inline float worldTexMacro(int t) {
     switch (t) {
         case TEX_ROCK: case TEX_STRATA: case TEX_ASHGROUND: case TEX_ASPHALT: case TEX_SLAB: case TEX_CINDER:
         case TEX_SNOW: case TEX_ICE: case TEX_GRID: case TEX_CONCRETE: case TEX_CASTWALL: case TEX_ADOBE:
-        case TEX_TERRACOTTA: case TEX_LIMESTONE: case TEX_RUSTPLATE: case TEX_FLAG: return 1.f;
-        case TEX_CLINIC: case TEX_LINO: case TEX_CIRCUIT: case TEX_CIRCUIT_FLOOR: case TEX_BRASS: return 0.2f;
+        case TEX_TERRACOTTA: case TEX_LIMESTONE: case TEX_RUSTPLATE: case TEX_FLAG: case TEX_SCRAPDECK: return 1.f;
+        case TEX_CLINIC: case TEX_LINO: case TEX_CIRCUIT: case TEX_CIRCUIT_FLOOR: case TEX_BRASS: return 0.3f;
+        case TEX_STEELPANEL: case TEX_PERFORATED: return 0.25f;
         default: return 0.6f;
     }
 }
@@ -55,6 +58,7 @@ inline WorldTex sideTex(Mat m) {
         case Mat::SLAB: case Mat::ASPHALT: return TEX_CASTWALL;
         case Mat::STRATA: return TEX_STRATA; case Mat::CORRUGATED: return TEX_CORRUGATED;
         case Mat::FROSTSTEEL: return TEX_FROSTSTEEL;
+        case Mat::SURGICAL: return TEX_STEELPANEL; case Mat::SALVAGE: return TEX_SALVAGE;
         default: return TEX_BRICK;
     }
 }
@@ -78,6 +82,7 @@ inline WorldTex topTex(Mat m) {
         case Mat::ASPHALT: return TEX_ASPHALT;
         case Mat::CORRUGATED: return TEX_RUSTPLATE;
         case Mat::FROSTSTEEL: return TEX_FROSTDECK;
+        case Mat::SURGICAL: return TEX_PERFORATED; case Mat::SALVAGE: return TEX_SCRAPDECK;
         default: return TEX_GRID;
     }
 }

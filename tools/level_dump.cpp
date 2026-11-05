@@ -31,10 +31,11 @@ static const char* TEX_NAME[TEX_COUNT] = {"grid", "brick", "metal", "panel", "ro
                                          "wood", "plate", "tread", "marble", "flagstone", "circuit", "circuit_floor",
                                          "basalt", "limestone", "brass", "clinic", "lino", "cinder", "snow", "ice",
                                          "hull", "deck", "painted", "castwall", "slab", "strata", "ashground", "asphalt",
-                                         "corrugated", "rustplate", "froststeel", "frostdeck"};
+                                         "corrugated", "rustplate", "froststeel", "frostdeck", "steelpanel", "perforated",
+                                         "salvage", "scrapdeck"};
 static const char* MAT_NAME[] = {"brick", "panel", "rock", "metal", "concrete", "adobe", "plate", "marble",
                                  "circuit", "basalt", "wood", "limestone", "brass", "clinic", "cinder", "snow", "ice",
-                                 "hull", "painted", "slab", "strata", "asphalt", "corrugated", "froststeel"};
+                                 "hull", "painted", "slab", "strata", "asphalt", "corrugated", "froststeel", "surgical", "salvage"};
 
 static std::vector<unsigned char> texPixels(int t) {
     using namespace MaterialTex;
@@ -55,6 +56,8 @@ static std::vector<unsigned char> texPixels(int t) {
         case TEX_ASHGROUND: return ashground();  case TEX_ASPHALT: return asphalt();
         case TEX_CORRUGATED: return corrugated(); case TEX_RUSTPLATE: return rustplate();
         case TEX_FROSTSTEEL: return froststeel(); case TEX_FROSTDECK: return frostdeck();
+        case TEX_STEELPANEL: return steelpanel(); case TEX_PERFORATED: return perforated();
+        case TEX_SALVAGE: return salvage();      case TEX_SCRAPDECK: return scrapdeck();
         default: return {};
     }
 }

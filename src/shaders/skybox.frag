@@ -27,6 +27,8 @@ uniform float uLabRealm; // 0 ordinary, 1 nebula, 2 hadal, 3 fractured
 uniform float uAssessment;
 uniform float uMoonLid;     // 0..1: the plain's moon blinking shut (it was an eye; it is the Gleaner's now)
 uniform float uPlain;       // 1 = THE BLOOD MOON PLAIN (Chapter 4): the blood moon, burning cloud
+uniform float uFlash;       // 0..1: lightning inside the plain's cloud, toward uFlashDir
+uniform vec3  uFlashDir;
 uniform float uCold;        // 1 = THE COLD STORE (Chapter 5): the ringed gas giant, a small cold sun, aurora, the Void below
 uniform float uDark;        // 0..1: TOTALITY: the ring dims to embers
 
@@ -190,9 +192,13 @@ vec3 plainSky(vec3 dir) {
         vec3 smoke = mix(vec3(0.05, 0.01, 0.012), vec3(0.6, 0.12, 0.04), under * (0.4 + 0.6 * c2));
         float fire = pow(c2, 3.0) * smoothstep(0.6, 0.8, c) * under;
         smoke += vec3(2.0, 0.6, 0.12) * fire * (0.7 + 0.3 * sin(uTime * 1.3 + c2 * 20.0));
+        // Lightning: the bank lit from inside round the strike, a little of it everywhere
+        float strike = pow(max(0.0, dot(dir, uFlashDir)), 18.0);
+        smoke += vec3(1.6, 0.9, 1.1) * uFlash * (strike * 3.0 + 0.12) * (0.4 + 0.6 * c2);
         // the moon shows through thin cloud, not thick
         float moon = step(ang, uSunSize * 1.05);
         col = mix(col, smoke, bank * (0.9 - 0.5 * moon));
+        col += vec3(0.6, 0.3, 0.4) * uFlash * strike * 0.5;   // and the clear sky round it
     }
     // Faint stars where the smoke is thin, high up
     vec3 cell = floor(dir * 260.0);

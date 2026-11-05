@@ -204,7 +204,9 @@ struct Mover {
     }
 };
 
-enum class Ambient { DUST, EMBERS, MOTES, WIND, ASH, STEAM };
+enum class Ambient { DUST, EMBERS, MOTES, WIND, ASH, STEAM,
+                     SPECKS, NEBULA, MARINE,   // Chapter 3: ward dust, the void's motes, the trench's falling snow
+                     ASHFALL };                // Chapter 4: ash on the wind, embers, cinders out of the sky
 // How an arena changes as its fight goes on (ArenaShifts.h)
 enum class ArenaShift { NONE, NIGHTFALL, LAVA_RISE, SPEED_UP, OVERLOAD, FLOOD, SOLAR, DESCENT, DRIFT };
 
