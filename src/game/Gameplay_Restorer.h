@@ -221,33 +221,27 @@ inline void GameplayState::updateRestorerFight(float dt) {
         if (want > rsPhase) {
             rsPhase = want; R->rsPhase = want;
             if (want == 1) {
-                pushBanner("THE RESTORER", "UNIT ?  /  PURPOSE: RESTORE", {0.8f, 0.9f, 1.f}, 3.f);
-                rsLineT = 3.3f; rsLine = deaths > 0 ? 1 : 0;
-                rsHintT = 7.2f;   // then what to do about it
+                pushBanner("THE RESTORER", "", {0.8f, 0.9f, 1.f}, 2.6f);
+                rsHintT = 3.f;   // then what to do about it
             } else if (want == 2) {   // RESTORE POINTS
-                pushBanner("RESTORE POINTS", "WHILE ONE STANDS, ITS WOUNDS GROW BACK - BREAK ALL THREE", {0.8f, 0.9f, 1.f}, 3.5f);
+                pushBanner("RESTORE POINTS", "BREAK ALL THREE TO STOP ITS HEALING", {0.8f, 0.9f, 1.f}, 3.5f);
                 for (int k = 0; k < 3; ++k) {
                     float a = 0.5f + k * 2.094f;
                     spawnEnemy(EnemyType::RS_POINT, cold::vaultC() + glm::vec3{std::cos(a) * 18.f, 0.f, std::sin(a) * 18.f});
                 }
                 R->rsPending = 0.f;
             } else {   // FACTORY RESET
-                pushBanner("\"YOU WERE BETTER BEFORE YOU REMEMBERED.\"", "FACTORY RESET", {0.8f, 0.9f, 1.f}, 4.f);
+
                 rsTakeT = 3.5f;
                 rsHintT = 4.2f;   // then: where your guns go
                 if (!rsStatues.empty() && rsShatterT < 0.f) rsShatterT = 1.4f;
             }
         }
         if (rsHintT > 0.f && (rsHintT -= dt) <= 0.f) {
-            if (rsPhase >= 3) pushBanner("IT IS TAKING YOUR GUNS", "EACH GOES INTO A DRUM ON THE RIM - BREAK THE DRUM, TAKE IT BACK", {1.f, 0.8f, 0.4f}, 4.f);
-            else pushBanner("SHOOT ITS GLASS DOME", "GOLD: IT PULLS YOU BACK - KEEP THAT SPOT SAFE OR RECALL  /  RED: GET OUT  /  WHITE: PARRY", {0.8f, 0.9f, 1.f}, 5.f);
+            if (rsPhase >= 3) pushBanner("RECOVER YOUR WEAPONS", "BREAK THEIR STORAGE DRUMS", {1.f, 0.8f, 0.4f}, 4.f);
+            else pushBanner("SHOOT THE GLASS DOME", "USE RECALL TO ESCAPE ITS REWIND", {0.8f, 0.9f, 1.f}, 5.f);
         }
-        if (R->rsFalter) rsHintT = rsLineT = -1.f;   // (beaten: nothing more to say over the finisher)
-        if (rsLineT > 0.f && (rsLineT -= dt) <= 0.f) {
-            char buf[64];
-            if (rsLine == 1) std::snprintf(buf, sizeof(buf), "\"I HAVE SAVED YOU %d TIMES.\"", deaths);
-            pushBanner(rsLine == 1 ? buf : "\"YOU HAVE CHANGED. THAT CAN BE UNDONE.\"", "", {0.8f, 0.9f, 1.f}, 3.5f);
-        }
+        if (R->rsFalter) rsHintT = -1.f;   // (beaten: nothing more to say over the finisher)
         // RESTORE POINTS: what you do to it grows back while one stands
         bool points = false;
         for (const auto& e : enemies) points |= e.alive && e.type == EnemyType::RS_POINT;
@@ -352,7 +346,7 @@ inline void GameplayState::updateRecallFinisher(float dt) {
     // It falters: say so, and put the finisher in reach
     if (R && R->rsFalter && !rsFalterSeen) {
         rsFalterSeen = true;
-        pushBanner("IT FALTERS", "GET CLOSE  -  " + binds().label(Act::INTERACT) + ": DRIVE THE RECALL MODULE INTO ITS DOME", RECALL_FROST, 4.f);
+        pushBanner("FINISH THE RESTORER", "GET CLOSE  -  " + binds().label(Act::INTERACT) + ": INTERACT", RECALL_FROST, 3.f);
         audio.playAt("ab_creak", R->position, 128, SoundGroup::ENEMY, true, 0.6f);
         Interactable it;
         it.position = R->position + glm::vec3{0.f, 1.5f, 0.f};

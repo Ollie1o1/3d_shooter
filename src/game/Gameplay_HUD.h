@@ -449,7 +449,6 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         if (!act2() && !arenaSolo()) renderLeaderboardPanel();   // (one arena on its own: no board)
     }
     if (training() && !paused && !armoryOpen) renderTraining();
-    if(laboratory() && !paused && !armoryOpen && !labIntro.active())renderSuccessorDialogue();
     if (armoryOpen) ui.renderArmory(prog, armoryW, armoryS, story()?storyOwned:(1<<WEAPON_COUNT)-1);
     if (paused) {
         if (guideOpen) { renderGuide(); }

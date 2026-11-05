@@ -1,8 +1,7 @@
 #pragma once
 
 inline void GameplayState::beginLab(){
-    audio.stop(labVoice);audio.stop(successorVoice);labVoice=successorVoice=0;labCue=-1;
-    labDialogueT=0;labDialogue=-1;
+    audio.stop(labVoice);labVoice=0;labCue=-1;
     storyOwned|=15;storyArmed=storyGrapple=true;wakeSeen=true;wakeT=-1;clawT=-1;
     beltBodies.clear();player.eyeHeight=1.7f;
     bool skip=labIntro.seen||g_devCam||director.arena>0||g_bossRun>=0;
@@ -104,7 +103,6 @@ inline void GameplayState::updateLab(float dt){
         bool alive=false;for(const auto& e:enemies)alive|=e.alive;
         if(!alive && director.queue.empty())director.completeGoal();
     }
-    if(labDialogueT>0)labDialogueT-=dt;
     const auto& e=level.story.end;
     (void)e;
     // Through the doors the Successor held shut: the ending (Gameplay_LabEnding.h)

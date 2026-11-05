@@ -45,7 +45,7 @@ inline void GameplayState::enterGut() {
     placeInGut(0);
     heart.wake(gut::heart(), gut::floorY(0));
     gutWhite = 1.f;
-    pushBanner("INSIDE IT", "\"EVERY ONE OF THEM FELT LIKE YOU.\"", {1.f, 0.4f, 0.2f}, 4.5f);
+    pushBanner("THE FURNACE", "", {1.f, 0.4f, 0.2f}, 2.6f);
     ui.feed("CHECKPOINT / INSIDE IT", {0.35f, 0.85f, 1.f});
     SfxMixer::Opts o; o.group = SoundGroup::UI; o.priority = true; o.pitch = 0.5f; audio.playOpts("door_close", o);
     o.pitch = 0.6f; audio.playOpts("gleaner_groan", o);
@@ -70,7 +70,7 @@ inline void GameplayState::gutShaftThrow() {
             player.camera.position = player.position + glm::vec3{0.f, 1.7f, 0.f}; prevCamPos = player.camera.position;
             gutWhite = 0.8f;
             SfxMixer::Opts o; o.group = SoundGroup::UI; o.priority = true; o.pitch = 0.5f; audio.playOpts("explosion", o);
-            pushBanner("THE SUMMIT", "IT TRIES TO STAND ONE LAST TIME", {1.f, 0.5f, 0.2f}, 4.f);
+            pushBanner("THE SUMMIT", "", {1.f, 0.5f, 0.2f}, 2.6f);
         }
     }
 }
@@ -125,7 +125,7 @@ inline void GameplayState::updateGut(float dt) {
                 styleSystem.addStyle(300.f, StyleSource::PARRY); gainXp(150);
                 gleanerPhase = GleanerPhase::LUNGS; openGutShaft(0);
                 storyCheckpoint = std::max(storyCheckpoint, 6); saveStoryProgress();
-                pushBanner("ITS HEART IS OUT", "THE SLAG DRAINS. THE SHAFT IN THE CORNER BREATHES: RIDE IT UP", {1.f, 0.45f, 0.2f}, 4.5f);
+                pushBanner("REACH THE LUNGS", "RIDE THE CORNER UPDRAFT", {1.f, 0.45f, 0.2f}, 4.5f);
                 ui.feed("CHECKPOINT / ITS HEART", {0.35f, 0.85f, 1.f});
                 break;
             default: break;
@@ -147,7 +147,7 @@ inline void GameplayState::updateGut(float dt) {
         BellowsLungs& L = lungs;
         if (!L.woke && gut::roomAt(p) == 1 && player.onGround) {
             L.wake(gut::bellows(0), gut::bellows(1), gut::blow(), gut::floorY(1));
-            pushBanner("ITS LUNGS", "STAND BEHIND THE PILLARS WHEN THEY BREATHE OUT", {1.f, 0.5f, 0.25f}, 4.f);
+            pushBanner("THE LUNGS", "USE THE PILLARS AS COVER", {1.f, 0.5f, 0.25f}, 4.f);
             audio.play("mini_sting", 128, SoundGroup::UI, true);
         }
         if (!L.woke) break;
@@ -164,7 +164,7 @@ inline void GameplayState::updateGut(float dt) {
                     gleanerPhase = GleanerPhase::CORE; openGutShaft(1);
                     storyCheckpoint = std::max(storyCheckpoint, 7); saveStoryProgress();
                     organSound("gleaner_scream", e.at, 1.3f, 0.8f);
-                    pushBanner("ITS LUNGS ARE TORN", "THE AIR GOES STILL. UP THE SHAFT", {1.f, 0.45f, 0.2f}, 4.5f);
+                    pushBanner("REACH THE CORE", "CONTINUE UP THE SHAFT", {1.f, 0.45f, 0.2f}, 4.5f);
                     ui.feed("CHECKPOINT / ITS LUNGS", {0.35f, 0.85f, 1.f});
                 } else ui.feed("ONE LUNG LEFT", {1.f, 0.7f, 0.3f});
                 break;
@@ -198,7 +198,7 @@ inline void GameplayState::updateGut(float dt) {
         SortingCore& c = core;
         if (c.state == SortingCore::DORMANT && gut::roomAt(p) == 2 && player.onGround) {
             c.wake(gut::core());
-            pushBanner("ITS SORTING CORE", "IT THROWS WHAT IT SORTS: PUNCH THEM BACK", {1.f, 0.5f, 0.25f}, 4.f);
+            pushBanner("SORTING CORE", "PARRY THE PROJECTILES", {1.f, 0.5f, 0.25f}, 4.f);
             audio.play("mini_sting", 128, SoundGroup::UI, true);
         }
         if (c.state == SortingCore::DORMANT) break;
@@ -216,7 +216,7 @@ inline void GameplayState::updateGut(float dt) {
                 styleSystem.addStyle(300.f, StyleSource::PARRY); gainXp(200);
                 gleanerPhase = GleanerPhase::SUMMIT; openGutShaft(2);
                 storyCheckpoint = std::max(storyCheckpoint, 8); saveStoryProgress();
-                pushBanner("ITS CORE STOPS", "THE CHIMNEY OPENS OVER IT: UP AND OUT", {1.f, 0.45f, 0.2f}, 4.5f);
+                pushBanner("REACH THE SUMMIT", "RIDE THE CHIMNEY UPDRAFT", {1.f, 0.45f, 0.2f}, 4.5f);
                 ui.feed("CHECKPOINT / ITS CORE", {0.35f, 0.85f, 1.f});
                 break;
             default: break;

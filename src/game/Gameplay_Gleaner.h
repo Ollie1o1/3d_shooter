@@ -25,7 +25,6 @@ constexpr float LEN = 5.55f;              // then the white of the fall
 // THE QUIET
 constexpr float FADE = 2.2f;              // up out of the dark
 constexpr float SEAM = 3.6f, OPEN1 = 7.f; // the portal: a seam of white in the air, opening
-constexpr float CAPTION0 = 7.5f, CAPTION1 = 13.5f;
 constexpr float PULL_R = 30.f;            // close: it draws you in
 constexpr float THROUGH = 1.4f;           // white, then the card
 constexpr float RADIUS = 21.f;
@@ -118,7 +117,7 @@ inline void GameplayState::updatePlainReveal(float dt) {
         player.camera.position = player.position + glm::vec3{0.f, 1.7f, 0.f}; prevCamPos = player.camera.position;
         director.hold = false;
         wakeSeen = true; plainRevealDone = true; saveStoryProgress();
-        pushBanner("THE GLEANER", "\"YOU WERE SENT TO ME. YOU ARE LATE.\"", {1.f, 0.3f, 0.18f}, 4.5f);
+        pushBanner("THE GLEANER", "", {1.f, 0.3f, 0.18f}, 2.6f);
         gleanerScreamCd = 16.f;
     }
 }
@@ -376,12 +375,7 @@ inline void GameplayState::renderPlainReveal() {
     if (r.a() > 1.f && r.a() < 7.5f) {
         float a = PlainReveal::sm(1.f, 2.f, r.a()) * (1.f - PlainReveal::sm(6.5f, 7.5f, r.a()));
         u.text("THE BLOOD MOON PLAIN", 48, 24, 2, {1.f, 0.4f, 0.25f, a});
-        u.text("CHAPTER 4  /  RECLAMATION", 48, 46, 1, {0.9f, 0.6f, 0.5f, a});
-    }
-    const char* cap = r.caption();
-    if (*cap) {
-        float a = PlainReveal::sm(17.f, 17.8f, r.a()) * (1.f - PlainReveal::sm(20.8f, 21.5f, r.a()));
-        u.text(cap, SCREEN_W / 2, SCREEN_H - 50, 2, {1.f, 0.45f, 0.3f, a}, true);
+        u.text("CHAPTER 4", 48, 46, 1, {0.9f, 0.6f, 0.5f, a});
     }
     std::string skip = "HOLD " + binds().label(Act::JUMP) + " TO SKIP";
     u.text(skip.c_str(), SCREEN_W / 2, SCREEN_H - 24, 1, {0.7f, 0.45f, 0.4f, 0.8f * r.bars()}, true);

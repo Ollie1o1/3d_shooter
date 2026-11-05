@@ -293,11 +293,7 @@ int main() {
     const glm::vec3 ZC = zenithCentre();
     {
         CHECK(std::string(ZENITH_NAME) == "!!!!!" && PIXEL_FONT['!' - ' '][0] != 0, "the encore's name is !!!!! (and the pixel font can draw it)");
-        bool gone = true;
-        for (int i = 0; i < 6; ++i) gone &= std::string(abLine(i)) != "BE JUDGED.";
-        CHECK(gone && abString(AB_JUDGED).line == -1, "\"BE JUDGED.\" is gone");
-        CHECK(std::string(abLine(0)) == "KNEEL." && std::string(abLine(1)) == "TOO SLOW." && std::string(abLine(2)) == "AGAIN." &&
-              std::string(abLine(AB_LINE_WORTHY)) == "...WORTHY.", "...and the other four lines stay");
+        CHECK(abString(AB_JUDGED).line == -1, "the final judgment attack has no dialogue cue");
     }
     {
         CHECK(N.arenas.size() == 6 && std::string(N.arenas[ZENITH_ARENA].name) == "!!!!!", "a sixth Act II arena: the encore, called !!!!!");

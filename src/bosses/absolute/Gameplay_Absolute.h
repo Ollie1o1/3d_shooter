@@ -93,7 +93,6 @@ inline void GameplayState::onAbsoluteEvents(Enemy& e, const EnemyEvents& ev) {
         audio.stop(abFlightH); abFlightH = at("ab_flight", e.position, 1.f, 110, 0.f);
     }
     if (ev.abShotDown) at("ab_shotdown", e.position, 1.f, 128, 0.5f);
-    if (ev.abLine >= 0) { abLineShown = ev.abLine; abLineT = 1.6f; audio.playAt("v_absolute_line", e.position, 128, SoundGroup::ENEMY, true); }
     if (ev.blinked) {   // a fading white copy where he was
         Enemy g = e; g.position = g.prevPosition = ev.blinkFrom; g.hitFlashTimer = 0.f;
         abGhosts.push_back({g, 0.f});
@@ -110,8 +109,8 @@ inline void GameplayState::onAbsoluteEvents(Enemy& e, const EnemyEvents& ev) {
     }
     if (ev.abPhase >= 2) eclipseFlare = 1.f;
     if (ev.abBladeDrawn) abShaftT = 0.f;   // the blade comes down to him out of the eclipse
-    if (ev.abPhase == 2) { pushBanner("HE ASCENDS", "STAY CLOSE", {1.f, 0.95f, 0.8f}, 3.f); shake(0.5f, 0.06f); audio.duck(6.f, 0.6f); }
-    if (ev.abPhase == 3) { pushBanner("HE DRAWS HIS SWORD", "WATCH THE BLADE", {1.f, 0.5f, 0.6f}, 3.f); shake(0.5f, 0.06f); audio.duck(6.f, 0.6f); }
+    if (ev.abPhase == 2) { shake(0.5f, 0.06f); audio.duck(6.f, 0.6f); }
+    if (ev.abPhase == 3) { shake(0.5f, 0.06f); audio.duck(6.f, 0.6f); }
     if (ev.abHalo) { abh.addHalo(level.zenith.centre, level.zenith.centre.y); audio.play("explosion", 100, SoundGroup::WORLD); }
     if (ev.abTakeoff) {   // a burst and a ring of dust where he left the floor
         fx.spawnBurst(e.position + glm::vec3{0.f, 0.5f, 0.f}, white, 30, 9.f, 0.5f, 4.f);
@@ -175,7 +174,6 @@ inline void GameplayState::updateAbsolute(float dt) {
     for (auto& t : pillarFallT) if (t >= 0.f) t += dt;
     if (abSkyMarkT >= 0.f) abSkyMarkT += dt;
     if (abCrackT >= 0.f) abCrackT += dt;
-    if (abLineT > 0.f) abLineT -= dt;
     if (abHintT > 0.f) abHintT -= dt;
     updateAbsoluteDeath(dt);
     eclipseFlare *= std::exp(-dt * 1.4f);
@@ -247,7 +245,7 @@ inline void GameplayState::swordParryAbsolute(Enemy& e) {
     if (sword.tryParry()) parryAbsolute(e, true);
 }
 
-// His death: he kneels, his halo cracks, "...WORTHY.", and he goes up in light
+// His death: he kneels, his halo cracks, and he goes up in light
 inline void GameplayState::onAbsoluteKilled(const Enemy& e) {
     abh.clear();
     audio.stop(abWindH); audio.stop(abFlightH); audio.stop(abBeamH); abWindH = abFlightH = abBeamH = 0;
@@ -256,9 +254,7 @@ inline void GameplayState::onAbsoluteKilled(const Enemy& e) {
     abCorpse.position.y = level.zenith.centre.y + (glm::length(glm::vec2{e.position.x - level.zenith.centre.x, e.position.z - level.zenith.centre.z}) < ZEN_DAIS ? ZEN_DAIS_UP : 0.f); abCorpse.staggerTimer = 1.f; abCorpse.abReeling = false;
     abCorpse.attack = AttackKind::NONE; abCorpse.telegraphTimer = 0.f; abCorpse.abBlade = false;
     abDeathT = 0.f; abDawnT = 0.f; abShaftT = -1.f; eclipseFlare = 1.f;
-    abLineShown = AB_LINE_WORTHY; abLineT = 3.f;
     msCheckpoint = false; msTotalityT = -1.f;   // (the dawn takes the swallow away: Gameplay_Render.h)
-    audio.playAt("v_absolute_line", e.position, 128, SoundGroup::ENEMY, true, 0.8f);   // "...WORTHY.", lower
     fx.spawnShockwave(e.position, 20.f, {1.6f, 1.5f, 1.2f});
     explosionFlashTimer = 0.8f; explosionFlashPos = e.position;
     audio.duck(10.f, 2.f);
@@ -497,14 +493,8 @@ inline void GameplayState::gatherAbsoluteBoxes(std::vector<BoxInstance>& out) {
     }
 }
 
-// His lines, as subtitles; a word on the sword when he arrives
+// A short equipment hint when the sword becomes available
 inline void GameplayState::renderAbsoluteHUD() {
-    if (abLineT > 0.f && abLineShown >= 0) {
-        float a = std::min(1.f, abLineT / 0.4f);
-        ui.begin2D();
-        ui.ui.textShadow(abLine(abLineShown), SCREEN_W / 2, (int)(SCREEN_H * 0.62f), 5, {1.f, 0.98f, 0.92f, a}, true);
-        ui.end2D();
-    }
     if (abHintT > 0.f && !swordOut) {
         ui.begin2D();
         ui.ui.textShadow(g_tellsColourblind ? "PRESS 5 - THE SWORD: RMB PARRIES WHITE, BLOCKS BLUE - EVERY CUT HEALS" : "PRESS 5 - THE SWORD: RMB PARRIES WHITE, BLOCKS GOLD - EVERY CUT HEALS", SCREEN_W / 2, 82, 2,

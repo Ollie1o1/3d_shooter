@@ -1,10 +1,5 @@
 #pragma once
 inline void GameplayState::ballastEvents(Enemy& e,const EnemyEvents& ev) {
-    if(ev.ballPhaseStarted) {
-        const char* line=ev.ballPhaseStarted==1?storytext::ballastIntro:ev.ballPhaseStarted==2?storytext::ballastDamaged:storytext::ballastFinal;
-        if(ev.ballPhaseStarted==1)pushBanner("BALLAST / CLEARANCE UNIT",line,{.95f,.7f,.35f},3.f);
-        else ui.feed(line,{.95f,.7f,.35f});
-    }
     if(ev.telegraphStarted) {
         audio.playAt("telegraph",(e.attack==AttackKind::BALL_ANCHOR||e.attack==AttackKind::BALL_WINCH)?e.ballAim:e.position,120,SoundGroup::ENEMY,true);
         const char* hint=e.attack==AttackKind::BALL_GRADE?"GRADING PASS / JUMP OR DASH SIDEWAYS":

@@ -366,7 +366,7 @@ inline void GameplayState::enterArena(int a) {
     for (int d = 0; d < (int)level.doors.size(); ++d) { level.doors[d].locked = false; level.setDoorInstant(d, false); }
     shifts.reset(level);   // the sun back up, the lava back down, the platforms back to speed, the cage to the top
     boardHinted = liftRiding = false;
-    successorHazards.clear();successorIntroLine=0;labDialogueT=0;
+    successorHazards.clear();
     ballastHazards.clear();
     ward.clear(); conduitClock.reset(); wardenUid = -1; shifts.bossPulseOff();
     relic.clear(); lastChunk = 0; snareTimer = 0.f; driftWasGliding = false;
@@ -404,7 +404,7 @@ inline void GameplayState::enterArena(int a) {
     holsterSword(); sword = Sword{};
     restoreDestructibles();
     abh.clear(); level.restoreZenith(); abGhosts.clear(); audio.stop(abWindH); audio.stop(abFlightH); audio.stop(abBeamH); abWindH = abFlightH = abBeamH = 0;
-    abSkyMarkT = abCrackT = -1.f; abLineT = abHintT = 0.f; abLineShown = -1; abDeathT = 1e9f;   // the Zenith whole again
+    abSkyMarkT = abCrackT = -1.f; abHintT = 0.f; abDeathT = 1e9f;   // the Zenith whole again
     if (!(act2() && a == ZENITH_ARENA)) msCheckpoint = false;   // MORNINGSTAR's checkpoint holds only for a retry in the Zenith
     msSwallowT = msCheckpoint ? Enemy::MS_SWALLOW : -1.f; msTotalityT = -1.f;   // (retried from him: already inside the eclipse)
     eclipseFlare = 0.f; abShaftT = abDawnT = -1.f; swordRoll = 0.f;
@@ -486,7 +486,7 @@ inline void GameplayState::retryArena() {
 
 inline void GameplayState::newRun() {
     if(training()){startTrainingLesson(trainingLesson);return;}
-    if(story()){labIntro=LabIntro{};labRoutes=0;successorHeard=0;storyRelayIsolated=false;storyTerminalsSeen=0;storyOwned=0;storyGrapple=false;storySword=swordStatueOpen=false;storyLogsSeen=0;storySeenSection=storyCheckpoint=0;storyBossDown=false;wakeSeen=false;}
+    if(story()){labIntro=LabIntro{};labRoutes=0;storyRelayIsolated=false;storyTerminalsSeen=0;storyOwned=0;storyGrapple=false;storySword=swordStatueOpen=false;storyLogsSeen=0;storySeenSection=storyCheckpoint=0;storyBossDown=false;wakeSeen=false;}
     msCheckpoint = false;
     director = WaveDirector{};
     director.level = &level;
@@ -533,7 +533,6 @@ inline void GameplayState::startBossRun() {
     prog.level = b.level; prog.points = b.points;
     bossStartAt = -1.f; bossKillT = 0.f; bossDone = false; bossPost = bossPosted = false;
     banners.clear();
-    pushBanner(b.name, b.where, {1.f, 0.6f, 0.25f}, 3.f);
     if (!g_devCam && g_devOverlay.empty() && !armoryOpen) openArmory();
 }
 // FAST's ROOM ATTACK: the room on its own, with the level a whole run would have reached by it, the
@@ -646,7 +645,7 @@ inline void GameplayState::handleDirectorEvents() {
                 const EnemyType* mini = nullptr;   // the room's mini-boss arriving: its name and how to beat it
                 for (auto& we : ar.waves[ev.value]) if (isMiniBoss(we.type)) mini = &we.type;
                 if (mini) {
-                    pushBanner(statsOf(*mini).name, statsOf(*mini).hint, statsOf(*mini).glow, 3.f);
+                    pushBanner(statsOf(*mini).name, "", statsOf(*mini).glow, 3.f);
                     audio.play("mini_sting", 128, SoundGroup::UI, true);
                     audio.duck(5.f, 0.6f);
                 } else if (ev.value > 0) pushBanner("SECOND WAVE", "", {1.f, 0.5f, 0.3f}, 1.4f);
@@ -659,36 +658,20 @@ inline void GameplayState::handleDirectorEvents() {
             pushBanner(buf, director.goal().label, {1.f, 0.9f, 0.4f}, director.hasGoal() ? 2.6f : 1.8f);
             audio.play("wave", 90, SoundGroup::UI); audio.duck(4.f, 0.4f);
             break;
-        case DirectorEvent::BOSS_START:
+        case DirectorEvent::BOSS_START: {
             if(ev.value<0 || ev.value>=(int)ar.waves.size() || ar.waves[ev.value].empty())break;
             if (bossStartAt < 0.f) bossStartAt = elapsedTime;   // BOSS: its clock
-            if(ar.waves[ev.value][0].type==EnemyType::SUCCESSOR)
-                pushBanner("THE SUCCESSOR","FINAL ASSESSMENT / WHITE: PARRY / GOLD: EVADE",{.65f,.9f,1},3.5f);
-            else if (ar.waves[ev.value][0].type == EnemyType::SOVEREIGN)
-                pushBanner("THE SOVEREIGN", "PARRY (F) THE BLADE AS IT LANDS", {1.f, 0.3f, 0.2f}, 4.f);
-            else if (ar.waves[ev.value][0].type == EnemyType::PENITENT)
-                pushBanner("THE PENITENT", "BREAK ITS CHAINS - JUMP LOW SWEEPS, SLIDE UNDER HIGH ONES", {1.f, 0.5f, 0.2f}, 4.5f);
-            else if (ar.waves[ev.value][0].type == EnemyType::ABSOLUTE && msCheckpoint) { abHintT = 6.f; }   // (MORNINGSTAR announces himself)
-            else if (ar.waves[ev.value][0].type == EnemyType::ABSOLUTE) {
-                pushBanner("THE ABSOLUTE", g_tellsColourblind ? "WHITE: PARRY   BLUE: DODGE OR BLOCK   RED: GET OUT" : "WHITE: PARRY   GOLD: DODGE OR BLOCK   RED: GET OUT", {1.f, 0.97f, 0.9f}, 4.5f);
-                abHintT = 9.f;
+            const EnemyType bossType = ar.waves[ev.value][0].type;
+            if (bossType == EnemyType::ABSOLUTE && msCheckpoint) abHintT = 6.f;
+            else if (bossType != EnemyType::UNIT24K && bossType != EnemyType::RESTORER) {
+                // Chapter 5 announces its bosses when their actual fights begin.
+                pushBanner(statsOf(bossType).name, "", statsOf(bossType).glow, 2.6f);
+                if (bossType == EnemyType::ABSOLUTE) abHintT = 9.f;
             }
-            else if (ar.waves[ev.value][0].type == EnemyType::LEVIATHAN)
-                pushBanner("THE LEVIATHAN", "DASH THE CRASH - SHOOT THE EYE WHILE IT'S DOWN", {1.f, 0.35f, 0.2f}, 4.5f);
-            else if(ar.waves[ev.value][0].type==EnemyType::SORTER)
-                pushBanner("THE SORTER","UNIT ?  PURPOSE: JUDGE   /   REJECT. RETURN TO LINE.",{1.f,.55f,.15f},4.f);
-            else if (ar.waves[ev.value][0].type == EnemyType::SUCCESSOR)
-                pushBanner("THE SUCCESSOR","PERFECT BODY / RELEASE DENIED",{.8f,.9f,1},4.f);
-            else if (ar.waves[ev.value][0].type == EnemyType::BALLAST)
-                pushBanner("BALLAST","CLEARANCE IN PROGRESS / WATCH THE BLADE AND CABLE",{.9f,.7f,.35f},4.f);
-            else if (ar.waves[ev.value][0].type == EnemyType::PACEMAKER)
-                pushBanner("THE PACEMAKER", "PARRY THE WHITE - IT RACES YOU TO THE BEACON", {1.f, 0.6f, 0.15f}, 4.f);
-            else if (ar.waves[ev.value][0].type == EnemyType::UNIT24K || ar.waves[ev.value][0].type == EnemyType::RESTORER) {}   // (Chapter 5's announce themselves: Gameplay_Cold.h, Gameplay_Restorer.h)
-            else
-                pushBanner("THE WARDEN", "CUT ITS CONDUITS - HIT THE CORE WHEN IT VENTS", {1.f, 0.2f, 0.65f}, 3.5f);
             audio.play("wave", 128, SoundGroup::UI); audio.play("explosion", 70, SoundGroup::UI); audio.duck(4.f, 0.4f);
             shake(0.6f, 0.06f);
             break;
+        }
         case DirectorEvent::NEW_TYPE: {
             EnemyType t = (EnemyType)(ev.value & 255);
             Hollow h = (Hollow)(ev.value >> 8);
@@ -1411,7 +1394,6 @@ inline void GameplayState::updateAscension(float dt) {
     }
     if (ascendT >= ASCEND_SINK + ASCEND_CARD + ASCEND_WHITE) {
         enterArena(ZENITH_ARENA);
-        pushBanner("THE ECLIPSE BREAKS", "SOMETHING ABOVE IT DOES NOT", {1.f, 0.95f, 0.85f}, 3.5f);
         captureMouse(true);
     }
 }

@@ -16,7 +16,6 @@ constexpr float CUT = 1.f;                           // the white: the far shot 
 constexpr float FALL0 = 1.6f, FALL1 = 9.f;           // it sinks into the plain
 constexpr float SLAM = 7.2f;                         // its chest hits the ground
 constexpr float MOON0 = 8.f, MOON1 = 11.5f;          // the real moon opens
-constexpr float CAP0 = 9.f, CAP1 = 12.8f;            // the caption
 constexpr float DARK0 = 12.8f;                       // to black, then the card
 inline float sm(float a, float b, float x) { float u = std::clamp((x - a) / (b - a), 0.f, 1.f); return u * u * (3.f - 2.f * u); }
 }
@@ -48,7 +47,7 @@ inline float GameplayState::eyeBeamReach(glm::vec3 o, glm::vec3 d, float maxT) c
 inline void GameplayState::wakeEye() {
     eye.wake(gleaner.eye(), eyeHang(), deckLo, deckHi, deckY);
     gleaner.scream();
-    pushBanner("THE EYE", "IT TEARS ITSELF OUT OF ITS CHEST", {1.f, 0.2f, 0.12f}, 4.f);
+    pushBanner("THE EYE", "", {1.f, 0.2f, 0.12f}, 2.6f);
     audio.play("mini_sting", 128, SoundGroup::UI, true);
     shake(2.f, 0.03f);
 }
@@ -101,7 +100,7 @@ inline void GameplayState::updateSummit(float dt) {
             gleaner.scream();
             fx.spawnBurst(e.pos, {2.8f, 0.5f, 0.2f}, 90, 16.f, 1.2f, 6.f);
             shake(1.f, 0.05f); hitStopFrames = std::max(hitStopFrames, 6);
-            pushBanner("IT FALTERS", "DOWN AT THE ROOF'S EDGE, WIDE OPEN", {1.f, 0.45f, 0.2f}, 3.f);
+            pushBanner("EYE EXPOSED", "REACH THE ROOF'S EDGE", {1.f, 0.45f, 0.2f}, 3.f);
             break;
         case EyeEvent::RECOVER: { SfxMixer::Opts f = o; f.pitch = 0.55f; audio.playOpts("boost", f); break; }
         case EyeEvent::FALL:
@@ -109,7 +108,7 @@ inline void GameplayState::updateSummit(float dt) {
             fx.spawnBurst(e.pos, {3.f, 0.5f, 0.2f}, 120, 18.f, 1.4f, 6.f);
             shake(1.5f, 0.06f); hitStopFrames = std::max(hitStopFrames, 10);
             styleSystem.addStyle(400.f, StyleSource::PARRY); gainXp(300);
-            pushBanner("IT FALLS", "WALK UP TO IT. TEAR IT OUT.", {1.f, 0.3f, 0.15f}, 5.f);
+            pushBanner("APPROACH THE EYE", "", {1.f, 0.3f, 0.15f}, 5.f);
             break;
         default: break;
         }
@@ -300,17 +299,12 @@ inline void GameplayState::gatherEye(std::vector<BoxInstance>& out) {
     }
 }
 
-// Over the collapse: the white of the tear, the caption, the dark, the skip prompt
+// Over the collapse: the white of the tear, the dark, the skip prompt
 inline void GameplayState::renderSummitEnd() {
     ui.begin2D(); auto& U = ui.ui;
     const float t = summitEndT;
     const int bar = (int)(70.f * summit::sm(summit::CUT, summit::CUT + 1.f, t));
     if (bar > 0) { U.rect(0, 0, SCREEN_W, bar, {0.02f, 0.f, 0.f, 1}); U.rect(0, SCREEN_H - bar, SCREEN_W, bar, {0.02f, 0.f, 0.f, 1}); }
-    float cap = summit::sm(summit::CAP0, summit::CAP0 + 0.8f, t) * (1.f - summit::sm(summit::CAP1 - 0.6f, summit::CAP1, t));
-    if (cap > 0.f) {
-        U.text("THE GLEANER", SCREEN_W / 2, SCREEN_H / 2 - 150, 3, {1.f, 0.4f, 0.25f, cap}, true);
-        U.text("PURPOSE: RECLAIM  /  STATUS: TERMINATED", SCREEN_W / 2, SCREEN_H / 2 - 110, 1, {0.9f, 0.6f, 0.5f, cap}, true);
-    }
     if (t > 2.f && t < summit::DARK0) {
         std::string skip = "HOLD " + binds().label(Act::JUMP) + " TO SKIP";
         U.text(skip.c_str(), SCREEN_W / 2, SCREEN_H - 24, 1, {0.7f, 0.45f, 0.4f, 0.7f}, true);

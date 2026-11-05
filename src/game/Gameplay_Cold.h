@@ -13,7 +13,7 @@ inline void GameplayState::beginCold() {
     wakeT = -1; clawT = -1; beltBodies.clear(); player.eyeHeight = 1.7f;
     player.camera.farPlane = cold::FAR_PLANE;
     coldCapsules.clear(); coldLaunchT = 3.f; coldShardT = 0.f; coldLaunches = 0;
-    if (!wakeSeen && director.arena == 0) pushBanner(level.story.title, "CHAPTER 5  /  NOTHING HERE IS THROWN AWAY", {0.75f, 0.86f, 0.95f}, 4.f);
+    if (!wakeSeen && director.arena == 0) pushBanner(level.story.title, "CHAPTER 5", {0.75f, 0.86f, 0.95f}, 4.f);
     wakeSeen = true;
     if (director.arena >= 5 || storyCheckpoint >= 5) coldRecall = true;   // (a start or a save past Rack 24: it is already yours)
     // RECALL, in 24-A's chest
@@ -191,13 +191,12 @@ inline void GameplayState::updateCold(float dt) {
     // 24-K: when its duel starts, it names itself
     if (director.arena == 7 && director.fighting() && !coldKIntro) {
         coldKIntro = true;
-        pushBanner("UNIT 24-K", "RESTORED TO SPECIFICATION  /  PURPOSE: COMPLY", {0.85f, 0.9f, 0.95f}, 3.f);
-        coldKLineT = 3.2f; coldKHintT = 7.f;
+        pushBanner("UNIT 24-K", "", {0.85f, 0.9f, 0.95f}, 2.6f);
+        coldKHintT = 3.f;
         audio.play("barrier", 110, SoundGroup::WORLD, true);   // (the ring going up round the yard)
     }
-    if (coldKLineT > 0.f && (coldKLineT -= dt) <= 0.f) pushBanner("\"YOU ARE DAMAGED. I AM CORRECT.\"", "", {0.85f, 0.9f, 0.95f}, 3.5f);
     if (coldKHintT > 0.f && (coldKHintT -= dt) <= 0.f && !coldKDown)
-        pushBanner("IT CANNOT FOLLOW YOU UP", "GRAPPLE ONTO THE CANOPY OR THE GANTRY  -  GOLD LINE: STEP OUT  -  WHITE RUSH: PARRY", {0.85f, 0.9f, 0.95f}, 5.f);
+        pushBanner("USE THE HIGH GROUND", "GRAPPLE TO THE CANOPY OR GANTRY", {0.85f, 0.9f, 0.95f}, 5.f);
     if (g_devOverlay == "k24")   // dev: look at it (footage)
         for (const auto& e : enemies) if (e.alive && e.type == EnemyType::UNIT24K) {
             const glm::vec3 d = e.position + glm::vec3{0.f, e.height() * 0.6f, 0.f} - player.camera.position;

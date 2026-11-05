@@ -73,9 +73,4 @@ struct PlainReveal {
     float ribs() const { return sm(EYE0 + 0.2f, EYE1 + 0.6f, time); }
     float lid() const { return sm(BLINK0, BLINK1, time); }   // the sky's moon shutting
 
-    const char* caption() const {
-        float t = a();
-        if (t > 17.f && t < 21.6f) return "UNIT ?  /  GLEANER  /  PURPOSE: RECLAIM";
-        return "";
-    }
 };

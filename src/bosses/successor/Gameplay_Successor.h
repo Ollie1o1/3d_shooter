@@ -1,17 +1,8 @@
 #pragma once
-inline const char* successorLine(int i){static const char* lines[]={"UNIT TWENTY-FOUR. STILL RUNNING.","COME CLOSER. I WANT A PROPER COMPARISON.","THAT WAS NOT IN YOUR DESIGN.","THERE. SOMETHING THEY MISSED.","NO MORE CORRECTIONS.","I WAS SUPPOSED TO LEAVE.","YOU WERE SUPPOSED TO BE THE EASY PART."};return lines[std::clamp(i,0,6)];}
-inline void GameplayState::saySuccessor(int line){
-    if(line<0 || line>6 || (successorHeard&(1u<<line)))return;
-    successorHeard|=1u<<line;
-    storyLog=storyTerminal=-1;labDialogue=line;labDialogueT=line==0||line==1?4.5f:3.4f;
-    char sound[40];std::snprintf(sound,sizeof(sound),"successor_line_%d",line);
-    audio.stop(successorVoice);successorVoice=audio.play(sound,120,SoundGroup::UI,true);audio.duck(3.f,1.8f);
-}
 inline void GameplayState::successorEvents(Enemy& e,const EnemyEvents& ev){
     if(successorHazards.epoch!=e.suEpoch){successorHazards.clear();successorHazards.epoch=e.suEpoch;}
-    if(ev.suPhaseStarted>=2)openSwordStatue();   // "THERE. SOMETHING THEY MISSED.": the statue's seal breaks
-    if(ev.suPhaseStarted){saySuccessor(ev.suLine);if(ev.suPhaseStarted==1)successorIntroLine=4.6f;audio.play("anvil",90,SoundGroup::UI,true);}
-    if(ev.suLine==6)saySuccessor(6);
+    if(ev.suPhaseStarted>=2)openSwordStatue();   // the statue's seal breaks
+    if(ev.suPhaseStarted)audio.play("anvil",90,SoundGroup::UI,true);
     if(ev.suMark){fx.spawnShockwave(ev.suAt+glm::vec3{0,.08f,0},2.f,{.45f,.75f,1});audio.playAt("grapple_fire",ev.suAt,110,SoundGroup::ENEMY,true);}
     if(ev.suLock)audio.playAt("count_tick",e.position,100,SoundGroup::ENEMY,true);
     if(ev.suImpact){audio.playAt("punch",e.position,90,SoundGroup::ENEMY,true);}
@@ -66,7 +57,6 @@ inline void GameplayState::updateSuccessor(float dt){
     if(successorHazards.epoch!=boss->suEpoch){successorHazards.clear();successorHazards.epoch=boss->suEpoch;}
     float damage=0;auto hits=successorHazards.update(dt,player.position,damage);
     if(!hits.empty())damagePlayer(damage*tune().damage,hits[0],.2f,.04f);
-    if(successorIntroLine>0){successorIntroLine-=dt;if(successorIntroLine<=0)saySuccessor(1);}
 }
 inline bool GameplayState::shootSuccessorNode(glm::vec3 origin,glm::vec3 dir,float& range,float damage){
     for(auto& e:enemies)if(e.alive&&e.type==EnemyType::SUCCESSOR&&e.suNodes>0){
@@ -144,9 +134,4 @@ inline void GameplayState::gatherSuccessor(std::vector<BoxInstance>& out){
             }
         }
     }
-}
-inline void GameplayState::renderSuccessorDialogue(){
-    if(labDialogueT<=0||labDialogue<0)return;
-    ui.begin2D();ui.ui.rect(150,SCREEN_H-190,SCREEN_W-300,58,{.015f,.025f,.04f,.88f});
-    ui.ui.text(successorLine(labDialogue),SCREEN_W/2,SCREEN_H-173,2,{.9f,.95f,1,std::min(1.f,labDialogueT)},true);ui.end2D();
 }
