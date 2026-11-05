@@ -84,8 +84,12 @@ int main(){
         bridges&=std::fabs(L.groundAt(x,c.z-27,c.y)-c.y)<.02f;Walk w(L,c+glm::vec3{x,0,-17});bridges&=w.to(c+glm::vec3{x,0,-36});m.drive=0;L.updateMovers(0);}
     CHECK(bridges,"each contact deploys real bridge collision and provides a walkable alternative across the observation gap");
     auto end=lab::centre(9);Walk coda(L,end+glm::vec3{0,0,-32});CHECK(coda.to(end+glm::vec3{0,0,-110}),"boss exit leads to a physically playable fractured garden threshold");
-    LabIntro intro;intro.start(false);for(int f=0;f<60*10;++f)intro.update(DT,false);CHECK(intro.active() && intro.patientRise()<.1f,"the entry anomaly waits for a sustained ordinary motor test");
-    for(int f=0;f<60*14;++f)intro.update(DT,false);
+    LabIntro intro;intro.start(false);
+    CHECK(intro.exterior() && intro.eye().y<LabIntro::PLAIN+2 && intro.carY()==LabIntro::PLAIN,"the arrival begins on Chapter 2's road at the tower's foot, the lift car waiting on the plain");
+    for(int f=0;f<60*10;++f)intro.update(DT,false);CHECK(intro.active() && intro.carY()<LabIntro::PLAIN+LabIntro::TOWER,"ten seconds in, the car is still climbing inside the tower");
+    for(int f=0;f<60*12;++f)intro.update(DT,false);CHECK(intro.active() && std::fabs(intro.carY())<1e-3f && intro.frontDoors()>.99f && intro.skyMix()>.99f,"the car docks at Admissions' floor and its doors open under the void");
+    {LabTheatre theatre;CHECK(theatre.rise()==0 && !theatre.floating(),"the theatre's subject walks the floor until the player comes close");theatre.time=8;CHECK(theatre.floating() && theatre.rise()>1.3f,"then it lifts off it");}
+    for(int f=0;f<60*12;++f)intro.update(DT,false);
     CHECK(!intro.active()&&intro.seen,"normal cutscene completion marks it seen exactly once");
     intro.start(false);for(int f=0;f<100;++f)intro.update(DT,true);CHECK(intro.active()&&!intro.seen,"holding Space from chapter selection cannot accidentally skip the intro");
     intro.update(DT,false);for(int f=0;f<45;++f)intro.update(DT,true);CHECK(!intro.active()&&intro.seen,"release then hold the bound skip action exits cleanly");intro.start(true);CHECK(!intro.active(),"seen cutscenes stay skipped on retry/Continue");

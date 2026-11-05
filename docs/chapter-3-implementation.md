@@ -13,7 +13,7 @@ than work that still needs starting.
   Boss select appends **THE SUCCESSOR** at
   index 9 without changing the earlier record indices.
 - A normal Chapter 2 ending continues into this chapter with upgrades carried.
-- Hold the bound Jump action to skip the 23-second first-person observation scene.
+- Hold the bound Jump action to skip the 32-second first-person arrival (see below).
   Completing/skipping it persists the seen flag; retries and Continue do not replay it.
   Release Jump after selecting the chapter before holding it to skip, so a held
   menu Space cannot dismiss the scene accidentally. Select a new Chapter 3 run
@@ -49,10 +49,19 @@ Broken orbital frames rotate above the calibrated boss floor. Split pylons and
 suspended arches surround it, with a lensed void and fractured accretion bands
 in the nebula beyond. The exterior shifts toward crimson as the boss loses health.
 
-The initial observation subject floats while its wall silhouette continues to
-walk and the instrument reports floor contact. A window changes to incompatible
-water while a stylized ward grid remains reflected. The camera eases into the
-subject and returns to the normal gameplay view without a lateral jump.
+The arrival (`LabIntro.h`, set in `Gameplay_LabLift.h`) picks up where Chapter 2
+ends: the tower on the Far Road. From the road, walk into its foot and a service
+lift climbs the shaft past its lit slots, out through the beacon; the ash plain
+falls away, the red sky goes black then violet, debris turns past and the lab hangs
+overhead, ward after ward going down. The car docks behind Admissions' entry wall;
+looking down through its glass floor the tower and plain are small and sinking
+("FLOOR CONTACT: CONFIRMED"); the doors close behind you and a scanner calls the
+chassis legacy. Play starts at `LabIntro::handoff()`. Under Chapter 2's sky none
+of the lab is drawn (`labAshSky()`). New PA lines `lab_pa_5/6`.
+
+The old observation scene is now Admissions' theatre (`LabTheatre`): walk up to
+the glass and the subject lifts off the floor while its silhouette keeps walking,
+and the window turns to water.
 
 The late wards have transparent observation glass, procedural nebula/trench skies,
 large exterior fragments/cliffs with parallax, floating dormant bodies, a numbered
@@ -295,3 +304,21 @@ verify it, and deploy it; `make web` alone does not update the public website.
 - **Air.** Ward dust (`Ambient::SPECKS`), the void's coloured motes in the open halls (`NEBULA`) and
   marine snow sinking through Hadal (`MARINE`). The wards' room tone has a patient monitor beeping for
   nobody; Hadal's a sonar ping and long low groans from the trench (`RoomTone.h` MONITOR, SONAR, GROAN).
+
+## Glass walls pass (2026-11-05)
+
+- Every outer side wall of the enclosed wards (all but the garden) is floor-to-roof
+  glass in ~9 m panes (`lab::windows`), each with a hidden collision pane, a glass
+  quad (`renderLabGlass`) and a deep frame (`Dresser::windowFrame`). Racks keep off
+  the glass; tanks stand a step in front of it.
+- Those wards' sky is the nebula (Surgical included; Hadal keeps the trench), with
+  violet fog, the far wings (and the great ring from Admissions) in `gatherLabVista`.
+- Outside each: drifting debris, two broken islands, a dark service deck under
+  every slab, and in Admissions, Recovery, Load Testing and Long-Term Care a lit
+  ward with no door that someone paces (`labWards`).
+- Motor Assessment has a walkable glass plate in its floor looking straight down
+  (`lab::glassFloor`).
+- `box_inst.frag` surface 6 is far open ground (no rim light or seams).
+- Rebake after edits: `make tools/light_bake && ./tools/light_bake story3`.
+- Benchmarks compare builds only with the same `settings.cfg`: it is read from
+  beside the executable.

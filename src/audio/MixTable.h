@@ -77,7 +77,7 @@ inline const std::vector<MixEntry>& mixTable() {
         // Original intelligible synthetic speech, authored for the lab. Separate from wordless enemy voices.
         {"successor_line_0",C::UI,0.1f},{"successor_line_1",C::UI,-0.3f},{"successor_line_2",C::UI,1.0f},
         {"successor_line_3",C::UI,1.4f},{"successor_line_4",C::UI,1.1f},{"successor_line_5",C::UI,1.8f},{"successor_line_6",C::UI,1.3f},
-        {"lab_pa_0",C::UI,1.3f},{"lab_pa_1",C::UI,-0.1f},{"lab_pa_2",C::UI,-1.3f},{"lab_pa_3",C::UI,0.8f},{"lab_pa_4",C::UI,1.2f},
+        {"lab_pa_0",C::UI,1.3f},{"lab_pa_1",C::UI,-0.1f},{"lab_pa_2",C::UI,-1.3f},{"lab_pa_3",C::UI,0.8f},{"lab_pa_4",C::UI,1.2f},{"lab_pa_5",C::UI,0.f},{"lab_pa_6",C::UI,0.f},
         // the forge: a room cleared (three variants), the beacon, a new best; splits, the countdown, OVERDRIVE's cues
         {"anvil", C::ACTION, -3.5f}, {"anvil_final", C::ACTION, -2.8f}, {"record", C::UI, -5.0f}, {"split_behind", C::WORLD, 1.7f},
         {"count_tick", C::UI, -2.9f}, {"count_go", C::UI, -0.8f}, {"drive_warn", C::UI, 0.7f}, {"drive_ready", C::UI, -1.7f}, {"dash_ready", C::UI, 4.9f}, {"potion_drop", C::WORLD, -0.4f},

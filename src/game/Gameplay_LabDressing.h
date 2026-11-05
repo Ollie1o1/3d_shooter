@@ -19,6 +19,9 @@ inline void GameplayState::gatherLabDressing(std::vector<BoxInstance>& out){
     };
 
     // Debris adrift: each piece bobs on its own slow orbit and tumbles
+    // (the arrival's opening shots, under Chapter 2's sky, see none of the void)
+    if(labAshSky())return;
+    const bool early=labIntro.active() && labIntro.time<14.8f;   // (the wings come up with the void)
     for(const auto& d:st.labDrift){
         if(!labfx::near(room,d.room))continue;
         float ph=d.phase;
@@ -105,7 +108,7 @@ inline void GameplayState::gatherLabDressing(std::vector<BoxInstance>& out){
             prev=p;
         }
     }
-    gatherLabVista(out);
+    if(!early)gatherLabVista(out);
 }
 
 // The far distance of the open wards, 230-450 m out where the fog turns things to silhouettes
@@ -119,9 +122,30 @@ inline void GameplayState::gatherLabVista(std::vector<BoxInstance>& out){
     // instanced parts per copy, and copies share their meshes, so the whole vista is a few draw calls
     using namespace rig;using glm::vec3;
     const float t=gameClock;const int room=labfx::nearRoom(player.position);
-    if(room<7)return;
     const vec3 c=lab::centre(room);
     const vec3 CYAN{.3f,1.1f,1.3f},WARM{1.5f,1.3f,1.f},GLOW{.2f,.9f,1.f};
+    if(room<7){
+        // The enclosed wards see the lab's other wings out of their windows, either side
+        // (not the garden, under its own sky)
+        if(room==4)return;
+        static const float WING[5][6]={{-250,30,-40,60,16,34},{270,-30,30,70,18,30},{-300,-70,90,44,12,26},
+                                       {240,80,-120,52,14,28},{-200,120,160,46,12,24}};
+        for(int k=0;k<5;++k){
+            float seed=.29f+k*.23f+room*.11f;
+            mat4 m=T(c+vec3{WING[k][0]*(room&1?-1.f:1.f),WING[k][1]+std::sin(t*.05f+seed)*4.f,WING[k][2]})*RY(seed*2.f+t*.006f*(k&1?1.f:-1.f))
+                  *RZ(.08f*std::sin(seed*9.f))*RX(.06f*std::cos(seed*5.f))*S(vec3{WING[k][3]/60.f,WING[k][4]/16.f,WING[k][5]/34.f});
+            float flick=labfx::hash(seed*31,std::floor(t*(.7f+.3f*k)))>.3f?1.f:.1f;
+            propdraw::push(out,"lab_wing",m,CYAN*flick);
+        }
+        if(room==0){
+            // and, off to the west, the great ring the lab turns under (it is overhead by Celestial)
+            const vec3 at=c+vec3{-330,60,-160};const float R=110;
+            mat4 ring=T(at)*RY(.9f)*RX(.25f)*RZ(t*.02f);
+            for(int k=0;k<40;++k)
+                propdraw::push(out,"lab_ring",ring*RZ(k*6.2832f/40)*T(vec3{R,0,0}),(k&1?CYAN:vec3{.6f,.3f,1.2f})*.9f);
+        }
+        return;
+    }
 
     if(room==7||room==9){
         // Wings of the lab adrift (the model is 60 x 16 x 34 m), bobbing and turning very slowly; the

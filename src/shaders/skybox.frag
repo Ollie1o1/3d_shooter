@@ -24,6 +24,7 @@ uniform float uFlare;       // 0..1: a flash of the eclipse (his entrance, his p
 uniform float uDawn;        // 0..1: the eclipse sliding off the sun (his death)
 uniform float uSwallow;     // 0..1: MORNINGSTAR: the eclipse grows over the whole sky, then its ring of fire settles on the horizon
 uniform float uLabRealm; // 0 ordinary, 1 nebula, 2 hadal, 3 fractured
+uniform float uRealmFade; // 1 = the lab's realm alone; less blends it over the ordinary sky (Chapter 3's arrival)
 uniform float uAssessment;
 uniform float uMoonLid;     // 0..1: the plain's moon blinking shut (it was an eye; it is the Gleaner's now)
 uniform float uPlain;       // 1 = THE BLOOD MOON PLAIN (Chapter 4): the blood moon, burning cloud
@@ -299,6 +300,7 @@ void main() {
     if (uPlain > 0.5) { FragColor = vec4(plainSky(dir), 1.0); return; }
     if (uCold > 0.5) { FragColor = vec4(coldSky(dir), 1.0); return; }
 
+    vec3 labSky=vec3(0.0);float labW=0.0;
     if (uLabRealm > 0.5) {
         float az=atan(dir.z,dir.x), elevation=asin(clamp(dir.y,-1.0,1.0));
         vec2 p=vec2(az,elevation)*3.0;
@@ -329,7 +331,8 @@ void main() {
             realm+=vec3(1.1,.08,.25)*rim*(.8+uAssessment*.7);
             realm+=mix(vec3(.35,.13,.65),vec3(1.0,.055,.18),uAssessment)*band*fracture;
         }
-        FragColor=vec4(realm,1.0);return;
+        if(uRealmFade>0.999){FragColor=vec4(realm,1.0);return;}
+        labSky=realm;labW=uRealmFade;
     }
 
     if (uEclipse > 0.5) {
@@ -378,5 +381,5 @@ void main() {
     if (y < ridgeFar && y > -0.05)  col = mix(col, uMountain * 1.4 + uHorizon * 0.15, 0.92);
     if (y < ridgeNear && y > -0.05) col = mix(col, uMountain, 0.96);
 
-    FragColor = vec4(col, 1.0);
+    FragColor = vec4(mix(col, labSky, labW), 1.0);
 }

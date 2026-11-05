@@ -116,7 +116,12 @@ vec3 bossSurface(int s, vec3 base, out vec3 emi, float dist) {
 void main()
 {
     vec3 baseColor = vColor, surfEmi = vec3(0.0);
-    if (vSurf > 0.5 && uSurfaces != 0) baseColor = bossSurface(int(vSurf + 0.5), vColor, surfEmi, length(viewPos - FragPos));
+    // 6: open ground seen from far off (Chapter 3's arrival): ash grain, no rim light or seams,
+    // which a plain seen at a glancing angle would otherwise turn white with
+    bool ground = vSurf > 5.5 && vSurf < 6.5;
+    if (ground) baseColor *= 0.82 + 0.18 * sin(FragPos.x * 0.07 + sin(FragPos.z * 0.05) * 3.0) * sin(FragPos.z * 0.09 + 1.3)
+                           + 0.12 * fract(sin(dot(floor(FragPos.xz * 0.7), vec2(12.9898, 78.233))) * 43758.5453);
+    else if (vSurf > 0.5 && uSurfaces != 0) baseColor = bossSurface(int(vSurf + 0.5), vColor, surfEmi, length(viewPos - FragPos));
     vec4 texColor = texture(uTexture, TexCoord) * vec4(baseColor, 1.0);
 
     vec3 norm    = normalize(Normal);
@@ -145,12 +150,12 @@ void main()
 
     // Rim light in the sky colour keeps silhouettes readable against the floor
     float rim     = pow(1.0 - max(dot(norm, viewDir), 0.0), 3.0);
-    vec3 rimColor = (uSkyAmb * 1.4 + vec3(0.06)) * rim;
+    vec3 rimColor = ground ? vec3(0.0) : (uSkyAmb * 1.4 + vec3(0.06)) * rim;
 
     // Dark seams at face edges make every box in a rig read as a separate part
     float eu = min(TexCoord.x, 1.0 - TexCoord.x);
     float ev = min(TexCoord.y, 1.0 - TexCoord.y);
-    float edgeFactor = smoothstep(0.0, 0.06, min(eu, ev));
+    float edgeFactor = ground ? 1.0 : smoothstep(0.0, 0.06, min(eu, ev));
 
     vec3 lighting = ambient + diff * lightColor + pointContrib + neonLight(FragPos, norm);
     vec3 result   = (lighting * texColor.rgb + specular + rimColor) * mix(0.35, 1.0, edgeFactor)
