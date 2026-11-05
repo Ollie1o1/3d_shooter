@@ -6,8 +6,8 @@ struct SuccessorHazards {
     std::vector<Mark> marks;
     int epoch=-1;
     void clear(){marks.clear();epoch=-1;}
-    void circle(glm::vec3 p,float delay,float damage,int kind=0,float radius=2.8f,float height=2.8f){if(marks.size()<8)marks.push_back({p,p,delay,.35f,radius,damage,kind,false,height});}
-    void line(glm::vec3 a,glm::vec3 b,float delay){if(marks.size()<8)marks.push_back({a,b,delay,.28f,.8f,22,1,false});}
+    void circle(glm::vec3 p,float delay,float damage,int kind=0,float radius=2.8f,float height=2.8f){if(marks.size()<40)marks.push_back({p,p,delay,.35f,radius,damage,kind,false,height});}
+    void line(glm::vec3 a,glm::vec3 b,float delay,float radius=.8f,float damage=22){if(marks.size()<40)marks.push_back({a,b,delay,.28f,radius,damage,1,false});}
     std::vector<glm::vec3> update(float dt,glm::vec3 feet,float& damage){
         std::vector<glm::vec3> hits;damage=0;
         for(auto& m:marks){

@@ -206,6 +206,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
         storyOwned = resumedStory.owned; storyLogsSeen = resumedStory.logs;
         storyTerminalsSeen = resumedStory.terminals; storyGrapple = resumedStory.grapple;
         labIntro.seen=resumedStory.labIntroSeen;labRoutes=resumedStory.labRoutes;
+        storySword = resumedStory.sword; if (storySword) swordStatueOpen = true;
         storyBossDown = resumedStory.bossDown; storyRelayIsolated = resumedStory.relayIsolated; wakeSeen = resumedStory.wakeSeen;
         prog = resumedStory.prog;
     }
@@ -1052,7 +1053,7 @@ inline void GameplayState::update(float dt) {
         }
     }
     static Uint8 noKeys[SDL_NUM_SCANCODES] = {};
-    if (g_devNoMouse) keys = noKeys;   // screenshot runs: the real keyboard doesn't reach the game
+    if (g_devNoMouse) keys = g_devKeys;   // screenshot runs: the real keyboard doesn't reach the game (a runtime check may hold keys)
     if (story()) {   // STORY: the wake-up has the controls (jump held skips it); no gun, no grapple yet
         storySkipKey = keys[SDL_SCANCODE_SPACE] != 0;
         if (storyLocked() || storyEndT >= 0.f) keys = noKeys;

@@ -5,6 +5,7 @@
 // footage tools (a fixed camera, poses held for screenshots, recordings).
 // See "Dev tools" in the README for every flag.
 // =============================================================================
+#include <SDL2/SDL.h>
 #include <glm/glm.hpp>
 #include <algorithm>
 #include <string>
@@ -44,6 +45,7 @@ inline bool devSkip(const char* pass) {
     return list.find("," + std::string(pass) + ",") != std::string::npos;
 }
 inline bool      g_devNoMouse = false;   // screenshot runs: never grab or read the mouse
+inline Uint8     g_devKeys[SDL_NUM_SCANCODES] = {};   // runtime checks (main.cpp --verify-*): keys held for a no-mouse run
 inline int g_devHollow = 0;            // --hollow N: --spawn enemies get Hollow variant N (1 ENRAGED, 2 TWINNED, 3 HALOED)
 inline std::vector<int> g_devSpawns;    // --spawn N (repeatable): enemies of type N in an arc 9-12 m in front of the camera
 // Footage (--record, see main.cpp): every frame advances a fixed step, the

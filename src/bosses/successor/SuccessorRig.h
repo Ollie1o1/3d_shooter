@@ -51,6 +51,15 @@ inline SuccessorPose successorStroke(SuccessorPose p,AttackKind attack,int step,
         p.lean=strike?-.15f:.25f;p.torsoYaw=.15f;
     }else if(attack==AttackKind::SU_RECALL){
         p.shR=strike?-1.1f:-2.4f;p.elR=strike?.15f:.7f;p.handR=strike?.65f:-.5f;p.lean=strike?.3f:-.1f;
+    }else if(attack==AttackKind::SU_LATTICE){   // both hands raised, then raked down and apart
+        p.shR=p.shL=strike?-.6f:-2.5f;p.splayR=strike?-1.2f:-.3f;p.splayL=strike?1.2f:.3f;p.elR=p.elL=strike?.15f:.6f;
+        p.handR=p.handL=strike?.7f:-.4f;p.lean=strike?.4f:-.2f;p.head=strike?.15f:-.2f;
+    }else if(attack==AttackKind::SU_CASCADE){   // a fist up, then down into the floor on one knee
+        p.shR=strike?-.2f:-2.6f;p.elR=strike?.1f:.9f;p.handR=strike?.8f:-.5f;p.lean=strike?.75f:-.15f;
+        p.hipR=strike?-1.1f:-.2f;p.kneeR=strike?1.5f:.4f;p.hipL=strike?.3f:-.3f;p.kneeL=strike?1.4f:.5f;p.head=strike?.25f:-.15f;
+    }else if(attack==AttackKind::SU_SEVER){   // the wide backhand, flinging the fan of blades
+        p.hipYaw=strike?1.1f:-.9f;p.torsoYaw=strike?1.25f:-1.05f;p.lean=.3f;p.roll=strike?-.2f:.15f;
+        p.shR=-1.4f;p.splayR=strike?-1.5f:.3f;p.elR=strike?.1f:1.3f;p.shL=-.6f;p.elL=1.3f;p.hipL=-.55f;p.kneeL=.85f;
     }else if(attack==AttackKind::SU_PERFUSION){
         p.shR=p.shL=strike?-1.6f:-.9f;p.elR=p.elL=strike?.1f:1.4f;p.splayR=-.4f;p.splayL=.4f;p.lean=strike?.25f:-.12f;
     }
@@ -108,6 +117,6 @@ inline bool successorFilePose(const Enemy& e,float time,const mat4& root,mat4& f
     f.chan[C_GLOW]=base;f.chan[C_SEAM]=base*.7f;f.chan[C_CORE]=e.suOpen>0 || e.staggered()?vec3{.15f,1.6f,2.f}:base*1.35f;
     f.chan[C_EYE]=active?tell:vec3{1.6f,.08f,.12f};
     f.chan[C_TELL_R]=active?tell*(.8f+e.telegraphProgress()):base;
-    f.chan[C_TELL_L]=active && (e.suStep%2 || e.attack==AttackKind::SU_SUTURE || e.attack==AttackKind::SU_PERFUSION)?tell*(.8f+e.telegraphProgress()):base;
+    f.chan[C_TELL_L]=active && (e.suStep%2 || e.attack==AttackKind::SU_SUTURE || e.attack==AttackKind::SU_PERFUSION || e.attack==AttackKind::SU_LATTICE)?tell*(.8f+e.telegraphProgress()):base;
     glow=base;return true;
 }

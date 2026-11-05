@@ -1188,6 +1188,7 @@ public:
     bool finishKey();                   // the FINISH key (E / R3): a finisher if one's in reach; never a parry
     static constexpr float FINISH_REACH = 6.f;
     float finishHint = 0.f;             // 0..1 the crosshair says a finisher is in reach
+    const char* finishWhat = "FINISH";  // what it says under it (the fallen eye: TEAR IT OUT)
     float finishCueCd = 0.f;            // the "ready" cue: not more than this often
     int   finishReadyUid = -1;          // the last one it cued for
     // OVERDRIVE: the meter full is a power state: harder, faster shots that never need

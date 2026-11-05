@@ -63,6 +63,7 @@ struct HudState {
     bool  damageNumbers = true;
     float finishHint = 0.f;        // 0..1 a finisher is in reach: the crosshair says so
     std::string finishKey = "E";   // what to press for it (the FINISH binding, R3 on a pad)
+    const char* finishWhat = "FINISH";
     // Attacks winding up where you can't see them: which way (as the damage indicators), how close to landing (0..1)
     struct Threat { float angle, urgency; };
     Threat threats[6];
@@ -977,7 +978,7 @@ private:
             for (int sx : {-1, 1}) for (int sy : {-1, 1})
                 ui.rect(cx + sx * r - 2, cy + sy * r - 2, 4, 4, fc);
             if (h.finishHint > 0.5f) {   // what to press, small, just under it (only while one is in reach)
-                std::string t = h.finishKey + "  FINISH";
+                std::string t = h.finishKey + "  " + h.finishWhat;
                 ui.textShadow(t.c_str(), cx, cy + 22, 1, {1.f, 0.7f, 0.3f, h.finishHint}, true);
             }
         }

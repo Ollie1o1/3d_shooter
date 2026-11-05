@@ -39,7 +39,7 @@ inline void GameplayState::pullStatueSword() {
     fx.spawnBurst(lab::swordStatueGrip(), gunkit::SWORD_GLOW * 1.6f, 50, 8.f, 0.7f, 6.f);
     fx.spawnShockwave(lab::swordStatue() + glm::vec3{0.f, 0.45f, 0.f}, 6.f, gunkit::SWORD_GLOW);
     shake(0.35f, 0.03f); hitStopFrames = std::max(hitStopFrames, 4);
-    drawSword();
+    drawSword(); saveStoryProgress();   // (kept through a death and a continue)
     pushBanner("OATHBREAKER", "IT WAS ALWAYS YOURS / 5 DRAWS IT", {1.f, 0.35f, 0.5f}, 4.f);
 }
 
