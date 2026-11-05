@@ -181,9 +181,9 @@ inline void GameplayState::updateSummitEnd(float dt) {
         g.eyeOpen = 0.f;
     }
     if (crossed(summit::CUT)) meteors.stopped = true;   // the sky goes quiet
-    if (crossed(summit::FALL0 + 0.2f)) {   // its last roar, lower
-        SfxMixer::Opts o; o.group = SoundGroup::UI; o.priority = true; o.unducked = true; o.pitch = 0.82f; o.volume = 1.f;
-        audio.playOpts("gleaner_scream", o);
+    if (crossed(summit::FALL0 + 0.2f)) {   // no roar left in it (its last was as you tore its eye out): a long low groan
+        SfxMixer::Opts o; o.group = SoundGroup::UI; o.priority = true; o.unducked = true; o.pitch = 0.55f; o.volume = 1.f;
+        audio.playOpts("gleaner_groan", o);
         audio.duck(14.f, 6.f);
     }
     if (crossed(summit::FALL0 + 2.5f)) { SfxMixer::Opts o; o.group = SoundGroup::UI; o.priority = true; o.unducked = true; o.pitch = 0.7f; audio.playOpts("gleaner_groan", o); }

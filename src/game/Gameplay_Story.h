@@ -664,7 +664,7 @@ inline void GameplayState::renderStoryOverlay(const glm::mat4& viewProj) {
     if(plain() && plainReveal.active()){renderPlainReveal();return;}
     if(plain() && tearT>=0.f){renderTear();return;}
     if(plain() && summitEndT>=0.f && storyEndT<0.f){renderSummitEnd();return;}
-    if(plain() && quietT>=0.f && storyEndT<0.f)renderQuiet();
+    if(plain() && quietT>=0.f)renderQuiet();   // (its white stays up under the card)
     if(laboratory() && labEnding.active()){renderLabEndingOverlay();return;}
     if(cold() && rsFinT>=0.f){renderRecallFin();return;}   // (Chapter 5's finisher: bars, its plea, the flashes)
     if(plain() && gutWhite>0.001f){ui.begin2D();ui.ui.rect(0,0,SCREEN_W,SCREEN_H,{1.f,.7f,.4f,gutWhite});ui.end2D();}   // (into the Gleaner, out of its chimney: fire)

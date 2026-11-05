@@ -469,6 +469,12 @@ static void checkSummitRuntime(AudioSystem& audio) {
     }
     std::printf("      portal: through %.2f, card %.1f\n",game.quietThrough,game.storyEndT);
     CHECK(game.storyEndT>=0.f && game.storyBossDown,"walk into it: it takes you, and the chapter's card");
+    for(int f=0;f<60*4;++f)game.updateStory(1.f/60);
+    CHECK(game.storyEndT>3.f,"the card comes up: its clock runs, so Enter can take you on");
+    { SDL_Event ev{};ev.type=SDL_KEYDOWN;ev.key.keysym.sym=SDLK_RETURN;game.handleEvent(ev);
+      CHECK(game.storyChapterRequest==5,"Enter on the card continues to Chapter 5"); }
+    { int screams=0;for(int f=0;f<60*60;++f){game.gleaner.events.clear();game.updateStory(1.f/60);if(game.gleaner.screaming())++screams;}
+      CHECK(screams==0,"dead, it never roars again"); }
     g_practice=false;g_godMode=false;g_storyChapter=1;
 }
 

@@ -328,6 +328,9 @@ inline void GameplayState::updateQuiet(float dt) {
         if (quietThrough >= THROUGH && storyEndT < 0.f) {
             storyEndT = 0.f; saveStoryProgress(); logRun("end"); audio.play("wave", 100, SoundGroup::UI, true);
         }
+        // the chapter's card: its clock runs here (this chapter's update never reaches the shared one),
+        // and Enter takes you on to Chapter 5 once it is up
+        if (storyEndT >= 0.f) { storyEndT += dt; if (storyEndT > 3.f) captureMouse(false); }
         return;
     }
     if (t < OPEN1) return;
