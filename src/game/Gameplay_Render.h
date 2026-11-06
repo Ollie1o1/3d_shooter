@@ -753,7 +753,10 @@ inline void GameplayState::render() {
         applyLighting(boxRenderer.shader, th, renderCamPos);
         applyNeon(boxRenderer.shader, true);
         glBindTexture(GL_TEXTURE_2D, whiteTex);
-        if (!devSkip("boxes")) boxRenderer.draw(boxes);
+        if (!devSkip("boxes")) {
+            if (devSkip("cull")) boxRenderer.draw(boxes);
+            else boxRenderer.drawVisible(boxes, proj * view);
+        }
     }
 
     ftLap.to(frametimer::R_BOXES);
@@ -840,24 +843,31 @@ inline void GameplayState::render() {
     // --- View model (inside the FBO so it gets bloom; no fog). Hidden
     // behind the Longshot's scope once it's up. ---
     if (!scopedView() && !devSkip("viewmodel")) {
-        worldShader.use();
-        worldShader.setVec3("lightDir",    glm::normalize(glm::vec3{0.4f,-1.f,0.3f}));
-        worldShader.setVec3("lightColor",  {1.f,0.9f,0.8f});
-        worldShader.setVec3("uSkyAmb",     {0.32f,0.32f,0.38f});
-        worldShader.setVec3("uGroundAmb",  {0.12f,0.11f,0.10f});
-        worldShader.setFloat("uFogDensity", 0.f);
-        worldShader.setVec3("viewPos",     renderCamPos);
+        ShaderProgram& vmShader = devSkip("vmbatch") ? worldShader : viewModel.batchShader();
+        vmShader.use();
+        vmShader.setMat4("view", view);
+        vmShader.setMat4("projection", proj);
+        vmShader.setVec3("lightDir",    glm::normalize(glm::vec3{0.4f,-1.f,0.3f}));
+        vmShader.setVec3("lightColor",  {1.f,0.9f,0.8f});
+        vmShader.setVec3("uSkyAmb",     {0.32f,0.32f,0.38f});
+        vmShader.setVec3("uGroundAmb",  {0.12f,0.11f,0.10f});
+        vmShader.setFloat("uFogDensity", 0.f);
+        vmShader.setVec3("viewPos",     renderCamPos);
+        vmShader.setVec3Array("pointLightPos", pointLightPos, MAX_POINT_LIGHTS);
+        vmShader.setVec3Array("pointLightColor", pointLightColor, MAX_POINT_LIGHTS);
+        viewModel.resetBatchStats();
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, whiteTex);
-        worldShader.setInt("uTexture", 0);
+        vmShader.setInt("uTexture", 0);
         float flash = glm::clamp(muzzleFlashTimer / 0.06f, 0.f, 1.f);
         if (story() && (!storyArmed || storyLocked())) {   // UNIT 24's empty hands (and the one he wakes looking at)
-            if (viewModel.parryTimer > 0.f && !storyLocked()) viewModel.drawPunch(worldShader, renderCam, glm::vec3{0.2f, 0.85f, 1.f});
-            else drawStoryArms(renderCam);
+            if (viewModel.parryTimer > 0.f && !storyLocked()) viewModel.drawPunch(vmShader, renderCam, glm::vec3{0.2f, 0.85f, 1.f});
+            else drawStoryArms(renderCam, vmShader);
         }
-        else if (swordOut) viewModel.drawSword(worldShader, renderCam, swordShownFor(sword));
-        else viewModel.draw(worldShader, renderCam, activeWeapon, flash, wd.canAim ? aim : 0.f,
+        else if (swordOut) viewModel.drawSword(vmShader, renderCam, swordShownFor(sword));
+        else viewModel.draw(vmShader, renderCam, activeWeapon, flash, wd.canAim ? aim : 0.f,
                             weapons[activeWeapon].ammo, weaponMag((WeaponId)activeWeapon, prog.up[activeWeapon]));
+        worldShader.use();
         worldShader.setMat4("projection", proj);
         worldShader.setMat4("view",       view);
     }

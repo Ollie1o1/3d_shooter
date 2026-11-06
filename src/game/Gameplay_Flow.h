@@ -457,7 +457,7 @@ inline void GameplayState::resetPlayer(glm::vec3 start) {
     grappleCooldown = 0.f; wasGrappling = false;
     jumpsRemaining = 2; slamming = false; invincFrames = 0.f;
     activeWeapon = 0; pendingWeapon = -1; weaponSwitchTimer = 0.f;
-    fireInput.clear(); dashInput.clear();
+    fireInput.clear(); dashInput.clear(); jumpInput.clear(); parryInput.clear();
     recoilPitch = 0.f; peakFallSpeed = 0.f; fovKick = 0.f; camFeel.reset();
     dashFx = speedFx = lowFx = heartT = heartPulse = windFx = 0.f; audio.setMuffle(0.f); audio.setWind(0.f);
     hasSafeGround = false; embeddedT = 0.f; slowT = 0.f; ropeFx = 0.f; audio.setRope(0.f);
@@ -1015,7 +1015,7 @@ inline void GameplayState::update(float dt) {
     }
     if (!frozen) ui.update(dt, styleSystem);
     if (frozen || playerDead || victory || countdown > 0.f) {
-        fireInput.clear(); dashInput.clear();
+        fireInput.clear(); dashInput.clear(); jumpInput.clear(); parryInput.clear();
         pendingFire = pendingAlt = pendingGrenade = pendingGrapple = pendingRecall = false;
         // Keep the physics clock current so resuming doesn't replay the
         // whole paused interval as a burst of catch-up ticks.
@@ -1074,7 +1074,10 @@ inline void GameplayState::update(float dt) {
     if (g_devNoMouse) keys = g_devKeys;   // screenshot runs: the real keyboard doesn't reach the game (a runtime check may hold keys)
     if (story()) {   // STORY: the wake-up has the controls (jump held skips it); no gun, no grapple yet
         storySkipKey = keys[SDL_SCANCODE_SPACE] != 0;
-        if (storyLocked() || storyEndT >= 0.f) keys = noKeys;
+        if (storyLocked() || storyEndT >= 0.f) {
+            keys = noKeys;
+            jumpInput.clear(); dashInput.clear(); parryInput.clear();
+        }
         else if (!storyArmed) {   // nothing to reload
             static Uint8 bare[SDL_NUM_SCANCODES];
             std::memcpy(bare, keys, sizeof(bare));

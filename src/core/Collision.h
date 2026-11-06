@@ -7,12 +7,51 @@
 #include <glm/glm.hpp>
 #include <vector>
 #include <algorithm>
+#include <cmath>
 
 // AABB = Axis-Aligned Bounding Box, defined by two corners. Every obstacle in
 // the world is one (the levels build them: Level.h, LevelGauntlet.h, LevelAct2.h).
 struct AABB {
     glm::vec3 min, max; // min = bottom-left-front, max = top-right-back
 };
+
+struct SweepHit { float time = 1.f; glm::vec3 normal{0.f}; };
+
+// A finite segment, with an explicit parallel-axis test (no reciprocal bias).
+// A segment starting inside has time zero and no entry normal.
+inline bool segmentBoxHit(glm::vec3 from, glm::vec3 to, const AABB& b, SweepHit& hit, bool strictParallel = false) {
+    const glm::vec3 delta = to - from;
+    float enter = 0.f, leave = 1.f;
+    glm::vec3 normal{0.f};
+    for (int axis = 0; axis < 3; ++axis) {
+        if (std::abs(delta[axis]) < 1e-8f) {
+            if (strictParallel ? (from[axis] <= b.min[axis] || from[axis] >= b.max[axis])
+                               : (from[axis] < b.min[axis] || from[axis] > b.max[axis])) return false;
+            continue;
+        }
+        float near = (b.min[axis] - from[axis]) / delta[axis];
+        float far = (b.max[axis] - from[axis]) / delta[axis];
+        const float sign = delta[axis] > 0.f ? -1.f : 1.f;
+        if (near > far) std::swap(near, far);
+        if (near >= enter) { enter = near; normal = glm::vec3{0.f}; normal[axis] = sign; }
+        leave = std::min(leave, far);
+        if (enter > leave) return false;
+    }
+    hit = {enter, normal};
+    return true;
+}
+
+inline bool segmentSphereHit(glm::vec3 from, glm::vec3 to, glm::vec3 centre, float radius, float& time) {
+    const glm::vec3 d = to - from, offset = from - centre;
+    const float c = glm::dot(offset, offset) - radius * radius;
+    if (c <= 0.f) { time = 0.f; return true; }
+    const float a = glm::dot(d, d), b = glm::dot(offset, d);
+    if (a < 1e-12f || b >= 0.f) return false;
+    const float discriminant = b * b - a * c;
+    if (discriminant < 0.f) return false;
+    time = (-b - std::sqrt(discriminant)) / a;
+    return time >= 0.f && time <= 1.f;
+}
 
 // Ray vs AABB: distance along the ray to the first hit, or -1 on a miss.
 inline float rayBoxHit(glm::vec3 o, glm::vec3 d, const AABB& b) {
@@ -83,8 +122,12 @@ struct SpatialGrid {
         NX = (int)((x1 - X0) / CELL) + 2;
         NZ = (int)((z1 - Z0) / CELL) + 2;
         cells.assign((size_t)NX * NZ, {});
+        firstCell.resize(walls.size());
         for (int i = 0; i < (int)walls.size(); ++i)
-            if (!walls[i].dynamic) insertWall(i, walls[i].box);
+            if (!walls[i].dynamic) {
+                firstCell[i] = {cx(walls[i].box.min.x), cz(walls[i].box.min.z)};
+                insertWall(i, walls[i].box);
+            }
     }
 
     // Returns candidate wall indices for a query box.
@@ -96,10 +139,13 @@ struct SpatialGrid {
         for (int xi = x0; xi <= x1; ++xi)
             for (int zi = z0; zi <= z1; ++zi)
                 for (int idx : cell(xi, zi))
-                    out.push_back(idx);
+                    // A wall spanning cells is returned at its first cell in
+                    // this query's overlap. No stamps, allocations or sorting.
+                    if (xi == std::max(x0, firstCell[idx].x) && zi == std::max(z0, firstCell[idx].y)) out.push_back(idx);
     }
 
 private:
+    std::vector<glm::ivec2> firstCell;
     int cx(float x) const { return glm::clamp((int)((x - X0) / CELL), 0, NX-1); }
     int cz(float z) const { return glm::clamp((int)((z - Z0) / CELL), 0, NZ-1); }
     const std::vector<int>& cell(int x, int z) const { return cells[z * NX + x]; }

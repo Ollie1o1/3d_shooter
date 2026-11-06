@@ -32,7 +32,7 @@ void main()
     gl_Position = projection * view * worldPos;
     TexCoord    = aTexCoord;
     // Normal matrix: handles non-uniform scale correctly.
-    Normal      = mat3(transpose(inverse(instanceModel))) * aNormal;
+    Normal      = transpose(inverse(mat3(instanceModel))) * aNormal;
     vColor      = instanceColor;
     vEmissive   = instanceEmissive;
     vSurf       = instanceSurface;

@@ -533,6 +533,7 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
     }
     if (!pierceArmor) dmg *= e.armorMult();
     dmg *= e.incomingMult();   // a halo, or the window after one breaks
+    if (dmg <= 0.f) { if (src != StyleSource::FRIENDLY) ui.onBlocked(); return false; }
     if (e.onBeamHit(dmg, crit)) { ui.feed("BEAM BROKEN", {1.f, 0.85f, 0.5f}); styleSystem.addStyle(25.f, src); }
     if (e.halo) fx.spawnHitSparks(at, {1.f, 0.85f, 0.3f});
     float before = e.health;
@@ -554,6 +555,7 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
         if (!friendly && src != StyleSource::MELEE) bodyHit(e, at, hp.push * pushK, stunned);
     }
     bool killed = e.takeDamage(dmg);
+    if (e.health >= before) { if (!friendly) ui.onBlocked(); return false; }
     if (e.health < before) {
         if (crit) trainingSuccess(lessons::PRECISION);
         if (e.type == EnemyType::SHIELDBEARER) trainingSuccess(lessons::SHIELD_COUNTER);

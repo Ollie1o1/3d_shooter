@@ -623,7 +623,7 @@ inline void GameplayState::gatherStoryBoxes(std::vector<BoxInstance>& out) {
 }
 
 // UNIT 24's hands: the right one raised as he wakes; both, empty, while he has no gun
-inline void GameplayState::drawStoryArms(const Camera& cam) {
+inline void GameplayState::drawStoryArms(const Camera& cam, ShaderProgram& shader) {
     using namespace story;
     using glm::vec3;
     ViewModel::FreeArm A[2];
@@ -660,7 +660,7 @@ inline void GameplayState::drawStoryArms(const Camera& cam) {
             ++n;
         }
     }
-    if (n) viewModel.drawFreeArms(worldShader, cam, A, n);
+    if (n) viewModel.drawFreeArms(shader, cam, A, n);
 }
 
 // Over everything: the boot text, the motor check, the skip prompt, the chute's ending

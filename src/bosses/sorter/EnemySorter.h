@@ -42,7 +42,9 @@ inline void Enemy::thinkSorter(float dt,const EnemyWorld& w,bool resolve) {
     auto pressPoint=[&](glm::vec3 at) {
         at.y=floor;
         for(int i=0;i<w.wallCount;++i){const auto& b=w.walls[i].box;
-            if(at.x>=b.min.x&&at.x<=b.max.x&&at.z>=b.min.z&&at.z<=b.max.z&&b.max.y<=w.playerFeet.y+.25f&&b.max.y<floor+10)
+            // Aim at the actual support beneath the player, including the
+            // tall gantry columns. The old 10 m cap put warnings under them.
+            if(at.x>=b.min.x&&at.x<=b.max.x&&at.z>=b.min.z&&at.z<=b.max.z&&b.max.y<=w.playerFeet.y+.25f)
                 at.y=std::max(at.y,b.max.y);
         }
         return at;

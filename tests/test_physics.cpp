@@ -21,6 +21,45 @@ int main() {
     Uint8 keys[SDL_NUM_SCANCODES];
     std::memset(keys, 0, sizeof(keys));
 
+    {
+        std::vector<Wall> walls{{{{-30,-1,-30},{30,4,30}}}};
+        SpatialGrid grid; grid.build(walls);
+        std::vector<int> candidates;
+        grid.query({{-40,-5,-40},{40,5,40}}, candidates);
+        CHECK(candidates.size()==1 && candidates[0]==0, "a wall spanning many grid cells is returned exactly once");
+        grid.query({{0,0,0},{1,1,1}}, candidates);
+        CHECK(candidates.size()==1, "deduplication still finds a wall when its first cell lies outside the query");
+        SweepHit hit;
+        CHECK(segmentBoxHit({-3,1,0},{3,1,0},{{0,0,-1},{.01f,2,1}},hit) &&
+              std::fabs(hit.time-.5f)<.00001f && hit.normal.x==-1,
+              "segment collision finds the entry face of thin cover crossed within one tick");
+        CHECK(!segmentBoxHit({0,3,0},{0,3,4},{{-1,0,-1},{1,2,1}},hit), "a parallel segment outside a slab stays a miss");
+    }
+    for(int mode=0;mode<3;++mode) {
+        std::vector<Wall> walls{{{{2,-2,-5},{2.01f,5,5}}}};
+        walls[0].dynamic=mode==2;
+        SpatialGrid grid; grid.build(walls); const int moving=0;
+        Player p({0,1,0});p.gravity=0;p.floorY=-100;p.velocity={1200,0,6};
+        if(mode==2){p.dynWalls=&moving;p.dynCount=1;}
+        p.update(DT,keys,walls.data(),1,true,mode?&grid:nullptr);
+        CHECK(p.position.x<=1.601f && p.position.x>=1.59f && std::fabs(p.position.z-.1f)<.001f &&
+              p.velocity.x==0 && p.velocity.z==6,
+              "a fast dash/grapple cannot cross thin static or moving cover and retains tangent momentum");
+    }
+    {
+        std::vector<Wall> walls{{{{-4,0,-4},{4,.01f,4}}}};
+        SpatialGrid grid;grid.build(walls);
+        Player p({0,5,0});p.floorY=-100;p.gravity=0;p.velocity={0,-900,0};
+        p.update(DT,keys,walls.data(),1,false,&grid);
+        CHECK(p.onGround && std::fabs(p.position.y-.01f)<.001f && p.velocity.y==0,
+              "a complete one-tick crossing of a thin floor lands on its top");
+        walls[0].box={{-4,3,-4},{4,3.01f,4}};grid.build(walls);
+        p=Player({0,0,0});p.gravity=0;p.velocity={0,900,0};
+        p.update(DT,keys,walls.data(),1,false,&grid);
+        CHECK(p.position.y<=1.201f && p.velocity.y==0 && !p.onGround,
+              "a fast upward launch stops beneath a thin ceiling without grounding");
+    }
+
     // World-space markers: front, behind and a complete camera turn must
     // agree for both weapon pickups and the final-hostile indicators.
     {

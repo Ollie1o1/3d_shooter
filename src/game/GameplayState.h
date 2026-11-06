@@ -265,7 +265,7 @@ public:
     bool  storyLookFree() const { return !labIntro.active() && wakeT >= 18.4f; }   // (story::W_SAT)
     float storyWakeFx() const;
     void  gatherStoryBoxes(std::vector<BoxInstance>& out);
-    void  drawStoryArms(const Camera& cam);
+    void  drawStoryArms(const Camera& cam, ShaderProgram& shader);
     void  renderStoryOverlay(const glm::mat4& viewProj = glm::mat4(1.f));
     Board boardFor() const { return fast() ? Board::FAST : endless() ? Board::ENDLESS : Board::ARENA; }
 
@@ -332,6 +332,7 @@ public:
     void drawContactShadows(const glm::mat4& view, const glm::mat4& proj, const Theme& th, glm::vec3 camPos);
 
     std::vector<Enemy> enemies;
+    std::vector<SpawnRequest> tickSpawns;
     SpatialGrid        spatialGrid;   // built once; door boxes move only in Y, movers are tested separately
 
     // ---- Weapons (see Weapons.h) ----
@@ -755,7 +756,7 @@ public:
     bool pendingGrenade   = false;
     bool pendingRecall    = false;
     bool pendingGrapple   = false;
-    ActionBuffer fireInput, dashInput;
+    ActionBuffer fireInput, dashInput, jumpInput, parryInput;
 
     GameplayState(AudioSystem& aud, GameSettings* s = nullptr, GameMode m = GameMode::ARENA);
 

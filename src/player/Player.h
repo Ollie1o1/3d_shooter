@@ -149,7 +149,8 @@ public:
         applyGravity(dt);
         tickFrom = position;   // where it was before this tick's move (resolveAABB: what you ran into, you ran into from there)
         integrate(dt);
-        resolveCollisions(walls, wallCount, grid);
+        sweepMove(tickFrom, walls, wallCount, grid);
+        resolveCollisions(walls);
         camera.position = position + glm::vec3{0, eyeHeight, 0};
     }
 
@@ -162,6 +163,46 @@ public:
 
 private:
     bool prevGroundForCoyote = false; // tracks last-tick ground state for coyote detection
+    std::vector<int> sweepCandidates;
+
+    void sweepMove(glm::vec3 from, const Wall* walls, int wallCount, const SpatialGrid* grid) {
+        sweepCandidates.clear();
+        if (!walls || wallCount <= 0) return;
+        glm::vec3 remaining = position - from;
+        const AABB path{glm::min(from, position) - glm::vec3{radius + .1f, .1f, radius + .1f},
+                        glm::max(from, position) + glm::vec3{radius + .1f, height + .1f, radius + .1f}};
+        if (grid) {
+            grid->query(path, sweepCandidates);
+            for (int k = 0; k < dynCount; ++k) sweepCandidates.push_back(dynWalls[k]);
+        } else {
+            sweepCandidates.clear();
+            for (int k = 0; k < wallCount; ++k) sweepCandidates.push_back(k);
+        }
+        // Ordinary moves cannot cross an entire obstacle plus the player's
+        // body in one tick. Keep their established contact/landing response
+        // (including authored pad arcs); sweep the exceptional fast moves.
+        if (std::abs(remaining.x) < radius * 2.f && std::abs(remaining.z) < radius * 2.f && std::abs(remaining.y) < height) return;
+        position = from;
+        // Each contact removes one inward axis. Retain motion along the wall
+        // instead of stopping the whole dash/grapple at a corner.
+        for (int contact = 0; contact < 4 && glm::dot(remaining, remaining) > 1e-12f; ++contact) {
+            SweepHit nearest; bool found = false;
+            for (int index : sweepCandidates) {
+                const AABB& wall = walls[index].box;
+                const AABB expanded{wall.min - glm::vec3{radius, height, radius}, wall.max + glm::vec3{radius, 0.f, radius}};
+                SweepHit hit;
+                if (segmentBoxHit(position, position + remaining, expanded, hit, true) &&
+                    glm::dot(remaining, hit.normal) < 0.f && (!found || hit.time < nearest.time)) {
+                    nearest = hit; found = true;
+                }
+            }
+            if (!found) { position += remaining; break; }
+            position += remaining * nearest.time + nearest.normal * .0001f;
+            remaining *= 1.f - nearest.time;
+            remaining -= nearest.normal * std::min(0.f, glm::dot(remaining, nearest.normal));
+            velocity -= nearest.normal * std::min(0.f, glm::dot(velocity, nearest.normal));
+        }
+    }
 
     void handleMovement(float dt, const Uint8* keys, bool grappling = false) {
         glm::vec3 flatFwd   = camera.flatForward();
@@ -335,8 +376,7 @@ private:
     // Order: check floor first, then walls (so standing on top of a box works),
     // then re-check floor in case a wall pushed us below it.
     // -------------------------------------------------------------------------
-    void resolveCollisions(const Wall* walls, int wallCount,
-                           const SpatialGrid* grid = nullptr) {
+    void resolveCollisions(const Wall* walls) {
         groundWall = -1;
         bool wasGrounded = onGround;
         bool settling = !sliding && waterSink < WADE_MAX;   // standing up out of a skim
@@ -351,17 +391,7 @@ private:
             onGround = false;
         }
 
-        static std::vector<int> candidates;
-        if (grid) {
-            // Grid path: only test walls in nearby cells (~4–9 cells vs all walls).
-            AABB pb{ position + glm::vec3{-radius-0.1f, -0.1f, -radius-0.1f},
-                     position + glm::vec3{ radius+0.1f,  height+0.1f, radius+0.1f} };
-            grid->query(pb, candidates);
-            if (walls) for (int i = 0; i < dynCount; ++i) candidates.push_back(dynWalls[i]);
-        } else {
-            candidates.clear();
-            for (int i = 0; i < wallCount; ++i) candidates.push_back(i);
-        }
+        const auto& candidates = sweepCandidates;
         for (int idx : candidates)
             if (resolveAABB(walls[idx].box)) groundWall = idx;
 

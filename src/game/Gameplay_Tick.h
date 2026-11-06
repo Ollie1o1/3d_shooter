@@ -10,8 +10,10 @@
 inline void GameplayState::shootInput() {
     WeaponState& ws = weapons[activeWeapon];
     bool switchBlocked = (pendingWeapon >= 0);
-    if (pendingFire && !swordOut)
+    if (pendingFire && !swordOut) {
         fireInput.press(switchBlocked ? pendingWeapon : activeWeapon, gameClock);
+        if (switchBlocked) fireInput.until += std::max(0.f, weaponSwitchTimer);
+    }
     if (swordOut) fireInput.clear();   // the sword has the button
     const bool queued = fireInput.pending(activeWeapon, gameClock) && !switchBlocked;
     if (queued && ws.ready()) { fireInput.clear(); fireWeapon(activeWeapon); }
@@ -92,6 +94,18 @@ inline void GameplayState::flushHitSounds() {
 }
 
 inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKey) {
+    // SDL events retain taps shorter than one 60 Hz tick. Held state still
+    // drives jump height and movement; a retained press is consumed only once.
+    Uint8 pressedKeys[SDL_NUM_SCANCODES];
+    if (jumpInput.pending(0, gameClock)) {
+        std::memcpy(pressedKeys, keys, sizeof(pressedKeys));
+        pressedKeys[SDL_SCANCODE_SPACE] = 1;
+        keys = pressedKeys;
+        prevJumpKey = false;
+    }
+    jumpInput.clear();
+    if (parryInput.pending(0, gameClock)) { parryKey = true; parryPrev = false; }
+    parryInput.clear();
     frametimer::Scope ftSim(frametimer::SIM);
     frametimer::tick();
     frametimer::Lap ftLap;
@@ -507,7 +521,8 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     for (auto& e : enemies) if (e.alive) ++alive;
     alive += relic.alive();              // a Revenant's soul in flight: not over until it's caught or back
     alive += (int)pendingTwins.size();   // a TWINNED kill this tick: its copies count before they're spawned
-    std::vector<SpawnRequest> spawns;
+    auto& spawns = tickSpawns;
+    spawns.clear();
     director.countScale    = tune().waveSize;
     director.maxAliveBonus = tune().maxAliveBonus;
     if (endless()) feedEndless();
@@ -559,7 +574,9 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     ftLap.to(frametimer::SIM_BOSSES);
     // --- Projectiles ---
     projSystem.floorY = level.lowestFloor();
-    auto result = projSystem.update(dt, level.walls.data(), (int)level.walls.size(),
+    projSystem.dynWalls = level.moverWalls.data();
+    projSystem.dynCount = (int)level.moverWalls.size();
+    const auto& result = projSystem.update(dt, level.walls.data(), (int)level.walls.size(),
                                     enemies, player.camera.position, &spatialGrid);
 
     whizPast();

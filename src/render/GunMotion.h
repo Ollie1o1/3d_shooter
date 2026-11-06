@@ -69,6 +69,11 @@ public:
         toGun = g; switchT = 0.f; switching = true; upCued = false;
         reloadT = -1.f; cycleT = -1.f; inspectT = -1.f; drawT = -1.f;   // whatever the old gun was doing stops here
     }
+    void retargetSwitch(int g) {
+        if (!switching) { switchTo(g); return; }
+        toGun = g;
+        if (upCued) gun = g;
+    }
     void inspect() { if (reloadT < 0.f && !switching) { inspectT = 0.f; drawT = -1.f; } }
     // A retry / restart: the gun is simply there, doing nothing
     void reset(int g) {

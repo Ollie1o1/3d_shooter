@@ -74,7 +74,11 @@ inline void GameplayState::assignAttackers() {
         cands.push_back({i,d*.25f+(unseen?18.f:0.f)+(e.noLosTimer>0?24.f:0.f)-ready*8.f-e.attackWait*8.f});
     }
     int free = std::max(0, attackersAllowed() - busy);
-    std::stable_sort(cands.begin(), cands.end(), [](const Cand& a, const Cand& b) { return a.score < b.score; });
+    // The index breaks equal-score ties in original encounter order, without
+    // stable_sort's temporary heap allocation on every simulation tick.
+    std::sort(cands.begin(), cands.end(), [](const Cand& a, const Cand& b) {
+        return a.score == b.score ? a.i < b.i : a.score < b.score;
+    });
     for (int k = free; k < (int)cands.size(); ++k) enemies[cands[k].i].mayAttack = false;
 }
 

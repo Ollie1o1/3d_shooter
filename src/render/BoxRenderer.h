@@ -12,6 +12,7 @@
 #include "core/gl.h"
 #include "core/Mesh.h"
 #include "core/ShaderProgram.h"
+#include "core/Frustum.h"
 #include "render/EnemyModel.h"   // BoxInstance
 #include "render/MeshLib.h"
 #include <vector>
@@ -25,8 +26,9 @@ public:
     GLsizei indexCount = 0;
     static constexpr size_t INITIAL_INSTANCES = 16384;
 
-    BoxRenderer() {
-        shader.loadFiles("src/shaders/box_inst.vert", "src/shaders/box_inst.frag");
+    BoxRenderer(const char* vert = "src/shaders/box_inst.vert", const char* frag = "src/shaders/box_inst.frag", const char* defines = "", size_t capacity = INITIAL_INSTANCES)
+        : instanceCapacity(std::max(size_t{1}, capacity)) {
+        shader.loadFiles(vert, frag, defines);
 
         // Unit cube centred on the origin, 0..1 UVs per face (for edge shading)
         std::vector<Vertex> verts;
@@ -99,7 +101,34 @@ public:
         if (instanceVBO) glDeleteBuffers(1, &instanceVBO);
     }
 
-    void draw(const std::vector<BoxInstance>& boxes) {
+    // Keep simulation and rig generation intact; only skip GPU work for parts
+    // wholly outside the camera. Bounds come from the actual mesh vertices.
+    size_t drawVisible(const std::vector<BoxInstance>& boxes, const glm::mat4& viewProj) {
+        const ViewFrustum frustum(viewProj);
+        while (meshBounds.size() < (size_t)meshlib::count()) {
+            const auto& md = *meshlib::get((int)meshBounds.size() + 1);
+            AABB b{glm::vec3{0.f}, glm::vec3{0.f}};
+            if (!md.pos.empty()) {
+                b.min = b.max = md.pos.front();
+                for (const auto& p : md.pos) { b.min = glm::min(b.min, p); b.max = glm::max(b.max, p); }
+            }
+            meshBounds.push_back(b);
+        }
+        visible.clear();
+        const AABB cube{glm::vec3{-.5f}, glm::vec3{.5f}};
+        const int shapes = meshlib::count() + 1;
+        for (const auto& b : boxes) {
+            const int shape = shapeOf(b, shapes);
+            if (frustum.sees(shape ? meshBounds[(size_t)shape - 1] : cube, b.model)) visible.push_back(b);
+        }
+        draw(visible);
+        return visible.size();
+    }
+
+    // Ordered batches preserve depth ties in the hands/weapons while joining
+    // adjacent parts of the same shape. All instance data is uploaded once.
+    void draw(const std::vector<BoxInstance>& boxes, bool ordered = false) {
+        lastDrawCalls = 0;
         int count = (int)boxes.size();
         if (count == 0) return;
         // Story dressing can exceed the initial allocation. Never discard the
@@ -118,6 +147,26 @@ public:
             glBindVertexArray(vao);
             instanceAttribs(0);
             glDrawElementsInstanced(GL_TRIANGLES, indexCount, GL_UNSIGNED_INT, nullptr, count);
+            ++lastDrawCalls;
+            glBindVertexArray(0);
+            return;
+        }
+        if (ordered) {
+            glBindBuffer(GL_ARRAY_BUFFER, instanceVBO);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, count * sizeof(BoxInstance), boxes.data());
+            const int shapes = meshlib::count() + 1;
+            for (int first = 0; first < count;) {
+                const int shape = shapeOf(boxes[first], shapes);
+                int end = first + 1;
+                while (end < count && shapeOf(boxes[end], shapes) == shape) ++end;
+                GLuint v = vao; GLsizei ic = indexCount;
+                if (shape > 0) { const auto& g = upload(shape); v = g.vao; ic = g.count; }
+                glBindVertexArray(v);
+                instanceAttribs((size_t)first);
+                glDrawElementsInstanced(GL_TRIANGLES, ic, GL_UNSIGNED_INT, nullptr, end - first);
+                ++lastDrawCalls;
+                first = end;
+            }
             glBindVertexArray(0);
             return;
         }
@@ -139,17 +188,22 @@ public:
             glBindVertexArray(v);
             instanceAttribs((size_t)from);
             glDrawElementsInstanced(GL_TRIANGLES, ic, GL_UNSIGNED_INT, nullptr, n);
+            ++lastDrawCalls;
         }
         glBindVertexArray(vao);
         instanceAttribs(0);
         glBindVertexArray(0);
     }
 
+    int lastDrawCalls = 0;
+
 private:
     size_t instanceCapacity = INITIAL_INSTANCES;
     struct Gpu { GLuint vao = 0, vbo = 0, ebo = 0; GLsizei count = 0; };
     std::vector<Gpu> gpu;                 // [id - 1], uploaded the first time each mesh is drawn
     std::vector<BoxInstance> sorted;
+    std::vector<BoxInstance> visible;
+    std::vector<AABB> meshBounds;
     std::vector<int> groupStart, fill;
 
     static int shapeOf(const BoxInstance& b, int shapes) {

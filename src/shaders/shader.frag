@@ -11,8 +11,13 @@ uniform sampler2D uTexture;
 uniform vec3 lightDir;
 uniform vec3 lightColor;
 uniform vec3 viewPos;
+#ifdef VIEWMODEL_INSTANCED
+flat in vec3 emissiveColor;
+flat in vec3 objectColor;
+#else
 uniform vec3 emissiveColor;
 uniform vec3 objectColor;
+#endif
 
 uniform vec3 pointLightPos[4];
 uniform vec3 pointLightColor[4];
@@ -182,6 +187,7 @@ void main()
     // Point lights
     vec3 pointContrib = vec3(0.0);
     for (int i = 0; i < 4; ++i) {
+        if (all(equal(pointLightColor[i], vec3(0.0)))) continue;
         vec3  toLight = pointLightPos[i] - FragPos;
         float dist    = length(toLight);
         float atten   = 1.0 / (1.0 + 0.25*dist + 0.07*dist*dist);

@@ -71,7 +71,11 @@ inline void GameplayState::padButton(Uint8 b) {
     if (armoryOpen && b == SDL_CONTROLLER_BUTTON_X) { key(SDLK_m); return; }
     if (armoryOpen) { key(b == SDL_CONTROLLER_BUTTON_BACK ? SDLK_TAB : gamepad::menuKey(b)); return; }
     if (paused) { key(gamepad::menuKey(b)); return; }
+    const bool control = !story() || (!storyLocked() && storyEndT < 0.f);
     switch (b) {
+        case SDL_CONTROLLER_BUTTON_A: if (control) jumpInput.press(0, gameClock); break;
+        case SDL_CONTROLLER_BUTTON_RIGHTSHOULDER: if (control) dashInput.press(0, gameClock); break;
+        case SDL_CONTROLLER_BUTTON_Y: if (control) parryInput.press(0, gameClock); break;
         case SDL_CONTROLLER_BUTTON_START:         key(SDLK_ESCAPE); break;
         case SDL_CONTROLLER_BUTTON_BACK:          key(SDLK_TAB); break;
         case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:  pendingGrapple = true; break;
@@ -227,7 +231,8 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
         return;
     }
     if (story() && e.type == SDL_MOUSEWHEEL && storyArmed) {   // STORY: the wheel cycles only the guns he's found
-        int n = activeWeapon;
+        if (e.wheel.y == 0) return;
+        int n = pendingWeapon >= 0 ? pendingWeapon : activeWeapon;
         if (swordOut) { holsterSword(); return; }   // (the wheel puts the sword away first, as outside the story)
         for (int k = 0; k < WEAPON_COUNT; ++k) { n = (n + (e.wheel.y > 0 ? WEAPON_COUNT - 1 : 1)) % WEAPON_COUNT; if (storyOwns(n)) break; }
         trySwitch(n);
@@ -239,6 +244,9 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
         if (e.type == SDL_KEYDOWN && (binds().pressed(Act::INSPECT, e) || binds().pressed(Act::RELOAD, e))) return;
     }
     const Bindings& kb = binds();
+    if (kb.pressed(Act::JUMP, e)) jumpInput.press(0, gameClock);
+    if (kb.pressed(Act::DASH, e)) dashInput.press(0, gameClock);
+    if (kb.pressed(Act::PARRY, e)) parryInput.press(0, gameClock);
     if (kb.pressed(Act::INTERACT, e)) {   // FINISH / INTERACT: one in reach to finish comes first (it never parries)
         if (!tryTearEye() && !finishKey()) {
             int idx = findInteractTarget();
@@ -251,7 +259,7 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
     if (kb.pressed(Act::GRAPPLE, e) && !tryTearEye()) pendingGrapple = true;   // (the hook pulls the fallen eye out too)
     if (e.type == SDL_MOUSEWHEEL && e.wheel.y != 0 && swordOut) holsterSword();
     else if (e.type == SDL_MOUSEWHEEL && e.wheel.y != 0)
-        trySwitch((activeWeapon + (e.wheel.y > 0 ? WEAPON_COUNT - 1 : 1)) % WEAPON_COUNT);
+        trySwitch(((pendingWeapon >= 0 ? pendingWeapon : activeWeapon) + (e.wheel.y > 0 ? WEAPON_COUNT - 1 : 1)) % WEAPON_COUNT);
     if (key >= SDLK_1 && key <= SDLK_4) { holsterSword(); trySwitch(key - SDLK_1); }
     if (key == SDLK_5) drawSword();
     if (kb.pressed(Act::GRENADE, e)) pendingGrenade = true;
@@ -271,14 +279,23 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
 // The D-pad's weapon cycle; in the Zenith the sword is a fifth stop on it
 inline void GameplayState::padCycle(int dir) {
     const int stops = WEAPON_COUNT + (swordAllowed() ? 1 : 0);
-    int at = swordOut ? WEAPON_COUNT : activeWeapon;
+    int at = swordOut ? WEAPON_COUNT : pendingWeapon >= 0 ? pendingWeapon : activeWeapon;
     int next = ((at + dir) % stops + stops) % stops;
     if (next == WEAPON_COUNT) { drawSword(); return; }
     holsterSword(); trySwitch(next);
 }
 
 inline void GameplayState::trySwitch(int w) {
+    if (w < 0 || w >= WEAPON_COUNT) return;
     if (story() && !storyOwns(w)) return;   // STORY: only the guns he's found
+    if (pendingWeapon >= 0) {
+        if (pendingWeapon != w) {
+            fireInput.clear();
+            pendingWeapon = w;
+            viewModel.retargetSwitch(w); // latest selection wins without restarting the readiness timer
+        }
+        return;
+    }
     if (w != activeWeapon && pendingWeapon < 0) {
         fireInput.clear();   // a press for the old gun never follows a later switch
         pendingWeapon = w;

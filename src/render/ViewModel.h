@@ -22,6 +22,7 @@
 #include "core/Camera.h"
 #include "core/ShaderProgram.h"
 #include "core/Mesh.h"
+#include "render/BoxRenderer.h"
 #include "render/GunKit.h"
 #include "render/ArmFile.h"
 #include "player/Sword.h"
@@ -41,6 +42,21 @@ public:
 
     ViewModel() { buildCube(); }
 
+    ShaderProgram& batchShader() {
+        if (!batch) {
+            batch = std::make_unique<BoxRenderer>("src/shaders/viewmodel_inst.vert", "src/shaders/shader.frag", "#define VIEWMODEL_INSTANCED\n", 512);
+            batch->shader.use();
+            // Active samplers of different types must use different units,
+            // even with the baked-light branch disabled for the view model.
+            batch->shader.setInt("uNormalMap", 1);
+            batch->shader.setInt("uBake", 3);
+            batch->shader.setInt("uGlowBake", 4);
+        }
+        return batch->shader;
+    }
+    int batchDrawCalls = 0, batchPartCount = 0;
+    void resetBatchStats() { batchDrawCalls = batchPartCount = 0; }
+
     // --- Triggers --------------------------------------------------------------
     void triggerFire() { motion.fire(); heat = std::min(1.f, heat + 0.22f); cylSpin = 45.f; }
     // A reload over its whole time; shells: rounds it puts back (the shotgun's shells, the Lancer's clip)
@@ -54,6 +70,7 @@ public:
     void triggerBolt(float t)     { motion.cycle(std::max(t, 0.2f)); }
     void triggerPump()            { motion.cycle(0.45f); }
     void triggerSwitch(int toGun) { motion.switchTo(toGun); }
+    void retargetSwitch(int toGun) { motion.retargetSwitch(toGun); }
     void triggerInspect()         { motion.inspect(); }
     void triggerGrenade()         { grenadeT = GRENADE_TIME; }
     void triggerGrapple()         { grappleT = GRAPPLE_TIME; }
@@ -228,6 +245,7 @@ public:
         }
         for (const auto& p : parts) drawPart(shader, base * p.xf, p.color, p.emissive, p.mesh);
         if (parryTimer > 0.f) drawFist(shader, cam, gunkit::SWORD_GLOW);   // F still punches
+        flushParts(shader);
         shader.setVec3("emissiveColor", {0.f, 0.f, 0.f});
         lastEmissive = glm::vec3{-1.f};
         glEnable(GL_CULL_FACE);
@@ -256,6 +274,7 @@ public:
         gunkit::Builder b{parts, gunkit::SWORD_GLOW};
         gunkit::drawArm(b, at + glm::vec3{0.f, -0.5f, -0.25f}, hf, 1.f, L);
         for (const auto& p : parts) drawPart(shader, base * p.xf, p.color, p.emissive, p.mesh);
+        flushParts(shader);
     }
     // Arms posed by the caller (STORY: UNIT 24's hands as he wakes, and empty while he has no gun), in camera space
     // (x right, y up, z forward): each a shoulder, a hand frame (armfile::handFrame) and a hand pose. side +1 right.
@@ -273,8 +292,9 @@ public:
             gunkit::drawArm(b, arms[i].shoulder, arms[i].fist, arms[i].side, L);
         }
         for (const auto& p : parts) drawPart(shader, base * p.xf, p.color, p.emissive, p.mesh);
+        flushParts(shader);
     }
-    void drawPunch(ShaderProgram& shader, const Camera& cam, glm::vec3 glow) { drawFist(shader, cam, glow); }   // (empty-handed: F still punches)
+    void drawPunch(ShaderProgram& shader, const Camera& cam, glm::vec3 glow) { drawFist(shader, cam, glow); flushParts(shader); }   // (empty-handed: F still punches)
     const SwordPose& swordPoseShown() const { return swordShown; }
     static constexpr float PARRY_TIME = 0.56f;   // (how long the punch is drawn; the parry window itself is the game's)
     float parryTimer = 0.f;
@@ -282,7 +302,7 @@ public:
     int   reloadShells = 1;
     void setMove(bool dashing, bool sliding) { motion.setMove(dashing, sliding); }
     void land(float fallSpeed) { motion.land(fallSpeed); }
-    std::vector<GunCue> takeCues() { std::vector<GunCue> c; c.swap(motion.cues); return c; }
+    const std::vector<GunCue>& takeCues() { cueScratch.clear(); cueScratch.swap(motion.cues); return cueScratch; }
 
     // ---- Sway (every frame, GameplayState::update): the gun is left behind by a turn
     // and swings past a little when you stop, leans into a strafe, pulls in at a
@@ -416,7 +436,8 @@ public:
             drawFan(shader, camBase, glm::inverse(camBase) * base);
         } else if (g != 0) fanT = -1.f;
         if (parryTimer > 0.f) drawFist(shader, cam, gunkit::glowOf(g));
-        if (devHand >= 0) drawDevHand(shader, cam);
+        if (devHand >= 0) { flushParts(shader); drawDevHand(shader, cam); }
+        flushParts(shader);
         shader.setVec3("emissiveColor", {0.f, 0.f, 0.f});
         lastEmissive = glm::vec3{-1.f};
         glEnable(GL_CULL_FACE);
@@ -634,11 +655,26 @@ private:
     }
 
     void drawPart(ShaderProgram& shader, const glm::mat4& model, glm::vec3 color, glm::vec3 emissive, int mesh = 0) {
+        if (batch && &shader == &batch->shader) {
+            BoxInstance b; b.model = model; b.color = color; b.emissive = emissive; b.mesh = (float)mesh;
+            batchParts.push_back(b);
+            return;
+        }
         shader.setMat4("model", model);
         shader.setVec3("objectColor", color);
         if (emissive != lastEmissive) { shader.setVec3("emissiveColor", emissive); lastEmissive = emissive; }   // most parts share it
         drawShape(mesh);
     }
+    void flushParts(ShaderProgram& shader) {
+        if (!batch || &shader != &batch->shader || batchParts.empty()) return;
+        batch->draw(batchParts, true);
+        batchDrawCalls += batch->lastDrawCalls;
+        batchPartCount += (int)batchParts.size();
+        batchParts.clear();
+    }
+    std::unique_ptr<BoxRenderer> batch;
+    std::vector<BoxInstance> batchParts;
+    std::vector<GunCue> cueScratch;
 public:
     // A part's shape: a MeshLib mesh (a bevelled plate, a barrel: uploaded the first time it's drawn,
     // centred at its own size) or the unit cube

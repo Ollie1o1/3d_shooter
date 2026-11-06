@@ -189,12 +189,14 @@ inline void GameplayState::renderLabGlass(const glm::mat4& view,const glm::mat4&
     auto c=lab::centre(room);labGlassShader.setVec3("uOrigin",c);
     glDisable(GL_CULL_FACE);glDepthMask(GL_FALSE);glEnable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
     glBindVertexArray(waterVAO);glBindBuffer(GL_ARRAY_BUFFER,waterVBO);
+    struct GlassDraw { vec3 normal; float mode, anomaly; };
+    vec3 vertices[MAX_WATER*6];
+    GlassDraw draws[MAX_WATER];
     int slot=0;
     auto quad=[&](vec3 a,vec3 b,vec3 d,vec3 e,vec3 normal,float mode,float anomaly){
-        if(slot>=MAX_WATER)return;   // (each quad its own slot: rewriting one the GPU is still drawing would stall it)
-        const vec3 v[]={a,b,d,a,d,e};glBufferSubData(GL_ARRAY_BUFFER,slot*sizeof(v),sizeof(v),v);
-        labGlassShader.setVec3("uNormal",normal);labGlassShader.setFloat("uMode",mode);labGlassShader.setFloat("uAnomaly",anomaly);
-        glDrawArrays(GL_TRIANGLES,slot*6,6);++slot;
+        if(slot>=MAX_WATER)return;
+        const vec3 v[]={a,b,d,a,d,e};std::copy(v,v+6,vertices+slot*6);
+        draws[slot++]={normal,mode,anomaly};
     };
     // The enclosed wards' windows onto the void, and Motor Assessment's glass floor
     if(room<7){
@@ -226,6 +228,16 @@ inline void GameplayState::renderLabGlass(const glm::mat4& view,const glm::mat4&
             float side=x<0?-1.f:1.f,inside=x-side*.12f;
             quad(c+vec3{inside,1.4f,bay.farZ},c+vec3{inside,1.4f,bay.nearZ},
                  c+vec3{inside,14,bay.nearZ},c+vec3{inside,14,bay.farZ},{-side,0,0},2,0);
+        }
+    }
+    if(slot){
+        // Submit all vertices before drawing. Updating this shared buffer
+        // between draws serializes the CPU and GPU on some drivers.
+        glBufferData(GL_ARRAY_BUFFER,sizeof(vertices),nullptr,GL_STREAM_DRAW);
+        glBufferSubData(GL_ARRAY_BUFFER,0,slot*6*sizeof(vec3),vertices);
+        for(int i=0;i<slot;++i){
+            labGlassShader.setVec3("uNormal",draws[i].normal);labGlassShader.setFloat("uMode",draws[i].mode);labGlassShader.setFloat("uAnomaly",draws[i].anomaly);
+            glDrawArrays(GL_TRIANGLES,i*6,6);
         }
     }
     glBindVertexArray(0);glDepthMask(GL_TRUE);glDisable(GL_BLEND);glEnable(GL_CULL_FACE);

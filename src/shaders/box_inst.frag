@@ -167,6 +167,7 @@ void main()
 
     vec3 pointContrib = vec3(0.0);
     for (int i = 0; i < 4; ++i) {
+        if (all(equal(pointLightColor[i], vec3(0.0)))) continue;
         vec3  toLight = pointLightPos[i] - FragPos;
         float dist    = length(toLight);
         float atten   = 1.0 / (1.0 + 0.25*dist + 0.07*dist*dist);

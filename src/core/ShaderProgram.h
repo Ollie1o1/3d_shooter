@@ -47,9 +47,15 @@ public:
 
     // Load vertex and fragment shaders from disk, compile, and link.
     // Throws std::runtime_error with the GL error log if anything fails.
-    void loadFiles(const std::string& vertPath, const std::string& fragPath) {
+    void loadFiles(const std::string& vertPath, const std::string& fragPath, const std::string& defines = {}) {
         std::string vs = readFile(vertPath);
         std::string fs = readFile(fragPath);
+        if (!defines.empty()) {
+            vs.insert(vs.find('\n') + 1, defines);
+            fs.insert(fs.find('\n') + 1, defines);
+        }
+        if (id) { glDeleteProgram(id); id = 0; }
+        locations.clear();
         compile(vs.c_str(), fs.c_str());
     }
 

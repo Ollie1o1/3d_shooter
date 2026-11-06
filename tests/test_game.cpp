@@ -2516,6 +2516,42 @@ int main() {
         CHECK(std::fabs(st.style - std::min(st.maxStyle, s0 + 8.f * StyleSystem::METER_GAIN)) < 1e-3f, "movement style isn't tracked or scaled by freshness");
     }
     {
+        std::vector<Wall> walls{{{{2,0,-2},{2.01f,4,2}}}};
+        SpatialGrid grid;grid.build(walls);
+        std::vector<Enemy> es;
+        auto target=[&](float x){
+            es.emplace_back(EnemyType::HUSK,glm::vec3{x,0,0});
+            es.back().state=EnemyState::ACTIVE;es.back().spawnTimer=0;
+        };
+        target(6);target(4); // far target first: collision must follow travel order
+        ProjectileSystem ps;ps.floorY=-100;
+        ps.fire({0,1,0},{900,0,0},10,true);
+        auto r=ps.update(DT,walls.data(),1,es,{0,1,50},&grid);
+        CHECK(r.wallHits.size()==1 && r.enemyHits.empty() && std::fabs(ps.pool[0].position.x-2)<.001f,
+              "a fast projectile hits thin cover before enemies beyond it");
+        ps.fire({0,1,0},{900,0,0},10,true);
+        r=ps.update(DT,nullptr,0,es,{0,1,50});
+        CHECK(r.enemyHits.size()==1 && r.enemyHits[0].second==1,
+              "a swept projectile hits the nearest enemy regardless of vector order");
+        walls[0].dynamic=true;grid.build(walls);const int moving=0;
+        ps.dynWalls=&moving;ps.dynCount=1;
+        ps.fire({0,1,0},{900,0,0},10,true);
+        r=ps.update(DT,walls.data(),1,es,{0,1,50},&grid);
+        CHECK(r.wallHits.size()==1 && r.enemyHits.empty(),"moving platforms block projectiles even when excluded from the static grid");
+        ps=ProjectileSystem{};ps.floorY=-100;es.clear();
+        ps.fire({-5,1,0},{900,0,0},10,false);
+        r=ps.update(DT,nullptr,0,es,{0,1,0});
+        CHECK(r.hitPlayer && r.playerDamage==10 && ps.pool[0].position.x<0,
+              "a fast hostile shot registers its crossing of the player rather than passing through");
+        ps=ProjectileSystem{};ps.floorY=-100;
+        ps.fire({0,1,0},{900,0,0},10,true);
+        const auto& retained=ps.update(DT,walls.data(),1,es,{0,1,50});
+        const auto capacity=retained.wallHits.capacity();
+        ps.update(DT,walls.data(),1,es,{0,1,50});
+        CHECK(retained.wallHits.empty() && retained.wallHits.capacity()==capacity,
+              "projectile result buffers clear each tick while retaining their allocation");
+    }
+    {
         // Friendly fire: a Juggernaut's siege shell hits the enemies in its path, but not its own Juggernaut or a boss
         auto ready = [](Enemy& e) { e.state = EnemyState::ACTIVE; e.spawnTimer = 0.f; };
         std::vector<Enemy> es;

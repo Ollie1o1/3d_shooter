@@ -7,6 +7,7 @@ static int failures = 0;
 #define CHECK(c, msg) do { bool ok = (c); std::printf("%s %s\n", ok ? "ok:" : "FAIL:", msg); failures += !ok; } while (0)
 static constexpr float DT = 1.f / 60.f;
 static void screenshot(const char* path) {
+    if (SDL_getenv("OVERDRIVE_TEST_NO_SCREENSHOTS")) return;
     auto* s = SDL_CreateRGBSurfaceWithFormat(0, SCREEN_W, SCREEN_H, 24, SDL_PIXELFORMAT_RGB24);
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glReadPixels(0, 0, SCREEN_W, SCREEN_H, GL_RGB, GL_UNSIGNED_BYTE, s->pixels);
@@ -48,6 +49,7 @@ int main() {
         CHECK(g.guideOpen && g.paused,"F3 enters a usable field guide");
         for(int i=0;i<10;++i)g.update(DT);
         g.render();screenshot("build/feel-pass/training-guide-1.bmp");
+        CHECK(glGetError()==GL_NO_ERROR,"the real game frame, including its instanced view model, has no GL errors");
         bool allLessons=true;
         for(int lesson=0;lesson<lessons::COUNT;++lesson) {
             g.startTrainingLesson(lesson);g.updateTraining(.2f);
@@ -139,11 +141,31 @@ int main() {
         CHECK(g.weapons[1].ammo == 2 && g.fireInput.context == 1, "a press during a switch belongs to the destination gun");
         g.activeWeapon = 1; g.pendingWeapon = -1; g.gameClock += .04f; g.shootInput();
         CHECK(g.weapons[1].ammo == 1, "the queued press fires the destination gun, not the holstered weapon");
+        g.activeWeapon=0;g.pendingWeapon=-1;g.viewModel.reset(0);
+        g.trySwitch(1);g.weaponSwitchTimer=.07f;g.viewModel.motion.update(.08f);
+        g.fireInput.press(1,g.gameClock);g.trySwitch(2);
+        CHECK(g.pendingWeapon==2 && g.weaponSwitchTimer==.07f && g.fireInput.context<0,
+              "a new weapon selection retargets an in-progress switch without adding delay or transferring a queued shot");
+        g.pendingWeapon=-1;g.viewModel.reset(0);
+        SDL_Event wheel{};wheel.type=SDL_MOUSEWHEEL;wheel.wheel.y=-1;
+        g.handleEvent(wheel);g.handleEvent(wheel);g.handleEvent(wheel);
+        CHECK(g.pendingWeapon==3,"rapid wheel notches advance from the requested weapon rather than losing selections");
+        g.activeWeapon=0;g.pendingWeapon=-1;g.viewModel.reset(0);g.trySwitch(1);
+        g.weapons[1].ammo=2;g.weapons[1].cooldown=0;g.weapons[1].reloading=false;
+        g.pendingFire=true;g.shootInput();g.gameClock+=.16f;
+        g.activeWeapon=1;g.pendingWeapon=-1;g.shootInput();g.shootInput();
+        CHECK(g.weapons[1].ammo==1,"a trigger tapped at switch start survives the full draw and fires exactly once");
         g.ui.hitmarkerTimer = 0; g.ui.onHit(true, true); g.ui.onHit(false, false); g.ui.onBlocked();
         CHECK(g.ui.hitmarkerKill && g.ui.hitmarkerHead && !g.ui.hitmarkerBlocked, "a later pellet or blocked contact cannot erase a same-burst kill/headshot marker");
+        g.ui.hitmarkerTimer=.09f;g.ui.onHit();g.ui.onBlocked();
+        CHECK(g.ui.hitmarkerKill && g.ui.hitmarkerTimer==.09f && !g.ui.hitmarkerBlocked,
+              "later body/blocked hits preserve a critical confirmation without extending its lifetime");
+        g.ui.hitmarkerTimer=0;g.ui.onBlocked();
+        CHECK(g.ui.hitmarkerBlocked,"resistance feedback appears once the prior confirmation has expired");
         g.fireInput.press(1, g.gameClock); g.dashInput.press(0, g.gameClock); g.pendingFire = true;
+        g.jumpInput.press(0,g.gameClock);g.parryInput.press(0,g.gameClock);
         g.paused = true; g.update(DT);
-        CHECK(g.fireInput.context < 0 && g.dashInput.context < 0 && !g.pendingFire, "pause cancels queued actions instead of firing them on resume");
+        CHECK(g.fireInput.context < 0 && g.dashInput.context < 0 && g.jumpInput.context<0 && g.parryInput.context<0 && !g.pendingFire, "pause cancels queued actions instead of firing them on resume");
         g.paused = false; g.swordOut = false; g.hitStopFrames = 0; g.player.position = feet;
         g.player.velocity = {0,0,0}; g.player.camera.position = feet + glm::vec3{0,g.player.eyeHeight,0};
         g.prevDashKey = false; g.dashCharges = 0; g.dashCooldown = .03f;
@@ -152,6 +174,30 @@ int main() {
         keys[SDL_SCANCODE_LSHIFT] = 0; g.physicsTick(DT, keys, false); g.gameClock += DT;
         g.physicsTick(DT, keys, false);
         CHECK(g.dashMomentumTimer > .2f && g.dashCharges == 0, "an early dash press survives the final recharge ticks and executes once");
+        {
+            auto tap=[&](SDL_Scancode code,SDL_Keycode key){
+                SDL_Event event{};event.type=SDL_KEYDOWN;event.key.keysym.scancode=code;event.key.keysym.sym=key;
+                g.handleEvent(event);event.type=SDL_KEYUP;g.handleEvent(event);
+            };
+            std::memset(keys,0,sizeof(keys));
+            g.player.position=feet;g.player.velocity={0,0,0};g.player.onGround=true;
+            g.prevOnGround=true;g.prevJumpKey=false;g.dashMomentumTimer=0;g.slamming=false;
+            tap(SDL_SCANCODE_SPACE,SDLK_SPACE);g.physicsTick(DT,keys,false);
+            CHECK(g.player.jumpedThisTick && g.player.velocity.y>0 && g.jumpInput.context<0,
+                  "a jump pressed and released between physics ticks is retained and consumed once");
+            g.physicsTick(DT,keys,false);
+            CHECK(!g.player.jumpedThisTick && g.jumpsRemaining==1,"a retained ground jump does not also spend the air jump");
+            g.dashCharges=2;g.prevDashKey=false;
+            tap(SDL_SCANCODE_LSHIFT,SDLK_LSHIFT);g.physicsTick(DT,keys,false);g.physicsTick(DT,keys,false);
+            CHECK(g.dashCharges==1,"a dash tapped between ticks executes once even with no held key");
+            g.punchCooldown=0;g.parryPrev=false;g.viewModel.parryTimer=0;
+            tap(SDL_SCANCODE_F,SDLK_f);g.physicsTick(DT,keys,false);
+            CHECK(g.viewModel.parryTimer>0 && g.punchCooldown>0,"a short parry tap survives between-tick key release");
+            g.jumpInput.press(0,g.gameClock);g.gameClock+=ActionBuffer::WINDOW+.01f;
+            g.player.position=feet;g.player.velocity={0,0,0};g.player.onGround=true;g.prevOnGround=true;
+            g.physicsTick(DT,keys,false);
+            CHECK(!g.player.jumpedThisTick,"an expired movement tap cannot trigger a late jump");
+        }
         Enemy body(EnemyType::BRUTE, {0,0,0});
         g.bodyHitPush = g.bodyHitStrongest = 0;
         g.bodyHit(body, {1,0,0}, 4, false); g.bodyHit(body, {2,0,0}, 4, false); g.bodyHit(body, {3,0,0}, 6, false);

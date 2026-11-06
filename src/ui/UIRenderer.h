@@ -117,6 +117,11 @@ public:
     void onOverdrive()           { overdriveFlash = 2.0f; }
     void onShoot()               { shootFlashTimer = 0.06f; }
     void onHit(bool kill=false, bool head=false) {
+        // Let a critical confirmation finish its display even when another
+        // target takes a plain hit. Plain hits do not keep it alive forever.
+        if (hitmarkerTimer > 0.f && !hitmarkerBlocked && !kill) {
+            if (hitmarkerKill || (hitmarkerHead && !head)) return;
+        }
         // A later pellet/body hit must not erase the same burst's kill or headshot.
         bool sameBurst = hitmarkerTimer > .14f && !hitmarkerBlocked;
         hitmarkerKill = kill || (sameBurst && hitmarkerKill);
@@ -124,7 +129,7 @@ public:
         hitmarkerBlocked = false; hitmarkerTimer = .18f;
     }
     void onBlocked() {
-        if (hitmarkerTimer > .14f && !hitmarkerBlocked) return;
+        if (hitmarkerTimer > 0.f && !hitmarkerBlocked && (hitmarkerKill || hitmarkerHead || hitmarkerTimer > .14f)) return;
         hitmarkerKill = hitmarkerHead = false;
         hitmarkerBlocked = true; hitmarkerTimer = .14f;
     }

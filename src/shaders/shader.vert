@@ -58,7 +58,7 @@ void main()
     // Transform normal to world space so lighting is correct when the model
     // is rotated or scaled. The transpose(inverse(model)) handles non-uniform scaling.
     // For a pure translation (no scale/rotation), this equals mat3(model).
-    Normal = mat3(transpose(inverse(model))) * aNormal;
+    Normal = transpose(inverse(mat3(model))) * aNormal;
 
     VertColor = aColor;
 }

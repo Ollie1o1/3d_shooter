@@ -202,25 +202,39 @@ inline void GameplayState::renderLabAtmosphere(const glm::mat4& view,const glm::
     labGlassShader.setVec3("uOrigin",vec3{0});labGlassShader.setVec3("uNormal",vec3{0,0,1});labGlassShader.setFloat("uAnomaly",0);
     glDisable(GL_CULL_FACE);glDepthMask(GL_FALSE);glEnable(GL_BLEND);glBlendFunc(GL_ONE,GL_ONE);
     glBindVertexArray(waterVAO);glBindBuffer(GL_ARRAY_BUFFER,waterVBO);
-    int slot=0;   // (each quad its own slot of the buffer: rewriting one the GPU is still drawing would stall it)
-    auto quad=[&](vec3 a,vec3 b,vec3 d,vec3 e){if(slot>=MAX_WATER)return;const vec3 v[]={a,b,d,a,d,e};glBufferSubData(GL_ARRAY_BUFFER,slot*sizeof(v),sizeof(v),v);glDrawArrays(GL_TRIANGLES,slot*6,6);++slot;};
-    labGlassShader.setFloat("uMode",3);
+    struct BeamDraw { vec3 a,b,color; glm::vec2 radius; float mode; };
+    vec3 vertices[MAX_WATER*6];
+    BeamDraw draws[MAX_WATER];
+    int slot=0;
+    auto quad=[&](vec3 a,vec3 b,vec3 d,vec3 e,BeamDraw draw){
+        if(slot>=MAX_WATER)return;
+        const vec3 v[]={a,b,d,a,d,e};std::copy(v,v+6,vertices+slot*6);
+        draws[slot++]=draw;
+    };
     for(const auto& beam:st.labBeams){
         if(!labfx::near(room,beam.room))continue;
         vec3 mid=(beam.top+beam.bottom)*.5f,axis=glm::normalize(beam.bottom-beam.top);
         vec3 side=glm::cross(axis,camPos-mid);float n=glm::length(side);
         if(n<.001f || glm::length(camPos-mid)>140)continue;
         side/=n;
-        labGlassShader.setVec3("uBeamA",beam.top);labGlassShader.setVec3("uBeamB",beam.bottom);
-        labGlassShader.setVec2("uBeamR",glm::vec2{beam.r0,beam.r1});labGlassShader.setVec3("uBeamColor",beam.color);
-        quad(beam.top-side*beam.r0,beam.top+side*beam.r0,beam.bottom+side*beam.r1,beam.bottom-side*beam.r1);
+        quad(beam.top-side*beam.r0,beam.top+side*beam.r0,beam.bottom+side*beam.r1,beam.bottom-side*beam.r1,
+             {beam.top,beam.bottom,beam.color,{beam.r0,beam.r1},3.f});
     }
     if(st.labPortalRadius>0 && room>=8){
         float R=st.labPortalRadius;vec3 p=st.labPortal;
-        labGlassShader.setFloat("uMode",4);labGlassShader.setVec3("uBeamA",p);labGlassShader.setVec2("uBeamR",glm::vec2{R,0});
         float heat=0;for(const auto& e:enemies)if(e.alive && e.type==EnemyType::SUCCESSOR)heat=1-e.health/e.maxHealth;
-        labGlassShader.setVec3("uBeamColor",vec3{heat,0,0});
-        quad(p+vec3{-R,-R,0},p+vec3{R,-R,0},p+vec3{R,R,0},p+vec3{-R,R,0});
+        quad(p+vec3{-R,-R,0},p+vec3{R,-R,0},p+vec3{R,R,0},p+vec3{-R,R,0},
+             {p,p,vec3{heat,0,0},{R,0},4.f});
+    }
+    if(slot){
+        glBufferData(GL_ARRAY_BUFFER,sizeof(vertices),nullptr,GL_STREAM_DRAW);
+        glBufferSubData(GL_ARRAY_BUFFER,0,slot*6*sizeof(vec3),vertices);
+        for(int i=0;i<slot;++i){
+            const auto& d=draws[i];
+            labGlassShader.setFloat("uMode",d.mode);labGlassShader.setVec3("uBeamA",d.a);labGlassShader.setVec3("uBeamB",d.b);
+            labGlassShader.setVec2("uBeamR",d.radius);labGlassShader.setVec3("uBeamColor",d.color);
+            glDrawArrays(GL_TRIANGLES,i*6,6);
+        }
     }
     glBindVertexArray(0);glDepthMask(GL_TRUE);glDisable(GL_BLEND);glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);glEnable(GL_CULL_FACE);
 }

@@ -387,6 +387,7 @@ tools/record_showcase.sh         # re-record docs/overdrive.gif (needs gifski)
 #   --gpu-timer        add GPU time via GL timer queries; on macOS reading them stalls the CPU, so
 #                      frame times run ~2x slower while it's on. ACT II needs --cam or it times the armory
 #   --skip sky,world,boxes,water,fx,viewmodel,bloom,hud   leave render passes out to see what each costs
+#   --skip cull        compare with camera culling disabled for both the static world and animated parts
 #   --inflight N       frames the CPU may run ahead of the GPU (default 2; 0 = no fence, 1 halves the rate on macOS)
 #   --aa N             MSAA samples whatever the settings say (0 = off; the setting offers OFF / 2X / 4X)
 #   (--fast means FAST mode, not "start quickly": use --play for ARENA)
@@ -396,6 +397,11 @@ tools/record_showcase.sh         # re-record docs/overdrive.gif (needs gifski)
 OVERDRIVE_SFXLIST=1 ./shooter ...   # print every loaded sound and its length
 ./shooter --mixreport              # every sound's level against its mix target, then quit
 ```
+
+See [the FPS optimization measurements](docs/fps-optimizations.md) for the glass/light-shaft upload fix,
+animated-part culling, validation and repeatable benchmark commands.
+The [shared-systems pass](docs/shared-systems.md) adds weapon/arm batching, collision and allocation
+improvements, retained quick taps, responsive weapon selection and clearer critical-hit feedback.
 
 **In the game:** `` ` `` or **F2** on the main menu opens the **DEV level select** (also `--dev`, or `?dev` on the web build): any arena and wave (Act I or Act II), any FAST room, or any STORY checkpoint in all three chapters, with god mode on or off. These are practice runs (no records, no leaderboard); in one, **F5** clears the current wave and **F6** refills health. STORY starts skip the wake-up and include equipment from earlier rooms. Scroll over the STORY column for Chapters 2 and 3; rows use `chapter.room` numbering.
 
