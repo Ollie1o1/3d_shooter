@@ -104,6 +104,39 @@ int main(){
     bool clear=true;int count=0;for(const auto& a:L.arenas)for(const auto& wave:a.waves)for(const auto& e:wave)for(auto p:e.at){++count;float r=statsOf(e.type).radius,h=statsOf(e.type).height;AABB capsule{p+glm::vec3{-r,.08f,-r},p+glm::vec3{r,h,r}};
         for(const auto& wall:L.walls){const auto& b=wall.box;if(capsule.min.x<b.max.x&&capsule.max.x>b.min.x&&capsule.min.y<b.max.y&&capsule.max.y>b.min.y&&capsule.min.z<b.max.z&&capsule.max.z>b.min.z){clear=false;std::printf("  blocked %s %.1f %.1f %.1f\n",statsOf(e.type).name,p.x,p.y,p.z);break;}}}
     CHECK(clear && count>35,"all authored enemies have full body clearance at their actual spawn");
+    bool density=true, support=true, separated=true;
+    const int roomCounts[]={10,24,14,20,0,14,16,14,22};
+    for(int room=0;room<9;++room){
+        const auto& a=L.arenas[room];int total=0;
+        for(const auto& wave:a.waves){
+            std::vector<std::pair<glm::vec3,float>> bodies;
+            for(const auto& e:wave)for(auto p:e.at){
+                ++total;const auto& stats=statsOf(e.type);
+                bool valid=spawnClearance(L,p,stats.radius,stats.height,!stats.flying) && L.arenaAt(p)==room;
+                if(!valid)std::printf("  unsupported %s room %d %.1f %.1f %.1f\n",stats.name,room,p.x,p.y,p.z);
+                support&=valid;
+                for(const auto& body:bodies){
+                    bool clear=glm::length(p-body.first)>=stats.radius+body.second;
+                    if(!clear)std::printf("  overlapping room %d %.1f %.1f %.1f\n",room,p.x,p.y,p.z);
+                    separated&=clear;
+                }
+                bodies.push_back({p,stats.radius});
+            }
+        }
+        density&=total==roomCounts[room] && (room==4 || a.maxAlive==14);
+        if(room!=4){
+            WaveDirector d;d.level=&L;d.fast=true;d.startArena(room);
+            std::vector<SpawnRequest> spawned;d.update(DT,0,a.playerStart,spawned);d.update(DT,0,a.playerStart,spawned);
+            int first=0;for(const auto& e:a.waves.front())first+=(int)e.at.size();
+            density&=(int)spawned.size()==first && d.queue.empty();
+        }
+    }
+    CHECK(density,"Chapter 3 fields twice the enemies in every combat room, with up to fourteen together");
+    CHECK(support,"every Chapter 3 spawn has full body clearance and ground enemies have floor support");
+    CHECK(separated,"doubled Chapter 3 waves use separate positions without overlapping enemy bodies");
+    int bosses=0;for(const auto& wave:L.arenas[9].waves)for(const auto& e:wave)
+        if(isBoss(e.type))bosses+=e.at.empty()?e.count:(int)e.at.size();
+    CHECK(bosses==1,"the final assessment remains one Successor");
     CHECK(L.arenas[4].scripted && L.arenas[4].waves.empty(),"the impossible garden stays a quiet recovery space");
     bool flow=true;for(int i=0;i<10;++i)if(i!=4){WaveDirector d;d.level=&L;d.fast=true;d.startArena(i);int emitted=0;
         for(int f=0;f<900 && d.arena==i && d.phase!=WaveDirector::Phase::VICTORY;++f){std::vector<SpawnRequest> spawns;d.update(DT,0,L.arenas[i].playerStart,spawns);emitted+=(int)spawns.size();if(f>300)d.completeGoal();}

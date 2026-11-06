@@ -321,7 +321,7 @@ inline LevelData buildLab(){
         for(float side:{-1.f,1.f})b.neon(side<0?-half+2:half-2.2f,y+.06f,z-38,side<0?-half+2.2f:half-2,y+.12f,z+38,cyan*.22f);
         Arena a;a.name=lab::name(i);a.subtitle=lab::objective(i);a.zone=LevelBuilder::aabb(-half,y-300,z-41,half,y+roof-.05f,z+41);a.bounds=a.zone;a.bounds.min.y=y;
         a.entryGate=i>0?b.doorway(true,entry-5.8f,entry+5.8f,z+39.7f,z+40.3f,y,7,cyan,false):-1;
-        a.playerStart={entry,y,z+31};a.startYaw=-90;a.exitDoor=door;a.maxAlive=7;a.damageScale=.9f;a.theme=lab::theme(i);
+        a.playerStart={entry,y,z+31};a.startYaw=-90;a.exitDoor=door;a.maxAlive=14;a.damageScale=.9f;a.theme=lab::theme(i);
         a.ambient=i==8?Ambient::MARINE:i>=7?Ambient::NEBULA:i==4?Ambient::WIND:Ambient::SPECKS;a.space=ReverbSpace::HALL;a.tone=i==4?RoomTone::YARD:i==8?RoomTone::HADAL:i>=7?RoomTone::CELESTIAL:RoomTone::WARD;
         a.hasTrigger=i!=4;a.trigger=LevelBuilder::aabb(-40,y-1,z-37,40,y+14,z+17);a.scripted=i==4;
         a.voidY=y-12;a.hasRespawn=true;a.respawn={entry,y,z+28};
@@ -329,21 +329,22 @@ inline LevelData buildLab(){
         if(i==1)a.groundSpawns={{-4,y,z-18},{18,y,z-22},{-18,y,z+2},{18,y,z-6}};
         if(i==5)a.groundSpawns={{-28,y,z-18},{28,y,z-18},{0,y,z+2},{28,y,z-6}};
         if(i==7||i==8)a.groundSpawns={{-18,y,z-14},{18,y,z-18},{-18,y,z+2},{18,y,z-6}};
-        // Each new body is first introduced in a readable, finite encounter.
+        // Doubled finite encounters: retain the original placements and give each
+        // reinforcement its own nearby position, including on the galleries.
         auto at=[&](EnemyType t,std::initializer_list<vec3> points){std::vector<vec3> p;for(auto q:points)p.push_back(c+q);return W(t,0,p);};
         using E=EnemyType;
-        if(i==0)a.waves={{at(E::PATIENT,{{-22,0,-14},{24,0,-22},{-20,0,0},{14,0,-8},{-8,0,-24}})}};
-        if(i==1)a.waves={{at(E::PATIENT,{{-4,0,-16},{16,0,-24},{0,0,0},{-24,0,-3},{8,0,-30},{12,0,-34}})},
-                         {at(E::PATIENT,{{4,0,-19},{20,0,-12},{-20,0,1},{-6,0,-31},{24,0,-4}}),at(E::GRAFTED,{{0,0,-25}})}};
-        if(i==2)a.waves={{at(E::GRAFTED,{{0,0,-18}}),at(E::PATIENT,{{-15,0,-9},{15,0,-3},{-31,6,-12},{31,6,-12},{-8,0,-24},{8,0,-12}})}};
-        if(i==3)a.waves={{at(E::SUSPENDED,{{0,8,-20}}),at(E::PATIENT,{{-19,0,-4},{20,0,-16},{-14,0,12},{10,0,-24},{-6,0,8}})},
-                         {at(E::SUSPENDED,{{24,9,-19}}),at(E::GRAFTED,{{-16,0,-12}}),at(E::PATIENT,{{31,6,-12},{-31,6,-12}})}};
-        if(i==5)a.waves={{at(E::SUSPENDED,{{-21,8,-12}}),at(E::PATIENT,{{0,0,-12},{28,0,-10},{-28,0,-7},{28,0,10},{-28,0,12},{0,0,8}})}};
-        if(i==6)a.waves={{at(E::PHASED,{{0,0,-20}})},
-                         {at(E::PHASED,{{-18,0,-20}}),at(E::PATIENT,{{14,0,-10},{-17,0,-5},{0,0,2},{-6,0,-12}}),at(E::GRAFTED,{{-18,6,-15.5f}}),at(E::SUSPENDED,{{24,8,-23}})}};
-        if(i==7)a.waves={{at(E::PHASED,{{-16,0,-8},{20,0,-18}}),at(E::SUSPENDED,{{-26,8,-26}}),at(E::PATIENT,{{0,0,-16},{-18,0,10},{18,0,8},{6,0,-16}})}};
-        if(i==8)a.waves={{at(E::GRAFTED,{{0,0,-18}}),at(E::SUSPENDED,{{-24,8,-20}}),at(E::PHASED,{{21,0,-16}}),at(E::PATIENT,{{-18,0,-4},{18,0,-4}})},
-                         {at(E::PHASED,{{-19,0,-13},{20,0,-18}}),at(E::PATIENT,{{-10,0,-17},{14,0,-8},{18,0,8},{-4,0,-20}})}};
+        if(i==0)a.waves={{at(E::PATIENT,{{-22,0,-14},{24,0,-22},{-20,0,0},{14,0,-8},{-8,0,-24},{-22,0,-10.5f},{24,0,-18.5f},{-20,0,3.5f},{14,0,-4.5f},{-8,0,-20.5f}})}};
+        if(i==1)a.waves={{at(E::PATIENT,{{-4,0,-16},{16,0,-24},{0,0,0},{-24,0,-3},{8,0,-30},{12,0,-34},{-4,0,-12.5f},{16,0,-20.5f},{-4,0,0},{-24,0,0.5f},{8,0,-26.5f},{12,0,-30.5f}})},
+                         {at(E::PATIENT,{{4,0,-19},{20,0,-12},{-20,0,1},{-6,0,-31},{24,0,-4},{4,0,-15.5f},{20,0,-8.5f},{-20,0,4.5f},{-6,0,-27.5f},{24,0,-0.5f}}),at(E::GRAFTED,{{0,0,-25},{0,0,-21.5f}})}};
+        if(i==2)a.waves={{at(E::GRAFTED,{{0,0,-18},{0,0,-14.5f}}),at(E::PATIENT,{{-15,0,-9},{15,0,-3},{-31,6,-12},{31,6,-12},{-8,0,-24},{8,0,-12},{-15,0,-5.5f},{15,0,0.5f},{-31,6,-8.5f},{31,6,-8.5f},{-8,0,-20.5f},{8,0,-8.5f}})}};
+        if(i==3)a.waves={{at(E::SUSPENDED,{{0,8,-20},{0,8,-16.5f}}),at(E::PATIENT,{{-19,0,-4},{20,0,-16},{-14,0,12},{10,0,-24},{-6,0,8},{-19,0,-0.5f},{20,0,-12.5f},{-14,0,15.5f},{10,0,-20.5f},{-6,0,11.5f}})},
+                         {at(E::SUSPENDED,{{24,9,-19},{24,9,-15.5f}}),at(E::GRAFTED,{{-16,0,-12},{-16,0,-8.5f}}),at(E::PATIENT,{{31,6,-12},{-31,6,-12},{31,6,-8.5f},{-31,6,-8.5f}})}};
+        if(i==5)a.waves={{at(E::SUSPENDED,{{-21,8,-12},{-21,8,-8.5f}}),at(E::PATIENT,{{0,0,-12},{28,0,-10},{-28,0,-7},{28,0,10},{-28,0,12},{0,0,8},{0,0,-8.5f},{28,0,-6.5f},{-28,0,-3.5f},{28,0,13.5f},{-28,0,15.5f},{0,0,11.5f}})}};
+        if(i==6)a.waves={{at(E::PHASED,{{0,0,-20},{0,0,-16.5f}})},
+                         {at(E::PHASED,{{-18,0,-20},{-18,0,-16.5f}}),at(E::PATIENT,{{14,0,-10},{-17,0,-5},{0,0,2},{-6,0,-12},{14,0,-6.5f},{-17,0,-1.5f},{0,0,5.5f},{-6,0,-8.5f}}),at(E::GRAFTED,{{-18,6,-15.5f},{-14,6,-15.5f}}),at(E::SUSPENDED,{{24,8,-23},{24,8,-19.5f}})}};
+        if(i==7)a.waves={{at(E::PHASED,{{-16,0,-8},{20,0,-18},{-16,0,-4.5f},{20,0,-14.5f}}),at(E::SUSPENDED,{{-26,8,-26},{-26,8,-22.5f}}),at(E::PATIENT,{{0,0,-16},{-18,0,10},{18,0,8},{6,0,-16},{0,0,-12.5f},{-18,0,13.5f},{18,0,11.5f},{6,0,-12.5f}})}};
+        if(i==8)a.waves={{at(E::GRAFTED,{{0,0,-18},{0,0,-14.5f}}),at(E::SUSPENDED,{{-24,8,-20},{-24,8,-16.5f}}),at(E::PHASED,{{21,0,-16},{21,0,-12.5f}}),at(E::PATIENT,{{-18,0,-4},{18,0,-4},{-18,0,-0.5f},{18,0,-0.5f}})},
+                         {at(E::PHASED,{{-19,0,-13},{20,0,-18},{-19,0,-9.5f},{20,0,-14.5f}}),at(E::PATIENT,{{-10,0,-17},{14,0,-8},{18,0,8},{-4,0,-20},{-10,0,-13.5f},{14,0,-4.5f},{18,0,11.5f},{-4,0,-16.5f}})}};
         if(i==2||i==6||i==7||i==8)a.goals={WaveGoal::external(lab::objective(i))};
         l.arenas.push_back(a);
         if(i<9){

@@ -167,6 +167,13 @@ The four ward subjects were rebuilt for character and aggression.
   The attack scheduler still limits simultaneous attackers by difficulty.
   The Grafted now trudges after the player instead of holding the centre.
 - Patient health 84 -> 64; most encounters gained one or two Patients.
+- November 6 encounter density pass: doubled every regular combat wave, from
+  67 to 134 enemies across the eight combat rooms, and raised the concurrent
+  cap from 7 to 14. Story emits these finite, authored waves together; each
+  reinforcement has its own checked position with body clearance and floor
+  support. Enemy introductions retain their order. The quiet garden and single
+  Successor encounter are unchanged. `test_lab.cpp` checks actual first-wave
+  emission, room totals, spacing, support and progression.
 - `--viewer patient|grafted|suspended|phased` previews the subjects;
   F winds up an attack, N cycles attacks, W toggles the run.
 
