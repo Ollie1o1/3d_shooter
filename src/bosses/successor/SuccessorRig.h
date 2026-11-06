@@ -65,6 +65,33 @@ inline SuccessorPose successorStroke(SuccessorPose p,AttackKind attack,int step,
     }
     return p;
 }
+inline bool successorCast(AttackKind a){
+    return a==AttackKind::SU_SUTURE || a==AttackKind::SU_RECALL || a==AttackKind::SU_LATTICE ||
+           a==AttackKind::SU_CASCADE || a==AttackKind::SU_SEVER || a==AttackKind::SU_PERFUSION;
+}
+inline float suEase(float x){x=glm::clamp(x,0.f,1.f);return x*x*(3.f-2.f*x);}
+// Hips load first, shoulders follow, wrists arrive last. The planted back leg carries the release.
+inline SuccessorPose successorCastPose(const SuccessorPose& guard,AttackKind a,float u,float remaining){
+    auto chamber=successorStroke(guard,a,0,false),strike=successorStroke(guard,a,0,true);
+    chamber.hipR=-.28f;chamber.kneeR=.65f;chamber.hipL=-.5f;chamber.kneeL=.8f;
+    strike.hipR=.18f;strike.kneeR=.35f;strike.hipL=-.65f;strike.kneeL=.85f;
+    // Separate the release silhouettes: pull the recall, split the suture, drive the barrage forward.
+    if(a==AttackKind::SU_RECALL){chamber.torsoYaw=-.35f;strike.torsoYaw=.4f;strike.shL=-.8f;strike.elL=1.6f;}
+    if(a==AttackKind::SU_SUTURE){chamber.torsoYaw=-.25f;strike.torsoYaw=.15f;strike.roll=-.1f;}
+    if(a==AttackKind::SU_PERFUSION){chamber.lean=-.22f;chamber.elR=chamber.elL=1.75f;strike.lean=.38f;strike.head=-.12f;}
+    if(a==AttackKind::SU_CASCADE){strike.hipR=-1.1f;strike.kneeR=1.5f;strike.hipL=.3f;strike.kneeL=1.4f;}
+    SuccessorPose p=guard;
+    const float core=suEase(u/.48f),arms=suEase((u-.08f)/.58f);
+    for(int k=0;k<SuccessorState::BODY_CHANNELS;++k)
+        p.*SU_CH[k]=glm::mix(guard.*SU_CH[k],chamber.*SU_CH[k],k<5 || (k>=11 && k<=14)?core:arms);
+    const float stroke=a==AttackKind::SU_CASCADE?.18f:a==AttackKind::SU_SEVER?.16f:.12f;
+    const float release=glm::clamp(1.f-remaining/stroke,0.f,1.f);
+    const float hips=suEase(release*1.35f),hands=suEase((release-.12f)/.88f);
+    for(int k=0;k<SuccessorState::BODY_CHANNELS;++k)
+        p.*SU_CH[k]=glm::mix(p.*SU_CH[k],strike.*SU_CH[k],k<5 || (k>=11 && k<=14)?hips:hands);
+    // A small compression under charge; no idle sway distracting from the locked aim.
+    p.head-=.045f*std::sin(u*3.14159265f);return p;
+}
 inline SuccessorPose successorGoal(const Enemy& e,float time){
     auto guard=successorGuard(e,time),goal=guard;
     if(e.telegraphTimer>0){
@@ -73,12 +100,26 @@ inline SuccessorPose successorGoal(const Enemy& e,float time){
         goal=suMix(guard,chamber,wind);
         float whip=glm::clamp(1.f-e.telegraphTimer/.15f,0.f,1.f);whip=1-std::pow(1-whip,3.f);
         goal=suMix(goal,strike,whip);
+        if(successorCast(e.attack))goal=successorCastPose(guard,e.attack,e.telegraphProgress(),e.telegraphTimer);
     }else if(e.suBurst>0)goal=successorStroke(guard,AttackKind::SU_VECTOR,0,true);
     else if(e.suAir>0)goal=successorStroke(guard,AttackKind::SU_BREAKER,0,e.suAir<.16f);
-    if(e.suSince<.28f && e.suLanded!=AttackKind::NONE && e.suBurst<=0 && e.suAir<=0){
-        float release=e.telegraphTimer>0?.14f:.24f;
-        float hold=1-glm::clamp((e.suSince-.035f)/(release-.035f),0.f,1.f);
-        goal=suMix(goal,successorStroke(guard,e.suLanded,e.suLandedStep,true),hold);
+    const bool cast=successorCast(e.suLanded);
+    const float follow=cast?.48f:.28f;
+    if(e.suSince<follow && e.suLanded!=AttackKind::NONE && e.suBurst<=0 && e.suAir<=0){
+        float release=e.telegraphTimer>0?.14f:cast?.46f:.24f;
+        float hold=1-suEase((e.suSince-.055f)/(release-.055f));
+        auto contact=cast?successorCastPose(guard,e.suLanded,1.f,0.f):successorStroke(guard,e.suLanded,e.suLandedStep,true);
+        // The cast pushes back through shoulders before the elbows fold home.
+        const float recoil=std::sin(glm::clamp(e.suSince/.16f,0.f,1.f)*3.14159265f);
+        if(cast){contact.lean-=.12f*recoil;contact.elR+=.22f*recoil;contact.elL+=.18f*recoil;}
+        goal=suMix(goal,contact,hold);
+    }
+    // Subsequent volleys have their own recoil; don't let the arms drop while shots are still leaving them.
+    if(e.telegraphTimer<=0 && e.suLanded==AttackKind::SU_PERFUSION && e.suSince<.72f && e.suPhase>=2){
+        auto fire=successorCastPose(guard,AttackKind::SU_PERFUSION,1.f,0.f);
+        float pulse=std::exp(-std::fmod(std::max(0.f,e.suSince),.22f)*24.f);
+        fire.lean-=.1f*pulse;fire.elR+=.28f*pulse;fire.elL+=.28f*pulse;
+        goal=suMix(goal,fire,1-suEase((e.suSince-.48f)/.24f));
     }
     if(e.suPause>0){goal.shR=goal.shL=.1f;goal.elR=goal.elL=.2f;goal.lean=-.08f;goal.torsoYaw=std::sin(time)*.1f;}
     if(e.staggered()){goal=guard;goal.lean=.65f;goal.head=.35f;goal.shR=goal.shL=.35f;goal.elR=goal.elL=.3f;goal.kneeR=goal.kneeL=.85f;goal.hipR=goal.hipL=-.4f;}
@@ -109,7 +150,10 @@ inline bool successorFilePose(const Enemy& e,float time,const mat4& root,mat4& f
     f.motion[E_ARMR]=RX(p.shR)*RZ(p.splayR);f.motion[E_ARML]=RX(p.shL)*RZ(p.splayL);
     f.motion[E_ELBOW_R]=RX(-p.elR);f.motion[E_ELBOW_L]=RX(-p.elL);
     f.motion[E_HAND_R]=RZ(p.handR);f.motion[E_HAND_L]=RZ(p.handL);
-    f.motion[E_FINGERS_R]=RX(-.75f);f.motion[E_FINGERS_L]=RX(-.65f);
+    const bool casting=(e.telegraphTimer>0 && successorCast(e.attack)) || (e.suSince<.4f && successorCast(e.suLanded));
+    const float open=casting?.75f:0.f;
+    f.motion[E_FINGERS_R]=RX(-.75f+open);f.motion[E_FINGERS_L]=RX(-.65f+open*.85f);
+    f.motion[E_TIPS_R]=RX(-.5f+open*.6f);f.motion[E_TIPS_L]=RX(-.5f+open*.6f);
     float pulse=.8f+.2f*std::sin(time*(e.suPhase>=3?12.f:5.f));
     vec3 red{1.7f,.035f,.12f},base=red*(.55f+.18f*e.suPhase)*pulse;
     vec3 tell=SuccessorState::white(e.attack)?vec3{2.2f}:e.attack==AttackKind::SU_BREAKER?vec3{2.2f,.12f,.2f}:abGoldTell(vec3{2.f,1.3f,.15f});
@@ -119,4 +163,18 @@ inline bool successorFilePose(const Enemy& e,float time,const mat4& root,mat4& f
     f.chan[C_TELL_R]=active?tell*(.8f+e.telegraphProgress()):base;
     f.chan[C_TELL_L]=active && (e.suStep%2 || e.attack==AttackKind::SU_SUTURE || e.attack==AttackKind::SU_PERFUSION || e.attack==AttackKind::SU_LATTICE)?tell*(.8f+e.telegraphProgress()):base;
     glow=base;return true;
+}
+
+// Effects follow the animated palms, including hip twist and the sprung pose.
+inline bool successorPalms(const Enemy& e,float time,vec3& right,vec3& left){
+    using namespace enemyfile;
+    const auto* model=enemyfile::model(e.type);if(!model)return false;
+    mat4 root=T(e.position)*RY(e.yaw)*S(vec3{e.scale}),fileRoot;FilePose pose;vec3 glow;
+    successorFilePose(e,time,root,fileRoot,pose,glow);
+    mat4 local[E_COUNT],world[E_COUNT];int parent[E_COUNT];
+    restLocals(*model,local,parent);for(auto& m:world)m=fileRoot;
+    for(const auto& joint:model->joints)world[joint.id]=world[joint.parent]*local[joint.id]*pose.motion[joint.id];
+    right=vec3(world[E_HAND_R]*glm::vec4{0,-.06f,.04f,1});
+    left=vec3(world[E_HAND_L]*glm::vec4{0,-.06f,.04f,1});
+    return true;
 }

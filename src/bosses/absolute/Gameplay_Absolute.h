@@ -303,10 +303,23 @@ inline void GameplayState::gatherAbsoluteBoxes(std::vector<BoxInstance>& out) {
         const float sky = 170.f;
         if (a->abArrive > 0.f) {
             float k = glm::clamp(a->abArrive / Enemy::AB_ARRIVE, 0.f, 1.f), pulse = 0.85f + 0.15f * std::sin(t * 31.f);
+            const float shaft = smooth01(a->abArrive / Enemy::AB_ARRIVE_SETTLE);
             glm::vec3 foot{a->position.x, C.y + ZEN_DAIS_UP + 0.05f, a->position.z};
-            along(foot, foot + glm::vec3{0.f, sky, 0.f}, 0.5f + 1.1f * k, glm::vec3{1.f}, glm::vec3{2.4f, 2.1f, 1.8f} * (0.6f + k) * pulse);
-            along(foot, foot + glm::vec3{0.f, sky, 0.f}, 0.15f + 0.2f * k, glm::vec3{1.f}, glm::vec3{4.f, 3.8f, 3.5f});   // (thin: the white-hot core shows through bloom)
-            push(out, T(foot) * RY(t * 2.f) * S({ZEN_DAIS * 1.6f * (1.f - k * 0.5f), 0.04f, ZEN_DAIS * 1.6f * (1.f - k * 0.5f)}), glm::vec3{1.f}, gold * (1.f - k) * 1.2f);
+            along(foot, foot + glm::vec3{0.f, sky, 0.f}, 0.5f + 1.1f * k, glm::vec3{1.f}, glm::vec3{2.4f, 2.1f, 1.8f} * (0.6f + k) * pulse * shaft);
+            along(foot, foot + glm::vec3{0.f, sky, 0.f}, 0.15f + 0.2f * k, glm::vec3{1.f}, glm::vec3{4.f, 3.8f, 3.5f} * shaft);   // (thin: the white-hot core shows through bloom)
+            // A segmented landing circle, then short radial cracks lifting off the Dais at contact.
+            const float contact = 1.f - glm::clamp(a->abArrive / Enemy::AB_ARRIVE_SETTLE, 0.f, 1.f);
+            const float radius = 1.2f + 2.f * k + 5.f * contact;
+            for(int j=0;j<24;++j){
+                float angle=j*6.2831853f/24.f, end=angle+.19f;
+                glm::vec3 d{std::cos(angle),0,std::sin(angle)},q{std::cos(end),0,std::sin(end)};
+                along(foot+d*radius,foot+q*radius,.045f,gold*.25f,gold*(.6f+1.4f*(1.f-k))*(1.f-contact));
+                if(contact>0.f && j%2==0){
+                    glm::vec3 start=foot+d*(1.2f+3.5f*contact);
+                    along(start,start+d*(.5f+1.2f*contact)+glm::vec3{0,.8f*std::sin(contact*3.14159265f),0},
+                          .07f,gold*.3f,gold*2.f*(1.f-contact));
+                }
+            }
         }
         if (abShaftT >= 0.f) {
             float u = abShaftT / AB_SHAFT, w = (u < 0.15f ? u / 0.15f : 1.f - (u - 0.15f) / 0.85f);

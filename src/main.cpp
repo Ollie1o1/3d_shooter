@@ -466,9 +466,16 @@ struct App {
         if (dynamic_cast<MenuState*>(currentState.get())) {   // the menu's music: a groove, no fight
             audio.masterVolume = settings.audioVolume;
             audio.setMusicVolume(settings.musicVolume);
-            audio.music.setTrack(0);
+            audio.music.setTrack(MENU_MUSIC_TRACK);
             audio.music.setIntensity(0.55f);
             audio.music.setMuffle(false);
+            audio.music.setDrive(false);
+            audio.music.setSolo(false);
+            audio.setOverdrive(false, 0.f);
+            audio.setRoomLevel(0.f);
+            audio.setWind(0.f);
+            audio.setRope(0.f);
+            audio.setMuffle(0.f);
         }
         if (recordFrames > 0) {   // --record: skip the warm-up, then save every frame
             ++recordIndex;
