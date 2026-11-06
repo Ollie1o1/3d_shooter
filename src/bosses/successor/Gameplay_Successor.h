@@ -93,6 +93,33 @@ inline void GameplayState::gatherSuccessor(std::vector<BoxInstance>& out){
     }
     for(const auto& e:enemies){if(!e.alive)continue;
         if(e.type==EnemyType::SUCCESSOR){
+            // Small charge filaments and release wakes sit on the actual animated hands.
+            const bool charging=e.telegraphTimer>0 && successorCast(e.attack);
+            const bool releasing=e.telegraphTimer<=0 && e.suSince<.24f && successorCast(e.suLanded) && !e.staggered() && e.suPause<=0;
+            if(charging || releasing){
+                vec3 right,left;
+                if(successorPalms(e,gameClock,right,left)){
+                    const float u=charging?e.telegraphProgress():1.f-e.suSince/.24f;
+                    const vec3 glow=vec3{1.5f,.16f,.22f}*(.35f+.9f*u);
+                    const vec3 side{std::cos(e.yaw),0,-std::sin(e.yaw)},up{0,1,0};
+                    const AttackKind kind=charging?e.attack:e.suLanded;
+                    const bool both=kind==AttackKind::SU_SUTURE || kind==AttackKind::SU_LATTICE || kind==AttackKind::SU_PERFUSION;
+                    for(int hand=0;hand<(both?2:1);++hand){
+                        const vec3 palm=hand?left:right;
+                        const float radius=charging?.32f-.19f*u:.14f+.65f*(1.f-u);
+                        for(int k=0;k<12;++k){
+                            if(k%4==3)continue;   // broken rings leave the hand and target readable
+                            float a=k*.5235988f+(charging?gameClock*3.f:0.f),b=a+.37f;
+                            line(palm+(side*std::cos(a)+up*std::sin(a))*radius,
+                                 palm+(side*std::cos(b)+up*std::sin(b))*radius,.025f,glow*.2f,glow*u);
+                        }
+                        if(charging){
+                            const vec3 chest=e.position+vec3{0,2.1f*e.scale,0};
+                            line(glm::mix(chest,palm,.45f+.35f*u),palm,.022f,glow*.15f,glow*.55f*u);
+                        }
+                    }
+                }
+            }
             if(e.telegraphTimer>0){
                 auto color=SuccessorState::white(e.attack)?vec3{2}:e.attack==AttackKind::SU_VECTOR||e.attack==AttackKind::SU_INCISION||e.attack==AttackKind::SU_REAP?abGoldTell(vec3{1.5f,1,.15f}):vec3{1.5f,.2f,.25f};
                 if(e.attack==AttackKind::SU_VECTOR){

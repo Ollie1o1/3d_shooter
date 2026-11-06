@@ -12,7 +12,7 @@
 
 struct AbsoluteState {
     // THE ABSOLUTE (EnemyAbsolute.h): he fights in strings (combos) from a table
-    static constexpr float AB_PHASE2 = 0.60f, AB_PHASE3 = 0.25f, AB_JUDGE_AT = 0.08f, AB_ARRIVE = 2.f, AB_REEL = 1.25f,
+    static constexpr float AB_PHASE2 = 0.60f, AB_PHASE3 = 0.25f, AB_JUDGE_AT = 0.08f, AB_ARRIVE = 2.f, AB_ARRIVE_SETTLE = 0.3f, AB_REEL = 1.25f,
                            AB_BREAK = 3.f, AB_SPENT = 4.f, AB_DEFLECT = 14.f, AB_CAMP = 3.f, AB_FAR = 30.f, AB_RUN = 11.f,
                            AB_DASH = 32.f, AB_REACH = 2.8f, AB_FOLLOW_FLOOR = 0.22f, AB_QUICK = 0.75f, AB_RANGE = 20.f,
                            AB_BLADE_BACK = 3.f, AB_HALO_TIME = 2.f, AB_JUDGE_WARN = 2.f,

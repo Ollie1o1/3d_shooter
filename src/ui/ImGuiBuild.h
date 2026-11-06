@@ -53,3 +53,6 @@
 #undef Expose
 #undef Complex
 #undef Convex
+
+// Windows headers also define the Absolute boss's enum name.
+#undef ABSOLUTE

@@ -282,9 +282,12 @@ inline void Enemy::thinkAbsoluteMind(float dt, const EnemyWorld& w, bool resolve
     moveSpeed = 0.f;
 
     if (abArrive > 0.f) {   // descending onto the Dais from above
-        abArrive -= dt;
-        if (abArrive <= 0.f) ev.abLanded = true;
-        abAlt = abAltWant = AB_ARRIVE_UP * glm::clamp((abArrive - 0.3f) / (AB_ARRIVE - 0.3f), 0.f, 1.f);
+        const float before = abArrive;
+        abArrive = std::max(0.f, abArrive - dt);
+        // Contact, sound and dust share the same instant; the remaining time absorbs the landing.
+        if (before > AB_ARRIVE_SETTLE && abArrive <= AB_ARRIVE_SETTLE) ev.abLanded = true;
+        const float fall = 1.f - glm::clamp((abArrive - AB_ARRIVE_SETTLE) / (AB_ARRIVE - AB_ARRIVE_SETTLE), 0.f, 1.f);
+        abAlt = abAltWant = AB_ARRIVE_UP * (1.f - fall * fall * fall);
         turnToward(to, dt, 6.f);
         return;
     }

@@ -2651,7 +2651,27 @@ int main() {
         MusicSynth m; m.setTrack(2);
         std::vector<float> buf(2 * 4410);
         m.render(buf.data(), 4410);
-        CHECK(m.currentTrack() == 2, "a track change waits for the bar line, then takes");
+        CHECK(m.currentTrack() == 2, "a track change fades out and takes within 100 ms");
+        // Menu stays in its low register through every bar and repeat.
+        const auto& menu = musicTrack(MENU_MUSIC_TRACK);
+        CHECK(menu.root <= 45 && menu.bpm >= 140.f && menu.techno,
+              "menu keeps a low key and a fast techno beat");
+        CHECK(std::all_of(menu.chords, menu.chords + 4, [](int c) { return c == 0; }) &&
+              std::strchr(menu.bass, 'o') == nullptr && std::strchr(menu.bass, 'f') == nullptr,
+              "menu has no chord transpositions or high bass pickups");
+        for (int previous : {10, 12, 14, 16}) {
+            m.setTrack(previous); m.setIntensity(1.3f); m.setDrive(true); m.stinger();
+            m.render(buf.data(), 4410);
+            m.rewind(); m.render(buf.data(), 4410);
+            m.setDrive(false); m.setSolo(false); m.setIntensity(.55f);
+            m.setTrack(MENU_MUSIC_TRACK);
+            m.render(buf.data(), 4410);
+            CHECK(m.currentTrack() == MENU_MUSIC_TRACK && !m.rewinding(),
+                  "menu promptly replaces boss music, including an active tape rewind");
+            CHECK(std::all_of(buf.begin(), buf.end(), [](float v) { return std::isfinite(v) && std::fabs(v) <= 1.f; }),
+                  "track transitions produce finite bounded audio");
+        }
+
     }
 
     // ---------------------------------------------------------------- sound effects mixer: core

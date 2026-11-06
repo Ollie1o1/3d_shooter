@@ -220,7 +220,7 @@ inline void absoluteMoveBody(AbsPose& P, AttackKind a, bool strike, float tp) {
         break;
     case AttackKind::ARAY: case AttackKind::AZENITH: case AttackKind::ASEAMS: case AttackKind::AHALO:
         P.glow = 0; P.fistR = 0.f;
-        if (a == AttackKind::ARAY) { P.hipYaw = -0.2f; P.shR = -1.57f; P.shRz = -0.05f; P.elR = 0.f; P.torsoYaw = 0.45f; P.shL = -0.3f; P.elL = 0.6f;
+        if (a == AttackKind::ARAY) { P.hipYaw = k ? -.1f : -.45f; P.shR = k ? -1.57f : -.9f; P.shRz = -0.05f; P.elR = k ? .08f : 1.65f; P.torsoYaw = k ? .45f : -.3f; P.dip += k ? .08f : .16f; P.shL = -0.3f; P.elL = 0.6f;
                                      P.twR = 0.f; P.flR = -1.3f; P.dvR = 0.f; }   // the palm out at you
         else { P.shR = -3.0f; P.elR = 0.1f; P.shL = -0.2f; P.shLz = 0.5f; P.elL = 0.5f; P.headPitch = -0.35f; P.torsoPitch = -0.1f; }   // one hand to the sky
         break;
@@ -355,8 +355,39 @@ inline void absPlant(AbsPose& P) {
 
 constexpr float AB_FOLLOW_T = 0.42f;   // a blow's follow-through, back to guard
 
+// Contact pose shared by the entrance and aerial hammer attacks: a planted, asymmetric landing.
+inline AbsPose absoluteLanding(const AbsPose& guard) {
+    AbsPose p = guard;
+    p.plant = 1.f; p.lift = 0.f; p.ankle = 1.f; p.dip = .2f;
+    p.hipR = -1.15f; p.kneeR = 1.65f; p.hipL = .2f; p.kneeL = 1.25f;
+    p.hipYaw = -.2f; p.torsoYaw = .25f; p.torsoPitch = .7f; p.headPitch = -.3f;
+    p.shR = -.45f; p.elR = .12f; p.shRz = -.15f; p.fistR = 1.f;
+    p.shL = .45f; p.shLz = .5f; p.elL = .65f; p.fistL = .35f;
+    p.omega = 48.f;
+    return p;
+}
+
 inline AbsPose absolutePose(const Enemy& e, float time) {
     AbsPose G = absoluteGuard(e, time);
+    if (e.abArrive > 0.f) {
+        const float settle = Enemy::AB_ARRIVE_SETTLE;
+        AbsPose land = absoluteLanding(G), p;
+        if (e.abArrive > settle) {
+            // Open silhouette, then tuck the legs and lead the fall with the striking arm.
+            AbsPose flight = G; flight.plant = 0.f; flight.dip = 0.f; flight.ankle = .2f;
+            flight.shR = -2.65f; flight.elR = .45f; flight.shL = .65f; flight.elL = .4f;
+            flight.hipR = -.6f; flight.kneeR = 1.2f; flight.hipL = .45f; flight.kneeL = .8f;
+            flight.torsoPitch = .12f; flight.torsoYaw = -.35f;
+            const float brace = smooth01(1.f - (e.abArrive - settle) / .28f);
+            p = absMix(flight, land, brace, brace);
+            p.plant = brace; p.omega = 48.f;
+        } else {
+            const float recovery = smooth01((settle - e.abArrive - .065f) / (settle - .065f));
+            p = absMix(land, G, recovery, smooth01(recovery * .8f));
+            p.plant = 1.f; p.omega = 38.f;
+        }
+        absPlant(p); return p;
+    }
     if (e.abAirborne() && !e.abDiving) {   // aloft: arms swept back, legs trailing, the guard gone
         G = AbsPose{}; G.omega = 8.f; G.ankle = 0.3f;
         G.shR = G.shL = 0.55f; G.shRz = G.shLz = 0.35f; G.elR = G.elL = 0.35f; G.fistR = G.fistL = 0.6f;
@@ -394,6 +425,9 @@ inline AbsPose absolutePose(const Enemy& e, float time) {
     } else if (e.abBodyLanded != AttackKind::NONE && e.abBodySince < AB_FOLLOW_T && !e.staggered() && !(e.abAirborne() && !e.abDiving)) {
         // the follow-through: held at full stretch a beat, then gathered back into his guard
         AbsPose K = G; absoluteMove(K, e.abBodyLanded, true, 1.f, e.abBlade);
+        const bool groundImpact = e.abAlt < .3f && (e.abBodyLanded == AttackKind::ASKYFALL ||
+            e.abBodyLanded == AttackKind::MDROP || e.abBodyLanded == AttackKind::AMETEOR);
+        if (groundImpact) K = absoluteLanding(G);
         if (K.plant > 0.f || G.plant <= 0.f) {
             const float r = smooth01((e.abBodySince - 0.06f) / (AB_FOLLOW_T - 0.06f));
             P = absMix(K, G, r, smooth01(r * 1.2f));

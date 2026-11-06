@@ -54,7 +54,8 @@ struct MusicTrack {
     bool breaks = false;   // two-step drums, short transients, moving Reese bass and rave stabs
 };
 
-constexpr int MUSIC_TRACKS = 17;
+constexpr int MENU_MUSIC_TRACK = 17;
+constexpr int MUSIC_TRACKS = 18;
 
 inline const MusicTrack& musicTrack(int i) {
     static const MusicTrack T[] = {
@@ -130,6 +131,11 @@ inline const MusicTrack& musicTrack(int i) {
         {"THE RESTORER", 174.f, 41, {0, 6, 5, 4},
          "x..x......x..x..", "....x..g.g..x..g", "x.XxxxX.x.XxxxXo",
          "x--.x-f.x--.o-f.", "0.1.2.3.2.1.0.2.", "3---2---1-------0---1---2---3---", 0, true},
+        // Menu: fast pulse, fixed low A minor. No octave pickups or changing chords.
+        {"AFTER HOURS", 150.f, 45, {0, 0, 0, 0},
+         "x...x...x...x...", "....x.......x...", "x.x.x.x.x.x.x.x.",
+         ".xxx.xxx.xxx.xxx", "0...0...0...0...", "................................", 1},
+
     };
     return T[((i % MUSIC_TRACKS) + MUSIC_TRACKS) % MUSIC_TRACKS];
 }
@@ -175,6 +181,13 @@ public:
             rewindT = (int)(REWIND_SECONDS * SR); rewindLen = rewindT; readHead = (double)histPos;
         }
         for (int f = 0; f < frames; ++f) {
+            const int requested = ((wantTrack.load() % MUSIC_TRACKS) + MUSIC_TRACKS) % MUSIC_TRACKS;
+            // Fade to silence before changing engines or keys; never mix the old tails into the new score.
+            const float fadeStep = 1.f / (SR * 0.06f);
+            if (requested != track) {
+                transitionGain = std::max(0.f, transitionGain - fadeStep);
+                if (transitionGain == 0.f) changeTrack(requested);
+            } else transitionGain = std::min(1.f, transitionGain + fadeStep);
             if (rewindT > 0) {   // the tape runs back: read the history backwards, the clock held
                 float u = 1.f - (float)rewindT / (float)rewindLen;            // 0..1 through the rewind
                 readHead -= 1.0 + 2.5 * u * u;                                // faster as it goes
@@ -182,8 +195,8 @@ public:
                 int i0 = (int)h, i1 = (i0 + 1) % histFrames; float fr = (float)(h - i0);
                 float env = std::min(1.f, (float)rewindT / (0.06f * SR)) * std::min(1.f, u * 40.f + 0.3f);   // no clicks in or out
                 float wobble = 0.85f + 0.15f * std::sin(u * 40.f);
-                out[2 * f]     = (hist[2 * i0] * (1 - fr) + hist[2 * i1] * fr) * env * wobble;
-                out[2 * f + 1] = (hist[2 * i0 + 1] * (1 - fr) + hist[2 * i1 + 1] * fr) * env * wobble;
+                out[2 * f]     = (hist[2 * i0] * (1 - fr) + hist[2 * i1] * fr) * env * wobble * transitionGain;
+                out[2 * f + 1] = (hist[2 * i0 + 1] * (1 - fr) + hist[2 * i1 + 1] * fr) * env * wobble * transitionGain;
                 if (--rewindT == 0) step = ((step - 8) % 64 + 64) % 64;       // and play on from half a bar back
                 continue;
             }
@@ -201,10 +214,11 @@ public:
             // Long driven techno kicks otherwise measure ~8 dB above the breaks.
             // Leave the quiet bed alone; reserve space for combat at full intensity.
             const MusicTrack& playing = musicTrack(track);
-            float trim = playing.techno ? 1.f - (playing.techno >= 2 ? 0.64f : 0.6f) * gKick
+            float trim = track == MENU_MUSIC_TRACK ? 1.f : playing.techno ? 1.f - (playing.techno >= 2 ? 0.64f : 0.6f) * gKick
                                        : plainTrack(track) ? 0.65f : 1.f;
-            L = softClip(L * 0.75f * trim) * vol;
-            R = softClip(R * 0.75f * trim) * vol;
+            L = softClip(L * 0.75f * trim) * vol * transitionGain;
+            R = softClip(R * 0.75f * trim) * vol * transitionGain;
+
             out[2 * f]     = L;
             out[2 * f + 1] = R;
             if (histFrames > 0) { hist[2 * histPos] = L; hist[2 * histPos + 1] = R; histPos = (histPos + 1) % histFrames; }
@@ -240,6 +254,7 @@ private:
     float lvl = 0.5f, muffleAmt = 0.f;
     int   step = -1;                 // 0..63 across the four-bar progression
     int   cycle = 0;                 // times round it on this track (odd: the B side)
+    float transitionGain = 1.f;
     float bSide = 0.f;               // smoothed 0..1: the B side's octaves (no clicks)
     float sampleInStep = 0.f, stepLen = 1.f;
     uint32_t blockPos = 0, rng = 0x9E3779B9u;
@@ -699,7 +714,7 @@ private:
             for (int k = 0; k < 4; ++k) stingNotes[k] = (float)chordTone(st, deg, k, 1);
             stingT = 0.f; crash = Hit{0.f, 1.f};
         }
-        bSide += ((cycle & 1 ? 1.f : 0.f) - bSide) * std::min(1.f, rate * 6.f);
+        bSide += ((track != MENU_MUSIC_TRACK && (cycle & 1) ? 1.f : 0.f) - bSide) * std::min(1.f, rate * 6.f);
         float mt = muffled.load() ? 1.f : 0.f;
         muffleAmt += (mt - muffleAmt) * std::min(1.f, rate * 6.f);
         gPad   = 0.55f + 0.2f * (1.f - sstep(0.9f, 1.3f, lvl));
@@ -721,7 +736,7 @@ private:
         gSnareF = gOf(1600.f); gHatF = gOf(7200.f); gArpF = gOf(2600.f + 1800.f * sstep(1.f, 1.3f, lvl));
         gLeadF = gOf(3200.f); gPadF = gOf(700.f + 500.f * sstep(0.6f, 1.2f, lvl)); gCrashF = gOf(5000.f);
         float cyc = (std::max(step, 0) + 1.f - sampleInStep / std::max(1.f, stepLen)) / 64.f;   // 0..1 across the four bars
-        acidBase = 320.f + 1900.f * cyc * cyc;
+        acidBase = track == MENU_MUSIC_TRACK ? 320.f : 320.f + 1900.f * cyc * cyc;
         if(labTrack(track)){
             const int vowel=(std::max(step,0)/8)%3;
             static const float f[3][3]={{800,1150,2900},{450,800,2830},{400,1600,2700}};   // ah, oh, eh
@@ -732,13 +747,40 @@ private:
         }
     }
 
+    void changeTrack(int next) {
+        track = next; step = -1; cycle = 0; sampleInStep = 0.f; bSide = 0.f;
+        rewindT = 0; rewindWanted.store(false); stingWanted.store(false);
+        stingT = stabT = arpT = leadT = bassEnvT = 1e9f;
+        kick = snare = hatC = hatO = crash = Hit{};
+        bassGate = leadOn = false; bassAmp = leadAmp = choirAmp = 0.f;
+        drive = solo = 0.f;
+        lvl = wantLevel.load();
+        snareF = hatF = crashF = bassF = padFL = padFR = arpF = riserF = leadF = mufL = mufR = SVF{};
+        taikoBig = taikoMid = brassHit = bellToll = anvilHit = Strike{};
+        pKick = pClap = pHat = pHatO = pBass = Strike{};
+        hornOn = acidOn = false; hornAmp = acidEnv = 0.f; pumpT = 9.f;
+        const auto& tr = musicTrack(track);
+        bassNote = bassTarget = (float)tr.root - 12.f;
+        for (int k = 0; k < 4; ++k)
+            padCur[k] = padNotes[k] = (float)(k == 3 ? scaleNote(tr, tr.chords[0], -2) : chordTone(tr, tr.chords[0], k, 0));
+        std::fill(delayL.begin(), delayL.end(), 0.f);
+        std::fill(delayR.begin(), delayR.end(), 0.f);
+        std::fill(hist.begin(), hist.end(), 0.f); histPos = 0;
+        for (int i = 0; i < 4; ++i) {
+            std::fill(combL[i].buf.begin(), combL[i].buf.end(), 0.f);
+            std::fill(combR[i].buf.begin(), combR[i].buf.end(), 0.f);
+            combL[i].store = combR[i].store = 0.f;
+        }
+        for (int i = 0; i < 2; ++i) {
+            std::fill(apL[i].buf.begin(), apL[i].buf.end(), 0.f);
+            std::fill(apR[i].buf.begin(), apR[i].buf.end(), 0.f);
+        }
+        updateBlock();
+    }
+
     void nextStep() {
         step = (step + 1) % 64;
         if (step == 0) ++cycle;
-        if (step % 16 == 0) {                                     // bar line: maybe change track
-            int want = ((wantTrack.load() % MUSIC_TRACKS) + MUSIC_TRACKS) % MUSIC_TRACKS;
-            if (want != track) { track = want; step = 0; cycle = 0; }
-        }
         const MusicTrack& tr = musicTrack(track);
         stepLen = SR * 60.f / tr.bpm / 4.f;
         int s = step % 16, bar = step / 16;
@@ -767,7 +809,7 @@ private:
         if (tr.breaks && bar == 3 && (cycle & 1) && s == 15) kick = Hit{0.f, 0.82f};
         char sn = at(tr.snare, s);
         if (sn == 'x') snare = Hit{0.f, 1.f}; else if (sn == 'g') snare = Hit{0.f, 0.35f};
-        if (tr.techno && bar == 3 && s >= 8 && (s >= 12 || s % 2 == 0))   // the clap roll into the next phrase
+        if (track != MENU_MUSIC_TRACK && tr.techno && bar == 3 && s >= 8 && (s >= 12 || s % 2 == 0))   // the clap roll into the next phrase
             snare = Hit{0.f, 0.35f + 0.65f * (s - 8) / 7.f};
         else if (!tr.techno && bar == 3 && (cycle & 1) && s >= 12 && gSnare > 0.3f)   // the B side's last beat: a fill into the top
             snare = Hit{0.f, 0.5f + 0.5f * (s - 12) / 3.f};
@@ -928,7 +970,7 @@ private:
         }
         // ---- techno: a noise riser through the last bar of every four ----
         float riser = 0.f;
-        if (techno && step >= 48) {
+        if (track != MENU_MUSIC_TRACK && techno && step >= 48) {
             float u = (step - 48 + 1.f - sampleInStep / std::max(1.f, stepLen)) / 16.f;
             riser = riserF.hp(noise(), gOf(600.f + 7000.f * u * u), 0.8f) * u * u * 0.1f * gArp;
         }

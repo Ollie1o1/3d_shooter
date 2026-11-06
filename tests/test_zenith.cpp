@@ -1186,6 +1186,7 @@ int main() {
         {   // the blade is held like a sword: its direction (in his own frame: +Z toward you, -X his right)
             auto bladeDir = [](AttackKind k, bool blow) {
                 Enemy b(EnemyType::ABSOLUTE, glm::vec3{0.f});
+                b.abArrive = 0.f;   // phase-three sword poses are tested after his entrance
                 b.abBlade = true; b.spawnTimer = 0.f; b.state = EnemyState::ACTIVE;
                 if (k != AttackKind::NONE) { b.attack = k; b.telegraphDuration = 1.f; b.telegraphTimer = blow ? 0.001f : 0.3f; }
                 for (int i = 0; i < 400; ++i) rig::tickAbsoluteBody(b, 1.f / 120.f);
