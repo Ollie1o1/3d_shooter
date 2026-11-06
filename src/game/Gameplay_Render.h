@@ -498,6 +498,16 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
         glm::vec3 c = (b.min + b.max) * 0.5f, sz = b.max - b.min;
         float pulse = 0.75f + 0.25f * std::sin(t * 4.f + c.x);
         push(out, T(c) * S(sz), m.color);
+        // Relics retain their material as they move; their pattern is in local
+        // metres so it travels with the slab instead of swimming through it.
+        switch (level.walls[m.wall].mat) {
+            case Mat::ADOBE: out.back().surface = 7; break;
+            case Mat::PLATE: out.back().surface = 1; break;
+            case Mat::MARBLE: out.back().surface = 8; break;
+            case Mat::CIRCUIT: out.back().surface = 9; break;
+            case Mat::BASALT: out.back().surface = 10; break;
+            default: break;
+        }
         glm::vec3 g = m.glow * pulse;
         float ey = b.max.y - 0.03f;
         push(out, T({c.x, ey, b.min.z}) * S({sz.x + 0.06f, 0.08f, 0.08f}), g * 0.2f, g);

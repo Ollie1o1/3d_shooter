@@ -3,6 +3,7 @@
 #include "core/MouseCapture.h"
 #include "core/Balance.h"
 #include "player/Player.h"
+#include "player/ActionBuffer.h"
 #include "core/Camera.h"
 #include "core/FrameTimer.h"
 #include "core/Mesh.h"
@@ -180,6 +181,7 @@ public:
     int trainingLesson = 0, trainingEnemy = 0;
     bool trainingPassed[lessons::COUNT] = {};
     float trainingRespawn = 0;
+    unsigned trainingSteps = 0;
     bool guideOpen = false, guideWasPaused = false;
     int guideSelected = 0;
     void startTrainingLesson(int lesson);
@@ -753,6 +755,7 @@ public:
     bool pendingGrenade   = false;
     bool pendingRecall    = false;
     bool pendingGrapple   = false;
+    ActionBuffer fireInput, dashInput;
 
     GameplayState(AudioSystem& aud, GameSettings* s = nullptr, GameMode m = GameMode::ARENA);
 
@@ -976,6 +979,7 @@ public:
     void drawSword();
     void holsterSword();
     void updateSword(float dt);
+    void swordContact(int stroke, float damage, bool riposte);
     void swordPlunge(glm::vec3 at);
     bool damagePlayerStrike(float dmg, glm::vec3 from, Sword::Strike k, float dt = 0.f);
 
@@ -1178,7 +1182,7 @@ public:
 
     // ---- how a fight feels (Gameplay_Feel.h) ------------------------------------
     // A hit's thump at the body it landed in, once a tick: the hardest shove of the tick
-    glm::vec3 bodyHitAt{0.f}; float bodyHitPush = 0.f, bodyHitMass = 1.f; bool bodyHitStun = false;
+    glm::vec3 bodyHitAt{0.f}; float bodyHitPush = 0.f, bodyHitStrongest = 0.f, bodyHitMass = 1.f; bool bodyHitStun = false;
     void bodyHit(const Enemy& e, glm::vec3 at, float push, bool stunned);
     void onStunned(Enemy& e, glm::vec3 at);
     float killFx = 0.f;                 // 0..1 the screen's jolt on a kill (bloom_composite.frag uKick)
@@ -1275,7 +1279,7 @@ public:
 
     // Every enemy along a ray up to the first wall, nearest first.
     struct RayHit { int enemy; float t; bool head; bool wound = false; LevZone zone = LevZone::NONE; };   // zone: where it found the LEVIATHAN   // wound: the PENITENT's back (x3)
-    float hitscanAll(glm::vec3 origin, glm::vec3 dir, float range, std::vector<RayHit>& out);
+    float hitscanAll(glm::vec3 origin, glm::vec3 dir, float range, std::vector<RayHit>& out, Mat* surface = nullptr);
 
     // Sounds timed to the reload animations (ViewModel.h): the revolver's
     // cylinder out, brass, speedloader, snap shut; each shotgun shell, the rack

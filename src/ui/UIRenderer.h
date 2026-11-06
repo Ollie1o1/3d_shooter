@@ -11,6 +11,7 @@
 #include "core/ShaderProgram.h"
 #include "player/StyleSystem.h"
 #include "ui/UIBatch.h"
+#include "ui/DamageTrail.h"
 #include "core/Accessibility.h"
 #include "game/Progression.h"
 #include "game/Score.h"
@@ -84,6 +85,10 @@ public:
     float shootFlashTimer = 0.f;
     bool  hitmarkerKill   = false;
     bool  hitmarkerHead   = false;
+    bool  hitmarkerBlocked = false;
+    DamageTrail bossDamageTrail;
+    std::string bossTrailName;
+    float bossTrailSeen = -1.f;
     float hudTime         = 0.f;
 
     int  currentFPS = 0;
@@ -111,7 +116,18 @@ public:
     void onDamage()              { damageVignette = 0.5f; }
     void onOverdrive()           { overdriveFlash = 2.0f; }
     void onShoot()               { shootFlashTimer = 0.06f; }
-    void onHit(bool kill=false, bool head=false) { hitmarkerTimer = 0.18f; hitmarkerKill = kill; hitmarkerHead = head; }
+    void onHit(bool kill=false, bool head=false) {
+        // A later pellet/body hit must not erase the same burst's kill or headshot.
+        bool sameBurst = hitmarkerTimer > .14f && !hitmarkerBlocked;
+        hitmarkerKill = kill || (sameBurst && hitmarkerKill);
+        hitmarkerHead = head || (sameBurst && hitmarkerHead);
+        hitmarkerBlocked = false; hitmarkerTimer = .18f;
+    }
+    void onBlocked() {
+        if (hitmarkerTimer > .14f && !hitmarkerBlocked) return;
+        hitmarkerKill = hitmarkerHead = false;
+        hitmarkerBlocked = true; hitmarkerTimer = .14f;
+    }
     void onParry()               { parryFlash = 0.15f; }
     float parryFlash = 0.f;
     void onGrenadeRefill()       { feed("+1 GRENADE", {0.5f, 1.f, 0.3f}); }
@@ -172,6 +188,7 @@ public:
 
     void update(float dt, const StyleSystem& style) {
         hudTime += dt;
+        bossDamageTrail.tick(dt);
         displayHealth += (style.health - displayHealth) * std::min(1.f, dt * 8.f);
         displayStyle  += (style.style  - displayStyle ) * std::min(1.f, dt * 5.f);
         if (damageVignette  > 0.f) damageVignette  -= dt;
@@ -357,12 +374,18 @@ public:
         end2D();
     }
     void renderBossBar(const char* name, float fill, bool enraged, glm::vec3 tint = {-1.f,-1.f,-1.f}) {
+        if (bossTrailName != name || hudTime - bossTrailSeen > .5f) {
+            bossTrailName = name; bossDamageTrail.reset(fill);
+        }
+        bossTrailSeen = hudTime;
+        bossDamageTrail.observe(fill);
         begin2D();
         int w = 560, x = screenW / 2 - w / 2, y = 62;
         glm::vec4 col = enraged ? glm::vec4{1.f, 0.15f, 0.25f, 0.95f} : glm::vec4{1.f, 0.2f, 0.65f, 0.95f};
         if(tint.x>=0)col=glm::vec4(tint,.95f);
         ui.text(name, screenW / 2, y - 16, 2, col, true);
         ui.rect(x - 3, y - 3, w + 6, 18, {0.05f, 0.03f, 0.06f, 0.85f});
+        ui.rect(x, y, w * bossDamageTrail.value, 12, {1.f, .83f, .5f, .9f});
         ui.rect(x, y, w * glm::clamp(fill, 0.f, 1.f), 12, col);
         for (int i = 1; i < 4; ++i) ui.rect(x + w * i / 4, y, 2, 12, {0.f, 0.f, 0.f, 0.5f});
         end2D();
@@ -949,10 +972,16 @@ private:
             ui.rect(cx - 5, cy - 5, 10, 10, {1.f, 0.9f, 0.5f, (shootFlashTimer / 0.06f) * 0.6f});
         if (hitmarkerTimer > 0.f) {
             float a = hitmarkerTimer / 0.18f;
-            glm::vec4 hc = hitmarkerKill ? glm::vec4{1.f, 0.35f, 0.f, a}
+            glm::vec4 hc = hitmarkerBlocked ? glm::vec4{.55f, .8f, 1.f, a}
+                         : hitmarkerKill ? glm::vec4{1.f, 0.35f, 0.f, a}
                          : hitmarkerHead ? glm::vec4{1.f, 0.85f, 0.2f, a} : glm::vec4{1.f, 1.f, 1.f, a};
             int g = h.scoped ? 10 : 6;
-            for (int i = 0; i < 4; ++i) {   // diagonal ticks
+            if (hitmarkerBlocked) {   // open cardinal ticks: resistance, distinct from the damage X
+                for (int side : {-1, 1}) {
+                    ui.rect(cx + side * (g + 5) - 3, cy - 1, 6, 2, hc);
+                    ui.rect(cx - 1, cy + side * (g + 5) - 3, 2, 6, hc);
+                }
+            } else for (int i = 0; i < 4; ++i) {   // diagonal ticks
                 float sx = (i & 1) ? 1.f : -1.f, sy = (i & 2) ? 1.f : -1.f;
                 for (int k = 0; k < 4; ++k)
                     ui.rect(cx + sx * (g + k * 2) - 1.5f, cy + sy * (g + k * 2) - 1.5f, 3, 3, hc);

@@ -40,7 +40,8 @@ public:
 
     AudioSystem() {
 #if HAS_SDL_MIXER
-        if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
+        // ~12 ms requested buffer: combat transients should follow the input closely.
+        if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 512) < 0) {
             std::cerr << "SDL_mixer init failed: " << Mix_GetError() << "\n";
             return;
         }

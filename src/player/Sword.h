@@ -34,7 +34,14 @@ struct Sword {
 
     enum class Strike { WHITE, GOLD, BEAM, AREA };   // AREA: red, get out of it (never blocked)
     enum class Guarded { NONE, PARRIED, BLOCKED, BROKE };
-    struct Out { int stroke = -1; bool thrust = false; };
+    struct Out {
+        int stroke = -1;        // anticipation begins immediately on press
+        bool thrust = false;
+        int contact = -1;       // the blade crosses the target, once per stroke
+        float damage = 0.f;
+        bool riposte = false;
+    };
+    static constexpr float contactPhase(int stroke) { return stroke == 2 ? .45f : .38f; }
 
     int   combo = 0;           // the next stroke: 0 right-to-left, 1 left-to-right, 2 overhead
     int   lastStroke = 0;
@@ -51,6 +58,9 @@ struct Sword {
     float sinceMiss = 1e9f;
     float riposteT = 0.f;
     bool  swingLatch = false;  // drawn with the button already down: nothing until it's let go
+    bool contactDone = true, swingRiposte = false;
+    float impactPause = 0.f;   // weapon-only contact pause; movement/world keep ticking
+    void pauseImpact(float seconds) { impactPause = std::max(impactPause, seconds); }
 
     bool  broken() const    { return brokenT > 0.f; }
     bool  parryOpen() const { return raised && windowLive && raisedFor < PARRY_WINDOW; }
@@ -83,9 +93,21 @@ struct Sword {
         if (raised) sinceBlock = 0.f; else sinceBlock += dt;
         if (!raised && !broken() && sinceBlock >= REFILL_DELAY) guard = std::min(GUARD_MAX, guard + REFILL * dt);
         // ---- strokes ----
-        swingT = std::max(0.f, swingT - dt);
+        float paused = std::min(dt, impactPause);
+        impactPause -= paused;
+        swingT = std::max(0.f, swingT - (dt - paused));
         if (swingLatch) { if (!in.swingHeld) swingLatch = false; return o; }
-        if (raised || broken()) { heldFor = 0.f; charged = false; buffered = false; return o; }
+        if (raised || broken()) {
+            heldFor = 0.f; charged = false; buffered = false;
+            contactDone = true;   // raising the guard cancels a pending cut
+            return o;
+        }
+        if (!contactDone && swingT <= SWING_TIME * (1.f - contactPhase(lastStroke))) {
+            contactDone = true;
+            o.contact = lastStroke; o.riposte = swingRiposte;
+            o.damage = strokeBase(lastStroke) * (swingRiposte ? RIPOSTE_MULT : 1.f);
+            if (swingRiposte) riposteT = 0.f;
+        }
         if (in.swingPressed) { if (swingT > 0.f) buffered = true; else startStroke(o); }
         else if (buffered && swingT <= 0.f) { buffered = false; startStroke(o); }
         if (in.swingHeld) { heldFor += dt; if (heldFor >= CHARGE_TIME) charged = true; }
@@ -149,6 +171,7 @@ private:
         o.stroke = lastStroke = combo;
         combo = (combo + 1) % 3;
         swingT = SWING_TIME; sinceSwing = 0.f;
+        contactDone = false; swingRiposte = riposteT > 0.f; impactPause = 0.f;
     }
     float spendRiposte(float d) { if (riposteT > 0.f) { riposteT = 0.f; return d * RIPOSTE_MULT; } return d; }
 };

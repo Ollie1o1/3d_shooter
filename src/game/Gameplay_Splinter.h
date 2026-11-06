@@ -9,7 +9,7 @@
 // =============================================================================
 
 // (Story: UNIT 24 takes the forearm that holds it off the Successor at the end of Chapter 3, so Chapter 4 has it)
-inline bool GameplayState::splinterOwned() const { return g_devSplinter || plain(); }
+inline bool GameplayState::splinterOwned() const { return g_devSplinter || plain() || (training() && lessons::usesSplinter(trainingLesson)); }
 
 static const glm::vec3 SPLINTER_GLOW{0.35f, 1.f, 1.15f};
 static constexpr int SPLINTER_BROOD = -2;   // splinterTarget: the Gleaner's brood, not an enemy in the list
@@ -177,7 +177,11 @@ inline void GameplayState::splinterRicochet(int first, float dmg, int w) {
         char buf[24]; std::snprintf(buf, sizeof(buf), "CHAIN x%d", link + 1);
         ui.feed(buf, SPLINTER_GLOW);
     } else if (landed) ui.feed("SPLINTERED", SPLINTER_GLOW);
-    if (landed) hitStopFrames = glm::max(hitStopFrames, 2 + std::min(link, 2));
+    if (landed) {
+        trainingSuccess(lessons::SPLINTER);
+        if (link > 0) trainingSuccess(lessons::SPLINTER_CHAIN);
+        hitStopFrames = glm::max(hitStopFrames, 2 + std::min(link, 2));
+    }
 }
 
 // The live ones: a long cyan diamond spinning on its own axis; at the top of

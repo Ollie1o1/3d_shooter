@@ -457,6 +457,7 @@ inline void GameplayState::resetPlayer(glm::vec3 start) {
     grappleCooldown = 0.f; wasGrappling = false;
     jumpsRemaining = 2; slamming = false; invincFrames = 0.f;
     activeWeapon = 0; pendingWeapon = -1; weaponSwitchTimer = 0.f;
+    fireInput.clear(); dashInput.clear();
     recoilPitch = 0.f; peakFallSpeed = 0.f; fovKick = 0.f; camFeel.reset();
     dashFx = speedFx = lowFx = heartT = heartPulse = windFx = 0.f; audio.setMuffle(0.f); audio.setWind(0.f);
     hasSafeGround = false; embeddedT = 0.f; slowT = 0.f; ropeFx = 0.f; audio.setRope(0.f);
@@ -1014,6 +1015,8 @@ inline void GameplayState::update(float dt) {
     }
     if (!frozen) ui.update(dt, styleSystem);
     if (frozen || playerDead || victory || countdown > 0.f) {
+        fireInput.clear(); dashInput.clear();
+        pendingFire = pendingAlt = pendingGrenade = pendingGrapple = pendingRecall = false;
         // Keep the physics clock current so resuming doesn't replay the
         // whole paused interval as a burst of catch-up ticks.
         prevTicks   = SDL_GetPerformanceCounter();
@@ -1301,6 +1304,13 @@ inline void GameplayState::snapshotForInterpolation() {
 inline void GameplayState::updateMusic() {
     auto& m = audio.music;
     audio.setMusicVolume(settings ? settings->musicVolume : 0.6f);
+    if (training()) {   // a sandbox has no wave definition to inspect
+        m.setTrack(0); m.setSolo(false); m.setDrive(overdriveOn());
+        m.setIntensity(overdriveOn() ? 1.25f : paused || armoryOpen ? .3f : .85f);
+        m.setMuffle(paused || armoryOpen);
+        audio.setOverdrive(overdriveOn() && !paused && !armoryOpen, 0.f);
+        return;
+    }
     if(plain()){   // Chapter 4: RECLAMATION. Silence until it screams, then the brass and the anvils
         m.setTrack(14);m.setDrive(overdriveOn()&&!playerDead);m.setSolo(false);
         const bool before=false;   // (the score is there from the landing: low and far off, rising with it)
@@ -1349,7 +1359,7 @@ inline void GameplayState::updateMusic() {
     if (story() && ((!wasteland() && director.arena < 3) || !director.fighting())) { audio.setMusicVolume(0.f); m.setMuffle(true); return; }   // STORY: the furnace line's own air, no music yet
     // STORY's first two chapters: never the menu's groove (track 0). The Cradle's fights take the Foundry's track and
     // the Sorter the Core's; the world outside takes the Spire's and Ballast the Descent's
-    const int storyTrack = wasteland() ? (director.bossWave() ? 7 : 2) : (director.bossWave() ? 3 : 1);
+    const int storyTrack = story() ? (wasteland() ? (director.bossWave() ? 7 : 2) : (director.bossWave() ? 3 : 1)) : 0;
     m.setTrack(story() ? storyTrack : fast() ? FAST_TRACK[a % 7] : morning ? 11 : zenith ? 10 : act2() ? 5 + std::min(a, 4) : ARENA_TRACK[a % 5]);   // the Nave .. the Maw; !!!!! has its own
     float lv = 0.6f;
     switch (director.phase) {

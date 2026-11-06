@@ -37,8 +37,8 @@ route, Blender assets and verification. Launch Chapter 2 directly with `./shoote
 Every chapter ends with a **rank** (S to C, from time, deaths and style against that chapter's own par times) and keeps your best rank and best time, shown beside it on the Story page. **TAB** on the Story page opens the **UNIT ARCHIVE**: Units 01 to 23, which wrecks you've found, and every last log you've read, kept across runs.
 
 Combat Practice is available from **F3** on the main menu or the Story page.
-Choose repeatable lessons for parries, finishers, grapples, shotgun jumps and
-more; **F4** reopens the Field Guide during any run. Story now autosaves local
+Choose **20 repeatable lessons** for parries, finishers, sword combos and
+ripostes, SPLINTER shots and chains, RECALL, movement, precision and alt fire; **F4** reopens the Field Guide during any run. Story now autosaves local
 checkpoint progress and offers **Continue**. The Armory offers two alternative
 mods per gun, with free swaps after buying the mod; **M** (controller X) previews
 its alternative. The Boss page also includes the Pacemaker, Sorter and Ballast.
@@ -688,7 +688,8 @@ The regular enemies (not the bosses, which have their own answers) take a hit wi
 - **Enemy voices** — every enemy is a machine body carrying a hollow choir, built in code when the game loads (`VoiceSynth.h`, no audio files): its own spawn, idle murmur, steps or wingbeats, a wind-up tell for every attack (the Sovereign sings a different syllable for each stroke, the Penitent groans before a low sweep and rings a bell before a high one), a release, a hurt and a death. The voice director (`EnemyVoice.h`) decides who speaks: every wind-up within 40 m is heard, even out of sight; only the nearest few chatter; hurts and spawns are rationed. Hollowed enemies sound changed (Enraged higher and driven, Twinned doubled, Haloed shimmering, and their halo shatters)
 - **A threat-aware mix** — every sound has a role: while a wind-up plays, enemy chatter steps back 3 dB (the music is left alone) and chatter never takes a tell's voice. Every sound's level lives in one table (`MixTable.h`, held by a test; `./shooter --mixreport` prints them all); `OVERDRIVE_SOLO=tell|chatter|action|ui` hears one role alone
 - **The forge**: a room or arena won is struck on an anvil (a low, heavy clank with a bounce; three of them, so it never repeats exactly), the Gauntlet's beacon on three blows (clank... clank-CLANG), a new best on bells; a split rises when you're ahead of your best run and falls when behind, a medal rings higher the better it is; 3, 2, 1 beep and GO is a starting gun. OVERDRIVE starts on the anvil too, ticks three times as it's about to burn out, and chimes when it's recharged. A mini-boss arrives on a heavy sting; the Cantor tolls a bell. All synthesized in `tools/gen_sfx.py`
-- **Soundtrack** — synthesized live (`MusicSynth.h`, no audio files): darksynth/industrial, a track per area (and one for the Sovereign), layers that build from the tubes into the fight and up again for the boss, muffled while paused
+- **Weighted combat sounds** — recorded blade-on-blade sword cuts, a heavier combo finisher, a distinct piercing thrust, normal/heavy parries, body/armour hits and stone/steel/wood/ice wall impacts. Three variations per cue; parries briefly dip the background while attack warnings stay audible. Regenerate with `make combat-audio`, audition with `make audio-preview`; [design, research and tuning notes](docs/audio-impact-pass.md).
+- **Soundtrack** — synthesized live (`MusicSynth.h`, no audio files): fast industrial techno and DnB at 170–178 BPM, broken drums, ghost snares, moving Reese bass, acid lines and longer filter phrases. A track per area, including the Story choir/orchestra and a quiet Cold Store exploration bed; layers build into the fight and boss, muffled while paused. Drums make room in the bass, and techno tracks are trimmed to leave room for combat.
 - **High refresh rates** — physics stays at a fixed 60 Hz while enemies, projectiles, pickups and platforms are interpolated between ticks, so 144/240/360 Hz is smooth; the frame limiter sleeps then spins to hold a cap to within microseconds. `./shooter --bench N [--cap HZ] [--res H]` prints frame times
 - Settings, best times, the leaderboard and your best FAST ghost persist across launches (`settings.cfg`, `records.v2.cfg`, `leaderboard.cfg`, `ghost.v2.cfg` next to the binary; `localStorage` in the browser)
 
@@ -715,3 +716,5 @@ The regular enemies (not the bosses, which have their own answers) take a hit wi
 | GLM | Math — vectors, matrices, transforms | all |
 | GLEW | OpenGL function loader | Windows |
 | LLVM/clang++ | Compiler (Homebrew) — replaces system clang | macOS |
+
+The [combat feel, training and Reliquary release notes](docs/feel-training-reliquary.md) cover contact timing, input buffering, the F3 crash fix and moving-platform spawn safety.

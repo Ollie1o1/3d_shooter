@@ -25,7 +25,8 @@ struct BoxInstance {
     float     mesh = 0.f;    // what's drawn: 0 the unit cube, else a mesh from MeshLib.h (centred, at its own size)
     glm::vec3 emissive{0.f};
     float     surface = 0.f; // a boss's surface, drawn by the shader (box_inst.frag): 0 plain, 1 riveted rusting plate,
-                             // 2 pitted cast iron, 3 cracked bone, 4 char, 5 heat-cracked iron lit in its cracks
+                             // 2 cast iron, 3 bone, 4 char, 5 hot iron, 6 distant ground,
+                             // 7 brick/pavers, 8 marble, 9 circuit plate, 10 basalt
 };
 
 #include "render/PropDraw.h"   // (Blender pieces: THE RESTORER; needs BoxInstance, above)
@@ -1675,7 +1676,8 @@ inline void buildEnemy(const Enemy& e, float time, std::vector<BoxInstance>& out
     const EnemyStats& st = e.stats();
     Rig r{out};
     labEnemyTell(e,time,r);
-    r.flash = glm::clamp(e.hitFlashTimer / 0.12f, 0.f, 1.f);
+    float hit = glm::clamp(e.hitFlashTimer / 0.12f, 0.f, 1.f);
+    r.flash = .48f * hit * hit;   // a crisp glint that preserves armour detail and attack colours
     r.spawn = 1.f - e.spawnTimer / Enemy::SPAWN_TIME;
     float grow = 0.05f + 0.95f * smooth01(r.spawn);
     r.finish = e.finishGlow;

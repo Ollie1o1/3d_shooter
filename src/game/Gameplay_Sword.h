@@ -8,6 +8,7 @@
 // =============================================================================
 
 inline bool GameplayState::swordAllowed() const {
+    if (training()) return true;
     if (laboratory() && storySword && !labEnding.active()) return true;   // (Story: pulled from its statue in the Successor's arena)
     return swordKeyAllowed(g_devSword, act2(), director.arena, ZENITH_ARENA);
 }
@@ -94,6 +95,7 @@ inline void GameplayState::gatherSwordStatue(std::vector<BoxInstance>& out) {
 inline void GameplayState::drawSword() {
     if (!swordAllowed() || swordOut) return;
     swordOut = true; sword.drawn(); aim = 0.f;
+    fireInput.clear();
     pendingWeapon = -1;
     lmbPrev = rmbPrev = true;   // the click or key that drew it isn't a stroke
     audio.play("sword_draw", 110);
@@ -120,7 +122,7 @@ inline void GameplayState::updateSword(float dt) {
     }
     Sword::Out o = sword.update(dt, in);
     viewModel.tickSword(dt, swordShownFor(sword));
-    glm::vec3 eye = player.camera.position, fwd = player.camera.forward();
+    glm::vec3 fwd = player.camera.forward();
 
     // A projectile met in the parry window goes back where you look (the punch's rules)
     if (sword.parryOpen()) {
@@ -128,7 +130,9 @@ inline void GameplayState::updateSword(float dt) {
         if (pi >= 0 && sword.tryParry()) { reflectProjectile(pi, fwd); styleSystem.heal(Sword::HEAL_PARRY * tune().heal); }
     }
     if (o.stroke >= 0) {
-        audio.play("sword_swing", 110);
+        SfxMixer::Opts swing; swing.volume = o.stroke == 2 ? 0.9f : 0.78f;
+        swing.pitch = o.stroke == 0 ? 1.04f : o.stroke == 1 ? 0.98f : 0.85f;
+        audio.playOpts("sword_swing", swing);
         const Enemy* near = nullptr; float nd = 1e9f;
         for (auto& e : enemies) {
             if (!e.targetable()) continue;
@@ -142,19 +146,8 @@ inline void GameplayState::updateSword(float dt) {
         fx.slashes.push_back({player.position, std::atan2(fwd.x, fwd.z), 10 + o.stroke, 0.f});   // kinds 10-12: the player's
         swordRoll = o.stroke == 0 ? 2.2f : o.stroke == 1 ? -2.2f : 0.f;   // the head leans into the cut
         if (o.stroke == 2) fovKick = std::max(fovKick, 3.f);
-        bool landed = false;
-        for (auto& e : enemies) {
-            if (!e.targetable()) continue;
-            glm::vec3 c = e.position + glm::vec3{0, std::min(e.height() * 0.5f, 1.3f), 0};
-            if (!Sword::inArc(eye, fwd, c, e.radius())) continue;
-            hurtEnemy(e, sword.strokeDamage(o.stroke), c, 12.f, Sword::HEAL_HIT, StyleSource::MELEE);
-            fx.spawnHitSparks(c, gunkit::SWORD_GLOW * 1.6f);
-            landed = true;
-        }
-        for (int m = (int)abh.mirages.size() - 1; m >= 0; --m)   // a stroke through a mirage ends it
-            if (Sword::inArc(eye, fwd, abh.mirages[m].at + glm::vec3{0.f, 1.3f, 0.f}, 0.6f)) { abh.killMirage(m); landed = true; }
-        if (landed) { viewModel.swordImpact(false); audio.play("sword_hit", 120); hitStopFrames = std::max(hitStopFrames, 3); shake(0.1f, 0.02f); }
     }
+    if (o.contact >= 0) swordContact(o.contact, o.damage, o.riposte);
     if (o.thrust) {
         glm::vec3 flat{fwd.x, 0.f, fwd.z};
         flat = glm::length(flat) > 1e-3f ? glm::normalize(flat) : glm::vec3{0.f, 0.f, -1.f};
@@ -169,8 +162,12 @@ inline void GameplayState::updateSword(float dt) {
     if (sword.thrustT > 0.f && !thrustHit) {
         for (auto& e : enemies) {
             if (!e.targetable() || !Sword::thrustHits(thrustFrom, player.position, e.position + glm::vec3{0, 1.f, 0}, e.radius())) continue;
+            float before = e.health;
             hurtEnemy(e, sword.thrustDamage(), e.position + glm::vec3{0, 1.2f, 0}, 25.f, Sword::HEAL_HIT, StyleSource::MELEE);
-            audio.play("sword_hit", 128); hitStopFrames = std::max(hitStopFrames, 5); shake(0.2f, 0.04f);
+            bool dealt = e.health < before;
+            audio.play(dealt ? "sword_pierce" : "sword_block", 128, SoundGroup::PLAYER, true);
+            if (dealt) { audio.duck(3.f, .07f); hitStopFrames = std::max(hitStopFrames, 2); shake(.2f, .04f); }
+            else ui.onBlocked();
             viewModel.swordImpact(true);
             thrustHit = true;
             break;
@@ -179,10 +176,62 @@ inline void GameplayState::updateSword(float dt) {
     player.horizontalSpeed = 7.f * sword.moveMult();
 }
 
+// Resolve at the animation's contact marker, rather than at the button press.
+// The recording, blade recoil, directional sparks and damage all agree here.
+inline void GameplayState::swordContact(int stroke, float damage, bool riposte) {
+    const auto eye = player.camera.position, fwd = player.camera.forward();
+    const bool heavy = stroke == 2;
+    const glm::vec3 cut = heavy ? glm::vec3{0.f, -1.f, 0.f} : player.camera.right() * (stroke == 0 ? -1.f : 1.f);
+    const glm::vec3 pushDir = glm::normalize(fwd * .6f + cut * .4f);
+    bool damaged = false, blocked = false;
+    for (auto& e : enemies) {
+        if (!e.targetable()) continue;
+        const auto centre = e.position + glm::vec3{0, std::min(e.height() * .5f, 1.3f), 0};
+        if (!Sword::inArc(eye, fwd, centre, e.radius())) continue;
+        auto toward = centre - eye;
+        const auto normal = glm::length(toward) > .001f ? -glm::normalize(toward) : -fwd;
+        const auto at = centre + normal * std::min(e.radius(), .65f);
+        const float before = e.health;
+        HitPush hp{pushDir, std::min(damage * .06f, 12.f), 1.f};
+        hurtEnemy(e, damage, at, 12.f, Sword::HEAL_HIT, StyleSource::MELEE, false, false, &hp);
+        if (e.health >= before) {
+            blocked = true;
+            fx.spawnSpray(at, normal + cut * .35f, {.9f, 1.2f, 1.6f}, 9, 6.f, .19f, .35f);
+            continue;
+        }
+        damaged = true;
+        if (training() && trainingLesson == lessons::SWORD_COMBO) {
+            trainingSteps |= 1u << stroke;
+            if ((trainingSteps & 7u) == 7u) trainingSuccess(lessons::SWORD_COMBO);
+        }
+        if (riposte) trainingSuccess(lessons::SWORD_RIPOSTE);
+        fx.spawnSpray(at, cut + normal * .35f, gunkit::SWORD_GLOW * 1.6f, heavy ? 13 : 8, heavy ? 8.f : 6.f, .2f, .3f);
+        if (e.alive && hitreact::bossFlinches(e.type)) {
+            // A visible deflection, without moving the boss or interrupting its tell.
+            e.flinchAmp = std::clamp(e.flinchAmp + (riposte ? .035f : heavy ? .022f : .012f), 0.f, hitreact::BOSS_FLINCH_MAX);
+            e.flinchTwist = heavy ? 0.f : (stroke == 0 ? -.12f : .12f);
+        }
+    }
+    for (int m = (int)abh.mirages.size() - 1; m >= 0; --m)
+        if (Sword::inArc(eye, fwd, abh.mirages[m].at + glm::vec3{0.f, 1.3f, 0.f}, .6f)) { abh.killMirage(m); damaged = true; }
+    if (!damaged && !blocked) return;   // a miss gets air, never an impact
+    viewModel.swordImpact(heavy || (!damaged && blocked));
+    sword.pauseImpact(heavy ? .045f : .025f);   // just the weapon: the player keeps moving
+    if (damaged) {
+        audio.play(heavy ? "sword_heavy" : "sword_hit", 120, SoundGroup::PLAYER, true);
+        if (heavy || riposte) audio.duck(2.5f, .055f);
+        camFeel.punch(heavy ? 8.f : 2.f, 0.f, heavy ? 0.f : (stroke == 0 ? -5.f : 5.f));
+    } else {
+        ui.onBlocked();
+        audio.play("sword_block", 105, SoundGroup::PLAYER, true);
+    }
+}
+
 // The slam's landing with the sword out (Gameplay_Tick.h)
 inline void GameplayState::swordPlunge(glm::vec3 at) {
     fx.spawnShockwave(at, Sword::PLUNGE_RADIUS, gunkit::SWORD_GLOW);
-    audio.play("sword_hit", 128);
+    audio.play("sword_heavy", 128, SoundGroup::PLAYER, true);
+    audio.duck(3.f, 0.08f);
     for (auto& e : enemies)
         if (e.targetable() && glm::length(glm::vec2{e.position.x - at.x, e.position.z - at.z}) < Sword::PLUNGE_RADIUS + e.radius() &&
             std::fabs(e.position.y - at.y) < 2.5f)
@@ -211,11 +260,15 @@ inline bool GameplayState::damagePlayerStrike(float dmg, glm::vec3 from, Sword::
             ui.feed("UNPARRYABLE", abGoldTell({1.f, 0.85f, 0.4f}));
         }
         if (lastGuarded != Sword::Guarded::NONE) {
+            if (lastGuarded == Sword::Guarded::BLOCKED) trainingSuccess(lessons::SWORD_BLOCK);
             if (k != Sword::Strike::BEAM || std::fmod(gameClock, 0.15f) < dt)
                 fx.spawnHitSparks(player.camera.position + player.camera.forward() * 0.8f, gunkit::SWORD_GLOW * 1.4f);
             if (k != Sword::Strike::BEAM || lastGuarded == Sword::Guarded::BROKE) {
                 viewModel.swordImpact(true);   // the blow jars the blade in your hands
-                if (lastGuarded == Sword::Guarded::BROKE) audio.play("sword_break", 128);
+                if (lastGuarded == Sword::Guarded::BROKE) {
+                    audio.play("sword_break", 128, SoundGroup::PLAYER, true);
+                    audio.duck(3.f, 0.09f);
+                }
                 else {
                     SfxMixer::Opts o; o.volume = 120.f / 128.f; o.group = SoundGroup::PLAYER; o.pitch = 0.8f + 0.3f * sword.guard01();   // lower as it drains
                     audio.playOpts("sword_block", o);

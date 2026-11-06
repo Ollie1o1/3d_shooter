@@ -711,11 +711,12 @@ inline void buildReliquary(LevelBuilder& B) {
 
     // ---- a relic: boxes (local to its top centre, top at y 0) moving as one ----
     struct Box { vec3 lo, hi; vec3 col; };
-    auto relic = [&](vec3 top, vec2 half, vec3 col, vec3 glow, const std::vector<Box>& extra, std::vector<vec3> at) {
+    auto relic = [&](vec3 top, vec2 half, vec3 col, vec3 glow, const std::vector<Box>& extra, std::vector<vec3> at, Mat material=Mat::BASALT) {
         LevelData::Formation::Chunk c; c.home = top; c.half = half; c.at = std::move(at);
         auto add = [&](vec3 lo, vec3 hi, vec3 bc) {
             int m = B.mover(top + (lo + hi) * 0.5f, (hi - lo) * 0.5f, Mover::Path::DRIVEN, {0, 0, 0}, {0, 0, 0}, 1.f, 0.f, glow);
             L.movers[m].color = bc;
+            L.walls[L.movers[m].wall].mat = material;
             c.movers.push_back(m);
         };
         add({-half.x, -1.5f, -half.y}, {half.x, 0.f, half.y}, col);   // the slab
@@ -729,20 +730,20 @@ inline void buildReliquary(LevelBuilder& B) {
     std::vector<vec3> yardPos{{0, 0, 45}, {0, 0, 32}, {0, 0, 30}, {0, 0, 28}};
     relic(Q + yardPos[0], {10, 10}, brick, amber,
           {{{-10, 0, -10}, {10, 1.2f, -9.4f}, brick * 0.8f}, {{-10, 0, -10}, {-9.4f, 1.2f, 10}, brick * 0.8f},
-           {{-3, 0, -3}, {3, 0.8f, 3}, brick * 1.1f}, {{7.4f, 0, 7.4f}, {8.6f, 9, 8.6f}, debrisCol}}, offsets(yardPos));
+           {{-3, 0, -3}, {3, 0.8f, 3}, brick * 1.1f}, {{7.4f, 0, 7.4f}, {8.6f, 9, 8.6f}, debrisCol}}, offsets(yardPos), Mat::ADOBE);
     // The Foundry: rust, a cold furnace, the empty channel's walls, a chimney to grapple
     std::vector<vec3> foundryPos{{-38, 0, 0}, {-32, 0, 0}, {-24, 3, 8}, {0, 0, 9}};
     relic(Q + foundryPos[0], {9, 8}, rust, ember,
           {{{-9, 0, -8}, {-5, 5, -4}, rust * 0.7f}, {{-3, 0, -6}, {-2.4f, 1.f, 6}, rust * 0.9f}, {{2.4f, 0, -6}, {3, 1.f, 6}, rust * 0.9f},
-           {{6, 0, -7.2f}, {7.2f, 10, -6}, debrisCol}}, offsets(foundryPos));
+           {{6, 0, -7.2f}, {7.2f, 10, -6}, debrisCol}}, offsets(foundryPos), Mat::PLATE);
     // The Spire: pale stone, a raised ledge, columns
     std::vector<vec3> spirePos{{38, 1, -8}, {32, 0, 0}, {22, 9, -6}, {17, 0, -24}};
     relic(Q + spirePos[0], {7, 7}, stone, bone,
-          {{{-7, 0, -7}, {-1, 2.5f, 7}, stone * 0.9f}, {{3.5f, 0, -4.5f}, {4.5f, 8, -3.5f}, stone}, {{3.5f, 0, 3.5f}, {4.5f, 8, 4.5f}, stone}}, offsets(spirePos));
+          {{{-7, 0, -7}, {-1, 2.5f, 7}, stone * 0.9f}, {{3.5f, 0, -4.5f}, {4.5f, 8, -3.5f}, stone}, {{3.5f, 0, 3.5f}, {4.5f, 8, 4.5f}, stone}}, offsets(spirePos), Mat::MARBLE);
     // The Core: slate, two of its pillars
     std::vector<vec3> corePos{{0, 0, -40}, {0, 0, -32}, {-4, 6, -18}, {0, 0, -9}};
     relic(Q + corePos[0], {9, 9}, slate, cyan,
-          {{{-6, 0, -1}, {-4, 7, 1}, slate * 0.8f}, {{4, 0, -1}, {6, 7, 1}, slate * 0.8f}}, offsets(corePos));
+          {{{-6, 0, -1}, {-4, 7, 1}, slate * 0.8f}, {{4, 0, -1}, {6, 7, 1}, slate * 0.8f}}, offsets(corePos), Mat::CIRCUIT);
     // Debris: stepping stones (5 x 5)
     // scattered / the ring / the stack / the path - assigned so that no glide
     // runs one relic through another (checked by the tests)
@@ -804,12 +805,12 @@ inline void buildReliquary(LevelBuilder& B) {
     a.shift = ArenaShift::DRIFT;
     a.ambient = Ambient::MOTES;
     a.theme = Theme{
-        {0.012f,0.008f,0.014f}, {0.16f,0.06f,0.08f}, {0.006f,0.003f,0.004f},
+        {0.02f,0.016f,0.03f}, {0.17f,0.08f,0.11f}, {0.009f,0.006f,0.012f},
         glm::normalize(vec3{0.3f, 0.85f, -0.4f}), {0.55f,0.5f,0.6f}, 0.06f, 0.f,
         {0.1f,0.03f,0.04f}, 1.f,
-        glm::normalize(vec3{-0.3f,-0.7f,0.6f}), {0.5f,0.2f,0.18f},
-        {0.12f,0.08f,0.1f}, {0.03f,0.02f,0.025f},
-        {0.08f,0.03f,0.04f}, 0.01f };
+        glm::normalize(vec3{-0.3f,-0.7f,0.6f}), {0.65f,0.49f,0.46f},
+        {0.2f,0.16f,0.2f}, {0.045f,0.028f,0.04f},
+        {0.08f,0.035f,0.05f}, 0.0065f };
     L.arenas.push_back(std::move(a));
 }
 

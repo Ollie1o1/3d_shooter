@@ -91,9 +91,6 @@ public:
         swordSince = s.sinceSwing;
         if (s.swinging()) swordShown = gunkit::mixPose(swordFrom, target, gunkit::smooth(std::clamp(u / 0.1f, 0.f, 1.f)));
         else              swordShown = gunkit::mixPose(swordShown, target, 1.f - std::exp(-dt * (s.blocking() ? 30.f : 18.f)));
-        // the cut lands where the blade crosses the middle (a hit's already counted on the click): the blow jars it
-        if (s.swinging() && swordU < 0.38f && u >= 0.38f && swordLanded) { swordLanded = false; jar(0.8f); }
-        if (!s.swinging()) swordLanded = false;
         swordStroke = s.swinging() ? s.lastStroke : -1; swordU = u;
         // The wrist: the blade chases the hand's pose on a loose spring, so it trails into a cut, whips
         // through and overshoots a hair at the end (a guard snaps in stiffer). Its edge is rolled to
@@ -129,8 +126,8 @@ public:
             handL.step(l, dt, 1.3f);
         }
     }
-    // A sword blow landed (on the click: it's shown as the blade crosses the middle) or was blocked / a thrust struck (now)
-    void swordImpact(bool now) { if (now) jar(1.f); else swordLanded = true; }
+    // Called at actual contact: a light cut, heavy cut, block or thrust.
+    void swordImpact(bool heavy) { jar(heavy ? 1.f : .8f); }
     void jar(float k) { jarT = 0.14f; jarK = k; handR.jolt(4.f * k); handL.jolt(3.f * k); }
     void drawSword(ShaderProgram& shader, const Camera& cam, const Sword& s) {
         SwordPose P = swordShown;
@@ -431,7 +428,7 @@ private:
     float swordSince = 1e9f, swordU = -1.f;
     armfile::HandSpring handR, handL, handParry, handFan;   // the hands' fingers (ArmFile.h)
     glm::vec3 bladeW{0.f, 1.f, 0.f}, bladeV{0.f}, edgeW{0.f, 0.f, 1.f}, edgeV{0.f}, heldEdge{0.f, 0.f, 1.f};   // the blade as the wrist carries it
-    bool  whipPrimed = false, swordLanded = false;
+    bool  whipPrimed = false;
     float fanT = -1.f, fanAge = 0.f;   // the fan: since it began (-1: not fanning), since the last slap
     int   fanLeft = 0, fanStruck = 0;   // slaps still to come, slaps so far
     float jarT = 0.f, jarK = 1.f;

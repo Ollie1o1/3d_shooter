@@ -1,4 +1,5 @@
 #pragma once
+#include "audio/ImpactAudio.h"
 // =============================================================================
 // Gameplay_Combat.h — GameplayState: Enemies, damage both ways, kills, XP, blasts and pickups, the punch and
 // parry, and the guns: hitscan, firing, reloads and their sounds, grenades.
@@ -23,8 +24,11 @@ inline void GameplayState::parryFeedback(glm::vec3 at, bool heavy) {
     fx.spawnBurst(at, {1.f, 0.85f, 0.35f}, heavy ? 50 : 28, heavy ? 12.f : 8.f, 0.45f, 4.f);
     fx.spawnBurst(at, {1.f, 1.f, 1.f}, 10, 4.f, 0.2f, 0.f);
     explosionFlashTimer = 0.2f; explosionFlashPos = at;
-    audio.play("clank");
-    audio.play("parry", 80);
+    // The reward owns the foreground for a moment; its own transient stays dry.
+    audio.duck(heavy ? 6.f : 4.f, heavy ? 0.12f : 0.075f);
+    SfxMixer::Opts cue; cue.priority = true; cue.unducked = true;
+    cue.volume = heavy ? 1.f : 0.9f;
+    audio.playOpts(heavy ? "parry_heavy" : "parry", cue);
     ui.onParry();
     viewModel.triggerParry(true);
     invincFrames  = std::max(invincFrames, 0.5f);
@@ -170,8 +174,10 @@ inline void GameplayState::punch(int boostable) {
 
 inline void GameplayState::spawnEnemy(EnemyType t, glm::vec3 pos, Hollow h) {
     float floor=level.baseFloor(pos.x,pos.z);
-    if(laboratory() || cold()){
-        int room=level.arenaAt(pos);if(room<0)room=director.arena;
+    int room=level.arenaAt(pos);if(room<0)room=director.arena;
+    bool movingDeck = room>=0 && room<(int)level.arenas.size() &&
+        (level.arenas[room].shift==ArenaShift::DRIFT || level.arenas[room].shift==ArenaShift::DESCENT);
+    if(laboratory() || cold() || movingDeck){
         // Lab basins are far below the real platforms. Using that abyss as a
         // flying subject's initial floor gives it a 250 m hover offset.
         floor=level.enemyFloor(room,pos,statsOf(t).flying,groundHeightAt(pos.x,pos.z,pos.y+.5f,true));
@@ -213,6 +219,7 @@ inline void GameplayState::playVoice(const VoiceCue& c) {
     SfxMixer::Opts o;
     o.volume = c.volume; o.group = SoundGroup::ENEMY; o.role = c.role; o.priority = c.priority;
     o.positional = true; o.pos = c.pos; o.floor = c.floor; o.pitch = c.pitch; o.drive = c.drive; o.delay = c.delay;
+    o.unducked = c.role == SoundRole::TELL;   // attack warnings survive a parry's foreground dip
     SoundHandle h = audio.playOpts(c.name, o);
     if (c.loop == VoiceCue::START) {
         auto it = voiceLoops.find(c.uid);
@@ -298,7 +305,7 @@ inline void GameplayState::updateEnemies(float dt) {
         if (e.type == EnemyType::ABSOLUTE) swordParryAbsolute(e);   // the sword's window meets a white strike as it lands
         // In the Descent the void runs to -300: stand on what's really under you (the cage included)
         e.floorY = level.enemyFloor(director.arena, e.position, e.stats().flying,
-                                    (descent || laboratory() || cold()) ? groundHeightAt(e.position.x, e.position.z, e.position.y + 0.5f, true) : 0.f);
+                                    (descent || ar.shift==ArenaShift::DRIFT || laboratory() || cold()) ? groundHeightAt(e.position.x, e.position.z, e.position.y + 0.5f, true) : 0.f);
         e.wadeMul = e.stats().flying ? 1.f : 1.f - 0.5f * (1.f - Player::wadeFactor(level.waterDepthAt(e.position)));
         if(story()&&e.type==EnemyType::SORTER&&e.sortRush>0)
             breakStoryCover(e.position,e.position+e.sortRushDir*(36.f*dt),3.6f);
@@ -514,6 +521,7 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
                                      bool crit, bool pierceArmor, const HitPush* push) {
     if (!e.targetable()) return false;
     if (e.shielded) {   // a CONDUCTOR's tether: nothing gets through until the Conductor is dead
+        if (src != StyleSource::FRIENDLY) ui.onBlocked();
         fx.spawnHitSparks(at, {0.3f, 1.f, 0.9f});
         if (src != StyleSource::FRIENDLY && shieldClankCd <= 0.f) {
             audio.playAt("clank", at, 70, SoundGroup::ENEMY);
@@ -543,17 +551,21 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
         float pushK = overdriveOn() ? 1.25f : 1.f;
         bool stunned = e.takeHit(hp.dir, hp.push * pushK, dmg, poiseMul, crit, gameClock);
         if (stunned) onStunned(e, at);
-        if (!friendly) bodyHit(e, at, hp.push * pushK, stunned);
+        if (!friendly && src != StyleSource::MELEE) bodyHit(e, at, hp.push * pushK, stunned);
     }
     bool killed = e.takeDamage(dmg);
+    if (e.health < before) {
+        if (crit) trainingSuccess(lessons::PRECISION);
+        if (e.type == EnemyType::SHIELDBEARER) trainingSuccess(lessons::SHIELD_COUNTER);
+    }
     if (!killed && isBoss(e.type)) shedBossPotions(e);
     if (!friendly) {
         styleSystem.addStyle(style, src, StyleSystem::HIT_METER);   // (hits score in full but barely move the meter: kills fill it)
         styleSystem.heal(heal * tune().heal);
     }
-    if (!friendly) { ++hitSoundCount; hitSoundCrit |= crit; hitSoundArmor |= !pierceArmor && e.armorMult() < 0.99f; }   // played once (flushHitSounds)
+    if (!friendly && src != StyleSource::MELEE) { ++hitSoundCount; hitSoundCrit |= crit; hitSoundArmor |= !pierceArmor && e.armorMult() < 0.99f; }   // played once (flushHitSounds)
     if (!e.stats().flying && e.type != EnemyType::LEVIATHAN) fx.spawnDecal(e.position);
-    fx.spawnHitSparks(at, e.stats().color * 1.4f);
+    if (src != StyleSource::MELEE) fx.spawnHitSparks(at, e.stats().color * 1.4f);
     if (!friendly) ui.onHit(killed, crit);
     if (!settings || settings->damageNumbers) ui.spawnDamageNumber(at, std::min(dmg, before), crit);
     if (killed) {
@@ -861,12 +873,13 @@ inline void GameplayState::updatePickups(float dt) {
                   [](const Pickup& p){ return p.life <= 0.f; }), pickups.end());
 }
 
-inline float GameplayState::hitscanAll(glm::vec3 origin, glm::vec3 dir, float range, std::vector<RayHit>& out) {
+inline float GameplayState::hitscanAll(glm::vec3 origin, glm::vec3 dir, float range, std::vector<RayHit>& out, Mat* surface) {
     out.clear();
     float wallT = range;
+    if (surface) *surface = Mat::CONCRETE;
     for (auto& w : level.walls) {
         float t = rayBoxHit(origin, dir, w.box);
-        if (t > 0.f && t < wallT) wallT = t;
+        if (t > 0.f && t < wallT) { wallT = t; if (surface) *surface = w.mat; }
     }
     for (int ei = 0; ei < (int)enemies.size(); ++ei) {
         if (!enemies[ei].targetable()) continue;
@@ -950,6 +963,7 @@ inline void GameplayState::shotEchoes(const char* sound, float loud) {
 }
 
 inline void GameplayState::fireWeapon(int w) {
+    if (fanning || doubleShot) trainingSuccess(lessons::ALT_FIRE);
     WeaponId id = (WeaponId)w;
     const WeaponDef& d = weaponDef(id);
     const WeaponUpgrades& u = prog.up[w];
@@ -984,7 +998,8 @@ inline void GameplayState::fireWeapon(int w) {
         // Uniform within a disc of radius `spread`
         float ang = frand(0.f, 6.2832f), rad = std::sqrt(frand(0.f, 1.f)) * spread;
         glm::vec3 dir = glm::normalize(fwd + right * (std::cos(ang) * rad) + up * (std::sin(ang) * rad));
-        float wallT = hitscanAll(origin, dir, d.range, hits);
+        Mat surface = Mat::CONCRETE;
+        float wallT = hitscanAll(origin, dir, d.range, hits, &surface);
         int n = std::min((int)hits.size(), pierce + 1);
         if (splinterOwned() && splinters.live() > 0) {   // a SPLINTER before anything else: the round goes on from it
             float st = 0.f;
@@ -1054,7 +1069,7 @@ inline void GameplayState::fireWeapon(int w) {
             glm::vec3 at = origin + dir * (endT - 0.05f);
             fx.spawnBurst(at, {1.f, 0.85f, 0.55f}, sniper ? 8 : 3, sniper ? 7.f : 4.f, 0.18f, 14.f);
             fx.spawnBurst(at, {0.55f, 0.5f, 0.46f}, sniper ? 6 : 2, 1.5f, 0.6f, -1.f);
-            if (p < 2) audio.playAt("impact", at, sniper ? 115 : pellets > 1 ? 70 : 90, SoundGroup::WORLD);
+            if (p < 2) audio.playAt(surfaceImpactSound(surface), at, sniper ? 115 : pellets > 1 ? 70 : 90, SoundGroup::WORLD);
         }
         fx.spawnTracer(origin + dir * 0.25f - up * 0.08f, origin + dir * endT, sniper ? 0.09f : 0.055f, sniper ? 0.35f : 0.22f,
                        od ? glm::vec3{1.4f, 0.8f, 0.25f} : glm::mix(glm::vec3{1.f}, gunkit::glowOf(w), 0.6f));   // the gun's colour (OVERDRIVE: gold)

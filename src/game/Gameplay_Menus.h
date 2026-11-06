@@ -280,6 +280,7 @@ inline void GameplayState::padCycle(int dir) {
 inline void GameplayState::trySwitch(int w) {
     if (story() && !storyOwns(w)) return;   // STORY: only the guns he's found
     if (w != activeWeapon && pendingWeapon < 0) {
+        fireInput.clear();   // a press for the old gun never follows a later switch
         pendingWeapon = w;
         weaponSwitchTimer = 0.15f;
         viewModel.triggerSwitch(w);   // its chime comes with the motion's cues

@@ -20,7 +20,7 @@
 inline void GameplayState::bodyHit(const Enemy& e, glm::vec3 at, float push, bool stunned) {
     if (!e.reacts()) return;
     float mass = hitreact::bodyOf(e.type).mass * e.scale * e.scale;
-    if (push > bodyHitPush) { bodyHitAt = at; bodyHitMass = mass; }
+    if (push > bodyHitStrongest) { bodyHitAt = at; bodyHitMass = mass; bodyHitStrongest = push; }
     bodyHitPush += push;   // (ten pellets in one body: one big thump)
     bodyHitStun |= stunned;
 }
@@ -305,6 +305,7 @@ inline void GameplayState::hookEnemy(int i) {
         fx.spawnBurst(c, {0.5f, 1.f, 1.f}, 12, 5.f, 0.25f, 0.f);
         camFeel.punch(-26.f, 0.f, frand(-1.f, 1.f) * 12.f);   // you haul on it
     } else {                                      // heavy: the rope takes you to it
+        trainingSuccess(lessons::HEAVY_GRAPPLE);
         glm::vec3 impulse{0.f};
         grapple.attach(eye, c, impulse);
         grapple.enemyUid = e.uid;
@@ -352,6 +353,7 @@ inline void GameplayState::slideKicks() {
         glm::vec3 at = e.position + glm::vec3{0.f, std::min(e.height() * 0.35f, 0.9f), 0.f};
         HitPush hp{glm::normalize(fwd + glm::vec3{0.f, 0.35f, 0.f}), 12.f + spd * 0.4f, 3.f};
         hurtEnemy(e, 20.f, at, 10.f, 1.f, StyleSource::SLAM, false, false, &hp);
+        trainingSuccess(lessons::SLIDE_KICK);
         audio.playAt("punch", at, 110, SoundGroup::PLAYER, true);
         camFeel.punch(heavy ? 40.f : 22.f, 0.f, frand(-1.f, 1.f) * 16.f);
         shake(heavy ? 0.18f : 0.1f, heavy ? 0.04f : 0.02f);
@@ -373,6 +375,7 @@ inline void GameplayState::slamLands() {
         glm::vec3 out = glm::length(glm::vec2{off.x, off.z}) > 1e-3f ? glm::normalize(glm::vec3{off.x, 0.f, off.z}) : glm::vec3{1.f, 0.f, 0.f};
         HitPush hp{glm::normalize(out + glm::vec3{0.f, 0.8f, 0.f}), (10.f + std::min(10.f, h * 0.5f)) * (1.f - 0.5f * d / r), 2.5f};
         hurtEnemy(e, dmg * (1.f - 0.4f * d / r), e.position + glm::vec3{0, e.height() * 0.5f, 0}, 15.f, 2.f, StyleSource::SLAM, false, false, &hp);
+        trainingSuccess(lessons::SLAM);
     }
     fx.spawnShockwave(player.position, r, {1.f, 0.8f, 0.4f});
     if (h > 6.f) fx.spawnBurst(player.position + glm::vec3{0.f, 0.2f, 0.f}, {1.f, 0.85f, 0.5f}, 30, 9.f, 0.4f, 12.f);

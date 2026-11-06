@@ -102,6 +102,38 @@ test: $(TESTS) $(HEADERS)
 	$(MAKE) test-cold
 	$(MAKE) test-route
 	$(MAKE) test-lighting
+	$(MAKE) test-audio
+	$(MAKE) test-feel
+	$(MAKE) test-reliquary
+
+.PHONY: test-reliquary
+test-reliquary: tests/test_reliquary.cpp $(HEADERS)
+	mkdir -p build/feel-pass
+	$(CXX) $(CXXFLAGS) tests/test_reliquary.cpp -o build/test_reliquary $(STDLIB)
+	./build/test_reliquary
+
+.PHONY: test-feel test-feel-runtime
+test-feel: tests/test_feel.cpp $(HEADERS)
+	mkdir -p build/feel-pass
+	$(CXX) $(CXXFLAGS) tests/test_feel.cpp -o build/test_feel $(STDLIB)
+	./build/test_feel
+
+test-feel-runtime: tests/test_feel_runtime.cpp $(HEADERS)
+	mkdir -p build/feel-pass
+	$(CXX) $(CXXFLAGS) tests/test_feel_runtime.cpp -o build/test_feel_runtime $(LDFLAGS)
+	./build/test_feel_runtime
+
+.PHONY: combat-audio test-audio audio-preview
+combat-audio:
+	python3 tools/gen_combat_audio.py
+
+audio-preview: tools/music_preview
+	python3 tools/audio_preview.py
+
+test-audio: tests/test_audio.cpp $(HEADERS)
+	mkdir -p build
+	$(CXX) $(CXXFLAGS) tests/test_audio.cpp -o build/test_audio $(STDLIB)
+	./build/test_audio
 
 test-story: tests/test_story.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) tests/test_story.cpp -o tests/test_story $(STDLIB)

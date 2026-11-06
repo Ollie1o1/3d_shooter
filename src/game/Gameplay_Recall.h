@@ -8,7 +8,7 @@
 // =============================================================================
 #include "player/Recall.h"
 
-inline bool GameplayState::recallOwned() const { return g_devRecall || (cold() && coldRecall); }
+inline bool GameplayState::recallOwned() const { return g_devRecall || (cold() && coldRecall) || (training() && lessons::usesRecall(trainingLesson)); }
 
 // Could UNIT 24 stand at `feet` right now? (a gate shut since, a mover in the way,
 // or a fight he would leave)
@@ -42,6 +42,7 @@ inline void GameplayState::pressRecall() {
             break;
         }
         fx.spawnTracer(eye, to + glm::vec3{0.f, player.eyeHeight, 0.f}, 0.12f, 0.3f, RECALL_FROST * 1.6f);
+        if (glm::length(player.position-to) >= 3.f) trainingSuccess(lessons::RECALL);
         fx.spawnBurst(eye, RECALL_FROST, 12, 3.f, 0.4f, -1.f);
         grapple.release();
         player.position = to;

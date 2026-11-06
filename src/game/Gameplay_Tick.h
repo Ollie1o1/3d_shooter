@@ -10,9 +10,13 @@
 inline void GameplayState::shootInput() {
     WeaponState& ws = weapons[activeWeapon];
     bool switchBlocked = (pendingWeapon >= 0);
-    if (swordOut) pendingFire = false;   // the sword has the button
-    if (pendingFire && ws.ready() && !switchBlocked) fireWeapon(activeWeapon);
-    else if (pendingFire && !switchBlocked && (ws.ammo <= 0 || ws.reloading) && dryCd <= 0.f) {
+    if (pendingFire && !swordOut)
+        fireInput.press(switchBlocked ? pendingWeapon : activeWeapon, gameClock);
+    if (swordOut) fireInput.clear();   // the sword has the button
+    const bool queued = fireInput.pending(activeWeapon, gameClock) && !switchBlocked;
+    if (queued && ws.ready()) { fireInput.clear(); fireWeapon(activeWeapon); }
+    else if (pendingFire && !swordOut && !switchBlocked && (ws.ammo <= 0 || ws.reloading) &&
+             !(ws.reloading && ws.reloadTimer <= ActionBuffer::WINDOW) && dryCd <= 0.f) {
         audio.play("dry", 100, SoundGroup::PLAYER);   // empty: the hammer falls on nothing
         dryCd = 0.3f;
     }
@@ -78,7 +82,7 @@ inline void GameplayState::flushHitSounds() {
         o.floor  = 0.55f;   // heard over the fight, whatever's further off
         audio.playOpts("hit_body", o);
         if (bodyHitStun) audio.playAt("stun", bodyHitAt, 115, SoundGroup::ENEMY, true, 0.6f);
-        bodyHitPush = 0.f; bodyHitStun = false;
+        bodyHitPush = bodyHitStrongest = 0.f; bodyHitStun = false;
     }
     if (hitSoundCount <= 0) return;
     audio.play("hit", 92 + std::min(36, (hitSoundCount - 1) * 9), SoundGroup::PLAYER);
@@ -123,8 +127,11 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     bool pinned = anchoredAt(player.position);   // an ANCHOR's field: no dash, no grapple
     if (pinnedCueCd > 0.f) pinnedCueCd -= dt;
     bool dashKey = keys[SDL_SCANCODE_LSHIFT] != 0;
+    if (dashKey && !prevDashKey) dashInput.press(0, gameClock);
     if (dashKey && !prevDashKey && pinned) pinnedCue();
-    if (dashKey && !prevDashKey && dashCharges > 0 && !pinned && snareTimer <= 0.f) {   // (snared by a wire: no dash)
+    if (pinned || snareTimer > 0.f) dashInput.clear();   // never queue through a disabling hazard
+    if (dashInput.pending(0, gameClock) && dashCharges > 0 && !pinned && snareTimer <= 0.f) {
+        dashInput.clear();
         // Dash by the keys held, W first: W (or nothing) along the camera in full 3D, else A/D flat to the
         // side, else S straight back along the camera
         bool w = keys[SDL_SCANCODE_W], s = keys[SDL_SCANCODE_S];

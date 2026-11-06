@@ -110,6 +110,35 @@ vec3 bossSurface(int s, vec3 base, out vec3 emi, float dist) {
         emi = vec3(2.2, 0.55, 0.12) * crack * (0.5 + 0.5 * n) * 0.9;
         return base * (0.7 + 0.6 * n) * (1.0 - 0.5 * crack);
     }
+    if (s == 7) {   // Yard: staggered brick on the walls, worn square pavers underfoot
+        vec2 tile = abs(vLocalN.y) > 0.5 ? vec2(1.5) : vec2(1.2, 0.48);
+        vec2 grid = uv / tile;
+        if (abs(vLocalN.y) < 0.5) grid.x += mod(floor(grid.y), 2.0) * 0.5;
+        vec2 f = fract(grid);
+        vec2 edge = min(f, 1.0 - f) * tile;
+        float mortar = 1.0 - smoothstep(0.018, 0.018 + max(fwidth(uv.x), fwidth(uv.y)) + 0.015, min(edge.x, edge.y));
+        float variation = hash2(floor(grid));
+        return mix(base * (0.77 + 0.32 * variation + 0.12 * n), base * 0.32, mortar * detail);
+    }
+    if (s == 8) {   // Spire: pale dressed stone with subtle mineral veins
+        float vein = 1.0 - smoothstep(0.025, 0.09, abs(sin(uv.x * 0.75 + uv.y * 0.34 + n * 8.0)));
+        vec2 seam = abs(fract(uv / 2.5) - 0.5);
+        float joint = smoothstep(0.485, 0.5, max(seam.x, seam.y));
+        return base * (0.9 + 0.18 * n) * (1.0 - 0.16 * vein * detail - 0.32 * joint * detail);
+    }
+    if (s == 9) {   // Core: recessed circuit panels, sparse cyan traces
+        vec2 cell = fract(uv / 2.4);
+        vec2 edge = min(cell, 1.0 - cell);
+        float seam = 1.0 - smoothstep(0.012, 0.035, min(edge.x, edge.y));
+        float trace = (1.0 - smoothstep(0.008, 0.018, abs(cell.x - 0.2))) * step(0.2, cell.y) * step(cell.y, 0.8);
+        trace += (1.0 - smoothstep(0.008, 0.018, abs(cell.y - 0.8))) * step(0.2, cell.x) * step(cell.x, 0.65);
+        emi = vec3(0.02, 0.24, 0.32) * trace * detail;
+        return base * (0.8 + 0.25 * n) * (1.0 - 0.55 * seam * detail);
+    }
+    if (s == 10) {   // debris: coarse fractured basalt, kept quiet against the landing edges
+        float crack = 1.0 - smoothstep(0.025, 0.075, crackDist(uv * 0.65));
+        return base * (0.65 + 0.55 * n) * (1.0 - 0.35 * crack * detail);
+    }
     return base;
 }
 
