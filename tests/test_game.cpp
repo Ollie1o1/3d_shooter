@@ -4859,6 +4859,7 @@ int main() {
             // rand() differs between libcs, so leaving it would make this check differ by platform)
             Enemy e(t, {0.f, 0.f, 0.f}); e.spawnTimer = 0.f; e.animPhase = 0.f; e.age = 0.f;
             formOf(f, e);
+            if (t == EnemyType::ABSOLUTE) e.abArrive = 0.f; // test the resting rig, not its airborne entrance
             glm::mat4 fr; rig::FilePose P; glm::vec3 g; glm::mat4 Wj[enemyfile::E_COUNT];
             std::vector<BoxInstance> sink; rig::Rig dummy{sink};
             rig::filePoseOf(e, 0.f, glm::scale(glm::mat4(1.f), glm::vec3(e.scale)), fr, P, g);   // (at its size: MORNINGSTAR's 1.65)
