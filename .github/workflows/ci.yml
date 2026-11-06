@@ -33,3 +33,9 @@ jobs:
       - run: make web
       - run: make test-web-story
       - run: make test-web-lighting
+      - uses: actions/upload-artifact@v4
+        with:
+          name: overdrive-web
+          path: web/dist/
+          if-no-files-found: error
+          retention-days: 3

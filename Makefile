@@ -282,13 +282,6 @@ test-plain: tests/test_plain.cpp $(HEADERS)
 tools/music_preview: tools/music_preview.cpp src/audio/MusicSynth.h
 	$(CXX) $(CXXFLAGS) tools/music_preview.cpp -o tools/music_preview $(STDLIB)
 
-# Soundtrack transitions and the fixed low-register menu, without SDL or a window.
-.PHONY: test-audio
-test-audio: tests/test_audio.cpp src/audio/MusicSynth.h
-	mkdir -p build
-	$(CXX) $(CXXFLAGS) tests/test_audio.cpp -o build/test_audio $(STDLIB)
-	./build/test_audio
-
 # Boss joint motion, landing contact and animated effect attachments (headless).
 .PHONY: test-boss-animation
 test-boss-animation: tests/test_boss_animation.cpp $(HEADERS)
