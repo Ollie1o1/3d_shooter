@@ -12,6 +12,7 @@ const browser = await chromium.launch({
 });
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  page.setDefaultTimeout(120000); // software-rendered frames can delay input on a two-core runner
   // Software WebGL in CI has no GPU. Keep the real shaders/lighting enabled,
   // but use 720p without MSAA so input and screenshots don't queue behind
   // supersampled frames. This fresh context never touches a player's settings.
@@ -28,9 +29,19 @@ try {
   });
   // Local static servers have no leaderboard API. Stub only that optional API.
   await page.route('**/api/overdrive-board**', route => route.fulfill({ json: { entries: [] } }));
+  async function enterGame() {
+    // Pointer lock may arrive as initialization finishes, in which case the
+    // shipped shell dismisses the overlay itself. Clicking a locator races
+    // that removal and waits forever for a button that is already gone.
+    await page.waitForFunction(() => {
+      const overlay = document.querySelector('#overlay');
+      return !overlay || overlay.dataset.state === 'ready';
+    });
+    await page.mouse.click(640, 360); // real user gesture, on the overlay or the running canvas
+    await page.locator('#overlay').waitFor({ state: 'detached' });
+  }
   await page.goto(url, { waitUntil: 'domcontentloaded' });
-  await page.locator('#overlay[data-state="ready"]').waitFor({ timeout: 120000 });
-  await page.locator('#overlay').click();
+  await enterGame();
   await page.keyboard.press('F3');
   await page.waitForTimeout(600);
   await page.screenshot({ path: path.join(output, 'f3-guide.png') });
@@ -57,8 +68,7 @@ try {
   reliquary.searchParams.set('act2', ''); reliquary.searchParams.set('arena', '4');
   reliquary.searchParams.set('god', '');
   await page.goto(reliquary.href, { waitUntil: 'domcontentloaded' });
-  await page.locator('#overlay[data-state="ready"]').waitFor({ timeout: 120000 });
-  await page.locator('#overlay').click();
+  await enterGame();
   await page.keyboard.press('Tab'); // later-arena starts open the upgrade armory
   await page.waitForTimeout(6500);
   await page.screenshot({ path: path.join(output, 'reliquary.png') });
@@ -71,8 +81,7 @@ try {
   ]) {
     const target = new URL(url); target.search = new URLSearchParams(params).toString();
     await page.goto(target.href, { waitUntil: 'domcontentloaded' });
-    await page.locator('#overlay[data-state="ready"]').waitFor({ timeout: 120000 });
-    await page.locator('#overlay').click();
+    await enterGame();
     if (name !== 'challenge') await page.keyboard.press('Tab');
     await page.waitForTimeout(3500);
     await page.screenshot({ path: path.join(output, `${name}.png`) });
