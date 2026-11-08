@@ -5,20 +5,25 @@ what kills you, what hurts you most, each gun's accuracy and kills, how long
 each enemy takes to kill, and how often stuns, finishers and OVERDRIVE happen.
 
     python3 tools/runlog.py [runs.jsonl] [--last N]
+    python3 tools/runlog.py runs.dev.jsonl --include-dev
 """
+import argparse
 import json
-import sys
 from collections import Counter, defaultdict
 
 
 def main():
-    args = sys.argv[1:]
-    last = None
-    if "--last" in args:
-        i = args.index("--last"); last = int(args[i + 1]); del args[i:i + 2]
-    path = args[0] if args else "runs.jsonl"
-    rows = [json.loads(l) for l in open(path) if l.strip()]
-    if last: rows = rows[-last:]
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("path", nargs="?", default="runs.jsonl")
+    parser.add_argument("--last", type=int)
+    parser.add_argument("--include-dev", action="store_true",
+                        help="include marked practice/capture rows (normally excluded)")
+    args = parser.parse_args()
+    rows = [json.loads(line) for line in open(args.path) if line.strip()]
+    if not args.include_dev:
+        rows = [r for r in rows if not r.get("practice") and not r.get("capture")]
+    if args.last:
+        rows = rows[-args.last:]
     if not rows:
         print("no runs logged yet"); return
     secs = sum(r["seconds"] for r in rows)
@@ -60,6 +65,10 @@ def main():
     print(f"\n{kills} kills, {stuns} stuns, {fin} finishers ({heal:.0f} HP back), "
           f"OVERDRIVE {od}x for {ods:.0f} s ({100 * ods / max(secs, 1e-6):.0f}% of the time)")
 
+    presses = sum(r.get("parryAttempts", 0) for r in rows)
+    contacts = sum(r.get("parrySuccesses", 0) for r in rows)
+    retries = sum(r.get("retries", 0) for r in rows)
+    print(f"\n{presses} punch/guard presses, {contacts} successful parry contacts, {retries} retries")
     story(rows)
 
 
@@ -68,10 +77,11 @@ def story(rows):
     rows = [r for r in rows if r.get("chapter")]
     if not rows:
         return
-    print("\nSTORY (chapter.section: deaths, minutes played, minutes lost):")
-    deaths, secs, lost, where = Counter(), Counter(), Counter(), defaultdict(list)
+    print("\nSTORY (chapter.section: deaths, retries, minutes played, minutes lost):")
+    deaths, retries, secs, lost, where = Counter(), Counter(), Counter(), Counter(), defaultdict(list)
     for r in rows:
         c = r["chapter"]
+        retries[(c, r["section"])] += r.get("retries", 0)
         if r["how"] == "death":
             deaths[(c, r["section"])] += 1
             where[(c, r["section"])].append(("died", r["at"], r.get("killedBy", "")))
@@ -79,10 +89,10 @@ def story(rows):
         for s, t in r.get("lostSeconds", {}).items(): lost[(c, int(s))] += t
         for p in r.get("lostAt", []):
             where[(c, r["section"])].append(("lost", p, ""))
-    for key in sorted(set(secs) | set(deaths)):
+    for key in sorted(set(secs) | set(deaths) | set(retries)):
         c, s = key
         flag = "  <- often lost" if lost[key] > 0.25 * max(secs[key], 1e-6) else ""
-        print(f"  {c}.{s:<3} {deaths[key]:3d} deaths  {secs[key] / 60:6.1f} min  {lost[key] / 60:5.1f} lost{flag}")
+        print(f"  {c}.{s:<3} {deaths[key]:3d} deaths  {retries[key]:3d} retries  {secs[key] / 60:6.1f} min  {lost[key] / 60:5.1f} lost{flag}")
         for what, p, by in where[key][:4]:
             print(f"        {what} at ({p[0]:.0f} {p[1]:.0f} {p[2]:.0f}){' to ' + by if by else ''}")
 

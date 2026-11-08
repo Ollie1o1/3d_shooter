@@ -3,6 +3,7 @@
 #include "core/Settings.h"
 #include "ui/SettingsMenu.h"
 #include "game/Progression.h"
+#include "game/BossChallenge.h"
 #include "game/StorySave.h"
 #include "ui/LeaderboardView.h"
 #include "world/Level.h"
@@ -44,7 +45,9 @@ public:
 
     GameSettings* settings = nullptr;   // injected by main
 
-    enum Page { MAIN, SETTINGS, BOARD, DEV, BOSS, FASTPAGE, ARENAPAGE, STORYPAGE, ARCHIVEPAGE };
+    enum Page { MAIN, SETTINGS, BOARD, DEV, BOSS, FASTPAGE, ARENAPAGE, STORYPAGE, ARCHIVEPAGE, ENDLESSPAGE };
+    int endlessSel=0;
+    std::string challengeInput,challengeError;
     // The ARENA page: two columns, each the whole act then its arenas one by one
     struct ArenaRow { std::string name, subtitle; };
     std::vector<ArenaRow> act1Arenas, act2Arenas;
@@ -59,6 +62,8 @@ public:
     StorySave storySave;
     bool hasStorySave = false;
     int   bossSel = 0;
+    int bossPracticePhase=0;
+    BossRushRecords rushRecords;
     int   page      = MAIN;
     int   selected  = 0;
     float flashTime = 0.f;
@@ -138,6 +143,9 @@ public:
     void handleEvent(const SDL_Event& e) override {
         settingsMenu.s = settings;
         if (e.type == SDL_CONTROLLERBUTTONDOWN) {   // the D-pad and A/B drive every page
+            if(page==BOSS && (e.cbutton.button==SDL_CONTROLLER_BUTTON_X || e.cbutton.button==SDL_CONTROLLER_BUTTON_Y)) {
+                SDL_Event ke=gamepad::keyEvent(e.cbutton.button==SDL_CONTROLLER_BUTTON_X?SDLK_p:SDLK_r);handleBossEvent(ke);return;
+            }
             // B backs out of a page; on the main page it does nothing (Escape there quits)
             SDL_Keycode k = gamepad::menuKey(e.cbutton.button, page != MAIN);
             if (page == MAIN && e.cbutton.button == SDL_CONTROLLER_BUTTON_BACK) { openDev(); return; }
@@ -153,6 +161,7 @@ public:
         }
         if (page == DEV) { handleDevEvent(e); return; }
         if (page == BOSS) { handleBossEvent(e); return; }
+        if (page == ENDLESSPAGE) { handleEndlessEvent(e); return; }
         if (page == FASTPAGE) { handleFastEvent(e); return; }
         if (page == ARENAPAGE) { handleArenaEvent(e); return; }
         if (page == STORYPAGE) { handleStoryEvent(e); return; }
@@ -223,6 +232,7 @@ public:
         else if (page == SETTINGS) settingsMenu.render(ui, flashTime);
         else if (page == BOARD) renderBoard();
         else if (page == BOSS) renderBoss();
+        else if (page == ENDLESSPAGE) renderEndless();
         else if (page == FASTPAGE) renderFast();
         else if (page == ARENAPAGE) renderArena();
         else if (page == STORYPAGE) renderStory();
@@ -246,8 +256,8 @@ private:
         if (idx == 0) { page = ARENAPAGE; arenaSel = 0; }
         if (idx == 1) {page=STORYPAGE;storySel=0;}   // STORY: CHAPTER 1, THE CRADLE
         if (idx == 2) { page = FASTPAGE; fastSel = 0; }
-        if (idx == 3 && onStart) onStart(GameMode::ENDLESS, StartOptions{});
-        if (idx == 4) { page = BOSS; bossSel = 0; bossPoll = 0.f; refreshWorld(); }
+        if (idx == 3) {page=ENDLESSPAGE;endlessSel=0;challengeError.clear();}
+        if (idx == 4) { page = BOSS; bossSel = 0; bossPracticePhase=0;bossPoll = 0.f; rushRecords.load();refreshWorld(); }
         if (idx == 5) {
             page = BOARD; board.load(); boardPoll = 0.f; bossPoll = 0.f;
 #ifdef __EMSCRIPTEN__
@@ -256,6 +266,56 @@ private:
         }
         if (idx == 6) { page = SETTINGS; settingsMenu.selected = 1; settingsMenu.bindsPage = false; }
         if (idx == 7 && onQuit) onQuit();
+    }
+
+    void launchEndless(int row) {
+        if(row==1)return;
+        if(!onStart)return;
+        StartOptions o;
+        if(row==2 && !o.challenge.parse(challengeInput)) {challengeError="USE OD1-SEED-DIFFICULTY (0-3)";return;}
+        onStart(GameMode::ENDLESS,o);
+    }
+    void handleEndlessEvent(const SDL_Event& e) {
+        if(e.type==SDL_KEYDOWN) {
+            auto k=e.key.keysym.sym;
+            if(k==SDLK_ESCAPE){page=MAIN;selected=3;return;}
+            if(k==SDLK_UP)endlessSel=(endlessSel+2)%3;
+            if(k==SDLK_DOWN)endlessSel=(endlessSel+1)%3;
+            if(k==SDLK_RETURN || k==SDLK_SPACE)launchEndless(endlessSel);
+            if(endlessSel==1) {
+                if(k==SDLK_BACKSPACE && !challengeInput.empty())challengeInput.pop_back();
+                if((e.key.keysym.mod&(KMOD_CTRL|KMOD_GUI)) && k==SDLK_v) {
+                    char* clip=SDL_GetClipboardText();if(clip){challengeInput=std::string(clip).substr(0,32);SDL_free(clip);}
+                } else if(challengeInput.size()<32) {
+                    if(k>=SDLK_0 && k<=SDLK_9)challengeInput+=(char)k;
+                    if(k==SDLK_o || k==SDLK_d)challengeInput+=(char)(k-'a'+'A');
+                    if(k==SDLK_MINUS)challengeInput+='-';
+                }
+                challengeError.clear();
+            }
+        }
+        if(e.type==SDL_MOUSEMOTION || (e.type==SDL_MOUSEBUTTONDOWN && e.button.button==SDL_BUTTON_LEFT)) {
+            int x=e.type==SDL_MOUSEMOTION?e.motion.x:e.button.x,y=e.type==SDL_MOUSEMOTION?e.motion.y:e.button.y;
+            if(x>screenW/2-340 && x<screenW/2+340 && y>=200 && y<410) {
+                endlessSel=(y-200)/70;
+                if(e.type==SDL_MOUSEBUTTONDOWN)launchEndless(endlessSel);
+            }
+        }
+    }
+    void renderEndless() {
+        const int cx=screenW/2;
+        ui.text("ENDLESS",cx,65,5,{1,.65f,.2f,1},true);
+        const std::string input="CODE: "+(challengeInput.empty()?std::string("OD1-12345-1"):challengeInput)+(endlessSel==1?"_":"");
+        const char* labels[]={"NEW RANDOM RUN",input.c_str(),"PLAY CHALLENGE CODE"};
+        for(int i=0;i<3;++i) {
+            ui.rect(cx-340,200+i*70,680,58,i==endlessSel?glm::vec4{.24f,.15f,.07f,1}:glm::vec4{.08f,.08f,.11f,1});
+            ui.text(labels[i],cx,220+i*70,2,{1,.85f,.6f,1},true);
+        }
+        ui.text("SELECT CODE TO TYPE OR CTRL+V TO PASTE",cx,455,1,{.7f,.8f,.85f,1},true);
+        ui.text("A CODE SHARES WAVES AND DIFFICULTY. CHALLENGES HAVE NO LEADERBOARD.",cx,485,1,{.7f,.8f,.85f,1},true);
+        ui.text("PAUSE DURING ANY ENDLESS RUN TO SEE ITS CODE. F8 COPIES IT.",cx,510,1,{.7f,.8f,.85f,1},true);
+        if(!challengeError.empty())ui.text(challengeError.c_str(),cx,550,2,{1,.4f,.3f,1},true);
+        ui.text("UP/DOWN PICK / ENTER PLAY / ESC BACK",cx,screenH-36,1,{.7f,.7f,.75f,1},true);
     }
 
     int storyRows() const { return hasStorySave ? 7 : 6; }
@@ -616,7 +676,14 @@ private:
         StartOptions o;
         o.boss = i; o.arena = bossEntry(i).arena;
         o.storyChapter = bossEntry(i).chapter;
+        o.bossPhase=bosspractice::supports(i)?bossPracticePhase:0;
+        o.practice=o.bossPhase>0;
         onStart(bossEntry(i).mode(), o);
+    }
+    void startBossRush() {
+        if(!onStart)return;
+        StartOptions o;o.boss=0;o.arena=bossEntry(0).arena;o.bossRush=true;
+        onStart(GameMode::ARENA,o);
     }
     void handleBossEvent(const SDL_Event& e) {
         if (e.type == SDL_KEYDOWN) {
@@ -625,10 +692,16 @@ private:
             if (k == SDLK_UP)   bossSel = (bossSel + BOSS_COUNT - 1) % BOSS_COUNT;
             if (k == SDLK_DOWN) bossSel = (bossSel + 1) % BOSS_COUNT;
             if (k == SDLK_LEFT || k == SDLK_RIGHT) cycleDifficulty(k == SDLK_LEFT ? -1 : 1);
+            if(k==SDLK_p && !e.key.repeat && bosspractice::supports(bossSel))bossPracticePhase=(bossPracticePhase+1)%4;
+            if(k==SDLK_r && !e.key.repeat){startBossRush();return;}
             if (k == SDLK_RETURN || k == SDLK_SPACE) startBoss(bossSel);
         }
         if (e.type == SDL_MOUSEMOTION) { int i = bossAt(e.motion.x, e.motion.y); if (i >= 0) bossSel = i; }
         if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_LEFT) {
+            if(e.button.x>=32 && e.button.x<=285) {
+                if(e.button.y>=200 && e.button.y<250 && bosspractice::supports(bossSel)){bossPracticePhase=(bossPracticePhase+1)%4;return;}
+                if(e.button.y>=310 && e.button.y<360){startBossRush();return;}
+            }
             int i = bossAt(e.button.x, e.button.y);
             if (i >= 0) { bossSel = i; startBoss(i); }
             else if (int d = difficultyClick(e.button.x, e.button.y, bossY(BOSS_COUNT) + 10.f)) cycleDifficulty(d);
@@ -646,6 +719,19 @@ private:
             if (portrait.now && portrait.now->tex) ui.image(portrait.now->tex, x, y, w, h, {1.f, 1.f, 1.f, t});
         }
         ui.text("BOSS", cx, 46, 5, {1.f, 0.55f, 0.08f, 1.f}, true);
+        const bool phaseSupported=bosspractice::supports(bossSel);
+        const std::string phase=phaseSupported?(bossPracticePhase?"PHASE "+std::to_string(bossPracticePhase)+" PRACTICE":"WHOLE FIGHT"):"WHOLE FIGHT";
+        ui.rect(32,200,253,50,{.14f,.11f,.08f,1});
+        ui.text(phase.c_str(),45,211,2,{1,.82f,.4f,1});
+        ui.text(phaseSupported?"P / PAD X / CLICK TO CHANGE":"PHASE PRACTICE: SELECT A DUEL",45,236,1,{.7f,.75f,.8f,1});
+        ui.text("PRACTICE HAS NO RECORDS",45,267,1,{.6f,.7f,.75f,1});
+        ui.rect(32,310,253,50,{.2f,.12f,.06f,1});
+        ui.text("R / PAD Y: BOSS RUSH",45,327,2,{1,.8f,.4f,1});
+        ui.text("SIX FIGHTS / ONE LIFE",45,382,1,{.8f,.8f,.8f,1});
+        ui.text("+25 HEALTH BETWEEN BOSSES",45,405,1,{.8f,.8f,.8f,1});
+        const int diff=settings?settings->difficulty:DIFFICULTY_DEFAULT;
+        const std::string rushBest="RUSH BEST: "+(rushRecords.best[diff]>0?formatTime(rushRecords.best[diff]):"-");
+        ui.text(rushBest.c_str(),45,440,1,{1,.82f,.4f,1});
         ui.text("EVERY BOSS IN ORDER, ON ITS OWN - WITH THE UPGRADES A RUN WOULD HAVE BY THEN", cx, 104, 1, {0.75f, 0.72f, 0.7f, 0.9f}, true);
         char buf[96];
         for (int i = 0; i < BOSS_COUNT; ++i) {

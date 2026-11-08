@@ -106,6 +106,19 @@ test: $(TESTS) $(HEADERS)
 	$(MAKE) test-audio
 	$(MAKE) test-feel
 	$(MAKE) test-reliquary
+	$(MAKE) test-next
+
+.PHONY: test-next test-next-runtime
+test-next: tests/test_next.cpp $(HEADERS)
+	mkdir -p build
+	$(CXX) $(CXXFLAGS) tests/test_next.cpp -o build/test_next $(STDLIB)
+	./build/test_next
+	python3 tests/test_runlog.py
+
+test-next-runtime: tests/test_next_runtime.cpp src/main.cpp $(HEADERS)
+	mkdir -p build/next-pass
+	$(CXX) $(CXXFLAGS) tests/test_next_runtime.cpp -o build/test_next_runtime $(LDFLAGS)
+	./build/test_next_runtime
 
 .PHONY: test-reliquary
 test-reliquary: tests/test_reliquary.cpp $(HEADERS)

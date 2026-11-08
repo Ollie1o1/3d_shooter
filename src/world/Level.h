@@ -587,6 +587,7 @@ struct LevelData {
         std::vector<Terminal> terminals;
         struct LabBridge {int room,side,mover;};
         std::vector<LabBridge> labBridges;
+        int motorLoad = -1;       // optional Motor Assessment drop trap (mover)
         // Chapter 3 dressing that moves (LabDressing.h builds it, Gameplay_LabDressing.h draws it):
         // light shafts, drifting debris, specimen-tank currents, arcing power and the portal.
         struct LabBeam {glm::vec3 top,bottom;float r0,r1;glm::vec3 color;int room;};

@@ -56,6 +56,7 @@ tests/scan_bounds
 
 # Play telemetry (RunLog.h)
 runs.jsonl
+runs.dev.jsonl
 tools/enemy_export
 tools/level_dump
 tools/light_bake

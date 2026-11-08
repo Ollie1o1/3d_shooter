@@ -33,6 +33,26 @@ jobs:
       - run: make web
       - run: make test-web-story
       - run: make test-web-lighting
+      - run: python3 tests/test_web_release.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node tests/test_web_pointer_lock.mjs
+      - run: npm install --prefix build/browser-smoke --no-save playwright@1.65.0
+      - run: build/browser-smoke/node_modules/.bin/playwright install --with-deps chromium
+      - name: Exercise the built game in Chromium
+        run: |
+          python3 -m http.server 8765 --bind 127.0.0.1 -d web/dist > build/web-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid"' EXIT
+          OVERDRIVE_PLAYWRIGHT="$PWD/build/browser-smoke/node_modules/playwright/index.mjs" node tests/test_web_smoke.mjs http://127.0.0.1:8765/ build/browser-smoke/captures
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-smoke-captures
+          path: build/browser-smoke/captures/
+          if-no-files-found: ignore
+          retention-days: 3
       - uses: actions/upload-artifact@v4
         with:
           name: overdrive-web

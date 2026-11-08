@@ -119,3 +119,13 @@ The "bare" and "dark" flags undercount Act I, FAST and Act II, whose dressing an
 lights come partly from systems the audit doesn't count yet (the arena dressing
 models fitted outside the zones, the baked glow): read those two flags there as
 rough.
+
+## Motor Assessment follow-up (2026-11-08)
+
+The first encounter/replay pass brings Motor Assessment to **26.2% cover**, a
+**24.8 m mean sightline**, seven measured standing layers and **0.79 light parts
+per 100 m²**. Its existing upper circuits, enemy count and required lock remain;
+new diagnostic banks provide climbable cover and shorter exposed crossings.
+The automated standard is checked by `make test-next`. The optional load release
+and upper-route record are described in [the pass notes](next-pass.md).
+The other Chapter 3 rooms listed above still need their own design passes.

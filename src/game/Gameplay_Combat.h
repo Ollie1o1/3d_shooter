@@ -21,6 +21,7 @@ inline int GameplayState::findParryTarget() const {
 }
 
 inline void GameplayState::parryFeedback(glm::vec3 at, bool heavy) {
+    ++runLog.parrySuccesses;
     fx.spawnBurst(at, {1.f, 0.85f, 0.35f}, heavy ? 50 : 28, heavy ? 12.f : 8.f, 0.45f, 4.f);
     fx.spawnBurst(at, {1.f, 1.f, 1.f}, 10, 4.f, 0.2f, 0.f);
     explosionFlashTimer = 0.2f; explosionFlashPos = at;
@@ -85,6 +86,7 @@ inline void GameplayState::reflectProjectile(int pi, glm::vec3 fwd) {
 }
 
 inline void GameplayState::punch(int boostable) {
+    ++runLog.parryAttempts;
     punchCooldown = PARRY_COOLDOWN;
     glm::vec3 eye = player.camera.position, fwd = player.camera.forward();
 
@@ -187,6 +189,8 @@ inline void GameplayState::spawnEnemy(EnemyType t, glm::vec3 pos, Hollow h) {
     enemies.back().setHollow(h);
     enemies.back().maxHealth *= tune().health * endlessToughness();
     enemies.back().health = enemies.back().maxHealth;
+    if(g_bossRun>=0 && g_bossPhase>0 && bosspractice::supports(g_bossRun) && isBoss(t))
+        bosspractice::startPhase(enemies.back(),g_bossPhase);
     if (t == EnemyType::PACEMAKER) enemies.back().pmKeep = {level.finishPos.x, level.baseFloor(pos.x, pos.z), level.finishPos.z};   // (its Tower)
     glm::vec3 c = statsOf(t).glow;
     fx.spawnBurst(pos + glm::vec3{0, 0.3f, 0}, c, 14, 3.f, 0.7f, -6.f);

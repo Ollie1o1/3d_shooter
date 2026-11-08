@@ -46,6 +46,16 @@ See [the improvement notes](docs/combat-and-story-improvements.md) for controls,
 save behaviour, relay isolation and the turbine winch, and
 [Chapter 3 directions](docs/chapter-3-directions.md) for the surreal-world brainstorm.
 
+The [encounter and replay pass](docs/next-pass.md) adds a revised **Motor Assessment**
+with climbable cover, an optional gallery-controlled load drop and an upper-route
+record. On **BOSS**, **P / controller X** cycles phase practice for the Sovereign,
+Sorter, Ballast and Successor; **R / controller Y** starts the original six-boss
+rush (one life, carried upgrades, +25 health between fights). **ENDLESS** now offers
+shareable challenge codes; pause to see a run's code and **F8** to copy it.
+Desktop **F1 → ENCOUNTER WORKSHOP** edits ordinary encounter waves and spawns,
+with validated patches and immediate room retries. Edited runs cannot save Story
+progress or records. Local developer play logs go to `runs.dev.jsonl`.
+
 ## The bosses
 
 | Boss | Where | The trick |
@@ -370,7 +380,7 @@ Everything below runs without touching the mouse, so it works from scripts.
 #   --campath X Y Z YAW PITCH  glide the camera there over the recording
 #   --autoaim  turn onto the nearest enemy in sight and fire (and take any finisher in reach)      --kite  back off from whatever gets close
 #   --clean    no title cards or enemy cards
-#   OVERDRIVE_RUNLOG=1 ./shooter ...   write runs.jsonl from dev runs too (normally only real play)
+#   python3 tools/runlog.py runs.dev.jsonl --include-dev   inspect developer/capture sessions
 #   --overlay driveNN   the OVERDRIVE screen look at NN %
 #   --overlay clearwaves  every wave cleared for you, one every 4 s (with --audiodump: hear the room clears)
 #   --overlay hook | alt   with --autoaim: grapple whatever it's aimed at every 2.5 s / use alt fire instead of the trigger

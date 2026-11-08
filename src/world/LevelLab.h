@@ -62,6 +62,8 @@ inline std::vector<glm::vec3> passageRoute(int i){
 inline glm::vec3 contactPosition(int room,int side=-1){
     return centre(room)+(room==2?glm::vec3{31,7.5f,-17}:room==6?glm::vec3{-31,7.5f,-17}:glm::vec3{side*20.f,1.5f,-18});
 }
+inline glm::vec3 motorLoadAt(){return centre(2)+glm::vec3{0,0,-18};}
+inline glm::vec3 motorLoadControl(){return centre(2)+glm::vec3{-25,7.4f,-13};}
 inline const char* name(int i){static const char* n[]={"ADMISSIONS","RECOVERY WARD","MOTOR ASSESSMENT","SURGICAL OBSERVATION","THE CONSERVATORY","LOAD TESTING","LONG-TERM CARE","CELESTIAL OBSERVATION","HADAL RESEARCH","FINAL ASSESSMENT"};return n[std::clamp(i,0,9)];}
 inline const char* objective(int i){static const char* n[]={"ENTER THE WARD","REACH THE OBSERVATION GALLERY","RELEASE THE MOTOR LOCK","CROSS THE SURGICAL FLOOR","FIND THE SERVICE DOOR","CROSS THE LOAD BRIDGE","RELEASE THE SUSPENSION LOCK","ROUTE THE OBSERVATION BRIDGE","SEAT THE HADAL CONTACT","DEFEAT THE SUCCESSOR"};return n[std::clamp(i,0,9)];}
 inline Theme theme(int i){
@@ -139,6 +141,35 @@ inline void combatStations(LevelBuilder& b,int room,glm::vec3 c) {
             detail(c+vec3{x,.018f,dz},c+vec3{x+.18f,.026f,dz+1.2f},paint);
         for(float dz:{-23.f,-3.f,19.f})for(int k=0;k<9;++k)
             detail(c+vec3{-4.5f+k,.019f,dz},c+vec3{-4.05f+k,.027f,dz+.12f},shell);
+        if(room==2) {
+            // Freestanding diagnostic banks break the long diagonal sightlines.
+            // Both ends stay open, and low steps make their roofs fighting space.
+            for(float side:{-1.f,1.f})for(float dz:{-26.f,-2.f,25.f}) {
+                vec3 p=c+vec3{side*22,0,dz};b.mat=Mat::CLINIC;
+                box(p+vec3{-6,0,-2},p+vec3{6,2.4f,2},shell);
+                b.mat=Mat::METAL;
+                box(p+vec3{-5,0,2},p+vec3{5,1.1f,3.2f},frame);
+                detail(p+vec3{-5.7f,.45f,-2.04f},p+vec3{5.7f,1.85f,-2.01f},inset);
+                for(float x:{-5.8f,5.7f})glow(p+vec3{x,2.42f,-1.9f},p+vec3{x+.1f,2.48f,1.9f},{.65f,.4f,.12f});
+                glow(p+vec3{-5.8f,2.42f,1.9f},p+vec3{5.8f,2.48f,2.f},{.65f,.4f,.12f});
+            }
+            for(vec3 local:{vec3{-4,0,-30},vec3{4,0,-30},vec3{0,0,15},vec3{0,0,-6},vec3{0,0,24}}) {
+                const auto p=c+local;b.mat=Mat::CLINIC;
+                box(p+vec3{-2.5f,0,-1.2f},p+vec3{2.5f,1.6f,1.2f},shell);
+                glow(p+vec3{-2.4f,1.62f,1.1f},p+vec3{2.4f,1.68f,1.2f},edge*.35f);
+                detail(p+vec3{-2.2f,.4f,1.21f},p+vec3{2.2f,1.25f,1.25f},inset);
+            }
+            // The suspended calibration load can be released from the gallery.
+            const auto target=motorLoadAt();
+            b.L.story.motorLoad=b.mover(target+vec3{0,13.2f,0},{4,1.2f,4},Mover::Path::DRIVEN,
+                {0,0,0},{0,-12,0},1,0,{.18f,.1f,.025f});
+            for(float x:{-4.7f,4.7f})glow(target+vec3{x,.03f,-4.7f},target+vec3{x+.12f,.06f,4.8f},{.7f,.4f,.1f});
+            for(float dz:{-4.7f,4.7f})glow(target+vec3{-4.7f,.03f,dz},target+vec3{4.8f,.06f,dz+.12f},{.7f,.4f,.1f});
+            stencil(b,"LOAD DROP / KEEP CLEAR",target+vec3{-4.7f,.04f,5.3f},.065f,paint);
+            // A cyan service record is visible from the west gallery. Reaching
+            // the new bank roof is optional; its discovery uses the normal save.
+            for(float dz:{-27.7f,-24.3f})glow(c+vec3{-27.7f,2.44f,dz},c+vec3{-16.3f,2.5f,dz+.1f},edge*.25f);
+        }
     } else if(room==3) {
         station({-19,0,6},"SURGICAL / PREPARATION");station({8,0,-16},"STERILE / INSTRUMENTS");
     } else if(room==5) {
@@ -544,6 +575,10 @@ inline LevelData buildLab(){
     l.arenas.back().extraZones.push_back(LevelBuilder::aabb(-7,end.y-300,end.z-120,7,end.y+28,end.z-71));
     l.basins.push_back({LevelBuilder::aabb(-8,end.y-300,end.z-120,8,end.y+30,end.z-72),end.y-250});
     // Two optional records reward looking above the test floor and behind the impossible garden.
+    // Append new terminal IDs after the existing records: old save bitmasks
+    // must continue referring to the same terminals.
+    s.terminals.push_back({lab::centre(2)+vec3{-22,2.4f,-26},"MANUAL CALIBRATION",
+        "THE LOAD RETURNS TO ZERO. THE SUBJECT DOES NOT. AFTER EACH RESET, IT CHOOSES THE HIGHER ROUTE."});
     s.wrecks.push_back({lab::centre(2)+vec3{-25,6,-24},0,18,-1,"THE LOCK OPENS FROM THE GALLERY. THEY DID NOT EXPECT US TO LOOK UP.",2,true});
     s.wrecks.push_back({lab::centre(4)+vec3{37,0,-34},0,21,-1,"NO ROOTS IN THE SOIL. NO WATER IN THE PIPE. SOMETHING HERE STILL KNOWS WHAT A GARDEN SHOULD BE.",4,true});
     // A little garden, out beyond the corridor: the exit is a place you can actually walk into.

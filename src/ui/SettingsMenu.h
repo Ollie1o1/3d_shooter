@@ -17,6 +17,7 @@
 class SettingsMenu {
 public:
     GameSettings* s = nullptr;
+    bool lockDifficulty=false;
     std::function<void()> onBack;
     int  selected = 1;          // row index (row 0 is a header)
     int  screenW, screenH;
@@ -66,7 +67,10 @@ public:
         slider("MASTER VOLUME", &g->audioVolume, 0.f, 1.f, 0.05f, 2);
         slider("MUSIC VOLUME", &g->musicVolume, 0.f, 1.f, 0.05f, 2);
         header("GAMEPLAY");
-        cycle ("DIFFICULTY", &g->difficulty, DIFFICULTY_LEVELS, [](int i) { return difficulty(i).name; });
+        if(lockDifficulty) {
+            header("DIFFICULTY / FIXED FOR THIS CHALLENGE");
+            header(difficulty(g->difficulty).name);
+        } else cycle ("DIFFICULTY", &g->difficulty, DIFFICULTY_LEVELS, [](int i) { return difficulty(i).name; });
         toggle("RUN TIMER", &g->showTimer);
         toggle("FAST GHOST", &g->ghost);
         toggle("DAMAGE NUMBERS", &g->damageNumbers);

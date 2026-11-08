@@ -234,14 +234,16 @@ inline void GameplayState::updateFeel(float dt) {
 // ---- the run log -------------------------------------------------------------------
 inline void GameplayState::logRun(const char* how) {
     if(training())return;
-    const bool force = std::getenv("OVERDRIVE_RUNLOG") != nullptr;   // dev: log screenshot / dump runs too
-    if (runLog.any() && ((!g_devNoMouse && !g_godMode) || force)) {
+    const bool capture=g_devNoMouse || g_devCam || g_devAutoAim;
+    const bool development=capture || g_practice || g_godMode;
+    if(story()){runLog.chapter=level.story.chapter;runLog.lastSection=level.arenaAt(player.position);runLog.at=player.position;}
+    if (runLog.any()) {
         static const char* MODE[] = {"ARENA", "FAST", "ENDLESS", "ACT2", "STORY", "TRAINING"};
         static_assert(sizeof(MODE)/sizeof(MODE[0])==(size_t)GameMode::TRAINING+1,"a log name for every game mode");
         int a = std::clamp(director.arena, 0, std::max(0, (int)level.arenas.size() - 1));
         const char* arena = level.arenas.empty() ? "" : level.arenas[a].name;
         RunLog::append(runLog.json(how, g_bossRun >= 0 ? "BOSS" : MODE[(int)mode], settings ? settings->difficulty : DIFFICULTY_DEFAULT,
-                                   arena, director.wave + 1, elapsedTime));
+                                   arena, director.wave + 1, elapsedTime,g_practice||g_godMode,capture),development);
     }
     runLog.reset(elapsedTime);
 }

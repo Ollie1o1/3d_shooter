@@ -114,6 +114,7 @@ inline void GameplayState::updateSword(float dt) {
     bool rmb = (mb & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0 || gamepad::state().aim;
     if (paused || playerDead || victory) lmb = rmb = false;
     SwordInput in{lmb && !lmbPrev, lmb, rmb && !rmbPrev, rmb};
+    if(in.guardPressed && !sword.broken())++runLog.parryAttempts;
     lmbPrev = lmb; rmbPrev = rmb;
     if (in.guardPressed && !sword.broken()) audio.play("sword_guard", 80);
     if (in.guardPressed && act2() && director.arena == ZENITH_ARENA) {   // timing: a press just after a white blow hit you was late

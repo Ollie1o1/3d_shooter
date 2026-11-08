@@ -27,6 +27,7 @@
 #include "ui/GunViewer.h"
 #include "ui/EnemyViewer.h"
 #include "ui/BalancePanel.h"
+#include "ui/EncounterPanel.h"
 #include "audio/AudioSystem.h"
 #include "core/Display.h"
 #include "core/Gamepad.h"
@@ -47,6 +48,8 @@ struct App {
     AudioSystem   audio;
     GameSettings  settings;   // shared settings object — persists for the process lifetime
     std::unique_ptr<GameState> currentState;
+    BossRush bossRush;
+    Progression rushProgress;
     bool running = true;
 
     // State changes are requested from inside a state's own handleEvent/update,
@@ -334,6 +337,8 @@ struct App {
         NextState next = pending;
         pending = NextState::None;
         if (next == NextState::Menu) {
+            balancepanel::extraBuild={};
+            balancepanel::showEncounter=false;
             setMouseCaptured(false);
             audio.setSpace(ReverbSpace::OPEN);
             auto* menu = new MenuState(SCREEN_W, SCREEN_H);
@@ -348,6 +353,12 @@ struct App {
                 g_bossRun    = o.boss;
                 g_roomAttack = o.room;
                 g_arenaSolo  = o.solo;
+                g_endlessChallenge=o.challenge;
+                if(o.challenge.active)settings.difficulty=o.challenge.difficulty;
+                g_bossPhase=o.bossPhase;g_bossRush=o.bossRush;
+                if(o.bossPhase>0)g_practice=true;
+                if(o.bossRush){bossRush.begin();rushProgress=Progression{};}
+                else bossRush=BossRush{};
             };
             menu->onQuit   = [this]() { quit(); };
             if(g_devOverlay=="chapters")menu->page=MenuState::STORYPAGE;
@@ -361,6 +372,28 @@ struct App {
             setMouseCaptured(!g_devNoMouse);
             audio.masterVolume = settings.audioVolume;
             auto* game = new GameplayState(audio, &settings, mode);
+            encounterpanel::bind(*game);
+            balancepanel::showEncounter=false;
+            balancepanel::extraBuild=[game](){encounterpanel::build(*game);};
+            if(g_bossRush) {
+                if(!bossRush.active)bossRush.begin();
+                game->bossRush=&bossRush;
+                if(bossRush.stage>0) {
+                    game->prog=rushProgress;
+                    const auto& b=bossEntry(bossRush.stage);
+                    const int previous=bossEntry(bossRush.stage-1).points;
+                    game->prog.points+=std::max(0,b.points-previous);
+                    game->prog.level=std::max(game->prog.level,b.level);
+                    game->styleSystem.health=bossRush.health;
+                    for(int w=0;w<WEAPON_COUNT;++w)game->weapons[w].ammo=weaponMag((WeaponId)w,game->prog.up[w]);
+                }
+                game->onBossChallenge=[this,game](bool restart){
+                    if(restart || bossRush.last()){bossRush.begin();rushProgress=Progression{};}
+                    else {rushProgress=game->prog;if(!bossRush.advance(game->styleSystem.health))return;}
+                    g_bossRun=bossRush.stage;g_storyChapter=bossEntry(g_bossRun).chapter;
+                    mode=bossEntry(g_bossRun).mode();pending=NextState::Game;
+                };
+            }
             game->onReturnToMenu = [this,game]() { game->saveStoryProgress(); pending = NextState::Menu; };
             game->onQuit         = [this]() { quit(); };
             currentState.reset(game);
@@ -748,6 +781,11 @@ int main(int argc, char* argv[]) {
             g_arenaSolo = std::max(0, std::atoi(argv[++i]) - 1); g_startArena = g_arenaSolo;
         }
         if (arg == "--endless") { app->mode = GameMode::ENDLESS; app->pending = App::NextState::Game; }
+        if (arg == "--challenge" && i+1<argc) {
+            if(!g_endlessChallenge.parse(argv[++i])) {std::cerr<<"Invalid challenge code (OD1-SEED-DIFFICULTY)\n";return 2;}
+            app->settings.difficulty=g_endlessChallenge.difficulty;
+            app->mode=GameMode::ENDLESS;app->pending=App::NextState::Game;
+        }
         if (arg == "--training") {app->mode=GameMode::TRAINING;app->pending=App::NextState::Game;g_practice=true;}
         if (arg == "--continue") {app->mode=GameMode::STORY;app->pending=App::NextState::Game;g_continueStory=true;}
         if (arg == "--story") { app->mode = GameMode::STORY; app->pending = App::NextState::Game; }   // STORY: CHAPTER 1 (the wake-up first)
@@ -762,6 +800,11 @@ int main(int argc, char* argv[]) {
             g_bossRun = std::clamp(std::atoi(argv[++i]) - 1, 0, BOSS_COUNT - 1);
             g_storyChapter = bossEntry(g_bossRun).chapter;
             app->mode = bossEntry(g_bossRun).mode(); app->pending = App::NextState::Game;
+        }
+        if(arg=="--boss-phase" && i+1<argc){g_bossPhase=std::clamp(std::atoi(argv[++i]),1,3);g_practice=true;}
+        if(arg=="--boss-rush") {
+            g_bossRush=true;g_bossRun=0;g_bossPhase=0;app->bossRush.begin();
+            app->mode=GameMode::ARENA;app->pending=App::NextState::Game;
         }
         if (arg == "--god")  { g_godMode = true; app->godFromCommandLine = true; }
         if (arg == "--dev")  app->openDevMenu = true;
@@ -841,6 +884,9 @@ int main(int argc, char* argv[]) {
         }
     }
 
+    if(g_bossPhase>0 && (g_bossRun<0 || !bosspractice::supports(g_bossRun))) {
+        std::cerr<<"Phase practice supports bosses 2, 8, 9 and 10. Use --boss N --boss-phase 1-3.\n";return 2;
+    }
     app->freq        = SDL_GetPerformanceFrequency();
     app->lastCounter = SDL_GetPerformanceCounter();
     app->readDisplayHz();

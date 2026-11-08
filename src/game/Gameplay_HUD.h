@@ -412,8 +412,16 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         const BossEntry& b = bossEntry(g_bossRun);
         std::string shown;
         if (nameEntry) { shown = nameBuf; if (std::fmod(ui.hudTime, 1.f) < 0.55f && (int)nameBuf.size() < Leaderboard::MAX_NAME_LEN) shown += "_"; }
-        ui.renderVictoryBoss(b.name, b.where, bossKillT, newRecord ? 0.f : records.bestBoss[g_bossRun], newRecord, deaths, totalShots, totalHits,
-                             nameEntry, shown, bossPosted);
+        if(bossRush && bossRush->active) {
+            const std::string stage="FIGHT "+std::to_string(bossRush->stage+1)+" / 6 - "+b.name;
+            const float best=bossRush->complete()?rushRecords.best[settings?settings->difficulty:DIFFICULTY_DEFAULT]:0.f;
+            ui.renderVictoryBoss(bossRush->complete()?"RUSH COMPLETE":"BOSS RUSH",stage.c_str(),bossRush->total(),newRecord?0.f:best,newRecord,0,totalShots,totalHits,
+                false,{},false,bossRush->last()?"ENTER - NEW RUSH    ESC - MENU":"ENTER - NEXT FIGHT    ESC - MENU");
+        } else {
+            const std::string label=g_bossPhase>0?"PHASE "+std::to_string(g_bossPhase)+" PRACTICE / NO RECORDS":b.where;
+            ui.renderVictoryBoss(b.name,label.c_str(),bossKillT,g_bossPhase>0?0.f:newRecord?0.f:records.bestBoss[g_bossRun],newRecord,deaths,totalShots,totalHits,
+                                 nameEntry,shown,bossPosted);
+        }
     } else if (victory && roomAttack() && !roomTimes.empty()) {   // ROOM ATTACK: the room, its time, its medal
         const int r = glm::clamp(g_roomAttack, 0, (int)level.arenas.size() - 1);
         const float best = r < (int)records.fastRooms.size() ? records.fastRooms[r] : 0.f;
@@ -474,4 +482,14 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             ui.renderPause(pauseSelected, labels, line.c_str(), c1.c_str(), c2.c_str());
         }
     }
+    if(endless() && (paused || playerDead || victory)) {
+        ui.begin2D();std::string code=endlessChallenge.code()+" / F8 COPY";
+        ui.ui.text(code.c_str(),SCREEN_W/2,SCREEN_H-18,1,{1,.8f,.4f,1},true);ui.end2D();
+    }
+    if(g_bossPhase>0 || (bossRush && bossRush->active && !victory)) {
+        const std::string label=g_bossPhase>0?"PHASE "+std::to_string(g_bossPhase)+" PRACTICE / BACKSPACE RETRY":
+            "BOSS RUSH "+std::to_string(bossRush->stage+1)+" / 6 / ONE LIFE";
+        ui.begin2D();ui.ui.textShadow(label.c_str(),SCREEN_W/2,SCREEN_H-18,1,{1,.8f,.4f,1},true);ui.end2D();
+    }
+
 }

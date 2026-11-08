@@ -258,6 +258,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     records.load();
 
     settingsMenu.s = settings;
+    settingsMenu.lockDifficulty=g_bossRush || (endless() && g_endlessChallenge.active);
     settingsMenu.onBack = [this]() { pauseSettings = false; };
 
     for (int i=0;i<MAX_POINT_LIGHTS;++i) {
@@ -268,7 +269,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     if (endless()) setupEndless();
     int start = endless() ? endlessArena : glm::clamp(g_startArena, 0, (int)level.arenas.size() - 1);
     // ACT II is a preview: unranked until the whole act exists
-    ranked = (start == 0 || endless()) && g_startWave <= 0 && !g_godMode && !g_practice && !g_devCam && !act2() && !story() && !training();
+    ranked = (start == 0 || endless()) && g_startWave <= 0 && !g_godMode && !g_practice && !g_devCam && !act2() && !story() && !training() && !(endless() && endlessChallenge.active);
     act2FromStart = act2() && start == 0 && g_startWave <= 0 && !g_devCam;
     storyFromStart = story() && (start == 0 || resumingStory) && !g_devCam;   // a best kept only for a chapter played through (StoryRank.h)
     if (g_bossRun >= 0) { start = bossEntry(g_bossRun).arena; ranked = act2FromStart = false; }
@@ -471,12 +472,16 @@ inline int GameplayState::storyRetryArena() const { return glm::clamp(storyCheck
 
 inline void GameplayState::restartHere() {
     if(training()){startTrainingLesson(trainingLesson);return;}
+    if(g_bossRush && onBossChallenge){onBossChallenge(true);return;}
+    ++runLog.retries;logRun("retry");
     if(story()){enterArena(storyRetryArena());captureMouse(true);return;}
     enterArena(director.arena + (!fast() && director.phase == WaveDirector::Phase::CLEARED ? 1 : 0));
     captureMouse(true);
 }
 
 inline void GameplayState::retryArena() {
+    if(g_bossRush && onBossChallenge){onBossChallenge(true);return;}
+    ++runLog.retries;logRun("retry");
     ++deaths;
     if (story()) { enterArena(storyRetryArena()); captureMouse(true); return; }
     if (fast() || arenaSolo()) { enterArena(director.arena); captureMouse(true); return; }   // (one arena on its own: that arena again)
@@ -487,6 +492,8 @@ inline void GameplayState::retryArena() {
 
 inline void GameplayState::newRun() {
     if(training()){startTrainingLesson(trainingLesson);return;}
+    if(g_bossRush && onBossChallenge){onBossChallenge(true);return;}
+    logRun("restart");
     if(story()){labIntro=LabIntro{};labRoutes=0;storyRelayIsolated=false;storyTerminalsSeen=0;storyOwned=0;storyGrapple=false;storySword=swordStatueOpen=false;storyLogsSeen=0;storySeenSection=storyCheckpoint=0;storyBossDown=false;wakeSeen=false;}
     msCheckpoint = false;
     director = WaveDirector{};
@@ -495,11 +502,12 @@ inline void GameplayState::newRun() {
     prog = Progression{};
     totalKills = totalShots = totalHits = deaths = 0;
     elapsedTime = 0.f; peakStyle = 0.f;
+    runLog.reset(0.f);
     splits.clear();
     fastLeftStanding = 0;
     roomTimes.clear(); roomMedals.clear(); roomNewBest = false;
     newRecord = false;
-    ranked = !g_godMode && !g_practice && !act2() && !story() && !training();
+    ranked = !g_godMode && !g_practice && !g_devCam && !act2() && !story() && !training() && !(endless() && endlessChallenge.active);
     act2FromStart = act2();
     nameEntry = false; boardPlace = -1;
     flareIntroduced = false;
@@ -557,9 +565,15 @@ inline void GameplayState::bossRunDone() {
     if (g_bossRun < 0 || bossDone) return;
     bossDone = true;
     bossKillT = bossStartAt >= 0.f ? elapsedTime - bossStartAt : elapsedTime;
-    newRecord = !g_godMode && !g_practice && recordBoss(records, g_bossRun, bossKillT);
+    newRecord = !g_godMode && !g_practice && !g_bossRush && g_bossPhase==0 && recordBoss(records, g_bossRun, bossKillT);
     if (newRecord) records.save();
-    bossPost = g_bossRun < 6 && (WORLD_BOARD || g_devOverlay.find("worldboard") != std::string::npos) && !g_godMode && !g_practice;   // (the web: the victory screen asks for a name to post it under)
+    bossPost = g_bossRun < 6 && (WORLD_BOARD || g_devOverlay.find("worldboard") != std::string::npos) && !g_godMode && !g_practice && !g_bossRush && g_bossPhase==0;   // (the web: the victory screen asks for a name to post it under)
+    if(bossRush && bossRush->active) {
+        bossRush->record(bossKillT);
+        if(bossRush->complete() && !g_godMode && !g_practice && !g_devCam && !g_devNoMouse) {
+            rushRecords.load();newRecord=rushRecords.record(settings?settings->difficulty:DIFFICULTY_DEFAULT,bossRush->total());
+        }
+    }
     victoryDelay = 3.f;
 }
 
@@ -878,7 +892,12 @@ inline void GameplayState::setupEndless() {
     static LevelData built = buildLevel();   // the arenas' own objectives, before any run touched them
     Arena& a = level.arenas[endlessArena];
     endlessBaseAlive = built.arenas[endlessArena].maxAlive;
-    uint32_t seed = (uint32_t)SDL_GetPerformanceCounter();
+    endlessChallenge=g_endlessChallenge;
+    if(!endlessChallenge.active) {
+        endlessChallenge.seed=(uint32_t)SDL_GetPerformanceCounter();
+        endlessChallenge.difficulty=settings?settings->difficulty:DIFFICULTY_DEFAULT;
+    }
+    uint32_t seed = endlessChallenge.seed;
     gen.begin(seed, built.arenas[endlessArena].goals, endlessArena == 3);
     a.waves.clear(); a.goals.clear();
     feedEndless();

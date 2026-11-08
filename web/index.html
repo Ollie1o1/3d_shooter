@@ -75,6 +75,10 @@
       if (q.has('continue')) args.push('--continue');
       if (q.has('fast')) args.push('--fast');
       if (q.has('endless')) args.push('--endless');
+      if (q.has('challenge')) args.push('--challenge', q.get('challenge'));
+      if (q.has('boss')) args.push('--boss', q.get('boss'));
+      if (q.has('phase')) args.push('--boss-phase', q.get('phase'));
+      if (q.has('bossrush')) args.push('--boss-rush');
       if (q.has('act2')) args.push('--act2');   // ?act2&arena=6: straight into the Zenith
       if (q.has('wave')) args.push('--wave', q.get('wave'));
       if (q.has('god')) args.push('--god');
@@ -140,15 +144,23 @@
       if (document.pointerLockElement && told && !wantsMouse) unlock.call(document);
     });
     HTMLCanvasElement.prototype.requestPointerLock = function (opts) {
+      // A pending lock may reject after navigation or after the game frees
+      // the cursor. Returning the rejected fallback promise made Emscripten's
+      // fire-and-forget request an unhandled page error in those cases.
+      if (!this.isConnected || this.ownerDocument !== document) return Promise.resolve();
       if (!told) wantsMouse = true;
       else if (!wantsMouse) return Promise.resolve();   // too late: the game has moved on
+      const plain = () => {
+        if (!this.isConnected || this.ownerDocument !== document || (told && !wantsMouse)) return Promise.resolve();
+        try { return Promise.resolve(lock.call(this)).catch(() => {}); }
+        catch (e) { return Promise.resolve(); }
+      };
       try {
         const p = lock.call(this, Object.assign({ unadjustedMovement: true }, opts || {}));
-        if (p && typeof p.catch === 'function')
-          return p.catch(() => { const q = lock.call(this); q?.catch?.(() => {}); return q; });
+        if (p && typeof p.catch === 'function') return p.catch(plain);
         return p;
       } catch (e) {
-        return lock.call(this);
+        return plain();
       }
     };
     Document.prototype.exitPointerLock = function () { if (!told) wantsMouse = false; return unlock.call(this); };

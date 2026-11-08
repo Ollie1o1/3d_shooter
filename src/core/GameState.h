@@ -1,5 +1,6 @@
 #pragma once
 #include <SDL2/SDL.h>
+#include "game/EndlessChallenge.h"
 
 class GameState {
 public:
@@ -28,4 +29,7 @@ struct StartOptions {
     int  boss = -1;          // BOSS: which boss (bossEntry, Progression.h), fought on its own
     int  room = -1;          // FAST: ROOM ATTACK, one room on its own (-1: the whole Gauntlet)
     int  solo = -1;          // ARENA / ACT II: one arena on its own (the ARENA page; -1: the whole act)
+    EndlessChallenge challenge;
+    int bossPhase=0;         // 1-3: unranked phase practice; 0: whole fight
+    bool bossRush=false;
 };

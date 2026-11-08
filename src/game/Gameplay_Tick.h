@@ -126,6 +126,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     moverClock += dt;
     updateShifts(dt);
     updateLift(dt);
+    updateMotorLoad(dt);
     level.updateMovers(moverClock);
     if (rideMover >= 0) {
         player.position += level.movers[rideMover].delta;

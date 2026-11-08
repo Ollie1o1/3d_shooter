@@ -631,7 +631,8 @@ public:
     // BOSS: one boss down - the kill time against its best
     // naming: the world board's name prompt is up (typed: what's typed so far); posted: the kill went on it
     void renderVictoryBoss(const char* name, const char* where, float time, float best, bool newRecord, int deaths, int shots, int hits,
-                           bool naming = false, const std::string& typed = {}, bool posted = false) {
+                           bool naming = false, const std::string& typed = {}, bool posted = false,
+                           const char* controls="ENTER - FIGHT IT AGAIN    ESC - MENU") {
         begin2D();
         ui.rect(0, 0, screenW, screenH, {0.03f, 0.01f, 0.02f, 0.74f});
         ui.text(name, screenW / 2, screenH / 2 - 150, 5, {1.f, 0.6f, 0.25f, 0.95f}, true);
@@ -658,7 +659,7 @@ public:
         } else if (posted) {
             ui.text("SAVED TO THE WORLD BOARD", screenW / 2, screenH / 2 + 100, 2, {1.f, 0.85f, 0.3f, 0.95f}, true);
         }
-        if (!naming) ui.text("ENTER - FIGHT IT AGAIN    ESC - MENU", screenW / 2, screenH - 40, 2, {0.6f, 0.6f, 0.6f, 0.85f}, true);
+        if (!naming) ui.text(controls, screenW / 2, screenH - 40, 2, {0.6f, 0.6f, 0.6f, 0.85f}, true);
         end2D();
     }
 

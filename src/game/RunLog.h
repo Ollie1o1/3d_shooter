@@ -1,13 +1,15 @@
 #pragma once
 // =============================================================================
 // RunLog.h — what happened in a stretch of play, so tuning can come from play
-// and not from guesses. Each death, finished run or quit appends one JSON line
+// and not from guesses. Each death, retry, finished run or quit appends one JSON line
 // to runs.jsonl beside the binary (desktop only; the web build keeps nothing):
 // what hurt you and how much, what killed you, each gun's shots, hits and
 // kills, how long each enemy type took to kill from its first hit, stuns,
 // finishers and OVERDRIVE. STORY adds the chapter, where you were, the time
 // spent in each section and the time spent lost (out of a fight and not getting
-// any closer to the way on). tools/runlog.py sums the file up.
+// any closer to the way on). Punch/guard inputs and successful parry contacts
+// are counted separately. Captures, god mode and practice write runs.dev.jsonl;
+// ordinary play writes runs.jsonl. tools/runlog.py sums the file up.
 // No OpenGL; the counters are plain so the tests can check them.
 // =============================================================================
 #include "enemies/EnemyTypes.h"
@@ -30,6 +32,7 @@ struct RunLog {
     int   ttkN[TYPES] = {};
     int   kills = 0, stuns = 0, finishers = 0, overdrives = 0;
     float overdriveTime = 0.f, finisherHeal = 0.f;
+    int parryAttempts=0,parrySuccesses=0,retries=0;
     // STORY: where it happened, how long each section took, and where you were lost
     static constexpr int SECTIONS = 16;
     static constexpr float LOST_AFTER = 20.f;   // seconds out of a fight without getting 1 m nearer the way on
@@ -56,7 +59,9 @@ struct RunLog {
     }
     bool  any() const {
         int took = 0; for (int s = 0; s < TYPES; ++s) took += hitsBy[s];
-        return kills > 0 || took > 0 || shots[0] + shots[1] + shots[2] + shots[3] > 0;
+        float explored=0;for(float t:sectionTime)explored+=t;
+        return kills > 0 || took > 0 || shots[0] + shots[1] + shots[2] + shots[3] > 0 ||
+            explored>1.f || parryAttempts>0 || retries>0;
     }
 
     static int slot(EnemyType t) { return t == EnemyType::COUNT ? TYPES - 1 : (int)t; }
@@ -75,12 +80,15 @@ struct RunLog {
     }
 
     // One JSON object on one line. how: "death" / "end" / "quit"
-    std::string json(const char* how, const char* mode, int difficulty, const char* arena, int wave, float now) const {
+    std::string json(const char* how, const char* mode, int difficulty, const char* arena, int wave, float now,
+                     bool practice=false, bool capture=false) const {
         std::string o;
         char b[256];
         std::snprintf(b, sizeof(b), "{\"how\":\"%s\",\"mode\":\"%s\",\"difficulty\":%d,\"arena\":\"%s\",\"wave\":%d,\"seconds\":%.1f,\"killedBy\":\"%s\"",
                       how, mode, difficulty, arena, wave, now - startAt, killedBy >= 0 && std::strcmp(how, "death") == 0 ? typeName(killedBy) : "");
         o += b;
+        std::snprintf(b,sizeof(b),",\"schema\":2,\"practice\":%s,\"capture\":%s,\"parryAttempts\":%d,\"parrySuccesses\":%d,\"retries\":%d",
+            practice?"true":"false",capture?"true":"false",parryAttempts,parrySuccesses,retries);o+=b;
         o += ",\"damageTaken\":{";
         bool first = true;
         for (int s = 0; s < TYPES; ++s) if (hitsBy[s]) {
@@ -124,11 +132,11 @@ struct RunLog {
         return o;
     }
 
-    static void append(const std::string& line) {
+    static void append(const std::string& line, bool development=false) {
 #ifndef __EMSCRIPTEN__
-        if (FILE* f = std::fopen("runs.jsonl", "a")) { std::fprintf(f, "%s\n", line.c_str()); std::fclose(f); }
+        if (FILE* f = std::fopen(development?"runs.dev.jsonl":"runs.jsonl", "a")) { std::fprintf(f, "%s\n", line.c_str()); std::fclose(f); }
 #else
-        (void)line;
+        (void)line;(void)development;
 #endif
     }
 };

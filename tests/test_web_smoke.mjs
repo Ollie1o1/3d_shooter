@@ -6,9 +6,17 @@ const { chromium } = await import(process.env.OVERDRIVE_PLAYWRIGHT || 'playwrigh
 const url = process.argv[2] || 'http://127.0.0.1:8765/';
 const output = process.argv[3] || 'build/feel-pass/web';
 await fs.mkdir(output, { recursive: true });
-const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--enable-unsafe-swiftshader'] });
+const browser = await chromium.launch({
+  ...(process.env.OVERDRIVE_BROWSER_CHANNEL ? { channel: process.env.OVERDRIVE_BROWSER_CHANNEL } : {}),
+  headless: true, args: ['--enable-unsafe-swiftshader'],
+});
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+  // Software WebGL in CI has no GPU. Keep the real shaders/lighting enabled,
+  // but use 720p without MSAA so input and screenshots don't queue behind
+  // supersampled frames. This fresh context never touches a player's settings.
+  await page.addInitScript(() => localStorage.setItem('overdrive.settings.cfg',
+    'quality 0\nantiAlias 0\nambientDetail 1\nframeCap 2\n'));
   const errors = [];
   page.on('pageerror', error => errors.push(String(error)));
   page.on('response', response => {
@@ -42,6 +50,7 @@ try {
   await page.screenshot({ path: path.join(output, 'guide-page-2.png') });
   await page.keyboard.press('PageDown');
   await page.screenshot({ path: path.join(output, 'guide-page-3.png') });
+  console.log('Training guide and twenty lesson input paths exercised.');
   // The moving-platform chapter exercises the new material shader in WebGL,
   // alongside live waves, rather than only the training room's static walls.
   const reliquary = new URL(url);
@@ -53,8 +62,32 @@ try {
   await page.keyboard.press('Tab'); // later-arena starts open the upgrade armory
   await page.waitForTimeout(6500);
   await page.screenshot({ path: path.join(output, 'reliquary.png') });
+  console.log('Reliquary rendered.');
+  for (const [name, params] of [
+    ['challenge', { challenge: 'OD1-12345-2' }],
+    ['phase-practice', { boss: '2', phase: '2' }],
+    ['boss-rush', { bossrush: '' }],
+    ['motor-assessment', { story3: '', arena: '3', god: '' }],
+  ]) {
+    const target = new URL(url); target.search = new URLSearchParams(params).toString();
+    await page.goto(target.href, { waitUntil: 'domcontentloaded' });
+    await page.locator('#overlay[data-state="ready"]').waitFor({ timeout: 120000 });
+    await page.locator('#overlay').click();
+    if (name !== 'challenge') await page.keyboard.press('Tab');
+    await page.waitForTimeout(3500);
+    await page.screenshot({ path: path.join(output, `${name}.png`) });
+    console.log(`${name} rendered.`);
+    if (name === 'phase-practice') {
+      await page.keyboard.press('Backspace');
+      await page.waitForTimeout(1000);
+    }
+    if (name === 'challenge') {
+      await page.keyboard.press('Escape');
+      await page.screenshot({ path: path.join(output, 'challenge-code.png') });
+    }
+  }
   if (errors.length) throw new Error(errors.join('\n'));
-  console.log('WebAssembly boots, F3 and all twenty lessons work, guide paging responds, and Reliquary renders live without browser errors.');
+  console.log('WebAssembly boots; all twenty lessons, guide paging, Reliquary, seeded challenges, phase practice, boss rush and Motor Assessment render without browser errors.');
 } finally {
   await browser.close();
 }

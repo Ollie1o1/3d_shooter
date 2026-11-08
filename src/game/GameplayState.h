@@ -74,6 +74,9 @@
 #include "game/Score.h"
 #include "game/EndlessWaves.h"
 #include "game/RunLog.h"
+#include "game/EncounterTrap.h"
+#include "game/BossChallenge.h"
+#include "game/EncounterDraft.h"
 #include "bosses/sovereign/SovereignHazards.h"
 #include "bosses/penitent/PenitentHazards.h"
 #include <SDL2/SDL.h>
@@ -132,6 +135,11 @@ class GameplayState : public GameState {
 public:
     std::function<void()> onReturnToMenu;
     std::function<void()> onQuit;
+    std::function<void(bool)> onBossChallenge; // deferred transition: true restarts the rush
+    BossRush* bossRush=nullptr;
+    BossRushRecords rushRecords;
+    EncounterDraft encounterDraft;
+    bool encounterPreview=false;
 
     GameSettings* settings = nullptr;   // injected by main — may be null (safe)
     GameMode      mode = GameMode::ARENA;
@@ -170,6 +178,8 @@ public:
     void gatherLabEnding(std::vector<BoxInstance>& out);
     void renderLabEndingOverlay();
     unsigned labRoutes=0;
+    EncounterTrap motorLoad;
+    void updateMotorLoad(float dt);
     void beginLab();
     void updateLab(float dt);
     void gatherLab(std::vector<BoxInstance>& out);
@@ -1241,6 +1251,7 @@ public:
     void  slamLands();
     // The run log (RunLog.h): what hurt you, what killed you, each gun's numbers
     RunLog runLog;
+    EndlessChallenge endlessChallenge;
     EnemyType hurtBy = EnemyType::COUNT;   // set around enemy events and shots: who's hitting you now
     bool  loggedDeath = false;
     void  logRun(const char* how);

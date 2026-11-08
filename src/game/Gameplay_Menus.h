@@ -160,6 +160,11 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
     // the grapple, armory or pause on and off. (Menus below read `e`
     // directly, where repeat is wanted for arrows and sliders.)
     SDL_Keycode key = (e.type == SDL_KEYDOWN && !e.key.repeat) ? e.key.keysym.sym : SDLK_UNKNOWN;
+    if(endless() && key==SDLK_F8) {
+        if(SDL_SetClipboardText(endlessChallenge.code().c_str())==0)ui.feed("CHALLENGE CODE COPIED",{.4f,1,.7f});
+        else ui.feed(endlessChallenge.code(),{1,.8f,.4f});
+        return;
+    }
 
     if (e.type == SDL_CONTROLLERBUTTONDOWN) { padButton(e.cbutton.button); return; }
 
@@ -218,6 +223,7 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
         return;
     }
     if (e.type == SDL_KEYDOWN && (playerDead || victory)) {
+        if(victory && g_bossRush && key==SDLK_RETURN && onBossChallenge) {onBossChallenge(false);return;}
         if (key == SDLK_r && playerDead && !endless()) { retryArena(); return; }   // ENDLESS: one life
         if (key == SDLK_RETURN)          { newRun();     return; }
         return;

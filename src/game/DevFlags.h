@@ -11,17 +11,21 @@
 #include <string>
 #include <vector>
 #include "player/Sword.h"
+#include "game/EndlessChallenge.h"
 
 // Set from the command line (--arena N) or the web URL (?arena=N) to start a
 // run at a later arena — handy for testing and for showing off the boss.
 inline int g_startArena = 0;
 inline int g_storyChapter = 1;
 inline bool g_continueStory = false;
+inline EndlessChallenge g_endlessChallenge;
 inline int g_startWave  = 0;   // --wave N / ?wave=N (with --arena): skip to that wave
 // --god / ?god: the player takes no damage (for recording footage)
 inline bool g_godMode = false;
 inline bool g_practice = false;   // dev level select: no records, no leaderboard
 inline int  g_bossRun = -1;       // BOSS (the main menu): which boss this run is, fought on its own (-1: not one)
+inline int g_bossPhase=0;
+inline bool g_bossRush=false;
 inline int  g_arenaSolo = -1;     // the ARENA page: one Act I / Act II arena on its own, ends as it's cleared (-1: the whole act)
 inline int  g_roomAttack = -1;    // FAST's ROOM ATTACK (the FAST page, --room N): one room on its own, for its medal (-1: the whole run)
 // --cam x y z yaw pitch: start the camera somewhere specific (screenshots)

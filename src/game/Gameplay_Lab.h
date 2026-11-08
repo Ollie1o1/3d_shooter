@@ -1,6 +1,8 @@
 #pragma once
 
 inline void GameplayState::beginLab(){
+    motorLoad=EncounterTrap{};
+    if(level.story.motorLoad>=0)level.movers[level.story.motorLoad].drive=0.f;
     audio.stop(labVoice);labVoice=0;labCue=-1;
     storyOwned|=15;storyArmed=storyGrapple=true;wakeSeen=true;wakeT=-1;clawT=-1;
     beltBodies.clear();player.eyeHeight=1.7f;
@@ -34,6 +36,17 @@ inline void GameplayState::beginLab(){
         };
         interactables.push_back(std::move(control));
     }
+    {
+        Interactable it;it.position=lab::motorLoadControl();
+        it.box={it.position-glm::vec3{.9f,.6f,.6f},it.position+glm::vec3{.9f,.6f,.6f}};
+        it.label="RELEASE CALIBRATION LOAD / CLEAR MARKED FLOOR";
+        it.onInteract=[this](){
+            if(director.arena!=2 || !director.fighting() || !motorLoad.trigger())return;
+            audio.playAt("telegraph",lab::motorLoadAt(),110,SoundGroup::WORLD,true);
+            ui.feed("CALIBRATION LOAD / CLEAR THE AMBER SQUARE",{1,.7f,.2f});
+        };
+        interactables.push_back(std::move(it));
+    }
     if(g_devOverlay=="swordopen")swordStatueOpen=true;   // --overlay swordopen: the statue's seal already broken (screenshots)
     {   // OATHBREAKER, plunged into its statue in the Successor's arena: sealed until the Successor's second phase
         Interactable it;it.position=lab::swordStatueGrip();
@@ -48,6 +61,36 @@ inline void GameplayState::beginLab(){
     }
     level.updateMovers(moverClock);
     player.camera.position=player.position+glm::vec3{0,1.7f,0};prevCamPos=player.camera.position;
+}
+
+inline void GameplayState::updateMotorLoad(float dt){
+    if(!laboratory() || level.story.motorLoad<0)return;
+    const bool hit=motorLoad.update(dt);
+    level.movers[level.story.motorLoad].drive=motorLoad.progress();
+    for(auto& it:interactables)if(it.label.rfind("RELEASE CALIBRATION",0)==0)
+        it.active=director.arena==2 && director.fighting() && motorLoad.age<0;
+    if(!hit)return;
+    const auto at=lab::motorLoadAt();
+    fx.spawnShockwave(at+glm::vec3{0,.1f,0},7,{1,.65f,.2f});
+    audio.playAt("slam",at,120,SoundGroup::WORLD,true);shake(.18f,.04f);
+    for(auto& e:enemies)if(e.targetable() && !isBoss(e.type) &&
+        std::abs(e.position.x-at.x)<4.f+e.radius() && std::abs(e.position.z-at.z)<4.f+e.radius() &&
+        e.position.y<at.y+3.f && e.position.y+e.height()>at.y)
+        hurtEnemy(e,500,e.position,8,2,StyleSource::ENVIRONMENT,false,true);
+    if(std::abs(player.position.x-at.x)<4.45f && std::abs(player.position.z-at.z)<4.45f &&
+       player.position.y<at.y+2.4f && player.position.y+player.height>at.y) {
+        damagePlayer(55,at,.2f,.04f);
+        // A surviving player is pushed clear instead of being entombed in the
+        // landed cover. Choose the nearest supported side with body clearance.
+        glm::vec3 safe=player.position;float best=1e9f;
+        for(glm::vec3 offset:{glm::vec3{-5,0,0},glm::vec3{5,0,0},glm::vec3{0,0,-5},glm::vec3{0,0,5}}) {
+            auto p=at+offset;p.y=groundHeightAt(p.x,p.z,at.y+.5f);
+            float d=glm::length(p-player.position);
+            if(d<best && spawnClearance(level,p,.45f,player.height,true)){best=d;safe=p;}
+        }
+        player.position=safe;player.velocity={0,0,0};
+        player.camera.position=safe+glm::vec3{0,player.eyeHeight,0};prevCamPos=player.camera.position;
+    }
 }
 
 inline void GameplayState::updateLab(float dt){
@@ -116,6 +159,20 @@ inline void GameplayState::gatherLab(std::vector<BoxInstance>& out){
     using namespace rig;using glm::vec3;Rig r{out};
     if(labAshSky()){gatherLabLift(r);return;}   // (the arrival's opening, under Chapter 2's sky)
     int room=std::max(0,level.arenaAt(player.position));
+    if(std::abs(room-2)<=1) {
+        const auto p=lab::motorLoadControl();
+        r.box(T(p),{0,-.6f,0},{2.1f,2.2f,.8f},{.15f,.24f,.28f});
+        r.box(T(p),{0,.1f,.44f},{1.6f,.6f,.08f},{.4f,.5f,.5f},motorLoad.age<0?vec3{1,.65f,.2f}:vec3{.1f,.65f,.35f});
+        if(!motorLoad.landed)for(float x:{-3.f,3.f})for(float z:{-3.f,3.f})
+            r.box(T(lab::motorLoadAt()),{x,16.2f,z},{.08f,3.6f,.08f},{.3f,.35f,.35f});
+        if(motorLoad.age>=0 && !motorLoad.landed) {
+            auto at=lab::motorLoadAt();float glow=1.2f+.5f*std::sin(gameClock*18);
+            for(float side:{-1.f,1.f}) {
+                r.box(T(at),{side*4.7f,.1f,0},{.15f,.12f,9.5f},{.6f,.3f,.1f},vec3{1,.4f,.08f}*glow);
+                r.box(T(at),{0,.1f,side*4.7f},{9.5f,.12f,.15f},{.6f,.3f,.1f},vec3{1,.4f,.08f}*glow);
+            }
+        }
+    }
     auto subject=[&](vec3 p,float phase,bool suspended,float yaw=0){
         static const Enemy specimen(EnemyType::PATIENT,{0,0,0});Enemy body=specimen;body.position=p;body.spawnTimer=0;body.state=EnemyState::ACTIVE;
         body.animPhase=phase;body.moveSpeed=suspended?0:3.f;

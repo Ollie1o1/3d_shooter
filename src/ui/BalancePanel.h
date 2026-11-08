@@ -14,6 +14,11 @@
 #include <SDL2/SDL.h>
 #include <string>
 #include <vector>
+#include <functional>
+namespace balancepanel {
+inline std::function<void()> extraBuild;
+inline bool showEncounter=false;
+}
 #if !defined(__EMSCRIPTEN__) || defined(WEB_BALANCE_PANEL)
 #define OVERDRIVE_BALANCE_PANEL 1
 #include "ui/ImGuiBuild.h"
@@ -118,6 +123,7 @@ inline void build(float screenH) {
     ImGui::SetNextWindowPos({16.f, 16.f}, ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize({470.f, std::max(300.f, screenH - 32.f)}, ImGuiCond_FirstUseEver);
     ImGui::Begin("BALANCE   (F1 to close and play)", nullptr, ImGuiWindowFlags_NoCollapse);
+    if(extraBuild && ImGui::Button("ENCOUNTER WORKSHOP"))showEncounter=true;
     ImGui::TextWrapped("Changes apply as you drag (enemy health from the next spawn, magazines from the next reload). "
                        "Ctrl+click a slider to type a value.");
     ImGui::TextColored(changed ? ImVec4{1.f, 0.68f, 0.22f, 1.f} : ImVec4{0.6f, 0.6f, 0.65f, 1.f},
@@ -212,7 +218,8 @@ inline void draw(GLuint fbo, int w, int h) {
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplSDL2_NewFrame();
     ImGui::NewFrame();
-    build(ImGui::GetIO().DisplaySize.y);
+    if(showEncounter && extraBuild)extraBuild();
+    else build(ImGui::GetIO().DisplaySize.y);
     ImGui::Render();
     ImDrawData* dd = ImGui::GetDrawData();
     if (dd->DisplaySize.x > 0.f && dd->DisplaySize.y > 0.f) dd->FramebufferScale = {(float)w / dd->DisplaySize.x, (float)h / dd->DisplaySize.y};
