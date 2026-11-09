@@ -40,7 +40,7 @@
 struct SpawnRequest { EnemyType type; glm::vec3 pos; Hollow hollow = Hollow::NONE; };
 
 enum class DirectorEvent { ARENA_START, WAVE_START, BOSS_START, NEW_TYPE, WAVE_CLEARED, ARENA_CLEARED, VICTORY, FINISH_OPEN,
-                           GOAL_DONE };
+                           GOAL_DONE, REINFORCEMENTS };
 struct DirectorEventRec { DirectorEvent kind; int value; };
 
 class WaveDirector {
@@ -66,7 +66,11 @@ public:
     Phase phase = Phase::INTRO;
     float timer = 0.f;
     float goalRefillTimer = 0.f;
-    struct Queued { EnemyType type; bool fixed; glm::vec3 pos; std::vector<EnemyType> escort; Hollow variant; };
+    struct Queued {
+        EnemyType type; bool fixed; glm::vec3 pos; std::vector<EnemyType> escort; Hollow variant;
+        int afterKills = 0;
+        float warning = -1.f;
+    };
     std::vector<Queued>            queue;
     std::vector<DirectorEventRec>  events;      // drained by the caller every frame
     bool  seen[(int)EnemyType::COUNT] = {};
@@ -147,6 +151,7 @@ public:
         return std::max(1, (int)std::lround(e.count * countScale));
     }
     bool fighting() const        { return phase == Phase::ACTIVE; }
+    static constexpr float REINFORCEMENT_WARNING = 1.2f;
     bool bossWave() const {
         if (!level || arena < 0 || arena >= (int)level->arenas.size() || wave < 0 ||
             wave >= (int)current().waves.size()) return false;
@@ -163,22 +168,36 @@ public:
             break;
         case Phase::ACTIVE: {
             spawnTimer -= dt;
+            const int casualties = std::max(0, waveSpawned - aliveCount);
+            std::vector<int> announced;
+            for (auto& q : queue) if (q.afterKills > 0 && casualties >= q.afterKills) {
+                if (q.warning < 0.f) {
+                    q.warning = REINFORCEMENT_WARNING;
+                    if (std::find(announced.begin(),announced.end(),q.afterKills)==announced.end()) {
+                        events.push_back({DirectorEvent::REINFORCEMENTS, q.afterKills});
+                        announced.push_back(q.afterKills);
+                    }
+                } else q.warning = std::max(0.f, q.warning - dt);
+            }
+            auto ready = [](const Queued& q) { return q.afterKills == 0 || q.warning == 0.f; };
             for (auto& r : fixedOut) out.push_back(r);   // a goal's conduits: straight away, outside the cap
             aliveCount += (int)fixedOut.size();
             fixedOut.clear();
             if (fast) {
-                size_t emitted = 0;
-                for (auto& q : queue) {
-                    if (hasGoal() && aliveCount + 1 + (int)q.escort.size() > maxAlive()) break;
-                    aliveCount += emitSquad(q, playerPos, out); ++emitted;
+                for (auto it = queue.begin(); it != queue.end();) {
+                    if (!ready(*it)) { ++it; continue; }
+                    if (hasGoal() && aliveCount + 1 + (int)it->escort.size() > maxAlive()) break;
+                    const int emitted = emitSquad(*it, playerPos, out);
+                    aliveCount += emitted; waveSpawned += emitted;
+                    it = queue.erase(it);
                 }
-                queue.erase(queue.begin(), queue.begin() + emitted);
-            } else if (!queue.empty() && spawnTimer <= 0.f &&
-                       (aliveCount + 1 + (int)queue.front().escort.size() <= maxAlive() || aliveCount == 0)) {
-                Queued q = queue.front();
-                queue.erase(queue.begin());
-                aliveCount += emitSquad(q, playerPos, out);   // on the field now; don't call the wave clear this tick
-                spawnTimer = SPAWN_GAP;
+            } else if (spawnTimer <= 0.f) {
+                auto it = std::find_if(queue.begin(), queue.end(), ready);
+                if (it != queue.end() && (aliveCount + 1 + (int)it->escort.size() <= maxAlive() || aliveCount == 0)) {
+                    const int emitted = emitSquad(*it, playerPos, out);
+                    aliveCount += emitted; waveSpawned += emitted;
+                    queue.erase(it); spawnTimer = SPAWN_GAP;
+                }
             }
             if (hasGoal() && !goalDone) {
                 updateGoal(dt, playerPos);
@@ -196,7 +215,8 @@ public:
             if (queue.empty() && aliveCount == 0 && (!hasGoal() || goalDone) && !hold) {
                 if (wave + 1 < waveCount()) {
                     events.push_back({DirectorEvent::WAVE_CLEARED, wave});
-                    if (fast) { ++wave; beginWave(); }
+                    if (fast && current().waveBreak > 0.f) { phase = Phase::BREAK; timer = current().waveBreak; }
+                    else if (fast) { ++wave; beginWave(); }
                     else      { phase = Phase::BREAK; timer = BREAK_TIME; }
                 } else if (arena + 1 < (int)level->arenas.size()) {
                     events.push_back({DirectorEvent::ARENA_CLEARED, arena});
@@ -255,12 +275,14 @@ public:
 private:
     float spawnTimer = 0.f;
     int   lastSpawn  = -1;
+    int   waveSpawned = 0;
 
     std::vector<SpawnRequest> fixedOut;   // spawned on the next update, outside the cap
 
     void beginWave() {
         phase = Phase::ACTIVE;
         spawnTimer = 0.f;
+        waveSpawned = 0;
         goalDone = false; holding = false; goalRefillTimer = 3.f;
         const WaveGoal& g = goal();
         goalTimer = g.kind == WaveGoal::SURVIVE ? g.seconds : 0.f;
@@ -297,7 +319,16 @@ private:
             for (auto& e : entries)
                 if (round < countOf(e) && (first || !isBoss(e.type))) {
                     bool fixed = !e.at.empty();
-                    queue.push_back({e.type, fixed, fixed ? e.at[round] : glm::vec3{0.f}, e.escort, e.variant});
+                    int gate=e.afterKills;
+                    if(gate>0) {
+                        int preceding=0;
+                        for(const auto& earlier:entries)if(earlier.afterKills<gate)
+                            preceding+=countOf(earlier)*(1+(int)earlier.escort.size());
+                        // Difficulty may reduce automatically placed groups.
+                        // Their smaller opening must still be able to release the next group.
+                        gate=std::min(gate,preceding);
+                    }
+                    queue.push_back({e.type, fixed, fixed ? e.at[round] : glm::vec3{0.f}, e.escort, e.variant, gate});
                     any = true;
                 }
         }

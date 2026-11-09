@@ -22,10 +22,12 @@ public:
     float maxHealth = 100.f;
     float style     = 0.f;
     float maxStyle  = 100.f;
-    // OVERDRIVE: a full meter. The game makes it a power state (Gameplay_Feel.h);
+    // A full meter banks OVERDRIVE; an attack with a live target unleashes it.
+    // The game makes it a power state (Gameplay_Feel.h);
     // kills keep it going a little longer, and when it burns out the meter
     // drops back to A, so it has to be earned again
     bool  overdrive = false;
+    bool  overdriveReady = false, overdriveReadied = false;
     float overdriveTimer = 0.f;
     static inline float OVERDRIVE_DURATION = 6.f;
     static inline float OVERDRIVE_MAX      = 8.f;    // what kills can stretch it to
@@ -88,33 +90,46 @@ public:
             }
         }
         if (driveCool > 0.f) driveCool = std::max(0.f, driveCool - dt);
-        if (style >= maxStyle && !overdrive && driveCool <= 0.f) startOverdrive();   // (cooled down with the meter still full)
+        if (style >= maxStyle && !overdrive && driveCool <= 0.f) readyOverdrive();
         for (float& f : fresh) f = std::min(1.f, f + RECOVER * dt);
         idleTimer += dt;
-        if (idleTimer > 3.f) {
+        if (idleTimer > 3.f && !overdriveReady) {
             style = std::max(0.f, style - 8.f * dt);
         }
     }
 
-    // Returns the style actually scored, after freshness
+    // Returns the style actually scored, after freshness. Deliberate player
+    // setups retain score above the passive cap, while their meter gain is capped.
     // meter: how much of it reaches the meter on top of METER_GAIN (a hit: HIT_METER; the score takes it all)
-    float addStyle(float amount, StyleSource src = StyleSource::NONE, float meter = 1.f) {
+    float addStyle(float amount, StyleSource src = StyleSource::NONE, float meter = 1.f, bool deliberateSetup = false) {
         if (src != StyleSource::NONE) {
             float worn = amount * WEAR;
             amount *= freshnessMult(freshness(src));
-            if (src == StyleSource::FRIENDLY || src == StyleSource::ENVIRONMENT)
-                amount = std::min(amount, std::max(0.f, PASSIVE_CAP - style) / (METER_GAIN * std::max(meter, 1e-3f)));
             for (int i = 1; i < (int)StyleSource::COUNT; ++i)
                 fresh[i] = i == (int)src ? std::max(0.f, fresh[i] - worn) : std::min(1.f, fresh[i] + worn * SHARE);
         }
         idleTimer = 0.f;
+        float gain = amount * METER_GAIN * meter;
+        if (src == StyleSource::FRIENDLY || src == StyleSource::ENVIRONMENT) {
+            gain = std::min(gain, std::max(0.f, PASSIVE_CAP - style));
+            if (!deliberateSetup)
+                amount = std::min(amount, std::max(0.f, PASSIVE_CAP-style)/(METER_GAIN*std::max(meter,1e-3f)));
+        }
         earned += amount;
-        style = std::min(maxStyle, style + amount * METER_GAIN * meter);
-        if (style >= maxStyle && !overdrive && driveCool <= 0.f) startOverdrive();
+        style = std::min(maxStyle, style + gain);
+        if (style >= maxStyle && !overdrive && driveCool <= 0.f) readyOverdrive();
         return amount;
     }
 
-    void startOverdrive() { overdrive = true; overdriveTimer = OVERDRIVE_DURATION; overdriveBegan = true; }
+    void readyOverdrive() { if (!overdriveReady) { overdriveReady = overdriveReadied = true; } }
+    bool activateOverdrive() {
+        if (!overdriveReady || overdrive || driveCool > 0.f) return false;
+        startOverdrive(); return true;
+    }
+    void startOverdrive() {
+        overdriveReady = overdriveReadied = false;
+        overdrive = true; overdriveTimer = OVERDRIVE_DURATION; overdriveBegan = true;
+    }
 
     void takeDamage(float amount) {
         damageTaken += std::min(amount, health);

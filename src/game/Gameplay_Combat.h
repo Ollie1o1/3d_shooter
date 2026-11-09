@@ -86,6 +86,7 @@ inline void GameplayState::reflectProjectile(int pi, glm::vec3 fwd) {
 }
 
 inline void GameplayState::punch(int boostable) {
+    attackOverdrive();
     ++runLog.parryAttempts;
     punchCooldown = PARRY_COOLDOWN;
     glm::vec3 eye = player.camera.position, fwd = player.camera.forward();
@@ -544,7 +545,13 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
     if (!pierceArmor) dmg *= e.armorMult();
     dmg *= e.incomingMult();   // a halo, or the window after one breaks
     if (dmg <= 0.f) { if (src != StyleSource::FRIENDLY) ui.onBlocked(); return false; }
-    if (e.onBeamHit(dmg, crit)) { ui.feed("BEAM BROKEN", {1.f, 0.85f, 0.5f}); styleSystem.addStyle(25.f, src); }
+    const bool playerHit = src != StyleSource::FRIENDLY && src != StyleSource::ENVIRONMENT;
+    if (playerHit && e.onBeamHit(dmg, crit)) {
+        ui.feed("BEAM BROKEN", {1.f, 0.85f, 0.5f}); styleSystem.addStyle(25.f, src); teach(TEACH_INTERRUPT);
+    }
+    if (playerHit && e.onPrecisionCounter(dmg, crit)) {
+        ui.feed("COUNTERSHOT / CHARGE BROKEN", {1.f,.85f,.5f}); styleSystem.addStyle(25.f,src); teach(TEACH_INTERRUPT);
+    }
     if (e.halo) fx.spawnHitSparks(at, {1.f, 0.85f, 0.3f});
     float before = e.health;
     // Enemies hurting each other: no hitmarker, no style or healing for the
@@ -561,6 +568,7 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
         float poiseMul = dmg >= e.health ? 0.f : hp.poise * (overdriveOn() ? 2.f : 1.f);   // (a killing blow stuns nothing)
         float pushK = overdriveOn() ? 1.25f : 1.f;
         bool stunned = e.takeHit(hp.dir, hp.push * pushK, dmg, poiseMul, crit, gameClock);
+        if (playerHit && hp.push >= 4.f) e.shoveSetupAge=e.age;
         if (stunned) onStunned(e, at);
         if (!friendly && src != StyleSource::MELEE) bodyHit(e, at, hp.push * pushK, stunned);
     }
@@ -618,7 +626,17 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     if (e.type == EnemyType::CONDUCTOR && e.linkCount > 0) ui.feed("TETHERS BROKEN", {0.3f, 1.f, 0.9f});
     // Half for one you only set up (enemies hurting each other, lava, the void)
     float hm = e.hollow != Hollow::NONE ? 1.5f : 1.f;   // a Hollowed kill is worth more
-    styleSystem.addStyle((src == StyleSource::FRIENDLY || src == StyleSource::ENVIRONMENT ? 15.f : 30.f) * hm, src);
+    const bool setup = !isBoss(e.type) && e.age-e.shoveSetupAge <= 2.5f &&
+        (src == StyleSource::ENVIRONMENT || src == StyleSource::FRIENDLY);
+    styleSystem.addStyle((src == StyleSource::FRIENDLY || src == StyleSource::ENVIRONMENT ? 15.f : 30.f) * hm, src,1.f,setup);
+    if (setup) {
+        styleSystem.addStyle(25.f,src,1.f,true);
+        ui.feed(src==StyleSource::ENVIRONMENT?"HAZARD SETUP":"CROSSFIRE SETUP", {1.f,.8f,.35f}); teach(TEACH_SETUP);
+    } else if (!isBoss(e.type) && src != StyleSource::FRIENDLY && src != StyleSource::ENVIRONMENT &&
+               e.age-e.staggerSetupAge <= 2.5f) {
+        styleSystem.addStyle(20.f,src);
+        ui.feed("STAGGER FINISH", {1.f,.8f,.35f}); teach(TEACH_SETUP);
+    }
     styleSystem.heal(5.f * tune().heal);
     for (const VoiceCue& c : voices.death(voiceIn(e, nullptr))) playVoice(c);   // a kill confirms at any range
     if (e.type == EnemyType::WARDEN) { shifts.bossPulseOff(); ward.clear(); conduitClock.reset(); }   // its rings and hazards die with it
@@ -975,6 +993,7 @@ inline void GameplayState::shotEchoes(const char* sound, float loud) {
 }
 
 inline void GameplayState::fireWeapon(int w) {
+    attackOverdrive();
     if (fanning || doubleShot) trainingSuccess(lessons::ALT_FIRE);
     WeaponId id = (WeaponId)w;
     const WeaponDef& d = weaponDef(id);
@@ -1224,6 +1243,7 @@ inline void GameplayState::fireWeapon(int w) {
 }
 
 inline void GameplayState::throwGrenade() {
+    attackOverdrive();
     teach(TEACH_GRENADE);
     --grenadeCount;
     grenadeTimer = 0.6f;

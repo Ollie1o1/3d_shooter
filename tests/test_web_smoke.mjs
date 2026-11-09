@@ -99,6 +99,8 @@ try {
     ['boss-rush', { bossrush: '' }],
     ['motor-assessment', { story3: '', arena: '3', god: '' }],
     ['surgical-observation', { story3: '', arena: '4', god: '' }],
+    ['combat-remix', { remix: '', god: '' }],
+    ['long-term-care', { story3: '', arena: '7', god: '' }],
     ['blast-chillers', { story5: '', arena: '6', god: '' }],
     ['dispatch-2', { story5: '', arena: '8', god: '' }],
     ['vault', { story5: '', arena: '10', god: '' }],

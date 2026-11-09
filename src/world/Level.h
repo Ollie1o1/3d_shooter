@@ -89,9 +89,11 @@ struct WaveEntry {
     std::vector<glm::vec3> at;
     std::vector<EnemyType> escort;
     Hollow variant = Hollow::NONE;   // a Hollowed variant (Act II): the leader only
+    int afterKills = 0;             // announced reinforcements after this many wave casualties
     WaveEntry(EnemyType t, int n, std::vector<glm::vec3> pts = {}) : type(t), count(n), at(std::move(pts)) {}
     WaveEntry with(std::vector<EnemyType> e) const { WaveEntry w = *this; w.escort = std::move(e); return w; }
     WaveEntry hollow(Hollow h) const { WaveEntry w = *this; w.variant = canBeHollow(type) ? h : Hollow::NONE; return w; }
+    WaveEntry after(int kills) const { WaveEntry w = *this; w.afterKills = std::max(0, kills); return w; }
     int total() const { return (at.empty() ? count : (int)at.size()) * (1 + (int)escort.size()); }
 };
 
@@ -231,6 +233,7 @@ struct Arena {
     float medals[4] = {0.f, 0.f, 0.f, 0.f};
     std::vector<WaveGoal> goals;    // per wave; missing: KILL_ALL
     int         maxAlive = 8;    // concurrent enemies; the rest trickle in as you kill
+    float       waveBreak = 0.f; // optional authored breather in triggered Story encounters
     float       damageScale = 1.f;  // enemy damage multiplier: the first arena is forgiving
     int         entryGate = -1;  // door behind you once you're in (index into doors)
     int         exitDoor  = -1;

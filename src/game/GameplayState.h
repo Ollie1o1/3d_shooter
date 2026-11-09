@@ -153,6 +153,7 @@ public:
     bool training() const { return mode == GameMode::TRAINING; }
     bool story() const { return mode == GameMode::STORY; }
     bool laboratory() const { return story() && level.story.chapter==3; }
+    bool combatRemix() const { return laboratory() && g_combatRemix; }
     SuccessorHazards successorHazards;
     void successorEvents(Enemy& e,const EnemyEvents& ev);
     void updateSuccessor(float dt);
@@ -1221,6 +1222,7 @@ public:
     void  enterOverdrive();
     void  leaveOverdrive();
     void  updateFeel(float dt);
+    void  attackOverdrive();
     // ALT FIRE (RMB on the guns that don't aim): the revolver FANS the rest of its cylinder in a
     // fast, loose, staggering burst; the shotgun lets BOTH BARRELS go at once: twice the pellets,
     // a huge shove, and a kick that throws you back (aimed at the floor: a shotgun jump)
@@ -1230,7 +1232,7 @@ public:
     void  altFire();
     // TEACHING: each fighting move gets one small card (the enemy cards' kind), the first time
     // it comes up, ever; then never again (GameSettings::taught)
-    enum Teach { TEACH_FINISH = 1, TEACH_STUN = 2, TEACH_OVERDRIVE = 4, TEACH_HOOK = 8, TEACH_ALT = 16, TEACH_PARRY = 32, TEACH_GRENADE = 64, TEACH_JUMP = 128 };
+    enum Teach { TEACH_FINISH = 1, TEACH_STUN = 2, TEACH_OVERDRIVE = 4, TEACH_HOOK = 8, TEACH_ALT = 16, TEACH_PARRY = 32, TEACH_GRENADE = 64, TEACH_JUMP = 128, TEACH_INTERRUPT = 256, TEACH_SETUP = 512 };
     void  teach(int bit);
     int   killsThisSession = 0;
     // UNSEEN WIND-UPS: a regular enemy out of view (or behind cover you can't see round) starting an

@@ -1,7 +1,7 @@
 #pragma once
 
 inline void GameplayState::saveStoryProgress() {
-    if (!story() || g_practice || g_godMode || g_devCam || g_devNoMouse || g_bossRun >= 0
+    if (!story() || combatRemix() || g_practice || g_godMode || g_devCam || g_devNoMouse || g_bossRun >= 0
         || !g_devOverlay.empty() || !level.story.built) return;
     StorySave s;
     s.labIntroSeen=labIntro.seen;s.labRoutes=labRoutes;

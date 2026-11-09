@@ -9,7 +9,7 @@
 // =============================================================================
 
 // (Story: UNIT 24 takes the forearm that holds it off the Successor at the end of Chapter 3, so Chapter 4 has it)
-inline bool GameplayState::splinterOwned() const { return g_devSplinter || plain() || (training() && lessons::usesSplinter(trainingLesson)); }
+inline bool GameplayState::splinterOwned() const { return g_devSplinter || combatRemix() || plain() || (training() && lessons::usesSplinter(trainingLesson)); }
 
 static const glm::vec3 SPLINTER_GLOW{0.35f, 1.f, 1.15f};
 static constexpr int SPLINTER_BROOD = -2;   // splinterTarget: the Gleaner's brood, not an enemy in the list
@@ -17,6 +17,7 @@ static constexpr int SPLINTER_BROOD = -2;   // splinterTarget: the Gleaner's bro
 inline void GameplayState::throwSplinter() {
     int i = splinters.toss(player.camera.position, player.camera.forward(), player.camera.right(), player.velocity);
     if (i < 0) { if (dryCd <= 0.f) { audio.play("dry", 60, SoundGroup::PLAYER); dryCd = 0.25f; } return; }
+    attackOverdrive();
     viewModel.triggerGrenade();   // the hand flicks forward
     SfxMixer::Opts o; o.group = SoundGroup::PLAYER; o.pitch = 1.7f; o.volume = 0.8f;
     audio.playOpts("casing", o);

@@ -8,7 +8,7 @@
 // =============================================================================
 #include "player/Recall.h"
 
-inline bool GameplayState::recallOwned() const { return g_devRecall || (cold() && coldRecall) || (training() && lessons::usesRecall(trainingLesson)); }
+inline bool GameplayState::recallOwned() const { return g_devRecall || combatRemix() || (cold() && coldRecall) || (training() && lessons::usesRecall(trainingLesson)); }
 
 // Could UNIT 24 stand at `feet` right now? (a gate shut since, a mover in the way,
 // or a fight he would leave)
@@ -82,6 +82,10 @@ inline bool GameplayState::recallLures(const Enemy& e) const {
 inline void GameplayState::gatherRecall(std::vector<BoxInstance>& out) {
     using namespace rig; using namespace enemyfile;
     if (!recall.placed) return;
+    // The mark starts inside the player's own body. Keep the view clear until
+    // they leave it; the lure, return point and placement effects remain live.
+    const auto eye=player.camera.position-(recall.feet+glm::vec3{0,player.eyeHeight,0});
+    if(glm::dot(eye,eye)<.9f*.9f)return;
     const auto* U = story::bodyModel("unit24");
     const float fade = std::clamp((RecallSystem::WINDOW - recall.age) / 2.f, 0.f, 1.f);   // 1 .. 0 over its last two seconds
     const float flick = (1.f - fade) * (0.5f + 0.5f * std::sin(gameClock * 30.f));

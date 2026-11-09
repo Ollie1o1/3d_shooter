@@ -424,6 +424,9 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             ui.renderVictoryBoss(b.name,label.c_str(),bossKillT,g_bossPhase>0?0.f:newRecord?0.f:records.bestBoss[g_bossRun],newRecord,deaths,totalShots,totalHits,
                                  nameEntry,shown,bossPosted);
         }
+    } else if (victory && combatRemix()) {
+        ui.renderVictoryArena(totalKills,totalShots,totalHits,deaths,elapsedTime,peakStyle,prog.level,
+            0,false,false,runScore(),"COMBAT REMIX COMPLETE","SURGICAL OBSERVATION / FULL ARSENAL");
     } else if (victory && roomAttack() && !roomTimes.empty()) {   // ROOM ATTACK: the room, its time, its medal
         const int r = glm::clamp(g_roomAttack, 0, (int)level.arenas.size() - 1);
         const float best = r < (int)records.fastRooms.size() ? records.fastRooms[r] : 0.f;

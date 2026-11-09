@@ -60,6 +60,7 @@ inline void build(GameplayState& g) {
             if(ImGui::Button("MOVE SPAWN TO PLAYER"))entry.at[s.point]=g.player.position;
             ImGui::SameLine();if(ImGui::Button("REMOVE SPAWN"))entry.at.erase(entry.at.begin()+s.point);
         }
+        ImGui::SliderInt("Arrive after casualties (0: opening)",&entry.afterKills,0,128);
         if(ImGui::Button("ADD SPAWN AT PLAYER")){entry.at.push_back(g.player.position);s.point=(int)entry.at.size()-1;}
         ImGui::SameLine();if(ImGui::Button("USE AUTOMATIC PLACEMENT")){entry.count=std::max(1,(int)entry.at.size());entry.at.clear();}
         ImGui::TextDisabled("Escorts: %zu (kept from the authored entry)",entry.escort.size());

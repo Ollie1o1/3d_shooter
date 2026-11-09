@@ -141,18 +141,22 @@ inline void combatStations(LevelBuilder& b,int room,glm::vec3 c) {
             detail(c+vec3{x,.018f,dz},c+vec3{x+.18f,.026f,dz+1.2f},paint);
         for(float dz:{-23.f,-3.f,19.f})for(int k=0;k<9;++k)
             detail(c+vec3{-4.5f+k,.019f,dz},c+vec3{-4.05f+k,.027f,dz+.12f},shell);
-        if(room==2) {
+        if(room==2 || room==6) {
             // Freestanding diagnostic banks break the long diagonal sightlines.
             // Both ends stay open, and low steps make their roofs fighting space.
-            for(float side:{-1.f,1.f})for(float dz:{-26.f,-2.f,25.f}) {
-                vec3 p=c+vec3{side*22,0,dz};b.mat=Mat::CLINIC;
-                box(p+vec3{-6,0,-2},p+vec3{6,2.4f,2},shell);
+            for(float side:{-1.f,1.f})for(float dz:{-26.f,room==6?1.f:-2.f,25.f}) {
+                const bool besideRamp=room==6 && dz>20;
+                const float half=besideRamp?4.f:6.f;
+                vec3 p=c+vec3{side*(besideRamp?25.f:22.f),0,dz};b.mat=Mat::CLINIC;
+                box(p+vec3{-half,0,-2},p+vec3{half,2.4f,2},shell);
                 b.mat=Mat::METAL;
-                box(p+vec3{-5,0,2},p+vec3{5,1.1f,3.2f},frame);
-                detail(p+vec3{-5.7f,.45f,-2.04f},p+vec3{5.7f,1.85f,-2.01f},inset);
-                for(float x:{-5.8f,5.7f})glow(p+vec3{x,2.42f,-1.9f},p+vec3{x+.1f,2.48f,1.9f},{.65f,.4f,.12f});
-                glow(p+vec3{-5.8f,2.42f,1.9f},p+vec3{5.8f,2.48f,2.f},{.65f,.4f,.12f});
+                box(p+vec3{1-half,0,2},p+vec3{half-1,1.1f,3.2f},frame);
+                detail(p+vec3{.3f-half,.45f,-2.04f},p+vec3{half-.3f,1.85f,-2.01f},inset);
+                for(float x:{.2f-half,half-.3f})glow(p+vec3{x,2.42f,-1.9f},p+vec3{x+.1f,2.48f,1.9f},{.65f,.4f,.12f});
+                glow(p+vec3{.2f-half,2.42f,1.9f},p+vec3{half-.2f,2.48f,2.f},{.65f,.4f,.12f});
             }
+        }
+        if(room==2) {
             for(vec3 local:{vec3{-4,0,-30},vec3{4,0,-30},vec3{0,0,15},vec3{0,0,-6},vec3{0,0,24}}) {
                 const auto p=c+local;b.mat=Mat::CLINIC;
                 box(p+vec3{-2.5f,0,-1.2f},p+vec3{2.5f,1.6f,1.2f},shell);
@@ -390,8 +394,20 @@ inline LevelData buildLab(){
         if(i==1)a.waves={{at(E::PATIENT,{{-4,0,-16},{16,0,-24},{0,0,0},{-24,0,-3},{8,0,-30},{12,0,-34},{-4,0,-12.5f},{16,0,-20.5f},{-4,0,0},{-24,0,0.5f},{8,0,-26.5f},{12,0,-30.5f}})},
                          {at(E::PATIENT,{{4,0,-19},{20,0,-12},{-20,0,1},{-6,0,-31},{24,0,-4},{4,0,-15.5f},{20,0,-8.5f},{-20,0,4.5f},{-6,0,-27.5f},{24,0,-0.5f}}),at(E::GRAFTED,{{0,0,-25},{0,0,-21.5f}})}};
         if(i==2)a.waves={{at(E::GRAFTED,{{0,0,-18},{0,0,-14.5f}}),at(E::PATIENT,{{-15,0,-9},{15,0,-3},{-31,6,-12},{31,6,-12},{-8,0,-24},{8,0,-12},{-15,0,-5.5f},{15,0,0.5f},{-31,6,-8.5f},{31,6,-8.5f},{-8,0,-20.5f},{8,0,-8.5f}})}};
-        if(i==3)a.waves={{at(E::SUSPENDED,{{0,8,-20},{0,8,-16.5f}}),at(E::PATIENT,{{-19,0,-4},{20,0,-16},{-14,0,12},{10,0,-24},{-6,0,13},{-19,0,-0.5f},{20,0,-12.5f},{-14,0,15.5f},{10,0,-20.5f},{-6,0,16.5f}})},
-                         {at(E::SUSPENDED,{{24,9,-19},{24,9,-15.5f}}),at(E::GRAFTED,{{-16,0,-12},{-16,0,-8.5f}}),at(E::PATIENT,{{31,6,-12},{-31,6,-12},{31,6,-8.5f},{-31,6,-8.5f}})}};
+        if(i==3) {
+            // One beam, one armoured approach and three rushers establish the
+            // problem. After three casualties, an announced east-side detail
+            // changes the firing angle. Same roster and twenty-enemy budget.
+            a.waveBreak=1.25f;
+            a.waves={{at(E::SUSPENDED,{{0,8,-20}}),at(E::GRAFTED,{{-16,0,-12}}),
+                at(E::PATIENT,{{-19,0,-4},{20,0,-16},{-14,0,12}}),
+                at(E::SUSPENDED,{{24,9,-19}}).after(3),
+                at(E::PATIENT,{{10,0,-24},{-6,0,13},{-19,0,-.5f},{20,0,-12.5f}}).after(3)},
+                {at(E::SUSPENDED,{{0,8,-16.5f}}),at(E::GRAFTED,{{-16,0,-8.5f}}),
+                at(E::PATIENT,{{31,6,-12},{-31,6,-12},{10,0,-20.5f}}),
+                at(E::SUSPENDED,{{24,9,-15.5f}}).after(3),
+                at(E::PATIENT,{{-14,0,15.5f},{-6,0,16.5f},{31,6,-8.5f},{-31,6,-8.5f}}).after(3)}};
+        }
         if(i==5)a.waves={{at(E::SUSPENDED,{{-21,8,-12},{-21,8,-8.5f}}),at(E::PATIENT,{{0,0,-12},{28,0,-10},{-28,0,-7},{28,0,10},{-28,0,12},{0,0,8},{0,0,-8.5f},{28,0,-6.5f},{-28,0,-3.5f},{28,0,13.5f},{-28,0,15.5f},{0,0,11.5f}})}};
         if(i==6)a.waves={{at(E::PHASED,{{0,0,-20},{0,0,-16.5f}})},
                          {at(E::PHASED,{{-18,0,-20},{-18,0,-16.5f}}),at(E::PATIENT,{{14,0,-10},{-17,0,-5},{0,0,2},{-6,0,-12},{14,0,-6.5f},{-17,0,-1.5f},{0,0,5.5f},{-6,0,-8.5f}}),at(E::GRAFTED,{{-18,6,-15.5f},{-14,6,-15.5f}}),at(E::SUSPENDED,{{24,8,-23},{24,8,-19.5f}})}};

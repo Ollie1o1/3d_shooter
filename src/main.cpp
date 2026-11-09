@@ -350,6 +350,8 @@ struct App {
                 g_continueStory=o.continueStory;
                 g_godMode    = o.god || godFromCommandLine;
                 g_practice   = o.practice;
+                g_combatRemix = o.combatRemix;
+                if(o.combatRemix)g_practice=true;
                 g_bossRun    = o.boss;
                 g_roomAttack = o.room;
                 g_arenaSolo  = o.solo;
@@ -788,6 +790,7 @@ int main(int argc, char* argv[]) {
             app->mode=GameMode::ENDLESS;app->pending=App::NextState::Game;
         }
         if (arg == "--training") {app->mode=GameMode::TRAINING;app->pending=App::NextState::Game;g_practice=true;}
+        if (arg == "--remix") {app->mode=GameMode::STORY;app->pending=App::NextState::Game;g_combatRemix=g_practice=true;g_storyChapter=3;g_startArena=3;}
         if (arg == "--continue") {app->mode=GameMode::STORY;app->pending=App::NextState::Game;g_continueStory=true;}
         if (arg == "--story") { app->mode = GameMode::STORY; app->pending = App::NextState::Game; }   // STORY: CHAPTER 1 (the wake-up first)
         if(arg=="--verify-tear") {if(i+1<argc&&argv[i+1][0]!='-')app->tearEyeX=(float)std::atof(argv[++i]);app->verifyTear=true;g_storyChapter=4;g_devOverlay="plainsummit";app->mode=GameMode::STORY;app->pending=App::NextState::Game;g_fixedDt=1.0/30;g_devNoMouse=true;g_godMode=true;}

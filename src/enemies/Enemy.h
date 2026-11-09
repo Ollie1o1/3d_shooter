@@ -202,6 +202,14 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         attack = AttackKind::NONE; telegraphTimer = 0.f; attackTimer = 0.f;
         return true;
     }
+    // 24-K commits its aim before firing. A substantial precision hit can
+    // break that charge; body shots and its other attacks remain unchanged.
+    bool onPrecisionCounter(float dmg, bool head) {
+        if (type != EnemyType::UNIT24K || !head || dmg < 40.f ||
+            attack != AttackKind::SHOT || telegraphTimer <= 0.f || !targetable()) return false;
+        stagger(.9f); recoverTimer=1.1f; kSideT=0.f;
+        return true;
+    }
     float fieldRadius() const { return hollow == Hollow::ENRAGED ? 13.f : 10.f; }   // ANCHOR
     float damageMult() const { return hollow == Hollow::ENRAGED ? 1.25f : 1.f; }   // what its attacks deal
     void setHollow(Hollow h) {
@@ -262,6 +270,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     float hitPush = 0.f;
     bool  hitHead = false;
     float firstHitAge = -1.f;    // age at its first hit (the run log's time to kill)
+    float staggerSetupAge = -100.f, shoveSetupAge = -100.f;
     // Attack tokens (GameplayState::assignAttackers): only so many enemies wind up at once,
     // and the ones you can't see take longer to get round to it. True / 1 outside the game
     bool  mayAttack  = true;

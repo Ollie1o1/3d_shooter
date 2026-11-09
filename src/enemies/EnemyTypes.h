@@ -200,7 +200,7 @@ inline EnemyStats& statsEdit(EnemyType t) {
         {"THAWLING",58,.45f,1.85f,7.2f,.6f,1.5f,false,{.6f,.66f,.73f},{.95f,.98f,1.05f},{.8f,.9f,1.f},"IT WARMS AS IT MOVES - KILL IT BEFORE IT IS FAST"},
         {"PICKER",70,.7f,1.1f,6.5f,.8f,3.2f,true,{.16f,.17f,.19f},{2.f,1.f,.25f},{1.f,.7f,.3f},"WHITE: PARRY THE SNATCH - CAUGHT: SHOOT IT OR PUNCH FREE"},
         {"CLERK",40,.45f,.8f,4.5f,0.f,0.f,true,{.7f,.68f,.6f},{2.f,1.4f,.5f},{1.f,.8f,.4f},"WHILE IT IS UP, WHAT YOU KILL GETS RESTORED - KILL IT FIRST"},
-        {"UNIT 24-K",2400,.45f,1.85f,7.6f,.6f,1.05f,false,{.78f,.79f,.8f},{1.5f,1.6f,1.8f},{1.f,.95f,.85f},"WHITE: PARRY ITS RUSH - GOLD LINE: STEP OUT OF THE LANCER - IT CANNOT FOLLOW YOU UP"},
+        {"UNIT 24-K",2400,.45f,1.85f,7.6f,.6f,1.05f,false,{.78f,.79f,.8f},{1.5f,1.6f,1.8f},{1.f,.95f,.85f},"WHITE: PARRY - GOLD LINE: EVADE OR HEADSHOT TO INTERRUPT - IT CANNOT FOLLOW YOU UP"},
         {"THE RESTORER",9000,1.7f,7.f,4.4f,.9f,1.5f,false,{.62f,.68f,.74f},{1.4f,1.6f,1.9f},{.9f,.95f,1.f},"GOLD: KEEP WHERE YOU WERE SAFE (OR RECALL) - RED: GET OUT - WHITE: PARRY THE TONGS"},
         {"RESTORE POINT",260,.8f,5.5f,0.f,0.f,0.f,false,{.7f,.82f,.92f},{1.2f,1.5f,1.9f},{1.f,1.f,1.f},"WHILE IT STANDS, WHAT YOU DO TO THE RESTORER GROWS BACK - BREAK IT"},
         {"STORAGE DRUM",120,1.f,1.6f,0.f,0.f,0.f,false,{.4f,.44f,.5f},{2.f,1.2f,.4f},{1.f,1.f,1.f},"IT HAS ONE OF YOUR GUNS - BREAK IT OPEN"},

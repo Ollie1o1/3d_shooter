@@ -16,6 +16,9 @@ inline void GameplayState::shootInput() {
     }
     if (swordOut) fireInput.clear();   // the sword has the button
     const bool queued = fireInput.pending(activeWeapon, gameClock) && !switchBlocked;
+    // A ready charge may refill an empty/reloading gun on this trigger pull.
+    // Still respect the shot cycle and switch, and never spend it in an empty room.
+    if (queued && ws.cooldown <= 0.f && styleSystem.overdriveReady) attackOverdrive();
     if (queued && ws.ready()) { fireInput.clear(); fireWeapon(activeWeapon); }
     else if (pendingFire && !swordOut && !switchBlocked && (ws.ammo <= 0 || ws.reloading) &&
              !(ws.reloading && ws.reloadTimer <= ActionBuffer::WINDOW) && dryCd <= 0.f) {

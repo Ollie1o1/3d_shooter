@@ -108,6 +108,18 @@ test: $(TESTS) $(HEADERS)
 	$(MAKE) test-reliquary
 	$(MAKE) test-next
 	$(MAKE) test-iteration
+	$(MAKE) test-combat
+
+.PHONY: test-combat test-combat-runtime
+test-combat: tests/test_combat_pass.cpp $(HEADERS)
+	mkdir -p build/combat-pass
+	$(CXX) $(CXXFLAGS) tests/test_combat_pass.cpp -o build/test_combat_pass $(STDLIB)
+	./build/test_combat_pass
+
+test-combat-runtime: tests/test_combat_runtime.cpp src/main.cpp $(HEADERS)
+	mkdir -p build/combat-pass
+	$(CXX) $(CXXFLAGS) tests/test_combat_runtime.cpp -o build/test_combat_runtime $(LDFLAGS)
+	./build/test_combat_runtime
 
 .PHONY: test-iteration test-iteration-runtime
 test-iteration: tests/test_iteration.cpp $(HEADERS)

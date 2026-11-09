@@ -32,4 +32,5 @@ struct StartOptions {
     EndlessChallenge challenge;
     int bossPhase=0;         // 1-3: unranked phase practice; 0: whole fight
     bool bossRush=false;
+    bool combatRemix=false; // one full-tool, unranked Surgical Observation encounter
 };

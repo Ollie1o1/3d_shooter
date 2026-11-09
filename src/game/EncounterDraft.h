@@ -30,7 +30,10 @@ struct EncounterDraft {
             struct Body{glm::vec3 position;float radius,height;};
             std::vector<Body> positions;
             int total=0;
+            std::vector<std::pair<int,int>> stages;
             for(const auto& e:wave) {
+                if(e.afterKills<0 || e.afterKills>128)return "Reinforcements need a casualty threshold from 0 to 128.";
+                stages.push_back({e.afterKills,e.total()});
                 if((int)e.type<0 || e.type>=EnemyType::COUNT || isBoss(e.type) || e.type==EnemyType::CONDUIT)
                     return "Use ordinary enemies in editable waves.";
                 if(e.at.size()>64 || e.count<0 || e.count>64 || (e.at.empty() && e.count<1) || e.escort.size()>8)
@@ -48,6 +51,15 @@ struct EncounterDraft {
                     positions.push_back({p,st.radius,st.height});
                 }
             }
+            std::sort(stages.begin(),stages.end());
+            int available=0;
+            for(size_t i=0;i<stages.size();) {
+                const int gate=stages[i].first;
+                if(gate>available)return "Reinforcements cannot require more casualties than earlier groups can supply.";
+                int group=0;
+                do {group+=stages[i++].second;}while(i<stages.size() && stages[i].first==gate);
+                available+=group;
+            }
         }
         return {};
     }
@@ -57,11 +69,11 @@ struct EncounterDraft {
     }
     std::string text()const {
         std::ostringstream out;out<<std::setprecision(9);
-        out<<"encounter 1 "<<map<<' '<<room<<' '<<maxAlive<<' '<<waves.size()<<'\n';
+        out<<"encounter 2 "<<map<<' '<<room<<' '<<maxAlive<<' '<<waves.size()<<'\n';
         for(const auto& wave:waves) {
             out<<wave.size()<<'\n';
             for(const auto& e:wave) {
-                out<<(int)e.type<<' '<<e.count<<' '<<(int)e.variant<<' '<<e.escort.size()<<' '<<e.at.size()<<'\n';
+                out<<(int)e.type<<' '<<e.count<<' '<<(int)e.variant<<' '<<e.escort.size()<<' '<<e.at.size()<<' '<<e.afterKills<<'\n';
                 for(auto escort:e.escort)out<<(int)escort<<' ';
                 out<<'\n';
                 for(auto p:e.at)out<<p.x<<' '<<p.y<<' '<<p.z<<'\n';
@@ -72,7 +84,7 @@ struct EncounterDraft {
     bool read(const std::string& text,const LevelData& level,std::string& error) {
         if(text.size()>256*1024){error="Patch is too large.";return false;}
         EncounterDraft parsed;std::istringstream in(text);std::string tag;int version=0,n=0;
-        if(!(in>>tag>>version>>parsed.map>>parsed.room>>parsed.maxAlive>>n) || tag!="encounter" || version!=1 ||
+        if(!(in>>tag>>version>>parsed.map>>parsed.room>>parsed.maxAlive>>n) || tag!="encounter" || (version!=1 && version!=2) ||
             parsed.map!=map || parsed.room!=room || n<1 || n>32){error="Patch does not match this map and room.";return false;}
         parsed.waves.resize(n);
         for(auto& wave:parsed.waves) {
@@ -82,6 +94,7 @@ struct EncounterDraft {
                 if(!(in>>type>>count>>variant>>escorts>>points) || variant<0 || variant>3 || escorts<0 || escorts>8 || points<0 || points>64)
                     {error="Invalid entry.";return false;}
                 WaveEntry e((EnemyType)type,count);e.variant=(Hollow)variant;
+                if(version>=2 && !(in>>e.afterKills)){error="Truncated reinforcement threshold.";return false;}
                 for(int k=0;k<escorts;++k){int t=0;if(!(in>>t)){error="Truncated escorts.";return false;}e.escort.push_back((EnemyType)t);}
                 for(int k=0;k<points;++k){glm::vec3 p;if(!(in>>p.x>>p.y>>p.z)){error="Truncated positions.";return false;}e.at.push_back(p);}
                 wave.push_back(e);

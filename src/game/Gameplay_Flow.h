@@ -434,6 +434,7 @@ inline void GameplayState::enterArena(int a) {
             if (level.arenas[a].exitDoor >= 0) level.doors[level.arenas[a].exitDoor].locked = false;
         }
     }   // (after resetPlayer: the wake-up puts you on the belt)
+    if (combatRemix()) ui.toast("COMBAT REMIX",binds().label(Act::GRENADE)+" SPLINTER / "+binds().label(Act::RECALL)+" RECALL / 5 OATHBREAKER",{.35f,.9f,1.f},5.f);
 }
 
 inline void GameplayState::resetPlayer(glm::vec3 start) {
@@ -517,8 +518,12 @@ inline void GameplayState::newRun() {
     if (endless()) setupEndless();
     if (g_bossRun >= 0) { ranked = act2FromStart = false; msCheckpoint = bossEntry(g_bossRun).morning; }
     if (arenaSolo()) ranked = act2FromStart = false;
+    if (combatRemix()) {
+        storyOwned=level.story.startWeapons; storyGrapple=true; wakeSeen=true;
+        storySeenSection=storyCheckpoint=3; storyFromStart=false;
+    }
     enterArena(g_bossRun >= 0 ? bossEntry(g_bossRun).arena : endless() ? endlessArena : roomAttack() ? g_roomAttack
-               : arenaSolo() ? glm::clamp(g_arenaSolo, 0, (int)level.arenas.size() - 1) : 0);
+               : arenaSolo() ? glm::clamp(g_arenaSolo, 0, (int)level.arenas.size() - 1) : combatRemix() ? 3 : 0);
     bankedStyle = bankedDamage = 0.f;   // after enterArena: that banked the last run's
     wavesCleared = 0;
     if (fast() && !roomAttack()) { countdown = 3.f; pushBanner("THE GAUNTLET", "SEVEN ROOMS - THEN REACH THE BEACON ON THE TOWER", {1.f, 0.6f, 0.2f}, 3.f); }
@@ -674,6 +679,10 @@ inline void GameplayState::handleDirectorEvents() {
             pushBanner(buf, director.goal().label, {1.f, 0.9f, 0.4f}, director.hasGoal() ? 2.6f : 1.8f);
             audio.play("wave", 90, SoundGroup::UI); audio.duck(4.f, 0.4f);
             break;
+        case DirectorEvent::REINFORCEMENTS:
+            ui.feed("REINFORCEMENTS INCOMING", {1.f, .65f, .25f});
+            audio.play("wave", 90, SoundGroup::UI, true);
+            break;
         case DirectorEvent::BOSS_START: {
             if(ev.value<0 || ev.value>=(int)ar.waves.size() || ar.waves[ev.value].empty())break;
             if (bossStartAt < 0.f) bossStartAt = elapsedTime;   // BOSS: its clock
@@ -707,6 +716,11 @@ inline void GameplayState::handleDirectorEvents() {
             break;
         case DirectorEvent::ARENA_CLEARED: {
             if (g_bossRun >= 0) { bossRunDone(); break; }   // BOSS: that was the fight
+            if (combatRemix()) {
+                victory=true; captureMouse(false); logRun("end");
+                audio.play("anvil",110,SoundGroup::UI,true);
+                break;
+            }
             const Arena& done = level.arenas[ev.value];
             lockDoor(done.exitDoor, false);
             lockDoor(done.entryGate, false);

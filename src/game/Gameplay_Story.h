@@ -98,7 +98,7 @@ inline void GameplayState::beginStory() {
             if (storyLog >= 0) {
                 storyLogsSeen |= 1u << i; saveStoryProgress(); audio.play("count_tick",90,SoundGroup::UI,true);
                 const int n = level.story.wrecks[i].number;   // the ARCHIVE keeps it for good (the Story page)
-                if (n > 0 && n < 32 && !((records.unitsRead >> n) & 1u)) { records.unitsRead |= 1u << n; if (!g_devNoMouse) records.save(); }
+                if (!combatRemix() && n > 0 && n < 32 && !((records.unitsRead >> n) & 1u)) { records.unitsRead |= 1u << n; if (!g_devNoMouse) records.save(); }
             }
         };
         interactables.push_back(std::move(it));

@@ -27,6 +27,7 @@ inline void GameplayState::bodyHit(const Enemy& e, glm::vec3 at, float push, boo
 
 // Its footing breaks: the attack it was winding up is gone
 inline void GameplayState::onStunned(Enemy& e, glm::vec3 at) {
+    e.staggerSetupAge=e.age;
     ++runLog.stuns;
     teach(TEACH_STUN);
     const bool heavy = hitreact::bodyOf(e.type).heavy;
@@ -50,17 +51,24 @@ inline int GameplayState::attackersAllowed() const {
 }
 
 inline void GameplayState::assignAttackers() {
+    auto weight = [](EnemyType type) {
+        switch(type) {
+        case EnemyType::SERAPH: case EnemyType::SUSPENDED: case EnemyType::WEAVER:
+        case EnemyType::BRUTE: case EnemyType::GRAFTED: case EnemyType::JUGGERNAUT: return 2;
+        default: return 1;
+        }
+    };
     struct Cand { int i; float score; };
     static std::vector<Cand> cands;
     cands.clear();
-    int busy = 0;
+    int busy = 0, pressure = 0;
     glm::vec3 eye = player.camera.position, fwd = player.camera.flatForward();
     for (int i = 0; i < (int)enemies.size(); ++i) {
         Enemy& e = enemies[i];
         e.mayAttack = true; e.attackPace = 1.f;
         if (!e.alive || !e.reacts() || e.type == EnemyType::MITE || e.type == EnemyType::CONDUCTOR) continue;   // (mites just run in; conductors never attack)
         if(!e.targetable()){e.mayAttack=false;continue;}
-        if(e.attackBusy()){++busy;continue;}
+        if(e.attackBusy()){++busy;pressure+=weight(e.type);continue;}
         if(e.stunned() || e.staggered() || e.recoverTimer>0){e.mayAttack=false;continue;}
         glm::vec3 to = e.position - eye; to.y = 0.f;
         float d = glm::length(to);
@@ -74,12 +82,17 @@ inline void GameplayState::assignAttackers() {
         cands.push_back({i,d*.25f+(unseen?18.f:0.f)+(e.noLosTimer>0?24.f:0.f)-ready*8.f-e.attackWait*8.f});
     }
     int free = std::max(0, attackersAllowed() - busy);
+    int headroom = std::max(0, attackersAllowed()+1-pressure);
     // The index breaks equal-score ties in original encounter order, without
     // stable_sort's temporary heap allocation on every simulation tick.
     std::sort(cands.begin(), cands.end(), [](const Cand& a, const Cand& b) {
         return a.score == b.score ? a.i < b.i : a.score < b.score;
     });
-    for (int k = free; k < (int)cands.size(); ++k) enemies[cands[k].i].mayAttack = false;
+    for (const auto& c : cands) {
+        auto& e=enemies[c.i];const int cost=weight(e.type);
+        e.mayAttack=free>0 && headroom>=cost;
+        if(e.mayAttack){--free;headroom-=cost;}
+    }
 }
 
 // ---- finishers -----------------------------------------------------------------
@@ -104,6 +117,7 @@ inline int GameplayState::findFinisher() const {
 inline bool GameplayState::tryFinisher() {
     int i = findFinisher();
     if (i < 0) return false;
+    attackOverdrive();
     Enemy& e = enemies[i];
     glm::vec3 eye = player.camera.position;
     glm::vec3 c = e.position + glm::vec3{0, std::min(e.height() * 0.5f, 1.2f), 0};
@@ -160,6 +174,17 @@ inline bool GameplayState::finishKey() {
 }
 
 // ---- OVERDRIVE -------------------------------------------------------------------
+inline void GameplayState::attackOverdrive() {
+    if (!styleSystem.overdriveReady || playerDead || victory) return;
+    for (const auto& e : enemies) if (e.targetable()) {
+        if (styleSystem.activateOverdrive()) {
+            styleSystem.overdriveBegan=false;
+            enterOverdrive();
+        }
+        return;
+    }
+}
+
 inline void GameplayState::enterOverdrive() {
     ++runLog.overdrives;
     teach(TEACH_OVERDRIVE);
@@ -187,6 +212,13 @@ inline void GameplayState::leaveOverdrive() {
 
 // Per frame: OVERDRIVE starting and ending, the screen's gold and kick, the finisher hint
 inline void GameplayState::updateFeel(float dt) {
+    if (styleSystem.overdriveReadied) {
+        styleSystem.overdriveReadied=false;
+        if (!playerDead && !victory) {
+            ui.feed("OVERDRIVE READY / ATTACK TO UNLEASH", {1.f,.8f,.3f});
+            audio.play("drive_ready",100,SoundGroup::UI);
+        }
+    }
     if (styleSystem.overdriveBegan) { styleSystem.overdriveBegan = false; if (!playerDead && !victory) enterOverdrive(); }
     if (styleSystem.overdriveEnded) { styleSystem.overdriveEnded = false; if (!playerDead) leaveOverdrive(); }
     float want = overdriveOn() && !playerDead ? 1.f : 0.f;
@@ -401,6 +433,7 @@ inline bool GameplayState::unseenWindup(const Enemy& e, glm::vec3 flatFwd) const
 // ---- alt fire ------------------------------------------------------------------------
 inline void GameplayState::altFire() {
     WeaponState& ws = weapons[activeWeapon];
+    if (activeWeapon<=int(WeaponId::SHOTGUN) && ws.cooldown<=0.f && styleSystem.overdriveReady) attackOverdrive();
     if (!ws.ready()) {
         if ((ws.ammo <= 0 || ws.reloading) && dryCd <= 0.f) { audio.play("dry", 100, SoundGroup::PLAYER); dryCd = 0.3f; }
         return;
@@ -431,7 +464,9 @@ inline void GameplayState::teach(int bit) {
         case TEACH_JUMP: ui.introduce("SHOTGUN JUMP", "TWO SHELLS LOADED: LOOK DOWN AND FIRE RMB TO LAUNCH YOURSELF", c, "NEW MOVE"); break;
         case TEACH_FINISH:    ui.introduce("FINISHER", kb.label(Act::INTERACT) + " ON A GLOWING ENEMY - HEALTH BACK, GUN RELOADED", c, "NEW MOVE"); break;
         case TEACH_STUN:      ui.introduce("STAGGER", "HITS CLOSE TOGETHER BREAK ITS ATTACK", c, "NEW MOVE"); break;
-        case TEACH_OVERDRIVE: ui.introduce("OVERDRIVE", "HARDER, FASTER, NO RELOADS - KILLS KEEP IT BURNING", c, "NEW MOVE"); break;
+        case TEACH_OVERDRIVE: ui.introduce("OVERDRIVE", "EARN A FULL METER, THEN ATTACK AN ACTIVE ENEMY TO UNLEASH IT. KILLS KEEP IT BURNING", c, "NEW MOVE"); break;
+        case TEACH_INTERRUPT: ui.introduce("INTERRUPT", "BREAK A CHARGING ATTACK, THEN USE THE OPENING TO REPOSITION OR FINISH", c, "COMBAT CHAIN"); break;
+        case TEACH_SETUP: ui.introduce("SETUP", "FOLLOW A STAGGER WITH A KILL, OR SHOVE AN ENEMY INTO DANGER, FOR BONUS STYLE", c, "COMBAT CHAIN"); break;
         case TEACH_HOOK:      ui.introduce("GRAPPLE AN ENEMY", kb.label(Act::GRAPPLE) + " - LIGHT ONES COME TO YOU, YOU GO TO HEAVY ONES", c, "NEW MOVE"); break;
         case TEACH_ALT:       ui.introduce("ALT FIRE", "RMB - THE REVOLVER FANS ITS HAMMER, THE SHOTGUN FIRES BOTH BARRELS", c, "NEW MOVE"); break;
         default: break;

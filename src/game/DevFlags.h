@@ -23,6 +23,7 @@ inline int g_startWave  = 0;   // --wave N / ?wave=N (with --arena): skip to tha
 // --god / ?god: the player takes no damage (for recording footage)
 inline bool g_godMode = false;
 inline bool g_practice = false;   // dev level select: no records, no leaderboard
+inline bool g_combatRemix = false;
 inline int  g_bossRun = -1;       // BOSS (the main menu): which boss this run is, fought on its own (-1: not one)
 inline int g_bossPhase=0;
 inline bool g_bossRush=false;

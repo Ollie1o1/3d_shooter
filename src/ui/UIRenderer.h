@@ -888,13 +888,14 @@ private:
                                            {1.f, 0.6f, 0.2f, 0.95f}, {1.f, 0.25f, 0.2f, 1.f}};
             ui.textShadow(StyleSystem::freshnessName(f), sx + 232, sy - 1, 2, FC[(int)f], false);
         }
-        if (overdriveFlash > 0.f || style.overdrive) {
-            float alpha = style.overdrive ? 0.9f : (overdriveFlash * 0.6f);
+        if (overdriveFlash > 0.f || style.overdrive || style.overdriveReady) {
+            float alpha = style.overdrive || style.overdriveReady ? 0.9f : (overdriveFlash * 0.6f);
             int oy = screenH - 120;
             ui.rect(screenW / 2 - 120, oy, 240, 30, {0.9f, 0.5f, 0.05f, alpha * 0.3f});
             ui.rect(screenW / 2 - 120, oy, 240, 3, {1.f, 0.7f, 0.1f, alpha});
             ui.rect(screenW / 2 - 120, oy + 27, 240, 3, {1.f, 0.7f, 0.1f, alpha});
-            ui.text("OVERDRIVE", screenW / 2, oy + 8, 2, {1.f, 0.75f, 0.2f, alpha}, true);
+            ui.text(style.overdriveReady ? "OVERDRIVE READY" : "OVERDRIVE", screenW / 2, oy + 8, 2, {1.f, 0.75f, 0.2f, alpha}, true);
+            if (style.overdriveReady) ui.text("ATTACK TO UNLEASH",screenW/2,oy+36,1,{1.f,.85f,.55f,alpha},true);
             if (style.overdrive)   // burning down
                 ui.rect(screenW / 2 - 118, oy + 22, (int)(236 * glm::clamp(style.overdriveTimer / StyleSystem::OVERDRIVE_DURATION, 0.f, 1.f)), 3, {1.f, 0.9f, 0.5f, alpha});
         }

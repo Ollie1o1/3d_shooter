@@ -5814,17 +5814,19 @@ int main() {
         // OVERDRIVE burns for its time (kills stretch it, to a limit), then the meter drops back to A
         StyleSystem ss;
         ss.addStyle(100.f / StyleSystem::METER_GAIN + 1.f);
+        CHECK(ss.overdriveReady && !ss.overdrive,"a full meter banks OVERDRIVE for the next attack");
+        ss.activateOverdrive();
         bool began = ss.overdrive && ss.overdriveBegan;
         for (int k = 0; k < 20; ++k) ss.extendOverdrive(0.5f);
         bool capped = std::fabs(ss.overdriveTimer - StyleSystem::OVERDRIVE_MAX) < 1e-4f;
         ss.update(StyleSystem::OVERDRIVE_MAX + 0.1f);
         CHECK(began && capped && !ss.overdrive && ss.overdriveEnded && ss.style <= StyleSystem::OVERDRIVE_AFTER,
-              "OVERDRIVE starts on a full meter, kills stretch it only so far, and burning out drops the meter back");
+              "an attack unleashes earned OVERDRIVE, kills stretch it only so far, and burning out drops the meter back");
         ss.overdriveBegan = false;
         for (int k = 0; k < 10; ++k) ss.addStyle(100.f);
         bool held = !ss.overdrive;
         ss.update(StyleSystem::OVERDRIVE_COOL);
-        CHECK(held && ss.overdrive && ss.overdriveBegan, "...then it can't start again until it has cooled down (and starts as it does, the meter still full)");
+        CHECK(held && ss.overdriveReady && !ss.overdrive && ss.activateOverdrive(), "...then a full meter becomes ready after cooling down, waiting for another attack");
         StyleSystem sc; float scored = sc.addStyle(40.f, StyleSource::KAR);
         CHECK(std::fabs(sc.earned - 60.f) < 1e-3f && std::fabs(scored - 60.f) < 1e-3f && std::fabs(sc.style - 60.f * StyleSystem::METER_GAIN) < 1e-3f,
               "the run's score takes all the style; the meter fills at its share");

@@ -62,6 +62,15 @@ identify supported damage sources and their counters, and cosmetic effects use
 their own random sequence so changing ambient detail cannot shift AI or loot
 random draws.
 
+The [combat pass](docs/combat-pass.md) gives Surgical Observation staged,
+announced reinforcements and Long-Term Care climbable cover around its low
+circuit. **Story → Combat Remix** plays the theatre with all guns, Oathbreaker,
+SPLINTER and RECALL together, without saving campaign progress or records.
+A full style meter now banks **OVERDRIVE READY** until your next attack with
+an active enemy present. Follow a stagger with a kill, or shove an enemy into
+a hazard or crossfire, for a setup bonus. A strong headshot during **24-K**'s
+gold Lancer charge interrupts it and opens a brief counterattack window.
+
 ## The bosses
 
 | Boss | Where | The trick |
@@ -651,7 +660,7 @@ The regular enemies (not the bosses, which have their own answers) take a hit wi
 - **You can hear OVERDRIVE**: for as long as it burns, a growling hum in the music's key throbs on its eighths (sixteenths in its last 1.5 s: it's running out), the enemies and the world step back and darken, and your own guns come up and get driven; a wind-up still cuts through all of it
 - **One card per move**: the first time each of these comes up (a finisher, a stagger, OVERDRIVE, a grapple on an enemy, alt fire) a small NEW MOVE card says what it is, once, ever
 - **Deaths** break the rig along the killing blow: the pieces fly the way the shot went (a headshot takes the head first), white-hot for a moment
-- **Attack tokens**: only a few regular enemies wind up at once (2 on LENIENT to 5 on BRUTAL, one more in a big crowd); the nearest ones you can see go first, and the ones behind you are slower to get to it
+- **Attack tokens**: only a few regular enemies wind up at once (2 on LENIENT to 5 on BRUTAL, one more in a big crowd); beams, heavy attacks and wire attacks also reserve extra pressure, including while a beam remains active. The nearest ones you can see go first, and the ones behind you are slower to get to it
 - **The run log**: each death, finished run or quit adds a line to `runs.jsonl` beside the binary (desktop only): what hurt you and what killed you, each gun's shots, hits and kills, time to kill per enemy, stuns, finishers and OVERDRIVE. `python3 tools/runlog.py` sums it up
 
 </details>
@@ -662,10 +671,10 @@ The regular enemies (not the bosses, which have their own answers) take a hit wi
 - ULTRAKILL-inspired style meter (D → C → B → A → S → SSS)
 - Style gained from kills, parries, dashes, slams, grenade multikills
 - **Freshness**: scoring with the same thing over and over earns less. Each gun, the punch, parries, explosives, the slam and the environment wear out as they score (FRESH x1.5, USED x1, STALE x0.5, DULL x0.2) and recover while you use something else; the gun in hand's freshness shows beside the style bar. Movement style (dashes, grapples, jumps) isn't affected
-- Kills you only set up (lava, the void, enemies hurting each other) can carry the meter into rank B but no further: the top ranks and Overdrive come from what you do yourself
+- Environmental and friendly-fire kills can carry the meter into rank B but no further. A recent player shove followed by a hazard or crossfire kill earns a setup bonus and retains run-score points above that meter cap; unrelated passive deaths cannot farm points there
 - **Friendly fire**: a Juggernaut's siege shell ploughs into any enemy in its path, and a Brute's slam or a Juggernaut's smash hurts the enemies around it (bosses are immune). Bait them into a crowd: those kills count as yours (+10 XP, half the kill style)
 - The run's score takes every point of style; the meter fills at about a third of it, and hits move it barely at all, so it's a run of good kills that fills it
-- **OVERDRIVE** at a full meter: a slow-motion beat, a gold shockwave and every gun full; then for 6 s your shots hit 30 % harder, fire a third faster and never run the magazine down, every hit staggers twice as hard, a punch finishes anything under half, and dash charges refill on each kill. Each kill keeps it burning half a second longer (8 s at most). When it burns out the meter drops back to C and it needs 25 s to recharge (a gold line under the meter)
+- **OVERDRIVE READY** at a full meter: the charge waits through a wave break. Your next gun shot, sword attack, punch, finisher or thrown explosive with an active enemy present unleashes a slow-motion beat, a gold shockwave and every gun full; then for 6 s your shots hit 30 % harder, fire a third faster and never run the magazine down, every hit staggers twice as hard, a punch finishes anything under half, and dash charges refill on each kill. Each kill keeps it burning half a second longer (8 s at most). When it burns out the meter drops back to C and it needs 25 s to recharge (a gold line under the meter)
 - Style decays after 3 seconds of inactivity
 
 </details>

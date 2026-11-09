@@ -109,6 +109,17 @@ int main(){
             "Surgical Observation meets the combat cover, sightline, layer and lighting targets");
     }
     auto motor=lab::centre(2),garden=lab::centre(4);
+    {
+        const auto c=lab::centre(6);
+        Walk circuit(L,c+glm::vec3{-17,0,29});
+        CHECK(circuit.to(c+glm::vec3{-17,2.4f,15}) && circuit.to(c+glm::vec3{17,2.4f,15}) &&
+              circuit.to(c+glm::vec3{17,0,29}) && !circuit.falseFall,
+              "Long-Term Care's cover leaves the complete low combat circuit walkable in both directions");
+        auto measured=audit::measure(L,6);
+        std::printf("  long-term care: %.1f%% cover, %.1fm sight, %.2f lights\n",measured.cover*100,measured.sight,measured.lights);
+        CHECK(measured.cover>=.25f && measured.cover<=.5f && measured.sight>=12 && measured.sight<=30 && measured.lights>=.5f,
+              "Long-Term Care meets the cover, sightline and lighting standard after the route pass");
+    }
     Walk maintenance(L,motor+glm::vec3{-31,0,20}),observation(L,garden+glm::vec3{0,0,28});
     CHECK(maintenance.to(motor+glm::vec3{-31,6,-12}) && maintenance.to(L.story.wrecks[0].pos)
         && observation.to(garden+glm::vec3{38,0,28}) && observation.to(garden+glm::vec3{38,0,-34}) && observation.to(L.story.wrecks[1].pos),
@@ -139,11 +150,12 @@ int main(){
         if(room!=4){
             WaveDirector d;d.level=&L;d.fast=true;d.startArena(room);
             std::vector<SpawnRequest> spawned;d.update(DT,0,a.playerStart,spawned);d.update(DT,0,a.playerStart,spawned);
-            int first=0;for(const auto& e:a.waves.front())first+=(int)e.at.size();
-            density&=(int)spawned.size()==first && d.queue.empty();
+            int first=0,deferred=0;for(const auto& e:a.waves.front())
+                (e.afterKills?deferred:first)+=(int)e.at.size();
+            density&=(int)spawned.size()==first && d.queued()==deferred;
         }
     }
-    CHECK(density,"Chapter 3 fields twice the enemies in every combat room, with up to fourteen together");
+    CHECK(density,"Chapter 3 retains its finite enemy budgets and stages only the authored reinforcements");
     CHECK(support,"every Chapter 3 spawn has full body clearance and ground enemies have floor support");
     CHECK(separated,"doubled Chapter 3 waves use separate positions without overlapping enemy bodies");
     int bosses=0;for(const auto& wave:L.arenas[9].waves)for(const auto& e:wave)

@@ -8,7 +8,7 @@
 // =============================================================================
 
 inline bool GameplayState::swordAllowed() const {
-    if (training()) return true;
+    if (training() || combatRemix()) return true;
     if (laboratory() && storySword && !labEnding.active()) return true;   // (Story: pulled from its statue in the Successor's arena)
     return swordKeyAllowed(g_devSword, act2(), director.arena, ZENITH_ARENA);
 }
@@ -131,6 +131,7 @@ inline void GameplayState::updateSword(float dt) {
         if (pi >= 0 && sword.tryParry()) { reflectProjectile(pi, fwd); styleSystem.heal(Sword::HEAL_PARRY * tune().heal); }
     }
     if (o.stroke >= 0) {
+        attackOverdrive();
         SfxMixer::Opts swing; swing.volume = o.stroke == 2 ? 0.9f : 0.78f;
         swing.pitch = o.stroke == 0 ? 1.04f : o.stroke == 1 ? 0.98f : 0.85f;
         audio.playOpts("sword_swing", swing);
@@ -150,6 +151,7 @@ inline void GameplayState::updateSword(float dt) {
     }
     if (o.contact >= 0) swordContact(o.contact, o.damage, o.riposte);
     if (o.thrust) {
+        attackOverdrive();
         glm::vec3 flat{fwd.x, 0.f, fwd.z};
         flat = glm::length(flat) > 1e-3f ? glm::normalize(flat) : glm::vec3{0.f, 0.f, -1.f};
         thrustFrom = player.position;

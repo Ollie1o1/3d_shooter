@@ -318,10 +318,10 @@ private:
         ui.text("UP/DOWN PICK / ENTER PLAY / ESC BACK",cx,screenH-36,1,{.7f,.7f,.75f,1},true);
     }
 
-    int storyRows() const { return hasStorySave ? 7 : 6; }
-    // The rows' layout: seven (a save to continue) sit closer, so the notes under them stay clear
-    float storyRowY(int i) const { return storyRows()>6 ? 150.f+i*68.f : 165.f+i*76.f; }
-    float storyRowH() const { return storyRows()>6 ? 62.f : 68.f; }
+    int storyRows() const { return hasStorySave ? 8 : 7; }
+    // A Continue slot adds an eighth row; keep the footer below either layout.
+    float storyRowY(int i) const { return storyRows()>7 ? 145.f+i*60.f : 150.f+i*68.f; }
+    float storyRowH() const { return storyRows()>7 ? 54.f : 62.f; }
     int storyAt(int x,int y) const {
         for(int i=0;i<storyRows();++i)if(x>screenW/2-360&&x<screenW/2+360&&y>storyRowY(i)&&y<storyRowY(i)+storyRowH())return i;
         return -1;
@@ -335,6 +335,7 @@ private:
         }
         int chapter=storySel-(hasStorySave?1:0)+1;
         if(chapter==6) {o.practice=true;onStart(GameMode::TRAINING,o);return;}
+        if(chapter==7) {o.practice=o.combatRemix=true;o.storyChapter=3;o.arena=3;onStart(GameMode::STORY,o);return;}
         o.storyChapter=chapter;onStart(GameMode::STORY,o);
     }
     void handleStoryEvent(const SDL_Event& e) {
@@ -416,8 +417,8 @@ private:
     void renderStory() {
         ui.text("STORY",screenW/2,55,5,{.35f,.85f,1.f,1},true);
         ui.text("UNIT 24 / PURPOSE: UNKNOWN",screenW/2,115,2,{.75f,.8f,.82f,1},true);
-        const char* names[]={"1  THE CRADLE","2  THE DEAD SPAN","3  THE LIVING WARD","4  THE BLOOD MOON PLAIN","5  THE COLD STORE","COMBAT PRACTICE"};
-        const char* descriptions[]={"NEW RUN / WAKE ON THE REJECT LINE.","NEW RUN / CROSS THE ASH WASTELAND.","NEW RUN / DESCEND INTO THE LABORATORY.","NEW RUN / THE GLEANER AND ITS BROOD.","NEW RUN / THE ICE SHELF, THE STORE AND WHAT KEEPS IT.","REPEATABLE LESSONS / SELECT ENEMIES / TRY YOUR UPGRADES"};
+        const char* names[]={"1  THE CRADLE","2  THE DEAD SPAN","3  THE LIVING WARD","4  THE BLOOD MOON PLAIN","5  THE COLD STORE","COMBAT PRACTICE","COMBAT REMIX"};
+        const char* descriptions[]={"NEW RUN / WAKE ON THE REJECT LINE.","NEW RUN / CROSS THE ASH WASTELAND.","NEW RUN / DESCEND INTO THE LABORATORY.","NEW RUN / THE GLEANER AND ITS BROOD.","NEW RUN / THE ICE SHELF, THE STORE AND WHAT KEEPS IT.","REPEATABLE LESSONS / SELECT ENEMIES / TRY YOUR UPGRADES","SURGICAL OBSERVATION / ALL TOOLS / NO SAVES OR RECORDS"};
         for(int i=0;i<storyRows();++i) {
             float x=screenW/2-360.f,y=storyRowY(i),h=storyRowH();
             ui.rect(x,y,720,h,i==storySel?glm::vec4{.1f,.17f,.2f,.95f}:glm::vec4{.06f,.07f,.09f,.9f});
