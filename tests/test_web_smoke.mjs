@@ -40,27 +40,38 @@ try {
     await page.mouse.click(640, 360); // real user gesture, on the overlay or the running canvas
     await page.locator('#overlay').waitFor({ state: 'detached' });
   }
+  async function capture(name) {
+    // Stop producing frames while Chromium drains software WebGL commands
+    // for the screenshot. Input and simulation run normally between captures;
+    // a continuous stream of draws can starve capture on a two-core runner.
+    await page.evaluate(() => Module.pauseMainLoop());
+    try {
+      await page.screenshot({ path: path.join(output, name) });
+    } finally {
+      await page.evaluate(() => Module.resumeMainLoop());
+    }
+  }
   await page.goto(url, { waitUntil: 'domcontentloaded' });
   await enterGame();
   await page.keyboard.press('F3');
   await page.waitForTimeout(600);
-  await page.screenshot({ path: path.join(output, 'f3-guide.png') });
+  await capture('f3-guide.png');
   // Select each lesson through actual keyboard input. Opening and closing the
   // guide repeatedly also exercises pointer-lock/pause restoration in WebAssembly.
   for (let lesson = 0; lesson < 20; ++lesson) {
     await page.keyboard.press('Enter');
     await page.waitForTimeout(450);
     if ([7, 8, 11, 13, 19].includes(lesson))
-      await page.screenshot({ path: path.join(output, `lesson-${lesson}.png`) });
+      await capture(`lesson-${lesson}.png`);
     await page.keyboard.press('F4');
     await page.waitForTimeout(70);
     if (lesson < 19) await page.keyboard.press('ArrowDown');
   }
   await page.keyboard.press('Home');
   await page.keyboard.press('PageDown');
-  await page.screenshot({ path: path.join(output, 'guide-page-2.png') });
+  await capture('guide-page-2.png');
   await page.keyboard.press('PageDown');
-  await page.screenshot({ path: path.join(output, 'guide-page-3.png') });
+  await capture('guide-page-3.png');
   console.log('Training guide and twenty lesson input paths exercised.');
   // The moving-platform chapter exercises the new material shader in WebGL,
   // alongside live waves, rather than only the training room's static walls.
@@ -71,7 +82,7 @@ try {
   await enterGame();
   await page.keyboard.press('Tab'); // later-arena starts open the upgrade armory
   await page.waitForTimeout(6500);
-  await page.screenshot({ path: path.join(output, 'reliquary.png') });
+  await capture('reliquary.png');
   console.log('Reliquary rendered.');
   for (const [name, params] of [
     ['challenge', { challenge: 'OD1-12345-2' }],
@@ -106,7 +117,7 @@ try {
       await page.keyboard.up('w');
     }
     await page.waitForTimeout(3500);
-    await page.screenshot({ path: path.join(output, `${name}.png`) });
+    await capture(`${name}.png`);
     console.log(`${name} rendered.`);
     if (name === 'phase-practice') {
       await page.keyboard.press('Backspace');
@@ -114,7 +125,7 @@ try {
     }
     if (name === 'challenge') {
       await page.keyboard.press('Escape');
-      await page.screenshot({ path: path.join(output, 'challenge-code.png') });
+      await capture('challenge-code.png');
     }
   }
   if (errors.length) throw new Error(errors.join('\n'));
