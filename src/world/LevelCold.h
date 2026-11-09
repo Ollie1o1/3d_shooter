@@ -183,6 +183,8 @@ constexpr int DRUMS = 4;   // one weapon in each (phase 3, FACTORY RESET)
 inline glm::vec3 drum(int k) { float a = 0.785f + k * 1.5708f; return vaultC() + glm::vec3{std::cos(a) * (VAULT_R - 3.f), 0.f, std::sin(a) * (VAULT_R - 3.f)}; }
 }
 
+#include "world/ColdCombat.h"
+
 inline LevelData buildCold() {
     using glm::vec3;
     LevelData l; LevelBuilder b{l}; auto& s = l.story;
@@ -912,13 +914,17 @@ inline LevelData buildCold() {
         }
         b.kit().box({cold::HOOK_X, -6.f, (ZB + bz0) * 0.5f}, {0.8f, 12.f, ZB - bz0}, steel);
         // The decks: cooling towers' tops, round, a hyperboloid falling away under each into the Void.
-        // (Collision: a cross of boxes inside the round top.)
+        // Fine floor strips follow the round lip. The old three-box cross
+        // left unsupported corners inside the visible deck once the
+        // invisible floor between towers was removed.
         for (int k = 0; k < 3; ++k) {
             const auto d = cold::chiller(k);
-            const float r = d.r, s = r * 0.7071f, w = r * 0.42f;
-            b.wall(d.c.x - s, -0.6f, d.c.z - s, d.c.x + s, 0.f, d.c.z + s, floorSteel);
-            b.wall(d.c.x - r + 0.5f, -0.6f, d.c.z - w, d.c.x + r - 0.5f, 0.f, d.c.z + w, floorSteel);
-            b.wall(d.c.x - w, -0.6f, d.c.z - r + 0.5f, d.c.x + w, 0.f, d.c.z + r - 0.5f, floorSteel);
+            const float r = d.r;
+            for(float z=-r;z<r-.01f;z+=.5f) {
+                const float z1=std::min(z+.5f,r),edge=std::max(std::fabs(z),std::fabs(z1));
+                const float half=std::sqrt((r+.5f)*(r+.5f)-edge*edge);
+                b.wall(d.c.x-half,-.6f,d.c.z+z,d.c.x+half,0,d.c.z+z1,floorSteel);
+            }
             b.kit().column(d.c + vec3{0.f, -0.7f, 0.f}, r, 0.7f, floorSteel, 24);
             b.kit().column(d.c + vec3{0.f, -0.2f, 0.f}, r + 0.6f, 0.9f, steelFrost * 0.5f, 24, 1.f).caps = false;   // its lip
             b.kit().column(d.c + vec3{0.f, -160.f, 0.f}, r * 1.5f, 159.f, steel * 0.6f, 24, 0.66f).caps = false;   // the tower falling away
@@ -954,6 +960,7 @@ inline LevelData buildCold() {
             // a silhouette against the sky, visible before its fight begins.
             for(float dz:{-1.8f,1.8f})b.kit().rod(p+vec3{-4.1f,4.8f,dz},p+vec3{-4.1f,4.8f,dz+2.3f},.23f,steelFrost,12);
             stencil("SERVICE DECK",p+vec3{-3.4f,2.1f,2.62f},{1,0,0},.07f,rime);
+            coldcombat::chillerDeck(b,k);
         }
         // Catwalks between the decks (A-B, B-C) and the exit east toward the sea
         auto catwalk = [&](vec3 a, vec3 c, float half) {
@@ -981,8 +988,8 @@ inline LevelData buildCold() {
             stencil("BLAST CHILLERS", {sx, 6.6f, sz - 4.9f}, {0.f, 0.f, 1.f}, 0.12f, paint);
         }
     }
-    // Their floor for the enemies (ahead of the Void's): the decks and the catwalks between them
-    l.basins.insert(l.basins.begin(), {LevelBuilder::aabb(cold::chiller(0).c.x - 22.f, 0.f, -890.f, cold::chiller(2).c.x + 22.f, 0.f, -806.f), 0.f});
+    // The visible slabs and catwalks supply support. A rectangle at Y=0 here
+    // used to turn every gap between the cooling towers into invisible floor.
 
     // ---- 7. THE FROZEN SEA: clear ice, and what is stored under it ----
     {
@@ -1190,7 +1197,7 @@ inline LevelData buildCold() {
         for (const auto& [x, z, alongX] : {std::tuple<float, float, bool>{14.f, 11.f, true}, {-6.f, 11.f, true}, {22.f, 3.f, false}}) {
             const vec3 c = st + vec3{x, 0.f, z};
             const vec3 h = alongX ? vec3{2.f, 0.5f, 0.4f} : vec3{0.4f, 0.5f, 2.f};
-            b.wall(c.x - h.x, 0.f, c.z - h.z, c.x + h.x, 1.f, c.z + h.z, vec3{0.55f, 0.57f, 0.6f});
+            b.wall(c.x - h.x, 0.f, c.z - h.z, c.x + h.x, 1.6f, c.z + h.z, vec3{0.55f, 0.57f, 0.6f});
             b.kit().box(c + vec3{0.f, 0.55f, 0.f}, h * 2.f + vec3{0.04f, 0.f, 0.04f}, vec3{0.75f, 0.55f, 0.15f} * 0.5f);   // hazard band
         }
         // The signal gantry: two towers and a walkway across the yard's south side (grapple up; stand on it)
@@ -1214,6 +1221,7 @@ inline LevelData buildCold() {
             b.kit(true).box(m + vec3{0.f, 12.f, 0.f}, {1.2f, 0.25f, 1.2f}, amber * 1.2f);
             b.kit(true).box(glm::mix(m, st, 0.25f) + vec3{0.f, 0.05f, 0.f}, {9.f, 0.01f, 9.f}, amber * 0.035f);
         }
+        coldcombat::dispatchYard(b);
     }
 
     // ---- 9. THE MANIFEST: a causeway from the station, out over the sinkhole, to the Vault ----
@@ -1302,6 +1310,7 @@ inline LevelData buildCold() {
                               LevelBuilder::aabb(vc.x - VR * 0.5f, 0.f, vc.z - VR * 0.86f, vc.x + VR * 0.5f, 0.f, vc.z + VR * 0.86f)})
             l.basins.insert(l.basins.begin(), {r, 0.f});
         // The fight's own walls, parked out of the way until it places them: 8 statues, 3 racks
+        coldcombat::vault(b);
         l.story.coldPool = (int)l.walls.size(); l.story.coldPoolCount = 11;
         for (int k = 0; k < 11; ++k) {
             Wall w{AABB{vc + vec3{-0.1f, -600.f, -0.1f}, vc + vec3{0.1f, -599.f, 0.1f}}, steel, true};
@@ -1370,7 +1379,7 @@ inline LevelData buildCold() {
     const float gateX = cold::chiller(2).c.x + cold::chiller(2).r;
     const int chillGate = b.doorway(false, cold::BRIDGE_Z0, cold::BRIDGE_Z1, gateX - 1.f, gateX - 0.4f, 0.f, 4.f, amber * 0.6f);
     Arena chill = section("THE BLAST CHILLERS", "MIND THE VENTS", LevelBuilder::aabb(cold::chiller(0).c.x - 22.f, -1000.f, -890.f, gateX - 0.4f, 60.f, -806.f),
-                          {cold::chiller(0).c.x - 18.f, 0.f, (cold::BRIDGE_Z0 + cold::BRIDGE_Z1) * 0.5f}, 0.f);
+                          {cold::chiller(0).c.x - 18.f, 0.f, (cold::BRIDGE_Z0 + cold::BRIDGE_Z1) * 0.5f + 6.f}, 0.f);
     chill.extraZones.push_back(LevelBuilder::aabb(cold::DOOR_X0, -1000.f, cold::BRIDGE_Z0, cold::chiller(0).c.x - 20.f, 60.f, ZB + 1.f));   // the transfer bridge (overlapping Rack 24's zone through the door)
     chill.hasRespawn = true; chill.respawn = chill.playerStart;
     chill.hasTrigger = true; chill.trigger = LevelBuilder::aabb(cold::chiller(0).c.x - 12.f, -2.f, -890.f, gateX, 8.f, -806.f);
@@ -1378,7 +1387,7 @@ inline LevelData buildCold() {
     {
         auto on = [&](int k, float a, float r) { auto d = cold::chiller(k); return d.c + glm::vec3{std::cos(a) * r, 0.f, std::sin(a) * r}; };
         const vec3 up{0.f, 4.6f, 0.f}, upC{0.f, 3.4f, 0.f};
-        chill.waves = {{W(EnemyType::THAWLING, 0, {on(1, 0.3f, 12.f), on(1, 2.4f, 12.f), on(2, 1.f, 14.f), on(2, 4.6f, 13.f)}), W(EnemyType::PICKER, 0, {on(1, 1.5f, 6.f) + up})},
+        chill.waves = {{W(EnemyType::THAWLING, 0, {on(1, 0.3f, 12.f), on(1, 2.4f, 12.f), on(2, 1.22f, 15.f), on(2, 4.6f, 13.f)}), W(EnemyType::PICKER, 0, {on(1, 1.5f, 6.f) + up})},
                        {W(EnemyType::THAWLING, 0, {on(0, 1.2f, 14.f), on(2, 2.2f, 14.f), on(1, 4.5f, 12.f), on(2, 5.3f, 12.f)}), W(EnemyType::CLERK, 0, {on(2, 0.f, 18.f) + upC}),
                         W(EnemyType::PICKER, 0, {on(0, 3.f, 8.f) + up})},
                        {W(EnemyType::THAWLING, 0, {on(0, 0.5f, 13.f), on(1, 1.6f, 13.f), on(1, 4.f, 16.f), on(2, 0.6f, 12.f), on(2, 2.8f, 16.f)}),

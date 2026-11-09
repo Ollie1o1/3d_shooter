@@ -158,15 +158,6 @@ struct FloorPatch { float x0, z0, x1, z1, y; glm::vec3 color; Mat mat = Mat::BRI
 // Ground that isn't at Y 0: inside `xz` (its X and Z only) the hard floor is
 // at `y`. Act II sits in one, 60 m under Act I.
 struct Basin { AABB xz; float y; };
-// Walkable ground slope, authored with a matching visible ramp. No underpass:
-// like a Basin, its footprint supplies the ground height to Player and enemies.
-struct GroundRamp {
-    AABB xz; int axis=0; float from=0,to=0;
-    float at(float x,float z) const {
-        float p=axis==0?x:z;
-        return glm::mix(from,to,glm::clamp((p-xz.min[axis])/(xz.max[axis]-xz.min[axis]),0.f,1.f));
-    }
-};
 
 // Standing water: over `box` (X and Z; box.min.y is the floor it fills from)
 // the surface is at `level`. ArenaShifts raises it (FLOOD).

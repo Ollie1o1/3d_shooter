@@ -84,6 +84,94 @@ int main() {
         CHECK(service,"every Blast Chiller service deck can be climbed, crossed and left without jumping");
     }
     // ---- the lip ----
+    {
+        bool loop=true,lowerLane=true,recovery=true;
+        for(int k=0;k<3;++k) {
+            const auto c=cold::chiller(k).c;
+            Walk w(L,c+glm::vec3{0,0,14});
+            loop&=w.to(c+glm::vec3{0,3.2f,2},false,1800,.25f)
+                && w.to(c+glm::vec3{0,3.2f,-.6f},false,1800,.25f)
+                && w.to(c+glm::vec3{11,3.2f,-.6f},false,1800,.25f)
+                && w.to(c+glm::vec3{-14,3.2f,-.6f},false,1800,.25f);
+            for(int f=0;f<30;++f)w.step(w.p.position,false,true);
+            loop&=w.p.onGround && std::fabs(w.p.position.y-3.2f)<.1f;
+            loop&=w.to(c+glm::vec3{11,3.2f,-.6f},false,1800,.25f)
+                && w.to(c+glm::vec3{0,3.2f,-.6f},false,1800,.25f)
+                && w.to(c+glm::vec3{0,3.2f,2},false,1800,.25f)
+                && w.to(c+glm::vec3{0,0,14},false,1800,.25f);
+            Walk ground(L,c+glm::vec3{-5,0,0});
+            lowerLane&=ground.to(c+glm::vec3{18,0,0},false,1800,.25f) && ground.p.position.y<.1f;
+            recovery&=coldcombat::chillerRecovery(L,c+glm::vec3{-3,0,4.5f},.4f,1.8f)
+                && !coldcombat::chillerRecovery(L,cold::vent(k*2),.4f,1.8f)
+                && !coldcombat::chillerRecovery(L,c+glm::vec3{21,0,10},.4f,1.8f);
+        }
+        CHECK(loop,"new Chiller ramps and upper bridges form a reversible walking loop on all three decks");
+        CHECK(lowerLane,"the Chiller cross-deck lane stays open underneath the service roofs");
+        CHECK(recovery,"Chiller fall recovery accepts safe deck floor and rejects vents and edges");
+        bool rim=true;
+        for(int k=0;k<3;++k)for(int n=0;n<48;++n) {
+            const auto d=cold::chiller(k);const float a=n*6.2831853f/48;
+            const auto p=d.c+glm::vec3{std::cos(a)*(d.r-.8f),0,std::sin(a)*(d.r-.8f)};
+            rim&=std::fabs(L.groundAt(p.x,p.z,.1f))<.1f;
+        }
+        CHECK(rim,"the full visible round deck is supported, including its diagonal corners");
+        Walk gap(L,{150,0,-830});
+        for(int f=0;f<360;++f)gap.step(gap.p.position,false,true);
+        CHECK(gap.p.position.y<L.arenas[5].voidY,"the visible gap between Chillers is a real fall, without an invisible floor");
+    }
+    {
+        const auto c=cold::station();Walk w(L,c+glm::vec3{-23.5f,0,-15});
+        bool balcony=w.to(c+glm::vec3{-23.5f,3.2f,-5},false,1800,.25f)
+            && w.to(c+glm::vec3{-23.5f,3.2f,6},false,1800,.25f);
+        for(int f=0;f<30;++f)w.step(w.p.position,false,true);
+        balcony&=w.p.onGround && std::fabs(w.p.position.y-3.2f)<.1f;
+        balcony&=w.to(c+glm::vec3{-23.5f,0,15.5f},false,1800,.25f)
+            && w.to(c+glm::vec3{-23.5f,3.2f,6},false,1800,.25f)
+            && w.to(c+glm::vec3{-23.5f,0,-15},false,1800,.25f);
+        CHECK(balcony,"Dispatch 2's loading balcony can be walked up, crossed and left from either end");
+        Walk ramp(L,c+glm::vec3{0,0,15.5f});
+        bool platform=ramp.to(c+glm::vec3{0,.6f,8},false,1800,.25f);
+        for(int f=0;f<30;++f)ramp.step(ramp.p.position,false,true);
+        CHECK(platform&&ramp.p.onGround&&std::fabs(ramp.p.position.y-.6f)<.1f,"the central loading ramp climbs the station platform without jumping");
+    }
+    {
+        const auto c=cold::vaultC();glm::vec3 landing;AABB top;
+        CHECK(coldcombat::vaultLanding(L,c+glm::vec3{24,0,0},.4f,1.8f,landing)
+            && spawnClearance(L,landing,.4f,1.8f,true)
+            && glm::length(landing-(c+glm::vec3{24,0,0}))<6.1f,
+            "a rollback into new Vault cover resolves to nearby supported, clear floor");
+        const auto cover=coldcombat::vaultLowCover()[1];
+        CHECK(coldcombat::freezeTop(c+glm::vec3{25,0,0},cover,top)
+            && top.min.y>cover.max.y && top.min.x>=cover.min.x && top.max.x<=cover.max.x
+            && !coldcombat::freezeTop(c,cover,top),"freeze warnings clip to the dangerous part of a cover top");
+        bool drums=true,points=true;
+        for(int k=0;k<4;++k)drums&=spawnClearance(L,cold::drum(k)+glm::vec3{0,1.4f,0},.4f,1.8f,true);
+        for(int k=0;k<3;++k){const float a=.5f+k*2.0944f;points&=spawnClearance(L,c+glm::vec3{std::cos(a)*18,0,std::sin(a)*18},1,4,true);}
+        CHECK(drums&&points,"Vault cover leaves every storage drum and restore point accessible");
+    }
+    {
+        SpatialGrid grid;grid.build(L.walls);EnemyWorld world;
+        world.walls=L.walls.data();world.wallCount=(int)L.walls.size();world.grid=&grid;
+        world.bounds=L.arenas[5].bounds;world.voidUnder=true;
+        world.ramps=L.ramps.data();world.rampCount=(int)L.ramps.size();
+        bool pursuit=true,supported=true;
+        for(int from=0;from<3;++from)for(int to=0;to<3;++to)if(from!=to) {
+            Enemy e(EnemyType::THAWLING,cold::chiller(from).c);e.spawnTimer=0;e.state=EnemyState::ACTIVE;
+            world.playerFeet=cold::chiller(to).c;world.playerEye=world.playerFeet+glm::vec3{0,1.7f,0};
+            bool reached=false;
+            for(int f=0;f<60*70;++f) {
+                e.floorY=L.enemyFloor(5,e.position,false,L.groundAt(e.position.x,e.position.z,e.position.y+.5f));
+                world.hasMoveVia=coldcombat::chillerRoute(e.position,world.playerFeet,world.moveVia);
+                e.update(DT,world);supported&=e.position.y>-.3f;
+                if(glm::length(glm::vec2{e.position.x-world.playerFeet.x,e.position.z-world.playerFeet.z})<4){reached=true;break;}
+            }
+            if(!reached)std::printf("  pursuit %d -> %d stopped at %.1f %.1f %.1f\n",from,to,e.position.x,e.position.y,e.position.z);
+            pursuit&=reached;
+        }
+        CHECK(supported,"Chiller ground enemies stay on visible deck and catwalk support");
+        CHECK(pursuit,"Thawlings can pursue between every pair of Chiller decks");
+    }
+    // ---- the lip ----
     bool lip = true, zoneOver = true, ragged = false;
     float lo = 1e9f, hi = -1e9f;
     for (float x = -cold::HALF_X + 1.5f; x < std::min(cold::HALF_X, cold::SEA_X0 - 1.f); x += 7.f) {   // (off the strips' boundary lines, where either side may answer)

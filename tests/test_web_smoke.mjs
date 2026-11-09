@@ -78,11 +78,23 @@ try {
     ['phase-practice', { boss: '2', phase: '2' }],
     ['boss-rush', { bossrush: '' }],
     ['motor-assessment', { story3: '', arena: '3', god: '' }],
+    ['blast-chillers', { story5: '', arena: '6', god: '' }],
+    ['dispatch-2', { story5: '', arena: '8', god: '' }],
+    ['vault', { story5: '', arena: '10', god: '' }],
   ]) {
     const target = new URL(url); target.search = new URLSearchParams(params).toString();
     await page.goto(target.href, { waitUntil: 'domcontentloaded' });
     await enterGame();
-    if (name !== 'challenge') await page.keyboard.press('Tab');
+    if (['phase-practice', 'boss-rush'].includes(name)) await page.keyboard.press('Tab');
+    if (['blast-chillers', 'dispatch-2', 'vault'].includes(name)) {
+      // Story checkpoint starts enter gameplay directly. Enter also resumes
+      // an initial browser pointer-lock pause without opening an armory.
+      await page.keyboard.press('Enter');
+      await page.waitForFunction(() => document.pointerLockElement === document.querySelector('#canvas'));
+      await page.keyboard.down('w');
+      await page.waitForTimeout(1500);
+      await page.keyboard.up('w');
+    }
     await page.waitForTimeout(3500);
     await page.screenshot({ path: path.join(output, `${name}.png`) });
     console.log(`${name} rendered.`);
@@ -96,7 +108,7 @@ try {
     }
   }
   if (errors.length) throw new Error(errors.join('\n'));
-  console.log('WebAssembly boots; all twenty lessons, guide paging, Reliquary, seeded challenges, phase practice, boss rush and Motor Assessment render without browser errors.');
+  console.log('WebAssembly boots; all twenty lessons, guide paging, Reliquary, seeded challenges, phase practice, boss rush, Motor Assessment and three Cold Store combat spaces render without browser errors.');
 } finally {
   await browser.close();
 }

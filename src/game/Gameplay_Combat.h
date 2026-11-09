@@ -251,9 +251,11 @@ inline void GameplayState::updateEnemies(float dt) {
     w.tune       = &tune();
     w.dynWalls   = level.moverWalls.data();   // the Descent's cage: walkers step onto it
     w.dynCount   = (int)level.moverWalls.size();
+    w.ramps=level.ramps.data();w.rampCount=(int)level.ramps.size();
     w.reactor    = level.reactorPos;              // the Warden feeds here
     w.hasReactor = level.hasReactor;
-    w.voidUnder  = ar.shift == ArenaShift::DRIFT || (laboratory()&&(director.arena==5||director.arena==7||director.arena==8||director.arena==9));   // only real floor supports the open wards
+    w.voidUnder  = ar.shift == ArenaShift::DRIFT || (cold()&&director.arena==5) ||
+        (laboratory()&&(director.arena==5||director.arena==7||director.arena==8||director.arena==9));   // walkers keep to the actual decks over the Void
     w.hasLair    = level.hasLair;                   // the Maw: where the Leviathan lives and breaches
     w.lair       = level.lair; w.lairFloor = level.lairFloor;
     w.wells      = level.wells.data(); w.wellCount = (int)level.wells.size();
@@ -318,6 +320,8 @@ inline void GameplayState::updateEnemies(float dt) {
         bool beamLocked=e.labLocked;
         const bool lured = recallLures(e);   // RECALL's statue, fresh: it goes for that instead of you
         if (lured) { w.playerFeet = recall.feet; w.playerEye = recall.feet + glm::vec3{0.f, 1.7f, 0.f}; w.playerVel = glm::vec3{0.f}; }
+        w.hasMoveVia=cold()&&director.arena==5&&e.type==EnemyType::THAWLING &&
+            coldcombat::chillerRoute(e.position,w.playerFeet,w.moveVia);
         e.update(dt, w);
         if (lured) { w.playerFeet = player.position; w.playerEye = player.camera.position; w.playerVel = player.velocity; }
         if(e.type==EnemyType::SUSPENDED && !beamLocked && e.labLocked)

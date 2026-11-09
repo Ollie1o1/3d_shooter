@@ -65,6 +65,7 @@ inline void GameplayState::restorerEvents(Enemy& e, const EnemyEvents& ev) {
         case AttackKind::RS_ROLLBACK: {   // where you were, four seconds ago
             int back = std::min(rsTrailN - 1, (int)(rsfight::ROLLBACK_SECONDS * rsfight::TRAIL_HZ));
             rsRollbackAt = back >= 0 ? rsTrail[(rsTrailHead - back + rsfight::TRAIL) % rsfight::TRAIL] : player.position;
+            coldcombat::vaultLanding(level,rsRollbackAt,player.radius,player.height,rsRollbackAt);
             rsRollbackT = e.telegraphDuration;
             ui.feed("ROLLBACK - KEEP WHERE YOU WERE SAFE, OR RECALL", abGoldTell(glm::vec3{1.f, 0.8f, 0.3f}));
             break;
@@ -106,13 +107,22 @@ inline void GameplayState::restorerEvents(Enemy& e, const EnemyEvents& ev) {
     }
     if (ev.rsCast == AttackKind::NONE) return;
     switch (ev.rsCast) {
-    case AttackKind::RS_ROLLBACK:
+    case AttackKind::RS_ROLLBACK: {
         rsRollbackT = -1.f;
         if (gameClock - recallPressedAt < 0.8f) {   // you put yourself somewhere first
             ui.feed("ROLLBACK OVERRIDDEN", RECALL_FROST);
             styleSystem.addStyle(40.f);
             break;
         }
+        // Racks and snapshots can have appeared since the ghost was shown.
+        // Keep the landing near that cue, with a clear, supported body.
+        glm::vec3 landing;
+        if (!coldcombat::vaultLanding(level,rsRollbackAt,player.radius,player.height,landing) &&
+            !coldcombat::vaultLanding(level,player.position,player.radius,player.height,landing)) {
+            ui.feed("ROLLBACK BLOCKED", RECALL_FROST);
+            break;
+        }
+        rsRollbackAt=landing;
         fx.spawnBurst(player.camera.position, {0.3f, 0.9f, 1.f}, 20, 4.f, 0.4f, -1.f);
         grapple.release();
         player.position = rsRollbackAt; player.velocity = glm::vec3{0.f};
@@ -122,6 +132,7 @@ inline void GameplayState::restorerEvents(Enemy& e, const EnemyEvents& ev) {
         ui.feed("ROLLED BACK", {0.3f, 0.9f, 1.f});
         e.rsAim = rsRollbackAt; e.rsAimSet = true;   // and it is ready for you there
         break;
+    }
     case AttackKind::RS_SNAPSHOT: {
         rsSnapT = -1.f;
         explosionFlashTimer = 0.15f; explosionFlashPos = e.position + glm::vec3{0.f, 7.f, 1.f};
@@ -541,6 +552,17 @@ inline void GameplayState::gatherRestorerFight(std::vector<BoxInstance>& out) {
             push(out, T(c + vec3{-h, 0.05f, 0.f}) * S(vec3{0.12f, 0.05f, 2.f * h}), col * 0.3f, col);
             push(out, T(c + vec3{h, 0.05f, 0.f}) * S(vec3{0.12f, 0.05f, 2.f * h}), col * 0.3f, col);
             push(out, T(c + vec3{0.f, 0.03f, 0.f}) * S(vec3{2.f * h, 0.02f, 2.f * h}), vec3{0.8f, 0.9f, 1.f} * (1.f - rsFreezeT));
+            auto onCover=[&](const AABB& cover) {
+                AABB top;if(!coldcombat::freezeTop(c,cover,top))return;
+                const vec3 p=(top.min+top.max)*.5f,s=top.max-top.min;
+                push(out,T(p)*S(s),col*.2f,col*.35f);
+                for(float side:{-1.f,1.f}) {
+                    push(out,T(p+vec3{0,.01f,side*(s.z*.5f-.025f)})*S(vec3{s.x,.05f,.05f}),col*.3f,col);
+                    push(out,T(p+vec3{side*(s.x*.5f-.025f),.01f,0})*S(vec3{.05f,.05f,s.z}),col*.3f,col);
+                }
+            };
+            for(const auto& cover:coldcombat::vaultLowCover())onCover(cover);
+            for(const auto& statue:rsStatues)onCover({statue.at+vec3{-.45f,0,-.45f},statue.at+vec3{.45f,1.85f,.45f}});
         } else if (rsSpikeT > 0.f) {   // the spikes
             for (int k = 0; k < 4; ++k) {
                 vec3 o{(k % 2 ? 1.f : -1.f) * 1.1f, 0.f, (k < 2 ? 1.f : -1.f) * 1.1f};

@@ -253,6 +253,10 @@ inline void GameplayState::updateCold(float dt) {
         coldLedge = {cold::HOOK_X, 0.f, p.z};
         level.arenas[0].respawn = level.arenas[1].respawn = coldLedge;
     }
+    // A missed catwalk returns you to safe ground on the deck you reached.
+    // Vent footprints, narrow edges and unsupported positions never qualify.
+    if(at==5 && player.onGround && !playerDead &&
+        coldcombat::chillerRecovery(level,p,player.radius,player.height))level.arenas[5].respawn=p;
     updateColdVents(dt);
     updateThawHeat(dt);
     updateColdSea(dt);

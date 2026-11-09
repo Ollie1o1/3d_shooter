@@ -15,6 +15,15 @@ struct AABB {
     glm::vec3 min, max; // min = bottom-left-front, max = top-right-back
 };
 
+// A solid ground slope with an authored matching visual mesh.
+struct GroundRamp {
+    AABB xz; int axis=0; float from=0,to=0;
+    float at(float x,float z) const {
+        float p=axis==0?x:z;
+        return glm::mix(from,to,glm::clamp((p-xz.min[axis])/(xz.max[axis]-xz.min[axis]),0.f,1.f));
+    }
+};
+
 struct SweepHit { float time = 1.f; glm::vec3 normal{0.f}; };
 
 // A finite segment, with an explicit parallel-axis test (no reciprocal bias).

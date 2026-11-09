@@ -492,6 +492,52 @@ unclear. What changed:
   then "IT CANNOT FOLLOW YOU UP" with how to use that, and the objective line
   says "GET ABOVE IT". `--overlay k24` starts you in the yard, looking at it.
 
+### Combat-space pass (2026-11-08)
+
+The Blast Chillers now have two service roofs linked by an upper bridge,
+with a central ramp and the original west approach forming a walking loop.
+The floor lane beneath stays open. Broader compressor banks and a low south
+screen break up exposed crossings; amber machinery strips distinguish these
+routes from red vent warnings. Vent footprints, cycle timings and enemy counts
+are unchanged. One Thawling spawn moved off the enlarged compressor.
+
+An invisible basin used to support the entire rectangle between towers.
+It is gone: the gaps are the Void, and fine collision strips support the
+whole visible round deck, including the corners missed by its old three-box
+cross. Fall recovery follows safe grounded positions on the deck you reached,
+excluding vent footprints and narrow edges. Thawlings follow the shared
+catwalk junction when pursuing across decks. Their attack target stays the
+real player or Recall lure. Ledge checks recognize slopes and probe their
+prospective landing height.
+
+DISPATCH 2 adds two cargo islands, taller firing barriers, a west loading
+balcony with ramps at both ends, and an ordinary ramp onto the station's
+60 cm platform. The canopy and signal gantry remain higher grapple routes.
+The duel still occupies its existing 52 × 34 m yard.
+
+Three low cryo screens give the Vault's rim cover, with suspended canisters
+outside the playable deck. The central shelving field, restore points, storage
+drums and north exit remain open. FLASH FREEZE warnings also mark affected
+cover tops, including snapshot statues; low cover does not prevent freeze
+damage. ROLLBACK resolves a blocked destination to nearby supported ground
+and checks again when it lands, after any new racks or statues. It preserves
+the player's view and the last-moment Recall override. Retries retain authored
+cover while clearing the boss's mutable collision.
+
+Validation: `make test` covers the full headless suite; `make test-cold` adds
+both directions of the new walking routes, round-rim support, real gap falls,
+vent-safe recovery, all six directed deck pursuits, authored spawn clearance,
+and drum/restore-point access. `make test-cold-runtime` exercises the actual
+gameplay methods and OpenGL rendering: falls, two-catwalk pursuit, 24-K moving
+and attacking among cover, changing rollback destinations, Recall overrides,
+freeze damage on cover and retries. `tests/test_web_smoke.mjs` now boots all
+three revised spaces in Chromium through `?story5&arena=6/8/10`.
+
+This pass uses the existing material, ambient and live neon lighting. Chapter
+5 still has no baked light volume. The original enemy health, weapon damage
+and boss phase thresholds are retained; further balance changes should follow
+human playtesting of these layouts.
+
 ## 11. Build order
 
 1. **RECALL** (testable anywhere with a dev flag).

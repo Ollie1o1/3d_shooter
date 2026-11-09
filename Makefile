@@ -285,6 +285,12 @@ test-cold: tests/test_cold.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) tests/test_cold.cpp -o build/test_cold $(STDLIB)
 	./build/test_cold
 
+.PHONY: test-cold-runtime
+test-cold-runtime: tests/test_cold_runtime.cpp src/main.cpp $(HEADERS)
+	mkdir -p build/cold-pass
+	$(CXX) $(CXXFLAGS) tests/test_cold_runtime.cpp -o build/test_cold_runtime $(LDFLAGS)
+	./build/test_cold_runtime
+
 # Chapter 4: THE BLOOD MOON PLAIN (tests/test_plain.cpp)
 .PHONY: test-plain
 test-plain: tests/test_plain.cpp $(HEADERS)

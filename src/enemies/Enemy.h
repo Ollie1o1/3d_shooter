@@ -121,6 +121,8 @@ struct EnemyWorld {
     glm::vec3 reactor{0.f};       // the WARDEN's power: where it goes to feed (the Core's reactor)
     bool hasReactor = false;
     bool voidUnder = false;       // the floor under the arena is a void (the Reliquary): only real ground holds you up
+    const GroundRamp* ramps = nullptr; int rampCount = 0;
+    bool hasMoveVia = false; glm::vec3 moveVia{0.f}; // movement junction; attacks still target the real player
     // THE LEVIATHAN's lair (the Maw): the pool's centre at its surface, the
     // ring floor's height, the wells it breaches from
     bool hasLair = false;
@@ -799,6 +801,11 @@ private:
     bool supportedAt(glm::vec3 p, const EnemyWorld& w) const {
         if (!w.walls) return true;
         if (p.y < floorY + 0.3f && !w.voidUnder) return true;   // the floor under it (Y 0, or a basin's); over a void, only real ground counts
+        for(int k=0;k<w.rampCount;++k) {
+            const auto& r=w.ramps[k];
+            if(p.x>=r.xz.min.x&&p.x<=r.xz.max.x&&p.z>=r.xz.min.z&&p.z<=r.xz.max.z &&
+                std::fabs(p.y-r.at(p.x,p.z))<1.4f)return true;
+        }
         AABB q{p + glm::vec3{-0.05f, -1.4f, -0.05f}, p + glm::vec3{0.05f, 0.6f, 0.05f}};
         static std::vector<int> cands;
         if (w.grid) w.grid->query(q, cands);
@@ -817,6 +824,16 @@ private:
     }
 
     bool canStepTo(glm::vec3 p, const EnemyWorld& w) const {
+        // Probe a ramp at its prospective foot height. Looking ahead at the
+        // current height mistakes its upper landing for a wall.
+        for(int k=0;k<w.rampCount;++k) {
+            const auto& r=w.ramps[k];
+            if(p.x>=r.xz.min.x&&p.x<=r.xz.max.x&&p.z>=r.xz.min.z&&p.z<=r.xz.max.z) {
+                float y=r.at(p.x,p.z);
+                if(y>=p.y && y-p.y<.65f)p.y=y;
+                break;
+            }
+        }
         if (blockedAt(p, w)) return false;
         if (w.voidUnder) return stats().flying || supportedAt(p, w);   // over a void every walker keeps to real ground
         return !(ledgeAware() && position.y > floorY + 0.3f && !supportedAt(p, w));
@@ -843,6 +860,7 @@ private:
     }
 
     void setMove(glm::vec3 dir, float speed, const EnemyWorld& w) {
+        if(w.hasMoveVia&&!stats().flying)dir=flatTo(w.moveVia);
         glm::vec3 want = norm2(dir);
         glm::vec3 toP = flatTo(w.playerFeet);
         float distP = glm::length(toP);
