@@ -172,6 +172,28 @@ inline void combatStations(LevelBuilder& b,int room,glm::vec3 c) {
         }
     } else if(room==3) {
         station({-19,0,6},"SURGICAL / PREPARATION");station({8,0,-16},"STERILE / INSTRUMENTS");
+        station({17,0,6},"SURGICAL / RECOVERY");
+        // A low theatre circuit offers a second crossing beneath the lamps.
+        // Both ends have ramps; the galleries and east floor lane stay open.
+        for(float x:{-19.f,17.f}) {
+            auto ramp=LevelBuilder::aabb(x-3,c.y,c.z+8.5f,x+3,c.y+2.4f,c.z+20.5f);
+            b.L.ramps.push_back({ramp,2,c.y+2.4f,c.y});
+            b.kit().box(c+vec3{x,1.05f,14.5f},{std::hypot(12.f,2.4f),.3f,6},frame,-1.5707963f,0,-.19739556f);
+            glow(c+vec3{x-3,2.42f,8.5f},c+vec3{x+3,2.48f,8.62f},{.65f,.4f,.12f});
+        }
+        box(c+vec3{-15.5f,2.1f,5},c+vec3{13.5f,2.4f,7},frame);
+        for(float dz:{5.f,6.9f})glow(c+vec3{-15.4f,2.42f,dz},c+vec3{13.4f,2.48f,dz+.08f},{.65f,.4f,.12f});
+        // Sterilisation banks interrupt the long diagonals without subdividing
+        // the theatre. Low service steps make every bank roof reachable.
+        for(vec3 local:{vec3{-18,0,28},vec3{25,0,29},vec3{-15,0,-25},vec3{8,0,-31},vec3{-10,0,-10},vec3{4,0,26},vec3{0,0,-25}}) {
+            auto p=c+local;b.mat=Mat::CLINIC;
+            box(p+vec3{-5,0,-1.4f},p+vec3{5,2.4f,1.4f},shell);
+            b.mat=Mat::METAL;
+            box(p+vec3{-4,0,1.4f},p+vec3{4,1.1f,2.6f},frame);
+            detail(p+vec3{-4.7f,.4f,-1.44f},p+vec3{4.7f,1.9f,-1.41f},inset);
+            for(float x:{-4.8f,4.7f})glow(p+vec3{x,2.42f,-1.3f},p+vec3{x+.1f,2.48f,1.3f},{.65f,.4f,.12f});
+            glow(p+vec3{-4.7f,.8f,1.41f},p+vec3{4.7f,.95f,1.46f},edge*.35f);
+        }
     } else if(room==5) {
         station({-29,0,0},"LOAD / WEST");station({29,0,0},"LOAD / EAST");
     } else if(room==7)station({30,0,3},"EXTERIOR / UNREGISTERED");
@@ -368,7 +390,7 @@ inline LevelData buildLab(){
         if(i==1)a.waves={{at(E::PATIENT,{{-4,0,-16},{16,0,-24},{0,0,0},{-24,0,-3},{8,0,-30},{12,0,-34},{-4,0,-12.5f},{16,0,-20.5f},{-4,0,0},{-24,0,0.5f},{8,0,-26.5f},{12,0,-30.5f}})},
                          {at(E::PATIENT,{{4,0,-19},{20,0,-12},{-20,0,1},{-6,0,-31},{24,0,-4},{4,0,-15.5f},{20,0,-8.5f},{-20,0,4.5f},{-6,0,-27.5f},{24,0,-0.5f}}),at(E::GRAFTED,{{0,0,-25},{0,0,-21.5f}})}};
         if(i==2)a.waves={{at(E::GRAFTED,{{0,0,-18},{0,0,-14.5f}}),at(E::PATIENT,{{-15,0,-9},{15,0,-3},{-31,6,-12},{31,6,-12},{-8,0,-24},{8,0,-12},{-15,0,-5.5f},{15,0,0.5f},{-31,6,-8.5f},{31,6,-8.5f},{-8,0,-20.5f},{8,0,-8.5f}})}};
-        if(i==3)a.waves={{at(E::SUSPENDED,{{0,8,-20},{0,8,-16.5f}}),at(E::PATIENT,{{-19,0,-4},{20,0,-16},{-14,0,12},{10,0,-24},{-6,0,8},{-19,0,-0.5f},{20,0,-12.5f},{-14,0,15.5f},{10,0,-20.5f},{-6,0,11.5f}})},
+        if(i==3)a.waves={{at(E::SUSPENDED,{{0,8,-20},{0,8,-16.5f}}),at(E::PATIENT,{{-19,0,-4},{20,0,-16},{-14,0,12},{10,0,-24},{-6,0,13},{-19,0,-0.5f},{20,0,-12.5f},{-14,0,15.5f},{10,0,-20.5f},{-6,0,16.5f}})},
                          {at(E::SUSPENDED,{{24,9,-19},{24,9,-15.5f}}),at(E::GRAFTED,{{-16,0,-12},{-16,0,-8.5f}}),at(E::PATIENT,{{31,6,-12},{-31,6,-12},{31,6,-8.5f},{-31,6,-8.5f}})}};
         if(i==5)a.waves={{at(E::SUSPENDED,{{-21,8,-12},{-21,8,-8.5f}}),at(E::PATIENT,{{0,0,-12},{28,0,-10},{-28,0,-7},{28,0,10},{-28,0,12},{0,0,8},{0,0,-8.5f},{28,0,-6.5f},{-28,0,-3.5f},{28,0,13.5f},{-28,0,15.5f},{0,0,11.5f}})}};
         if(i==6)a.waves={{at(E::PHASED,{{0,0,-20},{0,0,-16.5f}})},

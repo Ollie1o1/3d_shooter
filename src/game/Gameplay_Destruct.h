@@ -62,11 +62,11 @@ inline void GameplayState::breakDestructible(int i, glm::vec3 push) {
             glm::vec3 out = b.pos - c; out.y = 0.f;
             if (glm::length(out) > 1e-3f) out = glm::normalize(out);
             const float high = glm::clamp((b.pos.y - d.home.min.y) / std::max(0.5f, d.home.max.y - d.home.min.y), 0.f, 1.f);
-            b.vel = out * frand(1.5f, 4.f) + along * frand(2.f, 6.f) * (0.4f + high) + glm::vec3{0.f, frand(1.f, 4.f) * high, 0.f};
-            b.axis = glm::normalize(glm::vec3{frand(-1.f, 1.f), frand(-1.f, 1.f), frand(-1.f, 1.f)} + glm::vec3{0.01f});
-            b.spin = frand(1.f, 5.f);
+            b.vel = out * cosmetic::range(1.5f, 4.f) + along * cosmetic::range(2.f, 6.f) * (0.4f + high) + glm::vec3{0.f, cosmetic::range(1.f, 4.f) * high, 0.f};
+            b.axis = glm::normalize(glm::vec3{cosmetic::range(-1.f, 1.f), cosmetic::range(-1.f, 1.f), cosmetic::range(-1.f, 1.f)} + glm::vec3{0.01f});
+            b.spin = cosmetic::range(1.f, 5.f);
             b.color = part.color; b.emissive = glm::vec3{0.f};
-            b.maxLife = b.life = frand(5.f, 7.f);
+            b.maxLife = b.life = cosmetic::range(5.f, 7.f);
             b.fade = 1.2f;   // (rubble: whole until its last moment, then gone)
             b.floorY = floorY;
             b.rest = true;

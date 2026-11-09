@@ -406,7 +406,9 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         else snprintf(buf, sizeof(buf), "%s %d/%d %s - WAVE %d/%d", tag, director.arena + 1, nArenas, ar.name,
                       director.wave + 1, director.waveCount());
         const bool restored = cold() && level.arenaAt(player.position) >= 8;   // (the Manifest on: dying is the Restorer's word for it)
-        ui.renderDeath(buf, totalKills, elapsedTime, fast(), !endless(), restored ? "R - RESUME FROM RESTORE POINT" : story() ? "R - TRY AGAIN" : nullptr, restored ? "RESTORED" : "YOU DIED");
+        const auto cause=damageLabel(damageHistory.last);
+        ui.renderDeath(buf, totalKills, elapsedTime, fast(), !endless(), restored ? "R - RESUME FROM RESTORE POINT" : story() ? "R - TRY AGAIN" : nullptr, restored ? "RESTORED" : "YOU DIED",
+                       cause.c_str(), damageAdvice(damageHistory.last).counter);
     }
     if (victory && g_bossRun >= 0) {
         const BossEntry& b = bossEntry(g_bossRun);

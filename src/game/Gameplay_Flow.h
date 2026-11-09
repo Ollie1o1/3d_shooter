@@ -437,6 +437,7 @@ inline void GameplayState::enterArena(int a) {
 }
 
 inline void GameplayState::resetPlayer(glm::vec3 start) {
+    damageHistory.clear();
     player = Player{start};
     viewModel.reset(activeWeapon);   // whatever the gun was doing (a reload, a switch) is over
     dryCd = 0.f;

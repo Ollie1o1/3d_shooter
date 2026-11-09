@@ -139,7 +139,7 @@ inline void GameplayState::restorerEvents(Enemy& e, const EnemyEvents& ev) {
         audio.playAt("ab_zap", rsSnapAt, 128, SoundGroup::ENEMY, true, 1.4f);
         glm::vec2 d{player.position.x - rsSnapAt.x, player.position.z - rsSnapAt.z};
         if (glm::length(d) < rsfight::SNAP_R && !playerDead) {
-            damagePlayer(16.f * tune().damage, rsSnapAt, 0.2f, 0.04f);
+            damagePlayer(16.f * tune().damage, rsSnapAt, 0.2f, 0.04f,.35f,{EnemyType::RESTORER, DamageKind::UNKNOWN});
             player.velocity *= 0.1f;
             ui.feed("SNAPSHOT TAKEN", {1.f, 0.4f, 0.3f});
         }
@@ -161,7 +161,7 @@ inline void GameplayState::restorerEvents(Enemy& e, const EnemyEvents& ev) {
             for (int k = 0; k < 3; ++k) { float z = vc.z - 14.f + k * 14.f; if (std::fabs(z - player.position.z) < std::fabs(bestZ - player.position.z)) bestZ = z; }
             rsTongAt = {glm::clamp(player.position.x, vc.x - cold::VAULT_R + 3.f, vc.x + cold::VAULT_R - 3.f), 13.6f, bestZ};
             grapple.release();
-            damagePlayer(ev.meleeDamage * tune().damage, e.position, 0.25f, 0.05f, 0.f);
+            damagePlayer(ev.meleeDamage * tune().damage, e.position, 0.25f, 0.05f, 0.f,{EnemyType::RESTORER, DamageKind::UNKNOWN});
             audio.playAt("hook_yank", rsTongAt, 120, SoundGroup::ENEMY, true, 0.7f);
             ui.feed("HUNG UP - PUNCH FREE", {1.f, 1.f, 1.f});
         }
@@ -172,7 +172,7 @@ inline void GameplayState::restorerEvents(Enemy& e, const EnemyEvents& ev) {
         shake(0.3f, 0.05f);
         for (const auto& c : rsCells)
             if (std::fabs(player.position.x - c.x) < rsfight::CELL * 0.5f && std::fabs(player.position.z - c.z) < rsfight::CELL * 0.5f && player.position.y < 2.f) {
-                damagePlayer(24.f * tune().damage, c, 0.3f, 0.06f);
+                damagePlayer(24.f * tune().damage, c, 0.3f, 0.06f,.35f,{EnemyType::RESTORER, DamageKind::UNKNOWN});
                 player.velocity.y = std::max(player.velocity.y, 7.f);
                 break;
             }
@@ -186,7 +186,7 @@ inline void GameplayState::restorerEvents(Enemy& e, const EnemyEvents& ev) {
             fx.spawnBurst((b.min + b.max) * 0.5f, {0.8f, 0.85f, 0.9f}, 16, 5.f, 0.5f, 9.f);
             const glm::vec3 p = player.position;
             if (p.x + player.radius > b.min.x && p.x - player.radius < b.max.x && p.z + player.radius > b.min.z && p.z - player.radius < b.max.z && p.y < b.max.y) {
-                damagePlayer(20.f * tune().damage, (b.min + b.max) * 0.5f, 0.3f, 0.06f);
+                damagePlayer(20.f * tune().damage, (b.min + b.max) * 0.5f, 0.3f, 0.06f,.35f,{EnemyType::RESTORER, DamageKind::UNKNOWN});
                 glm::vec3 c = (b.min + b.max) * 0.5f;   // knocked out from under it, the short way
                 bool alongX = b.max.x - b.min.x > b.max.z - b.min.z;
                 if (alongX) player.position.z = p.z < c.z ? b.min.z - player.radius - 0.1f : b.max.z + player.radius + 0.1f;
@@ -314,7 +314,7 @@ inline void GameplayState::updateRestorerFight(float dt) {
         rsTongT -= dt;
         player.position = rsTongAt - glm::vec3{0.f, player.height + 0.4f, 0.f}; player.velocity = glm::vec3{0.f};
         rsTongHurtT -= dt;
-        if (rsTongHurtT <= 0.f) { rsTongHurtT = 0.5f; damagePlayer(3.f * tune().damage, rsTongAt, 0.05f, 0.01f, 0.f); }
+        if (rsTongHurtT <= 0.f) { rsTongHurtT = 0.5f; damagePlayer(3.f * tune().damage, rsTongAt, 0.05f, 0.01f, 0.f,{EnemyType::RESTORER, DamageKind::UNKNOWN}); }
         if (rsTongT <= 0.f || playerDead) rsTongT = -1.f;
     }
 }

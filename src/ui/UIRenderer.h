@@ -740,21 +740,28 @@ public:
         end2D();
     }
 
-    void renderDeath(const char* where, int kills, float gameTime, bool fast, bool retry = true, const char* retryLine = nullptr, const char* title = "YOU DIED") {
+    void renderDeath(const char* where, int kills, float gameTime, bool fast, bool retry = true, const char* retryLine = nullptr, const char* title = "YOU DIED", const char* cause = nullptr, const char* counter = nullptr) {
         begin2D();
+        const bool advice = cause && *cause;
+        const int offset = advice ? -45 : 0;
+        const int controls = advice ? 35 : 0;
         const bool calm = std::string(title) != "YOU DIED";   // (Chapter 5's RESTORED: cold, not red)
         ui.rect(0, 0, screenW, screenH, calm ? glm::vec4{0.05f, 0.08f, 0.12f, 0.6f} : glm::vec4{0.3f, 0.0f, 0.0f, 0.5f});
-        ui.text(title, screenW / 2, screenH / 2 - 90, 5, calm ? glm::vec4{0.8f, 0.9f, 1.f, 0.95f} : glm::vec4{0.95f, 0.15f, 0.1f, 0.95f}, true);
-        ui.text(where, screenW / 2, screenH / 2 - 34, 2, {0.95f, 0.8f, 0.75f, 0.9f}, true);
+        ui.text(title, screenW / 2, screenH / 2 - 90 + offset, 5, calm ? glm::vec4{0.8f, 0.9f, 1.f, 0.95f} : glm::vec4{0.95f, 0.15f, 0.1f, 0.95f}, true);
+        ui.text(where, screenW / 2, screenH / 2 - 34 + offset, 2, {0.95f, 0.8f, 0.75f, 0.9f}, true);
         char buf[64];
         std::snprintf(buf, sizeof(buf), "TIME %s   KILLS %d", formatTime(gameTime, fast).c_str(), kills);
-        ui.text(buf, screenW / 2, screenH / 2 - 6, 2, {0.8f, 0.7f, 0.7f, 0.85f}, true);
+        ui.text(buf, screenW / 2, screenH / 2 - 6 + offset, 2, {0.8f, 0.7f, 0.7f, 0.85f}, true);
+        if (advice) {
+            ui.text(cause, screenW / 2, screenH / 2 - 12, 2, {.95f,.85f,.65f,.95f}, true);
+            if(counter && *counter)ui.text(counter, screenW / 2, screenH / 2 + 16, 2, {.8f,.87f,.9f,.95f}, true);
+        }
         if (retry) {
             ui.text(retryLine ? retryLine : fast ? "R - RESTART ROOM (CLOCK KEEPS RUNNING)" : "R - RETRY THIS ARENA (UPGRADES KEPT)",
-                    screenW / 2, screenH / 2 + 40, 2, {1.f, 0.85f, 0.5f, 0.95f}, true);
-            ui.text("ENTER - NEW RUN    ESC - MENU", screenW / 2, screenH / 2 + 68, 2, {0.6f, 0.5f, 0.5f, 0.8f}, true);
+                    screenW / 2, screenH / 2 + 40 + controls, 2, {1.f, 0.85f, 0.5f, 0.95f}, true);
+            ui.text("ENTER - NEW RUN    ESC - MENU", screenW / 2, screenH / 2 + 68 + controls, 2, {0.6f, 0.5f, 0.5f, 0.8f}, true);
         } else {
-            ui.text("ONE LIFE - THE RUN IS OVER", screenW / 2, screenH / 2 + 40, 2, {1.f, 0.3f, 0.45f, 0.9f}, true);
+            ui.text("ONE LIFE - THE RUN IS OVER", screenW / 2, screenH / 2 + 40 + controls, 2, {1.f, 0.3f, 0.45f, 0.9f}, true);
         }
         end2D();
     }

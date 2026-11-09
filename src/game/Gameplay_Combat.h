@@ -361,9 +361,9 @@ inline void GameplayState::updateEnemies(float dt) {
                     player.position + glm::vec3{player.radius, player.height, player.radius}};
             if (segmentHitsBox(ev.beamFrom, ev.beamTo, pb)) {
                 beamTickCd -= dt;
-                if (beamTickCd <= 0.f) { beamTickCd = 0.2f; damagePlayer(6.f * eScale, epos, 0.08f, 0.02f, 0.f); }   // no i-frames: 30/s, and no shield
+                if (beamTickCd <= 0.f) { beamTickCd = 0.2f; damagePlayer(6.f * eScale, epos, 0.08f, 0.02f, 0.f, {e.type, DamageKind::BEAM}); }   // no i-frames: 30/s, and no shield
             }
-            if (rand() % 3 == 0) {
+            if (cosmetic::index(3) == 0) {
                 bool wet = level.waterDepthAt(ev.beamTo) > 0.05f;
                 fx.spawnBurst(ev.beamTo + glm::vec3{0, 0.1f, 0}, wet ? glm::vec3{0.85f, 0.88f, 0.9f} : glm::vec3{1.f, 0.85f, 0.5f},
                               3, wet ? 2.f : 5.f, wet ? 0.8f : 0.3f, wet ? -3.f : 9.f);
@@ -374,7 +374,7 @@ inline void GameplayState::updateEnemies(float dt) {
             fx.spawnHitSparks(recall.feet + glm::vec3{0.f, 1.f, 0.f}, RECALL_FROST);
             audio.playAt("clank", recall.feet, 90, SoundGroup::ENEMY, true, 1.3f);
         } else if (ev.meleeHit && enemies[i].type != EnemyType::ABSOLUTE) {   // (his: onAbsoluteEvents, where the sword can meet them)
-            if (damagePlayer(ev.meleeDamage * eScale, epos, 0.25f, 0.06f)) {
+            if (damagePlayer(ev.meleeDamage * eScale, epos, 0.25f, 0.06f, .35f, {enemies[i].type, DamageKind::MELEE, ev.meleeAttack})) {
                 glm::vec3 away = player.position - epos; away.y = 0.f;
                 if (glm::length(away) > 0.001f)
                     player.velocity += glm::normalize(away) * 8.f + glm::vec3{0, 3.f, 0};
@@ -389,7 +389,7 @@ inline void GameplayState::updateEnemies(float dt) {
             glm::vec2 flat{player.position.x - epos.x, player.position.z - epos.z};
             bool grounded = player.position.y < epos.y + 0.9f && player.position.y > epos.y - 1.5f;   // jump it to dodge
             if (ev.slamDamage > 0.f && glm::length(flat) < ev.slamRadius && grounded) {
-                if (damagePlayer(ev.slamDamage * eScale, epos, 0.3f, 0.08f) && glm::length(flat) > 0.01f)
+                if (damagePlayer(ev.slamDamage * eScale, epos, 0.3f, 0.08f, .35f, {enemies[i].type, DamageKind::SHOCKWAVE}) && glm::length(flat) > 0.01f)
                     player.velocity += glm::vec3{flat.x, 0.f, flat.y} / glm::length(flat) * 10.f + glm::vec3{0, 6.f, 0};
             }
         }
@@ -494,10 +494,12 @@ inline void GameplayState::friendlySlam(const Enemy& slammer, float radius) {
     }
 }
 
-inline bool GameplayState::damagePlayer(float dmg, glm::vec3 from, float shakeT, float shakeAmt, float iframes) {
+inline bool GameplayState::damagePlayer(float dmg, glm::vec3 from, float shakeT, float shakeAmt, float iframes, DamageCause cause) {
     if (invincFrames > 0.f || playerDead || g_godMode || victory || ascendT >= 0.f ||
         (!fast() && director.phase == WaveDirector::Phase::VICTORY)) return false;
     if (training()) dmg = std::min(dmg, std::max(0.f, styleSystem.health - 1.f));
+    if (!std::isfinite(dmg) || !(dmg > 0.f) || !styleSystem.isAlive()) return false;
+    damageHistory.record(dmg, styleSystem.health, cause);
     styleSystem.takeDamage(dmg);
     runLog.took(hurtBy, dmg);
     ui.onDamage();
@@ -589,7 +591,7 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
             killFx = std::max(killFx, heavy ? 1.f : crit ? 0.75f : 0.5f);
             if (heavy) { fx.spawnShockwave(e.position + glm::vec3{0.f, 0.08f, 0.f}, 3.f + e.radius() * 2.f, e.stats().glow); shake(0.25f, 0.05f); }
         }
-        if (src != StyleSource::FRIENDLY) camFeel.punch(crit ? 32.f : 14.f, 0.f, frand(-1.f, 1.f) * (crit ? 22.f : 10.f));   // the kill lands in your hands
+        if (src != StyleSource::FRIENDLY) camFeel.punch(crit ? 32.f : 14.f, 0.f, cosmetic::range(-1.f, 1.f) * (crit ? 22.f : 10.f));   // the kill lands in your hands
         if (!isBoss(e.type))   // a kill confirm that says what did it (bosses have their own deaths)
             if (const char* tag = killTag(src)) audio.play(tag, crit ? 85 : 70, SoundGroup::UI);
     }
@@ -690,13 +692,13 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
                 fx.spawnDeathParticles(o.position + glm::vec3{0, o.height() * 0.5f, 0}, o.stats().color);
             }
         for (int k = 0; k < 4; ++k)
-            fx.spawnExplosionParticles(e.position + glm::vec3{frand(-1.5f,1.5f), frand(1.f,4.f), frand(-1.5f,1.5f)}, 4.f);
+            fx.spawnExplosionParticles(e.position + glm::vec3{cosmetic::range(-1.5f,1.5f), cosmetic::range(1.f,4.f), cosmetic::range(-1.5f,1.5f)}, 4.f);
         explosionFlashTimer = 0.35f; explosionFlashPos = e.position + glm::vec3{0, 2.f, 0};
         shake(1.0f, 0.12f);
         playBoom("explosion", e.position + glm::vec3{0, 2.f, 0}, 128, SoundGroup::WORLD, true);
         if (e.type == EnemyType::SOVEREIGN) {
             for (int k = 0; k < 6; ++k)
-                fx.spawnBurst(e.position + glm::vec3{frand(-1.f, 1.f), frand(0.5f, 3.5f), frand(-1.f, 1.f)},
+                fx.spawnBurst(e.position + glm::vec3{cosmetic::range(-1.f, 1.f), cosmetic::range(0.5f, 3.5f), cosmetic::range(-1.f, 1.f)},
                            {1.f, 0.8f, 0.4f}, 30, 10.f, 0.8f, 2.f);
             if (!g_godMode && g_bossRun < 0 && g_arenaSolo < 0 && !records.act2Unlocked) {   // (a whole Act I run: not the BOSS page's fight, not the arena on its own)
                 records.act2Unlocked = true;
@@ -725,7 +727,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
             levCorpse = e; levCorpse.alive = true; levCorpse.staggerTimer = 0.f; levCorpse.levBeached = 0.f; levSinkT = 0.f;   // it sinks
             glm::vec3 c{e.levRoot.x, e.levFloor, e.levRoot.z};
             for (int k = 0; k < 8; ++k)
-                fx.spawnBurst(c + glm::vec3{frand(-6.f, 6.f), frand(1.f, 8.f), frand(-6.f, 6.f)}, {1.4f, 1.1f, 0.8f}, 40, 14.f, 1.2f, 3.f);
+                fx.spawnBurst(c + glm::vec3{cosmetic::range(-6.f, 6.f), cosmetic::range(1.f, 8.f), cosmetic::range(-6.f, 6.f)}, {1.4f, 1.1f, 0.8f}, 40, 14.f, 1.2f, 3.f);
             fx.spawnShockwave(c, 30.f, {1.4f, 1.2f, 1.f});
             explosionFlashTimer = 0.8f; explosionFlashPos = e.position;
         } else if (e.type == EnemyType::ABSOLUTE) {
@@ -753,7 +755,7 @@ inline void GameplayState::onMiniBossKilled(Enemy& e) {
         }
     const glm::vec3 c = e.position + glm::vec3{0.f, e.height() * 0.5f, 0.f};
     for (int k = 0; k < 3; ++k)
-        fx.spawnExplosionParticles(c + glm::vec3{frand(-1.2f, 1.2f), frand(-0.5f, 1.5f), frand(-1.2f, 1.2f)}, 3.5f);
+        fx.spawnExplosionParticles(c + glm::vec3{cosmetic::range(-1.2f, 1.2f), cosmetic::range(-0.5f, 1.5f), cosmetic::range(-1.2f, 1.2f)}, 3.5f);
     fx.spawnBurst(c, e.stats().glow, 50, 11.f, 0.9f, 2.f);
     fx.spawnShockwave(e.position + glm::vec3{0.f, 0.1f, 0.f}, 7.f, e.stats().glow);
     explosionFlashTimer = 0.3f; explosionFlashPos = c;
@@ -825,7 +827,7 @@ inline void GameplayState::processBlasts() {
             float pd = glm::length(player.camera.position - b.pos);
             if (pd < b.playerRadius) {
                 hurtBy = b.by;
-                damagePlayer(b.playerDamage * (1.f - pd / b.playerRadius) + 2.f, b.pos, 0.3f, 0.07f);
+                damagePlayer(b.playerDamage * (1.f - pd / b.playerRadius) + 2.f, b.pos, 0.3f, 0.07f, .35f, {b.by, DamageKind::EXPLOSION});
                 hurtBy = EnemyType::COUNT;
             }
         }
@@ -1171,7 +1173,7 @@ inline void GameplayState::fireWeapon(int w) {
             {55.f, 8.f, 12.f}, {125.f, 22.f, 45.f}, {105.f, 14.f, 26.f}, {165.f, 20.f, 40.f}};   // (the revolver: a firm jolt, not a wobble)
         const float* k = KICK[std::clamp(w, 0, 3)];
         float hold = (1.f - 0.55f * aimNow) * (doubleShot ? 1.6f : fanning ? 0.8f : 1.f);
-        camFeel.punch(k[0] * hold, frand(-1.f, 1.f) * k[1] * hold, frand(-1.f, 1.f) * k[2] * hold * (fanning ? 2.f : 1.f));
+        camFeel.punch(k[0] * hold, cosmetic::range(-1.f, 1.f) * k[1] * hold, cosmetic::range(-1.f, 1.f) * k[2] * hold * (fanning ? 2.f : 1.f));
     }
     {   // running low: a dry tick under the last rounds, higher as the mag empties
         int mag = weaponMag(id, u), low = std::max(1, mag / 4);
@@ -1202,7 +1204,7 @@ inline void GameplayState::fireWeapon(int w) {
     {   // the spent brass lands a moment later, by your feet (on the ground: higher up, a long way down)
         SfxMixer::Opts c; c.group = SoundGroup::WORLD; c.positional = true;
         c.pos = player.position + right * 0.6f + glm::vec3{0.f, 0.05f, 0.f};
-        c.delay = player.onGround ? frand(0.34f, 0.46f) : 0.75f;
+        c.delay = player.onGround ? cosmetic::range(0.34f, 0.46f) : 0.75f;
         c.volume = player.onGround ? 0.5f : 0.3f;
         c.pitch = pellets > 1 ? 0.62f : sniper ? 0.85f : 1.f;   // a shotgun shell is a duller, plastic tock
         audio.playOpts("casing", c);

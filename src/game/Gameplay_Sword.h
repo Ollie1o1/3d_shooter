@@ -241,7 +241,7 @@ inline void GameplayState::swordPlunge(glm::vec3 at) {
 
 // Damage a raised sword can meet: parried (white, in the window), blocked from
 // the front (25 %), or breaking the guard. `dt` for a beam's drain.
-inline bool GameplayState::damagePlayerStrike(float dmg, glm::vec3 from, Sword::Strike k, float dt) {
+inline bool GameplayState::damagePlayerStrike(float dmg, glm::vec3 from, Sword::Strike k, float dt, DamageCause cause) {
     lastGuarded = Sword::Guarded::NONE;
     if (invincFrames > 0.f || playerDead || g_godMode || victory || ascendT >= 0.f) return false;   // (nothing lands: the guard isn't spent)
     if (swordOut) {
@@ -286,6 +286,11 @@ inline bool GameplayState::damagePlayerStrike(float dmg, glm::vec3 from, Sword::
         }
         if (lastGuarded == Sword::Guarded::NONE) abWhiteHitT = gameClock;   // a blocked blow didn't hit you: no LATE for it
     }
+    if(cause.kind==DamageKind::UNKNOWN) {
+        cause.enemy=hurtBy;
+        cause.kind=k==Sword::Strike::WHITE?DamageKind::WHITE_STRIKE:k==Sword::Strike::GOLD?DamageKind::GOLD_STRIKE:
+                   k==Sword::Strike::AREA?DamageKind::RED_STRIKE:DamageKind::BEAM;
+    }
     return damagePlayer(dmg, from, k == Sword::Strike::BEAM ? 0.f : 0.25f, k == Sword::Strike::BEAM ? 0.f : 0.05f,
-                        k == Sword::Strike::BEAM ? 0.f : 0.15f);
+                        k == Sword::Strike::BEAM ? 0.f : 0.15f, cause);
 }

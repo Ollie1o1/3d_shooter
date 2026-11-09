@@ -79,7 +79,7 @@ inline void GameplayState::onAbsoluteEvents(Enemy& e, const EnemyEvents& ev) {
         if (f.boom) {
             float c = std::cos(e.yaw), sn = std::sin(e.yaw);
             glm::vec3 p = e.position + glm::vec3{f.at.x * c + f.at.z * sn, f.at.y, -f.at.x * sn + f.at.z * c} * e.scale;   // (MORNINGSTAR: his size)
-            at(f.boom, p, f.boomPitch * (0.96f + 0.08f * frand(0.f, 1.f)), 128, 0.5f);
+            at(f.boom, p, f.boomPitch * (0.96f + 0.08f * cosmetic::range(0.f, 1.f)), 128, 0.5f);
             fx.spawnBurst(p, {1.7f, 1.65f, 1.6f}, 22, 7.f, 0.25f, 0.f);
             fx.spawnShockwave(glm::vec3{p.x, std::max(level.zenith.centre.y, p.y - 1.2f), p.z}, 2.2f + 2.f * f.shake, {1.2f, 1.15f, 1.1f});
             float d = glm::length(player.position - e.position), k = glm::clamp(1.f - d / 25.f, 0.f, 1.f) * f.shake;
@@ -264,7 +264,7 @@ inline void GameplayState::updateAbsoluteDeath(float dt) {
     abDeathT += dt;
     abCorpse.prevPosition = abCorpse.position;
     if (abDeathT > 1.f && std::fmod(abDeathT, 0.12f) < dt)   // the halo cracking, then light pouring up off him
-        fx.spawnBurst(abCorpse.position + glm::vec3{frand(-0.5f, 0.5f), frand(0.3f, 2.4f), frand(-0.5f, 0.5f)},
+        fx.spawnBurst(abCorpse.position + glm::vec3{cosmetic::range(-0.5f, 0.5f), cosmetic::range(0.3f, 2.4f), cosmetic::range(-0.5f, 0.5f)},
                       {1.6f, 1.5f, 1.2f}, 12, 4.f, 0.8f, -6.f);
     if (abDeathT >= AB_DEATH) fx.spawnBurst(abCorpse.position + glm::vec3{0.f, 1.3f, 0.f}, {1.6f, 1.6f, 1.7f}, 120, 16.f, 1.4f, -4.f);
 }

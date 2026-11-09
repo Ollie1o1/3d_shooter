@@ -50,7 +50,7 @@ inline void GameplayState::updateWasteland(float dt) {
     }
     for(const auto& hit:ballastHazards.update(dt,p,level.walls))
         if(!playerDead&&!storyBossDown) {
-            damagePlayer(hit.damage*level.arenas[s.bossSection].damageScale*tune().damage,hit.at,.15f,.03f);
+            damagePlayer(hit.damage*level.arenas[s.bossSection].damageScale*tune().damage,hit.at,.15f,.03f,.35f,{EnemyType::BALLAST, DamageKind::UNKNOWN});
             if(!g_godMode&&dashMomentumTimer<=0)player.velocity+=hit.push;
         }
     for(int k=0;k<(int)s.turbineBrakes.size();++k)

@@ -98,6 +98,7 @@ try {
     ['phase-practice', { boss: '2', phase: '2' }],
     ['boss-rush', { bossrush: '' }],
     ['motor-assessment', { story3: '', arena: '3', god: '' }],
+    ['surgical-observation', { story3: '', arena: '4', god: '' }],
     ['blast-chillers', { story5: '', arena: '6', god: '' }],
     ['dispatch-2', { story5: '', arena: '8', god: '' }],
     ['vault', { story5: '', arena: '10', god: '' }],
@@ -153,7 +154,7 @@ try {
     }
   }
   if (errors.length) throw new Error(errors.join('\n'));
-  console.log('WebAssembly boots; all twenty lessons, guide paging, Reliquary, seeded challenges, phase practice, boss rush, Motor Assessment and three Cold Store combat spaces render without browser errors.');
+  console.log('WebAssembly boots; all twenty lessons, guide paging, Reliquary, seeded challenges, phase practice, boss rush, Motor Assessment, Surgical Observation and three Cold Store combat spaces render without browser errors.');
 } finally {
   await browser.close();
 }

@@ -22,7 +22,7 @@ inline void GameplayState::pickerGrab(Enemy& e, bool lured) {
     pickedBy = e.uid;
     pickedHealth = e.health;
     grapple.release();
-    damagePlayer(e.ev.meleeDamage * level.arenas[director.arena].damageScale * tune().damage, e.position, 0.2f, 0.05f, 0.f);
+    damagePlayer(e.ev.meleeDamage * level.arenas[director.arena].damageScale * tune().damage, e.position, 0.2f, 0.05f, 0.f,{EnemyType::PICKER, DamageKind::UNKNOWN});
     audio.playAt("hook_yank", e.position, 120, SoundGroup::ENEMY, true, 0.8f);
     ui.feed("PICKED - SHOOT IT OR PUNCH FREE", {1.f, 0.8f, 0.4f});
     shake(0.25f, 0.05f);
@@ -51,7 +51,7 @@ inline void GameplayState::holdInPicker(float dt) {
     pickHurtT -= dt;
     if (pickHurtT <= 0.f) {   // the claw squeezes
         pickHurtT = 0.5f;
-        damagePlayer(3.f * tune().damage, e->position, 0.06f, 0.015f, 0.f);
+        damagePlayer(3.f * tune().damage, e->position, 0.06f, 0.015f, 0.f,{EnemyType::PICKER, DamageKind::UNKNOWN});
     }
 }
 

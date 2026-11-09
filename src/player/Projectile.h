@@ -186,7 +186,10 @@ inline const ProjectileSystem::HitResult& ProjectileSystem::update(
         if (contact != Contact::NONE) {
             p.alive = false;
             if (contact == Contact::PLAYER) {
-                result.hitPlayer = true; result.playerDamage += p.damage; result.playerHitOwner = p.ownerType;
+                // Keep a source only when the entire damage batch has one owner type.
+                // Multiple simultaneous shots still deal their existing total damage.
+                result.playerHitOwner = !result.hitPlayer ? p.ownerType : result.playerHitOwner == p.ownerType ? p.ownerType : -1;
+                result.hitPlayer = true; result.playerDamage += p.damage;
                 const float speed = glm::length(p.velocity);
                 result.playerHitFrom = speed > .001f ? p.position - p.velocity / speed * 5.f : p.position;
             } else if (contact == Contact::ENEMY && friendly) result.friendlyHits.push_back({i, target});

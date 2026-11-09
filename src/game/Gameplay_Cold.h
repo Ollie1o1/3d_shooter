@@ -49,13 +49,13 @@ inline void GameplayState::updateColdVents(float dt) {
         const int st = cold::ventState(v, gameClock), was = cold::ventState(v, gameClock - dt);
         if (st == 1 && was != 1) audio.playAt("telegraph", p, 100, SoundGroup::WORLD, true, 0.7f);
         if (st == 2 && was != 2) { audio.playAt("skim", p, 128, SoundGroup::WORLD, true, 0.5f); audio.playAt("slam", p, 90, SoundGroup::WORLD, true, 0.6f); }
-        if (st == 1 && std::fmod(gameClock, 0.06f) < dt) fx.spawnBurst(p + glm::vec3{frand(-2.f, 2.f), 0.2f, frand(-2.f, 2.f)}, {1.f, 0.55f, 0.5f}, 1, 1.f, 0.6f, -4.f);
+        if (st == 1 && std::fmod(gameClock, 0.06f) < dt) fx.spawnBurst(p + glm::vec3{cosmetic::range(-2.f, 2.f), 0.2f, cosmetic::range(-2.f, 2.f)}, {1.f, 0.55f, 0.5f}, 1, 1.f, 0.6f, -4.f);
         if (st != 2) continue;
-        if (std::fmod(gameClock, 0.04f) < dt) fx.spawnBurst(p + glm::vec3{frand(-2.5f, 2.5f), 0.5f, frand(-2.5f, 2.5f)}, glm::vec3{0.85f, 0.92f, 1.f}, 2, 4.f, 0.9f, -14.f);
+        if (std::fmod(gameClock, 0.04f) < dt) fx.spawnBurst(p + glm::vec3{cosmetic::range(-2.5f, 2.5f), 0.5f, cosmetic::range(-2.5f, 2.5f)}, glm::vec3{0.85f, 0.92f, 1.f}, 2, 4.f, 0.9f, -14.f);
         glm::vec2 d{player.position.x - p.x, player.position.z - p.z};
         if (glm::length(d) < cold::VENT_R + player.radius && player.position.y < 12.f && !playerDead) {
             coldVentHurtT -= dt;
-            if (coldVentHurtT <= 0.f) { coldVentHurtT = 0.25f; damagePlayer(7.f * tune().damage, p, 0.08f, 0.02f, 0.f); }
+            if (coldVentHurtT <= 0.f) { coldVentHurtT = 0.25f; damagePlayer(7.f * tune().damage, p, 0.08f, 0.02f, 0.f, {EnemyType::COUNT, DamageKind::VENT}); }
             player.velocity.y = std::max(player.velocity.y, 3.f);   // it lifts you a little: get out
         }
         for (auto& e : enemies) {
@@ -75,7 +75,7 @@ inline void GameplayState::updateThawHeat(float dt) {
         if (!e.targetable() || e.type != EnemyType::THAWLING || !cold::inThawHeat(e.position)) continue;
         e.age += 2.f * dt;
         if (std::fmod(gameClock + e.uid * 0.13f, 0.08f) < dt)
-            fx.spawnBurst(e.position + glm::vec3{frand(-0.4f, 0.4f), 0.6f + frand(0.f, 1.f), frand(-0.4f, 0.4f)}, {0.95f, 0.85f, 0.8f}, 1, 1.2f, 0.9f, -3.f);
+            fx.spawnBurst(e.position + glm::vec3{cosmetic::range(-0.4f, 0.4f), 0.6f + cosmetic::range(0.f, 1.f), cosmetic::range(-0.4f, 0.4f)}, {0.95f, 0.85f, 0.8f}, 1, 1.2f, 0.9f, -3.f);
         if (!thawHeatTold) { thawHeatTold = true; ui.feed("THE HEAT WAKES THEM FASTER", {2.2f, 0.55f, 0.15f}); }
     }
 }
@@ -88,17 +88,17 @@ inline void GameplayState::updateColdSea(float dt) {
     glm::vec3 dir = glm::normalize(d);
     // A crack runs out ahead of you and a little to the side, in two or three kinks
     glm::vec3 at = player.position + dir * 1.5f;
-    float heading = std::atan2(dir.z, dir.x) + frand(-0.6f, 0.6f);
-    int segs = 2 + rand() % 3;
+    float heading = std::atan2(dir.z, dir.x) + cosmetic::range(-0.6f, 0.6f);
+    int segs = 2 + cosmetic::index(3);
     for (int k = 0; k < segs; ++k) {
-        float len = frand(1.2f, 3.5f);
+        float len = cosmetic::range(1.2f, 3.5f);
         glm::vec3 to = at + glm::vec3{std::cos(heading), 0.f, std::sin(heading)} * len;
         coldCracks.push_back({at, to, gameClock});
-        at = to; heading += frand(-0.7f, 0.7f);
+        at = to; heading += cosmetic::range(-0.7f, 0.7f);
     }
     if (coldCracks.size() > 600) coldCracks.erase(coldCracks.begin(), coldCracks.begin() + (coldCracks.size() - 600));
-    if (rand() % 3 == 0) audio.playAt("ab_creak", player.position + dir * 3.f, 60, SoundGroup::WORLD, true, frand(0.5f, 0.8f));
-    if (rand() % 9 == 0) { audio.playAt("ab_shatter", player.position + dir * 25.f, 40, SoundGroup::WORLD, false, 0.4f); shake(0.15f, 0.01f); }
+    if (cosmetic::index(3) == 0) audio.playAt("ab_creak", player.position + dir * 3.f, 60, SoundGroup::WORLD, true, cosmetic::range(0.5f, 0.8f));
+    if (cosmetic::index(9) == 0) { audio.playAt("ab_shatter", player.position + dir * 25.f, 40, SoundGroup::WORLD, false, 0.4f); shake(0.15f, 0.01f); }
     coldCrackFrom = player.position;
     (void)dt;
 }
@@ -290,8 +290,8 @@ inline void GameplayState::updateCold(float dt) {
     coldShardT -= dt;
     if (coldShardT <= 0.f && lip > 0.f) {
         coldShardT = 0.08f;
-        float x = player.position.x + frand(-60.f, 60.f);
-        glm::vec3 p{x, frand(-40.f, -4.f), cold::edgeZ(x) - frand(4.f, 50.f)};
+        float x = player.position.x + cosmetic::range(-60.f, 60.f);
+        glm::vec3 p{x, cosmetic::range(-40.f, -4.f), cold::edgeZ(x) - cosmetic::range(4.f, 50.f)};
         fx.spawnBurst(p, glm::vec3{0.7f, 0.82f, 0.95f}, 1, 0.4f, 5.f, -1.6f);
     }
 }
@@ -494,7 +494,7 @@ inline void GameplayState::updateColdEnding(float dt) {
             audio.playAt("ab_shatter", c, 128, SoundGroup::ENEMY, true, 1.2f);
         }
         if (rsDeathT > coldend::FALTER && rsDeathT < coldend::REWIND && std::fmod(rsDeathT, 0.08f) < dt)   // frost falling off it as it shrinks
-            fx.spawnBurst(c + glm::vec3{frand(-1.f, 1.f), frand(1.f, 6.f) * rsCorpse.scale, frand(-1.f, 1.f)}, {0.85f, 0.92f, 1.f}, 3, 2.f, 0.8f, 6.f);
+            fx.spawnBurst(c + glm::vec3{cosmetic::range(-1.f, 1.f), cosmetic::range(1.f, 6.f) * rsCorpse.scale, cosmetic::range(-1.f, 1.f)}, {0.85f, 0.92f, 1.f}, 3, 2.f, 0.8f, 6.f);
         if (rsDeathT > coldend::FALTER && std::fmod(rsDeathT, 0.55f) < dt && rsDeathT < coldend::PARTS)
             audio.playAt("count_tick", c, 90, SoundGroup::ENEMY, true, 0.6f + 0.1f * rsDeathT);   // a rewinding tick, quickening
         if (crossed(coldend::PARTS)) {

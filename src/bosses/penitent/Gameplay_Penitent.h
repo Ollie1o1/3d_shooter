@@ -69,7 +69,7 @@ inline void GameplayState::onPenitentEvents(Enemy& e, const EnemyEvents& ev) {
         pen.addSweep(e.position, e.yaw, e.sweepReach(), ev.penSweep);
         audio.playAt("dash", at, 128, SoundGroup::ENEMY, true);
         if (PenitentHazards::sweepHits(ev.penSweep, e.position, e.yaw, e.sweepReach(), player.position, player.height, floorY))
-            damagePlayer(PenitentHazards::SWEEP_DAMAGE * scale, e.position, 0.3f, 0.07f);
+            damagePlayer(PenitentHazards::SWEEP_DAMAGE * scale, e.position, 0.3f, 0.07f,.35f,{EnemyType::PENITENT, DamageKind::UNKNOWN});
     }
     if (ev.penSlam)  { pen.addRing(e.position, PenitentHazards::SLAM_RADIUS, PenitentHazards::SLAM_DAMAGE, 0);  audio.playAt("slam", e.position, 128, SoundGroup::ENEMY, true); shake(0.5f, 0.07f); }
     if (ev.penStomp) { pen.addRing(e.position, PenitentHazards::STOMP_RADIUS, PenitentHazards::SLAM_DAMAGE, 0); audio.playAt("slam", e.position, 110, SoundGroup::ENEMY, true); shake(0.3f, 0.05f); }
@@ -156,7 +156,7 @@ inline void GameplayState::updatePenitent(float dt) {
     const float scale = level.arenas[director.arena].damageScale * tune().damage;
     float floorY = boss ? boss->floorY : level.lift.y();
     for (const auto& h : pen.update(dt, player.position, floorY)) {
-        if (!damagePlayer(h.damage * scale, h.from, 0.25f, 0.05f, h.damage < 10.f ? 0.f : 0.25f)) continue;
+        if (!damagePlayer(h.damage * scale, h.from, 0.25f, 0.05f, h.damage < 10.f ? 0.f : 0.25f,{EnemyType::PENITENT, DamageKind::UNKNOWN})) continue;
         if (h.yank) {
             glm::vec3 in = h.from - player.position; in.y = 0.f;
             if (glm::length(in) > 0.1f) player.velocity += glm::normalize(in) * 16.f + glm::vec3{0.f, 4.f, 0.f};

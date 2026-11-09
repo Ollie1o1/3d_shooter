@@ -139,7 +139,7 @@ inline bool GameplayState::tryFinisher() {
     punchCooldown = 0.18f;                          // chain the next one
     killFx = 1.f;
     viewModel.triggerParry(true);
-    camFeel.punch(58.f, frand(-1.f, 1.f) * 20.f, -40.f);
+    camFeel.punch(58.f, cosmetic::range(-1.f, 1.f) * 20.f, -40.f);
     shake(heavy ? 0.35f : 0.22f, heavy ? 0.07f : 0.045f);
     fx.spawnSpray(c, dir, {1.f, 0.7f, 0.3f}, heavy ? 46 : 30, 15.f, 0.4f, 0.45f);
     fx.spawnBurst(c, {1.f, 0.95f, 0.8f}, 14, 6.f, 0.18f, 0.f);
@@ -168,7 +168,7 @@ inline void GameplayState::enterOverdrive() {
     audio.duck(6.f, 0.5f);
     slowMo(0.5f, 0.35f);
     hitStopFrames = std::max(hitStopFrames, 3);
-    camFeel.punch(-42.f, 0.f, frand(-1.f, 1.f) * 18.f);
+    camFeel.punch(-42.f, 0.f, cosmetic::range(-1.f, 1.f) * 18.f);
     shake(0.3f, 0.05f);
     fovKick = std::max(fovKick, 10.f);
     fx.spawnShockwave(player.position + glm::vec3{0.f, 0.1f, 0.f}, 9.f, {1.f, 0.65f, 0.15f});
@@ -309,7 +309,7 @@ inline void GameplayState::hookEnemy(int i) {
         grappleCooldown = 0.8f;
         audio.playAt("hook_yank", c, 120, SoundGroup::PLAYER, true);
         fx.spawnBurst(c, {0.5f, 1.f, 1.f}, 12, 5.f, 0.25f, 0.f);
-        camFeel.punch(-26.f, 0.f, frand(-1.f, 1.f) * 12.f);   // you haul on it
+        camFeel.punch(-26.f, 0.f, cosmetic::range(-1.f, 1.f) * 12.f);   // you haul on it
     } else {                                      // heavy: the rope takes you to it
         trainingSuccess(lessons::HEAVY_GRAPPLE);
         glm::vec3 impulse{0.f};
@@ -361,7 +361,7 @@ inline void GameplayState::slideKicks() {
         hurtEnemy(e, 20.f, at, 10.f, 1.f, StyleSource::SLAM, false, false, &hp);
         trainingSuccess(lessons::SLIDE_KICK);
         audio.playAt("punch", at, 110, SoundGroup::PLAYER, true);
-        camFeel.punch(heavy ? 40.f : 22.f, 0.f, frand(-1.f, 1.f) * 16.f);
+        camFeel.punch(heavy ? 40.f : 22.f, 0.f, cosmetic::range(-1.f, 1.f) * 16.f);
         shake(heavy ? 0.18f : 0.1f, heavy ? 0.04f : 0.02f);
         hitStopFrames = std::max(hitStopFrames, heavy ? 3 : 2);
         fx.spawnSpray(at, fwd, {1.f, 0.85f, 0.6f}, 12, 7.f, 0.3f);

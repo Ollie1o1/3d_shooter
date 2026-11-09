@@ -2,6 +2,7 @@
 #include "core/GameState.h"
 #include "core/MouseCapture.h"
 #include "core/Balance.h"
+#include "core/CosmeticRandom.h"
 #include "player/Player.h"
 #include "player/ActionBuffer.h"
 #include "core/Camera.h"
@@ -74,6 +75,7 @@
 #include "game/Score.h"
 #include "game/EndlessWaves.h"
 #include "game/RunLog.h"
+#include "game/DamageFeedback.h"
 #include "game/EncounterTrap.h"
 #include "game/BossChallenge.h"
 #include "game/EncounterDraft.h"
@@ -992,7 +994,7 @@ public:
     void updateSword(float dt);
     void swordContact(int stroke, float damage, bool riposte);
     void swordPlunge(glm::vec3 at);
-    bool damagePlayerStrike(float dmg, glm::vec3 from, Sword::Strike k, float dt = 0.f);
+    bool damagePlayerStrike(float dmg, glm::vec3 from, Sword::Strike k, float dt = 0.f, DamageCause cause = {});
 
     // ---- the enemies' voices (EnemyVoice.h) ---------------------------------------
     // Who speaks, and the held ones by uid
@@ -1179,7 +1181,7 @@ public:
 
     // Returns true if damage was applied (not blocked by i-frames).
     // iframes: how long you're untouchable after (a SERAPH beam's ticks give none)
-    bool damagePlayer(float dmg, glm::vec3 from, float shakeT, float shakeAmt, float iframes = 0.35f);
+    bool damagePlayer(float dmg, glm::vec3 from, float shakeT, float shakeAmt, float iframes = 0.35f, DamageCause cause = {});
 
     void showDamageFrom(glm::vec3 source);
 
@@ -1252,6 +1254,7 @@ public:
     // The run log (RunLog.h): what hurt you, what killed you, each gun's numbers
     RunLog runLog;
     EndlessChallenge endlessChallenge;
+    DamageHistory damageHistory;
     EnemyType hurtBy = EnemyType::COUNT;   // set around enemy events and shots: who's hitting you now
     bool  loggedDeath = false;
     void  logRun(const char* how);

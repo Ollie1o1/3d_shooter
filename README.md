@@ -56,6 +56,12 @@ Desktop **F1 → ENCOUNTER WORKSHOP** edits ordinary encounter waves and spawns,
 with validated patches and immediate room retries. Edited runs cannot save Story
 progress or records. Local developer play logs go to `runs.dev.jsonl`.
 
+The [latest encounter and feedback pass](docs/iteration-pass.md) gives Surgical
+Observation a low theatre circuit and climbable sterilisation banks. Death cards
+identify supported damage sources and their counters, and cosmetic effects use
+their own random sequence so changing ambient detail cannot shift AI or loot
+random draws.
+
 ## The bosses
 
 | Boss | Where | The trick |

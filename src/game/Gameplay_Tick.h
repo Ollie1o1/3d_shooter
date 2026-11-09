@@ -56,7 +56,7 @@ inline void GameplayState::waveEnded() {
     audio.play("lastkill", 110, SoundGroup::UI);
     audio.music.stinger();   // the track rings its chord over it
     audio.duck(4.f, 0.7f);
-    camFeel.punch(-30.f, 0.f, frand(-1.f, 1.f) * 25.f);
+    camFeel.punch(-30.f, 0.f, cosmetic::range(-1.f, 1.f) * 25.f);
     if (g_devOverlay == "lastkill") std::fprintf(stderr, "last kill at %.2f s\n", elapsedTime);
 }
 
@@ -80,7 +80,7 @@ inline void GameplayState::flushHitSounds() {
     if (bodyHitPush > 0.f) {   // the round landing in the body: a thump from where it hit, deeper and duller on the big ones
         SfxMixer::Opts o; o.group = SoundGroup::ENEMY; o.positional = true; o.pos = bodyHitAt; o.priority = true;
         o.volume = 0.5f + 0.5f * std::min(1.f, bodyHitPush / 10.f);
-        o.pitch  = glm::clamp(1.18f - 0.07f * bodyHitMass, 0.7f, 1.15f) * (0.96f + 0.08f * frand(0.f, 1.f));
+        o.pitch  = glm::clamp(1.18f - 0.07f * bodyHitMass, 0.7f, 1.15f) * (0.96f + 0.08f * cosmetic::range(0.f, 1.f));
         o.floor  = 0.55f;   // heard over the fight, whatever's further off
         audio.playOpts("hit_body", o);
         if (bodyHitStun) audio.playAt("stun", bodyHitAt, 115, SoundGroup::ENEMY, true, 0.6f);
@@ -187,7 +187,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
             // The head sinks with the fall and nods (a spring: it eases down and back), the gun dips too
             float f = std::min(peakFallSpeed, 30.f);
             camFeel.dip(-f * 0.11f);
-            camFeel.punch(-f * 2.4f, 0.f, frand(-1.f, 1.f) * f * 0.6f);
+            camFeel.punch(-f * 2.4f, 0.f, cosmetic::range(-1.f, 1.f) * f * 0.6f);
             viewModel.land(peakFallSpeed);
             if (peakFallSpeed > HEAVY_LAND) {   // a real drop: the floor answers
                 shake(0.3f, 0.025f + 0.025f * std::min(1.f, (peakFallSpeed - HEAVY_LAND) / 14.f));
@@ -200,7 +200,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         if (slamming) {
             slamLands();   // harder and wider the further it fell (Gameplay_Feel.h)
             camFeel.dip(-4.f);
-            camFeel.punch(-140.f, 0.f, frand(-1.f, 1.f) * 30.f);
+            camFeel.punch(-140.f, 0.f, cosmetic::range(-1.f, 1.f) * 30.f);
             audio.play("slam");
             if (swordOut) swordPlunge(player.position);
             slamming = false;
@@ -450,6 +450,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
             p.z > hz.box.min.z && p.z < hz.box.max.z) {
             if (!g_godMode && director.phase != WaveDirector::Phase::VICTORY) {
                 float burn = std::min(hz.dps * dt, styleSystem.health);
+                damageHistory.record(burn, styleSystem.health, {EnemyType::COUNT, DamageKind::BURN});
                 styleSystem.health -= burn;
                 styleSystem.damageTaken += burn;
             }
@@ -467,7 +468,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     if (camFeel.stepTick(playerXZSpeed, player.onGround && !player.sliding, dt)) {
         static const char* STEPS[] = {"step1", "step2", "step3", "step4"};
         static int last = -1;
-        int k = rand() % 3; if (k >= last) ++k; last = k;   // never the same step twice running
+        int k = cosmetic::index(3); if (k >= last) ++k; last = k;   // never the same step twice running
         int vol = 50 + (int)std::min(14.f, playerXZSpeed * 1.5f);
         if (player.wadeDepth >= 0.1f) audio.play("wade", 60);
         else if (onMetal()) audio.play("step_metal", vol);   // a steel deck rings under you
@@ -627,8 +628,8 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     hurtBy = EnemyType::COUNT;
     if (result.hitPlayer && result.playerHitOwner >= 0) hurtBy = (EnemyType)result.playerHitOwner;
     if (result.hitPlayer) {   // with the sword out, a shot from the front meets the guard
-        if (swordOut) damagePlayerStrike(result.playerDamage, result.playerHitFrom, Sword::Strike::WHITE);
-        else damagePlayer(result.playerDamage, result.playerHitFrom, 0.2f, 0.04f);
+        if (swordOut) damagePlayerStrike(result.playerDamage, result.playerHitFrom, Sword::Strike::WHITE, 0.f, {hurtBy, DamageKind::PROJECTILE});
+        else damagePlayer(result.playerDamage, result.playerHitFrom, 0.2f, 0.04f, .35f, {hurtBy, DamageKind::PROJECTILE});
     }
 
     updatePickups(dt);
@@ -777,7 +778,7 @@ inline void GameplayState::keepPlayerInZone(float dt) {
     int a = level.arenaAt(p);
     if (a >= 0 && p.y < level.voidHeightAt(a,p)) {
         resetToCheckpoint(a);
-        if (!g_godMode) styleSystem.takeDamage(15.f);
+        if (!g_godMode) { damageHistory.record(15.f, styleSystem.health, {EnemyType::COUNT, DamageKind::FALL}); styleSystem.takeDamage(15.f); }
         ui.onDamage();
         ui.feed("FELL - BACK TO THE LEDGE", {1.f, 0.5f, 0.3f});
         audio.play("player_hit");

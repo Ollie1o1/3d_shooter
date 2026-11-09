@@ -60,7 +60,7 @@ inline void Enemy::thinkSovereign(float dt, const EnemyWorld& w, bool resolve) {
         velocity.z = diveDir.z * DASH_SPEED;
         turnToward(diveDir, dt, 20.f);
         if (!dashHit && d < 2.6f && std::fabs(dy) < 2.6f) {
-            dashHit = true; ev.meleeHit = true; ev.meleeDamage = 22.f;
+            dashHit = true; ev.meleeHit = true; ev.meleeDamage = 22.f; ev.meleeAttack = AttackKind::DASH;
             // Caught you: pull up just past instead of carrying on through you
             dashTimer = std::min(dashTimer, 0.06f);
         }
@@ -70,7 +70,7 @@ inline void Enemy::thinkSovereign(float dt, const EnemyWorld& w, bool resolve) {
             dashTimer = 0.f;
             velocity.x = velocity.z = 0.f;
             ev.slash = 3; lastSwing = AttackKind::DASH; swingTimer = SWING_TIME;
-            if (!dashHit && inArc(w, 4.4f, 1.2f)) { ev.meleeHit = true; ev.meleeDamage = 18.f; }
+            if (!dashHit && inArc(w, 4.4f, 1.2f)) { ev.meleeHit = true; ev.meleeDamage = 18.f; ev.meleeAttack = AttackKind::DASH; }
             attack = AttackKind::NONE;
             if (chainLeft > 0) {                       // and again
                 --chainLeft;
@@ -93,7 +93,7 @@ inline void Enemy::thinkSovereign(float dt, const EnemyWorld& w, bool resolve) {
         velocity.x = diveDir.x * THRUST_SPEED;
         velocity.z = diveDir.z * THRUST_SPEED;
         if (!thrustHit && d < 2.9f && std::fabs(dy) < 2.4f) {
-            thrustHit = true; ev.meleeHit = true; ev.meleeDamage = 24.f;
+            thrustHit = true; ev.meleeHit = true; ev.meleeDamage = 24.f; ev.meleeAttack = AttackKind::THRUST;
             thrustTimer = std::min(thrustTimer, 0.04f);
         }
         if (thrustTimer <= 0.f) {
@@ -115,7 +115,7 @@ inline void Enemy::thinkSovereign(float dt, const EnemyWorld& w, bool resolve) {
             whirlHitCd = 0.3f;
             ev.slash = whirlStep % 2; lastSwing = AttackKind::SWEEP; lastSwingStep = whirlStep; swingTimer = SWING_TIME;
             ++whirlStep;
-            if (d < 4.4f && dy > -1.f && dy < 1.2f) { ev.meleeHit = true; ev.meleeDamage = 12.f; }
+            if (d < 4.4f && dy > -1.f && dy < 1.2f) { ev.meleeHit = true; ev.meleeDamage = 12.f; ev.meleeAttack = AttackKind::WHIRL; }
         }
         if (whirlTimer <= 0.f) {
             whirlTimer = 0.f;
@@ -171,7 +171,7 @@ inline void Enemy::thinkSovereign(float dt, const EnemyWorld& w, bool resolve) {
         case AttackKind::SWEEP: {
             ev.slash = comboStep % 2; lastSwing = AttackKind::SWEEP; lastSwingStep = comboStep;
             swingTimer = SWING_TIME;
-            if (inArc(w, SWEEP_REACH, 1.35f)) { ev.meleeHit = true; ev.meleeDamage = 18.f; }
+            if (inArc(w, SWEEP_REACH, 1.35f)) { ev.meleeHit = true; ev.meleeDamage = 18.f; ev.meleeAttack = AttackKind::SWEEP; }
             ++comboStep;
             if (comboStep < 2) startAttack(AttackKind::SWEEP, (0.3f - 0.06f * rage) * quick, true);
             else               startAttack(AttackKind::CLEAVE, (0.48f - 0.08f * rage) * quick, true);
@@ -179,7 +179,7 @@ inline void Enemy::thinkSovereign(float dt, const EnemyWorld& w, bool resolve) {
         }
         case AttackKind::CLEAVE: {
             ev.slash = 2; lastSwing = AttackKind::CLEAVE; swingTimer = SWING_TIME;
-            if (inArc(w, CLEAVE_REACH, 0.6f)) { ev.meleeHit = true; ev.meleeDamage = 28.f; }
+            if (inArc(w, CLEAVE_REACH, 0.6f)) { ev.meleeHit = true; ev.meleeDamage = 28.f; ev.meleeAttack = AttackKind::CLEAVE; }
             ev.slam = true; ev.slamRadius = 7.f; ev.slamDamage = 16.f;   // jump the shockwave
             comboStep = 0;
             if (rage > 0.f && d > 4.f) { chainLeft = 0; startAttack(AttackKind::DASH, 0.38f * quick, true); }

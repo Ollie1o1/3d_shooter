@@ -6,6 +6,7 @@
 // sword strokes. No OpenGL: GameplayState draws them (Gameplay_Render.h).
 // =============================================================================
 #include "world/Level.h"
+#include "core/CosmeticRandom.h"
 #include "enemies/Enemy.h"
 #include "render/EnemyModel.h"
 #include <glm/glm.hpp>
@@ -111,9 +112,9 @@ public:
         n=n*ambientLevel/3;
         for(int i=0;i<n;++i) {
             Particle* p=freeAmbientParticle();if(!p)return;
-            glm::vec3 d{frand(-1.f,1.f),frand(.1f,1.f),frand(-1.f,1.f)};
-            p->pos=c;p->vel=glm::normalize(d)*speed*frand(.4f,1.f);
-            p->color=color;p->gravity=gravity;p->maxLife=p->life=life*frand(.6f,1.f);p->alive=true;
+            glm::vec3 d{cosmetic::range(-1.f,1.f),cosmetic::range(.1f,1.f),cosmetic::range(-1.f,1.f)};
+            p->pos=c;p->vel=glm::normalize(d)*speed*cosmetic::range(.4f,1.f);
+            p->color=color;p->gravity=gravity;p->maxLife=p->life=life*cosmetic::range(.6f,1.f);p->alive=true;
         }
     }
 
@@ -122,11 +123,11 @@ public:
         for (int i = 0; i < n; ++i) {
             Particle* p = freeParticle();
             if (!p) return;
-            glm::vec3 d{frand(-1.f,1.f), frand(0.f,1.f), frand(-1.f,1.f)};
+            glm::vec3 d{cosmetic::range(-1.f,1.f), cosmetic::range(0.f,1.f), cosmetic::range(-1.f,1.f)};
             if (glm::length(d) < 1e-3f) d = {0,1,0};
-            p->pos = c; p->vel = glm::normalize(d) * speed * frand(0.4f, 1.f);
-            p->maxLife = p->life = life * frand(0.6f, 1.f);
-            p->color = color * frand(0.8f, 1.2f);
+            p->pos = c; p->vel = glm::normalize(d) * speed * cosmetic::range(0.4f, 1.f);
+            p->maxLife = p->life = life * cosmetic::range(0.6f, 1.f);
+            p->color = color * cosmetic::range(0.8f, 1.2f);
             p->gravity = gravity;
             p->alive = true;
         }
@@ -139,11 +140,11 @@ public:
         for (int i = 0; i < n; ++i) {
             Particle* p = freeParticle();
             if (!p) return;
-            glm::vec3 v = dir + glm::vec3{frand(-spread, spread), frand(-spread, spread) + 0.15f, frand(-spread, spread)};
+            glm::vec3 v = dir + glm::vec3{cosmetic::range(-spread, spread), cosmetic::range(-spread, spread) + 0.15f, cosmetic::range(-spread, spread)};
             float l = glm::length(v);
-            p->pos = pos; p->vel = (l > 1e-3f ? v / l : glm::vec3{0, 1, 0}) * speed * frand(0.5f, 1.f);
-            p->maxLife = p->life = life * frand(0.6f, 1.f);
-            p->color = color * frand(0.8f, 1.3f);
+            p->pos = pos; p->vel = (l > 1e-3f ? v / l : glm::vec3{0, 1, 0}) * speed * cosmetic::range(0.5f, 1.f);
+            p->maxLife = p->life = life * cosmetic::range(0.6f, 1.f);
+            p->color = color * cosmetic::range(0.8f, 1.3f);
             p->gravity = 16.f;
             p->alive = true;
         }
@@ -154,7 +155,7 @@ public:
         if (!p) return;
         p->pos     = origin + right * 0.15f;
         p->vel     = right * 2.5f + glm::vec3{0, 3.f, 0}
-                   + glm::vec3{((rand()%100)-50)/100.f, 0, ((rand()%100)-50)/100.f};
+                   + glm::vec3{((cosmetic::index(100))-50)/100.f, 0, ((cosmetic::index(100))-50)/100.f};
         p->maxLife = p->life = 0.7f;
         p->color   = glm::mix(glm::vec3{0.7f, 0.52f, 0.24f}, glow, 0.5f);   // brass, lit by the gun's glow
         p->gravity = 18.f;
@@ -165,11 +166,11 @@ public:
         for (int i = 0; i < 70; ++i) {
             Particle* p = freeParticle();
             if (!p) return;
-            glm::vec3 d = glm::normalize(glm::vec3{frand(-1.f,1.f), frand(0.2f,0.8f), frand(-1.f,1.f)});
+            glm::vec3 d = glm::normalize(glm::vec3{cosmetic::range(-1.f,1.f), cosmetic::range(0.2f,0.8f), cosmetic::range(-1.f,1.f)});
             p->pos     = center + d * (radius * 0.3f);
-            p->vel     = d * (8.f + frand(0.f, 1.f) * radius * 3.f);
-            p->maxLife = p->life = 0.5f + frand(0.f, 0.7f);
-            float heat = frand(0.f, 1.f);
+            p->vel     = d * (8.f + cosmetic::range(0.f, 1.f) * radius * 3.f);
+            p->maxLife = p->life = 0.5f + cosmetic::range(0.f, 0.7f);
+            float heat = cosmetic::range(0.f, 1.f);
             p->color   = heat > 0.8f ? glm::vec3{1.f, 0.95f, 0.75f}
                        : heat > 0.4f ? glm::vec3{1.f, 0.55f, 0.10f}
                                      : glm::vec3{0.55f, 0.12f, 0.05f};
@@ -220,111 +221,111 @@ public:
             Particle* p = freeAmbientParticle();
             if (!p) {ambientTimer=0;return;}
             p->alive = true;
-            float ang = frand(0.f, 6.28f), r = frand(4.f, 22.f);
+            float ang = cosmetic::range(0.f, 6.28f), r = cosmetic::range(4.f, 22.f);
             switch (kind) {
             case Ambient::DUST:
-                p->pos = me + glm::vec3{std::cos(ang) * r, frand(0.3f,6.f), std::sin(ang) * r};
-                p->vel = {frand(0.2f,0.8f), frand(-0.05f,0.15f), frand(-0.2f,0.2f)};
+                p->pos = me + glm::vec3{std::cos(ang) * r, cosmetic::range(0.3f,6.f), std::sin(ang) * r};
+                p->vel = {cosmetic::range(0.2f,0.8f), cosmetic::range(-0.05f,0.15f), cosmetic::range(-0.2f,0.2f)};
                 p->color = glm::vec3{1.f, 0.7f, 0.5f} * 0.15f;
-                p->gravity = 0.f; p->maxLife = p->life = frand(2.5f, 4.5f);
+                p->gravity = 0.f; p->maxLife = p->life = cosmetic::range(2.5f, 4.5f);
                 break;
             case Ambient::EMBERS:
                 if (!level.hazards.empty() && !fast) {
-                    const Hazard& hz = level.hazards[rand() % level.hazards.size()];
-                    p->pos = {frand(hz.box.min.x, hz.box.max.x), hz.box.max.y + 0.05f, frand(hz.box.min.z, hz.box.max.z)};
+                    const Hazard& hz = level.hazards[cosmetic::index((int)level.hazards.size())];
+                    p->pos = {cosmetic::range(hz.box.min.x, hz.box.max.x), hz.box.max.y + 0.05f, cosmetic::range(hz.box.min.z, hz.box.max.z)};
                 } else {
-                    p->pos = me + glm::vec3{std::cos(ang) * r, frand(-2.f, 1.f), std::sin(ang) * r};
+                    p->pos = me + glm::vec3{std::cos(ang) * r, cosmetic::range(-2.f, 1.f), std::sin(ang) * r};
                 }
-                p->vel = {frand(-0.4f,0.4f), frand(1.5f,3.5f), frand(-0.4f,0.4f)};
-                p->color = glm::vec3{1.f, 0.45f, 0.1f} * frand(0.6f, 1.1f);
-                p->gravity = -0.5f; p->maxLife = p->life = frand(1.2f, 2.8f);
+                p->vel = {cosmetic::range(-0.4f,0.4f), cosmetic::range(1.5f,3.5f), cosmetic::range(-0.4f,0.4f)};
+                p->color = glm::vec3{1.f, 0.45f, 0.1f} * cosmetic::range(0.6f, 1.1f);
+                p->gravity = -0.5f; p->maxLife = p->life = cosmetic::range(1.2f, 2.8f);
                 break;
             case Ambient::MOTES: {
                 glm::vec3 c = level.hasReactor ? level.reactorPos : me;
-                float rr = frand(2.5f, 9.f);
-                p->pos = c + glm::vec3{std::cos(ang) * rr, frand(-1.f, 2.5f), std::sin(ang) * rr};
-                p->vel = {0.f, frand(1.f, 2.5f), 0.f};
+                float rr = cosmetic::range(2.5f, 9.f);
+                p->pos = c + glm::vec3{std::cos(ang) * rr, cosmetic::range(-1.f, 2.5f), std::sin(ang) * rr};
+                p->vel = {0.f, cosmetic::range(1.f, 2.5f), 0.f};
                 p->color = glm::vec3{0.3f, 0.9f, 1.f} * 0.6f;
-                p->gravity = -0.3f; p->maxLife = p->life = frand(2.f, 4.f);
+                p->gravity = -0.3f; p->maxLife = p->life = cosmetic::range(2.f, 4.f);
                 break;
             }
             case Ambient::WIND:
                 // Fast pale streaks blowing across the heights
-                p->pos = me + glm::vec3{std::cos(ang) * r - 10.f, frand(-1.f, 9.f), std::sin(ang) * r};
-                p->vel = {frand(7.f, 11.f)*(1.f+.3f*std::sin(clock*.7f)), frand(-0.3f, 0.3f), frand(1.f, 3.f)};
+                p->pos = me + glm::vec3{std::cos(ang) * r - 10.f, cosmetic::range(-1.f, 9.f), std::sin(ang) * r};
+                p->vel = {cosmetic::range(7.f, 11.f)*(1.f+.3f*std::sin(clock*.7f)), cosmetic::range(-0.3f, 0.3f), cosmetic::range(1.f, 3.f)};
                 p->color = glm::vec3{0.85f, 0.9f, 1.f} * 0.22f;
-                p->gravity = 0.f; p->maxLife = p->life = frand(1.f, 2.f);
+                p->gravity = 0.f; p->maxLife = p->life = cosmetic::range(1.f, 2.f);
                 break;
             case Ambient::STEAM:
                 // Pale puffs drifting up from the floor
-                p->pos = me + glm::vec3{std::cos(ang) * r * 0.6f, frand(-1.f, 0.5f), std::sin(ang) * r * 0.6f};
-                p->vel = {frand(-0.3f, 0.3f), frand(1.f, 2.2f), frand(-0.3f, 0.3f)};
+                p->pos = me + glm::vec3{std::cos(ang) * r * 0.6f, cosmetic::range(-1.f, 0.5f), std::sin(ang) * r * 0.6f};
+                p->vel = {cosmetic::range(-0.3f, 0.3f), cosmetic::range(1.f, 2.2f), cosmetic::range(-0.3f, 0.3f)};
                 p->color = glm::vec3{0.7f, 0.95f, 0.85f} * 0.16f;
-                p->gravity = -0.2f; p->maxLife = p->life = frand(2.f, 3.5f);
+                p->gravity = -0.2f; p->maxLife = p->life = cosmetic::range(2.f, 3.5f);
                 break;
             case Ambient::ASH:
-                p->pos = me + glm::vec3{std::cos(ang) * r, frand(4.f, 12.f), std::sin(ang) * r};
-                p->vel = {frand(2.f, 4.5f)*(1.f+.45f*std::sin(clock*.7f)), frand(-1.2f, -0.4f), frand(.4f, 1.4f)};
+                p->pos = me + glm::vec3{std::cos(ang) * r, cosmetic::range(4.f, 12.f), std::sin(ang) * r};
+                p->vel = {cosmetic::range(2.f, 4.5f)*(1.f+.45f*std::sin(clock*.7f)), cosmetic::range(-1.2f, -0.4f), cosmetic::range(.4f, 1.4f)};
                 p->color = glm::vec3{0.63f, 0.57f, 0.46f} * .55f;
-                p->gravity = 0.f; p->maxLife = p->life = frand(3.f, 5.f);
+                p->gravity = 0.f; p->maxLife = p->life = cosmetic::range(3.f, 5.f);
                 break;
             case Ambient::SPECKS:
                 // Cold dust hanging in the ward's air, barely moving, catching the lamps
-                p->pos = me + glm::vec3{std::cos(ang) * r * 0.6f, frand(0.2f, 5.f), std::sin(ang) * r * 0.6f};
-                p->vel = {frand(-0.12f, 0.12f), frand(-0.06f, 0.08f), frand(-0.12f, 0.12f)};
-                p->color = glm::vec3{0.75f, 0.9f, 1.f} * frand(0.1f, 0.2f);
-                p->gravity = 0.f; p->maxLife = p->life = frand(4.f, 7.f);
+                p->pos = me + glm::vec3{std::cos(ang) * r * 0.6f, cosmetic::range(0.2f, 5.f), std::sin(ang) * r * 0.6f};
+                p->vel = {cosmetic::range(-0.12f, 0.12f), cosmetic::range(-0.06f, 0.08f), cosmetic::range(-0.12f, 0.12f)};
+                p->color = glm::vec3{0.75f, 0.9f, 1.f} * cosmetic::range(0.1f, 0.2f);
+                p->gravity = 0.f; p->maxLife = p->life = cosmetic::range(4.f, 7.f);
                 break;
             case Ambient::NEBULA: {
                 // Motes of the void drifting through the open halls: violet, cyan, now and then a hot magenta
-                float k = frand(0.f, 1.f);
-                p->pos = me + glm::vec3{std::cos(ang) * r, frand(-3.f, 10.f), std::sin(ang) * r};
-                p->vel = glm::vec3{std::sin(clock * 0.1f + ang), 0.25f * std::sin(clock * 0.23f + r), std::cos(clock * 0.13f + ang)} * frand(0.2f, 0.7f);
-                p->color = (k < 0.5f ? glm::vec3{0.55f, 0.3f, 1.f} : k < 0.88f ? glm::vec3{0.25f, 0.9f, 1.f} : glm::vec3{1.f, 0.25f, 0.8f}) * frand(0.3f, 0.75f);
-                p->gravity = -0.03f; p->maxLife = p->life = frand(4.f, 8.f);
+                float k = cosmetic::range(0.f, 1.f);
+                p->pos = me + glm::vec3{std::cos(ang) * r, cosmetic::range(-3.f, 10.f), std::sin(ang) * r};
+                p->vel = glm::vec3{std::sin(clock * 0.1f + ang), 0.25f * std::sin(clock * 0.23f + r), std::cos(clock * 0.13f + ang)} * cosmetic::range(0.2f, 0.7f);
+                p->color = (k < 0.5f ? glm::vec3{0.55f, 0.3f, 1.f} : k < 0.88f ? glm::vec3{0.25f, 0.9f, 1.f} : glm::vec3{1.f, 0.25f, 0.8f}) * cosmetic::range(0.3f, 0.75f);
+                p->gravity = -0.03f; p->maxLife = p->life = cosmetic::range(4.f, 8.f);
                 break;
             }
             case Ambient::MARINE:
                 // Marine snow: pale flakes sinking through the trench's light, drifting with a slow current
-                p->pos = me + glm::vec3{std::cos(ang) * r, frand(2.f, 12.f), std::sin(ang) * r};
-                p->vel = {0.25f * std::sin(clock * 0.2f) + frand(-0.1f, 0.1f), frand(-0.5f, -0.2f), frand(-0.1f, 0.1f)};
-                p->color = glm::vec3{0.6f, 0.85f, 0.9f} * frand(0.12f, 0.3f);
-                p->gravity = 0.f; p->maxLife = p->life = frand(6.f, 10.f);
+                p->pos = me + glm::vec3{std::cos(ang) * r, cosmetic::range(2.f, 12.f), std::sin(ang) * r};
+                p->vel = {0.25f * std::sin(clock * 0.2f) + cosmetic::range(-0.1f, 0.1f), cosmetic::range(-0.5f, -0.2f), cosmetic::range(-0.1f, 0.1f)};
+                p->color = glm::vec3{0.6f, 0.85f, 0.9f} * cosmetic::range(0.12f, 0.3f);
+                p->gravity = 0.f; p->maxLife = p->life = cosmetic::range(6.f, 10.f);
                 break;
             case Ambient::ASHFALL: {
-                float k = frand(0.f, 1.f);
+                float k = cosmetic::range(0.f, 1.f);
                 float gust = 1.f + 0.5f * std::sin(clock * 0.6f) * std::sin(clock * 0.27f + 1.f);
                 // Inside the Gleaner (built far off the plain, LevelPlain.h gut::O): its furnace's embers
                 // rising, and sparks shaken down from its vaults
                 if (level.story.chapter == 4 && me.x > 2000.f) {
                     if (k < 0.75f) {
-                        p->pos = me + glm::vec3{std::cos(ang) * r, frand(-1.f, 2.f), std::sin(ang) * r};
-                        p->vel = {frand(-0.5f, 0.5f), frand(1.8f, 4.f), frand(-0.5f, 0.5f)};
-                        p->color = glm::vec3{1.f, 0.42f, 0.08f} * frand(0.6f, 1.2f);
-                        p->gravity = -0.6f; p->maxLife = p->life = frand(1.4f, 3.f);
+                        p->pos = me + glm::vec3{std::cos(ang) * r, cosmetic::range(-1.f, 2.f), std::sin(ang) * r};
+                        p->vel = {cosmetic::range(-0.5f, 0.5f), cosmetic::range(1.8f, 4.f), cosmetic::range(-0.5f, 0.5f)};
+                        p->color = glm::vec3{1.f, 0.42f, 0.08f} * cosmetic::range(0.6f, 1.2f);
+                        p->gravity = -0.6f; p->maxLife = p->life = cosmetic::range(1.4f, 3.f);
                     } else {
-                        p->pos = me + glm::vec3{std::cos(ang) * r * 0.7f, frand(8.f, 16.f), std::sin(ang) * r * 0.7f};
-                        p->vel = {frand(-0.6f, 0.6f), frand(-2.f, -0.5f), frand(-0.6f, 0.6f)};
-                        p->color = glm::vec3{1.2f, 0.75f, 0.25f} * frand(0.8f, 1.3f);
-                        p->gravity = 9.f; p->maxLife = p->life = frand(0.8f, 1.4f);
+                        p->pos = me + glm::vec3{std::cos(ang) * r * 0.7f, cosmetic::range(8.f, 16.f), std::sin(ang) * r * 0.7f};
+                        p->vel = {cosmetic::range(-0.6f, 0.6f), cosmetic::range(-2.f, -0.5f), cosmetic::range(-0.6f, 0.6f)};
+                        p->color = glm::vec3{1.2f, 0.75f, 0.25f} * cosmetic::range(0.8f, 1.3f);
+                        p->gravity = 9.f; p->maxLife = p->life = cosmetic::range(0.8f, 1.4f);
                     }
                     break;
                 }
                 if (k < 0.55f) {          // ash flakes on the wind, dark against the red sky
-                    p->pos = me + glm::vec3{std::cos(ang) * r - 6.f, frand(3.f, 14.f), std::sin(ang) * r};
-                    p->vel = {frand(2.f, 4.f) * gust, frand(-1.1f, -0.4f), frand(0.3f, 1.2f)};
-                    p->color = glm::vec3{0.32f, 0.2f, 0.17f} * frand(0.35f, 0.7f);
-                    p->gravity = 0.f; p->maxLife = p->life = frand(3.5f, 6.f);
+                    p->pos = me + glm::vec3{std::cos(ang) * r - 6.f, cosmetic::range(3.f, 14.f), std::sin(ang) * r};
+                    p->vel = {cosmetic::range(2.f, 4.f) * gust, cosmetic::range(-1.1f, -0.4f), cosmetic::range(0.3f, 1.2f)};
+                    p->color = glm::vec3{0.32f, 0.2f, 0.17f} * cosmetic::range(0.35f, 0.7f);
+                    p->gravity = 0.f; p->maxLife = p->life = cosmetic::range(3.5f, 6.f);
                 } else if (k < 0.92f) {   // embers lifting off the hot ground
-                    p->pos = me + glm::vec3{std::cos(ang) * r, frand(-0.5f, 1.5f), std::sin(ang) * r};
-                    p->vel = {frand(0.6f, 1.8f) * gust, frand(1.2f, 3.f), frand(-0.4f, 0.4f)};
-                    p->color = glm::vec3{1.f, 0.4f, 0.08f} * frand(0.6f, 1.1f);
-                    p->gravity = -0.4f; p->maxLife = p->life = frand(1.5f, 3.2f);
+                    p->pos = me + glm::vec3{std::cos(ang) * r, cosmetic::range(-0.5f, 1.5f), std::sin(ang) * r};
+                    p->vel = {cosmetic::range(0.6f, 1.8f) * gust, cosmetic::range(1.2f, 3.f), cosmetic::range(-0.4f, 0.4f)};
+                    p->color = glm::vec3{1.f, 0.4f, 0.08f} * cosmetic::range(0.6f, 1.1f);
+                    p->gravity = -0.4f; p->maxLife = p->life = cosmetic::range(1.5f, 3.2f);
                 } else {                  // a cinder off a meteor, streaking down
-                    p->pos = me + glm::vec3{std::cos(ang) * r - 8.f, frand(16.f, 26.f), std::sin(ang) * r};
-                    p->vel = {frand(5.f, 8.f), frand(-11.f, -7.f), frand(-1.f, 1.f)};
-                    p->color = glm::vec3{1.4f, 0.8f, 0.3f} * frand(0.9f, 1.4f);
-                    p->gravity = 4.f; p->maxLife = p->life = frand(1.2f, 2.f);
+                    p->pos = me + glm::vec3{std::cos(ang) * r - 8.f, cosmetic::range(16.f, 26.f), std::sin(ang) * r};
+                    p->vel = {cosmetic::range(5.f, 8.f), cosmetic::range(-11.f, -7.f), cosmetic::range(-1.f, 1.f)};
+                    p->color = glm::vec3{1.4f, 0.8f, 0.3f} * cosmetic::range(0.9f, 1.4f);
+                    p->gravity = 4.f; p->maxLife = p->life = cosmetic::range(1.2f, 2.f);
                 }
                 break;
             }
@@ -339,15 +340,15 @@ public:
         const int n = 5 + (int)std::min(6.f, size * 3.f);
         for (int i = 0; i < n; ++i) {
             Debris d;
-            const float s = (0.05f + 0.06f * frand(0.f, 1.f)) * std::max(0.7f, size);
+            const float s = (0.05f + 0.06f * cosmetic::range(0.f, 1.f)) * std::max(0.7f, size);
             d.shape = glm::mat3(glm::scale(glm::mat4(1.f), glm::vec3{s}));
-            d.pos = pos + glm::vec3{frand(0.f, 1.f) - 0.5f, frand(0.f, 1.f) - 0.5f, frand(0.f, 1.f) - 0.5f} * 0.2f;
-            glm::vec3 r{frand(0.f, 1.f) * 2.f - 1.f, frand(0.f, 1.f) * 2.f - 1.f, frand(0.f, 1.f) * 2.f - 1.f};
-            d.vel = back * (2.f + 4.f * frand(0.f, 1.f)) + r * 3.f + glm::vec3{0.f, 2.5f, 0.f};
-            glm::vec3 ax{frand(0.f, 1.f) - 0.5f, frand(0.f, 1.f) - 0.5f, frand(0.f, 1.f) - 0.5f};
+            d.pos = pos + glm::vec3{cosmetic::range(0.f, 1.f) - 0.5f, cosmetic::range(0.f, 1.f) - 0.5f, cosmetic::range(0.f, 1.f) - 0.5f} * 0.2f;
+            glm::vec3 r{cosmetic::range(0.f, 1.f) * 2.f - 1.f, cosmetic::range(0.f, 1.f) * 2.f - 1.f, cosmetic::range(0.f, 1.f) * 2.f - 1.f};
+            d.vel = back * (2.f + 4.f * cosmetic::range(0.f, 1.f)) + r * 3.f + glm::vec3{0.f, 2.5f, 0.f};
+            glm::vec3 ax{cosmetic::range(0.f, 1.f) - 0.5f, cosmetic::range(0.f, 1.f) - 0.5f, cosmetic::range(0.f, 1.f) - 0.5f};
             d.axis = glm::length(ax) > 1e-3f ? glm::normalize(ax) : glm::vec3{0.f, 1.f, 0.f};
-            d.spin = 8.f + 14.f * frand(0.f, 1.f);
-            d.maxLife = d.life = 0.5f + 0.4f * frand(0.f, 1.f);
+            d.spin = 8.f + 14.f * cosmetic::range(0.f, 1.f);
+            d.maxLife = d.life = 0.5f + 0.4f * cosmetic::range(0.f, 1.f);
             d.color = glow * 0.35f; d.emissive = glow * 1.6f;
             d.floorY = floorY + s;
             debris.push_back(d);
@@ -391,9 +392,9 @@ public:
         auto launch = [&](glm::vec3 at, float scatter) {
             glm::vec3 out = at - c; out.y = std::max(out.y, 0.f);
             float ol = glm::length(out);
-            glm::vec3 v = (ol > 1e-3f ? out / ol : glm::vec3{0,1,0}) * frand(3.f, 8.f) * scatter * (1.f - 0.35f * std::min(1.f, carry / 10.f))
-                        + glm::vec3{frand(-2.f,2.f), frand(3.f,7.f), frand(-2.f,2.f)} * scatter + e.velocity * 0.3f + e.knockVel * 0.5f
-                        + along * carry * frand(0.5f, 1.25f);
+            glm::vec3 v = (ol > 1e-3f ? out / ol : glm::vec3{0,1,0}) * cosmetic::range(3.f, 8.f) * scatter * (1.f - 0.35f * std::min(1.f, carry / 10.f))
+                        + glm::vec3{cosmetic::range(-2.f,2.f), cosmetic::range(3.f,7.f), cosmetic::range(-2.f,2.f)} * scatter + e.velocity * 0.3f + e.knockVel * 0.5f
+                        + along * carry * cosmetic::range(0.5f, 1.25f);
             if (carry > 2.f) {   // a hard blow: nothing much comes back at the one who struck it
                 glm::vec3 flat{along.x, 0.f, along.z};
                 float fl = glm::length(flat), back = fl > 1e-3f ? glm::dot(v, flat / fl) : 0.f;
@@ -420,11 +421,11 @@ public:
                 float size = glm::length(hi - lo);
                 ch.low = std::max(0.05f, 0.35f * size);
                 ch.vel = launch(ch.pos, 0.8f);
-                if (e.hitHead && (g == enemyfile::E_HEAD || g == enemyfile::E_CROWN)) ch.vel += glm::vec3{0.f, frand(5.f, 8.f), 0.f} + along * frand(3.f, 6.f);   // the head goes first
-                ch.hot = carry > 2.f || e.hitHead ? frand(0.12f, 0.22f) : 0.08f;
-                ch.axis = glm::normalize(glm::vec3{frand(-1.f,1.f), frand(-1.f,1.f), frand(-1.f,1.f)} + glm::vec3{0.01f});
-                ch.spin = frand(3.f, 8.f) / std::max(1.f, std::sqrt(size));   // big pieces turn slower
-                ch.maxLife = ch.life = frand(1.6f, 2.3f);
+                if (e.hitHead && (g == enemyfile::E_HEAD || g == enemyfile::E_CROWN)) ch.vel += glm::vec3{0.f, cosmetic::range(5.f, 8.f), 0.f} + along * cosmetic::range(3.f, 6.f);   // the head goes first
+                ch.hot = carry > 2.f || e.hitHead ? cosmetic::range(0.12f, 0.22f) : 0.08f;
+                ch.axis = glm::normalize(glm::vec3{cosmetic::range(-1.f,1.f), cosmetic::range(-1.f,1.f), cosmetic::range(-1.f,1.f)} + glm::vec3{0.01f});
+                ch.spin = cosmetic::range(3.f, 8.f) / std::max(1.f, std::sqrt(size));   // big pieces turn slower
+                ch.maxLife = ch.life = cosmetic::range(1.6f, 2.3f);
                 ch.floorY = floorY;
                 chunks.push_back(std::move(ch));
             }
@@ -440,12 +441,12 @@ public:
             d.mesh  = b.mesh;
             d.pos   = glm::vec3(b.model[3]);
             d.vel   = launch(d.pos, 1.f);
-            if (e.hitHead && d.pos.y > headY) d.vel += glm::vec3{0.f, frand(5.f, 8.f), 0.f} + along * frand(3.f, 6.f);   // the head goes first
-            d.hot = carry > 2.f || e.hitHead ? frand(0.12f, 0.22f) : 0.08f;
-            d.axis  = glm::normalize(glm::vec3{frand(-1.f,1.f), frand(-1.f,1.f), frand(-1.f,1.f)} + glm::vec3{0.01f});
-            d.spin  = frand(4.f, 12.f);
+            if (e.hitHead && d.pos.y > headY) d.vel += glm::vec3{0.f, cosmetic::range(5.f, 8.f), 0.f} + along * cosmetic::range(3.f, 6.f);   // the head goes first
+            d.hot = carry > 2.f || e.hitHead ? cosmetic::range(0.12f, 0.22f) : 0.08f;
+            d.axis  = glm::normalize(glm::vec3{cosmetic::range(-1.f,1.f), cosmetic::range(-1.f,1.f), cosmetic::range(-1.f,1.f)} + glm::vec3{0.01f});
+            d.spin  = cosmetic::range(4.f, 12.f);
             d.color = b.color; d.emissive = b.emissive;
-            d.maxLife = d.life = frand(1.2f, 1.8f);
+            d.maxLife = d.life = cosmetic::range(1.2f, 1.8f);
             d.floorY = floorY;
             debris.push_back(d);
         }

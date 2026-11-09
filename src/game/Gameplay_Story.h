@@ -372,7 +372,7 @@ inline void GameplayState::updateStory(float dt) {
     const glm::vec3 p = player.position;
     const AABB& F = S.furnace;
     if (!playerDead && p.x > F.min.x && p.x < F.max.x && p.z > F.min.z && p.z < F.max.z && p.y < F.max.y) {
-        if (!g_godMode) { styleSystem.health = 0.f; ui.onDamage(); }
+        if (!g_godMode) { damageHistory.record(styleSystem.health, styleSystem.health, {EnemyType::COUNT, DamageKind::FURNACE}); styleSystem.health = 0.f; ui.onDamage(); }
         audio.play("explosion", 110, SoundGroup::PLAYER);
         fx.spawnBurst(p + glm::vec3{0.f, 0.5f, 0.f}, {1.f, 0.5f, 0.1f}, 30, 8.f, 0.9f, -9.f);
     }

@@ -42,7 +42,7 @@ inline void GameplayState::onWardenEvents(Enemy& e, const EnemyEvents& ev) {
         float dmg = WardenHazards::DETONATE_DAMAGE * scale;
         float cap = std::max(styleSystem.health - 1.f, 0.f);   // a setback, never the killing blow
         dmg = std::min(dmg, cap);
-        if (dmg > 0.f) damagePlayer(dmg, c, 0.4f, 0.09f);
+        if (dmg > 0.f) damagePlayer(dmg, c, 0.4f, 0.09f,.35f,{EnemyType::WARDEN, DamageKind::UNKNOWN});
         glm::vec3 away = player.position - e.position; away.y = 0.f;
         if (glm::length(away) > 0.1f) player.velocity += glm::normalize(away) * 18.f + glm::vec3{0.f, 7.f, 0.f};
         pushBanner("MELTDOWN", "40 SECONDS", {1.f, 0.5f, 0.2f}, 2.f);
@@ -96,7 +96,7 @@ inline void GameplayState::updateWarden(float dt) {
     const float scale = level.arenas[director.arena].damageScale * tune().damage;
     glm::vec3 at = w ? w->position : glm::vec3{0.f};
     for (const auto& h : ward.update(dt, player.position, player.height, level.walls.data(), (int)level.walls.size(), at, w && w->ventTimer > 0.f))
-        damagePlayer(h.damage * scale, h.from, 0.1f, 0.03f, h.damage < 10.f ? 0.f : 0.25f);
+        damagePlayer(h.damage * scale, h.from, 0.1f, 0.03f, h.damage < 10.f ? 0.f : 0.25f,{EnemyType::WARDEN, DamageKind::UNKNOWN});
 }
 
 inline void GameplayState::gatherWardenBoxes(std::vector<BoxInstance>& out) {

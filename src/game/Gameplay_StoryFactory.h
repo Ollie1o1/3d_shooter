@@ -104,7 +104,7 @@ inline void GameplayState::updateStoryFactory(float dt) {
         }
     }
     if(at==8 && p.y<level.arenas[8].playerStart.y-5.f && !storyBossDown) {
-        resetToCheckpoint(8);if(!g_godMode)styleSystem.takeDamage(18.f);
+        resetToCheckpoint(8);if(!g_godMode){damageHistory.record(18.f,styleSystem.health,{EnemyType::COUNT,DamageKind::FALL});styleSystem.takeDamage(18.f);}
     }
     // The exit vista's sky warms as the gate opens; it is visible before the end card.
     if(storyBossDown) {

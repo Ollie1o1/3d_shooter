@@ -107,6 +107,18 @@ test: $(TESTS) $(HEADERS)
 	$(MAKE) test-feel
 	$(MAKE) test-reliquary
 	$(MAKE) test-next
+	$(MAKE) test-iteration
+
+.PHONY: test-iteration test-iteration-runtime
+test-iteration: tests/test_iteration.cpp $(HEADERS)
+	mkdir -p build/iteration
+	$(CXX) $(CXXFLAGS) tests/test_iteration.cpp -o build/test_iteration $(STDLIB)
+	./build/test_iteration
+
+test-iteration-runtime: tests/test_iteration_runtime.cpp src/main.cpp $(HEADERS)
+	mkdir -p build/iteration
+	$(CXX) $(CXXFLAGS) tests/test_iteration_runtime.cpp -o build/test_iteration_runtime $(LDFLAGS)
+	./build/test_iteration_runtime
 
 .PHONY: test-next test-next-runtime
 test-next: tests/test_next.cpp $(HEADERS)

@@ -44,7 +44,7 @@ inline void GameplayState::onLeviathanEvents(Enemy& e, const EnemyEvents& ev) {
         fx.spawnShockwave(at, 7.f, red);
         fx.spawnBurst(at + glm::vec3{0.f, 0.5f, 0.f}, {0.4f, 0.35f, 0.3f}, 40, 10.f, 0.9f, 14.f);   // the ring breaking
         if (LeviathanHazards::inStrip(ev.lvFrom, ev.lvTo, player.position, floorY) &&
-            damagePlayer(LeviathanHazards::CRASH_DAMAGE * scale, at, 0.4f, 0.09f)) {
+            damagePlayer(LeviathanHazards::CRASH_DAMAGE * scale, at, 0.4f, 0.09f,.35f,{EnemyType::LEVIATHAN, DamageKind::UNKNOWN})) {
             glm::vec2 d{ev.lvTo.x - ev.lvFrom.x, ev.lvTo.z - ev.lvFrom.z};
             glm::vec2 r{player.position.x - ev.lvFrom.x, player.position.z - ev.lvFrom.z};
             glm::vec2 side{-d.y, d.x};
@@ -74,7 +74,7 @@ inline void GameplayState::onLeviathanEvents(Enemy& e, const EnemyEvents& ev) {
         playBoom("explosion", at, 128, SoundGroup::WORLD, true, 0.5f);
         fx.spawnBurst(at + glm::vec3{0.f, 1.f, 0.f}, water, 60, 16.f, 1.f, 9.f);
         fx.spawnShockwave(at, LeviathanHazards::BREACH_RADIUS, red);
-        if (LeviathanHazards::breachHits(at, player.position) && damagePlayer(LeviathanHazards::BREACH_DAMAGE * scale, at, 0.4f, 0.09f)) {
+        if (LeviathanHazards::breachHits(at, player.position) && damagePlayer(LeviathanHazards::BREACH_DAMAGE * scale, at, 0.4f, 0.09f,.35f,{EnemyType::LEVIATHAN, DamageKind::UNKNOWN})) {
             glm::vec3 away = player.position - at; away.y = 0.f;
             if (glm::length(away) > 0.1f) away = glm::normalize(away); else away = {1.f, 0.f, 0.f};
             player.velocity += away * 8.f + glm::vec3{0.f, 13.f, 0.f};   // thrown up out of it
@@ -101,7 +101,7 @@ inline void GameplayState::updateLeviathan(float dt) {
         glm::vec3 want = levSinkT < 0.8f ? base + glm::vec3{0.f, 17.f, 0.f} : base - glm::vec3{0.f, 12.f, 0.f};
         levCorpse.position += (want - levCorpse.position) * std::min(1.f, dt * (levSinkT < 0.8f ? 4.f : 1.6f));
         levCorpse.levPitch = levSinkT < 0.8f ? 0.8f : -0.6f; levCorpse.levJaw = levSinkT < 0.8f ? 1.f : 0.2f;
-        if (std::fmod(levSinkT, 0.2f) < dt) fx.spawnBurst(base + glm::vec3{frand(-6.f, 6.f), 0.5f, frand(-6.f, 6.f)}, {0.4f, 0.12f, 0.12f}, 6, 8.f, 0.8f, 9.f);
+        if (std::fmod(levSinkT, 0.2f) < dt) fx.spawnBurst(base + glm::vec3{cosmetic::range(-6.f, 6.f), 0.5f, cosmetic::range(-6.f, 6.f)}, {0.4f, 0.12f, 0.12f}, 6, 8.f, 0.8f, 9.f);
     }
     Enemy* e = leviathan();
     if (e && (e->staggered() || e->attack != AttackKind::CRASH)) lev.dropMarks();   // a crash that never came
@@ -113,9 +113,9 @@ inline void GameplayState::updateLeviathan(float dt) {
         player.position += pull * dt;   // the player's own collision holds it against walls
         player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0};
         if (std::fmod(gameClock, 0.08f) < dt)
-            fx.spawnBurst(player.position + glm::vec3{frand(-3.f, 3.f), 1.f, frand(-3.f, 3.f)}, {0.8f, 0.8f, 0.85f}, 2, 3.f, 0.5f, 0.f);
+            fx.spawnBurst(player.position + glm::vec3{cosmetic::range(-3.f, 3.f), 1.f, cosmetic::range(-3.f, 3.f)}, {0.8f, 0.8f, 0.85f}, 2, 3.f, 0.5f, 0.f);
         if (LeviathanHazards::bites(mouth, player.position)) {
-            if (damagePlayer(LeviathanHazards::BITE_DAMAGE * scale, mouth, 0.4f, 0.09f)) {
+            if (damagePlayer(LeviathanHazards::BITE_DAMAGE * scale, mouth, 0.4f, 0.09f,.35f,{EnemyType::LEVIATHAN, DamageKind::UNKNOWN})) {
                 glm::vec3 away = player.position - mouth; away.y = 0.f;
                 if (glm::length(away) > 0.1f) player.velocity += glm::normalize(away) * 18.f + glm::vec3{0.f, 6.f, 0.f};
             }
@@ -127,10 +127,10 @@ inline void GameplayState::updateLeviathan(float dt) {
     if (!e && lev.strips.empty() && lev.tides.empty() && lev.spits.empty() && lev.boils.empty()) return;
     float floorY = e ? e->levFloor : level.lairFloor;
     for (const auto& h : lev.update(dt, player.position, floorY))
-        damagePlayer(h.damage * scale, h.from, h.damage < 10.f ? 0.1f : 0.3f, h.damage < 10.f ? 0.03f : 0.07f, h.damage < 10.f ? 0.f : 0.25f);
+        damagePlayer(h.damage * scale, h.from, h.damage < 10.f ? 0.1f : 0.3f, h.damage < 10.f ? 0.03f : 0.07f, h.damage < 10.f ? 0.f : 0.25f,{EnemyType::LEVIATHAN, DamageKind::UNKNOWN});
     for (auto& b : lev.boils)   // the well boiling
-        if (rand() % 2 == 0)
-            fx.spawnBurst(b.at + glm::vec3{frand(-3.f, 3.f), 0.2f, frand(-3.f, 3.f)}, {1.2f, 0.25f, 0.12f}, 2, 4.f, 0.5f, 6.f);
+        if (cosmetic::index(2) == 0)
+            fx.spawnBurst(b.at + glm::vec3{cosmetic::range(-3.f, 3.f), 0.2f, cosmetic::range(-3.f, 3.f)}, {1.2f, 0.25f, 0.12f}, 2, 4.f, 0.5f, 6.f);
 }
 
 // A parried orb in flight steers into what it's homing on: the Warden's core,

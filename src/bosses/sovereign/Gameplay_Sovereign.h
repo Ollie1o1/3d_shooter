@@ -36,7 +36,7 @@ inline void GameplayState::updateSovereign(float dt) {
     const Arena& ar = level.arenas[director.arena];
     const float dmgScale = ar.damageScale * tune().damage;
     for (const auto& h : sov.update(dt, player.position)) {
-        if (!damagePlayer(h.damage * dmgScale, h.from, 0.3f, 0.07f)) continue;
+        if (!damagePlayer(h.damage * dmgScale, h.from, 0.3f, 0.07f, .35f, {EnemyType::SOVEREIGN, h.kind==2?DamageKind::PHANTOM:DamageKind::MARKED_FLOOR})) continue;
         if (h.kind == 1) player.velocity.y = std::max(player.velocity.y, 7.f);   // thrown up by the eruption
         else {
             glm::vec3 away = player.position - h.from; away.y = 0.f;
@@ -83,13 +83,14 @@ inline void GameplayState::updateSovereign(float dt) {
     glm::vec3 c = sanctumCentre();
     // Embers rising off the burning band
     for (int k = 0; k < 3; ++k) {
-        float x = frand(ar.bounds.min.x, ar.bounds.max.x), z = frand(ar.bounds.min.z, ar.bounds.max.z);
+        float x = cosmetic::range(ar.bounds.min.x, ar.bounds.max.x), z = cosmetic::range(ar.bounds.min.z, ar.bounds.max.z);
         if (!SovereignHazards::burns({x, 0.f, z}, c)) continue;
         fx.spawnBurst({x, 0.2f, z}, {1.f, 0.35f, 0.1f}, 1, 2.f, 1.4f, -3.f);
     }
     if (lastStandT < LAST_STAND_WARN || playerDead || g_godMode) return;
     if (!SovereignHazards::burns(player.position, c)) return;
     float burn = std::min(SovereignHazards::BURN_DPS * dt, styleSystem.health);
+    damageHistory.record(burn, styleSystem.health, {EnemyType::SOVEREIGN, DamageKind::BURN});
     styleSystem.health -= burn;
     styleSystem.damageTaken += burn;
     if (hazardTick <= 0.f) {

@@ -29,12 +29,12 @@ inline void GameplayState::onPacemakerEvents(const Enemy& e, const EnemyEvents& 
     }
     if (e.pmChannel > 0.f) {   // the pillar of light it's drawing up out of the keep
         const glm::vec3 base = e.position + glm::vec3{0.f, 0.2f, 0.f};
-        fx.spawnBurst(base + glm::vec3{frand(-0.6f, 0.6f), frand(0.f, 6.f), frand(-0.6f, 0.6f)}, {1.5f, 1.1f, 0.5f}, 2, 3.f, 0.5f, -6.f);
+        fx.spawnBurst(base + glm::vec3{cosmetic::range(-0.6f, 0.6f), cosmetic::range(0.f, 6.f), cosmetic::range(-0.6f, 0.6f)}, {1.5f, 1.1f, 0.5f}, 2, 3.f, 0.5f, -6.f);
     }
 }
 
 inline void GameplayState::onPacemakerKilled(Enemy& e) {
     for (int k = 0; k < 8; ++k)
-        fx.spawnBurst(e.position + glm::vec3{frand(-1.f, 1.f), frand(0.5f, 3.f), frand(-1.f, 1.f)}, {1.4f, 0.9f, 0.4f}, 30, 11.f, 0.9f, 2.f);
+        fx.spawnBurst(e.position + glm::vec3{cosmetic::range(-1.f, 1.f), cosmetic::range(0.5f, 3.f), cosmetic::range(-1.f, 1.f)}, {1.4f, 0.9f, 0.4f}, 30, 11.f, 0.9f, 2.f);
     fx.spawnShockwave(e.position, 14.f, {1.4f, 1.f, 0.5f});
 }

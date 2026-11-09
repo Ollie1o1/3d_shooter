@@ -56,7 +56,7 @@ inline void GameplayState::updateSuccessor(float dt){
     if(!boss){successorHazards.clear();return;}
     if(successorHazards.epoch!=boss->suEpoch){successorHazards.clear();successorHazards.epoch=boss->suEpoch;}
     float damage=0;auto hits=successorHazards.update(dt,player.position,damage);
-    if(!hits.empty())damagePlayer(damage*tune().damage,hits[0],.2f,.04f);
+    if(!hits.empty())damagePlayer(damage*tune().damage,hits[0],.2f,.04f,.35f,{EnemyType::SUCCESSOR, DamageKind::MARKED_FLOOR});
 }
 inline bool GameplayState::shootSuccessorNode(glm::vec3 origin,glm::vec3 dir,float& range,float damage){
     for(auto& e:enemies)if(e.alive&&e.type==EnemyType::SUCCESSOR&&e.suNodes>0){

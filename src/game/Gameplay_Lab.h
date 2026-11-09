@@ -79,7 +79,7 @@ inline void GameplayState::updateMotorLoad(float dt){
         hurtEnemy(e,500,e.position,8,2,StyleSource::ENVIRONMENT,false,true);
     if(std::abs(player.position.x-at.x)<4.45f && std::abs(player.position.z-at.z)<4.45f &&
        player.position.y<at.y+2.4f && player.position.y+player.height>at.y) {
-        damagePlayer(55,at,.2f,.04f);
+        damagePlayer(55,at,.2f,.04f,.35f,{EnemyType::COUNT,DamageKind::LOAD});
         // A surviving player is pushed clear instead of being entombed in the
         // landed cover. Choose the nearest supported side with body clearance.
         glm::vec3 safe=player.position;float best=1e9f;

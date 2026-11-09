@@ -10,6 +10,7 @@
 #include "render/EnemyModel.h"
 #include "render/LightBake.h"
 #include "audio/MusicSynth.h"
+#include "MapAudit.h"
 #include <cstdio>
 #include <set>
 static int failures=0;
@@ -96,6 +97,17 @@ int main(){
             && circuit.to(c+glm::vec3{17,0,z+16}) && !circuit.falseFall;
     }
     CHECK(circuits,"assessment apparatus forms a second complete fighting circuit with real ramps and roof collision");
+    {
+        auto c=lab::centre(3);
+        Walk theatre(L,c+glm::vec3{-19,0,22});
+        bool loop=theatre.to(c+glm::vec3{-19,2.4f,6}) && theatre.to(c+glm::vec3{17,2.4f,6})
+            && theatre.to(c+glm::vec3{17,0,22}) && theatre.to(c+glm::vec3{-19,0,22});
+        CHECK(loop && !theatre.falseFall,"Surgical Observation's low theatre circuit has two real ramp approaches and an open floor return");
+        const auto measure=audit::measure(L,3);
+        std::printf("  surgical: %.1f%% cover, %.1fm sight, %d layers, %.2f lights\n",measure.cover*100,measure.sight,measure.levels,measure.lights);
+        CHECK(measure.cover>=.25f && measure.cover<=.5f && measure.sight>=12 && measure.sight<=30 && measure.levels>=3 && measure.lights>=.5f,
+            "Surgical Observation meets the combat cover, sightline, layer and lighting targets");
+    }
     auto motor=lab::centre(2),garden=lab::centre(4);
     Walk maintenance(L,motor+glm::vec3{-31,0,20}),observation(L,garden+glm::vec3{0,0,28});
     CHECK(maintenance.to(motor+glm::vec3{-31,6,-12}) && maintenance.to(L.story.wrecks[0].pos)

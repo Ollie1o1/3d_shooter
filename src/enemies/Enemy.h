@@ -77,6 +77,7 @@ struct EnemyEvents : SovereignEvents, PenitentEvents, WardenEvents, LeviathanEve
     bool      beamOn = false;      // SERAPH: its beam is sweeping, from beamFrom to beamTo
     glm::vec3 beamFrom{0.f}, beamTo{0.f};
     bool      meleeHit = false;   float meleeDamage = 0.f;
+    AttackKind meleeAttack = AttackKind::NONE; // contact's attack; AI may already have queued the next one
     bool      slam = false;       float slamRadius = 0.f, slamDamage = 0.f;
     bool      detonated = false;  // MITE blew itself up next to the player
     int       summonMites = 0, summonRippers = 0;
@@ -369,7 +370,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         scale = miniScale(t);   // (1 for everything but the Gauntlet's mini-bosses)
         attackTimer = frand(0.f, s.attackEvery * 0.6f);   // desync the squad
         strafeDir   = (rand() & 1) ? 1.f : -1.f;
-        animPhase   = frand(0.f, 6.28f);
+        animPhase   = frand(0.f, 6.28f); // also drives Mite movement and animated hitboxes: gameplay state
         if (s.flying) {
             hoverY      = pos.y - floor > 2.f ? pos.y - floor : 8.f;   // above the floor under it
             orbitRadius = frand(9.f, 15.f);
