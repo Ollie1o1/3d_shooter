@@ -55,7 +55,9 @@ inline void dispatchYard(LevelBuilder& b) {
     b.mat=Mat::METAL;
     // A loading balcony with an approach at either end, below the grapple-only
     // canopy and signal gantry. The west entrance and east exit stay open.
-    b.wall(c.x-24.5f,0,c.z-6,c.x-22.5f,3.2f,c.z+7,iron);
+    b.wall(c.x-24.5f,2.9f,c.z-6,c.x-22.5f,3.2f,c.z+7,iron);
+    for(float x:{-24.5f,-22.9f})for(float z:{-6.f,6.6f})
+        b.wall(c.x+x,0,c.z+z,c.x+x+.4f,2.9f,c.z+z+.4f,iron);
     for(bool north:{true,false}) {
         float z0=north?-14.f:7.f,z1=north?-6.f:15.f;
         b.L.ramps.push_back({LevelBuilder::aabb(c.x-24.5f,0,c.z+z0,c.x-22.5f,3.2f,c.z+z1),2,north?0.f:3.2f,north?3.2f:0.f});

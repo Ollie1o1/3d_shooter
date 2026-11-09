@@ -137,6 +137,9 @@ int main() {
             && w.to(c+glm::vec3{-23.5f,3.2f,6},false,1800,.25f)
             && w.to(c+glm::vec3{-23.5f,0,-15},false,1800,.25f);
         CHECK(balcony,"Dispatch 2's loading balcony can be walked up, crossed and left from either end");
+        Walk entry(L,c+glm::vec3{-31,0,0});
+        CHECK(entry.to(c+glm::vec3{-20,0,0},false,1800,.25f)&&entry.p.position.y<.1f,
+            "Dispatch 2's west entrance stays open beneath the loading balcony");
         Walk ramp(L,c+glm::vec3{0,0,15.5f});
         bool platform=ramp.to(c+glm::vec3{0,.6f,8},false,1800,.25f);
         for(int f=0;f<30;++f)ramp.step(ramp.p.position,false,true);
