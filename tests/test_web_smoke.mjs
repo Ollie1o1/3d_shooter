@@ -3,7 +3,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 const { chromium } = await import(process.env.OVERDRIVE_PLAYWRIGHT || 'playwright');
-const url = process.argv[2] || 'http://127.0.0.1:8765/';
+const targetURL = new URL(process.argv[2] || 'http://127.0.0.1:8765/');
+const renderLines = process.env.OVERDRIVE_SMOKE_LINES || '360';
+targetURL.searchParams.set('res', renderLines);
+const url = targetURL.href;
 const output = process.argv[3] || 'build/feel-pass/web';
 await fs.mkdir(output, { recursive: true });
 const browser = await chromium.launch({
@@ -13,11 +16,16 @@ const browser = await chromium.launch({
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   page.setDefaultTimeout(120000); // software-rendered frames can delay input on a two-core runner
-  // Software WebGL in CI has no GPU. Keep the real shaders/lighting enabled,
-  // but use 720p without MSAA so input and screenshots don't queue behind
-  // supersampled frames. This fresh context never touches a player's settings.
-  await page.addInitScript(() => localStorage.setItem('overdrive.settings.cfg',
-    'quality 0\nantiAlias 0\nambientDetail 1\nframeCap 2\n'));
+  // Software WebGL on a two-core runner cannot consume desktop-rate draws.
+  // Exercise the real shaders, lighting and input at 360p/10 Hz, then stop
+  // frame production for captures. Normal-resolution public builds are also
+  // checked separately. This fresh context never touches a player's settings.
+  await page.addInitScript(() => {
+    window.requestAnimationFrame = callback => window.setTimeout(() => callback(performance.now()), 100);
+    window.cancelAnimationFrame = id => window.clearTimeout(id);
+    localStorage.setItem('overdrive.settings.cfg',
+      'quality 0\nantiAlias 0\nambientDetail 1\nframeCap 2\n');
+  });
   const errors = [];
   page.on('pageerror', error => errors.push(String(error)));
   page.on('response', response => {
@@ -39,6 +47,7 @@ try {
     });
     await page.mouse.click(640, 360); // real user gesture, on the overlay or the running canvas
     await page.locator('#overlay').waitFor({ state: 'detached' });
+    await page.waitForFunction(lines => document.querySelector('#canvas').height === Number(lines), renderLines);
   }
   async function capture(name) {
     // Stop producing frames while Chromium drains software WebGL commands
@@ -94,6 +103,7 @@ try {
     ['vault', { story5: '', arena: '10', god: '' }],
   ]) {
     const target = new URL(url); target.search = new URLSearchParams(params).toString();
+    target.searchParams.set('res', renderLines);
     await page.goto(target.href, { waitUntil: 'domcontentloaded' });
     await enterGame();
     if (['phase-practice', 'boss-rush'].includes(name)) await page.keyboard.press('Tab');
