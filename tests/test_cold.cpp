@@ -2,6 +2,7 @@
 // Void past it, walking it with the real controller, falling off it, and the
 // snow and ice textures. No OpenGL context required. `make test-cold`.
 #include "core/Balance.h"
+#include "core/MouseCapture.h"
 #include "world/LevelCold.h"
 #include "world/LevelPlain.h"
 #include "game/StorySave.h"
@@ -54,6 +55,13 @@ struct Walk {
 
 int main() {
     balanceInit();
+    {
+        bool held=false;
+        CHECK(!pointerLockReleased(false,held),"a denied initial browser mouse request does not pause gameplay");
+        CHECK(!pointerLockReleased(true,held)&&held,"acquiring a browser mouse lock does not pause gameplay");
+        CHECK(pointerLockReleased(false,held)&&!held,"releasing a held browser mouse lock still pauses gameplay");
+        CHECK(!pointerLockReleased(false,held),"repeated inactive browser notifications do not pause again");
+    }
     auto L = buildCold();
     const Arena& A = L.arenas[0];
 

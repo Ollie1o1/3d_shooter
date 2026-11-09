@@ -15,6 +15,12 @@
 #include <emscripten.h>
 #endif
 
+// Browsers can report an inactive change after denying a request. Only a
+// transition from a held lock means the player released it (e.g. Escape).
+inline bool pointerLockReleased(bool active,bool& held) {
+    const bool released=held&&!active;held=active;return released;
+}
+
 inline void setMouseCaptured(bool on) {
 #ifdef __EMSCRIPTEN__
     EM_ASM({ if (window.overdriveMouseWanted) window.overdriveMouseWanted(!!$0); }, on ? 1 : 0);

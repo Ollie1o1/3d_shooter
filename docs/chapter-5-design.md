@@ -532,6 +532,9 @@ gameplay methods and OpenGL rendering: falls, two-catwalk pursuit, 24-K moving
 and attacking among cover, changing rollback destinations, Recall overrides,
 freeze damage on cover and retries. `tests/test_web_smoke.mjs` now boots all
 three revised spaces in Chromium through `?story5&arena=6/8/10`.
+The stricter browser input check also exposed inactive pointer-lock callbacks
+after denied capture requests. Those no longer pause an uncaptured game;
+releasing a previously held lock still pauses normally.
 
 This pass uses the existing material, ambient and live neon lighting. Chapter
 5 still has no baked light volume. The original enemy health, weapon damage

@@ -89,8 +89,18 @@ try {
     if (['blast-chillers', 'dispatch-2', 'vault'].includes(name)) {
       // Story checkpoint starts enter gameplay directly. Enter also resumes
       // an initial browser pointer-lock pause without opening an armory.
+      await page.locator('#canvas').focus();
+      await page.waitForTimeout(750);
       await page.keyboard.press('Enter');
-      await page.waitForFunction(() => document.pointerLockElement === document.querySelector('#canvas'));
+      // SDL handles Enter on its next frame. If that arrives after the
+      // browser's gesture expires, use the shipped Click to aim affordance
+      // for a fresh pointer gesture once the game wants capture again.
+      await page.waitForFunction(() => document.pointerLockElement || document.querySelector('#aim').hasAttribute('data-on'));
+      await page.mouse.click(640, 360);
+      // Some headless browsers deny capture. The game must remain active
+      // with Click to aim, rather than pausing after an unheld lock is denied.
+      await page.waitForTimeout(500);
+      await page.waitForFunction(() => document.pointerLockElement || document.querySelector('#aim').hasAttribute('data-on'));
       await page.keyboard.down('w');
       await page.waitForTimeout(1500);
       await page.keyboard.up('w');

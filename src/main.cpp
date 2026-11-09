@@ -659,7 +659,8 @@ static void webFrame(void* p) {
 // sees the key. Treat losing the lock mid-run as a pause instead.
 static bool onPointerLockChange(int, const EmscriptenPointerlockChangeEvent* e, void* app) {
     auto* a = static_cast<App*>(app);
-    if (!e->isActive)
+    static bool held=false;
+    if (pointerLockReleased(e->isActive,held))
         if (auto* game = dynamic_cast<GameplayState*>(a->currentState.get())) game->pause();
     return false;
 }
