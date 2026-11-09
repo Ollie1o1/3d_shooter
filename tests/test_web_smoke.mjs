@@ -117,11 +117,25 @@ try {
       // browser's gesture expires, use the shipped Click to aim affordance
       // for a fresh pointer gesture once the game wants capture again.
       await page.waitForFunction(() => document.pointerLockElement || document.querySelector('#aim').hasAttribute('data-on'));
-      await page.mouse.click(640, 360);
-      // Some headless browsers deny capture. The game must remain active
-      // with Click to aim, rather than pausing after an unheld lock is denied.
-      await page.waitForTimeout(500);
-      await page.waitForFunction(() => document.pointerLockElement || document.querySelector('#aim').hasAttribute('data-on'));
+      const held = await page.evaluate(() => !!document.pointerLockElement);
+      console.log(`${name}: mouse capture ${held ? 'held' : 'needs a click'}.`);
+      if (!held) {
+        await page.mouse.click(640, 360);
+        // A denied capture must leave gameplay active with Click to aim.
+        // Already-held capture needs no extra synthetic absolute mouse move:
+        // Chromium can release pointer lock when CDP repositions the pointer.
+        await page.waitForTimeout(500);
+        try {
+          await page.waitForFunction(() => document.pointerLockElement || document.querySelector('#aim').hasAttribute('data-on'));
+        } catch (error) {
+          console.log(`${name}: capture state`, await page.evaluate(() => ({
+            locked: !!document.pointerLockElement, focus: document.activeElement?.id,
+            aim: document.querySelector('#aim').outerHTML,
+          })));
+          await capture(`${name}-input-failure.png`);
+          throw error;
+        }
+      }
       await page.keyboard.down('w');
       await page.waitForTimeout(1500);
       await page.keyboard.up('w');
