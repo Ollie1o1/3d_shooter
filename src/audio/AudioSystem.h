@@ -300,8 +300,11 @@ private:
         a->room.render(a->musicBuf.data(), frames);
         a->addWind(a->musicBuf.data(), frames);
         a->applyMuffle(a->musicBuf.data(), frames);
-        // The last word: the room's air and the wind go in after the effects' limiter, so round the sum off too
-        for (int i = 0; i < 2 * frames; ++i) a->musicBuf[i] = SfxMixer::softClip(a->musicBuf[i]);
+        // Round off the complete sum, including room/wind, then reserve 3.1 dB
+        // of reconstruction headroom. Sample-safe combat captures previously
+        // reached +1.27 dBTP between samples. This gain preserves the mix's
+        // dynamics and cue balance; it is not a true-peak limiter.
+        for (int i = 0; i < 2 * frames; ++i) a->musicBuf[i] = SfxMixer::softClip(a->musicBuf[i]) * .7f;
         const float* src = a->musicBuf.data();
         if (a->dumping.load(std::memory_order_acquire)) {
             int w = a->dumpWritten.load(std::memory_order_relaxed), cap = (int)(a->dumpBuf.size() / 2);

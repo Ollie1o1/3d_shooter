@@ -161,17 +161,22 @@ test-feel-runtime: tests/test_feel_runtime.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) tests/test_feel_runtime.cpp -o build/test_feel_runtime $(LDFLAGS)
 	./build/test_feel_runtime
 
-.PHONY: combat-audio test-audio audio-preview
+.PHONY: combat-audio test-audio test-music-score audio-preview
 combat-audio:
 	python3 tools/gen_combat_audio.py
 
 audio-preview: tools/music_preview
 	python3 tools/audio_preview.py
 
-test-audio: tests/test_audio.cpp $(HEADERS)
+test-audio: test-music-score tests/test_audio.cpp $(HEADERS)
 	mkdir -p build
 	$(CXX) $(CXXFLAGS) tests/test_audio.cpp -o build/test_audio $(STDLIB)
 	./build/test_audio
+
+test-music-score: tests/test_music_score.cpp $(HEADERS)
+	mkdir -p build/music-pass
+	$(CXX) $(CXXFLAGS) tests/test_music_score.cpp -o build/test_music_score $(STDLIB)
+	./build/test_music_score
 
 test-story: tests/test_story.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) tests/test_story.cpp -o tests/test_story $(STDLIB)
@@ -322,7 +327,7 @@ test-plain: tests/test_plain.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) tests/test_plain.cpp -o build/test_plain $(STDLIB)
 	./build/test_plain
 
-tools/music_preview: tools/music_preview.cpp src/audio/MusicSynth.h
+tools/music_preview: tools/music_preview.cpp src/audio/MusicSynth.h src/audio/CombatScore.h
 	$(CXX) $(CXXFLAGS) tools/music_preview.cpp -o tools/music_preview $(STDLIB)
 
 # Boss joint motion, landing contact and animated effect attachments (headless).

@@ -12,15 +12,17 @@
 //
 //   intensity  0     pad and sub bass, quiet hats          (menu bed, death)
 //              0.6   + kick, rolling bass (filtered)        (tubes, breathers)
-//              1.0   + snare, open filter, arpeggio         (fighting)
+//              1.0   + snare, open filter, arpeggio         (fighting; SUNSET/boss themes already present)
 //              1.3   + lead, crash on every bar             (the boss, OVERDRIVE)
 //
 // The fight can push it further (Gameplay_Flow.h updateMusic): OVERDRIVE (setDrive) adds a
 // distorted power-chord stab on every eighth, sixteenth hats and the bass wide open; the last
 // enemy of a wave (setSolo) strips it to the drums and the sub; a wave's end (stinger) rings a
 // chord in the track's key over a crash.
-// It doesn't just loop: every second pass through a track's four bars is its B side (the arp
-// an octave up, the lead doubled an octave over itself), and the end of each B side has a drum
+// CombatScore.h gives SUNSET a sixteen-bar form and ZENITH/MORNINGSTAR thirty-two:
+// an eight-bar theme, answers, breakdowns, builds and peaks. Other tracks use a
+// B side: every second pass through a track's four bars develops the arp
+// an octave up, doubles the lead an octave over itself, and ends with a drum
 // fill into the next (the techno tracks have their own clap roll and riser). The snare, the lead,
 // the arp, the pad and the stinger go into a plate reverb, the drums' kick and the bass stay dry.
 // The breaks add ghost notes, pickup kicks and rides; the bass moves through a
@@ -34,6 +36,7 @@
 #include <vector>
 #include <algorithm>
 #include <cstring>
+#include "audio/CombatScore.h"
 
 struct MusicTrack {
     const char* name;
@@ -95,9 +98,8 @@ inline const MusicTrack& musicTrack(int i) {
         {"LEVIATHAN", 174.f, 38, {0, 5, 6, 4},
          "x.........x..x..", "....x..g.g..x..g", "x.XxxxX.x.XxxxXo",
          "x---x-f.x---o-f.", "0.1.2.3.2.1.0.1.", "0-------1---2---3-------2-1-0---", 0, true},
-        // The Zenith (!!!!!): hard techno. A driven four-on-the-floor, a rolling off-beat bass pumping
-        // under it, claps on two and four, an acid line whose filter opens over four bars, staccato stabs
-        // on top, and a riser and clap roll into every fourth bar. It never lets up.
+        // The Zenith: hard techno. CombatScore develops its shared boss theme over
+        // thirty-two bars, opening the acid filter into peaks after half-time breaks.
         {"ZENITH", 172.f, 50, {0, 0, 5, 6},
          "x...x...x...x...", "....x.......x...", "xxoxxxoxxxoxxxoX",
          ".xxx.xxx.xxx.xxx", "0030102300301023", "3.3.3.2.3.3.3.0.3.3.3.2.1.1.1.2.", 1},
@@ -149,6 +151,7 @@ public:
     void setMuffle(bool m)     { muffled.store(m); }
     void setDrive(bool d)      { wantDrive.store(d); }
     void setSolo(bool s)       { wantSolo.store(s); }
+    void setThemeMuted(bool m) { wantThemeMuted.store(m); } // offline audition: retain the backing and clock
     void stinger()             { stingWanted.store(true); }
     // A tape rewind (the Restorer's ROLLBACK): the last moment of the score plays backwards, faster and
     // faster, then the song picks up half a bar earlier than where it was
@@ -197,7 +200,15 @@ public:
                 float wobble = 0.85f + 0.15f * std::sin(u * 40.f);
                 out[2 * f]     = (hist[2 * i0] * (1 - fr) + hist[2 * i1] * fr) * env * wobble * transitionGain;
                 out[2 * f + 1] = (hist[2 * i0 + 1] * (1 - fr) + hist[2 * i1 + 1] * fr) * env * wobble * transitionGain;
-                if (--rewindT == 0) step = ((step - 8) % 64 + 64) % 64;       // and play on from half a bar back
+                if (--rewindT == 0) {
+                    if(combatscore::owns(track)){
+                        // Preserve the position in the long form when crossing
+                        // a four-bar boundary; wrapping step alone jumps ahead.
+                        const int restored=std::max(0,std::max(0,cycle-1)*64+step-8);
+                        cycle=restored/64+1;step=restored%64;
+                        themeLeft=acidLeft=0;leadOn=false;restoreHarmony=true;
+                    }else step = ((step - 8) % 64 + 64) % 64;
+                }
                 continue;
             }
             if ((blockPos++ & 31) == 0) updateBlock();
@@ -216,6 +227,7 @@ public:
             const MusicTrack& playing = musicTrack(track);
             float trim = track == MENU_MUSIC_TRACK ? 1.f : playing.techno ? 1.f - (playing.techno >= 2 ? 0.64f : 0.6f) * gKick
                                        : plainTrack(track) ? 0.65f : 1.f;
+            if (combatscore::owns(track)) trim *= track==combatscore::SUNSET?.8f:.95f;
             L = softClip(L * 0.75f * trim) * vol * transitionGain;
             R = softClip(R * 0.75f * trim) * vol * transitionGain;
 
@@ -232,6 +244,7 @@ public:
     float  samplesPerStep() const { return stepLen; }
     int    rootNote() const { return musicTrack(track).root; }
     int    pass() const { return cycle; }   // times round the four bars (odd: the B side)
+    int scoreBar() const { return std::max(0,cycle-1)*4+std::max(step,0)/16; }
     static bool labTrack(int t) { return t == 12 || t == 13 || t == 15 || t == 16; }   // the lab's choir and organ (and Chapter 5's)
     // The plain's score, one instrument at a time (tests, tuning): a bit per layer, set = silent.
     // 1 drone, 2 choir, 4 strings, 8 bell, 16 war drums, 32 low brass, 64 anvils, 128 horn
@@ -241,6 +254,7 @@ public:
 private:
     std::atomic<int>   wantTrack{0};
     std::atomic<float> wantLevel{0.5f};
+    std::atomic<bool> wantThemeMuted{false};
     std::atomic<float> volume{0.6f};
     std::atomic<bool>  muffled{false};
     std::atomic<bool>  wantDrive{false}, wantSolo{false}, stingWanted{false}, rewindWanted{false};
@@ -256,6 +270,11 @@ private:
     int   cycle = 0;                 // times round it on this track (odd: the B side)
     float transitionGain = 1.f;
     float bSide = 0.f;               // smoothed 0..1: the B side's octaves (no clicks)
+    float scoreDrums=1,scoreBass=1,scoreArp=1,scoreTheme=1,scoreFilter=1,scoreRise=0;
+    bool themeMuted=false,scorePeak=false,restoreHarmony=false;
+    int playingDegree=0,themeLeft=0,acidLeft=0;
+    float themeVelocity=1,acidVelocity=1,acidNote=62,acidAmp=0;
+    bool scoreAcidSlide=false;
     float sampleInStep = 0.f, stepLen = 1.f;
     uint32_t blockPos = 0, rng = 0x9E3779B9u;
 
@@ -710,8 +729,9 @@ private:
         solo  += (sw - solo)  * std::min(1.f, rate * 4.f);
         if (stingWanted.exchange(false)) {   // a chord in the track's key (on the current bar's chord), over a crash
             const MusicTrack& st = musicTrack(track);
-            int deg = st.chords[std::max(step, 0) / 16];
+            int deg = playingDegree;
             for (int k = 0; k < 4; ++k) stingNotes[k] = (float)chordTone(st, deg, k, 1);
+            if(combatscore::owns(track) && track!=combatscore::SUNSET && deg==4)stingNotes[1]+=1;
             stingT = 0.f; crash = Hit{0.f, 1.f};
         }
         bSide += ((track != MENU_MUSIC_TRACK && (cycle & 1) ? 1.f : 0.f) - bSide) * std::min(1.f, rate * 6.f);
@@ -724,9 +744,23 @@ private:
         gSnare = sstep(0.7f, 1.f, lvl);
         gArp   = sstep(0.8f, 1.1f, lvl);
         gLead  = sstep(1.12f, 1.32f, lvl);
+        themeMuted=wantThemeMuted.load();
+        if(combatscore::owns(track)) {
+            const float within=(std::max(step,0)%16+1.f-sampleInStep/std::max(1.f,stepLen))/16.f;
+            const auto f=combatscore::form(track,scoreBar(),within);
+            scorePeak=f.section==combatscore::Section::PEAK;
+            const float smooth=std::min(1.f,rate*8.f);
+            scoreDrums+=(f.drums-scoreDrums)*smooth;scoreBass+=(f.bass-scoreBass)*smooth;
+            scoreArp+=(f.arp-scoreArp)*smooth;scoreTheme+=(f.theme-scoreTheme)*smooth;
+            scoreFilter+=(f.filter-scoreFilter)*smooth;scoreRise+=(f.rise-scoreRise)*smooth;
+            // The theme belongs to normal combat too; bosses/Overdrive add the
+            // complete texture instead of being the only way to hear a melody.
+            gLead=std::max(gLead,sstep(.72f,1.f,lvl)*(track==combatscore::SUNSET?.8f:.7f));
+            gLead*=scoreTheme;
+        }
         gBassF = gOf(260.f + 2400.f * std::max(sstep(0.45f, 1.2f, lvl), drive));
         // Sixteen-bar form: three driving phrases, then a two-bar filtered turn.
-        const bool turn = (cycle % 4 == 3) && step >= 32;
+        const bool turn = !combatscore::owns(track) && (cycle % 4 == 3) && step >= 32;
         phraseEnergy += ((turn ? 0.48f : 1.f) - phraseEnergy) * std::min(1.f, rate * 4.f);
         bassMotion += rate * musicTrack(track).bpm / 60.f * 0.125f;
         if (bassMotion >= 1.f) bassMotion -= 1.f;
@@ -737,6 +771,7 @@ private:
         gLeadF = gOf(3200.f); gPadF = gOf(700.f + 500.f * sstep(0.6f, 1.2f, lvl)); gCrashF = gOf(5000.f);
         float cyc = (std::max(step, 0) + 1.f - sampleInStep / std::max(1.f, stepLen)) / 64.f;   // 0..1 across the four bars
         acidBase = track == MENU_MUSIC_TRACK ? 320.f : 320.f + 1900.f * cyc * cyc;
+        if(combatscore::owns(track))acidBase=300.f+2200.f*scoreFilter*(.65f+.35f*cyc);
         if(labTrack(track)){
             const int vowel=(std::max(step,0)/8)%3;
             static const float f[3][3]={{800,1150,2900},{450,800,2830},{400,1600,2700}};   // ah, oh, eh
@@ -754,12 +789,15 @@ private:
         kick = snare = hatC = hatO = crash = Hit{};
         bassGate = leadOn = false; bassAmp = leadAmp = choirAmp = 0.f;
         drive = solo = 0.f;
+        scoreDrums=scoreBass=scoreArp=scoreTheme=scoreFilter=1;scoreRise=0;scorePeak=restoreHarmony=false;
+        playingDegree=themeLeft=acidLeft=0;themeVelocity=acidVelocity=1;acidAmp=0;scoreAcidSlide=false;
         lvl = wantLevel.load();
         snareF = hatF = crashF = bassF = padFL = padFR = arpF = riserF = leadF = mufL = mufR = SVF{};
         taikoBig = taikoMid = brassHit = bellToll = anvilHit = Strike{};
         pKick = pClap = pHat = pHatO = pBass = Strike{};
         hornOn = acidOn = false; hornAmp = acidEnv = 0.f; pumpT = 9.f;
         const auto& tr = musicTrack(track);
+        if(combatscore::owns(track)){leadNote=leadCur=float(tr.root+12);acidNote=float(tr.root+12);}
         bassNote = bassTarget = (float)tr.root - 12.f;
         for (int k = 0; k < 4; ++k)
             padCur[k] = padNotes[k] = (float)(k == 3 ? scaleNote(tr, tr.chords[0], -2) : chordTone(tr, tr.chords[0], k, 0));
@@ -784,12 +822,17 @@ private:
         const MusicTrack& tr = musicTrack(track);
         stepLen = SR * 60.f / tr.bpm / 4.f;
         int s = step % 16, bar = step / 16;
-        int deg = tr.chords[bar];
+        const bool authored=combatscore::owns(track);
+        const int longBar=scoreBar();
+        int deg = authored?combatscore::form(track,longBar).degree:tr.chords[bar];
+        playingDegree=deg;
 
-        if (s == 0) {                                             // new chord: pad, crash
+        if (s == 0 || restoreHarmony) {                           // new chord, or a restored tape position
             for (int k = 0; k < 3; ++k) padNotes[k] = (float)chordTone(tr, deg, k, 0);
+            if(authored && track!=combatscore::SUNSET && deg==4)padNotes[1]+=1; // a dominant leading back home
             padNotes[3] = (float)scaleNote(tr, deg, -2);          // sub, two octaves down
-            if (gLead > 0.05f) crash = Hit{0.f, 1.f};
+            if (s==0 && gLead > 0.05f && (!authored || longBar%4==0)) crash = Hit{0.f, 1.f};
+            restoreHarmony=false;
         }
         if (plainTrack(track)) { plainStep(s); return; }   // the plain's own score
         if(labTrack(track) && s%4==0){
@@ -803,21 +846,21 @@ private:
             choirClock=0;
         }
         auto at = [&](const char* p, int i) { return p[i % (int)std::strlen(p)]; };
-        char k = at(tr.kick, s);
+        char k = authored?combatscore::hit(track,longBar,s,0):at(tr.kick, s);
         if (k == 'x') kick = Hit{0.f, 1.f};
-        if (tr.breaks && bar % 2 == 1 && s == 14) kick = Hit{0.f, 0.72f};
-        if (tr.breaks && bar == 3 && (cycle & 1) && s == 15) kick = Hit{0.f, 0.82f};
-        char sn = at(tr.snare, s);
+        if (!authored && tr.breaks && bar % 2 == 1 && s == 14) kick = Hit{0.f, 0.72f};
+        if (!authored && tr.breaks && bar == 3 && (cycle & 1) && s == 15) kick = Hit{0.f, 0.82f};
+        char sn = authored?combatscore::hit(track,longBar,s,1):at(tr.snare, s);
         if (sn == 'x') snare = Hit{0.f, 1.f}; else if (sn == 'g') snare = Hit{0.f, 0.35f};
-        if (track != MENU_MUSIC_TRACK && tr.techno && bar == 3 && s >= 8 && (s >= 12 || s % 2 == 0))   // the clap roll into the next phrase
+        if (!authored && track != MENU_MUSIC_TRACK && tr.techno && bar == 3 && s >= 8 && (s >= 12 || s % 2 == 0))   // the clap roll into the next phrase
             snare = Hit{0.f, 0.35f + 0.65f * (s - 8) / 7.f};
-        else if (!tr.techno && bar == 3 && (cycle & 1) && s >= 12 && gSnare > 0.3f)   // the B side's last beat: a fill into the top
+        else if (!authored && !tr.techno && bar == 3 && (cycle & 1) && s >= 12 && gSnare > 0.3f)   // the B side's last beat: a fill into the top
             snare = Hit{0.f, 0.5f + 0.5f * (s - 12) / 3.f};
         // Ghost notes stay softer than the backbeat; accents imply a played break.
         if (tr.breaks && snare.t == 0.f && snare.vel < 0.5f)
             snare.vel = 0.16f + 0.07f * ((s + bar) % 3);
         if (tr.breaks && (cycle & 1) && s % 4 == 2) ride = Hit{0.f, bar % 2 ? 0.55f : 0.38f};
-        char h = at(tr.hat, s);
+        char h = authored?combatscore::hit(track,longBar,s,2):at(tr.hat, s);
         if (h == 'x') hatC = Hit{0.f, 0.55f}; else if (h == 'X') hatC = Hit{0.f, 1.f}; else if (h == 'o') hatO = Hit{0.f, 1.f};
         else if (h == '.' && drive > 0.3f) hatC = Hit{0.f, 0.4f * drive};   // OVERDRIVE: the gaps fill with sixteenths
         if (drive > 0.02f && s % 2 == 0) stabT = 0.f;                         // OVERDRIVE: a stab on every eighth
@@ -831,17 +874,38 @@ private:
         } else if (b == '.') bassGate = false;
 
         char a = at(tr.arp, s);
-        if (a >= '0' && a <= '3') { arpNote = (float)chordTone(tr, deg, a - '0', 1); arpT = 0.f; arpLeft = !arpLeft; }
+        if(authored && tr.techno){
+            const bool connected=acidLeft>0;
+            if(acidLeft>0)--acidLeft;
+            const auto note=combatscore::acid(track,longBar,s);
+            if(note.at>=0){
+                scoreAcidSlide=note.slide && connected;arpNote=float(tr.root+12+note.pitch);
+                if(!scoreAcidSlide)arpT=0;
+                acidVelocity=note.velocity;acidLeft=note.length;arpLeft=!arpLeft;
+            }
+        }else if (a >= '0' && a <= '3') { arpNote = (float)chordTone(tr, deg, a - '0', 1); arpT = 0.f; arpLeft = !arpLeft; }
 
-        char l = at(tr.lead, step % 32);
-        if (l >= '0' && l <= '3') { leadNote = (float)chordTone(tr, deg, l - '0', 2); leadT = 0.f; leadOn = true; }
-        else if (l == '.') leadOn = false;
+        if(authored){
+            if(themeLeft>0)--themeLeft;
+            const auto note=combatscore::theme(track,longBar,s);
+            if(note.at>=0){
+                leadNote=float(tr.root+12+note.pitch);
+                if(drive>.5f && longBar%4==3 && s>=8)leadNote+=12;
+                leadT=0;themeLeft=note.length;themeVelocity=note.velocity;
+            }
+            leadOn=themeLeft>0;
+        }else{
+            char l = at(tr.lead, step % 32);
+            if (l >= '0' && l <= '3') { leadNote = (float)chordTone(tr, deg, l - '0', 2); leadT = 0.f; leadOn = true; }
+            else if (l == '.') leadOn = false;
+        }
     }
 
     void synthSample(const MusicTrack& tr, float& L, float& R) {
         if (plainTrack(track)) { plainSample(L, R); return; }
         const float dt = 1.f / SR;
         const bool techno = tr.techno != 0, hard = tr.techno >= 2, breaks = tr.breaks;
+        const bool authored=combatscore::owns(track);
         // ---- drums ----
         float drums = 0.f, hatOut = 0.f;
         if (kick.t < 0.6f) {
@@ -953,11 +1017,25 @@ private:
         padL = padFL.lp(padL * 0.11f, gPadF, 0.4f);
         padR = padFR.lp(padR * 0.11f, gPadF, 0.4f);
         float pg = gPad * (techno ? 0.4f + 0.3f * duck : 0.65f + 0.35f * duck);   // techno: a darker bed that pumps harder
+        if(authored){
+            drums*=scoreDrums;snareOut*=scoreDrums;hatOut*=scoreDrums;rideOut*=scoreDrums;
+            bassOut*=scoreBass;bassWidth*=scoreBass;
+        }
 
         // ---- arp: a plucked square, alternating sides, into the delay ----
         // (techno: an acid line - a saw an octave down through a screaming resonant filter)
         float arpOut = 0.f;
-        if (arpT < 0.3f) {
+        if(authored && techno){
+            // Connected sixteenths glide without restarting the filter envelope.
+            // Smooth the gate as well: the held breakdown notes have real tails.
+            acidNote+=(arpNote-acidNote)*std::min(1.f,dt/(scoreAcidSlide?.04f:.003f));
+            const float target=acidLeft>0?acidVelocity*(.3f+.7f*std::exp(-arpT*14.f)):0.f;
+            acidAmp+=(target-acidAmp)*std::min(1.f,dt/.004f);
+            const float raw=arpOsc.saw(midiHz(acidNote-12.f),SR)*acidAmp;
+            const float cut=gOf(acidBase*(1.f+2.f*std::exp(-arpT*18.f)*acidVelocity));
+            arpOut=std::tanh(arpF.lp(raw,cut,.3f)*1.8f)*.1f*gArp*(.65f+.35f*duck);
+            arpT+=dt;
+        }else if (arpT < 0.3f) {
             if (techno || breaks) {
                 float a = arpOsc.saw(midiHz(arpNote - 12.f), SR) * std::exp(-arpT * 11.f);
                 float g = gOf(acidBase * (1.f + 3.f * std::exp(-arpT * 28.f)));
@@ -968,15 +1046,34 @@ private:
             }
             arpT += dt;
         }
+        if(authored)arpOut*=scoreArp;
         // ---- techno: a noise riser through the last bar of every four ----
         float riser = 0.f;
-        if (track != MENU_MUSIC_TRACK && techno && step >= 48) {
-            float u = (step - 48 + 1.f - sampleInStep / std::max(1.f, stepLen)) / 16.f;
+        if (track != MENU_MUSIC_TRACK && techno && (authored?scoreRise>.001f:step>=48)) {
+            float u = authored?scoreRise:(step - 48 + 1.f - sampleInStep / std::max(1.f, stepLen)) / 16.f;
             riser = riserF.hp(noise(), gOf(600.f + 7000.f * u * u), 0.8f) * u * u * 0.1f * gArp;
         }
         // ---- lead: a saw with vibrato, legato, into the delay ----
         float leadOut = 0.f;
-        if (gLead > 0.001f) {
+        if(authored){
+            leadCur+=(leadNote-leadCur)*std::min(1.f,dt/.004f);
+            const float v=vib.sine(5.2f,SR)*.07f*std::min(1.f,leadT*3.f);
+            const float hz=midiHz(leadCur+v);
+            const float target=leadOn?themeVelocity*(.55f+.45f*std::exp(-leadT*7.f)):0.f;
+            leadAmp+=(target-leadAmp)*std::min(1.f,dt/(leadOn?.006f:.018f));
+            // SUNSET's rounded pulse has a different identity from the bosses'
+            // detuned saws. Their upper octave only opens at a scored peak.
+            float raw=track==combatscore::SUNSET?
+                leadOsc.square(hz,SR)*.45f+leadOsc2.sine(hz,SR)*.55f:
+                leadOsc.saw(hz,SR)*.6f+leadOsc2.saw(hz*1.005f,SR)*.4f;
+            if(techno){
+                const float upper=scorePeak?.28f:0.f;
+                raw+=leadHi.saw(hz*2,SR)*upper;
+            }
+            leadOut=leadF.lp(raw,gLeadF,.65f)*leadAmp*.19f*gLead;
+            leadT+=dt;
+            if(themeMuted)leadOut=0; // audition the exact same backing without its theme
+        }else if (gLead > 0.001f) {
             leadCur += (leadNote - leadCur) * 0.004f;
             float v = vib.sine(5.5f, SR) * 0.12f * std::min(1.f, leadT * 2.f);
             float hz = midiHz(leadCur + v);
@@ -1021,7 +1118,7 @@ private:
         // ---- OVERDRIVE: a distorted power chord (root, fifth, octave, detuned) stabbing every eighth, pumping with the kick ----
         float stabOut = 0.f;
         if (drive > 0.002f && stabT < 0.25f) {
-            int deg = tr.chords[std::max(step, 0) / 16];
+            int deg = playingDegree;
             float notes[3] = {(float)chordTone(tr, deg, 0, 0), (float)chordTone(tr, deg, 2, 0), (float)chordTone(tr, deg, 3, 0)};
             float raw = 0.f;
             for (int k = 0; k < 3; ++k) raw += stab[2 * k].saw(midiHz(notes[k]) * 1.004f, SR) + stab[2 * k + 1].saw(midiHz(notes[k]) * 0.996f, SR);

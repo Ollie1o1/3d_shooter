@@ -46,6 +46,7 @@ jobs:
           server_pid=$!
           trap 'kill "$server_pid"' EXIT
           OVERDRIVE_PLAYWRIGHT="$PWD/build/browser-smoke/node_modules/playwright/index.mjs" node tests/test_web_smoke.mjs http://127.0.0.1:8765/ build/browser-smoke/captures
+          OVERDRIVE_PLAYWRIGHT="$PWD/build/browser-smoke/node_modules/playwright/index.mjs" node tests/test_web_audio.mjs http://127.0.0.1:8765/ build/browser-smoke/captures/audio.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
