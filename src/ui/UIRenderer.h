@@ -159,12 +159,17 @@ public:
     }
 
     // ---- feed (right side): kills, pickups, bonuses ----
-    struct FeedLine { std::string text; glm::vec3 color; float timer; };
+    struct FeedLine { std::string text; glm::vec3 color; float timer; int count = 1; };
     std::deque<FeedLine> feedLines;
+    // The same thing again while its line is still up (five Mites in a second) counts on that
+    // line, "MITE +11 XP x5", instead of filling the feed with copies of it
     void feed(const std::string& text, glm::vec3 color) {
+        for (auto& l : feedLines)
+            if (l.text == text) { ++l.count; l.timer = 2.8f; l.color = color; return; }
         feedLines.push_back({text, color, 2.8f});
         if (feedLines.size() > 6) feedLines.pop_front();
     }
+    static std::string feedShown(const FeedLine& l) { return l.count > 1 ? l.text + " x" + std::to_string(l.count) : l.text; }
 
     // ---- toasts (centre, under the crosshair): level up, quickscope ----
     struct Toast { std::string title, sub; glm::vec3 color; float timer, dur; };
@@ -210,7 +215,7 @@ public:
         for (auto& f : floating) { f.timer -= dt; f.pos.y += dt * 1.2f; }
         while (!floating.empty() && floating.front().timer <= 0.f) floating.pop_front();
         for (auto& l : feedLines) l.timer -= dt;
-        while (!feedLines.empty() && feedLines.front().timer <= 0.f) feedLines.pop_front();
+        feedLines.erase(std::remove_if(feedLines.begin(), feedLines.end(), [](const FeedLine& l) { return l.timer <= 0.f; }), feedLines.end());   // (a renewed line outlives newer ones)
         if (!toasts.empty()) { toasts.front().timer += dt; if (toasts.front().timer >= toasts.front().dur) toasts.pop_front(); }
         for (size_t i = 0; i < cards.size() && i < (size_t)CARD_SHOWN; ++i) cards[i].timer += dt;
         while (!cards.empty() && cards.front().timer >= CARD_TIME) cards.pop_front();
@@ -283,7 +288,8 @@ public:
         int fy = 150;
         for (auto it = feedLines.rbegin(); it != feedLines.rend(); ++it, fy += 22) {
             float a = std::min(1.f, it->timer / 0.5f);
-            ui.textShadow(it->text.c_str(), screenW - 24 - UIBatch::textWidth(it->text.c_str(), 2), fy, 2,
+            const std::string shown = feedShown(*it);
+            ui.textShadow(shown.c_str(), screenW - 24 - UIBatch::textWidth(shown.c_str(), 2), fy, 2,
                           {it->color.r, it->color.g, it->color.b, a});
         }
 

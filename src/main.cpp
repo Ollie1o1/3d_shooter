@@ -744,6 +744,11 @@ int main(int argc, char* argv[]) {
                 app->audio.addBuffer(v.name, std::move(b), VoiceSynth::RATE);
             }
         if (std::getenv("OVERDRIVE_SFXLIST")) std::fprintf(stderr, "voices: %.1f s of audio built in %u ms\n", secs, SDL_GetTicks() - t0);
+        const Uint32 t1 = SDL_GetTicks();   // the world's own sounds: lava, plant hum, fans, water (WorldEmitters.h)
+        for (int k = 0; k < (int)worldsound::Kind::COUNT; ++k)
+            for (int v = 0; v < worldsound::VARIANTS; ++v)
+                app->audio.addBuffer(worldsound::nameOf((worldsound::Kind)k), worldsound::build((worldsound::Kind)k, v), worldsound::RATE);
+        if (std::getenv("OVERDRIVE_SFXLIST")) std::fprintf(stderr, "world emitters built in %u ms\n", SDL_GetTicks() - t1);
     }
     if (std::getenv("OVERDRIVE_SFXLIST")) app->audio.sfx.dumpLengths(stderr);
     for (int i = 1; i < argc; ++i) if (std::string(argv[i]) == "--mixreport") {   // dev: every sound's level, then quit

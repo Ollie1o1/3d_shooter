@@ -76,6 +76,32 @@ inline void GameplayState::playBoom(const char* name, glm::vec3 at, int volume, 
     o.positional = true; o.pos = at; o.floor = floor;
     o.delay = std::max(0.f, glm::length(at - player.camera.position) - 8.f) / 343.f;
     audio.playOpts(name, o);
+    if (std::strncmp(name, "explosion", 9) == 0) worldJolt(at, volume / 128.f);   // (every blast in the game comes through here)
+}
+
+// The room answers a blast (world/Reactions.h): the neon near it stutters, soot is left on the
+// floor under it, dust comes off a ceiling over it, and lava close by throws a gout
+inline void GameplayState::worldJolt(glm::vec3 at, float power, bool burn) {
+    reactions.add(at, power);
+    const float ground = level.groundAt(at.x, at.z, at.y + 0.3f);
+    if (burn && at.y - ground < 2.5f && at.y - ground > -0.5f)
+        marksField.add(marks::Kind::SCORCH, {at.x, ground, at.z}, {0.f, 1.f, 0.f}, 0.9f + 1.1f * power);
+    if (ambientDetail() > 0) {
+        const float roof = wallAlong(at + glm::vec3{0.f, 0.5f, 0.f}, {0.f, 1.f, 0.f}, 14.f);   // dust needs something to fall from
+        if (roof > 0.f) fx.spawnDustFall(at + glm::vec3{0.f, 0.5f + roof - 0.1f, 0.f}, 2.f + 3.f * power, (int)(10.f + 14.f * power));
+    }
+    const Hazard* nearest = nullptr; float nearestD = 13.f; glm::vec3 spot{0.f};
+    for (const Hazard& h : level.hazards) {
+        const glm::vec3 q{glm::clamp(at.x, h.box.min.x, h.box.max.x), h.box.max.y, glm::clamp(at.z, h.box.min.z, h.box.max.z)};
+        const float d = glm::length(q - at);
+        if (d < nearestD) { nearestD = d; nearest = &h; spot = q; }
+    }
+    if (nearest) {   // the lava is thrown up where the blast is nearest it
+        fx.spawnBurst(spot + glm::vec3{0.f, 0.15f, 0.f}, {1.6f, 0.5f, 0.1f}, (int)(8.f + 12.f * power), 6.5f, 1.1f, 11.f);
+        SfxMixer::Opts o; o.group = SoundGroup::WORLD; o.positional = true; o.pos = spot; o.volume = 1.3f; o.pitch = 1.25f;
+        o.delay = 0.08f + std::max(0.f, glm::length(spot - player.camera.position) - 8.f) / 343.f;
+        audio.playOpts("em_lava", o);
+    }
 }
 
 // Every hit since the last call as one sound: fuller for more, a ping on a crit
@@ -653,6 +679,8 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     if (ceilingFxTimer > 0.f) ceilingFxTimer -= dt;
     nearInteractable = findInteractTarget() >= 0;
     fx.tickMarks(dt);
+    marksField.tick(dt);
+    reactions.tick(dt);
 
     // Clear out dead enemies once nothing references them by index
     enemies.erase(std::remove_if(enemies.begin(), enemies.end(),

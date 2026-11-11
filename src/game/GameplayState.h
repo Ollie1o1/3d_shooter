@@ -44,6 +44,9 @@
 #include "bosses/successor/SuccessorHazards.h"
 #include "world/LevelTraining.h"
 #include "world/NavBuild.h"
+#include "world/WorldSound.h"
+#include "world/Reactions.h"
+#include "render/Marks.h"
 #include "game/CombatLessons.h"
 #include "game/WaveDirector.h"
 #include "render/PostProcess.h"
@@ -684,7 +687,12 @@ public:
 
     ArenaShifts   shifts;      // arenas that change as the fight goes on (ArenaShifts.h)
     bool          pulseWarnCued = false;
-    Effects       fx;          // particles, debris, decals, tracers, rings (Effects.h)
+    Effects       fx;          // particles, debris, tracers, rings (Effects.h)
+    marks::Field  marksField;  // what the fight leaves on the room: pits, scorches, stains, spent brass (Marks.h)
+    react::Field  reactions;   // the room answering a blast: neon stutters, dust falls, lava spits (Reactions.h)
+    ShaderProgram markShader;
+    // Something went off here: the room answers (power 1 = a grenade). burn: it leaves soot on the floor under it
+    void worldJolt(glm::vec3 at, float power, bool burn = true);
     ShaderProgram tracerShader;
     GLuint        tracerVAO = 0, tracerVBO = 0;
     ShaderProgram waterShader, labGlassShader;
@@ -712,7 +720,7 @@ public:
 
     int hitStopFrames = 0;
 
-    GLuint decalVAO = 0, decalVBO = 0;
+    GLuint markVAO = 0, markVBO = 0;
 
     GLuint    particleVAO = 0, particleVBO = 0;
 
@@ -1182,6 +1190,8 @@ public:
 
     void updateEnemies(float dt);
     void gatherNavBoxes(std::vector<BoxInstance>& out) const;   // --nav: the grid round you and the routed enemies' paths (Gameplay_Dev.h)
+    worldsound::Director worldSound;   // the level's own sounds, placed (lava, the reactor, fans, water): world/WorldSound.h
+    void updateWorldEmitters(float dt);
 
     // Returns true if damage was applied (not blocked by i-frames).
     // iframes: how long you're untouchable after (a SERAPH beam's ticks give none)
@@ -1299,7 +1309,7 @@ public:
 
     // Every enemy along a ray up to the first wall, nearest first.
     struct RayHit { int enemy; float t; bool head; bool wound = false; LevZone zone = LevZone::NONE; };   // zone: where it found the LEVIATHAN   // wound: the PENITENT's back (x3)
-    float hitscanAll(glm::vec3 origin, glm::vec3 dir, float range, std::vector<RayHit>& out, Mat* surface = nullptr);
+    float hitscanAll(glm::vec3 origin, glm::vec3 dir, float range, std::vector<RayHit>& out, Mat* surface = nullptr, const Wall** stoppedOn = nullptr);
 
     // Sounds timed to the reload animations (ViewModel.h): the revolver's
     // cylinder out, brass, speedloader, snap shut; each shotgun shell, the rack
@@ -1355,7 +1365,7 @@ public:
 
     void renderHUD(const glm::mat4& view, const glm::mat4& proj);
 
-    void renderDecals();
+    void renderMarks(const glm::mat4& view, const glm::mat4& proj, const Theme& th, glm::vec3 camPos);
 
     struct PVert { float x, y, z, r, g, b, a; };
     void renderParticles(const glm::mat4& view, const glm::mat4& proj);

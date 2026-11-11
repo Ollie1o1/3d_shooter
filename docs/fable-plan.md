@@ -110,4 +110,67 @@ drawn head as before, so it moves a few centimetres with the new weight shift.
   motion, so the strips are the review material. BOSS mode launches stop on the Armory screen.
 - Step cadence varies a little with frame rate (51 to 68 steps over the same walk). Cosmetic.
 
-## Workstream 3: polish, feel and sound across the board (branch `polish-feel`): next
+## Workstream 3: polish, feel and sound across the board (branch `polish-feel`, from `main`): built, waiting for a playtest
+
+**Found already done** (so not redone): the music already reacts (the last-enemy reduction, the wave-clear
+stinger, intensity following the fight, the OVERDRIVE layer: `MusicSynth.h`, `CombatScore.h`); wall shots
+already answer by material and bodies by mass and armour (`ImpactAudio.h`, `Gameplay_Feel.h`); every room
+has a bed of tone (`RoomTone.h`); the story chapters have their own weather and dressing. What was thin:
+nothing in a room came from a place, nothing stayed after a fight, and the room ignored explosions.
+
+**Picked and built.**
+- **Places heard from where they are** (item 5). `audio/WorldEmitters.h`, `world/WorldSound.h`: lava, the
+  Core's reactor, fans and pools of water each sound from their own spot, read off the level data (no
+  authoring; 4 kinds, 3 variants each, built in code at load in 18 ms, nothing added to the download).
+  The nearest three within 30 m, three grains a second at most, under the enemies' chatter. Quieter with
+  AMBIENT DETAIL, silent at OFF.
+- **What you hear, you see** (item 1, the cheap part). When a lava emitter sounds it throws a few embers
+  from that spot; water drips where it laps.
+- **Marks that stay** (item 2). `render/Marks.h`, `shaders/mark.*`: a round leaves a pit on the wall or
+  floor it stopped on (not on doors, movers or breakables), a blast leaves soot on the floor under it,
+  and spent brass lies where it landed (red plastic for the shotgun). Pits 45 s, soot 90 s, brass 30 s,
+  all fading out; 192 marks and 64 casings at most at HIGH (64/16 at LOW), the oldest making room. One
+  extra draw call. This replaces the old hit decal (a hard red square, 10 s): it is now a soft-edged
+  stain, 14 s, and repeated hits on one enemy renew one stain instead of stacking them.
+- **The room answers a blast** (item 2). `world/Reactions.h`: for 0.85 s the neon tubes within reach
+  stutter in lengths, and the light they cast with them; dust comes off a ceiling over the blast (only
+  where there is one); lava within 13 m throws a gout and is heard. Every explosion in the game goes
+  through `playBoom`, so all of them do this. With REDUCE FLASHING on the tubes dip once and do not stutter.
+- **My critique** (item 7), from 18 s recordings of bot fights in Sunset Yard, the Foundry and arena 4
+  (`docs/polish-review/fight-*.jpg`). Five things, most harmful first:
+  1. The kill feed filled with copies of one line (six "MITE +11 XP" in a second). **Fixed:** the same
+     line again counts on the line that is up ("MITE +11 XP x5").
+  2. A room showed no trace of the fight a second after it. **Fixed** by the marks above.
+  3. Explosions happened in front of the room, not in it. **Fixed** by the reactions above.
+  4. Not fixed, yours to decide: at level-up "UPGRADE READY - PRESS TAB" is said twice at once (a toast
+     under the crosshair and the line over the health bar). The toast sits over the fight.
+  5. Not fixed, yours to decide: the wide shock rings in arena 4 bloom to a solid near-white band that
+     hides the enemies standing behind it. Dimming a telegraph is a readability and balance call.
+
+**Deliberately left out (say if you want them):** arena intro fly-overs (item 6: they touch the start of
+every run and the "never block play" rule; I'd want you to see a prototype first), weather for the Act I
+arenas (item 3), props that break (the destructible system exists; placing more is level design), and
+moving scenery such as banners and birds (item 1's larger part).
+
+**Proof.**
+- `make test-polish` (now in `make test`): 28 checks. Caps hold after a thousand rounds and the oldest
+  goes first; marks fade in and out with no pop; a pit on a pit renews it; the detail setting trims at
+  once and OFF leaves only stains; casings appear after their fall and shrink away; the neon stutter is
+  bounded, reaches only so far, is the same at 30 and 240 Hz and does not stutter with REDUCE FLASHING;
+  emitter grains are finite, at their level, click-free and deterministic; the director never exceeds
+  its budget, keeps pace at 30 and 240 Hz and is silent at OFF or out of range; ACT I, ACT II and FAST
+  all yield sane emitters.
+- `--bench 2000 --arena 4 --wave 2 --god`, three runs each, interleaved, same settings: `main` 12.70,
+  12.99, 12.70 ms; this branch 13.09, 13.14, 13.12 ms. About +0.3 ms (2 to 3%) on a GPU-bound frame.
+  Later runs drifted by 2 to 3 ms as the laptop warmed, so I could not pin down which part costs it
+  (`--skip marks` gave 12.84 ms once). Treat it as "small, not zero".
+- Stills in `docs/polish-review/`: `marks-before.jpg` / `marks-after.jpg` (`--overlay marks`),
+  `blast-neon-stutter.jpg` (`--overlay jolt`, every third frame from the blast).
+
+**Not done / to decide.**
+- I can't hear. The emitter sounds are level-checked, not listened to.
+- The mark shader and the tube stutter are new GLSL: compiled and seen on desktop; the web build is
+  checked for compiling only (see the report), not looked at in a browser.
+- Nothing here was play-tested by a person. The bot rarely shoots walls, so pits in a real fight are
+  only seen staged.
+- The feed's counting has no automated test (the HUD class needs a GL context).

@@ -250,6 +250,13 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
         push(out, fm, {0.9f, 0.15f, 0.1f}, {1.2f, 0.15f, 0.08f});
     }
 
+    for (auto& c : marksField.casings) {   // spent brass, lying where it fell (Marks.h)
+        const float k = marks::Field::shown(c);
+        if (k <= 0.f) continue;
+        const float r = c.length * 0.21f * k;
+        push(out, T(c.pos + glm::vec3{0.f, r, 0.f}) * glm::rotate(glm::mat4(1.f), c.yaw, glm::vec3{0.f, 1.f, 0.f}) * S(glm::vec3{r * 2.f, r * 2.f, c.length * k}),
+             c.color, c.color * 0.12f);
+    }
     for (auto& d : fx.debris) {
         float k = glm::clamp(d.life / d.maxLife, 0.f, 1.f);
         if (d.fade > 0.f) {   // rubble: its own colour, whole until it fades
@@ -700,6 +707,8 @@ inline void GameplayState::render() {
     glActiveTexture(GL_TEXTURE0);
     pickNeon(neonLights, renderCamPos, neonSet, renderCam.forward());
     if (devSkip("neonlight")) neonSet.n = 0;
+    for (int k = 0; k < neonSet.n; ++k)   // a blast near a strip shakes its light (Reactions.h)
+        neonSet.col[k] *= reactions.lightScale(neonLights[neonSet.idx[k]].box, neonSet.idx[k], gameClock, g_reduceFlashing);
     applyNeon(worldShader, true);
     worldShader.setFloat("uNoSeams", 1.f);   // every world texture wraps and carries its own joints (MaterialTex.h)
     const bool baked = bake && bake->tex && !devSkip("bake");
@@ -750,7 +759,22 @@ inline void GameplayState::render() {
     glBindTexture(GL_TEXTURE_2D, whiteTex);
     worldShader.setVec3("objectColor", {0.25f,0.25f,0.25f});
     worldShader.setFloat("uVertexGlow", 1.5f);
+    {   // the tubes near a blast stutter (Reactions.h; their light is shaken to match, above)
+        glm::vec4 k{0.f};
+        for (int i = 0; i < 4; ++i) {
+            const bool on = i < (int)reactions.jolts.size();
+            const react::Jolt j = on ? reactions.jolts[reactions.jolts.size() - 1 - i] : react::Jolt{};   // (the newest four)
+            const float fresh = 1.f - j.age / react::JOLT_LIFE;
+            k[i] = on ? fresh * fresh * std::min(1.f, j.power + 0.3f) : 0.f;
+            char name[16]; std::snprintf(name, sizeof(name), "uJolt[%d]", i);
+            worldShader.setVec4(name, glm::vec4{j.pos, react::reachOf(j.power)});
+        }
+        worldShader.setVec4("uJoltK", k);
+        worldShader.setFloat("uJoltClock", gameClock);
+        worldShader.setFloat("uJoltCalm", g_reduceFlashing ? 1.f : 0.f);
+    }
     if (!worldHidden) worldchunk::draw(world.neon, inView);
+    worldShader.setVec4("uJoltK", glm::vec4{0.f});
     worldShader.setFloat("uVertexGlow", 0.0f);
     worldShader.setVec3("objectColor", {1.f,1.f,1.f});
     if (!devSkip("contact")) drawContactShadows(view, proj, th, renderCamPos);
@@ -845,7 +869,7 @@ inline void GameplayState::render() {
                     grapple.drawRope(renderCamPos, p, view, proj);
                     break;
                 }
-        renderDecals();
+        renderMarks(view, proj, th, renderCamPos);
         renderTracers(view, proj);
         renderLasers(view, proj);
         renderFlare(view, proj);
@@ -912,38 +936,34 @@ inline void GameplayState::render() {
     ftLap.to(frametimer::R_HUD);
 }
 
-inline void GameplayState::renderDecals() {
-    struct DVert { float x,y,z, u,v, nx,ny,nz, r,g,b; };
-    DVert buf[Effects::MAX_DECALS * 6];
-    int count = 0;
-    for (auto& d : fx.decals) {
-        if (!d.alive) continue;
-        float fade = d.life / d.maxLife;
-        float r = 0.55f * fade, g = 0.03f * fade, b = 0.03f * fade;
-        float s = 0.35f;
-        float px = d.pos.x, py = d.pos.y, pz = d.pos.z;
-        DVert v0{px-s,py,pz-s, 0,0, 0,1,0, r,g,b};
-        DVert v1{px+s,py,pz-s, 1,0, 0,1,0, r,g,b};
-        DVert v2{px+s,py,pz+s, 1,1, 0,1,0, r,g,b};
-        DVert v3{px-s,py,pz+s, 0,1, 0,1,0, r,g,b};
-        buf[count++] = v0; buf[count++] = v1; buf[count++] = v2;
-        buf[count++] = v0; buf[count++] = v2; buf[count++] = v3;
-    }
-    if (count == 0) return;
-    glBindBuffer(GL_ARRAY_BUFFER, decalVBO);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, count * sizeof(DVert), buf);
-    worldShader.use();
-    worldShader.setMat4("model",         glm::mat4(1.f));
-    worldShader.setVec3("objectColor",   {1.f,1.f,1.f});
-    worldShader.setVec3("emissiveColor", {0.f,0.f,0.f});
-    glEnable(GL_POLYGON_OFFSET_FILL);
-    glPolygonOffset(-1.f, -1.f);
+// What the fight has left on the room (Marks.h): one multiply-blended draw, as the contact shadows are
+inline void GameplayState::renderMarks(const glm::mat4& view, const glm::mat4& proj, const Theme& th, glm::vec3 camPos) {
+    static std::vector<marks::Vert> verts;
+    if (devSkip("marks") || marksField.build(verts, camPos) == 0) return;
+    glBindBuffer(GL_ARRAY_BUFFER, markVBO);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, verts.size() * sizeof(marks::Vert), verts.data());
+    markShader.use();
+    markShader.setMat4("view", view);
+    markShader.setMat4("projection", proj);
+    markShader.setVec3("viewPos", camPos);
+    markShader.setFloat("uFogDensity", th.fogDensity);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_DST_COLOR, GL_ZERO);
+    glDepthMask(GL_FALSE);
+    glDepthFunc(GL_LEQUAL);
     glDisable(GL_CULL_FACE);
-    glBindVertexArray(decalVAO);
-    glDrawArrays(GL_TRIANGLES, 0, count);
+    glEnable(GL_POLYGON_OFFSET_FILL);
+    glPolygonOffset(-1.f, -2.f);
+    glBindVertexArray(markVAO);
+    glDrawArrays(GL_TRIANGLES, 0, (GLsizei)verts.size());
     glBindVertexArray(0);
     glDisable(GL_POLYGON_OFFSET_FILL);
     glEnable(GL_CULL_FACE);
+    glDepthFunc(GL_LESS);
+    glDepthMask(GL_TRUE);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDisable(GL_BLEND);
+    worldShader.use();
 }
 
 inline void GameplayState::renderParticles(const glm::mat4& view, const glm::mat4& proj) {

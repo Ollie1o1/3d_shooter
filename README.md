@@ -405,6 +405,7 @@ Everything below runs without touching the mouse, so it works from scripts.
 #   --overlay clearwaves  every wave cleared for you, one every 4 s (with --audiodump: hear the room clears)
 #   --overlay hook | alt   with --autoaim: grapple whatever it's aimed at every 2.5 s / use alt fire instead of the trigger
 #   --overlay teach | teach2   the NEW MOVE cards, every time (screenshots)
+#   --overlay marks | jolt     one of every mark a fight leaves, laid out by the player / a blast 7 m ahead every 2 s (the room answering)
 tools/record_showcase.sh         # re-record docs/overdrive.gif (needs gifski)
 
 # The gun viewer: one gun on a stand, reloaded whenever its file changes (see "Edit a gun")
@@ -695,7 +696,7 @@ The regular enemies (not the bosses, which have their own answers) take a hit wi
 - **CRT filter** (optional, toggle in settings) — barrel distortion, chromatic aberration, scanlines, vignette
 - PSX-style vertex snapping (configurable)
 - Hitscan tracers, muzzle flash, screen shake, hit-stop on kills
-- Impact decals, explosion particles, shell casings
+- Marks that stay for a while and fade (bullet pits, blast soot, stains, spent brass; capped), explosion particles; neon that stutters and dust that falls at a blast; lava, fans, water and the reactor heard from where they are
 - Damage direction indicators on screen edges
 - Dithered grapple rope rendering
 

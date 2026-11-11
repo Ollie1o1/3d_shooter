@@ -110,6 +110,14 @@ test: $(TESTS) $(HEADERS)
 	$(MAKE) test-iteration
 	$(MAKE) test-combat
 	$(MAKE) test-nav
+	$(MAKE) test-polish
+
+# What a fight leaves on the room, the room answering a blast, the world's own sounds (tests/test_polish.cpp)
+.PHONY: test-polish
+test-polish: tests/test_polish.cpp $(HEADERS)
+	mkdir -p build
+	$(CXX) $(CXXFLAGS) tests/test_polish.cpp -o build/test_polish $(STDLIB)
+	./build/test_polish
 
 .PHONY: test-combat test-combat-runtime
 test-combat: tests/test_combat_pass.cpp $(HEADERS)

@@ -234,7 +234,23 @@ inline void GameplayState::playVoice(const VoiceCue& c) {
     if (c.duckDb > 0.f) audio.duck(c.duckDb, 0.5f);
 }
 
+// The level's own sounds: whichever emitters are near let go of a grain each, placed where they are.
+// How much: the AMBIENT setting (OFF: none), and quieter still while a boss has the floor.
+inline void GameplayState::updateWorldEmitters(float dt) {
+    static const float BY_DETAIL[] = {0.f, 0.6f, 0.85f, 1.f};
+    const float level = BY_DETAIL[glm::clamp(ambientDetail(), 0, 3)];
+    for (const worldsound::Cue& c : worldSound.tick(dt, player.camera.position, level)) {
+        SfxMixer::Opts o; o.volume = c.volume; o.group = SoundGroup::WORLD; o.role = SoundRole::CHATTER;
+        o.positional = true; o.pos = c.pos; o.pitch = c.pitch;
+        audio.playOpts(c.name, o);
+        // What you hear, you see: the lava spits as it sounds, the water drips
+        if (c.kind == worldsound::Kind::LAVA) fx.spawnAmbientBurst(c.pos + glm::vec3{0.f, 0.1f, 0.f}, {1.5f, 0.45f, 0.08f}, 9, 4.2f, 1.2f, 7.f);
+        else if (c.kind == worldsound::Kind::WATER) fx.spawnAmbientBurst(c.pos + glm::vec3{0.f, 0.05f, 0.f}, {0.6f, 0.75f, 0.85f}, 4, 1.4f, 0.5f, 9.f);
+    }
+}
+
 inline void GameplayState::updateEnemies(float dt) {
+    updateWorldEmitters(dt);
     voices.begin(player.camera.position, dt);
     threatTickCd = std::max(0.f, threatTickCd - dt);
     beamHissCd -= dt;
@@ -542,7 +558,7 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
         if (src != StyleSource::FRIENDLY && shieldClankCd <= 0.f) {
             audio.playAt("clank", at, 70, SoundGroup::ENEMY);
             static const char* told = "SHIELDED - KILL THE CONDUCTOR";   // once in the feed, not once a pellet
-            if (ui.feedLines.empty() || ui.feedLines.back().text != told) ui.feed(told, {0.3f, 1.f, 0.9f});
+            if (std::none_of(ui.feedLines.begin(), ui.feedLines.end(), [&](const UIRenderer::FeedLine& l) { return l.text == told; })) ui.feed(told, {0.3f, 1.f, 0.9f});   // (said once while it's up, not counted per shot)
             shieldClankCd = 0.12f;
         }
         return false;
@@ -592,7 +608,7 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
         styleSystem.heal(heal * tune().heal);
     }
     if (!friendly && src != StyleSource::MELEE) { ++hitSoundCount; hitSoundCrit |= crit; hitSoundArmor |= !pierceArmor && e.armorMult() < 0.99f; }   // played once (flushHitSounds)
-    if (!e.stats().flying && e.type != EnemyType::LEVIATHAN) fx.spawnDecal(e.position);
+    if (!e.stats().flying && e.type != EnemyType::LEVIATHAN) marksField.add(marks::Kind::STAIN, e.position, {0.f, 1.f, 0.f}, 0.4f);
     if (src != StyleSource::MELEE) fx.spawnHitSparks(at, e.stats().color * 1.4f);
     if (!friendly) ui.onHit(killed, crit);
     if (!settings || settings->damageNumbers) ui.spawnDamageNumber(at, std::min(dmg, before), crit);
@@ -911,13 +927,14 @@ inline void GameplayState::updatePickups(float dt) {
                   [](const Pickup& p){ return p.life <= 0.f; }), pickups.end());
 }
 
-inline float GameplayState::hitscanAll(glm::vec3 origin, glm::vec3 dir, float range, std::vector<RayHit>& out, Mat* surface) {
+inline float GameplayState::hitscanAll(glm::vec3 origin, glm::vec3 dir, float range, std::vector<RayHit>& out, Mat* surface, const Wall** stoppedOn) {
     out.clear();
     float wallT = range;
     if (surface) *surface = Mat::CONCRETE;
+    if (stoppedOn) *stoppedOn = nullptr;
     for (auto& w : level.walls) {
         float t = rayBoxHit(origin, dir, w.box);
-        if (t > 0.f && t < wallT) { wallT = t; if (surface) *surface = w.mat; }
+        if (t > 0.f && t < wallT) { wallT = t; if (surface) *surface = w.mat; if (stoppedOn) *stoppedOn = &w; }
     }
     for (int ei = 0; ei < (int)enemies.size(); ++ei) {
         if (!enemies[ei].targetable()) continue;
@@ -1038,7 +1055,8 @@ inline void GameplayState::fireWeapon(int w) {
         float ang = frand(0.f, 6.2832f), rad = std::sqrt(frand(0.f, 1.f)) * spread;
         glm::vec3 dir = glm::normalize(fwd + right * (std::cos(ang) * rad) + up * (std::sin(ang) * rad));
         Mat surface = Mat::CONCRETE;
-        float wallT = hitscanAll(origin, dir, d.range, hits, &surface);
+        const Wall* stoppedOn = nullptr;
+        float wallT = hitscanAll(origin, dir, d.range, hits, &surface, &stoppedOn);
         int n = std::min((int)hits.size(), pierce + 1);
         if (splinterOwned() && splinters.live() > 0) {   // a SPLINTER before anything else: the round goes on from it
             float st = 0.f;
@@ -1109,6 +1127,11 @@ inline void GameplayState::fireWeapon(int w) {
             fx.spawnBurst(at, {1.f, 0.85f, 0.55f}, sniper ? 8 : 3, sniper ? 7.f : 4.f, 0.18f, 14.f);
             fx.spawnBurst(at, {0.55f, 0.5f, 0.46f}, sniper ? 6 : 2, 1.5f, 0.6f, -1.f);
             if (p < 2) audio.playAt(surfaceImpactSound(surface), at, sniper ? 115 : pellets > 1 ? 70 : 90, SoundGroup::WORLD);
+            // ...and the pit it knocked out of it stays (not on what moves or breaks: the mark would be left hanging)
+            if (stoppedOn && !stoppedOn->hidden && !stoppedOn->dynamic && endT == wallT) {
+                const glm::vec3 on = origin + dir * endT;
+                marksField.add(marks::Kind::PIT, on, marks::faceNormal(stoppedOn->box, on), sniper ? 0.14f : pellets > 1 ? 0.06f : 0.09f);
+            }
         }
         fx.spawnTracer(origin + dir * 0.25f - up * 0.08f, origin + dir * endT, sniper ? 0.09f : 0.055f, sniper ? 0.35f : 0.22f,
                        od ? glm::vec3{1.4f, 0.8f, 0.25f} : glm::mix(glm::vec3{1.f}, gunkit::glowOf(w), 0.6f));   // the gun's colour (OVERDRIVE: gold)
@@ -1240,6 +1263,17 @@ inline void GameplayState::fireWeapon(int w) {
     if (anyHit) { ++totalHits; ++runLog.hits[w]; }
     fx.spawnShellCasing(origin, right, gunkit::glowOf(w));
     if (pellets > 1) fx.spawnShellCasing(origin + right * 0.1f, right, gunkit::glowOf(w));
+    if (player.onGround) {   // ...and lies where the sound said it landed, for a while (Marks.h)
+        const glm::vec3 flat = glm::normalize(glm::vec3{right.x, 0.f, right.z} + glm::vec3{1e-4f, 0.f, 0.f});
+        for (int k = 0; k < (pellets > 1 ? 2 : 1); ++k) {
+            glm::vec3 at = player.position + flat * cosmetic::range(0.5f, 0.95f) + glm::vec3{cosmetic::range(-0.25f, 0.25f), 0.f, cosmetic::range(-0.25f, 0.25f)};
+            const float g = level.groundAt(at.x, at.z, player.position.y + 0.3f);
+            if (std::fabs(g - player.position.y) > 0.6f) continue;   // (over an edge: gone)
+            at.y = g;
+            marksField.addCasing(at, 0.42f, pellets > 1 ? glm::vec3{0.62f, 0.12f, 0.1f} : glm::vec3{0.72f, 0.54f, 0.24f},
+                                 pellets > 1 ? 0.07f : sniper ? 0.075f : 0.05f);
+        }
+    }
 
     if (ws.ammo <= 0) {
         if (!sniper) startReload(w);   // rifles reload after the bolt cycle (physicsTick)

@@ -2,7 +2,7 @@
 // =============================================================================
 // Effects.h — the short-lived things a fight leaves behind: particles (sparks,
 // blasts, shell casings, ambient dust and embers), enemies breaking into their
-// boxes, scorch decals, hitscan tracers, shockwave rings and the Sovereign's
+// boxes, hitscan tracers, shockwave rings and the Sovereign's
 // sword strokes. No OpenGL: GameplayState draws them (Gameplay_Render.h).
 // =============================================================================
 #include "world/Level.h"
@@ -27,14 +27,6 @@ public:
     };
     static constexpr int MAX_TRACERS = 32;
     Tracer tracers[MAX_TRACERS];
-
-    struct Decal {
-        glm::vec3 pos{0.f};
-        float life = 0.f, maxLife = 10.f;
-        bool  alive = false;
-    };
-    static constexpr int MAX_DECALS = 64;
-    Decal decals[MAX_DECALS];
 
     struct Particle {
         glm::vec3 pos{0.f}, vel{0.f};
@@ -78,9 +70,8 @@ public:
     static constexpr float SLASH_LIFE = 0.3f;
     std::vector<Slash> slashes;
 
-    // A fresh arena: no marks, sparks, pieces or rings left from the last one
+    // A fresh arena: no sparks, pieces or rings left from the last one
     void clear() {
-        for (auto& d : decals)    d.alive = false;
         for (auto& p : particles) p.alive = false;
         debris.clear(); chunks.clear(); shockwaves.clear();
     }
@@ -115,6 +106,19 @@ public:
             glm::vec3 d{cosmetic::range(-1.f,1.f),cosmetic::range(.1f,1.f),cosmetic::range(-1.f,1.f)};
             p->pos=c;p->vel=glm::normalize(d)*speed*cosmetic::range(.4f,1.f);
             p->color=color;p->gravity=gravity;p->maxLife=p->life=life*cosmetic::range(.6f,1.f);p->alive=true;
+        }
+    }
+
+    // Dust shaken off a ceiling: motes let go across a disc under it, drifting down. Decoration: the ambient budget.
+    void spawnDustFall(glm::vec3 under, float radius, int n) {
+        n = n * ambientLevel / 3;
+        for (int i = 0; i < n; ++i) {
+            Particle* p = freeAmbientParticle(); if (!p) return;
+            const float a = cosmetic::range(0.f, 6.2831853f), r = radius * std::sqrt(cosmetic::range(0.f, 1.f));
+            p->pos = under + glm::vec3{std::cos(a) * r, -cosmetic::range(0.f, 0.4f), std::sin(a) * r};
+            p->vel = {cosmetic::range(-0.25f, 0.25f), -cosmetic::range(0.4f, 1.4f), cosmetic::range(-0.25f, 0.25f)};
+            p->color = glm::vec3{0.62f, 0.57f, 0.5f} * cosmetic::range(0.7f, 1.f);
+            p->gravity = 2.2f; p->maxLife = p->life = cosmetic::range(1.4f, 2.6f); p->alive = true;
         }
     }
 
@@ -491,20 +495,6 @@ public:
                          [](const Shockwave& s){ return s.t > 0.5f; }), shockwaves.end());
     }
 
-    void spawnDecal(glm::vec3 enemyPos) {
-        int slot = -1;
-        float minLife = 1e9f;
-        for (int i = 0; i < MAX_DECALS; ++i) {
-            if (!decals[i].alive) { slot = i; break; }
-            if (decals[i].life < minLife) { minLife = decals[i].life; slot = i; }
-        }
-        auto& d  = decals[slot];
-        d.pos    = enemyPos + glm::vec3{0.f, 0.025f, 0.f};
-        d.maxLife = 10.f;
-        d.life    = d.maxLife;
-        d.alive   = true;
-    }
-
     void spawnTracer(glm::vec3 start, glm::vec3 end, float width = 0.055f, float life = 0.22f,
                      glm::vec3 color = {0.97f, 0.95f, 0.72f}) {
         Tracer* slot = nullptr;
@@ -518,10 +508,9 @@ public:
         slot->alive = true;
     }
 
-    // Tracers and decals age on the physics tick
+    // Tracers age on the physics tick
     void tickMarks(float dt) {
         for (auto& t : tracers) if (t.alive) { t.life -= dt; if (t.life <= 0.f) t.alive = false; }
-        for (auto& d : decals)  if (d.alive) { d.life -= dt; if (d.life <= 0.f) d.alive = false; }
     }
 
 private:

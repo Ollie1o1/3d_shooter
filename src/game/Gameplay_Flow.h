@@ -165,6 +165,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     : settings(s), mode(m), audio(aud) {
     worldShader.loadFiles("src/shaders/shader.vert","src/shaders/shader.frag");
     contactShader.loadFiles("src/shaders/contact.vert","src/shaders/contact.frag");
+    markShader.loadFiles("src/shaders/mark.vert","src/shaders/mark.frag");
     skyboxShader.loadFiles("src/shaders/skybox.vert","src/shaders/skybox.frag");
     tracerShader.loadFiles("src/shaders/tracer.vert","src/shaders/tracer.frag");
     particleShader.loadFiles("src/shaders/particle.vert","src/shaders/particle.frag");
@@ -207,16 +208,15 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     glVertexAttribPointer(2, 1, GL_FLOAT, GL_FALSE, 7*sizeof(float), (void*)(6*sizeof(float)));
     glBindVertexArray(0);
 
-    // Effects::Decal VBO: pos(3)+uv(2)+normal(3)+color(3) = 11 floats, matches worldShader
-    glGenVertexArrays(1, &decalVAO);
-    glGenBuffers(1, &decalVBO);
-    glBindVertexArray(decalVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, decalVBO);
-    glBufferData(GL_ARRAY_BUFFER, Effects::MAX_DECALS * 6 * 11 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
-    glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 11*sizeof(float), (void*)0);
-    glEnableVertexAttribArray(1); glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 11*sizeof(float), (void*)(3*sizeof(float)));
-    glEnableVertexAttribArray(2); glVertexAttribPointer(2, 3, GL_FLOAT, GL_FALSE, 11*sizeof(float), (void*)(5*sizeof(float)));
-    glEnableVertexAttribArray(3); glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 11*sizeof(float), (void*)(8*sizeof(float)));
+    // marks::Vert: pos(3) + uv, seed, strength(4) + tint, kind(4) = 11 floats (mark.vert)
+    glGenVertexArrays(1, &markVAO);
+    glGenBuffers(1, &markVBO);
+    glBindVertexArray(markVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, markVBO);
+    glBufferData(GL_ARRAY_BUFFER, marks::Field::MAX_MARKS * 6 * sizeof(marks::Vert), nullptr, GL_DYNAMIC_DRAW);
+    glEnableVertexAttribArray(0); glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(marks::Vert), (void*)offsetof(marks::Vert, pos));
+    glEnableVertexAttribArray(1); glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(marks::Vert), (void*)offsetof(marks::Vert, uvSeedStrength));
+    glEnableVertexAttribArray(2); glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE, sizeof(marks::Vert), (void*)offsetof(marks::Vert, tintKind));
     glBindVertexArray(0);
 
     whiteTex = makeGreyTexture();
@@ -249,6 +249,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     bake = &sharedBake(training() ? "training" : fast() ? "fast" : act2() ? "act2" : story() ? (level.story.chapter==5?"story5":level.story.chapter==4?"story4":level.story.chapter==3?"story3":level.story.chapter==2?"story2":"story1") : "act1", level);
     applyBake();
     neonLights = buildNeonLights(level);
+    gatherWorldEmitters(level, worldSound);
     shifts.capture(level);
     anchorsBuilt = level.anchors;   // the Penitent's anchors as built: a retry restores them
     anchorBoxes.clear();
@@ -349,8 +350,8 @@ inline GameplayState::~GameplayState() {
     if (waterVBO)    glDeleteBuffers(1, &waterVBO);
     if (particleVAO) glDeleteVertexArrays(1, &particleVAO);
     if (particleVBO) glDeleteBuffers(1, &particleVBO);
-    if (decalVAO)    glDeleteVertexArrays(1, &decalVAO);
-    if (decalVBO)    glDeleteBuffers(1, &decalVBO);
+    if (markVAO)     glDeleteVertexArrays(1, &markVAO);
+    if (markVBO)     glDeleteBuffers(1, &markVBO);
     setMouseCaptured(false);
     if (story()) armfile::load();   // the gloves back for the other modes
 }
@@ -398,7 +399,7 @@ inline void GameplayState::enterArena(int a) {
     for (auto& [uid, h] : voiceLoops) audio.stop(h);
     voiceLoops.clear();
     for (auto& p : projSystem.pool) p.alive = false;
-    fx.clear(); pickups.clear(); pendingBlasts.clear();
+    fx.clear(); marksField.clear(); reactions.clear(); pickups.clear(); pendingBlasts.clear();
     sov.clear(); lastStand = false; lastStandT = 0.f;
     banners.clear();
     grapple.release();
@@ -1024,6 +1025,7 @@ inline void GameplayState::updateScreenFx(float dt) {
 
 inline void GameplayState::update(float dt) {
     fx.setAmbientDetail(ambientDetail());   // settings take effect even while the world is paused
+    marksField.setDetail(ambientDetail());
     if(storyChapterRequest>0) {int chapter=storyChapterRequest;storyChapterRequest=0;loadStoryChapter(chapter);return;}
     if (story() && !paused && !armoryOpen && !playerDead && !victory) {
         storySaveClock += dt;
@@ -1193,6 +1195,33 @@ inline void GameplayState::update(float dt) {
     }
     viewModel.devOrbit = g_devSwordOrbit;
     if (g_devOverlay == "punch") { viewModel.parryTimer = ViewModel::PARRY_TIME * 0.62f; viewModel.parryHit = true; }
+    // --overlay marks: one of everything a fight leaves, laid out ahead of the camera (screenshots: Marks.h).
+    // --overlay jolt: a blast 7 m ahead every 2 s (the room answering: Reactions.h)
+    if (g_devOverlay == "marks" || g_devOverlay == "jolt") {
+        static float laidT = 0.f; static bool laid = false;
+        laidT += dt;
+        const glm::vec3 f = player.camera.flatForward(), r{-f.z, 0.f, f.x}, eye = player.camera.position;
+        auto floorAt = [&](glm::vec3 p) { p.y = level.groundAt(p.x, p.z, eye.y); return p; };
+        if (g_devOverlay == "marks" && !laid && laidT > 0.3f) {
+            laid = true;
+            marksField.add(marks::Kind::SCORCH, floorAt(eye + f * 4.5f - r * 1.6f), {0.f, 1.f, 0.f}, 1.6f);
+            marksField.add(marks::Kind::STAIN, floorAt(eye + f * 3.2f + r * 0.9f), {0.f, 1.f, 0.f}, 0.4f);
+            for (int k = 0; k < 7; ++k) {
+                marksField.add(marks::Kind::PIT, floorAt(eye + f * (2.2f + 0.13f * (float)k) + r * (0.1f * (float)((k * 5) % 7) - 0.2f)), {0.f, 1.f, 0.f}, k % 3 ? 0.075f : 0.11f);
+                marksField.addCasing(floorAt(eye + f * (1.9f + 0.17f * (float)k) + r * (0.5f + 0.09f * (float)((k * 3) % 5))), 0.f,
+                                     k % 3 == 2 ? glm::vec3{0.62f, 0.12f, 0.1f} : glm::vec3{0.72f, 0.54f, 0.24f}, k % 3 == 2 ? 0.07f : 0.05f);
+            }
+            const float w = wallAlong(eye, player.camera.forward(), 30.f);
+            if (w > 0.f)
+                for (int k = 0; k < 6; ++k) {
+                    const glm::vec3 d = glm::normalize(player.camera.forward() + r * (0.05f * (float)(k - 3)) + glm::vec3{0.f, 0.03f * (float)((k * 2) % 3), 0.f});
+                    std::vector<RayHit> none; const Wall* on = nullptr;
+                    const float t = hitscanAll(eye, d, 40.f, none, nullptr, &on);
+                    if (on) marksField.add(marks::Kind::PIT, eye + d * t, marks::faceNormal(on->box, eye + d * t), k % 2 ? 0.075f : 0.11f);
+                }
+        }
+        if (g_devOverlay == "jolt" && laidT > 2.f) { laidT = 0.f; Blast b{}; b.pos = eye + f * 7.f - glm::vec3{0.f, 0.9f, 0.f}; b.radius = 4.f; pendingBlasts.push_back(b); }
+    }
     // --overlay volley: orbs fired across your view every 0.2 s, a heavy shell every second (screenshots: their tumble,
     // trail and stretch), into the ground ahead (their shatter)
     if (g_devOverlay == "volley") {

@@ -27,6 +27,10 @@ uniform vec3  uGroundAmb;
 uniform vec3  uFogColor;
 uniform float uFogDensity;   // 0 = no fog (view model, HUD-ish geometry)
 uniform float uVertexGlow;   // > 0: per-vertex colour is also emitted (neon strips)
+uniform vec4  uJolt[4];      // a blast shaking the neon (world/Reactions.h): where, and how far it reaches
+uniform vec4  uJoltK;        // how strongly each shakes right now (0: not at all)
+uniform float uJoltClock;    // the stutter's clock
+uniform float uJoltCalm;     // 1: REDUCE FLASHING, the tubes dip instead of stuttering
 uniform vec3  uTexGlow;      // what the texture marks as glowing (alpha < 1) gives off this
 uniform float uNoSeams;      // 1: no dark seam every 4 m (the newer textures carry their own joints)
 uniform float uMacro;        // > 0: soft variation over metres of world (the 4 m tile stops reading as a repeat)
@@ -223,7 +227,16 @@ void main()
                   * mix(0.6, 1.0, max(edgeFactor, uNoSeams));   // darken at tile seams
     float glowMask = 1.0 - texture(uTexture, TexCoord).a;
     result += uTexGlow * glowMask;
-    result += VertColor * uVertexGlow;
+    float tube = 1.0;
+    if (uVertexGlow > 0.0 && (uJoltK.x + uJoltK.y + uJoltK.z + uJoltK.w) > 0.0) {   // a blast near a tube: it stutters, a length at a time
+        float w = 0.0;
+        for (int i = 0; i < 4; ++i) w = max(w, (1.0 - clamp(length(FragPos - uJolt[i].xyz) / max(uJolt[i].w, 0.01), 0.0, 1.0)) * uJoltK[i]);
+        vec3  cell = floor(FragPos / 2.5);
+        float step_ = fract(sin(dot(cell, vec3(12.9898, 78.233, 37.719)) + floor(uJoltClock * 28.0) * 7.31) * 43758.5453);
+        float lit = step_ < 0.38 ? 0.12 : (step_ < 0.7 ? 0.7 : 1.15);
+        tube = uJoltCalm > 0.5 ? 1.0 - 0.3 * w : mix(1.0, lit, min(1.0, w * 1.6));
+    }
+    result += VertColor * uVertexGlow * tube;
 
     // Exponential-squared distance fog toward the arena's horizon colour
     float d   = length(viewPos - FragPos) * uFogDensity;

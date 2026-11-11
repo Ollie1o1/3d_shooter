@@ -22,6 +22,7 @@ struct NeonLight { AABB box; glm::vec3 color; };   // color: the light it gives 
 struct NeonSet {
     int n = 0;
     glm::vec3 mn[MAX_NEON], mx[MAX_NEON], col[MAX_NEON];
+    int idx[MAX_NEON] = {};   // which of the level's lights each is (world/Reactions.h shakes them one by one)
 };
 
 // How strongly a strip of colour c and this size lights things. A thin strip
@@ -95,7 +96,7 @@ inline void pickNeon(const std::vector<NeonLight>& all, glm::vec3 cam, NeonSet& 
         float w = 1.f - t * t * (3.f - 2.f * t);
         if (w <= 0.f) continue;
         const NeonLight& l = all[d[k].second];
-        out.mn[out.n] = l.box.min; out.mx[out.n] = l.box.max; out.col[out.n] = l.color * w;
+        out.mn[out.n] = l.box.min; out.mx[out.n] = l.box.max; out.col[out.n] = l.color * w; out.idx[out.n] = d[k].second;
         ++out.n;
     }
 }
