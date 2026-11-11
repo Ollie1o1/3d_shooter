@@ -31,6 +31,11 @@ struct SovereignState {
     float blinkFlash = 5.f;     // seconds since a shadow step
     bool  riposte    = false;   // a deflected shot: answer it with a crescent
     float riposteCd  = 0.f;
+    // His body in motion (EnemyModel.h tickSovereignBody): the drawn pose, a spring per channel chasing
+    // where his attack state says he is going, so a stance is moved into and settled out of, never cut to
+    static constexpr int SOV_BODY = 9;
+    float sovBody[SOV_BODY] = {}, sovBodyV[SOV_BODY] = {}, sovBodyPrev[SOV_BODY] = {};
+    bool  sovBodyLive = false;
     static constexpr float PURSUE_RANGE  = 22.f;   // further than this (or 3 m above him) and he comes for you
     static constexpr float DEFLECT_RANGE = 16.f;   // shots from further than this bounce off his guard
     static constexpr float THRUST_SPEED  = 30.f;

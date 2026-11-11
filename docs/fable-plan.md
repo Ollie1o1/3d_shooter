@@ -49,6 +49,65 @@ already had a hand-made route for one room (`coldcombat::chillerRoute`), which i
 - `--nav` draws the grid and each routed enemy's path; `--nonav` turns routes off to compare.
   Stills in `docs/nav-review/`.
 
-## Workstream 2: boss animation and sound (branch `boss-animation`): next
+## Workstream 2: boss animation and sound (branch `boss-animation`, from `main`): built, waiting for a playtest
 
-## Workstream 3: polish, feel and sound across the board (branch `polish-feel`): after that
+**Found** (by drawing film strips of the real rigs on the CPU, `make boss-strips`, and measuring):
+- The Absolute's planted feet slid 106 to 137% of the ground he covered: the legs were posed from the
+  hips, so the feet went wherever the pelvis did. That is the gliding.
+- In a fight he is either standing or bursting across the floor (2,310 of 2,674 ground ticks still, the
+  rest faster than a run). He almost never walks, so what you look at is his stance and his blows.
+- On a cross he stood up out of his stance, and nothing shifted his weight on the wind-up.
+- The Sovereign had no springs at all: his pose was computed fresh each frame from his attack state,
+  so a sweep's follow-through began 2.2 rad from its wind-up in one frame. That is the screenshot look.
+  At rest he was frozen apart from his walk cycle.
+- Every joint of the Absolute and the Successor chased its target on the same critically damped
+  spring, so nothing trailed or settled, and MORNINGSTAR was the same motion scaled up.
+
+**Movement character** (my proposals; say if you want any changed):
+- The Absolute: a precise, fast duellist. Stiff core, arms and head a little loose, light quick feet.
+- MORNINGSTAR: the same body with far more mass. Every spring slower when he isn't striking and looser,
+  so his trunk runs past a stop and takes a moment to settle; his guard lives at 0.58 speed; long slow
+  steps that land like dropped stone (sound, dust, a small shake); a hit moves him 40% as far.
+- The Successor: a surgeon. Upright, almost still in the trunk, alive in the hands and head; small
+  on purpose so his stillness is the threat and a cast's locked aim stays readable.
+- The Sovereign: a knight in plate over a greatsword. Heavy trunk, a sword arm slower and looser so
+  the blade runs past and comes back; he breathes under it, the point drifts, now and then he shifts his grip.
+
+**Changed.**
+- `AbsoluteRig.h`: planted feet (`absFeetTick`: a foot stays where it was put in the world and steps
+  when the body has moved off it; legs solved by two-bone IK, `absLegReach`), a pelvis that shifts over
+  the feet, weight back on the wind-up and through the blow (`drive`), a spring of its own kind per
+  joint (`absSpring`, exact at any tick length), hit recoil (`absoluteHit`). At a run the run cycle
+  takes the legs back; a burst or blink carries the feet with him.
+- `SuccessorRig.h`: the looser springs, a living guard, hit recoil (`successorHit`).
+- `EnemyModel.h` / `SovereignState.h`: a sprung body for the Sovereign (`tickSovereignBody`), idle
+  life, a break he drops into instead of cutting to, hit recoil (`sovereignHit`).
+- Sound, all from existing files (no download growth): the Absolute's and MORNINGSTAR's footfalls on
+  each real step, the Sovereign's armoured steps and the whoosh of each stroke (low, long), the
+  Successor's steps and cutting strokes (thin, high).
+- `tools/boss_strip.cpp` (`make boss-strips`): the film strips. Before and after in `docs/anim-review/`.
+
+**Not changed.** No attack timing, telegraph length, hitbox or damage. The head hitbox follows the
+drawn head as before, so it moves a few centimetres with the new weight shift.
+
+**Proof.**
+- `make test-boss-animation`: 3.4 million checks at 30/60/120/240 Hz. Planted feet slide under 0.5% of
+  the ground covered (measured: millimetres over 10 to 50 m, both sizes); joints finite and bounded
+  through every move; no joint snaps; the same pose at 30 and 240 Hz; a hit rocks each boss back and
+  he comes home; a hit never bends a tell; MORNINGSTAR settles slower than the Absolute.
+- Telegraphs: the sequence of (attack, wind-up length) each boss's real mind starts over two minutes
+  is hashed and matches `main` exactly for the Absolute, the Successor and the Sovereign.
+  MORNINGSTAR starts no tells in that bare setup, so he is covered by BossSim only.
+- `tests/test_zenith` (BossSim): output identical to `main`, kill times included. `make test` green.
+
+**Not done / to decide.**
+- I can't hear. The new sounds are placed and level-checked (a 12 s Sovereign fight peaks at -4.7 dBFS)
+  but whether the pitches suit each boss needs your ears.
+- The Successor and the Sovereign did not get planted feet (their legs are still posed from the hips).
+- The Sovereign's legs stay nearly straight through his blows; his crouch is small. Deeper leg work
+  would mean reworking the shared humanoid walk, which I left alone.
+- No in-game `--record` footage for this branch: the bot keeps the bosses too far away to judge
+  motion, so the strips are the review material. BOSS mode launches stop on the Armory screen.
+- Step cadence varies a little with frame rate (51 to 68 steps over the same walk). Cosmetic.
+
+## Workstream 3: polish, feel and sound across the board (branch `polish-feel`): next

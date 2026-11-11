@@ -345,5 +345,12 @@ test-boss-animation: tests/test_boss_animation.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) tests/test_boss_animation.cpp -o build/test_boss_animation $(STDLIB)
 	./build/test_boss_animation
 
+# Film strips of the bosses in motion, drawn on the CPU from the game's own rigs (build/boss-strips/*.ppm)
+.PHONY: boss-strips
+boss-strips: tools/boss_strip.cpp $(HEADERS)
+	mkdir -p build/boss-strips
+	$(CXX) $(CXXFLAGS) tools/boss_strip.cpp -o build/boss_strip $(STDLIB)
+	./build/boss_strip
+
 tools/boss_animation_preview: tools/boss_animation_preview.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) tools/boss_animation_preview.cpp -o tools/boss_animation_preview $(STDLIB)

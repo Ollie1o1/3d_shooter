@@ -17,6 +17,16 @@ inline SuccessorPose suMix(const SuccessorPose& a,const SuccessorPose& b,float t
 inline SuccessorPose successorGuard(const Enemy& e,float time){
     SuccessorPose p;p.hipYaw=-.25f;p.torsoYaw=.18f;p.head=-.06f;
     p.lean=.16f+std::sin(time*2.6f)*.025f;p.roll=std::sin(time*1.8f)*.035f;
+    // A surgeon waiting: upright and almost still in the trunk, alive in the hands and the head. He
+    // breathes, his head tilts as he studies you, his fingers work, and now and then he resets his
+    // shoulders. Small on purpose: his stillness is the threat, and a cast's locked aim stays readable.
+    const float breath=std::sin(time*1.15f);
+    p.lean+=.02f*breath;p.shR+=.035f*breath;p.shL+=.03f*breath;p.elR-=.04f*breath;p.elL-=.035f*breath;
+    p.head+=.05f*std::sin(time*.47f+.6f);p.roll+=.03f*std::sin(time*.31f+2.f);p.torsoYaw+=.05f*std::sin(time*.39f);
+    const float flex=std::pow(std::max(0.f,std::sin(time*.83f+1.1f)),6.f);            // the right hand turning over, fingers testing
+    p.handR+=.35f*flex;p.elR-=.18f*flex;p.splayR-=.1f*flex;
+    const float reset=std::pow(std::max(0.f,std::sin(time*.29f+4.f)),20.f);           // every twenty seconds or so: the shoulders roll back
+    p.lean-=.07f*reset;p.shR+=.2f*reset;p.shL+=.2f*reset;p.head-=.1f*reset;
     float run=glm::clamp(e.suGait/18.f,0.f,1.f),s=std::sin(e.animPhase);
     // The planted leg stays long while the other knee folds through its swing.
     // Both knees bending on the old cosine beat made the whole body pogo.
@@ -129,11 +139,26 @@ inline void tickSuccessorBody(Enemy& e,float dt){
     auto p=successorGoal(e,e.age);
     if(!e.suBodyLive){for(int k=0;k<SuccessorState::BODY_CHANNELS;++k){e.suBody[k]=e.suBodyPrev[k]=p.*SU_CH[k];e.suBodyVel[k]=0;}e.suBodyLive=true;return;}
     bool strike=e.suSince<.16f || (e.telegraphTimer>0 && e.telegraphTimer<.16f);
+    // His trunk and legs go where they are sent and stop (critically damped: nothing wasted). His arms,
+    // hands and head are looser: they arrive a little late, run past and settle. In a stroke everything is stiff.
     for(int k=0;k<SuccessorState::BODY_CHANNELS;++k){
-        e.suBodyPrev[k]=e.suBody[k];float w=strike?(k<5?35.f:44.f):(k<5?24.f:22.f),decay=std::exp(-w*dt);
-        float x=e.suBody[k]-p.*SU_CH[k],v=e.suBodyVel[k],c=v+w*x;
-        e.suBody[k]=p.*SU_CH[k]+(x+c*dt)*decay;e.suBodyVel[k]=(v-w*c*dt)*decay;
+        e.suBodyPrev[k]=e.suBody[k];
+        const bool head=k==4,arm=(k>=5 && k<=10) || k==15 || k==16;
+        float w=strike?(k<5?35.f:44.f):(k<5?24.f:22.f),z=1.f;
+        if(!strike){if(arm){z=.72f;w*=.9f;}else if(head){z=.68f;w*=.75f;}}
+        absSpring(e.suBody[k],e.suBodyVel[k],p.*SU_CH[k],w,z,dt);
     }
+}
+// A hit rocks his trunk away from where it came and snaps his head after it (dir: the way the hit
+// travels; strength 0..1 by its damage). Not across a tell: the shape you have to read stays put.
+inline void successorHit(Enemy& e,glm::vec3 dir,float strength){
+    if(!e.suBodyLive || e.telegraphTimer>0 || e.suAir>0 || e.suBurst>0)return;
+    dir.y=0;const float len=glm::length(dir);if(len<1e-4f)return;dir/=len;
+    const float k=glm::clamp(strength,0.f,1.f);
+    const float fwd=dir.x*std::sin(e.yaw)+dir.z*std::cos(e.yaw),left=dir.x*std::cos(e.yaw)-dir.z*std::sin(e.yaw);
+    e.suBodyVel[2]+=6.f*k*fwd;e.suBodyVel[4]+=10.f*k*fwd;      // lean, head: struck from the front he rocks back
+    e.suBodyVel[3]-=5.f*k*left;e.suBodyVel[1]+=4.5f*k*left;    // roll, torsoYaw
+    e.suBodyVel[5]+=3.f*k*fwd;e.suBodyVel[8]+=3.f*k*fwd;       // the arms thrown a little with it
 }
 inline bool successorFilePose(const Enemy& e,float time,const mat4& root,mat4& fileRoot,FilePose& f,vec3& glow){
     using namespace enemyfile;auto p=successorGoal(e,time);

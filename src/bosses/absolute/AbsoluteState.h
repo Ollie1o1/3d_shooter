@@ -63,10 +63,21 @@ struct AbsoluteState {
     AttackKind lastAbAttack = AttackKind::NONE;   // the strike that just resolved (the game reads its colour)
     // his body in motion (AbsoluteRig.h tickAbsoluteBody): the drawn pose, one spring per joint, chasing
     // where the rig says he's going; the blow that last landed and how long ago (its follow-through)
-    static constexpr int AB_BODY = 34;
+    static constexpr int AB_BODY = 40;
     float abBody[AB_BODY] = {}, abBodyV[AB_BODY] = {}, abBodyPrev[AB_BODY] = {};
     bool  abBodyLive = false;
     float abGait = 0.f;                // his feet's speed over the floor, smoothed (+ forward, - backing off): his steps (abGaitTick)
+    // His feet on the floor (AbsoluteRig.h absFeetTick): where each ankle is in the world ([0] right, [1]
+    // left), planted until it has to step; a step in flight runs abFootS 0..1 from abFootFrom. The legs
+    // are solved to reach them (abFootIK: how much, 0 while a move poses the legs itself), so a planted
+    // foot stays where it was put whatever the body above it does.
+    glm::vec3 abFoot[2] = {glm::vec3{0.f}, glm::vec3{0.f}}, abFootPrev[2] = {glm::vec3{0.f}, glm::vec3{0.f}}, abFootFrom[2] = {glm::vec3{0.f}, glm::vec3{0.f}};
+    float abFootS[2] = {1.f, 1.f}, abFootT[2] = {0.25f, 0.25f}, abFootUp[2] = {0.f, 0.f}, abFootUpPrev[2] = {0.f, 0.f};
+    float abFootIK = 0.f, abFootIKPrev = 0.f;
+    glm::vec2 abFeetVel{0.f};          // his speed over the floor, smoothed (the AI moves him in bursts)
+    glm::vec3 abFeetAt{0.f};           // where he stood at the last feet tick (his speed over the floor; a blink shows as a jump)
+    bool  abFeetLive = false;
+    int   abStepped = 0;               // footfalls this tick (bit 0 right, bit 1 left): the game puts a sound and dust on each
     AttackKind abBodyAtk = AttackKind::NONE, abBodyLanded = AttackKind::NONE;
     float abBodyTT = 0.f, abBodySince = 9.f;
     // A white strike from his body or blade: the ones you can parry

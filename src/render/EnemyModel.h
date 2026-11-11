@@ -113,7 +113,9 @@ struct PoseOverride {
     float crouch = 0.f, torsoYaw = 0.f, torsoPitch = 0.f;
     float rxR = 0.f, rzR = 0.f, rxL = 0.f, rzL = 0.f;
     float grip = 0.f;   // the blade's angle in the right hand (0: continues the arm)
+    float slump = 0.f;  // 0..1 broken: sunk and bowed forward (the SOVEREIGN's stagger)
 };
+inline void absSpring(float& x, float& v, float goal, float omega, float zeta, float dt);   // (AbsoluteRig.h: a damped spring, solved exactly)
 
 // A RAPTOR's bob in the air (none in a dive): from its own state, not the clock, so its head
 // hitbox (headBox) bobs with the head you see
@@ -478,8 +480,7 @@ inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileR
         vec3 g = e.enraged ? vec3{1.f, 0.12f, 0.08f} * (1.3f + 2.f * tp) : glow;
         glowOut = g;
         PoseOverride ov = sovereignPose(e);
-        mat4 base = broken ? root * T({0.f, -0.2f, 0.f}) * RX(0.28f) : root;
-        if (broken) { ov.rxR = 0.2f; ov.rxL = 0.1f; ov.grip = -1.3f; ov.torsoYaw = 0.f; ov.torsoPitch = 0.2f; }
+        mat4 base = root * T({0.f, -0.2f * ov.slump, 0.f}) * RX(0.28f * ov.slump);   // (broken: sunk and bowed, sprung like the rest of him)
         HumanoidMotion mo = humanoidMotion(e.animPhase, stride, ArmPose::SWING, 0.f, &ov);
         P = humanoidPose(mo, g);
         fileRoot = base * T({0.f, mo.lift, 0.f});
@@ -813,7 +814,7 @@ inline float smooth01(float t) { t = glm::clamp(t, 0.f, 1.f); return t * t * (3.
 // The SOVEREIGN's stance from his attack state: every wind-up is a clear,
 // held pose (sword drawn back for a dash, wound to one side for a sweep,
 // raised overhead for the cleave), and every stroke follows through.
-inline PoseOverride sovereignPose(const Enemy& e) {
+inline PoseOverride sovereignStance(const Enemy& e) {
     PoseOverride o; o.on = true;
     float walk = std::sin(e.animPhase) * glm::clamp(e.moveSpeed / 6.f, 0.f, 1.f);
     o.rxR = -0.45f + walk * 0.12f; o.rxL = -walk * 0.5f; o.grip = -1.05f;
@@ -904,6 +905,69 @@ inline PoseOverride sovereignPose(const Enemy& e) {
     default: break;
     }
     return o;
+}
+
+// Where his body is going: the stance for his attack state, alive between blows (a knight in plate
+// standing over a greatsword: he breathes under the weight of it, the point drifts and is brought back,
+// his shoulders turn as he measures you; all slow, nothing wasted), and bowed when his guard is broken.
+static float PoseOverride::* const SOV_CH[] = {
+    &PoseOverride::crouch, &PoseOverride::torsoYaw, &PoseOverride::torsoPitch, &PoseOverride::rxR, &PoseOverride::rzR,
+    &PoseOverride::rxL, &PoseOverride::rzL, &PoseOverride::grip, &PoseOverride::slump};
+static_assert(sizeof(SOV_CH) / sizeof(SOV_CH[0]) == SovereignState::SOV_BODY, "Sovereign body channel count");
+inline bool sovereignStriking(const Enemy& e) {
+    return e.swingTimer > 0.f || e.whirlTimer > 0.f || e.thrustTimer > 0.f || e.dashTimer > 0.f || e.leapTimer > 0.f;
+}
+inline PoseOverride sovereignGoal(const Enemy& e) {
+    PoseOverride o = sovereignStance(e);
+    if (e.staggered()) { o.rxR = 0.2f; o.rxL = 0.1f; o.grip = -1.3f; o.torsoYaw = 0.f; o.torsoPitch = 0.2f; o.slump = 1.f; return o; }
+    if (e.telegraphTimer <= 0.f && !sovereignStriking(e)) {
+        const float t = e.age;
+        const float breath = std::sin(t * 1.05f);
+        o.torsoPitch += 0.03f * breath; o.crouch += 0.025f * (0.5f - 0.5f * breath);
+        o.rxR += 0.035f * breath; o.rxL += 0.03f * std::sin(t * 1.05f - 0.6f);
+        o.torsoYaw += 0.07f * std::sin(t * 0.43f) + 0.03f * std::sin(t * 0.97f + 1.f);
+        o.grip += 0.07f * std::sin(t * 0.61f + 0.4f);                                   // the point drifting
+        const float heft = std::pow(std::max(0.f, std::sin(t * 0.37f + 1.9f)), 10.f);   // now and then he shifts his grip: the blade lifts, settles
+        o.rxR -= 0.22f * heft; o.grip += 0.3f * heft; o.torsoYaw -= 0.1f * heft; o.rzR -= 0.08f * heft;
+    }
+    return o;
+}
+// Each tick: spring his drawn body after sovereignGoal. A stroke in flight is stiff (the blade is where
+// the blow is); a wind-up is firm; at rest he is heavy: the trunk slow, the sword arm slower and loose
+// enough that the blade runs past where it was sent and comes back.
+inline void tickSovereignBody(Enemy& e, float dt) {
+    const PoseOverride g = sovereignGoal(e);
+    if (!e.sovBodyLive) {
+        for (int k = 0; k < SovereignState::SOV_BODY; ++k) { e.sovBody[k] = e.sovBodyPrev[k] = g.*SOV_CH[k]; e.sovBodyV[k] = 0.f; }
+        e.sovBodyLive = true;
+        return;
+    }
+    const bool strike = sovereignStriking(e), wind = e.telegraphTimer > 0.f;
+    for (int k = 0; k < SovereignState::SOV_BODY; ++k) {
+        e.sovBodyPrev[k] = e.sovBody[k];
+        const bool arm = k >= 3 && k <= 7;
+        float w, z;
+        if (strike) { w = 42.f; z = 1.f; }
+        else if (wind) { w = arm ? 17.f : 20.f; z = arm ? 0.85f : 1.f; }
+        else { w = arm ? 9.f : 11.f; z = arm ? 0.62f : 0.85f; }
+        if (k == 8) { w = 13.f; z = 0.8f; }   // (breaking: he drops into it and sways)
+        absSpring(e.sovBody[k], e.sovBodyV[k], g.*SOV_CH[k], w, z, dt);
+    }
+}
+// The pose as drawn: his sprung body once it is live (the game ticks it), else where he is going
+inline PoseOverride sovereignPose(const Enemy& e) {
+    PoseOverride o = sovereignGoal(e);
+    if (e.sovBodyLive) for (int k = 0; k < SovereignState::SOV_BODY; ++k) o.*SOV_CH[k] = e.sovBody[k];
+    return o;
+}
+// A hit on his plate: he gives a little and the sword arm takes the shock (dir: the way the hit travels)
+inline void sovereignHit(Enemy& e, glm::vec3 dir, float strength) {
+    if (!e.sovBodyLive || e.telegraphTimer > 0.f || sovereignStriking(e)) return;
+    dir.y = 0.f; const float len = glm::length(dir); if (len < 1e-4f) return; dir /= len;
+    const float k = glm::clamp(strength, 0.f, 1.f) * 0.6f;
+    const float fwd = dir.x * std::sin(e.yaw) + dir.z * std::cos(e.yaw), left = dir.x * std::cos(e.yaw) - dir.z * std::sin(e.yaw);
+    e.sovBodyV[2] += 5.f * k * fwd; e.sovBodyV[1] += 5.f * k * left;
+    e.sovBodyV[3] += 4.f * k * fwd; e.sovBodyV[7] -= 5.f * k; e.sovBodyV[0] += 1.2f * k;
 }
 
 // Append the parts for one enemy. `time` drives idle animation (orbiting
@@ -1506,12 +1570,10 @@ inline void leviathanSegments(const Enemy& e, float time, Rig& r, const gunkit::
     }
     case EnemyType::ABSOLUTE: buildAbsolute(e, time, r, root); break;   // the most detailed rig in the game (AbsoluteRig.h)
     case EnemyType::SOVEREIGN: {
-        bool broken = e.staggered();
         vec3 g = e.enraged ? vec3{1.f, 0.12f, 0.08f} * (1.3f + 2.f * tp) : glow;
         HumanoidLook L = humanoidLook(e.type, st.color, st.color * 0.45f, g);
         PoseOverride ov = sovereignPose(e);
-        mat4 base = broken ? root * T({0.f, -0.2f, 0.f}) * RX(0.28f) : root;
-        if (broken) { ov.rxR = 0.2f; ov.rxL = 0.1f; ov.grip = -1.3f; ov.torsoYaw = 0.f; ov.torsoPitch = 0.2f; }
+        mat4 base = root * T({0.f, -0.2f * ov.slump, 0.f}) * RX(0.28f * ov.slump);   // (broken: sunk and bowed, sprung like the rest of him)
         auto f = humanoid(r, base, L, e.animPhase, stride, ArmPose::SWING, 0.f, true, &ov);
         vec3 gold{0.86f, 0.64f, 0.22f}, steel{0.5f, 0.52f, 0.58f};
         vec3 edge = e.enraged ? vec3{2.2f, 0.5f, 0.35f} : vec3{1.7f, 1.35f, 0.75f};
@@ -1771,8 +1833,8 @@ inline bool headBox(const Enemy& e, AABB& out) {
         PoseOverride ov;
         if (e.type == EnemyType::ANCHOR) ov.torsoPitch = 0.18f;   // hunched at the waist, as drawn
         if (e.type == EnemyType::SOVEREIGN) {
-            if (e.staggered()) { base = root * T({0.f, -0.2f, 0.f}) * RX(0.28f); ov.torsoPitch = 0.2f; }
-            else ov = sovereignPose(e);
+            ov = sovereignPose(e);
+            base = root * T({0.f, -0.2f * ov.slump, 0.f}) * RX(0.28f * ov.slump);
         }
         if (e.type == EnemyType::PENITENT) ov = penitentPose(e);
         float bob = std::fabs(std::sin(e.animPhase)) * 0.05f * stride;

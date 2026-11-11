@@ -3,6 +3,19 @@ inline void GameplayState::successorEvents(Enemy& e,const EnemyEvents& ev){
     if(successorHazards.epoch!=e.suEpoch){successorHazards.clear();successorHazards.epoch=e.suEpoch;}
     if(ev.suPhaseStarted>=2)openSwordStatue();   // the statue's seal breaks
     if(ev.suPhaseStarted)audio.play("anvil",90,SoundGroup::UI,true);
+    {
+        // His movement, heard: quick light steps when he walks (not in a burst or a leap), and each
+        // cutting stroke leaving his hand: thin and high, a scalpel where the Sovereign's is a greatsword.
+        auto heard=[&](const char* name,glm::vec3 p,float pitch,float vol){
+            SfxMixer::Opts o;o.volume=vol;o.group=SoundGroup::ENEMY;o.positional=true;o.pos=p;o.pitch=pitch;audio.playOpts(name,o);
+        };
+        const float vary=.95f+.1f*cosmetic::range(0.f, 1.f);
+        const bool walking=e.suGait>1.5f && e.suGait<24.f && e.suBurst<=0 && e.suAir<=0 && e.grounded && !e.staggered();
+        if(walking && std::floor(e.animPhase/3.14159265f)!=std::floor(e.prevAnimPhase/3.14159265f))heard("step_metal",e.position,1.05f*vary,.4f);
+        const bool cut=e.suLanded==AttackKind::SU_INCISION || e.suLanded==AttackKind::SU_THRUST || e.suLanded==AttackKind::SU_REAP || e.suLanded==AttackKind::SU_TRANSPOSE;
+        if(cut && e.suSince<1.f/60.f*1.5f)
+            heard(e.suLanded==AttackKind::SU_THRUST || e.suLanded==AttackKind::SU_TRANSPOSE?"sword_thrust":"sword_swing",e.position+glm::vec3{0,2.2f,0},1.32f*vary,.7f);
+    }
     if(ev.suMark){fx.spawnShockwave(ev.suAt+glm::vec3{0,.08f,0},2.f,{.45f,.75f,1});audio.playAt("grapple_fire",ev.suAt,110,SoundGroup::ENEMY,true);}
     if(ev.suLock)audio.playAt("count_tick",e.position,100,SoundGroup::ENEMY,true);
     if(ev.suImpact){audio.playAt("punch",e.position,90,SoundGroup::ENEMY,true);}

@@ -36,6 +36,8 @@ struct AbsPose {
     // top leans in toward his centre line). Each side mirrors the other: the same numbers mean the same.
     float twR = 0.f, twL = 0.f, flR = 0.f, flL = 0.f, dvR = 0.f, dvL = 0.f;
     float abdR = 0.f, abdL = 0.f;   // one leg lifted out to the side (a roundhouse's chamber), on top of stanceW
+    float swayX = 0.f, swayZ = 0.f; // his pelvis off the middle of his stance (+X his left, +Z forward): his weight, over one foot or the other
+    float legIK = 1.f;              // 1: his feet stay where they're planted and the legs reach for them (absFeetTick); 0: this move poses the legs itself
     int   glow = -1;   // what lights with the tell: 0 right arm, 1 left arm, 2 right leg, 3 both arms, 4 the blade, 5 all of him
     float omega = 14.f;   // how hard his body chases this pose (a spring's rate, per second)
 };
@@ -46,7 +48,8 @@ static float AbsPose::* const AB_CH[] = {
     &AbsPose::hipR, &AbsPose::kneeR, &AbsPose::hipL, &AbsPose::kneeL, &AbsPose::fistR, &AbsPose::fistL,
     &AbsPose::hipYaw, &AbsPose::torsoRoll, &AbsPose::shrug, &AbsPose::stanceW, &AbsPose::ankle, &AbsPose::plant,
     &AbsPose::bladeRoll, &AbsPose::bladeCock,
-    &AbsPose::twR, &AbsPose::twL, &AbsPose::flR, &AbsPose::flL, &AbsPose::dvR, &AbsPose::dvL, &AbsPose::abdR, &AbsPose::abdL};
+    &AbsPose::twR, &AbsPose::twL, &AbsPose::flR, &AbsPose::flL, &AbsPose::dvR, &AbsPose::dvL, &AbsPose::abdR, &AbsPose::abdL,
+    &AbsPose::swayX, &AbsPose::swayZ};
 static constexpr int AB_NCH = (int)(sizeof(AB_CH) / sizeof(AB_CH[0]));
 static_assert(AB_NCH <= Enemy::AB_BODY, "Enemy::abBody holds every channel");
 static constexpr int AB_CORE = 5;   // (channels before this, and hipYaw / torsoRoll / shrug, are his core: they lead a stroke)
@@ -82,6 +85,7 @@ inline AbsPose absMix(const AbsPose& a, const AbsPose& b, float core, float limb
         const float t = absCore(k) ? core : limb;
         o.*AB_CH[k] = a.*AB_CH[k] + (b.*AB_CH[k] - a.*AB_CH[k]) * t;
     }
+    o.legIK = limb > 0.5f ? b.legIK : a.legIK;   // (whichever pose the legs are mostly in says who places the feet)
     return o;
 }
 
@@ -105,7 +109,7 @@ inline AbsPose absoluteGuard(const Enemy& e, float time) {
         P.twR = P.flR = P.dvR = 0.f;   // (the sword's wrist is solved with the blade)
     }
     P.dip = 0.08f;
-    const float t = time;
+    const float t = e.morning() ? time * 0.58f : time;   // (MORNINGSTAR's guard lives slower: a colossus breathing, not a duellist bouncing)
     P.dip += 0.035f * (0.5f + 0.5f * std::sin(t * 4.8f));                    // a bounce in the knees
     P.torsoPitch += 0.035f * std::sin(t * 2.4f);                              // his weight rocking
     const float weave = std::sin(t * 1.25f) * 0.65f + std::sin(t * 0.77f + 1.3f) * 0.35f;
@@ -212,7 +216,7 @@ inline void absoluteMoveBody(AbsPose& P, AttackKind a, bool strike, float tp) {
                P.hipR = 0.3f; P.kneeR = 0.2f; P.hipL = -0.15f; P.kneeL = 0.2f; }
         break;
     case AttackKind::ADROP:       // up off the floor, the right leg chambered, then driven out
-        P.glow = 2; P.plant = 0.f; P.ankle = 0.3f; P.crouch = 0.f; P.lift = 2.6f * smooth01(tp); P.torsoPitch = -0.35f; P.hipYaw = 0.f;
+        P.glow = 2; P.plant = 0.f; P.legIK = 0.f; P.ankle = 0.3f; P.crouch = 0.f; P.lift = 2.6f * smooth01(tp); P.torsoPitch = -0.35f; P.hipYaw = 0.f;
         P.hipR = k ? -1.55f : -0.9f; P.kneeR = k ? 0.05f : 2.1f; P.hipL = 0.45f; P.kneeL = 1.7f;
         P.shL = -1.0f; P.shLz = -0.1f; P.elL = 2.2f; P.twL = 1.75f;                     // the lead hand up at his face
         P.shR = k ? 0.8f : 0.4f; P.shRz = 0.55f; P.elR = 0.4f; P.twR = 0.f;              // the rear arm flung back
@@ -225,7 +229,7 @@ inline void absoluteMoveBody(AbsPose& P, AttackKind a, bool strike, float tp) {
         else { P.shR = -3.0f; P.elR = 0.1f; P.shL = -0.2f; P.shLz = 0.5f; P.elL = 0.5f; P.headPitch = -0.35f; P.torsoPitch = -0.1f; }   // one hand to the sky
         break;
     case AttackKind::ASTOMP:      // the right knee up to his chest, then down through the floor
-        P.glow = 2;
+        P.glow = 2; P.legIK = 0.f;
         if (!k) { P.hipR = -1.65f; P.kneeR = 2.05f; P.abdR = 0.12f; P.torsoPitch = -0.1f; P.ankle = 0.4f;   // knee high, both fists raised
                   P.shR = P.shL = -1.4f; P.shRz = P.shLz = 0.5f; P.elR = P.elL = 1.4f; P.twR = P.twL = 1.57f; }
         else { P.hipR = -0.25f; P.kneeR = 0.45f; P.dip += 0.22f; P.torsoPitch = 0.42f; P.headPitch = 0.1f;   // driven down, fists with it
@@ -238,6 +242,7 @@ inline void absoluteMoveBody(AbsPose& P, AttackKind a, bool strike, float tp) {
     case AttackKind::ATELEPORT: case AttackKind::AHOP: case AttackKind::ADASH:
         P.torsoPitch = 0.4f; P.shR = P.shL = 0.7f; P.elR = P.elL = 0.4f; P.dip += 0.18f;
         if (a == AttackKind::ADASH) {   // one long burst of a step, lead foot out, the rear leg driving
+            P.legIK = 0.f;
             P.hipYaw = -0.15f; P.hipL = -0.85f; P.kneeL = 0.55f; P.hipR = 0.6f; P.kneeR = 0.35f; P.ankle = 0.6f;
         }
         break;
@@ -249,7 +254,7 @@ inline void absoluteMoveBody(AbsPose& P, AttackKind a, bool strike, float tp) {
     case AttackKind::ALUNGE:      // the blade drawn back, then the long step and the point
         P.glow = 4;
         if (!k) { P.dip += 0.22f; P.torsoYaw = -0.2f; }
-        else { P.hipYaw = 0.2f; P.torsoYaw = 0.45f; P.torsoPitch = 0.35f; P.hipR = -0.9f; P.kneeR = 0.95f; P.hipL = 0.6f; P.kneeL = 0.3f; }
+        else { P.legIK = 0.f; P.hipYaw = 0.2f; P.torsoYaw = 0.45f; P.torsoPitch = 0.35f; P.hipR = -0.9f; P.kneeR = 0.95f; P.hipL = 0.6f; P.kneeL = 0.3f; }
         break;
     case AttackKind::ACRESCENT:   // over his head, then down
         P.glow = 4;
@@ -271,7 +276,7 @@ inline void absoluteMoveBody(AbsPose& P, AttackKind a, bool strike, float tp) {
     case AttackKind::AROUNDHOUSE: // the knee up, then the hips turn over and the shin comes round at your ribs
         // (the knee comes up and out to the side, the shin folded flat; the hips turn over, he leans away from it,
         // the rear arm swings back to balance him, the lead hand stays on his face)
-        P.glow = 2; P.ankle = 0.35f; P.shL = -1.2f; P.shLz = -0.25f; P.elL = 2.3f; P.twL = 1.75f;
+        P.glow = 2; P.legIK = 0.f; P.ankle = 0.35f; P.shL = -1.2f; P.shLz = -0.25f; P.elL = 2.3f; P.twL = 1.75f;
         if (!k) { P.hipYaw = 0.1f; P.hipR = -1.25f; P.abdR = 0.7f; P.kneeR = 2.1f; P.torsoRoll = -0.22f; P.torsoPitch = -0.05f; P.kneeL = 0.5f;
                   P.shR = 0.2f; P.shRz = 0.35f; P.elR = 0.9f; P.twR = 0.f; }
         else { P.hipYaw = 0.9f; P.torsoYaw = -0.3f; P.hipR = -1.4f; P.abdR = 1.35f; P.kneeR = 0.12f; P.torsoRoll = -0.45f; P.torsoPitch = -0.12f;
@@ -290,7 +295,7 @@ inline void absoluteMoveBody(AbsPose& P, AttackKind a, bool strike, float tp) {
         break;
     case AttackKind::AAXE:        // the heel up past his head, then straight down
         // (the leg swung up and out past his head, then straight down the middle; the guard stays up)
-        P.glow = 2; P.ankle = 0.3f; P.shL = -1.1f; P.elL = 2.2f; P.shR = -0.9f; P.shRz = 0.1f; P.elR = 2.3f;
+        P.glow = 2; P.legIK = 0.f; P.ankle = 0.3f; P.shL = -1.1f; P.elL = 2.2f; P.shR = -0.9f; P.shRz = 0.1f; P.elR = 2.3f;
         if (!k) { P.hipR = -2.5f; P.abdR = 0.45f; P.kneeR = 0.15f; P.torsoPitch = -0.3f; P.torsoRoll = -0.15f; }
         else { P.hipR = -0.35f; P.abdR = 0.05f; P.kneeR = 0.12f; P.torsoPitch = 0.35f; P.dip += 0.15f; P.shR = -0.5f; P.elR = 1.6f; }
         break;
@@ -346,6 +351,35 @@ inline void absoluteMoveBody(AbsPose& P, AttackKind a, bool strike, float tp) {
     }
 }
 
+// His pelvis in the rig's root frame: sunk into his legs, risen off the floor, shifted over his feet, turned
+inline mat4 absBodyLocal(const Enemy& e, const AbsPose& P) {
+    return T({P.swayX, P.lift - P.crouch + absBob(e), P.swayZ}) * RY(P.hipYaw);
+}
+constexpr float AB_THIGH = 0.58f, AB_SHIN = 0.55f, AB_SOLE = 0.03f;   // (an ankle's height with the foot flat on the floor)
+// An ankle, in the root frame, by the pose's own leg angles
+inline vec3 absAnkleLocal(const Enemy& e, const AbsPose& P, bool right) {
+    const float s = right ? -1.f : 1.f;
+    const mat4 kn = absBodyLocal(e, P) * T({s * 0.15f, 1.15f, 0.f}) * RX(right ? P.hipR : P.hipL) * RZ(s * (P.stanceW + (right ? P.abdR : P.abdL)))
+                  * T({0.f, -AB_THIGH, 0.f}) * RX(right ? P.kneeR : P.kneeL);
+    return vec3(kn * glm::vec4(0.f, -AB_SHIN, 0.f, 1.f));
+}
+// Turn one leg's joints so its ankle is at `target` (root frame), by `weight`. Out of reach: the leg straight at it.
+inline void absLegReach(const Enemy& e, AbsPose& P, bool right, vec3 target, float weight) {
+    const float s = right ? -1.f : 1.f;
+    vec3 t = vec3(glm::inverse(absBodyLocal(e, P)) * glm::vec4(target, 1.f)) - vec3{s * 0.15f, 1.15f, 0.f};
+    const float len = glm::length(t), d = glm::clamp(len, 0.3f, AB_THIGH + AB_SHIN - 0.004f);
+    if (len < 1e-4f) return;
+    t *= d / len;
+    const float knee = 3.14159265f - std::acos(glm::clamp((AB_THIGH * AB_THIGH + AB_SHIN * AB_SHIN - d * d) / (2.f * AB_THIGH * AB_SHIN), -1.f, 1.f));
+    const float vy = -AB_THIGH - AB_SHIN * std::cos(knee), vz = -AB_SHIN * std::sin(knee);   // the ankle under a hip that hasn't turned
+    const float a = std::asin(glm::clamp(-t.x / std::min(vy, -1e-3f), -0.95f, 0.95f));        // out to the side (the hip's RZ)
+    const float hip = std::atan2(t.z, t.y) - std::atan2(vz, vy * std::cos(a));               // fore and aft (its RX)
+    float& H = right ? P.hipR : P.hipL; float& K = right ? P.kneeR : P.kneeL; float& A = right ? P.abdR : P.abdL;
+    H += std::remainder(hip - H, 6.2831853f) * weight;
+    K += (knee - K) * weight;
+    A += (s * a - P.stanceW - A) * weight;
+}
+
 // (where his feet are: planted, the hips sit on the legs; otherwise crouch is as given)
 inline void absPlant(AbsPose& P) {
     if (P.plant <= 0.f) return;
@@ -358,7 +392,7 @@ constexpr float AB_FOLLOW_T = 0.42f;   // a blow's follow-through, back to guard
 // Contact pose shared by the entrance and aerial hammer attacks: a planted, asymmetric landing.
 inline AbsPose absoluteLanding(const AbsPose& guard) {
     AbsPose p = guard;
-    p.plant = 1.f; p.lift = 0.f; p.ankle = 1.f; p.dip = .2f;
+    p.plant = 1.f; p.legIK = 0.f; p.lift = 0.f; p.ankle = 1.f; p.dip = .2f;
     p.hipR = -1.15f; p.kneeR = 1.65f; p.hipL = .2f; p.kneeL = 1.25f;
     p.hipYaw = -.2f; p.torsoYaw = .25f; p.torsoPitch = .7f; p.headPitch = -.3f;
     p.shR = -.45f; p.elR = .12f; p.shRz = -.15f; p.fistR = 1.f;
@@ -369,6 +403,8 @@ inline AbsPose absoluteLanding(const AbsPose& guard) {
 
 inline AbsPose absolutePose(const Enemy& e, float time) {
     AbsPose G = absoluteGuard(e, time);
+    const AbsPose stance = G;   // (his legs as the guard stands them: what a planted move sinks from)
+    float drive = 0.f;          // his weight through a blow: back onto the rear foot as he winds up (-), through the lead foot as it lands (+)
     if (e.abArrive > 0.f) {
         const float settle = Enemy::AB_ARRIVE_SETTLE;
         AbsPose land = absoluteLanding(G), p;
@@ -417,9 +453,11 @@ inline AbsPose absolutePose(const Enemy& e, float time) {
         P.torsoYaw += (C.torsoYaw - G.torsoYaw) * 0.18f * w * live;
         P.hipYaw += (C.hipYaw - G.hipYaw) * 0.12f * w * live;
         P.omega = 18.f;
+        drive = -0.55f * absEaseOut(w * 1.15f) * (1.f - s);
         if (s > 0.f) {   // the stroke: the hips snap round, the limb whips out after them, past the mark and back
             P = absMix(P, K, absBackOut(s * 1.4f), absBackOut((s - 0.15f) / 0.85f));
             P.omega = 42.f;
+            drive += absBackOut(s * 1.4f);
         }
         P.glow = C.glow;
     } else if (e.abBodyLanded != AttackKind::NONE && e.abBodySince < AB_FOLLOW_T && !e.staggered() && !(e.abAirborne() && !e.abDiving)) {
@@ -432,6 +470,7 @@ inline AbsPose absolutePose(const Enemy& e, float time) {
             const float r = smooth01((e.abBodySince - 0.06f) / (AB_FOLLOW_T - 0.06f));
             P = absMix(K, G, r, smooth01(r * 1.2f));
             P.glow = -1; P.omega = 20.f;
+            drive = 1.f - r;
         }
     }
     if (e.staggered() || e.abSwallow > Enemy::MS_RISE) {   // (the swallow: on his knees, as if broken)
@@ -446,13 +485,160 @@ inline AbsPose absolutePose(const Enemy& e, float time) {
             P.kneeR += std::max(0.f, cs) * 0.7f * st; P.kneeL += std::max(0.f, -cs) * 0.7f * st;
             P.torsoPitch -= 0.15f * st;
         } else {             // broken: down on one knee, head bowed
-            P.omega = 12.f;
+            P.omega = 12.f; P.legIK = 0.f;
             P.crouch = 0.62f; P.hipR = -1.45f; P.kneeR = 1.5f; P.hipL = 0.55f; P.kneeL = 2.3f;
             P.torsoPitch = 0.38f; P.headPitch = 0.4f; P.shR = P.shL = 0.15f; P.shRz = P.shLz = 0.2f; P.elR = P.elL = 0.3f;
         }
     }
+    if (P.plant > 0.5f && P.legIK > 0.5f) {
+        // Feet planted and the legs reaching for them: the pose's own leg angles only set how low he sits, so
+        // they are the guard's, sunk by the move's dip. A blow doesn't stand him up out of his stance; it
+        // drives his hips down and through it
+        P.hipR = stance.hipR; P.kneeR = stance.kneeR; P.hipL = stance.hipL; P.kneeL = stance.kneeL; P.abdR = P.abdL = 0.f; P.stanceW = stance.stanceW;
+        P.dip = std::max(P.dip, stance.dip) + 0.07f * std::max(0.f, drive);
+        P.swayZ += 0.17f * drive;
+    }
+    if (P.plant > 0.f) {
+        // His weight goes where his body does: forward with a lean, over the side he tips to, and onto
+        // the standing foot while the other steps. The legs take it up (his feet stay where they are)
+        const float sR = std::sin(3.14159265f * glm::clamp(e.abFootS[0], 0.f, 1.f)), sL = std::sin(3.14159265f * glm::clamp(e.abFootS[1], 0.f, 1.f));
+        P.swayZ += glm::clamp(0.26f * (std::sin(P.torsoPitch) - std::sin(0.38f)), -0.2f, 0.3f) * P.plant;
+        P.swayX += (-0.16f * P.torsoRoll + 0.05f * (sR - sL)) * P.plant;
+    }
     absPlant(P);
     return P;
+}
+
+inline AbsPose absoluteSprungPose(const Enemy& e, float time);
+inline const vec3* absFeetHome();
+inline mat4 absRootOf(const Enemy& e);
+// His feet. A planted foot stays where it is in the world; when the body has moved far enough off it
+// (or turned, or the leg can't reach) it steps: lifts, swings to where it will be wanted (his stance's
+// home for that foot, led by his speed), and plants again. One foot at a time unless he is moving
+// faster than a leg can cover, when both may be off the floor (a run's flight). A stride is as long as
+// the ground he covers, at any speed and either size. While a move poses his legs itself (a kick, a
+// leap, the kneel) the feet just follow the legs, so they are where the legs left them when it ends.
+inline void absFeetTick(Enemy& e, float dt, const AbsPose& goal) {
+    e.abStepped = 0;
+    for (int k = 0; k < 2; ++k) { e.abFootPrev[k] = e.abFoot[k]; e.abFootUpPrev[k] = e.abFootUp[k]; }
+    e.abFootIKPrev = e.abFootIK;
+    const float sc = std::max(e.scale, 1e-3f);
+    const mat4 root = absRootOf(e);
+    const glm::vec2 moved{e.position.x - e.abFeetAt.x, e.position.z - e.abFeetAt.z};
+    const bool jumped = glm::length(moved) > 0.9f * sc || std::fabs(e.position.y - e.abFeetAt.y) > 0.6f * sc;   // (a blink, a dash's burst)
+    e.abFeetAt = e.position;
+    if (jumped || dt <= 0.f) e.abFeetVel = glm::vec2{0.f};
+    else e.abFeetVel += (moved / dt - e.abFeetVel) * (1.f - std::exp(-dt * 14.f));
+    // Placed feet are for standing, shuffling and walking. At a run (over two body lengths a second) a leg
+    // can't cover the ground one step at a time: the run cycle takes the legs back (its strides are matched
+    // to the floor by abGaitTick) and the feet follow them
+    const float pace = glm::length(e.abFeetVel) / sc;
+    const bool grounded = goal.plant > 0.5f && goal.legIK > 0.5f && e.abAlt < 0.05f && e.abArrive <= 0.f && !e.abDiving;
+    const float wantIK = grounded ? 1.f - glm::smoothstep(2.0f, 3.4f, pace) : 0.f;
+    e.abFootIK += (wantIK - e.abFootIK) * (1.f - std::exp(-dt * (wantIK > e.abFootIK ? 9.f : 14.f)));
+    if (jumped && e.abFeetLive) {   // a blink: he is simply standing there, feet under him as his stance has them
+        const vec3* h = absFeetHome();
+        for (int k = 0; k < 2; ++k) {
+            e.abFoot[k] = vec3(root * glm::vec4(h[k], 1.f)); e.abFootPrev[k] = e.abFootFrom[k] = e.abFoot[k];
+            e.abFootS[k] = 1.f; e.abFootUp[k] = e.abFootUpPrev[k] = 0.f;
+        }
+        return;
+    }
+    if (!e.abFeetLive || e.abFootIK < 0.02f) {
+        const AbsPose P = absoluteSprungPose(e, e.age);
+        for (int k = 0; k < 2; ++k) {
+            const vec3 a = absAnkleLocal(e, P, k == 0);
+            e.abFoot[k] = vec3(root * glm::vec4(a, 1.f));
+            e.abFootUp[k] = std::max(0.f, a.y - AB_SOLE); e.abFootS[k] = 1.f;
+            if (!e.abFeetLive) { e.abFootPrev[k] = e.abFoot[k]; e.abFootUpPrev[k] = e.abFootUp[k]; }
+        }
+        e.abFeetLive = true;
+        return;
+    }
+    const glm::vec2 vel = e.abFeetVel;
+    const float speed = pace;                                                    // (in his own body lengths)
+    const float swingT = glm::clamp(0.30f - 0.016f * speed, 0.13f, 0.30f) * std::sqrt(sc);   // a long slow step for the colossus
+    const vec3* home = absFeetHome();
+    const AbsPose P = absoluteSprungPose(e, e.age);
+    glm::vec2 want2[2]; float err[2];
+    for (int k = 0; k < 2; ++k) {
+        const vec3 h = vec3(root * glm::vec4(home[k], 1.f));
+        glm::vec2 lead = vel * (swingT * 0.85f);                                 // where this foot should come down: ahead of its home by his speed
+        const float ll = glm::length(lead);
+        if (ll > 0.55f * sc) lead *= 0.55f * sc / ll;                            // (never further than a leg reaches)
+        want2[k] = glm::vec2{h.x, h.z} + lead;
+        err[k] = glm::length(glm::vec2{e.abFoot[k].x, e.abFoot[k].z} - glm::vec2{h.x, h.z});
+    }
+    const float limit = std::max(0.13f, speed * swingT * 0.8f) * sc;             // how far a planted foot may trail its home
+    // A burst across the floor (a step-in, a dash's start: faster than five body lengths a second this
+    // tick): no foot can stay planted through it. Both leave the floor and travel with him, to land as it ends
+    if (dt > 0.f && glm::length(moved) / dt / sc > 5.f) {
+        const float pull = 1.f - std::exp(-dt * 40.f);
+        for (int k = 0; k < 2; ++k) {
+            const vec3 h = vec3(root * glm::vec4(home[k], 1.f));
+            e.abFoot[k].x += (h.x - e.abFoot[k].x) * pull; e.abFoot[k].z += (h.z - e.abFoot[k].z) * pull;
+            e.abFootUp[k] += (0.1f - e.abFootUp[k]) * pull;
+            e.abFootS[k] = 0.6f; e.abFootFrom[k] = e.abFoot[k]; e.abFootT[k] = 0.16f * std::sqrt(sc);
+        }
+        return;
+    }
+    for (int k = 0; k < 2; ++k) {
+        const int o = 1 - k;
+        if (e.abFootS[k] >= 1.f) {
+            e.abFootUp[k] *= std::exp(-dt * 20.f);
+            const vec3 hip = vec3(root * absBodyLocal(e, P) * glm::vec4(k == 0 ? -0.15f : 0.15f, 1.15f, 0.f, 1.f));
+            const float off = glm::length(glm::vec2{e.abFoot[k].x - hip.x, e.abFoot[k].z - hip.z});
+            const bool torn = off > 0.92f * sc;                                  // the leg can't reach it any more
+            const bool turn = e.abFootS[o] >= 1.f && err[k] > limit && err[k] >= err[o];
+            if (torn || turn) { e.abFootS[k] = 0.f; e.abFootFrom[k] = e.abFoot[k]; e.abFootT[k] = swingT; }
+        }
+        if (e.abFootS[k] < 1.f) {
+            const float u0 = e.abFootS[k], e0 = u0 * u0 * (3.f - 2.f * u0);
+            e.abFootS[k] = std::min(1.f, e.abFootS[k] + dt / std::max(e.abFootT[k], 0.05f));
+            const float u = e.abFootS[k], ease = u * u * (3.f - 2.f * u);
+            // (closing on where it is wanted now: a share of what is left each tick, so a target that moves under it never jerks it)
+            const float share = e0 < 0.999f ? glm::clamp((ease - e0) / (1.f - e0), 0.f, 1.f) : 1.f;
+            e.abFoot[k].x += (want2[k].x - e.abFoot[k].x) * share; e.abFoot[k].z += (want2[k].y - e.abFoot[k].z) * share;
+            const float stepLen = glm::length(want2[k] - glm::vec2{e.abFootFrom[k].x, e.abFootFrom[k].z}) / sc;
+            e.abFootUp[k] = std::max(e.abFootUp[k] * std::exp(-dt * 14.f), glm::clamp(0.05f + 0.16f * stepLen, 0.05f, 0.34f) * std::sin(3.14159265f * u));
+            if (u >= 1.f) { e.abFootUp[k] = 0.f; e.abStepped |= 1 << k; }
+        }
+    }
+}
+
+// One step of a damped spring toward `goal`, solved exactly (the same motion at any tick length).
+// zeta 1: critically damped (arrives and stops); under 1: runs past and settles.
+inline void absSpring(float& x, float& v, float goal, float omega, float zeta, float dt) {
+    const float x0 = x - goal, v0 = v;
+    if (zeta >= 0.999f) {
+        const float ex = std::exp(-omega * dt), c = v0 + omega * x0;
+        x = goal + (x0 + c * dt) * ex;
+        v = (v0 - omega * c * dt) * ex;
+        return;
+    }
+    const float wd = omega * std::sqrt(1.f - zeta * zeta), ex = std::exp(-zeta * omega * dt);
+    const float A = x0, B = (v0 + zeta * omega * x0) / wd, cs = std::cos(wd * dt), sn = std::sin(wd * dt);
+    x = goal + ex * (A * cs + B * sn);
+    v = ex * ((B * wd - zeta * omega * A) * cs - (A * wd + zeta * omega * B) * sn);
+}
+// A hit goes into his body: his trunk rocks away from where it came from, his head snaps after it, his
+// weight goes back off the blow, and the springs bring him home. dir: the way the hit travels (world);
+// strength 0..1 by its damage. MORNINGSTAR takes the same hit like a wall takes it.
+inline void absoluteHit(Enemy& e, glm::vec3 dir, float strength) {
+    if (!e.abBodyLive || e.telegraphTimer > 0.f || e.abAirborne()) return;   // (never across a tell: the blow you must read keeps its shape)
+    dir.y = 0.f;
+    const float len = glm::length(dir);
+    if (len < 1e-4f) return;
+    dir /= len;
+    const float k = glm::clamp(strength, 0.f, 1.f) * (e.morning() ? 0.4f : 1.f);
+    const float fwd = dir.x * std::sin(e.yaw) + dir.z * std::cos(e.yaw);      // + : the hit runs the way he faces (from behind)
+    const float left = dir.x * std::cos(e.yaw) - dir.z * std::sin(e.yaw);     // + : it runs toward his left
+    e.abBodyV[3] += 7.f * k * fwd;          // torsoPitch: struck from the front he rocks back
+    e.abBodyV[4] += 11.f * k * fwd;         // headPitch
+    e.abBodyV[18] -= 6.f * k * left;        // torsoRoll: away from the side it came from
+    e.abBodyV[2] += 5.f * k * left;         // torsoYaw: the struck shoulder goes with it
+    e.abBodyV[33] += 2.2f * k * left;       // swayX
+    e.abBodyV[34] += 2.6f * k * fwd;        // swayZ
 }
 
 // Each tick: note a blow landing (its follow-through starts), then spring his drawn body after
@@ -471,21 +657,76 @@ inline void tickAbsoluteBody(Enemy& e, float dt) {
         e.abBodyLive = true;
         return;
     }
-    const float w = goal.omega, ex = std::exp(-w * dt);
+    // Each joint is a spring of its own kind. His core and legs are critically damped: they go where they
+    // are sent and stop. His arms and head are a little loose, so they trail the body, run past and settle
+    // (overlapping action). During a blow's stroke (omega over 30) everything is stiff: the fist is on its
+    // mark as the blow lands. MORNINGSTAR is the same body with far more mass: every spring slower when he
+    // isn't striking, and looser, so his trunk carries on past a stop and takes a moment to come to rest.
+    const bool striking = goal.omega > 30.f, ms = e.morning();
     for (int k = 0; k < AB_NCH; ++k) {
         e.abBodyPrev[k] = e.abBody[k];
-        const float x0 = e.abBody[k] - goal.*AB_CH[k], v0 = e.abBodyV[k], c = v0 + w * x0;
-        e.abBody[k]  = goal.*AB_CH[k] + (x0 + c * dt) * ex;
-        e.abBodyV[k] = (v0 - w * c * dt) * ex;
+        const bool head = k == 4, core = absCore(k) && !head, limb = (k >= 5 && k <= 10) || k == 15 || k == 16 || (k >= 23 && k <= 30);
+        float w = goal.omega, z = 1.f;
+        if (!striking) {
+            if (limb) { z = ms ? 0.6f : 0.78f; w *= ms ? 0.7f : 0.92f; }
+            else if (head) { z = ms ? 0.62f : 0.72f; w *= ms ? 0.6f : 0.8f; }
+            else if (core) { z = ms ? 0.78f : 1.f; w *= ms ? 0.68f : 1.f; }
+            else w *= ms ? 0.8f : 1.f;
+        } else if (ms) w *= 0.92f;
+        absSpring(e.abBody[k], e.abBodyV[k], goal.*AB_CH[k], w, z, dt);
     }
+    absFeetTick(e, dt, goal);
 }
 
 // The pose as drawn: his sprung body (what tickAbsoluteBody has), the tell's glow from where he's going
-inline AbsPose absoluteLivePose(const Enemy& e, float time) {
+inline AbsPose absoluteSprungPose(const Enemy& e, float time) {
     AbsPose P = absolutePose(e, time);
     if (!e.abBodyLive) return P;
     for (int k = 0; k < AB_NCH; ++k) P.*AB_CH[k] = e.abBody[k];
     if (P.plant > 0.f) P.crouch += (absLegDrop(P) - P.crouch) * glm::clamp(P.plant, 0.f, 1.f);   // (the feet stay on the floor)
+    return P;
+}
+// His feet's home under him, in the root frame: where the guard stands them (lead foot forward, bladed)
+inline const vec3* absFeetHome() {
+    static vec3 home[2]; static bool made = false;
+    if (!made) {
+        Enemy t(EnemyType::ABSOLUTE, vec3{0.f});
+        AbsPose G = absoluteGuard(t, 0.f); G.torsoRoll = 0.f; absPlant(G);
+        home[0] = absAnkleLocal(t, G, true); home[1] = absAnkleLocal(t, G, false);
+        home[0].y = home[1].y = AB_SOLE; made = true;
+    }
+    return home;
+}
+inline mat4 absRootOf(const Enemy& e) { return T(e.position) * RY(e.yaw) * S(vec3{e.scale}); }
+// The legs reaching for his planted feet. Sinks his hips first if a foot is further off than a leg is long.
+inline void absFeetApply(const Enemy& e, AbsPose& P) {
+    // (only with his feet on the floor in the pose he is actually in: a leap's rise is not a reach for the ground)
+    const float w = glm::clamp(e.abFootIK, 0.f, 1.f) * glm::clamp(P.plant, 0.f, 1.f) * (1.f - glm::clamp(P.lift * 5.f, 0.f, 1.f));
+    if (!e.abFeetLive || w < 0.01f) return;
+    const mat4 inv = glm::inverse(absRootOf(e));
+    vec3 target[2];
+    for (int k = 0; k < 2; ++k) {
+        target[k] = vec3(inv * glm::vec4(e.abFoot[k].x, e.position.y, e.abFoot[k].z, 1.f));
+        target[k].y = AB_SOLE + e.abFootUp[k];
+    }
+    const float reach = AB_THIGH + AB_SHIN - 0.03f;
+    for (int it = 0; it < 3; ++it) {
+        float over = 0.f;
+        for (int k = 0; k < 2; ++k) {
+            const vec3 hip = vec3(absBodyLocal(e, P) * glm::vec4(k == 0 ? -0.15f : 0.15f, 1.15f, 0.f, 1.f));
+            const vec3 d = target[k] - hip;
+            const float flat = glm::length(glm::vec2{d.x, d.z});
+            if (flat < reach && glm::length(d) > reach) over = std::max(over, -d.y - std::sqrt(reach * reach - flat * flat));
+        }
+        if (over <= 1e-4f) break;
+        P.crouch += over * w;
+    }
+    for (int k = 0; k < 2; ++k) absLegReach(e, P, k == 0, target[k], w);
+    P.ankle += (1.f - P.ankle) * w;
+}
+inline AbsPose absoluteLivePose(const Enemy& e, float time) {
+    AbsPose P = absoluteSprungPose(e, time);
+    absFeetApply(e, P);
     return P;
 }
 
@@ -501,7 +742,7 @@ inline mat4 absWrist(const AbsPose& P, float s) {
 
 // His torso's frame (the rig and headBox share it, so the head you see is the head you hit)
 inline mat4 absoluteTorsoFrame(const Enemy& e, const mat4& root, const AbsPose& P) {
-    return root * T({0.f, P.lift - P.crouch + absBob(e), 0.f}) * RY(P.hipYaw) * T({0.f, 1.30f, 0.f})
+    return root * absBodyLocal(e, P) * T({0.f, 1.30f, 0.f})
          * RY(P.torsoYaw) * RZ(P.torsoRoll) * RX(P.torsoPitch);
 }
 inline mat4 absoluteHeadFrame(const Enemy& e, const mat4& root, const AbsPose& P) {
@@ -535,7 +776,7 @@ inline void buildAbsolute(const Enemy& e, float time, Rig& r, const mat4& root) 
         bool on = P.glow == limb || P.glow == 5 || (P.glow == 3 && (limb == 0 || limb == 1));
         return on ? tc * tk : base;
     };
-    const mat4 body = root * T({0.f, P.lift - P.crouch + absBob(e), 0.f}) * RY(P.hipYaw);
+    const mat4 body = root * absBodyLocal(e, P);
 
     // ---- legs: thigh, its plate and two veins, knee cap, shin, calf, its seam, foot, two toes, heel, an ankle wrap ----
     for (float s : {-1.f, 1.f}) {
@@ -714,7 +955,7 @@ inline bool absoluteFilePose(const Enemy& e, float time, const mat4& root, mat4&
         bool on = P.glow == limb || P.glow == 5 || (P.glow == 3 && (limb == 0 || limb == 1));
         return on ? tc * tk : base;
     };
-    fileRoot = root * T({0.f, P.lift - P.crouch + absBob(e), 0.f}) * RY(P.hipYaw);
+    fileRoot = root * absBodyLocal(e, P);
     // legs
     F.motion[E_HIPR] = RX(P.hipR) * RZ(-(P.stanceW + P.abdR));  F.motion[E_HIPL] = RX(P.hipL) * RZ(P.stanceW + P.abdL);
     F.motion[E_KNEE_R] = RX(P.kneeR);                F.motion[E_KNEE_L] = RX(P.kneeL);

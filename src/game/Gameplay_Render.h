@@ -127,7 +127,15 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
         if (std::fabs(e.animPhase - e.prevAnimPhase) < 2.f)   // limbs between ticks too (a big jump: just show where it is)
             pose.animPhase = e.prevAnimPhase + (e.animPhase - e.prevAnimPhase) * renderAlpha;
         if (e.abBodyLive)   // (his sprung body, between ticks too)
+        {
             for (int k = 0; k < Enemy::AB_BODY; ++k) pose.abBody[k] = e.abBodyPrev[k] + (e.abBody[k] - e.abBodyPrev[k]) * renderAlpha;
+            for (int k = 0; k < 2; ++k) {   // (his feet: a planted one doesn't move; a stepping one, between ticks too)
+                pose.abFoot[k] = glm::mix(e.abFootPrev[k], e.abFoot[k], renderAlpha);
+                pose.abFootUp[k] = glm::mix(e.abFootUpPrev[k], e.abFootUp[k], renderAlpha);
+            }
+            pose.abFootIK = glm::mix(e.abFootIKPrev, e.abFootIK, renderAlpha);
+        }
+        if (e.sovBodyLive) for (int k = 0; k < SovereignState::SOV_BODY; ++k) pose.sovBody[k] = glm::mix(e.sovBodyPrev[k], e.sovBody[k], renderAlpha);
         if(e.suBodyLive)for(int k=0;k<SuccessorState::BODY_CHANNELS;++k)
             pose.suBody[k]=glm::mix(e.suBodyPrev[k],e.suBody[k],renderAlpha);
         // Low enough to finish: it throbs hot (a punch takes it, Gameplay_Feel.h)

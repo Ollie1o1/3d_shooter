@@ -99,6 +99,19 @@ inline void GameplayState::onAbsoluteEvents(Enemy& e, const EnemyEvents& ev) {
         fx.spawnBurst(ev.blinkFrom + glm::vec3{0.f, 1.3f, 0.f}, white, 10, 4.f, 0.3f, 0.f);
         at("ab_zap", ev.blinkFrom, 1.f, 100, 0.f);
     }
+    // His feet (AbsoluteRig.h absFeetTick): each step that comes down is heard where it lands. The duellist's
+    // are light and quick on the Dais; MORNINGSTAR's land like dropped stone: you feel them, and dust jumps.
+    if (e.abStepped && e.abAlt < 0.05f && e.abArrive <= 0.f) for (int k = 0; k < 2; ++k) if (e.abStepped & (1 << k)) {
+        const glm::vec3 foot{e.abFoot[k].x, e.position.y + 0.05f, e.abFoot[k].z};
+        const float vary = 0.94f + 0.12f * cosmetic::range(0.f, 1.f);
+        if (e.morning()) {
+            at("land_heavy", foot, 0.56f * vary, 96, 0.f);
+            at("ab_boom_stone", foot, 1.5f * vary, 34, 0.f);
+            fx.spawnBurst(foot, {0.75f, 0.32f, 0.16f}, 7, 2.6f, 0.45f, -3.f);
+            const float near = glm::clamp(1.f - glm::length(player.position - foot) / 22.f, 0.f, 1.f);
+            if (near > 0.05f) shake(0.1f, 0.014f * near);
+        } else at("step_metal", foot, 1.22f * vary, 50, 0.f);
+    }
     if (ev.abLanded) {   // his entrance comes down: the Dais rings, the eclipse flares
         fx.spawnShockwave(e.position, 12.f, {1.6f, 1.5f, 1.3f});
         fx.spawnBurst(e.position + glm::vec3{0.f, 0.3f, 0.f}, {1.6f, 1.55f, 1.4f}, 50, 12.f, 0.6f, 3.f);

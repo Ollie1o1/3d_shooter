@@ -274,7 +274,7 @@ inline void GameplayState::updateEnemies(float dt) {
         Enemy& e = enemies[i];
         if (!e.alive) continue;
         hurtBy = e.type;   // whatever hurts you from here on, until the next one: this one did
-        if (g_devOverlay.rfind("pose", 0) == 0 && e.type == EnemyType::SOVEREIGN) { devPose(e); continue; }
+        if (g_devOverlay.rfind("pose", 0) == 0 && e.type == EnemyType::SOVEREIGN) { devPose(e); rig::tickSovereignBody(e, dt); continue; }
         if (g_devOverlay == "rspose" && e.type == EnemyType::RESTORER) { e.yaw = 0.f; e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE; continue; }   // dev: it stands still, facing +Z (screenshots)
         if (g_devOverlay.rfind("penitent", 0) == 0 && e.type == EnemyType::PENITENT) { devPenitentPose(e); continue; }
         if (g_devOverlay == "thunder" && e.type == EnemyType::ABSOLUTE && e.abCur < 0) e.abForce = AB_THUNDER;   // dev: THUNDERCLAP, over and over
@@ -333,6 +333,7 @@ inline void GameplayState::updateEnemies(float dt) {
             audio.playAt("count_tick",e.position,90,SoundGroup::ENEMY,true);
         if (e.type == EnemyType::ABSOLUTE) rig::tickAbsoluteBody(e, dt);   // his body chasing his pose
         if(e.type==EnemyType::SUCCESSOR)rig::tickSuccessorBody(e,dt);
+        if (e.type == EnemyType::SOVEREIGN) rig::tickSovereignBody(e, dt);   // his body chasing his stance
         if (e.hollow == Hollow::ENRAGED && std::fmod(e.age, 0.15f) < dt)   // embers off an Enraged one
             fx.spawnBurst(e.position + glm::vec3{0, e.height() * 0.6f, 0}, {1.f, 0.3f, 0.1f}, 2, 1.5f, 0.6f, -2.f);
         const float eScale = dmgScale * e.damageMult();   // ENRAGED hits harder
@@ -572,6 +573,9 @@ inline bool GameplayState::hurtEnemy(Enemy& e, float dmg, glm::vec3 at, float st
         float poiseMul = dmg >= e.health ? 0.f : hp.poise * (overdriveOn() ? 2.f : 1.f);   // (a killing blow stuns nothing)
         float pushK = overdriveOn() ? 1.25f : 1.f;
         bool stunned = e.takeHit(hp.dir, hp.push * pushK, dmg, poiseMul, crit, gameClock);
+        if (e.type == EnemyType::SOVEREIGN) rig::sovereignHit(e, glm::length(hp.dir) > 0.1f ? hp.dir : e.position - player.position, glm::clamp(dmg / 90.f, 0.12f, 1.f));
+        if (e.type == EnemyType::SUCCESSOR) rig::successorHit(e, glm::length(hp.dir) > 0.1f ? hp.dir : e.position - player.position, glm::clamp(dmg / 90.f, 0.12f, 1.f));
+        if (e.type == EnemyType::ABSOLUTE) rig::absoluteHit(e, glm::length(hp.dir) > 0.1f ? hp.dir : e.position - player.position, glm::clamp(dmg / 90.f, 0.12f, 1.f));
         if (playerHit && hp.push >= 4.f) e.shoveSetupAge=e.age;
         if (stunned) onStunned(e, at);
         if (!friendly && src != StyleSource::MELEE) bodyHit(e, at, hp.push * pushK, stunned);

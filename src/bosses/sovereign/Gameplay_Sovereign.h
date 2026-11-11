@@ -20,6 +20,27 @@ inline void GameplayState::onSovereignEvents(const Enemy& e, const EnemyEvents& 
         sov.addStrike(p, ev.strikeKind[k], ev.strikeDelay[k]);
     }
     if (ev.strikes > 0) { audio.playAt("telegraph", e.position, 110, SoundGroup::ENEMY, true); audio.duck(6.f, 0.5f); }
+    {
+        // What a knight in plate with a greatsword sounds like when he moves: each footfall rings on the
+        // Sanctum's floor, and every stroke of the blade is heard leaving, lower and longer than your own sword.
+        auto heard = [&](const char* name, glm::vec3 p, float pitch, float vol) {
+            SfxMixer::Opts o; o.volume = vol; o.group = SoundGroup::ENEMY; o.positional = true; o.pos = p; o.pitch = pitch;
+            audio.playOpts(name, o);
+        };
+        const float vary = 0.95f + 0.1f * cosmetic::range(0.f, 1.f);
+        const bool walking = e.moveSpeed > 1.2f && e.grounded && e.dashTimer <= 0.f && e.leapTimer <= 0.f && e.thrustTimer <= 0.f && !e.staggered();
+        if (walking && std::floor(e.animPhase / 3.14159265f) != std::floor(e.prevAnimPhase / 3.14159265f)) {
+            heard("land_metal", e.position, 0.7f * vary, 0.5f);
+            heard("step_metal", e.position, 0.62f * vary, 0.35f);
+        }
+        const float dtTick = 1.f / 60.f;
+        if (e.swingTimer > Enemy::SWING_TIME - dtTick * 1.5f) {   // (a stroke has just been let go)
+            const bool heavy = e.lastSwing == AttackKind::CLEAVE;
+            heard(e.lastSwing == AttackKind::THRUST ? "sword_thrust" : "sword_swing", e.position + glm::vec3{0.f, 2.2f, 0.f}, (heavy ? 0.55f : 0.66f) * vary, heavy ? 1.f : 0.85f);
+        }
+        if (e.whirlTimer > 0.f && std::floor(e.whirlTimer / 0.22f) != std::floor((e.whirlTimer + dtTick) / 0.22f))
+            heard("sword_swing", e.position + glm::vec3{0.f, 2.f, 0.f}, 0.8f * vary, 0.7f);   // the blade coming round, each turn
+    }
     if (ev.blinked) {
         glm::vec3 smoke{0.45f, 0.04f, 0.08f};
         fx.spawnBurst(ev.blinkFrom + glm::vec3{0, 1.6f, 0}, smoke, 40, 7.f, 0.7f, -3.f);
