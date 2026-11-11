@@ -3,6 +3,7 @@
 // grid and its fields stay inside their time budget. No OpenGL context required. `make test-nav`.
 //   build/test_nav --compare   also runs each chase on feeler steering alone (what the game did before)
 //   build/test_nav --only CH3  one map (ARENA, ACT2, FAST, CH1..CH5)
+#include "PortableRand.h"   // (first: one rand() sequence on macOS and Linux)
 #include "world/Level.h"
 #include "world/LevelAct2.h"
 #include "world/LevelGauntlet.h"

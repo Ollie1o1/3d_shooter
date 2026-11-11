@@ -1,6 +1,7 @@
 #ifndef SDL_MAIN_HANDLED
 #define SDL_MAIN_HANDLED
 #endif
+#include "PortableRand.h"   // (first: one rand() sequence on macOS and Linux)
 #include "core/Balance.h"
 #include "render/EnemyModel.h"
 #include <cstdio>
@@ -148,8 +149,8 @@ static void suMotion(){
 // long its wind-up, in order), against the same run on main before this pass: animation must not move them.
 static void tellsUnchanged(){
     struct Want{EnemyType t;const char* name;int tells;float total;uint32_t hash;};
-    const Want want[]={{EnemyType::ABSOLUTE,"the Absolute",160,68.693f,0xe197f53eu},{EnemyType::SUCCESSOR,"the Successor",125,66.772f,0xcb2d6010u},
-                       {EnemyType::SOVEREIGN,"the Sovereign",89,36.905f,0xc5ceecaau}};
+    const Want want[]={{EnemyType::ABSOLUTE,"the Absolute",160,68.693f,0xe197f53eu},{EnemyType::SUCCESSOR,"the Successor",127,67.410f,0xf5548c2du},
+                       {EnemyType::SOVEREIGN,"the Sovereign",88,36.790f,0x65637f65u}};   // (on tests/PortableRand.h's sequence: the same on every platform)
     for(const Want& wnt:want){
         srand(1234);const float dt=1.f/60;
         Enemy e(wnt.t,{0,0,0});e.state=EnemyState::ACTIVE;e.spawnTimer=0;
