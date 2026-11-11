@@ -205,7 +205,11 @@ public:
     float crowdGain() const { return crowdNow; }                              // the crowd's shared gain now (1: not crowded)
     float sidechainLevel() const { return sideEnv; }                          // 0 none .. 1 a tell is playing
     float chatterGain() const { return 1.f - sideEnv * (1.f - SIDE_CHATTER); }
-    float musicGain() const { return duckGain; }
+    float musicGain() const { return musicShare(duckGain); }
+    // The music takes half of a short dip (a 6 dB duck on the crowd is 3 dB on the score) and sits
+    // 3 dB above anything deeper. A boss fight ducks on every wind-up, hit and parry: at full depth
+    // the score spent most of the fight several dB down. The long cinematic ducks still clear it.
+    static float musicShare(float g) { return g >= 0.5f ? std::sqrt(g) : g * 1.41421356f; }
     // Dev (OVERDRIVE_SOLO): hear only these roles (1 << role), and no music; 0 = everything
     void devSolo(int roleMask) { soloMask.store(roleMask, std::memory_order_relaxed); }
 
@@ -437,7 +441,7 @@ private:
             float want = duckHold > 0.f ? duckDepth : 1.f;
             duckGain += (want - duckGain) * (want < duckGain ? atkK : relK);
             sideEnv  += (side - sideEnv) * (side > sideEnv ? sideAtk : sideRel);
-            float m = duckGain * music;
+            float m = musicShare(duckGain) * music;
             io[2 * i] *= m; io[2 * i + 1] *= m;
         }
         duckHold = std::max(0.f, duckHold - n / rate);

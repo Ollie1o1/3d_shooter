@@ -69,7 +69,8 @@ public:
     }
 
     // Music volume (0..1) on top of the master volume
-    void setMusicVolume(float v) { music.setVolume(v * masterVolume * 0.8f); }
+    // (the score's own level is set per track in MusicSynth::trackGain, under its saturation)
+    void setMusicVolume(float v) { music.setVolume(v * masterVolume); }
 
     ~AudioSystem() {
 #if HAS_SDL_MIXER

@@ -30,12 +30,20 @@ int main(){
             bool finite=true;float peak=0;
             for(float v:x){finite&=std::isfinite(v);peak=std::max(peak,std::fabs(v));}
             check(finite && peak<.9f,"complete form and return remain finite with PCM headroom");
-            const int peakBar=track==0?9:track==10?22:18;
-            const int breakBar=track==0?12:track==10?12:8;
             auto sectionPower=[&](int b){return power(x,int((b*bar+.25f)*rate),int(((b+2)*bar-.15f)*rate));};
-            const double contrast=10*std::log10(sectionPower(peakBar)/sectionPower(breakBar));
-            std::printf("  %s %d Hz: peak/breakdown %.2f dB; PCM peak %.3f\n",musicTrack(track).name,rate,contrast,peak);
-            check(contrast>1.5,"rendered breakdown leaves audible dynamic room for the peak");
+            if(track==0){
+                const double contrast=10*std::log10(sectionPower(9)/sectionPower(12));
+                std::printf("  SUNSET %d Hz: peak/breakdown %.2f dB; PCM peak %.3f\n",rate,contrast,peak);
+                check(contrast>1.5,"rendered breakdown leaves audible dynamic room for the peak");
+            }else{
+                // A boss never lets up: sections change rhythm (techno, DnB, hybrid,
+                // hardstyle) at full speed and level, with no half-time lull.
+                double lo=1e9,hi=0;
+                for(int b=0;b<bars;b+=2){double p=sectionPower(b);lo=std::min(lo,p);hi=std::max(hi,p);}
+                const double spread=10*std::log10(hi/lo);
+                std::printf("  %s %d Hz: loudest/quietest two bars %.2f dB; PCM peak %.3f\n",musicTrack(track).name,rate,spread,peak);
+                check(spread<5.5,"no two bars of a boss's form fall far below its loudest");
+            }
             // Chunk sizes must not alter pitches, note gates or form boundaries.
             auto other=render(track,rate,seconds,false,997);renderedSeconds+=seconds;
             check(x==other,"audio is identical across irregular callback buffer sizes");
@@ -47,6 +55,41 @@ int main(){
         diff=std::sqrt(diff/(full.size()-rate*2));
         std::printf("  %s theme contribution RMS %.4f\n",musicTrack(track).name,diff);
         check(diff>.006,"theme contributes to the rendered combat mix at gameplay intensity");
+    }
+    // The boss forms use every rhythm section, the hardstyle bars only at the top of a fight,
+    // and at boss intensity the other break and techno tracks trade bars with the other style.
+    for(int track:{10,11}){
+        bool techno=false,dnb=false,hybrid=false,hard=false,half=false;
+        for(int b=0;b<32;++b){
+            const auto f=combatscore::form(track,b);using combatscore::Style;
+            techno|=f.style==Style::TECHNO;dnb|=f.style==Style::DNB;hybrid|=f.style==Style::HYBRID;hard|=f.style==Style::HARD;
+            int kicks=0;for(int s=0;s<16;++s)kicks+=combatscore::hit(track,b,s,0)=='x';
+            half|=kicks<2;
+        }
+        check(techno && dnb && hybrid && hard && !half,"boss form moves through techno, DnB, hybrid and hardstyle without a half-time bar");
+        // Just under and just over the threshold: the same score everywhere except the hardstyle bars.
+        auto take=[&](float intensity){
+            MusicSynth m;m.setTrack(track);m.setVolume(.9f);m.setIntensity(intensity);
+            const int n=int(25*240.f/musicTrack(track).bpm*44100);
+            std::vector<float> x(n*2);m.render(x.data(),n);return x;
+        };
+        const auto under=take(1.29f),over=take(1.35f);
+        const float bar=240.f/musicTrack(track).bpm;
+        auto diff=[&](int b0,int b1){double d=0;for(int i=int(b0*bar*44100)*2;i<int(b1*bar*44100)*2;++i){double e=over[i]-under[i];d+=e*e;}return d/((b1-b0)*bar*88200);};
+        const double ratio=10*std::log10(diff(22,25)/diff(18,20));
+        std::printf("  %s: hardstyle bars change %.1f dB more than their neighbours across the threshold\n",musicTrack(track).name,ratio);
+        check(ratio>6,"hardstyle kick only takes over at the top of the fight");
+    }
+    for(int track:{4,7,16}){
+        auto bars=[&](float intensity){
+            MusicSynth m;m.setTrack(track);m.setVolume(.9f);m.setIntensity(intensity);
+            const float bar=240.f/musicTrack(track).bpm;const int n=int(16*bar*44100);
+            std::vector<float> x(n*2);m.render(x.data(),n);return x;
+        };
+        const auto calm=bars(1.f),boss=bars(1.35f);
+        const float bar=240.f/musicTrack(track).bpm;
+        auto diff=[&](int b0,int b1){double d=0;for(int i=int(b0*bar*44100)*2;i<int(b1*bar*44100)*2;++i){double e=boss[i]-calm[i];d+=e*e;}return d/((b1-b0)*bar*88200);};
+        check(diff(8,16)>diff(1,8)*1.5,"boss intensity trades bars 9-16 for the other rhythm section");
     }
     // Pause must still remove high-frequency energy from the new themes.
     for(int track:{0,10,11}){

@@ -19,8 +19,13 @@
 // distorted power-chord stab on every eighth, sixteenth hats and the bass wide open; the last
 // enemy of a wave (setSolo) strips it to the drums and the sub; a wave's end (stinger) rings a
 // chord in the track's key over a crash.
-// CombatScore.h gives SUNSET a sixteen-bar form and ZENITH/MORNINGSTAR thirty-two:
-// an eight-bar theme, answers, breakdowns, builds and peaks. Other tracks use a
+// CombatScore.h gives SUNSET a sixteen-bar form and ZENITH/MORNINGSTAR thirty-two.
+// The bosses never drop to half-time: their sections trade the rhythm section at
+// full speed (four-on-the-floor techno, a DnB two-step over a Reese, the two
+// together, and at the top of the fight four to six bars of hardstyle: a pitched,
+// distorted kick whose tail is the bass, a screech on the theme). From intensity
+// 1.1 every other break or techno track does the same in bars 9-16 of each sixteen
+// (nextStep: traded), with the hardstyle bars from 1.3. Other tracks use a
 // B side: every second pass through a track's four bars develops the arp
 // an octave up, doubles the lead an octave over itself, and ends with a drum
 // fill into the next (the techno tracks have their own clap roll and riser). The snare, the lead,
@@ -98,8 +103,8 @@ inline const MusicTrack& musicTrack(int i) {
         {"LEVIATHAN", 174.f, 38, {0, 5, 6, 4},
          "x.........x..x..", "....x..g.g..x..g", "x.XxxxX.x.XxxxXo",
          "x---x-f.x---o-f.", "0.1.2.3.2.1.0.1.", "0-------1---2---3-------2-1-0---", 0, true},
-        // The Zenith: hard techno. CombatScore develops its shared boss theme over
-        // thirty-two bars, opening the acid filter into peaks after half-time breaks.
+        // The Zenith: hard techno that never lets up. CombatScore develops its shared boss theme over
+        // thirty-two bars: techno, a DnB section, a two-bar build, techno into hardstyle, then both at once.
         {"ZENITH", 172.f, 50, {0, 0, 5, 6},
          "x...x...x...x...", "....x.......x...", "xxoxxxoxxxoxxxoX",
          ".xxx.xxx.xxx.xxx", "0030102300301023", "3.3.3.2.3.3.3.0.3.3.3.2.1.1.1.2.", 1},
@@ -160,6 +165,7 @@ public:
     void setSampleRate(float sr) {
         SR = sr; delayL.assign((size_t)(sr * 1.5f), 0.f); delayR = delayL; dpos = 0;
         hist.assign((size_t)(sr * HIST_SECONDS) * 2, 0.f); histPos = 0; rewindT = 0;
+        compAtk = 1.f - std::exp(-1.f / (0.002f * sr)); compRel = 1.f - std::exp(-1.f / (0.120f * sr)); compEnv = 0.f;
         static const int COMB[4] = {1309, 1427, 1559, 1663}, AP[2] = {556, 441};
         const float k = sr / 44100.f;
         for (int i = 0; i < 4; ++i) {
@@ -222,14 +228,21 @@ public:
                 float lo = mufL.lp(L, gMuf, kMuf), ro = mufR.lp(R, gMuf, kMuf);
                 L += (lo - L) * m; R += (ro - R) * m;
             }
-            // Long driven techno kicks otherwise measure ~8 dB above the breaks.
-            // Leave the quiet bed alone; reserve space for combat at full intensity.
-            const MusicTrack& playing = musicTrack(track);
-            float trim = track == MENU_MUSIC_TRACK ? 1.f : playing.techno ? 1.f - (playing.techno >= 2 ? 0.64f : 0.6f) * gKick
-                                       : plainTrack(track) ? 0.65f : 1.f;
-            if (combatscore::owns(track)) trim *= track==combatscore::SUNSET?.8f:.95f;
-            L = softClip(L * 0.75f * trim) * vol * transitionGain;
-            R = softClip(R * 0.75f * trim) * vol * transitionGain;
+            // Long driven techno kicks otherwise measure ~8 dB above the breaks:
+            // kickHeat follows the section's kick, so a boss's DnB and techno
+            // sections land at the same level. trackGain() then puts every track
+            // on one loudness scale (the menu under the fights, bosses on top),
+            // and boss intensity lifts whatever is playing by 1.5 dB.
+            const float trim = 1.f - (musicTrack(track).techno >= 2 ? 0.64f : 0.6f) * gKick * kickHeat;
+            const float g = 0.75f * trim * trackGain(track) * calibration * (1.f + 0.19f * bossAmt);
+            L *= g; R *= g;
+            // Bus compressor (3:1 over the threshold, 2 ms / 120 ms): the breaks'
+            // tall drum peaks stop setting the level of everything under them.
+            const float pk = std::max(std::fabs(L), std::fabs(R));
+            compEnv += (pk - compEnv) * (pk > compEnv ? compAtk : compRel);
+            const float gr = compEnv > COMP_T ? (COMP_T + (compEnv - COMP_T) / 3.f) / compEnv : 1.f;
+            L = softClip(L * gr) * vol * transitionGain;
+            R = softClip(R * gr) * vol * transitionGain;
 
             out[2 * f]     = L;
             out[2 * f + 1] = R;
@@ -249,6 +262,14 @@ public:
     // The plain's score, one instrument at a time (tests, tuning): a bit per layer, set = silent.
     // 1 drone, 2 choir, 4 strings, 8 bell, 16 war drums, 32 low brass, 64 anvils, 128 horn
     unsigned plainMute = 0;
+    float calibration = 1.f;         // tools: scales trackGain() while it is being measured
+    // Each track's level, measured (tools/music_levels.py): at the intensity the game plays it,
+    // fights land near -13.5 LUFS, bosses near -12 and the menu near -15 at the same volume.
+    // (The Cold Store, 96 BPM and mostly choir, sits lower: its quiet walk sets its gain.)
+    static float trackGain(int t) {
+        static const float G[MUSIC_TRACKS] = {1.175f, 1.012f, 1.210f, 1.210f, 1.305f, 1.324f, 1.210f, 1.345f, 1.470f, 1.364f, 1.384f, 1.407f, 1.140f, 1.140f, 0.645f, 0.900f, 1.285f, 0.406f};
+        return G[((t % MUSIC_TRACKS) + MUSIC_TRACKS) % MUSIC_TRACKS];
+    }
     static bool plainTrack(int t) { return t == 14; }            // the plain's brass and anvils
 
 private:
@@ -276,6 +297,19 @@ private:
     float themeVelocity=1,acidVelocity=1,acidNote=62,acidAmp=0;
     bool scoreAcidSlide=false;
     float sampleInStep = 0.f, stepLen = 1.f;
+    // The rhythm section now playing. A boss's score changes it by section (CombatScore Style);
+    // at boss intensity every other track trades eight bars of its own style for eight of the other.
+    enum { KICK_SOFT, KICK_BREAK, KICK_TECHNO, KICK_HARD, KICK_STYLE };   // (KICK_STYLE: hardstyle)
+    int   kickKind = KICK_SOFT;
+    bool  breaksNow = false;         // two-step drums and the Reese (else the straight pattern)
+    float bossAmt = 0.f;             // 0..1 from intensity 1.1 to 1.28: a boss, OVERDRIVE
+    float hardAmt = 0.f;             // 0..1 from 1.26 to 1.34: a boss wave, a last phase. Hardstyle sections open
+    bool  hardNow = false;           // a hardstyle section is playing
+    float hardMix = 0.f, kickTailHz = 49.f;   // its screech on the lead (smoothed); the kick's tail, tuned to the bar's root
+    float kickHeat = 0.f, kickHeatTo = 0.f, subGain = 0.24f;
+    static constexpr float COMP_T = 0.4f;
+    float compEnv = 0.f, compAtk = 0.f, compRel = 0.f;
+    static int baseKick(const MusicTrack& tr) { return tr.breaks ? KICK_BREAK : tr.techno >= 2 ? KICK_HARD : tr.techno ? KICK_TECHNO : KICK_SOFT; }
     uint32_t blockPos = 0, rng = 0x9E3779B9u;
 
     // ---- building blocks ----
@@ -482,7 +516,12 @@ private:
         const bool fight = lvl >= 0.9f;
         // ---- the club: every sixteenth ----
         {
-            if (lvl >= 0.55f ? s % 4 == 0 : (lvl >= 0.3f && s == 0)) { pKick = Strike{0.f, 0.f, lvl >= 0.55f ? 1.f : 0.6f}; pumpT = 0.f; }
+            if (lvl >= 0.55f ? s % 4 == 0 : (lvl >= 0.3f && s == 0)) {
+                // The Gleaner's fight phases (1.2 and up): the last two of every eight bars go hardstyle, the kick's tail on the bar's root
+                float tail = 0.f;
+                if (lvl >= 1.19f && b8 >= 6) { tail = midiHz((float)CH[b8][0]); while (tail < 43.f) tail *= 2.f; while (tail > 87.f) tail *= 0.5f; }
+                pKick = Strike{0.f, tail, lvl >= 0.55f ? 1.f : 0.6f}; pumpT = 0.f;
+            }
             if (lvl >= 0.3f && s % 4 != 0) pBass = Strike{0.f, midiHz((float)CH[b8][0] + 12.f), s % 4 == 2 ? 1.f : 0.7f};
             if (lvl >= 0.55f && s % 4 == 2) pHatO = Strike{0.f, 0.f, 1.f};
             if (lvl >= 0.9f && s % 4 != 2) pHat = Strike{0.f, 0.f, s % 2 ? 0.75f : 0.45f};
@@ -632,8 +671,11 @@ private:
         pumpT += dt;
         if (pKick.t < 0.5f) {
             float t = pKick.t, hz = 46.f + 190.f * std::exp(-t * 38.f);
-            float body = std::tanh(pKickOsc.sine(hz, SR) * std::exp(-t * 6.5f) * 3.6f);
-            club += (body + noise() * std::exp(-t * 900.f) * 0.45f) * 0.5f * pKick.vel;
+            if (pKick.hz > 0.f) club += hardstyleKick(pKickOsc, t, pKick.hz) * 0.5f * pKick.vel;
+            else {
+                float body = std::tanh(pKickOsc.sine(hz, SR) * std::exp(-t * 6.5f) * 3.6f);
+                club += (body + noise() * std::exp(-t * 900.f) * 0.45f) * 0.5f * pKick.vel;
+            }
             pKick.t += dt;
         }
         if (pBass.t < 0.3f) {
@@ -704,6 +746,14 @@ private:
     float gBassF = 0, gMuf = 0, kMuf = 1.4f, gSnareF = 0, gHatF = 0, gArpF = 0, gLeadF = 0, gPadF = 0, gCrashF = 0;
     float duck = 1.f;
 
+    // Hardstyle: a hard "tok", then a distorted tail held on the bar's root and gated off before the next beat.
+    float hardstyleKick(Osc& osc, float t, float tailHz) {
+        float gate = 1.f - sstep(0.22f, 0.3f, t);
+        float x = osc.sine(tailHz + 340.f * std::exp(-t * 60.f), SR);
+        float tail = std::tanh(x * (2.f + 9.f * std::exp(-t * 3.5f))) * (0.45f + 0.55f * std::exp(-t * 6.f)) * gate;
+        float tok = std::tanh(x * 6.f) * std::exp(-t * 45.f) * 0.5f + noise() * std::exp(-t * 800.f) * 0.6f;
+        return (tail * 1.2f + tok) * std::min(1.f, t * 2500.f);
+    }
     static float sstep(float a, float b, float x) {
         float t = std::min(1.f, std::max(0.f, (x - a) / (b - a)));
         return t * t * (3.f - 2.f * t);
@@ -744,6 +794,10 @@ private:
         gSnare = sstep(0.7f, 1.f, lvl);
         gArp   = sstep(0.8f, 1.1f, lvl);
         gLead  = sstep(1.12f, 1.32f, lvl);
+        bossAmt = sstep(1.1f, 1.28f, lvl);
+        hardAmt = sstep(1.26f, 1.34f, lvl);
+        hardMix += ((hardNow ? 1.f : 0.f) - hardMix) * std::min(1.f, rate * 30.f);
+        kickHeat += (kickHeatTo - kickHeat) * std::min(1.f, rate * 40.f);
         themeMuted=wantThemeMuted.load();
         if(combatscore::owns(track)) {
             const float within=(std::max(step,0)%16+1.f-sampleInStep/std::max(1.f,stepLen))/16.f;
@@ -761,7 +815,7 @@ private:
         gBassF = gOf(260.f + 2400.f * std::max(sstep(0.45f, 1.2f, lvl), drive));
         // Sixteen-bar form: three driving phrases, then a two-bar filtered turn.
         const bool turn = !combatscore::owns(track) && (cycle % 4 == 3) && step >= 32;
-        phraseEnergy += ((turn ? 0.48f : 1.f) - phraseEnergy) * std::min(1.f, rate * 4.f);
+        phraseEnergy += ((turn ? 0.48f + 0.4f * bossAmt : 1.f) - phraseEnergy) * std::min(1.f, rate * 4.f);   // (a boss barely lets it close)
         bassMotion += rate * musicTrack(track).bpm / 60.f * 0.125f;
         if (bassMotion >= 1.f) bassMotion -= 1.f;
         reeseCut = gOf((420.f + 1250.f * (0.5f + 0.5f * std::sin(6.2831853f * bassMotion))) * (0.5f + 0.5f * phraseEnergy));
@@ -797,6 +851,8 @@ private:
         pKick = pClap = pHat = pHatO = pBass = Strike{};
         hornOn = acidOn = false; hornAmp = acidEnv = 0.f; pumpT = 9.f;
         const auto& tr = musicTrack(track);
+        kickKind = baseKick(tr); breaksNow = tr.breaks; subGain = tr.breaks ? 0.08f : 0.24f; hardNow = false; hardMix = 0.f;
+        kickHeat = kickHeatTo = tr.techno && track != MENU_MUSIC_TRACK ? 1.f : 0.f;
         if(combatscore::owns(track)){leadNote=leadCur=float(tr.root+12);acidNote=float(tr.root+12);}
         bassNote = bassTarget = (float)tr.root - 12.f;
         for (int k = 0; k < 4; ++k)
@@ -846,26 +902,50 @@ private:
             choirClock=0;
         }
         auto at = [&](const char* p, int i) { return p[i % (int)std::strlen(p)]; };
-        char k = authored?combatscore::hit(track,longBar,s,0):at(tr.kick, s);
-        if (k == 'x') kick = Hit{0.f, 1.f};
-        if (!authored && tr.breaks && bar % 2 == 1 && s == 14) kick = Hit{0.f, 0.72f};
-        if (!authored && tr.breaks && bar == 3 && (cycle & 1) && s == 15) kick = Hit{0.f, 0.82f};
-        char sn = authored?combatscore::hit(track,longBar,s,1):at(tr.snare, s);
+        // The rhythm section for this step: the boss's scored style, or (at boss intensity, bars 9-16 of
+        // every sixteen) the other one: a break track takes a four-on-the-floor kick under it, a techno
+        // track drops into the two-step and the Reese.
+        using combatscore::Style;
+        const bool scored = authored && tr.techno;
+        const bool traded = !authored && track != MENU_MUSIC_TRACK && (tr.breaks || tr.techno) && bossAmt > 0.5f && ((cycle - 1) & 3) >= 2;
+        const bool canHard = hardAmt > 0.5f;
+        Style style = scored ? combatscore::form(track, longBar).style
+                    : traded ? (tr.breaks ? Style::HYBRID : Style::DNB) : (tr.breaks ? Style::DNB : Style::TECHNO);
+        if (scored && style == Style::HARD && !canHard) style = Style::TECHNO;
+        if (traded && canHard && ((cycle - 1) & 3) == 3) style = Style::HARD;   // the traded bars' second half, at the top of a fight
+        const bool hardstyle = style == Style::HARD;
+        const bool toBreak = traded && !tr.breaks && !hardstyle;  // the techno track's bars of DnB
+        const bool floorKick = traded && (tr.breaks || hardstyle);
+        hardNow = hardstyle;
+        breaksNow = scored ? style == Style::DNB || style == Style::HYBRID : traded ? (tr.breaks || toBreak) : tr.breaks;
+        kickHeatTo = track == MENU_MUSIC_TRACK ? 0.f : hardstyle ? 1.f : scored ? (style == Style::DNB ? 0.f : 1.f)
+                   : traded ? (tr.breaks ? 0.6f : -0.2f) : tr.techno ? 1.f : 0.f;   // (measured: the traded bars within ~1 dB of the track's own)
+        if (s == 0) { kickTailHz = midiHz((float)scaleNote(tr, deg, -2)); while (kickTailHz < 43.f) kickTailHz *= 2.f; while (kickTailHz > 87.f) kickTailHz *= 0.5f; }
+        char k = authored ? combatscore::hit(track,longBar,s,0,canHard) : toBreak ? "x.........x..x.."[s] : hardstyle ? '.' : at(tr.kick, s);
+        if (k == 'x') { kick = Hit{0.f, 1.f}; kickKind = hardstyle ? KICK_STYLE : style == Style::DNB ? KICK_BREAK : baseKick(tr); }
+        if (!authored && !hardstyle && tr.breaks && bar % 2 == 1 && s == 14) { kick = Hit{0.f, 0.72f}; kickKind = KICK_BREAK; }
+        if (!authored && !hardstyle && tr.breaks && bar == 3 && (cycle & 1) && s == 15) { kick = Hit{0.f, 0.82f}; kickKind = KICK_BREAK; }
+        if (floorKick && s % 4 == 0) { kick = Hit{0.f, hardstyle ? 1.f : 0.8f}; kickKind = hardstyle ? KICK_STYLE : KICK_TECHNO; }   // four on the floor under the break
+        if (floorKick && hardstyle && bar == 3 && s >= 10 && (s >= 12 || s % 2 == 0)) { kick = Hit{0.f, 0.9f}; kickKind = KICK_STYLE; }   // and it rolls out
+        char sn = authored ? combatscore::hit(track,longBar,s,1,canHard) : toBreak ? "....x..g.g..x..g"[s] : at(tr.snare, s);
         if (sn == 'x') snare = Hit{0.f, 1.f}; else if (sn == 'g') snare = Hit{0.f, 0.35f};
-        if (!authored && track != MENU_MUSIC_TRACK && tr.techno && bar == 3 && s >= 8 && (s >= 12 || s % 2 == 0))   // the clap roll into the next phrase
+        else if (sn == 'r') snare = Hit{0.f, 0.3f + 0.7f * s / 15.f};   // a roll, rising through the bar
+        if (!authored && !breaksNow && !hardstyle && track != MENU_MUSIC_TRACK && tr.techno && bar == 3 && s >= 8 && (s >= 12 || s % 2 == 0))   // the clap roll into the next phrase
             snare = Hit{0.f, 0.35f + 0.65f * (s - 8) / 7.f};
         else if (!authored && !tr.techno && bar == 3 && (cycle & 1) && s >= 12 && gSnare > 0.3f)   // the B side's last beat: a fill into the top
             snare = Hit{0.f, 0.5f + 0.5f * (s - 12) / 3.f};
         // Ghost notes stay softer than the backbeat; accents imply a played break.
-        if (tr.breaks && snare.t == 0.f && snare.vel < 0.5f)
+        if (breaksNow && sn != 'r' && snare.t == 0.f && snare.vel < 0.5f)
             snare.vel = 0.16f + 0.07f * ((s + bar) % 3);
-        if (tr.breaks && (cycle & 1) && s % 4 == 2) ride = Hit{0.f, bar % 2 ? 0.55f : 0.38f};
-        char h = authored?combatscore::hit(track,longBar,s,2):at(tr.hat, s);
+        if (breaksNow && (cycle & 1) && s % 4 == 2) ride = Hit{0.f, bar % 2 ? 0.55f : 0.38f};
+        char h = authored?combatscore::hit(track,longBar,s,2,canHard):at(tr.hat, s);
+        if (floorKick && s % 4 == 2) h = 'o';                       // and the open hat off every beat
         if (h == 'x') hatC = Hit{0.f, 0.55f}; else if (h == 'X') hatC = Hit{0.f, 1.f}; else if (h == 'o') hatO = Hit{0.f, 1.f};
         else if (h == '.' && drive > 0.3f) hatC = Hit{0.f, 0.4f * drive};   // OVERDRIVE: the gaps fill with sixteenths
         if (drive > 0.02f && s % 2 == 0) stabT = 0.f;                         // OVERDRIVE: a stab on every eighth
 
-        char b = at(tr.bass, s);
+        const char* scoredBass = scored ? combatscore::bass(track, longBar) : nullptr;
+        char b = hardstyle ? '.' : scoredBass ? scoredBass[s] : toBreak ? "x--.x-f.x--.o-f."[s] : at(tr.bass, s);   // (hardstyle: the kick's tail is the bass)
         if (b != '.' && b != '-') {
             int n = chordTone(tr, deg, 0, -1);
             if (b == 'o') n += 12;
@@ -904,25 +984,27 @@ private:
     void synthSample(const MusicTrack& tr, float& L, float& R) {
         if (plainTrack(track)) { plainSample(L, R); return; }
         const float dt = 1.f / SR;
-        const bool techno = tr.techno != 0, hard = tr.techno >= 2, breaks = tr.breaks;
+        const bool techno = tr.techno != 0, hard = tr.techno >= 2, breaks = breaksNow;
         const bool authored=combatscore::owns(track);
         // ---- drums ----
         float drums = 0.f, hatOut = 0.f;
         if (kick.t < 0.6f) {
             float t = kick.t;
-            if (breaks) {
+            if (kickKind == KICK_BREAK) {
                 // Short kick leaves room before the next broken-beat hit.
                 float hz = 49.f + 185.f * std::exp(-t * 72.f);
                 float env = std::exp(-t * 23.f) * std::min(1.f, t * 1800.f);
                 float punch = std::tanh(kickOsc.sine(hz, SR) * 1.8f) * env;
                 float click = noise() * std::exp(-t * 850.f) * 0.3f;
                 drums += (punch * 1.15f + click) * gKick * kick.vel;
-            } else if (hard) {                                           // harder still: a distorted body with a long tail, a hard click
+            } else if (kickKind == KICK_STYLE) {
+                drums += hardstyleKick(kickOsc, t, kickTailHz) * gKick * kick.vel;
+            } else if (kickKind == KICK_HARD) {                          // harder still: a distorted body with a long tail, a hard click
                 float hz = 44.f + 260.f * std::exp(-t * 48.f);
                 float body = std::tanh(kickOsc.sine(hz, SR) * std::exp(-t * 5.f) * 5.5f) * 1.f;
                 float click = noise() * std::exp(-t * 1100.f) * 0.7f;
                 drums += (body + click) * gKick * kick.vel;
-            } else if (techno) {                                  // harder: a faster, deeper drop, driven, a sharper click
+            } else if (kickKind == KICK_TECHNO) {                 // harder: a faster, deeper drop, driven, a sharper click
                 float hz = 47.f + 190.f * std::exp(-t * 40.f);
                 float body = std::tanh(kickOsc.sine(hz, SR) * std::exp(-t * 7.5f) * 3.2f) * 1.35f;
                 float click = noise() * std::exp(-t * 900.f) * 0.55f;
@@ -983,7 +1065,7 @@ private:
         bassNote += (bassTarget - bassNote) * 0.02f;
         float bassOut = 0.f, bassWidth = 0.f;
         {
-            float target = !bassGate ? 0.f : techno ? 0.15f + 0.85f * std::exp(-bassEnvT * 20.f)   // techno: short rolling plucks
+            float target = !bassGate ? 0.f : techno && !breaks ? 0.15f + 0.85f * std::exp(-bassEnvT * 20.f)   // techno: short rolling plucks
                                                     : 0.35f + 0.65f * std::exp(-bassEnvT * 9.f);
             bassAmp += (target - bassAmp) * 0.012f;               // ~2 ms: no clicks on or off
             float env = bassAmp;
@@ -999,7 +1081,8 @@ private:
                 bassWidth = (upperL - upperR) * 0.045f * env * gBass * duck;
             }
             float sb = sub.sine(hz * 0.5f, SR) * 0.6f;
-            bassOut = hard ? std::tanh((f * 2.6f + sb * 1.4f) * env) * 0.28f * gBass * duck   // (dirtier, a heavier sub)
+            bassOut = breaks ? std::tanh((f * 1.6f + sb) * env) * 0.42f * gBass * duck          // the Reese
+                    : hard ? std::tanh((f * 2.6f + sb * 1.4f) * env) * 0.28f * gBass * duck   // (dirtier, a heavier sub)
                            : std::tanh((f * 1.6f + sb) * env) * (techno ? 0.32f : 0.42f) * gBass * duck;   // (techno: under the kick)
             bassEnvT += dt;
         }
@@ -1013,7 +1096,8 @@ private:
             padR += pad[2 * k + 1].saw(hz * 0.997f, SR);
         }
         padCur[3] += (padNotes[3] - padCur[3]) * 0.002f;
-        float subOut = pad[6].sine(midiHz(padCur[3]), SR) * (breaks ? 0.08f : 0.24f);
+        subGain += ((breaks ? 0.08f : 0.24f) - subGain) * 0.002f;   // (the Reese carries its own low end)
+        float subOut = pad[6].sine(midiHz(padCur[3]), SR) * subGain;
         padL = padFL.lp(padL * 0.11f, gPadF, 0.4f);
         padR = padFR.lp(padR * 0.11f, gPadF, 0.4f);
         float pg = gPad * (techno ? 0.4f + 0.3f * duck : 0.65f + 0.35f * duck);   // techno: a darker bed that pumps harder
@@ -1071,6 +1155,7 @@ private:
                 raw+=leadHi.saw(hz*2,SR)*upper;
             }
             leadOut=leadF.lp(raw,gLeadF,.65f)*leadAmp*.19f*gLead;
+            leadOut+=(std::tanh(leadF.band*5.f)*leadAmp*.16f*gLead-leadOut*.4f)*hardMix;   // hardstyle: the screech
             leadT+=dt;
             if(themeMuted)leadOut=0; // audition the exact same backing without its theme
         }else if (gLead > 0.001f) {
@@ -1083,6 +1168,7 @@ private:
             float raw = leadOsc.saw(hz, SR) * 0.6f + leadOsc2.saw(hz * 1.006f, SR) * 0.4f;
             if (bSide > 0.001f) raw += (leadHi.saw(hz * 2.f, SR) * 0.6f + leadHi2.saw(hz * 2.012f, SR) * 0.4f) * 0.35f * bSide;   // the B side: an octave over it
             leadOut = leadF.lp(raw, gLeadF, 0.5f) * env * 0.12f * gLead;
+            leadOut += (std::tanh(leadF.band * 5.f) * (breaks ? leadAmp : env) * 0.13f * gLead - leadOut * 0.4f) * hardMix;   // hardstyle: the screech, held
             leadT += dt;
         }
 
@@ -1096,6 +1182,7 @@ private:
                 for(int k=0;k<4;++k)humanChoir.setNote(k,choirHz[k]);
                 float vf[4]={F1lab,F2lab,F3lab,3300.f};humanChoir.setVowel(vf);
                 float gain=choirAmp*(track==13?.12f:.09f);
+                if(track==15)gain*=.72f+.28f*sstep(.3f,1.f,lvl);   // the Cold Store's walk keeps its old quiet; its fights get the full choir
                 humanChoir.sample(*this,gain,choirL,choirR);
             }
             // Organ doubles the theme in octaves; strings articulate the sixteenth pulse.

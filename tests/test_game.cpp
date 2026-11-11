@@ -2822,7 +2822,8 @@ int main() {
             float dipped = during[during.size() - 2];
             sfxRender(m, 88200, 0.25f);                               // hold 0.1 s, release 250 ms
             auto after = sfxRender(m, 441, 0.25f);
-            CHECK(std::fabs(dipped - 0.25f * 0.501f) < 0.015f, "a 6 dB duck dips the music to half within 50 ms");
+            CHECK(std::fabs(dipped - 0.25f * 0.708f) < 0.015f, "a 6 dB duck dips the music 3 dB within 50 ms (the score takes half a short dip)");
+            CHECK(std::fabs(SfxMixer::musicShare(std::pow(10.f, -18.f / 20.f)) - std::pow(10.f, -15.f / 20.f)) < 0.002f, "a deep cinematic duck still clears the music, 3 dB above the crowd");
             CHECK(std::fabs(after.back() - 0.25f) < 0.0025f, "the music comes back once the duck is over");
             SfxMixer o(44100.f, 3);
             o.duck(3.f, 0.5f); o.duck(9.f, 0.1f);

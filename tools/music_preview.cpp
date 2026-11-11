@@ -1,6 +1,6 @@
 // Render the actual live score to a stereo WAV for auditioning outside the game.
 // Usage: music_preview TRACK SECONDS OUT.wav [intensity] [--rate HZ]
-//        [--drive] [--theme-muted] [--exercise]
+//        [--drive] [--theme-muted] [--exercise] [--gain X (scales the track's calibrated level)]
 #include "audio/MusicSynth.h"
 #include <cstdio>
 #include <cstdlib>
@@ -11,9 +11,10 @@ int main(int argc,char** argv){
     int track=std::atoi(argv[1]),rate=44100,nextArg=4;
     const double seconds=std::atof(argv[2]);float intensity=1.3f;
     if(nextArg<argc && argv[nextArg][0]!='-')intensity=std::atof(argv[nextArg++]);
-    bool drive=false,muted=false,exercise=false;
+    bool drive=false,muted=false,exercise=false;float gain=1;
     for(int i=nextArg;i<argc;++i){
         if(!std::strcmp(argv[i],"--rate") && i+1<argc)rate=std::atoi(argv[++i]);
+        else if(!std::strcmp(argv[i],"--gain") && i+1<argc)gain=float(std::atof(argv[++i]));
         else if(!std::strcmp(argv[i],"--drive"))drive=true;
         else if(!std::strcmp(argv[i],"--theme-muted"))muted=true;
         else if(!std::strcmp(argv[i],"--exercise"))exercise=true;
@@ -24,7 +25,7 @@ int main(int argc,char** argv){
     const int frames=(int)(rate*seconds);
     if(frames<1)return 2;
     MusicSynth m;m.setSampleRate(float(rate));m.setTrack(track);m.setVolume(.9f);
-    m.setIntensity(intensity);m.setDrive(drive);m.setThemeMuted(muted);
+    m.calibration=gain;m.setIntensity(intensity);m.setDrive(drive);m.setThemeMuted(muted);
     std::vector<float> samples((size_t)frames*2);
     const int events[]={8,16,20,24,28,32,36,40};int event=0;
     for(int pos=0;pos<frames;){

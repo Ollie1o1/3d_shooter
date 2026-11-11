@@ -1,6 +1,8 @@
 # SUNSET, ZENITH and MORNINGSTAR music pass
 
 Implemented November 9, 2026, following the [soundtrack review](soundtrack-review.md).
+The boss half-time breakdowns and the level trims described here were replaced on
+November 11 by the [boss music and loudness pass](boss-music-pass.md).
 This pass changes composition, arrangement and output headroom. It does not copy
 recordings or melodies from reference games.
 
