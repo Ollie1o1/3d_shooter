@@ -256,7 +256,8 @@ src/
 │   ├── leviathan/          Gameplay_<Boss>.h  its fight in the game: events → damage, effects, sound, drawing
 │   └── absolute/           ...plus the Absolute's rig (AbsoluteRig.h), the feel of each move (AbsoluteFeel.h)
 │                           and MORNINGSTAR (Gameplay_Morning.h)
-├── world/              the maps: Level.h (Act I), LevelAct2.h, LevelGauntlet.h (FAST), ArenaShifts, Shapes, Interactable
+├── world/              the maps: Level.h (Act I), LevelAct2.h, LevelGauntlet.h (FAST), ArenaShifts, Shapes, Interactable,
+│                       NavGrid / NavBuild (each arena's routes for walking enemies)
 ├── render/             BoxRenderer (one instanced draw), PostProcess (bloom, CRT), TextureGen, WorldMesh,
 │                       Effects, EnemyModel (every enemy's box rig), GunKit / GunMotion / ViewModel (the guns),
 │                       GunModel / GunFile (a gun's shape as data: assets/guns/*.glb)
@@ -349,6 +350,8 @@ Three headless test programs, no window or GPU needed (CI runs them on Linux and
 - **`tests/test_game.cpp`**: every level's data (no spawn inside a wall, every jump pad lands, every moving platform stays clear of walls), the enemy AI, rigs, weapons, XP, the mix table, and simulated full ARENA, FAST and ACT II runs.
 - **`tests/test_zenith.cpp`**: the encore. The sword, the Zenith, and **BossSim** (`tests/BossSim.h`), which pits the real AI of the Warden, the Sovereign, the Leviathan and the Absolute (both forms) against scripted players: cheese strategies that must fail, a solid player whose kill time must land in a target range, and a dodger. BossSim is deterministic, so a change that shifts its numbers changed the fight.
 
+`make test-nav` (in `make test`) checks the enemies' routes (`tests/test_nav.cpp`): in every arena and Story section with a fight, walkers put down at reachable places must get to the player in time (the floor is 99% of about 2,200 chases; the misses are printed), nobody in a simulated wave may stand wedged with a route left, and cutting the grid and reading it must stay inside a time budget. `build/test_nav --compare` runs the same chases on feeler steering alone.
+
 Story boss combat, counters and simulation limits are documented in [the combat overhaul](docs/story-boss-combat-design.md). `make test-story-bosses` compares sustained weapon fire with real movement, reloads, healing and reactions to committed attacks.
 
 Story also has `make test-story-overhaul` for objective pacing, Ballast, weather budgets and record layout, and native `make test-dev` for checkpoint inputs, actual brake shots, gate/retry behavior and settings screenshots.
@@ -389,6 +392,8 @@ Everything below runs without touching the mouse, so it works from scripts.
 #     10 Conduit  11 Conductor  12 Seraph  13 Anchor  14 Penitent  15 Revenant  16 Weaver  17 Leviathan  18 Absolute
 #     19 Courier  20 Bulwark  21 Cantor  22 Harrier  23 Plumb Line  24 Foreman  25 Pacemaker (the Gauntlet's)
 #   --hollow N: --spawn enemies are Hollowed (1 Enraged, 2 Twinned, 3 Haloed)
+#   --nav: draw the arena's nav grid round you (green near, blue far, red: no way to you) and each routed enemy's path
+#   --nonav: enemies steer by feelers alone, as before the routes (to compare)
 
 # Footage: fixed 1/30 s frames; skip SKIP, then save FRAMES as PREFIX_0001.bmp ...
 ./shooter --arena 5 --god --cam 0 1.8 -310 -90 2 --spawn 8 --autoaim --kite --clean --record 180 30 out/boss
@@ -618,7 +623,7 @@ Every enemy is a rig of boxes on joints (hips, shoulders, wing roots) posed from
 | **MORNINGSTAR** (the Absolute's second form) | The Absolute at 1.65x, blood orange with white eyes | His lethal blow doesn't kill him: he kneels, the eclipse swallows the Zenith, and he comes back with a fresh health bar inside it. Three phases: MORNINGSTAR (jabs, a backhand, GRASP, his ECLIPSE drop, SUNDER rings, FISSUREs, the CORONA's flares from the ring of fire), RISING under 55 % (every slam leaves an aftershock, everything quicker) and TOTALITY under 12 % (the ring of fire collapses on you, then the light goes out of him). A death here retries from his second form | Only white shows on his body (parry it; the backhand can be parried too); his gold and red moves are read from the floor. Jump the collapsing ring |
 | **Penitent** (Act II) | A kneeling machine-monk, 8 m tall, hooded, a bone mask, two censers on chains, chained to six anchors on the pit wall | The Descent's boss. Chained, it can't move and takes a quarter of the damage: censer sweeps low (amber, a grinding whine) and high (white, a bell), a slam ring, burning incense pools, and a chain lash for anyone who keeps away or perches. With every chain broken it rises to 11.5 m and stalks you, sweeping in pairs and calling up Hollowed Husks; under a quarter health it scourges itself (rings of embers, everything 30% faster) | Shoot or rip the anchors; **jump the low sweep, slide under the high**; parry a censer as it reaches you (it reels, double damage); under a quarter, get behind it and hit the glowing wound (x3) |
 
-- Ground enemies steer around cover with feeler probes (no pathfinding; the arenas are open by design) and keep apart with soft separation
+- Ground enemies find routes to you: each arena's collision boxes are cut into a layered grid at load (`world/NavGrid.h`: floors, box tops, ramps, step-downs and ledge drops as the enemies really move; they have no step-up or jump), and a shared flow field per kind of walker leads to wherever you stand. They chase directly when the straight line is walkable, and feeler probes stay on top for the last step. Flyers and bosses don't use it; the Descent, the Reliquary (moving ground) and Chapter 4's plain (too wide) keep feeler steering alone. Enemies keep apart with soft separation
 - **Hollowed variants** (Act II): an **Enraged** enemy is faster, quicker to strike and hits harder; a **Twinned** one splits into two smaller copies when it dies; a **Haloed** one takes a tenth of the damage until a headshot or a parry breaks its halo. Worth 1.5x the XP and style.
 - Gunners and Brutes won't walk off a ledge; Rippers and Mites jump down after you
 - Gunners check line of sight before firing and sidestep out from behind cover when blocked

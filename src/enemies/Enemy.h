@@ -49,6 +49,7 @@
 #include <cstdlib>
 #include <algorithm>
 #include "core/Collision.h"   // AABB, Wall, SpatialGrid
+#include "world/NavGrid.h"    // the arena's routes (walkers that can't go straight at you)
 #include "core/Difficulty.h"
 #include "enemies/EnemyTypes.h"       // EnemyType, AttackKind, statsOf
 #include "enemies/HitReact.h"         // how a regular enemy takes a hit: shove, flinch, stun, finish
@@ -124,6 +125,10 @@ struct EnemyWorld {
     bool voidUnder = false;       // the floor under the arena is a void (the Reliquary): only real ground holds you up
     const GroundRamp* ramps = nullptr; int rampCount = 0;
     bool hasMoveVia = false; glm::vec3 moveVia{0.f}; // movement junction; attacks still target the real player
+    // The arena's routes to the player (world/NavGrid.h), or null: steer by feelers alone (the tests' bare
+    // worlds, the drifting and descending arenas, an enemy lured somewhere the player isn't)
+    const NavGrid* nav = nullptr;
+    bool groundTracked = false;   // floorY follows whatever is under the enemy (decks over a void): no perch to hold, so everyone drops
     // THE LEVIATHAN's lair (the Maw): the pool's centre at its surface, the
     // ring floor's height, the wells it breaches from
     bool hasLair = false;
@@ -246,6 +251,10 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     glm::vec3 progressFrom{0.f};
     float progressDist = 0.f;
     float progressAt = 0.f, detourUntil = -1.f, detourSign = 1.f;
+    // Routes (NavGrid): whether the straight way is walkable (looked at a few times a second),
+    // and whether this tick's movement is following a route
+    float navLookAt = 0.f; bool navStraight = true, navRouted = false, navSeek = false;
+    glm::vec3 navFrom{0.f}; float navFromAt = 0.f, navNudgeUntil = -1.f; int navWhy = 0; bool navDrop = false;
     glm::vec3 detourDir{0.f};
     float noLosTimer  = 0.f;      // > 0: reposition to find a clear shot
     float hoverY      = 8.f;   // flyers: height kept above floorY
@@ -851,11 +860,14 @@ private:
 
     // Feeler steering: if the way ahead is blocked, try turning ±45/90/135°
     // (keeping the side that worked last time) so enemies slide around cover
-    // instead of grinding into it. No pathfinding: arenas are open by design.
-    glm::vec3 steer(glm::vec3 want, const EnemyWorld& w) {
+    // instead of grinding into it. This is the local layer: the route round
+    // big cover and between levels comes from the arena's NavGrid (navDir).
+    // reach: how far ahead the feelers look (on a route the grid has already vouched for the ground, so
+    // they look only a step ahead, and a lane along a wall or a drop into a shaft isn't refused)
+    glm::vec3 steer(glm::vec3 want, const EnemyWorld& w, float reach = 0.9f) {
         want = norm2(want);
         if (glm::length(want) < 0.5f || stats().flying) return want;
-        float probe = radius() + 0.9f;
+        float probe = reach < 0.f ? -reach : radius() + reach;   // (negative: that far from its centre, whatever its size)
         if (canStepTo(position + want * probe, w)) return want;
         static const float ANG[] = {0.785f, 1.571f, 2.356f};
         for (float a : ANG)
@@ -869,13 +881,62 @@ private:
         return glm::vec3{0.f};
     }
 
+public:
+    // What kind of walker the routes should be cut for
+    NavAgent navAgent(const EnemyWorld& w) const {
+        NavAgent a;
+        a.wide = radius() > 0.62f; a.tall = height() > 2.3f;
+        a.drops = !w.voidUnder && !ledgeAware();   // (the ones that hold a perch never route off one, wherever their floor is read from)
+        a.variant = uid % NavGrid::VARIANTS;
+        return a;
+    }
+private:
+    // The routed way toward the player, when there is a grid and the straight way isn't walkable.
+    // Bosses place themselves; flyers go over everything.
+    bool navDir(const EnemyWorld& w, glm::vec3& out) {
+        if (!w.nav || stats().flying || isBoss(type) || w.hasMoveVia) return false;
+        const NavAgent ag = navAgent(w);
+        if (age >= navLookAt) {
+            navLookAt = age + 0.2f + (float)(uid % 5) * 0.02f;   // (staggered, so a wave doesn't all look on one tick)
+            navStraight = w.nav->direct(ag, position);
+        }
+        if (navStraight) return false;
+        const NavStep st = w.nav->step(ag, position);
+        if (!st.valid) return false;
+        out = st.dir; navDrop = st.drop;
+        return true;
+    }
+
     void setMove(glm::vec3 dir, float speed, const EnemyWorld& w) {
         if(w.hasMoveVia&&!stats().flying)dir=flatTo(w.moveVia);
         glm::vec3 want = norm2(dir);
         glm::vec3 toP = flatTo(w.playerFeet);
         float distP = glm::length(toP);
         bool approaching = distP > 4.f && glm::dot(want, toP / std::max(distP, 1e-3f)) > 0.3f;
-        if (!stats().flying && speed > 1.f && glm::length(want) > 0.5f && (approaching || age < detourUntil)) {
+        const bool seek = navSeek; navSeek = false;
+        navRouted = false; navWhy = 0; navDrop = false;
+        glm::vec3 routed{0.f};
+        // (right over or under the player counts as wanting them too: the way there is a route, not a line)
+        //  and the last few metres are a route too when the straight line isn't walkable: a gap, a storey between)
+        const bool closing = distP > 0.6f && distP <= 4.f && glm::dot(want, toP / distP) > 0.3f;
+        const bool storeyApart = distP <= 4.f && std::fabs(w.playerFeet.y - position.y) > 1.5f && glm::dot(want, toP) > -0.2f;
+        if (speed > 1.f && glm::length(want) > 0.5f && (approaching || seek || closing || storeyApart) && navDir(w, routed)) {
+            // On a route: the route's direction, with a little of what the enemy wanted across it (a
+            // Ripper's zigzag, a gunner's drift), so they don't all walk the same line
+            glm::vec3 across = want - routed * glm::dot(want, routed);
+            dir = routed + across * 0.3f;
+            navRouted = true;
+            // Not getting anywhere along it (wedged on a corner, shoved off the line): square up on the
+            // node under it for a moment
+            if (age - navFromAt > 1.2f) {
+                if (navFromAt > 0.f && glm::length(flatTo(navFrom)) < 0.5f) navNudgeUntil = age + 0.6f;
+                navFrom = position; navFromAt = age;
+            }
+            if (age < navNudgeUntil) { navWhy |= 1;
+                const int n = w.nav->nodeAt(position);
+                if (n >= 0) { glm::vec3 c = flatTo(w.nav->at(n)); if (glm::length(c) > 0.15f) dir = norm2(c) + routed * 0.5f; }
+            }
+        } else if (!stats().flying && speed > 1.f && glm::length(want) > 0.5f && (approaching || age < detourUntil)) {
             if (age - progressAt > 1.f) {
                 bool noCloser = progressDist - distP < 1.f;
                 if (progressAt > 0.f && approaching && noCloser && age >= detourUntil) {
@@ -899,7 +960,35 @@ private:
                 else if (!open && detourUntil - age < 0.1f) detourUntil = age + 0.5f;
             }
         }
-        glm::vec3 d = steer(dir, w);
+        glm::vec3 d = steer(dir, w, navRouted ? -0.45f : 0.9f);
+        if (w.nav && glm::length(d) > 0.5f && !stats().flying && !isBoss(type) && !w.hasMoveVia && !navDrop && (navRouted || approaching || closing)) {
+            // Keep to ground that leads to the player: a zigzag or a feeler's sidestep mustn't carry it off a
+            // ledge to somewhere farther from them (a Ripper still leaps down when down is the way)
+            const NavAgent ag = navAgent(w);
+            const float reach = radius() + 0.6f;
+            // (a ramp's side: the hard floor would lift it straight up onto the slope, off its route)
+            auto lifted = [&](glm::vec3 dd) {
+                for (float ahead : {0.3f, 0.8f}) {
+                    const glm::vec3 p = position + dd * ahead;
+                    for (int k = 0; k < w.rampCount; ++k) {
+                        const auto& r = w.ramps[k];
+                        if (p.x >= r.xz.min.x && p.x <= r.xz.max.x && p.z >= r.xz.min.z && p.z <= r.xz.max.z && r.at(p.x, p.z) > position.y + 0.65f) return true;
+                    }
+                }
+                return false;
+            };
+            auto astray = [&](glm::vec3 dd) { return w.nav->strays(ag, position, dd, reach) || lifted(dd); };
+            // Running along a lip with its centre already past it: ease back over the ground
+            if (grounded) { const int h = w.nav->hanging(ag, position); if (h >= 0) { navWhy |= 2; d = norm2(d + norm2(flatTo(w.nav->at(h))) * 1.2f); } }
+            if (astray(d)) { navWhy |= 4;
+                const glm::vec3 plain = navRouted ? routed : norm2(toP);
+                d = steer(plain, w, navRouted ? -0.45f : 0.9f);
+                if (glm::length(d) < 0.5f || astray(d)) { navWhy |= 8;
+                    const int n = w.nav->nodeAt(position);
+                    d = n >= 0 ? norm2(flatTo(w.nav->at(n))) : glm::vec3{0.f};
+                }
+            }
+        }
         speed *= tune_->moveSpeed;
         velocity.x = d.x * speed;
         velocity.z = d.z * speed;
@@ -966,7 +1055,7 @@ private:
         // edge (the ledge check stops it there) and shoot down from it
         bool perched = ledgeAware() && position.y > floorY + 0.3f;
         if (noLosTimer > 0.f && perched) mv = dir + side * strafeDir * 0.3f;
-        else if (noLosTimer > 0.f) mv = side * strafeDir + dir * 0.35f;      // sidestep out from behind cover
+        else if (noLosTimer > 0.f) { mv = side * strafeDir + dir * 0.35f; navSeek = true; }   // sidestep out from behind cover (with a route: walk it until the shot opens)
         else if (d < nearR)    mv = -dir + side * strafeDir * 0.7f + spread;
         else if (d > farR)     mv = dir + side * strafeDir * 0.3f + spread;
         else                   mv = side * strafeDir * 0.6f + spread * 1.4f;

@@ -40,6 +40,8 @@ inline bool      g_devSplinter = false;   // --splinter: UNIT 24's SPLINTER on t
 inline bool      g_devSword = false;   // --sword / ?sword: the sword (key 5) anywhere, not just the Zenith
 inline float     g_devSwordOrbit = 0.f;   // --swordorbit DEG: see the sword and its arms from the side (DEG round them; 0 off)
 inline bool      g_devAim = false;
+inline bool      g_navDraw = false;    // --nav: draw the arena's NavGrid (where walkers can stand) and each routed enemy's path
+inline bool      g_noNav = false;      // --nonav: enemies steer by feelers alone, as before the routes (to compare)
 inline std::string g_devOverlay;
 // --skip sky,world,boxes,water,fx,viewmodel,bloom,hud: leave render passes out (finding what the GPU spends)
 inline std::string g_devSkip;

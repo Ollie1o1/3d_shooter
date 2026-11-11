@@ -811,6 +811,8 @@ int main(int argc, char* argv[]) {
             app->mode=GameMode::ARENA;app->pending=App::NextState::Game;
         }
         if (arg == "--god")  { g_godMode = true; app->godFromCommandLine = true; }
+        if (arg == "--nav")   g_navDraw = true;
+        if (arg == "--nonav") g_noNav = true;
         if (arg == "--dev")  app->openDevMenu = true;
         if (arg == "--wave" && i + 1 < argc) g_startWave = std::atoi(argv[++i]) - 1;
         if (arg == "--arena" && i + 1 < argc) {

@@ -43,6 +43,7 @@
 #include "game/LabEnding.h"
 #include "bosses/successor/SuccessorHazards.h"
 #include "world/LevelTraining.h"
+#include "world/NavBuild.h"
 #include "game/CombatLessons.h"
 #include "game/WaveDirector.h"
 #include "render/PostProcess.h"
@@ -347,6 +348,7 @@ public:
     std::vector<Enemy> enemies;
     std::vector<SpawnRequest> tickSpawns;
     SpatialGrid        spatialGrid;   // built once; door boxes move only in Y, movers are tested separately
+    ArenaNav    arenaNav;      // the current arena's routes for walkers (world/NavGrid.h); rebuilt when its walls change
 
     // ---- Weapons (see Weapons.h) ----
     std::array<WeaponState, WEAPON_COUNT> weapons;
@@ -1179,6 +1181,7 @@ public:
     std::vector<Enemy> pendingTwins;   // TWINNED copies, spawned once the tick's enemy loop is done
 
     void updateEnemies(float dt);
+    void gatherNavBoxes(std::vector<BoxInstance>& out) const;   // --nav: the grid round you and the routed enemies' paths (Gameplay_Dev.h)
 
     // Returns true if damage was applied (not blocked by i-frames).
     // iframes: how long you're untouchable after (a SERAPH beam's ticks give none)

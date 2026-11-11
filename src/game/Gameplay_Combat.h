@@ -255,8 +255,11 @@ inline void GameplayState::updateEnemies(float dt) {
     w.ramps=level.ramps.data();w.rampCount=(int)level.ramps.size();
     w.reactor    = level.reactorPos;              // the Warden feeds here
     w.hasReactor = level.hasReactor;
-    w.voidUnder  = ar.shift == ArenaShift::DRIFT || (cold()&&director.arena==5) ||
-        (laboratory()&&(director.arena==5||director.arena==7||director.arena==8||director.arena==9));   // walkers keep to the actual decks over the Void
+    w.voidUnder  = arenaVoidUnder(level, director.arena);   // walkers keep to the actual decks over the Void (world/NavBuild.h)
+    w.groundTracked = arenaGroundTracked(level, director.arena);
+    arenaNav.update(level, director.arena, &spatialGrid, player.position, dt);
+    const NavGrid* const routes = g_noNav ? nullptr : arenaNav.get();
+    w.nav = routes;
     w.hasLair    = level.hasLair;                   // the Maw: where the Leviathan lives and breaches
     w.lair       = level.lair; w.lairFloor = level.lairFloor;
     w.wells      = level.wells.data(); w.wellCount = (int)level.wells.size();
@@ -321,6 +324,7 @@ inline void GameplayState::updateEnemies(float dt) {
         bool beamLocked=e.labLocked;
         const bool lured = recallLures(e);   // RECALL's statue, fresh: it goes for that instead of you
         if (lured) { w.playerFeet = recall.feet; w.playerEye = recall.feet + glm::vec3{0.f, 1.7f, 0.f}; w.playerVel = glm::vec3{0.f}; }
+        w.nav = lured ? nullptr : routes;   // (the routes lead to you, not to the statue)
         w.hasMoveVia=cold()&&director.arena==5&&e.type==EnemyType::THAWLING &&
             coldcombat::chillerRoute(e.position,w.playerFeet,w.moveVia);
         e.update(dt, w);

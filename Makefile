@@ -109,6 +109,7 @@ test: $(TESTS) $(HEADERS)
 	$(MAKE) test-next
 	$(MAKE) test-iteration
 	$(MAKE) test-combat
+	$(MAKE) test-nav
 
 .PHONY: test-combat test-combat-runtime
 test-combat: tests/test_combat_pass.cpp $(HEADERS)
@@ -329,6 +330,13 @@ test-plain: tests/test_plain.cpp $(HEADERS)
 
 tools/music_preview: tools/music_preview.cpp src/audio/MusicSynth.h src/audio/CombatScore.h
 	$(CXX) $(CXXFLAGS) tools/music_preview.cpp -o tools/music_preview $(STDLIB)
+
+# Routes: every walker reaches the player in every arena, nobody wedges, the grid stays in budget (headless).
+.PHONY: test-nav
+test-nav: tests/test_nav.cpp $(HEADERS)
+	mkdir -p build
+	$(CXX) $(CXXFLAGS) tests/test_nav.cpp -o build/test_nav $(STDLIB)
+	./build/test_nav
 
 # Boss joint motion, landing contact and animated effect attachments (headless).
 .PHONY: test-boss-animation

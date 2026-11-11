@@ -77,6 +77,7 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
     float t = gameClock;
 
     gatherShiftBoxes(out);
+    if (g_navDraw) gatherNavBoxes(out);
     if(encounterPreview && g_practice)for(const auto& wave:encounterDraft.waves)for(const auto& e:wave)for(auto p:e.at) {
         const auto& s=statsOf(e.type);const glm::vec3 glow{.2f,.9f,1.1f};
         for(float side:{-1.f,1.f}) {

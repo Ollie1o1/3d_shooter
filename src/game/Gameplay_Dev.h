@@ -175,3 +175,37 @@ inline void GameplayState::devClearWave() {
         }
     ui.feed("DEV: WAVE CLEARED", {0.3f, 1.f, 0.8f});
 }
+
+// --nav: the arena's NavGrid within 30 m of you. A tile per node, green where the way to you is short
+// through blue where it is long, dull red where a walker of the plainest kind has no way at all; a
+// darker tile hugs a wall or an edge. Each enemy walking a route trails amber pips along it.
+inline void GameplayState::gatherNavBoxes(std::vector<BoxInstance>& out) const {
+    using namespace rig;
+    const NavGrid* G = arenaNav.get();
+    if (!G) return;
+    const NavAgent plain{};
+    const glm::vec3 eye = player.position;
+    const int span = (int)(30.f / G->cell);
+    const int i0 = G->ci(eye.x), k0 = G->ck(eye.z);
+    for (int i = std::max(0, i0 - span); i <= std::min(G->nx - 1, i0 + span); ++i)
+        for (int k = std::max(0, k0 - span); k <= std::min(G->nz - 1, k0 + span); ++k) {
+            const int c = i * G->nz + k;
+            for (int n = G->colFirst[c]; n < G->colFirst[c] + G->colCount[c]; ++n) {
+                const NavGrid::Node& N = G->nodes[n];
+                const float d = G->distanceFrom(plain, n);
+                glm::vec3 col = d > 1e8f ? glm::vec3{0.5f, 0.1f, 0.1f} : glm::mix(glm::vec3{0.15f, 0.9f, 0.3f}, glm::vec3{0.15f, 0.3f, 1.f}, glm::clamp(d / 60.f, 0.f, 1.f));
+                if (!(N.flags & NavGrid::OPEN)) col *= 0.55f;
+                push(out, T(G->at(n) + glm::vec3{0.f, 0.04f, 0.f}) * S({G->cell * 0.42f, 0.03f, G->cell * 0.42f}), col * 0.3f, col * 0.9f);
+            }
+        }
+    for (const Enemy& e : enemies) {
+        if (!e.alive || !e.navRouted) continue;
+        NavAgent ag; ag.wide = e.radius() > 0.62f; ag.tall = e.height() > 2.3f; ag.variant = e.uid % NavGrid::VARIANTS;
+        ag.drops = !arenaVoidUnder(level, director.arena) && (e.type == EnemyType::RIPPER || e.type == EnemyType::MITE);
+        int n = G->nodeAt(e.position);
+        for (int s = 0; s < 60 && n >= 0; ++s) {
+            push(out, T(G->at(n) + glm::vec3{0.f, 0.25f, 0.f}) * S({0.16f, 0.16f, 0.16f}), {0.4f, 0.3f, 0.05f}, {1.6f, 1.1f, 0.2f});
+            n = G->nextFrom(ag, n);
+        }
+    }
+}
