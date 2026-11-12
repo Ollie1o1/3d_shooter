@@ -25,6 +25,13 @@ constexpr float PUSH_REACH = 2.6f;     // how close to its push spot a HERDER mu
 }
 
 inline void Enemy::thinkStray(float dt, const EnemyWorld& w, bool resolve) {
+    // One in a few doesn't run at all: it stops where it is and turns to face the flash
+    if (ringFaceSet && telegraphTimer <= 0.f && dashTimer <= 0.f && glm::length(flatTo(w.playerFeet)) > 3.6f) {
+        velocity.x = velocity.z = 0.f;
+        turnToward(ringFace, dt, 2.f);
+        attackTimer = std::max(attackTimer, 0.3f);
+        return;
+    }
     // Posts lit: it runs for shelter, unless you are right there to be fought
     if (ringSeekSet && telegraphTimer <= 0.f && dashTimer <= 0.f) {
         glm::vec3 to = flatTo(ringSeek);

@@ -18,8 +18,9 @@ inline void GameplayState::ringFoes(float dt) {
     for (auto& e : enemies) {
         if (!e.alive) continue;
         if (e.type == EnemyType::STRAY) {
-            e.ringSeekSet = false;
+            e.ringSeekSet = false; e.ringFaceSet = false;
             if (!lit) continue;
+            if (e.uid % 4 == 1) { e.ringFace = sweep.toSource(e.position); e.ringFaceSet = true; continue; }   // it won't run (13.6)
             float best = 60.f;
             for (const SweepShelter& s : sweepShelters) {
                 if (!sweep.shelterLit(s)) continue;

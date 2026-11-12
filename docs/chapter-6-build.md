@@ -190,9 +190,21 @@ Changed (small hooks; search for `ring()`, `holdfast`, `sweep`):
   400 m it was 100M cells, over the loader's 64M cap ("a broken atlas").
   Rebake after changing `buildRing()`.
 
-Still not done from step 3: Strays thrown off at a distance (13.6's last
-point), the floor tick/zero-cut polish, capsule knocking (13.1), a proper
-air-hiss sound for the hull (it uses `barrier` for now).
+- **The swept, thrown** (13.6): an enemy the sweep kills leaves a tumbling
+  silhouette (`sweptBodies`, drawn in `gatherSweep`) that flies down the
+  sweep and up, ~250 m in 2 s, to a glint that keeps about 0.6 degrees. One
+  STRAY in four (`uid % 4 == 1`) doesn't run for a post: it stops and turns to
+  face the flash (`Enemy::ringFace`).
+- **You hear what you touch** (13.1, `ringTouch`): standing on a capsule
+  (`LevelData::knockWalls`: the Landing's reachable capsules and the reef's
+  stacks), two slow knocks from inside every 3-6 s; standing pressed to a reef
+  wall (`creakWalls`), `ab_creak`. Both close enough to pass the vacuum.
+- **The zero**: a wall going over you in shelter ducks the mix 30 dB for
+  0.4 s, then the ice patters (`skim`, unducked, delayed).
+
+Still not done from step 3: a real air-hiss for entering the hull (it plays
+`barrier`; there is no hiss sample, and new sfx need a MixTable level), and
+music never ducks at the zero.
 
 ## Shortcuts taken, to be replaced
 

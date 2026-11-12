@@ -300,6 +300,9 @@ struct LevelData {
     // Chapter 6 (LevelRing.h): what counts as shelter from the sweep. A shelter with a `wall` takes
     // that wall's box every tick (a drifting chunk); one with a `mover` (DRIVEN) a HERDER can shove.
     std::vector<SweepShelter> sweepShelters;
+    // Chapter 6, "you hear what you touch" (design 13.1): capsules that knock from inside when you
+    // stand on them, and the reef's walls that creak when you lean on them (walls indices)
+    std::vector<int> knockWalls, creakWalls;
     std::vector<FloorPatch> floors;
     // How this level draws each material (WorldGeometry.h): identity unless a chapter restyles the
     // shared surfaces as its own (restyle()). Looks only: collision and sounds still go by `mat`.

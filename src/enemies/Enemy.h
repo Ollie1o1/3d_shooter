@@ -317,6 +317,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     // Chapter 6 (EnemyRing.h; the game sets these each tick from the sweep, Gameplay_RingFoes.h):
     // a STRAY's lee spot while the posts are lit, a HERDER's loose shelter to shove and where to push from
     glm::vec3 ringSeek{0.f}; bool ringSeekSet = false;
+    glm::vec3 ringFace{0.f}; bool ringFaceSet = false;   // a STRAY that won't run: it stands and faces the flash (13.6)
     glm::vec3 ringPushAt{0.f}; int ringPush = -1;
     float ringCount = 0.f;       // TALLY: counts so far (its drum turns a notch each)
     float kSideT = 0.f, kSideCd = 0.f; glm::vec3 kSideDir{0.f};   // UNIT 24-K: its sidestep dashes

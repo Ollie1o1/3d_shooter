@@ -238,9 +238,11 @@ inline void ringCapsule(LevelBuilder& b, glm::vec3 at, bool up, int quarter, flo
     const float yaw = quarter * 90.f + jitterDeg;
     b.place(up ? "ring_capsule_up" : "ring_capsule", at, yaw);
     if (!solid) return;
-    if (up) b.solid(at.x - 1.f, at.y, at.z - 1.f, at.x + 1.f, at.y + 3.4f, at.z + 1.f);
-    else if (quarter % 2 == 0) b.solid(at.x - 0.95f, at.y - 0.9f, at.z - 2.3f, at.x + 0.95f, at.y + 0.95f, at.z + 2.3f);
-    else b.solid(at.x - 2.3f, at.y - 0.9f, at.z - 0.95f, at.x + 2.3f, at.y + 0.95f, at.z + 0.95f);
+    int w;
+    if (up) w = b.solid(at.x - 1.f, at.y, at.z - 1.f, at.x + 1.f, at.y + 3.4f, at.z + 1.f);
+    else if (quarter % 2 == 0) w = b.solid(at.x - 0.95f, at.y - 0.9f, at.z - 2.3f, at.x + 0.95f, at.y + 0.95f, at.z + 2.3f);
+    else w = b.solid(at.x - 2.3f, at.y - 0.9f, at.z - 0.95f, at.x + 2.3f, at.y + 0.95f, at.z + 0.95f);
+    b.L.knockWalls.push_back(w);   // (someone is still in it)
 }
 
 // =============================================================================
@@ -437,7 +439,7 @@ inline LevelData buildRing() {
         const vec3 c = ring::reefC();
         // The reef's walls: capsules fused in courses, a gap north and south
         auto course = [&](float x0, float x1, float z) {
-            b.solid(x0, 0.f, z - ring::REEF_WALL * 0.5f, x1, ring::REEF_H, z + ring::REEF_WALL * 0.5f);
+            l.creakWalls.push_back(b.solid(x0, 0.f, z - ring::REEF_WALL * 0.5f, x1, ring::REEF_H, z + ring::REEF_WALL * 0.5f));
             for (float x = x0 + 2.3f; x < x1 - 1.f; x += 4.4f)
                 for (int row = 0; row < 3; ++row) {
                     const float k = x * 1.3f + z + row * 7.f;
@@ -448,7 +450,7 @@ inline LevelData buildRing() {
                 }
         };
         auto side = [&](float x, float z0, float z1) {
-            b.solid(x - ring::REEF_WALL * 0.5f, 0.f, z0, x + ring::REEF_WALL * 0.5f, ring::REEF_H, z1);
+            l.creakWalls.push_back(b.solid(x - ring::REEF_WALL * 0.5f, 0.f, z0, x + ring::REEF_WALL * 0.5f, ring::REEF_H, z1));
             for (float z = z0 + 2.3f; z < z1 - 1.f; z += 4.4f)
                 for (int row = 0; row < 3; ++row) {
                     const float k = z * 1.3f + x + row * 7.f;
@@ -470,7 +472,7 @@ inline LevelData buildRing() {
         }
         // The stacks in the courtyard: capsules on end, fused (shelter, each with a post)
         for (const ring::Stack& st : ring::reefStacks()) {
-            b.solid(st.x - st.hx, 0.f, st.z - st.hz, st.x + st.hx, st.h, st.z + st.hz);
+            l.knockWalls.push_back(b.solid(st.x - st.hx, 0.f, st.z - st.hz, st.x + st.hx, st.h, st.z + st.hz));
             for (int k = 0; k < 4; ++k) {
                 const float kk = st.x + st.z + k;
                 ringCapsule(b, {st.x + (k % 2 ? 1.f : -1.f) * st.hx * 0.45f, -0.6f, st.z + (k / 2 ? 1.f : -1.f) * st.hz * 0.4f}, true, k, (ring::hash(kk, 1.f) - 0.5f) * 30.f, false);

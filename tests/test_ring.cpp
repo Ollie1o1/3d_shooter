@@ -286,6 +286,9 @@ int main() {
         for (auto& a : l.arenas) for (auto& p : a.groundSpawns)
             for (auto& w : l.walls) if (!w.dynamic && p.x > w.box.min.x && p.x < w.box.max.x && p.z > w.box.min.z && p.z < w.box.max.z && p.y + 0.5f > w.box.min.y && p.y + 0.5f < w.box.max.y) spawnsClear = false;
         CHECK(spawnsClear, "no enemy spawns inside a wall");
+        bool tagsOk = l.knockWalls.size() > 50 && l.creakWalls.size() == 6;
+        for (int w : l.knockWalls) tagsOk &= w >= 0 && w < (int)l.walls.size() && !l.walls[w].dynamic;
+        CHECK(tagsOk, "what you touch: the Landing's capsules and the stacks knock, the reef's six walls creak");
     }
     {   // ---- the Shepherd's count (13.2) ----
         char line[48];

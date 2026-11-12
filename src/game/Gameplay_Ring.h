@@ -20,7 +20,7 @@ inline bool GameplayState::sweepOn() const { return ring() || g_devSweep > 0; }
 // A fresh start (a new run, a retry): shelters whole, the first sweep soon
 inline void GameplayState::armSweep() {
     sweep.reset(); sweepArmed = true; sweepCount = 0; sweepTickAt = -1; sweepSwept = 0;
-    ringGone = ringShort = 0; ringCountT = -1.f;
+    ringGone = ringShort = 0; ringCountT = -1.f; sweptBodies.clear();
     sweepShelters.clear();
     if (ring()) {
         sweepShelters = level.sweepShelters;
@@ -75,6 +75,8 @@ inline void GameplayState::tickSweep(float dt) {
         SweepSpec s = nextSweep(); s.flashLead = 0.f; s.warning = 6.f; sweep.start(s); ++sweepCount;
     }
     if (ringCountT >= 0.f && (ringCountT -= dt) < 0.f) ringCountT = -1.f;
+    for (auto& b : sweptBodies) b.t += dt;
+    sweptBodies.erase(std::remove_if(sweptBodies.begin(), sweptBodies.end(), [](const SweptBody& b) { return b.t > 5.f; }), sweptBodies.end());
     if (!sweep.active()) return;
     const glm::vec3 dir = sweep.spec.dir;
     auto ev = sweep.update(dt, player.position, sweepShelters);
@@ -105,7 +107,11 @@ inline void GameplayState::tickSweep(float dt) {
         e.knockVel = dir * 34.f + glm::vec3{0.f, 9.f, 0.f};
         fx.spawnBurst(e.position + glm::vec3{0.f, 1.f, 0.f}, SWEEP_ICE, 14, 10.f, 0.6f, 2.f);
         if (!sweep.lethal()) continue;
-        if (e.takeDamage(1e6f)) { onEnemyKilled(e, StyleSource::ENVIRONMENT); ++sweepSwept; }
+        if (e.takeDamage(1e6f)) {
+            onEnemyKilled(e, StyleSource::ENVIRONMENT); ++sweepSwept;
+            if (sweptBodies.size() < 24)
+                sweptBodies.push_back({e.position + glm::vec3{0.f, e.height() * 0.5f, 0.f}, dir, glm::vec3{e.radius() * 1.6f, e.height(), e.radius() * 1.2f}, e.stats().color, 0.f, (float)(e.uid % 7) - 3.f});
+        }
     }
     if (ev.struck) {
         const bool heldFast = holdfast.held() && holdfast.shelter >= 0 && sweepShelters[holdfast.shelter].alive && sweepShelters[holdfast.shelter].holds;
@@ -129,8 +135,9 @@ inline void GameplayState::tickSweep(float dt) {
     }
     if (ev.cleared && !playerDead) {   // it went over: ice pattering down on the shelter
         fx.spawnBurst(player.position + glm::vec3{0.f, 6.f, 0.f} - dir * 3.f, SWEEP_ICE, 60, 7.f, 1.6f, 3.f);
-        audio.play("skim", 128, SoundGroup::WORLD, true);
-        audio.duck(8.f, 0.35f);   // the zero: everything drops away for a beat
+        audio.duck(30.f, 0.4f);   // the zero (13.1): everything drops away for a beat as it goes over...
+        SfxMixer::Opts o; o.group = SoundGroup::WORLD; o.priority = true; o.unducked = true; o.delay = 0.4f;
+        audio.playOpts("skim", o);   // ...then ice pattering down on the shelter
         shake(0.3f, 0.02f);
     }
     if (ev.ended && !playerDead) {
@@ -164,7 +171,7 @@ inline void GameplayState::beginRing() {
     wakeSeen = true;
     if (director.arena >= 2) holdfastFound = true;   // (a checkpoint past I2: it is yours)
     holdfast.reset(); armSweep();
-    ringLevelSeen = -1; ringScriptT = -1.f; ringAir = -1;
+    ringLevelSeen = -1; ringScriptT = -1.f; ringAir = -1; ringKnockOn = -1; ringKnockT = ringCreakT = 0.f;
     if (g_devRingTest) ringLevelSeen = 99;
     player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0}; prevCamPos = player.camera.position;
 }
@@ -186,6 +193,7 @@ inline void GameplayState::updateRing(float dt) {
             audio.setSpace(air ? ReverbSpace::METAL : ReverbSpace::OPEN);
         }
     }
+    ringTouch(dt);
     const glm::vec3 p = player.position;
     const int at = level.arenaAt(p);
     if (at > director.arena && !director.fighting() && director.phase != WaveDirector::Phase::INTRO) director.approach(at);
@@ -240,6 +248,41 @@ inline void GameplayState::updateRing(float dt) {
     ringFoes(dt);
 }
 
+// You hear what you touch (13.1): out here nothing else carries. Stand on a capsule and, now and
+// then, something inside knocks twice; lean on the reef and it creaks.
+inline void GameplayState::ringTouch(float dt) {
+    if (playerDead || ringQuiet()) return;
+    const int on = player.onGround ? player.groundWall : -1;
+    const bool capsule = on >= 0 && std::find(level.knockWalls.begin(), level.knockWalls.end(), on) != level.knockWalls.end();
+    if (!capsule) ringKnockOn = -1;
+    else {
+        if (on != ringKnockOn) { ringKnockOn = on; ringKnockT = cosmetic::range(0.7f, 1.4f); }   // (a moment after you land on it)
+        if ((ringKnockT -= dt) <= 0.f) {
+            ringKnockT = cosmetic::range(3.f, 6.f);
+            const glm::vec3 at = player.position - glm::vec3{0.f, 0.6f, 0.f};
+            for (int k = 0; k < 2; ++k) {
+                SfxMixer::Opts o; o.group = SoundGroup::WORLD; o.positional = true; o.pos = at; o.volume = 0.5f;
+                o.pitch = 0.55f; o.delay = k * 0.22f; o.role = SoundRole::ACTION;
+                audio.playOpts("impact_metal", o);
+            }
+        }
+    }
+    // Leaning on the reef: pressed against one of its walls, not just passing
+    if ((ringCreakT -= dt) > 0.f) return;
+    const glm::vec3 p = player.position;
+    for (int w : level.creakWalls) {
+        const AABB& b = level.walls[w].box;
+        const float dx = std::max({b.min.x - p.x, 0.f, p.x - b.max.x}), dz = std::max({b.min.z - p.z, 0.f, p.z - b.max.z});
+        if (dx < 0.7f && dz < 0.7f && p.y < b.max.y && p.y + 1.8f > b.min.y && glm::length(glm::vec2{player.velocity.x, player.velocity.z}) < 2.f) {
+            ringCreakT = cosmetic::range(4.f, 7.f);
+            SfxMixer::Opts o; o.group = SoundGroup::WORLD; o.positional = true; o.pos = p + glm::vec3{0.f, 1.f, 0.f}; o.volume = 0.35f; o.pitch = 0.8f;
+            audio.playOpts("ab_creak", o);
+            return;
+        }
+    }
+    ringCreakT = 0.5f;   // (look again in a moment)
+}
+
 // The posts (lit from the flash until it has passed) and the front
 inline void GameplayState::gatherSweep(std::vector<BoxInstance>& out) {
     using namespace rig;
@@ -252,6 +295,14 @@ inline void GameplayState::gatherSweep(std::vector<BoxInstance>& out) {
         if (lit) push(out, T(s.post + glm::vec3{0.f, 23.f, 0.f}) * S(glm::vec3{0.07f, 40.f, 0.07f}), glm::vec3{0.f}, POST_LIT * 0.6f);   // a line of light you can find from anywhere
         if (!ring() || s.wall >= 0)   // (a post where the level baked none: dev runs, and on what drifts)
             push(out, T(s.post + glm::vec3{0.f, 1.5f, 0.f}) * S(glm::vec3{0.14f, 3.f, 0.14f}), glm::vec3{0.06f}, glm::vec3{0.f});
+    }
+    // The swept: tumbling away down the sweep and up, faster and faster, to a glint
+    for (const SweptBody& b : sweptBodies) {
+        const float d = 24.f * (std::exp(1.2f * b.t) - 1.f);   // ~250 m at 2 s, ~1 km by the end
+        const glm::vec3 at = b.from + b.dir * d + glm::vec3{0.f, 4.f * b.t + d * 0.35f, 0.f};
+        const float a = b.t * (2.f + b.spin);
+        push(out, T(at) * RY(a) * RX(a * 0.7f) * S(b.size), b.color * 0.6f);
+        push(out, T(at) * S(glm::vec3{0.3f + d * 0.01f}), glm::vec3{0.f}, SWEEP_ICE * std::min(3.f, 0.5f + b.t));   // (far off, the glint is what you see: it keeps ~0.6 degrees)
     }
     if (sweep.phase != RingSweep::Phase::INBOUND && sweep.phase != RingSweep::Phase::PASSING) return;
     // The front: a wall of lifted ice, ragged along its top

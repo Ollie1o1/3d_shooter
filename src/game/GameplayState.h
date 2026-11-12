@@ -382,7 +382,11 @@ public:
     float ringCountT = -1.f;
     // The swept death (design 13.6): thrown off the ring, in silence, before the death screen
     float sweptT = -1.f, sweptSkip = 0.f;
-    int   ringAir = -1;   // -1 not yet set, 0 hard vacuum outside, 1 the hull's air
+    int   ringAir = -1;
+    int   ringKnockOn = -1; float ringKnockT = 0.f, ringCreakT = 0.f;   // what you touch (13.1)
+    // The swept, thrown off at a distance (13.6): drawn until they are points against the giant
+    struct SweptBody { glm::vec3 from, dir, size, color; float t = 0.f, spin = 0.f; };
+    std::vector<SweptBody> sweptBodies;   // -1 not yet set, 0 hard vacuum outside, 1 the hull's air
     glm::vec3 sweptFrom{0.f}, sweptDir{0.f, 0.f, 1.f};
     bool sweptFalling() const { return playerDead && sweptT >= 0.f && sweptT < SWEPT_FALL; }
     static constexpr float SWEPT_FALL = 2.2f;
@@ -1354,6 +1358,7 @@ public:
     void gatherSweep(std::vector<BoxInstance>& out);
     void renderSweepCountdown();
     void updateSweptDeath(float dt);
+    void ringTouch(float dt);
     void renderSweptDeath();
     void beginRing();
     float ringShepherdSize() const;
