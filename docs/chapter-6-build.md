@@ -224,9 +224,14 @@ music never ducks at the zero.
 9. ~~The swept death is the normal death~~: built (see above). Enemies are
    still just killed, not thrown into the distance.
 10. **No music of its own.** (Vacuum sound and the count line: done.)
-11. **Not in the menu and not saved.** (HOLDFAST's pickup calls
-    `saveStoryProgress`, which ignores chapter 6.) `StorySave.h` rejects chapter > 5;
-    `MenuState.h` builds chapters 1–5 in two places.
+11. ~~Not in the menu and not saved~~: done (step 4). `6  THE KEPT RING`
+    is on the STORY page (practice and remix moved down to rows 7 and 8; with
+    a Continue slot the nine rows use a smaller title), its five checkpoints
+    are on the DEV page, `StorySave` takes chapter 6 (checkpoints 0..4), and
+    the Cold Store's end card continues to chapter 6 (`nextChapter = 6`; a
+    completed chapter-5 save resumes into the ring). HOLDFAST is not saved:
+    a continue from checkpoint 1 means picking it up on I2 again; from 2 on,
+    `beginRing` hands it over.
 12. **`sweepreach` is straight-line.** Fine on open ice; a level with gaps
     or walls needs a walked check like `tests/test_cold.cpp`'s `Walk`.
 13. **No runtime test.** The design asks for a check in
@@ -244,7 +249,9 @@ music never ducks at the zero.
    leaves at a third of its health. A mini-boss model in the DISPATCHED style.
 3. **Rough edges:** done on `ring-edges` (see "Rough edges done"); merge it
    into `ship` after the user's playtest verdict is in.
-4. **Menu and save** (shortcut 11) and the Chapter 5 -> 6 hand-off.
+4. ~~Menu and save~~: done. Still to do: the bridge cutscene (design
+   section 2: the capsule's flight from the Store to the ring and the
+   impact); for now the Cold Store's end card just loads the Landing.
 5. **Levels 4-8** (the Shadow Band uses `uRingNight`; the Spokes reuse the
    ANCHOR field), then the boss as written.
 

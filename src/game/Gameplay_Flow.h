@@ -225,7 +225,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
 
     if (story() && g_continueStory && resumedStory.load()) {
         resumingStory = true;
-        if (resumedStory.chapter < 4 && resumedStory.completed) {
+        if ((resumedStory.chapter < 4 || resumedStory.chapter == 5) && resumedStory.completed) {   // (5 -> 6: the ring)
             ++resumedStory.chapter; resumedStory.checkpoint = 0;
             resumedStory.owned |= resumedStory.chapter>=3?15:7; resumedStory.grapple = true;
             resumedStory.logs = resumedStory.terminals = 0;

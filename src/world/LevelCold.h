@@ -188,7 +188,7 @@ inline glm::vec3 drum(int k) { float a = 0.785f + k * 1.5708f; return vaultC() +
 inline LevelData buildCold() {
     using glm::vec3;
     LevelData l; LevelBuilder b{l}; auto& s = l.story;
-    s.built = true; s.chapter = 5; s.nextChapter = 0; s.title = "THE COLD STORE"; s.nextName = "TO BE CONTINUED";
+    s.built = true; s.chapter = 5; s.nextChapter = 6; s.title = "THE COLD STORE"; s.nextName = "THE KEPT RING";
     s.startWeapons = 15; s.startGrapple = true; s.bossSection = 99; s.pitSection = -1;
     const vec3 snow{0.86f, 0.9f, 0.96f}, snowBlue{0.66f, 0.75f, 0.86f}, ice{0.42f, 0.58f, 0.72f}, iceDeep{0.16f, 0.26f, 0.38f},
                steel{0.07f, 0.075f, 0.085f}, steelFrost{0.42f, 0.46f, 0.52f}, rime{0.78f, 0.84f, 0.9f},

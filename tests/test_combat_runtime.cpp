@@ -46,7 +46,7 @@ int main() {
         for(const auto& cue:mixTable())app.audio.loadSound(cue.name,std::string("assets/sfx/")+cue.name+".wav");
         app.pending=App::NextState::Menu;app.applyPendingState();
         auto& menu=*static_cast<MenuState*>(app.currentState.get());
-        menu.page=MenuState::STORYPAGE;menu.hasStorySave=false;menu.storySel=6;
+        menu.page=MenuState::STORYPAGE;menu.hasStorySave=false;menu.storySel=7;   // (remix: after the six chapters and practice)
         menu.render();capture("remix-menu");press(menu,SDLK_RETURN);app.applyPendingState();
         auto& g=*static_cast<GameplayState*>(app.currentState.get());g.closeArmory();g.paused=false;
         CHECK(g.combatRemix() && g.director.arena==3 && g_practice && !g.ranked && g.storyOwned==15,

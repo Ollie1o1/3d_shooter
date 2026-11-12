@@ -14,6 +14,7 @@
 #include "world/LevelLab.h"
 #include "world/LevelCold.h"
 #include "world/LevelPlain.h"
+#include "world/LevelRing.h"
 #include "ui/UIBatch.h"
 #include "ui/MenuArt.h"
 #include "ui/TextWrap.h"
@@ -125,14 +126,14 @@ public:
     void openDev() {
         // Build the chapter lists on demand so the regular menu stays quick to open.
         if (countMode(GameMode::STORY) == 0)
-            for (int chapter = 1; chapter <= 5; ++chapter) {
+            for (int chapter = 1; chapter <= 6; ++chapter) {
                 if (chapter == 4) {   // one arena, its fight's checkpoints inside it
                     static const char* C4[9] = {"THE ARRIVAL", "ON ITS BACK / THE TENDER", "ITS SHOULDERS / THE SIEVE", "ITS CROWN / THE CALLER", "THE BROOD IS DEAD",
                                                 "INSIDE / THE CRUCIBLE HEART", "INSIDE / THE BELLOWS LUNGS", "INSIDE / THE SORTING CORE", "THE SUMMIT"};
                     for (int i = 0; i < 9; ++i) devRows.push_back({"STORY", C4[i], GameMode::STORY, i, 0, 4});
                     continue;
                 }
-                LevelData S = chapter == 1 ? buildCradle() : chapter==2?buildWasteland():chapter==3?buildLab():buildCold();
+                LevelData S = chapter == 1 ? buildCradle() : chapter==2?buildWasteland():chapter==3?buildLab():chapter==5?buildCold():buildRing();
                 for (int i = 0; i < (int)S.arenas.size(); ++i)
                     devRows.push_back({"STORY", S.arenas[i].name, GameMode::STORY, i, (int)S.arenas[i].waves.size(), chapter});
             }
@@ -318,10 +319,10 @@ private:
         ui.text("UP/DOWN PICK / ENTER PLAY / ESC BACK",cx,screenH-36,1,{.7f,.7f,.75f,1},true);
     }
 
-    int storyRows() const { return hasStorySave ? 8 : 7; }
-    // A Continue slot adds an eighth row; keep the footer below either layout.
-    float storyRowY(int i) const { return storyRows()>7 ? 145.f+i*60.f : 150.f+i*68.f; }
-    float storyRowH() const { return storyRows()>7 ? 54.f : 62.f; }
+    int storyRows() const { return hasStorySave ? 9 : 8; }
+    // Six chapters, practice and remix; a Continue slot adds a ninth row. Keep the footer below either layout.
+    float storyRowY(int i) const { return storyRows()>8 ? 140.f+i*54.f : 145.f+i*60.f; }
+    float storyRowH() const { return storyRows()>8 ? 48.f : 54.f; }
     int storyAt(int x,int y) const {
         for(int i=0;i<storyRows();++i)if(x>screenW/2-360&&x<screenW/2+360&&y>storyRowY(i)&&y<storyRowY(i)+storyRowH())return i;
         return -1;
@@ -334,8 +335,8 @@ private:
             onStart(GameMode::STORY,o);return;
         }
         int chapter=storySel-(hasStorySave?1:0)+1;
-        if(chapter==6) {o.practice=true;onStart(GameMode::TRAINING,o);return;}
-        if(chapter==7) {o.practice=o.combatRemix=true;o.storyChapter=3;o.arena=3;onStart(GameMode::STORY,o);return;}
+        if(chapter==7) {o.practice=true;onStart(GameMode::TRAINING,o);return;}
+        if(chapter==8) {o.practice=o.combatRemix=true;o.storyChapter=3;o.arena=3;onStart(GameMode::STORY,o);return;}
         o.storyChapter=chapter;onStart(GameMode::STORY,o);
     }
     void handleStoryEvent(const SDL_Event& e) {
@@ -417,20 +418,21 @@ private:
     void renderStory() {
         ui.text("STORY",screenW/2,55,5,{.35f,.85f,1.f,1},true);
         ui.text("UNIT 24 / PURPOSE: UNKNOWN",screenW/2,115,2,{.75f,.8f,.82f,1},true);
-        const char* names[]={"1  THE CRADLE","2  THE DEAD SPAN","3  THE LIVING WARD","4  THE BLOOD MOON PLAIN","5  THE COLD STORE","COMBAT PRACTICE","COMBAT REMIX"};
-        const char* descriptions[]={"NEW RUN / WAKE ON THE REJECT LINE.","NEW RUN / CROSS THE ASH WASTELAND.","NEW RUN / DESCEND INTO THE LABORATORY.","NEW RUN / THE GLEANER AND ITS BROOD.","NEW RUN / THE ICE SHELF, THE STORE AND WHAT KEEPS IT.","REPEATABLE LESSONS / SELECT ENEMIES / TRY YOUR UPGRADES","SURGICAL OBSERVATION / ALL TOOLS / NO SAVES OR RECORDS"};
+        const char* names[]={"1  THE CRADLE","2  THE DEAD SPAN","3  THE LIVING WARD","4  THE BLOOD MOON PLAIN","5  THE COLD STORE","6  THE KEPT RING","COMBAT PRACTICE","COMBAT REMIX"};
+        const char* descriptions[]={"NEW RUN / WAKE ON THE REJECT LINE.","NEW RUN / CROSS THE ASH WASTELAND.","NEW RUN / DESCEND INTO THE LABORATORY.","NEW RUN / THE GLEANER AND ITS BROOD.","NEW RUN / THE ICE SHELF, THE STORE AND WHAT KEEPS IT.","NEW RUN / CROSS THE RING. HIDE FROM THE SWEEP.","REPEATABLE LESSONS / SELECT ENEMIES / TRY YOUR UPGRADES","SURGICAL OBSERVATION / ALL TOOLS / NO SAVES OR RECORDS"};
         for(int i=0;i<storyRows();++i) {
             float x=screenW/2-360.f,y=storyRowY(i),h=storyRowH();
             ui.rect(x,y,720,h,i==storySel?glm::vec4{.1f,.17f,.2f,.95f}:glm::vec4{.06f,.07f,.09f,.9f});
             if(i==storySel)ui.rect(x,y,4,h,{.35f,.85f,1,1});
             bool resume=hasStorySave&&i==0;
             int index=i-(hasStorySave?1:0);
-            int chapter=storySave.completed&&storySave.chapter<5?storySave.chapter+1:storySave.chapter;
-            const char* chapterNames[]={"THE CRADLE","THE DEAD SPAN","THE LIVING WARD","THE BLOOD MOON PLAIN","THE COLD STORE"};
-            std::string name=resume?std::string(storySave.completed&&storySave.chapter==5?"REVISIT / ":"CONTINUE / ")+chapterNames[std::clamp(chapter,1,5)-1]:names[index];
-            std::string desc=resume?(storySave.completed&&storySave.chapter<5?"NEXT CHAPTER / EQUIPMENT AND UPGRADES CARRY FORWARD":"CHECKPOINT "+std::to_string(storySave.checkpoint+1)+" / EQUIPMENT, UPGRADES AND RECORDS SAVED"):descriptions[index];
-            ui.text(name.c_str(),x+24,y+h*.2f,3,{.85f,.9f,.92f,1});
-            ui.text(desc.c_str(),x+24,y+h-20,1,{.65f,.72f,.75f,1});
+            int chapter=storySave.completed&&storySave.chapter<6?storySave.chapter+1:storySave.chapter;
+            const char* chapterNames[]={"THE CRADLE","THE DEAD SPAN","THE LIVING WARD","THE BLOOD MOON PLAIN","THE COLD STORE","THE KEPT RING"};
+            std::string name=resume?std::string(storySave.completed&&storySave.chapter==6?"REVISIT / ":"CONTINUE / ")+chapterNames[std::clamp(chapter,1,6)-1]:names[index];
+            std::string desc=resume?(storySave.completed&&storySave.chapter<6?"NEXT CHAPTER / EQUIPMENT AND UPGRADES CARRY FORWARD":"CHECKPOINT "+std::to_string(storySave.checkpoint+1)+" / EQUIPMENT, UPGRADES AND RECORDS SAVED"):descriptions[index];
+            const bool tight=storyRows()>8;   // (nine rows: a smaller title, so it clears its line)
+            ui.text(name.c_str(),x+24,tight?y+7:y+h*.2f,tight?2:3,{.85f,.9f,.92f,1});
+            ui.text(desc.c_str(),x+24,y+h-(tight?15:20),1,{.65f,.72f,.75f,1});
             if(!resume&&index<storyrank::CHAPTERS&&records.storyRank[index]>0) {   // its best: rank and time
                 const float t=records.storyTime[index];
                 char best[48];std::snprintf(best,sizeof(best),"%d:%02d",(int)t/60,(int)t%60);
@@ -988,7 +990,7 @@ private:
         if (records.bestEndless > 0) endSub += "   BEST " + std::to_string(records.bestEndless);
         Item items[NUM_ITEMS] = {
             {"ARENA", arenaSub.c_str()},
-            {"STORY", "FIVE CHAPTERS / ONE UNIT"},
+            {"STORY", "SIX CHAPTERS / ONE UNIT"},
             {"FAST",  fastSub.c_str()},
             {"ENDLESS", endSub.c_str()},
             {"BOSS", bossSub.c_str()},

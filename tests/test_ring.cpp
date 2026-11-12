@@ -5,6 +5,8 @@
 #include "world/RingSweep.h"
 #include "player/Holdfast.h"
 #include "world/LevelRing.h"
+#include "world/LevelCold.h"
+#include "game/StorySave.h"
 #include <cstdio>
 #include <string>
 static int failures = 0;
@@ -289,6 +291,15 @@ int main() {
         bool tagsOk = l.knockWalls.size() > 50 && l.creakWalls.size() == 6;
         for (int w : l.knockWalls) tagsOk &= w >= 0 && w < (int)l.walls.size() && !l.walls[w].dynamic;
         CHECK(tagsOk, "what you touch: the Landing's capsules and the stacks knock, the reef's six walls creak");
+    }
+    {   // ---- the menu and the save (step 4): chapter 6 is a chapter ----
+        StorySave a; a.chapter = 6; a.checkpoint = 4; a.owned = 15; a.grapple = true;
+        StorySave b; const bool ok = b.parse(a.text());
+        CHECK(ok && b.chapter == 6 && b.checkpoint == 4, "a chapter 6 save, at the hull, loads");
+        StorySave c = a; c.checkpoint = 5; StorySave d;
+        CHECK(!d.parse(c.text()), "a chapter 6 save past its last checkpoint does not");
+        CHECK((int)buildRing().arenas.size() == 5, "chapter 6 has five checkpoints (0..4), as the save allows");
+        CHECK(buildCold().story.nextChapter == 6, "the Cold Store's end card goes on to the ring");
     }
     {   // ---- the Shepherd's count (13.2) ----
         char line[48];
