@@ -62,6 +62,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
     if (story() && !storyArmed) { h.noWeapons = true; h.hideCrosshair = true; }
     if (story()) { for (int w = 0; w < WEAPON_COUNT; ++w) h.weapons[w].owned = storyOwns(w); if (!h.splinter) h.grenades = h.grenadeMax = 0; }
     if (!playerDead && !victory) ui.render(styleSystem, h);
+    renderSweepCountdown();
     if (story()) renderStoryOverlay(proj * view);   // a gun's waypoint and prompt, a wreck's log
 
     const Arena& ar = level.arenas[director.arena];
@@ -112,6 +113,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
                 if(here==1&&director.arena==1&&director.phase==WaveDirector::Phase::CLEARED)what="THE DOCK IS OPEN";
                 if(here==4)what=coldRecall?"THE BACK DOOR IS OPEN":"TAKE WHAT 24-A IS HOLDING";
             }
+            else if(ring()) what=sweep.active()?"GET BEHIND A LIT POST":"CROSS THE RING / SHELTER WHEN THE POSTS LIGHT";
             else if(here==0)what="SALVAGE BAY / FOLLOW THE AMBER LIGHTS DOWN";
             else if (here == level.story.pitSection && !storyOwns(0)) what = "TAKE THE REVOLVER / UNIT 01 UNDER THE WORK LIGHT";
             else if (here == level.story.pitSection) what = "CLIMB OUT";

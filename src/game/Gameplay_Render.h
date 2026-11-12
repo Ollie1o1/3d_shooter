@@ -95,6 +95,8 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
     gatherSuccessor(out);
     if (splinterOwned()) gatherSplinters(out);
     if (recallOwned()) gatherRecall(out);
+    if (holdfastOwned()) gatherHoldfast(out);
+    gatherSweep(out);
     if(laboratory())gatherLabDressing(out);
 
     // HOLD: a ring of light on the ground; the lit arc is how far it's held.
@@ -515,6 +517,7 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
 
     // Moving platforms: a slab with glowing edges and a grapple ring under it
     for (auto& m : level.movers) {
+        if (m.look == 1) continue;   // (Chapter 6's drifting ice: gatherRing)
         AABB b = level.walls[m.wall].box;
         b.min -= m.delta * (1.f - renderAlpha); b.max -= m.delta * (1.f - renderAlpha);
         glm::vec3 c = (b.min + b.max) * 0.5f, sz = b.max - b.min;
@@ -830,6 +833,10 @@ inline void GameplayState::render() {
         skyboxShader.setFloat("uRealmFade",realmFade);
         skyboxShader.setFloat("uPlain", plain() ? 1.f : 0.f);
         skyboxShader.setFloat("uCold", cold() ? 1.f : 0.f);
+        skyboxShader.setFloat("uRing", ring() ? 1.f : 0.f);   // Chapter 6: the giant on the horizon, the Shepherd on the line (Gameplay_Ring.h)
+        skyboxShader.setVec4("uShepherd", ring() ? glm::vec4{ring::shepherdDir(), ringShepherdSize()} : glm::vec4{0.f, 0.f, -1.f, 0.f});
+        skyboxShader.setFloat("uRingFlash", ring() ? ringFlash() : 0.f);
+        skyboxShader.setFloat("uRingNight", ring() ? ringNight() : 0.f);
         skyboxShader.setFloat("uMoonLid", plain() ? plainMoonLid() : 0.f);
         skyboxShader.setFloat("uFlash", plain() ? plainFlash() : 0.f);
         skyboxShader.setVec3("uFlashDir", g_devOverlay == "plainflash" ? glm::normalize(renderCam.forward() + glm::vec3{0.f, 0.3f, 0.f}) : plainFlashDir);

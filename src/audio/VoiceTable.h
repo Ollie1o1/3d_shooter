@@ -18,7 +18,8 @@ inline const char* voiceKey(EnemyType t) {
                               "sovereign", "shieldbearer", "conduit", "conductor", "seraph", "anchor", "penitent",
                               "leviathan", "absolute",
                               "courier", "bulwark", "cantor", "harrier", "plumb", "foreman", "pacemaker", "sorter", "ballast", "patient", "grafted", "suspended", "phased", "successor",
-                              "thawling", "picker", "clerk", "unit24k", "restorer", "restore_point", "storage_drum"};
+                              "thawling", "picker", "clerk", "unit24k", "restorer", "restore_point", "storage_drum",
+                              "stray", "herder", "tally", "porter"};
     static_assert(sizeof(K) / sizeof(K[0]) == (size_t)EnemyType::COUNT, "a voice key per enemy type");
     return (int)t < (int)EnemyType::COUNT ? K[(int)t] : "any";
 }
@@ -29,7 +30,7 @@ inline const char* attackKey(AttackKind k) {
         case AttackKind::BALL_WINCH:return "winch";case AttackKind::BALL_RIP:return "road_tear";case AttackKind::BALL_SWEEP:return "blade_sweep";
         case AttackKind::BALL_GRADE: return "grade"; case AttackKind::BALL_GUST: return "crosswind";
         case AttackKind::RS_ROLLBACK:return "rollback";case AttackKind::RS_SNAPSHOT:return "snapshot";case AttackKind::RS_TONG:return "tongs";case AttackKind::RS_FREEZE:return "flash_freeze";case AttackKind::RS_SHELVE:return "shelving";
-        case AttackKind::LAB_LUNGE:return "release";case AttackKind::LAB_PRESS:return "press";case AttackKind::LAB_BEAM:return "observe";case AttackKind::LAB_CROSS:return "crossing";case AttackKind::LAB_SWIPE:return "claw";
+        case AttackKind::LAB_LUNGE:return "release";case AttackKind::LAB_PRESS:return "press";case AttackKind::LAB_BEAM:return "observe";case AttackKind::LAB_CROSS:return "crossing";case AttackKind::LAB_SWIPE:return "claw";case AttackKind::RING_RAM:return "ram";
         case AttackKind::SU_INCISION:return "incision";case AttackKind::SU_THRUST:return "incision_thrust";case AttackKind::SU_VECTOR:return "vector";case AttackKind::SU_SUTURE:return "suture";case AttackKind::SU_TRANSPOSE:return "transpose";case AttackKind::SU_RECALL:return "recall";case AttackKind::SU_PERFUSION:return "perfusion";case AttackKind::SU_REAP:return "reap";case AttackKind::SU_BREAKER:return "breaker";case AttackKind::SU_LATTICE:return "lattice";case AttackKind::SU_CASCADE:return "cascade";case AttackKind::SU_SEVER:return "sever";
         case AttackKind::BALL_ANCHOR: return "weight"; case AttackKind::BALL_THROW: return "ballast";
         case AttackKind::SORT_GRAB: return "grab"; case AttackKind::SORT_STAMP: return "stamp";
@@ -85,6 +86,7 @@ inline std::vector<AttackKind> attacksOf(EnemyType t) {
     switch (t) {
         case EnemyType::THAWLING:return {A::LAB_SWIPE,A::LAB_LUNGE};case EnemyType::PICKER:return {A::SORT_GRAB};case EnemyType::CLERK:return {};case EnemyType::UNIT24K:return {A::BURST,A::SHOT,A::DASH};
         case EnemyType::RESTORER:return {A::RS_ROLLBACK,A::RS_SNAPSHOT,A::RS_TONG,A::RS_FREEZE,A::RS_SHELVE};case EnemyType::RS_POINT:case EnemyType::RS_DRUM:return {};
+        case EnemyType::STRAY:return {A::LAB_SWIPE,A::LAB_LUNGE};case EnemyType::HERDER:return {A::RING_RAM};case EnemyType::TALLY:return {};case EnemyType::PORTER:return {A::SLAM,A::LOB};
         case EnemyType::PATIENT:return {A::LAB_LUNGE,A::LAB_SWIPE};case EnemyType::GRAFTED:return {A::LAB_PRESS,A::VOLLEY};case EnemyType::SUSPENDED:return {A::LAB_BEAM};case EnemyType::PHASED:return {A::LAB_CROSS,A::LAB_LUNGE,A::LAB_SWIPE};
         case EnemyType::SUCCESSOR:return {A::SU_INCISION,A::SU_THRUST,A::SU_VECTOR,A::SU_SUTURE,A::SU_TRANSPOSE,A::SU_RECALL,A::SU_PERFUSION,A::SU_REAP,A::SU_BREAKER,A::SU_LATTICE,A::SU_CASCADE,A::SU_SEVER};
         case EnemyType::BALLAST: return {A::BALL_GRADE,A::BALL_GUST,A::BALL_ANCHOR,A::BALL_THROW,A::BALL_WINCH,A::BALL_RIP,A::BALL_SWEEP};
@@ -136,7 +138,8 @@ inline bool hasRelease(AttackKind k) {
 inline float moveCadence(EnemyType t) {
     static const float C[] = {2.2f, 7.f, 1.5f, 3.f, 1.4f, 9.f, 1.2f, 1.f, 2.4f, 1.8f, 0.f, 2.f, 1.6f, 1.f, 0.7f, 0.f, 3.f,
                               6.f, 1.1f, 1.2f, 2.2f, 0.f, 1.5f, 3.f, 0.f, 1.4f, 3.2f, 1.5f, 0.f, 2.6f, 3.8f,
-                              2.4f, 0.f, 0.f, 3.4f, 0.9f, 0.f, 0.f};   // THAWLING (its crawl and its steps), PICKER, CLERK, UNIT 24-K, THE RESTORER (its stilts), its points and drums
+                              2.4f, 0.f, 0.f, 3.4f, 0.9f, 0.f, 0.f,
+                              2.6f, 0.f, 0.f, 1.3f};   // THAWLING (its crawl and its steps), PICKER, CLERK, UNIT 24-K, THE RESTORER (its stilts), its points and drums
     static_assert(sizeof(C) / sizeof(C[0]) == (size_t)EnemyType::COUNT, "a cadence per enemy type");
     return C[(int)t];
 }
@@ -145,7 +148,7 @@ inline float moveCadence(EnemyType t) {
 inline float tellDur(EnemyType t, AttackKind a) {
     switch (a) {
         case AttackKind::RS_ROLLBACK:return 2.f;case AttackKind::RS_SNAPSHOT:return 1.1f;case AttackKind::RS_TONG:return .7f;case AttackKind::RS_FREEZE:return 1.4f;case AttackKind::RS_SHELVE:return 1.1f;
-        case AttackKind::LAB_LUNGE:return .7f;case AttackKind::LAB_PRESS:return .95f;case AttackKind::LAB_BEAM:return 1.05f;case AttackKind::LAB_CROSS:return .8f;case AttackKind::LAB_SWIPE:return .5f;
+        case AttackKind::LAB_LUNGE:return .7f;case AttackKind::LAB_PRESS:return .95f;case AttackKind::LAB_BEAM:return 1.05f;case AttackKind::LAB_CROSS:return .8f;case AttackKind::LAB_SWIPE:return .5f;case AttackKind::RING_RAM:return .8f;
         case AttackKind::SU_INCISION:return .64f;case AttackKind::SU_THRUST:return .46f;case AttackKind::SU_VECTOR:return .8f;
         case AttackKind::SU_SUTURE:return .95f;case AttackKind::SU_TRANSPOSE:return .48f;case AttackKind::SU_RECALL:return .85f;case AttackKind::SU_PERFUSION:return .9f;case AttackKind::SU_REAP:return .8f;case AttackKind::SU_BREAKER:return .85f;case AttackKind::SU_LATTICE:return .8f;case AttackKind::SU_CASCADE:return .7f;case AttackKind::SU_SEVER:return .62f;
         case AttackKind::SORT_GRAB: case AttackKind::SORT_STAMP: case AttackKind::SORT_SCAN: case AttackKind::SORT_THROW: return .35f;

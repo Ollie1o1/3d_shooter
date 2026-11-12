@@ -120,6 +120,7 @@ inline void GameplayState::beginStory() {
     if(laboratory()) {beginLab();return;}
     if(plain()) {beginPlain();return;}
     if(cold()) {beginCold();return;}
+    if(ring()) {beginRing();return;}
     if(wasteland()) {beginWasteland();return;}
     // Bodies on the belts, spaced out down their length; the one ahead of you on yours timed to go over the lip
     // just after you sit up (W_TIP), and none close behind you
@@ -235,6 +236,7 @@ inline void GameplayState::updateStory(float dt) {
     if(laboratory()) {updateLab(dt);return;}
     if(plain()) {updatePlain(dt);return;}
     if(cold()) {updateCold(dt);return;}
+    if(ring()) {updateRing(dt);return;}
     if(wasteland()) {updateWasteland(dt);return;}
 
     // ---- the wake-up ----
@@ -466,7 +468,8 @@ inline void GameplayState::gatherStoryBoxes(std::vector<BoxInstance>& out) {
     const auto& SL = level.story;
     using glm::vec3; using glm::mat4;
     if (!SL.built) return;
-    if (cold()) { gatherCold(out); return; }   // (the shelf: no factory, no bodies yet)
+    if (cold()) { gatherCold(out); return; }
+    if (ring()) { gatherRing(out); return; }   // (Chapter 6: the chunks; its posts and the front are gatherSweep)   // (the shelf: no factory, no bodies yet)
     if (plain()) gatherPlain(out);   // (the plain has no factory: its meteors, then the bodies on its heaps below)
     else gatherStoryFactory(out);
     const gunkit::GunModel* M = story::bodyModel();

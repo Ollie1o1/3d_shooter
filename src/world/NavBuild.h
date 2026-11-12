@@ -20,13 +20,14 @@ inline bool arenaVoidUnder(const LevelData& L, int a) {
     if (a < 0 || a >= (int)L.arenas.size()) return false;
     if (!L.story.built) return false;
     if (L.story.chapter == 5) return a == 5;
+    if (L.story.chapter == 6) return a == 1 || a == 2;   // the Drift: islands over nothing
     if (L.story.chapter == 3) return a == 5 || a == 7 || a == 8 || a == 9;
     return false;
 }
 // Where an enemy's floor is whatever is really under it (LevelData::enemyFloor), not the arena's hard floor
 inline bool arenaGroundTracked(const LevelData& L, int a) {
     if (a < 0 || a >= (int)L.arenas.size()) return false;
-    if (L.story.built && (L.story.chapter == 3 || L.story.chapter == 5)) return true;
+    if (L.story.built && (L.story.chapter == 3 || L.story.chapter == 5 || L.story.chapter == 6)) return true;
     return L.arenas[a].shift == ArenaShift::DESCENT;
 }
 

@@ -270,6 +270,7 @@ inline void GameplayState::handleEvent(const SDL_Event& e) {
     if (key == SDLK_5) drawSword();
     if (kb.pressed(Act::GRENADE, e)) pendingGrenade = true;
     if (kb.pressed(Act::RECALL, e)) pendingRecall = true;
+    if (kb.pressed(Act::HOLDFAST, e)) pendingHoldfast = true;
     if (kb.pressed(Act::INSPECT, e)) inspect();
     if (e.type == SDL_MOUSEMOTION && !g_devNoMouse) {
         float dx = (float)e.motion.xrel, dy = (float)e.motion.yrel;

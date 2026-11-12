@@ -802,9 +802,10 @@ int main(int argc, char* argv[]) {
         if(arg=="--verify-story") {app->verifyStory=true;g_storyChapter=1;app->mode=GameMode::STORY;app->pending=App::NextState::Game;g_fixedDt=1.0/30;g_devNoMouse=true;g_godMode=true;}
         if(arg=="--story2") {g_storyChapter=2;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}
         if(arg=="--story3") {g_storyChapter=3;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}
+        if(arg=="--story6") {g_storyChapter=6;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}   // Chapter 6: THE KEPT RING
         if(arg=="--story5") {g_storyChapter=5;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}   // Chapter 5: THE COLD STORE
         if(arg=="--story4") {g_storyChapter=4;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}   // Chapter 4: THE BLOOD MOON PLAIN (in progress)
-        if(arg=="--chapter" && i+1<argc)g_storyChapter=std::clamp(std::atoi(argv[++i]),1,5);
+        if(arg=="--chapter" && i+1<argc)g_storyChapter=std::clamp(std::atoi(argv[++i]),1,6);
         if (arg == "--boss" && i + 1 < argc) {   // --boss N: BOSS N (1 the Warden .. 6 MORNINGSTAR), on its own
             g_bossRun = std::clamp(std::atoi(argv[++i]) - 1, 0, BOSS_COUNT - 1);
             g_storyChapter = bossEntry(g_bossRun).chapter;
@@ -832,6 +833,12 @@ int main(int argc, char* argv[]) {
         }
         if (arg == "--weapon" && i + 1 < argc) g_devWeapon = std::atoi(argv[++i]) - 1;
         if (arg == "--aim") g_devAim = true;
+        if (arg == "--ringtest") { g_devRingTest = true; g_storyChapter = 6; app->mode = GameMode::STORY; app->pending = App::NextState::Game; }   // Chapter 6's test ground
+        if (arg == "--holdfast") g_devHoldfast = true;   // HOLDFAST (Chapter 6) on its key (Z), anywhere
+        if (arg == "--sweep") {   // Chapter 6's sweep in any level: far (default), mid, near or gather
+            g_devSweep = 1;
+            if (i + 1 < argc && argv[i + 1][0] != '-') { std::string t = argv[++i]; g_devSweep = t == "mid" ? 2 : t == "near" ? 3 : t == "gather" ? 4 : 1; }
+        }
         if (arg == "--recall") g_devRecall = true;       // RECALL (Chapter 5) on its key (X), anywhere
         if (arg == "--splinter") g_devSplinter = true;   // the SPLINTER (Chapter 4) on the grenade button
         if (arg == "--sword") g_devSword = true;   // the sword (key 5) anywhere, for testing it

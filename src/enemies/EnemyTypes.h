@@ -21,6 +21,7 @@ enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, JUGGERNAUT, 
                        COURIER, BULWARK, CANTOR, HARRIER, PLUMB, FOREMAN, PACEMAKER, SORTER, BALLAST, PATIENT, GRAFTED, SUSPENDED, PHASED, SUCCESSOR,
                        THAWLING, PICKER, CLERK, UNIT24K,   // Chapter 5 (EnemyCold.h)
                        RESTORER, RS_POINT, RS_DRUM,        // Chapter 5's boss, its restore points and storage drums (EnemyRestorer.h)
+                       STRAY, HERDER, TALLY, PORTER,       // Chapter 6's crossing: THE DISPATCHED (EnemyRing.h)
                        COUNT };
 inline bool isBoss(EnemyType t) { return t == EnemyType::WARDEN || t == EnemyType::SOVEREIGN || t == EnemyType::PENITENT || t == EnemyType::LEVIATHAN ||
                                          t == EnemyType::ABSOLUTE || t == EnemyType::PACEMAKER || t == EnemyType::SORTER || t == EnemyType::BALLAST || t==EnemyType::SUCCESSOR || t==EnemyType::UNIT24K || t==EnemyType::RESTORER; }
@@ -86,7 +87,8 @@ enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY,
                         ACROSS, ABACKFIST, AELBOW, AROUNDHOUSE, AHAYMAKER, ACHARGE, AAXE, ACLAP, ATHUNDER,   // (his fighter's arsenal; THUNDERCLAP)
                         MJAB, MBACKHAND, MGRASP, MDROP, MSUNDER, MFISSURE, MFLARES, MCOLLAPSE, SORT_GRAB, SORT_STAMP, SORT_SCAN, SORT_THROW, BALL_GRADE, BALL_GUST, BALL_ANCHOR, BALL_THROW, SORT_RUSH, SORT_ROW, SORT_PURGE, BALL_WINCH, BALL_RIP, BALL_SWEEP, LAB_LUNGE, LAB_PRESS, LAB_BEAM, LAB_CROSS, SU_INCISION, SU_THRUST, SU_VECTOR, SU_SUTURE, SU_TRANSPOSE, SU_RECALL, SU_PERFUSION, SU_REAP, SU_BREAKER, LAB_SWIPE,
                         RS_ROLLBACK, RS_SNAPSHOT, RS_TONG, RS_FREEZE, RS_SHELVE,
-                        SU_LATTICE, SU_CASCADE, SU_SEVER };   // THE RESTORER's (EnemyRestorer.h)   // MORNINGSTAR's (EnemyAbsolute.h)
+                        SU_LATTICE, SU_CASCADE, SU_SEVER,
+                        RING_RAM };   // a HERDER's plough (EnemyRing.h)   // THE RESTORER's (EnemyRestorer.h)   // MORNINGSTAR's (EnemyAbsolute.h)
 
 struct EnemyStats {
     const char* name;
@@ -197,6 +199,11 @@ inline EnemyStats& statsEdit(EnemyType t) {
         {"THE RESTORER",9000,1.7f,7.f,4.4f,.9f,1.5f,false,{.62f,.68f,.74f},{1.4f,1.6f,1.9f},{.9f,.95f,1.f},"GOLD: KEEP WHERE YOU WERE SAFE (OR RECALL) - RED: GET OUT - WHITE: PARRY THE TONGS"},
         {"RESTORE POINT",260,.8f,5.5f,0.f,0.f,0.f,false,{.7f,.82f,.92f},{1.2f,1.5f,1.9f},{1.f,1.f,1.f},"WHILE IT STANDS, WHAT YOU DO TO THE RESTORER GROWS BACK - BREAK IT"},
         {"STORAGE DRUM",120,1.f,1.6f,0.f,0.f,0.f,false,{.4f,.44f,.5f},{2.f,1.2f,.4f},{1.f,1.f,1.f},"IT HAS ONE OF YOUR GUNS - BREAK IT OPEN"},
+        // Chapter 6 (EnemyRing.h): what climbed out of the capsules, and what keeps the reef
+        {"STRAY",52,.45f,2.0f,6.4f,.55f,1.6f,false,{.84f,.82f,.76f},{1.6f,1.45f,1.1f},{1.f,.9f,.7f},"WHITE: PARRY - WHEN THE POSTS LIGHT, IT WANTS YOUR SHELTER"},
+        {"HERDER",95,.8f,1.0f,7.f,.7f,3.4f,true,{.78f,.66f,.38f},{1.8f,1.6f,1.2f},{1.f,.9f,.6f},"GOLD: DODGE THE RAM - IT SHOVES LOOSE SHELTER AWAY: SHOOT IT DOWN"},
+        {"TALLY",170,.6f,3.6f,0.f,0.f,0.f,false,{.84f,.82f,.76f},{1.6f,1.5f,1.2f},{1.f,1.f,1.f},"WHILE IT COUNTS, THE SWEEPS COME TWICE AS OFTEN - BREAK IT"},
+        {"PORTER",320,.95f,2.9f,3.1f,.85f,2.4f,false,{.8f,.78f,.72f},{1.6f,1.4f,1.f},{.95f,.9f,.8f},"ITS THROWS ARC OVER COVER - CLOSE IN, OR STAY MOVING"},
     };
     static_assert(sizeof(S) / sizeof(S[0]) == (size_t)EnemyType::COUNT, "a stats row per enemy type, in the enum's order");
     return S[(int)t];

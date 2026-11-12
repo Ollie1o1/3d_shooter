@@ -35,6 +35,9 @@ inline glm::vec3 g_devCamPos{0.f};
 inline float     g_devCamYaw = -90.f, g_devCamPitch = 0.f;
 // --weapon N --aim --overlay armory|pause|settings: pose a screenshot
 inline int       g_devWeapon = -1;
+inline bool      g_devHoldfast = false;   // --holdfast: UNIT 24's HOLDFAST (Chapter 6) on Z, anywhere
+inline bool      g_devRingTest = false;  // --ringtest: Chapter 6's flat test ground instead of its levels
+inline int       g_devSweep = 0;          // --sweep [far|mid|near|gather]: Chapter 6's sweep in any level (1..4)
 inline bool      g_devRecall = false;     // --recall: UNIT 24's RECALL (Chapter 5) on X, anywhere
 inline bool      g_devSplinter = false;   // --splinter: UNIT 24's SPLINTER on the grenade button, anywhere
 inline bool      g_devSword = false;   // --sword / ?sword: the sword (key 5) anywhere, not just the Zenith

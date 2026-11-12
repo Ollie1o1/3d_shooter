@@ -6,7 +6,7 @@
 // Store the contact, not the attack an enemy happens to be doing when the
 // death card is drawn. Unknown contacts deliberately offer no specific advice.
 enum class DamageKind { UNKNOWN, PROJECTILE, MELEE, SHOCKWAVE, BEAM, EXPLOSION,
-                        MARKED_FLOOR, PHANTOM, BURN, FALL, FURNACE, VENT, LOAD,
+                        MARKED_FLOOR, PHANTOM, BURN, FALL, FURNACE, VENT, LOAD, SWEEP,
                         WHITE_STRIKE, GOLD_STRIKE, RED_STRIKE };
 struct DamageCause {
     EnemyType enemy = EnemyType::COUNT;
@@ -35,6 +35,7 @@ inline DamageAdvice damageAdvice(DamageCause c) {
         case DamageKind::FALL:return {"FALL","USE THE RAMPS, GRAPPLE POINTS AND LANDING EDGES."};
         case DamageKind::FURNACE:return {"FURNACE","FOLLOW THE AMBER SALVAGE ROUTE AWAY FROM THE FIRE."};
         case DamageKind::VENT:return {"FREEZING VENT","LEAVE THE RED VENT WARNING BEFORE IT ERUPTS."};
+        case DamageKind::SWEEP:return {"SWEPT","GET BEHIND A LIT MOORING POST BEFORE THE COUNT REACHES ZERO."};
         case DamageKind::LOAD:return {"FALLING LOAD","CLEAR THE AMBER SQUARE AFTER RELEASING THE LOAD."};
         case DamageKind::WHITE_STRIKE:return {"WHITE STRIKE","PARRY THE WHITE STRIKE AS IT REACHES YOU."};
         case DamageKind::GOLD_STRIKE:return {"UNPARRYABLE STRIKE","DODGE OR USE THE SWORD TO BLOCK. PARRY WILL NOT WORK."};

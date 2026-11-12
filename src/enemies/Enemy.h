@@ -314,6 +314,11 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     float pace          = 1.f;   // its own pace on top (a THAWLING warming up)
     glm::vec3 pickAim{0.f};      // PICKER: where its snatch is going
     float pickT = 0.f;           // PICKER: seconds left holding you
+    // Chapter 6 (EnemyRing.h; the game sets these each tick from the sweep, Gameplay_RingFoes.h):
+    // a STRAY's lee spot while the posts are lit, a HERDER's loose shelter to shove and where to push from
+    glm::vec3 ringSeek{0.f}; bool ringSeekSet = false;
+    glm::vec3 ringPushAt{0.f}; int ringPush = -1;
+    float ringCount = 0.f;       // TALLY: counts so far (its drum turns a notch each)
     float kSideT = 0.f, kSideCd = 0.f; glm::vec3 kSideDir{0.f};   // UNIT 24-K: its sidestep dashes
     int   kLast = 0;             // UNIT 24-K: which gun it used last (0 revolver, 1 Lancer)
     // THE RESTORER (EnemyRestorer.h): its phase (set by the game from its health), the last few
@@ -392,7 +397,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
 
     const EnemyStats& stats() const { return statsOf(type); }
     // The Living Ward's subjects, and Chapter 5's thawed units that move like them
-    bool labBody() const { return (type>=EnemyType::PATIENT&&type<=EnemyType::PHASED)||type==EnemyType::THAWLING; }
+    bool labBody() const { return (type>=EnemyType::PATIENT&&type<=EnemyType::PHASED)||type==EnemyType::THAWLING||type==EnemyType::STRAY; }
     float radius() const { return stats().radius * scale; }
     float height() const {
         if (type == EnemyType::PENITENT) return (risen ? 11.5f : 8.2f) * scale;   // kneeling, then standing
@@ -409,13 +414,13 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     bool  parryWindow() const {
         // THE WARDEN's lunge: its last quarter second, or in flight until it connects (it comes into reach)
         if ((type == EnemyType::WARDEN || type == EnemyType::PACEMAKER) && dashTimer > 0.f && !dashHit) return true;   // (and THE PACEMAKER's dash)
-        if((type==EnemyType::PATIENT || type==EnemyType::PHASED || type==EnemyType::THAWLING || type==EnemyType::UNIT24K) && dashTimer>0 && !dashHit)return true;
+        if((type==EnemyType::PATIENT || type==EnemyType::PHASED || type==EnemyType::THAWLING || type==EnemyType::STRAY || type==EnemyType::UNIT24K) && dashTimer>0 && !dashHit)return true;
         if (telegraphTimer <= 0.f) return false;
         if(type==EnemyType::SUCCESSOR)return SuccessorState::white(attack)&&telegraphTimer<.26f;
         if(type==EnemyType::PICKER)return attack==AttackKind::SORT_GRAB&&telegraphTimer<.3f;
         if(type==EnemyType::UNIT24K)return attack==AttackKind::DASH&&telegraphTimer<.28f;
         if(type==EnemyType::RESTORER)return attack==AttackKind::RS_TONG&&telegraphTimer<.3f;
-        if(type==EnemyType::PATIENT || type==EnemyType::PHASED || type==EnemyType::THAWLING)return (attack==AttackKind::LAB_LUNGE&&telegraphTimer<.24f)||(attack==AttackKind::LAB_SWIPE&&telegraphTimer<.2f);
+        if(type==EnemyType::PATIENT || type==EnemyType::PHASED || type==EnemyType::THAWLING || type==EnemyType::STRAY)return (attack==AttackKind::LAB_LUNGE&&telegraphTimer<.24f)||(attack==AttackKind::LAB_SWIPE&&telegraphTimer<.2f);
         if (type == EnemyType::BALLAST) return (attack==AttackKind::BALL_ANCHOR||attack==AttackKind::BALL_WINCH)&&telegraphTimer<.28f;
         if (type == EnemyType::SORTER) return attack == AttackKind::SORT_GRAB && telegraphTimer < .25f;
         if (type == EnemyType::WARDEN) return attack == AttackKind::WLUNGE && telegraphTimer < 0.25f;
@@ -570,6 +575,9 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         if (type == EnemyType::CLERK) {    // small: a little generous, rotors and lamp included
             return {position + glm::vec3{-0.6f, 0.2f, -0.6f}, position + glm::vec3{0.6f, 1.1f, 0.6f}};
         }
+        if (type == EnemyType::HERDER) {   // Chapter 6: its block and plough round its middle
+            return {position + glm::vec3{-0.85f, -0.4f, -0.85f}, position + glm::vec3{0.85f, 0.8f, 0.85f}};
+        }
         if (type == EnemyType::THAWLING && age < 2.8f) {   // still crawling: it lies forward along the floor
             const float crawl = 1.f - glm::clamp((age - 1.6f) / 0.6f, 0.f, 1.f);
             const glm::vec3 fwd{std::sin(yaw), 0.f, std::cos(yaw)};
@@ -711,6 +719,10 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
             case EnemyType::THAWLING:thinkThawling(dt,w,resolve);break;
             case EnemyType::PICKER:thinkPicker(dt,w,resolve);break;
             case EnemyType::CLERK:thinkClerk(dt,w);break;
+            case EnemyType::STRAY:thinkStray(dt,w,resolve);break;
+            case EnemyType::HERDER:thinkHerder(dt,w,resolve);break;
+            case EnemyType::TALLY:velocity={0,0,0};attackTimer=0;animPhase+=dt;break;   // (it counts: Gameplay_RingFoes.h)
+            case EnemyType::PORTER:thinkBrute(dt,w,resolve);break;   // a hauler's slam up close and its lob over cover
             case EnemyType::UNIT24K:thinkUnit24K(dt,w,resolve);break;
             case EnemyType::RESTORER:thinkRestorer(dt,w,resolve);break;
             case EnemyType::RS_POINT:case EnemyType::RS_DRUM:velocity={0,0,0};attackTimer=0;break;   // (they stand there until broken)
@@ -1532,6 +1544,8 @@ private:
     void thinkThawling(float dt,const EnemyWorld& w,bool resolve);
     void thinkPicker(float dt,const EnemyWorld& w,bool resolve);
     void thinkClerk(float dt,const EnemyWorld& w);
+    void thinkStray(float dt,const EnemyWorld& w,bool resolve);
+    void thinkHerder(float dt,const EnemyWorld& w,bool resolve);
     void thinkUnit24K(float dt,const EnemyWorld& w,bool resolve);
     void thinkRestorer(float dt,const EnemyWorld& w,bool resolve);
     void thinkSuccessor(float dt,const EnemyWorld& w,bool resolve);
@@ -1682,5 +1696,6 @@ inline void linkConductors(std::vector<Enemy>& es, glm::vec3 player) {
 
 #include "enemies/EnemyLab.h"
 #include "enemies/EnemyCold.h"
+#include "enemies/EnemyRing.h"
 #include "enemies/EnemyRestorer.h"
 #include "bosses/successor/EnemySuccessor.h"

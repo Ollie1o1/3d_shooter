@@ -32,6 +32,8 @@ inline void GameplayState::shootInput() {
     pendingGrenade = false;
     if (pendingRecall && recallOwned() && !playerDead) pressRecall();
     pendingRecall = false;
+    if (pendingHoldfast && holdfastOwned() && !playerDead) pressHoldfast();
+    pendingHoldfast = false;
     flushHitSounds();
 }
 
@@ -422,6 +424,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
                       grapple.active || dashMomentumTimer > 0.f || boost >= 0, &spatialGrid);
         if (boost >= 0) { applyBooster(level.boosters[boost], player, dt); player.launched(); }
         if (grapple.active && grapple.latched) { player.position = hangPos; player.velocity = glm::vec3{0.f}; }   // held where it caught
+        holdfastRope();
         keepPlayerInZone(dt);
         if (pickedBy >= 0) holdInPicker(dt);   // hung under a PICKER's claw
         if (story()) { updateStory(dt); player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0}; trackStoryRun(dt); }
@@ -611,6 +614,8 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     whizPast();
     if (splinterOwned()) tickSplinters(dt);
     if (recallOwned()) tickRecall(dt);
+    if (holdfastOwned()) tickHoldfast(dt);
+    tickSweep(dt);
     if (!pendingRestores.empty()) tickRestores(dt);
     bool parryPressed = parryKey && !parryPrev;
     parryPrev = parryKey;

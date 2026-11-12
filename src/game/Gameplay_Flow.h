@@ -242,11 +242,11 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
         prog = resumedStory.prog;
     }
     g_continueStory = false;
-    level = training() ? buildTraining() : fast() ? buildGauntlet() : act2() ? buildAct2Level() : story() ? (g_storyChapter==5?buildCold():g_storyChapter==4?buildPlain():g_storyChapter==3?buildLab():g_storyChapter==2?buildWasteland():buildCradle()) : buildLevel();
+    level = training() ? buildTraining() : fast() ? buildGauntlet() : act2() ? buildAct2Level() : story() ? (g_storyChapter==6?(g_devRingTest?buildRingTest():buildRing()):g_storyChapter==5?buildCold():g_storyChapter==4?buildPlain():g_storyChapter==3?buildLab():g_storyChapter==2?buildWasteland():buildCradle()) : buildLevel();
     if (story()) armfile::load("assets/guns/unit24_arm.glb");   // UNIT 24's own hands (the menu's next run puts the gloves back)
     spatialGrid.build(level.walls);
     world = buildWorldMeshes(level);
-    bake = &sharedBake(training() ? "training" : fast() ? "fast" : act2() ? "act2" : story() ? (level.story.chapter==5?"story5":level.story.chapter==4?"story4":level.story.chapter==3?"story3":level.story.chapter==2?"story2":"story1") : "act1", level);
+    bake = &sharedBake(training() ? "training" : fast() ? "fast" : act2() ? "act2" : story() ? (level.story.chapter==6?"story6":level.story.chapter==5?"story5":level.story.chapter==4?"story4":level.story.chapter==3?"story3":level.story.chapter==2?"story2":"story1") : "act1", level);
     applyBake();
     neonLights = buildNeonLights(level);
     gatherWorldEmitters(level, worldSound);
@@ -450,6 +450,7 @@ inline void GameplayState::resetPlayer(glm::vec3 start) {
     grenadeCount = grenadeMax; killsThisCycle = 0;
     splinters.reset();
     recall.reset();
+    holdfast.reset(); sweep.reset(); sweepArmed = false;
     pickedBy = -1; pendingRestores.clear();
     for (int w = 0; w < WEAPON_COUNT; ++w) {
         weapons[w] = WeaponState{};
@@ -1051,7 +1052,7 @@ inline void GameplayState::update(float dt) {
     if (!frozen) ui.update(dt, styleSystem);
     if (frozen || playerDead || victory || countdown > 0.f) {
         fireInput.clear(); dashInput.clear(); jumpInput.clear(); parryInput.clear();
-        pendingFire = pendingAlt = pendingGrenade = pendingGrapple = pendingRecall = false;
+        pendingFire = pendingAlt = pendingGrenade = pendingGrapple = pendingRecall = pendingHoldfast = false;
         // Keep the physics clock current so resuming doesn't replay the
         // whole paused interval as a burst of catch-up ticks.
         prevTicks   = SDL_GetPerformanceCounter();
@@ -1122,7 +1123,7 @@ inline void GameplayState::update(float dt) {
         if (storyLocked() || !storyArmed || storyEndT>=0.f) { pendingFire = false; pendingAlt = false; }
         if (!splinterOwned() || storyLocked() || storyEndT >= 0.f) pendingGrenade = false;   // (no grenades in Story: the button is the SPLINTER's)
         if (!storyGrapple || storyLocked() || storyEndT >= 0.f) pendingGrapple = false;
-        if (storyLocked() || storyEndT >= 0.f) pendingRecall = false;
+        if (storyLocked() || storyEndT >= 0.f) pendingRecall = pendingHoldfast = false;
     }
     bool parryKey = keys[SDL_SCANCODE_F] != 0;
 

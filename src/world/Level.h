@@ -44,6 +44,7 @@
 #include "audio/AudioTypes.h"
 #include "enemies/Enemy.h"
 #include "world/Shapes.h"
+#include "world/RingSweep.h"
 #include <string>
 #include <vector>
 #include <algorithm>
@@ -181,6 +182,7 @@ struct Mover {
     glm::vec3 glow {0.3f, 1.0f, 1.0f};
     glm::vec3 delta{0.f};        // how far it moved on the last update
     float     drive  = 0.f;      // DRIVEN: 0..1 along a -> b
+    int       look   = 0;        // 0: a glowing slab (drawn by Gameplay_Render); 1: a drifting ice chunk (Chapter 6 draws it)
 
     glm::vec3 offsetAt(float t) const {
         if (path == Path::DRIVEN) return glm::mix(a, b, drive);
@@ -294,6 +296,9 @@ struct LevelData {
     std::vector<Shape>      shapes;    // visual only: round, curved, turned (Shapes.h)
     std::vector<PlacedModel> models;   // visual only: props made in Blender (PropFile.h)
     std::vector<Destructible> destructibles;   // pieces that break (LevelLayout.h places them)
+    // Chapter 6 (LevelRing.h): what counts as shelter from the sweep. A shelter with a `wall` takes
+    // that wall's box every tick (a drifting chunk); one with a `mover` (DRIVEN) a HERDER can shove.
+    std::vector<SweepShelter> sweepShelters;
     std::vector<FloorPatch> floors;
     // How this level draws each material (WorldGeometry.h): identity unless a chapter restyles the
     // shared surfaces as its own (restyle()). Looks only: collision and sounds still go by `mat`.

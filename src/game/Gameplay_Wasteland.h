@@ -16,14 +16,14 @@ inline void GameplayState::beginWasteland() {
 }
 
 inline void GameplayState::loadStoryChapter(int chapter) {
-    if(chapter<2 || chapter>5)return;
+    if(chapter<2 || chapter>6)return;
     logRun("chapter_complete");
     g_storyChapter=chapter;g_startArena=g_startWave=0;g_devOverlay.clear();
     storyFromStart=true;storyRankNow=0;storyRankBest=false;
     // Release the non-RAII contact buffers before moving in the new world.
     world.contact.release();movingShadows.release();
-    level=chapter==5?buildCold():chapter==4?buildPlain():chapter==3?buildLab():buildWasteland();world=buildWorldMeshes(level);spatialGrid.build(level.walls);
-    bake=&sharedBake(chapter==5?"story5":chapter==4?"story4":chapter==3?"story3":"story2",level);applyBake();neonLights=buildNeonLights(level);
+    level=chapter==6?(g_devRingTest?buildRingTest():buildRing()):chapter==5?buildCold():chapter==4?buildPlain():chapter==3?buildLab():buildWasteland();world=buildWorldMeshes(level);spatialGrid.build(level.walls);
+    bake=&sharedBake(chapter==6?"story6":chapter==5?"story5":chapter==4?"story4":chapter==3?"story3":"story2",level);applyBake();neonLights=buildNeonLights(level);
     shifts=ArenaShifts{};shifts.capture(level);
     anchorsBuilt=level.anchors;anchorBoxes.clear();
     for(const auto& a:level.anchors)anchorBoxes.push_back(level.walls[a.wall].box);

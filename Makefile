@@ -322,6 +322,13 @@ test-cold-runtime: tests/test_cold_runtime.cpp src/main.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) tests/test_cold_runtime.cpp -o build/test_cold_runtime $(LDFLAGS)
 	./build/test_cold_runtime
 
+# Chapter 6: THE KEPT RING: the sweep, HOLDFAST and the test ground (tests/test_ring.cpp)
+.PHONY: test-ring
+test-ring: tests/test_ring.cpp $(HEADERS)
+	mkdir -p build
+	$(CXX) $(CXXFLAGS) tests/test_ring.cpp -o build/test_ring $(STDLIB)
+	./build/test_ring
+
 # Chapter 4: THE BLOOD MOON PLAIN (tests/test_plain.cpp)
 .PHONY: test-plain
 test-plain: tests/test_plain.cpp $(HEADERS)

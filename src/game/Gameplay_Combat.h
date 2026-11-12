@@ -330,7 +330,7 @@ inline void GameplayState::updateEnemies(float dt) {
         if (e.type == EnemyType::ABSOLUTE) swordParryAbsolute(e);   // the sword's window meets a white strike as it lands
         // In the Descent the void runs to -300: stand on what's really under you (the cage included)
         e.floorY = level.enemyFloor(director.arena, e.position, e.stats().flying,
-                                    (descent || laboratory() || cold()) ? groundHeightAt(e.position.x, e.position.z, e.position.y + 0.5f, true) : 0.f);
+                                    (descent || laboratory() || cold() || ring()) ? groundHeightAt(e.position.x, e.position.z, e.position.y + 0.5f, true) : 0.f);
         e.wadeMul = e.stats().flying ? 1.f : 1.f - 0.5f * (1.f - Player::wadeFactor(level.waterDepthAt(e.position)));
         if(story()&&e.type==EnemyType::SORTER&&e.sortRush>0)
             breakStoryCover(e.position,e.position+e.sortRushDir*(36.f*dt),3.6f);
@@ -377,6 +377,7 @@ inline void GameplayState::updateEnemies(float dt) {
         if (story() && e.type == EnemyType::SORTER) storySorterEvents(e,ev);
         if (e.type == EnemyType::PICKER && ev.sortGrab) pickerGrab(e, lured);
         if (e.type == EnemyType::RESTORER) restorerEvents(e, ev);
+        if (ring()) ringFoeEvents(e, ev);
         if (ev.beamOn && e.type != EnemyType::SORTER) {   // a SERAPH's beam: 30/s while it touches you, sparks (or steam) where it lands
             AABB pb{player.position + glm::vec3{-player.radius, 0.f, -player.radius},
                     player.position + glm::vec3{player.radius, player.height, player.radius}};

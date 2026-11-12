@@ -78,6 +78,11 @@ inline Profile profileOf(EnemyType t) {
         case EnemyType::RESTORER:return {98.f,Vowel::OO,5,.85f,Body::HYDRAULIC,160.f,.9f};   // a careful, low, many-voiced hum and the hiss of its hoses
         case EnemyType::RS_POINT:return {523.f,Vowel::EE,2,1.1f,Body::HUM,1800.f,.3f};
         case EnemyType::RS_DRUM:return {0.f,Vowel::NONE,0,1.f,Body::GRIND,300.f,.4f};
+        // Chapter 6: heard through the boots, so low and dry
+        case EnemyType::STRAY:return {120.f,Vowel::UH,2,.9f,Body::SERVO,300.f,.35f};    // a stiff servo, a dry throat
+        case EnemyType::HERDER:return {0.f,Vowel::NONE,0,1.f,Body::HYDRAULIC,900.f,.4f}; // gas puffs and a plate grinding
+        case EnemyType::TALLY:return {440.f,Vowel::EE,1,1.1f,Body::CRACKLE,1800.f,.15f}; // beads clicking
+        case EnemyType::PORTER:return {62.f,Vowel::OH,3,.85f,Body::GRIND,200.f,.7f};    // a load groaning on its straps
         default:                      return {};
     }
 }
@@ -353,6 +358,8 @@ inline Buf tellV(EnemyType t, AttackKind a, const Profile& p, Rng& r) {
         case AttackKind::BALL_ANCHOR: add(out,servo(d,240.f,1100.f,r,.01f,.08f));add(out,click(1900.f,r),.8f);break;
         case AttackKind::BALL_THROW: add(out,metal(d,130.f,r,10.f));add(out,grind(d,25.f,130.f,r),.6f);break;
         case AttackKind::SORT_GRAB: add(out,servo(d,180.f,950.f,r,.01f,.08f));add(out,click(1400.f,r),.7f);break;
+        // A HERDER's ram: its gas pods spooling up, a plate scraping as it leans in
+        case AttackKind::RING_RAM: add(out,vent(d,1300.f,r,d*.75f,.04f));add(out,servo(d,140.f,720.f,r,d*.7f,.04f),.6f);add(out,metal(d*.4f,260.f,r,10.f),.4f,d*.6f);break;
         case AttackKind::SORT_STAMP: add(out,grind(d,22.f,220.f,r));add(out,thud(95.f,40.f,d),.8f);break;
         case AttackKind::SORT_SCAN: add(out,siren(d,500.f,1800.f));break;
         case AttackKind::SORT_THROW: add(out,metal(d,160.f,r,12.f));add(out,vent(d,700.f,r,.03f,.08f),.7f);break;

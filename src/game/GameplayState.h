@@ -30,6 +30,7 @@
 #include "world/LevelLab.h"
 #include "world/LevelPlain.h"
 #include "world/LevelCold.h"
+#include "world/LevelRing.h"
 #include "world/PlainMeteors.h"
 #include "bosses/gleaner/GleanerRig.h"
 #include "bosses/gleaner/TenderRig.h"
@@ -61,6 +62,7 @@
 #include "player/Weapons.h"
 #include "player/Splinter.h"
 #include "player/Recall.h"
+#include "player/Holdfast.h"
 #include "game/Progression.h"
 #include "game/StorySave.h"
 #include "game/DevFlags.h"          // the command line's and the dev tools' globals (g_*)
@@ -192,6 +194,7 @@ public:
     void renderLabIntro();
     void gatherLabLift(rig::Rig& r);   // the service lift, and on arrival its tower and plain (Gameplay_LabLift.h)
     bool wasteland() const { return story() && level.story.chapter==2; }
+    bool ring() const { return story() && level.story.chapter==6; }    // Chapter 6: THE KEPT RING (Gameplay_Ring.h)
     bool cold() const { return story() && level.story.chapter==5; }    // Chapter 5: THE COLD STORE (Gameplay_Cold.h)
     bool plain() const { return story() && level.story.chapter==4; }   // Chapter 4: THE BLOOD MOON PLAIN (Gameplay_Plain.h)
     int trainingLesson = 0, trainingEnemy = 0;
@@ -367,6 +370,20 @@ public:
     SplinterSystem splinters;
     // RECALL (Gameplay_Recall.h): a statue to snap back to, on its own key
     RecallSystem recall;
+    // Chapter 6 (Gameplay_Ring.h, Gameplay_Holdfast.h): the sweep, what shelters from it, and the spike
+    RingSweep sweep;
+    SweepSchedule sweepSched;
+    std::vector<SweepShelter> sweepShelters;
+    bool  sweepArmed = false;
+    int   sweepCount = 0, sweepTickAt = -1, sweepSwept = 0;
+    Holdfast holdfast;
+    glm::vec3 holdfastPinAt{0.f};
+    int   holdfastHints = 0;
+    float ringHintT = -1.f;
+    bool  holdfastFound = false;   // Chapter 6: taken from the capsule on I2 (the Drift)
+    int   ringLevelSeen = -1;      // the last place whose card was shown (the Drift's two halves are one place)
+    bool  ringRidgeHint = false, ringDriftHint = false, ringLeeHint = false;
+    float ringScriptT = -1.f;      // a level's scripted first sweep: seconds until it comes
     // Chapter 5's enemies (Gameplay_ColdEnemies.h): a PICKER holding you, kills a CLERK is restoring
     int   pickedBy = -1;
     float pickedHealth = 0.f, pickHurtT = 0.f;
@@ -777,6 +794,7 @@ public:
     bool pendingFire      = false;
     bool pendingGrenade   = false;
     bool pendingRecall    = false;
+    bool pendingHoldfast  = false;
     bool pendingGrapple   = false;
     ActionBuffer fireInput, dashInput, jumpInput, parryInput;
 
@@ -1318,6 +1336,27 @@ public:
     void holdInPicker(float dt);
     void clerkNoteDeath(const Enemy& e);
     void tickRestores(float dt);
+    bool sweepOn() const;
+    void armSweep();
+    SweepSpec nextSweep() const;
+    void tickSweep(float dt);
+    void gatherSweep(std::vector<BoxInstance>& out);
+    void renderSweepCountdown();
+    void beginRing();
+    float ringShepherdSize() const;
+    float ringFlash() const;
+    float ringNight() const;
+    void ringFoes(float dt);
+    void ringFoeEvents(Enemy& e, const EnemyEvents& ev);
+    void gatherRing(std::vector<BoxInstance>& out);
+    bool ringQuiet() const;
+    void updateRing(float dt);
+    bool holdfastOwned() const;
+    int  shelterOfWall(int wall) const;
+    void pressHoldfast();
+    void holdfastRope();
+    void tickHoldfast(float dt);
+    void gatherHoldfast(std::vector<BoxInstance>& out);
     bool recallOwned() const;
     bool recallClear(glm::vec3 feet) const;
     void pressRecall();
@@ -1408,6 +1447,9 @@ public:
 #include "game/Gameplay_Splinter.h"
 #include "game/Gameplay_Story.h"
 #include "game/Gameplay_Recall.h"
+#include "game/Gameplay_Holdfast.h"
+#include "game/Gameplay_Ring.h"
+#include "game/Gameplay_RingFoes.h"
 #include "game/Gameplay_ColdEnemies.h"
 #include "game/Gameplay_Wasteland.h"
 #include "bosses/ballast/Gameplay_Ballast.h"

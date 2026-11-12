@@ -32,6 +32,10 @@ uniform float uFlash;       // 0..1: lightning inside the plain's cloud, toward 
 uniform vec3  uFlashDir;
 uniform float uCold;        // 1 = THE COLD STORE (Chapter 5): the ringed gas giant, a small cold sun, aurora, the Void below
 uniform float uDark;        // 0..1: TOTALITY: the ring dims to embers
+uniform float uRing;        // 1 = THE KEPT RING (Chapter 6): standing in the rings, the giant on the horizon, the Shepherd
+uniform vec4  uShepherd;    // the Shepherd: xyz its direction, w its angular radius (it grows level by level)
+uniform float uRingFlash;   // 0..1: its ridge lamps (a sweep's flash)
+uniform float uRingNight;   // 0..1: the giant's shadow (the Shadow Band): no sun, the giant's night side
 
 float hash3(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
 float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -292,6 +296,123 @@ vec3 coldSky(vec3 dir) {
     return col;
 }
 
+// THE KEPT RING (Chapter 6): you stand in the plane of the rings. The gas giant
+// sits on the horizon to the east, half of it below the ring plane, so the ring
+// is an edge-on line of light across its middle; the floor of ice runs to that
+// line in every direction, and past its far edge there is nothing: black space,
+// stars below as well as above. Due north, on the line, the Shepherd: a walnut
+// with a ridge of lamps, and the dark gap it has combed out of the ring behind it.
+const vec3 RING_GIANT = vec3(0.9899, -0.02, 0.1414);   // normalize(0.99, -0.02, 0.14): LevelRing.h giantDir()
+const float RING_GIANT_R = 0.8;                       // its angular radius: it fills a third of the sky
+vec3 ringStars(vec3 dir, float k) {
+    vec3 cell = floor(dir * 600.0);
+    float st = hash3(cell);
+    vec3 sc = mix(vec3(0.8, 0.88, 1.1), vec3(1.15, 0.98, 0.82), hash3(cell + 3.0));
+    vec3 col = sc * step(0.9978, st) * (0.4 + 1.4 * hash3(cell + 9.0)) * k;
+    // The galaxy: a dusty band, brighter and warmer at its core
+    float band = exp(-pow((dir.y * 0.7 + dir.x * 0.45 - dir.z * 0.55 + 0.1) * 2.6, 2.0));
+    float az = atan(dir.z, dir.x);
+    float n = fbm(vec2(az * 5.0, dir.y * 7.0));
+    col += mix(vec3(0.03, 0.035, 0.06), vec3(0.09, 0.07, 0.05), n) * band * n * 1.4 * k;
+    col += vec3(0.5, 0.5, 0.6) * step(0.9993, hash3(floor(dir * 1400.0))) * band * k;   // its fine stars
+    return col;
+}
+vec3 ringSky(vec3 dir) {
+    float y = dir.y;
+    float az = atan(dir.z, dir.x);
+    float night = uRingNight;
+    vec3 sunD = uSunDir;
+    vec3 col = vec3(0.0015, 0.0015, 0.003);
+    col += ringStars(dir, 1.0 - 0.3 * (1.0 - night));
+
+    // The sun: tiny, white and hard (no air to soften it)
+    float sa = acos(clamp(dot(dir, sunD), -1.0, 1.0));
+    col += uSunColor * smoothstep(uSunSize, uSunSize * 0.7, sa) * 4.0 * (1.0 - night);
+    col += vec3(1.0, 0.97, 0.9) * exp(-sa * 40.0) * 0.6 * (1.0 - night);
+    col += vec3(0.7, 0.65, 0.55) * exp(-sa * 9.0) * 0.05 * (1.0 - night);
+
+    // The gas giant: a sphere along RING_GIANT, its equator on the ring plane
+    vec3 C = RING_GIANT * 10.0;
+    float R = 10.0 * sin(RING_GIANT_R);
+    float tb = dot(dir, C), disc = tb * tb - (dot(C, C) - R * R);
+    if (disc > 0.0 && tb > 0.0) {
+        float tP = tb - sqrt(disc);
+        vec3 hit = dir * tP, nrm = normalize(hit - C);
+        float lat = nrm.y;                                   // its poles are up and down: the ring is its equator
+        float lon = atan(nrm.z, nrm.x);
+        float swirl = fbm(vec2(lon * 2.5 + uTime * 0.001, lat * 9.0));
+        float swirl2 = fbm(vec2(lon * 9.0 - uTime * 0.002, lat * 30.0 + swirl * 2.0));
+        float bandsP = 0.5 + 0.5 * sin(lat * 34.0 + swirl * 4.0 + swirl2 * 1.2);
+        float belts = 0.5 + 0.5 * sin(lat * 11.0 + 0.8);
+        vec3 butter = vec3(0.92, 0.8, 0.56), tan_ = vec3(0.7, 0.55, 0.38), cream = vec3(0.96, 0.92, 0.8), rust = vec3(0.55, 0.36, 0.24);
+        vec3 surf = mix(tan_, butter, bandsP);
+        surf = mix(surf, cream, smoothstep(0.55, 0.9, belts) * 0.5);
+        surf = mix(surf, rust, smoothstep(0.62, 0.8, swirl2) * 0.35 * smoothstep(0.1, 0.3, abs(lat)));
+        // A storm: a pale oval in the northern belts
+        vec2 so = vec2((lon - 2.95) * 3.2, (lat - 0.32) * 7.0);
+        surf = mix(surf, vec3(1.0, 0.93, 0.78), smoothstep(1.0, 0.3, length(so)) * 0.6);
+        surf *= 0.8 + 0.25 * smoothstep(0.75, 0.95, abs(lat));   // pale poles, bluish-grey
+        float lit = clamp(dot(nrm, sunD) * 1.1 + 0.05, 0.0, 1.0) * (1.0 - night);
+        // The rings' shadow: thin dark stripes across the face, just off the equator
+        float rs = abs(lat + 0.09);
+        float shadow = 1.0 - 0.55 * smoothstep(0.06, 0.0, rs) * (0.6 + 0.4 * sin(rs * 300.0));
+        vec3 body = surf * lit * shadow * 1.05;
+        body += surf * vec3(0.02, 0.018, 0.016);                          // the night side: almost black
+        // Night-side lightning in the Shadow Band (silent flickers deep in the cloud)
+        if (night > 0.0) {
+            float cell = floor(uTime * 3.0);
+            float on = step(0.93, hash2(vec2(cell, 3.0)));
+            vec2 at = vec2(hash2(vec2(cell, 5.0)) * 1.4 - 0.7, hash2(vec2(cell, 7.0)) * 0.8 - 0.1);
+            float d = length(vec2(lon - 3.14 + at.x, lat - at.y) * vec2(1.0, 2.0));
+            body += vec3(0.6, 0.65, 0.9) * on * exp(-d * 9.0) * night * (0.5 + 0.5 * fract(uTime * 3.0));
+        }
+        float limb = pow(1.0 - clamp(dot(-dir, nrm), 0.0, 1.0), 2.5);
+        body += vec3(0.95, 0.75, 0.45) * limb * 0.18 * (0.2 + lit);      // its haze at the edge, warm
+        col = mix(col, body, smoothstep(0.0, 0.0008, disc / (tb * tb)));
+    }
+
+    // The ring, edge-on: a hair of light on the horizon (its far particles), brightest toward the sun,
+    // and broken where the Shepherd has combed the gap
+    vec3 sh = normalize(uShepherd.xyz);
+    float shAz = atan(sh.z, sh.x);
+    float gap = smoothstep(0.012, 0.05, abs(mod(az - shAz + 3.14159, 6.28318) - 3.14159));
+    float line = exp(-abs(y - 0.0006) * 1800.0) * 1.4 + exp(-abs(y) * 260.0) * 0.12;
+    vec3 ringCol = mix(vec3(0.75, 0.68, 0.55), vec3(1.1, 1.05, 0.96), 0.5 + 0.5 * dot(normalize(vec3(dir.x, 0.0, dir.z)), normalize(vec3(sunD.x, 0.0, sunD.z))));
+    col += ringCol * line * mix(0.25, 1.0, gap) * (1.0 - 0.8 * night);
+
+    // The Shepherd: a moonlet on the line, a walnut with a sharp ridge round its middle
+    float r = uShepherd.w;
+    if (r > 0.0) {
+        vec3 f = sh, rt = normalize(cross(f, vec3(0.0, 1.0, 0.0))), up = cross(rt, f);
+        vec2 q = vec2(dot(dir, rt), dot(dir, up)) / max(r, 1e-5);
+        float fwd = dot(dir, f);
+        if (fwd > 0.0) {
+            float body = 1.0 - smoothstep(0.92, 1.0, length(q * vec2(1.0, 1.55)) - 0.12 * pow(max(0.0, 1.0 - abs(q.y) * 6.0), 2.0));
+            // Shaded: lit from the sun's side, the ridge a bright line
+            vec3 n = normalize(vec3(q.x, q.y * 1.55, sqrt(max(0.0, 1.0 - dot(q * vec2(1.0, 1.55), q * vec2(1.0, 1.55))))));
+            vec3 nw = normalize(rt * n.x + up * n.y - f * n.z);
+            float l = clamp(dot(nw, sunD) * 1.2 + 0.04, 0.0, 1.0) * (1.0 - night);
+            vec3 skin = vec3(0.42, 0.4, 0.37) * (0.06 + l);
+            skin *= 0.85 + 0.15 * fbm(q * 9.0);
+            float ridge = exp(-abs(q.y) * 40.0) * step(length(q), 1.15);
+            skin += vec3(0.6, 0.58, 0.52) * ridge * (0.2 + l);
+            // Its ridge lamps: a row of points round the middle, steady and faint, all lit on a flash
+            float lamps = step(0.75, fract(q.x * 7.0)) * exp(-abs(q.y) * 60.0) * step(abs(q.x), 0.98);
+            skin += vec3(2.6, 2.6, 2.3) * lamps * (0.15 + 3.0 * uRingFlash);
+            col = mix(col, skin, body * step(0.0006, r));
+            // Far off it is only a point of light (its lamps) and a glow round it on a flash
+            float d = length(dir - f);
+            col += vec3(1.6, 1.55, 1.4) * exp(-d / max(r, 0.0015) * 2.0) * (0.25 + 2.5 * uRingFlash) * (1.0 - step(0.006, r) * 0.8);
+            col += vec3(1.0, 0.98, 0.9) * exp(-d * 18.0) * uRingFlash * 0.35;
+        }
+    }
+
+    // Below the line: past the ring's far edge, nothing. Black space, the stars under you,
+    // and the giant's southern half (above). A faint glow of the ring's underside close under the line.
+    if (y < 0.0) col += ringCol * exp(y * 120.0) * 0.05 * (1.0 - night);
+    return col;
+}
+
 void main() {
     vec4 v = uInvProj * vec4(vNDC, 1.0, 1.0);
     vec3 dir = normalize((uInvView * vec4(v.xyz / v.w, 0.0)).xyz);
@@ -299,6 +420,7 @@ void main() {
 
     if (uPlain > 0.5) { FragColor = vec4(plainSky(dir), 1.0); return; }
     if (uCold > 0.5) { FragColor = vec4(coldSky(dir), 1.0); return; }
+    if (uRing > 0.5) { FragColor = vec4(ringSky(dir), 1.0); return; }
 
     vec3 labSky=vec3(0.0);float labW=0.0;
     if (uLabRealm > 0.5) {

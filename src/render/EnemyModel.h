@@ -300,8 +300,10 @@ inline bool playClip(const char* fileName, const char* clipName, float progress,
 // turn and its glow channels shine this frame, from its state: the same numbers its
 // code rig uses. false for a type with no file rig. (Also what tools/enemy_export.cpp reads.)
 #include "render/LabSubjectPose.h"
+#include "render/RingFoePose.h"
 inline bool filePoseOf(const Enemy& e, float time, const mat4& root, mat4& fileRoot, FilePose& P, vec3& glowOut) {
     if(e.type==EnemyType::SUCCESSOR)return successorFilePose(e,time,root,fileRoot,P,glowOut);
+    if(e.type>=EnemyType::STRAY&&e.type<=EnemyType::PORTER)return ringFoePose(e,time,root,fileRoot,P,glowOut);
     if(e.labBody()){
         labSubjectPose(e,time,root,fileRoot,P,glowOut);
         if(e.type==EnemyType::THAWLING){   // still crawling up off the floor: pitched forward, low, getting up
