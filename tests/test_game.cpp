@@ -2347,7 +2347,7 @@ int main() {
         WeaponUpgrades none;
         float maxRegular = 0.f;
         for (int t = 0; t < (int)EnemyType::COUNT; ++t)
-            if (!isBoss((EnemyType)t) && !isMiniBoss((EnemyType)t) && (EnemyType)t != EnemyType::JUGGERNAUT)   // the heavies: parry them; the Gauntlet's mini-bosses
+            if (!isBoss((EnemyType)t) && !isMiniBoss((EnemyType)t) && !isSheepdog((EnemyType)t) && (EnemyType)t != EnemyType::JUGGERNAUT)   // the heavies: parry them; the Gauntlet's mini-bosses; Chapter 6's sheepdogs
                 maxRegular = std::max(maxRegular, statsOf((EnemyType)t).health);
         CHECK(weaponDamage(WeaponId::LONGSHOT, none) >= maxRegular, "the Longshot one-shots every regular enemy");
         CHECK(weaponDamage(WeaponId::KAR, none) * weaponDef(WeaponId::KAR).headMult >= maxRegular,

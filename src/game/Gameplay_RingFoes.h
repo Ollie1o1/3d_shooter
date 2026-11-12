@@ -10,11 +10,16 @@
 //            nobody else is shoving, flies to its far side and pushes it along
 //            its rail (a DRIVEN mover) and off your line. Kill it and it stops.
 //   TALLIES  counted in tickSweep: while one stands, the gap between sweeps halves.
+//   THE CROOK  opens by hooking a STRAY out of the reef and reeling it in; then
+//            it throws its hook at you (sooner while a countdown runs). Caught,
+//            you are dragged to it, out of any shelter, unless HOLDFAST holds
+//            you. It breaks off at a third gone (EnemyRing.h).
 // =============================================================================
 
 inline void GameplayState::ringFoes(float dt) {
     const bool lit = sweep.active() && sweep.lethal();
     std::vector<int> taken;
+    crookTick(dt);
     for (auto& e : enemies) {
         if (!e.alive) continue;
         if (e.type == EnemyType::STRAY) {
@@ -60,7 +65,89 @@ inline void GameplayState::ringFoes(float dt) {
     }
 }
 
+// THE CROOK, each tick: its card, its opening (a stray hooked out of the reef), its line, and you
+// on the end of it
+inline void GameplayState::crookTick(float dt) {
+    const glm::vec3 lineCol = HOLDFAST_STEEL * 1.5f;
+    for (auto& c : enemies) {
+        if (!c.alive || c.type != EnemyType::CROOK) continue;
+        const glm::vec3 hand = c.position + glm::vec3{std::sin(c.yaw) * 0.9f, 1.1f, std::cos(c.yaw) * 0.9f};
+        if (c.state == EnemyState::ACTIVE && !crookSeen) {
+            crookSeen = true;
+            pushBanner("THE CROOK", "IT KEEPS THE FLOCK IN LINE", HOLDFAST_STEEL, 3.f);
+            audio.playAt("hook_yank", c.position, 110, SoundGroup::ENEMY, true, 0.6f);
+        }
+        if (c.crookLeave >= 0.f) {   // a third gone: it breaks off, toward the Shepherd
+            if (!crookLeft) {
+                crookLeft = true;
+                ui.toast("THE CROOK", "IT BREAKS OFF, TOWARD THE SHEPHERD. IT WILL BE BACK", HOLDFAST_STEEL, 3.5f);
+                audio.playAt("hook_yank", c.position, 110, SoundGroup::ENEMY, true, 0.6f);
+            }
+            continue;
+        }
+        // Its opening: the nearest STRAY hooked and reeled in, in front of you
+        if (!c.crookOpened && c.targetable() && c.age > 0.8f) {
+            c.crookOpened = true;
+            Enemy* best = nullptr; float bd = 45.f;
+            for (auto& s : enemies)
+                if (s.alive && s.type == EnemyType::STRAY && s.targetable()) {
+                    const float d = glm::length(s.position - c.position);
+                    if (d < bd) { bd = d; best = &s; }
+                }
+            if (best) {
+                const glm::vec3 fwd = glm::normalize(glm::vec3{best->position.x - c.position.x, 0.f, best->position.z - c.position.z} + glm::vec3{1e-4f});
+                best->yank(c.position + fwd * 2.2f);
+                c.crookDrag = best->uid; c.attackTimer = std::max(c.attackTimer, 2.f);
+                audio.playAt("hook_yank", best->position, 120, SoundGroup::ENEMY, true, 0.6f);
+                fx.spawnHitSparks(best->position + glm::vec3{0.f, 1.2f, 0.f}, HOLDFAST_STEEL);
+            }
+        }
+        if (c.crookDrag >= 0) {
+            Enemy* s = enemyByUid(c.crookDrag);
+            if (!s || !s->alive || s->pullT <= 0.f) c.crookDrag = -1;
+            else fx.spawnTracer(hand, s->position + glm::vec3{0.f, 1.2f, 0.f}, 0.035f, dt * 1.5f, lineCol);
+        }
+        // The throw: its line paying out toward where the hook will land, over the last half second
+        if (c.attack == AttackKind::RING_HOOK && c.telegraphTimer > 0.f && c.telegraphTimer < 0.5f) {
+            const float k = 1.f - c.telegraphTimer / 0.5f;
+            const glm::vec3 at = glm::mix(hand, c.crookAim + glm::vec3{0.f, 1.f, 0.f}, k);
+            fx.spawnTracer(hand, at, 0.035f, dt * 1.5f, c.parryWindow() ? glm::vec3{2.4f} : lineCol);
+        }
+        // During a countdown it wants you out of your shelter: it throws sooner
+        if (sweep.active() && sweep.lethal() && sweep.phase == RingSweep::Phase::INBOUND) c.attackTimer = std::min(c.attackTimer, 0.8f);
+    }
+    // You, hooked: hauled toward it (up and over what is in the way), unless the spike holds you
+    if (crookDragT > 0.f) {
+        Enemy* c = enemyByUid(crookDragUid);
+        if (!c || !c->alive || c->crookLeave >= 0.f || playerDead || holdfast.held()) {
+            if (c && holdfast.held() && !playerDead) ui.feed("THE LINE HOLDS", HOLDFAST_STEEL);
+            crookDragT = 0.f; crookDragUid = -1;
+        } else {
+            crookDragT -= dt;
+            glm::vec3 d{c->position.x - player.position.x, 0.f, c->position.z - player.position.z};
+            const float n = glm::length(d);
+            if (n > 2.6f) { player.velocity = d / n * 16.f + glm::vec3{0.f, 3.5f, 0.f}; player.launched(); }
+            else crookDragT = 0.f;
+            fx.spawnTracer(c->position + glm::vec3{0.f, 1.1f, 0.f}, player.camera.position - glm::vec3{0.f, 0.4f, 0.f}, 0.035f, dt * 1.5f, lineCol);
+        }
+    }
+}
+
 inline void GameplayState::ringFoeEvents(Enemy& e, const EnemyEvents& ev) {
+    if (e.type == EnemyType::CROOK && ev.ringHooked && !playerDead) {   // the hook has you
+        if (holdfast.held()) {   // the line holds: it caught, and you didn't move
+            ui.feed("THE LINE HOLDS", HOLDFAST_STEEL);
+            fx.spawnHitSparks(player.camera.position - glm::vec3{0.f, 0.5f, 0.f}, HOLDFAST_STEEL);
+            audio.play("clank", 110, SoundGroup::PLAYER, true);
+        } else {
+            damagePlayer(9.f, e.position + glm::vec3{0.f, 1.5f, 0.f}, 0.25f, 0.035f, 0.f, {EnemyType::CROOK, DamageKind::MELEE});
+            crookDragT = 0.7f; crookDragUid = e.uid;
+            grapple.release();
+            ui.feed("HOOKED", HOLDFAST_STEEL);
+            audio.play("hook_yank", 120, SoundGroup::PLAYER, true);
+        }
+    }
+
     // A Stray's blow during a countdown throws you out of its way (low gravity: a long way)
     if (e.type == EnemyType::STRAY && ev.meleeHit && sweep.active() && sweep.lethal() && !playerDead) {
         glm::vec3 side{player.position.x - e.position.x, 0.f, player.position.z - e.position.z};

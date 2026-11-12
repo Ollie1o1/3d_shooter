@@ -14,6 +14,12 @@
 //           sweeps come twice as often (Gameplay_RingFoes.h).
 //   PORTER  a hauler with a capsule on its back: the BRUTE's slam and lob
 //           (thinkBrute), heavier and slower; its lobs arc over cover.
+//   CROOK   the Shepherd's first sheepdog, met in the Kept (design sections 3
+//           and 6). One attack: it throws its hook at where you stand (white:
+//           parry it as it arrives) and, if it catches, drags you to it, out of
+//           whatever shelter you were in. Held by HOLDFAST, the line holds. A
+//           third of its health gone and it breaks off toward the Shepherd: it
+//           can't be killed here (the tines are where it comes back).
 // =============================================================================
 
 namespace ringfoe {
@@ -22,6 +28,10 @@ constexpr float RAM_SPEED = 17.f;
 constexpr float RAM_TIME = 0.55f;
 constexpr float RAM_DAMAGE = 14.f;
 constexpr float PUSH_REACH = 2.6f;     // how close to its push spot a HERDER must be to shove
+constexpr float CROOK_REACH = 18.f;    // how far THE CROOK throws its hook
+constexpr float HOOK_LOCK = 0.35f;     // the last this-long of the throw, the aim is fixed: step out of it
+constexpr float HOOK_CATCH = 2.2f;     // where it lands: within this, it has you
+constexpr float CROOK_GONE = 3.2f;     // how long it takes to leave
 }
 
 inline void Enemy::thinkStray(float dt, const EnemyWorld& w, bool resolve) {
@@ -96,4 +106,50 @@ inline void Enemy::thinkHerder(float dt, const EnemyWorld& w, bool resolve) {
         if (distance < 16.f && lineOfSight(eyePos(), w)) { labAim = w.playerFeet; startAttack(AttackKind::RING_RAM, 0.8f); }
         else blockedShot();
     }
+}
+
+inline void Enemy::thinkCrook(float dt, const EnemyWorld& w, bool resolve) {
+    using namespace ringfoe;
+    const glm::vec3 to = flatTo(w.playerFeet);
+    const float distance = glm::length(to);
+    animPhase += dt * (0.8f + 2.6f * std::min(1.f, moveSpeed / std::max(0.1f, stats().speed)));
+    if (telegraphTimer > 0.f) {   // the throw: it plants and swings the pole over; the aim follows you until the last moment
+        velocity.x = velocity.z = 0.f;
+        turnToward(to, dt, 4.f);
+        if (telegraphTimer > HOOK_LOCK) crookAim = w.playerFeet;
+        return;
+    }
+    if (resolve && attack == AttackKind::RING_HOOK) {
+        attack = AttackKind::NONE;
+        const glm::vec3 d = w.playerFeet - crookAim;
+        if (glm::length(glm::vec2{d.x, d.z}) < HOOK_CATCH && std::fabs(d.y) < 2.5f) ev.ringHooked = true;
+        recover(0.9f);
+        return;
+    }
+    if (crookDrag >= 0) {   // reeling a stray in (the game pulls it): it stands and hauls
+        velocity.x = velocity.z = 0.f;
+        attackTimer = std::max(attackTimer, 0.6f);
+        return;
+    }
+    turnToward(to, dt, 3.f);
+    rangedMove(dt, w, 8.f, 14.f, stats().speed);
+    if (recoverTimer <= 0.f && attackReady(dt)) {
+        if (distance < CROOK_REACH && lineOfSight(eyePos(), w)) { crookAim = w.playerFeet; startAttack(AttackKind::RING_HOOK, stats().telegraph); }
+        else blockedShot();
+    }
+}
+
+// Breaking off: a crouch, then long bounds north toward the Shepherd, up and over the reef. No
+// walls and no arena: it is leaving them. Gone after CROOK_GONE (not killed: it comes back).
+inline void Enemy::crookLeaveTick(float dt) {
+    using namespace ringfoe;
+    crookLeave += dt;
+    yaw = 3.14159265f;   // facing -Z: the Shepherd
+    velocity = glm::vec3{0.f};
+    if (crookLeave > 0.5f) {
+        const float t = crookLeave - 0.5f;
+        position += glm::vec3{0.f, 14.f - 7.f * t, -15.f} * dt;
+        animPhase += dt * 5.f;
+    }
+    if (crookLeave > CROOK_GONE) { alive = false; state = EnemyState::DEAD; }
 }

@@ -22,6 +22,9 @@
 #   porter  a heavy hauler that never put its load down: a dispatch capsule strapped upright
 #           on its back, loader forearms with shovel hands for scooping ice to throw, head sunk
 #           between its shoulders under the weight
+#   crook   THE CROOK, the Shepherd's first sheepdog (design sections 3 and 6): a tall, thin
+#           retrieval unit, stooped, its right arm one long pole ending in a hook for pulling
+#           strays back into line; a cable winch on its back, the hook's line wound on it
 import os, math
 exec(open(os.path.join(os.getcwd(), 'tools/blender/enemy_kit.py')).read())
 
@@ -50,6 +53,7 @@ for _j in ['elbowL', 'elbowR', 'handL', 'handR', 'kneeL', 'kneeR', 'waist', 'hal
 NEEDED['stray'] = 'waist torso head hipL hipR kneeL kneeR armL armR elbowL elbowR handL handR halo'
 NEEDED['herder'] = 'body head shield wingL wingR'
 NEEDED['tally'] = 'body head halo crown armL armR'
+NEEDED['crook'] = 'waist torso head hipL hipR kneeL kneeR armL armR elbowL elbowR handL handR halo shield'
 NEEDED['porter'] = 'waist torso head hipL hipR kneeL kneeR armL armR elbowL elbowR handL handR shield'
 
 
@@ -324,3 +328,89 @@ if want('porter'):
         for f in (-1, 0, 1):
             B((s * .74 + f * .13, .66, .54), (.08, .06, .1), 'ring_dust_dk', 'hand' + sd, rot=(-25, 0, 0))
     done('porter')
+
+
+
+# =====================================================================================
+# THE CROOK (2.9 m, stooped by the pose): thin, long-shinned, a hook on a pole for an arm
+# =====================================================================================
+if want('crook'):
+    begin('crook')
+    add_joint('waist', (0, 1.62, 0)); add_joint('torso', (0, 1.9, 0), 'waist'); add_joint('head', (0, 2.62, .08), 'torso')
+    add_joint('halo', (0, 2.2, -.22), 'torso')   # the winch on its back
+    for sd, s in (('L', 1), ('R', -1)):
+        add_joint('hip' + sd, (s * .12, 1.56, 0), 'waist'); add_joint('knee' + sd, (s * .13, .86, .03), 'hip' + sd)
+    add_joint('armL', (.3, 2.4, 0), 'torso'); add_joint('elbowL', (.36, 2.0, .02), 'armL'); add_joint('handL', (.38, 1.66, .06), 'elbowL')
+    add_joint('armR', (-.32, 2.42, 0), 'torso'); add_joint('elbowR', (-.4, 1.9, .02), 'armR'); add_joint('handR', (-.44, 1.4, .06), 'elbowR')
+    add_joint('shield', (-.46, .3, .46), 'handR')   # the hook's head, at the end of the pole
+
+    # Pelvis: a narrow enamel cradle on a graphite spine of stacked rings, dust in the creases
+    P((0, 1.6, 0), (.3, .16, .2), 'ring_enamel_dk', 'waist', top=(.85, .9), bev=.02, seg=2)
+    for k in range(5):
+        C((0, 1.7 + k * .055, -.02), .05 - k * .003, .04, 'ring_graphite', 'waist', sides=10)
+    B((0, 1.55, .1), (.18, .08, .04), 'ring_dust', 'waist', bev=.01)
+    # Chest: long and narrow, a keel down the front, both shoulder plates still on (it is cared for)
+    P((0, 2.12, .01), (.3, .44, .22), 'ring_enamel', 'torso', top=(1.3, 1.05), bev=.03, seg=2)
+    P((0, 2.14, .125), (.07, .4, .04), 'ring_enamel_dk', 'torso', top=(1.6, 1), bev=.01)   # the keel
+    stencil((-.07, 2.24, .13), .02, .03, 'torso', n=5)
+    B((0, 1.9, .05), (.22, .06, .16), 'ring_graphite', 'torso', bev=.01)
+    for s in (1, -1):
+        B((s * .22, 2.36, 0), (.16, .07, .22), 'ring_enamel', 'torso', bev=.025, seg=2, rot=(0, 0, s * -16))
+        B((s * .22, 2.33, .06), (.14, .02, .06), 'ring_rime', 'torso', rot=(0, 0, s * -16))
+    strap((.16, 2.36, .12), (-.12, 1.98, .12), .04, 'torso')
+    # Neck and head: a long chamfered helm pushed forward, a visor slit, a crest like a hood
+    C((0, 2.5, .04), .045, .16, 'ring_graphite', 'torso', sides=10, rot=(18, 0, 0))
+    P((0, 2.66, .1), (.17, .2, .32), 'ring_enamel', 'head', top=(.8, .7), bev=.035, seg=3)
+    B((0, 2.66, .265), (.12, .026, .02), 'glow', 'head', glow='eye', k=1.5)
+    B((0, 2.66, .258), (.16, .06, .02), 'ring_graphite', 'head')
+    P((0, 2.78, -.02), (.05, .12, .34), 'ring_enamel_dk', 'head', top=(.4, .6), bev=.01)   # the crest
+    B((.09, 2.63, .02), (.02, .1, .18), 'ring_dust_dk', 'head'); B((-.09, 2.63, .02), (.02, .1, .18), 'ring_dust_dk', 'head')
+
+    # The winch: a drum on a frame across its back, the line wound on it, the capsule lamp it took
+    for s in (1, -1):
+        B((s * .16, 2.2, -.22), (.03, .5, .05), 'ring_graphite', 'halo', bev=.006)
+    C((0, 2.24, -.3), .13, .3, 'ring_hatch', 'halo', rot=(0, 0, 90), sides=14)
+    C((0, 2.24, -.3), .1, .26, 'ring_strap', 'halo', rot=(0, 0, 90), sides=14)   # the line, wound
+    for s in (1, -1):
+        C((s * .16, 2.24, -.3), .14, .02, 'ring_enamel_dk', 'halo', rot=(0, 0, 90), sides=14)
+    C((.12, 2.44, -.28), .03, .06, 'ring_hatch', 'halo', sides=8)
+    E((.12, 2.49, -.28), (.045, .04, .045), 'glow', 'halo', glow='core', k=1.7)
+    rod((-.1, 2.18, -.32), (-.34, 1.9, -.1), .008, 'ring_strap', 'halo', sides=5)   # the line, running to the arm
+
+    for sd, s in (('L', 1), ('R', -1)):
+        # Long legs: thigh, knee, a very long shin, a narrow splayed foot (it stands in the reef's gaps)
+        P((s * .13, 1.22, 0), (.12, .6, .14), 'ring_enamel', 'hip' + sd, top=(1.15, 1.1), bev=.02, seg=2)
+        C((s * .13, .87, .03), .05, .12, 'ring_graphite', 'knee' + sd, rot=(0, 0, 90), sides=10)
+        B((s * .13, .88, .1), (.08, .1, .04), 'ring_enamel_dk', 'knee' + sd, bev=.012)
+        P((s * .13, .46, 0), (.09, .76, .11), 'ring_dust', 'knee' + sd, top=(1.3, 1.25), bev=.015, seg=2)
+        B((s * .13, .05, .08), (.12, .08, .34), 'ring_dust_dk', 'knee' + sd, bev=.02, seg=2)
+        for t in (-1, 1):
+            K((s * .13 + t * .04, .03, .25), .02, .12, 'ring_graphite', 'knee' + sd, rot=(90, 0, t * 12), sides=5)
+        B((s * .13, .3, .06), (.08, .03, .02), 'ring_rime', 'knee' + sd)
+
+    # Left arm: short, a gripper for holding what it has hooked
+    P((.33, 2.22, 0), (.09, .36, .1), 'ring_enamel', 'armL', top=(1.1, 1.1), bev=.02, seg=2)
+    C((.36, 2.0, .02), .04, .09, 'ring_graphite', 'elbowL', rot=(0, 0, 90), sides=10)
+    P((.37, 1.84, .04), (.08, .3, .09), 'ring_enamel_dk', 'elbowL', top=(1.2, 1.2), bev=.02, seg=2)
+    B((.38, 1.66, .06), (.07, .06, .07), 'ring_graphite', 'handL', bev=.01)
+    for f in (-1, 1):
+        K((.38 + f * .02, 1.63, .06), .015, .13, 'ring_graphite', 'handL', rot=(180, 0, f * 10), sides=6)
+
+    # Right arm: the crook. Upper arm and forearm in heavy enamel, then a graphite pole
+    P((-.36, 2.18, 0), (.11, .48, .12), 'ring_enamel', 'armR', top=(1.1, 1.1), bev=.02, seg=2)
+    C((-.4, 1.9, .02), .055, .12, 'ring_graphite', 'elbowR', rot=(0, 0, 90), sides=10)
+    P((-.42, 1.66, .04), (.11, .48, .12), 'ring_enamel_dk', 'elbowR', top=(1.15, 1.1), bev=.02, seg=2)
+    B((-.44, 1.4, .06), (.12, .1, .12), 'ring_graphite', 'handR', bev=.015)   # the socket the pole is fixed in
+    rod((-.44, 1.38, .08), (-.46, .38, .44), .028, 'ring_graphite', 'handR', sides=10)   # the pole
+    for t in (0.25, 0.55, 0.8):   # collars, worn bright, dust caught under them
+        a = (-.44 + (-.02) * t, 1.38 - 1.0 * t, .08 + .36 * t)
+        C(a, .036, .05, 'ring_enamel_dk' if t != .55 else 'ring_buckle', 'handR', rot=(-20, 0, 0), sides=10)
+    # The hook: a J of short bent segments, the inside edge bright from use, a barb
+    pts = [(-.46, .38, .44), (-.46, .22, .5), (-.46, .12, .62), (-.46, .14, .76), (-.46, .26, .84), (-.46, .4, .82)]
+    for a, b in zip(pts, pts[1:]):
+        rod(a, b, .034, 'ring_enamel', 'shield', sides=8)
+    for a, b in zip(pts[1:], pts[2:]):
+        rod((a[0], a[1], a[2] + .02), (b[0], b[1], b[2] + .02), .012, 'ring_buckle', 'shield', sides=5)
+    K((-.46, .4, .82), .03, .12, 'ring_graphite', 'shield', rot=(-30, 0, 0), sides=6)   # the barb
+    B((-.46, .14, .66), (.05, .03, .04), 'ring_rime', 'shield')
+    done('crook')

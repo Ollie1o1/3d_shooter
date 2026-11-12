@@ -7,6 +7,7 @@
 #include "world/LevelRing.h"
 #include "world/LevelCold.h"
 #include "game/StorySave.h"
+#include "enemies/Enemy.h"
 #include <cstdio>
 #include <string>
 static int failures = 0;
@@ -291,6 +292,46 @@ int main() {
         bool tagsOk = l.knockWalls.size() > 50 && l.creakWalls.size() == 6;
         for (int w : l.knockWalls) tagsOk &= w >= 0 && w < (int)l.walls.size() && !l.walls[w].dynamic;
         CHECK(tagsOk, "what you touch: the Landing's capsules and the stacks knock, the reef's six walls creak");
+    }
+    {   // ---- THE CROOK: one attack, and it can't be killed here ----
+        auto fresh = []() { Enemy e(EnemyType::CROOK, {0.f, 0.f, 0.f}); e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE; return e; };
+        EnemyWorld w; w.playerFeet = {0.f, 0.f, 10.f}; w.playerEye = w.playerFeet + glm::vec3{0, 1.7f, 0};
+        {   // stand still: it throws, the end of the throw is white, and it catches
+            Enemy e = fresh(); bool threw = false, white = false, hooked = false;
+            for (int f = 0; f < 60 * 8 && !hooked; ++f) {
+                e.update(DT, w);
+                threw |= e.ev.telegraphStarted && e.attack == AttackKind::RING_HOOK;
+                white |= e.parryWindow();
+                hooked |= e.ev.ringHooked;
+            }
+            CHECK(threw && white && hooked, "the Crook throws its hook at you, white as it lands, and it catches if you stand there");
+        }
+        {   // step out of where it lands, once the aim is fixed: it misses
+            Enemy e = fresh(); bool hooked = false, stepped = false;
+            EnemyWorld v = w;
+            for (int f = 0; f < 60 * 8; ++f) {
+                if (e.attack == AttackKind::RING_HOOK && e.telegraphTimer > 0.f && e.telegraphTimer < ringfoe::HOOK_LOCK && !stepped) {
+                    v.playerFeet.x += 3.f; v.playerEye.x += 3.f; stepped = true;
+                }
+                e.update(DT, v);
+                hooked |= e.ev.ringHooked;
+                if (stepped && e.telegraphTimer <= 0.f && e.attack == AttackKind::NONE) break;
+            }
+            CHECK(stepped && !hooked, "a step out of the hook's landing after its aim locks, and it misses");
+        }
+        {   // a third gone and it breaks off: not killed, not hittable, north and up, then gone
+            Enemy e = fresh(); const float max = e.maxHealth;
+            const bool died = e.takeDamage(max * 5.f);
+            CHECK(!died && e.alive && std::fabs(e.health - max * Enemy::CROOK_LEAVES) < 1e-3f && e.crookLeave >= 0.f && !e.targetable(),
+                  "the Crook can't be killed here: a third gone, it stops taking damage and breaks off");
+            const glm::vec3 from = e.position; float top = from.y;
+            for (int f = 0; f < 60 * 4 && e.alive; ++f) { e.update(DT, w); top = std::max(top, e.position.y); }
+            CHECK(!e.alive && e.position.z < from.z - 20.f && top > from.y + 8.f, "it bounds away north, over the reef, and is gone (not a kill)");
+        }
+        LevelData l = buildRing();
+        int crooks = 0;
+        for (const auto& wave : l.arenas[3].waves) for (const auto& we : wave) crooks += we.type == EnemyType::CROOK;
+        CHECK(crooks == 1 && l.arenas[3].waves[0][0].type == EnemyType::CROOK, "the Kept's first wave is the Crook's");
     }
     {   // ---- the menu and the save (step 4): chapter 6 is a chapter ----
         StorySave a; a.chapter = 6; a.checkpoint = 4; a.owned = 15; a.grapple = true;

@@ -188,6 +188,12 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             ui.end2D();
         }
 
+        if (ring())   // THE CROOK: its bar runs out where it breaks off, not where it dies
+            for (const auto& e : enemies)
+                if (e.alive && e.type == EnemyType::CROOK && e.state == EnemyState::ACTIVE) {
+                    const float floor = e.maxHealth * Enemy::CROOK_LEAVES;
+                    ui.renderBossBar("THE CROOK", glm::clamp((e.health - floor) / std::max(1.f, e.maxHealth - floor), 0.f, 1.f), false, glm::vec3{0.85f, 0.82f, 0.7f});
+                }
         if (plain() && gleanerPhase == GleanerPhase::TENDER && tender.fighting())
             ui.renderBossBar("THE TENDER", tender.health01(), tender.enraged(), glm::vec3{1.f, 0.45f, 0.15f});
         if (plain() && gleanerPhase == GleanerPhase::SIEVE && sieve.fighting())

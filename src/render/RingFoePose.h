@@ -11,6 +11,10 @@
 //           lamp sweeping; a ram tilts it right over (gold), pods flared back.
 //   TALLY   still. The bead rows slide and the drum turns a notch every count,
 //           its lamp blinking each time.
+//   CROOK   a long-legged stalk, stooped, the hook carried low and forward like
+//           a shepherd's; the throw swings the pole back over its shoulder and
+//           whips it out (white as it lands); hauling, it leans back on it;
+//           breaking off, it crouches and bounds away, hook trailing.
 //   PORTER  a heavy, rolling trudge, bent under its capsule (which sways on its
 //           straps); both shovel hands come up over its head for a slam, one
 //           hauls back to throw.
@@ -93,6 +97,44 @@ inline bool ringFoePose(const Enemy& e, float time, const mat4& root, mat4& file
         P.chan[C_CORE] = vec3{2.6f, 1.5f, 0.4f} * (f < 0.12f ? 1.6f : 0.35f);
         P.chan[C_EYE] = st.glow * (0.8f + 0.2f * std::sin(time * 3.f));
         if (e.staggered()) P.chan[C_CORE] = vec3{0.3f, 0.15f, 0.05f};
+        break;
+    }
+    case EnemyType::CROOK: {
+        const float ph = e.animPhase * 0.7f, s = std::sin(ph), c = std::cos(ph);
+        fileRoot = root * T({0.f, -std::fabs(c) * 0.05f * run, 0.f});
+        P.motion[E_HIPL] = RX(s * 0.55f * run); P.motion[E_HIPR] = RX(-s * 0.55f * run);
+        P.motion[E_KNEE_L] = RX(-(0.12f + std::max(0.f, -c) * 0.8f) * run);
+        P.motion[E_KNEE_R] = RX(-(0.12f + std::max(0.f, c) * 0.8f) * run);
+        P.motion[E_WAIST] = RX(-0.18f);                                    // stooped
+        P.motion[E_TORSO] = RX(-0.22f) * RY(s * 0.06f * run);
+        P.motion[E_HEAD] = RX(0.3f) * RY(std::sin(time * 0.5f + id) * 0.2f);   // looking along the ground, for strays
+        P.motion[E_ARML] = RX(-s * 0.3f * run) * RZ(0.1f); P.motion[E_ELBOW_L] = RX(-0.5f);
+        P.motion[E_ARMR] = RX(-0.35f + s * 0.1f * run) * RZ(-0.08f);       // the crook carried low and forward
+        P.motion[E_ELBOW_R] = RX(-0.25f);
+        P.motion[E_HALO] = RZ(time * 0.3f);                                // the winch drum, idling
+        if (e.telegraphTimer > 0.f && e.attack == AttackKind::RING_HOOK) {
+            // Back over its shoulder (most of the wind-up), then whipped out flat at you for the last of it
+            const float back = smooth01c(std::min(1.f, tp / 0.7f)), out = smooth01c(std::max(0.f, (tp - 0.7f) / 0.3f));
+            P.motion[E_ARMR] = RX(-0.35f - 2.4f * back + 3.1f * out) * RZ(-0.2f * back);
+            P.motion[E_ELBOW_R] = RX(-0.6f * back * (1.f - out));
+            P.motion[E_TORSO] = RX(-0.22f + 0.25f * back - 0.35f * out) * RY(0.35f * back - 0.2f * out);
+            P.motion[E_SHIELD] = RX(0.5f * back - 0.3f * out);
+            P.motion[E_HALO] = RZ(time * 0.3f + tp * 9.f);                   // the line paying out
+            P.chan[C_EYE] = e.parryWindow() ? white : st.glow * (1.f + 2.f * tp);
+            P.chan[C_GLOW] = glow = e.parryWindow() ? white : glow;
+        }
+        if (e.crookDrag >= 0) {   // hauling a stray in: leaning back on the pole, the drum winding fast
+            P.motion[E_TORSO] = RX(0.25f); P.motion[E_ARMR] = RX(-1.2f); P.motion[E_ELBOW_R] = RX(-0.9f);
+            P.motion[E_HALO] = RZ(-time * 14.f);
+        }
+        if (e.staggered()) { P.motion[E_TORSO] = RX(0.4f); P.motion[E_HEAD] = RX(0.5f); P.motion[E_ARMR] = RX(0.4f); P.chan[C_EYE] = st.glow * 0.35f; }
+        if (e.crookLeave >= 0.f) {   // breaking off: a crouch, then tucked for the long bound
+            const float k = smooth01c(std::min(1.f, e.crookLeave / 0.5f));
+            P.motion[E_KNEE_L] = P.motion[E_KNEE_R] = RX(-1.1f * k);
+            P.motion[E_HIPL] = P.motion[E_HIPR] = RX(0.6f * k);
+            P.motion[E_TORSO] = RX(-0.6f * k);
+            P.motion[E_ARMR] = RX(0.6f * k);   // the hook trailing
+        }
         break;
     }
     case EnemyType::PORTER: {

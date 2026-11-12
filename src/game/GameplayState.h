@@ -384,6 +384,8 @@ public:
     float sweptT = -1.f, sweptSkip = 0.f;
     int   ringAir = -1;
     int   ringKnockOn = -1; float ringKnockT = 0.f, ringCreakT = 0.f;   // what you touch (13.1)
+    // THE CROOK (Gameplay_RingFoes.h): you on the end of its hook, and whether its card has been shown
+    float crookDragT = 0.f; int crookDragUid = -1; bool crookSeen = false, crookLeft = false;
     // The swept, thrown off at a distance (13.6): drawn until they are points against the giant
     struct SweptBody { glm::vec3 from, dir, size, color; float t = 0.f, spin = 0.f; };
     std::vector<SweptBody> sweptBodies;   // -1 not yet set, 0 hard vacuum outside, 1 the hull's air
@@ -1366,6 +1368,7 @@ public:
     float ringNight() const;
     void ringFoes(float dt);
     void ringFoeEvents(Enemy& e, const EnemyEvents& ev);
+    void crookTick(float dt);
     void gatherRing(std::vector<BoxInstance>& out);
     bool ringQuiet() const;
     void updateRing(float dt);

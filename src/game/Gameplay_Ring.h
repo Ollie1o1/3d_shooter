@@ -103,7 +103,7 @@ inline void GameplayState::tickSweep(float dt) {
     }
     // Enemies in the open go with it
     for (auto& e : enemies) {
-        if (!e.targetable() || isBoss(e.type) || !sweep.sweptNow(e.position, sweepShelters)) continue;
+        if (!e.targetable() || isBoss(e.type) || e.type == EnemyType::CROOK || !sweep.sweptNow(e.position, sweepShelters)) continue;   // (a sheepdog stands in it)
         e.knockVel = dir * 34.f + glm::vec3{0.f, 9.f, 0.f};
         fx.spawnBurst(e.position + glm::vec3{0.f, 1.f, 0.f}, SWEEP_ICE, 14, 10.f, 0.6f, 2.f);
         if (!sweep.lethal()) continue;
@@ -171,7 +171,7 @@ inline void GameplayState::beginRing() {
     wakeSeen = true;
     if (director.arena >= 2) holdfastFound = true;   // (a checkpoint past I2: it is yours)
     holdfast.reset(); armSweep();
-    ringLevelSeen = -1; ringScriptT = -1.f; ringAir = -1; ringKnockOn = -1; ringKnockT = ringCreakT = 0.f;
+    ringLevelSeen = -1; ringScriptT = -1.f; ringAir = -1; ringKnockOn = -1; ringKnockT = ringCreakT = 0.f; crookDragT = 0.f; crookDragUid = -1; crookSeen = crookLeft = false;
     if (g_devRingTest) ringLevelSeen = 99;
     player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0}; prevCamPos = player.camera.position;
 }

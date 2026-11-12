@@ -115,6 +115,8 @@ inline void GameplayState::punch(int boostable) {
             inReach = glm::length(player.position-e.ballAim)<Enemy::BALL_ANCHOR_R+1.f;
         if (e.type == EnemyType::SORTER)
             inReach = glm::length(player.position-e.sortAim)<Enemy::SORT_GRAB_R+1.f;
+        if (e.type == EnemyType::CROOK)   // its hook, as it lands where you stand
+            inReach = glm::length(player.position - e.crookAim) < ringfoe::HOOK_CATCH + 1.f;
         if (e.type == EnemyType::LEVIATHAN)   // its head coming down on you: punch it as it lands
             inReach = glm::length(glm::vec2{player.position.x - e.levTarget.x, player.position.z - e.levTarget.z}) < Enemy::LV_PARRY_REACH;
         if (inReach) {
@@ -129,6 +131,7 @@ inline void GameplayState::punch(int boostable) {
             else if (e.type == EnemyType::LEVIATHAN) { ui.toast("STAGGERED", "DOUBLE DAMAGE - MAKE IT COUNT", {1.f, 0.75f, 0.2f}, 1.8f); lev.dropMarks(); shake(0.7f, 0.08f); }
             else if (e.type == EnemyType::SHIELDBEARER) ui.toast("SHIELD DOWN", "", {0.4f, 1.f, 0.75f}, 1.2f);
             else if(e.type==EnemyType::SUCCESSOR)ui.toast("DRIVE EXPOSED","STRIKE NOW",{.4f,.9f,1.f},1.35f);
+            else if(e.type==EnemyType::CROOK)ui.toast("HOOK TURNED","IT'S OPEN - HIT IT HARD",{1.f,.75f,.2f},1.6f);
             else if(e.type==EnemyType::PATIENT || e.type==EnemyType::PHASED)ui.toast("RUSH BROKEN","EXPOSED - STRIKE NOW",{.4f,.9f,1.f},1.2f);
             else ui.toast("STAGGERED", "DOUBLE DAMAGE - MAKE IT COUNT", {1.f, 0.75f, 0.2f}, 1.8f);
             return;

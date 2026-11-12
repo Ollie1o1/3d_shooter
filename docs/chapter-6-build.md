@@ -91,6 +91,33 @@ part in the sweep: `src/game/Gameplay_RingFoes.h`.
 Their voice keys, cadences and the RING_RAM tell are in `VoiceTable.h` /
 `VoiceSynth.h` (the voice level test checks the tell).
 
+## THE CROOK (the first sheepdog)
+
+`EnemyType::CROOK` (`isSheepdog`), model `tools/blender/ring_foes_build.py`
+(`ONLY=crook`; note `enemy_kit.py` hard-codes `REPO` to the main checkout, so
+a build in a worktree writes `assets/enemies/crook.glb` there: move it).
+Mind: `thinkCrook` / `crookLeaveTick` in `EnemyRing.h`; pose: `RingFoePose.h`;
+in the world: `crookTick` and `ringFoeEvents` in `Gameplay_RingFoes.h`.
+
+- **Where:** the Kept's first wave is the Crook, a STRAY placed at the east
+  wall and two more. Its card (`THE CROOK / IT KEEPS THE FLOCK IN LINE`) and
+  its bar, which empties where it breaks off, not where it would die.
+- **Its opening:** 0.8 s in, it hooks the nearest STRAY and reels it in
+  (`Enemy::yank`, the grapple's pull), the line drawn as a tracer.
+- **One attack, RING_HOOK:** a 1.1 s throw; the aim follows you until the last
+  0.35 s (`HOOK_LOCK`), then lands where you were. White for its last 0.3 s:
+  parry it with the hook within 3.2 m of you (`HOOK TURNED`, a stagger).
+  Caught (within 2.2 m): 9 damage and you are hauled to it for 0.7 s at
+  16 m/s, out of any shelter (`HOOKED`). Spiked with HOLDFAST, or spiking
+  mid-haul: `THE LINE HOLDS`. While a countdown runs it throws sooner.
+- **It can't be killed here:** `takeDamage` stops at two thirds; it stops being
+  targetable, crouches, bounds north over the reef (no walls, no arena
+  clamp) and is gone after 3.2 s, not counted as a kill. The sweep doesn't
+  throw it and HOLDFAST can't pin it.
+- Not built: its own model in the code-rig check (DISPATCHED models have no
+  code skeleton), the bent hook it should carry to the boss fight, a line
+  cut (the design's answer to HOLDFAST, for the tines).
+
 ## The name
 
 The design calls the ability ANCHOR. The code calls it **HOLDFAST**, because
@@ -244,9 +271,9 @@ music never ducks at the zero.
    20 s far-tier sweep fair on moving chunks; do the Strays' shelter-grab and
    the Herders' shoves read; is the reef fight too long at three waves. Record
    the verdict here and tune `ring::lanes()`, `sweeptier`, the waves.
-2. **The Crook's crossing encounter** in the Kept (design section 3): it drags
-   a Stray out of the reef in front of you, then one attack (the hook, white),
-   leaves at a third of its health. A mini-boss model in the DISPATCHED style.
+2. ~~The Crook's crossing encounter~~: built (see "THE CROOK" below). Needs
+   the playtest: is the hook fair (1.1 s throw, aim fixed for the last
+   0.35 s, catches within 2.2 m), is 320 damage to chase it off right.
 3. **Rough edges:** done on `ring-edges` (see "Rough edges done"); merge it
    into `ship` after the user's playtest verdict is in.
 4. ~~Menu and save~~: done. Still to do: the bridge cutscene (design

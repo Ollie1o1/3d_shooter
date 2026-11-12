@@ -33,7 +33,7 @@ inline void GameplayState::pressHoldfast() {
         // A small enemy nearer than the wall takes the spike instead
         Enemy* pin = nullptr; float pinT = best;
         for (auto& e : enemies) {
-            if (!e.targetable() || isBoss(e.type) || e.radius() > 1.1f) continue;
+            if (!e.targetable() || isBoss(e.type) || e.type == EnemyType::CROOK || e.radius() > 1.1f) continue;
             const glm::vec3 c = e.position + glm::vec3{0.f, e.height() * 0.5f, 0.f};
             const float along = glm::dot(c - o, d);
             if (along < 0.5f || along > pinT) continue;

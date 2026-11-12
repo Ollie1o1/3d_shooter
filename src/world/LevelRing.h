@@ -591,7 +591,9 @@ inline LevelData buildRing() {
                           c + vec3{-14.f, 0.f, -20.f}, c + vec3{14.f, 0.f, -18.f}};
         k.airSpawns = {c + vec3{-20.f, 3.f, -30.f}, c + vec3{20.f, 3.f, -30.f}, c + vec3{0.f, 3.f, -36.f}};
         const vec3 tally = c + vec3{ring::REEF_HX - 2.5f, 3.f, -10.f};   // on the east ledge
-        k.waves = {{W(EnemyType::STRAY, 5)},
+        // The first wave is THE CROOK's: it hooks the stray at the east wall out of the reef as you come in,
+        // throws for you, and breaks off at a third gone (the wave ends when it has left and the strays are down)
+        k.waves = {{W(EnemyType::CROOK, 0, {c + vec3{6.f, 0.f, -24.f}}), W(EnemyType::STRAY, 0, {c + vec3{ring::REEF_HX - 4.f, 0.f, -12.f}}), W(EnemyType::STRAY, 2)},
                    {W(EnemyType::STRAY, 4), W(EnemyType::HERDER, 2), W(EnemyType::TALLY, 0, {tally})},
                    {W(EnemyType::PORTER, 0, {c + vec3{0.f, 0.f, -36.f}}), W(EnemyType::STRAY, 4), W(EnemyType::HERDER, 1)}};
         k.waveBreak = 3.f; k.maxAlive = 7;
