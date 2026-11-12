@@ -231,7 +231,7 @@ int main() {
     }
     {   // ---- the chapter: the Landing, the Drift, the Kept ----
         LevelData l = buildRing();
-        CHECK(l.story.built && l.story.chapter == 6 && l.arenas.size() == 5, "the chapter builds: five sections over three places");
+        CHECK(l.story.built && l.story.chapter == 6 && l.arenas.size() == 6, "the chapter builds: six sections over four places (the Shadow Band the last)");
         auto sh = ring::shelters();
         RingSweep probe; probe.spec.dir = ring::sweepDir();
         bool postsBehind = true;
@@ -268,6 +268,9 @@ int main() {
         const float land = worstIn(ring::LAND_N + 4.f, ring::LAND_S - 4.f), kept = worstIn(ring::KEPT_N + 4.f, ring::DRIFT_N - 4.f);
         std::printf("   worst walk to shelter: Landing %.1f s, Kept %.1f s\n", land, kept);
         CHECK(land < 20.f * 0.8f && kept < 20.f * 0.8f, "from anywhere on the ground, fixed shelter is inside the 20 s warning with a fifth to spare");
+        const float band = worstIn(ring::BAND_N + 4.f, ring::BAND_S - 4.f);
+        std::printf("   worst walk to shelter in the Shadow Band: %.1f s (the mid tier warns 10 s)\n", band);
+        CHECK(band < 10.f * 0.8f, "in the Shadow Band, fixed shelter is inside the mid tier's 10 s warning with a fifth to spare");
         // The Drift: each lane a jump from the last (gaps a low-gravity running jump clears), and none too high to climb
         // Everything you stand on crossing the Drift, south to north: the pier, the lanes, the islands, the far shore
         struct Span { float south, north, top; bool grapple; };
@@ -364,12 +367,12 @@ int main() {
         CHECK(crooks == 1 && l.arenas[3].waves[0][0].type == EnemyType::CROOK, "the Kept's first wave is the Crook's");
     }
     {   // ---- the menu and the save (step 4): chapter 6 is a chapter ----
-        StorySave a; a.chapter = 6; a.checkpoint = 4; a.owned = 15; a.grapple = true;
+        StorySave a; a.chapter = 6; a.checkpoint = 5; a.owned = 15; a.grapple = true;
         StorySave b; const bool ok = b.parse(a.text());
-        CHECK(ok && b.chapter == 6 && b.checkpoint == 4, "a chapter 6 save, at the hull, loads");
-        StorySave c = a; c.checkpoint = 5; StorySave d;
+        CHECK(ok && b.chapter == 6 && b.checkpoint == 5, "a chapter 6 save, in the Shadow Band, loads");
+        StorySave c = a; c.checkpoint = 6; StorySave d;
         CHECK(!d.parse(c.text()), "a chapter 6 save past its last checkpoint does not");
-        CHECK((int)buildRing().arenas.size() == 5, "chapter 6 has five checkpoints (0..4), as the save allows");
+        CHECK((int)buildRing().arenas.size() == 6, "chapter 6 has six checkpoints (0..5, the Shadow Band last), as the save allows");
         CHECK(buildCold().story.nextChapter == 6, "the Cold Store's end card goes on to the ring");
     }
     {   // ---- the Shepherd's count (13.2) ----

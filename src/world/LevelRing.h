@@ -47,6 +47,10 @@ constexpr float LAND_S = 135.f, LAND_N = -150.f;   // THE LANDING
 constexpr float DRIFT_N = -560.f;               // the Drift's far shore (the reef plain starts here)
 constexpr float DRIFT_MID = -345.f;             // its two halves meet at I2
 constexpr float KEPT_N = -905.f;
+// THE SHADOW BAND (level 4): the giant's shadow across the ring. Pitch black from SHADE_IN m in;
+// the sun comes back (the sunrise) as you near its far side
+constexpr float BAND_S = KEPT_N, BAND_N = -1240.f, SHADE_IN = 30.f;
+constexpr float SUNRISE_AT = BAND_N + 95.f;     // cross this and the sun clears the giant's edge
 constexpr float FAR_GROUND = 3000.f, FAR_PLANE = 5200.f;
 constexpr float VOID_FLOOR = -900.f;            // under the Drift: nothing
 constexpr float VOID_Y = -45.f;                 // fall past this in the Drift: back to the checkpoint
@@ -71,12 +75,13 @@ inline const char* distance(int arena) {
     switch (arena) {
         case 0: return "74,000 KM";
         case 1: case 2: return "61,000 KM";
+        case 5: return "46,000 KM";
         default: return "52,000 KM";
     }
 }
 // How big the Shepherd is in the sky (angular radius) as you go: a point at the Landing, growing
 inline float shepherdSize(float z) {
-    const float t = glm::clamp((LAND_S - z) / (LAND_S - KEPT_N), 0.f, 1.f);
+    const float t = glm::clamp((LAND_S - z) / (LAND_S - KEPT_N), 0.f, 1.35f);   // (and on, through the Shadow Band)
     return 0.0012f + 0.0075f * t * t;
 }
 
@@ -108,6 +113,43 @@ inline Theme theme() {
     t.fogColor = {0.02f, 0.02f, 0.02f};
     t.fogDensity = 0.00002f;                      // vacuum: nothing softens the distance
     return t;
+}
+
+// The Shadow Band: no sun. The giant's night side gives a breath of light, nothing else does
+// (your lamp, the capsules' lamps and the lightning are lights of their own: Gameplay_Shadow.h)
+inline Theme darkTheme() {
+    Theme t = theme();
+    t.zenith = {0.f, 0.f, 0.f}; t.horizon = {0.004f, 0.004f, 0.005f}; t.ground = {0.f, 0.f, 0.f};
+    t.sunColor = {0.f, 0.f, 0.f};
+    t.lightColor = {0.012f, 0.012f, 0.016f};
+    t.skyAmb = {0.018f, 0.017f, 0.02f};
+    t.groundAmb = {0.01f, 0.009f, 0.008f};
+    t.fogColor = {0.f, 0.f, 0.f};
+    return t;
+}
+// Its shelters: a staggered field of rock, close enough for the mid tier's 10 s warning (design
+// section 4: the double sweep starts here), and a route of lit capsules through it
+struct Rock { float x, z, w, h, d; };
+inline std::vector<Rock> bandRocks() {
+    std::vector<Rock> out;
+    for (int r = 0; r < 9; ++r)
+        for (int c = 0; c < 5; ++c) {
+            const float k = (float)(r * 5 + c);
+            const float x = -88.f + c * 44.f + (r % 2) * 22.f + 6.f * (hash(k, 91.f) - 0.5f);
+            if (x > 100.f) continue;
+            const float z = BAND_S - 44.f - r * 36.5f + 6.f * (hash(k, 92.f) - 0.5f);
+            out.push_back({x, z, 9.f + 3.f * hash(k, 93.f), 4.2f + 0.8f * hash(k, 94.f), 5.f + hash(k, 95.f)});
+        }
+    return out;
+}
+// The lamp route: where the lit capsules lie, south to north
+inline std::vector<glm::vec3> bandLamps() {
+    std::vector<glm::vec3> out;
+    for (int i = 0; i < 13; ++i) {
+        const float z = BAND_S - 20.f - i * 24.f;
+        out.push_back({18.f * std::sin(i * 0.7f) + 10.f * (hash((float)i, 96.f) - 0.5f), 0.f, z});
+    }
+    return out;
 }
 
 // ---- the drifting lanes ----------------------------------------------------------------
@@ -150,7 +192,6 @@ inline SweepShelter shelterBox(float x0, float z0, float x1, float z1, float y0,
 
 // The fixed shelters of the chapter (the chunks and the reef). The drifting boulders and the
 // loose ones a HERDER shoves are added by buildRing (they need their walls and movers).
-struct Rock { float x, z, w, h, d; };
 inline std::vector<Rock> landingRocks() {
     return {{-6.f, 72.f, 13.f, 7.f, 6.f}, {32.f, 56.f, 11.f, 6.5f, 5.f}, {-40.f, 44.f, 12.f, 7.f, 6.f},
             {10.f, 2.f, 12.f, 7.5f, 6.f}, {-30.f, -18.f, 11.f, 6.f, 6.f}, {44.f, -30.f, 13.f, 7.f, 5.f},
@@ -194,6 +235,7 @@ inline std::vector<SweepShelter> shelters() {
     out.push_back(shelterBox(c.x + 6.f, c.z + REEF_HZ, c.x + REEF_HX, c.z + REEF_HZ + REEF_WALL, 0.f, REEF_H, 3));
     for (const Stack& s : reefStacks()) out.push_back(shelterBox(s.x - s.hx, s.z - s.hz, s.x + s.hx, s.z + s.hz, 0.f, s.h, 3));
     out.push_back(shelterBox(quietHull().min.x - 1.f, quietHull().min.z - 1.f, quietHull().max.x + 1.f, quietHull().min.z, 0.f, 9.f, 4));   // (its nose wall)
+    for (const Rock& r : bandRocks()) out.push_back(shelterBox(r.x - r.w * 0.5f, r.z - r.d * 0.5f, r.x + r.w * 0.5f, r.z + r.d * 0.5f, 0.f, r.h, 5));
     return out;
 }
 
@@ -223,6 +265,22 @@ inline void countLine(char* out, size_t n, int count, int shortBy) {
     else snprintf(out, n, "COUNT: %s. %d SHORT.", num, shortBy);
 }
 }   // namespace ring
+
+// THE SHADOW BAND's numbers (Gameplay_Shadow.h)
+namespace shadowband {
+constexpr float DIAMOND = 1.6f;     // the sunrise: the flash, this long after the arc starts
+constexpr float FRONT_FROM = 320.f; // the light starts this far north of you...
+constexpr float FRONT_SPEED = 60.f; // ...and comes at a sweep's speed
+constexpr float LIFT = 1.2f;        // once it has reached you, the dark lifts over this long
+// The lightning's flicker: three strokes over half a second, each fading fast
+inline float bolt(float t) {
+    if (t < 0.f || t > 0.7f) return 0.f;
+    const float at[3] = {0.f, 0.11f, 0.32f}, amp[3] = {1.f, 0.55f, 0.8f};
+    float b = 0.f;
+    for (int i = 0; i < 3; ++i) if (t >= at[i]) b = std::max(b, amp[i] * std::exp(-(t - at[i]) * 26.f));
+    return b;
+}
+}
 
 // ---- collision that matches what is drawn ---------------------------------------------
 // Points over a mesh's surface (its triangles, every half metre or so)
@@ -678,10 +736,37 @@ inline LevelData buildRing() {
             s.terminals.push_back({vec3{H.max.x - 1.3f, 1.f, H.max.z - 6.f}, "MANIFEST",
                                    "DISPATCHED: 40,111. RECEIVED: 0. DESTINATION: (BLANK). HOLD UNTIL CALLED FOR."});
         }
-        // The way on: north, toward the Shepherd
-        s.end = LevelBuilder::aabb(-20.f, -1.f, ring::KEPT_N + 5.f, 20.f, 10.f, ring::KEPT_N + 25.f);
+        // The way on: north, toward the Shepherd, into the dark (the chapter's end is past the Shadow Band)
+        s.end = LevelBuilder::aabb(-60.f, -1.f, ring::BAND_N - 26.f, 60.f, 10.f, ring::BAND_N - 8.f);
         b.mat = Mat::METAL;
         for (int k = 0; k < 6; ++k) post({-6.f + (k % 2) * 12.f, 0.f, ring::KEPT_N + 30.f + (k / 2) * 14.f});
+    }
+
+    // =========================================================================
+    // 5. THE SHADOW BAND
+    // =========================================================================
+    {
+        for (const ring::Rock& r : ring::bandRocks())
+            rockShelter(ring::shelterBox(r.x - r.w * 0.5f, r.z - r.d * 0.5f, r.x + r.w * 0.5f, r.z + r.d * 0.5f, 0.f, r.h, 5));
+        // The lamp route: capsules come down along it, each lamp still lit (amber: they light the ice round them)
+        int i = 0;
+        for (const vec3& p : ring::bandLamps()) {
+            const int q = i % 4; const float yaw = (ring::hash((float)i, 97.f) - 0.5f) * 8.f;
+            ringCapsule(b, {p.x, 0.6f, p.z}, false, q, yaw, true);
+            const vec3 lamp = p + (q % 2 == 0 ? vec3{0.f, 1.6f, 1.8f * (q == 0 ? 1.f : -1.f)} : vec3{1.8f * (q == 1 ? 1.f : -1.f), 1.6f, 0.f});
+            b.neon(lamp.x - 0.2f, lamp.y - 0.15f, lamp.z - 0.2f, lamp.x + 0.2f, lamp.y + 0.2f, lamp.z + 0.2f, {1.f, 0.55f, 0.16f});
+            ++i;
+        }
+        // Dark capsules among them: silhouettes when the lightning comes
+        for (int k = 0; k < 60; ++k) {
+            const float x = (ring::hash((float)k, 98.f) - 0.5f) * 2.f * (ring::HALF_X - 6.f), z = ring::BAND_S - 12.f - ring::hash((float)k, 99.f) * (ring::BAND_S - ring::BAND_N - 30.f);
+            bool clear = true;
+            for (const ring::Rock& r : ring::bandRocks()) if (std::fabs(x - r.x) < r.w * 0.5f + 4.f && std::fabs(z - r.z) < r.d * 0.5f + 6.f) clear = false;
+            for (const vec3& p : ring::bandLamps()) if (glm::length(vec3{x, 0.f, z} - p) < 8.f) clear = false;
+            if (!clear) continue;
+            const bool up = ring::hash((float)k, 100.f) < 0.3f;
+            ringCapsule(b, {x, up ? -1.3f : 0.55f, z}, up, (int)(ring::hash((float)k, 101.f) * 4.f), (ring::hash((float)k, 102.f) - 0.5f) * 10.f, true);
+        }
     }
 
     // Every shelter's post (the drifting ones ride their chunk: drawn live)
@@ -765,6 +850,16 @@ inline LevelData buildRing() {
     // 4. The open hull, and out north
     Arena h = section("THE KEPT", "", ring::KEPT_N, -760.f, {0.f, 0.f, -770.f});
     l.arenas.push_back(h);
+    // 5. The Shadow Band: dark, and quiet; one short fight in the middle (their visors are what you see)
+    {
+        Arena sb = section("THE SHADOW BAND", "46,000 KM", ring::BAND_N - 32.f, ring::BAND_S, {0.f, 0.f, ring::BAND_S - 6.f});
+        sb.hasTrigger = true; sb.trigger = LevelBuilder::aabb(-ring::HALF_X, -2.f, -1110.f, ring::HALF_X, 20.f, -1060.f);
+        sb.groundSpawns = {{-40.f, 0.f, -1132.f}, {36.f, 0.f, -1128.f}, {-10.f, 0.f, -1140.f}, {60.f, 0.f, -1100.f}, {-64.f, 0.f, -1104.f}};
+        sb.airSpawns = {{0.f, 3.f, -1136.f}};
+        sb.waves = {{W(EnemyType::STRAY, 4), W(EnemyType::HERDER, 1)}};
+        sb.maxAlive = 6;
+        l.arenas.push_back(sb);
+    }
     // Last: whatever is drawn within reach and has no collision gets its own (nothing hollow to walk into)
     ringMatchCollision(b, ring::HALF_X + 6.f);
     return l;

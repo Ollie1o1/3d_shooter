@@ -1035,6 +1035,7 @@ inline void GameplayState::update(float dt) {
     if (settings) audio.masterVolume = settings->audioVolume;
     updateMusic();
     if (sweptFalling()) audio.setMusicVolume(0.f);   // (the swept death is silent: 13.6)
+    if (ring() && ringDark() > 0.2f) audio.setMusicVolume(0.f);   // (the Shadow Band: true silence, section 9)
     // The place's own air (RoomTone.h): full between fights, under a fight,
     // low while paused or dead; the Yard's night comes with its nightfall
     audio.setRoomLevel(paused || armoryOpen || playerDead ? 0.35f : director.fighting() ? 0.7f : 1.f);
@@ -1336,6 +1337,7 @@ inline void GameplayState::update(float dt) {
         ++lIdx;
     }
     for (;lIdx<MAX_POINT_LIGHTS;++lIdx) pointLightColor[lIdx]={0,0,0};
+    if (ring()) ringLamp();   // THE SHADOW BAND: your lamp (Gameplay_Shadow.h)
 
     fpsFrameCount++;
     fpsTimer += floatDt;

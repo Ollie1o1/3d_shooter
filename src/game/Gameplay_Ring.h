@@ -47,7 +47,7 @@ inline void GameplayState::armSweep() {
 // The test ground walks through the tiers, so one visit shows all three
 inline SweepSpec GameplayState::nextSweep() const {
     const glm::vec3 dir = ring() ? ring::sweepDir() : glm::vec3{0.f, 0.f, 1.f};
-    const int tier = g_devSweep > 0 ? g_devSweep : (ring() && !g_devRingTest) ? 1 : 1 + sweepCount % 3;
+    const int tier = g_devSweep > 0 ? g_devSweep : (ring() && !g_devRingTest) ? (level.arenaAt(player.position) >= 5 ? 2 : 1) : 1 + sweepCount % 3;   // (the Shadow Band: the mid tier)
     switch (tier) {
         case 2:  return sweeptier::mid(dir).spec;
         case 3:  return sweeptier::near(dir).spec;
@@ -157,7 +157,7 @@ inline float GameplayState::ringFlash() const {   // the ridge lamps: full on th
     if (sweep.phase == RingSweep::Phase::FLASH) return 1.f;
     return sweep.phase == RingSweep::Phase::INBOUND ? 0.55f + 0.1f * std::sin(gameClock * 2.f) : 0.2f;
 }
-inline float GameplayState::ringNight() const { return 0.f; }   // (the Shadow Band, when it exists)
+inline float GameplayState::ringNight() const { return ringDark(); }   // (the Shadow Band: Gameplay_Shadow.h)
 inline bool GameplayState::ringQuiet() const {   // inside the open hull: air, and no sweeps
     const AABB H = ring::quietHull(); const glm::vec3 p = player.position;
     return !g_devRingTest && p.x > H.min.x && p.x < H.max.x && p.z > H.min.z && p.z < H.max.z + 1.f && p.y < H.max.y;
@@ -171,7 +171,8 @@ inline void GameplayState::beginRing() {
     wakeSeen = true;
     if (director.arena >= 2) holdfastFound = true;   // (a checkpoint past I2: it is yours)
     holdfast.reset(); armSweep();
-    ringLevelSeen = -1; ringScriptT = -1.f; ringAir = -1; ringKnockOn = -1; ringKnockT = ringCreakT = 0.f; crookDragT = 0.f; crookDragUid = -1; crookSeen = crookLeft = false;
+    ringLevelSeen = -1; ringScriptT = -1.f; ringAir = -1;
+    ringBolt = 0.f; ringBoltT = -1.f; ringBoltNext = 3.f; ringSunT = ringSunHit = -1.f; ringShadeHint = false; ringKnockOn = -1; ringKnockT = ringCreakT = 0.f; crookDragT = 0.f; crookDragUid = -1; crookSeen = crookLeft = false;
     if (g_devRingTest) ringLevelSeen = 99;
     player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0}; prevCamPos = player.camera.position;
 }
@@ -194,6 +195,7 @@ inline void GameplayState::updateRing(float dt) {
         }
     }
     ringTouch(dt);
+    tickShadow(dt);
     const glm::vec3 p = player.position;
     const int at = level.arenaAt(p);
     if (at > director.arena && !director.fighting() && director.phase != WaveDirector::Phase::INTRO) director.approach(at);
@@ -208,6 +210,7 @@ inline void GameplayState::updateRing(float dt) {
             // Each place's first sweep is scripted, with shelter in sight (the Drift's waits for HOLDFAST)
             if (at == 0) ringScriptT = -1.f;   // (the Landing's comes at the ridge, below)
             if (at == 3) ringScriptT = 14.f;
+            if (at == 5) ringScriptT = 22.f;   // (the Shadow Band's first: in the dark, among the rocks)
         }
     }
     if (at >= 0 && at > storyCheckpoint && !director.fighting()) { storyCheckpoint = at; sweepSched.checkpoint(); ui.feed("CHECKPOINT", SWEEP_ICE * 0.6f); }
@@ -324,7 +327,8 @@ inline void GameplayState::gatherSweep(std::vector<BoxInstance>& out) {
             }
             at.y = player.position.y > 40.f ? 0.f : 0.f;
             const float w = cone ? std::max(0.6f, f * sweep.spec.coneHalf / 40.f * 1.1f) : 4.2f;
-            push(out, T(at + glm::vec3{0.f, h * 0.5f, 0.f}) * RY(std::atan2(side.z, -side.x)) * S(glm::vec3{w, h, 0.9f}), SWEEP_ICE * 0.35f, SWEEP_ICE * (0.55f + 0.35f * ring::hash(n, 2.f)));
+            const float seen = 1.f - 0.88f * ringDark();   // (in the Shadow Band you barely see it)
+            push(out, T(at + glm::vec3{0.f, h * 0.5f, 0.f}) * RY(std::atan2(side.z, -side.x)) * S(glm::vec3{w, h, 0.9f}), SWEEP_ICE * 0.35f * seen, SWEEP_ICE * (0.55f + 0.35f * ring::hash(n, 2.f)) * seen);
         }
     }
 }

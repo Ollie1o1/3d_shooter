@@ -36,6 +36,9 @@ uniform float uRing;        // 1 = THE KEPT RING (Chapter 6): standing in the ri
 uniform vec4  uShepherd;    // the Shepherd: xyz its direction, w its angular radius (it grows level by level)
 uniform float uRingFlash;   // 0..1: its ridge lamps (a sweep's flash)
 uniform float uRingNight;   // 0..1: the giant's shadow (the Shadow Band): no sun, the giant's night side
+uniform float uRingBolt;    // 0..1: lightning in its night side, now (the game times it: the ring lights with it)
+uniform vec2  uRingBoltAt;  // where in the cloud (longitude, latitude offsets)
+uniform float uRingDawn;    // 0..1: the sunrise out of the Shadow Band: a red arc on its edge, then the diamond
 
 float hash3(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
 float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -359,15 +362,18 @@ vec3 ringSky(vec3 dir) {
         vec3 body = surf * lit * shadow * 1.05;
         body += surf * vec3(0.02, 0.018, 0.016);                          // the night side: almost black
         // Night-side lightning in the Shadow Band (silent flickers deep in the cloud)
-        if (night > 0.0) {
-            float cell = floor(uTime * 3.0);
-            float on = step(0.93, hash2(vec2(cell, 3.0)));
-            vec2 at = vec2(hash2(vec2(cell, 5.0)) * 1.4 - 0.7, hash2(vec2(cell, 7.0)) * 0.8 - 0.1);
-            float d = length(vec2(lon - 3.14 + at.x, lat - at.y) * vec2(1.0, 2.0));
-            body += vec3(0.6, 0.65, 0.9) * on * exp(-d * 9.0) * night * (0.5 + 0.5 * fract(uTime * 3.0));
+        if (night > 0.0 && uRingBolt > 0.0) {
+            float d = length(vec2(lon - 3.14 + uRingBoltAt.x, lat - uRingBoltAt.y) * vec2(1.0, 2.0));
+            body += vec3(0.6, 0.65, 0.9) * uRingBolt * 1.6 * (exp(-d * 9.0) + 0.15 * exp(-d * 2.0));
         }
         float limb = pow(1.0 - clamp(dot(-dir, nrm), 0.0, 1.0), 2.5);
         body += vec3(0.95, 0.75, 0.45) * limb * 0.18 * (0.2 + lit);      // its haze at the edge, warm
+        // The sunrise: a thin red arc along its edge, brightest on the sun's side, then the diamond
+        if (uRingDawn > 0.0) {
+            float sunSide = clamp(dot(normalize(nrm.xz + vec2(1e-4)), normalize(sunD.xz + vec2(1e-4))) * 0.5 + 0.5, 0.0, 1.0);
+            body += vec3(1.6, 0.35, 0.12) * pow(limb, 5.0) * uRingDawn * (0.3 + 1.7 * sunSide);
+            body += vec3(3.0, 2.8, 2.5) * pow(limb, 14.0) * pow(sunSide, 8.0) * smoothstep(0.85, 1.0, uRingDawn) * 6.0;
+        }
         col = mix(col, body, smoothstep(0.0, 0.0008, disc / (tb * tb)));
     }
 

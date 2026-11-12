@@ -81,6 +81,33 @@ inside hollow meshes or fall into the void.
 - Rebake after any change to these (`make tools/light_bake && ./tools/light_bake story6`: rebuild
   the tool first, or the bake is stale and the game draws without it).
 
+## THE SHADOW BAND (level 4, arena 5; 2026-11-12)
+
+North of the open hull, z -905 to -1240 (`ring::BAND_S`, `BAND_N`), a short level with one idea:
+the giant's shadow crosses the ring and it is black. Rules and look: `src/game/Gameplay_Shadow.h`;
+numbers: `shadowband::` and `ring::darkTheme`, `bandRocks`, `bandLamps` in `LevelRing.h`.
+
+- **The dark** (`ringDark`): full SHADE_IN (30 m) in. The world's light lerps to the giant's
+  night side (`ringShade`), the sky shows its dark face (`uRingNight`), music is off (section 9:
+  true silence). The sweep's wall is drawn at 12%: you go by the count, the floor's tick and
+  the posts, which stay lit.
+- **Light:** your lamp (point light 3, 4.5 m ahead and low), and 13 capsules along a winding
+  route with their amber lamps lit (neon: they light the ice, and the bake carries it).
+  60 unlit capsules for silhouettes.
+- **Lightning** (`tickShadow`, `shadowband::bolt`): every 4-11 s, three strokes over half a second
+  in the giant's night side (`uRingBolt`, `uRingBoltAt`; the shader no longer picks its own),
+  and for that moment the ring is lit grey. Reduced flashing: 35%. `--overlay bolt`: one every
+  second or so, for screenshots.
+- **Sweeps:** the mid tier (10 s, two waves) from here on; the first is scripted 22 s after the
+  card. 41 rocks in nine staggered rows: the worst walk to shelter is 5.2 s (`make test-ring`).
+- **One fight:** 4 STRAYS and a HERDER, triggered between z -1060 and -1110.
+- **The sunrise** (past `SUNRISE_AT`, 95 m from the far side): a red arc along the giant's edge
+  (`uRingDawn`), the diamond (a white flash, 1.6 s in), then sunlit ice racing toward you at a
+  sweep's speed (`gatherShadow`) from 320 m north; when it reaches you the dark lifts over 1.2 s.
+- The chapter's end card is now past the band (`story.end`, z -1266 to -1248).
+- Not built: the sound (vacuum already; a floor hum for the front in the dark would help),
+  the Shepherd's lamps turning to follow you (13.2), dust on the hands (13.5).
+
 ## The sky (skybox.frag `ringSky`, `uRing`)
 
 The giant (`RING_GIANT`, east, angular radius 0.8) sits on the horizon with its
@@ -302,8 +329,9 @@ music never ducks at the zero.
 4. ~~Menu and save~~: done. Still to do: the bridge cutscene (design
    section 2: the capsule's flight from the Store to the ring and the
    impact); for now the Cold Store's end card just loads the Landing.
-5. **Levels 4-8** (the Shadow Band uses `uRingNight`; the Spokes reuse the
-   ANCHOR field), then the boss as written.
+5. **Levels 5-8**: the Shadow Band is built (above). Next, the Spokes (they
+   reuse the ANCHOR enemy's field: no grapple or dash inside), then the Gap,
+   the Wake and the Shore, then the boss as written.
 
 ## House rules noticed while building
 

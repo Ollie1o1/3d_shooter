@@ -97,6 +97,7 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
     if (recallOwned()) gatherRecall(out);
     if (holdfastOwned()) gatherHoldfast(out);
     gatherSweep(out);
+    if (ring()) gatherShadow(out);   // (the Shadow Band's sunrise: Gameplay_Shadow.h)
     if(laboratory())gatherLabDressing(out);
 
     // HOLD: a ring of light on the ground; the lit arc is how far it's held.
@@ -682,6 +683,7 @@ inline void GameplayState::render() {
     Theme th = level.themeAt(player.position);
     if (laboratory() && labIntro.active()) th = lerpTheme(lab::ashTheme(), level.arenas[0].theme, labIntro.skyMix());   // the Far Road's sky giving way to the void
     if (plain() && insideGleaner()) th = gut::theme();   // (inside it: the foundry's dark and its slag light)
+    if (ring()) th = ringShade(th);   // THE SHADOW BAND: the giant's night (Gameplay_Shadow.h)
     if (rageBlend > 0.f) th = lerpTheme(th, bloodEclipse(th), rageBlend);
     if (bossDusk > 0.005f && th.eclipse < 0.5f) th = lerpTheme(th, nightfall(th), bossDusk * BOSS_DUSK_MAX);   // (under the eclipse: it burns hotter instead)
     if (th.eclipse > 0.5f && swallow01() > 0.f) th = lerpTheme(th, swallowedOf(th), swallow01());   // MORNINGSTAR: inside the eclipse
@@ -837,6 +839,9 @@ inline void GameplayState::render() {
         skyboxShader.setVec4("uShepherd", ring() ? glm::vec4{ring::shepherdDir(), ringShepherdSize()} : glm::vec4{0.f, 0.f, -1.f, 0.f});
         skyboxShader.setFloat("uRingFlash", ring() ? ringFlash() : 0.f);
         skyboxShader.setFloat("uRingNight", ring() ? ringNight() : 0.f);
+        skyboxShader.setFloat("uRingBolt", ring() ? ringBolt : 0.f);
+        skyboxShader.setVec2("uRingBoltAt", ringBoltAt);
+        skyboxShader.setFloat("uRingDawn", ring() && ringSunT >= 0.f ? glm::clamp(ringSunT / shadowband::DIAMOND, 0.f, 1.f) * ringDark() : 0.f);
         skyboxShader.setFloat("uMoonLid", plain() ? plainMoonLid() : 0.f);
         skyboxShader.setFloat("uFlash", plain() ? plainFlash() : 0.f);
         skyboxShader.setVec3("uFlashDir", g_devOverlay == "plainflash" ? glm::normalize(renderCam.forward() + glm::vec3{0.f, 0.3f, 0.f}) : plainFlashDir);
