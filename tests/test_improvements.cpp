@@ -24,7 +24,7 @@ int main() {
     CHECK(restored.parse(original.text()) && restored.text()==original.text(),"Story save preserves chapter, equipment, discoveries, mods, choices and statistics");
     const std::string good=restored.text();
     CHECK(!restored.parse(good.substr(0,good.size()/2)) && restored.text()==good,"truncated saves cannot partially replace a valid checkpoint");
-    auto bad=original;bad.chapter=6;CHECK(!restored.parse(bad.text()),"future chapters are rejected safely");
+    auto bad=original;bad.chapter=7;CHECK(!restored.parse(bad.text()),"future chapters are rejected safely");
     bad=original;bad.checkpoint=8;CHECK(!restored.parse(bad.text()),"a chapter cannot restore an out-of-bounds checkpoint");
     bad=original;bad.prog.up[0].tier[0]=100;CHECK(!restored.parse(bad.text()),"corrupt upgrade tiers cannot reach gameplay");
     bad=original;bad.elapsed=-1;CHECK(!restored.parse(bad.text()),"invalid run times are rejected");
