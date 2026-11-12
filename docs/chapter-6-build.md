@@ -131,6 +131,38 @@ shapes: `ring::spokes()`, `spokeAt`, `spokeRocks` in `LevelRing.h`.
 - Not built: static crawling over UNIT 24's fingers (13.5); a HUD sign that you're in a spoke
   beyond the toast and the feed.
 
+## THE GAP and THE DROVER (level 6, arena 7; 2026-11-12)
+
+z -1784 to -2500. The ring stops at a cliff (`ring::GAP_S`, -1860), there is nothing for 480 m, and it
+goes on (`GAP_N`, -2340). Rules: `src/game/Gameplay_Gap.h`; numbers: `gapride::` and `ring::raft*`,
+`gapRocks` in `LevelRing.h`.
+
+- **The lips:** the sheet's face (10 m thick) and its underside drawn at both lips, a broken edge
+  on top, ice grains pouring off in a slow fall near you. Fall in: the arena's `voidY` puts you
+  back on the near side with the raft moored again.
+- **The raft** (`LevelData::raftMover`, `raftBoulder`, DRIVEN movers): flush with the near lip. Step
+  on and it goes, 8.5 m/s, about 55 s to the far lip. Its boulder is a moving shelter with
+  `holds` set: spiked to it with HOLDFAST you survive a sweep in the open (design section 5's one
+  case, with the Fall's hull). One mid tier sweep is fired a third of the way over.
+- **THE DROVER** (`EnemyType::DROVER`, the second sheepdog, `isSheepdog`; model `ONLY=drover`):
+  a flying tug with push-forks and four pods, spawned with its card when you board. It hangs
+  beside the raft (`droverPost`, swapping sides every 13 s) with a wedge of five chunks ahead
+  of it, and sends one sliding across the raft (RING_CHARGE, 1.3 s gold wind-up, the chunk glows
+  gold): 12 damage and a shove that cuts your spike, maybe into the gap. Jump it (2.1 m tall; a
+  jump clears ~3.4 m) or step off its line. Like the Crook it can't be killed here: a third gone
+  it breaks off, and when the raft docks it leaves anyway.
+- One fight first, on the near cliff top: 4 STRAYS and 2 HERDERS.
+- `--overlay raftride`: cast off without boarding (screenshots).
+- Boulders and loose blocks (`Mover::look` 2) are now drawn inside their boxes: the drifting
+  chunks' lumps used to stick out past what you could stand on.
+- **The light bake** grew past one GPU 3D texture (2,703 cells deep, limit 2,048): `packAtlas` now
+  wraps its shelves into balanced columns along X when needed (`MAX_ATLAS`). Other levels pack
+  as before. story6.light is 57M cells, under the loader's 64M; another long level will need
+  that cap or the cell size looked at.
+- Frame rate at the reef view: 61 fps (`--bench 300`), down from 66 before the Spokes and the Gap.
+- Not built: the Drover splitting its herd round a tine and HOLDFAST pinning a chunk to break the
+  formation (both for the tines, in the boss fight); a far side worth arriving at beyond rocks.
+
 ## The sky (skybox.frag `ringSky`, `uRing`)
 
 The giant (`RING_GIANT`, east, angular radius 0.8) sits on the horizon with its
@@ -352,9 +384,9 @@ music never ducks at the zero.
 4. ~~Menu and save~~: done. Still to do: the bridge cutscene (design
    section 2: the capsule's flight from the Store to the ring and the
    impact); for now the Cold Store's end card just loads the Landing.
-5. **Levels 6-8**: the Shadow Band and the Spokes are built (above). Next, the
-   Gap (THE DROVER and a raft ride over the gap), the Wake (THE BELLWETHER, the
-   double sweep on a climb) and the Shore, then the boss as written.
+5. **Levels 7-8**: the Shadow Band, the Spokes and the Gap are built (above).
+   Next, the Wake (THE BELLWETHER, the double sweep on a climb up a frozen wave)
+   and the Shore, then the boss as written.
 
 ## House rules noticed while building
 

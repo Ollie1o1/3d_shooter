@@ -134,6 +134,7 @@ inline void GameplayState::crookTick(float dt) {
 }
 
 inline void GameplayState::ringFoeEvents(Enemy& e, const EnemyEvents& ev) {
+    if (e.type == EnemyType::DROVER && ev.ringCharge && !playerDead) gapLaunch(e);
     if (e.type == EnemyType::CROOK && ev.ringHooked && !playerDead) {   // the hook has you
         if (holdfast.held()) {   // the line holds: it caught, and you didn't move
             ui.feed("THE LINE HOLDS", HOLDFAST_STEEL);
@@ -167,13 +168,24 @@ inline void GameplayState::gatherRing(std::vector<BoxInstance>& out) {
     const float ball = (float)meshlib::lumpBall();
     const glm::vec3 eye = player.camera.position;
     for (const Mover& m : level.movers) {
-        if (m.look != 1 || m.gone) continue;
+        if (m.look < 1 || m.gone) continue;
         AABB bx = level.walls[m.wall].box;
         bx.min -= m.delta * (1.f - renderAlpha); bx.max -= m.delta * (1.f - renderAlpha);
         const glm::vec3 c = (bx.min + bx.max) * 0.5f, sz = bx.max - bx.min;
         if (glm::length(c - eye) > 900.f) continue;
         const float k = m.base.min.x * 0.37f + m.base.min.z * 0.11f;
         const glm::vec3 col = m.color * 0.72f;   // (the sun is hard out here: keep the ice off white)
+        if (m.look == 2) {   // a boulder or a loose block: a lump of ice that fills its box and never leaves it
+            push(out, T(c) * S(sz * 0.96f), col);
+            out.back().surface = 6.f;
+            for (int i = 0; i < 3; ++i) {   // rounded off with lumps that stay inside (what you see is what you hit)
+                BoxInstance bi; bi.color = col * (0.86f + 0.08f * i); bi.mesh = ball;
+                const float u = (i - 1) * 0.3f;
+                bi.model = T(glm::vec3{c.x + u * sz.x, c.y + 0.05f * sz.y * i, c.z}) * RY(ring::hash(k + i, 6.f) * 6.28f) * S(glm::vec3{sz.x * 0.42f, sz.y * 0.98f, sz.z * 0.98f});
+                out.push_back(bi);
+            }
+            continue;
+        }
         push(out, T(c) * S(sz), col);
         out.back().surface = 6.f;   // (distant ground: a grain that travels with it)
         push(out, T(glm::vec3{c.x, bx.max.y + 0.005f, c.z}) * S(glm::vec3{sz.x * 0.98f, 0.01f, sz.z * 0.98f}), glm::mix(col, glm::vec3{0.5f, 0.43f, 0.33f}, 0.4f));
@@ -187,9 +199,9 @@ inline void GameplayState::gatherRing(std::vector<BoxInstance>& out) {
                      * RY(ring::hash(k + i, 6.f) * 6.28f) * S(glm::vec3{sz.x / lumps * 1.7f, sz.y * (1.2f + 1.4f * r), sz.z * (0.9f + 0.3f * r)});
             out.push_back(bi);
         }
-        for (int e = -1; e <= 1; e += 2) {   // its two ends, rounded off
+        for (int e = -1; e <= 1; e += 2) {   // its two ends, rounded off (pulled in: nothing to stand on that isn't there)
             BoxInstance bi; bi.color = col * 0.92f; bi.mesh = ball;
-            bi.model = T(glm::vec3{c.x + e * sz.x * 0.5f, c.y - sz.y * 0.1f, c.z}) * RY(k + e) * S(glm::vec3{sz.z * 0.7f, sz.y * 1.15f, sz.z * 1.05f});
+            bi.model = T(glm::vec3{c.x + e * (sz.x * 0.5f - sz.z * 0.3f), c.y - sz.y * 0.1f, c.z}) * RY(k + e) * S(glm::vec3{sz.z * 0.6f, sz.y * 1.0f, sz.z * 0.98f});
             out.push_back(bi);
         }
     }

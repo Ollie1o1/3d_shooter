@@ -392,7 +392,10 @@ public:
     // THE SHADOW BAND: the lightning (its flicker now, since it struck, the next, where in the cloud) and the sunrise
     float ringBolt = 0.f, ringBoltT = -1.f, ringBoltNext = 3.f; glm::vec2 ringBoltAt{0.f};
     float ringSunT = -1.f, ringSunHit = -1.f, ringSunFrom = 0.f; bool ringShadeHint = false;
-    bool  spokeHint = false; float spokeCrackle = 0.f;   // THE SPOKES   // -1 not yet set, 0 hard vacuum outside, 1 the hull's air
+    bool  spokeHint = false; float spokeCrackle = 0.f;   // THE SPOKES
+    // THE GAP: the ride, its sweep, the Drover, the chunk it sends, its side of the raft
+    bool  gapRide = false, gapSweepDone = false; int gapDroverUid = -1; float gapSide = 1.f, gapSideT = 0.f;
+    struct GapCharge { bool on = false, hit = false; glm::vec3 pos{0.f}; float dir = 1.f, from = 0.f; } gapCharge;   // -1 not yet set, 0 hard vacuum outside, 1 the hull's air
     glm::vec3 sweptFrom{0.f}, sweptDir{0.f, 0.f, 1.f};
     bool sweptFalling() const { return playerDead && sweptT >= 0.f && sweptT < SWEPT_FALL; }
     static constexpr float SWEPT_FALL = 2.2f;
@@ -1380,6 +1383,12 @@ public:
     bool  inSpoke(glm::vec3 feet) const;
     void  tickSpokes(float dt);
     void  gatherSpokes(std::vector<BoxInstance>& out);
+    // THE GAP (Gameplay_Gap.h)
+    void  resetGap();
+    bool  onRaft() const;
+    void  tickGap(float dt);
+    void  gapLaunch(const Enemy& d);
+    void  gatherGap(std::vector<BoxInstance>& out);
     void ringFoes(float dt);
     void ringFoeEvents(Enemy& e, const EnemyEvents& ev);
     void crookTick(float dt);
@@ -1486,6 +1495,7 @@ public:
 #include "game/Gameplay_Ring.h"
 #include "game/Gameplay_Shadow.h"
 #include "game/Gameplay_Spokes.h"
+#include "game/Gameplay_Gap.h"
 #include "game/Gameplay_RingFoes.h"
 #include "game/Gameplay_ColdEnemies.h"
 #include "game/Gameplay_Wasteland.h"

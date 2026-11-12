@@ -21,6 +21,7 @@ inline bool GameplayState::sweepOn() const { return ring() || g_devSweep > 0; }
 inline void GameplayState::armSweep() {
     sweep.reset(); sweepArmed = true; sweepCount = 0; sweepTickAt = -1; sweepSwept = 0;
     ringGone = ringShort = 0; ringCountT = -1.f; sweptBodies.clear();
+    resetGap();   // (the raft back at its mooring: armSweep resets every DRIVEN mover)
     sweepShelters.clear();
     if (ring()) {
         sweepShelters = level.sweepShelters;
@@ -103,7 +104,7 @@ inline void GameplayState::tickSweep(float dt) {
     }
     // Enemies in the open go with it
     for (auto& e : enemies) {
-        if (!e.targetable() || isBoss(e.type) || e.type == EnemyType::CROOK || !sweep.sweptNow(e.position, sweepShelters)) continue;   // (a sheepdog stands in it)
+        if (!e.targetable() || isBoss(e.type) || isSheepdog(e.type) || !sweep.sweptNow(e.position, sweepShelters)) continue;   // (a sheepdog stands in it)
         e.knockVel = dir * 34.f + glm::vec3{0.f, 9.f, 0.f};
         fx.spawnBurst(e.position + glm::vec3{0.f, 1.f, 0.f}, SWEEP_ICE, 14, 10.f, 0.6f, 2.f);
         if (!sweep.lethal()) continue;
@@ -172,7 +173,7 @@ inline void GameplayState::beginRing() {
     if (director.arena >= 2) holdfastFound = true;   // (a checkpoint past I2: it is yours)
     holdfast.reset(); armSweep();
     ringLevelSeen = -1; ringScriptT = -1.f; ringAir = -1;
-    ringBolt = 0.f; ringBoltT = -1.f; ringBoltNext = 3.f; ringSunT = ringSunHit = -1.f; ringShadeHint = false; spokeHint = false; ringKnockOn = -1; ringKnockT = ringCreakT = 0.f; crookDragT = 0.f; crookDragUid = -1; crookSeen = crookLeft = false;
+    ringBolt = 0.f; ringBoltT = -1.f; ringBoltNext = 3.f; ringSunT = ringSunHit = -1.f; ringShadeHint = false; spokeHint = false; resetGap(); ringKnockOn = -1; ringKnockT = ringCreakT = 0.f; crookDragT = 0.f; crookDragUid = -1; crookSeen = crookLeft = false;
     if (g_devRingTest) ringLevelSeen = 99;
     player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0}; prevCamPos = player.camera.position;
 }
@@ -197,6 +198,7 @@ inline void GameplayState::updateRing(float dt) {
     ringTouch(dt);
     tickShadow(dt);
     tickSpokes(dt);
+    tickGap(dt);
     const glm::vec3 p = player.position;
     const int at = level.arenaAt(p);
     if (at > director.arena && !director.fighting() && director.phase != WaveDirector::Phase::INTRO) director.approach(at);
@@ -213,6 +215,7 @@ inline void GameplayState::updateRing(float dt) {
             if (at == 3) ringScriptT = 14.f;
             if (at == 5) ringScriptT = 22.f;   // (the Shadow Band's first: in the dark, among the rocks)
             if (at == 6) ringScriptT = 18.f;   // (the Spokes': you walk to shelter)
+            if (at == 7) ringScriptT = -1.f;   // (the Gap's comes mid-crossing: Gameplay_Gap.h)
         }
     }
     if (at >= 0 && at > storyCheckpoint && !director.fighting()) { storyCheckpoint = at; sweepSched.checkpoint(); ui.feed("CHECKPOINT", SWEEP_ICE * 0.6f); }

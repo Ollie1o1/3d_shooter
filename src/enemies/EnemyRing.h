@@ -20,6 +20,9 @@
 //           whatever shelter you were in. Held by HOLDFAST, the line holds. A
 //           third of its health gone and it breaks off toward the Shepherd: it
 //           can't be killed here (the tines are where it comes back).
+//   DROVER  the second sheepdog, over the Gap: it hangs beside your raft with its
+//           herd and, every few seconds, sends a chunk sliding across it (gold:
+//           jump it, or step off its line). A third gone and it breaks off too.
 // =============================================================================
 
 namespace ringfoe {
@@ -152,4 +155,17 @@ inline void Enemy::crookLeaveTick(float dt) {
         animPhase += dt * 5.f;
     }
     if (crookLeave > CROOK_GONE) { alive = false; state = EnemyState::DEAD; }
+}
+
+inline void Enemy::thinkDrover(float dt, const EnemyWorld& w, bool resolve) {
+    const glm::vec3 to = flatTo(w.playerFeet);
+    animPhase += dt * 2.f;
+    turnToward(to, dt, 2.5f);
+    // It hangs where the game puts it (beside the raft), drifting there smoothly
+    glm::vec3 d = droverPost - position;
+    const float n = glm::length(d);
+    velocity = n > 0.2f ? d / n * std::min(stats().speed * 1.6f, n * 1.5f) : glm::vec3{0.f};
+    if (telegraphTimer > 0.f) { velocity *= 0.3f; return; }
+    if (resolve && attack == AttackKind::RING_CHARGE) { attack = AttackKind::NONE; ev.ringCharge = true; recover(1.4f); return; }
+    if (recoverTimer <= 0.f && attackReady(dt) && glm::length(to) < 60.f) startAttack(AttackKind::RING_CHARGE, stats().telegraph);
 }

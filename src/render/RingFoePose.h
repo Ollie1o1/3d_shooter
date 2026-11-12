@@ -72,7 +72,7 @@ inline bool ringFoePose(const Enemy& e, float time, const mat4& root, mat4& file
         }
         break;
     }
-    case EnemyType::HERDER: {
+    case EnemyType::HERDER: case EnemyType::DROVER: {
         const float pitch = e.dashTimer > 0.f ? 0.35f : e.telegraphTimer > 0.f ? -0.2f * tp : 0.08f + 0.06f * run;
         fileRoot = root * RX(pitch) * RZ(std::sin(time * 1.3f + id) * 0.05f);
         const float steer = std::sin(time * 0.9f + id) * 0.25f;

@@ -79,6 +79,7 @@ struct EnemyEvents : SovereignEvents, PenitentEvents, WardenEvents, LeviathanEve
     glm::vec3 beamFrom{0.f}, beamTo{0.f};
     bool      meleeHit = false;   float meleeDamage = 0.f;
     bool      ringHooked = false;   // THE CROOK's hook caught you (the game drags you, unless you are held)
+    bool      ringCharge = false;   // THE DROVER sent a chunk of its herd across (the game moves it: Gameplay_Gap.h)
     AttackKind meleeAttack = AttackKind::NONE; // contact's attack; AI may already have queued the next one
     bool      slam = false;       float slamRadius = 0.f, slamDamage = 0.f;
     bool      detonated = false;  // MITE blew itself up next to the player
@@ -322,6 +323,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     // THE CROOK (EnemyRing.h): where its hook will land, the stray it is reeling in (uid), its opening
     // done, and how long it has been breaking off (-1: it hasn't)
     glm::vec3 crookAim{0.f}; int crookDrag = -1; bool crookOpened = false; float crookLeave = -1.f;
+    glm::vec3 droverPost{0.f};   // THE DROVER: where the game wants it to hang (beside your raft)
     static constexpr float CROOK_LEAVES = 2.f / 3.f;   // it breaks off with this share of its health left   // a STRAY that won't run: it stands and faces the flash (13.6)
     glm::vec3 ringPushAt{0.f}; int ringPush = -1;
     float ringCount = 0.f;       // TALLY: counts so far (its drum turns a notch each)
@@ -409,7 +411,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         if (type == EnemyType::PENITENT) return (risen ? 11.5f : 8.2f) * scale;   // kneeling, then standing
         return stats().height * scale;
     }
-    bool  targetable() const { return alive && state == EnemyState::ACTIVE && !levHidden() && !(type == EnemyType::ABSOLUTE && (abArrive > 0.f || abSwallow > 0.f)) && !(type == EnemyType::CROOK && crookLeave >= 0.f); }
+    bool  targetable() const { return alive && state == EnemyState::ACTIVE && !levHidden() && !(type == EnemyType::ABSOLUTE && (abArrive > 0.f || abSwallow > 0.f)) && !(isSheepdog(type) && crookLeave >= 0.f); }
     bool  staggered() const  { return staggerTimer > 0.f; }
     bool attackBusy() const {
         return telegraphTimer>0 || burstLeft>0 || diveTimer>0 || beamTimer>0 ||
@@ -622,7 +624,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
             abBeginSwallow();
             return false;
         }
-        if (type == EnemyType::CROOK && health <= maxHealth * CROOK_LEAVES) {   // not here: a third gone and it breaks off
+        if (isSheepdog(type) && health <= maxHealth * CROOK_LEAVES) {   // a sheepdog, not here: a third gone and it breaks off
             health = maxHealth * CROOK_LEAVES;
             if (crookLeave < 0.f) { crookLeave = 0.f; attack = AttackKind::NONE; telegraphTimer = 0.f; }
             return false;
@@ -676,7 +678,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         if(type==EnemyType::SORTER && sortImpactT>=0) {
             sortImpactT+=dt;if(sortImpactT>SORT_IMPACT)sortImpactT=-1.f;
         }
-        if (type == EnemyType::CROOK && crookLeave >= 0.f) { crookLeaveTick(dt); return; }   // (no walls, no arena: it is going over them)
+        if (isSheepdog(type) && crookLeave >= 0.f) { crookLeaveTick(dt); return; }   // (no walls, no arena: it is going over them)
         if(type == EnemyType::SORTER && staggerTimer > 0.f) { staggerTimer=std::max(0.f,staggerTimer-dt); sortMark=0; sortScan=0; velocity=glm::vec3{0}; return; }
         bool resolve = false;   // telegraph ran out this tick
         if (telegraphTimer > 0.f) {
@@ -735,6 +737,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
             case EnemyType::STRAY:thinkStray(dt,w,resolve);break;
             case EnemyType::HERDER:thinkHerder(dt,w,resolve);break;
             case EnemyType::CROOK:thinkCrook(dt,w,resolve);break;
+            case EnemyType::DROVER:thinkDrover(dt,w,resolve);break;
             case EnemyType::TALLY:velocity={0,0,0};attackTimer=0;animPhase+=dt;break;   // (it counts: Gameplay_RingFoes.h)
             case EnemyType::PORTER:thinkBrute(dt,w,resolve);break;   // a hauler's slam up close and its lob over cover
             case EnemyType::UNIT24K:thinkUnit24K(dt,w,resolve);break;
@@ -1561,6 +1564,7 @@ private:
     void thinkStray(float dt,const EnemyWorld& w,bool resolve);
     void thinkHerder(float dt,const EnemyWorld& w,bool resolve);
     void thinkCrook(float dt,const EnemyWorld& w,bool resolve);
+    void thinkDrover(float dt,const EnemyWorld& w,bool resolve);
     void crookLeaveTick(float dt);
     void thinkUnit24K(float dt,const EnemyWorld& w,bool resolve);
     void thinkRestorer(float dt,const EnemyWorld& w,bool resolve);

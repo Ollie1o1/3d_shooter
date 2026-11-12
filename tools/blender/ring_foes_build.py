@@ -25,6 +25,9 @@
 #   crook   THE CROOK, the Shepherd's first sheepdog (design sections 3 and 6): a tall, thin
 #           retrieval unit, stooped, its right arm one long pole ending in a hook for pulling
 #           strays back into line; a cable winch on its back, the hook's line wound on it
+#   drover  THE DROVER, the second sheepdog: a long, heavy tug that flies its herd of ice chunks
+#           across the Gap, two push-forks out in front, four cold-gas pods, a mast at the back
+#           with a hooded lamp and the herd's amber beacon
 import os, math
 exec(open(os.path.join(os.getcwd(), 'tools/blender/enemy_kit.py')).read())
 
@@ -54,6 +57,7 @@ NEEDED['stray'] = 'waist torso head hipL hipR kneeL kneeR armL armR elbowL elbow
 NEEDED['herder'] = 'body head shield wingL wingR'
 NEEDED['tally'] = 'body head halo crown armL armR'
 NEEDED['crook'] = 'waist torso head hipL hipR kneeL kneeR armL armR elbowL elbowR handL handR halo shield'
+NEEDED['drover'] = 'body head shield wingL wingR'
 NEEDED['porter'] = 'waist torso head hipL hipR kneeL kneeR armL armR elbowL elbowR handL handR shield'
 
 
@@ -414,3 +418,55 @@ if want('crook'):
     K((-.46, .4, .82), .03, .12, 'ring_graphite', 'shield', rot=(-30, 0, 0), sides=6)   # the barb
     B((-.46, .14, .66), (.05, .03, .04), 'ring_rime', 'shield')
     done('crook')
+
+
+
+# =====================================================================================
+# THE DROVER (about 3.2 m long): a flying tug with push-forks; it moves ice in formation
+# =====================================================================================
+if want('drover'):
+    begin('drover')
+    add_joint('body', (0, 0, 0))
+    add_joint('head', (0, 1.05, -1.2), 'body')       # the mast's lamp
+    add_joint('shield', (0, -.05, 1.1), 'body')      # the forks
+    add_joint('wingL', (.9, .1, -.3), 'body'); add_joint('wingR', (-.9, .1, -.3), 'body')
+    # The hull: long, low and chamfered, scuffed enamel over a dust-dark keel, its flanks ribbed
+    P((0, 0, -.2), (1.3, .62, 2.4), 'ring_enamel', 'body', top=(.82, .86), bev=.06, seg=2)
+    B((0, -.32, -.2), (1.1, .12, 2.1), 'ring_dust_dk', 'body', bev=.03)
+    for k in range(7):
+        B((.66, -.02, -1.15 + k * .32), (.03, .3, .1), 'ring_graphite', 'body')
+        B((-.66, -.02, -1.15 + k * .32), (.03, .3, .1), 'ring_graphite', 'body')
+    B((0, .33, -.1), (.9, .05, 1.5), 'ring_dust', 'body')
+    stencil((0, .12, .9), .04, .07, 'body', n=5)
+    for z in (-.6, .3):   # cargo straps over its back
+        B((0, .34, z), (1.36, .03, .12), 'ring_strap', 'body')
+        B((.5, .36, z), (.12, .05, .16), 'ring_buckle', 'body')
+    B((.3, .3, .5), (.16, .03, .06), 'ring_rime', 'body')
+    # The forks: two long beams out in front, each ending in a broad push-pad with a rubber face
+    for s in (1, -1):
+        rod((s * .45, -.05, .8), (s * .55, -.1, 2.3), .07, 'ring_graphite', 'shield', sides=8)
+        B((s * .55, -.1, 1.6), (.16, .2, .16), 'ring_enamel_dk', 'shield', bev=.02)
+        P((s * .58, -.1, 2.36), (.7, .9, .12), 'ring_plough', 'shield', top=(1.0, 1.0), bev=.015)
+        B((s * .58, -.1, 2.44), (.74, .94, .05), 'ring_rubber', 'shield', bev=.01)
+        for c in range(2):
+            B((s * .58 + (c - .5) * .26, -.05, 2.43), (.08, .5, .01), 'ring_stencil', 'shield', rot=(0, 0, 35 if c else -35))
+    rod((.5, -.05, 1.3), (-.5, -.05, 1.3), .04, 'ring_graphite', 'shield', sides=6)   # the cross-brace
+    # The mast at the back: a lattice post, the hooded lamp, and the herd's amber beacon on top
+    for s in (1, -1):
+        rod((s * .12, .3, -1.15), (s * .06, 1.0, -1.2), .03, 'ring_graphite', 'body', sides=6)
+    B((0, 1.0, -1.2), (.24, .2, .28), 'ring_graphite', 'head', bev=.02)
+    P((0, 1.13, -1.15), (.32, .14, .36), 'ring_enamel_dk', 'head', top=(.9, .8), bev=.02)
+    C((0, 1.04, -1.0), .09, .06, 'ring_rubber', 'head', rot=(90, 0, 0), sides=12)
+    C((0, 1.04, -.96), .07, .02, 'glow', 'head', rot=(90, 0, 0), sides=12, glow='eye', k=1.8)
+    C((0, 1.24, -1.2), .05, .1, 'ring_hatch', 'head', sides=8)
+    E((0, 1.33, -1.2), (.07, .06, .07), 'glow', 'head', glow='core', k=1.8)
+    # Four pods on swivel arms, nozzles back
+    for sd, s in (('L', 1), ('R', -1)):
+        for z in (.55, -.85):
+            B((s * .82, .1, z), (.36, .07, .1), 'ring_graphite', 'wing' + sd)
+            C((s * 1.05, .1, z), .19, .55, 'ring_enamel', 'wing' + sd, rot=(90, 0, 0), sides=12)
+            C((s * 1.05, .1, z + .3), .15, .07, 'ring_enamel_dk', 'wing' + sd, rot=(90, 0, 0), sides=12)
+            C((s * 1.05, .1, z - .33), .12, .14, 'ring_graphite', 'wing' + sd, rot=(90, 0, 0), sides=10, r2=.16)
+            C((s * 1.05, .1, z - .41), .1, .02, 'glow', 'wing' + sd, rot=(90, 0, 0), sides=10, glow='core', k=.9)
+            B((s * 1.05, .3, z), (.2, .02, .36), 'ring_dust', 'wing' + sd)
+    done('drover')

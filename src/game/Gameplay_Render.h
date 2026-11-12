@@ -97,7 +97,7 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
     if (recallOwned()) gatherRecall(out);
     if (holdfastOwned()) gatherHoldfast(out);
     gatherSweep(out);
-    if (ring()) { gatherShadow(out); gatherSpokes(out); }   // (the Shadow Band's sunrise, the Spokes' static)
+    if (ring()) { gatherShadow(out); gatherSpokes(out); gatherGap(out); }   // (the Shadow Band's sunrise, the Spokes' static)
     if(laboratory())gatherLabDressing(out);
 
     // HOLD: a ring of light on the ground; the lit arc is how far it's held.
@@ -518,7 +518,7 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
 
     // Moving platforms: a slab with glowing edges and a grapple ring under it
     for (auto& m : level.movers) {
-        if (m.look == 1) continue;   // (Chapter 6's drifting ice: gatherRing)
+        if (m.look >= 1) continue;   // (Chapter 6: drifting ice and boulders, gatherRing)
         AABB b = level.walls[m.wall].box;
         b.min -= m.delta * (1.f - renderAlpha); b.max -= m.delta * (1.f - renderAlpha);
         glm::vec3 c = (b.min + b.max) * 0.5f, sz = b.max - b.min;

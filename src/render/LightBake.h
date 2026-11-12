@@ -251,21 +251,37 @@ inline std::vector<Region> regionsFor(const LevelData& L) {
 
 // Each region a place in the atlas: shelves along Z, each as deep as its deepest region; in a shelf,
 // regions stacked up (a cell apart) to the tallest region's height. Returns the atlas's size
+// (If that would run deeper than a GPU's 3D texture allows, MAX_ATLAS, the shelves wrap into a new
+// column beside the first, along X: a long level of low regions, like Chapter 6's ring. Levels that
+// fit already are packed exactly as before.)
+constexpr int MAX_ATLAS = 2048;
 inline glm::ivec3 packAtlas(std::vector<Region>& regions) {
     int H = 0, W = 0;
     for (const Region& r : regions) { H = std::max(H, r.dims.y); W = std::max(W, r.dims.x); }
     std::vector<int> order(regions.size());
     for (size_t i = 0; i < order.size(); ++i) order[i] = (int)i;
     std::stable_sort(order.begin(), order.end(), [&](int a, int b) { return regions[a].dims.y > regions[b].dims.y; });
-    int z = 0, y = 0, depth = 0;
+    const int colW = W + 2 + ((W + 2) & 1);
+    // How deep one column would be; past MAX_ATLAS, split it into columns of about equal depth
+    int total = 0;
+    { int y = 0, depth = 0, z = 0;
+      for (int i : order) { const Region& r = regions[i];
+          if (y > 0 && y + r.dims.y > H) { z += depth + 2; z += z & 1; y = 0; depth = 0; }
+          y += r.dims.y + 2; y += y & 1; depth = std::max(depth, r.dims.z); }
+      total = z + depth + 1; }
+    const int cols = std::max(1, (total + MAX_ATLAS - 1) / MAX_ATLAS);
+    const int wrapAt = cols > 1 ? total / cols + 1 : MAX_ATLAS;
+    int x = 0, z = 0, y = 0, depth = 0, deepest = 0;
     for (int i : order) {
         Region& r = regions[i];
         if (y > 0 && y + r.dims.y > H) { z += depth + 2; z += z & 1; y = 0; depth = 0; }   // a new shelf
-        r.off = {0, y, z};
+        if (y == 0 && z > 0 && (z + r.dims.z / 2 > wrapAt || z + r.dims.z + 1 > MAX_ATLAS)) { x += colW; z = 0; }   // ...in a new column
+        r.off = {x, y, z};
         y += r.dims.y + 2; y += y & 1;   // (two cells apart, at even cells: no glow cell is shared by two regions)
         depth = std::max(depth, r.dims.z);
+        deepest = std::max(deepest, z + depth + 1);
     }
-    return regions.empty() ? glm::ivec3(0) : glm::ivec3(W + 1, H + 1, z + depth + 1);
+    return regions.empty() ? glm::ivec3(0) : glm::ivec3(x + W + 1, H + 1, deepest);
 }
 
 // ---- the solid grid -----------------------------------------------------------------

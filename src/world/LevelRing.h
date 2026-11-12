@@ -54,6 +54,10 @@ constexpr float SUNRISE_AT = BAND_N + 95.f;     // cross this and the sun clears
 // THE SPOKES (level 5): streaks of charged dust lying across the ring. Inside one, no dash and
 // no grapple (the ANCHOR's field, at the scale of the landscape)
 constexpr float SPOKES_S = BAND_N - 32.f, SPOKES_N = -1760.f;
+// THE GAP (level 6): the ring stops at a cliff (GAP_S), nothing for 480 m, then goes on (GAP_N). You
+// cross on a raft of ring ice; THE DROVER herds its chunks alongside. FAR_N: the far side's end
+constexpr float GAP_S = -1860.f, GAP_N = -2340.f, FAR_N = -2480.f;
+constexpr float RAFT_SPEED = 8.5f;              // m/s across the gap (about a minute)
 constexpr float FAR_GROUND = 3000.f, FAR_PLANE = 5200.f;
 constexpr float VOID_FLOOR = -900.f;            // under the Drift: nothing
 constexpr float VOID_Y = -45.f;                 // fall past this in the Drift: back to the checkpoint
@@ -80,6 +84,7 @@ inline const char* distance(int arena) {
         case 1: case 2: return "61,000 KM";
         case 5: return "46,000 KM";
         case 6: return "39,000 KM";
+        case 7: return "31,000 KM";
         default: return "52,000 KM";
     }
 }
@@ -180,6 +185,23 @@ inline std::vector<Rock> spokeRocks() {
         }
     return out;
 }
+// The Gap's two sides: rows of rock on the cliff tops (the far side has the posts you'll want after the ride)
+inline std::vector<Rock> gapRocks() {
+    std::vector<Rock> out;
+    const float rows[] = {SPOKES_N - 40.f, GAP_S + 34.f, GAP_N - 16.f, GAP_N - 52.f, GAP_N - 88.f, GAP_N - 124.f};
+    for (int r = 0; r < 6; ++r)
+        for (int c = 0; c < 5; ++c) {
+            const float k = (float)(r * 5 + c) + 600.f;
+            const float x = -88.f + c * 44.f + (r % 2) * 22.f + 6.f * (hash(k, 91.f) - 0.5f);
+            if (x > 100.f || (r == 1 && std::fabs(x) < 16.f)) continue;   // (the way to the raft stays open)
+            out.push_back({x, rows[r] + 5.f * (hash(k, 92.f) - 0.5f), 9.f + 3.f * hash(k, 93.f), 4.2f + 0.8f * hash(k, 94.f), 5.f + hash(k, 95.f)});
+        }
+    return out;
+}
+// The raft: a slab of ring ice moored at the near lip, its boulder on its north end
+inline glm::vec3 raftHalf() { return {7.f, 1.6f, 5.5f}; }
+inline glm::vec3 raftStart() { return {0.f, -1.6f, GAP_S - 5.6f}; }       // (its top flush with the lip)
+inline float raftRun() { return (GAP_S - GAP_N) - 11.4f; }                // to the far lip
 // The lamp route: where the lit capsules lie, south to north
 inline std::vector<glm::vec3> bandLamps() {
     std::vector<glm::vec3> out;
@@ -275,6 +297,7 @@ inline std::vector<SweepShelter> shelters() {
     out.push_back(shelterBox(quietHull().min.x - 1.f, quietHull().min.z - 1.f, quietHull().max.x + 1.f, quietHull().min.z, 0.f, 9.f, 4));   // (its nose wall)
     for (const Rock& r : bandRocks()) out.push_back(shelterBox(r.x - r.w * 0.5f, r.z - r.d * 0.5f, r.x + r.w * 0.5f, r.z + r.d * 0.5f, 0.f, r.h, 5));
     for (const Rock& r : spokeRocks()) out.push_back(shelterBox(r.x - r.w * 0.5f, r.z - r.d * 0.5f, r.x + r.w * 0.5f, r.z + r.d * 0.5f, 0.f, r.h, 6));
+    for (const Rock& r : gapRocks()) out.push_back(shelterBox(r.x - r.w * 0.5f, r.z - r.d * 0.5f, r.x + r.w * 0.5f, r.z + r.d * 0.5f, 0.f, r.h, 7));
     return out;
 }
 
@@ -319,6 +342,13 @@ inline float bolt(float t) {
     for (int i = 0; i < 3; ++i) if (t >= at[i]) b = std::max(b, amp[i] * std::exp(-(t - at[i]) * 26.f));
     return b;
 }
+}
+
+// THE GAP's numbers (Gameplay_Gap.h)
+namespace gapride {
+constexpr float CHARGE_SPEED = 24.f;     // the chunk across the raft
+constexpr float CHARGE_DAMAGE = 12.f;
+const glm::vec3 CHUNK_HALF{2.2f, 1.05f, 1.8f};   // low enough to jump in this gravity (a jump clears ~3.4 m)
 }
 
 // ---- collision that matches what is drawn ---------------------------------------------
@@ -482,7 +512,9 @@ inline LevelData buildRing() {
         }
     };
     plane(ring::LAND_N, ring::FAR_GROUND);          // the Landing and everything south
-    plane(-ring::FAR_GROUND, ring::DRIFT_N);         // the reef plain and everything north
+    plane(ring::GAP_S, ring::DRIFT_N);               // the reef plain to the Gap's near lip
+    plane(-ring::FAR_GROUND, ring::GAP_N);           // past the Gap, on to the Shepherd
+    l.basins.push_back({LevelBuilder::aabb(-ring::FAR_GROUND, 0.f, ring::GAP_N, ring::FAR_GROUND, 0.f, ring::GAP_S), ring::VOID_FLOOR});   // THE GAP: nothing
     // Under the Drift: nothing. Its band runs across the whole ring
     l.basins.push_back({LevelBuilder::aabb(-ring::FAR_GROUND, 0.f, ring::DRIFT_N, ring::FAR_GROUND, 0.f, ring::LAND_N), ring::VOID_FLOOR});
 
@@ -516,7 +548,8 @@ inline LevelData buildRing() {
         }
     };
     sideEdge(ring::LAND_N, ring::FAR_GROUND * 0.6f);
-    sideEdge(-ring::FAR_GROUND * 0.6f, ring::DRIFT_N);
+    sideEdge(ring::GAP_S, ring::DRIFT_N);
+    sideEdge(-ring::FAR_GROUND * 0.9f, ring::GAP_N);
     // Space, both sides: the ring's loose rock hanging where the band thins out, sparser and more scattered
     // the further out; now and then a capsule that never came down. No collision: out of reach
     for (int i = 0; i < 1600; ++i) {
@@ -662,7 +695,7 @@ inline LevelData buildRing() {
                     const vec3 bh{std::min(3.2f, half.x - 1.f), 2.2f, 1.4f};
                     const vec3 bc{x, ln.top + bh.y, ln.z - half.z + bh.z + 0.2f};
                     const int bm = b.mover(bc, bh, Mover::Path::PINGPONG, flip ? bb : a, flip ? a : bb, ln.period, ln.phase, vec3{0.f});
-                    l.movers[bm].look = 1;
+                    l.movers[bm].look = 2;   // (a boulder: drawn inside its box)
                     l.movers[bm].color = glm::mix(iceLit, iceDark, 0.3f);
                     SweepShelter s; s.box = l.walls[l.movers[bm].wall].box; s.wall = l.movers[bm].wall; s.section = ln.z > ring::DRIFT_MID ? 1 : 2;
                     s.fixed = false;   // (it moves: the reach test doesn't count it)
@@ -776,7 +809,7 @@ inline LevelData buildRing() {
                                    "DISPATCHED: 40,111. RECEIVED: 0. DESTINATION: (BLANK). HOLD UNTIL CALLED FOR."});
         }
         // The way on: north, toward the Shepherd, into the dark (the chapter's end is past the Shadow Band)
-        s.end = LevelBuilder::aabb(-60.f, -1.f, ring::SPOKES_N - 20.f, 60.f, 10.f, ring::SPOKES_N + 4.f);   // (past the Spokes)
+        s.end = LevelBuilder::aabb(-60.f, -1.f, ring::FAR_N - 6.f, 60.f, 10.f, ring::FAR_N + 14.f);   // (past the Gap)
         b.mat = Mat::METAL;
         for (int k = 0; k < 6; ++k) post({-6.f + (k % 2) * 12.f, 0.f, ring::KEPT_N + 30.f + (k / 2) * 14.f});
     }
@@ -833,6 +866,42 @@ inline LevelData buildRing() {
         }
     }
 
+    // =========================================================================
+    // 7. THE GAP
+    // =========================================================================
+    {
+        for (const ring::Rock& r : ring::gapRocks())
+            rockShelter(ring::shelterBox(r.x - r.w * 0.5f, r.z - r.d * 0.5f, r.x + r.w * 0.5f, r.z + r.d * 0.5f, 0.f, r.h, 7));
+        // The lips: the ring is ten metres thick here. A broken edge on top, and its face going down
+        for (int side = 0; side < 2; ++side) {
+            const float z = side == 0 ? ring::GAP_S : ring::GAP_N, out = side == 0 ? -1.f : 1.f;
+            b.mat = Mat::ROCK;
+            b.kit().box({0.f, -5.2f, z + out * 1.f}, {2.f * (ring::EDGE + ring::EDGE_RAG), 10.f, 2.f}, glm::mix(iceDark, sand, 0.25f) * 0.75f);
+            b.kit().box({0.f, -10.8f, z - out * 4.f}, {2.f * (ring::EDGE + ring::EDGE_RAG), 1.2f, 10.f}, iceDark * 0.6f);   // (its underside, the sheet's other face)
+            for (float x = -ring::EDGE; x <= ring::EDGE; x += 7.f) {
+                const float k = x * 0.3f + side * 40.f + 900.f;
+                if (side == 0 && std::fabs(x) < 12.f) continue;   // (the mooring: clear)
+                if (ring::hash(k, 1.f) < 0.4f) continue;
+                b.kit().rock({x + 3.f * ring::hash(k, 2.f), -0.8f, z - out * (1.f + 2.f * ring::hash(k, 3.f))}, 1.4f + 1.4f * ring::hash(k, 4.f), 1.2f + 1.4f * ring::hash(k, 5.f), glm::mix(iceLit, iceDark, 0.4f), (uint32_t)(k * 9.f), 0.6f, 7);
+            }
+        }
+        // The raft, moored at the near lip, and its boulder: the game moves both (Gameplay_Gap.h)
+        const vec3 rh = ring::raftHalf(), rc = ring::raftStart() + vec3{0.f, 0.f, 0.f};
+        const vec3 runTo{0.f, 0.f, -ring::raftRun()};
+        l.raftMover = b.mover(rc, rh, Mover::Path::DRIVEN, vec3{0.f}, runTo, 1.f, 0.f, vec3{0.f});
+        l.movers[l.raftMover].look = 1; l.movers[l.raftMover].color = glm::mix(iceLit, sand, 0.35f);
+        l.walls[l.movers[l.raftMover].wall].mat = Mat::ROCK;
+        const vec3 bh{4.2f, 2.3f, 1.5f}, bc{0.f, bh.y, rc.z - rh.z + bh.z + 0.3f};
+        l.raftBoulder = b.mover(bc, bh, Mover::Path::DRIVEN, vec3{0.f}, runTo, 1.f, 0.f, vec3{0.f});
+        l.movers[l.raftBoulder].look = 2; l.movers[l.raftBoulder].color = glm::mix(iceLit, iceDark, 0.3f);
+        SweepShelter rs; rs.box = l.walls[l.movers[l.raftBoulder].wall].box; rs.wall = l.movers[l.raftBoulder].wall;
+        rs.fixed = false; rs.holds = true; rs.section = 7;   // (spiked to it, the wave can't take you: the one place the spike alone saves you, section 5)
+        rs.post = {bc.x + bh.x - 0.4f, 0.f, bc.z + bh.z + 1.2f};
+        l.sweepShelters.push_back(rs);
+        // Mooring bollards at both lips
+        for (float x : {-9.f, 9.f}) { post({x, 0.f, ring::GAP_S + 2.f}); post({x, 0.f, ring::GAP_N - 2.f}); }
+    }
+
     // Every shelter's post (the drifting ones ride their chunk: drawn live)
     for (const SweepShelter& q : ring::shelters()) post(q.post);
     {
@@ -843,7 +912,7 @@ inline LevelData buildRing() {
     auto loose = [&](vec3 at, vec3 push, int section) {
         const vec3 half{2.6f, 2.2f, 1.6f};
         const int m = b.mover(at + vec3{0.f, half.y, 0.f}, half, Mover::Path::DRIVEN, vec3{0.f}, push, 1.f, 0.f, vec3{0.f});
-        l.movers[m].look = 1; l.movers[m].color = glm::mix(iceLit, iceDark, 0.25f);
+        l.movers[m].look = 2; l.movers[m].color = glm::mix(iceLit, iceDark, 0.25f);   // (a loose block: drawn inside its box)
         SweepShelter s; s.box = l.walls[l.movers[m].wall].box; s.wall = l.movers[m].wall; s.mover = m; s.fixed = false; s.small = true; s.section = section;
         s.post = at + vec3{0.f, 0.f, half.z + 1.4f};
         l.sweepShelters.push_back(s);
@@ -935,6 +1004,17 @@ inline LevelData buildRing() {
                     {W(EnemyType::PORTER, 0, {vec3{10.f, 0.f, -1550.f}}), W(EnemyType::STRAY, 3), W(EnemyType::TALLY, 0, {tally})}};
         sp.waveBreak = 3.f; sp.maxAlive = 7;
         l.arenas.push_back(sp);
+    }
+    // 7. The Gap: a fight on the near cliff top, then the raft (THE DROVER comes with its herd once you're on it)
+    {
+        Arena g = section("THE GAP", "31,000 KM", ring::FAR_N - 20.f, ring::SPOKES_N - 24.f, {0.f, 0.f, ring::SPOKES_N - 30.f});
+        g.voidY = ring::VOID_Y;   // (fall in: back to the near side)
+        g.hasTrigger = true; g.trigger = LevelBuilder::aabb(-ring::HALF_X, -2.f, ring::GAP_S + 50.f, ring::HALF_X, 20.f, ring::SPOKES_N - 36.f);
+        g.groundSpawns = {{-40.f, 0.f, ring::GAP_S + 14.f}, {44.f, 0.f, ring::GAP_S + 12.f}, {-70.f, 0.f, ring::GAP_S + 24.f}, {70.f, 0.f, ring::GAP_S + 22.f}};
+        g.airSpawns = {{-20.f, 3.f, ring::GAP_S + 10.f}, {24.f, 3.f, ring::GAP_S + 10.f}};
+        g.waves = {{W(EnemyType::STRAY, 4), W(EnemyType::HERDER, 2)}};
+        g.maxAlive = 6;
+        l.arenas.push_back(g);
     }
     // Last: whatever is drawn within reach and has no collision gets its own (nothing hollow to walk into)
     ringMatchCollision(b, ring::HALF_X + 6.f);

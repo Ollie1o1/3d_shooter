@@ -231,7 +231,7 @@ int main() {
     }
     {   // ---- the chapter: the Landing, the Drift, the Kept ----
         LevelData l = buildRing();
-        CHECK(l.story.built && l.story.chapter == 6 && l.arenas.size() == 7, "the chapter builds: seven sections over five places (the Spokes the last)");
+        CHECK(l.story.built && l.story.chapter == 6 && l.arenas.size() == 8, "the chapter builds: eight sections over six places (the Gap the last)");
         auto sh = ring::shelters();
         RingSweep probe; probe.spec.dir = ring::sweepDir();
         bool postsBehind = true;
@@ -284,6 +284,28 @@ int main() {
             }
         }
         CHECK(crossings, "every spoke narrows to a crossing under 14 m, inside the band, and nothing blocks it");
+        // THE GAP: shelter on both cliff tops; nothing between; the raft from lip to lip, its boulder a shelter that holds
+        const float nearSide = worstIn(ring::GAP_S + 4.f, ring::SPOKES_N - 4.f), farSide = worstIn(ring::FAR_N + 4.f, ring::GAP_N - 4.f);
+        std::printf("   worst walk to shelter at the Gap: near side %.1f s, far side %.1f s\n", nearSide, farSide);
+        CHECK(nearSide < 8.f && farSide < 8.f, "at the Gap, shelter on both cliff tops is a walk inside the 10 s warning, with a fifth to spare");
+        bool gapVoid = true;
+        for (float x = -100.f; x <= 100.f; x += 25.f) for (float z = ring::GAP_S - 2.f; z > ring::GAP_N + 2.f; z -= 40.f) gapVoid &= l.baseFloor(x, z) < -100.f;
+        CHECK(gapVoid && l.baseFloor(0.f, ring::GAP_S + 2.f) == 0.f && l.baseFloor(0.f, ring::GAP_N - 2.f) == 0.f, "the Gap is nothing, lip to lip, across the whole band");
+        CHECK(l.raftMover >= 0 && l.raftBoulder >= 0, "the raft and its boulder are built");
+        if (l.raftMover >= 0) {
+            Mover& r = l.movers[l.raftMover];
+            const AABB at0 = l.walls[r.wall].box;
+            r.drive = 1.f; l.movers[l.raftBoulder].drive = 1.f; l.updateMovers(0.f);
+            const AABB at1 = l.walls[r.wall].box;
+            CHECK(std::fabs(at0.max.y) < 0.01f && at0.max.z > ring::GAP_S - 1.f && at1.min.z < ring::GAP_N + 1.f && std::fabs(at1.max.y) < 0.01f,
+                  "the raft lies flush with the near lip, and docks against the far one");
+            int holds = 0;
+            for (auto& s : l.sweepShelters) if (s.wall == l.movers[l.raftBoulder].wall && s.holds && !s.fixed) ++holds;
+            CHECK(holds == 1, "the raft's boulder is a moving shelter that holds a spiked player (design section 5)");
+            r.drive = 0.f; l.movers[l.raftBoulder].drive = 0.f; l.updateMovers(0.f);
+        }
+        const float jump = 9.1f * 9.1f / (2.f * 24.f * ring::GRAVITY_SCALE);
+        CHECK(gapride::CHUNK_HALF.y * 2.f < jump * 0.75f, "the Drover's chunk is low enough to jump in this gravity, with room");
         const auto sp0 = ring::spokes()[0];
         const glm::vec3 mid{sp0.narrowX + 60.f, 0.f, ring::spokeZ(sp0, sp0.narrowX + 60.f)};
         CHECK(ring::spokeAt(mid) == 0 && ring::spokeAt(mid + glm::vec3{0.f, 5.f, 0.f}) < 0 && ring::spokeAt({0.f, 0.f, ring::BAND_S - 50.f}) < 0,
@@ -378,18 +400,28 @@ int main() {
             for (int f = 0; f < 60 * 4 && e.alive; ++f) { e.update(DT, w); top = std::max(top, e.position.y); }
             CHECK(!e.alive && e.position.z < from.z - 20.f && top > from.y + 8.f, "it bounds away north, over the reef, and is gone (not a kill)");
         }
+        {   // THE DROVER: the same rule, a sheepdog
+            Enemy e(EnemyType::DROVER, {0.f, 8.f, 0.f}); e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE;
+            const bool died = e.takeDamage(e.maxHealth * 5.f);
+            CHECK(!died && e.alive && e.crookLeave >= 0.f && !e.targetable(), "the Drover can't be killed over the Gap either: a third gone, it breaks off");
+            Enemy f(EnemyType::DROVER, {0.f, 8.f, 0.f}); f.spawnTimer = 0.f; f.state = EnemyState::ACTIVE;
+            EnemyWorld v; v.playerFeet = {10.f, 0.f, 0.f}; v.playerEye = v.playerFeet + glm::vec3{0, 1.7f, 0}; f.droverPost = f.position;
+            bool gold = false, sent = false;
+            for (int i = 0; i < 60 * 8 && !sent; ++i) { f.update(DT, v); gold |= f.telegraphTimer > 0.f && f.attack == AttackKind::RING_CHARGE; sent |= f.ev.ringCharge; }
+            CHECK(gold && sent && !f.parryWindow(), "it sends a chunk of its herd after a gold wind-up (dodge, not parry)");
+        }
         LevelData l = buildRing();
         int crooks = 0;
         for (const auto& wave : l.arenas[3].waves) for (const auto& we : wave) crooks += we.type == EnemyType::CROOK;
         CHECK(crooks == 1 && l.arenas[3].waves[0][0].type == EnemyType::CROOK, "the Kept's first wave is the Crook's");
     }
     {   // ---- the menu and the save (step 4): chapter 6 is a chapter ----
-        StorySave a; a.chapter = 6; a.checkpoint = 6; a.owned = 15; a.grapple = true;
+        StorySave a; a.chapter = 6; a.checkpoint = 7; a.owned = 15; a.grapple = true;
         StorySave b; const bool ok = b.parse(a.text());
-        CHECK(ok && b.chapter == 6 && b.checkpoint == 6, "a chapter 6 save, in the Spokes, loads");
-        StorySave c = a; c.checkpoint = 7; StorySave d;
+        CHECK(ok && b.chapter == 6 && b.checkpoint == 7, "a chapter 6 save, at the Gap, loads");
+        StorySave c = a; c.checkpoint = 8; StorySave d;
         CHECK(!d.parse(c.text()), "a chapter 6 save past its last checkpoint does not");
-        CHECK((int)buildRing().arenas.size() == 7, "chapter 6 has seven checkpoints (0..6, the Spokes last), as the save allows");
+        CHECK((int)buildRing().arenas.size() == 8, "chapter 6 has eight checkpoints (0..7, the Gap last), as the save allows");
         CHECK(buildCold().story.nextChapter == 6, "the Cold Store's end card goes on to the ring");
     }
     {   // ---- the Shepherd's count (13.2) ----

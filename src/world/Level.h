@@ -182,7 +182,7 @@ struct Mover {
     glm::vec3 glow {0.3f, 1.0f, 1.0f};
     glm::vec3 delta{0.f};        // how far it moved on the last update
     float     drive  = 0.f;      // DRIVEN: 0..1 along a -> b
-    int       look   = 0;        // 0: a glowing slab (drawn by Gameplay_Render); 1: a drifting ice chunk (Chapter 6 draws it)
+    int       look   = 0;        // 0: a glowing slab (drawn by Gameplay_Render); 1: a drifting ice chunk, 2: a boulder or loose block (Chapter 6 draws both)
     bool      gone   = false;    // shattered (a breaker sweep): parked far below, not drawn, carries nothing. A retry restores it
 
     glm::vec3 offsetAt(float t) const {
@@ -303,6 +303,7 @@ struct LevelData {
     // Chapter 6, "you hear what you touch" (design 13.1): capsules that knock from inside when you
     // stand on them, and the reef's walls that creak when you lean on them (walls indices)
     std::vector<int> knockWalls, creakWalls;
+    int raftMover = -1, raftBoulder = -1;   // Chapter 6's raft over the Gap (Gameplay_Gap.h)
     std::vector<FloorPatch> floors;
     // How this level draws each material (WorldGeometry.h): identity unless a chapter restyles the
     // shared surfaces as its own (restyle()). Looks only: collision and sounds still go by `mat`.
