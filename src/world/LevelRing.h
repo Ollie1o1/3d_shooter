@@ -58,6 +58,10 @@ constexpr float SPOKES_S = BAND_N - 32.f, SPOKES_N = -1760.f;
 // cross on a raft of ring ice; THE DROVER herds its chunks alongside. FAR_N: the far side's end
 constexpr float GAP_S = -1860.f, GAP_N = -2340.f, FAR_N = -2480.f;
 constexpr float RAFT_SPEED = 8.5f;              // m/s across the gap (about a minute)
+// THE WAKE (level 7): the Shepherd's gravity has pulled the ring up into a frozen wave. Climb it in
+// terraces (each a jump up); the summit is the first time you stand above the ring plane
+constexpr float WAKE_S = FAR_N - 20.f, CLIMB_S = -2540.f, WAKE_HALF = 52.f;   // (the climb is narrower than the band)
+constexpr float STEP_UP = 2.6f;                 // a jump in this gravity clears ~3.4 m
 constexpr float FAR_GROUND = 3000.f, FAR_PLANE = 5200.f;
 constexpr float VOID_FLOOR = -900.f;            // under the Drift: nothing
 constexpr float VOID_Y = -45.f;                 // fall past this in the Drift: back to the checkpoint
@@ -85,6 +89,7 @@ inline const char* distance(int arena) {
         case 5: return "46,000 KM";
         case 6: return "39,000 KM";
         case 7: return "31,000 KM";
+        case 8: return "24,000 KM";
         default: return "52,000 KM";
     }
 }
@@ -202,6 +207,19 @@ inline std::vector<Rock> gapRocks() {
 inline glm::vec3 raftHalf() { return {7.f, 1.6f, 5.5f}; }
 inline glm::vec3 raftStart() { return {0.f, -1.6f, GAP_S - 5.6f}; }       // (its top flush with the lip)
 inline float raftRun() { return (GAP_S - GAP_N) - 11.4f; }                // to the far lip
+// The wave's terraces, south to north: each tread's south edge, north edge and height. Most are under
+// the sweep's 14 m shadow deep (tucked against the next step you're sheltered); a few are deeper
+struct Tread { float zS, zN, y; };
+inline std::vector<Tread> wakeTreads() {
+    std::vector<Tread> out;
+    const float depth[] = {12.f, 10.f, 18.f, 11.f, 12.f, 9.f, 19.f, 12.f, 10.f, 13.f, 18.f, 11.f, 12.f, 10.f, 17.f, 12.f};
+    float z = CLIMB_S;
+    for (int i = 0; i < 16; ++i) { out.push_back({z, z - depth[i], STEP_UP * (i + 1)}); z -= depth[i]; }
+    return out;
+}
+inline float summitY() { return wakeTreads().back().y; }
+inline float summitS() { return wakeTreads().back().zN; }
+inline float summitN() { return summitS() - 70.f; }
 // The lamp route: where the lit capsules lie, south to north
 inline std::vector<glm::vec3> bandLamps() {
     std::vector<glm::vec3> out;
@@ -298,6 +316,15 @@ inline std::vector<SweepShelter> shelters() {
     for (const Rock& r : bandRocks()) out.push_back(shelterBox(r.x - r.w * 0.5f, r.z - r.d * 0.5f, r.x + r.w * 0.5f, r.z + r.d * 0.5f, 0.f, r.h, 5));
     for (const Rock& r : spokeRocks()) out.push_back(shelterBox(r.x - r.w * 0.5f, r.z - r.d * 0.5f, r.x + r.w * 0.5f, r.z + r.d * 0.5f, 0.f, r.h, 6));
     for (const Rock& r : gapRocks()) out.push_back(shelterBox(r.x - r.w * 0.5f, r.z - r.d * 0.5f, r.x + r.w * 0.5f, r.z + r.d * 0.5f, 0.f, r.h, 7));
+    {   // The Wake's terraces: each tread's mass shelters the tread below it (its post at the riser's foot)
+        const auto T = wakeTreads();
+        for (size_t i = 0; i < T.size(); ++i) {
+            const float zN = i + 1 < T.size() ? T[i].zN : summitN();
+            SweepShelter s = shelterBox(-WAKE_HALF - 8.f, zN, WAKE_HALF + 8.f, T[i].zS, 0.f, T[i].y, 8);
+            s.post = {WAKE_HALF - 4.f, i ? T[i - 1].y : 0.f, T[i].zS + 1.6f};
+            out.push_back(s);
+        }
+    }
     return out;
 }
 
@@ -349,6 +376,11 @@ namespace gapride {
 constexpr float CHARGE_SPEED = 24.f;     // the chunk across the raft
 constexpr float CHARGE_DAMAGE = 12.f;
 const glm::vec3 CHUNK_HALF{2.2f, 1.05f, 1.8f};   // low enough to jump in this gravity (a jump clears ~3.4 m)
+}
+
+// THE WAKE's numbers: THE BELLWETHER's ring (Gameplay_Wake.h)
+namespace wakebell {
+constexpr float SPEED = 16.f, REACH = 34.f, DAMAGE = 10.f, BAND = 1.1f, JUMP_CLEAR = 1.0f;
 }
 
 // ---- collision that matches what is drawn ---------------------------------------------
@@ -809,7 +841,7 @@ inline LevelData buildRing() {
                                    "DISPATCHED: 40,111. RECEIVED: 0. DESTINATION: (BLANK). HOLD UNTIL CALLED FOR."});
         }
         // The way on: north, toward the Shepherd, into the dark (the chapter's end is past the Shadow Band)
-        s.end = LevelBuilder::aabb(-60.f, -1.f, ring::FAR_N - 6.f, 60.f, 10.f, ring::FAR_N + 14.f);   // (past the Gap)
+        s.end = LevelBuilder::aabb(-30.f, ring::summitY() - 1.f, ring::summitN() - 2.f, 30.f, ring::summitY() + 10.f, ring::summitN() + 14.f);   // (the Wake's summit)
         b.mat = Mat::METAL;
         for (int k = 0; k < 6; ++k) post({-6.f + (k % 2) * 12.f, 0.f, ring::KEPT_N + 30.f + (k / 2) * 14.f});
     }
@@ -900,6 +932,50 @@ inline LevelData buildRing() {
         l.sweepShelters.push_back(rs);
         // Mooring bollards at both lips
         for (float x : {-9.f, 9.f}) { post({x, 0.f, ring::GAP_S + 2.f}); post({x, 0.f, ring::GAP_N - 2.f}); }
+    }
+
+    // =========================================================================
+    // 8. THE WAKE
+    // =========================================================================
+    {
+        const vec3 ice = glm::mix(iceLit, iceDark, 0.35f), wave = glm::mix(iceLit, vec3{0.55f, 0.6f, 0.66f}, 0.3f);
+        b.mat = Mat::ROCK;
+        // The terraces: each tread a raised floor (basin), the ice under it a solid mass, the riser its south face.
+        // The mass is shelter: tucked against the next step up, the wave passes over (Gameplay_Wake.h)
+        const auto treads = ring::wakeTreads();
+        for (size_t i = 0; i < treads.size(); ++i) {
+            const ring::Tread& t = treads[i];
+            const float zN = i + 1 < treads.size() ? t.zN : ring::summitN();
+            l.basins.push_back({LevelBuilder::aabb(-ring::WAKE_HALF - 8.f, 0.f, zN, ring::WAKE_HALF + 8.f, 0.f, t.zS), t.y});
+            b.wall(-ring::WAKE_HALF - 8.f, 0.f, zN, ring::WAKE_HALF + 8.f, t.y, t.zS, glm::mix(ice, wave, (float)i / treads.size()));
+            l.floors.push_back({-ring::WAKE_HALF - 8.f, zN, ring::WAKE_HALF + 8.f, t.zS, t.y + 0.004f, glm::mix(iceLit, sand, 0.25f + 0.1f * ring::hash((float)i, 130.f)), Mat::SNOW});
+            // Ragged lips on each riser, rubble at the sides
+            for (float x = -ring::WAKE_HALF; x <= ring::WAKE_HALF; x += 11.f) {
+                const float k = x * 0.3f + i * 17.f + 2000.f;
+                if (ring::hash(k, 1.f) < 0.5f) continue;
+                b.kit().rock({x + 4.f * ring::hash(k, 2.f), t.y - 0.6f, t.zS - 0.9f}, 0.8f + 0.7f * ring::hash(k, 3.f), 0.9f + 0.5f * ring::hash(k, 4.f), ice, (uint32_t)(k * 3.f), 0.6f, 6);
+            }
+            for (int sd = -1; sd <= 1; sd += 2)
+                b.kit().rock({sd * (ring::WAKE_HALF + 9.f), -1.f, (t.zS + zN) * 0.5f}, 6.f, t.y + 4.f + 6.f * ring::hash((float)i, 131.f), glm::mix(ice, wave, 0.5f), (uint32_t)(i * 31 + sd + 50), 0.7f, 7);
+        }
+        // The wave itself, either side and behind: a frozen crest across the whole ring, kilometres tall
+        // away from the notch you climb, leaning toward the Shepherd. Out of reach: no collision
+        for (float x = -1600.f; x <= 1600.f; x += 46.f) {
+            const float ax = std::fabs(x);
+            if (ax < ring::WAKE_HALF + 20.f) continue;
+            const float k = x * 0.07f + 3000.f;
+            const float h = ring::summitY() + 10.f + std::min(900.f, (ax - 60.f) * (0.5f + 0.4f * ring::hash(k, 1.f)));
+            Shape& s = b.kit().rock({x, -2.f, ring::summitS() - 20.f + 30.f * ring::hash(k, 2.f)}, 30.f + 12.f * ring::hash(k, 3.f), h, glm::mix(wave, iceLit, 0.25f * ring::hash(k, 4.f)), (uint32_t)(k * 5.f), 0.35f, 7);
+            s.xf = s.xf * glm::scale(glm::mat4(1.f), glm::vec3{1.f, 1.f, 2.4f});
+        }
+        // Behind the summit, the wave's far face falling away: the ring beyond, and the Shepherd over it
+        b.kit().box({0.f, ring::summitY() * 0.5f - 0.5f, ring::summitN() - 30.f}, {2.f * ring::WAKE_HALF + 16.f, ring::summitY() - 1.f, 60.f}, wave * 0.8f);
+        // Strays that climbed it: capsules wedged in the treads
+        for (int k = 0; k < 14; ++k) {
+            const ring::Tread& t = treads[(k * 5 + 1) % treads.size()];
+            const float x = (ring::hash((float)k, 132.f) - 0.5f) * 2.f * (ring::WAKE_HALF - 8.f);
+            ringCapsule(b, {x, t.y + 0.55f, t.zN + 3.f}, false, 1 + 2 * (k % 2), (ring::hash((float)k, 133.f) - 0.5f) * 12.f, true);
+        }
     }
 
     // Every shelter's post (the drifting ones ride their chunk: drawn live)
@@ -1015,6 +1091,21 @@ inline LevelData buildRing() {
         g.waves = {{W(EnemyType::STRAY, 4), W(EnemyType::HERDER, 2)}};
         g.maxAlive = 6;
         l.arenas.push_back(g);
+    }
+    // 8. The Wake: the climb (the double sweep comes on it), and THE BELLWETHER on the summit with its flock
+    {
+        const float top = ring::summitY();
+        Arena w = section("THE WAKE", "24,000 KM", ring::summitN(), ring::WAKE_S, {0.f, 0.f, ring::WAKE_S - 8.f});
+        w.zone = LevelBuilder::aabb(-ring::WAKE_HALF, -1000.f, ring::summitN(), ring::WAKE_HALF, top + 30.f, ring::WAKE_S);   // (narrow: the notch in the wave)
+        w.bounds = w.zone; w.bounds.min.y = 0.f;
+        w.voidY = -30.f;
+        w.hasTrigger = true; w.trigger = LevelBuilder::aabb(-ring::WAKE_HALF, top - 2.f, ring::summitN(), ring::WAKE_HALF, top + 20.f, ring::summitS() - 6.f);
+        const float zs = ring::summitS(), zc = (ring::summitS() + ring::summitN()) * 0.5f;
+        w.groundSpawns = {{-30.f, top, zc - 10.f}, {30.f, top, zc - 8.f}, {-14.f, top, zc - 24.f}, {16.f, top, zc - 26.f}};
+        w.waves = {{W(EnemyType::BELLWETHER, 0, {vec3{0.f, top, zc - 14.f}}), W(EnemyType::STRAY, 3)}};
+        (void)zs;
+        w.maxAlive = 6;
+        l.arenas.push_back(w);
     }
     // Last: whatever is drawn within reach and has no collision gets its own (nothing hollow to walk into)
     ringMatchCollision(b, ring::HALF_X + 6.f);

@@ -1049,14 +1049,14 @@ int main() {
                         selected.storyChapter == row.chapter && selected.wave == 0 && selected.practice && selected.god;
             (row.chapter == 4 ? plainPhases : checkpoints).push_back(selected);
         }
-        CHECK(keyboard && checkpoints.size() == 45 && plainPhases.size() == 9, "all 45 checkpoints (Chapters 1-3, 5 and 6) and Chapter 4's nine launch the correct chapter and room with practice/god flags");
+        CHECK(keyboard && checkpoints.size() == 46 && plainPhases.size() == 9, "all 46 checkpoints (Chapters 1-3, 5 and 6) and Chapter 4's nine launch the correct chapter and room with practice/god flags");
         CHECK(menu.devScroll[2] > 0, "keyboard navigation reveals the later Chapter 2 checkpoints");
         menu.render(); screenshot("build/dev-story-menu-scrolled.bmp");
         // The last checkpoint is at the bottom of the visible Story column.
         SDL_Event click{}; click.type = SDL_MOUSEBUTTONDOWN; click.button.button = SDL_BUTTON_LEFT;
         click.button.x = 1000; click.button.y = 232 + 10 * 34;
         int before = starts; menu.handleEvent(click);
-        CHECK(starts == before + 1 && selected.storyChapter == 6 && selected.arena == 7,   // (the last row: Chapter 6's Gap)
+        CHECK(starts == before + 1 && selected.storyChapter == 6 && selected.arena == 8,   // (the last row: Chapter 6's Wake)
               "mouse activation uses the scrolled checkpoint rather than a hidden row");
         {   // Chapter 4's rows: each starts its fight at that checkpoint
             using P = GameplayState::GleanerPhase;

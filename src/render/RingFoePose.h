@@ -99,6 +99,31 @@ inline bool ringFoePose(const Enemy& e, float time, const mat4& root, mat4& file
         if (e.staggered()) P.chan[C_CORE] = vec3{0.3f, 0.15f, 0.05f};
         break;
     }
+    case EnemyType::BELLWETHER: {
+        const float ph = e.animPhase * 0.6f, s = std::sin(ph), c = std::cos(ph);
+        P.motion[E_HIPL] = RX(s * 0.5f * run); P.motion[E_HIPR] = RX(-s * 0.5f * run);
+        P.motion[E_KNEE_L] = RX(-(0.1f + std::max(0.f, -c) * 0.7f) * run);
+        P.motion[E_KNEE_R] = RX(-(0.1f + std::max(0.f, c) * 0.7f) * run);
+        P.motion[E_TORSO] = RY(s * 0.05f * run);
+        P.motion[E_HEAD] = RY(std::sin(time * 0.4f + id) * 0.3f);
+        const float sway = std::sin(time * 1.3f + id) * 0.08f + s * 0.12f * run;   // the bell swinging as it walks
+        P.motion[E_HALO] = RX(sway); P.motion[E_SHIELD] = RX(-sway * 1.6f);
+        P.motion[E_ARML] = RX(-0.2f) * RZ(0.12f); P.motion[E_ARMR] = RX(-0.2f) * RZ(-0.12f);
+        if (e.telegraphTimer > 0.f && e.attack == AttackKind::RING_BELL) {   // both hands up to the bell, and a hard swing
+            const float up = smooth01c(std::min(1.f, tp / 0.5f));
+            P.motion[E_ARML] = RX(-1.9f * up) * RZ(0.2f); P.motion[E_ARMR] = RX(-1.9f * up) * RZ(-0.2f);
+            P.motion[E_ELBOW_L] = P.motion[E_ELBOW_R] = RX(-0.5f * up);
+            const float swing = std::sin(tp * 18.f) * 0.5f * tp;
+            P.motion[E_HALO] = RX(swing); P.motion[E_SHIELD] = RX(-swing * 2.f);
+            P.chan[C_EYE] = gold * (1.f + tp); P.chan[C_CORE] = gold * (1.f + 2.f * tp); glow = gold;
+        }
+        if (e.staggered()) { P.motion[E_TORSO] = RX(0.35f); P.chan[C_EYE] = st.glow * 0.35f; }
+        if (e.crookLeave >= 0.f) {
+            const float k = smooth01c(std::min(1.f, e.crookLeave / 0.5f));
+            P.motion[E_KNEE_L] = P.motion[E_KNEE_R] = RX(-1.f * k); P.motion[E_HIPL] = P.motion[E_HIPR] = RX(0.6f * k);
+        }
+        break;
+    }
     case EnemyType::CROOK: {
         const float ph = e.animPhase * 0.7f, s = std::sin(ph), c = std::cos(ph);
         fileRoot = root * T({0.f, -std::fabs(c) * 0.05f * run, 0.f});

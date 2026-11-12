@@ -85,6 +85,7 @@ inline Profile profileOf(EnemyType t) {
         case EnemyType::PORTER:return {62.f,Vowel::OH,3,.85f,Body::GRIND,200.f,.7f};    // a load groaning on its straps
         case EnemyType::CROOK:return {88.f,Vowel::EE,2,.95f,Body::SERVO,520.f,.5f};     // a thin, high servo; its winch ratcheting
         case EnemyType::DROVER:return {0.f,Vowel::NONE,0,.8f,Body::HYDRAULIC,600.f,.6f}; // big gas pods and a groaning frame
+        case EnemyType::BELLWETHER:return {140.f,Vowel::OO,2,.9f,Body::SERVO,700.f,.4f}; // a high hollow servo, its bell
         default:                      return {};
     }
 }
@@ -364,6 +365,8 @@ inline Buf tellV(EnemyType t, AttackKind a, const Profile& p, Rng& r) {
         case AttackKind::RING_RAM: add(out,vent(d,1300.f,r,d*.75f,.04f));add(out,servo(d,140.f,720.f,r,d*.7f,.04f),.6f);add(out,metal(d*.4f,260.f,r,10.f),.4f,d*.6f);break;
         // THE CROOK's hook: the winch paying out line, then the pole whistling over
         // THE DROVER's charge: all four pods firing at once, then the chunk grinding away
+        // THE BELLWETHER: small, bright and quick (not the Caller's cracked toll)
+        case AttackKind::RING_BELL: add(out,metal(d,1650.f,r,22.f),.7f,d*.85f);add(out,metal(d*.6f,2480.f,r,30.f),.35f,d*.88f);break;
         case AttackKind::RING_CHARGE: add(out,vent(d,900.f,r,d*.8f,.05f));add(out,metal(d*.5f,180.f,r,8.f),.5f,d*.6f);break;
         case AttackKind::RING_HOOK: add(out,servo(d,220.f,1600.f,r,d*.6f,.05f),.7f);add(out,metal(d*.3f,540.f,r,16.f),.45f,d*.7f);break;
         case AttackKind::SORT_STAMP: add(out,grind(d,22.f,220.f,r));add(out,thud(95.f,40.f,d),.8f);break;

@@ -80,6 +80,7 @@ struct EnemyEvents : SovereignEvents, PenitentEvents, WardenEvents, LeviathanEve
     bool      meleeHit = false;   float meleeDamage = 0.f;
     bool      ringHooked = false;   // THE CROOK's hook caught you (the game drags you, unless you are held)
     bool      ringCharge = false;   // THE DROVER sent a chunk of its herd across (the game moves it: Gameplay_Gap.h)
+    bool      ringBell = false;     // THE BELLWETHER rang: a local sweep out of it (Gameplay_Wake.h)
     AttackKind meleeAttack = AttackKind::NONE; // contact's attack; AI may already have queued the next one
     bool      slam = false;       float slamRadius = 0.f, slamDamage = 0.f;
     bool      detonated = false;  // MITE blew itself up next to the player
@@ -738,6 +739,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
             case EnemyType::HERDER:thinkHerder(dt,w,resolve);break;
             case EnemyType::CROOK:thinkCrook(dt,w,resolve);break;
             case EnemyType::DROVER:thinkDrover(dt,w,resolve);break;
+            case EnemyType::BELLWETHER:thinkBellwether(dt,w,resolve);break;
             case EnemyType::TALLY:velocity={0,0,0};attackTimer=0;animPhase+=dt;break;   // (it counts: Gameplay_RingFoes.h)
             case EnemyType::PORTER:thinkBrute(dt,w,resolve);break;   // a hauler's slam up close and its lob over cover
             case EnemyType::UNIT24K:thinkUnit24K(dt,w,resolve);break;
@@ -1565,6 +1567,7 @@ private:
     void thinkHerder(float dt,const EnemyWorld& w,bool resolve);
     void thinkCrook(float dt,const EnemyWorld& w,bool resolve);
     void thinkDrover(float dt,const EnemyWorld& w,bool resolve);
+    void thinkBellwether(float dt,const EnemyWorld& w,bool resolve);
     void crookLeaveTick(float dt);
     void thinkUnit24K(float dt,const EnemyWorld& w,bool resolve);
     void thinkRestorer(float dt,const EnemyWorld& w,bool resolve);

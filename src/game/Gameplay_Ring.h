@@ -22,6 +22,7 @@ inline void GameplayState::armSweep() {
     sweep.reset(); sweepArmed = true; sweepCount = 0; sweepTickAt = -1; sweepSwept = 0;
     ringGone = ringShort = 0; ringCountT = -1.f; sweptBodies.clear();
     resetGap();   // (the raft back at its mooring: armSweep resets every DRIVEN mover)
+    resetWake();
     sweepShelters.clear();
     if (ring()) {
         sweepShelters = level.sweepShelters;
@@ -173,7 +174,7 @@ inline void GameplayState::beginRing() {
     if (director.arena >= 2) holdfastFound = true;   // (a checkpoint past I2: it is yours)
     holdfast.reset(); armSweep();
     ringLevelSeen = -1; ringScriptT = -1.f; ringAir = -1;
-    ringBolt = 0.f; ringBoltT = -1.f; ringBoltNext = 3.f; ringSunT = ringSunHit = -1.f; ringShadeHint = false; spokeHint = false; resetGap(); ringKnockOn = -1; ringKnockT = ringCreakT = 0.f; crookDragT = 0.f; crookDragUid = -1; crookSeen = crookLeft = false;
+    ringBolt = 0.f; ringBoltT = -1.f; ringBoltNext = 3.f; ringSunT = ringSunHit = -1.f; ringShadeHint = false; spokeHint = false; resetGap(); resetWake(); ringKnockOn = -1; ringKnockT = ringCreakT = 0.f; crookDragT = 0.f; crookDragUid = -1; crookSeen = crookLeft = false;
     if (g_devRingTest) ringLevelSeen = 99;
     player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0}; prevCamPos = player.camera.position;
 }
@@ -199,6 +200,7 @@ inline void GameplayState::updateRing(float dt) {
     tickShadow(dt);
     tickSpokes(dt);
     tickGap(dt);
+    tickWake(dt);
     const glm::vec3 p = player.position;
     const int at = level.arenaAt(p);
     if (at > director.arena && !director.fighting() && director.phase != WaveDirector::Phase::INTRO) director.approach(at);
@@ -216,6 +218,7 @@ inline void GameplayState::updateRing(float dt) {
             if (at == 5) ringScriptT = 22.f;   // (the Shadow Band's first: in the dark, among the rocks)
             if (at == 6) ringScriptT = 18.f;   // (the Spokes': you walk to shelter)
             if (at == 7) ringScriptT = -1.f;   // (the Gap's comes mid-crossing: Gameplay_Gap.h)
+            if (at == 8) ringScriptT = -1.f;   // (the Wake's comes on the climb: Gameplay_Wake.h)
         }
     }
     if (at >= 0 && at > storyCheckpoint && !director.fighting()) { storyCheckpoint = at; sweepSched.checkpoint(); ui.feed("CHECKPOINT", SWEEP_ICE * 0.6f); }

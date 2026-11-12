@@ -135,6 +135,7 @@ inline void GameplayState::crookTick(float dt) {
 
 inline void GameplayState::ringFoeEvents(Enemy& e, const EnemyEvents& ev) {
     if (e.type == EnemyType::DROVER && ev.ringCharge && !playerDead) gapLaunch(e);
+    if (e.type == EnemyType::BELLWETHER && ev.ringBell && !playerDead) wakeRing(e);
     if (e.type == EnemyType::CROOK && ev.ringHooked && !playerDead) {   // the hook has you
         if (holdfast.held()) {   // the line holds: it caught, and you didn't move
             ui.feed("THE LINE HOLDS", HOLDFAST_STEEL);

@@ -134,7 +134,7 @@ inline const char* fileName(EnemyType t) {
         case EnemyType::BALLAST: return "ballast";
         case EnemyType::PATIENT:return "patient";case EnemyType::GRAFTED:return "grafted";case EnemyType::SUSPENDED:return "suspended";case EnemyType::PHASED:return "phased";case EnemyType::SUCCESSOR:return "successor";
         case EnemyType::THAWLING:return "unit_blank";
-        case EnemyType::STRAY:return "stray";case EnemyType::HERDER:return "herder";case EnemyType::TALLY:return "tally";case EnemyType::PORTER:return "porter";case EnemyType::CROOK:return "crook";case EnemyType::DROVER:return "drover";   // Chapter 6 (tools/blender/ring_foes_build.py)
+        case EnemyType::STRAY:return "stray";case EnemyType::HERDER:return "herder";case EnemyType::TALLY:return "tally";case EnemyType::PORTER:return "porter";case EnemyType::CROOK:return "crook";case EnemyType::DROVER:return "drover";case EnemyType::BELLWETHER:return "bellwether";   // Chapter 6 (tools/blender/ring_foes_build.py)
         case EnemyType::UNIT24K:return "unit24_factory";   // you, restored: the factory's unit, none of what happened to you   // one of the stored units, thawing (posed like a PATIENT)
         default: return nullptr;
     }
@@ -170,7 +170,7 @@ inline std::vector<int> neededJoints(EnemyType t) {
         case EnemyType::HERDER: case EnemyType::DROVER: return {E_BODY,E_HEAD,E_SHIELD,E_WING_L,E_WING_R};
         case EnemyType::TALLY: return {E_BODY,E_HEAD,E_HALO,E_CROWN,E_ARML,E_ARMR};
         case EnemyType::PORTER: return {E_WAIST,E_TORSO,E_HEAD,E_HIPL,E_HIPR,E_KNEE_L,E_KNEE_R,E_ARML,E_ARMR,E_ELBOW_L,E_ELBOW_R,E_HAND_L,E_HAND_R,E_SHIELD};
-        case EnemyType::CROOK: return {E_WAIST,E_TORSO,E_HEAD,E_HIPL,E_HIPR,E_KNEE_L,E_KNEE_R,E_ARML,E_ARMR,E_ELBOW_L,E_ELBOW_R,E_HAND_L,E_HAND_R,E_HALO,E_SHIELD};
+        case EnemyType::CROOK: case EnemyType::BELLWETHER: return {E_WAIST,E_TORSO,E_HEAD,E_HIPL,E_HIPR,E_KNEE_L,E_KNEE_R,E_ARML,E_ARMR,E_ELBOW_L,E_ELBOW_R,E_HAND_L,E_HAND_R,E_HALO,E_SHIELD};
         default:                return {E_HIPL, E_HIPR, E_TORSO, E_HEAD, E_ARML, E_ARMR};
     }
 }

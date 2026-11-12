@@ -163,6 +163,33 @@ goes on (`GAP_N`, -2340). Rules: `src/game/Gameplay_Gap.h`; numbers: `gapride::`
 - Not built: the Drover splitting its herd round a tine and HOLDFAST pinning a chunk to break the
   formation (both for the tines, in the boss fight); a far side worth arriving at beyond rocks.
 
+## THE WAKE and THE BELLWETHER (level 7, arena 8; 2026-11-12)
+
+The Shepherd's gravity has pulled the ring up into a frozen wave. z -2500 to the summit's north
+edge (-2816). Rules: `src/game/Gameplay_Wake.h`; shapes: `ring::wakeTreads`, `summitY/S/N`,
+`wakebell::` in `LevelRing.h`.
+
+- **The climb:** 16 terraces, each 2.6 m up (a jump here clears ~3.4 m), 9-19 m deep, in a notch
+  120 m wide (the zone is +-52 m) between crests of the wave that rise to ~900 m on either side.
+  Each tread is ground at its own height (a basin) over a solid mass; the mass is a SweepShelter
+  for the tread below, so tucked against the next riser a wave passes over. The deep treads leave
+  their south ends open: the longest open stretch is 5 m (`make test-ring`).
+- **The double sweep:** the mid tier (two waves, 3.5 s apart) fires as you pass the fifth tread.
+- **The summit**, 41.6 m up: `ABOVE THE RING / EVERYTHING YOU CROSSED`. The Bellwether holds
+  its bell for the first 4 s there, so you look back.
+- **THE BELLWETHER** (`EnemyType::BELLWETHER`, third sheepdog; model `ONLY=bellwether`): tall
+  and upright, a yoke, a small polished bell on a pole out in front, three capsules tethered
+  behind it (its flock, drawn live). RING_BELL: a 0.9 s gold wind-up, then a gold ring runs out
+  along the ground from it at 16 m/s to 34 m: 10 damage and a throw, never a kill, no countdown
+  (the corner number is the Shepherd's alone). In the air over it (1 m up) it passes under you.
+  Like the others it breaks off at a third gone. With 3 STRAYS.
+- The chapter's end card is on the summit.
+- The voice bank's budget went to 360 s (352 s with the three sheepdogs' voices).
+- The bake: 61.3M cells, just under the loader's 64M cap: the Shore needs the cap raised or the
+  cell size looked at.
+- Not built: splintering the bell's clapper to scatter the flock (the tines), a toast when the
+  Bellwether or the Drover breaks off (the Crook has one).
+
 ## The sky (skybox.frag `ringSky`, `uRing`)
 
 The giant (`RING_GIANT`, east, angular radius 0.8) sits on the horizon with its
@@ -384,9 +411,10 @@ music never ducks at the zero.
 4. ~~Menu and save~~: done. Still to do: the bridge cutscene (design
    section 2: the capsule's flight from the Store to the ring and the
    impact); for now the Cold Store's end card just loads the Landing.
-5. **Levels 7-8**: the Shadow Band, the Spokes and the Gap are built (above).
-   Next, the Wake (THE BELLWETHER, the double sweep on a climb up a frozen wave)
-   and the Shore, then the boss as written.
+5. **Level 8**: the Shadow Band, the Spokes, the Gap and the Wake are built
+   (above). Next, the Shore (short: the Shepherd fills everything, gravity
+   comes back as you walk in, ~6 s warnings with breakers, no enemies), then
+   the boss as written.
 
 ## House rules noticed while building
 

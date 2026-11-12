@@ -28,6 +28,9 @@
 #   drover  THE DROVER, the second sheepdog: a long, heavy tug that flies its herd of ice chunks
 #           across the Gap, two push-forks out in front, four cold-gas pods, a mast at the back
 #           with a hooded lamp and the herd's amber beacon
+#   bellwether  THE BELLWETHER, the third: tall and upright on long legs, a yoke across its shoulders,
+#           and slung from a pole off its back a small bright bell it rings with its hands; three
+#           capsules tethered to its yoke trail after it like a flock
 import os, math
 exec(open(os.path.join(os.getcwd(), 'tools/blender/enemy_kit.py')).read())
 
@@ -58,6 +61,7 @@ NEEDED['herder'] = 'body head shield wingL wingR'
 NEEDED['tally'] = 'body head halo crown armL armR'
 NEEDED['crook'] = 'waist torso head hipL hipR kneeL kneeR armL armR elbowL elbowR handL handR halo shield'
 NEEDED['drover'] = 'body head shield wingL wingR'
+NEEDED['bellwether'] = 'waist torso head hipL hipR kneeL kneeR armL armR elbowL elbowR handL handR halo shield'
 NEEDED['porter'] = 'waist torso head hipL hipR kneeL kneeR armL armR elbowL elbowR handL handR shield'
 
 
@@ -470,3 +474,64 @@ if want('drover'):
             C((s * 1.05, .1, z - .41), .1, .02, 'glow', 'wing' + sd, rot=(90, 0, 0), sides=10, glow='core', k=.9)
             B((s * 1.05, .3, z), (.2, .02, .36), 'ring_dust', 'wing' + sd)
     done('drover')
+
+
+
+# =====================================================================================
+# THE BELLWETHER (3.1 m): upright, long-legged, a yoke and a hung bell
+# =====================================================================================
+if want('bellwether'):
+    begin('bellwether')
+    add_joint('waist', (0, 1.55, 0)); add_joint('torso', (0, 1.8, 0), 'waist'); add_joint('head', (0, 2.75, .04), 'torso')
+    add_joint('halo', (0, 3.1, .7), 'torso')      # the bell, hung from the pole's end out front
+    add_joint('shield', (0, 2.82, .7), 'halo')    # its clapper
+    for sd, s in (('L', 1), ('R', -1)):
+        add_joint('hip' + sd, (s * .14, 1.5, 0), 'waist'); add_joint('knee' + sd, (s * .15, .8, .02), 'hip' + sd)
+        add_joint('arm' + sd, (s * .36, 2.48, 0), 'torso'); add_joint('elbow' + sd, (s * .42, 2.1, .06), 'arm' + sd)
+        add_joint('hand' + sd, (s * .3, 1.82, .3), 'elbow' + sd)
+    # Hips and spine
+    P((0, 1.52, 0), (.34, .18, .22), 'ring_enamel_dk', 'waist', top=(.85, .9), bev=.02, seg=2)
+    for k in range(4):
+        C((0, 1.62 + k * .055, -.02), .055 - k * .004, .04, 'ring_graphite', 'waist', sides=10)
+    # Chest: tall and straight, a stencilled plate, the yoke across its shoulders
+    P((0, 2.12, .01), (.36, .62, .24), 'ring_enamel', 'torso', top=(1.2, 1.0), bev=.03, seg=2)
+    P((0, 2.18, .13), (.22, .4, .03), 'ring_enamel_dk', 'torso', top=(1.2, 1), bev=.01)
+    stencil((0, 2.3, .15), .02, .03, 'torso', n=4)
+    B((0, 2.5, -.04), (1.5, .09, .12), 'ring_graphite', 'torso', bev=.015)            # the yoke
+    for s in (1, -1):
+        C((s * .74, 2.5, -.04), .06, .14, 'ring_buckle', 'torso', rot=(0, 0, 90), sides=8)
+        rod((s * .74, 2.46, -.04), (s * .9, 1.7, -.6), .006, 'ring_strap', 'torso', sides=4)   # tethers back to its flock
+    # The pole up its back and out over its head, the bell hanging from it
+    rod((0, 1.9, -.16), (0, 3.25, -.1), .03, 'ring_graphite', 'torso', sides=8)
+    rod((0, 3.25, -.1), (0, 3.2, .7), .025, 'ring_graphite', 'torso', sides=8)
+    # Head: narrow and long-faced, a ram's curl of plate either side, a pale visor slit
+    C((0, 2.6, .02), .045, .14, 'ring_graphite', 'torso', sides=10)
+    P((0, 2.8, .05), (.18, .26, .26), 'ring_enamel', 'head', top=(.82, .76), bev=.035, seg=3)
+    B((0, 2.82, .185), (.13, .026, .02), 'glow', 'head', glow='eye', k=1.5)
+    B((0, 2.82, .178), (.16, .06, .02), 'ring_graphite', 'head')
+    for s in (1, -1):
+        C((s * .13, 2.86, -.02), .07, .05, 'ring_enamel_dk', 'head', rot=(0, 0, 90), sides=12)
+        C((s * .15, 2.82, .03), .04, .04, 'ring_dust_dk', 'head', rot=(0, 0, 90), sides=10)
+    # The bell: small, bright and quick (not the Caller's cracked iron): a polished cup, a rim, its lamp
+    C((0, 3.14, .7), .03, .06, 'ring_graphite', 'halo', sides=8)
+    C((0, 2.98, .7), .1, .22, 'ring_buckle', 'halo', sides=16, r2=.06)
+    C((0, 2.86, .7), .17, .03, 'ring_buckle', 'halo', sides=16)
+    E((0, 3.1, .7), (.05, .04, .05), 'glow', 'halo', glow='core', k=1.6)
+    # The clapper
+    rod((0, 3.0, .7), (0, 2.84, .7), .012, 'ring_graphite', 'shield', sides=5)
+    E((0, 2.82, .7), (.04, .04, .04), 'ring_graphite', 'shield')
+    for sd, s in (('L', 1), ('R', -1)):
+        # Long legs, splayed feet
+        P((s * .15, 1.15, 0), (.13, .68, .15), 'ring_enamel', 'hip' + sd, top=(1.15, 1.1), bev=.02, seg=2)
+        C((s * .15, .8, .03), .055, .13, 'ring_graphite', 'knee' + sd, rot=(0, 0, 90), sides=10)
+        P((s * .15, .4, 0), (.1, .76, .12), 'ring_dust', 'knee' + sd, top=(1.3, 1.25), bev=.015, seg=2)
+        B((s * .15, .05, .07), (.16, .09, .34), 'ring_dust_dk', 'knee' + sd, bev=.02, seg=2)
+        B((s * .15, .32, .07), (.09, .03, .02), 'ring_rime', 'knee' + sd)
+        # Arms: forward and up, to the bell
+        P((s * .4, 2.3, .02), (.09, .36, .1), 'ring_enamel', 'arm' + sd, top=(1.1, 1.1), bev=.02, seg=2)
+        C((s * .42, 2.1, .06), .04, .09, 'ring_graphite', 'elbow' + sd, rot=(0, 0, 90), sides=10)
+        P((s * .36, 1.96, .18), (.08, .3, .09), 'ring_enamel_dk', 'elbow' + sd, top=(1.2, 1.2), bev=.02, seg=2)
+        B((s * .3, 1.82, .3), (.07, .06, .07), 'ring_graphite', 'hand' + sd, bev=.01)
+        for f in (-1, 1):
+            K((s * .3 + f * .02, 1.79, .3), .014, .11, 'ring_graphite', 'hand' + sd, rot=(180, 0, f * 10), sides=6)
+    done('bellwether')

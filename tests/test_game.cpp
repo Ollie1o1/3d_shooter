@@ -3158,7 +3158,7 @@ int main() {
         CHECK(levels, "every voice sits within 2 dB of its mix class's level");
         CHECK(varied, "a voice's variants differ");
         CHECK(same, "the same voice builds the same every time");
-        CHECK(total <= 350.f, "the whole voice bank, including the expanded Story tools, five lab bodies and Chapter 5's enemies and bosses, stays within 350 s of audio");
+        CHECK(total <= 360.f, "the whole voice bank, including the expanded Story tools, five lab bodies, Chapter 5's enemies and bosses and Chapter 6's DISPATCHED and sheepdogs, stays within 360 s of audio");   // (350 until Chapter 6's three sheepdogs: 352 s)
     }
 
     // ---------------------------------------------------------------- enemy voices: who gets to speak

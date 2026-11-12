@@ -231,7 +231,7 @@ int main() {
     }
     {   // ---- the chapter: the Landing, the Drift, the Kept ----
         LevelData l = buildRing();
-        CHECK(l.story.built && l.story.chapter == 6 && l.arenas.size() == 8, "the chapter builds: eight sections over six places (the Gap the last)");
+        CHECK(l.story.built && l.story.chapter == 6 && l.arenas.size() == 9, "the chapter builds: nine sections over seven places (the Wake the last)");
         auto sh = ring::shelters();
         RingSweep probe; probe.spec.dir = ring::sweepDir();
         bool postsBehind = true;
@@ -306,6 +306,25 @@ int main() {
         }
         const float jump = 9.1f * 9.1f / (2.f * 24.f * ring::GRAVITY_SCALE);
         CHECK(gapride::CHUNK_HALF.y * 2.f < jump * 0.75f, "the Drover's chunk is low enough to jump in this gravity, with room");
+        // THE WAKE: every step a jump; tucked against the next riser you're sheltered; the open bits a short walk
+        CHECK(ring::STEP_UP < jump * 0.8f, "every step up the Wake is one jump in this gravity, with room");
+        {
+            RingSweep probe; probe.spec.dir = ring::sweepDir();
+            const auto T = ring::wakeTreads();
+            float worstOpen = 0.f; bool floorsRight = true;
+            for (size_t i = 0; i + 1 < T.size(); ++i) {
+                floorsRight &= std::fabs(l.baseFloor(0.f, (T[i].zS + T[i].zN) * 0.5f) - T[i].y) < 0.01f;
+                float run = 0.f;   // the longest stretch of this tread out of the shadow
+                for (float z = T[i].zS - 0.3f; z > T[i].zN + 0.3f; z -= 0.5f) {
+                    if (probe.sheltered({0.f, T[i].y, z}, l.sweepShelters)) run = 0.f; else run += 0.5f;
+                    worstOpen = std::max(worstOpen, run);
+                }
+            }
+            std::printf("   the Wake: the longest open stretch on a tread is %.1f m\n", worstOpen);
+            CHECK(floorsRight, "each tread of the Wake is ground at its own height");
+            CHECK(worstOpen < 7.f * 10.f * 0.8f && worstOpen < 8.f, "on the Wake, shelter is never more than a few steps away along a tread");
+            CHECK(ring::summitY() > 40.f, "the summit stands over 40 m above the ring plane");
+        }
         const auto sp0 = ring::spokes()[0];
         const glm::vec3 mid{sp0.narrowX + 60.f, 0.f, ring::spokeZ(sp0, sp0.narrowX + 60.f)};
         CHECK(ring::spokeAt(mid) == 0 && ring::spokeAt(mid + glm::vec3{0.f, 5.f, 0.f}) < 0 && ring::spokeAt({0.f, 0.f, ring::BAND_S - 50.f}) < 0,
@@ -410,18 +429,29 @@ int main() {
             for (int i = 0; i < 60 * 8 && !sent; ++i) { f.update(DT, v); gold |= f.telegraphTimer > 0.f && f.attack == AttackKind::RING_CHARGE; sent |= f.ev.ringCharge; }
             CHECK(gold && sent && !f.parryWindow(), "it sends a chunk of its herd after a gold wind-up (dodge, not parry)");
         }
+        {   // THE BELLWETHER: the same rule; its bell a gold wind-up and a ring (not a parry)
+            Enemy e(EnemyType::BELLWETHER, {0.f, 0.f, 0.f}); e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE;
+            EnemyWorld v; v.playerFeet = {12.f, 0.f, 0.f}; v.playerEye = v.playerFeet + glm::vec3{0, 1.7f, 0};
+            bool gold = false, rang = false;
+            for (int i = 0; i < 60 * 8 && !rang; ++i) { e.update(DT, v); gold |= e.telegraphTimer > 0.f && e.attack == AttackKind::RING_BELL; rang |= e.ev.ringBell; }
+            CHECK(gold && rang && !e.parryWindow(), "the Bellwether rings its bell after a gold wind-up (jump it, don't parry)");
+            const bool died = e.takeDamage(e.maxHealth * 5.f);
+            CHECK(!died && e.alive && e.crookLeave >= 0.f, "and it can't be killed on the Wake: a third gone, it breaks off");
+            const float jump = 9.1f * 9.1f / (2.f * 24.f * ring::GRAVITY_SCALE);
+            CHECK(wakebell::DAMAGE < 25.f && wakebell::JUMP_CLEAR < jump * 0.5f, "its ring hurts but never kills on its own, and a jump clears it easily");
+        }
         LevelData l = buildRing();
         int crooks = 0;
         for (const auto& wave : l.arenas[3].waves) for (const auto& we : wave) crooks += we.type == EnemyType::CROOK;
         CHECK(crooks == 1 && l.arenas[3].waves[0][0].type == EnemyType::CROOK, "the Kept's first wave is the Crook's");
     }
     {   // ---- the menu and the save (step 4): chapter 6 is a chapter ----
-        StorySave a; a.chapter = 6; a.checkpoint = 7; a.owned = 15; a.grapple = true;
+        StorySave a; a.chapter = 6; a.checkpoint = 8; a.owned = 15; a.grapple = true;
         StorySave b; const bool ok = b.parse(a.text());
-        CHECK(ok && b.chapter == 6 && b.checkpoint == 7, "a chapter 6 save, at the Gap, loads");
-        StorySave c = a; c.checkpoint = 8; StorySave d;
+        CHECK(ok && b.chapter == 6 && b.checkpoint == 8, "a chapter 6 save, on the Wake, loads");
+        StorySave c = a; c.checkpoint = 9; StorySave d;
         CHECK(!d.parse(c.text()), "a chapter 6 save past its last checkpoint does not");
-        CHECK((int)buildRing().arenas.size() == 8, "chapter 6 has eight checkpoints (0..7, the Gap last), as the save allows");
+        CHECK((int)buildRing().arenas.size() == 9, "chapter 6 has nine checkpoints (0..8, the Wake last), as the save allows");
         CHECK(buildCold().story.nextChapter == 6, "the Cold Store's end card goes on to the ring");
     }
     {   // ---- the Shepherd's count (13.2) ----

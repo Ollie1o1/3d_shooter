@@ -23,6 +23,10 @@
 //   DROVER  the second sheepdog, over the Gap: it hangs beside your raft with its
 //           herd and, every few seconds, sends a chunk sliding across it (gold:
 //           jump it, or step off its line). A third gone and it breaks off too.
+//   BELLWETHER  the third, on the Wake's summit. It paces with its flock and rings
+//           its bell: a ring runs out along the ground from it (gold: jump it),
+//           hurts and throws but doesn't kill, on its own rhythm beside the
+//           Shepherd's count. A third gone, it breaks off.
 // =============================================================================
 
 namespace ringfoe {
@@ -168,4 +172,14 @@ inline void Enemy::thinkDrover(float dt, const EnemyWorld& w, bool resolve) {
     if (telegraphTimer > 0.f) { velocity *= 0.3f; return; }
     if (resolve && attack == AttackKind::RING_CHARGE) { attack = AttackKind::NONE; ev.ringCharge = true; recover(1.4f); return; }
     if (recoverTimer <= 0.f && attackReady(dt) && glm::length(to) < 60.f) startAttack(AttackKind::RING_CHARGE, stats().telegraph);
+}
+
+inline void Enemy::thinkBellwether(float dt, const EnemyWorld& w, bool resolve) {
+    const glm::vec3 to = flatTo(w.playerFeet);
+    animPhase += dt * (0.8f + 2.f * std::min(1.f, moveSpeed / std::max(0.1f, stats().speed)));
+    if (telegraphTimer > 0.f) { velocity.x = velocity.z = 0.f; turnToward(to, dt, 3.f); return; }
+    if (resolve && attack == AttackKind::RING_BELL) { attack = AttackKind::NONE; ev.ringBell = true; recover(0.6f); return; }
+    turnToward(to, dt, 2.f);
+    rangedMove(dt, w, 9.f, 16.f, stats().speed);
+    if (recoverTimer <= 0.f && attackReady(dt) && glm::length(to) < 40.f) startAttack(AttackKind::RING_BELL, stats().telegraph);
 }
