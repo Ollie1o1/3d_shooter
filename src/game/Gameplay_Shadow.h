@@ -21,7 +21,8 @@
 
 inline float GameplayState::ringDark() const {
     if (!ring() || g_devRingTest) return 0.f;
-    float d = glm::clamp((ring::BAND_S - player.position.z) / ring::SHADE_IN, 0.f, 1.f);
+    float d = glm::clamp((ring::BAND_S - player.position.z) / ring::SHADE_IN, 0.f, 1.f)
+            * glm::clamp((player.position.z - (ring::BAND_N - 12.f)) / 12.f, 0.f, 1.f);   // (past its far side the sun is up, sunrise seen or not: a retry in the Spokes)
     if (ringSunHit >= 0.f) d *= 1.f - glm::clamp((ringSunT - ringSunHit) / shadowband::LIFT, 0.f, 1.f);
     return d;
 }

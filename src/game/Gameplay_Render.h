@@ -97,7 +97,7 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
     if (recallOwned()) gatherRecall(out);
     if (holdfastOwned()) gatherHoldfast(out);
     gatherSweep(out);
-    if (ring()) gatherShadow(out);   // (the Shadow Band's sunrise: Gameplay_Shadow.h)
+    if (ring()) { gatherShadow(out); gatherSpokes(out); }   // (the Shadow Band's sunrise, the Spokes' static)
     if(laboratory())gatherLabDressing(out);
 
     // HOLD: a ring of light on the ground; the lit arc is how far it's held.

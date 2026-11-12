@@ -51,6 +51,9 @@ constexpr float KEPT_N = -905.f;
 // the sun comes back (the sunrise) as you near its far side
 constexpr float BAND_S = KEPT_N, BAND_N = -1240.f, SHADE_IN = 30.f;
 constexpr float SUNRISE_AT = BAND_N + 95.f;     // cross this and the sun clears the giant's edge
+// THE SPOKES (level 5): streaks of charged dust lying across the ring. Inside one, no dash and
+// no grapple (the ANCHOR's field, at the scale of the landscape)
+constexpr float SPOKES_S = BAND_N - 32.f, SPOKES_N = -1760.f;
 constexpr float FAR_GROUND = 3000.f, FAR_PLANE = 5200.f;
 constexpr float VOID_FLOOR = -900.f;            // under the Drift: nothing
 constexpr float VOID_Y = -45.f;                 // fall past this in the Drift: back to the checkpoint
@@ -76,6 +79,7 @@ inline const char* distance(int arena) {
         case 0: return "74,000 KM";
         case 1: case 2: return "61,000 KM";
         case 5: return "46,000 KM";
+        case 6: return "39,000 KM";
         default: return "52,000 KM";
     }
 }
@@ -138,6 +142,40 @@ inline std::vector<Rock> bandRocks() {
             const float x = -88.f + c * 44.f + (r % 2) * 22.f + 6.f * (hash(k, 91.f) - 0.5f);
             if (x > 100.f) continue;
             const float z = BAND_S - 44.f - r * 36.5f + 6.f * (hash(k, 92.f) - 0.5f);
+            out.push_back({x, z, 9.f + 3.f * hash(k, 93.f), 4.2f + 0.8f * hash(k, 94.f), 5.f + hash(k, 95.f)});
+        }
+    return out;
+}
+// The spokes: each a streak across the band (radial to the giant, so across our way north),
+// slanted, wide at one end and narrowing to a crossing somewhere along it
+struct Spoke { float z, slope, narrowX, wMin, wMax; };
+inline std::vector<Spoke> spokes() {
+    return {{-1330.f, 0.10f, -55.f, 12.f, 58.f}, {-1418.f, -0.08f, 50.f, 11.f, 64.f}, {-1508.f, 0.13f, -15.f, 13.f, 52.f},
+            {-1598.f, -0.11f, 70.f, 12.f, 66.f}, {-1688.f, 0.07f, -60.f, 11.f, 60.f}};
+}
+inline float spokeHalf(const Spoke& s, float x) { return 0.5f * (s.wMin + (s.wMax - s.wMin) * std::min(1.f, std::fabs(x - s.narrowX) / 110.f)); }
+inline float spokeZ(const Spoke& s, float x) { return s.z + s.slope * x; }
+// Is a point (feet) inside a spoke's charged dust? (It reaches 4 m up: jump high over a narrow one and you're free)
+inline int spokeAt(glm::vec3 p) {
+    if (p.z > SPOKES_S || p.z < SPOKES_N || p.y > 4.f || p.y < -2.f) return -1;
+    const auto S = spokes();
+    for (int i = 0; i < (int)S.size(); ++i) if (std::fabs(p.z - spokeZ(S[i], p.x)) < spokeHalf(S[i], p.x)) return i;
+    return -1;
+}
+// Its shelters: rows of rock between and inside the spokes (you walk to them: no grapple in there),
+// none on a spoke's narrow crossing, which stays clear
+inline std::vector<Rock> spokeRocks() {
+    std::vector<Rock> out;
+    const auto S = spokes();
+    for (int r = 0; r < 13; ++r)
+        for (int c = 0; c < 5; ++c) {
+            const float k = (float)(r * 5 + c) + 300.f;
+            const float x = -88.f + c * 44.f + (r % 2) * 22.f + 6.f * (hash(k, 91.f) - 0.5f);
+            if (x > 100.f) continue;
+            const float z = SPOKES_S - 20.f - r * 36.f + 6.f * (hash(k, 92.f) - 0.5f);
+            bool onCrossing = false;
+            for (const Spoke& s : S) if (std::fabs(x - s.narrowX) < 14.f && std::fabs(z - spokeZ(s, x)) < spokeHalf(s, x) + 8.f) onCrossing = true;
+            if (onCrossing) continue;
             out.push_back({x, z, 9.f + 3.f * hash(k, 93.f), 4.2f + 0.8f * hash(k, 94.f), 5.f + hash(k, 95.f)});
         }
     return out;
@@ -236,6 +274,7 @@ inline std::vector<SweepShelter> shelters() {
     for (const Stack& s : reefStacks()) out.push_back(shelterBox(s.x - s.hx, s.z - s.hz, s.x + s.hx, s.z + s.hz, 0.f, s.h, 3));
     out.push_back(shelterBox(quietHull().min.x - 1.f, quietHull().min.z - 1.f, quietHull().max.x + 1.f, quietHull().min.z, 0.f, 9.f, 4));   // (its nose wall)
     for (const Rock& r : bandRocks()) out.push_back(shelterBox(r.x - r.w * 0.5f, r.z - r.d * 0.5f, r.x + r.w * 0.5f, r.z + r.d * 0.5f, 0.f, r.h, 5));
+    for (const Rock& r : spokeRocks()) out.push_back(shelterBox(r.x - r.w * 0.5f, r.z - r.d * 0.5f, r.x + r.w * 0.5f, r.z + r.d * 0.5f, 0.f, r.h, 6));
     return out;
 }
 
@@ -737,7 +776,7 @@ inline LevelData buildRing() {
                                    "DISPATCHED: 40,111. RECEIVED: 0. DESTINATION: (BLANK). HOLD UNTIL CALLED FOR."});
         }
         // The way on: north, toward the Shepherd, into the dark (the chapter's end is past the Shadow Band)
-        s.end = LevelBuilder::aabb(-60.f, -1.f, ring::BAND_N - 26.f, 60.f, 10.f, ring::BAND_N - 8.f);
+        s.end = LevelBuilder::aabb(-60.f, -1.f, ring::SPOKES_N - 20.f, 60.f, 10.f, ring::SPOKES_N + 4.f);   // (past the Spokes)
         b.mat = Mat::METAL;
         for (int k = 0; k < 6; ++k) post({-6.f + (k % 2) * 12.f, 0.f, ring::KEPT_N + 30.f + (k / 2) * 14.f});
     }
@@ -766,6 +805,31 @@ inline LevelData buildRing() {
             if (!clear) continue;
             const bool up = ring::hash((float)k, 100.f) < 0.3f;
             ringCapsule(b, {x, up ? -1.3f : 0.55f, z}, up, (int)(ring::hash((float)k, 101.f) * 4.f), (ring::hash((float)k, 102.f) - 0.5f) * 10.f, true);
+        }
+    }
+
+    // =========================================================================
+    // 6. THE SPOKES
+    // =========================================================================
+    {
+        // The dust lies on the ice as a dark stain, slanting across the band (its sparks and its edge
+        // are drawn live: Gameplay_Spokes.h)
+        for (const ring::Spoke& sp : ring::spokes())
+            for (float x = -ring::EDGE - ring::EDGE_RAG; x < ring::EDGE + ring::EDGE_RAG; x += 4.f) {
+                const float zc = ring::spokeZ(sp, x + 2.f), h = ring::spokeHalf(sp, x + 2.f);
+                l.floors.push_back({x, zc - h, x + 4.f, zc + h, 0.02f, glm::mix(vec3{0.1f, 0.09f, 0.12f}, sand * 0.3f, 0.25f), Mat::SNOW});
+            }
+        for (const ring::Rock& r : ring::spokeRocks())
+            rockShelter(ring::shelterBox(r.x - r.w * 0.5f, r.z - r.d * 0.5f, r.x + r.w * 0.5f, r.z + r.d * 0.5f, 0.f, r.h, 6));
+        // Capsules here and there (not on a crossing)
+        for (int k = 0; k < 50; ++k) {
+            const float x = (ring::hash((float)k, 110.f) - 0.5f) * 2.f * (ring::HALF_X - 6.f), z = ring::SPOKES_S - 10.f - ring::hash((float)k, 111.f) * (ring::SPOKES_S - ring::SPOKES_N - 20.f);
+            bool clear = true;
+            for (const ring::Rock& r : ring::spokeRocks()) if (std::fabs(x - r.x) < r.w * 0.5f + 4.f && std::fabs(z - r.z) < r.d * 0.5f + 6.f) clear = false;
+            for (const ring::Spoke& sp : ring::spokes()) if (std::fabs(x - sp.narrowX) < 16.f && std::fabs(z - ring::spokeZ(sp, x)) < ring::spokeHalf(sp, x) + 10.f) clear = false;
+            if (!clear) continue;
+            const bool up = ring::hash((float)k, 112.f) < 0.3f;
+            ringCapsule(b, {x, up ? -1.3f : 0.55f, z}, up, (int)(ring::hash((float)k, 113.f) * 4.f), (ring::hash((float)k, 114.f) - 0.5f) * 10.f, true);
         }
     }
 
@@ -859,6 +923,18 @@ inline LevelData buildRing() {
         sb.waves = {{W(EnemyType::STRAY, 4), W(EnemyType::HERDER, 1)}};
         sb.maxAlive = 6;
         l.arenas.push_back(sb);
+    }
+    // 6. The Spokes: the full level after the dark. Two fights, both where spokes make you walk
+    {
+        Arena sp = section("THE SPOKES", "39,000 KM", ring::SPOKES_N - 24.f, ring::SPOKES_S, {0.f, 0.f, ring::SPOKES_S - 6.f});
+        sp.hasTrigger = true; sp.trigger = LevelBuilder::aabb(-ring::HALF_X, -2.f, -1470.f, ring::HALF_X, 20.f, -1440.f);
+        sp.groundSpawns = {{-50.f, 0.f, -1520.f}, {40.f, 0.f, -1530.f}, {0.f, 0.f, -1545.f}, {70.f, 0.f, -1490.f}, {-75.f, 0.f, -1495.f}, {-20.f, 0.f, -1560.f}};
+        sp.airSpawns = {{-30.f, 3.f, -1530.f}, {30.f, 3.f, -1530.f}};
+        const vec3 tally{-44.f, 0.f, -1556.f};
+        sp.waves = {{W(EnemyType::STRAY, 5), W(EnemyType::HERDER, 2)},
+                    {W(EnemyType::PORTER, 0, {vec3{10.f, 0.f, -1550.f}}), W(EnemyType::STRAY, 3), W(EnemyType::TALLY, 0, {tally})}};
+        sp.waveBreak = 3.f; sp.maxAlive = 7;
+        l.arenas.push_back(sp);
     }
     // Last: whatever is drawn within reach and has no collision gets its own (nothing hollow to walk into)
     ringMatchCollision(b, ring::HALF_X + 6.f);

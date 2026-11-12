@@ -50,14 +50,15 @@ inline void GameplayState::breakHalo(Enemy& e) {
 
 inline bool GameplayState::anchoredAt(glm::vec3 feet) const {
     for (auto& e : enemies) if (inAnchorField(e, feet)) return true;
-    return false;
+    return ring() && ring::spokeAt(feet) >= 0 && !g_devRingTest;   // Chapter 6: a spoke's charged dust (Gameplay_Spokes.h)
 }
 
 inline void GameplayState::pinnedCue() {
     if (pinnedCueCd > 0.f) return;
     pinnedCueCd = 0.6f;
     audio.play("clank", 45);
-    ui.feed("PINNED - NO DASH OR GRAPPLE", {1.f, 0.3f, 0.3f});
+    if (ring() && ring::spokeAt(player.position) >= 0) ui.feed("CHARGED DUST - NO DASH OR GRAPPLE", {0.72f, 0.6f, 1.05f});
+    else ui.feed("PINNED - NO DASH OR GRAPPLE", {1.f, 0.3f, 0.3f});
 }
 
 // A projectile parried (the punch, or the sword's parry): sent back where you

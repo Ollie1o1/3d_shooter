@@ -108,6 +108,29 @@ numbers: `shadowband::` and `ring::darkTheme`, `bandRocks`, `bandLamps` in `Leve
 - Not built: the sound (vacuum already; a floor hum for the front in the dark would help),
   the Shepherd's lamps turning to follow you (13.2), dust on the hands (13.5).
 
+## THE SPOKES (level 5, arena 6; 2026-11-12)
+
+z -1272 to -1760 (`ring::SPOKES_S`, `SPOKES_N`). Rules and look: `src/game/Gameplay_Spokes.h`; the
+shapes: `ring::spokes()`, `spokeAt`, `spokeRocks` in `LevelRing.h`.
+
+- **Five spokes** of charged dust lie across the band, slanted, each 52-66 m wide at one end and
+  narrowing to an 11-13 m crossing somewhere along it (`Spoke::narrowX`, kept clear of rock and
+  capsules). Drawn as a dark stain on the ice, edged by faint violet stakes and lines, with
+  sparks hanging in the dust near you.
+- **Inside one** (feet within it, up to 4 m above the ice): no dash, no grapple. It is the ANCHOR's
+  field through the same check (`anchoredAt`) and refusal (`pinnedCue`, feed `CHARGED DUST - NO
+  DASH OR GRAPPLE`); a grapple already flying goes dead as you enter. HOLDFAST still works (a
+  spike, not a hook). A crackle of static while you're in it. Its tell is pale violet, not the
+  ANCHOR's red: red is the countdown's alone in this chapter.
+- **Sweeps:** the mid tier; the first scripted 18 s after the card. 57 rocks in 13 staggered rows,
+  between and inside the spokes: the worst walk to shelter is 5.7 s.
+- **Fights:** triggered between z -1440 and -1470: 5 STRAYS and 2 HERDERS, then a PORTER, 3 STRAYS
+  and a TALLY.
+- The chapter's end card is now past the Spokes. The Shadow Band's dark ends at its far side
+  whether or not the sunrise played (a retry in the Spokes starts in daylight).
+- Not built: static crawling over UNIT 24's fingers (13.5); a HUD sign that you're in a spoke
+  beyond the toast and the feed.
+
 ## The sky (skybox.frag `ringSky`, `uRing`)
 
 The giant (`RING_GIANT`, east, angular radius 0.8) sits on the horizon with its
@@ -329,9 +352,9 @@ music never ducks at the zero.
 4. ~~Menu and save~~: done. Still to do: the bridge cutscene (design
    section 2: the capsule's flight from the Store to the ring and the
    impact); for now the Cold Store's end card just loads the Landing.
-5. **Levels 5-8**: the Shadow Band is built (above). Next, the Spokes (they
-   reuse the ANCHOR enemy's field: no grapple or dash inside), then the Gap,
-   the Wake and the Shore, then the boss as written.
+5. **Levels 6-8**: the Shadow Band and the Spokes are built (above). Next, the
+   Gap (THE DROVER and a raft ride over the gap), the Wake (THE BELLWETHER, the
+   double sweep on a climb) and the Shore, then the boss as written.
 
 ## House rules noticed while building
 

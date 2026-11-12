@@ -172,7 +172,7 @@ inline void GameplayState::beginRing() {
     if (director.arena >= 2) holdfastFound = true;   // (a checkpoint past I2: it is yours)
     holdfast.reset(); armSweep();
     ringLevelSeen = -1; ringScriptT = -1.f; ringAir = -1;
-    ringBolt = 0.f; ringBoltT = -1.f; ringBoltNext = 3.f; ringSunT = ringSunHit = -1.f; ringShadeHint = false; ringKnockOn = -1; ringKnockT = ringCreakT = 0.f; crookDragT = 0.f; crookDragUid = -1; crookSeen = crookLeft = false;
+    ringBolt = 0.f; ringBoltT = -1.f; ringBoltNext = 3.f; ringSunT = ringSunHit = -1.f; ringShadeHint = false; spokeHint = false; ringKnockOn = -1; ringKnockT = ringCreakT = 0.f; crookDragT = 0.f; crookDragUid = -1; crookSeen = crookLeft = false;
     if (g_devRingTest) ringLevelSeen = 99;
     player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0}; prevCamPos = player.camera.position;
 }
@@ -196,6 +196,7 @@ inline void GameplayState::updateRing(float dt) {
     }
     ringTouch(dt);
     tickShadow(dt);
+    tickSpokes(dt);
     const glm::vec3 p = player.position;
     const int at = level.arenaAt(p);
     if (at > director.arena && !director.fighting() && director.phase != WaveDirector::Phase::INTRO) director.approach(at);
@@ -211,6 +212,7 @@ inline void GameplayState::updateRing(float dt) {
             if (at == 0) ringScriptT = -1.f;   // (the Landing's comes at the ridge, below)
             if (at == 3) ringScriptT = 14.f;
             if (at == 5) ringScriptT = 22.f;   // (the Shadow Band's first: in the dark, among the rocks)
+            if (at == 6) ringScriptT = 18.f;   // (the Spokes': you walk to shelter)
         }
     }
     if (at >= 0 && at > storyCheckpoint && !director.fighting()) { storyCheckpoint = at; sweepSched.checkpoint(); ui.feed("CHECKPOINT", SWEEP_ICE * 0.6f); }

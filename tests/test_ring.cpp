@@ -231,7 +231,7 @@ int main() {
     }
     {   // ---- the chapter: the Landing, the Drift, the Kept ----
         LevelData l = buildRing();
-        CHECK(l.story.built && l.story.chapter == 6 && l.arenas.size() == 6, "the chapter builds: six sections over four places (the Shadow Band the last)");
+        CHECK(l.story.built && l.story.chapter == 6 && l.arenas.size() == 7, "the chapter builds: seven sections over five places (the Spokes the last)");
         auto sh = ring::shelters();
         RingSweep probe; probe.spec.dir = ring::sweepDir();
         bool postsBehind = true;
@@ -271,6 +271,23 @@ int main() {
         const float band = worstIn(ring::BAND_N + 4.f, ring::BAND_S - 4.f);
         std::printf("   worst walk to shelter in the Shadow Band: %.1f s (the mid tier warns 10 s)\n", band);
         CHECK(band < 10.f * 0.8f, "in the Shadow Band, fixed shelter is inside the mid tier's 10 s warning with a fifth to spare");
+        const float spokesWalk = worstIn(ring::SPOKES_N + 4.f, ring::SPOKES_S - 4.f);
+        std::printf("   worst walk to shelter in the Spokes: %.1f s\n", spokesWalk);
+        CHECK(spokesWalk < 10.f * 0.8f, "in the Spokes, shelter is a walk inside the 10 s warning (no grapple in the dust), with a fifth to spare");
+        // Each spoke narrows to a crossing inside the playable width, and nothing stands on it
+        bool crossings = true;
+        for (const auto& sp : ring::spokes()) {
+            crossings &= std::fabs(sp.narrowX) < ring::HALF_X - 10.f && ring::spokeHalf(sp, sp.narrowX) * 2.f < 14.f;
+            for (float dz = -ring::spokeHalf(sp, sp.narrowX) - 3.f; dz <= ring::spokeHalf(sp, sp.narrowX) + 3.f; dz += 1.f) {
+                const glm::vec3 p{sp.narrowX, 1.f, ring::spokeZ(sp, sp.narrowX) + dz};
+                for (auto& w : l.walls) if (!w.dynamic && p.x > w.box.min.x - 0.5f && p.x < w.box.max.x + 0.5f && p.z > w.box.min.z && p.z < w.box.max.z && p.y > w.box.min.y && p.y < w.box.max.y) crossings = false;
+            }
+        }
+        CHECK(crossings, "every spoke narrows to a crossing under 14 m, inside the band, and nothing blocks it");
+        const auto sp0 = ring::spokes()[0];
+        const glm::vec3 mid{sp0.narrowX + 60.f, 0.f, ring::spokeZ(sp0, sp0.narrowX + 60.f)};
+        CHECK(ring::spokeAt(mid) == 0 && ring::spokeAt(mid + glm::vec3{0.f, 5.f, 0.f}) < 0 && ring::spokeAt({0.f, 0.f, ring::BAND_S - 50.f}) < 0,
+              "a spoke's dust holds you on the ground and up to 4 m; above it, and outside the Spokes, you're free");
         // The Drift: each lane a jump from the last (gaps a low-gravity running jump clears), and none too high to climb
         // Everything you stand on crossing the Drift, south to north: the pier, the lanes, the islands, the far shore
         struct Span { float south, north, top; bool grapple; };
@@ -367,12 +384,12 @@ int main() {
         CHECK(crooks == 1 && l.arenas[3].waves[0][0].type == EnemyType::CROOK, "the Kept's first wave is the Crook's");
     }
     {   // ---- the menu and the save (step 4): chapter 6 is a chapter ----
-        StorySave a; a.chapter = 6; a.checkpoint = 5; a.owned = 15; a.grapple = true;
+        StorySave a; a.chapter = 6; a.checkpoint = 6; a.owned = 15; a.grapple = true;
         StorySave b; const bool ok = b.parse(a.text());
-        CHECK(ok && b.chapter == 6 && b.checkpoint == 5, "a chapter 6 save, in the Shadow Band, loads");
-        StorySave c = a; c.checkpoint = 6; StorySave d;
+        CHECK(ok && b.chapter == 6 && b.checkpoint == 6, "a chapter 6 save, in the Spokes, loads");
+        StorySave c = a; c.checkpoint = 7; StorySave d;
         CHECK(!d.parse(c.text()), "a chapter 6 save past its last checkpoint does not");
-        CHECK((int)buildRing().arenas.size() == 6, "chapter 6 has six checkpoints (0..5, the Shadow Band last), as the save allows");
+        CHECK((int)buildRing().arenas.size() == 7, "chapter 6 has seven checkpoints (0..6, the Spokes last), as the save allows");
         CHECK(buildCold().story.nextChapter == 6, "the Cold Store's end card goes on to the ring");
     }
     {   // ---- the Shepherd's count (13.2) ----
