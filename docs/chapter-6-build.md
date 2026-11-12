@@ -6,26 +6,84 @@ or person can carry on without the first session's context.
 
 ## Where it stands
 
-Build order steps 1 and 2 of the design (section 11) exist and run: the new
-ability, and the sweep with its countdown on a test ground. Step 3, the
-playtest gate, is the user's to do. Nothing after that is started.
+**2026-11-12, second session (Opus 5.5): the vertical slice exists.** The
+Landing, the Drift and the Kept are built as one world (design steps 4 to 6,
+less the Crook), with the ring's own sky and the chapter's four crossing
+enemies. The test ground lives on behind `--ringtest`. Committed on `ship`
+(`0f7a07b` and after). **Nobody has played it by hand yet**: the playtest gate
+(step 3) and the slice playtest (step 6) are both still the user's.
 
 **Try it:**
 
 | Command | What you get |
 |---|---|
-| `./shooter --story6` | The test ground: shelters, posts, sweeps every 25–40 s cycling far → mid (double) → near (breakers), three waves of stand-in enemies north of z 34, HOLDFAST on **Z**, half gravity. |
-| `./shooter --story6 --sweep mid` | The same, one tier only (`far`, `mid`, `near`, `gather`). |
-| `./shooter --training --sweep --holdfast` | Sweeps and the spike in any other level; every tall wall counts as shelter. |
-| `./shooter --story6 --overlay sweepnow --god --shot 200 out.bmp` | A screenshot mid-countdown. |
-| `make test-ring` | 64 checks on the rules, no window needed. |
+| `./shooter --story6` | The chapter from the Landing: capsule field, the ridge (low gravity), the first sweep once you're over it, three Strays at the lip, the Drift, HOLDFAST on I2, the fight island, the Kept's courtyard (3 waves), the open hull, the end card. |
+| `./shooter --story6 --arena 2` / `3` / `4` | Start at the Drift / the far half of the Drift / the Kept. |
+| `./shooter --ringtest [--wave 2]` | The old flat test ground, sweeps every 25-40 s cycling the tiers, now with the real enemies. |
+| `./shooter --story6 --god --cam X Y Z YAW PITCH --shot 100 out.bmp` | A screenshot from anywhere (the eye is held there). Good views: `--cam -14 3 -170 -90 -8` (the lanes), `--cam 0 30 -590 -90 -22` (the reef), `--cam 0 1.7 100 0 5` (the giant). |
+| `./shooter --viewer stray` (herder, tally, porter) | The new models in the enemy viewer. |
+| `make test-ring` | Rules, plus: every post in its shelter's shadow, every shelter solid, shelter reach on the Landing (11 s) and the Kept (12 s) under the 20 s warning, every gap across the Drift (worst 6 m; a low-gravity running jump clears ~9.9 m), the grapple gap to the shore. |
 
-**Verified on 2026-11-12:** `make` builds clean; `make test-ring` passes;
-`make test` passes; in game the countdown, lit posts, front and the `SWEPT`
-death screen were checked by screenshot (`build/ring/count_s.png`,
-`build/ring/swept_s.png`). **Not verified:** nobody has played it by hand.
-HOLDFAST's rope and pin, enemies being swept, the double sweep and breakers
-are covered by the logic tests only, not seen in game.
+## The vertical slice (LevelRing.h)
+
+One world, north (-Z) toward the Shepherd; sweeps travel south, so every lee
+and every post is on the south side. Five arenas over three places:
+
+| Arena | Place | z | What's there |
+|---|---|---|---|
+| 0 | THE LANDING | 135 .. -150 | Your open capsule and its furrow; ~300 capsules (solid within reach, sparser and visual-only out to 400 m); worn paths; 16 rock shelters; the capsule ridge at z 26-30 (2.9 m: one jump at half gravity, impossible at full); a wave of 3 STRAYS at the lip. First sweep: scripted 2 s after you cross z 20. |
+| 1 | THE DRIFT | -150 .. -345 | A basin to -900 across the whole ring (nothing under you). The pier, 11 lanes of drifting chunks (PINGPONG movers along X, 3 per lane 34 m apart, 13-30 s periods, tops -0.6..1.8), every third lane's chunks carrying a boulder that is a moving shelter. Island I2 (top y 1) with the HOLDFAST capsule: walk within 4.5 m and it is yours; the Drift's first sweep comes 18 s later. |
+| 2 | (the Drift) | -345 .. -560 | 5 quicker lanes, the fight island I3 (STRAYS + a HERDER, then STRAYS; two loose shelters), 5 lanes, a 7.8 m gap to the far shore (grapple the capsule stack, or jump it). |
+| 3 | THE KEPT | -560 .. -760 | The reef plain (rock shelters), then the reef: capsule-course walls round a 72 x 84 m courtyard, 3 m ledges inside east and west, six capsule stacks (shelters), four loose shelters. Waves: 5 STRAYS; 4 STRAYS + 2 HERDERS + a TALLY on the east ledge; a PORTER + 4 STRAYS + a HERDER. First sweep 14 s after the card. |
+| 4 | (the Kept) | -760 .. -905 | The open hull (`ring::quietHull`): no sweeps inside, emergency strips, berths, the sibling's lamp blinking every 1.12 s, two terminals. North of it, `story.end`: the completion card. |
+
+Places get one card each (`ringLevelSeen`): the Drift's and the Kept's second
+arenas are checkpoints, not new places. Each card's subtitle is the distance
+(74,000 / 61,000 / 52,000 KM).
+
+**Shelters are level data now** (`LevelData::sweepShelters`): `ring::shelters()`
+(fixed: rocks, the ridge, the islands' blocks, the reef) plus, from
+`buildRing()`, the drifting boulders (`wall` set: their box follows the wall
+every tick, posts ride along) and the loose ones (`mover` set: DRIVEN movers a
+HERDER pushes along `b`). `armSweep()` copies them and resets every DRIVEN
+mover on a retry.
+
+**Drifting chunks** are movers with `look = 1`: the generic glowing-slab draw
+skips them and `gatherRing()` draws a slab with lumps (`meshlib::lumpBall`)
+under and at the ends.
+
+## The sky (skybox.frag `ringSky`, `uRing`)
+
+The giant (`RING_GIANT`, east, angular radius 0.8) sits on the horizon with its
+equator in the ring plane: butter, tan and cream belts, a storm, the rings'
+thin shadow stripes, a warm limb. The ring is a hair of light on the horizon,
+broken where the Shepherd's gap is. The Shepherd (`uShepherd`: direction and
+angular radius, `ring::shepherdSize(z)`, 0.0012 at the Landing growing to
+~0.009 at the Kept's end) is a point that becomes a walnut with a ridge; its
+ridge lamps light with `uRingFlash` on every sweep. `uRingNight` (the giant's
+shadow, night-side lightning) is wired for the Shadow Band and is 0 for now.
+Ring materials use `Mat::ROCK`: `Mat::ICE` renders as blue hex tiles, off the
+chapter's palette.
+
+## THE DISPATCHED (the chapter's enemies)
+
+Like Chapter 3's four lab families, but the opposite look: hard shells,
+bleached enamel, ring dust on every lower surface, rime in the seams,
+shipping hardware worn as anatomy, one warm light each (a pale visor, an amber
+capsule lamp). No cyan, no red. Models: `tools/blender/ring_foes_build.py`
+(`blender -b --factory-startup --python tools/blender/headless.py -- tools/blender/ring_foes_build.py [ONLY=stray]`).
+Minds: `src/enemies/EnemyRing.h`; poses: `src/render/RingFoePose.h`; their
+part in the sweep: `src/game/Gameplay_RingFoes.h`.
+
+| Enemy | Look | Fight | With the sweep |
+|---|---|---|---|
+| STRAY (52 hp) | Lean unit, the back half of its packing cradle still strapped on, foam blocks, a delivery tag, one pauldron torn off. Lopes in long low-gravity bounds. | The Living Ward patient's claw and lunge (`thinkLab`), white parry. | Runs for the nearest lit post; a hit during a countdown shoves you out of the lee (`SHOVED OUT`). |
+| HERDER (95 hp, flies) | A squat block behind a scuffed plough plate with black chevrons, gas pods on swivel arms, a hooded lamp. | RING_RAM: backs off, gold tell, rams down a line (dodge). | Takes the loose shelter nearest you and pushes it along its rail (about 3 s). Kill it and it stops. |
+| TALLY (170 hp, still) | A counting mast on three spiked legs: bead racks that slide, a counter drum that turns a notch per count, an amber lamp that blinks. | None. | While one stands the gap between sweeps halves (`SweepSchedule::tick` rate 2). |
+| PORTER (320 hp) | A hauler bent under a dispatch capsule strapped to its back; loader forearms with shovel hands. | The BRUTE's slam (gold) and lob (`thinkBrute`): its lobs arc over cover. | (none yet: a target for luring into the open) |
+
+Their voice keys, cadences and the RING_RAM tell are in `VoiceTable.h` /
+`VoiceSynth.h` (the voice level test checks the tell).
 
 ## The name
 
@@ -100,12 +158,14 @@ Changed (small hooks; search for `ring()`, `holdfast`, `sweep`):
    sheltering and bursts, but its box is still drawn and solid. Make small
    shelters `Destructible`s (see `LevelLayout.h`, and how Ballast's
    windbreaks break and update collision).
-2. **The sky is Chapter 5's** (aurora and all). There is no Shepherd in it.
+2. ~~The sky is Chapter 5's~~: `ringSky` exists. The Shepherd is still only an
+   impostor (no ridge geometry until the Shore).
 3. **No light bake.** The game prints `story6.light: no bake`. See `make
    light` once the first real level exists.
-4. **Enemies are stand-ins** (HUSK, RIPPER, BRUTE).
-5. **The test ground's gaps are 25–40 s** so sweeps come quickly. Real
-   levels use `sweeptier` gaps (90–150 / 70–120 / 50–90 s).
+4. ~~Enemies are stand-ins~~: the four DISPATCHED exist. Still missing: their
+   own death sounds and hurt barks beyond the synth defaults, and the Crook.
+5. The test ground's gaps are 25-40 s; the chapter uses the far tier's 90-150 s,
+   each place's first sweep scripted.
 6. **The Gather only throws you.** The ride (design phase 4) is not built.
 7. **No gamepad button** for HOLDFAST; every button is taken. R3 is finish
    / interact, L3 is RECALL.
@@ -115,7 +175,8 @@ Changed (small hooks; search for `ring()`, `holdfast`, `sweep`):
    ring is not built; the body is not thrown once dead.
 10. **No vacuum sound, no music of its own, no count line** beyond a feed
     message (`COUNT: ONE EXTRA`).
-11. **Not in the menu and not saved.** `StorySave.h` rejects chapter > 5;
+11. **Not in the menu and not saved.** (HOLDFAST's pickup calls
+    `saveStoryProgress`, which ignores chapter 6.) `StorySave.h` rejects chapter > 5;
     `MenuState.h` builds chapters 1–5 in two places.
 12. **`sweepreach` is straight-line.** Fine on open ice; a level with gaps
     or walls needs a walked check like `tests/test_cold.cpp`'s `Walk`.
@@ -124,26 +185,21 @@ Changed (small hooks; search for `ring()`, `holdfast`, `sweep`):
 
 ## Next steps, in order
 
-1. **Playtest gate (the user).** Ten minutes on `--story6`. The questions:
-   is sheltering fun, are 20 / 10 / 6 s right, is the front readable at a
-   distance, does HOLDFAST feel useful. Tune `sweeptier` and `Holdfast`
-   constants before any level is built. Record the verdict here.
-2. **Finish the test ground's rough edges** that affect that verdict:
-   breakable small shelters (shortcut 1), a HOLDFAST bar on the HUD beside
-   RECALL's (`UIRenderer.h` near the RECALL bar), the swept death.
-3. **The ring's own sky** (design step 4, section 10): a `uRing` branch in
-   `src/shaders/skybox.frag` beside `uCold`; the giant filling half the
-   sky, ring shadow stripes, no aurora, and the Shepherd as an impostor
-   whose size is a uniform set per level.
-4. **STRAYS, HERDERS, TALLIES** (section 7) in `src/enemies/`, following
-   how Chapter 5 added THAWLING / PICKER / CLERK (`EnemyCold.h`,
-   `Gameplay_ColdEnemies.h`, `EnemyTypes.h`). Herders move only shelters
-   with `fixed = false`.
-5. **The vertical slice:** the Landing, the Drift and the Kept as sections
-   of `buildRing()`, the Crook's crossing encounter, HOLDFAST handed over
-   in the Drift (`holdfastOwned()` then checks a flag, as `coldRecall`
-   does). Drifting chunks are `Mover`s; the rope already rides them.
-6. Then design steps 7–12 as written.
+1. **Play it (the user).** `./shooter --story6` start to finish. Questions: do
+   the lanes feel like hopping between asteroids or like a platformer; is the
+   20 s far-tier sweep fair on moving chunks; do the Strays' shelter-grab and
+   the Herders' shoves read; is the reef fight too long at three waves. Record
+   the verdict here and tune `ring::lanes()`, `sweeptier`, the waves.
+2. **The Crook's crossing encounter** in the Kept (design section 3): it drags
+   a Stray out of the reef in front of you, then one attack (the hook, white),
+   leaves at a third of its health. A mini-boss model in the DISPATCHED style.
+3. **Rough edges:** breakable small shelters (shortcut 1), a HOLDFAST bar on the
+   HUD, the swept death (13.6), vacuum sound (contact only; air inside the
+   hull), the count line after each sweep (13.2), a light bake (`story6` in
+   `tools/light_bake.cpp`; it has never had one).
+4. **Menu and save** (shortcut 11) and the Chapter 5 -> 6 hand-off.
+5. **Levels 4-8** (the Shadow Band uses `uRingNight`; the Spokes reuse the
+   ANCHOR field), then the boss as written.
 
 ## House rules noticed while building
 
@@ -158,4 +214,5 @@ Changed (small hooks; search for `ring()`, `holdfast`, `sweep`):
 - Mandatory tells are never hidden by detail settings.
 - Music: bosses loud, full tempo, no half-time sections
   (`docs/boss-music-pass.md`, `tools/music_levels.py`).
-- Nothing here is committed. The branch is `ship`.
+- Committed on `ship`. Pyright flags the Blender scripts' exec'd names (`_og`,
+  `NEEDED`, `bpy`): harmless, they run under `headless.py`.
