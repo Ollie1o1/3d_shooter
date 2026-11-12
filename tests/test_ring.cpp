@@ -239,14 +239,21 @@ int main() {
         CHECK(postsBehind, "every mooring post stands in its own shelter's shadow");
         bool solid = true;
         for (auto& s : sh) {
-            bool covered = false;   // (a shelter's box sits inside the collision built for it)
-            for (auto& w : l.walls)
-                if (w.box.min.x <= s.box.min.x + 0.05f && w.box.min.z <= s.box.min.z + 0.05f && w.box.max.x >= s.box.max.x - 0.05f &&
-                    w.box.max.z >= s.box.max.z - 0.05f && w.box.max.y >= s.box.max.y - 0.05f) covered = true;
-            if (!covered) std::printf("   shelter with no wall at %.0f %.0f\n", s.box.min.x, s.box.min.z);
+            // (collision is built from what is drawn, so it is the shelter's core that must be solid: the
+            //  middle 60% of its footprint, at chest height and near its top)
+            bool covered = true;
+            const glm::vec3 c = (s.box.min + s.box.max) * 0.5f, h = (s.box.max - s.box.min) * 0.3f;
+            for (int i = -1; i <= 1; ++i) for (int k = -1; k <= 1; ++k) for (float y : {s.box.min.y + 1.f, s.box.max.y - 0.5f}) {
+                if (y > s.box.min.y + 1.f && (i || k)) continue;   // (near its top, a rock has tapered: its middle)
+                const glm::vec3 p{c.x + h.x * i, y, c.z + h.z * k};
+                bool in = false;
+                for (auto& w : l.walls) if (!w.dynamic && p.x >= w.box.min.x && p.x <= w.box.max.x && p.z >= w.box.min.z && p.z <= w.box.max.z && p.y >= w.box.min.y && p.y <= w.box.max.y) { in = true; break; }
+                covered &= in;
+            }
+            if (!covered) std::printf("   shelter not solid through its core at %.0f %.0f\n", s.box.min.x, s.box.min.z);
             solid &= covered;
         }
-        CHECK(solid, "every shelter is solid");
+        CHECK(solid, "every shelter is solid through its core");
         // On the ground (the Landing and the Kept): a fixed shelter's lee inside the far tier's 20 s, walking
         auto worstIn = [&](float zLo, float zHi) {
             float worst = 0.f;
@@ -287,11 +294,34 @@ int main() {
         CHECK(loose >= 4, "there is loose shelter for HERDERS to shove");
         bool spawnsClear = true;
         for (auto& a : l.arenas) for (auto& p : a.groundSpawns)
-            for (auto& w : l.walls) if (!w.dynamic && p.x > w.box.min.x && p.x < w.box.max.x && p.z > w.box.min.z && p.z < w.box.max.z && p.y + 0.5f > w.box.min.y && p.y + 0.5f < w.box.max.y) spawnsClear = false;
+            for (auto& w : l.walls) if (!w.dynamic && p.x > w.box.min.x && p.x < w.box.max.x && p.z > w.box.min.z && p.z < w.box.max.z && p.y + 0.5f > w.box.min.y && p.y + 0.5f < w.box.max.y) { spawnsClear = false; std::printf("   spawn in a wall at %.1f %.1f %.1f\n", p.x, p.y, p.z); }
         CHECK(spawnsClear, "no enemy spawns inside a wall");
         bool tagsOk = l.knockWalls.size() > 50 && l.creakWalls.size() == 6;
         for (int w : l.knockWalls) tagsOk &= w >= 0 && w < (int)l.walls.size() && !l.walls[w].dynamic;
         CHECK(tagsOk, "what you touch: the Landing's capsules and the stacks knock, the reef's six walls creak");
+    }
+    {   // ---- what you see is what you hit: nothing drawn within reach is hollow ----
+        LevelData l = buildRing();
+        auto covered = [&](glm::vec3 p) {
+            for (auto& w : l.walls) if (!w.dynamic && p.x > w.box.min.x - 0.35f && p.x < w.box.max.x + 0.35f && p.z > w.box.min.z - 0.35f &&
+                                        p.z < w.box.max.z + 0.35f && p.y > w.box.min.y - 0.35f && p.y < w.box.max.y + 0.35f) return true;
+            return false;
+        };
+        int hollowShapes = 0, hollowModels = 0, models = 0;
+        auto hollow = [&](const std::vector<glm::vec3>& pts) {
+            int open = 0;
+            for (size_t i = 0; i < pts.size(); i += 3)   // (every third sample: plenty)
+                if (pts[i].y > 0.3f && pts[i].y < 2.f && std::fabs(pts[i].x) < ring::HALF_X + 4.f && !covered(pts[i])) ++open;
+            return open > 0;
+        };
+        for (const Shape& s : l.shapes) if (!s.neon && hollow(ringSamples(s))) ++hollowShapes;
+        for (const PlacedModel& m : l.models) { auto pts = ringSamples(m); models += !pts.empty(); if (hollow(pts)) ++hollowModels; }
+        std::printf("   %d rocks and %d of %d capsules can be walked into\n", hollowShapes, hollowModels, models);
+        CHECK(models > 500 && hollowShapes == 0 && hollowModels == 0, "no rock or capsule within reach is drawn without collision (nothing to walk into or get stuck inside)");
+        bool edges = true;   // the band's sides: ground stops a little past where you can walk, space beyond
+        for (float z : {100.f, 0.f, -100.f, -600.f, -700.f, -850.f})
+            edges &= l.baseFloor(0.f, z) == 0.f && l.baseFloor(ring::HALF_X - 1.f, z) == 0.f && l.baseFloor(ring::EDGE + ring::EDGE_RAG + 1.f, z) < -100.f && l.baseFloor(-(ring::EDGE + ring::EDGE_RAG + 1.f), z) < -100.f;
+        CHECK(edges, "the ring is a band: ground out to the playable width, space past its ragged sides");
     }
     {   // ---- THE CROOK: one attack, and it can't be killed here ----
         auto fresh = []() { Enemy e(EnemyType::CROOK, {0.f, 0.f, 0.f}); e.spawnTimer = 0.f; e.state = EnemyState::ACTIVE; return e; };

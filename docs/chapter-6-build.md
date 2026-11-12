@@ -58,6 +58,29 @@ mover on a retry.
 skips them and `gatherRing()` draws a slab with lumps (`meshlib::lumpBall`)
 under and at the ends.
 
+## The band, and collision that matches what is drawn (2026-11-12, after the user's note)
+
+The user: the ring shouldn't be a plain to every horizon (east and west there should be space,
+it should feel like standing on space rock); and rocks could be walked into, you could get stuck
+inside hollow meshes or fall into the void.
+
+- **The band** (`ring::EDGE`, `EDGE_RAG`, `edgeAt`): ground runs out to a ragged edge 116-128 m
+  either side (the zones still stop you at 110: you see the drop, you don't fall off it). Past it:
+  basins down to `VOID_FLOOR`, a low broken lip, cliff faces under it, and 1,600 rocks (and the odd
+  capsule) hanging in space, turned any way, sparser and more scattered further out. North and
+  south it still runs to the horizon. Costs about 4 fps (70 -> 66 at the reef view, `--bench 300`).
+- **Collision from the mesh** (`ringSamples`, `ringSolids`, `ringMatchCollision` in `LevelRing.h`):
+  a rock's or capsule's collision is its own surface, cut into up to 3x2 (rocks 4x3) boxes that meet
+  without seams, so a leaning capsule is a short staircase, not one box with empty corners. Before,
+  every body-height rock shape (113) and about 600 capsules could be walked into: the upright
+  capsule model leans 58 degrees and is 4 m deep against a 2 m box, the lips over the Drift had
+  no collision at all, and shelter rocks were drawn up to 10% wider than their boxes.
+  `ringMatchCollision` runs last in `buildRing()` and gives anything still hollow within reach
+  its own collision. `make test-ring` checks none is left. The shelter boxes still decide the
+  sweep's shadow; the test now checks each shelter is solid through its core.
+- Rebake after any change to these (`make tools/light_bake && ./tools/light_bake story6`: rebuild
+  the tool first, or the bake is stale and the game draws without it).
+
 ## The sky (skybox.frag `ringSky`, `uRing`)
 
 The giant (`RING_GIANT`, east, angular radius 0.8) sits on the horizon with its

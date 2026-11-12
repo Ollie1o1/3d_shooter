@@ -36,10 +36,13 @@
 // =============================================================================
 #include "world/Level.h"
 #include "world/RingSweep.h"
+#include "render/PropFile.h"
+#include <map>
 #include <cstdio>
 
 namespace ring {
-constexpr float HALF_X = 110.f;                 // the playable width
+constexpr float HALF_X = 110.f;                 // the playable width (the zones stop you here)
+constexpr float EDGE = 116.f, EDGE_RAG = 12.f;   // the ring band's sides: ragged between 116 and 128 m out; past them, space
 constexpr float LAND_S = 135.f, LAND_N = -150.f;   // THE LANDING
 constexpr float DRIFT_N = -560.f;               // the Drift's far shore (the reef plain starts here)
 constexpr float DRIFT_MID = -345.f;             // its two halves meet at I2
@@ -59,6 +62,8 @@ inline glm::vec3 sunDir() { return glm::normalize(glm::vec3{-0.8f, 0.16f, -0.35f
 inline glm::vec3 giantDir() { return glm::normalize(glm::vec3{0.99f, -0.02f, 0.14f}); }   // (skybox.frag's RING_GIANT)
 inline AABB testGround() { return {{-TEST_HALF_X, 0.f, TEST_NORTH}, {TEST_HALF_X, 0.f, TEST_SOUTH}}; }
 inline float hash(float n, float k) { float v = std::sin(n * 12.9898f + k * 78.233f) * 43758.5453f; return v - std::floor(v); }
+// How far out the band's side runs at z (side: -1 west, +1 east): ragged, in 20 m steps
+inline float edgeAt(float z, int side) { return EDGE + EDGE_RAG * hash(std::floor(z / 20.f) + (side > 0 ? 500.f : 0.f), 61.f); }
 inline bool inDrift(float z) { return z < LAND_N && z > DRIFT_N; }
 
 // The distance card for each place (section 13.2: falling every card)
@@ -188,7 +193,7 @@ inline std::vector<SweepShelter> shelters() {
     out.push_back(shelterBox(c.x - REEF_HX, c.z + REEF_HZ, c.x - 6.f, c.z + REEF_HZ + REEF_WALL, 0.f, REEF_H, 3));
     out.push_back(shelterBox(c.x + 6.f, c.z + REEF_HZ, c.x + REEF_HX, c.z + REEF_HZ + REEF_WALL, 0.f, REEF_H, 3));
     for (const Stack& s : reefStacks()) out.push_back(shelterBox(s.x - s.hx, s.z - s.hz, s.x + s.hx, s.z + s.hz, 0.f, s.h, 3));
-    out.push_back(shelterBox(quietHull().min.x, quietHull().min.z, quietHull().max.x, quietHull().min.z + 1.f, 0.f, 9.f, 4));
+    out.push_back(shelterBox(quietHull().min.x - 1.f, quietHull().min.z - 1.f, quietHull().max.x + 1.f, quietHull().min.z, 0.f, 9.f, 4));   // (its nose wall)
     return out;
 }
 
@@ -219,6 +224,100 @@ inline void countLine(char* out, size_t n, int count, int shortBy) {
 }
 }   // namespace ring
 
+// ---- collision that matches what is drawn ---------------------------------------------
+// Points over a mesh's surface (its triangles, every half metre or so)
+template <class Tri> inline std::vector<glm::vec3> ringSamples(Tri forEach) {
+    std::vector<glm::vec3> pts;
+    forEach([&](glm::vec3 a, glm::vec3 b, glm::vec3 c) {
+        const float e = std::max({glm::length(b - a), glm::length(c - b), glm::length(a - c)});
+        const int n = std::clamp((int)std::ceil(e / 0.5f), 1, 24);
+        for (int i = 0; i <= n; ++i)
+            for (int j = 0; j <= n - i; ++j) {
+                const float u = (float)i / n, v = (float)j / n;
+                pts.push_back(a + (b - a) * u + (c - a) * v);
+            }
+    });
+    return pts;
+}
+inline std::vector<glm::vec3> ringSamples(const Shape& s) {
+    return ringSamples([&](auto f) { s.forEachTri([&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3) { f(a, b, c); }); });
+}
+inline std::vector<glm::vec3> ringSamples(const PlacedModel& pm) {
+    const auto* prop = propfile::get(pm.name);
+    if (!prop) return {};
+    const glm::mat4 P = propfile::placement(*prop, pm.free, pm.xf, pm.fit, pm.yaw);
+    return ringSamples([&](auto f) { propfile::forEachTri(*prop, P, [&](glm::vec3 a, glm::vec3 b, glm::vec3 c, auto&&...) { f(a, b, c); }); });
+}
+// Hidden solid boxes round a mesh: its part above `floorY`, cut into `nAlong` pieces along its longer
+// flat axis and `nUp` up its height, each piece the box round its own surface. A leaning capsule
+// becomes a short staircase that follows it, not one box with empty corners. Returns the walls
+inline std::vector<int> ringSolids(LevelBuilder& b, const std::vector<glm::vec3>& all, float floorY = -0.4f, int nAlong = 3, int nUp = 2) {
+    std::vector<glm::vec3> pts;
+    for (const glm::vec3& p : all) if (p.y > floorY) pts.push_back(p);
+    std::vector<int> walls;
+    if (pts.empty()) return walls;
+    glm::vec3 lo(1e30f), hi(-1e30f);
+    for (const glm::vec3& p : pts) { lo = glm::min(lo, p); hi = glm::max(hi, p); }
+    const int ax = (hi.x - lo.x) >= (hi.z - lo.z) ? 0 : 2;
+    const float aLo = lo[ax], aLen = std::max(1e-3f, hi[ax] - aLo), yLen = std::max(1e-3f, hi.y - lo.y);
+    nAlong = std::max(1, std::min(nAlong, (int)std::ceil(aLen / 1.f)));
+    nUp = std::max(1, std::min(nUp, (int)std::ceil(yLen / 0.8f)));
+    std::vector<glm::vec3> clo(nAlong * nUp, glm::vec3(1e30f)), chi(nAlong * nUp, glm::vec3(-1e30f));
+    for (const glm::vec3& p : pts) {
+        const int i = std::clamp((int)((p[ax] - aLo) / aLen * nAlong), 0, nAlong - 1);
+        const int j = std::clamp((int)((p.y - lo.y) / yLen * nUp), 0, nUp - 1);
+        clo[i * nUp + j] = glm::min(clo[i * nUp + j], p); chi[i * nUp + j] = glm::max(chi[i * nUp + j], p);
+    }
+    for (int k = 0; k < nAlong * nUp; ++k) {
+        if (chi[k].x < clo[k].x) continue;
+        // Each piece reaches its slice's edges, so neighbours meet with no seam to snag on or slip through
+        const int i = k / nUp, j = k % nUp;
+        clo[k][ax] = std::min(clo[k][ax], aLo + aLen * i / nAlong); chi[k][ax] = std::max(chi[k][ax], aLo + aLen * (i + 1) / nAlong);
+        clo[k].y = std::min(clo[k].y, lo.y + yLen * j / nUp); chi[k].y = std::max(chi[k].y, lo.y + yLen * (j + 1) / nUp);
+        walls.push_back(b.solid(clo[k].x, clo[k].y, clo[k].z, chi[k].x, chi[k].y, chi[k].z));
+    }
+    return walls;
+}
+// The level's last pass: anything drawn that you could walk into (a body-height part within reach of
+// the playable band with no collision near it) gets collision made from its own mesh
+inline void ringMatchCollision(LevelBuilder& b, float reachX) {
+    LevelData& l = b.L;
+    std::map<std::pair<int, int>, std::vector<int>> grid;   // static walls by 4 m cell
+    auto cell = [](float v) { return (int)std::floor(v / 4.f); };
+    auto file = [&](int w) {
+        const AABB& x = l.walls[w].box;
+        for (int i = cell(x.min.x); i <= cell(x.max.x); ++i) for (int k = cell(x.min.z); k <= cell(x.max.z); ++k) grid[{i, k}].push_back(w);
+    };
+    for (int w = 0; w < (int)l.walls.size(); ++w) if (!l.walls[w].dynamic) file(w);
+    auto covered = [&](glm::vec3 p) {
+        auto it = grid.find({cell(p.x), cell(p.z)});
+        if (it == grid.end()) return false;
+        for (int w : it->second) {
+            const AABB& x = l.walls[w].box;
+            if (p.x > x.min.x - 0.3f && p.x < x.max.x + 0.3f && p.z > x.min.z - 0.3f && p.z < x.max.z + 0.3f && p.y > x.min.y - 0.3f && p.y < x.max.y + 0.3f) return true;
+        }
+        return false;
+    };
+    auto open = [&](const std::vector<glm::vec3>& pts) {
+        for (const glm::vec3& p : pts)
+            if (p.y > 0.25f && p.y < 2.2f && std::fabs(p.x) < reachX && !covered(p)) return true;
+        return false;
+    };
+    const Mat keep = b.mat; b.mat = Mat::ROCK;
+    for (size_t i = 0; i < l.shapes.size(); ++i) {
+        if (l.shapes[i].neon) continue;
+        const std::vector<glm::vec3> pts = ringSamples(l.shapes[i]);
+        if (open(pts)) for (int w : ringSolids(b, pts)) file(w);
+    }
+    for (size_t i = 0; i < l.models.size(); ++i) {
+        const std::vector<glm::vec3> pts = ringSamples(l.models[i]);
+        if (!open(pts)) continue;
+        const bool capsule = l.models[i].name.rfind("ring_capsule", 0) == 0;
+        for (int w : ringSolids(b, pts)) { file(w); if (capsule) l.knockWalls.push_back(w); }
+    }
+    b.mat = keep;
+}
+
 // A chunk of ring ice over a shelter's box: a jagged lump, its collision the box
 inline void ringChunk(LevelBuilder& b, const AABB& box, glm::vec3 col, uint32_t seed) {
     const glm::vec3 c = (box.min + box.max) * 0.5f, s = box.max - box.min;
@@ -238,11 +337,16 @@ inline void ringCapsule(LevelBuilder& b, glm::vec3 at, bool up, int quarter, flo
     const float yaw = quarter * 90.f + jitterDeg;
     b.place(up ? "ring_capsule_up" : "ring_capsule", at, yaw);
     if (!solid) return;
-    int w;
-    if (up) w = b.solid(at.x - 1.f, at.y, at.z - 1.f, at.x + 1.f, at.y + 3.4f, at.z + 1.f);
-    else if (quarter % 2 == 0) w = b.solid(at.x - 0.95f, at.y - 0.9f, at.z - 2.3f, at.x + 0.95f, at.y + 0.95f, at.z + 2.3f);
-    else w = b.solid(at.x - 2.3f, at.y - 0.9f, at.z - 0.95f, at.x + 2.3f, at.y + 0.95f, at.z + 0.95f);
-    b.L.knockWalls.push_back(w);   // (someone is still in it)
+    // Its collision is its own shape (a leaning one included); someone is still in it (it knocks)
+    std::vector<glm::vec3> pts = ringSamples(b.L.models.back());
+    if (pts.empty()) {   // (no model file: a box the size of one)
+        if (up) pts = {at + glm::vec3{-1.f, 0.f, -1.f}, at + glm::vec3{1.f, 3.4f, 1.f}};
+        else if (quarter % 2 == 0) pts = {at + glm::vec3{-0.95f, -0.9f, -2.3f}, at + glm::vec3{0.95f, 0.95f, 2.3f}};
+        else pts = {at + glm::vec3{-2.3f, -0.9f, -0.95f}, at + glm::vec3{2.3f, 0.95f, 0.95f}};
+    }
+    const Mat keep = b.mat; b.mat = Mat::METAL;
+    for (int w : ringSolids(b, pts)) b.L.knockWalls.push_back(w);
+    b.mat = keep;
 }
 
 // =============================================================================
@@ -261,17 +365,23 @@ inline LevelData buildRing() {
         const float a = ring::hash(n, 11.f), c = ring::hash(n, 12.f);
         l.floors.push_back({x0, z0, x1, z1, 0.f, glm::mix(iceLit, sand, 0.42f + 0.16f * a + 0.06f * c), Mat::SNOW});
     };
+    // The ring is a band, not a plain: north toward the Shepherd it runs on to the horizon, but east and
+    // west its sides break up a little past where you can walk, and past them is space, the ring's
+    // loose rock hanging in it (design section 1; the user's note of 2026-11-12)
+    auto zStep = [](float z) { return (z > -950.f && z < 200.f) ? 20.f : 200.f; };
     auto plane = [&](float zLo, float zHi) {   // z from zLo to zHi (zLo < zHi)
-        for (float x = -ring::FAR_GROUND; x < ring::FAR_GROUND; ) {
-            const bool nearX = std::abs(x) < 240.f;
-            const float x1 = x + (nearX ? 40.f : 400.f);
-            for (float z = zLo; z < zHi; ) {
-                const float step = (nearX && z > -950.f && z < 200.f) ? 40.f : 400.f;
-                const float z1 = std::min(zHi, z + step);
+        for (float z = zLo; z < zHi; ) {
+            const float z1 = std::min(zHi, z + zStep(z));
+            const float w = ring::edgeAt(z, -1), e = ring::edgeAt(z, 1);
+            for (float x = -w; x < e; ) {
+                const float x1 = std::min(e, x + 40.f);
                 patch(x, z, x1, z1, x * 0.37f + z * 0.11f);
-                z = z1;
+                x = x1;
             }
-            x = x1;
+            // Past the sides: nothing under you
+            l.basins.push_back({LevelBuilder::aabb(-ring::FAR_GROUND, 0.f, z, -w, 0.f, z1), ring::VOID_FLOOR});
+            l.basins.push_back({LevelBuilder::aabb(e, 0.f, z, ring::FAR_GROUND, 0.f, z1), ring::VOID_FLOOR});
+            z = z1;
         }
     };
     plane(ring::LAND_N, ring::FAR_GROUND);          // the Landing and everything south
@@ -280,19 +390,71 @@ inline LevelData buildRing() {
     l.basins.push_back({LevelBuilder::aabb(-ring::FAR_GROUND, 0.f, ring::DRIFT_N, ring::FAR_GROUND, 0.f, ring::LAND_N), ring::VOID_FLOOR});
 
     // The ragged lips where the floor ends: ice slabs leaning out over the band
-    for (float x = -400.f; x <= 400.f; x += 9.f) {
+    for (float x = -ring::EDGE - ring::EDGE_RAG; x <= ring::EDGE + ring::EDGE_RAG; x += 9.f) {
         for (int side = 0; side < 2; ++side) {
             const float k = x * 0.1f + side * 50.f;
             const float z = side == 0 ? ring::LAND_N + 1.f - 3.f * ring::hash(k, 1.f) : ring::DRIFT_N - 1.f + 3.f * ring::hash(k, 1.f);
+            if (std::fabs(x) > ring::edgeAt(z, x < 0.f ? -1 : 1)) continue;
+            if (std::fabs(x) < (side == 0 ? 20.f : 12.f)) continue;   // (solid now: keep the way onto the pier, and the far landing, clear)
             b.mat = Mat::ROCK;
             b.kit().rock({x + 4.f * ring::hash(k, 2.f), -6.f, z}, 4.5f + 2.f * ring::hash(k, 3.f), 6.4f + 1.2f * ring::hash(k, 4.f), glm::mix(iceLit, iceDark, 0.5f), (uint32_t)(k * 13.f + 7.f), 0.8f, 7);
         }
     }
+    // The band's sides: the ring's rubble rising into a broken lip, a cliff of packed ice and rock
+    // under it falling away into the dark
+    auto sideEdge = [&](float zLo, float zHi) {
+        for (float z = zLo; z < zHi; ) {
+            const float step = (z > -950.f && z < 200.f) ? 7.f : 26.f;
+            for (int side = -1; side <= 1; side += 2) {
+                const float k = z * 0.13f + side * 77.f;
+                const float e = ring::edgeAt(z, side) * side;
+                b.mat = Mat::ROCK;
+                const vec3 col = glm::mix(iceLit, iceDark, 0.35f + 0.4f * ring::hash(k, 3.f));
+                if (ring::hash(k, 6.f) < 0.45f)   // a low, broken lip (not a wall: you see over it, down into the dark)
+                    b.kit().rock({e + side * 1.5f * ring::hash(k, 1.f), -0.6f, z}, 1.6f + 1.6f * ring::hash(k, 2.f), 1.f + 1.3f * ring::hash(k, 4.f), col, (uint32_t)(k * 7.f + 3.f), 0.6f, 7);
+                Shape& cliff = b.kit().rock({e + side * 2.f, -34.f, z + step * 0.5f}, 4.f + 3.f * ring::hash(k, 5.f), 33.f, glm::mix(iceDark, sand, 0.2f) * 0.8f, (uint32_t)(k * 11.f + 1.f), 1.6f, 7);
+                cliff.xf = cliff.xf * glm::scale(glm::mat4(1.f), glm::vec3{1.f, 1.f, 1.f + step / 8.f});
+            }
+            z += step;
+        }
+    };
+    sideEdge(ring::LAND_N, ring::FAR_GROUND * 0.6f);
+    sideEdge(-ring::FAR_GROUND * 0.6f, ring::DRIFT_N);
+    // Space, both sides: the ring's loose rock hanging where the band thins out, sparser and more scattered
+    // the further out; now and then a capsule that never came down. No collision: out of reach
+    for (int i = 0; i < 1600; ++i) {
+        const float k = (float)i * 1.37f;
+        const int side = ring::hash(k, 71.f) < 0.5f ? -1 : 1;
+        const float u = ring::hash(k, 72.f), out = 8.f + 1500.f * u * u;
+        const float z = (ring::hash(k, 73.f) - 0.5f) * 2.f * ring::FAR_GROUND * 0.75f;
+        const float x = side * (ring::edgeAt(z, side) + out);
+        const float spread = 3.f + out * 0.05f;
+        const float y = -2.f + (ring::hash(k, 74.f) + ring::hash(k, 75.f) - 1.f) * spread;
+        const float r = (0.8f + 9.f * ring::hash(k, 76.f) * ring::hash(k, 77.f)) * (1.f + out / 500.f);
+        if (ring::hash(k, 78.f) < 0.03f && out < 300.f) {   // a capsule, tumbling slowly
+            PlacedModel m; m.name = "ring_capsule"; m.free = true; m.mat = Mat::METAL;
+            m.xf = glm::translate(glm::mat4(1.f), vec3{x, y + 2.f, z}) * glm::rotate(glm::mat4(1.f), ring::hash(k, 79.f) * 6.28f, glm::normalize(vec3{ring::hash(k, 80.f) - 0.5f, 0.6f, ring::hash(k, 81.f) - 0.5f}));
+            l.models.push_back(m);
+            continue;
+        }
+        b.mat = Mat::ROCK;
+        Shape& rock = b.kit().rock({x, y - r * 0.6f, z}, r, r * (0.9f + 0.9f * ring::hash(k, 82.f)), glm::mix(iceLit, iceDark, 0.2f + 0.6f * ring::hash(k, 83.f)) * (0.7f + 0.3f * ring::hash(k, 84.f)),
+                                    (uint32_t)(i * 29 + 11), 0.5f + 0.8f * ring::hash(k, 85.f), 6 + i % 3);
+        // Turned any way at all: a lump of ice in space, not a stone on the ground
+        rock.xf = glm::translate(glm::mat4(1.f), vec3{x, y, z}) * glm::rotate(glm::mat4(1.f), ring::hash(k, 86.f) * 6.28f, glm::normalize(vec3{ring::hash(k, 87.f) - 0.5f, ring::hash(k, 88.f) - 0.5f, ring::hash(k, 89.f) - 0.5f} + vec3{1e-3f}))
+                * glm::translate(glm::mat4(1.f), vec3{-x, -y, -z}) * rock.xf;
+    }
 
     int seed = 1;
     auto rockShelter = [&](const SweepShelter& sh) {
-        b.solid(sh.box.min.x, sh.box.min.y, sh.box.min.z, sh.box.max.x, sh.box.max.y, sh.box.max.z);
+        // Its collision is the rock as drawn (its three lumps), not the shelter's box round it: no
+        // invisible corners, nothing to walk into. (The box still decides the sweep's shadow.)
+        const size_t from = l.shapes.size();
         ringChunk(b, sh.box, glm::mix(iceLit, iceDark, 0.15f + 0.4f * ring::hash((float)seed, 5.f)), (uint32_t)(seed * 97 + 3));
+        std::vector<vec3> pts;
+        for (size_t i = from; i < l.shapes.size(); ++i) { auto q = ringSamples(l.shapes[i]); pts.insert(pts.end(), q.begin(), q.end()); }
+        b.mat = Mat::ROCK;
+        ringSolids(b, pts, sh.box.min.y - 0.4f, 4, 3);
         ++seed;
     };
     auto post = [&](glm::vec3 at) {   // a mooring post: a steel stake (its lamp is drawn live, Gameplay_Ring.h)
@@ -338,12 +500,13 @@ inline LevelData buildRing() {
         };
         // The field: hundreds of capsules, half-sunk, in no order; solid where you can reach them
         int n = 0;
-        for (float x = -400.f; x <= 400.f; x += 9.f)
+        for (float x = -ring::EDGE - ring::EDGE_RAG; x <= ring::EDGE + ring::EDGE_RAG; x += 9.f)
             for (float z = ring::LAND_N + 6.f; z <= 400.f; z += 9.f) {
                 const float k = x * 0.71f + z * 0.13f;
                 const float fx = x + 6.f * (ring::hash(k, 1.f) - 0.5f), fz = z + 6.f * (ring::hash(k, 2.f) - 0.5f);
-                const bool reach = std::abs(fx) < ring::HALF_X + 4.f && fz < ring::LAND_S + 6.f;
-                const float keep = reach ? 0.55f : std::abs(fx) > 250.f || fz > 260.f ? 0.18f : 0.32f;
+                if (std::abs(fx) > ring::edgeAt(fz, fx < 0.f ? -1 : 1) - 4.f) continue;   // (the band's side: past it, space)
+                const bool reach = std::abs(fx) < ring::HALF_X + 6.f && fz < ring::LAND_S + 6.f;
+                const float keep = reach ? 0.55f : fz > 260.f ? 0.18f : 0.32f;
                 if (ring::hash(k, 3.f) > keep) continue;
                 if (reach && (onPath(fx, fz) || !clear(fx, fz, 3.f))) continue;
                 if (fz > 24.f && fz < 32.f && std::abs(fx) < 64.f) continue;   // (the ridge's)
@@ -602,6 +765,8 @@ inline LevelData buildRing() {
     // 4. The open hull, and out north
     Arena h = section("THE KEPT", "", ring::KEPT_N, -760.f, {0.f, 0.f, -770.f});
     l.arenas.push_back(h);
+    // Last: whatever is drawn within reach and has no collision gets its own (nothing hollow to walk into)
+    ringMatchCollision(b, ring::HALF_X + 6.f);
     return l;
 }
 
