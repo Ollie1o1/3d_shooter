@@ -13,7 +13,7 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-TRACKS = [(0, "sunset", 1.0, 24), (10, "zenith", 1.3, 46), (11, "morningstar", 1.3, 45)]
+TRACKS = [(0, "sunset", 1.0, 24), (9, "zenith", 1.3, 46), (10, "morningstar", 1.3, 45)]
 
 
 def run(args):

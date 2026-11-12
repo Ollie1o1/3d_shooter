@@ -366,10 +366,7 @@ private:
             float lateral = (k % 2 ? -1.f : 1.f) * (1.6f + 1.2f * (k / 2));
             glm::vec2 o = back * 2.2f + side * lateral;
             glm::vec3 p = at + glm::vec3{o.x, 0.f, o.y};
-            const bool drift = current().shift == ArenaShift::DRIFT;
-            bool clear = drift ? spawnClearance(*level,p,statsOf(t).radius,statsOf(t).height,true) && level->arenaAt(p)==arena
-                               : clearOfWalls(p);
-            out.push_back({t, clear ? p : drift ? pickSpawn(t,playerPos) : at});
+            out.push_back({t, clearOfWalls(p) ? p : at});
         }
         return 1 + (int)q.escort.size();
     }
@@ -408,21 +405,7 @@ private:
         const auto& authored = flying ? ((wave < (int)a.waveAir.size() && !a.waveAir[wave].empty()) ? a.waveAir[wave] : a.airSpawns)
                         : (wave < (int)a.waveGround.size() && !a.waveGround[wave].empty()) ? a.waveGround[wave]
                         : a.groundSpawns;
-        std::vector<glm::vec3> supported;
-        const bool drift = a.shift == ArenaShift::DRIFT;
-        if (drift) {
-            for (auto p : authored)
-                if (spawnClearance(*level,p,statsOf(t).radius,statsOf(t).height,!flying)) supported.push_back(p);
-            if (supported.empty()) {
-                for (int c=0;c<std::min(4,(int)level->formation.chunks.size());++c) {
-                    glm::vec3 p;
-                    if (flying) p=level->formation.top(c)+glm::vec3{0,12,0};
-                    else if (!relicLanding(*level,c,statsOf(t).radius,statsOf(t).height,p)) continue;
-                    if (spawnClearance(*level,p,statsOf(t).radius,statsOf(t).height,!flying)) supported.push_back(p);
-                }
-            }
-        }
-        const auto& pts = drift ? supported : authored;
+        const auto& pts = authored;
         if (pts.empty()) return a.playerStart;   // scripted arenas may intentionally have no spawn pool
         // Under deep water (a flood): not used, unless every point is
         auto wet = [&](const glm::vec3& p) { return !flying && level->waterDepthAt(p) > DRY_DEPTH; };

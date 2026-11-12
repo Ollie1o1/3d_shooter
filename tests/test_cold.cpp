@@ -499,7 +499,7 @@ int main() {
     }
 
     {   // ROLLBACK winds the score back: a short backwards run of what just played, then half a bar earlier
-        MusicSynth m; m.setTrack(16); m.setIntensity(1.f);
+        MusicSynth m; m.setTrack(15); m.setIntensity(1.f);
         std::vector<float> buf(2 * 4410);
         for (int i = 0; i < 30; ++i) m.render(buf.data(), 4410);   // 3 s in
         double before = m.stepPos();

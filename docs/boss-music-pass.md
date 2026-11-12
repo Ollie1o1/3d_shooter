@@ -36,21 +36,26 @@ speed (`combatscore::Style`):
 | TECHNO | four-on-the-floor driven kick, clap, rolling off-beat bass |
 | DNB | two-step break with ghost snares, sustained Reese |
 | HYBRID | the four-on-the-floor kick under the break's snares and Reese |
-| HARD | hardstyle: a pitched, distorted kick whose gated tail is the bass, a screech on the theme |
+| HARD | hardstyle sections: a clean, pitched knock whose gated tail is the bass, a screech on the theme |
 
-ZENITH: techno 8 bars, DnB 8, a two-bar build, techno 4, hardstyle 4, hybrid 6.
-MORNINGSTAR: hybrid 8, DnB 8, build 2, techno 2, hardstyle 6, DnB 6.
+ZENITH: techno 4 bars, hardstyle 4, DnB 8, a two-bar build, techno 4, hardstyle 6, hybrid 4.
+MORNINGSTAR: hybrid 4, hardstyle 4, DnB 8, build 2, techno 2, hardstyle 6, DnB 6.
 Builds keep the kick and roll the snare; nothing drops out.
 
-Every other break or techno track does the same from intensity 1.1 (a boss wave, a
-boss phase, OVERDRIVE): bars 9-16 of each sixteen trade to the other style, a break
-track taking the four-on-the-floor kick, a techno track the two-step and Reese.
+Every other break or techno track does the same at boss intensity (a boss wave, a
+boss phase, OVERDRIVE): of each sixteen bars, 5-8 and 13-16 are hardstyle and 9-12
+trade to the other style, a break track taking the four-on-the-floor kick, a techno
+track the two-step and Reese.
 
-**Hardstyle** opens from intensity 1.3: boss waves, MORNINGSTAR, the Successor's
-third phase, the Restorer's third phase, arena OVERDRIVE. Below that the scored
-hardstyle bars play as techno. RECLAMATION (its own engine) takes the hardstyle kick
-in the last two of every eight bars from intensity 1.19, which the Gleaner's fight
-phases from TENDER to CORE all reach.
+**Hardstyle** opens from intensity 1.15, which every boss fight reaches; below that
+the scored hardstyle bars play as techno. Its kick is a clean thump (a fast sine
+drop, barely driven, no noise burst) rather than a distorted hit, and its bars sit
+about 1.5 dB over the ones round them. RECLAMATION (its own engine) takes the same
+kick in bars four, seven and eight of every eight from intensity 1.19, which the
+Gleaner's fight phases from TENDER to CORE all reach.
+
+The RELIQUARY track left with its arena on the same day; track numbers after it
+moved down by one.
 
 ## Not verified
 

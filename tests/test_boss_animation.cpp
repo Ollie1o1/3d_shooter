@@ -149,8 +149,10 @@ static void suMotion(){
 // long its wind-up, in order), against the same run on main before this pass: animation must not move them.
 static void tellsUnchanged(){
     struct Want{EnemyType t;const char* name;int tells;float total;uint32_t hash;};
-    const Want want[]={{EnemyType::ABSOLUTE,"the Absolute",160,68.693f,0xe197f53eu},{EnemyType::SUCCESSOR,"the Successor",127,67.410f,0xf5548c2du},
+    const Want want[]={{EnemyType::ABSOLUTE,"the Absolute",160,68.693f,0xe379e830u},{EnemyType::SUCCESSOR,"the Successor",127,67.410f,0xeec73058u},
                        {EnemyType::SOVEREIGN,"the Sovereign",88,36.790f,0x65637f65u}};   // (on tests/PortableRand.h's sequence: the same on every platform)
+    // (the Absolute's and the Successor's hashes were re-recorded when the Revenant's and Weaver's three attack kinds left the enum before theirs:
+    // the hash takes each attack's number. Their tell counts and total lengths did not move.)
     for(const Want& wnt:want){
         srand(1234);const float dt=1.f/60;
         Enemy e(wnt.t,{0,0,0});e.state=EnemyState::ACTIVE;e.spawnTimer=0;

@@ -90,7 +90,6 @@ inline void GameplayState::gatherBoxes(std::vector<BoxInstance>& out, const glm:
     gatherPenitentBoxes(out);
     gatherDestructibleBoxes(out);
     gatherWardenBoxes(out);
-    gatherReliquaryBoxes(out);
     gatherLeviathanBoxes(out);
     gatherAbsoluteBoxes(out);
     gatherSuccessor(out);

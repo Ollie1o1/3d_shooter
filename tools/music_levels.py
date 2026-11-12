@@ -13,9 +13,9 @@ import re, subprocess, sys, tempfile, os, math
 FIGHT, BOSS, MENU = -13.5, -12.0, -15.0
 # (track, intensity, target LUFS)
 TRACKS = [(0, 1.0, FIGHT), (1, 1.0, FIGHT), (2, 1.0, FIGHT), (3, 1.0, FIGHT), (4, 1.35, BOSS),
-          (5, 1.0, FIGHT), (6, 1.0, FIGHT), (7, 1.35, BOSS), (8, 1.0, FIGHT), (9, 1.35, BOSS),
-          (10, 1.35, BOSS), (11, 1.35, BOSS), (12, 1.0, FIGHT), (13, 1.28, BOSS), (14, 1.25, BOSS),
-          (15, 1.0, None), (16, 1.23, BOSS), (17, 0.55, MENU)]
+          (5, 1.0, FIGHT), (6, 1.0, FIGHT), (7, 1.35, BOSS), (8, 1.35, BOSS),
+          (9, 1.35, BOSS), (10, 1.35, BOSS), (11, 1.0, FIGHT), (12, 1.28, BOSS), (13, 1.25, BOSS),
+          (14, 1.0, None), (15, 1.23, BOSS), (16, 0.55, MENU)]
 SECONDS = 96   # two passes of a boss's thirty-two bars
 
 def measure(track, intensity, gain, wav):

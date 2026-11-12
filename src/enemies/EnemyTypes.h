@@ -17,7 +17,7 @@
 // final boss, THE PACEMAKER (bosses/pacemaker). Each mini-boss moves on an older enemy's skeleton
 // (rigBase) at a bigger size, with a body of its own made in Blender.
 enum class EnemyType { HUSK, RIPPER, SENTINEL, RAPTOR, BRUTE, MITE, JUGGERNAUT, WARDEN, SOVEREIGN, SHIELDBEARER, CONDUIT,
-                       CONDUCTOR, SERAPH, ANCHOR, PENITENT, REVENANT, WEAVER, LEVIATHAN, ABSOLUTE,
+                       CONDUCTOR, SERAPH, ANCHOR, PENITENT, LEVIATHAN, ABSOLUTE,
                        COURIER, BULWARK, CANTOR, HARRIER, PLUMB, FOREMAN, PACEMAKER, SORTER, BALLAST, PATIENT, GRAFTED, SUSPENDED, PHASED, SUCCESSOR,
                        THAWLING, PICKER, CLERK, UNIT24K,   // Chapter 5 (EnemyCold.h)
                        RESTORER, RS_POINT, RS_DRUM,        // Chapter 5's boss, its restore points and storage drums (EnemyRestorer.h)
@@ -80,7 +80,6 @@ enum class AttackKind { NONE, SHOT, BURST, LUNGE, DIVE, SLAM, LOB, FUSE, VOLLEY,
                         BEAM,                                  // the SERAPH's
                         CENSER_LOW, CENSER_HIGH, PSLAM, PSTOMP, PLASH, SCOURGE,     // the PENITENT's
                         WVENT, LANCE, SEEKER, WLUNGE, DETONATE,        // the WARDEN's
-                        RAKE, SOULBOLT, STRING,                        // the REVENANT's, the WEAVER's
                         CRASH, TORRENT, TIDE, SPIT, BREACH, SWALLOW, SUBMERGE,     // the LEVIATHAN's
                         ATELEPORT, ADASH, AJAB, AHOOK, AUPPER, ADROP, AHOP, ARAY, ASTOMP, ASERPENT,   // THE ABSOLUTE's
                         AHALO, ASEAMS, AZENITH, ASWEEP, ALUNGE, ACRESCENT, AJUDGE, ATAKEOFF, ASKYFALL, AMETEOR,
@@ -151,12 +150,6 @@ inline EnemyStats& statsEdit(EnemyType t) {
         {"PENITENT", 6000.f, 3.0f, 8.2f, 3.5f, 0.9f, 2.6f, false,
          {0.14f,0.13f,0.14f}, {1.3f,0.75f,0.3f}, {1.2f,0.5f,0.2f},
          "BREAK ITS CHAINS - JUMP LOW SWEEPS, SLIDE UNDER HIGH ONES"},
-        {"REVENANT", 160.f, 0.5f, 2.3f, 5.4f, 0.45f, 1.6f, false,
-         {0.2f,0.21f,0.26f}, {0.75f,0.9f,1.3f}, {0.6f,0.85f,1.2f},
-         "ITS SOUL RUNS - CATCH IT BEFORE IT COMES BACK"},
-        {"WEAVER", 120.f, 0.9f, 1.3f, 4.2f, 0.8f, 6.f, false,
-         {0.16f,0.13f,0.2f}, {0.75f,0.35f,1.1f}, {0.75f,0.35f,1.1f},
-         "IT WIRES THE GAPS - CUT THE NODES OR DUCK UNDER"},
         {"LEVIATHAN", 15000.f, 3.0f, 5.2f, 0.f, 1.1f, 1.9f, false,   // radius/height: the head's box
          {0.2f,0.18f,0.21f}, {1.4f,1.0f,0.6f}, {0.3f,1.1f,0.9f},
          "DASH THE CRASH - SHOOT THE EYE WHILE IT'S DOWN"},

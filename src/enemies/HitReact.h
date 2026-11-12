@@ -43,8 +43,6 @@ inline const Body& bodyOf(EnemyType t) {
         {1.6f,   70.f, 0.50f, false},   // SERAPH
         {6.0f,  150.f, 0.70f, true },   // ANCHOR
         INF,                            // PENITENT
-        {1.4f,   70.f, 0.45f, false},   // REVENANT
-        {1.6f,   55.f, 0.45f, false},   // WEAVER
         INF,                            // LEVIATHAN
         INF,                            // THE ABSOLUTE
         // The Gauntlet's mini-bosses: heavy (the hook takes you to them), hard to break

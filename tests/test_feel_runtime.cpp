@@ -203,55 +203,6 @@ int main() {
         g.bodyHit(body, {1,0,0}, 4, false); g.bodyHit(body, {2,0,0}, 4, false); g.bodyHit(body, {3,0,0}, 6, false);
         CHECK(g.bodyHitAt.x == 3 && g.bodyHitPush == 14, "the impact mix follows the strongest contact rather than comparing against accumulated pellets");
     }
-    {
-        AudioSystem audio;g_startArena=3;g_godMode=true;
-        auto live=std::make_unique<GameplayState>(audio,nullptr,GameMode::ACT2);auto& g=*live;
-        g.enterArena(3);g.act2Falling=false;g.director.hold=true;
-        bool floor=true,hover=true,recovery=true,souls=true;
-        for(int wave=0;wave<3;++wave) {
-            auto& fm=g.level.formation;fm.at=fm.to=wave;fm.t=0;fm.apply(g.level);g.level.updateMovers(0);
-            g.enemies.clear();g.director.wave=wave;
-            auto point=g.director.pickSpawnForTest(EnemyType::HUSK,g.player.position);
-            g.spawnEnemy(EnemyType::HUSK,point);
-            g.spawnEnemy(EnemyType::RAPTOR,g.level.arenas[3].waveAir[wave][0]);
-            hover &= g.enemies.back().hoverY>2 && g.enemies.back().hoverY<24;
-            for(int tick=0;tick<40;++tick){g.gameClock+=DT;g.updateEnemies(DT);}
-            floor &= g.enemies[0].position.y < -200 && std::fabs(g.enemies[0].floorY-point.y)<4;
-            g.relic.clear();
-            Enemy revenant(EnemyType::REVENANT,fm.top(0));revenant.scale=1.3f;
-            g.releaseRevenantSoul(revenant,false);
-            souls &= g.relic.souls.size()==1 && spawnClearance(g.level,g.relic.souls[0].to,revenant.radius(),revenant.height(),true);
-            g.enemies.clear();g.updateReliquary(RelicHazards::SOUL_TIME+.01f);
-            souls &= g.enemies.size()==1 && spawnClearance(g.level,g.enemies[0].position,g.enemies[0].radius(),g.enemies[0].height(),true);
-        }
-        for(int arrangement=0;arrangement<4;++arrangement) {
-            auto& fm=g.level.formation;fm.at=fm.to=arrangement;fm.t=0;fm.apply(g.level);g.level.updateMovers(0);
-            for(int c=0;c<(int)fm.chunks.size();++c) {
-                g.lastChunk=c;g.player.onGround=false;g.updateReliquary(DT);
-                auto p=g.level.arenas[3].respawn-glm::vec3{0,.05f,0};
-                recovery &= spawnClearance(g.level,p,g.player.radius,g.player.height,true);
-                g.player.position={p.x,g.level.arenas[3].voidY-2.f,p.z};
-                g.keepPlayerInZone(DT);
-                recovery &= glm::length(g.player.position-g.level.arenas[3].respawn)<.1f &&
-                    spawnClearance(g.level,g.player.position,g.player.radius,g.player.height,true);
-            }
-        }
-        CHECK(floor,"Reliquary walkers stay on the actual relic instead of snapping toward world Y zero");
-        CHECK(hover,"Reliquary flyers are initialized above the formation, not hundreds of metres above the void floor");
-        CHECK(souls,"Revenant souls reform with their full scaled body on a supported clear platform");
-        CHECK(recovery,"every Reliquary recovery point clears the actual player's body in all four formations");
-        g.enemies.clear();g.banners.clear();g.ui.cards.clear();g.ui.feedLines.clear();
-        g.ui.damageVignette=g.ui.parryFlash=g.ui.shootFlashTimer=0;
-        for(int arrangement=0;arrangement<4;++arrangement) {
-            auto& fm=g.level.formation;fm.at=fm.to=arrangement;fm.t=0;fm.apply(g.level);g.level.updateMovers(0);g.level.updateMovers(0);
-            g.player.position=RELIQUARY_Q+glm::vec3{0,15,59};
-            g.player.camera.position=g.player.position+glm::vec3{0,g.player.eyeHeight,0};
-            g.prevCamPos=g.player.camera.position;g.renderAlpha=1;
-            g.player.camera.yaw=-90;g.player.camera.pitch=-18;g.gameClock=5;
-            g.render();std::string path="build/feel-pass/reliquary-"+std::to_string(arrangement)+".bmp";screenshot(path.c_str());
-        }
-        g_godMode=false;g_startArena=0;
-    }
     SDL_GL_DeleteContext(context); SDL_DestroyWindow(window); SDL_Quit();
     std::printf("%d runtime feel failures\n", failures);
     return failures ? 1 : 0;

@@ -1146,7 +1146,8 @@ int main() {
                     press(game, SDLK_F5);
                     game.director.update(.1f, 0, game.player.position, spawns);
                     game.handleDirectorEvents();
-                    CHECK(game.storyBossDown && !game.level.doors[game.level.arenas[o.arena].exitDoor].locked,
+                    const int exitDoor = game.level.arenas[o.arena].exitDoor;   // (Chapter 5's Vault has none: you ride out)
+                    CHECK(game.storyBossDown && (exitDoor < 0 || !game.level.doors[exitDoor].locked),
                           queued ? "F5 handles a queued Story boss and opens its exit" : "F5 handles a live Story boss and opens its exit");
                 }
             }

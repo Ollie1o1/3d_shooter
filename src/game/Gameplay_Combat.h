@@ -92,7 +92,6 @@ inline void GameplayState::punch(int boostable) {
     glm::vec3 eye = player.camera.position, fwd = player.camera.forward();
 
     punchedThisTick = true;             // (a serpent within reach goes back: updateAbsolute)
-    if (catchSoulWithPunch()) return;   // a fleeing soul within reach, taken bare-handed
     int pi = findParryTarget();
     if (pi >= 0) { reflectProjectile(pi, fwd); return; }
     for (auto& e : enemies) {
@@ -179,7 +178,7 @@ inline void GameplayState::spawnEnemy(EnemyType t, glm::vec3 pos, Hollow h) {
     float floor=level.baseFloor(pos.x,pos.z);
     int room=level.arenaAt(pos);if(room<0)room=director.arena;
     bool movingDeck = room>=0 && room<(int)level.arenas.size() &&
-        (level.arenas[room].shift==ArenaShift::DRIFT || level.arenas[room].shift==ArenaShift::DESCENT);
+        level.arenas[room].shift==ArenaShift::DESCENT;
     if(laboratory() || cold() || movingDeck){
         // Lab basins are far below the real platforms. Using that abyss as a
         // flying subject's initial floor gives it a 250 m hover offset.
@@ -331,7 +330,7 @@ inline void GameplayState::updateEnemies(float dt) {
         if (e.type == EnemyType::ABSOLUTE) swordParryAbsolute(e);   // the sword's window meets a white strike as it lands
         // In the Descent the void runs to -300: stand on what's really under you (the cage included)
         e.floorY = level.enemyFloor(director.arena, e.position, e.stats().flying,
-                                    (descent || ar.shift==ArenaShift::DRIFT || laboratory() || cold()) ? groundHeightAt(e.position.x, e.position.z, e.position.y + 0.5f, true) : 0.f);
+                                    (descent || laboratory() || cold()) ? groundHeightAt(e.position.x, e.position.z, e.position.y + 0.5f, true) : 0.f);
         e.wadeMul = e.stats().flying ? 1.f : 1.f - 0.5f * (1.f - Player::wadeFactor(level.waterDepthAt(e.position)));
         if(story()&&e.type==EnemyType::SORTER&&e.sortRush>0)
             breakStoryCover(e.position,e.position+e.sortRushDir*(36.f*dt),3.6f);
@@ -447,7 +446,6 @@ inline void GameplayState::updateEnemies(float dt) {
         if (enemies[i].type == EnemyType::SOVEREIGN) onSovereignEvents(enemies[i], ev);
         if (enemies[i].type == EnemyType::PENITENT) onPenitentEvents(enemies[i], ev);
         if (enemies[i].type == EnemyType::WARDEN) onWardenEvents(enemies[i], ev);
-        if (enemies[i].type == EnemyType::WEAVER) onReliquaryEvents(enemies[i], ev);
         if (enemies[i].type == EnemyType::LEVIATHAN) onLeviathanEvents(enemies[i], ev);
         if (enemies[i].type == EnemyType::ABSOLUTE) onAbsoluteEvents(enemies[i], ev);
         if (enemies[i].type == EnemyType::PACEMAKER) onPacemakerEvents(enemies[i], ev);
@@ -664,8 +662,6 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     styleSystem.heal(5.f * tune().heal);
     for (const VoiceCue& c : voices.death(voiceIn(e, nullptr))) playVoice(c);   // a kill confirms at any range
     if (e.type == EnemyType::WARDEN) { shifts.bossPulseOff(); ward.clear(); conduitClock.reset(); }   // its rings and hazards die with it
-    if (e.type == EnemyType::REVENANT) releaseRevenantSoul(e, e.position.y < level.arenas[director.arena].voidY);   // its soul runs
-    if (e.type == EnemyType::WEAVER) relic.dropOwner(e.uid);                                                       // its wires fall
     if (e.type != EnemyType::RESTORER) {   // (its body stays, and rewinds: Gameplay_Cold.h)
         fx.spawnDeathParticles(e.position + glm::vec3{0, e.height() * 0.5f, 0}, e.stats().color);
         spawnDebrisFor(e);
@@ -834,10 +830,6 @@ inline void GameplayState::processBlasts() {
         shake(0.3f, 0.06f);
         explosionFlashTimer = 0.35f; explosionFlashPos = b.pos;
         playBoom("explosion", b.pos, 128, SoundGroup::WORLD);
-        for (int si = (int)relic.souls.size() - 1; si >= 0; --si)   // a blast catches a fleeing soul
-            if (glm::length(relic.souls[si].pos - b.pos) < b.radius && relic.hurtSoul(si, b.damage)) ui.feed("SOUL TAKEN", {0.75f, 0.9f, 1.3f});
-        for (int wi = (int)relic.wires.size() - 1; wi >= 0; --wi)    // ...and cuts any wire whose node it reaches
-            if (glm::length(relic.wires[wi].a - b.pos) < b.radius || glm::length(relic.wires[wi].b - b.pos) < b.radius) relic.cutWire(wi);
         blastDestructibles(b.pos, b.radius, b.damage);
         for (int ai = 0; ai < (int)level.anchors.size(); ++ai)   // a blast against the Penitent's anchors
             if (level.anchors[ai].alive && glm::length(level.anchors[ai].pos - b.pos) < b.radius + 1.f &&
@@ -1093,25 +1085,6 @@ inline void GameplayState::fireWeapon(int w) {
         }
         if (!level.destructibles.empty() && (n == 0 || hits[0].t > wallT - 0.05f))   // the round stopped on a wall: one that breaks?
             hitDestructible(origin, dir, wallT, dmg);
-        if (!relic.souls.empty() || !relic.wires.empty()) {   // the Reliquary: a fleeing soul, a wire's node, before what it hit
-            float firstT = hits.empty() ? wallT : hits[0].t, st = 0.f;
-            int si = relic.raySoul(origin, dir, firstT, st);
-            if (si >= 0) {
-                glm::vec3 sp = relic.souls[si].pos;
-                fx.spawnHitSparks(sp, {0.75f, 0.9f, 1.3f});
-                if (relic.hurtSoul(si, dmg)) {
-                    styleSystem.addStyle(40.f, StyleSource::PARRY);
-                    ui.feed("SOUL TAKEN", {0.75f, 0.9f, 1.3f});
-                    fx.spawnBurst(sp, {0.75f, 0.9f, 1.3f}, 30, 6.f, 0.5f, 2.f);
-                }
-            }
-            int ni = relic.rayNode(origin, dir, firstT, st);
-            if (ni >= 0) {
-                fx.spawnBurst(origin + dir * st, {0.75f, 0.35f, 1.1f}, 16, 5.f, 0.4f, 4.f);
-                audio.playAt("v_weaver_twang", origin + dir * st, 100, SoundGroup::ENEMY);
-                relic.cutWire(ni);
-            }
-        }
         if (!abh.mirages.empty()) {   // a mirage in the way: one hit and it's gone (and so is the round)
             int mi = abh.mirageAlong(origin, dir, hits.empty() ? wallT : hits[0].t);
             if (mi >= 0) {

@@ -53,7 +53,7 @@ inline int GameplayState::attackersAllowed() const {
 inline void GameplayState::assignAttackers() {
     auto weight = [](EnemyType type) {
         switch(type) {
-        case EnemyType::SERAPH: case EnemyType::SUSPENDED: case EnemyType::WEAVER:
+        case EnemyType::SERAPH: case EnemyType::SUSPENDED:
         case EnemyType::BRUTE: case EnemyType::GRAFTED: case EnemyType::JUGGERNAUT: return 2;
         default: return 1;
         }

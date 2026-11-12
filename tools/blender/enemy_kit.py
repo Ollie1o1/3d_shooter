@@ -50,7 +50,7 @@ _og.PALETTE.update({"husk": (0.70, 0.26, 0.18), "gunmetal": (0.16, 0.15, 0.17), 
                     "char": (0.10, 0.03, 0.02), "obsidian": (0.05, 0.04, 0.05),
                     "warden": (0.34, 0.27, 0.40),
                     "iron": (0.26, 0.24, 0.25), "leviathan": (0.20, 0.18, 0.21),
-                    "revenant": (0.20, 0.21, 0.26), "weaver": (0.16, 0.13, 0.20), "seraph": (0.82, 0.78, 0.66),
+                    "seraph": (0.82, 0.78, 0.66),
                     "anchor": (0.24, 0.27, 0.32), "conduit": (0.22, 0.20, 0.26), "conductor": (0.18, 0.30, 0.34), "rag": (0.15, 0.10, 0.11), "censer": (0.60, 0.45, 0.22),
                     # the Gauntlet's: the Courier's hi-vis orange, the Bulwark's verdigris, the Cantor's bell bronze,
                     # the Harrier's storm steel, the Plumb's cast iron, the Foreman's hazard yellow, the Pacemaker's black and brass
@@ -63,7 +63,7 @@ _og.PALETTE.update({"husk": (0.70, 0.26, 0.18), "gunmetal": (0.16, 0.15, 0.17), 
 
 ENEMY_SCENES = ["HUSK", "SENTINEL", "BRUTE", "RIPPER", "RAPTOR", "MITE", "JUGGERNAUT", "SHIELDBEARER",
                 "SOVEREIGN", "ABSOLUTE", "MORNINGSTAR", "WARDEN", "PENITENT", "LEVIATHAN",
-                "REVENANT", "WEAVER", "SERAPH", "ANCHOR", "CONDUIT", "CONDUCTOR",
+                "SERAPH", "ANCHOR", "CONDUIT", "CONDUCTOR",
                 "COURIER", "BULWARK", "CANTOR", "HARRIER", "PLUMB", "FOREMAN", "PACEMAKER"]
 _ABS = ("hipL hipR torso head armL armR halo crown weapon kneeL kneeR ankleL ankleR waist clothF clothB elbowL elbowR "
         "handL handR fingersL fingersR tipsL tipsR thumbL thumbR thumbTipL thumbTipR ribbonL ribbonR")
@@ -74,8 +74,7 @@ NEEDED = {"husk": "hipL hipR torso head armL armR", "sentinel": "hipL hipR torso
           "sovereign": "hipL hipR torso head armL armR weapon cape capeTip halo crown",
           "warden": "hipL hipR torso head armL armR cape capeTip crown",
           "penitent": "hipL hipR torso head armL armR", "leviathan": "head jaw halo body",
-          "revenant": "hipL hipR torso head armL armR", "anchor": "hipL hipR torso head armL armR",
-          "weaver": "body legL1 legL2 legL3 legR1 legR2 legR3 shinL1 shinL2 shinL3 shinR1 shinR2 shinR3",
+          "anchor": "hipL hipR torso head armL armR",
           "seraph": "head wingL wingR tipL tipR", "conduit": "halo crown head", "conductor": "body halo", "absolute": _ABS, "morningstar": _ABS}
 # The Gauntlet's mini-bosses move on an older enemy's skeleton (rigBase, EnemyTypes.h): open_enemy(name, joints=BASE_FILE["courier"])
 BASE_FILE = {"courier": "ripper", "bulwark": "shieldbearer", "cantor": "seraph", "harrier": "raptor", "plumb": "conduit", "foreman": "conductor"}

@@ -240,7 +240,7 @@ inline LevelData buildWasteland() {
     int turbineExit=B.doorway(true,24.2f,33.8f,-126.3f,-125.7f,0,6,cyan,true);
     auto turbines=room("THE TURBINE GRAVEYARD","THREE SEIZED BRAKES",box(-28,-1,-126,42,42,-66),{-23,0,-104},0,RoomTone::SPIRE);
     turbines.entryGate=turbineEntry;turbines.exitDoor=turbineExit;turbines.hasTrigger=true;turbines.trigger=box(-14,-1,-125,41,8,-67);
-    turbines.waves={{W(EnemyType::WEAVER,0,{{14,0,-115}}),
+    turbines.waves={{W(EnemyType::SENTINEL,0,{{14,0,-115}}),
                      W(EnemyType::SHIELDBEARER,0,{{-12,0,-78}}),
                      W(EnemyType::RAPTOR,0,{{14,9,-105},{28,11,-77}})}};
     turbines.goals={WaveGoal::external("SHOOT THE THREE TURBINE BRAKES")};

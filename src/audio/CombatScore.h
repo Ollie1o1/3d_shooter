@@ -5,7 +5,7 @@
 // Authored music, expressed in sixteenths rather than a chord-tone character
 // loop. Evaluated on the sequencer clock; no allocation or random choices.
 namespace combatscore {
-constexpr int SUNSET=0, ZENITH=10, MORNINGSTAR=11;
+constexpr int SUNSET=0, ZENITH=9, MORNINGSTAR=10;
 inline bool owns(int track){return track==SUNSET || track==ZENITH || track==MORNINGSTAR;}
 inline int bars(int track){return track==SUNSET?16:32;}
 enum class Section { STATEMENT, ANSWER, BREAKDOWN, BUILD, PEAK, TURN };
@@ -47,15 +47,15 @@ inline Form form(int track,int absoluteBar,float withinBar=0){
         f.degree=track==ZENITH?zen[b]:morning[b];
         if(track==ZENITH){
             if(b<4){f.theme=.75f;f.filter=.6f;}
-            else if(b<8){f.section=Section::ANSWER;f.filter=.85f;}
+            else if(b<8){f.section=Section::ANSWER;f.style=Style::HARD;}
             else if(b<16){f.section=Section::PEAK;f.style=Style::DNB;}
             else if(b<18){f.section=Section::BUILD;f.rise=(b-16+withinBar)/2;f.bass=.75f+.25f*f.rise;f.filter=.5f+.5f*f.rise;f.theme=.8f;}
-            else if(b<26){f.section=Section::PEAK;if(b>=22)f.style=Style::HARD;}
+            else if(b<28){f.section=Section::PEAK;if(b>=22)f.style=Style::HARD;}
             else if(b<31){f.section=Section::PEAK;f.style=Style::HYBRID;}
             else {f.section=Section::TURN;f.style=Style::HYBRID;f.rise=withinBar;}
         }else{
             if(b<4){f.section=Section::ANSWER;f.style=Style::HYBRID;f.filter=.85f;}
-            else if(b<8){f.section=Section::PEAK;f.style=Style::HYBRID;}
+            else if(b<8){f.section=Section::PEAK;f.style=Style::HARD;}
             else if(b<16){f.section=Section::PEAK;f.style=Style::DNB;}
             else if(b<18){f.section=Section::BUILD;f.rise=(b-16+withinBar)/2;f.bass=.8f+.2f*f.rise;f.filter=.5f+.5f*f.rise;}
             else if(b<26){f.section=Section::PEAK;if(b>=20)f.style=Style::HARD;}

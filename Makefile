@@ -105,7 +105,6 @@ test: $(TESTS) $(HEADERS)
 	$(MAKE) test-lighting
 	$(MAKE) test-audio
 	$(MAKE) test-feel
-	$(MAKE) test-reliquary
 	$(MAKE) test-next
 	$(MAKE) test-iteration
 	$(MAKE) test-combat
@@ -152,12 +151,6 @@ test-next-runtime: tests/test_next_runtime.cpp src/main.cpp $(HEADERS)
 	mkdir -p build/next-pass
 	$(CXX) $(CXXFLAGS) tests/test_next_runtime.cpp -o build/test_next_runtime $(LDFLAGS)
 	./build/test_next_runtime
-
-.PHONY: test-reliquary
-test-reliquary: tests/test_reliquary.cpp $(HEADERS)
-	mkdir -p build/feel-pass
-	$(CXX) $(CXXFLAGS) tests/test_reliquary.cpp -o build/test_reliquary $(STDLIB)
-	./build/test_reliquary
 
 .PHONY: test-feel test-feel-runtime
 test-feel: tests/test_feel.cpp $(HEADERS)

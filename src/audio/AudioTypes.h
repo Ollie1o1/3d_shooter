@@ -14,7 +14,7 @@ enum class ReverbSpace : uint8_t { OPEN, METAL, HALL, SHAFT, COUNT };
 enum class RoomTone : uint8_t { NONE,
     YARD, FOUNDRY, SPIRE, CORE, SANCTUM,                         // ARENA (Act I): each its own synth
     CANAL, SLUICE, ASCENT, SPAN, WELL, PUMPWORKS, TOWER,          // FAST: mixed from RoomToneSynth's kit
-    NAVE, ORRERY, DESCENT, RELIQUARY, MAW, ZENITH,                // ACT II: the same
+    NAVE, ORRERY, DESCENT, MAW, ZENITH,                // ACT II: the same
     WARD, CELESTIAL, HADAL,
     PLAIN, GUT,                                                   // Chapter 4: the Blood Moon Plain; inside the Gleaner
     COUNT };

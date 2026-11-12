@@ -98,8 +98,6 @@ struct EnemyEvents : SovereignEvents, PenitentEvents, WardenEvents, LeviathanEve
     float     strikeDelay[MAX_STRIKES];
     bool      blinked = false;       // a shadow step: he vanished from blinkFrom
     glm::vec3 blinkFrom{0.f};
-    // WEAVER: a wire strung between A and B
-    bool      wire = false; glm::vec3 wireA{0.f}, wireB{0.f};
     // THE CANTOR's bell: a ring racing out along the floor from ringAt (jump it)
     bool      ring = false; glm::vec3 ringAt{0.f};
     // THE PACEMAKER: a phase began (1-3: it leapt to its next perch); its beacon channel began (1),
@@ -122,7 +120,7 @@ struct EnemyWorld {
     int  dynCount = 0;
     glm::vec3 reactor{0.f};       // the WARDEN's power: where it goes to feed (the Core's reactor)
     bool hasReactor = false;
-    bool voidUnder = false;       // the floor under the arena is a void (the Reliquary): only real ground holds you up
+    bool voidUnder = false;       // the floor under the arena is a void (decks over nothing): only real ground holds you up
     const GroundRamp* ramps = nullptr; int rampCount = 0;
     bool hasMoveVia = false; glm::vec3 moveVia{0.f}; // movement junction; attacks still target the real player
     // The arena's routes to the player (world/NavGrid.h), or null: steer by feelers alone (the tests' bare
@@ -295,7 +293,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     static constexpr float EVADE_AT = 0.03f, EVADE_TIME = 0.3f, EVADE_SPEED = 15.f, EVADE_CD = 5.f;
     float pressure = 0.f, evadeCd = 0.f;
     int   potionsShed = 0, potionForm = 0;   // a boss: health potions earned off it so far (every BOSS_POTION_EVERY of its bar), and on which bar   // its recent hurt (share of its health, fading over ~1 s); the evade's cooldown
-    bool dodges() const { return type == EnemyType::HUSK || type == EnemyType::REVENANT || type == EnemyType::WEAVER; }
+    bool dodges() const { return type == EnemyType::HUSK; }
     // Yanked by the grapple (GameplayState::hookEnemy): dragged toward pullTo, stunned all the way
     glm::vec3 pullTo{0.f};
     float pullT = 0.f;
@@ -335,10 +333,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     float farTimer   = 0.f;     // how long you've kept your distance (or the high ground)
     float dashTimer  = 0.f;     // > 0 while dashing (the SOVEREIGN; the WARDEN's lunge)
     bool  dashHit    = false;   // the dash already caught you
-    int   comboLeft  = 0;       // blows still to come in a combo (PENITENT, LEVIATHAN, REVENANT)
-
-    // REVENANT: how many times its soul has come back (the third death is final)
-    int   reforms = 0;
+    int   comboLeft  = 0;       // blows still to come in a combo (PENITENT, LEVIATHAN)
 
     // The Gauntlet's mini-bosses (EnemyMini.h)
     glm::vec3 miniHome{0.f};   // where it hung / started: the Cantor's window, the Plumb's line, the Foreman's crane
@@ -733,8 +728,6 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
             case EnemyType::SERAPH:   thinkSeraph(dt, w, resolve);   break;
             case EnemyType::ANCHOR:   thinkAnchor(dt, w, resolve);   break;
             case EnemyType::PENITENT: thinkPenitent(dt, w, resolve); break;
-            case EnemyType::REVENANT: thinkRevenant(dt, w, resolve); break;
-            case EnemyType::WEAVER:   thinkWeaver(dt, w, resolve);   break;
             case EnemyType::LEVIATHAN: thinkLeviathan(dt, w, resolve); return;   // it moves its head itself
             case EnemyType::ABSOLUTE: thinkAbsolute(dt, w, resolve); return;     // he places himself (EnemyAbsolute.h)
             case EnemyType::COURIER: case EnemyType::BULWARK: case EnemyType::CANTOR:
@@ -1524,8 +1517,6 @@ private:
     void levReel(float dt);                                            // EnemyLeviathan.h
     void aimCrash(const EnemyWorld& w, float windup, bool followUp);
     void levPose(float dt, const EnemyWorld& w);
-    void thinkRevenant(float dt, const EnemyWorld& w, bool resolve);   // EnemyRelic.h
-    void thinkWeaver(float dt, const EnemyWorld& w, bool resolve);     // EnemyRelic.h
 
     void thinkSovereign(float dt, const EnemyWorld& w, bool resolve);  // EnemySovereign.h
     // The Gauntlet's mini-bosses (EnemyMini.h)
@@ -1627,7 +1618,6 @@ inline std::vector<Enemy> twinsOf(const Enemy& p) {
         Enemy t(p.type, p.position + side * (1.2f * s), p.floorY);
         t.maxHealth = t.health = p.maxHealth * 0.35f;
         t.scale = 0.75f;
-        t.reforms = p.reforms;   // a REVENANT's twins have the lives it had left
         t.yaw = t.prevYaw = p.yaw;
         t.state = EnemyState::ACTIVE; t.spawnTimer = 0.f;
         out.push_back(t);
@@ -1683,7 +1673,6 @@ inline void linkConductors(std::vector<Enemy>& es, glm::vec3 player) {
 #include "bosses/penitent/EnemyPenitent.h"   // THE PENITENT's mind (Enemy::thinkPenitent)
 #include "bosses/leviathan/EnemyLeviathan.h"  // THE LEVIATHAN's mind (Enemy::thinkLeviathan)
 #include "bosses/warden/EnemyWarden.h"     // THE WARDEN's mind (Enemy::thinkWarden)
-#include "enemies/EnemyRelic.h"      // the Reliquary's REVENANT and WEAVER
 #include "enemies/EnemyMini.h"       // the Gauntlet's mini-bosses
 #include "bosses/pacemaker/EnemyPacemaker.h"   // THE PACEMAKER's mind (Enemy::thinkPacemaker)
 #include "bosses/absolute/EnemyAbsolute.h"   // THE ABSOLUTE's mind (Enemy::thinkAbsolute)

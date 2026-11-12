@@ -123,8 +123,8 @@ int main(int argc, char** argv) {
     if (L.arenas.empty()) { std::fprintf(stderr, "no level '%s' (act1, act2, fast, story1, story2, story3, story4, story5, training)\n", which.c_str()); return 2; }
     mkdir(out.c_str(), 0755);
 
-    // The world as the game draws it, and the moving walls where they're built (a lift, the Reliquary's
-    // drifting relics): the game draws those on their own, but a picture of the level wants them
+    // The world as the game draws it, and the moving walls where they're built (a lift, a turning ring):
+    // the game draws those on their own, but a picture of the level wants them
     LevelData drawn = L;
     for (int w : drawn.moverWalls) { drawn.walls[w].dynamic = false; drawn.walls[w].hidden = false; }
     WorldGeometry G = buildWorldGeometry(drawn);

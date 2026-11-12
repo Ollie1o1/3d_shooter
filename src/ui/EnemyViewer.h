@@ -232,9 +232,6 @@ private:
         static const A ms[] = {A::MJAB, A::MBACKHAND, A::MGRASP, A::MSUNDER};
         static const A war[] = {A::SLAM, A::LANCE, A::WLUNGE, A::VOLLEY, A::SUMMON, A::WVENT};
         if (type == EnemyType::WARDEN) return war[attackIx % 6];
-        static const A rev[] = {A::RAKE, A::SOULBOLT};
-        if (type == EnemyType::REVENANT) return rev[attackIx % 2];
-        if (type == EnemyType::WEAVER) return A::STRING;
         if (type == EnemyType::SERAPH) return A::BEAM;
         if (type == EnemyType::ANCHOR) return A::VOLLEY;
         static const A lev[] = {A::CRASH, A::TORRENT, A::SWALLOW, A::SPIT};

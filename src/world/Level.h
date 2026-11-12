@@ -201,7 +201,7 @@ enum class Ambient { DUST, EMBERS, MOTES, WIND, ASH, STEAM,
                      SPECKS, NEBULA, MARINE,   // Chapter 3: ward dust, the void's motes, the trench's falling snow
                      ASHFALL };                // Chapter 4: ash on the wind, embers, cinders out of the sky
 // How an arena changes as its fight goes on (ArenaShifts.h)
-enum class ArenaShift { NONE, NIGHTFALL, LAVA_RISE, SPEED_UP, OVERLOAD, FLOOD, SOLAR, DESCENT, DRIFT };
+enum class ArenaShift { NONE, NIGHTFALL, LAVA_RISE, SPEED_UP, OVERLOAD, FLOOD, SOLAR, DESCENT };
 
 struct Arena {
     const char* name;
@@ -357,50 +357,6 @@ struct LevelData {
     };
     Lift lift;
 
-    // THE RELIQUARY's drifting relics: groups of DRIVEN movers, each with an
-    // offset per arrangement (one per wave, plus the path to the hole); a
-    // glide eases every chunk from one arrangement to the next in GLIDE_TIME
-    struct Formation {
-        struct Chunk {
-            std::vector<int>       movers;   // the boxes that move together
-            std::vector<glm::vec3> at;       // its offset in each arrangement (at[0] = as built)
-            glm::vec3 home{0.f};             // its top's centre as built
-            glm::vec2 half{0.f};             // half its top's size (X, Z)
-        };
-        std::vector<Chunk> chunks;
-        int at = 0, to = 0;
-        float t = 0.f;
-        static constexpr float GLIDE_TIME = 6.f;
-        int  arrangements() const { return chunks.empty() ? 0 : (int)chunks[0].at.size(); }
-        bool gliding() const { return to != at; }
-        float eased() const { float u = glm::clamp(t / GLIDE_TIME, 0.f, 1.f); return u * u * (3.f - 2.f * u); }
-        glm::vec3 offset(int c) const {
-            const Chunk& k = chunks[c];
-            return gliding() ? glm::mix(k.at[at], k.at[to], eased()) : k.at[at];
-        }
-        glm::vec3 top(int c) const { return chunks[c].home + offset(c); }
-        void glideTo(int k) { if (k >= 0 && k < arrangements() && k != at && !gliding()) { to = k; t = 0.f; } }
-        void reset(LevelData& L) { at = to = 0; t = 0.f; apply(L); }
-        void update(float dt, LevelData& L) {
-            if (gliding()) { t += dt; if (t >= GLIDE_TIME) { at = to; t = 0.f; } }
-            apply(L);
-        }
-        void apply(LevelData& L) const {
-            for (int c = 0; c < (int)chunks.size(); ++c) {
-                glm::vec3 o = offset(c);
-                for (int m : chunks[c].movers) { L.movers[m].a = o; L.movers[m].b = o; L.movers[m].drive = 0.f; }
-            }
-        }
-        int chunkOfWall(const LevelData& L, int wall) const {
-            for (int c = 0; c < (int)chunks.size(); ++c)
-                for (int m : chunks[c].movers) if (L.movers[m].wall == wall) return c;
-            return -1;
-        }
-        float lowestTop() const { float y = 1e9f; for (int c = 0; c < (int)chunks.size(); ++c) y = std::min(y, top(c).y); return chunks.empty() ? 0.f : y; }
-        float meanTop() const { float y = 0.f; for (int c = 0; c < (int)chunks.size(); ++c) y += top(c).y; return chunks.empty() ? 0.f : y / chunks.size(); }
-    };
-    Formation formation;
-
     // The Penitent's chains are fixed to these, high on the pit wall: shoot
     // one out (hp) or grapple onto it and hang on (GameplayState rips it)
     // The floor an enemy at pos stands on (or hovers over)
@@ -412,8 +368,6 @@ struct LevelData {
         float base = floorWithWater(pos.x, pos.z, false);
         if (arena < 0 || arena >= (int)arenas.size()) return base;
         if(story.built && (story.chapter==3||story.chapter==5))return flying?arenas[arena].bounds.min.y:std::max(base,groundUnder);   // (decks over a void: what is really under it)
-        if (arenas[arena].shift == ArenaShift::DRIFT)   // the Reliquary: the chunks under it (fliers keep to the chunks' height)
-            return flying ? std::max(base, formation.meanTop()) : std::max(base, groundUnder);
         if (arenas[arena].shift != ArenaShift::DESCENT) return base;
         return flying ? std::max(base, lift.y()) : std::max(base, groundUnder);
     }

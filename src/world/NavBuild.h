@@ -5,8 +5,8 @@
 // door opens, cover breaks, a load comes down, the water rises. (The check is
 // a hash of the arena's static boxes, a few times a second.)
 //
-// Two kinds of arena go without: the ones that are moving platforms more than
-// ground (the Reliquary's drifting chunks, the Descent's cage), and anything
+// Two kinds of arena go without: the one that is a moving platform more than
+// ground (the Descent's cage), and anything
 // too wide to cut finely (Chapter 4's plain). Enemies there steer as before.
 // =============================================================================
 #include "world/Level.h"
@@ -14,11 +14,10 @@
 #include <chrono>
 #include <cstring>
 
-// Over a void every walker keeps to real ground (Enemy::canStepTo): the Reliquary, the Blast Chillers,
+// Over a void every walker keeps to real ground (Enemy::canStepTo): the Blast Chillers,
 // the Living Ward's decks. One place for the game and the tests to ask.
 inline bool arenaVoidUnder(const LevelData& L, int a) {
     if (a < 0 || a >= (int)L.arenas.size()) return false;
-    if (L.arenas[a].shift == ArenaShift::DRIFT) return true;
     if (!L.story.built) return false;
     if (L.story.chapter == 5) return a == 5;
     if (L.story.chapter == 3) return a == 5 || a == 7 || a == 8 || a == 9;
@@ -28,7 +27,7 @@ inline bool arenaVoidUnder(const LevelData& L, int a) {
 inline bool arenaGroundTracked(const LevelData& L, int a) {
     if (a < 0 || a >= (int)L.arenas.size()) return false;
     if (L.story.built && (L.story.chapter == 3 || L.story.chapter == 5)) return true;
-    return L.arenas[a].shift == ArenaShift::DRIFT || L.arenas[a].shift == ArenaShift::DESCENT;
+    return L.arenas[a].shift == ArenaShift::DESCENT;
 }
 
 struct ArenaNav {
@@ -40,7 +39,7 @@ struct ArenaNav {
     double worstBuildMs = 0.;
 
     static bool arenaTakesNav(const Arena& a) {
-        return a.shift != ArenaShift::DRIFT && a.shift != ArenaShift::DESCENT;
+        return a.shift != ArenaShift::DESCENT;
     }
     // Everything a route depends on: the static boxes over the arena, and its water
     static uint32_t geometryKey(const LevelData& L, const AABB& b) {

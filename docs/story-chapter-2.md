@@ -18,7 +18,7 @@ for this landscape.
 | Dead Convoy | One crossfire ambush with sentinels, flankers, a shield and a beam flyer. Freight breaks sight lines; an open-ended fallen canopy offers a sheltered flank. |
 | Buried Relay | A broad ramp descends five metres. Stand on the service pad for nine uncontested seconds to seat a failed contact. Guards enter from the far (north and east) end, 20-30 m from the pad. A new pair arrives only once at most one guard is left, after 7 s of quiet (`WaveGoal::paced`), so a well-fought clear leaves a window to finish. Enemies on the pad pause the repair. |
 | Broken Span | Grapple beams cross the broken deck. A six-metre-wide maintenance bypass provides a walking alternative. Falling returns you to a safe ledge and costs health. |
-| Turbine Graveyard | Shoot three visible seized brake locks. A finite guard detail includes a Weaver and aerial threats. Clear it first or repair under pressure. Releasing the brakes starts the rotors and opens the gate. A broad ramp reaches an optional maintenance deck and an overhead hook. |
+| Turbine Graveyard | Shoot three visible seized brake locks. A finite guard detail includes a Sentinel and aerial threats. Clear it first or repair under pressure. Releasing the brakes starts the rotors and opens the gate. A broad ramp reaches an optional maintenance deck and an overhead hook. |
 | Last Toll | Quiet crew booths, failed repair requests and a rooftop wreck; Ballast is visible beyond the gate. |
 | The Cut | A dedicated boss space: blade scars, marked working lanes, real windbreaks and overhead grapple structures. No reactor or conduit phase. |
 | Far Road | The machinery falls quiet and the next service road leads toward the tower. Enter returns to the menu. |

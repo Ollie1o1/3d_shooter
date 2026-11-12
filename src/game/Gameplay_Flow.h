@@ -371,7 +371,6 @@ inline void GameplayState::enterArena(int a) {
     successorHazards.clear();
     ballastHazards.clear();
     ward.clear(); conduitClock.reset(); wardenUid = -1; shifts.bossPulseOff();
-    relic.clear(); lastChunk = 0; snareTimer = 0.f; driftWasGliding = false;
     lev.clear(); beachHinted = false; levSinkT = 1e9f;   // (shifts.reset drained the Maw's flood)
     pen.clear(); scourgeAnnounced = false; rip = AnchorRip{}; downHinted = false;
     level.anchors = anchorsBuilt;   // every chain whole again
@@ -762,8 +761,8 @@ inline void GameplayState::handleDirectorEvents() {
             }
             if (done.exitDoor >= 0 && !act2())
                 pushBanner("ARENA CLEARED", "THE GATE IS OPEN - HEAD NORTH", {0.4f, 1.f, 0.6f}, 3.5f);
-            else if (act2() && done.shift == ArenaShift::DRIFT)
-                pushBanner("THE HOLE IS OPEN", "JUMP IN", {1.f, 0.4f, 0.25f}, 3.5f);
+            else if (act2() && done.shift == ArenaShift::DESCENT)
+                pushBanner("THE PIT IS OPEN", "CROSS THE SPAN AND JUMP IN", {1.f, 0.4f, 0.25f}, 3.5f);
             else if (done.exitDoor >= 0)
                 pushBanner("THE WAY DOWN IS OPEN", ev.value == 0 ? "BEHIND THE ORGAN" : "THROUGH THE NORTH ARCH", {0.35f, 0.95f, 0.9f}, 3.5f);
             styleSystem.heal(40.f);
@@ -1378,7 +1377,7 @@ inline void GameplayState::updateMusic() {
         return;
     }
     if(plain()){   // Chapter 4: RECLAMATION. Silence until it screams, then the brass and the anvils
-        m.setTrack(14);m.setDrive(overdriveOn()&&!playerDead);m.setSolo(false);
+        m.setTrack(13);m.setDrive(overdriveOn()&&!playerDead);m.setSolo(false);
         const bool before=false;   // (the score is there from the landing: low and far off, rising with it)
         // the approach: the eerie layers (the horn far off); close, the drums start; on its back, everything
         const float flatDist=glm::length(glm::vec2{player.position.x-gleaner.pos.x,player.position.z-gleaner.pos.z});
@@ -1397,7 +1396,7 @@ inline void GameplayState::updateMusic() {
     if(cold()){   // Chapter 5: COLD STORAGE, quiet under the wind until a fight; THE RESTORER in the Vault
         const int here=level.arenaAt(player.position);
         const bool boss=here==9 && !coldRDown && director.fighting();
-        m.setTrack(boss?16:15);m.setDrive(overdriveOn()&&!playerDead);m.setSolo(false);
+        m.setTrack(boss?15:14);m.setDrive(overdriveOn()&&!playerDead);m.setSolo(false);
         float intensity=director.fighting()?(boss?1.15f+.08f*(float)std::max(0,rsPhase-1):1.f):.3f;
         if(coldRideT>=0.f)intensity=1.1f;
         if(rsDeathT>=0.f&&coldRideT<0.f)intensity=.15f;
@@ -1408,7 +1407,7 @@ inline void GameplayState::updateMusic() {
     }
     if(laboratory()){
         const bool boss=level.arenaAt(player.position)==9 && !storyBossDown;
-        m.setTrack(boss?13:12);m.setDrive(overdriveOn()&&!playerDead);m.setSolo(false);
+        m.setTrack(boss?12:11);m.setDrive(overdriveOn()&&!playerDead);m.setSolo(false);
         float intensity=director.fighting()?(boss?1.2f:1.f):.13f;
         for(const auto& e:enemies)if(e.alive&&e.type==EnemyType::SUCCESSOR)intensity=1.16f+.12f*(e.suPhase-1);
         if(labIntro.active())intensity=.05f;
@@ -1426,7 +1425,7 @@ inline void GameplayState::updateMusic() {
     // STORY's first two chapters: never the menu's groove (track 0). The Cradle's fights take the Foundry's track and
     // the Sorter the Core's; the world outside takes the Spire's and Ballast the Descent's
     const int storyTrack = story() ? (wasteland() ? (director.bossWave() ? 7 : 2) : (director.bossWave() ? 3 : 1)) : 0;
-    m.setTrack(story() ? storyTrack : fast() ? FAST_TRACK[a % 7] : morning ? 11 : zenith ? 10 : act2() ? 5 + std::min(a, 4) : ARENA_TRACK[a % 5]);   // the Nave .. the Maw; !!!!! has its own
+    m.setTrack(story() ? storyTrack : fast() ? FAST_TRACK[a % 7] : morning ? 10 : zenith ? 9 : act2() ? 5 + std::min(a, 3) : ARENA_TRACK[a % 5]);   // the Nave .. the Maw; !!!!! has its own
     float lv = 0.6f;
     switch (director.phase) {
         case WaveDirector::Phase::ACTIVE:   lv = director.bossWave() ? 1.35f : 1.f; break;

@@ -84,15 +84,15 @@ try {
   console.log('Training guide and twenty lesson input paths exercised.');
   // The moving-platform chapter exercises the new material shader in WebGL,
   // alongside live waves, rather than only the training room's static walls.
-  const reliquary = new URL(url);
-  reliquary.searchParams.set('act2', ''); reliquary.searchParams.set('arena', '4');
-  reliquary.searchParams.set('god', '');
-  await page.goto(reliquary.href, { waitUntil: 'domcontentloaded' });
+  const descent = new URL(url);
+  descent.searchParams.set('act2', ''); descent.searchParams.set('arena', '3');
+  descent.searchParams.set('god', '');
+  await page.goto(descent.href, { waitUntil: 'domcontentloaded' });
   await enterGame();
   await page.keyboard.press('Tab'); // later-arena starts open the upgrade armory
   await page.waitForTimeout(6500);
-  await capture('reliquary.png');
-  console.log('Reliquary rendered.');
+  await capture('descent.png');
+  console.log('Descent rendered.');
   for (const [name, params] of [
     ['challenge', { challenge: 'OD1-12345-2' }],
     ['phase-practice', { boss: '2', phase: '2' }],
@@ -156,7 +156,7 @@ try {
     }
   }
   if (errors.length) throw new Error(errors.join('\n'));
-  console.log('WebAssembly boots; all twenty lessons, guide paging, Reliquary, seeded challenges, phase practice, boss rush, Motor Assessment, Surgical Observation and three Cold Store combat spaces render without browser errors.');
+  console.log('WebAssembly boots; all twenty lessons, guide paging, the Descent, seeded challenges, phase practice, boss rush, Motor Assessment, Surgical Observation and three Cold Store combat spaces render without browser errors.');
 } finally {
   await browser.close();
 }

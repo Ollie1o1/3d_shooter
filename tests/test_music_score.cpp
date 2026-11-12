@@ -21,7 +21,7 @@ static std::vector<float> render(int track,int rate,float seconds,bool mute=fals
 }
 int main(){
     auto start=std::chrono::steady_clock::now();double renderedSeconds=0;
-    for(int track:{0,10,11}){
+    for(int track:{0,9,10}){
         for(int rate:{22050,44100,48000}){
             const float bar=240.f/musicTrack(track).bpm;
             const int bars=combatscore::bars(track);
@@ -58,7 +58,7 @@ int main(){
     }
     // The boss forms use every rhythm section, the hardstyle bars only at the top of a fight,
     // and at boss intensity the other break and techno tracks trade bars with the other style.
-    for(int track:{10,11}){
+    for(int track:{9,10}){
         bool techno=false,dnb=false,hybrid=false,hard=false,half=false;
         for(int b=0;b<32;++b){
             const auto f=combatscore::form(track,b);using combatscore::Style;
@@ -73,14 +73,15 @@ int main(){
             const int n=int(25*240.f/musicTrack(track).bpm*44100);
             std::vector<float> x(n*2);m.render(x.data(),n);return x;
         };
-        const auto under=take(1.29f),over=take(1.35f);
+        const auto under=take(1.14f),over=take(1.15f);
         const float bar=240.f/musicTrack(track).bpm;
         auto diff=[&](int b0,int b1){double d=0;for(int i=int(b0*bar*44100)*2;i<int(b1*bar*44100)*2;++i){double e=over[i]-under[i];d+=e*e;}return d/((b1-b0)*bar*88200);};
-        const double ratio=10*std::log10(diff(22,25)/diff(18,20));
+        // (bars before the first hardstyle section: after it the drums' noise sequence differs anyway)
+        const double ratio=10*std::log10(diff(4,8)/diff(1,4));
         std::printf("  %s: hardstyle bars change %.1f dB more than their neighbours across the threshold\n",musicTrack(track).name,ratio);
         check(ratio>6,"hardstyle kick only takes over at the top of the fight");
     }
-    for(int track:{4,7,16}){
+    for(int track:{4,7,15}){
         auto bars=[&](float intensity){
             MusicSynth m;m.setTrack(track);m.setVolume(.9f);m.setIntensity(intensity);
             const float bar=240.f/musicTrack(track).bpm;const int n=int(16*bar*44100);
@@ -89,10 +90,10 @@ int main(){
         const auto calm=bars(1.f),boss=bars(1.35f);
         const float bar=240.f/musicTrack(track).bpm;
         auto diff=[&](int b0,int b1){double d=0;for(int i=int(b0*bar*44100)*2;i<int(b1*bar*44100)*2;++i){double e=boss[i]-calm[i];d+=e*e;}return d/((b1-b0)*bar*88200);};
-        check(diff(8,16)>diff(1,8)*1.5,"boss intensity trades bars 9-16 for the other rhythm section");
+        check(diff(4,16)>diff(1,4)*1.5,"boss intensity trades bars 5-16 for hardstyle and the other rhythm section");
     }
     // Pause must still remove high-frequency energy from the new themes.
-    for(int track:{0,10,11}){
+    for(int track:{0,9,10}){
         MusicSynth a,b;for(auto* m:{&a,&b}){m->setTrack(track);m->setIntensity(1.3f);m->setVolume(.9f);}
         std::vector<float> x(44100*2),y(x.size());
         for(int i=0;i<4;++i){a.render(x.data(),44100);b.render(y.data(),44100);}

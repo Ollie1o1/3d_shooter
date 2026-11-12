@@ -203,7 +203,6 @@ private:
             make({{WATER, 0.4f}, {DRIPS, 0.8f}, {CHOIR, 0.5f}, {RUMBLE, 0.2f}}, {{CHOIR_ROOT, 73.4f}}),                      // NAVE: water and an organ's drone
             make({{TICKS, 1.0f}, {HUM, 0.6f}, {CHOIR, 0.3f}, {WIND, 0.5f}}, {{HUM_HZ, 110.f}, {TICK_HZ, 1.5f}, {CHOIR_ROOT, 98.f}, {BRIGHT, 0.2f}}),   // ORRERY: clockwork, the sun's roar
             make({{WIND, 0.8f}, {CLANKS, 0.5f}, {RUMBLE, 0.5f}, {HUM, 0.3f}}, {{BRIGHT, 0.2f}, {HUM_HZ, 45.f}}),             // DESCENT: the shaft's draught, chains
-            make({{CHOIR, 0.6f}, {WIND, 0.4f}, {BREATH, 0.2f}, {BELLS, 0.2f}}, {{CHOIR_ROOT, 87.3f}, {BRIGHT, 0.7f}, {BELL_ROOT, 174.6f}}),   // RELIQUARY: the void
             make({{BREATH, 1.0f}, {RUMBLE, 0.8f}, {DRIPS, 0.4f}, {CHOIR, 0.15f}}, {{CHOIR_ROOT, 55.f}}),                     // MAW: something breathing
             make({{SHIMMER, 1.0f}, {CHOIR, 0.4f}, {WIND, 0.4f}}, {{CHOIR_ROOT, 220.f}, {BRIGHT, 0.8f}}),                     // ZENITH: above the clouds
             make({{HUM,.76f},{DATA,.44f},{WIND,.26f},{MONITOR,.7f}},{{HUM_HZ,60.f},{BRIGHT,.18f}}), // WARD: ventilation, a monitor with nobody watching

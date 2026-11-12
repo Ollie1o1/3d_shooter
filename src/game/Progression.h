@@ -38,8 +38,6 @@ inline int xpForKill(EnemyType t) {
         case EnemyType::ANCHOR:   return 90;
         case EnemyType::WARDEN:   return 500;
         case EnemyType::SOVEREIGN: return 1000;
-        case EnemyType::REVENANT: return 45;
-        case EnemyType::WEAVER:   return 50;
         case EnemyType::LEVIATHAN: return 1500;
         case EnemyType::ABSOLUTE: return 2000;
         case EnemyType::PACEMAKER: case EnemyType::SORTER: case EnemyType::BALLAST: return 1200;
@@ -114,9 +112,9 @@ inline const BossEntry& bossEntry(int i) {
         {"THE WARDEN",    "THE CORE",                  false, 3, false, 4, 3},
         {"THE SOVEREIGN", "THE SANCTUM",               false, 4, false, 5, 4},
         {"THE PENITENT",  "ACT II - THE DESCENT",      true,  2, false, 6, 6},
-        {"THE LEVIATHAN", "ACT II - THE MAW",          true,  4, false, 6, 8},
-        {"THE ABSOLUTE",  "!!!!! - HIS FIRST FORM",    true,  5, false, 6, 9},
-        {"MORNINGSTAR",   "!!!!! - INSIDE THE ECLIPSE", true, 5, true,  6, 9},
+        {"THE LEVIATHAN", "ACT II - THE MAW",          true,  3, false, 6, 8},
+        {"THE ABSOLUTE",  "!!!!! - HIS FIRST FORM",    true,  4, false, 6, 9},
+        {"MORNINGSTAR",   "!!!!! - INSIDE THE ECLIPSE", true, 4, true,  6, 9},
         {"THE PACEMAKER", "FAST - THE TOWER", false, 6, false, 7, 6, GameMode::FAST},
         {"THE SORTER", "STORY - THE SORTING FLOOR", false, 8, false, 5, 4, GameMode::STORY, 1},
         {"BALLAST", "STORY - THE CUT", false, 6, false, 6, 6, GameMode::STORY, 2},
@@ -304,7 +302,7 @@ inline bool recordZenith(Records& r, float t) {
 }
 // The arena just cleared is the Maw, and the Zenith waits above it
 inline bool zenithHandoff(bool act2, int clearedArena, int arenaCount) {
-    return act2 && arenaCount == 6 && clearedArena == 4;
+    return act2 && arenaCount == 5 && clearedArena == 3;
 }
 
 // The ARENA page's ACT II card only starts a whole-act run once the Sovereign has fallen in an Act I run

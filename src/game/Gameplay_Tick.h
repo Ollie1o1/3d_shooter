@@ -173,8 +173,8 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     bool dashKey = keys[SDL_SCANCODE_LSHIFT] != 0;
     if (dashKey && !prevDashKey) dashInput.press(0, gameClock);
     if (dashKey && !prevDashKey && pinned) pinnedCue();
-    if (pinned || snareTimer > 0.f) dashInput.clear();   // never queue through a disabling hazard
-    if (dashInput.pending(0, gameClock) && dashCharges > 0 && !pinned && snareTimer <= 0.f) {
+    if (pinned) dashInput.clear();   // never queue through a disabling hazard
+    if (dashInput.pending(0, gameClock) && dashCharges > 0 && !pinned) {
         dashInput.clear();
         // Dash by the keys held, W first: W (or nothing) along the camera in full 3D, else A/D flat to the
         // side, else S straight back along the camera
@@ -550,7 +550,6 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     // --- Waves ---
     int alive = 0;
     for (auto& e : enemies) if (e.alive) ++alive;
-    alive += relic.alive();              // a Revenant's soul in flight: not over until it's caught or back
     alive += (int)pendingTwins.size();   // a TWINNED kill this tick: its copies count before they're spawned
     auto& spawns = tickSpawns;
     spawns.clear();
@@ -583,7 +582,6 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
     updateSovereign(dt);
     updatePenitent(dt);
     updateWarden(dt);
-    updateReliquary(dt);
     updateLeviathan(dt);
     updateAbsolute(dt);
     updateSuccessor(dt);

@@ -66,7 +66,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
 
     const Arena& ar = level.arenas[director.arena];
     const bool zen = act2() && director.arena == ZENITH_ARENA;
-    int nArenas = act2() ? ZENITH_ARENA : (int)level.arenas.size();   // ACT II counts its five; the Zenith is the encore
+    int nArenas = act2() ? ZENITH_ARENA : (int)level.arenas.size();   // ACT II counts its four; the Zenith is the encore
     const char* tag = act2() ? "ACT II" : "ARENA";
     char buf[128];
 
@@ -285,8 +285,8 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             snprintf(buf, sizeof(buf), fast() ? "EXIT %dM" : "GATE %dM", (int)glm::length(target - player.position));
             ui.renderMarker(sx, sy, on, {0.4f, 1.f, 0.6f}, buf);
         }
-        if (act2() && director.phase == WaveDirector::Phase::CLEARED && ar.shift == ArenaShift::DRIFT) {
-            glm::vec3 target = level.finishPos;   // the Reliquary's rim: the way down to the Maw
+        if (act2() && director.phase == WaveDirector::Phase::CLEARED && ar.shift == ArenaShift::DESCENT) {
+            glm::vec3 target = level.finishPos;   // the span's rim: the way down to the Maw
             float sx, sy;
             bool on = projectToScreen(target, view, proj, sx, sy);
             snprintf(buf, sizeof(buf), "THE HOLE %dM", (int)glm::length(target - player.position));

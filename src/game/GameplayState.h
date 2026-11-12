@@ -18,7 +18,6 @@
 #include "bosses/warden/WardenHazards.h"
 #include "bosses/leviathan/LeviathanHazards.h"
 #include "bosses/absolute/AbsoluteHazards.h"
-#include "enemies/RelicHazards.h"
 #include "render/EnemyModel.h"
 #include "render/BoxRenderer.h"
 #include "player/Projectile.h"
@@ -903,19 +902,6 @@ public:
     bool liftRiding  = false;   // a ride is under way (its arrival drops health on the cage)
     void updateLift(float dt);
 
-    // ---- THE RELIQUARY (Gameplay_Reliquary.h) -------------------------------------
-    // Souls and wires, the last relic you
-    // stood on, the snare, the drift
-    RelicHazards relic;
-    int   lastChunk = 0;
-    float snareTimer = 0.f;
-    bool  driftWasGliding = false;
-    void updateReliquary(float dt);
-    void onReliquaryEvents(Enemy& e, const EnemyEvents& ev);
-    void releaseRevenantSoul(const Enemy& e, bool inVoid);
-    bool catchSoulWithPunch();
-    void gatherReliquaryBoxes(std::vector<BoxInstance>& out);
-
     // ---- THE LEVIATHAN (Gameplay_Leviathan.h) -------------------------------------
     // What it does to the ring, the flood
     LeviathanHazards lev;
@@ -1416,7 +1402,6 @@ public:
 #include "bosses/pacemaker/Gameplay_Pacemaker.h"
 #include "bosses/penitent/Gameplay_Penitent.h"
 #include "bosses/warden/Gameplay_Warden.h"
-#include "game/Gameplay_Reliquary.h"
 #include "bosses/leviathan/Gameplay_Leviathan.h"
 #include "game/Gameplay_Sword.h"
 #include "game/Gameplay_Destruct.h"

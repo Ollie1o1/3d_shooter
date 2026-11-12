@@ -296,7 +296,7 @@ int main() {
         CHECK(abString(AB_JUDGED).line == -1, "the final judgment attack has no dialogue cue");
     }
     {
-        CHECK(N.arenas.size() == 6 && std::string(N.arenas[ZENITH_ARENA].name) == "!!!!!", "a sixth Act II arena: the encore, called !!!!!");
+        CHECK(N.arenas.size() == 5 && std::string(N.arenas[ZENITH_ARENA].name) == "!!!!!", "a fifth Act II arena: the encore, called !!!!!");
         const Arena& Z = N.arenas[ZENITH_ARENA];
         CHECK(Z.waves.size() == 1 && Z.waves[0][0].type == EnemyType::ABSOLUTE && Z.maxAlive == 1 && Z.space == ReverbSpace::OPEN,
               "one wave, THE ABSOLUTE, alone, under an open sky");
@@ -334,8 +334,8 @@ int main() {
         CHECK(!N.onZenithShard(zenithShard(2)), "a fallen shard is gone");
         N.restoreZenith();
         CHECK(N.zenithPillarAt(zenithPillar(0), 0.5f) == 0 && N.onZenithShard(zenithShard(2)), "a retry puts them back");
-        CHECK(MUSIC_TRACKS >= 12 && std::string(musicTrack(10).name) == "ZENITH" && musicTrack(10).bpm >= 165.f, "the Zenith's own fast track");
-        CHECK(std::string(musicTrack(11).name) == "MORNINGSTAR" && musicTrack(11).bpm > musicTrack(10).bpm && musicTrack(11).techno == 2,
+        CHECK(MUSIC_TRACKS >= 11 && std::string(musicTrack(9).name) == "ZENITH" && musicTrack(9).bpm >= 165.f, "the Zenith's own fast track");
+        CHECK(std::string(musicTrack(10).name) == "MORNINGSTAR" && musicTrack(10).bpm > musicTrack(9).bpm && musicTrack(10).techno == 2,
               "MORNINGSTAR's: faster than the Zenith's, the harder voicing");
     }
 
@@ -380,9 +380,9 @@ int main() {
         recordAct2Clear(r, 1600.f);
         CHECK(std::fabs(r.bestAct2 - 1500.f) < 1e-3f, "a slower clear doesn't replace the best");
         CHECK(recordZenith(r, 1700.f) && !recordZenith(r, 1800.f) && std::fabs(r.bestZenith - 1700.f) < 1e-3f, "ACT II + ZENITH keeps its own best");
-        CHECK(zenithHandoff(true, 4, 6) && !zenithHandoff(true, 3, 6) && !zenithHandoff(false, 4, 6) && !zenithHandoff(true, 4, 5),
+        CHECK(zenithHandoff(true, 3, 5) && !zenithHandoff(true, 2, 5) && !zenithHandoff(false, 3, 5) && !zenithHandoff(true, 3, 4),
               "only the Maw's clear in Act II hands off to the Zenith");
-        CHECK(retryTarget(WaveDirector::Phase::CLEARED, 4) == ZENITH_ARENA && retryTarget(WaveDirector::Phase::ACTIVE, ZENITH_ARENA) == ZENITH_ARENA,
+        CHECK(retryTarget(WaveDirector::Phase::CLEARED, 3) == ZENITH_ARENA && retryTarget(WaveDirector::Phase::ACTIVE, ZENITH_ARENA) == ZENITH_ARENA,
               "a death during the ascension retries the Zenith; a death in it, the Zenith again");
         Records w; w.act2Cleared = true; w.bestAct2 = 1234.5f; w.bestZenith = 1500.25f;
         std::string text = w.serialise();
