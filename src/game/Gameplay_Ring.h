@@ -34,7 +34,8 @@ inline void GameplayState::armSweep() {
     if (ring() && !g_devRingTest && g_devSweep == 0) {   // the crossing's far tier: one clean wave, a long gap
         const auto t = sweeptier::far(ring::sweepDir());
         sweepSched.arm(t.gapMin, t.gapMax, 0x52494E47u + (uint32_t)deaths * 7919u);
-        sweepSched.timer = 1e6f;   // (each level's first is scripted: updateRing)
+        // (the random clock runs from the start, so a retry from any checkpoint still gets sweeps;
+        //  each place's first is scripted on top of it: updateRing)
     } else {   // the test ground and dev runs come round quickly
         sweepSched.arm(25.f, 40.f, 0x52494E47u + (uint32_t)deaths * 7919u);
         sweepSched.timer = 8.f;
