@@ -13,6 +13,12 @@ enemies. The test ground lives on behind `--ringtest`. Committed on `ship`
 (`0f7a07b` and after). **Nobody has played it by hand yet**: the playtest gate
 (step 3) and the slice playtest (step 6) are both still the user's.
 
+**2026-11-12, third session (Opus 5.5): step 3's rough edges**, on branch
+`ring-edges` (worktree `../3d_shooter-edges`), while the user played the slice.
+Shattered loose shelters really go; the HOLDFAST bar; the swept death (13.6);
+the count line (13.2); vacuum sound outside, air in the hull; the light bake.
+See "Rough edges done" below. Not hand-played either.
+
 **Try it:**
 
 | Command | What you get |
@@ -152,16 +158,48 @@ Changed (small hooks; search for `ring()`, `holdfast`, `sweep`):
   on what they are spiked to. Nothing sets it yet: it is for the Gap's raft
   and the Shepherd's hull.
 
+## Rough edges done (third session)
+
+- **Shattered shelters go.** `Mover::gone`: a breaker parks a shattered loose
+  shelter 5 km down (`Level::updateMovers`; its `delta` is zeroed so nothing
+  riding it is dragged), `gatherRing` skips it, `armSweep` restores it. Only
+  movers can be small: a fixed wall is baked into the world mesh and the
+  collision grid, so any breakable shelter must be a DRIVEN mover.
+- **HOLDFAST bar** (`HudState::holdfast`, above RECALL's): steady `HOLDFAST:
+  HELD`, the pin's time draining as `HOLDFAST: PINNED`, else the cooldown
+  (`Holdfast::cooldownFrom`, so a 0.3 s miss fills as visibly as a 5 s pin).
+- **The swept death** (`updateSweptDeath`, `renderSweptDeath`): 2.2 s, run on
+  the frame (the dead don't tick) as a function of time. The eye is thrown
+  ~4 km down the sweep and up, wheeling back to face the ring, which ends as
+  a strip; no gun; sfx ducked 60 dB and music at 0; `HOLD JUMP TO SKIP`
+  (0.25 s). Then the death screen, `SWEPT. COUNT CORRECT` (the pixel font has
+  no middle dot).
+- **The count** (13.2): after each lethal sweep, on the countdown's plate for
+  6 s: `COUNT: 40,112. ONE EXTRA.`, or `FOUR SHORT.` when DISPATCHED were
+  killed or swept since the last one (`ring::countLine`, `ringGone`,
+  `ringShort`, counted in `onEnemyKilled`). Replaces the feed's COUNT line.
+- **Vacuum** (`SfxMixer::vacuum`, `AudioSystem::setVacuum`): outside the hull,
+  ENEMY and WORLD sounds more than ~2.5 m away lose 55% gain and close to a
+  520 Hz low-pass (felt, not heard). Tells, floored must-hear cues, unducked
+  sounds and your own are untouched (`make test-audio` checks both). Inside
+  `ring::quietHull` the vacuum lifts and the reverb goes METAL. Music is
+  untouched (the "inside the helmet" pulse is still to write).
+- **Light bake**: `story6` in `tools/light_bake.cpp` and
+  `assets/levels/story6.light` (1.2 MB, ~1 min). The sections' zones now stop
+  at 80 m, not 400 m: the bake fills each region's whole height, and at
+  400 m it was 100M cells, over the loader's 64M cap ("a broken atlas").
+  Rebake after changing `buildRing()`.
+
+Still not done from step 3: Strays thrown off at a distance (13.6's last
+point), the floor tick/zero-cut polish, capsule knocking (13.1), a proper
+air-hiss sound for the hull (it uses `barrier` for now).
+
 ## Shortcuts taken, to be replaced
 
-1. **Breakers don't remove the wall.** A shattered small shelter stops
-   sheltering and bursts, but its box is still drawn and solid. Make small
-   shelters `Destructible`s (see `LevelLayout.h`, and how Ballast's
-   windbreaks break and update collision).
+1. ~~Breakers don't remove the wall~~: done (see above), for movers.
 2. ~~The sky is Chapter 5's~~: `ringSky` exists. The Shepherd is still only an
    impostor (no ridge geometry until the Shore).
-3. **No light bake.** The game prints `story6.light: no bake`. See `make
-   light` once the first real level exists.
+3. ~~No light bake~~: baked (see above).
 4. ~~Enemies are stand-ins~~: the four DISPATCHED exist. Still missing: their
    own death sounds and hurt barks beyond the synth defaults, and the Crook.
 5. The test ground's gaps are 25-40 s; the chapter uses the far tier's 90-150 s,
@@ -171,10 +209,9 @@ Changed (small hooks; search for `ring()`, `holdfast`, `sweep`):
    / interact, L3 is RECALL.
 8. **Low gravity is the player's only.** `Splinter::GRAVITY` and enemies
    are unscaled.
-9. **The swept death is the normal death.** Section 13.6's tumble off the
-   ring is not built; the body is not thrown once dead.
-10. **No vacuum sound, no music of its own, no count line** beyond a feed
-    message (`COUNT: ONE EXTRA`).
+9. ~~The swept death is the normal death~~: built (see above). Enemies are
+   still just killed, not thrown into the distance.
+10. **No music of its own.** (Vacuum sound and the count line: done.)
 11. **Not in the menu and not saved.** (HOLDFAST's pickup calls
     `saveStoryProgress`, which ignores chapter 6.) `StorySave.h` rejects chapter > 5;
     `MenuState.h` builds chapters 1–5 in two places.
@@ -193,10 +230,8 @@ Changed (small hooks; search for `ring()`, `holdfast`, `sweep`):
 2. **The Crook's crossing encounter** in the Kept (design section 3): it drags
    a Stray out of the reef in front of you, then one attack (the hook, white),
    leaves at a third of its health. A mini-boss model in the DISPATCHED style.
-3. **Rough edges:** breakable small shelters (shortcut 1), a HOLDFAST bar on the
-   HUD, the swept death (13.6), vacuum sound (contact only; air inside the
-   hull), the count line after each sweep (13.2), a light bake (`story6` in
-   `tools/light_bake.cpp`; it has never had one).
+3. **Rough edges:** done on `ring-edges` (see "Rough edges done"); merge it
+   into `ship` after the user's playtest verdict is in.
 4. **Menu and save** (shortcut 11) and the Chapter 5 -> 6 hand-off.
 5. **Levels 4-8** (the Shadow Band uses `uRingNight`; the Spokes reuse the
    ANCHOR field), then the boss as written.

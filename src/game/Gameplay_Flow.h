@@ -338,6 +338,7 @@ inline GameplayState::~GameplayState() {
     saveStoryProgress();
     logRun("quit");   // whatever was played since the last death or finish (RunLog.h)
     audio.setMuffle(0.f);   // back to the menu: the world isn't dull any more
+    audio.setVacuum(0.f);
     audio.setWind(0.f); audio.setRope(0.f); audio.setOverdrive(false, 0.f);
     audio.setRoom(RoomTone::NONE);   // the menu has no air of its own
     glDeleteTextures(1,&whiteTex);
@@ -411,7 +412,7 @@ inline void GameplayState::enterArena(int a) {
     eclipseFlare = 0.f; abShaftT = abDawnT = -1.f; swordRoll = 0.f;
     pillarFallT.fill(-1.f); shardFallT.fill(-1.f); punchedThisTick = false;
     ascendT = -1.f; whiteFade = level.zenith.built && a == ZENITH_ARENA && act2() ? 1.f : 0.f;
-    playerDead = false; deadTimer = 0.f;
+    playerDead = false; deadTimer = 0.f; sweptT = -1.f;
     victory = false; victoryDelay = -1.f;
     finishOpen = false;
     act2Falling = act2() && !g_devCam;
@@ -463,7 +464,7 @@ inline void GameplayState::resetPlayer(glm::vec3 start) {
     activeWeapon = 0; pendingWeapon = -1; weaponSwitchTimer = 0.f;
     fireInput.clear(); dashInput.clear(); jumpInput.clear(); parryInput.clear();
     recoilPitch = 0.f; peakFallSpeed = 0.f; fovKick = 0.f; camFeel.reset();
-    dashFx = speedFx = lowFx = heartT = heartPulse = windFx = 0.f; audio.setMuffle(0.f); audio.setWind(0.f);
+    dashFx = speedFx = lowFx = heartT = heartPulse = windFx = 0.f; audio.setMuffle(0.f); audio.setWind(0.f); audio.setVacuum(0.f); ringAir = -1;
     hasSafeGround = false; embeddedT = 0.f; slowT = 0.f; ropeFx = 0.f; audio.setRope(0.f);
     paused = false; pauseSettings = false; pauseSelected = 0; armoryOpen = false;
     ui.clearIndicators();
@@ -1033,6 +1034,7 @@ inline void GameplayState::update(float dt) {
     }
     if (settings) audio.masterVolume = settings->audioVolume;
     updateMusic();
+    if (sweptFalling()) audio.setMusicVolume(0.f);   // (the swept death is silent: 13.6)
     // The place's own air (RoomTone.h): full between fights, under a fight,
     // low while paused or dead; the Yard's night comes with its nightfall
     audio.setRoomLevel(paused || armoryOpen || playerDead ? 0.35f : director.fighting() ? 0.7f : 1.f);
@@ -1058,6 +1060,7 @@ inline void GameplayState::update(float dt) {
         prevTicks   = SDL_GetPerformanceCounter();
         accumulator = 0.0;
         if (playerDead) deadTimer += dt;
+        if (playerDead) updateSweptDeath(dt);
         if (victory) audio.setMuffle(0.f);
         audio.setWind(0.f); audio.setRope(0.f);   // paused, dead or won: no air moving
         if (countdown > 0.f && !frozen) {

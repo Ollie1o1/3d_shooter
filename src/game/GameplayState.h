@@ -376,6 +376,17 @@ public:
     std::vector<SweepShelter> sweepShelters;
     bool  sweepArmed = false;
     int   sweepCount = 0, sweepTickAt = -1, sweepSwept = 0;
+    // The Shepherd counts (design 13.2): after each sweep a line where the countdown was.
+    // ringGone: DISPATCHED removed this run (kills and the swept); ringShort: since the last count
+    int   ringGone = 0, ringShort = 0;
+    float ringCountT = -1.f;
+    // The swept death (design 13.6): thrown off the ring, in silence, before the death screen
+    float sweptT = -1.f, sweptSkip = 0.f;
+    int   ringAir = -1;   // -1 not yet set, 0 hard vacuum outside, 1 the hull's air
+    glm::vec3 sweptFrom{0.f}, sweptDir{0.f, 0.f, 1.f};
+    bool sweptFalling() const { return playerDead && sweptT >= 0.f && sweptT < SWEPT_FALL; }
+    static constexpr float SWEPT_FALL = 2.2f;
+    char  ringCountLine[48] = {};
     Holdfast holdfast;
     glm::vec3 holdfastPinAt{0.f};
     int   holdfastHints = 0;
@@ -1342,6 +1353,8 @@ public:
     void tickSweep(float dt);
     void gatherSweep(std::vector<BoxInstance>& out);
     void renderSweepCountdown();
+    void updateSweptDeath(float dt);
+    void renderSweptDeath();
     void beginRing();
     float ringShepherdSize() const;
     float ringFlash() const;

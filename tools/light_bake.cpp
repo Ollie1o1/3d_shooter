@@ -12,6 +12,7 @@
 #include "world/LevelWasteland.h"
 #include "world/LevelTraining.h"
 #include "world/LevelLab.h"
+#include "world/LevelRing.h"
 #include "render/LightBake.h"
 #include <chrono>
 #include <cstdio>
@@ -22,11 +23,11 @@
 int main(int argc, char** argv) {
     std::vector<std::string> levels;
     for (int i = 1; i < argc; ++i) levels.push_back(argv[i]);
-    if (levels.empty()) levels = {"act1", "act2", "fast", "story1", "story2", "story3", "training"};
+    if (levels.empty()) levels = {"act1", "act2", "fast", "story1", "story2", "story3", "story6", "training"};
     mkdir("assets/levels", 0755);
     for (const std::string& l : levels) {
-        LevelData L = l == "act1" ? buildLevel() : l == "act2" ? buildAct2Level() : l == "fast" ? buildGauntlet() : l == "story1" ? buildCradle() : l == "story2" ? buildWasteland() : l == "story3" ? buildLab() : l == "training" ? buildTraining() : LevelData{};
-        if (L.arenas.empty()) { std::fprintf(stderr, "no level '%s' (act1, act2, fast, story1, story2, story3, training)\n", l.c_str()); return 2; }
+        LevelData L = l == "act1" ? buildLevel() : l == "act2" ? buildAct2Level() : l == "fast" ? buildGauntlet() : l == "story1" ? buildCradle() : l == "story2" ? buildWasteland() : l == "story3" ? buildLab() : l == "training" ? buildTraining() : l == "story6" ? buildRing() : LevelData{};
+        if (L.arenas.empty()) { std::fprintf(stderr, "no level '%s' (act1, act2, fast, story1, story2, story3, story6, training)\n", l.c_str()); return 2; }
         auto t0 = std::chrono::steady_clock::now();
         std::printf("%s:\n", l.c_str());
         lightbake::Bake B = lightbake::bake(L, 0, [](const char* s) { std::printf("%s\n", s); std::fflush(stdout); });

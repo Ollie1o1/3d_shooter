@@ -26,6 +26,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
     }
     h.grenades = grenadeCount; h.grenadeMax = grenadeMax;
     if (splinterOwned()) { h.splinter = true; h.grenades = splinters.charges; h.grenadeMax = SplinterSystem::CHARGES; h.splinterRegrow = splinters.regrow01(); }
+    if (holdfastOwned()) { h.holdfast = holdfast.held() ? 2 : holdfast.pinning() ? 3 : 1; h.holdfast01 = holdfast.pinning() ? holdfast.pin01() : holdfast.cooldown01(); }
     if (recallOwned()) { h.recall = true; h.recallPlaced = recall.placed; h.recall01 = recall.placed ? recall.left01() : recall.cooldown01(); }
     h.swordSlot = swordAllowed(); h.swordOut = swordOut; h.swordBroken = sword.broken(); h.swordGuard = sword.guard01();
     h.swordBar = swordOut && (sword.blocking() || sword.broken() || sword.riposteT > 0.f || sword.guard < Sword::GUARD_MAX);
@@ -400,7 +401,8 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
         ui.end2D();
     }
 
-    if (playerDead && !victory) {   // (ENDLESS has no retry: a moment, then the run's score)
+    renderSweptDeath();
+    if (playerDead && !victory && !sweptFalling()) {   // (ENDLESS has no retry: a moment, then the run's score)
         if (story()) snprintf(buf, sizeof(buf), "CHAPTER %d  %s  -  %s", level.story.chapter,level.story.title,ar.name);
         else if (fast()) snprintf(buf, sizeof(buf), "ROOM %d/%d  %s", director.arena + 1, nArenas, ar.name);
         else if (endless()) snprintf(buf, sizeof(buf), "%s - WAVE %d", ar.name, wavesCleared + 1);

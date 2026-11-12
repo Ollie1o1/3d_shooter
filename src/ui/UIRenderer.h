@@ -44,6 +44,8 @@ struct HudState {
     bool  recall = false;        // RECALL owned: its bar above the first weapon slot
     bool  recallPlaced = false;  // a statue is standing (the bar is its time left)
     float recall01 = 1.f;        // placed: time left, 0..1; otherwise: the cooldown, full = ready
+    int   holdfast = 0;          // HOLDFAST owned: 1 idle, 2 held to something, 3 pinning (its bar sits above RECALL's)
+    float holdfast01 = 1.f;      // pinning: time left; idle: the cooldown, full = ready
     // OATHBREAKER (the Zenith): a fifth slot; out, the guard meter under the crosshair
     bool  swordSlot = false, swordOut = false, swordBroken = false, swordBar = false;
     float swordGuard = 1.f;
@@ -973,6 +975,15 @@ private:
             ui.rect(x0, y0 - 16, 70, 6, {0.12f, 0.16f, 0.2f, 0.6f});
             ui.rect(x0, y0 - 16, (int)(70 * h.recall01), 6, glm::vec4{glm::vec3(frost), frost.a * a});
             ui.text(h.recallPlaced ? "RECALL: RETURN" : "RECALL", x0 + 76, y0 - 17, 1, glm::vec4{glm::vec3(frost), a});
+        }
+        if (h.holdfast) {   // HOLDFAST: sand-white (never cyan); steady while held, the pin's time draining
+            const glm::vec4 steel{0.82f, 0.8f, 0.72f, 0.95f};
+            const int y = y0 - (h.recall ? 30 : 16);
+            const float fill = h.holdfast == 2 ? 1.f : h.holdfast01;
+            const float a = h.holdfast == 3 ? 0.75f + 0.25f * std::sin(hudTime * 8.f) : (h.holdfast == 2 || fill >= 1.f) ? 1.f : 0.5f;
+            ui.rect(x0, y, 70, 6, {0.16f, 0.15f, 0.13f, 0.6f});
+            ui.rect(x0, y, (int)(70 * fill), 6, glm::vec4{glm::vec3(steel), steel.a * a});
+            ui.text(h.holdfast == 2 ? "HOLDFAST: HELD" : h.holdfast == 3 ? "HOLDFAST: PINNED" : "HOLDFAST", x0 + 76, y - 1, 1, glm::vec4{glm::vec3(steel), a});
         }
     }
 

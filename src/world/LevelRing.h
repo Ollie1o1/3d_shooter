@@ -36,6 +36,7 @@
 // =============================================================================
 #include "world/Level.h"
 #include "world/RingSweep.h"
+#include <cstdio>
 
 namespace ring {
 constexpr float HALF_X = 110.f;                 // the playable width
@@ -204,6 +205,17 @@ inline std::vector<SweepShelter> testShelters() {
     static const float SMALL[][2] = {{18.f, 66.f}, {-24.f, 28.f}, {26.f, 30.f}, {-10.f, -8.f}, {30.f, -10.f}, {-56.f, 22.f}, {-32.f, -30.f}, {26.f, -64.f}, {-4.f, -70.f}};
     for (auto& s : SMALL) { add(s[0], s[1], 3.6f, 2.6f, 2.4f, true); ++n; }
     return out;
+}
+
+// The Shepherd's count (design 13.2). The manifest in the hull says 40,111 were dispatched; you
+// are the one extra. Each DISPATCHED you remove makes it short instead.
+inline constexpr int DISPATCHED = 40111;
+inline void countLine(char* out, size_t n, int count, int shortBy) {
+    static const char* words[] = {"", "ONE", "TWO", "THREE", "FOUR", "FIVE", "SIX", "SEVEN", "EIGHT", "NINE", "TEN"};
+    char num[24]; snprintf(num, sizeof(num), "%d,%03d", count / 1000, count % 1000);
+    if (shortBy <= 0) { snprintf(out, n, "COUNT: %s. ONE EXTRA.", num); return; }
+    if (shortBy <= 10) snprintf(out, n, "COUNT: %s. %s SHORT.", num, words[shortBy]);
+    else snprintf(out, n, "COUNT: %s. %d SHORT.", num, shortBy);
 }
 }   // namespace ring
 
@@ -535,7 +547,7 @@ inline LevelData buildRing() {
     auto section = [&](const char* name, const char* sub, float zN, float zS, vec3 start) {
         Arena a;
         a.name = name; a.subtitle = sub;
-        a.zone = LevelBuilder::aabb(-ring::HALF_X, -1000.f, zN, ring::HALF_X, 400.f, zS);
+        a.zone = LevelBuilder::aabb(-ring::HALF_X, -1000.f, zN, ring::HALF_X, 80.f, zS);   // (80 m: nothing out here stands higher, and the light bake fills the whole height)
         a.bounds = a.zone; a.bounds.min.y = 0.f;
         a.playerStart = start; a.startYaw = -90.f; a.hasRespawn = true; a.respawn = start;
         a.maxAlive = 8; a.damageScale = 1.f;

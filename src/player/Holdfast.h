@@ -42,13 +42,14 @@ struct Holdfast {
     int       pinUid = -1;    // PIN: the enemy
     float     pinT = 0.f;
     float     cooldown = 0.f;
+    float     cooldownFrom = 0.f;   // what the cooldown started at (the HUD bar fills over it)
 
     void reset() { *this = Holdfast{}; }
     bool held() const { return state == State::HELD; }
     bool pinning() const { return state == State::PIN; }
     bool ready() const { return state == State::IDLE && cooldown <= 0.f; }
     float pin01() const { return pinning() ? std::clamp(pinT / PIN_TIME, 0.f, 1.f) : 0.f; }
-    float cooldown01() const { return std::clamp(1.f - cooldown / PIN_COOLDOWN, 0.f, 1.f); }
+    float cooldown01() const { return cooldown <= 0.f || cooldownFrom <= 0.f ? 1.f : std::clamp(1.f - cooldown / cooldownFrom, 0.f, 1.f); }
 
     // The button. FIRE: the caller casts the ray, then calls latch(), pin() or miss().
     Press press() {
@@ -60,10 +61,10 @@ struct Holdfast {
         length = std::clamp(glm::length(at - from), MIN_LINE, RANGE);
     }
     void pin(int uid) { state = State::PIN; pinUid = uid; pinT = PIN_TIME; }
-    void miss() { cooldown = MISS_COOLDOWN; }
+    void miss() { cooldown = cooldownFrom = MISS_COOLDOWN; }
     // The line is cut, or what it was in is gone
     void cut() { if (state == State::HELD) letGo(COOLDOWN); }
-    void letGo(float cd) { state = State::IDLE; body = shelter = pinUid = -1; cooldown = std::max(cooldown, cd); }
+    void letGo(float cd) { state = State::IDLE; body = shelter = pinUid = -1; if (cd > cooldown) cooldown = cooldownFrom = cd; }
 
     // Its body moved (a drifting chunk, a tine): the spike goes with it
     void carry(glm::vec3 delta) { if (held()) point += delta; }

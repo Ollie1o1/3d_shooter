@@ -888,7 +888,7 @@ inline void GameplayState::render() {
     ftLap.to(frametimer::R_FX);
     // --- View model (inside the FBO so it gets bloom; no fog). Hidden
     // behind the Longshot's scope once it's up. ---
-    if (!scopedView() && !devSkip("viewmodel")) {
+    if (!scopedView() && !devSkip("viewmodel") && !(playerDead && sweptT >= 0.f)) {   // (swept: the body is gone, 13.6)
         ShaderProgram& vmShader = devSkip("vmbatch") ? worldShader : viewModel.batchShader();
         vmShader.use();
         vmShader.setMat4("view", view);

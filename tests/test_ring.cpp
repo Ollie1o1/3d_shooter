@@ -6,6 +6,7 @@
 #include "player/Holdfast.h"
 #include "world/LevelRing.h"
 #include <cstdio>
+#include <string>
 static int failures = 0;
 #define CHECK(c, m) do { if (!(c)) { ++failures; std::printf("FAIL: %s\n", m); } else std::printf("ok: %s\n", m); } while (0)
 constexpr float DT = 1.f / 60;
@@ -285,6 +286,47 @@ int main() {
         for (auto& a : l.arenas) for (auto& p : a.groundSpawns)
             for (auto& w : l.walls) if (!w.dynamic && p.x > w.box.min.x && p.x < w.box.max.x && p.z > w.box.min.z && p.z < w.box.max.z && p.y + 0.5f > w.box.min.y && p.y + 0.5f < w.box.max.y) spawnsClear = false;
         CHECK(spawnsClear, "no enemy spawns inside a wall");
+    }
+    {   // ---- the Shepherd's count (13.2) ----
+        char line[48];
+        ring::countLine(line, sizeof(line), ring::DISPATCHED + 1, 0);
+        CHECK(std::string(line) == "COUNT: 40,112. ONE EXTRA.", "the count: you are the one extra");
+        ring::countLine(line, sizeof(line), ring::DISPATCHED + 1 - 4, 4);
+        CHECK(std::string(line) == "COUNT: 40,108. FOUR SHORT.", "the count: four swept or killed, four short");
+        ring::countLine(line, sizeof(line), ring::DISPATCHED - 20, 21);
+        CHECK(std::string(line) == "COUNT: 40,091. 21 SHORT.", "the count: past ten, in digits");
+    }
+    {   // ---- HOLDFAST's bar: it fills over whatever cooldown it is in ----
+        Holdfast h;
+        CHECK(h.cooldown01() == 1.f, "the bar: full when ready");
+        h.miss(); h.tick(Holdfast::MISS_COOLDOWN * 0.5f);
+        CHECK(std::fabs(h.cooldown01() - 0.5f) < 0.02f, "the bar: half full halfway through a miss's short cooldown");
+        h.tick(1.f); h.pin(7); while (!h.tick(DT)) {}
+        h.tick(Holdfast::PIN_COOLDOWN * 0.25f);
+        CHECK(std::fabs(h.cooldown01() - 0.25f) < 0.02f, "the bar: a quarter full a quarter into a pin's cooldown");
+    }
+    {   // ---- a breaker shatters a loose shelter, and it is gone ----
+        LevelData l = buildRing();
+        int si = -1;
+        for (int i = 0; i < (int)l.sweepShelters.size(); ++i) if (l.sweepShelters[i].small && l.sweepShelters[i].mover >= 0) { si = i; break; }
+        CHECK(si >= 0, "the Kept has loose (small) shelters");
+        if (si >= 0) {
+            auto sh = l.sweepShelters;
+            const glm::vec3 c = (sh[si].box.min + sh[si].box.max) * 0.5f;
+            RingSweep s; s.start(sweeptier::near(ring::sweepDir()).spec);
+            bool broke = false;
+            for (int i = 0; i < 60 * 30 && s.active() && !broke; ++i) {
+                auto ev = s.update(DT, c + ring::sweepDir() * 30.f, sh);
+                for (int k : ev.shattered) if (k == si) broke = true;
+            }
+            CHECK(broke, "a breaker shatters it as its front arrives");
+            Mover& m = l.movers[sh[si].mover];
+            m.gone = true; l.updateMovers(1.f);
+            const AABB& b = l.walls[m.wall].box;
+            CHECK(b.max.y < -1000.f && m.delta == glm::vec3{0.f}, "a shattered mover leaves: no box where it stood, and nothing riding it is dragged");
+            m.gone = false; l.updateMovers(1.f);
+            CHECK(std::fabs(l.walls[m.wall].box.min.y - sh[si].box.min.y) < 0.01f, "a retry puts it back");
+        }
     }
     std::printf(failures ? "\n%d FAILED\n" : "\nall passed\n", failures);
     return failures ? 1 : 0;

@@ -635,6 +635,7 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     runLog.killed(e.type, src, e.firstHitAge >= 0.f ? e.age - e.firstHitAge : -1.f);
     if (src != StyleSource::FRIENDLY && src != StyleSource::ENVIRONMENT) styleSystem.extendOverdrive(0.5f);   // kills keep OVERDRIVE burning
     if (e.type == EnemyType::CONDUIT) director.onConduitDestroyed(e.position);
+    if (sweepOn() && (e.type == EnemyType::STRAY || e.type == EnemyType::HERDER || e.type == EnemyType::TALLY || e.type == EnemyType::PORTER)) { ++ringGone; ++ringShort; }   // the Shepherd's count (Gameplay_Ring.h)
     clerkNoteDeath(e);   // a CLERK up nearby: it comes back (Gameplay_ColdEnemies.h)
     if (e.splitsOnDeath()) {   // not into `enemies` yet: callers may be iterating it
         for (auto& t : twinsOf(e)) pendingTwins.push_back(t);

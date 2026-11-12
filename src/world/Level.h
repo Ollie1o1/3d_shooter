@@ -183,6 +183,7 @@ struct Mover {
     glm::vec3 delta{0.f};        // how far it moved on the last update
     float     drive  = 0.f;      // DRIVEN: 0..1 along a -> b
     int       look   = 0;        // 0: a glowing slab (drawn by Gameplay_Render); 1: a drifting ice chunk (Chapter 6 draws it)
+    bool      gone   = false;    // shattered (a breaker sweep): parked far below, not drawn, carries nothing. A retry restores it
 
     glm::vec3 offsetAt(float t) const {
         if (path == Path::DRIVEN) return glm::mix(a, b, drive);
@@ -685,11 +686,12 @@ struct LevelData {
         moverClock = t;
         for (auto& m : movers) {
             glm::vec3 off = m.offsetAt(t);
+            if (m.gone) off.y -= 5000.f;
             AABB& b = walls[m.wall].box;
             glm::vec3 before = b.min;
             b.min = m.base.min + off;
             b.max = m.base.max + off;
-            m.delta = b.min - before;
+            m.delta = m.gone ? glm::vec3{0.f} : b.min - before;   // (the tick it goes, nothing riding it is dragged down)
         }
     }
 

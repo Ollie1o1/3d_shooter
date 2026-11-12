@@ -124,6 +124,8 @@ public:
     void setListener(glm::vec3 pos, glm::vec3 right, glm::vec3 fwd) { if (initialized) sfx.setListener(pos, right, fwd); }
     void setSpace(ReverbSpace s) { if (initialized) sfx.setSpace(s); }
     void duck(float dB, float seconds) { if (initialized) sfx.duck(dB, seconds); }
+    // 0..1: hard vacuum outside (Chapter 6): far enemy and world sounds thin and dull (SfxMixer::vacuum)
+    void setVacuum(float v) { sfx.setVacuum(v); }
     // OVERDRIVE: its hum (urgency 0..1: running out) and the mix's focus (SfxMixer THE CROWD)
     void setOverdrive(bool on, float urgency) {
         if (!initialized) return;

@@ -160,6 +160,7 @@ public:
     // Dip the music and the ENEMY/WORLD groups by dB for `seconds`, so the
     // sound that matters (you got hit, a boss winds up) stands out
     void duck(float dB, float seconds) { Cmd c{}; c.kind = Cmd::DUCK; c.x = dB; c.y = seconds; push(c); }
+    void setVacuum(float v) { vacuum.store(std::clamp(v, 0.f, 1.f), std::memory_order_relaxed); }   // (see `vacuum`)
     // The reverb of the place; its parameters crossfade over about a second
     void setSpace(ReverbSpace s) { Cmd c{}; c.kind = Cmd::SPACE; c.x = (float)(int)s; push(c); }
     // 0..1: OVERDRIVE's focus (see THE CROWD); eased in over ~80 ms, out over ~350 ms
@@ -264,6 +265,10 @@ private:
     // Tell sidechain envelope (0..1)
     float sideEnv = 0.f, sideAtk = 0.f, sideRel = 0.f, driveDec = 0.f;
     std::atomic<int> soloMask{0};
+    // 0..1: hard vacuum (Chapter 6, outside): sound has nothing to travel through. Enemy and world
+    // sounds more than an arm's length off come thin and dull, as if felt through the floor;
+    // tells and must-hear cues are untouched (they are how you stay alive), and so are your own.
+    std::atomic<float> vacuum{0.f};
     uint32_t births = 0;
     float focusWant = 0.f, focusNow = 0.f, crowdNow = 1.f;   // audio thread (THE CROWD)
     std::vector<float> bankRate;   // per bank entry: its source rate (0 = the device's)
@@ -414,10 +419,17 @@ private:
         }
         // a floored cue also sounds no further off than where its floor takes over
         float audible = v.floor > 0.f ? std::min(dist, REF_DIST / v.floor) : dist;
+        float vac = 0.f;
+        if ((v.group == SoundGroup::ENEMY || v.group == SoundGroup::WORLD) && v.role != SoundRole::TELL && v.floor <= 0.f && !v.unducked) {
+            const float far = std::clamp((dist - 2.5f) / 6.f, 0.f, 1.f);   // what you touch you still hear
+            vac = vacuum.load(std::memory_order_relaxed) * far;
+            g *= 1.f - 0.55f * vac;
+        }
         float th = (pan + 1.f) * 0.78539816f;   // 0 (hard left) .. pi/2 (hard right)
         L = g * std::min(1.f, 1.41421356f * std::cos(th));
         R = g * std::min(1.f, 1.41421356f * std::sin(th));
         float fc = 18000.f * std::pow(2500.f / 18000.f, std::min(audible, MAX_DIST) / MAX_DIST) * (1.f - 0.5f * behind);
+        if (vac > 0.f) fc = fc + (std::min(fc, 520.f) - fc) * vac;   // through the floor, not the air
         fc = std::min(std::min(fc, focusCut), 0.45f * rate);
         lp = 1.f - std::exp(-6.2831853f * fc / rate);
     }

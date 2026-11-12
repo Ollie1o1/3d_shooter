@@ -79,7 +79,7 @@ inline void GameplayState::gatherRing(std::vector<BoxInstance>& out) {
     const float ball = (float)meshlib::lumpBall();
     const glm::vec3 eye = player.camera.position;
     for (const Mover& m : level.movers) {
-        if (m.look != 1) continue;
+        if (m.look != 1 || m.gone) continue;
         AABB bx = level.walls[m.wall].box;
         bx.min -= m.delta * (1.f - renderAlpha); bx.max -= m.delta * (1.f - renderAlpha);
         const glm::vec3 c = (bx.min + bx.max) * 0.5f, sz = bx.max - bx.min;

@@ -101,6 +101,26 @@ int main() {
     std::vector<float> mix(4410 * 2, .15f);
     mixer.render(mix.data(), 4410);
     check(mixer.isPlaying(h) && mixer.duckLevel() < .53f, "heavy parry survives while the background dips 6 dB");
+    {   // Chapter 6's vacuum: far enemy sounds go thin and dull; tells, what you touch and your own don't
+        auto clip = wav("assets/sfx/impact.wav");
+        auto energy = [&](float vac, float dist, SoundRole role, SoundGroup group) {
+            SfxMixer m(44100.f, 1234u); m.addSound("impact", clip);
+            m.setListener({0, 0, 0}, {1, 0, 0}, {0, 0, -1});
+            m.setVacuum(vac);
+            SfxMixer::Opts q; q.group = group; q.positional = true; q.pos = {0, 0, -dist}; q.role = role;
+            m.play("impact", q);
+            std::vector<float> out(8192 * 2, 0.f); double e = 0;
+            for (int k = 0; k < 4; ++k) { std::fill(out.begin(), out.end(), 0.f); m.render(out.data(), 8192); for (float f : out) e += (double)f * f; }
+            return e;
+        };
+        const double farAir = energy(0, 25, SoundRole::ACTION, SoundGroup::ENEMY), farVac = energy(1, 25, SoundRole::ACTION, SoundGroup::ENEMY);
+        const double tellAir = energy(0, 25, SoundRole::TELL, SoundGroup::ENEMY), tellVac = energy(1, 25, SoundRole::TELL, SoundGroup::ENEMY);
+        const double nearAir = energy(0, 1.5f, SoundRole::ACTION, SoundGroup::WORLD), nearVac = energy(1, 1.5f, SoundRole::ACTION, SoundGroup::WORLD);
+        const double youAir = energy(0, 25, SoundRole::ACTION, SoundGroup::PLAYER), youVac = energy(1, 25, SoundRole::ACTION, SoundGroup::PLAYER);
+        check(!clip.empty() && farVac < farAir * 0.3, "vacuum: a far enemy sound comes through thin (well under a third of its energy)");
+        check(std::fabs(tellVac - tellAir) < tellAir * 1e-3 && std::fabs(nearVac - nearAir) < nearAir * 1e-3 && std::fabs(youVac - youAir) < youAir * 1e-3,
+              "vacuum: tells, sounds within reach and your own are untouched");
+    }
     // Exercise device rates, small callbacks, and all live transitions over multiple phrases.
     bool stable = true, clock = true;
     for (float sr : {22050.f, 44100.f, 48000.f}) {

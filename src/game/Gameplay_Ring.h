@@ -20,10 +20,11 @@ inline bool GameplayState::sweepOn() const { return ring() || g_devSweep > 0; }
 // A fresh start (a new run, a retry): shelters whole, the first sweep soon
 inline void GameplayState::armSweep() {
     sweep.reset(); sweepArmed = true; sweepCount = 0; sweepTickAt = -1; sweepSwept = 0;
+    ringGone = ringShort = 0; ringCountT = -1.f;
     sweepShelters.clear();
     if (ring()) {
         sweepShelters = level.sweepShelters;
-        for (auto& m : level.movers) if (m.path == Mover::Path::DRIVEN) m.drive = 0.f;   // loose shelters back where they were
+        for (auto& m : level.movers) if (m.path == Mover::Path::DRIVEN) { m.drive = 0.f; m.gone = false; }   // loose shelters back where they were, whole
     } else   // dev, anywhere: anything tall enough to stand behind
         for (const auto& w : level.walls) {
             const glm::vec3 size = w.box.max - w.box.min;
@@ -73,6 +74,7 @@ inline void GameplayState::tickSweep(float dt) {
     if (g_devOverlay == "sweepnow" && !sweep.active() && elapsedTime > 0.5f && sweepCount == 0) {   // dev: one mid-count, for screenshots
         SweepSpec s = nextSweep(); s.flashLead = 0.f; s.warning = 6.f; sweep.start(s); ++sweepCount;
     }
+    if (ringCountT >= 0.f && (ringCountT -= dt) < 0.f) ringCountT = -1.f;
     if (!sweep.active()) return;
     const glm::vec3 dir = sweep.spec.dir;
     auto ev = sweep.update(dt, player.position, sweepShelters);
@@ -93,6 +95,9 @@ inline void GameplayState::tickSweep(float dt) {
         const AABB& b = sweepShelters[i].box; const glm::vec3 c = (b.min + b.max) * 0.5f;
         fx.spawnBurst(c, SWEEP_ICE, 40, 12.f, 0.9f, 6.f);
         audio.playAt("ab_shatter", c, 128, SoundGroup::WORLD, true, 0.8f);
+        // ...and it is gone: no box to stand behind, on or in. (Only movers can be small: a fixed
+        // wall is baked into the world mesh and the collision grid, so a breakable one is a DRIVEN mover.)
+        if (const int m = sweepShelters[i].mover; m >= 0 && m < (int)level.movers.size()) level.movers[m].gone = true;
     }
     // Enemies in the open go with it
     for (auto& e : enemies) {
@@ -117,6 +122,8 @@ inline void GameplayState::tickSweep(float dt) {
             if (damagePlayer(1e6f, player.camera.position - dir * 10.f, 0.6f, 0.08f, 0.f, {EnemyType::COUNT, DamageKind::SWEEP})) {
                 holdfast.cut();
                 player.velocity = dir * 46.f + glm::vec3{0.f, 16.f, 0.f}; player.launched();   // off the ring
+                sweptT = 0.f; sweptSkip = 0.f; sweptFrom = player.camera.position; sweptDir = dir;   // (13.6: updateSweptDeath)
+                audio.duck(60.f, SWEPT_FALL + 0.3f);   // total silence
             }
         }
     }
@@ -129,7 +136,10 @@ inline void GameplayState::tickSweep(float dt) {
     if (ev.ended && !playerDead) {
         char line[64];
         if (sweepSwept > 0) { snprintf(line, sizeof(line), "SWEPT x%d", sweepSwept); ui.feed(line, SWEEP_ICE); }
-        ui.feed(sweepSwept > 0 ? "COUNT SHORT" : "COUNT: ONE EXTRA", {0.75f, 0.72f, 0.65f});   // (section 13.2: the Shepherd counts)
+        if (sweep.lethal()) {   // the Shepherd counts (13.2): where the countdown was, for a few seconds
+            ring::countLine(ringCountLine, sizeof(ringCountLine), ring::DISPATCHED + 1 - ringGone, ringShort);
+            ringCountT = 6.f; ringShort = 0;
+        }
     }
 }
 
@@ -154,7 +164,7 @@ inline void GameplayState::beginRing() {
     wakeSeen = true;
     if (director.arena >= 2) holdfastFound = true;   // (a checkpoint past I2: it is yours)
     holdfast.reset(); armSweep();
-    ringLevelSeen = -1; ringScriptT = -1.f;
+    ringLevelSeen = -1; ringScriptT = -1.f; ringAir = -1;
     if (g_devRingTest) ringLevelSeen = 99;
     player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0}; prevCamPos = player.camera.position;
 }
@@ -166,6 +176,15 @@ inline void GameplayState::updateRing(float dt) {
         player.position = g_devCamPos - glm::vec3{0.f, player.eyeHeight, 0.f}; player.velocity = glm::vec3{0.f};
         player.camera.yaw = g_devCamYaw; player.camera.pitch = g_devCamPitch;
         player.camera.position = g_devCamPos; prevCamPos = g_devCamPos;
+    }
+    {   // The sound (design 9, 13.1): vacuum outside, air and a room's echo inside the hull
+        const int air = ringQuiet() ? 1 : 0;
+        if (air != ringAir) {
+            if (air && ringAir == 0) audio.play("barrier", 60, SoundGroup::UI, true);   // the air coming back
+            ringAir = air;
+            audio.setVacuum(air ? 0.f : 1.f);
+            audio.setSpace(air ? ReverbSpace::METAL : ReverbSpace::OPEN);
+        }
     }
     const glm::vec3 p = player.position;
     const int at = level.arenaAt(p);
@@ -259,10 +278,49 @@ inline void GameplayState::gatherSweep(std::vector<BoxInstance>& out) {
     }
 }
 
+// The swept death (13.6). First person: the ring drops away, tumbling, and in two seconds it is a
+// line of light across the giant. Silent. Hold Jump to go straight to the death screen. Runs on the
+// frame (the dead don't tick), so it is written as a function of time, not a simulation.
+inline void GameplayState::updateSweptDeath(float dt) {
+    if (!sweptFalling()) return;
+    static Uint8 bound[SDL_NUM_SCANCODES];
+    binds().remap(SDL_GetKeyboardState(nullptr), g_devNoMouse ? 0 : SDL_GetMouseState(nullptr, nullptr), bound);
+    const Uint8* keys = g_devNoMouse ? g_devKeys : bound;   // (screenshot runs: the real keyboard doesn't reach the game)
+    sweptSkip = keys[SDL_SCANCODE_SPACE] ? sweptSkip + dt : 0.f;
+    sweptT += dt;
+    if (sweptSkip > 0.25f) sweptT = SWEPT_FALL;
+    const float t = std::min(sweptT, SWEPT_FALL);
+    const float d = 40.f * (std::exp(2.1f * t) - 1.f);   // ~4 km in 2.2 s (inside the far plane): fast, and faster
+    player.camera.position = sweptFrom + sweptDir * d * 0.75f + glm::vec3{0.f, d * 0.55f + 6.f * t, 0.f};
+    prevCamPos = player.camera.position;
+    // Facing back at the ring, turning over: the yaw wheels, the pitch rocks down at it
+    const float back = glm::degrees(std::atan2(-sweptDir.z, -sweptDir.x));
+    player.camera.yaw = back + 150.f * t + 30.f * std::sin(2.7f * t);
+    player.camera.pitch = glm::clamp(-20.f - 40.f * t / SWEPT_FALL + 28.f * std::sin(3.1f * t), -85.f, 85.f);
+    if (sweptT >= SWEPT_FALL) deadTimer = 0.f;   // the death screen starts its own clock from here
+}
+
+inline void GameplayState::renderSweptDeath() {
+    if (!sweptFalling()) return;
+    ui.begin2D();
+    const std::string skip = "HOLD " + binds().label(Act::JUMP) + " TO SKIP";
+    ui.ui.text(skip.c_str(), SCREEN_W / 2, SCREEN_H - 24, 1, {0.75f, 0.72f, 0.65f, 0.6f}, true);
+    ui.end2D();
+}
+
 // Top left, red, never flashing: the seconds until the wall reaches where you stand
 inline void GameplayState::renderSweepCountdown() {
     if (!sweepOn() || playerDead || victory) return;
     const float c = sweep.countdown(player.position);
+    if (c < 0.f && ringCountT > 0.f) {   // after it: the count, small, on the same plate, fading out
+        const float a = std::min(1.f, ringCountT / 1.5f);
+        const float w = 20.f + ui.ui.textWidth(ringCountLine, 2);
+        ui.begin2D();
+        ui.ui.rect(14, 40, w, 30, {0.f, 0.f, 0.f, 0.72f * a});
+        ui.ui.text(ringCountLine, 24, 48, 2, {0.86f, 0.82f, 0.72f, a});
+        ui.end2D();
+        return;
+    }
     if (c < 0.f) return;
     char num[16];
     if (c >= 3.f) snprintf(num, sizeof(num), "%d", (int)std::ceil(c));   // whole seconds, then tenths for the last three
