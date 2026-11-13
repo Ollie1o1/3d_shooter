@@ -212,7 +212,7 @@ public:
     void handleGuideEvent(const SDL_Event& e);
     void renderGuide();
     void renderTraining();
-    int storyChapterRequest=0;
+    int storyChapterRequest=0, storyLoadWait=0;
     StorySave resumedStory;
     bool resumingStory = false;
     unsigned storyTerminalsSeen = 0;

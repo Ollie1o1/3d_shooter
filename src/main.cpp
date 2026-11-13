@@ -59,6 +59,7 @@ struct App {
     int viewerGun = 0;                    // --viewer [gun]: which gun the viewer opens on
     int viewerEnemy = -1;                 // --viewer husk: an enemy instead (EnemyViewer.h)
     NextState pending = NextState::Menu;
+    int loadWaitFrames = 0;   // frames spent fading the sound out before a load
     GameMode  mode    = GameMode::ARENA;   // which game the next Game state runs
 
     // --shot N FILE: render N frames of gameplay, save the last one as a BMP and
@@ -452,12 +453,18 @@ struct App {
         if (frameDt > 0.25f) frameDt = 0.25f; // clamp huge stalls (breakpoints, window drag)
         if (g_fixedDt > 0.0) frameDt = (float)g_fixedDt;
 
-        if (pending != NextState::None) {
-            frametimer::Scope ftLoad(frametimer::LOAD);
-            applyPendingState();
-            lastCounter = SDL_GetPerformanceCounter(); // don't bill load time to the first frame
+        if (pending != NextState::None) {   // a load: fade the sound out first (~60 ms), so the stall is silence, not a glitch
+            if (loadWaitFrames == 0) audio.loadFade(true);
+            if (audio.loadFaded() || ++loadWaitFrames > 20) {
+                frametimer::Scope ftLoad(frametimer::LOAD);
+                applyPendingState();
+                loadWaitFrames = 0;
+                audio.resumeAfterLoad();
+                lastCounter = SDL_GetPerformanceCounter(); // don't bill load time to the first frame
+            } else if (loadWaitFrames == 0) loadWaitFrames = 1;
         }
 
+        audio.frameTick();
         frametimer::Lap ftLap;
         SDL_Event e;
         while (SDL_PollEvent(&e)) {

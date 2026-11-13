@@ -202,6 +202,9 @@ inline const GunModel* modelOf(int f) {
     return m.parts.empty() ? nullptr : &m;
 }
 inline const GunModel* model(EnemyType t) { return modelOf((int)t); }
+// Every enemy's model, now (at a level's load, in its silence): read lazily, the first of a kind to
+// appear mid-fight was a hitch, worst in a browser
+inline void preloadAll() { for (int f = 0; f < FILE_COUNT; ++f) (void)modelOf(f); }
 
 // Each joint at rest relative to its parent joint (from the file)
 inline void restLocals(const GunModel& m, glm::mat4 local[E_COUNT], int parent[E_COUNT]) {

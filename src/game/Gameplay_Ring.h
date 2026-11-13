@@ -292,7 +292,8 @@ inline void GameplayState::updateRing(float dt) {
     }
     if (shepEnterT >= 0.f) {
         shepEnterT += dt; player.velocity.x *= 0.9f; player.velocity.z *= 0.9f;
-        if (shepEnterT > 1.4f) { shepEnterT = -1.f; loadShepherd(0); return; }
+        if (shepEnterT > 1.2f) audio.loadFade(true);   // (silent before the load's stall)
+        if (shepEnterT > 1.4f && (audio.loadFaded() || shepEnterT > 1.9f)) { shepEnterT = -1.f; loadShepherd(0); audio.resumeAfterLoad(); return; }
     }
     if (storyEndT >= 0.f) { storyEndT += dt; player.velocity = {0.f, 0.f, 0.f}; if (storyEndT > 3.f) captureMouse(false); }
     if (storyTerminal >= 0 && glm::length(level.story.terminals[storyTerminal].pos - p) > 6.f) storyTerminal = -1;

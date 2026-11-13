@@ -244,13 +244,18 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
         prog = resumedStory.prog;
     }
     g_continueStory = false;
+    const auto loadT0 = std::chrono::steady_clock::now();   // (LOADLOG=1: where a level's load goes)
     level = training() ? buildTraining() : fast() ? buildGauntlet() : act2() ? buildAct2Level() : story() ? (g_storyChapter==6?(g_devRingTest?buildRingTest():g_shepherd?buildShepherd():buildRing()):g_storyChapter==5?buildCold():g_storyChapter==4?buildPlain():g_storyChapter==3?buildLab():g_storyChapter==2?buildWasteland():buildCradle()) : buildLevel();
     if (story()) armfile::load("assets/guns/unit24_arm.glb");   // UNIT 24's own hands (the menu's next run puts the gloves back)
+    enemyfile::preloadAll();   // (every enemy's model now, in the load's silence, not the first time one appears)
+    { static const bool on = std::getenv("LOADLOG") != nullptr; if (on) std::fprintf(stderr, "LOAD %-14s %7.1f ms\n", "level+arm", std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - loadT0).count()); }
     spatialGrid.build(level.walls);
     world = buildWorldMeshes(level);
+    { static const bool on = std::getenv("LOADLOG") != nullptr; if (on) std::fprintf(stderr, "LOAD %-14s %7.1f ms\n", "grid+meshes", std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - loadT0).count()); }
     bake = &sharedBake(training() ? "training" : fast() ? "fast" : act2() ? "act2" : story() ? (level.story.chapter==6?(level.story.part?"shepherd":"story6"):level.story.chapter==5?"story5":level.story.chapter==4?"story4":level.story.chapter==3?"story3":level.story.chapter==2?"story2":"story1") : "act1", level);
     applyBake();
     neonLights = buildNeonLights(level);
+    { static const bool on = std::getenv("LOADLOG") != nullptr; if (on) std::fprintf(stderr, "LOAD %-14s %7.1f ms\n", "bake+neon", std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - loadT0).count()); }
     gatherWorldEmitters(level, worldSound);
     shifts.capture(level);
     anchorsBuilt = level.anchors;   // the Penitent's anchors as built: a retry restores them
@@ -293,6 +298,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     // Chapter 4 is one arena with its fight's checkpoints inside it: a start "at" one is that checkpoint
     if (story() && g_storyChapter == 4 && !resumingStory) storyCheckpoint = std::clamp(g_startArena, 0, 8);
     enterArena(start);
+    { static const bool on = std::getenv("LOADLOG") != nullptr; if (on) std::fprintf(stderr, "LOAD %-14s %7.1f ms\n", "enterArena", std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - loadT0).count()); }
     if (resumingStory) {
         restoreStoryProgress();
         if (plain()) { gleanerFightStarted = false; beginGleaner(); }   // (the saved checkpoint is where its fight stands)
@@ -366,6 +372,7 @@ inline void GameplayState::captureMouse(bool on) {
 }
 
 inline void GameplayState::enterArena(int a) {
+    const auto eaT0 = std::chrono::steady_clock::now();
     // Every door shut; exits of the arenas already beaten unlocked. The way
     // in locks when the fight starts (ARENA_START).
     for (int d = 0; d < (int)level.doors.size(); ++d) { level.doors[d].locked = false; level.setDoorInstant(d, false); }
@@ -426,12 +433,15 @@ inline void GameplayState::enterArena(int a) {
     }
     // Splits after this section belong to a run we're redoing
     if (fast() && (int)splits.size() > a) splits.resize(a);
+    { static const bool on = std::getenv("LOADLOG") != nullptr; if (on) std::fprintf(stderr, "LOAD   %-12s %7.1f ms\n", "pre-approach", std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - eaT0).count()); }
     if (fast() || story()) director.approach(a);   // the fight starts at the section's trigger
     else director.startArena(a);
+    { static const bool on = std::getenv("LOADLOG") != nullptr; if (on) std::fprintf(stderr, "LOAD   %-12s %7.1f ms\n", "approach", std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - eaT0).count()); }
     if (g_bossRun >= 0) {
         director.startArena(a); director.wave = bossWaveOf(a); bossStartAt = -1.f;
     }   // BOSS: straight to its wave (a retry too), its clock afresh
     if (story()) { if(g_bossRun>=0)storyBossDown=false;resetStoryFactory(); beginStory();
+        { static const bool on = std::getenv("LOADLOG") != nullptr; if (on) std::fprintf(stderr, "LOAD   %-12s %7.1f ms\n", "beginStory", std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - eaT0).count()); }
         if (storyBossDown && g_bossRun < 0 && a == level.story.bossSection) {
             director.queue.clear(); director.events.clear(); director.phase = WaveDirector::Phase::CLEARED;
             if (level.arenas[a].exitDoor >= 0) level.doors[level.arenas[a].exitDoor].locked = false;
@@ -1029,7 +1039,11 @@ inline void GameplayState::updateScreenFx(float dt) {
 inline void GameplayState::update(float dt) {
     fx.setAmbientDetail(ambientDetail());   // settings take effect even while the world is paused
     marksField.setDetail(ambientDetail());
-    if(storyChapterRequest>0) {int chapter=storyChapterRequest;storyChapterRequest=0;loadStoryChapter(chapter);return;}
+    if(storyChapterRequest>0) {   // (the sound fades out first: the load is a stall)
+        audio.loadFade(true);
+        if(!audio.loadFaded()&&++storyLoadWait<20)return;
+        storyLoadWait=0;int chapter=storyChapterRequest;storyChapterRequest=0;loadStoryChapter(chapter);audio.resumeAfterLoad();return;
+    }
     if (story() && !paused && !armoryOpen && !playerDead && !victory) {
         storySaveClock += dt;
         if (storySaveClock >= 5.f) { storySaveClock = 0; saveStoryProgress(); }

@@ -40,8 +40,14 @@ public:
 
     AudioSystem() {
 #if HAS_SDL_MIXER
-        // ~12 ms requested buffer: combat transients should follow the input closely.
+        // ~12 ms requested buffer: combat transients should follow the input closely. In a browser the
+        // audio is fed from the game's own thread, so a 12 ms buffer runs dry on any hitch (a crackle, a
+        // cut): ~46 ms there
+#ifdef __EMSCRIPTEN__
+        if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0) {
+#else
         if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 512) < 0) {
+#endif
             std::cerr << "SDL_mixer init failed: " << Mix_GetError() << "\n";
             return;
         }
@@ -176,6 +182,17 @@ private:
     std::vector<float> dumpBuf;
     std::atomic<int>  dumpWritten{0};
     std::atomic<bool> dumping{false};
+    // A load ahead (a level, a menu): everything fades out first, so the stall is silence, not a glitch
+    std::atomic<float> loadTarget{1.f}, loadGainNow{1.f};
+    float loadGain = 1.f;   // (the audio thread's)
+public:
+    void loadFade(bool down) { loadTarget.store(down ? 0.f : 1.f); if (!started) loadGainNow.store(down ? 0.f : 1.f); if (down) resumeFrames = 0; }
+    // After a load: back in a few frames on (the first frames after a load are slow too: uploads, first draws)
+    void resumeAfterLoad(int frames = 4) { resumeFrames = frames; }
+    void frameTick() { if (resumeFrames > 0 && --resumeFrames == 0) loadFade(false); }
+    int resumeFrames = 0;   // (the game's thread)
+    bool loadFaded() const { return !started || loadGainNow.load() < 0.002f; }
+private:
     std::atomic<float> muffle{0.f};
     std::atomic<float> wind{0.f};
     std::atomic<float> rope{0.f};
@@ -308,6 +325,14 @@ private:
         // reached +1.27 dBTP between samples. This gain preserves the mix's
         // dynamics and cue balance; it is not a true-peak limiter.
         for (int i = 0; i < 2 * frames; ++i) a->musicBuf[i] = SfxMixer::softClip(a->musicBuf[i]) * .7f;
+        {   // the load fade (60 ms either way)
+            const float target = a->loadTarget.load(), step = 1.f / (0.06f * (float)(a->outRate > 0 ? a->outRate : 44100));
+            for (int f = 0; f < frames; ++f) {
+                a->loadGain += std::clamp(target - a->loadGain, -step, step);
+                a->musicBuf[2 * f] *= a->loadGain; a->musicBuf[2 * f + 1] *= a->loadGain;
+            }
+            a->loadGainNow.store(a->loadGain);
+        }
         const float* src = a->musicBuf.data();
         if (a->dumping.load(std::memory_order_acquire)) {
             int w = a->dumpWritten.load(std::memory_order_relaxed), cap = (int)(a->dumpBuf.size() / 2);
