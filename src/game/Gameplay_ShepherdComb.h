@@ -332,6 +332,13 @@ inline void GameplayState::shepComb(float dt) {
     }
     // ---- THE STAMPEDE ----
     if (k == 1) {
+        // Back behind the collapse (a fall, a death, a checkpoint) with the Drover still up: the plates are
+        // whole again and the chase starts over. Never a deck you can't cross
+        if (shepChase && dog && shepBreakT < 0.f && player.onGround && p.z > shepCollapseZ + 1.f && p.y > -1.f) {
+            shepChase = false; shepCollapseZ = shep::PLOUGH_N + 8.f; shepBoulders.clear();
+            for (float& f : shepSlabFall) f = -1.f;
+            ui.feed("THE PLATES SETTLE. RUN AGAIN", SWEEP_ICE * 0.7f);
+        }
         if (!shepChase && fight && p.z < shep::PLOUGH_N - 2.f) {
             shepChase = true; shepCollapseZ = shep::PLOUGH_N + 6.f;
             pushBanner("IT IS BREAKING UP", "RUN", SWEEP_RED * 0.8f, 2.5f);
@@ -340,7 +347,6 @@ inline void GameplayState::shepComb(float dt) {
         if (shepChase && shepCollapseZ > shep::KNUCKLE_S) {
             const float behind = shepCollapseZ - p.z;
             shepCollapseZ -= dt * (behind > 35.f ? COLLAPSE_CATCH : COLLAPSE_SPEED);
-            if (dog == nullptr || shepBreakT >= 0.f) shepCollapseZ -= dt * 20.f;   // (it all goes, once the herd scatters)
             if (std::fmod(gameClock, 0.05f) < dt) {   // the breaking edge: dust and plating
                 fx.spawnBurst({cosmetic::range(-shep::HALF, shep::HALF), 0.f, shepCollapseZ}, glm::vec3{0.7f, 0.65f, 0.6f}, 4, 6.f, 1.2f, -3.f);
                 shake(0.06f, 0.012f);
@@ -473,6 +479,7 @@ inline void GameplayState::shepComb(float dt) {
         }
         if (before < BREAK_LEN && shepBreakT >= BREAK_LEN) { shepTines = std::max(shepTines, k + 1); shepBreakT = -1.f; if (k == shep::TINES - 1) shepEndT = 0.f; }
     }
+    if (shepTines >= 2) { shepChase = false; for (float& f : shepSlabFall) f = -1.f; }   // (the Stampede over: its plates settle, whole: the way on stays open)
 }
 
 // The Comb drawn live: capsules in the air and on the deck (gold rings where they'll land), the

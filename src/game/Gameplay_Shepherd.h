@@ -42,7 +42,7 @@ constexpr float PHASES = 5.f;
 // THE TURN
 constexpr float TURN_LEN = 16.f, TURN_ANGLE = 2.5f;          // the sky rolling round it (radians, about the line to it)
 constexpr float RIDGE_WARN = 6.f, RIDGE_FLASH = 1.5f;        // 6 s: a RECALL statue (8 s) planted on the flash covers it
-constexpr float VENT_OPEN = 8.f, VENT_HP = 420.f, VENT_REACH = 24.f;   // open after each wave; only hurt from close in
+constexpr float VENT_OPEN = 8.f, VENT_HP = 420.f;   // open after each wave (any range)
 // THE RESONATOR
 constexpr float HALL_WARN = 5.f, HALL_FLASH = 1.f, HALL_GAP = 9.f;   // its blasts down the hall (the gap grows ragged as forks go)
 constexpr float FORK_RING = 6.5f;                                    // after a blast the forks ring this long: their cores open
@@ -434,11 +434,6 @@ inline bool GameplayState::shootVent(glm::vec3 from, glm::vec3 dir, float& dista
         if (shepVentOpenT <= 0.f) {
             fx.spawnHitSparks(at, glm::vec3{0.8f});
             if (shepVentMsgT <= 0.f) { shepVentMsgT = 2.f; ui.feed("SHUT: IT OPENS AFTER A WAVE", glm::vec3{0.75f}); }
-            return true;
-        }
-        if (t > VENT_REACH) {
-            fx.spawnHitSparks(at, glm::vec3{0.8f, 0.6f, 0.3f});
-            if (shepVentMsgT <= 0.f) { shepVentMsgT = 2.f; ui.feed("IT GLANCES OFF: GET IN CLOSE", glm::vec3{2.4f, 1.3f, 0.35f} * 0.5f); }
             return true;
         }
         shepVentHp[v] -= dmg; shepherdDamageT = 0.3f;

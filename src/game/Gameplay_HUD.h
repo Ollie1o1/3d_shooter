@@ -125,7 +125,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             }
             else if(shepherd()&&shepTines>=shep::TINES) {   // THE TURN: one step at a time, with the count
                 static char ridge[96];
-                const char* step=shepTurnT>=0.f?"IT IS TURNING":sweep.active()?"WAVE COMING: GET BEHIND A BLOCK BY ITS LIT POST":shepVentOpenT>0.f?"VENTS OPEN: RUN IN, SHOOT ONE FROM CLOSE":"SHUT: THEY OPEN AFTER THE NEXT WAVE";
+                const char* step=shepTurnT>=0.f?"IT IS TURNING":sweep.active()?"WAVE COMING: GET BEHIND A BLOCK BY ITS LIT POST":shepVentOpenT>0.f?"VENTS OPEN: SHOOT THEM":"SHUT: THEY OPEN AFTER THE NEXT WAVE";
                 std::snprintf(ridge,sizeof(ridge),"VENTS %d/3  /  %s",shepVents,step);what=ridge;
             }
             else if(shepherd()) what=combObjective();   // THE COMB (Gameplay_ShepherdComb.h)
