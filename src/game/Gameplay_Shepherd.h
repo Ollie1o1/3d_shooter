@@ -88,7 +88,7 @@ inline void GameplayState::beginShepherd() {
     for (int k = 0; k < 2; ++k) shepBridgeT[k] = k < shepTines ? 99.f : -1.f;
     if (director.arena == 0 && !shepSeen) pushBanner("THE SHEPHERD", "UNIT ?  /  PURPOSE: KEEP", SWEEP_ICE * 0.7f, 4.5f);
     shepSeen = true;
-    ringLevelSeen = 99; ringScriptT = -1.f; ringAir = -1;
+    ringLevelSeen = 99; ringScriptT = -1.f; ringAir = -1; ringLeeHint = true;   // (its own hint: ITS AIM)
     player.camera.position = player.position + glm::vec3{0, player.eyeHeight, 0}; prevCamPos = player.camera.position;
 }
 

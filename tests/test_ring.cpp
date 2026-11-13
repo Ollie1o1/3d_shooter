@@ -482,7 +482,9 @@ int main() {
         StorySave a; a.chapter = 6; a.checkpoint = 8; a.owned = 15; a.grapple = true;
         StorySave b; const bool ok = b.parse(a.text());
         CHECK(ok && b.chapter == 6 && b.checkpoint == 8, "a chapter 6 save, on the Wake, loads");
-        StorySave c = a; c.checkpoint = 10; StorySave d;
+        StorySave g = a; g.checkpoint = 12; StorySave h;
+        CHECK(h.parse(g.text()) && h.checkpoint == 12, "a chapter 6 save on the Shepherd (checkpoints from 10: its own level) loads");
+        StorySave c = a; c.checkpoint = 20; StorySave d;
         CHECK(!d.parse(c.text()), "a chapter 6 save past its last checkpoint does not");
         CHECK((int)buildRing().arenas.size() == 10, "chapter 6 has ten checkpoints (0..9, the Shore last), as the save allows");
         StorySave e = a; e.checkpoint = 9; StorySave f;
