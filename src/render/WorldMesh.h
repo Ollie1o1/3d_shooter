@@ -72,6 +72,7 @@ struct WorldMeshes {
     WorldChunked byTex[TEX_COUNT];
     WorldChunked neon;
     std::vector<AABB> chunkBox;   // every chunk's bounds (its triangles'), for the view test
+    std::vector<uint8_t> chunkLod; // what the chunk holds (WorldGeometry::lod): 0 always drawn, 1 near, 2 far
     ContactMesh contact;
 };
 
@@ -80,16 +81,17 @@ constexpr float CHUNK = 48.f;
 
 // Group a batch's triangles by chunk (by their middle), in chunk order; grow each chunk's box over them
 inline void sortBatch(const std::vector<Vertex>& V, std::vector<unsigned int>& I, std::vector<WorldChunked::Run>& runs,
-                      std::map<long long, int>& ids, std::vector<AABB>& boxes) {
+                      std::map<long long, int>& ids, std::vector<AABB>& boxes, const std::vector<uint8_t>& lod, std::vector<uint8_t>& boxLod) {
     const size_t tris = I.size() / 3;
     std::vector<std::pair<int, unsigned int>> order(tris);   // (chunk, triangle)
     for (size_t t = 0; t < tris; ++t) {
         const glm::vec3 a = V[I[t * 3]].position, b = V[I[t * 3 + 1]].position, c = V[I[t * 3 + 2]].position;
         const glm::vec3 mid = (a + b + c) / 3.f;
         const long long cx = (long long)std::floor(mid.x / CHUNK), cy = (long long)std::floor(mid.y / CHUNK), cz = (long long)std::floor(mid.z / CHUNK);
-        const long long key = ((cz + 100000) * 200000LL + (cx + 100000)) * 4096LL + (cy + 2048);   // (row by row in Z, then X: neighbours sit together)
+        const uint8_t l = t < lod.size() ? lod[t] : 0;
+        const long long key = (((cz + 100000) * 200000LL + (cx + 100000)) * 4096LL + (cy + 2048)) * 4 + l;   // (row by row in Z, then X: neighbours sit together; a model's near and far versions apart)
         auto it = ids.find(key);
-        if (it == ids.end()) { it = ids.emplace(key, (int)boxes.size()).first; boxes.push_back({glm::vec3{1e9f}, glm::vec3{-1e9f}}); }
+        if (it == ids.end()) { it = ids.emplace(key, (int)boxes.size()).first; boxes.push_back({glm::vec3{1e9f}, glm::vec3{-1e9f}}); boxLod.push_back(l); }
         AABB& box = boxes[it->second];
         box.min = glm::min(box.min, glm::min(a, glm::min(b, c)));
         box.max = glm::max(box.max, glm::max(a, glm::max(b, c)));
@@ -109,15 +111,25 @@ inline void sortBatch(const std::vector<Vertex>& V, std::vector<unsigned int>& I
 // The six planes of the view (each: normal xyz, offset w; inside is >= 0)
 using Frustum = ViewFrustum;
 
-// The chunks in view, nearest first
-inline void inViewOrder(const std::vector<AABB>& boxes, const glm::mat4& viewProj, glm::vec3 eye, bool all, std::vector<int>& out) {
+// How near a model's chunk must be to draw its full mesh (past it, its stand-in: WorldGeometry farVersion)
+inline float& lodDistance() { static float d = 120.f; return d; }
+
+// The chunks in view, nearest first; of a model's two versions, the one for how far its chunk is
+inline void inViewOrder(const std::vector<AABB>& boxes, const glm::mat4& viewProj, glm::vec3 eye, bool all, std::vector<int>& out,
+                        const std::vector<uint8_t>* lods = nullptr) {
     static std::vector<std::pair<float, int>> near;
     near.clear();
     const Frustum fr(viewProj);
+    const float far2 = lodDistance() * lodDistance();
     for (int c = 0; c < (int)boxes.size(); ++c) {
         if (!all && !fr.sees(boxes[c])) continue;
         const glm::vec3 d = glm::max(glm::max(boxes[c].min - eye, eye - boxes[c].max), glm::vec3{0.f});   // (to its nearest point)
-        near.push_back({glm::dot(d, d), c});
+        const float d2 = glm::dot(d, d);
+        if (lods && c < (int)lods->size()) {
+            const uint8_t l = (*lods)[c];
+            if ((l == 1 && d2 > far2) || (l == 2 && d2 <= far2)) continue;
+        }
+        near.push_back({d2, c});
     }
     std::sort(near.begin(), near.end());
     out.clear();
@@ -147,10 +159,10 @@ static WorldMeshes buildWorldMeshes(const LevelData& L) {
     WorldMeshes m;
     std::map<long long, int> ids;
     for (int t = 0; t < TEX_COUNT; ++t) {
-        worldchunk::sortBatch(G.V[t], G.I[t], m.byTex[t].runs, ids, m.chunkBox);
+        worldchunk::sortBatch(G.V[t], G.I[t], m.byTex[t].runs, ids, m.chunkBox, G.lod[t], m.chunkLod);
         m.byTex[t].mesh.upload(G.V[t], G.I[t]);
     }
-    worldchunk::sortBatch(G.nV, G.nI, m.neon.runs, ids, m.chunkBox);
+    worldchunk::sortBatch(G.nV, G.nI, m.neon.runs, ids, m.chunkBox, G.nLod, m.chunkLod);
     m.neon.mesh.upload(G.nV, G.nI);
     auto index = [&](WorldChunked& w) {
         w.runOf.assign(m.chunkBox.size(), -1);

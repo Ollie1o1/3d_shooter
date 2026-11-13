@@ -40,7 +40,9 @@ uniform float uRingBolt;    // 0..1: lightning in its night side, now (the game 
 uniform vec2  uRingBoltAt;  // where in the cloud (longitude, latitude offsets)
 uniform float uRingDawn;    // 0..1: the sunrise out of the Shadow Band: a red arc on its edge, then the diamond
 uniform float uRingSwept;   // seconds since a sweep threw the swept off the ring (<0: none lately): they burn up across the giant (13.3)
-uniform float uRingBend;    // 0..1: the main rings opening into an arch over you as you near the Shepherd (its pull bends your ringlet under them)
+uniform float uRingBend;
+uniform sampler2D uRingGiant;   // the giant's cloud tops, painted once (render/RingDetail.h): x longitude, y latitude angle
+uniform sampler2D uRingGalaxy;  // the galaxy's dust: x azimuth, y height    // 0..1: the main rings opening into an arch over you as you near the Shepherd (its pull bends your ringlet under them)
 
 float hash3(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
 float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -317,7 +319,7 @@ vec3 ringStars(vec3 dir, float k) {
     // The galaxy: a dusty band, brighter and warmer at its core
     float band = exp(-pow((dir.y * 0.7 + dir.x * 0.45 - dir.z * 0.55 + 0.1) * 2.6, 2.0));
     float az = atan(dir.z, dir.x);
-    float n = fbm(vec2(az * 5.0, dir.y * 7.0));
+    float n = textureLod(uRingGalaxy, vec2(az / 6.28318531 + 0.5, dir.y * 0.5 + 0.5), 0.0).r;   // (painted once: render/RingDetail.h)
     col += mix(vec3(0.03, 0.035, 0.06), vec3(0.09, 0.07, 0.05), n) * band * n * 1.4 * k;
     col += vec3(0.5, 0.5, 0.6) * step(0.9993, hash3(floor(dir * 1400.0))) * band * k;   // its fine stars
     return col;
@@ -412,23 +414,9 @@ vec3 ringSky(vec3 dir) {
         float lon = atan(nrm.z, nrm.x);
         // The belts drift, each at its own pace (the equator fastest), and curl where they meet
         float lonA = lon + uTime * 0.0035 * (1.0 + 0.9 * sin(lat * 23.0) + 0.6 * (1.0 - abs(lat)));
-        vec2 bp = vec2(lonA * 3.0, lat * 15.0);
-        vec2 w = vec2(fbm(bp * 1.3 + vec2(0.0, uTime * 0.002)), fbm(bp * 1.3 + 5.2));
-        float swirl = fbm(bp + 1.7 * w);
-        float swirl2 = fbm(vec2(lonA * 11.0, lat * 46.0) + 2.2 * w);
-        float bandsP = 0.5 + 0.5 * sin(lat * 34.0 + swirl * 4.5 + swirl2 * 1.4);
-        float belts = 0.5 + 0.5 * sin(lat * 11.0 + 0.8 + swirl * 0.8);
-        float hair = 0.5 + 0.5 * sin(lat * 130.0 + swirl2 * 6.0);   // fine lanes inside the belts
-        vec3 butter = vec3(0.92, 0.8, 0.56), tan_ = vec3(0.66, 0.5, 0.33), cream = vec3(0.97, 0.93, 0.82), rust = vec3(0.52, 0.32, 0.2);
-        vec3 surf = mix(tan_, butter, bandsP);
-        surf = mix(surf, cream, smoothstep(0.55, 0.9, belts) * 0.55);
-        surf = mix(surf, rust, smoothstep(0.6, 0.8, swirl2) * 0.4 * smoothstep(0.1, 0.3, abs(lat)));
-        surf *= 0.9 + 0.12 * hair;
-        // A storm: a pale oval in the northern belts, turning, with a dark wake
-        vec2 so = vec2((lonA - 2.95) * 3.2, (lat - 0.32) * 7.0);
-        float storm = smoothstep(1.0, 0.3, length(so));
-        surf = mix(surf, vec3(1.0, 0.94, 0.8), storm * (0.5 + 0.2 * sin(atan(so.y, so.x) * 3.0 + length(so) * 9.0 - uTime * 0.3)));
-        surf *= 1.0 - 0.25 * smoothstep(1.6, 1.0, length(so - vec2(1.3, 0.0))) * (1.0 - storm);
+        // The belts, their curls, the fine lanes, the storm and its wake: painted once (they barely change),
+        // read here. Each latitude reads at its own drift, so the belts still slide past each other
+        vec3 surf = textureLod(uRingGiant, vec2(lonA / 6.28318531 + 0.5, asin(clamp(lat, -1.0, 1.0)) / 3.14159265 + 0.5), 0.0).rgb;
         // The pole: a six-sided jet stream round a blue-grey cap
         if (lat > 0.7) {
             vec2 pp = nrm.xz / lat;

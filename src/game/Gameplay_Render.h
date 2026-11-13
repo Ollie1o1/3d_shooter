@@ -727,12 +727,21 @@ inline void GameplayState::render() {
     worldShader.setFloat("uBakeDebug", baked && g_devOverlay == "bake" ? 1.f : 0.f);   // (--overlay bake: what's baked, as colour)
     worldShader.setFloat("uGlowOn", baked && !devSkip("glow") && (settings ? settings->lighting : GameSettings::LIGHTING_DEFAULT) >= 1 ? 1.f : 0.f);   // (--skip glow: without the glow light and bounce)
     worldShader.setInt("uNormalMap", 1);
+    if (ring()) ringTextures();   // (made at the level's start: beginRing)
+    if (ring()) {
+        glActiveTexture(GL_TEXTURE5); glBindTexture(GL_TEXTURE_2D, ringDetailTex[0]);
+        glActiveTexture(GL_TEXTURE6); glBindTexture(GL_TEXTURE_2D, ringDetailTex[1]);
+        glActiveTexture(GL_TEXTURE0);
+    }
+    worldShader.setInt("uRingGround", 5);
+    worldShader.setInt("uRingRock", 6);
     const int lightingLevel = settings ? settings->lighting : GameSettings::LIGHTING_DEFAULT;   // (Settings: LIGHTING)
     const bool bumpOn = lightingLevel >= 2 && !devSkip("bump");   // (--skip bump: the flat faces, to compare)
     // Which chunks of the world are in view, nearest first (WorldMesh.h): only those are drawn
     // (--skip cull: every chunk, to compare)
     static std::vector<int> inView;
-    worldchunk::inViewOrder(world.chunkBox, proj * view, renderCamPos, devSkip("cull"), inView);
+    worldchunk::lodDistance() = devSkip("lod") ? 1e9f : 120.f;   // (--skip lod: every model at full detail, to compare)
+    worldchunk::inViewOrder(world.chunkBox, proj * view, renderCamPos, devSkip("cull"), inView, &world.chunkLod);
     const bool worldHidden = devSkip("world") || labAshSky();
     for (int t = 0; t < TEX_COUNT && !worldHidden; ++t) {
         if (world.byTex[t].empty()) continue;
@@ -843,6 +852,12 @@ inline void GameplayState::render() {
         skyboxShader.setFloat("uRingNight", ring() ? ringNight() : 0.f);
         skyboxShader.setFloat("uRingBolt", ring() ? ringBolt : 0.f);
         skyboxShader.setVec2("uRingBoltAt", ringBoltAt);
+        if (ring()) ringTextures();
+        glActiveTexture(GL_TEXTURE7); glBindTexture(GL_TEXTURE_2D, ringSkyTex[0]);
+        glActiveTexture(GL_TEXTURE8); glBindTexture(GL_TEXTURE_2D, ringSkyTex[1]);
+        glActiveTexture(GL_TEXTURE0);
+        skyboxShader.setInt("uRingGiant", 7);
+        skyboxShader.setInt("uRingGalaxy", 8);
         skyboxShader.setFloat("uRingSwept", ring() ? ringSweptAgo : -1.f);
         skyboxShader.setFloat("uRingBend", ring() && !g_devRingTest ? ring::ringBend(player.position.z) : 0.f);
         skyboxShader.setFloat("uRingDawn", ring() && ringSunT >= 0.f ? glm::clamp(ringSunT / shadowband::DIAMOND, 0.f, 1.f) * ringDark() : 0.f);

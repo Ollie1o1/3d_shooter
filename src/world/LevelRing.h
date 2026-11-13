@@ -1256,7 +1256,7 @@ inline LevelData buildRing() {
     land.waveBreak = 2.5f; land.maxAlive = 7;
     l.arenas.push_back(land);
     // 1. The Drift, as far as I2 and HOLDFAST
-    Arena d1 = section("THE DRIFT", "61,000 KM", ring::DRIFT_MID, ring::LAND_N, {0.f, 0.f, -160.f});
+    Arena d1 = section("THE DRIFT", "61,000 KM", ring::DRIFT_MID, ring::LAND_N, {4.f, 0.f, -158.f})   /* (beside the pier-end post, not behind it) */;
     d1.voidY = ring::VOID_Y; d1.ambient = Ambient::SPECKS;
     l.arenas.push_back(d1);
     // 2. The Drift beyond: the fight island

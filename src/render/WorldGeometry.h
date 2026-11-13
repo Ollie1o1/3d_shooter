@@ -8,6 +8,8 @@
 #include "core/Vertex.h"
 #include "render/PropFile.h"
 #include <vector>
+#include <map>
+#include <array>
 #include <algorithm>
 #include <cmath>
 
@@ -109,6 +111,9 @@ struct ContactVert { glm::vec3 pos; glm::vec4 rect; glm::vec2 strengthReach; };
 struct WorldGeometry {
     std::vector<Vertex> V[TEX_COUNT], nV;
     std::vector<unsigned int> I[TEX_COUNT], nI;
+    // Each triangle's level of detail (WorldMesh.h draws by distance): 0 always, 1 a model's full mesh
+    // (drawn near), 2 its stand-in (drawn far). Only placed models have two; the rest is 0
+    std::vector<uint8_t> lod[TEX_COUNT], nLod;
     std::vector<ContactVert> contact;   // triangles
 };
 
@@ -152,6 +157,38 @@ inline float sideShade(float h, float span, bool grounded) {
     float c = std::clamp(h / 0.9f, 0.f, 1.f);
     c = c * c * (3.f - 2.f * c);
     return overall * (0.45f + 0.55f * c);
+}
+
+// A model's stand-in for the distance: its own triangles with the vertices snapped to a coarse grid
+// (cells a seventh of its size) and the triangles that collapse dropped. The silhouette and the colours
+// stay; most of the triangles go (a dispatch capsule: ~960 to ~100). Made once per prop, in its own space
+struct FarTri { glm::vec3 a, b, c, col; bool glows; int tex; };
+inline const std::vector<FarTri>& farVersion(const propfile::Prop& pr) {
+    static std::map<const propfile::Prop*, std::vector<FarTri>> cache;
+    auto it = cache.find(&pr);
+    if (it != cache.end()) return it->second;
+    std::vector<FarTri> all;
+    propfile::forEachTri(pr, glm::mat4(1.f), [&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3, glm::vec3, glm::vec3, glm::vec3 col, bool glows, int tex) {
+        all.push_back({a, b, c, col, glows, tex});
+    });
+    glm::vec3 lo(1e30f), hi(-1e30f);
+    for (const FarTri& t : all) for (glm::vec3 p : {t.a, t.b, t.c}) { lo = glm::min(lo, p); hi = glm::max(hi, p); }
+    const float cell = std::max(1e-3f, std::max({hi.x - lo.x, hi.y - lo.y, hi.z - lo.z}) / 7.f);
+    auto key = [&](glm::vec3 p) { const glm::ivec3 q = glm::ivec3(glm::floor((p - lo) / cell)); return ((long long)q.x * 64 + q.y) * 64 + q.z; };
+    std::map<long long, std::pair<glm::vec3, int>> sum;   // each cell's vertices' mean: where they all go
+    for (const FarTri& t : all) for (glm::vec3 p : {t.a, t.b, t.c}) { auto& s = sum[key(p)]; s.first += p; ++s.second; }
+    auto snap = [&](glm::vec3 p) { const auto& s = sum[key(p)]; return s.first / (float)s.second; };
+    std::vector<FarTri> out;
+    std::map<std::array<long long, 3>, int> seen;
+    for (const FarTri& t : all) {
+        std::array<long long, 3> k{key(t.a), key(t.b), key(t.c)};
+        if (k[0] == k[1] || k[1] == k[2] || k[0] == k[2]) continue;   // (collapsed)
+        std::array<long long, 3> s = k; std::sort(s.begin(), s.end());
+        if (seen[s]++) continue;                                        // (one triangle per three cells)
+        out.push_back({snap(t.a), snap(t.b), snap(t.c), t.col, t.glows, t.tex});
+    }
+    if (out.empty()) out = all;
+    return cache.emplace(&pr, std::move(out)).first->second;
 }
 
 inline WorldGeometry buildWorldGeometry(const LevelData& L) {
@@ -304,8 +341,8 @@ inline WorldGeometry buildWorldGeometry(const LevelData& L) {
         const glm::mat4 world = propfile::placement(*pr, pm.free, pm.xf, pm.fit, pm.yaw);
         const float yLo = glm::vec3(world * glm::vec4(0.f, pr->lo.y, 0.f, 1.f)).y;
         const float ySpan = std::max(0.01f, glm::vec3(world * glm::vec4(0.f, pr->hi.y, 0.f, 1.f)).y - yLo);
-        propfile::forEachTri(*pr, world, [&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3 na, glm::vec3 nb, glm::vec3 nc,
-                                              glm::vec3 col, bool glows, int tex) {
+        uint8_t lodNow = 1;
+        auto emit = [&](glm::vec3 a, glm::vec3 b, glm::vec3 c, glm::vec3 na, glm::vec3 nb, glm::vec3 nc, glm::vec3 col, bool glows, int tex) {
             glm::vec3 fn = glm::normalize(glm::cross(b - a, c - a));
             int t = 0;
             if (!glows) { Mat m = L.drawn(tex >= 0 ? (Mat)tex : own); t = fn.y > 0.7f ? topTex(m) : fn.y < -0.7f ? TEX_METAL : sideTex(m); }
@@ -323,8 +360,21 @@ inline WorldGeometry buildWorldGeometry(const LevelData& L) {
             vv.push_back({b, uv(b), nb, shadeAt(b.y)});
             vv.push_back({c, uv(c), nc, shadeAt(c.y)});
             ii.insert(ii.end(), {base, base + 1, base + 2});
-        });
+            (glows ? G.nLod : G.lod[t]).push_back(lodNow);
+        };
+        lodNow = 1;
+        propfile::forEachTri(*pr, world, emit);
+        // ...and its stand-in, for the distance (the same colours and shading, flat-shaded)
+        lodNow = 2;
+        for (const FarTri& f : farVersion(*pr)) {
+            const glm::vec3 a = glm::vec3(world * glm::vec4(f.a, 1.f)), b = glm::vec3(world * glm::vec4(f.b, 1.f)), c = glm::vec3(world * glm::vec4(f.c, 1.f));
+            const glm::vec3 n = glm::normalize(glm::cross(b - a, c - a) + glm::vec3{1e-9f});
+            emit(a, b, c, n, n, n, f.col, f.glows, f.tex);
+        }
     }
+    // (everything else has one version: drawn at any distance)
+    for (int t = 0; t < TEX_COUNT; ++t) G.lod[t].resize(I[t].size() / 3, 0);
+    G.nLod.resize(nI.size() / 3, 0);
 
     for (auto& f : L.floors)
         pushFace(V[topTex(L.drawn(f.mat))], I[topTex(L.drawn(f.mat))], {f.x0,f.y,f.z1},{f.x1,f.y,f.z1},{f.x1,f.y,f.z0},{f.x0,f.y,f.z0},{0,1,0}, f.color, false);

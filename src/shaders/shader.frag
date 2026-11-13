@@ -78,6 +78,8 @@ vec3 macroTint(vec3 P) {
 // space. 1: the dust and ice underfoot (wind-less ripples, grains, bare ice, glints in the hard sun); 2: its rock
 // (cracks, strata, a relief, dust settled on what faces up). It fades out as a pixel covers more ground
 uniform float uRingSurf;
+uniform sampler2D uRingGround;   // its patterns, worked out once (render/RingDetail.h): mipmaps fade them with distance
+uniform sampler2D uRingRock;
 vec2 vor2(vec2 p) {
     vec2 i = floor(p), f = fract(p);
     float d1 = 8.0, d2 = 8.0;
@@ -188,44 +190,40 @@ void main()
     // Chapter 6: the ring's own surface detail (see uRingSurf)
     float ringGlint = 0.0, ringSpec = 1.0;
     vec3 glintN = vec3(0.0, 1.0, 0.0);
-    float ringPx = uRingSurf > 0.5 ? length(fwidth(FragPos)) : 1e9;
-    if (ringPx < 0.6) {   // (past where a pixel covers more than ~0.6 m, there is nothing left to see: skip it)
-        float px = ringPx;
-        float fade = 1.0 - smoothstep(0.06, 0.6, px);
+    // From two tiling textures (render/RingDetail.h), not noise per pixel: their mipmaps grade the detail
+    // by distance for nothing (far off a pixel reads the pattern's average: the plain surface). Only the
+    // glints, which need a sharp sparkle, are worked out here, and only close by
+    if (uRingSurf > 0.5) {
+        float px = length(fwidth(FragPos));
         vec3 an = abs(face);
         bool top = an.y > max(an.x, an.z);
         vec2 pp = top ? FragPos.xz : (an.x > an.z ? FragPos.zy : FragPos.xy);
         vec3 T = top ? vec3(1.0, 0.0, 0.0) : (an.x > an.z ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0));
         vec3 B = top ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
         if (uRingSurf < 1.5) {   // the ground
-            float n = fbm2(pp * 0.55), g = vnoise(pp * 9.0);
-            float ph = dot(pp, vec2(0.83, 0.55)) * 2.6 + n * 7.0;
-            float ripple = 0.5 + 0.5 * sin(ph);
-            float ice = smoothstep(0.62, 0.7, vnoise(pp * 0.07 + 40.0) * 0.7 + vnoise(pp * 0.31 + 9.0) * 0.3);   // bare ice, swept clean of dust
-            vec3 tint = (0.84 + 0.24 * n + 0.07 * ripple + 0.12 * (g - 0.5)) * vec3(1.0);
-            texColor.rgb *= mix(vec3(1.0), tint, fade);
-            texColor.rgb = mix(texColor.rgb, vec3(0.78, 0.83, 0.88) * (0.85 + 0.2 * n), ice * 0.55);
+            vec4 d = texture(uRingGround, pp / 16.0);
+            float macro = texture(uRingGround, pp / 256.0 + vec2(0.37, 0.61)).r;   // (the same pattern, sixteen times bigger: where the ice is bare)
+            float ice = smoothstep(0.7, 0.76, macro);
+            texColor.rgb *= d.r * 1.4;
+            texColor.rgb = mix(texColor.rgb, vec3(0.78, 0.83, 0.88) * (0.85 + 0.4 * (d.r - 0.6)), ice * 0.55);
             ringSpec = 1.0 + 3.0 * ice;
-            norm = normalize(norm + (T * 0.83 + B * 0.55) * cos(ph) * 0.18 * fade * (1.0 - ice));
-            // Glints: one grain in a dozen catches the sun just so (each tilted its own way)
-            vec2 cell = floor(pp / 0.09);
-            if (hash12(cell) > 0.9 - 0.06 * ice) {
+            norm = normalize(norm + (T * (d.g - 0.5) + B * (d.b - 0.5)) * 0.36 * (1.0 - ice));
+            vec2 cell = floor(pp / 0.09);   // glints: one grain in a dozen catches the sun just so
+            if (px < 0.08 && hash12(cell) > 0.9 - 0.06 * ice) {
                 glintN = normalize(vec3(hash12(cell + 3.1) - 0.5, 1.4, hash12(cell + 7.3) - 0.5));
                 vec2 cf = fract(pp / 0.09) - 0.5;
                 ringGlint = (1.0 - smoothstep(0.1, 0.3, length(cf))) * (1.0 - smoothstep(0.02, 0.08, px));
             }
         } else {                 // rock
-            vec2 v = vor2(pp * 0.8);
-            float crack = (1.0 - smoothstep(0.0, 0.05, v.y)) * (0.6 + 0.4 * vnoise(pp * 3.0));
-            float n = fbm2(pp * 1.6);
-            float strata = 0.5 + 0.5 * sin(FragPos.y * 4.2 + n * 3.5);
-            texColor.rgb *= mix(vec3(1.0), vec3((0.74 + 0.5 * n) * (0.9 + 0.16 * strata) * (1.0 - 0.5 * min(crack, 1.0))), fade);
+            vec4 d = texture(uRingRock, pp / 8.0);
+            float strata = 0.5 + 0.5 * sin(FragPos.y * 4.2 + d.r * 3.5);
+            texColor.rgb *= (0.74 + 0.5 * d.r) * (0.9 + 0.16 * strata) * (1.0 - 0.5 * d.g);
             float up = smoothstep(0.5, 0.85, face.y);
-            texColor.rgb = mix(texColor.rgb, vec3(0.64, 0.57, 0.46) * (0.9 + 0.2 * n), up * 0.5 * fade);
-            float e = 0.06, h0 = vnoise(pp * 2.7) + v.x * 0.5, hx = vnoise((pp + vec2(e, 0.0)) * 2.7) + v.x * 0.5, hy = vnoise((pp + vec2(0.0, e)) * 2.7) + v.x * 0.5;
-            norm = normalize(norm + (T * (h0 - hx) + B * (h0 - hy)) / e * 0.35 * fade + face * 0.0);
+            texColor.rgb = mix(texColor.rgb, vec3(0.64, 0.57, 0.46) * (0.9 + 0.2 * d.r), up * 0.5);
+            vec2 sl = (d.ba - 0.5) / 0.08;
+            norm = normalize(norm - (T * sl.x + B * sl.y) * 0.12);
             vec2 cell = floor(pp / 0.12);   // rime in the rock: fewer glints
-            if (hash12(cell) > 0.96) {
+            if (px < 0.08 && hash12(cell) > 0.96) {
                 glintN = normalize(face + vec3(hash12(cell + 3.1) - 0.5, hash12(cell + 5.1) - 0.5, hash12(cell + 7.3) - 0.5) * 0.8);
                 ringGlint = 0.7 * (1.0 - smoothstep(0.02, 0.08, px));
             }

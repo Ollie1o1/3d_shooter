@@ -59,6 +59,7 @@
 #include "core/Settings.h"
 #include "ui/SettingsMenu.h"
 #include "render/TextureGen.h"
+#include "render/RingDetail.h"
 #include "player/Weapons.h"
 #include "player/Splinter.h"
 #include "player/Recall.h"
@@ -330,6 +331,8 @@ public:
 
     GLuint      whiteTex = 0;
     GLuint      worldTex[TEX_COUNT] = {};
+    GLuint      ringDetailTex[2] = {};
+    GLuint      ringSkyTex[2] = {};      // the giant's cloud tops and the galaxy's dust, painted once (render/RingDetail.h)   // Chapter 6's ground and rock patterns (render/RingDetail.h), made the first time the ring is drawn
     GLuint      worldNrm[TEX_COUNT] = {};   // each one's relief (MaterialTex::normalMap), on unit 1
     static GLuint* sharedWorldTex();   // made once, kept for every run (Gameplay_Flow.h)
     static GLuint* sharedWorldNrm();   // (their normal maps: made with them)
@@ -1394,6 +1397,7 @@ public:
     void  gapLaunch(const Enemy& d);
     void  gatherGap(std::vector<BoxInstance>& out);
     // THE WAKE (Gameplay_Wake.h)
+    void  ringTextures();
     void  resetShore();
     void  tickShore(float dt);
     float ringEclipse() const;

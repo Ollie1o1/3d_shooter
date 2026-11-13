@@ -167,7 +167,25 @@ inline bool GameplayState::ringQuiet() const {   // inside the open hull: air, a
     return !g_devRingTest && p.x > H.min.x && p.x < H.max.x && p.z > H.min.z && p.z < H.max.z + 1.f && p.y < H.max.y;
 }
 
+// Chapter 6's painted-once textures (render/RingDetail.h): the ground's and rock's patterns, the giant's
+// cloud tops, the galaxy. ~0.3 s (0.6 s in a browser) the first time: done at the level's start, kept after
+inline void GameplayState::ringTextures() {
+    static GLuint detail[2] = {}, sky[2] = {};   // (shared by every run, like the world's: a retry doesn't paint them again)
+    if (!detail[0]) {
+        detail[0] = TextureGen::uploadTexture(ringdetail::ground(), ringdetail::SIZE, ringdetail::SIZE);
+        detail[1] = TextureGen::uploadTexture(ringdetail::rock(), ringdetail::SIZE, ringdetail::SIZE);
+        for (GLuint t : detail) TextureGen::setAnisotropy(t, GameSettings::qualityAnisotropy(settings ? settings->quality : GameSettings::QUALITY_DEFAULT));
+    }
+    if (!sky[0]) {
+        sky[0] = TextureGen::uploadTexture(ringdetail::giant(), ringdetail::GIANT_W, ringdetail::GIANT_H);
+        sky[1] = TextureGen::uploadTexture(ringdetail::galaxy(), ringdetail::GALAXY_W, ringdetail::GALAXY_H);
+        for (GLuint t : sky) { glBindTexture(GL_TEXTURE_2D, t); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); }
+    }
+    ringDetailTex[0] = detail[0]; ringDetailTex[1] = detail[1]; ringSkyTex[0] = sky[0]; ringSkyTex[1] = sky[1];
+}
+
 inline void GameplayState::beginRing() {
+    ringTextures();
     storyOwned |= 15; storyArmed = storyGrapple = true;
     wakeT = -1; clawT = -1; beltBodies.clear(); player.eyeHeight = 1.7f;
     player.camera.farPlane = ring::FAR_PLANE;
