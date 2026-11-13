@@ -182,6 +182,7 @@ int main(int argc, char** argv) {
                 // (Chapter 6 has its own walkers: the STRAY, which bounds, and the PORTER, wide and tall)
                 const bool ring6 = !std::strcmp(m.tag, "CH6");
                 const EnemyType ringWalkers[] = {EnemyType::STRAY, EnemyType::STRAY, EnemyType::PORTER};
+                const float ringNear[] = {4.f, 4.f, 6.5f};   // (a STRAY stops at its lunge's 3 m)
                 for (int wk = 0; wk < 3; ++wk) {
                     const EnemyType who = ring6 ? ringWalkers[wk] : walkers[wk];
                     NavAgent ag = agentOf(who, L, a);
@@ -202,11 +203,11 @@ int main(int argc, char** argv) {
                         worstStep = std::max(worstStep, std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count() / 50.);
                         srand(7u + (unsigned)n);
                         ++an_nav.runs; an_nav.metres += route;
-                        if (chase(L, a, grid, &G, who, from, feet, route, nearOf[wk], 100 + n, true, m.tag)) ++an_nav.reached;
+                        if (chase(L, a, grid, &G, who, from, feet, route, ring6 ? ringNear[wk] : nearOf[wk], 100 + n, true, m.tag)) ++an_nav.reached;
                         if (compare) {
                             srand(7u + (unsigned)n);
                             ++an_old.runs;
-                            if (chase(L, a, grid, nullptr, who, from, feet, route, nearOf[wk], 100 + n, false, m.tag)) ++an_old.reached;
+                            if (chase(L, a, grid, nullptr, who, from, feet, route, ring6 ? ringNear[wk] : nearOf[wk], 100 + n, false, m.tag)) ++an_old.reached;
                         }
                     }
                 }

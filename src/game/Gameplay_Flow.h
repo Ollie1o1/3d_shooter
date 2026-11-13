@@ -1399,6 +1399,19 @@ inline void GameplayState::updateMusic() {
         audio.setMusicVolume(before?0.f:(settings?settings->musicVolume:.6f));
         audio.setOverdrive(overdriveOn()&&!playerDead&&!paused&&!armoryOpen,0);return;
     }
+    if(ring()&&!g_devRingTest){   // Chapter 6: the helmet's pulse on the crossing, the full drum and bass in a fight
+        m.setTrack(RING_MUSIC_TRACK);m.setDrive(overdriveOn()&&!playerDead);m.setSolo(false);
+        bool dog=false;for(const auto& e:enemies)if(e.alive&&isSheepdog(e.type))dog=true;
+        float intensity=director.fighting()?(dog?1.18f:1.f):.38f;
+        // The Shore: the walk up to it, the drums gathering as it fills the sky
+        if(!director.fighting()&&player.position.z<ring::summitN())intensity=glm::mix(.38f,.75f,glm::clamp((ring::summitN()-player.position.z)/(ring::summitN()-ring::shoreN()),0.f,1.f));
+        if(storyEndT>=0.f)intensity=.2f;
+        m.setIntensity(playerDead?.05f:intensity);m.setMuffle(paused||armoryOpen||playerDead||ringQuiet());
+        float vol=(settings?settings->musicVolume:.6f)*(director.fighting()?1.f:.55f);
+        if(ringDark()>.2f||sweptFalling())vol=0.f;   // (true silence: the Shadow Band, the swept death)
+        audio.setMusicVolume(vol);
+        audio.setOverdrive(overdriveOn()&&!playerDead&&!paused&&!armoryOpen,0);return;
+    }
     if(cold()){   // Chapter 5: COLD STORAGE, quiet under the wind until a fight; THE RESTORER in the Vault
         const int here=level.arenaAt(player.position);
         const bool boss=here==9 && !coldRDown && director.fighting();

@@ -63,7 +63,8 @@ struct MusicTrack {
 };
 
 constexpr int MENU_MUSIC_TRACK = 16;
-constexpr int MUSIC_TRACKS = 17;
+constexpr int MUSIC_TRACKS = 18;
+constexpr int RING_MUSIC_TRACK = 17;
 
 inline const MusicTrack& musicTrack(int i) {
     static const MusicTrack T[] = {
@@ -138,6 +139,13 @@ inline const MusicTrack& musicTrack(int i) {
         {"AFTER HOURS", 150.f, 45, {0, 0, 0, 0},
          "x...x...x...x...", "....x.......x...", "x.x.x.x.x.x.x.x.",
          ".xxx.xxx.xxx.xxx", "0...0...0...0...", "................................", 1},
+        // THE KEPT RING (Chapter 6): hard space, not dream space. Walking, the "inside the helmet" pulse:
+        // a held pad, a dry tick, a kick now and then and a glassy arp turning slowly, like something
+        // counting. In a fight the full drum and bass comes in at tempo: a rolling two-step, a Reese
+        // under it, the arp running, a lead that falls a step at a time and climbs back
+        {"THE KEPT RING", 174.f, 42, {0, 6, 3, 5},
+         "x.........x..x..", "....x..g.g..x..g", "x.x.X.x.x.x.X.xo",
+         "x---.-f.x---o-f.", "0.3.1.3.2.3.1.3.", "3-------2---1---0-------1---2-3-", 0, true},
 
     };
     return T[((i % MUSIC_TRACKS) + MUSIC_TRACKS) % MUSIC_TRACKS];
@@ -263,7 +271,7 @@ public:
     // fights land near -13.5 LUFS, bosses near -12 and the menu near -15 at the same volume.
     // (The Cold Store, 96 BPM and mostly choir, sits lower: its quiet walk sets its gain.)
     static float trackGain(int t) {
-        static const float G[MUSIC_TRACKS] = {1.175f, 1.012f, 1.210f, 1.210f, 1.305f, 1.324f, 1.210f, 1.345f, 1.364f, 1.384f, 1.407f, 1.140f, 1.140f, 0.645f, 0.900f, 1.285f, 0.406f};
+        static const float G[MUSIC_TRACKS] = {1.175f, 1.012f, 1.210f, 1.210f, 1.305f, 1.324f, 1.210f, 1.345f, 1.364f, 1.384f, 1.407f, 1.140f, 1.140f, 0.645f, 0.900f, 1.285f, 0.406f, 1.160f};
         return G[((t % MUSIC_TRACKS) + MUSIC_TRACKS) % MUSIC_TRACKS];
     }
     static bool plainTrack(int t) { return t == 13; }            // the plain's brass and anvils
@@ -809,6 +817,7 @@ private:
             gLead=std::max(gLead,sstep(.72f,1.f,lvl)*(track==combatscore::SUNSET?.8f:.7f));
             gLead*=scoreTheme;
         }
+        if (track == RING_MUSIC_TRACK) gArp = std::max(gArp, 0.4f * sstep(0.25f, 0.5f, lvl));   // (the ring's walk: the arp counting, quietly)
         gBassF = gOf(260.f + 2400.f * std::max(sstep(0.45f, 1.2f, lvl), drive));
         // Sixteen-bar form: three driving phrases, then a two-bar filtered turn.
         const bool turn = !combatscore::owns(track) && (cycle % 4 == 3) && step >= 32;

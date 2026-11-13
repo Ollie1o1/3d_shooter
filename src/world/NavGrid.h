@@ -91,12 +91,12 @@ struct NavGrid {
     // burns: boxes that hurt whoever stands in them (lava); routes cross them only when it saves a long way round.
     template <class FloorFn>
     bool build(const Wall* walls, int wallCount, const SpatialGrid* grid, const AABB& bounds, float voidY, FloorFn&& baseFloor,
-               const AABB* burns = nullptr, int burnCount = 0) {
+               const AABB* burns = nullptr, int burnCount = 0, float minCell = 0.8f) {
         clear();
         area = bounds;
         const float ex = bounds.max.x - bounds.min.x, ez = bounds.max.z - bounds.min.z;
         if (!(ex > 1.f) || !(ez > 1.f) || ex > 1e6f || ez > 1e6f) return false;
-        cell = 0.8f;
+        cell = minCell;   // (open ground can take a coarser grid: Chapter 6's ice fields)
         while ((ex / cell) * (ez / cell) > (float)MAX_COLUMNS) cell *= 1.15f;
         if (cell > MAX_CELL) return false;
         nx = std::max(1, (int)std::ceil(ex / cell)); nz = std::max(1, (int)std::ceil(ez / cell));
