@@ -561,6 +561,34 @@ Not done / to check:
 - The hand-off from the Shore is a cut, not a fade.
 - `make test` beyond `test-ring` and a web build were not run this session.
 
+## THE SHEPHERD, phase 2: THE TURN (2026-11-13)
+
+Arena 3 of `buildShepherd()` (checkpoint 13; `./shooter --shepherd --arena 4`): a slab of packed ice east of
+the tines (x 260..400) heaped against its ridge (`shep::RIDGE_Z` -3458). Rules: `shepRidge` and `shootVent` in
+`Gameplay_Shepherd.h`.
+
+- **Getting there.** The third tine's break: `STAY.`, a rumble, then at 6 s `enterArena(3)` (a cut covered by
+  an ice burst; saved).
+- **The turn** (`shepTurnT`, 16 s, once: `shepTurnSeen`): the skybox rolls the whole sky round the line to the
+  Shepherd (`uRingTurn`, up to 2.5 rad, kept for the rest of the fight), low slams every 2.6 s, music at 0.35.
+  The design asked for 30 s of silence; shortened and kept at the pulse because of the user's music rule (no
+  lulls in boss fights). Adds wait. Then the RECALL toast.
+- **Its waves.** OUT, straight south, clocked: 1.5 s flash, 6 s countdown. Shelter: 12 ice blocks with posts
+  (`shep::ridgeShelters`). When a wave passes you, the vents open for 8 s (`shepVentOpenT`) and the next
+  flash comes 8.5 s after the pass.
+- **The vents** (`shep::vent(i)`, 420 hp each, `shepVentHp`): hitscan only (the hook is next to
+  `shootStoryCable` in `Gameplay_Combat.h`'s story block); shut, rounds spark; open but further than 24 m,
+  they glance off; nearest shelter to each is ~29 / 39 / 52 m. Their damage survives a retry. Drawn live:
+  louvers that turn edge-on, an orange throat, smoke when broken.
+- **Adds.** Every 12 s, if fewer than 4 are up: two Strays (and every third time a Herder) drop off the fleece.
+- **Bar.** The second fifth: each vent's damage a third of it.
+- **All three:** `IT'S OPEN / THE WAY IN`, everything on the ice dies, then the end card (still says
+  CHAPTER 6 COMPLETE; the save isn't marked complete). `--overlay ventkill` breaks each vent the moment it opens.
+
+Not done / to check: not hand-played (vent hp, 24 m reach, 8 s windows are guesses); only hitscan weapons
+hurt vents (Splinter and the sword don't); the ridge is dark and could use more of its lamps; the cut onto
+the ridge has no fade.
+
 ## Next steps, in order
 
 1. **Play it (the user).** `./shooter --story6` start to finish. Questions: do
@@ -581,9 +609,9 @@ Not done / to check:
    they are content with the crossing. Open: their verdict on the new sky, ground, waves and music;
    the frame cost at 4K; Strays still use full gravity in the low-gravity levels (shortcut 8);
    the Drift has no fight; the bridge cutscene.
-7. **The boss** as written (design section 6). Phase 1 (THE COMB) is built: see above. Next: THE TURN
-   (the sky rolls, vents open for ~5 s after each sweep, RECALL into shelter taught with 6 s warnings), then
-   THE RESONATOR, THE BREAK (the Gather ride), THE FALL and the finisher.
+7. **The boss** as written (design section 6). Phases 1 (THE COMB) and 2 (THE TURN) are built: see above.
+   Next: THE RESONATOR (inside: the Tuning Hall, the Ledger, the Lamp Well), THE BREAK (the Gather ride),
+   THE FALL and the finisher.
 
 ## House rules noticed while building
 
