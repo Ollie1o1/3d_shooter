@@ -41,7 +41,8 @@ uniform vec2  uRingBoltAt;  // where in the cloud (longitude, latitude offsets)
 uniform float uRingDawn;    // 0..1: the sunrise out of the Shadow Band: a red arc on its edge, then the diamond
 uniform float uRingSwept;   // seconds since a sweep threw the swept off the ring (<0: none lately): they burn up across the giant (13.3)
 uniform float uRingBend;
-uniform float uRingTurn;    // THE TURN: the whole sky rolled round the line to the Shepherd (radians)
+uniform float uRingTurn;
+uniform float uRingFall;    // THE FALL: 0..1, re-entry: fire low all round, the giant's cloud tops coming up    // THE TURN: the whole sky rolled round the line to the Shepherd (radians)
 uniform sampler2D uRingGiant;   // the giant's cloud tops, painted once (render/RingDetail.h): x longitude, y latitude angle
 uniform sampler2D uRingGalaxy;
 uniform sampler2D uRingNebula;  // the nebula's picture (render/RingDetail.h)  // the galaxy's dust: x azimuth, y height    // 0..1: the main rings opening into an arch over you as you near the Shepherd (its pull bends your ringlet under them)
@@ -606,7 +607,16 @@ void main() {
     if (uRing > 0.5) {
         vec3 d = dir;
         if (uRingTurn != 0.0) { float c = cos(uRingTurn), s = sin(uRingTurn); d = vec3(c * dir.x - s * dir.y, s * dir.x + c * dir.y, dir.z); }
-        FragColor = vec4(ringSky(d), 1.0); return;
+        vec3 col = ringSky(d);
+        if (uRingFall > 0.0) {   // re-entry: fire low all round, pouring up; the clouds below, pale and close
+            float low = smoothstep(0.35, -0.25, dir.y);
+            float flick = 0.85 + 0.15 * sin(dir.x * 40.0 + dir.z * 31.0 + uTime * 7.0) * sin(dir.z * 23.0 - uTime * 5.0);
+            vec3 fire = mix(vec3(1.6, 0.5, 0.12), vec3(2.4, 1.3, 0.4), smoothstep(0.1, -0.3, dir.y)) * flick;
+            col = mix(col, fire, uRingFall * low * 0.85);
+            col = mix(col, vec3(0.85, 0.75, 0.62), uRingFall * smoothstep(-0.2, -0.6, dir.y) * 0.7);
+            col += vec3(0.6, 0.18, 0.05) * uRingFall * smoothstep(0.6, 0.0, abs(dir.y)) * 0.25;
+        }
+        FragColor = vec4(col, 1.0); return;
     }
 
     vec3 labSky=vec3(0.0);float labW=0.0;

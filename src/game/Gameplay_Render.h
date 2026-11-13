@@ -847,7 +847,7 @@ inline void GameplayState::render() {
         skyboxShader.setFloat("uPlain", plain() ? 1.f : 0.f);
         skyboxShader.setFloat("uCold", cold() ? 1.f : 0.f);
         skyboxShader.setFloat("uRing", ring() && !devSkip("ringsky") ? 1.f : 0.f);   // Chapter 6: the giant on the horizon, the Shepherd on the line (Gameplay_Ring.h)
-        skyboxShader.setVec4("uShepherd", ring() ? glm::vec4{ring::shepherdDir(), ringShepherdSize()} : glm::vec4{0.f, 0.f, -1.f, 0.f});
+        skyboxShader.setVec4("uShepherd", ring() ? (shepherd() && shepEndingT >= 0.f ? glm::vec4{glm::normalize(glm::vec3{0.f, -0.2f - 0.03f * shepEndingT, -1.f}), glm::max(0.25f, 0.8f - 0.03f * shepEndingT)} : glm::vec4{ring::shepherdDir(), ringShepherdSize()}) : glm::vec4{0.f, 0.f, -1.f, 0.f});   // (the end: it sinks, burning, into the giant)
         skyboxShader.setFloat("uRingFlash", ring() ? ringFlash() : 0.f);
         skyboxShader.setFloat("uRingNight", ring() ? ringNight() : 0.f);
         skyboxShader.setFloat("uRingBolt", ring() ? ringBolt : 0.f);
@@ -862,6 +862,7 @@ inline void GameplayState::render() {
         skyboxShader.setInt("uRingNebula", 9);
         skyboxShader.setFloat("uRingSwept", ring() ? ringSweptAgo : -1.f);
         skyboxShader.setFloat("uRingTurn", shepherd() ? shepTurnAng : 0.f);   // THE TURN: the sky rolling round the Shepherd
+        skyboxShader.setFloat("uRingFall", shepherd() ? shepFallAmt : 0.f);   // THE FALL: re-entry fire
         skyboxShader.setFloat("uRingBend", ring() && !g_devRingTest ? ring::ringBend(player.position.z) : 0.f);
         skyboxShader.setFloat("uRingDawn", ring() && ringSunT >= 0.f ? glm::clamp(ringSunT / shadowband::DIAMOND, 0.f, 1.f) * ringDark() : 0.f);
         skyboxShader.setFloat("uMoonLid", plain() ? plainMoonLid() : 0.f);

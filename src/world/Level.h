@@ -305,6 +305,7 @@ struct LevelData {
     std::vector<int> knockWalls, creakWalls;
     int raftMover = -1, raftBoulder = -1;   // Chapter 6's raft over the Gap (Gameplay_Gap.h)
     std::vector<int> shepRideWalls;   // THE BREAK: each ledge's two ride chunks (walls)
+    int shepCoreWall = -1;            // THE FALL: its core lamp's housing (HOLDFAST into it: the finisher)
     std::vector<int> shepCaps, shepSlabs, shepForks;  int shepMembrane = -1;   // THE SHEPHERD (LevelShepherd.h): the capsules the Plough throws, the Stampede's plates, the forks' prongs (two a fork), the core's membrane  // THE SHEPHERD (LevelShepherd.h): the Drover's herd, the spars that fall between tines
     std::vector<FloorPatch> floors;
     // How this level draws each material (WorldGeometry.h): identity unless a chapter restyles the

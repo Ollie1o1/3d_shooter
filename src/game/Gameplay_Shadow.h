@@ -64,6 +64,13 @@ inline void GameplayState::tickShadow(float dt) {
 // The world's light in the band: the giant's night side, the lightning and the Shepherd's flash
 inline Theme GameplayState::ringShade(Theme th) const {
     if (const float e = ringEclipse(); e > 0.f) th = lerpTheme(th, ring::eclipseTheme(), e);   // THE SHORE: in the Shepherd's shadow
+    if (shepherd() && shepFallAmt > 0.f) {   // THE FALL: re-entry light pouring over its ridge
+        const float f = shepFallAmt;
+        th.lightColor = glm::mix(th.lightColor, glm::vec3{2.2f, 0.95f, 0.4f}, f);
+        th.lightDir = glm::normalize(glm::mix(th.lightDir, glm::vec3{0.1f, -0.5f, 1.f}, f));
+        th.skyAmb = glm::mix(th.skyAmb, glm::vec3{0.5f, 0.22f, 0.1f}, f * 0.8f);
+        th.horizon = glm::mix(th.horizon, glm::vec3{0.9f, 0.35f, 0.12f}, f);
+    }
     const float d = ringDark();
     if (d <= 0.f) return th;
     th = lerpTheme(th, ring::darkTheme(), d);

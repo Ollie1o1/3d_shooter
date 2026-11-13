@@ -420,6 +420,9 @@ public:
     int   shepVents = 0;   // THE TURN
     float shepTurnT = -1.f, shepTurnAng = 0.f, shepVentHp[3] = {1.f, 1.f, 1.f}, shepVentOpenT = 0.f, shepRidgeSweepT = 0.f, shepAddT = 0.f, shepVentMsgT = 0.f, shepInT = -1.f;
     int   shepGuardWave = 0; bool shepSweepWas = false;
+    // THE FALL (Gameplay_ShepherdFall.h)
+    float shepLampHp[6] = {}, shepLampOpen[6] = {}, shepFallSweepT = 0.f, shepFallT = 0.f, shepFallAmt = 0.f, shepLastT = -1.f, shepLastCount = 0.f, shepFinT = -1.f, shepFinCount = 0.f, shepEndingT = -1.f;
+    int   shepFireLamp = -1, shepLampNext = 0; bool shepLampsArmed = false, shepFallPassed = false, shepFallSeen = false;
     // THE BREAK (Gameplay_ShepherdBreak.h)
     float shepRideT = -1.f, shepGatherT = -1.f, shepThrownT = -1.f, shepCrownT = -1.f; int shepRides = 0, shepRideChunk = 0;
     bool  shepGatherPassed = false, shepLedgeFought = false, shepBreakSeen = false; glm::vec3 shepRideFrom{0.f}, shepRideTo{0.f};
@@ -1449,7 +1452,8 @@ public:
     glm::vec3 shepBellSpot(int i) const;
     glm::vec3 shepShieldPos(int i, const Enemy& d) const;
     void   shepCombMovers(float dt);
-    void   shepThrowCap(glm::vec3 to);
+    void   shepThrowCap(glm::vec3 to, glm::vec3 from = glm::vec3{0.f, -1e9f, 0.f});
+    void   shepCapsTick(float dt);
     bool   shootComb(glm::vec3 from, glm::vec3 dir, float& distance, float dmg);
     void   shepCombKit(Enemy& d, float dt);
     void   shepComb(float dt);
@@ -1463,6 +1467,13 @@ public:
     void   gatherBreak(std::vector<BoxInstance>& out);
     void   breakMarkers(const glm::mat4& view, const glm::mat4& proj);
     const char* breakObjective();
+    void   shepFallReset();
+    int    shepLampsAlive() const;
+    void   shepFall(float dt);
+    bool   shootFall(glm::vec3 from, glm::vec3 dir, float& distance, float dmg);
+    void   gatherFall(std::vector<BoxInstance>& out);
+    void   fallMarkers(const glm::mat4& view, const glm::mat4& proj);
+    const char* fallObjective();
     void   updateShepherd(float dt);
     void   gatherShepherd(std::vector<BoxInstance>& out);
     void   renderShepherdBars();

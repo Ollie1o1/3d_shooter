@@ -64,7 +64,11 @@ inline void GameplayState::shepBreak(float dt) {
         shepCrownT += dt;
         shake(0.1f, 0.01f + 0.01f * std::min(1.f, shepCrownT / 4.f));
         if (before < 2.f && shepCrownT >= 2.f) pushBanner("WITHOUT ME,", "THEY DRIFT.", glm::vec3{0.9f, 0.9f, 0.82f}, 4.f);
-        if (before < 7.f && shepCrownT >= 7.f && storyEndT < 0.f) { storyEndT = 0.f; logRun("end"); audio.play("wave", 90, SoundGroup::UI, true); }
+        if (before < 5.5f && shepCrownT >= 5.5f) {   // THE FALL (Gameplay_ShepherdFall.h)
+            shepCrownT = -1.f;
+            storySeenSection = storyCheckpoint = 10;
+            enterArena(10); saveStoryProgress();
+        }
         return;
     }
     const int L = shepLedge();

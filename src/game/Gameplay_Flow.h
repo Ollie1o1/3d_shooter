@@ -1419,6 +1419,7 @@ inline void GameplayState::updateMusic() {
         m.setTrack(RING_MUSIC_TRACK);m.setDrive(overdriveOn()&&!playerDead);m.setSolo(false);
         bool dog=false;for(const auto& e:enemies)if(e.alive&&isSheepdog(e.type))dog=true;
         float intensity=director.fighting()?(dog?1.18f:1.f):.38f;
+        if(shepherd()&&(level.arenaAt(player.position)==10||shepFinT>=0.f))m.setDrive(!playerDead);   // THE FALL: the biggest drop (OVERDRIVE's stabs over the boss's full kit)
         if(shepherd())intensity=level.arenaAt(player.position)==5?.4f:shepTurnT>=0.f?.35f:director.fighting()||shepBreakT>=0.f||shepTines>=shep::TINES?1.3f:.95f;   // THE SHEPHERD: the boss, loud and at full tempo throughout (only its turn drops to the pulse)
         // The Shore: the walk up to it, the drums gathering as it fills the sky
         if(!director.fighting()&&player.position.z<ring::summitN())intensity=glm::mix(.38f,.75f,glm::clamp((ring::summitN()-player.position.z)/(ring::summitN()-ring::shoreN()),0.f,1.f));
@@ -1426,6 +1427,7 @@ inline void GameplayState::updateMusic() {
         m.setIntensity(playerDead?.05f:intensity);m.setMuffle(paused||armoryOpen||playerDead||ringQuiet());
         float vol=(settings?settings->musicVolume:.6f)*(director.fighting()||shepherd()?1.f:.55f);
         if(ringDark()>.2f||sweptFalling())vol=0.f;   // (true silence: the Shadow Band, the swept death)
+        if(shepherd()&&shepEndingT>=0.f)vol=0.f;   // (and the end: drifting, nobody keeping it)
         audio.setMusicVolume(vol);
         audio.setOverdrive(overdriveOn()&&!playerDead&&!paused&&!armoryOpen,0);return;
     }

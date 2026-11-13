@@ -79,13 +79,38 @@ inline void GameplayState::shepCombMovers(float dt) {
     }
 }
 
+// Capsules in the air and on the deck (the Plough's, and the Fall's burning fleece)
+inline void GameplayState::shepCapsTick(float dt) {
+    using namespace shepcomb;
+    const glm::vec3 p = player.position;
+    for (ShepCap& c : shepCap) {
+        if (c.t >= 0.f && !c.down) {
+            c.t += dt;
+            if (c.t >= CAP_FLIGHT) {   // it lands
+                c.down = true; c.life = CAP_LIFE;
+                fx.spawnBurst(c.to + glm::vec3{0.f, 0.4f, 0.f}, SWEEP_ICE * 0.7f, 24, 8.f, 0.9f, 2.f);
+                audio.playAt("land_heavy", c.to, 120, SoundGroup::WORLD, true, 0.7f);
+                shake(0.25f, 0.02f);
+                if (!playerDead && glm::length(glm::vec2{p.x - c.to.x, p.z - c.to.z}) < CAP_HIT && p.y < c.to.y + 2.5f) {
+                    damagePlayer(CAP_DAMAGE, c.to, 0.25f, 0.04f, 0.3f, {EnemyType::COUNT, DamageKind::UNKNOWN});
+                    const glm::vec3 out = glm::normalize(glm::vec3{p.x - c.to.x, 0.f, p.z - c.to.z} + glm::vec3{1e-4f});
+                    player.velocity += out * 9.f + glm::vec3{0.f, 4.f, 0.f}; player.launched();
+                }
+                for (auto& e : enemies)
+                    if (e.targetable() && glm::length(glm::vec2{e.position.x - c.to.x, e.position.z - c.to.z}) < CAP_HIT && e.takeDamage(e.type == EnemyType::CROOK ? 40.f : 80.f) && !isSheepdog(e.type))
+                        onEnemyKilled(e, StyleSource::ENVIRONMENT);
+            }
+        } else if (c.down && (c.life -= dt) <= 0.f) { c.down = false; c.t = -1.f; fx.spawnBurst(c.to + glm::vec3{0.f, 1.f, 0.f}, glm::vec3{0.6f}, 14, 6.f, 0.8f, 2.f); }
+    }
+}
+
 // A capsule thrown up off the bow onto the deck, landing at `to`
-inline void GameplayState::shepThrowCap(glm::vec3 to) {
+inline void GameplayState::shepThrowCap(glm::vec3 to, glm::vec3 from) {
     ShepCap& c = shepCap[shepCapNext];
     shepCapNext = (shepCapNext + 1) % shep::CAPS;
     if (c.down) fx.spawnBurst(c.to + glm::vec3{0.f, 1.f, 0.f}, glm::vec3{0.6f}, 14, 6.f, 0.8f, 2.f);   // (the oldest goes back into the ice)
     c = ShepCap{};
-    c.t = 0.f; c.to = to; c.from = {-shep::HALF - 6.f, shep::PLAIN_Y + 2.f, to.z + cosmetic::range(-6.f, 6.f)};
+    c.t = 0.f; c.to = to; c.from = from.y > -1e8f ? from : glm::vec3{-shep::HALF - 6.f, shep::PLAIN_Y + 2.f, to.z + cosmetic::range(-6.f, 6.f)};
     c.spin = cosmetic::range(-1.f, 1.f);
     audio.playAt("ab_rumble", c.from, 100, SoundGroup::WORLD, true, 1.3f);
     fx.spawnSpray(c.from, glm::normalize(glm::vec3{0.6f, 1.f, 0.f}), SWEEP_ICE * 0.8f, 10, 14.f, 1.2f, 0.7f);
@@ -308,25 +333,7 @@ inline void GameplayState::shepComb(float dt) {
             if (glm::length(glm::vec2{to.x - shep::perch().x, to.z - shep::perch().z}) < 6.f) to.x += 9.f;
             shepThrowCap(to);
         }
-        for (ShepCap& c : shepCap) {
-            if (c.t >= 0.f && !c.down) {
-                c.t += dt;
-                if (c.t >= CAP_FLIGHT) {   // it lands
-                    c.down = true; c.life = CAP_LIFE;
-                    fx.spawnBurst(c.to + glm::vec3{0.f, 0.4f, 0.f}, SWEEP_ICE * 0.7f, 24, 8.f, 0.9f, 2.f);
-                    audio.playAt("land_heavy", c.to, 120, SoundGroup::WORLD, true, 0.7f);
-                    shake(0.25f, 0.02f);
-                    if (!playerDead && glm::length(glm::vec2{p.x - c.to.x, p.z - c.to.z}) < CAP_HIT && p.y < 2.5f) {
-                        damagePlayer(CAP_DAMAGE, c.to, 0.25f, 0.04f, 0.3f, {EnemyType::COUNT, DamageKind::UNKNOWN});
-                        const glm::vec3 out = glm::normalize(glm::vec3{p.x - c.to.x, 0.f, p.z - c.to.z} + glm::vec3{1e-4f});
-                        player.velocity += out * 9.f + glm::vec3{0.f, 4.f, 0.f}; player.launched();
-                    }
-                    for (auto& e : enemies)
-                        if (e.targetable() && glm::length(glm::vec2{e.position.x - c.to.x, e.position.z - c.to.z}) < CAP_HIT && e.takeDamage(e.type == EnemyType::CROOK ? 40.f : 80.f) && !isSheepdog(e.type))
-                            onEnemyKilled(e, StyleSource::ENVIRONMENT);
-                }
-            } else if (c.down && (c.life -= dt) <= 0.f) { c.down = false; c.t = -1.f; fx.spawnBurst(c.to + glm::vec3{0.f, 1.f, 0.f}, glm::vec3{0.6f}, 14, 6.f, 0.8f, 2.f); }
-        }
+        shepCapsTick(dt);
         if (std::fmod(gameClock, 0.04f) < dt)   // its bow: ice and capsule-bits thrown up all down the west face
             fx.spawnSpray({-shep::HALF - 3.f, shep::PLAIN_Y + 1.f, cosmetic::range(shep::PLOUGH_N, shep::TIP)}, glm::normalize(glm::vec3{-0.6f, 1.f, cosmetic::range(-0.2f, 0.2f)}), SWEEP_ICE * 0.7f, 2, 13.f, 1.6f, 0.6f);
     }
