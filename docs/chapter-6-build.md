@@ -623,6 +623,39 @@ Not done / to check: not hand-played; whether the grapple climb between alcoves 
 apart, the grapple's cooldown); the swept death in the well throws you sideways (it was made for the ring);
 the Tuning Hall's blast is drawn with the ring's curtain; cuts between ridge, hall and well have no fade.
 
+## THE COMB, redone (2026-11-13, after the user's play)
+
+The user: the three side-by-side tines were "lackluster", "no unique vibe or creativity", the sheepdogs didn't
+feel worth fighting, and it was unclear how to break the Tuning Hall's forks. They chose (of the options) one
+tine walked tip to root in three zones. The old "Phase 1" section above describes what was replaced.
+
+- Geometry: `buildShepherd()`'s PHASE 1 block; numbers in `shep::` (`TIP`, `PLOUGH_N`, `slabZ`, `KNUCKLE_*`,
+  `BEL_*`, `perch`, `fins`, `bells`, `greatBell`, `shepherdEye`). Rules: `src/game/Gameplay_ShepherdComb.h`
+  (`shepComb`, `shepCombKit`, `shootComb`, `gatherComb`, `combMarkers`, `combObjective`). Arenas 0-2 kept their
+  indices (checkpoints 10-12). `level.shepCaps` (8 capsule movers), `level.shepSlabs` (15 plate movers).
+- **THE PLOUGH** (0): capsules thrown off the bow every 3.2 s (2 s when the Crook is below 40%, then at you):
+  a gold ring where each lands, 18 damage under it, then a capsule on the deck as cover for 22 s (a moving
+  shelter). The Shepherd's cone from `shepherdEye()`. The Crook starts up its mast (`Enemy::shepHigh`:
+  armour 0.25): a parried hook yanks it down (stagger 4 s, 10%); after 35 s it comes down anyway. On the
+  deck: a pole swing (0.85 s gold tell, 7.5 m, under it if you jump or dash), HOLDFAST line cutting below 55%.
+- **THE STAMPEDE** (1): stepping onto the plates starts the collapse (5.5 m/s; 9 m/s when more than 35 m
+  behind you); each plate shakes and glows, then falls. The Drover hangs ahead rolling boulders down the
+  deck every 3.6 s (and on its attack): gold lanes, 16 damage and a knock back. Its four-block herd shield
+  (70 hp each, hitscan) blocks rounds; all four broken: open 7 s, then it re-forms. The Shepherd's teeth:
+  every 9-12 s a red band across the deck ahead of you, 1.8 s, then a tooth through it (40 damage). On the
+  KNUCKLE (solid) it makes its stand; strays climb up there.
+- **THE BELFRY** (2): two floors (balcony at 11 m on three sides, ramps west and east). Five bells
+  (`shep::bells`): the Bellwether stands under one (pinned) and hops to another every 9 s; shoot the chain
+  above it: the bell falls in 0.55 s, crushing it for 28% and a 4 s stagger. All down: re-hung after 6 s.
+  The great bell tolls every 15 s (2 s warning): rings on both floors. Wake rings now only hit on their own
+  floor (`tickWake`).
+- **Forks** (Tuning Hall): now shot. After a blast they ring 6.5 s and their cores open white: 260 hp each.
+  HOLDFAST into a ringing fork still breaks it at once.
+- The ridge (THE TURN) moved to x 560..700 and its steps were narrowed: it loomed over the tine.
+
+Not hand-played. To check: the collapse speed against real running with boulders and teeth; whether the
+Crook's perch reads; the bells' size and colour (they read dim); the Bellwether's hop is a scripted arc.
+
 ## Next steps, in order
 
 1. **Play it (the user).** `./shooter --story6` start to finish. Questions: do
