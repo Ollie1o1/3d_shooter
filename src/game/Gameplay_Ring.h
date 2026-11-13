@@ -22,7 +22,7 @@ inline void GameplayState::armSweep() {
     sweep.reset(); sweepArmed = true; sweepCount = 0; sweepTickAt = -1; sweepSwept = 0;
     ringGone = ringShort = 0; ringCountT = -1.f; sweptBodies.clear();
     resetGap();   // (the raft back at its mooring: armSweep resets every DRIVEN mover)
-    resetWake(); resetShore();
+    resetWake(); resetShore(); lurkerOut.assign(ring::lurkers().size(), 0);
     sweepShelters.clear();
     if (ring()) {
         sweepShelters = level.sweepShelters;
@@ -35,8 +35,8 @@ inline void GameplayState::armSweep() {
             sweepShelters.push_back(s);
         }
     if (ring() && !g_devRingTest && g_devSweep == 0) {   // the crossing's far tier: one clean wave, a long gap
-        const auto t = sweeptier::far(ring::sweepDir());
-        sweepSched.arm(t.gapMin, t.gapMax, 0x52494E47u + (uint32_t)deaths * 7919u);
+        // (the far tier's warning, but the crossing's own gaps: about two sweeps in each place, not one)
+        sweepSched.arm(55.f, 85.f, 0x52494E47u + (uint32_t)deaths * 7919u);
         // (the random clock runs from the start, so a retry from any checkpoint still gets sweeps;
         //  each place's first is scripted on top of it: updateRing)
     } else {   // the test ground and dev runs come round quickly
@@ -71,7 +71,7 @@ inline void GameplayState::tickSweep(float dt) {
     for (const auto& e : enemies) if (e.alive && e.type == EnemyType::TALLY) { rate = 2.f; break; }
     if (ringScriptT >= 0.f && !sweep.active() && !blocked && (ringScriptT -= dt) <= 0.f) {   // a level's first: scripted, shelter in sight
         ringScriptT = -1.f; sweep.start(nextSweep()); ++sweepCount;
-        const auto t = sweeptier::far(ring::sweepDir()); sweepSched.timer = t.gapMin + 10.f;
+        sweepSched.timer = 45.f + 15.f * (float)(sweepCount % 3) * 0.5f;   // (the next comes round in under a minute)
     } else if (sweepSched.tick(dt, sweep.active(), blocked, rate)) { sweep.start(nextSweep()); ++sweepCount; }
     if (g_devOverlay == "sweepnow" && !sweep.active() && elapsedTime > 0.5f && sweepCount == 0) {   // dev: one mid-count, for screenshots
         SweepSpec s = nextSweep(); s.flashLead = 0.f; s.warning = 6.f; sweep.start(s); ++sweepCount;
@@ -291,6 +291,7 @@ inline void GameplayState::updateRing(float dt) {
     }
     if (storyEndT >= 0.f) { storyEndT += dt; player.velocity = {0.f, 0.f, 0.f}; if (storyEndT > 3.f) captureMouse(false); }
     if (storyTerminal >= 0 && glm::length(level.story.terminals[storyTerminal].pos - p) > 6.f) storyTerminal = -1;
+    if (storyLog >= 0) { storyLogT += dt; if (glm::length(level.story.wrecks[storyLog].pos - p) > 6.f) storyLog = -1; }   // (a unit's last log: walk off and it closes)
     ringFoes(dt);
 }
 

@@ -18,9 +18,32 @@
 
 inline void GameplayState::ringFoes(float dt) {
     if (static const bool log = std::getenv("RINGLOG") != nullptr; log && std::fmod(elapsedTime, 1.f) < dt) {   // dev: where everyone is, once a second
+        int alive = 0; for (const auto& e : enemies) alive += e.alive && e.targetable();
+        std::printf("RD t %.0f arena %d wave %d phase %d alive %d hp %.0f sweep %d\n", elapsedTime, director.arena, director.wave, (int)director.phase, alive, styleSystem.health, (int)sweep.active());
+        if (std::getenv("RINGLOG")[0] == 'D') return;   // (RINGLOG=D: the director's line only)
         for (const auto& e : enemies) if (e.alive)
             std::printf("RL t %.0f %s uid %d pos %.1f %.1f %.1f vel %.1f %.1f routed %d seek %d dist %.1f\n", elapsedTime, e.stats().name, e.uid, e.position.x, e.position.y, e.position.z,
                         e.velocity.x, e.velocity.z, (int)e.navRouted, (int)e.ringSeekSet, glm::length(glm::vec2{e.position.x - player.position.x, e.position.z - player.position.z}));
+    }
+    // Lurkers: STRAYS climbing out of the capsules as you pass (ring::lurkers)
+    if (!g_devRingTest && !playerDead && storyEndT < 0.f) {
+        const auto L = ring::lurkers();
+        if (lurkerOut.size() != L.size()) lurkerOut.assign(L.size(), 0);
+        for (size_t i = 0; i < L.size(); ++i) {
+            if (lurkerOut[i]) continue;
+            const glm::vec2 d{L[i].at.x - player.position.x, L[i].at.z - player.position.z};
+            if (glm::length(d) > 46.f || std::fabs(L[i].at.y - player.position.y) > 6.f) continue;
+            lurkerOut[i] = 1;
+            for (int k = 0; k < L[i].strays; ++k) {
+                const float a = 6.2831853f * k / L[i].strays;
+                spawnEnemy(EnemyType::STRAY, L[i].at + glm::vec3{std::cos(a) * 3.5f, 0.f, std::sin(a) * 3.5f});
+            }
+            for (int k = 0; k < L[i].herders; ++k) spawnEnemy(EnemyType::HERDER, L[i].at + glm::vec3{0.f, 3.f, -4.f});
+            // a hatch giving way: the knock, through the floor, and the dust
+            SfxMixer::Opts o; o.group = SoundGroup::WORLD; o.positional = true; o.pos = L[i].at; o.volume = 0.9f; o.pitch = 0.6f; o.priority = true;
+            audio.playOpts("impact_metal", o);
+            fx.spawnBurst(L[i].at + glm::vec3{0.f, 0.5f, 0.f}, SWEEP_ICE * 0.5f, 24, 5.f, 1.4f, -1.f);
+        }
     }
     const bool lit = sweep.active() && sweep.lethal();
     std::vector<int> taken;
@@ -190,6 +213,27 @@ inline void GameplayState::gatherRing(std::vector<BoxInstance>& out) {
     using namespace rig;
     const float ball = (float)meshlib::lumpBall();
     const glm::vec3 eye = player.camera.position;
+    {   // the units before you that got this far (UNIT 23), and the beacons over what's to read
+        const auto& SL = level.story;
+        for (int i = 0; i < (int)SL.wrecks.size(); ++i) {
+            const auto& w = SL.wrecks[i];
+            if (glm::length(w.pos - eye) > 70.f) continue;
+            const gunkit::GunModel* WM = story::bodyModel(story::wreckFile(w.number));
+            if (!WM) WM = story::bodyModel();
+            if (!WM) continue;
+            Rig r{out};
+            drawFile(r, wreckRoot(i), *WM, story::sittingPose(0.3f + 0.2f * (float)(w.number % 3)), glm::vec3{0.f});
+        }
+        auto beacon = [&](glm::vec3 p, float phase, bool read) {
+            if (glm::length(p - eye) > 55.f) return;
+            p.y += 0.1f * std::sin(gameClock * 2.f + phase);
+            const float pulse = 0.75f + 0.25f * std::sin(gameClock * 3.f + phase);
+            const glm::vec3 glow = (read ? glm::vec3{0.15f, 0.45f, 0.55f} : glm::vec3{0.25f, 1.7f, 2.f}) * pulse;
+            push(out, T(p) * RY(gameClock * 0.65f + phase) * S(glm::vec3{0.13f, 0.22f, 0.13f}), glm::vec3{0.7f, 0.95f, 1.f}, glow);
+        };
+        for (int i = 0; i < (int)SL.wrecks.size(); ++i) beacon(SL.wrecks[i].pos + glm::vec3{0.f, 1.95f, 0.f}, i * 0.8f, (storyLogsSeen >> i) & 1u);
+        for (int i = 0; i < (int)SL.terminals.size(); ++i) beacon(SL.terminals[i].pos + glm::vec3{0.f, 2.65f, 0.25f}, i * 0.6f, (storyTerminalsSeen >> i) & 1u);
+    }
     for (const Mover& m : level.movers) {
         if (m.look < 1 || m.gone) continue;
         AABB bx = level.walls[m.wall].box;

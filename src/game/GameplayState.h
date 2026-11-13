@@ -402,6 +402,7 @@ public:
     struct WakeRing { glm::vec3 at; float radius = 0.f; bool hit = false; };
     std::vector<WakeRing> wakeRings; bool wakeSweepDone = false; float wakeViewT = -1.f;   // THE WAKE
     float ringSweptAgo = -1.f;   // since a lethal sweep passed (its swept burn up across the giant: skybox.frag)
+    std::vector<char> lurkerOut;   // which of ring::lurkers() have come out (Gameplay_RingFoes.h)
     int shoreSweeps = 0; bool shoreBreakHint = false, shoreWeightHint = false, shoreSpoke = false;   // THE SHORE
     struct GapCharge { bool on = false, hit = false; glm::vec3 pos{0.f}; float dir = 1.f, from = 0.f; } gapCharge;   // -1 not yet set, 0 hard vacuum outside, 1 the hull's air
     glm::vec3 sweptFrom{0.f}, sweptDir{0.f, 0.f, 1.f};

@@ -287,6 +287,24 @@ first (`--bench 200 --gpu-timer`, `--res N`): the frame is pixel-bound (GPU 21 m
 - **Enemies:** every wave about a fifth bigger; a new fight on I2 (where HOLDFAST is: 4 Strays, then 3 and
   a Herder); a Herder with the Bellwether. The Shore still has none (the walk-up).
 
+## Review pass (2026-11-13): what was wrong with the crossing, and what changed
+
+Reviewed from the layout, the timings and a bot run of every fight (`RINGLOG=D` prints the director's
+state each second; the `--autoaim --kite` bot proved too weak to clear a wave: it can't track Strays
+circling at 3 m, so fight length was judged from numbers: a Stray is two revolver body shots).
+
+- **Long empty walks.** ~2.5 km at 7 m/s, fights only at fixed triggers. Fixed with **lurkers**
+  (`ring::lurkers`, spawned in `ringFoes`): 12 small groups of Strays (a Herder with two) climbing out of
+  the capsules as you pass the long stretches. Not waves: nothing waits on them. `make test-ring` checks
+  they come out on open ground.
+- **The core mechanic was rare.** The crossing's sweeps waited 90-150 s, so most places got only their
+  scripted one. Now 55-85 s between them on the crossing, and the next comes round ~45-60 s after a place's
+  scripted sweep: about two per place. (The warning is still the far tier's 20 s.)
+- **Nothing to find.** The design's secrets: UNIT 23 (the furthest any got) sits on top of the reef's
+  north wall by its open capsule, a secret log the Archive keeps (no unit23.glb yet: drawn as the blank
+  unit); UNIT 24's own capsule, "never loaded", on the Wake summit's far corner (a terminal). The awake
+  sibling was already the hull's BERTH terminal. Wrecks and beacons are drawn by `gatherRing` now.
+
 ## The sky (skybox.frag `ringSky`, `uRing`)
 
 The giant (`RING_GIANT`, east, angular radius 0.8) sits on the horizon with its

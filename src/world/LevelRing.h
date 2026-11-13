@@ -424,6 +424,20 @@ inline std::vector<SweepShelter> shelters() {
     return out;
 }
 
+// Lurkers (between the fights): a few STRAYS that climb out of the capsules as you pass, on the long
+// walks with nothing else on them. Not a wave: nothing waits on them, and you can walk on past
+struct Lurker { glm::vec3 at; int strays, herders; };
+inline std::vector<Lurker> lurkers() {
+    return {
+        {{-22.f, 0.f, 72.f}, 2, 0},  {{30.3f, 0.f, -32.5f}, 3, 0},                                   // the Landing
+        {{30.8f, 0.f, -593.2f}, 2, 0}, {{-34.f, 0.f, -866.f}, 3, 0},                                 // the reef plain, past the hull
+        {{24.f, 0.f, -979.f}, 2, 0}, {{-30.f, 0.f, -1195.f}, 3, 0},                                // the Shadow Band (visors in the dark)
+        {{-44.f, 0.f, -1335.f}, 3, 0}, {{34.f, 0.f, -1622.f}, 3, 1}, {{-22.f, 0.f, -1712.f}, 2, 0},   // the Spokes
+        {{17.8f, 0.f, -2387.8f}, 3, 0}, {{-32.f, 0.f, -2452.f}, 2, 1},                               // the Gap's far side
+        {{-14.f, 0.f, -2522.f}, 3, 0},                                                              // the Wake's foot
+    };
+}
+
 // The test ground's (build step 2)
 inline std::vector<SweepShelter> testShelters() {
     std::vector<SweepShelter> out;
@@ -980,6 +994,15 @@ inline LevelData buildRing() {
             s.terminals.push_back({vec3{H.max.x - 1.3f, 1.f, H.max.z - 6.f}, "MANIFEST",
                                    "DISPATCHED: 40,111. RECEIVED: 0. DESTINATION: (BLANK). HOLD UNTIL CALLED FOR."});
         }
+        // A secret (design 3): UNIT 23, the furthest any got, sitting on top of the reef's north wall where it
+        // climbed out of its capsule and stopped. Up there by the grapple (or a long low-gravity leap)
+        {
+            const float zw = c.z - ring::REEF_HZ - ring::REEF_WALL * 0.5f;
+            b.place("ring_capsule_open", vec3{-27.f, ring::REEF_H + 0.4f, zw}, 80.f);
+            s.wrecks.push_back({{-20.f, ring::REEF_H, zw + 0.6f}, 3.14159f, 23, -1,
+                                "THE RING. I GOT FURTHER THAN TWENTY-TWO. THE LIGHT COMES ROUND AND I STOPPED HIDING FROM IT: IT ISN'T LOOKING FOR ME. IT'S COUNTING. I'M ONE IT CAN'T FIND A PLACE FOR.",
+                                3, true});
+        }
         // The way on: north, toward the Shepherd, into the dark (the chapter's end is past the Shadow Band)
         s.end = LevelBuilder::aabb(-60.f, -2.f, ring::shoreN() - 4.f, 60.f, 20.f, ring::shoreN() + 14.f);   // (the Shore: the Shepherd's foot)
         b.mat = Mat::METAL;
@@ -1121,6 +1144,14 @@ inline LevelData buildRing() {
             Shape& lip = b.kit().rock(topAt, r * 0.75f, r * 1.6f, col * 1.04f, (uint32_t)(k * 9.f + 1.f), 0.45f, 9);
             lip.xf = lip.xf * glm::scale(glm::mat4(1.f), glm::vec3{1.f, 1.f, 1.6f});
             leanAbout(lip, topAt, lean + glm::radians(55.f + 20.f * ring::hash(k, 5.f)));
+        }
+        // A secret (design 3, 6): a capsule labelled for UNIT 24, on the summit's far corner. Empty: it was
+        // never sent, because UNIT 24 was never delivered (it comes back at the end)
+        {
+            const vec3 at{-40.f, ring::summitY(), ring::summitN() + 9.f};
+            ringCapsule(b, at + vec3{0.f, 0.55f, 0.f}, false, 1, 8.f, true);
+            s.terminals.push_back({at + vec3{3.2f, 0.f, 1.5f}, "CONSIGNMENT 40,112",
+                                   "CONTENTS: UNIT 24. PACKED. LABELLED. NEVER LOADED. DISPATCH CANCELLED: ITEM NOT FOUND AT POINT OF COLLECTION. HOLD THE CAPSULE. IT WILL TURN UP."});
         }
         // Strays that climbed it: capsules wedged in the treads
         for (int k = 0; k < 14; ++k) {

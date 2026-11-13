@@ -381,6 +381,15 @@ int main() {
         for (auto& a : l.arenas) for (auto& p : a.groundSpawns)
             for (auto& w : l.walls) if (!w.dynamic && p.x > w.box.min.x && p.x < w.box.max.x && p.z > w.box.min.z && p.z < w.box.max.z && p.y + 0.5f > w.box.min.y && p.y + 0.5f < w.box.max.y) { spawnsClear = false; std::printf("   spawn in a wall at %.1f %.1f %.1f\n", p.x, p.y, p.z); }
         CHECK(spawnsClear, "no enemy spawns inside a wall");
+        bool lurkClear = true;
+        for (const auto& lk : ring::lurkers())
+            for (int k = 0; k < lk.strays; ++k) {
+                const float a = 6.2831853f * k / lk.strays;
+                const glm::vec3 p = lk.at + glm::vec3{std::cos(a) * 3.5f, 0.5f, std::sin(a) * 3.5f};
+                for (auto& w : l.walls) if (!w.dynamic && p.x > w.box.min.x && p.x < w.box.max.x && p.z > w.box.min.z && p.z < w.box.max.z && p.y > w.box.min.y && p.y < w.box.max.y) { lurkClear = false; std::printf("   lurker in a wall at %.1f %.1f\n", p.x, p.z); }
+                lurkClear &= std::fabs(l.baseFloor(p.x, p.z)) < 0.5f;
+            }
+        CHECK(lurkClear, "every lurker comes out on open ground");
         bool tagsOk = l.knockWalls.size() > 50 && l.creakWalls.size() == 6;
         for (int w : l.knockWalls) tagsOk &= w >= 0 && w < (int)l.walls.size() && !l.walls[w].dynamic;
         CHECK(tagsOk, "what you touch: the Landing's capsules and the stacks knock, the reef's six walls creak");
