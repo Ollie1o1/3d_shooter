@@ -1174,7 +1174,7 @@ inline LevelData buildRing() {
             const float len = std::sqrt(ring::SLOPE_RUN * ring::SLOPE_RUN + top * top), ang = ring::datan2(top, ring::SLOPE_RUN), th = 3.f;
             b.mat = Mat::SNOW;
             Shape& slab = b.kit().box({0.f, 0.f, 0.f}, {2.f * ring::WAKE_HALF + 16.f, th, len}, glm::mix(iceLit, sand, 0.3f));
-            slab.xf = glm::translate(glm::mat4(1.f), vec3{0.f, top * 0.5f - th * 0.5f / ring::dcos(ang), (zTop + zFoot) * 0.5f})
+            slab.xf = glm::translate(glm::mat4(1.f), vec3{0.f, top * 0.5f, (zTop + zFoot) * 0.5f})   // the slab's top face on the ramp (it was drawn th/2cos lower: you walked on air)
                     * ring::drotate(-ang, vec3{1.f, 0.f, 0.f}) * glm::translate(glm::mat4(1.f), vec3{0.f, -th * 0.5f, 0.f}) * slab.xf;
             // Under it, the wave's mass: solid, so nothing is hollow (and a fall off the side meets ice)
             for (int i = 0; i < 8; ++i) {
