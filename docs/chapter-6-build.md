@@ -677,6 +677,29 @@ Crook's perch reads; the bells' size and colour (they read dim); the Bellwether'
 
 Not hand-played. The end card still says CHAPTER 6 COMPLETE (the save isn't marked complete).
 
+## THE SHEPHERD, phase 5: THE FALL, the finisher and the end (2026-11-13)
+
+All five phases now exist, first passes, none hand-played (the user will play and give notes).
+`src/game/Gameplay_ShepherdFall.h`; geometry `shep::FALL_*`, `fallLamp`, `fallCore`, `fallFins`, `driftStart`;
+arenas 10 (THE FALL, checkpoint 20) and 11 (the end, checkpoint 21; `StorySave` takes up to 21).
+`./shooter --shepherd --arena 11` starts on the Fall, `--arena 12` at the end; `--overlay fallkill` plays it through.
+
+- **Lamps:** round robin, each fires an aimed cone (1 s + 3.5 s, half-width ~10 m), then stands open 5 s
+  (`shepLampOpen`); 230 hp, hitscan (`shootFall`, via `shootVent`). Gap between shots shrinks as they go (6.5 s
+  to 3 s). After each shot: two capsules of its fleece thrown down burning (`shepThrowCap` with a `from`, shared
+  pool with the Plough; `shepCapsTick`), strays climb the hull.
+- **The sky and light:** `shepFallAmt` (time and lamps out) drives `uRingFall` in skybox.frag (fire low all
+  round, pale cloud below) and `ringShade`'s light; gravity up to 1.25x. Music: OVERDRIVE drive on (the drop).
+- **The last count:** all lamps out: 12 s in the corner (`shepLastCount`); HOLDFAST into `level.shepCoreWall`
+  starts the finisher (`shepFinT`): the number drains to 0 over 1.5 s and stays a red 0; it goes off inside;
+  the death line; at 9 s `enterArena(11)`. At 0 unpinned: the swept death; a retry counts again (lamps stay out).
+- **The end:** UNIT 24's capsule far out; capsules drifting loose (`gatherFall`); the Shepherd's disc sinking
+  (`uShepherd` override); silence; `COUNT: -` at 9 s; end card at 18 s with the save marked complete.
+
+Not done: the death sequence is a cut (no first-person "drive the spike in" animation, no jump clear); the
+capsule has no UNIT 24 marking in the world (the banner names it); the sky's giant doesn't come up to meet you;
+the Shepherd's own lines are banners only; tuning throughout.
+
 ## Next steps, in order
 
 1. **Play it (the user).** `./shooter --story6` start to finish. Questions: do
@@ -697,7 +720,7 @@ Not hand-played. The end card still says CHAPTER 6 COMPLETE (the save isn't mark
    they are content with the crossing. Open: their verdict on the new sky, ground, waves and music;
    the frame cost at 4K; Strays still use full gravity in the low-gravity levels (shortcut 8);
    the Drift has no fight; the bridge cutscene.
-7. **The boss** as written (design section 6). Phases 1-4 (THE COMB, THE TURN, THE RESONATOR, THE BREAK) are built: see above.
+7. **The boss** as written (design section 6). All five phases and the end are built (first passes): see above. Next: the user's play notes.
    Next: THE FALL (on its surface as it falls into the giant: the aimed cone only, red on the hull, fins and
    HOLDFAST to the hull; the sky going from black to re-entry fire) and the finisher (the last countdown, held shut
    with HOLDFAST in its core lamp), the death and UNIT 24's capsule.
