@@ -478,8 +478,10 @@ vec3 ringSky(vec3 dir) {
         vec3 f = sh, rt = normalize(cross(f, vec3(0.0, 1.0, 0.0))), up = cross(rt, f);
         vec2 q = vec2(dot(dir, rt), dot(dir, up)) / max(r, 1e-5);
         float fwd = dot(dir, f);
-        if (fwd > 0.0) {
-            float shape = length(q * vec2(1.0, 1.55)) - 0.12 * pow(max(0.0, 1.0 - abs(q.y) * 6.0), 2.0);
+        float shape = length(q * vec2(1.0, 1.55)) - 0.12 * pow(max(0.0, 1.0 - abs(q.y) * 6.0), 2.0);
+        // (only near it: the skin's craters and the corona are the sky's costliest work, and it is a small part of it)
+        float reach = r < 0.05 ? 1e9 : 1.0 + 0.35 / max(r, 1e-3);
+        if (fwd > 0.0 && shape < reach) {
             float edgeW = clamp(0.0025 / r, 0.006, 0.08);                    // (a sharp silhouette however big it gets)
             float body = 1.0 - smoothstep(1.0 - edgeW, 1.0, shape);
             vec3 n = normalize(vec3(q.x, q.y * 1.55, sqrt(max(0.0, 1.0 - dot(q * vec2(1.0, 1.55), q * vec2(1.0, 1.55))))));
@@ -488,7 +490,11 @@ vec3 ringSky(vec3 dir) {
             float giantShine = clamp(dot(nw, RING_GIANT) * 0.8 + 0.2, 0.0, 1.0);   // the giant's light on its east side
             // Its skin: dark regolith, craters at two scales (the near ones only when it is big), the ridge
             float detail = smoothstep(0.02, 0.2, r);
-            float cr = craters(q * 6.0) + detail * 0.6 * craters(q * 23.0 + 7.0) + detail * 0.35 * craters(q * 71.0 + 3.0);
+            float cr = 0.0;
+            if (shape < 1.0) {
+                cr = craters(q * 6.0);
+                if (detail > 0.01) cr += detail * 0.6 * craters(q * 23.0 + 7.0) + detail * 0.35 * craters(q * 71.0 + 3.0);
+            }
             vec3 skin0 = vec3(0.4, 0.38, 0.35) * (0.82 + 0.25 * fbm(q * 9.0) + 0.3 * cr);
             vec3 skin = skin0 * (0.03 + l) + skin0 * vec3(0.55, 0.45, 0.3) * giantShine * (0.14 + 0.5 * detail) * (1.0 - night);
             skin += skin0 * vec3(0.05, 0.05, 0.06) * detail;   // (up close, the ring's own glow off its face)

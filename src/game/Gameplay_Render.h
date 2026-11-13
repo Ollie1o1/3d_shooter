@@ -746,6 +746,7 @@ inline void GameplayState::render() {
         worldShader.setVec3("uTexGlow", glow);
         worldShader.setFloat("uMacro", worldTexMacro(t));
         worldShader.setFloat("uBump", bumpOn ? worldTexBump(t) : 0.f);
+        worldShader.setFloat("uRingSurf", ring() && bumpOn && !devSkip("ringsurf") ? (t == TEX_SNOW || t == TEX_ICE ? 1.f : t == TEX_ROCK ? 2.f : 0.f) : 0.f);   // Chapter 6's ground and rock (shader.frag)
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, worldNrm[t]);
         glActiveTexture(GL_TEXTURE0);
@@ -755,6 +756,7 @@ inline void GameplayState::render() {
     worldShader.setVec3("uTexGlow", {0.f, 0.f, 0.f});
     worldShader.setFloat("uMacro", 0.f);
     worldShader.setFloat("uBump", 0.f);
+    worldShader.setFloat("uRingSurf", 0.f);
     worldShader.setFloat("uNoSeams", 0.f);
     worldShader.setFloat("uBakeOn", 0.f);
     worldShader.setFloat("uBakeDebug", 0.f);
@@ -835,7 +837,7 @@ inline void GameplayState::render() {
         skyboxShader.setFloat("uRealmFade",realmFade);
         skyboxShader.setFloat("uPlain", plain() ? 1.f : 0.f);
         skyboxShader.setFloat("uCold", cold() ? 1.f : 0.f);
-        skyboxShader.setFloat("uRing", ring() ? 1.f : 0.f);   // Chapter 6: the giant on the horizon, the Shepherd on the line (Gameplay_Ring.h)
+        skyboxShader.setFloat("uRing", ring() && !devSkip("ringsky") ? 1.f : 0.f);   // Chapter 6: the giant on the horizon, the Shepherd on the line (Gameplay_Ring.h)
         skyboxShader.setVec4("uShepherd", ring() ? glm::vec4{ring::shepherdDir(), ringShepherdSize()} : glm::vec4{0.f, 0.f, -1.f, 0.f});
         skyboxShader.setFloat("uRingFlash", ring() ? ringFlash() : 0.f);
         skyboxShader.setFloat("uRingNight", ring() ? ringNight() : 0.f);
