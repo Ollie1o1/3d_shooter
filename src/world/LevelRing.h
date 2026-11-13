@@ -73,7 +73,7 @@ inline glm::vec3 start() { return {0.f, 0.f, 112.f}; }
 inline glm::vec3 testStart() { return {0.f, 0.f, 78.f}; }
 inline glm::vec3 sweepDir() { return {0.f, 0.f, 1.f}; }        // away from the Shepherd
 inline glm::vec3 shepherdDir() { return glm::normalize(glm::vec3{0.f, 0.004f, -1.f}); }   // on the line, due north
-inline glm::vec3 sunDir() { return glm::normalize(glm::vec3{-0.8f, 0.16f, -0.35f}); }     // low in the west: long hard shadows
+inline glm::vec3 sunDir() { return glm::normalize(glm::vec3{-0.3f, 0.14f, -0.95f}); }     // low, a little west of north: behind the Shepherd's line, so every lee is in shadow and the giant shows its terminator
 inline glm::vec3 giantDir() { return glm::normalize(glm::vec3{0.99f, -0.02f, 0.14f}); }   // (skybox.frag's RING_GIANT)
 inline AABB testGround() { return {{-TEST_HALF_X, 0.f, TEST_NORTH}, {TEST_HALF_X, 0.f, TEST_SOUTH}}; }
 inline float hash(float n, float k) { float v = std::sin(n * 12.9898f + k * 78.233f) * 43758.5453f; return v - std::floor(v); }
@@ -90,13 +90,22 @@ inline const char* distance(int arena) {
         case 6: return "39,000 KM";
         case 7: return "31,000 KM";
         case 8: return "24,000 KM";
+        case 9: return "4 KM";
         default: return "52,000 KM";
     }
 }
+inline float shoreS();
 // How big the Shepherd is in the sky (angular radius) as you go: a point at the Landing, growing
 inline float shepherdSize(float z) {
     const float t = glm::clamp((LAND_S - z) / (LAND_S - KEPT_N), 0.f, 1.35f);   // (and on, through the Shadow Band)
-    return 0.0012f + 0.0075f * t * t;
+    float s = 0.0012f + 0.0075f * t * t;
+    // Past the Spokes it grows quickly: a disc by the Gap, a mountain from the Wake's summit, and on the
+    // Shore it fills the way north from side to side (design 3)
+    const float z0 = LAND_S - 1.35f * (LAND_S - KEPT_N);
+    if (z < z0) s *= std::exp(0.00168f * (z0 - z));
+    // On the Shore it fills the way north (and covers the sun: the eclipse, eclipseAt)
+    const float shore = glm::clamp((shoreS() + 60.f - z) / 260.f, 0.f, 1.f);
+    return glm::mix(s, 0.9f, shore * shore * (3.f - 2.f * shore));
 }
 
 // The Drift's two islands and the fight island, and the reef (the code that places enemies and the
@@ -139,6 +148,18 @@ inline Theme darkTheme() {
     t.skyAmb = {0.018f, 0.017f, 0.02f};
     t.groundAmb = {0.01f, 0.009f, 0.008f};
     t.fogColor = {0.f, 0.f, 0.f};
+    return t;
+}
+
+// The Shore, in the Shepherd's shadow (13.4): no sun. Its ridge lamps light you from the north, cold and
+// white; the giant, still in the sun, fills the shadows butter-dim from the east
+inline Theme eclipseTheme() {
+    Theme t = theme();
+    t.sunColor = {0.f, 0.f, 0.f};
+    t.lightDir = glm::normalize(glm::vec3{0.1f, -0.45f, 1.f});   // (travelling south, down from its lamps)
+    t.lightColor = {0.42f, 0.44f, 0.5f};
+    t.skyAmb = {0.16f, 0.13f, 0.09f};
+    t.groundAmb = {0.09f, 0.08f, 0.07f};
     return t;
 }
 // Its shelters: a staggered field of rock, close enough for the mid tier's 10 s warning (design
@@ -220,6 +241,46 @@ inline std::vector<Tread> wakeTreads() {
 inline float summitY() { return wakeTreads().back().y; }
 inline float summitS() { return wakeTreads().back().zN; }
 inline float summitN() { return summitS() - 70.f; }
+// THE SHORE (level 8): down the wave's back (one long slope of packed ice), then the last walk in the
+// Shepherd's shadow to its foot. Gravity comes back on the way: the Shepherd is the heaviest thing here
+constexpr float SLOPE_RUN = 120.f, SHORE_LEN = 300.f;
+inline float shoreS() { return summitN() - SLOPE_RUN; }   // the slope's foot: the Shore's ice starts
+inline float shoreN() { return shoreS() - SHORE_LEN; }    // the Shepherd's foot (the chapter's end)
+// How heavy you are at z: the crossing's half gravity until the Shore, full by 120 m onto it (design 1)
+inline float gravityAt(float z) {
+    const float t = glm::clamp((shoreS() + 10.f - z) / 130.f, 0.f, 1.f);
+    return GRAVITY_SCALE + (1.f - GRAVITY_SCALE) * t * t * (3.f - 2.f * t);
+}
+// The eclipse (13.4): the last walk is in the Shepherd's own shadow. 0 on the summit, 1 at the slope's foot
+// (as skybox.frag draws it: how much of the sun the Shepherd's disc covers from here)
+inline float eclipseAt(float z) {
+    const glm::vec3 f = shepherdDir(), rt = glm::normalize(glm::cross(f, glm::vec3{0.f, 1.f, 0.f})), up = glm::cross(rt, f), s = sunDir();
+    const glm::vec2 q = glm::vec2{glm::dot(s, rt), glm::dot(s, up)} / shepherdSize(z);
+    const float t = glm::clamp((1.05f - glm::length(q * glm::vec2{1.f, 1.55f})) / 0.15f, 0.f, 1.f);
+    return t * t * (3.f - 2.f * t);
+}
+// How far open the giant's main rings are over you (skybox.frag uRingBend): edge-on until the Kept,
+// an arch over the giant by the Wake, wide open on the Shore (the Shepherd's pull bends your ringlet)
+inline float ringBend(float z) {
+    const float t = glm::clamp((KEPT_N - z) / (KEPT_N - shoreN()), 0.f, 1.f);
+    return t * t * (3.f - 2.f * t);
+}
+// The Shore's shelter: plates the tines shed, in staggered rows (the near tier warns 6 s: every
+// walk to one is short)
+inline std::vector<Rock> shoreRocks() {
+    std::vector<Rock> out;
+    int r = 0;
+    for (float z = shoreS() - 20.f; z > shoreN() + 2.f; z -= 21.f, ++r)
+        for (int c = 0; c < 7; ++c) {
+            const float k = (float)(r * 7 + c) + 900.f;
+            const float x = -96.f + c * 32.f + (r % 2) * 16.f + 14.f * (hash(k, 91.f) - 0.5f);
+            if (x > 100.f || x < -104.f) continue;
+            if (r % 3 == 1 && std::fabs(x) < 12.f) continue;   // (a way up the middle, now and then)
+            if (hash(k, 96.f) < 0.12f) continue;               // (gaps: not a grid)
+            out.push_back({x, z + 9.f * (hash(k, 92.f) - 0.5f), 6.5f + 6.f * hash(k, 93.f), 3.8f + 2.6f * hash(k, 94.f), 4.f + 3.f * hash(k, 95.f)});
+        }
+    return out;
+}
 // The lamp route: where the lit capsules lie, south to north
 inline std::vector<glm::vec3> bandLamps() {
     std::vector<glm::vec3> out;
@@ -316,6 +377,7 @@ inline std::vector<SweepShelter> shelters() {
     for (const Rock& r : bandRocks()) out.push_back(shelterBox(r.x - r.w * 0.5f, r.z - r.d * 0.5f, r.x + r.w * 0.5f, r.z + r.d * 0.5f, 0.f, r.h, 5));
     for (const Rock& r : spokeRocks()) out.push_back(shelterBox(r.x - r.w * 0.5f, r.z - r.d * 0.5f, r.x + r.w * 0.5f, r.z + r.d * 0.5f, 0.f, r.h, 6));
     for (const Rock& r : gapRocks()) out.push_back(shelterBox(r.x - r.w * 0.5f, r.z - r.d * 0.5f, r.x + r.w * 0.5f, r.z + r.d * 0.5f, 0.f, r.h, 7));
+    for (const Rock& r : shoreRocks()) out.push_back(shelterBox(r.x - r.w * 0.5f, r.z - r.d * 0.5f, r.x + r.w * 0.5f, r.z + r.d * 0.5f, 0.f, r.h, 9));
     {   // The Wake's terraces: each tread's mass shelters the tread below it (its post at the riser's foot)
         const auto T = wakeTreads();
         for (size_t i = 0; i < T.size(); ++i) {
@@ -545,7 +607,7 @@ inline LevelData buildRing() {
     };
     plane(ring::LAND_N, ring::FAR_GROUND);          // the Landing and everything south
     plane(ring::GAP_S, ring::DRIFT_N);               // the reef plain to the Gap's near lip
-    plane(-ring::FAR_GROUND, ring::GAP_N);           // past the Gap, on to the Shepherd
+    plane(-ring::FAR_GROUND - 700.f, ring::GAP_N);   // past the Gap, on to the Shepherd (and its foot)
     l.basins.push_back({LevelBuilder::aabb(-ring::FAR_GROUND, 0.f, ring::GAP_N, ring::FAR_GROUND, 0.f, ring::GAP_S), ring::VOID_FLOOR});   // THE GAP: nothing
     // Under the Drift: nothing. Its band runs across the whole ring
     l.basins.push_back({LevelBuilder::aabb(-ring::FAR_GROUND, 0.f, ring::DRIFT_N, ring::FAR_GROUND, 0.f, ring::LAND_N), ring::VOID_FLOOR});
@@ -841,7 +903,7 @@ inline LevelData buildRing() {
                                    "DISPATCHED: 40,111. RECEIVED: 0. DESTINATION: (BLANK). HOLD UNTIL CALLED FOR."});
         }
         // The way on: north, toward the Shepherd, into the dark (the chapter's end is past the Shadow Band)
-        s.end = LevelBuilder::aabb(-30.f, ring::summitY() - 1.f, ring::summitN() - 2.f, 30.f, ring::summitY() + 10.f, ring::summitN() + 14.f);   // (the Wake's summit)
+        s.end = LevelBuilder::aabb(-60.f, -2.f, ring::shoreN() - 4.f, 60.f, 20.f, ring::shoreN() + 14.f);   // (the Shore: the Shepherd's foot)
         b.mat = Mat::METAL;
         for (int k = 0; k < 6; ++k) post({-6.f + (k % 2) * 12.f, 0.f, ring::KEPT_N + 30.f + (k / 2) * 14.f});
     }
@@ -968,14 +1030,90 @@ inline LevelData buildRing() {
             Shape& s = b.kit().rock({x, -2.f, ring::summitS() - 20.f + 30.f * ring::hash(k, 2.f)}, 30.f + 12.f * ring::hash(k, 3.f), h, glm::mix(wave, iceLit, 0.25f * ring::hash(k, 4.f)), (uint32_t)(k * 5.f), 0.35f, 7);
             s.xf = s.xf * glm::scale(glm::mat4(1.f), glm::vec3{1.f, 1.f, 2.4f});
         }
-        // Behind the summit, the wave's far face falling away: the ring beyond, and the Shepherd over it
-        b.kit().box({0.f, ring::summitY() * 0.5f - 0.5f, ring::summitN() - 30.f}, {2.f * ring::WAKE_HALF + 16.f, ring::summitY() - 1.f, 60.f}, wave * 0.8f);
         // Strays that climbed it: capsules wedged in the treads
         for (int k = 0; k < 14; ++k) {
             const ring::Tread& t = treads[(k * 5 + 1) % treads.size()];
             const float x = (ring::hash((float)k, 132.f) - 0.5f) * 2.f * (ring::WAKE_HALF - 8.f);
             ringCapsule(b, {x, t.y + 0.55f, t.zN + 3.f}, false, 1 + 2 * (k % 2), (ring::hash((float)k, 133.f) - 0.5f) * 12.f, true);
         }
+    }
+
+    // =========================================================================
+    // 9. THE SHORE
+    // =========================================================================
+    {
+        const vec3 ice = glm::mix(iceLit, iceDark, 0.35f), wave = glm::mix(iceLit, vec3{0.55f, 0.6f, 0.66f}, 0.3f);
+        const vec3 hullDark{0.16f, 0.155f, 0.15f}, lampWhite{2.4f, 2.4f, 2.15f};
+        const float top = ring::summitY(), zTop = ring::summitN(), zFoot = ring::shoreS();
+        // The wave's back: one long slope of packed ice down to the Shore (you walk the ramp; the slab is what you see)
+        l.ramps.push_back({LevelBuilder::aabb(-ring::WAKE_HALF - 8.f, 0.f, zFoot, ring::WAKE_HALF + 8.f, top, zTop), 2, 0.f, top});
+        {
+            const float len = std::sqrt(ring::SLOPE_RUN * ring::SLOPE_RUN + top * top), ang = std::atan2(top, ring::SLOPE_RUN), th = 3.f;
+            b.mat = Mat::SNOW;
+            Shape& slab = b.kit().box({0.f, 0.f, 0.f}, {2.f * ring::WAKE_HALF + 16.f, th, len}, glm::mix(iceLit, sand, 0.3f));
+            slab.xf = glm::translate(glm::mat4(1.f), vec3{0.f, top * 0.5f - th * 0.5f / std::cos(ang), (zTop + zFoot) * 0.5f})
+                    * glm::rotate(glm::mat4(1.f), -ang, vec3{1.f, 0.f, 0.f}) * glm::translate(glm::mat4(1.f), vec3{0.f, -th * 0.5f, 0.f}) * slab.xf;
+            // Under it, the wave's mass: solid, so nothing is hollow (and a fall off the side meets ice)
+            for (int i = 0; i < 8; ++i) {
+                const float z0 = zTop - ring::SLOPE_RUN * i / 8.f, z1 = zTop - ring::SLOPE_RUN * (i + 1) / 8.f;
+                const float h = top * (1.f - (i + 1) / 8.f);
+                if (h > 0.5f) b.solid(-ring::WAKE_HALF - 8.f, 0.f, z1, ring::WAKE_HALF + 8.f, h, z0);
+            }
+            b.mat = Mat::ROCK;
+            for (float z = zTop; z > zFoot; z -= 12.f)   // the crests either side, falling with it
+                for (int sd = -1; sd <= 1; sd += 2) {
+                    const float k = z * 0.21f + sd * 13.f + 4000.f;
+                    const float h = top * (z - zFoot) / ring::SLOPE_RUN + 5.f + 6.f * ring::hash(k, 1.f);
+                    b.kit().rock({sd * (ring::WAKE_HALF + 10.f), -1.f, z - 6.f}, 7.f, h, glm::mix(ice, wave, 0.5f), (uint32_t)(k * 7.f), 0.7f, 7);
+                }
+        }
+        // The Shore's ice is combed (13.3): fine grooves running north, cut by the tines
+        for (float x = -ring::HALF_X - 12.f; x < ring::HALF_X + 12.f; x += 3.f) {
+            const float k = x * 0.7f + 5000.f;
+            l.floors.push_back({x, ring::shoreN() - 40.f, x + 0.4f + 0.4f * ring::hash(k, 1.f), zFoot + 6.f, 0.005f, glm::mix(iceLit, sand, 0.5f) * (0.78f + 0.08f * ring::hash(k, 2.f)), Mat::SNOW});
+        }
+        // Shelter: plates the tines shed, dark, in rows
+        int seed = 900;
+        for (const ring::Rock& r : ring::shoreRocks()) {
+            const AABB box = LevelBuilder::aabb(r.x - r.w * 0.5f, 0.f, r.z - r.d * 0.5f, r.x + r.w * 0.5f, r.h, r.z + r.d * 0.5f);
+            const size_t from = l.shapes.size();
+            ringChunk(b, box, glm::mix(hullDark, iceDark, 0.35f + 0.3f * ring::hash((float)seed, 5.f)), (uint32_t)(seed * 97 + 3));
+            std::vector<vec3> pts;
+            for (size_t i = from; i < l.shapes.size(); ++i) { auto q = ringSamples(l.shapes[i]); pts.insert(pts.end(), q.begin(), q.end()); }
+            b.mat = Mat::ROCK;
+            ringSolids(b, pts, -0.4f, 4, 3);
+            // a seam of the Shepherd's lamps still lit on some (cold white: its light, not a capsule's)
+            if (ring::hash((float)seed, 6.f) < 0.4f) b.neon(r.x - r.w * 0.3f, r.h * 0.55f, r.z + r.d * 0.5f + 0.05f, r.x + r.w * 0.3f, r.h * 0.55f + 0.12f, r.z + r.d * 0.5f + 0.15f, lampWhite * 0.35f);
+            ++seed;
+        }
+        // The foot: the Shepherd's regolith rising out of the ring, boulders the size of houses, and its
+        // lamps in rows up the dark (the body itself is the sky's: skybox.frag's Shepherd fills the north)
+        const float zN = ring::shoreN();
+        b.mat = Mat::ROCK;
+        for (int i = 0; i < 70; ++i) {
+            const float k = (float)i * 3.1f + 6000.f;
+            const float x = (ring::hash(k, 1.f) - 0.5f) * 2.f * 260.f, z = zN - 20.f - 260.f * ring::hash(k, 2.f) * ring::hash(k, 3.f);
+            const float r = 10.f + 26.f * ring::hash(k, 4.f), rise = (zN - 20.f - z) * 0.5f;
+            b.kit().rock({x, -4.f, z}, r, r * (0.8f + 0.9f * ring::hash(k, 5.f)) + rise, hullDark * (0.8f + 0.4f * ring::hash(k, 6.f)), (uint32_t)(k * 11.f), 0.6f, 7);
+        }
+        b.solid(-ring::HALF_X - 20.f, 0.f, zN - 60.f, ring::HALF_X + 20.f, 30.f, zN - 22.f);   // (you stop at its foot)
+        for (int row = 0; row < 5; ++row)
+            for (int k = -12; k <= 12; ++k) {
+                const float x = k * 34.f + (row % 2) * 17.f, z = zN - 90.f - row * 70.f, y = 30.f + row * 38.f + 6.f * std::sin(k * 0.7f);
+                b.neon(x - 1.2f, y, z, x + 1.2f, y + 0.6f, z + 0.8f, lampWhite);
+            }
+        // The tines (phase 1's ground): either side, out past the band, two of its teeth dragging through the
+        // ring toward you, kilometres long. Out of reach: no collision
+        for (int sd = -1; sd <= 1; sd += 2)
+            for (int i = 0; i < 30; ++i) {
+                const float z = zN - 150.f + i * 55.f, x = sd * (420.f + i * 9.f);
+                const float h = 140.f - i * 3.2f;
+                b.mat = Mat::METAL;
+                b.kit().box({x, h * 0.5f - 160.f, z}, {46.f - i * 0.6f, h + 160.f, 56.f}, hullDark * (0.85f + 0.2f * ring::hash((float)i, 7.f + sd)));
+                if (i % 2 == 0) b.neon(x - 2.f, h - 158.f, z - 1.f, x + 2.f, h - 156.f, z + 1.f, lampWhite * 0.8f);
+                b.mat = Mat::ROCK;   // the ring piling up against its face: ice thrown up in a bow wave
+                b.kit().rock({x - sd * 30.f, -6.f, z + 20.f}, 18.f + 10.f * ring::hash((float)i, 8.f), 24.f + 30.f * ring::hash((float)i, 9.f), ice, (uint32_t)(i * 19 + sd + 70), 0.7f, 7);
+            }
     }
 
     // Every shelter's post (the drifting ones ride their chunk: drawn live)
@@ -998,6 +1136,8 @@ inline LevelData buildRing() {
         loose(c + vec3{-12.f, 0.f, 30.f}, {-9.f, 0.f, 0.f}, 3); loose(c + vec3{12.f, 0.f, 8.f}, {9.f, 0.f, 0.f}, 3);
         loose(c + vec3{-14.f, 0.f, -2.f}, {-8.f, 0.f, 0.f}, 3); loose(c + vec3{14.f, 0.f, -30.f}, {8.f, 0.f, 0.f}, 3);
         loose({18.f, 0.f, -440.f}, {9.f, 0.f, 0.f}, 2); loose({-6.f, 0.f, -456.f}, {-9.f, 0.f, 0.f}, 2);
+        // The Shore's first lesson: small shelter nearer than the plates. A breaker shatters it
+        for (float x : {-60.f, -24.f, 14.f, 50.f, 84.f}) loose({x, 0.f, ring::shoreS() - 7.f - 2.f * ring::hash(x, 140.f)}, {0.f, 0.f, 0.f}, 9);
     }
 
     // =========================================================================
@@ -1006,7 +1146,7 @@ inline LevelData buildRing() {
     auto section = [&](const char* name, const char* sub, float zN, float zS, vec3 start) {
         Arena a;
         a.name = name; a.subtitle = sub;
-        a.zone = LevelBuilder::aabb(-ring::HALF_X, -1000.f, zN, ring::HALF_X, 80.f, zS);   // (80 m: nothing out here stands higher, and the light bake fills the whole height)
+        a.zone = LevelBuilder::aabb(-ring::HALF_X, -1000.f, zN, ring::HALF_X, 40.f, zS);   // (40 m: nothing walkable out here stands higher, and the light bake fills the whole height)
         a.bounds = a.zone; a.bounds.min.y = 0.f;
         a.playerStart = start; a.startYaw = -90.f; a.hasRespawn = true; a.respawn = start;
         a.maxAlive = 8; a.damageScale = 1.f;
@@ -1106,6 +1246,14 @@ inline LevelData buildRing() {
         (void)zs;
         w.maxAlive = 6;
         l.arenas.push_back(w);
+    }
+    // 9. The Shore: down the wave's back, gravity coming back, the near tier's breakers, no one but you
+    {
+        Arena sh = section("THE SHORE", "4 KM", ring::shoreN() - 30.f, ring::summitN(), {0.f, ring::summitY(), ring::summitN() - 4.f});
+        sh.zone = LevelBuilder::aabb(-ring::HALF_X, -1000.f, ring::shoreN() - 30.f, ring::HALF_X, ring::summitY() + 20.f, ring::summitN());
+        sh.bounds = sh.zone; sh.bounds.min.y = 0.f;
+        sh.voidY = -30.f;
+        l.arenas.push_back(sh);
     }
     // Last: whatever is drawn within reach and has no collision gets its own (nothing hollow to walk into)
     ringMatchCollision(b, ring::HALF_X + 6.f);

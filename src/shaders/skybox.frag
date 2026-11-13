@@ -39,6 +39,7 @@ uniform float uRingNight;   // 0..1: the giant's shadow (the Shadow Band): no su
 uniform float uRingBolt;    // 0..1: lightning in its night side, now (the game times it: the ring lights with it)
 uniform vec2  uRingBoltAt;  // where in the cloud (longitude, latitude offsets)
 uniform float uRingDawn;    // 0..1: the sunrise out of the Shadow Band: a red arc on its edge, then the diamond
+uniform float uRingBend;    // 0..1: the main rings opening into an arch over you as you near the Shepherd (its pull bends your ringlet under them)
 
 float hash3(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
 float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -320,6 +321,39 @@ vec3 ringStars(vec3 dir, float k) {
     col += vec3(0.5, 0.5, 0.6) * step(0.9993, hash3(floor(dir * 1400.0))) * band * k;   // its fine stars
     return col;
 }
+// The giant's main rings: a plane through its centre (lifted onto the horizon), tilted by `a` so you
+// stand just under it. Radii in the sky's units (the giant is 10 away, its radius ~7.2; your ringlet is at 10)
+const float RING_IN = 7.6, RING_OUT = 9.75;
+float ringDensity(float r) {
+    float x = (r - RING_IN) / (RING_OUT - RING_IN);
+    if (x <= 0.0 || x >= 1.0) return 0.0;
+    float d = 0.22 + 0.18 * smoothstep(0.05, 0.3, x);                                  // the faint inner ring
+    d += 0.5 * smoothstep(0.26, 0.34, x) * (1.0 - smoothstep(0.6, 0.64, x));          // the dense middle
+    d *= 1.0 - 0.94 * smoothstep(0.635, 0.655, x) * (1.0 - smoothstep(0.7, 0.72, x)); // the wide dark division
+    d *= 1.0 - 0.7 * smoothstep(0.9, 0.906, x) * (1.0 - smoothstep(0.914, 0.92, x));  // a thin gap near the edge
+    float fine = vnoise(vec2(r * 190.0, 0.5)) * 0.55 + vnoise(vec2(r * 47.0, 3.0)) * 0.45;
+    d *= 0.5 + 0.8 * fine;
+    d *= smoothstep(0.0, 0.025, x) * (1.0 - smoothstep(0.975, 1.0, x));
+    return clamp(d, 0.0, 0.92);
+}
+bool hitsBall(vec3 o, vec3 d, vec3 c, float r) {
+    vec3 oc = o - c; float b = dot(oc, d), q = dot(oc, oc) - r * r;
+    return b < 0.0 && b * b - q > 0.0;
+}
+// Cellular craters for the Shepherd's skin: darker bowls with a bright rim, at one scale
+float craters(vec2 p) {
+    vec2 i = floor(p), f = fract(p);
+    float v = 0.0;
+    for (int y = -1; y <= 1; ++y) for (int x = -1; x <= 1; ++x) {
+        vec2 g = vec2(float(x), float(y));
+        vec2 o = vec2(hash2(i + g), hash2(i + g + 17.3));
+        float rad = 0.18 + 0.3 * hash2(i + g + 41.1);
+        float dd = length(g + o - f) / rad;
+        v += dd < 1.0 ? -0.5 * (1.0 - dd * dd) : 0.25 * exp(-(dd - 1.0) * (dd - 1.0) * 40.0);
+    }
+    return v;
+}
+
 vec3 ringSky(vec3 dir) {
     float y = dir.y;
     float az = atan(dir.z, dir.x);
@@ -334,40 +368,79 @@ vec3 ringSky(vec3 dir) {
     col += vec3(1.0, 0.97, 0.9) * exp(-sa * 40.0) * 0.6 * (1.0 - night);
     col += vec3(0.7, 0.65, 0.55) * exp(-sa * 9.0) * 0.05 * (1.0 - night);
 
+    // The main rings' plane (see ringDensity): where this ray meets it, if it does
+    float a = mix(0.0004, 0.034, uRingBend);
+    vec3 Gp = vec3(RING_GIANT.x, 0.0, RING_GIANT.z) * 10.0;
+    vec3 gFlat = normalize(Gp);
+    vec3 pn = normalize(vec3(0.0, cos(a), 0.0) + gFlat * sin(a));
+    float pd = dot(dir, pn);
+    float tRing = pd > 1e-5 ? dot(Gp, pn) / pd : -1.0;
+    float rRing = tRing > 0.0 ? length(dir * tRing - Gp) : 0.0;
+    float ringA = tRing > 0.0 ? ringDensity(rRing) : 0.0;
+
     // The gas giant: a sphere along RING_GIANT, its equator on the ring plane
     vec3 C = RING_GIANT * 10.0;
     float R = 10.0 * sin(RING_GIANT_R);
     float tb = dot(dir, C), disc = tb * tb - (dot(C, C) - R * R);
+    float tP = 1e9;
     if (disc > 0.0 && tb > 0.0) {
-        float tP = tb - sqrt(disc);
+        tP = tb - sqrt(disc);
         vec3 hit = dir * tP, nrm = normalize(hit - C);
         float lat = nrm.y;                                   // its poles are up and down: the ring is its equator
         float lon = atan(nrm.z, nrm.x);
-        float swirl = fbm(vec2(lon * 2.5 + uTime * 0.001, lat * 9.0));
-        float swirl2 = fbm(vec2(lon * 9.0 - uTime * 0.002, lat * 30.0 + swirl * 2.0));
-        float bandsP = 0.5 + 0.5 * sin(lat * 34.0 + swirl * 4.0 + swirl2 * 1.2);
-        float belts = 0.5 + 0.5 * sin(lat * 11.0 + 0.8);
-        vec3 butter = vec3(0.92, 0.8, 0.56), tan_ = vec3(0.7, 0.55, 0.38), cream = vec3(0.96, 0.92, 0.8), rust = vec3(0.55, 0.36, 0.24);
+        // The belts drift, each at its own pace (the equator fastest), and curl where they meet
+        float lonA = lon + uTime * 0.0035 * (1.0 + 0.9 * sin(lat * 23.0) + 0.6 * (1.0 - abs(lat)));
+        vec2 bp = vec2(lonA * 3.0, lat * 15.0);
+        vec2 w = vec2(fbm(bp * 1.3 + vec2(0.0, uTime * 0.002)), fbm(bp * 1.3 + 5.2));
+        float swirl = fbm(bp + 1.7 * w);
+        float swirl2 = fbm(vec2(lonA * 11.0, lat * 46.0) + 2.2 * w);
+        float bandsP = 0.5 + 0.5 * sin(lat * 34.0 + swirl * 4.5 + swirl2 * 1.4);
+        float belts = 0.5 + 0.5 * sin(lat * 11.0 + 0.8 + swirl * 0.8);
+        float hair = 0.5 + 0.5 * sin(lat * 130.0 + swirl2 * 6.0);   // fine lanes inside the belts
+        vec3 butter = vec3(0.92, 0.8, 0.56), tan_ = vec3(0.66, 0.5, 0.33), cream = vec3(0.97, 0.93, 0.82), rust = vec3(0.52, 0.32, 0.2);
         vec3 surf = mix(tan_, butter, bandsP);
-        surf = mix(surf, cream, smoothstep(0.55, 0.9, belts) * 0.5);
-        surf = mix(surf, rust, smoothstep(0.62, 0.8, swirl2) * 0.35 * smoothstep(0.1, 0.3, abs(lat)));
-        // A storm: a pale oval in the northern belts
-        vec2 so = vec2((lon - 2.95) * 3.2, (lat - 0.32) * 7.0);
-        surf = mix(surf, vec3(1.0, 0.93, 0.78), smoothstep(1.0, 0.3, length(so)) * 0.6);
-        surf *= 0.8 + 0.25 * smoothstep(0.75, 0.95, abs(lat));   // pale poles, bluish-grey
-        float lit = clamp(dot(nrm, sunD) * 1.1 + 0.05, 0.0, 1.0) * (1.0 - night);
-        // The rings' shadow: thin dark stripes across the face, just off the equator
-        float rs = abs(lat + 0.09);
-        float shadow = 1.0 - 0.55 * smoothstep(0.06, 0.0, rs) * (0.6 + 0.4 * sin(rs * 300.0));
-        vec3 body = surf * lit * shadow * 1.05;
-        body += surf * vec3(0.02, 0.018, 0.016);                          // the night side: almost black
+        surf = mix(surf, cream, smoothstep(0.55, 0.9, belts) * 0.55);
+        surf = mix(surf, rust, smoothstep(0.6, 0.8, swirl2) * 0.4 * smoothstep(0.1, 0.3, abs(lat)));
+        surf *= 0.9 + 0.12 * hair;
+        // A storm: a pale oval in the northern belts, turning, with a dark wake
+        vec2 so = vec2((lonA - 2.95) * 3.2, (lat - 0.32) * 7.0);
+        float storm = smoothstep(1.0, 0.3, length(so));
+        surf = mix(surf, vec3(1.0, 0.94, 0.8), storm * (0.5 + 0.2 * sin(atan(so.y, so.x) * 3.0 + length(so) * 9.0 - uTime * 0.3)));
+        surf *= 1.0 - 0.25 * smoothstep(1.6, 1.0, length(so - vec2(1.3, 0.0))) * (1.0 - storm);
+        // The pole: a six-sided jet stream round a blue-grey cap
+        if (lat > 0.7) {
+            vec2 pp = nrm.xz / lat;
+            float ang = uTime * 0.01;
+            pp = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * pp;
+            vec2 ap = abs(pp);
+            float hex = max(ap.x * 0.866 + ap.y * 0.5, ap.y);
+            float edge = exp(-abs(hex - 0.42) * 45.0);
+            surf = mix(surf, vec3(0.55, 0.6, 0.66), smoothstep(0.44, 0.36, hex) * 0.7);
+            surf += vec3(0.25, 0.22, 0.16) * edge;
+        }
+        // Light: a soft terminator, reddened where the sun is low through its haze; the limb darkens
+        float ndl = dot(nrm, sunD);
+        float lit = smoothstep(-0.06, 0.3, ndl) * (0.55 + 0.45 * clamp(ndl, 0.0, 1.0)) * (1.0 - night);
+        vec3 term = mix(vec3(1.0, 0.5, 0.25), vec3(1.0), smoothstep(-0.02, 0.28, ndl));
+        float mu = clamp(dot(nrm, -dir), 0.0, 1.0);
+        // The rings' real shadow: from this point toward the sun, through the rings' plane
+        float sp = dot(sunD, pn);
+        float ringShadow = 1.0;
+        if (abs(sp) > 1e-4) {
+            float s = dot(Gp - hit, pn) / sp;
+            if (s > 0.0) ringShadow = 1.0 - 0.85 * ringDensity(length(hit + sunD * s - Gp));
+        }
+        vec3 body = surf * lit * term * ringShadow * pow(mu, 0.22) * 1.08;
+        // The night side: ringshine, the rings' light thrown back onto it (faint, warm)
+        body += surf * vec3(0.035, 0.03, 0.024) * (1.0 - lit) * (1.0 - 0.7 * night);
         // Night-side lightning in the Shadow Band (silent flickers deep in the cloud)
         if (night > 0.0 && uRingBolt > 0.0) {
             float d = length(vec2(lon - 3.14 + uRingBoltAt.x, lat - uRingBoltAt.y) * vec2(1.0, 2.0));
             body += vec3(0.6, 0.65, 0.9) * uRingBolt * 1.6 * (exp(-d * 9.0) + 0.15 * exp(-d * 2.0));
         }
-        float limb = pow(1.0 - clamp(dot(-dir, nrm), 0.0, 1.0), 2.5);
-        body += vec3(0.95, 0.75, 0.45) * limb * 0.18 * (0.2 + lit);      // its haze at the edge, warm
+        float limb = pow(1.0 - mu, 2.5);
+        body += vec3(0.95, 0.75, 0.45) * limb * 0.2 * (0.15 + lit);      // its haze at the edge, warm
+        body += vec3(0.9, 0.55, 0.3) * pow(1.0 - mu, 8.0) * smoothstep(-0.2, 0.1, ndl) * 0.5 * (1.0 - night);   // the lit limb's thin bright rim
         // The sunrise: a thin red arc along its edge, brightest on the sun's side, then the diamond
         if (uRingDawn > 0.0) {
             float sunSide = clamp(dot(normalize(nrm.xz + vec2(1e-4)), normalize(sunD.xz + vec2(1e-4))) * 0.5 + 0.5, 0.0, 1.0);
@@ -377,7 +450,20 @@ vec3 ringSky(vec3 dir) {
         col = mix(col, body, smoothstep(0.0, 0.0008, disc / (tb * tb)));
     }
 
-    // The ring, edge-on: a hair of light on the horizon (its far particles), brightest toward the sun,
+    // The main rings, over the giant where they pass in front of it, behind it where it is nearer
+    if (ringA > 0.0 && tRing < tP) {
+        vec3 P = dir * tRing;
+        float x = (rRing - RING_IN) / (RING_OUT - RING_IN);
+        vec3 rc = mix(vec3(0.62, 0.52, 0.4), vec3(0.95, 0.9, 0.8), smoothstep(0.2, 0.6, x));
+        rc = mix(rc, vec3(0.75, 0.66, 0.52), 0.3 * vnoise(vec2(rRing * 23.0, 9.0)));
+        float lightR = 0.45 + 0.55 * abs(dot(pn, sunD));                 // (lit through, from either side)
+        float inShadow = hitsBall(P, sunD, C, R) ? 0.06 : 1.0;           // the giant's shadow across them
+        vec3 rl = rc * lightR * inShadow * (1.0 - night * 0.9) * 0.95;
+        float fade = smoothstep(0.0, 0.0015, a) ;                        // edge-on: nothing (the hairline below is them)
+        col = mix(col, rl, ringA * fade);
+    }
+
+    // Your ringlet, edge-on: a hair of light on the horizon (its far particles), brightest toward the sun,
     // and broken where the Shepherd has combed the gap
     vec3 sh = normalize(uShepherd.xyz);
     float shAz = atan(sh.z, sh.x);
@@ -393,23 +479,47 @@ vec3 ringSky(vec3 dir) {
         vec2 q = vec2(dot(dir, rt), dot(dir, up)) / max(r, 1e-5);
         float fwd = dot(dir, f);
         if (fwd > 0.0) {
-            float body = 1.0 - smoothstep(0.92, 1.0, length(q * vec2(1.0, 1.55)) - 0.12 * pow(max(0.0, 1.0 - abs(q.y) * 6.0), 2.0));
-            // Shaded: lit from the sun's side, the ridge a bright line
+            float shape = length(q * vec2(1.0, 1.55)) - 0.12 * pow(max(0.0, 1.0 - abs(q.y) * 6.0), 2.0);
+            float edgeW = clamp(0.0025 / r, 0.006, 0.08);                    // (a sharp silhouette however big it gets)
+            float body = 1.0 - smoothstep(1.0 - edgeW, 1.0, shape);
             vec3 n = normalize(vec3(q.x, q.y * 1.55, sqrt(max(0.0, 1.0 - dot(q * vec2(1.0, 1.55), q * vec2(1.0, 1.55))))));
             vec3 nw = normalize(rt * n.x + up * n.y - f * n.z);
             float l = clamp(dot(nw, sunD) * 1.2 + 0.04, 0.0, 1.0) * (1.0 - night);
-            vec3 skin = vec3(0.42, 0.4, 0.37) * (0.06 + l);
-            skin *= 0.85 + 0.15 * fbm(q * 9.0);
+            float giantShine = clamp(dot(nw, RING_GIANT) * 0.8 + 0.2, 0.0, 1.0);   // the giant's light on its east side
+            // Its skin: dark regolith, craters at two scales (the near ones only when it is big), the ridge
+            float detail = smoothstep(0.02, 0.2, r);
+            float cr = craters(q * 6.0) + detail * 0.6 * craters(q * 23.0 + 7.0) + detail * 0.35 * craters(q * 71.0 + 3.0);
+            vec3 skin0 = vec3(0.4, 0.38, 0.35) * (0.82 + 0.25 * fbm(q * 9.0) + 0.3 * cr);
+            vec3 skin = skin0 * (0.03 + l) + skin0 * vec3(0.55, 0.45, 0.3) * giantShine * (0.14 + 0.5 * detail) * (1.0 - night);
+            skin += skin0 * vec3(0.05, 0.05, 0.06) * detail;   // (up close, the ring's own glow off its face)
             float ridge = exp(-abs(q.y) * 40.0) * step(length(q), 1.15);
-            skin += vec3(0.6, 0.58, 0.52) * ridge * (0.2 + l);
-            // Its ridge lamps: a row of points round the middle, steady and faint, all lit on a flash
+            skin += vec3(0.6, 0.58, 0.52) * ridge * (0.12 + l);
+            // Its lamps: the ridge's row, and fainter rows above and below it like a lighthouse's;
+            // steady and faint, all lit on a flash
             float lamps = step(0.75, fract(q.x * 7.0)) * exp(-abs(q.y) * 60.0) * step(abs(q.x), 0.98);
-            skin += vec3(2.6, 2.6, 2.3) * lamps * (0.15 + 3.0 * uRingFlash);
+            for (int k = 1; k <= 3; ++k) {
+                float yy = float(k) * 0.14;
+                float row = exp(-abs(abs(q.y) - yy) * 140.0 * (1.0 + detail * 2.0)) * step(0.82 + 0.04 * float(k), fract(q.x * (9.0 + 6.0 * float(k)) + float(k) * 0.37));
+                lamps += row * (0.6 - 0.12 * float(k)) * step(shape, 0.97);
+            }
+            skin += vec3(2.6, 2.6, 2.3) * lamps * (0.15 + 1.2 * detail + 3.0 * uRingFlash);
+            skin += vec3(0.9, 0.9, 0.85) * exp(-abs(q.y) * 14.0) * 0.05 * detail * step(shape, 0.99);   // the ridge's row lighting the hull round it
             col = mix(col, skin, body * step(0.0006, r));
+            // Eclipse: when it covers the sun, its edge burns (the sun's light round its rim) and a corona
+            vec2 qs = vec2(dot(sunD, rt), dot(sunD, up)) / max(r, 1e-5);
+            float cover = smoothstep(1.05, 0.9, length(qs * vec2(1.0, 1.55))) * step(0.0, dot(sunD, f));
+            if (cover > 0.0) {
+                float outside = max(shape - 1.0, 0.0) * r;                      // radians past its edge
+                float toward = clamp(dot(normalize(q + vec2(1e-4)), normalize(qs + vec2(1e-4))) * 0.5 + 0.5, 0.0, 1.0);
+                vec3 corona = vec3(1.0, 0.96, 0.88) * (exp(-outside * 140.0) * 1.6 + exp(-outside * 18.0) * 0.18) * (0.4 + 0.6 * toward);
+                corona *= 0.85 + 0.3 * vnoise(vec2(atan(q.y, q.x) * 9.0, uTime * 0.05));
+                col += corona * cover * (1.0 - body) * (1.0 - night);
+                col += vec3(1.4, 1.3, 1.15) * exp(-abs(shape - 1.0) * r * 400.0) * pow(toward, 3.0) * cover * (1.0 - night);   // the bright rim nearest the sun
+            }
             // Far off it is only a point of light (its lamps) and a glow round it on a flash
             float d = length(dir - f);
-            col += vec3(1.6, 1.55, 1.4) * exp(-d / max(r, 0.0015) * 2.0) * (0.25 + 2.5 * uRingFlash) * (1.0 - step(0.006, r) * 0.8);
-            col += vec3(1.0, 0.98, 0.9) * exp(-d * 18.0) * uRingFlash * 0.35;
+            col += vec3(1.6, 1.55, 1.4) * exp(-d / max(r, 0.0015) * 2.0) * (0.25 + 2.5 * uRingFlash) * (1.0 - step(0.006, r) * 0.8) * (1.0 - smoothstep(0.05, 0.15, r));
+            col += vec3(1.0, 0.98, 0.9) * exp(-d * 18.0) * uRingFlash * 0.35 * (1.0 - smoothstep(0.05, 0.2, r));
         }
     }
 

@@ -231,7 +231,7 @@ int main() {
     }
     {   // ---- the chapter: the Landing, the Drift, the Kept ----
         LevelData l = buildRing();
-        CHECK(l.story.built && l.story.chapter == 6 && l.arenas.size() == 9, "the chapter builds: nine sections over seven places (the Wake the last)");
+        CHECK(l.story.built && l.story.chapter == 6 && l.arenas.size() == 10, "the chapter builds: ten sections over eight places (the Shore the last)");
         auto sh = ring::shelters();
         RingSweep probe; probe.spec.dir = ring::sweepDir();
         bool postsBehind = true;
@@ -324,6 +324,30 @@ int main() {
             CHECK(floorsRight, "each tread of the Wake is ground at its own height");
             CHECK(worstOpen < 7.f * 10.f * 0.8f && worstOpen < 8.f, "on the Wake, shelter is never more than a few steps away along a tread");
             CHECK(ring::summitY() > 40.f, "the summit stands over 40 m above the ring plane");
+        }
+        // THE SHORE: down the slope, gravity back, breakers: shelter a short walk even with the small ones gone
+        {
+            const float shoreWalk = [&] {
+                float worst = 0.f;
+                auto sh9 = l.sweepShelters;
+                for (float x = -ring::HALF_X + 4.f; x < ring::HALF_X - 4.f; x += 6.f)
+                    for (float z = ring::shoreN() + 20.f; z < ring::shoreS() - 2.f; z += 6.f) {
+                        bool inside = false;
+                        for (auto& w : l.walls) if (!w.dynamic && x > w.box.min.x && x < w.box.max.x && z > w.box.min.z && z < w.box.max.z && w.box.min.y < 1.f) inside = true;
+                        if (!inside) worst = std::max(worst, sweepreach::secondsToShelter({x, 0, z}, ring::sweepDir(), sh9, 7.f, true));
+                    }
+                return worst;
+            }();
+            std::printf("   worst walk to shelter on the Shore (breakers): %.1f s (the near tier warns 6 s)\n", shoreWalk);
+            CHECK(shoreWalk < 6.f * 0.8f, "on the Shore, fixed shelter is inside the near tier's 6 s with a fifth to spare, small ones shattered");
+            CHECK(std::fabs(l.baseFloor(0.f, ring::summitN() - 1.f) - ring::summitY()) < 1.f && std::fabs(l.baseFloor(0.f, ring::shoreS() + 1.f)) < 1.f,
+                  "the wave's back is one slope from the summit down to the Shore");
+            CHECK(ring::gravityAt(ring::summitS()) == ring::GRAVITY_SCALE && ring::gravityAt(ring::shoreS() - 150.f) == 1.f, "gravity comes back on the Shore, full before its foot");
+            CHECK(ring::eclipseAt(ring::summitS()) == 0.f && ring::eclipseAt(ring::shoreS() - 60.f) > 0.99f && ring::eclipseAt(ring::shoreN()) > 0.99f, "the summit is in the sun; the Shore in the Shepherd's shadow");
+            CHECK(l.arenas.back().waves.empty(), "no enemies on the Shore: the walk-up");
+            int small9 = 0; for (auto& q : l.sweepShelters) small9 += q.section == 9 && q.small;
+            CHECK(small9 >= 3, "the Shore has small shelter for the breakers to shatter");
+            CHECK(l.story.end.max.z < ring::shoreN() + 20.f, "the chapter ends at the Shepherd's foot");
         }
         const auto sp0 = ring::spokes()[0];
         const glm::vec3 mid{sp0.narrowX + 60.f, 0.f, ring::spokeZ(sp0, sp0.narrowX + 60.f)};
@@ -449,9 +473,11 @@ int main() {
         StorySave a; a.chapter = 6; a.checkpoint = 8; a.owned = 15; a.grapple = true;
         StorySave b; const bool ok = b.parse(a.text());
         CHECK(ok && b.chapter == 6 && b.checkpoint == 8, "a chapter 6 save, on the Wake, loads");
-        StorySave c = a; c.checkpoint = 9; StorySave d;
+        StorySave c = a; c.checkpoint = 10; StorySave d;
         CHECK(!d.parse(c.text()), "a chapter 6 save past its last checkpoint does not");
-        CHECK((int)buildRing().arenas.size() == 9, "chapter 6 has nine checkpoints (0..8, the Wake last), as the save allows");
+        CHECK((int)buildRing().arenas.size() == 10, "chapter 6 has ten checkpoints (0..9, the Shore last), as the save allows");
+        StorySave e = a; e.checkpoint = 9; StorySave f;
+        CHECK(f.parse(e.text()) && f.checkpoint == 9, "a chapter 6 save on the Shore loads");
         CHECK(buildCold().story.nextChapter == 6, "the Cold Store's end card goes on to the ring");
     }
     {   // ---- the Shepherd's count (13.2) ----

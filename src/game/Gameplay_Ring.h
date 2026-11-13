@@ -22,7 +22,7 @@ inline void GameplayState::armSweep() {
     sweep.reset(); sweepArmed = true; sweepCount = 0; sweepTickAt = -1; sweepSwept = 0;
     ringGone = ringShort = 0; ringCountT = -1.f; sweptBodies.clear();
     resetGap();   // (the raft back at its mooring: armSweep resets every DRIVEN mover)
-    resetWake();
+    resetWake(); resetShore();
     sweepShelters.clear();
     if (ring()) {
         sweepShelters = level.sweepShelters;
@@ -49,7 +49,7 @@ inline void GameplayState::armSweep() {
 // The test ground walks through the tiers, so one visit shows all three
 inline SweepSpec GameplayState::nextSweep() const {
     const glm::vec3 dir = ring() ? ring::sweepDir() : glm::vec3{0.f, 0.f, 1.f};
-    const int tier = g_devSweep > 0 ? g_devSweep : (ring() && !g_devRingTest) ? (level.arenaAt(player.position) >= 5 ? 2 : 1) : 1 + sweepCount % 3;   // (the Shadow Band: the mid tier)
+    const int tier = g_devSweep > 0 ? g_devSweep : (ring() && !g_devRingTest) ? (level.arenaAt(player.position) >= 9 ? 3 : level.arenaAt(player.position) >= 5 ? 2 : 1) : 1 + sweepCount % 3;   // (the Shadow Band: the mid tier)
     switch (tier) {
         case 2:  return sweeptier::mid(dir).spec;
         case 3:  return sweeptier::near(dir).spec;
@@ -181,7 +181,7 @@ inline void GameplayState::beginRing() {
 
 inline void GameplayState::updateRing(float dt) {
     player.camera.farPlane = ring::FAR_PLANE;                 // (a retry makes a fresh camera and player)
-    player.gravity = -24.f * ring::GRAVITY_SCALE;             // the crossing's low gravity; fast-fall and the slam are untouched
+    player.gravity = -24.f * (g_devRingTest ? ring::GRAVITY_SCALE : ring::gravityAt(player.position.z));   // the crossing's low gravity (full again on the Shore); fast-fall and the slam are untouched
     if (g_devCam) {   // dev: --cam X Y Z YAW PITCH holds the eye there (screenshots)
         player.position = g_devCamPos - glm::vec3{0.f, player.eyeHeight, 0.f}; player.velocity = glm::vec3{0.f};
         player.camera.yaw = g_devCamYaw; player.camera.pitch = g_devCamPitch;
@@ -201,6 +201,7 @@ inline void GameplayState::updateRing(float dt) {
     tickSpokes(dt);
     tickGap(dt);
     tickWake(dt);
+    tickShore(dt);
     const glm::vec3 p = player.position;
     const int at = level.arenaAt(p);
     if (at > director.arena && !director.fighting() && director.phase != WaveDirector::Phase::INTRO) director.approach(at);
@@ -219,6 +220,7 @@ inline void GameplayState::updateRing(float dt) {
             if (at == 6) ringScriptT = 18.f;   // (the Spokes': you walk to shelter)
             if (at == 7) ringScriptT = -1.f;   // (the Gap's comes mid-crossing: Gameplay_Gap.h)
             if (at == 8) ringScriptT = -1.f;   // (the Wake's comes on the climb: Gameplay_Wake.h)
+            if (at == 9) ringScriptT = -1.f;   // (the Shore's come once you're down the slope: Gameplay_Shore.h)
         }
     }
     if (at >= 0 && at > storyCheckpoint && !director.fighting()) { storyCheckpoint = at; sweepSched.checkpoint(); ui.feed("CHECKPOINT", SWEEP_ICE * 0.6f); }

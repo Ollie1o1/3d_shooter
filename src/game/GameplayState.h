@@ -397,6 +397,7 @@ public:
     bool  gapRide = false, gapSweepDone = false; int gapDroverUid = -1; float gapSide = 1.f, gapSideT = 0.f;
     struct WakeRing { glm::vec3 at; float radius = 0.f; bool hit = false; };
     std::vector<WakeRing> wakeRings; bool wakeSweepDone = false; float wakeViewT = -1.f;   // THE WAKE
+    int shoreSweeps = 0; bool shoreBreakHint = false, shoreWeightHint = false, shoreSpoke = false;   // THE SHORE
     struct GapCharge { bool on = false, hit = false; glm::vec3 pos{0.f}; float dir = 1.f, from = 0.f; } gapCharge;   // -1 not yet set, 0 hard vacuum outside, 1 the hull's air
     glm::vec3 sweptFrom{0.f}, sweptDir{0.f, 0.f, 1.f};
     bool sweptFalling() const { return playerDead && sweptT >= 0.f && sweptT < SWEPT_FALL; }
@@ -1392,6 +1393,9 @@ public:
     void  gapLaunch(const Enemy& d);
     void  gatherGap(std::vector<BoxInstance>& out);
     // THE WAKE (Gameplay_Wake.h)
+    void  resetShore();
+    void  tickShore(float dt);
+    float ringEclipse() const;
     void  resetWake();
     void  tickWake(float dt);
     void  wakeRing(const Enemy& e);
@@ -1504,6 +1508,7 @@ public:
 #include "game/Gameplay_Spokes.h"
 #include "game/Gameplay_Gap.h"
 #include "game/Gameplay_Wake.h"
+#include "game/Gameplay_Shore.h"
 #include "game/Gameplay_RingFoes.h"
 #include "game/Gameplay_ColdEnemies.h"
 #include "game/Gameplay_Wasteland.h"
