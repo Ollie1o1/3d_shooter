@@ -77,6 +77,7 @@ inline void GameplayState::tickSweep(float dt) {
         SweepSpec s = nextSweep(); s.flashLead = 0.f; s.warning = 6.f; sweep.start(s); ++sweepCount;
     }
     if (ringCountT >= 0.f && (ringCountT -= dt) < 0.f) ringCountT = -1.f;
+    if (ringSweptAgo >= 0.f && (ringSweptAgo += dt) > 12.f) ringSweptAgo = -1.f;
     for (auto& b : sweptBodies) b.t += dt;
     sweptBodies.erase(std::remove_if(sweptBodies.begin(), sweptBodies.end(), [](const SweptBody& b) { return b.t > 5.f; }), sweptBodies.end());
     if (!sweep.active()) return;
@@ -145,6 +146,7 @@ inline void GameplayState::tickSweep(float dt) {
     if (ev.ended && !playerDead) {
         char line[64];
         if (sweepSwept > 0) { snprintf(line, sizeof(line), "SWEPT x%d", sweepSwept); ui.feed(line, SWEEP_ICE); }
+        if (sweep.lethal()) ringSweptAgo = 0.f;   // (the swept, burning up across the giant: skybox.frag)
         if (sweep.lethal()) {   // the Shepherd counts (13.2): where the countdown was, for a few seconds
             ring::countLine(ringCountLine, sizeof(ringCountLine), ring::DISPATCHED + 1 - ringGone, ringShort);
             ringCountT = 6.f; ringShort = 0;

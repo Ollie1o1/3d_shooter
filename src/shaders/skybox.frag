@@ -39,6 +39,7 @@ uniform float uRingNight;   // 0..1: the giant's shadow (the Shadow Band): no su
 uniform float uRingBolt;    // 0..1: lightning in its night side, now (the game times it: the ring lights with it)
 uniform vec2  uRingBoltAt;  // where in the cloud (longitude, latitude offsets)
 uniform float uRingDawn;    // 0..1: the sunrise out of the Shadow Band: a red arc on its edge, then the diamond
+uniform float uRingSwept;   // seconds since a sweep threw the swept off the ring (<0: none lately): they burn up across the giant (13.3)
 uniform float uRingBend;    // 0..1: the main rings opening into an arch over you as you near the Shepherd (its pull bends your ringlet under them)
 
 float hash3(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
@@ -368,6 +369,27 @@ vec3 ringSky(vec3 dir) {
     col += vec3(1.0, 0.97, 0.9) * exp(-sa * 40.0) * 0.6 * (1.0 - night);
     col += vec3(0.7, 0.65, 0.55) * exp(-sa * 9.0) * 0.05 * (1.0 - night);
 
+    // Two small moons, far off: an icy one high in the west, a rust-dark one low over the band to the south.
+    // Lit by the sun like the giant (each shows its own phase)
+    for (int m = 0; m < 2; ++m) {
+        vec3 md = m == 0 ? normalize(vec3(-0.62, 0.42, 0.45)) : normalize(vec3(-0.15, 0.09, 0.98));
+        float mr = m == 0 ? 0.021 : 0.011;
+        float ma = acos(clamp(dot(dir, md), -1.0, 1.0));
+        if (ma < mr * 1.6) {
+            vec3 mrt = normalize(cross(md, vec3(0.0, 1.0, 0.0))), mup = cross(mrt, md);
+            vec2 mq = vec2(dot(dir, mrt), dot(dir, mup)) / mr;
+            float l2 = dot(mq, mq);
+            if (l2 < 1.0) {
+                vec3 mn = mrt * mq.x + mup * mq.y - md * sqrt(1.0 - l2);
+                float ml = clamp(dot(mn, sunD) * 1.1, 0.0, 1.0) * (1.0 - night);
+                vec3 msurf = m == 0 ? vec3(0.86, 0.88, 0.9) * (0.8 + 0.25 * vnoise(mq * 6.0 + 3.0)) : vec3(0.55, 0.36, 0.25) * (0.75 + 0.35 * vnoise(mq * 5.0));
+                msurf *= 1.0 - 0.35 * smoothstep(0.55, 0.0, craters(mq * 3.0 + float(m) * 5.0) + 0.4);
+                vec3 mc = msurf * (ml + 0.012);
+                col = mix(col, mc, smoothstep(1.0, 0.96, l2));
+            }
+        }
+    }
+
     // The main rings' plane (see ringDensity): where this ray meets it, if it does
     float a = mix(0.0004, 0.034, uRingBend);
     vec3 Gp = vec3(RING_GIANT.x, 0.0, RING_GIANT.z) * 10.0;
@@ -446,6 +468,24 @@ vec3 ringSky(vec3 dir) {
             float sunSide = clamp(dot(normalize(nrm.xz + vec2(1e-4)), normalize(sunD.xz + vec2(1e-4))) * 0.5 + 0.5, 0.0, 1.0);
             body += vec3(1.6, 0.35, 0.12) * pow(limb, 5.0) * uRingDawn * (0.3 + 1.7 * sunSide);
             body += vec3(3.0, 2.8, 2.5) * pow(limb, 14.0) * pow(sunSide, 8.0) * smoothstep(0.85, 1.0, uRingDawn) * 6.0;
+        }
+        // Where the swept go (13.3): a few seconds after a sweep, sparks streak down across its face, the
+        // ones it threw burning up. Nobody explains it
+        if (uRingSwept > 0.0 && uRingSwept < 9.0) {
+            for (int k = 0; k < 6; ++k) {
+                float fk = float(k);
+                float t0 = 1.2 + fk * 0.9 + hash2(vec2(fk, 3.0)) * 0.8, t = uRingSwept - t0;
+                if (t < 0.0 || t > 2.2) continue;
+                vec2 s0 = vec2(-0.5 + hash2(vec2(fk, 1.0)) * 1.0, 0.25 + 0.5 * hash2(vec2(fk, 2.0)));
+                vec2 v = normalize(vec2(0.35 + 0.4 * hash2(vec2(fk, 5.0)), -1.0)) * 0.22;
+                vec2 head = s0 + v * t, tail = s0 + v * max(0.0, t - 0.5);
+                vec2 p = vec2(mod(lon + 3.0 + 3.14159, 6.28318) - 3.14159, lat);   // (lon about -3.0 faces you)
+                vec2 ab = head - tail; float h = clamp(dot(p - tail, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);
+                float d = length(p - tail - ab * h);
+                float fadeK = (1.0 - smoothstep(1.4, 2.2, t)) * smoothstep(0.0, 0.15, t);
+                body += vec3(1.6, 0.9, 0.45) * exp(-d * 900.0) * (0.25 + 0.75 * h) * fadeK * 2.5;
+                body += vec3(2.5, 2.2, 1.8) * exp(-length(p - head) * 1500.0) * fadeK * 3.0;
+            }
         }
         col = mix(col, body, smoothstep(0.0, 0.0008, disc / (tb * tb)));
     }

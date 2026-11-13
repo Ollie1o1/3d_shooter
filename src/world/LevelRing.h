@@ -669,6 +669,50 @@ inline LevelData buildRing() {
                 * glm::translate(glm::mat4(1.f), vec3{-x, -y, -z}) * rock.xf;
     }
 
+    // Overhead: the ring's big loose chunks, hanging a few hundred metres up and turned any way, their
+    // undersides in shadow. They give the black over the band a depth (and a scale) it didn't have
+    for (int i = 0; i < 46; ++i) {
+        const float k = (float)i * 2.71f + 7000.f;
+        const float z = ring::LAND_S + 300.f - (ring::LAND_S + 300.f - ring::shoreN() + 200.f) * ring::hash(k, 1.f);
+        const float x = (ring::hash(k, 2.f) - 0.5f) * 2.f * 1400.f;
+        const float y = 150.f + 550.f * ring::hash(k, 3.f) * ring::hash(k, 4.f) + std::fabs(x) * 0.1f;
+        const float r = 14.f + 46.f * ring::hash(k, 5.f) * ring::hash(k, 6.f);
+        b.mat = Mat::ROCK;
+        Shape& rock = b.kit().rock({x, y - r * 0.6f, z}, r, r * (1.f + 0.8f * ring::hash(k, 7.f)), glm::mix(iceLit, iceDark, 0.15f + 0.5f * ring::hash(k, 8.f)), (uint32_t)(i * 37 + 900), 0.45f + 0.6f * ring::hash(k, 9.f), 7);
+        rock.xf = glm::translate(glm::mat4(1.f), vec3{x, y, z}) * glm::rotate(glm::mat4(1.f), ring::hash(k, 10.f) * 6.28f, glm::normalize(vec3{ring::hash(k, 11.f) - 0.5f, ring::hash(k, 12.f) - 0.5f, ring::hash(k, 13.f) - 0.5f} + vec3{1e-3f}))
+                * glm::translate(glm::mat4(1.f), vec3{-x, -y, -z}) * rock.xf;
+    }
+    // Ice crystals: where the ring's ice has grown undisturbed (the band's sides, out of the sweeps' way
+    // behind the lip, and the far field), clusters of tall pale prisms leaning out of the dust
+    auto crystals = [&](vec3 at, float sc, uint32_t sd) {
+        const int n = 4 + (int)(ring::hash((float)sd, 1.f) * 6.f);
+        const Mat keep = b.mat; b.mat = Mat::MARBLE;
+        for (int c = 0; c < n; ++c) {
+            const float kk = (float)sd * 0.37f + c * 1.9f;
+            const float h = sc * (2.5f + 7.f * ring::hash(kk, 2.f)), w = sc * (0.4f + 0.9f * ring::hash(kk, 3.f));
+            const vec3 off{(ring::hash(kk, 4.f) - 0.5f) * 3.f * sc, 0.f, (ring::hash(kk, 5.f) - 0.5f) * 3.f * sc};
+            const vec3 col = glm::mix(vec3{0.78f, 0.86f, 0.95f}, vec3{0.95f, 0.95f, 0.92f}, ring::hash(kk, 6.f));
+            b.kit().box(at + off + vec3{0.f, h * 0.45f, 0.f}, {w, h, w}, col, ring::hash(kk, 7.f) * 360.f, (ring::hash(kk, 8.f) - 0.5f) * 50.f, (ring::hash(kk, 9.f) - 0.5f) * 50.f);
+        }
+        b.mat = keep;
+    };
+    for (int i = 0; i < 140; ++i) {
+        const float k = (float)i * 3.3f + 8000.f;
+        const float z = ring::LAND_S + 200.f - (ring::LAND_S + 200.f - ring::shoreN()) * ring::hash(k, 1.f);
+        if (z < ring::DRIFT_MID + 200.f && z > ring::DRIFT_N - 10.f) continue;   // (the Drift: no ground)
+        if (z < ring::GAP_S + 5.f && z > ring::GAP_N - 5.f) continue;           // (the Gap: nothing)
+        if (z < ring::CLIMB_S + 10.f && z > ring::shoreS() - 10.f) continue;    // (the Wake's notch)
+        const int side = ring::hash(k, 2.f) < 0.5f ? -1 : 1;
+        const float x = side * (ring::HALF_X + 7.f + 9.f * ring::hash(k, 3.f));
+        if (std::fabs(x) > ring::edgeAt(z, side) - 2.f) continue;
+        crystals({x, -0.3f, z}, 0.8f + 0.9f * ring::hash(k, 4.f), (uint32_t)(i * 13 + 5));
+    }
+    for (int i = 0; i < 40; ++i) {   // the far field south of the Landing: bigger, older
+        const float k = (float)i * 4.1f + 9000.f;
+        const float x = (ring::hash(k, 1.f) - 0.5f) * 2.f * 105.f, z = 220.f + 900.f * ring::hash(k, 2.f);
+        crystals({x, -0.3f, z}, 1.4f + 1.6f * ring::hash(k, 3.f), (uint32_t)(i * 17 + 300));
+    }
+
     int seed = 1;
     auto rockShelter = [&](const SweepShelter& sh) {
         // Its collision is the rock as drawn (its three lumps), not the shelter's box round it: no
@@ -1022,13 +1066,27 @@ inline LevelData buildRing() {
         }
         // The wave itself, either side and behind: a frozen crest across the whole ring, kilometres tall
         // away from the notch you climb, leaning toward the Shepherd. Out of reach: no collision
-        for (float x = -1600.f; x <= 1600.f; x += 46.f) {
+        // (each column leans north, toward the Shepherd, more the higher it stands, and carries a lip curling
+        //  over at its top: a breaking wave, frozen, not a row of spires)
+        for (float x = -1600.f; x <= 1600.f; x += 30.f) {
             const float ax = std::fabs(x);
             if (ax < ring::WAKE_HALF + 20.f) continue;
             const float k = x * 0.07f + 3000.f;
-            const float h = ring::summitY() + 10.f + std::min(900.f, (ax - 60.f) * (0.5f + 0.4f * ring::hash(k, 1.f)));
-            Shape& s = b.kit().rock({x, -2.f, ring::summitS() - 20.f + 30.f * ring::hash(k, 2.f)}, 30.f + 12.f * ring::hash(k, 3.f), h, glm::mix(wave, iceLit, 0.25f * ring::hash(k, 4.f)), (uint32_t)(k * 5.f), 0.35f, 7);
-            s.xf = s.xf * glm::scale(glm::mat4(1.f), glm::vec3{1.f, 1.f, 2.4f});
+            const float h = ring::summitY() + 10.f + std::min(900.f, (ax - 60.f) * (0.55f + 0.25f * ring::hash(k, 1.f)));
+            const float z0 = ring::summitS() - 20.f + 24.f * ring::hash(k, 2.f), r = 34.f + 14.f * ring::hash(k, 3.f);
+            const vec3 col = glm::mix(wave, iceLit, 0.25f * ring::hash(k, 4.f));
+            const float lean = glm::radians(6.f + 16.f * std::min(1.f, h / 600.f));
+            auto leanAbout = [&](Shape& sh, vec3 pivot, float a) {
+                sh.xf = glm::translate(glm::mat4(1.f), pivot) * glm::rotate(glm::mat4(1.f), -a, vec3{1.f, 0.f, 0.f}) * glm::translate(glm::mat4(1.f), -pivot) * sh.xf;
+            };
+            Shape& body = b.kit().rock({x, -2.f, z0}, r, h, col, (uint32_t)(k * 5.f), 0.5f, 11);
+            body.xf = body.xf * glm::scale(glm::mat4(1.f), glm::vec3{1.f, 1.f, 2.f});
+            leanAbout(body, {x, -2.f, z0}, lean);
+            // The lip: a slab out over the north face at the top, turned further over
+            const vec3 topAt{x, -2.f + h * std::cos(lean) - r * 0.4f, z0 - h * std::sin(lean)};
+            Shape& lip = b.kit().rock(topAt, r * 0.75f, r * 1.6f, col * 1.04f, (uint32_t)(k * 9.f + 1.f), 0.45f, 9);
+            lip.xf = lip.xf * glm::scale(glm::mat4(1.f), glm::vec3{1.f, 1.f, 1.6f});
+            leanAbout(lip, topAt, lean + glm::radians(55.f + 20.f * ring::hash(k, 5.f)));
         }
         // Strays that climbed it: capsules wedged in the treads
         for (int k = 0; k < 14; ++k) {
