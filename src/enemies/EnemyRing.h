@@ -42,6 +42,7 @@ constexpr float CROOK_GONE = 3.2f;     // how long it takes to leave
 }
 
 inline void Enemy::thinkStray(float dt, const EnemyWorld& w, bool resolve) {
+    if (!ringSeekSet || glm::length(ringSeek - seekWas) > 2.f) { seekBest = 1e9f; seekStuck = 0.f; seekWas = ringSeek; }
     // One in a few doesn't run at all: it stops where it is and turns to face the flash
     if (ringFaceSet && telegraphTimer <= 0.f && dashTimer <= 0.f && glm::length(flatTo(w.playerFeet)) > 3.6f) {
         velocity.x = velocity.z = 0.f;
@@ -52,7 +53,10 @@ inline void Enemy::thinkStray(float dt, const EnemyWorld& w, bool resolve) {
     // Posts lit: it runs for shelter, unless you are right there to be fought
     if (ringSeekSet && telegraphTimer <= 0.f && dashTimer <= 0.f) {
         glm::vec3 to = flatTo(ringSeek);
-        const float d = glm::length(to), you = glm::length(flatTo(w.playerFeet));
+        float d = glm::length(to); const float you = glm::length(flatTo(w.playerFeet));
+        if (d < seekBest - 0.3f) { seekBest = d; seekStuck = 0.f; } else seekStuck += dt;
+        // Near enough and getting no nearer (the rock's face, another stray in the spot): this is its spot
+        if (d < 3.5f && seekStuck > 0.6f) d = 0.f;
         if (d > 1.2f && you > 3.6f) {
             animPhase += dt * 9.f;
             turnToward(to, dt, 8.f);
@@ -66,7 +70,17 @@ inline void Enemy::thinkStray(float dt, const EnemyWorld& w, bool resolve) {
             return;
         }
     }
+    // The swarm's chase, with the ring's own gait: from far off it lopes in long low-gravity bounds (it closes
+    // instead of trailing you), and up close its prowling eases from one way to the other instead of snapping
+    const glm::vec3 before = velocity;
     thinkLab(dt, w, resolve);
+    if (dashTimer > 0.f || telegraphTimer > 0.f) return;
+    const float far = glm::length(flatTo(w.playerFeet));
+    if (far > 16.f) { const float k = glm::clamp((far - 16.f) / 10.f, 0.f, 1.f) * 0.6f + 1.f; velocity.x *= k; velocity.z *= k; }
+    else {
+        const float a = 1.f - std::exp(-dt * 6.f);
+        velocity.x = glm::mix(before.x, velocity.x, a); velocity.z = glm::mix(before.z, velocity.z, a);
+    }
 }
 
 inline void Enemy::thinkHerder(float dt, const EnemyWorld& w, bool resolve) {

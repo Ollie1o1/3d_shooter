@@ -2,7 +2,7 @@
 // many reachable places get to the player in time, nobody in a simulated wave stands wedged, and the
 // grid and its fields stay inside their time budget. No OpenGL context required. `make test-nav`.
 //   build/test_nav --compare   also runs each chase on feeler steering alone (what the game did before)
-//   build/test_nav --only CH3  one map (ARENA, ACT2, FAST, CH1..CH5)
+//   build/test_nav --only CH3  one map (ARENA, ACT2, FAST, CH1..CH6)
 #include "PortableRand.h"   // (first: one rand() sequence on macOS and Linux)
 #include "world/Level.h"
 #include "world/LevelAct2.h"
@@ -12,6 +12,7 @@
 #include "world/LevelLab.h"
 #include "world/LevelPlain.h"
 #include "world/LevelCold.h"
+#include "world/LevelRing.h"
 #include "world/NavBuild.h"
 #include <chrono>
 #include <cstdio>
@@ -116,7 +117,7 @@ int main(int argc, char** argv) {
         if (!std::strcmp(argv[i], "--only") && i + 1 < argc) only = argv[++i];
     }
     Map maps[] = {{"ARENA", buildLevel()}, {"ACT2", buildAct2Level()}, {"FAST", buildGauntlet()}, {"CH1", buildCradle()},
-                  {"CH2", buildWasteland()}, {"CH3", buildLab()}, {"CH4", buildPlain()}, {"CH5", buildCold()}};
+                  {"CH2", buildWasteland()}, {"CH3", buildLab()}, {"CH4", buildPlain()}, {"CH5", buildCold()}, {"CH6", buildRing()}};
     // Who walks: a light chaser that drops off ledges, a small one, a wide tall one that holds its perch
     const EnemyType walkers[] = {EnemyType::RIPPER, EnemyType::MITE, EnemyType::BRUTE};
     const float nearOf[] = {4.f, 2.8f, 6.5f};
@@ -178,8 +179,12 @@ int main(int argc, char** argv) {
                 for (int k = 0; k < 20; ++k) G.tick(DT, stands[s]);
                 if (G.goal() < 0) continue;
                 const glm::vec3 feet = G.at(G.goal());
+                // (Chapter 6 has its own walkers: the STRAY, which bounds, and the PORTER, wide and tall)
+                const bool ring6 = !std::strcmp(m.tag, "CH6");
+                const EnemyType ringWalkers[] = {EnemyType::STRAY, EnemyType::STRAY, EnemyType::PORTER};
                 for (int wk = 0; wk < 3; ++wk) {
-                    NavAgent ag = agentOf(walkers[wk], L, a);
+                    const EnemyType who = ring6 ? ringWalkers[wk] : walkers[wk];
+                    NavAgent ag = agentOf(who, L, a);
                     for (int k = 0; k < 14; ++k) G.tick(DT, feet);   // (one field a tick: let this walker's follow the player here)
                     auto t0 = std::chrono::steady_clock::now();
                     (void)G.distanceFrom(ag, 0);
@@ -197,11 +202,11 @@ int main(int argc, char** argv) {
                         worstStep = std::max(worstStep, std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count() / 50.);
                         srand(7u + (unsigned)n);
                         ++an_nav.runs; an_nav.metres += route;
-                        if (chase(L, a, grid, &G, walkers[wk], from, feet, route, nearOf[wk], 100 + n, true, m.tag)) ++an_nav.reached;
+                        if (chase(L, a, grid, &G, who, from, feet, route, nearOf[wk], 100 + n, true, m.tag)) ++an_nav.reached;
                         if (compare) {
                             srand(7u + (unsigned)n);
                             ++an_old.runs;
-                            if (chase(L, a, grid, nullptr, walkers[wk], from, feet, route, nearOf[wk], 100 + n, false, m.tag)) ++an_old.reached;
+                            if (chase(L, a, grid, nullptr, who, from, feet, route, nearOf[wk], 100 + n, false, m.tag)) ++an_old.reached;
                         }
                     }
                 }

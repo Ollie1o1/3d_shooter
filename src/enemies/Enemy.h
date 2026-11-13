@@ -319,7 +319,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     float pickT = 0.f;           // PICKER: seconds left holding you
     // Chapter 6 (EnemyRing.h; the game sets these each tick from the sweep, Gameplay_RingFoes.h):
     // a STRAY's lee spot while the posts are lit, a HERDER's loose shelter to shove and where to push from
-    glm::vec3 ringSeek{0.f}; bool ringSeekSet = false;
+    glm::vec3 ringSeek{0.f}; bool ringSeekSet = false; float seekBest = 1e9f, seekStuck = 0.f; glm::vec3 seekWas{0.f};   // (a STRAY getting no nearer its lee settles where it is)
     glm::vec3 ringFace{0.f}; bool ringFaceSet = false;
     // THE CROOK (EnemyRing.h): where its hook will land, the stray it is reeling in (uid), its opening
     // done, and how long it has been breaking off (-1: it hasn't)

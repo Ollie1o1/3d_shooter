@@ -17,6 +17,11 @@
 // =============================================================================
 
 inline void GameplayState::ringFoes(float dt) {
+    if (static const bool log = std::getenv("RINGLOG") != nullptr; log && std::fmod(elapsedTime, 1.f) < dt) {   // dev: where everyone is, once a second
+        for (const auto& e : enemies) if (e.alive)
+            std::printf("RL t %.0f %s uid %d pos %.1f %.1f %.1f vel %.1f %.1f routed %d seek %d dist %.1f\n", elapsedTime, e.stats().name, e.uid, e.position.x, e.position.y, e.position.z,
+                        e.velocity.x, e.velocity.z, (int)e.navRouted, (int)e.ringSeekSet, glm::length(glm::vec2{e.position.x - player.position.x, e.position.z - player.position.z}));
+    }
     const bool lit = sweep.active() && sweep.lethal();
     std::vector<int> taken;
     crookTick(dt);
@@ -26,11 +31,28 @@ inline void GameplayState::ringFoes(float dt) {
             e.ringSeekSet = false; e.ringFaceSet = false;
             if (!lit) continue;
             if (e.uid % 4 == 1) { e.ringFace = sweep.toSource(e.position); e.ringFaceSet = true; continue; }   // it won't run (13.6)
-            float best = 60.f;
-            for (const SweepShelter& s : sweepShelters) {
+            float best = 60.f; int pick = -1;
+            for (int i = 0; i < (int)sweepShelters.size(); ++i) {
+                const SweepShelter& s = sweepShelters[i];
                 if (!sweep.shelterLit(s)) continue;
-                const float d = glm::length(glm::vec2{s.post.x - e.position.x, s.post.z - e.position.z});
-                if (d < best && std::fabs(s.post.y - e.position.y) < 2.5f) { best = d; e.ringSeek = s.post - sweep.spec.dir * 0.8f; e.ringSeekSet = true; }
+                float d = glm::length(glm::vec2{s.post.x - e.position.x, s.post.z - e.position.z});
+                if (std::count(taken.begin(), taken.end(), i) >= 2) d += 18.f;   // (two to a post: the rest spread to the next)
+                if (d < best && std::fabs(s.post.y - e.position.y) < 2.5f) { best = d; pick = i; }
+            }
+            if (pick >= 0) {
+                taken.push_back(pick);
+                const SweepShelter& s = sweepShelters[pick];
+                glm::vec3 spot = s.post + sweep.spec.dir * 0.7f;   // (just behind the post: off the rock's face, still in its lee)
+                // The rock between it and its lee: round the nearer end first, not into the rock
+                AABB b = s.box; b.min -= glm::vec3{1.f, 0.f, 1.f}; b.max += glm::vec3{1.f, 0.f, 1.f};
+                const glm::vec3 up{0.f, 1.f, 0.f};
+                if (segmentHitsBox(e.position + up, spot + up, b)) {
+                    const float cx = (b.min.x + b.max.x) * 0.5f;
+                    const float sideX = e.position.x < cx ? b.min.x - 0.6f : b.max.x + 0.6f;
+                    const bool beside = e.position.x < b.min.x - 0.3f || e.position.x > b.max.x + 0.3f;
+                    spot = beside ? glm::vec3{sideX, e.position.y, spot.z} : glm::vec3{sideX, e.position.y, e.position.z};
+                }
+                e.ringSeek = spot; e.ringSeekSet = true;
             }
         } else if (e.type == EnemyType::HERDER) {
             e.ringPush = -1;
