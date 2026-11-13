@@ -656,6 +656,27 @@ tine walked tip to root in three zones. The old "Phase 1" section above describe
 Not hand-played. To check: the collapse speed against real running with boulders and teeth; whether the
 Crook's perch reads; the bells' size and colour (they read dim); the Bellwether's hop is a scripted arc.
 
+## Fixes from the user's play, sound on loads, and phase 4: THE BREAK (2026-11-13)
+
+- **Stampede respawns** (`ab5e0ba`): back behind the collapse with the Drover alive (a fall, a death), the plates are
+  whole again and the chase restarts; once the Drover dies its plates settle whole. **Vents** take hits from any range.
+- **Loads and sound** (`151e7b1`, the user: "selecting anything cuts the audio with a glitch and freezes"): a chapter 6
+  load is ~1.2 s on desktop (`LOADLOG=1` prints the stages: level 220 ms, meshes 230, bake 260, the ring's painted
+  textures ~500 the first time). In a browser the audio is fed from the game's thread, so the 12 ms buffer starved.
+  Now: `AudioSystem::loadFade` fades the whole mix out (60 ms) and every load (state switches in main.cpp, the next
+  chapter, the Shepherd's level) waits for it; `resumeAfterLoad` brings it back 4 frames after. The web build's buffer
+  is 2048 frames. `enemyfile::preloadAll` reads every enemy model at the load (lazy reads hitched mid-fight).
+  Still slow: the load itself (the ring's textures could be cached or painted at a lower size on the web).
+- **THE BREAK** (`29b223e`; `src/game/Gameplay_ShepherdBreak.h`, arenas 7-9 at x -600, `shep::ledge(i)`,
+  `shep::rideChunk`, `shep::crown`; `./shooter --shepherd --arena 8`): low gravity on the ledges; clear a ledge, then
+  the Gather (GATHER sweep north, clocked 1.5 + 6 s, repeats every 10 s); held by HOLDFAST to a ride chunk (shelter
+  `holds`) when it passes: a scripted 3.4 s arc to the next ledge (`shepRideT`), else thrown (`tickSweep`) then 25
+  damage and put back (`shepThrownT`). Third ride: the crown (full gravity), WITHOUT ME, THEY DRIFT, end card.
+  Gotcha again: the director's arena moves on when a wave clears; the ledge's fight is tracked by `shepLedgeFought`.
+  `--overlay breakride` clears the ledges and spikes for you.
+
+Not hand-played. The end card still says CHAPTER 6 COMPLETE (the save isn't marked complete).
+
 ## Next steps, in order
 
 1. **Play it (the user).** `./shooter --story6` start to finish. Questions: do
@@ -676,9 +697,10 @@ Crook's perch reads; the bells' size and colour (they read dim); the Bellwether'
    they are content with the crossing. Open: their verdict on the new sky, ground, waves and music;
    the frame cost at 4K; Strays still use full gravity in the low-gravity levels (shortcut 8);
    the Drift has no fight; the bridge cutscene.
-7. **The boss** as written (design section 6). Phases 1-3 (THE COMB, THE TURN, THE RESONATOR) are built: see above.
-   Next: THE BREAK (low gravity, drifting debris, riding the Gather on a spiked chunk, three rides), then
-   THE FALL and the finisher (the last countdown, held shut with HOLDFAST), the death and UNIT 24's capsule.
+7. **The boss** as written (design section 6). Phases 1-4 (THE COMB, THE TURN, THE RESONATOR, THE BREAK) are built: see above.
+   Next: THE FALL (on its surface as it falls into the giant: the aimed cone only, red on the hull, fins and
+   HOLDFAST to the hull; the sky going from black to re-entry fire) and the finisher (the last countdown, held shut
+   with HOLDFAST in its core lamp), the death and UNIT 24's capsule.
 
 ## House rules noticed while building
 
