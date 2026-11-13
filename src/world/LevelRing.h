@@ -39,6 +39,8 @@
 #include "render/PropFile.h"
 #include <map>
 #include <cstdio>
+#include <cstdint>
+#include <cstring>
 
 namespace ring {
 constexpr float HALF_X = 110.f;                 // the playable width (the zones stop you here)
@@ -76,7 +78,40 @@ inline glm::vec3 shepherdDir() { return glm::normalize(glm::vec3{0.f, 0.004f, -1
 inline glm::vec3 sunDir() { return glm::normalize(glm::vec3{-0.3f, 0.14f, -0.95f}); }     // low, a little west of north: behind the Shepherd's line, so every lee is in shadow and the giant shows its terminator
 inline glm::vec3 giantDir() { return glm::normalize(glm::vec3{0.99f, -0.02f, 0.14f}); }   // (skybox.frag's RING_GIANT)
 inline AABB testGround() { return {{-TEST_HALF_X, 0.f, TEST_NORTH}, {TEST_HALF_X, 0.f, TEST_SOUTH}}; }
-inline float hash(float n, float k) { float v = std::sin(n * 12.9898f + k * 78.233f) * 43758.5453f; return v - std::floor(v); }
+// Every random draw in the chapter's layout. Integer mixing of the two floats' bits: the same on every
+// platform. (It was fract(sin(x) * 43758): the C library's sin differs in its last bit between macOS and
+// WebAssembly, the multiply turned that into centimetres, and the web build's ring never matched its bake.)
+inline float hash(float n, float k) {
+    uint32_t a, b; std::memcpy(&a, &n, 4); std::memcpy(&b, &k, 4);
+    uint32_t h = a * 0x9E3779B1u ^ (b + 0x7F4A7C15u) * 0x85EBCA77u;
+    h ^= h >> 15; h *= 0x2C1B3C6Du; h ^= h >> 12; h *= 0x297A2D39u; h ^= h >> 15;
+    return (float)(h >> 8) * (1.f / 16777216.f);
+}
+// The layout's trigonometry, the same everywhere for the same reason: range-reduced polynomials
+// (only + and *; the build sets -ffp-contract=off, so no platform fuses them differently)
+inline float dsin(float x) {
+    const float TWO_PI = 6.28318530718f, PI = 3.14159265359f;
+    x = x - TWO_PI * std::floor((x + PI) / TWO_PI);          // -pi..pi
+    if (x > PI * 0.5f) x = PI - x; else if (x < -PI * 0.5f) x = -PI - x;
+    const float x2 = x * x;
+    return x * (1.f + x2 * (-1.f / 6.f + x2 * (1.f / 120.f + x2 * (-1.f / 5040.f + x2 * (1.f / 362880.f + x2 * (-1.f / 39916800.f))))));
+}
+inline float dcos(float x) { return dsin(x + 1.57079632679f); }
+inline float datan2(float y, float x) {   // (only for a slope's angle: first quadrant, by series on the smaller ratio)
+    const bool swap = y > x; const float t = swap ? x / y : y / x, t2 = t * t;
+    float a = t * (1.f + t2 * (-1.f / 3.f + t2 * (1.f / 5.f + t2 * (-1.f / 7.f + t2 * (1.f / 9.f + t2 * (-1.f / 11.f + t2 * (1.f / 13.f - t2 / 15.f)))))));
+    return swap ? 1.57079632679f - a : a;
+}
+// A rotation about `axis` (normalised here), built from dsin/dcos (glm::rotate calls the C library)
+inline glm::mat4 drotate(float angle, glm::vec3 axis) {
+    const glm::vec3 a = glm::normalize(axis);
+    const float c = dcos(angle), s = dsin(angle), t = 1.f - c;
+    glm::mat4 m(1.f);
+    m[0][0] = c + a.x * a.x * t;       m[0][1] = a.y * a.x * t + a.z * s; m[0][2] = a.z * a.x * t - a.y * s;
+    m[1][0] = a.x * a.y * t - a.z * s; m[1][1] = c + a.y * a.y * t;       m[1][2] = a.z * a.y * t + a.x * s;
+    m[2][0] = a.x * a.z * t + a.y * s; m[2][1] = a.y * a.z * t - a.x * s; m[2][2] = c + a.z * a.z * t;
+    return m;
+}
 // How far out the band's side runs at z (side: -1 west, +1 east): ragged, in 20 m steps
 inline float edgeAt(float z, int side) { return EDGE + EDGE_RAG * hash(std::floor(z / 20.f) + (side > 0 ? 500.f : 0.f), 61.f); }
 inline bool inDrift(float z) { return z < LAND_N && z > DRIFT_N; }
@@ -276,8 +311,7 @@ inline std::vector<Rock> shoreRocks() {
             const float x = -96.f + c * 32.f + (r % 2) * 16.f + 14.f * (hash(k, 91.f) - 0.5f);
             if (x > 100.f || x < -104.f) continue;
             if (r % 3 == 1 && std::fabs(x) < 12.f) continue;   // (a way up the middle, now and then)
-            if (hash(k, 96.f) < 0.12f) continue;               // (gaps: not a grid)
-            out.push_back({x, z + 9.f * (hash(k, 92.f) - 0.5f), 6.5f + 6.f * hash(k, 93.f), 3.8f + 2.6f * hash(k, 94.f), 4.f + 3.f * hash(k, 95.f)});
+            out.push_back({x, z + 8.f * (hash(k, 92.f) - 0.5f), 6.5f + 6.f * hash(k, 93.f), 3.8f + 2.6f * hash(k, 94.f), 4.f + 3.f * hash(k, 95.f)});
         }
     return out;
 }
@@ -286,7 +320,7 @@ inline std::vector<glm::vec3> bandLamps() {
     std::vector<glm::vec3> out;
     for (int i = 0; i < 13; ++i) {
         const float z = BAND_S - 20.f - i * 24.f;
-        out.push_back({18.f * std::sin(i * 0.7f) + 10.f * (hash((float)i, 96.f) - 0.5f), 0.f, z});
+        out.push_back({18.f * dsin(i * 0.7f) + 10.f * (hash((float)i, 96.f) - 0.5f), 0.f, z});
     }
     return out;
 }
@@ -657,7 +691,7 @@ inline LevelData buildRing() {
         const float r = (0.8f + 9.f * ring::hash(k, 76.f) * ring::hash(k, 77.f)) * (1.f + out / 500.f);
         if (ring::hash(k, 78.f) < 0.03f && out < 300.f) {   // a capsule, tumbling slowly
             PlacedModel m; m.name = "ring_capsule"; m.free = true; m.mat = Mat::METAL;
-            m.xf = glm::translate(glm::mat4(1.f), vec3{x, y + 2.f, z}) * glm::rotate(glm::mat4(1.f), ring::hash(k, 79.f) * 6.28f, glm::normalize(vec3{ring::hash(k, 80.f) - 0.5f, 0.6f, ring::hash(k, 81.f) - 0.5f}));
+            m.xf = glm::translate(glm::mat4(1.f), vec3{x, y + 2.f, z}) * ring::drotate(ring::hash(k, 79.f) * 6.28f, glm::normalize(vec3{ring::hash(k, 80.f) - 0.5f, 0.6f, ring::hash(k, 81.f) - 0.5f}));
             l.models.push_back(m);
             continue;
         }
@@ -665,7 +699,7 @@ inline LevelData buildRing() {
         Shape& rock = b.kit().rock({x, y - r * 0.6f, z}, r, r * (0.9f + 0.9f * ring::hash(k, 82.f)), glm::mix(iceLit, iceDark, 0.2f + 0.6f * ring::hash(k, 83.f)) * (0.7f + 0.3f * ring::hash(k, 84.f)),
                                     (uint32_t)(i * 29 + 11), 0.5f + 0.8f * ring::hash(k, 85.f), 6 + i % 3);
         // Turned any way at all: a lump of ice in space, not a stone on the ground
-        rock.xf = glm::translate(glm::mat4(1.f), vec3{x, y, z}) * glm::rotate(glm::mat4(1.f), ring::hash(k, 86.f) * 6.28f, glm::normalize(vec3{ring::hash(k, 87.f) - 0.5f, ring::hash(k, 88.f) - 0.5f, ring::hash(k, 89.f) - 0.5f} + vec3{1e-3f}))
+        rock.xf = glm::translate(glm::mat4(1.f), vec3{x, y, z}) * ring::drotate(ring::hash(k, 86.f) * 6.28f, glm::normalize(vec3{ring::hash(k, 87.f) - 0.5f, ring::hash(k, 88.f) - 0.5f, ring::hash(k, 89.f) - 0.5f} + vec3{1e-3f}))
                 * glm::translate(glm::mat4(1.f), vec3{-x, -y, -z}) * rock.xf;
     }
 
@@ -679,7 +713,7 @@ inline LevelData buildRing() {
         const float r = 14.f + 46.f * ring::hash(k, 5.f) * ring::hash(k, 6.f);
         b.mat = Mat::ROCK;
         Shape& rock = b.kit().rock({x, y - r * 0.6f, z}, r, r * (1.f + 0.8f * ring::hash(k, 7.f)), glm::mix(iceLit, iceDark, 0.15f + 0.5f * ring::hash(k, 8.f)), (uint32_t)(i * 37 + 900), 0.45f + 0.6f * ring::hash(k, 9.f), 7);
-        rock.xf = glm::translate(glm::mat4(1.f), vec3{x, y, z}) * glm::rotate(glm::mat4(1.f), ring::hash(k, 10.f) * 6.28f, glm::normalize(vec3{ring::hash(k, 11.f) - 0.5f, ring::hash(k, 12.f) - 0.5f, ring::hash(k, 13.f) - 0.5f} + vec3{1e-3f}))
+        rock.xf = glm::translate(glm::mat4(1.f), vec3{x, y, z}) * ring::drotate(ring::hash(k, 10.f) * 6.28f, glm::normalize(vec3{ring::hash(k, 11.f) - 0.5f, ring::hash(k, 12.f) - 0.5f, ring::hash(k, 13.f) - 0.5f} + vec3{1e-3f}))
                 * glm::translate(glm::mat4(1.f), vec3{-x, -y, -z}) * rock.xf;
     }
     // Ice crystals: where the ring's ice has grown undisturbed (the band's sides, out of the sweeps' way
@@ -748,7 +782,7 @@ inline LevelData buildRing() {
         auto worn = [&](float x0, float z0, float x1, float z1) {
             const int n = (int)(glm::length(vec3{x1 - x0, 0.f, z1 - z0}) / 3.f);
             for (int i = 0; i < n; ++i) {
-                const float t = (float)i / n, x = glm::mix(x0, x1, t) + 1.2f * std::sin(t * 9.f + x0), z = glm::mix(z0, z1, t);
+                const float t = (float)i / n, x = glm::mix(x0, x1, t) + 1.2f * ring::dsin(t * 9.f + x0), z = glm::mix(z0, z1, t);
                 l.floors.push_back({x - 1.1f, z - 1.6f, x + 1.1f, z + 1.6f, 0.003f, path, Mat::SNOW});
             }
         };
@@ -912,7 +946,7 @@ inline LevelData buildRing() {
         }
         // The chain (13.7): the strays that held on to each other along the reef, gone still. Bodies are
         // the game's; here, the line of capsules they climbed out of, open
-        for (int k = 0; k < 7; ++k) b.place("ring_capsule_open", vec3{c.x - 30.f + 9.f * k, 0.35f, c.z + ring::REEF_HZ + 12.f + 2.f * std::sin(k * 1.3f)}, 90.f + 20.f * std::sin(k * 2.1f));
+        for (int k = 0; k < 7; ++k) b.place("ring_capsule_open", vec3{c.x - 30.f + 9.f * k, 0.35f, c.z + ring::REEF_HZ + 12.f + 2.f * ring::dsin(k * 1.3f)}, 90.f + 20.f * ring::dsin(k * 2.1f));
         for (const ring::Rock& r : ring::keptRocks())
             rockShelter(ring::shelterBox(r.x - r.w * 0.5f, r.z - r.d * 0.5f, r.x + r.w * 0.5f, r.z + r.d * 0.5f, 0.f, r.h, 3));
         // The open hull: one capsule the size of a house, lying north-south, its side torn open to the
@@ -1077,13 +1111,13 @@ inline LevelData buildRing() {
             const vec3 col = glm::mix(wave, iceLit, 0.25f * ring::hash(k, 4.f));
             const float lean = glm::radians(6.f + 16.f * std::min(1.f, h / 600.f));
             auto leanAbout = [&](Shape& sh, vec3 pivot, float a) {
-                sh.xf = glm::translate(glm::mat4(1.f), pivot) * glm::rotate(glm::mat4(1.f), -a, vec3{1.f, 0.f, 0.f}) * glm::translate(glm::mat4(1.f), -pivot) * sh.xf;
+                sh.xf = glm::translate(glm::mat4(1.f), pivot) * ring::drotate(-a, vec3{1.f, 0.f, 0.f}) * glm::translate(glm::mat4(1.f), -pivot) * sh.xf;
             };
             Shape& body = b.kit().rock({x, -2.f, z0}, r, h, col, (uint32_t)(k * 5.f), 0.5f, 11);
             body.xf = body.xf * glm::scale(glm::mat4(1.f), glm::vec3{1.f, 1.f, 2.f});
             leanAbout(body, {x, -2.f, z0}, lean);
             // The lip: a slab out over the north face at the top, turned further over
-            const vec3 topAt{x, -2.f + h * std::cos(lean) - r * 0.4f, z0 - h * std::sin(lean)};
+            const vec3 topAt{x, -2.f + h * ring::dcos(lean) - r * 0.4f, z0 - h * ring::dsin(lean)};
             Shape& lip = b.kit().rock(topAt, r * 0.75f, r * 1.6f, col * 1.04f, (uint32_t)(k * 9.f + 1.f), 0.45f, 9);
             lip.xf = lip.xf * glm::scale(glm::mat4(1.f), glm::vec3{1.f, 1.f, 1.6f});
             leanAbout(lip, topAt, lean + glm::radians(55.f + 20.f * ring::hash(k, 5.f)));
@@ -1106,11 +1140,11 @@ inline LevelData buildRing() {
         // The wave's back: one long slope of packed ice down to the Shore (you walk the ramp; the slab is what you see)
         l.ramps.push_back({LevelBuilder::aabb(-ring::WAKE_HALF - 8.f, 0.f, zFoot, ring::WAKE_HALF + 8.f, top, zTop), 2, 0.f, top});
         {
-            const float len = std::sqrt(ring::SLOPE_RUN * ring::SLOPE_RUN + top * top), ang = std::atan2(top, ring::SLOPE_RUN), th = 3.f;
+            const float len = std::sqrt(ring::SLOPE_RUN * ring::SLOPE_RUN + top * top), ang = ring::datan2(top, ring::SLOPE_RUN), th = 3.f;
             b.mat = Mat::SNOW;
             Shape& slab = b.kit().box({0.f, 0.f, 0.f}, {2.f * ring::WAKE_HALF + 16.f, th, len}, glm::mix(iceLit, sand, 0.3f));
-            slab.xf = glm::translate(glm::mat4(1.f), vec3{0.f, top * 0.5f - th * 0.5f / std::cos(ang), (zTop + zFoot) * 0.5f})
-                    * glm::rotate(glm::mat4(1.f), -ang, vec3{1.f, 0.f, 0.f}) * glm::translate(glm::mat4(1.f), vec3{0.f, -th * 0.5f, 0.f}) * slab.xf;
+            slab.xf = glm::translate(glm::mat4(1.f), vec3{0.f, top * 0.5f - th * 0.5f / ring::dcos(ang), (zTop + zFoot) * 0.5f})
+                    * ring::drotate(-ang, vec3{1.f, 0.f, 0.f}) * glm::translate(glm::mat4(1.f), vec3{0.f, -th * 0.5f, 0.f}) * slab.xf;
             // Under it, the wave's mass: solid, so nothing is hollow (and a fall off the side meets ice)
             for (int i = 0; i < 8; ++i) {
                 const float z0 = zTop - ring::SLOPE_RUN * i / 8.f, z1 = zTop - ring::SLOPE_RUN * (i + 1) / 8.f;
@@ -1157,7 +1191,7 @@ inline LevelData buildRing() {
         b.solid(-ring::HALF_X - 20.f, 0.f, zN - 60.f, ring::HALF_X + 20.f, 30.f, zN - 22.f);   // (you stop at its foot)
         for (int row = 0; row < 5; ++row)
             for (int k = -12; k <= 12; ++k) {
-                const float x = k * 34.f + (row % 2) * 17.f, z = zN - 90.f - row * 70.f, y = 30.f + row * 38.f + 6.f * std::sin(k * 0.7f);
+                const float x = k * 34.f + (row % 2) * 17.f, z = zN - 90.f - row * 70.f, y = 30.f + row * 38.f + 6.f * ring::dsin(k * 0.7f);
                 b.neon(x - 1.2f, y, z, x + 1.2f, y + 0.6f, z + 0.8f, lampWhite);
             }
         // The tines (phase 1's ground): either side, out past the band, two of its teeth dragging through the
@@ -1273,7 +1307,7 @@ inline LevelData buildRing() {
     {
         Arena sp = section("THE SPOKES", "39,000 KM", ring::SPOKES_N - 24.f, ring::SPOKES_S, {0.f, 0.f, ring::SPOKES_S - 6.f});
         sp.hasTrigger = true; sp.trigger = LevelBuilder::aabb(-ring::HALF_X, -2.f, -1470.f, ring::HALF_X, 20.f, -1440.f);
-        sp.groundSpawns = {{-34.f, 0.f, -1495.f}, {30.f, 0.f, -1500.f}, {0.f, 0.f, -1512.f}, {70.f, 0.f, -1484.f}, {-72.f, 0.f, -1486.f}, {-20.f, 0.f, -1525.f}, {-58.f, 0.f, -1425.f}, {56.f, 0.f, -1428.f}};
+        sp.groundSpawns = {{-34.f, 0.f, -1495.f}, {30.f, 0.f, -1500.f}, {8.f, 0.f, -1508.f}, {70.f, 0.f, -1484.f}, {-72.f, 0.f, -1486.f}, {-20.f, 0.f, -1525.f}, {-58.f, 0.f, -1425.f}, {56.f, 0.f, -1428.f}};
         sp.airSpawns = {{-30.f, 3.f, -1500.f}, {30.f, 3.f, -1500.f}};
         const vec3 tally{-44.f, 0.f, -1522.f};
         sp.waves = {{W(EnemyType::STRAY, 6), W(EnemyType::HERDER, 2)},
