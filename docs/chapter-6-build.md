@@ -250,6 +250,28 @@ landscape, the giant "looks like a png", the rings should bend round it on the w
 - **Dev:** `RINGLOG=1 ./shooter --story6 ... --bench N` prints every enemy's position, velocity, route and
   shelter-seek once a second; `--sweep mid` brings sweeps round every 25-40 s.
 
+## Performance: detail by distance (2026-11-12, after the user's note)
+
+The user: nothing far needs full detail; near things should get more, far things a stand-in. Measured
+first (`--bench 200 --gpu-timer`, `--res N`): the frame is pixel-bound (GPU 21 ms at 4K, 11 at 1440p, 4.4 at
+720p at the reef view; ~2.5 ms doesn't scale with resolution), so most of the win is per-pixel work.
+
+- **Painted once, not per pixel** (`render/RingDetail.h`, made at the level's start by `ringTextures()`,
+  shared by every run, ~0.3 s native / 0.6 s web): the ground's and rock's patterns (were ~30 noise lookups
+  a pixel: 4.3 -> 1.5 ms at 4K) and the giant's cloud tops and the galaxy (were ~70 sin a pixel: the sky
+  5 -> 2.3 ms). Their mipmaps are the distance grading: far off a pixel reads the pattern's average.
+- **Model stand-ins** (`WorldGeometry.h farVersion`, `WorldMesh.h chunkLod/lodDistance`): each placed
+  model's mesh, vertex-clustered once per prop (a capsule ~960 -> ~100 triangles); a chunk past 120 m
+  draws the stand-ins. 1,063 models were 1.02M of the ring's 1.14M triangles. -0.7 ms at the Landing.
+  Every chapter's Blender props get it. `--skip lod` shows the full meshes everywhere.
+- Tried and dropped: a half-resolution sky (the stretch pass over the 4K MSAA scene cost what it saved),
+  grading the texture relief by distance (no measurable change).
+- Result at the reef view: 4K 21.0 -> 15.6 ms GPU, 1440p 11.0 -> 8.1 ms.
+- **Web bake fixed:** `ring::hash` was fract(sin(x) * 43758): the C library's sin differs in its last bit
+  between macOS and WebAssembly, and the multiply made that centimetres, so the browser's ring never matched
+  its bake (since the chapter began). Now integer mixing, plus `dsin/dcos/datan2/drotate` for the layout's
+  trig. `make test-web-lighting` covers story6.
+
 ## The sky (skybox.frag `ringSky`, `uRing`)
 
 The giant (`RING_GIANT`, east, angular radius 0.8) sits on the horizon with its
