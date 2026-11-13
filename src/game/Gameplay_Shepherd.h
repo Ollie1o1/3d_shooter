@@ -47,7 +47,8 @@ constexpr float RIDGE_WARN = 6.f, RIDGE_FLASH = 1.5f;        // 6 s: a RECALL st
 constexpr float VENT_OPEN = 8.f, VENT_HP = 420.f, VENT_REACH = 24.f;   // open after each wave; only hurt from close in
 // THE RESONATOR
 constexpr float HALL_WARN = 5.f, HALL_FLASH = 1.f, HALL_GAP = 9.f;   // its blasts down the hall (the gap grows ragged as forks go)
-constexpr float FORK_RING = 4.5f;                                    // after a blast the forks ring this long: spike one now
+constexpr float FORK_RING = 6.5f;                                    // after a blast the forks ring this long: their cores open
+constexpr float FORK_HP = 260.f;                                     // a core's worth of rounds (HOLDFAST into a ringing fork: all at once)
 constexpr float WELL_WARN = 5.f, WELL_SPEED = 30.f, WELL_GAP = 7.f;  // the blasts up the well
 }
 
@@ -66,7 +67,7 @@ inline float GameplayState::shepherdHealth01() {
         if (Enemy* d = shepDog(); d && shepDogMax > 0.f) comb += glm::clamp(1.f - d->health / shepDogMax, 0.f, 1.f) * 0.8f;
     float done = comb / (float)shep::TINES;   // phases done, in fifths
     for (int v = 0; v < 3; ++v) done += glm::clamp(1.f - shepVentHp[v] / shepfight::VENT_HP, 0.f, 1.f) / 3.f;   // THE TURN: its vents
-    for (int f = 0; f < shep::FORKS; ++f) done += shepForkBroken[f] ? 0.6f / shep::FORKS : 0.f;              // THE RESONATOR: its forks,
+    for (int f = 0; f < shep::FORKS; ++f) done += (shepForkBroken[f] ? 1.f : glm::clamp(1.f - shepForkHp[f] / shepfight::FORK_HP, 0.f, 1.f)) * 0.6f / shep::FORKS;              // THE RESONATOR: its forks,
     done += 0.4f * glm::clamp(shepWellMaxY / shep::W_OUT, 0.f, 1.f);                                         // and the climb
     return glm::clamp(1.f - done / shepfight::PHASES, 0.f, 1.f);
 }
@@ -111,7 +112,7 @@ inline void GameplayState::beginShepherd() {
         for (float& h : shepVentHp) h = 0.f;
         shepVents = 3; shepTurnAng = shepfight::TURN_ANGLE; shepTurnSeen = true;
     }
-    if (!shepForksArmed) { shepForksArmed = true; for (bool& f : shepForkBroken) f = false; shepWellMaxY = 0.f; }
+    if (!shepForksArmed) { shepForksArmed = true; for (bool& f : shepForkBroken) f = false; for (float& h : shepForkHp) h = shepfight::FORK_HP; shepWellMaxY = 0.f; }
     if (director.arena >= 5) for (bool& f : shepForkBroken) f = true;
     shepForks = 0; for (bool f : shepForkBroken) shepForks += f;
     shepForkRingT = 0.f; shepHallSweepT = 5.f; shepWellT = -1.f; shepWellNext = 4.f; shepWellCount = -1.f; shepUpT = -1.f; shepMembraneT = shepForks >= shep::FORKS ? 99.f : -1.f;
@@ -488,7 +489,8 @@ inline void GameplayState::shepInside(float dt) {
     if (at == 4 && shepForks < shep::FORKS) {
         if (sweep.active() && sweep.passed > 0 && !shepSweepPassed) {   // it went over: the forks ring
             shepSweepPassed = true; shepForkRingT = FORK_RING;
-            ui.feed("THE FORKS RING", POST_LIT * 0.5f);
+            ui.feed("THE FORKS RING: SHOOT THEIR CORES", POST_LIT * 0.6f);
+            if (!shepForkHint) { shepForkHint = true; pushBanner("THEIR CORES ARE OPEN", "SHOOT THE WHITE CORES. QUICK", POST_LIT * 0.6f, 2.5f); }
             for (int f = 0; f < shep::FORKS; ++f) if (!shepForkBroken[f]) audio.playAt("ab_ting", shep::forkNode(f), 110, SoundGroup::WORLD, true, 0.55f + 0.08f * f);
             int alive = 0; for (const auto& e : enemies) alive += e.alive && e.targetable();
             for (int k = 0; k < 2 && alive < 4; ++k, ++alive) {   // and its flock comes back down the hall behind it
@@ -505,7 +507,7 @@ inline void GameplayState::shepInside(float dt) {
             sweep.start(s); ++sweepCount;
             // detuned: the rhythm goes (each warning stays whole and honest)
             shepHallSweepT = HALL_GAP + HALL_FLASH + HALL_WARN + cosmetic::range(-1.f, 1.f) * 2.2f * (float)shepForks;
-            if (!shepHallHint) { shepHallHint = true; ui.toast("THE TUNING HALL", "BLASTS COME DOWN THE HALL: GET INTO A SIDE ROOM. THEN SPIKE A RINGING FORK (" + binds().label(Act::HOLDFAST) + ")", POST_LIT * 0.4f, 6.f); }
+            if (!shepHallHint) { shepHallHint = true; ui.toast("THE TUNING HALL", "BLASTS COME DOWN THE HALL: GET INTO A SIDE ROOM. AFTER EACH ONE THE FORKS RING AND THEIR CORES OPEN: SHOOT THEM", POST_LIT * 0.4f, 7.f); }
         }
         if (g_devOverlay == "forkkill" && shepForkRingT > 0.f && !holdfast.held())   // dev: the spike, into the first ringing fork
             for (int f = 0; f < shep::FORKS; ++f) if (!shepForkBroken[f]) { const int w = level.movers[level.shepForks[2 * f]].wall; holdfast.latch(shep::forkNode(f), player.camera.position, w, -1); break; }
@@ -519,22 +521,7 @@ inline void GameplayState::shepInside(float dt) {
                     if (shepVentMsgT <= 0.f) { shepVentMsgT = 2.5f; ui.feed("IT ISN'T RINGING: AFTER A BLAST", glm::vec3{0.75f}); }
                     continue;
                 }
-                shepForkBroken[f] = true; ++shepForks; holdfast.cut();
-                const glm::vec3 n = shep::forkNode(f);
-                fx.spawnBurst(n + glm::vec3{0.f, 6.f, 0.f}, POST_LIT, 70, 14.f, 1.f, 3.f);
-                fx.spawnShockwave(n, 10.f, POST_LIT * 0.6f);
-                shake(1.f, 0.05f); shepherdDamageT = 1.f;
-                audio.playAt("ab_shatter", n, 128, SoundGroup::WORLD, true, 0.6f);
-                SfxMixer::Opts o; o.group = SoundGroup::WORLD; o.priority = true; o.unducked = true; o.pitch = 0.45f; o.volume = 0.9f;
-                audio.playOpts("slam", o);
-                styleSystem.addStyle(150.f, StyleSource::ENVIRONMENT);
-                static const char* left[4] = {"THREE LEFT. IT SOUNDS WRONG", "TWO LEFT", "ONE LEFT", "DETUNED"};
-                pushBanner("FORK STILLED", left[std::clamp(shepForks - 1, 0, 3)], POST_LIT * 0.6f, 2.5f);
-                if (shepForks >= shep::FORKS) {
-                    shepMembraneT = 0.f; sweep.reset();
-                    pushBanner("THE CORE OPENS", "ON, THROUGH IT", POST_LIT * 0.6f, 3.5f);
-                    fx.spawnBurst({shep::HX, 10.f, shep::HZ_N + 2.f}, glm::vec3{2.4f, 1.3f, 0.35f}, 80, 16.f, 1.2f, 2.f);
-                }
+                holdfast.cut(); shepStillFork(f);
                 break;
             }
     }
@@ -592,10 +579,51 @@ inline void GameplayState::shepInside(float dt) {
     }
 }
 
+// A fork broken (its core shot out while it rang, or HOLDFAST driven into it)
+inline void GameplayState::shepStillFork(int f) {
+    using namespace shepfight;
+    shepForkBroken[f] = true; ++shepForks;
+    const glm::vec3 n = shep::forkNode(f);
+    fx.spawnBurst(n + glm::vec3{0.f, 6.f, 0.f}, POST_LIT, 70, 14.f, 1.f, 3.f);
+    fx.spawnShockwave(n, 10.f, POST_LIT * 0.6f);
+    shake(1.f, 0.05f); shepherdDamageT = 1.f;
+    audio.playAt("ab_shatter", n, 128, SoundGroup::WORLD, true, 0.6f);
+    SfxMixer::Opts o; o.group = SoundGroup::WORLD; o.priority = true; o.unducked = true; o.pitch = 0.45f; o.volume = 0.9f;
+    audio.playOpts("slam", o);
+    styleSystem.addStyle(150.f, StyleSource::ENVIRONMENT);
+    static const char* left[4] = {"THREE LEFT. IT SOUNDS WRONG", "TWO LEFT", "ONE LEFT", "DETUNED"};
+    pushBanner("FORK BROKEN", left[std::clamp(shepForks - 1, 0, 3)], POST_LIT * 0.6f, 2.5f);
+    if (shepForks >= shep::FORKS) {
+        shepMembraneT = 0.f; sweep.reset();
+        pushBanner("THE CORE OPENS", "ON, THROUGH IT", POST_LIT * 0.6f, 3.5f);
+        fx.spawnBurst({shep::HX, 10.f, shep::HZ_N + 2.f}, glm::vec3{2.4f, 1.3f, 0.35f}, 80, 16.f, 1.2f, 2.f);
+    }
+}
+
 // A round down a vent's throat (Gameplay_Combat.h's hitscan): only while it is open, and only from close in
 inline bool GameplayState::shootVent(glm::vec3 from, glm::vec3 dir, float& distance, float dmg) {
     using namespace shepfight;
     if (!shepherd() || shepTines < shep::TINES || shepTurnT >= 0.f) return false;
+    if (level.arenaAt(player.position) == 4)   // THE TUNING HALL: a fork's core, glowing white while it rings
+        for (int f = 0; f < shep::FORKS; ++f) {
+            if (shepForkBroken[f]) continue;
+            const glm::vec3 c = shep::forkNode(f);
+            const AABB box{c - glm::vec3{1.5f}, c + glm::vec3{1.5f}};
+            const float t = rayBoxHit(from, dir, box);
+            if (t <= 0.f || t >= distance) continue;
+            distance = t;
+            const glm::vec3 at = from + dir * t;
+            if (shepForkRingT <= 0.f) {
+                fx.spawnHitSparks(at, glm::vec3{0.8f});
+                if (shepVentMsgT <= 0.f) { shepVentMsgT = 2.f; ui.feed("SHUT: IT OPENS WHEN THE FORK RINGS, AFTER A BLAST", glm::vec3{0.75f}); }
+                return true;
+            }
+            shepForkHp[f] -= dmg; shepherdDamageT = 0.3f;
+            fx.spawnHitSparks(at, POST_LIT);
+            styleSystem.addStyle(4.f, StyleSource::ENVIRONMENT);
+            if (shepForkHp[f] <= 0.f) shepStillFork(f);
+            return true;
+        }
     for (int v = 0; v < 3; ++v) {
         if (shepVentHp[v] <= 0.f) continue;
         const glm::vec3 c = shep::vent(v);
@@ -715,7 +743,7 @@ inline void GameplayState::gatherShepherd(std::vector<BoxInstance>& out) {
         const AABB& bx = level.walls[m.wall].box;
         const float ring = shepForkRingT / shepfight::FORK_RING, shiver = ring > 0.f ? 0.05f * std::sin(gameClock * 90.f + f) : 0.f;
         push(out, T((bx.min + bx.max) * 0.5f + glm::vec3{shiver, 0.f, 0.f}) * S(bx.max - bx.min), m.color, POST_LIT * (0.05f + 1.6f * ring * (0.8f + 0.2f * std::sin(gameClock * 30.f))));
-        if (f % 2 == 0) push(out, T(shep::forkNode(f / 2)) * S(glm::vec3{1.6f}), glm::vec3{0.1f}, POST_LIT * (0.3f + 2.f * ring));
+        if (f % 2 == 0) push(out, T(shep::forkNode(f / 2)) * RY(gameClock * (0.5f + 4.f * ring)) * S(glm::vec3{1.6f + 1.2f * ring}), glm::vec3{0.1f}, POST_LIT * (0.15f + 3.f * ring * (0.75f + 0.25f * std::sin(gameClock * 12.f))));
     }
     if (level.shepMembrane >= 0 && shepMembraneT < 1.5f) {
         const AABB& bx = level.walls[level.movers[level.shepMembrane].wall].box;
@@ -765,10 +793,14 @@ inline void GameplayState::shepherdMarkers(const glm::mat4& view, const glm::mat
         }
         for (int f = 0; f < shep::FORKS; ++f) {
             if (shepForkBroken[f]) continue;
-            const glm::vec3 at = shep::forkNode(f) + glm::vec3{0.f, 15.f, 0.f};
+            const glm::vec3 at = shep::forkNode(f) + glm::vec3{0.f, 2.2f, 0.f};
             const bool on = projectToScreen(at, view, proj, sx, sy);
-            if (shepForkRingT > 0.f) snprintf(buf, sizeof(buf), "RINGING %dM", (int)glm::length(at - player.position));
-            else snprintf(buf, sizeof(buf), "FORK");
+            const int pct = (int)std::ceil(100.f * shepForkHp[f] / shepfight::FORK_HP);
+            int nearest = -1; float nd = 1e9f;
+            for (int g = 0; g < shep::FORKS; ++g) if (!shepForkBroken[g]) { const float d = glm::length(shep::forkNode(g) - player.position); if (d < nd) { nd = d; nearest = g; } }
+            if (f != nearest) snprintf(buf, sizeof(buf), "%d%%", pct);
+            else if (shepForkRingT > 0.f) snprintf(buf, sizeof(buf), "SHOOT ITS CORE %dS  %d%%", (int)std::ceil(shepForkRingT), pct);
+            else snprintf(buf, sizeof(buf), "FORK %d%%", pct);
             ui.renderMarker(sx, sy, on, shepForkRingT > 0.f ? glm::vec3{1.f} : glm::vec3{0.6f}, buf, false, shepForkRingT <= 0.f);
         }
         return;

@@ -117,7 +117,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             else if(shepherd()&&level.arenaAt(player.position)>=4) {   // THE RESONATOR
                 static char res[110];const int here=level.arenaAt(player.position);
                 if(here==4){
-                    const char* step=shepForks>=shep::FORKS?"DETUNED: ON, THROUGH THE CORE":sweep.active()?"BLAST COMING: INTO A SIDE ROOM":shepForkRingT>0.f?"THE FORKS RING: SPIKE ONE WITH HOLDFAST":"WAIT IN A SIDE ROOM: THEY RING AFTER A BLAST";
+                    const char* step=shepForks>=shep::FORKS?"DETUNED: ON, THROUGH THE CORE":sweep.active()?"BLAST COMING: INTO A SIDE ROOM":shepForkRingT>0.f?"THE FORKS RING: SHOOT THEIR WHITE CORES":"IN A SIDE ROOM: AFTER A BLAST THEIR CORES OPEN";
                     std::snprintf(res,sizeof(res),"FORKS %d/4  /  %s",shepForks,step);
                 } else if(here==5) std::snprintf(res,sizeof(res),"EVERY LAMP A CAPSULE  /  READ IT, THEN ON TO THE WELL");
                 else std::snprintf(res,sizeof(res),"UP %dM  /  %s",std::max(0,(int)(shep::W_OUT-player.position.y)),shepWellCount>=0.f?"BLAST RISING: INTO AN ALCOVE":"GRAPPLE FROM ALCOVE TO ALCOVE");

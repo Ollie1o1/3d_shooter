@@ -410,7 +410,7 @@ public:
     float shepTurnT = -1.f, shepTurnAng = 0.f, shepVentHp[3] = {1.f, 1.f, 1.f}, shepVentOpenT = 0.f, shepRidgeSweepT = 0.f, shepAddT = 0.f, shepVentMsgT = 0.f, shepInT = -1.f;
     int   shepGuardWave = 0; bool shepSweepWas = false;
     bool  shepForkBroken[4] = {}, shepForksArmed = false, shepHallHint = false, shepLedgerSeen = false, shepWellHint = false;   // THE RESONATOR
-    int   shepForks = 0;
+    int   shepForks = 0; float shepForkHp[4] = {1.f, 1.f, 1.f, 1.f}; bool shepForkHint = false;
     float shepForkRingT = 0.f, shepHallSweepT = 0.f, shepMembraneT = -1.f, shepWellT = -1.f, shepWellNext = 0.f, shepWellCount = -1.f, shepWellFront = 0.f, shepWellMaxY = 0.f, shepUpT = -1.f;
     bool  shepTurnSeen = false, shepVentsArmed = false, shepSweepPassed = false;
     bool  shepHerdHeld = false, shepWasStaggered = false, shepSeen = false, shepConeHint = false, shepCutHint = false, shepBellHint = false;
@@ -1438,6 +1438,7 @@ public:
     void   shepRidge(float dt);
     void   shepInside(float dt);
     bool   shepInAlcove(glm::vec3 feet) const;
+    void   shepStillFork(int f);
     void   shepherdMarkers(const glm::mat4& view, const glm::mat4& proj);
     bool   shootVent(glm::vec3 from, glm::vec3 dir, float& distance, float dmg);
     void ringFoeEvents(Enemy& e, const EnemyEvents& ev);
