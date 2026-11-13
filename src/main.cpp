@@ -803,6 +803,7 @@ int main(int argc, char* argv[]) {
         if(arg=="--story2") {g_storyChapter=2;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}
         if(arg=="--story3") {g_storyChapter=3;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}
         if(arg=="--story6") {g_storyChapter=6;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}   // Chapter 6: THE KEPT RING
+        if(arg=="--shepherd") {g_storyChapter=6;g_shepherd=true;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}   // Chapter 6's boss: THE SHEPHERD (--arena N: tine N+1)
         if(arg=="--story5") {g_storyChapter=5;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}   // Chapter 5: THE COLD STORE
         if(arg=="--story4") {g_storyChapter=4;app->mode=GameMode::STORY;app->pending=App::NextState::Game;}   // Chapter 4: THE BLOOD MOON PLAIN (in progress)
         if(arg=="--chapter" && i+1<argc)g_storyChapter=std::clamp(std::atoi(argv[++i]),1,6);

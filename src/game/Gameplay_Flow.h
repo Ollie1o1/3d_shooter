@@ -235,6 +235,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
             resumedStory.kills = resumedStory.shots = resumedStory.hits = resumedStory.deaths = 0;
         }
         g_storyChapter = resumedStory.chapter; g_startArena = resumedStory.checkpoint;
+        if (g_storyChapter == 6 && g_startArena >= 10) { g_shepherd = true; g_startArena -= 10; }   // (the Shepherd's own level: its checkpoints are saved from 10)
         storyOwned = resumedStory.owned; storyLogsSeen = resumedStory.logs;
         storyTerminalsSeen = resumedStory.terminals; storyGrapple = resumedStory.grapple;
         labIntro.seen=resumedStory.labIntroSeen;labRoutes=resumedStory.labRoutes;
@@ -243,11 +244,11 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
         prog = resumedStory.prog;
     }
     g_continueStory = false;
-    level = training() ? buildTraining() : fast() ? buildGauntlet() : act2() ? buildAct2Level() : story() ? (g_storyChapter==6?(g_devRingTest?buildRingTest():buildRing()):g_storyChapter==5?buildCold():g_storyChapter==4?buildPlain():g_storyChapter==3?buildLab():g_storyChapter==2?buildWasteland():buildCradle()) : buildLevel();
+    level = training() ? buildTraining() : fast() ? buildGauntlet() : act2() ? buildAct2Level() : story() ? (g_storyChapter==6?(g_devRingTest?buildRingTest():g_shepherd?buildShepherd():buildRing()):g_storyChapter==5?buildCold():g_storyChapter==4?buildPlain():g_storyChapter==3?buildLab():g_storyChapter==2?buildWasteland():buildCradle()) : buildLevel();
     if (story()) armfile::load("assets/guns/unit24_arm.glb");   // UNIT 24's own hands (the menu's next run puts the gloves back)
     spatialGrid.build(level.walls);
     world = buildWorldMeshes(level);
-    bake = &sharedBake(training() ? "training" : fast() ? "fast" : act2() ? "act2" : story() ? (level.story.chapter==6?"story6":level.story.chapter==5?"story5":level.story.chapter==4?"story4":level.story.chapter==3?"story3":level.story.chapter==2?"story2":"story1") : "act1", level);
+    bake = &sharedBake(training() ? "training" : fast() ? "fast" : act2() ? "act2" : story() ? (level.story.chapter==6?(level.story.part?"shepherd":"story6"):level.story.chapter==5?"story5":level.story.chapter==4?"story4":level.story.chapter==3?"story3":level.story.chapter==2?"story2":"story1") : "act1", level);
     applyBake();
     neonLights = buildNeonLights(level);
     gatherWorldEmitters(level, worldSound);
@@ -1404,11 +1405,12 @@ inline void GameplayState::updateMusic() {
         m.setTrack(RING_MUSIC_TRACK);m.setDrive(overdriveOn()&&!playerDead);m.setSolo(false);
         bool dog=false;for(const auto& e:enemies)if(e.alive&&isSheepdog(e.type))dog=true;
         float intensity=director.fighting()?(dog?1.18f:1.f):.38f;
+        if(shepherd())intensity=director.fighting()||shepBreakT>=0.f?1.3f:.95f;   // THE SHEPHERD: the boss, loud and at full tempo throughout
         // The Shore: the walk up to it, the drums gathering as it fills the sky
         if(!director.fighting()&&player.position.z<ring::summitN())intensity=glm::mix(.38f,.75f,glm::clamp((ring::summitN()-player.position.z)/(ring::summitN()-ring::shoreN()),0.f,1.f));
         if(storyEndT>=0.f)intensity=.2f;
         m.setIntensity(playerDead?.05f:intensity);m.setMuffle(paused||armoryOpen||playerDead||ringQuiet());
-        float vol=(settings?settings->musicVolume:.6f)*(director.fighting()?1.f:.55f);
+        float vol=(settings?settings->musicVolume:.6f)*(director.fighting()||shepherd()?1.f:.55f);
         if(ringDark()>.2f||sweptFalling())vol=0.f;   // (true silence: the Shadow Band, the swept death)
         audio.setMusicVolume(vol);
         audio.setOverdrive(overdriveOn()&&!playerDead&&!paused&&!armoryOpen,0);return;

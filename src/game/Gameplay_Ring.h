@@ -229,6 +229,7 @@ inline void GameplayState::updateRing(float dt) {
             audio.setSpace(air ? ReverbSpace::METAL : ReverbSpace::OPEN);
         }
     }
+    if (shepherd()) { updateShepherd(dt); ringFoes(dt); return; }   // its own level (Gameplay_Shepherd.h)
     ringTouch(dt);
     tickShadow(dt);
     tickSpokes(dt);
@@ -286,8 +287,12 @@ inline void GameplayState::updateRing(float dt) {
     }
     // The way on
     const AABB& E = level.story.end;
-    if (storyEndT < 0.f && !playerDead && p.x > E.min.x && p.x < E.max.x && p.z > E.min.z && p.z < E.max.z) {
-        storyEndT = 0.f; saveStoryProgress(); logRun("end"); audio.play("wave", 90, SoundGroup::UI, true);
+    if (storyEndT < 0.f && shepEnterT < 0.f && !playerDead && p.x > E.min.x && p.x < E.max.x && p.z > E.min.z && p.z < E.max.z) {
+        shepEnterT = 0.f; audio.play("wave", 90, SoundGroup::UI, true);   // the Shepherd's foot: on, into its level (Gameplay_Shepherd.h)
+    }
+    if (shepEnterT >= 0.f) {
+        shepEnterT += dt; player.velocity.x *= 0.9f; player.velocity.z *= 0.9f;
+        if (shepEnterT > 1.4f) { shepEnterT = -1.f; loadShepherd(0); return; }
     }
     if (storyEndT >= 0.f) { storyEndT += dt; player.velocity = {0.f, 0.f, 0.f}; if (storyEndT > 3.f) captureMouse(false); }
     if (storyTerminal >= 0 && glm::length(level.story.terminals[storyTerminal].pos - p) > 6.f) storyTerminal = -1;

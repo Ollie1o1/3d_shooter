@@ -26,7 +26,7 @@ inline void GameplayState::ringFoes(float dt) {
                         e.velocity.x, e.velocity.z, (int)e.navRouted, (int)e.ringSeekSet, glm::length(glm::vec2{e.position.x - player.position.x, e.position.z - player.position.z}));
     }
     // Lurkers: STRAYS climbing out of the capsules as you pass (ring::lurkers)
-    if (!g_devRingTest && !playerDead && storyEndT < 0.f) {
+    if (!g_devRingTest && !shepherd() && !playerDead && storyEndT < 0.f) {
         const auto L = ring::lurkers();
         if (lurkerOut.size() != L.size()) lurkerOut.assign(L.size(), 0);
         for (size_t i = 0; i < L.size(); ++i) {
@@ -179,8 +179,11 @@ inline void GameplayState::crookTick(float dt) {
 }
 
 inline void GameplayState::ringFoeEvents(Enemy& e, const EnemyEvents& ev) {
-    if (e.type == EnemyType::DROVER && ev.ringCharge && !playerDead) gapLaunch(e);
-    if (e.type == EnemyType::BELLWETHER && ev.ringBell && !playerDead) wakeRing(e);
+    if (e.type == EnemyType::DROVER && ev.ringCharge && !playerDead) { if (shepherd()) shepLaunch(e); else gapLaunch(e); }
+    if (e.type == EnemyType::BELLWETHER && ev.ringBell && !playerDead) {
+        wakeRing(e);
+        if (shepherd() && e.tineForm && e.health < shepDogMax * 0.5f) shepBellT = 0.8f;   // (below half, on the tine: it rings twice)
+    }
     if (e.type == EnemyType::CROOK && ev.ringHooked && !playerDead) {   // the hook has you
         if (holdfast.held()) {   // the line holds: it caught, and you didn't move
             ui.feed("THE LINE HOLDS", HOLDFAST_STEEL);

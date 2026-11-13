@@ -114,6 +114,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
                 if(here==1&&director.arena==1&&director.phase==WaveDirector::Phase::CLEARED)what="THE DOCK IS OPEN";
                 if(here==4)what=coldRecall?"THE BACK DOOR IS OPEN":"TAKE WHAT 24-A IS HOLDING";
             }
+            else if(shepherd()) what=sweep.active()?"OUT OF THE CONE, OR BEHIND A LIT POST":"BREAK THE COMB / KILL ITS SHEEPDOG";
             else if(ring()) what=sweep.active()?"GET BEHIND A LIT POST":"CROSS THE RING / SHELTER WHEN THE POSTS LIGHT";
             else if(here==0)what="SALVAGE BAY / FOLLOW THE AMBER LIGHTS DOWN";
             else if (here == level.story.pitSection && !storyOwns(0)) what = "TAKE THE REVOLVER / UNIT 01 UNDER THE WORK LIGHT";
@@ -188,7 +189,8 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             ui.end2D();
         }
 
-        if (ring())   // THE CROOK: its bar runs out where it breaks off, not where it dies
+        if (shepherd()) renderShepherdBars();   // (THE SHEPHERD's five segments, its sheepdog's under them)
+        else if (ring())   // THE CROOK: its bar runs out where it breaks off, not where it dies
             for (const auto& e : enemies)
                 if (e.alive && isSheepdog(e.type) && e.state == EnemyState::ACTIVE) {
                     const float floor = e.maxHealth * Enemy::CROOK_LEAVES;

@@ -386,21 +386,21 @@ public:
         ui.rect(x + (int)(w * a), y, (int)(w * (b - a)), 12, {0.85f, 0.92f, 1.f, 0.55f});
         end2D();
     }
-    void renderBossBar(const char* name, float fill, bool enraged, glm::vec3 tint = {-1.f,-1.f,-1.f}) {
+    void renderBossBar(const char* name, float fill, bool enraged, glm::vec3 tint = {-1.f,-1.f,-1.f}, int barY = 62, int segments = 4) {
         if (bossTrailName != name || hudTime - bossTrailSeen > .5f) {
             bossTrailName = name; bossDamageTrail.reset(fill);
         }
         bossTrailSeen = hudTime;
         bossDamageTrail.observe(fill);
         begin2D();
-        int w = 560, x = screenW / 2 - w / 2, y = 62;
+        int w = 560, x = screenW / 2 - w / 2, y = barY;
         glm::vec4 col = enraged ? glm::vec4{1.f, 0.15f, 0.25f, 0.95f} : glm::vec4{1.f, 0.2f, 0.65f, 0.95f};
         if(tint.x>=0)col=glm::vec4(tint,.95f);
         ui.text(name, screenW / 2, y - 16, 2, col, true);
         ui.rect(x - 3, y - 3, w + 6, 18, {0.05f, 0.03f, 0.06f, 0.85f});
         ui.rect(x, y, w * bossDamageTrail.value, 12, {1.f, .83f, .5f, .9f});
         ui.rect(x, y, w * glm::clamp(fill, 0.f, 1.f), 12, col);
-        for (int i = 1; i < 4; ++i) ui.rect(x + w * i / 4, y, 2, 12, {0.f, 0.f, 0.f, 0.5f});
+        for (int i = 1; i < segments; ++i) ui.rect(x + w * i / segments, y, 2, 12, {0.f, 0.f, 0.f, 0.5f});
         end2D();
     }
 

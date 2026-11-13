@@ -183,7 +183,7 @@ inline void GameplayState::spawnEnemy(EnemyType t, glm::vec3 pos, Hollow h) {
     int room=level.arenaAt(pos);if(room<0)room=director.arena;
     bool movingDeck = room>=0 && room<(int)level.arenas.size() &&
         level.arenas[room].shift==ArenaShift::DESCENT;
-    if(laboratory() || cold() || movingDeck){
+    if(laboratory() || cold() || movingDeck || shepherd()){
         // Lab basins are far below the real platforms. Using that abyss as a
         // flying subject's initial floor gives it a 250 m hover offset.
         floor=level.enemyFloor(room,pos,statsOf(t).flying,groundHeightAt(pos.x,pos.z,pos.y+.5f,true));

@@ -120,6 +120,7 @@ inline void GameplayState::beginStory() {
     if(laboratory()) {beginLab();return;}
     if(plain()) {beginPlain();return;}
     if(cold()) {beginCold();return;}
+    if(shepherd()) {beginShepherd();return;}
     if(ring()) {beginRing();return;}
     if(wasteland()) {beginWasteland();return;}
     // Bodies on the belts, spaced out down their length; the one ahead of you on yours timed to go over the lip

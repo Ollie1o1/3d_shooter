@@ -31,6 +31,7 @@
 #include "world/LevelPlain.h"
 #include "world/LevelCold.h"
 #include "world/LevelRing.h"
+#include "world/LevelShepherd.h"
 #include "world/PlainMeteors.h"
 #include "bosses/gleaner/GleanerRig.h"
 #include "bosses/gleaner/TenderRig.h"
@@ -400,11 +401,17 @@ public:
     // THE GAP: the ride, its sweep, the Drover, the chunk it sends, its side of the raft
     bool  gapRide = false, gapSweepDone = false; int gapDroverUid = -1; float gapSide = 1.f, gapSideT = 0.f;
     struct WakeRing { glm::vec3 at; float radius = 0.f; bool hit = false; };
+    // THE SHEPHERD (Gameplay_Shepherd.h)
+    int   shepTines = 0, shepDogUid = -1, shepHerdPinned = -1;
+    float shepBreakT = -1.f, shepBridgeT[2] = {-1.f, -1.f}, shepSweepT = 0.f, shepDogMax = 1.f, shepStrayT = 0.f;
+    float shepCutT = -1.f, shepCutCd = 0.f, shepHerdT = 0.f, shepHerdPinT = 0.f, shepBellT = -1.f, shepBellHp = -1.f;
+    float shepSideT = 0.f, shepSide = -1.f, shepEndT = -1.f, shepEnterT = -1.f, shepherdDamageT = 0.f;
+    bool  shepHerdHeld = false, shepWasStaggered = false, shepSeen = false, shepConeHint = false, shepCutHint = false, shepBellHint = false;
     std::vector<WakeRing> wakeRings; bool wakeSweepDone = false; float wakeViewT = -1.f;   // THE WAKE
     float ringSweptAgo = -1.f;   // since a lethal sweep passed (its swept burn up across the giant: skybox.frag)
     std::vector<char> lurkerOut;   // which of ring::lurkers() have come out (Gameplay_RingFoes.h)
     int shoreSweeps = 0; bool shoreBreakHint = false, shoreWeightHint = false, shoreSpoke = false;   // THE SHORE
-    struct GapCharge { bool on = false, hit = false; glm::vec3 pos{0.f}; float dir = 1.f, from = 0.f; } gapCharge;   // -1 not yet set, 0 hard vacuum outside, 1 the hull's air
+    struct GapCharge { bool on = false, hit = false; glm::vec3 pos{0.f}; float dir = 1.f, from = 0.f; } gapCharge, shepCharge;   // -1 not yet set, 0 hard vacuum outside, 1 the hull's air
     glm::vec3 sweptFrom{0.f}, sweptDir{0.f, 0.f, 1.f};
     bool sweptFalling() const { return playerDead && sweptT >= 0.f && sweptT < SWEPT_FALL; }
     static constexpr float SWEPT_FALL = 2.2f;
@@ -1409,6 +1416,18 @@ public:
     void  wakeRing(const Enemy& e);
     void  gatherWake(std::vector<BoxInstance>& out);
     void ringFoes(float dt);
+    // THE SHEPHERD (Gameplay_Shepherd.h)
+    bool   shepherd() const;
+    Enemy* shepDog();
+    float  shepherdHealth01();
+    void   loadShepherd(int arena);
+    void   beginShepherd();
+    void   shepMovers(float dt);
+    void   shepLaunch(const Enemy& d);
+    void   shepDogKit(Enemy& d, float dt);
+    void   updateShepherd(float dt);
+    void   gatherShepherd(std::vector<BoxInstance>& out);
+    void   renderShepherdBars();
     void ringFoeEvents(Enemy& e, const EnemyEvents& ev);
     void crookTick(float dt);
     void gatherRing(std::vector<BoxInstance>& out);
@@ -1517,6 +1536,7 @@ public:
 #include "game/Gameplay_Gap.h"
 #include "game/Gameplay_Wake.h"
 #include "game/Gameplay_Shore.h"
+#include "game/Gameplay_Shepherd.h"
 #include "game/Gameplay_RingFoes.h"
 #include "game/Gameplay_ColdEnemies.h"
 #include "game/Gameplay_Wasteland.h"

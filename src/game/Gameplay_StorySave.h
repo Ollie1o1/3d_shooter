@@ -5,7 +5,7 @@ inline void GameplayState::saveStoryProgress() {
         || !g_devOverlay.empty() || !level.story.built) return;
     StorySave s;
     s.labIntroSeen=labIntro.seen;s.labRoutes=labRoutes;
-    s.chapter = level.story.chapter; s.checkpoint = storyCheckpoint;
+    s.chapter = level.story.chapter; s.checkpoint = storyCheckpoint + (shepherd() ? 10 : 0);
     s.owned = storyOwned; s.logs = storyLogsSeen; s.terminals = storyTerminalsSeen;
     s.relayIsolated = storyRelayIsolated; s.grapple = storyGrapple; s.bossDown = storyBossDown;
     s.completed = storyEndT >= 0; s.wakeSeen = wakeSeen; s.sword = storySword;
