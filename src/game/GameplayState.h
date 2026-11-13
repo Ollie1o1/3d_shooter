@@ -406,6 +406,9 @@ public:
     float shepBreakT = -1.f, shepBridgeT[2] = {-1.f, -1.f}, shepSweepT = 0.f, shepDogMax = 1.f, shepStrayT = 0.f;
     float shepCutT = -1.f, shepCutCd = 0.f, shepHerdT = 0.f, shepHerdPinT = 0.f, shepBellT = -1.f, shepBellHp = -1.f;
     float shepSideT = 0.f, shepSide = -1.f, shepEndT = -1.f, shepEnterT = -1.f, shepherdDamageT = 0.f;
+    int   shepVents = 0;   // THE TURN
+    float shepTurnT = -1.f, shepTurnAng = 0.f, shepVentHp[3] = {1.f, 1.f, 1.f}, shepVentOpenT = 0.f, shepRidgeSweepT = 0.f, shepAddT = 0.f, shepVentMsgT = 0.f, shepInT = -1.f;
+    bool  shepTurnSeen = false, shepVentsArmed = false, shepSweepPassed = false;
     bool  shepHerdHeld = false, shepWasStaggered = false, shepSeen = false, shepConeHint = false, shepCutHint = false, shepBellHint = false;
     std::vector<WakeRing> wakeRings; bool wakeSweepDone = false; float wakeViewT = -1.f;   // THE WAKE
     float ringSweptAgo = -1.f;   // since a lethal sweep passed (its swept burn up across the giant: skybox.frag)
@@ -1428,6 +1431,8 @@ public:
     void   updateShepherd(float dt);
     void   gatherShepherd(std::vector<BoxInstance>& out);
     void   renderShepherdBars();
+    void   shepRidge(float dt);
+    bool   shootVent(glm::vec3 from, glm::vec3 dir, float& distance, float dmg);
     void ringFoeEvents(Enemy& e, const EnemyEvents& ev);
     void crookTick(float dt);
     void gatherRing(std::vector<BoxInstance>& out);

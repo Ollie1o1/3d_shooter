@@ -114,6 +114,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
                 if(here==1&&director.arena==1&&director.phase==WaveDirector::Phase::CLEARED)what="THE DOCK IS OPEN";
                 if(here==4)what=coldRecall?"THE BACK DOOR IS OPEN":"TAKE WHAT 24-A IS HOLDING";
             }
+            else if(shepherd()&&shepTines>=shep::TINES) what=sweep.active()?"GET BEHIND A LIT POST":shepVentOpenT>0.f?"VENTS OPEN: GET IN CLOSE AND BREAK ONE":"ITS RIDGE / THE VENTS OPEN AFTER EACH WAVE";
             else if(shepherd()) what=sweep.active()?"OUT OF THE CONE, OR BEHIND A LIT POST":"BREAK THE COMB / KILL ITS SHEEPDOG";
             else if(ring()) what=sweep.active()?"GET BEHIND A LIT POST":"CROSS THE RING / SHELTER WHEN THE POSTS LIGHT";
             else if(here==0)what="SALVAGE BAY / FOLLOW THE AMBER LIGHTS DOWN";

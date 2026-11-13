@@ -861,6 +861,7 @@ inline void GameplayState::render() {
         skyboxShader.setInt("uRingGalaxy", 8);
         skyboxShader.setInt("uRingNebula", 9);
         skyboxShader.setFloat("uRingSwept", ring() ? ringSweptAgo : -1.f);
+        skyboxShader.setFloat("uRingTurn", shepherd() ? shepTurnAng : 0.f);   // THE TURN: the sky rolling round the Shepherd
         skyboxShader.setFloat("uRingBend", ring() && !g_devRingTest ? ring::ringBend(player.position.z) : 0.f);
         skyboxShader.setFloat("uRingDawn", ring() && ringSunT >= 0.f ? glm::clamp(ringSunT / shadowband::DIAMOND, 0.f, 1.f) * ringDark() : 0.f);
         skyboxShader.setFloat("uMoonLid", plain() ? plainMoonLid() : 0.f);

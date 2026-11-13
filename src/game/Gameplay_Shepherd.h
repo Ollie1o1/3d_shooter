@@ -41,6 +41,10 @@ constexpr float HERD_RATE = 0.28f, PIN_OPEN = 6.f, CHARGE_OPEN = 2.5f;
 const glm::vec3 CHARGE_HALF{2.2f, 0.65f, 1.8f};   // the Drover's block across the deck: low enough to jump at full weight
 constexpr float BREAK_LEN = 2.2f, SPAR_FALL = 1.4f;
 constexpr float PHASES = 5.f;
+// THE TURN
+constexpr float TURN_LEN = 16.f, TURN_ANGLE = 2.5f;          // the sky rolling round it (radians, about the line to it)
+constexpr float RIDGE_WARN = 6.f, RIDGE_FLASH = 1.5f;        // 6 s: a RECALL statue (8 s) planted on the flash covers it
+constexpr float VENT_OPEN = 8.f, VENT_HP = 420.f, VENT_REACH = 24.f;   // open after each wave; only hurt from close in
 }
 
 inline bool GameplayState::shepherd() const { return ring() && level.story.part == 1; }
@@ -56,7 +60,9 @@ inline float GameplayState::shepherdHealth01() {
     float comb = (float)shepTines;
     if (shepTines < shep::TINES && shepBreakT < 0.f)
         if (Enemy* d = shepDog(); d && shepDogMax > 0.f) comb += glm::clamp(1.f - d->health / shepDogMax, 0.f, 1.f) * 0.8f;
-    return glm::clamp(1.f - comb / (float)shep::TINES / shepfight::PHASES, 0.f, 1.f);
+    float done = comb / (float)shep::TINES;   // phases done, in fifths
+    for (int v = 0; v < 3; ++v) done += glm::clamp(1.f - shepVentHp[v] / shepfight::VENT_HP, 0.f, 1.f) / 3.f;   // THE TURN: its vents
+    return glm::clamp(1.f - done / shepfight::PHASES, 0.f, 1.f);
 }
 
 // In place, from the Shore's end (the run goes on: its clock, kills and style are kept)
@@ -71,6 +77,7 @@ inline void GameplayState::loadShepherd(int arena) {
     director = WaveDirector{}; director.level = &level; director.fast = true;
     storySeenSection = storyCheckpoint = arena; storyEndT = -1; storyLog = storyTerminal = -1;
     enemies.clear(); spaceArena = -1; warmupFrames = 2;
+    shepVentsArmed = shepTurnSeen = false;
     enterArena(arena); captureMouse(true); saveStoryProgress();
 }
 
@@ -86,6 +93,13 @@ inline void GameplayState::beginShepherd() {
     shepCutT = -1.f; shepCutCd = 0.f; shepHerdT = 0.f; shepHerdPinned = -1; shepHerdPinT = 0.f; shepHerdHeld = false;
     shepBellT = -1.f; shepBellHp = -1.f; shepBellHint = false; shepCharge.on = false; shepWasStaggered = false;
     for (int k = 0; k < 2; ++k) shepBridgeT[k] = k < shepTines ? 99.f : -1.f;
+    // THE TURN: the vents keep their damage through a retry (one beat replayed, never the phase)
+    if (!shepVentsArmed) { shepVentsArmed = true; for (float& h : shepVentHp) h = shepfight::VENT_HP; }
+    shepVents = 0; for (float h : shepVentHp) shepVents += h <= 0.f;
+    shepVentOpenT = 0.f; shepRidgeSweepT = 4.f; shepAddT = 6.f; shepSweepPassed = false; shepInT = -1.f; shepVentMsgT = 0.f;
+    shepTurnT = -1.f; shepTurnAng = director.arena >= 3 ? shepfight::TURN_ANGLE : 0.f;
+    if (director.arena == 3 && !shepTurnSeen) { shepTurnT = 0.f; shepTurnAng = 0.f; }
+    if (director.arena == 3) { storySeenSection = 3; shepTines = shep::TINES; }
     if (director.arena == 0 && !shepSeen) pushBanner("THE SHEPHERD", "UNIT ?  /  PURPOSE: KEEP", SWEEP_ICE * 0.7f, 4.5f);
     shepSeen = true;
     ringLevelSeen = 99; ringScriptT = -1.f; ringAir = -1; ringLeeHint = true;   // (its own hint: ITS AIM)
@@ -321,11 +335,140 @@ inline void GameplayState::updateShepherd(float dt) {
             SfxMixer::Opts o; o.group = SoundGroup::WORLD; o.priority = true; o.unducked = true; o.pitch = 0.4f; o.volume = 0.9f;
             audio.playOpts("slam", o);
         }
-        if (shepEndT > 3.f && shepEndT < 9.f) shake(0.1f, 0.015f);   // it begins to roll
-        if (before < 9.f && shepEndT >= 9.f && storyEndT < 0.f) { storyEndT = 0.f; logRun("end"); audio.play("wave", 90, SoundGroup::UI, true); }
+        if (shepEndT > 3.f && shepEndT < 6.f) shake(0.1f, 0.015f);   // it begins to roll
+        if (before < 6.f && shepEndT >= 6.f) {   // and the tine goes from under you: on to its ridge (THE TURN)
+            shepEndT = -1.f; sweep.reset();
+            fx.spawnBurst(player.camera.position + glm::vec3{0.f, 0.f, -2.f}, SWEEP_ICE, 60, 14.f, 0.8f, 2.f);
+            storySeenSection = storyCheckpoint = 3;
+            enterArena(3); saveStoryProgress();
+            return;
+        }
     }
+    shepRidge(dt);
     if (shepherdDamageT > 0.f) shepherdDamageT = std::max(0.f, shepherdDamageT - dt);
     if (storyEndT >= 0.f) { storyEndT += dt; player.velocity = {0.f, 0.f, 0.f}; if (storyEndT > 3.f) captureMouse(false); }
+}
+
+// =============================================================================
+// PHASE 2 · THE TURN. It rolls over to face you (the sky swings round it), then its ridge
+// fires: waves straight down the ice from the north, 6 s, and after each one its three vents
+// stand open for 8 s. Get to one, break it from close in, and get back behind a block
+// before the next (or plant RECALL in shelter on the flash and snap back on 1).
+// =============================================================================
+inline void GameplayState::shepRidge(float dt) {
+    using namespace shepfight;
+    if (shepTines < shep::TINES || level.arenaAt(player.position) != 3) return;
+    const glm::vec3 p = player.position;
+    shepVentMsgT = std::max(0.f, shepVentMsgT - dt);
+    if (shepTurnT >= 0.f) {   // the turn: slow, the sky rolling round it, the music down to its pulse
+        const float before = shepTurnT;
+        shepTurnT += dt;
+        float u = glm::clamp(shepTurnT / TURN_LEN, 0.f, 1.f); u = u * u * (3.f - 2.f * u);
+        shepTurnAng = TURN_ANGLE * u;
+        if (before == 0.f) pushBanner("THE TURN", "IT ROLLS OVER TO FACE YOU", SWEEP_ICE * 0.7f, 4.f);
+        shake(0.1f, 0.006f + 0.01f * std::sin(3.14159f * u));
+        if (std::floor(before / 2.6f) != std::floor(shepTurnT / 2.6f)) {   // its mass grinding through the ring, through your boots
+            SfxMixer::Opts o; o.group = SoundGroup::WORLD; o.priority = true; o.unducked = true; o.pitch = 0.3f + 0.05f * u; o.volume = 0.7f;
+            audio.playOpts("slam", o);
+        }
+        if (before < TURN_LEN * 0.55f && shepTurnT >= TURN_LEN * 0.55f) pushBanner("ITS FLEECE", "THE ONES IT KEPT CLOSEST", glm::vec3{2.4f, 1.3f, 0.35f} * 0.5f, 3.5f);
+        if (shepTurnT >= TURN_LEN) {
+            shepTurnT = -1.f; shepTurnSeen = true; shepTurnAng = TURN_ANGLE;
+            pushBanner("ITS RIDGE", "AFTER EACH WAVE ITS VENTS OPEN: BREAK ALL THREE", SWEEP_ICE * 0.7f, 4.f);
+            ui.toast("RECALL", "PLANT IT (" + binds().label(Act::RECALL) + ") BEHIND A BLOCK ON THE FLASH, RUN IN, SNAP BACK", HOLDFAST_STEEL, 6.f);
+            shepRidgeSweepT = 3.f;
+        }
+        for (auto& e : enemies) if (e.alive) e.attackTimer = std::max(e.attackTimer, 1.f);
+        return;
+    }
+    // In: all three broken
+    if (shepInT >= 0.f) {
+        const float before = shepInT;
+        shepInT += dt;
+        if (before == 0.f) {
+            pushBanner("IT'S OPEN", "THE WAY IN", SWEEP_ICE * 0.8f, 4.f);
+            sweep.reset();
+            for (auto& e : enemies) if (e.targetable() && e.takeDamage(1e6f)) onEnemyKilled(e, StyleSource::ENVIRONMENT);
+        }
+        if (before < 6.f && shepInT >= 6.f && storyEndT < 0.f) { storyEndT = 0.f; logRun("end"); audio.play("wave", 90, SoundGroup::UI, true); }   // (THE RESONATOR: next)
+        return;
+    }
+    if (playerDead) return;
+    // Its waves: straight down the ice, on its own clock
+    if (sweep.active() && sweep.passed > 0 && !shepSweepPassed) {   // gone over: the vents open
+        shepSweepPassed = true; shepVentOpenT = VENT_OPEN; shepRidgeSweepT = VENT_OPEN + 0.5f;
+        ui.feed("VENTS OPEN", glm::vec3{2.4f, 1.3f, 0.35f} * 0.6f);
+        for (int v = 0; v < 3; ++v) if (shepVentHp[v] > 0.f) audio.playAt("barrier", shep::vent(v), 110, SoundGroup::WORLD, true, 0.6f);
+    }
+    if (!sweep.active()) shepSweepPassed = false;
+    shepRidgeSweepT -= dt;
+    if (!sweep.active() && shepRidgeSweepT <= 0.f) {
+        SweepSpec s; s.kind = SweepSpec::Kind::OUT; s.dir = {0.f, 0.f, 1.f};
+        s.warning = RIDGE_WARN; s.flashLead = RIDGE_FLASH; s.clocked = true; s.range = 40.f;
+        sweep.start(s); ++sweepCount;
+        shepRidgeSweepT = 30.f;   // (set again when it goes over)
+    }
+    if (g_devOverlay == "ventkill" && shepVentOpenT > 0.f)   // dev: a round down each open vent from 10 m (the hit test, the breaking)
+        for (int v = 0; v < 3; ++v) { const glm::vec3 from = shep::vent(v) + glm::vec3{0.f, 0.f, 10.f}; float d = 100.f; shootVent(from, {0.f, 0.f, -1.f}, d, 1000.f); }
+    if (shepVentOpenT > 0.f) {
+        const float before = shepVentOpenT;
+        shepVentOpenT = std::max(0.f, shepVentOpenT - dt);
+        if (before > 0.f && shepVentOpenT <= 0.f) ui.feed("VENTS SHUT", glm::vec3{0.7f});
+    }
+    // Strays drop off its fleece in pairs, now and then a Herder
+    if ((shepAddT -= dt) <= 0.f) {
+        shepAddT = 12.f;
+        int alive = 0; for (const auto& e : enemies) alive += e.alive && e.targetable();
+        if (alive < 4)
+            for (int k = 0; k < 2 + (sweepCount % 3 == 2); ++k) {
+                const glm::vec3 q{cosmetic::range(shep::RX0 + 12.f, shep::RX1 - 12.f), 0.f, shep::RIDGE_Z + cosmetic::range(6.f, 16.f)};
+                spawnEnemy(k == 2 ? EnemyType::HERDER : EnemyType::STRAY, q + glm::vec3{0.f, k == 2 ? 2.f : 0.f, 0.f});
+                fx.spawnBurst(q + glm::vec3{0.f, 6.f, 0.f}, glm::vec3{0.7f}, 10, 5.f, 0.8f, 3.f);
+            }
+    }
+    (void)p;
+}
+
+// A round down a vent's throat (Gameplay_Combat.h's hitscan): only while it is open, and only from close in
+inline bool GameplayState::shootVent(glm::vec3 from, glm::vec3 dir, float& distance, float dmg) {
+    using namespace shepfight;
+    if (!shepherd() || shepTines < shep::TINES || shepTurnT >= 0.f) return false;
+    for (int v = 0; v < 3; ++v) {
+        if (shepVentHp[v] <= 0.f) continue;
+        const glm::vec3 c = shep::vent(v);
+        const AABB box{c - glm::vec3{shep::VENT_HX, shep::VENT_HY, 0.4f}, c + glm::vec3{shep::VENT_HX, shep::VENT_HY, 0.4f}};
+        const float t = rayBoxHit(from, dir, box);
+        if (t <= 0.f || t >= distance) continue;
+        distance = t;
+        const glm::vec3 at = from + dir * t;
+        if (shepVentOpenT <= 0.f) {
+            fx.spawnHitSparks(at, glm::vec3{0.8f});
+            if (shepVentMsgT <= 0.f) { shepVentMsgT = 2.f; ui.feed("SHUT: IT OPENS AFTER A WAVE", glm::vec3{0.75f}); }
+            return true;
+        }
+        if (t > VENT_REACH) {
+            fx.spawnHitSparks(at, glm::vec3{0.8f, 0.6f, 0.3f});
+            if (shepVentMsgT <= 0.f) { shepVentMsgT = 2.f; ui.feed("IT GLANCES OFF: GET IN CLOSE", glm::vec3{2.4f, 1.3f, 0.35f} * 0.5f); }
+            return true;
+        }
+        shepVentHp[v] -= dmg; shepherdDamageT = 0.3f;
+        fx.spawnHitSparks(at, glm::vec3{2.4f, 1.3f, 0.35f});
+        styleSystem.addStyle(4.f, StyleSource::ENVIRONMENT);
+        if (shepVentHp[v] <= 0.f) {
+            shepVentHp[v] = 0.f; ++shepVents;
+            fx.spawnBurst(c, glm::vec3{2.4f, 1.6f, 0.6f}, 60, 16.f, 1.f, 3.f);
+            fx.spawnShockwave(c, 8.f, glm::vec3{2.4f, 1.3f, 0.35f});
+            shake(1.f, 0.05f);
+            SfxMixer::Opts o; o.group = SoundGroup::WORLD; o.priority = true; o.unducked = true; o.pitch = 0.5f; o.volume = 1.f;
+            audio.playOpts("slam", o); audio.playAt("ab_shatter", c, 128, SoundGroup::WORLD, true, 0.7f);
+            styleSystem.addStyle(150.f, StyleSource::ENVIRONMENT);
+            static const char* left[3] = {"TWO LEFT", "ONE LEFT", "ALL THREE"};
+            pushBanner("VENT BROKEN", left[std::clamp(shepVents - 1, 0, 2)], glm::vec3{2.4f, 1.3f, 0.35f} * 0.6f, 2.5f);
+            if (shepVents >= 3) shepInT = 0.f;
+        }
+        return true;
+    }
+    return false;
 }
 
 // The cone on the deck, its horn's lamps (dark once its tine is broken), the Drover's block
@@ -370,6 +513,24 @@ inline void GameplayState::gatherShepherd(std::vector<BoxInstance>& out) {
         const float x0 = shep::tineX(t) - shep::HALF;
         push(out, T(glm::vec3{shep::tineX(t), 8.f, shep::Z_N + 0.35f}) * S(glm::vec3{2.f * shep::HALF - 4.f, 10.f, 0.3f}), glm::vec3{0.02f});
         (void)x0;
+    }
+    for (int v = 0; v < 3 && shepTines >= shep::TINES; ++v) {   // THE TURN: its vents (shut, open, broken)
+        const glm::vec3 c = shep::vent(v);
+        const glm::vec3 hs{shep::VENT_HX, shep::VENT_HY, 0.f};
+        if (shepVentHp[v] <= 0.f) {   // broken: a black hole, smoking
+            push(out, T(c + glm::vec3{0.f, 0.f, 0.05f}) * S(glm::vec3{hs.x * 2.f, hs.y * 2.f, 0.1f}), glm::vec3{0.01f});
+            if (std::fmod(gameClock + v * 0.13f, 0.2f) < 0.017f) fx.spawnBurst(c + glm::vec3{cosmetic::range(-2.f, 2.f), 1.f, 1.f}, glm::vec3{0.15f}, 1, 1.5f, 1.6f, -1.f);
+            continue;
+        }
+        const float open = glm::clamp(shepVentOpenT / 0.6f, 0.f, 1.f) * glm::clamp((shepfight::VENT_OPEN - (shepfight::VENT_OPEN - shepVentOpenT)) / 0.6f, 0.f, 1.f);
+        const float hurt = 1.f - shepVentHp[v] / shepfight::VENT_HP, pulse = 0.75f + 0.25f * std::sin(gameClock * 7.f + v);
+        push(out, T(c) * S(glm::vec3{hs.x * 2.f, hs.y * 2.f, 0.2f}), glm::vec3{0.02f}, glm::vec3{2.4f, 1.3f, 0.35f} * (0.08f + open * (1.4f + hurt) * pulse));   // its throat
+        for (int i = 0; i < 5; ++i) {   // louvers: shut flat across it, open turned edge-on
+            const float y = c.y - hs.y + 0.45f + 0.85f * i;
+            push(out, T(glm::vec3{c.x, y, c.z + 0.45f}) * RX(open * 1.35f) * S(glm::vec3{hs.x * 2.f, 0.78f, 0.12f}), glm::vec3{0.2f, 0.19f, 0.18f});
+        }
+        if (open > 0.5f && std::fmod(gameClock + v * 0.11f, 0.1f) < 0.017f)   // its heat pouring out
+            fx.spawnBurst(c + glm::vec3{cosmetic::range(-2.5f, 2.5f), cosmetic::range(-1.5f, 1.5f), 1.f}, glm::vec3{2.4f, 1.4f, 0.5f}, 1, 3.f, 0.5f, 0.5f);
     }
     if (shepCharge.on) {
         const glm::vec3 h = shepfight::CHARGE_HALF;

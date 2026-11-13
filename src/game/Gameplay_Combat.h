@@ -1082,6 +1082,7 @@ inline void GameplayState::fireWeapon(int w) {
                 float t=rayBoxHit(origin,dir,b);if(t>0&&t<nearest){nearest=t;body=&shot;}
             }
             if(shootStoryCable(origin,dir,nearest)){body=nullptr;n=0;wallT=nearest;anyHit=true;}
+            if(shootVent(origin,dir,nearest,dmg)){body=nullptr;n=0;wallT=nearest;anyHit=true;}   // THE SHEPHERD's vents (Gameplay_Shepherd.h)
             if(body){body->alive=false;n=0;wallT=nearest;fx.spawnBurst(body->position,{.7f,.7f,.65f},18,6,.6f,12);audio.playAt("clank",body->position,90,SoundGroup::WORLD);styleSystem.addStyle(10,StyleSource::PARRY);}
         }
         if (!level.anchors.empty()) {   // the Penitent's chains (before anything further along), then its anchors

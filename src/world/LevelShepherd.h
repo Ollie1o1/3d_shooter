@@ -58,6 +58,17 @@ inline std::vector<AABB> fins(int k) {
 // The Drover's herd: three blocks of ice in the middle rows' places, slid across the deck
 inline float herdZ(int i) { return rowZ(1 + 2 * i); }
 inline glm::vec3 herdHalf() { return {2.8f, 2.3f, 1.7f}; }
+
+// PHASE 2, THE TURN: a raft of packed ice heaped against its ridge, east of the tines. The ridge's
+// face is the north edge; its three vents open after each wave. Each sits further from shelter
+constexpr float RX0 = 260.f, RX1 = 400.f, RZ_S = -3296.f, RIDGE_Z = -3458.f;
+inline glm::vec3 ridgeStart() { return {330.f, 0.f, RZ_S - 8.f}; }
+inline glm::vec3 vent(int i) { const float x[3] = {290.f, 332.f, 374.f}; return {x[i], 2.6f, RIDGE_Z + 0.5f}; }
+constexpr float VENT_HX = 3.2f, VENT_HY = 2.2f;
+inline std::vector<glm::vec2> ridgeShelters() {   // (x, z) of each block's middle
+    return {{280.f, -3335.f}, {320.f, -3335.f}, {360.f, -3335.f}, {388.f, -3335.f}, {300.f, -3368.f}, {345.f, -3368.f}, {380.f, -3368.f},
+            {272.f, -3400.f}, {318.f, -3398.f}, {292.f, -3428.f}, {332.f, -3418.f}, {372.f, -3405.f}};
+}
 }
 
 inline LevelData buildShepherd() {
@@ -183,6 +194,59 @@ inline LevelData buildShepherd() {
         l.shepBridges.push_back(m);
     }
 
+    // ---- PHASE 2: THE TURN. The ice heaped against its ridge, and the ridge ----
+    {
+        b.mat = Mat::SNOW;
+        b.wall(shep::RX0, shep::PLAIN_Y - 2.f, shep::RIDGE_Z, shep::RX1, 0.f, shep::RZ_S, glm::mix(iceLit, sand, 0.35f));
+        b.mat = Mat::ROCK;
+        for (float x = shep::RX0; x < shep::RX1; x += 8.f)   // its ragged sides and south lip
+            for (int sd = 0; sd < 2; ++sd) {
+                const float q = x * 0.3f + sd * 77.f;
+                b.kit().rock({x + 4.f, shep::PLAIN_Y, sd ? shep::RZ_S + 2.f : shep::RZ_S + 2.f}, 3.f + 2.f * ring::hash(q, 1.f), 8.f + 2.f * ring::hash(q, 2.f), glm::mix(iceLit, iceDark, 0.3f), (uint32_t)(q * 13.f), 0.6f, 7);
+            }
+        for (float z = shep::RIDGE_Z; z < shep::RZ_S; z += 8.f)
+            for (float x : {shep::RX0 - 2.f, shep::RX1 + 2.f}) {
+                const float q = z * 0.3f + x;
+                b.kit().rock({x, shep::PLAIN_Y, z + 4.f}, 3.f + 2.f * ring::hash(q, 1.f), 8.5f + 2.f * ring::hash(q, 2.f), glm::mix(iceLit, iceDark, 0.3f), (uint32_t)(q * 13.f), 0.6f, 7);
+            }
+        // Shelter: blocks of the ice the ridge ploughed up, each with its post (the waves come from the north)
+        int n = 0;
+        for (const glm::vec2& c : shep::ridgeShelters()) {
+            const float hx = 3.2f + 0.8f * ring::hash((float)n, 31.f), hz = 1.6f, h = 4.2f + 0.8f * ring::hash((float)n, 32.f);
+            b.mat = Mat::ROCK;
+            b.wall(c.x - hx, 0.f, c.y - hz, c.x + hx, h, c.y + hz, glm::mix(iceLit, iceDark, 0.25f + 0.3f * ring::hash((float)n, 33.f)));
+            SweepShelter sh; sh.box = LevelBuilder::aabb(c.x - hx, 0.f, c.y - hz, c.x + hx, h, c.y + hz); sh.section = 3;
+            sh.post = {c.x + hx - 0.7f, 0.f, c.y + hz + 1.2f};
+            post(sh.post);
+            l.sweepShelters.push_back(sh);
+            ++n;
+        }
+        // The ridge: the Shepherd's face, rolled down to you. Rows of its lamps; its fleece (capsules pressed
+        // against it in rows, the ones it kept closest: design 13.8); three vents at its foot (drawn live)
+        b.mat = Mat::METAL;
+        b.wall(shep::RX0 - 30.f, shep::PLAIN_Y - 2.f, shep::RIDGE_Z - 60.f, shep::RX1 + 30.f, 26.f, shep::RIDGE_Z, hull);
+        for (int i = 0; i < 9; ++i) {   // stepping back and up: the ridge's slope
+            const float y = 26.f + 22.f * i, z = shep::RIDGE_Z - 6.f - 9.f * i;
+            b.kit().box({(shep::RX0 + shep::RX1) * 0.5f, y + 11.f, z - 30.f}, {shep::RX1 - shep::RX0 + 120.f + 24.f * i, 22.f, 60.f}, glm::mix(hull, steel, 0.2f + 0.06f * i));
+            b.kit().box({(shep::RX0 + shep::RX1) * 0.5f, y + 2.f, z + 0.2f}, {shep::RX1 - shep::RX0 + 100.f + 24.f * i, 0.5f, 0.6f}, lampWhite * (0.55f - 0.04f * i));
+        }
+        for (float x = shep::RX0 - 20.f; x < shep::RX1 + 20.f; x += 4.f)
+            for (int row = 0; row < 2; ++row) {
+                const float y = 9.f + 9.f * row, k2 = x * 0.37f + row * 11.f;
+                bool overVent = false;
+                for (int v = 0; v < 3; ++v) if (std::fabs(x - shep::vent(v).x) < 6.f && row == 0) overVent = true;
+                if (overVent || ring::hash(k2, 4.f) < 0.25f) continue;
+                b.prop(x - 1.f, y - 0.3f, shep::RIDGE_Z, x + 1.f, y, shep::RIDGE_Z + 1.4f, steel);   // its ledge
+                ringCapsule(b, {x, y, shep::RIDGE_Z + 0.8f}, true, 0, (ring::hash(k2, 5.f) - 0.5f) * 14.f, false);
+            }
+        b.neon(shep::RX0 - 30.f, 25.2f, shep::RIDGE_Z + 0.02f, shep::RX1 + 30.f, 25.6f, shep::RIDGE_Z + 0.25f, lampWhite * 0.6f);
+        for (int v = 0; v < 3; ++v) {   // each vent's throat: a dark recess with a lamp over it
+            const glm::vec3 c = shep::vent(v);
+            b.prop(c.x - shep::VENT_HX - 0.6f, c.y + shep::VENT_HY, shep::RIDGE_Z, c.x + shep::VENT_HX + 0.6f, c.y + shep::VENT_HY + 0.6f, shep::RIDGE_Z + 0.8f, steel);
+            b.neon(c.x - 1.5f, c.y + shep::VENT_HY + 1.4f, shep::RIDGE_Z + 0.02f, c.x + 1.5f, c.y + shep::VENT_HY + 1.7f, shep::RIDGE_Z + 0.2f, lampWhite * 0.8f);
+        }
+    }
+
     // ---- the arenas: one to a tine (its spar in belongs to it) ----
     using W = WaveEntry;
     for (int k = 0; k < shep::TINES; ++k) {
@@ -206,6 +270,18 @@ inline LevelData buildShepherd() {
         if (k == 0) a.waves = {{W(EnemyType::CROOK, 0, {vec3{cx + 4.f, 0.f, zc - 10.f}}), W(EnemyType::STRAY, 4), W(EnemyType::HERDER, 1)}};
         if (k == 1) a.waves = {{W(EnemyType::DROVER, 0, {vec3{cx - shep::HALF - 10.f, 8.f, zc}}), W(EnemyType::STRAY, 4), W(EnemyType::HERDER, 1)}};
         if (k == 2) a.waves = {{W(EnemyType::BELLWETHER, 0, {vec3{cx, 0.f, zc - 16.f}}), W(EnemyType::STRAY, 5), W(EnemyType::HERDER, 1)}};
+        l.arenas.push_back(a);
+    }
+    {   // 3. THE TURN: the ridge (no waves: its adds and its sweeps are the game's, Gameplay_Shepherd.h)
+        Arena a;
+        a.name = "THE TURN"; a.subtitle = "ITS RIDGE";
+        a.zone = LevelBuilder::aabb(shep::RX0 - 1.f, -1000.f, shep::RIDGE_Z - 1.f, shep::RX1 + 1.f, 40.f, shep::RZ_S + 4.f);
+        a.bounds = LevelBuilder::aabb(shep::RX0 + 1.f, shep::PLAIN_Y - 2.f, shep::RIDGE_Z + 1.f, shep::RX1 - 1.f, 40.f, shep::RZ_S);
+        a.playerStart = shep::ridgeStart(); a.startYaw = -90.f; a.hasRespawn = true; a.respawn = a.playerStart;
+        a.voidY = shep::VOID_Y;
+        a.theme = ring::eclipseTheme(); a.ambient = Ambient::DUST; a.space = ReverbSpace::OPEN; a.tone = RoomTone::NONE;
+        a.groundSpawns = {{290.f, 0.f, -3445.f}, {332.f, 0.f, -3448.f}, {374.f, 0.f, -3446.f}, {310.f, 0.f, -3440.f}, {354.f, 0.f, -3442.f}};
+        a.maxAlive = 8;
         l.arenas.push_back(a);
     }
     return l;

@@ -41,6 +41,7 @@ uniform vec2  uRingBoltAt;  // where in the cloud (longitude, latitude offsets)
 uniform float uRingDawn;    // 0..1: the sunrise out of the Shadow Band: a red arc on its edge, then the diamond
 uniform float uRingSwept;   // seconds since a sweep threw the swept off the ring (<0: none lately): they burn up across the giant (13.3)
 uniform float uRingBend;
+uniform float uRingTurn;    // THE TURN: the whole sky rolled round the line to the Shepherd (radians)
 uniform sampler2D uRingGiant;   // the giant's cloud tops, painted once (render/RingDetail.h): x longitude, y latitude angle
 uniform sampler2D uRingGalaxy;
 uniform sampler2D uRingNebula;  // the nebula's picture (render/RingDetail.h)  // the galaxy's dust: x azimuth, y height    // 0..1: the main rings opening into an arch over you as you near the Shepherd (its pull bends your ringlet under them)
@@ -602,7 +603,11 @@ void main() {
 
     if (uPlain > 0.5) { FragColor = vec4(plainSky(dir), 1.0); return; }
     if (uCold > 0.5) { FragColor = vec4(coldSky(dir), 1.0); return; }
-    if (uRing > 0.5) { FragColor = vec4(ringSky(dir), 1.0); return; }
+    if (uRing > 0.5) {
+        vec3 d = dir;
+        if (uRingTurn != 0.0) { float c = cos(uRingTurn), s = sin(uRingTurn); d = vec3(c * dir.x - s * dir.y, s * dir.x + c * dir.y, dir.z); }
+        FragColor = vec4(ringSky(d), 1.0); return;
+    }
 
     vec3 labSky=vec3(0.0);float labW=0.0;
     if (uLabRealm > 0.5) {
