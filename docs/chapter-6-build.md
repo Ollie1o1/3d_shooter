@@ -28,6 +28,7 @@ See "Rough edges done" below. Not hand-played either.
 | `./shooter --ringtest [--wave 2]` | The old flat test ground, sweeps every 25-40 s cycling the tiers, now with the real enemies. |
 | `./shooter --story6 --god --cam X Y Z YAW PITCH --shot 100 out.bmp` | A screenshot from anywhere (the eye is held there). Good views: `--cam -14 3 -170 -90 -8` (the lanes), `--cam 0 30 -590 -90 -22` (the reef), `--cam 0 1.7 100 0 5` (the giant). |
 | `./shooter --viewer stray` (herder, tally, porter) | The new models in the enemy viewer. |
+| `./shooter --story6 --arena 10` | Start on the Shore (the walk-up). |
 | `make test-ring` | Rules, plus: every post in its shelter's shadow, every shelter solid, shelter reach on the Landing (11 s) and the Kept (12 s) under the 20 s warning, every gap across the Drift (worst 6 m; a low-gravity running jump clears ~9.9 m), the grapple gap to the shore. |
 
 ## The vertical slice (LevelRing.h)
@@ -189,6 +190,65 @@ edge (-2816). Rules: `src/game/Gameplay_Wake.h`; shapes: `ring::wakeTreads`, `su
   cell size looked at.
 - Not built: splintering the bell's clapper to scatter the flock (the tines), a toast when the
   Bellwether or the Drover breaks off (the Crook has one).
+
+## THE SHORE (level 8, arena 9; 2026-11-12, last of the crossing)
+
+From the Wake's summit north: one slope down the wave's back (`ring::SLOPE_RUN`, a `GroundRamp` with a
+slab drawn over it and solid mass under it), then 300 m of combed ice to the Shepherd's foot
+(`ring::shoreS`, `shoreN`). Rules: `src/game/Gameplay_Shore.h`; numbers: `ring::gravityAt`,
+`eclipseAt`, `shoreRocks`, `eclipseTheme` in `LevelRing.h`.
+
+- **The eclipse:** the sun is now low a little west of north (`ring::sunDir`), on the Shepherd's line, so
+  as the Shepherd grows (`shepherdSize`, 0.33 rad at the slope's foot to 0.9 at its foot) its disc covers
+  the sun. `eclipseAt(z)` is that coverage, worked out the way skybox.frag draws it, and lerps the world
+  to `eclipseTheme` (no sun; its lamps from the north; the giant's light in the shadows). The sky draws
+  the corona and a burning rim.
+- **Gravity comes back** (`gravityAt`): half until the Shore, full 120 m onto it. `FULL WEIGHT` toast.
+- **Sweeps:** the near tier (6 s, breakers), on the Shore's own clock (`tickShore`: first 5 s after you're
+  down, then every 14-20 s; the random schedule is held off). Five loose blocks near the start shatter on
+  the first one (`BREAKERS` toast). Worst walk to a fixed shelter: 4.2 s (`make test-ring`).
+- **No enemies.** At its foot: `YOU WANDERED. / THEY ALWAYS WANDER.` with a floor-shaking slam, then the
+  chapter's end card (`story.end`). The tines: two kilometre-long teeth either side, past the band.
+- Checkpoint 9; the save takes chapter 6 checkpoints 0..9.
+
+## Polish pass (2026-11-12, after the user's notes)
+
+The user: not many enemies, bad pathfinding, music not spacey, no textures, nothing creative in the
+landscape, the giant "looks like a png", the rings should bend round it on the way to the boss.
+
+- **The giant** (skybox.frag `ringSky`): the sun move gives it a terminator (it was full phase, lit from
+  behind you). Belts drift at their own speeds and curl (domain-warped), a storm with a wake, a hexagon
+  round the north pole, a reddened terminator, limb darkening, ringshine on the night side.
+- **The rings bend** (`uRingBend`, `ring::ringBend`): the main rings are a plane through the giant tilted
+  just over you. Edge-on (the old hairline) until the Kept, opening to an arch over the giant by the Wake,
+  wide open on the Shore (the Shepherd's pull bends your ringlet under them). Real shadows both ways:
+  theirs across the giant, the giant's across them.
+- **The Shepherd:** craters at three scales as it grows, lamp rows above and below the ridge, the giant's
+  light on its east side. Its skin is only worked out near its disc (the sky's costliest part).
+- **Sky extras:** two moons; overhead, 46 big ring chunks hanging 150-700 m up; after a lethal sweep,
+  sparks streak across the giant's face (`uRingSwept`, 13.3).
+- **Ground and rock** (shader.frag `uRingSurf`, set for TEX_SNOW/ICE and TEX_ROCK in Chapter 6, LIGHTING
+  HIGH only): world-space ripples, grains, bare-ice patches and glints in the sun; rock cracks, strata,
+  relief and dust on top. Fades out by pixel footprint.
+- **Landscape:** ice crystal clusters (Mat::MARBLE, pale) along the band's sides and in the far field; the
+  Wake's crest is a leaning breaking wave with a curling lip (it was a row of vertical spires).
+- **Enemies:** bigger waves everywhere (second waves on the Landing, Shadow Band and Gap, a third in the
+  Spokes), spawns nearer and on the flanks (they were 70-110 m out: Strays trailed you and never arrived).
+  STRAYS lope 1.6x from far off, ease their close prowl (it snapped ±5 m/s every second), spread over lit
+  posts two to a post, go round a rock to its lee, settle when they get no nearer (they used to shuttle
+  against the rock for the whole countdown: the seek spot was inside its collision).
+- **Nav:** `test_nav` now covers CH6 (420/420 chases reach). Open ring arenas cut on 1.3 m cells
+  (`NavBuild.h`): the worst grid 273 -> 186 ms at fight start, a field 12 -> 7 ms.
+- **Music:** track 17 THE KEPT RING (`RING_MUSIC_TRACK`, 174 drum and bass in F#), `updateMusic`'s ring
+  branch: the helmet pulse walking (pad, tick, quiet arp), the full break in fights, lifted for a
+  sheepdog, building on the Shore, silent in the Shadow Band and the swept death. -13.3 LUFS in a fight.
+  Not listened to by the user yet.
+- **Bake:** ring sections' zones are 40 m tall now (were 80); story6.light is 62.9M cells against the
+  loader's 64M: the boss arena will need the cap raised or its own bake.
+- **Cost** (reef view, `--bench 300`, native 4K on the M2): 59 -> 41 fps. Sky ~5 ms, ground/rock detail
+  ~4.5 ms (`--skip ringsky` / `--skip ringsurf` to compare), the new geometry ~2.5 ms.
+- **Dev:** `RINGLOG=1 ./shooter --story6 ... --bench N` prints every enemy's position, velocity, route and
+  shelter-seek once a second; `--sweep mid` brings sweeps round every 25-40 s.
 
 ## The sky (skybox.frag `ringSky`, `uRing`)
 
@@ -411,10 +471,12 @@ music never ducks at the zero.
 4. ~~Menu and save~~: done. Still to do: the bridge cutscene (design
    section 2: the capsule's flight from the Store to the ring and the
    impact); for now the Cold Store's end card just loads the Landing.
-5. **Level 8**: the Shadow Band, the Spokes, the Gap and the Wake are built
-   (above). Next, the Shore (short: the Shepherd fills everything, gravity
-   comes back as you walk in, ~6 s warnings with breakers, no enemies), then
-   the boss as written.
+5. ~~Level 8~~: all eight places are built (the Shore last, above).
+6. **Polish, with the user** (started: see "Polish pass"). The user's rule: the boss starts only when
+   they are content with the crossing. Open: their verdict on the new sky, ground, waves and music;
+   the frame cost at 4K; Strays still use full gravity in the low-gravity levels (shortcut 8);
+   the Drift has no fight; the bridge cutscene.
+7. **Then the boss** as written (design section 6).
 
 ## House rules noticed while building
 
