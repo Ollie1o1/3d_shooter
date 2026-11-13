@@ -221,7 +221,7 @@ inline void GameplayState::updateRing(float dt) {
         player.camera.position = g_devCamPos; prevCamPos = g_devCamPos;
     }
     {   // The sound (design 9, 13.1): vacuum outside, air and a room's echo inside the hull
-        const int air = ringQuiet() ? 1 : 0;
+        const int air = ringQuiet() || (shepherd() && level.arenaAt(player.position) >= 4) ? 1 : 0;   // (inside the Shepherd: air)
         if (air != ringAir) {
             if (air && ringAir == 0) audio.play("barrier", 60, SoundGroup::UI, true);   // the air coming back
             ringAir = air;
@@ -474,7 +474,8 @@ inline void GameplayState::renderSweptDeath() {
 // Top left, red, never flashing: the seconds until the wall reaches where you stand
 inline void GameplayState::renderSweepCountdown() {
     if (!sweepOn() || playerDead || victory) return;
-    const float c = sweep.countdown(player.position);
+    float c = sweep.countdown(player.position);
+    if (shepherd() && shepWellCount >= 0.f) c = shepWellCount;   // (THE LAMP WELL's blasts: its own clock)
     if (c < 0.f && ringCountT > 0.f) {   // after it: the count, small, on the same plate, fading out
         const float a = std::min(1.f, ringCountT / 1.5f);
         const float w = 20.f + ui.ui.textWidth(ringCountLine, 2);
@@ -485,14 +486,18 @@ inline void GameplayState::renderSweepCountdown() {
         return;
     }
     if (c < 0.f) return;
+    // Detuned (THE TUNING HALL, each stilled fork): the digits waver and smear. The number stays true
+    const float waver = shepherd() && level.arenaAt(player.position) == 4 ? (float)shepForks : 0.f;
+    const float wx = waver * 1.6f * std::sin(gameClock * 13.f) + waver * 0.8f * std::sin(gameClock * 31.f);
     char num[16];
     if (c >= 3.f) snprintf(num, sizeof(num), "%d", (int)std::ceil(c));   // whole seconds, then tenths for the last three
     else snprintf(num, sizeof(num), "%.1f", c);
     const glm::vec4 red{SWEEP_RED, 1.f};
     ui.begin2D();
     ui.ui.rect(14, 40, 150, 92, {0.f, 0.f, 0.f, 0.72f});   // a dark plate: red stays readable over the giant, and over fire
-    ui.ui.text(sweep.spec.kind == SweepSpec::Kind::GATHER ? "GATHER" : "SWEEP", 24, 46, 2, red);
-    ui.ui.text(num, 24, 66, 7, red);
+    ui.ui.text(shepherd() && shepWellCount >= 0.f ? "BLAST" : sweep.spec.kind == SweepSpec::Kind::GATHER ? "GATHER" : "SWEEP", 24, 46, 2, red);
+    if (waver > 0.f) ui.ui.text(num, 24 + wx * 2.5f, 66, 7, {SWEEP_RED, 0.25f + 0.05f * waver});   // the smear
+    ui.ui.text(num, 24 + wx, 66, 7, red);
     for (int i = 0; i < sweep.wavesLeft(); ++i) ui.ui.rect(24.f + i * 14.f, 122, 9, 5, red);   // waves still to come
     ui.end2D();
 }

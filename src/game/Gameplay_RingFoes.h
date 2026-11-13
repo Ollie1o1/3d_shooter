@@ -238,7 +238,7 @@ inline void GameplayState::gatherRing(std::vector<BoxInstance>& out) {
         for (int i = 0; i < (int)SL.terminals.size(); ++i) beacon(SL.terminals[i].pos + glm::vec3{0.f, 2.65f, 0.25f}, i * 0.6f, (storyTerminalsSeen >> i) & 1u);
     }
     for (const Mover& m : level.movers) {
-        if (m.look < 1 || m.gone) continue;
+        if (m.look < 1 || m.look == 3 || m.gone) continue;   // (3: the Shepherd's forks and membrane: gatherShepherd)
         AABB bx = level.walls[m.wall].box;
         bx.min -= m.delta * (1.f - renderAlpha); bx.max -= m.delta * (1.f - renderAlpha);
         const glm::vec3 c = (bx.min + bx.max) * 0.5f, sz = bx.max - bx.min;

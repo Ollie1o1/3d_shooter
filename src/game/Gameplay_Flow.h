@@ -1405,7 +1405,7 @@ inline void GameplayState::updateMusic() {
         m.setTrack(RING_MUSIC_TRACK);m.setDrive(overdriveOn()&&!playerDead);m.setSolo(false);
         bool dog=false;for(const auto& e:enemies)if(e.alive&&isSheepdog(e.type))dog=true;
         float intensity=director.fighting()?(dog?1.18f:1.f):.38f;
-        if(shepherd())intensity=shepTurnT>=0.f?.35f:director.fighting()||shepBreakT>=0.f||shepTines>=shep::TINES?1.3f:.95f;   // THE SHEPHERD: the boss, loud and at full tempo throughout (only its turn drops to the pulse)
+        if(shepherd())intensity=level.arenaAt(player.position)==5?.4f:shepTurnT>=0.f?.35f:director.fighting()||shepBreakT>=0.f||shepTines>=shep::TINES?1.3f:.95f;   // THE SHEPHERD: the boss, loud and at full tempo throughout (only its turn drops to the pulse)
         // The Shore: the walk up to it, the drums gathering as it fills the sky
         if(!director.fighting()&&player.position.z<ring::summitN())intensity=glm::mix(.38f,.75f,glm::clamp((ring::summitN()-player.position.z)/(ring::summitN()-ring::shoreN()),0.f,1.f));
         if(storyEndT>=0.f)intensity=.2f;

@@ -45,6 +45,10 @@ constexpr float PHASES = 5.f;
 constexpr float TURN_LEN = 16.f, TURN_ANGLE = 2.5f;          // the sky rolling round it (radians, about the line to it)
 constexpr float RIDGE_WARN = 6.f, RIDGE_FLASH = 1.5f;        // 6 s: a RECALL statue (8 s) planted on the flash covers it
 constexpr float VENT_OPEN = 8.f, VENT_HP = 420.f, VENT_REACH = 24.f;   // open after each wave; only hurt from close in
+// THE RESONATOR
+constexpr float HALL_WARN = 5.f, HALL_FLASH = 1.f, HALL_GAP = 9.f;   // its blasts down the hall (the gap grows ragged as forks go)
+constexpr float FORK_RING = 4.5f;                                    // after a blast the forks ring this long: spike one now
+constexpr float WELL_WARN = 5.f, WELL_SPEED = 30.f, WELL_GAP = 7.f;  // the blasts up the well
 }
 
 inline bool GameplayState::shepherd() const { return ring() && level.story.part == 1; }
@@ -62,6 +66,8 @@ inline float GameplayState::shepherdHealth01() {
         if (Enemy* d = shepDog(); d && shepDogMax > 0.f) comb += glm::clamp(1.f - d->health / shepDogMax, 0.f, 1.f) * 0.8f;
     float done = comb / (float)shep::TINES;   // phases done, in fifths
     for (int v = 0; v < 3; ++v) done += glm::clamp(1.f - shepVentHp[v] / shepfight::VENT_HP, 0.f, 1.f) / 3.f;   // THE TURN: its vents
+    for (int f = 0; f < shep::FORKS; ++f) done += shepForkBroken[f] ? 0.6f / shep::FORKS : 0.f;              // THE RESONATOR: its forks,
+    done += 0.4f * glm::clamp(shepWellMaxY / shep::W_OUT, 0.f, 1.f);                                         // and the climb
     return glm::clamp(1.f - done / shepfight::PHASES, 0.f, 1.f);
 }
 
@@ -77,7 +83,7 @@ inline void GameplayState::loadShepherd(int arena) {
     director = WaveDirector{}; director.level = &level; director.fast = true;
     storySeenSection = storyCheckpoint = arena; storyEndT = -1; storyLog = storyTerminal = -1;
     enemies.clear(); spaceArena = -1; warmupFrames = 2;
-    shepVentsArmed = shepTurnSeen = false;
+    shepVentsArmed = shepTurnSeen = shepForksArmed = false;
     enterArena(arena); captureMouse(true); saveStoryProgress();
 }
 
@@ -100,6 +106,16 @@ inline void GameplayState::beginShepherd() {
     shepTurnT = -1.f; shepTurnAng = director.arena >= 3 ? shepfight::TURN_ANGLE : 0.f;
     if (director.arena == 3 && !shepTurnSeen) { shepTurnT = 0.f; shepTurnAng = 0.f; }
     if (director.arena == 3) { storySeenSection = 3; shepTines = shep::TINES; }
+    if (director.arena >= 4) {   // inside: the ridge behind you (its vents broken, the sky turned)
+        storySeenSection = std::max(storySeenSection, director.arena); shepTines = shep::TINES;
+        for (float& h : shepVentHp) h = 0.f;
+        shepVents = 3; shepTurnAng = shepfight::TURN_ANGLE; shepTurnSeen = true;
+    }
+    if (!shepForksArmed) { shepForksArmed = true; for (bool& f : shepForkBroken) f = false; shepWellMaxY = 0.f; }
+    if (director.arena >= 5) for (bool& f : shepForkBroken) f = true;
+    shepForks = 0; for (bool f : shepForkBroken) shepForks += f;
+    shepForkRingT = 0.f; shepHallSweepT = 5.f; shepWellT = -1.f; shepWellNext = 4.f; shepWellCount = -1.f; shepUpT = -1.f; shepMembraneT = shepForks >= shep::FORKS ? 99.f : -1.f;
+    if (director.arena == 4 && shepForks == 0) for (int k = 0; k < 3; ++k) spawnEnemy(EnemyType::STRAY, {shep::HX + (k - 1) * 8.f, 0.f, shep::HZ_N + 14.f});
     if (director.arena == 0 && !shepSeen) pushBanner("THE SHEPHERD", "UNIT ?  /  PURPOSE: KEEP", SWEEP_ICE * 0.7f, 4.5f);
     shepSeen = true;
     ringLevelSeen = 99; ringScriptT = -1.f; ringAir = -1; ringLeeHint = true;   // (its own hint: ITS AIM)
@@ -124,6 +140,8 @@ inline void GameplayState::shepMovers(float dt) {
             ui.toast("THE SPAR", "IT FELL ACROSS. CROSS TO THE NEXT TINE", SWEEP_ICE * 0.6f, 4.f);
         }
     }
+    for (int f = 0; f < (int)level.shepForks.size(); ++f) level.movers[level.shepForks[f]].gone = shepForkBroken[f / 2];   // (stilled forks stay gone through a retry)
+    if (level.shepMembrane >= 0) level.movers[level.shepMembrane].gone = shepMembraneT >= 0.f;
     Enemy* d = shepDog();
     const bool drover = d && d->type == EnemyType::DROVER;
     if (drover) shepHerdT += dt;
@@ -347,6 +365,7 @@ inline void GameplayState::updateShepherd(float dt) {
         }
     }
     shepRidge(dt);
+    shepInside(dt);
     if (shepherdDamageT > 0.f) shepherdDamageT = std::max(0.f, shepherdDamageT - dt);
     if (storyEndT >= 0.f) { storyEndT += dt; player.velocity = {0.f, 0.f, 0.f}; if (storyEndT > 3.f) captureMouse(false); }
 }
@@ -392,7 +411,12 @@ inline void GameplayState::shepRidge(float dt) {
             sweep.reset();
             for (auto& e : enemies) if (e.targetable() && e.takeDamage(1e6f)) onEnemyKilled(e, StyleSource::ENVIRONMENT);
         }
-        if (before < 6.f && shepInT >= 6.f && storyEndT < 0.f) { storyEndT = 0.f; logRun("end"); audio.play("wave", 90, SoundGroup::UI, true); }   // (THE RESONATOR: next)
+        if (before < 4.f && shepInT >= 4.f) {   // in, through the broken vent
+            shepInT = -1.f;
+            fx.spawnBurst(player.camera.position + glm::vec3{0.f, 0.f, -2.f}, glm::vec3{2.4f, 1.4f, 0.5f}, 60, 14.f, 0.8f, 2.f);
+            storySeenSection = storyCheckpoint = 4;
+            enterArena(4); saveStoryProgress();
+        }
         return;
     }
     if (playerDead) return;
@@ -434,6 +458,138 @@ inline void GameplayState::shepRidge(float dt) {
         if (before > 0.f && shepVentOpenT <= 0.f) ui.feed("VENTS SHUT", glm::vec3{0.7f});
     }
     (void)p;
+}
+
+// =============================================================================
+// PHASE 3 · THE RESONATOR (inside: air again, the hum you only felt is a chord now)
+//   THE TUNING HALL  its blasts come down the hall from the core every ~9 s (5 s count): get into a
+//                    side room. After each, its four forks ring for 4.5 s: spike a ringing fork with
+//                    HOLDFAST and it is stilled. Each stilled fork makes the blasts come less evenly,
+//                    and the corner number waver. All four: the core's membrane parts.
+//   THE LEDGER       quiet. Its terminals. Every lamp on its walls a capsule.
+//   THE LAMP WELL    grapple up from alcove to alcove; blasts come up the shaft (5 s): be in an alcove
+//                    when it reaches your height. Out at the top: its surface.
+// =============================================================================
+inline bool GameplayState::shepInAlcove(glm::vec3 feet) const {
+    if (feet.z > shep::WZ_S - 0.5f && feet.y < 5.f) return true;   // (the way in, at the foot: under its lintel)
+    for (int i = 0; i < shep::WELL_ALCOVES; ++i) {
+        const AABB a = shep::wellAlcove(i);
+        if (feet.x > a.min.x - 0.3f && feet.x < a.max.x + 0.3f && feet.z > a.min.z && feet.z < a.max.z && feet.y > a.min.y - 0.6f && feet.y < a.max.y) return true;
+    }
+    return false;
+}
+
+inline void GameplayState::shepInside(float dt) {
+    using namespace shepfight;
+    const int at = level.arenaAt(player.position);
+    if (at < 4 || playerDead || storyEndT >= 0.f) { shepWellCount = -1.f; return; }
+    const glm::vec3 p = player.position;
+    // ---- THE TUNING HALL ----
+    if (at == 4 && shepForks < shep::FORKS) {
+        if (sweep.active() && sweep.passed > 0 && !shepSweepPassed) {   // it went over: the forks ring
+            shepSweepPassed = true; shepForkRingT = FORK_RING;
+            ui.feed("THE FORKS RING", POST_LIT * 0.5f);
+            for (int f = 0; f < shep::FORKS; ++f) if (!shepForkBroken[f]) audio.playAt("ab_ting", shep::forkNode(f), 110, SoundGroup::WORLD, true, 0.55f + 0.08f * f);
+            int alive = 0; for (const auto& e : enemies) alive += e.alive && e.targetable();
+            for (int k = 0; k < 2 && alive < 4; ++k, ++alive) {   // and its flock comes back down the hall behind it
+                const glm::vec3 q{shep::HX + (k ? 6.f : -6.f), 0.f, shep::HZ_N + 6.f};
+                spawnEnemy(EnemyType::STRAY, q);
+            }
+        }
+        if (!sweep.active()) shepSweepPassed = false;
+        shepForkRingT = std::max(0.f, shepForkRingT - dt);
+        shepHallSweepT -= dt;
+        if (!sweep.active() && shepHallSweepT <= 0.f) {
+            SweepSpec s; s.kind = SweepSpec::Kind::OUT; s.dir = {0.f, 0.f, 1.f};
+            s.warning = HALL_WARN; s.flashLead = HALL_FLASH; s.clocked = true; s.range = 30.f;
+            sweep.start(s); ++sweepCount;
+            // detuned: the rhythm goes (each warning stays whole and honest)
+            shepHallSweepT = HALL_GAP + HALL_FLASH + HALL_WARN + cosmetic::range(-1.f, 1.f) * 2.2f * (float)shepForks;
+            if (!shepHallHint) { shepHallHint = true; ui.toast("THE TUNING HALL", "BLASTS COME DOWN THE HALL: GET INTO A SIDE ROOM. THEN SPIKE A RINGING FORK (" + binds().label(Act::HOLDFAST) + ")", POST_LIT * 0.4f, 6.f); }
+        }
+        if (g_devOverlay == "forkkill" && shepForkRingT > 0.f && !holdfast.held())   // dev: the spike, into the first ringing fork
+            for (int f = 0; f < shep::FORKS; ++f) if (!shepForkBroken[f]) { const int w = level.movers[level.shepForks[2 * f]].wall; holdfast.latch(shep::forkNode(f), player.camera.position, w, -1); break; }
+        // A fork spiked while it rings: stilled
+        if (holdfast.held())
+            for (int f = 0; f < shep::FORKS; ++f) {
+                if (shepForkBroken[f]) continue;
+                const bool on = holdfast.body == level.movers[level.shepForks[2 * f]].wall || holdfast.body == level.movers[level.shepForks[2 * f + 1]].wall;
+                if (!on) continue;
+                if (shepForkRingT <= 0.f) {
+                    if (shepVentMsgT <= 0.f) { shepVentMsgT = 2.5f; ui.feed("IT ISN'T RINGING: AFTER A BLAST", glm::vec3{0.75f}); }
+                    continue;
+                }
+                shepForkBroken[f] = true; ++shepForks; holdfast.cut();
+                const glm::vec3 n = shep::forkNode(f);
+                fx.spawnBurst(n + glm::vec3{0.f, 6.f, 0.f}, POST_LIT, 70, 14.f, 1.f, 3.f);
+                fx.spawnShockwave(n, 10.f, POST_LIT * 0.6f);
+                shake(1.f, 0.05f); shepherdDamageT = 1.f;
+                audio.playAt("ab_shatter", n, 128, SoundGroup::WORLD, true, 0.6f);
+                SfxMixer::Opts o; o.group = SoundGroup::WORLD; o.priority = true; o.unducked = true; o.pitch = 0.45f; o.volume = 0.9f;
+                audio.playOpts("slam", o);
+                styleSystem.addStyle(150.f, StyleSource::ENVIRONMENT);
+                static const char* left[4] = {"THREE LEFT. IT SOUNDS WRONG", "TWO LEFT", "ONE LEFT", "DETUNED"};
+                pushBanner("FORK STILLED", left[std::clamp(shepForks - 1, 0, 3)], POST_LIT * 0.6f, 2.5f);
+                if (shepForks >= shep::FORKS) {
+                    shepMembraneT = 0.f; sweep.reset();
+                    pushBanner("THE CORE OPENS", "ON, THROUGH IT", POST_LIT * 0.6f, 3.5f);
+                    fx.spawnBurst({shep::HX, 10.f, shep::HZ_N + 2.f}, glm::vec3{2.4f, 1.3f, 0.35f}, 80, 16.f, 1.2f, 2.f);
+                }
+                break;
+            }
+    }
+    if (shepMembraneT >= 0.f) shepMembraneT += dt;
+    // ---- THE LEDGER: nothing comes here ----
+    if (at == 5 && !shepLedgerSeen) { shepLedgerSeen = true; ui.toast("THE LEDGER", "READ IT IF YOU LIKE. THE WELL IS ON, NORTH", POST_LIT * 0.4f, 4.f); }
+    if (storyTerminal >= 0 && glm::length(level.story.terminals[storyTerminal].pos - p) > 6.f) storyTerminal = -1;
+    // ---- THE LAMP WELL ----
+    shepWellCount = -1.f;
+    if (at == 6) {
+        shepWellMaxY = std::max(shepWellMaxY, p.y);
+        if (shepUpT >= 0.f) {   // out: its surface
+            const float before = shepUpT; shepUpT += dt;
+            if (before < 5.f && shepUpT >= 5.f && storyEndT < 0.f) { storyEndT = 0.f; logRun("end"); audio.play("wave", 90, SoundGroup::UI, true); }   // (THE BREAK: next)
+            return;
+        }
+        if (p.y > shep::W_OUT) {
+            shepUpT = 0.f; shepWellT = -1.f;
+            pushBanner("ITS SURFACE", "IT IS LOSING ITS GRIP", SWEEP_ICE * 0.8f, 4.f);
+            shake(1.2f, 0.04f);
+            return;
+        }
+        if (!shepWellHint) { shepWellHint = true; ui.toast("THE LAMP WELL", "GRAPPLE UP FROM ALCOVE TO ALCOVE. WHEN A BLAST COMES UP THE SHAFT, BE IN ONE", POST_LIT * 0.4f, 6.f); }
+        if (shepWellT < 0.f && p.z < shep::WZ_S && (shepWellNext -= dt) <= 0.f) {   // (once you are in the shaft)   // a blast: the lamps below flare, then it climbs
+            shepWellT = 0.f;
+            audio.play("telegraph", 128, SoundGroup::WORLD, true);
+            shake(0.3f, 0.012f);
+        }
+        if (shepWellT >= 0.f) {
+            const float before = shepWellT;
+            shepWellT += dt;
+            const float due = HALL_FLASH + WELL_WARN, left = due - shepWellT;
+            if (shepWellT >= HALL_FLASH && left > 0.f) {
+                shepWellCount = left;
+                if (std::ceil(left) != std::ceil(left + dt)) audio.play("count_tick", left < 3.5f ? 128 : 90, SoundGroup::UI, true);
+            }
+            shepWellFront = p.y - left * WELL_SPEED;   // (clocked: it reaches your height at zero, wherever you climb to)
+            if (before < due && shepWellT >= due) {
+                if (shepInAlcove(p)) {
+                    ui.feed("IT WENT PAST", SWEEP_ICE * 0.7f);
+                    audio.duck(30.f, 0.4f); shake(0.4f, 0.03f);
+                    SfxMixer::Opts o; o.group = SoundGroup::WORLD; o.priority = true; o.unducked = true; o.delay = 0.3f; audio.playOpts("skim", o);
+                } else {
+                    invincFrames = 0.f;
+                    if (damagePlayer(1e6f, p - glm::vec3{0.f, 4.f, 0.f}, 0.6f, 0.08f, 0.f, {EnemyType::COUNT, DamageKind::SWEEP})) {
+                        holdfast.cut();
+                        player.velocity = glm::vec3{0.f, 40.f, 0.f}; player.launched();
+                        sweptT = 0.f; sweptSkip = 0.f; sweptFrom = player.camera.position; sweptDir = glm::vec3{0.f, 0.f, 1.f};
+                        audio.duck(60.f, SWEPT_FALL + 0.3f);
+                    }
+                }
+            }
+            if (shepWellT > due + 3.f) { shepWellT = -1.f; shepWellNext = WELL_GAP; }
+        }
+    }
 }
 
 // A round down a vent's throat (Gameplay_Combat.h's hitscan): only while it is open, and only from close in
@@ -552,6 +708,29 @@ inline void GameplayState::gatherShepherd(std::vector<BoxInstance>& out) {
         if (open > 0.5f && std::fmod(gameClock + v * 0.11f, 0.1f) < 0.017f)   // its heat pouring out
             fx.spawnBurst(c + glm::vec3{cosmetic::range(-2.5f, 2.5f), cosmetic::range(-1.5f, 1.5f), 1.f}, glm::vec3{2.4f, 1.4f, 0.5f}, 1, 3.f, 0.5f, 0.5f);
     }
+    // THE RESONATOR: its forks (ringing white after a blast), the core's membrane, the blast in the well
+    for (int f = 0; f < (int)level.shepForks.size(); ++f) {
+        const Mover& m = level.movers[level.shepForks[f]];
+        if (m.gone) continue;
+        const AABB& bx = level.walls[m.wall].box;
+        const float ring = shepForkRingT / shepfight::FORK_RING, shiver = ring > 0.f ? 0.05f * std::sin(gameClock * 90.f + f) : 0.f;
+        push(out, T((bx.min + bx.max) * 0.5f + glm::vec3{shiver, 0.f, 0.f}) * S(bx.max - bx.min), m.color, POST_LIT * (0.05f + 1.6f * ring * (0.8f + 0.2f * std::sin(gameClock * 30.f))));
+        if (f % 2 == 0) push(out, T(shep::forkNode(f / 2)) * S(glm::vec3{1.6f}), glm::vec3{0.1f}, POST_LIT * (0.3f + 2.f * ring));
+    }
+    if (level.shepMembrane >= 0 && shepMembraneT < 1.5f) {
+        const AABB& bx = level.walls[level.movers[level.shepMembrane].wall].box;
+        const float part = shepMembraneT < 0.f ? 0.f : shepMembraneT / 1.5f;
+        const glm::vec3 c = (bx.min + bx.max) * 0.5f, sz = bx.max - bx.min;
+        if (shepMembraneT >= 0.f || !level.movers[level.shepMembrane].gone)
+            for (int sd = -1; sd <= 1; sd += 2)   // two halves, drawing apart
+                push(out, T(c + glm::vec3{sd * (sz.x * 0.25f + part * sz.x * 0.5f), 0.f, 0.f}) * S(glm::vec3{sz.x * 0.5f, sz.y, sz.z}), glm::vec3{0.2f, 0.08f, 0.04f},
+                     glm::vec3{2.4f, 1.3f, 0.35f} * (0.25f + 0.15f * std::sin(gameClock * 3.f) + (sweep.active() ? 0.8f * ringFlash() : 0.f)) * (1.f - part));
+    }
+    if (shepWellT >= 0.f && shepWellFront > -2.f && shepWellFront < shep::W_TOP) {
+        const float y = shepWellFront;
+        push(out, T(glm::vec3{(shep::WX0 + shep::WX1) * 0.5f, y, (shep::WZ_S + shep::WZ_N) * 0.5f}) * S(glm::vec3{shep::WX1 - shep::WX0, 0.6f, shep::WZ_S - shep::WZ_N}), SWEEP_ICE * 0.3f, SWEEP_ICE * 1.6f);
+        if (std::fmod(gameClock, 0.05f) < 0.017f) fx.spawnBurst({cosmetic::range(shep::WX0, shep::WX1), y, cosmetic::range(shep::WZ_N, shep::WZ_S)}, SWEEP_ICE, 3, 6.f, 0.5f, -2.f);
+    }
     if (shepCharge.on) {
         const glm::vec3 h = shepfight::CHARGE_HALF;
         push(out, T(shepCharge.pos) * RY(shepCharge.from) * S(h * 2.f), glm::vec3{0.6f, 0.58f, 0.53f}, abGoldTell(glm::vec3{1.9f, 1.15f, 0.15f}) * 0.6f);
@@ -575,7 +754,49 @@ inline void GameplayState::shepherdMarkers(const glm::mat4& view, const glm::mat
         }
         return;
     }
-    if (level.arenaAt(player.position) != 3 || shepTurnT >= 0.f || shepInT >= 0.f) return;
+    const int here = level.arenaAt(player.position);
+    if (here == 4) {   // the forks, or the way on
+        if (shepForks >= shep::FORKS) {
+            const glm::vec3 at{shep::HX, 3.f, shep::HZ_N};
+            const bool on = projectToScreen(at, view, proj, sx, sy);
+            snprintf(buf, sizeof(buf), "ON %dM", (int)glm::length(at - player.position));
+            ui.renderMarker(sx, sy, on, glm::vec3{0.4f, 1.f, 0.6f}, buf);
+            return;
+        }
+        for (int f = 0; f < shep::FORKS; ++f) {
+            if (shepForkBroken[f]) continue;
+            const glm::vec3 at = shep::forkNode(f) + glm::vec3{0.f, 15.f, 0.f};
+            const bool on = projectToScreen(at, view, proj, sx, sy);
+            if (shepForkRingT > 0.f) snprintf(buf, sizeof(buf), "RINGING %dM", (int)glm::length(at - player.position));
+            else snprintf(buf, sizeof(buf), "FORK");
+            ui.renderMarker(sx, sy, on, shepForkRingT > 0.f ? glm::vec3{1.f} : glm::vec3{0.6f}, buf, false, shepForkRingT <= 0.f);
+        }
+        return;
+    }
+    if (here == 5) {
+        const glm::vec3 at{shep::HX, 2.5f, shep::LZ_N};
+        const bool on = projectToScreen(at, view, proj, sx, sy);
+        snprintf(buf, sizeof(buf), "THE WELL %dM", (int)glm::length(at - player.position));
+        ui.renderMarker(sx, sy, on, glm::vec3{0.4f, 1.f, 0.6f}, buf);
+        return;
+    }
+    if (here == 6 && shepUpT < 0.f) {   // the next alcove up, and the top
+        int next = -1;
+        for (int i = 0; i < shep::WELL_ALCOVES; ++i) if (shep::wellAlcoveY(i) > player.position.y + 1.f) { next = i; break; }
+        if (next >= 0) {
+            const AABB a = shep::wellAlcove(next);
+            const glm::vec3 at = (a.min + a.max) * 0.5f;
+            const bool on = projectToScreen(at, view, proj, sx, sy);
+            snprintf(buf, sizeof(buf), "ALCOVE %dM", (int)glm::length(at - player.position));
+            ui.renderMarker(sx, sy, on, shepWellT >= 0.f ? glm::vec3{1.f, 0.3f, 0.2f} : glm::vec3{1.f, 0.75f, 0.3f}, buf);
+        } else {
+            const glm::vec3 at{shep::HX, shep::W_TOP, (shep::WZ_S + shep::WZ_N) * 0.5f};
+            const bool on = projectToScreen(at, view, proj, sx, sy);
+            ui.renderMarker(sx, sy, on, glm::vec3{0.4f, 1.f, 0.6f}, "OUT");
+        }
+        return;
+    }
+    if (here != 3 || shepTurnT >= 0.f || shepInT >= 0.f) return;
     for (int v = 0; v < 3; ++v) {
         if (shepVentHp[v] <= 0.f) continue;
         const glm::vec3 at = shep::vent(v) + glm::vec3{0.f, shep::VENT_HY + 1.f, 1.f};

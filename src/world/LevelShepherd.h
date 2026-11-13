@@ -65,6 +65,23 @@ constexpr float RX0 = 260.f, RX1 = 400.f, RZ_S = -3296.f, RIDGE_Z = -3458.f;
 inline glm::vec3 ridgeStart() { return {330.f, 0.f, RZ_S - 8.f}; }
 inline glm::vec3 vent(int i) { const float x[3] = {290.f, 332.f, 374.f}; return {x[i], 2.6f, RIDGE_Z + 0.5f}; }
 constexpr float VENT_HX = 3.2f, VENT_HY = 2.2f;
+// PHASE 3, THE RESONATOR: inside. Three rooms north from x 800: the Tuning Hall (its blasts run
+// down it from the core; the side rooms are shelter; four forks to still), the Ledger (quiet), and
+// the Lamp Well (a shaft climbed by grapple, blasts coming up it, alcoves for shelter)
+constexpr float HX = 800.f, HHALF = 15.f, HZ_S = -3300.f, HZ_N = -3460.f, H_TOP = 24.f;
+constexpr float ALC_DEPTH = 7.f, ALC_LEN = 10.f, ALC_H = 8.f;
+inline float alcoveZ(int i) { return -3318.f - 32.f * (float)i; }   // five each side
+constexpr int ALCOVES = 5, FORKS = 4;
+inline float forkZ(int i) { return -3334.f - 32.f * (float)i; }
+inline glm::vec3 forkNode(int i) { return {HX, 4.5f, forkZ(i)}; }
+constexpr float LZ_N = -3522.f, L_TOP = 14.f;                         // the Ledger: from the hall's north end to here
+constexpr float WX0 = 790.f, WX1 = 810.f, WZ_S = -3524.f, WZ_N = -3544.f, W_TOP = 92.f, W_OUT = 86.f;   // the Well
+inline float wellAlcoveY(int i) { return 12.f * (float)(i + 1); }     // seven, alternating west and east
+constexpr int WELL_ALCOVES = 7;
+inline AABB wellAlcove(int i) {   // the recess (where standing is shelter)
+    const bool west = i % 2 == 0; const float y = wellAlcoveY(i);
+    return west ? AABB{{WX0 - 4.f, y, -3537.f}, {WX0 + 0.6f, y + 5.f, -3531.f}} : AABB{{WX1 - 0.6f, y, -3537.f}, {WX1 + 4.f, y + 5.f, -3531.f}};
+}
 inline std::vector<glm::vec2> ridgeShelters() {   // (x, z) of each block's middle
     return {{280.f, -3335.f}, {320.f, -3335.f}, {360.f, -3335.f}, {388.f, -3335.f}, {300.f, -3368.f}, {345.f, -3368.f}, {380.f, -3368.f},
             {272.f, -3400.f}, {318.f, -3398.f}, {292.f, -3428.f}, {332.f, -3418.f}, {372.f, -3405.f}};
@@ -253,6 +270,121 @@ inline LevelData buildShepherd() {
         }
     }
 
+    // ---- PHASE 3: THE RESONATOR (inside) ----
+    {
+        const vec3 lamp = lampWhite * 0.45f, amber{2.4f, 1.3f, 0.35f};
+        const float x0 = shep::HX - shep::HHALF, x1 = shep::HX + shep::HHALF;
+        b.mat = Mat::METAL;
+        // THE TUNING HALL: floor, ceiling, the south end shut, side walls with their rooms cut in
+        b.wall(x0 - 12.f, -2.f, shep::LZ_N, x1 + 12.f, 0.f, shep::HZ_S + 2.f, hull);
+        b.wall(x0 - 12.f, shep::H_TOP, shep::HZ_N, x1 + 12.f, shep::H_TOP + 2.f, shep::HZ_S + 2.f, hull);
+        b.wall(x0 - 12.f, 0.f, shep::HZ_S, x1 + 12.f, shep::H_TOP, shep::HZ_S + 2.f, hull);
+        for (int sd = -1; sd <= 1; sd += 2) {
+            const float face = sd < 0 ? x0 : x1, back = face + sd * shep::ALC_DEPTH, outer = back + sd * 3.f;
+            const float fa = std::min(face, back), fb = std::max(face, back), oa = std::min(back, outer), ob = std::max(back, outer);
+            b.wall(oa, 0.f, shep::HZ_N, ob, shep::H_TOP, shep::HZ_S, hull);   // behind the rooms
+            float z = shep::HZ_S;
+            for (int i = 0; i <= shep::ALCOVES; ++i) {   // the pieces between the rooms (shelter: a room's north side)
+                const float zEnd = i < shep::ALCOVES ? shep::alcoveZ(i) + shep::ALC_LEN * 0.5f : shep::HZ_N;
+                if (z - zEnd > 0.1f) {
+                    b.wall(fa, 0.f, zEnd, fb, shep::H_TOP, z, glm::mix(hull, hullLit, 0.3f));
+                    if (i > 0) {   // the piece north of room i-1 shelters it; its post stands in that room
+                        SweepShelter sh; sh.box = LevelBuilder::aabb(fa, 0.f, zEnd, fb, shep::H_TOP, z); sh.section = 4;
+                        sh.post = {(fa + fb) * 0.5f, 0.f, z + 2.f};
+                        l.sweepShelters.push_back(sh);
+                    }
+                }
+                if (i < shep::ALCOVES) {   // the room: open to the hall, roofed at ALC_H, a lamp in it
+                    const float za = shep::alcoveZ(i) - shep::ALC_LEN * 0.5f, zb = shep::alcoveZ(i) + shep::ALC_LEN * 0.5f;
+                    b.wall(fa, shep::ALC_H, za, fb, shep::H_TOP, zb, glm::mix(hull, hullLit, 0.3f));
+                    b.neon(fa + 0.5f, shep::ALC_H - 0.3f, za + 1.f, fb - 0.5f, shep::ALC_H - 0.05f, zb - 1.f, amber * 0.5f);
+                    z = za;
+                }
+            }
+        }
+        for (float z = shep::HZ_S - 8.f; z > shep::HZ_N; z -= 16.f) b.neon(x0 + 2.f, shep::H_TOP - 0.3f, z - 0.3f, x1 - 2.f, shep::H_TOP - 0.05f, z + 0.3f, lamp);
+        b.neon(x0 + 0.05f, 0.f, shep::HZ_N, x0 + 0.3f, 0.2f, shep::HZ_S, lamp * 0.6f);
+        b.neon(x1 - 0.3f, 0.f, shep::HZ_N, x1 - 0.05f, 0.2f, shep::HZ_S, lamp * 0.6f);
+        // Its forks: a base (stays) and two prongs (movers: they go when stilled; drawn live)
+        for (int i = 0; i < shep::FORKS; ++i) {
+            const float z = shep::forkZ(i);
+            b.wall(shep::HX - 5.f, 0.f, z - 2.5f, shep::HX + 5.f, 3.f, z + 2.5f, glm::mix(hull, steel, 0.5f));
+            for (int sd = -1; sd <= 1; sd += 2) {
+                const vec3 c{shep::HX + sd * 2.6f, 3.f + 8.f, z}, h{0.8f, 8.f, 0.8f};
+                const int m = b.mover(c, h, Mover::Path::DRIVEN, vec3{0.f}, vec3{0.f}, 1.f, 0.f, vec3{0.f});
+                l.movers[m].look = 3; l.movers[m].color = glm::mix(hullLit, steel, 0.2f);
+                l.shepForks.push_back(m);
+            }
+        }
+        // The core's membrane across the hall's north end: it parts when the forks are stilled
+        {
+            const vec3 c{shep::HX, shep::H_TOP * 0.5f, shep::HZ_N + 1.f}, h{shep::HHALF, shep::H_TOP * 0.5f, 1.f};
+            l.shepMembrane = b.mover(c, h, Mover::Path::DRIVEN, vec3{0.f}, vec3{0.f}, 1.f, 0.f, vec3{0.f});
+            l.movers[l.shepMembrane].look = 3; l.movers[l.shepMembrane].color = glm::vec3{0.3f, 0.12f, 0.06f};
+        }
+        // THE LEDGER: a long low room, every wall lamps (one a capsule), its terminals
+        b.wall(x0, shep::L_TOP, shep::LZ_N, x1, shep::L_TOP + 2.f, shep::HZ_N, hull);
+        b.wall(x0 - 3.f, 0.f, shep::LZ_N, x0, shep::L_TOP, shep::HZ_N, hull);
+        b.wall(x1, 0.f, shep::LZ_N, x1 + 3.f, shep::L_TOP, shep::HZ_N, hull);
+        b.wall(x0, shep::H_TOP * 0.5f + 2.f, shep::HZ_N - 0.5f, x1, shep::H_TOP, shep::HZ_N + 0.2f, hull);   // (over the membrane: the hall is taller)
+        for (int sd = -1; sd <= 1; sd += 2)
+            for (float z = shep::HZ_N - 3.f; z > shep::LZ_N + 2.f; z -= 1.5f)
+                for (float y = 1.5f; y < shep::L_TOP - 1.f; y += 1.2f)
+                    if (ring::hash(z * 3.1f + y * 7.f + sd, 9.f) < 0.55f) {
+                        const float xf = sd < 0 ? x0 + 0.02f : x1 - 0.12f;
+                        b.neon(xf, y, z, xf + 0.1f, y + 0.25f, z + 0.25f, (ring::hash(z + y, 3.f) < 0.03f ? amber : lampWhite * 0.35f));
+                    }
+        {
+            const float zc = (shep::HZ_N + shep::LZ_N) * 0.5f;
+            const std::pair<float, float> at[4] = {{-8.f, 14.f}, {8.f, 4.f}, {-8.f, -8.f}, {8.f, -18.f}};
+            const char* titles[4] = {"THE COUNT", "UNIT 24", "RETURNED", "UNIT 23"};
+            const char* lines[4] = {"40,112 HELD. NONE DRIFTING. NONE ARRIVED.", "DISPATCHED. NOT RECEIVED. NOT RECEIVED. NOT RECEIVED.",
+                                    "THE CROOK. THE DROVER. THE BELLWETHER. SENT OUT, BROUGHT BACK, SENT OUT.", "STILL COUNTING."};
+            for (int i = 0; i < 4; ++i) {
+                const vec3 p{shep::HX + at[i].first, 0.f, zc + at[i].second};
+                b.mat = Mat::METAL;
+                b.prop(p.x - 0.5f, 0.f, p.z - 0.3f, p.x + 0.5f, 1.2f, p.z + 0.3f, steel);
+                b.neon(p.x - 0.4f, 1.2f, p.z - 0.25f, p.x + 0.4f, 1.8f, p.z - 0.2f, lampWhite * 0.6f);
+                s.terminals.push_back({p + vec3{0.f, 0.f, 0.f}, titles[i], lines[i]});
+            }
+        }
+        b.mat = Mat::METAL;
+        // Its north end, with the way into the well
+        b.wall(x0, 0.f, shep::LZ_N - 2.f, shep::HX - 4.f, shep::L_TOP, shep::LZ_N, hull);
+        b.wall(shep::HX + 4.f, 0.f, shep::LZ_N - 2.f, x1, shep::L_TOP, shep::LZ_N, hull);
+        b.wall(shep::HX - 4.f, 5.f, shep::LZ_N - 2.f, shep::HX + 4.f, shep::L_TOP, shep::LZ_N, hull);
+        // THE LAMP WELL: a shaft to its surface. Each side wall is two layers: the back, and a face with
+        // the alcoves cut out of it (each with its floor: grapple up to the next)
+        b.wall(shep::WX0 - 6.f, -2.f, shep::WZ_N - 2.f, shep::WX1 + 6.f, 0.f, shep::LZ_N - 2.f, hull);
+        b.wall(shep::WX0 - 6.f, 0.f, shep::WZ_N - 2.f, shep::WX1 + 6.f, shep::W_TOP, shep::WZ_N, hull);   // north
+        b.wall(shep::WX0 - 6.f, 5.f, shep::WZ_S, shep::WX1 + 6.f, shep::W_TOP, shep::LZ_N - 2.f, hull);   // south, over the way in
+        b.wall(shep::WX0 - 6.f, 0.f, shep::WZ_S, shep::HX - 4.f, 5.f, shep::LZ_N - 2.f, hull);
+        b.wall(shep::HX + 4.f, 0.f, shep::WZ_S, shep::WX1 + 6.f, 5.f, shep::LZ_N - 2.f, hull);
+        for (int sd = -1; sd <= 1; sd += 2) {
+            const float face = sd < 0 ? shep::WX0 : shep::WX1;
+            const float fa = sd < 0 ? face - 4.f : face, fb = sd < 0 ? face : face + 4.f;
+            const float ba = sd < 0 ? face - 6.f : face + 4.f, bb = sd < 0 ? face - 4.f : face + 6.f;
+            b.wall(ba, 0.f, shep::WZ_N, bb, shep::W_TOP, shep::WZ_S, hull);
+            b.wall(fa, 0.f, shep::WZ_N, fb, shep::W_TOP, -3537.f, glm::mix(hull, hullLit, 0.25f));
+            b.wall(fa, 0.f, -3531.f, fb, shep::W_TOP, shep::WZ_S, glm::mix(hull, hullLit, 0.25f));
+            float y = 0.f;
+            for (int i = (sd < 0 ? 0 : 1); i < shep::WELL_ALCOVES; i += 2) {
+                const float ay = shep::wellAlcoveY(i);
+                b.wall(fa, y, -3537.f, fb, ay, -3531.f, glm::mix(hull, hullLit, 0.25f));
+                b.neon(fa + 0.3f, ay + 4.6f, -3536.5f, fb - 0.3f, ay + 4.9f, -3531.5f, amber * 0.6f);   // its lamp
+                y = ay + 5.f;
+            }
+            b.wall(fa, y, -3537.f, fb, shep::W_TOP, -3531.f, glm::mix(hull, hullLit, 0.25f));
+        }
+        for (float y = 6.f; y < shep::W_TOP; y += 6.f)   // rings of its lamps up the shaft
+            for (int sd = 0; sd < 2; ++sd) {
+                const float z = sd ? shep::WZ_N + 0.05f : shep::WZ_S - 0.3f;
+                b.neon(shep::WX0 + 1.f, y, z, shep::WX1 - 1.f, y + 0.3f, z + 0.25f, lamp * (0.5f + 0.5f * (y / shep::W_TOP)));
+            }
+        // The top: its surface, a lip to climb out onto
+        b.wall(shep::WX0 - 14.f, shep::W_TOP - 2.f, shep::WZ_N - 14.f, shep::WX1 + 14.f, shep::W_TOP, shep::WZ_N - 2.f, hull);
+    }
+
     // ---- the arenas: one to a tine (its spar in belongs to it) ----
     using W = WaveEntry;
     for (int k = 0; k < shep::TINES; ++k) {
@@ -290,5 +422,17 @@ inline LevelData buildShepherd() {
         a.maxAlive = 8;
         l.arenas.push_back(a);
     }
+    auto inside = [&](const char* name, const char* sub, AABB zone, vec3 start) {
+        Arena a;
+        a.name = name; a.subtitle = sub; a.zone = zone; a.bounds = zone; a.bounds.min.y = -1.f;
+        a.playerStart = start; a.startYaw = -90.f; a.hasRespawn = true; a.respawn = start;
+        a.voidY = -6.f; a.theme = ring::eclipseTheme(); a.theme.lightDir = glm::normalize(vec3{0.2f, -1.f, 0.1f});
+        a.ambient = Ambient::MOTES; a.space = ReverbSpace::METAL; a.tone = RoomTone::NONE; a.maxAlive = 6;
+        l.arenas.push_back(a);
+    };
+    const float hx0 = shep::HX - shep::HHALF - shep::ALC_DEPTH, hx1 = shep::HX + shep::HHALF + shep::ALC_DEPTH;
+    inside("THE TUNING HALL", "INSIDE IT", LevelBuilder::aabb(hx0, -1000.f, shep::HZ_N, hx1, shep::H_TOP, shep::HZ_S), {shep::HX, 0.f, shep::HZ_S - 5.f});        // 4
+    inside("THE LEDGER", "EVERY ONE, COUNTED", LevelBuilder::aabb(shep::HX - shep::HHALF, -1000.f, shep::LZ_N, shep::HX + shep::HHALF, shep::L_TOP, shep::HZ_N), {shep::HX, 0.f, shep::HZ_N - 4.f});   // 5
+    inside("THE LAMP WELL", "UP, TO ITS SURFACE", LevelBuilder::aabb(shep::WX0 - 4.f, -1000.f, shep::WZ_N, shep::WX1 + 4.f, shep::W_TOP + 10.f, shep::LZ_N - 0.5f), {shep::HX, 0.f, shep::WZ_S - 3.f});   // 6
     return l;
 }

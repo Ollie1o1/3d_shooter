@@ -304,7 +304,7 @@ struct LevelData {
     // stand on them, and the reef's walls that creak when you lean on them (walls indices)
     std::vector<int> knockWalls, creakWalls;
     int raftMover = -1, raftBoulder = -1;   // Chapter 6's raft over the Gap (Gameplay_Gap.h)
-    std::vector<int> shepHerd, shepBridges;  // THE SHEPHERD (LevelShepherd.h): the Drover's herd, the spars that fall between tines
+    std::vector<int> shepHerd, shepBridges, shepForks;  int shepMembrane = -1;   // (shepForks: two prongs a fork, movers)  // THE SHEPHERD (LevelShepherd.h): the Drover's herd, the spars that fall between tines
     std::vector<FloorPatch> floors;
     // How this level draws each material (WorldGeometry.h): identity unless a chapter restyles the
     // shared surfaces as its own (restyle()). Looks only: collision and sounds still go by `mat`.

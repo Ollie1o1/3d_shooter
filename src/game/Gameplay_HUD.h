@@ -114,6 +114,15 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
                 if(here==1&&director.arena==1&&director.phase==WaveDirector::Phase::CLEARED)what="THE DOCK IS OPEN";
                 if(here==4)what=coldRecall?"THE BACK DOOR IS OPEN":"TAKE WHAT 24-A IS HOLDING";
             }
+            else if(shepherd()&&level.arenaAt(player.position)>=4) {   // THE RESONATOR
+                static char res[110];const int here=level.arenaAt(player.position);
+                if(here==4){
+                    const char* step=shepForks>=shep::FORKS?"DETUNED: ON, THROUGH THE CORE":sweep.active()?"BLAST COMING: INTO A SIDE ROOM":shepForkRingT>0.f?"THE FORKS RING: SPIKE ONE WITH HOLDFAST":"WAIT IN A SIDE ROOM: THEY RING AFTER A BLAST";
+                    std::snprintf(res,sizeof(res),"FORKS %d/4  /  %s",shepForks,step);
+                } else if(here==5) std::snprintf(res,sizeof(res),"EVERY LAMP A CAPSULE  /  READ IT, THEN ON TO THE WELL");
+                else std::snprintf(res,sizeof(res),"UP %dM  /  %s",std::max(0,(int)(shep::W_OUT-player.position.y)),shepWellCount>=0.f?"BLAST RISING: INTO AN ALCOVE":"GRAPPLE FROM ALCOVE TO ALCOVE");
+                what=res;
+            }
             else if(shepherd()&&shepTines>=shep::TINES) {   // THE TURN: one step at a time, with the count
                 static char ridge[96];
                 const char* step=shepTurnT>=0.f?"IT IS TURNING":sweep.active()?"WAVE COMING: GET BEHIND A BLOCK BY ITS LIT POST":shepVentOpenT>0.f?"VENTS OPEN: RUN IN, SHOOT ONE FROM CLOSE":"SHUT: THEY OPEN AFTER THE NEXT WAVE";
