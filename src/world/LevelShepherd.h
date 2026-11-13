@@ -227,8 +227,14 @@ inline LevelData buildShepherd() {
         b.wall(shep::RX0 - 30.f, shep::PLAIN_Y - 2.f, shep::RIDGE_Z - 60.f, shep::RX1 + 30.f, 26.f, shep::RIDGE_Z, hull);
         for (int i = 0; i < 9; ++i) {   // stepping back and up: the ridge's slope
             const float y = 26.f + 22.f * i, z = shep::RIDGE_Z - 6.f - 9.f * i;
-            b.kit().box({(shep::RX0 + shep::RX1) * 0.5f, y + 11.f, z - 30.f}, {shep::RX1 - shep::RX0 + 120.f + 24.f * i, 22.f, 60.f}, glm::mix(hull, steel, 0.2f + 0.06f * i));
-            b.kit().box({(shep::RX0 + shep::RX1) * 0.5f, y + 2.f, z + 0.2f}, {shep::RX1 - shep::RX0 + 100.f + 24.f * i, 0.5f, 0.6f}, lampWhite * (0.55f - 0.04f * i));
+            {   // (real walls, not shapes: drawn at any distance, and nothing reaches them)
+                const float hw2 = (shep::RX1 - shep::RX0 + 120.f + 24.f * i) * 0.5f, mx2 = (shep::RX0 + shep::RX1) * 0.5f;
+                b.mat = Mat::METAL;
+                b.wall(mx2 - hw2, y, z - 60.f, mx2 + hw2, y + 22.f, z, glm::mix(hullLit, hull, 0.3f + 0.07f * i));
+            }
+            const float hw = (shep::RX1 - shep::RX0 + 100.f + 24.f * i) * 0.5f, mx = (shep::RX0 + shep::RX1) * 0.5f;
+            for (float lx = mx - hw + 2.f; lx < mx + hw - 4.f; lx += 9.f)   // (in lamps, not one strip: rows of points read as a face of lights)
+                { b.neon(lx, y + 12.f, z, lx + 5.f, y + 13.6f, z + 0.5f, lampWhite * (1.6f - 0.08f * i)); if ((int)(lx * 0.11f) % 3 == 0) b.neon(lx + 2.f, y + 5.f, z, lx + 3.f, y + 19.f, z + 0.4f, lampWhite * 0.5f); }   // its lamps, row on row up the ridge
         }
         for (float x = shep::RX0 - 20.f; x < shep::RX1 + 20.f; x += 4.f)
             for (int row = 0; row < 2; ++row) {

@@ -266,9 +266,11 @@ inline void GameplayState::updateShepherd(float dt) {
         if (sweepCount == 1 || !shepConeHint) { shepConeHint = true; ui.toast("ITS AIM", "THE RED CONE: GET OUT OF IT, OR BEHIND A FIN BY ITS LIT POST", SWEEP_RED * 0.8f, 4.5f); }
     }
     if (!fight && !sweep.active()) shepSweepT = std::max(shepSweepT, 5.f);
-    // Pairs of strays climb up over the rails while it lasts
-    if (fight && (shepStrayT -= dt) <= 0.f) {
-        shepStrayT = 14.f;
+    // Pairs of strays climb up over the rails just after each wave has gone through (it sends the flock
+    // back in behind its sweep), never in the middle of a countdown
+    const bool waveDone = shepSweepWas && !sweep.active();
+    shepSweepWas = sweep.active();
+    if (fight && waveDone) {
         int strays = 0; for (const auto& e : enemies) strays += e.alive && e.type == EnemyType::STRAY;
         if (strays < 3)
             for (int sd = -1; sd <= 1; sd += 2) {
@@ -398,6 +400,22 @@ inline void GameplayState::shepRidge(float dt) {
     if (sweep.active() && sweep.passed > 0 && !shepSweepPassed) {   // gone over: the vents open
         shepSweepPassed = true; shepVentOpenT = VENT_OPEN; shepRidgeSweepT = VENT_OPEN + 0.5f;
         ui.feed("VENTS OPEN", glm::vec3{2.4f, 1.3f, 0.35f} * 0.6f);
+        // ...and it drops its flock off the fleece in front of them: guards, between you and the vents
+        int alive = 0; for (const auto& e : enemies) alive += e.alive && e.targetable();
+        ++shepGuardWave;
+        for (int v = 0; v < 3 && alive < 7; ++v) {
+            if (shepVentHp[v] <= 0.f) continue;
+            const glm::vec3 c = shep::vent(v);
+            for (int sd = -1; sd <= 1 && alive < 7; sd += 2, ++alive) {
+                const glm::vec3 q{c.x + sd * 4.5f, 0.f, shep::RIDGE_Z + 7.f};
+                spawnEnemy(EnemyType::STRAY, q);
+                fx.spawnBurst(q + glm::vec3{0.f, 8.f, 0.f}, glm::vec3{0.7f}, 12, 5.f, 0.8f, 4.f);
+            }
+        }
+        if (shepGuardWave % 2 == 0 && alive < 8) {   // every second wave a Herder too
+            const glm::vec3 q{(shep::RX0 + shep::RX1) * 0.5f, 2.f, shep::RIDGE_Z + 12.f};
+            spawnEnemy(EnemyType::HERDER, q);
+        }
         for (int v = 0; v < 3; ++v) if (shepVentHp[v] > 0.f) audio.playAt("barrier", shep::vent(v), 110, SoundGroup::WORLD, true, 0.6f);
     }
     if (!sweep.active()) shepSweepPassed = false;
@@ -414,17 +432,6 @@ inline void GameplayState::shepRidge(float dt) {
         const float before = shepVentOpenT;
         shepVentOpenT = std::max(0.f, shepVentOpenT - dt);
         if (before > 0.f && shepVentOpenT <= 0.f) ui.feed("VENTS SHUT", glm::vec3{0.7f});
-    }
-    // Strays drop off its fleece in pairs, now and then a Herder
-    if ((shepAddT -= dt) <= 0.f) {
-        shepAddT = 12.f;
-        int alive = 0; for (const auto& e : enemies) alive += e.alive && e.targetable();
-        if (alive < 4)
-            for (int k = 0; k < 2 + (sweepCount % 3 == 2); ++k) {
-                const glm::vec3 q{cosmetic::range(shep::RX0 + 12.f, shep::RX1 - 12.f), 0.f, shep::RIDGE_Z + cosmetic::range(6.f, 16.f)};
-                spawnEnemy(k == 2 ? EnemyType::HERDER : EnemyType::STRAY, q + glm::vec3{0.f, k == 2 ? 2.f : 0.f, 0.f});
-                fx.spawnBurst(q + glm::vec3{0.f, 6.f, 0.f}, glm::vec3{0.7f}, 10, 5.f, 0.8f, 3.f);
-            }
     }
     (void)p;
 }
@@ -514,6 +521,19 @@ inline void GameplayState::gatherShepherd(std::vector<BoxInstance>& out) {
         push(out, T(glm::vec3{shep::tineX(t), 8.f, shep::Z_N + 0.35f}) * S(glm::vec3{2.f * shep::HALF - 4.f, 10.f, 0.3f}), glm::vec3{0.02f});
         (void)x0;
     }
+    if (shepTines >= shep::TINES) {   // THE TURN: its count, in six great lamps across the ridge's face. All lit on the
+        // flash; one goes out with each second of the countdown; orange while its vents stand open
+        const float c = sweep.countdown(player.position);
+        for (int i = 0; i < 6; ++i) {
+            const glm::vec3 at{shep::RX0 + 12.f + (shep::RX1 - shep::RX0 - 24.f) * i / 5.f, 21.f, shep::RIDGE_Z + 0.4f};
+            glm::vec3 glow{0.05f};
+            if (sweep.active() && sweep.phase == RingSweep::Phase::FLASH) glow = POST_LIT * 2.2f;
+            else if (c >= 0.f) glow = (float)i < std::ceil(c) ? SWEEP_RED * 3.f : glm::vec3{0.08f, 0.01f, 0.01f};
+            else if (shepVentOpenT > 0.f) glow = glm::vec3{2.4f, 1.3f, 0.35f} * (0.8f + 0.4f * (float)((int)(shepVentOpenT * 2.f) % 2));
+            else glow = POST_LIT * 0.25f;
+            push(out, T(at) * S(glm::vec3{6.f, 3.f, 0.6f}), glm::vec3{0.05f}, glow);
+        }
+    }
     for (int v = 0; v < 3 && shepTines >= shep::TINES; ++v) {   // THE TURN: its vents (shut, open, broken)
         const glm::vec3 c = shep::vent(v);
         const glm::vec3 hs{shep::VENT_HX, shep::VENT_HY, 0.f};
@@ -539,6 +559,35 @@ inline void GameplayState::gatherShepherd(std::vector<BoxInstance>& out) {
     if (Enemy* d = shepDog(); d && d->type == EnemyType::DROVER && d->attack == AttackKind::RING_CHARGE && d->telegraphTimer > 0.f) {
         const glm::vec3 fwd{std::sin(d->yaw), 0.f, std::cos(d->yaw)};
         push(out, T(d->position + fwd * 2.5f - glm::vec3{0.f, 1.2f, 0.f}) * S(shepfight::CHARGE_HALF * 1.8f), glm::vec3{0.6f, 0.58f, 0.53f}, abGoldTell(glm::vec3{1.9f, 1.15f, 0.15f}) * (0.6f + 1.4f * d->telegraphProgress()));
+    }
+}
+
+// Where to go: the sheepdog on its tine (phase 1), the vents (phase 2) with how long they stay open
+inline void GameplayState::shepherdMarkers(const glm::mat4& view, const glm::mat4& proj) {
+    if (!shepherd() || storyEndT >= 0.f || playerDead) return;
+    char buf[64]; float sx, sy;
+    if (shepTines < shep::TINES && shepBreakT < 0.f) {
+        if (Enemy* d = shepDog(); d && d->state == EnemyState::ACTIVE) {
+            const glm::vec3 at = d->position + glm::vec3{0.f, d->height() + 0.8f, 0.f};
+            const bool on = projectToScreen(at, view, proj, sx, sy);
+            snprintf(buf, sizeof(buf), "%s %dM", d->stats().name, (int)glm::length(at - player.position));
+            ui.renderMarker(sx, sy, on, d->shepOpen > 0.f || d->staggered() ? glm::vec3{1.f, 0.75f, 0.2f} : glm::vec3{0.95f, 0.92f, 0.8f}, buf);
+        }
+        return;
+    }
+    if (level.arenaAt(player.position) != 3 || shepTurnT >= 0.f || shepInT >= 0.f) return;
+    for (int v = 0; v < 3; ++v) {
+        if (shepVentHp[v] <= 0.f) continue;
+        const glm::vec3 at = shep::vent(v) + glm::vec3{0.f, shep::VENT_HY + 1.f, 1.f};
+        const bool on = projectToScreen(at, view, proj, sx, sy);
+        const int dist = (int)glm::length(at - player.position), pct = (int)std::ceil(100.f * shepVentHp[v] / shepfight::VENT_HP);
+        // (the nearest gets the full label; the others just their number, so three don't run together far off)
+        int nearest = -1; float nd = 1e9f;
+        for (int w = 0; w < 3; ++w) if (shepVentHp[w] > 0.f) { const float d = glm::length(shep::vent(w) - player.position); if (d < nd) { nd = d; nearest = w; } }
+        if (v != nearest) snprintf(buf, sizeof(buf), "%d%%", pct);
+        else if (shepVentOpenT > 0.f) snprintf(buf, sizeof(buf), "VENT OPEN %dS  %dM  %d%%", (int)std::ceil(shepVentOpenT), dist, pct);
+        else snprintf(buf, sizeof(buf), "VENT %dM  %d%%", dist, pct);
+        ui.renderMarker(sx, sy, on, shepVentOpenT > 0.f ? glm::vec3{1.f, 0.6f, 0.15f} : glm::vec3{0.6f, 0.6f, 0.6f}, buf, false, v != nearest);
     }
 }
 

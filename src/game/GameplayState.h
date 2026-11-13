@@ -408,6 +408,7 @@ public:
     float shepSideT = 0.f, shepSide = -1.f, shepEndT = -1.f, shepEnterT = -1.f, shepherdDamageT = 0.f;
     int   shepVents = 0;   // THE TURN
     float shepTurnT = -1.f, shepTurnAng = 0.f, shepVentHp[3] = {1.f, 1.f, 1.f}, shepVentOpenT = 0.f, shepRidgeSweepT = 0.f, shepAddT = 0.f, shepVentMsgT = 0.f, shepInT = -1.f;
+    int   shepGuardWave = 0; bool shepSweepWas = false;
     bool  shepTurnSeen = false, shepVentsArmed = false, shepSweepPassed = false;
     bool  shepHerdHeld = false, shepWasStaggered = false, shepSeen = false, shepConeHint = false, shepCutHint = false, shepBellHint = false;
     std::vector<WakeRing> wakeRings; bool wakeSweepDone = false; float wakeViewT = -1.f;   // THE WAKE
@@ -1432,6 +1433,7 @@ public:
     void   gatherShepherd(std::vector<BoxInstance>& out);
     void   renderShepherdBars();
     void   shepRidge(float dt);
+    void   shepherdMarkers(const glm::mat4& view, const glm::mat4& proj);
     bool   shootVent(glm::vec3 from, glm::vec3 dir, float& distance, float dmg);
     void ringFoeEvents(Enemy& e, const EnemyEvents& ev);
     void crookTick(float dt);

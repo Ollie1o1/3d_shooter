@@ -114,8 +114,16 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
                 if(here==1&&director.arena==1&&director.phase==WaveDirector::Phase::CLEARED)what="THE DOCK IS OPEN";
                 if(here==4)what=coldRecall?"THE BACK DOOR IS OPEN":"TAKE WHAT 24-A IS HOLDING";
             }
-            else if(shepherd()&&shepTines>=shep::TINES) what=sweep.active()?"GET BEHIND A LIT POST":shepVentOpenT>0.f?"VENTS OPEN: GET IN CLOSE AND BREAK ONE":"ITS RIDGE / THE VENTS OPEN AFTER EACH WAVE";
-            else if(shepherd()) what=sweep.active()?"OUT OF THE CONE, OR BEHIND A LIT POST":"BREAK THE COMB / KILL ITS SHEEPDOG";
+            else if(shepherd()&&shepTines>=shep::TINES) {   // THE TURN: one step at a time, with the count
+                static char ridge[96];
+                const char* step=shepTurnT>=0.f?"IT IS TURNING":sweep.active()?"WAVE COMING: GET BEHIND A BLOCK BY ITS LIT POST":shepVentOpenT>0.f?"VENTS OPEN: RUN IN, SHOOT ONE FROM CLOSE":"SHUT: THEY OPEN AFTER THE NEXT WAVE";
+                std::snprintf(ridge,sizeof(ridge),"VENTS %d/3  /  %s",shepVents,step);what=ridge;
+            }
+            else if(shepherd()) {   // THE COMB: which tine, and what now
+                static char comb[96];
+                const char* step=shepBreakT>=0.f||level.arenaAt(player.position)<shepTines?"THE TINE IS BROKEN: CROSS THE SPAR":sweep.active()?"OUT OF THE RED CONE, OR BEHIND A FIN":"KILL ITS SHEEPDOG";
+                std::snprintf(comb,sizeof(comb),"TINE %d/3  /  %s",std::min(shepTines+1,3),step);what=comb;
+            }
             else if(ring()) what=sweep.active()?"GET BEHIND A LIT POST":"CROSS THE RING / SHELTER WHEN THE POSTS LIGHT";
             else if(here==0)what="SALVAGE BAY / FOLLOW THE AMBER LIGHTS DOWN";
             else if (here == level.story.pitSection && !storyOwns(0)) what = "TAKE THE REVOLVER / UNIT 01 UNDER THE WORK LIGHT";
@@ -297,6 +305,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             snprintf(buf, sizeof(buf), fast() ? "EXIT %dM" : "GATE %dM", (int)glm::length(target - player.position));
             ui.renderMarker(sx, sy, on, {0.4f, 1.f, 0.6f}, buf);
         }
+        shepherdMarkers(view, proj);   // THE SHEPHERD: its sheepdog, its vents
         if (act2() && director.phase == WaveDirector::Phase::CLEARED && ar.shift == ArenaShift::DESCENT) {
             glm::vec3 target = level.finishPos;   // the span's rim: the way down to the Maw
             float sx, sy;
