@@ -511,6 +511,56 @@ music never ducks at the zero.
 13. **No runtime test.** The design asks for a check in
     `tests/test_dev.cpp`; only the logic tests exist.
 
+## THE SHEPHERD, phase 1: THE COMB (2026-11-13)
+
+The boss has its own level: `src/world/LevelShepherd.h` (`buildShepherd()`, `story.part = 1`, bake
+`assets/levels/shepherd.light`: `./tools/light_bake shepherd`, ~10 s). Rules: `src/game/Gameplay_Shepherd.h`.
+It sits just north of the Shore (z -3300..-3520), so the sky's Shepherd size, the eclipse, the bent rings and
+full gravity are already right there. Reaching `story.end` at the Shore's foot no longer shows the end card:
+`shepEnterT` runs 1.4 s, then `loadShepherd(0)` swaps the level in place (kills, time and style carry on).
+
+| Command | What you get |
+|---|---|
+| `./shooter --shepherd` | Tine 1 (THE CROOK). `--arena 2` / `--arena 3`: tines 2 / 3 (`--arena` is 1-based). |
+| `--overlay shepkill` | Kills the tine's sheepdog 2.5 s after it arrives (to see the break and the spar). |
+
+- **Layout.** Three decks 40 x 200 m (`shep::tineX` -110 / 0 / 110), the ring's ice 10 m below (`VOID_Y` -5
+  sends you to the checkpoint). Gaps are 70 m, past the grapple's 50 m: you can't skip a tine. Fins
+  (`shep::fins`) are the shelter, posts on their south side. Rails along the edges, open where a spar lands.
+  The root horn housing closes the north end; the tine climbs from it into the Shepherd (visual boxes).
+- **The aimed sweep.** From `shep::horn(k)`, every 11-15 s after the last ends, while the tine's fight is
+  on: 1.2 s of lamps, then a clocked 4 s countdown; cone half-angle = atan(12 m / distance), so it is a ~24 m
+  wide strip where it reaches you. Red edges and chevrons on the deck, an arc of ice for the front
+  (`gatherShepherd`). The crossing's random schedule is held off.
+- **Sheepdogs (tine form).** `Enemy::tineForm`: no breaking off, `armorMult` 0.6 (Drover 0.35), 1.6 while
+  `shepOpen`, 1.8 staggered. They arrive at 72% health ("back hurt"). A staggered sheepdog caught by a wave
+  loses 20%. Crook: parried hook staggers it 3.5 s; below 55% it cuts HOLDFAST lines (1.1 s gold tell, let go
+  to avoid; else cut, 6 damage and hauled in). Drover: hangs 9 m off a deck edge, swaps sides every 12 s;
+  its herd is three DRIVEN movers (`level.shepHerd`, moving shelter); spiking one breaks the formation
+  (6 s open, that block stops); each block it sends across (0.65 m half-height: jumpable at full weight)
+  opens it 4 s. Bellwether: 25+ damage while its bell swings cracks the clapper (staggered 3 s); below half
+  it rings twice. Pairs of Strays climb over the rails every 14 s while fewer than 3 are up.
+- **The break.** The sheepdog dead: everything else on the tine is thrown off, cracks run root to tip,
+  the horn goes dark, and 2.2 s later its spar (`level.shepBridges[k]`, a DRIVEN mover dropped from 90 m)
+  falls across to the next tine. The third break: `STAY. / EVERYTHING HERE STAYS.`, then the end card
+  ("TO BE CONTINUED"; the save is not marked complete).
+- **One bar, five segments** (`renderBossBar` takes a y and a segment count now). The Comb is the first
+  fifth: a third per tine, the sheepdog's health the way there.
+- **Save.** Its checkpoints are chapter 6 checkpoints 10-12 (`StorySave` takes up to 19); a resume from 10+
+  sets `g_shepherd` and builds this level.
+- **Track the tine in play with `shepTines`, never `director.arena`:** the director moves on to the next
+  arena as soon as a wave clears.
+
+Not done / to check:
+- **Not hand-played.** Numbers (sheepdog health and armour, the cone width, the 11-15 s gaps) are guesses.
+- The sweep is not on the beat yet: the music is the ring's track at boss intensity (1.3). Design 9 wants
+  180 BPM and the countdown landing on a downbeat (`MusicSynth` would need to expose its playhead).
+- The tines don't move: motion is sold by the bow-wave spray on each west face and nothing else. Streaming
+  chunks in the gaps would help.
+- The Bellwether's flock is still drawn after a cracked clapper ("scatters" is only the banner).
+- The hand-off from the Shore is a cut, not a fade.
+- `make test` beyond `test-ring` and a web build were not run this session.
+
 ## Next steps, in order
 
 1. **Play it (the user).** `./shooter --story6` start to finish. Questions: do
@@ -531,7 +581,9 @@ music never ducks at the zero.
    they are content with the crossing. Open: their verdict on the new sky, ground, waves and music;
    the frame cost at 4K; Strays still use full gravity in the low-gravity levels (shortcut 8);
    the Drift has no fight; the bridge cutscene.
-7. **Then the boss** as written (design section 6).
+7. **The boss** as written (design section 6). Phase 1 (THE COMB) is built: see above. Next: THE TURN
+   (the sky rolls, vents open for ~5 s after each sweep, RECALL into shelter taught with 6 s warnings), then
+   THE RESONATOR, THE BREAK (the Gather ride), THE FALL and the finisher.
 
 ## House rules noticed while building
 
