@@ -180,11 +180,14 @@ inline LevelData buildShepherd() {
         for (int i = 0; i < 16; ++i) {
             const float fi = (float)i, len = 60.f, ang = 0.42f + 0.025f * fi;   // steepening as it rises
             float y = 8.f, z = shep::Z_N - 22.f;
-            for (int j = 0; j < i; ++j) { y += std::sin(0.42f + 0.025f * j) * len; z -= std::cos(0.42f + 0.025f * j) * len; }
+            for (int j = 0; j < i; ++j) { y += ring::dsin(0.42f + 0.025f * j) * len; z -= ring::dcos(0.42f + 0.025f * j) * len; }   // (dsin/dcos: the same in the browser, so the bake matches)
             const float w = 2.f * shep::HALF + 3.f * fi;
-            Shape& seg = b.kit().box({cx, y + std::sin(ang) * len * 0.5f, z - std::cos(ang) * len * 0.5f}, {w, 16.f + 1.5f * fi, len + 2.f}, glm::mix(hull, steel, 0.3f + 0.04f * fi), 0.f, ang);
-            (void)seg;
-            if (i % 2 == 0) b.kit().box({cx, y + std::sin(ang) * len * 0.5f + 8.5f + 0.75f * fi, z - std::cos(ang) * len * 0.5f}, {w * 0.7f, 0.4f, 1.f}, lampWhite * 0.4f, 0.f, ang);
+            auto tilted = [&](vec3 c, vec3 size, vec3 col) {   // (turned with drotate, not the kit's pitch: libm-free)
+                Shape& sh = b.kit().box({0.f, 0.f, 0.f}, size, col);
+                sh.xf = glm::translate(glm::mat4(1.f), c) * ring::drotate(ang, vec3{1.f, 0.f, 0.f}) * sh.xf;
+            };
+            tilted({cx, y + ring::dsin(ang) * len * 0.5f, z - ring::dcos(ang) * len * 0.5f}, {w, 16.f + 1.5f * fi, len + 2.f}, glm::mix(hull, steel, 0.3f + 0.04f * fi));
+            if (i % 2 == 0) tilted({cx, y + ring::dsin(ang) * len * 0.5f + 8.5f + 0.75f * fi, z - ring::dcos(ang) * len * 0.5f}, {w * 0.7f, 0.4f, 1.f}, lampWhite * 0.4f);
         }
         // Sheepdog spawn marks don't need geometry; the Drover's herd (tine 2): movers the game slides
         if (k == 1) {

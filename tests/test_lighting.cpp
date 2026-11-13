@@ -8,6 +8,7 @@
 #include "world/LevelAct2.h"
 #include "world/LevelTraining.h"
 #include "world/LevelRing.h"
+#include "world/LevelShepherd.h"
 #include "render/LightBake.h"
 #include <cstdio>
 
@@ -17,7 +18,7 @@ int main() {
     for (auto entry : {Entry{"act1",buildLevel}, Entry{"act2",buildAct2Level},
             Entry{"fast",buildGauntlet}, Entry{"story1",buildCradle},
             Entry{"story2",buildWasteland}, Entry{"story3",buildLab},
-            Entry{"training",buildTraining}, Entry{"story6",buildRing}}) {
+            Entry{"training",buildTraining}, Entry{"story6",buildRing}, Entry{"shepherd",buildShepherd}}) {
         auto level=entry.build();
         std::string error;
         bool valid=!lightbake::load(entry.name,level,error).empty();
