@@ -68,6 +68,7 @@
       const q = new URLSearchParams(location.search);
       const args = q.has('arena') ? ['--arena', q.get('arena')] : q.has('play') ? ['--play'] : [];
       if (q.has('story5')) args.push('--story5');
+      if (q.has('shepherd')) args.push('--shepherd');   // Chapter 6's boss: THE SHEPHERD (?shepherd&arena=N: 1-3 the tines, 4 the ridge, 5 the hall, 6 the Ledger, 7 the well)
       if (q.has('story6')) args.push('--story6');   // Chapter 6: THE KEPT RING (?story6&arena=10: the Shore)
       if (q.has('res')) args.push('--res', q.get('res')); // optional render resolution for previews/software GPU checks
       if (q.has('story4')) args.push('--story4');   // Chapter 4 (in progress): no menu entry yet
