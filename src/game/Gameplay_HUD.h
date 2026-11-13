@@ -128,11 +128,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
                 const char* step=shepTurnT>=0.f?"IT IS TURNING":sweep.active()?"WAVE COMING: GET BEHIND A BLOCK BY ITS LIT POST":shepVentOpenT>0.f?"VENTS OPEN: RUN IN, SHOOT ONE FROM CLOSE":"SHUT: THEY OPEN AFTER THE NEXT WAVE";
                 std::snprintf(ridge,sizeof(ridge),"VENTS %d/3  /  %s",shepVents,step);what=ridge;
             }
-            else if(shepherd()) {   // THE COMB: which tine, and what now
-                static char comb[96];
-                const char* step=shepBreakT>=0.f||level.arenaAt(player.position)<shepTines?"THE TINE IS BROKEN: CROSS THE SPAR":sweep.active()?"OUT OF THE RED CONE, OR BEHIND A FIN":"KILL ITS SHEEPDOG";
-                std::snprintf(comb,sizeof(comb),"TINE %d/3  /  %s",std::min(shepTines+1,3),step);what=comb;
-            }
+            else if(shepherd()) what=combObjective();   // THE COMB (Gameplay_ShepherdComb.h)
             else if(ring()) what=sweep.active()?"GET BEHIND A LIT POST":"CROSS THE RING / SHELTER WHEN THE POSTS LIGHT";
             else if(here==0)what="SALVAGE BAY / FOLLOW THE AMBER LIGHTS DOWN";
             else if (here == level.story.pitSection && !storyOwns(0)) what = "TAKE THE REVOLVER / UNIT 01 UNDER THE WORK LIGHT";

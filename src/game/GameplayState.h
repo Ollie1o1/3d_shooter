@@ -402,10 +402,21 @@ public:
     bool  gapRide = false, gapSweepDone = false; int gapDroverUid = -1; float gapSide = 1.f, gapSideT = 0.f;
     struct WakeRing { glm::vec3 at; float radius = 0.f; bool hit = false; };
     // THE SHEPHERD (Gameplay_Shepherd.h)
-    int   shepTines = 0, shepDogUid = -1, shepHerdPinned = -1;
-    float shepBreakT = -1.f, shepBridgeT[2] = {-1.f, -1.f}, shepSweepT = 0.f, shepDogMax = 1.f, shepStrayT = 0.f;
-    float shepCutT = -1.f, shepCutCd = 0.f, shepHerdT = 0.f, shepHerdPinT = 0.f, shepBellT = -1.f, shepBellHp = -1.f;
-    float shepSideT = 0.f, shepSide = -1.f, shepEndT = -1.f, shepEnterT = -1.f, shepherdDamageT = 0.f;
+    int   shepTines = 0, shepDogUid = -1;   // (shepTines: the Comb's zones done)
+    float shepBreakT = -1.f, shepSweepT = 0.f, shepDogMax = 1.f, shepStrayT = 0.f;
+    float shepCutT = -1.f, shepCutCd = 0.f, shepBellT = -1.f;
+    float shepEndT = -1.f, shepEnterT = -1.f, shepherdDamageT = 0.f;
+    // THE COMB (Gameplay_ShepherdComb.h)
+    struct ShepCap { float t = -1.f; glm::vec3 from{0.f}, to{0.f}; float life = 0.f, spin = 0.f; bool down = false; };
+    ShepCap shepCap[8]; float shepCapT = 0.f; int shepCapNext = 0;
+    bool  shepPerched = false; float shepPerchT = 0.f, shepSwingT = -1.f, shepSwingCd = 0.f;
+    bool  shepChase = false; float shepCollapseZ = 0.f, shepSlabFall[15] = {};
+    struct ShepBoulder { glm::vec3 pos{0.f}, vel{0.f}; bool hit = false; float life = 0.f, spin = 0.f; };
+    std::vector<ShepBoulder> shepBoulders; float shepBoulderT = 0.f;
+    float shepGrindT = 0.f, shepGrindWarn = -1.f, shepGrindX = -1e9f, shepGrindZ = 0.f; bool shepGrindHit = false, shepGrindHint = false;
+    float shepShieldHp[4] = {}, shepShieldOpenT = 0.f;
+    bool  shepBellDown[5] = {}; float shepBellFall[5] = {}; int shepBellPerch = 2;
+    float shepHopT = -1.f, shepHopNext = 0.f, shepTollT = 0.f, shepTollWarn = -1.f, shepRehangT = -1.f; glm::vec3 shepHopFrom{0.f}, shepHopTo{0.f}; bool shepTollHint = false;
     int   shepVents = 0;   // THE TURN
     float shepTurnT = -1.f, shepTurnAng = 0.f, shepVentHp[3] = {1.f, 1.f, 1.f}, shepVentOpenT = 0.f, shepRidgeSweepT = 0.f, shepAddT = 0.f, shepVentMsgT = 0.f, shepInT = -1.f;
     int   shepGuardWave = 0; bool shepSweepWas = false;
@@ -413,12 +424,12 @@ public:
     int   shepForks = 0; float shepForkHp[4] = {1.f, 1.f, 1.f, 1.f}; bool shepForkHint = false;
     float shepForkRingT = 0.f, shepHallSweepT = 0.f, shepMembraneT = -1.f, shepWellT = -1.f, shepWellNext = 0.f, shepWellCount = -1.f, shepWellFront = 0.f, shepWellMaxY = 0.f, shepUpT = -1.f;
     bool  shepTurnSeen = false, shepVentsArmed = false, shepSweepPassed = false;
-    bool  shepHerdHeld = false, shepWasStaggered = false, shepSeen = false, shepConeHint = false, shepCutHint = false, shepBellHint = false;
+    bool  shepWasStaggered = false, shepSeen = false, shepConeHint = false, shepCutHint = false, shepBellHint = false;
     std::vector<WakeRing> wakeRings; bool wakeSweepDone = false; float wakeViewT = -1.f;   // THE WAKE
     float ringSweptAgo = -1.f;   // since a lethal sweep passed (its swept burn up across the giant: skybox.frag)
     std::vector<char> lurkerOut;   // which of ring::lurkers() have come out (Gameplay_RingFoes.h)
     int shoreSweeps = 0; bool shoreBreakHint = false, shoreWeightHint = false, shoreSpoke = false;   // THE SHORE
-    struct GapCharge { bool on = false, hit = false; glm::vec3 pos{0.f}; float dir = 1.f, from = 0.f; } gapCharge, shepCharge;   // -1 not yet set, 0 hard vacuum outside, 1 the hull's air
+    struct GapCharge { bool on = false, hit = false; glm::vec3 pos{0.f}; float dir = 1.f, from = 0.f; } gapCharge;   // -1 not yet set, 0 hard vacuum outside, 1 the hull's air
     glm::vec3 sweptFrom{0.f}, sweptDir{0.f, 0.f, 1.f};
     bool sweptFalling() const { return playerDead && sweptT >= 0.f && sweptT < SWEPT_FALL; }
     static constexpr float SWEPT_FALL = 2.2f;
@@ -1431,7 +1442,17 @@ public:
     void   beginShepherd();
     void   shepMovers(float dt);
     void   shepLaunch(const Enemy& d);
-    void   shepDogKit(Enemy& d, float dt);
+    void   shepCombReset();
+    glm::vec3 shepBellSpot(int i) const;
+    glm::vec3 shepShieldPos(int i, const Enemy& d) const;
+    void   shepCombMovers(float dt);
+    void   shepThrowCap(glm::vec3 to);
+    bool   shootComb(glm::vec3 from, glm::vec3 dir, float& distance, float dmg);
+    void   shepCombKit(Enemy& d, float dt);
+    void   shepComb(float dt);
+    void   gatherComb(std::vector<BoxInstance>& out);
+    void   combMarkers(const glm::mat4& view, const glm::mat4& proj);
+    const char* combObjective();
     void   updateShepherd(float dt);
     void   gatherShepherd(std::vector<BoxInstance>& out);
     void   renderShepherdBars();

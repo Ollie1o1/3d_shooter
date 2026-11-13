@@ -23,47 +23,46 @@
 #include "world/LevelRing.h"
 
 namespace shep {
-constexpr int   TINES = 3;
-constexpr float HALF = 20.f;                     // a deck's half width
-constexpr float Z_S = -3300.f, Z_N = -3500.f;    // a deck's south tip and its root
-constexpr float PLAIN_Y = -10.f;                 // the ring's ice, ploughed aside below the decks
-constexpr float VOID_Y = -5.f;                   // off a deck: back to the checkpoint
-constexpr float BRIDGE_Z = -3340.f, BRIDGE_HZ = 6.f;
+constexpr int   TINES = 3;                       // the Comb's three zones, up one tine (the name stayed)
+constexpr float PLAIN_Y = -10.f;                 // the ring's ice, ploughed aside below the tine
+constexpr float VOID_Y = -5.f;                   // off the tine: back to the checkpoint
 constexpr float FIN_W = 7.f, FIN_D = 1.6f, FIN_H = 5.f;
-constexpr float HERD_RUN = 15.f;                 // the Drover's herd slides this far either side of the deck's line
-inline float tineX(int k) { return -110.f + 110.f * (float)k; }
-inline glm::vec3 horn(int k) { return {tineX(k), 9.f, Z_N - 12.f}; }   // where its sweep fires from
-inline glm::vec3 start(int k) { return k == 0 ? glm::vec3{tineX(0), 0.f, Z_S - 6.f} : glm::vec3{tineX(k) - HALF + 4.f, 0.f, BRIDGE_Z}; }
-inline AABB bridge(int k) {   // the spar from tine k to tine k + 1 (k = 0, 1)
-    return {{tineX(k) + HALF - 0.5f, -1.4f, BRIDGE_Z - BRIDGE_HZ}, {tineX(k + 1) - HALF + 0.5f, 0.f, BRIDGE_Z + BRIDGE_HZ}};
-}
-inline float rowZ(int r) { return Z_S - 22.f - 30.f * (float)r; }
-constexpr int ROWS = 6;
-// Its fins: shelter on a tine (each with a mooring post on its lee). Rows of two, then one in the
-// middle. The Drover's tine keeps only the rows of two: its herd is the rest
-inline std::vector<AABB> fins(int k) {
+// PHASE 1, THE COMB: one tine, walked from its tip toward the Shepherd, in three zones.
+//   THE PLOUGH     its tip, tearing through a field of capsules that it throws up onto the deck; THE CROOK
+//                  hooks from a mast over the middle of it
+//   THE STAMPEDE   the tine breaking up behind you (deck plates that fall), THE DROVER rolling its herd
+//                  down at you; it makes its stand on the KNUCKLE, where the plates stop
+//   THE BELFRY     the root: a tower of hanging bells. THE BELLWETHER rings them; drop one on it
+constexpr float HALF = 22.f;                     // the deck's half width
+constexpr float TIP = -3300.f, PLOUGH_N = -3445.f;
+constexpr float SLAB = 10.f; constexpr int SLABS = 15;
+inline float slabZ(int i) { return PLOUGH_N - SLAB * (float)i; }   // a plate's south edge (its north: slabZ(i) - SLAB)
+constexpr float KNUCKLE_S = -3595.f, KNUCKLE_N = -3656.f;
+constexpr float BEL_S = -3656.f, BEL_N = -3716.f, BEL_HX = 25.f, BALC_Y = 11.f, BALC_D = 6.f, BEL_TOP = 34.f;
+inline glm::vec3 perch() { return {0.f, 14.f, -3388.f}; }          // the Crook's mast top
+inline glm::vec3 shepherdEye() { return {0.f, 70.f, -3900.f}; }     // where its aimed sweep comes from (its ridge, high and north)
+inline std::vector<AABB> fins() {
     std::vector<AABB> out;
-    const float cx = tineX(k);
-    for (int r = 0; r < ROWS; ++r) {
-        const float z = rowZ(r);
-        if (r % 2 == 0) {
-            for (float sx : {-11.f, 11.f})
-                out.push_back({{cx + sx - FIN_W * 0.5f, 0.f, z - FIN_D * 0.5f}, {cx + sx + FIN_W * 0.5f, FIN_H, z + FIN_D * 0.5f}});
-        } else if (k != 1) {
-            out.push_back({{cx - FIN_W * 0.5f, 0.f, z - FIN_D * 0.5f}, {cx + FIN_W * 0.5f, FIN_H, z + FIN_D * 0.5f}});
-        }
-    }
+    auto fin = [&](float x, float z) { out.push_back({{x - FIN_W * 0.5f, 0.f, z - FIN_D * 0.5f}, {x + FIN_W * 0.5f, FIN_H, z + FIN_D * 0.5f}}); };
+    fin(-12.f, -3330.f); fin(12.f, -3330.f); fin(-16.f, -3360.f); fin(16.f, -3360.f);
+    fin(-12.f, -3412.f); fin(12.f, -3412.f); fin(0.f, -3436.f);
     return out;
 }
-// The Drover's herd: three blocks of ice in the middle rows' places, slid across the deck
-inline float herdZ(int i) { return rowZ(1 + 2 * i); }
-inline glm::vec3 herdHalf() { return {2.8f, 2.3f, 1.7f}; }
+constexpr int CAPS = 8;                          // the capsules it throws up onto the deck (a pool of movers)
+inline glm::vec3 capHalf() { return {1.2f, 1.1f, 2.4f}; }
+struct Bell { glm::vec3 top; float floorY; };
+inline std::vector<Bell> bells() {
+    return {{{-12.f, 8.5f, -3678.f}, 0.f}, {{12.f, 8.5f, -3678.f}, 0.f}, {{0.f, 8.5f, -3700.f}, 0.f},
+            {{-22.f, 19.5f, -3692.f}, BALC_Y}, {{22.f, 19.5f, -3692.f}, BALC_Y}};
+}
+constexpr float BELL_H = 3.6f, BELL_R = 2.3f;
+inline glm::vec3 greatBell() { return {0.f, 30.f, -3690.f}; }
 
 // PHASE 2, THE TURN: a raft of packed ice heaped against its ridge, east of the tines. The ridge's
 // face is the north edge; its three vents open after each wave. Each sits further from shelter
-constexpr float RX0 = 260.f, RX1 = 400.f, RZ_S = -3296.f, RIDGE_Z = -3458.f;
-inline glm::vec3 ridgeStart() { return {330.f, 0.f, RZ_S - 8.f}; }
-inline glm::vec3 vent(int i) { const float x[3] = {290.f, 332.f, 374.f}; return {x[i], 2.6f, RIDGE_Z + 0.5f}; }
+constexpr float RX0 = 560.f, RX1 = 700.f, RZ_S = -3296.f, RIDGE_Z = -3458.f;
+inline glm::vec3 ridgeStart() { return {630.f, 0.f, RZ_S - 8.f}; }
+inline glm::vec3 vent(int i) { const float x[3] = {590.f, 632.f, 674.f}; return {x[i], 2.6f, RIDGE_Z + 0.5f}; }
 constexpr float VENT_HX = 3.2f, VENT_HY = 2.2f;
 // PHASE 3, THE RESONATOR: inside. Three rooms north from x 800: the Tuning Hall (its blasts run
 // down it from the core; the side rooms are shelter; four forks to still), the Ledger (quiet), and
@@ -83,8 +82,10 @@ inline AABB wellAlcove(int i) {   // the recess (where standing is shelter)
     return west ? AABB{{WX0 - 4.f, y, -3537.f}, {WX0 + 0.6f, y + 5.f, -3531.f}} : AABB{{WX1 - 0.6f, y, -3537.f}, {WX1 + 4.f, y + 5.f, -3531.f}};
 }
 inline std::vector<glm::vec2> ridgeShelters() {   // (x, z) of each block's middle
-    return {{280.f, -3335.f}, {320.f, -3335.f}, {360.f, -3335.f}, {388.f, -3335.f}, {300.f, -3368.f}, {345.f, -3368.f}, {380.f, -3368.f},
-            {272.f, -3400.f}, {318.f, -3398.f}, {292.f, -3428.f}, {332.f, -3418.f}, {372.f, -3405.f}};
+    std::vector<glm::vec2> v = {{280.f, -3335.f}, {320.f, -3335.f}, {360.f, -3335.f}, {388.f, -3335.f}, {300.f, -3368.f}, {345.f, -3368.f}, {380.f, -3368.f},
+                                {272.f, -3400.f}, {318.f, -3398.f}, {292.f, -3428.f}, {332.f, -3418.f}, {372.f, -3405.f}};
+    for (auto& c : v) c.x += 300.f;   // (moved east, out of sight of the Comb)
+    return v;
 }
 }
 
@@ -108,9 +109,7 @@ inline LevelData buildShepherd() {
     for (int i = 0; i < 70; ++i) {   // chunks lying on the ice between and around the tines (out of reach)
         const float fi = (float)i;
         float x = -260.f + 520.f * ring::hash(fi, 21.f), z = -3560.f + 300.f * ring::hash(fi, 22.f);
-        bool onDeck = false;
-        for (int k = 0; k < shep::TINES; ++k) if (std::fabs(x - shep::tineX(k)) < shep::HALF + 8.f) onDeck = true;
-        if (onDeck) continue;
+        if (std::fabs(x) < shep::HALF + 8.f) continue;   // (off the tine)
         const float r = 1.2f + 3.f * ring::hash(fi, 23.f);
         ringChunk(b, LevelBuilder::aabb(x - r, shep::PLAIN_Y, z - r * 0.7f, x + r, shep::PLAIN_Y + r * 1.1f, z + r * 0.7f), glm::mix(iceLit, iceDark, 0.3f + 0.4f * ring::hash(fi, 24.f)), (uint32_t)(i * 31 + 5));
     }
@@ -121,97 +120,134 @@ inline LevelData buildShepherd() {
         b.prop(at.x - 0.25f, at.y, at.z - 0.25f, at.x + 0.25f, at.y + 0.2f, at.z + 0.25f, steel);
     };
 
-    for (int k = 0; k < shep::TINES; ++k) {
-        const float cx = shep::tineX(k), x0 = cx - shep::HALF, x1 = cx + shep::HALF;
-        // The deck: the top of a tooth ploughing through the ice
-        b.mat = Mat::METAL;
-        b.wall(x0, shep::PLAIN_Y - 2.f, shep::Z_N, x1, 0.f, shep::Z_S, hull);
-        // Its plating: seams across it every 10 m, a lit strip down each edge
-        for (float z = shep::Z_S - 10.f; z > shep::Z_N; z -= 10.f) {
-            if (std::fmod(-z, 20.f) < 1.f) b.neon(x0 + 3.f, 0.f, z - 0.1f, x1 - 3.f, 0.04f, z + 0.1f, lampWhite * 0.22f);   // its deck lamps, cold, every 20 m
-            else b.prop(x0 + 1.f, 0.f, z - 0.08f, x1 - 1.f, 0.03f, z + 0.08f, hullLit);
-        }
-        b.neon(x0 + 0.6f, 0.02f, shep::Z_N + 4.f, x0 + 0.8f, 0.06f, shep::Z_S - 2.f, lampWhite * 0.18f);
-        b.neon(x1 - 0.8f, 0.02f, shep::Z_N + 4.f, x1 - 0.6f, 0.06f, shep::Z_S - 2.f, lampWhite * 0.18f);
-        // Rails down both edges (a lip to stop a careless step; jump it if you mean to), open where a spar lands
-        for (int sd = -1; sd <= 1; sd += 2) {
-            const float xr = sd < 0 ? x0 : x1 - 0.5f;
-            const bool gapHere = (sd > 0 && k < shep::TINES - 1) || (sd < 0 && k > 0);
-            if (gapHere) {
-                b.wall(xr, 0.f, shep::Z_N, xr + 0.5f, 0.7f, shep::BRIDGE_Z - shep::BRIDGE_HZ - 1.f, hullLit);
-                b.wall(xr, 0.f, shep::BRIDGE_Z + shep::BRIDGE_HZ + 1.f, xr + 0.5f, 0.7f, shep::Z_S, hullLit);
-            } else b.wall(xr, 0.f, shep::Z_N, xr + 0.5f, 0.7f, shep::Z_S, hullLit);
-        }
-        // Its south point: the tooth's tip, stepping down into the ice
-        b.mat = Mat::METAL;
-        for (int i = 0; i < 4; ++i) {
-            const float w = shep::HALF * (0.8f - 0.18f * i), z = shep::Z_S + 6.f * i;
-            b.prop(cx - w, shep::PLAIN_Y - 1.f, z, cx + w, -1.5f - 2.f * i, z + 6.f, hull);
-        }
-        // The bow wave: the ice it shoves aside, heaped against its west face
-        b.mat = Mat::ROCK;
-        for (float z = shep::Z_N + 6.f; z < shep::Z_S; z += 9.f) {
-            const float q = z * 0.13f + k * 31.f;
-            b.kit().rock({x0 - 2.f - 2.f * ring::hash(q, 1.f), shep::PLAIN_Y - 0.5f, z}, 3.f + 2.f * ring::hash(q, 2.f), 4.f + 4.f * ring::hash(q, 3.f), glm::mix(iceLit, sand, 0.3f), (uint32_t)(q * 7.f), 0.6f, 7);
-            b.kit().rock({x1 + 1.5f, shep::PLAIN_Y - 0.5f, z + 4.f}, 1.6f + ring::hash(q, 4.f), 1.5f + 2.f * ring::hash(q, 5.f), glm::mix(iceLit, iceDark, 0.4f), (uint32_t)(q * 11.f), 0.6f, 6);
-        }
-        // Fins: shelter (each with its post in its lee, the south side)
-        int n = 0;
-        for (const AABB& f : shep::fins(k)) {
+    // =========================================================================
+    // PHASE 1: THE COMB. One tine, tip to root
+    // =========================================================================
+    {
+        const float x0 = -shep::HALF, x1 = shep::HALF;
+        const vec3 amber{2.4f, 1.3f, 0.35f};
+        auto deck = [&](float zS, float zN) {   // solid deck: plating, lit edges, rails
             b.mat = Mat::METAL;
-            const int w = b.wall(f.min.x, f.min.y, f.min.z, f.max.x, f.max.y, f.max.z, glm::mix(hull, hullLit, 0.4f + 0.3f * ring::hash((float)n + k * 10.f, 5.f)));
-            (void)w;
-            b.neon(f.min.x + 0.4f, f.max.y - 0.5f, f.max.z + 0.01f, f.max.x - 0.4f, f.max.y - 0.36f, f.max.z + 0.06f, lampWhite * 0.25f);   // a seam of its lamps
-            SweepShelter sh; sh.box = f; sh.section = k;
-            sh.post = {f.max.x - 0.8f, 0.f, f.max.z + 1.2f};
-            post(sh.post);
+            b.wall(x0, shep::PLAIN_Y - 2.f, zN, x1, 0.f, zS, hull);
+            for (float z = zS - 10.f; z > zN; z -= 10.f) {
+                if (std::fmod(-z, 20.f) < 1.f) b.neon(x0 + 3.f, 0.f, z - 0.1f, x1 - 3.f, 0.04f, z + 0.1f, lampWhite * 0.22f);
+                else b.prop(x0 + 1.f, 0.f, z - 0.08f, x1 - 1.f, 0.03f, z + 0.08f, hullLit);
+            }
+            for (float xr : {x0, x1 - 0.5f}) b.wall(xr, 0.f, zN, xr + 0.5f, 0.7f, zS, hullLit);
+            b.neon(x0 + 0.6f, 0.02f, zN + 1.f, x0 + 0.8f, 0.06f, zS - 1.f, lampWhite * 0.18f);
+            b.neon(x1 - 0.8f, 0.02f, zN + 1.f, x1 - 0.6f, 0.06f, zS - 1.f, lampWhite * 0.18f);
+        };
+        // ---- THE PLOUGH: the tip, and the field of capsules it tears through ----
+        deck(shep::TIP, shep::PLOUGH_N);
+        for (int i = 0; i < 4; ++i) {   // its point, stepping down into the ice
+            const float w = shep::HALF * (0.8f - 0.18f * i), z = shep::TIP + 6.f * i;
+            b.prop(-w, shep::PLAIN_Y - 1.f, z, w, -1.5f - 2.f * i, z + 6.f, hull);
+        }
+        for (int i = 0; i < 150; ++i) {   // the field: capsules lying in the ice both sides, heaped up at its bow
+            const float fi = (float)i, side = ring::hash(fi, 41.f) < 0.65f ? -1.f : 1.f;
+            const float x = side * (shep::HALF + 4.f + 120.f * ring::hash(fi, 42.f) * ring::hash(fi, 43.f));
+            const float z = -3260.f - 520.f * ring::hash(fi, 44.f);
+            ringCapsule(b, {x, shep::PLAIN_Y + 0.4f, z}, ring::hash(fi, 45.f) < 0.3f, (int)(ring::hash(fi, 46.f) * 4.f), (ring::hash(fi, 47.f) - 0.5f) * 40.f, false);
+        }
+        b.mat = Mat::ROCK;
+        for (float z = shep::KNUCKLE_N; z < shep::TIP; z += 9.f) {   // the bow wave on its west face, ice and capsules heaped
+            const float q = z * 0.13f;
+            b.kit().rock({x0 - 2.f - 2.f * ring::hash(q, 1.f), shep::PLAIN_Y - 0.5f, z}, 3.f + 2.f * ring::hash(q, 2.f), 4.f + 4.f * ring::hash(q, 3.f), glm::mix(iceLit, sand, 0.3f), (uint32_t)(q * 7.f), 0.6f, 7);
+        }
+        int n = 0;
+        for (const AABB& f : shep::fins()) {   // fins: shelter from its aim, each with its post in its lee
+            b.mat = Mat::METAL;
+            b.wall(f.min.x, f.min.y, f.min.z, f.max.x, f.max.y, f.max.z, glm::mix(hull, hullLit, 0.4f + 0.3f * ring::hash((float)n, 5.f)));
+            b.neon(f.min.x + 0.4f, f.max.y - 0.5f, f.max.z + 0.01f, f.max.x - 0.4f, f.max.y - 0.36f, f.max.z + 0.06f, lampWhite * 0.25f);
+            SweepShelter sh; sh.box = f; sh.section = 0; sh.post = {f.max.x - 0.8f, 0.f, f.max.z + 1.2f};
+            post(sh.post); l.sweepShelters.push_back(sh); ++n;
+        }
+        {   // the Crook's mast: a pillar and its platform, a lamp ring round it
+            const vec3 pc = shep::perch();
+            b.mat = Mat::METAL;
+            b.wall(pc.x - 1.6f, 0.f, pc.z - 1.6f, pc.x + 1.6f, pc.y - 0.6f, pc.z + 1.6f, hullLit);
+            b.wall(pc.x - 4.5f, pc.y - 0.6f, pc.z - 4.5f, pc.x + 4.5f, pc.y, pc.z + 4.5f, hull);
+            b.neon(pc.x - 4.5f, pc.y - 0.7f, pc.z + 4.45f, pc.x + 4.5f, pc.y - 0.45f, pc.z + 4.55f, amber * 0.6f);
+            b.neon(pc.x - 4.5f, pc.y - 0.7f, pc.z - 4.55f, pc.x + 4.5f, pc.y - 0.45f, pc.z - 4.45f, amber * 0.6f);
+            SweepShelter sh; sh.box = LevelBuilder::aabb(pc.x - 1.6f, 0.f, pc.z - 1.6f, pc.x + 1.6f, pc.y, pc.z + 1.6f); sh.section = 0; sh.post = {pc.x + 1.f, 0.f, pc.z + 2.8f};
+            post(sh.post); l.sweepShelters.push_back(sh);
+        }
+        for (int i = 0; i < shep::CAPS; ++i) {   // the capsules it throws: parked until thrown (Gameplay_ShepherdComb.h)
+            const vec3 c{0.f, shep::capHalf().y, -3380.f};
+            const int m = b.mover(c, shep::capHalf(), Mover::Path::DRIVEN, vec3{0.f}, vec3{0.f}, 1.f, 0.f, vec3{0.f});
+            l.movers[m].look = 3; l.movers[m].color = vec3{0.62f, 0.64f, 0.64f}; l.walls[l.movers[m].wall].mat = Mat::METAL;
+            SweepShelter sh; sh.box = l.walls[l.movers[m].wall].box; sh.wall = l.movers[m].wall; sh.mover = m; sh.fixed = false; sh.section = 0;
+            sh.post = c + vec3{0.f, -shep::capHalf().y, shep::capHalf().z + 1.2f};
             l.sweepShelters.push_back(sh);
-            ++n;
+            l.shepCaps.push_back(m);
         }
-        // The root: its horn housing across the north end (where the sweep fires from), and the tooth
-        // climbing away from it, up into the Shepherd
+        // ---- THE STAMPEDE: plates that fall (movers), then the KNUCKLE (solid) ----
+        for (int i = 0; i < shep::SLABS; ++i) {
+            const float zS = shep::slabZ(i), zN = zS - shep::SLAB;
+            const vec3 c{0.f, -0.75f, (zS + zN) * 0.5f}, h{shep::HALF, 0.75f, shep::SLAB * 0.5f - 0.05f};
+            const int m = b.mover(c, h, Mover::Path::DRIVEN, vec3{0.f}, vec3{0.f, -90.f, 0.f}, 1.f, 0.f, vec3{0.f});
+            l.movers[m].look = 3; l.movers[m].color = glm::mix(hull, hullLit, 0.25f + 0.2f * ring::hash((float)i, 7.f)); l.walls[l.movers[m].wall].mat = Mat::METAL;
+            l.shepSlabs.push_back(m);
+        }
+        deck(shep::KNUCKLE_S, shep::KNUCKLE_N);
         b.mat = Mat::METAL;
-        b.wall(x0, 0.f, shep::Z_N - 22.f, x1, 16.f, shep::Z_N, hull);
-        for (int row = 0; row < 3; ++row) {   // rows of its lamps, which flare with the sweep (skybox's ridge, made near)
-            const float y = 4.f + 4.f * row;
-            b.neon(x0 + 3.f, y, shep::Z_N + 0.02f, x1 - 3.f, y + 0.35f, shep::Z_N + 0.2f, lampWhite * (0.5f - 0.1f * row));
+        for (int sd = -1; sd <= 1; sd += 2)   // its knuckle's bosses either side: cover, and the look of a joint
+            b.wall(sd * 14.f - 3.f, 0.f, -3630.f, sd * 14.f + 3.f, 4.f, -3622.f, glm::mix(hull, hullLit, 0.5f));
+        // The comb's other teeth, far off either side: they grind past (the game's blade, near you)
+        for (int sd = -1; sd <= 1; sd += 2) {
+            b.wall(sd * 150.f - 18.f, shep::PLAIN_Y, -3900.f, sd * 150.f + 18.f, 3.f, -3240.f, hull);
+            b.neon(sd * 150.f - 18.f, 3.f, -3900.f, sd * 150.f - 17.6f, 3.4f, -3240.f, lampWhite * 0.3f);
         }
-        b.prop(cx - 4.f, 6.f, shep::Z_N, cx + 4.f, 12.f, shep::Z_N + 1.2f, steel);   // the horn's mouth
+        // ---- THE BELFRY: the root, a tower of bells ----
+        const float bx = shep::BEL_HX, bs = shep::BEL_S, bn = shep::BEL_N;
+        b.mat = Mat::METAL;
+        b.wall(-bx - 3.f, shep::PLAIN_Y - 2.f, bn - 3.f, bx + 3.f, 0.f, bs, hull);   // floor
+        b.wall(-bx - 3.f, 0.f, bn - 3.f, -bx, shep::BEL_TOP, bs, hull);             // west
+        b.wall(bx, 0.f, bn - 3.f, bx + 3.f, shep::BEL_TOP, bs, hull);               // east
+        b.wall(-bx, 0.f, bn - 3.f, bx, shep::BEL_TOP, bn, hull);                    // north
+        b.wall(-bx, 0.f, bs - 3.f, -7.f, shep::BEL_TOP, bs, hull);                  // south, its door in the middle
+        b.wall(7.f, 0.f, bs - 3.f, bx, shep::BEL_TOP, bs, hull);
+        b.wall(-7.f, 9.f, bs - 3.f, 7.f, shep::BEL_TOP, bs, hull);
+        // balconies: west, east and north, at BALC_Y; ramps up to the west and east ones
+        b.wall(-bx, shep::BALC_Y - 0.6f, bn, -bx + shep::BALC_D, shep::BALC_Y, bs - 3.f, hullLit);
+        b.wall(bx - shep::BALC_D, shep::BALC_Y - 0.6f, bn, bx, shep::BALC_Y, bs - 3.f, hullLit);
+        b.wall(-bx, shep::BALC_Y - 0.6f, bn, bx, shep::BALC_Y, bn + shep::BALC_D, hullLit);
+        for (int sd = -1; sd <= 1; sd += 2) {
+            const float xa = sd < 0 ? -bx + shep::BALC_D : bx - shep::BALC_D - 4.f, xb = xa + 4.f;
+            const float zFoot = bs - 6.f, zTop = bs - 6.f - 30.f;
+            l.ramps.push_back({LevelBuilder::aabb(xa, 0.f, zTop, xb, shep::BALC_Y, zFoot), 2, shep::BALC_Y, 0.f});
+            const float len = std::sqrt(30.f * 30.f + shep::BALC_Y * shep::BALC_Y), ang = ring::datan2(shep::BALC_Y, 30.f);
+            Shape& slab = b.kit().box({0.f, 0.f, 0.f}, {4.f, 0.6f, len}, hullLit);
+            slab.xf = glm::translate(glm::mat4(1.f), vec3{(xa + xb) * 0.5f, shep::BALC_Y * 0.5f, (zFoot + zTop) * 0.5f}) * ring::drotate(ang, vec3{1.f, 0.f, 0.f})
+                    * glm::translate(glm::mat4(1.f), vec3{0.f, -0.3f, 0.f}) * slab.xf;
+            for (int k = 1; k < 6; ++k) {   // solid under it
+                const float zz = zFoot - 30.f * k / 6.f;
+                b.solid(xa, 0.f, zz - 5.f, xb, shep::BALC_Y * k / 6.f - 0.2f, zz);
+            }
+        }
+        for (float y = 4.f; y < shep::BEL_TOP; y += 6.f) {   // its lamps: rows round the tower
+            b.neon(-bx + 0.02f, y, bn + 2.f, -bx + 0.25f, y + 0.3f, bs - 5.f, lampWhite * 0.35f);
+            b.neon(bx - 0.25f, y, bn + 2.f, bx - 0.02f, y + 0.3f, bs - 5.f, lampWhite * 0.35f);
+            b.neon(-bx + 2.f, y, bn + 0.02f, bx - 2.f, y + 0.3f, bn + 0.25f, lampWhite * 0.35f);
+        }
+        for (const shep::Bell& bl : shep::bells()) {   // the beams the bells hang from (the bells and chains are drawn live)
+            b.kit().box({bl.top.x, shep::BEL_TOP - 0.5f, (bl.top.z + bn) * 0.5f}, {1.2f, 1.f, std::fabs(bl.top.z - bn) + 2.f}, steel);
+            b.neon(bl.top.x - 1.f, bl.floorY + 0.02f, bl.top.z - 1.f, bl.top.x + 1.f, bl.floorY + 0.06f, bl.top.z + 1.f, amber * 0.25f);   // a lamp under it, on the floor: where it lands
+        }
+        b.kit().box({0.f, shep::BEL_TOP - 0.5f, (shep::greatBell().z + bn) * 0.5f}, {2.f, 1.4f, std::fabs(shep::greatBell().z - bn) + 2.f}, steel);
+        // The root, rising out of the tower's back into the Shepherd
         for (int i = 0; i < 16; ++i) {
-            const float fi = (float)i, len = 60.f, ang = 0.42f + 0.025f * fi;   // steepening as it rises
-            float y = 8.f, z = shep::Z_N - 22.f;
-            for (int j = 0; j < i; ++j) { y += ring::dsin(0.42f + 0.025f * j) * len; z -= ring::dcos(0.42f + 0.025f * j) * len; }   // (dsin/dcos: the same in the browser, so the bake matches)
-            const float w = 2.f * shep::HALF + 3.f * fi;
-            auto tilted = [&](vec3 c, vec3 size, vec3 col) {   // (turned with drotate, not the kit's pitch: libm-free)
+            const float fi = (float)i, len = 60.f, ang = 0.42f + 0.025f * fi;
+            float y = 20.f, z = bn - 3.f;
+            for (int j = 0; j < i; ++j) { y += ring::dsin(0.42f + 0.025f * j) * len; z -= ring::dcos(0.42f + 0.025f * j) * len; }
+            const float w = 2.f * shep::HALF + 12.f + 3.f * fi;
+            auto tilted = [&](vec3 c, vec3 size, vec3 col) {
                 Shape& sh = b.kit().box({0.f, 0.f, 0.f}, size, col);
                 sh.xf = glm::translate(glm::mat4(1.f), c) * ring::drotate(ang, vec3{1.f, 0.f, 0.f}) * sh.xf;
             };
-            tilted({cx, y + ring::dsin(ang) * len * 0.5f, z - ring::dcos(ang) * len * 0.5f}, {w, 16.f + 1.5f * fi, len + 2.f}, glm::mix(hull, steel, 0.3f + 0.04f * fi));
-            if (i % 2 == 0) tilted({cx, y + ring::dsin(ang) * len * 0.5f + 8.5f + 0.75f * fi, z - ring::dcos(ang) * len * 0.5f}, {w * 0.7f, 0.4f, 1.f}, lampWhite * 0.4f);
+            tilted({0.f, y + ring::dsin(ang) * len * 0.5f, z - ring::dcos(ang) * len * 0.5f}, {w, 16.f + 1.5f * fi, len + 2.f}, glm::mix(hull, steel, 0.3f + 0.04f * fi));
+            if (i % 2 == 0) tilted({0.f, y + ring::dsin(ang) * len * 0.5f + 8.5f + 0.75f * fi, z - ring::dcos(ang) * len * 0.5f}, {w * 0.7f, 0.4f, 1.f}, lampWhite * 0.4f);
         }
-        // Sheepdog spawn marks don't need geometry; the Drover's herd (tine 2): movers the game slides
-        if (k == 1) {
-            const vec3 h = shep::herdHalf();
-            for (int i = 0; i < 3; ++i) {
-                const vec3 c{cx, h.y, shep::herdZ(i)};
-                const int m = b.mover(c, h, Mover::Path::DRIVEN, vec3{-shep::HERD_RUN, 0.f, 0.f}, vec3{shep::HERD_RUN, 0.f, 0.f}, 1.f, 0.f, vec3{0.f});
-                l.movers[m].look = 2; l.movers[m].color = glm::mix(iceLit, iceDark, 0.2f);
-                l.walls[l.movers[m].wall].mat = Mat::ROCK;
-                SweepShelter sh; sh.box = l.walls[l.movers[m].wall].box; sh.wall = l.movers[m].wall; sh.mover = m; sh.fixed = false; sh.section = 1;
-                sh.post = c + vec3{0.f, -h.y, h.z + 1.3f};
-                l.sweepShelters.push_back(sh);
-                l.shepHerd.push_back(m);
-            }
-        }
-    }
-    // The spars: a broken tine's tooth falls across to the next (DRIVEN: the game drops them)
-    for (int k = 0; k + 1 < shep::TINES; ++k) {
-        const AABB br = shep::bridge(k);
-        const vec3 c = (br.min + br.max) * 0.5f, h = (br.max - br.min) * 0.5f;
-        const int m = b.mover(c, h, Mover::Path::DRIVEN, vec3{0.f, 90.f, 0.f}, vec3{0.f}, 1.f, 0.f, vec3{0.f});
-        l.movers[m].color = hull; l.movers[m].glow = lampWhite * 0.12f;
-        l.walls[l.movers[m].wall].mat = Mat::METAL;
-        l.shepBridges.push_back(m);
     }
 
     // ---- PHASE 2: THE TURN. The ice heaped against its ridge, and the ridge ----
@@ -248,11 +284,11 @@ inline LevelData buildShepherd() {
         for (int i = 0; i < 9; ++i) {   // stepping back and up: the ridge's slope
             const float y = 26.f + 22.f * i, z = shep::RIDGE_Z - 6.f - 9.f * i;
             {   // (real walls, not shapes: drawn at any distance, and nothing reaches them)
-                const float hw2 = (shep::RX1 - shep::RX0 + 120.f + 24.f * i) * 0.5f, mx2 = (shep::RX0 + shep::RX1) * 0.5f;
+                const float hw2 = (shep::RX1 - shep::RX0 + 60.f + 8.f * i) * 0.5f, mx2 = (shep::RX0 + shep::RX1) * 0.5f;
                 b.mat = Mat::METAL;
                 b.wall(mx2 - hw2, y, z - 60.f, mx2 + hw2, y + 22.f, z, glm::mix(hullLit, hull, 0.3f + 0.07f * i));
             }
-            const float hw = (shep::RX1 - shep::RX0 + 100.f + 24.f * i) * 0.5f, mx = (shep::RX0 + shep::RX1) * 0.5f;
+            const float hw = (shep::RX1 - shep::RX0 + 50.f + 8.f * i) * 0.5f, mx = (shep::RX0 + shep::RX1) * 0.5f;
             for (float lx = mx - hw + 2.f; lx < mx + hw - 4.f; lx += 9.f)   // (in lamps, not one strip: rows of points read as a face of lights)
                 { b.neon(lx, y + 12.f, z, lx + 5.f, y + 13.6f, z + 0.5f, lampWhite * (1.6f - 0.08f * i)); if ((int)(lx * 0.11f) % 3 == 0) b.neon(lx + 2.f, y + 5.f, z, lx + 3.f, y + 19.f, z + 0.4f, lampWhite * 0.5f); }   // its lamps, row on row up the ridge
         }
@@ -388,31 +424,42 @@ inline LevelData buildShepherd() {
         b.wall(shep::WX0 - 14.f, shep::W_TOP - 2.f, shep::WZ_N - 14.f, shep::WX1 + 14.f, shep::W_TOP, shep::WZ_N - 2.f, hull);
     }
 
-    // ---- the arenas: one to a tine (its spar in belongs to it) ----
+    // ---- the arenas: the Comb's three zones (0-2), then the ridge (3) and inside (4-6) ----
     using W = WaveEntry;
-    for (int k = 0; k < shep::TINES; ++k) {
-        const float cx = shep::tineX(k);
-        static const char* names[3] = {"THE COMB", "THE COMB", "THE COMB"};
-        static const char* subs[3] = {"THE FIRST TINE", "THE SECOND TINE", "THE THIRD TINE"};
+    auto comb = [&](const char* name, const char* sub, AABB zone, vec3 start, AABB trig) {
         Arena a;
-        a.name = names[k]; a.subtitle = subs[k];
-        a.zone = LevelBuilder::aabb(cx - shep::HALF - 1.f, -1000.f, shep::Z_N - 2.f, cx + shep::HALF + 1.f, 40.f, shep::Z_S + 30.f);
-        if (k > 0) { AABB br = shep::bridge(k - 1); br.min.y = -1000.f; br.max.y = 40.f; br.max.x = cx - shep::HALF - 1.f; a.extraZones.push_back(br); }
-        a.bounds = LevelBuilder::aabb(cx - shep::HALF + 1.f, shep::PLAIN_Y - 2.f, shep::Z_N + 1.f, cx + shep::HALF - 1.f, 40.f, shep::Z_S);
-        a.playerStart = shep::start(k); a.startYaw = -90.f; a.hasRespawn = true; a.respawn = a.playerStart;
+        a.name = name; a.subtitle = sub; a.zone = zone; a.bounds = zone; a.bounds.min.y = shep::PLAIN_Y - 2.f; a.bounds.max.y = 40.f;
+        a.playerStart = start; a.startYaw = -90.f; a.hasRespawn = true; a.respawn = start;
         a.voidY = shep::VOID_Y;
         a.theme = ring::eclipseTheme(); a.ambient = Ambient::DUST; a.space = ReverbSpace::OPEN; a.tone = RoomTone::NONE;
-        a.hasTrigger = true;
-        a.trigger = LevelBuilder::aabb(cx - shep::HALF, -2.f, shep::Z_N, cx + shep::HALF, 20.f, k == 0 ? shep::Z_S - 24.f : shep::Z_S);
-        const float zc = (shep::Z_S + shep::Z_N) * 0.5f;
-        a.groundSpawns = {{cx - 14.f, 0.f, zc - 40.f}, {cx + 14.f, 0.f, zc - 44.f}, {cx, 0.f, zc - 60.f}, {cx - 15.f, 0.f, zc + 10.f}, {cx + 15.f, 0.f, zc + 6.f}, {cx - 6.f, 0.f, zc - 80.f}, {cx + 6.f, 0.f, zc - 76.f}};
-        a.airSpawns = {{cx - 10.f, 3.f, zc - 50.f}, {cx + 10.f, 3.f, zc - 54.f}};
-        a.maxAlive = 7; a.waveBreak = 2.f; a.damageScale = 1.f;
-        if (k == 0) a.waves = {{W(EnemyType::CROOK, 0, {vec3{cx + 4.f, 0.f, zc - 10.f}}), W(EnemyType::STRAY, 4), W(EnemyType::HERDER, 1)}};
-        if (k == 1) a.waves = {{W(EnemyType::DROVER, 0, {vec3{cx - shep::HALF - 10.f, 8.f, zc}}), W(EnemyType::STRAY, 4), W(EnemyType::HERDER, 1)}};
-        if (k == 2) a.waves = {{W(EnemyType::BELLWETHER, 0, {vec3{cx, 0.f, zc - 16.f}}), W(EnemyType::STRAY, 5), W(EnemyType::HERDER, 1)}};
+        a.hasTrigger = true; a.trigger = trig; a.maxAlive = 7; a.waveBreak = 2.f;
+        return a;
+    };
+    {   // 0. THE PLOUGH
+        Arena a = comb("THE PLOUGH", "ITS TIP", LevelBuilder::aabb(-shep::HALF - 1.f, -1000.f, -3438.f, shep::HALF + 1.f, 40.f, shep::TIP + 30.f), {0.f, 0.f, shep::TIP - 6.f},
+                       LevelBuilder::aabb(-shep::HALF, -2.f, -3438.f, shep::HALF, 20.f, -3326.f));
+        a.groundSpawns = {{-14.f, 0.f, -3420.f}, {14.f, 0.f, -3418.f}, {-8.f, 0.f, -3346.f}, {8.f, 0.f, -3350.f}, {0.f, 0.f, -3400.f}};
+        a.airSpawns = {{-10.f, 3.f, -3410.f}, {10.f, 3.f, -3410.f}};
+        a.waves = {{W(EnemyType::CROOK, 0, {shep::perch()}), W(EnemyType::STRAY, 4)}};
         l.arenas.push_back(a);
     }
+    {   // 1. THE STAMPEDE and the KNUCKLE
+        Arena a = comb("THE STAMPEDE", "IT IS BREAKING UP", LevelBuilder::aabb(-shep::HALF - 1.f, -1000.f, -3650.f, shep::HALF + 1.f, 40.f, -3438.f), {0.f, 0.f, -3441.f},
+                       LevelBuilder::aabb(-shep::HALF, -2.f, -3650.f, shep::HALF, 20.f, shep::PLOUGH_N - 3.f));
+        a.groundSpawns = {{-12.f, 0.f, -3612.f}, {12.f, 0.f, -3614.f}, {0.f, 0.f, -3640.f}, {-16.f, 0.f, -3600.f}, {16.f, 0.f, -3602.f}};
+        a.airSpawns = {{-8.f, 3.f, -3620.f}, {8.f, 3.f, -3620.f}};
+        a.waves = {{W(EnemyType::DROVER, 0, {vec3{0.f, 8.f, -3490.f}})}};
+        l.arenas.push_back(a);
+    }
+    {   // 2. THE BELFRY
+        Arena a = comb("THE BELFRY", "WHERE IT RINGS FROM", LevelBuilder::aabb(-shep::BEL_HX, -1000.f, shep::BEL_N, shep::BEL_HX, 40.f, -3650.f), {0.f, 0.f, -3652.f},
+                       LevelBuilder::aabb(-shep::BEL_HX, -2.f, shep::BEL_N, shep::BEL_HX, 30.f, shep::BEL_S - 6.f));
+        a.voidY = -30.f;
+        a.groundSpawns = {{-14.f, 0.f, -3668.f}, {14.f, 0.f, -3668.f}, {-18.f, shep::BALC_Y, -3700.f}, {18.f, shep::BALC_Y, -3700.f}, {0.f, shep::BALC_Y, -3712.f}};
+        a.waves = {{W(EnemyType::BELLWETHER, 0, {vec3{0.f, 0.f, -3700.f}}), W(EnemyType::STRAY, 3)}};
+        l.arenas.push_back(a);
+    }
+
     {   // 3. THE TURN: the ridge (no waves: its adds and its sweeps are the game's, Gameplay_Shepherd.h)
         Arena a;
         a.name = "THE TURN"; a.subtitle = "ITS RIDGE";
@@ -421,7 +468,7 @@ inline LevelData buildShepherd() {
         a.playerStart = shep::ridgeStart(); a.startYaw = -90.f; a.hasRespawn = true; a.respawn = a.playerStart;
         a.voidY = shep::VOID_Y;
         a.theme = ring::eclipseTheme(); a.ambient = Ambient::DUST; a.space = ReverbSpace::OPEN; a.tone = RoomTone::NONE;
-        a.groundSpawns = {{290.f, 0.f, -3445.f}, {332.f, 0.f, -3448.f}, {374.f, 0.f, -3446.f}, {310.f, 0.f, -3440.f}, {354.f, 0.f, -3442.f}};
+        a.groundSpawns = {{590.f, 0.f, -3445.f}, {632.f, 0.f, -3448.f}, {674.f, 0.f, -3446.f}, {610.f, 0.f, -3440.f}, {654.f, 0.f, -3442.f}};
         a.maxAlive = 8;
         l.arenas.push_back(a);
     }

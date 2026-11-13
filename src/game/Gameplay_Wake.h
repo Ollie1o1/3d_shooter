@@ -49,7 +49,7 @@ inline void GameplayState::tickWake(float dt) {
         r.radius += SPEED * dt;
         const float d = glm::length(glm::vec2{p.x - r.at.x, p.z - r.at.z});
         const bool crossed = before - BAND < d && d <= r.radius + BAND * 0.5f;
-        if (!r.hit && crossed && !playerDead && p.y - r.at.y < JUMP_CLEAR) {   // (in the air over it: it passes under you)
+        if (!r.hit && crossed && !playerDead && p.y - r.at.y < JUMP_CLEAR && p.y - r.at.y > -3.f) {   // (on its floor: the Shepherd's belfry has two)   // (in the air over it: it passes under you)
             r.hit = true;
             damagePlayer(DAMAGE, r.at, 0.25f, 0.04f, 0.4f, {EnemyType::BELLWETHER, DamageKind::SHOCKWAVE});
             const glm::vec3 out = glm::normalize(glm::vec3{p.x - r.at.x, 0.f, p.z - r.at.z} + glm::vec3{1e-4f});

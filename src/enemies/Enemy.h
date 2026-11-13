@@ -326,7 +326,8 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
     glm::vec3 crookAim{0.f}; int crookDrag = -1; bool crookOpened = false; float crookLeave = -1.f;
     glm::vec3 droverPost{0.f};   // THE DROVER: where the game wants it to hang (beside your raft)
     bool  tineForm = false;      // a sheepdog on the Shepherd's tines (Gameplay_Shepherd.h): no breaking off, its full kit
-    float shepOpen = 0.f;        // ...and how long it is open (a broken formation, a block just sent)
+    float shepOpen = 0.f;        // ...and how long it is open (its herd split, staggered)
+    bool  shepHigh = false;      // THE CROOK up its mast: only a parry brings it down (rounds barely mark it)
     static constexpr float CROOK_LEAVES = 2.f / 3.f;   // it breaks off with this share of its health left   // a STRAY that won't run: it stands and faces the flash (13.6)
     glm::vec3 ringPushAt{0.f}; int ringPush = -1;
     float ringCount = 0.f;       // TALLY: counts so far (its drum turns a notch each)
@@ -489,7 +490,7 @@ struct Enemy : SovereignState, PenitentState, WardenState, LeviathanState, Absol
         if (type == EnemyType::PENITENT) return (anchorsLeft > 0 ? 0.25f : 1.f) * (staggered() ? 2.f : 1.f);
         if (type == EnemyType::ABSOLUTE) return staggered() ? (abReeling ? 1.5f : 2.f) : 1.f;
         if (type == EnemyType::SOVEREIGN || type == EnemyType::LEVIATHAN || type == EnemyType::PACEMAKER) return staggered() ? 2.f : 1.f;
-        if (isSheepdog(type) && tineForm) return staggered() ? 1.8f : shepOpen > 0.f ? 1.6f : (type == EnemyType::DROVER ? 0.35f : 0.6f);   // (the Drover shrugs it off until its formation breaks)
+        if (isSheepdog(type) && tineForm) return staggered() ? 1.8f : shepOpen > 0.f ? 1.6f : shepHigh ? 0.25f : (type == EnemyType::DROVER ? 0.35f : 0.6f);   // (the Drover shrugs it off until its formation breaks)
         if (isMiniBoss(type)) return miniArmor();
         if (type != EnemyType::JUGGERNAUT) return 1.f;
         return staggered() ? 2.f : 0.5f;

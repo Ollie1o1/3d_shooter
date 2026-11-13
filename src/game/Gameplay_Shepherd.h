@@ -37,8 +37,6 @@ constexpr float CONE_HALF_WIDTH = 12.f;   // metres either side of the cone's li
 constexpr float DOG_HURT = 0.72f;          // what a sheepdog has left from the crossing
 constexpr float SWEPT_DOG = 0.2f;          // a staggered sheepdog caught by the wave loses this much of its health
 constexpr float CUT_TELL = 1.1f, CUT_COOLDOWN = 7.f;
-constexpr float HERD_RATE = 0.28f, PIN_OPEN = 6.f, CHARGE_OPEN = 2.5f;
-const glm::vec3 CHARGE_HALF{2.2f, 0.65f, 1.8f};   // the Drover's block across the deck: low enough to jump at full weight
 constexpr float BREAK_LEN = 2.2f, SPAR_FALL = 1.4f;
 constexpr float PHASES = 5.f;
 // THE TURN
@@ -51,6 +49,8 @@ constexpr float FORK_RING = 6.5f;                                    // after a 
 constexpr float FORK_HP = 260.f;                                     // a core's worth of rounds (HOLDFAST into a ringing fork: all at once)
 constexpr float WELL_WARN = 5.f, WELL_SPEED = 30.f, WELL_GAP = 7.f;  // the blasts up the well
 }
+
+#include "game/Gameplay_ShepherdComb.h"
 
 inline bool GameplayState::shepherd() const { return ring() && level.story.part == 1; }
 
@@ -96,10 +96,8 @@ inline void GameplayState::beginShepherd() {
     holdfast.reset(); armSweep();
     resetGap(); resetWake(); crookDragT = 0.f; crookDragUid = -1; crookSeen = crookLeft = true;
     shepTines = std::clamp(director.arena, 0, shep::TINES);
-    shepBreakT = -1.f; shepSweepT = 7.f; shepDogUid = -1; shepDogMax = 1.f; shepStrayT = 16.f;
-    shepCutT = -1.f; shepCutCd = 0.f; shepHerdT = 0.f; shepHerdPinned = -1; shepHerdPinT = 0.f; shepHerdHeld = false;
-    shepBellT = -1.f; shepBellHp = -1.f; shepBellHint = false; shepCharge.on = false; shepWasStaggered = false;
-    for (int k = 0; k < 2; ++k) shepBridgeT[k] = k < shepTines ? 99.f : -1.f;
+    shepBreakT = -1.f; shepSweepT = 7.f; shepDogUid = -1; shepDogMax = 1.f; shepStrayT = 12.f;
+    shepCombReset();
     // THE TURN: the vents keep their damage through a retry (one beat replayed, never the phase)
     if (!shepVentsArmed) { shepVentsArmed = true; for (float& h : shepVentHp) h = shepfight::VENT_HP; }
     shepVents = 0; for (float h : shepVentHp) shepVents += h <= 0.f;
@@ -125,120 +123,12 @@ inline void GameplayState::beginShepherd() {
 
 // The game's hold on what moves: the spars (down once their tine is broken) and the herd
 inline void GameplayState::shepMovers(float dt) {
-    for (int k = 0; k < (int)level.shepBridges.size(); ++k) {
-        Mover& m = level.movers[level.shepBridges[k]];
-        if (shepBridgeT[k] < 0.f) { m.gone = true; m.drive = 0.f; continue; }
-        const float before = shepBridgeT[k];
-        shepBridgeT[k] += dt;
-        const float u = glm::clamp(shepBridgeT[k] / shepfight::SPAR_FALL, 0.f, 1.f);
-        m.gone = false; m.drive = u * u;   // (it falls: slow, then fast)
-        if (before < shepfight::SPAR_FALL && shepBridgeT[k] >= shepfight::SPAR_FALL) {   // it lands
-            const AABB br = shep::bridge(k);
-            for (float x = br.min.x; x < br.max.x; x += 5.f) fx.spawnBurst({x, 0.3f, shep::BRIDGE_Z}, SWEEP_ICE * 0.7f, 6, 6.f, 1.2f, 2.f);
-            shake(0.9f, 0.05f);
-            SfxMixer::Opts o; o.group = SoundGroup::WORLD; o.priority = true; o.unducked = true; o.pitch = 0.55f; o.volume = 1.f;
-            audio.playOpts("slam", o);
-            ui.toast("THE SPAR", "IT FELL ACROSS. CROSS TO THE NEXT TINE", SWEEP_ICE * 0.6f, 4.f);
-        }
-    }
-    for (int f = 0; f < (int)level.shepForks.size(); ++f) level.movers[level.shepForks[f]].gone = shepForkBroken[f / 2];   // (stilled forks stay gone through a retry)
+    (void)dt;
+    for (int f = 0; f < (int)level.shepForks.size(); ++f) level.movers[level.shepForks[f]].gone = shepForkBroken[f / 2];   // (broken forks stay gone through a retry)
     if (level.shepMembrane >= 0) level.movers[level.shepMembrane].gone = shepMembraneT >= 0.f;
-    Enemy* d = shepDog();
-    const bool drover = d && d->type == EnemyType::DROVER;
-    if (drover) shepHerdT += dt;
-    if (shepHerdPinT > 0.f && (shepHerdPinT -= dt) <= 0.f) shepHerdPinned = -1;
-    for (int i = 0; i < (int)level.shepHerd.size(); ++i) {
-        Mover& m = level.movers[level.shepHerd[i]];
-        if (!drover || i == shepHerdPinned) continue;   // (pinned, or nobody driving: it stays where it is)
-        const float want = 0.5f + 0.5f * std::sin(shepHerdT * shepfight::HERD_RATE + 2.1f * (float)i);
-        m.drive += glm::clamp(want - m.drive, -dt * 0.4f, dt * 0.4f);
-    }
 }
 
-inline void GameplayState::shepLaunch(const Enemy& d) {
-    shepCharge.on = true; shepCharge.hit = false;
-    shepCharge.dir = d.position.x < player.position.x ? 1.f : -1.f;
-    shepCharge.from = d.position.x;
-    shepCharge.pos = {d.position.x, shepfight::CHARGE_HALF.y, glm::clamp(player.position.z, shep::Z_N + 4.f, shep::Z_S - 4.f)};
-    audio.playAt("ab_rumble", shepCharge.pos, 120, SoundGroup::ENEMY, true, 0.7f);
-    if (Enemy* dd = shepDog()) dd->shepOpen = std::max(dd->shepOpen, shepfight::CHARGE_OPEN + 1.5f);   // (its herd is a block short while it crosses)
-}
 
-inline void GameplayState::shepDogKit(Enemy& d, float dt) {
-    using namespace shepfight;
-    const float cx = shep::tineX(std::clamp(shepTines, 0, 2));
-    d.shepOpen = std::max(0.f, d.shepOpen - dt);
-    // Newly staggered (a parried hook, a cracked clapper): it stays down long enough for a wave to find it
-    const bool stag = d.staggered();
-    if (stag && !shepWasStaggered) {
-        d.staggerTimer = std::max(d.staggerTimer, 3.5f);
-        if (sweep.active() && sweep.lethal()) ui.toast("IT'S IN THE OPEN", "STAGGERED, THE WAVE WILL TAKE IT", POST_LIT * 0.4f, 2.5f);
-    }
-    shepWasStaggered = stag;
-    // Caught in the wave while it is down
-    if (stag && sweep.sweptNow(d.position, sweepShelters)) {
-        d.takeDamage(d.maxHealth * SWEPT_DOG);
-        d.knockVel = sweep.toSource(d.position) * -18.f + glm::vec3{0.f, 6.f, 0.f};
-        fx.spawnBurst(d.position + glm::vec3{0.f, 1.5f, 0.f}, SWEEP_ICE, 30, 12.f, 0.8f, 3.f);
-        ui.feed("IT TOOK THE WAVE", SWEEP_ICE);
-        styleSystem.addStyle(120.f, StyleSource::ENVIRONMENT);
-    }
-    if (d.type == EnemyType::CROOK) {   // below half: it cuts the line you hold by
-        shepCutCd = std::max(0.f, shepCutCd - dt);
-        if (shepCutT < 0.f && shepCutCd <= 0.f && holdfast.held() && d.targetable() && !stag && d.health < shepDogMax * 0.55f && d.telegraphTimer <= 0.f) {
-            shepCutT = CUT_TELL;
-            audio.playAt("telegraph", d.position, 120, SoundGroup::ENEMY, true, 0.8f);
-            if (!shepCutHint) { shepCutHint = true; ui.toast("GOLD: IT CUTS YOUR LINE", "LET GO (" + binds().label(Act::HOLDFAST) + ") BEFORE IT LANDS", abGoldTell(glm::vec3{1.9f, 1.15f, 0.15f}) * 0.6f, 3.f); }
-        }
-        if (shepCutT >= 0.f) {
-            d.velocity.x = d.velocity.z = 0.f; d.attackTimer = std::max(d.attackTimer, 0.5f);
-            const glm::vec3 hand = d.position + glm::vec3{0.f, 1.6f, 0.f};
-            const float u = 1.f - shepCutT / CUT_TELL;
-            if (holdfast.held()) fx.spawnTracer(hand, glm::mix(hand, holdfast.point, u), 0.05f, dt * 1.5f, abGoldTell(glm::vec3{1.9f, 1.15f, 0.15f}) * (0.6f + 1.2f * u));
-            if ((shepCutT -= dt) < 0.f || stag) {
-                shepCutT = -1.f; shepCutCd = CUT_COOLDOWN;
-                if (holdfast.held() && !stag && !playerDead) {
-                    holdfast.cut();
-                    damagePlayer(6.f, d.position + glm::vec3{0.f, 1.5f, 0.f}, 0.2f, 0.03f, 0.f, {EnemyType::CROOK, DamageKind::MELEE});
-                    crookDragT = 0.7f; crookDragUid = d.uid; grapple.release();
-                    ui.feed("LINE CUT", abGoldTell(glm::vec3{1.9f, 1.15f, 0.15f}));
-                    audio.play("hook_yank", 120, SoundGroup::PLAYER, true);
-                }
-            }
-        }
-    }
-    if (d.type == EnemyType::DROVER) {   // it hangs off the deck's edge, changing sides
-        if ((shepSideT += dt) > 12.f) { shepSideT = 0.f; shepSide = -shepSide; }
-        d.droverPost = glm::vec3{cx + shepSide * (shep::HALF + 9.f), 8.f, glm::clamp(player.position.z - 6.f, shep::Z_N + 10.f, shep::Z_S - 10.f)};
-        // Spike one of its herd and the formation breaks around it
-        int herd = -1;
-        if (holdfast.held())
-            for (int i = 0; i < (int)level.shepHerd.size(); ++i)
-                if (holdfast.body == level.movers[level.shepHerd[i]].wall) herd = i;
-        if (herd >= 0 && !shepHerdHeld) {
-            shepHerdPinned = herd; shepHerdPinT = PIN_OPEN; d.shepOpen = std::max(d.shepOpen, PIN_OPEN);
-            pushBanner("FORMATION BROKEN", "THE DROVER IS OPEN", HOLDFAST_STEEL, 2.f);
-            audio.play("drive_ready", 110, SoundGroup::UI, true);
-        }
-        shepHerdHeld = herd >= 0;
-        if (d.shepOpen > 0.f && std::fmod(gameClock, 0.15f) < dt) fx.spawnBurst(d.position + glm::vec3{0.f, 1.f, 0.f}, glm::vec3{1.8f, 1.2f, 0.4f}, 2, 2.f, 0.4f, 0.f);
-    }
-    if (d.type == EnemyType::BELLWETHER) {   // hit the bell as it swings: the clapper cracks
-        if (d.attack == AttackKind::RING_BELL && d.telegraphTimer > 0.f) {
-            if (shepBellHp < 0.f) {
-                shepBellHp = d.health;
-                if (!shepBellHint) { shepBellHint = true; ui.toast("ITS BELL SWINGS", "HIT IT NOW: CRACK THE CLAPPER", glm::vec3{1.9f, 1.4f, 0.4f} * 0.6f, 3.f); }
-            } else if (d.health < shepBellHp - 25.f) {
-                d.attack = AttackKind::NONE; d.telegraphTimer = 0.f;
-                d.stagger(3.f); d.staggerTimer = std::max(d.staggerTimer, 3.f); shepBellHp = -1.f;
-                pushBanner("CLAPPER CRACKED", "THE FLOCK SCATTERS", glm::vec3{1.9f, 1.4f, 0.4f} * 0.6f, 2.f);
-                audio.playAt("ab_shatter", d.position + glm::vec3{0.f, 2.5f, 0.f}, 128, SoundGroup::ENEMY, true, 1.3f);
-                fx.spawnBurst(d.position + glm::vec3{0.f, 2.5f, 0.f}, glm::vec3{1.9f, 1.4f, 0.4f}, 30, 9.f, 0.7f, 2.f);
-            }
-        } else shepBellHp = -1.f;
-        if (shepBellT >= 0.f && (shepBellT -= dt) < 0.f && !playerDead) { shepBellT = -1.f; wakeRing(d); }
-    }
-}
 
 inline void GameplayState::updateShepherd(float dt) {
     using namespace shepfight;
@@ -252,100 +142,8 @@ inline void GameplayState::updateShepherd(float dt) {
     }
     if (at >= 0 && at > storyCheckpoint && !director.fighting()) { storyCheckpoint = at; sweepSched.checkpoint(); ui.feed("CHECKPOINT", SWEEP_ICE * 0.6f); saveStoryProgress(); }
     shepMovers(dt);
-    // Its sweeps are its own (the random clock is held off)
-    sweepSched.timer = std::max(sweepSched.timer, 60.f);
-    const int k = std::clamp(shepTines, 0, shep::TINES - 1);   // the tine in play (the director moves on when its wave clears)
-    // The sheepdog: found as it arrives (hurt from the crossing; its full kit from here)
-    if (!shepDog() && shepBreakT < 0.f && shepTines < shep::TINES && (shepDogUid >= 0 || at == shepTines)) {
-        if (shepDogUid >= 0) { shepBreakT = 0.f; shepDogUid = -1; }   // it died: the tine breaks
-        else for (auto& e : enemies)
-            if (e.alive && isSheepdog(e.type) && e.state == EnemyState::ACTIVE) {
-                shepDogUid = e.uid; e.tineForm = true; e.health = e.maxHealth * DOG_HURT; shepDogMax = e.health;
-                shepSideT = 0.f; shepSide = -1.f; shepWasStaggered = false;
-                static const char* lines[3] = {"IT CAME BACK FOR YOU", "IT BROUGHT THE HERD", "IT RINGS FOR THE SHEPHERD"};
-                pushBanner(e.stats().name, lines[k], HOLDFAST_STEEL, 3.f);
-                audio.playAt("hook_yank", e.position, 110, SoundGroup::ENEMY, true, 0.5f);
-                shepSweepT = std::max(shepSweepT, 6.f);
-                break;
-            }
-    }
-    Enemy* dog = shepDog();
-    if (dog && g_devOverlay == "shepkill" && dog->age > 2.5f && dog->takeDamage(1e6f)) { onEnemyKilled(*dog, StyleSource::ENVIRONMENT); dog = nullptr; }   // dev: the tine breaking
-    if (dog) shepDogKit(*dog, dt);
-    // The aimed sweep, down the deck from the horn, while its tine's fight is on
-    const bool fight = dog != nullptr && shepBreakT < 0.f && !playerDead && at == shepTines;
-    if (fight && !sweep.active() && (shepSweepT -= dt) <= 0.f) {
-        const glm::vec3 o = shep::horn(k);
-        SweepSpec s = sweeptier::aimed(o, p, SWEEP_WARN);
-        s.flashLead = SWEEP_FLASH; s.range = 40.f;
-        const float dist = glm::length(glm::vec2{p.x - o.x, p.z - o.z});
-        s.coneHalf = glm::clamp(std::atan(CONE_HALF_WIDTH / std::max(dist, 1.f)), 0.05f, 0.5f);
-        sweep.start(s); ++sweepCount;
-        shepSweepT = cosmetic::range(SWEEP_GAP_MIN, SWEEP_GAP_MAX) + SWEEP_FLASH + SWEEP_WARN;
-        if (sweepCount == 1 || !shepConeHint) { shepConeHint = true; ui.toast("ITS AIM", "THE RED CONE: GET OUT OF IT, OR BEHIND A FIN BY ITS LIT POST", SWEEP_RED * 0.8f, 4.5f); }
-    }
-    if (!fight && !sweep.active()) shepSweepT = std::max(shepSweepT, 5.f);
-    // Pairs of strays climb up over the rails just after each wave has gone through (it sends the flock
-    // back in behind its sweep), never in the middle of a countdown
-    const bool waveDone = shepSweepWas && !sweep.active();
-    shepSweepWas = sweep.active();
-    if (fight && waveDone) {
-        int strays = 0; for (const auto& e : enemies) strays += e.alive && e.type == EnemyType::STRAY;
-        if (strays < 3)
-            for (int sd = -1; sd <= 1; sd += 2) {
-                const glm::vec3 q{shep::tineX(k) + sd * (shep::HALF - 2.f), 0.f, glm::clamp(p.z + cosmetic::range(-18.f, 18.f), shep::Z_N + 8.f, shep::Z_S - 8.f)};
-                spawnEnemy(EnemyType::STRAY, q);
-                fx.spawnBurst(q + glm::vec3{0.f, 0.5f, 0.f}, SWEEP_ICE * 0.6f, 10, 4.f, 0.8f, 1.f);
-            }
-    }
-    // The Drover's block across the deck
-    if (shepCharge.on) {
-        const glm::vec3 h = CHARGE_HALF;
-        shepCharge.pos.x += shepCharge.dir * gapride::CHARGE_SPEED * dt;
-        if (!shepCharge.hit && !playerDead && std::fabs(p.x - shepCharge.pos.x) < h.x + 0.4f && std::fabs(p.z - shepCharge.pos.z) < h.z + 0.4f && p.y < shepCharge.pos.y + h.y) {
-            shepCharge.hit = true;
-            damagePlayer(gapride::CHARGE_DAMAGE, shepCharge.pos, 0.3f, 0.05f, 0.f, {EnemyType::DROVER, DamageKind::MELEE});
-            holdfast.cut();
-            player.velocity += glm::vec3{shepCharge.dir * 9.f, 5.f, 0.f}; player.launched();
-            ui.feed("RAMMED", HOLDFAST_STEEL);
-        }
-        if (std::fabs(shepCharge.pos.x - shepCharge.from) > 2.f * shep::HALF + 24.f) shepCharge.on = false;
-    }
-    // The bow waves: ice thrown up off each tine's west face (near you)
-    for (int t = 0; t < shep::TINES; ++t)
-        if (std::fabs(p.x - shep::tineX(t)) < 160.f && std::fmod(gameClock, 0.05f) < dt) {
-            const glm::vec3 at2{shep::tineX(t) - shep::HALF - 3.f, shep::PLAIN_Y + 1.f, cosmetic::range(shep::Z_N, shep::Z_S)};
-            fx.spawnSpray(at2, glm::normalize(glm::vec3{-0.7f, 1.f, cosmetic::range(-0.2f, 0.2f)}), SWEEP_ICE * 0.7f, 2, 12.f, 1.6f, 0.6f);
-        }
-    // The tine breaking
-    if (shepBreakT >= 0.f) {
-        const float before = shepBreakT;
-        shepBreakT += dt;
-        const float cx = shep::tineX(k);
-        if (before == 0.f) {
-            pushBanner("THE TINE BREAKS", k == 2 ? "THE COMB IS BROKEN" : "IT FELT THAT", SWEEP_ICE * 0.8f, 3.5f);
-            shake(1.4f, 0.06f);
-            SfxMixer::Opts o; o.group = SoundGroup::WORLD; o.priority = true; o.unducked = true; o.pitch = 0.4f; o.volume = 1.f;
-            audio.playOpts("slam", o); o.delay = 0.7f; o.pitch = 0.33f; audio.playOpts("slam", o);
-            sweep.reset();
-            for (auto& e : enemies)   // the tine bucks: everything else on it goes
-                if (e.targetable() && !isSheepdog(e.type) && e.takeDamage(1e6f)) {
-                    onEnemyKilled(e, StyleSource::ENVIRONMENT);
-                    if (sweptBodies.size() < 24) sweptBodies.push_back({e.position + glm::vec3{0.f, e.height() * 0.5f, 0.f}, glm::vec3{-1.f, 0.f, 0.f}, glm::vec3{e.radius() * 1.6f, e.height(), e.radius() * 1.2f}, e.stats().color, 0.f, (float)(e.uid % 7) - 3.f});
-                }
-            shepCharge.on = false; shepherdDamageT = 1.f;
-        }
-        if (shepBreakT < 1.6f) {   // cracking down its length, root to tip
-            const float z = glm::mix(shep::Z_N, shep::Z_S, shepBreakT / 1.6f);
-            if (std::fmod(gameClock, 0.06f) < dt) {
-                fx.spawnBurst({cx + cosmetic::range(-14.f, 14.f), 0.4f, z}, glm::vec3{2.f, 1.8f, 1.5f}, 12, 9.f, 0.6f, 3.f);
-                fx.spawnShockwave({cx, 0.2f, z}, 4.f, SWEEP_ICE * 0.6f);
-            }
-            shake(0.12f, 0.02f);
-        }
-        if (k < shep::TINES - 1 && before < BREAK_LEN && shepBreakT >= BREAK_LEN) shepBridgeT[k] = 0.f;
-        if (before < BREAK_LEN && shepBreakT >= BREAK_LEN) { shepTines = std::max(shepTines, k + 1); shepBreakT = -1.f; if (k == shep::TINES - 1) shepEndT = 0.f; }
-    }
+    sweepSched.timer = std::max(sweepSched.timer, 60.f);   // (its sweeps are its own: the random clock is held off)
+    shepComb(dt);   // THE COMB (Gameplay_ShepherdComb.h)
     // The Comb is broken: it turns (THE TURN is the next phase; for now the run ends here)
     if (shepEndT >= 0.f) {
         const float before = shepEndT;
@@ -603,6 +401,7 @@ inline void GameplayState::shepStillFork(int f) {
 // A round down a vent's throat (Gameplay_Combat.h's hitscan): only while it is open, and only from close in
 inline bool GameplayState::shootVent(glm::vec3 from, glm::vec3 dir, float& distance, float dmg) {
     using namespace shepfight;
+    if (shepherd() && shepTines < shep::TINES) return shootComb(from, dir, distance, dmg);   // THE COMB's targets
     if (!shepherd() || shepTines < shep::TINES || shepTurnT >= 0.f) return false;
     if (level.arenaAt(player.position) == 4)   // THE TUNING HALL: a fork's core, glowing white while it rings
         for (int f = 0; f < shep::FORKS; ++f) {
@@ -693,18 +492,7 @@ inline void GameplayState::gatherShepherd(std::vector<BoxInstance>& out) {
                 }
         }
     }
-    for (int t = 0; t < shep::TINES; ++t) {   // a broken tine's horn: its lamps out
-        if (t >= shepTines) {
-            if (t == shepTines && ringFlash() > 0.f) {   // the live horn flaring
-                const glm::vec3 h = shep::horn(t);
-                push(out, T(h + glm::vec3{0.f, 0.f, 2.f}) * S(glm::vec3{7.f, 5.f, 0.3f}), glm::vec3{0.f}, POST_LIT * 1.6f * ringFlash());
-            }
-            continue;
-        }
-        const float x0 = shep::tineX(t) - shep::HALF;
-        push(out, T(glm::vec3{shep::tineX(t), 8.f, shep::Z_N + 0.35f}) * S(glm::vec3{2.f * shep::HALF - 4.f, 10.f, 0.3f}), glm::vec3{0.02f});
-        (void)x0;
-    }
+    gatherComb(out);   // THE COMB
     if (shepTines >= shep::TINES) {   // THE TURN: its count, in six great lamps across the ridge's face. All lit on the
         // flash; one goes out with each second of the countdown; orange while its vents stand open
         const float c = sweep.countdown(player.position);
@@ -759,29 +547,13 @@ inline void GameplayState::gatherShepherd(std::vector<BoxInstance>& out) {
         push(out, T(glm::vec3{(shep::WX0 + shep::WX1) * 0.5f, y, (shep::WZ_S + shep::WZ_N) * 0.5f}) * S(glm::vec3{shep::WX1 - shep::WX0, 0.6f, shep::WZ_S - shep::WZ_N}), SWEEP_ICE * 0.3f, SWEEP_ICE * 1.6f);
         if (std::fmod(gameClock, 0.05f) < 0.017f) fx.spawnBurst({cosmetic::range(shep::WX0, shep::WX1), y, cosmetic::range(shep::WZ_N, shep::WZ_S)}, SWEEP_ICE, 3, 6.f, 0.5f, -2.f);
     }
-    if (shepCharge.on) {
-        const glm::vec3 h = shepfight::CHARGE_HALF;
-        push(out, T(shepCharge.pos) * RY(shepCharge.from) * S(h * 2.f), glm::vec3{0.6f, 0.58f, 0.53f}, abGoldTell(glm::vec3{1.9f, 1.15f, 0.15f}) * 0.6f);
-    }
-    if (Enemy* d = shepDog(); d && d->type == EnemyType::DROVER && d->attack == AttackKind::RING_CHARGE && d->telegraphTimer > 0.f) {
-        const glm::vec3 fwd{std::sin(d->yaw), 0.f, std::cos(d->yaw)};
-        push(out, T(d->position + fwd * 2.5f - glm::vec3{0.f, 1.2f, 0.f}) * S(shepfight::CHARGE_HALF * 1.8f), glm::vec3{0.6f, 0.58f, 0.53f}, abGoldTell(glm::vec3{1.9f, 1.15f, 0.15f}) * (0.6f + 1.4f * d->telegraphProgress()));
-    }
 }
 
 // Where to go: the sheepdog on its tine (phase 1), the vents (phase 2) with how long they stay open
 inline void GameplayState::shepherdMarkers(const glm::mat4& view, const glm::mat4& proj) {
     if (!shepherd() || storyEndT >= 0.f || playerDead) return;
     char buf[64]; float sx, sy;
-    if (shepTines < shep::TINES && shepBreakT < 0.f) {
-        if (Enemy* d = shepDog(); d && d->state == EnemyState::ACTIVE) {
-            const glm::vec3 at = d->position + glm::vec3{0.f, d->height() + 0.8f, 0.f};
-            const bool on = projectToScreen(at, view, proj, sx, sy);
-            snprintf(buf, sizeof(buf), "%s %dM", d->stats().name, (int)glm::length(at - player.position));
-            ui.renderMarker(sx, sy, on, d->shepOpen > 0.f || d->staggered() ? glm::vec3{1.f, 0.75f, 0.2f} : glm::vec3{0.95f, 0.92f, 0.8f}, buf);
-        }
-        return;
-    }
+    if (shepTines < shep::TINES) { combMarkers(view, proj); return; }
     const int here = level.arenaAt(player.position);
     if (here == 4) {   // the forks, or the way on
         if (shepForks >= shep::FORKS) {
