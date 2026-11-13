@@ -272,6 +272,21 @@ first (`--bench 200 --gpu-timer`, `--res N`): the frame is pixel-bound (GPU 21 m
   its bake (since the chapter began). Now integer mixing, plus `dsin/dcos/datan2/drotate` for the layout's
   trig. `make test-web-lighting` covers story6.
 
+## Polish pass 2 (2026-11-12): the wall, the sky, more enemies
+
+- **The sweep's wall** is drawn by `renderSweepWall` (`sweepwall.frag`, after the sky: it writes no depth)
+  as a translucent curtain, two layers 32 m and 46 m tall, 440 m wide, centred on you: ragged churning
+  crest with a bright lip, billows streaming up, dusty foot, ice glints (none within 6 m: they'd be blobs).
+  `gatherSweep` adds tumbling chunks over it, a bright edge on the ice and its shadow (28 m) ahead of it;
+  `tickSweep` sprays ice off its crest within 160 m of you. The boss's cone is still drawn plain.
+  `--skip sweepwall` hides the curtain.
+- **Sky:** a nebula south-west and up (`ringdetail::nebula`, its own 1024x1024 picture projected round
+  `NEB_C`), the giant's palette richer (gold equator, blue-grey north, +30% saturation in the shader),
+  the main rings blue-grey inside / gold middle / tan outside, an aurora on the north limb (moved down to
+  colatitude 0.88: the real pole is behind the limb from the ring), meteors every few seconds.
+- **Enemies:** every wave about a fifth bigger; a new fight on I2 (where HOLDFAST is: 4 Strays, then 3 and
+  a Herder); a Herder with the Bellwether. The Shore still has none (the walk-up).
+
 ## The sky (skybox.frag `ringSky`, `uRing`)
 
 The giant (`RING_GIANT`, east, angular radius 0.8) sits on the horizon with its
