@@ -589,6 +589,40 @@ Not done / to check: not hand-played (vent hp, 24 m reach, 8 s windows are guess
 hurt vents (Splinter and the sword don't); the ridge is dark and could use more of its lamps; the cut onto
 the ridge has no fade.
 
+## THE SHEPHERD: clarity pass, and phase 3: THE RESONATOR (2026-11-13)
+
+**The user's note on phase 2:** "confusing what to do, the spawns happen at an odd time, no boss to hunt
+or clear objective." Fixed for every phase (`c7343e9`):
+- **Markers** (`shepherdMarkers`): the tine's sheepdog (gold while open); the vents (the nearest with open
+  seconds, distance and health; the others their health); in the Resonator the forks (white RINGING), the
+  way on, the next alcove up, OUT.
+- **The objective line counts and says the step** (TINE n/3, VENTS n/3, FORKS n/4, UP n M).
+- **Adds on the fight's beat**: strays climb onto a tine just after each wave; on the ridge two strays drop
+  in front of each unbroken vent as they open (a Herder every second wave); in the hall two come back
+  down it behind each blast. No blind timers.
+- **The ridge has presence**: six great lamps on its face count the wave down (orange while the vents are
+  open), and its steps are real walls covered in lamps. (Gotchas found: live box instances are culled past
+  ~120 m, and big `kit()` shapes far away were dropped: use walls and neon for anything seen from far.)
+
+**THE RESONATOR** (`173e571`), arenas 4-6 at x 800 (checkpoints 14-16; `--shepherd --arena 5/6/7`). Air
+inside (vacuum off, METAL reverb). Rules: `shepInside`; geometry in `buildShepherd()`'s PHASE 3 block.
+- **The Tuning Hall** (4): 30 m wide, 160 m long, five side rooms each side (`shep::alcoveZ`). Blasts: OUT
+  down the hall, 1 s + 5 s, every ~9 s plus up to +-2.2 s per stilled fork (detuned). The wall piece north of
+  each room is its shelter (post inside it). After a blast passes, the forks ring 4.5 s
+  (`shepForkRingT`): HOLDFAST into a ringing fork's prong (movers, look 3, drawn in `gatherShepherd`)
+  stills it. Not ringing: "IT ISN'T RINGING". The corner number wavers and smears with each stilled fork
+  (`renderSweepCountdown`). Four: the core membrane (a mover) parts.
+- **The Ledger** (5): no sweeps, music at 0.4, walls of lamps, four terminals.
+- **The Lamp Well** (6): 20 x 20 m, 92 m tall, alcoves every 12 m alternating west/east
+  (`shep::wellAlcove`). Blasts once you're in the shaft: 1 s, then a 5 s count clocked to your height (it
+  reaches you at zero wherever you've climbed); in an alcove (or the doorway at its foot) it goes past,
+  otherwise the swept death. The corner reads BLAST. `y > 86`: ITS SURFACE, then the end card.
+- `--overlay forkkill` latches HOLDFAST into the first ringing fork.
+
+Not done / to check: not hand-played; whether the grapple climb between alcoves is comfortable (12 m
+apart, the grapple's cooldown); the swept death in the well throws you sideways (it was made for the ring);
+the Tuning Hall's blast is drawn with the ring's curtain; cuts between ridge, hall and well have no fade.
+
 ## Next steps, in order
 
 1. **Play it (the user).** `./shooter --story6` start to finish. Questions: do
@@ -609,9 +643,9 @@ the ridge has no fade.
    they are content with the crossing. Open: their verdict on the new sky, ground, waves and music;
    the frame cost at 4K; Strays still use full gravity in the low-gravity levels (shortcut 8);
    the Drift has no fight; the bridge cutscene.
-7. **The boss** as written (design section 6). Phases 1 (THE COMB) and 2 (THE TURN) are built: see above.
-   Next: THE RESONATOR (inside: the Tuning Hall, the Ledger, the Lamp Well), THE BREAK (the Gather ride),
-   THE FALL and the finisher.
+7. **The boss** as written (design section 6). Phases 1-3 (THE COMB, THE TURN, THE RESONATOR) are built: see above.
+   Next: THE BREAK (low gravity, drifting debris, riding the Gather on a spiked chunk, three rides), then
+   THE FALL and the finisher (the last countdown, held shut with HOLDFAST), the death and UNIT 24's capsule.
 
 ## House rules noticed while building
 
