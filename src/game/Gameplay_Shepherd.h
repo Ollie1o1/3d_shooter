@@ -51,6 +51,7 @@ constexpr float WELL_WARN = 5.f, WELL_SPEED = 30.f, WELL_GAP = 7.f;  // the blas
 }
 
 #include "game/Gameplay_ShepherdComb.h"
+#include "game/Gameplay_ShepherdBreak.h"
 
 inline bool GameplayState::shepherd() const { return ring() && level.story.part == 1; }
 
@@ -69,6 +70,7 @@ inline float GameplayState::shepherdHealth01() {
     for (int v = 0; v < 3; ++v) done += glm::clamp(1.f - shepVentHp[v] / shepfight::VENT_HP, 0.f, 1.f) / 3.f;   // THE TURN: its vents
     for (int f = 0; f < shep::FORKS; ++f) done += (shepForkBroken[f] ? 1.f : glm::clamp(1.f - shepForkHp[f] / shepfight::FORK_HP, 0.f, 1.f)) * 0.6f / shep::FORKS;              // THE RESONATOR: its forks,
     done += 0.4f * glm::clamp(shepWellMaxY / shep::W_OUT, 0.f, 1.f);                                         // and the climb
+    done += (float)shepRides / (float)shep::LEDGES;                                                            // THE BREAK: its rides
     return glm::clamp(1.f - done / shepfight::PHASES, 0.f, 1.f);
 }
 
@@ -112,6 +114,8 @@ inline void GameplayState::beginShepherd() {
     }
     if (!shepForksArmed) { shepForksArmed = true; for (bool& f : shepForkBroken) f = false; for (float& h : shepForkHp) h = shepfight::FORK_HP; shepWellMaxY = 0.f; }
     if (director.arena >= 5) for (bool& f : shepForkBroken) f = true;
+    if (director.arena >= 7) shepWellMaxY = shep::W_OUT;
+    shepBreakReset();
     shepForks = 0; for (bool f : shepForkBroken) shepForks += f;
     shepForkRingT = 0.f; shepHallSweepT = 5.f; shepWellT = -1.f; shepWellNext = 4.f; shepWellCount = -1.f; shepUpT = -1.f; shepMembraneT = shepForks >= shep::FORKS ? 99.f : -1.f;
     if (director.arena == 4 && shepForks == 0) for (int k = 0; k < 3; ++k) spawnEnemy(EnemyType::STRAY, {shep::HX + (k - 1) * 8.f, 0.f, shep::HZ_N + 14.f});
@@ -134,7 +138,7 @@ inline void GameplayState::updateShepherd(float dt) {
     using namespace shepfight;
     const glm::vec3 p = player.position;
     const int at = level.arenaAt(p);
-    if (at > director.arena && !director.fighting() && director.phase != WaveDirector::Phase::INTRO && at <= shepTines) director.approach(at);
+    if (at > director.arena && !director.fighting() && director.phase != WaveDirector::Phase::INTRO && (at <= shepTines || at >= 7)) director.approach(at);
     if (at >= 0 && at > storySeenSection && !playerDead) {
         storySeenSection = at;
         pushBanner(level.arenas[at].name, level.arenas[at].subtitle, SWEEP_ICE * 0.6f, 3.f);
@@ -165,6 +169,7 @@ inline void GameplayState::updateShepherd(float dt) {
     }
     shepRidge(dt);
     shepInside(dt);
+    shepBreak(dt);   // THE BREAK (Gameplay_ShepherdBreak.h)
     if (shepherdDamageT > 0.f) shepherdDamageT = std::max(0.f, shepherdDamageT - dt);
     if (storyEndT >= 0.f) { storyEndT += dt; player.velocity = {0.f, 0.f, 0.f}; if (storyEndT > 3.f) captureMouse(false); }
 }
@@ -333,7 +338,11 @@ inline void GameplayState::shepInside(float dt) {
         shepWellMaxY = std::max(shepWellMaxY, p.y);
         if (shepUpT >= 0.f) {   // out: its surface
             const float before = shepUpT; shepUpT += dt;
-            if (before < 5.f && shepUpT >= 5.f && storyEndT < 0.f) { storyEndT = 0.f; logRun("end"); audio.play("wave", 90, SoundGroup::UI, true); }   // (THE BREAK: next)
+            if (before < 4.f && shepUpT >= 4.f) {   // out onto its surface: THE BREAK
+                shepUpT = -1.f;
+                storySeenSection = storyCheckpoint = 7;
+                enterArena(7); saveStoryProgress();
+            }
             return;
         }
         if (p.y > shep::W_OUT) {
@@ -488,6 +497,7 @@ inline void GameplayState::gatherShepherd(std::vector<BoxInstance>& out) {
         }
     }
     gatherComb(out);   // THE COMB
+    gatherBreak(out);  // THE BREAK
     if (shepTines >= shep::TINES) {   // THE TURN: its count, in six great lamps across the ridge's face. All lit on the
         // flash; one goes out with each second of the countdown; orange while its vents stand open
         const float c = sweep.countdown(player.position);
@@ -549,6 +559,7 @@ inline void GameplayState::shepherdMarkers(const glm::mat4& view, const glm::mat
     if (!shepherd() || storyEndT >= 0.f || playerDead) return;
     char buf[64]; float sx, sy;
     if (shepTines < shep::TINES) { combMarkers(view, proj); return; }
+    if (shepLedge() >= 0) { breakMarkers(view, proj); return; }   // THE BREAK
     const int here = level.arenaAt(player.position);
     if (here == 4) {   // the forks, or the way on
         if (shepForks >= shep::FORKS) {

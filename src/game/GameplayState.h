@@ -420,6 +420,9 @@ public:
     int   shepVents = 0;   // THE TURN
     float shepTurnT = -1.f, shepTurnAng = 0.f, shepVentHp[3] = {1.f, 1.f, 1.f}, shepVentOpenT = 0.f, shepRidgeSweepT = 0.f, shepAddT = 0.f, shepVentMsgT = 0.f, shepInT = -1.f;
     int   shepGuardWave = 0; bool shepSweepWas = false;
+    // THE BREAK (Gameplay_ShepherdBreak.h)
+    float shepRideT = -1.f, shepGatherT = -1.f, shepThrownT = -1.f, shepCrownT = -1.f; int shepRides = 0, shepRideChunk = 0;
+    bool  shepGatherPassed = false, shepLedgeFought = false, shepBreakSeen = false; glm::vec3 shepRideFrom{0.f}, shepRideTo{0.f};
     bool  shepForkBroken[4] = {}, shepForksArmed = false, shepHallHint = false, shepLedgerSeen = false, shepWellHint = false;   // THE RESONATOR
     int   shepForks = 0; float shepForkHp[4] = {1.f, 1.f, 1.f, 1.f}; bool shepForkHint = false;
     float shepForkRingT = 0.f, shepHallSweepT = 0.f, shepMembraneT = -1.f, shepWellT = -1.f, shepWellNext = 0.f, shepWellCount = -1.f, shepWellFront = 0.f, shepWellMaxY = 0.f, shepUpT = -1.f;
@@ -1453,6 +1456,13 @@ public:
     void   gatherComb(std::vector<BoxInstance>& out);
     void   combMarkers(const glm::mat4& view, const glm::mat4& proj);
     const char* combObjective();
+    int    shepLedge() const;
+    void   shepBreakReset();
+    void   shepBreak(float dt);
+    void   resetPlayerPosition(glm::vec3 at);
+    void   gatherBreak(std::vector<BoxInstance>& out);
+    void   breakMarkers(const glm::mat4& view, const glm::mat4& proj);
+    const char* breakObjective();
     void   updateShepherd(float dt);
     void   gatherShepherd(std::vector<BoxInstance>& out);
     void   renderShepherdBars();

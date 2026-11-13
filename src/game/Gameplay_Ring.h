@@ -221,7 +221,7 @@ inline void GameplayState::updateRing(float dt) {
         player.camera.position = g_devCamPos; prevCamPos = g_devCamPos;
     }
     {   // The sound (design 9, 13.1): vacuum outside, air and a room's echo inside the hull
-        const int air = ringQuiet() || (shepherd() && level.arenaAt(player.position) >= 4) ? 1 : 0;   // (inside the Shepherd: air)
+        const int air = ringQuiet() || (shepherd() && level.arenaAt(player.position) >= 4 && level.arenaAt(player.position) <= 6) ? 1 : 0;   // (inside the Shepherd: air)
         if (air != ringAir) {
             if (air && ringAir == 0) audio.play("barrier", 60, SoundGroup::UI, true);   // the air coming back
             ringAir = air;

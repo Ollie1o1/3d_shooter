@@ -81,6 +81,15 @@ inline AABB wellAlcove(int i) {   // the recess (where standing is shelter)
     const bool west = i % 2 == 0; const float y = wellAlcoveY(i);
     return west ? AABB{{WX0 - 4.f, y, -3537.f}, {WX0 + 0.6f, y + 5.f, -3531.f}} : AABB{{WX1 - 0.6f, y, -3537.f}, {WX1 + 4.f, y + 5.f, -3531.f}};
 }
+// PHASE 4, THE BREAK: it tears the ring apart round itself. Three ledges of drifting debris west of the
+// Comb, each higher and further north, then its crown. Low gravity. Clear a ledge and the Gather comes:
+// spike a ride chunk and it throws you up to the next
+constexpr float BRK_X = -600.f;
+constexpr int LEDGES = 3;
+inline glm::vec3 ledge(int i) { return {BRK_X, 20.f + 40.f * (float)i, -3300.f - 220.f * (float)i}; }   // its raft's top centre
+inline glm::vec3 ledgeStart(int i) { return ledge(i) + glm::vec3{0.f, 0.f, 12.f}; }
+inline glm::vec3 crown() { return {BRK_X, 140.f, -3960.f}; }
+inline glm::vec3 rideChunk(int i, int k) { return ledge(i) + glm::vec3{k ? 9.f : -9.f, 1.f, -27.f}; }   // its top centre
 inline std::vector<glm::vec2> ridgeShelters() {   // (x, z) of each block's middle
     std::vector<glm::vec2> v = {{280.f, -3335.f}, {320.f, -3335.f}, {360.f, -3335.f}, {388.f, -3335.f}, {300.f, -3368.f}, {345.f, -3368.f}, {380.f, -3368.f},
                                 {272.f, -3400.f}, {318.f, -3398.f}, {292.f, -3428.f}, {332.f, -3418.f}, {372.f, -3405.f}};
@@ -424,6 +433,57 @@ inline LevelData buildShepherd() {
         b.wall(shep::WX0 - 14.f, shep::W_TOP - 2.f, shep::WZ_N - 14.f, shep::WX1 + 14.f, shep::W_TOP, shep::WZ_N - 2.f, hull);
     }
 
+    // ---- PHASE 4: THE BREAK. Ledges of debris, its crown ----
+    {
+        const vec3 rock = glm::mix(iceLit, iceDark, 0.35f), steelLit{1.2f, 1.25f, 1.35f};
+        for (int i = 0; i < shep::LEDGES; ++i) {
+            const vec3 c = shep::ledge(i);
+            b.mat = Mat::ROCK;
+            b.wall(c.x - 18.f, c.y - 5.f, c.z - 18.f, c.x + 18.f, c.y, c.z + 18.f, rock);   // the raft
+            for (int k = 0; k < 10; ++k) {   // its ragged edge, and what hangs under it
+                const float a = 6.2831853f * k / 10.f, q = c.z * 0.1f + k;
+                b.kit().rock({c.x + 19.f * ring::dcos(a), c.y - 9.f, c.z + 19.f * ring::dsin(a)}, 3.f + 2.f * ring::hash(q, 1.f), 8.f, glm::mix(rock, iceLit, 0.2f), (uint32_t)(q * 31.f), 0.5f, 7);
+            }
+            const float off[5][4] = {{-30.f, 3.f, 0.f, 9.f}, {30.f, 5.f, -8.f, 8.f}, {-22.f, 9.f, -24.f, 7.f}, {24.f, 2.f, 22.f, 8.f}, {0.f, 12.f, 28.f, 6.f}};
+            for (const auto& o : off) {   // chunks hanging round it: cover, and high ground in the low gravity
+                const vec3 p = c + vec3{o[0], o[1], o[2]};
+                b.wall(p.x - o[3] * 0.5f, p.y - o[3] * 0.45f, p.z - o[3] * 0.5f, p.x + o[3] * 0.5f, p.y, p.z + o[3] * 0.5f, glm::mix(rock, iceLit, 0.15f));
+            }
+            for (int k = 0; k < 2; ++k) {   // two drifting chunks, rising and sinking
+                const vec3 mc = c + vec3{k ? 14.f : -14.f, 5.f + 2.f * k, k ? 30.f : -12.f};
+                const int m = b.mover(mc, vec3{3.f, 0.6f, 3.f}, Mover::Path::PINGPONG, vec3{0.f, -4.f, 0.f}, vec3{0.f, 4.f, 0.f}, 9.f + 3.f * k, 0.3f * k, vec3{0.f});
+                l.movers[m].look = 1; l.movers[m].color = glm::mix(iceLit, sand, 0.3f);
+            }
+            for (int k = 0; k < 2; ++k) {   // the ride chunks: a gap off its north side, a steel spike-post in each (spike one, ride the Gather)
+                const vec3 r = shep::rideChunk(i, k);
+                b.mat = Mat::ROCK;
+                const int w = b.wall(r.x - 3.f, r.y - 3.f, r.z - 2.5f, r.x + 3.f, r.y, r.z + 2.5f, glm::mix(rock, iceLit, 0.3f));
+                l.shepRideWalls.push_back(w);
+                b.mat = Mat::METAL;
+                b.prop(r.x - 0.15f, r.y, r.z - 0.15f, r.x + 0.15f, r.y + 2.4f, r.z + 0.15f, steel);
+                b.neon(r.x - 3.f, r.y - 0.4f, r.z + 2.5f, r.x + 3.f, r.y - 0.2f, r.z + 2.6f, steelLit);
+                SweepShelter sh; sh.box = LevelBuilder::aabb(r.x - 3.f, r.y - 3.f, r.z - 2.5f, r.x + 3.f, r.y, r.z + 2.5f); sh.holds = true; sh.section = 7 + i;
+                sh.post = r + vec3{2.5f, 0.f, 3.5f};
+                l.sweepShelters.push_back(sh);
+            }
+        }
+        const vec3 cr = shep::crown();   // its crown: the top of its ridge, lamps all round
+        b.mat = Mat::METAL;
+        b.wall(cr.x - 16.f, cr.y - 4.f, cr.z - 16.f, cr.x + 16.f, cr.y, cr.z + 16.f, hull);
+        for (int sd = -1; sd <= 1; sd += 2) {
+            b.neon(cr.x - 16.f, cr.y - 0.5f, cr.z + sd * 16.f - 0.1f, cr.x + 16.f, cr.y - 0.2f, cr.z + sd * 16.f + 0.1f, lampWhite * 0.8f);
+            b.neon(cr.x + sd * 16.f - 0.1f, cr.y - 0.5f, cr.z - 16.f, cr.x + sd * 16.f + 0.1f, cr.y - 0.2f, cr.z + 16.f, lampWhite * 0.8f);
+        }
+        b.mat = Mat::ROCK;
+        for (int k = 0; k < 60; ++k) {   // the torn ring: chunks hanging all round, far off
+            const float fk = (float)k;
+            const vec3 p{shep::BRK_X + (ring::hash(fk, 61.f) - 0.5f) * 500.f, -20.f + 220.f * ring::hash(fk, 62.f), -3250.f - 760.f * ring::hash(fk, 63.f)};
+            if (std::fabs(p.x - shep::BRK_X) < 60.f) continue;
+            const float r = 3.f + 9.f * ring::hash(fk, 64.f);
+            ringChunk(b, LevelBuilder::aabb(p.x - r, p.y - r * 0.5f, p.z - r * 0.7f, p.x + r, p.y + r * 0.5f, p.z + r * 0.7f), glm::mix(iceLit, iceDark, 0.3f + 0.4f * ring::hash(fk, 65.f)), (uint32_t)(k * 13 + 7));
+        }
+    }
+
     // ---- the arenas: the Comb's three zones (0-2), then the ridge (3) and inside (4-6) ----
     using W = WaveEntry;
     auto comb = [&](const char* name, const char* sub, AABB zone, vec3 start, AABB trig) {
@@ -484,5 +544,25 @@ inline LevelData buildShepherd() {
     inside("THE TUNING HALL", "INSIDE IT", LevelBuilder::aabb(hx0, -1000.f, shep::HZ_N, hx1, shep::H_TOP, shep::HZ_S), {shep::HX, 0.f, shep::HZ_S - 5.f});        // 4
     inside("THE LEDGER", "EVERY ONE, COUNTED", LevelBuilder::aabb(shep::HX - shep::HHALF, -1000.f, shep::LZ_N, shep::HX + shep::HHALF, shep::L_TOP, shep::HZ_N), {shep::HX, 0.f, shep::HZ_N - 4.f});   // 5
     inside("THE LAMP WELL", "UP, TO ITS SURFACE", LevelBuilder::aabb(shep::WX0 - 4.f, -1000.f, shep::WZ_N, shep::WX1 + 4.f, shep::W_TOP + 10.f, shep::LZ_N - 0.5f), {shep::HX, 0.f, shep::WZ_S - 3.f});   // 6
+    for (int i = 0; i < shep::LEDGES; ++i) {   // 7-9: THE BREAK
+        const vec3 c = shep::ledge(i);
+        static const char* subs[3] = {"IT HAS LOST ITS GRIP", "HIGHER", "ITS CROWN ABOVE"};
+        Arena a;
+        a.name = "THE BREAK"; a.subtitle = subs[i];
+        a.zone = LevelBuilder::aabb(c.x - 50.f, -1000.f, c.z - 45.f, c.x + 50.f, c.y + 60.f, c.z + 45.f);
+        a.bounds = LevelBuilder::aabb(c.x - 36.f, c.y - 8.f, c.z - 34.f, c.x + 36.f, c.y + 40.f, c.z + 34.f);
+        a.playerStart = shep::ledgeStart(i); a.startYaw = -90.f; a.hasRespawn = true; a.respawn = a.playerStart;
+        a.voidY = c.y - 25.f;
+        a.theme = ring::eclipseTheme(); a.ambient = Ambient::SPECKS; a.space = ReverbSpace::OPEN; a.tone = RoomTone::NONE;
+        a.hasTrigger = true; a.trigger = LevelBuilder::aabb(c.x - 18.f, c.y - 2.f, c.z - 18.f, c.x + 18.f, c.y + 20.f, c.z + 18.f);
+        a.groundSpawns = {c + vec3{-12.f, 0.f, -12.f}, c + vec3{12.f, 0.f, -10.f}, c + vec3{-14.f, 0.f, 8.f}, c + vec3{14.f, 0.f, 6.f}, c + vec3{0.f, 0.f, -15.f}, c + vec3{-30.f, 3.f, 0.f}, c + vec3{30.f, 5.f, -8.f}};
+        a.airSpawns = {c + vec3{-10.f, 5.f, -20.f}, c + vec3{10.f, 5.f, -20.f}, c + vec3{0.f, 8.f, 20.f}};
+        a.maxAlive = 8; a.waveBreak = 2.f;
+        using W = WaveEntry;
+        if (i == 0) a.waves = {{W(EnemyType::STRAY, 5), W(EnemyType::HERDER, 1)}};
+        if (i == 1) a.waves = {{W(EnemyType::STRAY, 5), W(EnemyType::HERDER, 2)}, {W(EnemyType::STRAY, 4), W(EnemyType::PORTER, 1)}};
+        if (i == 2) a.waves = {{W(EnemyType::STRAY, 6), W(EnemyType::HERDER, 2)}, {W(EnemyType::STRAY, 5), W(EnemyType::HERDER, 1), W(EnemyType::PORTER, 1)}};
+        l.arenas.push_back(a);
+    }
     return l;
 }

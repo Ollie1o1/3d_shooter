@@ -114,6 +114,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
                 if(here==1&&director.arena==1&&director.phase==WaveDirector::Phase::CLEARED)what="THE DOCK IS OPEN";
                 if(here==4)what=coldRecall?"THE BACK DOOR IS OPEN":"TAKE WHAT 24-A IS HOLDING";
             }
+            else if(shepherd()&&(shepLedge()>=0||shepRideT>=0.f||shepCrownT>=0.f)) what=breakObjective();   // THE BREAK
             else if(shepherd()&&level.arenaAt(player.position)>=4) {   // THE RESONATOR
                 static char res[110];const int here=level.arenaAt(player.position);
                 if(here==4){
