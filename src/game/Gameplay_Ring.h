@@ -95,6 +95,18 @@ inline void GameplayState::tickSweep(float dt) {
         if (whole != sweepTickAt) { sweepTickAt = whole; audio.play("count_tick", c < 3.5f ? 128 : 90, SoundGroup::UI, true); }
         if (std::fmod(gameClock, 0.12f) < dt)   // dust lifting off the ground ahead of it
             fx.spawnBurst(player.position - dir * cosmetic::range(4.f, 18.f) + glm::vec3{cosmetic::range(-8.f, 8.f), 0.1f, 0.f}, SWEEP_ICE * 0.5f, 1, 0.6f, 0.9f, -0.6f);
+        if (sweep.spec.kind != SweepSpec::Kind::CONE && !ringQuiet()) {   // ice streaming off its crest, near you
+            const glm::vec3 side{-dir.z, 0.f, dir.x};
+            for (int w = 0; w < sweep.waves(); ++w) {
+                const glm::vec3 crest = sweep.base + dir * sweep.front(w);
+                const float ahead = glm::dot(player.position - crest, dir);
+                if (ahead < 0.f || ahead > 160.f) continue;
+                for (int q = 0; q < 3; ++q) {
+                    const glm::vec3 at = crest + side * (glm::dot(player.position - sweep.base, side) + cosmetic::range(-45.f, 45.f)) + glm::vec3{0.f, cosmetic::range(8.f, 18.f), 0.f};
+                    fx.spawnSpray(at, glm::normalize(dir * 0.7f + glm::vec3{0.f, 0.7f, 0.f}), SWEEP_ICE * 0.9f * (1.f - 0.8f * ringDark()), 2, 16.f, 1.4f, 0.5f);
+                }
+            }
+        }
     }
     for (int i : ev.shattered) {
         const AABB& b = sweepShelters[i].box; const glm::vec3 c = (b.min + b.max) * 0.5f;
@@ -170,7 +182,7 @@ inline bool GameplayState::ringQuiet() const {   // inside the open hull: air, a
 // Chapter 6's painted-once textures (render/RingDetail.h): the ground's and rock's patterns, the giant's
 // cloud tops, the galaxy. ~0.3 s (0.6 s in a browser) the first time: done at the level's start, kept after
 inline void GameplayState::ringTextures() {
-    static GLuint detail[2] = {}, sky[2] = {};   // (shared by every run, like the world's: a retry doesn't paint them again)
+    static GLuint detail[2] = {}, sky[3] = {};   // (shared by every run, like the world's: a retry doesn't paint them again)
     if (!detail[0]) {
         detail[0] = TextureGen::uploadTexture(ringdetail::ground(), ringdetail::SIZE, ringdetail::SIZE);
         detail[1] = TextureGen::uploadTexture(ringdetail::rock(), ringdetail::SIZE, ringdetail::SIZE);
@@ -179,9 +191,10 @@ inline void GameplayState::ringTextures() {
     if (!sky[0]) {
         sky[0] = TextureGen::uploadTexture(ringdetail::giant(), ringdetail::GIANT_W, ringdetail::GIANT_H);
         sky[1] = TextureGen::uploadTexture(ringdetail::galaxy(), ringdetail::GALAXY_W, ringdetail::GALAXY_H);
+        sky[2] = TextureGen::uploadTexture(ringdetail::nebula(), ringdetail::NEBULA_SIZE, ringdetail::NEBULA_SIZE);
         for (GLuint t : sky) { glBindTexture(GL_TEXTURE_2D, t); glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); }
     }
-    ringDetailTex[0] = detail[0]; ringDetailTex[1] = detail[1]; ringSkyTex[0] = sky[0]; ringSkyTex[1] = sky[1];
+    ringDetailTex[0] = detail[0]; ringDetailTex[1] = detail[1]; ringSkyTex[0] = sky[0]; ringSkyTex[1] = sky[1]; ringSkyTex[2] = sky[2];
 }
 
 inline void GameplayState::beginRing() {
@@ -338,9 +351,15 @@ inline void GameplayState::gatherSweep(std::vector<BoxInstance>& out) {
         push(out, T(at) * S(glm::vec3{0.3f + d * 0.01f}), glm::vec3{0.f}, SWEEP_ICE * std::min(3.f, 0.5f + b.t));   // (far off, the glint is what you see: it keeps ~0.6 degrees)
     }
     if (sweep.phase != RingSweep::Phase::INBOUND && sweep.phase != RingSweep::Phase::PASSING) return;
-    // The front: a wall of lifted ice, ragged along its top
+    // The front: a wall of lifted ice. Three layers (a low bright crest racing ahead, the wall, a taller
+    // dimmer wall of what it has already lifted behind), leaning forward and churning; chunks tumbling over
+    // its top; a hard bright edge where it meets the ice; and its shadow lying on the ground ahead of it
+    // (13.4: the ground goes dark a moment before the wave). The boss's cone is drawn plain
     const glm::vec3 dir = sweep.spec.dir, side{-dir.z, 0.f, dir.x};
     const bool cone = sweep.spec.kind == SweepSpec::Kind::CONE;
+    const float seen = 1.f - 0.88f * ringDark();   // (in the Shadow Band you barely see it)
+    const float yawSide = std::atan2(side.z, -side.x);
+    const float ground = std::fabs(player.position.y) < 1.5f ? 0.f : player.position.y;   // (on the Wake's treads it runs over the step you're on)
     for (int k = 0; k < sweep.waves(); ++k) {
         const float f = sweep.front(k);
         if (cone && f <= 0.5f) continue;
@@ -355,12 +374,65 @@ inline void GameplayState::gatherSweep(std::vector<BoxInstance>& out) {
                 const float across = glm::dot(player.position - sweep.base, side) + (float)i * 4.f;
                 at = sweep.base + dir * f + side * across;
             }
-            at.y = player.position.y > 40.f ? 0.f : 0.f;
+            at.y = ground;
             const float w = cone ? std::max(0.6f, f * sweep.spec.coneHalf / 40.f * 1.1f) : 4.2f;
-            const float seen = 1.f - 0.88f * ringDark();   // (in the Shadow Band you barely see it)
-            push(out, T(at + glm::vec3{0.f, h * 0.5f, 0.f}) * RY(std::atan2(side.z, -side.x)) * S(glm::vec3{w, h, 0.9f}), SWEEP_ICE * 0.35f * seen, SWEEP_ICE * (0.55f + 0.35f * ring::hash(n, 2.f)) * seen);
+            if (cone) {
+                push(out, T(at + glm::vec3{0.f, h * 0.5f, 0.f}) * RY(yawSide) * S(glm::vec3{w, h, 0.9f}), SWEEP_ICE * 0.35f * seen, SWEEP_ICE * (0.55f + 0.35f * ring::hash(n, 2.f)) * seen);
+                continue;
+            }
+            // (the wall itself is drawn by renderSweepWall: a curtain, not boxes)
+            (void)w; (void)yawSide;
+            // a chunk it has lifted, tumbling over the top
+            if (i % 3 == 0) {
+                const float t = gameClock * (1.5f + ring::hash(n, 3.f)) + n;
+                const glm::vec3 c = at - dir * 2.f + glm::vec3{0.f, h + 2.f + 3.f * std::sin(t * 0.7f), 0.f} + side * (1.5f * std::sin(t));
+                const float sz = 0.6f + 1.4f * ring::hash(n, 4.f);
+                push(out, T(c) * RY(t) * RX(t * 1.3f) * S(glm::vec3{sz, sz * 0.8f, sz * 1.1f}), glm::vec3{0.55f, 0.52f, 0.48f} * seen, SWEEP_ICE * 0.15f * seen);
+            }
         }
+        if (cone) continue;
+        // where it meets the ice: a hard bright edge, then its shadow on the ground ahead of it
+        const glm::vec3 mid = sweep.base + dir * f + side * glm::dot(player.position - sweep.base, side);
+        push(out, T(mid + dir * 1.6f + glm::vec3{0.f, ground + 0.06f, 0.f}) * RY(yawSide) * S(glm::vec3{340.f, 0.12f, 0.7f}), glm::vec3{0.f}, SWEEP_ICE * 2.2f * seen);
+        const float shadowLen = 28.f;
+        push(out, T(mid + dir * (2.f + shadowLen * 0.5f) + glm::vec3{0.f, ground + 0.025f, 0.f}) * RY(yawSide) * S(glm::vec3{340.f, 0.02f, shadowLen}), glm::vec3{0.018f, 0.016f, 0.015f}, glm::vec3{0.f});
     }
+}
+
+// The wall itself (13.4): a translucent curtain of lifted ice, two layers (the wall and what it has lifted
+// behind it), drawn after the sky (it writes no depth: what it passes in front of shows through)
+inline void GameplayState::renderSweepWall(const glm::mat4& view, const glm::mat4& proj) {
+    if (!sweepOn() || (sweep.phase != RingSweep::Phase::INBOUND && sweep.phase != RingSweep::Phase::PASSING)) return;
+    if (sweep.spec.kind == SweepSpec::Kind::CONE || devSkip("sweepwall")) return;
+    using glm::vec3;
+    const vec3 dir = sweep.spec.dir, side{-dir.z, 0.f, dir.x};
+    const float ground = std::fabs(player.position.y) < 1.5f ? 0.f : player.position.y;
+    const float seen = 1.f - 0.88f * ringDark();
+    sweepWallShader.use();
+    sweepWallShader.setMat4("projection", proj); sweepWallShader.setMat4("view", view);
+    sweepWallShader.setFloat("uTime", gameClock); sweepWallShader.setFloat("uSeen", seen);
+    sweepWallShader.setFloat("uGround", ground); sweepWallShader.setVec3("uSide", side); sweepWallShader.setVec3("uViewPos", player.camera.position);
+    glDisable(GL_CULL_FACE); glDepthMask(GL_FALSE); glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBindVertexArray(waterVAO); glBindBuffer(GL_ARRAY_BUFFER, waterVBO);
+    vec3 v[MAX_WATER * 6]; int quads = 0;
+    struct Layer { vec3 origin; float height, layer; } layers[8];
+    for (int k = 0; k < sweep.waves() && quads + 2 <= 8; ++k)
+        for (int l = 1; l >= 0; --l) {   // (the far layer first: drawn back to front)
+            const vec3 mid = sweep.base + dir * (sweep.front(k) - l * 6.f) + side * glm::dot(player.position - sweep.base, side);
+            const float H = l ? 46.f : 32.f;
+            const vec3 a = mid - side * 220.f + vec3{0.f, ground, 0.f} - vec3{0.f, mid.y, 0.f}, b = a + side * 440.f;
+            const vec3 e{0.f, H, 0.f};
+            const vec3 q[] = {a, b, b + e, a, b + e, a + e};
+            std::copy(q, q + 6, v + quads * 6);
+            layers[quads++] = {a, H, (float)l};
+        }
+    glBufferData(GL_ARRAY_BUFFER, sizeof(v), nullptr, GL_STREAM_DRAW);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, quads * 6 * sizeof(vec3), v);
+    for (int i = 0; i < quads; ++i) {
+        sweepWallShader.setVec3("uOrigin", layers[i].origin); sweepWallShader.setFloat("uHeight", layers[i].height); sweepWallShader.setFloat("uLayer", layers[i].layer);
+        glDrawArrays(GL_TRIANGLES, i * 6, 6);
+    }
+    glBindVertexArray(0); glDepthMask(GL_TRUE); glDisable(GL_BLEND); glEnable(GL_CULL_FACE);
 }
 
 // The swept death (13.6). First person: the ring drops away, tumbling, and in two seconds it is a

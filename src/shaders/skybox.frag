@@ -42,7 +42,8 @@ uniform float uRingDawn;    // 0..1: the sunrise out of the Shadow Band: a red a
 uniform float uRingSwept;   // seconds since a sweep threw the swept off the ring (<0: none lately): they burn up across the giant (13.3)
 uniform float uRingBend;
 uniform sampler2D uRingGiant;   // the giant's cloud tops, painted once (render/RingDetail.h): x longitude, y latitude angle
-uniform sampler2D uRingGalaxy;  // the galaxy's dust: x azimuth, y height    // 0..1: the main rings opening into an arch over you as you near the Shepherd (its pull bends your ringlet under them)
+uniform sampler2D uRingGalaxy;
+uniform sampler2D uRingNebula;  // the nebula's picture (render/RingDetail.h)  // the galaxy's dust: x azimuth, y height    // 0..1: the main rings opening into an arch over you as you near the Shepherd (its pull bends your ringlet under them)
 
 float hash3(vec3 p) { return fract(sin(dot(p, vec3(12.9898, 78.233, 37.719))) * 43758.5453); }
 float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
@@ -321,7 +322,31 @@ vec3 ringStars(vec3 dir, float k) {
     float az = atan(dir.z, dir.x);
     float n = textureLod(uRingGalaxy, vec2(az / 6.28318531 + 0.5, dir.y * 0.5 + 0.5), 0.0).r;   // (painted once: render/RingDetail.h)
     col += mix(vec3(0.03, 0.035, 0.06), vec3(0.09, 0.07, 0.05), n) * band * n * 1.4 * k;
+    // The nebula, high in the south-west over the way you came: its own picture, laid flat on the sky round
+    // its centre (render/RingDetail.h nebula), squared back from its storage (deep blacks, bright wisps)
+    const vec3 NEB_C = vec3(-0.5872, 0.5338, 0.6085);   // normalize(-0.55, 0.5, 0.57)
+    float nf = dot(dir, NEB_C);
+    if (nf > 0.6) {
+        vec3 nr = normalize(cross(NEB_C, vec3(0.0, 1.0, 0.0))), nu = cross(nr, NEB_C);
+        vec2 nq = vec2(dot(dir, nr), dot(dir, nu)) / nf / 0.84 * 0.5 + 0.5;
+        if (all(greaterThan(nq, vec2(0.0))) && all(lessThan(nq, vec2(1.0)))) {
+            vec3 neb = texture(uRingNebula, nq).rgb;
+            col += neb * neb * 0.85 * k;
+        }
+    }
     col += vec3(0.5, 0.5, 0.6) * step(0.9993, hash3(floor(dir * 1400.0))) * band * k;   // its fine stars
+    // Now and then a meteor: a short bright streak somewhere up high, gone in under a second
+    float slot = floor(uTime / 4.3);
+    float mt = fract(uTime / 4.3) * 4.3;
+    if (mt < 0.7 && hash2(vec2(slot, 7.0)) > 0.35) {
+        vec3 a0 = normalize(vec3(hash2(vec2(slot, 1.0)) - 0.5, 0.25 + 0.6 * hash2(vec2(slot, 2.0)), hash2(vec2(slot, 3.0)) - 0.5));
+        vec3 md = normalize(cross(a0, vec3(hash2(vec2(slot, 4.0)) - 0.5, 1.0, hash2(vec2(slot, 5.0)) - 0.5)));
+        float u = mt / 0.7;
+        vec3 head = normalize(a0 + md * 0.25 * u), tail = normalize(a0 + md * 0.25 * max(0.0, u - 0.35));
+        vec3 ab = head - tail; float hh = clamp(dot(dir - tail, ab) / max(dot(ab, ab), 1e-6), 0.0, 1.0);
+        float dd = length(dir - tail - ab * hh);
+        col += vec3(1.0, 0.95, 0.85) * exp(-dd * 2500.0) * hh * (1.0 - u) * 2.0 * k;
+    }
     return col;
 }
 // The giant's main rings: a plane through its centre (lifted onto the horizon), tilted by `a` so you
@@ -417,6 +442,7 @@ vec3 ringSky(vec3 dir) {
         // The belts, their curls, the fine lanes, the storm and its wake: painted once (they barely change),
         // read here. Each latitude reads at its own drift, so the belts still slide past each other
         vec3 surf = textureLod(uRingGiant, vec2(lonA / 6.28318531 + 0.5, asin(clamp(lat, -1.0, 1.0)) / 3.14159265 + 0.5), 0.0).rgb;
+        surf = max(mix(vec3(dot(surf, vec3(0.3, 0.55, 0.15))), surf, 1.3), 0.0);   // (more colour than the map holds: vivid, not washed out)
         // The pole: a six-sided jet stream round a blue-grey cap
         if (lat > 0.7) {
             vec2 pp = nrm.xz / lat;
@@ -449,7 +475,12 @@ vec3 ringSky(vec3 dir) {
             body += vec3(0.6, 0.65, 0.9) * uRingBolt * 1.6 * (exp(-d * 9.0) + 0.15 * exp(-d * 2.0));
         }
         float limb = pow(1.0 - mu, 2.5);
-        body += vec3(0.95, 0.75, 0.45) * limb * 0.2 * (0.15 + lit);      // its haze at the edge, warm
+        body += vec3(1.0, 0.7, 0.35) * limb * 0.28 * (0.15 + lit);      // its haze at the edge, warm
+        body += vec3(0.35, 0.55, 1.0) * pow(1.0 - mu, 6.0) * 0.12 * smoothstep(0.4, 0.9, lat) * (0.2 + lit);   // the north's blue haze
+        // Its aurora: a ring of light round the north pole, curtains rippling along it, seen on the night side
+        float aur = exp(-pow((acos(clamp(lat, -1.0, 1.0)) - 0.88) * 9.0, 2.0));   // (low enough to show on the limb from the ring)
+        float curt = 0.5 + 0.5 * sin(lon * 23.0 + uTime * 0.7 + 3.0 * sin(lon * 5.0 - uTime * 0.3));
+        body += mix(vec3(0.25, 1.0, 0.55), vec3(0.6, 0.35, 1.0), curt) * aur * (0.35 + 0.65 * curt) * 1.6 * (1.0 - lit) * (1.0 - night * 0.3);
         body += vec3(0.9, 0.55, 0.3) * pow(1.0 - mu, 8.0) * smoothstep(-0.2, 0.1, ndl) * 0.5 * (1.0 - night);   // the lit limb's thin bright rim
         // The sunrise: a thin red arc along its edge, brightest on the sun's side, then the diamond
         if (uRingDawn > 0.0) {
@@ -482,7 +513,8 @@ vec3 ringSky(vec3 dir) {
     if (ringA > 0.0 && tRing < tP) {
         vec3 P = dir * tRing;
         float x = (rRing - RING_IN) / (RING_OUT - RING_IN);
-        vec3 rc = mix(vec3(0.62, 0.52, 0.4), vec3(0.95, 0.9, 0.8), smoothstep(0.2, 0.6, x));
+        vec3 rc = mix(vec3(0.5, 0.55, 0.62), vec3(1.0, 0.86, 0.62), smoothstep(0.2, 0.36, x));   // the faint inner ring blue-grey, the dense middle warm gold
+        rc = mix(rc, vec3(0.82, 0.7, 0.55), smoothstep(0.7, 0.8, x));                          // the outer, tan past the division
         rc = mix(rc, vec3(0.75, 0.66, 0.52), 0.3 * vnoise(vec2(rRing * 23.0, 9.0)));
         float lightR = 0.45 + 0.55 * abs(dot(pn, sunD));                 // (lit through, from either side)
         float inShadow = hitsBall(P, sunD, C, R) ? 0.06 : 1.0;           // the giant's shadow across them

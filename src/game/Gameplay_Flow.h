@@ -171,6 +171,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
     particleShader.loadFiles("src/shaders/particle.vert","src/shaders/particle.frag");
     waterShader.loadFiles("src/shaders/water.vert","src/shaders/water.frag");
     labGlassShader.loadFiles("src/shaders/water.vert","src/shaders/labglass.frag");
+    sweepWallShader.loadFiles("src/shaders/water.vert","src/shaders/sweepwall.frag");
 
     // Effects::Tracer VBO: 4 floats per vertex (xyz + alpha), dynamic
     glGenVertexArrays(1, &tracerVAO);

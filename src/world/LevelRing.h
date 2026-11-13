@@ -1252,12 +1252,20 @@ inline LevelData buildRing() {
     land.hasTrigger = true; land.trigger = LevelBuilder::aabb(-ring::HALF_X, -2.f, -140.f, ring::HALF_X, 20.f, -90.f);
     land.groundSpawns = {{-30.f, 0.f, -140.f}, {24.f, 0.f, -138.f}, {4.f, 0.f, -146.f}, {-52.f, 0.f, -112.f}, {50.f, 0.f, -108.f}};
     land.airSpawns = {{0.f, 3.f, -146.f}};
-    land.waves = {{W(EnemyType::STRAY, 4)}, {W(EnemyType::STRAY, 4), W(EnemyType::HERDER, 1)}};
+    land.waves = {{W(EnemyType::STRAY, 5)}, {W(EnemyType::STRAY, 5), W(EnemyType::HERDER, 1)}};
     land.waveBreak = 2.5f; land.maxAlive = 7;
     l.arenas.push_back(land);
     // 1. The Drift, as far as I2 and HOLDFAST
     Arena d1 = section("THE DRIFT", "61,000 KM", ring::DRIFT_MID, ring::LAND_N, {4.f, 0.f, -158.f})   /* (beside the pier-end post, not behind it) */;
     d1.voidY = ring::VOID_Y; d1.ambient = Ambient::SPECKS;
+    {   // I2, where HOLDFAST is: strays waiting on the island (the Drift's first sweep comes soon after)
+        const AABB i2 = ring::islandI2();
+        d1.hasTrigger = true; d1.trigger = LevelBuilder::aabb(i2.min.x, -2.f, i2.min.z, i2.max.x, 12.f, i2.max.z + 6.f);
+        d1.groundSpawns = {{-16.f, i2.max.y, i2.min.z + 4.f}, {16.f, i2.max.y, i2.min.z + 5.f}, {18.f, i2.max.y, i2.max.z - 5.f}, {-18.f, i2.max.y, i2.max.z - 6.f}, {-6.f, i2.max.y, i2.max.z - 4.f}};
+        d1.airSpawns = {{0.f, i2.max.y + 3.f, i2.min.z - 4.f}};
+        d1.waves = {{W(EnemyType::STRAY, 4)}, {W(EnemyType::STRAY, 3), W(EnemyType::HERDER, 1)}};
+        d1.waveBreak = 2.5f; d1.maxAlive = 6;
+    }
     l.arenas.push_back(d1);
     // 2. The Drift beyond: the fight island
     Arena d2 = section("THE DRIFT", "", ring::DRIFT_N, ring::DRIFT_MID, {0.f, 1.f, -330.f});
@@ -1268,8 +1276,8 @@ inline LevelData buildRing() {
         d2.hasTrigger = true; d2.trigger = LevelBuilder::aabb(i3.min.x, -2.f, i3.min.z + 4.f, i3.max.x, 12.f, i3.max.z - 4.f);
         d2.groundSpawns = {{-24.f, 0.f, -470.f}, {22.f, 0.f, -474.f}, {0.f, 0.f, -476.f}, {-28.f, 0.f, -440.f}, {28.f, 0.f, -446.f}};
         d2.airSpawns = {{-20.f, 3.f, -470.f}, {20.f, 3.f, -466.f}};
-        d2.waves = {{W(EnemyType::STRAY, 5), W(EnemyType::HERDER, 1)}, {W(EnemyType::STRAY, 5), W(EnemyType::PORTER, 1)}};
-        d2.waveBreak = 2.5f; d2.maxAlive = 7;
+        d2.waves = {{W(EnemyType::STRAY, 6), W(EnemyType::HERDER, 1)}, {W(EnemyType::STRAY, 6), W(EnemyType::PORTER, 1)}};
+        d2.waveBreak = 2.5f; d2.maxAlive = 8;
     }
     l.arenas.push_back(d2);
     // 3. The Kept: the reef and its courtyard
@@ -1284,10 +1292,10 @@ inline LevelData buildRing() {
         const vec3 tally = c + vec3{ring::REEF_HX - 2.5f, 3.f, -10.f};   // on the east ledge
         // The first wave is THE CROOK's: it hooks the stray at the east wall out of the reef as you come in,
         // throws for you, and breaks off at a third gone (the wave ends when it has left and the strays are down)
-        k.waves = {{W(EnemyType::CROOK, 0, {c + vec3{6.f, 0.f, -24.f}}), W(EnemyType::STRAY, 0, {c + vec3{ring::REEF_HX - 4.f, 0.f, -12.f}}), W(EnemyType::STRAY, 4)},
-                   {W(EnemyType::STRAY, 6), W(EnemyType::HERDER, 2), W(EnemyType::TALLY, 0, {tally})},
-                   {W(EnemyType::PORTER, 0, {c + vec3{0.f, 0.f, -36.f}}), W(EnemyType::STRAY, 6), W(EnemyType::HERDER, 2)}};
-        k.waveBreak = 3.f; k.maxAlive = 9;
+        k.waves = {{W(EnemyType::CROOK, 0, {c + vec3{6.f, 0.f, -24.f}}), W(EnemyType::STRAY, 0, {c + vec3{ring::REEF_HX - 4.f, 0.f, -12.f}}), W(EnemyType::STRAY, 5)},
+                   {W(EnemyType::STRAY, 7), W(EnemyType::HERDER, 2), W(EnemyType::TALLY, 0, {tally})},
+                   {W(EnemyType::PORTER, 0, {c + vec3{0.f, 0.f, -36.f}}), W(EnemyType::STRAY, 7), W(EnemyType::HERDER, 2)}};
+        k.waveBreak = 3.f; k.maxAlive = 10;
         l.arenas.push_back(k);
     }
     // 4. The open hull, and out north
@@ -1299,8 +1307,8 @@ inline LevelData buildRing() {
         sb.hasTrigger = true; sb.trigger = LevelBuilder::aabb(-ring::HALF_X, -2.f, -1110.f, ring::HALF_X, 20.f, -1060.f);
         sb.groundSpawns = {{-40.f, 0.f, -1132.f}, {36.f, 0.f, -1128.f}, {-10.f, 0.f, -1140.f}, {60.f, 0.f, -1100.f}, {-64.f, 0.f, -1104.f}, {-22.f, 0.f, -1122.f}, {24.f, 0.f, -1118.f}};
         sb.airSpawns = {{0.f, 3.f, -1136.f}, {-30.f, 3.f, -1120.f}};
-        sb.waves = {{W(EnemyType::STRAY, 6), W(EnemyType::HERDER, 1)}, {W(EnemyType::STRAY, 5), W(EnemyType::PORTER, 1)}};
-        sb.waveBreak = 3.f; sb.maxAlive = 8;
+        sb.waves = {{W(EnemyType::STRAY, 7), W(EnemyType::HERDER, 1)}, {W(EnemyType::STRAY, 6), W(EnemyType::PORTER, 1)}};
+        sb.waveBreak = 3.f; sb.maxAlive = 9;
         l.arenas.push_back(sb);
     }
     // 6. The Spokes: the full level after the dark. Two fights, both where spokes make you walk
@@ -1310,10 +1318,10 @@ inline LevelData buildRing() {
         sp.groundSpawns = {{-34.f, 0.f, -1495.f}, {30.f, 0.f, -1500.f}, {8.f, 0.f, -1508.f}, {70.f, 0.f, -1484.f}, {-72.f, 0.f, -1486.f}, {-20.f, 0.f, -1525.f}, {-58.f, 0.f, -1425.f}, {56.f, 0.f, -1428.f}};
         sp.airSpawns = {{-30.f, 3.f, -1500.f}, {30.f, 3.f, -1500.f}};
         const vec3 tally{-44.f, 0.f, -1522.f};
-        sp.waves = {{W(EnemyType::STRAY, 6), W(EnemyType::HERDER, 2)},
-                    {W(EnemyType::PORTER, 0, {vec3{10.f, 0.f, -1515.f}}), W(EnemyType::STRAY, 5), W(EnemyType::TALLY, 0, {tally})},
-                    {W(EnemyType::STRAY, 6), W(EnemyType::HERDER, 1)}};
-        sp.waveBreak = 3.f; sp.maxAlive = 9;
+        sp.waves = {{W(EnemyType::STRAY, 7), W(EnemyType::HERDER, 2)},
+                    {W(EnemyType::PORTER, 0, {vec3{10.f, 0.f, -1515.f}}), W(EnemyType::STRAY, 6), W(EnemyType::TALLY, 0, {tally})},
+                    {W(EnemyType::STRAY, 7), W(EnemyType::HERDER, 2)}};
+        sp.waveBreak = 3.f; sp.maxAlive = 10;
         l.arenas.push_back(sp);
     }
     // 7. The Gap: a fight on the near cliff top, then the raft (THE DROVER comes with its herd once you're on it)
@@ -1323,8 +1331,8 @@ inline LevelData buildRing() {
         g.hasTrigger = true; g.trigger = LevelBuilder::aabb(-ring::HALF_X, -2.f, ring::GAP_S + 50.f, ring::HALF_X, 20.f, ring::SPOKES_N - 36.f);
         g.groundSpawns = {{-40.f, 0.f, ring::GAP_S + 14.f}, {44.f, 0.f, ring::GAP_S + 12.f}, {-70.f, 0.f, ring::GAP_S + 24.f}, {70.f, 0.f, ring::GAP_S + 22.f}};
         g.airSpawns = {{-20.f, 3.f, ring::GAP_S + 10.f}, {24.f, 3.f, ring::GAP_S + 10.f}};
-        g.waves = {{W(EnemyType::STRAY, 5), W(EnemyType::HERDER, 2)}, {W(EnemyType::STRAY, 4), W(EnemyType::PORTER, 1)}};
-        g.waveBreak = 3.f; g.maxAlive = 8;
+        g.waves = {{W(EnemyType::STRAY, 6), W(EnemyType::HERDER, 2)}, {W(EnemyType::STRAY, 5), W(EnemyType::PORTER, 1)}};
+        g.waveBreak = 3.f; g.maxAlive = 9;
         l.arenas.push_back(g);
     }
     // 8. The Wake: the climb (the double sweep comes on it), and THE BELLWETHER on the summit with its flock
@@ -1337,9 +1345,10 @@ inline LevelData buildRing() {
         w.hasTrigger = true; w.trigger = LevelBuilder::aabb(-ring::WAKE_HALF, top - 2.f, ring::summitN(), ring::WAKE_HALF, top + 20.f, ring::summitS() - 6.f);
         const float zs = ring::summitS(), zc = (ring::summitS() + ring::summitN()) * 0.5f;
         w.groundSpawns = {{-30.f, top, zc - 10.f}, {30.f, top, zc - 8.f}, {-14.f, top, zc - 24.f}, {16.f, top, zc - 26.f}};
-        w.waves = {{W(EnemyType::BELLWETHER, 0, {vec3{0.f, top, zc - 14.f}}), W(EnemyType::STRAY, 5)}};
+        w.waves = {{W(EnemyType::BELLWETHER, 0, {vec3{0.f, top, zc - 14.f}}), W(EnemyType::STRAY, 6), W(EnemyType::HERDER, 1)}};
+        w.airSpawns = {{0.f, top + 3.f, zc - 20.f}};
         (void)zs;
-        w.maxAlive = 8;
+        w.maxAlive = 9;
         l.arenas.push_back(w);
     }
     // 9. The Shore: down the wave's back, gravity coming back, the near tier's breakers, no one but you

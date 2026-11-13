@@ -855,9 +855,11 @@ inline void GameplayState::render() {
         if (ring()) ringTextures();
         glActiveTexture(GL_TEXTURE7); glBindTexture(GL_TEXTURE_2D, ringSkyTex[0]);
         glActiveTexture(GL_TEXTURE8); glBindTexture(GL_TEXTURE_2D, ringSkyTex[1]);
+        glActiveTexture(GL_TEXTURE9); glBindTexture(GL_TEXTURE_2D, ringSkyTex[2]);
         glActiveTexture(GL_TEXTURE0);
         skyboxShader.setInt("uRingGiant", 7);
         skyboxShader.setInt("uRingGalaxy", 8);
+        skyboxShader.setInt("uRingNebula", 9);
         skyboxShader.setFloat("uRingSwept", ring() ? ringSweptAgo : -1.f);
         skyboxShader.setFloat("uRingBend", ring() && !g_devRingTest ? ring::ringBend(player.position.z) : 0.f);
         skyboxShader.setFloat("uRingDawn", ring() && ringSunT >= 0.f ? glm::clamp(ringSunT / shadowband::DIAMOND, 0.f, 1.f) * ringDark() : 0.f);
@@ -882,6 +884,7 @@ inline void GameplayState::render() {
     ftLap.to(frametimer::R_WORLD);
 
     if (!devSkip("water")) renderWater(view, proj, th, renderCamPos);
+    renderSweepWall(view, proj);
     if(laboratory())renderLabGlass(view,proj,renderCamPos);
     if (cold()) renderColdIce(view, proj, renderCamPos);
     if(laboratory() && !devSkip("fx") && !labAshSky())renderLabAtmosphere(view,proj,renderCamPos);

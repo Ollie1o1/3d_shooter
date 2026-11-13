@@ -132,7 +132,8 @@ constexpr int GIANT_W = 2048, GIANT_H = 1024;
 inline std::vector<uint8_t> giant() {
     std::vector<uint8_t> px((size_t)GIANT_W * GIANT_H * 4);
     const float PI = 3.14159265359f, TAU = 6.28318530718f;
-    const float butter[3] = {0.92f, 0.8f, 0.56f}, tan_[3] = {0.66f, 0.5f, 0.33f}, cream[3] = {0.97f, 0.93f, 0.82f}, rust[3] = {0.52f, 0.32f, 0.2f};
+    const float butter[3] = {0.97f, 0.79f, 0.44f}, tan_[3] = {0.72f, 0.47f, 0.26f}, cream[3] = {1.f, 0.93f, 0.76f}, rust[3] = {0.66f, 0.29f, 0.13f};
+    const float north[3] = {0.55f, 0.66f, 0.78f}, gold[3] = {1.f, 0.8f, 0.36f};
     for (int j = 0; j < GIANT_H; ++j) {
         const float phi = ((j + 0.5f) / GIANT_H - 0.5f) * PI, lat = std::sin(phi);
         for (int i = 0; i < GIANT_W; ++i) {
@@ -150,6 +151,8 @@ inline std::vector<uint8_t> giant() {
                 float v = tan_[k] + (butter[k] - tan_[k]) * bandsP;
                 v += (cream[k] - v) * sstep(0.55f, 0.9f, belts) * 0.55f;
                 v += (rust[k] - v) * sstep(0.6f, 0.8f, swirl2) * 0.4f * sstep(0.1f, 0.3f, std::fabs(lat));
+                v += (gold[k] - v) * sstep(0.22f, 0.0f, std::fabs(lat - 0.02f)) * 0.35f * (0.6f + 0.4f * bandsP);   // the equator's gold zone
+                v += (north[k] - v) * sstep(0.62f, 0.88f, lat) * 0.55f;                                              // the north, gone blue-grey
                 c[k] = v * (0.9f + 0.12f * hair);
             }
             // The storm: a pale oval in the northern belts, turning, a dark wake behind it
@@ -181,6 +184,46 @@ inline std::vector<uint8_t> galaxy() {
             const float n = wfbm(u * 31.f, y * 7.f, 31, 201);
             uint8_t* p = &px[((size_t)j * GALAXY_W + i) * 4];
             p[0] = p[1] = p[2] = u8(n); p[3] = 255;
+        }
+    return px;
+}
+
+// The nebula, high in the south-west over the way you came: a flat picture of NEBULA_SPAN radians either
+// way of its centre (skybox.frag projects it onto the sky). Violet haze outside, rose where its hydrogen
+// glows, a teal heart, a knot of young stars in it, dark lanes of dust across all of it, filaments at its
+// edges. RGB premultiplied (the shader squares it back: deep blacks, bright wisps), A unused
+constexpr int NEBULA_SIZE = 1024;
+constexpr float NEBULA_SPAN = 0.84f;   // (tan 40 degrees: the picture is 80 degrees across)
+inline std::vector<uint8_t> nebula() {
+    std::vector<uint8_t> px((size_t)NEBULA_SIZE * NEBULA_SIZE * 4);
+    const int BIG = 1 << 20;   // (no wrap needed: it is a picture with dark edges)
+    for (int j = 0; j < NEBULA_SIZE; ++j)
+        for (int i = 0; i < NEBULA_SIZE; ++i) {
+            const float x = ((i + 0.5f) / NEBULA_SIZE * 2.f - 1.f), y = ((j + 0.5f) / NEBULA_SIZE * 2.f - 1.f);
+            // its shape: an uneven blob leaning one way, a tail drawn off it
+            const float ex = x * 0.95f + y * 0.3f, ey = y * 1.25f - x * 0.15f;
+            const float r = std::sqrt(ex * ex + ey * ey);
+            const float wx = wfbm(x * 3.f + 11.f, y * 3.f + 4.f, BIG, 401), wy = wfbm(x * 3.f + 2.f, y * 3.f + 17.f, BIG, 411);
+            const float cloud = wfbm(x * 4.f + wx * 1.6f + 50.f, y * 4.f + wy * 1.6f + 50.f, BIG, 421);
+            const float fine = wfbm(x * 13.f + wx * 3.f + 80.f, y * 13.f + wy * 3.f + 80.f, BIG, 431);
+            const float fil = std::pow(1.f - std::fabs(wfbm(x * 7.f + wy * 2.f + 30.f, y * 7.f + wx * 2.f + 30.f, BIG, 441) * 2.f - 1.f), 6.f);
+            const float lanes = sstep(0.5f, 0.66f, wfbm(x * 6.f + wy * 2.5f + 90.f, y * 6.f + wx * 2.5f + 90.f, BIG, 451));
+            const float halo = std::exp(-r * r * 1.3f) * sstep(0.2f, 0.65f, cloud);
+            const float body = std::exp(-r * r * 3.6f) * sstep(0.35f, 0.75f, cloud) * (0.6f + 0.6f * fine);
+            const float heart = std::exp(-r * r * 26.f) * (0.5f + 0.8f * fine);
+            const float wisps = fil * std::exp(-r * r * 1.6f) * (0.4f + 0.6f * cloud);
+            const float violet[3] = {0.45f, 0.22f, 0.75f}, rose[3] = {1.f, 0.3f, 0.45f}, teal[3] = {0.25f, 0.85f, 0.85f}, warm[3] = {1.f, 0.7f, 0.5f};
+            float rgb[3];
+            for (int k = 0; k < 3; ++k)
+                rgb[k] = (violet[k] * halo * 0.55f + rose[k] * (body * 0.9f + wisps * 0.7f) + teal[k] * heart * 0.8f + warm[k] * wisps * 0.15f) * (1.f - 0.9f * lanes * std::min(1.f, body * 3.f + halo));
+            // the knot of young stars at its heart
+            const float h = h2(i / 3, j / 3, 461);
+            const float near = std::exp(-r * r * 30.f);
+            if (h > 0.985f - 0.05f * near) for (int k = 0; k < 3; ++k) rgb[k] += (0.6f + 0.4f * warm[k]) * near * 1.5f;
+            const float fadeEdge = sstep(1.f, 0.8f, std::max(std::fabs(x), std::fabs(y)));   // (dark at the picture's edge)
+            uint8_t* p = &px[((size_t)j * NEBULA_SIZE + i) * 4];
+            for (int k = 0; k < 3; ++k) p[k] = u8(std::sqrt(std::min(1.f, rgb[k] * fadeEdge * 0.9f)));
+            p[3] = 255;
         }
     return px;
 }
