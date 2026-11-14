@@ -700,6 +700,21 @@ Not done: the death sequence is a cut (no first-person "drive the spike in" anim
 capsule has no UNIT 24 marking in the world (the banner names it); the sky's giant doesn't come up to meet you;
 the Shepherd's own lines are banners only; tuning throughout.
 
+## THE SHEPHERD itself: the head (2026-11-13)
+
+The user, after the five phases: "i want an actual boss that you have to fight in the end". Offered three
+(the Shepherd's body, a keeper duel, a giant head); they chose **the giant head**. It replaces the Fall's six lamps
+(`src/game/Gameplay_ShepherdHead.h`; `shephead::` numbers). Design 13.8 said "no face": the face is only its lamps.
+
+- Rises over the ridge (5 s), then cycles attacks by third: P1 SLAM, AIM, SLAM, FLEECE; P2 SLAM, BEAM, AIM, SLAM,
+  BEAM, FLEECE; P3 PULL(+BEAM), SLAM2, AIM, SLAM, BEAM, SLAM2. After each: face open 3.6 s (full damage; 15% shut).
+  Hands lie 3.2 s after a slam (1.5x). 2400 hp; rears at 66% and 33%. A retry restarts the third you died in.
+- Hitscan via `shootFall` -> `shootHead`. Beam shelter: a SweepShelter within 16 m north of you (`shepFinCovers`).
+- At 0: face breaks -> `shepLastT` (the last count and HOLDFAST finisher, unchanged).
+- Leftovers: `shepLamp*` members and `shep::fallLamp` are unused now.
+
+Not hand-played. From 100 m it still reads smaller than it should; the arms are plain boxes.
+
 ## Next steps, in order
 
 1. **Play it (the user).** `./shooter --story6` start to finish. Questions: do
