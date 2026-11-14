@@ -72,7 +72,7 @@ inline float GameplayState::shepherdHealth01() {
     for (int f = 0; f < shep::FORKS; ++f) done += (shepForkBroken[f] ? 1.f : glm::clamp(1.f - shepForkHp[f] / shepfight::FORK_HP, 0.f, 1.f)) * 0.6f / shep::FORKS;              // THE RESONATOR: its forks,
     done += 0.4f * glm::clamp(shepWellMaxY / shep::W_OUT, 0.f, 1.f);                                         // and the climb
     done += (float)shepRides / (float)shep::LEDGES;                                                            // THE BREAK: its rides
-    done += 0.8f * (float)(shep::LAMPS - shepLampsAlive()) / (float)shep::LAMPS + (shepFinT >= shepfall::FIN_DRAIN || shepEndingT >= 0.f ? 0.2f : 0.f);   // THE FALL
+    done += (director.arena >= 11 || shepEndingT >= 0.f ? 0.8f : 0.8f * (1.f - shepHeadHp / shephead::HP)) + (shepFinT >= shepfall::FIN_DRAIN || shepEndingT >= 0.f ? 0.2f : 0.f);   // THE FALL: the Shepherd itself, then the finisher
     return glm::clamp(1.f - done / shepfight::PHASES, 0.f, 1.f);
 }
 
@@ -88,7 +88,7 @@ inline void GameplayState::loadShepherd(int arena) {
     director = WaveDirector{}; director.level = &level; director.fast = true;
     storySeenSection = storyCheckpoint = arena; storyEndT = -1; storyLog = storyTerminal = -1;
     enemies.clear(); spaceArena = -1; warmupFrames = 2;
-    shepVentsArmed = shepTurnSeen = shepForksArmed = shepLampsArmed = false;
+    shepVentsArmed = shepTurnSeen = shepForksArmed = shepLampsArmed = shepHeadArmed = false;
     enterArena(arena); captureMouse(true); saveStoryProgress();
 }
 
@@ -118,9 +118,8 @@ inline void GameplayState::beginShepherd() {
     if (director.arena >= 5) for (bool& f : shepForkBroken) f = true;
     if (director.arena >= 7) shepWellMaxY = shep::W_OUT;
     shepBreakReset();
-    if (director.arena >= 11) shepLampsArmed = false;
     shepFallReset();
-    if (director.arena >= 11) for (float& h : shepLampHp) h = 0.f;
+    if (director.arena >= 11) shepHeadHp = 0.f;
     shepForks = 0; for (bool f : shepForkBroken) shepForks += f;
     shepForkRingT = 0.f; shepHallSweepT = 5.f; shepWellT = -1.f; shepWellNext = 4.f; shepWellCount = -1.f; shepUpT = -1.f; shepMembraneT = shepForks >= shep::FORKS ? 99.f : -1.f;
     if (director.arena == 4 && shepForks == 0) for (int k = 0; k < 3; ++k) spawnEnemy(EnemyType::STRAY, {shep::HX + (k - 1) * 8.f, 0.f, shep::HZ_N + 14.f});

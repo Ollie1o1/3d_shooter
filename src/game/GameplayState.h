@@ -420,6 +420,10 @@ public:
     int   shepVents = 0;   // THE TURN
     float shepTurnT = -1.f, shepTurnAng = 0.f, shepVentHp[3] = {1.f, 1.f, 1.f}, shepVentOpenT = 0.f, shepRidgeSweepT = 0.f, shepAddT = 0.f, shepVentMsgT = 0.f, shepInT = -1.f;
     int   shepGuardWave = 0; bool shepSweepWas = false;
+    // THE SHEPHERD itself (Gameplay_ShepherdHead.h)
+    float shepHeadHp = 1.f, shepHeadRise = 0.f, shepRiseT = -1.f, shepRearT = -1.f, shepAtkT = 0.f, shepIdleT = 0.f, shepOpenT = 0.f, shepArmDown[2] = {}, shepBeamX = 0.f, shepBeamDir = 1.f, shepGazeX = -600.f;
+    int   shepAtk = 0, shepHeadPhase = 0, shepCycle = 0, shepSlamArm = 0; bool shepHeadArmed = false, shepHeadSeen = false, shepBeamOn = false, shepBeamHit = false, shepHandHint = false;
+    glm::vec3 shepSlamAt[2] = {}, shepHandAt[2] = {};
     // THE FALL (Gameplay_ShepherdFall.h)
     float shepLampHp[6] = {}, shepLampOpen[6] = {}, shepFallSweepT = 0.f, shepFallT = 0.f, shepFallAmt = 0.f, shepLastT = -1.f, shepLastCount = 0.f, shepFinT = -1.f, shepFinCount = 0.f, shepEndingT = -1.f;
     int   shepFireLamp = -1, shepLampNext = 0; bool shepLampsArmed = false, shepFallPassed = false, shepFallSeen = false;
@@ -1474,6 +1478,15 @@ public:
     void   gatherFall(std::vector<BoxInstance>& out);
     void   fallMarkers(const glm::mat4& view, const glm::mat4& proj);
     const char* fallObjective();
+    float  shepHeadThird() const;
+    void   shepHeadReset();
+    bool   shepFinCovers(glm::vec3 feet) const;
+    void   shepHeadHurt(float dmg);
+    void   shepHead(float dt);
+    bool   shootHead(glm::vec3 from, glm::vec3 dir, float& distance, float dmg);
+    void   gatherHead(std::vector<BoxInstance>& out);
+    void   headMarkers(const glm::mat4& view, const glm::mat4& proj);
+    const char* headObjective();
     void   updateShepherd(float dt);
     void   gatherShepherd(std::vector<BoxInstance>& out);
     void   renderShepherdBars();
