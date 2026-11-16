@@ -14,29 +14,42 @@ const browser = await chromium.launch({
   headless: true, args: ['--enable-unsafe-swiftshader'],
 });
 try {
-  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
-  page.setDefaultTimeout(120000); // software-rendered frames can delay input on a two-core runner
-  // Software WebGL on a two-core runner cannot consume desktop-rate draws.
-  // Exercise the real shaders, lighting and input at 360p/10 Hz, then stop
-  // frame production for captures. Normal-resolution public builds are also
-  // checked separately. This fresh context never touches a player's settings.
-  await page.addInitScript(() => {
-    window.requestAnimationFrame = callback => window.setTimeout(() => callback(performance.now()), 100);
-    window.cancelAnimationFrame = id => window.clearTimeout(id);
-    localStorage.setItem('overdrive.settings.cfg',
-      'quality 0\nantiAlias 0\nambientDetail 1\nframeCap 2\n');
-  });
   const errors = [];
-  page.on('pageerror', error => errors.push(String(error)));
-  page.on('response', response => {
-    if (response.status() >= 400 && !response.url().includes('favicon'))
-      errors.push(`${response.status()} ${response.url()}`);
-  });
-  page.on('console', message => {
-    if (message.type() === 'error' && !/favicon|404|api\/overdrive-board/.test(message.text())) errors.push(message.text());
-  });
-  // Local static servers have no leaderboard API. Stub only that optional API.
-  await page.route('**/api/overdrive-board**', route => route.fulfill({ json: { entries: [] } }));
+  let context, page;
+  async function freshPage() {
+    // Release the previous WASM heap, WebGL context and audio graph before
+    // loading another whole game. Reusing one renderer across every chapter
+    // can exhaust a small software-GPU runner late in this suite.
+    if (context) await context.close();
+    context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    page = await context.newPage();
+    page.setDefaultTimeout(120000);
+    // Exercise real shaders, lighting and input at 360p/4 Hz, then stop
+    // frame production for captures. This bounds software-GPU draw backlog;
+    // simulation still uses the game's normal fixed-step update.
+    await page.addInitScript(() => {
+      window.requestAnimationFrame = callback => window.setTimeout(() => callback(performance.now()), 250);
+      window.cancelAnimationFrame = id => window.clearTimeout(id);
+      localStorage.setItem('overdrive.settings.cfg',
+        'quality 0\nantiAlias 0\nambientDetail 1\nframeCap 2\n');
+      // Keep the actual SDL callback and autoplay policy, with no dependency
+      // on the runner having a physical audio output device.
+      const NativeAudioContext = window.AudioContext;
+      window.AudioContext = class extends NativeAudioContext {
+        constructor(options = {}) { super({ ...options, sinkId: { type: 'none' } }); }
+      };
+    });
+    page.on('pageerror', error => errors.push(String(error)));
+    page.on('response', response => {
+      if (response.status() >= 400 && !response.url().includes('favicon'))
+        errors.push(`${response.status()} ${response.url()}`);
+    });
+    page.on('console', message => {
+      if (message.type() === 'error' && !/favicon|404|api\/overdrive-board/.test(message.text())) errors.push(message.text());
+    });
+    // Local static servers have no leaderboard API. Stub only that optional API.
+    await page.route('**/api/overdrive-board**', route => route.fulfill({ json: { entries: [] } }));
+  }
   async function enterGame() {
     // Pointer lock may arrive as initialization finishes, in which case the
     // shipped shell dismisses the overlay itself. Clicking a locator races
@@ -60,6 +73,7 @@ try {
       await page.evaluate(() => Module.resumeMainLoop());
     }
   }
+  await freshPage();
   await page.goto(url, { waitUntil: 'domcontentloaded' });
   await enterGame();
   await page.keyboard.press('F3');
@@ -87,6 +101,7 @@ try {
   const descent = new URL(url);
   descent.searchParams.set('act2', ''); descent.searchParams.set('arena', '3');
   descent.searchParams.set('god', '');
+  await freshPage();
   await page.goto(descent.href, { waitUntil: 'domcontentloaded' });
   await enterGame();
   await page.keyboard.press('Tab'); // later-arena starts open the upgrade armory
@@ -112,6 +127,7 @@ try {
   ]) {
     const target = new URL(url); target.search = new URLSearchParams(params).toString();
     target.searchParams.set('res', renderLines);
+    await freshPage();
     await page.goto(target.href, { waitUntil: 'domcontentloaded' });
     await enterGame();
     if (['phase-practice', 'boss-rush'].includes(name)) await page.keyboard.press('Tab');

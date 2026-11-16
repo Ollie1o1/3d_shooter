@@ -149,7 +149,7 @@ Technical verification: all 54 WAVs pass format, onset, variant, tail, headroom
 and mix-level checks. The real mixer test keeps a warning audible 240 metres
 behind the listener through vacuum, an 18 dB background duck and Overdrive focus.
 Runtime tests cover cue cancellation and the music-intensity regression. Native
-and web builds, the full regression suite, render checks, audio checks and 131
+and web builds, the full regression suite, render checks, audio checks and 137
 Shepherd runtime checks pass. All 54 variants are present as Ogg in the web
 package. The updated adaptive mix and stress reels peak at 0.568 and 0.681 respectively
 after the game's output stage. FFmpeg measures -4.4 and -2.6 dBTP respectively.
