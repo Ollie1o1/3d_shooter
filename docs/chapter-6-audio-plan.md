@@ -170,3 +170,9 @@ output gain; their true peaks are not the game output's true peaks. The mixed
 reels above include that output stage. Tests render every complete form at
 22.05/44.1/48 kHz, compare irregular callbacks, and check phase quantization and
 retry restart. The actual browser callback at the court also passes at 48 kHz.
+
+Headless browser checks use a silent Web Audio sink, keeping the real SDL
+callback and autoplay policy while avoiding dependence on a sleeping display's
+audio device. The shipped shell resumes `Module.SDL2.audioContext` on a user
+gesture, including when audio initializes just after the first click. Release
+identities now include the loader template so shell-only fixes invalidate caches.

@@ -15,6 +15,7 @@
 #include "world/LevelRing.h"
 #include "world/NavBuild.h"
 #include <chrono>
+#include <ctime>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -134,11 +135,13 @@ int main(int argc, char** argv) {
         for (int a = 0; a < (int)L.arenas.size(); ++a) {
             const Arena& A = L.arenas[a];
             if (A.waves.empty()) continue;
+            const auto buildCpuStart=std::clock();
             ArenaNav an; an.rebuild(L, a, &grid);
+            const double buildCpuMs=1000.*double(std::clock()-buildCpuStart)/CLOCKS_PER_SEC;
             if (!an.get()) { ++arenasWithout; std::printf("      %s %-28s no grid (%s)\n", m.tag, A.name, ArenaNav::arenaTakesNav(A) ? "too wide" : "moving ground"); continue; }
             ++arenasWith;
             NavGrid& G = an.grid;
-            worstBuild = std::max(worstBuild, G.buildMs); sumBuild += G.buildMs; mostNodes = std::max(mostNodes, G.nodes.size());
+            worstBuild = std::max(worstBuild, buildCpuMs); sumBuild += buildCpuMs; mostNodes = std::max(mostNodes, G.nodes.size());
 
             // Where the player stands: the section's start, then places picked across the grid that the start can be walked to from
             // (a start behind its own shut gate, or out in the approach, doesn't count: then somewhere most of the room can walk to)
@@ -187,9 +190,11 @@ int main(int argc, char** argv) {
                     const EnemyType who = ring6 ? ringWalkers[wk] : walkers[wk];
                     NavAgent ag = agentOf(who, L, a);
                     for (int k = 0; k < 14; ++k) G.tick(DT, feet);   // (one field a tick: let this walker's follow the player here)
-                    auto t0 = std::chrono::steady_clock::now();
+                    // This test is single-threaded. Charge the field's CPU work,
+                    // not time the shared CI runner schedules another process.
+                    const auto cpuStart = std::clock();
                     (void)G.distanceFrom(ag, 0);
-                    worstField = std::max(worstField, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
+                    worstField = std::max(worstField, 1000. * double(std::clock() - cpuStart) / CLOCKS_PER_SEC);
                     int placed = 0;
                     for (int tries = 0; tries < 600 && placed < 5; ++tries) {
                         const int n = (int)(rnd() % (uint32_t)G.nodes.size());
@@ -198,9 +203,9 @@ int main(int argc, char** argv) {
                         if (!(N.flags & NavGrid::OPEN) || !NavGrid::fits(N, ag) || route > 1e8f || route < 8.f) continue;
                         ++placed;
                         const glm::vec3 from = G.at(n);
-                        t0 = std::chrono::steady_clock::now();
+                        const auto stepCpuStart=std::clock();
                         for (int q = 0; q < 50; ++q) (void)G.step(ag, from);
-                        worstStep = std::max(worstStep, std::chrono::duration<double, std::micro>(std::chrono::steady_clock::now() - t0).count() / 50.);
+                        worstStep = std::max(worstStep, 1e6*double(std::clock()-stepCpuStart)/CLOCKS_PER_SEC/50.);
                         srand(7u + (unsigned)n);
                         ++an_nav.runs; an_nav.metres += route;
                         if (chase(L, a, grid, &G, who, from, feet, route, ring6 ? ringNear[wk] : nearOf[wk], 100 + n, true, m.tag)) ++an_nav.reached;
@@ -294,7 +299,7 @@ int main(int argc, char** argv) {
         std::printf("        melee enemy-seconds within 6 m: %.0f with routes, %.0f on feelers alone (%+.0f%%)\n", closeNav, closeOld, closeOld > 0. ? 100. * (closeNav / closeOld - 1.) : 0.);
         std::printf("        gunner-seconds with a clear shot inside 20 m: %.0f with routes, %.0f on feelers alone (%+.0f%%)\n", shotsNav, shotsOld, shotsOld > 0. ? 100. * (shotsNav / shotsOld - 1.) : 0.);
     }
-    std::printf("      worst: grid %.1f ms (%zu nodes), a field %.2f ms, a step %.2f us; grids cut in %.0f ms altogether\n", worstBuild, mostNodes,
+    std::printf("      worst CPU times: grid %.1f ms (%zu nodes), a field %.2f ms, a step %.2f us; grids cut in %.0f CPU ms altogether\n", worstBuild, mostNodes,
                 worstField, worstStep, sumBuild);
     CHECK(arenasWith >= 30, "every fight on standing ground has a grid");
     std::printf("      routes reached the player in %d of %d chases (%.2f%%)\n", nav.reached, nav.runs, nav.runs ? 100. * nav.reached / nav.runs : 0.);
@@ -302,9 +307,9 @@ int main(int argc, char** argv) {
     // (each failure is printed above with where it stopped). The floor is 99%; feeler steering alone manages 89%.
     CHECK(nav.runs > 500 && nav.reached * 100 >= nav.runs * 99, "walkers put down anywhere reachable get to the player in time (99% of chases)");
     CHECK(waveEnemies > 100 && wedged == 0, "nobody in a simulated wave stands wedged with a route left to walk");
-    CHECK(worstBuild < 250., "the largest grid is cut in under a quarter second (at arena load)");
-    CHECK(worstField < 12., "a flow field for the whole arena costs under 12 ms (one at most per tick, five a second)");
-    CHECK(worstStep < 60., "reading the route for one enemy costs under 60 microseconds");
+    CHECK(worstBuild < 250., "the largest grid costs under a quarter second of CPU time (at arena load)");
+    CHECK(worstField < 12., "a flow field for the whole arena costs under 12 ms of CPU time (one at most per tick, five a second)");
+    CHECK(worstStep < 60., "reading the route for one enemy costs under 60 microseconds of CPU time");
     std::printf("%d nav failures\n", failures);
     return failures ? 1 : 0;
 }

@@ -191,6 +191,14 @@
     }, 250);
   })();
 
+  function resumeAudio() {
+    const ctx = Module.SDL2?.audioContext ?? globalThis.SDL2?.audioContext;
+    if (ctx?.state === 'suspended') ctx.resume().catch(() => {});
+  }
+  // Audio may be created just after the first click during initialization.
+  document.addEventListener('mousedown', resumeAudio, true);
+  document.addEventListener('keydown', resumeAudio, true);
+
   // Dismiss on the first interaction once the game is ready. Listening only for
   // clicks on the overlay isn't enough: once the game holds pointer lock, the
   // browser sends every mouse event to the canvas, even through the overlay.
@@ -201,8 +209,7 @@
     // Let an embedding page (e.g. a portfolio) know the game is live
     if (window.parent !== window) window.parent.postMessage({ overdrive: 'running' }, location.origin);
     // Resume audio contexts the browser created suspended (autoplay policy)
-    const ctx = globalThis.SDL2?.audioContext;
-    if (ctx && ctx.state === 'suspended') ctx.resume();
+    resumeAudio();
   }
   // Fullscreen. Embedded (the portfolio page shows the game in an iframe),
   // the parent page owns fullscreen, so ask it; on its own, the stage goes

@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-def stamp(directory):
+def stamp(directory, shell=None):
     directory = Path(directory)
     assets = {}
     identity = hashlib.sha256()
@@ -16,10 +16,14 @@ def stamp(directory):
         digest = hashlib.sha256(content).hexdigest()
         assets[name] = {"sha256": digest, "bytes": len(content)}
         identity.update((name + ":" + digest + "\n").encode())
-    build = identity.hexdigest()[:12]
-    shell = (Path(__file__).resolve().parent.parent / "web/index.html").read_text()
+    if shell is None:
+        shell = (Path(__file__).resolve().parent.parent / "web/index.html").read_text()
     if "__OVERDRIVE_BUILD__" not in shell:
         raise ValueError("web shell is missing its release marker")
+    # Loader/input/audio fixes need a new cache identity even when the binary
+    # and data are unchanged. Hash the template before replacing its marker.
+    identity.update(("shell:" + hashlib.sha256(shell.encode()).hexdigest() + "\n").encode())
+    build = identity.hexdigest()[:12]
     content = shell.replace("__OVERDRIVE_BUILD__", build).encode()
     (directory / "index.html").write_bytes(content)
     assets["index.html"] = {"sha256": hashlib.sha256(content).hexdigest(), "bytes": len(content)}

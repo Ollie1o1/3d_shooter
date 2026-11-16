@@ -11,6 +11,20 @@ spec.loader.exec_module(release)
 
 
 class WebRelease(unittest.TestCase):
+    def test_shell_changes_invalidate_the_release(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            for name in ("overdrive.js", "overdrive.wasm", "overdrive.data"):
+                (root / name).write_bytes(name.encode())
+            before = release.stamp(root)
+            shell = (Path(__file__).resolve().parents[1] / "web/index.html").read_text()
+            after = release.stamp(root, shell + "\n<!-- changed loader -->")
+            self.assertNotEqual(before["build"], after["build"])
+            for name in ("overdrive.js", "overdrive.wasm", "overdrive.data"):
+                self.assertEqual(before["assets"][name], after["assets"][name])
+            self.assertIn(after["build"], (root / "index.html").read_text())
+            self.assertEqual(after["build"], release.stamp(root, shell + "\n<!-- changed loader -->")["build"])
+
     def test_asset_identity_and_cache_urls(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)

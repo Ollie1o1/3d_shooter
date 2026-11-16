@@ -17,34 +17,35 @@ try {
     window.requestAnimationFrame = callback => setTimeout(() => callback(performance.now()), 100);
     window.cancelAnimationFrame = id => clearTimeout(id);
     localStorage.setItem('overdrive.settings.cfg', 'quality 0\nantiAlias 0\nambientDetail 0\nframeCap 2\n');
+    // A real Web Audio clock with a silent sink: headless checks must not
+    // depend on a sleeping laptop, HDMI monitor or CI sound device. Autoplay
+    // policy and the actual SDL callback still run normally.
+    const NativeAudioContext = window.AudioContext;
+    window.AudioContext = class extends NativeAudioContext {
+      constructor(options = {}) { super({ ...options, sinkId: { type: 'none' } }); }
+    };
     window.audioStats = { samples: 0, sum: 0, peak: 0, bad: 0, rate: 0, active: false };
-    const descriptor = Object.getOwnPropertyDescriptor(ScriptProcessorNode.prototype, 'onaudioprocess');
+    window.observedAudioContexts = [];
     const create = AudioContext.prototype.createScriptProcessor;
     AudioContext.prototype.createScriptProcessor = function (...args) {
       const node = create.apply(this, args);
       const context = this;
-      let callback = null;
-      Object.defineProperty(node, 'onaudioprocess', {
-        configurable: true,
-        get() { return callback; },
-        set(fn) {
-          callback = fn;
-          descriptor.set.call(node, fn ? function (event) {
-            fn.call(node, event);
-            const stats = window.audioStats;
-            if (!stats.active) return;
-            stats.rate = context.sampleRate;
-            for (let channel = 0; channel < event.outputBuffer.numberOfChannels; ++channel) {
-              for (const sample of event.outputBuffer.getChannelData(channel)) {
-                stats.samples++;
-                if (!Number.isFinite(sample)) stats.bad++;
-                stats.peak = Math.max(stats.peak, Math.abs(sample));
-                stats.sum += sample * sample;
-              }
-            }
-          } : null);
-        },
-      });
+      window.observedAudioContexts.push(context);
+      // Observe after SDL installs its handler, whether it uses the property
+      // or addEventListener. Leave the game's callback and its output intact.
+      queueMicrotask(() => node.addEventListener('audioprocess', event => {
+        const stats = window.audioStats;
+        if (!stats.active) return;
+        stats.rate = context.sampleRate;
+        for (let channel = 0; channel < event.outputBuffer.numberOfChannels; ++channel) {
+          for (const sample of event.outputBuffer.getChannelData(channel)) {
+            stats.samples++;
+            if (!Number.isFinite(sample)) stats.bad++;
+            stats.peak = Math.max(stats.peak, Math.abs(sample));
+            stats.sum += sample * sample;
+          }
+        }
+      }));
       return node;
     };
   });
@@ -62,7 +63,10 @@ try {
     await page.mouse.click(640, 360);
     await page.waitForTimeout(500);
   }
-  await page.waitForFunction(() => window.audioStats.samples >= window.audioStats.rate * 2 * 6 && window.audioStats.rate > 0);
+  await page.waitForFunction(() => window.audioStats.samples >= window.audioStats.rate * 2 * 6 && window.audioStats.rate > 0).catch(async error => {
+    console.log(await page.evaluate(() => ({ stats: window.audioStats, contexts: window.observedAudioContexts.map(c => ({state: c.state, rate: c.sampleRate})) })));
+    throw error;
+  });
   const stats = await page.evaluate(() => ({ ...window.audioStats }));
   stats.rms = Math.sqrt(stats.sum / stats.samples);
   if (errors.length || stats.bad || stats.rms < .0001 || stats.peak > .701)

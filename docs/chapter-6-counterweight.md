@@ -398,3 +398,7 @@ numeric enum indices.
 The website offers direct practice previews of the ascent and crown fight.
 `--practice` / `?practice` applies the existing unranked, no-Story-save rules to
 checkpoint launches; normal Story starts retain their existing behavior.
+
+The single-threaded navigation benchmark now charges CPU time for grid creation,
+flow fields and route reads; its original 250 ms / 12 ms / 60 microsecond budgets
+are unchanged. Shared-runner scheduling delays no longer count as algorithm cost.
