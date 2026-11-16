@@ -1,4 +1,5 @@
 #pragma once
+#include <glm/gtc/quaternion.hpp>
 #include "core/GameState.h"
 #include "core/MouseCapture.h"
 #include "core/Balance.h"
@@ -421,9 +422,27 @@ public:
     float shepTurnT = -1.f, shepTurnAng = 0.f, shepVentHp[3] = {1.f, 1.f, 1.f}, shepVentOpenT = 0.f, shepRidgeSweepT = 0.f, shepAddT = 0.f, shepVentMsgT = 0.f, shepInT = -1.f;
     int   shepGuardWave = 0; bool shepSweepWas = false;
     // THE SHEPHERD itself (Gameplay_ShepherdHead.h)
-    float shepHeadHp = 1.f, shepHeadRise = 0.f, shepRiseT = -1.f, shepRearT = -1.f, shepAtkT = 0.f, shepIdleT = 0.f, shepOpenT = 0.f, shepArmDown[2] = {}, shepBeamX = 0.f, shepBeamDir = 1.f, shepGazeX = -600.f;
+    float shepHeadHp = 1.f, shepHeadRise = 0.f, shepRiseT = -1.f, shepRearT = -1.f, shepAtkT = 0.f, shepIdleT = 0.f, shepOpenT = 0.f, shepArmDown[2] = {}, shepBeamX = 0.f, shepBeamDir = 1.f, shepGazeX = -600.f, shepGape = 0.f;
     int   shepAtk = 0, shepHeadPhase = 0, shepCycle = 0, shepSlamArm = 0; bool shepHeadArmed = false, shepHeadSeen = false, shepBeamOn = false, shepBeamHit = false, shepHandHint = false;
     glm::vec3 shepSlamAt[2] = {}, shepHandAt[2] = {};
+    // Simulation-owned pose: render, ray tests and the two-bone rig share it.
+    bool shepPoseReady = false, shepPosePlanted[2] = {};
+    int shepPoseAttack = 0;
+    glm::vec3 shepPoseHand[2] = {}, shepPoseStart[2] = {}, shepRecoverFrom[2] = {}, shepBodyAngles{0.f};
+    float shepRecoverT[2] = {2.f,2.f}, shepFingerCurl[2] = {}, shepWristTilt[2] = {};
+    glm::vec3 shepBodyOffset{0.f}, shepSpine{0.f}, shepLookAt{0.f}, shepAttackAt{0.f}, shepGrabFrom{0.f}, shepGrabOffset{0.f};
+    glm::quat shepPalmRotation[2] = {glm::quat{1,0,0,0},glm::quat{1,0,0,0}};
+    float shepMotionClock=0.f, shepBreath=0.f, shepSweepZ=0.f, shepGrabHp=0.f, shepGrabT=-1.f, shepGazeTick=0.f;
+    int shepVariation=0, shepAttackHits=0;
+    bool shepGrabCaught=false;
+    struct ShepScar { glm::vec3 from, to; float life=0.f; };
+    std::vector<ShepScar> shepScars;
+    float shepPinT[2] = {}, shepCounterT = 0.f, shepHitHealT = 0.f;
+    glm::vec3 shepEchoAt[3] = {}; int shepEchoN = 0, shepEchoHit = 0;
+    bool shepSlamParried[2] = {};
+    float shepOrbitClock[3] = {}, shepOrbitPin[3] = {}, shepOrbitFire = 3.f;
+    glm::vec3 shepOrbitAim{0.f}; float shepOrbitTell = -1.f;
+    float shepLedgeStrike = 5.f, shepLedgeTell = -1.f; glm::vec3 shepLedgeAim{0.f};
     // THE FALL (Gameplay_ShepherdFall.h)
     float shepLampHp[6] = {}, shepLampOpen[6] = {}, shepFallSweepT = 0.f, shepFallT = 0.f, shepFallAmt = 0.f, shepLastT = -1.f, shepLastCount = 0.f, shepFinT = -1.f, shepFinCount = 0.f, shepEndingT = -1.f;
     int   shepFireLamp = -1, shepLampNext = 0; bool shepLampsArmed = false, shepFallPassed = false, shepFallSeen = false;
@@ -1483,6 +1502,25 @@ public:
     bool   shepFinCovers(glm::vec3 feet) const;
     void   shepHeadHurt(float dmg);
     void   shepHead(float dt);
+    void animateShepherd(float dt);
+    glm::mat4 shepRootPose() const;
+    glm::mat4 shepSpinePose(float weight=1.f) const;
+    glm::mat4 shepBodyPose() const;
+    glm::mat4 shepChestPose() const;
+    glm::vec3 shepEyePose(int side) const;
+    glm::vec3 shepGazeMark(int shot) const;
+    void shepReleaseGrab(bool counter);
+    bool shepBreakGrip(glm::vec3 from,glm::vec3 dir,float& distance,float damage);
+    void shepPressure(float dt,float before);
+    glm::mat4 shepFacePose() const;
+    glm::vec3 shepMouthPose() const;
+    glm::vec3 shepHandPose(int k) const;
+    bool   parryHead();
+    bool   pinShepherd(glm::vec3 from, glm::vec3 dir, float distance);
+    void   shepherdShots(float dt);
+    void   blastShepherd(glm::vec3 at, float radius, float damage);
+    glm::vec3 shepMoon(int k) const;
+    bool shepherdSplinterPoint(glm::vec3 from, glm::vec3& at) const;
     bool   shootHead(glm::vec3 from, glm::vec3 dir, float& distance, float dmg);
     void   gatherHead(std::vector<BoxInstance>& out);
     void   headMarkers(const glm::mat4& view, const glm::mat4& proj);

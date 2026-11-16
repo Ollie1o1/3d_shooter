@@ -25,6 +25,7 @@ inline int GameplayState::shepLedge() const {
 
 inline void GameplayState::shepBreakReset() {
     shepRideT = -1.f; shepGatherT = -1.f; shepGatherPassed = false; shepLedgeFought = false; shepThrownT = -1.f; shepCrownT = -1.f;
+    shepLedgeStrike=5.f;shepLedgeTell=-1.f;
     shepRides = std::clamp(director.arena - 7, 0, 3);
 }
 
@@ -92,6 +93,14 @@ inline void GameplayState::shepBreak(float dt) {
         for (auto& e : enemies) if (e.targetable() && e.age > 1.f && e.takeDamage(1e6f)) onEnemyKilled(e, StyleSource::ENVIRONMENT);
         if (sweep.active() && !holdfast.held()) { const int w = level.shepRideWalls[2 * L]; holdfast.latch(shep::rideChunk(L, 0), player.camera.position, w, shelterOfWall(w)); }
     }
+    // The Shepherd hammers the ascent itself. Bait its blow into the flock.
+    if(director.fighting()) {
+        if(shepLedgeTell>=0.f){shepLedgeTell+=dt;if(shepLedgeTell>=1.8f){
+            const auto q=shepLedgeAim;shepLedgeTell=-1.f;wakeRings.push_back({q,.6f,false});fx.spawnShockwave(q,12.f,POST_LIT);fx.spawnBurst(q,POST_LIT,40,14.f,.8f,3.f);shake(.6f,.04f);audio.play("slam",128,SoundGroup::WORLD,true);
+            if(glm::length(glm::vec2{p.x-q.x,p.z-q.z})<6.f&&p.y<q.y+9.f&&invincFrames<=0.f)damagePlayer(28.f,q,.4f,.05f,0.f,{EnemyType::COUNT,DamageKind::SHOCKWAVE});
+            for(auto& e:enemies)if(e.targetable()&&glm::length(e.position-q)<8.f&&e.takeDamage(200.f))onEnemyKilled(e,StyleSource::ENVIRONMENT);
+        }}else if((shepLedgeStrike-=dt)<=0.f){shepLedgeStrike=6.f;shepLedgeTell=0.f;shepLedgeAim=p;shepLedgeAim.y=shep::ledge(L).y;audio.play("telegraph",128,SoundGroup::WORLD,true);}
+    }else shepLedgeTell=-1.f;
     // The ledge's fight; cleared, the Gather comes
     if (director.fighting()) shepLedgeFought = true;   // (the director moves its arena on when a wave clears: track the ledge's own fight)
     const bool cleared = shepLedgeFought && !director.fighting();
@@ -134,6 +143,11 @@ inline void GameplayState::resetPlayerPosition(glm::vec3 at) {
 // The torn ring all round you, the chunk you ride
 inline void GameplayState::gatherBreak(std::vector<BoxInstance>& out) {
     using namespace rig;
+    if(shepLedgeTell>=0.f&&shepLedge()>=0){
+        for(int j=0;j<40;++j){float a=6.2831853f*j/40.f;push(out,T(shepLedgeAim+glm::vec3{std::cos(a)*6.f,.1f,std::sin(a)*6.f})*RY(-a)*S(glm::vec3{.25f,.1f,1.f}),glm::vec3{.1f},SWEEP_RED*2.f);}
+        push(out,T(shepLedgeAim+glm::vec3{0,35.f*(1.f-shepLedgeTell/1.8f)+2.f,0})*S(glm::vec3{9,4,12}),glm::vec3{.2f,.4f,.65f},POST_LIT*.6f);
+    }
+
     if (!shepherd()) return;
     const int L = shepLedge();
     if (L < 0 && shepRideT < 0.f && shepCrownT < 0.f) return;

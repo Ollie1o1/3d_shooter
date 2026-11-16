@@ -9,6 +9,7 @@
 
 inline bool GameplayState::swordAllowed() const {
     if (training() || combatRemix()) return true;
+    if (ring()) return true;   // Chapter 6 follows the sword pickup in Chapter 3.
     if (laboratory() && storySword && !labEnding.active()) return true;   // (Story: pulled from its statue in the Successor's arena)
     return swordKeyAllowed(g_devSword, act2(), director.arena, ZENITH_ARENA);
 }
@@ -187,6 +188,10 @@ inline void GameplayState::swordContact(int stroke, float damage, bool riposte) 
     const glm::vec3 cut = heavy ? glm::vec3{0.f, -1.f, 0.f} : player.camera.right() * (stroke == 0 ? -1.f : 1.f);
     const glm::vec3 pushDir = glm::normalize(fwd * .6f + cut * .4f);
     bool damaged = false, blocked = false;
+    if(shepherd()) {
+        float reach=7.f; const float wall=wallAlong(eye,fwd,reach);if(wall>0.f)reach=std::min(reach,wall);
+        if(shootVent(eye,fwd,reach,damage)) { damaged=true;styleSystem.heal(Sword::HEAL_HIT*tune().heal); }
+    }
     for (auto& e : enemies) {
         if (!e.targetable()) continue;
         const auto centre = e.position + glm::vec3{0, std::min(e.height() * .5f, 1.3f), 0};

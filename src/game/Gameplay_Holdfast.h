@@ -40,6 +40,7 @@ inline void GameplayState::pressHoldfast() {
             if (glm::length(c - (o + d * along)) > std::max(e.radius(), e.height() * 0.5f) + 0.25f) continue;
             pin = &e; pinT = along;
         }
+        if (pinShepherd(o, d, pinT)) break;
         audio.play("cyl_close", 110, SoundGroup::PLAYER);
         if (pin) {
             holdfast.pin(pin->uid); holdfastPinAt = pin->position;

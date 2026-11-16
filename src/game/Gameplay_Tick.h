@@ -605,6 +605,7 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
 
     ftLap.to(frametimer::SIM_BOSSES);
     // --- Projectiles ---
+    shepherdShots(dt);
     projSystem.floorY = level.lowestFloor();
     projSystem.dynWalls = level.moverWalls.data();
     projSystem.dynCount = (int)level.moverWalls.size();

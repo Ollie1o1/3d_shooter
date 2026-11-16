@@ -60,6 +60,17 @@ float fbm2(vec2 p) { return 0.57 * vnoise2(p) + 0.29 * vnoise2(p * 2.03 + vec2(1
 vec2 faceUV(vec3 p, vec3 n) { vec3 a = abs(n); return a.x > a.y && a.x > a.z ? p.zy : a.y > a.z ? p.xz : p.xy; }
 // How near a crack: the noise's midline, wandering (0 on a crack)
 float crackDist(vec2 p) { return abs(vnoise2(p) - 0.5) + 0.25 * abs(vnoise2(p * 2.7 + vec2(4.1, 1.3)) - 0.5); }
+// Triplanar mineral grain follows each articulated piece without projection
+// seams across the face, shoulders or curved muscles.
+float carbonGrain(vec3 p, vec3 n) {
+    vec3 w=pow(abs(n),vec3(4.0)); w/=max(dot(w,vec3(1.0)),0.001);
+    return dot(w,vec3(fbm2(p.zy),fbm2(p.xz+17.0),fbm2(p.xy+39.0)));
+}
+float carbonHeight(vec3 p, vec3 n) {
+    float strata=carbonGrain(p*0.12,n);
+    float vein=1.0-smoothstep(0.025,0.095,abs(sin(p.y*0.22+p.x*0.06+strata*15.0)));
+    return carbonGrain(p*1.8,n)*0.045-vein*0.09;
+}
 // One noise per pixel (n), shared by everything a surface does; the fine work only near enough to see it
 vec3 bossSurface(int s, vec3 base, out vec3 emi, float dist) {
     emi = vec3(0.0);
@@ -69,6 +80,25 @@ vec3 bossSurface(int s, vec3 base, out vec3 emi, float dist) {
     if (dist > 900.0) return base * (0.8 + 0.4 * vnoise2(uv * 0.04));     // (far off: tone only)
     float detail = 1.0 - smoothstep(90.0, 700.0, dist);
     float n = fbm2(uv * 0.25);
+    if (s == 11 || s == 13) { // black carbon skin: mineral layers, pits, cold buried veins
+        float strata=carbonGrain(p*0.12,vLocalN);
+        float grain=carbonGrain(p*1.8,vLocalN);
+        float vein=1.0-smoothstep(0.025,0.095,abs(sin(p.y*0.22+p.x*0.06+strata*15.0)));
+        float pits=smoothstep(0.65,0.8,grain)*detail;
+        float strength=s==13?0.45:1.0;
+        vec3 c=base*(0.55+1.05*strata+0.32*(grain-0.5)*detail);
+        c*=1.0-strength*(0.48*vein+0.35*pits);
+        c+=vec3(0.003,0.005,0.008)*vein*strength;
+        emi=vec3(0.001,0.004,0.009)*vein*strength*detail;
+        return c;
+    }
+    if (s == 12) { // hull lamination, brushed scoring and worn plate boundaries
+        float score=vnoise2(vec2(uv.x*4.0,uv.y*0.08));
+        float seam=1.0-smoothstep(0.025,0.11,abs(sin(p.y*0.45+n*0.35)));
+        float wear=smoothstep(0.58,0.78,n);
+        return base*(0.62+0.8*n+detail*0.24*(score-0.5))*(1.0-seam*0.5)
+             +vec3(0.009,0.011,0.014)*wear*detail;
+    }
     if (s == 1) {   // riveted plate, rusting: panels, their seams, rivets along them, rust blooms, runoff streaks
         float panel = clamp(big / 5.0, 1.4, 18.0);
         vec2 g = abs(fract(uv / panel) - 0.5) * panel;
@@ -155,6 +185,15 @@ void main()
 
     vec3 norm    = normalize(Normal);
     vec3 viewDir = normalize(viewPos - FragPos);
+    bool carbon=vSurf>10.5&&vSurf<13.5;
+    if (carbon && uSurfaces != 0) {
+        float microDetail=1.0-smoothstep(90.0,320.0,length(viewPos-FragPos));
+        float h=carbonHeight(vLocal,vLocalN)*(vSurf>12.5?0.35:1.0)*microDetail;
+        vec3 dx=dFdx(FragPos),dy=dFdy(FragPos);
+        vec3 a=cross(dy,norm),b=cross(norm,dx);
+        float det=dot(dx,a);
+        norm=normalize(norm-sign(det)*(dFdx(h)*a+dFdy(h)*b)/max(abs(det),0.00001));
+    }
 
     vec3 ambient = mix(uGroundAmb, uSkyAmb, norm.y * 0.5 + 0.5);
 
@@ -163,7 +202,8 @@ void main()
     float diff = max(dot(norm, L), 0.0) * 0.85 + 0.08;
     vec3  H    = normalize(L + viewDir);
     float spec = pow(max(dot(norm, H), 0.0), 48.0);
-    vec3  specular = lightColor * spec * 0.18;
+    float finish=carbon?mix(0.035,0.075,vnoise2(faceUV(vLocal,vLocalN)*0.6)):0.18;
+    vec3  specular = lightColor * spec * finish;
 
     vec3 pointContrib = vec3(0.0);
     for (int i = 0; i < 4; ++i) {

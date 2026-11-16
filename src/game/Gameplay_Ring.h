@@ -229,7 +229,7 @@ inline void GameplayState::updateRing(float dt) {
             audio.setSpace(air ? ReverbSpace::METAL : ReverbSpace::OPEN);
         }
     }
-    if (shepherd()) { updateShepherd(dt); ringFoes(dt); return; }   // its own level (Gameplay_Shepherd.h)
+    if (shepherd()) { updateShepherd(dt); tickWake(dt); ringFoes(dt); return; }   // its own level (Gameplay_Shepherd.h)
     ringTouch(dt);
     tickShadow(dt);
     tickSpokes(dt);

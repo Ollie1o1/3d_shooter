@@ -26,6 +26,7 @@ inline void GameplayState::tickWake(float dt) {
     using namespace wakebell;
     if (!ring() || g_devRingTest) return;
     const glm::vec3 p = player.position;
+    if(!shepherd()) {
     // The double sweep, a third of the way up
     const auto T = ring::wakeTreads();
     if (!wakeSweepDone && p.z < T[4].zS && p.z > ring::summitS() && !sweep.active() && !playerDead) {
@@ -43,6 +44,7 @@ inline void GameplayState::tickWake(float dt) {
         wakeViewT += dt;
         for (auto& e : enemies) if (e.type == EnemyType::BELLWETHER && e.alive) e.attackTimer = std::max(e.attackTimer, 4.f - wakeViewT);   // (it waits for you to look)
     }
+    }
     // The rings, running out
     for (auto& r : wakeRings) {
         const float before = r.radius;
@@ -51,11 +53,11 @@ inline void GameplayState::tickWake(float dt) {
         const bool crossed = before - BAND < d && d <= r.radius + BAND * 0.5f;
         if (!r.hit && crossed && !playerDead && p.y - r.at.y < JUMP_CLEAR && p.y - r.at.y > -3.f) {   // (on its floor: the Shepherd's belfry has two)   // (in the air over it: it passes under you)
             r.hit = true;
-            damagePlayer(DAMAGE, r.at, 0.25f, 0.04f, 0.4f, {EnemyType::BELLWETHER, DamageKind::SHOCKWAVE});
+            damagePlayer(DAMAGE, r.at, 0.25f, 0.04f, 0.4f, {shepherd()?EnemyType::COUNT:EnemyType::BELLWETHER, DamageKind::SHOCKWAVE});
             const glm::vec3 out = glm::normalize(glm::vec3{p.x - r.at.x, 0.f, p.z - r.at.z} + glm::vec3{1e-4f});
             holdfast.cut();
             player.velocity += out * 11.f + glm::vec3{0.f, 5.f, 0.f}; player.launched();
-            ui.feed("RUNG", HOLDFAST_STEEL);
+            ui.feed(shepherd()?"AFTERSHOCK":"RUNG", HOLDFAST_STEEL);
         }
     }
     wakeRings.erase(std::remove_if(wakeRings.begin(), wakeRings.end(), [](const WakeRing& r) { return r.radius > wakebell::REACH; }), wakeRings.end());

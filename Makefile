@@ -101,6 +101,8 @@ test: $(TESTS) $(HEADERS)
 	$(MAKE) test-boss-animation
 	$(MAKE) test-plain
 	$(MAKE) test-cold
+	$(MAKE) test-ring
+	$(MAKE) test-shepherd
 	$(MAKE) test-route
 	$(MAKE) test-lighting
 	$(MAKE) test-audio
@@ -362,3 +364,22 @@ boss-strips: tools/boss_strip.cpp $(HEADERS)
 
 tools/boss_animation_preview: tools/boss_animation_preview.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) tools/boss_animation_preview.cpp -o tools/boss_animation_preview $(STDLIB)
+
+# Chapter 6 colossus counterplay, projectile collision, retries and visual captures.
+.PHONY: test-shepherd-runtime
+test-shepherd-runtime: tests/test_shepherd_runtime.cpp src/main.cpp $(HEADERS)
+	mkdir -p build/shepherd-pass
+	$(CXX) $(CXXFLAGS) tests/test_shepherd_runtime.cpp -o build/test_shepherd_runtime $(LDFLAGS)
+	./build/test_shepherd_runtime
+
+.PHONY: test-shepherd
+test-shepherd: tests/test_shepherd.cpp $(HEADERS)
+	mkdir -p build
+	$(CXX) $(CXXFLAGS) tests/test_shepherd.cpp -o build/test_shepherd $(STDLIB)
+	./build/test_shepherd
+
+# THE SHEPHERD's adult anatomy and black spacecraft hull, authored in Blender.
+BLENDER ?= /Applications/Blender.app/Contents/MacOS/Blender
+.PHONY: shepherd-art
+shepherd-art:
+	$(BLENDER) -b --factory-startup --python tools/blender/headless.py -- tools/blender/shepherd_build.py

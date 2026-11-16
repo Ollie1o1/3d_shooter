@@ -119,7 +119,7 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             else if(shepherd()&&level.arenaAt(player.position)>=4) {   // THE RESONATOR
                 static char res[110];const int here=level.arenaAt(player.position);
                 if(here==4){
-                    const char* step=shepForks>=shep::FORKS?"DETUNED: ON, THROUGH THE CORE":sweep.active()?"BLAST COMING: INTO A SIDE ROOM":shepForkRingT>0.f?"THE FORKS RING: SHOOT THEIR WHITE CORES":"IN A SIDE ROOM: AFTER A BLAST THEIR CORES OPEN";
+                    const char* step=shepForks>=shep::FORKS?"DETUNED: ON, THROUGH THE CORE":sweep.active()?"BLAST COMING: INTO A SIDE ROOM":shepForkRingT>0.f?"CHAIN THE RINGING CORES: SHOOT OR HOLDFAST":"IN A SIDE ROOM: AFTER A BLAST THEIR CORES OPEN";
                     std::snprintf(res,sizeof(res),"FORKS %d/4  /  %s",shepForks,step);
                 } else if(here==5) std::snprintf(res,sizeof(res),"EVERY LAMP A CAPSULE  /  READ IT, THEN ON TO THE WELL");
                 else std::snprintf(res,sizeof(res),"UP %dM  /  %s",std::max(0,(int)(shep::W_OUT-player.position.y)),shepWellCount>=0.f?"BLAST RISING: INTO AN ALCOVE":"GRAPPLE FROM ALCOVE TO ALCOVE");
@@ -127,8 +127,8 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             }
             else if(shepherd()&&shepTines>=shep::TINES) {   // THE TURN: one step at a time, with the count
                 static char ridge[96];
-                const char* step=shepTurnT>=0.f?"IT IS TURNING":sweep.active()?"WAVE COMING: GET BEHIND A BLOCK BY ITS LIT POST":shepVentOpenT>0.f?"VENTS OPEN: SHOOT THEM":"SHUT: THEY OPEN AFTER THE NEXT WAVE";
-                std::snprintf(ridge,sizeof(ridge),"VENTS %d/3  /  %s",shepVents,step);what=ridge;
+                const char* step=shepTurnT>=0.f?"IT IS TURNING":sweep.active()?"WAVE COMING: GET BEHIND A BLOCK BY ITS LIT POST":"SHOOT THE MOVING MOONS. HOLDFAST STOPS THEIR ORBIT";
+                std::snprintf(ridge,sizeof(ridge),"MOONS %d/3  /  %s",shepVents,step);what=ridge;
             }
             else if(shepherd()) what=combObjective();   // THE COMB (Gameplay_ShepherdComb.h)
             else if(ring()) what=sweep.active()?"GET BEHIND A LIT POST":"CROSS THE RING / SHELTER WHEN THE POSTS LIGHT";

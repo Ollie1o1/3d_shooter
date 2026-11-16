@@ -23,7 +23,7 @@
 
 namespace shepfall {
 constexpr float LAMP_HP = 230.f, LAMP_OPEN = 5.f, WARN = 3.5f, FLASH = 1.f;
-constexpr float LAST_COUNT = 12.f, FIN_DRAIN = shep::FIN_DRAIN, FIN_END = 9.f, END_LEN = 18.f;
+constexpr float LAST_COUNT = 24.f, FIN_DRAIN = shep::FIN_DRAIN, FIN_END = 9.f, END_LEN = 18.f;
 }
 
 inline void GameplayState::shepFallReset() {
@@ -97,7 +97,7 @@ inline void GameplayState::shepFall(float dt) {
     player.gravity = -24.f * (1.f + 0.25f * shepFallAmt);   // full, and rising
     if (!shepFallSeen) {
         shepFallSeen = true;
-        pushBanner("THE FALL", "IT IS FALLING INTO THE GIANT", glm::vec3{2.4f, 1.1f, 0.4f} * 0.5f, 4.f);
+        pushBanner("THE FALL", "THE LAST ORBIT. INTO THE GIANT", glm::vec3{2.4f, 1.1f, 0.4f} * 0.5f, 4.f);
     }
     if (std::fmod(gameClock, 0.05f) < dt)   // re-entry: fire pouring over its ridge, more as it falls
         for (int k = 0; k < 1 + (int)(4.f * shepFallAmt); ++k)

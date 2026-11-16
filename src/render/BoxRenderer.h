@@ -88,6 +88,9 @@ public:
         glEnableVertexAttribArray(10);
         glVertexAttribPointer(10, 1, GL_FLOAT, GL_FALSE, sizeof(BoxInstance), (void*)(base + offsetof(BoxInstance, surface)));
         glVertexAttribDivisor(10, 1);
+        glEnableVertexAttribArray(11);
+        glVertexAttribPointer(11, 4, GL_FLOAT, GL_FALSE, sizeof(BoxInstance), (void*)(base + offsetof(BoxInstance, deform)));
+        glVertexAttribDivisor(11, 1);
     }
 
     BoxRenderer(const BoxRenderer&) = delete;
@@ -119,7 +122,8 @@ public:
         const int shapes = meshlib::count() + 1;
         for (const auto& b : boxes) {
             const int shape = shapeOf(b, shapes);
-            if (frustum.sees(shape ? meshBounds[(size_t)shape - 1] : cube, b.model)) visible.push_back(b);
+            // A deforming spine may lean outside its undeformed mesh bounds.
+            if (b.deform.w > .5f || frustum.sees(shape ? meshBounds[(size_t)shape - 1] : cube, b.model)) visible.push_back(b);
         }
         draw(visible);
         return visible.size();

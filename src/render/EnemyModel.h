@@ -27,6 +27,7 @@ struct BoxInstance {
     float     surface = 0.f; // a boss's surface, drawn by the shader (box_inst.frag): 0 plain, 1 riveted rusting plate,
                              // 2 cast iron, 3 bone, 4 char, 5 hot iron, 6 distant ground,
                              // 7 brick/pavers, 8 marble, 9 circuit plate, 10 basalt
+    glm::vec4 deform{0.f};   // optional continuous spine: bend, twist, breath, enabled
 };
 
 #include "render/PropDraw.h"   // (Blender pieces: THE RESTORER; needs BoxInstance, above)

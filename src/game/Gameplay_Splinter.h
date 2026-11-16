@@ -9,9 +9,10 @@
 // =============================================================================
 
 // (Story: UNIT 24 takes the forearm that holds it off the Successor at the end of Chapter 3, so Chapter 4 has it)
-inline bool GameplayState::splinterOwned() const { return g_devSplinter || combatRemix() || plain() || (training() && lessons::usesSplinter(trainingLesson)); }
+inline bool GameplayState::splinterOwned() const { return g_devSplinter || combatRemix() || plain() || ring() || (training() && lessons::usesSplinter(trainingLesson)); }
 
 static const glm::vec3 SPLINTER_GLOW{0.35f, 1.f, 1.15f};
+static constexpr int SPLINTER_SHEPHERD = -3;
 static constexpr int SPLINTER_BROOD = -2;   // splinterTarget: the Gleaner's brood, not an enemy in the list
 
 inline void GameplayState::throwSplinter() {
@@ -87,6 +88,8 @@ inline int GameplayState::splinterTarget(glm::vec3 from, glm::vec3& aimAt) const
         float d = glm::length(to), wall = d > 0.3f ? wallAlong(from, to / d, d) : -1.f;
         if (d > 0.3f && d < SplinterSystem::REACH && !(wall > 0.f && wall < d - 0.3f) && d - 8.f < bestScore) { best = SPLINTER_BROOD; aimAt = brood; }
     }
+    glm::vec3 kept;
+    if(shepherdSplinterPoint(from,kept)&&glm::length(kept-from)-8.f<bestScore){best=SPLINTER_SHEPHERD;aimAt=kept;}
     return best;
 }
 
@@ -133,11 +136,12 @@ inline void GameplayState::splinterRicochet(int first, float dmg, int w) {
         // The weak point it can see
         glm::vec3 aimAt;
         int target = splinterTarget(from, aimAt);
-        if (target < 0 && target != SPLINTER_BROOD) {   // nothing to go for: it spends itself upward
+        if (target < 0 && target != SPLINTER_BROOD && target != SPLINTER_SHEPHERD) {   // nothing to go for: it spends itself upward
             fx.spawnTracer(from, from + glm::vec3{0.f, 6.f, 0.f}, 0.05f, 0.25f, SPLINTER_GLOW);
             break;
         }
         glm::vec3 dir = glm::normalize(aimAt - from);
+        if(target==SPLINTER_SHEPHERD){float near=SplinterSystem::REACH+5.f;fx.spawnTracer(from,aimAt,.08f,.35f,SPLINTER_GLOW*1.6f);landed=shootVent(from,dir,near,dmg*mult);break;}
         if (target == SPLINTER_BROOD) {   // into the brood's weak point (the glass finds the gaps)
             float near = SplinterSystem::REACH + 5.f;
             fx.spawnTracer(from, aimAt, 0.08f, 0.35f, SPLINTER_GLOW * 1.6f);

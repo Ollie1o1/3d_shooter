@@ -138,6 +138,7 @@ inline void GameplayState::punch(int boostable) {
             return;
         }
     }
+    if (parryHead()) return;
     if (parryCaller()) return;   // THE CALLER diving at you (Gameplay_GleanerFight.h)
     if (parryTender()) return;   // THE TENDER's white tongs reaching for you
     if (tryFinisher()) return;   // one low enough to finish (it glows): Gameplay_Feel.h
@@ -837,6 +838,7 @@ inline void GameplayState::processBlasts() {
         explosionFlashTimer = 0.35f; explosionFlashPos = b.pos;
         playBoom("explosion", b.pos, 128, SoundGroup::WORLD);
         blastDestructibles(b.pos, b.radius, b.damage);
+        blastShepherd(b.pos, b.radius, b.damage);
         for (int ai = 0; ai < (int)level.anchors.size(); ++ai)   // a blast against the Penitent's anchors
             if (level.anchors[ai].alive && glm::length(level.anchors[ai].pos - b.pos) < b.radius + 1.f &&
                 (level.anchors[ai].kind != LevelData::ChainAnchor::CONDUIT || conduitShootable(wardenAlive(), wardenPhase())) &&

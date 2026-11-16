@@ -609,7 +609,9 @@ void main() {
         if (uRingTurn != 0.0) { float c = cos(uRingTurn), s = sin(uRingTurn); d = vec3(c * dir.x - s * dir.y, s * dir.x + c * dir.y, dir.z); }
         vec3 col = ringSky(d);
         if (uRingFall > 0.0) {   // re-entry: fire low all round, pouring up; the clouds below, pale and close
-            float low = smoothstep(0.35, -0.25, dir.y);
+            // Hold a dark sky behind the blue colossus; re-entry burns below it.
+            col *= mix(vec3(1.0), vec3(0.12, 0.17, 0.27), smoothstep(0.0, 0.15, uRingFall));
+            float low = smoothstep(0.12, -0.35, dir.y);
             float flick = 0.85 + 0.15 * sin(dir.x * 40.0 + dir.z * 31.0 + uTime * 7.0) * sin(dir.z * 23.0 - uTime * 5.0);
             vec3 fire = mix(vec3(1.6, 0.5, 0.12), vec3(2.4, 1.3, 0.4), smoothstep(0.1, -0.3, dir.y)) * flick;
             col = mix(col, fire, uRingFall * low * 0.85);

@@ -90,18 +90,21 @@ inline glm::vec3 ledge(int i) { return {BRK_X, 20.f + 40.f * (float)i, -3300.f -
 inline glm::vec3 ledgeStart(int i) { return ledge(i) + glm::vec3{0.f, 0.f, 12.f}; }
 inline glm::vec3 crown() { return {BRK_X, 140.f, -3960.f}; }
 inline glm::vec3 rideChunk(int i, int k) { return ledge(i) + glm::vec3{k ? 9.f : -9.f, 1.f, -27.f}; }   // its top centre
-// PHASE 5, THE FALL: its crown, falling into the giant. A field of hull round where the last ride lands,
-// its ridge along the north edge: six great lamps (each fires the aimed sweep, then stands open to be shot
-// out) either side of its core lamp (the finisher: HOLDFAST into it on the last count)
-constexpr float FALL_Y = 140.f, FALL_X0 = -650.f, FALL_X1 = -550.f, FALL_ZS = -3930.f, FALL_ZN = -4046.f;
+// PHASE 5, THE FALL: the court of broken orbits on its crown, falling into the giant.
+// The colossus rises beyond the north ridge. Its heart housing takes the final HOLDFAST.
+// Legacy lamp locations remain for checkpoint compatibility; the living body owns the fight.
+constexpr float FALL_Y = 140.f, FALL_X0 = -690.f, FALL_X1 = -510.f, FALL_ZS = -3890.f, FALL_ZN = -4054.f;
 constexpr int LAMPS = 6;
 constexpr float FIN_DRAIN = 1.5f;   // the finisher: the last count runs out this fast once it is pinned
 inline glm::vec3 fallLamp(int i) { const float x[6] = {-642.f, -628.f, -614.f, -586.f, -572.f, -558.f}; return {x[i], FALL_Y + 9.f, FALL_ZN + 1.f}; }
 inline glm::vec3 fallCore() { return {-600.f, FALL_Y + 10.f, FALL_ZN + 1.5f}; }
-inline glm::vec3 fallStart() { return {-600.f, FALL_Y, FALL_ZS - 12.f}; }
+inline glm::vec3 fallStart() { return {-600.f, FALL_Y, -3942.f}; }
 inline std::vector<glm::vec2> fallFins() {
-    return {{-632.f, -4018.f}, {-610.f, -4024.f}, {-588.f, -4021.f}, {-566.f, -4016.f}, {-640.f, -3988.f}, {-616.f, -3992.f},
-            {-584.f, -3994.f}, {-560.f, -3986.f}, {-624.f, -3960.f}, {-576.f, -3958.f}};
+    std::vector<glm::vec2> out;
+    // Broken orbital vanes flank a clear central route to the exposed heart.
+    for(int row=0;row<4;++row)for(float x:{-666.f,-640.f,-614.f,-586.f,-560.f,-534.f})
+        out.push_back({x,-4027.f+33.f*row+(x<-600.f?2.f:-2.f)});
+    return out;
 }
 // After it: UNIT 24's own capsule, drifting, far out
 inline glm::vec3 driftStart() { return {-1400.f, 262.f, -3420.f}; }
@@ -326,11 +329,7 @@ inline LevelData buildShepherd() {
                 ringCapsule(b, {x, y, shep::RIDGE_Z + 0.8f}, true, 0, (ring::hash(k2, 5.f) - 0.5f) * 14.f, false);
             }
         b.neon(shep::RX0 - 30.f, 25.2f, shep::RIDGE_Z + 0.02f, shep::RX1 + 30.f, 25.6f, shep::RIDGE_Z + 0.25f, lampWhite * 0.6f);
-        for (int v = 0; v < 3; ++v) {   // each vent's throat: a dark recess with a lamp over it
-            const glm::vec3 c = shep::vent(v);
-            b.prop(c.x - shep::VENT_HX - 0.6f, c.y + shep::VENT_HY, shep::RIDGE_Z, c.x + shep::VENT_HX + 0.6f, c.y + shep::VENT_HY + 0.6f, shep::RIDGE_Z + 0.8f, steel);
-            b.neon(c.x - 1.5f, c.y + shep::VENT_HY + 1.4f, shep::RIDGE_Z + 0.02f, c.x + 1.5f, c.y + shep::VENT_HY + 1.7f, shep::RIDGE_Z + 0.2f, lampWhite * 0.8f);
-        }
+
     }
 
     // ---- PHASE 3: THE RESONATOR (inside) ----
@@ -482,31 +481,89 @@ inline LevelData buildShepherd() {
                 l.sweepShelters.push_back(sh);
             }
         }
-        // ---- PHASE 5: THE FALL. Its crown: a field of hull, its ridge north with its lamps and its core ----
+        // ---- PHASE 5: THE FALL. A broken celestial court cut into the crown. ----
         {
             const float y = shep::FALL_Y;
-            b.mat = Mat::METAL;
+            const vec3 court{-600.f,0.f,-3972.f};
+            b.mat = Mat::HULL;
             b.wall(shep::FALL_X0, y - 6.f, shep::FALL_ZN, shep::FALL_X1, y, shep::FALL_ZS, hull);
-            for (float z = shep::FALL_ZS - 8.f; z > shep::FALL_ZN; z -= 8.f)
-                b.prop(shep::FALL_X0 + 1.f, y, z - 0.08f, shep::FALL_X1 - 1.f, y + 0.03f, z + 0.08f, hullLit);
-            for (int sd = 0; sd < 2; ++sd) {   // lit edges
-                const float x = sd ? shep::FALL_X1 - 0.6f : shep::FALL_X0 + 0.4f;
-                b.neon(x, y + 0.02f, shep::FALL_ZN + 2.f, x + 0.2f, y + 0.06f, shep::FALL_ZS - 1.f, lampWhite * 0.3f);
+            // Individual inset slabs, scored seams and occasional circuit panels.
+            // Dressing sits flush above one continuous collision floor.
+            for(int ix=0;ix<15;++ix)for(int iz=0;iz<14;++iz){
+                float x=shep::FALL_X0+12.f*ix,z=shep::FALL_ZN+12.f*iz;
+                float far=std::min(z+11.82f,shep::FALL_ZS-.12f);if(far<=z)continue;
+                b.mat=(ix+iz*3)%9==0?Mat::CIRCUIT:Mat::HULL;
+                b.prop(x+.12f,y+.006f,z+.12f,x+11.88f,y+.025f,far,
+                    glm::mix(hull,hullLit,.14f+.22f*ring::hash(float(ix),float(iz))));
             }
-            b.neon(shep::FALL_X0 + 1.f, y + 0.02f, shep::FALL_ZS - 0.6f, shep::FALL_X1 - 1.f, y + 0.06f, shep::FALL_ZS - 0.4f, lampWhite * 0.3f);
+            // Tarnished orbital inlays and broken radial spokes echo his halo.
+            b.mat=Mat::BRASS;
+            const vec3 inlay{.24f,.19f,.105f};
+            for(float radius:{13.f,28.f,45.f,63.f,77.f}){
+                for(int q=0;q<8;++q){float a=q*.78539816f;
+                    b.kit().curve(court,radius,a+.035f,a+.72f,y+.027f,y+.055f,.19f,inlay,10);
+                }
+                for(int k=0;k<48;++k){float a=k*.13089969f;
+                    b.kit().box(court+vec3{radius*std::cos(a),y+.05f,radius*std::sin(a)},
+                        {k%6==0?1.7f:.7f,.045f,.13f},inlay,-a);
+                }
+            }
+            b.mat=Mat::BASALT;
+            for(int k=0;k<12;++k){float a=k*.52359878f;
+                b.kit().box(court+vec3{38.f*std::cos(a),y+.035f,38.f*std::sin(a)},
+                    {51.f,.025f,.38f},hull*.5f,-a);
+            }
+            // A dark compass rosette is the visual centre, kept level for combat.
+            b.kit().column(court+vec3{0,y+.026f,0},11.5f,.04f,hullLit*.65f,24);
+            b.mat=Mat::BRASS;
+            for(int k=0;k<8;++k)b.kit().box(court+vec3{0,y+.073f,0},{19.f,.025f,.12f},inlay,k*.39269908f);
+            b.mat=Mat::HULL;
+            for(int sd:{-1,1}){
+                const float x=-600.f+sd*82.f;
+                // Side galleries with real slopes at both ends form long flank routes.
+                b.wall(x-5.f,y,-4028.f,x+5.f,y+3.f,-3928.f,hullLit*.7f);
+                auto slope=[&](float za,float zb,float ya,float yb){
+                    l.ramps.push_back({LevelBuilder::aabb(x-5.f,y,za,x+5.f,y+3.f,zb),2,ya,yb});
+                    float dz=zb-za,dy=ya-yb;
+                    auto& slab=b.kit().box({0,0,0},{10.f,.4f,std::sqrt(dz*dz+dy*dy)},hullLit*.7f);
+                    slab.xf=glm::translate(glm::mat4{1.f},vec3{x,(ya+yb)*.5f,(za+zb)*.5f})
+                        *glm::rotate(glm::mat4{1.f},std::atan2(dy,dz),vec3{1,0,0})
+                        *glm::translate(glm::mat4{1.f},vec3{0,-.2f,0})*slab.xf;
+                };
+                slope(-4040.f,-4028.f,y,y+3.f);slope(-3928.f,-3916.f,y+3.f,y);
+                b.neon(x-.12f,y+3.02f,-4028.f,x+.12f,y+3.08f,-3928.f,lampWhite*.22f);
+                // Exterior flying ribs and split arches frame the giant, never the firing lanes.
+                for(int j=0;j<5;++j){float z=-4032.f+j*31.f;
+                    float edge=sd<0?shep::FALL_X0:shep::FALL_X1;
+                    b.wall(edge-1.3f,y-8.f,z-2.f,edge+1.3f,y+7.f,z+2.f,hull);
+                    b.kit().rod({edge,y+6.f,z},{edge+sd*12.f,y+18.f,z-5.f},2.f,hullLit*.6f,6);
+                    b.kit().arch({edge+sd*12.f,y+18.f,z-5.f},19.f,16.f,1.4f,3.f,hullLit*.65f,1.5707963f,10);
+                    b.kit(true).rod({edge,y+6.5f,z},{edge+sd*11.5f,y+18.f,z-5.f},.12f,lampWhite*.2f,6);
+                }
+            }
+            for(int sd=0;sd<2;++sd){
+                float x=sd?shep::FALL_X1-.6f:shep::FALL_X0+.4f;
+                b.neon(x,y+.04f,shep::FALL_ZN+2.f,x+.2f,y+.1f,shep::FALL_ZS-1.f,lampWhite*.3f);
+            }
+            b.neon(shep::FALL_X0+1.f,y+.04f,shep::FALL_ZS-.6f,shep::FALL_X1-1.f,y+.1f,shep::FALL_ZS-.4f,lampWhite*.3f);
             // its ridge: the north edge, rising; the lamps and the core are drawn live in front of it
-            b.wall(shep::FALL_X0 - 10.f, y, shep::FALL_ZN - 14.f, shep::FALL_X1 + 10.f, y + 22.f, shep::FALL_ZN, hull);
-            b.wall(shep::FALL_X0 - 20.f, y + 22.f, shep::FALL_ZN - 40.f, shep::FALL_X1 + 20.f, y + 40.f, shep::FALL_ZN - 10.f, glm::mix(hull, steel, 0.3f));
+            b.wall(shep::FALL_X0 - 10.f, y, shep::FALL_ZN - 14.f, shep::FALL_X1 + 10.f, y + 3.f, shep::FALL_ZN, hull);
+            b.wall(shep::FALL_X0 - 20.f, y + 3.f, shep::FALL_ZN - 40.f, shep::FALL_X1 + 20.f, y + 6.f, shep::FALL_ZN - 10.f, glm::mix(hull, steel, 0.3f));
             for (float x = shep::FALL_X0 - 8.f; x < shep::FALL_X1 + 8.f; x += 4.5f)   // its fleece along the top of the ridge, peeling as it falls
-                if (ring::hash(x, 81.f) < 0.7f) ringCapsule(b, {x, y + 22.f, shep::FALL_ZN - 3.f - 6.f * ring::hash(x, 82.f)}, true, 0, (ring::hash(x, 83.f) - 0.5f) * 30.f, false);
+                if (ring::hash(x, 81.f) < 0.7f) ringCapsule(b, {x, y + 6.f, shep::FALL_ZN - 3.f - 6.f * ring::hash(x, 82.f)}, true, 0, (ring::hash(x, 83.f) - 0.5f) * 30.f, false);
             {   // the core lamp's housing: HOLDFAST goes into this
                 const vec3 c = shep::fallCore();
                 l.shepCoreWall = b.wall(c.x - 7.f, y, c.z - 1.5f, c.x + 7.f, y + 20.f, c.z + 1.f, glm::mix(hull, hullLit, 0.4f));
             }
             int n = 0;
-            for (const glm::vec2& f : shep::fallFins()) {   // ridge fins: shelter from its lamps (posts in their lee, south)
+            for (const glm::vec2& f : shep::fallFins()) {   // broken counterweight vanes, with HOLDFAST posts in their lee
                 const AABB box{{f.x - shep::FIN_W * 0.5f, y, f.y - shep::FIN_D * 0.5f}, {f.x + shep::FIN_W * 0.5f, y + shep::FIN_H, f.y + shep::FIN_D * 0.5f}};
                 b.wall(box.min.x, box.min.y, box.min.z, box.max.x, box.max.y, box.max.z, glm::mix(hull, hullLit, 0.4f + 0.3f * ring::hash((float)n, 85.f)));
+                // Three tapering crests make each shelter a torn orbital tooth.
+                b.mat=Mat::BRASS;
+                for(int tooth=0;tooth<3;++tooth)b.kit().column({f.x-2.1f+tooth*2.1f,y+shep::FIN_H,f.y},.72f,1.2f+(tooth==1?1.f:0.f),inlay,5,.15f);
+                b.mat=Mat::HULL;
+                for(int strut:{-1,1})b.kit().rod({f.x+strut*2.5f,y+.3f,f.y+1.4f},{f.x+strut*2.5f,y+4.4f,f.y+.65f},.24f,hullLit,6);
                 b.neon(box.min.x + 0.4f, box.max.y - 0.5f, box.max.z + 0.01f, box.max.x - 0.4f, box.max.y - 0.36f, box.max.z + 0.06f, lampWhite * 0.25f);
                 SweepShelter sh; sh.box = box; sh.section = 10; sh.post = {box.max.x - 0.8f, y, box.max.z + 1.2f};
                 post(sh.post); l.sweepShelters.push_back(sh); ++n;
@@ -567,7 +624,7 @@ inline LevelData buildShepherd() {
 
     {   // 3. THE TURN: the ridge (no waves: its adds and its sweeps are the game's, Gameplay_Shepherd.h)
         Arena a;
-        a.name = "THE TURN"; a.subtitle = "ITS RIDGE";
+        a.name = "THE ORRERY"; a.subtitle = "THREE CAPTIVE MOONS";
         a.zone = LevelBuilder::aabb(shep::RX0 - 1.f, -1000.f, shep::RIDGE_Z - 1.f, shep::RX1 + 1.f, 40.f, shep::RZ_S + 4.f);
         a.bounds = LevelBuilder::aabb(shep::RX0 + 1.f, shep::PLAIN_Y - 2.f, shep::RIDGE_Z + 1.f, shep::RX1 - 1.f, 40.f, shep::RZ_S);
         a.playerStart = shep::ridgeStart(); a.startYaw = -90.f; a.hasRespawn = true; a.respawn = a.playerStart;
@@ -604,14 +661,14 @@ inline LevelData buildShepherd() {
         a.airSpawns = {c + vec3{-10.f, 5.f, -20.f}, c + vec3{10.f, 5.f, -20.f}, c + vec3{0.f, 8.f, 20.f}};
         a.maxAlive = 8; a.waveBreak = 2.f;
         using W = WaveEntry;
-        if (i == 0) a.waves = {{W(EnemyType::STRAY, 5), W(EnemyType::HERDER, 1)}};
-        if (i == 1) a.waves = {{W(EnemyType::STRAY, 5), W(EnemyType::HERDER, 2)}, {W(EnemyType::STRAY, 4), W(EnemyType::PORTER, 1)}};
-        if (i == 2) a.waves = {{W(EnemyType::STRAY, 6), W(EnemyType::HERDER, 2)}, {W(EnemyType::STRAY, 5), W(EnemyType::HERDER, 1), W(EnemyType::PORTER, 1)}};
+        if (i == 0) a.waves = {{W(EnemyType::STRAY, 3), W(EnemyType::HERDER, 2)}};
+        if (i == 1) a.waves = {{W(EnemyType::STRAY, 2), W(EnemyType::TALLY, 2), W(EnemyType::PORTER, 1)}};
+        if (i == 2) a.waves = {{W(EnemyType::STRAY, 2), W(EnemyType::HERDER, 2), W(EnemyType::PORTER, 1)}};
         l.arenas.push_back(a);
     }
     {   // 10. THE FALL (its fight is the game's: Gameplay_ShepherdFall.h)
         Arena a;
-        a.name = "THE FALL"; a.subtitle = "INTO THE GIANT";
+        a.name = "THE FALL"; a.subtitle = "THE COURT OF BROKEN ORBITS";
         a.zone = LevelBuilder::aabb(shep::FALL_X0, -1000.f, shep::FALL_ZN, shep::FALL_X1, shep::FALL_Y + 60.f, shep::FALL_ZS + 16.f);
         a.bounds = LevelBuilder::aabb(shep::FALL_X0 + 1.f, shep::FALL_Y - 2.f, shep::FALL_ZN + 1.f, shep::FALL_X1 - 1.f, shep::FALL_Y + 40.f, shep::FALL_ZS);
         a.playerStart = shep::fallStart(); a.startYaw = -90.f; a.hasRespawn = true; a.respawn = a.playerStart;

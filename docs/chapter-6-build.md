@@ -1,3 +1,7 @@
+> **2026-11-14:** The orrery, humanoid colossus finale, resonance chains and ascent
+> assaults supersede the older vent/head notes below. See
+> [Chapter 6: COUNTERWEIGHT](chapter-6-counterweight.md) for current behavior and verification.
+
 # Chapter 6: THE KEPT RING — build log and hand-off
 
 The design is `docs/chapter-6-design.md`. This file is where the build stands

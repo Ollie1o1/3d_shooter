@@ -71,6 +71,11 @@ inline Theme GameplayState::ringShade(Theme th) const {
         th.skyAmb = glm::mix(th.skyAmb, glm::vec3{0.5f, 0.22f, 0.1f}, f * 0.8f);
         th.horizon = glm::mix(th.horizon, glm::vec3{0.9f, 0.35f, 0.12f}, f);
     }
+    if(shepherd()&&level.arenaAt(player.position)==10){
+        th.skyAmb={.11f,.115f,.13f};th.groundAmb={.055f,.06f,.07f};
+        th.lightColor=glm::mix(glm::vec3{1.12f,1.14f,1.20f},glm::vec3{1.5f,.8f,.45f},shepFallAmt*.45f);
+        th.lightDir=glm::normalize(glm::vec3{-.25f,-.7f,-.5f});
+    }
     const float d = ringDark();
     if (d <= 0.f) return th;
     th = lerpTheme(th, ring::darkTheme(), d);
