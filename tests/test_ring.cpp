@@ -33,6 +33,9 @@ static Run run(RingSweep& s, std::vector<SweepShelter>& sh, glm::vec3 feet, glm:
 }
 
 int main() {
+    CHECK(ring::layoutSeed(-3326.75f)==uint32_t(int32_t(-3326)) && ring::layoutSeed(-.75f)==0 && ring::layoutSeed(147.9f)==147,
+        "negative layout coordinates use a defined signed seed before wrapping to uint32");
+
     const glm::vec3 dir{0.f, 0.f, 1.f};   // the wall travels toward +Z: the Shepherd is at -Z
     auto block = [](float x, float z, float w = 6.f, float h = 5.f) {
         SweepShelter s; s.box = {{x - w * 0.5f, 0.f, z - 1.5f}, {x + w * 0.5f, h, z + 1.5f}}; s.post = {x, 0.f, z + 2.f}; return s;

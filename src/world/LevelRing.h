@@ -87,6 +87,11 @@ inline float hash(float n, float k) {
     h ^= h >> 15; h *= 0x2C1B3C6Du; h ^= h >> 12; h *= 0x297A2D39u; h ^= h >> 15;
     return (float)(h >> 8) * (1.f / 16777216.f);
 }
+// Layout coordinates fit in int32. A direct negative-float -> uint32 cast is
+// undefined: ARM Clang clamped it to zero while x86 GCC wrapped it, changing
+// the scenery and invalidating its lighting. Truncate signed, then wrap by the
+// standard integer conversion so negative coordinates retain distinct seeds.
+inline uint32_t layoutSeed(float n) { return static_cast<uint32_t>(static_cast<int32_t>(n)); }
 // The layout's trigonometry, the same everywhere for the same reason: range-reduced polynomials
 // (only + and *; the build sets -ffp-contract=off, so no platform fuses them differently)
 inline float dsin(float x) {
@@ -668,7 +673,7 @@ inline LevelData buildRing() {
             if (std::fabs(x) > ring::edgeAt(z, x < 0.f ? -1 : 1)) continue;
             if (std::fabs(x) < (side == 0 ? 20.f : 12.f)) continue;   // (solid now: keep the way onto the pier, and the far landing, clear)
             b.mat = Mat::ROCK;
-            b.kit().rock({x + 4.f * ring::hash(k, 2.f), -6.f, z}, 4.5f + 2.f * ring::hash(k, 3.f), 6.4f + 1.2f * ring::hash(k, 4.f), glm::mix(iceLit, iceDark, 0.5f), (uint32_t)(k * 13.f + 7.f), 0.8f, 7);
+            b.kit().rock({x + 4.f * ring::hash(k, 2.f), -6.f, z}, 4.5f + 2.f * ring::hash(k, 3.f), 6.4f + 1.2f * ring::hash(k, 4.f), glm::mix(iceLit, iceDark, 0.5f), ring::layoutSeed(k * 13.f + 7.f), 0.8f, 7);
         }
     }
     // The band's sides: the ring's rubble rising into a broken lip, a cliff of packed ice and rock
@@ -682,8 +687,8 @@ inline LevelData buildRing() {
                 b.mat = Mat::ROCK;
                 const vec3 col = glm::mix(iceLit, iceDark, 0.35f + 0.4f * ring::hash(k, 3.f));
                 if (ring::hash(k, 6.f) < 0.45f)   // a low, broken lip (not a wall: you see over it, down into the dark)
-                    b.kit().rock({e + side * 1.5f * ring::hash(k, 1.f), -0.6f, z}, 1.6f + 1.6f * ring::hash(k, 2.f), 1.f + 1.3f * ring::hash(k, 4.f), col, (uint32_t)(k * 7.f + 3.f), 0.6f, 7);
-                Shape& cliff = b.kit().rock({e + side * 2.f, -34.f, z + step * 0.5f}, 4.f + 3.f * ring::hash(k, 5.f), 33.f, glm::mix(iceDark, sand, 0.2f) * 0.8f, (uint32_t)(k * 11.f + 1.f), 1.6f, 7);
+                    b.kit().rock({e + side * 1.5f * ring::hash(k, 1.f), -0.6f, z}, 1.6f + 1.6f * ring::hash(k, 2.f), 1.f + 1.3f * ring::hash(k, 4.f), col, ring::layoutSeed(k * 7.f + 3.f), 0.6f, 7);
+                Shape& cliff = b.kit().rock({e + side * 2.f, -34.f, z + step * 0.5f}, 4.f + 3.f * ring::hash(k, 5.f), 33.f, glm::mix(iceDark, sand, 0.2f) * 0.8f, ring::layoutSeed(k * 11.f + 1.f), 1.6f, 7);
                 cliff.xf = cliff.xf * glm::scale(glm::mat4(1.f), glm::vec3{1.f, 1.f, 1.f + step / 8.f});
             }
             z += step;
@@ -789,8 +794,8 @@ inline LevelData buildRing() {
         for (float z = 122.f; z < 175.f; z += 6.f) {   // the furrow: a darker scar of turned ice behind it
             l.floors.push_back({1.f + 0.05f * (z - 122.f), z, 6.f + 0.05f * (z - 122.f), z + 6.f, 0.004f, iceDark * 0.8f, Mat::ROCK});
             b.mat = Mat::ROCK;
-            b.kit().rock({0.5f + 0.05f * (z - 122.f), -0.3f, z + 3.f}, 0.9f, 1.f, iceDark, (uint32_t)z, 0.5f, 5);
-            b.kit().rock({6.5f + 0.05f * (z - 122.f), -0.3f, z + 2.f}, 0.8f, 0.9f, iceDark, (uint32_t)z + 3u, 0.5f, 5);
+            b.kit().rock({0.5f + 0.05f * (z - 122.f), -0.3f, z + 3.f}, 0.9f, 1.f, iceDark, ring::layoutSeed(z), 0.5f, 5);
+            b.kit().rock({6.5f + 0.05f * (z - 122.f), -0.3f, z + 2.f}, 0.8f, 0.9f, iceDark, ring::layoutSeed(z) + 3u, 0.5f, 5);
         }
         // The worn paths between the capsules: something has walked here for a long time (13.7)
         auto worn = [&](float x0, float z0, float x1, float z1) {
@@ -1077,7 +1082,7 @@ inline LevelData buildRing() {
                 const float k = x * 0.3f + side * 40.f + 900.f;
                 if (side == 0 && std::fabs(x) < 12.f) continue;   // (the mooring: clear)
                 if (ring::hash(k, 1.f) < 0.4f) continue;
-                b.kit().rock({x + 3.f * ring::hash(k, 2.f), -0.8f, z - out * (1.f + 2.f * ring::hash(k, 3.f))}, 1.4f + 1.4f * ring::hash(k, 4.f), 1.2f + 1.4f * ring::hash(k, 5.f), glm::mix(iceLit, iceDark, 0.4f), (uint32_t)(k * 9.f), 0.6f, 7);
+                b.kit().rock({x + 3.f * ring::hash(k, 2.f), -0.8f, z - out * (1.f + 2.f * ring::hash(k, 3.f))}, 1.4f + 1.4f * ring::hash(k, 4.f), 1.2f + 1.4f * ring::hash(k, 5.f), glm::mix(iceLit, iceDark, 0.4f), ring::layoutSeed(k * 9.f), 0.6f, 7);
             }
         }
         // The raft, moored at the near lip, and its boulder: the game moves both (Gameplay_Gap.h)
@@ -1116,7 +1121,7 @@ inline LevelData buildRing() {
             for (float x = -ring::WAKE_HALF; x <= ring::WAKE_HALF; x += 11.f) {
                 const float k = x * 0.3f + i * 17.f + 2000.f;
                 if (ring::hash(k, 1.f) < 0.5f) continue;
-                b.kit().rock({x + 4.f * ring::hash(k, 2.f), t.y - 0.6f, t.zS - 0.9f}, 0.8f + 0.7f * ring::hash(k, 3.f), 0.9f + 0.5f * ring::hash(k, 4.f), ice, (uint32_t)(k * 3.f), 0.6f, 6);
+                b.kit().rock({x + 4.f * ring::hash(k, 2.f), t.y - 0.6f, t.zS - 0.9f}, 0.8f + 0.7f * ring::hash(k, 3.f), 0.9f + 0.5f * ring::hash(k, 4.f), ice, ring::layoutSeed(k * 3.f), 0.6f, 6);
             }
             for (int sd = -1; sd <= 1; sd += 2)
                 b.kit().rock({sd * (ring::WAKE_HALF + 9.f), -1.f, (t.zS + zN) * 0.5f}, 6.f, t.y + 4.f + 6.f * ring::hash((float)i, 131.f), glm::mix(ice, wave, 0.5f), (uint32_t)(i * 31 + sd + 50), 0.7f, 7);
@@ -1136,12 +1141,12 @@ inline LevelData buildRing() {
             auto leanAbout = [&](Shape& sh, vec3 pivot, float a) {
                 sh.xf = glm::translate(glm::mat4(1.f), pivot) * ring::drotate(-a, vec3{1.f, 0.f, 0.f}) * glm::translate(glm::mat4(1.f), -pivot) * sh.xf;
             };
-            Shape& body = b.kit().rock({x, -2.f, z0}, r, h, col, (uint32_t)(k * 5.f), 0.5f, 11);
+            Shape& body = b.kit().rock({x, -2.f, z0}, r, h, col, ring::layoutSeed(k * 5.f), 0.5f, 11);
             body.xf = body.xf * glm::scale(glm::mat4(1.f), glm::vec3{1.f, 1.f, 2.f});
             leanAbout(body, {x, -2.f, z0}, lean);
             // The lip: a slab out over the north face at the top, turned further over
             const vec3 topAt{x, -2.f + h * ring::dcos(lean) - r * 0.4f, z0 - h * ring::dsin(lean)};
-            Shape& lip = b.kit().rock(topAt, r * 0.75f, r * 1.6f, col * 1.04f, (uint32_t)(k * 9.f + 1.f), 0.45f, 9);
+            Shape& lip = b.kit().rock(topAt, r * 0.75f, r * 1.6f, col * 1.04f, ring::layoutSeed(k * 9.f + 1.f), 0.45f, 9);
             lip.xf = lip.xf * glm::scale(glm::mat4(1.f), glm::vec3{1.f, 1.f, 1.6f});
             leanAbout(lip, topAt, lean + glm::radians(55.f + 20.f * ring::hash(k, 5.f)));
         }
@@ -1187,7 +1192,7 @@ inline LevelData buildRing() {
                 for (int sd = -1; sd <= 1; sd += 2) {
                     const float k = z * 0.21f + sd * 13.f + 4000.f;
                     const float h = top * (z - zFoot) / ring::SLOPE_RUN + 5.f + 6.f * ring::hash(k, 1.f);
-                    b.kit().rock({sd * (ring::WAKE_HALF + 10.f), -1.f, z - 6.f}, 7.f, h, glm::mix(ice, wave, 0.5f), (uint32_t)(k * 7.f), 0.7f, 7);
+                    b.kit().rock({sd * (ring::WAKE_HALF + 10.f), -1.f, z - 6.f}, 7.f, h, glm::mix(ice, wave, 0.5f), ring::layoutSeed(k * 7.f), 0.7f, 7);
                 }
         }
         // The Shore's ice is combed (13.3): fine grooves running north, cut by the tines

@@ -185,7 +185,7 @@ inline LevelData buildShepherd() {
         b.mat = Mat::ROCK;
         for (float z = shep::KNUCKLE_N; z < shep::TIP; z += 9.f) {   // the bow wave on its west face, ice and capsules heaped
             const float q = z * 0.13f;
-            b.kit().rock({x0 - 2.f - 2.f * ring::hash(q, 1.f), shep::PLAIN_Y - 0.5f, z}, 3.f + 2.f * ring::hash(q, 2.f), 4.f + 4.f * ring::hash(q, 3.f), glm::mix(iceLit, sand, 0.3f), (uint32_t)(q * 7.f), 0.6f, 7);
+            b.kit().rock({x0 - 2.f - 2.f * ring::hash(q, 1.f), shep::PLAIN_Y - 0.5f, z}, 3.f + 2.f * ring::hash(q, 2.f), 4.f + 4.f * ring::hash(q, 3.f), glm::mix(iceLit, sand, 0.3f), ring::layoutSeed(q * 7.f), 0.6f, 7);
         }
         int n = 0;
         for (const AABB& f : shep::fins()) {   // fins: shelter from its aim, each with its post in its lee
@@ -291,12 +291,12 @@ inline LevelData buildShepherd() {
         for (float x = shep::RX0; x < shep::RX1; x += 8.f)   // its ragged sides and south lip
             for (int sd = 0; sd < 2; ++sd) {
                 const float q = x * 0.3f + sd * 77.f;
-                b.kit().rock({x + 4.f, shep::PLAIN_Y, sd ? shep::RZ_S + 2.f : shep::RZ_S + 2.f}, 3.f + 2.f * ring::hash(q, 1.f), 8.f + 2.f * ring::hash(q, 2.f), glm::mix(iceLit, iceDark, 0.3f), (uint32_t)(q * 13.f), 0.6f, 7);
+                b.kit().rock({x + 4.f, shep::PLAIN_Y, sd ? shep::RZ_S + 2.f : shep::RZ_S + 2.f}, 3.f + 2.f * ring::hash(q, 1.f), 8.f + 2.f * ring::hash(q, 2.f), glm::mix(iceLit, iceDark, 0.3f), ring::layoutSeed(q * 13.f), 0.6f, 7);
             }
         for (float z = shep::RIDGE_Z; z < shep::RZ_S; z += 8.f)
             for (float x : {shep::RX0 - 2.f, shep::RX1 + 2.f}) {
                 const float q = z * 0.3f + x;
-                b.kit().rock({x, shep::PLAIN_Y, z + 4.f}, 3.f + 2.f * ring::hash(q, 1.f), 8.5f + 2.f * ring::hash(q, 2.f), glm::mix(iceLit, iceDark, 0.3f), (uint32_t)(q * 13.f), 0.6f, 7);
+                b.kit().rock({x, shep::PLAIN_Y, z + 4.f}, 3.f + 2.f * ring::hash(q, 1.f), 8.5f + 2.f * ring::hash(q, 2.f), glm::mix(iceLit, iceDark, 0.3f), ring::layoutSeed(q * 13.f), 0.6f, 7);
             }
         // Shelter: blocks of the ice the ridge ploughed up, each with its post (the waves come from the north)
         int n = 0;
@@ -464,7 +464,7 @@ inline LevelData buildShepherd() {
             b.wall(c.x - 18.f, c.y - 5.f, c.z - 18.f, c.x + 18.f, c.y, c.z + 18.f, rock);   // the raft
             for (int k = 0; k < 10; ++k) {   // its ragged edge, and what hangs under it
                 const float a = 6.2831853f * k / 10.f, q = c.z * 0.1f + k;
-                b.kit().rock({c.x + 19.f * ring::dcos(a), c.y - 9.f, c.z + 19.f * ring::dsin(a)}, 3.f + 2.f * ring::hash(q, 1.f), 8.f, glm::mix(rock, iceLit, 0.2f), (uint32_t)(q * 31.f), 0.5f, 7);
+                b.kit().rock({c.x + 19.f * ring::dcos(a), c.y - 9.f, c.z + 19.f * ring::dsin(a)}, 3.f + 2.f * ring::hash(q, 1.f), 8.f, glm::mix(rock, iceLit, 0.2f), ring::layoutSeed(q * 31.f), 0.5f, 7);
             }
             const float off[5][4] = {{-30.f, 3.f, 0.f, 9.f}, {30.f, 5.f, -8.f, 8.f}, {-22.f, 9.f, -24.f, 7.f}, {24.f, 2.f, 22.f, 8.f}, {0.f, 12.f, 28.f, 6.f}};
             for (const auto& o : off) {   // chunks hanging round it: cover, and high ground in the low gravity

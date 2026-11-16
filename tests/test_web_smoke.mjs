@@ -104,11 +104,11 @@ try {
     ['blast-chillers', { story5: '', arena: '6', god: '' }],
     ['dispatch-2', { story5: '', arena: '8', god: '' }],
     ['vault', { story5: '', arena: '10', god: '' }],
-    ['shepherd-mooring', { shepherd: '', arena: '8', god: '' }],
-    ['shepherd-relay', { shepherd: '', arena: '9', god: '' }],
-    ['shepherd-boarding', { shepherd: '', arena: '10', god: '' }],
-    ['shepherd-court', { shepherd: '', arena: '11', god: '' }],
-    ['shepherd-ending', { shepherd: '', arena: '12', god: '' }],
+    ['shepherd-mooring', { shepherd: '', practice: '', arena: '8', god: '' }],
+    ['shepherd-relay', { shepherd: '', practice: '', arena: '9', god: '' }],
+    ['shepherd-boarding', { shepherd: '', practice: '', arena: '10', god: '' }],
+    ['shepherd-court', { shepherd: '', practice: '', arena: '11', god: '' }],
+    ['shepherd-ending', { shepherd: '', practice: '', arena: '12', god: '' }],
   ]) {
     const target = new URL(url); target.search = new URLSearchParams(params).toString();
     target.searchParams.set('res', renderLines);

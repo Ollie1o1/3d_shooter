@@ -381,3 +381,20 @@ render regression checks, 131 Shepherd runtime checks, the input pilot, web
 Story/lighting/release checks, pointer-lock checks and Chromium smoke/audio
 checks passed. Website type/content checks, 35 tests and the static build/link
 verification passed before publication.
+
+
+The release check also found an older platform discrepancy in both Chapter 6
+levels: negative floating-point layout seeds were cast directly to unsigned
+integers. ARM Clang produced zero while x86 GCC wrapped them, changing rock
+recipes and rejecting the baked lighting. Seeds now truncate to a signed int32
+before the standard unsigned conversion. The resulting Mac and Linux hash
+input streams match byte for byte (5,467,120 and 1,285,276 words respectively).
+Both levels' lighting was regenerated for the defined recipes. Seed tests and
+float-cast-overflow sanitizer runs cover the conversion. Failed Linux lighting
+checks retain their fingerprint stream for diagnosis without relaxing the cache
+validation. Web Story preview tests now select bosses by name instead of stale
+numeric enum indices.
+
+The website offers direct practice previews of the ascent and crown fight.
+`--practice` / `?practice` applies the existing unranked, no-Story-save rules to
+checkpoint launches; normal Story starts retain their existing behavior.

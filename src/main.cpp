@@ -825,6 +825,7 @@ int main(int argc, char* argv[]) {
             app->mode=GameMode::ARENA;app->pending=App::NextState::Game;
         }
         if (arg == "--god")  { g_godMode = true; app->godFromCommandLine = true; }
+        if (arg == "--practice") g_practice = true; // checkpoint demos leave Story progress and records untouched
         if (arg == "--nav")   g_navDraw = true;
         if (arg == "--nonav") g_noNav = true;
         if (arg == "--dev")  app->openDevMenu = true;
