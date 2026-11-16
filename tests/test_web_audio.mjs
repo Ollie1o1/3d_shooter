@@ -14,7 +14,10 @@ try {
   const errors = [];
   page.on('pageerror', error => errors.push(String(error)));
   await page.addInitScript(() => {
-    window.requestAnimationFrame = callback => setTimeout(() => callback(performance.now()), 100);
+    // Match the visual smoke test's software-GPU pacing. This test measures
+    // the real audio clock, not graphics throughput; queued draws must not
+    // starve input or callback observation on a small headless runner.
+    window.requestAnimationFrame = callback => setTimeout(() => callback(performance.now()), 250);
     window.cancelAnimationFrame = id => clearTimeout(id);
     localStorage.setItem('overdrive.settings.cfg', 'quality 0\nantiAlias 0\nambientDetail 0\nframeCap 2\n');
     // A real Web Audio clock with a silent sink: headless checks must not
@@ -63,6 +66,9 @@ try {
     await page.mouse.click(640, 360);
     await page.waitForTimeout(500);
   }
+  // Input and weapon updates above are real. Once they have run, let Web
+  // Audio finish the observation without submitting more software draws.
+  await page.evaluate(() => Module.pauseMainLoop());
   await page.waitForFunction(() => window.audioStats.samples >= window.audioStats.rate * 2 * 6 && window.audioStats.rate > 0).catch(async error => {
     console.log(await page.evaluate(() => ({ stats: window.audioStats, contexts: window.observedAudioContexts.map(c => ({state: c.state, rate: c.sampleRate})) })));
     throw error;
