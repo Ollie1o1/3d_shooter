@@ -176,3 +176,8 @@ callback and autoplay policy while avoiding dependence on a sleeping display's
 audio device. The shipped shell resumes `Module.SDL2.audioContext` on a user
 gesture, including when audio initializes just after the first click. Release
 identities now include the loader template so shell-only fixes invalidate caches.
+
+The Shepherd now accepts an actual charged Overdrive attack, and palm counters
+can earn that charge. Its music/DriveBed layers therefore follow a usable player
+power state rather than a forced soundtrack switch. The entrance, phase breaks
+and final core count preserve a ready charge instead of wasting it.

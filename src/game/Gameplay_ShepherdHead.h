@@ -261,7 +261,9 @@ inline bool GameplayState::pinShepherd(glm::vec3 from,glm::vec3 dir,float distan
         shepPinT[hit]=PIN_TIME;shepArmDown[hit]=PIN_TIME;shepCounterHit[hit]=false;
         shepherdSound("shep_pin",shepHandAt[hit]);
         audio.stop(shepStrainSound[hit]);shepStrainSound[hit]=shepherdSound("shep_strain",shepHandAt[hit],.65f);
-        styleSystem.addStyle(180.f,StyleSource::ENVIRONMENT);styleSystem.heal(8.f*tune().heal);
+        // A palm pin is a deliberate counter, like turning a white fist. It
+        // can earn Overdrive instead of stopping at the passive hazard cap.
+        styleSystem.addStyle(180.f,StyleSource::PARRY);styleSystem.heal(8.f*tune().heal);
         ui.feed("PALM PINNED. ITS ORBIT IS COMING DOWN",HOLDFAST_STEEL);
         shake(.7f,.045f);fx.spawnShockwave(shepHandAt[hit],15.f,HOLDFAST_STEEL);
     }else if(arena==3&&shepTurnT<0.f&&shepInT<0.f){

@@ -64,10 +64,11 @@ struct ArenaNav {
         const auto t0 = std::chrono::steady_clock::now();
         burns_.clear();
         for (const Hazard& h : L.hazards) burns_.push_back(h.box);
-        // Chapter 6's fights are on open ice a few hundred metres across: a coarser grid there (cut in a
-        // third of the time, and its fields cost a third as much) loses nothing between rocks metres apart
+        // Open ring fields use 1.3 m cells, or 1.6 m on the widest fields.
+        // Interiors and the crown keep their finer grids. Route tests cover
+        // the real walkers and narrow passages at each resolution.
         const float area = (A.bounds.max.x - A.bounds.min.x) * (A.bounds.max.z - A.bounds.min.z);
-        const float minCell = L.story.built && L.story.chapter == 6 && area > 15000.f ? 1.3f : 0.8f;
+        const float minCell = L.story.built && L.story.chapter == 6 ? (area>60000.f?1.6f:area>15000.f?1.3f:.8f) : .8f;
         grid.build(L.walls.data(), (int)L.walls.size(), sg, A.bounds, A.voidY,
                    [&](float x, float z) { return L.floorWithWater(x, z, false); }, burns_.data(), (int)burns_.size(), minCell);
         grid.buildMs = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();

@@ -176,12 +176,15 @@ inline bool GameplayState::finishKey() {
 // ---- OVERDRIVE -------------------------------------------------------------------
 inline void GameplayState::attackOverdrive() {
     if (!styleSystem.overdriveReady || playerDead || victory) return;
-    for (const auto& e : enemies) if (e.targetable()) {
-        if (styleSystem.activateOverdrive()) {
-            styleSystem.overdriveBegan=false;
-            enterOverdrive();
-        }
-        return;
+    // The Shepherd is a custom body rather than an Enemy. Its live combat
+    // must spend a ready charge too; entrances, phase breaks and the final
+    // core count keep the charge until there is a damageable threat again.
+    bool threat=shepherd() && level.arenaAt(player.position)==10 && shepHeadHp>0.f
+        && shepRiseT<0.f && shepRearT<0.f && shepLastT<0.f && shepFinT<0.f && shepEndingT<0.f;
+    if(!threat)for(const auto& e:enemies)if(e.targetable()){threat=true;break;}
+    if(threat && styleSystem.activateOverdrive()) {
+        styleSystem.overdriveBegan=false;
+        enterOverdrive();
     }
 }
 

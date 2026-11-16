@@ -19,7 +19,7 @@ int main(){
     glViewport(0,0,SCREEN_W,SCREEN_H);balanceInit();balancepanel::init(window,context);
     g_devNoMouse=true;g_fixedDt=1.0/60;g_devCam=false;g_devOverlay.clear();g_devAim=true;
     StorySave::key="build/shepherd-pass/pilot-story.cfg";
-    bool finished=false;int shots=0,pins=0;float lowest=100,seconds=0;
+    bool finished=false;int shots=0,pins=0,overdrives=0;float lowest=100,seconds=0;
     {
         App app;app.window=window;app.ctx=context;
         app.pending=App::NextState::Menu;app.applyPendingState();
@@ -90,13 +90,15 @@ int main(){
             if(g.shepLastT>=0 && glm::length(shep::fallCore()-g.player.camera.position)<38.f)g.pendingHoldfast=true;
             if(g.shepHeadHp>0 && g.weapons[g.activeWeapon].ready()){g.pendingFire=true;++shots;}
             const float before=g.styleSystem.health;
+            const bool wasOverdrive=g.overdriveOn();
             g.update(1.f/60);
+            if(!wasOverdrive&&g.overdriveOn())++overdrives;
             if(g.styleSystem.health<before-3)std::printf("  damage %.0f at %.2fs attack %d t %.2f position %.1f %.1f %.1f\n",before-g.styleSystem.health,seconds,g.shepAtk,g.shepAtkT,g.player.position.x,g.player.position.y,g.player.position.z);
             lowest=std::min(lowest,g.styleSystem.health);
             if(f%300==0)std::printf("pilot %.0fs: HP %.0f, boss %.0f, phase %d, attack %d, position %.1f %.1f %.1f\n",seconds,g.styleSystem.health,g.shepHeadHp,g.shepHeadPhase,g.shepAtk,g.player.position.x,g.player.position.y,g.player.position.z);
         }
-        finished=g.storyEndT>=0&&!g.playerDead&&!g_godMode;
-        std::printf("%s: input pilot %.1fs, %d trigger pulls, %d pin attempts, lowest HP %.1f, ending %d, god %d\n",finished?"ok":"FAIL",seconds,shots,pins,lowest,g.storyEndT>=0,g_godMode);
+        finished=g.storyEndT>=0&&!g.playerDead&&!g_godMode&&overdrives>0;
+        std::printf("%s: input pilot %.1fs, %d trigger pulls, %d pin attempts, %d Overdrives, lowest HP %.1f, ending %d, god %d\n",finished?"ok":"FAIL",seconds,shots,pins,overdrives,lowest,g.storyEndT>=0,g_godMode);
         balancepanel::extraBuild={};app.currentState.reset();
     }
     ImGui_ImplOpenGL3_Shutdown();ImGui_ImplSDL2_Shutdown();ImGui::DestroyContext();SDL_GL_DeleteContext(context);SDL_DestroyWindow(window);SDL_Quit();return finished?0:1;

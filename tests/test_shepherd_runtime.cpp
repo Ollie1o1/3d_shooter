@@ -44,9 +44,27 @@ int main(){
         using namespace shephead;
         for(const char* name:shepherdmodel::PIECES)CHECK(propfile::get(name),"the live boss loads its Blender-authored anatomy");
         CHECK(g.swordAllowed()&&g.splinterOwned(),"Chapter 6 carries the sword and Splinter into the finale");
-        auto ready=[&](){g.playerDead=false;g.styleSystem.health=100;g.invincFrames=0;g.shepHeadArmed=false;g.shepHeadReset();g.shepRiseT=-1;g.shepHeadRise=1;g.shepHeadSeen=true;g.shepIdleT=99;g.sweep.reset();g.enemies.clear();g.wakeRings.clear();g.fx.clear();for(auto& t:g.fx.tracers)t.alive=false;for(auto& p:g.projSystem.pool)p.alive=false;g.ui.clearIndicators();g.ui.parryFlash=0;g.ui.damageVignette=0;g.ui.shootFlashTimer=0;g.explosionFlashTimer=0;g.whiteFade=0;};
+        auto ready=[&](){g.playerDead=false;g.styleSystem=StyleSystem{};g.invincFrames=0;g.shepHeadArmed=false;g.shepHeadReset();g.shepRiseT=-1;g.shepHeadRise=1;g.shepHeadSeen=true;g.shepIdleT=99;g.sweep.reset();g.enemies.clear();g.wakeRings.clear();g.fx.clear();for(auto& t:g.fx.tracers)t.alive=false;for(auto& p:g.projSystem.pool)p.alive=false;g.ui.clearIndicators();g.ui.parryFlash=0;g.ui.damageVignette=0;g.ui.shootFlashTimer=0;g.explosionFlashTimer=0;g.whiteFade=0;};
         ready();aim(g,shep::fallStart(),headC(1));
         g.updateMusic();CHECK(g.audio.music.targetLevel()>1.25f,"the Shore approach ramp cannot overwrite the actual boss music intensity");
+        {
+            const auto savedStyle=g.styleSystem;const auto savedWeapons=g.weapons;
+            g.styleSystem=StyleSystem{};g.styleSystem.readyOverdrive();
+            g.shepRiseT=0;g.attackOverdrive();
+            CHECK(g.styleSystem.overdriveReady&&!g.overdriveOn(),"the entrance preserves a charged Overdrive");
+            g.shepRiseT=-1;g.shepRearT=0;g.attackOverdrive();
+            CHECK(g.styleSystem.overdriveReady&&!g.overdriveOn(),"a movement break preserves a charged Overdrive");
+            g.shepRearT=-1;g.shepHeadHp=0;g.shepLastT=0;g.attackOverdrive();
+            CHECK(g.styleSystem.overdriveReady&&!g.overdriveOn(),"the final core count cannot waste a charged Overdrive");
+            g.shepLastT=-1;g.shepHeadHp=HP;
+            aim(g,shep::ledgeStart(0),headC(1));g.attackOverdrive();
+            CHECK(g.styleSystem.overdriveReady&&!g.overdriveOn(),"an empty ledge cannot spend a charge on the distant body");
+            aim(g,shep::fallStart(),headC(1));g.pendingFire=true;g.shootInput();
+            CHECK(g.enemies.empty()&&g.overdriveOn()&&!g.styleSystem.overdriveReady,"the actual trigger unleashes Overdrive against the live custom body without regular enemies");
+            g.styleSystem=savedStyle;g.weapons=savedWeapons;g.slowT=0;g.hitStopFrames=0;g.fovKick=0;
+            g.ui.overdriveFlash=0;g.camFeel.reset();g.viewModel.reset(g.activeWeapon);
+            ready();aim(g,shep::fallStart(),headC(1));
+        }
         float range=300;auto dir=glm::normalize(headC(1)-g.player.camera.position);
         CHECK(g.shootHead(g.player.camera.position,dir,range,100)&&g.shepHeadHp<HP,"face takes damage during ordinary combat without a timed opening");
         ready();g.shepHeadHurt(1e5f);
@@ -56,7 +74,9 @@ int main(){
         CHECK(g.shepHeadHp==HP*2.f/3.f&&g.shepHeadPhase==1,"retry restarts the current third");
         ready();const glm::vec3 palm{-600,shep::FALL_Y,-3980};g.shepHandAt[0]=palm;g.shepArmDown[0]=HAND_DOWN;
         aim(g,palm+glm::vec3{0,0,20},palm+glm::vec3{0,2,0});g.holdfast.reset();
+        g.styleSystem.style=StyleSystem::PASSIVE_CAP;
         g.pressHoldfast();
+        CHECK(g.styleSystem.style>StyleSystem::PASSIVE_CAP,"a deliberate palm counter can earn Overdrive beyond the passive environment cap");
         CHECK(g.shepPinT[0]>0&&!g.shepCounterHit[0]&&g.shepHeadHp==HP,"HOLDFAST plants the palm before the captive mass reaches the heart");
         CHECK(!g.holdfast.held()&&g.holdfast.cooldown>0,"palm pin consumes one spike without tethering the player to a fake wall");
         CHECK(g.shepStrainSound[0]!=0,"pinning starts a tracked tension sound for the pending counterweight");

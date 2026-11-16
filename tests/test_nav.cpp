@@ -16,6 +16,10 @@
 #include "world/NavBuild.h"
 #include <chrono>
 #include <ctime>
+#include <queue>
+#if defined(__APPLE__)
+#include <pthread/qos.h>
+#endif
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -112,6 +116,29 @@ static bool chase(const LevelData& L, int a, const SpatialGrid& grid, NavGrid* n
 }
 
 int main(int argc, char** argv) {
+#if defined(__APPLE__)
+    // Match the foreground game's CPU class. Unclassified CI command-line
+    // work may otherwise run on efficiency cores while timing the same budget.
+    const int qos=pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED,0);
+    std::printf("navigation benchmark: user-initiated CPU class (%d)\n",qos);
+#endif
+    {
+        NavQueue frontier;
+        using Item=std::pair<float,int>;
+        std::priority_queue<Item,std::vector<Item>,std::greater<Item>> reference;
+        uint32_t seed=12345;auto next=[&](){seed=seed*1664525u+1013904223u;return seed;};
+        auto push=[&](float d,int n){frontier.push(d,n);reference.push({d,n});};
+        // Equal distances, duplicate keys, then interleaved monotone inserts
+        // across floating-point exponent/bucket boundaries.
+        for(int i=0;i<256;++i)push(float(i%9)*.125f,int(next()%1000));
+        bool ordered=true;int popped=0;
+        while(!reference.empty()){
+            auto expected=reference.top();reference.pop();auto actual=frontier.pop();
+            ordered&=actual==expected;++popped;
+            if(popped<10000)for(int j=0;j<2;++j)push(expected.first+.03125f*float(1+next()%1000),int(next()%100000));
+        }
+        CHECK(ordered&&frontier.empty()&&popped>10000,"radix frontier matches the binary heap exactly, including node-id ties and interleaved inserts");
+    }
     bool compare = false; const char* only = nullptr;
     for (int i = 1; i < argc; ++i) {
         if (!std::strcmp(argv[i], "--compare")) compare = true;

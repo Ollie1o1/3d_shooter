@@ -23,8 +23,8 @@
 // steering (Enemy::steer) stays on top as the local layer. Flyers never use it.
 // =============================================================================
 #include "core/Collision.h"
+#include "world/NavQueue.h"
 #include <cstdint>
-#include <queue>
 #include <vector>
 
 struct NavAgent {
@@ -84,7 +84,7 @@ struct NavGrid {
     bool inGrid(int i, int k) const { return i >= 0 && k >= 0 && i < nx && k < nz; }
     glm::vec3 at(int n) const { const Node& N = nodes[n]; return {cx(N.col / nz), N.y, cz(N.col % nz)}; }
 
-    void clear() { built = false; nodes.clear(); colFirst.clear(); colCount.clear(); rev.clear(); revFirst.clear(); nx = nz = 0; goal_ = -1; ++revision; }
+    void clear() { built = false; nodes.clear(); colFirst.clear(); colCount.clear(); rev.clear(); revFirst.clear(); for(auto& c:costs_)c.values.clear(); nx = nz = 0; goal_ = -1; ++revision; }
 
     // Cut the grid for `bounds` out of the static walls and the hard floor.
     // baseFloor(x, z): the floor's height there; at or under voidY it's no floor at all.
@@ -101,6 +101,7 @@ struct NavGrid {
         if (cell > MAX_CELL) return false;
         nx = std::max(1, (int)std::ceil(ex / cell)); nz = std::max(1, (int)std::ceil(ez / cell));
         const int cols = nx * nz;
+        nodes.reserve(cols);
 
         // The walls near each column (within a wide body of its centre)
         std::vector<int> candFirst((size_t)cols + 1, 0), cand, q;
@@ -445,6 +446,9 @@ private:
         std::vector<float> dist; std::vector<int8_t> next;
     };
     mutable Field fields_[8 * VARIANTS];
+    struct NodeCost { float axial, diagonal; };
+    struct CostCache { int variant=-1; std::vector<NodeCost> values; };
+    mutable CostCache costs_[VARIANTS];
     mutable int budget_ = 1;
     float clock_ = 0.f;
     int goal_ = -1;
@@ -478,11 +482,24 @@ private:
         f.dist.assign(nodes.size(), 1e9f); f.next.assign(nodes.size(), (int8_t)-1);
         ++const_cast<NavGrid*>(this)->fieldsBuilt;
         if (goal_ < 0) return;
-        using Item = std::pair<float, int>;
-        std::priority_queue<Item, std::vector<Item>, std::greater<Item>> open;
-        f.dist[goal_] = 0.f; open.push({0.f, goal_});
+        // Prices depend on static terrain and the route variant, not on the
+        // goal or walker size. Reuse them across fields instead of hashing
+        // and multiplying the same node for each of its incoming links.
+        const bool varied=ag.variant>0;
+        auto& cache=costs_[glm::clamp(ag.variant,0,VARIANTS-1)];
+        if(varied && (cache.variant!=ag.variant || cache.values.size()!=nodes.size())){
+            cache.variant=ag.variant;cache.values.resize(nodes.size());
+            for(size_t i=0;i<nodes.size();++i){const float price=1.f+priceAt(nodes[i],ag.variant);
+                cache.values[i]={cell*price,(1.4142f*cell)*price};}
+        }
+        NodeCost plain[4];
+        for(int i=0;i<4;++i){float p=(i&1)?.3f:0.f;if(i&2)p+=2.f;
+            plain[i]={cell*(1.f+p),(1.4142f*cell)*(1.f+p)};}
+        const float diagonal=1.4142f*cell;
+        NavQueue open;
+        f.dist[goal_] = 0.f; open.push(0.f, goal_);
         while (!open.empty()) {
-            const Item it = open.top(); open.pop();
+            const auto it = open.pop();
             const int b = it.second;
             if (it.first > f.dist[b]) continue;
             for (int j = revFirst[b]; j < revFirst[b + 1]; ++j) {
@@ -490,10 +507,13 @@ private:
                 const Node& A = nodes[a];
                 if (!fits(A, ag)) continue;
                 if (!ag.drops && (A.big & (1u << d))) continue;
-                float cost = (d < 4 ? 1.f : 1.4142f) * cell * (1.f + priceAt(A, ag.variant));
+                float cost;
+                if(!varied && (A.flags&(OPEN|BURNS))==OPEN)cost=d<4?cell:diagonal;
+                else {const auto& prices=varied?cache.values[a]:plain[((A.flags&OPEN)?0:1)|((A.flags&BURNS)?2:0)];
+                    cost=d<4?prices.axial:prices.diagonal;}
                 if (A.y - nodes[b].y > STEP) cost += 0.6f;   // a drop: fine, but not for nothing
                 const float nd = it.first + cost;
-                if (nd < f.dist[a]) { f.dist[a] = nd; f.next[a] = (int8_t)d; open.push({nd, a}); }
+                if (nd < f.dist[a]) { f.dist[a] = nd; f.next[a] = (int8_t)d; open.push(nd, a); }
             }
         }
     }

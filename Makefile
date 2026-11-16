@@ -86,6 +86,7 @@ run: all
 # director, level data, weapons and XP through simulated ARENA, FAST and ACT II
 # runs; and the Zenith (the Absolute, the sword, BossSim's kill times)
 test: $(TESTS) $(HEADERS)
+	$(MAKE) test-nav
 	$(CXX) $(CXXFLAGS) tests/test_physics.cpp -o tests/test_physics $(STDLIB)
 	$(CXX) $(CXXFLAGS) tests/test_game.cpp -o tests/test_game $(STDLIB)
 	./tests/test_physics
@@ -110,7 +111,6 @@ test: $(TESTS) $(HEADERS)
 	$(MAKE) test-next
 	$(MAKE) test-iteration
 	$(MAKE) test-combat
-	$(MAKE) test-nav
 	$(MAKE) test-polish
 
 # What a fight leaves on the room, the room answering a blast, the world's own sounds (tests/test_polish.cpp)

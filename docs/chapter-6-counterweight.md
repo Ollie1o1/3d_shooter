@@ -402,3 +402,30 @@ checkpoint launches; normal Story starts retain their existing behavior.
 The single-threaded navigation benchmark now charges CPU time for grid creation,
 flow fields and route reads; its original 250 ms / 12 ms / 60 microsecond budgets
 are unchanged. Shared-runner scheduling delays no longer count as algorithm cost.
+
+
+## Counter rewards and navigation follow-up
+
+The final review found that charged Overdrive only recognized ordinary Enemy
+actors. The live Shepherd body is now a valid threat, while its entrance,
+movement breaks, core count and ending preserve the charge. Palm pins count as
+intentional counters rather than passive hazard damage, so they can earn the
+meter beyond its passive cap. The real trigger input is covered without any
+ordinary enemies present. Runtime fixtures reset style between cases so a
+previous counter cannot silently change a later test's power state.
+
+The updated no-god-mode input pilot completes the ending in 72.1 simulated
+seconds, with 35 trigger pulls, four pin attempts, one earned and unleashed
+Overdrive, and a lowest health of 77.0. This is one scripted strategy with the
+base Lancer; it demonstrates the complete reward loop, not a human difficulty
+assessment. All 137 targeted runtime checks pass.
+
+Wide ring navigation now reserves its node storage, reuses static terrain
+prices, and uses a radix frontier with the same distance/node ordering as the
+previous binary heap. An interleaved reference-heap comparison checks ties and
+floating-point bucket boundaries. Only Chapter 6 areas over 60,000 square metres
+use the existing maximum 1.6 m grid spacing; smaller arenas retain their prior
+spacing. The full route simulation still reaches the player in 2,757 of 2,767
+chases (99.64%), with no simulated wave enemies wedged. Timing budgets remain
+250 ms / 12 ms / 60 microseconds; navigation runs first in the regression suite
+to surface failures early.
