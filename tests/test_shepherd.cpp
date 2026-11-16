@@ -2,6 +2,7 @@
 #include "render/HeadMesh.h"
 #include "render/PropFile.h"
 #include "world/LevelShepherd.h"
+#include "core/Balance.h"
 #include <cstdio>
 #include <string>
 static int failures=0;
@@ -57,6 +58,10 @@ int main(){
     CHECK(level.arenas.size()==12&&level.story.chapter==6&&level.story.part==1,"chapter checkpoints and arena indices remain compatible");
     CHECK(std::string(level.arenas[3].name)=="THE ORRERY","the vent arena is replaced by the orrery");
     for(int k=7;k<10;++k)CHECK(level.arenas[k].waves.size()==1,"ascent ledges each use one composed encounter");
+    CHECK(level.arenas[9].goals.size()==1&&level.arenas[9].goals[0].kind==WaveGoal::EXTERNAL&&!level.arenas[9].goals[0].refill,"the last ascent is a finite boarding encounter instead of another kill gate");
+    CHECK(level.shepLedgeMooring>=0&&level.shepLedgeRelay>=0&&level.arenas[7].goals.size()==1&&level.arenas[8].goals.size()==1
+        &&level.arenas[7].goals[0].kind==WaveGoal::EXTERNAL&&level.arenas[8].goals[0].kind==WaveGoal::EXTERNAL
+        &&!level.arenas[7].goals[0].refill&&!level.arenas[8].goals[0].refill,"all three ascent encounters have distinct objectives with finite guards");
     const auto& court=level.arenas[10];
     CHECK((shep::FALL_X1-shep::FALL_X0)*(shep::FALL_ZS-shep::FALL_ZN)>29000.f,"celestial court has over two and a half times the old floor area");
     CHECK(level.groundAt(court.playerStart.x,court.playerStart.z,shep::FALL_Y)==shep::FALL_Y&&level.arenaAt(shep::crown())==10,"practice spawn and the ascent landing remain on the court floor");
@@ -72,6 +77,31 @@ int main(){
         cover&=shelter.post.x>court.bounds.min.x&&shelter.post.x<court.bounds.max.x&&shelter.post.z>court.bounds.min.z&&shelter.post.z<court.bounds.max.z;
         cover&=std::fabs(level.groundAt(shelter.post.x,shelter.post.z,shep::FALL_Y)-shep::FALL_Y)<.01f;
     }
-    CHECK(cover&&count==24,"all twenty-four orbital vanes have reachable posts inside the larger arena");
+    CHECK(cover&&count==16,"sixteen orbital vanes retain reachable posts around the clearer central lane");
+    bool terraces=true;
+    for(int side=0;side<2;++side){
+        const float x=shep::courtTerrace(side).x;
+        terraces&=std::fabs(level.groundAt(x,-4010.f,shep::FALL_Y+3.f)-(shep::FALL_Y+1.5f))<.01f;
+        terraces&=std::fabs(level.groundAt(x,-3978.f,shep::FALL_Y+3.f)-(shep::FALL_Y+3.f))<.01f;
+        terraces&=std::fabs(level.groundAt(x,-3934.f,shep::FALL_Y+3.f)-(shep::FALL_Y+1.5f))<.01f;
+        float midX=side?-568.f:-632.f;
+        terraces&=std::fabs(level.groundAt(midX,shep::COURT_CROSS_Z,shep::FALL_Y+3.f)-(shep::FALL_Y+1.5f))<.01f;
+    }
+    CHECK(terraces,"inner terraces have sloped access at both ends and from the heart lane");
+    CHECK(level.shepCourtClamps.size()==2,"two dynamic clamps control the optional gallery crossovers");
+    // Walk the actual collision geometry from the heart lane to each gallery.
+    // Before a break the clamp blocks it; after the break it is a continuous route.
+    balanceInit();Uint8 keys[SDL_NUM_SCANCODES]={};
+    for(int side=0;side<2;++side)for(bool open:{false,true}){
+        level.movers[level.shepCourtClamps[side]].gone=open;level.updateMovers(0.f);
+        Player p({side?-578.f:-622.f,shep::FALL_Y,shep::COURT_CROSS_Z});
+        for(int frame=0;frame<60*12;++frame){
+            p.floorY=level.baseFloor(p.position.x,p.position.z,p.radius);
+            p.velocity.x=shep::courtSide(side)*6.f;
+            p.update(1.f/60,keys,level.walls.data(),(int)level.walls.size(),true);
+            if(std::fabs(p.position.x+600.f)>81.f)break;
+        }
+        CHECK(open?(std::fabs(p.position.x+600.f)>81.f&&std::fabs(p.position.y-shep::FALL_Y-3.f)<.1f):(std::fabs(p.position.x+600.f)<68.f),"a broken clamp opens a walkable crossover while an intact clamp blocks that route");
+    }
     std::printf("%d failures\n",failures);return failures?1:0;
 }

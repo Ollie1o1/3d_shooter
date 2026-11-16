@@ -4,7 +4,7 @@
 import fs from 'node:fs/promises';
 const { chromium } = await import(process.env.OVERDRIVE_PLAYWRIGHT || 'playwright');
 const url = new URL(process.argv[2] || 'http://127.0.0.1:8876/');
-url.searchParams.set('arena', '1');
+if (!url.searchParams.has('arena')) url.searchParams.set('arena', '1');
 url.searchParams.set('god', '');
 url.searchParams.set('res', '360');
 const browser = await chromium.launch({ headless: true, args: ['--enable-unsafe-swiftshader'] });
@@ -57,7 +57,7 @@ try {
   await page.mouse.click(640, 360);
   await page.locator('#overlay').waitFor({ state: 'detached' });
   await page.evaluate(() => { window.audioStats.active = true; });
-  // Actual input produces gun sounds alongside the live SUNSET score.
+  // Actual input produces gun sounds alongside the live score (SUNSET by default, or a supplied checkpoint).
   for (let i = 0; i < 12; ++i) {
     await page.mouse.click(640, 360);
     await page.waitForTimeout(500);

@@ -73,6 +73,14 @@ inline void GameplayState::animateShepherd(float dt) {
         spine.y+=(shepSlamArm?-.12f:.12f)*reach;offset.z+=42.f*reach*(1.f-recoil);}
     if(shepAtk==ORRERY){spine.x-=.12f*std::sin(glm::clamp(shepAtkT/3.1f,0.f,1.f)*3.14159265f);}
     if(shepAtk==PULL){float gather=smooth(shepAtkT/PULL_LEN);spine.x-=.15f*gather;offset.y+=7.f*gather;}
+    // A pinned hand strains against its captive orbit before the mass strikes home.
+    for(int k=0;k<2;++k)if(shepPinT[k]>0.f&&!shepCounterHit[k]){
+        float strain=smooth((PIN_TIME-shepPinT[k])/COUNTER_HIT),sd=k?1.f:-1.f;
+        spine.y+=sd*.12f*strain;offset.x+=sd*8.f*strain;
+    }
+    if(shepCounterT>0.f){float recoil=std::sin(3.14159265f*(1.f-shepCounterT/COUNTER_RECOIL));
+        spine.x-=.22f*recoil;offset.z-=24.f*recoil;offset.y+=4.f*recoil;
+    }
     if(shepRearT>=0.f){float recoil=std::sin(3.14159265f*glm::clamp(shepRearT/REAR,0.f,1.f));spine.x-=.24f*recoil;offset.z-=22.f*recoil;}
     shepBodyAngles=glm::mix(shepBodyAngles,angles,blend);shepSpine=glm::mix(shepSpine,spine,blend);shepBodyOffset=glm::mix(shepBodyOffset,offset,blend);
     const auto body=shepBodyPose();

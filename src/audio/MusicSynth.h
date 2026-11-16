@@ -42,6 +42,7 @@
 #include <algorithm>
 #include <cstring>
 #include "audio/CombatScore.h"
+#include "audio/ShepherdScore.h"
 
 struct MusicTrack {
     const char* name;
@@ -63,7 +64,8 @@ struct MusicTrack {
 };
 
 constexpr int MENU_MUSIC_TRACK = 16;
-constexpr int MUSIC_TRACKS = 18;
+constexpr int MUSIC_TRACKS = 19;
+constexpr int SHEPHERD_MUSIC_TRACK = 18;
 constexpr int RING_MUSIC_TRACK = 17;
 
 inline const MusicTrack& musicTrack(int i) {
@@ -147,6 +149,9 @@ inline const MusicTrack& musicTrack(int i) {
          "x.........x..x..", "....x..g.g..x..g", "x.x.X.x.x.x.X.xo",
          "x---.-f.x---o-f.", "0.3.1.3.2.3.1.3.", "3-------2---1---0-------1---2-3-", 0, true},
 
+        {"COUNTERWEIGHT", 174.f, 42, {0, 0, 5, 4},
+         "x...x...x...x...", "....x.......x...", "x.XxxxX.x.XxxxXo",
+         ".xxx.xxx.xxx.xfx", "0...2...3...2...", "................................", 1},
     };
     return T[((i % MUSIC_TRACKS) + MUSIC_TRACKS) % MUSIC_TRACKS];
 }
@@ -155,6 +160,10 @@ class MusicSynth {
 public:
     // ---- set from the game thread ----
     void setTrack(int t)       { wantTrack.store(t); }
+    void setShepherdMovement(int m) { wantShepherdMovement.store(shepherdscore::clampMovement(m)); }
+    void resetShepherdMovement(int m) { setShepherdMovement(m); wantShepherdReset.fetch_add(1); }
+    int targetShepherdMovement() const { return wantShepherdMovement.load(); }
+    int currentShepherdMovement() const { return shepherdMovement; } // audio-thread inspection, like currentTrack()
     void setIntensity(float x) { wantLevel.store(x); }
     void setVolume(float v)    { volume.store(v); }
     void setMuffle(bool m)     { muffled.store(m); }
@@ -197,7 +206,7 @@ public:
             const int requested = ((wantTrack.load() % MUSIC_TRACKS) + MUSIC_TRACKS) % MUSIC_TRACKS;
             // Fade to silence before changing engines or keys; never mix the old tails into the new score.
             const float fadeStep = 1.f / (SR * 0.06f);
-            if (requested != track) {
+            if (requested != track || (track==SHEPHERD_MUSIC_TRACK && seenShepherdReset!=wantShepherdReset.load())) {
                 transitionGain = std::max(0.f, transitionGain - fadeStep);
                 if (transitionGain == 0.f) changeTrack(requested);
             } else transitionGain = std::min(1.f, transitionGain + fadeStep);
@@ -211,7 +220,7 @@ public:
                 out[2 * f]     = (hist[2 * i0] * (1 - fr) + hist[2 * i1] * fr) * env * wobble * transitionGain;
                 out[2 * f + 1] = (hist[2 * i0 + 1] * (1 - fr) + hist[2 * i1 + 1] * fr) * env * wobble * transitionGain;
                 if (--rewindT == 0) {
-                    if(combatscore::owns(track)){
+                    if(authoredTrack()){
                         // Preserve the position in the long form when crossing
                         // a four-bar boundary; wrapping step alone jumps ahead.
                         const int restored=std::max(0,std::max(0,cycle-1)*64+step-8);
@@ -238,7 +247,7 @@ public:
             // on one loudness scale (the menu under the fights, bosses on top),
             // and boss intensity lifts whatever is playing by 1.5 dB.
             const float trim = 1.f - (musicTrack(track).techno >= 2 ? 0.64f : 0.6f) * gKick * kickHeat;
-            const float g = 0.75f * trim * trackGain(track) * calibration * (1.f + 0.19f * bossAmt);
+            const float g = 0.75f * trim * trackGain(track) * calibration * shepherdGain * (1.f + 0.19f * bossAmt);
             L *= g; R *= g;
             // Bus compressor (3:1 over the threshold, 2 ms / 120 ms): the breaks'
             // tall drum peaks stop setting the level of everything under them.
@@ -255,6 +264,7 @@ public:
     }
 
     float level() const { return lvl; }       // smoothed intensity (tests)
+    float targetLevel() const { return wantLevel.load(); } // game-thread inspection without reading audio-thread state
     int   currentTrack() const { return track; }
     // The clock, for layers made in time and in key with it (DriveBed.h): the audio thread, after render()
     double stepPos() const { return (double)std::max(step, 0) + 1.0 - (double)sampleInStep / std::max(1.f, stepLen); }   // in sixteenths
@@ -271,13 +281,17 @@ public:
     // fights land near -13.5 LUFS, bosses near -12 and the menu near -15 at the same volume.
     // (The Cold Store, 96 BPM and mostly choir, sits lower: its quiet walk sets its gain.)
     static float trackGain(int t) {
-        static const float G[MUSIC_TRACKS] = {1.175f, 1.012f, 1.210f, 1.210f, 1.305f, 1.324f, 1.210f, 1.345f, 1.364f, 1.384f, 1.407f, 1.140f, 1.140f, 0.645f, 0.900f, 1.285f, 0.406f, 1.160f};
+        static const float G[MUSIC_TRACKS] = {1.175f, 1.012f, 1.210f, 1.210f, 1.305f, 1.324f, 1.210f, 1.345f, 1.364f, 1.384f, 1.407f, 1.140f, 1.140f, 0.645f, 0.900f, 1.285f, 0.406f, 1.160f, 1.160f};
         return G[((t % MUSIC_TRACKS) + MUSIC_TRACKS) % MUSIC_TRACKS];
     }
     static bool plainTrack(int t) { return t == 13; }            // the plain's brass and anvils
 
 private:
     std::atomic<int>   wantTrack{0};
+    std::atomic<int> wantShepherdMovement{shepherdscore::ASCENT};
+    std::atomic<unsigned> wantShepherdReset{0};
+    unsigned seenShepherdReset=0;
+    int shepherdMovement=shepherdscore::ASCENT, shepherdBarStart=0;
     std::atomic<float> wantLevel{0.5f};
     std::atomic<bool> wantThemeMuted{false};
     std::atomic<float> volume{0.6f};
@@ -295,7 +309,7 @@ private:
     int   cycle = 0;                 // times round it on this track (odd: the B side)
     float transitionGain = 1.f;
     float bSide = 0.f;               // smoothed 0..1: the B side's octaves (no clicks)
-    float scoreDrums=1,scoreBass=1,scoreArp=1,scoreTheme=1,scoreFilter=1,scoreRise=0;
+    float scoreDrums=1,scoreBass=1,scoreArp=1,scoreTheme=1,scoreFilter=1,scoreRise=0,shepherdGain=1;
     bool themeMuted=false,scorePeak=false,restoreHarmony=false;
     int playingDegree=0,themeLeft=0,acidLeft=0;
     float themeVelocity=1,acidVelocity=1,acidNote=62,acidAmp=0;
@@ -786,7 +800,7 @@ private:
             const MusicTrack& st = musicTrack(track);
             int deg = playingDegree;
             for (int k = 0; k < 4; ++k) stingNotes[k] = (float)chordTone(st, deg, k, 1);
-            if(combatscore::owns(track) && track!=combatscore::SUNSET && deg==4)stingNotes[1]+=1;
+            if(authoredTrack() && track!=combatscore::SUNSET && deg==4)stingNotes[1]+=1;
             stingT = 0.f; crash = Hit{0.f, 1.f};
         }
         bSide += ((track != MENU_MUSIC_TRACK && (cycle & 1) ? 1.f : 0.f) - bSide) * std::min(1.f, rate * 6.f);
@@ -804,9 +818,12 @@ private:
         hardMix += ((hardNow ? 1.f : 0.f) - hardMix) * std::min(1.f, rate * 30.f);
         kickHeat += (kickHeatTo - kickHeat) * std::min(1.f, rate * 40.f);
         themeMuted=wantThemeMuted.load();
-        if(combatscore::owns(track)) {
+        static constexpr float movementGain[]={1.f,1.19f,1.19f,1.f,1.12f};
+        const float gainTarget=track==SHEPHERD_MUSIC_TRACK?movementGain[shepherdMovement]:1.f;
+        shepherdGain+=(gainTarget-shepherdGain)*std::min(1.f,rate*5.f);
+        if(authoredTrack()) {
             const float within=(std::max(step,0)%16+1.f-sampleInStep/std::max(1.f,stepLen))/16.f;
-            const auto f=combatscore::form(track,scoreBar(),within);
+            const auto f=scoreForm(scoreBar(),within);
             scorePeak=f.section==combatscore::Section::PEAK;
             const float smooth=std::min(1.f,rate*8.f);
             scoreDrums+=(f.drums-scoreDrums)*smooth;scoreBass+=(f.bass-scoreBass)*smooth;
@@ -820,7 +837,7 @@ private:
         if (track == RING_MUSIC_TRACK) gArp = std::max(gArp, 0.4f * sstep(0.25f, 0.5f, lvl));   // (the ring's walk: the arp counting, quietly)
         gBassF = gOf(260.f + 2400.f * std::max(sstep(0.45f, 1.2f, lvl), drive));
         // Sixteen-bar form: three driving phrases, then a two-bar filtered turn.
-        const bool turn = !combatscore::owns(track) && (cycle % 4 == 3) && step >= 32;
+        const bool turn = !authoredTrack() && (cycle % 4 == 3) && step >= 32;
         phraseEnergy += ((turn ? 0.48f + 0.4f * bossAmt : 1.f) - phraseEnergy) * std::min(1.f, rate * 4.f);   // (a boss barely lets it close)
         bassMotion += rate * musicTrack(track).bpm / 60.f * 0.125f;
         if (bassMotion >= 1.f) bassMotion -= 1.f;
@@ -831,7 +848,7 @@ private:
         gLeadF = gOf(3200.f); gPadF = gOf(700.f + 500.f * sstep(0.6f, 1.2f, lvl)); gCrashF = gOf(5000.f);
         float cyc = (std::max(step, 0) + 1.f - sampleInStep / std::max(1.f, stepLen)) / 64.f;   // 0..1 across the four bars
         acidBase = track == MENU_MUSIC_TRACK ? 320.f : 320.f + 1900.f * cyc * cyc;
-        if(combatscore::owns(track))acidBase=300.f+2200.f*scoreFilter*(.65f+.35f*cyc);
+        if(authoredTrack())acidBase=300.f+2200.f*scoreFilter*(.65f+.35f*cyc);
         if(labTrack(track)){
             const int vowel=(std::max(step,0)/8)%3;
             static const float f[3][3]={{800,1150,2900},{450,800,2830},{400,1600,2700}};   // ah, oh, eh
@@ -842,14 +859,33 @@ private:
         }
     }
 
+    bool authoredTrack() const { return combatscore::owns(track)||track==SHEPHERD_MUSIC_TRACK; }
+    int shepherdBar(int bar) const { return std::max(0,bar-shepherdBarStart); }
+    combatscore::Form scoreForm(int bar,float within=0) const {
+        return track==SHEPHERD_MUSIC_TRACK?shepherdscore::form(shepherdMovement,shepherdBar(bar),within):combatscore::form(track,bar,within);
+    }
+    char scoreHit(int bar,int s,int instrument,bool hard) const {
+        return track==SHEPHERD_MUSIC_TRACK?shepherdscore::hit(shepherdMovement,shepherdBar(bar),s,instrument,hard):combatscore::hit(track,bar,s,instrument,hard);
+    }
+    const char* scoreBassLine(int bar) const {
+        return track==SHEPHERD_MUSIC_TRACK?shepherdscore::bass(shepherdMovement,shepherdBar(bar)):combatscore::bass(track,bar);
+    }
+    combatscore::Note scoreArpNote(int bar,int s) const {
+        return track==SHEPHERD_MUSIC_TRACK?shepherdscore::acid(shepherdMovement,shepherdBar(bar),s):combatscore::acid(track,bar,s);
+    }
+    combatscore::Note scoreThemeNote(int bar,int s) const {
+        return track==SHEPHERD_MUSIC_TRACK?shepherdscore::theme(shepherdMovement,shepherdBar(bar),s):combatscore::theme(track,bar,s);
+    }
+
     void changeTrack(int next) {
-        track = next; step = -1; cycle = 0; sampleInStep = 0.f; bSide = 0.f;
+        track = next; shepherdMovement=wantShepherdMovement.load(); shepherdBarStart=0; seenShepherdReset=wantShepherdReset.load();
+        step = -1; cycle = 0; sampleInStep = 0.f; bSide = 0.f;
         rewindT = 0; rewindWanted.store(false); stingWanted.store(false);
         stingT = stabT = arpT = leadT = bassEnvT = 1e9f;
         kick = snare = hatC = hatO = crash = Hit{};
         bassGate = leadOn = false; bassAmp = leadAmp = choirAmp = 0.f;
         drive = solo = 0.f;
-        scoreDrums=scoreBass=scoreArp=scoreTheme=scoreFilter=1;scoreRise=0;scorePeak=restoreHarmony=false;
+        shepherdGain=1;scoreDrums=scoreBass=scoreArp=scoreTheme=scoreFilter=1;scoreRise=0;scorePeak=restoreHarmony=false;
         playingDegree=themeLeft=acidLeft=0;themeVelocity=acidVelocity=1;acidAmp=0;scoreAcidSlide=false;
         lvl = wantLevel.load();
         snareF = hatF = crashF = bassF = padFL = padFR = arpF = riserF = leadF = mufL = mufR = SVF{};
@@ -859,7 +895,7 @@ private:
         const auto& tr = musicTrack(track);
         kickKind = baseKick(tr); breaksNow = tr.breaks; subGain = tr.breaks ? 0.08f : 0.24f; hardNow = false; hardMix = 0.f;
         kickHeat = kickHeatTo = tr.techno && track != MENU_MUSIC_TRACK ? 1.f : 0.f;
-        if(combatscore::owns(track)){leadNote=leadCur=float(tr.root+12);acidNote=float(tr.root+12);}
+        if(authoredTrack()){leadNote=leadCur=float(tr.root+12);acidNote=float(tr.root+12);}
         bassNote = bassTarget = (float)tr.root - 12.f;
         for (int k = 0; k < 4; ++k)
             padCur[k] = padNotes[k] = (float)(k == 3 ? scaleNote(tr, tr.chords[0], -2) : chordTone(tr, tr.chords[0], k, 0));
@@ -884,9 +920,13 @@ private:
         const MusicTrack& tr = musicTrack(track);
         stepLen = SR * 60.f / tr.bpm / 4.f;
         int s = step % 16, bar = step / 16;
-        const bool authored=combatscore::owns(track);
+        const bool authored=authoredTrack();
         const int longBar=scoreBar();
-        int deg = authored?combatscore::form(track,longBar).degree:tr.chords[bar];
+        if(track==SHEPHERD_MUSIC_TRACK && s==0 && shepherdMovement!=wantShepherdMovement.load()){
+            shepherdMovement=wantShepherdMovement.load();shepherdBarStart=longBar;
+            themeLeft=acidLeft=0;leadOn=false;restoreHarmony=true;
+        }
+        int deg = authored?scoreForm(longBar).degree:tr.chords[bar];
         playingDegree=deg;
 
         if (s == 0 || restoreHarmony) {                           // new chord, or a restored tape position
@@ -917,7 +957,7 @@ private:
         const int phrase = (cycle - 1) & 3;                       // which four bars of the sixteen
         const bool boss16 = !authored && track != MENU_MUSIC_TRACK && (tr.breaks || tr.techno);
         const bool traded = boss16 && ((bossAmt > 0.5f && phrase >= 2) || (canHard && phrase == 1));
-        Style style = scored ? combatscore::form(track, longBar).style
+        Style style = scored ? scoreForm(longBar).style
                     : traded ? (tr.breaks ? Style::HYBRID : Style::DNB) : (tr.breaks ? Style::DNB : Style::TECHNO);
         if (scored && style == Style::HARD && !canHard) style = Style::TECHNO;
         if (traded && canHard && (phrase & 1)) style = Style::HARD;   // bars 5-8 and 13-16: hardstyle
@@ -929,13 +969,13 @@ private:
         kickHeatTo = track == MENU_MUSIC_TRACK ? 0.f : hardstyle ? 0.4f : scored ? (style == Style::DNB ? 0.f : 1.f)
                    : traded ? (tr.breaks ? 0.6f : -0.2f) : tr.techno ? 1.f : 0.f;   // (measured: the traded bars within ~1 dB of the track's own)
         if (s == 0) { kickTailHz = midiHz((float)scaleNote(tr, deg, -2)); while (kickTailHz < 43.f) kickTailHz *= 2.f; while (kickTailHz > 87.f) kickTailHz *= 0.5f; }
-        char k = authored ? combatscore::hit(track,longBar,s,0,canHard) : toBreak ? "x.........x..x.."[s] : hardstyle ? '.' : at(tr.kick, s);
+        char k = authored ? scoreHit(longBar,s,0,canHard) : toBreak ? "x.........x..x.."[s] : hardstyle ? '.' : at(tr.kick, s);
         if (k == 'x') { kick = Hit{0.f, 1.f}; kickKind = hardstyle ? KICK_STYLE : style == Style::DNB ? KICK_BREAK : baseKick(tr); }
         if (!authored && !hardstyle && tr.breaks && bar % 2 == 1 && s == 14) { kick = Hit{0.f, 0.72f}; kickKind = KICK_BREAK; }
         if (!authored && !hardstyle && tr.breaks && bar == 3 && (cycle & 1) && s == 15) { kick = Hit{0.f, 0.82f}; kickKind = KICK_BREAK; }
         if (floorKick && s % 4 == 0) { kick = Hit{0.f, hardstyle ? 1.f : 0.8f}; kickKind = hardstyle ? KICK_STYLE : KICK_TECHNO; }   // four on the floor under the break
         if (floorKick && hardstyle && bar == 3 && s >= 10 && (s >= 12 || s % 2 == 0)) { kick = Hit{0.f, 0.9f}; kickKind = KICK_STYLE; }   // and it rolls out
-        char sn = authored ? combatscore::hit(track,longBar,s,1,canHard) : toBreak ? "....x..g.g..x..g"[s] : at(tr.snare, s);
+        char sn = authored ? scoreHit(longBar,s,1,canHard) : toBreak ? "....x..g.g..x..g"[s] : at(tr.snare, s);
         if (sn == 'x') snare = Hit{0.f, 1.f}; else if (sn == 'g') snare = Hit{0.f, 0.35f};
         else if (sn == 'r') snare = Hit{0.f, 0.3f + 0.7f * s / 15.f};   // a roll, rising through the bar
         if (!authored && !breaksNow && !hardstyle && track != MENU_MUSIC_TRACK && tr.techno && bar == 3 && s >= 8 && (s >= 12 || s % 2 == 0))   // the clap roll into the next phrase
@@ -946,13 +986,13 @@ private:
         if (breaksNow && sn != 'r' && snare.t == 0.f && snare.vel < 0.5f)
             snare.vel = 0.16f + 0.07f * ((s + bar) % 3);
         if (breaksNow && (cycle & 1) && s % 4 == 2) ride = Hit{0.f, bar % 2 ? 0.55f : 0.38f};
-        char h = authored?combatscore::hit(track,longBar,s,2,canHard):at(tr.hat, s);
+        char h = authored?scoreHit(longBar,s,2,canHard):at(tr.hat, s);
         if (floorKick && s % 4 == 2) h = 'o';                       // and the open hat off every beat
         if (h == 'x') hatC = Hit{0.f, 0.55f}; else if (h == 'X') hatC = Hit{0.f, 1.f}; else if (h == 'o') hatO = Hit{0.f, 1.f};
         else if (h == '.' && drive > 0.3f) hatC = Hit{0.f, 0.4f * drive};   // OVERDRIVE: the gaps fill with sixteenths
         if (drive > 0.02f && s % 2 == 0) stabT = 0.f;                         // OVERDRIVE: a stab on every eighth
 
-        const char* scoredBass = scored ? combatscore::bass(track, longBar) : nullptr;
+        const char* scoredBass = scored ? scoreBassLine(longBar) : nullptr;
         char b = hardstyle ? '.' : scoredBass ? scoredBass[s] : toBreak ? "x--.x-f.x--.o-f."[s] : at(tr.bass, s);   // (hardstyle: the kick's tail is the bass)
         if (b != '.' && b != '-') {
             int n = chordTone(tr, deg, 0, -1);
@@ -965,7 +1005,7 @@ private:
         if(authored && tr.techno){
             const bool connected=acidLeft>0;
             if(acidLeft>0)--acidLeft;
-            const auto note=combatscore::acid(track,longBar,s);
+            const auto note=scoreArpNote(longBar,s);
             if(note.at>=0){
                 scoreAcidSlide=note.slide && connected;arpNote=float(tr.root+12+note.pitch);
                 if(!scoreAcidSlide)arpT=0;
@@ -975,7 +1015,7 @@ private:
 
         if(authored){
             if(themeLeft>0)--themeLeft;
-            const auto note=combatscore::theme(track,longBar,s);
+            const auto note=scoreThemeNote(longBar,s);
             if(note.at>=0){
                 leadNote=float(tr.root+12+note.pitch);
                 if(drive>.5f && longBar%4==3 && s>=8)leadNote+=12;
@@ -993,7 +1033,7 @@ private:
         if (plainTrack(track)) { plainSample(L, R); return; }
         const float dt = 1.f / SR;
         const bool techno = tr.techno != 0, hard = tr.techno >= 2, breaks = breaksNow;
-        const bool authored=combatscore::owns(track);
+        const bool authored=authoredTrack();
         // ---- drums ----
         float drums = 0.f, hatOut = 0.f;
         if (kick.t < 0.6f) {
@@ -1123,7 +1163,8 @@ private:
             acidNote+=(arpNote-acidNote)*std::min(1.f,dt/(scoreAcidSlide?.04f:.003f));
             const float target=acidLeft>0?acidVelocity*(.3f+.7f*std::exp(-arpT*14.f)):0.f;
             acidAmp+=(target-acidAmp)*std::min(1.f,dt/.004f);
-            const float raw=arpOsc.saw(midiHz(acidNote-12.f),SR)*acidAmp;
+            const float raw=(track==SHEPHERD_MUSIC_TRACK?
+                arpOsc.sine(midiHz(acidNote),SR):arpOsc.saw(midiHz(acidNote-12.f),SR))*acidAmp;
             const float cut=gOf(acidBase*(1.f+2.f*std::exp(-arpT*18.f)*acidVelocity));
             arpOut=std::tanh(arpF.lp(raw,cut,.3f)*1.8f)*.1f*gArp*(.65f+.35f*duck);
             arpT+=dt;
@@ -1155,10 +1196,12 @@ private:
             leadAmp+=(target-leadAmp)*std::min(1.f,dt/(leadOn?.006f:.018f));
             // SUNSET's rounded pulse has a different identity from the bosses'
             // detuned saws. Their upper octave only opens at a scored peak.
-            float raw=track==combatscore::SUNSET?
+            float raw=track==SHEPHERD_MUSIC_TRACK?
+                leadOsc.sine(hz,SR)*.65f+leadOsc2.square(hz*.5f,SR)*.35f:
+                track==combatscore::SUNSET?
                 leadOsc.square(hz,SR)*.45f+leadOsc2.sine(hz,SR)*.55f:
                 leadOsc.saw(hz,SR)*.6f+leadOsc2.saw(hz*1.005f,SR)*.4f;
-            if(techno){
+            if(techno && track!=SHEPHERD_MUSIC_TRACK){
                 const float upper=scorePeak?.28f:0.f;
                 raw+=leadHi.saw(hz*2,SR)*upper;
             }

@@ -71,9 +71,7 @@ inline void GameplayState::shepFall(float dt) {
                 fx.spawnBurst(c + glm::vec3{cosmetic::range(-12.f, 12.f), cosmetic::range(-4.f, 14.f), cosmetic::range(-6.f, 2.f)}, POST_LIT, 50, 20.f, 1.4f, 2.f);
                 fx.spawnShockwave(c + glm::vec3{0.f, 2.f * k, 0.f}, 30.f + 8.f * k, POST_LIT * 0.8f);
             }
-            SfxMixer::Opts o; o.group = SoundGroup::WORLD; o.priority = true; o.unducked = true; o.pitch = 0.3f; o.volume = 1.f;
-            audio.playOpts("slam", o); o.delay = 0.5f; o.pitch = 0.25f; audio.playOpts("slam", o); o.delay = 1.1f; o.pitch = 0.2f; audio.playOpts("slam", o);
-            audio.playAt("ab_shatter", c, 128, SoundGroup::WORLD, true, 0.3f);
+            shepherdSound("shep_implode",c);
             for (auto& e : enemies) if (e.targetable() && e.takeDamage(1e6f)) onEnemyKilled(e, StyleSource::ENVIRONMENT);
             styleSystem.addStyle(500.f, StyleSource::ENVIRONMENT);
             shepherdDamageT = 2.f;
@@ -121,7 +119,7 @@ inline void GameplayState::shepFall(float dt) {
         if (std::ceil(left) != std::ceil(left + dt) && left > 0.f) audio.play("count_tick", left < 3.5f ? 128 : 100, SoundGroup::UI, true);
         if (holdfast.held() && holdfast.body == level.shepCoreWall) {   // pinned
             shepFinT = 0.f; shepFinCount = shepLastCount; shepLastT = -1.f;
-            audio.play("drive_ready", 128, SoundGroup::UI, true);
+            stopShepherdAudio();shepherdSound("shep_seal",shep::fallCore());
             return;
         }
         if (left <= 0.f) {   // it fires everything
@@ -151,6 +149,7 @@ inline void GameplayState::gatherFall(std::vector<BoxInstance>& out) {
     using namespace rig;
     using namespace shepfall;
     const int at = level.arenaAt(player.position);
+    if(at==10||shepFinT>=0.f)gatherShepherdCourt(out);
     gatherHead(out);   // THE SHEPHERD itself
     if (at == 10 || shepFinT >= 0.f) {
         const glm::vec3 core = shep::fallCore();

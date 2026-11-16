@@ -85,14 +85,16 @@ inline void GameplayState::renderHUD(const glm::mat4& view, const glm::mat4& pro
             const char* what = "FIND A WAY OUT";
             accent = {0.35f, 0.85f, 1.f};
             if (here == 0 && level.conveyorOfWall(player.groundWall) >= 0 && player.onGround) { what = "GET OFF THE BELT"; accent = {1.f, 0.45f, 0.2f}; }
-            else if (director.fighting()) {
+            else if (director.fighting() && !shepherd()) {
                 if (director.hasGoal() && director.goal().kind == WaveGoal::HOLD)
                     snprintf(buf,sizeof(buf),"%s   %.0f%%  %s",director.goal().label,director.goalProgress()*100.f,
                              director.zoneContested?"CLEAR THE PAD":director.holding?"CONTACT SEATING":"STAND ON THE SERVICE PAD");
                 else if (director.hasGoal() && director.goal().kind == WaveGoal::EXTERNAL && laboratory())
                     snprintf(buf,sizeof(buf),"%s / HOSTILES %d",lab::objective(here),left);
-                else if (director.hasGoal() && director.goal().kind == WaveGoal::EXTERNAL)
+                else if (director.hasGoal() && director.goal().kind == WaveGoal::EXTERNAL && wasteland())
                     snprintf(buf,sizeof(buf),"RELEASE TURBINE BRAKES   %d/3   HOSTILES %d",3-level.anchorsAlive(LevelData::ChainAnchor::BRAKE),left);
+                else if (director.hasGoal() && director.goal().kind == WaveGoal::EXTERNAL)
+                    snprintf(buf,sizeof(buf),"%s",director.goal().label);
                 else if (cold() && coldFightLine(buf, sizeof(buf), left)) {}   // Chapter 5: what this fight wants of you
                 else snprintf(buf, sizeof(buf), "%s   HOSTILES %d", here == level.story.pitSection ? "THE SCRAP IS AWAKE" : level.arenas[director.arena].name, left);
                 what = nullptr; accent = {1.f, 0.45f, 0.2f};

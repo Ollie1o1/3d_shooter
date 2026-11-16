@@ -86,6 +86,12 @@ inline const std::vector<MixEntry>& mixTable() {
         {"gleaner_scream", C::ACTION, -2.9f}, {"gleaner_slam", C::ACTION, -7.3f}, {"gleaner_groan", C::ACTION, -1.7f}, {"gleaner_blink", C::UI, -5.0f},
         // Its brood (same tool): the Caller's cracked bell (a toll; a round off its shell), the Sieve's basket shaken, its leg staked
         {"caller_toll", C::ACTION, -1.7f}, {"caller_clang", C::WORLD, -4.1f}, {"sieve_rattle", C::WORLD, -0.5f}, {"sieve_stake", C::ACTION, -7.2f},
+        // THE SHEPHERD: original attack signatures and body-transmitted contacts.
+        {"shep_fist_tell",C::TELL,0.f},{"shep_sweep_tell",C::TELL,0.f},{"shep_grab_tell",C::TELL,0.f},{"shep_gaze_tell",C::TELL,0.f},
+        {"shep_lock",C::TELL,0.f},{"shep_parry",C::TELL,0.f},{"shep_memory",C::TELL,0.f},{"shep_gather",C::TELL,0.f},
+        {"shep_moon",C::WORLD,0.f},{"shep_strain",C::WORLD,0.f},
+        {"shep_contact",C::ACTION,0.f},{"shep_sweep",C::ACTION,0.f},{"shep_grip",C::ACTION,0.f},{"shep_pin",C::ACTION,0.f},
+        {"shep_counter",C::ACTION,0.f},{"shep_break",C::ACTION,0.f},{"shep_seal",C::ACTION,0.f},{"shep_implode",C::ACTION,0.f},
     };
     return T;
 }

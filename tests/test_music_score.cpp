@@ -116,6 +116,38 @@ int main(){
         const double after=(tape.pass()-1)*64+tape.stepPos();
         check(!tape.rewinding() && std::fabs(before-after-8)<.01,"rewind crosses a four-bar boundary without jumping ahead in the form");
     }
+    // Render every Shepherd movement at web and native device rates, and
+    // compare irregular audio callbacks to catch clock-dependent transitions.
+    for(int movement=0;movement<=4;++movement)for(int rate:{22050,44100,48000}){
+        auto take=[&](int chunk){
+            MusicSynth m;m.setSampleRate(float(rate));m.setTrack(SHEPHERD_MUSIC_TRACK);
+            m.setShepherdMovement(movement);m.setIntensity(1.3f);m.setVolume(.9f);
+            const int n=int(18*240.f/174.f*rate);std::vector<float> x(n*2);
+            for(int p=0;p<n;p+=chunk)m.render(x.data()+p*2,std::min(chunk,n-p));
+            return x;
+        };
+        auto x=take(512),y=take(997);renderedSeconds+=double(x.size())/rate;bool finite=true;float peak=0;
+        for(float v:x){finite&=std::isfinite(v);peak=std::max(peak,std::fabs(v));}
+        check(finite&&peak<.9f,"Shepherd movement keeps finite PCM headroom through its full form");
+        check(x==y,"Shepherd clock and voice gates survive irregular callback sizes");
+        double lo=1e9,hi=0;const float bar=240.f/174.f;
+        for(int b=2;b<16;b+=2){auto p=power(x,int((b*bar+.1f)*rate),int(((b+2)*bar-.1f)*rate));lo=std::min(lo,p);hi=std::max(hi,p);}
+        const double spread=10*std::log10(hi/lo);
+        std::printf("  COUNTERWEIGHT movement %d @%d: spread %.2f dB, peak %.3f\n",movement,rate,spread,peak);
+        check(spread<5.5,"Shepherd changes rhythm without a two-bar energy hole");
+    }
+    {
+        MusicSynth m;m.setTrack(SHEPHERD_MUSIC_TRACK);m.setIntensity(1.3f);
+        m.setShepherdMovement(shepherdscore::CONTROL);
+        std::vector<float> x(44100*2);m.render(x.data(),44100);
+        const int before=m.scoreBar();m.setShepherdMovement(shepherdscore::RESISTANCE);
+        m.render(x.data(),1000);
+        check(m.currentShepherdMovement()==shepherdscore::CONTROL && m.scoreBar()==before,"movement request does not interrupt a playing bar");
+        m.render(x.data(),44100);
+        check(m.currentShepherdMovement()==shepherdscore::RESISTANCE && m.scoreBar()>before,"next bar changes the movement while preserving the tempo clock");
+        m.resetShepherdMovement(shepherdscore::COLLAPSE);m.render(x.data(),44100);
+        check(m.currentShepherdMovement()==shepherdscore::COLLAPSE && m.scoreBar()==0,"retry fades and restarts the checkpoint's movement without stale phrases");
+    }
     double elapsed=std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count();
     std::printf("%.0f seconds of complete-form audio rendered in %.2fs; %d failures\n",renderedSeconds,elapsed,failures);
     return failures?1:0;

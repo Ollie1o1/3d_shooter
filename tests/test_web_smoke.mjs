@@ -104,13 +104,18 @@ try {
     ['blast-chillers', { story5: '', arena: '6', god: '' }],
     ['dispatch-2', { story5: '', arena: '8', god: '' }],
     ['vault', { story5: '', arena: '10', god: '' }],
+    ['shepherd-mooring', { shepherd: '', arena: '8', god: '' }],
+    ['shepherd-relay', { shepherd: '', arena: '9', god: '' }],
+    ['shepherd-boarding', { shepherd: '', arena: '10', god: '' }],
+    ['shepherd-court', { shepherd: '', arena: '11', god: '' }],
+    ['shepherd-ending', { shepherd: '', arena: '12', god: '' }],
   ]) {
     const target = new URL(url); target.search = new URLSearchParams(params).toString();
     target.searchParams.set('res', renderLines);
     await page.goto(target.href, { waitUntil: 'domcontentloaded' });
     await enterGame();
     if (['phase-practice', 'boss-rush'].includes(name)) await page.keyboard.press('Tab');
-    if (['blast-chillers', 'dispatch-2', 'vault'].includes(name)) {
+    if (['blast-chillers', 'dispatch-2', 'vault'].includes(name) || name.startsWith('shepherd-')) {
       // Story checkpoint starts enter gameplay directly. Enter also resumes
       // an initial browser pointer-lock pause without opening an armory.
       await page.locator('#canvas').focus();
@@ -156,7 +161,7 @@ try {
     }
   }
   if (errors.length) throw new Error(errors.join('\n'));
-  console.log('WebAssembly boots; all twenty lessons, guide paging, the Descent, seeded challenges, phase practice, boss rush, Motor Assessment, Surgical Observation and three Cold Store combat spaces render without browser errors.');
+  console.log('WebAssembly boots; all twenty lessons, guide paging, the Descent, seeded challenges, phase practice, boss rush, Motor Assessment, Surgical Observation three Cold Store combat spaces, all three Shepherd ascent ledges, the crown fight and capsule ending render without browser errors.');
 } finally {
   await browser.close();
 }

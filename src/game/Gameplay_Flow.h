@@ -343,6 +343,7 @@ inline GameplayState::GameplayState(AudioSystem& aud, GameSettings* s, GameMode 
 }
 
 inline GameplayState::~GameplayState() {
+    stopShepherdAudio();
     saveStoryProgress();
     logRun("quit");   // whatever was played since the last death or finish (RunLog.h)
     audio.setMuffle(0.f);   // back to the menu: the world isn't dull any more
@@ -1374,6 +1375,7 @@ inline void GameplayState::update(float dt) {
     whiteFade = std::max(0.f, whiteFade - floatDt);
     if (!styleSystem.isAlive() && !playerDead) {
         playerDead = true;
+        stopShepherdAudio();
         deadTimer = 0.f;
         logRun("death");
         grapple.release();
@@ -1416,13 +1418,16 @@ inline void GameplayState::updateMusic() {
         audio.setOverdrive(overdriveOn()&&!playerDead&&!paused&&!armoryOpen,0);return;
     }
     if(ring()&&!g_devRingTest){   // Chapter 6: the helmet's pulse on the crossing, the full drum and bass in a fight
-        m.setTrack(RING_MUSIC_TRACK);m.setDrive(overdriveOn()&&!playerDead);m.setSolo(false);
+        const bool finaleScore=shepherd() && director.arena>=7;
+        m.setTrack(finaleScore?SHEPHERD_MUSIC_TRACK:RING_MUSIC_TRACK);
+        m.setShepherdMovement(shepLastT>=0.f||shepFinT>=0.f?shepherdscore::LAST_COUNT:
+            director.arena>=10?shepherdscore::CONTROL+shepHeadPhase:shepherdscore::ASCENT);
+        m.setDrive(overdriveOn()&&!playerDead);m.setSolo(false);
         bool dog=false;for(const auto& e:enemies)if(e.alive&&isSheepdog(e.type))dog=true;
         float intensity=director.fighting()?(dog?1.18f:1.f):.38f;
-        if(shepherd()&&(level.arenaAt(player.position)==10||shepFinT>=0.f))m.setDrive(!playerDead);   // THE FALL: the biggest drop (OVERDRIVE's stabs over the boss's full kit)
         if(shepherd())intensity=level.arenaAt(player.position)==5?.4f:shepTurnT>=0.f?.35f:director.fighting()||shepBreakT>=0.f||shepTines>=shep::TINES?1.3f:.95f;   // THE SHEPHERD: the boss, loud and at full tempo throughout (only its turn drops to the pulse)
         // The Shore: the walk up to it, the drums gathering as it fills the sky
-        if(!director.fighting()&&player.position.z<ring::summitN())intensity=glm::mix(.38f,.75f,glm::clamp((ring::summitN()-player.position.z)/(ring::summitN()-ring::shoreN()),0.f,1.f));
+        if(!shepherd()&&!director.fighting()&&player.position.z<ring::summitN())intensity=glm::mix(.38f,.75f,glm::clamp((ring::summitN()-player.position.z)/(ring::summitN()-ring::shoreN()),0.f,1.f));
         if(storyEndT>=0.f)intensity=.2f;
         m.setIntensity(playerDead?.05f:intensity);m.setMuffle(paused||armoryOpen||playerDead||ringQuiet());
         float vol=(settings?settings->musicVolume:.6f)*(director.fighting()||shepherd()?1.f:.55f);

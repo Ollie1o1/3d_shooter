@@ -3,6 +3,7 @@
 #include "audio/MixTable.h"
 #include "audio/MusicSynth.h"
 #include "audio/SfxMixer.h"
+#include "audio/ShepherdAudio.h"
 #include <fstream>
 #include <cstdio>
 #include <cstring>
@@ -57,11 +58,41 @@ static void checkMenuPlayback() {
       assert(m.currentTrack()==MENU_MUSIC_TRACK);
     }
   }
-  std::puts("All 18 tracks: menu transitions, rewind cancellation, and sustained playback passed at 44.1/48 kHz.");
+  std::printf("All %d tracks: menu transitions, rewind cancellation, and sustained playback passed at 44.1/48 kHz.\n",MUSIC_TRACKS);
 }
 
 int main() {
     checkMenuPlayback();
+    bool shepherdAssets=true,shepherdLevels=true,shepherdOnset=true,shepherdVariants=true;
+    int shepherdFamilies=0;
+    for(const auto& entry:mixTable())if(std::string(entry.name).find("shep_")==0){
+        ++shepherdFamilies;std::vector<float> previous;
+        for(int v=0;v<3;++v){
+            auto x=wav(std::string("assets/sfx/")+entry.name+(v?"_"+std::to_string(v):"")+".wav");
+            if(x.empty()){shepherdAssets=false;continue;}
+            shepherdAssets&=std::all_of(x.begin(),x.end(),[](float a){return std::isfinite(a)&&std::fabs(a)<.98f;})&&std::fabs(x.back())<.001f;
+            shepherdLevels&=std::fabs(shortTermDb(x.data(),x.size(),44100)+entry.trimDb-mixTargetDb(entry.cls))<.25f;
+            size_t onset=0;while(onset<x.size()&&std::fabs(x[onset])<.01f)++onset;
+            shepherdOnset&=onset<221;shepherdVariants&=previous.empty()||x!=previous;previous=std::move(x);
+        }
+    }
+    check(shepherdFamilies==18&&shepherdAssets&&shepherdLevels,"all 54 Shepherd cue assets leave headroom and meet their mix targets");
+    check(shepherdOnset&&shepherdVariants,"Shepherd cues have immediate onset, distinct variants and clean tails");
+    {
+        auto clip=wav("assets/sfx/shep_fist_tell.wav");
+        auto energy=[&](float vacuum,bool stress){
+            SfxMixer m(44100,9217);m.addSound("shep_fist_tell",clip);
+            m.setListener({0,0,0},{1,0,0},{0,0,-1});m.setVacuum(vacuum);
+            if(stress){m.duck(18,.5f);m.setFocus(1);}
+            auto o=shepherdaudio::options("shep_fist_tell",{0,0,240});m.play("shep_fist_tell",o);
+            std::vector<float> b(512*2);double e=0;
+            for(int k=0;k<60;++k){std::fill(b.begin(),b.end(),0);m.render(b.data(),512);for(float x:b)e+=x*x;}
+            return e;
+        };
+        double normal=energy(0,false),vacuum=energy(1,true);
+        check(normal>1&&std::fabs(vacuum-normal)<normal*.001,"a Shepherd warning remains audible 240 metres behind the listener through vacuum, ducking and Overdrive focus");
+        check(shepherdaudio::options("shep_fist_tell",{}).role==SoundRole::TELL&&shepherdaudio::options("shep_counter",{}).floor>0,"Shepherd warnings and counter rewards use protected mixer roles and audibility floors");
+    }
     bool assets = true, onset = true, levels = true, variants = true, tails = true;
     SfxMixer mixer;
     for (const char* name : {"sword_draw", "sword_swing", "sword_thrust", "sword_guard", "sword_hit",

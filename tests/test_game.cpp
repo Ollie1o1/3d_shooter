@@ -3373,7 +3373,10 @@ int main() {
                                 "hit_body", "stun", "finisher", "overdrive_on", "overdrive_off", "finish_ready", "hook_yank",
                                 "anvil", "anvil_final", "record", "split_behind", "count_tick", "count_go", "drive_warn", "drive_ready", "dash_ready", "potion_drop",
                                 "mini_sting", "bell", "medal", "gleaner_scream", "gleaner_slam", "gleaner_groan", "gleaner_blink",
-                                "caller_toll", "caller_clang", "sieve_rattle", "sieve_stake"};
+                                "caller_toll", "caller_clang", "sieve_rattle", "sieve_stake",
+                                "shep_fist_tell", "shep_sweep_tell", "shep_grab_tell", "shep_gaze_tell", "shep_lock", "shep_parry",
+                                "shep_memory", "shep_moon", "shep_gather", "shep_contact", "shep_sweep", "shep_grip",
+                                "shep_pin", "shep_strain", "shep_counter", "shep_break", "shep_seal", "shep_implode"};
         std::vector<std::string> names(std::begin(loaded), std::end(loaded));
         for(int i=0;i<7;++i)names.push_back("successor_line_"+std::to_string(i));
         for(int i=0;i<7;++i)names.push_back("lab_pa_"+std::to_string(i));

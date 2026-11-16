@@ -20,8 +20,9 @@ the sweeping gaze; the fins remain useful cover.
 
 - Face and torso take damage throughout combat. There is no compulsory
   attack / wait / vulnerability cycle.
-- Grounded palms take 1.8x damage. HOLDFAST pins one for 5.5 seconds, deals
-  150 damage, and exposes the whole body to 1.6x damage for five seconds.
+- Grounded palms take 1.8x damage. HOLDFAST pins one for 5.5 seconds; after a
+  visible 0.9-second counterweight flight, the impact deals 150 damage and
+  exposes the whole body to 1.6x damage for five seconds.
   Pinning is optional; ordinary fire can finish the fight.
 - A white flash in the final 0.27 seconds of a fist's wind-up permits a punch
   or sword parry. A successful parry deals 120 damage, heals and grounds the
@@ -67,10 +68,12 @@ to chain another break. The hall fields a Herder alongside its Stray, rather
 than repeating pairs of basic enemies. HOLDFAST remains the fast way to
 silence a ringing fork.
 
-Each ascent ledge now has one distinct enemy composition rather than
-repeated waves. The Shepherd strikes the ledge during its fight; its warning
-locks to the old player position, so these blows can be baited into enemies.
-The Gather rides remain the transport between ledges.
+The ascent's three goals are to break a mooring with the Shepherd's strike,
+stabilise a moving relay with HOLDFAST, then board the last Gather under fire.
+Each has a finite, distinct guard composition. The Shepherd strikes the ledge
+during its fight; its warning locks to the old player position, so these blows
+can also be baited into enemies. The Gather rides remain the transport between
+ledges.
 
 An existing update-loop bug prevented the boss's ground rings from advancing.
 The Shepherd path now ticks those rings while keeping crossing-only Wake
@@ -260,3 +263,121 @@ The inspected 15 fps review is `build/shepherd-pass/shepherd-pressure.mp4`;
 regenerate with `SHEPHERD_CAPTURE_MOTION=1 ./build/test_shepherd_runtime` and
 encode the resulting `pressure-%03d.bmp` sequence at 15 fps. Final attack
 balance remains subject to human play feedback.
+
+## Court, counterweight and boarding pass (2026-11-15)
+
+The first implementation of the finale review concentrates on readable routes,
+visible consequences and momentum into the humanoid fight.
+
+- Two inner terraces have end ramps and a central ramp from the heart lane.
+  Level bridges connect them to the existing outer galleries. Orbital clamps
+  initially obstruct these crossovers; the first health-third break throws the
+  west clamp clear, and the second clears the east. Both galleries remain
+  accessible through their original end ramps throughout the fight.
+- Sixteen shelter vanes replace the repeated twenty-four-vane grid, leaving a
+  wider central firing and finishing route. Shelter posts remain reachable.
+  A capsule dock on the west and a brass orbital arch on the east distinguish
+  the flanks. Underside ribs give the court visible depth at its edges.
+- Broad, quiet slab plates replace the busy hull/circuit floor treatment.
+  Sparse recessed lights on the Orrery ridge let its three moving moons remain
+  the brightest targets. A neutral light floor improves the body's readability.
+- Palm pins now show the cause of their damage: the hand stays grounded, the
+  torso strains, a captive mass arcs toward the heart, and the arrival triggers
+  damage, sound, recoil and the five-second damage opening. Each hand has an
+  independent pending impact. Movement transitions, defeat and retries cancel
+  unfinished impacts so they cannot damage a later movement.
+- Each health-third break leaves damaged heart cages, chest seams, stress
+  fractures, a displaced clamp and released capsules. Released fleets have
+  separate simulation timers so advancing a movement does not reset their drift.
+  The checkpoint's health third reconstructs broken clamps and opened paths;
+  retries do not replay the break animation. Floors and shelters stay intact.
+- Distant fire restores 1 HP at most every 0.8 seconds. Grounded-palm hits within
+  42 metres, and exposed-body hits within 100 metres, restore 3 HP every 0.3
+  seconds. The existing pin/parry healing remains. All amounts scale with tuning.
+- The third ascent ledge is a boarding objective with finite guards. The Gather
+  starts while they are alive, both ride chunks are marked immediately, and
+  boarding completes the objective. Missing a ride retains the existing
+  damage-and-return recovery. The first two ledges retain their composed fights.
+
+Start the court with `./shooter --shepherd --arena 11`, the boarding ledge with
+`--arena 10`, or the Orrery with `--arena 4`. `make test-shepherd` walks the actual
+collision geometry through both closed and opened crossovers and checks terrace
+access. `make test-shepherd-runtime` exercises delayed pin damage, transition and
+retry cancellation, persistent routes, healing incentives, and boarding with
+live guards. Additional captures in `build/shepherd-pass/` are
+`counterweight-flight.bmp`, `court-movement-2.bmp` and `court-movement-3.bmp`.
+
+Verification completed: native `make`, Emscripten `make web`, the full `make test`
+suite, `make test-render`, and all 118 `make test-shepherd-runtime` checks passed.
+The Shepherd light bake was regenerated and the final court, counterweight,
+third-movement and Orrery captures were inspected. Human playtesting is still
+needed to tune the new healing rates and boarding pressure.
+
+The broader review also proposed connecting every approach objective through
+visible damage, giving the first two ascent ledges new goals, optional forearm
+traversal, deeper enemy/environment interactions and a musical through-line.
+Those remain future passes; this change establishes the court and counterweight
+behavior against which to playtest them.
+
+## Ascent objectives and first audio implementation (2026-11-16)
+
+All three ascent ledges now have different goals. On the first, bait a marked
+Shepherd strike onto the mooring, or spike its core with HOLDFAST to call a
+strike there. The delayed impact breaks the mooring; the player remains free
+to dodge. On the second, HOLDFAST arrests a moving relay: hold it steady for
+2.5 seconds while fighting. Releasing early resets only this short hold. On
+the last, board the Gather under pressure. Each has finite guards, an explicit
+objective and a marked interactable. Completing a mechanism clears its remaining
+guard detail through the existing objective system. Retries restore the current
+ledge's mechanism, and earlier ledges stay completed.
+
+The HUD now uses the Shepherd's current objective during its fights. Previously,
+external goals inherited Chapter 2's turbine-brake text; that text is now limited
+to Chapter 2. New mechanism captures are `build/shepherd-pass/mooring.bmp` and
+`relay.bmp`. Start these ledges with `--shepherd --arena 8` and `--arena 9`.
+
+The [audio plan](chapter-6-audio-plan.md) contains the audit, cue vocabulary,
+three-movement score brief, production order and audition criteria. Its first
+implementation ships 54 original WAVs with protected directional warnings,
+separate pin/strain/heart-impact sounds, phase breaks and a dedicated finisher.
+The music's Shore intensity override is fixed and its Overdrive layer follows
+the actual player state. The dedicated new composition remains planned.
+
+Verification completed for this pass: native and web builds, the full `make test`
+suite, `make test-render`, `make test-audio` and all 131 native Shepherd runtime
+checks passed. The web package contains all 54 new Ogg variants. Mooring and relay
+captures were inspected after fixing the HUD, and the regenerated light bake
+passes the level checks. Offline mix/stress reels peak at 0.552/0.684 after the
+game's output stage; subjective timbre, mix balance and encounter pressure still
+need human audition and playtesting.
+
+
+## Release polish (2026-11-16)
+
+COUNTERWEIGHT now has its own 174 BPM score, with ascent, control, resistance,
+collapse and last-count arrangements. Each combat movement changes rhythm and
+melodic response while retaining the pulse and comparable loudness. Arrangement
+changes land on the next bar; physical counters and attack cues stay immediate.
+Retry fades and restarts the checkpoint's movement, and the capsule ending
+remains quiet. See the audio plan for reproducible renders and measurements.
+
+Web smoke coverage now includes each ascent objective, the court and the capsule
+ending. Web Audio checks can target a supplied checkpoint, including the court;
+CI exercises both SUNSET and the Shepherd through the real browser callback.
+The website describes the complete sixth chapter, includes a current court
+capture and lists the HOLDFAST control.
+
+`make test-shepherd-playthrough` runs a separate input pilot through the normal
+update loop with god mode off, a base Lancer, ordinary magazines and reloads,
+physical movement, real parry/HOLDFAST inputs and the existing attack schedule.
+The release attempt reached the core, sealed it and completed the capsule ending
+in 98 simulated seconds, with 47 trigger pulls and a lowest health of 30.7.
+It injects no boss damage, health refill, mid-fight teleport or completion flag.
+This establishes that the full loop is playable under those inputs; it is not a
+substitute for a human judging aim, challenge or sound on their own equipment.
+
+Release verification: native and web builds, the complete `make test` suite,
+render regression checks, 131 Shepherd runtime checks, the input pilot, web
+Story/lighting/release checks, pointer-lock checks and Chromium smoke/audio
+checks passed. Website type/content checks, 35 tests and the static build/link
+verification passed before publication.

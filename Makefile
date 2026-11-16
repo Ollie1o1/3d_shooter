@@ -338,7 +338,7 @@ test-plain: tests/test_plain.cpp $(HEADERS)
 	$(CXX) $(CXXFLAGS) tests/test_plain.cpp -o build/test_plain $(STDLIB)
 	./build/test_plain
 
-tools/music_preview: tools/music_preview.cpp src/audio/MusicSynth.h src/audio/CombatScore.h
+tools/music_preview: tools/music_preview.cpp src/audio/MusicSynth.h src/audio/CombatScore.h src/audio/ShepherdScore.h
 	$(CXX) $(CXXFLAGS) tools/music_preview.cpp -o tools/music_preview $(STDLIB)
 
 # Routes: every walker reaches the player in every arena, nobody wedges, the grid stays in budget (headless).
@@ -367,6 +367,12 @@ tools/boss_animation_preview: tools/boss_animation_preview.cpp $(HEADERS)
 
 # Chapter 6 colossus counterplay, projectile collision, retries and visual captures.
 .PHONY: test-shepherd-runtime
+.PHONY: test-shepherd-playthrough
+test-shepherd-playthrough: tests/test_shepherd_playthrough.cpp src/main.cpp $(HEADERS)
+	mkdir -p build/shepherd-pass
+	$(CXX) $(CXXFLAGS) tests/test_shepherd_playthrough.cpp -o build/test_shepherd_playthrough $(LDFLAGS)
+	./build/test_shepherd_playthrough
+
 test-shepherd-runtime: tests/test_shepherd_runtime.cpp src/main.cpp $(HEADERS)
 	mkdir -p build/shepherd-pass
 	$(CXX) $(CXXFLAGS) tests/test_shepherd_runtime.cpp -o build/test_shepherd_runtime $(LDFLAGS)
@@ -377,6 +383,18 @@ test-shepherd: tests/test_shepherd.cpp $(HEADERS)
 	mkdir -p build
 	$(CXX) $(CXXFLAGS) tests/test_shepherd.cpp -o build/test_shepherd $(STDLIB)
 	./build/test_shepherd
+
+.PHONY: shepherd-audio
+shepherd-audio:
+	python3 tools/gen_shepherd_audio.py
+
+tools/shepherd_audio_preview: tools/shepherd_audio_preview.cpp $(HEADERS)
+	$(CXX) $(CXXFLAGS) tools/shepherd_audio_preview.cpp -o tools/shepherd_audio_preview $(STDLIB)
+
+.PHONY: shepherd-audio-preview
+shepherd-audio-preview: tools/shepherd_audio_preview
+	mkdir -p build/shepherd-audio
+	./tools/shepherd_audio_preview
 
 # THE SHEPHERD's adult anatomy and black spacecraft hull, authored in Blender.
 BLENDER ?= /Applications/Blender.app/Contents/MacOS/Blender

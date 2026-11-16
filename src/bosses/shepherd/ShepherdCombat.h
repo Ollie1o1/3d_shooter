@@ -13,6 +13,7 @@ constexpr float AIM_WARN = 4.f, AIM_FLASH = 1.f;
 constexpr float PULL_LEN = 3.2f, PULL_SPEED = 7.f;
 constexpr float SCALE = 64.f, HW = 27.f, HH = 42.f, HD = 38.f;
 constexpr float PIN_DAMAGE = 150.f, PIN_TIME = 5.5f, PARRY_DAMAGE = 120.f;
+constexpr float COUNTER_HIT = .9f, COUNTER_RECOIL = 1.2f;
 constexpr int SHOT_OWNER = -606;
 enum Atk { NONE, SLAM, SLAM2, BEAM, AIM, ORRERY, PULL, ECHO, SWEEP, GRAB, GAZE };
 constexpr float SWEEP_TELL=1.25f, SWEEP_TRAVEL=1.05f, SWEEP_HALF=8.f;

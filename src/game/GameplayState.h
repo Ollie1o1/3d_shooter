@@ -438,11 +438,18 @@ public:
     struct ShepScar { glm::vec3 from, to; float life=0.f; };
     std::vector<ShepScar> shepScars;
     float shepPinT[2] = {}, shepCounterT = 0.f, shepHitHealT = 0.f;
+    bool shepCounterHit[2] = {true,true};
+    float shepCourtT = 99.f;
+    float shepReleaseT[2] = {-1.f,-1.f};
+    SoundHandle shepWindSound=0,shepStrainSound[2]={};
     glm::vec3 shepEchoAt[3] = {}; int shepEchoN = 0, shepEchoHit = 0;
     bool shepSlamParried[2] = {};
     float shepOrbitClock[3] = {}, shepOrbitPin[3] = {}, shepOrbitFire = 3.f;
     glm::vec3 shepOrbitAim{0.f}; float shepOrbitTell = -1.f;
     float shepLedgeStrike = 5.f, shepLedgeTell = -1.f; glm::vec3 shepLedgeAim{0.f};
+    bool shepMooringBroken=false,shepMooringCalled=false,shepRelayDone=false;
+    float shepRelayCharge=0.f,shepRelayClock=0.f;
+    int shepLedgeLesson=-1;
     // THE FALL (Gameplay_ShepherdFall.h)
     float shepLampHp[6] = {}, shepLampOpen[6] = {}, shepFallSweepT = 0.f, shepFallT = 0.f, shepFallAmt = 0.f, shepLastT = -1.f, shepLastCount = 0.f, shepFinT = -1.f, shepFinCount = 0.f, shepEndingT = -1.f;
     int   shepFireLamp = -1, shepLampNext = 0; bool shepLampsArmed = false, shepFallPassed = false, shepFallSeen = false;
@@ -1503,6 +1510,10 @@ public:
     void   shepHeadHurt(float dmg);
     void   shepHead(float dt);
     void animateShepherd(float dt);
+    SoundHandle shepherdSound(const char* name,glm::vec3 at,float weight=1.f);
+    void stopShepherdAudio();
+    void updateShepherdCourt(float dt);
+    void gatherShepherdCourt(std::vector<BoxInstance>& out);
     glm::mat4 shepRootPose() const;
     glm::mat4 shepSpinePose(float weight=1.f) const;
     glm::mat4 shepBodyPose() const;

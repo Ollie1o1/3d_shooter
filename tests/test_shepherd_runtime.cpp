@@ -31,6 +31,9 @@ int main(){
     StorySave::key="build/shepherd-pass/story.cfg";
     {
         App app;app.window=window;app.ctx=context;
+        for(const auto& cue:mixTable())if(std::string(cue.name).find("shep_")==0)
+            app.audio.loadSound(cue.name,std::string("assets/sfx/")+cue.name+".wav");
+        app.audio.start();
         app.pending=App::NextState::Menu;app.applyPendingState();
         auto& menu=*static_cast<MenuState*>(app.currentState.get());
         StartOptions options;options.storyChapter=6;options.arena=10;options.practice=true;options.god=true;
@@ -43,6 +46,7 @@ int main(){
         CHECK(g.swordAllowed()&&g.splinterOwned(),"Chapter 6 carries the sword and Splinter into the finale");
         auto ready=[&](){g.playerDead=false;g.styleSystem.health=100;g.invincFrames=0;g.shepHeadArmed=false;g.shepHeadReset();g.shepRiseT=-1;g.shepHeadRise=1;g.shepHeadSeen=true;g.shepIdleT=99;g.sweep.reset();g.enemies.clear();g.wakeRings.clear();g.fx.clear();for(auto& t:g.fx.tracers)t.alive=false;for(auto& p:g.projSystem.pool)p.alive=false;g.ui.clearIndicators();g.ui.parryFlash=0;g.ui.damageVignette=0;g.ui.shootFlashTimer=0;g.explosionFlashTimer=0;g.whiteFade=0;};
         ready();aim(g,shep::fallStart(),headC(1));
+        g.updateMusic();CHECK(g.audio.music.targetLevel()>1.25f,"the Shore approach ramp cannot overwrite the actual boss music intensity");
         float range=300;auto dir=glm::normalize(headC(1)-g.player.camera.position);
         CHECK(g.shootHead(g.player.camera.position,dir,range,100)&&g.shepHeadHp<HP,"face takes damage during ordinary combat without a timed opening");
         ready();g.shepHeadHurt(1e5f);
@@ -53,10 +57,33 @@ int main(){
         ready();const glm::vec3 palm{-600,shep::FALL_Y,-3980};g.shepHandAt[0]=palm;g.shepArmDown[0]=HAND_DOWN;
         aim(g,palm+glm::vec3{0,0,20},palm+glm::vec3{0,2,0});g.holdfast.reset();
         g.pressHoldfast();
-        CHECK(g.shepPinT[0]>0&&g.shepOpenT>0&&g.shepHeadHp==HP-PIN_DAMAGE,"the actual HOLDFAST input pins a grounded palm and counters the orbit");
+        CHECK(g.shepPinT[0]>0&&!g.shepCounterHit[0]&&g.shepHeadHp==HP,"HOLDFAST plants the palm before the captive mass reaches the heart");
         CHECK(!g.holdfast.held()&&g.holdfast.cooldown>0,"palm pin consumes one spike without tethering the player to a fake wall");
+        CHECK(g.shepStrainSound[0]!=0,"pinning starts a tracked tension sound for the pending counterweight");
+        g.shepHead(.45f);CHECK(g.shepHeadHp==HP&&g.shepOpenT==0,"the counterweight flight has no invisible early damage or opening");
+        g.shepHead(.46f);CHECK(g.shepCounterHit[0]&&g.shepOpenT>0&&g.shepHeadHp==HP-PIN_DAMAGE,"the arriving counterweight damages the heart and opens the body on impact");
+        g.shepHead(.2f);CHECK(g.shepHeadHp==HP-PIN_DAMAGE,"one palm pin applies its counterweight damage exactly once");
+        CHECK(g.shepStrainSound[0]==0,"heart impact stops the pending tension sound");
         const float hp=g.shepHeadHp;range=50;g.shootHead(g.player.camera.position,g.player.camera.forward(),range,10);
         CHECK(g.shepHeadHp<hp-20,"a pinned hand receives the weak-point damage bonus");
+        // A pending orbit must never leak through a phase boundary or a retry.
+        ready();g.shepHandAt[0]=palm;g.shepArmDown[0]=HAND_DOWN;
+        aim(g,palm+glm::vec3{0,0,20},palm+glm::vec3{0,2,0});g.holdfast.reset();g.pressHoldfast();
+        g.shepHeadHurt(10000);g.shepHead(3.f);g.shepHead(.2f);
+        CHECK(g.shepHeadHp==HP*2.f/3.f&&g.shepCounterHit[0],"entering a new movement cancels unfinished counterweights from the previous one");
+        CHECK(g.shepStrainSound[0]==0&&g.shepWindSound==0,"a movement transition cancels obsolete wind-up and strain sounds");
+        g.shepMovers(0);g.level.updateMovers(0);
+        CHECK(g.level.movers[g.level.shepCourtClamps[0]].gone&&!g.level.movers[g.level.shepCourtClamps[1]].gone,"the first movement break opens only the west crossover");
+        g.shepHeadReset();g.shepMovers(0);g.level.updateMovers(0);
+        CHECK(g.shepHeadPhase==1&&g.shepCourtT==99.f&&g.level.movers[g.level.shepCourtClamps[0]].gone,"retry reconstructs the opened route without replaying its destruction");
+        g.shepHeadHp=HP/3.f;g.shepHeadReset();g.shepMovers(0);g.level.updateMovers(0);
+        CHECK(g.level.movers[g.level.shepCourtClamps[0]].gone&&g.level.movers[g.level.shepCourtClamps[1]].gone,"the last movement retains both opened gallery crossovers");
+        ready();g.shepMovers(0);g.level.updateMovers(0);g.styleSystem.health=50;
+        aim(g,shep::fallStart(),headC(1));range=400;g.shootHead(g.player.camera.position,g.player.camera.forward(),range,10);
+        const float distantHeal=g.styleSystem.health-50,distantCooldown=g.shepHitHealT;
+        ready();g.styleSystem.health=50;g.shepArmDown[0]=HAND_DOWN;g.shepHandAt[0]=palm;
+        aim(g,palm+glm::vec3{0,0,20},palm+glm::vec3{0,2,0});range=50;g.shootHead(g.player.camera.position,g.player.camera.forward(),range,10);
+        CHECK(g.styleSystem.health-50>distantHeal&&g.shepHitHealT<distantCooldown,"close palm punishment restores more health and faster than distant body fire");
         ready();g.shepArmDown[0]=HAND_DOWN;g.shepHandAt[0]=palm;aim(g,palm+glm::vec3{0,0,8},palm+glm::vec3{0,3,0});
         glm::vec3 splinterAt;CHECK(g.shepherdSplinterPoint(g.player.camera.position,splinterAt),"Splinter finds the grounded hand as a valid weak point");
         g.swordContact(0,30,false);CHECK(g.shepHeadHp<HP,"sword contact damages a grounded palm");
@@ -179,6 +206,15 @@ int main(){
         ready();g.gameClock=12;g.animateShepherd(.016f);
         aim(g,{-678,shep::FALL_Y+3.f,-3928},{-600,shep::FALL_Y,-3972});g.render();capture("build/shepherd-pass/court.bmp");
         aim(g,{-600,shep::FALL_Y,-3898},headC(1));g.render();capture("build/shepherd-pass/court-wide.bmp");
+        // Capture the new cause/effect beats and checkpoint-restored court states.
+        ready();g.shepMovers(0);g.level.updateMovers(0);g.shepHandAt[0]=palm;g.shepArmDown[0]=HAND_DOWN;
+        aim(g,palm+glm::vec3{0,0,20},palm+glm::vec3{0,2,0});g.holdfast.reset();g.pressHoldfast();g.shepHead(.65f);
+        aim(g,{-600,shep::FALL_Y,-3942},{-610,205,-4090});g.render();capture("build/shepherd-pass/counterweight-flight.bmp");
+        for(int phase=1;phase<3;++phase){
+            ready();g.shepHeadHp=HP*(3-phase)/3;g.shepHeadReset();g.shepRiseT=-1;g.shepHeadRise=1;g.shepHeadSeen=true;g.shepMovers(0);g.level.updateMovers(0);g.animateShepherd(.016f);
+            aim(g,{-650,shep::FALL_Y+3.f,-3950},{-600,188,-4050});g.render();
+            capture(phase==1?"build/shepherd-pass/court-movement-2.bmp":"build/shepherd-pass/court-movement-3.bmp");
+        }
         g.shepVentsArmed=false;g.enterArena(3);g.armoryOpen=false;g.shepTurnT=-1;g.shepTurnSeen=true;g.enemies.clear();g.sweep.reset();
         CHECK(g.shepVents==0,"orrery starts with three captive moons");
         const auto old=g.shepMoon(0);g.shepRidge(.5f);CHECK(glm::length(g.shepMoon(0)-old)>1,"moon targets move through the arena");
@@ -190,6 +226,39 @@ int main(){
         g.shepVentsArmed=false;g.enterArena(3);g.armoryOpen=false;g.shepTurnT=-1;g.enemies.clear();aim(g,{630,0,-3340},{630,8,-3400});g.render();capture("build/shepherd-pass/orrery.bmp");
         g.shepForksArmed=false;g.enterArena(4);g.armoryOpen=false;g.shepForkRingT=3;g.shepHallSweepT=1;g.shepStillFork(0);
         CHECK(g.shepForkRingT==shepfight::FORK_RING&&g.shepHallSweepT>=7,"breaking a fork transfers resonance and buys time to chain the next");
+        g.enterArena(7);g.armoryOpen=false;g.director.phase=WaveDirector::Phase::ACTIVE;g.director.wave=0;g.director.goalDone=false;
+        g.enemies.clear();g.spawnEnemy(EnemyType::HERDER,shep::ledge(0)+glm::vec3{13,0,13});g.enemies.back().state=EnemyState::ACTIVE;
+        auto mooring=shep::ledgeMooring();aim(g,mooring+glm::vec3{0,-2,14},mooring);g.holdfast.reset();g.pressHoldfast();g.shepBreak(.016f);
+        CHECK(g.shepMooringCalled&&!g.holdfast.held()&&g.shepLedgeTell>=0,"HOLDFAST calls the Shepherd's delayed strike onto the mooring and leaves the player free to dodge");
+        g.render();capture("build/shepherd-pass/mooring.bmp");
+        aim(g,shep::ledgeStart(0),mooring);for(int f=0;f<120;++f)g.shepBreak(1.f/60);
+        CHECK(g.shepMooringBroken&&g.director.goalDone&&g.enemies[0].targetable(),"the boss's own strike breaks the mooring without a required guard cleanup");
+        g.shepMovers(0);g.level.updateMovers(0);
+        CHECK(g.level.movers[g.level.shepLedgeMooring].gone,"a broken mooring removes its collision as well as its intact appearance");
+        g.enterArena(7);g.armoryOpen=false;g.director.phase=WaveDirector::Phase::ACTIVE;g.director.wave=0;g.director.goalDone=false;
+        aim(g,shep::ledgeStart(0),mooring);g.shepLedgeTell=1.79f;g.shepLedgeAim=g.player.position;g.shepBreak(.02f);
+        CHECK(!g.shepMooringBroken&&!g.director.goalDone,"a strike away from the mooring cannot complete its objective");
+        g.shepLedgeTell=1.79f;g.shepLedgeAim=mooring;g.shepBreak(.02f);
+        CHECK(g.shepMooringBroken&&g.director.goalDone,"baiting an ordinary strike onto the mooring is a valid alternative to HOLDFAST");
+        g.enterArena(8);g.armoryOpen=false;g.director.phase=WaveDirector::Phase::ACTIVE;g.director.wave=0;g.director.goalDone=false;g.enemies.clear();
+        auto& relayMover=g.level.movers[g.level.shepLedgeRelay];g.shepMovers(.5f);g.level.updateMovers(.5f);
+        auto relay=(g.level.walls[relayMover.wall].box.min+g.level.walls[relayMover.wall].box.max)*.5f;
+        aim(g,shep::ledge(1)+glm::vec3{9,0,8},relay);g.holdfast.reset();g.pressHoldfast();
+        const float relayClock=g.shepRelayClock;g.shepMovers(.5f);g.level.updateMovers(1.f);g.shepBreak(1.2f);
+        CHECK(g.holdfast.held()&&g.shepRelayClock==relayClock&&g.shepRelayCharge>1.f&&!g.director.goalDone,"holding the relay freezes its actual mover and builds progress while combat remains active");
+        g.render();capture("build/shepherd-pass/relay.bmp");
+        g.holdfast.cut();g.shepBreak(.1f);CHECK(g.shepRelayCharge==0,"releasing the relay resets an incomplete hold");
+        g.holdfast.reset();g.pressHoldfast();g.shepBreak(2.51f);
+        CHECK(g.shepRelayDone&&g.director.goalDone&&!g.holdfast.held(),"one uninterrupted relay hold completes the objective and releases the line for boarding");
+        g.shepBreakReset();CHECK(!g.shepRelayDone&&g.shepRelayCharge==0,"retrying the relay reconstructs its unsolved objective without stale progress");
+        g.enterArena(9);g.armoryOpen=false;g.director.phase=WaveDirector::Phase::ACTIVE;g.director.wave=0;g.director.goalDone=false;
+        g.enemies.clear();g.spawnEnemy(EnemyType::STRAY,shep::ledge(2));g.enemies.back().state=EnemyState::ACTIVE;
+        aim(g,shep::ledgeStart(2),shep::rideChunk(2,0));g.shepRides=2;g.shepLedgeFought=true;g.shepGatherT=-1;g.shepRideT=-1;g.shepCrownT=-1;g.shepThrownT=-1;g.sweep.reset();
+        g.shepBreak(3.f);
+        CHECK(g.sweep.active()&&g.enemies[0].targetable(),"the final Gather starts while the ledge guards are still alive");
+        auto ride=shep::rideChunk(2,0);aim(g,ride+glm::vec3{0,0,10},ride-glm::vec3{0,1,0});g.holdfast.reset();g.pressHoldfast();
+        for(int f=0;f<60*9&&g.shepRideT<0;++f){g.tickSweep(1.f/60);g.shepBreak(1.f/60);}
+        CHECK(g.shepRideT>=0&&g.director.goalDone,"boarding the last Gather completes the objective without requiring guard kills");
         g.enterArena(10);g.armoryOpen=false;ready();g.shepHeadPhase=2;g.shepHeadHp=1;g.shepHeadHurt(5);
         CHECK(g.shepHeadHp==0&&g.shepLastT==0,"defeating the body starts the last count");
         g.shepFallReset();CHECK(g.shepLastT==0,"retry after defeating the body restarts the finisher without replaying the fight");

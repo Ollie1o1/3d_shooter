@@ -46,3 +46,9 @@ through `src/sword_steel_2.wav`: Norse Sword Katana Blade on Blade, starting at
 14.232154 s (0.68 s each). `gen_combat_audio.py` applies a small pitch variation,
 rumble removal, transient control and tail fades. These contact cues contain
 no synthesized boom, noise crunch or oscillator-based metallic substitute.
+
+The Shepherd's 18 cue families (`shep_*`, three variants each) are original
+deterministic synthesis from `tools/gen_shepherd_audio.py`: inharmonic steel,
+counting tones, oscillator body and filtered noise. Contact cues also use the
+same frozen CC0 `src/clank_rec.wav` texture credited above. No new external
+recordings or music are shipped by this pass.

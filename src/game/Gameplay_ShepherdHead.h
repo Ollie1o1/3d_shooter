@@ -4,20 +4,25 @@
 #include "bosses/shepherd/ShepherdCombat.h"
 #include "game/Gameplay_ShepherdMotion.h"
 #include "game/Gameplay_ShepherdPressure.h"
+#include "game/Gameplay_ShepherdCourt.h"
 // THE COUNTERWEIGHT: the Shepherd's human form rises out of the machine moon.
 // Always vulnerable. White fists can be parried; grounded palms take HOLDFAST.
 // Pinning a palm turns its captive orbit into a counterweight against its heart.
 inline float GameplayState::shepHeadThird() const { return shepHeadHp / shephead::HP; }
 inline void GameplayState::shepHeadReset() {
     using namespace shephead;
+    stopShepherdAudio();
     if (!shepHeadArmed) { shepHeadArmed=true; shepHeadHp=HP; shepHeadSeen=false; }
     else shepHeadHp=checkpointHp(shepHeadHp);
     shepAtk=NONE; shepAtkT=0.f; shepIdleT=1.2f; shepOpenT=0.f; shepRearT=-1.f; shepCycle=0;
     shepArmDown[0]=shepArmDown[1]=shepPinT[0]=shepPinT[1]=0.f;
     shepSlamParried[0]=shepSlamParried[1]=false;
     shepHitHealT=0.f;shepCounterT=0.f; shepEchoN=shepEchoHit=0;
+    shepCounterHit[0]=shepCounterHit[1]=true;shepCourtT=99.f;
     shepBeamOn=false; shepHeadRise=shepHeadSeen?1.f:0.f; shepRiseT=shepHeadSeen?-1.f:0.f;
     shepHeadPhase=shepHeadHp>HP*2.f/3.f?0:shepHeadHp>HP/3.f?1:2;
+    if(director.arena==10)audio.music.resetShepherdMovement(shepHeadHp<=0.f?shepherdscore::LAST_COUNT:shepherdscore::CONTROL+shepHeadPhase);
+    for(int k=0;k<2;++k)shepReleaseT[k]=k<shepHeadPhase?12.f:-1.f;
     shepGazeX=-600.f; shepGape=0.f;
     shepPoseReady=false;shepPoseAttack=NONE;shepBodyAngles=shepBodyOffset=shepSpine=glm::vec3{0.f};
     shepMotionClock=shepBreath=0;shepLookAt=player.camera.position;
@@ -39,19 +44,25 @@ inline void GameplayState::shepHeadHurt(float dmg) {
     const float gate=shepHeadPhase==0?HP*2.f/3.f:shepHeadPhase==1?HP/3.f:0.f;
     shepHeadHp=std::max(gate,shepHeadHp-dmg); shepherdDamageT=.3f;
     if(shepHeadHp<=gate && gate>0.f) {
+        stopShepherdAudio();
         shepReleaseGrab(false);shepScars.clear();
         ++shepHeadPhase; shepRearT=0.f; shepCycle=0; sweep.reset();
+        shepCourtT=0.f;shepCounterHit[0]=shepCounterHit[1]=true;
+        shepReleaseT[shepHeadPhase-1]=0.f;
+        shepherdSound("shep_break",shep::courtClamp(shepHeadPhase-1));
         shepAtk=NONE; shepBeamOn=false; shepOpenT=0.f; shepEchoN=shepEchoHit=0;
         wakeRings.clear();
         for(auto& p:projSystem.pool)if(p.owner==SHOT_OWNER)p.alive=false;
     }
     if(shepHeadHp<=0.f) {
+        stopShepherdAudio();
         shepReleaseGrab(false);shepScars.clear();
+        shepCounterHit[0]=shepCounterHit[1]=true;
         sweep.reset(); shepAtk=NONE; shepBeamOn=false; wakeRings.clear();
         for(auto& p:projSystem.pool)if(p.owner==SHOT_OWNER)p.alive=false;
         pushBanner("THE ORBIT BREAKS","PIN ITS HEART. END THE COUNT",POST_LIT*.7f,3.f);
         shake(1.6f,.08f); fx.spawnBurst(headC(1.f),POST_LIT,100,22.f,1.5f,3.f);
-        SfxMixer::Opts o; o.group=SoundGroup::WORLD; o.priority=true; o.unducked=true; o.pitch=.35f; audio.playOpts("slam",o);
+        shepherdSound("shep_break",shepMouthPose());
         for(auto& e:enemies)if(e.targetable()&&e.takeDamage(1e6f))onEnemyKilled(e,StyleSource::ENVIRONMENT);
         shepLastT=0.f;
     }
@@ -87,7 +98,7 @@ inline bool GameplayState::parryHead() {
 }
 inline void GameplayState::shepHead(float dt) {
     using namespace shephead;
-    if(playerDead)return;
+    if(playerDead){stopShepherdAudio();return;}
     // Every early-return path still advances the pose exactly once per sim tick.
     struct PoseStep { GameplayState& g; float dt; ~PoseStep(){g.animateShepherd(dt);} } poseStep{*this,dt};
     const auto p=player.position;
@@ -100,20 +111,19 @@ inline void GameplayState::shepHead(float dt) {
     shepScars.erase(std::remove_if(shepScars.begin(),shepScars.end(),[](const ShepScar& s){return s.life<=0;}),shepScars.end());
     shepGazeX+=(glm::clamp(p.x,shep::FALL_X0,shep::FALL_X1)-shepGazeX)*std::min(1.f,dt*2.f);
     shepHitHealT=std::max(0.f,shepHitHealT-dt);
-    shepCounterT=std::max(0.f,shepCounterT-dt);
     shepGape+=(float(shepAtk==AIM||shepAtk==PULL)-shepGape)*std::min(1.f,dt*6.f);
-    for(int k=0;k<2;++k){shepPinT[k]=std::max(0.f,shepPinT[k]-dt);shepArmDown[k]=std::max(0.f,shepArmDown[k]-dt);}
+    updateShepherdCourt(dt);
     if(shepHeadHp<=0.f)return;
     if(shepRiseT>=0.f) {
         const float before=shepRiseT; shepRiseT+=dt; shepHeadRise=std::clamp(shepRiseT/RISE,0.f,1.f);
         shake(.1f,.025f);
-        if(before==0.f){pushBanner("THE SHEPHERD","THE BODY THAT HOLDS THE RING",POST_LIT*.7f,4.f);audio.play("telegraph",128,SoundGroup::WORLD,true);}
+        if(before==0.f){pushBanner("THE SHEPHERD","THE BODY THAT HOLDS THE RING",POST_LIT*.7f,4.f);shepherdSound("shep_gather",chest(1.f));}
         if(shepRiseT>=RISE){shepRiseT=-1.f;shepHeadRise=1.f;shepHeadSeen=true;shepIdleT=.7f;
             ui.toast("COUNTERWEIGHT","PARRY WHITE FISTS. PIN A GROUNDED PALM WITH "+binds().label(Act::HOLDFAST)+" TO TURN ITS ORBIT AGAINST IT",HOLDFAST_STEEL,7.f);}
         return;
     }
     if(shepRearT>=0.f) {
-        if(shepRearT==0.f){pushBanner(shepHeadPhase==1?"I HOLD EVERY ONE.":"THEN FALL WITH THEM.",shepHeadPhase==1?"ITS HANDS REMEMBER WHERE YOU STOOD":"THE RING IS COMING APART",POST_LIT*.7f,3.f);shake(1.f,.05f);audio.play("slam",128,SoundGroup::WORLD,true);}
+        if(shepRearT==0.f){pushBanner(shepHeadPhase==1?"I HOLD EVERY ONE.":"THEN FALL WITH THEM.",shepHeadPhase==1?"WEST CLAMP BROKEN. THE GALLERY OPENS":"EAST CLAMP BROKEN. THE FLEET BREAKS FREE",POST_LIT*.7f,3.f);shake(1.f,.05f);}
         shepRearT+=dt;
         if(shepRearT>=REAR){shepRearT=-1.f;shepIdleT=.5f;}
         return;
@@ -142,7 +152,9 @@ inline void GameplayState::shepHead(float dt) {
             ui.feed(shepVariation?"CROSS-SWEEP: TWO LANES. CHANGE YOUR DEPTH":"ARM SWEEP: DASH FORWARD OR BACK",SWEEP_RED);}
         if(shepAtk==GRAB)ui.feed("OPEN HAND: DODGE SIDEWAYS. BREAK ITS GRIP IF CAUGHT",HOLDFAST_STEEL);
         if(shepAtk==GAZE)ui.feed("ITS EYES FIND YOU. MOVE WHEN THE STARE LOCKS",SWEEP_RED);
-        audio.play("telegraph",128,SoundGroup::WORLD,true);
+        audio.stop(shepWindSound);shepWindSound=0;
+        if(const char* cue=shepherdaudio::attackCue(shepAtk))
+            shepWindSound=shepherdSound(cue,shepAtk==SLAM||shepAtk==SLAM2||shepAtk==SWEEP||shepAtk==GRAB?shepHandPose(shepSlamArm):shepMouthPose());
         if(shepAtk==BEAM){shepBeamDir=p.x<-600.f?1.f:-1.f;shepBeamX=shepBeamDir>0.f?shep::FALL_X0-2.f:shep::FALL_X1+2.f;shepBeamOn=shepBeamHit=false;}
         if(shepAtk==AIM){auto s=sweeptier::aimed(shepMouthPose(),p,AIM_WARN);s.flashLead=AIM_FLASH;s.range=30.f;
             const float dist=glm::length(glm::vec2{p.x-s.origin.x,p.z-s.origin.z});s.coneHalf=std::atan(12.f/std::max(dist,1.f));sweep.start(s);++sweepCount;}
@@ -159,6 +171,7 @@ inline void GameplayState::shepHead(float dt) {
             shepSlamAt[a]=p+glm::vec3{n==2?float(a?6:-6):0.f,0.f,0.f};
         for(int a=0;a<n;++a){auto& q=shepSlamAt[a];q.x=glm::clamp(q.x,shep::FALL_X0+8.f,shep::FALL_X1-8.f);q.z=glm::clamp(q.z,shep::FALL_ZN+10.f,shep::FALL_ZS-8.f);q.y=level.groundAt(q.x,q.z,p.y);}
         for(int a=0;a<n;++a){const float impact=SLAM_TELL+(a==1?.42f:0.f);
+        if(before<impact-.27f&&shepAtkT>=impact-.27f)shepherdSound("shep_parry",shepSlamAt[a]);
         if(before<impact&&shepAtkT>=impact) {
             {const int k=n==2?a:shepSlamArm;const auto at=shepSlamAt[a];
                 shepHandAt[k]=at;shepArmDown[k]=HAND_DOWN;
@@ -168,7 +181,7 @@ inline void GameplayState::shepHead(float dt) {
                 if(slamHits(p,at)&&invincFrames<=0.f)damagePlayer(SLAM_DAMAGE,at,.5f,.06f,0.f,{EnemyType::COUNT,DamageKind::SHOCKWAVE});
                 for(auto& e:enemies)if(e.targetable()&&slamHits(e.position,at)&&e.takeDamage(1e6f))onEnemyKilled(e,StyleSource::ENVIRONMENT);
             }
-            shake(.8f,.06f);audio.play("slam",128,SoundGroup::WORLD,true);
+            shake(.8f,.06f);shepherdSound("shep_contact",shepSlamAt[a]);
             if(!shepHandHint){shepHandHint=true;ui.toast("ITS PALM IS GROUNDED","SHOOT IT, CUT IT, OR DRIVE HOLDFAST INTO IT",HOLDFAST_STEEL,4.f);}
         }}
         if(shepAtkT>SLAM_TELL+(n==2?.42f:0.f)+.4f)finish();
@@ -189,12 +202,13 @@ inline void GameplayState::shepHead(float dt) {
             const auto dir=glm::normalize(player.camera.position+player.velocity*.25f-from);
             if(auto* shot=projSystem.fire(from,dir*(45.f+shepHeadPhase*6.f),18.f*tune().damage,false,glm::vec3{2.5f},false,0.f,2.6f,true)){shot->owner=SHOT_OWNER;shot->parryDamage=180.f;shot->lifetime=8.f;}
             fx.spawnShockwave(from,6.f,POST_LIT);
+            shepherdSound("shep_moon",from,.65f);
         }}
         if(shepAtkT>3.1f)finish();
     } else if(shepAtk==ECHO) {
         // Three captured positions; each mark has its own full 1.8-second tell.
-        for(int k=0;k<3;++k){const float record=.2f+k*.65f;if(before<record&&shepAtkT>=record){shepEchoAt[k]=p;shepEchoAt[k].y=level.groundAt(p.x,p.z,p.y);++shepEchoN;audio.play("count_tick",100,SoundGroup::WORLD,true);}
-            const float hit=record+1.8f;if(before<hit&&shepAtkT>=hit){++shepEchoHit;const auto at=shepEchoAt[k];wakeRings.push_back({at,.6f,false});fx.spawnBurst(at,POST_LIT,40,12.f,.7f,3.f);shake(.5f,.035f);audio.play("slam",110,SoundGroup::WORLD,true);
+        for(int k=0;k<3;++k){const float record=.2f+k*.65f;if(before<record&&shepAtkT>=record){shepEchoAt[k]=p;shepEchoAt[k].y=level.groundAt(p.x,p.z,p.y);++shepEchoN;shepherdSound("shep_memory",shepEchoAt[k]);}
+            const float hit=record+1.8f;if(before<hit&&shepAtkT>=hit){++shepEchoHit;const auto at=shepEchoAt[k];wakeRings.push_back({at,.6f,false});fx.spawnBurst(at,POST_LIT,40,12.f,.7f,3.f);shake(.5f,.035f);shepherdSound("shep_contact",at,.8f);
                 if(slamHits(p,at)&&invincFrames<=0.f)damagePlayer(26.f,at,.3f,.04f,0.f,{EnemyType::COUNT,DamageKind::SHOCKWAVE});
             }}
         if(shepAtkT>3.8f)finish();
@@ -204,7 +218,7 @@ inline void GameplayState::shepHead(float dt) {
             // Inward rings instead of a lethal sweep: HOLDFAST counters the drag, jump the fronts.
             wakeRings.push_back({{-600.f,shep::FALL_Y,-4040.f},.6f,false});
             wakeRings.push_back({{-600.f,shep::FALL_Y,-3950.f},.6f,false});
-            fx.spawnShockwave(chest(1.f),35.f,POST_LIT);audio.play("slam",128,SoundGroup::WORLD,true);
+            fx.spawnShockwave(chest(1.f),35.f,POST_LIT);shepherdSound("shep_contact",chest(1.f));
         }
         if(shepAtkT>PULL_LEN+.6f)finish();
     }
@@ -226,7 +240,11 @@ inline bool GameplayState::shootHead(glm::vec3 from,glm::vec3 dir,float& distanc
     if(mult==0.f)return false;
     distance=best;fx.spawnHitSparks(from+dir*best,shepOpenT>0.f?POST_LIT:glm::vec3{.6f,1.5f,2.5f});
     const float hp=shepHeadHp;shepHeadHurt(dmg*mult*(shepOpenT>0.f?1.6f:1.f));
-    if(shepHeadHp<hp&&shepHitHealT<=0.f){shepHitHealT=.18f;styleSystem.heal(2.f*tune().heal);styleSystem.addStyle(4.f,StyleSource::ENVIRONMENT);}
+    if(shepHeadHp<hp&&shepHitHealT<=0.f){
+        const bool committed=(mult==HAND_MULT&&best<42.f)||(shepOpenT>0.f&&best<100.f);
+        shepHitHealT=committed?.3f:.8f;
+        styleSystem.heal((committed?3.f:1.f)*tune().heal);styleSystem.addStyle(4.f,StyleSource::ENVIRONMENT);
+    }
     return true;
 }
 // HOLDFAST uses the same nearest-hit limit as walls; no pinning through cover.
@@ -240,9 +258,11 @@ inline bool GameplayState::pinShepherd(glm::vec3 from,glm::vec3 dir,float distan
     if(arena==10&&shepHeadHp>0.f&&shepRearT<0.f){
         for(int k=0;k<2;++k)if(shepArmDown[k]>0.f&&shepPinT[k]<=0.f){float t=hitBody(from,dir,handBox(shepHandAt[k]));if(t>0.f&&t<best){best=t;hit=k;}}
         if(hit<0)return false;
-        shepPinT[hit]=PIN_TIME;shepArmDown[hit]=PIN_TIME;shepOpenT=OPEN;shepCounterT=1.2f;
-        shepHeadHurt(PIN_DAMAGE);styleSystem.addStyle(180.f,StyleSource::ENVIRONMENT);styleSystem.heal(8.f*tune().heal);
-        pushBanner("COUNTERWEIGHT","ITS OWN ORBIT STRIKES ITS HEART",HOLDFAST_STEEL,2.2f);
+        shepPinT[hit]=PIN_TIME;shepArmDown[hit]=PIN_TIME;shepCounterHit[hit]=false;
+        shepherdSound("shep_pin",shepHandAt[hit]);
+        audio.stop(shepStrainSound[hit]);shepStrainSound[hit]=shepherdSound("shep_strain",shepHandAt[hit],.65f);
+        styleSystem.addStyle(180.f,StyleSource::ENVIRONMENT);styleSystem.heal(8.f*tune().heal);
+        ui.feed("PALM PINNED. ITS ORBIT IS COMING DOWN",HOLDFAST_STEEL);
         shake(.7f,.045f);fx.spawnShockwave(shepHandAt[hit],15.f,HOLDFAST_STEEL);
     }else if(arena==3&&shepTurnT<0.f&&shepInT<0.f){
         for(int k=0;k<3;++k)if(shepVentHp[k]>0.f&&shepOrbitPin[k]<=0.f){auto c=shepMoon(k);float t=rayBoxHit(from,dir,{c-glm::vec3{MOON_RADIUS},c+glm::vec3{MOON_RADIUS}});if(t>0.f&&t<best){best=t;hit=k;}}
@@ -251,7 +271,7 @@ inline bool GameplayState::pinShepherd(glm::vec3 from,glm::vec3 dir,float distan
     }else return false;
     holdfast.letGo(Holdfast::COOLDOWN);
     fx.spawnTracer(from,from+dir*best,.08f,.4f,HOLDFAST_STEEL*2.f);
-    audio.playAt("clank",from+dir*best,128,SoundGroup::PLAYER,true,.6f);
+    if(arena!=10)shepherdSound("shep_pin",from+dir*best);
     return true;
 }
 inline bool GameplayState::shepherdSplinterPoint(glm::vec3 from,glm::vec3& at) const {
@@ -310,15 +330,25 @@ inline void GameplayState::gatherHead(std::vector<BoxInstance>& out) {
     // Adult anatomy and swept hull armor are actual Blender meshes. The torso
     // has broad lats and flat pecs, with a narrow waist under the ship's ribs.
     auto chestC=chest(rise);const auto hc=glm::vec3(B*glm::vec4(headC(rise),1));
-    const auto anatomyLight=dead?glm::vec3{0.f}:expose?HOLDFAST_STEEL:light*.6f;
+    const auto anatomyLight=dead?glm::vec3{0.f}:expose?HOLDFAST_STEEL:glm::vec3{.13f,.145f,.16f};
     shepherdmodel::torso(out,shepRootPose()*T(chestC)*S(glm::vec3{shepherdmodel::TORSO_SCALE}),anatomyLight,glm::vec4{shepSpine.x,shepSpine.y,shepBreath,1.f});
     // The heart is an orbit cage: each phase tears a ring away.
     const auto heart=glm::vec3(C*glm::vec4(chestC+glm::vec3{0.f,5.f,26.f},1));
     ellipsoid(heart,{10,14,8},glm::vec3{.005f},dead?POST_LIT:expose?POST_LIT*1.5f:light*.15f);
-    for(int ring=0;ring<3;++ring)for(int j=0;j<40;++j){float a=6.2831853f*j/40.f;float r=14.f+ring*4.f;
-        const auto M=T(heart)*RY(.25f*std::sin(gameClock*.3f+ring))*RZ((ring-1)*.65f+gameClock*.12f*(ring%2?1.f:-1.f));
-        glm::vec3 glow=ring<shepHeadPhase?SWEEP_RED*.16f:expose?HOLDFAST_STEEL:light*.15f;
+    float strain=0.f;
+    for(int k=0;k<2;++k)if(shepPinT[k]>0.f&&!shepCounterHit[k])strain=std::max(strain,smooth((PIN_TIME-shepPinT[k])/COUNTER_HIT));
+    for(int ring=0;ring<3;++ring)for(int j=0;j<40;++j){
+        if(ring<shepHeadPhase&&j%10>=4)continue;
+        float a=6.2831853f*j/40.f;float r=14.f+ring*4.f;
+        const auto M=T(heart)*RY(.25f*std::sin(gameClock*.3f+ring)+strain*.6f)*RZ((ring-1)*.65f+gameClock*.12f*(ring%2?1.f:-1.f)+strain*.4f);
+        glm::vec3 glow=ring<shepHeadPhase?light*.1f:expose?HOLDFAST_STEEL:light*.15f;
         push(out,M*T(glm::vec3{std::cos(a)*r,std::sin(a)*r,0})*RZ(a)*S(glm::vec3{.55f,r*.158f,.6f}),skin*.4f,glow);}
+    // Persistent open seams make damage readable on the body itself.
+    for(int stage=0;stage<shepHeadPhase;++stage)for(int j=0;j<5;++j){
+        float sd=stage?1.f:-1.f;auto a=heart+glm::vec3{sd*(8.f+j*4.f),-8.f+j*7.f,3.f};
+        bone(a,a+glm::vec3{sd*5.f,9.f,0},.65f,.65f);
+        push(out,T(a)*RZ(sd*-.45f)*S({.45f,9.f,.3f}),glm::vec3{.06f},HOLDFAST_STEEL*.5f);
+    }
     const glm::vec3 gaze=dead?glm::vec3{0.f}:shepAtk==AIM||shepAtk==GAZE||shepAtk==GRAB?SWEEP_RED:expose?POST_LIT:glm::vec3{.58f,.60f,.63f};
     shepherdmodel::piece(out,"shepherd_head",H*S(glm::vec3{shepherdmodel::HEAD_SCALE}),gaze);
     // A broken orrery behind the skull. Moons travel on distinct inclined planes.
@@ -400,7 +430,16 @@ inline void GameplayState::gatherHead(std::vector<BoxInstance>& out) {
         push(out,T(glm::vec3{shepBeamX,shep::FALL_Y+(shepBeamOn?2.2f:.1f),zc})*S(glm::vec3{shepBeamOn?2.f*BEAM_HALF:.5f,shepBeamOn?4.4f:.08f,zl}),glm::vec3{0},shepBeamOn?POST_LIT*2.f:SWEEP_RED*2.f);
         if(shepBeamOn)bone(shepMouthPose(),{shepBeamX,shep::FALL_Y+2.f,zc},.8f,.8f);}
     if(shepAtk==PULL)for(int j=0;j<6;++j)mark({-600.f,shep::FALL_Y,-4040.f},8.f+std::fmod(100.f+j*17.f-shepAtkT*28.f,100.f),HOLDFAST_STEEL*.5f);
-    if(shepCounterT>0.f)for(int k=0;k<12;++k){float u=1.f-shepCounterT/1.2f;float a=k*2.39996f;auto at=glm::mix(hc+glm::vec3{std::cos(a)*65.f,std::sin(a)*65.f,25.f},heart,smooth(u));ellipsoid(at,{2,2,2},skin,HOLDFAST_STEEL*2.f);}
+    // Follow the force from the planted palm to a captive mass, then into the heart.
+    for(int arm=0;arm<2;++arm)if(shepPinT[arm]>0.f&&!shepCounterHit[arm]){
+        float age=PIN_TIME-shepPinT[arm],u=smooth((age-.15f)/(COUNTER_HIT-.15f)),sd=arm?1.f:-1.f;
+        auto source=hc+glm::vec3{sd*60.f,35.f,12.f};
+        auto at=glm::mix(source,heart,u)+glm::vec3{sd*22.f*std::sin(u*3.14159265f),15.f*std::sin(u*3.14159265f),16.f*std::sin(u*3.14159265f)};
+        bone(shepHandAt[arm]+glm::vec3{0,7.f,0},at,.28f,.28f);
+        ellipsoid(at,{6,6,6},skin,HOLDFAST_STEEL*(.7f+u));
+        for(int j=1;j<=4;++j){float trail=std::max(0.f,u-j*.055f);auto p=glm::mix(source,heart,trail)+glm::vec3{sd*22.f*std::sin(trail*3.14159265f),15.f*std::sin(trail*3.14159265f),16.f*std::sin(trail*3.14159265f)};
+            ellipsoid(p,glm::vec3{2.6f-j*.4f},skin,HOLDFAST_STEEL*(.6f-j*.1f));}
+    }
     if(dead&&shepFinT>shep::FIN_DRAIN){float sink=(shepFinT-shep::FIN_DRAIN)*9.f;for(size_t i=first;i<out.size();++i)out[i].model=glm::translate(glm::mat4{1.f},glm::vec3{0,-sink,0})*out[i].model;}
 }
 inline void GameplayState::headMarkers(const glm::mat4& view,const glm::mat4& proj) {
@@ -425,6 +464,7 @@ inline const char* GameplayState::headObjective() {
     else if(shepAtk==ORRERY)step="PARRY THE WHITE MOONS BACK INTO ITS HEART";
     else if(shepAtk==PULL)step="HOLDFAST TO THE HULL. JUMP THE RINGS";
     else if(shepAtk==AIM)step="LEAVE THE RED CONE BEFORE ZERO";
+    else if((shepPinT[0]>0.f&&!shepCounterHit[0])||(shepPinT[1]>0.f&&!shepCounterHit[1]))step="PALM HELD. ITS ORBIT IS STRIKING THE HEART";
     else if(shepOpenT>0.f)step="COUNTERWEIGHT: ITS BODY TAKES EXTRA DAMAGE";
     snprintf(line,sizeof(line),"%d/3  /  %s",shepHeadPhase+1,step);return line;
 }

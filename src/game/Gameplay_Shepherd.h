@@ -29,6 +29,7 @@
 // ends the Comb. (THE TURN, THE RESONATOR, THE BREAK and THE FALL: next.)
 // =============================================================================
 #include "world/LevelShepherd.h"
+#include "game/Gameplay_ShepherdAudio.h"
 
 namespace shepfight {
 constexpr float SWEEP_WARN = 4.f, SWEEP_FLASH = 1.2f;   // the aimed sweep: its countdown, and its lamps before it
@@ -134,9 +135,16 @@ inline void GameplayState::beginShepherd() {
 
 // The game's hold on what moves: the spars (down once their tine is broken) and the herd
 inline void GameplayState::shepMovers(float dt) {
-    (void)dt;
     for (int f = 0; f < (int)level.shepForks.size(); ++f) level.movers[level.shepForks[f]].gone = shepForkBroken[f / 2];   // (broken forks stay gone through a retry)
     if (level.shepMembrane >= 0) level.movers[level.shepMembrane].gone = shepMembraneT >= 0.f;
+    for(int side=0;side<(int)level.shepCourtClamps.size();++side)
+        level.movers[level.shepCourtClamps[side]].gone=shepHeadPhase>side||shepHeadHp<=0.f;
+    if(level.shepLedgeMooring>=0)level.movers[level.shepLedgeMooring].gone=shepMooringBroken;
+    if(level.shepLedgeRelay>=0){
+        auto& relay=level.movers[level.shepLedgeRelay];
+        if(!shepRelayDone&&!(holdfast.held()&&holdfast.body==relay.wall))shepRelayClock+=dt;
+        relay.drive=.5f+.5f*std::sin(shepRelayClock*.8f);
+    }
 }
 
 

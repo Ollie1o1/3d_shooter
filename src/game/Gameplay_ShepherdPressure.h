@@ -9,7 +9,7 @@ inline void GameplayState::shepReleaseGrab(bool counter) {
     player.velocity.y=std::max(6.f,player.velocity.y);player.launched();
     shepAtk=shephead::NONE;shepIdleT=counter?1.f:.55f;
     if(counter){shepOpenT=3.5f;shepHeadHurt(110.f);styleSystem.heal(10.f*tune().heal);styleSystem.addStyle(150.f,StyleSource::PARRY);
-        ui.feed("THE GRIP BREAKS",HOLDFAST_STEEL);fx.spawnShockwave(player.position,14.f,HOLDFAST_STEEL);audio.play("clank",128,SoundGroup::WORLD,true);}
+        ui.feed("THE GRIP BREAKS",HOLDFAST_STEEL);fx.spawnShockwave(player.position,14.f,HOLDFAST_STEEL);shepherdSound("shep_pin",player.position);}
 }
 inline bool GameplayState::shepBreakGrip(glm::vec3 from,glm::vec3 dir,float& distance,float damage) {
     if(shepGrabT<0.f)return false;
@@ -28,6 +28,7 @@ inline void GameplayState::shepPressure(float dt,float before) {
         const int passes=shepVariation==1?2:1;
         for(int pass=0;pass<passes;++pass){
             float start=SWEEP_TELL+pass*(SWEEP_TRAVEL+.35f),end=start+SWEEP_TRAVEL;
+            if(pass&&before<start-.35f&&shepAtkT>=start-.35f)shepherdSound("shep_sweep_tell",{player.position.x,shep::FALL_Y+6.f,shepAttackAt.z},.8f);
             if(shepAtkT<start||before>end)continue;
             float z=pass?shepAttackAt.z:shepSweepZ;int side=pass?1-shepSlamArm:shepSlamArm;
             float a=sweepX(std::max(before,start)-pass*(SWEEP_TRAVEL+.35f),side,shep::FALL_X0-14.f,shep::FALL_X1+14.f);
@@ -38,11 +39,13 @@ inline void GameplayState::shepPressure(float dt,float before) {
                     player.velocity+=glm::vec3{side?-15.f:15.f,5.f,0};player.launched();
                 }
             }
-            if(before<start&&shepAtkT>=start){audio.play("slam",110,SoundGroup::WORLD,true);shake(.3f,.035f);}
+            if(before<start&&shepAtkT>=start){shepherdSound("shep_sweep",{b,shep::FALL_Y+6.f,z},.8f);shake(.3f,.035f);}
         }
         if(shepAtkT>SWEEP_TELL+passes*SWEEP_TRAVEL+(passes-1)*.35f+.3f)finish();
     }else if(shepAtk==GRAB){
         if(shepAtkT<GRAB_LOCK){shepAttackAt=p;shepAttackAt.y=level.groundAt(p.x,p.z,p.y);}
+        if(before<GRAB_LOCK&&shepAtkT>=GRAB_LOCK)shepherdSound("shep_lock",shepAttackAt);
+        if(before<GRAB_CLOSE-.22f&&shepAtkT>=GRAB_CLOSE-.22f)shepherdSound("shep_parry",shepAttackAt);
         if(before<GRAB_CLOSE&&shepAtkT>=GRAB_CLOSE){
             if(!(shepAttackHits&1)&&grabHits(p,player.height,shepAttackAt)){
                 shepGrabT=0.f;shepGrabHp=GRAB_BREAK;shepGrabCaught=true;
@@ -50,7 +53,7 @@ inline void GameplayState::shepPressure(float dt,float before) {
                 grapple.release();
                 for(auto& shot:projSystem.pool)if(shot.owner==SHOT_OWNER&&!shot.isPlayer)shot.alive=false;
                 ui.feed("CAUGHT: BREAK THE HAND OR ANCHOR THE HULL",HOLDFAST_STEEL);
-                audio.play("clank",128,SoundGroup::WORLD,true);shake(.3f,.04f);
+                shepherdSound("shep_grip",shepAttackAt);shake(.3f,.04f);
             }else{
                 shepHandAt[shepSlamArm]=shepAttackAt;shepArmDown[shepSlamArm]=1.3f;
                 ui.feed("THE HAND MISSES. PUNISH IT",HOLDFAST_STEEL);
@@ -73,6 +76,7 @@ inline void GameplayState::shepPressure(float dt,float before) {
         }else if(shepAtkT>GRAB_CLOSE+.8f)finish();
     }else if(shepAtk==GAZE){
         if(shepAtkT<GAZE_TRACK){shepAttackAt=p;shepAttackAt.y=level.groundAt(p.x,p.z,p.y);}
+        if(before<GAZE_TRACK&&shepAtkT>=GAZE_TRACK)shepherdSound("shep_lock",shepAttackAt);
         const int count=shepVariation==1?3:1;
         for(int k=0;k<count;++k){const float fire=GAZE_FIRE+k*.6f;
             if(before<fire&&shepAtkT>=fire){
@@ -83,7 +87,7 @@ inline void GameplayState::shepPressure(float dt,float before) {
                 }
                 if(glm::length(glm::vec2(p.x-at.x,p.z-at.z))<4.8f&&p.y<at.y+14.f)
                     damagePlayer(27.f,at,.25f,.045f,.4f,{EnemyType::COUNT,DamageKind::BEAM});
-                fx.spawnBurst(at,SWEEP_RED,30,10.f,.6f,2.f);audio.play("barrier",110,SoundGroup::WORLD,true);shake(.15f,.025f);
+                fx.spawnBurst(at,SWEEP_RED,30,10.f,.6f,2.f);shepherdSound("shep_sweep",at,.7f);shake(.15f,.025f);
             }
         }
         if(shepAtkT>GAZE_END+(count-1)*.6f)finish();
