@@ -12,7 +12,7 @@
 #include "render/LightBake.h"
 #include <cstdio>
 
-int main() {
+int main(int argc,char** argv) {
     struct Entry {const char* name; LevelData (*build)();};
     int failures=0;
     for (auto entry : {Entry{"act1",buildLevel}, Entry{"act2",buildAct2Level},
@@ -23,6 +23,13 @@ int main() {
         std::string error;
         bool valid=!lightbake::load(entry.name,level,error).empty();
         std::printf("%s: %s lighting %s\n",valid?"ok":"FAIL",entry.name,error.c_str());
+        if(argc==2){
+            std::vector<uint32_t> words;auto hash=lightbake::levelHash(level,&words);
+            const std::string path=std::string(argv[1])+"/"+entry.name+".hash";
+            FILE* f=std::fopen(path.c_str(),"wb");if(!f)return 1;
+            std::fwrite(words.data(),4,words.size(),f);std::fclose(f);
+            std::printf("  fingerprint %016llx / %zu words\n",(unsigned long long)hash,words.size());
+        }
         failures+=!valid;
     }
     return failures?1:0;

@@ -4,11 +4,14 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
+#include <cstring>
 
 int main(int argc,char** argv) {
     if(argc!=2)return 1;
-    const auto type=static_cast<EnemyType>(std::atoi(argv[1]));
-    if(type!=EnemyType::SORTER&&type!=EnemyType::BALLAST&&type!=EnemyType::SUCCESSOR)return 1;
+    const auto type=!std::strcmp(argv[1],"sorter")?EnemyType::SORTER:
+        !std::strcmp(argv[1],"ballast")?EnemyType::BALLAST:
+        !std::strcmp(argv[1],"successor")?EnemyType::SUCCESSOR:EnemyType::COUNT;
+    if(type==EnemyType::COUNT){std::fprintf(stderr,"expected sorter, ballast or successor\n");return 1;}
     const auto* model=enemyfile::modelOf(static_cast<int>(type));
     if(!model||model->parts.empty())return 1;
     Enemy boss(type,{0,0,0});boss.spawnTimer=0;boss.state=EnemyState::ACTIVE;

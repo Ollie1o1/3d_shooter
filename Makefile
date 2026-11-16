@@ -278,9 +278,9 @@ test-web-story: tests/test_web_story.cpp $(HEADERS)
 	em++ -std=c++17 -O3 -ffp-contract=off -Isrc -Ibuild/web-include tests/test_web_story.cpp -o build/web-story/story.js \
 	    -sENVIRONMENT=node -sASSERTIONS=2 -sSTACK_OVERFLOW_CHECK=2 -sSTACK_SIZE=32768 -sALLOW_MEMORY_GROWTH=1 \
 	    --preload-file assets/enemies@/assets/enemies
-	cd build/web-story && node story.js 26
-	cd build/web-story && node story.js 27
-	cd build/web-story && node story.js 32
+	cd build/web-story && node story.js sorter
+	cd build/web-story && node story.js ballast
+	cd build/web-story && node story.js successor
 
 .PHONY: test-lighting test-web-lighting
 test-lighting: tests/test_lighting.cpp $(HEADERS)

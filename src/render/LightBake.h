@@ -167,9 +167,14 @@ inline std::vector<Emitter> emitters(const LevelData& L) {
 }
 
 // What a bake depends on: the occluders, the arenas' boxes and suns. A level changed since: a new hash
-inline uint64_t levelHash(const LevelData& L) {
+inline uint64_t levelHash(const LevelData& L, std::vector<uint32_t>* trace = nullptr) {
     uint64_t h = 1469598103934665603ull;
-    auto mix = [&](const void* p, size_t n) { const uint8_t* b = (const uint8_t*)p; for (size_t i = 0; i < n; ++i) { h ^= b[i]; h *= 1099511628211ull; } };
+    auto mix = [&](const void* p, size_t n) {
+        // Optional diagnostic stream: the exact words hashed, so a rejected
+        // cross-platform bake can be compared without loosening validation.
+        if(trace)for(size_t i=0;i+4<=n;i+=4){uint32_t word;std::memcpy(&word,(const uint8_t*)p+i,4);trace->push_back(word);}
+        const uint8_t* b = (const uint8_t*)p; for (size_t i = 0; i < n; ++i) { h ^= b[i]; h *= 1099511628211ull; }
+    };
     auto q = [&](float v) {
         double scaled=(double)v*64.0, half=std::floor(scaled)+0.5;
         // Transform arithmetic can land just above/below an exact half bin.

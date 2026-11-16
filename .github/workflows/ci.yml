@@ -11,8 +11,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y libsdl2-dev libsdl2-mixer-dev libglew-dev libglm-dev
+      - run: make test-lighting
       - run: make
       - run: make test
+      - name: Capture rejected lighting fingerprints
+        if: failure()
+        run: |
+          mkdir -p build/lighting-fingerprints
+          if [ -x build/test_lighting ]; then ./build/test_lighting build/lighting-fingerprints || true; fi
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: linux-lighting-fingerprints
+          path: build/lighting-fingerprints/
+          if-no-files-found: ignore
+          retention-days: 3
 
   macos:
     name: macOS build + physics tests
