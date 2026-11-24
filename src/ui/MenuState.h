@@ -15,6 +15,7 @@
 #include "world/LevelCold.h"
 #include "world/LevelPlain.h"
 #include "world/LevelRing.h"
+#include "world/LevelShepherd.h"
 #include "ui/UIBatch.h"
 #include "ui/MenuArt.h"
 #include "ui/TextWrap.h"
@@ -136,6 +137,14 @@ public:
                 LevelData S = chapter == 1 ? buildCradle() : chapter==2?buildWasteland():chapter==3?buildLab():chapter==5?buildCold():buildRing();
                 for (int i = 0; i < (int)S.arenas.size(); ++i)
                     devRows.push_back({"STORY", S.arenas[i].name, GameMode::STORY, i, (int)S.arenas[i].waves.size(), chapter});
+                if (chapter == 6) {   // THE SHEPHERD: its own level, every stage of the fight (arena 10+, as its checkpoints are saved)
+                    LevelData H = buildShepherd();
+                    for (int i = 0; i < (int)H.arenas.size(); ++i) {
+                        std::string n = std::string("SHEPHERD / ") + H.arenas[i].name;
+                        if (H.arenas[i].subtitle && *H.arenas[i].subtitle) n += std::string(" / ") + H.arenas[i].subtitle;
+                        devRows.push_back({"STORY", n, GameMode::STORY, 10 + i, (int)H.arenas[i].waves.size(), 6});
+                    }
+                }
             }
         page = DEV; devSel = DEV_OPTIONS;
         for (int& offset : devScroll) offset = 0;
@@ -876,7 +885,9 @@ private:
             else {
                 const DevRow& r = devRows[i - DEV_OPTIONS];
                 bool boss = r.mode == GameMode::ARENA && r.arena == (int)countMode(GameMode::ARENA) - 1;
-                if (r.mode == GameMode::STORY)
+                if (r.mode == GameMode::STORY && r.arena >= 10)   // the Shepherd's stages: 6.S1 ..
+                    std::snprintf(buf, sizeof(buf), "%d.S%d  %s", r.chapter, r.arena - 9, r.name.c_str());
+                else if (r.mode == GameMode::STORY)
                     std::snprintf(buf, sizeof(buf), "%d.%d  %s", r.chapter, r.arena + 1, r.name.c_str());
                 else std::snprintf(buf, sizeof(buf), "%s %d  %s%s",
                               r.mode == GameMode::FAST ? "ROOM" : r.label,

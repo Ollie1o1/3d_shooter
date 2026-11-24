@@ -348,6 +348,9 @@ struct App {
                 mode = m; pending = NextState::Game;
                 g_startArena = o.arena; g_startWave = o.wave;
                 g_storyChapter=o.storyChapter;
+                // Chapter 6's arena 10+: the Shepherd's own level (the dev menu's 6.S rows), as the save encodes it
+                g_shepherd = m == GameMode::STORY && o.storyChapter == 6 && o.arena >= 10;
+                if (g_shepherd) g_startArena = o.arena - 10;
                 g_continueStory=o.continueStory;
                 g_godMode    = o.god || godFromCommandLine;
                 g_practice   = o.practice;
