@@ -24,8 +24,11 @@
 class MasterBus {
 public:
     static constexpr int LOOKAHEAD = 64;          // ~1.5 ms at 44.1 kHz: shorter than any transient's rise you'd hear
-    float inputGain = 0.85f;                      // the mix's level into the limiter (was a fixed 0.7 after the clip)
-    float ceiling   = 0.84f;                      // ~-1.5 dBFS: headroom for the DAC's reconstruction between samples
+    // The output contract the mix always had (test_web_audio: peaks at most 0.701): 0.7 in, a 0.70 ceiling
+    // (-3.1 dBFS: headroom for reconstruction overs between samples, which reached +1.27 dBTP before).
+    // Below the ceiling it is exactly the old level; above it, clean gain reduction instead of a tanh bend
+    float inputGain = 0.7f;
+    float ceiling   = 0.70f;
 
     void setSampleRate(float sr) {
         relK = 1.f - std::exp(-1.f / (0.120f * std::max(8000.f, sr)));   // 120 ms back up

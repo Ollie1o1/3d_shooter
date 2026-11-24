@@ -324,7 +324,7 @@ private:
         a->addWind(a->musicBuf.data(), frames);
         a->applyMuffle(a->musicBuf.data(), frames);
         // The complete sum, including room/wind, through the master bus: a gain and a
-        // look-ahead limiter to -1.5 dBFS (MasterBus.h). It used to be rounded off with
+        // look-ahead limiter to -3.1 dBFS (MasterBus.h). It used to be rounded off with
         // tanh twice and scaled by 0.7, which bent every loud moment into distortion
         a->bus.process(a->musicBuf.data(), frames);
         {   // the load fade (60 ms either way)

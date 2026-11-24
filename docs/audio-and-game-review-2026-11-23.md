@@ -43,7 +43,7 @@ blips. Everything physical should start from a recording.
   the most-played sounds in the game: `explosion` has 49 call sites and `slam` 32.
   MixTable trims are updated.
 - **`src/audio/MasterBus.h`**: a look-ahead (1.5 ms), stereo-linked peak limiter at
-  -1.5 dBFS replaces both tanh stages. Under the ceiling it is a pure gain (tested),
+  -3.1 dBFS (the mix's old 0.7 output contract) replaces both tanh stages. Under the ceiling it is a pure gain (tested),
   and it never passes the ceiling (tested with 6x spikes). The preview tool and the
   playthrough audit use the same bus.
 - **A/B reel**: `build/audition/real-sfx-ab.mp3` (timecodes in `real-sfx-ab.md`).
