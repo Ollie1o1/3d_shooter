@@ -744,13 +744,26 @@ int main(int argc, char* argv[]) {
     if (app->audio.initialized) {   // the enemy voices, built in code (VoiceSynth.h)
         const Uint32 t0 = SDL_GetTicks();
         float secs = 0.f;
-        for (const VoiceSpec& v : voiceBank())
+        int recorded = 0;
+        for (const VoiceSpec& v : voiceBank()) {
+            // A recorded voice (tools/build_real_voices.py) wins: assets/sfx/voices/<name>.wav and its
+            // variants (.ogg on the web). The rest are still built in code
+            const std::string stem = "assets/sfx/voices/" + v.name;
+            static const bool synthOnly = std::getenv("OVERDRIVE_SYNTH_VOICES") != nullptr;   // dev: the old voices, to compare
+            std::FILE* f = synthOnly ? nullptr : std::fopen((stem + ".wav").c_str(), "rb");
+            if (!f && !synthOnly) f = std::fopen((stem + ".ogg").c_str(), "rb");
+            if (f) {
+                std::fclose(f);
+                app->audio.loadSound(v.name, stem + ".wav");
+                if (app->audio.sfx.has(v.name)) { ++recorded; continue; }
+            }
             for (int k = 0; k < v.variants; ++k) {
                 auto b = VoiceSynth::build(v, k);
                 secs += b.size() / VoiceSynth::RATE;
                 app->audio.addBuffer(v.name, std::move(b), VoiceSynth::RATE);
             }
-        if (std::getenv("OVERDRIVE_SFXLIST")) std::fprintf(stderr, "voices: %.1f s of audio built in %u ms\n", secs, SDL_GetTicks() - t0);
+        }
+        if (std::getenv("OVERDRIVE_SFXLIST")) std::fprintf(stderr, "voices: %d recorded, %.1f s built in %u ms\n", recorded, secs, SDL_GetTicks() - t0);
         const Uint32 t1 = SDL_GetTicks();   // the world's own sounds: lava, plant hum, fans, water (WorldEmitters.h)
         for (int k = 0; k < (int)worldsound::Kind::COUNT; ++k)
             for (int v = 0; v < worldsound::VARIANTS; ++v)

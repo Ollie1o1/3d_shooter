@@ -3161,6 +3161,30 @@ int main() {
         CHECK(varied, "a voice's variants differ");
         CHECK(same, "the same voice builds the same every time");
         CHECK(total <= 360.f, "the whole voice bank, including the expanded Story tools, five lab bodies, Chapter 5's enemies and bosses and Chapter 6's DISPATCHED and sheepdogs, stays within 360 s of audio");   // (350 until Chapter 6's three sheepdogs: 352 s)
+        {   // the recorded voices (tools/build_real_voices.py): every death/hurt/idle/spawn/move has its files, at its level
+            bool complete = true, ok = true, lv = true, differ = true; int files = 0;
+            for (const auto& s : bank) {
+                if (s.type == EnemyType::COUNT || !(s.kind == VoiceKind::DEATH || s.kind == VoiceKind::HURT || s.kind == VoiceKind::IDLE ||
+                                                     s.kind == VoiceKind::SPAWN || s.kind == VoiceKind::MOVE)) continue;
+                std::vector<float> prev;
+                for (int v = 0; v < s.variants; ++v) {
+                    float sr = 0.f;
+                    auto x = readWav16("assets/sfx/voices/" + s.name + (v ? "_" + std::to_string(v) : std::string()) + ".wav", sr);
+                    if (x.empty()) { complete = false; std::printf("      missing recorded %s/%d\n", s.name.c_str(), v); continue; }
+                    ++files;
+                    float pk = 0.f; for (float f : x) pk = std::max(pk, std::fabs(f));
+                    if (pk > 0.951f || x.size() < 1000) { ok = false; std::printf("      %s/%d peak %.2f\n", s.name.c_str(), v, pk); }
+                    const float l = shortTermDb(x.data(), x.size(), sr);
+                    if (std::fabs(l - mixTargetDb(s.cls)) > 2.f) { lv = false; std::printf("      recorded %s/%d at %.1f dB (wants %.1f)\n", s.name.c_str(), v, l, mixTargetDb(s.cls)); }
+                    if (v > 0 && x == prev) differ = false;
+                    prev = x;
+                }
+            }
+            std::printf("      recorded voices: %d files\n", files);
+            CHECK(complete, "every enemy's death, hurt, idle, spawn and move voice has its recorded files (all variants)");
+            CHECK(ok && lv, "every recorded voice is a real length, peaks under 0.95 and sits within 2 dB of its class");
+            CHECK(differ, "a recorded voice's variants differ");
+        }
     }
 
     // ---------------------------------------------------------------- enemy voices: who gets to speak

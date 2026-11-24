@@ -72,7 +72,7 @@ SRC     := src/main.cpp
 HEADERS := $(shell find src -name '*.h')
 TESTS   := tests/test_wasteland.cpp tests/test_story.cpp tests/test_physics.cpp tests/test_game.cpp tests/test_zenith.cpp tests/BossSim.h
 
-.PHONY: all clean run test test-story test-wasteland test-render test-dev test-story-overhaul test-story-bosses test-web-story web scan level-dump light gleaner-art
+.PHONY: all clean run voices real-sfx test test-story test-wasteland test-render test-dev test-story-overhaul test-story-bosses test-web-story web scan level-dump light gleaner-art
 
 all: $(TARGET)
 
@@ -275,7 +275,7 @@ web: $(SRC) $(HEADERS) web/index.html
 	rm -rf $(WEB_DATA)/assets/sfx/src   # the frozen recordings gen_arsenal.py reads: the game never loads them
 	@command -v oggenc >/dev/null || { echo "make web needs oggenc (brew install vorbis-tools / apt install vorbis-tools)"; exit 1; }
 	# Sounds ship as Ogg Vorbis q7: ~1.2 MB instead of ~5.8 MB of WAV (the game prefers .ogg when both exist)
-	for f in $(WEB_DATA)/assets/sfx/*.wav; do oggenc -Q -q 7 -o "$${f%.wav}.ogg" "$$f" && rm "$$f" || exit 1; done
+	for f in $(WEB_DATA)/assets/sfx/*.wav $(WEB_DATA)/assets/sfx/voices/*.wav; do oggenc -Q -q 7 -o "$${f%.wav}.ogg" "$$f" && rm "$$f" || exit 1; done
 	ln -s $$(brew --prefix glm 2>/dev/null || echo /usr)/include/glm build/web-include/glm
 	em++ -std=c++17 -O3 -ffp-contract=off -Isrc -Isrc/third_party/imgui -Ibuild/web-include $(WEB_FLAGS) $(SRC) -o $(WEB_OUT)/overdrive.js \
 	    -sUSE_SDL=2 -sUSE_SDL_MIXER=2 \
@@ -425,3 +425,13 @@ listen-ch6: listen-setup
 	OVERDRIVE_AUDIO_STEMS=build/listen/ch6 $(MAKE) test-shepherd-playthrough
 	build/.listen-venv/bin/python tools/listen.py masking build/listen/ch6
 	build/.listen-venv/bin/python tools/listen.py family 'assets/sfx/shep_*.wav' --name ch6-family
+
+# The enemy voices from CC0 recordings (tools/build_real_voices.py): dump the bank, then build the recorded kinds
+voices:
+	$(CXX) $(CXXFLAGS) tools/voice_bank_dump.cpp -o build/voice_bank_dump $(STDLIB)
+	./build/voice_bank_dump > build/voice_bank.txt
+	python3 tools/build_real_voices.py build/voice_bank.txt
+
+# The core combat sounds from CC0 recordings (tools/build_real_sfx.py)
+real-sfx:
+	python3 tools/build_real_sfx.py
