@@ -4,6 +4,9 @@
 Run AFTER gen_sfx.py / import_sfx.py: python3 tools/gen_combat_audio.py
 The frozen CC0 metal recording is a texture, never a previously generated output.
 Each cue has three independently excited variants, matched to MixTable levels.
+
+NOTE: explosion, slam, hit_body, hit_armor, player_hit, impact*, land and land_heavy
+are now built from recordings by tools/build_real_sfx.py: run it after this script.
 """
 import math
 from pathlib import Path

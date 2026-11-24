@@ -7,6 +7,9 @@ shipping external binary/media files (see src/TextureGen.h for the visual
 equivalent). Re-run this after changing a sound's parameters below:
 
     python3 tools/gen_sfx.py
+
+NOTE: explosion, slam, hit_body, hit_armor, player_hit, impact*, land and land_heavy
+are now built from recordings by tools/build_real_sfx.py: run it after this script.
 """
 import math
 import random

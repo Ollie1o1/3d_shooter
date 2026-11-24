@@ -3,6 +3,8 @@
 #include "audio/ShepherdAudio.h"
 #include "audio/RingAudio.h"
 #include "audio/DriveBed.h"
+#include "audio/MasterBus.h"
+static MasterBus gBus;   // the game's own last stage (AudioSystem)
 #include <fstream>
 #include <iterator>
 #include <cstdint>
@@ -77,7 +79,8 @@ static bool render(bool stress){
         if(event<std::size(EVENTS))n=std::min(n,std::max(1,int(std::ceil(EVENTS[event].at*SR))-pos));
         music.render(block.data(),n);mixer.render(block.data(),n);
         drive.render(block.data(),n,SR,float(music.rootNote()),music.samplesPerStep(),music.stepPos(),1.f);
-        for(int i=0;i<2*n;++i){if(!std::isfinite(block[i]))return false;out[pos*2+i]=SfxMixer::softClip(block[i])*.7f;}
+        for(int i=0;i<2*n;++i)if(!std::isfinite(block[i]))return false;
+        gBus.process(block.data(),n);for(int i=0;i<2*n;++i)out[pos*2+i]=block[i];
         pos+=n;
     }
     const char* path=stress?"build/shepherd-audio/shepherd-stress.wav":"build/shepherd-audio/shepherd-mix.wav";
@@ -102,7 +105,7 @@ static bool crossing(){
         }
         int n=std::min(256,FRAMES-p);if(event<std::size(events))n=std::min(n,std::max(1,int(events[event].at*SR)-p));
         music.render(out.data()+2*p,n);mixer.render(out.data()+2*p,n);
-        for(int i=0;i<2*n;++i)out[2*p+i]=SfxMixer::softClip(out[2*p+i])*.7f;
+        gBus.process(out.data()+2*p,n);
         p+=n;
     }
     return writeWav("build/shepherd-audio/ring-crossing.wav",out,SR);
@@ -124,7 +127,7 @@ static bool vocabulary(){
     for(int p=0;p<FRAMES;){
         while(event<std::size(cues)&&cues[event].at*SR<=p){auto e=cues[event++];auto o=shepherdaudio::options(e.name,e.pos,e.weight);o.volume*=mixGain(e.name);mixer.play(e.name,o);}
         int n=std::min(256,FRAMES-p);if(event<std::size(cues))n=std::min(n,std::max(1,int(std::lround(cues[event].at*SR))-p));
-        mixer.render(out.data()+2*p,n);for(int i=0;i<2*n;++i)out[2*p+i]=SfxMixer::softClip(out[2*p+i])*.7f;p+=n;
+        mixer.render(out.data()+2*p,n);gBus.process(out.data()+2*p,n);p+=n;
     }
     std::ofstream labels("build/shepherd-audio/attack-language.md");
     labels<<"# Shepherd attack language\n\nNo music, footsteps or weapon fire. Quiet gaps separate each family.\n\n0.5 s: idle latch (quiet)\n4 s: fist — two piston knocks, white-window chime, drum/steel contact\n9 s: sweep — accelerating chain winch, torn teeth and carriage thud\n14 s: grab — three closing finger latches, lock, grip\n19 s: gaze — glassy electrical dyad, lock, discharge\n24 s: gather — three descending pressure knocks, hull contact\n30 s: pin — spike bite, beating tension, counterweight fracture\n";

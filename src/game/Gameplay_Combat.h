@@ -672,6 +672,13 @@ inline void GameplayState::onEnemyKilled(Enemy& e, StyleSource src) {
     if (e.type != EnemyType::RESTORER) {   // (its body stays, and rewinds: Gameplay_Cold.h)
         fx.spawnDeathParticles(e.position + glm::vec3{0, e.height() * 0.5f, 0}, e.stats().color);
         spawnDebrisFor(e);
+        if (!isBoss(e.type)) {   // the body coming apart: a recorded metal break and its pieces landing, deeper for bigger ones
+            const float mass = hitreact::bodyOf(e.type).mass * e.scale * e.scale;
+            SfxMixer::Opts o; o.group = SoundGroup::ENEMY; o.positional = true; o.pos = e.position + glm::vec3{0, e.height() * 0.5f, 0};
+            o.volume = 0.8f; o.floor = 0.25f;
+            o.pitch = glm::clamp(1.15f - 0.08f * mass, 0.6f, 1.15f);
+            audio.playOpts("enemy_break", o);
+        }
     }
     if (styleSystem.overdrive) dashCharges = 2;
     if (++killsThisCycle >= 2) {

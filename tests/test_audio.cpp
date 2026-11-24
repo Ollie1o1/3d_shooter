@@ -5,6 +5,7 @@
 #include "audio/SfxMixer.h"
 #include "audio/ShepherdAudio.h"
 #include "audio/RingAudio.h"
+#include "audio/MasterBus.h"
 #include <fstream>
 #include <cstdio>
 #include <cstring>
@@ -238,6 +239,35 @@ int main() {
         }
     }
     check(stable && clock, "all tracks, stingers, OVERDRIVE, solo and rewind remain stable at 22.05/44.1/48 kHz");
+    {   // The master bus: a clean limiter, not a clipper
+        MasterBus bus(44100.f);
+        std::vector<float> x(44100 * 2);
+        uint32_t r = 77u;
+        for (size_t i = 0; i < x.size() / 2; ++i) {   // loud noise bursts and isolated spikes over a quiet bed
+            r ^= r << 13; r ^= r >> 17; r ^= r << 5;
+            const float n = (r & 0xFFFF) / 32768.f - 1.f;
+            const float burst = (i / 4410) % 3 == 1 ? 3.f : 0.2f;
+            x[2 * i] = n * burst + (i % 9001 == 0 ? 6.f : 0.f); x[2 * i + 1] = -0.7f * x[2 * i];
+        }
+        auto y = x; bus.process(y.data(), (int)y.size() / 2);
+        float peak = 0.f; for (float v : y) peak = std::max(peak, std::fabs(v));
+        check(peak <= bus.ceiling + 1e-6f, "the master bus never passes its ceiling, even on 6x spikes");
+        // under the ceiling it only scales and delays: no distortion
+        MasterBus quiet(44100.f); std::vector<float> s(4096 * 2);
+        for (int i = 0; i < 4096; ++i) s[2 * i] = s[2 * i + 1] = 0.5f * std::sin(i * 0.05f);
+        auto q = s; quiet.process(q.data(), 4096);
+        float err = 0.f; const int d = MasterBus::LOOKAHEAD - 1;
+        for (int i = d; i < 4096; ++i) err = std::max(err, std::fabs(q[2 * i] - s[2 * (i - d)] * quiet.inputGain));
+        check(err < 1e-5f, "under the ceiling the master bus is a pure gain and a 1.5 ms delay (no curve)");
+        // after a spike the gain recovers (no stuck gain reduction)
+        MasterBus rec(44100.f); std::vector<float> z(44100 * 2, 0.f); z[2000] = z[2001] = 8.f;
+        for (int i = 4000; i < 44100; ++i) z[2 * i] = z[2 * i + 1] = 0.3f;
+        rec.process(z.data(), 44100);
+        check(rec.gain() > 0.999f, "the limiter lets go within a second of a spike");
+        float nan[4] = {NAN, 0.2f, INFINITY, -0.2f}; MasterBus g(44100.f); g.process(nan, 2);
+        bool finite = true; for (float v : nan) finite &= std::isfinite(v);
+        check(finite, "a NaN or inf reaching the master bus comes out as silence, not a screech");
+    }
     std::printf("%d audio failures\n", failures);
     return failures ? 1 : 0;
 }

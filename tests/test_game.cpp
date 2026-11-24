@@ -26,6 +26,7 @@
 #include "core/Settings.h"
 #include "audio/MusicSynth.h"
 #include "audio/DriveBed.h"
+#include "audio/MasterBus.h"
 #include "game/Ghost.h"
 #include "player/StyleSystem.h"
 #include "player/Projectile.h"
@@ -2729,10 +2730,11 @@ int main() {
             }
             CHECK(noRepeat && usedAll[0] && usedAll[1] && usedAll[2], "a sound with variants picks among them, never the same twice running");
         }
-        {   // overload: 48 full-scale voices stay within +-1 and finite
+        {   // overload: 48 full-scale voices stay finite, and through the master bus within +-1
             SfxMixer m(44100.f, 3); m.addSound("loud", sfxSquare(44100));
             for (int g = 0; g < 4; ++g) for (int i = 0; i < 20; ++i) m.play("loud", opts(1.f, (G)g));
             auto b = sfxRender(m, 8192, 0.9f);
+            MasterBus bus(44100.f); bus.process(b.data(), (int)b.size() / 2);
             CHECK(sfxFinite(b) && sfxPeak(b) <= 1.f, "48 full-scale voices over loud music: never past +-1, never NaN");
         }
         {   // the command ring: a flood drops, later commands still work
@@ -3370,7 +3372,7 @@ int main() {
                                 "sword_draw", "sword_swing", "sword_hit", "sword_thrust", "sword_guard", "sword_block", "sword_break",
                                 "kill_light", "kill_heavy", "kill_rifle", "kill_blade",
                                 "jump_air", "land_heavy", "slide", "hit_head", "ammo_low", "heartbeat", "hit_armor", "impact", "casing", "whiz", "step_metal", "land_metal", "lastkill",
-                                "hit_body", "stun", "finisher", "overdrive_on", "overdrive_off", "finish_ready", "hook_yank",
+                                "hit_body", "enemy_break", "stun", "finisher", "overdrive_on", "overdrive_off", "finish_ready", "hook_yank",
                                 "anvil", "anvil_final", "record", "split_behind", "count_tick", "count_go", "drive_warn", "drive_ready", "dash_ready", "potion_drop",
                                 "mini_sting", "bell", "medal", "gleaner_scream", "gleaner_slam", "gleaner_groan", "gleaner_blink",
                                 "caller_toll", "caller_clang", "sieve_rattle", "sieve_stake",

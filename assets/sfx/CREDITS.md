@@ -62,3 +62,23 @@ and idle clunks, and the three credited `sword_steel_*.wav` strikes for cage and
 heavy-contact fractures. These are short contact transients; their tails are
 original inharmonic/physical-mode synthesis. Idle and attack wind-ups contain
 no sustained filtered-noise bed.
+
+## Recorded core combat sounds (November 23 2026)
+
+`explosion`, `slam`, `hit_body`, `hit_armor`, `player_hit`, `impact`, `impact_metal`,
+`impact_wood`, `impact_ice`, `land` and `land_heavy` (three variants each) are no
+longer synthesized. `tools/build_real_sfx.py` layers real recordings (a transient,
+a body, a tail or debris layer), compresses, limits and decays them, and levels each
+family to its mix class. The recordings are frozen (mono 44.1 kHz) in
+`assets/sfx/src/cc0/`; every one is **CC0** from OpenGameArt:
+
+| Frozen as | Pack |
+|---|---|
+| `bang_*`, `cannon_*` | [25 CC0 bang / firework SFX](https://opengameart.org/content/25-cc0-bang-firework-sfx) |
+| `scifi_explosion_*` | [50 CC0 Sci-Fi SFX](https://opengameart.org/content/50-cc0-sci-fi-sfx) |
+| `chunky_explosion` | [Chunky Explosion](https://opengameart.org/content/chunky-explosion) |
+| `oga_explosion` | [Explosion](https://opengameart.org/content/explosion-0) |
+| `rock_*`, `metal_fall_*`, `metal_hit_*`, `hit_*`, `wood_*`, `glass_*`, `falling_*` | [75 CC0 breaking / falling / hit sfx](https://opengameart.org/content/75-cc0-breaking-falling-hit-sfx) |
+| `punch_1`–`punch_5` | [Punch](https://opengameart.org/content/punch) (qubodup) |
+| `slam_*`, `metal_08`, `metal_09`, `door_close_*` | [100 CC0 SFX](https://opengameart.org/content/100-cc0-sfx) |
+| `clink_*`, `thud_3` | [Metal Impact Sounds](https://opengameart.org/content/metal-impact-sounds) |

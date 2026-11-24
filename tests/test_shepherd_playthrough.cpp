@@ -124,7 +124,7 @@ int main(){
                     for(const auto& n:playLog)if(eventLog)std::fprintf(eventLog,"%.2f s: %s\n",seconds,n.c_str());
                     playLog.clear();
                 }
-                for(float v:pcm)audit.push_back(int16_t(std::clamp(SfxMixer::softClip(v)*.7f,-1.f,1.f)*32767));
+                app.audio.bus.process(pcm,735);for(float v:pcm)audit.push_back(int16_t(std::clamp(v,-1.f,1.f)*32767));
             }
             if(!wasOverdrive&&g.overdriveOn())++overdrives;
             if(g.styleSystem.health<before-3)std::printf("  damage %.0f at %.2fs attack %d t %.2f position %.1f %.1f %.1f\n",before-g.styleSystem.health,seconds,g.shepAtk,g.shepAtkT,g.player.position.x,g.player.position.y,g.player.position.z);

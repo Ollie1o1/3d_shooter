@@ -52,9 +52,9 @@ inline const std::vector<MixEntry>& mixTable() {
         {"dry", C::FOLEY, 5.0f}, {"eject", C::FOLEY, 0.7f}, {"pump", C::FOLEY, -3.2f}, {"reload", C::FOLEY, 8.6f},
         {"shell_in", C::FOLEY, -0.3f}, {"scope", C::FOLEY, 0.8f}, {"telegraph", C::FOLEY, 5.f},
         {"wade", C::FOLEY, -0.7f}, {"barrier", C::FOLEY, 0.6f}, {"ammo_low", C::FOLEY, 0.2f},
-        {"jump", C::PLAYER, -2.3f}, {"hit", C::PLAYER, 1.5f}, {"land", C::PLAYER, 1.3f}, {"dash", C::PLAYER, -2.6f}, {"grapple_fire", C::PLAYER, -0.6f},
+        {"jump", C::PLAYER, -2.3f}, {"hit", C::PLAYER, 1.5f}, {"land", C::PLAYER, 0.00f}, {"dash", C::PLAYER, -2.6f}, {"grapple_fire", C::PLAYER, -0.6f},
         {"punch", C::PLAYER, 1.7f}, {"step1", C::PLAYER, 1.9f}, {"step2", C::PLAYER, 2.5f}, {"step3", C::PLAYER, 2.5f},
-        {"step4", C::PLAYER, 2.5f}, {"jump_air", C::PLAYER, 0.4f}, {"land_heavy", C::PLAYER, -3.9f}, {"slide", C::PLAYER, 4.1f}, {"heartbeat", C::PLAYER, -3.9f}, {"hit_armor", C::PLAYER, 0.f}, {"step_metal", C::PLAYER, -0.2f}, {"land_metal", C::PLAYER, 1.2f}, {"lastkill", C::ACTION, -3.5f}, {"hit_body", C::ACTION, 0.f}, {"stun", C::ACTION, 3.4f}, {"finisher", C::ACTION, -2.9f}, {"overdrive_on", C::ACTION, -0.9f}, {"overdrive_off", C::UI, -3.8f}, {"finish_ready", C::TELL, -5.8f}, {"hook_yank", C::PLAYER, 1.4f}, {"skim", C::PLAYER, -3.2f}, {"boost", C::PLAYER, -1.9f}, {"player_hit", C::PLAYER, -2.f},
+        {"step4", C::PLAYER, 2.5f}, {"jump_air", C::PLAYER, 0.4f}, {"land_heavy", C::PLAYER, 1.39f}, {"slide", C::PLAYER, 4.1f}, {"heartbeat", C::PLAYER, -3.9f}, {"hit_armor", C::PLAYER, 3.44f}, {"step_metal", C::PLAYER, -0.2f}, {"land_metal", C::PLAYER, 1.2f}, {"lastkill", C::ACTION, -3.5f}, {"hit_body", C::ACTION, 3.94f}, {"stun", C::ACTION, 3.4f}, {"finisher", C::ACTION, -2.9f}, {"overdrive_on", C::ACTION, -0.9f}, {"overdrive_off", C::UI, -3.8f}, {"finish_ready", C::TELL, -5.8f}, {"hook_yank", C::PLAYER, 1.4f}, {"skim", C::PLAYER, -3.2f}, {"boost", C::PLAYER, -1.9f}, {"player_hit", C::PLAYER, 2.22f},
         {"parry", C::PLAYER, 0.f}, {"sword_draw", C::PLAYER, 0.f}, {"sword_swing", C::PLAYER, 0.f}, {"sword_hit", C::PLAYER, 0.f}, {"sword_heavy", C::PLAYER, 0.f}, {"sword_pierce", C::PLAYER, 0.f}, {"parry_heavy", C::PLAYER, 0.f},
         {"sword_thrust", C::PLAYER, 0.f}, {"sword_guard", C::PLAYER, 0.f}, {"sword_block", C::PLAYER, 0.f}, {"sword_break", C::PLAYER, 0.f}, {"switch_up0", C::PLAYER, 1.3f}, {"switch_up1", C::PLAYER, 0.9f},
         {"switch_up2", C::PLAYER, 0.6f}, {"switch_up3", C::PLAYER, 0.2f},
@@ -69,9 +69,9 @@ inline const std::vector<MixEntry>& mixTable() {
         {"ab_zap", C::ACTION, 1.5f}, {"ab_flight", C::WORLD, -2.0f},
         {"ab_clang", C::PLAYER, 0.0f}, {"ab_shatter", C::PLAYER, 0.5f}, {"ab_creak", C::PLAYER, 1.5f},
         {"ab_tsk", C::UI, 4.8f}, {"ab_wrong", C::UI, -6.8f},
-        {"explosion", C::ACTION, -1.2f}, {"slam", C::ACTION, -1.8f}, {"clank", C::ACTION, 2.f},
+        {"explosion", C::ACTION, 4.05f}, {"slam", C::ACTION, 2.51f}, {"clank", C::ACTION, 2.f},
         {"door", C::WORLD, -1.5f}, {"door_close", C::WORLD, 1.6f}, {"split", C::WORLD, 0.7f}, {"pickup", C::WORLD, -2.2f},
-        {"potion", C::WORLD, 0.5f}, {"impact", C::WORLD, 0.f}, {"impact_metal", C::WORLD, 0.f}, {"impact_wood", C::WORLD, 0.f}, {"impact_ice", C::WORLD, 0.f}, {"casing", C::FOLEY, -4.6f}, {"whiz", C::ACTION, 2.8f},
+        {"potion", C::WORLD, 0.5f}, {"impact", C::WORLD, 6.79f}, {"impact_metal", C::WORLD, 2.51f}, {"impact_wood", C::WORLD, 2.31f}, {"impact_ice", C::WORLD, 3.63f}, {"enemy_break", C::WORLD, 1.43f}, {"casing", C::FOLEY, -4.6f}, {"whiz", C::ACTION, 2.8f},
         {"hit_head", C::UI, -1.0f}, {"kill_light", C::UI, 8.5f}, {"kill_heavy", C::UI, -3.7f}, {"kill_rifle", C::UI, 0.f}, {"kill_blade", C::UI, 0.f},   // kill confirms
         {"wave", C::UI, -4.2f}, {"levelup", C::UI, -0.1f}, {"upgrade", C::UI, 0.1f},
         // Original intelligible synthetic speech, authored for the lab. Separate from wordless enemy voices.

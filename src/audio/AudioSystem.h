@@ -11,6 +11,7 @@
 #include "audio/MixTable.h"
 #include "audio/RoomTone.h"
 #include "audio/DriveBed.h"
+#include "audio/MasterBus.h"
 
 // SDL_mixer may not be available — guard the include
 #ifdef __has_include
@@ -33,6 +34,7 @@ class AudioSystem {
 public:
     bool  initialized  = false;
     float masterVolume = 1.f;   // 0..1, from GameSettings::audioVolume
+    MasterBus  bus;             // the last stage: gain and limiter (MasterBus.h)
     MusicSynth music;           // the live soundtrack (MusicSynth.h), always running
     SfxMixer   sfx;             // the effects (SfxMixer.h)
     RoomToneSynth room;         // each arena's background air (RoomTone.h)
@@ -58,6 +60,7 @@ public:
         music.setSampleRate((float)freq);
         sfx.setSampleRate((float)freq);
         room.setSampleRate((float)freq);
+        bus.setSampleRate((float)freq);
         musicBuf.resize(16384);          // so the audio thread never has to allocate
         if (const char* solo = std::getenv("OVERDRIVE_SOLO")) {   // dev: hear one role (tell / chatter / action / ui)
             const std::string s = solo;
@@ -320,11 +323,10 @@ private:
         a->room.render(a->musicBuf.data(), frames);
         a->addWind(a->musicBuf.data(), frames);
         a->applyMuffle(a->musicBuf.data(), frames);
-        // Round off the complete sum, including room/wind, then reserve 3.1 dB
-        // of reconstruction headroom. Sample-safe combat captures previously
-        // reached +1.27 dBTP between samples. This gain preserves the mix's
-        // dynamics and cue balance; it is not a true-peak limiter.
-        for (int i = 0; i < 2 * frames; ++i) a->musicBuf[i] = SfxMixer::softClip(a->musicBuf[i]) * .7f;
+        // The complete sum, including room/wind, through the master bus: a gain and a
+        // look-ahead limiter to -1.5 dBFS (MasterBus.h). It used to be rounded off with
+        // tanh twice and scaled by 0.7, which bent every loud moment into distortion
+        a->bus.process(a->musicBuf.data(), frames);
         {   // the load fade (60 ms either way)
             const float target = a->loadTarget.load(), step = 1.f / (0.06f * (float)(a->outRate > 0 ? a->outRate : 44100));
             for (int f = 0; f < frames; ++f) {

@@ -514,7 +514,8 @@ private:
             io[2 * i] += l * revCur.wet; io[2 * i + 1] += r * revCur.wet;
         }
         if (sfxStem) for (int i = 0; i < 2 * n; ++i) sfxStem[i] = io[i] - (musicStem ? musicStem[i] : 0.f);
-        for (int i = 0; i < 2 * n; ++i) io[i] = softClip(io[i]);
+        // No clipping here: the master bus (MasterBus.h) limits the finished mix. Only a guard
+        for (int i = 0; i < 2 * n; ++i) if (!(std::fabs(io[i]) < 1e6f)) io[i] = 0.f;
     }
     void mixVoice(Voice& v, float* io, int n) {
         float tL, tR, tlp;
@@ -556,7 +557,7 @@ private:
         v.curL = tL; v.curR = tR; v.lp = tlp;
     }
 public:
-    // Leaves anything under 0.8 alone, rounds the rest off toward 1 (AudioSystem rounds the final mix off with it too)
+    // Leaves anything under 0.8 alone, rounds the rest off toward 1 (no longer on the game's path: MasterBus limits)
     static float softClip(float x) {
         float a = std::fabs(x);
         if (!(a < 1e6f)) return 0.f;   // NaN / inf: silence rather than a screech
