@@ -442,6 +442,10 @@ public:
     float shepCourtT = 99.f;
     float shepReleaseT[2] = {-1.f,-1.f};
     SoundHandle shepWindSound=0,shepStrainSound[2]={};
+    SoundHandle shepMotionSound[3]={};
+    glm::vec3 shepAudioPose[3]={};
+    float shepMotionCooldown[3]={},shepHitSoundT=0.f;
+    bool shepAudioPoseReady=false;
     glm::vec3 shepEchoAt[3] = {}; int shepEchoN = 0, shepEchoHit = 0;
     bool shepSlamParried[2] = {};
     float shepOrbitClock[3] = {}, shepOrbitPin[3] = {}, shepOrbitFire = 3.f;
@@ -1512,6 +1516,8 @@ public:
     void animateShepherd(float dt);
     SoundHandle shepherdSound(const char* name,glm::vec3 at,float weight=1.f);
     void stopShepherdAudio();
+    void updateShepherdMotionAudio(float dt);
+    void shepherdHitSound(glm::vec3 at,float damage);
     void updateShepherdCourt(float dt);
     void gatherShepherdCourt(std::vector<BoxInstance>& out);
     glm::mat4 shepRootPose() const;

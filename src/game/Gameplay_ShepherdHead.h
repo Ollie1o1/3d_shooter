@@ -18,6 +18,7 @@ inline void GameplayState::shepHeadReset() {
     shepArmDown[0]=shepArmDown[1]=shepPinT[0]=shepPinT[1]=0.f;
     shepSlamParried[0]=shepSlamParried[1]=false;
     shepHitHealT=0.f;shepCounterT=0.f; shepEchoN=shepEchoHit=0;
+    shepHitSoundT=0.f;
     shepCounterHit[0]=shepCounterHit[1]=true;shepCourtT=99.f;
     shepBeamOn=false; shepHeadRise=shepHeadSeen?1.f:0.f; shepRiseT=shepHeadSeen?-1.f:0.f;
     shepHeadPhase=shepHeadHp>HP*2.f/3.f?0:shepHeadHp>HP/3.f?1:2;
@@ -47,6 +48,7 @@ inline void GameplayState::shepHeadHurt(float dmg) {
         stopShepherdAudio();
         shepReleaseGrab(false);shepScars.clear();
         ++shepHeadPhase; shepRearT=0.f; shepCycle=0; sweep.reset();
+        audio.music.setShepherdMovement(shepherdscore::CONTROL+shepHeadPhase);
         shepCourtT=0.f;shepCounterHit[0]=shepCounterHit[1]=true;
         shepReleaseT[shepHeadPhase-1]=0.f;
         shepherdSound("shep_break",shep::courtClamp(shepHeadPhase-1));
@@ -102,6 +104,7 @@ inline void GameplayState::shepHead(float dt) {
     // Every early-return path still advances the pose exactly once per sim tick.
     struct PoseStep { GameplayState& g; float dt; ~PoseStep(){g.animateShepherd(dt);} } poseStep{*this,dt};
     const auto p=player.position;
+    shepHitSoundT=std::max(0.f,shepHitSoundT-dt);
     shepGazeTick=std::max(0.f,shepGazeTick-dt);
     for(auto& scar:shepScars){scar.life-=dt;
         if(shepGazeTick<=0&&scar.life>0&&p.y<shep::FALL_Y+2.4f&&segmentDistance(glm::vec2(p.x,p.z),glm::vec2(scar.from.x,scar.from.z),glm::vec2(scar.to.x,scar.to.z))<1.25f){
@@ -152,7 +155,7 @@ inline void GameplayState::shepHead(float dt) {
             ui.feed(shepVariation?"CROSS-SWEEP: TWO LANES. CHANGE YOUR DEPTH":"ARM SWEEP: DASH FORWARD OR BACK",SWEEP_RED);}
         if(shepAtk==GRAB)ui.feed("OPEN HAND: DODGE SIDEWAYS. BREAK ITS GRIP IF CAUGHT",HOLDFAST_STEEL);
         if(shepAtk==GAZE)ui.feed("ITS EYES FIND YOU. MOVE WHEN THE STARE LOCKS",SWEEP_RED);
-        audio.stop(shepWindSound);shepWindSound=0;
+        audio.stop(shepWindSound,.012f);shepWindSound=0;
         if(const char* cue=shepherdaudio::attackCue(shepAtk))
             shepWindSound=shepherdSound(cue,shepAtk==SLAM||shepAtk==SLAM2||shepAtk==SWEEP||shepAtk==GRAB?shepHandPose(shepSlamArm):shepMouthPose());
         if(shepAtk==BEAM){shepBeamDir=p.x<-600.f?1.f:-1.f;shepBeamX=shepBeamDir>0.f?shep::FALL_X0-2.f:shep::FALL_X1+2.f;shepBeamOn=shepBeamHit=false;}
@@ -175,7 +178,7 @@ inline void GameplayState::shepHead(float dt) {
         if(before<impact&&shepAtkT>=impact) {
             {const int k=n==2?a:shepSlamArm;const auto at=shepSlamAt[a];
                 shepHandAt[k]=at;shepArmDown[k]=HAND_DOWN;
-                if(shepSlamParried[a]){fx.spawnShockwave(at,14.f,HOLDFAST_STEEL);continue;}
+                if(shepSlamParried[a]){fx.spawnShockwave(at,14.f,HOLDFAST_STEEL);shepherdSound("shep_contact",at,.9f);continue;}
                 wakeRings.push_back({at,.6f,false});
                 fx.spawnBurst(at,POST_LIT,45,13.f,1.f,3.f);fx.spawnShockwave(at,14.f,POST_LIT);
                 if(slamHits(p,at)&&invincFrames<=0.f)damagePlayer(SLAM_DAMAGE,at,.5f,.06f,0.f,{EnemyType::COUNT,DamageKind::SHOCKWAVE});
@@ -187,7 +190,7 @@ inline void GameplayState::shepHead(float dt) {
         if(shepAtkT>SLAM_TELL+(n==2?.42f:0.f)+.4f)finish();
     } else if(shepAtk==BEAM) {
         if(shepAtkT>=BEAM_TELL){
-            if(!shepBeamOn){shepBeamOn=true;audio.play("barrier",128,SoundGroup::WORLD,true);}
+            if(!shepBeamOn){shepBeamOn=true;shepherdSound("shep_beam",{shepBeamX,shep::FALL_Y+2.f,p.z});}
             const float old=shepBeamX;shepBeamX+=shepBeamDir*BEAM_SPEED*dt;
             if(!shepBeamHit&&p.x>std::min(old,shepBeamX)-BEAM_HALF&&p.x<std::max(old,shepBeamX)+BEAM_HALF&&p.y<shep::FALL_Y+4.5f&&invincFrames<=0.f&&!shepFinCovers(p)){
                 shepBeamHit=true;damagePlayer(BEAM_DAMAGE,p+glm::vec3{0,1,-5},.3f,.04f,0.f,{EnemyType::COUNT,DamageKind::UNKNOWN});}
@@ -240,6 +243,7 @@ inline bool GameplayState::shootHead(glm::vec3 from,glm::vec3 dir,float& distanc
     if(mult==0.f)return false;
     distance=best;fx.spawnHitSparks(from+dir*best,shepOpenT>0.f?POST_LIT:glm::vec3{.6f,1.5f,2.5f});
     const float hp=shepHeadHp;shepHeadHurt(dmg*mult*(shepOpenT>0.f?1.6f:1.f));
+    if(shepHeadHp<hp)shepherdHitSound(from+dir*best,dmg);
     if(shepHeadHp<hp&&shepHitHealT<=0.f){
         const bool committed=(mult==HAND_MULT&&best<42.f)||(shepOpenT>0.f&&best<100.f);
         shepHitHealT=committed?.3f:.8f;
@@ -260,7 +264,7 @@ inline bool GameplayState::pinShepherd(glm::vec3 from,glm::vec3 dir,float distan
         if(hit<0)return false;
         shepPinT[hit]=PIN_TIME;shepArmDown[hit]=PIN_TIME;shepCounterHit[hit]=false;
         shepherdSound("shep_pin",shepHandAt[hit]);
-        audio.stop(shepStrainSound[hit]);shepStrainSound[hit]=shepherdSound("shep_strain",shepHandAt[hit],.65f);
+        audio.stop(shepStrainSound[hit],.012f);shepStrainSound[hit]=shepherdSound("shep_strain",shepHandAt[hit],.65f);
         // A palm pin is a deliberate counter, like turning a white fist. It
         // can earn Overdrive instead of stopping at the passive hazard cap.
         styleSystem.addStyle(180.f,StyleSource::PARRY);styleSystem.heal(8.f*tune().heal);
@@ -312,7 +316,7 @@ inline void GameplayState::blastShepherd(glm::vec3 at,float radius,float damage)
         test(chestBox(shepHeadRise),BODY_MULT,glm::vec3(glm::inverse(shepChestPose())*glm::vec4(at,1)));
         test({{-HW,-HH,-HD},{HW,HH,HD}},1.f,glm::vec3(glm::inverse(shepFacePose())*glm::vec4(at,1)));
         for(int k=0;k<2;++k)if(shepArmDown[k]>0.f)test(handBox(shepHandAt[k]),HAND_MULT,at);
-        if(near<radius)shepHeadHurt(damage*mult*(1.f-near/radius)*(shepOpenT>0.f?1.6f:1.f));
+        if(near<radius){const float hp=shepHeadHp;shepHeadHurt(damage*mult*(1.f-near/radius)*(shepOpenT>0.f?1.6f:1.f));if(shepHeadHp<hp)shepherdHitSound(at,damage);}
     }else if(level.arenaAt(player.position)==3){
         for(int k=0;k<3;++k)if(shepVentHp[k]>0.f){auto c=shepMoon(k);float d=glm::length(c-at);if(d<radius+MOON_RADIUS&&d>.001f){float range=d+MOON_RADIUS;shootVent(at,(c-at)/d,range,damage*(1.f-std::max(0.f,d-MOON_RADIUS)/radius));}}
     }

@@ -172,6 +172,19 @@ combat-audio:
 audio-preview: tools/music_preview
 	python3 tools/audio_preview.py
 
+.PHONY: audio-review audio-review-plan audio-review-check test-audio-review
+audio-review:
+	python3 tools/review_audio.py
+
+audio-review-plan:
+	python3 tools/review_audio.py --dry-run
+
+audio-review-check:
+	python3 tools/review_audio.py --check
+
+test-audio-review:
+	python3 tests/test_audio_review.py
+
 test-audio: test-music-score tests/test_audio.cpp $(HEADERS)
 	mkdir -p build
 	$(CXX) $(CXXFLAGS) tests/test_audio.cpp -o build/test_audio $(STDLIB)
@@ -401,3 +414,14 @@ BLENDER ?= /Applications/Blender.app/Contents/MacOS/Blender
 .PHONY: shepherd-art
 shepherd-art:
 	$(BLENDER) -b --factory-startup --python tools/blender/headless.py -- tools/blender/shepherd_build.py
+
+# Claude can't hear: tools/listen.py turns audio into spectrogram sheets, loudness/noise
+# reports, cue-vs-everything-else masking and family similarity (build/listen/).
+.PHONY: listen-setup listen-ch6
+listen-setup:
+	test -x build/.listen-venv/bin/python || (python3 -m venv build/.listen-venv && build/.listen-venv/bin/pip install -q numpy scipy matplotlib)
+listen-ch6: listen-setup
+	mkdir -p build/listen/ch6
+	OVERDRIVE_AUDIO_STEMS=build/listen/ch6 $(MAKE) test-shepherd-playthrough
+	build/.listen-venv/bin/python tools/listen.py masking build/listen/ch6
+	build/.listen-venv/bin/python tools/listen.py family 'assets/sfx/shep_*.wav' --name ch6-family

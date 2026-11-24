@@ -153,6 +153,7 @@ inline void GameplayState::updateShepherd(float dt) {
     using namespace shepfight;
     const glm::vec3 p = player.position;
     const int at = level.arenaAt(p);
+    if(at!=10)shepHitSoundT=std::max(0.f,shepHitSoundT-dt);
     if (at > director.arena && !director.fighting() && director.phase != WaveDirector::Phase::INTRO && (at <= shepTines || at >= 7)) director.approach(at);
     if (at >= 0 && at > storySeenSection && !playerDead) {
         storySeenSection = at;
@@ -390,11 +391,13 @@ inline bool GameplayState::shootVent(glm::vec3 from, glm::vec3 dir, float& dista
             distance = t;
             const glm::vec3 at = from + dir * t;
             if (shepForkRingT <= 0.f) {
+                shepherdHitSound(at,dmg*.5f);
                 fx.spawnHitSparks(at, glm::vec3{0.8f});
                 if (shepVentMsgT <= 0.f) { shepVentMsgT = 2.f; ui.feed("SHUT: IT OPENS WHEN THE FORK RINGS, AFTER A BLAST", glm::vec3{0.75f}); }
                 return true;
             }
             shepForkHp[f] -= dmg; shepherdDamageT = 0.3f;
+            shepherdHitSound(at,dmg);
             fx.spawnHitSparks(at, POST_LIT);
             styleSystem.addStyle(4.f, StyleSource::ENVIRONMENT);
             if (shepForkHp[f] <= 0.f) shepStillFork(f);
@@ -407,6 +410,7 @@ inline bool GameplayState::shootVent(glm::vec3 from, glm::vec3 dir, float& dista
     if(hit<0)return false;
     distance=best;auto c=shepMoon(hit);shepVentHp[hit]=std::max(0.f,shepVentHp[hit]-dmg*(shepOrbitPin[hit]>0.f?1.5f:1.f));
     shepherdDamageT=.3f;fx.spawnHitSparks(from+dir*best,POST_LIT);
+    shepherdHitSound(from+dir*best,dmg);
     if(shepVentHp[hit]<=0.f){++shepVents;fx.spawnBurst(c,POST_LIT,70,17.f,1.2f,3.f);fx.spawnShockwave(c,15.f,POST_LIT);shake(.8f,.05f);
         audio.play("ab_shatter",128,SoundGroup::WORLD,true);styleSystem.addStyle(180.f,StyleSource::ENVIRONMENT);
         pushBanner("MOON SHATTERED",shepVents==3?"NOTHING HOLDS THE HEART":"THE ORBIT ACCELERATES",POST_LIT*.6f,2.f);

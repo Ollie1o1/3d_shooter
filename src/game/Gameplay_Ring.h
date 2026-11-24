@@ -10,6 +10,7 @@
 // --training or another chapter).
 // =============================================================================
 #include "world/LevelRing.h"
+#include "audio/RingAudio.h"
 
 inline const glm::vec3 SWEEP_RED{1.f, 0.1f, 0.06f};          // the countdown: red, never flashing
 inline const glm::vec3 POST_LIT{2.4f, 2.6f, 2.1f};           // a mooring post, lit: pale and hard, unlike a capsule's amber
@@ -84,12 +85,12 @@ inline void GameplayState::tickSweep(float dt) {
     const glm::vec3 dir = sweep.spec.dir;
     auto ev = sweep.update(dt, player.position, sweepShelters);
     if (ev.flash) {   // the ridge lamps: every post lights
-        audio.play("telegraph", 128, SoundGroup::WORLD, true);
+        audio.playOpts("ring_sweep_warn",ringaudio::warning());
         shake(0.25f, 0.012f);
         sweepSwept = 0;
         if (ring() && !ringLeeHint) { ringLeeHint = true; ui.toast("THE SWEEP", "THE POSTS ARE LIT: GET ON THE FAR SIDE OF SOMETHING HEAVY, BY ITS POST", POST_LIT * 0.4f, 6.f); }
     }
-    if (ev.begun) { sweepTickAt = -1; audio.play("barrier", 90, SoundGroup::WORLD, true); }
+    if (ev.begun) sweepTickAt = -1;
     if (const float c = sweep.countdown(player.position); c >= 0.f) {   // a dull tick through the floor each second
         const int whole = (int)std::ceil(c);
         if (whole != sweepTickAt) { sweepTickAt = whole; audio.play("count_tick", c < 3.5f ? 128 : 90, SoundGroup::UI, true); }
@@ -131,7 +132,7 @@ inline void GameplayState::tickSweep(float dt) {
     if (ev.struck) {
         const bool heldFast = holdfast.held() && holdfast.shelter >= 0 && sweepShelters[holdfast.shelter].alive && sweepShelters[holdfast.shelter].holds;
         fx.spawnBurst(player.camera.position, SWEEP_ICE, 50, 16.f, 0.7f, 2.f);
-        audio.play("slam", 128, SoundGroup::WORLD, true);
+        audio.play("ring_sweep_pass", 128, SoundGroup::WORLD, true);
         shake(0.5f, 0.06f);
         if (heldFast) ui.feed("HELD FAST", HOLDFAST_STEEL);
         else if (!sweep.lethal()) {   // the Gather: thrown toward the Shepherd (the ride itself is build step 10)
@@ -152,7 +153,7 @@ inline void GameplayState::tickSweep(float dt) {
         fx.spawnBurst(player.position + glm::vec3{0.f, 6.f, 0.f} - dir * 3.f, SWEEP_ICE, 60, 7.f, 1.6f, 3.f);
         audio.duck(30.f, 0.4f);   // the zero (13.1): everything drops away for a beat as it goes over...
         SfxMixer::Opts o; o.group = SoundGroup::WORLD; o.priority = true; o.unducked = true; o.delay = 0.4f;
-        audio.playOpts("skim", o);   // ...then ice pattering down on the shelter
+        audio.playOpts("ring_debris", o);   // ...then ice pattering down on the shelter
         shake(0.3f, 0.02f);
     }
     if (ev.ended && !playerDead) {
@@ -313,11 +314,8 @@ inline void GameplayState::ringTouch(float dt) {
         if ((ringKnockT -= dt) <= 0.f) {
             ringKnockT = cosmetic::range(3.f, 6.f);
             const glm::vec3 at = player.position - glm::vec3{0.f, 0.6f, 0.f};
-            for (int k = 0; k < 2; ++k) {
-                SfxMixer::Opts o; o.group = SoundGroup::WORLD; o.positional = true; o.pos = at; o.volume = 0.5f;
-                o.pitch = 0.55f; o.delay = k * 0.22f; o.role = SoundRole::ACTION;
-                audio.playOpts("impact_metal", o);
-            }
+            // One authored double knock: no two pitched bullet impacts or queued echo.
+            audio.playOpts("ring_knock",ringaudio::contact(at));
         }
     }
     // Leaning on the reef: pressed against one of its walls, not just passing
@@ -328,8 +326,7 @@ inline void GameplayState::ringTouch(float dt) {
         const float dx = std::max({b.min.x - p.x, 0.f, p.x - b.max.x}), dz = std::max({b.min.z - p.z, 0.f, p.z - b.max.z});
         if (dx < 0.7f && dz < 0.7f && p.y < b.max.y && p.y + 1.8f > b.min.y && glm::length(glm::vec2{player.velocity.x, player.velocity.z}) < 2.f) {
             ringCreakT = cosmetic::range(4.f, 7.f);
-            SfxMixer::Opts o; o.group = SoundGroup::WORLD; o.positional = true; o.pos = p + glm::vec3{0.f, 1.f, 0.f}; o.volume = 0.35f; o.pitch = 0.8f;
-            audio.playOpts("ab_creak", o);
+            audio.playOpts("ring_creak",ringaudio::contact(p + glm::vec3{0.f, 1.f, 0.f}));
             return;
         }
     }

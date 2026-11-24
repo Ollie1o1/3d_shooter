@@ -11,13 +11,13 @@ inline combatscore::Form form(int movement,int bar,float within=0){
     const int m=clampMovement(movement),b=std::max(0,bar)%16;
     static constexpr int harmony[5][8]={
         {0,0,6,6,3,3,5,4}, {0,0,0,6,0,0,5,4},
-        {0,3,5,4,0,6,5,4}, {0,6,3,4,0,5,3,4}, {0,0,0,4,0,0,5,4}};
+        {3,3,5,4,0,6,5,4}, {6,6,3,4,0,5,3,4}, {0,0,0,4,0,0,5,4}};
     Form f;f.degree=harmony[m][b%8];f.arp=.65f;f.theme=.85f;
-    if(m==ASCENT){f.style=Style::DNB;f.filter=.55f+.3f*(b%4)/3.f;f.theme=.55f;f.arp=.45f;}
-    if(m==CONTROL){f.style=b<8?Style::TECHNO:Style::DNB;f.filter=.65f;}
-    if(m==RESISTANCE){f.style=b<8?Style::DNB:Style::HYBRID;f.arp=.8f;f.theme=1;}
-    if(m==COLLAPSE){f.style=b<4||b>=12?Style::HARD:Style::HYBRID;f.theme=1;f.arp=.85f;}
-    if(m==LAST_COUNT){f.style=Style::HYBRID;f.theme=.65f;f.arp=.4f;f.filter=.85f;}
+    if(m==ASCENT){f.style=Style::DNB;f.filter=.55f+.3f*(b%4)/3.f;f.theme=.65f;f.arp=.3f;f.bass=.8f;}
+    if(m==CONTROL){f.style=b<12?Style::TECHNO:Style::HYBRID;f.filter=.6f;f.arp=.4f;}
+    if(m==RESISTANCE){f.style=b<12?Style::DNB:Style::HYBRID;f.arp=.65f;f.theme=1;f.filter=.9f;}
+    if(m==COLLAPSE){f.style=b<4||b>=12?Style::HARD:Style::HYBRID;f.theme=1.1f;f.arp=.85f;f.filter=1;}
+    if(m==LAST_COUNT){f.style=Style::TECHNO;f.theme=.6f;f.arp=.2f;f.filter=.45f;f.bass=.75f;}
     f.section=b%8<4?Section::STATEMENT:Section::ANSWER;
     if(m>=RESISTANCE && b>=8)f.section=Section::PEAK;
     if(b%8==7){f.section=Section::TURN;f.rise=std::clamp(within,0.f,1.f);}
@@ -37,9 +37,15 @@ inline combatscore::Note theme(int movement,int bar,int step){
         {20,3,4,.85f},{28,5,3,.82f},
         {32,7,4,.95f},{40,10,4,.85f},{46,12,2,.9f},
         {52,7,4,.9f},{60,11,4,.88f}};
-    const bool reply=movement>=RESISTANCE && movement<LAST_COUNT && bar%8>=4;
+    static constexpr Note fracture[]={
+        {0,12,2,.95f},{3,7,2,.8f},{6,15,3,1.f},{12,10,3,.9f},
+        {18,12,2,.85f},{22,19,3,.95f},{28,11,4,.9f},
+        {32,12,3,.95f},{38,10,2,.85f},{42,7,3,.9f},
+        {48,15,4,1.f},{56,14,2,.8f},{60,11,4,.95f}};
+    const bool reply=movement==RESISTANCE;
     if(movement==ASCENT && bar%2==1)return {-1,0,0,0};
     const int at=(bar%4)*16+step;
+    if(movement==COLLAPSE){for(const auto& n:fracture)if(n.at==at%64)return n;return {-1,0,0,0};}
     const auto* notes=reply?answer:count;
     for(int i=0;i<10;++i)if(notes[i].at==at)return notes[i];
     return {-1,0,0,0};
@@ -54,6 +60,7 @@ inline char hit(int movement,int bar,int step,int instrument,bool hard){
     auto style=form(movement,bar).style;
     if(style==Style::HARD && !hard)style=Style::TECHNO;
     if(instrument==0){
+        if(movement==LAST_COUNT)return "x.......x......."[step];
         if(style==Style::DNB)return bar%2?"x.........x..x.."[step]:"x.....x...x....."[step];
         return bar%8==7?"x...x...x...x..x"[step]:"x...x...x...x..."[step];
     }

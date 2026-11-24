@@ -31,7 +31,7 @@ int main(){
     StorySave::key="build/shepherd-pass/story.cfg";
     {
         App app;app.window=window;app.ctx=context;
-        for(const auto& cue:mixTable())if(std::string(cue.name).find("shep_")==0)
+        for(const auto& cue:mixTable())if(std::string(cue.name).find("shep_")==0||std::string(cue.name).find("ring_")==0)
             app.audio.loadSound(cue.name,std::string("assets/sfx/")+cue.name+".wav");
         app.audio.start();
         app.pending=App::NextState::Menu;app.applyPendingState();
@@ -288,6 +288,133 @@ int main(){
         CHECK(g.shepEndingT>=0&&g.director.arena==11,"finisher reaches the drifting capsule ending");
         CHECK(glGetError()==GL_NO_ERROR,"the colossus, fists, pinned palms and moving orrery render without GL errors");
         CHECK(persist::load(StorySave::key).empty(),"practice verification leaves Story progress untouched");
+        // Deterministic audio clock: game events feed the real mixer once per
+        // simulation tick. Do not race the SDL callback's voice introspection.
+        Mix_HookMusic(nullptr,nullptr);
+        g.enterArena(10);g.armoryOpen=false;
+        std::vector<float> audioBlock(4096*2);
+        auto pump=[&](int frames){while(frames>0){int n=std::min(frames,4096);std::fill(audioBlock.begin(),audioBlock.end(),0.f);g.audio.sfx.render(audioBlock.data(),n);frames-=n;}};
+        auto prepareAudio=[&](){ready();pump(44100*3);aim(g,shep::fallStart(),headC(1));g.audio.setListener(g.player.camera.position,g.player.camera.right(),g.player.camera.forward());};
+        prepareAudio();g.shepHandAt[0]=palm;g.shepArmDown[0]=HAND_DOWN;
+        aim(g,palm+glm::vec3{0,0,20},palm+glm::vec3{0,2,0});
+        for(int k=0;k<8;++k){float d=50;g.shootHead(g.player.camera.position,g.player.camera.forward(),d,10);}
+        g.audio.sfx.render(audioBlock.data(),0);
+        CHECK(g.audio.sfx.active("shep_wound")==1,"damaging a custom boss body emits one audible impact per pellet burst");
+        g.shepHead(.1f);float hitRange=50;g.shootHead(g.player.camera.position,g.player.camera.forward(),hitRange,10);g.audio.sfx.render(audioBlock.data(),0);
+        CHECK(g.audio.sfx.active("shep_wound")==2,"the next rifle-rate hit has its own contact sound");
+        prepareAudio();g.shepHandAt[0]=palm;g.shepArmDown[0]=HAND_DOWN;aim(g,palm+glm::vec3{0,0,20},palm+glm::vec3{0,2,0});hitRange=50;
+        g.shootHead(g.player.camera.position,g.player.camera.forward(),hitRange,80);g.audio.sfx.render(audioBlock.data(),0);
+        CHECK(g.audio.sfx.active("shep_wound_heavy")==1,"a heavy damaging hit has a separate structural impact");
+        prepareAudio();g.updateShepherdMotionAudio(.016f);g.updateShepherdMotionAudio(.016f);g.audio.sfx.render(audioBlock.data(),0);
+        CHECK(g.audio.sfx.active("shep_motion")==0&&g.audio.sfx.active("shep_lift")==0,"a stationary pose does not emit fake movement sounds");
+        g.shepAtk=SLAM;g.shepSlamArm=0;g.shepSlamAt[0]=palm;
+        bool audibleMotion=false;
+        for(int f=0;f<80;++f){g.shepAtkT=f/60.f;g.animateShepherd(1.f/60);g.audio.sfx.render(audioBlock.data(),0);audibleMotion|=g.audio.sfx.active("shep_motion")>0||g.audio.sfx.active("shep_lift")>0;pump(735);}
+        CHECK(!audibleMotion,"attack animation never adds generic idle movement over its signature cue");
+        for(int hz:{30,60,120}){
+            prepareAudio();g.shepAtk=NONE;int starts=0,audibleFrames=0;SoundHandle last=0;bool noOverlap=true;
+            for(int f=0;f<hz*30;++f){
+                g.animateShepherd(1.f/hz);g.audio.sfx.render(audioBlock.data(),0);
+                SoundHandle active=0;for(auto h:g.shepMotionSound)if(g.audio.sfx.isPlaying(h))active=h;
+                if(active&&active!=last)++starts;last=active;
+                audibleFrames+=active!=0;
+                noOverlap&=g.audio.sfx.active("shep_motion")+g.audio.sfx.active("shep_lift")<=1;
+                pump(int(std::lround((f+1)*44100./hz)-std::lround(f*44100./hz)));
+            }
+            CHECK(noOverlap,"idle mechanisms never overlap");
+            CHECK(starts>0&&starts<=5&&audibleFrames<hz*3,"thirty seconds of moving idle contains sparse clunks and more than 90 percent silence at each simulation rate");
+        }
+        prepareAudio();g.shepMotionSound[0]=g.shepherdSound("shep_motion",g.player.position);pump(128);
+        auto motion=g.shepMotionSound[0];g.shepAtk=SLAM;g.updateShepherdMotionAudio(.016f);pump(2048);
+        CHECK(motion&&!g.audio.sfx.isPlaying(motion),"starting an attack fades an already-playing idle clunk before the attack develops");
+        prepareAudio();g.shepMotionSound[0]=g.shepherdSound("shep_motion",g.player.position);pump(128);
+        motion=g.shepMotionSound[0];g.stopShepherdAudio();pump(4410);
+        CHECK(motion&&!g.audio.sfx.isPlaying(motion),"retry/death cancellation releases the tracked movement sound");
+        prepareAudio();g.shepLastT=g.shepFinT=g.shepEndingT=-1;
+        for(int phase=0;phase<3;++phase){g.shepHeadPhase=phase;g.updateMusic();g.audio.music.render(audioBlock.data(),0);for(int k=0;k<24;++k)g.audio.music.render(audioBlock.data(),4096);
+            CHECK(g.audio.music.currentTrack()==SHEPHERD_MUSIC_TRACK&&g.audio.music.currentShepherdMovement()==shepherdscore::CONTROL+phase,"the live fight selects and plays each movement's distinct arrangement");}
+        g.enterArena(0);g.armoryOpen=false;g.updateMusic();for(int k=0;k<24;++k)g.audio.music.render(audioBlock.data(),4096);
+        CHECK(g.audio.music.currentTrack()==SHEPHERD_MUSIC_TRACK&&g.audio.music.currentShepherdMovement()==shepherdscore::ASCENT,"boarding the giant changes from the crossing score immediately");
+        g.enterArena(10);g.armoryOpen=false;
+        const char* watched[]={"shep_fist_tell","shep_sweep_tell","shep_grab_tell","shep_gaze_tell","shep_lock","shep_parry","shep_contact","shep_sweep","shep_gaze_fire","shep_memory","shep_moon","shep_gather"};
+        for(int hz:{30,60,120})for(int attack:{SLAM,SLAM2,SWEEP,GRAB,GAZE,ECHO,ORRERY,PULL})for(int variation=0;variation<(attack==SWEEP||attack==GAZE||attack==ORRERY?2:1);++variation){
+            prepareAudio();
+            const int phase=attack==ECHO?1:attack==PULL?2:0;
+            g.shepHeadPhase=phase;g.shepCycle=0;
+            while(nextAttack(phase,g.shepCycle)!=attack)++g.shepCycle;
+            if(variation)g.shepCycle+=phase==0?7:phase==1?8:9;
+            g.shepIdleT=0;
+            std::unordered_map<std::string,std::vector<float>> onsets;
+            for(int f=0;f<hz*6;++f){
+                std::array<int,std::size(watched)> before{};
+                for(size_t k=0;k<std::size(watched);++k)before[k]=g.audio.sfx.active(watched[k]);
+                g.shepHead(1.f/hz);g.audio.sfx.render(audioBlock.data(),0);
+                for(size_t k=0;k<std::size(watched);++k)if(g.audio.sfx.active(watched[k])>before[k])onsets[watched[k]].push_back(g.shepAtkT);
+                pump(int(std::lround((f+1)*44100./hz)-std::lround(f*44100./hz)));
+                if(g.shepAtk==NONE)break;
+            }
+            auto timed=[&](const char* name,std::initializer_list<float> expected){
+                const auto& got=onsets[name];bool ok=got.size()==expected.size();size_t k=0;
+                for(float t:expected){if(k<got.size())ok&=got[k]>=t-.001f&&got[k]<=t+1.f/hz+.001f;++k;}
+                if(!ok){std::printf("audio @%d Hz, attack %d, %s:",hz,attack,name);for(float t:got)std::printf(" %.3f",t);std::puts("");}
+                return ok;
+            };
+            bool synced=true;
+            if(attack==SLAM||attack==SLAM2){
+                synced&=timed("shep_fist_tell",{0});
+                synced&=attack==SLAM?timed("shep_parry",{SLAM_TELL-.27f}):timed("shep_parry",{SLAM_TELL-.27f,SLAM_TELL+.42f-.27f});
+                synced&=attack==SLAM?timed("shep_contact",{SLAM_TELL}):timed("shep_contact",{SLAM_TELL,SLAM_TELL+.42f});
+            }
+            if(attack==SWEEP)synced&=variation?
+                timed("shep_sweep_tell",{0,SWEEP_TELL+SWEEP_TRAVEL})&&timed("shep_sweep",{SWEEP_TELL,SWEEP_TELL+SWEEP_TRAVEL+.35f}):
+                timed("shep_sweep_tell",{0})&&timed("shep_sweep",{SWEEP_TELL});
+            if(attack==GRAB)synced&=timed("shep_grab_tell",{0})&&timed("shep_lock",{GRAB_LOCK})&&timed("shep_parry",{GRAB_CLOSE-.22f});
+            if(attack==GAZE){synced&=timed("shep_gaze_tell",{0})&&timed("shep_lock",{GAZE_TRACK})&&timed("shep_sweep",{});
+                synced&=variation?timed("shep_gaze_fire",{GAZE_FIRE,GAZE_FIRE+.6f,GAZE_FIRE+1.2f}):timed("shep_gaze_fire",{GAZE_FIRE});}
+            if(attack==ECHO)synced&=timed("shep_memory",{.2f,.85f,1.5f})&&timed("shep_contact",{2.f,2.65f,3.3f});
+            if(attack==ORRERY)synced&=variation?timed("shep_moon",{.8f,1.12f,1.44f,1.76f,2.08f,2.4f,2.72f}):timed("shep_moon",{.8f,1.12f,1.44f,1.76f,2.08f});
+            if(attack==PULL)synced&=timed("shep_gather",{0})&&timed("shep_contact",{PULL_LEN});
+            CHECK(synced,"attack warnings, locks, parry windows and releases sound once at their simulation markers at 30/60/120 Hz");
+        }
+        prepareAudio();g.shepHandAt[0]=palm;g.shepArmDown[0]=HAND_DOWN;
+        aim(g,palm+glm::vec3{0,0,20},palm+glm::vec3{0,2,0});g.holdfast.reset();g.pressHoldfast();pump(128);
+        auto strainHandle=g.shepStrainSound[0];g.shepHeadHurt(10000);pump(1024);
+        CHECK(!g.audio.sfx.isPlaying(strainHandle),"a phase break actually releases the tension voice in the mixer");
+        prepareAudio();g.shepWindSound=g.shepherdSound("shep_gather",g.player.position);pump(128);
+        auto windHandle=g.shepWindSound;g.playerDead=true;g.shepHead(.016f);pump(1024);
+        CHECK(!g.audio.sfx.isPlaying(windHandle),"death actually releases the warning voice instead of just clearing its handle");
+        prepareAudio();g.shepWindSound=g.shepherdSound("shep_gather",g.player.position);pump(128);
+        windHandle=g.shepWindSound;g.shepHeadReset();pump(1024);
+        CHECK(!g.audio.sfx.isPlaying(windHandle),"retry actually releases the previous attempt's warning voice");
+        prepareAudio();auto knockWalls=g.level.knockWalls;auto creakWalls=g.level.creakWalls;
+        g.level.knockWalls={0};g.level.creakWalls.clear();g.player.onGround=true;g.player.groundWall=0;g.ringKnockOn=-1;
+        g.ringTouch(1.5f);g.audio.sfx.render(audioBlock.data(),0);
+        CHECK(g.audio.sfx.active("ring_knock")==1,"capsule contact emits one authored double knock without a queued bullet-impact echo");
+        pump(44100);g.level.knockWalls.clear();g.level.creakWalls={0};g.ringCreakT=0;
+        const auto wallBox=g.level.walls[0].box;const auto feet=g.player.position;
+        g.level.walls[0].box={feet+glm::vec3{.3f,0,-1},feet+glm::vec3{1.3f,3,1}};g.player.velocity=glm::vec3{0};
+        g.ringTouch(.016f);g.audio.sfx.render(audioBlock.data(),0);
+        CHECK(g.audio.sfx.active("ring_creak")==1,"leaning on the reef emits its own quiet contact creak");
+        g.level.walls[0].box=wallBox;g.level.knockWalls=knockWalls;g.level.creakWalls=creakWalls;
+        prepareAudio();g.storyEndT=-1;g.sweepArmed=true;g.sweep.start(sweeptier::far({0,0,1}).spec);
+        g.tickSweep(.016f);g.audio.sfx.render(audioBlock.data(),0);g.tickSweep(.016f);g.audio.sfx.render(audioBlock.data(),0);
+        CHECK(g.audio.sfx.active("ring_sweep_warn")==1,"a sweep flash emits its protected warning exactly once");
+        g.sweep.reset();
+        prepareAudio();g.shepFinT=shepfall::FIN_DRAIN-.01f;g.shepEndingT=-1;
+        g.styleSystem.overdrive=true;g.styleSystem.overdriveTimer=2.f;g.updateMusic();
+        for(int k=0;k<4;++k){std::fill(audioBlock.begin(),audioBlock.end(),0.f);g.audio.drive.render(audioBlock.data(),4096,44100,float(g.audio.music.rootNote()),g.audio.music.samplesPerStep(),g.audio.music.stepPos(),1.f);}
+        CHECK(g.audio.drive.level()>.9f,"the ending regression starts with an audible Overdrive bed");
+        g.audio.music.render(audioBlock.data(),4096);
+        CHECK(std::any_of(audioBlock.begin(),audioBlock.end(),[](float x){return std::fabs(x)>.001f;}),"the score stays present until the actual internal explosion");
+        g.shepFall(.02f);g.audio.music.render(audioBlock.data(),4096);
+        CHECK(std::all_of(audioBlock.begin(),audioBlock.end(),[](float x){return x==0.f;}),"the internal explosion releases the score immediately instead of waiting for the capsule checkpoint");
+        g.updateMusic();g.audio.music.render(audioBlock.data(),4096);
+        CHECK(std::all_of(audioBlock.begin(),audioBlock.end(),[](float x){return x==0.f;}),"the next frame keeps the detonation's score release in place");
+        std::fill(audioBlock.begin(),audioBlock.end(),0.f);
+        for(int k=0;k<20;++k)g.audio.drive.render(audioBlock.data(),4096,44100,float(g.audio.music.rootNote()),g.audio.music.samplesPerStep(),g.audio.music.stepPos(),1.f);
+        CHECK(g.audio.drive.level()<.002f,"an active Overdrive cannot restart its power bed under the quiet ending");
+        g.shepFinT=-1;g.shepEndingT=-1;g.updateMusic();g.audio.music.render(audioBlock.data(),4096);
+        CHECK(std::any_of(audioBlock.begin(),audioBlock.end(),[](float x){return std::fabs(x)>.001f;}),"retry restores the combat score after the silent ending");
         balancepanel::extraBuild={};app.currentState.reset();
     }
     std::remove(StorySave::key);ImGui_ImplOpenGL3_Shutdown();ImGui_ImplSDL2_Shutdown();ImGui::DestroyContext();

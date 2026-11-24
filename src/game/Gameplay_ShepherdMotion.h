@@ -133,4 +133,5 @@ inline void GameplayState::animateShepherd(float dt) {
         else shepPalmRotation[k]=glm::slerp(shepPalmRotation[k],orientation,1.f-std::exp(-dt*13.f));
     }
     shepPoseReady=true;shepPoseAttack=shepAtk;
+    updateShepherdMotionAudio(dt);
 }

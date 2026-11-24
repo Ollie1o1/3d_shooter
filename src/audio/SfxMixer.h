@@ -48,6 +48,10 @@ public:
     static constexpr float MAX_DIST = 90.f;   // silent beyond (fading over the last 10 m)
     static constexpr int   CHATTER_CAP    = 6;            // enemy idle/step voices at once
     static constexpr float SIDE_CHATTER   = 0.70795f;     // -3 dB under a TELL
+    // -4 dB under a TELL for the player's own sounds and unprotected world
+    // detail (gun tails, echoes, casings, bullet impacts): measured with
+    // tools/listen.py masking, the rifle family otherwise buried boss warnings
+    static constexpr float SIDE_PLAYER    = 0.63096f;
     static constexpr float DRIVE_TRIM     = 0.86f;        // the drive's shape adds ~1.3 dB at drive 0.35: taken back
     static constexpr float CROWD_FREE     = 6.f;          // crowd voices before the crowd shares its level
     static constexpr float FOCUS_CROWD    = 0.6f;         // the crowd's gain at full FOCUS (-4.4 dB)...
@@ -150,10 +154,11 @@ public:
         c.group = o.group; c.priority = o.priority; c.positional = o.positional; c.a = o.pos; c.x = o.floor;
         c.y = o.delay; c.role = o.role; c.drive = o.drive; c.unducked = o.unducked;
         lastPitch = c.pitch; lastPick = pick;
+        if (playLog) playLog->push_back(name);
         return push(c) ? c.serial : 0;
     }
     void move(SoundHandle h, glm::vec3 p) { if (!h) return; Cmd c{}; c.kind = Cmd::MOVE; c.serial = h; c.a = p; push(c); }
-    void stop(SoundHandle h) { if (!h) return; Cmd c{}; c.kind = Cmd::STOP; c.serial = h; push(c); }
+    void stop(SoundHandle h, float release = 0.f) { if (!h) return; Cmd c{}; c.kind = Cmd::STOP; c.serial = h; c.x = release; push(c); }
     void setListener(glm::vec3 pos, glm::vec3 right, glm::vec3 fwd) {
         Cmd c{}; c.kind = Cmd::LISTENER; c.a = pos; c.b = right; c.c = fwd; push(c);
     }
@@ -170,14 +175,26 @@ public:
 
     // --- audio thread ---------------------------------------------------------
     // io: interleaved stereo, `frames` long, already holding the music
-    void render(float* io, int frames) {
+    // Dev stems (tools/listen.py): when given, musicStem receives the ducked
+    // music and sfxStem everything this mixer added, both before the soft clip.
+    void render(float* io, int frames, float* musicStem = nullptr, float* sfxStem = nullptr) {
         drain();
         for (int done = 0; done < frames;) {
             int n = std::min(CHUNK, frames - done);
-            mixChunk(io + 2 * done, n);
+            focusAt = focusStem ? focusStem + 2 * done : nullptr;
+            mixChunk(io + 2 * done, n, musicStem ? musicStem + 2 * done : nullptr, sfxStem ? sfxStem + 2 * done : nullptr);
             done += n;
         }
     }
+    // Dev: when set, play() appends each started sound's name (game thread)
+    std::vector<std::string>* playLog = nullptr;
+    // Dev: sounds whose name passes `pick` are also mixed (dry, as heard) into
+    // render()'s focusStem, so one family can be judged against everything else
+    template <class F> void markFocus(F pick) {
+        focusMask.assign(bank.size(), 0);
+        for (const auto& [n, ids] : names) if (pick(n)) for (int id : ids) focusMask[id] = 1;
+    }
+    float* focusStem = nullptr;   // interleaved stereo, `frames` long, set around a render() call
 
     // --- introspection (audio-thread state; tests) -----------------------------
     bool isPlaying(SoundHandle h) const {
@@ -195,6 +212,12 @@ public:
     int active(SoundGroup g) const {
         int n = 0;
         for (const auto& v : voices) n += v.active && v.group == g;
+        return n;
+    }
+    int active(const std::string& name) const {
+        auto it=names.find(name);if(it==names.end())return 0;
+        int n=0;
+        for(const auto& v:voices)if(v.active&&std::find(it->second.begin(),it->second.end(),v.sample)!=it->second.end())++n;
         return n;
     }
     int roleActive(SoundRole r) const {
@@ -226,6 +249,7 @@ private:
         glm::vec3  a, b, c;
     };
     struct Voice {
+        int releaseLeft = 0, releaseTotal = 0; // optional click-free cancellation
         bool       active = false, priority = false, positional = false, fresh = true, unducked = false;
         uint32_t   serial = 0;
         int        sample = 0;
@@ -244,6 +268,8 @@ private:
         float      driveEnv = 0.f;                     // drive: the voice's recent peak
         uint32_t   born = 0;                           // start order (chatter steals the oldest)
     };
+    std::vector<char> focusMask;
+    float* focusAt = nullptr;
     struct Listener { glm::vec3 pos{0.f}, right{1.f, 0.f, 0.f}, fwd{0.f, 0.f, -1.f}; };
 
     float rate = 44100.f;
@@ -329,7 +355,12 @@ private:
         switch (c.kind) {
             case Cmd::PLAY: startVoice(c); break;
             case Cmd::MOVE: for (auto& v : voices) if (v.active && v.serial == c.serial) v.at = c.a; break;
-            case Cmd::STOP: for (auto& v : voices) if (v.active && v.serial == c.serial) v.active = false; break;
+            case Cmd::STOP:
+                for (auto& v : voices) if (v.active && v.serial == c.serial) {
+                    if (!(c.x > 0.f) || v.wait > 0) v.active = false;
+                    else if (!v.releaseTotal) v.releaseLeft = v.releaseTotal = std::max(1, int(std::min(c.x, .1f) * rate));
+                }
+                break;
             case Cmd::LISTENER: lis.pos = c.a; lis.right = c.b; lis.fwd = c.c; break;
             case Cmd::SPACE: {
                 int s = std::clamp((int)c.x, 0, (int)ReverbSpace::COUNT - 1);
@@ -390,6 +421,8 @@ private:
         if (solo && !(solo & (1 << (int)v.role))) { L = R = 0.f; lp = 1.f; if (heard) *heard = 0.f; return; }
         float g = v.gain * ((v.group == SoundGroup::ENEMY || v.group == SoundGroup::WORLD) && !v.unducked ? duckGain : 1.f);
         if (v.role == SoundRole::CHATTER) g *= 1.f - sideEnv * (1.f - SIDE_CHATTER);   // steps back under a tell
+        else if (v.role != SoundRole::TELL && (v.group == SoundGroup::PLAYER || (v.group == SoundGroup::WORLD && !v.unducked)))
+            g *= 1.f - sideEnv * (1.f - SIDE_PLAYER);
         const bool inCrowd = crowd(v);
         const float base = g;
         if (heard) *heard = base;
@@ -434,9 +467,11 @@ private:
         lp = 1.f - std::exp(-6.2831853f * fc / rate);
     }
 
-    void mixChunk(float* io, int n) {
+    void mixChunk(float* io, int n, float* musicStem = nullptr, float* sfxStem = nullptr) {
         bool tellOn = false;
-        for (const auto& v : voices) if (v.active && v.role == SoundRole::TELL && v.wait <= 0) { tellOn = true; break; }
+        // A tell, or a protected boss impact/reward (priority, unducked world action), opens the sidechain
+        for (const auto& v : voices) if (v.active && v.wait <= 0 && (v.role == SoundRole::TELL ||
+            (v.role == SoundRole::ACTION && v.group == SoundGroup::WORLD && v.priority && v.unducked))) { tellOn = true; break; }
         const float side = tellOn ? 1.f : 0.f;
         {   // THE CROWD: how many are sounding, and the focus, eased per chunk
             int crowded = 0;
@@ -457,6 +492,7 @@ private:
             io[2 * i] *= m; io[2 * i + 1] *= m;
         }
         duckHold = std::max(0.f, duckHold - n / rate);
+        if (musicStem) std::copy(io, io + 2 * n, musicStem);
         // Reverb parameters drift toward the place's preset (~1 s)
         float k = 1.f - std::exp(-(float)n / (0.35f * rate));
         revCur.fb   += (revWant.fb   - revCur.fb)   * k;
@@ -464,13 +500,20 @@ private:
         revCur.wet  += (revWant.wet  - revCur.wet)  * k;
 
         std::fill(send.begin(), send.begin() + n, 0.f);
-        for (auto& v : voices) if (v.active) mixVoice(v, io, n);
+        for (auto& v : voices) if (v.active) {
+            if (focusAt && v.sample < (int)focusMask.size() && focusMask[v.sample]) {
+                float tmp[2 * CHUNK] = {};
+                mixVoice(v, tmp, n);
+                for (int i = 0; i < 2 * n; ++i) { io[i] += tmp[i]; focusAt[i] += tmp[i]; }
+            } else mixVoice(v, io, n);
+        }
         for (int i = 0; i < n; ++i) {
             float in = send[i] * 0.03f, l = 0.f, r = 0.f;
             for (int c = 0; c < 4; ++c) { l += combL[c].process(in, revCur.fb, revCur.damp); r += combR[c].process(in, revCur.fb, revCur.damp); }
             for (int a = 0; a < 2; ++a) { l = apL[a].process(l); r = apR[a].process(r); }
             io[2 * i] += l * revCur.wet; io[2 * i + 1] += r * revCur.wet;
         }
+        if (sfxStem) for (int i = 0; i < 2 * n; ++i) sfxStem[i] = io[i] - (musicStem ? musicStem[i] : 0.f);
         for (int i = 0; i < 2 * n; ++i) io[i] = softClip(io[i]);
     }
     void mixVoice(Voice& v, float* io, int n) {
@@ -485,6 +528,7 @@ private:
         const double end = (double)s.size() - 1.0;
         if (tL + tR + v.curL + v.curR <= 0.f) {   // out of earshot: keep time, skip the work
             v.pos += (double)v.pitch * m;
+            if (v.releaseTotal) { v.releaseLeft -= m; if (v.releaseLeft <= 0) v.active = false; }
             if (v.pos >= end) v.active = false;
             return;
         }
@@ -502,10 +546,12 @@ private:
             }
             v.lp += dlp; v.curL += dL; v.curR += dR;
             v.z += v.lp * (x - v.z);
-            io[2 * i]     += v.z * v.curL;
-            io[2 * i + 1] += v.z * v.curR;
-            send[i] += v.z * (v.curL + v.curR) * 0.5f * SEND[(int)v.group];
+            const float release = v.releaseTotal ? float(v.releaseLeft) / v.releaseTotal : 1.f;
+            io[2 * i]     += v.z * v.curL * release;
+            io[2 * i + 1] += v.z * v.curR * release;
+            send[i] += v.z * (v.curL + v.curR) * 0.5f * SEND[(int)v.group] * release;
             v.pos += v.pitch;
+            if (v.releaseTotal && --v.releaseLeft <= 0) { v.active = false; break; }
         }
         v.curL = tL; v.curR = tR; v.lp = tlp;
     }

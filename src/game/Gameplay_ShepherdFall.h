@@ -66,6 +66,9 @@ inline void GameplayState::shepFall(float dt) {
         if (shepFinT < FIN_DRAIN) shake(0.1f, 0.01f + 0.03f * shepFinT / FIN_DRAIN);
         if (before < FIN_DRAIN && shepFinT >= FIN_DRAIN) {   // 0: nothing comes out. It goes off inside
             holdfast.cut();
+            // updateMusic runs before the simulation. Release here as well so
+            // the callback cannot play another frame of combat after detonation.
+            audio.setMusicVolume(0.f);audio.music.setDrive(false);audio.setOverdrive(false,0);
             shake(2.5f, 0.12f);
             for (int k = 0; k < 8; ++k) {
                 fx.spawnBurst(c + glm::vec3{cosmetic::range(-12.f, 12.f), cosmetic::range(-4.f, 14.f), cosmetic::range(-6.f, 2.f)}, POST_LIT, 50, 20.f, 1.4f, 2.f);

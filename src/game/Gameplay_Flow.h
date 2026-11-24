@@ -1418,11 +1418,12 @@ inline void GameplayState::updateMusic() {
         audio.setOverdrive(overdriveOn()&&!playerDead&&!paused&&!armoryOpen,0);return;
     }
     if(ring()&&!g_devRingTest){   // Chapter 6: the helmet's pulse on the crossing, the full drum and bass in a fight
-        const bool finaleScore=shepherd() && director.arena>=7;
+        const bool finaleScore=shepherd();
         m.setTrack(finaleScore?SHEPHERD_MUSIC_TRACK:RING_MUSIC_TRACK);
         m.setShepherdMovement(shepLastT>=0.f||shepFinT>=0.f?shepherdscore::LAST_COUNT:
             director.arena>=10?shepherdscore::CONTROL+shepHeadPhase:shepherdscore::ASCENT);
-        m.setDrive(overdriveOn()&&!playerDead);m.setSolo(false);
+        const bool ringMusicEnded=shepherd()&&(shepEndingT>=0.f||shepFinT>=shep::FIN_DRAIN);
+        m.setDrive(overdriveOn()&&!playerDead&&!ringMusicEnded);m.setSolo(false);
         bool dog=false;for(const auto& e:enemies)if(e.alive&&isSheepdog(e.type))dog=true;
         float intensity=director.fighting()?(dog?1.18f:1.f):.38f;
         if(shepherd())intensity=level.arenaAt(player.position)==5?.4f:shepTurnT>=0.f?.35f:director.fighting()||shepBreakT>=0.f||shepTines>=shep::TINES?1.3f:.95f;   // THE SHEPHERD: the boss, loud and at full tempo throughout (only its turn drops to the pulse)
@@ -1432,9 +1433,9 @@ inline void GameplayState::updateMusic() {
         m.setIntensity(playerDead?.05f:intensity);m.setMuffle(paused||armoryOpen||playerDead||ringQuiet());
         float vol=(settings?settings->musicVolume:.6f)*(director.fighting()||shepherd()?1.f:.55f);
         if(ringDark()>.2f||sweptFalling())vol=0.f;   // (true silence: the Shadow Band, the swept death)
-        if(shepherd()&&shepEndingT>=0.f)vol=0.f;   // (and the end: drifting, nobody keeping it)
+        if(ringMusicEnded)vol=0.f;   // release the score at the internal explosion, then drift in silence
         audio.setMusicVolume(vol);
-        audio.setOverdrive(overdriveOn()&&!playerDead&&!paused&&!armoryOpen,0);return;
+        audio.setOverdrive(overdriveOn()&&!playerDead&&!paused&&!armoryOpen&&!ringMusicEnded,0);return;
     }
     if(cold()){   // Chapter 5: COLD STORAGE, quiet under the wind until a fight; THE RESTORER in the Vault
         const int here=level.arenaAt(player.position);

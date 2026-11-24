@@ -138,6 +138,7 @@ inline bool GameplayState::shootComb(glm::vec3 from, glm::vec3 dir, float& dista
             if (t <= 0.f || t >= distance) continue;
             distance = t;
             shepShieldHp[i] -= dmg;
+            shepherdHitSound(from+dir*t,dmg);
             fx.spawnHitSparks(from + dir * t, SWEEP_ICE);
             if (shepShieldHp[i] <= 0.f) {
                 fx.spawnBurst(c, SWEEP_ICE, 30, 10.f, 0.8f, 3.f);

@@ -10,7 +10,7 @@ inline void GameplayState::updateShepherdCourt(float dt) {
         shepArmDown[k]=std::max(0.f,shepArmDown[k]-dt);
         if(shepPinT[k]<=0.f||shepCounterHit[k]||shephead::PIN_TIME-shepPinT[k]<shephead::COUNTER_HIT)continue;
         shepCounterHit[k]=true;
-        audio.stop(shepStrainSound[k]);shepStrainSound[k]=0;
+        audio.stop(shepStrainSound[k],.012f);shepStrainSound[k]=0;
         if(shepHeadHp<=0.f||shepRearT>=0.f)continue;
         shepCounterT=shephead::COUNTER_RECOIL;
         const auto heart=glm::vec3(shepChestPose()*glm::vec4(shephead::chest(shepHeadRise)+glm::vec3{0,5,26},1));

@@ -1,4 +1,5 @@
 #pragma once
+#include "audio/RingAudio.h"
 // =============================================================================
 // Gameplay_Tick.h — GameplayState: The fixed 60 Hz simulation tick, and keeping the player inside the
 // arena they're fighting in (zones, ceilings, checkpoints, grapple targets).
@@ -502,12 +503,13 @@ inline void GameplayState::physicsTick(float dt, const Uint8* keys, bool parryKe
         static int last = -1;
         int k = cosmetic::index(3); if (k >= last) ++k; last = k;   // never the same step twice running
         int vol = 50 + (int)std::min(14.f, playerXZSpeed * 1.5f);
-        if (player.wadeDepth >= 0.1f) audio.play("wade", 60);
+        if(ring())vol=std::max(1,int(vol*ringaudio::FOOTSTEP_GAIN));
+        if (player.wadeDepth >= 0.1f) audio.play("wade", ring()?15:60);
         else if (onMetal()) audio.play("step_metal", vol);   // a steel deck rings under you
         else audio.play(STEPS[k], vol);
     }
     // The land sound grows with the fall (a hop is a tap, a drop is a thud)
-    if (justLanded && landFall > 2.f) audio.play(onMetal() ? "land_metal" : "land", 45 + (int)std::min(83.f, landFall * 5.f));
+    if (justLanded && landFall > 2.f) audio.play(onMetal() ? "land_metal" : "land", int((45 + std::min(83.f, landFall * 5.f))*(ring()?ringaudio::LANDING_GAIN:1.f)));
     // Sliding over dry ground: grit thrown up from under you
     if (player.sliding && player.onGround && player.wadeDepth < 0.1f && playerXZSpeed > 6.f) {
         slideDustT -= dt;

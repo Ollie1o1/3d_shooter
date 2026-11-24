@@ -36,6 +36,10 @@ route, Blender assets and verification. Launch Chapter 2 directly with `./shoote
 
 Chapter 6's final ascent and boss have [design notes](docs/chapter-6-counterweight.md) and a [dedicated audio plan and implementation](docs/chapter-6-audio-plan.md). Start the ascent with `./shooter --shepherd --arena 8`, or the crown fight with `--arena 11`.
 
+An optional [audio-input API reviewer](docs/audio-api-review.md) critiques the actual
+recordings. Run `make audio-review-plan` to preview its clips without making API
+calls; the setup guide covers the local credential and review commands.
+
 Every chapter ends with a **rank** (S to C, from time, deaths and style against that chapter's own par times) and keeps your best rank and best time, shown beside it on the Story page. **TAB** on the Story page opens the **UNIT ARCHIVE**: Units 01 to 23, which wrecks you've found, and every last log you've read, kept across runs.
 
 Combat Practice is available from **F3** on the main menu or the Story page.

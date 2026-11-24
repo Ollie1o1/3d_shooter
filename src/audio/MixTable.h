@@ -92,6 +92,12 @@ inline const std::vector<MixEntry>& mixTable() {
         {"shep_moon",C::WORLD,0.f},{"shep_strain",C::WORLD,0.f},
         {"shep_contact",C::ACTION,0.f},{"shep_sweep",C::ACTION,0.f},{"shep_grip",C::ACTION,0.f},{"shep_pin",C::ACTION,0.f},
         {"shep_counter",C::ACTION,0.f},{"shep_break",C::ACTION,0.f},{"shep_seal",C::ACTION,0.f},{"shep_implode",C::ACTION,0.f},
+        {"shep_beam_tell",C::TELL,0.f},{"shep_gaze_fire",C::ACTION,0.f},{"shep_beam",C::ACTION,0.f},
+        // The crossing: floor-transmitted machinery, rather than reused gun/UI sounds.
+        {"ring_knock",C::FOLEY,0.f},{"ring_creak",C::FOLEY,0.f},
+        {"ring_sweep_warn",C::TELL,0.f},{"ring_sweep_pass",C::WORLD,0.f},{"ring_debris",C::FOLEY,0.f},
+        {"shep_motion",C::FOLEY,0.f},{"shep_lift",C::FOLEY,0.f},
+        {"shep_wound",C::ACTION,0.f},{"shep_wound_heavy",C::ACTION,0.f},
     };
     return T;
 }

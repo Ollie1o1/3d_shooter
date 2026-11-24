@@ -47,8 +47,18 @@ through `src/sword_steel_2.wav`: Norse Sword Katana Blade on Blade, starting at
 rumble removal, transient control and tail fades. These contact cues contain
 no synthesized boom, noise crunch or oscillator-based metallic substitute.
 
-The Shepherd's 18 cue families (`shep_*`, three variants each) are original
-deterministic synthesis from `tools/gen_shepherd_audio.py`: inharmonic steel,
-counting tones, oscillator body and filtered noise. Contact cues also use the
-same frozen CC0 `src/clank_rec.wav` texture credited above. No new external
+Chapter 6's 30 cue families (`shep_*` and `ring_*`, three variants each) are
+original deterministic synthesis from `tools/gen_shepherd_audio.py`: short
+inharmonic steel, low mechanical body and filtered friction. They also use the
+same frozen CC0 `src/clank_rec.wav` texture credited above, resampled with
+interpolation and filtered. Capsule double knocks, hull creaks, sweep warnings,
+debris, gaze discharge, beam ignition, heavy body contacts and load-bearing
+torso/arm movement have separate recipes. No new external
 recordings or music are shipped by this pass.
+
+The attack-signature revision also uses the frozen CC0 `pump_rec.wav` and
+`cyl_close_rec.wav` recordings credited above for discrete winch teeth, latches
+and idle clunks, and the three credited `sword_steel_*.wav` strikes for cage and
+heavy-contact fractures. These are short contact transients; their tails are
+original inharmonic/physical-mode synthesis. Idle and attack wind-ups contain
+no sustained filtered-noise bed.

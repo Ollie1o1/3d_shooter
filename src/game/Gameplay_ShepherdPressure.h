@@ -17,6 +17,7 @@ inline bool GameplayState::shepBreakGrip(glm::vec3 from,glm::vec3 dir,float& dis
     float hit=shephead::hitBody(from,dir,{hand-glm::vec3{12,8,16},hand+glm::vec3{12,9,16}});
     if(hit<=0.f||hit>=distance)return false;
     distance=hit;shepGrabHp-=damage;fx.spawnHitSparks(from+dir*hit,HOLDFAST_STEEL);
+    shepherdHitSound(from+dir*hit,damage);
     if(shepGrabHp<=0.f)shepReleaseGrab(true);
     return true;
 }
@@ -28,7 +29,10 @@ inline void GameplayState::shepPressure(float dt,float before) {
         const int passes=shepVariation==1?2:1;
         for(int pass=0;pass<passes;++pass){
             float start=SWEEP_TELL+pass*(SWEEP_TRAVEL+.35f),end=start+SWEEP_TRAVEL;
-            if(pass&&before<start-.35f&&shepAtkT>=start-.35f)shepherdSound("shep_sweep_tell",{player.position.x,shep::FALL_Y+6.f,shepAttackAt.z},.8f);
+            if(pass&&before<start-.35f&&shepAtkT>=start-.35f){
+                audio.stop(shepWindSound,.012f);
+                shepWindSound=shepherdSound("shep_sweep_tell",{player.position.x,shep::FALL_Y+6.f,shepAttackAt.z},.8f);
+            }
             if(shepAtkT<start||before>end)continue;
             float z=pass?shepAttackAt.z:shepSweepZ;int side=pass?1-shepSlamArm:shepSlamArm;
             float a=sweepX(std::max(before,start)-pass*(SWEEP_TRAVEL+.35f),side,shep::FALL_X0-14.f,shep::FALL_X1+14.f);
@@ -87,7 +91,7 @@ inline void GameplayState::shepPressure(float dt,float before) {
                 }
                 if(glm::length(glm::vec2(p.x-at.x,p.z-at.z))<4.8f&&p.y<at.y+14.f)
                     damagePlayer(27.f,at,.25f,.045f,.4f,{EnemyType::COUNT,DamageKind::BEAM});
-                fx.spawnBurst(at,SWEEP_RED,30,10.f,.6f,2.f);shepherdSound("shep_sweep",at,.7f);shake(.15f,.025f);
+                fx.spawnBurst(at,SWEEP_RED,30,10.f,.6f,2.f);shepherdSound("shep_gaze_fire",at,.7f);shake(.15f,.025f);
             }
         }
         if(shepAtkT>GAZE_END+(count-1)*.6f)finish();

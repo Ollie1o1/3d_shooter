@@ -6,6 +6,14 @@
 #include "../src/main.cpp"
 #undef main
 int main(){
+    const char* auditPath=std::getenv("OVERDRIVE_AUDIO_AUDIT");
+    // OVERDRIVE_AUDIO_STEMS=dir also writes music/sfx/beds stems and a timed
+    // cue log there, for tools/listen.py (it implies an audit capture).
+    const char* stemDir=std::getenv("OVERDRIVE_AUDIO_STEMS");
+    std::string stemMix=stemDir?std::string(stemDir)+"/mix.wav":"";
+    if(stemDir && !auditPath)auditPath=stemMix.c_str();
+    std::vector<int16_t> audit;
+    std::vector<float> stemMusic,stemSfx,stemBeds,stemFocus;std::vector<std::string> playLog;FILE* eventLog=nullptr;
     SDL_setenv("SDL_AUDIODRIVER","dummy",1);
     if(SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO)!=0)return 1;
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION,3);SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION,3);
@@ -22,6 +30,14 @@ int main(){
     bool finished=false;int shots=0,pins=0,overdrives=0;float lowest=100,seconds=0;
     {
         App app;app.window=window;app.ctx=context;
+        if(auditPath)for(const auto& cue:mixTable())app.audio.loadSound(cue.name,std::string("assets/sfx/")+cue.name+".wav");
+        if(stemDir){app.audio.sfx.playLog=&playLog;
+            // OVERDRIVE_AUDIO_FOCUS=prefix[,prefix...] (default the boss's shep_/ring_ cues) -> focus.wav
+            std::string focus=std::getenv("OVERDRIVE_AUDIO_FOCUS")?std::getenv("OVERDRIVE_AUDIO_FOCUS"):"shep_,ring_";
+            app.audio.sfx.markFocus([&](const std::string& n){
+                for(size_t a=0;a<=focus.size();){size_t b=focus.find(',',a);if(b==std::string::npos)b=focus.size();
+                    if(b>a && n.rfind(focus.substr(a,b-a),0)==0)return true;a=b+1;}
+                return false;});eventLog=std::fopen((std::string(stemDir)+"/events.md").c_str(),"w");}
         app.pending=App::NextState::Menu;app.applyPendingState();
         auto& menu=*static_cast<MenuState*>(app.currentState.get());
         StartOptions options;options.storyChapter=6;options.arena=10;options.practice=true;options.god=false;
@@ -92,6 +108,24 @@ int main(){
             const float before=g.styleSystem.health;
             const bool wasOverdrive=g.overdriveOn();
             g.update(1.f/60);
+            if(auditPath){
+                // The real gameplay emits every cue. Advance its live score,
+                // effects, Overdrive and room buses on the same 60 Hz clock.
+                // No wind/rope post-processing or synthesized enemy voices.
+                float pcm[735*2],mus[735*2],fx[735*2],beds[735*2]={},foc[735*2]={};
+                app.audio.music.render(pcm,735);
+                if(stemDir)app.audio.sfx.focusStem=foc;
+                app.audio.sfx.render(pcm,735,mus,fx);app.audio.sfx.focusStem=nullptr;
+                app.audio.drive.render(beds,735,44100,float(app.audio.music.rootNote()),app.audio.music.samplesPerStep(),app.audio.music.stepPos(),app.audio.masterVolume);
+                app.audio.room.render(beds,735);
+                for(int i=0;i<735*2;++i)pcm[i]+=beds[i];
+                if(stemDir){
+                    stemMusic.insert(stemMusic.end(),mus,mus+735*2);stemSfx.insert(stemSfx.end(),fx,fx+735*2);stemBeds.insert(stemBeds.end(),beds,beds+735*2);stemFocus.insert(stemFocus.end(),foc,foc+735*2);
+                    for(const auto& n:playLog)if(eventLog)std::fprintf(eventLog,"%.2f s: %s\n",seconds,n.c_str());
+                    playLog.clear();
+                }
+                for(float v:pcm)audit.push_back(int16_t(std::clamp(SfxMixer::softClip(v)*.7f,-1.f,1.f)*32767));
+            }
             if(!wasOverdrive&&g.overdriveOn())++overdrives;
             if(g.styleSystem.health<before-3)std::printf("  damage %.0f at %.2fs attack %d t %.2f position %.1f %.1f %.1f\n",before-g.styleSystem.health,seconds,g.shepAtk,g.shepAtkT,g.player.position.x,g.player.position.y,g.player.position.z);
             lowest=std::min(lowest,g.styleSystem.health);
@@ -100,6 +134,23 @@ int main(){
         finished=g.storyEndT>=0&&!g.playerDead&&!g_godMode&&overdrives>0;
         std::printf("%s: input pilot %.1fs, %d trigger pulls, %d pin attempts, %d Overdrives, lowest HP %.1f, ending %d, god %d\n",finished?"ok":"FAIL",seconds,shots,pins,overdrives,lowest,g.storyEndT>=0,g_godMode);
         balancepanel::extraBuild={};app.currentState.reset();
+    }
+    if(auditPath){
+        FILE* file=std::fopen(auditPath,"wb");if(!file)return 1;
+        auto u16=[&](uint16_t v){std::fputc(v&255,file);std::fputc(v>>8,file);};auto u32=[&](uint32_t v){u16(v&65535);u16(v>>16);};
+        std::fwrite("RIFF",1,4,file);u32(36+audit.size()*2);std::fwrite("WAVEfmt ",1,8,file);u32(16);u16(1);u16(2);u32(44100);u32(44100*4);u16(4);u16(16);std::fwrite("data",1,4,file);u32(audit.size()*2);for(auto v:audit)u16(uint16_t(v));std::fclose(file);
+        std::printf("Gameplay audio audit: %.2fs -> %s\n",audit.size()/88200.,auditPath);
+    }
+    if(stemDir){
+        if(eventLog)std::fclose(eventLog);
+        auto writeStem=[&](const char* name,const std::vector<float>& x){
+            FILE* file=std::fopen((std::string(stemDir)+"/"+name).c_str(),"wb");if(!file)return;
+            auto u16=[&](uint16_t v){std::fputc(v&255,file);std::fputc(v>>8,file);};auto u32=[&](uint32_t v){u16(v&65535);u16(v>>16);};
+            std::fwrite("RIFF",1,4,file);u32(36+x.size()*2);std::fwrite("WAVEfmt ",1,8,file);u32(16);u16(1);u16(2);u32(44100);u32(44100*4);u16(4);u16(16);std::fwrite("data",1,4,file);u32(x.size()*2);
+            for(float v:x)u16(uint16_t(int16_t(std::clamp(v*.7f,-1.f,1.f)*32767)));std::fclose(file);
+        };
+        writeStem("music.wav",stemMusic);writeStem("sfx.wav",stemSfx);writeStem("beds.wav",stemBeds);writeStem("focus.wav",stemFocus);
+        std::printf("Stems: music/sfx/beds/mix + events.md -> %s\n",stemDir);
     }
     ImGui_ImplOpenGL3_Shutdown();ImGui_ImplSDL2_Shutdown();ImGui::DestroyContext();SDL_GL_DeleteContext(context);SDL_DestroyWindow(window);SDL_Quit();return finished?0:1;
 }

@@ -126,7 +126,7 @@ public:
         return sfx.play(name, o);
     }
     void moveSource(SoundHandle h, glm::vec3 p) { if (initialized) sfx.move(h, p); }
-    void stop(SoundHandle h) { if (initialized) sfx.stop(h); }
+    void stop(SoundHandle h, float release = 0.f) { if (initialized) sfx.stop(h, release); }
     void setListener(glm::vec3 pos, glm::vec3 right, glm::vec3 fwd) { if (initialized) sfx.setListener(pos, right, fwd); }
     void setSpace(ReverbSpace s) { if (initialized) sfx.setSpace(s); }
     void duck(float dB, float seconds) { if (initialized) sfx.duck(dB, seconds); }

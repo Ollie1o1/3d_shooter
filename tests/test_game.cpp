@@ -3376,7 +3376,10 @@ int main() {
                                 "caller_toll", "caller_clang", "sieve_rattle", "sieve_stake",
                                 "shep_fist_tell", "shep_sweep_tell", "shep_grab_tell", "shep_gaze_tell", "shep_lock", "shep_parry",
                                 "shep_memory", "shep_moon", "shep_gather", "shep_contact", "shep_sweep", "shep_grip",
-                                "shep_pin", "shep_strain", "shep_counter", "shep_break", "shep_seal", "shep_implode"};
+                                "shep_pin", "shep_strain", "shep_counter", "shep_break", "shep_seal", "shep_implode",
+                                "shep_beam_tell", "shep_gaze_fire", "shep_beam", "ring_knock", "ring_creak",
+                                "ring_sweep_warn", "ring_sweep_pass", "ring_debris",
+                                "shep_motion", "shep_lift", "shep_wound", "shep_wound_heavy"};
         std::vector<std::string> names(std::begin(loaded), std::end(loaded));
         for(int i=0;i<7;++i)names.push_back("successor_line_"+std::to_string(i));
         for(int i=0;i<7;++i)names.push_back("lab_pa_"+std::to_string(i));

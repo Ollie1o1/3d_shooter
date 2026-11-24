@@ -1197,7 +1197,11 @@ private:
             // SUNSET's rounded pulse has a different identity from the bosses'
             // detuned saws. Their upper octave only opens at a scored peak.
             float raw=track==SHEPHERD_MUSIC_TRACK?
-                leadOsc.sine(hz,SR)*.65f+leadOsc2.square(hz*.5f,SR)*.35f:
+                shepherdMovement==shepherdscore::RESISTANCE?
+                    leadOsc.saw(hz,SR)*.55f+leadOsc2.square(hz*.5f,SR)*.3f+leadHi.sine(hz*2,SR)*.15f:
+                shepherdMovement==shepherdscore::COLLAPSE?
+                    leadOsc.saw(hz,SR)*.45f+leadOsc2.saw(hz*1.006f,SR)*.35f+leadHi.square(hz*2,SR)*.2f:
+                leadOsc.sine(hz,SR)*.5f+leadOsc2.square(hz*.5f,SR)*.5f:
                 track==combatscore::SUNSET?
                 leadOsc.square(hz,SR)*.45f+leadOsc2.sine(hz,SR)*.55f:
                 leadOsc.saw(hz,SR)*.6f+leadOsc2.saw(hz*1.005f,SR)*.4f;

@@ -4,6 +4,7 @@
 #include "audio/MusicSynth.h"
 #include "audio/SfxMixer.h"
 #include "audio/ShepherdAudio.h"
+#include "audio/RingAudio.h"
 #include <fstream>
 #include <cstdio>
 #include <cstring>
@@ -65,7 +66,7 @@ int main() {
     checkMenuPlayback();
     bool shepherdAssets=true,shepherdLevels=true,shepherdOnset=true,shepherdVariants=true;
     int shepherdFamilies=0;
-    for(const auto& entry:mixTable())if(std::string(entry.name).find("shep_")==0){
+    for(const auto& entry:mixTable())if(std::string(entry.name).find("shep_")==0||std::string(entry.name).find("ring_")==0){
         ++shepherdFamilies;std::vector<float> previous;
         for(int v=0;v<3;++v){
             auto x=wav(std::string("assets/sfx/")+entry.name+(v?"_"+std::to_string(v):"")+".wav");
@@ -76,8 +77,69 @@ int main() {
             shepherdOnset&=onset<221;shepherdVariants&=previous.empty()||x!=previous;previous=std::move(x);
         }
     }
-    check(shepherdFamilies==18&&shepherdAssets&&shepherdLevels,"all 54 Shepherd cue assets leave headroom and meet their mix targets");
-    check(shepherdOnset&&shepherdVariants,"Shepherd cues have immediate onset, distinct variants and clean tails");
+    check(shepherdFamilies==30&&shepherdAssets&&shepherdLevels,"all 90 Chapter 6 cue assets leave headroom and meet their mix targets");
+    check(shepherdOnset&&shepherdVariants,"Chapter 6 cues have immediate onset, distinct variants and clean tails");
+    {
+        bool rhythms=true;
+        for(auto spec:{std::pair<const char*,int>{"shep_fist_tell",2},{"shep_sweep_tell",4},{"shep_grab_tell",3},{"shep_gaze_tell",2},{"shep_gather",3}})for(int v=0;v<3;++v){
+            auto x=wav(std::string("assets/sfx/")+spec.first+(v?"_"+std::to_string(v):"")+".wav");
+            std::vector<double> env;double peak=0;
+            for(size_t p=0;p+220<=x.size();p+=220){double e=0;for(size_t i=p;i<p+220;++i)e+=x[i]*x[i];env.push_back(e);peak=std::max(peak,e);}
+            int groups=0,last=-999;for(int i=0;i<int(env.size());++i)if(env[i]>peak*.2){if(i-last>4)++groups;last=i;}
+            if(groups!=spec.second)std::printf("  signature %s variant %d: %d pulse groups, expected %d\n",spec.first,v,groups,spec.second);
+            rhythms&=groups==spec.second;
+        }
+        check(rhythms,"warning variants preserve separate piston, winch, latch, glass and pressure-pulse rhythms rather than continuous swells");
+        auto idle=shepherdaudio::options("shep_motion",{});
+        check(idle.role==SoundRole::CHATTER&&!idle.priority&&!idle.unducked&&idle.floor<=.25f&&
+              wav("assets/sfx/shep_motion.wav").size()<44100*.4&&wav("assets/sfx/shep_lift.wav").size()<44100*.55,
+              "idle mechanisms are brief background foley, separate from protected attack tells");
+    }
+    {
+        const auto launch=shepherdaudio::options("shep_moon",{});
+        const auto strain=shepherdaudio::options("shep_strain",{});
+        const auto reward=shepherdaudio::options("shep_counter",{});
+        check(!launch.priority&&!launch.unducked&&launch.floor<.3f&&launch.volume<=.8f&&
+              !strain.priority&&!strain.unducked&&strain.floor<=.3f&&strain.volume<=.75f&&reward.priority&&reward.unducked,
+              "repeated launches and tension leave priority and level for warnings and counter rewards");
+        check(ringaudio::warning().role==SoundRole::TELL&&ringaudio::warning().unducked&&
+              ringaudio::contact({}).role==SoundRole::CHATTER&&!ringaudio::contact({}).priority,
+              "ring sweep warnings cut through while capsule knocks and hull creaks step back");
+        check(std::strcmp(shepherdaudio::attackCue(shephead::GAZE),shepherdaudio::attackCue(shephead::BEAM))!=0,
+              "the locked gaze and travelling beam announce different responses");
+    }
+    {
+        auto loudest=[](const std::vector<float>& x){double best=0;const size_t win=2205;
+            for(size_t p=0;p+win<=x.size()/2;p+=win/4){double sum=0;for(size_t i=p;i<p+win;++i)sum+=(x[i*2]*x[i*2]+x[i*2+1]*x[i*2+1])*.5;best=std::max(best,sum/win);}return best;};
+        auto render=[&](const char* name,SfxMixer::Opts o){SfxMixer m(44100,9217);m.addSound(name,wav(std::string("assets/sfx/")+name+".wav"));o.volume*=mixGain(name);m.setListener({0,0,0},{1,0,0},{0,0,-1});m.setVacuum(1);m.play(name,o);std::vector<float> x(44100*3*2);m.render(x.data(),44100*3);return loudest(x);};
+        SfxMixer::Opts step;step.volume=64.f/128.f*ringaudio::FOOTSTEP_GAIN;
+        const auto foot=render("step_metal",step);
+        const auto smack=render("shep_contact",shepherdaudio::options("shep_contact",{0,30,240}));
+        const auto wound=render("shep_wound",shepherdaudio::options("shep_wound",{0,30,240},.85f));
+        check(10*std::log10(smack/foot)>12&&10*std::log10(wound/foot)>10,
+              "distant giant smacks and damaging hits clearly outrank a maximum-speed close footstep in vacuum");
+        bool body=true;for(const char* name:{"shep_contact","shep_counter","shep_break","shep_wound_heavy"}){
+            auto x=wav(std::string("assets/sfx/")+name+".wav");double all=0,tail=0;for(size_t i=0;i<x.size();++i){all+=x[i]*x[i];if(i>=13230)tail+=x[i]*x[i];}body&=tail>all*.025;
+        }
+        check(body,"large impacts retain audible structural resonance after 300 ms instead of padded silence");
+    }
+    // A cancelled continuous sound releases its waveform rather than chopping
+    // an arbitrary nonzero sample. Repeated death/reset calls cannot extend it.
+    for(int rate:{22050,44100,48000}) {
+        SfxMixer m(float(rate),1234);m.addSound("steady",std::vector<float>(rate,.25f));
+        SfxMixer::Opts o;o.group=SoundGroup::UI;
+        const auto h=m.play("steady",o);std::vector<float> b(256*2);
+        m.render(b.data(),256);const float before=b[510];
+        m.stop(h,.012f);std::fill(b.begin(),b.end(),0.f);m.render(b.data(),1);
+        bool clean=std::fabs(b[0]-before)<.001f;float last=b[0];
+        for(int i=1;i<int(rate*.02f);++i){
+            m.stop(h,.012f);std::fill(b.begin(),b.end(),0.f);m.render(b.data(),1);
+            clean&=std::isfinite(b[0])&&std::fabs(b[0]-last)<.002f;last=b[0];
+        }
+        check(clean&&!m.isPlaying(h),"12 ms cancellation is click-free and bounded under repeated stops at each device rate");
+        o.delay=.2f;auto delayed=m.play("steady",o);m.stop(delayed,.012f);m.render(b.data(),256);
+        check(!m.isPlaying(delayed),"cancelling a queued sound prevents its future onset entirely");
+    }
     {
         auto clip=wav("assets/sfx/shep_fist_tell.wav");
         auto energy=[&](float vacuum,bool stress){

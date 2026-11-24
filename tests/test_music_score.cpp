@@ -137,6 +137,15 @@ int main(){
         check(spread<5.5,"Shepherd changes rhythm without a two-bar energy hole");
     }
     {
+        std::vector<std::vector<float>> themes;
+        for(int movement=1;movement<=3;++movement){
+            auto take=[&](bool muted){MusicSynth m;m.setTrack(SHEPHERD_MUSIC_TRACK);m.setShepherdMovement(movement);m.setIntensity(1.3f);m.setThemeMuted(muted);std::vector<float> x(int(2*240.f/174.f*44100)*2);m.render(x.data(),int(x.size()/2));return x;};
+            auto full=take(false),backing=take(true);for(size_t i=0;i<full.size();++i)full[i]-=backing[i];themes.push_back(std::move(full));
+        }
+        bool distinct=true;for(int a=0;a<3;++a)for(int b=a+1;b<3;++b){double xy=0,xx=0,yy=0;for(size_t i=0;i<themes[a].size();++i){xy+=themes[a][i]*themes[b][i];xx+=themes[a][i]*themes[a][i];yy+=themes[b][i]*themes[b][i];}double correlation=xy/std::sqrt(std::max(1e-20,xx*yy));std::printf("  Shepherd opening theme %d/%d correlation %.3f\n",a+1,b+1,correlation);distinct&=xx>1&&yy>1&&std::fabs(correlation)<.8;}
+        check(distinct,"every combat movement has an audible, distinct melody/timbre in its first two bars");
+    }
+    {
         MusicSynth m;m.setTrack(SHEPHERD_MUSIC_TRACK);m.setIntensity(1.3f);
         m.setShepherdMovement(shepherdscore::CONTROL);
         std::vector<float> x(44100*2);m.render(x.data(),44100);
