@@ -16,8 +16,9 @@ machinery. Wordless by design: no speech recordings.
     python3 tools/build_real_voices.py BANK # BANK: the output of build/voice_bank_dump
     python3 tools/build_real_voices.py BANK --freeze SFXDL VOICEDL   # (re)freeze sources
 
-Built kinds: death, hurt, idle, spawn, move. Tells and releases (timed to the
-wind-ups) are still synthesized.
+Built kinds: death, hurt, idle, spawn, move, tell (as long as its wind-up, keeping
+the synthesized tells' gestures) and attack (the releases). The shared specials
+are still synthesized.
 """
 import hashlib
 import math
@@ -35,7 +36,7 @@ SRC = os.path.join(ROOT, "assets", "sfx", "src", "cc0", "voice")
 OUT = os.path.join(ROOT, "assets", "sfx", "voices")
 SFXSRC = os.path.join(ROOT, "assets", "sfx", "src")   # the gun foley recordings (mechanisms)
 TARGET = {"GUN": -11.0, "FOLEY": -18.0, "PLAYER": -12.0, "ACTION": -10.0, "WORLD": -13.0, "UI": -12.0, "TELL": -14.0, "CHATTER": -22.0}
-BUILT = {"death", "hurt", "idle", "spawn", "move"}
+BUILT = {"death", "hurt", "idle", "spawn", "move", "tell", "attack"}
 
 C1, C2 = "x_80-CC0-creature-SFX_0/", "x_80-CC0-creature-sfx-2/"
 SN, MS, V2 = "x_monster_-_starninjas/", "x_monster_sfx_pack/monster_sfx_pack/", "x_monster-sounds-volume-2/Monster-Sounds-Volume-2/"
@@ -68,6 +69,15 @@ _f("big_roar", "v", "monster_roar.wav", 0.0, 3.6)
 _f("alien_hiss", "v", "alien_hiss.mp3")
 _f("power_off", "v", "MachinePowerOff.ogg")
 for k, (a, d) in enumerate([(0.0, 2.6), (5.0, 2.6), (10.0, 2.6), (15.0, 2.6)]): _f(f"troll_idle_{k}", "v", "troll-idle-noises.ogg", a, d)
+# long snarls and roars (segments between the pauses), for the sustained wind-ups
+for k, (a, b) in enumerate([(0, 1.22), (1.6, 2.91), (3.28, 4.2), (5.17, 6.05), (6.72, 7.84), (8.78, 9.83)]):
+    _f(f"snarl_atk_{k}", "v", "monster-snarl-attack.ogg", a, b - a)
+for k, (a, b) in enumerate([(0, 3.53), (4.96, 8.76), (9.7, 12.98)]): _f(f"snarl_long_{k}", "v", "monster-snarls.ogg", a, b - a)
+for k, (a, b) in enumerate([(0, 1.17), (1.86, 2.96), (3.6, 4.77), (5.35, 6.41), (7.07, 8.73)]): _f(f"troll_roar_{k}", "v", "troll-roars.ogg", a, b - a)
+for k, (a, b) in enumerate([(0.33, 1.66), (2.02, 3.49), (4.01, 5.67), (6.3, 8.09)]): _f(f"snarl5_{k}", "v", "monster-snarl-5.ogg", a, b - a)
+_f("m_shoot_01", "s", SF + "shoot_01.ogg"); _f("m_loop_machine_03", "s", SF + "loop_machine_03.ogg", 0.0, 2.0)
+for n in ["shot_01", "shot_02", "shot_03"]: _f("b_" + n, "s", "x_25-CC0-bang-sfx/" + n + ".ogg")
+
 # machinery
 for n in ["loop_machine_01", "loop_machine_02", "loop_ambient_01", "misc_03", "misc_04", "misc_06", "misc_12", "teleport_01", "teleport_02"]:
     _f("m_" + n, "s", SF + n + ".ogg", 0.0, 2.0 if n.startswith("loop") else None)
@@ -183,6 +193,10 @@ def build_voice(v, k):
     bpitch *= (1.15 - 0.35 * size) * jitter
     pick = lambda pool, salt=0: pool[(h(typ, kind, salt) + k) % len(pool)]
 
+    if kind == "tell":
+        return build_tell(v, k, reg, vpitch, comb, bpool, bpitch, voices, body, size)
+    if kind == "attack":
+        return build_release(v, k, reg, vpitch, comb, bpool, bpitch, voices, body, size)
     length = {"death": min(2.0, 0.8 + 0.9 * size), "hurt": 0.32 + 0.25 * size, "idle": 0.7 + 0.8 * size,
               "spawn": min(2.2, 1.0 + 1.0 * size), "move": 0.22 + 0.3 * size}[kind]
     out = [0.0] * int(length * SR)
@@ -230,6 +244,187 @@ def build_voice(v, k):
         out[i] *= 10 ** (-42 / 20 * (i - hold) / (len(out) - hold))
     out = fade_tail(out, 0.02); out[-1] = 0.0
     return out
+
+
+# ---- the wind-ups (tells) and their releases ---------------------------------------------------------
+# A tell is a gesture the player learns, as long as the wind-up it announces (tellDur). The synthesized
+# tells' gestures are kept, built from recordings: RISE (a growl and a mechanism gliding up to a metal
+# catch at the release), HISS (breath and a snarl into a lunge), FALL (a shriek gliding down), RATCHET
+# (recorded clicks, faster and faster), INHALE (a roar reversed, then grinding gears), METAL (a ring
+# swelling backwards into a snap), SING (a massed voice rising), SIREN (a machine whine climbing)
+GESTURE = {}
+for a in ["lunge", "release", "claw", "incision", "ram", "wlunge", "leap", "dash", "charge", "gantry", "rollback"]: GESTURE[a] = "HISS"
+for a in ["dive", "submerge", "teleport", "adash", "blink"]: GESTURE[a] = "FALL"
+for a in ["smash", "press_row", "suture", "recall", "fuse", "grab", "snapshot", "winch"]: GESTURE[a] = "RATCHET"
+for a in ["slam", "pslam", "stomp", "breaker", "cascade", "road_tear", "ballast", "crash", "tide", "breach", "swallow",
+          "stamp", "press", "rupture", "grade", "reject", "detonate", "weight", "spit"]: GESTURE[a] = "INHALE"
+for a in ["incision_thrust", "transpose", "sever", "bell", "bash", "hook", "cleave", "crescent", "whirl", "blade_sweep",
+          "tongs", "lance", "thrust", "lattice", "reap", "crossing", "shelving"]: GESTURE[a] = "METAL"
+for a in ["sweep", "judgment", "phantoms", "summon", "beam", "volley", "perfusion", "observe", "censer_low", "censer_high",
+          "lash", "scourge", "torrent", "vector", "flash_freeze", "seeker", "vent", "crosswind", "purge"]: GESTURE[a] = "SING"
+for a in ["scan", "shell", "burst"]: GESTURE[a] = "SIREN"
+CLICKS = ["#cyl_close_rec", "@clink_1", "@clink_2", "#bolt_rec"]
+LONG_VOCAL = {"deep": ["snarl_long_0", "snarl_long_1", "troll_roar_4", "big_roar", "snarl_long_2"],
+              "mid": ["snarl_long_0", "snarl_long_1", "snarl_long_2", "snarl5_2", "snarl5_3", "sn_11", "sn_08"],
+              "high": ["snarl5_0", "snarl5_1", "c_monster_19", "c_scream_01", "c_monster_17", "v2_02"],
+              "tiny": ["c_alien_03", "c_alien_08", "c_misc_14", "c_bug_01", "c_alien_02"]}
+
+
+def glide(x, r0, r1, n, loop=False):
+    """x played at a rate gliding from r0 to r1 (tape-style: pitch and speed), n samples out"""
+    out = [0.0] * n
+    pos, m = 0.0, len(x) - 1
+    if m < 2: return out
+    for i in range(n):
+        k = int(pos)
+        if k >= m:
+            if not loop: break
+            pos -= m; k = int(pos)
+        f = pos - k
+        out[i] = x[k] + (x[k + 1] - x[k]) * f
+        pos += r0 + (r1 - r0) * i / n
+    return out
+
+
+def env_ramp(x, lo=0.25, start=0.0):
+    """crescendo: from `lo` to full across the sound (a wind-up gets nearer)"""
+    n = len(x)
+    for i in range(n):
+        t = i / n
+        x[i] *= lo + (1 - lo) * (t ** 1.3) if t >= start else lo
+    return x
+
+
+def ident_vocal(name, comb, voices, **kw):
+    return clip(name, hp=70, comb=comb, chorus=voices if voices >= 2 else 0, **kw)
+
+
+def build_tell(v, k, reg, vp, comb, bpool, bp, voices, body, size):
+    d = max(0.2, v["dur"]); a = v["attack"]; typ = v["type"]
+    g = GESTURE.get(a, "RISE")
+    n = int((d + 0.12) * SR); end = int(d * SR)
+    out = [0.0] * n
+    pick = lambda pool, salt=0: pool[(h(typ, a, salt) + k) % len(pool)]
+    lv = LONG_VOCAL[reg] if reg else None
+    def catch(db=-3.0, pitch=1.0, at=None):   # the release moment, on the beat of the wind-up's end
+        x = clip(pick(CLICKS, 9), pitch=pitch * bp, dur=0.12)
+        mix_into(out, gain(fade_tail(x, 0.05), db), (at if at is not None else d - 0.03))
+    def mech_glide(r0, r1, db, name=None, reverse=False):
+        x = clip(name or pick(bpool, 3), hp=50, reverse=reverse)
+        mix_into(out, gain(env_ramp(glide(x, r0 * bp, r1 * bp, end, loop=True), 0.35), db))
+    def vocal_glide(r0, r1, db, pool=None, lo=0.25, reverse=False, until=None):
+        x = ident_vocal(pick(pool or lv, 1), comb, voices, reverse=reverse)
+        m = int((until or d) * SR)
+        y = env_ramp(glide(x, r0 * vp, r1 * vp, m), lo)
+        mix_into(out, gain(fade_tail(y, 0.04), db))
+    if g == "RISE":
+        if reg: vocal_glide(0.85, 1.22, 0)
+        mech_glide(0.7, 1.5, -7 if reg else 0)
+        catch()
+    elif g == "HISS":
+        hx = clip(pick(["alien_hiss", "c_breath", "c_breath_02"], 2), hp=300)
+        mix_into(out, gain(env_ramp(glide(hx, 0.85, 1.25, end, loop=True), 0.3), -4 if reg else 0))
+        if reg:
+            sx = ident_vocal(pick(["snarl_atk_0", "snarl_atk_1", "snarl_atk_2", "snarl_atk_3", "snarl_atk_4", "snarl_atk_5"] if reg in ("deep", "mid")
+                                  else POOL[(reg, "spawn")], 4), comb, voices, pitch=vp)
+            sx = sx[:end]; mix_into(out, env_ramp(fade_tail(sx, 0.05), 0.4), max(0.0, d - len(sx) / SR))
+        mech_glide(0.8, 1.3, -10)
+        catch(-6)
+    elif g == "FALL":
+        if reg: vocal_glide(1.45, 0.8, 0, pool=LONG_VOCAL["high"] if reg != "tiny" else lv, lo=0.6)
+        hx = clip(pick(["alien_hiss", "c_breath_02"], 2), hp=400)
+        mix_into(out, gain(glide(hx, 1.2, 0.8, end, loop=True), -8 if reg else 0))
+        catch(-6, pitch=0.8)
+    elif g == "RATCHET":
+        bright = a == "fuse"
+        t, gap = 0.0, 0.11 if not bright else 0.13
+        while t < d - 0.02:
+            x = clip(pick(CLICKS, int(t * 100)), pitch=(1.6 if bright else 1.0) * bp, dur=0.06)
+            mix_into(out, gain(fade_tail(x, 0.02), -2 + 6 * t / d - 6), t)
+            t += gap; gap = max(0.028, gap * (0.75 if bright else 0.84))
+        if not bright: mech_glide(0.6, 1.0, -10, name=pick(["m_loop_machine_02", "m_misc_03"], 5))
+        if reg and not bright: vocal_glide(0.9, 1.1, -8)
+        catch(0)
+    elif g == "INHALE":
+        if reg:   # a roar played backwards: an intake of breath that swells to the strike
+            x = ident_vocal(pick(["troll_roar_0", "troll_roar_1", "troll_roar_2", "troll_roar_3", "c_roar_05", "c_roar_06"]
+                                 if reg in ("deep", "mid") else POOL[(reg, "spawn")], 1), comb, voices, reverse=True, pitch=vp)
+            x = x[-int(d * 0.75 * SR):] if len(x) > d * 0.75 * SR else x
+            mix_into(out, env_ramp(fade_tail(x, 0.03), 0.3), max(0.0, d * 0.75 - len(x) / SR))
+        gx = clip(pick(["m_loop_machine_02", "m_misc_03", "@metal_09"], 6), hp=40)
+        gy = glide(gx, 0.55 * bp, 0.9 * bp, int(d * 0.45 * SR), loop=True)
+        mix_into(out, gain(env_ramp(gy, 0.4), -4 if reg else 0), d * 0.55)
+        thud = clip(pick(["@punch_2", "@punch_3", "@door_close_03"], 7), pitch=0.7, lp=400, dur=0.15)
+        mix_into(out, gain(fade_tail(thud, 0.06), -2), d - 0.04)
+    elif g == "METAL":
+        rx = clip(pick(["@metal_hit_03", "@metal_hit_06", "@metal_hit_02", "@clink_1", "m_tools_02"], 2), pitch=bp * 1.1, reverse=True)
+        mix_into(out, gain(env_ramp(glide(rx, 0.9, 1.0, end, loop=True), 0.15), -2))
+        hx = clip(pick(["alien_hiss", "c_breath_02"], 3), hp=1500)
+        mix_into(out, gain(env_ramp(glide(hx, 0.9, 1.3, end, loop=True), 0.2), -12))
+        if reg: vocal_glide(0.95, 1.15, -8)
+        snap = clip(pick(["@metal_hit_04", "@metal_hit_06", "@clink_2"], 8), pitch=bp * 1.2, dur=0.12)
+        mix_into(out, fade_tail(snap, 0.05), d - 0.03)
+    elif g == "SING":
+        if reg: vocal_glide(0.95, 1.18, 0, lo=0.35)
+        mech_glide(0.85, 1.25, -9 if reg else 0, name=pick(["m_loop_ambient_01", "m_loop_machine_01", "m_teleport_02"], 4))
+        catch(-8)
+    elif g == "SIREN":
+        mech_glide(0.6, 1.5, 0, name="m_loop_machine_03")
+        if reg: vocal_glide(0.85, 1.25, -6)
+        catch(-4)
+    out = fade_tail(out, 0.03); out[-1] = 0.0
+    # starts at once: a short fade-in from the first sample (no pre-roll)
+    for i in range(min(len(out), int(0.006 * SR))): out[i] *= i / (0.006 * SR)
+    if max(abs(x) for x in out) < 1e-6: out[0] = 1e-4
+    return out
+
+
+def build_release(v, k, reg, vp, comb, bpool, bp, voices, body, size):
+    a = v["attack"]; typ = v["type"]
+    pick = lambda pool, salt=0: pool[(h(typ, a, salt) + k) % len(pool)]
+    def put(out, name, at=0.0, db=0.0, pitch=1.0, dur=None, lp=None, hp=None, fade=0.06):
+        x = clip(name, pitch=pitch, dur=dur, lp=lp, hp=hp)
+        mix_into(out, gain(fade_tail(x, min(fade, len(x) / SR * 0.5)), db), at)
+    if a == "beam":   # held while the beam sweeps (3 s), stopped when it ends: steady, no decay
+        out = [0.0] * int(3.0 * SR)
+        x = clip("m_loop_machine_03", pitch=1.1 * bp); mix_into(out, glide(x, 1.0, 1.0, len(out), loop=True))
+        y = clip("m_loop_ambient_01", pitch=1.3); mix_into(out, gain(glide(y, 1.0, 1.0, len(out), loop=True), -6))
+        if reg:
+            z = ident_vocal(pick(LONG_VOCAL[reg], 1), comb, max(4, voices), pitch=vp * 1.3)
+            mix_into(out, gain(glide(z, 1.0, 1.0, len(out), loop=True), -5))
+        out[:int(0.08 * SR)] = [s * i / (0.08 * SR) for i, s in enumerate(out[:int(0.08 * SR)])]
+        return fade_tail(out, 0.1)
+    out = [0.0] * int(0.6 * SR)
+    shot = lambda: pick(["m_shoot_01", "b_shot_01", "b_shot_02", "b_shot_03"], 2)
+    if a == "shot":
+        put(out, shot(), pitch=bp * 1.05, dur=0.4, fade=0.15); put(out, pick(CLICKS, 3), db=-10, pitch=bp, dur=0.08)
+    elif a == "burst":
+        for j in range(3): put(out, shot(), at=j * 0.07, pitch=bp * (1.1 + 0.04 * j), dur=0.25, fade=0.1, db=-1)
+    elif a in ("lunge", "dive", "bash"):
+        put(out, pick(["alien_hiss", "c_breath_02"], 4), db=-4, pitch=1.2, hp=500, dur=0.3)
+        if reg:
+            x = ident_vocal(pick(["snarl_atk_0", "snarl_atk_2", "snarl_atk_4"] if reg in ("deep", "mid") else POOL[(reg, "hurt")], 5),
+                            comb, voices, pitch=vp * 1.05, dur=0.35)
+            mix_into(out, fade_tail(x, 0.12))
+        if a == "bash": put(out, pick(["@metal_hit_02", "@metal_hit_04"], 6), db=-2, pitch=bp, dur=0.3, fade=0.15)
+    elif a == "lob":
+        put(out, pick(["@punch_2", "@punch_3"], 4), pitch=0.8, lp=600, dur=0.2); put(out, pick(CLICKS, 3), db=-6, pitch=0.8, dur=0.08)
+    elif a == "shell":
+        put(out, "cannon_04" if False else "b_shot_01", pitch=0.6, lp=1500, dur=0.5, fade=0.2)
+        put(out, pick(["alien_hiss", "c_breath_02"], 4), at=0.03, db=-8, pitch=0.8, dur=0.4)
+    elif a == "volley":
+        for j in range(3):
+            put(out, pick(["@punch_2", "@punch_4", "@punch_5"], j), at=j * 0.06, pitch=0.85, lp=700, dur=0.15)
+            put(out, pick(CLICKS, j + 3), at=j * 0.06, db=-8, pitch=0.9, dur=0.06)
+    else:   # a heavy machine letting go: a thump, a clank, a little grind
+        put(out, pick(["@punch_2", "@punch_3", "@door_close_03"], 4), pitch=0.75, lp=700, dur=0.25, fade=0.1)
+        put(out, pick(["@metal_hit_02", "@metal_hit_05", "@metal_08"], 5), db=-4, pitch=bp, dur=0.35, fade=0.15)
+        put(out, pick(CLICKS, 3), db=-8, pitch=bp, dur=0.08)
+    pk = max(1e-9, max(abs(s) for s in out))
+    last = max(i for i, s in enumerate(out) if abs(s) >= pk * 0.003)
+    out = out[:last + 1]
+    for i in range(min(len(out), int(0.004 * SR))): out[i] *= i / (0.004 * SR)
+    return fade_tail(out, 0.02)
 
 
 def level(x, cls):

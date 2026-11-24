@@ -85,12 +85,14 @@ family to its mix class. The recordings are frozen (mono 44.1 kHz) in
 
 ## Recorded enemy voices (November 23 2026)
 
-Every enemy's death, hurt, idle, spawn and move voice (`assets/sfx/voices/`, 327 files)
+Every enemy voice (`assets/sfx/voices/`, 596 files: death, hurt, idle, spawn, move, every tell and every release)
 is built by `tools/build_real_voices.py` (`make voices`) from recordings frozen in
 `assets/sfx/src/cc0/voice/`. Each is a creature vocal pitched to the enemy's register,
 put through a short metal comb (a chorus for the massed ones), over a recorded
-mechanism for its body; the cold machines have no vocal. Tells and attack releases
-are still synthesized by `src/audio/VoiceSynth.h`, which also remains the fallback
+mechanism for its body; the cold machines have no vocal. Tells keep the synthesized
+gestures (rise, hiss, fall, ratchet, inhale, drawn metal, sung, siren), built from
+recordings and exactly as long as their wind-ups. The shared specials (halo, enrage,
+rise, link, choke, the Absolute's line) are still synthesized by `src/audio/VoiceSynth.h`, the fallback
 (`OVERDRIVE_SYNTH_VOICES=1` forces the old voices). All sources are **CC0** from
 OpenGameArt:
 
@@ -104,6 +106,8 @@ OpenGameArt:
 | `big_roar` | [CC0 Deep Monster Roar](https://opengameart.org/content/cc0-deep-monster-roar) |
 | `troll_idle_*` | [Big scary troll sounds](https://opengameart.org/content/big-scary-troll-sounds) |
 | `alien_hiss` | [Alien Sounds](https://opengameart.org/content/alien-sounds-0) |
+| `snarl_*`, `troll_roar_*` | [Monster snarls](https://opengameart.org/content/monster-snarls), [Big scary troll sounds](https://opengameart.org/content/big-scary-troll-sounds) |
+| `b_shot_*`, `m_shoot_01`, `m_loop_machine_03` | [25 CC0 bang / firework SFX](https://opengameart.org/content/25-cc0-bang-firework-sfx), [50 CC0 Sci-Fi SFX](https://opengameart.org/content/50-cc0-sci-fi-sfx) |
 | `power_off` | [Machine shutting down](https://opengameart.org/content/machine-shutting-down) |
 | `m_loop_*`, `m_misc_*`, `m_teleport_*` | [50 CC0 Sci-Fi SFX](https://opengameart.org/content/50-cc0-sci-fi-sfx) |
 | `m_tools_*`, `m_machine_*` | [100 CC0 SFX](https://opengameart.org/content/100-cc0-sfx) |
